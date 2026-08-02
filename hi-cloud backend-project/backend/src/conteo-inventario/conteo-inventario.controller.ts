@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Patch, Body, Param, Query,
-  ParseIntPipe, UseGuards, HttpCode, HttpStatus,
+  ParseIntPipe, UseGuards, HttpCode, HttpStatus, Res,
 } from '@nestjs/common';
 import {
   IsString, IsOptional, IsInt, IsPositive, IsNumber, Min, IsDateString,
@@ -18,6 +18,7 @@ import {
   ConteoInventarioService, CreateConteoInput,
   DigitarLineaResult, LoteResultado,
 } from './conteo-inventario.service';
+import { ConteoPdfService } from './conteo-pdf.service';
 import { ConteoInventario } from './entities/conteo-inventario.entity';
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────
@@ -112,7 +113,44 @@ class ListarConteosQuery {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('conteo-inventario')
 export class ConteoInventarioController {
-  constructor(private readonly svc: ConteoInventarioService) {}
+  constructor(
+    private readonly svc: ConteoInventarioService,
+    private readonly pdfSvc: ConteoPdfService,
+  ) {}
+
+  // ── PDF ───────────────────────────────────────────────────────────────────
+
+  @Get(':id/hoja.pdf')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
+  @ApiOperation({ summary: 'Descargar hoja de conteo en PDF (modalidad ciega por defecto)' })
+  async hojaPdf(
+    @Param('id', ParseIntPipe) id: number,
+    @Res() res: any,
+  ) {
+    const buf = await this.pdfSvc.generarHojaPDF(id);
+    res.set({
+      'Content-Type':        'application/pdf',
+      'Content-Disposition': `attachment; filename="conteo-${id}.pdf"`,
+      'Content-Length':      buf.length,
+    });
+    res.end(buf);
+  }
+
+  @Get(':id/recuento.pdf')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
+  @ApiOperation({ summary: 'Descargar hoja de recuento en PDF (solo líneas en_recuento)' })
+  async hojaRecuentoPdf(
+    @Param('id', ParseIntPipe) id: number,
+    @Res() res: any,
+  ) {
+    const buf = await this.pdfSvc.generarHojaRecuentoPDF(id);
+    res.set({
+      'Content-Type':        'application/pdf',
+      'Content-Disposition': `attachment; filename="recuento-${id}.pdf"`,
+      'Content-Length':      buf.length,
+    });
+    res.end(buf);
+  }
 
   // ── Consultas (lectura abierta a VIEWER) ───────────────────────────────────
 

@@ -93,6 +93,78 @@ export async function exportarInventario(productos: any[]) {
   await exportarExcel(filas, `Inventario-${new Date().toISOString().split('T')[0]}`);
 }
 
+// ── Exportar hoja de conteo físico ───────────────────────────────────────────
+// Genera tres hojas: Conteo (líneas ordenadas por orden), Resumen, Recuento (si hay en_recuento).
+// Columna "Cant. Sistema" solo aparece en modalidad informada.
+export async function exportarHojaConteo(conteo: any) {
+  const XLSX = await import('xlsx');
+
+  const lineas: any[] = (conteo.lineas ?? []).slice().sort((a: any, b: any) => a.orden - b.orden);
+  const informado  = conteo.modalidad === 'informado';
+  const enRevision = ['en_revision', 'ajustado', 'cerrado'].includes(conteo.estado);
+
+  // ── Hoja principal ──
+  const filas = lineas.map((l: any) => {
+    const badges: string[] = [];
+    if (l.tieneLotes)    badges.push('Lotes');
+    if (l.tieneSeriales) badges.push('Seriales');
+
+    const row: Record<string, any> = {
+      '#':           l.orden,
+      'Código':      l.productoCodigo ?? '',
+      'Descripción': (l.productoNombre ?? '') + (badges.length ? ` [${badges.join(', ')}]` : ''),
+      'Unidad':      l.unidadMedida ?? '',
+    };
+    if (informado) row['Cant. Sistema'] = Number(l.cantidadSistema ?? 0);
+    row['Cant. Contada'] = l.cantidadContada != null ? Number(l.cantidadContada) : '';
+    if (enRevision) {
+      row['Diferencia'] = Number(l.diferencia ?? 0);
+      row['Estado']     = l.estadoLinea;
+    }
+    return row;
+  });
+
+  const ws = XLSX.utils.json_to_sheet(filas);
+  ws['!cols'] = Object.keys(filas[0] ?? {}).map(k => ({
+    wch: Math.max(k.length, ...filas.map((r: any) => String(r[k] ?? '').length)) + 2,
+  }));
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Conteo');
+
+  // ── Resumen ──
+  const resumen = [
+    { 'Campo': 'Código',     'Valor': conteo.codigo },
+    { 'Campo': 'Nombre',     'Valor': conteo.nombre },
+    { 'Campo': 'Modalidad',  'Valor': conteo.modalidad === 'ciego' ? 'Ciega' : 'Informada' },
+    { 'Campo': 'Estado',     'Valor': conteo.estado },
+    { 'Campo': 'Total líneas', 'Valor': conteo.totalLineas },
+    { 'Campo': 'Capturadas', 'Valor': conteo.lineasContadas },
+    { 'Campo': 'Diferencias','Valor': conteo.totalDiferencias },
+    { 'Campo': 'Fecha',      'Valor': new Date(conteo.fechaGeneracion).toLocaleDateString('es-DO') },
+  ];
+  const wsRes = XLSX.utils.json_to_sheet(resumen);
+  wsRes['!cols'] = [{ wch: 16 }, { wch: 30 }];
+  XLSX.utils.book_append_sheet(wb, wsRes, 'Resumen');
+
+  // ── Recuento (solo si hay líneas en esa fase) ──
+  const recuentoLineas = lineas.filter((l: any) => l.estadoLinea === 'en_recuento');
+  if (recuentoLineas.length > 0) {
+    const filasRec = recuentoLineas.map((l: any) => ({
+      '#':              l.orden,
+      'Código':         l.productoCodigo ?? '',
+      'Descripción':    l.productoNombre ?? '',
+      'Cant. Original': Number(l.cantidadContada ?? 0),
+      'Cant. Recuento': l.cantidadRecuento != null ? Number(l.cantidadRecuento) : '',
+    }));
+    const wsRec = XLSX.utils.json_to_sheet(filasRec);
+    wsRec['!cols'] = Object.keys(filasRec[0]).map(k => ({ wch: Math.max(k.length, 16) }));
+    XLSX.utils.book_append_sheet(wb, wsRec, 'Recuento');
+  }
+
+  XLSX.writeFile(wb, `${conteo.codigo}-conteo.xlsx`);
+}
+
 // ── Exportar catálogo completo de productos (columnas ricas) ─────────────────
 // Devuelve true si generó el archivo, false si la lista estaba vacía.
 export async function exportarCatalogo(productos: any[], sufijo: string): Promise<boolean> {

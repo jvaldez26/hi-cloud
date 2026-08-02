@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConteoInventarioController } from './conteo-inventario.controller';
 import { ConteoInventarioService } from './conteo-inventario.service';
+import { ConteoPdfService } from './conteo-pdf.service';
 import { ConteoInventario } from './entities/conteo-inventario.entity';
 import { LineaConteo } from './entities/linea-conteo.entity';
 import { ConteoAjuste } from './entities/conteo-ajuste.entity';
@@ -11,7 +12,7 @@ import { Movimiento } from '../inventario/entities/movimiento.entity';
 @Module({
   imports: [TypeOrmModule.forFeature([ConteoInventario, LineaConteo, ConteoAjuste, Producto, Movimiento])],
   controllers: [ConteoInventarioController],
-  providers: [ConteoInventarioService],
+  providers: [ConteoInventarioService, ConteoPdfService],
   exports: [ConteoInventarioService],
 })
 export class ConteoInventarioModule {}

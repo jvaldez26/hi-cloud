@@ -11,10 +11,11 @@ import {
   ArrowLeftOutlined, SearchOutlined, CheckCircleFilled, WarningFilled,
   CloseCircleFilled, LoadingOutlined, SyncOutlined, PlusOutlined,
   PlayCircleOutlined, AuditOutlined, CheckOutlined, StopOutlined,
-  DisconnectOutlined, BarcodeOutlined,
+  DisconnectOutlined, BarcodeOutlined, FilePdfOutlined, FileExcelOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
+import { exportarHojaConteo } from '../../utils/exportExcel';
 
 const { Text, Title } = Typography;
 const { Option } = Select;
@@ -112,8 +113,11 @@ function ConteoDigitacion({ conteoId, onBack }: { conteoId: number; onBack: () =
   const isFlushing  = useRef(false);
   const retryHandle = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchRef   = useRef<InputRef>(null);
-  // Track lines that have been queued this session to compute local "done" state
   const queuedIds   = useRef<Set<number>>(new Set());
+
+  // Refs sincronizados para usar en el efecto del escáner (evita stale closures)
+  const activeLineaIdRef = useRef<number | null>(null);
+  const cantidadesRef    = useRef<Record<number, string>>({});
 
   // ── Data ────────────────────────────────────────────────────────────────────
 
@@ -139,6 +143,24 @@ function ConteoDigitacion({ conteoId, onBack }: { conteoId: number; onBack: () =
 
   const esEditable = conteo?.estado === 'en_conteo' || conteo?.estado === 'en_digitacion';
   const esRevision = conteo?.estado === 'en_revision';
+
+  // Mantener refs sincronizados con el estado
+  useEffect(() => { activeLineaIdRef.current = activeLineaId; }, [activeLineaId]);
+  useEffect(() => { cantidadesRef.current = cantidades; }, [cantidades]);
+
+  // ── localStorage helpers ────────────────────────────────────────────────────
+
+  const queueKey = `conteo-queue-${conteoId}`;
+
+  const persistQueue = () => {
+    try {
+      if (pendingQ.current.length > 0) {
+        localStorage.setItem(queueKey, JSON.stringify(pendingQ.current));
+      } else {
+        localStorage.removeItem(queueKey);
+      }
+    } catch { /* localStorage may be unavailable (private mode) */ }
+  };
 
   // ── Save queue ──────────────────────────────────────────────────────────────
 
@@ -177,12 +199,14 @@ function ConteoDigitacion({ conteoId, onBack }: { conteoId: number; onBack: () =
         setQueueSize(pendingQ.current.length);
       }
 
+      persistQueue();
       qc.invalidateQueries({ queryKey: ['conteo', conteoId] });
 
     } catch {
       // Red caída — devolver al queue como offline
       pendingQ.current.push(...batch);
       setQueueSize(pendingQ.current.length);
+      persistQueue();
       setLineaStatus(prev => {
         const next = { ...prev };
         batch.forEach(b => { next[b.lineaId] = 'offline'; });
@@ -194,7 +218,37 @@ function ConteoDigitacion({ conteoId, onBack }: { conteoId: number; onBack: () =
         retryHandle.current = setTimeout(flush, 4000);
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conteoId, qc]);
+
+  // Restaurar cola de localStorage al montar (refresco de página / app móvil)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(queueKey);
+      if (!saved) return;
+      const items: QueueItem[] = JSON.parse(saved);
+      if (!items.length) return;
+      pendingQ.current.push(...items);
+      setQueueSize(items.length);
+      items.forEach(i => {
+        setCantidades(prev => ({ ...prev, [i.lineaId]: String(i.cantidad) }));
+        setLineaStatus(prev => ({ ...prev, [i.lineaId]: 'offline' }));
+      });
+      setTimeout(flush, 1000); // intentar sincronizar en cuanto cargue
+    } catch { /* ignore */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conteoId]);
+
+  // Avisar antes de salir si hay capturas sin sincronizar
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (pendingQ.current.length === 0) return;
+      e.preventDefault();
+      return (e.returnValue = `${pendingQ.current.length} captura(s) sin sincronizar. ¿Salir de todas formas?`);
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, []);
 
   useEffect(() => {
     const up   = () => { setIsOnline(true);  setTimeout(flush, 500); };
@@ -253,42 +307,99 @@ function ConteoDigitacion({ conteoId, onBack }: { conteoId: number; onBack: () =
     pendingQ.current.push({ lineaId, cantidad });
     queuedIds.current.add(lineaId);
     setQueueSize(pendingQ.current.length);
+    persistQueue();
 
     focusNext(lineaId);
     flush();
   }, [cantidades, focusNext, flush]);
 
-  // ── Scanner (buffer con timeout 200ms) ──────────────────────────────────────
-  // Captura códigos tipados/escaneados cuando ningún input está activo.
-  // CNT-XXXXXX → podría navegar a otro conteo (not implemented).
-  // Código de producto → saltar a esa línea.
+  // ── Scanner HID — interceptación por velocidad de tecleo ───────────────────
+  // Un escáner HID envía los chars del código de barras en ráfagas < 30-50ms.
+  // Estrategia: usar capture=true para interceptar antes que el input, y detectar
+  // la ráfaga por timing. A partir del 2º char consecutivo rápido: preventDefault.
+  // El 1º char puede haber llegado al input; se restaura al completar el escaneo.
 
   useEffect(() => {
     if (!conteo) return;
-    let buf = '';
-    let timer: ReturnType<typeof setTimeout>;
 
-    const process = (code: string) => {
-      buf = '';
+    let lastTime    = 0;
+    let count       = 0;
+    let buf         = '';
+    let scanTimer: ReturnType<typeof setTimeout> | null = null;
+    let preScanVal: string | null = null; // valor del input activo justo antes del 1º char
+
+    const finish = (code: string) => {
+      count = 0;
+      buf   = '';
       if (!code.trim()) return;
+
+      // Restaurar valor del input activo (deshacer el char que pudo haber entrado)
+      const activeId = activeLineaIdRef.current;
+      if (activeId !== null && preScanVal !== null) {
+        setCantidades(prev => ({ ...prev, [activeId]: preScanVal! }));
+      }
+      preScanVal = null;
+
       const sorted = (conteo.lineas ?? []).slice().sort((a, b) => a.orden - b.orden);
       const found  = sorted.find(l => l.productoCodigo?.toLowerCase() === code.toLowerCase());
-      if (found) focusLine(found.id);
+      if (found) {
+        focusLine(found.id);
+      } else {
+        message.info(`Código "${code}" no encontrado en este conteo`, 2);
+      }
     };
 
     const handler = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement).tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return; // dejar que los inputs manejen sus teclas
-      if (e.key === 'Enter') { clearTimeout(timer); process(buf); return; }
+      const now   = performance.now();
+      const delta = now - lastTime;
+      lastTime    = now;
+
+      // Enter cierra el escaneo si estamos en modo escáner
+      if (e.key === 'Enter') {
+        if (count >= 2) {
+          if (scanTimer) clearTimeout(scanTimer);
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          const code = buf;
+          buf = ''; count = 0;
+          finish(code);
+        }
+        return;
+      }
+
       if (e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey) return;
+
+      if (count === 0) {
+        // Primer char de nueva secuencia — guardar el estado previo del input activo
+        preScanVal = cantidadesRef.current[activeLineaIdRef.current ?? -1] ?? null;
+      }
+
+      const isFastChar = delta < 50 && count > 0;
+
       buf += e.key;
-      clearTimeout(timer);
-      timer = setTimeout(() => process(buf), 200);
+      count++;
+
+      if (isFastChar) {
+        // Confirmado como escáner — prevenir que el char llegue al input
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
+
+      if (scanTimer) clearTimeout(scanTimer);
+      scanTimer = setTimeout(() => {
+        scanTimer = null;
+        if (count >= 2) finish(buf);
+        else { buf = ''; count = 0; preScanVal = null; } // solo tecleo lento — ignorar
+      }, 200);
     };
 
-    document.addEventListener('keydown', handler);
-    return () => { document.removeEventListener('keydown', handler); clearTimeout(timer); };
-  }, [conteo, focusLine]);
+    // capture:true → se ejecuta antes del listener del input
+    document.addEventListener('keydown', handler, true);
+    return () => {
+      document.removeEventListener('keydown', handler, true);
+      if (scanTimer) clearTimeout(scanTimer);
+    };
+  }, [conteo, focusLine, setCantidades]);
 
   // ── Mutations ─────────────────────────────────────────────────────────────
 
@@ -330,6 +441,19 @@ function ConteoDigitacion({ conteoId, onBack }: { conteoId: number; onBack: () =
     onError: (e) => message.error(errMsg(e), 5),
   });
 
+  // ── Descarga de archivos (usa el api client para incluir auth headers) ──────
+
+  const downloadPdf = async (path: string, filename: string) => {
+    try {
+      const res = await api.get(path, { responseType: 'blob' } as any);
+      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const href = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = href; a.download = filename; a.click();
+      URL.revokeObjectURL(href);
+    } catch (e) { message.error(errMsg(e)); }
+  };
+
   // ── Render ───────────────────────────────────────────────────────────────────
 
   if (isLoading) return (
@@ -351,6 +475,33 @@ function ConteoDigitacion({ conteoId, onBack }: { conteoId: number; onBack: () =
         display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, flexWrap: 'wrap',
       }}>
         <Button icon={<ArrowLeftOutlined />} onClick={onBack}>Conteos</Button>
+        <Divider type="vertical" style={{ height: 28 }} />
+        <Tooltip title="Descargar hoja de conteo en PDF">
+          <Button
+            icon={<FilePdfOutlined />}
+            onClick={() => conteo && downloadPdf(`/conteo-inventario/${conteoId}/hoja.pdf`, `${conteo.codigo}.pdf`)}
+          >
+            Hoja PDF
+          </Button>
+        </Tooltip>
+        {(esRevision || conteo?.estado === 'ajustado') && (
+          <Tooltip title="Descargar solo las líneas que requieren segundo recuento">
+            <Button
+              icon={<FilePdfOutlined />}
+              onClick={() => conteo && downloadPdf(`/conteo-inventario/${conteoId}/recuento.pdf`, `${conteo.codigo}-recuento.pdf`)}
+            >
+              Recuento PDF
+            </Button>
+          </Tooltip>
+        )}
+        <Tooltip title="Exportar hoja de conteo a Excel">
+          <Button
+            icon={<FileExcelOutlined />}
+            onClick={() => conteo && exportarHojaConteo(conteo)}
+          >
+            Excel
+          </Button>
+        </Tooltip>
         <Divider type="vertical" style={{ height: 28 }} />
 
         <Space size={8} wrap style={{ flex: 1 }}>
