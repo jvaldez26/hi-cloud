@@ -1,19 +1,57 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" fill="none">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+    <linearGradient id="cloudGrad" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#00AAFF"/>
       <stop offset="60%" stop-color="#1565C0"/>
       <stop offset="100%" stop-color="#003A9B"/>
     </linearGradient>
-    <linearGradient id="hi" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#29C6FF"/>
+    <linearGradient id="hiGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#29B6FF"/>
       <stop offset="100%" stop-color="#1565C0"/>
     </linearGradient>
   </defs>
-  <!-- Cloud shape -->
-  <path d="M 80 370 Q 20 370 20 290 Q 20 215 100 205 Q 110 130 185 120 Q 235 112 272 148 Q 295 100 355 95 Q 450 88 478 175 Q 510 172 510 230 Q 512 295 460 310 Q 490 340 490 370 Z" fill="url(#bg)"/>
-  <!-- White inner -->
-  <path d="M 90 355 Q 45 355 45 292 Q 45 232 116 224 Q 128 156 196 147 Q 243 140 277 172 Q 302 128 358 123 Q 441 118 462 196 Q 490 194 492 245 Q 494 300 450 314 Q 480 338 478 355 Z" fill="white"/>
-  <!-- Hi text -->
-  <text x="148" y="305" font-family="Arial Black, Arial, sans-serif" font-size="148" font-weight="900" fill="url(#hi)" letter-spacing="-4">Hi</text>
+
+  <!-- Cloud shape outline -->
+  <path d="
+    M 110 185
+    Q 60 185 60 140
+    Q 60 100 100 95
+    Q 105 60 140 55
+    Q 165 50 185 68
+    Q 195 45 225 42
+    Q 275 38 295 80
+    Q 325 78 340 100
+    Q 360 115 355 145
+    Q 350 185 310 185
+    Z
+  " fill="url(#cloudGrad)" stroke="none"/>
+
+  <!-- Inner white space (cloud outline effect) -->
+  <path d="
+    M 115 175
+    Q 75 175 75 142
+    Q 75 110 108 106
+    Q 115 76 145 70
+    Q 168 65 186 80
+    Q 198 58 226 55
+    Q 268 51 284 87
+    Q 310 86 322 104
+    Q 338 117 334 143
+    Q 330 175 300 175
+    Z
+  " fill="white"/>
+
+  <!-- H letter -->
+  <text x="138" y="158" font-family="Arial Rounded MT Bold, Arial, sans-serif"
+        font-size="82" font-weight="900" fill="url(#hiGrad)"
+        letter-spacing="-2">H</text>
+
+  <!-- i letter -->
+  <text x="218" y="158" font-family="Arial Rounded MT Bold, Arial, sans-serif"
+        font-size="82" font-weight="900" fill="url(#hiGrad)">i</text>
+
+  <!-- cloud text below -->
+  <text x="200" y="250" font-family="Arial Rounded MT Bold, Arial, sans-serif"
+        font-size="52" font-weight="600" fill="#0A1851"
+        text-anchor="middle" letter-spacing="10">cloud</text>
 </svg>
