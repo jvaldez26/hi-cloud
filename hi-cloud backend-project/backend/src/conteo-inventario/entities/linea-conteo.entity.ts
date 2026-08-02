@@ -37,13 +37,13 @@ export class LineaConteo extends TenantBaseEntity {
 
   // Snapshot desnormalizado (no actualizar retroactivamente)
   @Column({ length: 30, nullable: true })
-  productoCodigo!: string | null;
+  productoCodigo?: string;
 
   @Column({ length: 200, nullable: true })
-  productoNombre!: string | null;
+  productoNombre?: string;
 
   @Column({ length: 20, nullable: true })
-  unidadMedida!: string | null;
+  unidadMedida?: string;
 
   @ManyToOne(() => UbicacionAlmacen, { nullable: true })
   @JoinColumn({ name: 'ubicacionId' })
