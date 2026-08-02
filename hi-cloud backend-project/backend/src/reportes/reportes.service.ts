@@ -235,7 +235,16 @@ export class ReportesService {
         [eid, inicioHoy],
       ),
       this.dataSource.query<{ cnt: string }[]>(
-        `SELECT COUNT(*) AS cnt FROM productos WHERE "empresaId"=$1 AND "isActive"=true AND stock=0`,
+        `SELECT COUNT(*) AS cnt
+         FROM productos p
+         WHERE p."empresaId"=$1 AND p."isActive"=true AND p.tipo='producto'
+           AND COALESCE((
+             SELECT SUM(sa.stock)
+             FROM stock_almacen sa
+             INNER JOIN almacenes a ON a.id = sa."almacenId"
+             WHERE sa."productoId"=p.id AND sa."empresaId"=$1
+               AND sa."isActive"=true AND a."isActive"=true
+           ), 0) = 0`,
         [eid],
       ),
       this.dataSource.query<{ cnt: string; total: string }[]>(
