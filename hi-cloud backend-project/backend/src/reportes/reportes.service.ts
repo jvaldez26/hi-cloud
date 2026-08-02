@@ -174,6 +174,87 @@ export class ReportesService {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
+  // CONTEXTO PERSONALIZADO DEL DASHBOARD
+  // ══════════════════════════════════════════════════════════════════════════
+
+  async getContextoDashboard(
+    inicioHoy: string, ahoraLocal: string,
+    inicioAyer: string, mismaHoraAyer: string,
+    role: UserRole,
+  ) {
+    const eid = this.eid;
+
+    // Ventas + top producto — mismo bloque para todos los roles
+    const [ventasHoyRow, ventasAyerRow, ventasSemanaRow, topProdRow] = await Promise.all([
+      this.dataSource.query<{ total: string }[]>(
+        `SELECT COALESCE(SUM(total),0) AS total FROM facturas
+         WHERE "empresaId"=$1 AND "isActive"=true AND estado IN ('emitida','pagada')
+           AND fecha BETWEEN $2 AND $3`,
+        [eid, inicioHoy, ahoraLocal],
+      ),
+      this.dataSource.query<{ total: string }[]>(
+        `SELECT COALESCE(SUM(total),0) AS total FROM facturas
+         WHERE "empresaId"=$1 AND "isActive"=true AND estado IN ('emitida','pagada')
+           AND fecha BETWEEN $2 AND $3`,
+        [eid, inicioAyer, mismaHoraAyer],
+      ),
+      // Misma franja horaria del mismo día de la semana pasada (para micro-reconocimiento)
+      this.dataSource.query<{ total: string }[]>(
+        `SELECT COALESCE(SUM(total),0) AS total FROM facturas
+         WHERE "empresaId"=$1 AND "isActive"=true AND estado IN ('emitida','pagada')
+           AND fecha BETWEEN ($2::timestamptz - INTERVAL '7 days') AND ($3::timestamptz - INTERVAL '7 days')`,
+        [eid, inicioHoy, ahoraLocal],
+      ),
+      this.dataSource.query<{ nombre: string; total: string; unidades: string }[]>(
+        `SELECT p.nombre, COALESCE(SUM(fd.total),0) AS total, COALESCE(SUM(fd.cantidad),0) AS unidades
+         FROM factura_detalles fd
+         JOIN productos p ON p.id=fd."productoId"
+         JOIN facturas  f ON f.id=fd."facturaId"
+         WHERE f."empresaId"=$1 AND f."isActive"=true AND fd."isActive"=true
+           AND f.estado IN ('emitida','pagada') AND f.fecha BETWEEN $2 AND $3
+         GROUP BY p.nombre ORDER BY total DESC LIMIT 1`,
+        [eid, inicioHoy, ahoraLocal],
+      ),
+    ]);
+
+    const ventasHoy           = Number(ventasHoyRow[0]?.total  ?? 0);
+    const ventasAyerMismaHora = Number(ventasAyerRow[0]?.total ?? 0);
+    const ventasHaceSemana    = Number(ventasSemanaRow[0]?.total ?? 0);
+    const topProductoHoy      = topProdRow[0]
+      ? { nombre: topProdRow[0].nombre, total: Number(topProdRow[0].total), unidades: Number(topProdRow[0].unidades) }
+      : null;
+
+    if (role === UserRole.VENDEDOR) {
+      return { ecfRechazados: 0, stockCero: 0, facturasVencidas: { count: 0, total: 0 }, ventasHoy, ventasAyerMismaHora, ventasHaceSemana, topProductoHoy };
+    }
+
+    // ADMIN / CONTADOR — alertas adicionales
+    const [ecfRows, stockRows, cxcVencidasRows] = await Promise.all([
+      this.dataSource.query<{ cnt: string }[]>(
+        `SELECT COUNT(*) AS cnt FROM ecf WHERE "empresaId"=$1 AND "isActive"=true AND "estadoDGII" IN ('rechazado','contingencia')`,
+        [eid],
+      ),
+      this.dataSource.query<{ cnt: string }[]>(
+        `SELECT COUNT(*) AS cnt FROM productos WHERE "empresaId"=$1 AND "isActive"=true AND stock=0`,
+        [eid],
+      ),
+      this.dataSource.query<{ cnt: string; total: string }[]>(
+        `SELECT COUNT(*) AS cnt, COALESCE(SUM("montoPendiente"),0) AS total
+         FROM cuentas_por_cobrar
+         WHERE "empresaId"=$1 AND "isActive"=true AND estado IN ('pendiente','pagada_parcial') AND "fechaVencimiento" < CURRENT_DATE`,
+        [eid],
+      ),
+    ]);
+
+    return {
+      ecfRechazados:    Number(ecfRows[0]?.cnt ?? 0),
+      stockCero:        Number(stockRows[0]?.cnt ?? 0),
+      facturasVencidas: { count: Number(cxcVencidasRows[0]?.cnt ?? 0), total: Number(cxcVencidasRows[0]?.total ?? 0) },
+      ventasHoy, ventasAyerMismaHora, ventasHaceSemana, topProductoHoy,
+    };
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
   // DASHBOARD
   // ══════════════════════════════════════════════════════════════════════════
 

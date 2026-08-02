@@ -42,4 +42,7 @@ export const reportesApi = {
 
   ecfPorEstado: (mes: number, anio: number) =>
     api.get(`/reportes/fiscal/ecf?mes=${mes}&anio=${anio}`).then(r => r.data.data),
+
+  contexto: (p: { inicioHoy: string; ahoraLocal: string; inicioAyer: string; mismaHoraAyer: string }) =>
+    api.get(`/reportes/dashboard/contexto?inicioHoy=${encodeURIComponent(p.inicioHoy)}&ahoraLocal=${encodeURIComponent(p.ahoraLocal)}&inicioAyer=${encodeURIComponent(p.inicioAyer)}&mismaHoraAyer=${encodeURIComponent(p.mismaHoraAyer)}`).then(r => r.data.data),
 };

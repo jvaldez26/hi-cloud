@@ -30,6 +30,19 @@ export class ReportesController {
     return this.reportesService.getDashboard(usuario.id, usuario.role);
   }
 
+  @Get('dashboard/contexto')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Contexto personalizado del dashboard — fechas en hora local del cliente (ISO UTC)' })
+  getContextoDashboard(
+    @Query('inicioHoy')     inicioHoy:     string,
+    @Query('ahoraLocal')    ahoraLocal:    string,
+    @Query('inicioAyer')    inicioAyer:    string,
+    @Query('mismaHoraAyer') mismaHoraAyer: string,
+    @GetUser() usuario: User,
+  ) {
+    return this.reportesService.getContextoDashboard(inicioHoy, ahoraLocal, inicioAyer, mismaHoraAyer, usuario.role);
+  }
+
   @Get('kpis')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'KPIs del mes seleccionado — filtrar con ?mes=7&anio=2026' })

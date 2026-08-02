@@ -1,9 +1,9 @@
-import { Row, Col, Card, Table, Typography, Spin, Tag, Space, Button, theme, DatePicker, Empty, Tooltip as AntTooltip } from 'antd';
+import { Row, Col, Card, Table, Typography, Spin, Tag, Space, Button, theme, DatePicker, Empty, Tooltip as AntTooltip, Skeleton } from 'antd';
 import {
   DollarOutlined, FileTextOutlined, RightOutlined, ReloadOutlined,
-  LineChartOutlined, BarChartOutlined, DownloadOutlined,
+  LineChartOutlined, BarChartOutlined, DownloadOutlined, WarningOutlined,
 } from '@ant-design/icons';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useMobile } from '../../hooks/useMediaQuery';
 import { useQueryClient } from '@tanstack/react-query';
 import { useQuery } from '@tanstack/react-query';
@@ -19,6 +19,147 @@ import api from '../../api/client';
 import { useAuthStore } from '../../store/auth.store';
 
 const { Title, Text } = Typography;
+
+// ── Saludo contextual + línea de contexto ────────────────────────────────────
+function ContextoHeader() {
+  const { user }   = useAuthStore();
+  const role       = user?.role ?? 'admin';
+  const navigate   = useNavigate();
+  const { token }  = theme.useToken();
+
+  // Fechas calculadas UNA SOLA VEZ (hora local del navegador → ISO UTC para el backend)
+  const params = useMemo(() => {
+    const now              = new Date();
+    const inicioHoyLocal   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const inicioAyerLocal  = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
+    const mismaHoraAyer    = new Date(inicioAyerLocal.getTime() + (now.getTime() - inicioHoyLocal.getTime()));
+    return {
+      inicioHoy:     inicioHoyLocal.toISOString(),
+      ahoraLocal:    now.toISOString(),
+      inicioAyer:    inicioAyerLocal.toISOString(),
+      mismaHoraAyer: mismaHoraAyer.toISOString(),
+    };
+  }, []);
+
+  const { data: ctx, isLoading } = useQuery<any>({
+    queryKey: ['dash-contexto', params.inicioHoy],
+    queryFn:  () => reportesApi.contexto(params),
+    staleTime: 2 * 60_000,
+  });
+
+  // Saludo según hora LOCAL del navegador
+  const hora          = new Date().getHours();
+  const saludoTexto   = hora >= 5 && hora < 12 ? 'Buenos días' : hora >= 12 && hora < 19 ? 'Buenas tardes' : 'Buenas noches';
+  const primerNombre  = (user?.nombre ?? '').split(' ')[0];
+
+  // Resolución de prioridad de la línea de contexto
+  const ctxLine = useMemo(() => {
+    if (!ctx) return null;
+    const esAdmin = role === 'admin' || role === 'contador';
+
+    if (esAdmin && ctx.ecfRechazados > 0) {
+      const n = ctx.ecfRechazados;
+      return { tipo: 'alert', text: `Tienes ${n} comprobante${n > 1 ? 's' : ''} rechazado${n > 1 ? 's' : ''} por DGII esperando`, href: '/fiscal/ecf' };
+    }
+    if (esAdmin && ctx.stockCero > 0) {
+      const n = ctx.stockCero;
+      return { tipo: 'warn', text: `${n} producto${n > 1 ? 's' : ''} sin existencia hoy`, href: '/inventario' };
+    }
+    if (esAdmin && ctx.facturasVencidas?.count > 0) {
+      const { count: n, total } = ctx.facturasVencidas;
+      return { tipo: 'warn', text: `${n} factura${n > 1 ? 's' : ''} vencida${n > 1 ? 's' : ''} por ${fmt.money(total)}`, href: '/cxc' };
+    }
+    if (ctx.ventasHoy > 0 && ctx.ventasAyerMismaHora > 0) {
+      const delta = ((ctx.ventasHoy - ctx.ventasAyerMismaHora) / ctx.ventasAyerMismaHora) * 100;
+      const sube  = delta >= 0;
+      return {
+        tipo: 'compare',
+        text: `Llevas ${fmt.money(ctx.ventasHoy)} hoy — ${sube ? '↑' : '↓'} ${Math.abs(delta).toFixed(0)}% ${sube ? 'más' : 'menos'} que ayer a esta hora`,
+        href: '/facturas',
+        sube,
+        superaSemana: ctx.ventasHoy > ctx.ventasHaceSemana,
+      };
+    }
+    if (ctx.ventasHoy > 0) {
+      return { tipo: 'info', text: `Llevas ${fmt.money(ctx.ventasHoy)} en ventas hoy`, href: '/facturas' };
+    }
+    if (ctx.topProductoHoy) {
+      return { tipo: 'info', text: `Lo más vendido hoy: ${ctx.topProductoHoy.nombre} · ${fmt.money(ctx.topProductoHoy.total)}`, href: '/facturas' };
+    }
+    return { tipo: 'vacio', text: null, href: null };
+  }, [ctx, role]);
+
+  const colorLinea: Record<string, string> = {
+    alert:   '#DC2626',
+    warn:    '#D97706',
+    compare: ctxLine?.sube !== false ? '#059669' : '#DC2626',
+    info:    token.colorTextSecondary,
+    vacio:   token.colorTextTertiary,
+  };
+
+  return (
+    <div style={{ marginBottom: 28 }}>
+      {/* Saludo */}
+      {isLoading ? (
+        <Skeleton active title={{ width: 220 }} paragraph={{ rows: 1, width: 340 }} />
+      ) : (
+        <>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, lineHeight: 1.3, color: token.colorText }}>
+              {saludoTexto}, {primerNombre}
+            </h2>
+            {/* Micro-reconocimiento: superó la semana pasada */}
+            {ctxLine?.superaSemana && (
+              <span style={{
+                fontSize: 11, fontWeight: 600, color: '#059669',
+                background: '#D1FAE5', borderRadius: 99, padding: '1px 8px',
+                letterSpacing: '0.02em',
+              }}>
+                Mejor que la semana pasada
+              </span>
+            )}
+          </div>
+
+          {/* Línea de contexto */}
+          {ctxLine?.tipo === 'vacio' ? (
+            // Estado vacío: sin ventas aún
+            <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Text style={{ fontSize: 14, color: token.colorTextSecondary }}>
+                Todavía no hay ventas hoy — ¿empezamos?
+              </Text>
+              <Button size="small" type="primary" onClick={() => navigate('/pos')}>
+                Abrir POS
+              </Button>
+            </div>
+          ) : ctxLine ? (
+            <div
+              onClick={() => ctxLine.href && navigate(ctxLine.href)}
+              style={{
+                marginTop: 6, display: 'inline-flex', alignItems: 'center', gap: 6,
+                cursor: ctxLine.href ? 'pointer' : 'default',
+              }}
+            >
+              {(ctxLine.tipo === 'alert' || ctxLine.tipo === 'warn') && (
+                <WarningOutlined style={{ fontSize: 13, color: colorLinea[ctxLine.tipo] }} />
+              )}
+              <Text style={{
+                fontSize: 14, color: colorLinea[ctxLine.tipo ?? 'info'],
+                textDecoration: ctxLine.href ? 'underline' : 'none',
+                textDecorationColor: 'transparent',
+                transition: 'text-decoration-color 0.15s',
+              }}
+                onMouseEnter={e => { if (ctxLine.href) (e.currentTarget as HTMLElement).style.textDecorationColor = colorLinea[ctxLine.tipo ?? 'info']; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.textDecorationColor = 'transparent'; }}
+              >
+                {ctxLine.text}
+              </Text>
+            </div>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
 
 // ── Dashboard simplificado para vendedores ────────────────────────────────────
 function DashboardVendedor() {
@@ -47,10 +188,10 @@ function DashboardVendedor() {
 
   return (
     <div>
-      <Row justify="space-between" align="middle" style={{ marginBottom: 20 }}>
-        <Title level={4} style={{ margin: 0 }}>Mi Panel</Title>
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
+        <ContextoHeader />
         <DatePicker.MonthPicker value={periodo} onChange={v => v && setPeriodo(v)} format="MMMM YYYY" allowClear={false} />
-      </Row>
+      </div>
 
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={12}>
@@ -249,7 +390,7 @@ function DashboardAdmin() {
 
   return (
     <div>
-      <Title level={3} style={{ margin: '0 0 20px', fontWeight: 600 }}>Dashboard</Title>
+      <ContextoHeader />
 
       <Row gutter={[16, 0]}>
         {/* ══ Columna izquierda ══════════════════════════════════════ */}
