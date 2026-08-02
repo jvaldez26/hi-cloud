@@ -59,7 +59,7 @@ function ContextoHeader() {
 
     if (esAdmin && ctx.ecfRechazados > 0) {
       const n = ctx.ecfRechazados;
-      return { tipo: 'alert', text: `Tienes ${n} comprobante${n > 1 ? 's' : ''} rechazado${n > 1 ? 's' : ''} por DGII esperando`, href: '/fiscal/ecf' };
+      return { tipo: 'alert', text: `${n} e-CF rechazado${n > 1 ? 's' : ''} por DGII hoy`, href: '/fiscal/ecf' };
     }
     if (esAdmin && ctx.stockCero > 0) {
       const n = ctx.stockCero;

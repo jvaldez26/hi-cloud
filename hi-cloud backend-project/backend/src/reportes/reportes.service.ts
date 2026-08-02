@@ -231,8 +231,8 @@ export class ReportesService {
     // ADMIN / CONTADOR — alertas adicionales
     const [ecfRows, stockRows, cxcVencidasRows] = await Promise.all([
       this.dataSource.query<{ cnt: string }[]>(
-        `SELECT COUNT(*) AS cnt FROM ecf WHERE "empresaId"=$1 AND "isActive"=true AND "estadoDGII" IN ('rechazado','contingencia')`,
-        [eid],
+        `SELECT COUNT(*) AS cnt FROM ecf WHERE "empresaId"=$1 AND "isActive"=true AND "estadoDGII" IN ('rechazado','contingencia') AND "createdAt" >= $2::timestamptz`,
+        [eid, inicioHoy],
       ),
       this.dataSource.query<{ cnt: string }[]>(
         `SELECT COUNT(*) AS cnt FROM productos WHERE "empresaId"=$1 AND "isActive"=true AND stock=0`,
