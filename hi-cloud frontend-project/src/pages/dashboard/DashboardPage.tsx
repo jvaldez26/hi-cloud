@@ -1,7 +1,7 @@
 import { Row, Col, Card, Table, Typography, Spin, Tag, Space, Button, theme, DatePicker, Empty, Tooltip as AntTooltip, Skeleton } from 'antd';
 import {
   DollarOutlined, FileTextOutlined, RightOutlined, ReloadOutlined,
-  LineChartOutlined, BarChartOutlined, DownloadOutlined, WarningOutlined,
+  LineChartOutlined, BarChartOutlined, DownloadOutlined,
 } from '@ant-design/icons';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useMobile } from '../../hooks/useMediaQuery';
@@ -63,7 +63,7 @@ function ContextoHeader() {
     }
     if (esAdmin && ctx.stockCero > 0) {
       const n = ctx.stockCero;
-      return { tipo: 'warn', text: `${n} producto${n > 1 ? 's' : ''} sin existencia hoy`, href: '/inventario' };
+      return { tipo: 'warn', text: `${n} producto${n > 1 ? 's' : ''} sin existencia`, href: '/inventario' };
     }
     if (esAdmin && ctx.facturasVencidas?.count > 0) {
       const { count: n, total } = ctx.facturasVencidas;
@@ -89,73 +89,59 @@ function ContextoHeader() {
     return { tipo: 'vacio', text: null, href: null };
   }, [ctx, role]);
 
-  const colorLinea: Record<string, string> = {
-    alert:   '#DC2626',
-    warn:    '#D97706',
-    compare: ctxLine?.sube !== false ? '#059669' : '#DC2626',
-    info:    token.colorTextSecondary,
-    vacio:   token.colorTextTertiary,
-  };
-
   return (
-    <div style={{ marginBottom: 28 }}>
-      {/* Saludo */}
+    <div style={{ marginBottom: 12 }}>
       {isLoading ? (
-        <Skeleton active title={{ width: 220 }} paragraph={{ rows: 1, width: 340 }} />
+        <Skeleton active title={{ width: 320 }} paragraph={false} />
       ) : (
-        <>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, lineHeight: 1.3, color: token.colorText }}>
-              {saludoTexto}, {primerNombre}
-            </h2>
-            {/* Micro-reconocimiento: superó la semana pasada */}
-            {ctxLine?.superaSemana && (
-              <span style={{
-                fontSize: 11, fontWeight: 600, color: '#059669',
-                background: '#D1FAE5', borderRadius: 99, padding: '1px 8px',
-                letterSpacing: '0.02em',
-              }}>
-                Mejor que la semana pasada
-              </span>
-            )}
-          </div>
+        <div
+          onClick={() => ctxLine?.href && navigate(ctxLine.href)}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            cursor: ctxLine?.href ? 'pointer' : 'default',
+            flexWrap: 'wrap',
+            rowGap: 2,
+          }}
+        >
+          <span style={{ fontSize: 15, fontWeight: 500, color: token.colorTextSecondary, lineHeight: 1.4 }}>
+            {saludoTexto}, {primerNombre}
+          </span>
 
-          {/* Línea de contexto */}
           {ctxLine?.tipo === 'vacio' ? (
-            // Estado vacío: sin ventas aún
-            <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
-              <Text style={{ fontSize: 14, color: token.colorTextSecondary }}>
-                Todavía no hay ventas hoy — ¿empezamos?
-              </Text>
-              <Button size="small" type="primary" onClick={() => navigate('/pos')}>
-                Abrir POS
-              </Button>
-            </div>
+            <>
+              <span style={{ margin: '0 8px', color: token.colorTextTertiary, fontSize: 13 }}>·</span>
+              <span style={{ fontSize: 14, color: token.colorTextTertiary }}>
+                Sin ventas aún —{' '}
+                <a
+                  onClick={e => { e.stopPropagation(); navigate('/pos'); }}
+                  style={{ color: token.colorPrimary, textDecoration: 'underline' }}
+                >
+                  abrir POS
+                </a>
+              </span>
+            </>
           ) : ctxLine ? (
-            <div
-              onClick={() => ctxLine.href && navigate(ctxLine.href)}
-              style={{
-                marginTop: 6, display: 'inline-flex', alignItems: 'center', gap: 6,
-                cursor: ctxLine.href ? 'pointer' : 'default',
-              }}
-            >
-              {(ctxLine.tipo === 'alert' || ctxLine.tipo === 'warn') && (
-                <WarningOutlined style={{ fontSize: 13, color: colorLinea[ctxLine.tipo] }} />
-              )}
-              <Text style={{
-                fontSize: 14, color: colorLinea[ctxLine.tipo ?? 'info'],
-                textDecoration: ctxLine.href ? 'underline' : 'none',
-                textDecorationColor: 'transparent',
-                transition: 'text-decoration-color 0.15s',
-              }}
-                onMouseEnter={e => { if (ctxLine.href) (e.currentTarget as HTMLElement).style.textDecorationColor = colorLinea[ctxLine.tipo ?? 'info']; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.textDecorationColor = 'transparent'; }}
+            <>
+              <span style={{ margin: '0 8px', color: token.colorTextTertiary, fontSize: 13 }}>·</span>
+              <span
+                style={{ fontSize: 14, color: token.colorTextSecondary }}
+                onMouseEnter={e => { if (ctxLine.href) (e.currentTarget as HTMLElement).style.textDecoration = 'underline'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'none'; }}
               >
                 {ctxLine.text}
-              </Text>
-            </div>
+              </span>
+              {ctxLine.superaSemana && (
+                <span style={{
+                  marginLeft: 10, fontSize: 11, fontWeight: 500,
+                  color: token.colorTextTertiary, letterSpacing: '0.01em',
+                }}>
+                  ↑ semana pasada
+                </span>
+              )}
+            </>
           ) : null}
-        </>
+        </div>
       )}
     </div>
   );
