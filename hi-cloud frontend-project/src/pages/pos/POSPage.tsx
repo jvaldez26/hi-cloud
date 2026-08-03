@@ -435,22 +435,31 @@ function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, o
             <span style={{ fontSize: 11, color: C.textSub, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
               {permitirModificarPrecio ? (
                 precioDraft !== null ? (
-                  <input
-                    type="number"
-                    autoFocus
-                    value={precioDraft}
-                    min={0.01}
-                    step={0.01}
-                    style={{ width: 88, fontSize: 11, borderRadius: 4,
-                      border: `1px solid ${C.blue}`, background: 'transparent',
-                      color: C.text, textAlign: 'right', padding: '1px 4px', outline: 'none' }}
-                    onChange={e => setPrecioDraft(e.target.value)}
-                    onBlur={e => confirmarPrecio(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') confirmarPrecio((e.target as HTMLInputElement).value);
-                      if (e.key === 'Escape') setPrecioDraft(null);
-                    }}
-                  />
+                  <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
+                    <input
+                      type="number"
+                      autoFocus
+                      value={precioDraft}
+                      min={0.01}
+                      step={0.0001}
+                      style={{ width: 96, fontSize: 11, borderRadius: 4,
+                        border: `1px solid ${C.blue}`, background: 'transparent',
+                        color: C.text, textAlign: 'right', padding: '1px 4px', outline: 'none' }}
+                      onChange={e => setPrecioDraft(e.target.value)}
+                      onBlur={e => confirmarPrecio(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') confirmarPrecio((e.target as HTMLInputElement).value);
+                        if (e.key === 'Escape') setPrecioDraft(null);
+                      }}
+                    />
+                    {(() => {
+                      const v = parseFloat(precioDraft || '0');
+                      const pct = Number((item.produto as any).porcentajeIva ?? 18) / 100;
+                      if (!v || pct === 0) return null;
+                      const total = (v * (1 + pct)).toFixed(2);
+                      return <span style={{ fontSize: 9, color: C.textSub, textAlign: 'right' }}>c/ITBIS≈{total}</span>;
+                    })()}
+                  </span>
                 ) : (
                   <span onClick={async () => {
                       if (requireSupervisor) {
