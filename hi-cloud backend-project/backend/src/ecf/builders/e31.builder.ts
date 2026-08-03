@@ -102,16 +102,14 @@ export function buildE31(input: ECFBuildInput): MSellerPayload {
   if (montoGravado16 > 0) totales['MontoGravadoI2'] = round2(montoGravado16);
   // 2. Exento — ANTES de cualquier ITBIS
   if (montoExento > 0) totales['MontoExento'] = round2(montoExento);
-  // 3. ITBIS (tasa) → TotalITBIS
-  if (montoGravadoTotal > 0) {
-    totales['ITBIS1']      = 18;
-    totales['TotalITBIS']  = totalITBIS;
-    totales['TotalITBIS1'] = round2(itbis18);
-  }
-  if (montoGravado16 > 0) {
-    totales['ITBIS2']      = 16;
-    totales['TotalITBIS2'] = round2(itbis16);
-  }
+  // 3. Tasas primero (ITBIS1, ITBIS2), luego montos (TotalITBIS, TotalITBIS1, TotalITBIS2).
+  //    Mezclarlos (ITBIS1 → TotalITBIS1 → ITBIS2 → TotalITBIS2) hace que DGII rechace
+  //    con "invalid child element 'ITBIS2'" porque espera 'TotalITBIS2' en esa posición.
+  if (montoGravado18 > 0)    totales['ITBIS1']      = 18;
+  if (montoGravado16 > 0)    totales['ITBIS2']      = 16;
+  if (montoGravadoTotal > 0) totales['TotalITBIS']  = totalITBIS;
+  if (montoGravado18 > 0)    totales['TotalITBIS1'] = round2(itbis18);
+  if (montoGravado16 > 0)    totales['TotalITBIS2'] = round2(itbis16);
   // 4. Total
   totales['MontoTotal'] = montoTotal;
   // 5. Retenciones (E31 agente de retención) — DESPUÉS de MontoTotal (orden XSD)
