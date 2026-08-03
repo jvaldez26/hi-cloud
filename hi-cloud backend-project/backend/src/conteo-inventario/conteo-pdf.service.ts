@@ -205,7 +205,7 @@ export class ConteoPdfService {
     for (let i = 0; i < totalPages; i++) {
       doc.switchToPage(range.start + i);
       doc.fontSize(8).fillColor(GRAY_MED)
-         .text(`Página ${i + 1} de ${totalPages}`, M, A4H - M - 8, { width: CW, align: 'right' });
+         .text(`Pagina ${i + 1} de ${totalPages}`, M, A4H - M - 8, { width: CW, align: 'right', lineBreak: false });
     }
 
     doc.flushPages();
@@ -225,9 +225,9 @@ export class ConteoPdfService {
     const y = M;
 
     doc.rect(M, y, CW, 28).fill(BLUE_INV);
-    const titulo = esRecuento ? 'HOJA DE RECUENTO' : 'HOJA DE CONTEO FÍSICO';
+    const titulo = esRecuento ? 'HOJA DE RECUENTO' : 'HOJA DE CONTEO FISICO';
     doc.fillColor('#ffffff').fontSize(11).font('Helvetica-Bold')
-       .text(titulo, M + 8, y + 8, { width: CW - 16 });
+       .text(titulo, M + 8, y + 8, { width: CW - 16, lineBreak: false });
 
     doc.fillColor(GRAY_DARK).fontSize(20).font('Helvetica-Bold')
        .text(datos.codigo, M, y + 36, { width: 200 });
@@ -237,27 +237,35 @@ export class ConteoPdfService {
     const col2w = CW - 220;
     doc.fontSize(8).font('Helvetica').fillColor(GRAY_MED);
 
+    // Etiqueta + valor con x,y explícitos y lineBreak:false para evitar que valores
+    // largos rompan en múltiples líneas y desplacen los campos siguientes.
     const campos: [string, string][] = [
       ['Nombre:',    datos.nombre],
-      ['Almacén:',   datos.almacen],
+      ['Almacen:',   datos.almacen],
       ['Fecha:',     datos.fechaGeneracion.toLocaleDateString('es-DO')],
-      ['Modalidad:', datos.modalidad === 'ciego' ? 'CIEGA (sin cantidades sistema)' : 'INFORMADA'],
-      ['Estado:',    datos.estado.replace(/_/g, ' ').toUpperCase()],
+      ['Modalidad:', datos.modalidad === 'ciego' ? 'Ciega' : 'Informada'],
+      ['Estado:',    datos.estado.replace(/_/g, ' ')],
     ];
+
+    const LABEL_W = 52;
+    const VALUE_X = col2 + LABEL_W + 2;
+    const VALUE_W = M + CW - VALUE_X - 2;
 
     let cy = y + 36;
     for (const [label, valor] of campos) {
-      doc.font('Helvetica-Bold').text(label, col2, cy, { width: 58, continued: true });
-      doc.font('Helvetica').text(` ${valor}`, { width: col2w - 58 });
-      cy += 12;
+      doc.font('Helvetica-Bold').fontSize(7.5).fillColor(GRAY_MED)
+         .text(label, col2, cy, { width: LABEL_W, lineBreak: false });
+      doc.font('Helvetica').fontSize(7.5).fillColor(GRAY_DARK)
+         .text(valor, VALUE_X, cy, { width: VALUE_W, lineBreak: false, ellipsis: true });
+      cy += 11;
     }
 
-    const firmY = y + 105;
-    doc.fillColor(GRAY_DARK).fontSize(8).font('Helvetica')
-       .text('Responsable:', M, firmY)
-       .text('_________________________________', M + 58, firmY)
-       .text('Firma:', M + 280, firmY)
-       .text('_____________________', M + 308, firmY);
+    const firmY = y + 112;
+    doc.fillColor(GRAY_DARK).fontSize(7.5).font('Helvetica')
+       .text('Responsable:', M, firmY, { lineBreak: false })
+       .text('_________________________________', M + 58, firmY, { lineBreak: false })
+       .text('Firma:', M + 280, firmY, { lineBreak: false })
+       .text('_____________________', M + 310, firmY, { lineBreak: false });
 
     doc.moveTo(M, y + HEADER_H - 1).lineTo(M + CW, y + HEADER_H - 1)
        .strokeColor('#cccccc').lineWidth(0.5).stroke();
@@ -335,8 +343,9 @@ export class ConteoPdfService {
 
   private drawSeparador(doc: PDFKit.PDFDocument, label: string, y: number, cw: number) {
     doc.rect(M, y, cw, ROW_H - 1).fill('#dbe9f4');
+    // Usar ">>" en lugar de "■": Helvetica solo soporta WinAnsiEncoding, ■ (U+25A0) no está incluido
     doc.fillColor(BLUE_INV).fontSize(7.5).font('Helvetica-Bold')
-       .text(`■  ${label.toUpperCase()}`, M + 6, y + (ROW_H - 8) / 2, { width: cw - 12 });
+       .text(`>> ${label.toUpperCase()}`, M + 6, y + (ROW_H - 8) / 2, { width: cw - 12, lineBreak: false });
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
