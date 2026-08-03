@@ -359,13 +359,19 @@ export class PDFService {
       metodoPago:      factura.notas?.includes('Tarjeta')
         ? 'Tarjeta'
         : factura.notas?.includes('Transferencia') ? 'Transferencia' : 'Efectivo',
-      items: (factura.detalles || []).map(d => ({
-        descripcion: d.descripcion,
-        cantidad:    Number(d.cantidad),
-        precio:      Number(d.precioUnitario),
-        total:       Number(d.precioUnitario) * Number(d.cantidad) *
-                     (1 + Number(d.porcentajeIva ?? 0) / 100),
-      })),
+      items: (factura.detalles || []).map(d => {
+        const subtotalF = Number(factura.subtotal ?? 0);
+        const ivaF      = Number(factura.iva      ?? 0);
+        const ivaEfPct  = subtotalF > 0 ? (ivaF / subtotalF) * 100 : 0;
+        const pct       = Number(d.porcentajeIva) || ivaEfPct;
+        const factor    = 1 + pct / 100;
+        return {
+          descripcion: d.descripcion,
+          cantidad:    Number(d.cantidad),
+          precio:      Number(d.precioUnitario) * factor,
+          total:       Number(d.precioUnitario) * Number(d.cantidad) * factor,
+        };
+      }),
       subtotal:  Number(factura.subtotal ?? 0),
       itbis:     Number(factura.iva      ?? 0),
       total:     Number(factura.total    ?? 0),

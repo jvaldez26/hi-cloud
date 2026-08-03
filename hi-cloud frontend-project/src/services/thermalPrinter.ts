@@ -208,12 +208,16 @@ export async function generarReciboESCPOS(sale: SaleBT, empresa: EmpresaBT): Pro
 
   // ── Items ──────────────────────────────────────────────────────────────────
   c.texto(separador());
+  const subtotalBT = sale.subtotal ?? 0;
+  const ivaBT      = sale.iva      ?? 0;
+  const ivaFactor  = subtotalBT > 0 ? 1 + ivaBT / subtotalBT : 1;
   for (const item of sale.items) {
-    const lines = envolver(item.produto.nombre, CARACTERES_POR_LINEA - 8);
-    const totalItem = fmtMonto(item.cantidad * item.precio);
+    const lines         = envolver(item.produto.nombre, CARACTERES_POR_LINEA - 8);
+    const precioConIva  = item.precio * ivaFactor;
+    const totalItem     = fmtMonto(item.cantidad * precioConIva);
     c.texto(lineaLR(lines[0], totalItem));
     for (let i = 1; i < lines.length; i++) c.texto('  ' + lines[i]);
-    c.texto(`  ${item.cantidad} x ${fmtMonto(item.precio)}`);
+    c.texto(`  ${item.cantidad} x ${fmtMonto(precioConIva)}`);
   }
 
   // ── Totales ────────────────────────────────────────────────────────────────

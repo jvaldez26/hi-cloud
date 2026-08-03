@@ -666,13 +666,16 @@ function buildReciboTermicoHTML(
 
   const tieneModificados = sale.items.some(i => i.precioModificado);
   const itemsHtml = sale.items.map(item => {
-    const sub        = (item.precio - item.descuentoMonto) * item.cantidad;
+    const ivaPct     = esExento ? 0 : Number(item.produto.porcentajeIva ?? 18) / 100;
+    const factor     = 1 + ivaPct;
+    const precioNeto = item.precio - item.descuentoMonto;
+    const sub        = precioNeto * item.cantidad * factor;
     const nom        = item.produto.nombre.length > 26 ? item.produto.nombre.slice(0, 25) + '…' : item.produto.nombre;
     const modMark    = item.precioModificado ? ' *' : '';
-    const unitLine   = `<div class="row small"><span>  ${item.cantidad} × RD$${(item.precio - item.descuentoMonto).toFixed(2)}</span></div>`;
+    const unitLine   = `<div class="row small"><span>  ${item.cantidad} × RD$${(precioNeto * factor).toFixed(2)}</span></div>`;
     const itemLine   = `<div class="row"><span>${esc(nom + modMark)}</span><span>${sub.toFixed(2)}</span></div>`;
     const descLine   = item.descuentoMonto > 0
-      ? `<div class="row small"><span>  Desc: -RD$${item.descuentoMonto.toFixed(2)} c/u (orig. RD$${item.precio.toFixed(2)})</span></div>`
+      ? `<div class="row small"><span>  Desc: -RD$${(item.descuentoMonto * factor).toFixed(2)} c/u (orig. RD$${(item.precio * factor).toFixed(2)})</span></div>`
       : '';
     return itemLine + unitLine + descLine;
   }).join('');
