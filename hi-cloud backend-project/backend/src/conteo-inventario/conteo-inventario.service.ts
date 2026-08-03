@@ -68,19 +68,20 @@ export class ConteoInventarioService {
 
   // ── Consultas básicas ─────────────────────────────────────────────────────
 
-  listar(opts: { page?: number; limit?: number; estado?: string; almacenId?: number } = {}) {
+  async listar(opts: { page?: number; limit?: number; estado?: string; almacenId?: number } = {}) {
     const empresaId = this.tenantSvc.getEmpresaId();
     const { page = 1, limit = 20, estado, almacenId } = opts;
     const where: Record<string, unknown> = { empresaId, isActive: true };
     if (estado)    where.estado    = estado;
     if (almacenId) where.almacenId = almacenId;
 
-    return this.conteoRepo.findAndCount({
+    const [items, total] = await this.conteoRepo.findAndCount({
       where: where as any,
       order: { createdAt: 'DESC' },
       skip: (page - 1) * limit,
       take: limit,
     });
+    return { items, total };
   }
 
   async findOne(id: number): Promise<ConteoInventario> {

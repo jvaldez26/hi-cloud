@@ -909,32 +909,40 @@ export default function ConteoInventarioPage() {
           columns={[
             {
               title: 'Código', dataIndex: 'codigo', key: 'cod', width: 130,
-              render: v => <Text strong style={{ fontFamily: 'monospace', fontSize: 12 }}>{v}</Text>,
+              render: v => <Text strong style={{ fontFamily: 'monospace', fontSize: 12 }}>{v ?? '—'}</Text>,
             },
-            { title: 'Nombre', dataIndex: 'nombre', key: 'nom', ellipsis: true },
+            {
+              title: 'Nombre', dataIndex: 'nombre', key: 'nom', ellipsis: true,
+              render: v => v ?? '—',
+            },
             {
               title: 'Tipo', dataIndex: 'tipo', key: 'tp', width: 110,
-              render: v => <Tag style={{ fontSize: 11 }}>{v}</Tag>,
+              render: v => v ? <Tag style={{ fontSize: 11 }}>{v}</Tag> : '—',
             },
             {
               title: 'Progreso', key: 'prog', width: 170,
               render: (_, r) => {
-                const pct = r.totalLineas > 0
-                  ? Math.round((r.lineasContadas / r.totalLineas) * 100) : 0;
+                const total = Number(r.totalLineas ?? 0);
+                const contadas = Number(r.lineasContadas ?? 0);
+                const pct = total > 0 ? Math.round((contadas / total) * 100) : 0;
                 return <Progress percent={pct} size="small"
-                  format={() => `${r.lineasContadas}/${r.totalLineas}`}
+                  format={() => `${contadas}/${total}`}
                   strokeColor={pct === 100 ? token.colorSuccess : undefined} />;
               },
             },
             {
               title: 'Dif.', dataIndex: 'totalDiferencias', key: 'dif', width: 70, align: 'center',
-              render: v => v > 0
-                ? <Tag color="orange" style={{ fontSize: 11 }}>{v}</Tag>
-                : <Tag color="green"  style={{ fontSize: 11 }}>0</Tag>,
+              render: v => {
+                const n = Number(v ?? 0);
+                return n > 0
+                  ? <Tag color="orange" style={{ fontSize: 11 }}>{n}</Tag>
+                  : <Tag color="green"  style={{ fontSize: 11 }}>0</Tag>;
+              },
             },
             {
               title: 'Estado', dataIndex: 'estado', key: 'est', width: 120,
               render: (v: ConteoEstado) => {
+                if (!v) return '—';
                 const c = ESTADO_CONFIG[v] ?? { color: 'default', label: v };
                 return <Tag color={c.color}>{c.label}</Tag>;
               },
@@ -998,6 +1006,22 @@ export default function ConteoInventarioPage() {
               <Form.Item name="tipo" label="Tipo de Conteo" rules={[{ required: true }]}>
                 <Select onChange={v => setTipoSel(String(v))}>
                   {TIPOS_CONTEO.map(t => <Option key={t.value} value={t.value}>{t.label}</Option>)}
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={12}>
+            <Col xs={24} sm={12}>
+              <Form.Item
+                name="modalidad"
+                label="Modalidad"
+                tooltip="Ciega: el capturador no ve el stock del sistema. Evita sesgo: el contador anota lo que físicamente hay, no lo que el sistema dice."
+                rules={[{ required: true }]}
+              >
+                <Select>
+                  <Option value="ciego">Ciega (recomendada)</Option>
+                  <Option value="informado">Informada (muestra stock sistema)</Option>
                 </Select>
               </Form.Item>
             </Col>

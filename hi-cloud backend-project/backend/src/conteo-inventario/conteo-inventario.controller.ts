@@ -23,10 +23,12 @@ import { ConteoInventario } from './entities/conteo-inventario.entity';
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────
 
-// 'proveedor' y 'ciclico_abc' no están implementados — no exponerlos en el DTO
-const TIPOS_CONTEO   = ['total', 'selectivo', 'categoria', 'marca', 'ubicacion'] as const;
-const MODALIDADES    = ['manual', 'guiado'] as const;
-const UMBRAL_TIPOS   = ['porcentaje', 'unidades', 'valor'] as const;
+// 'proveedor' y 'ciclico_abc' requieren datos adicionales — rechazados en el service, no expuestos aquí
+const TIPOS_CONTEO = ['total', 'selectivo', 'categoria', 'marca', 'ubicacion'] as const;
+// Debe coincidir con ConteoModalidad de la entidad y el CHECK constraint de la DB
+const MODALIDADES  = ['ciego', 'informado'] as const;
+// Debe coincidir con ConteoUmbralTipo de la entidad y el CHECK constraint de la DB
+const UMBRAL_TIPOS = ['unidades', 'valor'] as const;
 
 export class CreateConteoDto implements CreateConteoInput {
   @IsString()
