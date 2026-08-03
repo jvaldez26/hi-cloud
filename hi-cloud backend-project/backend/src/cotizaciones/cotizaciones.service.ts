@@ -238,7 +238,7 @@ export class CotizacionesService {
   // Sin vendedorId para saltarse el check de caja en cambiarEstado.
   // ──────────────────────────────────────────────────────────────────
 
-  async cobrarDesdePos(id: number, usuarioId: number, dto: { metodoPago: string }) {
+  async cobrarDesdePos(id: number, usuarioId: number, dto: { metodoPago: string; diasCredito?: number }) {
     const empresaId = this.tenantService.getEmpresaId();
     const cot = await this.findById(id);
 
@@ -266,21 +266,30 @@ export class CotizacionesService {
     const folio = `FAC-${row.numero}`;
 
     // Crear factura BORRADOR + marcar cotización CONVERTIDA (transacción atómica).
+    const esCredito     = /cr[eé]dito/i.test(dto.metodoPago);
+    const diasCred      = esCredito ? (dto.diasCredito ?? 30) : 0;
+    const notasFactura  = esCredito ? `Crédito ${diasCred} días` : dto.metodoPago;
+    const vencimiento   = esCredito
+      ? (() => { const d = new Date(); d.setDate(d.getDate() + diasCred); return d; })()
+      : undefined;
+
     const savedFactura = await this.dataSource.transaction(async (manager) => {
       const f = manager.create(Factura, {
         empresaId,
         folio,
-        fecha:      new Date(),
-        estado:     FacturaEstado.BORRADOR,
-        clienteId:  cot.clienteId,
+        fecha:            new Date(),
+        estado:           FacturaEstado.BORRADOR,
+        clienteId:        cot.clienteId,
         usuarioId,
-        vendedorId: cajaVendedorId,
-        sucursalId: (cot as any).sucursalId ?? undefined,
-        subtotal:   Number(cot.subtotal),
-        iva:        Number(cot.iva),
-        total:      Number(cot.total),
-        tipoNcf:    'E32',
-        notas:      dto.metodoPago,
+        vendedorId:       cajaVendedorId,
+        sucursalId:       (cot as any).sucursalId ?? undefined,
+        subtotal:         Number(cot.subtotal),
+        iva:              Number(cot.iva),
+        total:            Number(cot.total),
+        tipoNcf:          'E32',
+        notas:            notasFactura,
+        diasCredito:      diasCred || undefined,
+        fechaVencimiento: vencimiento,
         detalles:   cot.detalles.map(det => ({
           productoId:     det.productoId,
           descripcion:    det.descripcion,

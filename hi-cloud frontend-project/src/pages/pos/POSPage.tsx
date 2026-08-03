@@ -7127,6 +7127,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
   const [cobrarCot,      setCobrarCot]      = useState<{ id: number; numero: string; total: number; cliente: string } | null>(null);
   const [cobrarCotMetodo, setCobrarCotMetodo] = useState<string>('Efectivo');
   const [cobrarCotMonto,  setCobrarCotMonto]  = useState<string>('');
+  const [cobrarCotDias,   setCobrarCotDias]   = useState<number>(30);
   const [genericDoc,     setGenericDoc]     = useState<GenericDocData | null>(null);
   const PANEL_GENERIC_ID  = 'hc-pos-panel-generic';
 
@@ -7269,8 +7270,8 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
 
   // ── Cobrar Cotización desde POS ───────────────────────────────────────────────
   const cobrarCotMut = useMutation({
-    mutationFn: async ({ id, metodoPago }: { id: number; metodoPago: string }) =>
-      api.post(`/cotizaciones/${id}/cobrar-pos`, { metodoPago }).then(r => r.data?.data ?? r.data),
+    mutationFn: async ({ id, metodoPago, diasCredito }: { id: number; metodoPago: string; diasCredito?: number }) =>
+      api.post(`/cotizaciones/${id}/cobrar-pos`, { metodoPago, ...(diasCredito ? { diasCredito } : {}) }).then(r => r.data?.data ?? r.data),
     onSuccess: async (data: { facturaId: number; folio: string; ecfEmitido?: boolean; ecfError?: string }) => {
       if (data.ecfEmitido === false) {
         Modal.warning({
@@ -7278,14 +7279,14 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           content: `La venta se cobró (${data.folio}) pero NO se pudo emitir el comprobante fiscal. ${data.ecfError ?? 'Error al contactar el servicio de comprobantes fiscales'}. Avisa a un supervisor — la factura puede reintentarse desde el módulo Facturas con el botón "Emitir".`,
           okText: 'Entendido',
         });
-        setCobrarCot(null); setCobrarCotMonto(''); setCobrarCotMetodo('Efectivo');
+        setCobrarCot(null); setCobrarCotMonto(''); setCobrarCotMetodo('Efectivo'); setCobrarCotDias(30);
         qc.invalidateQueries({ queryKey: ['pos-panel', 'cotizaciones'] });
         qc.refetchQueries({    queryKey: ['pos-panel', 'cotizaciones'] });
         qc.invalidateQueries({ queryKey: ['pos-panel', 'facturas'] });
         return;
       }
       message.success(`Factura ${data.folio} generada`);
-      setCobrarCot(null); setCobrarCotMonto(''); setCobrarCotMetodo('Efectivo');
+      setCobrarCot(null); setCobrarCotMonto(''); setCobrarCotMetodo('Efectivo'); setCobrarCotDias(30);
       qc.invalidateQueries({ queryKey: ['pos-panel', 'cotizaciones'] });
       qc.refetchQueries({    queryKey: ['pos-panel', 'cotizaciones'] });
       qc.invalidateQueries({ queryKey: ['pos-panel', 'facturas'] });
@@ -7293,9 +7294,12 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
         try {
           const empRes = await api.get('/configuracion/empresa').then(x => x.data?.data ?? x.data).catch(() => ({}));
           const f = await api.get(`/facturas/${data.facturaId}`).then(r => r.data?.data ?? r.data);
-          const metodo = f.notas?.includes('Tarjeta') ? 'tarjeta' : f.notas?.includes('Transferencia') ? 'transferencia' : 'efectivo';
+          const metodo = /cr[eé]dito/i.test(f.notas ?? '') ? 'credito'
+            : f.notas?.includes('Tarjeta') ? 'tarjeta'
+            : f.notas?.includes('Transferencia') ? 'transferencia' : 'efectivo';
           const saleObj: Sale = {
             folio: f.folio, total: Number(f.total ?? 0), cambio: 0, metodo,
+            diasCredito: metodo === 'credito' ? (f.diasCredito ?? undefined) : undefined,
             items: (f.detalles ?? []).map((d: any) => ({
               produto: { id: d.productoId, nombre: d.descripcion, precio: Number(d.precioUnitario), stock: 999, porcentajeIva: Number(d.porcentajeIva ?? 18), codigo: '', categoria: '', unidadMedida: '' } as any,
               cantidad: Number(d.cantidad), precio: Number(d.precioUnitario), descuentoMonto: 0,
@@ -8276,7 +8280,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
       {/* ── Modal cobrar Cotización ───────────────────────────────────────────── */}
       {cobrarCot && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,.55)' }}
-          onClick={(e) => { if (e.target === e.currentTarget) { setCobrarCot(null); setCobrarCotMonto(''); } }}>
+          onClick={(e) => { if (e.target === e.currentTarget) { setCobrarCot(null); setCobrarCotMonto(''); setCobrarCotDias(30); } }}>
           <div style={{ background: C.card, borderRadius: 16, padding: 28, width: 360, maxWidth: '92vw', boxShadow: '0 8px 40px rgba(0,0,0,.3)' }}>
             <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4, color: C.text }}>Cobrar Cotización</div>
             <div style={{ fontSize: 13, color: C.textSub, marginBottom: 16 }}>{cobrarCot.numero} · {cobrarCot.cliente}</div>
@@ -8287,7 +8291,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
             <div style={{ marginBottom: 14 }}>
               <div style={{ fontSize: 12, color: C.textSub, marginBottom: 6 }}>Método de pago</div>
               <div style={{ display: 'flex', gap: 8 }}>
-                {(['Efectivo', 'Tarjeta', 'Transferencia'] as const).map(m => (
+                {(['Efectivo', 'Tarjeta', 'Transferencia', 'Crédito'] as const).map(m => (
                   <button key={m} onClick={() => setCobrarCotMetodo(m)}
                     style={{ flex: 1, padding: '8px 4px', borderRadius: 8, border: `2px solid ${cobrarCotMetodo === m ? C.green : C.border2}`, background: cobrarCotMetodo === m ? '#dcfce7' : C.card, color: cobrarCotMetodo === m ? '#15803d' : C.text, cursor: 'pointer', fontSize: 12, fontWeight: cobrarCotMetodo === m ? 700 : 400 }}>
                     {m}
@@ -8308,13 +8312,21 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
                 )}
               </div>
             )}
+            {cobrarCotMetodo === 'Crédito' && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 12, color: C.textSub, marginBottom: 6 }}>Días de crédito</div>
+                <input type="number" min="1" step="1" value={cobrarCotDias}
+                  onChange={e => setCobrarCotDias(Number(e.target.value) || 30)}
+                  style={{ width: '100%', padding: '10px 12px', border: `1px solid ${C.border2}`, borderRadius: 8, fontSize: 16, background: C.bg, color: C.text, outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-              <button onClick={() => { setCobrarCot(null); setCobrarCotMonto(''); }}
+              <button onClick={() => { setCobrarCot(null); setCobrarCotMonto(''); setCobrarCotDias(30); }}
                 style={{ flex: 1, padding: '11px 0', borderRadius: 9, border: `1px solid ${C.border2}`, background: 'none', color: C.textSub, cursor: 'pointer', fontSize: 14 }}>
                 Cancelar
               </button>
               <button disabled={cobrarCotMut.isPending}
-                onClick={() => cobrarCotMut.mutate({ id: cobrarCot.id, metodoPago: cobrarCotMetodo })}
+                onClick={() => cobrarCotMut.mutate({ id: cobrarCot.id, metodoPago: cobrarCotMetodo, diasCredito: cobrarCotMetodo === 'Crédito' ? cobrarCotDias : undefined })}
                 style={{ flex: 2, padding: '11px 0', borderRadius: 9, border: 'none', background: cobrarCotMut.isPending ? '#9ca3af' : '#16a34a', color: '#fff', cursor: cobrarCotMut.isPending ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 700 }}>
                 {cobrarCotMut.isPending ? 'Procesando...' : 'Confirmar Cobro'}
               </button>
