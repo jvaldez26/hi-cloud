@@ -264,8 +264,9 @@ export class AuthService implements OnModuleInit {
         await qr.manager.query(
           `INSERT INTO suscripciones
              ("empresaId", plan, estado, "fechaInicio", "fechaVencimiento",
-              "fechaFinPrueba", "planElegidoEnRegistro", "modalidad")
-           VALUES ($1, $2, 'prueba', NOW(), $3, $3, $4, 'mensual')`,
+              "fechaFinPrueba", "planElegidoEnRegistro", "modalidad", "diaCorte")
+           VALUES ($1, $2, 'prueba', NOW(), $3, $3, $4, 'mensual',
+                   EXTRACT(DAY FROM $3::date)::smallint)`,
           [empresaId, planElegido, fechaFinPrueba.toISOString(), planElegido],
         );
 

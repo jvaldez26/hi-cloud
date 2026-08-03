@@ -7,10 +7,10 @@ import { suscripcionesApi } from '../../api/suscripciones.api';
 const { Title, Text } = Typography;
 
 const PLANES_OPCIONES = [
-  { value: 'emprendedor', label: 'EMPRENDEDOR — US$29/mes (RD$125K/mes, 2 usuarios)' },
-  { value: 'pyme',        label: 'PYME — US$59/mes (RD$500K/mes, 3 usuarios)' },
-  { value: 'pro',         label: 'PRO — US$89/mes (RD$1.25M/mes, 4 usuarios)' },
-  { value: 'plus',        label: 'PLUS — US$129/mes (RD$6.25M/mes, 10 usuarios)' },
+  { value: 'emprendedor', label: 'EMPRENDEDOR — RD$1,700/mes (hasta RD$125K ingresos, 2 usuarios)' },
+  { value: 'pyme',        label: 'PYME — RD$3,500/mes (hasta RD$500K ingresos, 3 usuarios)' },
+  { value: 'pro',         label: 'PRO — RD$5,200/mes (hasta RD$1.25M ingresos, 4 usuarios)' },
+  { value: 'plus',        label: 'PLUS — RD$7,600/mes (hasta RD$6.25M ingresos, 10 usuarios)' },
 ];
 
 interface SuspensionScreenProps {

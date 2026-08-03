@@ -17,7 +17,7 @@ const PAISES = ['República Dominicana', 'México', 'Colombia', 'Panamá', 'Otro
 const PLANES = [
   {
     clave: 'emprendedor', nombre: 'EMPRENDEDOR',
-    precio: 29, limite: 'RD$125,000/mes', usuarios: 2,
+    precio: 1700, limite: 'RD$125,000/mes', usuarios: 2,
     color: '#374151', borderColor: '#6B7280',
     accentColor: '#10B981',
     features: [
@@ -32,7 +32,7 @@ const PLANES = [
   },
   {
     clave: 'pyme', nombre: 'PYME',
-    precio: 59, limite: 'RD$500,000/mes', usuarios: 3,
+    precio: 3500, limite: 'RD$500,000/mes', usuarios: 3,
     color: '#047857', borderColor: '#10B981',
     accentColor: '#10B981', popular: false,
     features: [
@@ -47,7 +47,7 @@ const PLANES = [
   },
   {
     clave: 'pro', nombre: 'PRO',
-    precio: 89, limite: 'RD$1,250,000/mes', usuarios: 4,
+    precio: 5200, limite: 'RD$1,250,000/mes', usuarios: 4,
     color: '#0d9488', borderColor: '#14B8A6', popular: true,
     accentColor: '#14B8A6',
     features: [
@@ -62,7 +62,7 @@ const PLANES = [
   },
   {
     clave: 'plus', nombre: 'PLUS',
-    precio: 129, limite: 'RD$6,250,000/mes', usuarios: 10,
+    precio: 7600, limite: 'RD$6,250,000/mes', usuarios: 10,
     color: '#4F46E5', borderColor: '#818CF8',
     accentColor: '#818CF8',
     features: [
@@ -275,7 +275,7 @@ export default function RegisterPage() {
               {/* Precio y límite */}
               <div style={{ marginBottom: 24 }}>
                 <Text style={{ color: '#fff', fontWeight: 800, fontSize: 32, display: 'block' }}>
-                  US${planSeleccionado.precio}<span style={{ fontSize: 16, fontWeight: 400, color: 'rgba(255,255,255,.6)' }}>/mes</span>
+                  RD${planSeleccionado.precio.toLocaleString('es-DO')}<span style={{ fontSize: 16, fontWeight: 400, color: 'rgba(255,255,255,.6)' }}>/mes</span>
                 </Text>
                 <Text style={{ color: 'rgba(255,255,255,.5)', fontSize: 13, display: 'block', marginTop: 4 }}>
                   {planSeleccionado.limite} · {planSeleccionado.usuarios} usuarios
@@ -459,7 +459,7 @@ export default function RegisterPage() {
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <Text strong style={{ color: planElegido === p.clave ? p.borderColor : '#374151', fontSize: 15 }}>
-                          US${p.precio}/mes
+                          RD${p.precio.toLocaleString('es-DO')}/mes
                         </Text>
                         {planElegido === p.clave && (
                           <div style={{
