@@ -28,6 +28,14 @@ export default function CotizacionFormPage() {
   ]);
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [precioInputModo, setPrecioInputModo] = useState<'c' | 's'>(() => {
+    try { return (localStorage.getItem('cot_precio_input_modo') as 'c' | 's') ?? 'c'; }
+    catch { return 'c'; }
+  });
+  const cambiarModo = (m: 'c' | 's') => {
+    setPrecioInputModo(m);
+    try { localStorage.setItem('cot_precio_input_modo', m); } catch {}
+  };
 
   const sucursalActual = useAuthStore(s => s.sucursalActual);
   const empresaActual  = useAuthStore(s => s.empresaActual);
@@ -149,18 +157,37 @@ export default function CotizacionFormPage() {
         <InputNumber min={1} precision={0} value={r.cantidad} style={{ width:'100%' }}
           onChange={v => { const u=[...lineas]; u[idx].cantidad=v??1; setLineas(u); }} />
       )},
-    { title: 'Precio (RD$)', key: 'price', width: 120,
-      render: (_: any, r: Linea, idx: number) => (
-        <InputNumber min={0} precision={2} value={r.precioUnitario} style={{ width:'100%' }}
-          onChange={v => { const u=[...lineas]; u[idx].precioUnitario=v??0; setLineas(u); }} />
-      )},
+    { title: precioInputModo === 'c' ? 'Precio c/ITBIS (RD$)' : 'Precio s/ITBIS (RD$)', key: 'price', width: 150,
+      render: (_: any, r: Linea, idx: number) => {
+        const pct = r.porcentajeIva / 100;
+        const displayVal = precioInputModo === 'c' && pct > 0
+          ? parseFloat((r.precioUnitario * (1 + pct)).toFixed(2))
+          : r.precioUnitario;
+        return (
+          <InputNumber min={0} precision={precioInputModo === 'c' ? 2 : 4}
+            value={displayVal} style={{ width:'100%' }}
+            onChange={v => {
+              const raw = v ?? 0;
+              const base = precioInputModo === 'c' && pct > 0
+                ? parseFloat((raw / (1 + pct)).toFixed(4))
+                : raw;
+              const u=[...lineas]; u[idx].precioUnitario=base; setLineas(u);
+            }} />
+        );
+      }},
     { title: 'ITBIS %', key: 'iva', width: 80,
       render: (_: any, r: Linea, idx: number) => (
         <InputNumber min={0} max={100} value={r.porcentajeIva} style={{ width:'100%' }}
           onChange={v => { const u=[...lineas]; u[idx].porcentajeIva=v??18; setLineas(u); }} />
       )},
     { title: 'Subtotal', key: 'sub', width: 110,
-      render: (_: any, r: Linea) => fmt.money(r.precioUnitario * r.cantidad) },
+      render: (_: any, r: Linea) => {
+        const pct = r.porcentajeIva / 100;
+        const val = precioInputModo === 'c' && pct > 0
+          ? r.precioUnitario * r.cantidad * (1 + pct)
+          : r.precioUnitario * r.cantidad;
+        return fmt.money(val);
+      }},
     { title: '', key: 'del', width: 40,
       render: (_: any, _r: Linea, idx: number) => (
         <Button type="text" danger size="small" icon={<DeleteOutlined />}
@@ -233,10 +260,23 @@ export default function CotizacionFormPage() {
 
         <Card title="Ítems cotizados" style={{ marginBottom: 16 }}
           extra={
-            <Button icon={<PlusOutlined />}
-              onClick={() => setLineas([...lineas, { key: Date.now().toString(), cantidad: 1, precioUnitario: 0, porcentajeIva: 18 }])}>
-              Agregar ítem
-            </Button>
+            <Space>
+              {(['c', 's'] as const).map(m => (
+                <button key={m} onClick={() => cambiarModo(m)}
+                  style={{
+                    fontSize: 11, padding: '2px 8px', borderRadius: 4, border: 'none',
+                    cursor: 'pointer', fontWeight: 600,
+                    background: precioInputModo === m ? '#1677ff' : '#f0f0f0',
+                    color: precioInputModo === m ? '#fff' : '#888',
+                  }}>
+                  {m === 'c' ? 'c/ITBIS' : 's/ITBIS'}
+                </button>
+              ))}
+              <Button icon={<PlusOutlined />}
+                onClick={() => setLineas([...lineas, { key: Date.now().toString(), cantidad: 1, precioUnitario: 0, porcentajeIva: 18 }])}>
+                Agregar ítem
+              </Button>
+            </Space>
           }>
           <Table columns={lineaCols as any} dataSource={lineas} rowKey="key" pagination={false} size="small" />
         </Card>
