@@ -2,7 +2,7 @@ import {
   Injectable, NotFoundException, BadRequestException, Logger,
 } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, Like } from 'typeorm';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { fechaHoyRD, mesHoyRD } from '../common/utils/fecha-local.util';
 import { ReciboCobro, MetodoPagoRecibo } from './entities/recibo-cobro.entity';
@@ -362,6 +362,12 @@ export class RecibosCobrosService {
               estado: FacturaEstado.EMITIDA,
             });
           }
+          // Marcar el pago_cobrado asociado como inactivo para que no aparezca
+          // en el estado de cuenta ni en el historial de cobros del cliente.
+          await em.getRepository(PagoCobrado).update(
+            { cuentaPorCobrarId: cxc.id, notas: Like(`Recibo ${recibo.numero}%`), isActive: true },
+            { isActive: false },
+          );
         });
 
         // Asiento de reversión: CRÉDITO Bancos, DÉBITO Clientes (inverso del cobro)

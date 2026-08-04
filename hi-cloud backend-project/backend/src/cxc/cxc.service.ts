@@ -169,7 +169,7 @@ export class CxCService {
 
   async getCuentas(filtro: FiltroCuentasDto) {
     const empresaId = this.tenantService.getEmpresaId();
-    const { limit = 10, page = 1, estado, fechaDesde, fechaHasta } = filtro;
+    const { limit = 10, page = 1, estado, fechaDesde, fechaHasta, search } = filtro;
 
     const qb = this.cxcRepository
       .createQueryBuilder('c')
@@ -181,6 +181,12 @@ export class CxCService {
     if (estado)     qb.andWhere('c.estado = :estado', { estado });
     if (fechaDesde) qb.andWhere('c.fechaVencimiento >= :desde', { desde: new Date(fechaDesde) });
     if (fechaHasta) qb.andWhere('c.fechaVencimiento <= :hasta', { hasta: new Date(fechaHasta) });
+    if (search) {
+      qb.andWhere(
+        '(LOWER(cliente.nombre) LIKE :s OR LOWER(factura.folio) LIKE :s)',
+        { s: `%${search.toLowerCase()}%` },
+      );
+    }
 
     const [data, total] = await qb
       .orderBy('c.fechaVencimiento', 'ASC')

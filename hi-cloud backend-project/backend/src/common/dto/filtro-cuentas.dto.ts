@@ -14,4 +14,5 @@ export class FiltroCuentasDto extends PaginationDto {
   @IsOptional()
   @IsDateString()
   fechaHasta?: string;
+  // `search` heredado de PaginationDto
 }

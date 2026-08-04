@@ -109,6 +109,9 @@ export default function RecibosCobrosPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['recibos-cobro'] });
       qc.invalidateQueries({ queryKey: ['recibos-resumen'] });
+      qc.invalidateQueries({ queryKey: ['cxc'] });
+      qc.invalidateQueries({ queryKey: ['cxc-resumen'] });
+      qc.invalidateQueries({ queryKey: ['facturas'] });
       setDetalleRecibo(null);
       message.success('Recibo anulado correctamente');
     },
@@ -196,6 +199,9 @@ export default function RecibosCobrosPage() {
       qc.invalidateQueries({ queryKey: ['recibos-cobro'] });
       qc.invalidateQueries({ queryKey: ['recibos-resumen'] });
       qc.invalidateQueries({ queryKey: ['anticipos'] });
+      qc.invalidateQueries({ queryKey: ['cxc'] });
+      qc.invalidateQueries({ queryKey: ['cxc-resumen'] });
+      qc.invalidateQueries({ queryKey: ['facturas'] });
       setModalCrear(false);
       setPendienteExcedente(null);
       form.resetFields();

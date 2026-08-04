@@ -67,6 +67,7 @@ export default function CxCPage() {
       estado,
       fechaDesde: rango?.[0].format('YYYY-MM-DD'),
       fechaHasta: rango?.[1].format('YYYY-MM-DD'),
+      search:     search || undefined,
     }),
   });
 
