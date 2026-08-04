@@ -384,10 +384,11 @@ function ProductCard({ produto, onAdd, mostrarStock = true, permitirStockNegativ
 }
 
 // ── Cart row ──────────────────────────────────────────────────────────────────
-function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, onLista, permitirModificarPrecio, permitirDescuentos = true, requireSupervisor }: {
+function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, onLista, permitirModificarPrecio, permitirDescuentos = true, precioInputModo = 'c', onPrecioInputModoChange, requireSupervisor }: {
   item: CartItem; onQty: (d: number) => void; onQtyDirecto?: (v: number) => void; onRemove: () => void; onDescuento: (monto: number) => void;
   onPrecio?: (p: number) => void; onLista?: (lista: PrecioLista) => void;
   permitirModificarPrecio?: boolean; permitirDescuentos?: boolean;
+  precioInputModo?: 'c' | 's'; onPrecioInputModoChange?: (modo: 'c' | 's') => void;
   requireSupervisor?: (action: string, detail?: string) => Promise<boolean>;
 }) {
   const C = useC();
@@ -411,7 +412,13 @@ function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, o
 
   const confirmarPrecio = (raw: string) => {
     const v = parseFloat(raw.replace(/[^0-9.]/g, ''));
-    if (v > 0) onPrecio?.(v);
+    if (v > 0) {
+      const pct = Number((item.produto as any).porcentajeIva ?? 18) / 100;
+      const base = (precioInputModo === 'c' && pct > 0)
+        ? parseFloat((v / (1 + pct)).toFixed(4))
+        : v;
+      onPrecio?.(base);
+    }
     setPrecioDraft(null);
   };
 
@@ -436,12 +443,32 @@ function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, o
               {permitirModificarPrecio ? (
                 precioDraft !== null ? (
                   <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
+                    {(() => {
+                      const pct = Number((item.produto as any).porcentajeIva ?? 18) / 100;
+                      if (pct === 0) return null;
+                      return (
+                        <span style={{ display: 'inline-flex', gap: 2, alignSelf: 'flex-end' }}>
+                          {(['c', 's'] as const).map(m => (
+                            <button key={m}
+                              onMouseDown={e => { e.preventDefault(); onPrecioInputModoChange?.(m); }}
+                              style={{
+                                fontSize: 9, padding: '1px 5px', borderRadius: 3, border: 'none',
+                                cursor: 'pointer', fontWeight: 600, lineHeight: '14px',
+                                background: precioInputModo === m ? C.blue : C.border,
+                                color: precioInputModo === m ? '#fff' : C.textSub,
+                              }}>
+                              {m === 'c' ? 'c/ITBIS' : 's/ITBIS'}
+                            </button>
+                          ))}
+                        </span>
+                      );
+                    })()}
                     <input
                       type="number"
                       autoFocus
                       value={precioDraft}
                       min={0.01}
-                      step={0.0001}
+                      step={precioInputModo === 'c' ? 0.01 : 0.0001}
                       style={{ width: 96, fontSize: 11, borderRadius: 4,
                         border: `1px solid ${C.blue}`, background: 'transparent',
                         color: C.text, textAlign: 'right', padding: '1px 4px', outline: 'none' }}
@@ -456,8 +483,13 @@ function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, o
                       const v = parseFloat(precioDraft || '0');
                       const pct = Number((item.produto as any).porcentajeIva ?? 18) / 100;
                       if (!v || pct === 0) return null;
-                      const total = (v * (1 + pct)).toFixed(2);
-                      return <span style={{ fontSize: 9, color: C.textSub, textAlign: 'right' }}>c/ITBIS≈{total}</span>;
+                      if (precioInputModo === 'c') {
+                        const base = (v / (1 + pct)).toFixed(4);
+                        return <span style={{ fontSize: 9, color: C.textSub, textAlign: 'right' }}>base {base}</span>;
+                      } else {
+                        const total = (v * (1 + pct)).toFixed(2);
+                        return <span style={{ fontSize: 9, color: C.textSub, textAlign: 'right' }}>c/ITBIS {total}</span>;
+                      }
                     })()}
                   </span>
                 ) : (
@@ -466,7 +498,10 @@ function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, o
                         const ok = await requireSupervisor('Modificar precio', `Producto: ${item.produto.nombre} — Precio actual: ${fmt.money(item.precio)}`);
                         if (!ok) return;
                       }
-                      setPrecioDraft(String(item.precio));
+                      const _pct = Number((item.produto as any).porcentajeIva ?? 18) / 100;
+                      setPrecioDraft(precioInputModo === 'c' && _pct > 0
+                        ? String(parseFloat((item.precio * (1 + _pct)).toFixed(2)))
+                        : String(item.precio));
                     }}
                     style={{ cursor: 'pointer', borderBottom: `1px dashed ${C.blue}`, paddingBottom: 1 }}
                     title="Click para editar precio">
@@ -8661,6 +8696,10 @@ export default function POSPage() {
     } catch { return []; }
   });
   const [isOffline,          setIsOffline]          = useState(!navigator.onLine);
+  const [precioInputModo,    setPrecioInputModo]    = useState<'c' | 's'>(() => {
+    try { return (localStorage.getItem('pos_precio_input_modo') as 'c' | 's') ?? 'c'; }
+    catch { return 'c'; }
+  });
   // e-CF: datos del comprador y estado del loader
   const [rncComprador,       setRncComprador]       = useState('');
   const [razonSocialComp,    setRazonSocialComp]    = useState('');
@@ -10529,6 +10568,11 @@ export default function POSPage() {
                     onLista={lista => cambiarListaItem(idx, lista)}
                     permitirModificarPrecio={posConf.posModificarPrecio === true}
                     permitirDescuentos={posConf.posPermitirDescuentos !== false}
+                    precioInputModo={precioInputModo}
+                    onPrecioInputModoChange={modo => {
+                      setPrecioInputModo(modo);
+                      try { localStorage.setItem('pos_precio_input_modo', modo); } catch {}
+                    }}
                     requireSupervisor={supervisor.supervisorModeEnabled && posConf.posModificarPrecio === true ? supervisor.requireSupervisor : undefined} />
                 ))}
               </AnimatePresence>
