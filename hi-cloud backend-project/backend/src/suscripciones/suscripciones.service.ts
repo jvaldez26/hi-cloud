@@ -71,7 +71,11 @@ export class SuscripcionesService implements OnModuleInit {
 
   // ── Obtener suscripción ───────────────────────────────────────────────────
 
-  async getSuscripcion(empresaId = 1): Promise<Suscripcion & { info: typeof PLAN_LIMITES[PlanTipo]; diasRestantes: number }> {
+  async getSuscripcion(empresaId = 1): Promise<Suscripcion & {
+    info: typeof PLAN_LIMITES[PlanTipo];
+    diasRestantes: number;
+    diasGraciaRestantes: number;
+  }> {
     let s = await this.repo.findOne({ where: { empresaId } });
     if (!s) {
       const hoy = new Date();
@@ -91,7 +95,17 @@ export class SuscripcionesService implements OnModuleInit {
       ? new Date(s.fechaFinPrueba ?? s.fechaVencimiento)
       : new Date(s.fechaVencimiento);
     const diasRestantes = Math.ceil((fechaRef.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
-    return { ...s, info: PLAN_LIMITES[s.plan] ?? PLAN_LIMITES[PlanTipo.EMPRENDEDOR], diasRestantes };
+
+    const diasGraciaRestantes = s.enPeriodoGracia && s.fechaFinGracia
+      ? Math.max(0, Math.ceil((new Date(s.fechaFinGracia).getTime() - hoy.getTime()) / 86_400_000))
+      : 0;
+
+    return {
+      ...s,
+      info: PLAN_LIMITES[s.plan] ?? PLAN_LIMITES[PlanTipo.EMPRENDEDOR],
+      diasRestantes,
+      diasGraciaRestantes,
+    };
   }
 
   // ── Activar plan (por super admin) ────────────────────────────────────────
@@ -225,34 +239,53 @@ export class SuscripcionesService implements OnModuleInit {
     return { totales, activas, enPrueba, mrr, porPlan: rows };
   }
 
-  // ── Cron: procesar vencimientos de prueba (diario 00:10 UTC) ─────────────
+  // ── Cron: procesar vencimientos (diario 00:10 UTC) ───────────────────────
 
   @Cron('10 0 * * *')
   async procesarVencimientosPrueba() {
     const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
 
-    // Suscripciones en PRUEBA cuya fechaFinPrueba ya pasó
+    // 1. Suscripciones en PRUEBA cuya fechaFinPrueba ya pasó → SUSPENDIDA
     const vencidas = await this.repo.find({
       where: { estado: SuscripcionEstado.PRUEBA, fechaFinPrueba: LessThan(hoy) },
     });
-
     for (const s of vencidas) {
       await this.repo.update(s.id, {
         estado: SuscripcionEstado.SUSPENDIDA,
         motivoSuspension: 'PRUEBA_VENCIDA',
       });
-      // Notificar al admin de la empresa por email (lazy import para evitar dep circular)
       this.notificarVencimientoPrueba(s.empresaId, s.plan).catch(() => null);
     }
-
-    await this.ds.query(`
-      UPDATE suscripciones SET estado = 'vencida'
-      WHERE estado = 'activa'
-        AND "fechaVencimiento" < $1
-    `, [hoy.toISOString().slice(0, 10)]);
-
     if (vencidas.length > 0)
       this.logger.warn(`${vencidas.length} pruebas vencidas → SUSPENDIDA`);
+
+    // 2. Suscripciones ACTIVAS cuya fechaVencimiento ya pasó y aún no entraron en gracia
+    //    → activar período de gracia de 5 días
+    const hoyStr = hoy.toISOString().slice(0, 10);
+    const finGracia = new Date(hoy);
+    finGracia.setDate(finGracia.getDate() + 5);
+    const finGraciaStr = finGracia.toISOString().slice(0, 10);
+
+    const vencidasPago = await this.ds.query<{ id: number; empresaId: number; plan: string }[]>(`
+      SELECT id, "empresaId", plan FROM suscripciones
+      WHERE estado = 'activa'
+        AND "fechaVencimiento" < $1
+        AND "enPeriodoGracia" = false
+    `, [hoyStr]);
+
+    for (const s of vencidasPago) {
+      await this.ds.query(`
+        UPDATE suscripciones
+        SET "enPeriodoGracia" = true,
+            "fechaFinGracia"  = $1,
+            "recordatorio1dGraciaEnviado" = false,
+            "updatedAt"       = NOW()
+        WHERE id = $2
+      `, [finGraciaStr, s.id]);
+      this.notificarInicioGracia(s.empresaId, s.plan as PlanTipo, finGracia).catch(() => null);
+    }
+    if (vencidasPago.length > 0)
+      this.logger.warn(`${vencidasPago.length} suscripciones → período de gracia (5 días hasta ${finGraciaStr})`);
   }
 
   // ── Cron: recordatorios de vencimiento (8 AM hora RD = 12:00 UTC) ─────────
@@ -276,7 +309,7 @@ export class SuscripcionesService implements OnModuleInit {
       if (s) { await this.enviarRecordatorio(s, 5); await this.repo.update(s.id, { recordatorio5dEnviado: true }); }
     }
 
-    // Recordatorio 1 día
+    // Recordatorio 1 día (trial)
     const por1d = await this.ds.query<{ id: number }[]>(`
       SELECT id FROM suscripciones
        WHERE estado = 'prueba'
@@ -288,8 +321,24 @@ export class SuscripcionesService implements OnModuleInit {
       if (s) { await this.enviarRecordatorio(s, 1); await this.repo.update(s.id, { recordatorio1dEnviado: true }); }
     }
 
-    if (por5d.length + por1d.length > 0)
-      this.logger.log(`Recordatorios enviados: ${por5d.length} (5d) + ${por1d.length} (1d)`);
+    // Recordatorio 1 día restante en período de gracia
+    const graciaVenceMañana = await this.ds.query<{ id: number; empresaId: number; plan: string }[]>(`
+      SELECT id, "empresaId", plan FROM suscripciones
+       WHERE "enPeriodoGracia" = true
+         AND "fechaFinGracia"::date = $1::date
+         AND "recordatorio1dGraciaEnviado" = false
+    `, [en1Dia.toISOString().slice(0, 10)]);
+    for (const row of graciaVenceMañana) {
+      await this.notificarGracia1DiaRestante(row.empresaId, row.plan as PlanTipo).catch(() => null);
+      await this.ds.query(
+        `UPDATE suscripciones SET "recordatorio1dGraciaEnviado" = true WHERE id = $1`,
+        [row.id],
+      );
+    }
+
+    const total = por5d.length + por1d.length + graciaVenceMañana.length;
+    if (total > 0)
+      this.logger.log(`Recordatorios enviados: ${por5d.length} (5d prueba) + ${por1d.length} (1d prueba) + ${graciaVenceMañana.length} (1d gracia)`);
   }
 
   private async enviarRecordatorio(s: Suscripcion, dias: number): Promise<void> {
@@ -321,6 +370,90 @@ export class SuscripcionesService implements OnModuleInit {
       });
     } catch (err) {
       this.logger.warn(`No se pudo enviar recordatorio empresa #${s.empresaId}: ${(err as Error).message}`);
+    }
+  }
+
+  private async notificarInicioGracia(empresaId: number, plan: PlanTipo, fechaFinGracia: Date): Promise<void> {
+    try {
+      const admin = await this.ds.query<{ email: string; nombre: string }[]>(`
+        SELECT u.email, u.nombre FROM users u
+        JOIN usuario_empresa ue ON ue."userId" = u.id
+        WHERE ue."empresaId" = $1 AND ue."isActive" = true AND ue."isPrincipal" = true
+        LIMIT 1
+      `, [empresaId]);
+      if (!admin.length) return;
+
+      const planNombre = PLANES[plan]?.nombre ?? plan;
+      const fechaStr   = fechaFinGracia.toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' });
+      const frontendUrl = process.env['FRONTEND_URL'] ?? 'https://hicloudrd.com';
+
+      await this.emailSvc.enviar({
+        to: admin[0].email,
+        subject: `⏳ Tu suscripción HiCloud venció — 5 días de gracia para pagar`,
+        html: `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+<style>body{font-family:'Inter',sans-serif;background:#f5f5f5;margin:0;padding:20px}
+.card{background:#fff;max-width:520px;margin:0 auto;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.1)}
+.header{background:linear-gradient(135deg,#f59e0b,#d97706);padding:28px;color:#fff;text-align:center}
+.body{padding:28px}.btn{display:inline-block;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700}
+.footer{padding:16px;text-align:center;font-size:12px;color:#9ca3af}</style></head>
+<body><div class="card">
+  <div class="header"><h2 style="margin:0">⏳ Período de gracia activado</h2></div>
+  <div class="body">
+    <p>Hola <strong>${admin[0].nombre}</strong>,</p>
+    <p>Tu suscripción al plan <strong>${planNombre}</strong> ha vencido. Sin embargo, hemos activado un <strong>período de gracia de 5 días</strong> para que puedas realizar tu pago sin interrupciones.</p>
+    <p><strong>Fecha límite de pago:</strong> ${fechaStr}</p>
+    <p>Si no realizas el pago antes de esa fecha, tu cuenta quedará <strong>suspendida automáticamente</strong>.</p>
+    <p style="text-align:center;margin:28px 0">
+      <a href="${frontendUrl}/configuracion" class="btn">Realizar pago ahora →</a>
+    </p>
+    <p style="color:#6b7280;font-size:13px">¿Tienes preguntas? soporte@hicloudrd.com</p>
+  </div>
+  <div class="footer">© 2026 HiCloud ERP · República Dominicana</div>
+</div></body></html>`,
+      });
+    } catch (err) {
+      this.logger.warn(`notificarInicioGracia empresa #${empresaId}: ${(err as Error).message}`);
+    }
+  }
+
+  private async notificarGracia1DiaRestante(empresaId: number, plan: PlanTipo): Promise<void> {
+    try {
+      const admin = await this.ds.query<{ email: string; nombre: string }[]>(`
+        SELECT u.email, u.nombre FROM users u
+        JOIN usuario_empresa ue ON ue."userId" = u.id
+        WHERE ue."empresaId" = $1 AND ue."isActive" = true AND ue."isPrincipal" = true
+        LIMIT 1
+      `, [empresaId]);
+      if (!admin.length) return;
+
+      const planNombre  = PLANES[plan]?.nombre ?? plan;
+      const frontendUrl = process.env['FRONTEND_URL'] ?? 'https://hicloudrd.com';
+
+      await this.emailSvc.enviar({
+        to: admin[0].email,
+        subject: `🚨 Tu período de gracia HiCloud vence MAÑANA — paga hoy`,
+        html: `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+<style>body{font-family:'Inter',sans-serif;background:#f5f5f5;margin:0;padding:20px}
+.card{background:#fff;max-width:520px;margin:0 auto;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.1)}
+.header{background:linear-gradient(135deg,#ef4444,#dc2626);padding:28px;color:#fff;text-align:center}
+.body{padding:28px}.btn{display:inline-block;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700}
+.footer{padding:16px;text-align:center;font-size:12px;color:#9ca3af}</style></head>
+<body><div class="card">
+  <div class="header"><h2 style="margin:0">🚨 ¡Último día de gracia!</h2></div>
+  <div class="body">
+    <p>Hola <strong>${admin[0].nombre}</strong>,</p>
+    <p>Tu período de gracia del plan <strong>${planNombre}</strong> <strong>vence mañana</strong>.</p>
+    <p>Si no realizas el pago hoy, tu cuenta quedará <strong>suspendida automáticamente</strong> y no podrás acceder al sistema.</p>
+    <p style="text-align:center;margin:28px 0">
+      <a href="${frontendUrl}/configuracion" class="btn">Pagar ahora →</a>
+    </p>
+    <p style="color:#6b7280;font-size:13px">¿Urgente? soporte@hicloudrd.com</p>
+  </div>
+  <div class="footer">© 2026 HiCloud ERP · República Dominicana</div>
+</div></body></html>`,
+      });
+    } catch (err) {
+      this.logger.warn(`notificarGracia1DiaRestante empresa #${empresaId}: ${(err as Error).message}`);
     }
   }
 

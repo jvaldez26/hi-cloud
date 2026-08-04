@@ -66,6 +66,12 @@ export class PagosSuscripcionService {
     const precioMensual = Number(pcRows[0]?.precio ?? 0);
     const saldoPendiente = await this.getSaldoPendiente(empresaId);
 
+    const enGracia = sus.enPeriodoGracia === true;
+    const fechaFinGracia = sus.fechaFinGracia ? new Date(sus.fechaFinGracia) : null;
+    const diasGraciaRestantes = enGracia && fechaFinGracia
+      ? Math.max(0, Math.ceil((fechaFinGracia.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)))
+      : 0;
+
     return {
       plan:           sus.plan,
       estado:         sus.estado,
@@ -78,7 +84,10 @@ export class PagosSuscripcionService {
       porcentajeUsado: diasTotales > 0
         ? Math.max(0, Math.min(100, Math.round(((diasTotales - diasRestantes) / diasTotales) * 100)))
         : 0,
-      saldo: saldoPendiente,
+      saldo:              saldoPendiente,
+      enPeriodoGracia:    enGracia,
+      fechaFinGracia:     sus.fechaFinGracia ?? null,
+      diasGraciaRestantes,
     };
   }
 
@@ -572,24 +581,24 @@ export class PagosSuscripcionService {
     }
   }
 
-  /** 00:30 UTC — suspender automáticamente tras 3 días de vencimiento sin pago */
+  /** 00:30 UTC — suspender automáticamente cuando vence el período de gracia sin pago */
   @Cron('30 0 * * *')
   async suspenderPorFaltaDePago() {
-    const hace3dias = new Date();
-    hace3dias.setDate(hace3dias.getDate() - 3);
-    const fecha = hace3dias.toISOString().split('T')[0];
+    const hoy = new Date();
+    const fecha = hoy.toISOString().split('T')[0];
 
+    // Buscar suscripciones en período de gracia cuya fechaFinGracia ya pasó
     const empresas = await this.ds.query<any[]>(`
       SELECT s."empresaId", s.plan, e.nombre, e.email
       FROM suscripciones s
       JOIN empresa e ON e.id = s."empresaId"
-      WHERE s.estado = 'activa'
-        AND s."fechaVencimiento"::date <= $1
+      WHERE s."enPeriodoGracia" = true
+        AND s."fechaFinGracia"::date <= $1
         AND e."isActive" = true
     `, [fecha]);
 
     for (const emp of empresas) {
-      // Verificar si tiene pagos confirmados después del vencimiento
+      // Verificar si tiene pago confirmado después del vencimiento original
       const [pago] = await this.ds.query<any[]>(`
         SELECT id FROM pagos_suscripcion
         WHERE "empresaId" = $1
@@ -603,14 +612,16 @@ export class PagosSuscripcionService {
       if (!pago) {
         await this.ds.query(`
           UPDATE suscripciones
-          SET estado = 'suspendida', "motivoSuspension" = 'SUSPENSION_AUTOMATICA_PAGO'
-          WHERE "empresaId" = $1 AND estado = 'activa'
+          SET estado = 'suspendida',
+              "enPeriodoGracia" = false,
+              "motivoSuspension" = 'SUSPENSION_AUTOMATICA_PAGO'
+          WHERE "empresaId" = $1 AND "enPeriodoGracia" = true
         `, [emp.empresaId]);
 
         await this.enviarEmailSuspension(emp.email, emp.nombre, emp.plan)
           .catch(e => this.logger.warn(`Email suspensión empresa #${emp.empresaId}: ${e?.message}`));
 
-        this.logger.warn(`Empresa #${emp.empresaId} suspendida automáticamente por falta de pago`);
+        this.logger.warn(`Empresa #${emp.empresaId} suspendida (gracia vencida, sin pago)`);
       }
     }
   }

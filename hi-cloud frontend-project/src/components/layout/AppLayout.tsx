@@ -283,27 +283,39 @@ function PlanIndicadorHeader() {
     trial: 'TRIAL', basico: 'BÁSICO', profesional: 'PRO',
     empresarial: 'EMPR.', enterprise: 'ENT.',
   };
-  const color   = COLOR[plan] ?? '#64748B';
-  const label   = LABEL[plan] ?? plan.toUpperCase();
-  const estado  = suscripcion.estado as string;
-  const enPrueba = estado === 'prueba';
-  const urgente  = enPrueba && dias <= 5;
+  const color       = COLOR[plan] ?? '#64748B';
+  const label       = LABEL[plan] ?? plan.toUpperCase();
+  const estado      = suscripcion.estado as string;
+  const enPrueba    = estado === 'prueba';
+  const enGracia    = suscripcion.enPeriodoGracia === true;
+  const diasGracia  = typeof suscripcion.diasGraciaRestantes === 'number' ? suscripcion.diasGraciaRestantes as number : 0;
+  const urgente     = (enPrueba && dias <= 5) || (enGracia && diasGracia <= 2);
+  const colorUrgente = enGracia ? '#F59E0B' : '#EF4444';
+
+  const tooltipText = enGracia
+    ? `Período de gracia — ${diasGracia} día${diasGracia !== 1 ? 's' : ''} para pagar`
+    : `Plan ${suscripcion.info?.nombre ?? label}${enPrueba ? ` · Prueba gratis — ${dias} días restantes` : dias > 0 ? ` · vence en ${dias} días` : ''} — Click para ver planes`;
 
   return (
-    <Tooltip title={`Plan ${suscripcion.info?.nombre ?? label}${enPrueba ? ` · Prueba gratis — ${dias} días restantes` : dias > 0 ? ` · vence en ${dias} días` : ''} — Click para ver planes`}>
+    <Tooltip title={tooltipText}>
       <button
-        onClick={() => navigate('/suscripcion/planes')}
+        onClick={() => navigate(enGracia ? '/configuracion' : '/suscripcion/planes')}
         style={{
-          background: urgente ? '#FEF2F222' : `${color}18`,
-          border: `1px solid ${urgente ? '#EF444455' : `${color}55`}`,
+          background: urgente ? `${colorUrgente}18` : `${color}18`,
+          border: `1px solid ${urgente ? `${colorUrgente}55` : `${color}55`}`,
           borderRadius: 6, padding: '3px 9px', cursor: 'pointer',
           display: 'flex', alignItems: 'center', gap: 5,
           animation: urgente ? 'pulse 2s infinite' : 'none',
         }}>
-        <span style={{ color: urgente ? '#EF4444' : color, fontWeight: 800, fontSize: 11, letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
+        <span style={{ color: urgente ? colorUrgente : color, fontWeight: 800, fontSize: 11, letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
           {label}
         </span>
-        {enPrueba && dias > 0 && (
+        {enGracia && (
+          <span style={{ color: colorUrgente, fontSize: 10, whiteSpace: 'nowrap', fontWeight: 700 }}>
+            {diasGracia}d gracia
+          </span>
+        )}
+        {!enGracia && enPrueba && dias > 0 && (
           <span style={{ color: urgente ? '#EF4444' : '#94A3B8', fontSize: 10, whiteSpace: 'nowrap' }}>
             {dias}d prueba
           </span>

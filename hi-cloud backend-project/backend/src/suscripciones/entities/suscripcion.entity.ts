@@ -163,6 +163,9 @@ export class Suscripcion {
   @Column({ type: 'date', nullable: true })
   fechaFinGracia?: Date;
 
+  @Column({ default: false })
+  recordatorio1dGraciaEnviado!: boolean;
+
   @Column({ type: 'smallint' })
   diaCorte!: number;
 

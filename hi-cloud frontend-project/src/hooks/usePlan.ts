@@ -59,11 +59,13 @@ export function usePlan() {
 
   return {
     plan,
-    planNombre:    suscripcion?.info?.nombre ?? planInfo.nombre,
-    diasRestantes: suscripcion?.diasRestantes ?? 0,
+    planNombre:          suscripcion?.info?.nombre ?? planInfo.nombre,
+    diasRestantes:       suscripcion?.diasRestantes ?? 0,
     estado,
-    enPrueba:      estado === 'prueba',
-    suspendida:    estado === 'suspendida',
+    enPrueba:            estado === 'prueba',
+    suspendida:          estado === 'suspendida',
+    enPeriodoGracia:     suscripcion?.enPeriodoGracia === true,
+    diasGraciaRestantes: typeof suscripcion?.diasGraciaRestantes === 'number' ? suscripcion.diasGraciaRestantes : 0,
     suscripcion,
     limites,
     isLoading:     loadingPlan || loadingLimites,

@@ -36,11 +36,56 @@ export default function PlanBanner() {
     retry: false,
   });
 
-  if (!suscripcion || cerrado) return null;
+  if (!suscripcion) return null;
 
   const plan   = suscripcion.plan as string;
   const dias   = suscripcion.diasRestantes as number;
   const estado = suscripcion.estado as string;
+
+  // ── Período de gracia — SIEMPRE VISIBLE, sin botón de cierre ─────────────
+  const enGracia      = suscripcion.enPeriodoGracia === true;
+  const diasGracia    = typeof suscripcion.diasGraciaRestantes === 'number'
+    ? (suscripcion.diasGraciaRestantes as number)
+    : 0;
+
+  if (enGracia) {
+    const critico = diasGracia <= 1;
+    return (
+      <div style={{
+        background:    critico ? '#FEF2F2' : '#FFFBEB',
+        borderBottom:  `2px solid ${critico ? '#EF4444' : '#F59E0B'}`,
+        borderLeft:    `4px solid ${critico ? '#EF4444' : '#F59E0B'}`,
+        padding:       '10px 20px',
+        display:       'flex',
+        alignItems:    'center',
+        justifyContent: 'space-between',
+        flexWrap:      'wrap',
+        gap:           8,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <AlertTriangle size={16} color={critico ? '#EF4444' : '#D97706'} />
+          <span style={{ color: critico ? '#991B1B' : '#92400E', fontWeight: 600, fontSize: 13 }}>
+            {critico
+              ? `🚨 Tu período de gracia vence ${diasGracia === 0 ? 'hoy' : 'mañana'} — paga ahora para evitar la suspensión`
+              : `⏳ Período de gracia activo — tienes ${diasGracia} día${diasGracia !== 1 ? 's' : ''} para realizar tu pago`
+            }
+          </span>
+        </div>
+        <Button
+          size="small"
+          onClick={() => navigate('/configuracion')}
+          style={critico
+            ? { background: '#EF4444', border: 'none', color: '#fff', fontWeight: 600 }
+            : { background: '#F59E0B', border: 'none', color: '#fff', fontWeight: 600 }
+          }
+        >
+          Pagar ahora →
+        </Button>
+      </div>
+    );
+  }
+
+  if (cerrado) return null;
 
   // ── Vencida / suspendida ──────────────────────────────────────────────────
   if (estado === 'vencida' || estado === 'suspendida') {
