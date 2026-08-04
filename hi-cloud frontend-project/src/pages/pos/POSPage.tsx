@@ -9151,10 +9151,13 @@ export default function POSPage() {
     setTipoNcf(/^\d{9}$/.test(rnc) ? 'E31' : 'E32');
   };
 
-  // Pre-llenar razón social con el nombre del cliente cuando no tiene RNC registrado
+  // Pre-llenar razón social con el nombre del cliente cuando no tiene RNC registrado.
+  // No pre-llenar con "Consumidor final" — ese nombre genérico no es un comprador real;
+  // el DGII lookup lo reemplazará cuando el cajero ingrese el RNC.
   useEffect(() => {
     if (tipoNcf === 'E32' || clienteTieneRNC) return;
-    if (razonSocialComp === '' && clienteSeleccionado?.nombre) {
+    if (razonSocialComp === '' && clienteSeleccionado?.nombre
+        && !/^consumidor\s+final$/i.test(clienteSeleccionado.nombre)) {
       setRazonSocialComp(clienteSeleccionado.nombre);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps

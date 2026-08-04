@@ -743,6 +743,17 @@ export class FacturasService {
           }
         : undefined;
 
+      // Fallback: si el RNC está presente pero la razón social es genérica o falta
+      // (p.ej. el cajero confirmó antes de que terminara el lookup DGII en el frontend),
+      // consultamos DGII aquí para obtener el nombre real del comprador.
+      if (datosComprador?.rnc &&
+          (!datosComprador.razonSocial || /^consumidor\s+final$/i.test(datosComprador.razonSocial))) {
+        const rncDatos = await this.rncService.consultarRNC(datosComprador.rnc).catch(() => null);
+        if (rncDatos?.encontrado && rncDatos.nombre) {
+          datosComprador = { ...datosComprador, razonSocial: rncDatos.nombre };
+        }
+      }
+
       const ecfInput = {
         empresaId:           factura.empresaId,
         documentoOrigenTipo: DocumentoOrigenTipo.FACTURA,
