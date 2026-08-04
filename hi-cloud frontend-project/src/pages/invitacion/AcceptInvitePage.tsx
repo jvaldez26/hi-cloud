@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Form, Input, Button, Card, Typography, Spin, Result, Tag, Alert, Space, theme } from 'antd';
 import { LockOutlined, UserOutlined, CheckCircleOutlined, MailOutlined } from '@ant-design/icons';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import api from '../../api/client';
 import { useAuthStore } from '../../store/auth.store';
@@ -22,6 +22,7 @@ export default function AcceptInvitePage() {
   const [done,  setDone]  = useState(false);
   const [empresaIdAceptada, setEmpresaIdAceptada] = useState<number | null>(null);
   const { user } = useAuthStore();
+  const queryClient = useQueryClient();
 
   // Obtener datos de la invitación
   const { data: inv, isLoading, error } = useQuery({
@@ -48,6 +49,9 @@ export default function AcceptInvitePage() {
         } catch {
           // Si falla, el usuario puede hacer login de nuevo
         }
+        // Invalidar la lista de empresas para que el switcher la refresque
+        // inmediatamente sin necesitar logout/login
+        queryClient.invalidateQueries({ queryKey: ['mis-empresas'] });
       }
       setDone(true);
     },

@@ -241,31 +241,35 @@ export class InvitacionesService {
         // gate de correo verificado del login con "Credenciales inválidas".
         emailVerifiedAt: new Date(),
       }));
-    } else {
-      // El rol de la invitación es autoritativo — actualizar User.role siempre,
-      // excepto si ya es super_admin (no se degrada al super admin nunca)
-      if (user.role !== UserRole.SUPER_ADMIN) {
-        await this.userRepo.update(user.id, { role: inv.rol as UserRole });
-        user.role = inv.rol as UserRole;
-      }
     }
 
     // Asignar a la empresa
     const yaAsignado = await this.ueRepo.findOne({ where: { userId: user.id, empresaId: inv.empresaId } });
+    // Determinar si esta empresa será la principal: solo si el usuario no tiene otra activa
+    const tieneEmpresaActivaPrincipal = await this.ueRepo.findOne({
+      where: { userId: user.id, isPrincipal: true, isActive: true },
+    });
+
     if (!yaAsignado) {
-      // Si el usuario no tiene ninguna empresa activa (ej: su empresa anterior fue eliminada),
-      // marcar esta como principal. Si ya tiene otra empresa principal activa, no tocar ese flag.
-      const tieneEmpresaActivaPrincipal = await this.ueRepo.findOne({
-        where: { userId: user.id, isPrincipal: true, isActive: true },
-      });
+      const esPrincipal = !tieneEmpresaActivaPrincipal;
       await this.ueRepo.save(this.ueRepo.create({
         userId:      user.id,
         empresaId:   inv.empresaId,
         rol:         inv.rol,
-        isPrincipal: !tieneEmpresaActivaPrincipal,  // principal solo si no tiene otra activa
+        isPrincipal: esPrincipal,
       }));
+      // Sincronizar User.role solo si esta empresa se convierte en la principal
+      if (esPrincipal && user.role !== UserRole.SUPER_ADMIN) {
+        await this.userRepo.update(user.id, { role: inv.rol as UserRole });
+      }
     } else {
       await this.ueRepo.update(yaAsignado.id, { rol: inv.rol, isActive: true });
+      // Si esta empresa ya era principal y sigue siendo la principal del usuario,
+      // sincronizar User.role. Si el usuario tiene OTRA empresa principal activa,
+      // no tocar su rol global para no degradarlo.
+      if (yaAsignado.isPrincipal && !tieneEmpresaActivaPrincipal && user.role !== UserRole.SUPER_ADMIN) {
+        await this.userRepo.update(user.id, { role: inv.rol as UserRole });
+      }
     }
 
     // Marcar invitación como aceptada
