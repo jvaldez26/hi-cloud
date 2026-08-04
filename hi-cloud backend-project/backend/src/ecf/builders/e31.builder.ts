@@ -44,11 +44,12 @@ export function buildE31(input: ECFBuildInput): MSellerPayload {
     const otME     = mc.otraMonedaItem(precioME, montoME);
 
     const cantidad     = cap4(d.cantidad);
-    const precioDOP    = round2(mc.toDOP(precioME));
     const montoItemDOP = round2(mc.toDOP(montoME));
-    // Descuento = precio×cant − monto, con el PrecioUnitarioItem YA redondeado
-    // (lo que DGII multiplica) → cuadratura exacta con MontoItem.
-    const descuentoDOP = round2(precioDOP * cantidad - montoItemDOP);
+    // PrecioUnitarioItem a 4 dec derivado de MontoItem÷cantidad — DGII Informe Técnico §13
+    // permite hasta 4 decimales para este campo. Derivar desde MontoItem garantiza
+    // cuadratura exacta sin DescuentoMonto fantasma. Residuos de redondeo quedan dentro
+    // de la tolerancia DGII §12 (±1 unidad por línea).
+    const precioXML = cantidad > 0 ? cap4(montoItemDOP / cantidad) : cap4(mc.toDOP(precioME));
 
     const item = {
       NumeroLinea:            idx + 1,
@@ -57,12 +58,7 @@ export function buildE31(input: ECFBuildInput): MSellerPayload {
       IndicadorBienoServicio: 1,
       CantidadItem:           cantidad,
       UnidadMedida:           43,
-      PrecioUnitarioItem:     precioDOP,
-      // DescuentoMonto SOLO en DOP (sin OtraMonedaDetalle). En moneda extranjera
-      // el orden XSD relativo a OtraMonedaDetalle y un posible DescuentoOtraMoneda
-      // están sin confirmar. TODO(ME): habilitar tras validar el XSD oficial. Hoy
-      // el path ME sale como antes (sin DescuentoMonto), no peor.
-      ...(descuentoDOP > 0 && !otME ? { DescuentoMonto: descuentoDOP } : {}),
+      PrecioUnitarioItem:     precioXML,
       ...(otME ? { OtraMonedaDetalle: otME } : {}),
       MontoItem:              montoItemDOP,
     };
