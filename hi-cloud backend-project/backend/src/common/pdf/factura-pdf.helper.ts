@@ -64,12 +64,14 @@ function ecfTipoTitulo(tipo?: string): string {
 // ── Generador ────────────────────────────────────────────────────────────────
 
 /**
- * @param d       - datos de la factura
- * @param logoBuf - logo de la empresa descargado como Buffer (opcional)
+ * @param d           - datos de la factura
+ * @param logoBuf     - logo de la empresa descargado como Buffer (opcional)
+ * @param logoAlturaMm - altura máxima del logo en mm (config posLogoAltura, default 20)
  */
 export async function generarFacturaPDF(
   d: FacturaPDFData,
   logoBuf?: Buffer,
+  logoAlturaMm = 20,
 ): Promise<Buffer> {
   return new Promise<Buffer>((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 0, compress: true });
@@ -105,11 +107,14 @@ export async function generarFacturaPDF(
     const iniciales = (d.empresaNombre || 'HC')
       .split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
 
+    // 1pt = 1/72 in = 0.3528mm → 1mm = 2.835pt
+    const ptH = Math.round(logoAlturaMm * 2.835);
+
     let logoH = 0;
     if (logoBuf) {
       try {
-        doc.image(logoBuf, PL, y, { fit: [110, 68] });
-        logoH = 74;
+        doc.image(logoBuf, PL, y, { fit: [200, ptH] });
+        logoH = ptH + 6;
       } catch {
         // falla la imagen → iniciales
         doc.rect(PL, y, 56, 56).fill(DARK);

@@ -52,7 +52,7 @@ export class PDFService {
   private async buildFacturaData(
     factura: Factura,
     empresaIdParam?: number,
-  ): Promise<{ data: FacturaPDFData; logoBuf?: Buffer }> {
+  ): Promise<{ data: FacturaPDFData; logoBuf?: Buffer; logoAlturaMm: number }> {
     const empresaId = empresaIdParam ?? this.tenantSvc.getEmpresaId();
 
     const empresa = await this.facturaRepo.manager.query(
@@ -256,7 +256,8 @@ export class PDFService {
       netoCobrar:           Number((factura as any).netoCobrar ?? totalGeneral),
     };
 
-    return { data, logoBuf };
+    const logoAlturaMm = Number(factConf.posLogoAltura ?? 20);
+    return { data, logoBuf, logoAlturaMm };
   }
 
   // ── Genera PDF de factura (PDFKit) ──────────────────────────────────
@@ -270,8 +271,8 @@ export class PDFService {
     });
     if (!factura) throw new NotFoundException(`Factura #${facturaId} no encontrada`);
 
-    const { data, logoBuf } = await this.buildFacturaData(factura);
-    const buffer = await generarFacturaPDF(data, logoBuf);
+    const { data, logoBuf, logoAlturaMm } = await this.buildFacturaData(factura);
+    const buffer = await generarFacturaPDF(data, logoBuf, logoAlturaMm);
 
     this.logger.log(
       `PDF generado en ${Date.now() - t0} ms — ${factura.folio} — ` +
@@ -286,8 +287,8 @@ export class PDFService {
     empresaId: number,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const t0 = Date.now();
-    const { data, logoBuf } = await this.buildFacturaData(factura, empresaId);
-    const buffer = await generarFacturaPDF(data, logoBuf);
+    const { data, logoBuf, logoAlturaMm } = await this.buildFacturaData(factura, empresaId);
+    const buffer = await generarFacturaPDF(data, logoBuf, logoAlturaMm);
     this.logger.log(
       `PDF (cron) generado en ${Date.now() - t0} ms — ${factura.folio}`,
     );
