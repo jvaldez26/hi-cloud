@@ -8323,8 +8323,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
 
       {/* ── Modal cobrar Cotización ───────────────────────────────────────────── */}
       {cobrarCot && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,.55)' }}
-          onClick={(e) => { if (e.target === e.currentTarget) { setCobrarCot(null); setCobrarCotMonto(''); setCobrarCotDias(30); } }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,.55)' }}>
           <div style={{ background: C.card, borderRadius: 16, padding: 28, width: 360, maxWidth: '92vw', boxShadow: '0 8px 40px rgba(0,0,0,.3)' }}>
             <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4, color: C.text }}>Cobrar Cotización</div>
             <div style={{ fontSize: 13, color: C.textSub, marginBottom: 16 }}>{cobrarCot.numero} · {cobrarCot.cliente}</div>
@@ -8359,8 +8358,8 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
             {cobrarCotMetodo === 'Crédito' && (
               <div style={{ marginBottom: 14 }}>
                 <div style={{ fontSize: 12, color: C.textSub, marginBottom: 6 }}>Días de crédito</div>
-                <input type="number" min="1" step="1" value={cobrarCotDias}
-                  onChange={e => setCobrarCotDias(Number(e.target.value) || 30)}
+                <input type="number" min="1" step="1" value={cobrarCotDias || ''}
+                  onChange={e => setCobrarCotDias(Number(e.target.value) || 0)}
                   style={{ width: '100%', padding: '10px 12px', border: `1px solid ${C.border2}`, borderRadius: 8, fontSize: 16, background: C.bg, color: C.text, outline: 'none', boxSizing: 'border-box' }} />
               </div>
             )}
@@ -8370,7 +8369,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
                 Cancelar
               </button>
               <button disabled={cobrarCotMut.isPending}
-                onClick={() => cobrarCotMut.mutate({ id: cobrarCot.id, metodoPago: cobrarCotMetodo, diasCredito: cobrarCotMetodo === 'Crédito' ? cobrarCotDias : undefined })}
+                onClick={() => cobrarCotMut.mutate({ id: cobrarCot.id, metodoPago: cobrarCotMetodo, diasCredito: cobrarCotMetodo === 'Crédito' ? Math.max(1, cobrarCotDias || 30) : undefined })}
                 style={{ flex: 2, padding: '11px 0', borderRadius: 9, border: 'none', background: cobrarCotMut.isPending ? '#9ca3af' : '#16a34a', color: '#fff', cursor: cobrarCotMut.isPending ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 700 }}>
                 {cobrarCotMut.isPending ? 'Procesando...' : 'Confirmar Cobro'}
               </button>

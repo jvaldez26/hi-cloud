@@ -22,7 +22,7 @@ export class CotizacionDetalle extends BaseEntity {
   @Column({ length: 200 })
   descripcion!: string;
 
-  @Column({ type: 'decimal', precision: 12, scale: 2 })
+  @Column({ type: 'decimal', precision: 12, scale: 4 })
   precioUnitario!: number;
 
   @Column({ type: 'decimal', precision: 12, scale: 4 })

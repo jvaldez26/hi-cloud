@@ -287,6 +287,7 @@ export class CotizacionesService {
         iva:              Number(cot.iva),
         total:            Number(cot.total),
         tipoNcf:          'E32',
+        tipoPago:         esCredito ? 'CREDITO' : 'CONTADO',
         notas:            notasFactura,
         diasCredito:      diasCred || undefined,
         fechaVencimiento: vencimiento,
