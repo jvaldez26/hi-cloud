@@ -561,11 +561,19 @@ function SeccionBranding({ empresa, onSaved }: { empresa: any; onSaved: () => vo
   });
 
   const beforeUploadLogo = (file: File) => {
+    if (file.size > 2 * 1024 * 1024) {
+      message.error(`El logo pesa ${(file.size / 1024 / 1024).toFixed(1)} MB — máximo 2 MB`);
+      return false;
+    }
     uploadLogoMut.mutate(file);
     return false;
   };
 
   const beforeUploadFavicon = (file: File) => {
+    if (file.size > 512 * 1024) {
+      message.error(`El favicon pesa ${(file.size / 1024).toFixed(0)} KB — máximo 512 KB`);
+      return false;
+    }
     uploadFaviconMut.mutate(file);
     return false;
   };
