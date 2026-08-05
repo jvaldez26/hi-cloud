@@ -23,16 +23,22 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-  // Limpia caches viejos pero NO llama clients.claim().
-  // Sin claim(), las pestañas abiertas siguen controladas por el SW anterior,
-  // que aún tiene sus chunks en cache. Esto evita el race condition donde
-  // un import() en vuelo es abortado por la recarga forzada (SW_UPDATED).
-  // Las pestañas nuevas o recargas usan este SW inmediatamente.
+  // Sin clients.claim(): las pestañas abiertas se quedan bajo el SW anterior,
+  // que aún tiene sus chunks en cache. Las nuevas pestañas usan este SW.
+  //
+  // Conservamos la caché ACTUAL + la INMEDIATAMENTE ANTERIOR porque el SW
+  // viejo puede seguir sirviendo tabs abiertas desde su propia caché.
+  // Si borráramos la caché anterior, el SW viejo caería a red en cada miss,
+  // lo que restauraría el problema original.
+  // Caches más antiguas (2+) no tienen tabs controladas → se borran.
   event.waitUntil(
-    caches.keys()
-      .then(keys => Promise.all(
-        keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)),
-      )),
+    caches.keys().then(keys => {
+      const ours = keys
+        .filter(k => k.startsWith('hicloud-'))
+        .sort(); // base-36 timestamp → orden lexicográfico ≈ cronológico
+      const toDelete = ours.slice(0, Math.max(0, ours.length - 2));
+      return Promise.all(toDelete.map(k => caches.delete(k)));
+    }),
   );
 });
 
