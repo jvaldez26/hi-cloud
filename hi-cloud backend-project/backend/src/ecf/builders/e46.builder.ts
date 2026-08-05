@@ -18,6 +18,7 @@ import {
   resolverMoneda,
 } from './base-ecf.builder';
 import { round2 } from './sections/totales.section';
+import { truncarNombreItem } from './sections/items.section';
 
 function fmt2(v: number): number { return parseFloat(v.toFixed(2)); }
 
@@ -51,7 +52,7 @@ export function buildE46(input: ECFBuildInput): MSellerPayload {
     return {
       NumeroLinea:            idx + 1,
       IndicadorFacturacion:   3,
-      NombreItem:             d.descripcion,
+      NombreItem:             truncarNombreItem(d.descripcion, encf),
       IndicadorBienoServicio: 1,
       CantidadItem:           Number(d.cantidad),
       UnidadMedida:           43,

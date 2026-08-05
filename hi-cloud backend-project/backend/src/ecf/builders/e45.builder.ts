@@ -14,6 +14,7 @@ import {
   round2,
 } from './base-ecf.builder';
 import { Logger } from '@nestjs/common';
+import { truncarNombreItem } from './sections/items.section';
 
 const logger = new Logger('E45Builder');
 
@@ -45,7 +46,7 @@ export function buildE45(input: ECFBuildInput): MSellerPayload {
     return {
       NumeroLinea:            idx + 1,
       IndicadorFacturacion:   indFact,
-      NombreItem:             d.descripcion,
+      NombreItem:             truncarNombreItem(d.descripcion, encf),
       IndicadorBienoServicio: 1,
       CantidadItem:           Number(d.cantidad),
       UnidadMedida:           43,

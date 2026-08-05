@@ -4,6 +4,26 @@ import { sanitizeText } from '../../../common/utils/text.utils';
 
 const itemsLogger = new Logger('ECFItems');
 
+const NOMBRE_ITEM_MAX = 80;
+
+/**
+ * Trunca NombreItem al límite AlfaNum80 del XSD DGII (80 caracteres).
+ * Corta en el último espacio antes del límite; elimina coma/espacio final.
+ * Si no hay espacio, corta en el caracter 80.
+ * Registra cada truncamiento con el e-NCF y campo para auditoría.
+ */
+export function truncarNombreItem(s: string | null | undefined, encf = ''): string {
+  const txt = sanitizeText(s);
+  if (txt.length <= NOMBRE_ITEM_MAX) return txt;
+  const corte = txt.lastIndexOf(' ', NOMBRE_ITEM_MAX);
+  const resultado = (corte > 0 ? txt.substring(0, corte) : txt.substring(0, NOMBRE_ITEM_MAX))
+    .replace(/[,\s]+$/, '');
+  itemsLogger.warn(
+    `NombreItem truncado [${encf || 'sin-encf'}] "${txt.substring(0, 40)}…" (${txt.length} → ${resultado.length} chars)`,
+  );
+  return resultado;
+}
+
 interface DetalleLike {
   descripcion:    string;
   cantidad:       number | string;
@@ -103,7 +123,7 @@ export function buildItems(detalles: DetalleLike[], encf = ''): Record<string, u
     return {
       NumeroLinea:            idx + 1,
       IndicadorFacturacion:   indicadorFacturacion(Number(d.porcentajeIva)),
-      NombreItem:             sanitizeText(d.descripcion),
+      NombreItem:             truncarNombreItem(d.descripcion, encf),
       IndicadorBienoServicio: 1,
       CantidadItem:           cap4(d.cantidad),
       UnidadMedida:           43,
@@ -137,7 +157,7 @@ export function buildItemsE33(detalles: DetalleLike[], encf = ''): Record<string
     return {
       NumeroLinea:            idx + 1,
       IndicadorFacturacion:   indicadorFacturacion(Number(d.porcentajeIva)),
-      NombreItem:             sanitizeText(d.descripcion),
+      NombreItem:             truncarNombreItem(d.descripcion, encf),
       IndicadorBienoServicio: 1,
       CantidadItem:           String(cap4(d.cantidad)),
       UnidadMedida:           '47',

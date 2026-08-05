@@ -13,6 +13,7 @@ import {
   EcfRncRequeridoError,
   round2,
 } from './base-ecf.builder';
+import { truncarNombreItem } from './sections/items.section';
 
 export function buildE41(input: ECFBuildInput): MSellerPayload {
   const { encf, factura, config, fechaVencSec } = input;
@@ -55,7 +56,7 @@ export function buildE41(input: ECFBuildInput): MSellerPayload {
         MontoITBISRetenido: round2(retenItbisItem),
         MontoISRRetenido:   round2(retenIsrItem),
       },
-      NombreItem:             d.descripcion,
+      NombreItem:             truncarNombreItem(d.descripcion, encf),
       IndicadorBienoServicio: 1,
       CantidadItem:           Number(d.cantidad),
       UnidadMedida:           43,

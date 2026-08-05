@@ -14,6 +14,7 @@ import {
   buildTotalesExentos,
   round2,
 } from './base-ecf.builder';
+import { truncarNombreItem } from './sections/items.section';
 
 export function buildE43(input: ECFBuildInput): MSellerPayload {
   const { encf, factura, config, fechaVencSec } = input;
@@ -27,7 +28,7 @@ export function buildE43(input: ECFBuildInput): MSellerPayload {
   const items = (factura.detalles as any[] ?? []).map((d: any, idx: number) => ({
     NumeroLinea:            idx + 1,
     IndicadorFacturacion:   4,
-    NombreItem:             d.descripcion,
+    NombreItem:             truncarNombreItem(d.descripcion, encf),
     IndicadorBienoServicio: d.esServicio === false ? 1 : 2,  // default Servicio para gastos menores
     CantidadItem:           Number(d.cantidad),
     UnidadMedida:           43,

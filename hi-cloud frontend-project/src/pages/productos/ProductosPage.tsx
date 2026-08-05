@@ -494,6 +494,7 @@ function ProductosCatalogo() {
   const [form]                      = Form.useForm<ProductoPayload>();
   const tipoWatch      = Form.useWatch('tipo',          form) ?? 'producto';
   const itbisWatch     = Form.useWatch('porcentajeIva', form) ?? 18;
+  const nombreWatch    = Form.useWatch('nombre', form) ?? '';
   const uomWatch       = Form.useWatch('unidadMedida',  form) ?? 'PZA';
   const almacenIdWatch = Form.useWatch('almacenId',     form) as number | undefined;
   const esServicio     = tipoWatch === 'servicio';
@@ -1046,7 +1047,12 @@ function ProductosCatalogo() {
             <Col xs={24} sm={16}>
               <Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}
                 validateStatus={fieldErrors.nombre ? 'error' : undefined}
-                help={fieldErrors.nombre}>
+                help={fieldErrors.nombre}
+                extra={nombreWatch.length > 80 ? (
+                  <span style={{ color: '#faad14', fontSize: 12 }}>
+                    Los nombres de más de 80 caracteres se acortan en los comprobantes fiscales.
+                  </span>
+                ) : undefined}>
                 <Input
                   onChange={() => setFieldErrors(prev => ({ ...prev, nombre: undefined }))}
                   onBlur={async e => {

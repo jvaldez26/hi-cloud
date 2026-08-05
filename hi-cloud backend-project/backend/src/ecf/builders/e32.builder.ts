@@ -13,7 +13,7 @@ import {
   round2,
 } from './base-ecf.builder';
 import { Logger } from '@nestjs/common';
-import { warnCuadraturaItem } from './sections/items.section';
+import { warnCuadraturaItem, truncarNombreItem } from './sections/items.section';
 
 const logger = new Logger('E32Builder');
 
@@ -58,7 +58,7 @@ export function buildE32(input: ECFBuildInput): MSellerPayload {
     const item = {
       NumeroLinea:            idx + 1,
       IndicadorFacturacion:   indFact,
-      NombreItem:             d.descripcion,
+      NombreItem:             truncarNombreItem(d.descripcion, encf),
       IndicadorBienoServicio: 1,
       CantidadItem:           cantidad,
       UnidadMedida:           43,

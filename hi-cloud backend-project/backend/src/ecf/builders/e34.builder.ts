@@ -17,7 +17,7 @@ import {
 } from './base-ecf.builder';
 import { fmtFecha } from './sections/id-doc.section';
 import { Logger } from '@nestjs/common';
-import { warnCuadraturaDGII } from './sections/items.section';
+import { warnCuadraturaDGII, truncarNombreItem } from './sections/items.section';
 
 const logger = new Logger('E34Builder');
 
@@ -104,7 +104,7 @@ export function buildE34(input: ECFBuildInput): MSellerPayload {
     return {
       NumeroLinea:            idx + 1,
       IndicadorFacturacion:   indFact,
-      NombreItem:             d.descripcion,
+      NombreItem:             truncarNombreItem(d.descripcion, encf),
       IndicadorBienoServicio: 1,
       CantidadItem:           cap4(d.cantidad),
       UnidadMedida:           43,

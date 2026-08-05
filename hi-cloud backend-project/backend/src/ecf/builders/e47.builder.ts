@@ -20,6 +20,7 @@ import {
   round2,
 } from './base-ecf.builder';
 import { Logger } from '@nestjs/common';
+import { truncarNombreItem } from './sections/items.section';
 
 const logger = new Logger('E47Builder');
 
@@ -55,7 +56,7 @@ export function buildE47(input: ECFBuildInput): MSellerPayload {
         IndicadorAgenteRetencionoPercepcion: 1,
         MontoISRRetenido: retencionISR,   // 0.00 si no hay retención
       },
-      NombreItem:             d.descripcion,
+      NombreItem:             truncarNombreItem(d.descripcion, encf),
       IndicadorBienoServicio: 2,
       CantidadItem:           Number(d.cantidad),
       UnidadMedida:           43,
