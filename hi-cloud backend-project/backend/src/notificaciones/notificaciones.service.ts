@@ -1227,52 +1227,68 @@ ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${
       cheque: 'Cheque', tarjeta: 'Tarjeta', deposito: 'Depósito', otro: 'Otro',
     };
 
+    const rowHtml = (label: string, value: string) => `
+      <tr>
+        <td style="padding:9px 0;font-size:13px;color:#6b7280;width:48%;vertical-align:top">${label}</td>
+        <td style="padding:9px 0;font-size:13px;font-weight:600;color:#374151;text-align:right;vertical-align:top">${value}</td>
+      </tr>`;
+
     const html = `<!DOCTYPE html>
 <html lang="es"><head><meta charset="UTF-8"/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 <title>Recibo ${r.numero}</title></head>
-<body style="margin:0;padding:0;background:#f4f6f9;font-family:'Inter',Arial,sans-serif">
-<div style="max-width:560px;margin:24px auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.1)">
-  <div style="background:linear-gradient(135deg,#059669,#10b981);padding:28px 32px">
-    <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px">Recibo de Cobro</div>
-    <div style="font-size:26px;font-weight:800;color:#fff;letter-spacing:-.3px">${r.numero}</div>
-    <div style="margin-top:8px;font-size:12px;color:rgba(255,255,255,.8)">📅 ${fmtDate(r.fecha)}</div>
-  </div>
-  <div style="padding:28px 32px">
-    <p style="margin:0 0 20px;font-size:14px;color:#374151">Estimado/a <strong>${r.clienteNombre ?? 'Cliente'}</strong>,</p>
-    <p style="margin:0 0 24px;font-size:13px;color:#6b7280">Confirmamos la recepción del siguiente pago:</p>
-    <div style="background:#f9fafb;border-radius:10px;padding:20px;margin-bottom:20px">
-      <div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:13px">
-        <span style="color:#6b7280">Concepto</span>
-        <span style="font-weight:600;color:#374151">${r.concepto}</span>
-      </div>
-      ${r.facturaFolio ? `<div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:13px">
-        <span style="color:#6b7280">Factura referenciada</span>
-        <span style="font-weight:600;color:#374151">${r.facturaFolio}</span>
-      </div>` : ''}
-      ${r.referencia ? `<div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:13px">
-        <span style="color:#6b7280">Referencia</span>
-        <span style="font-weight:600;color:#374151">${r.referencia}</span>
-      </div>` : ''}
-      <div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:13px">
-        <span style="color:#6b7280">Forma de pago</span>
-        <span style="font-weight:600;color:#374151">${metodoLabel[r.metodoPago] ?? r.metodoPago}</span>
-      </div>
-      <div style="border-top:2px solid #e5e7eb;margin-top:12px;padding-top:14px;display:flex;justify-content:space-between">
-        <span style="font-size:15px;font-weight:700;color:#374151">MONTO RECIBIDO</span>
-        <span style="font-size:22px;font-weight:900;color:#059669">${fmtMoney(r.monto)}</span>
-      </div>
-    </div>
-    <p style="font-size:12px;color:#9ca3af;text-align:center">Recibido por: <strong>${r.nombreUsuario ?? 'Sistema'}</strong></p>
-    <div style="text-align:center;margin-top:8px">
-      ${r.empresaTelefono ? `<p style="font-size:13px;color:#374151;margin:4px 0">📞 ${r.empresaTelefono}</p>` : ''}
-      ${r.empresaEmail    ? `<p style="font-size:13px;color:#374151;margin:4px 0">✉️ ${r.empresaEmail}</p>` : ''}
-    </div>
-  </div>
-  <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:14px 32px;text-align:center;font-size:11px;color:#9ca3af">
-    <strong>${r.empresaNombre}</strong>${r.empresaRNC ? ` · RNC ${r.empresaRNC}` : ''} · <strong style="color:#059669">HiCloud ERP</strong>
-  </div>
-</div>
+<body style="margin:0;padding:0;background:#f4f6f9;font-family:Arial,Helvetica,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f6f9">
+  <tr><td align="center" style="padding:24px 16px">
+    <table width="560" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.1)">
+
+      <!-- Header -->
+      <tr>
+        <td style="background:#059669;padding:28px 32px">
+          <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,.75);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px">Recibo de Cobro</div>
+          <div style="font-size:26px;font-weight:800;color:#fff">${r.numero}</div>
+          <div style="margin-top:8px;font-size:12px;color:rgba(255,255,255,.85)">${fmtDate(r.fecha)}</div>
+        </td>
+      </tr>
+
+      <!-- Body -->
+      <tr>
+        <td style="padding:28px 32px">
+          <p style="margin:0 0 6px;font-size:14px;color:#374151">Estimado/a <strong>${r.clienteNombre ?? 'Cliente'}</strong>,</p>
+          <p style="margin:0 0 22px;font-size:13px;color:#6b7280">Confirmamos la recepción del siguiente pago:</p>
+
+          <!-- Detalle -->
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f9fafb;border-radius:10px;padding:4px 20px">
+            <tr><td>
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                ${rowHtml('Concepto', r.concepto)}
+                ${r.facturaFolio ? rowHtml('Factura referenciada', r.facturaFolio) : ''}
+                ${r.referencia   ? rowHtml('Referencia', r.referencia) : ''}
+                ${rowHtml('Forma de pago', metodoLabel[r.metodoPago] ?? r.metodoPago)}
+                <tr><td colspan="2" style="padding:0"><div style="border-top:2px solid #e5e7eb;margin:8px 0"></div></td></tr>
+                <tr>
+                  <td style="padding:12px 0 8px;font-size:14px;font-weight:700;color:#374151;vertical-align:middle">MONTO RECIBIDO</td>
+                  <td style="padding:12px 0 8px;font-size:22px;font-weight:900;color:#059669;text-align:right;vertical-align:middle">${fmtMoney(r.monto)}</td>
+                </tr>
+              </table>
+            </td></tr>
+          </table>
+
+          <p style="font-size:12px;color:#9ca3af;text-align:center;margin:16px 0 4px">Recibido por: <strong>${r.nombreUsuario ?? 'Sistema'}</strong></p>
+          ${r.empresaTelefono ? `<p style="font-size:13px;color:#374151;text-align:center;margin:4px 0">${r.empresaTelefono}</p>` : ''}
+          ${r.empresaEmail    ? `<p style="font-size:13px;color:#374151;text-align:center;margin:4px 0">${r.empresaEmail}</p>` : ''}
+        </td>
+      </tr>
+
+      <!-- Footer -->
+      <tr>
+        <td style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:14px 32px;text-align:center;font-size:11px;color:#9ca3af">
+          <strong>${r.empresaNombre}</strong>${r.empresaRNC ? ` &middot; RNC ${r.empresaRNC}` : ''} &middot; <strong style="color:#059669">HiCloud ERP</strong>
+        </td>
+      </tr>
+
+    </table>
+  </td></tr>
+</table>
 </body></html>`;
 
     const { ccList, ccoList } = this.calcCcCco(cc, cco, emailCliente);
