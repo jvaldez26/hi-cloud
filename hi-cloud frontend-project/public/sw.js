@@ -66,7 +66,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (/\/assets\/[^/]+-[a-f0-9]{8,}\.[^/]+$/.test(url.pathname)) {
+  if (/\/assets\/[^/]+-[A-Za-z0-9_-]{8}\.[^/]+$/.test(url.pathname)) {
     event.respondWith(cacheFirst(request));
     return;
   }
