@@ -105,7 +105,7 @@ export function buildE45(input: ECFBuildInput): MSellerPayload {
           tipo:                  45,
           encf,
           fechaVencSec,
-          indicadorMontoGravado: hayGravado,
+          indicadorMontoGravado: 0,
           tipoIngresos:          '01',
           tipoPago:              1,
         }),

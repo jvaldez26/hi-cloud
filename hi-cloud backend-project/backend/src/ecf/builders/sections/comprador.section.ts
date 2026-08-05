@@ -1,3 +1,7 @@
+import { Logger } from '@nestjs/common';
+
+const compradorLogger = new Logger('ECFComprador');
+
 /** RNC genérico DGII para gastos menores (E43) */
 export const COMPRADOR_GASTOS_MENORES = {
   RNCComprador:         '131880657',
@@ -15,10 +19,19 @@ export function buildCompradorRNC(
   rnc:         string,
   razonSocial: string,
   extras?:     Record<string, unknown>,
+  encf = '',
 ): Record<string, unknown> {
+  const rncLimpio = rnc.replace(/\D/g, '');
+  if (rncLimpio.length !== 9 && rncLimpio.length !== 11) {
+    compradorLogger.warn(
+      `[${encf || 'sin-encf'}] RNCComprador con formato inválido: "${rnc}" ` +
+      `(${rncLimpio.length} dígitos; esperado 9=RNC o 11=cédula). ` +
+      `Razón social: "${razonSocial.trim()}". Revisar datos del cliente.`,
+    );
+  }
   return {
-    RNCComprador:         rnc,
-    RazonSocialComprador: razonSocial,
+    RNCComprador:         rncLimpio || rnc,
+    RazonSocialComprador: razonSocial.trim(),
     ...(extras ?? {}),
   };
 }
@@ -44,7 +57,7 @@ export function buildCompradorExtranjero(
   } else if (identificadorExtranjero) {
     comp['IdentificadorExtranjero'] = identificadorExtranjero;
   }
-  comp['RazonSocialComprador'] = nombre;
+  comp['RazonSocialComprador'] = nombre.trim();
   comp['PaisComprador']        = paisISO;
   return comp;
 }
