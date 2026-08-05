@@ -483,6 +483,18 @@ jobs:
               sed -i 's|^SEED_PLAN_CUENTAS_RUN=.*|SEED_PLAN_CUENTAS_RUN=false|' "$ENV_FILE" 2>/dev/null || true
               echo "  SEED_PLAN_CUENTAS_RUN desactivado"
 
+              # ── Limpieza de assets viejos ─────────────────────────────────
+              # Conserva assets de los últimos 7 días (sessiones largas son
+              # inusuales; 7 días da margen incluso para tabs olvidadas).
+              # Se ejecuta solo tras un deploy exitoso para no dejar el disco
+              # lleno de builds acumulados (5.7 GB / 316 K archivos → ~14 MB/build).
+              ASSET_DIR="/var/www/hicloudrd.com/html/assets"
+              DELETED=$(find "$ASSET_DIR" -type f -mtime +7 -delete -print | wc -l)
+              REMAINING=$(find "$ASSET_DIR" -type f | wc -l)
+              SIZE=$(du -sh "$ASSET_DIR" 2>/dev/null | cut -f1)
+              echo "  → Assets eliminados (> 7 días): $DELETED"
+              echo "  → Assets restantes: $REMAINING ($SIZE)"
+
             else
               # ── AUTO-ROLLBACK ──────────────────────────────────────────────
               echo ""

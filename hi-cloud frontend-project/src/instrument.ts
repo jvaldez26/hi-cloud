@@ -70,6 +70,16 @@ if (import.meta.env.PROD && DSN) {
 
     beforeSend(event) {
       try {
+        // Chunk load errors son ruido esperado tras un deploy — no son fallos
+        // de código. Se producen cuando el SW activa mid-session y un import()
+        // de hash viejo falla. El listener de vite:preloadError ya los maneja.
+        const errMsg = event.exception?.values?.[0]?.value ?? '';
+        if (
+          errMsg.includes('Failed to fetch dynamically imported module') ||
+          errMsg.includes('Unable to preload CSS') ||
+          (errMsg.includes('Loading chunk') && errMsg.includes('failed'))
+        ) return null;
+
         if (event.request) {
           delete event.request.data;
           delete event.request.cookies;

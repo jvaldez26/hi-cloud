@@ -140,8 +140,9 @@ export class HealthController {
       status:  errors.length === 0 ? 'healthy'
              : errors.some(e => ['database','schema'].includes(e.module)) ? 'critical'
              : 'degraded',
-      version: process.env.npm_package_version ?? '1.0.0',
-      env:     process.env.NODE_ENV ?? 'development',
+      version:  process.env.npm_package_version ?? '1.0.0',
+      build_id: process.env.SENTRY_RELEASE ?? null,
+      env:      process.env.NODE_ENV ?? 'development',
       uptime:  Math.round(process.uptime()),
       totalMs: Date.now() - start,
       summary: { ok, errors: errors.length, total: modules.length },

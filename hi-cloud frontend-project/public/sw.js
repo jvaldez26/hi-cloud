@@ -23,17 +23,16 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
+  // Limpia caches viejos pero NO llama clients.claim().
+  // Sin claim(), las pestañas abiertas siguen controladas por el SW anterior,
+  // que aún tiene sus chunks en cache. Esto evita el race condition donde
+  // un import() en vuelo es abortado por la recarga forzada (SW_UPDATED).
+  // Las pestañas nuevas o recargas usan este SW inmediatamente.
   event.waitUntil(
     caches.keys()
       .then(keys => Promise.all(
         keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)),
-      ))
-      .then(() => self.clients.claim())
-      .then(() =>
-        self.clients.matchAll({ type: 'window' }).then(clients =>
-          clients.forEach(c => c.postMessage({ type: 'SW_UPDATED' })),
-        ),
-      ),
+      )),
   );
 });
 

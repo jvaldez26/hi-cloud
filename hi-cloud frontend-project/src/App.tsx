@@ -15,6 +15,7 @@ import PortalEmpleadoLayout     from './components/layout/PortalEmpleadoLayout';
 import ErrorBoundary     from './components/ui/ErrorBoundary';
 import PageLoader        from './components/ui/PageLoader';
 import ScrollToTop          from './components/ui/ScrollToTop';
+import NewVersionBanner     from './components/ui/NewVersionBanner';
 
 // ── Carga diferida (lazy) — mejora el tiempo de carga inicial ────────────────
 const LoginPage          = lazy(() => import('./pages/auth/LoginPage'));
@@ -603,6 +604,7 @@ export default function App() {
         <QueryClientProvider client={qc}>
           <BrowserRouter>
             <ScrollToTop />
+            <NewVersionBanner />
             <ErrorBoundary>
               <Suspense fallback={null}>
                 <Routes>
