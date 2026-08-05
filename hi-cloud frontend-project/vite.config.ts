@@ -37,12 +37,12 @@ export default defineConfig({
       authToken: process.env.SENTRY_AUTH_TOKEN,
       release:   { name: process.env.VITE_SENTRY_RELEASE },
       sourcemaps: { filesToDeleteAfterUpload: ['./dist/**/*.map'] },
-      // La observabilidad NUNCA bloquea el deploy: un fallo al subir source maps
-      // (Sentry caído, token expirado, glitch de red) queda en WARNING, no rompe el build.
-      // Los .map igual se borran (deleteArtifacts corre en un finally del hook de Rollup),
-      // así que nunca quedan expuestos. Solo se pierde el desminificado de ESE release.
+      // Si el upload falla, el build falla — preferible a source maps que nadie
+      // sabe que no funcionan. Los .map se borran del dist antes o después según
+      // el plugin, pero nunca quedan expuestos en el EC2 (están en filesToDeleteAfterUpload).
       errorHandler: (err) => {
-        console.warn('[sentry-vite-plugin] fallo al subir source maps (no bloquea el deploy):', err.message);
+        console.error('[sentry-vite-plugin] ERROR al subir source maps — abortando build:', err.message);
+        throw err;
       },
     })] : []),
   ],
