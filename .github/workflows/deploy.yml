@@ -484,19 +484,43 @@ jobs:
               echo "  SEED_PLAN_CUENTAS_RUN desactivado"
 
               # ── Limpieza de assets viejos ─────────────────────────────────
-              # mtime seguro: scp sin -p refresca mtime de TODOS los archivos
-              # del build actual en cada deploy. Solo los hashes viejos (de
-              # builds anteriores, no en el index.html vigente) conservan mtime
-              # antiguo. La limpieza a 7 días nunca borra archivos en uso.
-              #
-              # PRIMERA PASADA: puede eliminar ~316K archivos acumulados.
-              # Si tarda más de 90s, se aborta y continúa en el próximo deploy.
+              # DOBLE CRITERIO — seguro sin importar si scp refresca mtime:
+              #   1. Más de 7 días de antigüedad (mtime)
+              #   2. No referenciado por el index.html vigente
+              # El criterio 2 garantiza que nunca se borra un chunk en uso,
+              # aunque su mtime sea viejo por no haber cambiado entre builds.
               ASSET_DIR="/var/www/hicloudrd.com/html/assets"
-              BEFORE=$(find "$ASSET_DIR" -type f | wc -l 2>/dev/null || echo "?")
-              DELETED=$(timeout 90 find "$ASSET_DIR" -type f -mtime +7 -delete -print 2>/dev/null | wc -l || echo "0 (timeout)")
-              REMAINING=$(find "$ASSET_DIR" -type f 2>/dev/null | wc -l || echo "?")
-              SIZE=$(du -sh "$ASSET_DIR" 2>/dev/null | cut -f1 || echo "?")
-              echo "  → Assets: antes=$BEFORE eliminados=$DELETED restantes=$REMAINING ($SIZE)"
+              INDEX_HTML="/var/www/hicloudrd.com/html/index.html"
+              TMPREF=$(mktemp)
+              TMPOLD=$(mktemp)
+              TMPDEL=$(mktemp)
+
+              # Filenames referenciados en el index.html actual (hash Vite: [name]-[8+hex].[ext])
+              grep -oE '[A-Za-z0-9_.-]+-[a-f0-9]{8,}\.[a-z]+' "$INDEX_HTML" 2>/dev/null \
+                | sort -u > "$TMPREF"
+              NREFS=$(wc -l < "$TMPREF")
+
+              if [ "$NREFS" -eq 0 ]; then
+                echo "  ⚠  index.html: 0 referencias detectadas — skip limpieza"
+              else
+                # Basenames de assets con > 7 días; timeout 60s para no bloquear
+                timeout 60 find "$ASSET_DIR" -type f -mtime +7 2>/dev/null \
+                  | awk -F'/' '{print $NF}' | sort > "$TMPOLD"
+                NOLD=$(wc -l < "$TMPOLD")
+
+                # Candidatos: viejos Y no referenciados por index.html vigente
+                comm -23 "$TMPOLD" "$TMPREF" > "$TMPDEL"
+                NDEL=$(wc -l < "$TMPDEL")
+
+                if [ "$NDEL" -gt 0 ]; then
+                  sed "s|^|${ASSET_DIR}/|" "$TMPDEL" | xargs -r rm -f
+                fi
+
+                REMAINING=$(find "$ASSET_DIR" -type f 2>/dev/null | wc -l)
+                SIZE=$(du -sh "$ASSET_DIR" 2>/dev/null | cut -f1)
+                echo "  → old(>7d)=${NOLD} refs=${NREFS} borrados=${NDEL} restantes=${REMAINING} (${SIZE})"
+              fi
+              rm -f "$TMPREF" "$TMPOLD" "$TMPDEL"
 
             else
               # ── AUTO-ROLLBACK ──────────────────────────────────────────────

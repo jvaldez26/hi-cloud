@@ -26,17 +26,23 @@ self.addEventListener('activate', (event) => {
   // Sin clients.claim(): las pestañas abiertas se quedan bajo el SW anterior,
   // que aún tiene sus chunks en cache. Las nuevas pestañas usan este SW.
   //
-  // Conservamos la caché ACTUAL + la INMEDIATAMENTE ANTERIOR porque el SW
-  // viejo puede seguir sirviendo tabs abiertas desde su propia caché.
-  // Si borráramos la caché anterior, el SW viejo caería a red en cada miss,
-  // lo que restauraría el problema original.
-  // Caches más antiguas (2+) no tienen tabs controladas → se borran.
+  // Retención por ANTIGÜEDAD (3 días) en vez de por conteo.
+  // Con varios deploys al día, conservar solo N caches no es suficiente.
+  // Retener 3 días garantiza que cualquier pestaña abierta siga teniendo
+  // su caché, independientemente de cuántos deploys ocurrieron.
+  //
+  // El timestamp en base-36 tiene largo fijo (8 chars) para el año 2026:
+  //   36^7 ≈ 78 B ms (año 1972) < Date.now() ≈ 1.75 T ms < 36^8 ≈ 2.8 T ms (año 2059)
+  // Se parsea directamente en lugar de depender del orden lexicográfico.
+  const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
   event.waitUntil(
     caches.keys().then(keys => {
-      const ours = keys
-        .filter(k => k.startsWith('hicloud-'))
-        .sort(); // base-36 timestamp → orden lexicográfico ≈ cronológico
-      const toDelete = ours.slice(0, Math.max(0, ours.length - 2));
+      const toDelete = keys
+        .filter(k => k.startsWith('hicloud-') && k !== CACHE_NAME)
+        .filter(k => {
+          const ts = parseInt(k.slice('hicloud-'.length), 36);
+          return isNaN(ts) || (Date.now() - ts) > THREE_DAYS_MS;
+        });
       return Promise.all(toDelete.map(k => caches.delete(k)));
     }),
   );
