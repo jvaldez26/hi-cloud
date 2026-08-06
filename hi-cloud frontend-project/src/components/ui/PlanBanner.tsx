@@ -73,13 +73,13 @@ export default function PlanBanner() {
         </div>
         <Button
           size="small"
-          onClick={() => navigate('/configuracion')}
+          onClick={() => navigate('/mi-suscripcion')}
           style={critico
-            ? { background: '#EF4444', border: 'none', color: '#fff', fontWeight: 600 }
-            : { background: '#F59E0B', border: 'none', color: '#fff', fontWeight: 600 }
+            ? { background: '#EF4444', border: 'none', color: '#fff', fontWeight: 600, flexShrink: 0 }
+            : { background: '#F59E0B', border: 'none', color: '#fff', fontWeight: 600, flexShrink: 0 }
           }
         >
-          Pagar ahora →
+          Pagar ahora
         </Button>
       </div>
     );
