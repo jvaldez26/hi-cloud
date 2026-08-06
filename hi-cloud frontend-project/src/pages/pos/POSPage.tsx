@@ -807,7 +807,7 @@ body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};font-
 .xlarge{font-size:15pt;font-weight:bold}
 .small{font-size:9pt}
 .row{display:flex;justify-content:space-between;gap:4px;margin:1px 0;width:100%}
-.row span:first-child{flex:1;overflow:hidden}
+.row span:first-child{flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .row span:last-child{text-align:right;white-space:nowrap}
 .line{border-top:1px dashed #000;margin:4px 0}
 .dbl{border-top:2px solid #000;margin:4px 0}
@@ -1825,7 +1825,7 @@ body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};font-
 .xlarge{font-size:15pt;font-weight:bold}
 .small{font-size:9pt}
 .row{display:flex;justify-content:space-between;gap:4px;margin:1px 0;width:100%}
-.row span:first-child{flex:1;overflow:hidden}
+.row span:first-child{flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .row span:last-child{text-align:right;white-space:nowrap}
 .line{border-top:1px dashed #000;margin:4px 0}
 .dbl{border-top:2px solid #000;margin:4px 0}
@@ -6262,7 +6262,7 @@ body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};font-
 .large{font-size:1.15em;font-weight:900}
 .small{font-size:0.85em}
 .row{display:flex;justify-content:space-between;gap:4px;margin:1px 0;width:100%}
-.row span:first-child{flex:1;overflow:hidden}
+.row span:first-child{flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .row span:last-child{text-align:right;white-space:nowrap}
 .line{border-top:1px dashed #000;margin:4px 0}
 .dbl{border-top:2px solid #000;margin:4px 0}
@@ -6344,7 +6344,7 @@ body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};font-
 .large{font-size:1.15em;font-weight:900}
 .small{font-size:0.85em}
 .row{display:flex;justify-content:space-between;gap:4px;margin:1px 0;width:100%}
-.row span:first-child{flex:1;overflow:hidden}
+.row span:first-child{flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .row span:last-child{text-align:right;white-space:nowrap}
 .line{border-top:1px dashed #000;margin:4px 0}
 .dbl{border-top:2px solid #000;margin:4px 0}
