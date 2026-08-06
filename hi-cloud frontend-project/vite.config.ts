@@ -1,6 +1,5 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { sentryVitePlugin } from '@sentry/vite-plugin';
 import { readFileSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 
@@ -29,22 +28,12 @@ export default defineConfig({
   plugins: [
     react(),
     injectSwVersion(),
-    // Sube source maps a Sentry en CI y los BORRA del dist (nunca llegan al EC2).
-    // Solo activo si hay SENTRY_AUTH_TOKEN (build de CI); no-op en build local.
-    ...(process.env.SENTRY_AUTH_TOKEN ? [sentryVitePlugin({
-      org:       process.env.SENTRY_ORG,
-      project:   process.env.SENTRY_PROJECT,
-      authToken: process.env.SENTRY_AUTH_TOKEN,
-      release:   { name: process.env.VITE_SENTRY_RELEASE },
-      sourcemaps: { filesToDeleteAfterUpload: ['./dist/**/*.map'] },
-      // Si el upload falla, advertimos pero NO abortamos el build.
-      // Un fallo de source maps (token expirado, red, Sentry down) no puede
-      // bloquear un fix de producción. El equipo ve el warning en los logs de CI.
-      errorHandler: (err) => {
-        console.warn('[sentry-vite-plugin] ⚠️  Upload de source maps falló — el deploy CONTINÚA sin ellos:', err.message);
-        console.warn('[sentry-vite-plugin] Verificar SENTRY_AUTH_TOKEN, SENTRY_ORG y SENTRY_PROJECT en GitHub Secrets.');
-      },
-    })] : []),
+    // TODO: Sentry source map upload desactivado temporalmente.
+    // El plugin (@sentry/vite-plugin) se cuelga indefinidamente en el deploy de CI
+    // cuando SENTRY_AUTH_TOKEN está configurado pero la subida falla (token expirado,
+    // red lenta, etc.), bloqueando deploys de producción por 20-25 minutos.
+    // Reactivar cuando se confirme que el token es válido y se agregue un timeout.
+    // Ver: commits b391c13a → 18d8c56e → este commit.
   ],
   server: {
     port: 5173,
@@ -70,9 +59,8 @@ export default defineConfig({
     dedupe: ['react', 'react-dom'],
   },
   build: {
-    // Source maps solo cuando el plugin de Sentry está activo (hay token) para
-    // subirlos y BORRARLOS. Sin token NO se generan → nunca queda un .map en dist.
-    sourcemap: process.env.SENTRY_AUTH_TOKEN ? 'hidden' : false,
+    // Source maps desactivados hasta que el upload a Sentry esté estabilizado.
+    sourcemap: false,
     rollupOptions: {
       output: {
         entryFileNames: 'assets/[name]-[hash].js',
