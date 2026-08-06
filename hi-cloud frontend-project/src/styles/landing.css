@@ -115,7 +115,8 @@
   gap: 0.5rem;
   font-weight: 600;
   font-size: 0.975rem;
-  padding: 0.8rem 1.35rem;
+  line-height: 1.4;
+  padding: 0.75rem 1.5rem;
   border-radius: 10px;
   border: 1.5px solid transparent;
   transition: transform 0.16s ease, background-color 0.16s ease, border-color 0.16s ease;
@@ -131,7 +132,7 @@
 .hcl-hero .hcl-btn--ghost { border-color: rgba(234, 240, 255, .34); color: var(--hcl-on-ink); }
 .hcl-sec--ink .hcl-btn--ghost:hover,
 .hcl-hero .hcl-btn--ghost:hover { border-color: var(--hcl-on-ink); }
-.hcl-btn--lg { padding: 0.95rem 1.6rem; font-size: 1.05rem; }
+.hcl-btn--lg { padding: 1rem 2rem; font-size: 1.05rem; }
 
 /* ===== CINTA FISCAL (motivo recurrente) ================================== */
 .hcl-chip {
