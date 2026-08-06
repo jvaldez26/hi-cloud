@@ -37,12 +37,12 @@ export default defineConfig({
       authToken: process.env.SENTRY_AUTH_TOKEN,
       release:   { name: process.env.VITE_SENTRY_RELEASE },
       sourcemaps: { filesToDeleteAfterUpload: ['./dist/**/*.map'] },
-      // Si el upload falla, el build falla — preferible a source maps que nadie
-      // sabe que no funcionan. Los .map se borran del dist antes o después según
-      // el plugin, pero nunca quedan expuestos en el EC2 (están en filesToDeleteAfterUpload).
+      // Si el upload falla, advertimos pero NO abortamos el build.
+      // Un fallo de source maps (token expirado, red, Sentry down) no puede
+      // bloquear un fix de producción. El equipo ve el warning en los logs de CI.
       errorHandler: (err) => {
-        console.error('[sentry-vite-plugin] ERROR al subir source maps — abortando build:', err.message);
-        throw err;
+        console.warn('[sentry-vite-plugin] ⚠️  Upload de source maps falló — el deploy CONTINÚA sin ellos:', err.message);
+        console.warn('[sentry-vite-plugin] Verificar SENTRY_AUTH_TOKEN, SENTRY_ORG y SENTRY_PROJECT en GitHub Secrets.');
       },
     })] : []),
   ],
