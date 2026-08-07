@@ -94,8 +94,10 @@ export class NotasCreditoService {
     }>;
 
     if (dto.codigoModificacion === '1' && dto.facturaOriginalId) {
+      // factura_detalles no tiene "unidadMedida" — se usa 'PZA' como default.
+      // No vale agregar la columna a esa tabla (tabla grande, campo menor).
       const fdRows = await this.ds.query<any[]>(
-        `SELECT descripcion, "productoId", "unidadMedida", cantidad,
+        `SELECT descripcion, "productoId", 'PZA' AS "unidadMedida", cantidad,
                 "precioUnitario", subtotal, "porcentajeIva", "importeIva"
          FROM factura_detalles
          WHERE "facturaId" = $1
