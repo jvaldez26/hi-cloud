@@ -169,7 +169,7 @@ export class CajaController {
 
   @Get('retiros')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  @ApiOperation({ summary: 'Listar retiros de la caja abierta actual' })
+  @ApiOperation({ summary: 'Listar retiros de la caja del día (abierta o cerrada). ?cajaId para una caja específica.' })
   listarRetiros(@Query('cajaId') cajaId?: string) {
     return this.cajaService.listarRetiros(cajaId ? Number(cajaId) : undefined);
   }

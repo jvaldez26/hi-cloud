@@ -592,9 +592,14 @@ export class CajaService {
 
     let cajaDiariaId = cajaId;
     if (!cajaDiariaId) {
+      // Buscar la caja más reciente del día (abierta O cerrada) para que los
+      // retiros sean visibles después del cierre — fines de consulta histórica.
+      // Antes solo buscaba estado: ABIERTA, lo que causaba que los retiros
+      // desaparecieran en cuanto el cajero cerraba la caja.
+      const hoy = fechaHoyRD();
       const caja = await this.repo.findOne({
-        where: { empresaId, estado: EstadoCierre.ABIERTA } as any,
-        order: { fecha: 'DESC' },
+        where: { empresaId, fecha: new Date(hoy) as any } as any,
+        order: { id: 'DESC' },
       });
       cajaDiariaId = caja?.id;
     }
