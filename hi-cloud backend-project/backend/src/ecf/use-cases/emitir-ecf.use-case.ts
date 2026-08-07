@@ -416,24 +416,8 @@ export class EmitirECFUseCase {
         securityCode: respuesta.securityCode,
       });
 
-      // ── Anulación total (código 1): marcar factura como "anulación en proceso" ──
-      // Los efectos definitivos (cancelar) se aplican SOLO cuando DGII confirma ACEPTADO.
-      // Si DGII rechaza, EcfEfectosNcService revierte el estado provisional.
-      if (
-        documentoOrigenTipo === DocumentoOrigenTipo.NOTA_CREDITO &&
-        infoReferencia?.CodigoModificacion === '1'
-      ) {
-        const nc = await this.notaCreditoRepo.findOne({ where: { id: documentoOrigenId, empresaId } });
-        if (nc?.facturaOriginalId) {
-          await this.facturaRepo.update(
-            { id: nc.facturaOriginalId, empresaId },
-            { anulacionPendiente: true },
-          ).catch(err =>
-            this.logger.error(`[EmitirECF] No se pudo marcar anulacionPendiente FAC #${nc.facturaOriginalId}: ${err?.message}`),
-          );
-          this.logger.log(`[EmitirECF] NC código 1 → Factura #${nc.facturaOriginalId} anulacionPendiente=true (pendiente DGII)`);
-        }
-      }
+      // anulacionPendiente=true ya fue puesto por notas-credito.service.emitir()
+      // antes de llamar al use-case. No se repite aquí.
 
       const ecfFinal = await this.ecfRepo.findOne({ where: { id: ecfSaved.id }, relations: ['tipoECF'] });
       this.logger.log(`EmitirECF OK | ${encf} | trackId=${respuesta.internalTrackId} | estado=ENVIADO`);

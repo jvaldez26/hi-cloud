@@ -117,8 +117,26 @@ export class RecibosCobrosService {
       const factura = await this.facturaRepo.findOne({ where: { id: dto.facturaId, empresaId } });
       if (factura?.moneda) moneda = factura.moneda;
       if (factura?.anulacionPendiente) {
+        // Cargar la NC activa que causó el bloqueo para dar contexto al cajero
+        const [ncInfo] = await this.dataSource.query<{
+          ncNumero: string; ncEstado: string; estadoDGII: string | null;
+        }[]>(
+          `SELECT nc.numero AS "ncNumero", nc.estado AS "ncEstado",
+                  e."estadoDGII"
+           FROM notas_credito nc
+           LEFT JOIN ecf e ON e."documentoOrigenId" = nc.id
+                          AND e."documentoOrigenTipo" = 'NOTA_CREDITO'
+           WHERE nc."facturaOriginalId" = $1 AND nc."empresaId" = $2
+             AND nc.estado = 'emitida' AND nc."isActive" = true
+           ORDER BY nc."createdAt" DESC LIMIT 1`,
+          [dto.facturaId, empresaId],
+        );
+        const ncDetalle = ncInfo
+          ? ` Nota de crédito ${ncInfo.ncNumero} en estado "${ncInfo.estadoDGII ?? ncInfo.ncEstado}".`
+          : '';
         throw new BadRequestException(
-          'La factura tiene una anulación pendiente de confirmación DGII y no acepta cobros hasta que se resuelva',
+          `Factura #${dto.facturaId} tiene una anulación total pendiente de confirmación DGII y no acepta cobros.` +
+          `${ncDetalle} Consulte a Contabilidad para resolver la nota de crédito antes de registrar este cobro.`,
         );
       }
     }

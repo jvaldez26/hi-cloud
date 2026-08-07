@@ -294,33 +294,21 @@ export class NotasCreditoService {
 
     await this.ncRepo.update(id, { estado: EstadoNotaCredito.EMITIDA });
 
-    // Bug B (codigoMod=1): La cancelación definitiva de la factura la gestiona
-    // ecf-efectos-nc.service cuando DGII confirma ACEPTADO. El use-case de ECF
-    // marca anulacionPendiente=true en la factura al recibir OK de MSeller.
-    // NO se toca la factura aquí.
-
-    // Código 3 = Devolución / Ajuste de montos: reducir CxC si la factura tiene saldo pendiente
-    if (codigoModificacion === '3' && nc.facturaOriginalId) {
-      const [cxcRow] = await this.ds.query<any[]>(
-        `SELECT id, "montoPendiente", "montoOriginal", "montoPagado"
-         FROM cuentas_por_cobrar
-         WHERE "facturaId" = $1 AND "empresaId" = $2
-           AND "isActive" = true AND estado NOT IN ('anulada', 'pagada')
-         LIMIT 1`,
+    // Indicador visual para codigoMod=1 (anulación total): la factura muestra
+    // "ANULACIÓN PENDIENTE DGII" sin ningún efecto financiero. Los efectos
+    // reales (cancelar factura, ajustar CxC, etc.) se aplican ÚNICAMENTE cuando
+    // DGII responde ACEPTADO — en ecf-efectos-nc.service.ts.
+    if (codigoModificacion === '1' && nc.facturaOriginalId) {
+      await this.ds.query(
+        `UPDATE facturas SET "anulacionPendiente" = true
+         WHERE id = $1 AND "empresaId" = $2 AND "isActive" = true`,
         [nc.facturaOriginalId, empresaId],
       );
-      if (cxcRow) {
-        const nuevoPendiente = +Math.max(0, Number(cxcRow.montoPendiente) - Number(nc.total)).toFixed(2);
-        const nuevoPagado    = +Math.max(0, Number(cxcRow.montoOriginal) - nuevoPendiente).toFixed(2);
-        const nuevoEstado    = nuevoPendiente <= 0 ? 'pagada' : 'pagada_parcial';
-        await this.ds.query(
-          `UPDATE cuentas_por_cobrar
-           SET "montoPendiente" = $1, "montoPagado" = $2, estado = $3
-           WHERE id = $4`,
-          [nuevoPendiente, nuevoPagado, nuevoEstado, cxcRow.id],
-        );
-      }
     }
+
+    // codigoMod=3 (ajuste parcial): NO tocar CxC aquí. El ajuste se aplica
+    // en ecf-efectos-nc.service → handleAceptado, cuando DGII confirma.
+    // Si DGII rechaza: la CxC nunca fue tocada → nada que revertir.
 
     return this.findOne(id);
   }

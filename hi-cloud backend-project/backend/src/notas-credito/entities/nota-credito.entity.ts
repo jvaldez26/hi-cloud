@@ -5,9 +5,11 @@ import { NotaCreditoDetalle } from './nota-credito-detalle.entity';
 import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum EstadoNotaCredito {
-  BORRADOR = 'borrador',
-  EMITIDA  = 'emitida',
-  ANULADA  = 'anulada',
+  BORRADOR  = 'borrador',
+  EMITIDA   = 'emitida',
+  ANULADA   = 'anulada',
+  /** DGII rechazó y la secuencia fue quemada. Se debe emitir una NC nueva. */
+  RECHAZADA = 'rechazada',
 }
 
 export enum MotivoNotaCredito {

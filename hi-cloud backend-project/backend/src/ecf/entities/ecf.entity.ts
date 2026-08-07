@@ -216,6 +216,17 @@ export class ECF extends BaseEntity {
   @Column({ type: 'decimal', precision: 18, scale: 2, nullable: true })
   montoRetencionItbis?: number;
 
+  // ── DGII — metadatos de rechazo ──────────────────────────────────────────
+
+  /**
+   * Indica si DGII quemó la secuencia al rechazar el e-CF.
+   * - true  → el número NO puede reutilizarse; se debe emitir una nueva NC.
+   * - false → el número está libre; se puede corregir y reenviar con el mismo e-NCF.
+   * - null  → información no disponible (rechazos por batch sin dgiiResponse[]).
+   */
+  @Column({ type: 'boolean', nullable: true, default: null })
+  secuenciaUtilizada?: boolean | null;
+
   // ── Panel DGII — archivar rechazados ─────────────────────────────────────
   // "Archivar" oculta el e-CF del panel de acción requerida sin borrarlo.
   // Es solo visual: el registro fiscal permanece intacto en la BD.

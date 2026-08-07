@@ -231,6 +231,17 @@ export class ConsultarEstadoECFJob {
       const respuestaDgii = (!rawRespuestaDgii.dgiiResponse && prevRespuestaDgii?.dgiiResponse)
         ? { ...rawRespuestaDgii, dgiiResponse: prevRespuestaDgii.dgiiResponse }
         : rawRespuestaDgii;
+      // Extraer secuenciaUtilizada de la respuesta DGII.
+      // Vive dentro de dgiiResponse[].secuenciaUtilizada (boolean | undefined).
+      // Si varios ítems la traen, tomamos el primero con valor definido.
+      // Pasamos el valor al handler de efectos ANTES de que se selle la columna
+      // dedicada en el update de abajo, porque los efectos se aplican antes de sellar.
+      const dgiiItemsSeq: any[] = (respuestaDgii as any)?.dgiiResponse ?? [];
+      const itemConSeq = dgiiItemsSeq.find(
+        (d: any) => d?.secuenciaUtilizada !== undefined && d?.secuenciaUtilizada !== null,
+      );
+      const secuenciaUtilizada: boolean | undefined = itemConSeq?.secuenciaUtilizada;
+
       // Aplicar/revertir efectos sobre la factura (NC de anulación total) ANTES de
       // sellar el estado definitivo. Si el efecto falla, NO commiteamos estadoDGII →
       // el e-CF queda ENVIADO y el cron lo reintenta en la próxima pasada (cada 2 min),
@@ -238,7 +249,7 @@ export class ConsultarEstadoECFJob {
       // reportServiceError ya se emitió dentro de aplicarEfectosPorEstado. El lote NO
       // se aborta: continuamos con el siguiente e-CF.
       try {
-        await this.efectosNc.aplicarEfectosPorEstado(ecf, nuevoEstado);
+        await this.efectosNc.aplicarEfectosPorEstado(ecf, nuevoEstado, secuenciaUtilizada);
       } catch (err) {
         this.logger.error(
           `[ConsultarEstado] Efecto NC ${ecf.numero} falló — e-CF queda ENVIADO para reintento: ` +
@@ -250,6 +261,8 @@ export class ConsultarEstadoECFJob {
       await this.ecfRepo.update(ecf.id, {
         estadoDGII:    nuevoEstado,
         respuestaDgii,
+        // Sellar secuenciaUtilizada obtenida de DGII (null si no vino en la respuesta)
+        secuenciaUtilizada: secuenciaUtilizada ?? null,
         // Guardar QR url del comprobante aceptado si viene en la respuesta batch
         ...(batchData?.qr_url    ? { qrUrl: batchData.qr_url }       : {}),
         fechaUso:      nuevoEstado === EstadoDGII.ACEPTADO ? new Date() : undefined,
