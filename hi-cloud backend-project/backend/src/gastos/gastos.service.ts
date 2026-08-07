@@ -12,15 +12,19 @@ import { EmitirECFUseCase } from '../ecf/use-cases/emitir-ecf.use-case';
 import { DocumentoOrigenTipo } from '../ecf/entities/ecf.entity';
 
 interface CreateGastoDto {
-  fecha:       string;
-  categoria:   CategoriaGasto;
-  descripcion: string;
-  monto:       number;
-  itbis?:      number;
-  proveedor?:  string;
-  comprobante?:string;
-  rncProveedor?:string;
-  userId:      number;
+  fecha:        string;
+  categoria:    CategoriaGasto;
+  descripcion:  string;
+  monto:        number;
+  itbis?:       number;
+  proveedor?:   string;
+  comprobante?: string;
+  rncProveedor?: string;
+  /** Código DGII 606: 01-11. Solo obligatorio cuando el gasto tiene comprobante fiscal. */
+  tipoBienes?:  string;
+  /** Forma de pago DGII 606: 01-07. Solo obligatorio cuando el gasto tiene comprobante fiscal. */
+  formaPago?:   string;
+  userId:       number;
 }
 
 @Injectable()

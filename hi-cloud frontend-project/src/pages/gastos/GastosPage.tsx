@@ -6,7 +6,7 @@ import { DetailDrawer } from '../../components/ui/DetailDrawer';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Table, Button, Card, Row, Col, Typography, Statistic, Tag,
          Modal, Form, Input, InputNumber, Select, DatePicker, message,
-         Tabs, Popconfirm, Space, Alert, theme } from 'antd';
+         Tabs, Popconfirm, Space, Alert, theme, Checkbox } from 'antd';
 import { PlusOutlined, DeleteOutlined, FileExcelOutlined, AuditOutlined, PrinterOutlined, LoadingOutlined, SearchOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { SolicitarAprobacionModal } from '../../components/ui/SolicitarAprobacionModal';
 import { exportarExcel } from '../../utils/exportExcel';
@@ -24,6 +24,49 @@ import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
+
+// ── Códigos fiscales DGII (Formato 606) ─────────────────────────────────────
+
+const TIPOS_BIENES_606 = [
+  { value: '01', label: '01 — Gastos de personal' },
+  { value: '02', label: '02 — Trabajo, suministros y servicios' },
+  { value: '03', label: '03 — Arrendamientos' },
+  { value: '04', label: '04 — Gastos de activos fijos' },
+  { value: '05', label: '05 — Gastos de representación' },
+  { value: '06', label: '06 — Otras deducciones admitidas' },
+  { value: '07', label: '07 — Gastos financieros' },
+  { value: '08', label: '08 — Gastos extraordinarios' },
+  { value: '09', label: '09 — Compras y gastos del costo de venta' },
+  { value: '10', label: '10 — Adquisiciones de activos' },
+  { value: '11', label: '11 — Gastos de seguros' },
+];
+
+const FORMAS_PAGO_606 = [
+  { value: '01', label: '01 — Efectivo' },
+  { value: '02', label: '02 — Cheque / Transferencia / Depósito' },
+  { value: '03', label: '03 — Tarjeta de Débito / Crédito' },
+  { value: '04', label: '04 — Compra a crédito' },
+  { value: '05', label: '05 — Permuta' },
+  { value: '06', label: '06 — Nota de crédito' },
+  { value: '07', label: '07 — Mixto' },
+];
+
+/** Sugerencia de tipoBienes según la categoría del ERP.
+ *  El usuario puede cambiarlo — es solo un pre-llenado orientativo. */
+const CATEGORIA_TIPO_BIENES_SUGERIDO: Record<string, string> = {
+  alquiler:           '03',  // Arrendamientos
+  servicios_publicos: '02',  // Trabajo, suministros y servicios
+  comunicaciones:     '02',
+  nomina:             '01',  // Gastos de personal
+  materiales_oficina: '02',
+  transporte:         '02',
+  marketing:          '02',
+  impuestos_tasas:    '06',  // Otras deducciones admitidas
+  mantenimiento:      '02',
+  seguros:            '11',  // Gastos de seguros
+  gastos_financieros: '07',  // Gastos financieros
+  otros:              '06',
+};
 
 const gastosApi = {
   categorias: ()           => api.get('/gastos/categorias').then(r => r.data?.data ?? r.data),
@@ -44,11 +87,12 @@ export default function GastosPage() {
   const [mes,        setMes]        = useState(dayjs().month() + 1);
   const [anio,       setAnio]       = useState(dayjs().year());
   const [catFilt,    setCatFilt]    = useState<string | undefined>();
-  const [open,         setOpen]         = useState(false);
-  const [ecfEncf,      setEcfEncf]      = useState<string | null>(null);
-  const [detalleGasto, setDetalleGasto] = useState<any>(null);
-  const [pdfPending,   setPdfPending]   = useState<number | null>(null);
-  const [aprobGasto,   setAprobGasto]   = useState<any>(null);
+  const [open,             setOpen]             = useState(false);
+  const [tieneComprobante, setTieneComprobante] = useState(false);
+  const [ecfEncf,          setEcfEncf]          = useState<string | null>(null);
+  const [detalleGasto,     setDetalleGasto]     = useState<any>(null);
+  const [pdfPending,       setPdfPending]       = useState<number | null>(null);
+  const [aprobGasto,       setAprobGasto]       = useState<any>(null);
   const [form]                      = Form.useForm();
   const qc = useQueryClient();
 
@@ -58,6 +102,21 @@ export default function GastosPage() {
   const categoriaWatch = Form.useWatch('categoria', form);
   const categoriaInfo  = (categorias as any[])?.find((c: any) => c.value === categoriaWatch);
   const generaE43      = categoriaInfo?.generaE43 === true;
+
+  // Al cambiar a categoría E43, quitar el checkbox de comprobante
+  // Al cambiar a otra categoría, sugerir tipoBienes según el mapeo
+  const handleCategoriaChange = (value: string) => {
+    const info = (categorias as any[])?.find((c: any) => c.value === value);
+    if (info?.generaE43) {
+      setTieneComprobante(false);
+      form.setFieldsValue({ tipoBienes: undefined, formaPago: undefined });
+    } else {
+      const sugerido = CATEGORIA_TIPO_BIENES_SUGERIDO[value];
+      if (sugerido && tieneComprobante) {
+        form.setFieldsValue({ tipoBienes: sugerido });
+      }
+    }
+  };
   const { data: resumen }    = useQuery({ queryKey: ['gasto-res', mes, anio], queryFn: () => gastosApi.resumen(mes, anio) });
   const { data: anual }      = useQuery({ queryKey: ['gasto-anual', anio], queryFn: () => gastosApi.anual(anio) });
   const { data: lista, isLoading } = useQuery({
@@ -209,7 +268,7 @@ export default function GastosPage() {
             <Select value={mes} onChange={setMes} style={{ width: 130 }} options={MESES} />
             <Select value={anio} onChange={setAnio} style={{ width: 100 }}
               options={[2024, 2025, 2026].map(y => ({ value: y, label: y }))} />
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => { setOpen(true); form.resetFields(); }}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => { setOpen(true); form.resetFields(); setTieneComprobante(false); }}>
               Registrar gasto
             </Button>
           </Space>
@@ -325,7 +384,7 @@ export default function GastosPage() {
       <Modal
         title="Registrar Gasto"
         open={open}
-        onCancel={() => { setOpen(false); form.resetFields(); }}
+        onCancel={() => { setOpen(false); form.resetFields(); setTieneComprobante(false); }}
         footer={null}
         width={620}
       >
@@ -351,6 +410,7 @@ export default function GastosPage() {
                 <Select
                   placeholder="Seleccionar categoría"
                   options={categorias?.map((c: any) => ({ value: c.value, label: c.label }))}
+                  onChange={handleCategoriaChange}
                 />
               </Form.Item>
             </Col>
@@ -409,7 +469,6 @@ export default function GastosPage() {
               <Form.Item
                 name="proveedor"
                 label={generaE43 ? 'Proveedor (opcional)' : 'Proveedor'}
-                rules={generaE43 ? [] : []}
               >
                 <Input placeholder={generaE43 ? 'Nombre del vendedor informal' : 'Nombre del proveedor'} />
               </Form.Item>
@@ -420,22 +479,77 @@ export default function GastosPage() {
                   <Input placeholder="Descripción o referencia interna" />
                 </Form.Item>
               ) : (
-                <Form.Item name="rncProveedor" label="RNC Proveedor">
+                <Form.Item name="rncProveedor" label={tieneComprobante ? 'RNC Proveedor *' : 'RNC Proveedor'}
+                  rules={tieneComprobante ? [{ required: true, message: 'RNC obligatorio cuando tiene comprobante' }] : []}>
                   <Input placeholder="9 dígitos" maxLength={9} />
                 </Form.Item>
               )}
             </Col>
             {!generaE43 && (
               <Col xs={24} sm={12}>
-                <Form.Item name="comprobante" label="No. Comprobante (NCF recibido)">
-                  <Input placeholder="E310000000001 o referencia" />
+                <Form.Item name="comprobante" label={tieneComprobante ? 'No. Comprobante (NCF) *' : 'No. Comprobante (NCF recibido)'}
+                  rules={tieneComprobante ? [{ required: true, message: 'NCF obligatorio cuando tiene comprobante' }] : []}>
+                  <Input placeholder="E310000000001" />
                 </Form.Item>
               </Col>
             )}
           </Row>
 
+          {/* ── Checkbox "Tiene comprobante fiscal" + campos 606 ────────────────── */}
+          {!generaE43 && (
+            <>
+              <div style={{ marginBottom: tieneComprobante ? 12 : 4 }}>
+                <Checkbox
+                  checked={tieneComprobante}
+                  onChange={e => {
+                    const checked = e.target.checked;
+                    setTieneComprobante(checked);
+                    if (checked && categoriaWatch) {
+                      const sugerido = CATEGORIA_TIPO_BIENES_SUGERIDO[categoriaWatch];
+                      if (sugerido) form.setFieldsValue({ tipoBienes: sugerido });
+                    }
+                    if (!checked) {
+                      form.setFieldsValue({ tipoBienes: undefined, formaPago: undefined });
+                    }
+                  }}
+                >
+                  <span style={{ fontSize: 13, fontWeight: 500 }}>
+                    Este gasto tiene comprobante fiscal (incluir en Formato 606)
+                  </span>
+                </Checkbox>
+              </div>
+
+              {tieneComprobante && (
+                <Alert
+                  type="success"
+                  showIcon
+                  style={{ marginBottom: 12, fontSize: 12 }}
+                  message="Gasto marcado como reportable al 606 — completa los campos fiscales obligatorios."
+                />
+              )}
+
+              {tieneComprobante && (
+                <Row gutter={12}>
+                  <Col xs={24} sm={12}>
+                    <Form.Item name="tipoBienes" label="Tipo de bienes / servicios (DGII)"
+                      rules={[{ required: true, message: 'Requerido por el Formato 606' }]}
+                      tooltip="Código oficial DGII — sugiere un valor según la categoría. Revísalo antes de guardar.">
+                      <Select placeholder="Seleccionar tipo" options={TIPOS_BIENES_606} />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} sm={12}>
+                    <Form.Item name="formaPago" label="Forma de pago (DGII)"
+                      rules={[{ required: true, message: 'Requerido por el Formato 606' }]}>
+                      <Select placeholder="Seleccionar forma" options={FORMAS_PAGO_606} />
+                    </Form.Item>
+                  </Col>
+                </Row>
+              )}
+            </>
+          )}
+
           <Row justify="end" gutter={8} style={{ marginTop: 4 }}>
-            <Col><Button onClick={() => { setOpen(false); form.resetFields(); }}>Cancelar</Button></Col>
+            <Col><Button onClick={() => { setOpen(false); form.resetFields(); setTieneComprobante(false); }}>Cancelar</Button></Col>
             <Col>
               <Button
                 type="primary"

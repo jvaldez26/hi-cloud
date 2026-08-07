@@ -36,6 +36,10 @@ class CreateGastoDto {
   @IsOptional() @IsString()                        proveedor?: string;
   @IsOptional() @IsString()                        comprobante?: string;
   @IsOptional() @IsString()                        rncProveedor?: string;
+  /** Código DGII 606 — 01 Personal · 02 Suministros · 03 Arrendamientos · 11 Seguros … */
+  @IsOptional() @IsString()                        tipoBienes?: string;
+  /** Forma de pago DGII 606 — 01 Efectivo · 02 Cheque/Transferencia · 03 Tarjeta … */
+  @IsOptional() @IsString()                        formaPago?: string;
 }
 
 @ApiTags('Gastos Operativos')

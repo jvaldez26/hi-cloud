@@ -110,6 +110,15 @@ interface Problema {
   ruta?: string;
 }
 
+interface GastoExcluido {
+  id: number;
+  descripcion: string;
+  categoria: string;
+  fecha: string;
+  total: number;
+  motivos: string[];
+}
+
 function ValidationPanel({
   tipo, mes, anio, onTxtClick, txtCargando,
 }: {
@@ -120,6 +129,7 @@ function ValidationPanel({
   const [resultado, setResultado] = useState<{
     valido: boolean; errores: Problema[]; advertencias: Problema[];
     totalLineas: number; lineasOk: number;
+    gastosExcluidos?: GastoExcluido[];
   } | null>(null);
 
   const validar = useCallback(async () => {
@@ -223,6 +233,48 @@ function ValidationPanel({
           {errCnt === 0 && resultado && (
             <Alert type="success" showIcon
               message={`✅ ${okCnt} registros válidos listos para exportar${advCnt > 0 ? ` (${advCnt} advertencias no bloquean)` : ''}`}
+            />
+          )}
+
+          {/* Gastos excluidos del 606 por campos fiscales incompletos */}
+          {tipo === '606' && resultado?.gastosExcluidos && resultado.gastosExcluidos.length > 0 && (
+            <Alert type="warning" style={{ marginTop: 6 }}
+              message={
+                <span style={{ fontWeight: 700 }}>
+                  ⚠️ {resultado.gastosExcluidos.length} gasto{resultado.gastosExcluidos.length !== 1 ? 's' : ''} operativo{resultado.gastosExcluidos.length !== 1 ? 's' : ''} excluido{resultado.gastosExcluidos.length !== 1 ? 's' : ''} del 606 por datos incompletos
+                </span>
+              }
+              description={
+                <div>
+                  <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 6 }}>
+                    Estos gastos tienen NCF/RNC registrado pero les falta algún campo obligatorio del 606. Completa los datos en Gastos Operativos para que aparezcan en la próxima declaración.
+                  </Text>
+                  <div style={{ maxHeight: 180, overflowY: 'auto' }}>
+                    {resultado.gastosExcluidos.map(g => (
+                      <div key={g.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '4px 0', borderBottom: '1px solid #fde68a' }}>
+                        <span>
+                          <Text code style={{ fontSize: 10 }}>#{g.id}</Text>
+                          {' '}
+                          <Text style={{ fontSize: 12 }}>{g.descripcion}</Text>
+                          {' '}
+                          <Text type="secondary" style={{ fontSize: 11 }}>({g.fecha})</Text>
+                          {' '}
+                          <Text strong style={{ fontSize: 12, color: '#ef4444' }}>{fmt.money(g.total)}</Text>
+                          <div>
+                            {g.motivos.map((m, i) => (
+                              <Tag key={i} color="orange" style={{ fontSize: 10, marginTop: 2 }}>{m}</Tag>
+                            ))}
+                          </div>
+                        </span>
+                        <Button type="link" size="small" style={{ padding: 0, fontSize: 11, whiteSpace: 'nowrap' }}
+                          onClick={() => window.open('/gastos', '_blank')}>
+                          Completar →
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              }
             />
           )}
         </div>

@@ -10,9 +10,10 @@ import { Factura } from '../facturas/entities/factura.entity';
 import { FacturaDetalle } from '../facturas/entities/factura-detalle.entity';
 import { Compra } from '../compras/entities/compra.entity';
 import { CompraDetalle } from '../compras/entities/compra-detalle.entity';
+import { Gasto } from '../gastos/entities/gasto.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Factura, FacturaDetalle, Compra, CompraDetalle, ReporteDgii])],
+  imports: [TypeOrmModule.forFeature([Factura, FacturaDetalle, Compra, CompraDetalle, ReporteDgii, Gasto])],
   controllers: [DeclaracionesController],
   providers:   [DeclaracionesService, DeclaracionesPdfService, DgiiValidatorService, DgiiTxtGeneratorService],
   exports:     [DeclaracionesService],

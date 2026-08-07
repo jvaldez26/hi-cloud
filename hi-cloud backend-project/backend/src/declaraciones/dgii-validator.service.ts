@@ -11,12 +11,24 @@ export interface ResultadoValidacion {
   ruta?:     string;   // ruta frontend para corregir
 }
 
+/** Gasto del período que no entró al 606 por campos fiscales incompletos */
+export interface GastoExcluido {
+  id:          number;
+  descripcion: string;
+  categoria:   string;
+  fecha:       string;
+  total:       number;
+  motivos:     string[];  // ej. ['Sin NCF del proveedor', 'Sin tipo de bienes']
+}
+
 export interface ResumenValidacion {
-  valido:       boolean;         // false si hay al menos 1 error
-  errores:      ResultadoValidacion[];
-  advertencias: ResultadoValidacion[];
-  totalLineas:  number;
-  lineasOk:     number;
+  valido:           boolean;         // false si hay al menos 1 error
+  errores:          ResultadoValidacion[];
+  advertencias:     ResultadoValidacion[];
+  totalLineas:      number;
+  lineasOk:         number;
+  /** Solo presente en la validación del 606 — gastos excluidos por datos incompletos */
+  gastosExcluidos?: GastoExcluido[];
 }
 
 @Injectable()
@@ -32,17 +44,20 @@ export class DgiiValidatorService {
 
       // ── Errores que bloquean exportación ─────────────────────────────────
 
+      // La ruta de corrección depende de si la fila viene de compras o gastos
+      const rutaBase = f.source === 'gasto' ? `/gastos` : `/compras/${f.id}`;
+
       // RNC/cédula del proveedor obligatorio y válido
       if (!f.rncProveedor) {
         errores.push({ nivel: 'error', campo: 'RNC proveedor', referencia: ref,
           mensaje: 'Proveedor sin RNC/Cédula — requerido por DGII',
-          ruta: `/compras/${f.id}` });
+          ruta: rutaBase });
       } else {
         const tipo = tipoIdDgii(f.rncProveedor);
         if (tipo === '') {
           errores.push({ nivel: 'error', campo: 'RNC proveedor', referencia: ref,
             mensaje: `RNC "${f.rncProveedor}" no tiene formato válido (9 dígitos RNC, 11 cédula)`,
-            ruta: `/compras/${f.id}` });
+            ruta: rutaBase });
         }
       }
 
@@ -50,7 +65,7 @@ export class DgiiValidatorService {
       if (!f.ncfProveedor && Number(f.montoFacturado) > 5000) {
         errores.push({ nivel: 'error', campo: 'NCF proveedor', referencia: ref,
           mensaje: 'Compra mayor a RD$50 sin NCF del proveedor',
-          ruta: `/compras/${f.id}` });
+          ruta: rutaBase });
       }
 
       // Monto negativo
@@ -66,14 +81,14 @@ export class DgiiValidatorService {
           mensaje: `ITBIS (${f.itbis}) mayor al 18.5% del monto (${f.montoFacturado})` });
       }
 
-      // Fecha de pago anterior a fecha del comprobante
-      if (f.fechaPago && f.fechaComprobante) {
+      // Fecha de pago anterior a fecha del comprobante (solo aplica a compras con fechaPago real)
+      if (f.fechaPago && f.fechaComprobante && f.source !== 'gasto') {
         const fp = new Date(f.fechaPago);
         const fc = new Date(f.fechaComprobante);
         if (fp < fc) {
           errores.push({ nivel: 'error', campo: 'Fecha de pago', referencia: ref,
             mensaje: 'Fecha de pago es anterior a la fecha del comprobante',
-            ruta: `/compras/${f.id}` });
+            ruta: rutaBase });
         }
       }
 
@@ -82,10 +97,10 @@ export class DgiiValidatorService {
       if (!f.tipoBienes) {
         advertencias.push({ nivel: 'advertencia', campo: 'Tipo de bienes', referencia: ref,
           mensaje: 'Sin clasificación de tipo de bienes/servicios — se usará 09',
-          ruta: `/compras/${f.id}` });
+          ruta: rutaBase });
       }
 
-      if (!f.fechaPago) {
+      if (!f.fechaPago && f.source !== 'gasto') {
         advertencias.push({ nivel: 'advertencia', campo: 'Fecha de pago', referencia: ref,
           mensaje: 'Sin fecha de pago — se usará fecha del comprobante' });
       }
@@ -220,6 +235,8 @@ export interface Fila606 {
   linea:           number;
   id:              number;
   folio:           string;
+  /** 'compra' (fuente principal) o 'gasto' (gasto operativo con comprobante fiscal) */
+  source?:         'compra' | 'gasto';
   rncProveedor?:   string;
   ncfProveedor?:   string;
   tipoBienes?:     string;

@@ -66,6 +66,14 @@ export class Gasto extends TenantBaseEntity {
   @Column({ length: 11, nullable: true })
   rncProveedor?: string;
 
+  /** Código oficial DGII para Formato 606 — 01 Gastos personal … 11 Seguros */
+  @Column({ length: 2, nullable: true })
+  tipoBienes?: string;
+
+  /** Forma de pago DGII para Formato 606 — 01 Efectivo … 07 Mixto */
+  @Column({ length: 2, nullable: true })
+  formaPago?: string;
+
   @Column({ length: 7 })
   periodo!: string;
 

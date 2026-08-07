@@ -7,6 +7,7 @@ import { FacturaDetalle } from '../facturas/entities/factura-detalle.entity';
 import { Compra } from '../compras/entities/compra.entity';
 import { CompraDetalle } from '../compras/entities/compra-detalle.entity';
 import { ReporteDgii } from './entities/reporte-dgii.entity';
+import { Gasto } from '../gastos/entities/gasto.entity';
 import {
   mapFormaPagoDgii, mapTipoIngreso607, tipoIdDgii,
   fechaDgii, montoEntero, TIPOS_BIENES_606, FORMAS_PAGO_DGII,
@@ -25,6 +26,7 @@ export class DeclaracionesService {
     @InjectRepository(Compra)         private compRepo:     Repository<Compra>,
     @InjectRepository(CompraDetalle)  private cdetRepo:     Repository<CompraDetalle>,
     @InjectRepository(ReporteDgii)    private reporteRepo:  Repository<ReporteDgii>,
+    @InjectRepository(Gasto)          private gastoRepo:    Repository<Gasto>,
     private dataSource:  DataSource,
     private tenantSvc:   TenantService,
     private validator:   DgiiValidatorService,
@@ -114,13 +116,21 @@ export class DeclaracionesService {
     };
   }
 
-  // ── Formato 606: Compras — query mejorada con todos los campos DGII ─────────
+  // ── Formato 606: Compras + Gastos con comprobante fiscal ─────────────────────
+  //
+  // Fuentes incluidas:
+  //   1. compras — facturas de proveedor formales (como antes)
+  //   2. gastos  — gastos operativos con comprobante fiscal (NCF + RNC + tipoBienes + formaPago)
+  //
+  // Un gasto sin alguno de esos 4 campos es excluido en silencio del 606,
+  // pero aparece listado al llamar getGastosExcluidos606() (usado en "Validar antes de exportar").
 
   async getFormato606(mes: number, anio: number) {
     const { desde, hasta } = this.rango(mes, anio);
     const eid = this.eid;
 
     const rows = await this.dataSource.query<any[]>(`
+      -- ── Fuente 1: compras formales ────────────────────────────────────────────
       SELECT
         c.id,
         c.folio,
@@ -134,14 +144,47 @@ export class DeclaracionesService {
         COALESCE(c."formaPago",  '04')               AS "formaPago",
         c.notas,
         p.rnc                                        AS "rncProveedor",
-        p.nombre                                     AS "nombreProveedor"
+        p.nombre                                     AS "nombreProveedor",
+        'compra'                                     AS "_source"
       FROM compras c
       LEFT JOIN proveedores p ON p.id = c."proveedorId"
       WHERE c."empresaId" = $1
         AND c.fecha BETWEEN $2 AND $3
         AND c."isActive" = true
         AND c.estado IN ('recibida','pagada')
-      ORDER BY c.fecha ASC, c.id ASC
+
+      UNION ALL
+
+      -- ── Fuente 2: gastos operativos con comprobante fiscal completo ────────────
+      -- Requisitos: NCF + RNC del proveedor + tipoBienes + formaPago — todos obligatorios.
+      -- Los gastos que no cumplan aparecen en getGastosExcluidos606() para que el usuario
+      -- los complete antes de la próxima declaración.
+      SELECT
+        g.id,
+        NULL::text                                   AS folio,
+        g.fecha::text                                AS "fechaComprobante",
+        g.fecha::text                                AS "fechaPago",
+        (g.total - g.itbis)::numeric                 AS subtotal,
+        g.itbis::numeric                             AS itbis,
+        g.total::numeric                             AS total,
+        UPPER(g.comprobante)                         AS "ncfProveedor",
+        g."tipoBienes",
+        g."formaPago",
+        g.descripcion                                AS notas,
+        g."rncProveedor",
+        g.proveedor                                  AS "nombreProveedor",
+        'gasto'                                      AS "_source"
+      FROM gastos g
+      WHERE g."empresaId" = $1
+        AND g.fecha BETWEEN $2 AND $3
+        AND g."isActive" = true
+        AND g.categoria != 'gasto_menor'
+        AND g.comprobante    IS NOT NULL AND g.comprobante    != ''
+        AND g."rncProveedor" IS NOT NULL AND g."rncProveedor" != ''
+        AND g."tipoBienes"   IS NOT NULL
+        AND g."formaPago"    IS NOT NULL
+
+      ORDER BY "fechaComprobante" ASC, id ASC
     `, [eid, desde, hasta]);
 
     const filas = rows.map((r, i) => {
@@ -154,6 +197,7 @@ export class DeclaracionesService {
         linea:            i + 1,
         id:               r.id,
         folio:            r.folio,
+        source:           (r._source ?? 'compra') as 'compra' | 'gasto',
         rncProveedor,
         nombreProveedor:  r.nombreProveedor,
         tipoId,
@@ -180,6 +224,56 @@ export class DeclaracionesService {
       totalITBIS:  filas.reduce((s, f) => s + f.itbis, 0),
       filas,
     };
+  }
+
+  // ── Gastos excluidos del 606 por datos incompletos ────────────────────────
+  //
+  // Devuelve los gastos del período que NO entraron al 606 porque les falta
+  // al menos uno de los 4 campos requeridos: NCF, RNC, tipoBienes, formaPago.
+  // Usado en "Validar antes de exportar" para que el usuario los complete.
+
+  async getGastosExcluidos606(mes: number, anio: number) {
+    const { desde, hasta } = this.rango(mes, anio);
+    const eid = this.eid;
+
+    const rows = await this.dataSource.query<any[]>(`
+      SELECT
+        g.id,
+        g.descripcion,
+        g.categoria,
+        g.fecha::text,
+        g.total::numeric,
+        g.comprobante,
+        g."rncProveedor",
+        g."tipoBienes",
+        g."formaPago"
+      FROM gastos g
+      WHERE g."empresaId" = $1
+        AND g.fecha BETWEEN $2 AND $3
+        AND g."isActive" = true
+        AND g.categoria != 'gasto_menor'
+        AND (
+          g.comprobante    IS NULL OR g.comprobante    = '' OR
+          g."rncProveedor" IS NULL OR g."rncProveedor" = '' OR
+          g."tipoBienes"   IS NULL OR
+          g."formaPago"    IS NULL
+        )
+      ORDER BY g.fecha ASC, g.id ASC
+    `, [eid, desde, hasta]);
+
+    return rows.map(r => ({
+      id:          r.id,
+      descripcion: r.descripcion,
+      categoria:   r.categoria,
+      fecha:       String(r.fecha).substring(0, 10),
+      total:       Number(r.total),
+      motivos: [
+        ...(!r.comprobante                   ? ['Sin NCF del proveedor']  : []),
+        ...(!r.rncProveedor                  ? ['Sin RNC del proveedor']  : []),
+        ...(!r.tipoBienes                    ? ['Sin tipo de bienes']      : []),
+        ...(!r.formaPago                     ? ['Sin forma de pago']       : []),
+      ],
+    }));
   }
 
   // ── Formato 607: Ventas — fix critico: usa eNCF real via JOIN con tabla ecf ─
@@ -265,8 +359,12 @@ export class DeclaracionesService {
 
   async validarPeriodo(tipo: '606'|'607'|'608', mes: number, anio: number): Promise<ResumenValidacion> {
     if (tipo === '606') {
-      const data = await this.getFormato606(mes, anio);
-      return this.validator.validar606(data.filas as Fila606[]);
+      const [data, excluidos] = await Promise.all([
+        this.getFormato606(mes, anio),
+        this.getGastosExcluidos606(mes, anio),
+      ]);
+      const resultado = this.validator.validar606(data.filas as Fila606[]);
+      return { ...resultado, gastosExcluidos: excluidos };
     }
     if (tipo === '607') {
       const data = await this.getFormato607(mes, anio);
