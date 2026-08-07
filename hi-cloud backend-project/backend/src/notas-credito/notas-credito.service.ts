@@ -212,11 +212,12 @@ export class NotasCreditoService {
     // Enriquecer con datos ECF (número y estado) para que el frontend
     // pueda ocultar el botón "e-CF E34" cuando ya fue emitido
     const ids = data.map(n => n.id);
-    let ecfByNotaId: Record<number, { numero: string; estadoDGII: string; ncfModificado: string | null }> = {};
+    let ecfByNotaId: Record<number, { numero: string; estadoDGII: string; ncfModificado: string | null; secuenciaUtilizada: boolean | null; respuestaDgii: any; errorEnvio: string | null }> = {};
     if (ids.length > 0) {
       const ecfRows = await this.ncRepo.manager.query<any[]>(
         `SELECT DISTINCT ON ("documentoOrigenId")
-           "documentoOrigenId" AS "notaId", numero, "estadoDGII", "ncfModificado"
+           "documentoOrigenId" AS "notaId", numero, "estadoDGII", "ncfModificado",
+           "secuenciaUtilizada", "respuestaDgii", "errorEnvio"
          FROM ecf
          WHERE "documentoOrigenId" = ANY($1)
            AND "documentoOrigenTipo" = 'NOTA_CREDITO'
@@ -224,7 +225,14 @@ export class NotasCreditoService {
         [ids],
       );
       for (const e of ecfRows) {
-        ecfByNotaId[e.notaId] = { numero: e.numero, estadoDGII: e.estadoDGII, ncfModificado: e.ncfModificado ?? null };
+        ecfByNotaId[e.notaId] = {
+          numero:             e.numero,
+          estadoDGII:         e.estadoDGII,
+          ncfModificado:      e.ncfModificado ?? null,
+          secuenciaUtilizada: e.secuenciaUtilizada ?? null,
+          respuestaDgii:      e.respuestaDgii ?? null,
+          errorEnvio:         e.errorEnvio ?? null,
+        };
       }
     }
 
@@ -331,6 +339,61 @@ export class NotasCreditoService {
     }
     await this.ncRepo.update(id, { isActive: false });
     return { ok: true };
+  }
+
+  /**
+   * Reemitir una NC rechazada por DGII (secuencia quemada).
+   * Crea una NC nueva en BORRADOR copiando todos los datos de la rechazada.
+   * La NC original queda en RECHAZADA (el estado no cambia).
+   */
+  async reemitir(id: number, usuarioId: number) {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const original = await this.ncRepo.findOne({
+      where:     { id, empresaId, isActive: true },
+      relations: ['detalles'],
+    });
+    if (!original) throw new NotFoundException(`Nota de Crédito #${id} no encontrada`);
+    if (original.estado !== EstadoNotaCredito.RECHAZADA) {
+      throw new BadRequestException(
+        `Solo se puede reemitir notas en estado RECHAZADA. Estado actual: ${original.estado}`,
+      );
+    }
+
+    const numero = await this.generarNumero();
+    const nueva = this.ncRepo.create({
+      empresaId,
+      numero,
+      fecha:                original.fecha,
+      tipoNcf:              original.tipoNcf,
+      facturaOriginalId:    original.facturaOriginalId ?? undefined,
+      facturaOriginalFolio: original.facturaOriginalFolio ?? undefined,
+      clienteId:            original.clienteId,
+      sucursalId:           original.sucursalId ?? undefined,
+      usuarioId,
+      motivo:               original.motivo ?? MotivoNotaCredito.DEVOLUCION,
+      descripcionMotivo:    original.descripcionMotivo ?? undefined,
+      notas:                original.notas ?? undefined,
+      moneda:               original.moneda ?? 'DOP',
+      tipoCambio:           original.tipoCambio ?? 1,
+      vendedorId:           original.vendedorId ?? undefined,
+      nombreVendedor:       original.nombreVendedor ?? undefined,
+      subtotal:             +Number(original.subtotal).toFixed(2),
+      iva:                  +Number(original.iva).toFixed(2),
+      total:                +Number(original.total).toFixed(2),
+      detalles: original.detalles.map(d => ({
+        productoId:     d.productoId ?? undefined,
+        descripcion:    d.descripcion,
+        unidadMedida:   d.unidadMedida ?? 'PZA',
+        cantidad:       +Number(d.cantidad),
+        precioUnitario: +Number(d.precioUnitario),
+        porcentajeIva:  +Number(d.porcentajeIva ?? 18),
+        subtotal:       +Number(d.subtotal).toFixed(2),
+        iva:            +Number(d.iva).toFixed(2),
+        total:          +Number(d.total).toFixed(2),
+      })) as unknown as NotaCreditoDetalle[],
+    });
+
+    return this.ncRepo.save(nueva);
   }
 
   // ─── Por factura ──────────────────────────────────────────────────────────────

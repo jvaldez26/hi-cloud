@@ -115,6 +115,13 @@ export class NotasCreditoController {
     return this.svc.emitir(id, body?.codigoModificacion);
   }
 
+  @Post(':id/reemitir')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Reemitir NC rechazada: crea una nueva NC en BORRADOR con los mismos datos' })
+  reemitir(@Param('id', ParseIntPipe) id: number, @GetUser() user: User) {
+    return this.svc.reemitir(id, user.id);
+  }
+
   @Patch(':id/anular')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Anular nota de crédito' })

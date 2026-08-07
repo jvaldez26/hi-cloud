@@ -25,6 +25,8 @@ import { FiltroECFDto } from './dto/filtro-ecf.dto';
 import { CreateProveedorECFDto } from './dto/create-proveedor-ecf.dto';
 import { UpdateProveedorECFDto } from './dto/update-proveedor-ecf.dto';
 import { ECFHttpService } from './services/ecf-http.service';
+import { EcfEfectosNcService } from './services/ecf-efectos-nc.service';
+import { DocumentoOrigenTipo } from './entities/ecf.entity';
 
 const MAX_INTENTOS = 3;
 
@@ -63,6 +65,7 @@ export class ECFService implements OnModuleInit {
     private tenantService: TenantService,
     private dataSource: DataSource,
     @Inject(CACHE_MANAGER) private cache: Cache,
+    private efectosNc: EcfEfectosNcService,
   ) {}
 
   // ──────────────────────────────────────────────────────────────────
@@ -370,6 +373,18 @@ export class ECFService implements OnModuleInit {
       });
 
       this.logger.log(`e-CF ${ecf.numero} enviado y aceptado. Ref: ${respuesta.referencia}`);
+
+      // Si es una NC (E34) aceptada síncronamente → aplicar efectos financieros
+      // (el job consultar-estado ya hace esto; este bloque cubre el path legado)
+      if (ecf.documentoOrigenTipo === DocumentoOrigenTipo.NOTA_CREDITO) {
+        try {
+          await this.efectosNc.aplicarEfectosPorEstado(ecf, EstadoDGII.ACEPTADO);
+        } catch (efectosErr) {
+          this.logger.error(
+            `Error aplicando efectos NC ${ecf.numero} tras envío síncrono: ${efectosErr}`,
+          );
+        }
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error desconocido';
       this.logger.error(`Error enviando e-CF ${ecf.numero}: ${msg}`);
@@ -813,12 +828,30 @@ ${respuestaStr}`;
     const ecf = await this.getECFByNumero(numero);
 
     const update: Record<string, unknown> = { estadoDGII: dto.estadoDGII };
-    if (dto.xmlRespuesta)       update.xmlRespuesta = dto.xmlRespuesta;
-    if (dto.firmaDigital)       update.firmaDigital = dto.firmaDigital;
+    if (dto.xmlRespuesta)        update.xmlRespuesta = dto.xmlRespuesta;
+    if (dto.firmaDigital)        update.firmaDigital = dto.firmaDigital;
     if (dto.proveedorReferencia) update.proveedorReferencia = dto.proveedorReferencia;
     if (dto.estadoDGII === EstadoDGII.ACEPTADO) update.fechaFirma = new Date();
 
     await this.ecfRepository.update(ecf.id, update);
+
+    // Si es una NC, propagar efectos financieros para estados terminales.
+    // La idempotencia (efectosAplicados) evita doble aplicación si ya fue procesada
+    // por el job consultar-estado-ecf.
+    const estadosTerminales = [EstadoDGII.ACEPTADO, EstadoDGII.OBSERVADO, EstadoDGII.RECHAZADO];
+    if (
+      estadosTerminales.includes(dto.estadoDGII) &&
+      ecf.documentoOrigenTipo === DocumentoOrigenTipo.NOTA_CREDITO
+    ) {
+      try {
+        await this.efectosNc.aplicarEfectosPorEstado(ecf, dto.estadoDGII, null);
+      } catch (efectosErr) {
+        this.logger.error(
+          `Error aplicando efectos NC ${ecf.numero} en actualizarEstadoDGII: ${efectosErr}`,
+        );
+      }
+    }
+
     return this.getECFByNumero(numero);
   }
 

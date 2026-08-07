@@ -40,9 +40,10 @@ const fmtMon = (v: number, moneda?: string) => {
 
 
 const ESTADO_CONFIG: Record<string, { color: string; label: string }> = {
-  borrador: { color: 'default', label: 'Borrador' },
-  emitida:  { color: 'blue',   label: 'Emitida'  },
-  anulada:  { color: 'red',    label: 'Anulada'  },
+  borrador:  { color: 'default', label: 'Borrador'  },
+  emitida:   { color: 'blue',   label: 'Emitida'   },
+  anulada:   { color: 'red',    label: 'Anulada'   },
+  rechazada: { color: 'volcano', label: 'Rechazada' },
 };
 
 // ── Búsqueda de factura/documento original ────────────────────────────────────
@@ -222,6 +223,17 @@ export default function NotasCreditoPage() {
     mutationFn: (id: number) => api.delete(`/notas-credito/${id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['notas-credito'] });
       qc.invalidateQueries({ queryKey: ['nc-resumen'] }); message.success('Nota eliminada'); },
+  });
+
+  /** Reemitir: crea una nueva NC en borrador copiando los datos de la rechazada */
+  const reemitir = useMutation({
+    mutationFn: (id: number) => api.post(`/notas-credito/${id}/reemitir`).then(r => r.data?.data ?? r.data),
+    onSuccess: (nueva: any) => {
+      qc.invalidateQueries({ queryKey: ['notas-credito'] });
+      qc.invalidateQueries({ queryKey: ['nc-resumen'] });
+      message.success(`Nueva NC ${nueva?.numero ?? ''} creada en borrador. Revisa y emite cuando estés listo.`);
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al reemitir la nota de crédito'),
   });
 
   // Totales en tiempo real
@@ -458,6 +470,12 @@ export default function NotasCreditoPage() {
                       label: 'Anular',
                       danger: true,
                       onClick: () => anular.mutate(r.id),
+                    } : null,
+                    r.estado === 'rechazada' ? {
+                      key: 'reemitir',
+                      label: 'Reemitir (nueva NC)',
+                      icon: <CheckCircleOutlined />,
+                      onClick: () => reemitir.mutate(r.id),
                     } : null,
                     r.estado === 'borrador' ? {
                       key: 'eliminar',
@@ -723,6 +741,41 @@ export default function NotasCreditoPage() {
                 <Text type="secondary" style={{ fontSize: 11 }}>{modalDetalle.descripcionMotivo}</Text>
               </div>
             )}
+
+            {/* ── Motivo de rechazo DGII ── */}
+            {modalDetalle.estado === 'rechazada' && (() => {
+              const dgiiItems: any[] = (modalDetalle.ecf?.respuestaDgii as any)?.dgiiResponse ?? [];
+              const mensajes = dgiiItems.flatMap((d: any) => d?.mensajes ?? d?.errores ?? []);
+              const tieneMotivo = mensajes.length > 0 || modalDetalle.ecf?.errorEnvio;
+              if (!tieneMotivo) return null;
+              return (
+                <Alert
+                  type="error"
+                  showIcon
+                  style={{ marginBottom: 12 }}
+                  message={<Text strong>Rechazada por DGII</Text>}
+                  description={
+                    <div style={{ marginTop: 4 }}>
+                      {mensajes.length > 0
+                        ? mensajes.map((m: any, i: number) => (
+                            <div key={i} style={{ fontSize: 12, marginBottom: 2 }}>
+                              {m.codigo ? <Text code style={{ fontSize: 11 }}>{m.codigo}</Text> : null}
+                              {' '}{m.valor ?? m.descripcion ?? m.mensaje ?? JSON.stringify(m)}
+                            </div>
+                          ))
+                        : <Text style={{ fontSize: 12 }}>{modalDetalle.ecf?.errorEnvio}</Text>
+                      }
+                      {(modalDetalle.ecf?.secuenciaUtilizada === true) && (
+                        <Text type="warning" style={{ fontSize: 11, display: 'block', marginTop: 4 }}>
+                          ⚠ La secuencia fue quemada. Debes emitir una nueva NC con un número diferente.
+                        </Text>
+                      )}
+                    </div>
+                  }
+                />
+              );
+            })()}
+
             <Table size="small"
         scroll={{ x: 'max-content' }} dataSource={modalDetalle.detalles} rowKey="id" pagination={false}
               columns={[

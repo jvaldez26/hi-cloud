@@ -721,7 +721,7 @@ function buildReciboTermicoHTML(
     const descLine   = item.descuentoMonto > 0
       ? `<div class="row small"><span>  Desc: -RD$${(item.descuentoMonto * factor).toFixed(2)} c/u (orig. RD$${(item.precio * factor).toFixed(2)})</span></div>`
       : '';
-    return itemLine + unitLine + descLine;
+    return `<div style="page-break-inside:avoid;break-inside:avoid">${itemLine}${unitLine}${descLine}</div>`;
   }).join('');
 
   const compradorHtml = mostrarComprador ? `
