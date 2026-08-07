@@ -353,14 +353,17 @@ export default function GastosPage() {
                 <Col>
                   <Button icon={<FileExcelOutlined />} onClick={() => {
                     const filas = (lista?.data ?? []).map((g: any) => ({
-                      'Fecha':       g.fecha ? dayjs(g.fecha).format('DD/MM/YYYY') : '',
-                      'Categoría':   g.categoria ?? '',
-                      'Descripción': g.descripcion ?? '',
-                      'Proveedor':   g.proveedor ?? '',
-                      'Comprobante': g.comprobante ?? '',
-                      'Monto':       Number(g.monto ?? 0),
-                      'ITBIS':       Number(g.itbis ?? 0),
-                      'Total':       Number(g.total ?? 0),
+                      'Fecha':         g.fecha ? dayjs(g.fecha).format('DD/MM/YYYY') : '',
+                      'Categoría':     g.categoria ?? '',
+                      'Descripción':   g.descripcion ?? '',
+                      'Proveedor':     g.proveedor ?? '',
+                      'RNC Proveedor': g.rncProveedor ?? '',
+                      'Comprobante':   g.comprobante ?? '',
+                      'Tipo bienes':   g.tipoBienes ?? '',
+                      'Forma de pago': g.formaPago ?? '',
+                      'Monto':         Number(g.monto ?? 0),
+                      'ITBIS':         Number(g.itbis ?? 0),
+                      'Total':         Number(g.total ?? 0),
                     }));
                     exportarExcel(filas, `Gastos-${anio}-${String(mes).padStart(2,'0')}`);
                     message.success(`${filas.length} gastos exportados`);
