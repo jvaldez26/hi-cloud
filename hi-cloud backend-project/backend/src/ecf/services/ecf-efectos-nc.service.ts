@@ -36,7 +36,6 @@ export class EcfEfectosNcService {
 
   async aplicarEfectosPorEstado(ecf: ECF, nuevoEstado: EstadoDGII): Promise<void> {
     if (ecf.documentoOrigenTipo !== DocumentoOrigenTipo.NOTA_CREDITO) return;
-    if (ecf.codigoModificacion !== 1) return;
 
     const estadosAccionables = [
       EstadoDGII.ACEPTADO,
@@ -45,6 +44,64 @@ export class EcfEfectosNcService {
       EstadoDGII.CONTINGENCIA,
     ];
     if (!estadosAccionables.includes(nuevoEstado)) return;
+
+    // ── codigoMod=3 RECHAZADO: revertir el ajuste de CxC aplicado en emitir() ──
+    if (ecf.codigoModificacion === 3 && nuevoEstado === EstadoDGII.RECHAZADO) {
+      try {
+        await this.dataSource.transaction(async (em) => {
+          const nc = await em.getRepository(NotaCredito).findOne({
+            where: { id: ecf.documentoOrigenId, empresaId: ecf.empresaId ?? undefined },
+            lock: { mode: 'pessimistic_write' },
+            loadEagerRelations: false,
+          });
+          if (!nc?.facturaOriginalId) return;
+
+          // Restaurar CxC: sumar de vuelta nc.total al montoPendiente
+          const [cxcRow] = await em.query<any[]>(
+            `SELECT id, "montoPendiente", "montoOriginal"
+             FROM cuentas_por_cobrar
+             WHERE "facturaId" = $1 AND "empresaId" = $2 AND "isActive" = true
+             LIMIT 1`,
+            [nc.facturaOriginalId, ecf.empresaId],
+          );
+          if (cxcRow) {
+            const montoOriginal     = +Number(cxcRow.montoOriginal).toFixed(2);
+            const montoPendienteOld = +Number(cxcRow.montoPendiente).toFixed(2);
+            const ncTotal           = +Number(nc.total).toFixed(2);
+            const montoPendienteNew = +Math.min(montoOriginal, montoPendienteOld + ncTotal).toFixed(2);
+            const montoPagadoNew    = +Math.max(0, montoOriginal - montoPendienteNew).toFixed(2);
+            const estadoNew = montoPendienteNew <= 0 ? 'pagada'
+                            : montoPagadoNew   >  0 ? 'pagada_parcial'
+                            : 'pendiente';
+            await em.query(
+              `UPDATE cuentas_por_cobrar
+               SET "montoPendiente" = $1, "montoPagado" = $2, estado = $3
+               WHERE id = $4`,
+              [montoPendienteNew, montoPagadoNew, estadoNew, cxcRow.id],
+            );
+          }
+          await em.getRepository(NotaCredito).update(
+            { id: nc.id, empresaId: ecf.empresaId ?? undefined },
+            { estado: EstadoNotaCredito.ANULADA },
+          );
+          this.logger.warn(
+            `[EcfEfectosNc] NC ${ecf.numero} codigoMod=3 RECHAZADA → ` +
+            `CxC de Factura #${nc.facturaOriginalId} revertida. NC #${nc.id} marcada ANULADA.`,
+          );
+        });
+      } catch (err) {
+        reportServiceError(err, 'ecf_efectos_nc_codigomod3_rechazado', {
+          ecfId:             ecf.id,
+          numero:            ecf.numero,
+          empresaId:         String(ecf.empresaId ?? ''),
+          documentoOrigenId: String(ecf.documentoOrigenId ?? ''),
+        });
+        throw err;
+      }
+      return;
+    }
+
+    if (ecf.codigoModificacion !== 1) return;
 
     try {
       await this.dataSource.transaction(async (em) => {

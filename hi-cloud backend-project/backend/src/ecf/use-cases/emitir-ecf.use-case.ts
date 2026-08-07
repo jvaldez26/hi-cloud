@@ -249,13 +249,43 @@ export class EmitirECFUseCase {
 
       const facturaOrig = await this.facturaRepo.findOne({ where: { id: facturaOrigId, empresaId } });
 
-      // Validación E34 código 1 (anulación total): monto debe coincidir
+      // Cambio 2 — guard real antes de enviar a MSeller:
+      // DGII compara el MontoTotal del XML de la NC contra el MontoTotal del e-CF
+      // original (error 615 si no coinciden exactamente). Usar ecfOriginal.montoTotal
+      // como fuente primaria porque es lo que DGII tiene registrado.
       if (tipoEcf === 34 && infoRefInput?.CodigoModificacion === '1') {
         const montoNota = Number((nota as any).total);
-        const montoOrig = Number(facturaOrig?.total ?? ecfOriginal.montoTotal ?? 0);
-        if (montoNota > montoOrig) {
+        const montoOrig = Number(ecfOriginal.montoTotal ?? facturaOrig?.total ?? 0);
+        if (montoNota !== montoOrig) {
           throw new BadRequestException(
-            `El monto de la nota de crédito (${montoNota}) no puede superar el monto original (${montoOrig}).`,
+            `NC de anulación total (codigoMod=1): el monto (${montoNota}) debe ser ` +
+            `exactamente igual al monto del e-CF original ${ecfOriginal.numero} (${montoOrig}). ` +
+            `DGII rechaza cualquier diferencia (error 615). Para ajuste parcial use codigoMod=3.`,
+          );
+        }
+      }
+
+      // Cambio 3 — balance para codigoMod≠1: verificar que el monto de la NC no
+      // supere el saldo disponible según DGII (solo NCs aceptadas/observadas cuentan).
+      if (tipoEcf === 34 && infoRefInput?.CodigoModificacion && infoRefInput.CodigoModificacion !== '1') {
+        const [{ ncAplicadas }] = await this.ds.query<{ ncAplicadas: string }[]>(
+          `SELECT COALESCE(SUM(e."montoTotal"), 0)::numeric AS "ncAplicadas"
+           FROM ecf e
+           JOIN notas_credito nc ON nc.id = e."documentoOrigenId"
+                                 AND e."documentoOrigenTipo" = 'NOTA_CREDITO'
+           WHERE nc."facturaOriginalId" = $1
+             AND nc."empresaId" = $2
+             AND e."estadoDGII" IN ('aceptado', 'observado')`,
+          [facturaOrigId, empresaId],
+        );
+        const montoNota       = Number((nota as any).total);
+        const montoOriginal   = Number(ecfOriginal.montoTotal ?? 0);
+        const totalAplicado   = Number(ncAplicadas);
+        const saldoDisponible = +Math.max(0, montoOriginal - totalAplicado).toFixed(2);
+        if (montoNota > saldoDisponible + 0.005) {
+          throw new BadRequestException(
+            `El monto de la NC (${montoNota}) supera el saldo disponible del e-CF ` +
+            `${ecfOriginal.numero} (${saldoDisponible} = ${montoOriginal} − ${totalAplicado} ya aplicado).`,
           );
         }
       }

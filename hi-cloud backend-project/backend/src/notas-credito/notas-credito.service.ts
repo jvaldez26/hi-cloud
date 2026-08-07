@@ -63,11 +63,16 @@ export class NotasCreditoService {
       [facturaId, empresaId],
     );
     if (!factura) throw new NotFoundException(`Factura #${facturaId} no encontrada`);
+    // Criterio unificado con Cambio 3 (emitir-ecf.use-case): solo cuentan NCs
+    // aceptadas u observadas por DGII. Las rechazadas o pendientes no consumen saldo.
     const [{ ncEmitidas }] = await this.ds.query<{ ncEmitidas: string }[]>(
-      `SELECT COALESCE(SUM(total), 0)::numeric AS "ncEmitidas"
-       FROM notas_credito
-       WHERE "facturaOriginalId" = $1 AND "empresaId" = $2
-         AND estado != 'anulada' AND "isActive" = true`,
+      `SELECT COALESCE(SUM(nc.total), 0)::numeric AS "ncEmitidas"
+       FROM notas_credito nc
+       JOIN ecf ON ecf."documentoOrigenId" = nc.id
+                AND ecf."documentoOrigenTipo" = 'NOTA_CREDITO'
+                AND ecf."estadoDGII" IN ('aceptado', 'observado')
+       WHERE nc."facturaOriginalId" = $1 AND nc."empresaId" = $2
+         AND nc."isActive" = true`,
       [facturaId, empresaId],
     );
     const totalFactura    = +Number(factura.total).toFixed(2);
@@ -131,11 +136,22 @@ export class NotasCreditoService {
     // Validar saldo disponible cuando referencia una factura
     if (dto.facturaOriginalId) {
       const saldo = await this.getSaldoDisponible(dto.facturaOriginalId);
-      if (totalNC > saldo.saldoDisponible + 0.005) {
+      if (dto.codigoModificacion === '1') {
+        // DGII exige equivalencia exacta (error 615): el monto de la NC debe ser
+        // idéntico al total del NCF modificado. Sin tolerancia.
+        if (totalNC !== saldo.totalFactura) {
+          throw new BadRequestException(
+            `NC de anulación total (codigoMod=1): el monto (${totalNC.toFixed(2)}) ` +
+            `debe ser exactamente igual al total de la factura (${saldo.totalFactura.toFixed(2)} ${saldo.moneda}). ` +
+            `Diferencia: ${Math.abs(totalNC - saldo.totalFactura).toFixed(2)}. ` +
+            `Para anulación parcial use codigoMod=3.`,
+          );
+        }
+      } else if (totalNC > saldo.saldoDisponible + 0.005) {
         throw new BadRequestException(
           `El monto de la NC (${totalNC.toFixed(2)} ${saldo.moneda}) excede el saldo disponible ` +
           `de la factura (${saldo.saldoDisponible.toFixed(2)} ${saldo.moneda}). ` +
-          `Ya existen NC activas por ${saldo.ncEmitidas.toFixed(2)}.`,
+          `Ya existen NC aceptadas por ${saldo.ncEmitidas.toFixed(2)}.`,
         );
       }
     }
@@ -249,21 +265,39 @@ export class NotasCreditoService {
   // ─── Ciclo de vida ────────────────────────────────────────────────────────────
 
   async emitir(id: number, codigoModificacion?: string) {
+    const empresaId = this.tenantSvc.getEmpresaId();
     const nc = await this.findOne(id);
     if (nc.estado !== EstadoNotaCredito.BORRADOR) {
       throw new BadRequestException('Solo se puede emitir notas en BORRADOR');
     }
-    await this.ncRepo.update(id, { estado: EstadoNotaCredito.EMITIDA });
 
-    const empresaId = this.tenantSvc.getEmpresaId();
-
-    // Código 1 = Anulación total: la factura original queda CANCELADA
+    // Cambio 1 — Bug A: Para anulación total DGII exige equivalencia exacta
+    // entre el monto de la NC y el total del NCF original (error 615 si difieren).
+    // Validar antes de aplicar efectos para que la NC permanezca en BORRADOR si falla.
     if (codigoModificacion === '1' && nc.facturaOriginalId) {
-      await this.ds.query(
-        `UPDATE facturas SET estado = 'cancelada' WHERE id = $1 AND "empresaId" = $2 AND "isActive" = true`,
+      const [factOrig] = await this.ds.query<any[]>(
+        `SELECT total::numeric FROM facturas WHERE id = $1 AND "empresaId" = $2 AND "isActive" = true`,
         [nc.facturaOriginalId, empresaId],
       );
+      if (!factOrig) throw new NotFoundException(`Factura #${nc.facturaOriginalId} no encontrada`);
+      const totalFactura = +Number(factOrig.total).toFixed(2);
+      const totalNC      = +Number(nc.total).toFixed(2);
+      if (totalNC !== totalFactura) {
+        throw new BadRequestException(
+          `NC de anulación total (codigoMod=1): el monto (${totalNC}) debe ser exactamente ` +
+          `igual al total de la factura original (${totalFactura}). ` +
+          `Diferencia: ${Math.abs(totalNC - totalFactura).toFixed(2)}. ` +
+          `Para anulación parcial use codigoMod=3.`,
+        );
+      }
     }
+
+    await this.ncRepo.update(id, { estado: EstadoNotaCredito.EMITIDA });
+
+    // Bug B (codigoMod=1): La cancelación definitiva de la factura la gestiona
+    // ecf-efectos-nc.service cuando DGII confirma ACEPTADO. El use-case de ECF
+    // marca anulacionPendiente=true en la factura al recibir OK de MSeller.
+    // NO se toca la factura aquí.
 
     // Código 3 = Devolución / Ajuste de montos: reducir CxC si la factura tiene saldo pendiente
     if (codigoModificacion === '3' && nc.facturaOriginalId) {
