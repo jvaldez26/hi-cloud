@@ -11,6 +11,7 @@
  * Sin VITE_SENTRY_DSN (o fuera de producción) NO inicializa — no-op seguro.
  */
 import * as Sentry from '@sentry/react';
+import { isNavigatingAway } from './utils/sessionEvents';
 
 const DSN = import.meta.env.VITE_SENTRY_DSN as string | undefined;
 
@@ -70,6 +71,11 @@ if (import.meta.env.PROD && DSN) {
 
     beforeSend(event) {
       try {
+        // Durante un logout suave la app está desmontando componentes y pueden
+        // producirse errores de lazy chunk abortado o de teardown de React. No
+        // son bugs del código — el usuario ya está siendo redirigido a /login.
+        if (isNavigatingAway) return null;
+
         // Chunk load errors son ruido esperado tras un deploy — no son fallos
         // de código. Se producen cuando el SW activa mid-session y un import()
         // de hash viejo falla. El listener de vite:preloadError ya los maneja.

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { ConfigProvider, App as AntApp, theme as antTheme } from 'antd';
 import esES from 'antd/locale/es_ES';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider, MutationCache } from '@tanstack/react-query';
 import * as Sentry from '@sentry/react';
 import { moduloActual } from './observability/sentryScope';
@@ -9,6 +9,7 @@ import dayjs from 'dayjs';
 import 'dayjs/locale/es';
 
 import { useAuthStore, registerLogoutCallback }  from './store/auth.store';
+import { onSessionEnd, markNavigatingAway }      from './utils/sessionEvents';
 import { useThemeStore } from './store/theme.store';
 import AppLayout                from './components/layout/AppLayout';
 import PortalEmpleadoLayout     from './components/layout/PortalEmpleadoLayout';
@@ -395,6 +396,34 @@ function SuperAdminRoute({ children }: { children: React.ReactNode }) {
   return <SetupTwoFactorGate>{children}</SetupTwoFactorGate>;
 }
 
+// ── Maneja la redirección a /login cuando el interceptor de Axios detecta ──────
+// sesión expirada o desplazada. Debe vivir DENTRO del BrowserRouter para poder
+// usar useNavigate(). El logout suave (sin window.location.replace) permite que
+// React limpie su estado antes de navegar, evitando que chunks lazy en vuelo
+// queden en _status=1/_result=undefined y disparen TypeError en WebKit.
+function SessionExpiredHandler() {
+  const navigate = useNavigate();
+  const logout   = useAuthStore((s) => s.logout);
+
+  useEffect(() => {
+    onSessionEnd((reason) => {
+      markNavigatingAway();   // redundante si client.ts ya lo llamó, pero defensivo
+      logout();               // limpia zustand + localStorage restante + React Query cache
+      navigate('/login', { replace: true });
+
+      // El mensaje de error (login_error) ya fue escrito en sessionStorage por
+      // client.ts antes de emitir el evento, así que LoginPage lo mostrará.
+      // reason 'displaced' vs 'expired' no cambia el flujo aquí.
+      void reason;
+    });
+    // Limpiar listener al desmontar (robustez, aunque este componente vive
+    // toda la sesión de la app al nivel raíz).
+    return () => onSessionEnd(null);
+  }, [logout, navigate]);
+
+  return null;
+}
+
 // Portal exclusivo del Empleado — solo role === 'empleado' (o admin/contador para pruebas)
 function EmpleadoRoute({ children }: { children: React.ReactNode }) {
   const { hydrated } = useAuthStore();
@@ -604,6 +633,7 @@ export default function App() {
         <QueryClientProvider client={qc}>
           <BrowserRouter>
             <ScrollToTop />
+            <SessionExpiredHandler />
             <NewVersionBanner />
             <ErrorBoundary>
               <Suspense fallback={null}>

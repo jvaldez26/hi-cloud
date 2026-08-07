@@ -1,6 +1,7 @@
 import axios, { AxiosError } from 'axios';
 import * as Sentry from '@sentry/react';
 import { moduloActual } from '../observability/sentryScope';
+import { emitSessionEnd, markNavigatingAway, isNavigatingAway } from '../utils/sessionEvents';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '/api/v1';
 
@@ -113,6 +114,11 @@ apiClient.interceptors.response.use(
 
     // ── 401: access token expirado → intentar refresh automático (S-28) ─────
     if (status === 401) {
+      // Si ya iniciamos el logout suave, no hay nada más que hacer — el usuario
+      // está camino a /login. Rechazar silenciosamente evita un doble-ciclo
+      // de refresh que podría emitir sessionEnd de nuevo.
+      if (isNavigatingAway) return Promise.reject(err);
+
       const original = err.config as any;
 
       // verificar-supervisor: contraseña incorrecta del supervisor — NO es sesión expirada.
@@ -134,7 +140,8 @@ apiClient.interceptors.response.use(
           'Si no fuiste tú, cambia tu contraseña inmediatamente.',
         );
         if (!window.location.pathname.startsWith('/login')) {
-          window.location.replace('/login');
+          markNavigatingAway();
+          emitSessionEnd('displaced');
         }
         return Promise.reject(err);
       }
@@ -150,7 +157,8 @@ apiClient.interceptors.response.use(
       // No reintentar en refresh/login ni en páginas públicas para evitar
       // que un refresh_token válido restaure la sesión tras un logout explícito.
       const isAuthEndpoint = original?.url?.includes('/auth/refresh') ||
-                             original?.url?.includes('/auth/login');
+                             original?.url?.includes('/auth/login')  ||
+                             original?.url?.includes('/auth/logout');  // fire-and-forget; no reintentar
 
       if (!isAuthEndpoint && !original?._retry && !onPublicPage) {
         // ── Capa 1: intra-pestaña — encolar si esta pestaña ya está refrescando ─
@@ -206,7 +214,8 @@ apiClient.interceptors.response.use(
           'login_error',
           'Tu sesión ha expirado. Por favor inicia sesión de nuevo.',
         );
-        window.location.replace('/login');
+        markNavigatingAway();
+        emitSessionEnd('expired');
       }
       return Promise.reject(err);
     }
@@ -250,7 +259,8 @@ apiClient.interceptors.response.use(
           'Esta empresa ha sido suspendida. Contacte al administrador de la plataforma HiCloud.',
         );
         if (!window.location.pathname.startsWith('/login')) {
-          window.location.replace('/login');
+          markNavigatingAway();
+          emitSessionEnd('expired');
         }
       }
       return Promise.reject(err);
