@@ -179,15 +179,16 @@ export default function GastosPage() {
   });
 
   const COLS_DEF = [
-    { key: 'fecha',       label: 'Fecha',       defaultVisible: true  },
-    { key: 'categoria',   label: 'Categoría',   defaultVisible: true  },
-    { key: 'descripcion', label: 'Descripción', defaultVisible: true  },
-    { key: 'proveedor',   label: 'Proveedor',   defaultVisible: false },
-    { key: 'comprobante', label: 'Comprobante', defaultVisible: false },
-    { key: 'monto',       label: 'Monto',       defaultVisible: true  },
-    { key: 'itbis',       label: 'ITBIS',       defaultVisible: false },
-    { key: 'total',       label: 'Total',       defaultVisible: true  },
-    { key: 'ecf',         label: 'e-CF',        defaultVisible: false },
+    { key: 'fecha',        label: 'Fecha',        defaultVisible: true  },
+    { key: 'categoria',    label: 'Categoría',    defaultVisible: true  },
+    { key: 'descripcion',  label: 'Descripción',  defaultVisible: true  },
+    { key: 'proveedor',    label: 'Proveedor',    defaultVisible: false },
+    { key: 'rncProveedor', label: 'RNC Proveedor',defaultVisible: false },
+    { key: 'comprobante',  label: 'Comprobante',  defaultVisible: false },
+    { key: 'monto',        label: 'Monto',        defaultVisible: true  },
+    { key: 'itbis',        label: 'ITBIS',        defaultVisible: false },
+    { key: 'total',        label: 'Total',        defaultVisible: true  },
+    { key: 'ecf',          label: 'e-CF',         defaultVisible: false },
   ];
   const { visibleColumns, updateVisibility, filterColumns: fcGastos } = useColumnVisibility('gastos', COLS_DEF);
 
@@ -199,8 +200,9 @@ export default function GastosPage() {
         return <Tag style={{ fontSize: 11 }}>{cat?.label ?? v}</Tag>;
       }},
     { title: 'Descripción', key: 'descripcion', dataIndex: 'descripcion', ellipsis: true },
-    { title: 'Proveedor',   key: 'proveedor',   dataIndex: 'proveedor',   width: 130, render: (v: string) => v ?? '—' },
-    { title: 'Comprobante', key: 'comprobante', dataIndex: 'comprobante', width: 110, render: (v: string) => v ? <Text code style={{ fontSize: 11 }}>{v}</Text> : '—' },
+    { title: 'Proveedor',    key: 'proveedor',    dataIndex: 'proveedor',    width: 130, render: (v: string) => v ?? '—' },
+    { title: 'RNC Proveedor',key: 'rncProveedor', dataIndex: 'rncProveedor', width: 110, render: (v: string) => v ? <Text code style={{ fontSize: 11 }}>{v}</Text> : '—' },
+    { title: 'Comprobante',  key: 'comprobante',  dataIndex: 'comprobante',  width: 110, render: (v: string) => v ? <Text code style={{ fontSize: 11 }}>{v}</Text> : '—' },
     { title: 'Monto',   key: 'monto',  dataIndex: 'monto',  width: 110, render: (v: number) => fmt.money(v) },
     { title: 'ITBIS',   key: 'itbis',  dataIndex: 'itbis',  width: 90, render: (v: number) => v > 0 ? fmt.money(v) : '—' },
     { title: 'Total',   key: 'total',  dataIndex: 'total',  width: 120, render: (v: number) => <Text strong style={{ color: '#ef4444' }}>{fmt.money(v)}</Text> },
@@ -586,12 +588,15 @@ export default function GastosPage() {
             { label: 'Fecha',        value: detalleGasto?.fecha },
             { label: 'Categoría',    value: detalleGasto?.categoria?.replace(/_/g,' ') },
             { label: 'Descripción',  value: detalleGasto?.descripcion, span: 2 },
-            { label: 'Proveedor',    value: detalleGasto?.proveedor },
-            { label: 'Comprobante',  value: detalleGasto?.comprobante },
-            { label: 'Monto',        value: detalleGasto?.monto !== undefined ? `RD$${Number(detalleGasto.monto).toLocaleString('es-DO',{minimumFractionDigits:2})}` : undefined },
-            { label: 'ITBIS',        value: detalleGasto?.itbis !== undefined ? `RD$${Number(detalleGasto.itbis).toLocaleString('es-DO',{minimumFractionDigits:2})}` : undefined },
-            { label: 'Total',        value: detalleGasto?.total !== undefined ? `RD$${Number(detalleGasto.total).toLocaleString('es-DO',{minimumFractionDigits:2})}` : undefined },
-            { label: 'e-CF',         value: detalleGasto?.ecfNumero, hidden: !detalleGasto?.ecfNumero },
+            { label: 'Proveedor',     value: detalleGasto?.proveedor },
+            { label: 'RNC Proveedor', value: detalleGasto?.rncProveedor },
+            { label: 'Comprobante',   value: detalleGasto?.comprobante },
+            { label: 'Tipo bienes',   value: detalleGasto?.tipoBienes, hidden: !detalleGasto?.tipoBienes },
+            { label: 'Forma de pago', value: detalleGasto?.formaPago,  hidden: !detalleGasto?.formaPago  },
+            { label: 'Monto',         value: detalleGasto?.monto !== undefined ? `RD$${Number(detalleGasto.monto).toLocaleString('es-DO',{minimumFractionDigits:2})}` : undefined },
+            { label: 'ITBIS',         value: detalleGasto?.itbis !== undefined ? `RD$${Number(detalleGasto.itbis).toLocaleString('es-DO',{minimumFractionDigits:2})}` : undefined },
+            { label: 'Total',         value: detalleGasto?.total !== undefined ? `RD$${Number(detalleGasto.total).toLocaleString('es-DO',{minimumFractionDigits:2})}` : undefined },
+            { label: 'e-CF',          value: detalleGasto?.ecfNumero, hidden: !detalleGasto?.ecfNumero },
           ],
         }]}
       />
