@@ -361,8 +361,9 @@ function HistorialPanel({ mes, anio }: { mes: number; anio: number }) {
 function IT1Card({ data }: { data: any }) {
   const { token } = theme.useToken();
   if (!data) return null;
-  const { liquidacion, ventas, compras } = data;
+  const { liquidacion, ventas, compras, gastosConCf } = data;
   const isPagar = liquidacion.estado === 'A PAGAR';
+  const hayGastosCf = Number(gastosConCf?.itbisCredito ?? 0) > 0;
 
   return (
     <Row gutter={[16, 16]}>
@@ -390,7 +391,16 @@ function IT1Card({ data }: { data: any }) {
           <Statistic title="Compras gravadas" value={compras?.subtotal ?? 0} formatter={v => fmt.money(Number(v))} />
           <Statistic title="Crédito fiscal (ITBIS pagado)" value={liquidacion.itbisCredito ?? 0} formatter={v => fmt.money(Number(v))}
             valueStyle={{ color: '#10b981' }} />
-          <Text type="secondary" style={{ fontSize: 11 }}>{compras?.cantidadCompras ?? compras?.cantidad ?? 0} compras</Text>
+          <Text type="secondary" style={{ fontSize: 11 }}>
+            {compras?.cantidadCompras ?? compras?.cantidad ?? 0} compras
+            {hayGastosCf && (
+              <> · <Tooltip title={`${gastosConCf.cantidad} gastos operativos con comprobante fiscal: ${fmt.money(Number(gastosConCf.itbisCredito))}`}>
+                <span style={{ color: '#10b981', cursor: 'help', textDecoration: 'underline dotted' }}>
+                  +{gastosConCf.cantidad} gastos c/CF
+                </span>
+              </Tooltip></>
+            )}
+          </Text>
         </Card>
       </Col>
     </Row>

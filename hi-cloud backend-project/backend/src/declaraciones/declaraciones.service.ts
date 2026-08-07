@@ -80,7 +80,29 @@ export class DeclaracionesService {
 
     const totalCompras  = compras.reduce((s, c) => s + Number(c.subtotal ?? 0), 0);
     const itbisCompras  = compras.reduce((s, c) => s + Number(c.itbis ?? 0), 0);
-    const itbisNeto     = Math.max(0, itbisVentas - itbisCompras);
+
+    // Gastos operativos con comprobante fiscal completo (mismo filtro que el Formato 606)
+    // Requisito: NCF + RNC + tipoBienes + formaPago — para que IT-1 y 606 sean consistentes
+    const [gastosConCfRow] = await this.dataSource.query<
+      { cantidad: string; itbis: string }[]
+    >(`
+      SELECT COUNT(*)::integer AS cantidad, COALESCE(SUM(g.itbis), 0) AS itbis
+      FROM gastos g
+      WHERE g."empresaId" = $1
+        AND g.fecha BETWEEN $2 AND $3
+        AND g."isActive" = true
+        AND g.categoria != 'gasto_menor'
+        AND g.comprobante    IS NOT NULL AND g.comprobante    != ''
+        AND g."rncProveedor" IS NOT NULL AND g."rncProveedor" != ''
+        AND g."tipoBienes"   IS NOT NULL
+        AND g."formaPago"    IS NOT NULL
+        AND g.itbis > 0
+    `, [this.eid, desde, hasta]);
+
+    const itbisGastosCf  = Number(gastosConCfRow?.itbis    ?? 0);
+    const cantGastosCf   = Number(gastosConCfRow?.cantidad  ?? 0);
+    const itbisCredito   = itbisCompras + itbisGastosCf;
+    const itbisNeto      = Math.max(0, itbisVentas - itbisCredito);
 
     // Resumen por tipo de NCF
     const ventasPorTipo = ventas.reduce((acc, f) => {
@@ -107,9 +129,14 @@ export class DeclaracionesService {
         subtotal:     totalCompras,
         itbisCredito: itbisCompras,
       },
+      /** Gastos operativos con comprobante fiscal que aportan crédito ITBIS */
+      gastosConCf: {
+        cantidad:     cantGastosCf,
+        itbisCredito: itbisGastosCf,
+      },
       liquidacion: {
         itbisDebito:  itbisVentas,
-        itbisCredito: itbisCompras,
+        itbisCredito,          // compras + gastos con CF
         itbisNeto,
         estado:       itbisNeto > 0 ? 'A PAGAR' : 'A FAVOR',
       },
