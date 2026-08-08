@@ -7300,12 +7300,6 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
                 background:'#059669', color:'#fff', fontWeight:700, fontSize:15, cursor:'pointer' }}>
               {cerrarMut.isPending ? 'Cerrando...' : 'Grabar'}
             </button>
-            <button onClick={() => abrirDialogoImprimir('actual')}
-              style={{ height:46, padding:'0 18px', borderRadius:10, border:'1px solid #e2e8f0',
-                background:'transparent', color:C.text, fontWeight:600, fontSize:14, cursor:'pointer',
-                display:'flex', alignItems:'center', gap:6 }}>
-              🖨 Imprimir
-            </button>
           </div>
         </div>
         ))}
