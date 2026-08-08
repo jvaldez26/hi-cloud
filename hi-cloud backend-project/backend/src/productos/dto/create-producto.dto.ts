@@ -144,4 +144,17 @@ export class CreateProductoDto {
   @IsOptional()
   @IsBoolean()
   esCreacionRapida?: boolean;
+
+  // ── Balanzas etiquetadoras ────────────────────────────────────────────────
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(999999)
+  @Type(() => Number)
+  plu?: number | null;
+
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  esPesable?: boolean;
 }

@@ -179,6 +179,11 @@ export class ProductosService implements OnModuleInit {
       ubicacionId = ubicacionIdDto;
     }
 
+    // Validar unidad de medida para productos pesables (balanzas)
+    if (dto.esPesable) {
+      await this.validarUnidadPesable(true, productoData.unidadMedida ?? 'PZA', empresaId);
+    }
+
     const producto = this.productoRepository.create({ ...productoData, empresaId });
     const saved = await this.productoRepository.save(producto);
     if (!saved.codigo) {
@@ -401,6 +406,16 @@ export class ProductosService implements OnModuleInit {
     const { almacenId, ubicacionId: ubicacionIdDto, stock: _stock, ...updateData } = dto as any;
     // Limpiar flag de creación rápida: cualquier edición manual del producto lo completa
     updateData.esCreacionRapida = false;
+
+    // Validar unidad de medida si el producto es (o se está volviendo) pesable
+    const efectivoEsPesable = updateData.esPesable !== undefined
+      ? updateData.esPesable
+      : producto.esPesable;
+    if (efectivoEsPesable) {
+      const efectivoUom = updateData.unidadMedida ?? producto.unidadMedida;
+      await this.validarUnidadPesable(true, efectivoUom, empresaId);
+    }
+
     await this.productoRepository.update(id, updateData);
 
     // Si viene ubicacionId, validar anti-IDOR y persistir en stock_almacen
@@ -582,5 +597,51 @@ export class ProductosService implements OnModuleInit {
       },
       lineas,
     };
+  }
+
+  // ── Balanzas ──────────────────────────────────────────────────────────────
+
+  /**
+   * Valida que, si un producto es pesable, su unidad de medida sea una unidad
+   * de peso con permiteDecimales = true.
+   *
+   * DEUDA TÉCNICA: productos.unidadMedida es VARCHAR libre — no hay FK a
+   * unidades_medida. Hasta que se agregue la FK, esta validación hace la
+   * consulta de forma manual. Si la unidad no existe en la tabla (unidades
+   * creadas antes del módulo UOM) se permite el guardado con una advertencia
+   * para no romper workflows existentes.
+   */
+  private async validarUnidadPesable(
+    esPesable:     boolean,
+    unidadMedida:  string,
+    empresaId:     number,
+  ): Promise<void> {
+    if (!esPesable) return;
+
+    const [fila] = await this.productoRepository.manager.query<any[]>(
+      `SELECT codigo, "permiteDecimales", tipo
+       FROM unidades_medida
+       WHERE LOWER(codigo) = LOWER($1)
+         AND "empresaId" = $2
+         AND "isActive" = true
+       LIMIT 1`,
+      [unidadMedida, empresaId],
+    );
+
+    if (!fila) {
+      // La unidad no está registrada en la tabla UOM — advertir pero no bloquear
+      this.logger.warn(
+        `esPesable=true: la unidad '${unidadMedida}' no existe en unidades_medida para empresa ${empresaId}. ` +
+        'Verifique que sea una unidad de peso válida.',
+      );
+      return;
+    }
+
+    if (!fila.permiteDecimales || fila.tipo !== 'peso') {
+      throw new BadRequestException(
+        `La unidad '${unidadMedida}' no es válida para un producto pesable. ` +
+        `Debe ser una unidad de tipo "peso" con permiteDecimales=true (ej. KG, LB, G).`,
+      );
+    }
   }
 }

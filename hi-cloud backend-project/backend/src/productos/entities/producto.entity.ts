@@ -77,4 +77,23 @@ export class Producto extends TenantBaseEntity {
 
   @Column({ default: false })
   esCreacionRapida!: boolean;
+
+  // ── Balanzas etiquetadoras ────────────────────────────────────────────────
+  /**
+   * PLU (Product Lookup Unit): identificador entero único por empresa que la
+   * balanza graba en el código de barras EAN-13.
+   * NULL = este producto no usa balanza / no tiene PLU asignado.
+   */
+  @Column({ type: 'integer', nullable: true, default: null })
+  plu?: number | null;
+
+  /**
+   * Indica que este producto se despacha por peso y puede recibirse desde una
+   * balanza etiquetadora. Cuando es true:
+   *  - unidadMedida debe ser una unidad con permiteDecimales=true (KG, LB, G…)
+   *  - La cantidad en el carrito de POS se deriva del peso embebido en el código
+   *    de barras o se ingresa como decimal.
+   */
+  @Column({ type: 'boolean', default: false })
+  esPesable!: boolean;
 }

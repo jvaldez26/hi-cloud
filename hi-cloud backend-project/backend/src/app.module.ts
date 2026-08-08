@@ -138,6 +138,7 @@ import { AgroModule }               from './agro/agro.module';
 import { TransporteModule }         from './transporte/transporte.module';
 import { EcfRecibidosModule }       from './ecf-recibidos/ecf-recibidos.module';
 import { EducativoModule }          from './educativo/educativo.module';
+import { BalanzaModule }            from './balanza/balanza.module';
 
 @Module({
   imports: [
@@ -369,6 +370,7 @@ import { EducativoModule }          from './educativo/educativo.module';
     TransporteModule,
     EcfRecibidosModule,
     EducativoModule,
+    BalanzaModule,
   ],
   controllers: [AppController],
   providers: [
