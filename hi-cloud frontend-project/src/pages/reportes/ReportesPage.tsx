@@ -285,17 +285,17 @@ export default function ReportesPage() {
                 <Table
                   dataSource={(stock?.productos ?? []).filter((p: any) => p.alerta)}
                   columns={[
-                    { title: 'Código', dataIndex: 'codigo', width: 100 },
+                    { title: 'Código', dataIndex: 'codigo', width: 155, ellipsis: true },
                     { title: 'Nombre', dataIndex: 'nombre', ellipsis: true },
                     {
-                      title: 'Stock', dataIndex: 'stock', width: 90,
+                      title: 'Stock', dataIndex: 'stock', width: 80, align: 'right' as const,
                       render: (v: number) => (
                         <Text strong style={{ color: v === 0 ? '#ff4d4f' : '#fa8c16' }}>{v}</Text>
                       ),
                     },
-                    { title: 'Mínimo', dataIndex: 'stockMinimo', width: 80 },
+                    { title: 'Mínimo', dataIndex: 'stockMinimo', width: 80, align: 'right' as const },
                     {
-                      title: 'Diferencia', key: 'dif', width: 90,
+                      title: 'Diferencia', key: 'dif', width: 95, align: 'right' as const,
                       render: (_: any, r: any) => (
                         <Tag color={r.stock === 0 ? 'red' : 'orange'}>
                           {r.stock - r.stockMinimo}
@@ -303,7 +303,9 @@ export default function ReportesPage() {
                       ),
                     },
                   ]}
-                  size="small" rowKey="codigo" pagination={false}
+                  size="small"
+                  rowKey="codigo"
+                  pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50'] }}
                   locale={{ emptyText: '✅ Todo el inventario está en orden' }}
                 />
               </Card>
