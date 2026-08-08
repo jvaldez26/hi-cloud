@@ -7,29 +7,32 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Card, Row, Col, Typography, Statistic, Button, InputNumber,
          Table, Tag, Modal, Form, Input, Select, Space, Alert, Spin, message, Avatar,
-         theme, Drawer, Descriptions, Divider, DatePicker } from 'antd';
+         theme, Drawer, Descriptions, Divider, DatePicker, Radio, Checkbox } from 'antd';
 import { UnlockOutlined, LockOutlined, HistoryOutlined,
          RollbackOutlined, WarningOutlined,
-         PrinterOutlined, SearchOutlined } from '@ant-design/icons';
+         PrinterOutlined, SearchOutlined,
+         FileExcelOutlined, FilePdfOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../store/auth.store';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import api from '../../api/client';
 import { fmt } from '../../utils/formatters';
 import { imprimirReciboTermico } from '../../utils/printUtils';
+import { exportarExcel } from '../../utils/exportExcel';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 
 const cajaApi = {
-  hoy:       ()                          => api.get('/caja/hoy').then(r => r.data?.data ?? r.data),
-  cajeros:   ()                          => api.get('/caja/cajeros').then(r => r.data?.data ?? r.data),
-  abrir:     (body: any)                 => api.post('/caja/abrir', body).then(r => r.data?.data),
-  cerrar:    (id: number, body: any)     => api.patch(`/caja/${id}/cerrar`, body).then(r => r.data?.data),
-  anular:    (id: number, motivo: string) => api.patch(`/caja/${id}/anular`, { motivo }).then(r => r.data?.data),
-  historial: (p = 1, mes?: number, anio?: number) =>
+  hoy:             ()                          => api.get('/caja/hoy').then(r => r.data?.data ?? r.data),
+  cajeros:         ()                          => api.get('/caja/cajeros').then(r => r.data?.data ?? r.data),
+  abrir:           (body: any)                 => api.post('/caja/abrir', body).then(r => r.data?.data),
+  cerrar:          (id: number, body: any)     => api.patch(`/caja/${id}/cerrar`, body).then(r => r.data?.data),
+  anular:          (id: number, motivo: string) => api.patch(`/caja/${id}/anular`, { motivo }).then(r => r.data?.data),
+  historial:       (p = 1, mes?: number, anio?: number) =>
     api.get(`/caja/historial?page=${p}${mes ? `&mes=${mes}&anio=${anio}` : ''}`).then(r => r.data?.data),
-  resumen:   (mes: number, anio: number) => api.get(`/caja/resumen?mes=${mes}&anio=${anio}`).then(r => r.data?.data),
+  resumen:         (mes: number, anio: number) => api.get(`/caja/resumen?mes=${mes}&anio=${anio}`).then(r => r.data?.data),
+  facturasDetalle: (id: number)                => api.get(`/caja/${id}/facturas-detalle`).then(r => r.data?.data ?? r.data),
 };
 
 const estadoColor: Record<string, string> = {
@@ -146,6 +149,12 @@ export default function CajaPage() {
       : [(cajaData as any)];
 
   const [searchHistorial, setSearchHistorial] = useState('');
+
+  // ── Diálogo de impresión unificado ────────────────────────────────────────
+  const [printTarget, setPrintTarget]       = useState<any>(null);
+  const [printFormat, setPrintFormat]       = useState<'ticket'|'pdf'|'excel'>('ticket');
+  const [printDetalle, setPrintDetalle]     = useState(false);
+  const [printLoading, setPrintLoading]     = useState(false);
 
   // El backend ya excluye 'abierta' y filtra por mes — solo filtro local de texto
   const historialCerrados = useMemo(() => {
@@ -274,6 +283,267 @@ ${line()}
     } catch {
       // PDF backend no configurado → generar impresión HTML como alternativa
       imprimirCierre(r);
+    }
+  };
+
+  // ── Helpers de formato de hora / dinero para el detalle ─────────────────
+  const fmtHora = (iso: string) => {
+    try { return new Date(iso).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }); }
+    catch { return ''; }
+  };
+
+  const PAGO_LABELS_FE: Record<number, string> = {
+    1: 'Efectivo', 2: 'Transferencia', 3: 'Tarjeta',
+    4: 'Crédito', 5: 'Permuta', 6: 'NC',
+  };
+
+  const fmtFormasPago = (fps: { tipo: number; monto: number }[]): string =>
+    fps.length === 0
+      ? '—'
+      : fps.map(fp => `${PAGO_LABELS_FE[fp.tipo] ?? `T${fp.tipo}`} ${fmt.money(fp.monto)}`).join(' / ');
+
+  // ── Impresión de ticket térmico con detalle de facturas ────────────────
+  const imprimirTicketConDetalle = async (r: any, detalle: any) => {
+    const empRes = await api.get('/configuracion/empresa')
+      .then(res => res.data?.data ?? res.data)
+      .catch(() => ({}));
+    const empConf = (empRes.configuracion ?? {}) as any;
+    const tipoImp = empConf.posTipoImpresora ?? '80mm';
+    const IMP_CFG: Record<string, { width: string; fontSize: string; paddingLR: string }> = {
+      '58mm':    { width: '58mm',  fontSize: '10pt', paddingLR: '3mm' },
+      '80mm':    { width: '80mm',  fontSize: '11pt', paddingLR: '5mm' },
+      'carta':   { width: '210mm', fontSize: '12pt', paddingLR: '15mm' },
+      'ninguna': { width: '80mm',  fontSize: '11pt', paddingLR: '5mm' },
+    };
+    const prn  = IMP_CFG[tipoImp] ?? IMP_CFG['80mm'];
+    const esc  = (s: string) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const f    = (v: number) => `RD$${v.toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+    const line = () => `<div class="sep">--------------------------------</div>`;
+    const row  = (lbl: string, val: string, bold = false) =>
+      `<div class="row${bold?' bold':''}"><span>${esc(lbl)}</span><span>${esc(val)}</span></div>`;
+
+    const totalIngresos = Number(r.ventasEfectivo ?? 0) + Number(r.ventasTarjeta ?? 0) + Number(r.ventasTransferencia ?? 0);
+    const diferencia    = Number(r.diferencia ?? 0);
+    const difLabel = diferencia === 0 ? 'CUADRADO' : diferencia > 0 ? `+${f(diferencia)} SOBRANTE` : `${f(diferencia)} FALTANTE`;
+
+    // Sección detalle de facturas
+    let seccionDetalle = '';
+    if (detalle?.facturas?.length > 0) {
+      const filas = detalle.facturas.map((fac: any) =>
+        `<div class="fac-row${fac.cancelada?' anulada':''}">
+          <div class="fac-top">
+            <span class="fac-num">${esc(fac.folio)}${fac.encf ? ` · ${esc(fac.encf)}` : ''}${fac.cancelada ? ' [ANULADA]' : ''}</span>
+            <span class="fac-total">${f(fac.cancelada ? 0 : fac.total)}</span>
+          </div>
+          <div class="fac-sub">${esc(fmtHora(fac.hora))} · ${esc(fac.clienteNombre)} · ${esc(fmtFormasPago(fac.formasPago))}</div>
+        </div>`
+      ).join('');
+
+      const totPagoRows = Object.entries(detalle.totalesPago ?? {})
+        .map(([k,v]) => row(`  ${k}:`, f(Number(v))))
+        .join('\n');
+
+      seccionDetalle = `
+        ${line()}
+        <div class="small bold">FACTURAS DEL TURNO (${detalle.resumen?.totalFacturas ?? 0} emitidas${detalle.resumen?.totalCanceladas ? `, ${detalle.resumen.totalCanceladas} anuladas` : ''})</div>
+        <style>
+          .fac-row{padding:2px 0;border-bottom:1px dotted #999;margin-bottom:1px}
+          .fac-row.anulada{opacity:0.55;text-decoration:line-through}
+          .fac-top{display:flex;justify-content:space-between}
+          .fac-num{font-size:0.8em;font-weight:700}
+          .fac-total{font-weight:700}
+          .fac-sub{font-size:0.75em;color:#555}
+        </style>
+        ${filas}
+        ${line()}
+        <div class="small bold">TOTALES POR FORMA DE PAGO</div>
+        ${totPagoRows}
+      `;
+    }
+
+    const desgloseBilletes: Record<string,number> = r.desgloseBilletes ?? {};
+    const billetesRows = Object.entries(desgloseBilletes)
+      .filter(([,qty]) => Number(qty) > 0)
+      .map(([den,qty]) => row(`  ${Number(den).toLocaleString()} x${qty}:`, f(Number(den)*Number(qty))))
+      .join('\n');
+    const totalBilletes = Object.entries(desgloseBilletes)
+      .reduce((s,[den,qty]) => s + Number(den)*Number(qty), 0);
+    const desglosePago: Record<string,string> = r.desglosePago ?? {};
+    const PAGO_LABELS: Record<string,string> = {
+      efectivo:'Efectivo', tarjetaCredito:'Tarjeta Crédito', tarjetaDebito:'Tarjeta Débito',
+      cheque:'Cheque', transferencia:'Transferencia', otro:'Otro', deposito:'Depósito', documentos:'Documentos',
+    };
+    const pagoRows = Object.entries(desglosePago)
+      .filter(([,v]) => Number(v) > 0)
+      .map(([k,v]) => row(`  ${PAGO_LABELS[k] ?? k}:`, f(Number(v))))
+      .join('\n');
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+  @media print { @page { size:${prn.width} auto; margin:0; } }
+  body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};font-weight:bold;line-height:1.45;
+    width:${prn.width};margin:0;padding:3mm ${prn.paddingLR};
+    color:#000;background:#fff;-webkit-font-smoothing:none;font-smooth:never}
+  .center{text-align:center}
+  .row{display:flex;justify-content:space-between;gap:4px}
+  .bold{font-weight:900}
+  .sep{color:#000;margin:2px 0}
+  .small{font-size:0.85em}
+  .xlarge{font-size:1.2em;font-weight:900}
+</style></head><body>
+${empRes.razonSocial ?? empRes.nombre ? `<div class="center bold">${esc(empRes.razonSocial ?? empRes.nombre)}</div>` : ''}
+${empRes.rnc        ? `<div class="center small">RNC: ${esc(empRes.rnc)}</div>` : ''}
+${empRes.direccion  ? `<div class="center small">${esc(empRes.direccion)}</div>` : ''}
+${empRes.telefono   ? `<div class="center small">Tel: ${esc(empRes.telefono)}</div>` : ''}
+${line()}
+<div class="center bold" style="font-size:1.1em;letter-spacing:1px">CIERRE DE CAJA</div>
+${line()}
+${row('Cajero:',  r.vendedorNombre ?? 'Administrador')}
+${row('Fecha:',   String(r.fecha ?? '').substring(0, 10))}
+${row('Estado:',  (r.estado ?? '').toUpperCase())}
+${r.cantidadTransacciones != null ? row('Transacciones:', String(r.cantidadTransacciones)) : ''}
+${line()}
+<div class="small bold">INGRESOS DEL TURNO</div>
+${row('Ventas efectivo:',    f(Number(r.ventasEfectivo      ?? 0)))}
+${row('Ventas tarjeta:',     f(Number(r.ventasTarjeta       ?? 0)))}
+${row('Ventas transfer.:',   f(Number(r.ventasTransferencia ?? 0)))}
+${row('Cobros recibidos:',   f(Number(r.cobrosRecibidos     ?? 0)))}
+${Number(r.totalAnticipos ?? 0) > 0 ? row('Anticipos:', f(Number(r.totalAnticipos))) : ''}
+${row('Total ingresos:', f(totalIngresos), true)}
+${line()}
+<div class="small bold">EGRESOS</div>
+${row('Gastos:',  f(Number(r.gastosEfectivo ?? 0)))}
+${row('Retiros:', f(Number(r.retiros        ?? 0)))}
+${line()}
+<div class="small bold">CUADRE</div>
+${row('Apertura:',          f(Number(r.saldoApertura ?? 0)))}
+${row('Efectivo esperado:', f(Number(r.saldoCierre   ?? 0)))}
+${row('Efectivo contado:',  f(Number(r.saldoFisico   ?? 0)))}
+${line()}
+<div class="center xlarge">${esc(difLabel)}</div>
+${billetesRows ? `${line()}<div class="small bold">DESGLOSE DE BILLETES</div>\n${billetesRows}\n${row('Total billetes:', f(totalBilletes), true)}` : ''}
+${pagoRows     ? `${line()}<div class="small bold">DESGLOSE DE PAGO</div>\n${pagoRows}` : ''}
+${seccionDetalle}
+${r.notas      ? `${line()}<div class="small">Nota: ${esc(r.notas)}</div>` : ''}
+${line()}
+<div class="center bold">** CIERRE DE CAJA **</div>
+<div class="center small">Documento interno</div>
+${line()}
+</body></html>`;
+
+    imprimirReciboTermico(html);
+  };
+
+  // ── Exportar cierre a Excel ────────────────────────────────────────────────
+  const exportarCierreExcel = async (r: any, detalle: any) => {
+    const fecha = String(r.fecha ?? '').substring(0, 10);
+    const cajero = r.vendedorNombre ?? 'Administrador';
+
+    // Hoja 1: Resumen del cierre
+    const XLSX = await import('xlsx');
+    const wb = XLSX.utils.book_new();
+
+    const resumenRows = [
+      { 'Concepto': 'Cajero',              'Valor': cajero },
+      { 'Concepto': 'Fecha',               'Valor': fecha },
+      { 'Concepto': 'Estado',              'Valor': (r.estado ?? '').toUpperCase() },
+      { 'Concepto': 'Transacciones',       'Valor': r.cantidadTransacciones ?? 0 },
+      { 'Concepto': '',                    'Valor': '' },
+      { 'Concepto': 'Ventas efectivo',     'Valor': Number(r.ventasEfectivo      ?? 0) },
+      { 'Concepto': 'Ventas tarjeta',      'Valor': Number(r.ventasTarjeta       ?? 0) },
+      { 'Concepto': 'Ventas transferencia','Valor': Number(r.ventasTransferencia ?? 0) },
+      { 'Concepto': 'Cobros recibidos',    'Valor': Number(r.cobrosRecibidos     ?? 0) },
+      { 'Concepto': 'Anticipos',           'Valor': Number(r.totalAnticipos      ?? 0) },
+      { 'Concepto': '',                    'Valor': '' },
+      { 'Concepto': 'Gastos',              'Valor': Number(r.gastosEfectivo ?? 0) },
+      { 'Concepto': 'Retiros',             'Valor': Number(r.retiros        ?? 0) },
+      { 'Concepto': '',                    'Valor': '' },
+      { 'Concepto': 'Apertura (fondo)',    'Valor': Number(r.saldoApertura ?? 0) },
+      { 'Concepto': 'Efectivo esperado',   'Valor': Number(r.saldoCierre   ?? 0) },
+      { 'Concepto': 'Efectivo contado',    'Valor': Number(r.saldoFisico   ?? 0) },
+      { 'Concepto': 'Diferencia',          'Valor': Number(r.diferencia    ?? 0) },
+    ];
+    const wsRes = XLSX.utils.json_to_sheet(resumenRows);
+    wsRes['!cols'] = [{ wch: 22 }, { wch: 18 }];
+    XLSX.utils.book_append_sheet(wb, wsRes, 'Resumen');
+
+    // Hoja 2: Facturas del turno (solo si hay detalle)
+    if (detalle?.facturas?.length > 0) {
+      const facFilas = detalle.facturas.map((fac: any) => ({
+        'No. Factura':  fac.folio,
+        'e-NCF':        fac.encf ?? '',
+        'Hora':         fmtHora(fac.hora),
+        'Cliente':      fac.clienteNombre,
+        'Forma de pago': fmtFormasPago(fac.formasPago),
+        'Subtotal':     fac.cancelada ? 0 : fac.subtotal,
+        'ITBIS':        fac.cancelada ? 0 : fac.iva,
+        'Total':        fac.cancelada ? 0 : fac.total,
+        'Estado':       fac.cancelada ? 'ANULADA' : (fac.estado ?? '').toUpperCase(),
+      }));
+
+      // Fila totales
+      facFilas.push({
+        'No. Factura':   'TOTALES',
+        'e-NCF':         '',
+        'Hora':          '',
+        'Cliente':       `${detalle.resumen?.totalFacturas ?? 0} emitidas, ${detalle.resumen?.totalCanceladas ?? 0} anuladas`,
+        'Forma de pago': '',
+        'Subtotal':      detalle.resumen?.subtotal ?? 0,
+        'ITBIS':         detalle.resumen?.iva ?? 0,
+        'Total':         detalle.resumen?.total ?? 0,
+        'Estado':        '',
+      });
+
+      const wsFac = XLSX.utils.json_to_sheet(facFilas);
+      wsFac['!cols'] = [
+        { wch: 14 }, { wch: 14 }, { wch: 8 }, { wch: 24 },
+        { wch: 30 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 },
+      ];
+      XLSX.utils.book_append_sheet(wb, wsFac, 'Facturas');
+
+      // Hoja 3: Totales por forma de pago
+      const totPagoFilas = Object.entries(detalle.totalesPago ?? {}).map(([k, v]) => ({
+        'Forma de pago': k,
+        'Total':         Number(v),
+      }));
+      if (totPagoFilas.length > 0) {
+        const wsTot = XLSX.utils.json_to_sheet(totPagoFilas);
+        wsTot['!cols'] = [{ wch: 20 }, { wch: 14 }];
+        XLSX.utils.book_append_sheet(wb, wsTot, 'Por forma de pago');
+      }
+    }
+
+    XLSX.writeFile(wb, `Cierre-${cajero.replace(/\s+/g,'-')}-${fecha}.xlsx`);
+  };
+
+  // ── Ejecutar impresión según formato elegido ──────────────────────────────
+  const ejecutarImpresion = async (r: any, formato: 'ticket'|'pdf'|'excel', conDetalle: boolean) => {
+    setPrintLoading(true);
+    try {
+      let detalle: any = null;
+      if (conDetalle && (formato === 'pdf' || formato === 'excel')) {
+        detalle = await cajaApi.facturasDetalle(r.id);
+      }
+
+      if (formato === 'ticket') {
+        // Ticket: siempre resumen (sin detalle de facturas)
+        await imprimirCierre(r);
+      } else if (formato === 'pdf') {
+        if (conDetalle && detalle?.facturas?.length > 0) {
+          // PDF con detalle: generar HTML extendido e imprimir
+          await imprimirTicketConDetalle(r, detalle);
+        } else {
+          await imprimirPDFCierre(r);
+        }
+      } else {
+        // Excel
+        await exportarCierreExcel(r, conDetalle ? detalle : null);
+      }
+      setPrintTarget(null);
+    } catch (err: any) {
+      message.error(err?.response?.data?.message ?? 'Error al generar el documento');
+    } finally {
+      setPrintLoading(false);
     }
   };
 
@@ -491,7 +761,7 @@ ${line()}
                   onView={() => setDetalleCierre(r)}
                   viewLabel="Ver detalle del cierre"
                   items={[
-                    { key: 'imprimir', label: 'Imprimir cierre', icon: <PrinterOutlined />, onClick: () => imprimirCierre(r) },
+                    { key: 'imprimir', label: 'Imprimir cierre', icon: <PrinterOutlined />, onClick: () => setPrintTarget(r) },
                     ...(puedeAnular ? [
                       { type: 'divider' as const },
                       { key: 'anular', label: 'Anular cierre', icon: <RollbackOutlined />, danger: true,
@@ -518,7 +788,7 @@ ${line()}
         width="min(480px, 95vw)"
         footer={
           <Space>
-            <Button icon={<PrinterOutlined />} onClick={() => imprimirCierre(detalleCierre)}>Imprimir cierre</Button>
+            <Button icon={<PrinterOutlined />} onClick={() => setPrintTarget(detalleCierre)}>Imprimir cierre</Button>
             {puedeAnular && detalleCierre?.estado !== 'anulada' && (
               <Button danger icon={<RollbackOutlined />}
                 onClick={() => { setAnularTarget({ id: detalleCierre.id, nombre: detalleCierre.vendedorNombre ?? 'Administrador', fecha: detalleCierre.fecha }); setDetalleCierre(null); formAnular.resetFields(); }}>
@@ -736,6 +1006,81 @@ ${line()}
             </Col>
           </Row>
         </Form>
+      </Modal>
+
+      {/* Modal imprimir cierre unificado */}
+      <Modal
+        title={<Space><PrinterOutlined />Imprimir cierre de caja</Space>}
+        open={!!printTarget}
+        onCancel={() => setPrintTarget(null)}
+        width="min(420px, 95vw)"
+        footer={
+          <Space>
+            <Button onClick={() => setPrintTarget(null)}>Cancelar</Button>
+            <Button
+              type="primary"
+              icon={printFormat === 'excel' ? <FileExcelOutlined /> : printFormat === 'pdf' ? <FilePdfOutlined /> : <PrinterOutlined />}
+              loading={printLoading}
+              onClick={() => ejecutarImpresion(printTarget, printFormat, printDetalle)}
+            >
+              {printFormat === 'excel' ? 'Exportar Excel' : printFormat === 'pdf' ? 'Abrir PDF' : 'Imprimir ticket'}
+            </Button>
+          </Space>
+        }
+      >
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontWeight: 500, marginBottom: 8 }}>Formato</div>
+          <Radio.Group
+            value={printFormat}
+            onChange={e => {
+              setPrintFormat(e.target.value);
+              // Ticket no tiene detalle
+              if (e.target.value === 'ticket') setPrintDetalle(false);
+            }}
+            style={{ display: 'flex', flexDirection: 'column', gap: 10 }}
+          >
+            <Radio value="ticket">
+              <Space>
+                <PrinterOutlined />
+                Ticket térmico
+                <span style={{ fontSize: 12, color: '#94a3b8' }}>(solo resumen)</span>
+              </Space>
+            </Radio>
+            <Radio value="pdf">
+              <Space>
+                <FilePdfOutlined />
+                PDF
+              </Space>
+            </Radio>
+            <Radio value="excel">
+              <Space>
+                <FileExcelOutlined />
+                Excel
+              </Space>
+            </Radio>
+          </Radio.Group>
+        </div>
+
+        <div>
+          <Checkbox
+            checked={printDetalle}
+            disabled={printFormat === 'ticket'}
+            onChange={e => setPrintDetalle(e.target.checked)}
+          >
+            Incluir detalle de facturas emitidas
+          </Checkbox>
+          {printFormat === 'ticket' && (
+            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4, paddingLeft: 24 }}>
+              El ticket térmico siempre muestra solo el resumen.
+            </div>
+          )}
+          {printDetalle && printFormat !== 'ticket' && (
+            <div style={{ fontSize: 12, color: '#64748b', marginTop: 4, paddingLeft: 24 }}>
+              Se incluirá cada factura del turno con número, e-NCF, hora, cliente, forma de pago, subtotal, ITBIS y total.
+              Las facturas anuladas quedan marcadas.
+            </div>
+          )}
+        </div>
       </Modal>
 
       {/* Modal anular cierre */}

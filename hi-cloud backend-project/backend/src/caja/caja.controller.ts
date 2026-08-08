@@ -173,4 +173,11 @@ export class CajaController {
   listarRetiros(@Query('cajaId') cajaId?: string) {
     return this.cajaService.listarRetiros(cajaId ? Number(cajaId) : undefined);
   }
+
+  @Get(':id/facturas-detalle')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Detalle de facturas del turno para impresión de cierre' })
+  getFacturasDetalle(@Param('id', ParseIntPipe) id: number) {
+    return this.cajaService.getFacturasDetalle(id);
+  }
 }

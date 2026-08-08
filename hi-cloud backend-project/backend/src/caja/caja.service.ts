@@ -611,6 +611,102 @@ export class CajaService {
     });
   }
 
+  // ── Detalle de facturas del turno para impresión ──────────────────────────
+  async getFacturasDetalle(cajaId: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+
+    const caja = await this.repo.findOne({ where: { id: cajaId, empresaId } as any });
+    if (!caja) throw new NotFoundException('Cierre de caja no encontrado');
+
+    const fechaStr = (caja.fecha instanceof Date
+      ? caja.fecha.toISOString()
+      : String(caja.fecha)
+    ).split('T')[0];
+
+    const vendedorFilter = caja.vendedorId
+      ? `AND f."vendedorId" = ${Number(caja.vendedorId)}`
+      : `AND f."vendedorId" IS NULL`;
+
+    const PAGO_LABELS: Record<number, string> = {
+      1: 'Efectivo', 2: 'Transferencia', 3: 'Tarjeta',
+      4: 'Crédito', 5: 'Permuta', 6: 'Nota Crédito',
+    };
+
+    const rows = await this.dataSource.query<{
+      id: number; folio: string; encf: string | null;
+      hora: string; clienteNombre: string;
+      formasPago: { tipo: number; monto: number }[] | null;
+      subtotal: string; iva: string; total: string; estado: string;
+    }[]>(
+      `SELECT
+         f.id,
+         f.folio,
+         e.numero    AS encf,
+         f."createdAt" AS hora,
+         COALESCE(c.nombre, 'Consumidor Final') AS "clienteNombre",
+         f."formasPago",
+         f.subtotal,
+         f.iva,
+         f.total,
+         f.estado
+       FROM facturas f
+       LEFT JOIN ecf e ON e.id = f."ecfId" AND e."isActive" = true
+       LEFT JOIN clientes c ON c.id = f."clienteId" AND c."isActive" = true
+       WHERE DATE(f.fecha) = $1::date
+         AND f."empresaId" = $2
+         AND f."isActive" = true
+         AND f.estado IN ('emitida', 'pagada', 'cancelada')
+         ${vendedorFilter}
+       ORDER BY f."createdAt" ASC`,
+      [fechaStr, empresaId],
+    );
+
+    // Totales por forma de pago (solo facturas no canceladas)
+    const totalesPago: Record<string, number> = {};
+    for (const f of rows) {
+      if (f.estado === 'cancelada') continue;
+      const fps = Array.isArray(f.formasPago) ? f.formasPago : [];
+      if (fps.length > 0) {
+        for (const fp of fps) {
+          const lbl = PAGO_LABELS[fp.tipo] ?? `Tipo ${fp.tipo}`;
+          totalesPago[lbl] = (totalesPago[lbl] ?? 0) + Number(fp.monto);
+        }
+      } else {
+        totalesPago['Otro'] = (totalesPago['Otro'] ?? 0) + Number(f.total);
+      }
+    }
+
+    const facturas = rows.map(f => ({
+      id:            f.id,
+      folio:         f.folio,
+      encf:          f.encf ?? null,
+      hora:          f.hora,
+      clienteNombre: f.clienteNombre,
+      formasPago:    Array.isArray(f.formasPago) ? f.formasPago : [],
+      subtotal:      Number(f.subtotal),
+      iva:           Number(f.iva),
+      total:         Number(f.total),
+      estado:        f.estado,
+      cancelada:     f.estado === 'cancelada',
+    }));
+
+    const activas = facturas.filter(f => !f.cancelada);
+    return {
+      cajaId,
+      fecha:          fechaStr,
+      vendedorNombre: caja.vendedorNombre ?? 'Administrador',
+      facturas,
+      totalesPago,
+      resumen: {
+        totalFacturas:   activas.length,
+        totalCanceladas: facturas.length - activas.length,
+        subtotal: activas.reduce((s, f) => s + f.subtotal, 0),
+        iva:      activas.reduce((s, f) => s + f.iva, 0),
+        total:    activas.reduce((s, f) => s + f.total, 0),
+      },
+    };
+  }
+
   async esCajaAbiertaVendedor(vendedorId: number, empresaId: number): Promise<boolean> {
     // Buscar caja propia del vendedor O caja global (sin vendedorId asignado).
     // La caja global cubre empresas que no asocian caja por vendedor.
