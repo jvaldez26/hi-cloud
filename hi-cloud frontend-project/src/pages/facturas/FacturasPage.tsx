@@ -489,12 +489,12 @@ export default function FacturasPage() {
               ))}
             </Select>
           </Col>
-          <Col xs={24} sm={6} md={7}>
+          <Col xs={24} sm={6} md={6}>
             <RangePicker value={rango}
               onChange={v => { setRango(v as [Dayjs, Dayjs] | null); setPage(1); }}
               format="DD/MM/YYYY" style={{ width: '100%' }} placeholder={['Desde', 'Hasta']} />
           </Col>
-          <Col xs={24} sm={24} md={4} style={{ display: 'flex', gap: 6 }}>
+          <Col xs={24} sm={24} md={5} style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
             <Badge count={filtrosAvanzadosActivos} size="small">
               <Button
                 icon={<ControlOutlined />}
@@ -507,7 +507,7 @@ export default function FacturasPage() {
               </Button>
             </Badge>
             {hayFiltros && (
-              <Button type="text" size="small" icon={<FilterOutlined />} onClick={limpiarFiltros}>
+              <Button type="text" icon={<FilterOutlined />} onClick={limpiarFiltros}>
                 Limpiar
               </Button>
             )}
