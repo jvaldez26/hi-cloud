@@ -2429,6 +2429,9 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
       if (detalles.length === 0) throw new Error('Selecciona al menos un ítem a acreditar');
 
       // Paso 1: Crear NC (estado BORRADOR)
+      // codigoModificacion DEBE enviarse aquí para que el backend use el branch
+      // correcto cuando es código 1: lee factura_detalles con IVA real en lugar
+      // del detalle sintético del frontend (que solo tiene subtotal, sin IVA).
       const ncRes = await api.post('/notas-credito', {
         clienteId,
         fecha,
@@ -2440,6 +2443,7 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
         notas,
         moneda: facturaData.moneda ?? 'DOP',
         tipoCambio: facturaData.tipoCambio ? Number(facturaData.tipoCambio) : 1,
+        codigoModificacion: codigoMod,
         detalles,
       });
       const nc = ncRes.data?.data ?? ncRes.data;
