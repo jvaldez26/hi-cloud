@@ -1,8 +1,8 @@
 ﻿import { useState, useCallback, useEffect, useRef, createContext, useContext } from 'react';
 import { useRncLookup } from '../../hooks/useRncLookup';
 import QRCode from 'qrcode';
-import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover, Input, Button, Segmented, Tabs, InputNumber } from 'antd';
-import { SearchOutlined, ShoppingCartOutlined, CheckCircleOutlined, DisconnectOutlined, LogoutOutlined, PrinterOutlined, LockOutlined, UserSwitchOutlined, SwapOutlined, EyeOutlined, EyeInvisibleOutlined, ShopOutlined, MailOutlined } from '@ant-design/icons';
+import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover, Input, Button, Segmented, Tabs, InputNumber, Radio, Checkbox } from 'antd';
+import { SearchOutlined, ShoppingCartOutlined, CheckCircleOutlined, DisconnectOutlined, LogoutOutlined, PrinterOutlined, LockOutlined, UserSwitchOutlined, SwapOutlined, EyeOutlined, EyeInvisibleOutlined, ShopOutlined, MailOutlined, FileExcelOutlined, FilePdfOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../store/auth.store';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import * as Sentry from '@sentry/react';
@@ -20,7 +20,8 @@ import { inventarioApi } from '../../api/inventario.api';
 import { fmt, round2 } from '../../utils/formatters';
 import { validarEAN, parsearBalanza, type BalanzaPatronFrontend, type BalanzaMatchFrontend } from '../../utils/balanza-scan';
 import { resolverNombreComprador, resolverRncComprador } from '../../utils/facturaComprador';
-import { imprimirElemento, imprimirReciboTermico, imprimirPDFA4, imprimirFacturaPreviewA4 } from '../../utils/printUtils';
+import { imprimirElemento, imprimirReciboTermico, imprimirPDFA4, imprimirFacturaPreviewA4, imprimirHtml } from '../../utils/printUtils';
+import { exportarExcel } from '../../utils/exportExcel';
 import { imprimirReciboEscPos, conectarImpresora, desconectarImpresora, estaConectada, getNombreImpresora, imprimirPruebaEscPos, autoReconectarImpresora, bluetoothAutoReconexionDisponible, huboFalloWatchAdvertisements } from '../../services/thermalPrinter';
 import { useThemeStore } from '../../store/theme.store';
 import { useOfflineQueue } from '../../hooks/useOfflineQueue';
@@ -6845,9 +6846,14 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
     efectivo:'', tarjetaCredito:'', tarjetaDebito:'',
     cheque:'', transferencia:'', otro:'', deposito:'', documentos:'',
   });
-  const [imprimiendoCierre, setImprimiendoCierre] = useState(false);
   const [tab, setTab] = useState<'actual' | 'historial'>('actual');
-  const [imprimiendoHistorial, setImprimiendoHistorial] = useState<number | null>(null);
+
+  // ── Diálogo de impresión ──────────────────────────────────────────────────
+  const [printDialogOpen, setPrintDialogOpen] = useState(false);
+  const [printFormat, setPrintFormat]         = useState<'ticket'|'pdf'|'excel'>('ticket');
+  const [printDetalle, setPrintDetalle]       = useState(false);
+  const [printLoading, setPrintLoading]       = useState(false);
+  const [printSnapshot, setPrintSnapshot]     = useState<any>(null);
 
   const totalBilletes   = BILLETES_RD.reduce((s,b) => s + (billetes[b]??0)*b, 0);
   const totalDesglosePago = Object.values(pago).reduce((s,v) => s + (Number(v)||0), 0);
@@ -6934,71 +6940,231 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
 
   const grid3: React.CSSProperties = { display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:10 };
 
-  const handleImprimirCierre = async () => {
-    if (!cajaHoy) return;
-    setImprimiendoCierre(true);
-    try {
-      const empRes = await api.get('/configuracion/empresa')
-        .then(r => r.data?.data ?? r.data)
-        .catch(() => ({}));
-      const empConf = (empRes.configuracion ?? {}) as any;
-      const ventasTarjeta      = Number(cajaHoy.ventasTarjeta ?? 0);
-      const ventasTransferencia = Number(cajaHoy.ventasTransferencia ?? 0);
-      const esperado            = Number(cajaHoy.saldoCierre ?? 0);
-      imprimirReciboTermico(buildCierreCajaHTML({
-        empresa:  { nombre: empRes.razonSocial ?? empRes.nombre, rnc: empRes.rnc, direccion: empRes.direccion, telefono: empRes.telefono },
-        caja:     { id: cajaHoy.id, numero: cajaHoy.numero, fecha: cajaHoy.fecha, cajeroNombre: cajaHoy.vendedorNombre, estado: cajaHoy.estado, cantidadTransacciones: cajaHoy.cantidadTransacciones },
-        ingresos: { ventasEfectivo: vendidoContado, ventasTarjeta, ventasTransferencia, cobrosRecibidos: totalRecibos, totalAnticipos: Number(cajaHoy.totalAnticipos ?? 0) },
-        egresos:  { gastos: Number(cajaHoy.gastosEfectivo ?? 0), retiros: Number(cajaHoy.retiros ?? 0) },
-        cuadre:   cajaHoy.ciegoCajaActivo ? null : { apertura: efectivoInicial, esperado, contado: totalFisico },
-        billetes: Object.fromEntries(Object.entries(billetes).map(([k,v]) => [k, Number(v)])),
-        pago,
-        totalBilletes,
-        totalFisico,
-        nota:     nota || undefined,
-        tipoImpresora: empConf.posTipoImpresora,
-      }), undefined, empConf.posTipoImpresora);
-    } catch (e: any) {
-      message.error(e?.response?.data?.message ?? 'Error al imprimir cierre');
-    } finally {
-      setImprimiendoCierre(false);
+  // ── Helpers de formato ────────────────────────────────────────────────────
+  const fmtHoraPOS = (iso: string) => {
+    try { return new Date(iso).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }); }
+    catch { return ''; }
+  };
+  const PAGO_LABELS_POS: Record<number, string> = {
+    1: 'Efectivo', 2: 'Transferencia', 3: 'Tarjeta',
+    4: 'Crédito', 5: 'Permuta', 6: 'NC',
+  };
+  const fmtFormasPagoPOS = (fps: { tipo: number; monto: number }[]): string =>
+    fps.length === 0
+      ? '—'
+      : fps.map(fp => `${PAGO_LABELS_POS[fp.tipo] ?? `T${fp.tipo}`} ${fmt.money(fp.monto)}`).join(' / ');
+
+  // ── Abrir diálogo con snapshot del cierre a imprimir ─────────────────────
+  const abrirDialogoImprimir = (source: 'actual' | any) => {
+    if (source === 'actual') {
+      if (!cajaHoy) return;
+      setPrintSnapshot({
+        ...cajaHoy,
+        _billetes:           Object.fromEntries(Object.entries(billetes).map(([k,v]) => [k, Number(v)])),
+        _pago:               pago,
+        _nota:               nota || undefined,
+        _totalFisico:        totalFisico,
+        _totalBilletes:      totalBilletes,
+        _vendidoContado:     vendidoContado,
+        _vendidoCreditoRecibo: vendidoCreditoRecibo,
+        _efectivoInicial:    efectivoInicial,
+        _totalRecibos:       totalRecibos,
+      });
+    } else {
+      const bls      = (source.desgloseBilletes ?? {}) as Record<string, number>;
+      const totalBls = Object.entries(bls).reduce((s, [den, qty]) => s + Number(den) * Number(qty), 0);
+      setPrintSnapshot({
+        ...source,
+        _billetes:           bls,
+        _pago:               source.desglosePago ?? {},
+        _nota:               source.notas ?? undefined,
+        _totalFisico:        Number(source.saldoFisico ?? 0),
+        _totalBilletes:      totalBls,
+        _vendidoContado:     Number(source.ventasEfectivo ?? 0),
+        _vendidoCreditoRecibo: Number(source.ventasTarjeta ?? 0) + Number(source.ventasTransferencia ?? 0) + Number(source.ventasCredito ?? 0),
+        _efectivoInicial:    Number(source.saldoApertura ?? 0),
+        _totalRecibos:       Number(source.cobrosRecibidos ?? 0),
+      });
     }
+    setPrintDialogOpen(true);
   };
 
-  const handleImprimirHistorial = async (item: any) => {
-    setImprimiendoHistorial(item.id);
+  // ── Ejecutar impresión según formato ─────────────────────────────────────
+  const ejecutarImpresionPOS = async (snap: any, formato: 'ticket'|'pdf'|'excel', conDetalle: boolean) => {
+    setPrintLoading(true);
     try {
       const empRes = await api.get('/configuracion/empresa')
         .then(r => r.data?.data ?? r.data)
         .catch(() => ({}));
-      const empConf         = (empRes.configuracion ?? {}) as any;
-      const vendContado     = Number(item.ventasEfectivo ?? 0);
-      const ventasTarjeta   = Number(item.ventasTarjeta ?? 0);
-      const ventasTransf    = Number(item.ventasTransferencia ?? 0);
-      const totalRec        = Number(item.cobrosRecibidos ?? 0);
-      const efInicial       = Number(item.saldoApertura ?? 0);
-      const esperado        = Number(item.saldoCierre ?? 0);
-      const bls             = (item.desgloseBilletes ?? {}) as Record<string, number>;
-      const pg              = (item.desglosePago ?? {}) as Record<string, string>;
-      const totalBills      = Object.entries(bls).reduce((s, [den, qty]) => s + Number(den) * Number(qty), 0);
-      const totalFis        = Number(item.saldoFisico ?? 0);
-      imprimirReciboTermico(buildCierreCajaHTML({
+      const empConf    = (empRes.configuracion ?? {}) as any;
+      const esperado   = Number(snap.saldoCierre ?? 0);
+      const buildParams = {
         empresa:  { nombre: empRes.razonSocial ?? empRes.nombre, rnc: empRes.rnc, direccion: empRes.direccion, telefono: empRes.telefono },
-        caja:     { id: item.id, numero: item.numero, fecha: item.fecha, cajeroNombre: item.vendedorNombre, estado: item.estado, cantidadTransacciones: item.cantidadTransacciones },
-        ingresos: { ventasEfectivo: vendContado, ventasTarjeta, ventasTransferencia: ventasTransf, cobrosRecibidos: totalRec, totalAnticipos: Number(item.totalAnticipos ?? 0) },
-        egresos:  { gastos: Number(item.gastosEfectivo ?? 0), retiros: Number(item.retiros ?? 0) },
-        cuadre:   (item as any).ciegoCajaActivo ? null : { apertura: efInicial, esperado, contado: totalFis },
-        billetes: bls,
-        pago:     pg,
-        totalBilletes: totalBills,
-        totalFisico:   totalFis,
-        nota:     item.notas ?? undefined,
+        caja:     { id: snap.id, numero: snap.numero, fecha: snap.fecha, cajeroNombre: snap.vendedorNombre, estado: snap.estado, cantidadTransacciones: snap.cantidadTransacciones },
+        ingresos: { ventasEfectivo: snap._vendidoContado, ventasTarjeta: Number(snap.ventasTarjeta ?? 0), ventasTransferencia: Number(snap.ventasTransferencia ?? 0), cobrosRecibidos: snap._totalRecibos, totalAnticipos: Number(snap.totalAnticipos ?? 0) },
+        egresos:  { gastos: Number(snap.gastosEfectivo ?? 0), retiros: Number(snap.retiros ?? 0) },
+        cuadre:   snap.ciegoCajaActivo ? null : { apertura: snap._efectivoInicial, esperado, contado: snap._totalFisico },
+        billetes: snap._billetes,
+        pago:     snap._pago,
+        totalBilletes: snap._totalBilletes,
+        totalFisico:   snap._totalFisico,
+        nota:     snap._nota,
         tipoImpresora: empConf.posTipoImpresora,
-      }), undefined, empConf.posTipoImpresora);
-    } catch (e: any) {
-      message.error(e?.response?.data?.message ?? 'Error al imprimir cierre');
+      };
+
+      let detalle: any = null;
+      if (conDetalle && (formato === 'pdf' || formato === 'excel')) {
+        detalle = await api.get(`/caja/${snap.id}/facturas-detalle`).then(r => r.data?.data ?? r.data);
+      }
+
+      if (formato === 'ticket') {
+        imprimirReciboTermico(buildCierreCajaHTML(buildParams), undefined, empConf.posTipoImpresora);
+
+      } else if (formato === 'pdf') {
+        if (conDetalle && detalle?.facturas?.length > 0) {
+          // PDF con detalle: HTML en carta con sección de facturas
+          const esc = (s: string) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+          const fmn = (v: number) => `RD$${v.toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+          const rowHtml = (l: string, r: string, bold=false) =>
+            `<div style="display:flex;justify-content:space-between;${bold?'font-weight:700':''}"><span>${esc(l)}</span><span>${esc(r)}</span></div>`;
+
+          const facFilas = detalle.facturas.map((fac: any) =>
+            `<tr style="${fac.cancelada?'text-decoration:line-through;opacity:.55':''}">
+              <td>${esc(fac.folio)}</td>
+              <td style="color:#666">${esc(fac.encf ?? '—')}</td>
+              <td>${esc(fmtHoraPOS(fac.hora))}</td>
+              <td>${esc(fac.clienteNombre)}</td>
+              <td>${esc(fmtFormasPagoPOS(fac.formasPago))}</td>
+              <td style="text-align:right">${fmn(fac.cancelada ? 0 : fac.subtotal)}</td>
+              <td style="text-align:right">${fmn(fac.cancelada ? 0 : fac.iva)}</td>
+              <td style="text-align:right;font-weight:600">${fmn(fac.cancelada ? 0 : fac.total)}</td>
+              <td style="color:${fac.cancelada?'#ef4444':'#10b981'}">${fac.cancelada ? 'ANULADA' : (fac.estado ?? '').toUpperCase()}</td>
+            </tr>`
+          ).join('');
+
+          const totPagoRows = Object.entries(detalle.totalesPago ?? {})
+            .map(([k,v]) => rowHtml(`${k}:`, fmn(Number(v))))
+            .join('');
+
+          const resumen = detalle.resumen ?? {};
+          const baseHtml = buildCierreCajaHTML({ ...buildParams, tipoImpresora: 'carta' });
+          // Inject the detail section before </body>
+          const detailSection = `
+            <hr style="margin:16px 0">
+            <div style="font-size:13px;font-weight:800;margin-bottom:8px;letter-spacing:.04em">
+              FACTURAS DEL TURNO (${resumen.totalFacturas ?? 0} emitidas${resumen.totalCanceladas ? `, ${resumen.totalCanceladas} anuladas` : ''})
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:12px">
+              <thead>
+                <tr style="border-bottom:2px solid #000;font-weight:700">
+                  <th style="text-align:left;padding:4px 2px">No.</th>
+                  <th style="text-align:left;padding:4px 2px">e-NCF</th>
+                  <th style="text-align:left;padding:4px 2px">Hora</th>
+                  <th style="text-align:left;padding:4px 2px">Cliente</th>
+                  <th style="text-align:left;padding:4px 2px">Forma Pago</th>
+                  <th style="text-align:right;padding:4px 2px">Subtotal</th>
+                  <th style="text-align:right;padding:4px 2px">ITBIS</th>
+                  <th style="text-align:right;padding:4px 2px">Total</th>
+                  <th style="text-align:left;padding:4px 2px">Estado</th>
+                </tr>
+              </thead>
+              <tbody>${facFilas}</tbody>
+              <tfoot>
+                <tr style="border-top:2px solid #000;font-weight:700">
+                  <td colspan="5" style="padding:4px 2px">TOTALES</td>
+                  <td style="text-align:right;padding:4px 2px">${fmn(resumen.subtotal ?? 0)}</td>
+                  <td style="text-align:right;padding:4px 2px">${fmn(resumen.iva ?? 0)}</td>
+                  <td style="text-align:right;padding:4px 2px">${fmn(resumen.total ?? 0)}</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+            <div style="font-size:12px;font-weight:700;margin-bottom:4px">TOTALES POR FORMA DE PAGO</div>
+            <div style="font-size:12px">${totPagoRows}</div>
+          `;
+          const htmlConDetalle = baseHtml.replace('</body>', `${detailSection}</body>`);
+          imprimirHtml(htmlConDetalle);
+        } else {
+          // PDF sin detalle: intentar backend PDF, fallback a HTML
+          try {
+            await imprimirPDFA4(`/api/v1/caja/${snap.id}/pdf`);
+          } catch {
+            imprimirHtml(buildCierreCajaHTML({ ...buildParams, tipoImpresora: 'carta' }));
+          }
+        }
+
+      } else {
+        // Excel
+        const fecha  = String(snap.fecha ?? '').substring(0, 10);
+        const cajero = snap.vendedorNombre ?? 'Administrador';
+        const XLSX = await import('xlsx');
+        const wb = XLSX.utils.book_new();
+
+        const resumenRows = [
+          { 'Concepto': 'Cajero',              'Valor': cajero },
+          { 'Concepto': 'Fecha',               'Valor': fecha },
+          { 'Concepto': 'Estado',              'Valor': (snap.estado ?? '').toUpperCase() },
+          { 'Concepto': 'Transacciones',       'Valor': snap.cantidadTransacciones ?? 0 },
+          { 'Concepto': '',                    'Valor': '' },
+          { 'Concepto': 'Ventas efectivo',     'Valor': snap._vendidoContado },
+          { 'Concepto': 'Ventas tarjeta',      'Valor': Number(snap.ventasTarjeta ?? 0) },
+          { 'Concepto': 'Ventas transferencia','Valor': Number(snap.ventasTransferencia ?? 0) },
+          { 'Concepto': 'Cobros recibidos',    'Valor': snap._totalRecibos },
+          { 'Concepto': 'Anticipos',           'Valor': Number(snap.totalAnticipos ?? 0) },
+          { 'Concepto': '',                    'Valor': '' },
+          { 'Concepto': 'Gastos',              'Valor': Number(snap.gastosEfectivo ?? 0) },
+          { 'Concepto': 'Retiros',             'Valor': Number(snap.retiros ?? 0) },
+          { 'Concepto': '',                    'Valor': '' },
+          { 'Concepto': 'Apertura (fondo)',    'Valor': snap._efectivoInicial },
+          { 'Concepto': 'Efectivo esperado',   'Valor': Number(snap.saldoCierre ?? 0) },
+          { 'Concepto': 'Efectivo contado',    'Valor': snap._totalFisico },
+          { 'Concepto': 'Diferencia',          'Valor': Number(snap.diferencia ?? 0) },
+        ];
+        const wsRes = XLSX.utils.json_to_sheet(resumenRows);
+        wsRes['!cols'] = [{ wch: 22 }, { wch: 18 }];
+        XLSX.utils.book_append_sheet(wb, wsRes, 'Resumen');
+
+        if (detalle?.facturas?.length > 0) {
+          const facFilasXls = detalle.facturas.map((fac: any) => ({
+            'No. Factura':   fac.folio,
+            'e-NCF':         fac.encf ?? '',
+            'Hora':          fmtHoraPOS(fac.hora),
+            'Cliente':       fac.clienteNombre,
+            'Forma de pago': fmtFormasPagoPOS(fac.formasPago),
+            'Subtotal':      fac.cancelada ? 0 : fac.subtotal,
+            'ITBIS':         fac.cancelada ? 0 : fac.iva,
+            'Total':         fac.cancelada ? 0 : fac.total,
+            'Estado':        fac.cancelada ? 'ANULADA' : (fac.estado ?? '').toUpperCase(),
+          }));
+          const res = detalle.resumen ?? {};
+          facFilasXls.push({
+            'No. Factura': 'TOTALES', 'e-NCF': '', 'Hora': '',
+            'Cliente': `${res.totalFacturas ?? 0} emitidas, ${res.totalCanceladas ?? 0} anuladas`,
+            'Forma de pago': '',
+            'Subtotal': res.subtotal ?? 0, 'ITBIS': res.iva ?? 0, 'Total': res.total ?? 0, 'Estado': '',
+          });
+          const wsFac = XLSX.utils.json_to_sheet(facFilasXls);
+          wsFac['!cols'] = [
+            { wch: 14 }, { wch: 14 }, { wch: 8 }, { wch: 24 },
+            { wch: 30 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 },
+          ];
+          XLSX.utils.book_append_sheet(wb, wsFac, 'Facturas');
+
+          const totPago = Object.entries(detalle.totalesPago ?? {}).map(([k,v]) => ({ 'Forma de pago': k, 'Total': Number(v) }));
+          if (totPago.length > 0) {
+            const wsTot = XLSX.utils.json_to_sheet(totPago);
+            wsTot['!cols'] = [{ wch: 20 }, { wch: 14 }];
+            XLSX.utils.book_append_sheet(wb, wsTot, 'Por forma de pago');
+          }
+        }
+        XLSX.writeFile(wb, `Cierre-${cajero.replace(/\s+/g,'-')}-${fecha}.xlsx`);
+      }
+
+      setPrintDialogOpen(false);
+    } catch (err: any) {
+      message.error(err?.response?.data?.message ?? 'Error al generar el documento');
     } finally {
-      setImprimiendoHistorial(null);
+      setPrintLoading(false);
     }
   };
 
@@ -7134,6 +7300,12 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
                 background:'#059669', color:'#fff', fontWeight:700, fontSize:15, cursor:'pointer' }}>
               {cerrarMut.isPending ? 'Cerrando...' : 'Grabar'}
             </button>
+            <button onClick={() => abrirDialogoImprimir('actual')}
+              style={{ height:46, padding:'0 18px', borderRadius:10, border:'1px solid #e2e8f0',
+                background:'transparent', color:C.text, fontWeight:600, fontSize:14, cursor:'pointer',
+                display:'flex', alignItems:'center', gap:6 }}>
+              🖨 Imprimir
+            </button>
           </div>
         </div>
         ))}
@@ -7171,12 +7343,11 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
                         color: item.estado === 'revisada' ? C.green : C.textSub }}>
                         {item.estado}
                       </div>
-                      <button onClick={() => handleImprimirHistorial(item)}
-                        disabled={imprimiendoHistorial === item.id}
+                      <button onClick={() => abrirDialogoImprimir(item)}
                         style={{ height:34, padding:'0 12px', borderRadius:8, border:`1px solid ${C.border}`,
                           background:'transparent', color:C.text, fontWeight:600, fontSize:13,
-                          cursor: imprimiendoHistorial === item.id ? 'not-allowed' : 'pointer', whiteSpace:'nowrap' }}>
-                        {imprimiendoHistorial === item.id ? '…' : '🖨'}
+                          cursor:'pointer', whiteSpace:'nowrap' }}>
+                        🖨
                       </button>
                     </div>
                   );
@@ -7186,6 +7357,68 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
           </div>
         )}
       </div>
+
+      {/* Modal imprimir cierre */}
+      <Modal
+        title={<span style={{ fontWeight:700 }}>🖨 Imprimir cierre de caja</span>}
+        open={printDialogOpen}
+        onCancel={() => setPrintDialogOpen(false)}
+        width="min(400px, 95vw)"
+        footer={
+          <div style={{ display:'flex', justifyContent:'flex-end', gap:8 }}>
+            <Button onClick={() => setPrintDialogOpen(false)}>Cancelar</Button>
+            <Button
+              type="primary"
+              icon={printFormat === 'excel' ? <FileExcelOutlined /> : printFormat === 'pdf' ? <FilePdfOutlined /> : <PrinterOutlined />}
+              loading={printLoading}
+              onClick={() => printSnapshot && ejecutarImpresionPOS(printSnapshot, printFormat, printDetalle)}
+            >
+              {printFormat === 'excel' ? 'Exportar Excel' : printFormat === 'pdf' ? 'Abrir PDF' : 'Imprimir ticket'}
+            </Button>
+          </div>
+        }
+      >
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontWeight: 600, marginBottom: 8 }}>Formato</div>
+          <Radio.Group
+            value={printFormat}
+            onChange={e => {
+              setPrintFormat(e.target.value);
+              if (e.target.value === 'ticket') setPrintDetalle(false);
+            }}
+            style={{ display: 'flex', flexDirection: 'column', gap: 10 }}
+          >
+            <Radio value="ticket">
+              <span>🖨 Ticket térmico <span style={{ fontSize: 12, color: '#94a3b8' }}>(solo resumen)</span></span>
+            </Radio>
+            <Radio value="pdf">
+              <span><FilePdfOutlined /> PDF</span>
+            </Radio>
+            <Radio value="excel">
+              <span><FileExcelOutlined /> Excel</span>
+            </Radio>
+          </Radio.Group>
+        </div>
+        <div>
+          <Checkbox
+            checked={printDetalle}
+            disabled={printFormat === 'ticket'}
+            onChange={e => setPrintDetalle(e.target.checked)}
+          >
+            Incluir detalle de facturas emitidas
+          </Checkbox>
+          {printFormat === 'ticket' && (
+            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4, paddingLeft: 24 }}>
+              El ticket térmico siempre muestra solo el resumen.
+            </div>
+          )}
+          {printDetalle && printFormat !== 'ticket' && (
+            <div style={{ fontSize: 12, color: '#64748b', marginTop: 4, paddingLeft: 24 }}>
+              Incluye cada factura del turno con número, e-NCF, hora, cliente, forma de pago, subtotal, ITBIS y total. Anuladas quedan marcadas.
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }
