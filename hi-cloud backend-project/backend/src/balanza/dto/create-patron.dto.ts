@@ -44,7 +44,7 @@ export class CreatePatronDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(20)
-  unidadPeso?: string | null;
+  unidadPeso?: string;
 
   @IsBoolean()
   @Type(() => Boolean)

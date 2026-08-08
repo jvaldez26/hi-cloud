@@ -49,7 +49,7 @@ export class BalanzaPatron extends TenantBaseEntity {
    * Al escanear, si producto.unidadMedida ≠ unidadPeso → RECHAZAR con error explícito.
    */
   @Column({ length: 20, nullable: true, name: 'unidadPeso' })
-  unidadPeso!: string | null;
+  unidadPeso?: string;
 
   /**
    * El último dígito de longitudValor es un verificador de la balanza

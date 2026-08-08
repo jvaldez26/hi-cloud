@@ -29,7 +29,7 @@ export class BalanzaFormatoExportacion extends TenantBaseEntity {
 
   /** Separador de columnas (solo relevante para CSV/TXT) */
   @Column({ length: 5, nullable: true })
-  separador?: string | null;
+  separador?: string;
 
   /** Máximo de caracteres permitidos para el nombre del producto */
   @Column({ type: 'smallint', default: 20, name: 'limiteNombre' })

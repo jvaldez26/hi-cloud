@@ -37,7 +37,7 @@ export class CreateFormatoDto {
   @IsOptional()
   @IsString()
   @MaxLength(5)
-  separador?: string | null;
+  separador?: string;
 
   @IsInt()
   @Min(5)

@@ -45,7 +45,7 @@ export interface BalanzaPatronConfig {
   tipoDato:        TipoDatoBal;
   longitudValor:   number;        // incluye check interno si tieneCheckValor=true
   decimalesValor:  number;        // 0–6
-  unidadPeso:      string | null; // 'KG' | 'LB' | null (si tipoDato='precio')
+  unidadPeso?:     string;        // 'KG' | 'LB' | undefined (si tipoDato='precio')
   tieneCheckValor: boolean;
   longitudTotal:   number;        // 12 (UPC-A) | 13 (EAN-13)
   prioridad:       number;        // menor = mayor prioridad
@@ -57,7 +57,7 @@ export interface BalanzaParseResult {
   plu:        number;
   valor:      number;          // peso en kg/lb  O  precio en moneda local
   tipoDato:   TipoDatoBal;
-  unidadPeso: string | null;
+  unidadPeso?: string;
 }
 
 /** Candidato generado por el asistente de calibración. */
