@@ -12,7 +12,7 @@ import {
 import {
   FileTextOutlined, PlusOutlined, PrinterOutlined,
   CheckCircleOutlined, MailOutlined, FileExcelOutlined,
-  LoadingOutlined, StopOutlined, SearchOutlined,
+  LoadingOutlined, StopOutlined, SearchOutlined, SwapOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -101,6 +101,9 @@ export default function RecibosCobrosPage() {
   const [motivoAnulacion,     setMotivoAnulacion]     = useState('');
   const [pendienteExcedente,  setPendienteExcedente]  = useState<{ dto: any; excedente: number; pendiente: number } | null>(null);
   const [monedaForm,          setMonedaForm]          = useState<'DOP' | 'USD'>('DOP');
+  const [modalCambiarForma,   setModalCambiarForma]   = useState<any>(null);   // recibo target
+  const [nuevaFormaVal,       setNuevaFormaVal]       = useState<string>('');
+  const [referenciaVal,       setReferenciaVal]       = useState('');
   const [form] = Form.useForm();
 
   const anularMut = useMutation({
@@ -237,6 +240,24 @@ export default function RecibosCobrosPage() {
     onError: (e: any) => message.error(errMsg(e), 5),
   });
 
+  const cambiarFormaMut = useMutation({
+    mutationFn: ({ id, nuevaForma, referencia }: { id: number; nuevaForma: string; referencia?: string }) =>
+      api.patch(`/recibos-cobro/${id}/cambiar-forma-pago`, { nuevaForma, referencia })
+         .then((r: any) => r.data?.data ?? r.data),
+    onSuccess: (data: any) => {
+      qc.invalidateQueries({ queryKey: ['recibos-cobro'] });
+      qc.invalidateQueries({ queryKey: ['recibos-resumen'] });
+      qc.invalidateQueries({ queryKey: ['cxc'] });
+      qc.invalidateQueries({ queryKey: ['facturas'] });
+      setModalCambiarForma(null);
+      setDetalleRecibo(null);
+      const nuevo = data?.reciboNuevo?.numero ?? data?.reciboNuevo ?? '?';
+      const viejo = data?.reciboAnulado ?? '?';
+      message.success(`${viejo} anulado → nuevo recibo ${nuevo}`, 5);
+    },
+    onError: (e: any) => message.error(errMsg(e), 6),
+  });
+
   const handleImprimir = (recibo: any) => {
     setReciboImprimir(recibo);
     setTimeout(() => imprimirElemento(RECIBO_PRINT_ID, '80mm auto'), 200);
@@ -352,6 +373,10 @@ export default function RecibosCobrosPage() {
                     { key: 'email',    label: 'Enviar por email', icon: <MailOutlined />,
                       onClick: () => { setEmailRecibo(r); } },
                     { type: 'divider' as const },
+                    { key: 'cambiar-forma', label: 'Cambiar forma de pago', icon: <SwapOutlined />,
+                      disabled: r.isActive === false,
+                      onClick: () => { setNuevaFormaVal(''); setReferenciaVal(''); setModalCambiarForma(r); } },
+                    { type: 'divider' as const },
                     { key: 'anular',   label: 'Anular recibo', icon: <StopOutlined />, danger: true,
                       disabled: r.isActive === false,
                       onClick: () => confirmarAnulacion(r) },
@@ -389,6 +414,11 @@ export default function RecibosCobrosPage() {
             <Button icon={<MailOutlined />}
               onClick={() => { setEmailRecibo(detalleRecibo); setDetalleRecibo(null); }}>
               Email
+            </Button>
+            <Button icon={<SwapOutlined />}
+              disabled={detalleRecibo?.isActive === false}
+              onClick={() => { setNuevaFormaVal(''); setReferenciaVal(''); setModalCambiarForma(detalleRecibo); }}>
+              Cambiar pago
             </Button>
             <Button danger icon={<StopOutlined />}
               disabled={detalleRecibo?.isActive === false}
@@ -561,6 +591,66 @@ export default function RecibosCobrosPage() {
             <Input.TextArea rows={2} />
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* ── Modal: cambiar forma de pago ──────────────────────────── */}
+      <Modal
+        open={!!modalCambiarForma}
+        title={<Space><SwapOutlined style={{ color: token.colorPrimary }} />Cambiar forma de pago</Space>}
+        onCancel={() => setModalCambiarForma(null)}
+        onOk={() => {
+          if (!nuevaFormaVal) { message.warning('Selecciona la nueva forma de pago'); return; }
+          cambiarFormaMut.mutate({
+            id:         modalCambiarForma.id,
+            nuevaForma: nuevaFormaVal,
+            referencia: referenciaVal || undefined,
+          });
+        }}
+        confirmLoading={cambiarFormaMut.isPending}
+        okText="Cambiar y reemitir"
+        cancelText="Cancelar"
+        width={420}
+        destroyOnClose
+      >
+        {modalCambiarForma && (
+          <div style={{ padding: '4px 0' }}>
+            <div style={{
+              background: token.colorFillSecondary,
+              borderRadius: 8,
+              padding: '10px 14px',
+              marginBottom: 16,
+              fontSize: 13,
+            }}>
+              <div>Recibo: <strong style={{ fontFamily: 'monospace', color: token.colorSuccess }}>{modalCambiarForma.numero}</strong></div>
+              <div>Forma actual: <strong>{METODOS.find(m => m.value === modalCambiarForma.metodoPago)?.label ?? modalCambiarForma.metodoPago}</strong></div>
+              <div>Monto: <strong>{fmt(Number(modalCambiarForma.monto), modalCambiarForma.moneda)}</strong></div>
+            </div>
+            <div style={{ fontSize: 12, color: token.colorWarning, marginBottom: 12 }}>
+              ⚠ Esta acción anulará el recibo actual y emitirá uno nuevo con la nueva forma de pago.
+              Solo es posible si la caja del día está abierta.
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ marginBottom: 4, fontWeight: 500, fontSize: 13 }}>Nueva forma de pago <span style={{ color: 'red' }}>*</span></div>
+              <Select
+                style={{ width: '100%' }}
+                value={nuevaFormaVal || undefined}
+                placeholder="Seleccionar..."
+                onChange={v => setNuevaFormaVal(v)}
+                options={METODOS.filter(m => m.value !== modalCambiarForma.metodoPago).map(m => ({
+                  value: m.value, label: m.label,
+                }))}
+              />
+            </div>
+            <div>
+              <div style={{ marginBottom: 4, fontWeight: 500, fontSize: 13 }}>Referencia (opcional)</div>
+              <Input
+                placeholder="Número de tarjeta, banco, cheque #..."
+                value={referenciaVal}
+                onChange={e => setReferenciaVal(e.target.value)}
+              />
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* ── Modal: excedente sobre CxC → registrar como anticipo ─── */}

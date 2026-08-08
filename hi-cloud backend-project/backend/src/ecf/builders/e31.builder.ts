@@ -7,7 +7,7 @@
 import {
   ECFBuildInput, MSellerPayload,
   buildEmisor, assertEmisorOrder, toEmpresaConfig,
-  buildIdDoc, fmtFecha,
+  buildIdDoc, fmtFecha, addDias,
   buildCompradorRNC,
   EcfRncRequeridoError,
   resolverMoneda,
@@ -144,6 +144,16 @@ export function buildE31(input: ECFBuildInput): MSellerPayload {
     };
   }
 
+  // ── TipoPago: derivado de factura.tipoPago (CONTADO=1, CREDITO=2) ─────────
+  // Antes estaba hardcoded a 1; las facturas a crédito se declaraban incorrectamente
+  // a DGII como "Contado". XSD E31 confirma que TipoPago=2 es válido. §IdDoc.
+  const tipoPagoECF        = factura.tipoPago === 'CREDITO' ? 2 : 1;
+  const fechaLimitePagoECF = tipoPagoECF === 2
+    ? (factura.fechaVencimiento
+        ? fmtFecha(factura.fechaVencimiento)
+        : addDias(factura.fecha ?? new Date(), factura.diasCredito || 30))
+    : undefined;
+
   return {
     ECF: {
       Encabezado: {
@@ -155,7 +165,8 @@ export function buildE31(input: ECFBuildInput): MSellerPayload {
           indicadorEnvioDiferido: 1,
           indicadorMontoGravado:  0,
           tipoIngresos:           '01',
-          tipoPago:               1,
+          tipoPago:               tipoPagoECF,
+          fechaLimitePago:        fechaLimitePagoECF,
         }),
         Emisor:    emisor,
         Comprador: buildCompradorRNC(rnc, cliente?.nombre ?? 'Sin nombre',

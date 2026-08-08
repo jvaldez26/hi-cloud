@@ -8,7 +8,7 @@
 import {
   ECFBuildInput, MSellerPayload,
   buildEmisor, assertEmisorOrder, toEmpresaConfig,
-  buildIdDoc, fmtFecha,
+  buildIdDoc, fmtFecha, addDias,
   buildCompradorRNC,
   buildItemsE33,
   resolverMoneda,
@@ -128,6 +128,14 @@ export function buildE33(input: ECFBuildInput): MSellerPayload {
 
   logger.debug(`[E33] moneda=${(factura as any).moneda ?? 'DOP'} otraMoneda=${!!otraMoneda}`);
 
+  // ── TipoPago: derivado de factura.tipoPago (CONTADO=1, CREDITO=2) ─────────
+  const tipoPagoECF        = factura.tipoPago === 'CREDITO' ? 2 : 1;
+  const fechaLimitePagoECF = tipoPagoECF === 2
+    ? (factura.fechaVencimiento
+        ? fmtFecha(factura.fechaVencimiento)
+        : addDias(factura.fecha ?? new Date(), factura.diasCredito || 30))
+    : undefined;
+
   return {
     ECF: {
       Encabezado: {
@@ -138,7 +146,8 @@ export function buildE33(input: ECFBuildInput): MSellerPayload {
           fechaVencSec,
           indicadorMontoGravado: 0,
           tipoIngresos:          '01',
-          tipoPago:              1,
+          tipoPago:              tipoPagoECF,
+          fechaLimitePago:       fechaLimitePagoECF,
         }),
         Emisor:    emisor,
         Comprador: buildCompradorRNC(rnc, cliente?.nombre ?? 'Sin nombre',

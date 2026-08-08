@@ -6,7 +6,7 @@
 import {
   ECFBuildInput, MSellerPayload,
   buildEmisor, assertEmisorOrder, toEmpresaConfig,
-  buildIdDoc, fmtFecha,
+  buildIdDoc, fmtFecha, addDias,
   buildCompradorRNC, COMPRADOR_CONSUMIDOR_FINAL,
   EcfRncRequeridoError,
   resolverMoneda,
@@ -119,6 +119,14 @@ export function buildE32(input: ECFBuildInput): MSellerPayload {
         cliente?.direccion ? { DireccionComprador: cliente.direccion } : undefined)
     : { ...COMPRADOR_CONSUMIDOR_FINAL };
 
+  // ── TipoPago: derivado de factura.tipoPago (CONTADO=1, CREDITO=2) ─────────
+  const tipoPagoECF        = factura.tipoPago === 'CREDITO' ? 2 : 1;
+  const fechaLimitePagoECF = tipoPagoECF === 2
+    ? (factura.fechaVencimiento
+        ? fmtFecha(factura.fechaVencimiento)
+        : addDias(factura.fecha ?? new Date(), factura.diasCredito || 30))
+    : undefined;
+
   return {
     ECF: {
       Encabezado: {
@@ -129,7 +137,8 @@ export function buildE32(input: ECFBuildInput): MSellerPayload {
           indicadorEnvioDiferido: 1,
           indicadorMontoGravado:  0,
           tipoIngresos:           '01',
-          tipoPago:               1,
+          tipoPago:               tipoPagoECF,
+          fechaLimitePago:        fechaLimitePagoECF,
         }),
         Emisor:    emisor,
         Comprador: comprador,

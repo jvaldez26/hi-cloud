@@ -400,6 +400,68 @@ export class RecibosCobrosService {
     return { ok: true, mensaje: `Recibo ${recibo.numero} anulado y CxC revertida` };
   }
 
+  /**
+   * Cambia la forma de pago de un recibo activo.
+   * Anula el recibo original (revirtiendo CxC/Factura/asiento) y crea uno nuevo
+   * con la misma data pero con la nueva forma de pago. Solo permitido si la caja
+   * del recibo sigue abierta.
+   */
+  async cambiarFormaPago(
+    id:         number,
+    nuevaForma: MetodoPagoRecibo,
+    referencia: string | undefined,
+    usuarioId:  number,
+  ) {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const recibo    = await this.findOne(id);
+
+    if (recibo.metodoPago === nuevaForma) {
+      throw new BadRequestException('La nueva forma de pago es la misma que la actual.');
+    }
+
+    // Verificar que la caja asignada sigue abierta
+    if (recibo.cajaDiariaId) {
+      const [caja] = await this.dataSource.query<{ estado: string }[]>(
+        `SELECT estado FROM cierres_caja WHERE id = $1 AND "empresaId" = $2 LIMIT 1`,
+        [recibo.cajaDiariaId, empresaId],
+      );
+      if (!caja || caja.estado !== 'abierta') {
+        throw new BadRequestException(
+          'La caja de este recibo ya está cerrada. No se puede cambiar la forma de pago. ' +
+          'Contacte al administrador para gestionarlo.',
+        );
+      }
+    }
+
+    const numeroAnterior = recibo.numero;
+
+    // Anular el recibo original — revierte CxC, Factura, pago_cobrado y asiento
+    await this.eliminar(id);
+
+    // Crear el nuevo recibo con la nueva forma de pago
+    const resultado = await this.crear({
+      clienteId:     recibo.clienteId,
+      clienteNombre: recibo.clienteNombre,
+      fecha:         recibo.fecha,          // ya es string YYYY-MM-DD
+      monto:         Number(recibo.monto),
+      metodoPago:    nuevaForma,
+      concepto:      recibo.concepto,
+      facturaId:     recibo.facturaId,
+      facturaFolio:  recibo.facturaFolio,
+      cxcId:         recibo.cxcId,
+      referencia:    referencia ?? recibo.referencia,
+      notas:         `Reemisión de ${numeroAnterior}${recibo.notas ? ' — ' + recibo.notas : ''}`,
+      moneda:        recibo.moneda,
+      nombreUsuario: recibo.nombreUsuario,
+    }, usuarioId);
+
+    const reciboNuevo = (resultado as any)?.recibo ?? resultado;
+    this.logger.log(
+      `[cambiarFormaPago] ${numeroAnterior} anulado → ${reciboNuevo?.numero ?? '?'} (${nuevaForma})`,
+    );
+    return { reciboAnulado: numeroAnterior, reciboNuevo };
+  }
+
   async resumen() {
     const empresaId = this.tenantSvc.getEmpresaId();
     const hoy = fechaHoyRD();

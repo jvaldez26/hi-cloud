@@ -1,4 +1,4 @@
-import {Controller, Get, Post, Delete, Body, Param, Query,
+import {Controller, Get, Post, Patch, Delete, Body, Param, Query,
   ParseIntPipe, UseGuards, HttpCode, HttpStatus, Res, Logger} from '@nestjs/common';
 import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiHeader } from '@nestjs/swagger';
@@ -23,6 +23,14 @@ class RecibosQueryDto extends PaginationDto {
 import { RecibosCobrosService } from './recibos-cobro.service';
 import { ReciboPDFService } from './recibo-pdf.service';
 import { MetodoPagoRecibo } from './entities/recibo-cobro.entity';
+
+class CambiarFormaPagoDto {
+  @IsEnum(MetodoPagoRecibo)
+  nuevaForma!: MetodoPagoRecibo;
+
+  @IsOptional() @IsString()
+  referencia?: string;
+}
 
 class CreateReciboDto {
   @IsOptional() @IsInt() @IsPositive() @Type(() => Number)  clienteId?: number;
@@ -92,6 +100,18 @@ export class RecibosCobrosController {
   crear(@Body() dto: CreateReciboDto, @GetUser() user: User) {
     const hoy = fechaHoyRD();
     return this.svc.crear({ ...dto, fecha: dto.fecha ?? hoy, nombreUsuario: user.nombre }, user.id);
+  }
+
+  @Patch(':id/cambiar-forma-pago')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Cambiar forma de pago de un recibo activo (anula y reemite)' })
+  cambiarFormaPago(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CambiarFormaPagoDto,
+    @GetUser() user: User,
+  ) {
+    return this.svc.cambiarFormaPago(id, dto.nuevaForma, dto.referencia, user.id);
   }
 
   @Delete(':id')

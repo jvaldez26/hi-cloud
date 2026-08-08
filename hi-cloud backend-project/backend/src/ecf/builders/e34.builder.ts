@@ -89,7 +89,11 @@ export function buildE34(input: ECFBuildInput): MSellerPayload {
   const emisor     = buildEmisor(toEmpresaConfig(config), fecha);
   assertEmisorOrder(emisor);
 
-  const fechaLimite = addDias(factura.fecha ?? new Date(), 30);
+  // FechaLimitePago: usar la fecha de vencimiento real de la factura.
+  // Antes se calculaba siempre como fecha+30 días, ignorando diasCredito y fechaVencimiento.
+  const fechaLimite = factura.fechaVencimiento
+    ? fmtFecha(factura.fechaVencimiento)
+    : addDias(factura.fecha ?? new Date(), factura.diasCredito || 30);
   const indicadorNC = calcIndicadorNC(infoReferencia.FechaNCFModificado);
 
   // ── ITEMS: DOP como principal, OtraMonedaDetalle si USD ──────────────────
