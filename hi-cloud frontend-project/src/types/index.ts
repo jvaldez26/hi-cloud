@@ -85,6 +85,9 @@ export interface Producto {
   imagenUrl?:        string;
   isActive:          boolean;
   permiteDecimales?: boolean;
+  // Balanzas etiquetadoras
+  plu?:      number | null;
+  esPesable?: boolean;
 }
 
 // ── Facturas ──────────────────────────────────────────────────────────────────

@@ -108,4 +108,13 @@ export class BalanzaController {
       dto.tipoDato,
     );
   }
+
+  @Get('productos-sin-configurar')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({
+    summary: 'Lista productos con esPesable=true que no tienen PLU o tienen la unidad incorrecta',
+  })
+  productosSinConfigurar() {
+    return this.svc.productosSinConfigurar();
+  }
 }

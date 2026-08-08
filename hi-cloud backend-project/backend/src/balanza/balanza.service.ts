@@ -81,16 +81,72 @@ export class BalanzaService {
       dto.longitudValor !== undefined &&
       dto.longitudTotal !== undefined
     ) {
-      const suma = dto.prefijo.length + dto.longitudPlu + dto.longitudValor + 1;
+      // Invariante: prefijo + PLU + valor + (tieneCheckValor ? 1 : 0) + 1 = total
+      // longitudValor = dígitos de valor PUROS (sin incluir check interno)
+      const checkBonus = dto.tieneCheckValor === true ? 1 : 0;
+      const suma = dto.prefijo.length + dto.longitudPlu + dto.longitudValor + checkBonus + 1;
       if (suma !== dto.longitudTotal) {
         throw new BadRequestException(
-          `Geometría inválida: prefijo(${dto.prefijo.length}) + PLU(${dto.longitudPlu}) + valor(${dto.longitudValor}) + 1 = ${suma} ≠ longitudTotal(${dto.longitudTotal})`,
+          `Geometría inválida: prefijo(${dto.prefijo.length}) + PLU(${dto.longitudPlu}) + valor(${dto.longitudValor}) + checkBonus(${checkBonus}) + 1 = ${suma} ≠ longitudTotal(${dto.longitudTotal})`,
         );
       }
     }
     if (dto.tipoDato === 'precio' && dto.unidadPeso) {
       throw new BadRequestException('unidadPeso debe ser null cuando tipoDato = "precio"');
     }
+  }
+
+  // ── Diagnóstico ───────────────────────────────────────────────────────────
+
+  /**
+   * Retorna los productos pesables que no están completamente configurados:
+   *  - Sin PLU: la balanza no puede identificar el producto
+   *  - Unidad no encontrada en catálogo UOM o no es de tipo peso (advertencia)
+   *
+   * Accessible para ADMIN/CONTADOR/VENDEDOR — es lectura.
+   */
+  async productosSinConfigurar(): Promise<{
+    id: number;
+    codigo: string;
+    nombre: string;
+    unidadMedida: string;
+    plu: number | null;
+    sinPlu: boolean;
+    advertenciaUnidad: string | null;
+  }[]> {
+    const empresaId = this.empresaId;
+    const rows = await this.patronRepo.manager.query<any[]>(
+      `SELECT p.id, p.codigo, p.nombre, p."unidadMedida", p.plu,
+              u.codigo AS uomCodigo, u."permiteDecimales", u.tipo AS uomTipo
+       FROM productos p
+       LEFT JOIN unidades_medida u
+             ON LOWER(u.codigo) = LOWER(p."unidadMedida")
+            AND u."empresaId" = p."empresaId"
+            AND u."isActive" = true
+       WHERE p."esPesable" = true
+         AND p."empresaId" = $1
+         AND p."isActive" = true
+       ORDER BY p.nombre`,
+      [empresaId],
+    );
+
+    return rows.map(r => {
+      let advertenciaUnidad: string | null = null;
+      if (!r.uomCodigo) {
+        advertenciaUnidad = `La unidad '${r.unidadMedida}' no está registrada en el catálogo UOM`;
+      } else if (r.uomTipo !== 'peso' || !r.permiteDecimales) {
+        advertenciaUnidad = `La unidad '${r.unidadMedida}' no es de tipo peso con decimales`;
+      }
+      return {
+        id:                r.id,
+        codigo:            r.codigo,
+        nombre:            r.nombre,
+        unidadMedida:      r.unidadMedida,
+        plu:               r.plu ?? null,
+        sinPlu:            r.plu == null,
+        advertenciaUnidad,
+      };
+    });
   }
 
   // ── Formatos de exportación ────────────────────────────────────────────────

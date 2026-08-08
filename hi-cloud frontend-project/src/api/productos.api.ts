@@ -14,6 +14,9 @@ export interface ProductoPayload {
   marca?: string;
   modelo?: string;
   referencia?: string;
+  // Balanzas etiquetadoras
+  plu?: number | null;
+  esPesable?: boolean;
 }
 
 export const productosApi = {

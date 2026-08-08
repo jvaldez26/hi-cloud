@@ -866,6 +866,11 @@ function ProductosCatalogo() {
               <Tag color="orange" style={{ fontSize: 10, padding: '0 4px', lineHeight: '16px' }}>Pendiente</Tag>
             </Tooltip>
           )}
+          {(r as any).esPesable && !(r as any).plu && (
+            <Tooltip title="Producto pesable sin PLU asignado — configure el PLU en Configuración → Balanzas para que el escáner lo identifique">
+              <Tag color="warning" style={{ fontSize: 10, padding: '0 4px', lineHeight: '16px' }}>⚖ Sin PLU</Tag>
+            </Tooltip>
+          )}
         </Space>
       )},
     { title: 'Referencia', key: 'referencia', dataIndex: 'referencia', width: 120,

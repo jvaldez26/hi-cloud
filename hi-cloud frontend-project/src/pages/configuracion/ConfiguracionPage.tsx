@@ -11,9 +11,10 @@ import {
   BellOutlined, BankOutlined,
 } from '@ant-design/icons';
 import api from '../../api/client';
+import { SeccionBalanza } from './SeccionBalanza';
 import {
   Building2, MapPin, Palette, FileText, Monitor, ReceiptText,
-  Users, ShieldCheck, Bell, Lock, PieChart, Activity,
+  Users, ShieldCheck, Bell, Lock, PieChart, Activity, Scale,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { UploadFile } from 'antd';
@@ -60,7 +61,7 @@ const ROL_INFO: Record<string, { label: string; color: string; permisos: string[
 
 type SectionKey =
   | 'datos' | 'ubicacion' | 'branding'
-  | 'facturacion' | 'pos' | 'ecf'
+  | 'facturacion' | 'pos' | 'ecf' | 'balanza'
   | 'usuarios' | 'roles'
   | 'notificaciones' | 'seguridad' | 'plan' | 'auditoria';
 
@@ -81,6 +82,7 @@ const SIDEBAR_GROUPS: Array<{
     items: [
       { key: 'facturacion', label: 'Facturación',   Icon: FileText },
       { key: 'pos',         label: 'Punto de Venta', Icon: Monitor },
+      { key: 'balanza',     label: 'Balanzas',        Icon: Scale },
       { key: 'ecf',         label: 'e-CF — Estado',  Icon: ReceiptText, readonly: true },
     ],
   },
@@ -1976,6 +1978,7 @@ export default function ConfiguracionPage() {
       case 'branding':      return <SeccionBranding empresa={empresa} onSaved={handleSaved} />;
       case 'facturacion':   return <SeccionFacturacion empresa={empresa} onSaved={handleSaved} />;
       case 'pos':           return <SeccionPOS empresa={empresa} onSaved={handleSaved} />;
+      case 'balanza':       return <SeccionBalanza />;
       case 'ecf':           return <SeccionECF empresaId={empresaId} />;
       case 'usuarios':      return <SeccionUsuarios empresaId={empresaId} />;
       case 'roles':         return <SeccionRoles />;
