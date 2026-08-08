@@ -18,6 +18,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { facturasApi } from '../../api/facturas.api';
 import { inventarioApi } from '../../api/inventario.api';
 import { fmt, round2 } from '../../utils/formatters';
+import { validarEAN, parsearBalanza, type BalanzaPatronFrontend, type BalanzaMatchFrontend } from '../../utils/balanza-scan';
 import { resolverNombreComprador, resolverRncComprador } from '../../utils/facturaComprador';
 import { imprimirElemento, imprimirReciboTermico, imprimirPDFA4, imprimirFacturaPreviewA4 } from '../../utils/printUtils';
 import { imprimirReciboEscPos, conectarImpresora, desconectarImpresora, estaConectada, getNombreImpresora, imprimirPruebaEscPos, autoReconectarImpresora, bluetoothAutoReconexionDisponible, huboFalloWatchAdvertisements } from '../../services/thermalPrinter';
@@ -93,6 +94,11 @@ interface CartItem {
   descuentoMonto:   number;
   precioModificado?: boolean;
   precioLista?:     PrecioLista;  // qué lista de precio está aplicada
+  // ── Balanza etiquetadora ─────────────────────────────────────────────────────
+  esBalanza?:        boolean;           // línea proviene de etiqueta de balanza
+  balanzaTipoDato?:  'peso' | 'precio'; // qué codifica el campo de valor
+  balanzaUnidad?:    string;            // 'KG', 'LB', etc.
+  balanzaTotalFijo?: number;            // modo precio: total EXACTO de la etiqueta (bloqueado)
 }
 
 interface ParkedSale {
@@ -397,6 +403,12 @@ function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, o
   const uomCodigo = (item.produto as any).unidadMedida ?? 'PZA';
   const uomInfo = uomUnidades.find((u: any) => u.codigo === uomCodigo);
   const esFraccionable = uomInfo?.permiteDecimales ?? false;
+  // ── Balanza ────────────────────────────────────────────────────────────────
+  const esBalanzaPrecio        = item.esBalanza === true && item.balanzaTipoDato === 'precio';
+  const esBalanzaPeso          = item.esBalanza === true && item.balanzaTipoDato === 'peso';
+  // Balanza peso: mostrar cantidad decimal aunque UOM no esté en catálogo con permiteDecimales
+  const esFraccionableEfectivo = esFraccionable || esBalanzaPeso;
+  // ──────────────────────────────────────────────────────────────────────────
   const [descFocus,    setDescFocus]    = useState(false);
   const [precioDraft,  setPrecioDraft]  = useState<string | null>(null);
   const [qtyDraft,     setQtyDraft]     = useState<number | null>(item.cantidad);
@@ -407,7 +419,10 @@ function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, o
     prevCantidadRef.current = item.cantidad;
     setQtyDraft(item.cantidad);
   }
-  const sub = (item.precio - item.descuentoMonto) * item.cantidad;
+  // Para balanza precio: el total es el embebido en la etiqueta (fijo)
+  const sub = item.balanzaTotalFijo != null
+    ? item.balanzaTotalFijo
+    : (item.precio - item.descuentoMonto) * item.cantidad;
   const showDesc = descFocus || item.descuentoMonto > 0;
 
   const confirmarPrecio = (raw: string) => {
@@ -436,8 +451,27 @@ function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, o
         {/* Fila 1: nombre + total */}
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 5 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: C.text, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {item.produto.nombre}
+            <span style={{ fontSize: 12, fontWeight: 600, color: C.text, display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                {item.produto.nombre}
+              </span>
+              {item.esBalanza && (
+                <Tooltip title={
+                  item.balanzaTipoDato === 'precio'
+                    ? `Etiqueta balanza — total fijo $${item.balanzaTotalFijo?.toFixed(2)}`
+                    : `Etiqueta balanza — ${item.cantidad} ${item.balanzaUnidad ?? ''}`
+                }>
+                  <span style={{
+                    fontSize: 9, fontWeight: 700, padding: '1px 4px', borderRadius: 3,
+                    background: item.balanzaTipoDato === 'precio' ? '#7c3aed22' : '#0891b222',
+                    color: item.balanzaTipoDato === 'precio' ? '#7c3aed' : '#0891b2',
+                    border: `1px solid ${item.balanzaTipoDato === 'precio' ? '#7c3aed44' : '#0891b244'}`,
+                    whiteSpace: 'nowrap', flexShrink: 0,
+                  }}>
+                    ⚖{item.balanzaTipoDato === 'precio' ? ' fijo' : ` ${item.balanzaUnidad ?? ''}`}
+                  </span>
+                </Tooltip>
+              )}
             </span>
             <span style={{ fontSize: 11, color: C.textSub, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
               {permitirModificarPrecio ? (
@@ -520,9 +554,18 @@ function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, o
         </div>
 
         {/* Fila 2: controles */}
+        {/* Balanza precio fijo — sin controles de edición */}
+        {esBalanzaPrecio ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingTop: 2 }}>
+            <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, fontWeight: 600,
+              background: '#7c3aed22', color: '#7c3aed', border: '1px solid #7c3aed44' }}>
+              🔒 Precio fijo de etiqueta — eliminá y reescaneá para corregir
+            </span>
+          </div>
+        ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           {/* Cantidad — InputNumber para fraccionables (KG, LB, L…), botones +/− para enteros */}
-          {esFraccionable ? (
+          {esFraccionableEfectivo ? (
             <InputNumber
               size="small"
               value={qtyDraft}
@@ -643,6 +686,14 @@ function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, o
               background: 'rgba(239,68,68,.12)', color: C.red, cursor: 'pointer',
               fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', outline: 'none' }}>✕</button>
         </div>
+        )} {/* fin ternario esBalanzaPrecio */}
+        {/* Eliminar en modo precio fijo (el botón queda fuera del bloque de controles) */}
+        {esBalanzaPrecio && (
+          <button onClick={onRemove}
+            style={{ width: 26, height: 26, borderRadius: 6, border: 'none', marginTop: 2,
+              background: 'rgba(239,68,68,.12)', color: C.red, cursor: 'pointer',
+              fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', outline: 'none' }}>✕</button>
+        )}
       </div>
     </motion.div>
   );
@@ -713,11 +764,21 @@ function buildReciboTermicoHTML(
     const ivaPct     = esExento ? 0 : Number(item.produto.porcentajeIva ?? 18) / 100;
     const factor     = 1 + ivaPct;
     const precioNeto = item.precio - item.descuentoMonto;
-    const sub        = precioNeto * item.cantidad * factor;
+    // Balanza precio fijo: el total es el embebido en la etiqueta
+    const sub        = (item as any).balanzaTotalFijo != null
+      ? (item as any).balanzaTotalFijo * factor
+      : precioNeto * item.cantidad * factor;
     const nom        = item.produto.nombre.length > 26 ? item.produto.nombre.slice(0, 25) + '…' : item.produto.nombre;
     const modMark    = item.precioModificado ? ' *' : '';
-    const unitLine   = `<div class="row small"><span>  ${item.cantidad} × RD$${(precioNeto * factor).toFixed(2)}</span></div>`;
-    const itemLine   = `<div class="row"><span>${esc(nom + modMark)}</span><span>${sub.toFixed(2)}</span></div>`;
+    const balMark    = (item as any).esBalanza ? ' ⚖' : '';
+    // Cantidad con unidad correcta para balanza
+    const cantStr    = (item as any).esBalanza
+      ? `${item.cantidad.toFixed(3)} ${(item as any).balanzaUnidad ?? ''}`
+      : String(item.cantidad);
+    const unitLine   = (item as any).balanzaTipoDato === 'precio'
+      ? `<div class="row small"><span>  Precio fijo etiqueta</span></div>`
+      : `<div class="row small"><span>  ${cantStr} × RD$${(precioNeto * factor).toFixed(2)}</span></div>`;
+    const itemLine   = `<div class="row"><span>${esc(nom + modMark + balMark)}</span><span>${sub.toFixed(2)}</span></div>`;
     const descLine   = item.descuentoMonto > 0
       ? `<div class="row small"><span>  Desc: -RD$${(item.descuentoMonto * factor).toFixed(2)} c/u (orig. RD$${(item.precio * factor).toFixed(2)})</span></div>`
       : '';
@@ -8927,6 +8988,15 @@ export default function POSPage() {
   });
   const todosProdutos: any[] = (todosProdutosData as any)?.data ?? (todosProdutosData as any) ?? [];
 
+  // Precarga silenciosa de patrones de balanza — permite intercept offline en procesarScan
+  useQuery({
+    queryKey: ['balanza-patrones'],
+    queryFn:  () => api.get('/balanza/patrones').then((r: any) => r.data?.data ?? []),
+    staleTime: 5 * 60_000,   // 5 min
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+
   // FIX 1: también refrescar al recuperar el foco (el cajero vuelve de otra pestaña)
   useEffect(() => {
     const onFocus = () => { refetchProductos(); };
@@ -9260,6 +9330,60 @@ export default function POSPage() {
       .catch(() => { precioCache.current.set(cacheKey, null); });
   }, [clienteId, posPermitirStockNegativo, listaGlobal]);
 
+  /**
+   * Agrega una línea de balanza al carrito.
+   * SIEMPRE crea una línea nueva — nunca incrementa una existente,
+   * porque dos paquetes del mismo PLU tienen pesos distintos.
+   *
+   * @param producto   Producto encontrado por PLU
+   * @param match      Resultado del parser (plu, valor, tipoDato, patron)
+   */
+  const addBalanzaToCart = useCallback((
+    producto: Prod,
+    match:    BalanzaMatchFrontend,
+  ) => {
+    const precioBase  = Number(producto.precio);
+    const decimales   = match.patron.decimalesValor;
+
+    let cantidad: number;
+    let totalFijo: number | undefined;
+
+    if (match.tipoDato === 'precio') {
+      // valor = precio total embebido en la etiqueta
+      totalFijo = match.valor;
+      // cantidad = round a 4 decimales para que precio × cantidad = totalFijo (approx)
+      cantidad  = precioBase > 0
+        ? Math.round((match.valor / precioBase) * 10_000) / 10_000
+        : 1;
+    } else {
+      // valor = peso (kg, lb…)
+      cantidad  = match.valor;
+      totalFijo = undefined;
+    }
+
+    const nuevaLinea: CartItem = {
+      produto:          producto,
+      cantidad,
+      precio:           precioBase,
+      descuentoMonto:   0,
+      esBalanza:        true,
+      balanzaTipoDato:  match.tipoDato,
+      balanzaUnidad:    match.unidadPeso,
+      balanzaTotalFijo: totalFijo,
+    };
+
+    setCart(prev => [nuevaLinea, ...prev]); // prepend — siempre línea nueva
+
+    message.success(
+      match.tipoDato === 'precio'
+        ? `⚖ ${producto.nombre} — $${match.valor.toFixed(2)} (precio fijo)`
+        : `⚖ ${producto.nombre} — ${match.valor.toFixed(decimales)} ${match.unidadPeso ?? ''}`,
+      1.5,
+    );
+    setScanFlash(true);
+    setTimeout(() => setScanFlash(false), 600);
+  }, []);
+
   const updateQty = (idx: number, delta: number) => setCart(prev =>
     prev.map((it, i) => {
       if (i !== idx) return it;
@@ -9345,11 +9469,44 @@ export default function POSPage() {
       addToCart(found as Prod);
       setBarcodeInput('');
       message.success(`${(found as any).nombre} agregado`, 1);
-    } else {
-      message.warning(`Código "${trimmed}" no encontrado`, 2);
-      setBarcodeInput('');
+      return;
     }
-  }, [todosProdutos, addToCart]);
+
+    // 2. Balanza: interpretar EAN con patrones cacheados
+    if (/^\d{12,13}$/.test(trimmed)) {
+      const patronesCache = qc.getQueryData<BalanzaPatronFrontend[]>(['balanza-patrones']) ?? [];
+      if (patronesCache.length > 0) {
+        const match = parsearBalanza(trimmed, patronesCache);
+        if (match) {
+          const porPlu = catalog.find(
+            (p: any) => p.plu === match.plu && p.esPesable === true,
+          ) as Prod | undefined;
+          if (porPlu) {
+            if (match.tipoDato === 'peso' && match.unidadPeso) {
+              const uProd = (porPlu.unidadMedida ?? '').toUpperCase();
+              const uPat  = match.unidadPeso.toUpperCase();
+              if (uProd && uProd !== uPat) {
+                message.error(`⚖ El producto está en ${uProd} y la balanza envía ${uPat}. Corrija la configuración.`, 4);
+                setBarcodeInput('');
+                return;
+              }
+            }
+            addBalanzaToCart(porPlu, match);
+            setBarcodeInput('');
+            return;
+          } else {
+            const pluStr = String(match.plu).padStart(match.patron.longitudPlu, '0');
+            message.error(`⚖ PLU ${pluStr} no está asignado a ningún producto.`, 4);
+            setBarcodeInput('');
+            return;
+          }
+        }
+      }
+    }
+
+    message.warning(`Código "${trimmed}" no encontrado`, 2);
+    setBarcodeInput('');
+  }, [todosProdutos, addToCart, addBalanzaToCart, qc]);
 
   // ── SCANNER HID — listener global con buffer + timeout 500ms ─────────────────
   const procesarScan = useCallback((codigo: string) => {
@@ -9395,7 +9552,50 @@ export default function POSPage() {
       return;
     }
 
-    // 2. Fallback: producto no encontrado localmente (fuera del catálogo cargado)
+    // 2. ── Balanza: interpretar código EAN con patrones activos ───────────────
+    // Solo si el código es numérico de 12-13 dígitos (potencial EAN de balanza).
+    // Los patrones están cacheados en react-query — sin petición de red.
+    // Un producto local con ese código exacto ya ganó en el paso 1.
+    if (/^\d{12,13}$/.test(trimmed)) {
+      const patronesCache = qc.getQueryData<BalanzaPatronFrontend[]>(['balanza-patrones']) ?? [];
+      if (patronesCache.length > 0) {
+        const match = parsearBalanza(trimmed, patronesCache);
+        if (match) {
+          // Buscar producto por PLU entre los cargados localmente
+          const porPlu = todosProdutos.find(
+            (p: any) => p.plu === match.plu && p.esPesable === true,
+          ) as Prod | undefined;
+
+          if (!porPlu) {
+            const pluStr = String(match.plu).padStart(match.patron.longitudPlu, '0');
+            message.error(`⚖ PLU ${pluStr} no está asignado a ningún producto. Verifique Configuración → Balanzas.`, 4);
+            return;
+          }
+
+          // Validar que esPesable está marcado
+          if (!(porPlu as any).esPesable) {
+            message.warning(`⚖ ${porPlu.nombre} no está marcado como pesable. Configure el producto.`, 3);
+            return;
+          }
+
+          // Validar unidad (solo si el patrón especifica unidad)
+          if (match.tipoDato === 'peso' && match.unidadPeso) {
+            const uProd = (porPlu.unidadMedida ?? '').toUpperCase();
+            const uPat  = match.unidadPeso.toUpperCase();
+            if (uProd && uProd !== uPat) {
+              message.error(`⚖ El producto está en ${uProd} y la balanza envía ${uPat}. Corrija la configuración.`, 4);
+              return;
+            }
+          }
+
+          setSearch('');
+          addBalanzaToCart(porPlu, match);
+          return;
+        }
+      }
+    }
+
+    // 3. Fallback: producto no encontrado localmente (fuera del catálogo cargado)
     setSearch('');
     const fetchConRetry = (intento: number): Promise<void> =>
       api.get(`/productos?search=${encodeURIComponent(trimmed)}&limit=5`)
@@ -9437,7 +9637,7 @@ export default function POSPage() {
         });
 
     fetchConRetry(0).finally(() => setTimeout(() => searchRef.current?.focus(), 50));
-  }, [addToCart, todosProdutos, posPermitirStockNegativo]);
+  }, [addToCart, addBalanzaToCart, todosProdutos, posPermitirStockNegativo, qc]);
 
   useEffect(() => {
     // Un scanner HID envía chars a <10ms de intervalo; un humano tarda >100ms.
