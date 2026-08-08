@@ -149,6 +149,37 @@ export class BalanzaService {
     });
   }
 
+  /**
+   * Retorna todos los productos pesables con PLU asignado,
+   * listos para exportar al catálogo de la balanza.
+   * Solo accesible para ADMIN/CONTADOR (contiene precio).
+   */
+  async catalogoPesables(): Promise<{
+    id: number;
+    plu: number;
+    nombre: string;
+    precio: number;
+    iva: number;
+    categoria: string | null;
+    codigo: string;
+    codigoBarras: string | null;
+    unidadMedida: string;
+  }[]> {
+    const empresaId = this.empresaId;
+    return this.patronRepo.manager.query<any[]>(
+      `SELECT p.id, p.plu, p.nombre, CAST(p.precio AS FLOAT) AS precio,
+              p."porcentajeIva" AS iva, p.categoria, p.codigo,
+              p."codigoBarras", p."unidadMedida"
+       FROM productos p
+       WHERE p."esPesable" = true
+         AND p.plu IS NOT NULL
+         AND p."empresaId" = $1
+         AND p."isActive" = true
+       ORDER BY p.plu`,
+      [empresaId],
+    );
+  }
+
   // ── Formatos de exportación ────────────────────────────────────────────────
 
   async listarFormatos(): Promise<BalanzaFormatoExportacion[]> {
@@ -160,6 +191,15 @@ export class BalanzaService {
 
   async crearFormato(dto: CreateFormatoDto): Promise<BalanzaFormatoExportacion> {
     const formato = this.formatoRepo.create({ ...dto, empresaId: this.empresaId });
+    return this.formatoRepo.save(formato);
+  }
+
+  async actualizarFormato(id: number, dto: CreateFormatoDto): Promise<BalanzaFormatoExportacion> {
+    const formato = await this.formatoRepo.findOne({
+      where: { id, empresaId: this.empresaId, isActive: true },
+    });
+    if (!formato) throw new NotFoundException(`Formato ${id} no encontrado`);
+    Object.assign(formato, dto);
     return this.formatoRepo.save(formato);
   }
 

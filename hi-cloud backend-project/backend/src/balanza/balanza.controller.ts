@@ -117,4 +117,23 @@ export class BalanzaController {
   productosSinConfigurar() {
     return this.svc.productosSinConfigurar();
   }
+
+  @Get('catalogo-pesables')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Lista productos pesables con PLU asignado, para exportar al catálogo de la balanza' })
+  catalogoPesables() {
+    return this.svc.catalogoPesables();
+  }
+
+  // ── Formatos de exportación — PATCH ──────────────────────────────────────
+
+  @Patch('formatos/:id')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Actualiza un formato de exportación' })
+  actualizarFormato(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreateFormatoDto,
+  ) {
+    return this.svc.actualizarFormato(id, dto);
+  }
 }

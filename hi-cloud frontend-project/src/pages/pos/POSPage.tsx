@@ -8623,6 +8623,7 @@ export default function POSPage() {
   const qc           = useQueryClient();
   const user               = useAuthStore(s => s.user);
   const almacenActual      = useAuthStore(s => s.almacenActual);
+  const empresaActual      = useAuthStore(s => s.empresaActual);
   const setSucursalActualPOS = useAuthStore(s => s.setSucursalActual);
   const setAlmacenActualPOS  = useAuthStore(s => s.setAlmacenActual);
 
@@ -8988,13 +8989,15 @@ export default function POSPage() {
   });
   const todosProdutos: any[] = (todosProdutosData as any)?.data ?? (todosProdutosData as any) ?? [];
 
-  // Precarga silenciosa de patrones de balanza — permite intercept offline en procesarScan
+  // Precarga silenciosa de patrones de balanza — permite intercept offline en procesarScan.
+  // Key con empresaActual: al cambiar de tenant el caché queda huérfano y no contamina la nueva sesión.
+  // refetchOnWindowFocus: true garantiza que al volver de Configuración → Balanzas se reciben patrones nuevos.
   useQuery({
-    queryKey: ['balanza-patrones'],
+    queryKey: ['balanza-patrones', empresaActual],
     queryFn:  () => api.get('/balanza/patrones').then((r: any) => r.data?.data ?? []),
-    staleTime: 5 * 60_000,   // 5 min
+    staleTime: 60_000,   // 1 min — refetchOnWindowFocus lo renueva al volver de otra pestaña
     retry: false,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
   });
 
   // FIX 1: también refrescar al recuperar el foco (el cajero vuelve de otra pestaña)
@@ -9474,7 +9477,7 @@ export default function POSPage() {
 
     // 2. Balanza: interpretar EAN con patrones cacheados
     if (/^\d{12,13}$/.test(trimmed)) {
-      const patronesCache = qc.getQueryData<BalanzaPatronFrontend[]>(['balanza-patrones']) ?? [];
+      const patronesCache = qc.getQueryData<BalanzaPatronFrontend[]>(['balanza-patrones', empresaActual]) ?? [];
       if (patronesCache.length > 0) {
         const match = parsearBalanza(trimmed, patronesCache);
         if (match) {
@@ -9506,7 +9509,7 @@ export default function POSPage() {
 
     message.warning(`Código "${trimmed}" no encontrado`, 2);
     setBarcodeInput('');
-  }, [todosProdutos, addToCart, addBalanzaToCart, qc]);
+  }, [todosProdutos, addToCart, addBalanzaToCart, qc, empresaActual]);
 
   // ── SCANNER HID — listener global con buffer + timeout 500ms ─────────────────
   const procesarScan = useCallback((codigo: string) => {
@@ -9557,7 +9560,7 @@ export default function POSPage() {
     // Los patrones están cacheados en react-query — sin petición de red.
     // Un producto local con ese código exacto ya ganó en el paso 1.
     if (/^\d{12,13}$/.test(trimmed)) {
-      const patronesCache = qc.getQueryData<BalanzaPatronFrontend[]>(['balanza-patrones']) ?? [];
+      const patronesCache = qc.getQueryData<BalanzaPatronFrontend[]>(['balanza-patrones', empresaActual]) ?? [];
       if (patronesCache.length > 0) {
         const match = parsearBalanza(trimmed, patronesCache);
         if (match) {
@@ -9637,7 +9640,7 @@ export default function POSPage() {
         });
 
     fetchConRetry(0).finally(() => setTimeout(() => searchRef.current?.focus(), 50));
-  }, [addToCart, addBalanzaToCart, todosProdutos, posPermitirStockNegativo, qc]);
+  }, [addToCart, addBalanzaToCart, todosProdutos, posPermitirStockNegativo, qc, empresaActual]);
 
   useEffect(() => {
     // Un scanner HID envía chars a <10ms de intervalo; un humano tarda >100ms.

@@ -17,8 +17,13 @@ import {
 import {
   ScanOutlined, PlusOutlined, DeleteOutlined, EditOutlined,
   CheckCircleOutlined, CloseCircleOutlined, WarningOutlined,
-  ArrowRightOutlined, ReloadOutlined, InfoCircleOutlined,
+  ArrowRightOutlined, ReloadOutlined, InfoCircleOutlined, DownloadOutlined,
 } from '@ant-design/icons';
+import {
+  type CampoExportacion, type ConfigExportBal, type FormatoArchivo, type CodificacionBal,
+  type ProductoCatalogoBal, type ColumnaExportBal,
+  CAMPOS_DISPONIBLES, generarExportacion, previsualizarExportacion, descargar,
+} from '../../utils/balanza-export';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
 import { useAuthStore } from '../../store/auth.store';
@@ -84,9 +89,25 @@ interface ProductoSinConfig {
 interface Formato {
   id: number;
   nombre: string;
+  formato: 'CSV' | 'TXT';
   separador?: string;
-  columnas: { campo: string; largo: number }[];
+  limiteNombre: number;
+  codificacion: string;
+  columnas: ColumnaExportBal[];
 }
+
+/** Cuerpo para crear / actualizar un formato (refleja CreateFormatoDto del backend). */
+interface CreateFormatoBody {
+  nombre:       string;
+  formato:      string;
+  separador?:   string;
+  limiteNombre: number;
+  codificacion: string;
+  columnas:     ColumnaExportBal[];
+}
+
+/** Producto pesable con PLU, tal como devuelve GET /balanza/catalogo-pesables. */
+type ProductoCatalogo = ProductoCatalogoBal;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -121,10 +142,14 @@ const balanzaApi = {
     api.delete(`/balanza/patrones/${id}`),
   listarFormatos: () =>
     api.get<{ data: Formato[] }>('/balanza/formatos').then(r => r.data.data),
-  crearFormato: (body: Omit<Formato, 'id'>) =>
+  crearFormato: (body: CreateFormatoBody) =>
     api.post<{ data: Formato }>('/balanza/formatos', body).then(r => r.data.data),
+  actualizarFormato: (id: number, body: CreateFormatoBody) =>
+    api.patch<{ data: Formato }>(`/balanza/formatos/${id}`, body).then(r => r.data.data),
   eliminarFormato: (id: number) =>
     api.delete(`/balanza/formatos/${id}`),
+  catalogoPesables: () =>
+    api.get<{ data: ProductoCatalogo[] }>('/balanza/catalogo-pesables').then(r => r.data.data),
   probar: (codigo: string) =>
     api.post<{ data: ProbarResponse }>('/balanza/probar', { codigo }).then(r => r.data.data),
   calibrarFiltrar: (payload: { codigo: string; plu: number; valor: number; tipoDato: TipoDato }) =>
@@ -1121,30 +1146,88 @@ function TabSinConfigurar() {
 
 // ── Tab 5: Formatos de exportación ───────────────────────────────────────────
 
+interface ColumnaState {
+  campo:   CampoExportacion;
+  titulo:  string;
+  ancho:   number;
+  incluir: boolean;
+}
+
+function defaultColumnasState(formato: Formato | null = null): ColumnaState[] {
+  return CAMPOS_DISPONIBLES.map(c => {
+    const guardada = formato?.columnas.find(col => col.campo === c.campo);
+    return {
+      campo:   c.campo,
+      titulo:  guardada?.titulo ?? c.titulo,
+      ancho:   guardada?.ancho  ?? c.anchoDefault,
+      incluir: guardada != null || c.campo === 'plu' || c.campo === 'nombre' || c.campo === 'precio',
+    };
+  });
+}
+
+const EJEMPLO_NOMBRE = 'Queso Parmesano Extra Añejado';
+
 function TabFormatos({ isAdmin }: { isAdmin: boolean }) {
   const qc = useQueryClient();
-  const [modalVisible, setModalVisible] = useState(false);
   const [form] = Form.useForm();
+  const [modalMode, setModalMode] = useState<'none' | 'crear' | 'editar'>('none');
+  const [editando, setEditando] = useState<Formato | null>(null);
+  const [exportPanel, setExportPanel] = useState<Formato | null>(null);
+  const [columnasState, setColumnasState] = useState<ColumnaState[]>(() => defaultColumnasState());
+  const [conEncabezado, setConEncabezado] = useState(true);
+
+  const formatoForm      = Form.useWatch('formato', form) as 'CSV' | 'TXT' | undefined;
+  const limiteNombreForm = Form.useWatch('limiteNombre', form) as number | undefined;
+
+  // ── Queries ────────────────────────────────────────────────────────────────
 
   const { data: formatos = [], isLoading } = useQuery({
     queryKey: ['balanza-formatos'],
-    queryFn: balanzaApi.listarFormatos,
+    queryFn:  balanzaApi.listarFormatos,
   });
 
+  const {
+    data:    catalogo = [],
+    isLoading: catalogoLoading,
+    refetch: refetchCatalogo,
+  } = useQuery({
+    queryKey: ['balanza-catalogo-pesables'],
+    queryFn:  balanzaApi.catalogoPesables,
+    enabled:  exportPanel != null,
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: sinConfigData = [] } = useQuery({
+    queryKey: ['balanza-productos-sin-configurar'],
+    queryFn:  balanzaApi.productosSinConfigurar,
+    staleTime: 60_000,
+  });
+  const sinPluCount = sinConfigData.filter(p => p.sinPlu).length;
+
+  // ── Mutations ──────────────────────────────────────────────────────────────
+
   const crear = useMutation({
-    mutationFn: (vals: any) =>
-      balanzaApi.crearFormato({
-        nombre: vals.nombre,
-        separador: vals.separador,
-        columnas: [],
-      }),
+    mutationFn: (body: CreateFormatoBody) => balanzaApi.crearFormato(body),
     onSuccess: () => {
       message.success('Formato creado');
-      setModalVisible(false);
+      setModalMode('none');
       form.resetFields();
       qc.invalidateQueries({ queryKey: ['balanza-formatos'] });
     },
-    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al crear'),
+  });
+
+  const editarMutation = useMutation({
+    mutationFn: ({ id, body }: { id: number; body: CreateFormatoBody }) =>
+      balanzaApi.actualizarFormato(id, body),
+    onSuccess: () => {
+      message.success('Formato actualizado');
+      setModalMode('none');
+      setEditando(null);
+      form.resetFields();
+      qc.invalidateQueries({ queryKey: ['balanza-formatos'] });
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al actualizar'),
   });
 
   const eliminar = useMutation({
@@ -1152,95 +1235,390 @@ function TabFormatos({ isAdmin }: { isAdmin: boolean }) {
     onSuccess: () => {
       message.success('Formato eliminado');
       qc.invalidateQueries({ queryKey: ['balanza-formatos'] });
+      setExportPanel(null);
     },
-    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al eliminar'),
   });
 
-  const columns = [
+  // ── Handlers ───────────────────────────────────────────────────────────────
+
+  const abrirCrear = () => {
+    setEditando(null);
+    setColumnasState(defaultColumnasState(null));
+    form.resetFields();
+    form.setFieldsValue({ formato: 'CSV', separador: ';', codificacion: 'UTF-8', limiteNombre: 20 });
+    setModalMode('crear');
+  };
+
+  const abrirEditar = (f: Formato) => {
+    setEditando(f);
+    setColumnasState(defaultColumnasState(f));
+    form.setFieldsValue({
+      nombre:       f.nombre,
+      formato:      f.formato,
+      separador:    f.separador,
+      codificacion: f.codificacion,
+      limiteNombre: f.limiteNombre,
+    });
+    setModalMode('editar');
+  };
+
+  const handleSubmit = (vals: any) => {
+    const columnas: ColumnaExportBal[] = columnasState
+      .filter(c => c.incluir)
+      .map(c => ({ campo: c.campo, titulo: c.titulo, ancho: c.ancho }));
+    if (columnas.length === 0) {
+      message.warning('Selecciona al menos una columna');
+      return;
+    }
+    const body: CreateFormatoBody = {
+      nombre:       vals.nombre,
+      formato:      vals.formato,
+      separador:    vals.separador ?? undefined,
+      codificacion: vals.codificacion,
+      limiteNombre: vals.limiteNombre,
+      columnas,
+    };
+    if (modalMode === 'editar' && editando) {
+      editarMutation.mutate({ id: editando.id, body });
+    } else {
+      crear.mutate(body);
+    }
+  };
+
+  const buildConfig = (f: Formato): ConfigExportBal => ({
+    formato:       f.formato as FormatoArchivo,
+    separador:     f.separador ?? ',',
+    codificacion:  f.codificacion as CodificacionBal,
+    limiteNombre:  f.limiteNombre,
+    columnas:      f.columnas.map(c => ({
+      campo:  c.campo as CampoExportacion,
+      titulo: c.titulo,
+      ancho:  c.ancho ?? 10,
+    })),
+    conEncabezado,
+  });
+
+  const handleDescargar = () => {
+    if (!exportPanel || catalogo.length === 0) return;
+    const { bytes, nombreArchivo, mimeType } = generarExportacion(catalogo, buildConfig(exportPanel));
+    descargar(bytes, nombreArchivo, mimeType);
+    message.success(`Descargado: ${catalogo.length} productos`);
+  };
+
+  // ── Preview ────────────────────────────────────────────────────────────────
+
+  const previewText = exportPanel && catalogo.length > 0
+    ? previsualizarExportacion(catalogo, buildConfig(exportPanel), 8)
+    : '';
+
+  const previewNombre = EJEMPLO_NOMBRE.slice(0, limiteNombreForm ?? 20);
+
+  // ── Columnas de la tabla de formatos ──────────────────────────────────────
+
+  const formatColumns = [
     { title: 'Nombre', dataIndex: 'nombre', key: 'nombre' },
     {
-      title: 'Separador',
-      dataIndex: 'separador',
-      key: 'separador',
-      width: 100,
-      render: (v?: string) => v ? <Text code>{v}</Text> : '—',
+      title: 'Tipo', dataIndex: 'formato', key: 'formato', width: 60,
+      render: (v: string) => <Tag>{v}</Tag>,
     },
     {
-      title: 'Columnas',
-      dataIndex: 'columnas',
-      key: 'columnas',
-      render: (cols: Formato['columnas']) => cols?.length ?? 0,
-      width: 80,
-    },
-    ...(isAdmin ? [{
-      title: '',
-      key: 'acciones',
-      width: 60,
-      render: (_: any, r: Formato) => (
-        <Popconfirm
-          title="¿Eliminar este formato?"
-          onConfirm={() => eliminar.mutate(r.id)}
-          okText="Sí" cancelText="No"
-        >
-          <Button size="small" danger icon={<DeleteOutlined />} />
-        </Popconfirm>
+      title: 'Codificación', dataIndex: 'codificacion', key: 'codificacion', width: 130,
+      render: (v: string) => (
+        <Tag color={v === 'ASCII' ? 'default' : v === 'UTF-8' ? 'blue' : 'orange'}>{v}</Tag>
       ),
-    }] : []),
+    },
+    { title: 'Lím. nombre', dataIndex: 'limiteNombre', key: 'limiteNombre', width: 95 },
+    {
+      title: 'Columnas', dataIndex: 'columnas', key: 'columnas', width: 78,
+      render: (cols: any[]) => cols?.length ?? 0,
+    },
+    {
+      title: '', key: 'acciones', width: 165,
+      render: (_: any, r: Formato) => (
+        <Space size={4}>
+          <Button
+            size="small" type="primary"
+            icon={<DownloadOutlined />}
+            onClick={() => { setExportPanel(r); setConEncabezado(true); }}
+          >
+            Exportar
+          </Button>
+          {isAdmin && (
+            <>
+              <Button size="small" icon={<EditOutlined />} onClick={() => abrirEditar(r)} />
+              <Popconfirm
+                title="¿Eliminar este formato?"
+                onConfirm={() => eliminar.mutate(r.id)}
+                okText="Sí" cancelText="No"
+              >
+                <Button size="small" danger icon={<DeleteOutlined />} />
+              </Popconfirm>
+            </>
+          )}
+        </Space>
+      ),
+    },
   ];
 
+  // ── Render ─────────────────────────────────────────────────────────────────
+
   return (
-    <>
-      <Alert
-        type="info"
-        showIcon
-        message="Exportación de catálogo"
-        description="Define formatos de archivo para exportar el catálogo de productos a la balanza. La exportación de archivos se implementará en la siguiente versión."
-        style={{ marginBottom: 12 }}
-      />
-      {isAdmin && (
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => setModalVisible(true)}
-          style={{ marginBottom: 12 }}
-        >
-          Nuevo formato
-        </Button>
+    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      {sinPluCount > 0 && (
+        <Alert
+          type="warning" showIcon
+          message={`${sinPluCount} producto${sinPluCount !== 1 ? 's' : ''} pesable${sinPluCount !== 1 ? 's' : ''} sin PLU`}
+          description="Esos productos quedan excluidos de cualquier exportación. Asígnales un PLU en Inventario → Productos."
+        />
       )}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <Text type="secondary">Define formatos de archivo para exportar el catálogo pesable a la balanza.</Text>
+        {isAdmin && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={abrirCrear}>
+            Nuevo formato
+          </Button>
+        )}
+      </div>
+
       <Table
         dataSource={formatos}
-        columns={columns}
+        columns={formatColumns}
         rowKey="id"
         loading={isLoading}
         size="small"
         pagination={false}
         locale={{ emptyText: <Empty description="Sin formatos configurados" /> }}
+        rowClassName={(r: Formato) => exportPanel?.id === r.id ? 'ant-table-row-selected' : ''}
       />
+
+      {/* ── Panel de exportación ─────────────────────────────────────────── */}
+      {exportPanel && (
+        <Card
+          size="small"
+          title={
+            <Space>
+              <DownloadOutlined />
+              <Text strong>Exportar: {exportPanel.nombre}</Text>
+            </Space>
+          }
+          extra={<Button size="small" onClick={() => setExportPanel(null)}>Cerrar</Button>}
+          style={{ border: '1px solid #1677ff40', background: '#f0f5ff' }}
+        >
+          <Space direction="vertical" size={12} style={{ width: '100%' }}>
+            <Space wrap>
+              <Tag>{exportPanel.formato}</Tag>
+              <Tag color={exportPanel.codificacion === 'UTF-8' ? 'blue' : 'orange'}>
+                {exportPanel.codificacion}
+              </Tag>
+              {exportPanel.formato === 'CSV' && exportPanel.separador && (
+                <Tag>sep: <Text code>{exportPanel.separador === '\t' ? 'TAB' : exportPanel.separador}</Text></Tag>
+              )}
+              <Tag>lím. nombre: {exportPanel.limiteNombre} chars</Tag>
+              <Tag>{exportPanel.columnas.length} col.</Tag>
+            </Space>
+
+            {exportPanel.codificacion === 'ASCII' && (
+              <Alert type="info" showIcon
+                message="Codificación ASCII: los acentos se transliteran (á→a, é→e, ñ→n…). El archivo no contiene caracteres especiales."
+              />
+            )}
+            {(exportPanel.codificacion === 'ISO-8859-1' || exportPanel.codificacion === 'Windows-1252') && (
+              <Alert type="info" showIcon
+                message={`${exportPanel.codificacion}: cubre todos los caracteres del español. Abre en Excel sin caracteres raros.`}
+              />
+            )}
+
+            <Space align="center" wrap>
+              <Switch
+                checked={conEncabezado}
+                onChange={setConEncabezado}
+                checkedChildren="Con encabezado"
+                unCheckedChildren="Sin encabezado"
+                size="small"
+              />
+              {catalogoLoading
+                ? <Spin size="small" />
+                : (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {catalogo.length} producto{catalogo.length !== 1 ? 's' : ''} para exportar
+                    {sinPluCount > 0 ? ` (${sinPluCount} excluido${sinPluCount !== 1 ? 's' : ''} sin PLU)` : ''}
+                  </Text>
+                )
+              }
+              <Button size="small" icon={<ReloadOutlined />} onClick={() => refetchCatalogo()}>Recargar</Button>
+            </Space>
+
+            {previewText ? (
+              <div>
+                <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+                  Vista previa — primeros 8 productos (visualización UTF-8, independiente de la codificación del archivo):
+                </Text>
+                <pre style={{
+                  background: '#1a1a2e', color: '#e0e0ff',
+                  padding: 10, borderRadius: 6,
+                  fontSize: 12, fontFamily: 'Consolas, "Courier New", monospace',
+                  overflowX: 'auto', maxHeight: 260, lineHeight: 1.5, margin: 0,
+                }}>
+                  {previewText}
+                </pre>
+              </div>
+            ) : catalogoLoading ? (
+              <Spin tip="Cargando catálogo…" />
+            ) : catalogo.length === 0 && (
+              <Alert type="warning" showIcon
+                message="No hay productos pesables con PLU asignado."
+                description="Abre un producto en Inventario → Productos, activa «Pesable» y asigna su PLU."
+              />
+            )}
+
+            {catalogo.length > 0 && (
+              <Button
+                type="primary" icon={<DownloadOutlined />}
+                onClick={handleDescargar}
+                disabled={catalogoLoading}
+              >
+                Descargar archivo ({exportPanel.codificacion})
+              </Button>
+            )}
+          </Space>
+        </Card>
+      )}
+
+      {/* ── Modal creación / edición ──────────────────────────────────────── */}
       <Modal
-        title="Nuevo formato de exportación"
-        open={modalVisible}
+        title={modalMode === 'editar' ? 'Editar formato de exportación' : 'Nuevo formato de exportación'}
+        open={modalMode !== 'none'}
         footer={null}
-        onCancel={() => { setModalVisible(false); form.resetFields(); }}
+        onCancel={() => { setModalMode('none'); setEditando(null); form.resetFields(); }}
         destroyOnClose
+        width={640}
       >
-        <Form form={form} layout="vertical" onFinish={crear.mutate}>
+        <Form form={form} layout="vertical" onFinish={handleSubmit}>
           <Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}>
             <Input placeholder="Ej: Dibal G-300 CSV" maxLength={100} />
           </Form.Item>
-          <Form.Item name="separador" label="Separador de campos">
-            <Select allowClear placeholder="Vacío = longitud fija">
-              <Option value=",">,  (coma)</Option>
-              <Option value=";">; (punto y coma)</Option>
-              <Option value="|">| (barra)</Option>
-              <Option value="\t">TAB</Option>
-            </Select>
-          </Form.Item>
-          <Button type="primary" htmlType="submit" loading={crear.isPending} block>
-            Crear formato
-          </Button>
+
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <Form.Item name="formato" label="Tipo de formato" rules={[{ required: true }]} style={{ flex: 1, minWidth: 160 }}>
+              <Select>
+                <Option value="CSV">CSV (delimitado)</Option>
+                <Option value="TXT">TXT (ancho fijo)</Option>
+              </Select>
+            </Form.Item>
+            {formatoForm === 'CSV' && (
+              <Form.Item name="separador" label="Separador" style={{ width: 200 }}>
+                <Select placeholder="Elegir">
+                  <Option value=";">; (punto y coma — recomendado)</Option>
+                  <Option value=",">, (coma)</Option>
+                  <Option value="|">| (barra vertical)</Option>
+                  <Option value={'\t'}>→ (tabulador)</Option>
+                </Select>
+              </Form.Item>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <Form.Item name="codificacion" label="Codificación del archivo" rules={[{ required: true }]} style={{ flex: 1, minWidth: 200 }}>
+              <Select>
+                <Option value="UTF-8">UTF-8 — acentos y ñ nativos</Option>
+                <Option value="ISO-8859-1">ISO-8859-1 — balanzas europeas</Option>
+                <Option value="Windows-1252">Windows-1252 — compatible Excel</Option>
+                <Option value="ASCII">ASCII — transliteración (á→a, ñ→n)</Option>
+              </Select>
+            </Form.Item>
+            <Form.Item
+              name="limiteNombre"
+              rules={[{ required: true }]}
+              style={{ width: 175 }}
+              label={
+                <Tooltip title={`Ejemplo: "${EJEMPLO_NOMBRE}" → "${previewNombre}"`}>
+                  Límite de nombre (chars)&nbsp;<InfoCircleOutlined />
+                </Tooltip>
+              }
+            >
+              <InputNumber min={5} max={200} style={{ width: '100%' }} />
+            </Form.Item>
+          </div>
+
+          {limiteNombreForm != null && (
+            <div style={{ marginBottom: 12, fontSize: 12, color: '#888' }}>
+              Ej:&nbsp;<Text type="secondary">"{EJEMPLO_NOMBRE}"</Text>
+              &nbsp;→&nbsp;
+              <Text code style={{ fontSize: 12 }}>"{EJEMPLO_NOMBRE.slice(0, limiteNombreForm)}"</Text>
+            </div>
+          )}
+
+          <Divider orientation="left" style={{ fontSize: 13, margin: '8px 0 8px' }}>
+            Columnas a exportar
+          </Divider>
+          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+            {formatoForm === 'TXT'
+              ? 'Ancho fijo: cada columna ocupa exactamente N caracteres (se rellena con espacios o se trunca).'
+              : 'El separador delimita las columnas en CSV; el campo "Ancho" se usa como referencia de longitud máxima.'}
+          </Text>
+
+          <Table
+            dataSource={columnasState}
+            rowKey="campo"
+            size="small"
+            pagination={false}
+            columns={[
+              {
+                title: '', key: 'inc', width: 44,
+                render: (_: any, r: ColumnaState) => (
+                  <Switch
+                    size="small"
+                    checked={r.incluir}
+                    onChange={v => setColumnasState(prev =>
+                      prev.map(c => c.campo === r.campo ? { ...c, incluir: v } : c),
+                    )}
+                  />
+                ),
+              },
+              {
+                title: 'Campo', dataIndex: 'campo', key: 'campo', width: 120,
+                render: (v: string) => <Text code style={{ fontSize: 12 }}>{v}</Text>,
+              },
+              {
+                title: 'Título en archivo', key: 'titulo',
+                render: (_: any, r: ColumnaState) => (
+                  <Input
+                    value={r.titulo} size="small" maxLength={50} disabled={!r.incluir}
+                    onChange={e => setColumnasState(prev =>
+                      prev.map(c => c.campo === r.campo ? { ...c, titulo: e.target.value } : c),
+                    )}
+                  />
+                ),
+              },
+              {
+                title: 'Ancho', key: 'ancho', width: 80,
+                render: (_: any, r: ColumnaState) => (
+                  <InputNumber
+                    value={r.ancho} size="small" min={1} max={200} disabled={!r.incluir}
+                    style={{ width: 70 }}
+                    onChange={v => setColumnasState(prev =>
+                      prev.map(c => c.campo === r.campo ? { ...c, ancho: v ?? c.ancho } : c),
+                    )}
+                  />
+                ),
+              },
+            ]}
+          />
+
+          <div style={{ marginTop: 16 }}>
+            <Button
+              type="primary" htmlType="submit"
+              loading={crear.isPending || editarMutation.isPending}
+              block
+            >
+              {modalMode === 'editar' ? 'Guardar cambios' : 'Crear formato'}
+            </Button>
+          </div>
         </Form>
       </Modal>
-    </>
+    </Space>
   );
 }
 
