@@ -1955,13 +1955,20 @@ function SeccionAuditoria() {
 // ── Sección: Apariencia ────────────────────────────────────────────────────────
 
 const TEMA_META: Record<TemaSidebar, { label: string; bg: string; accent: string; actBg: string; txt: string; muted: string }> = {
-  nube:    { label: 'Nube',    bg: '#FBFBFC', accent: '#1D4FD7', actBg: '#E9EFFC', txt: '#2E3641', muted: '#7C8593' },
-  marea:   { label: 'Marea',   bg: '#EEF4F3', accent: '#0E6E72', actBg: '#DCEAE9', txt: '#22302F', muted: '#6D7C7A' },
-  indigo:  { label: 'Índigo',  bg: '#F2F1F9', accent: '#4A43A8', actBg: '#E4E2F4', txt: '#2A2840', muted: '#757390' },
-  bosque:  { label: 'Bosque',  bg: '#F5F4ED', accent: '#2E5D46', actBg: '#E5E7DB', txt: '#2C302A', muted: '#7B7C6F' },
-  cemento: { label: 'Cemento', bg: '#F2F2F3', accent: '#18181B', actBg: '#E3E3E6', txt: '#1F1F21', muted: '#71717A' },
-  ciruela: { label: 'Ciruela', bg: '#F6F1F5', accent: '#6E3B63', actBg: '#E9DEE7', txt: '#2F2830', muted: '#7E7280' },
-  bronce:  { label: 'Bronce',  bg: '#F7F4EE', accent: '#8A5A1E', actBg: '#EBE4D7', txt: '#302C25', muted: '#82796A' },
+  // Paletas suaves (fondo claro)
+  nube:     { label: 'Nube',     bg: '#FBFBFC', accent: '#1D4FD7', actBg: '#E9EFFC',              txt: '#2E3641', muted: '#7C8593' },
+  marea:    { label: 'Marea',    bg: '#EEF4F3', accent: '#0E6E72', actBg: '#DCEAE9',              txt: '#22302F', muted: '#6D7C7A' },
+  indigo:   { label: 'Índigo',   bg: '#F2F1F9', accent: '#4A43A8', actBg: '#E4E2F4',              txt: '#2A2840', muted: '#757390' },
+  bosque:   { label: 'Bosque',   bg: '#F5F4ED', accent: '#2E5D46', actBg: '#E5E7DB',              txt: '#2C302A', muted: '#7B7C6F' },
+  cemento:  { label: 'Cemento',  bg: '#F2F2F3', accent: '#18181B', actBg: '#E3E3E6',              txt: '#1F1F21', muted: '#71717A' },
+  ciruela:  { label: 'Ciruela',  bg: '#F6F1F5', accent: '#6E3B63', actBg: '#E9DEE7',              txt: '#2F2830', muted: '#7E7280' },
+  bronce:   { label: 'Bronce',   bg: '#F7F4EE', accent: '#8A5A1E', actBg: '#EBE4D7',              txt: '#302C25', muted: '#82796A' },
+  // Paletas intensas (fondo oscuro sólido, texto blanco)
+  cobalto:  { label: 'Cobalto',  bg: '#0063CB', accent: '#FFFFFF', actBg: 'rgba(255,255,255,.16)', txt: '#FFFFFF', muted: 'rgba(255,255,255,.55)' },
+  azul:     { label: 'Azul',     bg: '#3F46B8', accent: '#FFFFFF', actBg: 'rgba(255,255,255,.17)', txt: '#FFFFFF', muted: 'rgba(255,255,255,.55)' },
+  verde:    { label: 'Verde',    bg: '#147A3D', accent: '#FFFFFF', actBg: 'rgba(255,255,255,.17)', txt: '#FFFFFF', muted: 'rgba(255,255,255,.55)' },
+  petroleo: { label: 'Petróleo', bg: '#0B6A6E', accent: '#FFFFFF', actBg: 'rgba(255,255,255,.17)', txt: '#FFFFFF', muted: 'rgba(255,255,255,.55)' },
+  violeta:  { label: 'Violeta',  bg: '#6B3F73', accent: '#FFFFFF', actBg: 'rgba(255,255,255,.17)', txt: '#FFFFFF', muted: 'rgba(255,255,255,.55)' },
 };
 
 function SeccionApariencia() {

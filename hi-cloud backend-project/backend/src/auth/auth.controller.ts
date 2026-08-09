@@ -65,7 +65,7 @@ class UpdateProfileDto {
 
 class UpdateTemaSidebarDto {
   @IsString()
-  @IsIn(['nube', 'marea', 'indigo', 'bosque', 'cemento', 'ciruela', 'bronce'])
+  @IsIn(['nube', 'marea', 'indigo', 'bosque', 'cemento', 'ciruela', 'bronce', 'cobalto', 'azul', 'verde', 'petroleo', 'violeta'])
   temaSidebar: string;
 }
 

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export const TEMAS_SIDEBAR = ['nube', 'marea', 'indigo', 'bosque', 'cemento', 'ciruela', 'bronce'] as const;
+export const TEMAS_SIDEBAR = ['nube', 'marea', 'indigo', 'bosque', 'cemento', 'ciruela', 'bronce', 'cobalto', 'azul', 'verde', 'petroleo', 'violeta'] as const;
 export type TemaSidebar = typeof TEMAS_SIDEBAR[number];
 
 interface ThemeState {
