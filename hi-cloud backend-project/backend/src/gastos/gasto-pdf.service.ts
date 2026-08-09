@@ -56,12 +56,14 @@ export class GastoPDFService {
       .query('SELECT * FROM empresa WHERE id = $1 AND "isActive" = true LIMIT 1', [empresaId])
       .then((r: any[]) => r[0] || {});
 
-    // ECF E43 asociado al gasto
+    // e-CF asociado al gasto (puede ser E43 u otro tipo si el usuario lo configuró así)
     const ecf = await this.repo.manager.query(
       `SELECT e.numero, e."estadoDGII", e."codigoSeguridad", e."qrUrl", e."fechaFirma",
-              e."respuestaMSeller", s."fechaVencimiento" AS "secFechaVenc"
+              e."respuestaMSeller", s."fechaVencimiento" AS "secFechaVenc",
+              t.codigo AS "tipoEcfCodigo"
        FROM ecf e
        LEFT JOIN secuencias_ecf s ON s.id = e."secuenciaId"
+       LEFT JOIN tipos_ecf      t ON t.id  = e."tipoECFId"
        WHERE e."documentoOrigenId"   = $1
          AND e."documentoOrigenTipo" = 'GASTO'
          AND e."isActive"            = true
@@ -136,9 +138,21 @@ export class GastoPDFService {
         // ── HEADER DERECHO — datos fiscales ───────────────────────────────────
         const rW = 215; const rX = PR - rW;
         let ry = y;
-        // Título: solo "ELECTRÓNICO" si hay e-CF real asociado
+        // Título según el tipo real del e-CF (solo E43 = gastos menores)
+        const ECF_TITULOS: Record<string, string> = {
+          E43: 'COMPROBANTE DE GASTOS MENORES ELECTRÓNICO',
+          E41: 'COMPROBANTE PARA PAGOS AL EXTERIOR ELECTRÓNICO',
+          E31: 'FACTURA DE CRÉDITO FISCAL ELECTRÓNICA',
+          E32: 'FACTURA DE CONSUMO ELECTRÓNICA',
+          E33: 'NOTA DE DÉBITO ELECTRÓNICA',
+          E34: 'NOTA DE CRÉDITO ELECTRÓNICA',
+          E44: 'RÉGIMEN ESPECIAL ELECTRÓNICO',
+          E45: 'GUBERNAMENTAL ELECTRÓNICO',
+          E46: 'EXPORTACIONES ELECTRÓNICAS',
+          E47: 'COMPRA EXTERIOR ELECTRÓNICA',
+        };
         const tituloDoc = ecf?.numero
-          ? 'COMPROBANTE DE GASTOS MENORES ELECTRÓNICO'
+          ? (ECF_TITULOS[ecf.tipoEcfCodigo ?? ''] ?? 'COMPROBANTE ELECTRÓNICO')
           : 'REGISTRO DE GASTO OPERATIVO';
         doc.fillColor(THEAD).font('Helvetica-Bold').fontSize(8)
           .text(tituloDoc, rX, ry, { width: rW, align: 'right' });
