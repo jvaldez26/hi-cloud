@@ -1329,6 +1329,41 @@ export class AuthService implements OnModuleInit {
     return Math.min(global, Math.max(3, effective));
   }
 
+  // ── Formulario de soporte público ─────────────────────────────────────────
+  async enviarMensajeSoporte(dto: { nombre: string; email: string; mensaje: string }): Promise<{ ok: boolean }> {
+    const dest = process.env['NOTIF_ADMIN_EMAIL'] ?? 'soporte@hicloudrd.com';
+    try {
+      await this.emailService.enviar({
+        to:      dest,
+        replyTo: dto.email,
+        subject: `💬 Soporte HiCloud — mensaje de ${dto.nombre}`,
+        html: `
+          <div style="font-family:sans-serif;max-width:540px;margin:0 auto;padding:24px">
+            <div style="background:#1E3A8A;border-radius:10px 10px 0 0;padding:20px 24px">
+              <h2 style="color:#fff;margin:0;font-size:18px">💬 Nuevo mensaje de soporte</h2>
+            </div>
+            <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-top:none;border-radius:0 0 10px 10px;padding:24px">
+              <p style="margin:0 0 8px"><strong>Nombre:</strong> ${dto.nombre}</p>
+              <p style="margin:0 0 16px"><strong>Correo:</strong> <a href="mailto:${dto.email}" style="color:#2563EB">${dto.email}</a></p>
+              <p style="margin:0 0 8px;font-weight:600">Mensaje:</p>
+              <div style="background:#fff;border-left:4px solid #2563EB;border-radius:0 6px 6px 0;padding:12px 16px;color:#1E293B;line-height:1.6">
+                ${dto.mensaje.replace(/\n/g, '<br>')}
+              </div>
+              <p style="color:#94A3B8;font-size:11px;margin:20px 0 0">
+                Puedes responder directamente a este correo — llegará a ${dto.email}
+              </p>
+            </div>
+          </div>
+        `,
+        text: `Nuevo mensaje de soporte\n\nNombre: ${dto.nombre}\nCorreo: ${dto.email}\n\nMensaje:\n${dto.mensaje}`,
+      });
+    } catch (err) {
+      this.logger.warn(`enviarMensajeSoporte: fallo al enviar email — ${(err as Error).message}`);
+    }
+    // Siempre devolvemos ok:true para no revelar errores de infraestructura
+    return { ok: true };
+  }
+
   /**
    * Devuelve el lifetime de sesión en ms para una empresa.
    * El global es el TOPE: empresa.sesionHoras ≤ global siempre.

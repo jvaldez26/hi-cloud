@@ -63,6 +63,17 @@ class UpdateProfileDto {
   nombre: string;
 }
 
+class ContactoSoporteDto {
+  @IsString() @MinLength(2) @MaxLength(100)
+  nombre: string;
+
+  @IsEmail()
+  email: string;
+
+  @IsString() @MinLength(10) @MaxLength(1000)
+  mensaje: string;
+}
+
 class UpdateTemaSidebarDto {
   @IsString()
   @IsIn(['nube', 'marea', 'indigo', 'bosque', 'cemento', 'ciruela', 'bronce', 'cobalto', 'azul', 'verde', 'petroleo', 'violeta'])
@@ -546,6 +557,15 @@ export class AuthController {
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 días
       path:   '/api/v1/auth/refresh',    // Solo se envía al endpoint de refresh
     });
+  }
+
+  // ── Formulario de soporte público (sin autenticación) ────────────────────
+  @Post('contacto-soporte')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 3, ttl: 3_600_000 } }) // 3 mensajes por hora por IP
+  @ApiOperation({ summary: 'Formulario de soporte — envía mensaje al equipo HiCloud' })
+  contactoSoporte(@Body() dto: ContactoSoporteDto) {
+    return this.authService.enviarMensajeSoporte(dto);
   }
 
   // ── Super admin: forzar cierre de sesión de un usuario ────────────────────

@@ -1,12 +1,104 @@
 import { useState, useEffect, useRef } from 'react';
-import { Form, Input, Button, Typography, Alert, Checkbox, ConfigProvider, theme as antTheme } from 'antd';
-import { UserOutlined, LockOutlined, RocketOutlined } from '@ant-design/icons';
+import { Form, Input, Button, Typography, Alert, Checkbox, ConfigProvider, theme as antTheme, Modal, message } from 'antd';
+import { UserOutlined, LockOutlined, RocketOutlined, MailOutlined, MessageOutlined } from '@ant-design/icons';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, useInView } from 'framer-motion';
 import { useAuthStore } from '../../store/auth.store';
 import { useThemeStore } from '../../store/theme.store';
 import { authApi } from '../../api/auth.api';
+import api from '../../api/client';
 import DemoModal from './DemoModal';
+
+const WS_NUMBER   = '8093081713';
+const WS_URL      = `https://wa.me/1${WS_NUMBER}`;
+const EMAIL_SOPORTE = 'soporte@hicloudrd.com';
+
+// ── Modal de contacto con soporte ────────────────────────────────────────────
+function ContactoModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [form]    = Form.useForm();
+  const [sending, setSending] = useState(false);
+  const [done,    setDone]    = useState(false);
+
+  const handleClose = () => { form.resetFields(); setDone(false); onClose(); };
+
+  const onSend = async (vals: { nombre: string; email: string; mensaje: string }) => {
+    setSending(true);
+    try {
+      await api.post('/auth/contacto-soporte', vals);
+      setDone(true);
+    } catch {
+      message.error('No pudimos enviar tu mensaje. Intenta por WhatsApp o escríbenos directamente.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={open}
+      onCancel={handleClose}
+      footer={null}
+      width={420}
+      centered
+      styles={{ body: { padding: '8px 0 0' } }}
+      title={
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <MessageOutlined style={{ color: '#2563EB', fontSize: 15 }} />
+          </div>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#1E3A8A' }}>Escribirnos</div>
+            <div style={{ fontWeight: 400, fontSize: 12, color: '#64748B' }}>Te respondemos por correo</div>
+          </div>
+        </div>
+      }
+    >
+      {done ? (
+        <div style={{ textAlign: 'center', padding: '24px 0 8px' }}>
+          <div style={{ fontSize: 44, marginBottom: 12 }}>✅</div>
+          <div style={{ fontWeight: 700, fontSize: 16, color: '#1E3A8A', marginBottom: 6 }}>¡Mensaje enviado!</div>
+          <div style={{ color: '#64748B', fontSize: 13, marginBottom: 20 }}>
+            Te responderemos a tu correo en breve.<br />
+            También puedes escribirnos por{' '}
+            <a href={WS_URL} target="_blank" rel="noreferrer" style={{ color: '#25D366', fontWeight: 600 }}>WhatsApp</a>.
+          </div>
+          <Button type="primary" onClick={handleClose}
+            style={{ background: '#1E3A8A', border: 'none', borderRadius: 8, fontWeight: 600 }}>
+            Cerrar
+          </Button>
+        </div>
+      ) : (
+        <ConfigProvider theme={{ algorithm: antTheme.defaultAlgorithm }}>
+          <Form form={form} layout="vertical" onFinish={onSend} style={{ padding: '4px 0' }}>
+            <Form.Item name="nombre" label="Tu nombre"
+              rules={[{ required: true, message: 'Ingresa tu nombre' }, { min: 2, message: 'Muy corto' }]}>
+              <Input placeholder="Juan Pérez" maxLength={100} />
+            </Form.Item>
+            <Form.Item name="email" label="Tu correo electrónico"
+              rules={[{ required: true, message: 'Ingresa tu correo' }, { type: 'email', message: 'Correo inválido' }]}>
+              <Input placeholder="juan@empresa.com" maxLength={200} prefix={<MailOutlined style={{ color: '#94A3B8' }} />} />
+            </Form.Item>
+            <Form.Item name="mensaje" label="¿En qué podemos ayudarte?"
+              rules={[{ required: true, message: 'Escribe tu mensaje' }, { min: 10, message: 'Mensaje muy corto' }]}>
+              <Input.TextArea
+                rows={4} maxLength={1000} showCount
+                placeholder="Describe tu pregunta o problema…"
+                style={{ resize: 'none' }}
+              />
+            </Form.Item>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 4 }}>
+              <Button onClick={handleClose} style={{ borderRadius: 8 }}>Cancelar</Button>
+              <Button type="primary" htmlType="submit" loading={sending}
+                style={{ background: '#1E3A8A', border: 'none', borderRadius: 8, fontWeight: 600 }}>
+                {sending ? 'Enviando…' : 'Enviar mensaje'}
+              </Button>
+            </div>
+          </Form>
+        </ConfigProvider>
+      )}
+    </Modal>
+  );
+}
 
 const { Text } = Typography;
 
@@ -27,6 +119,7 @@ function CountUp({ to, suffix = '' }: { to: number; suffix?: string }) {
 export default function LoginPage() {
   const [loading,          setLoading]          = useState(false);
   const [demoOpen,         setDemoOpen]         = useState(false);
+  const [contactOpen,      setContactOpen]      = useState(false);
   const [recordarPassword, setRecordarPassword] = useState<boolean>(
     () => localStorage.getItem('hicloud_recordar_pw') === 'true',
   );
@@ -469,15 +562,69 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <Text style={{ display:'block', textAlign:'center', marginTop:28, fontSize:11, color:rightSub }}>
-              © 2026 HiCloud ERP · Cumplimiento DGII República Dominicana
-            </Text>
+            {/* ── ¿Necesitas ayuda? ──────────────────────────────────────── */}
+            <div style={{
+              marginTop: 28,
+              paddingTop: 16,
+              borderTop: `1px solid ${rightBorder}`,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 10,
+            }}>
+              <Text style={{ fontSize: 12, color: rightSub, fontWeight: 500 }}>¿Necesitas ayuda?</Text>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                {/* Correo → abre modal */}
+                <button
+                  type="button"
+                  onClick={() => setContactOpen(true)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: '#2563EB', fontSize: 13, fontWeight: 500, padding: 0,
+                    textDecoration: 'none',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
+                  onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}
+                >
+                  <MailOutlined style={{ fontSize: 14 }} />
+                  Correo
+                </button>
+
+                <span style={{ color: rightBorder, fontSize: 14, lineHeight: 1 }}>|</span>
+
+                {/* WhatsApp */}
+                <a
+                  href={WS_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    color: '#25D366', fontSize: 13, fontWeight: 500,
+                    textDecoration: 'none',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
+                  onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}
+                >
+                  {/* Icono WhatsApp SVG */}
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="#25D366">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                  </svg>
+                  WhatsApp
+                </a>
+              </div>
+
+              <Text style={{ fontSize: 10, color: '#CBD5E1', marginTop: 2 }}>
+                © 2026 HiCloud ERP · Cumplimiento DGII República Dominicana
+              </Text>
+            </div>
           </div>
         </motion.div>
       </div>
       </ConfigProvider>
 
       <DemoModal open={demoOpen} onClose={() => setDemoOpen(false)} />
+      <ContactoModal open={contactOpen} onClose={() => setContactOpen(false)} />
     </div>
   );
 }
