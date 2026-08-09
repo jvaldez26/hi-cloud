@@ -1448,10 +1448,14 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar 
     return () => clearInterval(id);
   }, []);
 
-  // Auto-seleccionar cuando el usuario solo tiene un vendedor vinculado
+  // Auto-seleccionar cuando el usuario solo tiene un vendedor vinculado.
+  // Incluye `vendedorId` en las deps para que se re-active si la validación
+  // limpia un id obsoleto (race condition: la validación borra el id guardado
+  // en localStorage y este efecto necesita re-dispararse para seleccionar el único
+  // vendedor disponible, evitando que el botón quede bloqueado indefinidamente).
   useEffect(() => {
-    if (vendedores.length === 1) setVendedorId(vendedores[0].id);
-  }, [vendedores]);
+    if (vendedores.length === 1 && !vendedorId) setVendedorId(vendedores[0].id);
+  }, [vendedores, vendedorId]);
 
   // Validar que el vendedor/sucursal guardados sigan existiendo en las listas
   useEffect(() => {
