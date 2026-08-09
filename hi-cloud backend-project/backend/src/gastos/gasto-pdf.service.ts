@@ -136,8 +136,12 @@ export class GastoPDFService {
         // ── HEADER DERECHO — datos fiscales ───────────────────────────────────
         const rW = 215; const rX = PR - rW;
         let ry = y;
+        // Título: solo "ELECTRÓNICO" si hay e-CF real asociado
+        const tituloDoc = ecf?.numero
+          ? 'COMPROBANTE DE GASTOS MENORES ELECTRÓNICO'
+          : 'REGISTRO DE GASTO OPERATIVO';
         doc.fillColor(THEAD).font('Helvetica-Bold').fontSize(8)
-          .text('COMPROBANTE DE GASTOS MENORES ELECTRÓNICO', rX, ry, { width: rW, align: 'right' });
+          .text(tituloDoc, rX, ry, { width: rW, align: 'right' });
         ry += 16;
         if (ecf?.numero) {
           doc.fillColor('#0047AB').font('Helvetica-Bold').fontSize(15)
@@ -148,10 +152,25 @@ export class GastoPDFService {
         doc.text('Número interno: '+numero, rX, ry, { width: rW, align: 'right' }); ry += 11;
         if (fechaVencSec) { doc.text('Válida hasta: '+fechaVencSec, rX, ry, { width: rW, align: 'right' }); ry += 11; }
         doc.text('Fecha: '+fmtF(String(g.fecha)), rX, ry, { width: rW, align: 'right' }); ry += 11;
-        // Estado badge
+        // Estado badge — diferenciado según si tiene e-CF o no
         const bW = 76; const bX = PR - bW;
-        doc.roundedRect(bX, ry, bW, 17, 4).fill('#dcfce7');
-        doc.fillColor('#15803d').font('Helvetica-Bold').fontSize(8).text('EMITIDO', bX, ry+4, { width: bW, align: 'center' });
+        if (ecf?.numero) {
+          // Tiene e-CF: mostrar estado DGII (ACEPTADO, EMITIDO, etc.)
+          const estadoLabel = (() => {
+            const s = (ecf.estadoDGII ?? 'EMITIDO').toUpperCase();
+            if (s === 'ACEPTADO') return { bg: '#dcfce7', ink: '#15803d', txt: 'ACEPTADO' };
+            if (s === 'RECHAZADO') return { bg: '#fee2e2', ink: '#b91c1c', txt: 'RECHAZADO' };
+            return { bg: '#dcfce7', ink: '#15803d', txt: 'EMITIDO' };
+          })();
+          doc.roundedRect(bX, ry, bW, 17, 4).fill(estadoLabel.bg);
+          doc.fillColor(estadoLabel.ink).font('Helvetica-Bold').fontSize(8)
+            .text(estadoLabel.txt, bX, ry+4, { width: bW, align: 'center' });
+        } else {
+          // Sin e-CF: badge neutro "REGISTRADO"
+          doc.roundedRect(bX, ry, bW, 17, 4).fill('#e0f2fe');
+          doc.fillColor('#0369a1').font('Helvetica-Bold').fontSize(8)
+            .text('REGISTRADO', bX, ry+4, { width: bW, align: 'center' });
+        }
         ry += 22;
 
         y = Math.max(leftBottom, ry) + 10;
