@@ -2094,12 +2094,16 @@ function SeccionApariencia() {
 export default function ConfiguracionPage() {
   const [activeSection, setActiveSection] = useState<SectionKey>('datos');
   const [collapsed, setCollapsed] = useState(window.innerWidth < 1024);
+  const user         = useAuthStore(s => s.user);
   const empresaActual = useAuthStore(s => s.empresaActual);
   const empresaId = Number(empresaActual ?? localStorage.getItem('empresaId') ?? 1);
+  const esAdmin = user?.role === 'admin';
 
   const { data: empresa, isLoading } = useQuery({
     queryKey: ['empresa'],
     queryFn:  configuracionApi.getEmpresa,
+    // No-admins no necesitan cargar datos de empresa
+    enabled: esAdmin,
   });
 
   const handleSaved = useCallback(() => {}, []);
@@ -2129,6 +2133,19 @@ export default function ConfiguracionPage() {
       default:              return null;
     }
   };
+
+  // ── Vendedor / Contador: solo pueden personalizar su apariencia ──────────────
+  if (!esAdmin) {
+    return (
+      <div style={{ maxWidth: 720, margin: '0 auto', padding: '32px 24px' }}>
+        <Title level={4} style={{ marginBottom: 4 }}>Apariencia</Title>
+        <Text type="secondary" style={{ display: 'block', marginBottom: 24, fontSize: 13 }}>
+          Personaliza el color del panel de navegación. La preferencia se sincroniza entre dispositivos.
+        </Text>
+        <SeccionApariencia />
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', height: 'calc(100vh - 120px)', overflow: 'hidden' }} className="config-layout">

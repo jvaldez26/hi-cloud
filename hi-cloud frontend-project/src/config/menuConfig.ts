@@ -36,7 +36,7 @@ export const ADDON_IDS: string[] = [
 
 export const PATH_ROLES: Record<string, string[]> = {
   // ── Solo Admin ────────────────────────────────────────────────────────────
-  '/configuracion':      ADMIN,
+  '/configuracion':      ADMIN_CONT_VEND,  // vendedor/contador ven solo la sección Apariencia
   '/equipo':             ADMIN,
   '/sucursales':         ADMIN,
   '/aprobaciones':       ADMIN,
