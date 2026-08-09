@@ -484,7 +484,9 @@ export default function App() {
           if (user?.temaSidebar) setTemaSidebar(user.temaSidebar as any);
         })
         .catch(() => {
-          // Cookie inválida o expirada — limpiar estado
+          // Cookie inválida o expirada — marcar navegación saliente antes de limpiar
+          // para que Sentry/ErrorBoundary ignoren errores de teardown en la ruta actual
+          markNavigatingAway();
           logout();
         })
         .finally(() => setHydrated(true));

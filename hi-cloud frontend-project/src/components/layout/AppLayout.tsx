@@ -39,6 +39,7 @@ import { useRealtime, useRealtimeStatus } from '../../hooks/useRealtime';
 import { useAlertas }    from '../../hooks/useAlertas';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { MENU_CATEGORIES_DATA, ADDON_IDS, PATH_ROLES, rolPuedeVerRuta } from '../../config/menuConfig';
+import { markNavigatingAway } from '../../utils/sessionEvents';
 
 const { Header, Content } = Layout;
 const { Text } = Typography;
@@ -1281,6 +1282,14 @@ export default function AppLayout() {
   const { token }                       = theme.useToken();
   const navigate                        = useNavigate();
 
+  /** Cierre de sesión unificado: siempre marca la bandera antes de navegar
+   *  para que Sentry, ErrorBoundary y el interceptor de Axios no fallen en teardown. */
+  const handleLogout = useCallback(() => {
+    markNavigatingAway();
+    logout();
+    navigate('/login');
+  }, [logout, navigate]);
+
   // Solo el super_admin ve la entrada /super-admin en el sidebar
   const esSuperAdmin = user?.role === 'super_admin';
 
@@ -1781,10 +1790,9 @@ export default function AppLayout() {
     timerLogout.current = setTimeout(() => {
       limpiarTimers();
       setShowInactividad(false);
-      logout();
-      navigate('/login');
+      handleLogout();
     }, INACTIVIDAD_MS);
-  }, [limpiarTimers, logout, navigate, ADVERTENCIA_MS, INACTIVIDAD_MS]);
+  }, [limpiarTimers, handleLogout, ADVERTENCIA_MS, INACTIVIDAD_MS]);
 
   useEffect(() => {
     const eventos = ['mousemove', 'click', 'keydown', 'scroll', 'touchstart'] as const;
@@ -1803,7 +1811,7 @@ export default function AppLayout() {
       { key: 'profile', icon: <UserOutlined />, label: 'Mi perfil',     onClick: () => navigate('/profile') },
       { type: 'divider' as const },
       { key: 'logout',  icon: <LogoutOutlined />, label: 'Cerrar sesión', danger: true,
-        onClick: () => { logout(); navigate('/login'); } },
+        onClick: () => handleLogout() },
     ],
   };
 
@@ -2211,7 +2219,7 @@ export default function AppLayout() {
             </Tooltip>
             <Tooltip title="Cerrar sesión" placement="right">
               <button
-                onClick={() => { logout(); navigate('/login'); }}
+                onClick={() => handleLogout()}
                 style={{ background: 'transparent', border: 'none', cursor: 'pointer',
                   color: C.footerText, display: 'flex', padding: 2, borderRadius: 6,
                   transition: 'color 0.15s' }}
@@ -2312,7 +2320,7 @@ export default function AppLayout() {
 
             {/* Cerrar sesión */}
             <button
-              onClick={() => { logout(); navigate('/login'); }}
+              onClick={() => handleLogout()}
               title="Cerrar sesión"
               style={{ background: 'transparent', border: 'none', cursor: 'pointer',
                 color: C.footerText, display: 'flex', padding: 4, borderRadius: 6,
@@ -2648,7 +2656,7 @@ export default function AppLayout() {
             Crear nueva empresa
           </button>
           <button
-            onClick={() => { logout(); navigate('/login'); }}
+            onClick={() => handleLogout()}
             style={{
               display: 'flex', alignItems: 'center', gap: 8,
               padding: '8px 12px', background: 'none', border: 'none',

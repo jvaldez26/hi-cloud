@@ -88,7 +88,12 @@ async function networkFirstAPI(request) {
       }
     }
     return response;
-  } catch {
+  } catch (err) {
+    // Si el fetch fue abortado por navegación (AbortError), propagar el error real
+    // en vez de fabricar un 503: el fetch ya fue cancelado intencionalmente y
+    // el mensaje "venta guardada localmente" sería mentira — el cajero no hizo nada.
+    if (err && err.name === 'AbortError') throw err;
+
     const cached = await caches.match(request);
     if (cached) return cached;
     if (request.method === 'POST') {

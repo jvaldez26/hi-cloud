@@ -9205,7 +9205,11 @@ export default function POSPage() {
         return caja?.estado === 'abierta' ? caja : null;
       }).catch(() => null);
     },
-    refetchInterval:      10_000,
+    // 30 s cuando la pestaña está visible; pausado cuando está oculta.
+    // /caja/hoy solo cambia cuando el propio cajero abre/cierra, lo cual
+    // invalida el cache por evento — el polling es solo fallback.
+    refetchInterval:           () => (document.hidden ? false : 30_000),
+    refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
     staleTime:            0,
     enabled:              !!vendedorId,
