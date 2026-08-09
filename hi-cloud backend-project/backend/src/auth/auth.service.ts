@@ -920,6 +920,11 @@ export class AuthService implements OnModuleInit {
     await this.userRepository.update(userId, { tourCompletado: true } as any);
   }
 
+  /** PATCH /auth/tema-sidebar — actualizar tema del sidebar del usuario autenticado. */
+  async updateTemaSidebar(userId: number, tema: string): Promise<void> {
+    await this.userRepository.update(userId, { temaSidebar: tema } as any);
+  }
+
   /** PATCH /auth/profile — actualizar nombre del usuario autenticado. */
   async updateProfile(userId: number, nombre: string) {
     const trimmed = nombre.trim();

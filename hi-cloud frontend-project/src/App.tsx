@@ -437,7 +437,7 @@ function EmpleadoRoute({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  const { isDark } = useThemeStore();
+  const { isDark, setTemaSidebar } = useThemeStore();
   const { login, logout, hydrated, setHydrated } = useAuthStore();
 
   // Registra la limpieza de React Query cache al hacer logout.
@@ -480,6 +480,8 @@ export default function App() {
           const userHydrated   = empresaActiva ? { ...user, role: empresaActiva.rol } : user;
           login(userHydrated, empresaId ? Number(empresaId) : null, empresas,
                 null, sucursalId ? Number(sucursalId) : null, sucursalNombre);
+          // Sincronizar tema del sidebar: el servidor es fuente de verdad (cross-device)
+          if (user?.temaSidebar) setTemaSidebar(user.temaSidebar as any);
         })
         .catch(() => {
           // Cookie inválida o expirada — limpiar estado

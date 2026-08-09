@@ -46,53 +46,300 @@ const { Text } = Typography;
 // ── Paletas de colores del sidebar ───────────────────────────────────────────
 
 type SidebarPalette = {
+  // fondos + bordes
   bg: string; bgHover: string; bgActive: string; border: string;
-  separator: string; text: string; textActive: string;
-  textCategory: string; textSub: string; textSubHover: string;
-  accent: string; footerText: string; scrollbar: string;
-  panelBg: string; panelBorder: string;
+  separator: string; scrollbar: string; panelBg: string; panelBorder: string;
+  // texto
+  text: string; textActive: string; textCategory: string;
+  textSub: string; textSubHover: string; footerText: string;
+  // acento
+  accent: string;
+  // íconos (valores directos — no pueden derivarse de bg cuando hay mezcla claro/oscuro)
+  iconBg: string; iconColor: string; arrowColor: string; activeBorder: string;
+  // chips / tags
+  chipBg: string; chipInk: string;
+  // avatar usuario footer
+  avBg: string; avInk: string;
+  // header logo
+  headerGlow: string; wordmarkColor: string;
+  // botón colapsar
+  collapseBtn: string; collapseBtnHover: string;
+  collapseBtnBorder: string; collapseBtnColor: string;
+  // botones rápidos (Opciones / Buscar)
+  quickBtnBg: string; quickBtnHover: string;
 };
 
-// Modo claro — gradiente profundo #1a2c5b → #0f1d3e
-const sidebarLight: SidebarPalette = {
-  bg:           'linear-gradient(160deg, #1a2c5b 0%, #0f1d3e 100%)',
-  bgHover:      'rgba(255,255,255,0.07)',
-  bgActive:     'rgba(99,130,255,0.18)',
-  border:       'rgba(255,255,255,0.08)',
-  separator:    'rgba(255,255,255,0.08)',
-  text:         'rgba(255,255,255,0.6)',
-  textActive:   '#a0b4ff',
-  textCategory: 'rgba(255,255,255,0.25)',
-  textSub:      'rgba(255,255,255,0.5)',
-  textSubHover: 'rgba(255,255,255,0.9)',
-  accent:       '#7b9fff',
-  footerText:   'rgba(255,255,255,0.35)',
-  scrollbar:    'rgba(255,255,255,0.08)',
-  panelBg:      '#1a2c5b',
-  panelBorder:  'rgba(255,255,255,0.08)',
-};
-
-// Modo oscuro — gradiente aún más profundo
-const sidebarDark: SidebarPalette = {
-  bg:           'linear-gradient(160deg, #111e3d 0%, #080f20 100%)',
-  bgHover:      'rgba(255,255,255,0.07)',
-  bgActive:     'rgba(99,130,255,0.18)',
-  border:       'rgba(255,255,255,0.07)',
-  separator:    'rgba(255,255,255,0.07)',
-  text:         'rgba(255,255,255,0.55)',
-  textActive:   '#a0b4ff',
-  textCategory: 'rgba(255,255,255,0.22)',
-  textSub:      'rgba(255,255,255,0.45)',
-  textSubHover: 'rgba(255,255,255,0.85)',
-  accent:       '#7b9fff',
-  footerText:   'rgba(255,255,255,0.30)',
-  scrollbar:    'rgba(255,255,255,0.07)',
-  panelBg:      '#111e3d',
-  panelBorder:  'rgba(255,255,255,0.07)',
+// ── Paletas del sidebar ───────────────────────────────────────────────────────
+// 'dark' se usa cuando isDark=true; los 7 restantes son opciones del modo claro.
+const PALETTES: Record<string, SidebarPalette> = {
+  dark: {
+    bg:                'linear-gradient(160deg, #111e3d 0%, #080f20 100%)',
+    bgHover:           'rgba(255,255,255,0.07)',
+    bgActive:          'rgba(99,130,255,0.18)',
+    border:            'rgba(255,255,255,0.07)',
+    separator:         'rgba(255,255,255,0.07)',
+    text:              'rgba(255,255,255,0.55)',
+    textActive:        '#a0b4ff',
+    textCategory:      'rgba(255,255,255,0.22)',
+    textSub:           'rgba(255,255,255,0.45)',
+    textSubHover:      'rgba(255,255,255,0.85)',
+    accent:            '#7b9fff',
+    footerText:        'rgba(255,255,255,0.30)',
+    scrollbar:         'rgba(255,255,255,0.07)',
+    panelBg:           '#111e3d',
+    panelBorder:       'rgba(255,255,255,0.07)',
+    iconBg:            'rgba(255,255,255,0.05)',
+    iconColor:         'rgba(255,255,255,0.45)',
+    arrowColor:        'rgba(255,255,255,0.35)',
+    activeBorder:      'rgba(99,130,255,0.25)',
+    chipBg:            '#3b5bdb',
+    chipInk:           '#fff',
+    avBg:              '#FCD34D',
+    avInk:             '#1E3A8A',
+    headerGlow:        'radial-gradient(120% 100% at 20% 0%, rgba(76,134,232,.22), transparent 60%)',
+    wordmarkColor:     '#fff',
+    collapseBtn:       'rgba(255,255,255,.06)',
+    collapseBtnHover:  'rgba(255,255,255,.14)',
+    collapseBtnBorder: 'rgba(255,255,255,.10)',
+    collapseBtnColor:  'rgba(255,255,255,.5)',
+    quickBtnBg:        'rgba(255,255,255,0.05)',
+    quickBtnHover:     'rgba(255,255,255,0.09)',
+  },
+  nube: {
+    bg:                '#FBFBFC',
+    bgHover:           'rgba(0,0,0,0.04)',
+    bgActive:          '#E9EFFC',
+    border:            '#E3E7EC',
+    separator:         '#E3E7EC',
+    text:              '#2E3641',
+    textActive:        '#1A44BD',
+    textCategory:      '#7C8593',
+    textSub:           '#7C8593',
+    textSubHover:      '#2E3641',
+    accent:            '#1D4FD7',
+    footerText:        '#7C8593',
+    scrollbar:         '#E3E7EC',
+    panelBg:           '#F4F6F8',
+    panelBorder:       '#E3E7EC',
+    iconBg:            'rgba(0,0,0,0.04)',
+    iconColor:         '#7C8593',
+    arrowColor:        '#B0BAC5',
+    activeBorder:      '#C7D4F5',
+    chipBg:            '#DDF1F2',
+    chipInk:           '#116A72',
+    avBg:              '#F0D48A',
+    avInk:             '#6B4E10',
+    headerGlow:        'none',
+    wordmarkColor:     '#2E3641',
+    collapseBtn:       'rgba(0,0,0,0.04)',
+    collapseBtnHover:  'rgba(0,0,0,0.08)',
+    collapseBtnBorder: '#E3E7EC',
+    collapseBtnColor:  '#7C8593',
+    quickBtnBg:        'rgba(0,0,0,0.04)',
+    quickBtnHover:     'rgba(0,0,0,0.07)',
+  },
+  marea: {
+    bg:                '#EEF4F3',
+    bgHover:           'rgba(0,0,0,0.04)',
+    bgActive:          '#DCEAE9',
+    border:            '#D4E0DE',
+    separator:         '#D4E0DE',
+    text:              '#22302F',
+    textActive:        '#0B5A5E',
+    textCategory:      '#6D7C7A',
+    textSub:           '#6D7C7A',
+    textSubHover:      '#22302F',
+    accent:            '#0E6E72',
+    footerText:        '#6D7C7A',
+    scrollbar:         '#D4E0DE',
+    panelBg:           '#E5EDEC',
+    panelBorder:       '#D4E0DE',
+    iconBg:            'rgba(0,0,0,0.04)',
+    iconColor:         '#6D7C7A',
+    arrowColor:        '#A8B8B6',
+    activeBorder:      '#C0D6D4',
+    chipBg:            '#D3E7E8',
+    chipInk:           '#0D5F63',
+    avBg:              '#E9C97F',
+    avInk:             '#5C4610',
+    headerGlow:        'none',
+    wordmarkColor:     '#22302F',
+    collapseBtn:       'rgba(0,0,0,0.04)',
+    collapseBtnHover:  'rgba(0,0,0,0.08)',
+    collapseBtnBorder: '#D4E0DE',
+    collapseBtnColor:  '#6D7C7A',
+    quickBtnBg:        'rgba(0,0,0,0.04)',
+    quickBtnHover:     'rgba(0,0,0,0.07)',
+  },
+  indigo: {
+    bg:                '#F2F1F9',
+    bgHover:           'rgba(0,0,0,0.04)',
+    bgActive:          '#E4E2F4',
+    border:            '#DBD9EA',
+    separator:         '#DBD9EA',
+    text:              '#2A2840',
+    textActive:        '#3E3897',
+    textCategory:      '#757390',
+    textSub:           '#757390',
+    textSubHover:      '#2A2840',
+    accent:            '#4A43A8',
+    footerText:        '#757390',
+    scrollbar:         '#DBD9EA',
+    panelBg:           '#EAE9F4',
+    panelBorder:       '#DBD9EA',
+    iconBg:            'rgba(0,0,0,0.04)',
+    iconColor:         '#757390',
+    arrowColor:        '#AEACCA',
+    activeBorder:      '#C8C5E8',
+    chipBg:            '#D9DDF5',
+    chipInk:           '#3F3A93',
+    avBg:              '#EFD08A',
+    avInk:             '#5F4711',
+    headerGlow:        'none',
+    wordmarkColor:     '#2A2840',
+    collapseBtn:       'rgba(0,0,0,0.04)',
+    collapseBtnHover:  'rgba(0,0,0,0.08)',
+    collapseBtnBorder: '#DBD9EA',
+    collapseBtnColor:  '#757390',
+    quickBtnBg:        'rgba(0,0,0,0.04)',
+    quickBtnHover:     'rgba(0,0,0,0.07)',
+  },
+  bosque: {
+    bg:                '#F5F4ED',
+    bgHover:           'rgba(0,0,0,0.04)',
+    bgActive:          '#E5E7DB',
+    border:            '#DEDBCF',
+    separator:         '#DEDBCF',
+    text:              '#2C302A',
+    textActive:        '#29553F',
+    textCategory:      '#7B7C6F',
+    textSub:           '#7B7C6F',
+    textSubHover:      '#2C302A',
+    accent:            '#2E5D46',
+    footerText:        '#7B7C6F',
+    scrollbar:         '#DEDBCF',
+    panelBg:           '#EDEBE2',
+    panelBorder:       '#DEDBCF',
+    iconBg:            'rgba(0,0,0,0.04)',
+    iconColor:         '#7B7C6F',
+    arrowColor:        '#ADAE9E',
+    activeBorder:      '#C9CABD',
+    chipBg:            '#DDE7DC',
+    chipInk:           '#35604A',
+    avBg:              '#E4C57C',
+    avInk:             '#57420F',
+    headerGlow:        'none',
+    wordmarkColor:     '#2C302A',
+    collapseBtn:       'rgba(0,0,0,0.04)',
+    collapseBtnHover:  'rgba(0,0,0,0.08)',
+    collapseBtnBorder: '#DEDBCF',
+    collapseBtnColor:  '#7B7C6F',
+    quickBtnBg:        'rgba(0,0,0,0.04)',
+    quickBtnHover:     'rgba(0,0,0,0.07)',
+  },
+  cemento: {
+    bg:                '#F2F2F3',
+    bgHover:           'rgba(0,0,0,0.04)',
+    bgActive:          '#E3E3E6',
+    border:            '#DCDCDF',
+    separator:         '#DCDCDF',
+    text:              '#1F1F21',
+    textActive:        '#18181B',
+    textCategory:      '#71717A',
+    textSub:           '#71717A',
+    textSubHover:      '#1F1F21',
+    accent:            '#18181B',
+    footerText:        '#71717A',
+    scrollbar:         '#DCDCDF',
+    panelBg:           '#EAEAEC',
+    panelBorder:       '#DCDCDF',
+    iconBg:            'rgba(0,0,0,0.04)',
+    iconColor:         '#71717A',
+    arrowColor:        '#A1A1AA',
+    activeBorder:      '#C4C4C8',
+    chipBg:            '#DCDCDF',
+    chipInk:           '#3F3F46',
+    avBg:              '#E7C87E',
+    avInk:             '#4A3A0D',
+    headerGlow:        'none',
+    wordmarkColor:     '#1F1F21',
+    collapseBtn:       'rgba(0,0,0,0.04)',
+    collapseBtnHover:  'rgba(0,0,0,0.08)',
+    collapseBtnBorder: '#DCDCDF',
+    collapseBtnColor:  '#71717A',
+    quickBtnBg:        'rgba(0,0,0,0.04)',
+    quickBtnHover:     'rgba(0,0,0,0.07)',
+  },
+  ciruela: {
+    bg:                '#F6F1F5',
+    bgHover:           'rgba(0,0,0,0.04)',
+    bgActive:          '#E9DEE7',
+    border:            '#DFD5DD',
+    separator:         '#DFD5DD',
+    text:              '#2F2830',
+    textActive:        '#63355A',
+    textCategory:      '#7E7280',
+    textSub:           '#7E7280',
+    textSubHover:      '#2F2830',
+    accent:            '#6E3B63',
+    footerText:        '#7E7280',
+    scrollbar:         '#DFD5DD',
+    panelBg:           '#EEE7EC',
+    panelBorder:       '#DFD5DD',
+    iconBg:            'rgba(0,0,0,0.04)',
+    iconColor:         '#7E7280',
+    arrowColor:        '#B0A8AF',
+    activeBorder:      '#D0C2CD',
+    chipBg:            '#E4DAE2',
+    chipInk:           '#6A3A60',
+    avBg:              '#E9C77E',
+    avInk:             '#5A430F',
+    headerGlow:        'none',
+    wordmarkColor:     '#2F2830',
+    collapseBtn:       'rgba(0,0,0,0.04)',
+    collapseBtnHover:  'rgba(0,0,0,0.08)',
+    collapseBtnBorder: '#DFD5DD',
+    collapseBtnColor:  '#7E7280',
+    quickBtnBg:        'rgba(0,0,0,0.04)',
+    quickBtnHover:     'rgba(0,0,0,0.07)',
+  },
+  bronce: {
+    bg:                '#F7F4EE',
+    bgHover:           'rgba(0,0,0,0.04)',
+    bgActive:          '#EBE4D7',
+    border:            '#E1DBCF',
+    separator:         '#E1DBCF',
+    text:              '#302C25',
+    textActive:        '#7A4E17',
+    textCategory:      '#82796A',
+    textSub:           '#82796A',
+    textSubHover:      '#302C25',
+    accent:            '#8A5A1E',
+    footerText:        '#82796A',
+    scrollbar:         '#E1DBCF',
+    panelBg:           '#F0ECE3',
+    panelBorder:       '#E1DBCF',
+    iconBg:            'rgba(0,0,0,0.04)',
+    iconColor:         '#82796A',
+    arrowColor:        '#B3A99A',
+    activeBorder:      '#CFC4B5',
+    chipBg:            '#E1E6DA',
+    chipInk:           '#4E6340',
+    avBg:              '#DFC079',
+    avInk:             '#4F3A0C',
+    headerGlow:        'none',
+    wordmarkColor:     '#302C25',
+    collapseBtn:       'rgba(0,0,0,0.04)',
+    collapseBtnHover:  'rgba(0,0,0,0.08)',
+    collapseBtnBorder: '#E1DBCF',
+    collapseBtnColor:  '#82796A',
+    quickBtnBg:        'rgba(0,0,0,0.04)',
+    quickBtnHover:     'rgba(0,0,0,0.07)',
+  },
 };
 
 // Contexto de tema del sidebar — inyectado una vez en AppLayout
-const SidebarCtx = createContext<SidebarPalette>(sidebarDark);
+const SidebarCtx = createContext<SidebarPalette>(PALETTES.dark);
 const useC = () => useContext(SidebarCtx);
 
 // ── Comparación de rutas sin falsos positivos ─────────────────────────────────
@@ -346,7 +593,7 @@ function QuickItemComp({
         gap:            10,
         padding:        collapsed ? '6px 0' : '8px 10px',
         height:         36,
-        border:         active ? '1px solid rgba(99,130,255,0.25)' : '1px solid transparent',
+        border:         active ? `1px solid ${C.activeBorder}` : '1px solid transparent',
         cursor:         'pointer',
         borderRadius:   10,
         justifyContent: collapsed ? 'center' : 'flex-start',
@@ -358,14 +605,14 @@ function QuickItemComp({
       {/* Contenedor de ícono 28×28 */}
       <span style={{
         width: 28, height: 28, borderRadius: 7, flexShrink: 0,
-        background: active ? 'rgba(99,130,255,0.2)' : 'rgba(255,255,255,0.05)',
+        background: active ? C.bgActive : C.iconBg,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         transition: 'background 0.15s',
       }}>
         <item.Icon
           size={15}
           strokeWidth={active ? 2.2 : 1.8}
-          style={{ color: active ? C.accent : hover ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.45)' }}
+          style={{ color: active ? C.accent : hover ? C.text : C.iconColor }}
         />
       </span>
 
@@ -375,7 +622,7 @@ function QuickItemComp({
             flex:         1,
             fontSize:     12.5,
             fontWeight:   active ? 600 : 500,
-            color:        active ? C.textActive : hover ? 'rgba(255,255,255,0.85)' : C.text,
+            color:        active ? C.textActive : hover ? C.textSubHover : C.text,
             textAlign:    'left',
             whiteSpace:   'nowrap',
             overflow:     'hidden',
@@ -387,8 +634,8 @@ function QuickItemComp({
           {item.badge && (
             <span style={{
               fontSize: 9, fontWeight: 700, padding: '2px 7px',
-              borderRadius: 5, background: '#3b5bdb',
-              color: '#fff', letterSpacing: 0.5, textTransform: 'uppercase',
+              borderRadius: 5, background: C.chipBg,
+              color: C.chipInk, letterSpacing: 0.5, textTransform: 'uppercase',
             }}>
               {item.badge}
             </span>
@@ -433,7 +680,7 @@ function CategoryAccordion({
           gap:            10,
           padding:        '8px 10px',
           height:         36,
-          border:         hasActiveSub ? '1px solid rgba(99,130,255,0.25)' : '1px solid transparent',
+          border:         hasActiveSub ? `1px solid ${C.activeBorder}` : '1px solid transparent',
           cursor:         'pointer',
           borderRadius:   10,
           background:     hasActiveSub ? C.bgActive : hover ? C.bgHover : 'transparent',
@@ -444,18 +691,18 @@ function CategoryAccordion({
         {/* Contenedor de ícono 28×28 */}
         <span style={{
           width: 28, height: 28, borderRadius: 7, flexShrink: 0,
-          background: hasActiveSub ? 'rgba(99,130,255,0.2)' : 'rgba(255,255,255,0.05)',
+          background: hasActiveSub ? C.bgActive : C.iconBg,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           transition: 'background 0.15s',
         }}>
           <category.Icon
             size={15} strokeWidth={1.8}
-            style={{ color: hasActiveSub ? C.accent : hover ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.45)' }}
+            style={{ color: hasActiveSub ? C.accent : hover ? C.text : C.iconColor }}
           />
         </span>
         <span style={{
           flex: 1, fontSize: 12.5, fontWeight: hasActiveSub ? 600 : 500,
-          color: hasActiveSub ? C.textActive : hover ? 'rgba(255,255,255,0.85)' : C.text,
+          color: hasActiveSub ? C.textActive : hover ? C.textSubHover : C.text,
           textAlign: 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}>
           {category.label}
@@ -536,7 +783,7 @@ function AccordionSubItem({
       >
         <span style={{
           fontSize: 11, flexShrink: 0, lineHeight: 1,
-          color: active ? C.accent : 'rgba(255,255,255,0.35)',
+          color: active ? C.accent : C.arrowColor,
           transition: 'color 0.12s',
         }}>↳</span>
         <span style={{
@@ -840,7 +1087,7 @@ export default function AppLayout() {
   const queryClient                     = useQueryClient();
 
   const currentUserRole = user?.role ?? 'viewer';
-  const { isDark, toggle: toggleTheme } = useThemeStore();
+  const { isDark, toggle: toggleTheme, temaSidebar } = useThemeStore();
   const { token }                       = theme.useToken();
   const navigate                        = useNavigate();
 
@@ -940,8 +1187,8 @@ export default function AppLayout() {
   const addonCats   = categoriasFiltradas.filter(cat => ADDON_IDS.includes(cat.id));
   const regularCats = categoriasFiltradas.filter(cat => !ADDON_IDS.includes(cat.id));
 
-  // Paleta activa del sidebar según el modo de tema
-  const C = isDark ? sidebarDark : sidebarLight;
+  // Paleta activa: modo oscuro siempre usa 'dark'; modo claro usa la elección del usuario
+  const C = PALETTES[isDark ? 'dark' : (temaSidebar in PALETTES ? temaSidebar : 'nube')];
 
   // Selector de empresa
   const [empresaActiva, setEmpresaActiva] = useState<number | null>(
@@ -1423,8 +1670,8 @@ export default function AppLayout() {
         justifyContent: collapsed ? 'center' : 'space-between',
         padding:        collapsed ? '12px 10px 11px' : '12px 16px 11px',
         flexShrink:     0,
-        background:     'radial-gradient(120% 100% at 20% 0%, rgba(76,134,232,.22), transparent 60%)',
-        borderBottom:   '1px solid rgba(120,150,210,.14)',
+        background:     C.headerGlow,
+        borderBottom:   `1px solid ${C.border}`,
       }}>
         {/* Lockup: badge + wordmark — click colapsa/expande */}
         <div
@@ -1468,7 +1715,7 @@ export default function AppLayout() {
                 fontWeight:    800,
                 fontSize:      23,
                 letterSpacing: '-0.02em',
-                color:         '#fff',
+                color:         C.wordmarkColor,
                 lineHeight:    1.1,
                 userSelect:    'none',
               }}>
@@ -1476,7 +1723,7 @@ export default function AppLayout() {
               </div>
               <div style={{
                 fontSize:      10.5,
-                color:         '#8FA3C8',
+                color:         C.textCategory,
                 textTransform: 'uppercase',
                 letterSpacing: '.14em',
                 marginTop:     2.5,
@@ -1497,15 +1744,15 @@ export default function AppLayout() {
             title="Contraer menú"
             style={{
               width: 26, height: 26, borderRadius: 6, flexShrink: 0,
-              background: 'rgba(255,255,255,.06)',
-              border:     '1px solid rgba(255,255,255,.10)',
+              background: C.collapseBtn,
+              border:     `1px solid ${C.collapseBtnBorder}`,
               cursor:     'pointer',
               display:    'flex', alignItems: 'center', justifyContent: 'center',
-              color:      'rgba(255,255,255,.5)',
+              color:      C.collapseBtnColor,
               transition: 'background 0.15s, color 0.15s',
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,.14)'; e.currentTarget.style.color = '#fff'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,.06)'; e.currentTarget.style.color = 'rgba(255,255,255,.5)'; }}
+            onMouseEnter={e => { e.currentTarget.style.background = C.collapseBtnHover; e.currentTarget.style.color = C.text; }}
+            onMouseLeave={e => { e.currentTarget.style.background = C.collapseBtn; e.currentTarget.style.color = C.collapseBtnColor; }}
           >
             <ChevronLeft size={13} strokeWidth={2.5} />
           </button>
@@ -1725,12 +1972,12 @@ export default function AppLayout() {
             onClick={() => { setMenuTemp(menuActivos); setModalMenu(true); }}
             style={{
               flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-              padding: '6px 0', background: 'rgba(255,255,255,0.05)',
+              padding: '6px 0', background: C.quickBtnBg,
               border: `1px solid ${C.border}`, borderRadius: 9, cursor: 'pointer',
               color: C.footerText, fontSize: 10, transition: 'all 0.15s',
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.09)'; e.currentTarget.style.color = C.text; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = C.footerText; }}
+            onMouseEnter={e => { e.currentTarget.style.background = C.quickBtnHover; e.currentTarget.style.color = C.text; }}
+            onMouseLeave={e => { e.currentTarget.style.background = C.quickBtnBg; e.currentTarget.style.color = C.footerText; }}
           >
             <AppstoreOutlined style={{ fontSize: 12 }} />
             Opciones
@@ -1739,12 +1986,12 @@ export default function AppLayout() {
             onClick={() => setCmdOpen(true)}
             style={{
               flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-              padding: '6px 0', background: 'rgba(255,255,255,0.05)',
+              padding: '6px 0', background: C.quickBtnBg,
               border: `1px solid ${C.border}`, borderRadius: 9, cursor: 'pointer',
               color: C.footerText, fontSize: 10, transition: 'all 0.15s',
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.09)'; e.currentTarget.style.color = C.text; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = C.footerText; }}
+            onMouseEnter={e => { e.currentTarget.style.background = C.quickBtnHover; e.currentTarget.style.color = C.text; }}
+            onMouseLeave={e => { e.currentTarget.style.background = C.quickBtnBg; e.currentTarget.style.color = C.footerText; }}
           >
             <SearchOutlined style={{ fontSize: 12 }} />
             Buscar
@@ -1765,7 +2012,7 @@ export default function AppLayout() {
             <Tooltip title={user?.nombre ?? 'Perfil'} placement="right">
               <button onClick={() => navigate('/profile')}
                 style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 2 }}>
-                <Avatar size={28} style={{ background: '#FCD34D', color: '#1E3A8A', fontSize: 12 }}>
+                <Avatar size={28} style={{ background: C.avBg, color: C.avInk, fontSize: 12 }}>
                   {user?.nombre?.charAt(0).toUpperCase()}
                 </Avatar>
               </button>
@@ -1790,7 +2037,7 @@ export default function AppLayout() {
               style={{ background: 'transparent', border: 'none', cursor: 'pointer',
                 display: 'flex', alignItems: 'center', gap: 8,
                 flex: 1, minWidth: 0, padding: '2px 0', textAlign: 'left' }}>
-              <Avatar size={28} style={{ background: '#FCD34D', color: '#1E3A8A', fontSize: 12, flexShrink: 0 }}>
+              <Avatar size={28} style={{ background: C.avBg, color: C.avInk, fontSize: 12, flexShrink: 0 }}>
                 {user?.nombre?.charAt(0).toUpperCase()}
               </Avatar>
               <div style={{ minWidth: 0 }}>

@@ -20,6 +20,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { UploadFile } from 'antd';
 import { configuracionApi } from '../../api/configuracion.api';
 import { useAuthStore } from '../../store/auth.store';
+import { useThemeStore, TEMAS_SIDEBAR, type TemaSidebar } from '../../store/theme.store';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -63,7 +64,7 @@ type SectionKey =
   | 'datos' | 'ubicacion' | 'branding'
   | 'facturacion' | 'pos' | 'ecf' | 'balanza'
   | 'usuarios' | 'roles'
-  | 'notificaciones' | 'seguridad' | 'plan' | 'auditoria';
+  | 'notificaciones' | 'seguridad' | 'plan' | 'auditoria' | 'apariencia';
 
 const SIDEBAR_GROUPS: Array<{
   label: string;
@@ -96,6 +97,7 @@ const SIDEBAR_GROUPS: Array<{
   {
     label: 'Sistema',
     items: [
+      { key: 'apariencia',     label: 'Apariencia',     Icon: Palette },
       { key: 'notificaciones', label: 'Notificaciones', Icon: Bell },
       { key: 'seguridad',      label: 'Seguridad',      Icon: Lock },
       { key: 'plan',           label: 'Plan y uso',     Icon: PieChart, readonly: true },
@@ -1950,6 +1952,136 @@ function SeccionAuditoria() {
   );
 }
 
+// ── Sección: Apariencia ────────────────────────────────────────────────────────
+
+const TEMA_META: Record<TemaSidebar, { label: string; bg: string; accent: string; actBg: string; txt: string; muted: string }> = {
+  nube:    { label: 'Nube',    bg: '#FBFBFC', accent: '#1D4FD7', actBg: '#E9EFFC', txt: '#2E3641', muted: '#7C8593' },
+  marea:   { label: 'Marea',   bg: '#EEF4F3', accent: '#0E6E72', actBg: '#DCEAE9', txt: '#22302F', muted: '#6D7C7A' },
+  indigo:  { label: 'Índigo',  bg: '#F2F1F9', accent: '#4A43A8', actBg: '#E4E2F4', txt: '#2A2840', muted: '#757390' },
+  bosque:  { label: 'Bosque',  bg: '#F5F4ED', accent: '#2E5D46', actBg: '#E5E7DB', txt: '#2C302A', muted: '#7B7C6F' },
+  cemento: { label: 'Cemento', bg: '#F2F2F3', accent: '#18181B', actBg: '#E3E3E6', txt: '#1F1F21', muted: '#71717A' },
+  ciruela: { label: 'Ciruela', bg: '#F6F1F5', accent: '#6E3B63', actBg: '#E9DEE7', txt: '#2F2830', muted: '#7E7280' },
+  bronce:  { label: 'Bronce',  bg: '#F7F4EE', accent: '#8A5A1E', actBg: '#EBE4D7', txt: '#302C25', muted: '#82796A' },
+};
+
+function SeccionApariencia() {
+  const { isDark, temaSidebar, setTemaSidebar } = useThemeStore();
+  const [saving, setSaving] = useState(false);
+
+  const handleSelect = async (t: TemaSidebar) => {
+    setTemaSidebar(t);    // cambio instantáneo (sin esperar al servidor)
+    setSaving(true);
+    try {
+      await api.patch('/auth/tema-sidebar', { temaSidebar: t });
+    } catch {
+      /* silencioso — el valor ya quedó en localStorage; se reintenta al próximo inicio */
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ marginBottom: 20 }}>
+        <Text strong style={{ fontSize: 15 }}>Tema del sidebar</Text>
+        <div style={{ marginTop: 4 }}>
+          <Text type="secondary" style={{ fontSize: 13 }}>
+            Elige el color del panel de navegación. La preferencia se guarda por usuario y se sincroniza entre dispositivos.
+          </Text>
+        </div>
+      </div>
+
+      {isDark && (
+        <Alert
+          type="info"
+          showIcon
+          icon={<InfoCircleOutlined />}
+          message="En modo oscuro el sidebar mantiene su estilo actual."
+          description="Los temas de color aplican únicamente en modo claro. Desactiva el modo oscuro para personalizar el sidebar."
+          style={{ marginBottom: 20 }}
+        />
+      )}
+
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+        gap: 12,
+        opacity: isDark ? 0.45 : 1,
+        pointerEvents: isDark ? 'none' : 'auto',
+        transition: 'opacity 0.2s',
+      }}>
+        {TEMAS_SIDEBAR.map((t) => {
+          const m = TEMA_META[t];
+          const isSelected = temaSidebar === t;
+          return (
+            <button
+              key={t}
+              onClick={() => handleSelect(t)}
+              disabled={isDark || saving}
+              style={{
+                border: isSelected ? `2px solid ${m.accent}` : '2px solid transparent',
+                borderRadius: 12,
+                padding: 0,
+                cursor: isDark ? 'default' : 'pointer',
+                background: 'transparent',
+                outline: 'none',
+                transition: 'border-color 0.15s, box-shadow 0.15s',
+                boxShadow: isSelected ? `0 0 0 2px ${m.accent}33` : '0 1px 3px rgba(0,0,0,0.08)',
+              }}
+            >
+              {/* Mini-preview del sidebar */}
+              <div style={{ background: m.bg, borderRadius: 10, overflow: 'hidden', height: 100 }}>
+                {/* Header del mini-sidebar */}
+                <div style={{ height: 22, background: m.bg, borderBottom: `1px solid ${m.muted}22`,
+                  display: 'flex', alignItems: 'center', paddingLeft: 10, gap: 5 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: 2, background: m.accent }} />
+                  <div style={{ width: 32, height: 4, borderRadius: 2, background: m.txt, opacity: 0.5 }} />
+                </div>
+                {/* Ítems del mini-sidebar */}
+                <div style={{ padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {/* Ítem activo */}
+                  <div style={{ height: 14, borderRadius: 5, background: m.actBg,
+                    display: 'flex', alignItems: 'center', paddingLeft: 6, gap: 4 }}>
+                    <div style={{ width: 3, height: 10, borderRadius: 2, background: m.accent, flexShrink: 0 }} />
+                    <div style={{ width: 40, height: 4, borderRadius: 2, background: m.accent, opacity: 0.7 }} />
+                  </div>
+                  {/* Ítems inactivos */}
+                  {[32, 44, 28].map((w, i) => (
+                    <div key={i} style={{ height: 13, borderRadius: 5, display: 'flex',
+                      alignItems: 'center', paddingLeft: 6, gap: 4 }}>
+                      <div style={{ width: 7, height: 7, borderRadius: 2, background: m.muted, opacity: 0.5, flexShrink: 0 }} />
+                      <div style={{ width: w, height: 3, borderRadius: 2, background: m.muted, opacity: 0.4 }} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {/* Etiqueta */}
+              <div style={{ padding: '6px 10px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 12, fontWeight: isSelected ? 600 : 400, color: isSelected ? m.accent : undefined }}>
+                  {m.label}
+                </span>
+                {isSelected && (
+                  <span style={{
+                    width: 16, height: 16, borderRadius: '50%', background: m.accent,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 9, color: '#fff', fontWeight: 700,
+                  }}>✓</span>
+                )}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {saving && (
+        <div style={{ marginTop: 12, fontSize: 12, color: '#8c8c8c' }}>
+          Guardando preferencia…
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Componente principal ──────────────────────────────────────────────────────
 
 export default function ConfiguracionPage() {
@@ -1986,6 +2118,7 @@ export default function ConfiguracionPage() {
       case 'seguridad':     return <SeccionSeguridad empresa={empresa} onSaved={handleSaved} />;
       case 'plan':          return <SeccionPlan />;
       case 'auditoria':     return <SeccionAuditoria />;
+      case 'apariencia':    return <SeccionApariencia />;
       default:              return null;
     }
   };

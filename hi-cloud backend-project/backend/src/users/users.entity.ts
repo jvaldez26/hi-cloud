@@ -74,6 +74,10 @@ export class User extends BaseEntity {
   @Column({ default: true })
   passwordConfigured!: boolean;
 
+  // ── Preferencias UI (por usuario, cross-device) ───────────────────────────
+  @Column({ length: 20, default: 'nube' })
+  temaSidebar!: string;
+
   @Column({ default: false })
   twoFactorEnabled!: boolean;
 

@@ -4,7 +4,7 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { IsEmail, IsString, MinLength, MaxLength, Matches, IsInt, IsPositive } from 'class-validator';
+import { IsEmail, IsString, MinLength, MaxLength, Matches, IsInt, IsPositive, IsIn } from 'class-validator';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
@@ -61,6 +61,12 @@ class UpdateProfileDto {
   @MinLength(3, { message: 'El nombre debe tener al menos 3 caracteres' })
   @MaxLength(200, { message: 'El nombre no puede superar 200 caracteres' })
   nombre: string;
+}
+
+class UpdateTemaSidebarDto {
+  @IsString()
+  @IsIn(['nube', 'marea', 'indigo', 'bosque', 'cemento', 'ciruela', 'bronce'])
+  temaSidebar: string;
 }
 
 class SetupPasswordDto {
@@ -411,6 +417,19 @@ export class AuthController {
     @Body() dto: UpdateProfileDto,
   ) {
     return this.authService.updateProfile(user.id, dto.nombre);
+  }
+
+  @Patch('tema-sidebar')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Actualizar tema de color del sidebar (preferencia por usuario)' })
+  async updateTemaSidebar(
+    @GetUser() user: User,
+    @Body() dto: UpdateTemaSidebarDto,
+  ) {
+    await this.authService.updateTemaSidebar(user.id, dto.temaSidebar);
+    return { temaSidebar: dto.temaSidebar };
   }
 
   // ── Google OAuth ──────────────────────────────────────────────────────────

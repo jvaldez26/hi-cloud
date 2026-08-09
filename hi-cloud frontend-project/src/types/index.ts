@@ -9,6 +9,7 @@ export interface AuthUser {
   role:            UserRole;
   tourCompletado?: boolean;
   provider?:       string;  // 'LOCAL' | 'GOOGLE' — para mostrar candado en email
+  temaSidebar?:    string;  // preferencia de color del sidebar, por usuario
 }
 
 export interface EmpresaItem {
