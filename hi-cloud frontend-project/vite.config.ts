@@ -28,12 +28,10 @@ export default defineConfig({
   plugins: [
     react(),
     injectSwVersion(),
-    // TODO: Sentry source map upload desactivado temporalmente.
-    // El plugin (@sentry/vite-plugin) se cuelga indefinidamente en el deploy de CI
-    // cuando SENTRY_AUTH_TOKEN está configurado pero la subida falla (token expirado,
-    // red lenta, etc.), bloqueando deploys de producción por 20-25 minutos.
-    // Reactivar cuando se confirme que el token es válido y se agregue un timeout.
-    // Ver: commits b391c13a → 18d8c56e → este commit.
+    // Sentry source map upload: sentryVitePlugin NO se usa aquí.
+    // La subida ocurre como paso separado en deploy.yml con sentry-cli,
+    // con timeout-minutes: 3 y continue-on-error: true para no bloquear deploys.
+    // El plugin colgaba indefinidamente cuando fallaba la autenticación (b391c13a → 18d8c56e).
   ],
   server: {
     port: 5173,
@@ -59,8 +57,9 @@ export default defineConfig({
     dedupe: ['react', 'react-dom'],
   },
   build: {
-    // Source maps desactivados hasta que el upload a Sentry esté estabilizado.
-    sourcemap: false,
+    // 'hidden': genera .map pero NO añade //# sourceMappingURL al JS (cliente no los descarga).
+    // sentry-cli inject añade debugIds a los .map; luego los sube y los borra del dist.
+    sourcemap: 'hidden',
     rollupOptions: {
       output: {
         entryFileNames: 'assets/[name]-[hash].js',

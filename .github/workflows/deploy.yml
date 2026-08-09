@@ -124,7 +124,7 @@ jobs:
   build-frontend:
     name: Build Frontend
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15   # +3 min para el paso de subida de source maps (con timeout propio)
     needs: ci
     steps:
       - uses: actions/checkout@v4
@@ -143,9 +143,33 @@ jobs:
           VITE_API_URL: /api/v1
           VITE_SENTRY_DSN:     ${{ secrets.VITE_SENTRY_DSN }}
           VITE_SENTRY_RELEASE: ${{ github.sha }}
-          SENTRY_AUTH_TOKEN:   ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG:          ${{ secrets.SENTRY_ORG }}
-          SENTRY_PROJECT:      ${{ secrets.SENTRY_PROJECT }}
+          # SENTRY_AUTH_TOKEN / ORG / PROJECT ya NO van aquí — eran para sentryVitePlugin
+          # (desactivado). Ahora solo los usa el paso de subida de source maps más abajo.
+
+      - name: "Subir source maps a Sentry (falla → deploy continúa)"
+        # Diseño resistente: si sentry-cli se cuelga o falla, el job sigue.
+        # Un problema de source maps no puede volver a bloquear producción.
+        working-directory: 'hi-cloud frontend-project'
+        timeout-minutes: 3
+        continue-on-error: true
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG:        ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT:    ${{ secrets.SENTRY_PROJECT }}
+        run: |
+          # Inyectar debugIds en JS y .map → correlación automática sin depender del release
+          npx @sentry/cli sourcemaps inject ./dist
+          # Subir bajo el mismo release que Sentry.init() usará en el frontend
+          npx @sentry/cli sourcemaps upload --release "$GITHUB_SHA" ./dist
+          echo "✅ Source maps subidos al release $GITHUB_SHA"
+
+      - name: "Borrar .map del dist (no exponer en producción)"
+        # Siempre corre, incluso si la subida falló — los .map no deben llegar a EC2.
+        working-directory: 'hi-cloud frontend-project'
+        run: |
+          COUNT=$(find ./dist -name '*.map' | wc -l)
+          find ./dist -name '*.map' -delete
+          echo "✅ $COUNT archivos .map eliminados del dist"
 
       - name: Upload frontend dist
         uses: actions/upload-artifact@v4
