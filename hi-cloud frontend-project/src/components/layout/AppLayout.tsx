@@ -1769,21 +1769,23 @@ export default function AppLayout() {
         flexShrink:     0,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: collapsed ? undefined : 1 }}>
-          {/* Avatar con iniciales */}
-          <div
-            onClick={collapsed ? () => setCollapsedPersisted(false) : undefined}
-            title={collapsed ? (empresaNombreDisplay || undefined) : undefined}
-            style={{
-              width: 28, height: 28, borderRadius: 6, flexShrink: 0,
-              background: getEmpresaColor(empresaNombreDisplay || 'H'),
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 11, fontWeight: 700, color: '#FFFFFF',
-              cursor: collapsed ? 'pointer' : 'default',
-              userSelect: 'none',
-            }}
-          >
-            {(empresaNombreDisplay || 'HI').slice(0, 2).toUpperCase()}
-          </div>
+          {/* Avatar con iniciales — solo visible cuando el sidebar está colapsado */}
+          {collapsed && (
+            <div
+              onClick={() => setCollapsedPersisted(false)}
+              title={empresaNombreDisplay || undefined}
+              style={{
+                width: 28, height: 28, borderRadius: 6, flexShrink: 0,
+                background: getEmpresaColor(empresaNombreDisplay || 'H'),
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 11, fontWeight: 700, color: '#FFFFFF',
+                cursor: 'pointer',
+                userSelect: 'none',
+              }}
+            >
+              {(empresaNombreDisplay || 'HI').slice(0, 2).toUpperCase()}
+            </div>
+          )}
           {!collapsed && (
             <div style={{ minWidth: 0, flex: 1 }}>
               <span style={{
