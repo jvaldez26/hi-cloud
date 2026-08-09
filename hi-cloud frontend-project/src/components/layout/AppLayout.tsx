@@ -832,6 +832,18 @@ function CategoryAccordion({
 }) {
   const C = useC();
   const [hover, setHover] = useState(false);
+  // Color de la línea lateral: deriva del accent del tema actual.
+  // Paletas intensas (accent=#FFFFFF) → blanco semitransparente.
+  // Paletas claras → accent al 50% de opacidad.
+  const categoryLineColor = C.accent === '#FFFFFF'
+    ? 'rgba(255,255,255,0.28)'
+    : (() => {
+        const h = C.accent.replace('#', '');
+        const r = parseInt(h.slice(0, 2), 16);
+        const g = parseInt(h.slice(2, 4), 16);
+        const b = parseInt(h.slice(4, 6), 16);
+        return `rgba(${r},${g},${b},0.50)`;
+      })();
   const hasActiveSub = category.items.some(i => isActivePath(activePath, i.path));
 
   return (
@@ -892,7 +904,18 @@ function CategoryAccordion({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.12 }}
           >
-            <div style={{ paddingBottom: 4 }}>
+            {/* Línea lateral que delimita visualmente la categoría expandida */}
+            <div style={{ position: 'relative', paddingBottom: 4 }}>
+              <div style={{
+                position: 'absolute',
+                left: 16,
+                top: 4,
+                bottom: 8,
+                width: 2,
+                borderRadius: 2,
+                background: categoryLineColor,
+                pointerEvents: 'none',
+              }} />
               {category.items.map(item => {
                 const isActive  = isActivePath(activePath, item.path);
                 const minPlan   = PATH_MIN_PLAN[item.path] as PlanTipo | undefined;
