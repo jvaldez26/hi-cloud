@@ -11,6 +11,7 @@ import {
 import {
   DollarOutlined, SearchOutlined, FileExcelOutlined, EyeOutlined,
   WhatsAppOutlined, FilterOutlined, HistoryOutlined, ClockCircleOutlined, PrinterOutlined,
+  StopOutlined,
 } from '@ant-design/icons';
 import { TableActions } from '../../components/ui/TableActions';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -131,6 +132,52 @@ export default function CxCPage() {
         setTimeout(() => URL.revokeObjectURL(url), 60_000);
       })
       .catch(() => message.error('No se pudo generar el recibo'));
+  };
+
+  const anularReciboCxCMut = useMutation({
+    mutationFn: ({ reciboId, motivo }: { reciboId: number; motivo: string }) =>
+      api.delete(`/recibos-cobro/${reciboId}`, { data: { motivo } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cxc-pagos', histId] });
+      qc.invalidateQueries({ queryKey: ['cxc'] });
+      qc.invalidateQueries({ queryKey: ['cxc-resumen'] });
+      message.success('Recibo anulado y saldo revertido correctamente');
+    },
+    onError: (e: any) =>
+      message.error(e?.response?.data?.message ?? 'Error al anular recibo', 5),
+  });
+
+  const confirmarAnulacionRecibo = (pago: any) => {
+    let motivo = '';
+    Modal.confirm({
+      title: '¿Anular este recibo de cobro?',
+      icon: <StopOutlined style={{ color: '#EF4444' }} />,
+      content: (
+        <div>
+          <p style={{ margin: '0 0 4px' }}>
+            Recibo: <strong style={{ fontFamily: 'monospace' }}>{pago.reciboNumero}</strong>
+          </p>
+          <p style={{ margin: '0 0 8px' }}>
+            Monto: <strong>{new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP' }).format(Number(pago.monto))}</strong>
+          </p>
+          <p style={{ color: '#EF4444', fontSize: 12, margin: '0 0 8px' }}>
+            Esta acción revertirá el pago y actualizará el saldo pendiente de la cuenta por cobrar.
+          </p>
+          <Input.TextArea
+            placeholder="Motivo de anulación (obligatorio)"
+            rows={2}
+            onChange={e => { motivo = e.target.value; }}
+          />
+        </div>
+      ),
+      okText: 'Anular recibo',
+      okButtonProps: { danger: true },
+      cancelText: 'Cancelar',
+      onOk: () => {
+        if (!motivo.trim()) { message.warning('Debes ingresar un motivo'); return Promise.reject(); }
+        return anularReciboCxCMut.mutateAsync({ reciboId: pago.reciboId, motivo });
+      },
+    });
   };
 
   const abrirWhatsApp = (r: CuentaPorCobrar) => {
@@ -440,11 +487,24 @@ export default function CxCPage() {
               { title: 'Método', dataIndex: 'metodoPago', width: 110, render: (v: string) => <Tag>{v}</Tag> },
               { title: 'Ref.',   dataIndex: 'referencia', ellipsis: true, render: (v: string) => v ?? '—' },
               {
-                title: '', key: 'print', width: 44, align: 'center' as const,
+                title: '', key: 'acciones', width: 76, align: 'center' as const,
                 render: (_: unknown, r: any) => (
-                  <Tooltip title="Imprimir recibo">
-                    <Button size="small" icon={<PrinterOutlined />} onClick={() => imprimirPagoCobrado(r.id)} />
-                  </Tooltip>
+                  <Space size={4}>
+                    <Tooltip title="Imprimir recibo">
+                      <Button size="small" icon={<PrinterOutlined />} onClick={() => imprimirPagoCobrado(r.id)} />
+                    </Tooltip>
+                    {r.reciboId && (
+                      <Tooltip title={`Anular ${r.reciboNumero}`}>
+                        <Button
+                          size="small"
+                          danger
+                          icon={<StopOutlined />}
+                          loading={anularReciboCxCMut.isPending}
+                          onClick={() => confirmarAnulacionRecibo(r)}
+                        />
+                      </Tooltip>
+                    )}
+                  </Space>
                 ),
               },
             ]}

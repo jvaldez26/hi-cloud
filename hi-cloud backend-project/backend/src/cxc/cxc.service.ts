@@ -212,10 +212,27 @@ export class CxCService {
 
   async getPagos(cuentaId: number) {
     await this.findById(cuentaId);
-    return this.pagoRepository.find({
+    const pagos = await this.pagoRepository.find({
       where: { cuentaPorCobrarId: cuentaId, isActive: true },
       relations: ['user'],
       order: { fecha: 'DESC' },
+    });
+
+    // Enriquecer con reciboId/reciboNumero para permitir anulación desde el historial
+    const recibosRows = await this.dataSource.query<{ id: number; numero: string }[]>(
+      `SELECT id, numero FROM recibos_cobro WHERE "cxcId" = $1 AND "isActive" = true`,
+      [cuentaId],
+    );
+    const reciboByNumero: Record<string, number> = {};
+    for (const r of recibosRows) reciboByNumero[r.numero] = r.id;
+
+    return pagos.map(p => {
+      const match = p.notas?.match(/^Recibo (REC-\d+)/);
+      const numero = match?.[1] ?? null;
+      return Object.assign(p as any, {
+        reciboId:     numero ? (reciboByNumero[numero] ?? null) : null,
+        reciboNumero: numero,
+      });
     });
   }
 

@@ -343,18 +343,21 @@ export default function RecibosCobrosPage() {
           rowKey="id"
           loading={isLoading}
           size="middle"
+          scroll={{ x: 'max-content' }}
           pagination={{ pageSize: 15 }}
           columns={filterColumns([
-            { title: 'Número', dataIndex: 'numero', key: 'n', render: (v: any) => <Text strong style={{ fontFamily: 'monospace', color: token.colorSuccess }}>{v}</Text> },
-            { title: 'Fecha', dataIndex: 'fecha', key: 'f' },
-            { title: 'Cliente', dataIndex: 'clienteNombre', key: 'c', render: (v: any) => <Text strong>{v}</Text> },
+            { title: 'Número', dataIndex: 'numero', key: 'n', width: 115,
+              render: (v: any) => <Text strong style={{ fontFamily: 'monospace', color: token.colorSuccess }}>{v}</Text> },
+            { title: 'Fecha', dataIndex: 'fecha', key: 'f', width: 108 },
+            { title: 'Cliente', dataIndex: 'clienteNombre', key: 'c', ellipsis: true,
+              render: (v: any) => <Text strong>{v}</Text> },
             {
-              title: 'Método', dataIndex: 'metodoPago', key: 'm',
+              title: 'Método', dataIndex: 'metodoPago', key: 'm', width: 160,
               render: (v: any) => <Tag>{METODOS.find(x => x.value === v)?.label ?? v}</Tag>,
             },
             { title: 'Concepto', dataIndex: 'concepto', key: 'co', ellipsis: true },
             {
-              title: 'Monto', dataIndex: 'monto', key: 'mo', align: 'right' as const,
+              title: 'Monto', dataIndex: 'monto', key: 'mo', align: 'right' as const, width: 150,
               render: (v: any, r: any) => <Text strong style={{ color: token.colorSuccess, fontSize: 14 }}>{fmt(v, r.moneda)}</Text>,
             },
             {
