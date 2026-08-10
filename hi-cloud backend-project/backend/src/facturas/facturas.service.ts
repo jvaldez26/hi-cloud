@@ -956,6 +956,13 @@ export class FacturasService {
           factura.folio,
         );
       }
+
+      // Anular CxC vinculada (si la factura era a crédito)
+      await this.cxcService.anularPorFacturaId(id).catch(err =>
+        this.logger.warn(
+          `Cancelación factura #${id}: no se pudo anular CxC — ${(err as Error).message}`,
+        ),
+      );
     }
 
     await this.facturaRepository.update(id, { estado });

@@ -314,6 +314,29 @@ export class CxCService {
     return this.findById(id);
   }
 
+  /**
+   * Anula la CxC vinculada a una factura cuando ésta se cancela.
+   * - Si no existe CxC (factura de contado) → no hace nada.
+   * - Si ya está ANULADA → no hace nada (idempotente).
+   * - Si está PAGADA → la deja intacta; el cobro ya fue procesado.
+   * - En cualquier otro estado (PENDIENTE, VENCIDA, PAGADA_PARCIAL) → la anula.
+   */
+  async anularPorFacturaId(facturaId: number): Promise<void> {
+    const cuenta = await this.cxcRepository.findOne({
+      where: { facturaId, isActive: true },
+    });
+    if (!cuenta) return;
+    if (cuenta.estado === EstadoCuenta.ANULADA) return;
+    if (cuenta.estado === EstadoCuenta.PAGADA) {
+      this.logger.warn(
+        `anularPorFacturaId: CxC #${cuenta.id} (factura #${facturaId}) ya está PAGADA — se omite`,
+      );
+      return;
+    }
+    await this.cxcRepository.update(cuenta.id, { estado: EstadoCuenta.ANULADA });
+    this.logger.log(`CxC #${cuenta.id} anulada por cancelación de factura #${facturaId}`);
+  }
+
   // ──────────────────────────────────────────────────────────────────
   // Antigüedad de saldos (aging)
   // ──────────────────────────────────────────────────────────────────
