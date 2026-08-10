@@ -332,6 +332,48 @@ export class CxCService {
   }
 
   /**
+   * Anula un PagoCobrado individual y revierte los saldos de la CxC.
+   * Usado desde el historial de cobros para pagos sin recibo asociado.
+   */
+  async anularPago(pagoId: number): Promise<{ ok: boolean; mensaje: string }> {
+    const empresaId = this.tenantService.getEmpresaId();
+
+    const pago = await this.pagoRepository.findOne({
+      where: { id: pagoId, isActive: true },
+    });
+    if (!pago) throw new NotFoundException(`Pago #${pagoId} no encontrado`);
+
+    const cxc = await this.cxcRepository.findOne({
+      where: { id: pago.cuentaPorCobrarId, empresaId, isActive: true },
+    });
+    if (!cxc) throw new NotFoundException(`Cuenta por cobrar no encontrada`);
+
+    const monto = Number(pago.monto);
+    const nuevoMontoPagado    = Math.max(0, +(Number(cxc.montoPagado) - monto).toFixed(2));
+    const nuevoMontoPendiente = +(Number(cxc.montoOriginal) - nuevoMontoPagado).toFixed(2);
+    const nuevoEstado: EstadoCuenta =
+      nuevoMontoPagado <= 0   ? EstadoCuenta.PENDIENTE :
+      nuevoMontoPendiente > 0 ? EstadoCuenta.PAGADA_PARCIAL :
+                                 EstadoCuenta.PAGADA;
+
+    await this.dataSource.transaction(async (em) => {
+      await em.getRepository(PagoCobrado).update(pagoId, { isActive: false } as any);
+      await em.getRepository(CuentaPorCobrar).update(cxc.id, {
+        montoPagado:    nuevoMontoPagado,
+        montoPendiente: nuevoMontoPendiente,
+        estado:         nuevoEstado as any,
+      });
+      // Revertir factura a EMITIDA si había quedado PAGADA por este pago
+      if (cxc.facturaId && nuevoEstado !== EstadoCuenta.PAGADA) {
+        await em.getRepository(Factura).update(cxc.facturaId, { estado: FacturaEstado.EMITIDA });
+      }
+    });
+
+    this.logger.log(`Pago #${pagoId} anulado — CxC #${cxc.id} revertida (nuevo estado: ${nuevoEstado})`);
+    return { ok: true, mensaje: `Pago anulado y saldo revertido` };
+  }
+
+  /**
    * Anula la CxC vinculada a una factura cuando ésta se cancela.
    * - Si no existe CxC (factura de contado) → no hace nada.
    * - Si ya está ANULADA → no hace nada (idempotente).
