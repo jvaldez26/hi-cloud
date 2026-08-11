@@ -14,7 +14,7 @@ import {
   round2,
 } from './base-ecf.builder';
 import { Logger } from '@nestjs/common';
-import { truncarNombreItem } from './sections/items.section';
+import { buildItems } from './sections/items.section';
 
 const logger = new Logger('E45Builder');
 
@@ -36,24 +36,12 @@ export function buildE45(input: ECFBuildInput): MSellerPayload {
   if (cliente?.direccion)         compradorExtras['DireccionComprador'] = cliente.direccion;
   if (cliente?.numeroOrdenCompra) compradorExtras['NumeroOrdenCompra']  = cliente.numeroOrdenCompra;
 
-  // PASO 1: construir items con DOP
-  const items = detallesME.map((d: any, idx: number) => {
-    const precioME = Number(d.precioUnitario);
-    const montoME  = Number(d.subtotal);
-    const pct      = parseFloat(String(d.porcentajeIva ?? 18));
-    const indFact  = pct >= 18 ? 1 : pct >= 16 ? 2 : 4;
-    const otME     = mc.otraMonedaItem(precioME, montoME);
-    return {
-      NumeroLinea:            idx + 1,
-      IndicadorFacturacion:   indFact,
-      NombreItem:             truncarNombreItem(d.descripcion, encf),
-      IndicadorBienoServicio: 1,
-      CantidadItem:           Number(d.cantidad),
-      UnidadMedida:           43,
-      PrecioUnitarioItem:     round2(mc.toDOP(precioME)),
-      ...(otME ? { OtraMonedaDetalle: otME } : {}),
-      MontoItem:              round2(mc.toDOP(montoME)),
-    };
+  // PASO 1: construir items con DOP — buildItems maneja DescuentoMonto+TablaSubDescuento
+  // y cuadratura exacta (adv. DGII 2394). Emite DescuentoMonto solo cuando hay
+  // descuento real registrado en d.descuentoMonto; sin descuento usa cap4(monto÷qty).
+  const items = buildItems(detallesME, encf, {
+    toDOP:          (v) => mc.toDOP(v),
+    otraMonedaItem: (p, m) => mc.otraMonedaItem(p, m) ?? undefined,
   });
 
   // PASO 2: calcular totales DESDE los items (en RD$)

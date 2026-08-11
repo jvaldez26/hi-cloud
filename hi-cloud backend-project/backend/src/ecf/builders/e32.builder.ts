@@ -13,11 +13,9 @@ import {
   round2,
 } from './base-ecf.builder';
 import { Logger } from '@nestjs/common';
-import { warnCuadraturaItem, truncarNombreItem } from './sections/items.section';
+import { buildItems } from './sections/items.section';
 
 const logger = new Logger('E32Builder');
-
-function cap4(n: number | string): number { return parseFloat(Number(n).toFixed(4)); }
 
 const MONTO_RNC_OBLIGATORIO = 250_000;
 
@@ -40,39 +38,17 @@ export function buildE32(input: ECFBuildInput): MSellerPayload {
   assertEmisorOrder(emisor);
 
   // PASO 2: construir items con DOP
-  const items = detallesME.map((d: any, idx: number) => {
-    const precioME = Number(d.precioUnitario);
-    const montoME  = Number(d.subtotal);
-    const pct      = parseFloat(String(d.porcentajeIva ?? 18));
-    const indFact  = pct === 18 ? 1 : pct === 16 ? 2 : pct === 0 ? 4
-      : (() => { throw new Error(`[E32] porcentajeIva inválido: ${pct}. Valores válidos: 0, 16, 18`); })();
-    const otME     = mc.otraMonedaItem(precioME, montoME);
-
-    const cantidad     = cap4(d.cantidad);
-    const precioDOP    = round2(mc.toDOP(precioME));
-    const montoItemDOP = round2(mc.toDOP(montoME));
-    // Descuento = precio×cant − monto, con el PrecioUnitarioItem YA redondeado
-    // (lo que DGII multiplica) → cuadratura exacta con MontoItem.
-    const descuentoDOP = round2(precioDOP * cantidad - montoItemDOP);
-
-    const item = {
-      NumeroLinea:            idx + 1,
-      IndicadorFacturacion:   indFact,
-      NombreItem:             truncarNombreItem(d.descripcion, encf),
-      IndicadorBienoServicio: 1,
-      CantidadItem:           cantidad,
-      UnidadMedida:           43,
-      PrecioUnitarioItem:     precioDOP,
-      // DescuentoMonto SOLO en DOP (sin OtraMonedaDetalle). En moneda extranjera
-      // el orden XSD relativo a OtraMonedaDetalle y un posible DescuentoOtraMoneda
-      // están sin confirmar. TODO(ME): habilitar tras validar el XSD oficial. Hoy
-      // el path ME sale como antes (sin DescuentoMonto), no peor.
-      ...(descuentoDOP > 0 && !otME ? { DescuentoMonto: descuentoDOP } : {}),
-      ...(otME ? { OtraMonedaDetalle: otME } : {}),
-      MontoItem:              montoItemDOP,
-    };
-    warnCuadraturaItem(item, encf);
-    return item;
+  // Validación estricta de porcentajeIva (E32 solo admite 0, 16, 18).
+  for (const d of detallesME) {
+    const pct = parseFloat(String((d as any).porcentajeIva ?? 18));
+    if (pct !== 0 && pct !== 16 && pct !== 18) {
+      throw new Error(`[E32] porcentajeIva inválido: ${pct}. Valores válidos: 0, 16, 18`);
+    }
+  }
+  // buildItems gestiona DescuentoMonto+TablaSubDescuento y cuadratura exacta (adv. 2394).
+  const items = buildItems(detallesME, encf, {
+    toDOP:          (v) => mc.toDOP(v),
+    otraMonedaItem: (p, m) => mc.otraMonedaItem(p, m) ?? undefined,
   });
 
   // PASO 3: calcular totales DESDE los items en RD$

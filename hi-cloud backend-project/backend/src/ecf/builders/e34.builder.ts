@@ -17,11 +17,9 @@ import {
 } from './base-ecf.builder';
 import { fmtFecha } from './sections/id-doc.section';
 import { Logger } from '@nestjs/common';
-import { warnCuadraturaDGII, truncarNombreItem } from './sections/items.section';
+import { buildItems } from './sections/items.section';
 
 const logger = new Logger('E34Builder');
-
-function cap4(n: number | string): number { return parseFloat(Number(n).toFixed(4)); }
 
 const CODIGOS_MODIFICACION_E34: Record<string, string> = {
   '1': 'Anulación total',
@@ -97,25 +95,17 @@ export function buildE34(input: ECFBuildInput): MSellerPayload {
   const indicadorNC = calcIndicadorNC(infoReferencia.FechaNCFModificado);
 
   // ── ITEMS: DOP como principal, OtraMonedaDetalle si USD ──────────────────
-  const items = detallesME.map((d: any, idx: number) => {
-    warnCuadraturaDGII(d, encf);
-    const precioME = Number(d.precioUnitario);
-    const montoME  = Number(d.subtotal);
-    const pct      = parseFloat(String(d.porcentajeIva ?? 18));
-    const indFact  = pct === 18 ? 1 : pct === 16 ? 2 : pct === 0 ? 4
-      : (() => { throw new Error(`[E34] porcentajeIva inválido: ${pct}. Valores válidos: 0, 16, 18`); })();
-    const otME     = mc.otraMonedaItem(precioME, montoME);
-    return {
-      NumeroLinea:            idx + 1,
-      IndicadorFacturacion:   indFact,
-      NombreItem:             truncarNombreItem(d.descripcion, encf),
-      IndicadorBienoServicio: 1,
-      CantidadItem:           cap4(d.cantidad),
-      UnidadMedida:           43,
-      PrecioUnitarioItem:     round2(mc.toDOP(precioME)),
-      ...(otME ? { OtraMonedaDetalle: otME } : {}),
-      MontoItem:              round2(mc.toDOP(montoME)),
-    };
+  // Validación estricta de porcentajeIva (E34 solo admite 0, 16, 18).
+  for (const d of detallesME) {
+    const pct = parseFloat(String((d as any).porcentajeIva ?? 18));
+    if (pct !== 0 && pct !== 16 && pct !== 18) {
+      throw new Error(`[E34] porcentajeIva inválido: ${pct}. Valores válidos: 0, 16, 18`);
+    }
+  }
+  // buildItems gestiona DescuentoMonto+TablaSubDescuento y cuadratura exacta (adv. 2394).
+  const items = buildItems(detallesME, encf, {
+    toDOP:          (v) => mc.toDOP(v),
+    otraMonedaItem: (p, m) => mc.otraMonedaItem(p, m) ?? undefined,
   });
 
   // ── TOTALES: calcular desde items en DOP ──────────────────────────────────

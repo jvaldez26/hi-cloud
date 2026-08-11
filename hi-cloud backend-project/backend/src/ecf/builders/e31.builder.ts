@@ -14,11 +14,9 @@ import {
   round2,
 } from './base-ecf.builder';
 import { Logger } from '@nestjs/common';
-import { warnCuadraturaItem, truncarNombreItem } from './sections/items.section';
+import { buildItems } from './sections/items.section';
 
 const logger = new Logger('E31Builder');
-
-function cap4(n: number | string): number { return parseFloat(Number(n).toFixed(4)); }
 
 export function buildE31(input: ECFBuildInput): MSellerPayload {
   const { encf, factura, config, fechaVencSec } = input;
@@ -36,34 +34,11 @@ export function buildE31(input: ECFBuildInput): MSellerPayload {
   const detallesME = factura.detalles as any[] ?? [];
 
   // ── PASO 1: construir items con DOP como principal ─────────────────────────
-  const items = detallesME.map((d: any, idx: number) => {
-    const precioME = Number(d.precioUnitario);
-    const montoME  = Number(d.subtotal);
-    const pct      = parseFloat(String(d.porcentajeIva ?? 18));
-    const indFact  = pct >= 18 ? 1 : pct >= 16 ? 2 : 4;
-    const otME     = mc.otraMonedaItem(precioME, montoME);
-
-    const cantidad     = cap4(d.cantidad);
-    const montoItemDOP = round2(mc.toDOP(montoME));
-    // PrecioUnitarioItem a 4 dec derivado de MontoItem÷cantidad — DGII Informe Técnico §13
-    // permite hasta 4 decimales para este campo. Derivar desde MontoItem garantiza
-    // cuadratura exacta sin DescuentoMonto fantasma. Residuos de redondeo quedan dentro
-    // de la tolerancia DGII §12 (±1 unidad por línea).
-    const precioXML = cantidad > 0 ? cap4(montoItemDOP / cantidad) : cap4(mc.toDOP(precioME));
-
-    const item = {
-      NumeroLinea:            idx + 1,
-      IndicadorFacturacion:   indFact,
-      NombreItem:             truncarNombreItem(d.descripcion, encf),
-      IndicadorBienoServicio: 1,
-      CantidadItem:           cantidad,
-      UnidadMedida:           43,
-      PrecioUnitarioItem:     precioXML,
-      ...(otME ? { OtraMonedaDetalle: otME } : {}),
-      MontoItem:              montoItemDOP,
-    };
-    warnCuadraturaItem(item, encf);
-    return item;
+  // buildItems gestiona la estrategia de precio (cap4 sin descuento, round2 con
+  // descuento real) y emite DescuentoMonto+TablaSubDescuento cuando d.descuentoMonto>0.
+  const items = buildItems(detallesME, encf, {
+    toDOP:          (v) => mc.toDOP(v),
+    otraMonedaItem: (p, m) => mc.otraMonedaItem(p, m) ?? undefined,
   });
 
   // ── PASO 2: calcular totales DESDE los items (en RD$) ─────────────────────

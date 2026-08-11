@@ -101,36 +101,89 @@ export function warnCuadraturaItem(
 }
 
 /**
+ * Opciones para buildItems / buildItemsE33.
+ */
+export interface BuildItemsOptions {
+  /**
+   * Convierte un monto de la moneda original (ME) a RD$. Identidad para
+   * facturas DOP. Defecto: (x) => x.
+   */
+  toDOP?: (v: number) => number;
+  /**
+   * Construye el bloque OtraMonedaDetalle para una línea (facturas ME).
+   * Recibe el precio y el monto en la moneda original. Retorna null/undefined
+   * cuando no aplica (facturas DOP).
+   */
+  otraMonedaItem?: (precioME: number, montoME: number) => unknown | null | undefined;
+}
+
+/**
  * Ítems estándar — todos los tipos de e-CF (E31–E47).
+ *
+ * Estrategia PrecioUnitarioItem:
+ *   • Descuento real (d.descuentoMonto > 0): se usa el precio original redondeado a 2 dec y
+ *     se emite DescuentoMonto + TablaSubDescuento para que DGII valide
+ *     CantidadItem × PrecioUnitarioItem − DescuentoMonto = MontoItem.
+ *   • Sin descuento: se deriva el precio de MontoItem ÷ CantidadItem (cap4, técnica E31),
+ *     garantizando cuadratura exacta sin emitir DescuentoMonto fantasma.
+ *
  * El ITBIS 18% estándar NO se declara en TablaImpuesto dentro del ítem;
  * va únicamente en los Totales del encabezado del documento (estándar DGII XSD).
  * IndicadorFacturacion identifica el tipo de gravamen por línea.
- *
- * DescuentoMonto = bruto - MontoItem (solo se incluye cuando > 0).
- * PrecioUnitarioItem siempre es el precio original sin descuento.
  */
-export function buildItems(detalles: DetalleLike[], encf = ''): Record<string, unknown>[] {
+export function buildItems(
+  detalles: DetalleLike[],
+  encf = '',
+  opts: BuildItemsOptions = {},
+): Record<string, unknown>[] {
+  const { toDOP = (x: number) => x, otraMonedaItem } = opts;
+
   return (detalles ?? []).map((d, idx) => {
-    const montoItem = round2(Number(d.subtotal));
-    const bruto     = round2(Number(d.precioUnitario) * Number(d.cantidad));
-    const descMonto = round2(bruto - montoItem);
+    const cantidad  = cap4(d.cantidad);
+    const precioME  = Number(d.precioUnitario);
+    const montoME   = Number(d.subtotal);
+    const descReal  = round2(Number(d.descuentoMonto ?? 0));
 
-    warnCuadraturaDGII(
-      { ...d, descuentoMonto: descMonto },
-      encf || `item#${idx + 1}`,
-    );
+    const montoItem = round2(toDOP(montoME));
 
-    return {
+    // PrecioUnitarioItem — dos estrategias según presencia de descuento real:
+    //   Con descuento: precio original (round2) + DescuentoMonto + TablaSubDescuento
+    //   Sin descuento: derivado de MontoItem÷cantidad (cap4) → cuadratura exacta,
+    //                  sin DescuentoMonto fantasma por residuos de redondeo.
+    const precioDOP = round2(toDOP(precioME));
+    const precioXML = descReal > 0
+      ? precioDOP
+      : cap4(montoItem / (cantidad || 1));
+
+    // DescuentoMonto computado aritméticamente sobre el precioXML serializado,
+    // de modo que CantidadItem × PrecioUnitarioItem − DescuentoMonto = MontoItem
+    // se cumpla exactamente (regla XSD DGII, adv. 2394).
+    const descMonto = descReal > 0
+      ? round2(round2(precioXML * cantidad) - montoItem)
+      : 0;
+
+    const otME = otraMonedaItem?.(precioME, montoME) ?? null;
+
+    const item: Record<string, unknown> = {
       NumeroLinea:            idx + 1,
       IndicadorFacturacion:   indicadorFacturacion(Number(d.porcentajeIva)),
       NombreItem:             truncarNombreItem(d.descripcion, encf),
       IndicadorBienoServicio: 1,
-      CantidadItem:           cap4(d.cantidad),
+      CantidadItem:           cantidad,
       UnidadMedida:           43,
-      PrecioUnitarioItem:     round2(Number(d.precioUnitario)),
-      ...(descMonto > 0 ? { DescuentoMonto: descMonto } : {}),
-      MontoItem:              montoItem,
+      PrecioUnitarioItem:     precioXML,
+      ...(descMonto > 0 ? {
+        DescuentoMonto: descMonto,
+        TablaSubDescuento: {
+          SubDescuento: [{ TipoSubDescuento: '$', MontoSubDescuento: descMonto }],
+        },
+      } : {}),
+      ...(otME ? { OtraMonedaDetalle: otME } : {}),
+      MontoItem: montoItem,
     };
+
+    warnCuadraturaItem(item, encf || `item#${idx + 1}`);
+    return item;
   });
 }
 
@@ -142,28 +195,38 @@ export const buildItemsConImpuesto = buildItems;
 
 /**
  * Ítems E33 (Nota de Débito) — valores STRING y UnidadMedida='47' según spec DGII.
+ * Misma estrategia PrecioUnitarioItem/DescuentoMonto que buildItems.
  */
 export function buildItemsE33(detalles: DetalleLike[], encf = ''): Record<string, unknown>[] {
   return (detalles ?? []).map((d, idx) => {
+    const cantidad  = cap4(d.cantidad);
+    const descReal  = round2(Number(d.descuentoMonto ?? 0));
     const montoItem = round2(Number(d.subtotal));
-    const bruto     = round2(Number(d.precioUnitario) * Number(d.cantidad));
-    const descMonto = round2(bruto - montoItem);
 
-    warnCuadraturaDGII(
-      { ...d, descuentoMonto: descMonto },
-      encf || `item#${idx + 1}`,
-    );
+    const precioDOP = round2(Number(d.precioUnitario));
+    const precioXML = descReal > 0
+      ? precioDOP
+      : cap4(montoItem / (cantidad || 1));
+
+    const descMonto = descReal > 0
+      ? round2(round2(precioXML * cantidad) - montoItem)
+      : 0;
 
     return {
       NumeroLinea:            idx + 1,
       IndicadorFacturacion:   indicadorFacturacion(Number(d.porcentajeIva)),
       NombreItem:             truncarNombreItem(d.descripcion, encf),
       IndicadorBienoServicio: 1,
-      CantidadItem:           String(cap4(d.cantidad)),
+      CantidadItem:           String(cantidad),
       UnidadMedida:           '47',
-      PrecioUnitarioItem:     round2(Number(d.precioUnitario)).toFixed(2),
-      ...(descMonto > 0 ? { DescuentoMonto: descMonto.toFixed(2) } : {}),
-      MontoItem:              montoItem.toFixed(2),
+      PrecioUnitarioItem:     precioXML.toFixed(2),
+      ...(descMonto > 0 ? {
+        DescuentoMonto: descMonto.toFixed(2),
+        TablaSubDescuento: {
+          SubDescuento: [{ TipoSubDescuento: '$', MontoSubDescuento: descMonto.toFixed(2) }],
+        },
+      } : {}),
+      MontoItem: montoItem.toFixed(2),
     };
   });
 }
