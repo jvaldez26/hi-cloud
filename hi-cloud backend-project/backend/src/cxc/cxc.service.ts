@@ -47,8 +47,22 @@ export class CxCService {
     const factura = await this.facturaRepository.findOne({ where: { id: facturaId } });
     if (!factura) throw new NotFoundException(`Factura #${facturaId} no encontrada`);
 
-    const yaExiste = await this.cxcRepository.findOne({ where: { facturaId } });
+    // Si ya existe un CxC activo, devolverlo sin duplicar
+    const yaExiste = await this.cxcRepository.findOne({ where: { facturaId, isActive: true } });
     if (yaExiste) return yaExiste;
+
+    // Si existe uno inactivo, reactivarlo en lugar de crear uno nuevo
+    const inactivo = await this.cxcRepository.findOne({ where: { facturaId, isActive: false } });
+    if (inactivo) {
+      await this.cxcRepository.update(inactivo.id, {
+        isActive:       true,
+        estado:         EstadoCuenta.PENDIENTE,
+        montoOriginal:  Number(factura.total),
+        montoPendiente: Number(factura.total),
+        montoPagado:    0,
+      } as any);
+      return this.cxcRepository.findOne({ where: { id: inactivo.id } }) as Promise<CuentaPorCobrar>;
+    }
 
     const fechaEmision = new Date();
     const fechaVencimiento = new Date();
@@ -86,11 +100,11 @@ export class CxCService {
       SELECT f.id, f."usuarioId", COALESCE(f."diasCredito", 30) AS "diasCredito", f.folio
       FROM facturas f
       WHERE f."empresaId" = $1
-        AND f."tipoPago"  = 'CREDITO'
         AND f.estado      = 'emitida'
         AND f."isActive"  = true
         AND NOT EXISTS (
-          SELECT 1 FROM cuentas_por_cobrar c WHERE c."facturaId" = f.id
+          SELECT 1 FROM cuentas_por_cobrar c
+          WHERE c."facturaId" = f.id AND c."isActive" = true
         )
       ORDER BY f.fecha DESC
     `, [empresaId]);
