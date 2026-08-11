@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -54,6 +55,37 @@ export class ClientesService {
   ) {}
 
   /**
+   * El "RNC Receptor" es el RNC del COMPRADOR — solo hace falta cuando difiere
+   * del RNC/Cédula del cliente (p. ej. se factura a una razón social distinta
+   * de la registrada en la ficha). Nunca es el RNC de la empresa que emite.
+   *
+   * Ya pasó una vez: en una empresa se copió su propio RNC al campo receptor de
+   * 5 clientes. Como el e-CF y el 607 resuelven el comprador con
+   * COALESCE(rncReceptor, rfc), esas ventas habrían declarado al emisor como
+   * comprador de su propia factura. Se corrigió en migración; esto cierra el
+   * camino para que no vuelva a cargarse.
+   */
+  private async validarRncReceptor(rncReceptor?: string | null) {
+    const limpio = (rncReceptor ?? '').replace(/\D/g, '');
+    if (!limpio) return;
+
+    const empresaId = this.tenantService.getEmpresaId();
+    const rows = await this.dataSource.query<{ rnc: string | null; nombre: string }[]>(
+      `SELECT rnc, nombre FROM empresa WHERE id = $1`,
+      [empresaId],
+    );
+    const rncEmpresa = (rows[0]?.rnc ?? '').replace(/\D/g, '');
+    if (rncEmpresa && rncEmpresa === limpio) {
+      throw new BadRequestException(
+        `El RNC Receptor no puede ser ${rncReceptor}: ese es el RNC de su propia ` +
+        `empresa (${rows[0].nombre}), que es quien emite la factura. Este campo es ` +
+        'para el RNC del COMPRADOR, y solo hace falta cuando difiere del RNC/Cédula ' +
+        'del cliente. Si son el mismo, déjelo vacío.',
+      );
+    }
+  }
+
+  /**
    * Clientes activos que ya usan este RNC/Cédula en la empresa actual.
    *
    * Alimenta la alerta NO BLOQUEANTE al guardar: compartir RNC es legítimo
@@ -87,6 +119,7 @@ export class ClientesService {
 
   async create(dto: CreateClienteDto) {
     const empresaId = this.tenantService.getEmpresaId();
+    await this.validarRncReceptor(dto.rncReceptor);
     await this.limitesService.verificarLimiteClientes(empresaId);
 
     // Se calcula ANTES de insertar para que el aviso no incluya al recién creado
@@ -204,6 +237,7 @@ export class ClientesService {
   async update(id: number, dto: UpdateClienteDto) {
     const empresaId = this.tenantService.getEmpresaId();
     const actual    = await this.findOne(id); // valida que existe en este tenant
+    if (dto.rncReceptor !== undefined) await this.validarRncReceptor(dto.rncReceptor);
 
     try {
       await this.clienteRepository.update(id, dto);
