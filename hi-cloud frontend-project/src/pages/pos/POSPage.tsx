@@ -732,6 +732,40 @@ const IMPRESORA_CONFIG: Record<string, { width: string; fontSize: string; paddin
   'ninguna':{ width: '80mm',  fontSize: '11pt', paddingLR: '5mm' },
 };
 
+/**
+ * buildSaleItemsFromDetalles — FUENTE ÚNICA de ítems para el ticket.
+ *
+ * Convierte detalles guardados en DB a la forma que buildReciboTermicoHTML espera.
+ * Se usa tanto en la impresión original (post-cobro, desde el response del POST)
+ * como en la reimpresión (desde el GET /facturas/:id).
+ * Usar esta función en AMBOS caminos garantiza que los tickets nunca diverjan.
+ *
+ * Convención A (Facturas regular — sin precioOriginal):
+ *   precio = precioUnitario, descuentoMonto = 0 → sin línea de descuento
+ *
+ * Convención B (POS con descuento por ítem — con precioOriginal):
+ *   precio = precioOriginal, descuentoMonto = real
+ *   → la línea de descuento aparece y el total de línea cuadra con lo cobrado
+ */
+function buildSaleItemsFromDetalles(detalles: any[]): CartItem[] {
+  return (detalles ?? []).map((d: any) => {
+    const precioOrig = d.precioOriginal != null ? Number(d.precioOriginal) : null;
+    return {
+      produto: {
+        id:            d.productoId ?? 0,
+        nombre:        d.descripcion ?? '',
+        precio:        precioOrig ?? Number(d.precioUnitario),
+        stock:         999,
+        porcentajeIva: Number(d.porcentajeIva ?? 18),
+        codigo: '', categoria: '', unidadMedida: '',
+      } as any,
+      cantidad:       Number(d.cantidad),
+      precio:         precioOrig ?? Number(d.precioUnitario),
+      descuentoMonto: precioOrig != null ? Number(d.descuentoMonto ?? 0) : 0,
+    };
+  });
+}
+
 function buildReciboTermicoHTML(
   sale: Sale,
   qrDataUrl: string | null,
@@ -7757,22 +7791,9 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
         const sale: Sale = {
           folio:       f.folio, total: Number(f.total??0), cambio: 0,
           metodo:      f.notas?.includes('Tarjeta') ? 'tarjeta' : f.notas?.includes('Transferencia') ? 'transferencia' : 'efectivo',
-          items:       (f.detalles??[]).map((d: any) => {
-            // Convención B (POS): si precioOriginal está guardado, usarlo para que el ticket
-            // muestre la línea de descuento y la línea cuadre.
-            // Convención A (Facturas regular): sin precioOriginal → precio=precioUnitario, desc=0.
-            // Totales (subtotal/iva/total) siempre del guardado — no se recalculan.
-            const precioOrig = d.precioOriginal != null ? Number(d.precioOriginal) : null;
-            return {
-              produto:        { id: d.productoId, nombre: d.descripcion,
-                                precio: precioOrig ?? Number(d.precioUnitario),
-                                stock: 999, porcentajeIva: Number(d.porcentajeIva??18),
-                                codigo:'', categoria:'', unidadMedida:'' } as any,
-              cantidad:       Number(d.cantidad),
-              precio:         precioOrig ?? Number(d.precioUnitario),
-              descuentoMonto: precioOrig != null ? Number(d.descuentoMonto ?? 0) : 0,
-            };
-          }),
+          // buildSaleItemsFromDetalles: MISMA función que usa la impresión original.
+        // Los totales (subtotal/iva/total) se leen de DB — no se recalculan.
+        items:       buildSaleItemsFromDetalles(f.detalles ?? []),
           cliente:   f.cliente?.nombre, iva: Number(f.iva??0), subtotal: Number(f.subtotal??0),
           facturaId: f.id, tipoNcf: f.tipoNcf ?? 'E32',
           encf:      f.ecf?.numero, ecfPendiente: !f.ecf?.numero,
@@ -7781,7 +7802,9 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           securityCode: f.ecf?.codigoSeguridad, qrUrl: f.ecf?.qrUrl,
           rncComprador: resolverRncComprador(f),
           razonSocial:  resolverNombreComprador(f),
-          cajero: f.usuario?.nombre ?? f.nombreVendedor,
+          // nombreVendedor primero (= quién hizo la venta); usuario.nombre como fallback.
+          // Mismo orden que la impresión original → mismo cajero en ambos tickets.
+          cajero: f.nombreVendedor ?? f.usuario?.nombre,
           sucursalNombre: (f as any).sucursal?.nombre ?? sucursalNombreFromCache(qc),
           empresaNombreComercial: empInfo.nombre, empresaRnc: empInfo.rnc,
           empresaDireccion: empInfo.direccion, empresaTelefono: empInfo.telefono,
@@ -10194,7 +10217,12 @@ export default function POSPage() {
         notas:                   tipoPagoPos === 'CREDITO' ? `Crédito ${diasCreditoPos} días` : undefined,
         diasCredito:             tipoPagoPos === 'CREDITO' ? diasCreditoPos : undefined,
         clienteId:               clienteId ?? undefined,
-        items:                   [...cart],
+        // buildSaleItemsFromDetalles: MISMA función que usa la reimpresión.
+        // factura.detalles viene del response del POST (findOne incluye detalles).
+        // Fallback a cart en-memoria si la API no devolvió detalles (no debería pasar).
+        items:                   factura.detalles?.length
+          ? buildSaleItemsFromDetalles(factura.detalles)
+          : [...cart],
         cliente:                 clientes?.data.find((c: Cliente) => c.id === clienteId)?.nombre,
         iva:                     ivaEfectivo,
         subtotal,
