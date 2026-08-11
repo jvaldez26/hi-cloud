@@ -136,7 +136,7 @@ export default function SuspensionScreen({
     ? <>Tu prueba del plan <strong style={{ color: T.strongColor }}>{planNombre}</strong> venció el{' '}<strong style={{ color: T.strongColor }}>{fechaStr}</strong>. Para continuar usando HiCloud ERP, solicita la activación de tu licencia.</>
     : esManual
     ? <>Tu cuenta fue suspendida por un administrador. Contacta a soporte para más información.</>
-    : <>Tu período de gracia del plan <strong style={{ color: T.strongColor }}>{planNombre}</strong> venció el{' '}<strong style={{ color: T.strongColor }}>{fechaStr}</strong>. Renueva tu licencia para seguir usando HiCloud ERP.</>;
+    : <>Tu licencia del plan <strong style={{ color: T.strongColor }}>{planNombre}</strong> expiró el{' '}<strong style={{ color: T.strongColor }}>{fechaStr}</strong> y el período de gracia ha concluido. Renueva tu licencia para seguir usando HiCloud ERP.</>;
 
   return (
     <div style={{
