@@ -2341,6 +2341,7 @@ export default function AppLayout() {
       <SuspensionScreen
         planActual={suscripcion?.plan}
         fechaVencimiento={suscripcion?.fechaFinPrueba ?? suscripcion?.fechaVencimiento}
+        motivoSuspension={suscripcion?.motivoSuspension}
       />
     );
   }

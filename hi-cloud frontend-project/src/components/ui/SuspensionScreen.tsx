@@ -16,9 +16,10 @@ const PLANES_OPCIONES = [
 interface SuspensionScreenProps {
   planActual?: string;
   fechaVencimiento?: string;
+  motivoSuspension?: string | null;
 }
 
-export default function SuspensionScreen({ planActual = 'emprendedor', fechaVencimiento }: SuspensionScreenProps) {
+export default function SuspensionScreen({ planActual = 'emprendedor', fechaVencimiento, motivoSuspension }: SuspensionScreenProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [enviado,   setEnviado]   = useState(false);
   const [form] = Form.useForm();
@@ -49,6 +50,20 @@ export default function SuspensionScreen({ planActual = 'emprendedor', fechaVenc
     ? new Date(fechaVencimiento).toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' })
     : 'fecha desconocida';
 
+  // Textos según el motivo de suspensión
+  const esPrueba = motivoSuspension === 'PRUEBA_VENCIDA' || !motivoSuspension;
+  const esManual = motivoSuspension === 'SUSPENSION_MANUAL';
+  const titulo = esPrueba
+    ? 'Tu período de prueba ha vencido'
+    : esManual
+    ? 'Tu cuenta ha sido suspendida'
+    : 'Tu licencia ha vencido';
+  const subtexto = esPrueba
+    ? <>Tu prueba del plan <strong style={{ color: '#F8FAFC' }}>{planNombre}</strong> venció el{' '}<strong style={{ color: '#F8FAFC' }}>{fechaStr}</strong>. Para continuar usando HiCloud ERP, solicita la activación de tu licencia.</>
+    : esManual
+    ? <>Tu cuenta fue suspendida por un administrador. Contacta a soporte para más información.</>
+    : <>Tu período de gracia del plan <strong style={{ color: '#F8FAFC' }}>{planNombre}</strong> venció el{' '}<strong style={{ color: '#F8FAFC' }}>{fechaStr}</strong>. Renueva tu licencia para seguir usando HiCloud ERP.</>;
+
   return (
     <div style={{
       minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -72,12 +87,10 @@ export default function SuspensionScreen({ planActual = 'emprendedor', fechaVenc
         </div>
 
         <Title level={3} style={{ color: '#F8FAFC', marginBottom: 8 }}>
-          Tu período de prueba ha vencido
+          {titulo}
         </Title>
         <Text style={{ color: '#94A3B8', display: 'block', marginBottom: 24, fontSize: 15, lineHeight: 1.6 }}>
-          Tu prueba del plan <strong style={{ color: '#F8FAFC' }}>{planNombre}</strong> venció el{' '}
-          <strong style={{ color: '#F8FAFC' }}>{fechaStr}</strong>.
-          Para continuar usando HiCloud ERP, solicita la activación de tu licencia.
+          {subtexto}
         </Text>
 
         {enviado || tienePendiente ? (

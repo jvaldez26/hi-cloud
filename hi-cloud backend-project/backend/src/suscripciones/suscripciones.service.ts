@@ -100,8 +100,24 @@ export class SuscripcionesService implements OnModuleInit {
       ? Math.max(0, Math.ceil((new Date(s.fechaFinGracia).getTime() - hoy.getTime()) / 86_400_000))
       : 0;
 
+    // Si la gracia venció pero el cron aún no corrió, derivamos el estado como suspendida en tiempo real
+    const estadoEfectivo: SuscripcionEstado =
+      s.estado === SuscripcionEstado.ACTIVA &&
+      s.enPeriodoGracia &&
+      s.fechaFinGracia &&
+      new Date(s.fechaFinGracia) < hoy
+        ? SuscripcionEstado.SUSPENDIDA
+        : s.estado;
+
+    const motivoEfectivo: string | undefined =
+      estadoEfectivo === SuscripcionEstado.SUSPENDIDA && s.estado !== SuscripcionEstado.SUSPENDIDA
+        ? 'GRACIA_VENCIDA'
+        : (s.motivoSuspension ?? undefined);
+
     return {
       ...s,
+      estado:           estadoEfectivo,
+      motivoSuspension: motivoEfectivo,
       info: PLAN_LIMITES[s.plan] ?? PLAN_LIMITES[PlanTipo.EMPRENDEDOR],
       diasRestantes,
       diasGraciaRestantes,
@@ -286,6 +302,25 @@ export class SuscripcionesService implements OnModuleInit {
     }
     if (vencidasPago.length > 0)
       this.logger.warn(`${vencidasPago.length} suscripciones → período de gracia (5 días hasta ${finGraciaStr})`);
+
+    // 3. Suscripciones en período de gracia cuya fechaFinGracia ya pasó → SUSPENDIDA
+    const graciaVencida = await this.ds.query<{ id: number; empresaId: number; plan: string }[]>(`
+      SELECT id, "empresaId", plan FROM suscripciones
+      WHERE "enPeriodoGracia" = true
+        AND "fechaFinGracia" < $1
+        AND estado = 'activa'
+    `, [hoyStr]);
+    for (const s of graciaVencida) {
+      await this.ds.query(`
+        UPDATE suscripciones
+        SET estado            = 'suspendida',
+            "motivoSuspension" = 'GRACIA_VENCIDA',
+            "updatedAt"        = NOW()
+        WHERE id = $1
+      `, [s.id]);
+    }
+    if (graciaVencida.length > 0)
+      this.logger.warn(`${graciaVencida.length} suscripciones: gracia vencida → SUSPENDIDA`);
   }
 
   // ── Cron: recordatorios de vencimiento (8 AM hora RD = 12:00 UTC) ─────────
