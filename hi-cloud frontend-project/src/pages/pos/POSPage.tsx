@@ -20,6 +20,7 @@ import { inventarioApi } from '../../api/inventario.api';
 import { fmt, round2 } from '../../utils/formatters';
 import { validarEAN, parsearBalanza, type BalanzaPatronFrontend, type BalanzaMatchFrontend } from '../../utils/balanza-scan';
 import { resolverNombreComprador, resolverRncComprador } from '../../utils/facturaComprador';
+import { descuentoFinalABase, descuentoBaseAFinal, pctIvaEfectivo } from '../../utils/descuentoItbis';
 import { imprimirElemento, imprimirReciboTermico, imprimirPDFA4, imprimirFacturaPreviewA4, imprimirHtml } from '../../utils/printUtils';
 import { exportarExcel } from '../../utils/exportExcel';
 import { imprimirReciboEscPos, conectarImpresora, desconectarImpresora, estaConectada, getNombreImpresora, imprimirPruebaEscPos, autoReconectarImpresora, bluetoothAutoReconexionDisponible, huboFalloWatchAdvertisements } from '../../services/thermalPrinter';
@@ -140,7 +141,11 @@ interface Sale {
   ncfOriginal?:            string;
   codigoModificacion?:     string;
   descripcionMotivo?:      string;
-  // Descuento global (sobre subtotal)
+  // Descuento global — en BASE imponible (misma unidad que `subtotal`), para que
+  // el bloque de totales cuadre: subtotal − descuentoGlobal + iva = total.
+  // El equivalente c/ITBIS se muestra en PANTALLA (donde el cajero teclea), no en
+  // el ticket: reconstruirlo desde la factura guardada puede desviarse 1 centavo
+  // por doble redondeo y haría divergir impresión y reimpresión.
   descuentoGlobal?:        number;
   // Propina (opcional)
   propina?:                number;
@@ -391,12 +396,14 @@ function ProductCard({ produto, onAdd, mostrarStock = true, permitirStockNegativ
 }
 
 // ── Cart row ──────────────────────────────────────────────────────────────────
-function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, onLista, permitirModificarPrecio, permitirDescuentos = true, precioInputModo = 'c', onPrecioInputModoChange, requireSupervisor }: {
+function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, onLista, permitirModificarPrecio, permitirDescuentos = true, precioInputModo = 'c', onPrecioInputModoChange, requireSupervisor, precioIncluyeItbis = false }: {
   item: CartItem; onQty: (d: number) => void; onQtyDirecto?: (v: number) => void; onRemove: () => void; onDescuento: (monto: number) => void;
   onPrecio?: (p: number) => void; onLista?: (lista: PrecioLista) => void;
   permitirModificarPrecio?: boolean; permitirDescuentos?: boolean;
   precioInputModo?: 'c' | 's'; onPrecioInputModoChange?: (modo: 'c' | 's') => void;
   requireSupervisor?: (action: string, detail?: string) => Promise<boolean>;
+  /** config posPrecioIncluyeItbis — si true, item.precio YA es final y el descuento no se convierte */
+  precioIncluyeItbis?: boolean;
 }) {
   const C = useC();
   const uomQc = useQueryClient();
@@ -419,6 +426,9 @@ function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, o
   const [qtyEditing,     setQtyEditing]     = useState(false);
   // Tasa ITBIS del item para conversión final ↔ base en el descuento
   const pctIvaItem = Number((item.produto as any).porcentajeIva ?? 18) / 100;
+  // Equivalentes en pesos FINALES (lo que el cajero ve y teclea)
+  const precioFinalUnit  = descuentoBaseAFinal(item.precio,          pctIvaItem, precioIncluyeItbis);
+  const descFinalActual  = descuentoBaseAFinal(item.descuentoMonto,  pctIvaItem, precioIncluyeItbis);
   // Sincronizar draft cuando cambia externamente (otro updater, restaurar venta)
   const prevCantidadRef = useRef(item.cantidad);
   if (prevCantidadRef.current !== item.cantidad) {
@@ -457,10 +467,8 @@ function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, o
    */
   const confirmarDescuento = (rawFinal: string) => {
     const vFinal = Math.max(0, parseFloat(rawFinal) || 0);
-    // Convertir final → base solo cuando el producto tiene ITBIS
-    const baseDesc = pctIvaItem > 0
-      ? parseFloat((vFinal / (1 + pctIvaItem)).toFixed(4))
-      : vFinal;
+    // Conversión final → base: función compartida con el descuento GLOBAL
+    const baseDesc = descuentoFinalABase(vFinal, pctIvaItem, precioIncluyeItbis);
     // Cap al precio base (nunca un descuento mayor que el precio)
     onDescuento(Math.min(item.precio, Math.max(0, baseDesc)));
     setDescFinalDraft(null);
@@ -572,10 +580,7 @@ function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, o
               {item.descuentoMonto > 0 && (
                 <span style={{ color: C.orange, fontWeight: 700 }}>
                   {/* Mostrar el descuento en pesos FINALES (igual que el cajero lo tecleó) */}
-                  −{fmt.money(pctIvaItem > 0
-                    ? parseFloat((item.descuentoMonto * (1 + pctIvaItem)).toFixed(2))
-                    : item.descuentoMonto
-                  )}
+                  −{fmt.money(descuentoBaseAFinal(item.descuentoMonto, pctIvaItem, precioIncluyeItbis))}
                 </span>
               )}
               {item.precioModificado && <span style={{ color: C.orange, fontSize: 10 }}>✎</span>}
@@ -693,25 +698,13 @@ function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, o
                 <span style={{ fontSize: 10, color: item.descuentoMonto > 0 ? C.orange : C.textMuted, fontWeight: 600 }}>-$</span>
                 <input
                   type="number"
-                  value={
-                    descFinalDraft !== null
-                      ? descFinalDraft
-                      : pctIvaItem > 0
-                        ? parseFloat((item.descuentoMonto * (1 + pctIvaItem)).toFixed(2))
-                        : item.descuentoMonto
-                  }
+                  value={descFinalDraft !== null ? descFinalDraft : descFinalActual}
                   min={0}
-                  max={pctIvaItem > 0
-                    ? parseFloat((item.precio * (1 + pctIvaItem)).toFixed(2))
-                    : item.precio
-                  }
+                  max={precioFinalUnit}
                   step={0.01}
                   onChange={e => setDescFinalDraft(e.target.value)}
                   onFocus={() => {
-                    const finalEquiv = pctIvaItem > 0
-                      ? parseFloat((item.descuentoMonto * (1 + pctIvaItem)).toFixed(2))
-                      : item.descuentoMonto;
-                    setDescFinalDraft(String(finalEquiv > 0 ? finalEquiv : ''));
+                    setDescFinalDraft(String(descFinalActual > 0 ? descFinalActual : ''));
                     setDescFocus(true);
                   }}
                   onBlur={e  => confirmarDescuento(e.target.value)}
@@ -727,11 +720,10 @@ function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, o
                     textAlign: 'center', fontSize: 11, fontWeight: 700, outline: 'none', padding: '0 2px' }} />
               </div>
               {/* Preview: el cajero ve el resultado antes de confirmar */}
-              {descFinalDraft !== null && pctIvaItem > 0 && (() => {
+              {descFinalDraft !== null && (() => {
                 const vFinal = parseFloat(descFinalDraft) || 0;
                 if (vFinal <= 0) return null;
-                const precioFinalUnit = item.precio * (1 + pctIvaItem);
-                const pagaFinalTotal  = Math.max(0, precioFinalUnit - Math.min(vFinal, precioFinalUnit)) * item.cantidad;
+                const pagaFinalTotal = Math.max(0, precioFinalUnit - Math.min(vFinal, precioFinalUnit)) * item.cantidad;
                 return (
                   <span style={{ fontSize: 9, color: '#22c55e', fontWeight: 600 }}>
                     Paga {fmt.money(parseFloat(pagaFinalTotal.toFixed(2)))}
@@ -834,6 +826,43 @@ function buildSaleItemsFromDetalles(detalles: any[]): CartItem[] {
       descuentoMonto: precioOrig != null ? Number(d.descuentoMonto ?? 0) : 0,
     };
   });
+}
+
+/**
+ * buildSaleTotalesFromFactura — FUENTE ÚNICA de totales del ticket.
+ *
+ * REGLA: la plantilla LEE los totales guardados; NO los recalcula. Aquí solo se
+ * reconstruye el descuento GENERAL, que la factura guarda como tipo+valor
+ * (facturas.descuentoGeneralValor) mientras `subtotal` ya viene NETO de él.
+ *
+ * Devuelve el bloque tal como debe imprimirse:
+ *   subtotal (BRUTO, pre-descuento) − descuentoGlobal + iva = total
+ * `descuentoGlobalFinal` es el equivalente c/ITBIS (lo que tecleó el cajero).
+ */
+function buildSaleTotalesFromFactura(f: any): {
+  subtotal: number; iva: number; total: number; descuentoGlobal?: number;
+} {
+  const subtotalNeto = Number(f.subtotal ?? 0);
+  const iva          = Number(f.iva ?? 0);
+  const total        = Number(f.total ?? 0);
+
+  const dgt = f.descuentoGeneralTipo as string | undefined;
+  const dgv = Number(f.descuentoGeneralValor ?? 0);
+  let descBase = 0;
+  if (dgt === 'monto' && dgv > 0) {
+    descBase = round2(dgv);
+  } else if (dgt === 'porcentaje' && dgv > 0 && dgv < 100) {
+    // subtotal guardado = bruto × (1 − pct) → se despeja el bruto para obtener el importe
+    descBase = round2((subtotalNeto / (1 - dgv / 100)) * (dgv / 100));
+  }
+  if (descBase <= 0) return { subtotal: subtotalNeto, iva, total };
+
+  return {
+    subtotal:        round2(subtotalNeto + descBase),   // BRUTO, pre-descuento
+    iva,
+    total,
+    descuentoGlobal: descBase,
+  };
 }
 
 function buildReciboTermicoHTML(
@@ -6169,14 +6198,12 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
         return ts ? dayjs(ts).format('DD-MM-YYYY HH:mm:ss') : undefined;
       })();
       const sale: Sale = {
-        folio: f.folio, total: Number(f.total ?? 0), cambio: 0,
+        folio: f.folio, cambio: 0,
         metodo: f.notas?.includes('Tarjeta') ? 'tarjeta' : f.notas?.includes('Transferencia') ? 'transferencia' : 'efectivo',
-        items: (f.detalles ?? []).map((d: any) => ({
-          produto: { id: d.productoId, nombre: d.descripcion, precio: Number(d.precioUnitario),
-                     stock: 999, porcentajeIva: Number(d.porcentajeIva ?? 18), codigo: '', categoria: '', unidadMedida: '' } as any,
-          cantidad: Number(d.cantidad), precio: Number(d.precioUnitario), descuentoMonto: 0,
-        })),
-        cliente: f.cliente?.nombre, iva: Number(f.iva ?? 0), subtotal: Number(f.subtotal ?? 0),
+        // MISMAS funciones que la impresión original — ítems y totales nunca divergen
+        items: buildSaleItemsFromDetalles(f.detalles ?? []),
+        ...buildSaleTotalesFromFactura(f),
+        cliente: f.cliente?.nombre,
         facturaId: f.id, tipoNcf: f.tipoNcf ?? 'E32',
         encf: f.ecf?.numero, ecfPendiente: !f.ecf?.numero,
         ecfFecha: _ecfFecha,
@@ -7669,12 +7696,11 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           const f = await api.get(`/facturas/${data.facturaId}`).then(r => r.data?.data ?? r.data);
           const metodo = f.notas?.includes('Tarjeta') ? 'tarjeta' : f.notas?.includes('Transferencia') ? 'transferencia' : 'efectivo';
           const saleObj: Sale = {
-            folio: f.folio, total: Number(f.total ?? 0), cambio: 0, metodo,
-            items: (f.detalles ?? []).map((d: any) => ({
-              produto: { id: d.productoId, nombre: d.descripcion, precio: Number(d.precioUnitario), stock: 999, porcentajeIva: Number(d.porcentajeIva ?? 18), codigo: '', categoria: '', unidadMedida: '' } as any,
-              cantidad: Number(d.cantidad), precio: Number(d.precioUnitario), descuentoMonto: 0,
-            })),
-            cliente: f.cliente?.nombre, iva: Number(f.iva ?? 0), subtotal: Number(f.subtotal ?? 0),
+            folio: f.folio, cambio: 0, metodo,
+            // MISMAS funciones que la impresión original — ítems y totales nunca divergen
+            items: buildSaleItemsFromDetalles(f.detalles ?? []),
+            ...buildSaleTotalesFromFactura(f),
+            cliente: f.cliente?.nombre,
             facturaId: f.id, tipoNcf: f.tipoNcf ?? 'E32',
             encf: f.ecf?.numero, ecfPendiente: !f.ecf?.numero,
             securityCode: f.ecf?.codigoSeguridad, qrUrl: f.ecf?.qrUrl,
@@ -7742,13 +7768,12 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
             : f.notas?.includes('Tarjeta') ? 'tarjeta'
             : f.notas?.includes('Transferencia') ? 'transferencia' : 'efectivo';
           const saleObj: Sale = {
-            folio: f.folio, total: Number(f.total ?? 0), cambio: 0, metodo,
+            folio: f.folio, cambio: 0, metodo,
             diasCredito: metodo === 'credito' ? (f.diasCredito ?? undefined) : undefined,
-            items: (f.detalles ?? []).map((d: any) => ({
-              produto: { id: d.productoId, nombre: d.descripcion, precio: Number(d.precioUnitario), stock: 999, porcentajeIva: Number(d.porcentajeIva ?? 18), codigo: '', categoria: '', unidadMedida: '' } as any,
-              cantidad: Number(d.cantidad), precio: Number(d.precioUnitario), descuentoMonto: 0,
-            })),
-            cliente: f.cliente?.nombre, iva: Number(f.iva ?? 0), subtotal: Number(f.subtotal ?? 0),
+            // MISMAS funciones que la impresión original — ítems y totales nunca divergen
+            items: buildSaleItemsFromDetalles(f.detalles ?? []),
+            ...buildSaleTotalesFromFactura(f),
+            cliente: f.cliente?.nombre,
             facturaId: f.id, tipoNcf: f.tipoNcf ?? 'E32',
             encf: f.ecf?.numero, ecfPendiente: !f.ecf?.numero,
             securityCode: f.ecf?.codigoSeguridad, qrUrl: f.ecf?.qrUrl,
@@ -7859,12 +7884,13 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           return ts ? dayjs(ts).format('DD-MM-YYYY HH:mm:ss') : undefined;
         })();
         const sale: Sale = {
-          folio:       f.folio, total: Number(f.total??0), cambio: 0,
+          folio:       f.folio, cambio: 0,
           metodo:      f.notas?.includes('Tarjeta') ? 'tarjeta' : f.notas?.includes('Transferencia') ? 'transferencia' : 'efectivo',
-          // buildSaleItemsFromDetalles: MISMA función que usa la impresión original.
-        // Los totales (subtotal/iva/total) se leen de DB — no se recalculan.
-        items:       buildSaleItemsFromDetalles(f.detalles ?? []),
-          cliente:   f.cliente?.nombre, iva: Number(f.iva??0), subtotal: Number(f.subtotal??0),
+          // buildSaleItemsFromDetalles / buildSaleTotalesFromFactura: MISMAS funciones
+          // que usa la impresión original. Los totales se LEEN de DB — no se recalculan.
+          items:       buildSaleItemsFromDetalles(f.detalles ?? []),
+          ...buildSaleTotalesFromFactura(f),
+          cliente:   f.cliente?.nombre,
           facturaId: f.id, tipoNcf: f.tipoNcf ?? 'E32',
           encf:      f.ecf?.numero, ecfPendiente: !f.ecf?.numero,
           ecfFecha:  _ecfFecha,
@@ -9480,31 +9506,56 @@ export default function POSPage() {
 
   // Totals — si posPrecioIncluyeItbis, el precio ya lleva ITBIS incluido
   const precioIncluyeItbis = (empresa?.configuracion as any)?.posPrecioIncluyeItbis === true;
-  const subtotal = round2(cart.reduce((s, i) => {
-    const linea = (i.precio - i.descuentoMonto) * i.cantidad;
-    if (precioIncluyeItbis) {
-      const pct = Number((i.produto as any).porcentajeIva ?? 0) / 100;
-      return pct > 0 ? s + linea / (1 + pct) : s + linea;
-    }
-    return s + linea;
-  }, 0));
-  const iva = round2(cart.reduce((s, i) => {
-    const linea = (i.precio - i.descuentoMonto) * i.cantidad;
-    const pct   = Number((i.produto as any).porcentajeIva ?? 0) / 100;
-    return precioIncluyeItbis
-      ? s + linea * pct / (1 + pct)
-      : s + linea * pct;
-  }, 0));
-  // Descuento global — se aplica sobre el subtotal (antes del ITBIS, base imponible)
+  // Base cruda por línea (sin redondeo intermedio) — subtotal e ITBIS se redondean
+  // POR LÍNEA igual que facturas.service, para que el total que cobra la caja sea
+  // EXACTAMENTE el que guarda el backend y el que se declara a DGII.
+  const lineasBase = cart.map(i => {
+    const pct      = Number((i.produto as any).porcentajeIva ?? 0) / 100;
+    const lineaRaw = (i.precio - i.descuentoMonto) * i.cantidad;
+    const baseRaw  = precioIncluyeItbis && pct > 0 ? lineaRaw / (1 + pct) : lineaRaw;
+    return { pct, baseRaw, subtotal: round2(baseRaw) };
+  });
+  const subtotal = round2(lineasBase.reduce((s, l) => s + l.subtotal, 0));
+  const iva      = round2(lineasBase.reduce((s, l) => s + round2(l.baseRaw * l.pct), 0));
+  // ── Descuento global ───────────────────────────────────────────────────────
+  // El cajero teclea en pesos FINALES (c/ITBIS) — MISMA regla que el descuento
+  // por ítem (descuentoFinalABase). Se guarda en BASE imponible porque el ITBIS
+  // se recalcula sobre la base ya descontada.
+  //   fijo:       RD$10 tecleados  → el total baja EXACTAMENTE RD$10
+  //   porcentaje: 10% tecleado     → el total baja EXACTAMENTE 10%
+  // La tasa usada es la EFECTIVA del carrito (iva/subtotal), así funciona con
+  // mezcla de 18% / 16% / exentos igual que el reparto proporcional del backend.
   const descGlobalVal   = Math.max(0, parseFloat(descGlobal) || 0);
+  // E44 (Zona Franca) no cobra ITBIS: el precio que ve el cajero YA es el final,
+  // así que el descuento tecleado no se convierte.
+  const pctIvaCarrito   = tipoNcf === 'E44' ? 0 : pctIvaEfectivo(subtotal, iva);
+  const totalConItbis   = tipoNcf === 'E44' ? subtotal : round2(subtotal + iva);
   const descGlobalMonto = round2(descGlobalTipo === 'pct'
-    ? subtotal * descGlobalVal / 100
-    : Math.min(descGlobalVal, subtotal));
-  const subtotalConDesc = round2(subtotal - descGlobalMonto);
-  // ITBIS se recalcula sobre el subtotal descontado (proporcional por ítem)
-  const descRatio      = subtotal > 0 ? subtotalConDesc / subtotal : 1;
-  const ivaConDesc     = round2(iva * descRatio);
-  const total          = round2(subtotalConDesc + ivaConDesc);
+    // % sobre la base → el total baja ese mismo % (proporcional, no requiere conversión)
+    ? subtotal * Math.min(descGlobalVal, 100) / 100
+    // monto en pesos finales → base imponible, capeado al total cobrable
+    : Math.min(
+        descuentoFinalABase(Math.min(descGlobalVal, totalConItbis), pctIvaCarrito, precioIncluyeItbis),
+        subtotal,
+      ));
+  // Equivalente en pesos FINALES del descuento global — SOLO para pantalla.
+  // En modo fijo es exactamente lo que tecleó el cajero (tras el cap); en % es la
+  // rebaja real sobre lo que paga el cliente.
+  const descGlobalFinal = descGlobalTipo === 'fijo'
+    ? round2(Math.min(descGlobalVal, totalConItbis))
+    : descuentoBaseAFinal(descGlobalMonto, pctIvaCarrito, precioIncluyeItbis);
+  // Reparto proporcional del descuento y recálculo del ITBIS — MISMO orden de
+  // operaciones que facturas.service.create(). Escalar el ITBIS ya redondeado
+  // (iva × ratio) desviaba hasta 1 centavo del total guardado y declarado.
+  const lineasConDesc = lineasBase.map(l => {
+    const descProp    = subtotal > 0 ? round2((l.subtotal / subtotal) * descGlobalMonto) : 0;
+    const subtotFinal = round2(l.subtotal - descProp);
+    const rawFinal    = l.subtotal > 0 ? l.baseRaw * (subtotFinal / l.subtotal) : subtotFinal;
+    return { subtotFinal, ivaLinea: round2(rawFinal * l.pct) };
+  });
+  const subtotalConDesc = round2(lineasConDesc.reduce((s, l) => s + l.subtotFinal, 0));
+  const ivaConDesc      = round2(lineasConDesc.reduce((s, l) => s + l.ivaLinea,    0));
+  const total           = round2(subtotalConDesc + ivaConDesc);
   // E44 (Zona Franca): ITBIS = 0 — Opción B: precio base sin ITBIS
   const ivaEfectivo   = tipoNcf === 'E44' ? 0 : ivaConDesc;
   const totalEfectivo = tipoNcf === 'E44' ? subtotalConDesc : total;
@@ -9776,9 +9827,7 @@ export default function POSPage() {
     const nombreItem   = cart[idx]?.produto.nombre ?? 'ítem';
     const pct          = precio > 0 ? (monto / precio) * 100 : 0;
     // Mostrar el límite en pesos FINALES (lo que el cajero reconoce)
-    const toFinal = (base: number) => pctIvaProd > 0
-      ? parseFloat((base * (1 + pctIvaProd)).toFixed(2))
-      : base;
+    const toFinal = (base: number) => descuentoBaseAFinal(base, pctIvaProd, precioIncluyeItbis);
     // Verificar descuento máximo configurado (en % internamente, mostrar RD$ al usuario)
     if (posDescuentoMaximo < 100 && pct > posDescuentoMaximo) {
       const maxMonto = toFinal(precio * posDescuentoMaximo / 100);
@@ -10152,6 +10201,15 @@ export default function POSPage() {
           // E44 (Zona Franca): ITBIS = 0 en todos los ítems
           ...(tipoNcf === 'E44' ? { porcentajeIva: 0 } : {}),
         })),
+        // Descuento GLOBAL — se envía SIEMPRE como 'monto' en BASE imponible
+        // (descGlobalMonto ya viene convertido desde los pesos finales que tecleó
+        // el cajero, y para el modo % ya es el importe calculado sobre la base).
+        // Sin esto la factura, el e-CF y la reimpresión ignoran el descuento y
+        // declaran un total mayor que el cobrado en caja.
+        ...(descGlobalMonto > 0 ? {
+          descuentoGeneralTipo:  'monto' as const,
+          descuentoGeneralValor: descGlobalMonto,
+        } : {}),
         // RNC capturado en el modal de cobro → persistir en facturas.rncComprador
         // para que emitirEcfIndividual (botón "Emitir") también funcione sin datosComprador.
         rncComprador: clienteTieneRNC ? rncCliente : (rncComprador || undefined),
@@ -11126,6 +11184,7 @@ export default function POSPage() {
                     onLista={lista => cambiarListaItem(idx, lista)}
                     permitirModificarPrecio={posConf.posModificarPrecio === true}
                     permitirDescuentos={posConf.posPermitirDescuentos !== false}
+                    precioIncluyeItbis={precioIncluyeItbis}
                     precioInputModo={precioInputModo}
                     onPrecioInputModoChange={modo => {
                       setPrecioInputModo(modo);
@@ -11160,11 +11219,18 @@ export default function POSPage() {
                   style={{ flex: 1, height: 28, borderRadius: 7, border: `1px solid ${descGlobal ? C.orange : C.border}`,
                     background: C.card, color: C.text, fontSize: 12, padding: '0 8px', outline: 'none' }} />
                 {descGlobal && (
+                  /* Rebaja REAL sobre lo que paga el cliente (c/ITBIS) — misma unidad
+                     en que el cajero teclea el monto */
                   <span style={{ fontSize: 11, color: C.orange, fontWeight: 700, flexShrink: 0 }}>
-                    −{fmt.money(descGlobalMonto)}
+                    −{fmt.money(descGlobalFinal)}
                   </span>
                 )}
               </div>
+              {descGlobalMonto > 0 && (
+                <div style={{ fontSize: 10, color: '#22c55e', fontWeight: 600, marginTop: 3, textAlign: 'right' }}>
+                  Paga {fmt.money(totalEfectivo)}
+                </div>
+              )}
             </div>
           )}
 
@@ -11177,7 +11243,16 @@ export default function POSPage() {
               </div>
               {descGlobalMonto > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-                  <span style={{ fontSize: 12, color: C.orange }}>Descuento</span>
+                  {/* Base imponible en la columna (para que Subtotal − Desc + ITBIS = Total),
+                      con el equivalente c/ITBIS al lado — que es lo que el cliente percibe */}
+                  <span style={{ fontSize: 12, color: C.orange }}>
+                    Descuento
+                    {descGlobalFinal > descGlobalMonto && (
+                      <span style={{ fontSize: 10, color: C.textMuted, marginLeft: 4 }}>
+                        ({fmt.money(descGlobalFinal)} c/ITBIS)
+                      </span>
+                    )}
+                  </span>
                   <span style={{ fontSize: 12, color: C.orange, fontWeight: 600 }}>−{fmt.money(descGlobalMonto)}</span>
                 </div>
               )}

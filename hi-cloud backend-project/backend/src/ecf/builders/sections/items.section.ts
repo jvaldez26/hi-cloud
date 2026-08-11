@@ -172,7 +172,6 @@ export function buildItems(
     const cantidad  = cap4(d.cantidad);
     const precioME  = Number(d.precioUnitario);
     const montoME   = Number(d.subtotal);
-    const descReal  = round2(Number(d.descuentoMonto ?? 0));
 
     const montoItem = round2(toDOP(montoME));
 
@@ -185,9 +184,19 @@ export function buildItems(
     // DescuentoMonto computado aritméticamente sobre el precioXML serializado,
     // de modo que CantidadItem × PrecioUnitarioItem − DescuentoMonto = MontoItem
     // se cumpla exactamente (regla XSD DGII, adv. 2394).
-    const descMonto = descReal > 0
-      ? round2(round2(precioXML * cantidad) - montoItem)
-      : 0;
+    //
+    // Se deriva de la DIFERENCIA, no de d.descuentoMonto: la línea puede venir
+    // rebajada por un descuento que no vive en el detalle —
+    //   • descuento GENERAL de la factura (facturas.descuentoGeneralValor), que
+    //     el servicio reparte proporcionalmente reduciendo d.subtotal sin tocar
+    //     d.precioUnitario ni d.descuentoMonto;
+    //   • ajuste de redondeo cuando precioUnitario es decimal(12,2) y el subtotal
+    //     se calculó sobre el raw de 4 decimales.
+    // Condicionarlo a d.descuentoMonto > 0 dejaba esos casos SIN DescuentoMonto y
+    // el XML no cuadraba (MontoItem no válido → rechazo/advertencia DGII).
+    // Umbral 0.01 = la propia tolerancia de DGII: por debajo no se declara nada.
+    const deltaDesc = round2(round2(precioXML * cantidad) - montoItem);
+    const descMonto = deltaDesc > 0.01 ? deltaDesc : 0;
 
     const otME = otraMonedaItem?.(precioME, montoME) ?? null;
 
@@ -227,15 +236,14 @@ export const buildItemsConImpuesto = buildItems;
 export function buildItemsE33(detalles: DetalleLike[], encf = ''): Record<string, unknown>[] {
   return (detalles ?? []).map((d, idx) => {
     const cantidad  = cap4(d.cantidad);
-    const descReal  = round2(Number(d.descuentoMonto ?? 0));
     const montoItem = round2(Number(d.subtotal));
 
     // cap4 en ambas ramas — misma lógica que buildItems.
     const precioXML = cap4(Number(d.precioUnitario));
 
-    const descMonto = descReal > 0
-      ? round2(round2(precioXML * cantidad) - montoItem)
-      : 0;
+    // Derivado de la diferencia — misma regla que buildItems (ver comentario allí).
+    const deltaDesc = round2(round2(precioXML * cantidad) - montoItem);
+    const descMonto = deltaDesc > 0.01 ? deltaDesc : 0;
 
     return {
       NumeroLinea:            idx + 1,

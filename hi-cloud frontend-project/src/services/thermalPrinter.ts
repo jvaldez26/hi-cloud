@@ -147,9 +147,17 @@ export interface SaleBT {
   total:                   number;
   cambio?:                 number;
   metodo?:                 string;
-  items:                   Array<{ produto: { nombre: string }; cantidad: number; precio: number }>;
+  items:                   Array<{
+    produto: { nombre: string; porcentajeIva?: number };
+    cantidad: number;
+    precio: number;
+    /** descuento por unidad en BASE imponible (convención B del POS) */
+    descuentoMonto?: number;
+  }>;
   iva?:                    number;
   subtotal?:               number;
+  /** descuento global en BASE imponible (subtotal − descuentoGlobal + iva = total) */
+  descuentoGlobal?:        number;
   encf?:                   string;
   ecfPendiente?:           boolean;
   cajero?:                 string;
@@ -212,17 +220,29 @@ export async function generarReciboESCPOS(sale: SaleBT, empresa: EmpresaBT): Pro
   const ivaBT      = sale.iva      ?? 0;
   const ivaFactor  = subtotalBT > 0 ? 1 + ivaBT / subtotalBT : 1;
   for (const item of sale.items) {
-    const lines         = envolver(item.produto.nombre, CARACTERES_POR_LINEA - 8);
-    const precioConIva  = item.precio * ivaFactor;
-    const totalItem     = fmtMonto(item.cantidad * precioConIva);
+    const lines    = envolver(item.produto.nombre, CARACTERES_POR_LINEA - 8);
+    // Factor del propio ítem cuando se conoce su tasa; si no, el factor global del ticket
+    const factor   = item.produto.porcentajeIva !== undefined
+      ? 1 + Number(item.produto.porcentajeIva) / 100
+      : ivaFactor;
+    const descUnit = Number(item.descuentoMonto ?? 0);
+    // MISMO criterio que el ticket HTML: el importe de línea es el NETO de descuento
+    const precioConIva = (item.precio - descUnit) * factor;
+    const totalItem    = fmtMonto(item.cantidad * precioConIva);
     c.texto(lineaLR(lines[0], totalItem));
     for (let i = 1; i < lines.length; i++) c.texto('  ' + lines[i]);
     c.texto(`  ${item.cantidad} x ${fmtMonto(precioConIva)}`);
+    if (descUnit > 0) {
+      c.texto(`  Desc: -${fmtMonto(descUnit * factor)} c/u (orig. ${fmtMonto(item.precio * factor)})`);
+    }
   }
 
   // ── Totales ────────────────────────────────────────────────────────────────
   c.texto(separador());
   if (sale.subtotal !== undefined) c.texto(lineaLR('Subtotal:', `RD$${fmtMonto(sale.subtotal)}`));
+  if ((sale.descuentoGlobal ?? 0) > 0) {
+    c.texto(lineaLR('Descuento:', `-RD$${fmtMonto(sale.descuentoGlobal!)}`));
+  }
   if (sale.iva !== undefined && sale.iva > 0) c.texto(lineaLR('ITBIS:', `RD$${fmtMonto(sale.iva)}`));
   c.bold(true).texto(lineaLR('TOTAL:', `RD$${fmtMonto(sale.total)}`)).bold(false);
   if (sale.cambio !== undefined && sale.cambio > 0) c.texto(lineaLR('Cambio:', `RD$${fmtMonto(sale.cambio)}`));

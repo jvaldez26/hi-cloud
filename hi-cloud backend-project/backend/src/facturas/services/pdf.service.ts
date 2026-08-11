@@ -104,12 +104,22 @@ export class PDFService {
 
     const items: FacturaPDFItem[] = (factura.detalles || []).map((d, i) => {
       const itbisPct  = Number(d.porcentajeIva ?? 18);
-      const bruto     = r2pdf(Number(d.precioUnitario) * Number(d.cantidad));
       const dm        = Number(d.descuentoMonto ?? 0);
       const dp        = Number(d.descuentoPct   ?? 0);
-      let descLinea   = 0;
-      if (dm > 0) descLinea = r2pdf(Math.min(dm, bruto));
-      else if (dp > 0) descLinea = r2pdf(bruto * (dp / 100));
+      // MISMA convención A/B que facturas.service al calcular la factura:
+      //   B (POS, con precioOriginal): precioUnitario YA es el neto → la base es
+      //     precioOriginal y el descuento se resta UNA sola vez.
+      //   A (Facturas regular, sin precioOriginal): la base es precioUnitario.
+      // Sin esto el PDF restaba el descuento dos veces y su subtotal no cuadraba
+      // con el ITBIS y el total leídos de la factura.
+      const precioOrig = (d as any).precioOriginal != null ? Number((d as any).precioOriginal) : null;
+      const convencionB = precioOrig != null && dm > 0;
+      const precioBase = convencionB ? precioOrig! : Number(d.precioUnitario);
+      const bruto      = r2pdf(precioBase * Number(d.cantidad));
+      let descLinea    = 0;
+      if (convencionB)      descLinea = r2pdf(dm * Number(d.cantidad));
+      else if (dm > 0)      descLinea = r2pdf(Math.min(dm, bruto));
+      else if (dp > 0)      descLinea = r2pdf(bruto * (dp / 100));
       const subtotal  = r2pdf(bruto - descLinea);
       const impIva    = r2pdf(subtotal * (itbisPct / 100));
       return {
@@ -118,7 +128,8 @@ export class PDFService {
         descripcion:    d.descripcion,
         cantidad:       Number(d.cantidad),
         unidadMedida:   (d as any).producto?.unidadMedida ?? 'UN',
-        precioUnitario: Number(d.precioUnitario),
+        // En convención B se muestra el precio de lista; el descuento va en su columna
+        precioUnitario: precioBase,
         descuentoPct:   dp,
         descuentoMonto: descLinea > 0 ? descLinea : 0,
         subtotal,
