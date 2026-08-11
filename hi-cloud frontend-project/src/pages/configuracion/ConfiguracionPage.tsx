@@ -1250,11 +1250,23 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
           </div>
         </Col>
         <Col xs={24} sm={12}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+          {/* DESHABILITADO — este régimen no está soportado de extremo a extremo:
+              el POS envía precioUnitario con el ITBIS ya incluido y el backend no
+              conoce esta configuración, así que le volvería a aplicar ITBIS encima
+              y la factura quedaría por encima de lo cobrado en caja.
+              No reactivar sin arreglar el envío en POSPage.ventaMut. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, opacity: 0.55 }}>
             <Form.Item name="posPrecioIncluyeItbis" valuePropName="checked" style={{ marginBottom: 0 }}>
-              <Switch size="small" />
+              <Switch size="small" disabled />
             </Form.Item>
-            <Text style={{ fontSize: 13 }}>Los precios mostrados en el POS incluyen ITBIS</Text>
+            <div>
+              <Text style={{ fontSize: 13 }}>Los precios mostrados en el POS incluyen ITBIS</Text>
+              <div style={{ fontSize: 11, color: '#d97706', marginTop: 2 }}>
+                No disponible — activarlo facturaría por encima de lo cobrado en caja.
+                Para vender con precios c/ITBIS, carga el precio sin ITBIS en el producto:
+                el recibo ya lo muestra con ITBIS incluido.
+              </div>
+            </div>
           </div>
         </Col>
       </Row>

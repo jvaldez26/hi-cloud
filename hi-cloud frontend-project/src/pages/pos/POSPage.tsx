@@ -141,12 +141,13 @@ interface Sale {
   ncfOriginal?:            string;
   codigoModificacion?:     string;
   descripcionMotivo?:      string;
-  // Descuento global — en BASE imponible (misma unidad que `subtotal`), para que
-  // el bloque de totales cuadre: subtotal − descuentoGlobal + iva = total.
-  // El equivalente c/ITBIS se muestra en PANTALLA (donde el cajero teclea), no en
-  // el ticket: reconstruirlo desde la factura guardada puede desviarse 1 centavo
-  // por doble redondeo y haría divergir impresión y reimpresión.
+  // Descuento global en BASE imponible — de aquí sale el desglose fiscal del recibo
   descuentoGlobal?:        number;
+  // Importe PACTADO con el cliente (c/ITBIS) — es el que se imprime como
+  // "Descuento". Se persiste en facturas.descuentoGeneralFinal en vez de
+  // derivarse de la base, que se desviaría 1 centavo por doble redondeo y haría
+  // divergir la impresión original de la reimpresión.
+  descuentoGlobalFinal?:   number;
   // Propina (opcional)
   propina?:                number;
   // Emisor
@@ -840,7 +841,8 @@ function buildSaleItemsFromDetalles(detalles: any[]): CartItem[] {
  * `descuentoGlobalFinal` es el equivalente c/ITBIS (lo que tecleó el cajero).
  */
 function buildSaleTotalesFromFactura(f: any): {
-  subtotal: number; iva: number; total: number; descuentoGlobal?: number;
+  subtotal: number; iva: number; total: number;
+  descuentoGlobal?: number; descuentoGlobalFinal?: number;
 } {
   const subtotalNeto = Number(f.subtotal ?? 0);
   const iva          = Number(f.iva ?? 0);
@@ -857,11 +859,19 @@ function buildSaleTotalesFromFactura(f: any): {
   }
   if (descBase <= 0) return { subtotal: subtotalNeto, iva, total };
 
+  // Importe pactado c/ITBIS. Guardado desde el POS; para facturas anteriores a la
+  // columna (o creadas desde el módulo Facturas, que trabaja en base) se cae al
+  // importe en base — ahí el operador tecleó sobre precios sin ITBIS.
+  const descPactado = Number(f.descuentoGeneralFinal ?? 0) > 0
+    ? round2(Number(f.descuentoGeneralFinal))
+    : descBase;
+
   return {
-    subtotal:        round2(subtotalNeto + descBase),   // BRUTO, pre-descuento
+    subtotal:             round2(subtotalNeto + descBase),   // BRUTO, pre-descuento
     iva,
     total,
-    descuentoGlobal: descBase,
+    descuentoGlobal:      descBase,
+    descuentoGlobalFinal: descPactado,
   };
 }
 
@@ -964,6 +974,40 @@ function buildReciboTermicoHTML(
   const modoInfo = sale.modoContexto && sale.modoContexto !== 'general'
     ? MODO_INFO[sale.modoContexto] : null;
 
+  // ── Bloque de totales ──────────────────────────────────────────────────────
+  // CON descuento global el recibo habla en el idioma del cliente: la línea de
+  // descuento muestra lo PACTADO c/ITBIS (lo que el cajero dijo de viva voz) y
+  // el subtotal es la suma de las líneas de arriba, que también van c/ITBIS.
+  //   Subtotal (c/ITBIS) − Descuento = TOTAL     ← cuadra exacto
+  // El desglose fiscal (base + ITBIS) va debajo del total como información del
+  // comprobante, y también cuadra: base + ITBIS = TOTAL.
+  // SIN descuento se conserva el formato clásico (base + ITBIS = total).
+  const descGlobalBase  = sale.descuentoGlobal ?? 0;
+  const descGlobalPact  = sale.descuentoGlobalFinal ?? descGlobalBase;
+  const hayDescGlobal   = descGlobalBase > 0;
+  const baseImponible   = round2(sale.subtotal - descGlobalBase);
+
+  // La propina se suma DESPUÉS del total de la venta, así que no forma parte del
+  // subtotal de mercancía (si no, se contaría dos veces en el bloque).
+  const totalMercancia = round2(sale.total - (sale.propina ?? 0));
+
+  const totalesHtml = hayDescGlobal
+    ? [
+        row('Subtotal (c/ITBIS):', fmt(round2(totalMercancia + descGlobalPact))),
+        row('Descuento:', `-${fmt(descGlobalPact)}`),
+      ].join('\n')
+    : [
+        row('Subtotal:', fmt(sale.subtotal)),
+        row(esExento ? 'ITBIS (Exento ZF):' : 'ITBIS (18%):', esExento ? 'RD$0.00' : fmt(sale.iva)),
+      ].join('\n');
+
+  const desgloseFiscalHtml = hayDescGlobal && !esExento
+    ? `${line()}<div class="row small"><span>Base imponible:</span><span>${fmt(baseImponible)}</span></div>` +
+      `<div class="row small"><span>ITBIS (18%):</span><span>${fmt(sale.iva)}</span></div>`
+    : hayDescGlobal && esExento
+      ? `${line()}<div class="row small"><span>Monto exento (ZF):</span><span>${fmt(baseImponible)}</span></div>`
+      : '';
+
   const pagoHtml = tipoDoc === 'COTIZACIÓN' || tipoDoc === 'PRO-FORMA'
     ? row('Validez:', `${validezDias ?? 30} días`)
     : tipoDoc === 'PRE-FACTURA'
@@ -1043,12 +1087,11 @@ ${line()}
 ${line()}
 ${itemsHtml}
 ${line()}
-${row('Subtotal:', fmt(sale.subtotal))}
-${(sale.descuentoGlobal ?? 0) > 0 ? row('Descuento:', `-${fmt(sale.descuentoGlobal!)}`) : ''}
-${row(esExento ? 'ITBIS (Exento ZF):' : 'ITBIS (18%):', esExento ? 'RD$0.00' : fmt(sale.iva))}
+${totalesHtml}
 ${(sale.propina ?? 0) > 0 ? row('Propina:', fmt(sale.propina!)) : ''}
 ${dbl()}
 <div class="row xlarge bold"><span>TOTAL:</span><span>${fmt(sale.total)}</span></div>
+${desgloseFiscalHtml}
 ${line()}
 ${pagoHtml}
 ${ecfHtml}
@@ -9504,8 +9547,15 @@ export default function POSPage() {
     || clienteSeleccionado.nombre?.toLowerCase().includes('consumidor')
     || ['00000000000', '000000000', ''].includes(rncCliente);
 
-  // Totals — si posPrecioIncluyeItbis, el precio ya lleva ITBIS incluido
-  const precioIncluyeItbis = (empresa?.configuracion as any)?.posPrecioIncluyeItbis === true;
+  // Totals — el régimen "precio del catálogo YA incluye ITBIS" está NEUTRALIZADO.
+  // El POS enviaba precioUnitario con ITBIS incluido y el backend no conoce la
+  // configuración (posPrecioIncluyeItbis no existe en todo el backend), así que le
+  // aplicaba ITBIS por encima: la factura y el e-CF quedaban ~18% arriba de lo
+  // cobrado en caja. Se fuerza a false para que las empresas que ya lo tengan
+  // guardado en configuración calculen igual que lo que el backend factura.
+  // El switch está deshabilitado en Configuración → POS con la misma explicación.
+  // Para reactivarlo hay que desglosar el precio ANTES de armar el payload.
+  const precioIncluyeItbis = false;
   // Base cruda por línea (sin redondeo intermedio) — subtotal e ITBIS se redondean
   // POR LÍNEA igual que facturas.service, para que el total que cobra la caja sea
   // EXACTAMENTE el que guarda el backend y el que se declara a DGII.
@@ -10209,6 +10259,8 @@ export default function POSPage() {
         ...(descGlobalMonto > 0 ? {
           descuentoGeneralTipo:  'monto' as const,
           descuentoGeneralValor: descGlobalMonto,
+          // lo pactado con el cliente (c/ITBIS) — se imprime en el recibo
+          descuentoGeneralFinal: descGlobalFinal,
         } : {}),
         // RNC capturado en el modal de cobro → persistir en facturas.rncComprador
         // para que emitirEcfIndividual (botón "Emitir") también funcione sin datosComprador.
@@ -10361,6 +10413,7 @@ export default function POSPage() {
         iva:                     ivaEfectivo,
         subtotal,
         descuentoGlobal:         descGlobalMonto > 0 ? descGlobalMonto : undefined,
+        descuentoGlobalFinal:    descGlobalMonto > 0 ? descGlobalFinal : undefined,
         facturaId:               factura.id > 0 ? factura.id : undefined,
         tipoNcf,
         encf:                    encfFinal,

@@ -40,7 +40,10 @@ export interface FacturaPayload {
   moneda?:         string;
   tipoCambio?:     number;
   descuentoGeneralTipo?:  'monto' | 'porcentaje';
+  /** descuento general en BASE imponible — es el que entra en los cálculos */
   descuentoGeneralValor?: number;
+  /** importe pactado c/ITBIS — solo para imprimirlo en el recibo */
+  descuentoGeneralFinal?: number;
   ordenCompraNumero?:     string;
   formasPago?:            FormaPagoPayload[];
 }

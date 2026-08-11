@@ -156,8 +156,10 @@ export interface SaleBT {
   }>;
   iva?:                    number;
   subtotal?:               number;
-  /** descuento global en BASE imponible (subtotal − descuentoGlobal + iva = total) */
+  /** descuento global en BASE imponible — alimenta el desglose fiscal */
   descuentoGlobal?:        number;
+  /** importe PACTADO con el cliente (c/ITBIS) — es el que se imprime */
+  descuentoGlobalFinal?:   number;
   encf?:                   string;
   ecfPendiente?:           boolean;
   cajero?:                 string;
@@ -177,6 +179,8 @@ export interface SaleBT {
 function fmtMonto(n: number): string {
   return n.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+
+const r2BT = (n: number) => Math.round(n * 100) / 100;
 
 export async function generarReciboESCPOS(sale: SaleBT, empresa: EmpresaBT): Promise<Uint8Array> {
   // Pre-renderizar QR antes de armar el buffer (toCanvas es async; el buffer es síncrono)
@@ -239,12 +243,24 @@ export async function generarReciboESCPOS(sale: SaleBT, empresa: EmpresaBT): Pro
 
   // ── Totales ────────────────────────────────────────────────────────────────
   c.texto(separador());
-  if (sale.subtotal !== undefined) c.texto(lineaLR('Subtotal:', `RD$${fmtMonto(sale.subtotal)}`));
-  if ((sale.descuentoGlobal ?? 0) > 0) {
-    c.texto(lineaLR('Descuento:', `-RD$${fmtMonto(sale.descuentoGlobal!)}`));
+  // MISMO criterio que el recibo HTML: con descuento global el bloque habla en
+  // pesos c/ITBIS (lo pactado con el cliente) y el desglose fiscal va bajo el
+  // total. Sin descuento se mantiene el formato clásico base + ITBIS.
+  const descBaseBT   = sale.descuentoGlobal ?? 0;
+  const descPactoBT  = sale.descuentoGlobalFinal ?? descBaseBT;
+  if (descBaseBT > 0) {
+    c.texto(lineaLR('Subtotal (c/ITBIS):', `RD$${fmtMonto(r2BT(sale.total + descPactoBT))}`));
+    // (el recibo BT no imprime propina, así que el total es solo mercancía)
+    c.texto(lineaLR('Descuento:', `-RD$${fmtMonto(descPactoBT)}`));
+  } else {
+    if (sale.subtotal !== undefined) c.texto(lineaLR('Subtotal:', `RD$${fmtMonto(sale.subtotal)}`));
+    if (sale.iva !== undefined && sale.iva > 0) c.texto(lineaLR('ITBIS:', `RD$${fmtMonto(sale.iva)}`));
   }
-  if (sale.iva !== undefined && sale.iva > 0) c.texto(lineaLR('ITBIS:', `RD$${fmtMonto(sale.iva)}`));
   c.bold(true).texto(lineaLR('TOTAL:', `RD$${fmtMonto(sale.total)}`)).bold(false);
+  if (descBaseBT > 0 && sale.subtotal !== undefined) {
+    c.texto(lineaLR('Base imponible:', `RD$${fmtMonto(r2BT(sale.subtotal - descBaseBT))}`));
+    if (sale.iva !== undefined && sale.iva > 0) c.texto(lineaLR('ITBIS:', `RD$${fmtMonto(sale.iva)}`));
+  }
   if (sale.cambio !== undefined && sale.cambio > 0) c.texto(lineaLR('Cambio:', `RD$${fmtMonto(sale.cambio)}`));
   if (sale.metodo) {
     const m = sale.metodo.charAt(0).toUpperCase() + sanear(sale.metodo.slice(1));

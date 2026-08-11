@@ -296,6 +296,11 @@ export class FacturasService {
       descuentoGeneralValor: Number(dto.descuentoGeneralValor ?? 0) > 0
         ? dto.descuentoGeneralValor
         : undefined,
+      // Importe pactado c/ITBIS — solo para el recibo; si no viene, se cae al
+      // descuento efectivamente aplicado en base (facturas antiguas / módulo Facturas)
+      descuentoGeneralFinal: Number(dto.descuentoGeneralFinal ?? 0) > 0
+        ? dto.descuentoGeneralFinal
+        : undefined,
       ordenCompraNumero: dto.ordenCompraNumero ?? undefined,
       formasPago: dto.formasPago?.length ? dto.formasPago : undefined,
       rncComprador: dto.rncComprador ?? undefined,
@@ -486,6 +491,9 @@ export class FacturasService {
       fechaVencimiento: fechaVenc,
       descuentoGeneralTipo:  dgtU ?? null,
       descuentoGeneralValor: dgvU > 0 ? dgvU : null,
+      descuentoGeneralFinal: Number(dto.descuentoGeneralFinal ?? 0) > 0
+        ? Number(dto.descuentoGeneralFinal)
+        : null,
       ordenCompraNumero:     dto.ordenCompraNumero ?? null,
       formasPago:            dto.formasPago?.length ? dto.formasPago : null,
     } as any);

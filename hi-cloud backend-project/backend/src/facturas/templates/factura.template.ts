@@ -61,7 +61,8 @@ export interface FacturaPDFData {
   subtotalGeneral:     number;
   descuentoTotal:      number;   // descuento general (aplicado sobre subtotalGeneral)
   descuentoGeneralTipo?:  string;  // 'monto' | 'porcentaje'
-  descuentoGeneralValor?: number;  // valor del descuento general
+  descuentoGeneralValor?: number;  // valor del descuento general (BASE imponible o %)
+  descuentoGeneralFinal?: number;  // importe pactado c/ITBIS — solo para la etiqueta
   itbisTotal:          number;
   totalGeneral:        number;
   montoEnLetras:       string;
@@ -258,9 +259,13 @@ export function generarHTMLFactura(d: FacturaPDFData): string {
     ['Subtotal Exento',    money(d.subtotalExento)],   // siempre visible aunque sea 0
     ['Subtotal General',   money(d.subtotalGeneral)],
     ...(d.descuentoTotal > 0 ? [[
+      // El importe va en base imponible para que el bloque fiscal cuadre, pero la
+      // etiqueta menciona lo PACTADO c/ITBIS: es la cifra que el cliente escuchó.
       d.descuentoGeneralTipo === 'porcentaje'
         ? `(-) Descuento general (${d.descuentoGeneralValor}%)`
-        : '(-) Descuento general',
+        : (d.descuentoGeneralFinal ?? 0) > d.descuentoTotal
+          ? `(-) Descuento general (${money(d.descuentoGeneralFinal!)} c/ITBIS)`
+          : '(-) Descuento general',
       `-${money(d.descuentoTotal)}`,
     ] as [string, string]] : []),
     ['ITBIS Total (18%)',  money(d.itbisTotal)],

@@ -256,6 +256,9 @@ export class PDFService {
       descuentoTotal:          r2pdf(descGeneral),
       descuentoGeneralTipo:    dgt,
       descuentoGeneralValor:   dgv > 0 ? dgv : undefined,
+      descuentoGeneralFinal:   Number((factura as any).descuentoGeneralFinal ?? 0) > 0
+        ? Number((factura as any).descuentoGeneralFinal)
+        : undefined,
       itbisTotal,
       totalGeneral,
       montoEnLetras:       this.numLetras.numeroALetras(totalGeneral),

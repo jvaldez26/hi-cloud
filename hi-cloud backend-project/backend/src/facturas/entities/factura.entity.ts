@@ -131,9 +131,17 @@ export class Factura extends TenantBaseEntity {
   @Column({ length: 10, nullable: true, default: null })
   descuentoGeneralTipo?: string;   // 'monto' | 'porcentaje'
 
-  /** Valor del descuento general: importe RD$ o porcentaje (0-100) */
+  /** Valor del descuento general: importe RD$ (BASE imponible) o porcentaje (0-100) */
   @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true, default: null })
   descuentoGeneralValor?: number;
+
+  /**
+   * Importe FINAL del descuento general (c/ITBIS) tal como se pactó con el
+   * cliente. Solo para presentación en el recibo: total + descuentoGeneralFinal
+   * = suma de las líneas mostradas c/ITBIS. No interviene en ningún cálculo.
+   */
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true, default: null })
+  descuentoGeneralFinal?: number;
 
   // ── Comprador (cuando se ingresa RNC/cédula sin seleccionar cliente) ────────
   /** RNC o cédula del comprador capturado manualmente en el formulario */

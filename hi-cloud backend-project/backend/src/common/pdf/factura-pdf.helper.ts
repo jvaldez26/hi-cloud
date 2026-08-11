@@ -411,9 +411,13 @@ export async function generarFacturaPDF(
 
     // Descuento general (si aplica)
     if (d.descuentoTotal > 0) {
+      // Importe en base imponible (cuadra con el bloque fiscal); la etiqueta
+      // menciona lo pactado c/ITBIS, que es la cifra que el cliente escuchó.
       const descLabel = d.descuentoGeneralTipo === 'porcentaje'
         ? `(-) Descuento general (${d.descuentoGeneralValor}%):`
-        : '(-) Descuento general:';
+        : (d.descuentoGeneralFinal ?? 0) > d.descuentoTotal
+          ? `(-) Descuento general (${fmtM(d.descuentoGeneralFinal!)} c/ITBIS):`
+          : '(-) Descuento general:';
       doc.fillColor(GRAY).font('Helvetica').fontSize(9.5)
         .text(descLabel, totX, ty, { width: labelW2, align: 'left' });
       doc.fillColor(DARK).font('Helvetica').fontSize(9.5)

@@ -188,6 +188,16 @@ export class CreateFacturaDto {
   @Min(0)
   descuentoGeneralValor?: number;
 
+  /**
+   * Importe FINAL del descuento (c/ITBIS) tal como lo tecleó/pactó el cajero.
+   * Solo se persiste para imprimirlo en el recibo — los cálculos siguen usando
+   * descuentoGeneralValor (BASE imponible).
+   */
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  descuentoGeneralFinal?: number;
+
   // ── Comprador ─────────────────────────────────────────────────────────────
   @IsOptional() @IsString() @MaxLength(11)
   rncComprador?: string;
