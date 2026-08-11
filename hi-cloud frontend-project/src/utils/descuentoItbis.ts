@@ -21,6 +21,16 @@
  *     está en la misma unidad que el precio y NO se convierte.
  */
 
+/**
+ * Redondeo a 4 decimales — la precisión en que se GUARDAN los descuentos en
+ * base imponible (factura_detalles.descuentoMonto y
+ * facturas.descuentoGeneralValor son NUMERIC(12,4), y los DTO validan 4dp).
+ * Redondear a 2 desvía el total hasta un centavo respecto de lo cobrado.
+ */
+export function round4(n: number): number {
+  return parseFloat((Number(n) || 0).toFixed(4));
+}
+
 /** Descuento tecleado por el cajero (pesos FINALES, c/ITBIS) → base imponible. */
 export function descuentoFinalABase(
   valorFinal: number,

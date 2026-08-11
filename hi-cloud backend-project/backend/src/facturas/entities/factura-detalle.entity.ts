@@ -46,7 +46,12 @@ export class FacturaDetalle extends BaseEntity {
   @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
   descuentoPct!: number;
 
-  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  /**
+   * Descuento en BASE IMPONIBLE. 4 decimales porque sale de una división: el
+   * cajero teclea pesos finales c/ITBIS y se convierte (10 / 1.18 = 8.4746).
+   * Con 2 decimales el recibo mostraba 9.99 donde se pactaron 10.00.
+   */
+  @Column({ type: 'decimal', precision: 12, scale: 4, default: 0 })
   descuentoMonto!: number;
 
   @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })

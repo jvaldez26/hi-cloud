@@ -103,9 +103,15 @@ export class CreateFacturaDetalleDto {
   /**
    * Convención A: descuento TOTAL de la línea.
    * Convención B (con precioOriginal): descuento POR UNIDAD.
+   *
+   * En BASE IMPONIBLE y con 4 decimales: el POS convierte lo que teclea el
+   * cajero (pesos finales c/ITBIS) dividiendo entre 1 + ITBIS, y 10 / 1.18 =
+   * 8.4746. Con 2 decimales el POST daba 400 y, al aflojar la validación sin
+   * ampliar la columna, el recibo mostraría 9.99 donde se pactaron 10.00.
+   * Debe ir alineado con factura_detalles."descuentoMonto" NUMERIC(12,4).
    */
   @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsNumber({ maxDecimalPlaces: 4 })
   @Min(0)
   descuentoMonto?: number;
 
@@ -198,8 +204,13 @@ export class CreateFacturaDto {
   @IsString()
   descuentoGeneralTipo?: string;   // 'monto' | 'porcentaje'
 
+  /**
+   * Importe en BASE IMPONIBLE (o porcentaje). 4 decimales — misma conversión
+   * final → base que descuentoMonto de línea. Alineado con
+   * facturas."descuentoGeneralValor" NUMERIC(12,4).
+   */
   @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsNumber({ maxDecimalPlaces: 4 })
   @Min(0)
   descuentoGeneralValor?: number;
 

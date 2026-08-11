@@ -131,8 +131,12 @@ export class Factura extends TenantBaseEntity {
   @Column({ length: 10, nullable: true, default: null })
   descuentoGeneralTipo?: string;   // 'monto' | 'porcentaje'
 
-  /** Valor del descuento general: importe RD$ (BASE imponible) o porcentaje (0-100) */
-  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true, default: null })
+  /**
+   * Valor del descuento general: importe RD$ en BASE IMPONIBLE, o porcentaje.
+   * 4 decimales por la misma razón que factura_detalles.descuentoMonto — el
+   * importe sale de dividir entre (1 + ITBIS) lo que tecleó el cajero.
+   */
+  @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true, default: null })
   descuentoGeneralValor?: number;
 
   /**

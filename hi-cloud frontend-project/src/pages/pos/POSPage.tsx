@@ -20,7 +20,7 @@ import { inventarioApi } from '../../api/inventario.api';
 import { fmt, round2 } from '../../utils/formatters';
 import { validarEAN, parsearBalanza, type BalanzaPatronFrontend, type BalanzaMatchFrontend } from '../../utils/balanza-scan';
 import { resolverNombreComprador, resolverRncComprador } from '../../utils/facturaComprador';
-import { descuentoFinalABase, descuentoBaseAFinal, pctIvaEfectivo } from '../../utils/descuentoItbis';
+import { descuentoFinalABase, descuentoBaseAFinal, pctIvaEfectivo, round4 } from '../../utils/descuentoItbis';
 import { imprimirElemento, imprimirReciboTermico, imprimirPDFA4, imprimirFacturaPreviewA4, imprimirHtml } from '../../utils/printUtils';
 import { exportarExcel } from '../../utils/exportExcel';
 import { imprimirReciboEscPos, conectarImpresora, desconectarImpresora, estaConectada, getNombreImpresora, imprimirPruebaEscPos, autoReconectarImpresora, bluetoothAutoReconexionDisponible, huboFalloWatchAdvertisements } from '../../services/thermalPrinter';
@@ -882,7 +882,9 @@ function buildSaleTotalesFromFactura(f: any): {
   const dgv = Number(f.descuentoGeneralValor ?? 0);
   let descBase = 0;
   if (dgt === 'monto' && dgv > 0) {
-    descBase = round2(dgv);
+    // sin redondear a 2: la columna guarda 4 decimales y redondear aquí
+    // desviaría el subtotal bruto que se imprime
+    descBase = round4(dgv);
   } else if (dgt === 'porcentaje' && dgv > 0 && dgv < 100) {
     // subtotal guardado = bruto × (1 − pct) → se despeja el bruto para obtener el importe
     descBase = round2((subtotalNeto / (1 - dgv / 100)) * (dgv / 100));
@@ -9616,7 +9618,10 @@ export default function POSPage() {
   // así que el descuento tecleado no se convierte.
   const pctIvaCarrito   = tipoNcf === 'E44' ? 0 : pctIvaEfectivo(subtotal, iva);
   const totalConItbis   = tipoNcf === 'E44' ? subtotal : round2(subtotal + iva);
-  const descGlobalMonto = round2(descGlobalTipo === 'pct'
+  // 4 decimales, no 2: el importe sale de una división y redondearlo aquí
+  // desviaría el total hasta un centavo respecto de lo que cobra la caja.
+  // La columna es NUMERIC(12,4) y el DTO valida 4dp.
+  const descGlobalMonto = round4(descGlobalTipo === 'pct'
     // % sobre la base → el total baja ese mismo % (proporcional, no requiere conversión)
     ? subtotal * Math.min(descGlobalVal, 100) / 100
     // monto en pesos finales → base imponible, capeado al total cobrable
@@ -10302,7 +10307,10 @@ export default function POSPage() {
           cantidad:            i.cantidad,
           precioUnitario:      parseFloat((i.precio - i.descuentoMonto).toFixed(4)),
           descripcion:         i.produto.nombre,
-          descuentoMonto:      i.descuentoMonto,
+          // 4dp: el descuento va en BASE imponible y sale de dividir entre
+          // 1 + ITBIS lo que tecleó el cajero (10 / 1.18 = 8.4746). El toFixed
+          // acota la cola de IEEE754 para no exceder el maxDecimalPlaces del DTO.
+          descuentoMonto:      parseFloat(i.descuentoMonto.toFixed(4)),
           // round a 4dp para no exceder @IsNumber({maxDecimalPlaces:4}) cuando
           // i.precio viene con más decimales de DB (ej. decimal(12,4)) o por IEEE754
           precioOriginal:      i.descuentoMonto > 0 ? parseFloat(i.precio.toFixed(4)) : undefined,
