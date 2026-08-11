@@ -410,10 +410,15 @@ function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, o
   // Balanza peso: mostrar cantidad decimal aunque UOM no esté en catálogo con permiteDecimales
   const esFraccionableEfectivo = esFraccionable || esBalanzaPeso;
   // ──────────────────────────────────────────────────────────────────────────
-  const [descFocus,    setDescFocus]    = useState(false);
-  const [precioDraft,  setPrecioDraft]  = useState<string | null>(null);
-  const [qtyDraft,     setQtyDraft]     = useState<number | null>(item.cantidad);
-  const [qtyEditing,   setQtyEditing]   = useState(false);
+  const [descFocus,      setDescFocus]      = useState(false);
+  // descFinalDraft — lo que teclea el cajero en pesos FINALES (con ITBIS).
+  // Sólo existe mientras el campo está enfocado; null = campo no editando.
+  const [descFinalDraft, setDescFinalDraft] = useState<string | null>(null);
+  const [precioDraft,    setPrecioDraft]    = useState<string | null>(null);
+  const [qtyDraft,       setQtyDraft]       = useState<number | null>(item.cantidad);
+  const [qtyEditing,     setQtyEditing]     = useState(false);
+  // Tasa ITBIS del item para conversión final ↔ base en el descuento
+  const pctIvaItem = Number((item.produto as any).porcentajeIva ?? 18) / 100;
   // Sincronizar draft cuando cambia externamente (otro updater, restaurar venta)
   const prevCantidadRef = useRef(item.cantidad);
   if (prevCantidadRef.current !== item.cantidad) {
@@ -443,6 +448,23 @@ function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, o
     setQtyDraft(v);
     if (v !== item.cantidad) onQtyDirecto?.(v);
     setQtyEditing(false);
+  };
+
+  /**
+   * confirmarDescuento — el cajero trabaja en pesos FINALES (c/ITBIS).
+   * Para productos con ITBIS: raw es el descuento en precio final → se convierte
+   * a BASE antes de guardar. El ticket lo mostrará en final (× factor) igual que antes.
+   */
+  const confirmarDescuento = (rawFinal: string) => {
+    const vFinal = Math.max(0, parseFloat(rawFinal) || 0);
+    // Convertir final → base solo cuando el producto tiene ITBIS
+    const baseDesc = pctIvaItem > 0
+      ? parseFloat((vFinal / (1 + pctIvaItem)).toFixed(4))
+      : vFinal;
+    // Cap al precio base (nunca un descuento mayor que el precio)
+    onDescuento(Math.min(item.precio, Math.max(0, baseDesc)));
+    setDescFinalDraft(null);
+    setDescFocus(false);
   };
 
   return (
@@ -547,7 +569,15 @@ function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, o
                 <span>{fmt.money(item.precio)}</span>
               )}
               <span>× {uomCodigo}</span>
-              {item.descuentoMonto > 0 && <span style={{ color: C.orange, fontWeight: 700 }}>−{fmt.money(item.descuentoMonto)}</span>}
+              {item.descuentoMonto > 0 && (
+                <span style={{ color: C.orange, fontWeight: 700 }}>
+                  {/* Mostrar el descuento en pesos FINALES (igual que el cajero lo tecleó) */}
+                  −{fmt.money(pctIvaItem > 0
+                    ? parseFloat((item.descuentoMonto * (1 + pctIvaItem)).toFixed(2))
+                    : item.descuentoMonto
+                  )}
+                </span>
+              )}
               {item.precioModificado && <span style={{ color: C.orange, fontSize: 10 }}>✎</span>}
             </span>
           </div>
@@ -654,20 +684,60 @@ function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, o
 
           <div style={{ flex: 1 }} />
 
-          {/* Descuento por monto (RD$) — aparece si permitirDescuentos y si >0 o en foco */}
+          {/* Descuento por monto — el cajero teclea pesos FINALES (c/ITBIS).
+               Para productos con ITBIS, confirmarDescuento() convierte a BASE antes de guardar.
+               El value muestra el equivalente final del descuento actual, o el draft mientras edita. */}
           {permitirDescuentos && showDesc ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <span style={{ fontSize: 10, color: item.descuentoMonto > 0 ? C.orange : C.textMuted, fontWeight: 600 }}>-$</span>
-              <input type="number" value={item.descuentoMonto} min={0} max={item.precio} step={0.01}
-                onChange={e => onDescuento(Math.min(item.precio, Math.max(0, Number(e.target.value))))}
-                onFocus={() => setDescFocus(true)}
-                onBlur={() => setDescFocus(false)}
-                autoFocus={descFocus && item.descuentoMonto === 0}
-                style={{ width: 62, height: 24, borderRadius: 6,
-                  border: `1px solid ${item.descuentoMonto > 0 ? C.orange : C.border2}`,
-                  background: item.descuentoMonto > 0 ? C.orange + '11' : 'rgba(255,255,255,.05)',
-                  color: item.descuentoMonto > 0 ? C.orange : C.text,
-                  textAlign: 'center', fontSize: 11, fontWeight: 700, outline: 'none', padding: '0 2px' }} />
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <span style={{ fontSize: 10, color: item.descuentoMonto > 0 ? C.orange : C.textMuted, fontWeight: 600 }}>-$</span>
+                <input
+                  type="number"
+                  value={
+                    descFinalDraft !== null
+                      ? descFinalDraft
+                      : pctIvaItem > 0
+                        ? parseFloat((item.descuentoMonto * (1 + pctIvaItem)).toFixed(2))
+                        : item.descuentoMonto
+                  }
+                  min={0}
+                  max={pctIvaItem > 0
+                    ? parseFloat((item.precio * (1 + pctIvaItem)).toFixed(2))
+                    : item.precio
+                  }
+                  step={0.01}
+                  onChange={e => setDescFinalDraft(e.target.value)}
+                  onFocus={() => {
+                    const finalEquiv = pctIvaItem > 0
+                      ? parseFloat((item.descuentoMonto * (1 + pctIvaItem)).toFixed(2))
+                      : item.descuentoMonto;
+                    setDescFinalDraft(String(finalEquiv > 0 ? finalEquiv : ''));
+                    setDescFocus(true);
+                  }}
+                  onBlur={e  => confirmarDescuento(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter')  confirmarDescuento((e.target as HTMLInputElement).value);
+                    if (e.key === 'Escape') { setDescFinalDraft(null); setDescFocus(false); }
+                  }}
+                  autoFocus={descFocus && item.descuentoMonto === 0}
+                  style={{ width: 62, height: 24, borderRadius: 6,
+                    border: `1px solid ${item.descuentoMonto > 0 ? C.orange : C.border2}`,
+                    background: item.descuentoMonto > 0 ? C.orange + '11' : 'rgba(255,255,255,.05)',
+                    color: item.descuentoMonto > 0 ? C.orange : C.text,
+                    textAlign: 'center', fontSize: 11, fontWeight: 700, outline: 'none', padding: '0 2px' }} />
+              </div>
+              {/* Preview: el cajero ve el resultado antes de confirmar */}
+              {descFinalDraft !== null && pctIvaItem > 0 && (() => {
+                const vFinal = parseFloat(descFinalDraft) || 0;
+                if (vFinal <= 0) return null;
+                const precioFinalUnit = item.precio * (1 + pctIvaItem);
+                const pagaFinalTotal  = Math.max(0, precioFinalUnit - Math.min(vFinal, precioFinalUnit)) * item.cantidad;
+                return (
+                  <span style={{ fontSize: 9, color: '#22c55e', fontWeight: 600 }}>
+                    Paga {fmt.money(parseFloat(pagaFinalTotal.toFixed(2)))}
+                  </span>
+                );
+              })()}
             </div>
           ) : permitirDescuentos ? (
             <Tooltip title="Aplicar descuento en RD$">
@@ -9700,20 +9770,26 @@ export default function POSPage() {
     }));
   };
   const setDescuentoMonto = async (idx: number, monto: number) => {
+    // monto es siempre en BASE (la conversión final→base ya la hizo confirmarDescuento en CartRow)
     const precio       = cart[idx]?.precio ?? 0;
+    const pctIvaProd   = Number((cart[idx]?.produto as any)?.porcentajeIva ?? 18) / 100;
     const nombreItem   = cart[idx]?.produto.nombre ?? 'ítem';
     const pct          = precio > 0 ? (monto / precio) * 100 : 0;
+    // Mostrar el límite en pesos FINALES (lo que el cajero reconoce)
+    const toFinal = (base: number) => pctIvaProd > 0
+      ? parseFloat((base * (1 + pctIvaProd)).toFixed(2))
+      : base;
     // Verificar descuento máximo configurado (en % internamente, mostrar RD$ al usuario)
     if (posDescuentoMaximo < 100 && pct > posDescuentoMaximo) {
-      const maxMonto = precio * posDescuentoMaximo / 100;
+      const maxMonto = toFinal(precio * posDescuentoMaximo / 100);
       message.error(`Descuento máximo: RD$${maxMonto.toFixed(2)} para este producto`);
       return;
     }
     // Si el modo supervisor está activo y el descuento supera el máximo → pedir autorización
     if (supervisor.supervisorModeEnabled && pct > supervisor.maxDiscountPercent) {
-      const maxMonto = precio * supervisor.maxDiscountPercent / 100;
+      const maxMonto = toFinal(precio * supervisor.maxDiscountPercent / 100);
       const ok = await supervisor.requireSupervisor(
-        `Descuento de RD$${monto.toFixed(2)} en ${nombreItem}`,
+        `Descuento de RD$${toFinal(monto).toFixed(2)} en ${nombreItem}`,
         `Máximo permitido sin supervisor: RD$${maxMonto.toFixed(2)}`,
       );
       if (!ok) return; // cancelado
