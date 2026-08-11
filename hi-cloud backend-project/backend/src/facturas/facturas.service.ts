@@ -937,11 +937,18 @@ export class FacturasService {
           return { ...(facturaActual ?? {}), ecfEmitido: false, ecfError: err?.message ?? 'Error al emitir e-CF' };
         });
 
-        // 6. Sellar PAGADA sólo si es CONTADO y la emisión no fue rechazada.
+        // 6. Linkear ecfId + sellar PAGADA (solo si CONTADO y emisión exitosa).
         //    Si ecfEmitido === false (DGII rechazó o error), la factura queda EMITIDA.
-        if (!esCredito && (ecfResult as any)?.ecfEmitido !== false) {
-          await this.facturaRepository.update(id, { estado: FacturaEstado.PAGADA });
-          this.realtimeService.notify(factura.empresaId, 'factura', 'updated', id);
+        const ecfEmitidoOk = (ecfResult as any)?.ecfEmitido !== false;
+        if (ecfEmitidoOk) {
+          const ecfIdPOS = (ecfResult as any)?.ecf?.id;
+          const posPatch: Record<string, unknown> = {};
+          if (ecfIdPOS) posPatch.ecfId = ecfIdPOS;
+          if (!esCredito) posPatch.estado = FacturaEstado.PAGADA;
+          if (Object.keys(posPatch).length) {
+            await this.facturaRepository.update(id, posPatch as any);
+            this.realtimeService.notify(factura.empresaId, 'factura', 'updated', id);
+          }
         }
 
         return ecfResult;
