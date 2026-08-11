@@ -78,6 +78,28 @@ export default function ClientesPage() {
   }, [editing?.id]);
 
   /**
+   * Ante DGII el RNC identifica UN contribuyente, así que todos los clientes
+   * que compartan RNC tienen que declarar la misma razón social. Si los que ya
+   * existen tienen una definida y la de este formulario no coincide, hay que
+   * avisar: ya pasó que tres clientes del mismo RNC declararan tres razones
+   * sociales distintas porque el campo se dejó vacío y cayó al nombre interno.
+   */
+  const razonSocialForm = Form.useWatch('razonSocial', form);
+  const nombreForm      = Form.useWatch('nombre', form);
+  const razonSocialDelGrupo = (() => {
+    const definidas = new Set(
+      (rncExistentes?.clientes ?? [])
+        .map(c => (c.razonSocial ?? '').trim())
+        .filter(Boolean),
+    );
+    return definidas.size === 1 ? [...definidas][0] : null;
+  })();
+  // Lo que este cliente declararía hoy (mismo fallback que el backend)
+  const declararia = (razonSocialForm ?? '').trim() || (nombreForm ?? '').trim();
+  const razonSocialDiverge =
+    !!razonSocialDelGrupo && !!declararia && razonSocialDelGrupo !== declararia;
+
+  /**
    * Descarta el cliente nuevo y abre el existente que el usuario eligió — el
    * caso legítimo se resuelve en dos clics y el duplicado por error se evita.
    */
@@ -534,12 +556,39 @@ export default function ClientesPage() {
                           {[c.direccion, c.ciudad].filter(Boolean).join(', ') || 'Sin dirección registrada'}
                           {c.telefono ? ` · ${c.telefono}` : ''}
                         </div>
+                        <div style={{ fontSize: 11, color: token.colorTextTertiary }}>
+                          Declara ante DGII: {(c.razonSocial ?? '').trim() || c.nombre}
+                        </div>
                       </div>
                       <Button size="small" onClick={() => void usarClienteExistente(c.id)}>
                         Usar este
                       </Button>
                     </div>
                   ))}
+
+                  {/* Un RNC = un contribuyente = una sola razón social ante DGII */}
+                  {razonSocialDiverge && (
+                    <div style={{
+                      marginTop: 10, paddingTop: 10,
+                      borderTop: `1px solid ${token.colorBorderSecondary}`,
+                    }}>
+                      <Text strong style={{ fontSize: 12, color: token.colorErrorText }}>
+                        Este cliente declararía una razón social distinta
+                      </Text>
+                      <div style={{ fontSize: 11, color: token.colorTextSecondary, margin: '2px 0 8px' }}>
+                        Los demás clientes de este RNC declaran{' '}
+                        <strong>"{razonSocialDelGrupo}"</strong> y este declararía{' '}
+                        <strong>"{declararia}"</strong>. Ante DGII un RNC es un solo
+                        contribuyente: todos deben declarar la misma razón social.
+                      </div>
+                      <Button
+                        size="small" type="primary" ghost
+                        onClick={() => form.setFieldsValue({ razonSocial: razonSocialDelGrupo! })}
+                      >
+                        Usar "{razonSocialDelGrupo}" como razón social fiscal
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </Col>
             )}
