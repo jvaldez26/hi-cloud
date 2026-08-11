@@ -72,6 +72,43 @@ export class CxCService {
     return this.cxcRepository.save(cxc);
   }
 
+  /**
+   * Detecta facturas de crédito EMITIDAS sin CxC y las crea.
+   * Útil para corregir inconsistencias históricas o errores silenciosos
+   * durante la emisión.
+   */
+  async sincronizarCxCFaltantes(): Promise<{ creadas: number; folios: string[] }> {
+    const empresaId = this.tenantService.getEmpresaId();
+
+    const facturasSinCxC = await this.dataSource.query<{
+      id: number; usuarioId: number; diasCredito: number; folio: string;
+    }[]>(`
+      SELECT f.id, f."usuarioId", COALESCE(f."diasCredito", 30) AS "diasCredito", f.folio
+      FROM facturas f
+      WHERE f."empresaId" = $1
+        AND f."tipoPago"  = 'CREDITO'
+        AND f.estado      = 'emitida'
+        AND f."isActive"  = true
+        AND NOT EXISTS (
+          SELECT 1 FROM cuentas_por_cobrar c WHERE c."facturaId" = f.id
+        )
+      ORDER BY f.fecha DESC
+    `, [empresaId]);
+
+    const folios: string[] = [];
+    for (const f of facturasSinCxC) {
+      try {
+        await this.crear(f.id, f.usuarioId ?? 0, f.diasCredito);
+        folios.push(f.folio);
+        this.logger.warn(`CxC creada retroactivamente para factura ${f.folio} (id ${f.id})`);
+      } catch (err) {
+        this.logger.error(`Error creando CxC para factura ${f.folio}: ${(err as Error).message}`);
+      }
+    }
+
+    return { creadas: folios.length, folios };
+  }
+
   // ──────────────────────────────────────────────────────────────────
   // Registro de cobros
   // ──────────────────────────────────────────────────────────────────

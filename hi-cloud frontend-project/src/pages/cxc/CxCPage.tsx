@@ -11,7 +11,7 @@ import {
 import {
   DollarOutlined, SearchOutlined, FileExcelOutlined, EyeOutlined,
   WhatsAppOutlined, FilterOutlined, HistoryOutlined, ClockCircleOutlined, PrinterOutlined,
-  StopOutlined,
+  StopOutlined, SyncOutlined,
 } from '@ant-design/icons';
 import { TableActions } from '../../components/ui/TableActions';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -107,6 +107,22 @@ export default function CxCPage() {
         message.error(msg, 5);
       }
     },
+  });
+
+  const sincronizarMut = useMutation({
+    mutationFn: () => api.post('/cxc/sincronizar').then(r => r.data),
+    onSuccess: (data: any) => {
+      qc.invalidateQueries({ queryKey: ['cxc'] });
+      qc.invalidateQueries({ queryKey: ['cxc-resumen'] });
+      const creadas = data?.creadas ?? 0;
+      if (creadas === 0) {
+        message.info('No hay facturas de crédito sin CxC pendientes.');
+      } else {
+        const folios = (data?.folios ?? []).join(', ');
+        message.success(`${creadas} CxC creada${creadas > 1 ? 's' : ''}: ${folios}`, 6);
+      }
+    },
+    onError: () => message.error('Error al sincronizar CxC'),
   });
 
   const handleExcel = useCallback(async () => {
@@ -382,6 +398,15 @@ export default function CxCPage() {
           <Col xs={24} sm="auto">
             <Space wrap>
               <Button icon={<FileExcelOutlined />} onClick={handleExcel}>Excel</Button>
+              <Tooltip title="Crea CxC para facturas de crédito que no tienen registro (corrección de inconsistencias)">
+                <Button
+                  icon={<SyncOutlined />}
+                  loading={sincronizarMut.isPending}
+                  onClick={() => sincronizarMut.mutate()}
+                >
+                  Sincronizar
+                </Button>
+              </Tooltip>
               <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
               <RefreshByKeyButton queryKey={['cxc']} />
               <VideoTutorialButton />

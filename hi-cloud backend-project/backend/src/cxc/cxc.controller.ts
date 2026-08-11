@@ -125,4 +125,12 @@ export class CxCController {
   anularPago(@Param('pagoId', ParseIntPipe) pagoId: number) {
     return this.cxcService.anularPago(pagoId);
   }
+
+  @Post('sincronizar')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Crear CxC faltantes para facturas de crédito sin registro' })
+  sincronizarCxCFaltantes() {
+    return this.cxcService.sincronizarCxCFaltantes();
+  }
 }
