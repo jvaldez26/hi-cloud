@@ -20,8 +20,23 @@ export class FormaPagoDto {
   @IsInt() @Min(1) @Max(6)
   tipo: number;  // 1=Efectivo 2=Cheque/Transfer 3=Tarjeta 4=Crédito 5=Permuta 6=NC
 
+  /**
+   * Monto APLICADO a la venta — lo que realmente entra a caja por esta vía.
+   * La suma de los montos de todas las formas debe dar el total de la factura;
+   * es lo que lee el arqueo (caja.service). Nunca el billete que entregó el
+   * cliente: para eso está montoEntregado.
+   */
   @IsNumber({ maxDecimalPlaces: 2 }) @IsPositive()
   monto: number;
+
+  /**
+   * Solo efectivo: lo que el cliente puso sobre el mostrador cuando hubo vuelto
+   * (montoEntregado − monto = cambio). Se persiste para que la reimpresión
+   * muestre el mismo PAGADO / CAMBIO que el recibo original. No entra en ningún
+   * cálculo ni en el arqueo.
+   */
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @IsPositive()
+  montoEntregado?: number;
 
   @IsOptional() @IsString() @MaxLength(200)
   referencia?: string;

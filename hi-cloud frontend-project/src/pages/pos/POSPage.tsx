@@ -830,6 +830,36 @@ function buildSaleItemsFromDetalles(detalles: any[]): CartItem[] {
 }
 
 /**
+ * buildSalePagoFromFactura — FUENTE ÚNICA del bloque de pago del ticket.
+ *
+ * `formasPago.monto` guarda lo APLICADO (lo que entró a caja). Para que la
+ * reimpresión muestre el mismo "PAGADO / CAMBIO" que el recibo original hay que
+ * volver a lo ENTREGADO, que vive en `montoEntregado` cuando hubo vuelto.
+ */
+function buildSalePagoFromFactura(f: any): {
+  formasPago?: { tipo: number; monto: number }[];
+  pagoRecibido?: number;
+  cambio: number;
+} {
+  const fps: any[] = Array.isArray(f.formasPago) ? f.formasPago : [];
+  if (!fps.length) return { cambio: 0 };
+
+  // Lo que el cliente puso sobre el mostrador por cada vía
+  const entregadas = fps.map(fp => ({
+    tipo:  Number(fp.tipo),
+    monto: round2(Number(fp.montoEntregado ?? fp.monto ?? 0)),
+  }));
+  const totalEntregado = round2(entregadas.reduce((s, fp) => s + fp.monto, 0));
+  const cambio         = round2(Math.max(0, totalEntregado - Number(f.total ?? 0)));
+
+  return {
+    formasPago:   entregadas.length > 1 ? entregadas : undefined,
+    pagoRecibido: totalEntregado > 0 ? totalEntregado : undefined,
+    cambio,
+  };
+}
+
+/**
  * buildSaleTotalesFromFactura — FUENTE ÚNICA de totales del ticket.
  *
  * REGLA: la plantilla LEE los totales guardados; NO los recalcula. Aquí solo se
@@ -6241,11 +6271,12 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
         return ts ? dayjs(ts).format('DD-MM-YYYY HH:mm:ss') : undefined;
       })();
       const sale: Sale = {
-        folio: f.folio, cambio: 0,
+        folio: f.folio,
         metodo: f.notas?.includes('Tarjeta') ? 'tarjeta' : f.notas?.includes('Transferencia') ? 'transferencia' : 'efectivo',
-        // MISMAS funciones que la impresión original — ítems y totales nunca divergen
+        // MISMAS funciones que la impresión original — ítems, totales y pago nunca divergen
         items: buildSaleItemsFromDetalles(f.detalles ?? []),
         ...buildSaleTotalesFromFactura(f),
+        ...buildSalePagoFromFactura(f),
         cliente: f.cliente?.nombre,
         facturaId: f.id, tipoNcf: f.tipoNcf ?? 'E32',
         encf: f.ecf?.numero, ecfPendiente: !f.ecf?.numero,
@@ -7739,10 +7770,11 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           const f = await api.get(`/facturas/${data.facturaId}`).then(r => r.data?.data ?? r.data);
           const metodo = f.notas?.includes('Tarjeta') ? 'tarjeta' : f.notas?.includes('Transferencia') ? 'transferencia' : 'efectivo';
           const saleObj: Sale = {
-            folio: f.folio, cambio: 0, metodo,
-            // MISMAS funciones que la impresión original — ítems y totales nunca divergen
+            folio: f.folio, metodo,
+            // MISMAS funciones que la impresión original — ítems, totales y pago nunca divergen
             items: buildSaleItemsFromDetalles(f.detalles ?? []),
             ...buildSaleTotalesFromFactura(f),
+            ...buildSalePagoFromFactura(f),
             cliente: f.cliente?.nombre,
             facturaId: f.id, tipoNcf: f.tipoNcf ?? 'E32',
             encf: f.ecf?.numero, ecfPendiente: !f.ecf?.numero,
@@ -7811,11 +7843,12 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
             : f.notas?.includes('Tarjeta') ? 'tarjeta'
             : f.notas?.includes('Transferencia') ? 'transferencia' : 'efectivo';
           const saleObj: Sale = {
-            folio: f.folio, cambio: 0, metodo,
+            folio: f.folio, metodo,
             diasCredito: metodo === 'credito' ? (f.diasCredito ?? undefined) : undefined,
-            // MISMAS funciones que la impresión original — ítems y totales nunca divergen
+            // MISMAS funciones que la impresión original — ítems, totales y pago nunca divergen
             items: buildSaleItemsFromDetalles(f.detalles ?? []),
             ...buildSaleTotalesFromFactura(f),
+            ...buildSalePagoFromFactura(f),
             cliente: f.cliente?.nombre,
             facturaId: f.id, tipoNcf: f.tipoNcf ?? 'E32',
             encf: f.ecf?.numero, ecfPendiente: !f.ecf?.numero,
@@ -7927,12 +7960,13 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           return ts ? dayjs(ts).format('DD-MM-YYYY HH:mm:ss') : undefined;
         })();
         const sale: Sale = {
-          folio:       f.folio, cambio: 0,
+          folio:       f.folio,
           metodo:      f.notas?.includes('Tarjeta') ? 'tarjeta' : f.notas?.includes('Transferencia') ? 'transferencia' : 'efectivo',
-          // buildSaleItemsFromDetalles / buildSaleTotalesFromFactura: MISMAS funciones
-          // que usa la impresión original. Los totales se LEEN de DB — no se recalculan.
+          // buildSaleItemsFromDetalles / buildSaleTotalesFromFactura / buildSalePagoFromFactura:
+          // MISMAS funciones que usa la impresión original. Todo se LEE de DB — no se recalcula.
           items:       buildSaleItemsFromDetalles(f.detalles ?? []),
           ...buildSaleTotalesFromFactura(f),
+          ...buildSalePagoFromFactura(f),
           cliente:   f.cliente?.nombre,
           facturaId: f.id, tipoNcf: f.tipoNcf ?? 'E32',
           encf:      f.ecf?.numero, ecfPendiente: !f.ecf?.numero,
@@ -9637,12 +9671,32 @@ export default function POSPage() {
   const tieneEfec     = formasPagoList.some(fp => fp.metodo === 'efectivo');
   const sumaFP        = esMixto ? round2(formasPagoList.reduce((s, fp) => s + fp.monto, 0)) : 0;
   const noEfecSum     = esMixto ? round2(formasPagoList.filter(fp => fp.metodo !== 'efectivo').reduce((s, fp) => s + fp.monto, 0)) : 0;
+  // efectivoMonto = lo que el cliente ENTREGÓ en billetes (puede exceder: hay vuelto)
   const efectivoMonto = esMixto ? round2(formasPagoList.filter(fp => fp.metodo === 'efectivo').reduce((s, fp) => s + fp.monto, 0)) : montoRecibido;
   const cambio        = tieneEfec
     ? round2(Math.max(0, esMixto
         ? efectivoMonto - Math.max(0, totalAPagar - noEfecSum)
         : montoRecibido - totalAPagar))
     : 0;
+  // efectivoAplicado = lo que REALMENTE queda en la gaveta (entregado − vuelto).
+  // Es lo que se persiste como monto de la forma de pago y lo que alimenta el
+  // arqueo; el entregado se guarda aparte para el recibo (PAGADO / CAMBIO).
+  const efectivoAplicado = round2(Math.max(0, totalAPagar - noEfecSum));
+  // Las formas SIN vuelto (tarjeta, transferencia, cheque, vale) no pueden
+  // exceder el total: de una tarjeta no se da cambio. Si exceden, el efectivo
+  // aplicado saldría negativo.
+  const noEfecExcede = esMixto && noEfecSum > round2(totalAPagar + 0.005);
+  // Una forma sin vuelto es REDUNDANTE si el resto del pago ya cubre el total
+  // por sí solo: entonces no está cubriendo nada y su importe se convierte en
+  // "cambio" imaginario. Es lo que pasó en FAC-219 — el efectivo ya cubría los
+  // 30,019.20 y encima se registró una transferencia de 22,000, que el sistema
+  // aceptó porque solo exigía sumaFP >= total.
+  const formaRedundante = esMixto
+    ? formasPagoList.find((fp, i) =>
+        fp.metodo !== 'efectivo' && fp.monto > 0 &&
+        round2(formasPagoList.reduce((s, x, j) => j === i ? s : s + x.monto, 0)) >= round2(totalAPagar - 0.005))
+    : undefined;
+  const pagoInvalido = noEfecExcede || !!formaRedundante;
 
   // Auto-foco en el input de búsqueda cuando el panel de ítems está activo
   // (mantiene el foco para escaneo continuo con scanner HID)
@@ -10266,10 +10320,37 @@ export default function POSPage() {
         // para que emitirEcfIndividual (botón "Emitir") también funcione sin datosComprador.
         rncComprador: clienteTieneRNC ? rncCliente : (rncComprador || undefined),
         // formasPago — backend ya acepta este campo; arqueo sigue leyendo notas (Fase 2)
+        // formasPago — `monto` es SIEMPRE lo APLICADO a la venta, nunca lo que el
+        // cliente puso sobre el mostrador: la suma de montos debe dar el total.
+        // El billete entregado va en `montoEntregado` para reconstruir
+        // PAGADO / CAMBIO en la reimpresión.
+        // Antes se guardaba el entregado como monto y el arqueo del día quedaba
+        // inflado por el vuelto (el cierre esperaba 1.000 en gaveta habiendo 385).
         ...(tipoPagoPos === 'CONTADO' ? {
           formasPago: esMixto
-            ? formasPagoList.filter(fp => fp.monto > 0).map(fp => ({ tipo: METODO_TIPO_MAP[fp.metodo] as 1|2|3|4|5|6, monto: fp.monto, ...(fp.referencia ? { referencia: fp.referencia } : {}) }))
-            : [{ tipo: METODO_TIPO_MAP[metodoPago] as 1|2|3|4|5|6, monto: totalAPagar }],
+            ? [
+                // no-efectivo: no admiten vuelto, el monto es el aplicado
+                ...formasPagoList
+                  .filter(fp => fp.metodo !== 'efectivo' && fp.monto > 0)
+                  .map(fp => ({
+                    tipo: METODO_TIPO_MAP[fp.metodo] as 1|2|3|4|5|6,
+                    monto: round2(fp.monto),
+                    ...(fp.referencia ? { referencia: fp.referencia } : {}),
+                  })),
+                // efectivo: una sola línea consolidada, aplicado + entregado
+                ...(efectivoAplicado > 0 ? [{
+                  tipo: METODO_TIPO_MAP['efectivo'] as 1|2|3|4|5|6,
+                  monto: efectivoAplicado,
+                  ...(efectivoMonto > efectivoAplicado ? { montoEntregado: round2(efectivoMonto) } : {}),
+                }] : []),
+              ]
+            : [{
+                tipo: METODO_TIPO_MAP[metodoPago] as 1|2|3|4|5|6,
+                monto: totalAPagar,
+                ...(metodoPago === 'efectivo' && montoRecibido > totalAPagar
+                  ? { montoEntregado: round2(montoRecibido) }
+                  : {}),
+              }],
         } : {}),
       };
 
@@ -10397,6 +10478,8 @@ export default function POSPage() {
         pagoRecibido:            (!esMixto && metodoPago === 'efectivo' && montoRecibido > 0) ? montoRecibido
           : (esMixto && tieneEfec && efectivoMonto > 0) ? efectivoMonto
           : undefined,
+        // El recibo muestra lo ENTREGADO (lo que el cliente puso sobre el
+        // mostrador) junto con el CAMBIO; lo aplicado es asunto del arqueo.
         formasPago:              esMixto ? formasPagoList.map(fp => ({ tipo: METODO_TIPO_MAP[fp.metodo], monto: fp.monto })) : undefined,
         propina:                 propinaMontoCalc > 0 ? propinaMontoCalc : undefined,
         metodo:                  tipoPagoPos === 'CREDITO' ? 'credito' : metodoPago,
@@ -10740,7 +10823,7 @@ export default function POSPage() {
   const compradorNoVigente  = tipoDaCreditoFiscal
     && (estadoRncPadron === 'SUSPENDIDO' || estadoRncPadron.includes('BAJA'));
   const canPay       = tipoPagoPos === 'CREDITO'
-    || (esMixto && sumaFP >= totalAPagar)
+    || (esMixto && sumaFP >= totalAPagar && !pagoInvalido)
     || (!esMixto && metodoPago !== 'efectivo')
     || (!esMixto && metodoPago === 'efectivo' && montoRecibido >= totalAPagar);
   const cajaAbierta  = cajaActivaHoy?.estado === 'abierta';
@@ -11594,10 +11677,33 @@ export default function POSPage() {
                           style={{ fontSize: 10, fontWeight: 600, color: '#6D28D9', background: 'none', border: 'none', cursor: 'pointer', padding: 0, outline: 'none' }}>
                           + Agregar método
                         </button>
-                        <span style={{ fontSize: 11, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: sumaFP >= totalAPagar ? '#15803D' : '#DC2626' }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: sumaFP >= totalAPagar && !pagoInvalido ? '#15803D' : '#DC2626' }}>
                           {fmt.money(sumaFP)} / {fmt.money(totalAPagar)}
                         </span>
                       </div>
+                      {/* De una tarjeta o transferencia no se da vuelto: si esas
+                          vías cubren más que el total, los montos están mal */}
+                      {noEfecExcede && (
+                        <div style={{ marginTop: 4, padding: '5px 7px', borderRadius: 5, background: '#FEF2F2',
+                          border: '1px solid #FECACA', fontSize: 10, color: '#B91C1C', fontWeight: 600, lineHeight: 1.35 }}>
+                          ⚠ Tarjeta/transferencia suman {fmt.money(noEfecSum)} y el total es {fmt.money(totalAPagar)}.
+                          Solo el efectivo admite cambio — corrige los montos.
+                        </div>
+                      )}
+                      {!noEfecExcede && formaRedundante && (
+                        <div style={{ marginTop: 4, padding: '5px 7px', borderRadius: 5, background: '#FEF2F2',
+                          border: '1px solid #FECACA', fontSize: 10, color: '#B91C1C', fontWeight: 600, lineHeight: 1.35 }}>
+                          ⚠ El resto del pago ya cubre los {fmt.money(totalAPagar)}: la línea de{' '}
+                          {METODOS.find(m => m.key === formaRedundante.metodo)?.label ?? formaRedundante.metodo}{' '}
+                          por {fmt.money(formaRedundante.monto)} sobra. Elimínala o corrige los montos.
+                        </div>
+                      )}
+                      {!pagoInvalido && efectivoMonto > efectivoAplicado && (
+                        <div style={{ marginTop: 4, fontSize: 10, color: '#64748B', textAlign: 'right' }}>
+                          Entra a caja: <strong style={{ color: '#0F172A' }}>{fmt.money(efectivoAplicado)}</strong> en efectivo
+                          {' · '}cambio {fmt.money(cambio)}
+                        </div>
+                      )}
                     </div>
                   )}
                 </>

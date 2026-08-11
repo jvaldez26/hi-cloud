@@ -216,6 +216,48 @@ export class FacturasService {
     // Si es moneda extranjera, totalOriginal = monto en esa moneda; total = DOP
     const totalOriginal = moneda !== 'DOP' ? +(totalDOP / tipoCambio).toFixed(2) : undefined;
 
+    // ── Formas de pago: el monto es lo APLICADO, no lo entregado ──────────────
+    // Las vías sin vuelto (todo salvo efectivo=1) no pueden exceder el total: de
+    // una tarjeta o una transferencia no se da cambio. Cuando eso pasaba, el
+    // efectivo aplicado salía negativo y el arqueo del día quedaba inflado.
+    if (dto.formasPago?.length) {
+      const sinVuelto = r2(dto.formasPago
+        .filter(f => f.tipo !== 1)
+        .reduce((s, f) => s + Number(f.monto ?? 0), 0));
+      if (sinVuelto > r2(totalDOP + 0.05)) {
+        throw new BadRequestException(
+          `[formasPago] Las formas de pago sin vuelto (tarjeta, transferencia, cheque, vale) ` +
+          `suman RD$${sinVuelto.toFixed(2)} y superan el total de la factura ` +
+          `(RD$${totalDOP.toFixed(2)}). Solo el efectivo admite cambio — corrige los montos.`,
+        );
+      }
+      // Una forma sin vuelto es REDUNDANTE si el resto del pago ya cubre el
+      // total por sí solo: no está cubriendo nada y su importe se vuelve
+      // "cambio" imaginario. Caso real: efectivo por el total completo + una
+      // transferencia de 22,000 encima (FAC-219, 25-jul-2026).
+      const sumaTodas = r2(dto.formasPago.reduce((s, f) => s + Number(f.monto ?? 0), 0));
+      const redundante = dto.formasPago.find((f, i) =>
+        f.tipo !== 1 && Number(f.monto) > 0 &&
+        r2(sumaTodas - Number(dto.formasPago![i].monto)) >= r2(totalDOP - 0.05),
+      );
+      if (redundante) {
+        throw new BadRequestException(
+          `[formasPago] La forma de pago tipo ${redundante.tipo} por RD$${Number(redundante.monto).toFixed(2)} ` +
+          `es redundante: el resto del pago ya cubre el total de RD$${totalDOP.toFixed(2)}. ` +
+          `Elimínala o corrige los montos.`,
+        );
+      }
+      const entregadoInvalido = dto.formasPago.find(
+        f => f.montoEntregado != null && Number(f.montoEntregado) < Number(f.monto),
+      );
+      if (entregadoInvalido) {
+        throw new BadRequestException(
+          `[formasPago] montoEntregado (RD$${Number(entregadoInvalido.montoEntregado).toFixed(2)}) ` +
+          `no puede ser menor que el monto aplicado (RD$${Number(entregadoInvalido.monto).toFixed(2)}).`,
+        );
+      }
+    }
+
     // Si hay formasPago explícitas, derivar tipoPago de ellas (tipo 4 = crédito)
     let tipoPago = dto.tipoPago?.toUpperCase() === 'CREDITO' ? 'CREDITO' : 'CONTADO';
     if (dto.formasPago?.length) {
