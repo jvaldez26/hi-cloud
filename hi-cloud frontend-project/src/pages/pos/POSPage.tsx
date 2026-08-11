@@ -7757,11 +7757,22 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
         const sale: Sale = {
           folio:       f.folio, total: Number(f.total??0), cambio: 0,
           metodo:      f.notas?.includes('Tarjeta') ? 'tarjeta' : f.notas?.includes('Transferencia') ? 'transferencia' : 'efectivo',
-          items:       (f.detalles??[]).map((d: any) => ({
-            produto:   { id: d.productoId, nombre: d.descripcion, precio: Number(d.precioUnitario),
-                         stock: 999, porcentajeIva: Number(d.porcentajeIva??18), codigo:'', categoria:'', unidadMedida:'' } as any,
-            cantidad: Number(d.cantidad), precio: Number(d.precioUnitario), descuentoMonto: 0,
-          })),
+          items:       (f.detalles??[]).map((d: any) => {
+            // Convención B (POS): si precioOriginal está guardado, usarlo para que el ticket
+            // muestre la línea de descuento y la línea cuadre.
+            // Convención A (Facturas regular): sin precioOriginal → precio=precioUnitario, desc=0.
+            // Totales (subtotal/iva/total) siempre del guardado — no se recalculan.
+            const precioOrig = d.precioOriginal != null ? Number(d.precioOriginal) : null;
+            return {
+              produto:        { id: d.productoId, nombre: d.descripcion,
+                                precio: precioOrig ?? Number(d.precioUnitario),
+                                stock: 999, porcentajeIva: Number(d.porcentajeIva??18),
+                                codigo:'', categoria:'', unidadMedida:'' } as any,
+              cantidad:       Number(d.cantidad),
+              precio:         precioOrig ?? Number(d.precioUnitario),
+              descuentoMonto: precioOrig != null ? Number(d.descuentoMonto ?? 0) : 0,
+            };
+          }),
           cliente:   f.cliente?.nombre, iva: Number(f.iva??0), subtotal: Number(f.subtotal??0),
           facturaId: f.id, tipoNcf: f.tipoNcf ?? 'E32',
           encf:      f.ecf?.numero, ecfPendiente: !f.ecf?.numero,

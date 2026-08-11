@@ -27,6 +27,24 @@ export class FormaPagoDto {
   referencia?: string;
 }
 
+/**
+ * CONTRATO DE PRECIOS POR LÍNEA — dos convenciones:
+ *
+ * Convención A — Facturas regular (precioOriginal AUSENTE):
+ *   precioUnitario  = precio BRUTO antes de descuento
+ *   descuentoMonto  = descuento TOTAL de la línea (no por unidad)
+ *   subtotal guardado = precioUnitario × cantidad − descuentoMonto
+ *
+ * Convención B — POS con descuento por ítem (precioOriginal PRESENTE):
+ *   precioUnitario  = precio NETO por unidad (ya descontado: precioOriginal − descuentoMonto)
+ *   precioOriginal  = precio BRUTO original por unidad (antes del descuento)
+ *   descuentoMonto  = descuento POR UNIDAD
+ *   subtotal guardado = precioUnitario × cantidad  (el descuento ya está en el precio)
+ *   Invariante verificada: precioOriginal − descuentoMonto ≈ precioUnitario (±0.05)
+ *
+ * El backend detecta la convención por la presencia de precioOriginal y valida
+ * la invariante; errores de cuadratura resultan en BadRequest explícito.
+ */
 export class CreateFacturaDetalleDto {
   @IsOptional()
   @IsInt()
@@ -47,6 +65,10 @@ export class CreateFacturaDetalleDto {
   @Type(() => Number)
   cantidad: number;
 
+  /**
+   * Convención A: precio bruto (antes de descuento).
+   * Convención B (con precioOriginal): precio NETO ya descontado por unidad.
+   */
   @IsNumber({ maxDecimalPlaces: 4 })
   @IsPositive()
   precioUnitario: number;
@@ -63,14 +85,23 @@ export class CreateFacturaDetalleDto {
   @Max(100)
   descuentoPct?: number;
 
+  /**
+   * Convención A: descuento TOTAL de la línea.
+   * Convención B (con precioOriginal): descuento POR UNIDAD.
+   */
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   descuentoMonto?: number;
 
+  /**
+   * Solo Convención B (POS). Precio bruto original por unidad, antes del descuento.
+   * Permite al backend reconstruir la base imponible correcta sin doble-contar el descuento.
+   * Invariante: precioOriginal − descuentoMonto ≈ precioUnitario.
+   */
   @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 4 })   // 4dp — consistente con precioUnitario; precio lista
-  @IsPositive()                         // puede venir de divisiones (ej. PVP÷1.18)
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @IsPositive()
   precioOriginal?: number;
 }
 

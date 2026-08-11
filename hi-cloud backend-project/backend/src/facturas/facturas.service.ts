@@ -104,17 +104,51 @@ export class FacturasService {
 
       const porcentajeIva = item.porcentajeIva ?? (producto ? Number(producto.porcentajeIva) : 18);
 
-      // Descuento por línea: monto fijo tiene precedencia; pct se aplica solo si monto = 0
-      const precioRaw = Number(item.precioUnitario) * item.cantidad;
-      const bruto = r2(precioRaw);
-      let descLinea = 0;
       const dm = Number(item.descuentoMonto ?? 0);
       const dp = Number(item.descuentoPct   ?? 0);
-      if (dm > 0) {
-        descLinea = r2(Math.min(dm, bruto));
-      } else if (dp > 0) {
-        descLinea = r2(bruto * (dp / 100));
+
+      // ── Contrato de descuento por línea ────────────────────────────────────
+      // Convención A — Facturas regular (sin precioOriginal):
+      //   precioUnitario = precio BRUTO antes de descuento
+      //   descuentoMonto = descuento TOTAL de la línea
+      //   subtotal = precioUnitario × cantidad − descuentoMonto
+      //
+      // Convención B — POS con descuento por ítem (precioOriginal presente):
+      //   precioUnitario = precio NETO ya descontado por unidad
+      //   precioOriginal = precio BRUTO original por unidad
+      //   descuentoMonto = descuento POR UNIDAD (no por línea)
+      //   Invariante: precioOriginal − descuentoMonto ≈ precioUnitario (±0.05)
+      //   subtotal = precioOriginal × cantidad − descuentoMonto × cantidad
+      //            = precioUnitario × cantidad  (descuento ya está en precio)
+      let precioRaw: number;
+      let descLinea = 0;
+
+      if (item.precioOriginal != null && dm > 0) {
+        // Convención B: base desde precioOriginal; descuento = dm × cantidad
+        const precioOrig = Number(item.precioOriginal);
+        const precioNeto = Number(item.precioUnitario);
+        const diff = Math.abs((precioOrig - dm) - precioNeto);
+        if (diff > 0.05) {
+          throw new BadRequestException(
+            `[precio] "${item.descripcion ?? 'ítem'}": ` +
+            `precioOriginal (${precioOrig}) − descuentoMonto (${dm}) ≠ precioUnitario (${precioNeto}) ` +
+            `(diff=${diff.toFixed(4)}). El precio enviado ya incluye el descuento.`,
+          );
+        }
+        precioRaw = precioOrig * item.cantidad;
+        descLinea = r2(dm * item.cantidad);
+      } else {
+        // Convención A: base desde precioUnitario; descuentoMonto es total de la línea
+        precioRaw = Number(item.precioUnitario) * item.cantidad;
+        const brutoA = r2(precioRaw);
+        if (dm > 0) {
+          descLinea = r2(Math.min(dm, brutoA));
+        } else if (dp > 0) {
+          descLinea = r2(brutoA * (dp / 100));
+        }
       }
+
+      const bruto = r2(precioRaw);
       const subtotalLinea = r2(bruto - descLinea);
       subtotalBase += subtotalLinea;
 
@@ -329,16 +363,39 @@ export class FacturasService {
 
       const porcentajeIva = item.porcentajeIva ?? (producto ? Number(producto.porcentajeIva) : 18);
 
-      const precioRawU = Number(item.precioUnitario) * item.cantidad;
-      const brutoU = r2u(precioRawU);
-      let descLineaU = 0;
       const dmU = Number(item.descuentoMonto ?? 0);
       const dpU = Number(item.descuentoPct   ?? 0);
-      if (dmU > 0) {
-        descLineaU = r2u(Math.min(dmU, brutoU));
-      } else if (dpU > 0) {
-        descLineaU = r2u(brutoU * (dpU / 100));
+
+      // Mismo contrato A/B que en create() — ver comentario allá
+      let precioRawU: number;
+      let descLineaU = 0;
+
+      if (item.precioOriginal != null && dmU > 0) {
+        // Convención B (POS): base desde precioOriginal; descuento = dm × cantidad
+        const precioOrigU = Number(item.precioOriginal);
+        const precioNetoU = Number(item.precioUnitario);
+        const diffU = Math.abs((precioOrigU - dmU) - precioNetoU);
+        if (diffU > 0.05) {
+          throw new BadRequestException(
+            `[precio] "${item.descripcion ?? 'ítem'}": ` +
+            `precioOriginal (${precioOrigU}) − descuentoMonto (${dmU}) ≠ precioUnitario (${precioNetoU}) ` +
+            `(diff=${diffU.toFixed(4)}). El precio enviado ya incluye el descuento.`,
+          );
+        }
+        precioRawU = precioOrigU * item.cantidad;
+        descLineaU = r2u(dmU * item.cantidad);
+      } else {
+        // Convención A (Facturas): base desde precioUnitario; descuentoMonto es total de la línea
+        precioRawU = Number(item.precioUnitario) * item.cantidad;
+        const brutoA = r2u(precioRawU);
+        if (dmU > 0) {
+          descLineaU = r2u(Math.min(dmU, brutoA));
+        } else if (dpU > 0) {
+          descLineaU = r2u(brutoA * (dpU / 100));
+        }
       }
+
+      const brutoU = r2u(precioRawU);
       const subtotalLineaU = r2u(brutoU - descLineaU);
       subtotalBaseU += subtotalLineaU;
 
