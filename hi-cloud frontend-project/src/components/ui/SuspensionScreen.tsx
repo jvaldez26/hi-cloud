@@ -3,6 +3,7 @@ import { Button, Modal, Form, Input, Select, message, Typography, Space } from '
 import { LockOutlined, SendOutlined, LogoutOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { suscripcionesApi } from '../../api/suscripciones.api';
+import { useThemeStore } from '../../store/theme.store';
 
 const { Title, Text } = Typography;
 
@@ -38,6 +39,58 @@ export default function SuspensionScreen({
   empresaActualId,
   onCambiarEmpresa,
 }: SuspensionScreenProps) {
+  const isDark = useThemeStore(s => s.isDark);
+
+  const T = isDark
+    ? {
+        pageBg:        'linear-gradient(135deg,#0F172A 0%,#1E293B 100%)',
+        cardBg:        '#1E293B',
+        cardBorder:    '#334155',
+        cardShadow:    '0 24px 64px rgba(0,0,0,.5)',
+        titleColor:    '#F8FAFC',
+        textColor:     '#94A3B8',
+        textMuted:     '#64748B',
+        textFaint:     '#475569',
+        iconCircle:    'rgba(239,68,68,.15)',
+        strongColor:   '#F8FAFC',
+        successBg:     'rgba(16,185,129,.1)',
+        successBorder: 'rgba(16,185,129,.3)',
+        successText:   '#10B981',
+        divider:       'rgba(255,255,255,0.08)',
+        sectionBg:     'rgba(255,255,255,0.04)',
+        sectionBorder: 'rgba(255,255,255,0.08)',
+        popupBg:       '#1E293B',
+        logoutColor:   '#94a3b8',
+        modalBg:       '#1E293B',
+        modalBorder:   '#334155',
+        labelColor:    '#94A3B8',
+        linkColor:     '#60A5FA',
+      }
+    : {
+        pageBg:        'linear-gradient(135deg,#EFF6FF 0%,#DBEAFE 100%)',
+        cardBg:        '#FFFFFF',
+        cardBorder:    '#CBD5E1',
+        cardShadow:    '0 24px 64px rgba(0,0,0,.1)',
+        titleColor:    '#0F172A',
+        textColor:     '#475569',
+        textMuted:     '#64748B',
+        textFaint:     '#94A3B8',
+        iconCircle:    'rgba(239,68,68,.1)',
+        strongColor:   '#0F172A',
+        successBg:     'rgba(16,185,129,.08)',
+        successBorder: 'rgba(16,185,129,.25)',
+        successText:   '#059669',
+        divider:       'rgba(0,0,0,0.1)',
+        sectionBg:     'rgba(0,0,0,0.03)',
+        sectionBorder: 'rgba(0,0,0,0.08)',
+        popupBg:       '#FFFFFF',
+        logoutColor:   '#64748b',
+        modalBg:       '#FFFFFF',
+        modalBorder:   '#E2E8F0',
+        labelColor:    '#475569',
+        linkColor:     '#2563EB',
+      };
+
   const [modalOpen, setModalOpen] = useState(false);
   const [enviado,   setEnviado]   = useState(false);
   const [form] = Form.useForm();
@@ -77,55 +130,55 @@ export default function SuspensionScreen({
     ? 'Tu cuenta ha sido suspendida'
     : 'Tu licencia ha vencido';
   const subtexto = esPrueba
-    ? <>Tu prueba del plan <strong style={{ color: '#F8FAFC' }}>{planNombre}</strong> venció el{' '}<strong style={{ color: '#F8FAFC' }}>{fechaStr}</strong>. Para continuar usando HiCloud ERP, solicita la activación de tu licencia.</>
+    ? <>Tu prueba del plan <strong style={{ color: T.strongColor }}>{planNombre}</strong> venció el{' '}<strong style={{ color: T.strongColor }}>{fechaStr}</strong>. Para continuar usando HiCloud ERP, solicita la activación de tu licencia.</>
     : esManual
     ? <>Tu cuenta fue suspendida por un administrador. Contacta a soporte para más información.</>
-    : <>Tu período de gracia del plan <strong style={{ color: '#F8FAFC' }}>{planNombre}</strong> venció el{' '}<strong style={{ color: '#F8FAFC' }}>{fechaStr}</strong>. Renueva tu licencia para seguir usando HiCloud ERP.</>;
+    : <>Tu período de gracia del plan <strong style={{ color: T.strongColor }}>{planNombre}</strong> venció el{' '}<strong style={{ color: T.strongColor }}>{fechaStr}</strong>. Renueva tu licencia para seguir usando HiCloud ERP.</>;
 
   return (
     <div style={{
       minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'linear-gradient(135deg,#0F172A 0%,#1E293B 100%)',
+      background: T.pageBg,
       padding: '24px',
     }}>
       <div style={{
         maxWidth: 520, width: '100%',
-        background: '#1E293B', borderRadius: 20,
+        background: T.cardBg, borderRadius: 20,
         padding: '48px 40px', textAlign: 'center',
-        border: '1px solid #334155',
-        boxShadow: '0 24px 64px rgba(0,0,0,.5)',
+        border: `1px solid ${T.cardBorder}`,
+        boxShadow: T.cardShadow,
       }}>
         <div style={{
           width: 72, height: 72, borderRadius: '50%',
-          background: 'rgba(239,68,68,.15)',
+          background: T.iconCircle,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           margin: '0 auto 24px',
         }}>
           <LockOutlined style={{ fontSize: 32, color: '#EF4444' }} />
         </div>
 
-        <Title level={3} style={{ color: '#F8FAFC', marginBottom: 8 }}>
+        <Title level={3} style={{ color: T.titleColor, marginBottom: 8 }}>
           {titulo}
         </Title>
-        <Text style={{ color: '#94A3B8', display: 'block', marginBottom: 24, fontSize: 15, lineHeight: 1.6 }}>
+        <Text style={{ color: T.textColor, display: 'block', marginBottom: 24, fontSize: 15, lineHeight: 1.6 }}>
           {subtexto}
         </Text>
 
         {enviado || tienePendiente ? (
           <div style={{
-            background: 'rgba(16,185,129,.1)', border: '1px solid rgba(16,185,129,.3)',
+            background: T.successBg, border: `1px solid ${T.successBorder}`,
             borderRadius: 12, padding: '20px 24px', marginBottom: 20,
           }}>
-            <Text style={{ color: '#10B981', fontSize: 15, fontWeight: 600, display: 'block', marginBottom: 8 }}>
+            <Text style={{ color: T.successText, fontSize: 15, fontWeight: 600, display: 'block', marginBottom: 8 }}>
               ✅ Solicitud enviada exitosamente
             </Text>
-            <Text style={{ color: '#94A3B8', fontSize: 14 }}>
+            <Text style={{ color: T.textColor, fontSize: 14 }}>
               Un asesor de HiCloud te contactará en menos de 24 horas para coordinar el pago y activar tu plan.
               Tus datos están seguros y conservados.
             </Text>
-            <Text style={{ color: '#64748B', fontSize: 13, display: 'block', marginTop: 12 }}>
+            <Text style={{ color: T.textMuted, fontSize: 13, display: 'block', marginTop: 12 }}>
               ¿Tienes urgencia? Escríbenos a{' '}
-              <a href="mailto:soporte@hicloudrd.com" style={{ color: '#60A5FA' }}>soporte@hicloudrd.com</a>
+              <a href="mailto:soporte@hicloudrd.com" style={{ color: T.linkColor }}>soporte@hicloudrd.com</a>
             </Text>
           </div>
         ) : (
@@ -142,14 +195,14 @@ export default function SuspensionScreen({
           </Button>
         )}
 
-        <Text style={{ color: '#475569', fontSize: 12 }}>
+        <Text style={{ color: T.textFaint, fontSize: 12 }}>
           Un asesor te contactará en menos de 24 horas
         </Text>
 
         {/* Cambio de empresa — visible si el usuario pertenece a más de una */}
         {misEmpresas.length > 1 && onCambiarEmpresa && (
-          <div style={{ marginTop: 16, padding: '14px 16px', background: 'rgba(255,255,255,0.04)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.08)' }}>
-            <Text style={{ color: '#94A3B8', fontSize: 13, display: 'block', marginBottom: 8 }}>
+          <div style={{ marginTop: 16, padding: '14px 16px', background: T.sectionBg, borderRadius: 10, border: `1px solid ${T.sectionBorder}` }}>
+            <Text style={{ color: T.textColor, fontSize: 13, display: 'block', marginBottom: 8 }}>
               Cambiar a otra empresa:
             </Text>
             <Select
@@ -161,17 +214,17 @@ export default function SuspensionScreen({
                 .filter(e => e.empresaId !== empresaActualId)
                 .map(e => ({ value: e.empresaId, label: e.nombre }))
               }
-              styles={{ popup: { root: { background: '#1E293B' } } }}
+              styles={{ popup: { root: { background: T.popupBg } } }}
             />
           </div>
         )}
 
-        <div style={{ marginTop: 24, borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 16 }}>
+        <div style={{ marginTop: 24, borderTop: `1px solid ${T.divider}`, paddingTop: 16 }}>
           <Button
             type="text"
             icon={<LogoutOutlined />}
             onClick={() => { localStorage.clear(); sessionStorage.clear(); window.location.href = '/login'; }}
-            style={{ color: '#94a3b8', fontSize: 13 }}
+            style={{ color: T.logoutColor, fontSize: 13 }}
           >
             Cerrar sesión
           </Button>
@@ -182,24 +235,27 @@ export default function SuspensionScreen({
       <Modal
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
-        title={<span style={{ color: '#F8FAFC' }}>Solicitar activación de licencia</span>}
+        title={<span style={{ color: T.titleColor }}>Solicitar activación de licencia</span>}
         footer={null}
-        styles={{ content: { background: '#1E293B', border: '1px solid #334155' }, header: { background: '#1E293B', borderBottom: '1px solid #334155' } }}>
+        styles={{
+          content: { background: T.modalBg, border: `1px solid ${T.modalBorder}` },
+          header:  { background: T.modalBg, borderBottom: `1px solid ${T.modalBorder}` },
+        }}>
         <Form
           form={form}
           layout="vertical"
           initialValues={{ planSolicitado: planActual, modalidad: 'mensual' }}
           onFinish={(vals) => solicitarMut.mutate(vals)}>
-          <Form.Item name="planSolicitado" label={<span style={{ color: '#94A3B8' }}>Plan deseado</span>}>
+          <Form.Item name="planSolicitado" label={<span style={{ color: T.labelColor }}>Plan deseado</span>}>
             <Select size="large" options={PLANES_OPCIONES} />
           </Form.Item>
-          <Form.Item name="modalidad" label={<span style={{ color: '#94A3B8' }}>Modalidad de pago</span>}>
+          <Form.Item name="modalidad" label={<span style={{ color: T.labelColor }}>Modalidad de pago</span>}>
             <Select size="large" options={[
               { value: 'mensual', label: 'Mensual' },
               { value: 'anual',   label: 'Anual (10% de descuento)' },
             ]} />
           </Form.Item>
-          <Form.Item name="comentario" label={<span style={{ color: '#94A3B8' }}>Comentario (opcional)</span>}>
+          <Form.Item name="comentario" label={<span style={{ color: T.labelColor }}>Comentario (opcional)</span>}>
             <Input.TextArea rows={3} placeholder="Alguna nota adicional para el asesor..." />
           </Form.Item>
           <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
