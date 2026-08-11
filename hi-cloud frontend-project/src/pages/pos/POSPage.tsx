@@ -9174,6 +9174,8 @@ export default function POSPage() {
   const barcodeRef = useRef<HTMLInputElement>(null);
   const [showPago,           setShowPago]           = useState(false);
   const [formasPagoList,     setFormasPagoList]     = useState<{ metodo: MetodoPago; monto: number; referencia?: string }[]>([{ metodo: 'efectivo', monto: 0 }]);
+  // Confirmación explícita cuando el vuelto en efectivo es desproporcionado
+  const [vueltoConfirmado,   setVueltoConfirmado]   = useState(false);
   const [monedaPOS,          setMonedaPOS]          = useState<'DOP' | 'USD'>('DOP');
   const [tasaCambioPOS,      setTasaCambioPOS]      = useState<number>(1);
   const [montoRecibido,      setMontoRecibido]      = useState(0);
@@ -9686,17 +9688,19 @@ export default function POSPage() {
   // exceder el total: de una tarjeta no se da cambio. Si exceden, el efectivo
   // aplicado saldría negativo.
   const noEfecExcede = esMixto && noEfecSum > round2(totalAPagar + 0.005);
-  // Una forma sin vuelto es REDUNDANTE si el resto del pago ya cubre el total
-  // por sí solo: entonces no está cubriendo nada y su importe se convierte en
-  // "cambio" imaginario. Es lo que pasó en FAC-219 — el efectivo ya cubría los
-  // 30,019.20 y encima se registró una transferencia de 22,000, que el sistema
-  // aceptó porque solo exigía sumaFP >= total.
-  const formaRedundante = esMixto
-    ? formasPagoList.find((fp, i) =>
-        fp.metodo !== 'efectivo' && fp.monto > 0 &&
-        round2(formasPagoList.reduce((s, x, j) => j === i ? s : s + x.monto, 0)) >= round2(totalAPagar - 0.005))
-    : undefined;
-  const pagoInvalido = noEfecExcede || !!formaRedundante;
+  // Vuelto desproporcionado — ADVERTENCIA, no bloqueo.
+  //
+  // Un pago con exceso puede ser perfectamente legítimo (tarjeta 500 + un billete
+  // de 2.500 en una venta de 2.035: entran 1.535 y se devuelven 965) o un error
+  // de registro (FAC-219: efectivo por el total completo + 22.000 de
+  // transferencia encima). Estructuralmente son IDÉNTICOS — efectivo entregado
+  // ≥ total, más otra forma de pago — y solo se distinguen por la magnitud del
+  // vuelto, que es un juicio del cajero, no una regla. Por eso aquí no se
+  // bloquea: se pide una confirmación explícita y la venta sigue.
+  const vueltoDesproporcionado = esMixto && cambio > 0
+    && (cambio > totalAPagar || cambio > round2(efectivoAplicado * 2));
+  // Si el cajero corrige los montos, la confirmación anterior deja de valer
+  useEffect(() => { setVueltoConfirmado(false); }, [cambio, efectivoAplicado]);
 
   // Auto-foco en el input de búsqueda cuando el panel de ítems está activo
   // (mantiene el foco para escaneo continuo con scanner HID)
@@ -10823,7 +10827,8 @@ export default function POSPage() {
   const compradorNoVigente  = tipoDaCreditoFiscal
     && (estadoRncPadron === 'SUSPENDIDO' || estadoRncPadron.includes('BAJA'));
   const canPay       = tipoPagoPos === 'CREDITO'
-    || (esMixto && sumaFP >= totalAPagar && !pagoInvalido)
+    || (esMixto && sumaFP >= totalAPagar && !noEfecExcede
+        && (!vueltoDesproporcionado || vueltoConfirmado))
     || (!esMixto && metodoPago !== 'efectivo')
     || (!esMixto && metodoPago === 'efectivo' && montoRecibido >= totalAPagar);
   const cajaAbierta  = cajaActivaHoy?.estado === 'abierta';
@@ -11677,12 +11682,13 @@ export default function POSPage() {
                           style={{ fontSize: 10, fontWeight: 600, color: '#6D28D9', background: 'none', border: 'none', cursor: 'pointer', padding: 0, outline: 'none' }}>
                           + Agregar método
                         </button>
-                        <span style={{ fontSize: 11, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: sumaFP >= totalAPagar && !pagoInvalido ? '#15803D' : '#DC2626' }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: sumaFP >= totalAPagar && !noEfecExcede ? '#15803D' : '#DC2626' }}>
                           {fmt.money(sumaFP)} / {fmt.money(totalAPagar)}
                         </span>
                       </div>
-                      {/* De una tarjeta o transferencia no se da vuelto: si esas
-                          vías cubren más que el total, los montos están mal */}
+                      {/* BLOQUEO: de una tarjeta o transferencia no se da vuelto.
+                          Si esas vías cubren más que el total, el efectivo aplicado
+                          saldría negativo — es imposible, no un juicio. */}
                       {noEfecExcede && (
                         <div style={{ marginTop: 4, padding: '5px 7px', borderRadius: 5, background: '#FEF2F2',
                           border: '1px solid #FECACA', fontSize: 10, color: '#B91C1C', fontWeight: 600, lineHeight: 1.35 }}>
@@ -11690,15 +11696,22 @@ export default function POSPage() {
                           Solo el efectivo admite cambio — corrige los montos.
                         </div>
                       )}
-                      {!noEfecExcede && formaRedundante && (
-                        <div style={{ marginTop: 4, padding: '5px 7px', borderRadius: 5, background: '#FEF2F2',
-                          border: '1px solid #FECACA', fontSize: 10, color: '#B91C1C', fontWeight: 600, lineHeight: 1.35 }}>
-                          ⚠ El resto del pago ya cubre los {fmt.money(totalAPagar)}: la línea de{' '}
-                          {METODOS.find(m => m.key === formaRedundante.metodo)?.label ?? formaRedundante.metodo}{' '}
-                          por {fmt.money(formaRedundante.monto)} sobra. Elimínala o corrige los montos.
-                        </div>
+                      {/* ADVERTENCIA: un vuelto grande puede ser legítimo (billete
+                          grande) o un monto mal tecleado. Se confirma, no se frena. */}
+                      {!noEfecExcede && vueltoDesproporcionado && (
+                        <label style={{ marginTop: 4, padding: '5px 7px', borderRadius: 5, background: '#FFFBEB',
+                          border: '1px solid #FCD34D', fontSize: 10, color: '#92400E', fontWeight: 600, lineHeight: 1.35,
+                          display: 'flex', gap: 6, alignItems: 'flex-start', cursor: 'pointer' }}>
+                          <input type="checkbox" checked={vueltoConfirmado}
+                            onChange={e => setVueltoConfirmado(e.target.checked)}
+                            style={{ marginTop: 1, cursor: 'pointer', flexShrink: 0 }} />
+                          <span>
+                            Vas a entregar {fmt.money(cambio)} de cambio y solo entran{' '}
+                            {fmt.money(efectivoAplicado)} en efectivo. Confirmo que es correcto.
+                          </span>
+                        </label>
                       )}
-                      {!pagoInvalido && efectivoMonto > efectivoAplicado && (
+                      {!noEfecExcede && !vueltoDesproporcionado && efectivoMonto > efectivoAplicado && (
                         <div style={{ marginTop: 4, fontSize: 10, color: '#64748B', textAlign: 'right' }}>
                           Entra a caja: <strong style={{ color: '#0F172A' }}>{fmt.money(efectivoAplicado)}</strong> en efectivo
                           {' · '}cambio {fmt.money(cambio)}

@@ -231,22 +231,13 @@ export class FacturasService {
           `(RD$${totalDOP.toFixed(2)}). Solo el efectivo admite cambio — corrige los montos.`,
         );
       }
-      // Una forma sin vuelto es REDUNDANTE si el resto del pago ya cubre el
-      // total por sí solo: no está cubriendo nada y su importe se vuelve
-      // "cambio" imaginario. Caso real: efectivo por el total completo + una
-      // transferencia de 22,000 encima (FAC-219, 25-jul-2026).
-      const sumaTodas = r2(dto.formasPago.reduce((s, f) => s + Number(f.monto ?? 0), 0));
-      const redundante = dto.formasPago.find((f, i) =>
-        f.tipo !== 1 && Number(f.monto) > 0 &&
-        r2(sumaTodas - Number(dto.formasPago![i].monto)) >= r2(totalDOP - 0.05),
-      );
-      if (redundante) {
-        throw new BadRequestException(
-          `[formasPago] La forma de pago tipo ${redundante.tipo} por RD$${Number(redundante.monto).toFixed(2)} ` +
-          `es redundante: el resto del pago ya cubre el total de RD$${totalDOP.toFixed(2)}. ` +
-          `Elimínala o corrige los montos.`,
-        );
-      }
+      // NOTA: no se valida aquí que una forma "sobre" porque el efectivo
+      // entregado ya cubra el total. Un pago con exceso puede ser legítimo
+      // (tarjeta 500 + billete de 2.500 en una venta de 2.035) o un error de
+      // registro (FAC-219): son estructuralmente idénticos y solo los separa la
+      // magnitud del vuelto, que es un juicio del cajero. El POS pide
+      // confirmación explícita en ese caso; el backend no puede pedirla y
+      // rechazar rompería cobros válidos en el mostrador.
       const entregadoInvalido = dto.formasPago.find(
         f => f.montoEntregado != null && Number(f.montoEntregado) < Number(f.monto),
       );
