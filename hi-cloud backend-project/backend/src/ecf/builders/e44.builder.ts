@@ -4,6 +4,9 @@
  * Comprador: RNC obligatorio del beneficiario del régimen.
  * IndicadorFacturacion: siempre 4 (Exento) en todos los ítems.
  * IndicadorMontoGravado: NO aplica en E44 — campo inválido para este tipo (causa error 3).
+ *
+ * TODO(buildItems): migrar a buildItems() con IndicadorFacturacion=4 fijo.
+ * Riesgo bajo — regímenes especiales raramente tienen descuentos de línea.
  */
 import {
   ECFBuildInput, MSellerPayload,

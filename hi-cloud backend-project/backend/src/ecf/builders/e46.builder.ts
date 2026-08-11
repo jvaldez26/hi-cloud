@@ -7,6 +7,10 @@
  * Comprador (dos casos):
  *   A) Cliente extranjero → IdentificadorExtranjero (ID fiscal en su país) OBLIGATORIO
  *   B) Zona Franca / residente RD → RNCComprador OBLIGATORIO
+ *
+ * TODO(buildItems): migrar a buildItems() con IndicadorFacturacion=3 fijo y
+ * soporte ME (toDOP+otraMonedaItem). Riesgo bajo — exportaciones raramente
+ * llevan descuentos de línea en la práctica actual.
  */
 import {
   ECFBuildInput, MSellerPayload,

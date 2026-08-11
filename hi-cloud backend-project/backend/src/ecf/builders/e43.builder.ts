@@ -6,6 +6,9 @@
  * SIN Comprador (E43 es autofactura interna — minOccurs=0).
  * SIN TipoIngresos en IdDoc (no corresponde a E43).
  * Totales: solo MontoExento y MontoTotal.
+ *
+ * TODO(buildItems): migrar a buildItems() con IndicadorFacturacion=4 fijo y
+ * IndicadorBienoServicio dinámico. Riesgo muy bajo — gastos menores sin descuentos.
  */
 import {
   ECFBuildInput, MSellerPayload,

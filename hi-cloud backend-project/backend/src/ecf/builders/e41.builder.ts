@@ -4,6 +4,13 @@
  * no registradas ante la DGII (proveedores informales).
  * IndicadorMontoGravado: 0 — el vendedor informal no transparenta ITBIS.
  * Totales calculados DESDE los items (no buildTotalesGravados con detalles raw).
+ *
+ * TODO(buildItems): migrar construcción de ítems a buildItems() de items.section.ts.
+ * Bloqueante: el bloque <Retencion> debe aparecer ANTES de <NombreItem> según el XSD
+ * de E41, y buildItems() no soporta ese campo intercalado. Requiere una opción
+ * retencionItem o un wrapper buildItemsE41() similar a buildItemsE33().
+ * Hasta entonces este builder construye ítems inline sin DescuentoMonto+TablaSubDescuento.
+ * Riesgo: si una línea tiene descuentoMonto > 0 DGII emitirá la adv. 2394.
  */
 import {
   ECFBuildInput, MSellerPayload,

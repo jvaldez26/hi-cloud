@@ -100,6 +100,36 @@ export function warnCuadraturaItem(
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ESTADO DE MIGRACIÓN — builders que ya usan buildItems / buildItemsE33
+// ─────────────────────────────────────────────────────────────────────────────
+// ✅ E31 — Crédito Fiscal         (buildItems con toDOP+otraMonedaItem)
+// ✅ E32 — Consumidor Final       (buildItems con toDOP+otraMonedaItem)
+// ✅ E33 — Nota de Débito         (buildItemsE33 — valores STRING, UnidadMedida='47')
+// ✅ E34 — Nota de Crédito        (buildItems con toDOP+otraMonedaItem)
+// ✅ E45 — Gubernamental          (buildItems con toDOP+otraMonedaItem)
+//
+// ⏳ PENDIENTES — cada uno tiene particularidades que requieren migración separada:
+//
+//   E41 — Comprobante de Compras
+//     • Bloque <Retencion> ANTES de <NombreItem> (orden XSD estricto).
+//     • buildItems no soporta ese bloque intercalado; necesita extensión o wrapper.
+//
+//   E47 — Pagos al Exterior
+//     • Bloque <Retencion> POR ÍTEM (MontoISRRetenido obligatorio).
+//     • IndicadorBienoServicio siempre 2 (Servicio).
+//     • Necesita buildItemsE47() propio o opción en buildItems.
+//
+//   E43 — Gastos Menores
+//   E44 — Regímenes Especiales
+//   E46 — Exportaciones
+//     • Todos con IndicadorFacturacion=4 fijo (exento / tasa cero).
+//     • IndicadorBienoServicio dinámico (1=Bien, 2=Servicio).
+//     • Riesgo bajo: sin descuentos reales en práctica, pero están expuestos
+//       al mismo bug si algún día se emiten con descuento de línea.
+//     • TODO: migrar cuando se trabaje alguno de estos tipos.
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * Opciones para buildItems / buildItemsE33.
  */
@@ -120,12 +150,12 @@ export interface BuildItemsOptions {
 /**
  * Ítems estándar — todos los tipos de e-CF (E31–E47).
  *
- * Estrategia PrecioUnitarioItem:
- *   • Descuento real (d.descuentoMonto > 0): se usa el precio original redondeado a 2 dec y
- *     se emite DescuentoMonto + TablaSubDescuento para que DGII valide
- *     CantidadItem × PrecioUnitarioItem − DescuentoMonto = MontoItem.
- *   • Sin descuento: se deriva el precio de MontoItem ÷ CantidadItem (cap4, técnica E31),
- *     garantizando cuadratura exacta sin emitir DescuentoMonto fantasma.
+ * PrecioUnitarioItem usa cap4 en ambas ramas (DGII IT §13 admite hasta 4
+ * decimales). La única diferencia entre ramas es si se emite DescuentoMonto:
+ *   • Descuento real (d.descuentoMonto > 0): emite DescuentoMonto + TablaSubDescuento
+ *     para que DGII valide CantidadItem × PrecioUnitarioItem − DescuentoMonto = MontoItem.
+ *   • Sin descuento: no emite DescuentoMonto; cap4(precio) × cantidad debe quedar
+ *     dentro de la tolerancia DGII ±0.01 por línea.
  *
  * El ITBIS 18% estándar NO se declara en TablaImpuesto dentro del ítem;
  * va únicamente en los Totales del encabezado del documento (estándar DGII XSD).
@@ -146,14 +176,11 @@ export function buildItems(
 
     const montoItem = round2(toDOP(montoME));
 
-    // PrecioUnitarioItem — dos estrategias según presencia de descuento real:
-    //   Con descuento: precio original (round2) + DescuentoMonto + TablaSubDescuento
-    //   Sin descuento: derivado de MontoItem÷cantidad (cap4) → cuadratura exacta,
-    //                  sin DescuentoMonto fantasma por residuos de redondeo.
-    const precioDOP = round2(toDOP(precioME));
-    const precioXML = descReal > 0
-      ? precioDOP
-      : cap4(montoItem / (cantidad || 1));
+    // cap4 en ambas ramas — DGII IT §13 permite hasta 4 dp en PrecioUnitarioItem.
+    // Preserva precisión cuando toDOP() produce decimales largos (ME) o cuando
+    // el precio almacenado tiene más de 2 dp. La única diferencia entre ramas
+    // es si se emite DescuentoMonto.
+    const precioXML = cap4(toDOP(precioME));
 
     // DescuentoMonto computado aritméticamente sobre el precioXML serializado,
     // de modo que CantidadItem × PrecioUnitarioItem − DescuentoMonto = MontoItem
@@ -203,10 +230,8 @@ export function buildItemsE33(detalles: DetalleLike[], encf = ''): Record<string
     const descReal  = round2(Number(d.descuentoMonto ?? 0));
     const montoItem = round2(Number(d.subtotal));
 
-    const precioDOP = round2(Number(d.precioUnitario));
-    const precioXML = descReal > 0
-      ? precioDOP
-      : cap4(montoItem / (cantidad || 1));
+    // cap4 en ambas ramas — misma lógica que buildItems.
+    const precioXML = cap4(Number(d.precioUnitario));
 
     const descMonto = descReal > 0
       ? round2(round2(precioXML * cantidad) - montoItem)

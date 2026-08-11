@@ -10,6 +10,13 @@
  * - Retencion SIEMPRE presente en cada ítem (minOccurs=1 en el XSD), con
  *   MontoISRRetenido=0 cuando no hay retención; TotalISRRetencion cuadra
  *   exactamente con la suma de los ítems
+ *
+ * TODO(buildItems): migrar construcción de ítems a buildItems() de items.section.ts.
+ * Bloqueante: bloque <Retencion> por ítem con MontoISRRetenido obligatorio (incluso
+ * cuando es 0) + IndicadorBienoServicio=2 fijo. buildItems() necesita opción
+ * retencionItem o un buildItemsE47() dedicado para manejar el orden XSD correcto.
+ * Hasta entonces construye ítems inline sin DescuentoMonto+TablaSubDescuento.
+ * Riesgo bajo en la práctica (pagos al exterior raramente tienen descuentos de línea).
  */
 import {
   ECFBuildInput, MSellerPayload,
