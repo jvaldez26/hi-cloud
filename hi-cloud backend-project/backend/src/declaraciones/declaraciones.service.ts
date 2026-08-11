@@ -322,7 +322,10 @@ export class DeclaracionesService {
         e.numero                                        AS "encf",
         e."estadoDGII"                                  AS "estadoDgii",
         COALESCE(c."rncReceptor", c.rfc, '')            AS "rncComprador",
-        c.nombre                                        AS "nombreComprador"
+        -- Misma razón social que se declaró en el e-CF: varios clientes pueden
+        -- compartir RNC (p.ej. escuelas de un distrito educativo) y ante DGII
+        -- todos van con la razón social registrada de ese contribuyente
+        COALESCE(NULLIF(btrim(c."razonSocial"), ''), c.nombre) AS "nombreComprador"
       FROM facturas f
       LEFT JOIN ecf e ON e."facturaId" = f.id AND e."isActive" = true
       LEFT JOIN clientes c ON c.id = f."clienteId"

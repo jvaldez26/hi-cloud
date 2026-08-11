@@ -9585,6 +9585,12 @@ export default function POSPage() {
     || clienteSeleccionado.nombre?.toLowerCase().includes('consumidor')
     || ['00000000000', '000000000', ''].includes(rncCliente);
 
+  // Lo que se declara como RazonSocialComprador. `nombre` es interno y puede
+  // distinguir sucursales que comparten RNC (escuelas de un mismo distrito
+  // educativo); ante DGII todas van con la razón social registrada del RNC.
+  const razonSocialFiscalCliente =
+    (clienteSeleccionado?.razonSocial ?? '').trim() || clienteSeleccionado?.nombre;
+
   // Totals — el régimen "precio del catálogo YA incluye ITBIS" está NEUTRALIZADO.
   // El POS enviaba precioUnitario con ITBIS incluido y el backend no conoce la
   // configuración (posPrecioIncluyeItbis no existe en todo el backend), así que le
@@ -9774,9 +9780,9 @@ export default function POSPage() {
   // el DGII lookup lo reemplazará cuando el cajero ingrese el RNC.
   useEffect(() => {
     if (tipoNcf === 'E32' || clienteTieneRNC) return;
-    if (razonSocialComp === '' && clienteSeleccionado?.nombre
-        && !/^consumidor\s+final$/i.test(clienteSeleccionado.nombre)) {
-      setRazonSocialComp(clienteSeleccionado.nombre);
+    if (razonSocialComp === '' && razonSocialFiscalCliente
+        && !/^consumidor\s+final$/i.test(razonSocialFiscalCliente)) {
+      setRazonSocialComp(razonSocialFiscalCliente);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tipoNcf, clienteId]);
@@ -10396,7 +10402,9 @@ export default function POSPage() {
       const datosComprador = clienteTieneRNC
         ? {
             rnc:         rncCliente,
-            razonSocial: clienteSeleccionado?.nombre,
+            // Ante DGII va la razón social registrada del RNC, no el nombre
+            // interno (que puede distinguir sucursales del mismo contribuyente)
+            razonSocial: razonSocialFiscalCliente,
             direccion:   clienteSeleccionado?.direccion,
           }
         : {
@@ -10519,7 +10527,7 @@ export default function POSPage() {
         ecfPendiente:            ['pendiente_envio', 'pendiente', 'contingencia'].includes(estadoEcf),
         ecfFecha,
         rncComprador:            clienteTieneRNC ? rncCliente : (rncComprador || undefined),
-        razonSocial:             clienteTieneRNC ? clienteSeleccionado?.nombre : (razonSocialComp || undefined),
+        razonSocial:             clienteTieneRNC ? razonSocialFiscalCliente : (razonSocialComp || undefined),
         securityCode,
         qrUrl,
         cajero:                  cajeroNombre,
@@ -11277,7 +11285,15 @@ export default function POSPage() {
             <Select showSearch allowClear placeholder="Cliente (opcional)" style={{ width: '100%', marginBottom: 8 }}
               value={clienteId} onChange={onClienteChange}
               filterOption={(i, o) => String(o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
-              options={clientes?.data.map((c: Cliente) => ({ value: c.id, label: c.nombre }))} />
+              // Cuando varios clientes comparten RNC (escuelas de un mismo
+              // distrito educativo) el nombre solo no alcanza: se muestra RNC y
+              // dirección para que el cajero pueda elegir bien
+              options={clientes?.data.map((c: Cliente) => ({
+                value: c.id,
+                label: c.rncCompartido
+                  ? `${c.nombre} · RNC ${c.rfc} · ${c.direccion || c.ciudad || 'sin dirección'}`
+                  : c.nombre,
+              }))} />
             {/* Title row */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

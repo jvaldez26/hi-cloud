@@ -50,9 +50,14 @@ export interface PaginatedData<T> {
 // ── Clientes ──────────────────────────────────────────────────────────────────
 export interface Cliente {
   id:             number;
+  /** Nombre interno del cliente. Distingue sucursales que comparten RNC. */
   nombre:         string;
+  /** Razón social registrada del RNC ante DGII. Es la que se declara en el e-CF. */
+  razonSocial?:   string;
   rfc:            string;
   rncReceptor?:   string;
+  /** true si otro cliente activo de la empresa usa el mismo RNC */
+  rncCompartido?: boolean;
   email?:         string;
   telefono?:      string;
   direccion?:     string;

@@ -105,6 +105,55 @@ describe('ECFBuilderService', () => {
     service = new ECFBuilderService();
   });
 
+  // ── Razón social fiscal vs nombre interno ─────────────────────────────────
+  //
+  // Varios clientes pueden compartir RNC (p. ej. escuelas de un mismo distrito
+  // educativo, cada una con su dirección y su cuenta por cobrar). Ante DGII
+  // todas declaran la razón social registrada de ese RNC; el nombre del cliente
+  // es interno y solo sirve para distinguirlas dentro del sistema.
+
+  describe('RazonSocialComprador', () => {
+    const distrito = (nombre: string) => ({
+      id: 9, nombre, rncReceptor: '401000001', rfc: null,
+      razonSocial: 'DISTRITO EDUCATIVO 10-04', direccion: 'Los Alcarrizos',
+    });
+
+    it('usa la razón social fiscal, no el nombre interno del cliente', () => {
+      const p = service.build(31, makeInput({
+        tipoEcf: 31,
+        facturaOverrides: { cliente: distrito('Escuela Básica Los Alcarrizos #3') },
+      }));
+      expect(p.ECF.Encabezado.Comprador!.RazonSocialComprador).toBe('DISTRITO EDUCATIVO 10-04');
+    });
+
+    it('dos clientes con el mismo RNC declaran RNC y razón social idénticos', () => {
+      const a = service.build(31, makeInput({
+        tipoEcf: 31, facturaOverrides: { cliente: distrito('Escuela Básica Los Alcarrizos #3') },
+      })).ECF.Encabezado.Comprador!;
+      const b = service.build(31, makeInput({
+        tipoEcf: 31, facturaOverrides: { cliente: distrito('Escuela Primaria Manoguayabo') },
+      })).ECF.Encabezado.Comprador!;
+
+      expect(a.RNCComprador).toBe(b.RNCComprador);
+      expect(a.RazonSocialComprador).toBe(b.RazonSocialComprador);
+    });
+
+    it('sin razón social fiscal cae al nombre — comportamiento previo intacto', () => {
+      const p = service.build(31, makeInput({
+        tipoEcf: 31, facturaOverrides: { cliente: CLIENTE_CON_RNC },
+      }));
+      expect(p.ECF.Encabezado.Comprador!.RazonSocialComprador).toBe('Empresa Demo SA');
+    });
+
+    it('razón social en blanco cae al nombre', () => {
+      const p = service.build(31, makeInput({
+        tipoEcf: 31,
+        facturaOverrides: { cliente: { ...CLIENTE_CON_RNC, razonSocial: '   ' } },
+      }));
+      expect(p.ECF.Encabezado.Comprador!.RazonSocialComprador).toBe('Empresa Demo SA');
+    });
+  });
+
   // ── Tipos soportados ──────────────────────────────────────────────────────
 
   it('lista los 10 tipos soportados (E31-E47)', () => {

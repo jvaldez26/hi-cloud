@@ -11,6 +11,7 @@ export {
   COMPRADOR_CONSUMIDOR_FINAL,
   buildCompradorRNC,
   buildCompradorExtranjero,
+  razonSocialFiscal,
 } from './sections/comprador.section';
 export { buildIdDoc, fmtFecha, addDias } from './sections/id-doc.section';
 export {

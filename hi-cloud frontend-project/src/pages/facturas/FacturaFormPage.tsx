@@ -360,9 +360,19 @@ export default function FacturaFormPage() {
   /** Intenta auto-seleccionar cliente por RFC exacto en la lista cargada */
   const intentarAutoseleccionPorRNC = useCallback((clean: string) => {
     if (!clientes?.data || form.getFieldValue('clienteId')) return false;
-    const match = clientes.data.find(
+    const coincidencias = clientes.data.filter(
       (c: Cliente) => (c.rfc ?? '').replace(/\D/g, '') === clean
     );
+    // Varios clientes pueden compartir RNC (escuelas de un mismo distrito
+    // educativo). Elegir uno al azar facturaría a la cuenta equivocada: se
+    // devuelve true para no crear un cliente nuevo, pero el usuario decide.
+    if (coincidencias.length > 1) {
+      message.info(
+        `${coincidencias.length} clientes comparten el RNC ${clean}. Elige cuál en la lista.`,
+      );
+      return true;
+    }
+    const match = coincidencias[0];
     if (match) {
       form.setFieldValue('clienteId', match.id);
       setClienteSeleccionado(match);
@@ -697,7 +707,12 @@ export default function FacturaFormPage() {
                   filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
                   options={clientes?.data.map((c: Cliente) => ({
                     value: c.id,
-                    label: c.rfc ? `${c.rfc} — ${c.nombre}` : c.nombre,
+                    // Con RNC compartido el nombre y el RNC no bastan para
+                    // distinguirlos: se agrega la dirección
+                    label: [
+                      c.rfc ? `${c.rfc} — ${c.nombre}` : c.nombre,
+                      c.rncCompartido ? (c.direccion || c.ciudad || 'sin dirección') : '',
+                    ].filter(Boolean).join(' · '),
                   }))}
                   onChange={onClienteChange}
                   onSearch={v => setClienteSearch(v)}

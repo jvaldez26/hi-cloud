@@ -29,7 +29,7 @@ import {
   EcfNcfReferenciadoError,
   EcfMontoAnulacionError,
 } from '../errors/ecf.errors';
-import { fmtFecha } from '../builders/base-ecf.builder';
+import { fmtFecha, razonSocialFiscal } from '../builders/base-ecf.builder';
 
 const TIMEOUT_POS      = 8_000;
 const TIMEOUT_REGULAR  = 30_000;
@@ -166,14 +166,19 @@ export class EmitirECFUseCase {
       }),
     ]);
 
-    // Merge datos del comprador capturados en POS (sobrescriben al cliente guardado)
+    // Merge datos del comprador capturados en POS (sobrescriben al cliente guardado).
+    // La razón social tecleada en el POS va a `razonSocial` (el campo fiscal, que
+    // es de donde el builder toma el RazonSocialComprador) y también a `nombre`,
+    // que es lo que leen el ticket y otras vistas. Escribir solo en `nombre` haría
+    // que un cliente con razón social fiscal cargada ignorara lo que tecleó el cajero.
     if (datosComprador) {
       const f = factura as any;
       f.cliente = {
         ...(f.cliente ?? {}),
-        ...(datosComprador.rnc         ? { rncReceptor: datosComprador.rnc }          : {}),
-        ...(datosComprador.razonSocial ? { nombre:      datosComprador.razonSocial }   : {}),
-        ...(datosComprador.direccion   ? { direccion:   datosComprador.direccion }     : {}),
+        ...(datosComprador.rnc         ? { rncReceptor: datosComprador.rnc }           : {}),
+        ...(datosComprador.razonSocial ? { razonSocial: datosComprador.razonSocial,
+                                           nombre:      datosComprador.razonSocial }   : {}),
+        ...(datosComprador.direccion   ? { direccion:   datosComprador.direccion }      : {}),
         ...(datosComprador.numeroOrdenCompra ? { numeroOrdenCompra: datosComprador.numeroOrdenCompra } : {}),
       };
     }
@@ -347,7 +352,12 @@ export class EmitirECFUseCase {
       estadoDGII:          EstadoDGII.PENDIENTE_ENVIO,
       codigoSeguridad:     String(Math.floor(100000 + Math.random() * 900000)),
       rncComprador:        (factura as Factura).cliente?.rncReceptor ?? (factura as Factura).rncComprador ?? undefined,
-      razonSocialComprador: (factura as Factura).cliente?.nombre,
+      // Misma fuente que el RazonSocialComprador del XML, para que el registro
+      // guardado (y el PDF, que lo lee de aquí) no diverja de lo declarado
+      razonSocialComprador: razonSocialFiscal(
+        (factura as Factura).cliente,
+        (factura as Factura).cliente?.nombre ?? '',
+      ) || undefined,
       direccionComprador:  (factura as Factura).cliente?.direccion ?? undefined,
       montoExento:         0,
       montoGravado,

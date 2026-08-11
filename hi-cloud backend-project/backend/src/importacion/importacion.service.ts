@@ -131,11 +131,24 @@ export class ImportacionService {
           throw new Error('RNC/Cédula debe tener 9 dígitos (empresa) u 11 dígitos (persona)');
         }
 
-        // Duplicado estricto por empresa
-        const existe = await this.clienteRepository.findOne({ where: { rfc: rnc, empresaId } });
+        // Duplicado real = mismo RNC Y mismo nombre entre clientes ACTIVOS.
+        // El RNC repetido con nombre distinto se importa: varias escuelas de un
+        // mismo distrito educativo facturan bajo el RNC del distrito y son
+        // clientes distintos. Un cliente borrado tampoco bloquea la reimportación.
+        const existe = await this.clienteRepository
+          .createQueryBuilder('c')
+          .where('c.empresaId = :empresaId', { empresaId })
+          .andWhere('c.isActive = true')
+          .andWhere('c.rfc = :rnc', { rnc })
+          .andWhere('lower(btrim(c.nombre)) = lower(btrim(:nombre))', { nombre })
+          .getOne();
         if (existe) {
           result.errores++;
-          result.detalles.push({ fila: fNum, error: `RNC/Cédula ${rnc} ya existe en esta empresa`, estado: 'error' });
+          result.detalles.push({
+            fila:   fNum,
+            error:  `Ya existe un cliente activo "${nombre}" con RNC/Cédula ${rnc} en esta empresa`,
+            estado: 'error',
+          });
           continue;
         }
 

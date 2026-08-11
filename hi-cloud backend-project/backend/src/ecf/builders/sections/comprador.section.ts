@@ -14,6 +14,29 @@ export const COMPRADOR_CONSUMIDOR_FINAL = {
   RazonSocialComprador: 'Consumidor Final',
 } as const;
 
+/**
+ * Razón social que va al XML como RazonSocialComprador.
+ *
+ * Ante DGII el nombre debe ser la razón social REGISTRADA para ese RNC. El
+ * campo `nombre` del cliente es de uso interno y puede distinguir sucursales
+ * que comparten contribuyente — p. ej. varias escuelas de un mismo distrito
+ * educativo facturan bajo el RNC del distrito pero se registran por separado
+ * para llevar dirección, contacto y cuenta por cobrar propias. Todas deben
+ * declarar la MISMA razón social.
+ *
+ * Fallback a `nombre` porque la inmensa mayoría de clientes no tiene la razón
+ * social fiscal cargada, y en esos casos `nombre` es exactamente lo que se
+ * venía enviando.
+ */
+export function razonSocialFiscal(
+  cliente?: { razonSocial?: string | null; nombre?: string | null },
+  porDefecto = 'Sin nombre',
+): string {
+  const fiscal = (cliente?.razonSocial ?? '').trim();
+  if (fiscal) return fiscal;
+  return (cliente?.nombre ?? '').trim() || porDefecto;
+}
+
 /** Comprador con RNC identificado — E31, E32 con RNC, E33, E34, E41, E44, E45 */
 export function buildCompradorRNC(
   rnc:         string,

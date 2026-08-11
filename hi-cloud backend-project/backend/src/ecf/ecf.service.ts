@@ -143,7 +143,9 @@ export class ECFService implements OnModuleInit {
         ? `
   <Comprador>
     <RNCComprador>${factura.cliente.rncReceptor}</RNCComprador>
-    <RazonSocialComprador>${this.escapeXml(factura.cliente.nombre)}</RazonSocialComprador>
+    <RazonSocialComprador>${this.escapeXml(
+      (factura.cliente.razonSocial ?? '').trim() || factura.cliente.nombre,
+    )}</RazonSocialComprador>
     ${factura.cliente.direccion ? `<DireccionComprador>${this.escapeXml(factura.cliente.direccion)}</DireccionComprador>` : ''}
   </Comprador>`
         : '';

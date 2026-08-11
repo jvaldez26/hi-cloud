@@ -20,7 +20,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import api from '../../api/client';
-import { clientesApi, type ClientePayload } from '../../api/clientes.api';
+import { clientesApi, type ClientePayload, type ClientesConMismoRnc } from '../../api/clientes.api';
 import { exportarExcel } from '../../utils/exportExcel';
 import type { Cliente } from '../../types';
 import { fmt } from '../../utils/formatters';
@@ -48,17 +48,49 @@ export default function ClientesPage() {
   const [portalCliente, setPortalCliente] = useState<Cliente | null>(null);
   const [portalUrl,     setPortalUrl]     = useState('');
   const [form]                          = Form.useForm<ClientePayload>();
+  // Clientes que ya usan el RNC tecleado. No bloquea: varias escuelas de un
+  // mismo distrito educativo facturan bajo el RNC del distrito y son clientes
+  // distintos. Solo se muestran para que el usuario elija uno si ya existe.
+  const [rncExistentes, setRncExistentes] = useState<ClientesConMismoRnc | null>(null);
   const qc = useQueryClient();
   const rnc = useRncLookup();
 
-  // Autocompletar nombre desde DGII cuando se encuentra el RNC
+  // Autocompletar desde DGII cuando se encuentra el RNC. El nombre oficial va a
+  // `razonSocial` (lo que se declara ante DGII) y también a `nombre` si está
+  // vacío — este último el usuario puede reescribirlo para distinguir sucursales.
   useEffect(() => {
     if (rnc.datos?.encontrado && rnc.datos?.nombre) {
-      if (!form.getFieldValue('nombre')) {
-        form.setFieldsValue({ nombre: rnc.datos.nombre });
-      }
+      const parche: Partial<ClientePayload> = {};
+      if (!form.getFieldValue('nombre'))      parche.nombre      = rnc.datos.nombre;
+      if (!form.getFieldValue('razonSocial')) parche.razonSocial = rnc.datos.nombre;
+      if (Object.keys(parche).length) form.setFieldsValue(parche);
     }
   }, [rnc.datos, form]);
+
+  /** Consulta quién más usa este RNC. Se dispara al terminar de teclearlo. */
+  const consultarRncExistentes = useCallback(async (valor: string) => {
+    const limpio = (valor ?? '').replace(/\D/g, '');
+    if (limpio.length !== 9 && limpio.length !== 11) { setRncExistentes(null); return; }
+    try {
+      const res = await clientesApi.buscarPorRnc(limpio, editing?.id);
+      setRncExistentes(res.total > 0 ? res : null);
+    } catch { setRncExistentes(null); }
+  }, [editing?.id]);
+
+  /**
+   * Descarta el cliente nuevo y abre el existente que el usuario eligió — el
+   * caso legítimo se resuelve en dos clics y el duplicado por error se evita.
+   */
+  const usarClienteExistente = async (id: number) => {
+    // El listado de la alerta trae solo lo necesario para distinguir; para
+    // editar hace falta el cliente completo (crédito, sector, etc.)
+    const completo = await clientesApi.getOne(id).catch(() => null);
+    if (!completo) { message.error('No se pudo abrir el cliente'); return; }
+    setRncExistentes(null);
+    setEditing(completo);
+    form.setFieldsValue({ ...completo, diasCredito: (completo as any).diasCredito ?? 30 });
+    setOpen(true);
+  };
 
   const { data, isLoading } = useQuery({
     queryKey: ['clientes', page, search],
@@ -102,9 +134,17 @@ export default function ClientesPage() {
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al generar enlace del portal'),
   });
 
-  const openCreate = () => { setEditing(null); form.resetFields(); setOpen(true); };
-  const openEdit   = (c: Cliente) => { setEditing(c); form.setFieldsValue({ ...c, diasCredito: (c as any).diasCredito ?? 30 }); setOpen(true); };
-  const closeModal = () => { setOpen(false); setEditing(null); form.resetFields(); rnc.limpiar(); };
+  const openCreate = () => { setEditing(null); form.resetFields(); setRncExistentes(null); setOpen(true); };
+  const openEdit   = (c: Cliente) => {
+    setEditing(c); setRncExistentes(null);
+    form.setFieldsValue({ ...c, diasCredito: (c as any).diasCredito ?? 30 });
+    setOpen(true);
+    if (c.rfc) void consultarRncExistentes(c.rfc);
+  };
+  const closeModal = () => {
+    setOpen(false); setEditing(null); form.resetFields();
+    setRncExistentes(null); rnc.limpiar();
+  };
   const handleSubmit = (values: ClientePayload) => {
     if (editing) updateMut.mutate({ id: editing.id, body: values });
     else         createMut.mutate(values);
@@ -145,7 +185,24 @@ export default function ClientesPage() {
           </Avatar>
           <div>
             <Text strong style={{ fontSize: 13 }}>{r.nombre}</Text>
-            {r.rfc && <div><Text type="secondary" style={{ fontSize: 11 }}>{r.rfc}</Text></div>}
+            {r.rfc && (
+              <div>
+                <Text type="secondary" style={{ fontSize: 11 }}>{r.rfc}</Text>
+                {/* Compartir RNC es válido, pero hay que poder distinguirlos */}
+                {r.rncCompartido && (
+                  <Tooltip title="Otro cliente activo usa este mismo RNC">
+                    <Tag color="blue" style={{ marginLeft: 6, fontSize: 10, lineHeight: '16px', padding: '0 5px' }}>
+                      RNC compartido
+                    </Tag>
+                  </Tooltip>
+                )}
+              </div>
+            )}
+            {r.rncCompartido && (r.direccion || r.ciudad) && (
+              <div><Text type="secondary" style={{ fontSize: 11 }}>
+                {[r.direccion, r.ciudad].filter(Boolean).join(', ')}
+              </Text></div>
+            )}
           </div>
         </Space>
       ),
@@ -417,7 +474,11 @@ export default function ClientesPage() {
                         <Input
                           placeholder={tieneIdExt ? '(opcional para clientes extranjeros)' : '9 dígitos (RNC) u 11 dígitos (Cédula)'}
                           maxLength={11}
-                          onChange={e => rnc.consultarDebounced(e.target.value.replace(/\D/g, ''))}
+                          onChange={e => {
+                            const v = e.target.value.replace(/\D/g, '');
+                            rnc.consultarDebounced(v);
+                            void consultarRncExistentes(v);
+                          }}
                         />
                       </Form.Item>
                       <RncBadge datos={rnc.datos} loading={rnc.loading} />
@@ -427,10 +488,54 @@ export default function ClientesPage() {
               </Form.Item>
             </Col>
             <Col xs={24} sm={16}>
-              <Form.Item name="nombre" label="Nombre / Razón Social" rules={[{ required: true }]}>
-                <Input />
+              <Form.Item
+                name="nombre"
+                label="Nombre del cliente"
+                tooltip="Uso interno. Si varias sucursales comparten RNC (p. ej. escuelas de un mismo distrito educativo), este es el nombre que las distingue en el listado, el POS y su cuenta por cobrar."
+                rules={[{ required: true }]}>
+                <Input placeholder="Ej: Escuela Básica Los Alcarrizos #3" />
               </Form.Item>
             </Col>
+
+            {/* Alerta NO bloqueante: el RNC repetido es válido, solo hay que
+                asegurarse de que no sea el mismo cliente registrado dos veces */}
+            {rncExistentes && rncExistentes.total > 0 && (
+              <Col xs={24}>
+                <div style={{
+                  border: `1px solid ${token.colorWarningBorder}`,
+                  background: token.colorWarningBg,
+                  borderRadius: 8, padding: '10px 12px', marginBottom: 16,
+                }}>
+                  <Text strong style={{ fontSize: 13 }}>
+                    Ya existe{rncExistentes.total === 1 ? '' : 'n'} {rncExistentes.total}{' '}
+                    cliente{rncExistentes.total === 1 ? '' : 's'} con este RNC
+                  </Text>
+                  <div style={{ fontSize: 12, color: token.colorTextSecondary, marginTop: 2, marginBottom: 8 }}>
+                    Compartir RNC es válido cuando son cuentas distintas del mismo
+                    contribuyente. Si alguno de estos ya es el cliente que ibas a
+                    registrar, ábrelo en vez de crear otro.
+                  </div>
+                  {rncExistentes.clientes.map(c => (
+                    <div key={c.id} style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      gap: 12, padding: '6px 0',
+                      borderTop: `1px solid ${token.colorBorderSecondary}`,
+                    }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600 }}>{c.nombre}</div>
+                        <div style={{ fontSize: 11, color: token.colorTextSecondary }}>
+                          {[c.direccion, c.ciudad].filter(Boolean).join(', ') || 'Sin dirección registrada'}
+                          {c.telefono ? ` · ${c.telefono}` : ''}
+                        </div>
+                      </div>
+                      <Button size="small" onClick={() => void usarClienteExistente(c.id)}>
+                        Usar este
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </Col>
+            )}
             <Col xs={24} sm={12}>
               <Form.Item noStyle shouldUpdate={(p, c) => p.identificadorExtranjero !== c.identificadorExtranjero}>
                 {({ getFieldValue }) => {
@@ -503,8 +608,11 @@ export default function ClientesPage() {
               </Form.Item>
             </Col>
             <Col xs={24} sm={10}>
-              <Form.Item name="razonSocial" label="Razón Social (DGII)">
-                <Input placeholder="Nombre oficial en DGII" />
+              <Form.Item
+                name="razonSocial"
+                label="Razón Social fiscal (DGII)"
+                tooltip="La razón social registrada para este RNC. Es lo que se declara como RazonSocialComprador en el e-CF, así que debe ser idéntica en todos los clientes que compartan el RNC. Si se deja vacía se usa el nombre del cliente.">
+                <Input placeholder="Se autocompleta al consultar el RNC" />
               </Form.Item>
             </Col>
             <Col xs={24} sm={8}>

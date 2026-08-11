@@ -16,13 +16,25 @@ import { LimitesService } from '../suscripciones/limites.service';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const PDFKit = require('pdfkit') as typeof import('pdfkit');
 
-/** Lanza ConflictException amigable si el error es 23505 (duplicate key) */
-function handleRfcDuplicate(err: any, rfc?: string): never {
-  if (err?.code === '23505' || err?.message?.includes('duplicate key') || err?.message?.includes('ya existe')) {
+/**
+ * Traduce el 23505 del índice único a un mensaje entendible.
+ *
+ * El RNC repetido YA NO es un error: varias escuelas de un mismo distrito
+ * educativo facturan bajo el mismo RNC y son clientes distintos. Lo que sigue
+ * bloqueado es el duplicado real — mismo RNC Y mismo nombre, entre activos.
+ */
+function handleClienteDuplicate(err: any, rfc?: string, nombre?: string): never {
+  const esDuplicado =
+    err?.code === '23505' ||
+    err?.message?.includes('duplicate key') ||
+    err?.message?.includes('ya existe');
+
+  if (esDuplicado) {
     throw new ConflictException(
-      rfc
-        ? `Ya existe un cliente con RNC/Cédula ${rfc} en su empresa`
-        : 'Ya existe un cliente con ese RNC/Cédula en su empresa',
+      nombre
+        ? `Ya existe un cliente activo llamado "${nombre}"${rfc ? ` con RNC/Cédula ${rfc}` : ''}. ` +
+          'Si es un cliente distinto que comparte el RNC, dale un nombre que lo diferencie.'
+        : 'Ya existe un cliente activo con ese mismo RNC/Cédula y nombre en su empresa',
     );
   }
   throw err;
@@ -41,17 +53,66 @@ export class ClientesService {
     private limitesService:   LimitesService,
   ) {}
 
+  /**
+   * Clientes activos que ya usan este RNC/Cédula en la empresa actual.
+   *
+   * Alimenta la alerta NO BLOQUEANTE al guardar: compartir RNC es legítimo
+   * (escuelas de un mismo distrito educativo), así que en vez de rechazar se
+   * muestra quiénes son para que el usuario elija uno existente si aplica.
+   * Devuelve dirección y contacto porque un RNC repetido sin más contexto no
+   * permite distinguir entre las opciones.
+   */
+  async buscarPorRnc(rnc: string, excluirId?: number) {
+    const empresaId  = this.tenantService.getEmpresaId();
+    const rncLimpio  = (rnc ?? '').replace(/\D/g, '');
+    if (!rncLimpio) return { rnc: '', total: 0, clientes: [] };
+
+    const qb = this.clienteRepository
+      .createQueryBuilder('cliente')
+      .select([
+        'cliente.id', 'cliente.nombre', 'cliente.razonSocial', 'cliente.rfc',
+        'cliente.rncReceptor', 'cliente.direccion', 'cliente.ciudad',
+        'cliente.telefono', 'cliente.email',
+      ])
+      .where('cliente.empresaId = :empresaId', { empresaId })
+      .andWhere('cliente.isActive = :active', { active: true })
+      .andWhere('(cliente.rfc = :rnc OR cliente.rncReceptor = :rnc)', { rnc: rncLimpio })
+      .orderBy('cliente.nombre', 'ASC');
+
+    if (excluirId) qb.andWhere('cliente.id != :excluirId', { excluirId });
+
+    const clientes = await qb.getMany();
+    return { rnc: rncLimpio, total: clientes.length, clientes };
+  }
+
   async create(dto: CreateClienteDto) {
     const empresaId = this.tenantService.getEmpresaId();
     await this.limitesService.verificarLimiteClientes(empresaId);
+
+    // Se calcula ANTES de insertar para que el aviso no incluya al recién creado
+    const previos = dto.rfc ? await this.buscarPorRnc(dto.rfc) : null;
 
     const cliente = this.clienteRepository.create({ ...dto, empresaId });
     try {
       const saved = await this.clienteRepository.save(cliente);
       this.realtimeService.notify(empresaId, 'cliente', 'created', saved.id);
+
+      // Aviso, no error: el cliente ya quedó guardado. Sirve para el caso en que
+      // el usuario creó desde un formulario que no consultó /clientes/rnc antes.
+      if (previos && previos.total > 0) {
+        return {
+          ...saved,
+          avisoRncCompartido: {
+            total:    previos.total,
+            clientes: previos.clientes,
+            mensaje:  `Ya existe${previos.total === 1 ? '' : 'n'} ${previos.total} ` +
+                      `cliente${previos.total === 1 ? '' : 's'} con este RNC`,
+          },
+        };
+      }
       return saved;
     } catch (err: unknown) {
-      handleRfcDuplicate(err, dto.rfc);
+      handleClienteDuplicate(err, dto.rfc, dto.nombre);
     }
   }
 
@@ -66,7 +127,8 @@ export class ClientesService {
 
     if (search) {
       qb.andWhere(
-        '(cliente.nombre ILIKE :s OR cliente.rfc ILIKE :s OR cliente.razonSocial ILIKE :s)',
+        '(cliente.nombre ILIKE :s OR cliente.rfc ILIKE :s OR cliente.razonSocial ILIKE :s ' +
+        ' OR cliente.rncReceptor ILIKE :s OR cliente.direccion ILIKE :s)',
         { s: `%${search}%` },
       );
     }
@@ -77,10 +139,32 @@ export class ClientesService {
       .take(Math.min(limit, 100))
       .getManyAndCount();
 
+    // Marca qué clientes comparten RNC con otro de la misma empresa. Los
+    // selectores lo usan para mostrar dirección y desambiguar: un cajero que ve
+    // cinco veces el mismo RNC sin más contexto no puede elegir bien.
+    const rncsCompartidos = await this.rncsCompartidos(empresaId);
+    const conMarca = data.map(c => ({
+      ...c,
+      rncCompartido: !!c.rfc && rncsCompartidos.has(c.rfc),
+    }));
+
     return {
-      data,
+      data: conMarca,
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
+  }
+
+  /** RNC que más de un cliente activo usa dentro de la empresa */
+  private async rncsCompartidos(empresaId: number): Promise<Set<string>> {
+    const rows = await this.dataSource.query<{ rfc: string }[]>(
+      `SELECT rfc
+         FROM clientes
+        WHERE "empresaId" = $1 AND "isActive" = true AND rfc IS NOT NULL AND rfc <> ''
+        GROUP BY rfc
+       HAVING COUNT(*) > 1`,
+      [empresaId],
+    );
+    return new Set(rows.map(r => r.rfc));
   }
 
   async findOne(id: number) {
@@ -92,23 +176,39 @@ export class ClientesService {
     return cliente;
   }
 
+  /**
+   * Un solo cliente por RNC — se mantiene por compatibilidad con integraciones
+   * existentes. Desde que varios clientes pueden compartir RNC (escuelas de un
+   * distrito), esto devuelve el más antiguo de forma determinista y avisa de
+   * los demás en `otrosConMismoRnc`. Para elegir entre varios usa buscarPorRnc().
+   */
   async findByRfc(rfc: string) {
     const empresaId = this.tenantService.getEmpresaId();
-    const cliente = await this.clienteRepository.findOne({
+    const clientes = await this.clienteRepository.find({
       where: { rfc, empresaId, isActive: true },
+      order: { id: 'ASC' },
     });
-    if (!cliente) throw new NotFoundException(`Cliente con RNC/Cédula ${rfc} no encontrado`);
-    return cliente;
+    if (clientes.length === 0) {
+      throw new NotFoundException(`Cliente con RNC/Cédula ${rfc} no encontrado`);
+    }
+    if (clientes.length > 1) {
+      this.logger.warn(
+        `RNC ${rfc} (empresa ${empresaId}) lo comparten ${clientes.length} clientes; ` +
+        `findByRfc devuelve el #${clientes[0].id}. Usar /clientes/rnc/:rnc para elegir.`,
+      );
+      return { ...clientes[0], otrosConMismoRnc: clientes.length - 1 };
+    }
+    return clientes[0];
   }
 
   async update(id: number, dto: UpdateClienteDto) {
     const empresaId = this.tenantService.getEmpresaId();
-    await this.findOne(id); // valida que existe en este tenant
+    const actual    = await this.findOne(id); // valida que existe en este tenant
 
     try {
       await this.clienteRepository.update(id, dto);
     } catch (err: unknown) {
-      handleRfcDuplicate(err, dto.rfc);
+      handleClienteDuplicate(err, dto.rfc ?? actual.rfc, dto.nombre ?? actual.nombre);
     }
 
     this.realtimeService.notify(empresaId, 'cliente', 'updated', id);

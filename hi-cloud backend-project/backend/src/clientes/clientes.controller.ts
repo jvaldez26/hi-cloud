@@ -79,9 +79,34 @@ export class ClientesController {
     res.send(buffer);
   }
 
+  @Get('rnc/:rnc')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @ApiOperation({
+    summary: 'Clientes que comparten un RNC/Cédula',
+    description:
+      'Devuelve TODOS los clientes activos con ese RNC (con dirección y contacto ' +
+      'para distinguirlos). Compartir RNC es válido: varias escuelas de un mismo ' +
+      'distrito educativo facturan bajo el RNC del distrito y son clientes ' +
+      'distintos. Se usa para la alerta no bloqueante al crear un cliente.',
+  })
+  buscarPorRnc(
+    @Param('rnc') rnc: string,
+    @Query('excluirId') excluirId?: string,
+  ) {
+    return this.clientesService.buscarPorRnc(
+      rnc,
+      excluirId ? Number(excluirId) : undefined,
+    );
+  }
+
   @Get('rfc/:rfc')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
-  @ApiOperation({ summary: 'Buscar cliente por RNC/Cédula' })
+  @ApiOperation({
+    summary: 'Buscar UN cliente por RNC/Cédula (compatibilidad)',
+    description:
+      'Devuelve el cliente más antiguo con ese RNC. Si varios lo comparten, ' +
+      'incluye "otrosConMismoRnc". Para elegir entre varios usar GET /clientes/rnc/:rnc.',
+  })
   findByRfc(@Param('rfc') rfc: string) {
     return this.clientesService.findByRfc(rfc);
   }

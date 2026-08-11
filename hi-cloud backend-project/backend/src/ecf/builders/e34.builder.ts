@@ -10,6 +10,7 @@ import {
   buildEmisor, assertEmisorOrder, toEmpresaConfig,
   buildIdDoc, addDias,
   buildCompradorRNC,
+  razonSocialFiscal,
   buildTotalesCero,
   EcfRncRequeridoError,
   resolverMoneda,
@@ -187,7 +188,7 @@ export function buildE34(input: ECFBuildInput): MSellerPayload {
         Emisor:    emisor,
         Comprador: buildCompradorRNC(
           rnc || '00000000000',
-          cliente?.nombre ?? 'Sin nombre',
+          razonSocialFiscal(cliente),
           cliente?.direccion ? { DireccionComprador: cliente.direccion } : undefined,
         ),
         Totales:   totales,

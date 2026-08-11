@@ -7,7 +7,7 @@ import {
   ECFBuildInput, MSellerPayload,
   buildEmisor, assertEmisorOrder, toEmpresaConfig,
   buildIdDoc, fmtFecha, addDias,
-  buildCompradorRNC, COMPRADOR_CONSUMIDOR_FINAL,
+  buildCompradorRNC, COMPRADOR_CONSUMIDOR_FINAL, razonSocialFiscal,
   EcfRncRequeridoError,
   resolverMoneda,
   round2,
@@ -91,7 +91,7 @@ export function buildE32(input: ECFBuildInput): MSellerPayload {
   const otMEEncab = mc.otraMonedaGravados(subtotME, itbisME, totalME);
 
   const comprador = rnc
-    ? buildCompradorRNC(rnc, cliente?.nombre ?? 'Cliente',
+    ? buildCompradorRNC(rnc, razonSocialFiscal(cliente, 'Cliente'),
         cliente?.direccion ? { DireccionComprador: cliente.direccion } : undefined)
     : { ...COMPRADOR_CONSUMIDOR_FINAL };
 
