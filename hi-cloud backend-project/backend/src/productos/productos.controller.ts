@@ -22,6 +22,7 @@ import { CreateProductoDto } from './dto/create-producto.dto';
 import { UpdateProductoDto } from './dto/update-producto.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { ListProductosQueryDto } from './dto/list-productos-query.dto';
+import { PreviewAjustePreciosDto } from './dto/ajuste-precios.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -41,6 +42,17 @@ export class ProductosController {
   @ApiOperation({ summary: 'Crear producto' })
   create(@Body() dto: CreateProductoDto) {
     return this.productosService.create(dto);
+  }
+
+  @Post('ajuste-precios/preview')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN)   // toca precios de venta: solo ADMIN de la empresa
+  @ApiOperation({
+    summary: 'Preview del ajuste de precios al público (solo lectura, no escribe nada). ' +
+             'Devuelve por producto el precio final actual y el propuesto, con la base despejada y verificada.',
+  })
+  previewAjustePrecios(@Body() dto: PreviewAjustePreciosDto) {
+    return this.productosService.previewAjustePrecios(dto);
   }
 
   @Get()

@@ -15,6 +15,8 @@ import { Movimiento, TipoMovimiento } from '../inventario/entities/movimiento.en
 import { CreateProductoDto } from './dto/create-producto.dto';
 import { UpdateProductoDto } from './dto/update-producto.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
+import { PreviewAjustePreciosDto } from './dto/ajuste-precios.dto';
+import { calcularFila } from './ajuste-precios.util';
 import { TenantService } from '../tenant/tenant.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { LimitesService } from '../suscripciones/limites.service';
@@ -643,5 +645,79 @@ export class ProductosService implements OnModuleInit {
         `Debe ser una unidad de tipo "peso" con permiteDecimales=true (ej. KG, LB, G).`,
       );
     }
+  }
+
+  // ── Ajuste de precios al público ───────────────────────────────────────────
+
+  /**
+   * PREVIEW del ajuste de precios al público. Solo lectura: calcula la propuesta
+   * y no escribe nada.
+   *
+   * El conjunto se acota siempre (categoría, marca o ids explícitos); sin ningún
+   * filtro devuelve vacío en vez de barrer el catálogo completo, para que nadie
+   * ajuste 6.000 productos por accidente.
+   *
+   * Cada fila incluye la verificación del despeje: si la base propuesta no
+   * reproduce exactamente el precio objetivo, viene con verificado=false y su
+   * motivo, y la UI la deja fuera de la selección.
+   */
+  async previewAjustePrecios(dto: PreviewAjustePreciosDto) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const tieneFiltro = !!dto.categoria || !!dto.marca || !!dto.productoIds?.length;
+    if (!tieneFiltro) {
+      return {
+        filas: [], total: 0, conCambio: 0, excluidas: 0,
+        aviso: 'Acota el conjunto por categoría, marca o selección manual — ' +
+               'no se ajusta el catálogo completo por defecto.',
+      };
+    }
+
+    const qb = this.productoRepository.createQueryBuilder('p')
+      .where('p."empresaId" = :empresaId', { empresaId })
+      .andWhere('p."isActive" = true')
+      .andWhere('p.precio > 0');
+
+    if (dto.productoIds?.length) {
+      qb.andWhere('p.id IN (:...ids)', { ids: dto.productoIds });
+    } else {
+      if (dto.categoria) qb.andWhere('p.categoria = :categoria', { categoria: dto.categoria });
+      if (dto.marca)     qb.andWhere('p.marca = :marca',         { marca: dto.marca });
+    }
+
+    const productos = await qb
+      .select(['p.id', 'p.codigo', 'p.nombre', 'p.precio', 'p.precio2', 'p.precio3',
+               'p.porcentajeIva', 'p.categoria', 'p.marca'])
+      .orderBy('p.nombre', 'ASC')
+      .getMany();
+
+    const direccion = dto.direccion ?? 'cercano';
+    const soloConCambio = dto.soloConCambio !== false;
+
+    const filas = productos.map(p => {
+      const pctIva = Number(p.porcentajeIva ?? 0);
+      const base   = calcularFila(Number(p.precio), pctIva, dto.modo, direccion);
+      // precio2/precio3 solo cuando el producto los tiene cargados
+      const p2 = p.precio2 != null && Number(p.precio2) > 0
+        ? calcularFila(Number(p.precio2), pctIva, dto.modo, direccion) : null;
+      const p3 = p.precio3 != null && Number(p.precio3) > 0
+        ? calcularFila(Number(p.precio3), pctIva, dto.modo, direccion) : null;
+
+      return {
+        id: p.id, codigo: p.codigo, nombre: p.nombre,
+        categoria: p.categoria, marca: p.marca, porcentajeIva: pctIva,
+        ...base,
+        precio2: p2, precio3: p3,
+      };
+    })
+    .filter(f => !soloConCambio || f.diferencia !== 0 || f.precio2?.diferencia || f.precio3?.diferencia)
+    // por desviación: primero lo que más se mueve
+    .sort((a, b) => Math.abs(b.diferencia) - Math.abs(a.diferencia));
+
+    return {
+      filas,
+      total:     productos.length,
+      conCambio: filas.filter(f => f.verificado && f.diferencia !== 0).length,
+      excluidas: filas.filter(f => !f.verificado).length,
+    };
   }
 }

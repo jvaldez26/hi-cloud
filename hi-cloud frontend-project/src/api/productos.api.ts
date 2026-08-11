@@ -42,4 +42,48 @@ export const productosApi = {
 
   historialCompras: (id: number) =>
     api.get(`/productos/${id}/historial-compras`).then((r: any) => r.data?.data ?? r.data),
+
+  /** Preview del ajuste de precios al público — SOLO LECTURA, no escribe nada */
+  previewAjustePrecios: (body: PreviewAjusteBody) =>
+    api.post<ApiResponse<PreviewAjusteResp>>('/productos/ajuste-precios/preview', body)
+      .then(r => r.data.data),
 };
+
+// ── Ajuste de precios al público ────────────────────────────────────────────
+export type ModoRedondeo =
+  | 'entero' | 'multiplo5' | 'multiplo10' | 'terminacion95' | 'terminacion99';
+export type DireccionRedondeo = 'cercano' | 'arriba' | 'abajo';
+
+export interface PreviewAjusteBody {
+  categoria?:     string;
+  marca?:         string;
+  productoIds?:   number[];
+  modo:           ModoRedondeo;
+  direccion?:     DireccionRedondeo;
+  soloConCambio?: boolean;
+}
+
+export interface FilaAjuste {
+  precioFinalActual:    number;
+  precioFinalPropuesto: number;
+  baseActual:           number;
+  baseNueva:            number;
+  diferencia:           number;
+  verificado:           boolean;
+  motivoExclusion?:     string;
+}
+
+export interface FilaAjusteProducto extends FilaAjuste {
+  id: number; codigo?: string; nombre: string;
+  categoria?: string; marca?: string; porcentajeIva: number;
+  precio2: FilaAjuste | null;
+  precio3: FilaAjuste | null;
+}
+
+export interface PreviewAjusteResp {
+  filas: FilaAjusteProducto[];
+  total: number;
+  conCambio: number;
+  excluidas: number;
+  aviso?: string;
+}

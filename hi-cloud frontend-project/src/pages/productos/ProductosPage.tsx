@@ -11,7 +11,8 @@ import { Table, Button, Input, Space, Tag, Modal, Form, Row, Col,
 import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
          WarningOutlined, PictureOutlined, UploadOutlined, LinkOutlined,
          FileExcelOutlined, BarcodeOutlined, AppstoreOutlined,
-         CloseOutlined, QuestionCircleOutlined, DownOutlined } from '@ant-design/icons';
+         CloseOutlined, QuestionCircleOutlined, DownOutlined, CalculatorOutlined } from '@ant-design/icons';
+import AjustePreciosModal from './AjustePreciosModal';
 import { TableActions } from '../../components/ui/TableActions';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -590,6 +591,10 @@ function ProductosCatalogo() {
   });
 
   const categorias = [...new Set((data?.data ?? []).map((p: Producto) => p.categoria).filter(Boolean))] as string[];
+  const marcas     = [...new Set((data?.data ?? []).map((p: Producto) => (p as any).marca).filter(Boolean))] as string[];
+  // Ajustar precios al público toca precios de venta: solo ADMIN (el backend lo exige igual)
+  const esAdminPrecios = String((user as any)?.role ?? '').toLowerCase() === 'admin';
+  const [ajusteOpen, setAjusteOpen] = useState(false);
 
   // Mapa almacenId → sucursalId para el filtro local de sucursal
   const almacenSucursalMap = useMemo(() => {
@@ -971,6 +976,13 @@ function ProductosCatalogo() {
                 Excel <DownOutlined />
               </Button>
             </Dropdown>
+            {esAdminPrecios && (
+              <Tooltip title="Corrige precios al público que quedaron con céntimos (400.02 en vez de 400.00)">
+                <Button icon={<CalculatorOutlined />} onClick={() => setAjusteOpen(true)}>
+                  Ajustar precios
+                </Button>
+              </Tooltip>
+            )}
             <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <RefreshByKeyButton queryKey={['productos']} />
             <VideoTutorialButton />
@@ -1477,6 +1489,15 @@ function ProductosCatalogo() {
           ]}
         />
       </DetailDrawer>
+
+      {esAdminPrecios && (
+        <AjustePreciosModal
+          open={ajusteOpen}
+          onClose={() => setAjusteOpen(false)}
+          categorias={categorias}
+          marcas={marcas}
+        />
+      )}
     </>
   );
 }
