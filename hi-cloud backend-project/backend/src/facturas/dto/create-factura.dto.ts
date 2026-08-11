@@ -69,8 +69,8 @@ export class CreateFacturaDetalleDto {
   descuentoMonto?: number;
 
   @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @IsPositive()
+  @IsNumber({ maxDecimalPlaces: 4 })   // 4dp — consistente con precioUnitario; precio lista
+  @IsPositive()                         // puede venir de divisiones (ej. PVP÷1.18)
   precioOriginal?: number;
 }
 

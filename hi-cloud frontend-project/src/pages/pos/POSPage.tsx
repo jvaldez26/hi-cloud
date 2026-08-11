@@ -10033,10 +10033,12 @@ export default function POSPage() {
           productoId:          i.produto.id > 0 ? i.produto.id : undefined,
           opticaInventarioId:  (i.produto as any).opticaInventarioId ?? undefined,
           cantidad:            i.cantidad,
-          precioUnitario:      i.precio - i.descuentoMonto,
+          precioUnitario:      parseFloat((i.precio - i.descuentoMonto).toFixed(4)),
           descripcion:         i.produto.nombre,
           descuentoMonto:      i.descuentoMonto,
-          precioOriginal:      i.descuentoMonto > 0 ? i.precio : undefined,
+          // round a 4dp para no exceder @IsNumber({maxDecimalPlaces:4}) cuando
+          // i.precio viene con más decimales de DB (ej. decimal(12,4)) o por IEEE754
+          precioOriginal:      i.descuentoMonto > 0 ? parseFloat(i.precio.toFixed(4)) : undefined,
           // E44 (Zona Franca): ITBIS = 0 en todos los ítems
           ...(tipoNcf === 'E44' ? { porcentajeIva: 0 } : {}),
         })),
