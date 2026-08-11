@@ -227,4 +227,15 @@ export class CreateFacturaDto {
   @ValidateNested({ each: true })
   @Type(() => FormaPagoDto)
   formasPago?: FormaPagoDto[];
+
+  /**
+   * Propina cobrada junto con la venta. NO se persiste ni entra en el total de
+   * la factura (no es un ingreso gravado): se declara solo para que la
+   * validación aritmética de formasPago sepa que los montos aplicados suman
+   * total + propina y no rechace un cobro legítimo.
+   */
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  propina?: number;
 }

@@ -9,7 +9,7 @@ import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Factura, FacturaEstado } from './entities/factura.entity';
 import { FacturaDetalle } from './entities/factura-detalle.entity';
-import { CreateFacturaDto } from './dto/create-factura.dto';
+import { CreateFacturaDto, FormaPagoDto } from './dto/create-factura.dto';
 import { ClientesService } from '../clientes/clientes.service';
 import { ProductosService } from '../productos/productos.service';
 import { InventarioService } from '../inventario/inventario.service';
@@ -68,6 +68,81 @@ export class FacturasService {
       [empresaId, 'FAC'],
     );
     return `FAC-${row.numero}`;
+  }
+
+  /**
+   * Invariantes ARITMÉTICAS de las formas de pago. No son juicios de negocio:
+   * son las que garantizan que el arqueo de caja cierre, sin importar qué mande
+   * el cliente. Viven aquí y no solo en el POS a propósito.
+   *
+   *   1. La suma de los montos APLICADOS es exactamente el total de la factura.
+   *      `monto` es lo que entra a caja por esa vía — nunca el billete que el
+   *      cliente entregó, que va en `montoEntregado`.
+   *   2. montoEntregado >= monto: no se puede entregar menos de lo aplicado.
+   *   3. Ningún monto aplicado negativo (ni cero).
+   *   4. Las vías sin vuelto (todo salvo efectivo=1) no pueden exceder el total:
+   *      de una tarjeta no se da cambio, así que el efectivo aplicado saldría
+   *      negativo.
+   *
+   * Lo que NO se valida aquí: que una forma "sobre" porque el efectivo entregado
+   * ya cubra el total. Un pago con exceso puede ser legítimo (tarjeta 500 +
+   * billete de 2.500 en una venta de 2.035) o un error de registro (FAC-219);
+   * son estructuralmente idénticos y solo los separa la magnitud del vuelto, que
+   * es un juicio del cajero. El POS pide confirmación explícita en ese caso; el
+   * backend no puede pedirla y rechazar rompería cobros válidos en el mostrador.
+   *
+   * Tolerancia 0.01 = el céntimo de redondeo, la misma que ya usa la UI de
+   * Facturas. La propina no forma parte del total de la factura, así que si
+   * viene declarada se suma al objetivo.
+   */
+  private validarFormasPago(
+    dto: { formasPago?: FormaPagoDto[]; propina?: number },
+    totalFactura: number,
+  ): void {
+    const formas = dto.formasPago;
+    if (!formas?.length) return;
+    const r2v = (n: number) => Math.round(n * 100) / 100;
+
+    const negativo = formas.find(f => !(Number(f.monto) > 0));
+    if (negativo) {
+      throw new BadRequestException(
+        `[formasPago] Monto inválido (RD$${Number(negativo.monto).toFixed(2)}) en la forma de pago ` +
+        `tipo ${negativo.tipo}: debe ser mayor que cero.`,
+      );
+    }
+
+    const entregadoInvalido = formas.find(
+      f => f.montoEntregado != null && Number(f.montoEntregado) < Number(f.monto),
+    );
+    if (entregadoInvalido) {
+      throw new BadRequestException(
+        `[formasPago] montoEntregado (RD$${Number(entregadoInvalido.montoEntregado).toFixed(2)}) ` +
+        `no puede ser menor que el monto aplicado ` +
+        `(RD$${Number(entregadoInvalido.monto).toFixed(2)}).`,
+      );
+    }
+
+    const sinVuelto = r2v(formas.filter(f => f.tipo !== 1)
+      .reduce((s, f) => s + Number(f.monto ?? 0), 0));
+    if (sinVuelto > r2v(totalFactura + 0.01)) {
+      throw new BadRequestException(
+        `[formasPago] Las formas de pago sin vuelto (tarjeta, transferencia, cheque, vale) ` +
+        `suman RD$${sinVuelto.toFixed(2)} y superan el total de la factura ` +
+        `(RD$${totalFactura.toFixed(2)}). Solo el efectivo admite cambio — corrige los montos.`,
+      );
+    }
+
+    const objetivo = r2v(totalFactura + Number(dto.propina ?? 0));
+    const aplicado = r2v(formas.reduce((s, f) => s + Number(f.monto ?? 0), 0));
+    if (Math.abs(aplicado - objetivo) > 0.01) {
+      throw new BadRequestException(
+        `[formasPago] Los montos aplicados suman RD$${aplicado.toFixed(2)} y el total ` +
+        `${dto.propina ? 'con propina ' : ''}es RD$${objetivo.toFixed(2)} ` +
+        `(diferencia RD$${Math.abs(aplicado - objetivo).toFixed(2)}). ` +
+        `El monto de cada forma debe ser lo APLICADO a la venta; si el cliente ` +
+        `entregó de más, ese billete va en montoEntregado.`,
+      );
+    }
   }
 
   async create(dto: CreateFacturaDto, usuario: User) {
@@ -216,38 +291,7 @@ export class FacturasService {
     // Si es moneda extranjera, totalOriginal = monto en esa moneda; total = DOP
     const totalOriginal = moneda !== 'DOP' ? +(totalDOP / tipoCambio).toFixed(2) : undefined;
 
-    // ── Formas de pago: el monto es lo APLICADO, no lo entregado ──────────────
-    // Las vías sin vuelto (todo salvo efectivo=1) no pueden exceder el total: de
-    // una tarjeta o una transferencia no se da cambio. Cuando eso pasaba, el
-    // efectivo aplicado salía negativo y el arqueo del día quedaba inflado.
-    if (dto.formasPago?.length) {
-      const sinVuelto = r2(dto.formasPago
-        .filter(f => f.tipo !== 1)
-        .reduce((s, f) => s + Number(f.monto ?? 0), 0));
-      if (sinVuelto > r2(totalDOP + 0.05)) {
-        throw new BadRequestException(
-          `[formasPago] Las formas de pago sin vuelto (tarjeta, transferencia, cheque, vale) ` +
-          `suman RD$${sinVuelto.toFixed(2)} y superan el total de la factura ` +
-          `(RD$${totalDOP.toFixed(2)}). Solo el efectivo admite cambio — corrige los montos.`,
-        );
-      }
-      // NOTA: no se valida aquí que una forma "sobre" porque el efectivo
-      // entregado ya cubra el total. Un pago con exceso puede ser legítimo
-      // (tarjeta 500 + billete de 2.500 en una venta de 2.035) o un error de
-      // registro (FAC-219): son estructuralmente idénticos y solo los separa la
-      // magnitud del vuelto, que es un juicio del cajero. El POS pide
-      // confirmación explícita en ese caso; el backend no puede pedirla y
-      // rechazar rompería cobros válidos en el mostrador.
-      const entregadoInvalido = dto.formasPago.find(
-        f => f.montoEntregado != null && Number(f.montoEntregado) < Number(f.monto),
-      );
-      if (entregadoInvalido) {
-        throw new BadRequestException(
-          `[formasPago] montoEntregado (RD$${Number(entregadoInvalido.montoEntregado).toFixed(2)}) ` +
-          `no puede ser menor que el monto aplicado (RD$${Number(entregadoInvalido.monto).toFixed(2)}).`,
-        );
-      }
-    }
+    this.validarFormasPago(dto, totalDOP);
 
     // Si hay formasPago explícitas, derivar tipoPago de ellas (tipo 4 = crédito)
     let tipoPago = dto.tipoPago?.toUpperCase() === 'CREDITO' ? 'CREDITO' : 'CONTADO';
@@ -489,6 +533,10 @@ export class FacturasService {
     const tipoCambio    = dto.tipoCambio ?? 1;
     const totalDOP      = r2u(subtotalFactura + ivaFactura);
     const totalOriginal = moneda !== 'DOP' ? +(totalDOP / tipoCambio).toFixed(2) : undefined;
+
+    // Mismas invariantes aritméticas que en create(): editar una factura no
+    // puede dejar las formas de pago descuadradas contra el nuevo total.
+    this.validarFormasPago(dto, totalDOP);
 
     let tipoPago = dto.tipoPago?.toUpperCase() === 'CREDITO' ? 'CREDITO' : 'CONTADO';
     if (dto.formasPago?.length) {

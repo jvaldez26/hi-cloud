@@ -10330,6 +10330,10 @@ export default function POSPage() {
         // PAGADO / CAMBIO en la reimpresión.
         // Antes se guardaba el entregado como monto y el arqueo del día quedaba
         // inflado por el vuelto (el cierre esperaba 1.000 en gaveta habiendo 385).
+        // La propina no entra en el total de la factura pero sí en lo que cobra
+        // la caja: se declara para que la validación aritmética del backend
+        // (suma de aplicados == total) sepa contra qué comparar.
+        ...(propinaMontoCalc > 0 ? { propina: propinaMontoCalc } : {}),
         ...(tipoPagoPos === 'CONTADO' ? {
           formasPago: esMixto
             ? [

@@ -12,7 +12,10 @@ export interface FacturaDetallePayload {
 
 export interface FormaPagoPayload {
   tipo: 1 | 2 | 3 | 4 | 5 | 6;  // 1=Efectivo 2=Cheque/Transfer 3=Tarjeta 4=Crédito 5=Permuta 6=NC
+  /** monto APLICADO a la venta — la suma de todas las formas debe dar el total */
   monto: number;
+  /** solo efectivo: el billete que entregó el cliente cuando hubo vuelto */
+  montoEntregado?: number;
   referencia?: string;
 }
 
@@ -46,6 +49,8 @@ export interface FacturaPayload {
   descuentoGeneralFinal?: number;
   ordenCompraNumero?:     string;
   formasPago?:            FormaPagoPayload[];
+  /** propina cobrada aparte del total — solo para la validación de formasPago */
+  propina?:               number;
 }
 
 export const facturasApi = {
