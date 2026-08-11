@@ -2342,6 +2342,9 @@ export default function AppLayout() {
         planActual={suscripcion?.plan}
         fechaVencimiento={suscripcion?.fechaFinPrueba ?? suscripcion?.fechaVencimiento}
         motivoSuspension={suscripcion?.motivoSuspension}
+        misEmpresas={misEmpresas}
+        empresaActualId={empresaActiva}
+        onCambiarEmpresa={cambiarEmpresa}
       />
     );
   }

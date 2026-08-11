@@ -13,13 +13,31 @@ const PLANES_OPCIONES = [
   { value: 'plus',        label: 'PLUS — RD$7,600/mes (hasta RD$6.25M ingresos, 10 usuarios)' },
 ];
 
+interface EmpresaItem {
+  empresaId: number;
+  nombre:    string;
+}
+
 interface SuspensionScreenProps {
   planActual?: string;
   fechaVencimiento?: string;
   motivoSuspension?: string | null;
+  /** Lista de todas las empresas del usuario (para mostrar cambio de empresa) */
+  misEmpresas?: EmpresaItem[];
+  /** Id de la empresa actual suspendida (para excluirla del selector) */
+  empresaActualId?: number | null;
+  /** Callback para cambiar a otra empresa */
+  onCambiarEmpresa?: (empresaId: number) => void;
 }
 
-export default function SuspensionScreen({ planActual = 'emprendedor', fechaVencimiento, motivoSuspension }: SuspensionScreenProps) {
+export default function SuspensionScreen({
+  planActual = 'emprendedor',
+  fechaVencimiento,
+  motivoSuspension,
+  misEmpresas = [],
+  empresaActualId,
+  onCambiarEmpresa,
+}: SuspensionScreenProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [enviado,   setEnviado]   = useState(false);
   const [form] = Form.useForm();
@@ -127,6 +145,26 @@ export default function SuspensionScreen({ planActual = 'emprendedor', fechaVenc
         <Text style={{ color: '#475569', fontSize: 12 }}>
           Un asesor te contactará en menos de 24 horas
         </Text>
+
+        {/* Cambio de empresa — visible si el usuario pertenece a más de una */}
+        {misEmpresas.length > 1 && onCambiarEmpresa && (
+          <div style={{ marginTop: 16, padding: '14px 16px', background: 'rgba(255,255,255,0.04)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.08)' }}>
+            <Text style={{ color: '#94A3B8', fontSize: 13, display: 'block', marginBottom: 8 }}>
+              Cambiar a otra empresa:
+            </Text>
+            <Select
+              size="middle"
+              style={{ width: '100%' }}
+              placeholder="Selecciona una empresa…"
+              onChange={(id: number) => onCambiarEmpresa(id)}
+              options={misEmpresas
+                .filter(e => e.empresaId !== empresaActualId)
+                .map(e => ({ value: e.empresaId, label: e.nombre }))
+              }
+              styles={{ popup: { root: { background: '#1E293B' } } }}
+            />
+          </div>
+        )}
 
         <div style={{ marginTop: 24, borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 16 }}>
           <Button
