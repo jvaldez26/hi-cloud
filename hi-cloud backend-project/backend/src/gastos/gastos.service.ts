@@ -88,10 +88,10 @@ export class GastosService {
     return gasto;
   }
 
-  async listar(pagination: PaginationDto, mes?: number, anio?: number, categoria?: CategoriaGasto) {
+  async listar(pagination: PaginationDto, mes?: number, anio?: number, categoria?: CategoriaGasto, exportar?: boolean) {
     const { limit = 10, page = 1, search } = pagination;
-    // limit=0 → exportación completa sin paginación
-    const exportAll = limit === 0;
+    // exportar=true → devuelve todos los registros sin paginación (para Excel)
+    const exportAll = exportar === true;
 
     const empresaId  = this.tenantService.getEmpresaId();
     const sucursalId = this.tenantService.getSucursalId();

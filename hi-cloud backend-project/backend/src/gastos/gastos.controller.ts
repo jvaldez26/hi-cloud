@@ -4,9 +4,9 @@ import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import {
   IsEnum, IsString, IsNotEmpty, IsNumber, IsPositive,
-  IsOptional, IsDateString, Min, IsInt,
+  IsOptional, IsDateString, Min, IsInt, IsBoolean,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { GastosService } from './gastos.service';
 import { GastoPDFService } from './gasto-pdf.service';
 import { CategoriaGasto } from './entities/gasto.entity';
@@ -19,12 +19,14 @@ import { UserRole } from '../users/enums/user-role.enum';
 import { User } from '../users/users.entity';
 
 class ListGastosDto {
-  @IsOptional() @IsInt() @Type(() => Number)    page?:      number;
-  @IsOptional() @IsInt() @Type(() => Number)    limit?:     number;
-  @IsOptional() @IsString()                     search?:    string;
-  @IsOptional() @IsInt() @Type(() => Number)    mes?:       number;
-  @IsOptional() @IsInt() @Type(() => Number)    anio?:      number;
-  @IsOptional() @IsEnum(CategoriaGasto)         categoria?: CategoriaGasto;
+  @IsOptional() @IsInt() @Type(() => Number)                              page?:      number;
+  @IsOptional() @IsInt() @Type(() => Number)                              limit?:     number;
+  @IsOptional() @IsString()                                               search?:    string;
+  @IsOptional() @IsInt() @Type(() => Number)                              mes?:       number;
+  @IsOptional() @IsInt() @Type(() => Number)                              anio?:      number;
+  @IsOptional() @IsEnum(CategoriaGasto)                                   categoria?: CategoriaGasto;
+  /** true → devuelve todos los registros sin paginación (solo para exportar a Excel) */
+  @IsOptional() @IsBoolean() @Transform(({ value }) => value === 'true') exportar?:  boolean;
 }
 
 class CreateGastoDto {
@@ -90,6 +92,7 @@ export class GastosController {
       q.mes,
       q.anio,
       q.categoria,
+      q.exportar,
     );
   }
 
