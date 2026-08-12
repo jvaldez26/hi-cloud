@@ -152,11 +152,37 @@ export class ImportacionService {
           continue;
         }
 
+        // Si el RNC ya lo usan otros clientes (escuelas del mismo distrito), se
+        // hereda su razón social fiscal: ante DGII un RNC es un contribuyente y
+        // todos deben declarar la misma. Sin esto, cada fila importada caería al
+        // fallback de `nombre` y declararía algo distinto.
+        const razonSocialGrupo = (await this.clienteRepository
+          .createQueryBuilder('c')
+          .select('DISTINCT btrim(c.razonSocial)', 'razonSocial')
+          .where('c.empresaId = :empresaId', { empresaId })
+          .andWhere('c.isActive = true')
+          .andWhere('c.rfc = :rnc', { rnc })
+          .andWhere("btrim(COALESCE(c.razonSocial, '')) <> ''")
+          .getRawMany<{ razonSocial: string }>())
+          .map(r => r.razonSocial);
+
+        if (razonSocialGrupo.length > 1) {
+          result.errores++;
+          result.detalles.push({
+            fila:   fNum,
+            error:  `El RNC ${rnc} ya se declara con ${razonSocialGrupo.length} razones ` +
+                    `sociales distintas (${razonSocialGrupo.join(', ')}). Unifícalas antes de importar.`,
+            estado: 'error',
+          });
+          continue;
+        }
+
         await this.clienteRepository.save(
           this.clienteRepository.create({
             empresaId,
             nombre,
             rfc:      rnc,
+            razonSocial: razonSocialGrupo[0] ?? undefined,
             email:    idx('email')    >= 0 ? (fila[idx('email')]    || undefined) : undefined,
             telefono: idx('telefono') >= 0 ? (fila[idx('telefono')] || undefined) : undefined,
             direccion:idx('direccion')>= 0 ? (fila[idx('direccion')]|| undefined) : undefined,

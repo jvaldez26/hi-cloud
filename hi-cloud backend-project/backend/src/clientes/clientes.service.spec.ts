@@ -60,3 +60,73 @@ describe('ClientesService — reglas de RNC', () => {
     await expect(validar(service, '101532483')).resolves.toBeUndefined();
   });
 });
+
+/**
+ * Ante DGII un RNC es un contribuyente: los clientes que lo compartan deben
+ * declarar la misma razón social. Si el campo fiscal queda vacío se cae a
+ * `nombre` — que es justo lo que los distingue — y cada uno declara algo
+ * distinto. Pasó en producción con tres clientes del RNC 132269551.
+ */
+describe('ClientesService — razón social de un RNC compartido', () => {
+  const build = (grupo: Array<{ nombre: string; razonSocial?: string }>) => {
+    const service = new ClientesService(
+      {} as any,
+      { query: jest.fn().mockResolvedValue([{ rnc: '000', nombre: 'X' }]) } as any,
+      { getEmpresaId: () => 57 } as any,
+      { notify: jest.fn() } as any,
+      { verificarLimiteClientes: jest.fn() } as any,
+    );
+    jest.spyOn(service, 'buscarPorRnc').mockResolvedValue({
+      rnc: '132269551', total: grupo.length, clientes: grupo as any,
+    });
+    return service;
+  };
+
+  const resolver = (service: ClientesService, rfc?: string, razon?: string) =>
+    (service as any).resolverRazonSocialDelGrupo(rfc, razon);
+
+  it('hereda la razón social cuando el grupo declara una sola', async () => {
+    const s = build([
+      { nombre: 'Escuela Los Alcarrizos #3', razonSocial: 'DISTRITO EDUCATIVO 10-04' },
+      { nombre: 'Escuela Manoguayabo',       razonSocial: 'DISTRITO EDUCATIVO 10-04' },
+    ]);
+    await expect(resolver(s, '132269551', undefined))
+      .resolves.toBe('DISTRITO EDUCATIVO 10-04');
+  });
+
+  it('exige la razón social cuando el grupo no tiene ninguna', async () => {
+    const s = build([{ nombre: 'VALDEZ GONZALEZ 2' }]);
+    await expect(resolver(s, '132269551', ''))
+      .rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('exige la razón social cuando el grupo declara varias distintas', async () => {
+    const s = build([
+      { nombre: 'A', razonSocial: 'RAZON UNO' },
+      { nombre: 'B', razonSocial: 'RAZON DOS' },
+    ]);
+    await expect(resolver(s, '132269551', undefined)).rejects.toThrow(/no coinciden/i);
+  });
+
+  it('el mensaje nombra a los clientes que ya usan el RNC', async () => {
+    const s = build([{ nombre: 'VALDEZ GONZALEZ 2' }]);
+    await expect(resolver(s, '132269551', '')).rejects.toThrow(/VALDEZ GONZALEZ 2/);
+  });
+
+  it('respeta la razón social que el usuario escribió', async () => {
+    const s = build([{ nombre: 'otro', razonSocial: 'RAZON DEL GRUPO' }]);
+    await expect(resolver(s, '132269551', 'LA QUE YO PUSE')).resolves.toBeUndefined();
+    expect(s.buscarPorRnc).not.toHaveBeenCalled();   // ni consulta el grupo
+  });
+
+  it('no exige nada cuando el RNC es nuevo — el fallback a nombre es correcto', async () => {
+    const s = build([]);
+    await expect(resolver(s, '101532483', undefined)).resolves.toBeUndefined();
+  });
+
+  it('no exige nada cuando el cliente no tiene RNC', async () => {
+    const s = build([{ nombre: 'otro' }]);
+    await expect(resolver(s, undefined, undefined)).resolves.toBeUndefined();
+    await expect(resolver(s, '', undefined)).resolves.toBeUndefined();
+  });
+});

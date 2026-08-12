@@ -117,6 +117,62 @@ export class ClientesService {
     return { rnc: rncLimpio, total: clientes.length, clientes };
   }
 
+  /**
+   * Ante DGII un RNC identifica UN contribuyente: todos los clientes que lo
+   * compartan tienen que declarar la misma razón social. Cuando la razón social
+   * fiscal queda vacía se cae a `nombre`, que es justo lo que distingue a las
+   * sucursales entre sí — y entonces cada una declara algo distinto.
+   *
+   * Ya pasó: tres clientes del RNC 132269551 emitieron e-CF aceptados por DGII
+   * con tres RazonSocialComprador diferentes. El fallback es correcto para un
+   * cliente con RNC propio, pero hace daño en cuanto el RNC se comparte.
+   *
+   * Por eso, al entrar a un grupo que ya existe:
+   *   - si el grupo ya declara una razón social única, se hereda en silencio
+   *     (así los flujos sin formulario — POS, importación — no se rompen);
+   *   - si no hay ninguna que heredar, se exige, porque no hay forma de
+   *     adivinarla y dejarla vacía reproduce el problema.
+   *
+   * Devuelve la razón social a usar, o undefined si no hay que tocar nada.
+   */
+  private async resolverRazonSocialDelGrupo(
+    rfc:          string | undefined,
+    razonSocial:  string | undefined,
+    excluirId?:   number,
+    grupoCargado?: Awaited<ReturnType<ClientesService['buscarPorRnc']>>,
+  ): Promise<string | undefined> {
+    if ((razonSocial ?? '').trim()) return undefined;   // el usuario ya la dio
+    if (!(rfc ?? '').trim()) return undefined;          // sin RNC no hay grupo
+
+    const { clientes } = grupoCargado ?? await this.buscarPorRnc(rfc!, excluirId);
+    if (clientes.length === 0) return undefined;        // RNC nuevo: fallback OK
+
+    const delGrupo = new Set(
+      clientes.map(c => (c.razonSocial ?? '').trim()).filter(Boolean),
+    );
+
+    if (delGrupo.size === 1) {
+      const heredada = [...delGrupo][0];
+      this.logger.log(
+        `RNC ${rfc} ya lo usan ${clientes.length} clientes; se hereda su razón ` +
+        `social fiscal: "${heredada}"`,
+      );
+      return heredada;
+    }
+
+    const nombres = clientes.map(c => c.nombre).join(', ');
+    throw new BadRequestException(
+      `El RNC ${rfc} ya lo usa${clientes.length === 1 ? '' : 'n'} ${clientes.length} ` +
+      `cliente${clientes.length === 1 ? '' : 's'} (${nombres}) y ` +
+      (delGrupo.size === 0
+        ? 'ninguno tiene definida la Razón Social fiscal (DGII). '
+        : `no coinciden entre sí (${[...delGrupo].map(r => `"${r}"`).join(', ')}). `) +
+      'Indica la Razón Social fiscal registrada para ese RNC: ante DGII un RNC ' +
+      'es un solo contribuyente y todos deben declarar la misma. ' +
+      'El nombre del cliente puede seguir siendo distinto para diferenciarlos.',
+    );
+  }
+
   async create(dto: CreateClienteDto) {
     const empresaId = this.tenantService.getEmpresaId();
     await this.validarRncReceptor(dto.rncReceptor);
@@ -124,6 +180,12 @@ export class ClientesService {
 
     // Se calcula ANTES de insertar para que el aviso no incluya al recién creado
     const previos = dto.rfc ? await this.buscarPorRnc(dto.rfc) : null;
+
+    // Reutiliza el grupo ya consultado arriba
+    const heredada = await this.resolverRazonSocialDelGrupo(
+      dto.rfc, dto.razonSocial, undefined, previos ?? undefined,
+    );
+    if (heredada) dto = { ...dto, razonSocial: heredada };
 
     const cliente = this.clienteRepository.create({ ...dto, empresaId });
     try {
@@ -238,6 +300,20 @@ export class ClientesService {
     const empresaId = this.tenantService.getEmpresaId();
     const actual    = await this.findOne(id); // valida que existe en este tenant
     if (dto.rncReceptor !== undefined) await this.validarRncReceptor(dto.rncReceptor);
+
+    // Cambiar el RNC puede meter a este cliente en un grupo que ya existe — es
+    // lo que hace el POS al guardar el RNC en el perfil desde el modal de venta.
+    // Se resuelve igual que al crear, excluyéndose a sí mismo del grupo.
+    //
+    // Solo cuando el PATCH toca la situación fiscal: editar el teléfono de un
+    // cliente que ya venía en un grupo divergente no debe quedar bloqueado, o
+    // los registros anteriores a esta regla serían ineditables.
+    if (dto.rfc !== undefined || dto.razonSocial !== undefined) {
+      const rfcFinal         = dto.rfc         ?? actual.rfc;
+      const razonSocialFinal = dto.razonSocial ?? actual.razonSocial;
+      const heredada = await this.resolverRazonSocialDelGrupo(rfcFinal, razonSocialFinal, id);
+      if (heredada) dto = { ...dto, razonSocial: heredada };
+    }
 
     try {
       await this.clienteRepository.update(id, dto);

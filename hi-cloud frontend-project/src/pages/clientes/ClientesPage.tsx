@@ -74,8 +74,18 @@ export default function ClientesPage() {
     try {
       const res = await clientesApi.buscarPorRnc(limpio, editing?.id);
       setRncExistentes(res.total > 0 ? res : null);
+
+      // Con el RNC compartido el campo deja de ser opcional: si queda vacío, el
+      // fallback usaría el nombre interno y cada cliente declararía uno distinto
+      // ante DGII. Se precarga con la del grupo para que sea un solo enter.
+      if (res.total > 0 && !(form.getFieldValue('razonSocial') ?? '').trim()) {
+        const delGrupo = new Set(
+          res.clientes.map(c => (c.razonSocial ?? '').trim()).filter(Boolean),
+        );
+        if (delGrupo.size === 1) form.setFieldsValue({ razonSocial: [...delGrupo][0] });
+      }
     } catch { setRncExistentes(null); }
-  }, [editing?.id]);
+  }, [editing?.id, form]);
 
   /**
    * Ante DGII el RNC identifica UN contribuyente, así que todos los clientes
@@ -86,6 +96,8 @@ export default function ClientesPage() {
    */
   const razonSocialForm = Form.useWatch('razonSocial', form);
   const nombreForm      = Form.useWatch('nombre', form);
+  /** El RNC del formulario ya lo usan otros clientes de la empresa */
+  const rncCompartidoActual = !!rncExistentes && rncExistentes.total > 0;
   const razonSocialDelGrupo = (() => {
     const definidas = new Set(
       (rncExistentes?.clientes ?? [])
@@ -681,7 +693,29 @@ export default function ClientesPage() {
               <Form.Item
                 name="razonSocial"
                 label="Razón Social fiscal (DGII)"
-                tooltip="La razón social registrada para este RNC. Es lo que se declara como RazonSocialComprador en el e-CF, así que debe ser idéntica en todos los clientes que compartan el RNC. Si se deja vacía se usa el nombre del cliente.">
+                tooltip="La razón social registrada para este RNC. Es lo que se declara como RazonSocialComprador en el e-CF, así que debe ser idéntica en todos los clientes que compartan el RNC. Si se deja vacía se usa el nombre del cliente."
+                // Obligatoria solo cuando el RNC ya lo usan otros clientes: ahí
+                // el fallback al nombre interno haría que cada uno declarara algo
+                // distinto para el mismo contribuyente
+                required={rncCompartidoActual}
+                extra={rncCompartidoActual ? (
+                  <span style={{ fontSize: 11 }}>
+                    Obligatoria: este RNC lo usan {rncExistentes!.total + 1} clientes y
+                    todos deben declarar la misma
+                  </span>
+                ) : undefined}
+                rules={[{
+                  validator: (_, v) => {
+                    if (!rncCompartidoActual) return Promise.resolve();
+                    return (v ?? '').trim()
+                      ? Promise.resolve()
+                      : Promise.reject(
+                          'Indica la razón social registrada del RNC: si la dejas vacía, ' +
+                          'este cliente declararía su nombre interno ante DGII y no ' +
+                          'coincidiría con los demás del mismo RNC.',
+                        );
+                  },
+                }]}>
                 <Input placeholder="Se autocompleta al consultar el RNC" />
               </Form.Item>
             </Col>
