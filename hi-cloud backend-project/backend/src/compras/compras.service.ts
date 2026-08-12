@@ -11,6 +11,7 @@ import { CreateCompraDto } from './dto/create-compra.dto';
 import { ProveedoresService } from '../proveedores/proveedores.service';
 import { ProductosService } from '../productos/productos.service';
 import { InventarioService } from '../inventario/inventario.service';
+import { ValoracionStockService } from '../valoracion-stock/valoracion-stock.service';
 import { CxPService } from '../cxp/cxp.service';
 import { AsientosAutomaticosService } from '../contabilidad/services/asientos-automaticos.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
@@ -31,6 +32,7 @@ export class ComprasService {
     private proveedoresService: ProveedoresService,
     private productosService:   ProductosService,
     private inventarioService:  InventarioService,
+    private valoracionService:  ValoracionStockService,
     private cxpService:         CxPService,
     private asientosService:    AsientosAutomaticosService,
     private tenantService:      TenantService,
@@ -267,6 +269,16 @@ export class ComprasService {
           compra.folio,
           almacenIdCompra,
         );
+        // 1b. Actualizar costo promedio (AVCO).
+        // Se omite cuando costoReal = 0 (bonificaciones puras) para no corromper el promedio.
+        const costoReal = Number((detalle as any).costoUnitarioReal ?? detalle.precioUnitario);
+        if (costoReal > 0) {
+          await this.valoracionService.actualizarCostoPromedio(
+            detalle.productoId,
+            qtdInventario,
+            costoReal,
+          );
+        }
       }
 
       // 2. Crear cuenta por pagar solo si tipoPago = 'credito'
@@ -367,6 +379,16 @@ export class ComprasService {
         compra.folio,
         almacenIdCompra,
       );
+
+      // Actualizar AVCO con la cantidad recibida en esta recepción parcial.
+      const costoReal = Number((detalle as any).costoUnitarioReal ?? detalle.precioUnitario);
+      if (costoReal > 0) {
+        await this.valoracionService.actualizarCostoPromedio(
+          detalle.productoId,
+          cantNueva,
+          costoReal,
+        );
+      }
 
       // Guardar la cantidad ACUMULADA total recibida
       await this.detalleRepository.update(detalle.id, {
