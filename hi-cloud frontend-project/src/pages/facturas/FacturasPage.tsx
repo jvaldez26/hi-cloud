@@ -31,6 +31,9 @@ import { fmt, estadoColor } from '../../utils/formatters';
 import { resolverNombreComprador, resolverRncComprador } from '../../utils/facturaComprador';
 import WhatsAppButton from '../../components/ui/WhatsAppButton';
 import EcfBadge, { type EstadoEcf } from '../../components/ui/EcfBadge';
+import {
+  ModalRncNoVigente, detectarRncNoVigente, type ErrorRncNoVigente,
+} from '../../components/ui/RncNoVigente';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -163,17 +166,34 @@ export default function FacturasPage() {
     onError:   (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error al reenviar e-CF'),
   });
 
+  // Comprador con RNC no vigente: el backend advierte y espera confirmación.
+  // Se abre un modal porque un toast no admite interacción — el usuario veía el
+  // "confírmalo para emitir" sin tener dónde confirmarlo.
+  const [rncNoVigente, setRncNoVigente] = useState<
+    { error: ErrorRncNoVigente; facturaId: number; folio?: string } | null
+  >(null);
+
   const emitirEcfMut = useMutation({
-    mutationFn: (id: number) => facturasApi.emitirEcfIndividual(id),
-    onSuccess: (_data, id) => {
+    mutationFn: ({ id, confirmar }: { id: number; confirmar?: boolean }) =>
+      facturasApi.emitirEcfIndividual(id, confirmar ? { confirmaRncNoVigente: true } : undefined),
+    onSuccess: (_data, { id }) => {
+      setRncNoVigente(null);
       qc.invalidateQueries({ queryKey: ['facturas'] });
       qc.invalidateQueries({ queryKey: ['factura-ecf', id] });
       // Navegar al detalle para que el usuario vea el QR en tiempo real
       navigate(`/facturas/${id}`);
     },
-    onError: (e: any) => message.error(
-      e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'No se pudo emitir el comprobante. Verifica la configuración e-CF.',
-    ),
+    onError: (e: any, { id }) => {
+      const noVigente = detectarRncNoVigente(e);
+      if (noVigente) {
+        const folio = (data?.data ?? []).find((f: any) => f.id === id)?.folio;
+        setRncNoVigente({ error: noVigente, facturaId: id, folio });
+        return;
+      }
+      message.error(
+        e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'No se pudo emitir el comprobante. Verifica la configuración e-CF.',
+      );
+    },
   });
 
   const deleteMut = useMutation({
@@ -329,8 +349,8 @@ export default function FacturasPage() {
             <Tooltip title="Emitir comprobante fiscal electrónico">
               <Button
                 size="small" type="dashed" icon={<SendOutlined />}
-                loading={emitirEcfMut.isPending && emitirEcfMut.variables === r.id}
-                onClick={e => { e.stopPropagation(); emitirEcfMut.mutate(r.id); }}
+                loading={emitirEcfMut.isPending && emitirEcfMut.variables?.id === r.id}
+                onClick={e => { e.stopPropagation(); emitirEcfMut.mutate({ id: r.id }); }}
                 style={{ fontSize: 11 }}
               >
                 Emitir
@@ -612,6 +632,19 @@ export default function FacturasPage() {
         onEnviar={p => emailFactura && emailMut.mutate({ id: emailFactura.id, ...p })}
         loading={emailMut.isPending}
         okText="Enviar factura"
+      />
+
+      {/* ── Confirmación de comprador con RNC no vigente ──
+          El backend advierte y espera una decisión explícita; aquí es donde
+          se toma, porque desde el listado no hay otro lugar donde ponerla. */}
+      <ModalRncNoVigente
+        error={rncNoVigente?.error ?? null}
+        documento={rncNoVigente?.folio}
+        emitiendo={emitirEcfMut.isPending}
+        onCancel={() => setRncNoVigente(null)}
+        onConfirmar={() => rncNoVigente && emitirEcfMut.mutate({
+          id: rncNoVigente.facturaId, confirmar: true,
+        })}
       />
 
       {/* ── Vista mobile: cards ── */}

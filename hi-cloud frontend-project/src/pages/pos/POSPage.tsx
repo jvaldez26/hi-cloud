@@ -28,6 +28,7 @@ import { useThemeStore } from '../../store/theme.store';
 import { useOfflineQueue } from '../../hooks/useOfflineQueue';
 import { useSupervisor } from '../../hooks/useSupervisor';
 import { UomSelect } from '../../components/ui/UomSelect';
+import { AvisoRncNoVigente } from '../../components/ui/RncNoVigente';
 import type { Producto, Cliente } from '../../types';
 import dayjs from 'dayjs';
 import { useModuloAddon } from '../../hooks/useModuloAddon';
@@ -11882,20 +11883,14 @@ export default function POSPage() {
                       y se desactiva el cobro. El backend aplica la misma regla al
                       emitir, por si se llega por otra vía. */}
                   {compradorNoVigente && (
-                    <label style={{
-                      fontSize: 11, lineHeight: 1.4, color: '#92400E', background: '#FFFBEB',
-                      border: '1px solid #FCD34D', borderRadius: 6, padding: '6px 8px', marginBottom: 6,
-                      display: 'flex', gap: 6, alignItems: 'flex-start', cursor: 'pointer',
-                    }}>
-                      <input type="checkbox" checked={rncNoVigenteConfirmado}
-                        onChange={e => setRncNoVigenteConfirmado(e.target.checked)}
-                        style={{ marginTop: 2, cursor: 'pointer', flexShrink: 0 }} />
-                      <span>
-                        <b>Este RNC está {rncDGII.datos?.estado} ante la DGII.</b> El crédito
-                        fiscal del {tipoNcf} podría no serle reconocido al comprador. Puedes
-                        cambiar a Consumo (E32) o corregir el RNC — o confirmar y emitir igual.
-                      </span>
-                    </label>
+                    <div style={{ marginBottom: 6 }}>
+                      <AvisoRncNoVigente
+                        estadoRnc={rncDGII.datos?.estado}
+                        tipoNcf={tipoNcf}
+                        checked={rncNoVigenteConfirmado}
+                        onChange={setRncNoVigenteConfirmado}
+                      />
+                    </div>
                   )}
 
                   {/* Razón Social — E31/E44/E45 */}

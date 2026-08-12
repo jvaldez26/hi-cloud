@@ -1204,7 +1204,7 @@ export class FacturasService {
    * Emite e-CF para una sola factura que ya está EMITIDA o PAGADA pero no
    * tiene comprobante. Llamado por el botón "Emitir e-CF" en la UI.
    */
-  async emitirEcfIndividual(id: number, usuario: any) {
+  async emitirEcfIndividual(id: number, usuario: any, confirmaRncNoVigente = false) {
     const empresaId = this.tenantService.getEmpresaId();
     const factura   = await this.findOne(id);
 
@@ -1260,6 +1260,16 @@ export class FacturasService {
       datosCompradorIndividual = {
         rnc:         rncFactura,
         razonSocial: rncDatos?.encontrado && rncDatos.nombre ? rncDatos.nombre : undefined,
+      };
+    }
+
+    // La confirmación de RNC no vigente viaja aunque no haya otros datos del
+    // comprador — que es el caso normal aquí: el cliente ya tiene su RNC en la
+    // ficha, así que el bloque de arriba no llega a construir nada.
+    if (confirmaRncNoVigente) {
+      datosCompradorIndividual = {
+        ...(datosCompradorIndividual ?? {}),
+        confirmaRncNoVigente: true,
       };
     }
 

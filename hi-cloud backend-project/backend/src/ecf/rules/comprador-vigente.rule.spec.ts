@@ -1,13 +1,12 @@
 /**
- * RNC suspendido — un comprador no vigente no puede recibir crédito fiscal.
- *
- * El POS ya mostraba la etiqueta "(SUSPENDIDO)" al digitar el RNC, pero dejaba
- * cobrar y emitir el E31 igual. Aquí vive la regla de verdad.
+ * RNC no vigente — el comprador suspendido o dado de baja se ADVIERTE, no se
+ * impide: se pide una confirmación explícita y, si se da, se emite y queda
+ * registrado. Aquí vive esa regla y el contrato del error que la comunica.
  */
 
 import {
   evaluarCompradorFiscal, esCreditoFiscal, estadoNoVigente, normalizarEstado,
-  TIPOS_CREDITO_FISCAL,
+  payloadCompradorNoVigente, TIPOS_CREDITO_FISCAL,
 } from './comprador-vigente.rule';
 
 describe('qué tipos otorgan crédito fiscal', () => {
@@ -81,6 +80,43 @@ describe('E31 / E44 / E45 — el comprador no vigente se advierte, no se impide'
 describe('los tipos sin crédito fiscal no se ven afectados', () => {
   it.each([32, 33, 34, 41, 43, 46, 47])('E%s con RNC suspendido se permite', (tipo) => {
     expect(evaluarCompradorFiscal(tipo, { encontrado: true, estado: 'SUSPENDIDO' }).bloquear).toBe(false);
+  });
+});
+
+/**
+ * El cuerpo del error es un CONTRATO con el frontend: cada pantalla de emisión
+ * lo lee para saber que debe ofrecer la casilla de confirmación en vez de un
+ * toast. Se rompió una vez —el listado de facturas mostraba el mensaje sin
+ * dónde confirmar y la emisión quedaba trabada—, así que se fija aquí.
+ */
+describe('contrato del error hacia el frontend', () => {
+  const payload = () => payloadCompradorNoVigente(
+    evaluarCompradorFiscal(31, { encontrado: true, estado: 'SUSPENDIDO' }),
+    '132269551',
+  );
+
+  it('lleva el código que las pantallas usan para reconocerlo', () => {
+    expect(payload().codigo).toBe('COMPRADOR_NO_VIGENTE');
+  });
+
+  it('se anuncia como confirmable — nunca como un rechazo definitivo', () => {
+    expect(payload().confirmable).toBe(true);
+  });
+
+  it('incluye estado y RNC para poder redactar el aviso', () => {
+    expect(payload().estadoRnc).toBe('SUSPENDIDO');
+    expect(payload().rnc).toBe('132269551');
+  });
+
+  it('el mensaje explica la situación y la alternativa', () => {
+    expect(payload().message).toContain('SUSPENDIDO');
+    expect(payload().message).toContain('E32');
+  });
+
+  it('nunca queda sin mensaje, aunque el veredicto venga vacío', () => {
+    const p = payloadCompradorNoVigente({ bloquear: true }, '000000000');
+    expect(p.message.length).toBeGreaterThan(0);
+    expect(p.codigo).toBe('COMPRADOR_NO_VIGENTE');
   });
 });
 

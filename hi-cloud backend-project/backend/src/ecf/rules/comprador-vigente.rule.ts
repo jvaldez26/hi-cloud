@@ -112,3 +112,37 @@ export function evaluarCompradorFiscal(
 
   return { bloquear: true, estado, motivo, requiereConfirmacion: true, confirmado: false };
 }
+
+/** Código que identifica este caso en las respuestas de error de la API. */
+export const CODIGO_COMPRADOR_NO_VIGENTE = 'COMPRADOR_NO_VIGENTE' as const;
+
+export interface PayloadCompradorNoVigente {
+  message:     string;
+  codigo:      typeof CODIGO_COMPRADOR_NO_VIGENTE;
+  estadoRnc?:  string;
+  rnc:         string;
+  confirmable: true;
+}
+
+/**
+ * Cuerpo del error que se devuelve cuando falta confirmar.
+ *
+ * Vive aquí, junto a la regla, porque es un CONTRATO con el frontend: cada
+ * pantalla de emisión lo usa para saber que debe ofrecer la casilla en vez de
+ * un toast. Cuando la confirmación existía en un solo camino, el botón "Emitir"
+ * del listado de facturas mostraba el mensaje sin ofrecer dónde confirmarlo y
+ * la emisión quedaba trabada de hecho. Un cambio en estos campos rompe todas
+ * las pantallas a la vez, así que está cubierto por tests.
+ */
+export function payloadCompradorNoVigente(
+  veredicto: ResultadoComprador,
+  rnc: string,
+): PayloadCompradorNoVigente {
+  return {
+    message:     veredicto.motivo ?? 'El RNC del comprador no está vigente ante DGII.',
+    codigo:      CODIGO_COMPRADOR_NO_VIGENTE,
+    estadoRnc:   veredicto.estado,
+    rnc,
+    confirmable: true,
+  };
+}

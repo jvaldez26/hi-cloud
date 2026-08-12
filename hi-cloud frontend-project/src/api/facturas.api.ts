@@ -27,6 +27,8 @@ export interface EmitirPosBody {
     razonSocial?: string;
     direccion?: string;
     numeroOrdenCompra?: string;
+    /** El usuario confirmó emitir a un comprador con RNC no vigente ante DGII */
+    confirmaRncNoVigente?: boolean;
   };
   /** Si true → crear e-CF en CONTINGENCIA sin llamar a MSeller (modo contingencia en Config POS) */
   modoContingencia?: boolean;
@@ -89,8 +91,12 @@ export const facturasApi = {
     api.patch(`/facturas/${id}/emitir-pos`, { estado: 'emitida', ...body }).then(r => r.data.data ?? r.data),
 
   /** Emite e-CF para una factura EMITIDA/PAGADA que no tiene comprobante */
-  emitirEcfIndividual: (id: number) =>
-    api.post(`/facturas/${id}/emitir-ecf`).then(r => r.data.data ?? r.data),
+  /**
+   * @param body.confirmaRncNoVigente reintento tras confirmar la advertencia de
+   *        comprador no vigente (el backend responde COMPRADOR_NO_VIGENTE sin él)
+   */
+  emitirEcfIndividual: (id: number, body?: { confirmaRncNoVigente?: boolean }) =>
+    api.post(`/facturas/${id}/emitir-ecf`, body ?? {}).then(r => r.data.data ?? r.data),
 
   /** Emite e-CF para TODAS las facturas sin comprobante (batch — solo ADMIN) */
   recuperarEcfBatch: () =>

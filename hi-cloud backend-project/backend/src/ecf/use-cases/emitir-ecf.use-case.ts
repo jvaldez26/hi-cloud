@@ -18,7 +18,9 @@ import { MSellerClientService } from '../services/mseller-client.service';
 import { esErrorYaExiste, consultarExistenciaEncf } from '../services/reconciliacion-ecf.helper';
 import { EcfConfigService } from '../services/ecf-config.service';
 import { RncService } from '../../rnc/rnc.service';
-import { esCreditoFiscal, evaluarCompradorFiscal } from '../rules/comprador-vigente.rule';
+import {
+  esCreditoFiscal, evaluarCompradorFiscal, payloadCompradorNoVigente,
+} from '../rules/comprador-vigente.rule';
 
 import {
   EcfDuplicadoError,
@@ -596,13 +598,7 @@ ${JSON.stringify(payload, null, 2)}`;
       );
       // El código permite al frontend distinguir "hay que confirmar" de un
       // error cualquiera, y ofrecer la casilla en vez de un mensaje sin salida.
-      throw new BadRequestException({
-        message:    veredicto.motivo,
-        codigo:     'COMPRADOR_NO_VIGENTE',
-        estadoRnc:  veredicto.estado,
-        rnc,
-        confirmable: true,
-      });
+      throw new BadRequestException(payloadCompradorNoVigente(veredicto, rnc));
     }
 
     // Emitido a pesar de la advertencia: queda constancia de la decisión.

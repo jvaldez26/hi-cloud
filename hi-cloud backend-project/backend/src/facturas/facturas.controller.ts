@@ -91,6 +91,15 @@ class DatosCompradorPosDto {
   confirmaRncNoVigente?: boolean;
 }
 
+class EmitirEcfIndividualDto {
+  /**
+   * El usuario vio la advertencia de RNC no vigente y confirmó emitir igual.
+   * Mismo contrato que DatosCompradorPosDto: la regla advierte, no impide.
+   */
+  @IsOptional() @IsBoolean()
+  confirmaRncNoVigente?: boolean;
+}
+
 class EmitirDesdePos {
   @IsEnum(FacturaEstado)
   estado: FacturaEstado;
@@ -253,8 +262,11 @@ export class FacturasController {
   emitirEcfIndividual(
     @Param('id', ParseIntPipe) id: number,
     @GetUser() usuario: User,
+    @Body() body?: EmitirEcfIndividualDto,
   ) {
-    return this.facturasService.emitirEcfIndividual(id, usuario);
+    return this.facturasService.emitirEcfIndividual(
+      id, usuario, body?.confirmaRncNoVigente === true,
+    );
   }
 
   // ── PDF ────────────────────────────────────────────────────────────
