@@ -27,6 +27,14 @@ interface CreateGastoDto {
   userId:       number;
 }
 
+/** Filtros compartidos por el listado paginado y la exportación completa. */
+export interface FiltrosGastos {
+  mes?:       number;
+  anio?:      number;
+  categoria?: CategoriaGasto;
+  search?:    string;
+}
+
 @Injectable()
 export class GastosService {
   private readonly logger = new Logger(GastosService.name);
@@ -88,11 +96,12 @@ export class GastosService {
     return gasto;
   }
 
-  async listar(pagination: PaginationDto, mes?: number, anio?: number, categoria?: CategoriaGasto, exportar?: boolean) {
-    const { limit = 10, page = 1, search } = pagination;
-    // exportar=true → devuelve todos los registros sin paginación (para Excel)
-    const exportAll = exportar === true;
-
+  /**
+   * QueryBuilder con los filtros aplicados, sin paginación ni orden.
+   * Lo comparten listar() y exportarTodos() para que el Excel no pueda salir
+   * con un conjunto distinto al que muestra la pantalla.
+   */
+  private queryConFiltros(f: FiltrosGastos) {
     const empresaId  = this.tenantService.getEmpresaId();
     const sucursalId = this.tenantService.getSucursalId();
 
@@ -103,19 +112,48 @@ export class GastosService {
     // Si el JWT tiene sucursalId → filtrar por sucursal; si no (admin sin sucursal) → mostrar todos
     if (sucursalId) qb.andWhere('g.sucursalId = :sid', { sid: sucursalId });
 
-    if (mes && anio) {
-      const periodo = `${anio}-${String(mes).padStart(2, '0')}`;
+    if (f.mes && f.anio) {
+      const periodo = `${f.anio}-${String(f.mes).padStart(2, '0')}`;
       qb.andWhere('g.periodo = :p', { p: periodo });
     }
-    if (categoria) qb.andWhere('g.categoria = :cat', { cat: categoria });
-    if (search)    qb.andWhere('(g.descripcion ILIKE :s OR g.proveedor ILIKE :s)', { s: `%${search}%` });
+    if (f.categoria) qb.andWhere('g.categoria = :cat', { cat: f.categoria });
+    if (f.search)    qb.andWhere('(g.descripcion ILIKE :s OR g.proveedor ILIKE :s)', { s: `%${f.search}%` });
 
-    qb.orderBy('g.fecha', 'DESC');
-    if (!exportAll) {
-      qb.skip((page - 1) * limit).take(limit);
-    }
+    return qb.orderBy('g.fecha', 'DESC');
+  }
+
+  /**
+   * Todos los gastos que cumplen el filtro, sin paginar. Alimenta el Excel.
+   *
+   * Es un método aparte —y un endpoint aparte— a propósito. Antes esto era un
+   * flag `exportar=true` sobre el listado y nunca funcionó: el ValidationPipe
+   * global corre con enableImplicitConversion, que ya convierte "true" en true
+   * antes de que el @Transform del DTO evalúe `value === 'true'`, comparando
+   * booleano contra string y devolviendo siempre false. El límite de la página
+   * se aplicaba igual y el Excel salía con 10 filas.
+   */
+  async exportarTodos(f: FiltrosGastos) {
+    const data = await this.queryConFiltros(f).getMany();
+    return { data: await this.conDatosEcf(data), meta: { total: data.length } };
+  }
+
+  async listar(pagination: PaginationDto, mes?: number, anio?: number, categoria?: CategoriaGasto) {
+    const { limit = 10, page = 1, search } = pagination;
+
+    const qb = this.queryConFiltros({ mes, anio, categoria, search })
+      .skip((page - 1) * limit)
+      .take(limit);
+
     const [data, total] = await qb.getManyAndCount();
 
+    return {
+      data: await this.conDatosEcf(data),
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
+  }
+
+  /** Añade a cada gasto el e-CF asociado (número, código de seguridad, fecha, QR). */
+  private async conDatosEcf(data: Gasto[]) {
     // Cargar e-CF asociados (número + código seguridad + fecha) por documentoOrigenId
     const ids = data.map(g => g.id);
     let ecfMap: Record<number, { numero: string; codigoSeguridad?: string; fechaUso?: string; qrUrl?: string }> = {};
@@ -141,14 +179,13 @@ export class GastosService {
       }
     }
 
-    const enriched = data.map(g => ({
+    return data.map(g => ({
       ...g,
       ecfNumero:          ecfMap[g.id]?.numero          ?? null,
       ecfCodigoSeguridad: ecfMap[g.id]?.codigoSeguridad ?? null,
       ecfFecha:           ecfMap[g.id]?.fechaUso        ?? null,
       ecfQrUrl:           ecfMap[g.id]?.qrUrl           ?? null,
     }));
-    return { data: enriched, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
   }
 
   async findById(id: number): Promise<Gasto> {

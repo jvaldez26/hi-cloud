@@ -18,16 +18,30 @@ import { GetUser } from '../auth/decorators/get-user.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
 import { User } from '../users/users.entity';
 
-class ListGastosDto {
-  @IsOptional() @IsInt() @Type(() => Number)                              page?:      number;
-  @IsOptional() @IsInt() @Type(() => Number)                              limit?:     number;
-  @IsOptional() @IsString()                                               search?:    string;
-  @IsOptional() @IsInt() @Type(() => Number)                              mes?:       number;
-  @IsOptional() @IsInt() @Type(() => Number)                              anio?:      number;
-  @IsOptional() @IsEnum(CategoriaGasto)                                   categoria?: CategoriaGasto;
-  /** true → devuelve todos los registros sin paginación (solo para exportar a Excel) */
-  @IsOptional() @IsBoolean() @Transform(({ value }) => value === 'true') exportar?:  boolean;
+/** Filtros comunes al listado y a la exportación. */
+class FiltrosGastosDto {
+  @IsOptional() @IsString()                  search?:    string;
+  @IsOptional() @IsInt() @Type(() => Number) mes?:       number;
+  @IsOptional() @IsInt() @Type(() => Number) anio?:      number;
+  @IsOptional() @IsEnum(CategoriaGasto)      categoria?: CategoriaGasto;
 }
+
+class ListGastosDto extends FiltrosGastosDto {
+  @IsOptional() @IsInt() @Type(() => Number) page?:  number;
+  @IsOptional() @IsInt() @Type(() => Number) limit?: number;
+}
+
+/**
+ * La exportación NO lleva flag booleano.
+ *
+ * Antes era `?exportar=true` sobre el listado y nunca funcionó: el
+ * ValidationPipe global corre con enableImplicitConversion, que convierte
+ * "true" en booleano ANTES de que el @Transform del DTO evalúe
+ * `value === 'true'` — comparaba true contra 'true' y daba false siempre, así
+ * que el límite de página se aplicaba igual y el Excel salía con 10 filas.
+ * Un endpoint propio no puede caer en eso ni afectar al listado.
+ */
+class ExportarGastosDto extends FiltrosGastosDto {}
 
 class CreateGastoDto {
   @IsDateString()                                  fecha: string;
@@ -77,6 +91,20 @@ export class GastosController {
     return this.svc.getResumenAnual(Number(anio));
   }
 
+  // Debe declararse ANTES de @Get(':id') o Nest lo tomaría como id="exportar"
+  @Get('exportar')
+  @ApiOperation({
+    summary: 'Todos los gastos del filtro, sin paginación (para Excel)',
+    description:
+      'Mismos filtros que el listado (mes, anio, categoria, search) pero sin ' +
+      'page ni limit: devuelve el conjunto completo.',
+  })
+  exportar(@Query() q: ExportarGastosDto) {
+    return this.svc.exportarTodos({
+      mes: q.mes, anio: q.anio, categoria: q.categoria, search: q.search,
+    });
+  }
+
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Registrar gasto (genera asiento contable automático)' })
@@ -92,7 +120,6 @@ export class GastosController {
       q.mes,
       q.anio,
       q.categoria,
-      q.exportar,
     );
   }
 
