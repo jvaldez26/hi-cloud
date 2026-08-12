@@ -82,6 +82,13 @@ class DatosCompradorPosDto {
 
   @IsOptional() @IsString()
   numeroOrdenCompra?: string;
+
+  /**
+   * El cajero vio que el RNC no está vigente ante DGII y confirmó emitir igual.
+   * La regla advierte, no impide — ver ecf/rules/comprador-vigente.rule.ts.
+   */
+  @IsOptional() @IsBoolean()
+  confirmaRncNoVigente?: boolean;
 }
 
 class EmitirDesdePos {

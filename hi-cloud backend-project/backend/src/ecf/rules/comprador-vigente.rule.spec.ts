@@ -43,16 +43,34 @@ describe('lectura del estado del padrón', () => {
   });
 });
 
-describe('E31 / E44 / E45 — se bloquea al comprador no vigente', () => {
-  it.each([31, 44, 45])('E%s con RNC SUSPENDIDO se bloquea', (tipo) => {
+describe('E31 / E44 / E45 — el comprador no vigente se advierte, no se impide', () => {
+  it.each([31, 44, 45])('E%s con RNC SUSPENDIDO pide confirmación', (tipo) => {
     const r = evaluarCompradorFiscal(tipo, { encontrado: true, estado: 'SUSPENDIDO' });
     expect(r.bloquear).toBe(true);
+    expect(r.requiereConfirmacion).toBe(true);
+    expect(r.confirmado).toBe(false);
     expect(r.motivo).toContain('SUSPENDIDO');
-    expect(r.motivo).toContain('E32');   // le dice al cajero qué hacer
+    expect(r.motivo).toContain('E32');   // le dice al cajero qué alternativa tiene
   });
 
-  it('E31 con RNC DADO DE BAJA se bloquea', () => {
+  it('E31 con RNC DADO DE BAJA pide confirmación', () => {
     expect(evaluarCompradorFiscal(31, { encontrado: true, estado: 'DADO DE BAJA' }).bloquear).toBe(true);
+  });
+
+  it.each([31, 44, 45])('E%s se emite cuando el usuario confirma', (tipo) => {
+    const r = evaluarCompradorFiscal(tipo, { encontrado: true, estado: 'SUSPENDIDO' }, true);
+    expect(r.bloquear).toBe(false);
+    expect(r.confirmado).toBe(true);
+    // El motivo se conserva para que quede registrado que se emitió advertido
+    expect(r.motivo).toContain('SUSPENDIDO');
+    expect(r.estado).toBe('SUSPENDIDO');
+  });
+
+  it('confirmar no inventa advertencias donde no las hay', () => {
+    const r = evaluarCompradorFiscal(31, { encontrado: true, estado: 'ACTIVO' }, true);
+    expect(r.bloquear).toBe(false);
+    expect(r.requiereConfirmacion).toBeUndefined();
+    expect(r.confirmado).toBeUndefined();
   });
 
   it('E31 con RNC ACTIVO se permite', () => {
@@ -72,8 +90,15 @@ describe('falla ABIERTA — el padrón no puede parar la facturación', () => {
     expect(evaluarCompradorFiscal(31, null).bloquear).toBe(false);
   });
 
-  it('RNC no encontrado se permite', () => {
-    expect(evaluarCompradorFiscal(31, { encontrado: false }).bloquear).toBe(false);
+  it('RNC no encontrado se permite SIN advertir', () => {
+    // Caso real: los RNC gubernamentales de la serie 401xxxxxx (entidades
+    // públicas, distritos educativos) no figuran como contribuyentes y el
+    // padrón responde 404. Eso no dice nada sobre la validez de la venta, así
+    // que no se advierte ni se pide confirmar — solo se emite.
+    const r = evaluarCompradorFiscal(45, { encontrado: false });
+    expect(r.bloquear).toBe(false);
+    expect(r.requiereConfirmacion).toBeUndefined();
+    expect(r.motivo).toBeUndefined();
   });
 
   it('estado desconocido o vacío se permite', () => {
@@ -82,17 +107,22 @@ describe('falla ABIERTA — el padrón no puede parar la facturación', () => {
     expect(evaluarCompradorFiscal(31, { encontrado: true }).bloquear).toBe(false);
   });
 
-  it('solo bloquea cuando el padrón lo afirma explícitamente', () => {
-    // Resumen de la política: de todos estos casos, solo uno bloquea.
+  it('solo pide confirmación cuando el padrón lo afirma explícitamente', () => {
+    // Resumen de la política: de todos estos casos, solo uno frena algo, y lo
+    // frena hasta que el usuario confirme — nunca de forma definitiva.
     const casos = [
       undefined,
       null,
-      { encontrado: false },
+      { encontrado: false },                        // no inscrito (401xxxxxx)
       { encontrado: true, estado: 'ACTIVO' },
       { encontrado: true, estado: '' },
       { encontrado: true, estado: 'SUSPENDIDO' },   // ← el único
     ];
-    const bloqueados = casos.filter(c => evaluarCompradorFiscal(31, c as any).bloquear);
-    expect(bloqueados).toHaveLength(1);
+    const frenados = casos.filter(c => evaluarCompradorFiscal(31, c as any).bloquear);
+    expect(frenados).toHaveLength(1);
+
+    // Y ese único deja de frenar en cuanto se confirma: ninguno es un muro.
+    const conConfirmacion = casos.filter(c => evaluarCompradorFiscal(31, c as any, true).bloquear);
+    expect(conConfirmacion).toHaveLength(0);
   });
 });

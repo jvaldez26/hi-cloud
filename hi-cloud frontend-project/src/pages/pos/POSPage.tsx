@@ -9178,6 +9178,8 @@ export default function POSPage() {
   const [formasPagoList,     setFormasPagoList]     = useState<{ metodo: MetodoPago; monto: number; referencia?: string }[]>([{ metodo: 'efectivo', monto: 0 }]);
   // Confirmación explícita cuando el vuelto en efectivo es desproporcionado
   const [vueltoConfirmado,   setVueltoConfirmado]   = useState(false);
+  // El cajero vio que el RNC no está vigente ante DGII y decidió emitir igual
+  const [rncNoVigenteConfirmado, setRncNoVigenteConfirmado] = useState(false);
   const [monedaPOS,          setMonedaPOS]          = useState<'DOP' | 'USD'>('DOP');
   const [tasaCambioPOS,      setTasaCambioPOS]      = useState<number>(1);
   const [montoRecibido,      setMontoRecibido]      = useState(0);
@@ -9712,6 +9714,11 @@ export default function POSPage() {
     && (cambio > totalAPagar || cambio > round2(efectivoAplicado * 2));
   // Si el cajero corrige los montos, la confirmación anterior deja de valer
   useEffect(() => { setVueltoConfirmado(false); }, [cambio, efectivoAplicado]);
+  // La confirmación vale para ESTE comprador y ESTE tipo: si cambia el RNC, el
+  // cliente o el tipo de comprobante, hay que volver a decidir
+  useEffect(() => {
+    setRncNoVigenteConfirmado(false);
+  }, [rncComprador, clienteId, tipoNcf]);
 
   // Auto-foco en el input de búsqueda cuando el panel de ítems está activo
   // (mantiene el foco para escaneo continuo con scanner HID)
@@ -10399,19 +10406,25 @@ export default function POSPage() {
       }
 
       // Construir datosComprador: desde el cliente si tiene RNC, o desde el formulario
-      const datosComprador = clienteTieneRNC
-        ? {
-            rnc:         rncCliente,
-            // Ante DGII va la razón social registrada del RNC, no el nombre
-            // interno (que puede distinguir sucursales del mismo contribuyente)
-            razonSocial: razonSocialFiscalCliente,
-            direccion:   clienteSeleccionado?.direccion,
-          }
-        : {
-            ...(rncComprador    ? { rnc:              rncComprador }    : {}),
-            ...(razonSocialComp ? { razonSocial:       razonSocialComp } : {}),
-            ...(tipoNcf === 'E45' && numeroOrdenCompra ? { numeroOrdenCompra } : {}),
-          };
+      const datosComprador = {
+        ...(clienteTieneRNC
+          ? {
+              rnc:         rncCliente,
+              // Ante DGII va la razón social registrada del RNC, no el nombre
+              // interno (que puede distinguir sucursales del mismo contribuyente)
+              razonSocial: razonSocialFiscalCliente,
+              direccion:   clienteSeleccionado?.direccion,
+            }
+          : {
+              ...(rncComprador    ? { rnc:              rncComprador }    : {}),
+              ...(razonSocialComp ? { razonSocial:       razonSocialComp } : {}),
+              ...(tipoNcf === 'E45' && numeroOrdenCompra ? { numeroOrdenCompra } : {}),
+            }),
+        // El backend vuelve a evaluar el padrón; sin esta marca pediría confirmar
+        ...(compradorNoVigente && rncNoVigenteConfirmado
+          ? { confirmaRncNoVigente: true }
+          : {}),
+      };
 
       try {
         const emitResult = await facturasApi.emitirPos(factura.id, {
@@ -10838,10 +10851,12 @@ export default function POSPage() {
   const tipoExigeRnc = tipoNcf === 'E31' || tipoNcf === 'E44' || tipoNcf === 'E45' || totalEfectivo >= posCedulaMonto;
   const necesitaRnc  = tipoExigeRnc && !clienteTieneRNC;
   const rncValido    = clienteTieneRNC || /^\d{9}$|^\d{11}$/.test(rncComprador);
-  // Un RNC SUSPENDIDO o DADO DE BAJA no puede recibir crédito fiscal (E31/E44/E45).
-  // Solo bloquea cuando el padrón lo afirma: si no responde o no lo encuentra, se
-  // cobra igual — la DGII caída no puede parar la caja. Misma regla en el backend
-  // (ecf/rules/comprador-vigente.rule.ts), que es donde de verdad se aplica.
+  // Un RNC SUSPENDIDO o DADO DE BAJA ante DGII es un aviso, no un muro: el
+  // padrón puede estar desactualizado y quien tiene al cliente delante sabe más.
+  // Se advierte y se pide confirmar; el backend aplica la misma regla al emitir
+  // (ecf/rules/comprador-vigente.rule.ts) y registra que se emitió advertido.
+  // Si el padrón no responde o no encuentra el RNC no se advierte nada — ahí
+  // caen los RNC no inscritos, como la serie 401xxxxxx de entidades públicas.
   const tipoDaCreditoFiscal = tipoNcf === 'E31' || tipoNcf === 'E44' || tipoNcf === 'E45';
   const estadoRncPadron     = (rncDGII.datos?.encontrado ? rncDGII.datos?.estado ?? '' : '').toUpperCase();
   const compradorNoVigente  = tipoDaCreditoFiscal
@@ -10855,7 +10870,7 @@ export default function POSPage() {
   // Crédito requiere cliente real seleccionado (no consumidor final por defecto)
   const clienteParaCredito = tipoPagoPos === 'CONTADO' || clienteId != null;
   const canCheckout  = canPay && (!tipoExigeRnc || rncValido) && cajaAbierta && clienteParaCredito
-    && !compradorNoVigente;
+    && (!compradorNoVigente || rncNoVigenteConfirmado);
 
   // Enter / NumpadEnter confirma el cobro cuando el modal de pago está abierto
   useEffect(() => {
@@ -11867,14 +11882,20 @@ export default function POSPage() {
                       y se desactiva el cobro. El backend aplica la misma regla al
                       emitir, por si se llega por otra vía. */}
                   {compradorNoVigente && (
-                    <div style={{
-                      fontSize: 11, lineHeight: 1.4, color: '#7F1D1D', background: '#FEF2F2',
-                      border: '1px solid #FCA5A5', borderRadius: 6, padding: '6px 8px', marginBottom: 6,
+                    <label style={{
+                      fontSize: 11, lineHeight: 1.4, color: '#92400E', background: '#FFFBEB',
+                      border: '1px solid #FCD34D', borderRadius: 6, padding: '6px 8px', marginBottom: 6,
+                      display: 'flex', gap: 6, alignItems: 'flex-start', cursor: 'pointer',
                     }}>
-                      <b>Este RNC está {rncDGII.datos?.estado} ante la DGII.</b><br />
-                      No puede recibir un {tipoNcf} (crédito fiscal). Cambia el tipo a
-                      Consumo (E32) o corrige el RNC para poder cobrar.
-                    </div>
+                      <input type="checkbox" checked={rncNoVigenteConfirmado}
+                        onChange={e => setRncNoVigenteConfirmado(e.target.checked)}
+                        style={{ marginTop: 2, cursor: 'pointer', flexShrink: 0 }} />
+                      <span>
+                        <b>Este RNC está {rncDGII.datos?.estado} ante la DGII.</b> El crédito
+                        fiscal del {tipoNcf} podría no serle reconocido al comprador. Puedes
+                        cambiar a Consumo (E32) o corregir el RNC — o confirmar y emitir igual.
+                      </span>
+                    </label>
                   )}
 
                   {/* Razón Social — E31/E44/E45 */}

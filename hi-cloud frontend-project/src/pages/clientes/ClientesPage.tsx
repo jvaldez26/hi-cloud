@@ -522,7 +522,14 @@ export default function ClientesPage() {
                           }}
                         />
                       </Form.Item>
-                      <RncBadge datos={rnc.datos} loading={rnc.loading} />
+                      {/* rncNuevo: nadie más usa este RNC todavía. Si además no
+                          está en el padrón, este cliente fija la razón social
+                          que heredarán los siguientes — hay que verificarla. */}
+                      <RncBadge
+                        datos={rnc.datos}
+                        loading={rnc.loading}
+                        rncNuevo={!rncCompartidoActual}
+                      />
                     </>
                   );
                 }}

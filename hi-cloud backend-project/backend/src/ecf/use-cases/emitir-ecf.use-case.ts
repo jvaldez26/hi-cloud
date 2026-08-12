@@ -40,6 +40,12 @@ export interface DatosCompradorECF {
   razonSocial?:       string;
   direccion?:         string;
   numeroOrdenCompra?: string;
+  /**
+   * El usuario vio la advertencia de que el RNC no está vigente ante DGII y
+   * decidió emitir igual. Ver comprador-vigente.rule.ts: se advierte, no se
+   * impide, pero la decisión tiene que ser explícita y queda registrada.
+   */
+  confirmaRncNoVigente?: boolean;
 }
 
 export interface EmitirECFInput {
@@ -309,7 +315,9 @@ export class EmitirECFUseCase {
     // Falla ABIERTA: si el padrón no responde, no se encuentra el RNC o el estado
     // es desconocido, se emite — un servicio externo caído no puede frenar la
     // facturación. Ver rules/comprador-vigente.rule.ts.
-    await this.validarCompradorVigente(tipoEcf, factura);
+    await this.validarCompradorVigente(
+      tipoEcf, factura, datosComprador?.confirmaRncNoVigente === true,
+    );
 
     // ── 5. CONSTRUIR PAYLOAD JSON ─────────────────────────────────────────────
     let payload: MSellerPayload;
@@ -555,7 +563,11 @@ ${JSON.stringify(payload, null, 2)}`;
    * protege del error fiscal, no puede convertirse en un punto de caída de la
    * facturación.
    */
-  private async validarCompradorVigente(tipoEcf: number, documento: any): Promise<void> {
+  private async validarCompradorVigente(
+    tipoEcf: number,
+    documento: any,
+    confirmado = false,
+  ): Promise<void> {
     if (!esCreditoFiscal(tipoEcf)) return;
 
     const rnc = String(
@@ -576,10 +588,30 @@ ${JSON.stringify(payload, null, 2)}`;
       return;
     }
 
-    const veredicto = evaluarCompradorFiscal(tipoEcf, padron);
+    const veredicto = evaluarCompradorFiscal(tipoEcf, padron, confirmado);
+
     if (veredicto.bloquear) {
-      this.logger.warn(`[ECF] Emisión E${tipoEcf} bloqueada: RNC ${rnc} está ${veredicto.estado}`);
-      throw new BadRequestException(veredicto.motivo);
+      this.logger.warn(
+        `[ECF] E${tipoEcf} requiere confirmación: RNC ${rnc} está ${veredicto.estado}`,
+      );
+      // El código permite al frontend distinguir "hay que confirmar" de un
+      // error cualquiera, y ofrecer la casilla en vez de un mensaje sin salida.
+      throw new BadRequestException({
+        message:    veredicto.motivo,
+        codigo:     'COMPRADOR_NO_VIGENTE',
+        estadoRnc:  veredicto.estado,
+        rnc,
+        confirmable: true,
+      });
+    }
+
+    // Emitido a pesar de la advertencia: queda constancia de la decisión.
+    // El usuario que la tomó sale del contexto de la request (pino la incluye).
+    if (veredicto.confirmado) {
+      this.logger.warn(
+        `[ECF] E${tipoEcf} emitido a RNC ${rnc} ${veredicto.estado} ante DGII — ` +
+        'el usuario confirmó la advertencia explícitamente',
+      );
     }
   }
 
