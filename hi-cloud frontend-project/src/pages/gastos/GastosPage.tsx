@@ -74,6 +74,9 @@ const gastosApi = {
   anual:      (a: number)  => api.get(`/gastos/anual?anio=${a}`).then(r => r.data?.data ?? r.data),
   list:       (p = 1, m?: number, a?: number, cat?: string, search = '') =>
     api.get(`/gastos?page=${p}${m ? `&mes=${m}&anio=${a}` : ''}${cat ? `&categoria=${cat}` : ''}${search ? `&search=${encodeURIComponent(search)}` : ''}`).then(r => r.data?.data ?? r.data),
+  /** Descarga todos los gastos del filtro activo sin paginación (limit=0). Solo para exportar. */
+  exportAll:  (m?: number, a?: number, cat?: string, search = '') =>
+    api.get(`/gastos?limit=0${m ? `&mes=${m}&anio=${a}` : ''}${cat ? `&categoria=${cat}` : ''}${search ? `&search=${encodeURIComponent(search)}` : ''}`).then(r => r.data),
   crear:      (body: any)  => api.post('/gastos', body).then(r => r.data?.data ?? r.data),
   eliminar:   (id: number) => api.delete(`/gastos/${id}`).then(r => r.data?.data ?? r.data),
 };
@@ -93,6 +96,7 @@ export default function GastosPage() {
   const [detalleGasto,     setDetalleGasto]     = useState<any>(null);
   const [pdfPending,       setPdfPending]       = useState<number | null>(null);
   const [aprobGasto,       setAprobGasto]       = useState<any>(null);
+  const [exportLoading,    setExportLoading]    = useState(false);
   const [form]                      = Form.useForm();
   const qc = useQueryClient();
 
@@ -351,23 +355,36 @@ export default function GastosPage() {
                   </Space>
                 </Col>
                 <Col>
-                  <Button icon={<FileExcelOutlined />} onClick={() => {
-                    const filas = (lista?.data ?? []).map((g: any) => ({
-                      'Fecha':         g.fecha ? dayjs(g.fecha).format('DD/MM/YYYY') : '',
-                      'Categoría':     g.categoria ?? '',
-                      'Descripción':   g.descripcion ?? '',
-                      'Proveedor':     g.proveedor ?? '',
-                      'RNC Proveedor': g.rncProveedor ?? '',
-                      'Comprobante':   g.comprobante ?? '',
-                      'Tipo bienes':   g.tipoBienes ?? '',
-                      'Forma de pago': g.formaPago ?? '',
-                      'Monto':         Number(g.monto ?? 0),
-                      'ITBIS':         Number(g.itbis ?? 0),
-                      'Total':         Number(g.total ?? 0),
-                    }));
-                    exportarExcel(filas, `Gastos-${anio}-${String(mes).padStart(2,'0')}`);
-                    message.success(`${filas.length} gastos exportados`);
-                  }}>
+                  <Button
+                    icon={<FileExcelOutlined />}
+                    loading={exportLoading}
+                    onClick={async () => {
+                      setExportLoading(true);
+                      try {
+                        const res  = await gastosApi.exportAll(mes, anio, catFilt, search);
+                        const todos: any[] = res?.data ?? res ?? [];
+                        const filas = todos.map((g: any) => ({
+                          'Fecha':         g.fecha ? dayjs(g.fecha).format('DD/MM/YYYY') : '',
+                          'Categoría':     g.categoria ?? '',
+                          'Descripción':   g.descripcion ?? '',
+                          'Proveedor':     g.proveedor ?? '',
+                          'RNC Proveedor': g.rncProveedor ?? '',
+                          'Comprobante':   g.comprobante ?? '',
+                          'Tipo bienes':   g.tipoBienes ?? '',
+                          'Forma de pago': g.formaPago ?? '',
+                          'Monto':         Number(g.monto ?? 0),
+                          'ITBIS':         Number(g.itbis ?? 0),
+                          'Total':         Number(g.total ?? 0),
+                        }));
+                        exportarExcel(filas, `Gastos-${anio}-${String(mes).padStart(2,'0')}`);
+                        message.success(`${filas.length} gastos exportados`);
+                      } catch {
+                        message.error('No se pudo exportar. Intenta de nuevo.');
+                      } finally {
+                        setExportLoading(false);
+                      }
+                    }}
+                  >
                     Excel
                   </Button>
                   <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />

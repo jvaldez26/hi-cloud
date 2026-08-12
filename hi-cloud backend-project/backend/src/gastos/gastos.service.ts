@@ -90,6 +90,8 @@ export class GastosService {
 
   async listar(pagination: PaginationDto, mes?: number, anio?: number, categoria?: CategoriaGasto) {
     const { limit = 10, page = 1, search } = pagination;
+    // limit=0 → exportación completa sin paginación
+    const exportAll = limit === 0;
 
     const empresaId  = this.tenantService.getEmpresaId();
     const sucursalId = this.tenantService.getSucursalId();
@@ -108,10 +110,11 @@ export class GastosService {
     if (categoria) qb.andWhere('g.categoria = :cat', { cat: categoria });
     if (search)    qb.andWhere('(g.descripcion ILIKE :s OR g.proveedor ILIKE :s)', { s: `%${search}%` });
 
-    const [data, total] = await qb
-      .orderBy('g.fecha', 'DESC')
-      .skip((page - 1) * limit).take(limit)
-      .getManyAndCount();
+    qb.orderBy('g.fecha', 'DESC');
+    if (!exportAll) {
+      qb.skip((page - 1) * limit).take(limit);
+    }
+    const [data, total] = await qb.getManyAndCount();
 
     // Cargar e-CF asociados (número + código seguridad + fecha) por documentoOrigenId
     const ids = data.map(g => g.id);
