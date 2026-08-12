@@ -74,17 +74,13 @@ const gastosApi = {
   anual:      (a: number)  => api.get(`/gastos/anual?anio=${a}`).then(r => r.data?.data ?? r.data),
   list:       (p = 1, m?: number, a?: number, cat?: string, search = '') =>
     api.get(`/gastos?page=${p}${m ? `&mes=${m}&anio=${a}` : ''}${cat ? `&categoria=${cat}` : ''}${search ? `&search=${encodeURIComponent(search)}` : ''}`).then(r => r.data?.data ?? r.data),
-  /** Todos los gastos del filtro activo, sin paginación. Endpoint dedicado:
-   *  el flag ?exportar=true sobre el listado no funcionaba (el @Transform del
-   *  DTO peleaba con enableImplicitConversion y el límite se aplicaba igual).
-   *  ResponseInterceptor envuelve en { success, data: <service_result> }
-   *  y el servicio devuelve { data: [...], meta: {} } — dos niveles. */
+  /** Todos los gastos del filtro activo, sin paginación.
+   *  GET /gastos/exportar — endpoint dedicado que no aplica .take()/.skip().
+   *  exportarTodos() devuelve el array directamente; ResponseInterceptor lo
+   *  envuelve en { success, data: [...] } → un solo nivel de desembalaje. */
   exportAll:  (m?: number, a?: number, cat?: string, search = '') =>
     api.get(`/gastos/exportar?${m ? `mes=${m}&anio=${a}` : ''}${cat ? `&categoria=${cat}` : ''}${search ? `&search=${encodeURIComponent(search)}` : ''}`)
-      .then(r => {
-        const body = r.data?.data ?? r.data;   // desempacar ResponseInterceptor
-        return (body?.data ?? body ?? []) as any[];  // desempacar { data, meta } del servicio
-      }),
+      .then(r => (r.data?.data ?? r.data ?? []) as any[]),
   crear:      (body: any)  => api.post('/gastos', body).then(r => r.data?.data ?? r.data),
   eliminar:   (id: number) => api.delete(`/gastos/${id}`).then(r => r.data?.data ?? r.data),
 };

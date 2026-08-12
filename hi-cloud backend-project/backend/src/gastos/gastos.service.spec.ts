@@ -55,14 +55,13 @@ describe('GastosService — exportación sin paginación', () => {
 
   it('exportar devuelve TODAS las filas del período, no una página', async () => {
     const { service } = build(gastos(32));
-    const r = await service.exportarTodos({ mes: 8, anio: 2026 });
-    expect(r.data).toHaveLength(32);
-    expect(r.meta.total).toBe(32);
+    const r = await service.exportarTodos(8, 2026);
+    expect(r).toHaveLength(32);
   });
 
   it('exportar no aplica skip ni take — de ahí salían las 10 filas', async () => {
     const { service, qb } = build(gastos(32));
-    await service.exportarTodos({ mes: 8, anio: 2026 });
+    await service.exportarTodos(8, 2026);
     expect(qb.skip).not.toHaveBeenCalled();
     expect(qb.take).not.toHaveBeenCalled();
   });
@@ -76,36 +75,51 @@ describe('GastosService — exportación sin paginación', () => {
 
   it('exportar respeta el filtro de categoría', async () => {
     const { service, qb } = build(gastos(17));
-    await service.exportarTodos({ mes: 8, anio: 2026, categoria: CategoriaGasto.MATERIALES });
-    const filtros = qb.andWhere.mock.calls.map((c: any[]) => c[0]).join(' | ');
-    expect(filtros).toContain('g.categoria = :cat');
+    await service.exportarTodos(8, 2026, CategoriaGasto.MATERIALES);
+    const cat = qb.andWhere.mock.calls.find((c: any[]) => c[0] === 'g.categoria = :cat');
+    expect(cat?.[1]).toEqual({ cat: CategoriaGasto.MATERIALES });
   });
 
   it('exportar respeta el filtro de búsqueda', async () => {
     const { service, qb } = build(gastos(3));
-    await service.exportarTodos({ mes: 8, anio: 2026, search: 'combustible' });
+    await service.exportarTodos(8, 2026, undefined, 'combustible');
     const filtros = qb.andWhere.mock.calls.map((c: any[]) => c[0]).join(' | ');
     expect(filtros).toContain('ILIKE');
   });
 
   it('exportar filtra por período igual que el listado', async () => {
     const { service, qb } = build(gastos(32));
-    await service.exportarTodos({ mes: 8, anio: 2026 });
+    await service.exportarTodos(8, 2026);
     const periodo = qb.andWhere.mock.calls.find((c: any[]) => c[0] === 'g.periodo = :p');
     expect(periodo?.[1]).toEqual({ p: '2026-08' });
   });
 
   it('exportar respeta el aislamiento por sucursal', async () => {
     const { service, qb } = build(gastos(5), 7);
-    await service.exportarTodos({ mes: 8, anio: 2026 });
+    await service.exportarTodos(8, 2026);
     const suc = qb.andWhere.mock.calls.find((c: any[]) => c[0] === 'g.sucursalId = :sid');
     expect(suc?.[1]).toEqual({ sid: 7 });
   });
 
   it('sin mes y año exporta sin filtro de período', async () => {
     const { service, qb } = build(gastos(50));
-    await service.exportarTodos({});
+    await service.exportarTodos();
     const periodo = qb.andWhere.mock.calls.find((c: any[]) => c[0] === 'g.periodo = :p');
     expect(periodo).toBeUndefined();
+  });
+
+  it('listar y exportar aplican los MISMOS filtros — el Excel no puede traer otro conjunto', async () => {
+    const filtrosDe = (qb: any) =>
+      qb.andWhere.mock.calls.map((c: any[]) => c[0]).sort().join(' | ');
+
+    const a = build(gastos(32), 7);
+    await a.service.exportarTodos(8, 2026, CategoriaGasto.MATERIALES, 'papel');
+
+    const b = build(gastos(10), 7);
+    await b.service.listar(
+      { page: 1, limit: 10, search: 'papel' } as any, 8, 2026, CategoriaGasto.MATERIALES,
+    );
+
+    expect(filtrosDe(a.qb)).toBe(filtrosDe(b.qb));
   });
 });

@@ -4,9 +4,9 @@ import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import {
   IsEnum, IsString, IsNotEmpty, IsNumber, IsPositive,
-  IsOptional, IsDateString, Min, IsInt, IsBoolean,
+  IsOptional, IsDateString, Min, IsInt,
 } from 'class-validator';
-import { Type, Transform } from 'class-transformer';
+import { Type } from 'class-transformer';
 import { GastosService } from './gastos.service';
 import { GastoPDFService } from './gasto-pdf.service';
 import { CategoriaGasto } from './entities/gasto.entity';
@@ -32,14 +32,14 @@ class ListGastosDto extends FiltrosGastosDto {
 }
 
 /**
- * La exportación NO lleva flag booleano.
+ * DTO para el endpoint de exportación.
  *
- * Antes era `?exportar=true` sobre el listado y nunca funcionó: el
- * ValidationPipe global corre con enableImplicitConversion, que convierte
- * "true" en booleano ANTES de que el @Transform del DTO evalúe
- * `value === 'true'` — comparaba true contra 'true' y daba false siempre, así
- * que el límite de página se aplicaba igual y el Excel salía con 10 filas.
- * Un endpoint propio no puede caer en eso ni afectar al listado.
+ * No hereda page ni limit — es un endpoint sin paginación por diseño.
+ * Tampoco tiene flag boolean: el problema anterior era exactamente ese.
+ * El ValidationPipe global corre con enableImplicitConversion, que convierte
+ * "true" → true ANTES de que @Transform evalúe `value === 'true'`, comparando
+ * un boolean contra un string y devolviendo siempre false. El endpoint propio
+ * no puede caer en ese problema y no afecta al listado normal.
  */
 class ExportarGastosDto extends FiltrosGastosDto {}
 
@@ -91,18 +91,16 @@ export class GastosController {
     return this.svc.getResumenAnual(Number(anio));
   }
 
-  // Debe declararse ANTES de @Get(':id') o Nest lo tomaría como id="exportar"
+  // Declarado ANTES de @Get(':id') para que Nest no lo trate como id="exportar"
   @Get('exportar')
   @ApiOperation({
     summary: 'Todos los gastos del filtro, sin paginación (para Excel)',
     description:
       'Mismos filtros que el listado (mes, anio, categoria, search) pero sin ' +
-      'page ni limit: devuelve el conjunto completo.',
+      'page ni limit: devuelve el conjunto completo como un array.',
   })
   exportar(@Query() q: ExportarGastosDto) {
-    return this.svc.exportarTodos({
-      mes: q.mes, anio: q.anio, categoria: q.categoria, search: q.search,
-    });
+    return this.svc.exportarTodos(q.mes, q.anio, q.categoria, q.search);
   }
 
   @Post()
