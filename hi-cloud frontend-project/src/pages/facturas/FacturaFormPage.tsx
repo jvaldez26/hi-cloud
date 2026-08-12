@@ -704,6 +704,8 @@ export default function FacturaFormPage() {
               <Form.Item name="clienteId" label={<span style={{ fontSize: 12 }}>Cliente <span style={{ color: 'red' }}>*</span></span>}
                 rules={[{ required: true, message: 'Selecciona un cliente' }]} style={fi}>
                 <Select showSearch placeholder="Buscar por nombre o RNC..."
+                  popupMatchSelectWidth={false}
+                  dropdownStyle={{ minWidth: 360 }}
                   filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
                   options={clientes?.data.map((c: Cliente) => ({
                     value: c.id,
