@@ -74,9 +74,15 @@ const gastosApi = {
   anual:      (a: number)  => api.get(`/gastos/anual?anio=${a}`).then(r => r.data?.data ?? r.data),
   list:       (p = 1, m?: number, a?: number, cat?: string, search = '') =>
     api.get(`/gastos?page=${p}${m ? `&mes=${m}&anio=${a}` : ''}${cat ? `&categoria=${cat}` : ''}${search ? `&search=${encodeURIComponent(search)}` : ''}`).then(r => r.data?.data ?? r.data),
-  /** Descarga todos los gastos del filtro activo sin paginación. Solo para exportar. */
+  /** Descarga todos los gastos del filtro activo sin paginación. Solo para exportar.
+   *  ResponseInterceptor envuelve en { success, data: <service_result> }
+   *  y el servicio devuelve { data: [...], meta: {} } — hay que desempacar dos niveles. */
   exportAll:  (m?: number, a?: number, cat?: string, search = '') =>
-    api.get(`/gastos?exportar=true${m ? `&mes=${m}&anio=${a}` : ''}${cat ? `&categoria=${cat}` : ''}${search ? `&search=${encodeURIComponent(search)}` : ''}`).then(r => r.data),
+    api.get(`/gastos?exportar=true${m ? `&mes=${m}&anio=${a}` : ''}${cat ? `&categoria=${cat}` : ''}${search ? `&search=${encodeURIComponent(search)}` : ''}`)
+      .then(r => {
+        const body = r.data?.data ?? r.data;   // desempacar ResponseInterceptor
+        return (body?.data ?? body ?? []) as any[];  // desempacar { data, meta } del servicio
+      }),
   crear:      (body: any)  => api.post('/gastos', body).then(r => r.data?.data ?? r.data),
   eliminar:   (id: number) => api.delete(`/gastos/${id}`).then(r => r.data?.data ?? r.data),
 };
@@ -361,8 +367,7 @@ export default function GastosPage() {
                     onClick={async () => {
                       setExportLoading(true);
                       try {
-                        const res  = await gastosApi.exportAll(mes, anio, catFilt, search);
-                        const todos: any[] = res?.data ?? res ?? [];
+                        const todos = await gastosApi.exportAll(mes, anio, catFilt, search);
                         const filas = todos.map((g: any) => ({
                           'Fecha':         g.fecha ? dayjs(g.fecha).format('DD/MM/YYYY') : '',
                           'Categoría':     g.categoria ?? '',
@@ -378,8 +383,13 @@ export default function GastosPage() {
                         }));
                         exportarExcel(filas, `Gastos-${anio}-${String(mes).padStart(2,'0')}`);
                         message.success(`${filas.length} gastos exportados`);
-                      } catch {
-                        message.error('No se pudo exportar. Intenta de nuevo.');
+                      } catch (e: any) {
+                        const detalle = e?.response?.data?.errors?.[0]
+                          ?? e?.response?.data?.message
+                          ?? e?.message
+                          ?? 'Error desconocido';
+                        message.error(`No se pudo exportar: ${detalle}`);
+                        console.error('[exportar gastos]', e);
                       } finally {
                         setExportLoading(false);
                       }
