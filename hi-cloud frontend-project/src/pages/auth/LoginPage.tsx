@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Form, Input, Button, Typography, Alert, Checkbox, ConfigProvider, theme as antTheme, Modal, message } from 'antd';
-import { UserOutlined, LockOutlined, RocketOutlined, MailOutlined, MessageOutlined } from '@ant-design/icons';
+import { RocketOutlined, MailOutlined, MessageOutlined } from '@ant-design/icons';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '../../store/auth.store';
@@ -220,43 +220,43 @@ export default function LoginPage() {
           .login-logo-mobile{display:block!important}
           .login-right-inner{padding:24px 20px!important}
         }
-        /* Fix doble borde: solo el wrapper tiene background/border, el input interno es transparente */
+        /* ── Campos — estilo maqueta ────────────────────────────────── */
         .login-panel .ant-input-affix-wrapper {
-          background:#F8FAFC!important;
-          border:1.5px solid #CBD5E1!important;
-          border-radius:10px!important;
-          height:48px!important;
+          background:#fff!important;
+          border:1.5px solid #D8DDE4!important;
+          border-radius:9px!important;
+          height:50px!important;
           padding:0 12px!important;
           box-shadow:none!important;
         }
-        .login-panel .ant-input-affix-wrapper:hover { border-color:#94A3B8!important; }
+        .login-panel .ant-input-affix-wrapper:hover { border-color:#C3CAD3!important; }
         .login-panel .ant-input-affix-wrapper-focused {
-          border-color:#2563EB!important;
-          box-shadow:0 0 0 2px rgba(37,99,235,.12)!important;
+          border-color:#1B4FD8!important;
+          box-shadow:0 0 0 3px rgba(27,79,216,.12)!important;
         }
-        /* Input interno: TRANSPARENTE para evitar el doble */
         .login-panel .ant-input-affix-wrapper .ant-input,
         .login-panel .ant-input-affix-wrapper input {
-          background:transparent!important;
-          color:#0F172A!important;
-          border:none!important;
-          box-shadow:none!important;
-          height:100%!important;
+          background:transparent!important; color:#161A1F!important;
+          border:none!important; box-shadow:none!important; height:100%!important;
         }
-        /* Input sin wrapper (edge case) */
         .login-panel .ant-input:not(.ant-input-affix-wrapper .ant-input) {
-          background:#F8FAFC!important;
-          border:1.5px solid #CBD5E1!important;
-          border-radius:10px!important; height:48px!important; color:#0F172A!important;
+          background:#fff!important; border:1.5px solid #D8DDE4!important;
+          border-radius:9px!important; height:50px!important; color:#161A1F!important;
         }
         .login-panel .ant-input::placeholder,
-        .login-panel input::placeholder { color:#94A3B8!important; }
-        .login-panel .ant-input-prefix { color:#64748B!important; margin-right:8px!important; }
-        .login-panel .ant-input-suffix { color:#64748B!important; }
-        .login-panel .ant-form-item-label > label { color:#1E3A8A!important; font-size:13px!important; font-weight:600!important; }
-        .login-panel .ant-checkbox-inner { background:#fff!important; border-color:#CBD5E1!important; }
-        .login-panel .ant-checkbox-checked .ant-checkbox-inner { background:#2563EB!important; border-color:#2563EB!important; }
-        .login-panel .ant-checkbox-wrapper span { color:#374151!important; font-size:13px!important; }
+        .login-panel input::placeholder { color:#9BA5B4!important; }
+        .login-panel .ant-input-suffix { color:#8A929D!important; }
+        /* Etiqueta: full-width para que Contraseña y el enlace queden en extremos */
+        .login-panel .ant-form-item-label { width:100%!important; }
+        .login-panel .ant-form-item-label > label {
+          width:100%!important; color:#1E3A8A!important;
+          font-size:13px!important; font-weight:600!important;
+        }
+        /* Ocultar asterisco rojo — en un login ambos campos son obvios */
+        .login-panel .ant-form-item-label > label.ant-form-item-required::before { display:none!important; }
+        .login-panel .ant-checkbox-inner { background:#fff!important; border-color:#D8DDE4!important; }
+        .login-panel .ant-checkbox-checked .ant-checkbox-inner { background:#1B4FD8!important; border-color:#1B4FD8!important; }
+        .login-panel .ant-checkbox-wrapper span { color:#3B4451!important; font-size:13.5px!important; }
         .login-panel .ant-form-item { margin-bottom:14px!important; }
         .login-right-inner { box-sizing:border-box!important; }
       `}</style>
@@ -289,18 +289,18 @@ export default function LoginPage() {
           initial={{ opacity:0, x:20 }} animate={{ opacity:1, x:0 }} transition={{ duration:.5, delay:.1 }}
           style={{ width:'100%', maxWidth:420, padding:'24px 32px', boxSizing:'border-box' }}>
 
-          {/* Logo móvil — visible solo en <768px */}
-          <div className="login-logo-mobile" style={{ textAlign:'center', marginBottom:28, display:'none' }}>
+          {/* Logo centrado — visible siempre */}
+          <div style={{ textAlign:'center', marginBottom:20 }}>
             <img src="/logo-hicloud.png" alt="HiCloud ERP"
-              style={{ height:48, width:'auto', display:'inline-block', borderRadius:10 }} />
+              style={{ width:80, height:'auto', display:'inline-block' }} />
           </div>
 
-          <div style={{ marginBottom:20 }}>
-            <h2 style={{ color:'#1E3A8A', fontSize:28, fontWeight:800, margin:'0 0 6px', letterSpacing:'-0.5px' }}>
-              Bienvenido de nuevo
+          <div style={{ marginBottom:20, textAlign:'center' }}>
+            <h2 style={{ color:'#161A1F', fontSize:22, fontWeight:700, margin:'0 0 5px', letterSpacing:'-0.018em' }}>
+              ¡Bienvenido a HiCloud!
             </h2>
-            <p style={{ color:'#64748B', fontSize:13, margin:0 }}>
-              Inicia sesión en tu cuenta
+            <p style={{ color:'#1B4FD8', fontSize:14, margin:0 }}>
+              Por favor, inicia sesión en tu cuenta.
             </p>
           </div>
 
@@ -375,11 +375,10 @@ export default function LoginPage() {
 
           {/* Formulario principal */}
           <div className="login-panel" style={{ display: pending2FA ? 'none' : undefined }}>
-            <Form layout="vertical" onFinish={onFinish} size="large">
+            <Form layout="vertical" onFinish={onFinish} size="large" requiredMark={false}>
               <Form.Item name="email" label="Correo electrónico"
                 rules={[{ required:true, message:'El correo es requerido' },{ type:'email', message:'Correo inválido' }]}>
                 <Input
-                  prefix={<UserOutlined style={{ color:'#64748B' }} />}
                   placeholder="usuario@empresa.com"
                   autoComplete="email" type="email"
                 />
@@ -396,7 +395,6 @@ export default function LoginPage() {
                 }
                 rules={[{ required:true, message:'La contraseña es requerida' }]}>
                 <Input.Password
-                  prefix={<LockOutlined style={{ color:'#64748B' }} />}
                   placeholder="••••••••"
                   autoComplete={recordarPassword ? 'current-password' : 'new-password'}
                 />
@@ -413,12 +411,13 @@ export default function LoginPage() {
               <Button type="primary" htmlType="submit" block
                 loading={loading && blockCountdown === 0}
                 disabled={blockCountdown > 0}
-                style={{ height:46, background: blockCountdown > 0 ? '#9CA3AF' : '#2563EB',
-                  border:'none', borderRadius:10, fontSize:15, fontWeight:700,
-                  boxShadow: blockCountdown > 0 ? 'none' : '0 4px 20px rgba(37,99,235,.4)',
-                  transition:'all .15s', cursor: blockCountdown > 0 ? 'not-allowed' : 'pointer' }}
-                onMouseEnter={(e:any) => { if (blockCountdown === 0) e.currentTarget.style.background='#1d4ed8'; }}
-                onMouseLeave={(e:any) => { if (blockCountdown === 0) e.currentTarget.style.background='#2563EB'; }}>
+                style={{ height:50, background: blockCountdown > 0 ? '#9CA3AF' : '#1B4FD8',
+                  border:'none', borderRadius:9, fontSize:15.5, fontWeight:600,
+                  boxShadow: blockCountdown > 0 ? 'none' : '0 3px 16px rgba(27,79,216,.38)',
+                  transition:'all .15s', cursor: blockCountdown > 0 ? 'not-allowed' : 'pointer',
+                  letterSpacing:'-0.005em' }}
+                onMouseEnter={(e:any) => { if (blockCountdown === 0) e.currentTarget.style.background='#1642B8'; }}
+                onMouseLeave={(e:any) => { if (blockCountdown === 0) e.currentTarget.style.background='#1B4FD8'; }}>
                 {blockCountdown > 0
                   ? `Bloqueado — espera ${blockCountdown >= 60 ? `${Math.floor(blockCountdown/60)}:${String(blockCountdown%60).padStart(2,'0')} min` : `${blockCountdown}s`}`
                   : loading ? 'Iniciando sesión…' : 'Iniciar sesión'
@@ -427,19 +426,19 @@ export default function LoginPage() {
             </Form>
 
             {/* Google OAuth */}
-            <div style={{ display:'flex', alignItems:'center', gap:12, margin:'14px 0 10px' }}>
-              <div style={{ flex:1, height:1, background:rightBorder }} />
-              <Text style={{ color:rightSub, fontSize:12, whiteSpace:'nowrap' }}>o continúa con</Text>
-              <div style={{ flex:1, height:1, background:rightBorder }} />
+            <div style={{ display:'flex', alignItems:'center', gap:10, margin:'14px 0 12px' }}>
+              <div style={{ flex:1, height:1, background:'#D8DDE4' }} />
+              <Text style={{ color:'#9BA5B4', fontSize:11.5, whiteSpace:'nowrap', letterSpacing:'.01em' }}>o continúa con</Text>
+              <div style={{ flex:1, height:1, background:'#D8DDE4' }} />
             </div>
             <button type="button"
               onClick={() => { window.location.href = `${import.meta.env.VITE_API_URL ?? '/api/v1'}/auth/google`; }}
-              style={{ width:'100%', padding:'10px 16px', borderRadius:10, border:`1px solid ${rightBorder}`,
-                background:rightCard, color:rightText, fontSize:14, fontWeight:600,
+              style={{ width:'100%', height:48, borderRadius:9, border:'1.5px solid #D8DDE4',
+                background:'#fff', color:'#161A1F', fontSize:14, fontWeight:500,
                 display:'flex', alignItems:'center', justifyContent:'center', gap:10, cursor:'pointer',
-                transition:'background .15s' }}
-              onMouseEnter={e => (e.currentTarget.style.background = isDark ? '#334155' : '#F1F5F9')}
-              onMouseLeave={e => (e.currentTarget.style.background = rightCard)}>
+                transition:'background .14s, border-color .14s' }}
+              onMouseEnter={e => { e.currentTarget.style.background='#F5F7FA'; e.currentTarget.style.borderColor='#C3CAD3'; }}
+              onMouseLeave={e => { e.currentTarget.style.background='#fff'; e.currentTarget.style.borderColor='#D8DDE4'; }}>
               <svg width="18" height="18" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
                 <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
@@ -450,21 +449,21 @@ export default function LoginPage() {
             </button>
 
             {/* Sin cuenta */}
-            <div style={{ marginTop:14 }}>
-              <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:10 }}>
-                <div style={{ flex:1, height:1, background:rightBorder }} />
-                <Text style={{ color:rightSub, fontSize:12, whiteSpace:'nowrap' }}>¿No tienes cuenta?</Text>
-                <div style={{ flex:1, height:1, background:rightBorder }} />
+            <div style={{ marginTop:12 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+                <div style={{ flex:1, height:1, background:'#D8DDE4' }} />
+                <Text style={{ color:'#9BA5B4', fontSize:11.5, whiteSpace:'nowrap', letterSpacing:'.01em' }}>¿No tienes cuenta?</Text>
+                <div style={{ flex:1, height:1, background:'#D8DDE4' }} />
               </div>
-              <div style={{ display:'flex', gap:10 }}>
+              <div style={{ display:'flex', gap:8 }}>
                 <Button block icon={<RocketOutlined />} onClick={() => setDemoOpen(true)}
-                  style={{ height:40, borderRadius:10, border:`1px solid #2563EB`,
-                    background:isDark?'rgba(37,99,235,.15)':'#EFF6FF', color:'#2563EB', fontWeight:600 }}>
+                  style={{ height:38, borderRadius:8, border:'1.5px solid rgba(27,79,216,.35)',
+                    background:'#EEF3FC', color:'#1B4FD8', fontWeight:500, fontSize:13 }}>
                   Solicitar Demo
                 </Button>
                 <Button block onClick={() => navigate('/registrar')}
-                  style={{ height:40, borderRadius:10, border:`1px solid ${rightBorder}`,
-                    background:rightCard, color:rightText, fontWeight:600 }}>
+                  style={{ height:38, borderRadius:8, border:'1.5px solid #D8DDE4',
+                    background:'#fff', color:'#3B4451', fontWeight:500, fontSize:13 }}>
                   Crear cuenta
                 </Button>
               </div>
@@ -472,34 +471,33 @@ export default function LoginPage() {
 
             {/* ── ¿Necesitas ayuda? ──────────────────────────────────────── */}
             <div style={{
-              marginTop: 16,
+              marginTop: 14,
               paddingTop: 12,
-              borderTop: `1px solid ${rightBorder}`,
+              borderTop: '1px solid #D8DDE4',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              gap: 10,
+              gap: 8,
             }}>
-              <Text style={{ fontSize: 12, color: rightSub, fontWeight: 500 }}>¿Necesitas ayuda?</Text>
+              <Text style={{ fontSize: 11.5, color: '#9BA5B4', letterSpacing: '.01em' }}>¿Necesitas ayuda?</Text>
               <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                 {/* Correo → abre modal */}
                 <button
                   type="button"
                   onClick={() => setContactOpen(true)}
                   style={{
-                    display: 'flex', alignItems: 'center', gap: 6,
+                    display: 'flex', alignItems: 'center', gap: 5,
                     background: 'none', border: 'none', cursor: 'pointer',
-                    color: '#2563EB', fontSize: 13, fontWeight: 500, padding: 0,
-                    textDecoration: 'none',
+                    color: '#1B4FD8', fontSize: 13, fontWeight: 500, padding: 0,
                   }}
-                  onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
-                  onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}
+                  onMouseEnter={e => (e.currentTarget.style.opacity = '0.75')}
+                  onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
                 >
-                  <MailOutlined style={{ fontSize: 14 }} />
+                  <MailOutlined style={{ fontSize: 13 }} />
                   Correo
                 </button>
 
-                <span style={{ color: rightBorder, fontSize: 14, lineHeight: 1 }}>|</span>
+                <span style={{ color: '#D8DDE4', fontSize: 14, lineHeight: 1 }}>|</span>
 
                 {/* WhatsApp */}
                 <a
@@ -522,9 +520,25 @@ export default function LoginPage() {
                 </a>
               </div>
 
-              <Text style={{ fontSize: 10, color: '#CBD5E1', marginTop: 2 }}>
-                © 2026 HiCloud ERP · Cumplimiento DGII República Dominicana
-              </Text>
+              {/* Pie legal + Términos y Privacidad */}
+              <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:5, marginTop:2 }}>
+                <Text style={{ fontSize: 10.5, color: '#B0BAC6', textAlign:'center' }}>
+                  © 2026 HiCloud ERP · Cumplimiento DGII República Dominicana
+                </Text>
+                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                  <Link to="/terminos" style={{ fontSize:10.5, color:'#B0BAC6', textDecoration:'none' }}
+                    onMouseEnter={e => (e.currentTarget.style.color='#9BA5B4')}
+                    onMouseLeave={e => (e.currentTarget.style.color='#B0BAC6')}>
+                    Términos de Uso
+                  </Link>
+                  <span style={{ fontSize:10, color:'#CDD2D9' }}>·</span>
+                  <Link to="/privacidad" style={{ fontSize:10.5, color:'#B0BAC6', textDecoration:'none' }}
+                    onMouseEnter={e => (e.currentTarget.style.color='#9BA5B4')}
+                    onMouseLeave={e => (e.currentTarget.style.color='#B0BAC6')}>
+                    Privacidad
+                  </Link>
+                </div>
+              </div>
             </div>
           </div>
         </motion.div>
