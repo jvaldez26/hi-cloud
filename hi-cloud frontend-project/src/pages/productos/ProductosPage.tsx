@@ -590,8 +590,19 @@ function ProductosCatalogo() {
     queryFn:  () => productosApi.list(page, PAGE_SIZE, search, true),
   });
 
-  const categorias = [...new Set((data?.data ?? []).map((p: Producto) => p.categoria).filter(Boolean))] as string[];
-  const marcas     = [...new Set((data?.data ?? []).map((p: Producto) => (p as any).marca).filter(Boolean))] as string[];
+  // Categorías y marcas: cargan todo el catálogo (no solo la página actual) para Selects completos
+  const { data: catalogoCats } = useQuery({
+    queryKey: ['productos-categorias'],
+    queryFn: productosApi.categorias,
+    staleTime: 5 * 60_000,
+  });
+  const { data: catalogoMarcas } = useQuery({
+    queryKey: ['productos-marcas'],
+    queryFn: productosApi.marcas,
+    staleTime: 5 * 60_000,
+  });
+  const categorias = catalogoCats ?? [];
+  const marcas     = catalogoMarcas ?? [];
   // Ajustar precios al público toca precios de venta: solo ADMIN (el backend lo exige igual)
   const esAdminPrecios = String((user as any)?.role ?? '').toLowerCase() === 'admin';
   const [ajusteOpen, setAjusteOpen] = useState(false);

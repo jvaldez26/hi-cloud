@@ -78,6 +78,20 @@ export class ProductosController {
     return this.productosService.findAll(pagination as PaginationDto, incluirSinStock === true, tipo);
   }
 
+  @Get('categorias')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @ApiOperation({ summary: 'Valores distintos de categoría en el catálogo (para Selects — todo el catálogo, no paginado)' })
+  getCategorias() {
+    return this.productosService.getCategorias();
+  }
+
+  @Get('marcas')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @ApiOperation({ summary: 'Valores distintos de marca en el catálogo (para Selects — todo el catálogo, no paginado)' })
+  getMarcas() {
+    return this.productosService.getMarcas();
+  }
+
   @Get('stock-bajo')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Productos con stock bajo o agotado' })

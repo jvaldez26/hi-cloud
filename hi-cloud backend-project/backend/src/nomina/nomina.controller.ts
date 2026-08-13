@@ -146,6 +146,56 @@ export class NominaController {
     );
   }
 
+  // ── Catálogos: Departamentos y Cargos ──────────────────────────────────────
+
+  @Get('departamentos')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Listar departamentos del catálogo' })
+  listarDepartamentos() {
+    return this.nominaService.listarDepartamentos();
+  }
+
+  @Post('departamentos')
+  @HttpCode(HttpStatus.CREATED)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Crear departamento en el catálogo' })
+  crearDepartamento(@Body('nombre') nombre: string) {
+    if (!nombre?.trim()) throw new HttpException('El nombre es requerido', HttpStatus.BAD_REQUEST);
+    return this.nominaService.crearDepartamento(nombre.trim());
+  }
+
+  @Delete('departamentos/:id')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Eliminar departamento (solo si no tiene empleados asignados)' })
+  eliminarDepartamento(@Param('id', ParseIntPipe) id: number) {
+    return this.nominaService.eliminarDepartamento(id);
+  }
+
+  @Get('cargos')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Listar cargos del catálogo' })
+  listarCargos() {
+    return this.nominaService.listarCargos();
+  }
+
+  @Post('cargos')
+  @HttpCode(HttpStatus.CREATED)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Crear cargo en el catálogo' })
+  crearCargo(@Body('nombre') nombre: string) {
+    if (!nombre?.trim()) throw new HttpException('El nombre es requerido', HttpStatus.BAD_REQUEST);
+    return this.nominaService.crearCargo(nombre.trim());
+  }
+
+  @Delete('cargos/:id')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Eliminar cargo (solo si no tiene empleados asignados)' })
+  eliminarCargo(@Param('id', ParseIntPipe) id: number) {
+    return this.nominaService.eliminarCargo(id);
+  }
+
   // ── Empleados ──────────────────────────────────────────────────────────────
 
   @Post('empleados')

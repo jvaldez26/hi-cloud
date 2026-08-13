@@ -95,6 +95,14 @@ export class RefreshTokenService {
     await this.repo.update({ tokenHash: hash }, { revokedAt: new Date(), motivoRevocacion: motivo });
   }
 
+  /** Revoca una sesión activa por su UUID, verificando que pertenezca al usuario. */
+  async revocarPorId(id: string, userId: number): Promise<void> {
+    await this.repo.update(
+      { id, userId, revokedAt: IsNull() },
+      { revokedAt: new Date(), motivoRevocacion: 'logout' },
+    );
+  }
+
   /** Lista sesiones activas de un usuario (para "dispositivos conectados"). */
   async sesionesActivas(userId: number) {
     return this.repo.find({

@@ -17,7 +17,7 @@ import {
   MailOutlined, LinkOutlined, CreditCardOutlined, ClockCircleOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { nominaApi, type EmpleadoPayload, type PeriodoPayload, type NovedadPayload, type ContratoPayload } from '../../api/nomina.api';
+import { nominaApi, departamentosApi, cargosApi, type EmpleadoPayload, type PeriodoPayload, type NovedadPayload, type ContratoPayload } from '../../api/nomina.api';
 import { exportarExcel } from '../../utils/exportExcel';
 import { fmt } from '../../utils/formatters';
 import dayjs from 'dayjs';
@@ -52,6 +52,18 @@ function EmpleadosTab() {
   const { data, isLoading } = useQuery({
     queryKey: ['empleados', page, search],
     queryFn: () => nominaApi.empleados(page, 10, search),
+  });
+
+  // Catálogos de departamentos y cargos (todo el tenant, no paginado)
+  const { data: catalogoDeptos } = useQuery({
+    queryKey: ['nomina-departamentos'],
+    queryFn: departamentosApi.listar,
+    staleTime: 5 * 60_000,
+  });
+  const { data: catalogoCargos } = useQuery({
+    queryKey: ['nomina-cargos'],
+    queryFn: cargosApi.listar,
+    staleTime: 5 * 60_000,
   });
 
   // Usuarios del tenant — solo se carga cuando el modal de vinculación está abierto
@@ -225,8 +237,42 @@ function EmpleadosTab() {
             <Col xs={24} sm={8}><Form.Item name="apellido" label="Apellido" rules={[{ required: true }]}><Input /></Form.Item></Col>
             <Col xs={24} sm={8}><Form.Item name="fechaNacimiento" label="Fecha Nacimiento" rules={[{ required: true }]}><Input type="date" /></Form.Item></Col>
             <Col xs={24} sm={8}><Form.Item name="fechaIngreso" label="Fecha Ingreso" rules={[{ required: true }]}><Input type="date" /></Form.Item></Col>
-            <Col xs={24} sm={8}><Form.Item name="cargo" label="Cargo" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col xs={24} sm={8}><Form.Item name="departamento" label="Departamento"><Input /></Form.Item></Col>
+            <Col xs={24} sm={8}>
+              <Form.Item name="cargo" label="Cargo" rules={[{ required: true, message: 'El cargo es requerido' }]}>
+                <Select
+                  showSearch allowClear
+                  placeholder="Selecciona o escribe un cargo"
+                  options={(catalogoCargos ?? []).map(c => ({ value: c.nombre, label: c.nombre }))}
+                  filterOption={(input, opt) => (opt?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+                  dropdownRender={menu => (
+                    <div>
+                      {menu}
+                      <div style={{ padding: '4px 8px', fontSize: 12, color: '#999' }}>
+                        Administra los cargos en el catálogo desde el botón "Catálogos"
+                      </div>
+                    </div>
+                  )}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={8}>
+              <Form.Item name="departamento" label="Departamento">
+                <Select
+                  showSearch allowClear
+                  placeholder="Selecciona o escribe un departamento"
+                  options={(catalogoDeptos ?? []).map(d => ({ value: d.nombre, label: d.nombre }))}
+                  filterOption={(input, opt) => (opt?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+                  dropdownRender={menu => (
+                    <div>
+                      {menu}
+                      <div style={{ padding: '4px 8px', fontSize: 12, color: '#999' }}>
+                        Administra los departamentos desde el botón "Catálogos"
+                      </div>
+                    </div>
+                  )}
+                />
+              </Form.Item>
+            </Col>
             <Col xs={24} sm={4}><Form.Item name="moneda" label="Moneda sueldo" initialValue="DOP">
               <Select options={[{ value: 'DOP', label: 'DOP (Pesos)' }, { value: 'USD', label: 'USD (Dólares)' }]} />
             </Form.Item></Col>

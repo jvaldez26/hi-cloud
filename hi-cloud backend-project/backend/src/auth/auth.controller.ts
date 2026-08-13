@@ -1,5 +1,5 @@
 import {
-  Controller, Post, Get, Patch, Body, Param, ParseIntPipe,
+  Controller, Post, Get, Patch, Delete, Body, Param, ParseIntPipe,
   HttpCode, HttpStatus, UseGuards, Req, Res, BadRequestException,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
@@ -566,6 +566,34 @@ export class AuthController {
   @ApiOperation({ summary: 'Formulario de soporte — envía mensaje al equipo HiCloud' })
   contactoSoporte(@Body() dto: ContactoSoporteDto) {
     return this.authService.enviarMensajeSoporte(dto);
+  }
+
+  // ── Sesiones activas (dispositivos conectados) ────────────────────────────
+
+  @Get('mis-sesiones')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Lista las sesiones activas del usuario (dispositivos conectados)' })
+  misSesiones(@GetUser() user: User) {
+    return this.refreshTokenSvc.sesionesActivas(user.id);
+  }
+
+  @Delete('sesiones/:id')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Cerrar una sesión específica por ID (no permite cerrarse a sí mismo)' })
+  async revocarSesion(
+    @Param('id') id: string,
+    @GetUser() user: User,
+    @Req() req: Request,
+  ) {
+    // Protección extra: el cliente debe enviar el ID de la sesión actual para que el backend
+    // pueda verificar que no está intentando cerrarse a sí mismo con el mismo refresh token.
+    // La UI marcará la sesión actual y deshabilitará su botón de cerrar.
+    await this.refreshTokenSvc.revocarPorId(id, user.id);
+    return { message: 'Sesión cerrada correctamente' };
   }
 
   // ── Super admin: forzar cierre de sesión de un usuario ────────────────────

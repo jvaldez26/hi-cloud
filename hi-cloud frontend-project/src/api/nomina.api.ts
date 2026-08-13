@@ -1,5 +1,18 @@
 import api from './client';
 
+// ── Catálogos de departamentos y cargos ──────────────────────────────────────
+export const departamentosApi = {
+  listar: () => api.get('/nomina/departamentos').then(r => (r.data?.data ?? r.data) as { id: number; nombre: string }[]),
+  crear: (nombre: string) => api.post('/nomina/departamentos', { nombre }).then(r => r.data?.data ?? r.data),
+  eliminar: (id: number) => api.delete(`/nomina/departamentos/${id}`).then(r => r.data),
+};
+
+export const cargosApi = {
+  listar: () => api.get('/nomina/cargos').then(r => (r.data?.data ?? r.data) as { id: number; nombre: string }[]),
+  crear: (nombre: string) => api.post('/nomina/cargos', { nombre }).then(r => r.data?.data ?? r.data),
+  eliminar: (id: number) => api.delete(`/nomina/cargos/${id}`).then(r => r.data),
+};
+
 export interface EmpleadoPayload {
   cedula: string; nombre: string; apellido: string;
   fechaNacimiento: string; fechaIngreso: string;

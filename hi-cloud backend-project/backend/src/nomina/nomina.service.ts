@@ -11,6 +11,8 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { Empleado, EstadoEmpleado, TipoContrato } from './entities/empleado.entity';
+import { Departamento } from './entities/departamento.entity';
+import { Cargo } from './entities/cargo.entity';
 import { NominaPeriodo, EstadoNomina } from './entities/nomina-periodo.entity';
 import { NominaLinea } from './entities/nomina-linea.entity';
 import { NominaNovedadEmpleado, TipoNovedad } from './entities/nomina-novedad.entity';
@@ -53,6 +55,10 @@ export class NominaService {
     private prestamoRepository: Repository<PrestamoEmpleado>,
     @InjectRepository(AnticipoNomina)
     private anticipoRepository: Repository<AnticipoNomina>,
+    @InjectRepository(Departamento)
+    private departamentoRepository: Repository<Departamento>,
+    @InjectRepository(Cargo)
+    private cargoRepository: Repository<Cargo>,
     private calculos:         NominaCalculosService,
     private asientosService:  AsientosAutomaticosService,
     private tesoreriaService: TesoreriaService,
@@ -60,6 +66,71 @@ export class NominaService {
     private emailService:     EmailService,
     @InjectDataSource() private dataSource: DataSource,
   ) {}
+
+  // ──────────────────────────────────────────────────────────────────
+  // Catálogos: Departamentos y Cargos
+  // ──────────────────────────────────────────────────────────────────
+
+  async listarDepartamentos() {
+    const empresaId = this.tenantService.getEmpresaId();
+    return this.departamentoRepository.find({
+      where: { empresaId, isActive: true },
+      order: { nombre: 'ASC' },
+    });
+  }
+
+  async crearDepartamento(nombre: string) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const existe = await this.departamentoRepository.findOne({
+      where: { empresaId, nombre, isActive: true },
+    });
+    if (existe) throw new ConflictException(`El departamento "${nombre}" ya existe`);
+    const dep = this.departamentoRepository.create({ empresaId, nombre: nombre.trim() });
+    return this.departamentoRepository.save(dep);
+  }
+
+  async eliminarDepartamento(id: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const dep = await this.departamentoRepository.findOne({ where: { id, empresaId } });
+    if (!dep) throw new NotFoundException('Departamento no encontrado');
+    // Verificar que no tenga empleados activos vinculados
+    const count = await this.empleadoRepository.count({
+      where: { empresaId, departamentoId: id, isActive: true } as any,
+    });
+    if (count > 0) throw new BadRequestException(`No se puede eliminar: ${count} empleado(s) asignado(s) a este departamento`);
+    await this.departamentoRepository.update({ id, empresaId }, { isActive: false });
+    return { ok: true };
+  }
+
+  async listarCargos() {
+    const empresaId = this.tenantService.getEmpresaId();
+    return this.cargoRepository.find({
+      where: { empresaId, isActive: true },
+      order: { nombre: 'ASC' },
+    });
+  }
+
+  async crearCargo(nombre: string) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const existe = await this.cargoRepository.findOne({
+      where: { empresaId, nombre, isActive: true },
+    });
+    if (existe) throw new ConflictException(`El cargo "${nombre}" ya existe`);
+    const cargo = this.cargoRepository.create({ empresaId, nombre: nombre.trim() });
+    return this.cargoRepository.save(cargo);
+  }
+
+  async eliminarCargo(id: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const cargo = await this.cargoRepository.findOne({ where: { id, empresaId } });
+    if (!cargo) throw new NotFoundException('Cargo no encontrado');
+    const count = await this.empleadoRepository.count({
+      where: { empresaId, cargoId: id, isActive: true } as any,
+    });
+    if (count > 0) throw new BadRequestException(`No se puede eliminar: ${count} empleado(s) asignado(s) a este cargo`);
+    await this.cargoRepository.update({ id, empresaId }, { isActive: false });
+    return { ok: true };
+  }
 
   // ──────────────────────────────────────────────────────────────────
   // Empleados

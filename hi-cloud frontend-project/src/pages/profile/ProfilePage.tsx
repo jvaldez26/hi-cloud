@@ -1,11 +1,17 @@
 import { useState } from 'react';
 import { Card, Form, Input, Button, Row, Col, Typography, Tag, Avatar,
-         Space, Divider, message, Alert, Modal, Tooltip } from 'antd';
+         Space, Divider, message, Alert, Modal, Tooltip, Table, Popconfirm, Badge } from 'antd';
 import { UserOutlined, LockOutlined, SaveOutlined, SafetyOutlined,
-         EditOutlined, CloseOutlined, GoogleOutlined, LinkOutlined } from '@ant-design/icons';
+         EditOutlined, CloseOutlined, GoogleOutlined, LinkOutlined,
+         DesktopOutlined, LogoutOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
 import api from '../../api/client';
+import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
+import 'dayjs/locale/es';
+dayjs.extend(relativeTime);
+dayjs.locale('es');
 
 const { Title, Text } = Typography;
 
@@ -180,6 +186,125 @@ function TwoFactorSection() {
           </Space>
         )}
       </Modal>
+    </Card>
+  );
+}
+
+function SesionesActivasSection() {
+  const qc = useQueryClient();
+
+  const { data: sesiones, isLoading } = useQuery({
+    queryKey: ['mis-sesiones'],
+    queryFn: () => api.get('/auth/mis-sesiones').then(r => (r.data?.data ?? r.data) as any[]),
+    refetchInterval: 60_000, // refresca cada minuto
+  });
+
+  const revocarMut = useMutation({
+    mutationFn: (id: string) => api.delete(`/auth/sesiones/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['mis-sesiones'] });
+      message.success('Sesión cerrada correctamente');
+    },
+    onError: () => message.error('No se pudo cerrar la sesión'),
+  });
+
+  // Detectar la sesión actual: la más reciente entre las activas que no ha expirado
+  // (La sesión actual es la primera en orden descendente de createdAt — es la que usamos ahora)
+  const sesionActualId = sesiones?.[0]?.id;
+
+  const columns = [
+    {
+      title: 'Dispositivo',
+      key: 'dispositivo',
+      render: (_: any, r: any) => (
+        <Space>
+          <DesktopOutlined style={{ color: '#8b9cf4' }} />
+          <div>
+            <div style={{ fontWeight: 500, fontSize: 13 }}>
+              {r.deviceInfo
+                ? r.deviceInfo.replace(/Mozilla\/[\d.]+ /, '').slice(0, 60)
+                : 'Dispositivo desconocido'}
+              {r.id === sesionActualId && (
+                <Badge status="processing" text="Esta sesión" style={{ marginLeft: 8, fontSize: 11 }} />
+              )}
+            </div>
+            <div style={{ fontSize: 11, color: '#94a3b8' }}>IP: {r.ipAddress ?? '—'}</div>
+          </div>
+        </Space>
+      ),
+    },
+    {
+      title: 'Última actividad',
+      key: 'createdAt',
+      width: 150,
+      render: (_: any, r: any) => (
+        <Tooltip title={dayjs(r.createdAt).format('DD/MM/YYYY HH:mm')}>
+          <span style={{ fontSize: 13, color: '#64748b' }}>{dayjs(r.createdAt).fromNow()}</span>
+        </Tooltip>
+      ),
+    },
+    {
+      title: 'Expira',
+      key: 'expiresAt',
+      width: 130,
+      render: (_: any, r: any) => (
+        <span style={{ fontSize: 12, color: '#94a3b8' }}>
+          {dayjs(r.expiresAt).format('DD/MM/YY HH:mm')}
+        </span>
+      ),
+    },
+    {
+      title: '',
+      key: 'acciones',
+      width: 80,
+      render: (_: any, r: any) => (
+        r.id === sesionActualId
+          ? <Tooltip title="No puedes cerrar tu sesión actual desde aquí — usa 'Cerrar sesión'">
+              <LogoutOutlined style={{ color: '#d1d5db', cursor: 'not-allowed' }} />
+            </Tooltip>
+          : <Popconfirm
+              title="¿Cerrar esta sesión?"
+              description="El dispositivo quedará desconectado."
+              okText="Cerrar"
+              okButtonProps={{ danger: true }}
+              onConfirm={() => revocarMut.mutate(r.id)}
+            >
+              <Tooltip title="Cerrar sesión en este dispositivo">
+                <Button size="small" danger icon={<LogoutOutlined />} loading={revocarMut.isPending} />
+              </Tooltip>
+            </Popconfirm>
+      ),
+    },
+  ];
+
+  return (
+    <Card
+      title={<><DesktopOutlined /> Dispositivos conectados</>}
+      style={{ marginTop: 16 }}
+      extra={
+        <Popconfirm
+          title="¿Cerrar todas las demás sesiones?"
+          description="Quedarás conectado solo en el dispositivo actual."
+          okText="Cerrar todas"
+          okButtonProps={{ danger: true }}
+          onConfirm={() => api.post('/auth/logout-all').then(() => {
+            qc.invalidateQueries({ queryKey: ['mis-sesiones'] });
+            message.success('Sesiones cerradas en todos los demás dispositivos');
+          })}
+        >
+          <Button size="small" danger>Cerrar todas las demás</Button>
+        </Popconfirm>
+      }
+    >
+      <Table
+        dataSource={sesiones ?? []}
+        columns={columns}
+        rowKey="id"
+        loading={isLoading}
+        pagination={false}
+        size="small"
+        locale={{ emptyText: 'No hay sesiones activas' }}
+      />
     </Card>
   );
 }
@@ -406,6 +531,8 @@ export default function ProfilePage() {
           </Card>
 
           <TwoFactorSection />
+
+          <SesionesActivasSection />
 
           <Card title="Permisos de acceso" style={{ marginTop: 16 }}>
             <Row gutter={[12, 12]}>

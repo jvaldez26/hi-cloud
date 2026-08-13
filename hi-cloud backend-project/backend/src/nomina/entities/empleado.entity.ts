@@ -100,4 +100,12 @@ export class Empleado extends TenantBaseEntity {
   /** ID del usuario del sistema vinculado (para Portal del Empleado) */
   @Column({ nullable: true })
   userId?: number;
+
+  /** FK al catálogo de departamentos (nullable — retrocompatible con texto libre) */
+  @Column({ nullable: true })
+  departamentoId?: number;
+
+  /** FK al catálogo de cargos (nullable — retrocompatible con texto libre) */
+  @Column({ nullable: true })
+  cargoId?: number;
 }

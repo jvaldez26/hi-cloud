@@ -45,6 +45,36 @@ export class ProductosService implements OnModuleInit {
     private s3Service:       S3Service,
   ) {}
 
+  /** Devuelve todas las categorías distintas del catálogo de la empresa (para Selects). */
+  async getCategorias(): Promise<string[]> {
+    const empresaId = this.tenantService.getEmpresaId();
+    const rows = await this.productoRepository
+      .createQueryBuilder('p')
+      .select('DISTINCT p.categoria', 'categoria')
+      .where('p."empresaId" = :empresaId', { empresaId })
+      .andWhere('p."isActive" = true')
+      .andWhere('p.categoria IS NOT NULL')
+      .andWhere("p.categoria != ''")
+      .orderBy('p.categoria', 'ASC')
+      .getRawMany<{ categoria: string }>();
+    return rows.map(r => r.categoria);
+  }
+
+  /** Devuelve todas las marcas distintas del catálogo de la empresa (para Selects). */
+  async getMarcas(): Promise<string[]> {
+    const empresaId = this.tenantService.getEmpresaId();
+    const rows = await this.productoRepository
+      .createQueryBuilder('p')
+      .select('DISTINCT p.marca', 'marca')
+      .where('p."empresaId" = :empresaId', { empresaId })
+      .andWhere('p."isActive" = true')
+      .andWhere('p.marca IS NOT NULL')
+      .andWhere("p.marca != ''")
+      .orderBy('p.marca', 'ASC')
+      .getRawMany<{ marca: string }>();
+    return rows.map(r => r.marca);
+  }
+
   async onModuleInit() {
     // Migrar imágenes base64 existentes a S3 (operación idempotente, 1 vez)
     try {

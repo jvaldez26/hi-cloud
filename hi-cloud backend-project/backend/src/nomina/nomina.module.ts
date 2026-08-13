@@ -5,6 +5,8 @@ import { NominaService } from './nomina.service';
 import { NominaController } from './nomina.controller';
 import { NominaCalculosService } from './services/nomina-calculos.service';
 import { Empleado } from './entities/empleado.entity';
+import { Departamento } from './entities/departamento.entity';
+import { Cargo } from './entities/cargo.entity';
 import { NominaPeriodo } from './entities/nomina-periodo.entity';
 import { NominaLinea } from './entities/nomina-linea.entity';
 import { NominaNovedadEmpleado } from './entities/nomina-novedad.entity';
@@ -19,6 +21,8 @@ import { NotificacionesModule } from '../notificaciones/notificaciones.module';
   imports: [
     TypeOrmModule.forFeature([
       Empleado,
+      Departamento,
+      Cargo,
       NominaPeriodo,
       NominaLinea,
       NominaNovedadEmpleado,
