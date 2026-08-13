@@ -10024,7 +10024,7 @@ export default function POSPage() {
             return;
           } else {
             const pluStr = String(match.plu).padStart(match.patron.longitudPlu, '0');
-            message.error(`⚖ PLU ${pluStr} no está asignado a ningún producto.`, 4);
+            message.error(`⚖ PLU ${pluStr} no está asignado a ningún producto. Asígnelo en Inventario → Productos.`, 4);
             setBarcodeInput('');
             return;
           }
@@ -10096,7 +10096,7 @@ export default function POSPage() {
 
           if (!porPlu) {
             const pluStr = String(match.plu).padStart(match.patron.longitudPlu, '0');
-            message.error(`⚖ PLU ${pluStr} no está asignado a ningún producto. Verifique Configuración → Balanzas.`, 4);
+            message.error(`⚖ PLU ${pluStr} no está asignado a ningún producto. Asígnelo en Inventario → Productos.`, 4);
             return;
           }
 

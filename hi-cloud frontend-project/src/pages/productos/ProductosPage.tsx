@@ -497,8 +497,9 @@ function ProductosCatalogo() {
   const itbisWatch     = Form.useWatch('porcentajeIva', form) ?? 18;
   const nombreWatch    = Form.useWatch('nombre', form) ?? '';
   const uomWatch       = Form.useWatch('unidadMedida',  form) ?? 'PZA';
-  const almacenIdWatch = Form.useWatch('almacenId',     form) as number | undefined;
-  const esServicio     = tipoWatch === 'servicio';
+  const almacenIdWatch  = Form.useWatch('almacenId',  form) as number | undefined;
+  const esPesableWatch  = Form.useWatch('esPesable', form) as boolean | undefined;
+  const esServicio      = tipoWatch === 'servicio';
 
   const { data: uomUnidades = [] } = useQuery({
     queryKey: ['uom-unidades'],
@@ -775,7 +776,8 @@ function ProductosCatalogo() {
     // Abrir en modo avanzado si el producto ya tiene campos avanzados con datos
     const pa = p as any;
     if (pa.marca || pa.modelo || pa.precio2 || pa.precio3 || pa.categoria ||
-        pa.imagenUrl || pa.descripcion || spa?.some((s: any) => s.ubicacionId)) {
+        pa.imagenUrl || pa.descripcion || pa.esPesable ||
+        spa?.some((s: any) => s.ubicacionId)) {
       setModoAvanzado(true);
     }
     setOpen(true);
@@ -883,7 +885,7 @@ function ProductosCatalogo() {
             </Tooltip>
           )}
           {(r as any).esPesable && !(r as any).plu && (
-            <Tooltip title="Producto pesable sin PLU asignado — configure el PLU en Configuración → Balanzas para que el escáner lo identifique">
+            <Tooltip title="Producto pesable sin PLU asignado — edita el producto y asigna el número PLU en la sección Balanza etiquetadora">
               <Tag color="warning" style={{ fontSize: 10, padding: '0 4px', lineHeight: '16px' }}>⚖ Sin PLU</Tag>
             </Tooltip>
           )}
@@ -1356,6 +1358,33 @@ function ProductosCatalogo() {
                           value: u.id,
                           label: `${u.codigo}${u.tipo ? ` (${u.tipo})` : ''}`,
                         }))}
+                      />
+                    </Form.Item>
+                  </Col>
+                )}
+              </>
+            )}
+
+            {/* ── Balanza etiquetadora — solo en avanzado, solo productos físicos ── */}
+            {modoAvanzado && !esServicio && (
+              <>
+                <Col xs={24} sm={8}>
+                  <Form.Item name="esPesable" label="Balanza etiquetadora" valuePropName="checked">
+                    <Switch checkedChildren="Pesable" unCheckedChildren="Normal" />
+                  </Form.Item>
+                </Col>
+                {esPesableWatch && (
+                  <Col xs={24} sm={8}>
+                    <Form.Item
+                      name="plu"
+                      label="Número PLU"
+                      extra="Código numérico asignado en la balanza"
+                      rules={[{ type: 'number', min: 1, message: 'El PLU debe ser mayor que 0' }]}
+                    >
+                      <InputNumber
+                        style={{ width: '100%' }}
+                        min={1} max={99999} precision={0}
+                        placeholder="Ej: 42"
                       />
                     </Form.Item>
                   </Col>

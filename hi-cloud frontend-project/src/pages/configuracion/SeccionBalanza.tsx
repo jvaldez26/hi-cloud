@@ -1051,10 +1051,30 @@ function TabAsistente({ isAdmin }: { isAdmin: boolean }) {
 // ── Tab 4: Productos sin configurar ─────────────────────────────────────────
 
 function TabSinConfigurar() {
+  const qc = useQueryClient();
   const { data = [], isLoading, refetch } = useQuery({
     queryKey: ['balanza-productos-sin-configurar'],
     queryFn: balanzaApi.productosSinConfigurar,
   });
+
+  const [pluEdit, setPluEdit] = useState<{ [id: number]: number | null }>({});
+  const [saving, setSaving] = useState<{ [id: number]: boolean }>({});
+
+  const guardarPlu = async (id: number) => {
+    const valor = pluEdit[id];
+    if (!valor || valor < 1) { message.error('El PLU debe ser un número mayor que 0'); return; }
+    setSaving(s => ({ ...s, [id]: true }));
+    try {
+      await api.patch(`/productos/${id}`, { plu: valor, esPesable: true });
+      message.success('PLU asignado correctamente');
+      setPluEdit(e => { const n = { ...e }; delete n[id]; return n; });
+      qc.invalidateQueries({ queryKey: ['balanza-productos-sin-configurar'] });
+    } catch {
+      message.error('No se pudo guardar el PLU');
+    } finally {
+      setSaving(s => ({ ...s, [id]: false }));
+    }
+  };
 
   const sinPlu = data.filter(p => p.sinPlu);
   const conAdvertencia = data.filter(p => !p.sinPlu && p.advertenciaUnidad);
@@ -1067,8 +1087,30 @@ function TabSinConfigurar() {
       title: 'PLU',
       dataIndex: 'plu',
       key: 'plu',
-      width: 80,
-      render: (v: number | null) => v ?? <Tag color="warning">Sin PLU</Tag>,
+      width: 170,
+      render: (v: number | null, r: ProductoSinConfig) => {
+        if (!r.sinPlu) return v ?? <Tag color="warning">Sin PLU</Tag>;
+        return (
+          <Space.Compact size="small">
+            <InputNumber
+              size="small"
+              min={1} max={99999} precision={0}
+              placeholder="Nº PLU"
+              value={pluEdit[r.id] ?? undefined}
+              onChange={n => setPluEdit(e => ({ ...e, [r.id]: n }))}
+              style={{ width: 90 }}
+            />
+            <Button
+              size="small" type="primary"
+              disabled={!pluEdit[r.id] || (pluEdit[r.id] ?? 0) < 1}
+              loading={!!saving[r.id]}
+              onClick={() => guardarPlu(r.id)}
+            >
+              ✓
+            </Button>
+          </Space.Compact>
+        );
+      },
     },
     {
       title: 'Estado',
@@ -1117,8 +1159,7 @@ function TabSinConfigurar() {
             description={
               <ul style={{ margin: 0, paddingLeft: 16 }}>
                 <li>
-                  <Text strong>Sin PLU:</Text> abre el producto en Inventario → Productos, activa
-                  la opción «Pesable» y asigna el número PLU de la balanza.
+                  <Text strong>Sin PLU:</Text> escribe el número PLU en la columna PLU y presiona ✓ para guardar directamente desde aquí; o bien abre el producto en Inventario → Productos, activa «Balanza etiquetadora» y asigna el PLU desde el formulario.
                 </li>
                 <li>
                   <Text strong>Unidad inválida:</Text> la unidad de medida del producto no está en
