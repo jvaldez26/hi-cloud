@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, ForbiddenException, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { ILike, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User } from './users.entity';
 import { UserRole } from './enums/user-role.enum';
@@ -37,18 +37,21 @@ export class UsersService implements OnModuleInit {
 
   /** Sin select explícito — TypeORM respeta `select: false` en la entidad
    *  (password, tokens, googleId, etc. NO se cargan). Incluye createdAt y
-   *  emailVerifiedAt necesarios para la lógica de login/verificación. */
+   *  emailVerifiedAt necesarios para la lógica de login/verificación.
+   *  Usa ILike para ser insensible a mayúsculas — el email se guarda
+   *  normalizado pero el lookup debe tolerar cualquier capitalización. */
   findByEmail(email: string) {
-    return this.userRepository.findOne({ where: { email } });
+    return this.userRepository.findOne({ where: { email: ILike(email) } });
   }
 
-  /** Igual que findByEmail pero incluye el hash de contraseña para bcrypt. */
+  /** Igual que findByEmail pero incluye el hash de contraseña para bcrypt.
+   *  LOWER() en ambos lados para lookup case-insensitive. */
   findByEmailForAuth(email: string) {
     return this.userRepository
       .createQueryBuilder('u')
       .addSelect('u.password')
       .addSelect('u.sessionToken')
-      .where('u.email = :email', { email })
+      .where('LOWER(u.email) = LOWER(:email)', { email })
       .getOne();
   }
 

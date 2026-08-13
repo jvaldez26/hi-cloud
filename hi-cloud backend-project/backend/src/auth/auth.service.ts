@@ -13,7 +13,7 @@
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { ILike, Repository, DataSource } from 'typeorm';
 import { randomUUID, randomBytes, createHash } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { UsersService } from '../users/users.service';
@@ -645,7 +645,7 @@ export class AuthService implements OnModuleInit {
   // ─── Password Reset ───────────────────────────────────────────────────────────
 
   async forgotPassword(email: string) {
-    const user = await this.userRepository.findOne({ where: { email, isActive: true } });
+    const user = await this.userRepository.findOne({ where: { email: ILike(email), isActive: true } });
 
     if (!user) {
       this.logger.log(`Reset solicitado para email no encontrado: ${email}`);
@@ -851,7 +851,7 @@ export class AuthService implements OnModuleInit {
 
   async resendVerificationEmail(email: string): Promise<{ message: string }> {
     const user = await this.userRepository.findOne({
-      where: { email, isActive: true },
+      where: { email: ILike(email), isActive: true },
       select: ['id', 'nombre', 'email', 'emailVerifiedAt'] as any,
     });
 
@@ -888,7 +888,7 @@ export class AuthService implements OnModuleInit {
 
     // 2. Buscar por email (cuenta local existente → vincular Google ID)
     if (!user) {
-      user = await this.userRepository.findOne({ where: { email: data.email } });
+      user = await this.userRepository.findOne({ where: { email: ILike(data.email) } });
       if (user) {
         // Vincular Google ID si aún no estaba vinculado
         await this.userRepository.update(user.id, {
