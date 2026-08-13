@@ -559,6 +559,15 @@ export class AuthController {
     });
   }
 
+  // ── Stats de plataforma públicas (sin autenticación, caché 24h) ─────────
+  @Get('stats-plataforma')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 60, ttl: 60_000 } }) // 60 req/min por IP
+  @ApiOperation({ summary: 'Stats públicas de plataforma para el panel de login' })
+  statsPlataforma() {
+    return this.authService.statsPlataforma();
+  }
+
   // ── Formulario de soporte público (sin autenticación) ────────────────────
   @Post('contacto-soporte')
   @HttpCode(HttpStatus.OK)

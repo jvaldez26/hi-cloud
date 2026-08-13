@@ -2,12 +2,13 @@ import { useState, useEffect, useRef } from 'react';
 import { Form, Input, Button, Typography, Alert, Checkbox, ConfigProvider, theme as antTheme, Modal, message } from 'antd';
 import { UserOutlined, LockOutlined, RocketOutlined, MailOutlined, MessageOutlined } from '@ant-design/icons';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { motion, useInView } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useAuthStore } from '../../store/auth.store';
 import { useThemeStore } from '../../store/theme.store';
 import { authApi } from '../../api/auth.api';
 import api from '../../api/client';
 import DemoModal from './DemoModal';
+import { PanelAcceso } from './panel';
 
 const WS_NUMBER   = '8093081713';
 const WS_URL      = `https://wa.me/1${WS_NUMBER}`;
@@ -102,19 +103,6 @@ function ContactoModal({ open, onClose }: { open: boolean; onClose: () => void }
 
 const { Text } = Typography;
 
-// ── CountUp para stats ────────────────────────────────────────────────────────
-function CountUp({ to, suffix = '' }: { to: number; suffix?: string }) {
-  const ref = useRef(null);
-  const inView = useInView(ref, { once: true });
-  const [n, setN] = useState(0);
-  useEffect(() => {
-    if (!inView) return;
-    let cur = 0; const step = to / 50;
-    const t = setInterval(() => { cur += step; if (cur >= to) { setN(to); clearInterval(t); } else setN(Math.floor(cur)); }, 20);
-    return () => clearInterval(t);
-  }, [inView, to]);
-  return <span ref={ref}>{n.toLocaleString('es-DO')}{suffix}</span>;
-}
 
 export default function LoginPage() {
   const [loading,          setLoading]          = useState(false);
@@ -225,8 +213,6 @@ export default function LoginPage() {
   return (
     <div style={{ height: '100vh', overflow: 'hidden', display: 'flex', fontFamily: "'Inter',-apple-system,sans-serif" }}>
       <style>{`
-        @keyframes floatA { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
-        @keyframes floatB { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
         /* Mobile: ocultar izquierdo, mostrar logo */
         @media(max-width:768px){
           .login-left{display:none!important}
@@ -276,85 +262,7 @@ export default function LoginPage() {
       `}</style>
 
       {/* ── LADO IZQUIERDO ──────────────────────────────────────────────── */}
-      <div className="login-left" style={{
-        width: '50%', height: '100%', background: 'linear-gradient(150deg,#1E3A8A 0%,#1e40af 60%,#1d4ed8 100%)',
-        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        padding: '32px 40px', position: 'relative', overflow: 'hidden',
-        borderRight: '1px solid rgba(255,255,255,.08)',
-      }}>
-        {/* Círculos decorativos — mayor opacidad */}
-        <div style={{ position:'absolute', top:-80, right:-80, width:320, height:320, borderRadius:'50%', background:'rgba(255,255,255,.18)', pointerEvents:'none' }} />
-        <div style={{ position:'absolute', bottom:-60, left:-60, width:260, height:260, borderRadius:'50%', background:'rgba(255,255,255,.12)', pointerEvents:'none' }} />
-        <div style={{ position:'absolute', top:'40%', left:'60%', width:180, height:180, borderRadius:'50%', background:'rgba(255,255,255,.07)', pointerEvents:'none' }} />
-
-        <motion.div initial={{ opacity:0, y:30 }} animate={{ opacity:1, y:0 }} transition={{ duration:.7 }}
-          style={{ maxWidth:440, width:'100%', position:'relative', zIndex:1 }}>
-
-          {/* Logo en contenedor blanco agrandado */}
-          <div style={{ background:'#fff', borderRadius:18, width:100, height:100,
-            display:'flex', alignItems:'center', justifyContent:'center',
-            boxShadow:'0 4px 20px rgba(0,0,0,.2)', marginBottom:20 }}>
-            <img src="/logo-hicloud.png" alt="HiCloud ERP"
-              style={{ width:82, height:'auto', display:'block', objectFit:'contain' }} />
-          </div>
-
-          <h1 style={{ color:'#fff', fontSize:27, fontWeight:800, margin:'0 0 10px', lineHeight:1.2 }}>
-            El ERP para PYMEs<br />dominicanas
-          </h1>
-          <p style={{ color:'rgba(255,255,255,.7)', fontSize:14, margin:'0 0 24px', lineHeight:1.6 }}>
-            Facturación electrónica, contabilidad, POS y más.<br />
-            Cumplimiento DGII garantizado.
-          </p>
-
-          {/* Stats — mayor contraste */}
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:24 }}>
-            {[
-              { icon:'🧾', num: 50000, suffix:'+', label:'Facturas emitidas' },
-              { icon:'🏢', num: 120,   suffix:'+', label:'Empresas activas' },
-              { icon:'⚡', num: 99,    suffix:'.9%', label:'Uptime' },
-            ].map(s => (
-              <div key={s.label} style={{
-                background:'rgba(255,255,255,.15)', border:'1px solid rgba(255,255,255,.22)',
-                borderRadius:14, padding:'16px 10px', textAlign:'center',
-              }}>
-                <div style={{ fontSize:24, marginBottom:6 }}>{s.icon}</div>
-                <div style={{ color:'#fff', fontSize:22, fontWeight:900, lineHeight:1 }}>
-                  <CountUp to={s.num} suffix={s.suffix} />
-                </div>
-                <div style={{ color:'rgba(255,255,255,.6)', fontSize:11, marginTop:5 }}>{s.label}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Card e-CF — border izquierdo verde + float */}
-          <div style={{ animation:'floatA 3s ease-in-out infinite',
-            background:'rgba(255,255,255,.13)', backdropFilter:'blur(12px)',
-            border:'1px solid rgba(255,255,255,.2)', borderLeft:'4px solid #10B981',
-            borderRadius:14, padding:'11px 16px', marginBottom:10, display:'flex', alignItems:'center', gap:12 }}>
-            <div style={{ width:38, height:38, borderRadius:10, background:'#10B981', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>✅</div>
-            <div>
-              <div style={{ color:'#fff', fontWeight:700, fontSize:14 }}>e-CF E32 enviado · RD$118.00</div>
-              <div style={{ color:'rgba(255,255,255,.4)', fontSize:12, marginTop:3 }}>Hace 2 minutos · LUBRIGOMAS PC, SRL</div>
-            </div>
-          </div>
-
-          {/* Card ventas — border izquierdo azul claro + float desfasado */}
-          <div style={{ animation:'floatB 4s ease-in-out infinite 1s',
-            background:'rgba(255,255,255,.09)', backdropFilter:'blur(12px)',
-            border:'1px solid rgba(255,255,255,.15)', borderLeft:'4px solid #60A5FA',
-            borderRadius:14, padding:'10px 16px', display:'flex', alignItems:'center', gap:12 }}>
-            <div style={{ fontSize:22 }}>📊</div>
-            <div>
-              <div style={{ color:'rgba(255,255,255,.75)', fontWeight:600, fontSize:13 }}>Ventas hoy</div>
-              <div style={{ color:'#60A5FA', fontWeight:800, fontSize:18 }}>RD$45,230.00</div>
-            </div>
-          </div>
-
-          <Link to="/" style={{ color:'rgba(255,255,255,.35)', fontSize:12, textDecoration:'none', marginTop:24, display:'block', textAlign:'center' }}>
-            ← Volver al inicio
-          </Link>
-        </motion.div>
-      </div>
+      <PanelAcceso />
 
       {/* ── LADO DERECHO — FORMULARIO ────────────────────────────────────── */}
       {/* ConfigProvider con defaultAlgorithm fuerza tema claro en este panel

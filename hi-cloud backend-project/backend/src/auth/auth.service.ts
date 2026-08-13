@@ -1392,4 +1392,29 @@ export class AuthService implements OnModuleInit {
 
     return Math.min(globalHoras, Math.max(1, horas)) * 3_600_000;
   }
+
+  // ── Stats públicas de plataforma (sin auth, caché 24 h en proceso) ──────────
+  private _statsCacheValue: number | null = null;
+  private _statsCacheAt = 0;
+  private readonly STATS_TTL_MS = 24 * 60 * 60 * 1000;
+
+  async statsPlataforma(): Promise<{ ecfAceptados: number }> {
+    if (
+      this._statsCacheValue !== null &&
+      Date.now() - this._statsCacheAt < this.STATS_TTL_MS
+    ) {
+      return { ecfAceptados: this._statsCacheValue };
+    }
+    try {
+      const [{ total }] = await this.dataSource.query<[{ total: number }]>(
+        `SELECT COUNT(*)::int AS total FROM ecf WHERE "estadoDGII" = 'aceptado'`,
+      );
+      this._statsCacheValue = total;
+      this._statsCacheAt   = Date.now();
+      return { ecfAceptados: total };
+    } catch {
+      // Si la DB no responde, señalamos con -1 para que el frontend use fallback
+      return { ecfAceptados: -1 };
+    }
+  }
 }
