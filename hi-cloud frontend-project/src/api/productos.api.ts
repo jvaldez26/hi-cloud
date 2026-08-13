@@ -55,12 +55,26 @@ export type ModoRedondeo =
 export type DireccionRedondeo = 'cercano' | 'arriba' | 'abajo';
 
 export interface PreviewAjusteBody {
-  categoria?:     string;
-  marca?:         string;
-  productoIds?:   number[];
-  modo:           ModoRedondeo;
-  direccion?:     DireccionRedondeo;
-  soloConCambio?: boolean;
+  /** Selección manual — tiene prioridad sobre los demás filtros. */
+  productoIds?:          number[];
+  categoria?:            string;
+  marca?:                string;
+  /** Búsqueda parcial por nombre o código. */
+  busqueda?:             string;
+  /** Solo productos cuyo precio al público actual tiene centavos (el default al abrir el modal). */
+  soloNoRedondos?:       boolean;
+  /** Solo productos con stock > 0. */
+  soloConExistencia?:    boolean;
+  /** Solo productos vendidos en los últimos N meses. */
+  vendidosUltimosMeses?: number;
+  /** Rango de precio final al público actual. */
+  precioMin?:            number;
+  precioMax?:            number;
+  /** Opt-in explícito para procesar todo el catálogo sin filtros de scope. */
+  todoElCatalogo?:       boolean;
+  modo:                  ModoRedondeo;
+  direccion?:            DireccionRedondeo;
+  soloConCambio?:        boolean;
 }
 
 export interface FilaAjuste {
@@ -81,9 +95,11 @@ export interface FilaAjusteProducto extends FilaAjuste {
 }
 
 export interface PreviewAjusteResp {
-  filas: FilaAjusteProducto[];
-  total: number;
-  conCambio: number;
-  excluidas: number;
-  aviso?: string;
+  filas:      FilaAjusteProducto[];
+  total:      number;
+  conCambio:  number;
+  excluidas:  number;
+  /** true cuando el conjunto supera 500 — la UI pide confirmación adicional al aplicar. */
+  esGrande?:  boolean;
+  aviso?:     string;
 }

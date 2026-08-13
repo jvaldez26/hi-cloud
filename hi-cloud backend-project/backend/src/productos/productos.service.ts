@@ -653,9 +653,16 @@ export class ProductosService implements OnModuleInit {
    * PREVIEW del ajuste de precios al público. Solo lectura: calcula la propuesta
    * y no escribe nada.
    *
-   * El conjunto se acota siempre (categoría, marca o ids explícitos); sin ningún
-   * filtro devuelve vacío en vez de barrer el catálogo completo, para que nadie
-   * ajuste 6.000 productos por accidente.
+   * El conjunto se acota mediante uno o varios filtros combinables:
+   *   - productoIds (selección manual — prioridad)
+   *   - categoria / marca / busqueda
+   *   - soloNoRedondos (post-filtro, libera el requisito de categoría/marca)
+   *   - soloConExistencia / vendidosUltimosMeses (filtros de DB)
+   *   - precioMin / precioMax (post-filtro por rango de precio final)
+   *   - todoElCatalogo=true (opt-in explícito, nunca el default)
+   *
+   * Sin ningún filtro y sin todoElCatalogo, devuelve aviso sugiriendo
+   * soloNoRedondos en vez de bloquear con un error.
    *
    * Cada fila incluye la verificación del despeje: si la base propuesta no
    * reproduce exactamente el precio objetivo, viene con verificado=false y su
@@ -663,12 +670,28 @@ export class ProductosService implements OnModuleInit {
    */
   async previewAjustePrecios(dto: PreviewAjustePreciosDto) {
     const empresaId = this.tenantService.getEmpresaId();
-    const tieneFiltro = !!dto.categoria || !!dto.marca || !!dto.productoIds?.length;
+
+    const tieneFiltro =
+      !!dto.productoIds?.length ||
+      !!dto.categoria ||
+      !!dto.marca ||
+      !!dto.busqueda ||
+      !!dto.soloNoRedondos ||
+      !!dto.soloConExistencia ||
+      !!dto.vendidosUltimosMeses ||
+      dto.precioMin != null ||
+      dto.precioMax != null ||
+      dto.todoElCatalogo === true;
+
     if (!tieneFiltro) {
       return {
-        filas: [], total: 0, conCambio: 0, excluidas: 0,
-        aviso: 'Acota el conjunto por categoría, marca o selección manual — ' +
-               'no se ajusta el catálogo completo por defecto.',
+        filas: [], total: 0, conCambio: 0, excluidas: 0, esGrande: false,
+        aviso:
+          'Activa al menos un filtro. La opción más útil es "Precios no redondos" — ' +
+          'selecciona automáticamente los productos cuyo precio al público tiene ' +
+          'centavos, que es exactamente el conjunto que esta herramienta existe para ' +
+          'arreglar. También puedes filtrar por categoría, marca, búsqueda, ' +
+          'existencia o activar "Todo el catálogo" si quieres revisar todo.',
       };
     }
 
@@ -678,10 +701,35 @@ export class ProductosService implements OnModuleInit {
       .andWhere('p.precio > 0');
 
     if (dto.productoIds?.length) {
+      // Selección manual — ignora el resto de filtros de DB
       qb.andWhere('p.id IN (:...ids)', { ids: dto.productoIds });
     } else {
       if (dto.categoria) qb.andWhere('p.categoria = :categoria', { categoria: dto.categoria });
       if (dto.marca)     qb.andWhere('p.marca = :marca',         { marca: dto.marca });
+      if (dto.busqueda) {
+        qb.andWhere(
+          '(p.nombre ILIKE :busq OR p.codigo ILIKE :busq)',
+          { busq: `%${dto.busqueda}%` },
+        );
+      }
+      if (dto.soloConExistencia) {
+        qb.andWhere('p.stock > 0');
+      }
+      if (dto.vendidosUltimosMeses) {
+        const fechaVentaDesde = new Date();
+        fechaVentaDesde.setMonth(fechaVentaDesde.getMonth() - dto.vendidosUltimosMeses);
+        qb.andWhere(
+          `EXISTS (
+            SELECT 1 FROM factura_detalles fd
+            JOIN facturas f ON f.id = fd."facturaId"
+            WHERE fd."productoId" = p.id
+              AND f."empresaId" = :empVentas
+              AND f."isActive" = true
+              AND f.fecha >= :fechaVentaDesde
+          )`,
+          { empVentas: empresaId, fechaVentaDesde },
+        );
+      }
     }
 
     const productos = await qb
@@ -690,13 +738,12 @@ export class ProductosService implements OnModuleInit {
       .orderBy('p.nombre', 'ASC')
       .getMany();
 
-    const direccion = dto.direccion ?? 'cercano';
+    const direccion    = dto.direccion ?? 'cercano';
     const soloConCambio = dto.soloConCambio !== false;
 
-    const filas = productos.map(p => {
+    let filas = productos.map(p => {
       const pctIva = Number(p.porcentajeIva ?? 0);
       const base   = calcularFila(Number(p.precio), pctIva, dto.modo, direccion);
-      // precio2/precio3 solo cuando el producto los tiene cargados
       const p2 = p.precio2 != null && Number(p.precio2) > 0
         ? calcularFila(Number(p.precio2), pctIva, dto.modo, direccion) : null;
       const p3 = p.precio3 != null && Number(p.precio3) > 0
@@ -708,16 +755,39 @@ export class ProductosService implements OnModuleInit {
         ...base,
         precio2: p2, precio3: p3,
       };
-    })
-    .filter(f => !soloConCambio || f.diferencia !== 0 || f.precio2?.diferencia || f.precio3?.diferencia)
-    // por desviación: primero lo que más se mueve
-    .sort((a, b) => Math.abs(b.diferencia) - Math.abs(a.diferencia));
+    });
+
+    // ── Post-filtros (dependen del cálculo) ──────────────────────────────────
+
+    /** true si el precio al público actual tiene centavos — los "no redondos". */
+    const tieneDecimales = (precioFinal: number) =>
+      !Number.isInteger(Math.round(precioFinal * 100) / 100 * 1) ||
+      Math.round(precioFinal) !== precioFinal;
+
+    if (dto.soloNoRedondos) {
+      filas = filas.filter(f => tieneDecimales(f.precioFinalActual));
+    }
+    if (dto.precioMin != null) {
+      filas = filas.filter(f => f.precioFinalActual >= dto.precioMin!);
+    }
+    if (dto.precioMax != null) {
+      filas = filas.filter(f => f.precioFinalActual <= dto.precioMax!);
+    }
+
+    const totalEnScope = filas.length;
+
+    filas = filas
+      .filter(f => !soloConCambio || f.diferencia !== 0 || f.precio2?.diferencia || f.precio3?.diferencia)
+      // por desviación: primero lo que más se mueve
+      .sort((a, b) => Math.abs(b.diferencia) - Math.abs(a.diferencia));
 
     return {
       filas,
-      total:     productos.length,
+      total:     totalEnScope,
       conCambio: filas.filter(f => f.verificado && f.diferencia !== 0).length,
       excluidas: filas.filter(f => !f.verificado).length,
+      /** true cuando el conjunto supera 500 — la UI puede pedir confirmación extra al aplicar. */
+      esGrande:  totalEnScope > 500,
     };
   }
 }
