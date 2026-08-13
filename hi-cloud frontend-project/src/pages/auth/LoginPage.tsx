@@ -225,7 +225,7 @@ export default function LoginPage() {
           background:#fff!important;
           border:1.5px solid #D8DDE4!important;
           border-radius:9px!important;
-          height:50px!important;
+          height:46px!important;
           padding:0 12px!important;
           box-shadow:none!important;
         }
@@ -241,7 +241,7 @@ export default function LoginPage() {
         }
         .login-panel .ant-input:not(.ant-input-affix-wrapper .ant-input) {
           background:#fff!important; border:1.5px solid #D8DDE4!important;
-          border-radius:9px!important; height:50px!important; color:#161A1F!important;
+          border-radius:9px!important; height:46px!important; color:#161A1F!important;
         }
         .login-panel .ant-input::placeholder,
         .login-panel input::placeholder { color:#9BA5B4!important; }
@@ -257,7 +257,7 @@ export default function LoginPage() {
         .login-panel .ant-checkbox-inner { background:#fff!important; border-color:#D8DDE4!important; }
         .login-panel .ant-checkbox-checked .ant-checkbox-inner { background:#1B4FD8!important; border-color:#1B4FD8!important; }
         .login-panel .ant-checkbox-wrapper span { color:#3B4451!important; font-size:13.5px!important; }
-        .login-panel .ant-form-item { margin-bottom:14px!important; }
+        .login-panel .ant-form-item { margin-bottom:10px!important; }
         .login-right-inner { box-sizing:border-box!important; }
       `}</style>
 
@@ -287,19 +287,19 @@ export default function LoginPage() {
       }}>
         <motion.div className="login-right-inner"
           initial={{ opacity:0, x:20 }} animate={{ opacity:1, x:0 }} transition={{ duration:.5, delay:.1 }}
-          style={{ width:'100%', maxWidth:420, padding:'24px 32px', boxSizing:'border-box' }}>
+          style={{ width:'100%', maxWidth:420, padding:'16px 32px 14px', boxSizing:'border-box' }}>
 
           {/* Logo centrado — visible siempre */}
-          <div style={{ textAlign:'center', marginBottom:20 }}>
+          <div style={{ textAlign:'center', marginBottom:10 }}>
             <img src="/logo-hicloud.png" alt="HiCloud ERP"
-              style={{ width:80, height:'auto', display:'inline-block' }} />
+              style={{ width:62, height:'auto', display:'inline-block' }} />
           </div>
 
-          <div style={{ marginBottom:20, textAlign:'center' }}>
-            <h2 style={{ color:'#161A1F', fontSize:22, fontWeight:700, margin:'0 0 5px', letterSpacing:'-0.018em' }}>
+          <div style={{ marginBottom:14, textAlign:'center' }}>
+            <h2 style={{ color:'#161A1F', fontSize:20, fontWeight:700, margin:'0 0 3px', letterSpacing:'-0.018em' }}>
               ¡Bienvenido a HiCloud!
             </h2>
-            <p style={{ color:'#1B4FD8', fontSize:14, margin:0 }}>
+            <p style={{ color:'#1B4FD8', fontSize:13, margin:0 }}>
               Por favor, inicia sesión en tu cuenta.
             </p>
           </div>
@@ -400,7 +400,7 @@ export default function LoginPage() {
                 />
               </Form.Item>
 
-              <div style={{ marginBottom:16, marginTop:-6 }}>
+              <div style={{ marginBottom:10, marginTop:-4 }}>
                 <Checkbox checked={recordarPassword}
                   onChange={e => { setRecordarPassword(e.target.checked); localStorage.setItem('hicloud_recordar_pw', String(e.target.checked)); }}
                   style={{ color:'#374151' }}>
@@ -411,7 +411,7 @@ export default function LoginPage() {
               <Button type="primary" htmlType="submit" block
                 loading={loading && blockCountdown === 0}
                 disabled={blockCountdown > 0}
-                style={{ height:50, background: blockCountdown > 0 ? '#9CA3AF' : '#1B4FD8',
+                style={{ height:46, background: blockCountdown > 0 ? '#9CA3AF' : '#1B4FD8',
                   border:'none', borderRadius:9, fontSize:15.5, fontWeight:600,
                   boxShadow: blockCountdown > 0 ? 'none' : '0 3px 16px rgba(27,79,216,.38)',
                   transition:'all .15s', cursor: blockCountdown > 0 ? 'not-allowed' : 'pointer',
@@ -426,14 +426,14 @@ export default function LoginPage() {
             </Form>
 
             {/* Google OAuth */}
-            <div style={{ display:'flex', alignItems:'center', gap:10, margin:'14px 0 12px' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10, margin:'10px 0 8px' }}>
               <div style={{ flex:1, height:1, background:'#D8DDE4' }} />
               <Text style={{ color:'#9BA5B4', fontSize:11.5, whiteSpace:'nowrap', letterSpacing:'.01em' }}>o continúa con</Text>
               <div style={{ flex:1, height:1, background:'#D8DDE4' }} />
             </div>
             <button type="button"
               onClick={() => { window.location.href = `${import.meta.env.VITE_API_URL ?? '/api/v1'}/auth/google`; }}
-              style={{ width:'100%', height:48, borderRadius:9, border:'1.5px solid #D8DDE4',
+              style={{ width:'100%', height:44, borderRadius:9, border:'1.5px solid #D8DDE4',
                 background:'#fff', color:'#161A1F', fontSize:14, fontWeight:500,
                 display:'flex', alignItems:'center', justifyContent:'center', gap:10, cursor:'pointer',
                 transition:'background .14s, border-color .14s' }}
@@ -449,21 +449,21 @@ export default function LoginPage() {
             </button>
 
             {/* Sin cuenta */}
-            <div style={{ marginTop:12 }}>
-              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+            <div style={{ marginTop:8 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
                 <div style={{ flex:1, height:1, background:'#D8DDE4' }} />
                 <Text style={{ color:'#9BA5B4', fontSize:11.5, whiteSpace:'nowrap', letterSpacing:'.01em' }}>¿No tienes cuenta?</Text>
                 <div style={{ flex:1, height:1, background:'#D8DDE4' }} />
               </div>
               <div style={{ display:'flex', gap:8 }}>
                 <Button block icon={<RocketOutlined />} onClick={() => setDemoOpen(true)}
-                  style={{ height:38, borderRadius:8, border:'1.5px solid rgba(27,79,216,.35)',
-                    background:'#EEF3FC', color:'#1B4FD8', fontWeight:500, fontSize:13 }}>
+                  style={{ height:34, borderRadius:8, border:'1.5px solid rgba(27,79,216,.35)',
+                    background:'#EEF3FC', color:'#1B4FD8', fontWeight:500, fontSize:12.5 }}>
                   Solicitar Demo
                 </Button>
                 <Button block onClick={() => navigate('/registrar')}
-                  style={{ height:38, borderRadius:8, border:'1.5px solid #D8DDE4',
-                    background:'#fff', color:'#3B4451', fontWeight:500, fontSize:13 }}>
+                  style={{ height:34, borderRadius:8, border:'1.5px solid #D8DDE4',
+                    background:'#fff', color:'#3B4451', fontWeight:500, fontSize:12.5 }}>
                   Crear cuenta
                 </Button>
               </div>
@@ -471,13 +471,13 @@ export default function LoginPage() {
 
             {/* ── ¿Necesitas ayuda? ──────────────────────────────────────── */}
             <div style={{
-              marginTop: 14,
-              paddingTop: 12,
+              marginTop: 10,
+              paddingTop: 9,
               borderTop: '1px solid #D8DDE4',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              gap: 8,
+              gap: 5,
             }}>
               <Text style={{ fontSize: 11.5, color: '#9BA5B4', letterSpacing: '.01em' }}>¿Necesitas ayuda?</Text>
               <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
