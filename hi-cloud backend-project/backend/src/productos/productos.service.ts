@@ -15,7 +15,7 @@ import { Movimiento, TipoMovimiento } from '../inventario/entities/movimiento.en
 import { CreateProductoDto } from './dto/create-producto.dto';
 import { UpdateProductoDto } from './dto/update-producto.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
-import { PreviewAjustePreciosDto } from './dto/ajuste-precios.dto';
+import { PreviewAjustePreciosDto, AplicarAjustePreciosDto } from './dto/ajuste-precios.dto';
 import { calcularFila } from './ajuste-precios.util';
 import { TenantService } from '../tenant/tenant.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -789,5 +789,46 @@ export class ProductosService implements OnModuleInit {
       /** true cuando el conjunto supera 500 — la UI puede pedir confirmación extra al aplicar. */
       esGrande:  totalEnScope > 500,
     };
+  }
+
+  /**
+   * Persiste el ajuste de precios aprobado en el preview.
+   *
+   * Seguridad: antes de tocar nada se verifica que cada id pertenezca a la
+   * empresa del JWT. Cualquier id ajeno se descarta en silencio — no devuelve
+   * error para no exponer el catálogo de otras empresas.
+   */
+  async aplicarAjustePrecios(dto: AplicarAjustePreciosDto) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const ids       = dto.filas.map(f => f.id);
+
+    // Solo procesar ids que realmente pertenecen a esta empresa
+    const existentes = await this.productoRepository
+      .createQueryBuilder('p')
+      .select('p.id')
+      .where('p.id IN (:...ids)',           { ids })
+      .andWhere('p."empresaId" = :eid',     { eid: empresaId })
+      .andWhere('p."isActive" = true')
+      .getMany();
+
+    const idsSeguros  = new Set(existentes.map(p => p.id));
+    const filasSeguras = dto.filas.filter(f => idsSeguros.has(f.id));
+
+    if (filasSeguras.length === 0) return { actualizados: 0 };
+
+    await this.productoRepository.manager.transaction(async em => {
+      for (const fila of filasSeguras) {
+        const patch: Partial<Producto> = { precio: fila.baseNueva };
+        if (fila.precio2Nueva != null) patch.precio2 = fila.precio2Nueva;
+        if (fila.precio3Nueva != null) patch.precio3 = fila.precio3Nueva;
+        await em.update(Producto, { id: fila.id, empresaId }, patch);
+      }
+    });
+
+    this.logger.log(
+      `[ajustePrecios] aplicados ${filasSeguras.length} productos` +
+      ` (solicitados ${dto.filas.length}) para empresa ${empresaId}`,
+    );
+    return { actualizados: filasSeguras.length };
   }
 }

@@ -1494,6 +1494,7 @@ function ProductosCatalogo() {
         <AjustePreciosModal
           open={ajusteOpen}
           onClose={() => setAjusteOpen(false)}
+          onApplied={() => qc.invalidateQueries({ queryKey: ['productos'] })}
           categorias={categorias}
           marcas={marcas}
         />

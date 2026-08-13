@@ -47,6 +47,11 @@ export const productosApi = {
   previewAjustePrecios: (body: PreviewAjusteBody) =>
     api.post<ApiResponse<PreviewAjusteResp>>('/productos/ajuste-precios/preview', body)
       .then(r => r.data.data),
+
+  /** Persiste el ajuste aprobado en el preview. Devuelve { actualizados: N }. */
+  aplicarAjustePrecios: (body: AplicarAjusteBody) =>
+    api.post<ApiResponse<{ actualizados: number }>>('/productos/ajuste-precios/aplicar', body)
+      .then(r => r.data.data),
 };
 
 // ── Ajuste de precios al público ────────────────────────────────────────────
@@ -92,6 +97,15 @@ export interface FilaAjusteProducto extends FilaAjuste {
   categoria?: string; marca?: string; porcentajeIva: number;
   precio2: FilaAjuste | null;
   precio3: FilaAjuste | null;
+}
+
+export interface AplicarAjusteBody {
+  filas: Array<{
+    id:           number;
+    baseNueva:    number;
+    precio2Nueva?: number;
+    precio3Nueva?: number;
+  }>;
 }
 
 export interface PreviewAjusteResp {

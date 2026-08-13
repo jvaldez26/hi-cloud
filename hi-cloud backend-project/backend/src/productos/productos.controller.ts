@@ -22,7 +22,7 @@ import { CreateProductoDto } from './dto/create-producto.dto';
 import { UpdateProductoDto } from './dto/update-producto.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { ListProductosQueryDto } from './dto/list-productos-query.dto';
-import { PreviewAjustePreciosDto } from './dto/ajuste-precios.dto';
+import { PreviewAjustePreciosDto, AplicarAjustePreciosDto } from './dto/ajuste-precios.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -53,6 +53,20 @@ export class ProductosController {
   })
   previewAjustePrecios(@Body() dto: PreviewAjustePreciosDto) {
     return this.productosService.previewAjustePrecios(dto);
+  }
+
+  @Post('ajuste-precios/aplicar')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN)   // solo ADMIN puede modificar precios de venta
+  @ApiOperation({
+    summary: 'Aplica el ajuste de precios previamente calculado en el preview.',
+    description:
+      'Actualiza precio (base imponible) de los productos indicados. ' +
+      'El backend re-verifica que cada id pertenezca a la empresa del JWT. ' +
+      'Devuelve { actualizados: N }.',
+  })
+  aplicarAjustePrecios(@Body() dto: AplicarAjustePreciosDto) {
+    return this.productosService.aplicarAjustePrecios(dto);
   }
 
   @Get()

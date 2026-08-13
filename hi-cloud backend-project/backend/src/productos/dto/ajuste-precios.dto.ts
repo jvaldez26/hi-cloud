@@ -1,6 +1,7 @@
 import {
   IsArray, IsBoolean, IsEnum, IsInt, IsOptional, IsString,
-  MaxLength, ArrayMaxSize, IsNumber, Min, Max,
+  MaxLength, ArrayMaxSize, ArrayMinSize, IsNumber, IsPositive,
+  Min, Max, ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import type { ModoRedondeo, DireccionRedondeo } from '../ajuste-precios.util';
@@ -96,4 +97,38 @@ export class PreviewAjustePreciosDto {
    */
   @IsOptional() @IsBoolean()
   soloConCambio?: boolean;
+}
+
+// ── Aplicar ajuste ────────────────────────────────────────────────────────────
+
+/** Una fila del preview que el usuario aprobó y quiere persistir. */
+class FilaAplicarDto {
+  /** id del producto — el backend re-verifica que pertenezca a la empresa. */
+  @IsInt() @IsPositive() @Type(() => Number)
+  id: number;
+
+  /** Base imponible calculada por el preview. NUMERIC(14,4). */
+  @IsNumber({ maxDecimalPlaces: 4 }) @IsPositive() @Type(() => Number)
+  baseNueva: number;
+
+  /** Opcional: base nueva para precio 2 (si el producto lo tiene y cambió). */
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @IsPositive() @Type(() => Number)
+  precio2Nueva?: number;
+
+  /** Opcional: base nueva para precio 3 (si el producto lo tiene y cambió). */
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @IsPositive() @Type(() => Number)
+  precio3Nueva?: number;
+}
+
+/**
+ * Aplica el ajuste de precios calculado en el preview.
+ * Solo se persisten los productos cuyo id pertenezca a la empresa del JWT.
+ */
+export class AplicarAjustePreciosDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(5000)
+  @ValidateNested({ each: true })
+  @Type(() => FilaAplicarDto)
+  filas: FilaAplicarDto[];
 }
