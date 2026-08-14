@@ -62,9 +62,12 @@ export default function FacturaFormPage() {
   const [diasCredito, setDiasCredito] = useState(30);
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null);
 
-  // RNC lookup
+  // RNC lookup — campo principal
   const rnc = useRncLookup();
   const [rncInput, setRncInput] = useState('');
+
+  // RNC lookup — modal "Crear cliente rápido"
+  const crearClienteRnc = useRncLookup();
 
   // Descuento general
   const [descGeneralTipo,  setDescGeneralTipo]  = useState<'monto' | 'porcentaje'>('monto');
@@ -273,6 +276,13 @@ export default function FacturaFormPage() {
     staleTime: 24 * 60 * 60 * 1000,
   });
 
+  // Auto-rellenar nombre del cliente cuando DGII responde en el modal
+  useEffect(() => {
+    if (crearClienteRnc.datos?.encontrado && crearClienteRnc.datos.nombre) {
+      crearClienteForm.setFieldsValue({ nombre: crearClienteRnc.datos.nombre });
+    }
+  }, [crearClienteRnc.datos, crearClienteForm]);
+
   const crearClienteMut = useMutation({
     mutationFn: (body: any) => clientesApi.create(body),
     onSuccess: (cli: any) => {
@@ -281,6 +291,7 @@ export default function FacturaFormPage() {
       onClienteChange(cli.id);
       setShowCrearCliente(false);
       crearClienteForm.resetFields();
+      crearClienteRnc.limpiar();
       const esAutoDGII = !showCrearCliente;
       message.success(
         esAutoDGII
@@ -1215,7 +1226,7 @@ export default function FacturaFormPage() {
       <Modal
         title="Crear cliente rápido"
         open={showCrearCliente}
-        onCancel={() => { setShowCrearCliente(false); crearClienteForm.resetFields(); }}
+        onCancel={() => { setShowCrearCliente(false); crearClienteForm.resetFields(); crearClienteRnc.limpiar(); }}
         footer={null}
         destroyOnClose
         width={480}
@@ -1242,8 +1253,17 @@ export default function FacturaFormPage() {
                       : Promise.reject('9 dígitos (RNC) u 11 (Cédula)');
                   },
                 }]}>
-                <Input placeholder="9 u 11 dígitos" maxLength={11} />
+                <Input
+                  placeholder="9 u 11 dígitos"
+                  maxLength={11}
+                  onChange={e => {
+                    const v = e.target.value.replace(/\D/g, '');
+                    crearClienteForm.setFieldsValue({ rfc: v });
+                    crearClienteRnc.consultarDebounced(v);
+                  }}
+                />
               </Form.Item>
+              <RncBadge datos={crearClienteRnc.datos} loading={crearClienteRnc.loading} />
             </Col>
             <Col span={14}>
               <Form.Item name="nombre" label="Nombre / Razón Social"
@@ -1276,7 +1296,7 @@ export default function FacturaFormPage() {
             message="Creación rápida — completa los datos del cliente en el módulo Clientes después." />
           <Row gutter={8} justify="end">
             <Col>
-              <Button onClick={() => { setShowCrearCliente(false); crearClienteForm.resetFields(); }}>
+              <Button onClick={() => { setShowCrearCliente(false); crearClienteForm.resetFields(); crearClienteRnc.limpiar(); }}>
                 Cancelar
               </Button>
             </Col>

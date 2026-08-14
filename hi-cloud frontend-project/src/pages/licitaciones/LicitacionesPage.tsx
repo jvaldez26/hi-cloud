@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { exportarExcel } from '../../utils/exportExcel';
+import { useRncLookup } from '../../hooks/useRncLookup';
+import RncBadge from '../../components/ui/RncBadge';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -11,7 +13,7 @@ import {
 } from 'antd';
 import {
   PlusOutlined, TrophyOutlined, FileTextOutlined, FileExcelOutlined,
-  CloseCircleOutlined, LinkOutlined, SearchOutlined,
+  CloseCircleOutlined, LinkOutlined, SearchOutlined, LoadingOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -58,6 +60,14 @@ export default function LicitacionesPage() {
   const [form]                        = Form.useForm();
   const [formEst]                     = Form.useForm();
   const qc = useQueryClient();
+  const rncLic = useRncLookup();
+
+  // Auto-rellenar entidad convocante cuando DGII responde
+  useEffect(() => {
+    if (rncLic.datos?.encontrado && rncLic.datos.nombre) {
+      form.setFieldsValue({ entidadConvocante: rncLic.datos.nombre });
+    }
+  }, [rncLic.datos, form]);
 
   const { data: dash }     = useQuery({ queryKey: ['lic-dash'],             queryFn: licApi.dashboard });
   const { data: lista, isLoading } = useQuery({
@@ -72,7 +82,7 @@ export default function LicitacionesPage() {
 
   const crearMut = useMutation({
     mutationFn: licApi.crear,
-    onSuccess: () => { inv(); setCrearModal(false); form.resetFields(); message.success('Licitación registrada'); },
+    onSuccess: () => { inv(); setCrearModal(false); form.resetFields(); rncLic.limpiar(); message.success('Licitación registrada'); },
     onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error'),
   });
 
@@ -243,7 +253,7 @@ export default function LicitacionesPage() {
 
       {/* Modal crear */}
       <Modal title="Registrar Licitación" open={crearModal}
-        onCancel={() => setCrearModal(false)} footer={null} width={620}>
+        onCancel={() => { setCrearModal(false); rncLic.limpiar(); }} footer={null} width={620}>
         <Form form={form} layout="vertical"
           initialValues={{ tipo: 'publica' }}
           onFinish={v => crearMut.mutate({
@@ -254,8 +264,22 @@ export default function LicitacionesPage() {
           })}>
           <Row gutter={12}>
             <Col span={24}><Form.Item name="titulo" label="Título" rules={[{ required: true }]}><Input /></Form.Item></Col>
+            <Col xs={24} sm={8}>
+              <Form.Item name="rncEntidad" label="RNC entidad">
+                <Input
+                  placeholder="9 dígitos — busca en DGII"
+                  maxLength={9}
+                  suffix={rncLic.loading ? <LoadingOutlined style={{ color: '#1677ff' }} /> : undefined}
+                  onChange={e => {
+                    const v = e.target.value.replace(/\D/g, '');
+                    form.setFieldsValue({ rncEntidad: v });
+                    rncLic.consultarDebounced(v);
+                  }}
+                />
+              </Form.Item>
+              <RncBadge datos={rncLic.datos} loading={rncLic.loading} />
+            </Col>
             <Col xs={24} sm={16}><Form.Item name="entidadConvocante" label="Entidad convocante" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col xs={24} sm={8}><Form.Item name="rncEntidad" label="RNC entidad"><Input /></Form.Item></Col>
             <Col xs={24} sm={12}><Form.Item name="tipo" label="Tipo"><Select options={TIPO_LIC} /></Form.Item></Col>
             <Col xs={24} sm={12}><Form.Item name="fechaPublicacion" label="Fecha publicación" rules={[{ required: true }]}>
               <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
@@ -277,7 +301,7 @@ export default function LicitacionesPage() {
             <Col span={24}><Form.Item name="requisitos" label="Requisitos"><Input.TextArea rows={2} /></Form.Item></Col>
           </Row>
           <Row justify="end" gutter={8}>
-            <Col><Button onClick={() => setCrearModal(false)}>Cancelar</Button></Col>
+            <Col><Button onClick={() => { setCrearModal(false); rncLic.limpiar(); }}>Cancelar</Button></Col>
             <Col><Button type="primary" htmlType="submit" loading={crearMut.isPending}>Registrar</Button></Col>
           </Row>
         </Form>

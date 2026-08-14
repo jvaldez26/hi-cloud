@@ -53,7 +53,8 @@ export default function ClientesPage() {
   // distintos. Solo se muestran para que el usuario elija uno si ya existe.
   const [rncExistentes, setRncExistentes] = useState<ClientesConMismoRnc | null>(null);
   const qc = useQueryClient();
-  const rnc = useRncLookup();
+  const rnc            = useRncLookup();
+  const rncReceptorLkp = useRncLookup();
 
   // Autocompletar desde DGII cuando se encuentra el RNC. El nombre oficial va a
   // `razonSocial` (lo que se declara ante DGII) y también a `nombre` si está
@@ -184,7 +185,7 @@ export default function ClientesPage() {
   };
   const closeModal = () => {
     setOpen(false); setEditing(null); form.resetFields();
-    setRncExistentes(null); rnc.limpiar();
+    setRncExistentes(null); rnc.limpiar(); rncReceptorLkp.limpiar();
   };
   const handleSubmit = (values: ClientePayload) => {
     if (editing) updateMut.mutate({ id: editing.id, body: values });
@@ -616,34 +617,42 @@ export default function ClientesPage() {
                 {({ getFieldValue }) => {
                   const tieneIdExt = !!getFieldValue('identificadorExtranjero');
                   return (
-                    <Form.Item
-                      name="rncReceptor"
-                      label="RNC Receptor (e-CF) — opcional"
-                      tooltip="RNC del COMPRADOR que se declara en el e-CF. Casi siempre se deja VACÍO: si está vacío se usa el RNC/Cédula de arriba. Solo se llena cuando la factura va a nombre de un RNC distinto al de la ficha del cliente. Nunca es el RNC de su propia empresa — esa es quien emite, no quien compra."
-                      extra={
-                        <span style={{ fontSize: 11 }}>
-                          Déjalo vacío salvo que factures a un RNC distinto al del cliente
-                        </span>
-                      }
-                      rules={[{
-                        validator: (_, v) => {
-                          if (!v || tieneIdExt) return Promise.resolve();
-                          if (!/^\d{9}$|^\d{11}$/.test(v)) return Promise.reject('9 u 11 dígitos');
-                          // El emisor no puede ser el comprador de su propia venta
-                          const rncPropio = (empresa?.rnc ?? '').replace(/\D/g, '');
-                          if (rncPropio && rncPropio === v.replace(/\D/g, '')) {
-                            return Promise.reject(
-                              'Ese es el RNC de tu propia empresa (quien emite). Aquí va el RNC del comprador, o déjalo vacío.',
-                            );
-                          }
-                          return Promise.resolve();
-                        },
-                      }]}>
-                      <Input
-                        placeholder={tieneIdExt ? '(opcional para clientes extranjeros)' : 'Vacío = usa el RNC/Cédula del cliente'}
-                        maxLength={11}
-                      />
-                    </Form.Item>
+                    <>
+                      <Form.Item
+                        name="rncReceptor"
+                        label="RNC Receptor (e-CF) — opcional"
+                        tooltip="RNC del COMPRADOR que se declara en el e-CF. Casi siempre se deja VACÍO: si está vacío se usa el RNC/Cédula de arriba. Solo se llena cuando la factura va a nombre de un RNC distinto al de la ficha del cliente. Nunca es el RNC de su propia empresa — esa es quien emite, no quien compra."
+                        extra={
+                          <span style={{ fontSize: 11 }}>
+                            Déjalo vacío salvo que factures a un RNC distinto al del cliente
+                          </span>
+                        }
+                        rules={[{
+                          validator: (_, v) => {
+                            if (!v || tieneIdExt) return Promise.resolve();
+                            if (!/^\d{9}$|^\d{11}$/.test(v)) return Promise.reject('9 u 11 dígitos');
+                            // El emisor no puede ser el comprador de su propia venta
+                            const rncPropio = (empresa?.rnc ?? '').replace(/\D/g, '');
+                            if (rncPropio && rncPropio === v.replace(/\D/g, '')) {
+                              return Promise.reject(
+                                'Ese es el RNC de tu propia empresa (quien emite). Aquí va el RNC del comprador, o déjalo vacío.',
+                              );
+                            }
+                            return Promise.resolve();
+                          },
+                        }]}>
+                        <Input
+                          placeholder={tieneIdExt ? '(opcional para clientes extranjeros)' : 'Vacío = usa el RNC/Cédula del cliente'}
+                          maxLength={11}
+                          onChange={e => {
+                            const v = e.target.value.replace(/\D/g, '');
+                            form.setFieldsValue({ rncReceptor: v });
+                            rncReceptorLkp.consultarDebounced(v);
+                          }}
+                        />
+                      </Form.Item>
+                      <RncBadge datos={rncReceptorLkp.datos} loading={rncReceptorLkp.loading} />
+                    </>
                   );
                 }}
               </Form.Item>

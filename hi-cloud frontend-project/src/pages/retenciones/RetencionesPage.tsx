@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { TableActions } from '../../components/ui/TableActions';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
@@ -7,6 +7,8 @@ import { Table, Button, Card, Row, Col, Typography, Statistic, Tag, Space,
          Modal, Form, Input, InputNumber, Select, message, Popconfirm,
          Tabs, Alert, theme } from 'antd';
 import { PlusOutlined, DeleteOutlined, FileTextOutlined, PrinterOutlined, LoadingOutlined, SearchOutlined } from '@ant-design/icons';
+import { useRncLookup } from '../../hooks/useRncLookup';
+import RncBadge from '../../components/ui/RncBadge';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import api from '../../api/client';
@@ -47,12 +49,20 @@ function ListadoTab() {
   const [tasa, setTasa] = useState(10);
   const qc = useQueryClient();
   const { token } = theme.useToken();
+  const rncRet = useRncLookup();
+
+  // Auto-rellenar nombre del proveedor cuando DGII responde
+  useEffect(() => {
+    if (rncRet.datos?.encontrado && rncRet.datos.nombre) {
+      form.setFieldsValue({ nombreProveedor: rncRet.datos.nombre });
+    }
+  }, [rncRet.datos, form]);
 
   const { data, isLoading } = useQuery({ queryKey: ['retenciones', page, search], queryFn: () => retencionApi.list(page, search) });
 
   const createMut = useMutation({
     mutationFn: retencionApi.create,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['retenciones'] }); setOpen(false); form.resetFields(); message.success('Retención registrada'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['retenciones'] }); setOpen(false); form.resetFields(); rncRet.limpiar(); message.success('Retención registrada'); },
     onError: (e: any) => message.error(e?.response?.data?.errors?.[0] ?? 'Error'),
   });
   const removeMut = useMutation({
@@ -151,15 +161,31 @@ function ListadoTab() {
         scroll={{ x: 'max-content' }}
         pagination={{ total: data?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }} />
 
-      <Modal title="Registrar Retención ISR" open={open} onCancel={() => setOpen(false)} footer={null} width={580}>
+      <Modal title="Registrar Retención ISR" open={open} onCancel={() => { setOpen(false); rncRet.limpiar(); }} footer={null} width={580}>
         <Alert type="info" showIcon style={{ marginBottom: 16 }}
           message="Las retenciones ISR se aplican cuando pagas servicios profesionales. Ley 11-92 Art. 308." />
         <Form form={form} layout="vertical" onFinish={v => createMut.mutate(v)}
           initialValues={{ periodo: dayjs().format('YYYY-MM'), porcentajeRetencion: 10 }}>
           <Row gutter={12}>
             <Col xs={24} sm={8}><Form.Item name="periodo" label="Período" rules={[{ required: true }]}><Input placeholder="2026-05" /></Form.Item></Col>
-            <Col xs={24} sm={16}><Form.Item name="nombreProveedor" label="Nombre del proveedor" rules={[{ required: true }]}><Input /></Form.Item></Col>
-            <Col xs={24} sm={8}><Form.Item name="rncProveedor" label="RNC del proveedor"><Input /></Form.Item></Col>
+            <Col xs={24} sm={16}>
+              <Form.Item name="nombreProveedor" label="Nombre del proveedor" rules={[{ required: true }]}><Input /></Form.Item>
+            </Col>
+            <Col xs={24} sm={8}>
+              <Form.Item name="rncProveedor" label="RNC del proveedor">
+                <Input
+                  placeholder="9 dígitos — busca en DGII"
+                  maxLength={9}
+                  suffix={rncRet.loading ? <LoadingOutlined style={{ color: '#1677ff' }} /> : undefined}
+                  onChange={e => {
+                    const v = e.target.value.replace(/\D/g, '');
+                    form.setFieldsValue({ rncProveedor: v });
+                    rncRet.consultarDebounced(v);
+                  }}
+                />
+              </Form.Item>
+              <RncBadge datos={rncRet.datos} loading={rncRet.loading} />
+            </Col>
             <Col xs={24} sm={16}><Form.Item name="tipoServicio" label="Tipo de servicio" rules={[{ required: true }]}>
               <Select options={TIPOS_RETENCION} onChange={handleTipoChange} />
             </Form.Item></Col>
@@ -175,7 +201,7 @@ function ListadoTab() {
             <Col xs={12} sm={5}><Form.Item name="montoNeto" label="Monto Neto"><InputNumber style={{ width: '100%' }} readOnly /></Form.Item></Col>
           </Row>
           <Row justify="end" gutter={8}>
-            <Col><Button onClick={() => setOpen(false)}>Cancelar</Button></Col>
+            <Col><Button onClick={() => { setOpen(false); rncRet.limpiar(); }}>Cancelar</Button></Col>
             <Col><Button type="primary" htmlType="submit" loading={createMut.isPending}>Registrar</Button></Col>
           </Row>
         </Form>
