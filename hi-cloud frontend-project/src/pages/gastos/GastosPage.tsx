@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRncLookup } from '../../hooks/useRncLookup';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { TableActions } from '../../components/ui/TableActions';
@@ -126,6 +127,16 @@ export default function GastosPage() {
       }
     }
   };
+  // Lookup de RNC en DGII — auto-llena el proveedor al encontrar el contribuyente
+  const rncGasto = useRncLookup();
+  useEffect(() => {
+    if (rncGasto.datos?.encontrado && rncGasto.datos.nombre) {
+      // Solo auto-llena si el campo proveedor está vacío para no pisar lo que el usuario escribió
+      const actual = form.getFieldValue('proveedor');
+      if (!actual) form.setFieldsValue({ proveedor: rncGasto.datos.nombre });
+    }
+  }, [rncGasto.datos, form]);
+
   // Cajas abiertas hoy — para el selector cuando formaPago='01' (efectivo)
   const { data: cajasHoy } = useQuery({
     queryKey: ['caja-hoy-gastos'],
@@ -154,6 +165,7 @@ export default function GastosPage() {
       setOpen(false);
       form.resetFields();
       setTieneComprobante(false);
+      rncGasto.limpiar();
       const esE43 = (categorias as any[])?.find((c: any) => c.value === vars.categoria)?.generaE43;
       message.success(esE43
         ? 'Gasto registrado — E43 enviado a DGII automáticamente'
@@ -429,7 +441,7 @@ export default function GastosPage() {
       <Modal
         title="Registrar Gasto"
         open={open}
-        onCancel={() => { setOpen(false); form.resetFields(); setTieneComprobante(false); }}
+        onCancel={() => { setOpen(false); form.resetFields(); setTieneComprobante(false); rncGasto.limpiar(); }}
         footer={null}
         width={620}
       >
@@ -508,37 +520,76 @@ export default function GastosPage() {
             )}
           </Row>
 
-          {/* Campos según tipo */}
-          <Row gutter={12}>
-            <Col xs={24} sm={12}>
-              <Form.Item
-                name="proveedor"
-                label={generaE43 ? 'Proveedor (opcional)' : 'Proveedor'}
-              >
-                <Input placeholder={generaE43 ? 'Nombre del vendedor informal' : 'Nombre del proveedor'} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={12}>
-              {generaE43 ? (
+          {/* Proveedor — RNC primero con lookup DGII, nombre se auto-llena */}
+          {!generaE43 && (
+            <Row gutter={12}>
+              <Col xs={24} sm={12}>
+                <Form.Item
+                  name="rncProveedor"
+                  label={tieneComprobante ? 'RNC Proveedor *' : 'RNC Proveedor'}
+                  rules={tieneComprobante ? [{ required: true, message: 'RNC obligatorio cuando tiene comprobante' }] : []}
+                  style={{ marginBottom: rncGasto.datos ? 4 : undefined }}
+                >
+                  <Input
+                    placeholder="9 dígitos — busca en DGII"
+                    maxLength={9}
+                    suffix={rncGasto.loading ? <LoadingOutlined style={{ color: '#1677ff' }} /> : undefined}
+                    onChange={e => {
+                      const v = e.target.value.replace(/\D/g, '');
+                      form.setFieldsValue({ rncProveedor: v });
+                      rncGasto.consultarDebounced(v);
+                    }}
+                  />
+                </Form.Item>
+                {/* Feedback del lookup */}
+                {rncGasto.datos?.encontrado && !rncGasto.loading && (
+                  <div style={{ fontSize: 12, color: '#16a34a', marginBottom: 8, marginTop: -4 }}>
+                    <CheckCircleOutlined /> {rncGasto.datos.nombre}
+                    {rncGasto.datos.estado && rncGasto.datos.estado !== 'ACTIVO' && (
+                      <span style={{ marginLeft: 6, color: '#d97706' }}>({rncGasto.datos.estado})</span>
+                    )}
+                  </div>
+                )}
+                {rncGasto.datos && !rncGasto.datos.encontrado && !rncGasto.loading && (
+                  <div style={{ fontSize: 12, color: '#d97706', marginBottom: 8, marginTop: -4 }}>
+                    ⚠️ RNC no encontrado en DGII
+                  </div>
+                )}
+              </Col>
+              <Col xs={24} sm={12}>
+                <Form.Item
+                  name="proveedor"
+                  label="Nombre del proveedor"
+                  tooltip="Se auto-completa al encontrar el RNC en DGII"
+                >
+                  <Input placeholder="Nombre del proveedor" />
+                </Form.Item>
+              </Col>
+            </Row>
+          )}
+          {generaE43 && (
+            <Row gutter={12}>
+              <Col xs={24} sm={12}>
+                <Form.Item name="proveedor" label="Proveedor (opcional)">
+                  <Input placeholder="Nombre del vendedor informal" />
+                </Form.Item>
+              </Col>
+              <Col xs={24} sm={12}>
                 <Form.Item name="comprobante" label="Referencia (opcional)">
                   <Input placeholder="Descripción o referencia interna" />
                 </Form.Item>
-              ) : (
-                <Form.Item name="rncProveedor" label={tieneComprobante ? 'RNC Proveedor *' : 'RNC Proveedor'}
-                  rules={tieneComprobante ? [{ required: true, message: 'RNC obligatorio cuando tiene comprobante' }] : []}>
-                  <Input placeholder="9 dígitos" maxLength={9} />
-                </Form.Item>
-              )}
-            </Col>
-            {!generaE43 && (
-              <Col xs={24} sm={12}>
-                <Form.Item name="comprobante" label={tieneComprobante ? 'No. Comprobante (NCF) *' : 'No. Comprobante (NCF recibido)'}
-                  rules={tieneComprobante ? [{ required: true, message: 'NCF obligatorio cuando tiene comprobante' }] : []}>
-                  <Input placeholder="E310000000001" />
-                </Form.Item>
               </Col>
-            )}
-          </Row>
+            </Row>
+          )}
+          {!generaE43 && (
+            <Form.Item
+              name="comprobante"
+              label={tieneComprobante ? 'No. Comprobante (NCF) *' : 'No. Comprobante (NCF recibido)'}
+              rules={tieneComprobante ? [{ required: true, message: 'NCF obligatorio cuando tiene comprobante' }] : []}
+            >
+              <Input placeholder="E310000000001" />
+            </Form.Item>
+          )}
 
           {/* ── Checkbox "Tiene comprobante fiscal" + campos 606 ────────────────── */}
           {!generaE43 && (
@@ -619,7 +670,7 @@ export default function GastosPage() {
           )}
 
           <Row justify="end" gutter={8} style={{ marginTop: 4 }}>
-            <Col><Button onClick={() => { setOpen(false); form.resetFields(); setTieneComprobante(false); }}>Cancelar</Button></Col>
+            <Col><Button onClick={() => { setOpen(false); form.resetFields(); setTieneComprobante(false); rncGasto.limpiar(); }}>Cancelar</Button></Col>
             <Col>
               <Button
                 type="primary"

@@ -6780,6 +6780,15 @@ function POSGastosLista({ C }: { C: Palette }) {
     cajaDiariaId: '' as string | number,
   });
 
+  // RNC lookup — consulta DGII y auto-llena nombre del proveedor
+  const rncGasto = useRncLookup();
+  useEffect(() => {
+    if (rncGasto.datos?.encontrado && rncGasto.datos.nombre && !f.proveedor) {
+      setF(p => ({ ...p, proveedor: rncGasto.datos!.nombre! }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rncGasto.datos]);
+
   // Categorías desde la misma API que el módulo admin
   const { data: categorias = [] } = useQuery<any[]>({
     queryKey: ['gasto-cats'],
@@ -6876,6 +6885,7 @@ function POSGastosLista({ C }: { C: Palette }) {
       refetch();
       setShowForm(false);
       setTieneComprobante(false);
+      rncGasto.limpiar();
       setF({ fecha: dayjs().format('YYYY-MM-DD'), categoria:'', descripcion:'', monto:'', itbis:'', proveedor:'', rncProveedor:'', comprobante:'', tipoBienes:'', formaPago:'', cajaDiariaId:'' });
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al registrar gasto'),
@@ -6952,17 +6962,42 @@ function POSGastosLista({ C }: { C: Palette }) {
             </div>
 
             {!generaE43 && (
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
-                <div>
-                  <span style={labelS}>Proveedor</span>
+              <>
+                <div style={{ marginBottom:6 }}>
+                  <span style={labelS}>RNC Proveedor</span>
+                  <div style={{ position:'relative' }}>
+                    <input
+                      value={f.rncProveedor}
+                      onChange={e => {
+                        const v = e.target.value.replace(/\D/g, '').slice(0, 9);
+                        setF(p => ({ ...p, rncProveedor: v }));
+                        rncGasto.consultarDebounced(v);
+                      }}
+                      placeholder="9 dígitos — busca en DGII"
+                      maxLength={9}
+                      style={{ ...inputS, paddingRight: rncGasto.loading ? 30 : undefined }}
+                    />
+                    {rncGasto.loading && (
+                      <span style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', fontSize:11, color:'#1677ff' }}>⏳</span>
+                    )}
+                  </div>
+                  {rncGasto.datos?.encontrado && !rncGasto.loading && (
+                    <div style={{ fontSize:11, color:'#16a34a', marginTop:3 }}>
+                      ✅ {rncGasto.datos.nombre}
+                      {rncGasto.datos.estado && rncGasto.datos.estado !== 'ACTIVO' && (
+                        <span style={{ marginLeft:6, color:'#d97706' }}>({rncGasto.datos.estado})</span>
+                      )}
+                    </div>
+                  )}
+                  {rncGasto.datos && !rncGasto.datos.encontrado && !rncGasto.loading && (
+                    <div style={{ fontSize:11, color:'#d97706', marginTop:3 }}>⚠️ RNC no encontrado en DGII</div>
+                  )}
+                </div>
+                <div style={{ marginBottom:10 }}>
+                  <span style={labelS}>Proveedor{rncGasto.datos?.encontrado ? ' (auto-completado)' : ''}</span>
                   <input value={f.proveedor} onChange={inp('proveedor')} placeholder="Nombre del proveedor" style={inputS} />
                 </div>
-                <div>
-                  <span style={labelS}>RNC Proveedor</span>
-                  <input value={f.rncProveedor} onChange={inp('rncProveedor')} placeholder="9 dígitos"
-                    maxLength={9} style={inputS} />
-                </div>
-              </div>
+              </>
             )}
 
             <div style={{ marginBottom:10 }}>
