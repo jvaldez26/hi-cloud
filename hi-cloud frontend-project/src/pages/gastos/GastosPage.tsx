@@ -107,9 +107,10 @@ export default function GastosPage() {
   const { data: categorias } = useQuery({ queryKey: ['gasto-cats'], queryFn: gastosApi.categorias });
 
   // Categoría seleccionada en el form — para comportamiento dinámico
-  const categoriaWatch = Form.useWatch('categoria', form);
-  const categoriaInfo  = (categorias as any[])?.find((c: any) => c.value === categoriaWatch);
-  const generaE43      = categoriaInfo?.generaE43 === true;
+  const categoriaWatch  = Form.useWatch('categoria', form);
+  const formaPagoWatch  = Form.useWatch('formaPago', form);
+  const categoriaInfo   = (categorias as any[])?.find((c: any) => c.value === categoriaWatch);
+  const generaE43       = categoriaInfo?.generaE43 === true;
 
   // Al cambiar a categoría E43, quitar el checkbox de comprobante
   // Al cambiar a otra categoría, sugerir tipoBienes según el mapeo
@@ -125,6 +126,19 @@ export default function GastosPage() {
       }
     }
   };
+  // Cajas abiertas hoy — para el selector cuando formaPago='01' (efectivo)
+  const { data: cajasHoy } = useQuery({
+    queryKey: ['caja-hoy-gastos'],
+    queryFn: () => api.get('/caja/hoy').then(r => {
+      const d = r.data?.data ?? r.data;
+      if (Array.isArray(d?.cajas)) return d.cajas as any[];
+      if (d?.id)                   return [d] as any[];
+      return [] as any[];
+    }),
+    enabled: open,
+    staleTime: 30_000,
+  });
+
   const { data: resumen }    = useQuery({ queryKey: ['gasto-res', mes, anio], queryFn: () => gastosApi.resumen(mes, anio) });
   const { data: anual }      = useQuery({ queryKey: ['gasto-anual', anio], queryFn: () => gastosApi.anual(anio) });
   const { data: lista, isLoading } = useQuery({
@@ -139,6 +153,7 @@ export default function GastosPage() {
       qc.invalidateQueries({ queryKey: ['gasto-res'] });
       setOpen(false);
       form.resetFields();
+      setTieneComprobante(false);
       const esE43 = (categorias as any[])?.find((c: any) => c.value === vars.categoria)?.generaE43;
       message.success(esE43
         ? 'Gasto registrado — E43 enviado a DGII automáticamente'
@@ -539,7 +554,7 @@ export default function GastosPage() {
                       if (sugerido) form.setFieldsValue({ tipoBienes: sugerido });
                     }
                     if (!checked) {
-                      form.setFieldsValue({ tipoBienes: undefined, formaPago: undefined });
+                      form.setFieldsValue({ tipoBienes: undefined, formaPago: undefined, cajaDiariaId: undefined });
                     }
                   }}
                 >
@@ -570,10 +585,35 @@ export default function GastosPage() {
                   <Col xs={24} sm={12}>
                     <Form.Item name="formaPago" label="Forma de pago (DGII)"
                       rules={[{ required: true, message: 'Requerido por el Formato 606' }]}>
-                      <Select placeholder="Seleccionar forma" options={FORMAS_PAGO_606} />
+                      <Select
+                        placeholder="Seleccionar forma"
+                        options={FORMAS_PAGO_606}
+                        onChange={val => {
+                          if (val !== '01') form.setFieldsValue({ cajaDiariaId: undefined });
+                        }}
+                      />
                     </Form.Item>
                   </Col>
                 </Row>
+              )}
+              {tieneComprobante && formaPagoWatch === '01' && (
+                <Form.Item
+                  name="cajaDiariaId"
+                  label="Caja de efectivo"
+                  rules={[{ required: true, message: 'Selecciona la caja a la que se imputa este gasto' }]}
+                  tooltip="El monto se descontará del cuadre de esa caja como gasto de efectivo"
+                  style={{ marginBottom: 8 }}
+                >
+                  <Select
+                    placeholder="Seleccionar caja activa"
+                    loading={!cajasHoy}
+                    notFoundContent="No hay cajas abiertas hoy"
+                    options={(cajasHoy ?? []).map((c: any) => ({
+                      value: c.id,
+                      label: c.vendedorNombre ? `${c.vendedorNombre} — Caja #${c.id}` : `Caja #${c.id}`,
+                    }))}
+                  />
+                </Form.Item>
               )}
             </>
           )}

@@ -393,24 +393,18 @@ export class CajaService {
       [cajaId],
     ).catch(() => [{ total: '0' }]);
 
-    // Gastos de efectivo del día: imputar solo a la caja sin vendedorId asignado
-    // (caja global/única de la empresa). La tabla gastos no tiene cajaDiariaId,
-    // por lo que no es posible asignar gastos a un cajero específico sin esa FK.
-    // Para empresas con múltiples cajeros, los gastos siguen siendo 0 por cajero
-    // individual hasta que se agregue cajaDiariaId a la tabla gastos.
-    let gastosTotal = 0;
-    if (!vendedorId) {
-      const [gastos] = await this.dataSource.query<{ total: string }[]>(
-        `SELECT COALESCE(SUM(g.total), 0)::text AS total
-         FROM gastos g
-         WHERE DATE(g.fecha) = $1
-           AND g."empresaId" = $2
-           AND g."isActive" = true
-           AND g."formaPago" = '01'`,
-        [fecha, empresaId],
-      ).catch(() => [{ total: '0' }]);
-      gastosTotal = Number(gastos?.total ?? 0);
-    }
+    // Gastos de efectivo imputados directamente a esta caja mediante cajaDiariaId.
+    // El campo cajaDiariaId se llena solo cuando formaPago='01' y el usuario selecciona
+    // la caja en el formulario de gastos — funciona para todas las empresas sin importar
+    // si tienen uno o varios cajeros activos al mismo tiempo.
+    const [gastos] = await this.dataSource.query<{ total: string }[]>(
+      `SELECT COALESCE(SUM(g.total), 0)::text AS total
+       FROM gastos g
+       WHERE g."cajaDiariaId" = $1
+         AND g."isActive" = true`,
+      [cajaId],
+    ).catch(() => [{ total: '0' }]);
+    const gastosTotal = Number(gastos?.total ?? 0);
 
     await this.repo.update(cajaId, {
       ventasEfectivo:        Number(ventas?.efectivo      ?? 0),

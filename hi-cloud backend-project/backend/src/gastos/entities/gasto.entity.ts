@@ -85,4 +85,9 @@ export class Gasto extends TenantBaseEntity {
 
   @Column({ nullable: true })
   sucursalId?: number;
+
+  /** ID de la caja diaria a la que se imputa este gasto (solo cuando formaPago='01').
+   *  Permite a recalcularDesdeBD() descontar el gasto del cuadre del cajero correcto. */
+  @Column({ nullable: true })
+  cajaDiariaId?: number;
 }

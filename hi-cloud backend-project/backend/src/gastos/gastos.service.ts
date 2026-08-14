@@ -24,6 +24,9 @@ interface CreateGastoDto {
   tipoBienes?:  string;
   /** Forma de pago DGII 606: 01-07. Solo obligatorio cuando el gasto tiene comprobante fiscal. */
   formaPago?:   string;
+  /** Caja diaria a la que se imputa el gasto. Obligatorio cuando formaPago='01' (efectivo).
+   *  Permite descontar el monto del cuadre del cajero correcto en recalcularDesdeBD(). */
+  cajaDiariaId?: number;
   userId:       number;
 }
 
