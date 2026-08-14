@@ -1,10 +1,10 @@
 import {
-  Injectable, NotFoundException, BadRequestException, Logger,
+  Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, IsNull, Not, Between } from 'typeorm';
 import { CierreCaja, EstadoCierre } from './entities/cierre-caja.entity';
-import { RetiroCaja } from './entities/retiro-caja.entity';
+import { RetiroCaja, CategoriaRetiro, EstadoRetiro } from './entities/retiro-caja.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { fechaHoyRD } from '../common/utils/fecha-local.util';
@@ -388,7 +388,8 @@ export class CajaService {
     const [retiros] = await this.dataSource.query<{ total: string }[]>(
       `SELECT COALESCE(SUM(monto), 0)::text AS total
        FROM retiros_caja
-       WHERE "cajaDiariaId" = $1`,
+       WHERE "cajaDiariaId" = $1
+         AND estado != 'anulado'`,
       [cajaId],
     ).catch(() => [{ total: '0' }]);
 
@@ -426,15 +427,21 @@ export class CajaService {
 
   // ── Helpers: configuración ciego ─────────────────────────────────────────
 
-  private async getEmpresaCfg(empresaId: number): Promise<{ cierreCajaCiego: boolean; umbralDescuadreCaja: number }> {
+  private async getEmpresaCfg(empresaId: number): Promise<{
+    cierreCajaCiego: boolean;
+    umbralDescuadreCaja: number;
+    montoMaxRetiroSinAutorizacion: number;
+  }> {
     const rows = await this.dataSource.query<{ configuracion: Record<string, unknown> }[]>(
       'SELECT configuracion FROM empresa WHERE id = $1 LIMIT 1',
       [empresaId],
     );
     const cfg = (rows[0]?.configuracion ?? {}) as Record<string, unknown>;
     return {
-      cierreCajaCiego:     cfg.cierreCajaCiego === true,
-      umbralDescuadreCaja: Number(cfg.umbralDescuadreCaja ?? 100),
+      cierreCajaCiego:               cfg.cierreCajaCiego === true,
+      umbralDescuadreCaja:           Number(cfg.umbralDescuadreCaja ?? 100),
+      /** 0 = sin restricción (cualquier monto es válido sin autorización) */
+      montoMaxRetiroSinAutorizacion: Number(cfg.montoMaxRetiroSinAutorizacion ?? 0),
     };
   }
 
@@ -583,6 +590,8 @@ export class CajaService {
     descripcion: string,
     usuarioId: number,
     usuarioNombre?: string,
+    categoria: CategoriaRetiro = CategoriaRetiro.OTRO,
+    cuentaBancariaId?: number,
   ) {
     const empresaId = this.tenantService.getEmpresaId();
 
@@ -598,6 +607,12 @@ export class CajaService {
       );
     }
 
+    // Comprobar si el monto supera el umbral configurado por la empresa.
+    // 0 o ausente = sin restricción (no requiere autorización).
+    const cfg = await this.getEmpresaCfg(empresaId);
+    const requiereAuth = cfg.montoMaxRetiroSinAutorizacion > 0 && monto > cfg.montoMaxRetiroSinAutorizacion;
+    const estado = requiereAuth ? EstadoRetiro.PENDIENTE : EstadoRetiro.ACTIVO;
+
     const retiro = this.retiroRepo.create({
       empresaId,
       cajaDiariaId: caja.id,
@@ -605,18 +620,139 @@ export class CajaService {
       usuarioNombre,
       monto,
       descripcion: descripcion.trim(),
+      categoria,
+      estado,
+      ...(cuentaBancariaId ? { cuentaBancariaId } : {}),
     });
     await this.retiroRepo.save(retiro);
 
-    // Actualizar columna retiros en cierres_caja con el acumulado real
-    const [{ total }] = await this.dataSource.query<{ total: string }[]>(
-      `SELECT COALESCE(SUM(monto), 0)::text AS total FROM retiros_caja WHERE "cajaDiariaId" = $1`,
-      [caja.id],
-    );
-    await this.repo.update(caja.id, { retiros: Number(total) });
-
+    // Actualizar columna retiros en cierres_caja (solo retiros no anulados)
+    await this.actualizarTotalRetiros(caja.id);
     this.realtimeService.notify(empresaId, 'caja', 'updated', caja.id);
-    return retiro;
+
+    return { ...retiro, requiereAuth };
+  }
+
+  /** Autoriza un retiro pendiente. Solo ADMIN/CONTADOR. */
+  async autorizarRetiro(id: number, autorizadorId: number, autorizadorNombre: string) {
+    const empresaId = this.tenantService.getEmpresaId();
+
+    const retiro = await this.retiroRepo.findOne({ where: { id, empresaId } });
+    if (!retiro) throw new NotFoundException(`Retiro #${id} no encontrado`);
+    if (retiro.estado === EstadoRetiro.ANULADO)   throw new BadRequestException('El retiro ya está anulado');
+    if (retiro.estado === EstadoRetiro.ACTIVO)     throw new BadRequestException('El retiro ya fue autorizado');
+
+    await this.retiroRepo.update(id, {
+      estado:           EstadoRetiro.ACTIVO,
+      autorizadorId,
+      autorizadorNombre,
+      autorizadoEn:     new Date(),
+    });
+
+    // No cambia el total — el retiro ya contaba como no-anulado desde el momento de creación
+    this.realtimeService.notify(empresaId, 'caja', 'updated', retiro.cajaDiariaId);
+    return this.retiroRepo.findOne({ where: { id } });
+  }
+
+  /** Anula un retiro con traza. Solo ADMIN/CONTADOR. Solo mientras la caja siga abierta. */
+  async anularRetiro(id: number, motivo: string, anuladoPorId: number, anuladoPorNombre: string) {
+    const empresaId = this.tenantService.getEmpresaId();
+
+    const retiro = await this.retiroRepo.findOne({ where: { id, empresaId } });
+    if (!retiro) throw new NotFoundException(`Retiro #${id} no encontrado`);
+    if (retiro.estado === EstadoRetiro.ANULADO) throw new BadRequestException('El retiro ya está anulado');
+
+    // Verificar estado de la caja — no se puede anular en una caja cerrada
+    const caja = await this.repo.findOne({ where: { id: retiro.cajaDiariaId } });
+    if (caja && caja.estado !== EstadoCierre.ABIERTA) {
+      throw new ForbiddenException(
+        'No se puede anular un retiro de un cierre ya cerrado. ' +
+        'Anular el cierre primero y luego el retiro.',
+      );
+    }
+
+    await this.retiroRepo.update(id, {
+      estado:           EstadoRetiro.ANULADO,
+      motivoAnulacion:  motivo.trim(),
+      anuladoPorId,
+      anuladoPorNombre,
+      anuladoEn:        new Date(),
+    });
+
+    // Recalcular — el anulado ya no suma
+    if (caja) {
+      await this.actualizarTotalRetiros(caja.id);
+      this.realtimeService.notify(empresaId, 'caja', 'updated', caja.id);
+    }
+
+    return this.retiroRepo.findOne({ where: { id } });
+  }
+
+  /** Reporte completo de retiros — retorna TODOS los registros (sin paginar) para export.
+   *  Filtrable por período, cajero, categoría y estado. */
+  async reporteRetiros(params: {
+    desde:      string;
+    hasta:      string;
+    vendedorId?: number;
+    categoria?:  string;
+    estado?:     string;
+  }) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const conds: string[] = [
+      `r."empresaId" = ${empresaId}`,
+      `cc.fecha BETWEEN $1 AND $2`,
+    ];
+    const args: any[] = [params.desde, params.hasta];
+
+    if (params.vendedorId !== undefined) {
+      args.push(params.vendedorId);
+      conds.push(`cc."vendedorId" = $${args.length}`);
+    }
+    if (params.categoria) {
+      args.push(params.categoria);
+      conds.push(`r.categoria = $${args.length}`);
+    }
+    if (params.estado) {
+      args.push(params.estado);
+      conds.push(`r.estado = $${args.length}`);
+    }
+
+    return this.dataSource.query<any[]>(
+      `SELECT
+         r.id,
+         r."createdAt",
+         r.monto,
+         r.descripcion,
+         r.categoria,
+         r.estado,
+         r."usuarioNombre",
+         r."autorizadorNombre",
+         r."autorizadoEn",
+         r."motivoAnulacion",
+         r."anuladoPorNombre",
+         r."anuladoEn",
+         r."cuentaBancariaId",
+         cc.fecha                AS "cajaFecha",
+         cc."vendedorNombre"     AS "cajeroNombre",
+         cc.id                   AS "cajaDiariaId"
+       FROM retiros_caja r
+       JOIN cierres_caja cc ON cc.id = r."cajaDiariaId"
+       WHERE ${conds.join(' AND ')}
+       ORDER BY r."createdAt" DESC`,
+      args,
+    );
+  }
+
+  /** Suma retiros vigentes (no anulados) de una caja y actualiza la columna. */
+  private async actualizarTotalRetiros(cajaDiariaId: number) {
+    const [{ total }] = await this.dataSource.query<{ total: string }[]>(
+      `SELECT COALESCE(SUM(monto), 0)::text AS total
+         FROM retiros_caja
+        WHERE "cajaDiariaId" = $1
+          AND estado != 'anulado'`,
+      [cajaDiariaId],
+    );
+    await this.repo.update(cajaDiariaId, { retiros: Number(total) });
   }
 
   async listarRetiros(cajaId?: number) {
@@ -626,8 +762,6 @@ export class CajaService {
     if (!cajaDiariaId) {
       // Buscar la caja más reciente del día (abierta O cerrada) para que los
       // retiros sean visibles después del cierre — fines de consulta histórica.
-      // Antes solo buscaba estado: ABIERTA, lo que causaba que los retiros
-      // desaparecieran en cuanto el cajero cerraba la caja.
       const hoy = fechaHoyRD();
       const caja = await this.repo.findOne({
         where: { empresaId, fecha: new Date(hoy) as any } as any,

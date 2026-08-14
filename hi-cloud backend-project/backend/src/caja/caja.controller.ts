@@ -3,8 +3,10 @@ import {
   ParseIntPipe, Query, HttpCode, HttpStatus, UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { IsOptional, IsNumber, IsString, IsNotEmpty, IsInt, IsPositive, Min, MaxLength, Max } from 'class-validator';
+import { IsOptional, IsNumber, IsString, IsNotEmpty, IsInt, IsPositive,
+         Min, MaxLength, Max, IsEnum, IsDateString } from 'class-validator';
 import { CajaService } from './caja.service';
+import { CategoriaRetiro } from './entities/retiro-caja.entity';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -57,6 +59,39 @@ class RegistrarRetiroDto {
 
   @IsString() @IsNotEmpty() @MaxLength(300)
   descripcion: string;
+
+  @IsOptional() @IsEnum(CategoriaRetiro)
+  categoria?: CategoriaRetiro;
+
+  /** Cuenta bancaria destino (solo cuando categoria = deposito_banco) */
+  @IsOptional() @IsInt() @IsPositive()
+  cuentaBancariaId?: number;
+}
+
+class AutorizarRetiroDto {
+  // El autorizador se toma del JWT — no acepta parámetros externos.
+}
+
+class AnularRetiroDto {
+  @IsString() @IsNotEmpty() @MaxLength(500)
+  motivo: string;
+}
+
+class ReporteRetirosDto {
+  @IsDateString()
+  desde: string;
+
+  @IsDateString()
+  hasta: string;
+
+  @IsOptional() @IsInt()
+  vendedorId?: number;
+
+  @IsOptional() @IsEnum(CategoriaRetiro)
+  categoria?: CategoriaRetiro;
+
+  @IsOptional() @IsString()
+  estado?: string;
 }
 
 @ApiTags('Caja')
@@ -171,12 +206,52 @@ export class CajaController {
       dto.descripcion,
       usuario.id,
       (usuario as any).nombre ?? (usuario as any).name,
+      dto.categoria,
+      dto.cuentaBancariaId,
     );
+  }
+
+  @Get('retiros/reporte')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Reporte completo de retiros por período — sin paginar, para exportar' })
+  reporteRetiros(
+    @Query('desde')      desde:      string,
+    @Query('hasta')      hasta:      string,
+    @Query('vendedorId') vendedorId?: string,
+    @Query('categoria')  categoria?:  string,
+    @Query('estado')     estado?:     string,
+  ) {
+    return this.cajaService.reporteRetiros({
+      desde, hasta,
+      vendedorId: vendedorId ? Number(vendedorId) : undefined,
+      categoria,
+      estado,
+    });
+  }
+
+  @Patch('retiros/:id/autorizar')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Autorizar un retiro pendiente — solo ADMIN/CONTADOR' })
+  autorizarRetiro(@Param('id', ParseIntPipe) id: number, @GetUser() usuario: User) {
+    const nombre = (usuario as any).nombre ?? (usuario as any).name ?? `Usuario #${usuario.id}`;
+    return this.cajaService.autorizarRetiro(id, usuario.id, nombre);
+  }
+
+  @Patch('retiros/:id/anular')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Anular un retiro con traza — no borra, solo marca como anulado' })
+  anularRetiro(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AnularRetiroDto,
+    @GetUser() usuario: User,
+  ) {
+    const nombre = (usuario as any).nombre ?? (usuario as any).name ?? `Usuario #${usuario.id}`;
+    return this.cajaService.anularRetiro(id, dto.motivo, usuario.id, nombre);
   }
 
   @Get('retiros')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  @ApiOperation({ summary: 'Listar retiros de la caja del día (abierta o cerrada). ?cajaId para una caja específica.' })
+  @ApiOperation({ summary: 'Listar retiros de una caja. ?cajaId para una caja específica.' })
   listarRetiros(@Query('cajaId') cajaId?: string) {
     return this.cajaService.listarRetiros(cajaId ? Number(cajaId) : undefined);
   }

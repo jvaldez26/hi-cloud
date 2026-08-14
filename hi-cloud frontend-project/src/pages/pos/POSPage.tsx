@@ -6915,6 +6915,15 @@ function POSGastosLista({ C }: { C: Palette }) {
   );
 }
 
+// ── Categorías de retiro (sincronizado con backend CategoriaRetiro enum) ─────
+const POS_RETIRO_CATEGORIAS = [
+  { value: 'pago_proveedor', label: '🧾 Pago a proveedor' },
+  { value: 'deposito_banco', label: '🏦 Depósito a banco'  },
+  { value: 'gasto',          label: '💸 Gasto operacional' },
+  { value: 'prestamo_dueno', label: '👤 Préstamo al dueño' },
+  { value: 'otro',           label: '📋 Otro'              },
+] as const;
+
 // ── Retiros de Caja ───────────────────────────────────────────────────────────
 function POSRetirosLista({ C }: { C: Palette }) {
   const qc = useQueryClient();
@@ -6922,12 +6931,18 @@ function POSRetirosLista({ C }: { C: Palette }) {
   const [showForm,    setShowForm]    = useState(false);
   const [monto,       setMonto]       = useState('');
   const [desc,        setDesc]        = useState('');
+  const [categoria,   setCategoria]   = useState<string>('otro');
   const [imprimiendo, setImprimiendo] = useState<number|null>(null);
 
   // Obtener la caja del turno activo del cache (ya está cargada por POSCierreCajaPanel)
   const cajaActiva = qc.getQueryData<any>(['pos-caja-hoy']);
   const cajaId: number | undefined = cajaActiva?.id;
   const cajeroNombre: string = cajaActiva?.vendedorNombre ?? '';
+  // Umbral de autorización — lo lee del config de empresa si está en cache
+  const empCfg = qc.getQueryData<any>(['pos-empresa-config']) as any;
+  const umbralAuth: number = Number((empCfg?.configuracion ?? empCfg)?.montoMaxRetiroSinAutorizacion ?? 0);
+  const montoNum = Number(monto);
+  const requiereAuth = umbralAuth > 0 && montoNum > umbralAuth;
 
   const { data: retiros = [], isLoading, refetch } = useQuery<any[]>({
     queryKey: ['pos-retiros-caja'],
@@ -6959,26 +6974,35 @@ function POSRetirosLista({ C }: { C: Palette }) {
   const crearMut = useMutation({
     mutationFn: () => api.post('/caja/retiros', {
       cajaId,
-      monto: Number(monto),
+      monto: montoNum,
       descripcion: desc.trim(),
+      categoria,
     }),
     onSuccess: (res) => {
-      message.success('Retiro registrado ✓');
+      const retiro = res?.data?.data ?? res?.data;
+      const pendiente = retiro?.requiereAuth === true;
+      if (pendiente) {
+        message.warning('Retiro registrado — pendiente de autorización por un supervisor', 5);
+      } else {
+        message.success('Retiro registrado ✓');
+      }
       qc.invalidateQueries({ queryKey: ['pos-retiros-caja'] });
       qc.invalidateQueries({ queryKey: ['pos-caja-hoy'] });
       refetch();
       setShowForm(false);
-      setMonto(''); setDesc('');
-      const retiro = res?.data?.data ?? res?.data;
+      setMonto(''); setDesc(''); setCategoria('otro');
       if (retiro?.id) imprimirRetiro(retiro);
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al registrar retiro'),
   });
 
-  const canSubmit = !!cajaId && desc.trim().length > 0 && Number(monto) > 0;
+  const canSubmit = !!cajaId && desc.trim().length > 0 && montoNum > 0;
   const inputS: React.CSSProperties = { width:'100%', height:36, padding:'0 10px', borderRadius:8,
     border:`1px solid ${C.border}`, background:C.card, color:C.text, fontSize:13, outline:'none', boxSizing:'border-box' };
   const labelS: React.CSSProperties = { fontSize:11, fontWeight:700, color:C.textSub, display:'block', marginBottom:3 };
+
+  const ESTADO_COLOR: Record<string,string> = { activo:'#10b981', pendiente:'#f59e0b', anulado:'#9ca3af' };
+  const ESTADO_LABEL: Record<string,string> = { activo:'✓', pendiente:'⏳', anulado:'✗' };
 
   return (
     <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
@@ -6990,6 +7014,12 @@ function POSRetirosLista({ C }: { C: Palette }) {
               Cajero: <strong style={{ color:C.text }}>{cajeroNombre}</strong>
             </span>
           ) : null}
+          {retiros.filter((r:any) => r.estado === 'pendiente').length > 0 && (
+            <span style={{ marginLeft:8, background:'#FEF9C3', border:'1px solid #FDE68A', borderRadius:10,
+              padding:'1px 7px', fontSize:11, color:'#92400E', fontWeight:700 }}>
+              {retiros.filter((r:any) => r.estado === 'pendiente').length} pendiente(s)
+            </span>
+          )}
         </div>
         <button onClick={() => setShowForm(v => !v)}
           style={{ background: showForm ? C.border : '#DC2626', border:'none', borderRadius:8,
@@ -7013,16 +7043,33 @@ function POSRetirosLista({ C }: { C: Palette }) {
                 💰 Este retiro se aplicará a la caja de <strong>{cajeroNombre}</strong>
               </div>
             )}
+            {/* Categoría — obligatoria para poder conciliar */}
+            <div style={{ marginBottom:10 }}>
+              <span style={labelS}>Categoría *</span>
+              <select value={categoria} onChange={e => setCategoria(e.target.value)}
+                style={{ ...inputS, height:38, cursor:'pointer' }}>
+                {POS_RETIRO_CATEGORIAS.map(c => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
+              </select>
+            </div>
             <div style={{ marginBottom:10 }}>
               <span style={labelS}>Monto RD$ *</span>
               <input type="number" value={monto} onChange={e => setMonto(e.target.value)}
                 placeholder="0.00" min="0.01" step="0.01"
                 style={{ ...inputS, textAlign:'right' }} />
             </div>
+            {/* Advertencia de autorización requerida */}
+            {requiereAuth && (
+              <div style={{ background:'#FEF9C3', border:'1px solid #FDE68A', borderRadius:8,
+                padding:'8px 12px', marginBottom:10, fontSize:12, color:'#92400E' }}>
+                ⚠️ Monto superior al límite (RD${umbralAuth.toLocaleString('es-DO')}). Quedará pendiente hasta que un supervisor lo autorice.
+              </div>
+            )}
             <div style={{ marginBottom:14 }}>
               <span style={labelS}>Descripción *</span>
               <input value={desc} onChange={e => setDesc(e.target.value)}
-                placeholder="Motivo del retiro" maxLength={300} style={inputS} />
+                placeholder="Describe el motivo con detalle" maxLength={300} style={inputS} />
             </div>
             <div style={{ background: '#EF444415', border:'1px solid #EF444430', borderRadius:8,
               padding:'8px 12px', marginBottom:14, fontSize:12, color:'#DC2626' }}>
@@ -7044,29 +7091,49 @@ function POSRetirosLista({ C }: { C: Palette }) {
              : (
               <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
                 <thead><tr style={{ background:C.card, position:'sticky', top:0 }}>
-                  {['Descripción','Monto','Hora',''].map(h => (
+                  {['#','Categoría','Descripción','Monto','Hora',''].map(h => (
                     <th key={h} style={{ padding:'8px 12px', textAlign:'left', color:C.textSub,
                       fontWeight:600, fontSize:11, borderBottom:`1px solid ${C.border}` }}>{h}</th>
                   ))}
                 </tr></thead>
-                <tbody>{retiros.map((r: any, i: number) => (
-                  <tr key={r.id} style={{ borderBottom:`1px solid ${C.border}`, background:i%2===0?'transparent':C.card }}>
-                    <td style={{ padding:'8px 12px', color:C.text }}>{r.descripcion}</td>
-                    <td style={{ padding:'8px 12px', fontWeight:700, color:'#DC2626' }}>{fmt.money(r.monto??0)}</td>
-                    <td style={{ padding:'8px 12px', color:C.textSub, fontSize:11 }}>
-                      {r.createdAt ? new Date(r.createdAt).toLocaleTimeString('es-DO', { hour:'2-digit', minute:'2-digit' }) : '—'}
-                    </td>
-                    <td style={{ padding:'6px 8px', textAlign:'right' }}>
-                      <button onClick={() => imprimirRetiro(r)} title="Imprimir recibo"
-                        disabled={imprimiendo === r.id}
-                        style={{ background:'none', border:`1px solid ${C.border}`, borderRadius:6,
-                          color: imprimiendo===r.id ? C.textMuted : C.textSub,
-                          padding:'3px 8px', fontSize:14, cursor:'pointer', outline:'none' }}>
-                        {imprimiendo === r.id ? '⏳' : '🖨'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}</tbody>
+                <tbody>{retiros.map((r: any, i: number) => {
+                  const anulado = r.estado === 'anulado';
+                  const pendiente = r.estado === 'pendiente';
+                  return (
+                    <tr key={r.id} style={{ borderBottom:`1px solid ${C.border}`, background:i%2===0?'transparent':C.card,
+                      opacity: anulado ? 0.5 : 1 }}>
+                      <td style={{ padding:'8px 8px', color:C.textSub, fontSize:10, fontFamily:'monospace' }}>
+                        RET-{String(r.id).padStart(5,'0')}
+                        {pendiente && <span style={{ display:'block', color:'#f59e0b', fontSize:9, fontWeight:700 }}>⏳ PENDIENTE</span>}
+                        {anulado   && <span style={{ display:'block', color:'#9ca3af', fontSize:9, fontWeight:700 }}>✗ ANULADO</span>}
+                      </td>
+                      <td style={{ padding:'8px 8px', color:C.textSub, fontSize:11 }}>
+                        {POS_RETIRO_CATEGORIAS.find(c => c.value === r.categoria)?.label ?? r.categoria ?? '—'}
+                      </td>
+                      <td style={{ padding:'8px 12px', color:C.text, textDecoration: anulado ? 'line-through':'none' }}>
+                        {r.descripcion}
+                        {r.autorizadorNombre && <span style={{ display:'block', fontSize:10, color:'#10b981' }}>✓ {r.autorizadorNombre}</span>}
+                      </td>
+                      <td style={{ padding:'8px 12px', fontWeight:700,
+                        color: anulado ? '#9ca3af' : pendiente ? '#f59e0b' : '#DC2626',
+                        textDecoration: anulado ? 'line-through' : 'none' }}>
+                        {fmt.money(r.monto??0)}
+                      </td>
+                      <td style={{ padding:'8px 12px', color:C.textSub, fontSize:11 }}>
+                        {r.createdAt ? new Date(r.createdAt).toLocaleTimeString('es-DO', { hour:'2-digit', minute:'2-digit' }) : '—'}
+                      </td>
+                      <td style={{ padding:'6px 8px', textAlign:'right' }}>
+                        <button onClick={() => imprimirRetiro(r)} title="Imprimir recibo"
+                          disabled={imprimiendo === r.id}
+                          style={{ background:'none', border:`1px solid ${C.border}`, borderRadius:6,
+                            color: imprimiendo===r.id ? C.textMuted : C.textSub,
+                            padding:'3px 8px', fontSize:14, cursor:'pointer', outline:'none' }}>
+                          {imprimiendo === r.id ? '⏳' : '🖨'}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}</tbody>
               </table>
             )}
         </div>

@@ -7,10 +7,10 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Card, Row, Col, Typography, Statistic, Button, InputNumber,
          Table, Tag, Modal, Form, Input, Select, Space, Alert, Spin, message, Avatar,
-         theme, Drawer, Descriptions, Divider, DatePicker, Radio, Checkbox } from 'antd';
+         theme, Drawer, Descriptions, Divider, DatePicker, Radio, Checkbox, Tooltip, Empty } from 'antd';
 import { UnlockOutlined, LockOutlined, HistoryOutlined,
-         RollbackOutlined, WarningOutlined,
-         PrinterOutlined, SearchOutlined,
+         RollbackOutlined, WarningOutlined, CheckCircleOutlined, StopOutlined,
+         PrinterOutlined, SearchOutlined, DollarOutlined,
          FileExcelOutlined, FilePdfOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../store/auth.store';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -20,6 +20,45 @@ import { fmt } from '../../utils/formatters';
 import { imprimirReciboTermico } from '../../utils/printUtils';
 import { exportarExcel } from '../../utils/exportExcel';
 import dayjs from 'dayjs';
+
+// ── Constantes de retiros ──────────────────────────────────────────────────
+const CATEGORIA_OPTIONS = [
+  { value: 'pago_proveedor', label: '🧾 Pago a proveedor' },
+  { value: 'deposito_banco', label: '🏦 Depósito a banco'  },
+  { value: 'gasto',          label: '💸 Gasto operacional' },
+  { value: 'prestamo_dueno', label: '👤 Préstamo al dueño' },
+  { value: 'otro',           label: '📋 Otro'              },
+];
+const CATEGORIA_LABELS: Record<string, string> = {
+  pago_proveedor: 'Pago a proveedor',
+  deposito_banco: 'Depósito a banco',
+  gasto:          'Gasto operacional',
+  prestamo_dueno: 'Préstamo al dueño',
+  otro:           'Otro',
+};
+const ESTADO_RETIRO_COLOR: Record<string, string> = {
+  activo:    'green',
+  pendiente: 'orange',
+  anulado:   'red',
+};
+const ESTADO_RETIRO_LABEL: Record<string, string> = {
+  activo:    'Autorizado',
+  pendiente: 'Pendiente',
+  anulado:   'Anulado',
+};
+
+const retirosApi = {
+  listar:    (cajaId?: number) =>
+    api.get(`/caja/retiros${cajaId ? `?cajaId=${cajaId}` : ''}`).then(r => r.data?.data ?? r.data ?? []),
+  reporte:   (params: Record<string, string>) =>
+    api.get('/caja/retiros/reporte', { params }).then(r => r.data?.data ?? r.data ?? []),
+  autorizar: (id: number) =>
+    api.patch(`/caja/retiros/${id}/autorizar`).then(r => r.data?.data ?? r.data),
+  anular:    (id: number, motivo: string) =>
+    api.patch(`/caja/retiros/${id}/anular`, { motivo }).then(r => r.data?.data ?? r.data),
+  cuentasBancarias: () =>
+    api.get('/bancos/cuentas').then(r => r.data?.data ?? r.data ?? []),
+};
 
 const { Title, Text } = Typography;
 
@@ -149,6 +188,92 @@ export default function CajaPage() {
       : [(cajaData as any)];
 
   const [searchHistorial, setSearchHistorial] = useState('');
+
+  // ── Módulo de Retiros ─────────────────────────────────────────────────────
+  const [retirosDesde,   setRetirosDesde]   = useState(() => dayjs().startOf('month'));
+  const [retirosHasta,   setRetirosHasta]   = useState(() => dayjs());
+  const [retirosCajero,  setRetirosCajero]  = useState<number | undefined>(undefined);
+  const [retirosCateg,   setRetirosCateg]   = useState<string | undefined>(undefined);
+  const [retirosEstado,  setRetirosEstado]  = useState<string | undefined>(undefined);
+  const [retiroAnular,   setRetiroAnular]   = useState<any>(null);
+  const [formAnularRet]  = Form.useForm();
+  const [exportandoRet,  setExportandoRet]  = useState(false);
+
+  const { data: retirosReporte = [], isLoading: loadingRetiros, refetch: refetchRetiros } = useQuery<any[]>({
+    queryKey: ['caja-retiros-reporte',
+      retirosDesde.format('YYYY-MM-DD'), retirosHasta.format('YYYY-MM-DD'),
+      retirosCajero, retirosCateg, retirosEstado],
+    queryFn: () => retirosApi.reporte({
+      desde: retirosDesde.format('YYYY-MM-DD'),
+      hasta: retirosHasta.format('YYYY-MM-DD'),
+      ...(retirosCajero !== undefined ? { vendedorId: String(retirosCajero) } : {}),
+      ...(retirosCateg  ? { categoria: retirosCateg }  : {}),
+      ...(retirosEstado ? { estado:    retirosEstado  } : {}),
+    }),
+    staleTime: 30_000,
+    enabled: esAdmin,
+  });
+
+  const autorizarRetiroMut = useMutation({
+    mutationFn: (id: number) => retirosApi.autorizar(id),
+    onSuccess: () => {
+      message.success('Retiro autorizado ✓');
+      qc.invalidateQueries({ queryKey: ['caja-retiros-reporte'] });
+      qc.invalidateQueries({ queryKey: ['caja-hoy'] });
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al autorizar'),
+  });
+
+  const anularRetiroMut = useMutation({
+    mutationFn: ({ id, motivo }: { id: number; motivo: string }) => retirosApi.anular(id, motivo),
+    onSuccess: () => {
+      message.success('Retiro anulado ✓');
+      setRetiroAnular(null); formAnularRet.resetFields();
+      qc.invalidateQueries({ queryKey: ['caja-retiros-reporte'] });
+      qc.invalidateQueries({ queryKey: ['caja-hoy'] });
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al anular'),
+  });
+
+  const exportarRetiros = async () => {
+    setExportandoRet(true);
+    try {
+      const data = retirosReporte;   // ya tiene TODOS (sin paginar)
+      if (!data.length) { message.warning('No hay retiros para exportar'); return; }
+      const XLSX = await import('xlsx');
+      const wb = XLSX.utils.book_new();
+      const filas = data.map((r: any) => ({
+        'No.':          `RET-${String(r.id).padStart(5, '0')}`,
+        'Fecha caja':   String(r.cajaFecha ?? '').substring(0, 10),
+        'Hora':         r.createdAt ? new Date(r.createdAt).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }) : '',
+        'Cajero':       r.cajeroNombre ?? '',
+        'Categoría':    CATEGORIA_LABELS[r.categoria] ?? r.categoria ?? '',
+        'Monto':        Number(r.monto ?? 0),
+        'Descripción':  r.descripcion ?? '',
+        'Estado':       ESTADO_RETIRO_LABEL[r.estado] ?? r.estado ?? '',
+        'Autorizó':     r.autorizadorNombre ?? '',
+        'Autorizado en':r.autorizadoEn ? new Date(r.autorizadoEn).toLocaleString('es-DO') : '',
+        'Motivo anulación': r.motivoAnulacion ?? '',
+        'Anuló':        r.anuladoPorNombre ?? '',
+      }));
+      const ws = XLSX.utils.json_to_sheet(filas);
+      ws['!cols'] = [{ wch: 12 }, { wch: 11 }, { wch: 7 }, { wch: 18 },
+        { wch: 20 }, { wch: 12 }, { wch: 34 }, { wch: 12 }, { wch: 18 },
+        { wch: 18 }, { wch: 30 }, { wch: 18 }];
+      XLSX.utils.book_append_sheet(wb, ws, 'Retiros');
+      const desde = retirosDesde.format('YYYY-MM-DD');
+      const hasta = retirosHasta.format('YYYY-MM-DD');
+      XLSX.writeFile(wb, `Retiros-${desde}_${hasta}.xlsx`);
+    } finally { setExportandoRet(false); }
+  };
+
+  // Retiros del cierre activo en el drawer
+  const { data: retirosDetalle = [] } = useQuery<any[]>({
+    queryKey: ['caja-retiros-cierre', detalleCierre?.id],
+    queryFn: () => retirosApi.listar(detalleCierre!.id),
+    enabled: !!detalleCierre,
+    staleTime: 60_000,
+  });
 
   // ── Diálogo de impresión unificado ────────────────────────────────────────
   const [printTarget, setPrintTarget]       = useState<any>(null);
@@ -824,8 +949,47 @@ ${line()}
             <Divider style={{ margin: '8px 0' }}>Egresos</Divider>
             <Descriptions column={1} size="small" style={{ marginBottom: 8 }}>
               <Descriptions.Item label="Gastos registrados">{fmt.money(Number(detalleCierre.gastosEfectivo ?? 0))}</Descriptions.Item>
-              <Descriptions.Item label="Retiros">{fmt.money(Number(detalleCierre.retiros ?? 0))}</Descriptions.Item>
+              <Descriptions.Item label="Retiros (total)">{fmt.money(Number(detalleCierre.retiros ?? 0))}</Descriptions.Item>
             </Descriptions>
+            {/* Detalle individual de retiros */}
+            {retirosDetalle.length > 0 && (
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  Retiros del turno
+                </div>
+                <Table
+                  size="small"
+                  dataSource={retirosDetalle}
+                  rowKey="id"
+                  pagination={false}
+                  columns={[
+                    { title: '#',      dataIndex: 'id', width: 78, render: (v: number) => `RET-${String(v).padStart(5,'0')}` },
+                    { title: 'Hora',   dataIndex: 'createdAt', width: 60,
+                      render: (v: string) => new Date(v).toLocaleTimeString('es-DO',{hour:'2-digit',minute:'2-digit'}) },
+                    { title: 'Categoría', dataIndex: 'categoria', width: 120,
+                      render: (v: string) => CATEGORIA_LABELS[v] ?? v ?? '' },
+                    { title: 'Monto',  dataIndex: 'monto', width: 90, align: 'right' as const,
+                      render: (v: number, r: any) => (
+                        <span style={{ color: r.estado === 'anulado' ? '#9ca3af' : '#ef4444',
+                          textDecoration: r.estado === 'anulado' ? 'line-through' : 'none',
+                          fontWeight: 600 }}>
+                          {fmt.money(v)}
+                        </span>
+                      )},
+                    { title: 'Estado', dataIndex: 'estado', width: 90,
+                      render: (v: string) => <Tag color={ESTADO_RETIRO_COLOR[v] ?? 'default'} style={{ fontSize: 10 }}>
+                        {ESTADO_RETIRO_LABEL[v] ?? v}
+                      </Tag> },
+                  ]}
+                />
+                {retirosDetalle.map((r: any) => r.descripcion ? (
+                  <div key={r.id} style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
+                    <strong>RET-{String(r.id).padStart(5,'0')}:</strong> {r.descripcion}
+                    {r.autorizadorNombre ? <span style={{ marginLeft: 6, color: '#10b981' }}>✓ {r.autorizadorNombre}</span> : null}
+                  </div>
+                ) : null)}
+              </div>
+            )}
 
             <Divider style={{ margin: '8px 0' }}>Cierre</Divider>
             <Descriptions column={1} size="small">
@@ -1081,6 +1245,158 @@ ${line()}
             </div>
           )}
         </div>
+      </Modal>
+
+      {/* ── SECCIÓN RETIROS ─────────────────────────────────────────────── */}
+      {esAdmin && (
+        <Card
+          title={<><DollarOutlined /> Retiros de Caja</>}
+          style={{ marginTop: 16 }}
+          extra={
+            <Space wrap>
+              <DatePicker.RangePicker
+                value={[retirosDesde, retirosHasta]}
+                onChange={v => { if (v) { setRetirosDesde(v[0]!); setRetirosHasta(v[1]!); } }}
+                allowClear={false} size="small" format="DD/MM/YYYY"
+                disabledDate={d => d.isAfter(dayjs(), 'day')}
+              />
+              <Select
+                placeholder="Cajero" allowClear size="small" style={{ width: 140 }}
+                value={retirosCajero}
+                onChange={v => setRetirosCajero(v)}
+                options={cajeros.map((c: any) => ({ value: c.id, label: c.nombre }))}
+              />
+              <Select
+                placeholder="Categoría" allowClear size="small" style={{ width: 160 }}
+                value={retirosCateg}
+                onChange={v => setRetirosCateg(v)}
+                options={CATEGORIA_OPTIONS}
+              />
+              <Select
+                placeholder="Estado" allowClear size="small" style={{ width: 130 }}
+                value={retirosEstado}
+                onChange={v => setRetirosEstado(v)}
+                options={[
+                  { value: 'activo',    label: '✅ Autorizado' },
+                  { value: 'pendiente', label: '⏳ Pendiente'  },
+                  { value: 'anulado',   label: '❌ Anulado'    },
+                ]}
+              />
+              <Tooltip title="Exportar todo el período filtrado (no solo la página)">
+                <Button size="small" icon={<FileExcelOutlined />} onClick={exportarRetiros}
+                  loading={exportandoRet}>
+                  Exportar
+                </Button>
+              </Tooltip>
+            </Space>
+          }
+        >
+          {retirosReporte.filter((r: any) => r.estado === 'pendiente').length > 0 && (
+            <Alert
+              type="warning" showIcon icon={<WarningOutlined />}
+              message={`${retirosReporte.filter((r: any) => r.estado === 'pendiente').length} retiro(s) pendiente(s) de autorización`}
+              style={{ marginBottom: 12 }}
+            />
+          )}
+          <Table
+            size="small"
+            loading={loadingRetiros}
+            dataSource={retirosReporte}
+            rowKey="id"
+            scroll={{ x: 'max-content' }}
+            pagination={{ pageSize: 20, showTotal: (t: number) => `${t} retiros`, showSizeChanger: false }}
+            rowClassName={(r: any) => r.estado === 'anulado' ? 'row-anulado' : ''}
+            columns={[
+              { title: '#', dataIndex: 'id', width: 90, fixed: 'left' as const,
+                render: (v: number) => <span style={{ fontFamily: 'monospace', fontSize: 12 }}>RET-{String(v).padStart(5,'0')}</span> },
+              { title: 'Fecha',    dataIndex: 'cajaFecha', width: 100,
+                render: (v: string) => String(v ?? '').substring(0, 10) },
+              { title: 'Hora',     dataIndex: 'createdAt', width: 65,
+                render: (v: string) => new Date(v).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }) },
+              { title: 'Cajero',   dataIndex: 'cajeroNombre', width: 140,
+                render: (v: string) => {
+                  const n = v ?? 'Admin';
+                  return <Space size={4}><Avatar size={18} style={{ background: avatarColor(n), fontSize: 9 }}>{n[0]}</Avatar><span style={{ fontSize: 12 }}>{n}</span></Space>;
+                } },
+              { title: 'Categoría', dataIndex: 'categoria', width: 150,
+                render: (v: string) => CATEGORIA_LABELS[v] ?? v ?? '' },
+              { title: 'Monto',    dataIndex: 'monto', width: 110, align: 'right' as const,
+                render: (v: number, r: any) => (
+                  <span style={{ fontWeight: 700, color: r.estado === 'anulado' ? '#9ca3af' : '#ef4444',
+                    textDecoration: r.estado === 'anulado' ? 'line-through' : 'none' }}>
+                    {fmt.money(v)}
+                  </span>
+                ) },
+              { title: 'Descripción', dataIndex: 'descripcion', width: 240,
+                render: (v: string) => <span style={{ fontSize: 12 }}>{v}</span> },
+              { title: 'Estado',   dataIndex: 'estado', width: 110,
+                render: (v: string) => <Tag color={ESTADO_RETIRO_COLOR[v] ?? 'default'}>{ESTADO_RETIRO_LABEL[v] ?? v}</Tag> },
+              { title: 'Autorizó', dataIndex: 'autorizadorNombre', width: 130,
+                render: (v: string, r: any) => v
+                  ? <span style={{ fontSize: 12, color: '#10b981' }}>✓ {v}</span>
+                  : r.estado === 'pendiente'
+                    ? <span style={{ fontSize: 11, color: '#f59e0b' }}>Sin autorizar</span>
+                    : null },
+              { title: '', key: 'actions', width: 90, fixed: 'right' as const,
+                render: (_: any, r: any) => (
+                  <Space size={4}>
+                    {r.estado === 'pendiente' && (
+                      <Tooltip title="Autorizar este retiro">
+                        <Button size="small" type="primary" icon={<CheckCircleOutlined />}
+                          style={{ background: '#10b981', borderColor: '#10b981' }}
+                          loading={autorizarRetiroMut.isPending}
+                          onClick={() => autorizarRetiroMut.mutate(r.id)} />
+                      </Tooltip>
+                    )}
+                    {r.estado !== 'anulado' && (
+                      <Tooltip title="Anular retiro (con traza)">
+                        <Button size="small" danger icon={<StopOutlined />}
+                          onClick={() => { setRetiroAnular(r); formAnularRet.resetFields(); }} />
+                      </Tooltip>
+                    )}
+                  </Space>
+                ) },
+            ]}
+          />
+          <style>{`.row-anulado td { opacity: 0.55; }`}</style>
+        </Card>
+      )}
+
+      {/* Modal anular retiro */}
+      <Modal
+        title={<Space><StopOutlined style={{ color: '#ef4444' }} />
+          {`Anular retiro RET-${String(retiroAnular?.id ?? 0).padStart(5,'0')}`}
+        </Space>}
+        open={!!retiroAnular}
+        onCancel={() => { setRetiroAnular(null); formAnularRet.resetFields(); }}
+        footer={null} width="min(460px, 95vw)" destroyOnClose
+      >
+        {retiroAnular && (
+          <>
+            <Descriptions size="small" column={2} style={{ marginBottom: 16 }}>
+              <Descriptions.Item label="Cajero" span={2}>{retiroAnular.cajeroNombre}</Descriptions.Item>
+              <Descriptions.Item label="Monto"><strong style={{ color: '#ef4444' }}>{fmt.money(retiroAnular.monto)}</strong></Descriptions.Item>
+              <Descriptions.Item label="Fecha">{String(retiroAnular.cajaFecha ?? '').substring(0,10)}</Descriptions.Item>
+              <Descriptions.Item label="Descripción" span={2}>{retiroAnular.descripcion}</Descriptions.Item>
+            </Descriptions>
+            <Alert type="warning" showIcon message="Esta acción revertirá el retiro y recalculará el cierre de caja. Solo disponible mientras la caja esté abierta." style={{ marginBottom: 16 }} />
+            <Form form={formAnularRet} layout="vertical"
+              onFinish={v => anularRetiroMut.mutate({ id: retiroAnular.id, motivo: v.motivo })}>
+              <Form.Item name="motivo" label="Motivo de la anulación"
+                rules={[{ required: true, message: 'El motivo es obligatorio' }]}>
+                <Input.TextArea rows={3} maxLength={500} placeholder="Ej: El retiro fue registrado por error, el dinero fue devuelto a caja..." showCount />
+              </Form.Item>
+              <Row justify="end" gutter={8}>
+                <Col><Button onClick={() => { setRetiroAnular(null); formAnularRet.resetFields(); }}>Cancelar</Button></Col>
+                <Col>
+                  <Button danger htmlType="submit" icon={<StopOutlined />} loading={anularRetiroMut.isPending}>
+                    Confirmar anulación
+                  </Button>
+                </Col>
+              </Row>
+            </Form>
+          </>
+        )}
       </Modal>
 
       {/* Modal anular cierre */}
