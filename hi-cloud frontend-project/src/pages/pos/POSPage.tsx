@@ -6987,8 +6987,22 @@ function POSRetirosLista({ C }: { C: Palette }) {
   const [categoria,   setCategoria]   = useState<string>('otro');
   const [imprimiendo, setImprimiendo] = useState<number|null>(null);
 
-  // Obtener la caja del turno activo del cache (ya está cargada por POSCierreCajaPanel)
-  const cajaActiva = qc.getQueryData<any>(['pos-caja-hoy']);
+  // Caja activa — ejecuta la query propiamente (no depende de que POSCierreCajaPanel esté montado)
+  const { data: cajaActiva, isLoading: cajaLoading } = useQuery<any>({
+    queryKey: ['pos-caja-hoy'],
+    queryFn: () => {
+      const vid = localStorage.getItem('pos_vendedor_id');
+      const url = vid ? `/caja/hoy?vendedorId=${vid}` : '/caja/hoy';
+      return api.get(url).then(r => {
+        const d = r.data?.data ?? r.data;
+        if (d?.cajas) return d.cajas.find((c: any) => c.estado === 'abierta') ?? null;
+        if (Array.isArray(d)) return d.find((c: any) => c.estado === 'abierta') ?? null;
+        return d?.estado === 'sin_apertura' ? null : d;
+      });
+    },
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+  });
   const cajaId: number | undefined = cajaActiva?.id;
   const cajeroNombre: string = cajaActiva?.vendedorNombre ?? '';
   // Umbral de autorización — lo lee del config de empresa si está en cache
@@ -7085,9 +7099,13 @@ function POSRetirosLista({ C }: { C: Palette }) {
         <div style={{ flex:1, overflowY:'auto', padding:16 }}>
           <div style={{ maxWidth:420, color:C.text }}>
             {!cajaId && (
-              <div style={{ background:'#FEF9C3', border:'1px solid #FDE68A', borderRadius:8,
-                padding:'8px 12px', marginBottom:14, fontSize:12, color:'#92400E' }}>
-                ⚠️ No se detecta una caja abierta. Recarga la página e inténtalo de nuevo.
+              <div style={{ background: cajaLoading ? '#F0F9FF' : '#FEF9C3',
+                border:`1px solid ${cajaLoading ? '#BAE6FD' : '#FDE68A'}`, borderRadius:8,
+                padding:'8px 12px', marginBottom:14, fontSize:12,
+                color: cajaLoading ? '#0369A1' : '#92400E' }}>
+                {cajaLoading
+                  ? '⏳ Verificando caja activa...'
+                  : '⚠️ No se detecta una caja abierta. Verifica que el cajero seleccionado tenga su turno abierto.'}
               </div>
             )}
             {cajeroNombre && (
