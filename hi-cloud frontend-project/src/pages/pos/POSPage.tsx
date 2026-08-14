@@ -6735,17 +6735,48 @@ function POSGastosPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
   );
 }
 
+const POS_TIPOS_BIENES_606 = [
+  { value: '01', label: '01 — Gastos de personal' },
+  { value: '02', label: '02 — Trabajo, suministros y servicios' },
+  { value: '03', label: '03 — Arrendamientos' },
+  { value: '04', label: '04 — Gastos de activos fijos' },
+  { value: '05', label: '05 — Gastos de representación' },
+  { value: '06', label: '06 — Otras deducciones admitidas' },
+  { value: '07', label: '07 — Gastos financieros' },
+  { value: '08', label: '08 — Gastos extraordinarios' },
+  { value: '09', label: '09 — Compras y gastos del costo de venta' },
+  { value: '10', label: '10 — Adquisiciones de activos' },
+  { value: '11', label: '11 — Gastos de seguros' },
+];
+const POS_FORMAS_PAGO_606 = [
+  { value: '01', label: '01 — Efectivo' },
+  { value: '02', label: '02 — Cheque / Transferencia / Depósito' },
+  { value: '03', label: '03 — Tarjeta de Débito / Crédito' },
+  { value: '04', label: '04 — Compra a crédito' },
+  { value: '05', label: '05 — Permuta' },
+  { value: '06', label: '06 — Nota de crédito' },
+  { value: '07', label: '07 — Mixto' },
+];
+const POS_TIPO_BIENES_SUGERIDO: Record<string, string> = {
+  alquiler: '03', servicios_publicos: '02', comunicaciones: '02',
+  nomina: '01', materiales_oficina: '02', transporte: '02',
+  marketing: '02', impuestos_tasas: '06', mantenimiento: '02',
+  seguros: '11', gastos_financieros: '07', otros: '06',
+};
+
 function POSGastosLista({ C }: { C: Palette }) {
   const qc = useQueryClient();
   const user = useAuthStore(s => s.user);
   const sucursalActual = useAuthStore(s => s.sucursalActual);
-  const [showForm,    setShowForm]    = useState(false);
-  const [busq,        setBusq]        = useState('');
-  const [imprimiendo, setImprimiendo] = useState<number|null>(null);
+  const [showForm,         setShowForm]         = useState(false);
+  const [busq,             setBusq]             = useState('');
+  const [imprimiendo,      setImprimiendo]      = useState<number|null>(null);
+  const [tieneComprobante, setTieneComprobante] = useState(false);
   const [f, setF] = useState({
     fecha: dayjs().format('YYYY-MM-DD'),
     categoria: '', descripcion: '', monto: '',
     itbis: '', proveedor: '', rncProveedor: '', comprobante: '',
+    tipoBienes: '', formaPago: '',
     cajaDiariaId: '' as string | number,
   });
 
@@ -6830,10 +6861,12 @@ function POSGastosLista({ C }: { C: Palette }) {
         descripcion:  f.descripcion.trim(),
         monto,
         itbis,
-        proveedor:    f.proveedor  || undefined,
-        rncProveedor: f.rncProveedor || undefined,
-        comprobante:  f.comprobante  || undefined,
-        cajaDiariaId: f.cajaDiariaId ? Number(f.cajaDiariaId) : undefined,
+        proveedor:    f.proveedor     || undefined,
+        rncProveedor: f.rncProveedor  || undefined,
+        comprobante:  f.comprobante   || undefined,
+        tipoBienes:   tieneComprobante ? (f.tipoBienes   || undefined) : undefined,
+        formaPago:    tieneComprobante ? (f.formaPago    || undefined) : undefined,
+        cajaDiariaId: f.cajaDiariaId  ? Number(f.cajaDiariaId) : undefined,
       });
     },
     onSuccess: () => {
@@ -6842,7 +6875,8 @@ function POSGastosLista({ C }: { C: Palette }) {
       qc.invalidateQueries({ queryKey: ['gastos'] });
       refetch();
       setShowForm(false);
-      setF({ fecha: dayjs().format('YYYY-MM-DD'), categoria:'', descripcion:'', monto:'', itbis:'', proveedor:'', rncProveedor:'', comprobante:'', cajaDiariaId:'' });
+      setTieneComprobante(false);
+      setF({ fecha: dayjs().format('YYYY-MM-DD'), categoria:'', descripcion:'', monto:'', itbis:'', proveedor:'', rncProveedor:'', comprobante:'', tipoBienes:'', formaPago:'', cajaDiariaId:'' });
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al registrar gasto'),
   });
@@ -6850,7 +6884,8 @@ function POSGastosLista({ C }: { C: Palette }) {
   const inp = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF(p => ({ ...p, [k]: e.target.value }));
   const inputS: React.CSSProperties = { width:'100%', height:36, padding:'0 10px', borderRadius:8, border:`1px solid ${C.border}`, background:C.card, color:C.text, fontSize:13, outline:'none', boxSizing:'border-box' };
   const labelS: React.CSSProperties = { fontSize:11, fontWeight:700, color:C.textSub, display:'block', marginBottom:3 };
-  const canSubmit = f.categoria && f.descripcion.trim() && Number(f.monto) > 0;
+  const canSubmit = f.categoria && f.descripcion.trim() && Number(f.monto) > 0
+    && (!tieneComprobante || (f.tipoBienes && f.formaPago));
 
   return (
     <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
@@ -6875,8 +6910,15 @@ function POSGastosLista({ C }: { C: Palette }) {
               {/* Categoría */}
               <div>
                 <span style={labelS}>Categoría *</span>
-                <select value={f.categoria} onChange={e => setF(p => ({ ...p, categoria: e.target.value }))}
-                  style={{ ...inputS, appearance:'auto' as any }}>
+                <select value={f.categoria} onChange={e => {
+                    const cat = e.target.value;
+                    setF(p => ({
+                      ...p, categoria: cat,
+                      tipoBienes: tieneComprobante && POS_TIPO_BIENES_SUGERIDO[cat]
+                        ? POS_TIPO_BIENES_SUGERIDO[cat]
+                        : p.tipoBienes,
+                    }));
+                  }} style={{ ...inputS, appearance:'auto' as any }}>
                   <option value="">Seleccionar...</option>
                   {(categorias as any[]).map((c: any) => (
                     <option key={c.value} value={c.value}>{c.icon} {c.label}</option>
@@ -6923,12 +6965,63 @@ function POSGastosLista({ C }: { C: Palette }) {
               </div>
             )}
 
-            <div style={{ marginBottom:14 }}>
+            <div style={{ marginBottom:10 }}>
               <span style={labelS}>{generaE43 ? 'Referencia' : 'No. Comprobante (NCF recibido)'}</span>
               <input value={f.comprobante} onChange={inp('comprobante')}
                 placeholder={generaE43 ? 'Referencia o número' : 'E310000000001 o referencia'}
                 style={inputS} />
             </div>
+
+            {/* Comprobante fiscal 606 — igual que el módulo de Gastos */}
+            {!generaE43 && (
+              <div style={{ marginBottom:10 }}>
+                <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', fontSize:13, color:C.text }}>
+                  <input
+                    type="checkbox"
+                    checked={tieneComprobante}
+                    onChange={e => {
+                      const v = e.target.checked;
+                      setTieneComprobante(v);
+                      if (!v) setF(p => ({ ...p, tipoBienes:'', formaPago:'' }));
+                      else if (f.categoria && POS_TIPO_BIENES_SUGERIDO[f.categoria]) {
+                        setF(p => ({ ...p, tipoBienes: POS_TIPO_BIENES_SUGERIDO[f.categoria] }));
+                      }
+                    }}
+                    style={{ width:16, height:16, accentColor:'#1677ff', cursor:'pointer' }}
+                  />
+                  <span style={{ fontWeight:500 }}>Este gasto tiene comprobante fiscal (incluir en 606)</span>
+                </label>
+              </div>
+            )}
+
+            {tieneComprobante && !generaE43 && (
+              <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:8, padding:'8px 12px', marginBottom:10, fontSize:12, color:'#166534' }}>
+                ✅ Gasto marcado como reportable al 606 — completa los campos fiscales.
+              </div>
+            )}
+
+            {tieneComprobante && !generaE43 && (
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
+                <div>
+                  <span style={labelS}>Tipo bienes / servicios (DGII) *</span>
+                  <select value={f.tipoBienes} onChange={e => setF(p => ({ ...p, tipoBienes: e.target.value }))}
+                    style={{ ...inputS, appearance:'auto' as any }}>
+                    <option value="">Seleccionar tipo...</option>
+                    {POS_TIPOS_BIENES_606.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <span style={labelS}>Forma de pago (DGII) *</span>
+                  <select value={f.formaPago} onChange={e => {
+                    const v = e.target.value;
+                    setF(p => ({ ...p, formaPago: v, cajaDiariaId: v !== '01' ? '' : p.cajaDiariaId }));
+                  }} style={{ ...inputS, appearance:'auto' as any }}>
+                    <option value="">Seleccionar forma...</option>
+                    {POS_FORMAS_PAGO_606.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+              </div>
+            )}
 
             {generaE43 && (
               <div style={{ background: C.blue + '15', border:`1px solid ${C.blue}30`, borderRadius:8, padding:'8px 12px', marginBottom:14, fontSize:12, color:C.blue }}>
@@ -6936,7 +7029,7 @@ function POSGastosLista({ C }: { C: Palette }) {
               </div>
             )}
 
-            {cajasDisp.length > 0 && (
+            {cajasDisp.length > 0 && (!tieneComprobante || f.formaPago === '01') && (
               <div style={{ marginBottom:14 }}>
                 <span style={labelS}>Caja (opcional — para descontar del cuadre)</span>
                 <select
