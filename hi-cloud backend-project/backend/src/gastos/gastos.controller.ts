@@ -56,6 +56,8 @@ class CreateGastoDto {
   @IsOptional() @IsString()                        tipoBienes?: string;
   /** Forma de pago DGII 606 — 01 Efectivo · 02 Cheque/Transferencia · 03 Tarjeta … */
   @IsOptional() @IsString()                        formaPago?: string;
+  /** Caja diaria a la que se imputa el gasto (opcional — solo cuando formaPago='01'). */
+  @IsOptional() @IsInt() @Type(() => Number)       cajaDiariaId?: number;
 }
 
 @ApiTags('Gastos Operativos')

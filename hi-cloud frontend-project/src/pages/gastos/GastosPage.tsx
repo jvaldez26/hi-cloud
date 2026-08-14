@@ -599,14 +599,14 @@ export default function GastosPage() {
               {tieneComprobante && formaPagoWatch === '01' && (
                 <Form.Item
                   name="cajaDiariaId"
-                  label="Caja de efectivo"
-                  rules={[{ required: true, message: 'Selecciona la caja a la que se imputa este gasto' }]}
-                  tooltip="El monto se descontará del cuadre de esa caja como gasto de efectivo"
+                  label="Caja de efectivo (opcional)"
+                  tooltip="Si se selecciona, el monto se descontará del cuadre de esa caja. Déjalo vacío si no aplica."
                   style={{ marginBottom: 8 }}
                 >
                   <Select
-                    placeholder="Seleccionar caja activa"
+                    placeholder="Seleccionar caja (opcional)"
                     loading={!cajasHoy}
+                    allowClear
                     notFoundContent="No hay cajas abiertas hoy"
                     options={(cajasHoy ?? []).map((c: any) => ({
                       value: c.id,

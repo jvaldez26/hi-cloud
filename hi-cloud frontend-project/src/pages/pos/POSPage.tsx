@@ -6746,6 +6746,7 @@ function POSGastosLista({ C }: { C: Palette }) {
     fecha: dayjs().format('YYYY-MM-DD'),
     categoria: '', descripcion: '', monto: '',
     itbis: '', proveedor: '', rncProveedor: '', comprobante: '',
+    cajaDiariaId: '' as string | number,
   });
 
   // Categorías desde la misma API que el módulo admin
@@ -6753,6 +6754,23 @@ function POSGastosLista({ C }: { C: Palette }) {
     queryKey: ['gasto-cats'],
     queryFn: () => api.get('/gastos/categorias').then(r => r.data?.data ?? r.data ?? []),
     staleTime: 5 * 60_000,
+    enabled: showForm,
+  });
+
+  // Cajas abiertas hoy — para asignar opcionalmente el gasto a una caja
+  const { data: cajasDisp = [] } = useQuery<any[]>({
+    queryKey: ['pos-cajas-hoy-gastos'],
+    queryFn: () => {
+      const vid = localStorage.getItem('pos_vendedor_id');
+      const url = vid ? `/caja/hoy?vendedorId=${vid}` : '/caja/hoy';
+      return api.get(url).then(r => {
+        const d = r.data?.data ?? r.data;
+        if (Array.isArray(d?.cajas)) return d.cajas.filter((c: any) => c.estado === 'abierta');
+        if (d?.id && d?.estado === 'abierta') return [d];
+        return [];
+      });
+    },
+    staleTime: 30_000,
     enabled: showForm,
   });
 
@@ -6815,6 +6833,7 @@ function POSGastosLista({ C }: { C: Palette }) {
         proveedor:    f.proveedor  || undefined,
         rncProveedor: f.rncProveedor || undefined,
         comprobante:  f.comprobante  || undefined,
+        cajaDiariaId: f.cajaDiariaId ? Number(f.cajaDiariaId) : undefined,
       });
     },
     onSuccess: () => {
@@ -6823,7 +6842,7 @@ function POSGastosLista({ C }: { C: Palette }) {
       qc.invalidateQueries({ queryKey: ['gastos'] });
       refetch();
       setShowForm(false);
-      setF({ fecha: dayjs().format('YYYY-MM-DD'), categoria:'', descripcion:'', monto:'', itbis:'', proveedor:'', rncProveedor:'', comprobante:'' });
+      setF({ fecha: dayjs().format('YYYY-MM-DD'), categoria:'', descripcion:'', monto:'', itbis:'', proveedor:'', rncProveedor:'', comprobante:'', cajaDiariaId:'' });
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al registrar gasto'),
   });
@@ -6914,6 +6933,24 @@ function POSGastosLista({ C }: { C: Palette }) {
             {generaE43 && (
               <div style={{ background: C.blue + '15', border:`1px solid ${C.blue}30`, borderRadius:8, padding:'8px 12px', marginBottom:14, fontSize:12, color:C.blue }}>
                 💡 Esta categoría genera un e-CF E43 (Gastos Menores) automáticamente.
+              </div>
+            )}
+
+            {cajasDisp.length > 0 && (
+              <div style={{ marginBottom:14 }}>
+                <span style={labelS}>Caja (opcional — para descontar del cuadre)</span>
+                <select
+                  value={String(f.cajaDiariaId ?? '')}
+                  onChange={e => setF(p => ({ ...p, cajaDiariaId: e.target.value }))}
+                  style={{ ...inputS, cursor:'pointer' }}
+                >
+                  <option value="">— No imputar a caja —</option>
+                  {cajasDisp.map((c: any) => (
+                    <option key={c.id} value={c.id}>
+                      {c.vendedorNombre ? `${c.vendedorNombre} — Caja #${c.id}` : `Caja #${c.id}`}
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
 
