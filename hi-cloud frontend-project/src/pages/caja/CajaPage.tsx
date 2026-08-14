@@ -7,7 +7,8 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Card, Row, Col, Typography, Statistic, Button, InputNumber,
          Table, Tag, Modal, Form, Input, Select, Space, Alert, Spin, message, Avatar,
-         theme, Drawer, Descriptions, Divider, DatePicker, Radio, Checkbox, Tooltip, Empty } from 'antd';
+         theme, Drawer, Descriptions, Divider, DatePicker, Radio, Checkbox, Tooltip, Empty,
+         Tabs, Badge } from 'antd';
 import { UnlockOutlined, LockOutlined, HistoryOutlined,
          RollbackOutlined, WarningOutlined, CheckCircleOutlined, StopOutlined,
          PrinterOutlined, SearchOutlined, DollarOutlined,
@@ -192,6 +193,7 @@ export default function CajaPage() {
       : [(cajaData as any)];
 
   const [searchHistorial, setSearchHistorial] = useState('');
+  const [activeTab, setActiveTab]             = useState<'historial' | 'retiros'>('historial');
 
   // ── Módulo de Retiros ─────────────────────────────────────────────────────
   const [retirosDesde,   setRetirosDesde]   = useState(() => dayjs().startOf('month'));
@@ -850,97 +852,241 @@ ${line()}
         </>
       )}
 
-      {/* Historial — solo muestra cierres COMPLETADOS (no abierta) */}
-      <Card
-        title={<><HistoryOutlined /> Historial de Cierres</>}
-        extra={
-          <Space wrap>
-            <DatePicker
-              picker="month"
-              value={histFecha}
-              onChange={v => { setHistFecha(v ?? dayjs()); setHistPage(1); setSearchHistorial(''); }}
-              format="MMMM YYYY"
-              allowClear={false}
-              size="small"
-              style={{ width: 140 }}
-              disabledDate={d => d.isAfter(dayjs(), 'month')}
-            />
-            <Input
-              placeholder="Buscar cajero..."
-              prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
-              value={searchHistorial}
-              onChange={e => setSearchHistorial(e.target.value)}
-              allowClear
-              size="small"
-              style={{ width: 180 }}
-            />
-          </Space>
-        }
-      >
-        {historialCerrados.length === 0 && !isLoading && (
-          <Text type="secondary" style={{ fontSize: 13 }}>
-            Sin cierres registrados aún. Los cierres completados aparecerán aquí.
-          </Text>
-        )}
-        <Table size="small" scroll={{ x: 'max-content' }}
-          dataSource={historialCerrados}
-          rowKey="id"
-          pagination={{
-            current: histPage,
-            pageSize: 20,
-            total: historial?.meta?.total ?? 0,
-            showTotal: (t: number) => `${t} cierres`,
-            showSizeChanger: false,
-            onChange: (p: number) => { setHistPage(p); setSearchHistorial(''); },
-          }}
-          columns={filterColumns([
-            { title: 'Fecha',  dataIndex: 'fecha',  width: 100, render: (v: string) => fmt.date(v) },
-            {
-              title: 'Cajero', dataIndex: 'vendedorNombre', width: 150,
-              render: (v: string) => {
-                const n = v ?? 'Administrador';
-                return (
-                  <Space size={4}>
-                    <Avatar size={20} style={{ background: avatarColor(n), fontSize: 10 }}>{n.charAt(0)}</Avatar>
-                    <Text style={{ fontSize: 12 }}>{n}</Text>
-                  </Space>
-                );
-              },
-            },
-            { title: 'Estado', dataIndex: 'estado', width: 90,
-              render: (v: string) => <Tag color={estadoColor[v] ?? 'default'}>{v?.toUpperCase()}</Tag> },
-            { title: 'Apertura',       dataIndex: 'saldoApertura', width: 110, align: 'right' as const, render: (v: number) => fmt.money(v) },
-            { title: 'Total Ingresos', key: 'ing', width: 120, align: 'right' as const,
-              render: (_: any, r: any) => fmt.money(Number(r.ventasEfectivo ?? 0) + Number(r.ventasTarjeta ?? 0) + Number(r.ventasTransferencia ?? 0)) },
-            { title: 'Esperado',   dataIndex: 'saldoCierre', width: 110, align: 'right' as const, render: (v: number) => fmt.money(v) },
-            { title: 'Contado',    dataIndex: 'saldoFisico', width: 110, align: 'right' as const, render: (v: number) => fmt.money(v) },
-            { title: 'Diferencia', dataIndex: 'diferencia', width: 110, align: 'right' as const,
-              render: (v: number) => (
-                <Text strong style={{ color: v === 0 ? token.colorSuccess : v > 0 ? token.colorPrimary : token.colorError }}>
-                  {v > 0 ? '+' : ''}{fmt.money(v)}
-                </Text>
-              )},
-            { title: 'Trans.', dataIndex: 'cantidadTransacciones', width: 70, align: 'center' as const },
-            {
-              title: '', key: 'acciones', width: 72, align: 'right' as const,
-              render: (_: any, r: any) => (
-                <TableActions
-                  onView={() => setDetalleCierre(r)}
-                  viewLabel="Ver detalle del cierre"
-                  items={[
-                    { key: 'imprimir', label: 'Imprimir cierre', icon: <PrinterOutlined />, onClick: () => setPrintTarget(r) },
-                    ...(puedeAnular ? [
-                      { type: 'divider' as const },
-                      { key: 'anular', label: 'Anular cierre', icon: <RollbackOutlined />, danger: true,
-                        disabled: r.estado === 'anulada',
-                        onClick: () => { setAnularTarget({ id: r.id, nombre: r.vendedorNombre ?? 'Administrador', fecha: r.fecha }); formAnular.resetFields(); } },
-                    ] : []),
+      {/* Historial de Cierres + Retiros en tabs laterales */}
+      <Tabs
+        activeKey={activeTab}
+        onChange={v => setActiveTab(v as 'historial' | 'retiros')}
+        style={{ marginTop: 4 }}
+        items={[
+          {
+            key: 'historial',
+            label: <><HistoryOutlined /> Historial de Cierres</>,
+            children: (
+              <div style={{ paddingTop: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+                  <DatePicker
+                    picker="month"
+                    value={histFecha}
+                    onChange={v => { setHistFecha(v ?? dayjs()); setHistPage(1); setSearchHistorial(''); }}
+                    format="MMMM YYYY"
+                    allowClear={false}
+                    size="small"
+                    style={{ width: 140 }}
+                    disabledDate={d => d.isAfter(dayjs(), 'month')}
+                  />
+                  <Input
+                    placeholder="Buscar cajero..."
+                    prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+                    value={searchHistorial}
+                    onChange={e => setSearchHistorial(e.target.value)}
+                    allowClear
+                    size="small"
+                    style={{ width: 180 }}
+                  />
+                </div>
+                {historialCerrados.length === 0 && !isLoading && (
+                  <Text type="secondary" style={{ fontSize: 13 }}>
+                    Sin cierres registrados aún. Los cierres completados aparecerán aquí.
+                  </Text>
+                )}
+                <Table size="small" scroll={{ x: 'max-content' }}
+                  dataSource={historialCerrados}
+                  rowKey="id"
+                  pagination={{
+                    current: histPage,
+                    pageSize: 20,
+                    total: historial?.meta?.total ?? 0,
+                    showTotal: (t: number) => `${t} cierres`,
+                    showSizeChanger: false,
+                    onChange: (p: number) => { setHistPage(p); setSearchHistorial(''); },
+                  }}
+                  columns={filterColumns([
+                    { title: 'Fecha',  dataIndex: 'fecha',  width: 100, render: (v: string) => fmt.date(v) },
+                    {
+                      title: 'Cajero', dataIndex: 'vendedorNombre', width: 150,
+                      render: (v: string) => {
+                        const n = v ?? 'Administrador';
+                        return (
+                          <Space size={4}>
+                            <Avatar size={20} style={{ background: avatarColor(n), fontSize: 10 }}>{n.charAt(0)}</Avatar>
+                            <Text style={{ fontSize: 12 }}>{n}</Text>
+                          </Space>
+                        );
+                      },
+                    },
+                    { title: 'Estado', dataIndex: 'estado', width: 90,
+                      render: (v: string) => <Tag color={estadoColor[v] ?? 'default'}>{v?.toUpperCase()}</Tag> },
+                    { title: 'Apertura',       dataIndex: 'saldoApertura', width: 110, align: 'right' as const, render: (v: number) => fmt.money(v) },
+                    { title: 'Total Ingresos', key: 'ing', width: 120, align: 'right' as const,
+                      render: (_: any, r: any) => fmt.money(Number(r.ventasEfectivo ?? 0) + Number(r.ventasTarjeta ?? 0) + Number(r.ventasTransferencia ?? 0)) },
+                    { title: 'Esperado',   dataIndex: 'saldoCierre', width: 110, align: 'right' as const, render: (v: number) => fmt.money(v) },
+                    { title: 'Contado',    dataIndex: 'saldoFisico', width: 110, align: 'right' as const, render: (v: number) => fmt.money(v) },
+                    { title: 'Diferencia', dataIndex: 'diferencia', width: 110, align: 'right' as const,
+                      render: (v: number) => (
+                        <Text strong style={{ color: v === 0 ? token.colorSuccess : v > 0 ? token.colorPrimary : token.colorError }}>
+                          {v > 0 ? '+' : ''}{fmt.money(v)}
+                        </Text>
+                      )},
+                    { title: 'Trans.', dataIndex: 'cantidadTransacciones', width: 70, align: 'center' as const },
+                    {
+                      title: '', key: 'acciones', width: 72, align: 'right' as const,
+                      render: (_: any, r: any) => (
+                        <TableActions
+                          onView={() => setDetalleCierre(r)}
+                          viewLabel="Ver detalle del cierre"
+                          items={[
+                            { key: 'imprimir', label: 'Imprimir cierre', icon: <PrinterOutlined />, onClick: () => setPrintTarget(r) },
+                            ...(puedeAnular ? [
+                              { type: 'divider' as const },
+                              { key: 'anular', label: 'Anular cierre', icon: <RollbackOutlined />, danger: true,
+                                disabled: r.estado === 'anulada',
+                                onClick: () => { setAnularTarget({ id: r.id, nombre: r.vendedorNombre ?? 'Administrador', fecha: r.fecha }); formAnular.resetFields(); } },
+                            ] : []),
+                          ]}
+                        />
+                      ),
+                    },
+                  ])} />
+              </div>
+            ),
+          },
+          ...(esAdmin ? [{
+            key: 'retiros',
+            label: (() => {
+              const n = (retirosReporte as any[]).filter((r: any) => r.estado === 'pendiente').length;
+              return n > 0
+                ? <Badge count={n} size="small" offset={[8, -2]}><span style={{ paddingRight: 6 }}><DollarOutlined /> Retiros</span></Badge>
+                : <span><DollarOutlined /> Retiros</span>;
+            })(),
+            children: (
+              <div style={{ paddingTop: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+                  <DatePicker.RangePicker
+                    value={[retirosDesde, retirosHasta]}
+                    onChange={v => { if (v) { setRetirosDesde(v[0]!); setRetirosHasta(v[1]!); } }}
+                    allowClear={false} size="small" format="DD/MM/YYYY"
+                    disabledDate={d => d.isAfter(dayjs(), 'day')}
+                  />
+                  <Select
+                    placeholder="Cajero" allowClear size="small" style={{ width: 140 }}
+                    value={retirosCajero}
+                    onChange={v => setRetirosCajero(v)}
+                    options={cajeros.map((c: any) => ({ value: c.id, label: c.nombre }))}
+                  />
+                  <Select
+                    placeholder="Categoría" allowClear size="small" style={{ width: 160 }}
+                    value={retirosCateg}
+                    onChange={v => setRetirosCateg(v)}
+                    options={CATEGORIA_OPTIONS}
+                  />
+                  <Select
+                    placeholder="Estado" allowClear size="small" style={{ width: 130 }}
+                    value={retirosEstado}
+                    onChange={v => setRetirosEstado(v)}
+                    options={[
+                      { value: 'activo',    label: '✅ Autorizado' },
+                      { value: 'pendiente', label: '⏳ Pendiente'  },
+                      { value: 'anulado',   label: '⬜ Anulado'    },
+                      { value: 'rechazado', label: '🚫 Rechazado'  },
+                    ]}
+                  />
+                  <Tooltip title="Exportar todo el período filtrado (no solo la página)">
+                    <Button size="small" icon={<FileExcelOutlined />} onClick={exportarRetiros}
+                      loading={exportandoRet}>
+                      Exportar
+                    </Button>
+                  </Tooltip>
+                </div>
+                {(retirosReporte as any[]).filter((r: any) => r.estado === 'pendiente').length > 0 && (
+                  <Alert
+                    type="warning" showIcon icon={<WarningOutlined />}
+                    message={`${(retirosReporte as any[]).filter((r: any) => r.estado === 'pendiente').length} retiro(s) pendiente(s) de autorización`}
+                    style={{ marginBottom: 12 }}
+                  />
+                )}
+                <Table
+                  size="small"
+                  loading={loadingRetiros}
+                  dataSource={retirosReporte}
+                  rowKey="id"
+                  scroll={{ x: 'max-content' }}
+                  pagination={{ pageSize: 20, showTotal: (t: number) => `${t} retiros`, showSizeChanger: false }}
+                  rowClassName={(r: any) => r.estado === 'anulado' ? 'row-anulado' : r.estado === 'rechazado' ? 'row-rechazado' : ''}
+                  columns={[
+                    { title: '#', dataIndex: 'id', width: 90, fixed: 'left' as const,
+                      render: (v: number) => <span style={{ fontFamily: 'monospace', fontSize: 12 }}>RET-{String(v).padStart(5,'0')}</span> },
+                    { title: 'Fecha',    dataIndex: 'cajaFecha', width: 100,
+                      render: (v: string) => String(v ?? '').substring(0, 10) },
+                    { title: 'Hora',     dataIndex: 'createdAt', width: 65,
+                      render: (v: string) => new Date(v).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }) },
+                    { title: 'Cajero',   dataIndex: 'cajeroNombre', width: 140,
+                      render: (v: string) => {
+                        const n = v ?? 'Admin';
+                        return <Space size={4}><Avatar size={18} style={{ background: avatarColor(n), fontSize: 9 }}>{n[0]}</Avatar><span style={{ fontSize: 12 }}>{n}</span></Space>;
+                      } },
+                    { title: 'Categoría', dataIndex: 'categoria', width: 150,
+                      render: (v: string) => CATEGORIA_LABELS[v] ?? v ?? '' },
+                    { title: 'Monto',    dataIndex: 'monto', width: 110, align: 'right' as const,
+                      render: (v: number, r: any) => (
+                        <span style={{
+                          fontWeight: 700,
+                          color: r.estado === 'anulado' ? '#9ca3af'
+                               : r.estado === 'rechazado' ? '#d97706'
+                               : '#ef4444',
+                          textDecoration: r.estado === 'anulado' ? 'line-through' : 'none',
+                        }}>
+                          {fmt.money(v)}
+                        </span>
+                      ) },
+                    { title: 'Descripción', dataIndex: 'descripcion', width: 240,
+                      render: (v: string) => <span style={{ fontSize: 12 }}>{v}</span> },
+                    { title: 'Estado',   dataIndex: 'estado', width: 110,
+                      render: (v: string) => <Tag color={ESTADO_RETIRO_COLOR[v] ?? 'default'}>{ESTADO_RETIRO_LABEL[v] ?? v}</Tag> },
+                    { title: 'Autorizó / Rechazó', dataIndex: 'autorizadorNombre', width: 160,
+                      render: (v: string, r: any) => {
+                        if (r.estado === 'rechazado') return (
+                          <Tooltip title={r.motivoRechazo ?? ''}>
+                            <span style={{ fontSize: 11, color: '#d97706' }}>🚫 {r.rechazadoPorNombre ?? 'Rechazado'}</span>
+                          </Tooltip>
+                        );
+                        if (v) return <span style={{ fontSize: 12, color: '#10b981' }}>✓ {v}</span>;
+                        if (r.estado === 'pendiente') return <span style={{ fontSize: 11, color: '#f59e0b' }}>Sin autorizar</span>;
+                        return null;
+                      } },
+                    { title: '', key: 'actions', width: 100, fixed: 'right' as const,
+                      render: (_: any, r: any) => (
+                        <Space size={4}>
+                          {r.estado === 'pendiente' && (
+                            <Tooltip title="Autorizar este retiro">
+                              <Button size="small" type="primary" icon={<CheckCircleOutlined />}
+                                style={{ background: '#10b981', borderColor: '#10b981' }}
+                                loading={autorizarRetiroMut.isPending}
+                                onClick={() => autorizarRetiroMut.mutate(r.id)} />
+                            </Tooltip>
+                          )}
+                          {r.estado === 'pendiente' && (
+                            <Tooltip title="Rechazar — el supervisor no avala este retiro (el monto NO regresa a caja)">
+                              <Button size="small" icon={<CloseCircleOutlined />}
+                                style={{ borderColor: '#d97706', color: '#d97706' }}
+                                onClick={() => { setRetiroRechazar(r); formRechazarRet.resetFields(); }} />
+                            </Tooltip>
+                          )}
+                          {(r.estado === 'activo' || r.estado === 'pendiente') && (
+                            <Tooltip title="Anular retiro — revierte el monto (solo caja abierta)">
+                              <Button size="small" danger icon={<StopOutlined />}
+                                onClick={() => { setRetiroAnular(r); formAnularRet.resetFields(); }} />
+                            </Tooltip>
+                          )}
+                        </Space>
+                      ) },
                   ]}
                 />
-              ),
-            },
-          ])} />
-      </Card>
+                <style>{`.row-anulado td { opacity: 0.55; } .row-rechazado td { opacity: 0.7; background: #fffbeb; }`}</style>
+              </div>
+            ),
+          }] : []),
+        ]}
+      />
 
       {/* Drawer detalle de cierre */}
       <Drawer
@@ -1299,138 +1445,6 @@ ${line()}
         </div>
       </Modal>
 
-      {/* ── SECCIÓN RETIROS ─────────────────────────────────────────────── */}
-      {esAdmin && (
-        <Card
-          title={<><DollarOutlined /> Retiros de Caja</>}
-          style={{ marginTop: 16 }}
-          extra={
-            <Space wrap>
-              <DatePicker.RangePicker
-                value={[retirosDesde, retirosHasta]}
-                onChange={v => { if (v) { setRetirosDesde(v[0]!); setRetirosHasta(v[1]!); } }}
-                allowClear={false} size="small" format="DD/MM/YYYY"
-                disabledDate={d => d.isAfter(dayjs(), 'day')}
-              />
-              <Select
-                placeholder="Cajero" allowClear size="small" style={{ width: 140 }}
-                value={retirosCajero}
-                onChange={v => setRetirosCajero(v)}
-                options={cajeros.map((c: any) => ({ value: c.id, label: c.nombre }))}
-              />
-              <Select
-                placeholder="Categoría" allowClear size="small" style={{ width: 160 }}
-                value={retirosCateg}
-                onChange={v => setRetirosCateg(v)}
-                options={CATEGORIA_OPTIONS}
-              />
-              <Select
-                placeholder="Estado" allowClear size="small" style={{ width: 130 }}
-                value={retirosEstado}
-                onChange={v => setRetirosEstado(v)}
-                options={[
-                  { value: 'activo',    label: '✅ Autorizado' },
-                  { value: 'pendiente', label: '⏳ Pendiente'  },
-                  { value: 'anulado',   label: '⬜ Anulado'    },
-                  { value: 'rechazado', label: '🚫 Rechazado'  },
-                ]}
-              />
-              <Tooltip title="Exportar todo el período filtrado (no solo la página)">
-                <Button size="small" icon={<FileExcelOutlined />} onClick={exportarRetiros}
-                  loading={exportandoRet}>
-                  Exportar
-                </Button>
-              </Tooltip>
-            </Space>
-          }
-        >
-          {retirosReporte.filter((r: any) => r.estado === 'pendiente').length > 0 && (
-            <Alert
-              type="warning" showIcon icon={<WarningOutlined />}
-              message={`${retirosReporte.filter((r: any) => r.estado === 'pendiente').length} retiro(s) pendiente(s) de autorización`}
-              style={{ marginBottom: 12 }}
-            />
-          )}
-          <Table
-            size="small"
-            loading={loadingRetiros}
-            dataSource={retirosReporte}
-            rowKey="id"
-            scroll={{ x: 'max-content' }}
-            pagination={{ pageSize: 20, showTotal: (t: number) => `${t} retiros`, showSizeChanger: false }}
-            rowClassName={(r: any) => r.estado === 'anulado' ? 'row-anulado' : r.estado === 'rechazado' ? 'row-rechazado' : ''}
-            columns={[
-              { title: '#', dataIndex: 'id', width: 90, fixed: 'left' as const,
-                render: (v: number) => <span style={{ fontFamily: 'monospace', fontSize: 12 }}>RET-{String(v).padStart(5,'0')}</span> },
-              { title: 'Fecha',    dataIndex: 'cajaFecha', width: 100,
-                render: (v: string) => String(v ?? '').substring(0, 10) },
-              { title: 'Hora',     dataIndex: 'createdAt', width: 65,
-                render: (v: string) => new Date(v).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }) },
-              { title: 'Cajero',   dataIndex: 'cajeroNombre', width: 140,
-                render: (v: string) => {
-                  const n = v ?? 'Admin';
-                  return <Space size={4}><Avatar size={18} style={{ background: avatarColor(n), fontSize: 9 }}>{n[0]}</Avatar><span style={{ fontSize: 12 }}>{n}</span></Space>;
-                } },
-              { title: 'Categoría', dataIndex: 'categoria', width: 150,
-                render: (v: string) => CATEGORIA_LABELS[v] ?? v ?? '' },
-              { title: 'Monto',    dataIndex: 'monto', width: 110, align: 'right' as const,
-                render: (v: number, r: any) => (
-                  <span style={{
-                    fontWeight: 700,
-                    color: r.estado === 'anulado' ? '#9ca3af'
-                         : r.estado === 'rechazado' ? '#d97706'
-                         : '#ef4444',
-                    textDecoration: r.estado === 'anulado' ? 'line-through' : 'none',
-                  }}>
-                    {fmt.money(v)}
-                  </span>
-                ) },
-              { title: 'Descripción', dataIndex: 'descripcion', width: 240,
-                render: (v: string) => <span style={{ fontSize: 12 }}>{v}</span> },
-              { title: 'Estado',   dataIndex: 'estado', width: 110,
-                render: (v: string) => <Tag color={ESTADO_RETIRO_COLOR[v] ?? 'default'}>{ESTADO_RETIRO_LABEL[v] ?? v}</Tag> },
-              { title: 'Autorizó / Rechazó', dataIndex: 'autorizadorNombre', width: 160,
-                render: (v: string, r: any) => {
-                  if (r.estado === 'rechazado') return (
-                    <Tooltip title={r.motivoRechazo ?? ''}>
-                      <span style={{ fontSize: 11, color: '#d97706' }}>🚫 {r.rechazadoPorNombre ?? 'Rechazado'}</span>
-                    </Tooltip>
-                  );
-                  if (v) return <span style={{ fontSize: 12, color: '#10b981' }}>✓ {v}</span>;
-                  if (r.estado === 'pendiente') return <span style={{ fontSize: 11, color: '#f59e0b' }}>Sin autorizar</span>;
-                  return null;
-                } },
-              { title: '', key: 'actions', width: 100, fixed: 'right' as const,
-                render: (_: any, r: any) => (
-                  <Space size={4}>
-                    {r.estado === 'pendiente' && (
-                      <Tooltip title="Autorizar este retiro">
-                        <Button size="small" type="primary" icon={<CheckCircleOutlined />}
-                          style={{ background: '#10b981', borderColor: '#10b981' }}
-                          loading={autorizarRetiroMut.isPending}
-                          onClick={() => autorizarRetiroMut.mutate(r.id)} />
-                      </Tooltip>
-                    )}
-                    {r.estado === 'pendiente' && (
-                      <Tooltip title="Rechazar — el supervisor no avala este retiro (el monto NO regresa a caja)">
-                        <Button size="small" icon={<CloseCircleOutlined />}
-                          style={{ borderColor: '#d97706', color: '#d97706' }}
-                          onClick={() => { setRetiroRechazar(r); formRechazarRet.resetFields(); }} />
-                      </Tooltip>
-                    )}
-                    {(r.estado === 'activo' || r.estado === 'pendiente') && (
-                      <Tooltip title="Anular retiro — revierte el monto (solo caja abierta)">
-                        <Button size="small" danger icon={<StopOutlined />}
-                          onClick={() => { setRetiroAnular(r); formAnularRet.resetFields(); }} />
-                      </Tooltip>
-                    )}
-                  </Space>
-                ) },
-            ]}
-          />
-          <style>{`.row-anulado td { opacity: 0.55; } .row-rechazado td { opacity: 0.7; background: #fffbeb; }`}</style>
-        </Card>
-      )}
 
       {/* Modal anular retiro */}
       <Modal
