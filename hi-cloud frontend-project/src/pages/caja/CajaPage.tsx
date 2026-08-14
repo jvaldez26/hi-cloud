@@ -266,7 +266,7 @@ export default function CajaPage() {
       const XLSX = await import('xlsx');
       const wb = XLSX.utils.book_new();
       const filas = data.map((r: any) => ({
-        'No.':           `RET-${String(r.id).padStart(5, '0')}`,
+        'No.':           r.numero ?? `RET-${String(r.id).padStart(5, '0')}`,
         'Fecha caja':    String(r.cajaFecha ?? '').substring(0, 10),
         'Hora':          r.createdAt ? new Date(r.createdAt).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }) : '',
         'Cajero':        r.cajeroNombre ?? '',
@@ -1014,7 +1014,7 @@ ${line()}
                   rowClassName={(r: any) => r.estado === 'anulado' ? 'row-anulado' : r.estado === 'rechazado' ? 'row-rechazado' : ''}
                   columns={[
                     { title: '#', dataIndex: 'id', width: 90, fixed: 'left' as const,
-                      render: (v: number) => <span style={{ fontFamily: 'monospace', fontSize: 12 }}>RET-{String(v).padStart(5,'0')}</span> },
+                      render: (_v: number, row: any) => <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{row.numero ?? `RET-${String(_v).padStart(5,'0')}`}</span> },
                     { title: 'Fecha',    dataIndex: 'cajaFecha', width: 100,
                       render: (v: string) => String(v ?? '').substring(0, 10) },
                     { title: 'Hora',     dataIndex: 'createdAt', width: 65,
@@ -1151,7 +1151,7 @@ ${line()}
                   rowKey="id"
                   pagination={false}
                   columns={[
-                    { title: '#',      dataIndex: 'id', width: 78, render: (v: number) => `RET-${String(v).padStart(5,'0')}` },
+                    { title: '#',      dataIndex: 'id', width: 78, render: (_v: number, row: any) => row.numero ?? `RET-${String(_v).padStart(5,'0')}` },
                     { title: 'Hora',   dataIndex: 'createdAt', width: 60,
                       render: (v: string) => new Date(v).toLocaleTimeString('es-DO',{hour:'2-digit',minute:'2-digit'}) },
                     { title: 'Categoría', dataIndex: 'categoria', width: 120,
@@ -1176,7 +1176,7 @@ ${line()}
                 />
                 {retirosDetalle.map((r: any) => (
                   <div key={r.id} style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
-                    <strong>RET-{String(r.id).padStart(5,'0')}:</strong> {r.descripcion}
+                    <strong>{r.numero ?? `RET-${String(r.id).padStart(5,'0')}`}:</strong> {r.descripcion}
                     {r.autorizadorNombre ? (
                       <span style={{ marginLeft: 6, color: '#10b981' }}>✓ {r.autorizadorNombre}</span>
                     ) : r.estado === 'rechazado' && r.rechazadoPorNombre ? (
@@ -1449,7 +1449,7 @@ ${line()}
       {/* Modal anular retiro */}
       <Modal
         title={<Space><StopOutlined style={{ color: '#ef4444' }} />
-          {`Anular retiro RET-${String(retiroAnular?.id ?? 0).padStart(5,'0')}`}
+          {`Anular retiro ${retiroAnular?.numero ?? `RET-${String(retiroAnular?.id ?? 0).padStart(5,'0')}`}`}
         </Space>}
         open={!!retiroAnular}
         onCancel={() => { setRetiroAnular(null); formAnularRet.resetFields(); }}
@@ -1489,7 +1489,7 @@ ${line()}
       {/* Modal rechazar retiro */}
       <Modal
         title={<Space><CloseCircleOutlined style={{ color: '#d97706' }} />
-          {`Rechazar retiro RET-${String(retiroRechazar?.id ?? 0).padStart(5,'0')}`}
+          {`Rechazar retiro ${retiroRechazar?.numero ?? `RET-${String(retiroRechazar?.id ?? 0).padStart(5,'0')}`}`}
         </Space>}
         open={!!retiroRechazar}
         onCancel={() => { setRetiroRechazar(null); formRechazarRet.resetFields(); }}
@@ -1577,7 +1577,7 @@ ${line()}
               background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6,
             }}>
               <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#92400e', flexShrink: 0 }}>
-                RET-{String(r.id).padStart(5,'0')}
+                {r.numero ?? `RET-${String(r.id).padStart(5,'0')}`}
               </span>
               <span style={{ fontSize: 12, color: '#78350f', flex: 1 }}>{r.descripcion}</span>
               <span style={{ fontWeight: 700, color: '#ef4444', flexShrink: 0 }}>{fmt.money(r.monto)}</span>

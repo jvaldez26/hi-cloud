@@ -154,6 +154,12 @@ export class CxCService {
       const cxcRepo   = em.getRepository(CuentaPorCobrar);
       const factRepo  = em.getRepository(Factura);
 
+      // Número secuencial por empresa — atómico dentro de la transacción
+      const [{ n }] = await em.query<{ n: number }[]>(
+        `SELECT siguiente_numero_secuencia($1, 'RDP') AS n`, [cuenta.empresaId],
+      );
+      const numero = `RDP-${String(n).padStart(5, '0')}`;
+
       const nuevoPago = await pagoRepo.save(pagoRepo.create({
         cuentaPorCobrarId: id,
         monto:       dto.monto,
@@ -162,6 +168,8 @@ export class CxCService {
         referencia:  dto.referencia,
         notas:       dto.notas,
         userId,
+        empresaId:   cuenta.empresaId,
+        numero,
         moneda:      cuenta.moneda    ?? 'DOP',
         tipoCambio:  Number(dto.tipoCambio ?? cuenta.tipoCambio ?? 1),
       }));
@@ -495,6 +503,7 @@ export class CxCService {
       rows = await this.dataSource.query<any[]>(`
         SELECT
           p.id, p.monto, p.fecha, p."metodoPago", p.referencia, p.notas, p.moneda, p."tipoCambio",
+          p.numero,
           cxc."montoPendiente" AS "montoPendiente",
           f.folio,
           cl.nombre AS "clienteNombre", cl."rncReceptor" AS "clienteRnc",
@@ -528,7 +537,8 @@ export class CxCService {
 
     const data: DocData = {
       tipo:   'RECIBO DE PAGO',
-      numero: `REC-${String(r.id).padStart(6, '0')}`,
+      // Usa el número almacenado; fallback al id para registros anteriores a la migración
+      numero: r.numero ?? `RDP-${String(r.id).padStart(5, '0')}`,
       fecha:  fechaStr,
       empresa: {
         nombre:    r.empresaNombre,

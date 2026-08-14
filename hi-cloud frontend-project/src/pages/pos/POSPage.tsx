@@ -6574,7 +6574,7 @@ function buildGastoReciboHTML(
   const ahora = dayjs();
   const row   = (l: string, v: string) => `<div class="row"><span>${e(l)}</span><span>${e(v)}</span></div>`;
   const rowB  = (l: string, v: string) => `<div class="row bold"><span>${e(l)}</span><span>${e(v)}</span></div>`;
-  const numGasto = `GAS-${String(g.id??0).padStart(5,'0')}`;
+  const numGasto = g.numero ?? `GAS-${String(g.id??0).padStart(6,'0')}`;
   const catLabel = (g.categoria??'').replace(/_/g,' ').replace(/\b\w/g,(c:string)=>c.toUpperCase());
   const qrW = tipoImpresora === '58mm' ? 28 : 34;
 
@@ -6655,7 +6655,7 @@ function buildRetiroReciboHTML(
   const e    = (s: string) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const fmtM = (n: number) => `RD$${Number(n??0).toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
   const ahora = dayjs();
-  const numRet = `RET-${String(r.id??0).padStart(5,'0')}`;
+  const numRet = r.numero ?? `RET-${String(r.id??0).padStart(5,'0')}`;
   const hora = r.createdAt
     ? dayjs(r.createdAt).format('hh:mm a')
     : ahora.format('hh:mm a');
@@ -7175,7 +7175,7 @@ function POSRetirosLista({ C }: { C: Palette }) {
                     <tr key={r.id} style={{ borderBottom:`1px solid ${C.border}`, background:i%2===0?'transparent':C.card,
                       opacity: anulado ? 0.5 : rechazado ? 0.7 : 1 }}>
                       <td style={{ padding:'8px 8px', color:C.textSub, fontSize:10, fontFamily:'monospace' }}>
-                        RET-{String(r.id).padStart(5,'0')}
+                        {r.numero ?? `RET-${String(r.id).padStart(5,'0')}`}
                         {pendiente  && <span style={{ display:'block', color:'#f59e0b', fontSize:9, fontWeight:700 }}>⏳ PENDIENTE</span>}
                         {anulado    && <span style={{ display:'block', color:'#9ca3af', fontSize:9, fontWeight:700 }}>✗ ANULADO</span>}
                         {rechazado  && <span style={{ display:'block', color:'#d97706', fontSize:9, fontWeight:700 }}>🚫 RECHAZADO</span>}
@@ -8383,7 +8383,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
         };
       } else if (panel === 'gastos') {
         gd = {
-          tipo: 'COMPROBANTE DE GASTO', numero: `GAS-${String(doc.id).padStart(5,'0')}`,
+          tipo: 'COMPROBANTE DE GASTO', numero: doc.numero ?? `GAS-${String(doc.id).padStart(6,'0')}`,
           fecha: String(doc.fecha ?? '').substring(0,10),
           empresa: empInfo,
           items: [{ desc: doc.descripcion, total: Number(doc.monto??0) }],

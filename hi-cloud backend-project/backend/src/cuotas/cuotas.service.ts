@@ -129,11 +129,20 @@ export class CuotasService {
       throw new BadRequestException('Esta cuota ya fue pagada');
     }
 
+    // Número secuencial por empresa — atómico vía siguiente_numero_secuencia
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const [{ n }] = await this.ds.query<{ n: number }[]>(
+      `SELECT siguiente_numero_secuencia($1, 'COMP') AS n`, [empresaId],
+    );
+    const numero = `COMP-${String(n).padStart(6, '0')}`;
+
     await this.cuotaRepo.update(cuotaId, {
       estado:         EstadoCuota.PAGADA,
       montoPagado:    cuota.monto,
       fechaPago:      fechaHoyRD(),
       referenciaPago: referencia,
+      empresaId,
+      numero,
     });
 
     // Verificar si todas las cuotas están pagadas
@@ -293,7 +302,8 @@ export class CuotasService {
       sepSolid();
 
       // ── Identificación ──────────────────────────────────────
-      row('No. Comprobante:', `COMP-${String(d.cuota.id).padStart(6, '0')}`, true);
+      // Usa el número almacenado; fallback al id para cuotas anteriores a la migración
+      row('No. Comprobante:', d.cuota.numero ?? `COMP-${String(d.cuota.id).padStart(6, '0')}`, true);
       row('Fecha emisión:', fmtDate(fechaHoyRD()));
 
       y += 2;

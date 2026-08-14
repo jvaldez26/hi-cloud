@@ -43,4 +43,12 @@ export class Cuota {
 
   @Column({ length: 100, nullable: true })
   referenciaPago?: string;
+
+  /** empresaId derivado de planes_pago — necesario para secuencia por empresa */
+  @Column({ nullable: true })
+  empresaId?: number;
+
+  /** Número secuencial por empresa — COMP-000001, COMP-000002, … */
+  @Column({ length: 20, nullable: true })
+  numero?: string;
 }

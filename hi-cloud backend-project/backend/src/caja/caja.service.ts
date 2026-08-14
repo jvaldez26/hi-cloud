@@ -607,6 +607,12 @@ export class CajaService {
     const requiereAuth = cfg.montoMaxRetiroSinAutorizacion > 0 && monto > cfg.montoMaxRetiroSinAutorizacion;
     const estado = requiereAuth ? EstadoRetiro.PENDIENTE : EstadoRetiro.ACTIVO;
 
+    // Número secuencial por empresa — atómico vía siguiente_numero_secuencia
+    const [{ n }] = await this.dataSource.query<{ n: number }[]>(
+      `SELECT siguiente_numero_secuencia($1, 'RET') AS n`, [empresaId],
+    );
+    const numero = `RET-${String(n).padStart(5, '0')}`;
+
     const retiro = this.retiroRepo.create({
       empresaId,
       cajaDiariaId: caja.id,
@@ -616,6 +622,7 @@ export class CajaService {
       descripcion: descripcion.trim(),
       categoria,
       estado,
+      numero,
       ...(cuentaBancariaId ? { cuentaBancariaId } : {}),
     });
     await this.retiroRepo.save(retiro);

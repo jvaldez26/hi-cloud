@@ -82,7 +82,8 @@ export class GastoPDFService {
         .catch(err => { this.logger.warn(`[GastoPDF] QR error: ${err.message}`); return ''; });
     }
 
-    const numero = `GAS-${g.id.toString().padStart(6, '0')}`;
+    // Usa el número almacenado; fallback al id para documentos anteriores a la migración
+    const numero = g.numero ?? `GAS-${g.id.toString().padStart(6, '0')}`;
     const fechaVencSec = ecf?.secFechaVenc
       ? fmtF(ecf.secFechaVenc)
       : undefined;

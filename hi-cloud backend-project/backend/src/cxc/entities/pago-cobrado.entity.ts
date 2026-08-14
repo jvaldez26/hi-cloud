@@ -42,4 +42,12 @@ export class PagoCobrado extends BaseEntity {
 
   @Column()
   userId!: number;
+
+  /** empresaId — ya existía en BD (migración anterior), lo declaramos en entidad */
+  @Column({ nullable: true })
+  empresaId?: number;
+
+  /** Número secuencial por empresa — RDP-00001, RDP-00002, … */
+  @Column({ length: 20, nullable: true })
+  numero?: string;
 }

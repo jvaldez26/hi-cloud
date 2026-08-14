@@ -96,6 +96,10 @@ export class RetiroCaja {
   @Column({ type: 'integer', nullable: true })
   cuentaBancariaId?: number;
 
+  /** Número secuencial por empresa — RET-00001, RET-00002, … */
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  numero?: string;
+
   @CreateDateColumn()
   createdAt!: Date;
 

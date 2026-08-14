@@ -90,4 +90,8 @@ export class Gasto extends TenantBaseEntity {
    *  Permite a recalcularDesdeBD() descontar el gasto del cuadre del cajero correcto. */
   @Column({ nullable: true })
   cajaDiariaId?: number;
+
+  /** Número secuencial por empresa — GAS-000001, GAS-000002, … */
+  @Column({ length: 20, nullable: true })
+  numero?: string;
 }

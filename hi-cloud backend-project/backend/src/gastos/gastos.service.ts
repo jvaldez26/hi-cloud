@@ -51,17 +51,25 @@ export class GastosService {
     const fecha = new Date(dto.fecha);
     const periodo = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
 
+    const empresaId  = this.tenantService.getEmpresaId();
     const sucursalId = this.tenantService.getSucursalId() ?? undefined;
+
+    // Número secuencial por empresa — atómico vía siguiente_numero_secuencia
+    const [{ n }] = await this.dataSource.query<{ n: number }[]>(
+      `SELECT siguiente_numero_secuencia($1, 'GAS') AS n`, [empresaId],
+    );
+    const numero = `GAS-${String(n).padStart(6, '0')}`;
 
     const gasto = await this.repo.save(
       this.repo.create({
         ...dto,
-        empresaId: this.tenantService.getEmpresaId(),
+        empresaId,
         sucursalId,
         itbis,
         total,
         periodo,
         fecha,
+        numero,
       }),
     );
 

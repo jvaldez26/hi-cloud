@@ -642,7 +642,7 @@ export default function GastosPage() {
           onClose={() => setAprobGasto(null)}
           tipo="gasto"
           entidadId={aprobGasto.id}
-          entidadRef={`GAS-${String(aprobGasto.id).padStart(6, '0')}`}
+          entidadRef={aprobGasto.numero ?? `GAS-${String(aprobGasto.id).padStart(6, '0')}`}
           monto={aprobGasto.total}
         />
       )}
