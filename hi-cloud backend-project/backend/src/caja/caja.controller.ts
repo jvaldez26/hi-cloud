@@ -77,6 +77,11 @@ class AnularRetiroDto {
   motivo: string;
 }
 
+class RechazarRetiroDto {
+  @IsString() @IsNotEmpty() @MaxLength(500)
+  motivo: string;
+}
+
 class ReporteRetirosDto {
   @IsDateString()
   desde: string;
@@ -247,6 +252,18 @@ export class CajaController {
   ) {
     const nombre = (usuario as any).nombre ?? (usuario as any).name ?? `Usuario #${usuario.id}`;
     return this.cajaService.anularRetiro(id, dto.motivo, usuario.id, nombre);
+  }
+
+  @Patch('retiros/:id/rechazar')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Rechazar retiro pendiente — el supervisor no lo avala; el monto NO revierte; funciona con caja cerrada' })
+  rechazarRetiro(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: RechazarRetiroDto,
+    @GetUser() usuario: User,
+  ) {
+    const nombre = (usuario as any).nombre ?? (usuario as any).name ?? `Usuario #${usuario.id}`;
+    return this.cajaService.rechazarRetiro(id, dto.motivo, usuario.id, nombre);
   }
 
   @Get('retiros')

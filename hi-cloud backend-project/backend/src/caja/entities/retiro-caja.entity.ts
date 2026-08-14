@@ -12,6 +12,8 @@ export enum EstadoRetiro {
   ACTIVO    = 'activo',
   PENDIENTE = 'pendiente',
   ANULADO   = 'anulado',
+  /** Supervisor no avala el retiro. El monto NO revierte — queda en el cuadre del cierre. */
+  RECHAZADO = 'rechazado',
 }
 
 export const CATEGORIA_LABELS: Record<CategoriaRetiro, string> = {
@@ -75,6 +77,20 @@ export class RetiroCaja {
 
   @Column({ type: 'timestamptz', nullable: true })
   anuladoEn?: Date;
+
+  // ── Traza de rechazo ─────────────────────────────────────────────────────
+  /** Motivo por el que el supervisor rechazó el retiro (sin revertir el monto). */
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  motivoRechazo?: string;
+
+  @Column({ type: 'integer', nullable: true })
+  rechazadoPorId?: number;
+
+  @Column({ type: 'varchar', length: 150, nullable: true })
+  rechazadoPorNombre?: string;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  rechazadoEn?: Date;
 
   /** Vínculo opcional al módulo de Bancos (solo cuando categoria = deposito_banco) */
   @Column({ type: 'integer', nullable: true })

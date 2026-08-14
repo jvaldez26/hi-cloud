@@ -11,7 +11,7 @@ import { Card, Row, Col, Typography, Statistic, Button, InputNumber,
 import { UnlockOutlined, LockOutlined, HistoryOutlined,
          RollbackOutlined, WarningOutlined, CheckCircleOutlined, StopOutlined,
          PrinterOutlined, SearchOutlined, DollarOutlined,
-         FileExcelOutlined, FilePdfOutlined } from '@ant-design/icons';
+         FileExcelOutlined, FilePdfOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../store/auth.store';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -39,12 +39,14 @@ const CATEGORIA_LABELS: Record<string, string> = {
 const ESTADO_RETIRO_COLOR: Record<string, string> = {
   activo:    'green',
   pendiente: 'orange',
-  anulado:   'red',
+  anulado:   'default',   // gris — fue revertido (dinero regresó a caja)
+  rechazado: 'volcano',   // rojo-naranja — supervisor no lo avaló (dinero NO regresó)
 };
 const ESTADO_RETIRO_LABEL: Record<string, string> = {
   activo:    'Autorizado',
   pendiente: 'Pendiente',
   anulado:   'Anulado',
+  rechazado: 'Rechazado',
 };
 
 const retirosApi = {
@@ -56,6 +58,8 @@ const retirosApi = {
     api.patch(`/caja/retiros/${id}/autorizar`).then(r => r.data?.data ?? r.data),
   anular:    (id: number, motivo: string) =>
     api.patch(`/caja/retiros/${id}/anular`, { motivo }).then(r => r.data?.data ?? r.data),
+  rechazar:  (id: number, motivo: string) =>
+    api.patch(`/caja/retiros/${id}/rechazar`, { motivo }).then(r => r.data?.data ?? r.data),
   cuentasBancarias: () =>
     api.get('/bancos/cuentas').then(r => r.data?.data ?? r.data ?? []),
 };
@@ -196,8 +200,12 @@ export default function CajaPage() {
   const [retirosCateg,   setRetirosCateg]   = useState<string | undefined>(undefined);
   const [retirosEstado,  setRetirosEstado]  = useState<string | undefined>(undefined);
   const [retiroAnular,   setRetiroAnular]   = useState<any>(null);
+  const [retiroRechazar, setRetiroRechazar] = useState<any>(null);
   const [formAnularRet]  = Form.useForm();
+  const [formRechazarRet] = Form.useForm();
   const [exportandoRet,  setExportandoRet]  = useState(false);
+  // Pre-cierre: caja con retiros pendientes detectada antes de abrir el modal de cierre
+  const [preCierreData, setPreCierreData] = useState<{ caja: any; pendientes: any[] } | null>(null);
 
   const { data: retirosReporte = [], isLoading: loadingRetiros, refetch: refetchRetiros } = useQuery<any[]>({
     queryKey: ['caja-retiros-reporte',
@@ -231,8 +239,21 @@ export default function CajaPage() {
       setRetiroAnular(null); formAnularRet.resetFields();
       qc.invalidateQueries({ queryKey: ['caja-retiros-reporte'] });
       qc.invalidateQueries({ queryKey: ['caja-hoy'] });
+      qc.invalidateQueries({ queryKey: ['caja-retiros-cierre'] });
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al anular'),
+  });
+
+  const rechazarRetiroMut = useMutation({
+    mutationFn: ({ id, motivo }: { id: number; motivo: string }) => retirosApi.rechazar(id, motivo),
+    onSuccess: () => {
+      message.success('Retiro rechazado ✓ — el monto queda en el cuadre del cierre');
+      setRetiroRechazar(null); formRechazarRet.resetFields();
+      qc.invalidateQueries({ queryKey: ['caja-retiros-reporte'] });
+      qc.invalidateQueries({ queryKey: ['caja-hoy'] });
+      qc.invalidateQueries({ queryKey: ['caja-retiros-cierre'] });
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al rechazar'),
   });
 
   const exportarRetiros = async () => {
@@ -243,23 +264,25 @@ export default function CajaPage() {
       const XLSX = await import('xlsx');
       const wb = XLSX.utils.book_new();
       const filas = data.map((r: any) => ({
-        'No.':          `RET-${String(r.id).padStart(5, '0')}`,
-        'Fecha caja':   String(r.cajaFecha ?? '').substring(0, 10),
-        'Hora':         r.createdAt ? new Date(r.createdAt).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }) : '',
-        'Cajero':       r.cajeroNombre ?? '',
-        'Categoría':    CATEGORIA_LABELS[r.categoria] ?? r.categoria ?? '',
-        'Monto':        Number(r.monto ?? 0),
-        'Descripción':  r.descripcion ?? '',
-        'Estado':       ESTADO_RETIRO_LABEL[r.estado] ?? r.estado ?? '',
-        'Autorizó':     r.autorizadorNombre ?? '',
-        'Autorizado en':r.autorizadoEn ? new Date(r.autorizadoEn).toLocaleString('es-DO') : '',
+        'No.':           `RET-${String(r.id).padStart(5, '0')}`,
+        'Fecha caja':    String(r.cajaFecha ?? '').substring(0, 10),
+        'Hora':          r.createdAt ? new Date(r.createdAt).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }) : '',
+        'Cajero':        r.cajeroNombre ?? '',
+        'Categoría':     CATEGORIA_LABELS[r.categoria] ?? r.categoria ?? '',
+        'Monto':         Number(r.monto ?? 0),
+        'Descripción':   r.descripcion ?? '',
+        'Estado':        ESTADO_RETIRO_LABEL[r.estado] ?? r.estado ?? '',
+        'Autorizó':      r.autorizadorNombre ?? '',
+        'Autorizado en': r.autorizadoEn ? new Date(r.autorizadoEn).toLocaleString('es-DO') : '',
         'Motivo anulación': r.motivoAnulacion ?? '',
-        'Anuló':        r.anuladoPorNombre ?? '',
+        'Anuló':         r.anuladoPorNombre ?? '',
+        'Motivo rechazo':   r.motivoRechazo ?? '',
+        'Rechazó':       r.rechazadoPorNombre ?? '',
       }));
       const ws = XLSX.utils.json_to_sheet(filas);
       ws['!cols'] = [{ wch: 12 }, { wch: 11 }, { wch: 7 }, { wch: 18 },
         { wch: 20 }, { wch: 12 }, { wch: 34 }, { wch: 12 }, { wch: 18 },
-        { wch: 18 }, { wch: 30 }, { wch: 18 }];
+        { wch: 18 }, { wch: 30 }, { wch: 18 }, { wch: 30 }, { wch: 18 }];
       XLSX.utils.book_append_sheet(wb, ws, 'Retiros');
       const desde = retirosDesde.format('YYYY-MM-DD');
       const hasta = retirosHasta.format('YYYY-MM-DD');
@@ -274,6 +297,40 @@ export default function CajaPage() {
     enabled: !!detalleCierre,
     staleTime: 60_000,
   });
+
+  // ── Pre-cierre: verifica retiros pendientes antes de abrir modal de cierre ─
+  const iniciarCierre = async (caja: any) => {
+    const nombre        = caja.vendedorNombre ?? 'Administrador';
+    const totalIngresos = Number(caja.ventasEfectivo ?? 0) + Number(caja.ventasTarjeta ?? 0) + Number(caja.ventasTransferencia ?? 0);
+    const saldoEsperado = Number(caja.saldoApertura ?? 0) + totalIngresos
+      - Number(caja.gastosEfectivo ?? 0) - Number(caja.retiros ?? 0);
+
+    try {
+      const todos: any[] = await retirosApi.listar(caja.id);
+      const pendientes   = todos.filter((r: any) => r.estado === 'pendiente');
+      if (pendientes.length > 0) {
+        setPreCierreData({ caja, pendientes });
+        return;
+      }
+    } catch {
+      // Si falla el fetch de retiros, continuamos con el cierre normal
+    }
+
+    setCerrarTarget({
+      id: caja.id, nombre, saldoEsperado,
+      saldoApertura:         Number(caja.saldoApertura ?? 0),
+      ventasEfectivo:        Number(caja.ventasEfectivo ?? 0),
+      ventasTarjeta:         Number(caja.ventasTarjeta ?? 0),
+      ventasTransferencia:   Number(caja.ventasTransferencia ?? 0),
+      cobrosRecibidos:       Number(caja.cobrosRecibidos ?? 0),
+      totalAnticipos:        Number(caja.totalAnticipos  ?? 0),
+      gastosEfectivo:        Number(caja.gastosEfectivo  ?? 0),
+      retiros:               Number(caja.retiros ?? 0),
+      cantidadTransacciones: caja.cantidadTransacciones ?? 0,
+      fecha:                 caja.fecha ?? '',
+    });
+    form.resetFields(); setSaldoFisicoInput(0);
+  };
 
   // ── Diálogo de impresión unificado ────────────────────────────────────────
   const [printTarget, setPrintTarget]       = useState<any>(null);
@@ -745,22 +802,7 @@ ${line()}
                       extra={
                         caja.estado === 'abierta' ? (
                           <Button size="small" danger icon={<LockOutlined />}
-                            onClick={() => {
-                            setCerrarTarget({
-                              id: caja.id, nombre, saldoEsperado,
-                              saldoApertura:          Number(caja.saldoApertura ?? 0),
-                              ventasEfectivo:         Number(caja.ventasEfectivo ?? 0),
-                              ventasTarjeta:          Number(caja.ventasTarjeta ?? 0),
-                              ventasTransferencia:    Number(caja.ventasTransferencia ?? 0),
-                              cobrosRecibidos:        Number(caja.cobrosRecibidos ?? 0),
-                              totalAnticipos:         Number(caja.totalAnticipos  ?? 0),
-                              gastosEfectivo:         Number(caja.gastosEfectivo  ?? 0),
-                              retiros:                Number(caja.retiros ?? 0),
-                              cantidadTransacciones:  caja.cantidadTransacciones ?? 0,
-                              fecha:                  caja.fecha ?? '',
-                            });
-                            form.resetFields(); setSaldoFisicoInput(0);
-                          }}>
+                            onClick={() => iniciarCierre(caja)}>
                             Cerrar caja
                           </Button>
                         ) : null
@@ -970,9 +1012,13 @@ ${line()}
                       render: (v: string) => CATEGORIA_LABELS[v] ?? v ?? '' },
                     { title: 'Monto',  dataIndex: 'monto', width: 90, align: 'right' as const,
                       render: (v: number, r: any) => (
-                        <span style={{ color: r.estado === 'anulado' ? '#9ca3af' : '#ef4444',
+                        <span style={{
+                          color: r.estado === 'anulado' ? '#9ca3af'
+                               : r.estado === 'rechazado' ? '#d97706'
+                               : '#ef4444',
                           textDecoration: r.estado === 'anulado' ? 'line-through' : 'none',
-                          fontWeight: 600 }}>
+                          fontWeight: 600,
+                        }}>
                           {fmt.money(v)}
                         </span>
                       )},
@@ -982,12 +1028,18 @@ ${line()}
                       </Tag> },
                   ]}
                 />
-                {retirosDetalle.map((r: any) => r.descripcion ? (
+                {retirosDetalle.map((r: any) => (
                   <div key={r.id} style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
                     <strong>RET-{String(r.id).padStart(5,'0')}:</strong> {r.descripcion}
-                    {r.autorizadorNombre ? <span style={{ marginLeft: 6, color: '#10b981' }}>✓ {r.autorizadorNombre}</span> : null}
+                    {r.autorizadorNombre ? (
+                      <span style={{ marginLeft: 6, color: '#10b981' }}>✓ {r.autorizadorNombre}</span>
+                    ) : r.estado === 'rechazado' && r.rechazadoPorNombre ? (
+                      <Tooltip title={r.motivoRechazo ?? ''}>
+                        <span style={{ marginLeft: 6, color: '#d97706' }}>🚫 {r.rechazadoPorNombre}</span>
+                      </Tooltip>
+                    ) : null}
                   </div>
-                ) : null)}
+                ))}
               </div>
             )}
 
@@ -1279,7 +1331,8 @@ ${line()}
                 options={[
                   { value: 'activo',    label: '✅ Autorizado' },
                   { value: 'pendiente', label: '⏳ Pendiente'  },
-                  { value: 'anulado',   label: '❌ Anulado'    },
+                  { value: 'anulado',   label: '⬜ Anulado'    },
+                  { value: 'rechazado', label: '🚫 Rechazado'  },
                 ]}
               />
               <Tooltip title="Exportar todo el período filtrado (no solo la página)">
@@ -1305,7 +1358,7 @@ ${line()}
             rowKey="id"
             scroll={{ x: 'max-content' }}
             pagination={{ pageSize: 20, showTotal: (t: number) => `${t} retiros`, showSizeChanger: false }}
-            rowClassName={(r: any) => r.estado === 'anulado' ? 'row-anulado' : ''}
+            rowClassName={(r: any) => r.estado === 'anulado' ? 'row-anulado' : r.estado === 'rechazado' ? 'row-rechazado' : ''}
             columns={[
               { title: '#', dataIndex: 'id', width: 90, fixed: 'left' as const,
                 render: (v: number) => <span style={{ fontFamily: 'monospace', fontSize: 12 }}>RET-{String(v).padStart(5,'0')}</span> },
@@ -1322,8 +1375,13 @@ ${line()}
                 render: (v: string) => CATEGORIA_LABELS[v] ?? v ?? '' },
               { title: 'Monto',    dataIndex: 'monto', width: 110, align: 'right' as const,
                 render: (v: number, r: any) => (
-                  <span style={{ fontWeight: 700, color: r.estado === 'anulado' ? '#9ca3af' : '#ef4444',
-                    textDecoration: r.estado === 'anulado' ? 'line-through' : 'none' }}>
+                  <span style={{
+                    fontWeight: 700,
+                    color: r.estado === 'anulado' ? '#9ca3af'
+                         : r.estado === 'rechazado' ? '#d97706'
+                         : '#ef4444',
+                    textDecoration: r.estado === 'anulado' ? 'line-through' : 'none',
+                  }}>
                     {fmt.money(v)}
                   </span>
                 ) },
@@ -1331,13 +1389,18 @@ ${line()}
                 render: (v: string) => <span style={{ fontSize: 12 }}>{v}</span> },
               { title: 'Estado',   dataIndex: 'estado', width: 110,
                 render: (v: string) => <Tag color={ESTADO_RETIRO_COLOR[v] ?? 'default'}>{ESTADO_RETIRO_LABEL[v] ?? v}</Tag> },
-              { title: 'Autorizó', dataIndex: 'autorizadorNombre', width: 130,
-                render: (v: string, r: any) => v
-                  ? <span style={{ fontSize: 12, color: '#10b981' }}>✓ {v}</span>
-                  : r.estado === 'pendiente'
-                    ? <span style={{ fontSize: 11, color: '#f59e0b' }}>Sin autorizar</span>
-                    : null },
-              { title: '', key: 'actions', width: 90, fixed: 'right' as const,
+              { title: 'Autorizó / Rechazó', dataIndex: 'autorizadorNombre', width: 160,
+                render: (v: string, r: any) => {
+                  if (r.estado === 'rechazado') return (
+                    <Tooltip title={r.motivoRechazo ?? ''}>
+                      <span style={{ fontSize: 11, color: '#d97706' }}>🚫 {r.rechazadoPorNombre ?? 'Rechazado'}</span>
+                    </Tooltip>
+                  );
+                  if (v) return <span style={{ fontSize: 12, color: '#10b981' }}>✓ {v}</span>;
+                  if (r.estado === 'pendiente') return <span style={{ fontSize: 11, color: '#f59e0b' }}>Sin autorizar</span>;
+                  return null;
+                } },
+              { title: '', key: 'actions', width: 100, fixed: 'right' as const,
                 render: (_: any, r: any) => (
                   <Space size={4}>
                     {r.estado === 'pendiente' && (
@@ -1348,8 +1411,15 @@ ${line()}
                           onClick={() => autorizarRetiroMut.mutate(r.id)} />
                       </Tooltip>
                     )}
-                    {r.estado !== 'anulado' && (
-                      <Tooltip title="Anular retiro (con traza)">
+                    {r.estado === 'pendiente' && (
+                      <Tooltip title="Rechazar — el supervisor no avala este retiro (el monto NO regresa a caja)">
+                        <Button size="small" icon={<CloseCircleOutlined />}
+                          style={{ borderColor: '#d97706', color: '#d97706' }}
+                          onClick={() => { setRetiroRechazar(r); formRechazarRet.resetFields(); }} />
+                      </Tooltip>
+                    )}
+                    {(r.estado === 'activo' || r.estado === 'pendiente') && (
+                      <Tooltip title="Anular retiro — revierte el monto (solo caja abierta)">
                         <Button size="small" danger icon={<StopOutlined />}
                           onClick={() => { setRetiroAnular(r); formAnularRet.resetFields(); }} />
                       </Tooltip>
@@ -1358,7 +1428,7 @@ ${line()}
                 ) },
             ]}
           />
-          <style>{`.row-anulado td { opacity: 0.55; }`}</style>
+          <style>{`.row-anulado td { opacity: 0.55; } .row-rechazado td { opacity: 0.7; background: #fffbeb; }`}</style>
         </Card>
       )}
 
@@ -1374,12 +1444,15 @@ ${line()}
         {retiroAnular && (
           <>
             <Descriptions size="small" column={2} style={{ marginBottom: 16 }}>
-              <Descriptions.Item label="Cajero" span={2}>{retiroAnular.cajeroNombre}</Descriptions.Item>
+              <Descriptions.Item label="Cajero" span={2}>{retiroAnular.cajeroNombre ?? retiroAnular.usuarioNombre}</Descriptions.Item>
               <Descriptions.Item label="Monto"><strong style={{ color: '#ef4444' }}>{fmt.money(retiroAnular.monto)}</strong></Descriptions.Item>
               <Descriptions.Item label="Fecha">{String(retiroAnular.cajaFecha ?? '').substring(0,10)}</Descriptions.Item>
               <Descriptions.Item label="Descripción" span={2}>{retiroAnular.descripcion}</Descriptions.Item>
             </Descriptions>
-            <Alert type="warning" showIcon message="Esta acción revertirá el retiro y recalculará el cierre de caja. Solo disponible mientras la caja esté abierta." style={{ marginBottom: 16 }} />
+            <Alert type="warning" showIcon
+              message="El monto regresa a la caja"
+              description="Esta acción revierte el retiro, devuelve el monto y recalcula el cierre. Solo disponible mientras la caja esté abierta."
+              style={{ marginBottom: 16 }} />
             <Form form={formAnularRet} layout="vertical"
               onFinish={v => anularRetiroMut.mutate({ id: retiroAnular.id, motivo: v.motivo })}>
               <Form.Item name="motivo" label="Motivo de la anulación"
@@ -1397,6 +1470,106 @@ ${line()}
             </Form>
           </>
         )}
+      </Modal>
+
+      {/* Modal rechazar retiro */}
+      <Modal
+        title={<Space><CloseCircleOutlined style={{ color: '#d97706' }} />
+          {`Rechazar retiro RET-${String(retiroRechazar?.id ?? 0).padStart(5,'0')}`}
+        </Space>}
+        open={!!retiroRechazar}
+        onCancel={() => { setRetiroRechazar(null); formRechazarRet.resetFields(); }}
+        footer={null} width="min(460px, 95vw)" destroyOnClose
+      >
+        {retiroRechazar && (
+          <>
+            <Descriptions size="small" column={2} style={{ marginBottom: 16 }}>
+              <Descriptions.Item label="Cajero" span={2}>{retiroRechazar.cajeroNombre ?? retiroRechazar.usuarioNombre}</Descriptions.Item>
+              <Descriptions.Item label="Monto"><strong style={{ color: '#ef4444' }}>{fmt.money(retiroRechazar.monto)}</strong></Descriptions.Item>
+              <Descriptions.Item label="Fecha">{String(retiroRechazar.cajaFecha ?? '').substring(0,10)}</Descriptions.Item>
+              <Descriptions.Item label="Descripción" span={2}>{retiroRechazar.descripcion}</Descriptions.Item>
+            </Descriptions>
+            <Alert type="warning" showIcon
+              message="El monto NO regresa a la caja"
+              description="Rechazar documenta que el supervisor no avaló este retiro, pero el dinero ya salió físicamente. La diferencia queda en el cuadre del cierre para resolución fuera del sistema. Funciona aunque la caja ya esté cerrada."
+              style={{ marginBottom: 16 }} />
+            <Form form={formRechazarRet} layout="vertical"
+              onFinish={v => rechazarRetiroMut.mutate({ id: retiroRechazar.id, motivo: v.motivo })}>
+              <Form.Item name="motivo" label="Motivo del rechazo"
+                rules={[{ required: true, message: 'El motivo es obligatorio' }]}>
+                <Input.TextArea rows={3} maxLength={500}
+                  placeholder="Ej: El monto no fue autorizado por gerencia, el cajero debe reintegrarlo..." showCount />
+              </Form.Item>
+              <Row justify="end" gutter={8}>
+                <Col><Button onClick={() => { setRetiroRechazar(null); formRechazarRet.resetFields(); }}>Cancelar</Button></Col>
+                <Col>
+                  <Button htmlType="submit" icon={<CloseCircleOutlined />}
+                    loading={rechazarRetiroMut.isPending}
+                    style={{ background: '#d97706', borderColor: '#d97706', color: '#fff' }}>
+                    Rechazar retiro
+                  </Button>
+                </Col>
+              </Row>
+            </Form>
+          </>
+        )}
+      </Modal>
+
+      {/* Modal pre-cierre: advertencia de retiros pendientes */}
+      <Modal
+        title={<Space><WarningOutlined style={{ color: '#f59e0b' }} />Retiros pendientes de autorización</Space>}
+        open={preCierreData !== null}
+        onCancel={() => setPreCierreData(null)}
+        width="min(500px, 95vw)"
+        footer={[
+          <Button key="cancel" onClick={() => setPreCierreData(null)}>Volver</Button>,
+          <Button key="close" type="primary" danger icon={<LockOutlined />}
+            onClick={() => {
+              if (!preCierreData) return;
+              const { caja } = preCierreData;
+              const nombre        = caja.vendedorNombre ?? 'Administrador';
+              const totalIngresos = Number(caja.ventasEfectivo ?? 0) + Number(caja.ventasTarjeta ?? 0) + Number(caja.ventasTransferencia ?? 0);
+              const saldoEsperado = Number(caja.saldoApertura ?? 0) + totalIngresos
+                - Number(caja.gastosEfectivo ?? 0) - Number(caja.retiros ?? 0);
+              setCerrarTarget({
+                id: caja.id, nombre, saldoEsperado,
+                saldoApertura:         Number(caja.saldoApertura ?? 0),
+                ventasEfectivo:        Number(caja.ventasEfectivo ?? 0),
+                ventasTarjeta:         Number(caja.ventasTarjeta ?? 0),
+                ventasTransferencia:   Number(caja.ventasTransferencia ?? 0),
+                cobrosRecibidos:       Number(caja.cobrosRecibidos ?? 0),
+                totalAnticipos:        Number(caja.totalAnticipos  ?? 0),
+                gastosEfectivo:        Number(caja.gastosEfectivo  ?? 0),
+                retiros:               Number(caja.retiros ?? 0),
+                cantidadTransacciones: caja.cantidadTransacciones ?? 0,
+                fecha:                 caja.fecha ?? '',
+              });
+              form.resetFields(); setSaldoFisicoInput(0);
+              setPreCierreData(null);
+            }}>
+            Cerrar de todas formas
+          </Button>,
+        ]}
+      >
+        <Alert type="warning" showIcon
+          message={`Hay ${preCierreData?.pendientes.length ?? 0} retiro(s) pendiente(s) de autorización por ${fmt.money(preCierreData?.pendientes.reduce((s: number, r: any) => s + Number(r.monto), 0) ?? 0)}`}
+          description="Al cerrar la caja, estos retiros ya no podrán anularse (el dinero no podrá regresar automáticamente). Solo quedará disponible la acción de rechazar, que deja constancia sin revertir el monto."
+          style={{ marginBottom: 16 }}
+        />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {preCierreData?.pendientes.map((r: any) => (
+            <div key={r.id} style={{
+              display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px',
+              background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6,
+            }}>
+              <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#92400e', flexShrink: 0 }}>
+                RET-{String(r.id).padStart(5,'0')}
+              </span>
+              <span style={{ fontSize: 12, color: '#78350f', flex: 1 }}>{r.descripcion}</span>
+              <span style={{ fontWeight: 700, color: '#ef4444', flexShrink: 0 }}>{fmt.money(r.monto)}</span>
+            </div>
+          ))}
+        </div>
       </Modal>
 
       {/* Modal anular cierre */}

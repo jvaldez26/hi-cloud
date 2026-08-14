@@ -7097,15 +7097,17 @@ function POSRetirosLista({ C }: { C: Palette }) {
                   ))}
                 </tr></thead>
                 <tbody>{retiros.map((r: any, i: number) => {
-                  const anulado = r.estado === 'anulado';
+                  const anulado   = r.estado === 'anulado';
                   const pendiente = r.estado === 'pendiente';
+                  const rechazado = r.estado === 'rechazado';
                   return (
                     <tr key={r.id} style={{ borderBottom:`1px solid ${C.border}`, background:i%2===0?'transparent':C.card,
-                      opacity: anulado ? 0.5 : 1 }}>
+                      opacity: anulado ? 0.5 : rechazado ? 0.7 : 1 }}>
                       <td style={{ padding:'8px 8px', color:C.textSub, fontSize:10, fontFamily:'monospace' }}>
                         RET-{String(r.id).padStart(5,'0')}
-                        {pendiente && <span style={{ display:'block', color:'#f59e0b', fontSize:9, fontWeight:700 }}>⏳ PENDIENTE</span>}
-                        {anulado   && <span style={{ display:'block', color:'#9ca3af', fontSize:9, fontWeight:700 }}>✗ ANULADO</span>}
+                        {pendiente  && <span style={{ display:'block', color:'#f59e0b', fontSize:9, fontWeight:700 }}>⏳ PENDIENTE</span>}
+                        {anulado    && <span style={{ display:'block', color:'#9ca3af', fontSize:9, fontWeight:700 }}>✗ ANULADO</span>}
+                        {rechazado  && <span style={{ display:'block', color:'#d97706', fontSize:9, fontWeight:700 }}>🚫 RECHAZADO</span>}
                       </td>
                       <td style={{ padding:'8px 8px', color:C.textSub, fontSize:11 }}>
                         {POS_RETIRO_CATEGORIAS.find(c => c.value === r.categoria)?.label ?? r.categoria ?? '—'}
@@ -7113,9 +7115,10 @@ function POSRetirosLista({ C }: { C: Palette }) {
                       <td style={{ padding:'8px 12px', color:C.text, textDecoration: anulado ? 'line-through':'none' }}>
                         {r.descripcion}
                         {r.autorizadorNombre && <span style={{ display:'block', fontSize:10, color:'#10b981' }}>✓ {r.autorizadorNombre}</span>}
+                        {rechazado && r.rechazadoPorNombre && <span style={{ display:'block', fontSize:10, color:'#d97706' }}>🚫 {r.rechazadoPorNombre}</span>}
                       </td>
                       <td style={{ padding:'8px 12px', fontWeight:700,
-                        color: anulado ? '#9ca3af' : pendiente ? '#f59e0b' : '#DC2626',
+                        color: anulado ? '#9ca3af' : rechazado ? '#d97706' : pendiente ? '#f59e0b' : '#DC2626',
                         textDecoration: anulado ? 'line-through' : 'none' }}>
                         {fmt.money(r.monto??0)}
                       </td>

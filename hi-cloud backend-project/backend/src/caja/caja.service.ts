@@ -640,6 +640,7 @@ export class CajaService {
     const retiro = await this.retiroRepo.findOne({ where: { id, empresaId } });
     if (!retiro) throw new NotFoundException(`Retiro #${id} no encontrado`);
     if (retiro.estado === EstadoRetiro.ANULADO)   throw new BadRequestException('El retiro ya está anulado');
+    if (retiro.estado === EstadoRetiro.RECHAZADO) throw new BadRequestException('El retiro fue rechazado y no puede autorizarse');
     if (retiro.estado === EstadoRetiro.ACTIVO)     throw new BadRequestException('El retiro ya fue autorizado');
 
     await this.retiroRepo.update(id, {
@@ -660,7 +661,10 @@ export class CajaService {
 
     const retiro = await this.retiroRepo.findOne({ where: { id, empresaId } });
     if (!retiro) throw new NotFoundException(`Retiro #${id} no encontrado`);
-    if (retiro.estado === EstadoRetiro.ANULADO) throw new BadRequestException('El retiro ya está anulado');
+    if (retiro.estado === EstadoRetiro.ANULADO)   throw new BadRequestException('El retiro ya está anulado');
+    if (retiro.estado === EstadoRetiro.RECHAZADO) throw new BadRequestException(
+      'El retiro fue rechazado. Para revertir el monto, anula el cierre primero.',
+    );
 
     // Verificar estado de la caja — no se puede anular en una caja cerrada
     const caja = await this.repo.findOne({ where: { id: retiro.cajaDiariaId } });
@@ -685,6 +689,44 @@ export class CajaService {
       this.realtimeService.notify(empresaId, 'caja', 'updated', caja.id);
     }
 
+    return this.retiroRepo.findOne({ where: { id } });
+  }
+
+  /**
+   * Rechaza un retiro pendiente. Solo ADMIN/CONTADOR.
+   *
+   * A diferencia de la anulación:
+   * - Funciona aunque la caja ya esté CERRADA.
+   * - El monto NO se devuelve a la caja (el dinero ya salió físicamente).
+   * - El estado queda como "rechazado" para distinguirlo del "anulado".
+   * - La diferencia queda documentada en el cuadre del cierre para resolución externa.
+   */
+  async rechazarRetiro(id: number, motivo: string, rechazadoPorId: number, rechazadoPorNombre: string) {
+    const empresaId = this.tenantService.getEmpresaId();
+
+    const retiro = await this.retiroRepo.findOne({ where: { id, empresaId } });
+    if (!retiro) throw new NotFoundException(`Retiro #${id} no encontrado`);
+    if (retiro.estado !== EstadoRetiro.PENDIENTE) {
+      const estados: Record<string, string> = {
+        activo:    'El retiro ya fue autorizado',
+        anulado:   'El retiro ya está anulado',
+        rechazado: 'El retiro ya fue rechazado',
+      };
+      throw new BadRequestException(estados[retiro.estado] ?? 'Solo se pueden rechazar retiros pendientes');
+    }
+
+    await this.retiroRepo.update(id, {
+      estado:              EstadoRetiro.RECHAZADO,
+      motivoRechazo:       motivo.trim(),
+      rechazadoPorId,
+      rechazadoPorNombre,
+      rechazadoEn:         new Date(),
+    });
+
+    // El rechazo NO cambia el total de retiros de la caja:
+    // rechazado cuenta igual que activo (dinero físicamente fuera de la gaveta).
+    // actualizarTotalRetiros usa estado != 'anulado' — rechazado se incluye. ✓
+    this.realtimeService.notify(empresaId, 'caja', 'updated', retiro.cajaDiariaId);
     return this.retiroRepo.findOne({ where: { id } });
   }
 
@@ -731,6 +773,9 @@ export class CajaService {
          r."motivoAnulacion",
          r."anuladoPorNombre",
          r."anuladoEn",
+         r."motivoRechazo",
+         r."rechazadoPorNombre",
+         r."rechazadoEn",
          r."cuentaBancariaId",
          cc.fecha                AS "cajaFecha",
          cc."vendedorNombre"     AS "cajeroNombre",
