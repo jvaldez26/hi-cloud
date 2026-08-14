@@ -361,6 +361,22 @@ export class PDFService {
         ).then((r: any[]) => r[0]?.nombre ?? undefined)
       : undefined;
 
+    // Desglose ITBIS por tasa — mismo criterio que el builder ECF.
+    // d.precioUnitario = base neta (post-descuento-línea, pre-ITBIS).
+    const r2rec = (n: number) => Math.round(n * 100) / 100;
+    let rG18 = 0, rG16 = 0, rExt = 0, rI18 = 0, rI16 = 0;
+    for (const d of factura.detalles || []) {
+      const pct  = Number(d.porcentajeIva ?? 0);
+      const base = Number(d.precioUnitario) * Number(d.cantidad);
+      if (pct === 18)      { rG18 += base; rI18 += base * 0.18; }
+      else if (pct === 16) { rG16 += base; rI16 += base * 0.16; }
+      else                 { rExt += base; }
+    }
+    const sGravado = r2rec(rG18 + rG16);
+    const sExento  = r2rec(rExt);
+    const sI18     = r2rec(rI18);
+    const sI16     = r2rec(rI16);
+
     const data: ReciboPOSData = {
       empresaNombre:   empresa.nombreComercial || empresa.nombre || 'Mi Empresa',
       empresaRNC:      empresa.rnc || '',
@@ -387,9 +403,14 @@ export class PDFService {
           total:       Number(d.precioUnitario) * Number(d.cantidad) * factor,
         };
       }),
-      subtotal:  Number(factura.subtotal ?? 0),
-      itbis:     Number(factura.iva      ?? 0),
-      total:     Number(factura.total    ?? 0),
+      subtotal:        Number(factura.subtotal ?? 0),
+      itbis:           Number(factura.iva      ?? 0),
+      total:           Number(factura.total    ?? 0),
+      subtotalGravado: sGravado > 0 ? sGravado : undefined,
+      subtotalExento:  sExento  > 0 ? sExento  : undefined,
+      itbis18:         sI18     > 0 ? sI18     : undefined,
+      itbis16:         sI16     > 0 ? sI16     : undefined,
+      totalLineas:     (factura.detalles || []).length || undefined,
       qrBase64,
       rncComprador:         ecf?.rncComprador
                               ?? (factura as any).rncComprador

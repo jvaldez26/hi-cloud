@@ -908,6 +908,35 @@ function buildSaleTotalesFromFactura(f: any): {
   };
 }
 
+/** Agrupa los ítems del carrito por tasa de ITBIS — mismo criterio que el builder ECF.
+ *  Devuelve bases imponibles y montos de ITBIS por tasa para el desglose del ticket.
+ *  - gravado18: MontoGravadoI1 (base al 18%)
+ *  - gravado16: MontoGravadoI2 (base al 16%)
+ *  - exento:    MontoExento
+ *  - itbis18:   TotalITBIS1
+ *  - itbis16:   TotalITBIS2
+ *  balanzaTotalFijo es la base pre-ITBIS del ítem de balanza (etiqueta de precio fijo). */
+function calcularDesgloseITBIS(items: CartItem[], esExento: boolean) {
+  let g18 = 0, g16 = 0, ext = 0, i18 = 0, i16 = 0;
+  for (const item of items) {
+    const pct     = esExento ? 0 : Number(item.produto.porcentajeIva ?? 18);
+    const descUnit = item.descuentoMonto ?? 0;
+    const base    = (item as any).balanzaTotalFijo != null
+      ? (item as any).balanzaTotalFijo
+      : (item.precio - descUnit) * item.cantidad;
+    if (pct === 18)      { g18 += base; i18 += base * 0.18; }
+    else if (pct === 16) { g16 += base; i16 += base * 0.16; }
+    else                 { ext += base; }
+  }
+  return {
+    gravado18: round2(g18),
+    gravado16: round2(g16),
+    exento:    round2(ext),
+    itbis18:   round2(i18),
+    itbis16:   round2(i16),
+  };
+}
+
 function buildReciboTermicoHTML(
   sale: Sale,
   qrDataUrl: string | null,
@@ -1008,38 +1037,61 @@ function buildReciboTermicoHTML(
     ? MODO_INFO[sale.modoContexto] : null;
 
   // ── Bloque de totales ──────────────────────────────────────────────────────
-  // CON descuento global el recibo habla en el idioma del cliente: la línea de
-  // descuento muestra lo PACTADO c/ITBIS (lo que el cajero dijo de viva voz) y
-  // el subtotal es la suma de las líneas de arriba, que también van c/ITBIS.
-  //   Subtotal (c/ITBIS) − Descuento = TOTAL     ← cuadra exacto
-  // El desglose fiscal (base + ITBIS) va debajo del total como información del
-  // comprobante, y también cuadra: base + ITBIS = TOTAL.
-  // SIN descuento se conserva el formato clásico (base + ITBIS = total).
+  // Los montos base + ITBIS por tasa se toman de calcularDesgloseITBIS() —
+  // mismo criterio que el builder del e-CF (MontoGravadoI1/I2, MontoExento,
+  // TotalITBIS1/2). No se derivan del subtotal combinado sino de los ítems.
+  const { gravado18, gravado16, exento: montoExento, itbis18, itbis16 } =
+    calcularDesgloseITBIS(sale.items, esExento);
+
   const descGlobalBase  = sale.descuentoGlobal ?? 0;
   const descGlobalPact  = sale.descuentoGlobalFinal ?? descGlobalBase;
   const hayDescGlobal   = descGlobalBase > 0;
   const baseImponible   = round2(sale.subtotal - descGlobalBase);
 
-  // La propina se suma DESPUÉS del total de la venta, así que no forma parte del
-  // subtotal de mercancía (si no, se contaría dos veces en el bloque).
+  // La propina se suma DESPUÉS del total de la venta.
   const totalMercancia = round2(sale.total - (sale.propina ?? 0));
+  // Cantidad de líneas del carrito (no suma de cantidades — con pesables sería decimal)
+  const totalLineas    = sale.items.length;
 
-  const totalesHtml = hayDescGlobal
-    ? [
-        row('Subtotal (c/ITBIS):', fmt(round2(totalMercancia + descGlobalPact))),
-        row('Descuento:', `-${fmt(descGlobalPact)}`),
-      ].join('\n')
-    : [
-        row('Subtotal:', fmt(sale.subtotal)),
-        row(esExento ? 'ITBIS (Exento ZF):' : 'ITBIS (18%):', esExento ? 'RD$0.00' : fmt(sale.iva)),
-      ].join('\n');
+  const hayExento = montoExento > 0;
+  const hayI1     = itbis18 > 0;
+  const hayI2     = itbis16 > 0;
+  const gravadoTotal = round2(gravado18 + gravado16);
 
-  const desgloseFiscalHtml = hayDescGlobal && !esExento
-    ? `${line()}<div class="row small"><span>Base imponible:</span><span>${fmt(baseImponible)}</span></div>` +
-      `<div class="row small"><span>ITBIS (18%):</span><span>${fmt(sale.iva)}</span></div>`
-    : hayDescGlobal && esExento
+  let totalesHtml: string;
+  let desgloseFiscalHtml = '';
+
+  if (hayDescGlobal) {
+    // CON descuento global: el recibo habla en pesos c/ITBIS (lo pactado con el
+    // cliente). El desglose fiscal va debajo del TOTAL.
+    totalesHtml = [
+      row('Subtotal (c/ITBIS):', fmt(round2(totalMercancia + descGlobalPact))),
+      row('Descuento:', `-${fmt(descGlobalPact)}`),
+    ].join('\n');
+    desgloseFiscalHtml = esExento
       ? `${line()}<div class="row small"><span>Monto exento (ZF):</span><span>${fmt(baseImponible)}</span></div>`
-      : '';
+      : `${line()}<div class="row small"><span>Base imponible:</span><span>${fmt(baseImponible)}</span></div>` +
+        `<div class="row small"><span>ITBIS (18%):</span><span>${fmt(sale.iva)}</span></div>`;
+  } else if (esExento) {
+    // E44 Zona Franca: sin desglose de ITBIS
+    totalesHtml = row('Subtotal:', fmt(sale.subtotal));
+  } else {
+    // Desglose fiscal completo por tasa (visible solo las líneas que aplican)
+    const lineas: string[] = [];
+    if (gravadoTotal > 0 && !hayExento) {
+      lineas.push(row('Subtotal:', fmt(gravadoTotal)));
+    } else if (gravadoTotal > 0 && hayExento) {
+      lineas.push(row('Subtotal Gravado:', fmt(gravadoTotal)));
+      lineas.push(row('Subtotal Exento:', fmt(montoExento)));
+    } else if (hayExento) {
+      // Solo exentos (sin tasa gravada)
+      lineas.push(row('Subtotal:', fmt(montoExento)));
+    }
+    if (hayI1) lineas.push(row('ITBIS (18%):', fmt(itbis18)));
+    if (hayI2) lineas.push(row('ITBIS (16%):', fmt(itbis16)));
+    if (hayI1 && hayI2) lineas.push(row('Total ITBIS:', fmt(round2(itbis18 + itbis16))));
+    totalesHtml = lineas.join('\n');
+  }
 
   const pagoHtml = tipoDoc === 'COTIZACIÓN' || tipoDoc === 'PRO-FORMA'
     ? row('Validez:', `${validezDias ?? 30} días`)
@@ -1127,6 +1179,7 @@ ${dbl()}
 ${desgloseFiscalHtml}
 ${line()}
 ${pagoHtml}
+${row('Total Ítems:', String(totalLineas))}
 ${ecfHtml}
 ${dbl()}
 ${tieneModificados ? `${line()}<div class="small">* Precio modificado en venta</div>` : ''}

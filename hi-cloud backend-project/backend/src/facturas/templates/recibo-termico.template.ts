@@ -18,6 +18,12 @@ export interface ReciboPOSData {
   subtotal:   number;
   itbis:      number;
   total:      number;
+  /** Desglose ITBIS por tasa — mismo criterio que builder ECF */
+  subtotalGravado?: number;   // base 18% + 16% (MontoGravadoTotal)
+  subtotalExento?:  number;   // MontoExento
+  itbis18?:         number;   // TotalITBIS1 (18%)
+  itbis16?:         number;   // TotalITBIS2 (16%)
+  totalLineas?:     number;   // cantidad de líneas del ticket
   recibido?:             number;
   cambio?:               number;
   qrBase64?:             string;
@@ -125,13 +131,30 @@ ${itemsHTML}
 
 <div class="line-solid"></div>
 
-<!-- TOTALES -->
-<div style="display:flex;justify-content:space-between;margin:3px 0;">
-  <span>Subtotal:</span><span>${money(d.subtotal)}</span>
-</div>
-<div style="display:flex;justify-content:space-between;margin:3px 0;">
-  <span>ITBIS 18%:</span><span>${money(d.itbis)}</span>
-</div>
+<!-- TOTALES — desglose por tasa (mismo criterio que builder ECF) -->
+${(() => {
+  const r = (lbl: string, val: string) =>
+    `<div style="display:flex;justify-content:space-between;margin:3px 0;"><span>${lbl}</span><span>${val}</span></div>`;
+  const hayExento  = (d.subtotalExento  ?? 0) > 0;
+  const hayGravado = (d.subtotalGravado ?? 0) > 0;
+  const hayI1      = (d.itbis18 ?? 0) > 0;
+  const hayI2      = (d.itbis16 ?? 0) > 0;
+  const lines: string[] = [];
+  if (hayGravado && !hayExento) {
+    lines.push(r('Subtotal:', money(d.subtotalGravado!)));
+  } else if (hayGravado && hayExento) {
+    lines.push(r('Subtotal Gravado:', money(d.subtotalGravado!)));
+    lines.push(r('Subtotal Exento:',  money(d.subtotalExento!)));
+  } else if (hayExento) {
+    lines.push(r('Subtotal:', money(d.subtotalExento!)));
+  } else {
+    lines.push(r('Subtotal:', money(d.subtotal)));
+  }
+  if (hayI1) lines.push(r('ITBIS (18%):', money(d.itbis18!)));
+  if (hayI2) lines.push(r('ITBIS (16%):', money(d.itbis16!)));
+  if (hayI1 && hayI2) lines.push(r('Total ITBIS:', money(d.itbis)));
+  return lines.join('\n');
+})()}
 
 <div class="line-solid"></div>
 
@@ -148,6 +171,7 @@ ${d.recibido ? `
   <span class="bold">Cambio:</span><span class="bold">${money(d.cambio || 0)}</span>
 </div>
 ` : ''}
+${d.totalLineas ? `<div style="display:flex;justify-content:space-between;margin:3px 0;font-size:11px;"><span>Total Ítems:</span><span>${d.totalLineas}</span></div>` : ''}
 
 <div class="line"></div>
 

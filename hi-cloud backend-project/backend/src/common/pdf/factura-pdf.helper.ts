@@ -559,9 +559,26 @@ export async function generarReciboPOSPDF(
       doc.text(fmtM(val), PL + W * 0.5, y, { width: W * 0.5, align: 'right' });
       y += size + 4;
     };
-    totRow('Subtotal:', d.subtotal);
-    totRow('ITBIS:',    d.itbis);
-    totRow('TOTAL:',    d.total, true);
+    // Desglose por tasa (mismo criterio que builder ECF)
+    const hayExentoP  = (d.subtotalExento  ?? 0) > 0;
+    const hayGravadoP = (d.subtotalGravado ?? 0) > 0;
+    const hayI1P      = (d.itbis18 ?? 0) > 0;
+    const hayI2P      = (d.itbis16 ?? 0) > 0;
+    if (hayGravadoP && !hayExentoP) {
+      totRow('Subtotal:', d.subtotalGravado!);
+    } else if (hayGravadoP && hayExentoP) {
+      totRow('Subtotal Gravado:', d.subtotalGravado!);
+      totRow('Subtotal Exento:',  d.subtotalExento!);
+    } else if (hayExentoP) {
+      totRow('Subtotal:', d.subtotalExento!);
+    } else {
+      totRow('Subtotal:', d.subtotal);
+    }
+    if (hayI1P) totRow('ITBIS (18%):', d.itbis18!);
+    if (hayI2P) totRow('ITBIS (16%):', d.itbis16!);
+    if (hayI1P && hayI2P) totRow('Total ITBIS:', d.itbis);
+    totRow('TOTAL:', d.total, true);
+    if (d.totalLineas) totRow('Total Items:', d.totalLineas);
 
     y += 4;
     doc.moveTo(PL, y).lineTo(PR, y).strokeColor('#ccc').lineWidth(0.5).stroke(); y += 6;

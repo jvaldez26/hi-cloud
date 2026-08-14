@@ -153,6 +153,8 @@ export interface SaleBT {
     precio: number;
     /** descuento por unidad en BASE imponible (convención B del POS) */
     descuentoMonto?: number;
+    /** balanza modo-precio: total base pre-ITBIS de la etiqueta (bloqueado) */
+    balanzaTotalFijo?: number;
   }>;
   iva?:                    number;
   subtotal?:               number;
@@ -242,19 +244,48 @@ export async function generarReciboESCPOS(sale: SaleBT, empresa: EmpresaBT): Pro
   }
 
   // ── Totales ────────────────────────────────────────────────────────────────
+  // Desglose ITBIS por tasa — mismo criterio que el builder ECF.
+  // (MontoGravadoI1/I2, MontoExento, TotalITBIS1/2)
+  let bG18 = 0, bG16 = 0, bExt = 0, bI18 = 0, bI16 = 0;
+  for (const item of sale.items) {
+    const pct  = Number(item.produto.porcentajeIva ?? 18);
+    const desc = item.descuentoMonto ?? 0;
+    const base = item.balanzaTotalFijo != null
+      ? item.balanzaTotalFijo
+      : (item.precio - desc) * item.cantidad;
+    if (pct === 18)      { bG18 += base; bI18 += base * 0.18; }
+    else if (pct === 16) { bG16 += base; bI16 += base * 0.16; }
+    else                 { bExt += base; }
+  }
+  const g18BT      = r2BT(bG18), g16BT = r2BT(bG16), extBT = r2BT(bExt);
+  const i18BT      = r2BT(bI18), i16BT = r2BT(bI16);
+  const gravTotalBT = r2BT(g18BT + g16BT);
+  const hayExtBT   = extBT > 0;
+  const hayI1BT    = i18BT > 0;
+  const hayI2BT    = i16BT > 0;
+
   c.texto(separador());
-  // MISMO criterio que el recibo HTML: con descuento global el bloque habla en
-  // pesos c/ITBIS (lo pactado con el cliente) y el desglose fiscal va bajo el
-  // total. Sin descuento se mantiene el formato clásico base + ITBIS.
-  const descBaseBT   = sale.descuentoGlobal ?? 0;
-  const descPactoBT  = sale.descuentoGlobalFinal ?? descBaseBT;
+  const descBaseBT  = sale.descuentoGlobal ?? 0;
+  const descPactoBT = sale.descuentoGlobalFinal ?? descBaseBT;
   if (descBaseBT > 0) {
+    // CON descuento global: el bloque habla en pesos c/ITBIS (lo pactado)
     c.texto(lineaLR('Subtotal (c/ITBIS):', `RD$${fmtMonto(r2BT(sale.total + descPactoBT))}`));
-    // (el recibo BT no imprime propina, así que el total es solo mercancía)
     c.texto(lineaLR('Descuento:', `-RD$${fmtMonto(descPactoBT)}`));
   } else {
-    if (sale.subtotal !== undefined) c.texto(lineaLR('Subtotal:', `RD$${fmtMonto(sale.subtotal)}`));
-    if (sale.iva !== undefined && sale.iva > 0) c.texto(lineaLR('ITBIS:', `RD$${fmtMonto(sale.iva)}`));
+    // SIN descuento: desglose fiscal por tasa (solo líneas con valor > 0)
+    if (gravTotalBT > 0 && !hayExtBT) {
+      c.texto(lineaLR('Subtotal:', `RD$${fmtMonto(gravTotalBT)}`));
+    } else if (gravTotalBT > 0 && hayExtBT) {
+      c.texto(lineaLR('Sub.Gravado:', `RD$${fmtMonto(gravTotalBT)}`));
+      c.texto(lineaLR('Sub.Exento:', `RD$${fmtMonto(extBT)}`));
+    } else if (hayExtBT) {
+      c.texto(lineaLR('Subtotal:', `RD$${fmtMonto(extBT)}`));
+    } else if (sale.subtotal !== undefined) {
+      c.texto(lineaLR('Subtotal:', `RD$${fmtMonto(sale.subtotal)}`));
+    }
+    if (hayI1BT) c.texto(lineaLR('ITBIS (18%):', `RD$${fmtMonto(i18BT)}`));
+    if (hayI2BT) c.texto(lineaLR('ITBIS (16%):', `RD$${fmtMonto(i16BT)}`));
+    if (hayI1BT && hayI2BT) c.texto(lineaLR('Total ITBIS:', `RD$${fmtMonto(r2BT(i18BT + i16BT))}`));
   }
   c.bold(true).texto(lineaLR('TOTAL:', `RD$${fmtMonto(sale.total)}`)).bold(false);
   if (descBaseBT > 0 && sale.subtotal !== undefined) {
@@ -266,6 +297,7 @@ export async function generarReciboESCPOS(sale: SaleBT, empresa: EmpresaBT): Pro
     const m = sale.metodo.charAt(0).toUpperCase() + sanear(sale.metodo.slice(1));
     c.texto(lineaLR('Metodo:', m));
   }
+  c.texto(lineaLR('Total Items:', String(sale.items.length)));
 
   // ── e-CF / Comprobante Fiscal ──────────────────────────────────────────────
   if (sale.encf) {
