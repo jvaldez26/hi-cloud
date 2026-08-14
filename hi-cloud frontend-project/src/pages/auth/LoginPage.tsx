@@ -216,9 +216,17 @@ export default function LoginPage() {
         /* Mobile / tablet estrecho: ocultar izquierdo, derecho a full-width */
         @media(max-width:900px){
           .login-left{display:none!important}
-          .login-right{width:100%!important; height:100vh!important; overflow-y:auto!important; overflow-x:hidden!important}
+          .login-right{width:100%!important}
           .login-logo-mobile{display:block!important}
-          .login-right-inner{padding:24px 20px!important}
+          .login-right-inner{padding:20px!important}
+        }
+        /* Pantallas bajas: compactar sin eliminar contenido */
+        @media(max-height:760px){
+          .login-right-inner{padding-top:8px!important; padding-bottom:8px!important}
+          .login-logo-img{width:44px!important}
+          .login-bajada{display:none!important}
+          .login-cta-full{display:none!important}
+          .login-cta-compact{display:flex!important}
         }
         /* ── Campos — estilo maqueta ────────────────────────────────── */
         .login-panel .ant-input-affix-wrapper {
@@ -257,7 +265,8 @@ export default function LoginPage() {
         .login-panel .ant-checkbox-inner { background:#fff!important; border-color:#D8DDE4!important; }
         .login-panel .ant-checkbox-checked .ant-checkbox-inner { background:#1B4FD8!important; border-color:#1B4FD8!important; }
         .login-panel .ant-checkbox-wrapper span { color:#3B4451!important; font-size:13.5px!important; }
-        .login-panel .ant-form-item { margin-bottom:10px!important; }
+        .login-panel .ant-form-item { margin-bottom:8px!important; }
+        .login-panel .ant-form-item-label { padding-bottom:3px!important; }
         .login-right-inner { box-sizing:border-box!important; }
       `}</style>
 
@@ -281,25 +290,26 @@ export default function LoginPage() {
         },
       }}>
       <div className="login-right" style={{
-        width:'50%', height:'100%', background:'#FFFFFF', display:'flex',
-        alignItems:'center', justifyContent:'center',
-        padding:'0', overflow:'hidden',
+        width:'50%', height:'100%', background:'#FFFFFF',
+        display:'flex', flexDirection:'column',
+        overflowY:'auto', overflowX:'hidden',
+        padding:'0',
       }}>
         <motion.div className="login-right-inner"
           initial={{ opacity:0 }} animate={{ opacity:1 }} transition={{ duration:.45, delay:.1 }}
-          style={{ width:'100%', maxWidth:420, padding:'16px 32px 14px', boxSizing:'border-box' }}>
+          style={{ width:'100%', maxWidth:420, padding:'16px 32px 14px', boxSizing:'border-box', margin:'auto' }}>
 
           {/* Logo centrado — visible siempre */}
-          <div style={{ textAlign:'center', marginBottom:10 }}>
-            <img src="/logo-hicloud.png" alt="HiCloud ERP"
+          <div style={{ textAlign:'center', marginBottom:6 }}>
+            <img src="/logo-hicloud.png" alt="HiCloud ERP" className="login-logo-img"
               style={{ width:62, height:'auto', display:'inline-block' }} />
           </div>
 
-          <div style={{ marginBottom:14, textAlign:'center' }}>
-            <h2 style={{ color:'#161A1F', fontSize:20, fontWeight:700, margin:'0 0 3px', letterSpacing:'-0.018em' }}>
+          <div style={{ marginBottom:10, textAlign:'center' }}>
+            <h2 style={{ color:'#161A1F', fontSize:20, fontWeight:700, margin:'0 0 2px', letterSpacing:'-0.018em' }}>
               ¡Bienvenido a HiCloud!
             </h2>
-            <p style={{ color:'#1B4FD8', fontSize:13, margin:0 }}>
+            <p className="login-bajada" style={{ color:'#1B4FD8', fontSize:13, margin:0 }}>
               Por favor, inicia sesión en tu cuenta.
             </p>
           </div>
@@ -426,7 +436,7 @@ export default function LoginPage() {
             </Form>
 
             {/* Google OAuth */}
-            <div style={{ display:'flex', alignItems:'center', gap:10, margin:'10px 0 8px' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10, margin:'8px 0 6px' }}>
               <div style={{ flex:1, height:1, background:'#D8DDE4' }} />
               <Text style={{ color:'#9BA5B4', fontSize:11.5, whiteSpace:'nowrap', letterSpacing:'.01em' }}>o continúa con</Text>
               <div style={{ flex:1, height:1, background:'#D8DDE4' }} />
@@ -449,13 +459,14 @@ export default function LoginPage() {
             </button>
 
             {/* Sin cuenta */}
-            <div style={{ marginTop:8 }}>
-              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
+            <div style={{ marginTop:6 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
                 <div style={{ flex:1, height:1, background:'#D8DDE4' }} />
                 <Text style={{ color:'#9BA5B4', fontSize:11.5, whiteSpace:'nowrap', letterSpacing:'.01em' }}>¿No tienes cuenta?</Text>
                 <div style={{ flex:1, height:1, background:'#D8DDE4' }} />
               </div>
-              <div style={{ display:'flex', gap:8 }}>
+              {/* Botones completos — se ocultan en pantallas muy bajas */}
+              <div className="login-cta-full" style={{ display:'flex', gap:8 }}>
                 <Button block icon={<RocketOutlined />} onClick={() => setDemoOpen(true)}
                   style={{ height:34, borderRadius:8, border:'1.5px solid rgba(27,79,216,.35)',
                     background:'#EEF3FC', color:'#1B4FD8', fontWeight:500, fontSize:12.5 }}>
@@ -467,12 +478,24 @@ export default function LoginPage() {
                   Crear cuenta
                 </Button>
               </div>
+              {/* Versión compacta (enlaces) — visible solo en pantallas muy bajas */}
+              <div className="login-cta-compact" style={{ display:'none', gap:16, justifyContent:'center' }}>
+                <button type="button" onClick={() => setDemoOpen(true)}
+                  style={{ background:'none', border:'none', color:'#1B4FD8', fontSize:12.5, fontWeight:500, cursor:'pointer', padding:0 }}>
+                  Solicitar Demo
+                </button>
+                <span style={{ color:'#D8DDE4', fontSize:14 }}>·</span>
+                <button type="button" onClick={() => navigate('/registrar')}
+                  style={{ background:'none', border:'none', color:'#3B4451', fontSize:12.5, fontWeight:500, cursor:'pointer', padding:0 }}>
+                  Crear cuenta
+                </button>
+              </div>
             </div>
 
             {/* ── ¿Necesitas ayuda? ──────────────────────────────────────── */}
             <div style={{
-              marginTop: 10,
-              paddingTop: 9,
+              marginTop: 8,
+              paddingTop: 8,
               borderTop: '1px solid #D8DDE4',
               display: 'flex',
               flexDirection: 'column',
