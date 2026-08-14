@@ -46,6 +46,12 @@ class AnularCierreDto {
 }
 
 class RegistrarRetiroDto {
+  /** ID de la caja diaria a la que se imputa el retiro. Obligatorio para
+   *  evitar que el retiro se aplique a la caja equivocada en empresas con
+   *  varios cajeros abiertos al mismo tiempo. */
+  @IsInt() @IsPositive()
+  cajaId: number;
+
   @IsNumber({ maxDecimalPlaces: 2 }) @Min(0.01) @Max(9_999_999)
   monto: number;
 
@@ -157,9 +163,10 @@ export class CajaController {
   @Post('retiros')
   @HttpCode(HttpStatus.CREATED)
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  @ApiOperation({ summary: 'Registrar retiro de caja (descuenta del efectivo del turno)' })
+  @ApiOperation({ summary: 'Registrar retiro de caja — cajaId obligatorio para imputar al cajero correcto' })
   registrarRetiro(@Body() dto: RegistrarRetiroDto, @GetUser() usuario: User) {
     return this.cajaService.registrarRetiro(
+      dto.cajaId,
       dto.monto,
       dto.descripcion,
       usuario.id,

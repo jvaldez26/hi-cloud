@@ -6924,6 +6924,11 @@ function POSRetirosLista({ C }: { C: Palette }) {
   const [desc,        setDesc]        = useState('');
   const [imprimiendo, setImprimiendo] = useState<number|null>(null);
 
+  // Obtener la caja del turno activo del cache (ya está cargada por POSCierreCajaPanel)
+  const cajaActiva = qc.getQueryData<any>(['pos-caja-hoy']);
+  const cajaId: number | undefined = cajaActiva?.id;
+  const cajeroNombre: string = cajaActiva?.vendedorNombre ?? '';
+
   const { data: retiros = [], isLoading, refetch } = useQuery<any[]>({
     queryKey: ['pos-retiros-caja'],
     queryFn: () => api.get('/caja/retiros').then(r => r.data?.data ?? r.data ?? []),
@@ -6953,6 +6958,7 @@ function POSRetirosLista({ C }: { C: Palette }) {
 
   const crearMut = useMutation({
     mutationFn: () => api.post('/caja/retiros', {
+      cajaId,
       monto: Number(monto),
       descripcion: desc.trim(),
     }),
@@ -6969,7 +6975,7 @@ function POSRetirosLista({ C }: { C: Palette }) {
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al registrar retiro'),
   });
 
-  const canSubmit = desc.trim().length > 0 && Number(monto) > 0;
+  const canSubmit = !!cajaId && desc.trim().length > 0 && Number(monto) > 0;
   const inputS: React.CSSProperties = { width:'100%', height:36, padding:'0 10px', borderRadius:8,
     border:`1px solid ${C.border}`, background:C.card, color:C.text, fontSize:13, outline:'none', boxSizing:'border-box' };
   const labelS: React.CSSProperties = { fontSize:11, fontWeight:700, color:C.textSub, display:'block', marginBottom:3 };
@@ -6977,7 +6983,14 @@ function POSRetirosLista({ C }: { C: Palette }) {
   return (
     <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
       <div style={{ padding:'10px 14px', borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
-        <span style={{ fontWeight:700, color:C.text, fontSize:14, flex:1 }}>Retiros de caja</span>
+        <div style={{ flex:1 }}>
+          <span style={{ fontWeight:700, color:C.text, fontSize:14 }}>Retiros de caja</span>
+          {cajeroNombre ? (
+            <span style={{ fontSize:11, color:C.textSub, marginLeft:8 }}>
+              Cajero: <strong style={{ color:C.text }}>{cajeroNombre}</strong>
+            </span>
+          ) : null}
+        </div>
         <button onClick={() => setShowForm(v => !v)}
           style={{ background: showForm ? C.border : '#DC2626', border:'none', borderRadius:8,
             color: showForm ? C.text : '#fff', cursor:'pointer', padding:'6px 14px', fontSize:12, fontWeight:700 }}>
@@ -6988,6 +7001,18 @@ function POSRetirosLista({ C }: { C: Palette }) {
       {showForm ? (
         <div style={{ flex:1, overflowY:'auto', padding:16 }}>
           <div style={{ maxWidth:420, color:C.text }}>
+            {!cajaId && (
+              <div style={{ background:'#FEF9C3', border:'1px solid #FDE68A', borderRadius:8,
+                padding:'8px 12px', marginBottom:14, fontSize:12, color:'#92400E' }}>
+                ⚠️ No se detecta una caja abierta. Recarga la página e inténtalo de nuevo.
+              </div>
+            )}
+            {cajeroNombre && (
+              <div style={{ background:'#F0FDF4', border:'1px solid #BBF7D0', borderRadius:8,
+                padding:'8px 12px', marginBottom:14, fontSize:12, color:'#166534' }}>
+                💰 Este retiro se aplicará a la caja de <strong>{cajeroNombre}</strong>
+              </div>
+            )}
             <div style={{ marginBottom:10 }}>
               <span style={labelS}>Monto RD$ *</span>
               <input type="number" value={monto} onChange={e => setMonto(e.target.value)}

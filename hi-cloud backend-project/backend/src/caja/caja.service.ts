@@ -392,6 +392,25 @@ export class CajaService {
       [cajaId],
     ).catch(() => [{ total: '0' }]);
 
+    // Gastos de efectivo del día: imputar solo a la caja sin vendedorId asignado
+    // (caja global/única de la empresa). La tabla gastos no tiene cajaDiariaId,
+    // por lo que no es posible asignar gastos a un cajero específico sin esa FK.
+    // Para empresas con múltiples cajeros, los gastos siguen siendo 0 por cajero
+    // individual hasta que se agregue cajaDiariaId a la tabla gastos.
+    let gastosTotal = 0;
+    if (!vendedorId) {
+      const [gastos] = await this.dataSource.query<{ total: string }[]>(
+        `SELECT COALESCE(SUM(g.total), 0)::text AS total
+         FROM gastos g
+         WHERE DATE(g.fecha) = $1
+           AND g."empresaId" = $2
+           AND g."isActive" = true
+           AND g."formaPago" = '01'`,
+        [fecha, empresaId],
+      ).catch(() => [{ total: '0' }]);
+      gastosTotal = Number(gastos?.total ?? 0);
+    }
+
     await this.repo.update(cajaId, {
       ventasEfectivo:        Number(ventas?.efectivo      ?? 0),
       ventasTarjeta:         Number(ventas?.tarjeta       ?? 0),
@@ -401,6 +420,7 @@ export class CajaService {
       totalAnticipos:        Number(anticipos?.total      ?? 0),
       cantidadTransacciones: Number(ventas?.cantidad      ?? 0),
       retiros:               Number(retiros?.total        ?? 0),
+      gastosEfectivo:        gastosTotal,
     });
   }
 
@@ -557,14 +577,26 @@ export class CajaService {
   // sigue siendo válida para emitir. Usa TypeORM como getCajaHoy.
   // ── Retiros de caja ───────────────────────────────────────────────────────
 
-  async registrarRetiro(monto: number, descripcion: string, usuarioId: number, usuarioNombre?: string) {
+  async registrarRetiro(
+    cajaId: number,
+    monto: number,
+    descripcion: string,
+    usuarioId: number,
+    usuarioNombre?: string,
+  ) {
     const empresaId = this.tenantService.getEmpresaId();
 
-    const caja = await this.repo.findOne({
-      where: { empresaId, estado: EstadoCierre.ABIERTA } as any,
-      order: { fecha: 'DESC' },
-    });
-    if (!caja) throw new BadRequestException('No hay una caja abierta para registrar retiros');
+    // Buscar la caja específica del cajero — nunca "cualquier caja abierta de
+    // la empresa" para evitar imputar retiros al cajero equivocado.
+    const caja = await this.repo.findOne({ where: { id: cajaId, empresaId } as any });
+    if (!caja) throw new BadRequestException(`Caja #${cajaId} no encontrada`);
+
+    if (caja.estado !== EstadoCierre.ABIERTA) {
+      const quien = caja.vendedorNombre ? ` de ${caja.vendedorNombre}` : '';
+      throw new BadRequestException(
+        `La caja${quien} ya está cerrada. No se puede registrar un retiro sin autorización de un supervisor.`,
+      );
+    }
 
     const retiro = this.retiroRepo.create({
       empresaId,
@@ -576,7 +608,7 @@ export class CajaService {
     });
     await this.retiroRepo.save(retiro);
 
-    // Actualizar columna retiros en cierres_caja
+    // Actualizar columna retiros en cierres_caja con el acumulado real
     const [{ total }] = await this.dataSource.query<{ total: string }[]>(
       `SELECT COALESCE(SUM(monto), 0)::text AS total FROM retiros_caja WHERE "cajaDiariaId" = $1`,
       [caja.id],
