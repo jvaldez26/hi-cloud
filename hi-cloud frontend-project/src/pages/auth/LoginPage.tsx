@@ -213,10 +213,10 @@ export default function LoginPage() {
   return (
     <div style={{ height: '100vh', overflow: 'hidden', display: 'flex', fontFamily: "'Inter',-apple-system,sans-serif" }}>
       <style>{`
-        /* Mobile: ocultar izquierdo, mostrar logo */
-        @media(max-width:768px){
+        /* Mobile / tablet estrecho: ocultar izquierdo, derecho a full-width */
+        @media(max-width:900px){
           .login-left{display:none!important}
-          .login-right{width:100%!important; height:100vh!important; overflow-y:auto!important}
+          .login-right{width:100%!important; height:100vh!important; overflow-y:auto!important; overflow-x:hidden!important}
           .login-logo-mobile{display:block!important}
           .login-right-inner{padding:24px 20px!important}
         }
@@ -283,10 +283,10 @@ export default function LoginPage() {
       <div className="login-right" style={{
         width:'50%', height:'100%', background:'#FFFFFF', display:'flex',
         alignItems:'center', justifyContent:'center',
-        padding:'0', overflowY:'auto',
+        padding:'0', overflow:'hidden',
       }}>
         <motion.div className="login-right-inner"
-          initial={{ opacity:0, x:20 }} animate={{ opacity:1, x:0 }} transition={{ duration:.5, delay:.1 }}
+          initial={{ opacity:0 }} animate={{ opacity:1 }} transition={{ duration:.45, delay:.1 }}
           style={{ width:'100%', maxWidth:420, padding:'16px 32px 14px', boxSizing:'border-box' }}>
 
           {/* Logo centrado — visible siempre */}
