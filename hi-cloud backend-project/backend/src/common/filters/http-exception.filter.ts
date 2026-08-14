@@ -157,6 +157,27 @@ export class HttpExceptionFilter implements ExceptionFilter {
       return this.send(response, request, status, message);
     }
 
+    // ── Rechazo de CORS — comportamiento esperado, no un bug ──────────────────
+    // Express CORS llama callback(new Error('CORS: ...')) cuando el Origin no
+    // está en la lista blanca; la excepción llega aquí como Error genérico.
+    //
+    // • Logea como WARN con método, ruta y user-agent: así se distingue de un
+    //   vistazo un scanner/bot de una misconfiguration real de un cliente.
+    // • Devuelve 403 (no 500 — es un rechazo intencional, no un fallo).
+    // • NO sube a Sentry: con la IP pública expuesta ocurre indefinidamente y
+    //   taparía errores reales (beforeSend en instrument.ts es el backstop).
+    if (exception instanceof Error && exception.message.startsWith('CORS:')) {
+      const ua     = request.headers['user-agent'] ?? '(sin user-agent)';
+      const origin = exception.message.split('→')[1]?.trim() ?? '?';
+      this.logger.warn(
+        `[CORS] ${request.method} ${request.url} | origin="${origin}" | ua="${ua}"`,
+      );
+      return this.send(
+        response, request, HttpStatus.FORBIDDEN,
+        'Solicitud rechazada por política de origen',
+      );
+    }
+
     // ── Error genérico no manejado (5xx + errores PG que cayeron al default) ──
     if (exception instanceof Error) {
       this.logger.error(

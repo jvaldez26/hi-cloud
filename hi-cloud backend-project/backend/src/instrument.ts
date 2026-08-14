@@ -87,8 +87,19 @@ const SKIP_EXCEPTION_TYPES = new Set([
 
 function beforeSend(event: Sentry.ErrorEvent): Sentry.ErrorEvent | null {
   try {
-    // Descartar excepciones 4xx de validación de negocio esperadas
     const firstEx = event.exception?.values?.[0];
+
+    // Descartar rechazos CORS — comportamiento esperado del servidor, no un bug.
+    // Con la IP pública expuesta se generan continuamente (scanners AWS/bots) y
+    // taparían errores reales en el tablero, igual que pasó con los chunk-load errors.
+    // El HttpExceptionFilter los logea en warn con ruta + user-agent para que una
+    // misconfiguration real (dominio cliente mal puesto) siga siendo visible.
+    const firstValue = firstEx?.value ?? '';
+    if (typeof firstValue === 'string' && firstValue.startsWith('CORS:')) {
+      return null;
+    }
+
+    // Descartar excepciones 4xx de validación de negocio esperadas
     if (firstEx?.type && SKIP_EXCEPTION_TYPES.has(firstEx.type)) {
       return null;
     }
