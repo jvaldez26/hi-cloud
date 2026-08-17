@@ -187,6 +187,46 @@ else
   ok "Todos los servicios con QueryBuilder referencian empresaId"
 fi
 
+# ─── CHECK 9: Tabla "empresas" en plural — la tabla real es "empresa" ────────
+header "Tabla 'empresas' (plural) en SQL — debe ser 'empresa' (singular)..."
+# Aplica a entidades, servicios, migraciones y seeds. Los falsos positivos
+# reales son imposibles: "empresas" no es una tabla válida en este proyecto.
+RESULTADO=$(grep -rn \
+  -E '(FROM|JOIN|REFERENCES|UPDATE|INSERT\s+INTO)\s+"?empresas"?' \
+  "$SRC" --include="*.ts" \
+  | grep -v "\.spec\.ts\|nosec" \
+  || true)
+# Buscar también en migrations/ (fuera de src/)
+RESULTADO_MIGS=$(grep -rn \
+  -E '(FROM|JOIN|REFERENCES|UPDATE|INSERT\s+INTO)\s+"?empresas"?' \
+  "src/migrations" "src/seeds" --include="*.ts" 2>/dev/null \
+  | grep -v "\.spec\.ts\|nosec" \
+  || true)
+if [ -n "$RESULTADO" ] || [ -n "$RESULTADO_MIGS" ]; then
+  fail "Referencia a tabla 'empresas' (plural) — la tabla real es 'empresa' (sin s):"
+  [ -n "$RESULTADO" ]      && echo "$RESULTADO"      | head -10
+  [ -n "$RESULTADO_MIGS" ] && echo "$RESULTADO_MIGS" | head -10
+else
+  ok "Sin referencias a 'empresas' (plural)"
+fi
+
+# ─── CHECK 10: FK sobre empresaId en migraciones — convención multi-tenant ───
+header "FOREIGN KEY sobre empresaId en migraciones (convención: sin FK a nivel BD)..."
+# Ninguna tabla multi-tenant del proyecto tiene FK de empresaId a la tabla empresa.
+# El aislamiento de tenant se resuelve en la capa de aplicación (TenantService).
+# Un FK así siempre es un error de diseño — y puede referenciar "empresas" (plural).
+RESULTADO=$(grep -rn \
+  -E 'FOREIGN\s+KEY\s*\([^)]*empresaId[^)]*\)|empresaId[^)]*REFERENCES' \
+  "src/migrations" --include="*.ts" 2>/dev/null \
+  | grep -v "nosec" \
+  || true)
+if [ -n "$RESULTADO" ]; then
+  fail "FK sobre empresaId en migración — usar empresaId como columna plain (sin FK a BD):"
+  echo "$RESULTADO" | head -10
+else
+  ok "Sin FK sobre empresaId en migraciones"
+fi
+
 # ─── RESUMEN ─────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════════"

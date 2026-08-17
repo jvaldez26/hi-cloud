@@ -96,7 +96,7 @@ export class PrestamistaPdfService {
        FROM pr_pagos pg
        JOIN pr_prestamos p ON p.id = pg."prestamoId"
        JOIN pr_deudores  d ON d.id = pg."deudorId"
-       LEFT JOIN empresas e ON e.id = pg."empresaId"
+       LEFT JOIN empresa e ON e.id = pg."empresaId"
        WHERE pg.id=$1 AND pg."empresaId"=$2`, [pagoId, empresaId],
     );
     const pago = rows[0];

@@ -253,7 +253,7 @@ export class PortalEmpleadoService {
 
     // Obtener nombre de empresa
     const [empresa] = await this.dataSource.query<{ nombre: string; rnc: string }[]>(
-      `SELECT "nombreComercial" AS nombre, rnc FROM empresas WHERE id = $1 LIMIT 1`,
+      `SELECT "nombreComercial" AS nombre, rnc FROM empresa WHERE id = $1 LIMIT 1`,
       [empresaId],
     ).catch(() => [{ nombre: 'La Empresa', rnc: '' }]);
 

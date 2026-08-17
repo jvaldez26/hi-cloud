@@ -30,7 +30,7 @@ export class TallerPdfService {
 
   private async getEmpresaInfo(empresaId: number): Promise<any> {
     const [e] = await this.ds.query<any[]>(
-      `SELECT nombre, "logoUrl", telefono, email, direccion FROM empresas WHERE id = $1`,
+      `SELECT nombre, "logoUrl", telefono, email, direccion FROM empresa WHERE id = $1`,
       [empresaId],
     );
     return e ?? {};
