@@ -281,10 +281,17 @@ export class ProductosService implements OnModuleInit {
     }
 
     if (search) {
-      qb.andWhere(
-        '(producto.nombre ILIKE :s OR producto.codigo ILIKE :s OR producto.categoria ILIKE :s)',
-        { s: `%${search}%` },
-      );
+      // Búsqueda por tokens: cada palabra debe aparecer en algún campo.
+      // Esto resuelve: espacios dobles en nombres ("TUBO  ELECTRICO"), orden
+      // de palabras distinto y cualquier variación de espaciado.
+      const tokens = search.trim().split(/\s+/).filter(Boolean);
+      tokens.forEach((token, i) => {
+        const param = `srch${i}`;
+        qb.andWhere(
+          `(producto.nombre ILIKE :${param} OR producto.codigo ILIKE :${param} OR producto.categoria ILIKE :${param})`,
+          { [param]: `%${token}%` },
+        );
+      });
     }
 
     const [data, total] = await qb
@@ -737,10 +744,14 @@ export class ProductosService implements OnModuleInit {
       if (dto.categoria) qb.andWhere('p.categoria = :categoria', { categoria: dto.categoria });
       if (dto.marca)     qb.andWhere('p.marca = :marca',         { marca: dto.marca });
       if (dto.busqueda) {
-        qb.andWhere(
-          '(p.nombre ILIKE :busq OR p.codigo ILIKE :busq)',
-          { busq: `%${dto.busqueda}%` },
-        );
+        const tokens = dto.busqueda.trim().split(/\s+/).filter(Boolean);
+        tokens.forEach((token, i) => {
+          const param = `busq${i}`;
+          qb.andWhere(
+            `(p.nombre ILIKE :${param} OR p.codigo ILIKE :${param})`,
+            { [param]: `%${token}%` },
+          );
+        });
       }
       if (dto.soloConExistencia) {
         qb.andWhere('p.stock > 0');
