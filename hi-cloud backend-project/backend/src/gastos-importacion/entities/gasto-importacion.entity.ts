@@ -36,7 +36,7 @@ export class GastoImportacion {
   compraId: number;
 
   /** Gancho para embarque multi-OC futuro — null hasta que se implemente */
-  @Column({ nullable: true })
+  @Column({ type: 'integer', nullable: true })
   embarqueId: number | null;
 
   @Column({ length: 200 })
@@ -76,7 +76,7 @@ export class GastoImportacion {
   @Column({ type: 'text', nullable: true })
   motivoAjuste: string | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'timestamptz', nullable: true })
   aplicadoAt: Date | null;
 
   @CreateDateColumn()
