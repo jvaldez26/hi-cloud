@@ -393,6 +393,41 @@ jobs:
               echo "  DB_CA_CERT exportado al entorno de node"
             fi
 
+            # ──────────────────────────────────────────────────────────────────
+            # CAPA 0: Validar DataSource metadata ANTES de correr migraciones
+            #
+            # Detecta DataTypeNotSupportedError (columnas con union type sin
+            # type: explícito, enums sin type:'enum', etc.) en las entidades
+            # del NUEVO dist, antes de tocar la BD.
+            #
+            # Sin este check, el error ocurre dentro del runner de migraciones
+            # y el mensaje queda enterrado. Con este check aparece explícito.
+            # ──────────────────────────────────────────────────────────────────
+            echo "  → Validando metadata de entidades TypeORM..."
+            timeout 30 node -e "
+              const { AppDataSource } = require('./dist/data-source');
+              AppDataSource.initialize()
+                .then(ds => {
+                  const n = ds.entityMetadatas.length;
+                  console.log('  ✅ DataSource OK —', n, 'entidades cargadas');
+                  return ds.destroy();
+                })
+                .then(() => process.exit(0))
+                .catch(err => {
+                  console.error('  ❌ DataSource.initialize() falló:', err.message);
+                  process.exit(1);
+                });
+            " || {
+              echo "❌ CAPA 0: DataSource metadata inválido — abortando ANTES de correr migraciones"
+              echo "  → Diagnóstico típico: columna con 'string|null' o 'number|null' sin type: explícito"
+              echo "  → Buscar en las entidades nuevas: @Column() campo!: Tipo | null sin type:'...'"
+              rm -rf dist
+              if [ -d /home/ubuntu/hicloud/.backup-dist ]; then
+                cp -r /home/ubuntu/hicloud/.backup-dist dist
+              fi
+              exit 1
+            }
+
             echo "  → Corriendo migraciones pendientes..."
             node -e "
               const { AppDataSource } = require('./dist/data-source');

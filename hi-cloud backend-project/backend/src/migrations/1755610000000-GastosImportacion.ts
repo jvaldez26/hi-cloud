@@ -35,7 +35,6 @@ export class GastosImportacion1755610000000 implements MigrationInterface {
         "aplicadoAt"          TIMESTAMP WITH TIME ZONE,
         "createdAt"           TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
         "updatedAt"           TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-        CONSTRAINT "fk_gi_empresa" FOREIGN KEY ("empresaId") REFERENCES "empresas"("id"),
         CONSTRAINT "fk_gi_compra"  FOREIGN KEY ("compraId")  REFERENCES "compras"("id") ON DELETE CASCADE
       )
     `);
