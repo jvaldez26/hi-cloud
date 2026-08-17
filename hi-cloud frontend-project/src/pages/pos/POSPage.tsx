@@ -9883,12 +9883,17 @@ export default function POSPage() {
     // Búsqueda LOCAL sobre el catálogo completo — cero requests al backend por keystroke
     let list = todosProdutos as any[];
     if (search.trim()) {
-      const q = search.trim().toLowerCase();
+      // Buscar por tokens (AND): cada palabra debe aparecer en algún campo.
+      // Evita fallos por espacios dobles en nombres ("TUBO  ELECTRICO 3/4")
+      // y permite escribir las palabras en cualquier orden.
+      const tokens = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
       list = list.filter((p: any) =>
-        p.nombre?.toLowerCase().includes(q) ||
-        p.codigo?.toLowerCase().includes(q) ||
-        (p.codigoBarras ?? '').toLowerCase().includes(q) ||
-        p.categoria?.toLowerCase().includes(q),
+        tokens.every(tok =>
+          p.nombre?.toLowerCase().includes(tok) ||
+          p.codigo?.toLowerCase().includes(tok) ||
+          (p.codigoBarras ?? '').toLowerCase().includes(tok) ||
+          p.categoria?.toLowerCase().includes(tok),
+        )
       );
     }
     // Filtro categoría
