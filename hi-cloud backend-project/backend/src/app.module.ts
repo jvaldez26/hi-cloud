@@ -139,6 +139,7 @@ import { TransporteModule }         from './transporte/transporte.module';
 import { EcfRecibidosModule }       from './ecf-recibidos/ecf-recibidos.module';
 import { EducativoModule }          from './educativo/educativo.module';
 import { BalanzaModule }            from './balanza/balanza.module';
+import { VideosTutorialesModule }   from './videos-tutoriales/videos-tutoriales.module';
 
 @Module({
   imports: [
@@ -371,6 +372,7 @@ import { BalanzaModule }            from './balanza/balanza.module';
     EcfRecibidosModule,
     EducativoModule,
     BalanzaModule,
+    VideosTutorialesModule,
   ],
   controllers: [AppController],
   providers: [

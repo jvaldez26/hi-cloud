@@ -25,6 +25,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { demoApi, ESTADO_DEMO_LABEL, ESTADO_DEMO_COLOR } from '../../api/demo.api';
 import CobrosPage from './CobrosPage';
+import VideosTutorialesAdminPage from './VideosTutorialesAdminPage';
 import { SECTORES_EMPRESARIALES } from '../../constants/sectores';
 import { fmtDop } from '../../utils/fmt';
 
@@ -2396,6 +2397,7 @@ export default function SuperAdminPage() {
               { key: 'metricas',      icon: <BarChart2 size={15} />,  label: 'Métricas MRR' },
               { key: 'ecf',           icon: <FileText size={15} />,   label: 'e-CF Config' },
               { key: 'modulos',       icon: <span style={{ fontSize: 15 }}>🧩</span>, label: 'Módulos Add-on' },
+              { key: 'videos',        icon: <span style={{ fontSize: 15 }}>🎬</span>, label: 'Videos Tutoriales' },
               { key: 'herramientas',  icon: <Settings size={15} />,   label: 'Herramientas' },
               { key: 'config',        icon: <Settings size={15} />,   label: 'Configuración' },
             ].map(t => {
@@ -2856,6 +2858,11 @@ export default function SuperAdminPage() {
             {/* ── TAB AUDITORÍA ─────────────────────────────────────────────── */}
             {tab === 'auditoria' && (
               <AuditoriaTab C={C} />
+            )}
+
+            {/* ── TAB VIDEOS TUTORIALES ───────────────────────────────────── */}
+            {tab === 'videos' && (
+              <VideosTutorialesAdminPage C={C} />
             )}
 
             {/* ── TAB HERRAMIENTAS ─────────────────────────────────────────── */}
