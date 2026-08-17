@@ -57,15 +57,16 @@ const makeCompra = (estado: CompraEstado, detalles: ReturnType<typeof makeDetall
 });
 
 interface Deps {
-  compraRepo:     Record<string, jest.Mock>;
-  detalleRepo:    Record<string, jest.Mock>;
-  inventarioSvc:  Record<string, jest.Mock>;
-  valoracionSvc:  Record<string, jest.Mock>;
-  cxpSvc:         Record<string, jest.Mock>;
-  asientosSvc:    Record<string, jest.Mock>;
-  tenantSvc:      { getEmpresaId: () => number; getAlmacenId: () => null; getSucursalId: () => null; resolveSucursalId: jest.Mock };
-  realtimeSvc:    Record<string, jest.Mock>;
-  ds:             Record<string, jest.Mock>;
+  compraRepo:          Record<string, jest.Mock>;
+  detalleRepo:         Record<string, jest.Mock>;
+  inventarioSvc:       Record<string, jest.Mock>;
+  valoracionSvc:       Record<string, jest.Mock>;
+  cxpSvc:              Record<string, jest.Mock>;
+  asientosSvc:         Record<string, jest.Mock>;
+  tenantSvc:           { getEmpresaId: () => number; getAlmacenId: () => null; getSucursalId: () => null; resolveSucursalId: jest.Mock };
+  realtimeSvc:         Record<string, jest.Mock>;
+  gastosImportacionSvc: Record<string, jest.Mock>;
+  ds:                  Record<string, jest.Mock>;
 }
 
 function buildDeps(mockCompra: ReturnType<typeof makeCompra>): Deps {
@@ -78,7 +79,7 @@ function buildDeps(mockCompra: ReturnType<typeof makeCompra>): Deps {
       update: jest.fn().mockResolvedValue(undefined),
     },
     inventarioSvc: {
-      registrarEntrada:   jest.fn().mockResolvedValue(undefined),
+      registrarEntrada:    jest.fn().mockResolvedValue(undefined),
       registrarDevolucion: jest.fn().mockResolvedValue(undefined),
     },
     valoracionSvc: {
@@ -91,13 +92,19 @@ function buildDeps(mockCompra: ReturnType<typeof makeCompra>): Deps {
       asientoCompraRecibida: jest.fn().mockResolvedValue(undefined),
     },
     tenantSvc: {
-      getEmpresaId:        () => EMPRESA,
-      getAlmacenId:        () => null,
-      getSucursalId:       () => null,
-      resolveSucursalId:   jest.fn().mockResolvedValue(null),
+      getEmpresaId:      () => EMPRESA,
+      getAlmacenId:      () => null,
+      getSucursalId:     () => null,
+      resolveSucursalId: jest.fn().mockResolvedValue(null),
     },
     realtimeSvc: {
       notify: jest.fn(),
+    },
+    // GastosImportacionService — usado en cambiarEstado/recibir para sumar
+    // costos de importación al AVCO al momento de la recepción.
+    gastosImportacionSvc: {
+      getCostosImportacionPorUnidad: jest.fn().mockResolvedValue(new Map()),
+      aplicarGastosPendientes:       jest.fn().mockResolvedValue(undefined),
     },
     ds: {
       query: jest.fn().mockResolvedValue([]),
@@ -109,15 +116,16 @@ function buildService(d: Deps): ComprasService {
   return new ComprasService(
     d.compraRepo as any,
     d.detalleRepo as any,
-    {} as any,          // proveedoresService (no se usa en estos caminos)
-    {} as any,          // productosService
+    {} as any,                    // proveedoresService (no se usa en estos caminos)
+    {} as any,                    // productosService
     d.inventarioSvc as any,
     d.valoracionSvc as any,
     d.cxpSvc as any,
     d.asientosSvc as any,
     d.tenantSvc as any,
     d.realtimeSvc as any,
-    d.ds as any,
+    d.gastosImportacionSvc as any, // posición 11 — GastosImportacionService
+    d.ds as any,                   // posición 12 — DataSource
   );
 }
 

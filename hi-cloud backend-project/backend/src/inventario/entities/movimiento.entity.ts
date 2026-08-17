@@ -12,6 +12,9 @@ export enum TipoMovimiento {
   SALIDA_TRANSFERENCIA      = 'salida_transferencia',
   ENTRADA_TRANSFERENCIA     = 'entrada_transferencia',
   CANCELACION_TRANSFERENCIA = 'cancelacion_transferencia',
+  // Ajuste puro de costo sin impacto físico (cantidad=0).
+  // Generado por aplicarGastoRetroactivo cuando la compra ya está RECIBIDA.
+  AJUSTE_COSTO_IMPORTACION  = 'ajuste_costo_importacion',
 }
 
 @TenantScoped()

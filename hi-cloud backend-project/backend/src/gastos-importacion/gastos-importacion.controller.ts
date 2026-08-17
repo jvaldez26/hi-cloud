@@ -6,6 +6,8 @@ import { GastosImportacionService } from './gastos-importacion.service';
 import { CrearGastoImportacionDto } from './dto/crear-gasto-importacion.dto';
 import { AjustarLineasDto } from './dto/ajustar-lineas.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { GetUser } from '../auth/decorators/get-user.decorator';
+import { User }   from '../users/users.entity';
 
 @UseGuards(JwtAuthGuard)
 @Controller('gastos-importacion')
@@ -65,5 +67,30 @@ export class GastosImportacionController {
   @Get('compra/:compraId/desglose')
   desglose(@Param('compraId', ParseIntPipe) compraId: number) {
     return this.svc.desglosePorCompra(compraId);
+  }
+
+  // ── Caso B: ajuste retroactivo de AVCO ───────────────────────────────────────
+
+  /**
+   * Aplica retroactivamente un gasto de importación a una compra ya RECIBIDA.
+   *
+   * PRIMERA LLAMADA (body vacío o { confirmado: false }):
+   *   Si hay condiciones de alerta devuelve:
+   *     { aplicado:false, necesitaConfirmacion:true, advertencias:[...], lineas:[...] }
+   *   El frontend muestra las advertencias y solicita confirmación explícita.
+   *
+   * SEGUNDA LLAMADA (body: { confirmado: true }):
+   *   Aplica el ajuste en una sola transacción atómica.
+   *   Devuelve: { aplicado:true, lineas:[{ productoId, costoAnterior, costoNuevo, delta }] }
+   *   Si el asiento contable falla → rollback completo (AVCO + movimiento + lineas + estado).
+   */
+  @Post(':id/aplicar-retroactivo')
+  @HttpCode(HttpStatus.OK)
+  aplicarRetroactivo(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: { confirmado?: boolean },
+    @GetUser() usuario: User,
+  ) {
+    return this.svc.aplicarGastoRetroactivo(id, dto, usuario.id);
   }
 }

@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { Repository, DataSource, In } from 'typeorm';
+import { Repository, DataSource, In, EntityManager } from 'typeorm';
 import { generarNumeroSecuencial } from '../../common/utils/generar-numero.util';
 import { CuentaContable } from '../entities/cuenta-contable.entity';
 import { AsientoContable, TipoOrigenAsiento, EstadoAsiento } from '../entities/asiento-contable.entity';
@@ -73,19 +73,28 @@ export class AsientosAutomaticosService {
     );
   }
 
-  private async _crearAsientoContabilizado(params: {
-    descripcion: string;
-    tipoOrigen: TipoOrigenAsiento;
-    referenciaId: number;
-    referenciaFolio: string;
-    userId: number;
-    lineas: Array<{ codigo: string; descripcion: string; debe: number; haber: number }>;
-  }): Promise<AsientoContable | null> {
+  private async _crearAsientoContabilizado(
+    params: {
+      descripcion:     string;
+      tipoOrigen:      TipoOrigenAsiento;
+      referenciaId:    number;
+      referenciaFolio: string;
+      userId:          number;
+      lineas: Array<{ codigo: string; descripcion: string; debe: number; haber: number }>;
+    },
+    manager?: EntityManager,
+  ): Promise<AsientoContable | null> {
     // Una sola query para todas las cuentas del asiento en vez de N findOne
     const codigos = [...new Set(params.lineas.map(l => l.codigo))];
     const whereCondition: any = { codigo: In(codigos), isActive: true };
     if (this.eid) whereCondition.empresaId = this.eid;
-    const cuentas = await this.cuentaRepository.find({ where: whereCondition });
+
+    // Cuando el caller pasa un manager (transacción externa) lo usamos para que
+    // la lectura de cuentas y los saves participen de la misma transacción.
+    const cuentas = manager
+      ? await manager.find(CuentaContable, { where: whereCondition })
+      : await this.cuentaRepository.find({ where: whereCondition });
+
     const cuentaMap = new Map(cuentas.map(c => [c.codigo, c]));
 
     const lineasResueltas: { cuenta: CuentaContable; descripcion: string; debe: number; haber: number }[] = [];
@@ -101,34 +110,47 @@ export class AsientosAutomaticosService {
     const totalDebe  = lineasResueltas.reduce((s, l) => s + l.debe,  0);
     const totalHaber = lineasResueltas.reduce((s, l) => s + l.haber, 0);
 
-    const numero  = await this.generarNumero(this.eid);
-    const asiento = await this.asientoRepository.save(
-      this.asientoRepository.create({
-        ...(this.eid ? { empresaId: this.eid } : {}),
-        numero,
-        fecha:           new Date(),
-        descripcion:     params.descripcion,
-        tipoOrigen:      params.tipoOrigen,
-        referenciaId:    params.referenciaId,
-        referenciaFolio: params.referenciaFolio,
-        estado:          EstadoAsiento.CONTABILIZADO,
-        totalDebe:       Number(totalDebe.toFixed(2)),
-        totalHaber:      Number(totalHaber.toFixed(2)),
-        userId:          params.userId,
-      }),
-    );
+    // NOTA: generarNumero() usa this.dataSource.query() — una conexión del pool
+    // FUERA de la transacción externa (si la hay). La función siguiente_numero_secuencia
+    // hace INSERT ... ON CONFLICT DO UPDATE que se confirma inmediatamente.
+    // Consecuencia aceptada: si la tx externa hace rollback, el número ASI-XXXX queda
+    // consumido y habrá un hueco en la numeración. La unicidad es invariante; la densidad
+    // no es requerimiento (un auditor puede ver el hueco pero no habrá duplicados).
+    const numero = await this.generarNumero(this.eid);
 
-    await this.lineaRepository.save(
-      this.lineaRepository.create(
-        lineasResueltas.map((l) => ({
-          asientoId:        asiento.id,
-          cuentaContableId: l.cuenta.id,
-          descripcion:      l.descripcion,
-          debe:             l.debe,
-          haber:            l.haber,
-        })),
-      ),
-    );
+    const asientoData = {
+      ...(this.eid ? { empresaId: this.eid } : {}),
+      numero,
+      fecha:           new Date(),
+      descripcion:     params.descripcion,
+      tipoOrigen:      params.tipoOrigen,
+      referenciaId:    params.referenciaId,
+      referenciaFolio: params.referenciaFolio,
+      estado:          EstadoAsiento.CONTABILIZADO,
+      totalDebe:       Number(totalDebe.toFixed(2)),
+      totalHaber:      Number(totalHaber.toFixed(2)),
+      userId:          params.userId,
+    };
+
+    const asientoInstance = this.asientoRepository.create(asientoData);
+    const asiento = manager
+      ? await manager.save(AsientoContable, asientoInstance)
+      : await this.asientoRepository.save(asientoInstance);
+
+    const lineasData = lineasResueltas.map((l) => ({
+      asientoId:        asiento.id,
+      cuentaContableId: l.cuenta.id,
+      descripcion:      l.descripcion,
+      debe:             l.debe,
+      haber:            l.haber,
+    }));
+
+    const lineasInstances = this.lineaRepository.create(lineasData);
+    if (manager) {
+      await manager.save(AsientoLinea, lineasInstances);
+    } else {
+      await this.lineaRepository.save(lineasInstances);
+    }
 
     return asiento;
   }
@@ -754,14 +776,56 @@ export class AsientosAutomaticosService {
   // cargando contra esa misma cuenta. Así el pasivo se crea una sola vez.
   // ──────────────────────────────────────────────────────────────────
 
-  async asientoGastoImportacion(params: {
-    gastoId:      number;
-    concepto:     string;
-    montoDOP:     number;
-    compraFolio:  string;
-    usuarioId:    number;
-  }): Promise<void> {
+  async asientoGastoImportacion(
+    params: {
+      gastoId:     number;
+      concepto:    string;
+      montoDOP:    number;
+      compraFolio: string;
+      usuarioId:   number;
+    },
+    manager?: EntityManager,
+  ): Promise<void> {
     if (params.montoDOP <= 0) return;
+
+    const lineas = [
+      {
+        codigo:      COD.INVENTARIO,
+        descripcion: `Costo importación — ${params.concepto}`,
+        debe:        params.montoDOP,
+        haber:       0,
+      },
+      {
+        codigo:      COD.GASTOS_IMPORT_X_APLICAR,
+        descripcion: `Gasto por aplicar — ${params.concepto}`,
+        debe:        0,
+        haber:       params.montoDOP,
+      },
+    ];
+
+    if (manager) {
+      // Dentro de una transacción externa: propagar el error para que el caller
+      // haga rollback completo. El inventario y el mayor contable deben quedar
+      // siempre en sintonía.
+      await this._crearAsientoContabilizado(
+        {
+          descripcion:     `Gasto importación: ${params.concepto} — ${params.compraFolio}`,
+          tipoOrigen:      TipoOrigenAsiento.IMPORTACION,
+          referenciaId:    params.gastoId,
+          referenciaFolio: `GIMP-${params.gastoId}`,
+          userId:          params.usuarioId,
+          lineas,
+        },
+        manager,
+      );
+      this.logger.log(
+        `Asiento gasto importación #${params.gastoId} generado (en tx) — ${params.montoDOP} DOP`,
+      );
+      return;
+    }
+
+    // Sin manager (Caso A — llamado desde aplicarGastosPendientes fuera de tx):
+    // el asiento es best-effort; un fallo no interrumpe la recepción ya confirmada.
     try {
       await this._crearAsientoContabilizado({
         descripcion:     `Gasto importación: ${params.concepto} — ${params.compraFolio}`,
@@ -769,24 +833,13 @@ export class AsientosAutomaticosService {
         referenciaId:    params.gastoId,
         referenciaFolio: `GIMP-${params.gastoId}`,
         userId:          params.usuarioId,
-        lineas: [
-          {
-            codigo:      COD.INVENTARIO,
-            descripcion: `Costo importación — ${params.concepto}`,
-            debe:        params.montoDOP,
-            haber:       0,
-          },
-          {
-            codigo:      COD.GASTOS_IMPORT_X_APLICAR,
-            descripcion: `Gasto por aplicar — ${params.concepto}`,
-            debe:        0,
-            haber:       params.montoDOP,
-          },
-        ],
+        lineas,
       });
       this.logger.log(`Asiento gasto importación #${params.gastoId} generado — ${params.montoDOP} DOP`);
     } catch (err) {
-      this.logger.error(`Error asiento gasto importación #${params.gastoId}: ${(err as Error).message}`);
+      this.logger.error(
+        `Error asiento gasto importación #${params.gastoId}: ${(err as Error).message}`,
+      );
     }
   }
 }
