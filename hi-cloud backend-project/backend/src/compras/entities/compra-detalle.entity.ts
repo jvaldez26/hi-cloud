@@ -41,9 +41,16 @@ export class CompraDetalle extends BaseEntity {
   @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true })
   cantidadRecibida?: number;
 
-  /** Costo real por unidad = subtotal ÷ cantidadTotal (para costeo/AVCO) */
+  /** Costo real por unidad = subtotal ÷ cantidadTotal (precio proveedor para AVCO) */
   @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true })
   costoUnitarioReal?: number;
+
+  /**
+   * Suma de montoUnitario de todos los GastoImportacionLinea aplicados a esta línea.
+   * costoUnitarioReal + costoImportacionUnitario = costo landing real → AVCO.
+   */
+  @Column({ type: 'decimal', precision: 12, scale: 4, default: 0 })
+  costoImportacionUnitario!: number;
 
   @Column({ type: 'decimal', precision: 5, scale: 2, default: 18 })
   porcentajeItbis!: number;

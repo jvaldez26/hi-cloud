@@ -19,6 +19,7 @@ import { TenantService } from '../tenant/tenant.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { User } from '../users/users.entity';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
+import { GastosImportacionService } from '../gastos-importacion/gastos-importacion.service';
 
 const ITBIS_DEFAULT = 18;
 
@@ -34,10 +35,11 @@ export class ComprasService {
     private inventarioService:  InventarioService,
     private valoracionService:  ValoracionStockService,
     private cxpService:         CxPService,
-    private asientosService:    AsientosAutomaticosService,
-    private tenantService:      TenantService,
-    private realtimeService:    RealtimeService,
-    @InjectDataSource() private ds: DataSource,
+    private asientosService:         AsientosAutomaticosService,
+    private tenantService:           TenantService,
+    private realtimeService:         RealtimeService,
+    private gastosImportacionService: GastosImportacionService,
+    @InjectDataSource() private ds:  DataSource,
   ) {}
 
   private async generarFolio(): Promise<string> {
@@ -256,8 +258,15 @@ export class ComprasService {
     }
 
     if (estado === CompraEstado.RECIBIDA) {
+      const empresaId   = this.tenantService.getEmpresaId();
       // 1. Registrar entrada en inventario — usar almacén de la compra o el del contexto
       const almacenIdCompra = (compra as any).almacenId ?? this.tenantService.getAlmacenId() ?? undefined;
+
+      // Leer costos de importación pendientes (solo lectura, sin efectos secundarios)
+      const costoImportMap = await this.gastosImportacionService.getCostosImportacionPorUnidad(
+        compra.id, compra.detalles, empresaId,
+      );
+
       for (const detalle of compra.detalles) {
         // cantidadTotal = facturada + bonificada — todas las unidades entran al stock
         const qtdInventario = Number((detalle as any).cantidadTotal ?? detalle.cantidad);
@@ -270,8 +279,11 @@ export class ComprasService {
           almacenIdCompra,
         );
         // 1b. Actualizar costo promedio (AVCO).
+        // costoReal = precio proveedor + costos de importación prorrateados por unidad.
         // Se omite cuando costoReal = 0 (bonificaciones puras) para no corromper el promedio.
-        const costoReal = Number((detalle as any).costoUnitarioReal ?? detalle.precioUnitario);
+        const costoBase     = Number((detalle as any).costoUnitarioReal ?? detalle.precioUnitario);
+        const costoImport   = costoImportMap.get(detalle.id) ?? 0;
+        const costoReal     = costoBase + costoImport;
         if (costoReal > 0) {
           await this.valoracionService.actualizarCostoPromedio(
             detalle.productoId,
@@ -280,6 +292,11 @@ export class ComprasService {
           );
         }
       }
+
+      // Aplicar gastos de importación: persistir lineas, actualizar detalle, crear asientos
+      await this.gastosImportacionService.aplicarGastosPendientes(
+        compra.id, compra.detalles, empresaId, compra.usuarioId, compra.folio,
+      );
 
       // 2. Crear cuenta por pagar solo si tipoPago = 'credito'
       if (!compra.tipoPago || compra.tipoPago === 'credito') {
@@ -352,8 +369,14 @@ export class ComprasService {
       );
     }
 
-    const almacenIdCompra = (compra as any).almacenId ?? this.tenantService.getAlmacenId() ?? undefined;
+    const empresaIdRecibir = this.tenantService.getEmpresaId();
+    const almacenIdCompra  = (compra as any).almacenId ?? this.tenantService.getAlmacenId() ?? undefined;
     let todosCompletos = true;
+
+    // Leer costos de importación pendientes antes del bucle (solo lectura)
+    const costoImportMapRecibir = await this.gastosImportacionService.getCostosImportacionPorUnidad(
+      compra.id, compra.detalles, empresaIdRecibir,
+    );
 
     for (const item of dto.detalles) {
       const detalle = compra.detalles.find(d => d.id === item.detalleId);
@@ -380,8 +403,10 @@ export class ComprasService {
         almacenIdCompra,
       );
 
-      // Actualizar AVCO con la cantidad recibida en esta recepción parcial.
-      const costoReal = Number((detalle as any).costoUnitarioReal ?? detalle.precioUnitario);
+      // Actualizar AVCO: precio proveedor + costo de importación por unidad
+      const costoBase   = Number((detalle as any).costoUnitarioReal ?? detalle.precioUnitario);
+      const costoImport = costoImportMapRecibir.get(detalle.id) ?? 0;
+      const costoReal   = costoBase + costoImport;
       if (costoReal > 0) {
         await this.valoracionService.actualizarCostoPromedio(
           detalle.productoId,
@@ -399,6 +424,13 @@ export class ComprasService {
     }
 
     const nuevoEstado = todosCompletos ? CompraEstado.RECIBIDA : CompraEstado.RECIBIDA_PARCIAL;
+
+    // Si la compra llega a RECIBIDA final, aplicar gastos de importación pendientes
+    if (todosCompletos) {
+      await this.gastosImportacionService.aplicarGastosPendientes(
+        compra.id, compra.detalles, empresaIdRecibir, usuario.id, compra.folio,
+      );
+    }
 
     // Crear CxP solo en la primera recepción (cuando venía de borrador/enviada)
     const esPrimeraRecepcion = compra.estado !== CompraEstado.RECIBIDA_PARCIAL;

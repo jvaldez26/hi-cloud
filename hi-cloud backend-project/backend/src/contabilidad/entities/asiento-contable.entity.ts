@@ -13,6 +13,7 @@ export enum TipoOrigenAsiento {
   AJUSTE        = 'ajuste',
   MANUFACTURA   = 'manufactura',
   PRESTAMISTA   = 'prestamista',
+  IMPORTACION   = 'importacion',
 }
 
 export enum EstadoAsiento {

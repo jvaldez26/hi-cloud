@@ -10,25 +10,26 @@ import { TenantService } from '../../tenant/tenant.service';
 
 // Códigos del plan de cuentas dominicano
 const COD = {
-  CLIENTES:           '1.1.2.01',
-  BANCOS:             '1.1.1.03',
-  CAJA:               '1.1.1.02',
-  INVENTARIO:         '1.1.3.01',
-  ITBIS_CREDITO:      '1.1.4.01',
-  PROVEEDORES:        '2.1.1.01',
-  ITBIS_POR_PAGAR:    '2.1.2.01',
-  VENTAS:             '4.1.1.01',
-  SUELDOS:            '6.1.1.01',
-  TSS_PATRONAL:       '6.1.1.02',
-  SUELDOS_X_PAGAR:    '2.1.3.01',
-  TSS_X_PAGAR:        '2.1.3.02',
-  ISR_X_PAGAR:        '2.1.2.02',
-  ITBIS_CREDITO_COMPRAS: '1.1.4.01',
-  ANTICIPOS_CLIENTES:  '2.1.5.01',  // Pasivo corriente — anticipos recibidos
-  GANANCIA_CAMBIARIA:  '4.1.3.01',  // Ingreso — ganancia en diferencia cambiaria
-  PERDIDA_CAMBIARIA:   '6.1.5.01',  // Gasto — pérdida en diferencia cambiaria
-  ITBIS_RET_POR_PAGAR: '2.1.2.03',  // Pasivo — ITBIS retenido por enterar a DGII (E41)
-  ISR_RET_POR_PAGAR:   '2.1.2.04',  // Pasivo — ISR retenido por enterar a DGII (E41)
+  CLIENTES:                '1.1.2.01',
+  BANCOS:                  '1.1.1.03',
+  CAJA:                    '1.1.1.02',
+  INVENTARIO:              '1.1.3.01',
+  ITBIS_CREDITO:           '1.1.4.01',
+  PROVEEDORES:             '2.1.1.01',
+  ITBIS_POR_PAGAR:         '2.1.2.01',
+  VENTAS:                  '4.1.1.01',
+  SUELDOS:                 '6.1.1.01',
+  TSS_PATRONAL:            '6.1.1.02',
+  SUELDOS_X_PAGAR:         '2.1.3.01',
+  TSS_X_PAGAR:             '2.1.3.02',
+  ISR_X_PAGAR:             '2.1.2.02',
+  ITBIS_CREDITO_COMPRAS:   '1.1.4.01',
+  ANTICIPOS_CLIENTES:      '2.1.5.01',  // Pasivo corriente — anticipos recibidos
+  GANANCIA_CAMBIARIA:      '4.1.3.01',  // Ingreso — ganancia en diferencia cambiaria
+  PERDIDA_CAMBIARIA:       '6.1.5.01',  // Gasto — pérdida en diferencia cambiaria
+  ITBIS_RET_POR_PAGAR:     '2.1.2.03',  // Pasivo — ITBIS retenido por enterar a DGII (E41)
+  ISR_RET_POR_PAGAR:       '2.1.2.04',  // Pasivo — ISR retenido por enterar a DGII (E41)
+  GASTOS_IMPORT_X_APLICAR: '2.1.6.01',  // Transitoria — gastos de importación hasta llegar la factura del agente
 } as const;
 
 @Injectable()
@@ -741,6 +742,51 @@ export class AsientosAutomaticosService {
       this.logger.log(`Asiento pago ${numeroPago} generado`);
     } catch (err) {
       this.logger.error(`Error asiento pago ${numeroPago}: ${(err as Error).message}`);
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Gasto de importación aplicado
+  // DR 1.1.3.01 Inventario / CR 2.1.6.01 Gastos de Importación por Aplicar
+  //
+  // La cuenta 2.1.6.01 es TRANSITORIA: queda en el pasivo hasta que el
+  // usuario registre la factura del agente aduanal como compra normal
+  // cargando contra esa misma cuenta. Así el pasivo se crea una sola vez.
+  // ──────────────────────────────────────────────────────────────────
+
+  async asientoGastoImportacion(params: {
+    gastoId:      number;
+    concepto:     string;
+    montoDOP:     number;
+    compraFolio:  string;
+    usuarioId:    number;
+  }): Promise<void> {
+    if (params.montoDOP <= 0) return;
+    try {
+      await this._crearAsientoContabilizado({
+        descripcion:     `Gasto importación: ${params.concepto} — ${params.compraFolio}`,
+        tipoOrigen:      TipoOrigenAsiento.IMPORTACION,
+        referenciaId:    params.gastoId,
+        referenciaFolio: `GIMP-${params.gastoId}`,
+        userId:          params.usuarioId,
+        lineas: [
+          {
+            codigo:      COD.INVENTARIO,
+            descripcion: `Costo importación — ${params.concepto}`,
+            debe:        params.montoDOP,
+            haber:       0,
+          },
+          {
+            codigo:      COD.GASTOS_IMPORT_X_APLICAR,
+            descripcion: `Gasto por aplicar — ${params.concepto}`,
+            debe:        0,
+            haber:       params.montoDOP,
+          },
+        ],
+      });
+      this.logger.log(`Asiento gasto importación #${params.gastoId} generado — ${params.montoDOP} DOP`);
+    } catch (err) {
+      this.logger.error(`Error asiento gasto importación #${params.gastoId}: ${(err as Error).message}`);
     }
   }
 }

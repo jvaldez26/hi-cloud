@@ -79,6 +79,9 @@ const PLAN_CUENTAS: SeedCuenta[] = [
   { codigo: '2.1.4',      nombre: 'Otras Cuentas por Pagar CP',        tipo: TipoCuenta.PASIVO,     naturaleza: A, nivel: 3, permiteMovimientos: false },
   { codigo: '2.1.5',      nombre: 'Anticipos de Clientes',             tipo: TipoCuenta.PASIVO,     naturaleza: A, nivel: 3, permiteMovimientos: false },
   { codigo: '2.1.5.01',   nombre: 'Anticipos Recibidos de Clientes',   tipo: TipoCuenta.PASIVO,     naturaleza: A, nivel: 4, permiteMovimientos: true },
+  // Cuenta transitoria para costos de importación — se salda cuando llega la factura del agente aduanal
+  { codigo: '2.1.6',      nombre: 'Cuentas Transitorias Corrientes',   tipo: TipoCuenta.PASIVO,     naturaleza: A, nivel: 3, permiteMovimientos: false },
+  { codigo: '2.1.6.01',   nombre: 'Gastos de Importación por Aplicar', tipo: TipoCuenta.PASIVO,     naturaleza: A, nivel: 4, permiteMovimientos: true },
   { codigo: '2.2',        nombre: 'Pasivo No Corriente',               tipo: TipoCuenta.PASIVO,     naturaleza: A, nivel: 2, permiteMovimientos: false },
   { codigo: '2.2.1.01',   nombre: 'Préstamos Bancarios LP',            tipo: TipoCuenta.PASIVO,     naturaleza: A, nivel: 4, permiteMovimientos: true },
 

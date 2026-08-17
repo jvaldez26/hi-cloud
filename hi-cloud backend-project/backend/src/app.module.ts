@@ -140,6 +140,7 @@ import { EcfRecibidosModule }       from './ecf-recibidos/ecf-recibidos.module';
 import { EducativoModule }          from './educativo/educativo.module';
 import { BalanzaModule }            from './balanza/balanza.module';
 import { VideosTutorialesModule }   from './videos-tutoriales/videos-tutoriales.module';
+import { GastosImportacionModule }  from './gastos-importacion/gastos-importacion.module';
 
 @Module({
   imports: [
@@ -373,6 +374,7 @@ import { VideosTutorialesModule }   from './videos-tutoriales/videos-tutoriales.
     EducativoModule,
     BalanzaModule,
     VideosTutorialesModule,
+    GastosImportacionModule,
   ],
   controllers: [AppController],
   providers: [

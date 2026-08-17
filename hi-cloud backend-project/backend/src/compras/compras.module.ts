@@ -12,14 +12,15 @@ import { InventarioModule }      from '../inventario/inventario.module';
 import { CxPModule }             from '../cxp/cxp.module';
 import { ContabilidadModule }    from '../contabilidad/contabilidad.module';
 import { TenantModule }          from '../tenant/tenant.module';
-import { ValoracionStockModule } from '../valoracion-stock/valoracion-stock.module';
+import { ValoracionStockModule }      from '../valoracion-stock/valoracion-stock.module';
+import { GastosImportacionModule }    from '../gastos-importacion/gastos-importacion.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Compra, CompraDetalle, Empresa]),
     ProveedoresModule, ProductosModule, InventarioModule,
     CxPModule, ContabilidadModule, TenantModule,
-    ValoracionStockModule,
+    ValoracionStockModule, GastosImportacionModule,
   ],
   controllers: [ComprasController],
   providers:   [ComprasService, ComprasPdfService],
