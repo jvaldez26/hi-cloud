@@ -182,7 +182,13 @@ export class RecibosCobrosService {
 
     // ── 3. Resolver caja diaria y guardar recibo ───────────────────
     const cajaDiariaId = await this.resolverCajaDiaria(empresaId, usuarioId, dto.vendedorId);
-    const numero = await this.generarNumero();
+    const numero    = await this.generarNumero();
+    // Número secuencial del registro en pagos_cobrados (RDP-XXXXX).
+    // Se genera aquí —antes de la transacción— para que el contador se
+    // incremente en su propio lock atómico, independientemente del tx.
+    const rdpNumero = await generarNumeroSecuencial(
+      this.dataSource, 'pagos_cobrados', 'numero', '^RDP-[0-9]+$', 'RDP-', 1, empresaId,
+    );
     const recibo = await this.repo.save(
       this.repo.create({
         ...dto,
@@ -227,6 +233,8 @@ export class RecibosCobrosService {
           userId:     usuarioId,
           moneda,
           tipoCambio: 1,
+          numero:     rdpNumero,   // RDP-XXXXX — NOT NULL en pagos_cobrados
+          empresaId,               // necesario para el índice único (empresaId, numero)
         }));
 
         // 2. Actualizar saldos de CxC

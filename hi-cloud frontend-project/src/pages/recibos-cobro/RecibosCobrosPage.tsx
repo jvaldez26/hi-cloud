@@ -5,7 +5,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { TableActions } from '../../components/ui/TableActions';
 import {
-  Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
+  Alert, Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   DatePicker, InputNumber, Space, Typography, Popconfirm,
   message, theme, Tooltip, Drawer, Descriptions, Divider,
 } from 'antd';
@@ -104,6 +104,7 @@ export default function RecibosCobrosPage() {
   const [modalCambiarForma,   setModalCambiarForma]   = useState<any>(null);   // recibo target
   const [nuevaFormaVal,       setNuevaFormaVal]       = useState<string>('');
   const [referenciaVal,       setReferenciaVal]       = useState('');
+  const [crearError,          setCrearError]          = useState<string | null>(null);
   const [form] = Form.useForm();
 
   const anularMut = useMutation({
@@ -205,6 +206,7 @@ export default function RecibosCobrosPage() {
       qc.invalidateQueries({ queryKey: ['cxc'] });
       qc.invalidateQueries({ queryKey: ['cxc-resumen'] });
       qc.invalidateQueries({ queryKey: ['facturas'] });
+      setCrearError(null);
       setModalCrear(false);
       setPendienteExcedente(null);
       form.resetFields();
@@ -228,7 +230,7 @@ export default function RecibosCobrosPage() {
         const dto = (crear as any).variables;
         setPendienteExcedente({ dto, excedente, pendiente });
       } else {
-        message.error(msg || 'Error inesperado', 5);
+        setCrearError(msg || 'Error inesperado al registrar el recibo');
       }
     },
   });
@@ -482,7 +484,7 @@ export default function RecibosCobrosPage() {
       <Modal
         title={<Space><CheckCircleOutlined style={{ color: token.colorSuccess }} />Nuevo Recibo de Cobro</Space>}
         open={modalCrear}
-        onCancel={() => { setModalCrear(false); form.resetFields(); setMonedaForm('DOP'); }}
+        onCancel={() => { setModalCrear(false); form.resetFields(); setMonedaForm('DOP'); setCrearError(null); }}
         onOk={() => form.submit()}
         confirmLoading={crear.isPending}
         okText="Emitir Recibo"
@@ -492,7 +494,7 @@ export default function RecibosCobrosPage() {
       >
         <Form form={form} layout="vertical"
           initialValues={{ fecha: dayjs(), metodoPago: 'efectivo' }}
-          onFinish={v => crear.mutate({
+          onFinish={v => { setCrearError(null); crear.mutate({
             ...v,
             fecha:         v.fecha?.format('YYYY-MM-DD'),
             monto:         Number(v.monto),
@@ -500,7 +502,17 @@ export default function RecibosCobrosPage() {
             clienteNombre: clientes.find((c: any) => c.id === v.clienteId)?.nombre,
             facturaId:     v.facturaId ?? undefined,
             facturaFolio:  v.facturaFolio ?? undefined,
-          })}>
+          }); }}>
+          {crearError && (
+            <Alert
+              type="error"
+              showIcon
+              message={crearError}
+              style={{ marginBottom: 16 }}
+              closable
+              onClose={() => setCrearError(null)}
+            />
+          )}
           <Form.Item name="clienteId" label="Cliente" rules={[{ required: true }]}>
             <Select
               showSearch

@@ -48,6 +48,6 @@ export class PagoCobrado extends BaseEntity {
   empresaId?: number;
 
   /** Número secuencial por empresa — RDP-00001, RDP-00002, … */
-  @Column({ length: 20, nullable: true })
-  numero?: string;
+  @Column({ length: 20 })
+  numero!: string;
 }
