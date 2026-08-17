@@ -77,6 +77,15 @@ export class ReportesController {
     return this.reportesService.getResumenGastos();
   }
 
+  @Get('dashboard/ingresos-gastos-mensuales')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Ingresos (facturas DOP) y gastos agrupados por mes — gráfico del dashboard' })
+  @ApiQuery({ name: 'fechaDesde', required: true, example: '2025-09-01', description: 'Inicio del rango (normalmente hace 11 meses)' })
+  @ApiQuery({ name: 'fechaHasta', required: true, example: '2026-08-31', description: 'Fin del rango (fin del mes actual)' })
+  getIngresosGastosMensuales(@Query() dto: FiltroFechaDto) {
+    return this.reportesService.getIngresosGastosMensuales(dto.fechaDesde, dto.fechaHasta);
+  }
+
   // ── Ventas ─────────────────────────────────────────────────────────────────
 
   @Get('ventas')

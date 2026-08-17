@@ -367,6 +367,77 @@ export class ReportesService {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
+  // GRÁFICO DASHBOARD — ingresos + gastos agrupados por mes
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Ingresos (facturas DOP emitidas/pagadas) y gastos agrupados mes a mes.
+   * Usado por el gráfico de barras/línea del dashboard.
+   * El frontend pide los 12 meses rodantes:
+   *   desde = inicio del mes de hace 11 meses
+   *   hasta = fin del mes actual
+   *
+   * Devuelve solo los meses que tienen al menos ingresos o gastos;
+   * el frontend rellena los meses vacíos a 0.
+   */
+  async getIngresosGastosMensuales(
+    desde: string,
+    hasta: string,
+  ): Promise<{ mes: number; anio: number; ingresos: number; gastos: number }[]> {
+    const [factRows, gastoRows] = await Promise.all([
+      // Facturas — solo DOP (no mezclar moneda), estados que representan venta real
+      this.dataSource.query<{ anio: string; mes: string; total: string }[]>(
+        `SELECT EXTRACT(YEAR  FROM fecha)::int AS anio,
+                EXTRACT(MONTH FROM fecha)::int AS mes,
+                COALESCE(SUM(total), 0)        AS total
+         FROM facturas
+         WHERE "isActive" = true
+           AND "empresaId" = $1
+           AND estado IN ('emitida','pagada')
+           AND COALESCE(moneda,'DOP') = 'DOP'
+           AND fecha >= $2::date AND fecha <= $3::date
+         GROUP BY anio, mes
+         ORDER BY anio, mes`,
+        [this.eid, desde, hasta],
+      ),
+      // Gastos operativos
+      this.dataSource.query<{ anio: string; mes: string; total: string }[]>(
+        `SELECT EXTRACT(YEAR  FROM fecha)::int AS anio,
+                EXTRACT(MONTH FROM fecha)::int AS mes,
+                COALESCE(SUM(total), 0)        AS total
+         FROM gastos
+         WHERE "isActive" = true
+           AND "empresaId" = $1
+           AND fecha >= $2::date AND fecha <= $3::date
+         GROUP BY anio, mes
+         ORDER BY anio, mes`,
+        [this.eid, desde, hasta],
+      ),
+    ]);
+
+    // Merge en un mapa indexado por 'YYYY-M'
+    const map = new Map<string, { mes: number; anio: number; ingresos: number; gastos: number }>();
+
+    for (const r of factRows) {
+      const key = `${r.anio}-${r.mes}`;
+      map.set(key, { anio: Number(r.anio), mes: Number(r.mes), ingresos: Number(r.total), gastos: 0 });
+    }
+    for (const r of gastoRows) {
+      const key = `${r.anio}-${r.mes}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.gastos = Number(r.total);
+      } else {
+        map.set(key, { anio: Number(r.anio), mes: Number(r.mes), ingresos: 0, gastos: Number(r.total) });
+      }
+    }
+
+    return [...map.values()].sort((a, b) =>
+      a.anio !== b.anio ? a.anio - b.anio : a.mes - b.mes,
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
   // VENTAS
   // ══════════════════════════════════════════════════════════════════════════
 

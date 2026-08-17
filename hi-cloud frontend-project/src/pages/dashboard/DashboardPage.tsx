@@ -273,7 +273,7 @@ function DashboardAdmin() {
     qc.invalidateQueries({ queryKey: ['bancos-dashboard'] });
     qc.invalidateQueries({ queryKey: ['kpis-cf'] });
     qc.invalidateQueries({ queryKey: ['actividad-cf'] });
-    qc.invalidateQueries({ queryKey: ['gastos-anual-cf'] });
+    qc.invalidateQueries({ queryKey: ['ingresos-gastos-mensuales'] });
     qc.invalidateQueries({ queryKey: ['fact-pend-cf'] });
     qc.invalidateQueries({ queryKey: ['antiguedad-cobrar'] });
     qc.invalidateQueries({ queryKey: ['antiguedad-pagar'] });
@@ -309,11 +309,15 @@ function DashboardAdmin() {
     staleTime: 30_000,
   });
 
-  // Gastos anuales para el gráfico
-  const { data: gastosAnualRaw } = useQuery<any>({
-    queryKey: ['gastos-anual-cf', anioActual],
-    queryFn:  () => api.get(`/gastos/anual?anio=${anioActual}`).then((r: any) => r.data?.data ?? r.data),
-    staleTime: 300_000,
+  // Ingresos + gastos agrupados por mes para el gráfico (12 meses rodantes)
+  const chartDesde = dayjs().subtract(11, 'month').startOf('month').format('YYYY-MM-DD');
+  const chartHasta = dayjs().endOf('month').format('YYYY-MM-DD');
+  const { data: chartSeriesRaw } = useQuery<any>({
+    queryKey: ['ingresos-gastos-mensuales', chartDesde, chartHasta],
+    queryFn:  () => api.get(
+      `/reportes/dashboard/ingresos-gastos-mensuales?fechaDesde=${chartDesde}&fechaHasta=${chartHasta}`,
+    ).then((r: any) => r.data?.data ?? r.data),
+    staleTime: 120_000,
   });
 
   // Facturas pendientes
@@ -334,7 +338,8 @@ function DashboardAdmin() {
 
   const auditLogs   = Array.isArray(auditRaw?.data) ? auditRaw.data : (Array.isArray(auditRaw) ? auditRaw : []);
   const facturas    = Array.isArray(factPendRaw) ? factPendRaw : [];
-  const gastosAnual = Array.isArray(gastosAnualRaw) ? gastosAnualRaw : (gastosAnualRaw?.data ?? []);
+  const chartSeries: { mes: number; anio: number; ingresos: number; gastos: number }[] =
+    Array.isArray(chartSeriesRaw) ? chartSeriesRaw : (chartSeriesRaw?.data ?? []);
 
   const ahora = dayjs();
 
@@ -359,19 +364,17 @@ function DashboardAdmin() {
     staleTime: 120_000,
   });
 
-  // Datos del gráfico — 12 meses
+  // Datos del gráfico — 12 meses rodantes con datos reales por mes
   const chartData = Array.from({ length: 12 }, (_, i) => {
     const d    = dayjs().subtract(11 - i, 'month');
     const mes  = d.month() + 1;
     const anio = d.year();
-    const gastoRow = (Array.isArray(gastosAnual) ? gastosAnual : [])
-      .find((r: any) => Number(r.mes) === mes && Number(r.anio ?? anioActual) === anio);
-    const gasto   = Number(gastoRow?.total ?? 0);
-    // Usar dopTotal si disponible (solo DOP) para no mezclar con USD
-    const ingresoMes = kpis?.ventas?.dopTotal ?? kpis?.ventas?.mes ?? 0;
-    const ingreso = (mes === mesActual && anio === anioActual)
-      ? Number(ingresoMes) : 0;
-    return { label: d.format('MMM YYYY'), ingreso, gasto };
+    const row  = chartSeries.find(r => r.mes === mes && r.anio === anio);
+    return {
+      label:   d.format('MMM YYYY'),
+      ingreso: Number(row?.ingresos ?? 0),
+      gasto:   Number(row?.gastos   ?? 0),
+    };
   });
 
   return (
