@@ -2,7 +2,9 @@
 import { useRncLookup } from '../../hooks/useRncLookup';
 import QRCode from 'qrcode';
 import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover, Input, Button, Segmented, Tabs, InputNumber, Radio, Checkbox } from 'antd';
-import { SearchOutlined, ShoppingCartOutlined, CheckCircleOutlined, DisconnectOutlined, LogoutOutlined, PrinterOutlined, LockOutlined, UserSwitchOutlined, SwapOutlined, EyeOutlined, EyeInvisibleOutlined, ShopOutlined, MailOutlined, FileExcelOutlined, FilePdfOutlined } from '@ant-design/icons';
+import { SearchOutlined, ShoppingCartOutlined, CheckCircleOutlined, DisconnectOutlined, LogoutOutlined, PrinterOutlined, LockOutlined, UserSwitchOutlined, SwapOutlined, EyeOutlined, EyeInvisibleOutlined, ShopOutlined, MailOutlined, FileExcelOutlined, FilePdfOutlined, PlayCircleOutlined } from '@ant-design/icons';
+import { VideoPlayerModal } from '../../components/ui/VideoPlayerModal';
+import { useVideosTutoriales } from '../../hooks/useVideosTutoriales';
 import { useAuthStore } from '../../store/auth.store';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import * as Sentry from '@sentry/react';
@@ -1231,6 +1233,9 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
   const [showOpcionesMenu, setShowOpcionesMenu] = useState(false);
   const [showModoContexto, setShowModoContexto] = useState(false);
   const [showAtalhos,  setShowAtalhos]    = useState(false);
+  const [showVideoPos, setShowVideoPos]   = useState(false);
+  const { data: videosMap } = useVideosTutoriales();
+  const videoPos = videosMap?.['pos'] ?? null;
 
   // ESC cierra el modo supervisor
   useEffect(() => {
@@ -1498,6 +1503,35 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
           </>
         )}
       </div>
+
+      {/* ── Video Tutorial (solo si hay video configurado para el POS) ── */}
+      {videoPos && (
+        <>
+          <Tooltip title="Video Tutorial del POS">
+            <button
+              onClick={() => setShowVideoPos(true)}
+              style={{
+                width: 30, height: 30, borderRadius: 6,
+                border: '1px solid rgba(255,255,255,.15)',
+                background: 'rgba(255,255,255,.06)',
+                color: '#94A3B8', cursor: 'pointer', outline: 'none',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <PlayCircleOutlined style={{ fontSize: 14 }} />
+            </button>
+          </Tooltip>
+          <VideoPlayerModal
+            open={showVideoPos}
+            onClose={() => setShowVideoPos(false)}
+            titulo={videoPos.titulo}
+            proveedor={videoPos.proveedor}
+            videoId={videoPos.videoId}
+            duracionSegundos={videoPos.duracionSegundos}
+          />
+        </>
+      )}
 
       {/* ── Clock ── */}
       <div style={{ fontSize: 13, fontWeight: 600, color: '#F1F5F9', fontVariantNumeric: 'tabular-nums',

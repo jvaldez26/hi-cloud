@@ -17,6 +17,7 @@ import { fmt } from '../../utils/formatters';
 import dayjs from 'dayjs';
 import api from '../../api/client';
 import { useAuthStore } from '../../store/auth.store';
+import { VideoTutorialButton } from '../../components/ui/TableToolbar';
 
 const { Title, Text } = Typography;
 
@@ -90,7 +91,8 @@ function ContextoHeader() {
   }, [ctx, role]);
 
   return (
-    <div style={{ marginBottom: 12 }}>
+    <div style={{ marginBottom: 12, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
       {isLoading ? (
         <Skeleton active title={{ width: 320 }} paragraph={false} />
       ) : (
@@ -143,6 +145,8 @@ function ContextoHeader() {
           ) : null}
         </div>
       )}
+      </div>
+      <VideoTutorialButton />
     </div>
   );
 }

@@ -21,6 +21,7 @@ import type { UploadFile } from 'antd';
 import { configuracionApi } from '../../api/configuracion.api';
 import { useAuthStore } from '../../store/auth.store';
 import { useThemeStore, TEMAS_SIDEBAR, type TemaSidebar } from '../../store/theme.store';
+import { VideoTutorialButton } from '../../components/ui/TableToolbar';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -2197,13 +2198,16 @@ export default function ConfiguracionPage() {
         ))}
       </div>
       <div className="config-content" style={{ flex: 1, overflowY: 'auto', padding: '0 24px 24px' }}>
-        <div style={{ marginBottom: 20, paddingTop: 4 }}>
-          <Title level={4} style={{ margin: 0 }}>{sectionLabel}</Title>
-          {empresa && (
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {empresa.nombre} · RNC {empresa.rnc}
-            </Text>
-          )}
+        <div style={{ marginBottom: 20, paddingTop: 4, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <Title level={4} style={{ margin: 0 }}>{sectionLabel}</Title>
+            {empresa && (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {empresa.nombre} · RNC {empresa.rnc}
+              </Text>
+            )}
+          </div>
+          <VideoTutorialButton />
         </div>
         {renderContent()}
       </div>

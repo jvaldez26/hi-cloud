@@ -121,6 +121,9 @@ jobs:
         # || true: evita que un timeout de registry.npmjs.org (504) rompa el CI.
         run: npm audit --audit-level=critical --omit=dev || true
 
+      - name: Verificar claves de videos tutoriales vs rutas
+        run: node scripts/check-video-modulos.mjs
+
       - name: Build producción
         run: npm run build
         env:

@@ -10,6 +10,7 @@ import {
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
+import { VIDEO_TUTORIAL_MODULOS, VIDEO_TUTORIAL_MODULOS_SET } from '../../constants/video-tutorial-modulos';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -29,22 +30,8 @@ interface VideoTutorial {
 
 type VideoForm = Omit<VideoTutorial, 'id' | 'createdAt' | 'updatedAt'>;
 
-// 83 claves de módulo
-const MODULOS_CLAVES = [
-  'activos-fijos','agro','almacenes','anticipos-cliente','aprobaciones','auditoria',
-  'bancos','caja','caja-chica','capacitacion','centro-costos','cheques','clientes',
-  'clinica','comisiones','compras','comunicaciones','conduce','contabilidad','contactos',
-  'contratos','cotizaciones','credito-cliente','crm','cuentas-estadisticas','cuotas',
-  'cxc','cxp','datafono','declaraciones','depositos','descuentos','devoluciones',
-  'divisas','documentos','ecf','empresas','encuestas','equipo','etiquetas','evaluaciones',
-  'facturas','farmacia','fidelidad','flota','gastos','gimnasio','grupos','importacion',
-  'inventario','isr','libro-ventas','licitaciones','mantenimiento','manufactura','nomina',
-  'notas-credito','notas-credito-compras','notas-debito','objetivos','optica','pre-factura',
-  'precios','prestamista','presupuestos','pro-formas','productos','proveedores','proyectos',
-  'recibos-cobro','reportes','restaurante','retenciones','servicios','servicios-pro',
-  'solicitudes-compra','sucursales','taller','tesoreria','tss','uom','vacaciones',
-  'valoracion-stock','vendedores',
-];
+// Las claves vienen de constants/video-tutorial-modulos.ts (fuente única)
+// VIDEO_TUTORIAL_MODULOS y VIDEO_TUTORIAL_MODULOS_SET ya están importados arriba
 
 // ── URL → videoId extractor ───────────────────────────────────────────────────
 
@@ -230,7 +217,7 @@ export default function VideosTutorialesAdminPage({ C }: Props) {
 
   // Módulos ya usados (para excluir del select al crear)
   const modulosUsados = new Set(videos.map(v => v.modulo));
-  const opcionesModulo = MODULOS_CLAVES
+  const opcionesModulo = VIDEO_TUTORIAL_MODULOS
     .filter(m => editingId !== null || !modulosUsados.has(m))
     .map(m => ({ value: m, label: m }));
 
@@ -239,7 +226,16 @@ export default function VideosTutorialesAdminPage({ C }: Props) {
   const columns = [
     {
       title: 'Módulo', dataIndex: 'modulo', key: 'modulo',
-      render: (m: string) => <code style={{ fontSize: 12, background: `${C.border}55`, padding: '2px 6px', borderRadius: 4 }}>{m}</code>,
+      render: (m: string) => (
+        <Space size={4}>
+          <code style={{ fontSize: 12, background: `${C.border}55`, padding: '2px 6px', borderRadius: 4 }}>{m}</code>
+          {!VIDEO_TUTORIAL_MODULOS_SET.has(m) && (
+            <Tooltip title="Clave huérfana: no existe en las rutas registradas. Actualiza constants/video-tutorial-modulos.ts.">
+              <span style={{ cursor: 'help' }}>⚠️</span>
+            </Tooltip>
+          )}
+        </Space>
+      ),
     },
     {
       title: 'Título', dataIndex: 'titulo', key: 'titulo',
@@ -316,7 +312,7 @@ export default function VideosTutorialesAdminPage({ C }: Props) {
           type="primary"
           icon={<PlusOutlined />}
           onClick={openCrear}
-          disabled={modulosUsados.size >= MODULOS_CLAVES.length}
+          disabled={modulosUsados.size >= VIDEO_TUTORIAL_MODULOS.length}
         >
           Agregar video
         </Button>
