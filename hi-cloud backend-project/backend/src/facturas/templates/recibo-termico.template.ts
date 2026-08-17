@@ -51,7 +51,7 @@ export function generarHTMLRecibo(d: ReciboPOSData): string {
     return `<div style="display:flex;justify-content:space-between;margin:1px 0;">
       <span>${desc}</span><span style="font-weight:600;">${total}</span>
     </div>
-    <div style="font-size:9px;color:#666;margin-bottom:3px;">
+    <div style="font-size:9px;margin-bottom:3px;">
       ${item.cantidad} x ${money(item.precio)}
     </div>`;
   }).join('');
@@ -77,7 +77,7 @@ export function generarHTMLRecibo(d: ReciboPOSData): string {
   .center { text-align: center; }
   .right  { text-align: right;  }
   .bold   { font-weight: bold;  }
-  .line   { border-top: 1px dashed #ccc; margin: 6px 0; }
+  .line   { border-top: 1px dashed #000; margin: 6px 0; }
   .line-solid { border-top: 2px solid #000; margin: 6px 0; }
   @media print {
     body { -webkit-print-color-adjust: exact; }
@@ -89,16 +89,16 @@ export function generarHTMLRecibo(d: ReciboPOSData): string {
 
 <!-- CABECERA -->
 <div class="center bold" style="font-size:14px;letter-spacing:-0.3px;">${d.empresaNombre}</div>
-<div class="center" style="font-size:10px;color:#555;">RNC: ${d.empresaRNC}</div>
-${d.empresaTelefono ? `<div class="center" style="font-size:10px;color:#555;">${d.empresaTelefono}</div>` : ''}
-${d.empresaWeb     ? `<div class="center" style="font-size:10px;color:#555;">${d.empresaWeb}</div>` : ''}
+<div class="center" style="font-size:10px;">RNC: ${d.empresaRNC}</div>
+${d.empresaTelefono ? `<div class="center" style="font-size:10px;">${d.empresaTelefono}</div>` : ''}
+${d.empresaWeb     ? `<div class="center" style="font-size:10px;">${d.empresaWeb}</div>` : ''}
 
 <div class="line"></div>
 
 <!-- e-CF -->
 ${d.ecfNumero ? `
 <div class="center bold" style="font-size:16px;letter-spacing:1px;">${d.ecfNumero}</div>
-<div class="center" style="font-size:9px;color:#555;">Comprobante Fiscal Electrónico</div>
+<div class="center" style="font-size:10px;">Comprobante Fiscal Electrónico</div>
 <div class="line"></div>
 ` : ''}
 
@@ -179,16 +179,16 @@ ${d.totalLineas ? `<div style="display:flex;justify-content:space-between;margin
 ${qrHtml ? `
 <div class="center" style="margin:8px 0;">
   ${qrHtml}
-  <div style="font-size:9px;color:#555;margin-top:2px;">Verificar en ecf.dgii.gov.do</div>
+  <div style="font-size:9px;margin-top:2px;">Verificar en ecf.dgii.gov.do</div>
 </div>
 <div class="line"></div>
 ` : ''}
 
 <!-- FOOTER -->
 <div class="center bold" style="font-size:12px;margin:6px 0;">¡Gracias por su compra!</div>
-<div class="center" style="font-size:9px;color:#777;">Generado por HiCloud ERP</div>
-${d.empresaWeb ? `<div class="center" style="font-size:9px;color:#777;">${d.empresaWeb}</div>` : ''}
-<div class="center" style="font-size:8px;color:#aaa;margin-top:4px;">Ley 32-23 · DGII República Dominicana</div>
+<div class="center" style="font-size:9px;">Generado por HiCloud ERP</div>
+${d.empresaWeb ? `<div class="center" style="font-size:9px;">${d.empresaWeb}</div>` : ''}
+<div class="center" style="font-size:9px;margin-top:4px;">Ley 32-23 · DGII República Dominicana</div>
 
 <br><br>
 
