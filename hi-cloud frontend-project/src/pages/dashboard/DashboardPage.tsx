@@ -240,7 +240,9 @@ function DashboardAdmin() {
   const qc        = useQueryClient();
   const isMobile  = useMobile();
   const [grupoAbierto,  setGrupoAbierto]  = useState(true);
-  const [chartTipo,     setChartTipo]     = useState<'line' | 'bar'>('line');
+  const [chartTipo, setChartTipo] = useState<'line' | 'bar'>(
+    () => (localStorage.getItem('dash_chartTipo') as 'line' | 'bar') ?? 'line',
+  );
   const chartContainerRef = useRef<HTMLDivElement>(null);
 
   const descargarGrafico = useCallback(() => {
@@ -549,7 +551,11 @@ function DashboardAdmin() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <AntTooltip title={chartTipo === 'line' ? 'Ver como barras' : 'Ver como línea'}>
                     <button
-                      onClick={() => setChartTipo(t => t === 'line' ? 'bar' : 'line')}
+                      onClick={() => setChartTipo(t => {
+                        const next = t === 'line' ? 'bar' : 'line';
+                        localStorage.setItem('dash_chartTipo', next);
+                        return next;
+                      })}
                       style={{ background: 'none', border: 'none', cursor: 'pointer',
                         color: token.colorPrimary, padding: '2px 4px', borderRadius: 4,
                         display: 'flex', alignItems: 'center', fontSize: 14 }}
