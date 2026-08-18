@@ -2,10 +2,11 @@
 import { useMobile, useTablet } from '../../hooks/useMediaQuery';
 import {
   Layout, Avatar, Dropdown, Typography, Badge, Space,
-  Button, Tooltip, theme, Select, Tag, Modal, Input, Divider, Checkbox, message,
+  Button, Tooltip, theme, Select, Tag, Modal, Input, Divider, Checkbox, message, notification,
 } from 'antd';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMisModulosAddon, useSucursalesQuery } from '../../hooks/useCatalogQueries';
+import { useNoLeidosCount, useNovedadesNoVistas, useMarcarVisto } from '../../hooks/useMensajes';
 import api from '../../api/client';
 import {
   LogoutOutlined, UserOutlined, BellOutlined,
@@ -14,7 +15,7 @@ import {
   AppstoreOutlined,
 } from '@ant-design/icons';
 import {
-  LayoutDashboard, ShoppingCart, Wallet, TrendingUp, Package,
+  Home, Inbox, LayoutDashboard, ShoppingCart, Wallet, TrendingUp, Package,
   Boxes, Briefcase, Users, BarChart3, Settings, ChevronDown,
   Menu, HelpCircle, Building2, CreditCard, Receipt,
   FileText, BookOpen, PieChart, Database, Truck,
@@ -521,10 +522,12 @@ function isActivePath(activePath: string, path: string): boolean {
 // ── Estructura de navegación ──────────────────────────────────────────────────
 
 interface QuickItem {
-  path:   string;
-  label:  string;
-  Icon:   LucideIcon;
-  badge?: string;
+  path:        string;
+  label:       string;
+  Icon:        LucideIcon;
+  badge?:      string;
+  /** Conteo de no leídos — muestra un punto rojo con número cuando > 0 */
+  badgeCount?: number;
 }
 
 interface SubItem {
@@ -541,9 +544,10 @@ interface MenuCategory {
 }
 
 const QUICK_ITEMS: QuickItem[] = [
-  { path: '/dashboard', label: 'Dashboard',      Icon: LayoutDashboard },
-  { path: '/pos',       label: 'Punto de Venta', Icon: ShoppingCart,    badge: 'POS' },
-  { path: '/caja',      label: 'Caja Diaria',    Icon: Wallet },
+  { path: '/dashboard', label: 'Inicio',             Icon: Home },
+  { path: '/bandeja',   label: 'Bandeja de entrada', Icon: Inbox },
+  { path: '/pos',       label: 'Punto de Venta',     Icon: ShoppingCart, badge: 'POS' },
+  { path: '/caja',      label: 'Caja Diaria',        Icon: Wallet },
 ];
 
 // Mapa de íconos por categoría — desacoplado de los datos para poder importar los datos
@@ -807,6 +811,17 @@ function QuickItemComp({
               color: C.chipInk, letterSpacing: 0.5, textTransform: 'uppercase',
             }}>
               {item.badge}
+            </span>
+          )}
+          {!!item.badgeCount && item.badgeCount > 0 && (
+            <span style={{
+              minWidth: 16, height: 16, borderRadius: 8, flexShrink: 0,
+              background: '#ff4d4f', color: '#fff',
+              fontSize: 9, fontWeight: 700, lineHeight: '16px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: '0 4px',
+            }}>
+              {item.badgeCount > 99 ? '99+' : item.badgeCount}
             </span>
           )}
         </>
@@ -1276,6 +1291,28 @@ export default function AppLayout() {
   const { total: totalAlertas, criticas: alertasCriticas, alertas } = useAlertas();
   const { status: pushStatus, subscribe: pushSubscribe, unsubscribe: pushUnsub } = usePushNotifications();
   const { user, logout }                = useAuthStore();
+
+  // ── Bandeja de entrada ────────────────────────────────────────────────────
+  // Una sola petición al entrar; se invalida manualmente al abrir bandeja o marcar leído.
+  const { data: noLeidosCount = 0 }       = useNoLeidosCount(!!user);
+  const { data: novedadesNoVistas = [] }  = useNovedadesNoVistas(!!user);
+  const marcarVisto                        = useMarcarVisto();
+
+  // Toast de novedad — una sola vez por novedad (vistoEn escrito en DB).
+  // Se muestra al entrar a la app, no interrumpe, desaparece en 8 s.
+  useEffect(() => {
+    if (!novedadesNoVistas.length) return;
+    novedadesNoVistas.forEach(id => marcarVisto.mutate(id));
+    notification.info({
+      message:     '¡Hay novedades en HiCloud!',
+      description: 'Nuevas funcionalidades disponibles para ti.',
+      placement:   'bottomRight',
+      duration:    8,
+      onClick:     () => window.location.assign('/bandeja?tab=novedades'),
+    });
+  // Solo cuando carga por primera vez — no re-ejecutar al mutar
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [novedadesNoVistas.length > 0]);
   const queryClient                     = useQueryClient();
 
   const currentUserRole = user?.role ?? 'viewer';
@@ -2055,7 +2092,9 @@ export default function AppLayout() {
           {QUICK_ITEMS.filter(item => rolPuedeVerRuta(item.path, userRole)).map(item => (
             <QuickItemComp
               key={item.path}
-              item={item}
+              item={item.path === '/bandeja'
+                ? { ...item, badgeCount: noLeidosCount }
+                : item}
               active={isActivePath(activePath, item.path)}
               collapsed={collapsed}
               onClick={() => { handleNavigate(item.path); }}

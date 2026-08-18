@@ -21,6 +21,7 @@ import NewVersionBanner     from './components/ui/NewVersionBanner';
 // ── Carga diferida (lazy) — mejora el tiempo de carga inicial ────────────────
 const LoginPage          = lazy(() => import('./pages/auth/LoginPage'));
 const DashboardPage      = lazy(() => import('./pages/dashboard/DashboardPage'));
+const BandejaPage        = lazy(() => import('./pages/bandeja/BandejaPage'));
 const ClientesPage       = lazy(() => import('./pages/clientes/ClientesPage'));
 const ProductosPage      = lazy(() => import('./pages/productos/ProductosPage'));
 const FacturasPage       = lazy(() => import('./pages/facturas/FacturasPage'));
@@ -676,6 +677,9 @@ export default function App() {
 
                     {/* ── Core ── */}
                     <Route path="/dashboard"                    element={<DashboardPage />} />
+                    {/* /inicio es un alias de /dashboard — mantiene URLs guardadas */}
+                    <Route path="/inicio"                       element={<DashboardPage />} />
+                    <Route path="/bandeja"                      element={<BandejaPage />} />
                     <Route path="/pos"                          element={<POSPage />} />
                     <Route path="/clientes"                     element={<ClientesPage />} />
                     <Route path="/clientes/:id/estado-cuenta"   element={<EstadoCuentaPage />} />

@@ -140,6 +140,7 @@ import { EcfRecibidosModule }       from './ecf-recibidos/ecf-recibidos.module';
 import { EducativoModule }          from './educativo/educativo.module';
 import { BalanzaModule }            from './balanza/balanza.module';
 import { VideosTutorialesModule }   from './videos-tutoriales/videos-tutoriales.module';
+import { MensajesModule }          from './mensajes/mensajes.module';
 import { GastosImportacionModule }  from './gastos-importacion/gastos-importacion.module';
 
 @Module({
@@ -374,6 +375,7 @@ import { GastosImportacionModule }  from './gastos-importacion/gastos-importacio
     EducativoModule,
     BalanzaModule,
     VideosTutorialesModule,
+    MensajesModule,
     GastosImportacionModule,
   ],
   controllers: [AppController],

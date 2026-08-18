@@ -26,6 +26,7 @@ import api from '../../api/client';
 import { demoApi, ESTADO_DEMO_LABEL, ESTADO_DEMO_COLOR } from '../../api/demo.api';
 import CobrosPage from './CobrosPage';
 import VideosTutorialesAdminPage from './VideosTutorialesAdminPage';
+import { MensajesAdminTab } from '../../components/super-admin/MensajesAdminTab';
 import { SECTORES_EMPRESARIALES } from '../../constants/sectores';
 import { fmtDop } from '../../utils/fmt';
 
@@ -2398,6 +2399,7 @@ export default function SuperAdminPage() {
               { key: 'ecf',           icon: <FileText size={15} />,   label: 'e-CF Config' },
               { key: 'modulos',       icon: <span style={{ fontSize: 15 }}>🧩</span>, label: 'Módulos Add-on' },
               { key: 'videos',        icon: <span style={{ fontSize: 15 }}>🎬</span>, label: 'Videos Tutoriales' },
+              { key: 'mensajes',      icon: <span style={{ fontSize: 15 }}>📥</span>, label: 'Mensajes' },
               { key: 'herramientas',  icon: <Settings size={15} />,   label: 'Herramientas' },
               { key: 'config',        icon: <Settings size={15} />,   label: 'Configuración' },
             ].map(t => {
@@ -2864,6 +2866,9 @@ export default function SuperAdminPage() {
             {tab === 'videos' && (
               <VideosTutorialesAdminPage C={C} />
             )}
+
+            {/* ── TAB MENSAJES ─────────────────────────────────────────────── */}
+            {tab === 'mensajes' && <MensajesAdminTab />}
 
             {/* ── TAB HERRAMIENTAS ─────────────────────────────────────────── */}
             {tab === 'herramientas' && (
