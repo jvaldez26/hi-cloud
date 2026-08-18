@@ -15,6 +15,7 @@ import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
 import AjustePreciosModal from './AjustePreciosModal';
 import { TableActions } from '../../components/ui/TableActions';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSucursalesQuery, useUomUnidadesQuery } from '../../hooks/useCatalogQueries';
 import dayjs from 'dayjs';
 import { productosApi, type ProductoPayload } from '../../api/productos.api';
 import { wmsApi } from '../../api/wms.api';
@@ -469,11 +470,7 @@ export default function ProductosPage() {
 
 // Componente invisible — precarga las unidades al abrir el formulario
 function UomMedidaSelector() {
-  useQuery({
-    queryKey: ['uom-unidades'],
-    queryFn: () => api.get('/uom').then((r: any) => r.data?.data ?? r.data),
-    staleTime: 5 * 60 * 1000,
-  });
+  useUomUnidadesQuery(); // precarga el catálogo con staleTime: Infinity
   return null;
 }
 
@@ -501,11 +498,7 @@ function ProductosCatalogo() {
   const esPesableWatch  = Form.useWatch('esPesable', form) as boolean | undefined;
   const esServicio      = tipoWatch === 'servicio';
 
-  const { data: uomUnidades = [] } = useQuery({
-    queryKey: ['uom-unidades'],
-    queryFn:  () => api.get('/uom').then((r: any) => r.data?.data ?? r.data),
-    staleTime: 5 * 60_000,
-  });
+  const { data: uomUnidades = [] } = useUomUnidadesQuery();
   const stockPrecision = useMemo(() => {
     const u = (uomUnidades as any[]).find((u: any) => u.codigo === uomWatch);
     return (u?.permiteDecimales ?? false) ? 3 : 0;
@@ -530,15 +523,7 @@ function ProductosCatalogo() {
   const [sucursalSeleccionada, setSucursalSeleccionada] = useState<number | undefined>(undefined);
 
   // Sucursales accesibles — usadas tanto en el form como en los filtros del catálogo
-  const { data: sucursales = [] } = useQuery<any[]>({
-    queryKey: ['mis-sucursales', user?.id, empresaActual],
-    queryFn:  () => api.get('/auth/mis-sucursales').then((r: any) => {
-      const d = r.data?.data ?? r.data;
-      return Array.isArray(d) ? d : [];
-    }),
-    staleTime: 60_000,
-    enabled:   !!user && !!empresaActual,
-  });
+  const { data: sucursales = [] } = useSucursalesQuery(empresaActual);
 
   // Almacenes filtrados por sucursal seleccionada — se cargan solo cuando el modal está abierto
   const { data: almacenesRaw = [] } = useQuery<any[]>({

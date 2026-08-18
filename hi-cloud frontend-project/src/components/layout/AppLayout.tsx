@@ -5,6 +5,7 @@ import {
   Button, Tooltip, theme, Select, Tag, Modal, Input, Divider, Checkbox, message,
 } from 'antd';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMisModulosAddon, useSucursalesQuery } from '../../hooks/useCatalogQueries';
 import api from '../../api/client';
 import {
   LogoutOutlined, UserOutlined, BellOutlined,
@@ -1346,13 +1347,7 @@ export default function AppLayout() {
 
   const cancelarMenu = () => { setMenuTemp(menuActivos); setModalMenu(false); };
 
-  const { data: _misModulosRes } = useQuery<{ modulos: string[] }>({
-    queryKey: ['mis-modulos-addon'],
-    queryFn: () => api.get('/modulos/mis-modulos').then((r: any) => r.data?.data ?? r.data),
-    enabled: !!user,
-    staleTime: Infinity, // catálogo estático — módulos cambian solo al contratar/cancelar
-    gcTime:    Infinity,
-  });
+  const { data: _misModulosRes } = useMisModulosAddon(!!user);
   const modulosActivos: string[] = _misModulosRes?.modulos ?? [];
 
   // Categorías filtradas: oculta /super-admin para usuarios normales,

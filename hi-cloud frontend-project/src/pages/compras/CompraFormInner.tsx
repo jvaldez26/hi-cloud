@@ -3,6 +3,7 @@ import { Form, Input, Button, Card, Row, Col, Select, DatePicker, Table,
          InputNumber, Space, Divider, message, Tag, Alert, Checkbox, theme, Tooltip, Modal } from 'antd';
 import { PlusOutlined, DeleteOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSucursalesQuery } from '../../hooks/useCatalogQueries';
 import { comprasApi, type CompraDetallePayload } from '../../api/compras.api';
 import { proveedoresApi } from '../../api/proveedores.api';
 import { productosApi } from '../../api/productos.api';
@@ -73,10 +74,7 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
     queryKey: ['almacenes-sel'],
     queryFn:  () => api.get('/almacenes?limit=200').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
   });
-  const { data: sucursales = [] } = useQuery<any[]>({
-    queryKey: ['mis-sucursales', empresaActual],
-    queryFn:  () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []),
-  });
+  const { data: sucursales = [] } = useSucursalesQuery(empresaActual);
 
   const proveedorSel = (proveedores?.data ?? []).find((p: any) => p.id === proveedorSelId);
   const esInformal   = proveedorSel

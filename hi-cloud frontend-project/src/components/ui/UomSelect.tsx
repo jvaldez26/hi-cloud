@@ -1,15 +1,10 @@
 import { Select, Input, Tooltip, Typography } from 'antd';
-import { useQuery } from '@tanstack/react-query';
-import api from '../../api/client';
+import { useUomUnidadesQuery } from '../../hooks/useCatalogQueries';
 
 const { Text } = Typography;
 
 export function UomSelect({ value, onChange }: { value?: string; onChange?: (v: string) => void }) {
-  const { data: unidades } = useQuery({
-    queryKey: ['uom-unidades'],
-    queryFn: () => api.get('/uom').then((r: any) => r.data?.data ?? r.data),
-    staleTime: 5 * 60 * 1000,
-  });
+  const { data: unidades } = useUomUnidadesQuery();
 
   const opts = (unidades ?? []).map((u: any) => ({
     value: u.codigo,

@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../api/client';
+import { useMisModulosAddon } from '../../hooks/useCatalogQueries';
 import { useAuthStore } from '../../store/auth.store';
 import { MENU_CATEGORIES_DATA, ADDON_IDS, rolPuedeVerRuta } from '../../config/menuConfig';
 
@@ -266,18 +267,8 @@ export default function CommandPalette({ open, onClose }: Props) {
   const { user } = useAuthStore();
   const userRole = user?.role ?? 'viewer';
 
-  // Compartir caché con AppLayout (misma queryKey + mismo staleTime).
-  // IMPORTANTE: en React Query el staleTime efectivo es el más corto entre todos
-  // los observers de la misma queryKey. Si AppLayout usa Infinity y CommandPalette
-  // usa 5 min, el efectivo es 5 min → la query se vuelve stale y se recarga al
-  // hacer foco. Ambos deben ser Infinity para evitar polls innecesarios.
-  const { data: _misModulosRes } = useQuery<{ modulos: string[] }>({
-    queryKey: ['mis-modulos-addon'],
-    queryFn:  () => api.get('/modulos/mis-modulos').then((r: any) => r.data?.data ?? r.data),
-    enabled:  !!user,
-    staleTime: Infinity, // catálogo estático — módulos cambian solo al contratar/cancelar
-    gcTime:    Infinity,
-  });
+  // Hook centralizado (misma queryKey + mismo staleTime que AppLayout).
+  const { data: _misModulosRes } = useMisModulosAddon(!!user);
   const modulosActivos: string[] = _misModulosRes?.modulos ?? [];
 
   // ── Índice dinámico — filtrado por rol + add-ons activos ──────────────────

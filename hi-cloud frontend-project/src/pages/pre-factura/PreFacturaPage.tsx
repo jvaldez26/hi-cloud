@@ -15,6 +15,7 @@ import {
   MailOutlined, PrinterOutlined, LoadingOutlined, EditOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSucursalesQuery, useVendedoresQuery } from '../../hooks/useCatalogQueries';
 import dayjs from 'dayjs';
 import api from '../../api/client';
 import { useAuthStore } from '../../store/auth.store';
@@ -62,17 +63,14 @@ export default function PreFacturaPage() {
 
   // ─── Queries ─────────────────────────────────────────────────────────────────
 
-  const { data: sucursales = [] } = useQuery<any[]>({ queryKey: ['mis-sucursales', empresaActual], queryFn: () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []) });
+  const { data: sucursales = [] } = useSucursalesQuery(empresaActual);
 
   const { data: clientes = [] } = useQuery<any[]>({
     queryKey: ['clientes-select'],
     queryFn:  () => api.get('/clientes?limit=200').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
   });
 
-  const { data: vendedores = [] } = useQuery<any[]>({
-    queryKey: ['vendedores-sel'],
-    queryFn:  () => api.get('/vendedores').then((r: any) => r.data?.data?.data ?? r.data?.data ?? []),
-  });
+  const { data: vendedores = [] } = useVendedoresQuery();
 
   const { data: productos = [] } = useQuery<any[]>({
     queryKey: ['productos-select'],

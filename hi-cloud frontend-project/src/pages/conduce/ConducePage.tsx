@@ -15,6 +15,7 @@ import {
 } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSucursalesQuery } from '../../hooks/useCatalogQueries';
 import dayjs from 'dayjs';
 import api from '../../api/client';
 import { useAuthStore } from '../../store/auth.store';
@@ -76,10 +77,7 @@ export default function ConducePage() {
     queryFn:  () => api.get('/clientes?limit=200').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
   });
 
-  const { data: sucursales = [] } = useQuery<any[]>({
-    queryKey: ['mis-sucursales', empresaActual],
-    queryFn:  () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []),
-  });
+  const { data: sucursales = [] } = useSucursalesQuery(empresaActual);
 
   const cargarFacturasCliente = async (cid: number) => {
     try {

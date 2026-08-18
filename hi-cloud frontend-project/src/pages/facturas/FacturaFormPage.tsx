@@ -6,6 +6,7 @@ import { PlusOutlined, DeleteOutlined, ArrowLeftOutlined,
          SafetyCertificateOutlined, SearchOutlined, PaperClipOutlined,
          FileOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSucursalesQuery, useVendedoresQuery, useProductosCatalogoQuery } from '../../hooks/useCatalogQueries';
 import { useNavigate, useParams } from 'react-router-dom';
 import { facturasApi, type FacturaDetallePayload, type FormaPagoPayload } from '../../api/facturas.api';
 import { clientesApi } from '../../api/clientes.api';
@@ -97,11 +98,7 @@ export default function FacturaFormPage() {
     queryFn:  () => clientesApi.list(1, 100),
   });
 
-  const { data: productos } = useQuery({
-    queryKey: ['productos-sel'],
-    queryFn:  () => productosApi.list(1, 5000, '', true),
-    refetchOnWindowFocus: true,
-  });
+  const { data: productos } = useProductosCatalogoQuery();
 
   const sucursalActual = useAuthStore(s => s.sucursalActual);
   const empresaActual  = useAuthStore(s => s.empresaActual);
@@ -109,15 +106,8 @@ export default function FacturaFormPage() {
 
   const [stockPorProducto, setStockPorProducto] = useState<Record<number, any[]>>({});
 
-  const { data: vendedores = [] } = useQuery<any[]>({
-    queryKey: ['vendedores-sel'],
-    queryFn:  () => api.get('/vendedores').then((r: any) => r.data?.data?.data ?? r.data?.data ?? []),
-  });
-
-  const { data: sucursales = [] } = useQuery<any[]>({
-    queryKey: ['mis-sucursales', empresaActual],
-    queryFn:  () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []),
-  });
+  const { data: vendedores = [] } = useVendedoresQuery();
+  const { data: sucursales = [] } = useSucursalesQuery(empresaActual);
 
   // ── Carga de factura existente (modo edición) ──────────────────────────────
   const { data: facturaEdit, isLoading: loadingEdit } = useQuery({

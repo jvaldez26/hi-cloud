@@ -9,6 +9,7 @@ import {
   FileExcelOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSucursalesQuery } from '../../hooks/useCatalogQueries';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -67,10 +68,7 @@ export default function ProFormasPage() {
     refetchOnWindowFocus: true,
   });
 
-  const { data: sucursales = [] } = useQuery<any[]>({
-    queryKey: ['mis-sucursales', empresaActual],
-    queryFn: () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []),
-  });
+  const { data: sucursales = [] } = useSucursalesQuery(empresaActual);
 
   const { data: pfData, isLoading } = useQuery<any>({
     queryKey: ['pro-formas', page, search, estadoFiltro],
