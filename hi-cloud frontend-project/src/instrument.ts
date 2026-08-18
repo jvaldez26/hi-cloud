@@ -96,6 +96,16 @@ if (import.meta.env.PROD && DSN) {
           (errMsg.includes('removeChild') || errMsg.includes('insertBefore'))
         ) return null;
 
+        // Service Worker offline sintético — el SW devuelve un 503 cuando el
+        // dispositivo del usuario pierde conectividad. Tiene X-SW-Offline: 1 y
+        // swGenerated: true en el body. El cliente axios ya lo descarta antes de
+        // captureException, pero si algún otro path lo captura este beforeSend
+        // es la red de seguridad.
+        if (
+          errMsg.includes('Sin conexión') ||
+          (event.extra as any)?.swOffline === true
+        ) return null;
+
         if (event.request) {
           delete event.request.data;
           delete event.request.cookies;

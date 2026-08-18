@@ -9850,8 +9850,13 @@ export default function POSPage() {
   const { data: todosProdutosData, isLoading, refetch: refetchProductos } = useQuery({
     queryKey: ['pos-products-scan', almacenActual],
     queryFn:  () => productosApi.list(1, 5000, '', true),
-    staleTime: 60_000,
-    refetchInterval: 120_000,
+    // El catálogo de 5000 productos pesa ~100 KB por respuesta.
+    // staleTime alto + sin refetch-on-focus evita que múltiples pestañas POS
+    // generen un flood al hacer foco (fenómeno observado: 127 req/min desde un solo IP).
+    // El refetchInterval mantiene el catálogo fresco cada 5 min sin tormentas de foco.
+    staleTime:            5 * 60_000,  // 5 min
+    refetchInterval:      5 * 60_000,  // cada 5 min (antes: 2 min)
+    refetchOnWindowFocus: false,        // clave: no refetchear al hacer focus
   });
   const todosProdutos: any[] = (todosProdutosData as any)?.data ?? (todosProdutosData as any) ?? [];
 

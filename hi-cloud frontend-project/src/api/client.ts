@@ -332,7 +332,13 @@ apiClient.interceptors.response.use(
     // no bugs del sistema. Se marca el error como reportado para que el onError
     // global de mutaciones no lo duplique.
     const esCancelacion = axios.isCancel?.(err) || (err as any)?.code === 'ERR_CANCELED';
-    const esServidor    = typeof status === 'number' && status >= 500;
+    // Respuestas generadas por el Service Worker (X-SW-Offline: 1) cuando el dispositivo
+    // pierde conectividad. El SW devuelve un 503 sintético — no es un fallo del backend
+    // y no aporta al debugging. Marcamos el error para que beforeSend también lo descarte.
+    const esSwOffline = err.response?.headers?.['x-sw-offline'] === '1' ||
+                        (err.response?.data as any)?.swGenerated === true;
+    if (esSwOffline) (enrichedErr as any).swOffline = true;
+    const esServidor    = typeof status === 'number' && status >= 500 && !esSwOffline;
     if (!esCancelacion && esServidor) {
       enrichedErr.__sentryReported = true;
       Sentry.captureException(err, {

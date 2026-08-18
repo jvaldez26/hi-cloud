@@ -96,13 +96,20 @@ async function networkFirstAPI(request) {
 
     const cached = await caches.match(request);
     if (cached) return cached;
+    // X-SW-Offline identifica esta respuesta como generada por el SW (no por el backend).
+    // El cliente axios la detecta y omite el reporte a Sentry — un corte de red
+    // del dispositivo del usuario no es un bug de la aplicación.
+    const swHeaders = { 'Content-Type': 'application/json', 'X-SW-Offline': '1' };
     if (request.method === 'POST') {
       return new Response(
-        JSON.stringify({ offline: true, message: 'Sin conexión — venta guardada localmente' }),
-        { status: 503, headers: { 'Content-Type': 'application/json' } },
+        JSON.stringify({ offline: true, swGenerated: true, message: 'Sin conexión — venta guardada localmente' }),
+        { status: 503, headers: swHeaders },
       );
     }
-    return new Response('Sin conexión', { status: 503 });
+    return new Response(
+      JSON.stringify({ offline: true, swGenerated: true, message: 'Sin conexión' }),
+      { status: 503, headers: swHeaders },
+    );
   }
 }
 
@@ -117,7 +124,10 @@ async function cacheFirst(request) {
     }
     return response;
   } catch {
-    return new Response('Sin conexión', { status: 503 });
+    return new Response(
+      JSON.stringify({ offline: true, swGenerated: true, message: 'Sin conexión' }),
+      { status: 503, headers: { 'Content-Type': 'application/json', 'X-SW-Offline': '1' } },
+    );
   }
 }
 
