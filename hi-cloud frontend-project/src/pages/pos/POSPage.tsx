@@ -9334,14 +9334,16 @@ const MENU_EXTRAS: Array<{ label: string; icon: string; panel: PanelId }> = [
 ];
 
 function POSBottomNav({
-  palette, menuAbierto, panelActivo, onMenuToggle, onPanelChange, onNavigate,
+  palette, menuAbierto, panelActivo, onMenuToggle, onPanelChange, onNavigate, controlCajaActivo,
 }: {
-  palette:        Palette;
-  menuAbierto:    boolean;
-  panelActivo:    PanelId;
-  onMenuToggle:   () => void;
-  onPanelChange:  (panel: PanelId) => void;
-  onNavigate:     (ruta: string) => void;
+  palette:            Palette;
+  menuAbierto:        boolean;
+  panelActivo:        PanelId;
+  onMenuToggle:       () => void;
+  onPanelChange:      (panel: PanelId) => void;
+  onNavigate:         (ruta: string) => void;
+  /** Cuando es false, Gastos/Retiros y Cierre de Caja se ocultan del menú POS. */
+  controlCajaActivo?: boolean;
 }) {
   const C = palette;
   const isDarkMode = C === darkC;
@@ -9383,14 +9385,18 @@ function POSBottomNav({
             : '-2px -4px 12px rgba(0,0,0,.12)',
           overflow: 'hidden',
         }}>
-          {MENU_EXTRAS.map((item, i) => (
+          {(() => {
+            const visibles = MENU_EXTRAS.filter(item =>
+              controlCajaActivo !== false || (item.panel !== 'gastos' && item.panel !== 'cierre-caja')
+            );
+            return visibles.map((item, i) => (
             <button
               key={item.label}
               onClick={() => { onMenuToggle(); onPanelChange(item.panel); }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 12,
                 width: '100%', padding: '11px 16px',
-                border: 'none', borderBottom: i < MENU_EXTRAS.length - 1 ? `1px solid ${C.border}` : 'none',
+                border: 'none', borderBottom: i < visibles.length - 1 ? `1px solid ${C.border}` : 'none',
                 background: 'transparent', color: C.text, fontSize: 13,
                 cursor: 'pointer', outline: 'none', textAlign: 'left',
               }}
@@ -9400,7 +9406,7 @@ function POSBottomNav({
               <span style={{ fontSize: 18, width: 24, textAlign: 'center' }}>{item.icon}</span>
               <span style={{ fontWeight: 500 }}>{item.label}</span>
             </button>
-          ))}
+          ))})()}
         </div>
       )}
 
@@ -9783,9 +9789,22 @@ export default function POSPage() {
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
   }, []);
 
+  // Datos de empresa — necesarios antes de las queries de caja para saber si
+  // el control de caja está activo. Se carga aquí (antes que el resto de las queries
+  // de empresa que venían más abajo) para poder usar controlCajaActivo como `enabled`.
+  const { data: empresa } = useQuery<any>({
+    queryKey: ['empresa-config-pos'],
+    queryFn:  () => configuracionApi.getEmpresa(),
+    staleTime: 5 * 60 * 1000,
+  });
+  // Columna directa en empresa — NO en configuracion blob.
+  // Mientras empresa no carga, asumimos false (sin control) para no bloquear la UI.
+  const controlCajaActivo = empresa?.controlCajaActivo === true;
+
   // Al cargar, si hay un vendedorId guardado, verificar si su caja sigue abierta
   // para omitir el modal de apertura automáticamente
   useEffect(() => {
+    if (!controlCajaActivo) return;   // sin control de caja no hace falta verificar
     if (!vendedorId || turnoAbierto) return;
     api.get(`/caja/hoy?vendedorId=${vendedorId}`)
       .then((res: any) => {
@@ -9818,7 +9837,9 @@ export default function POSPage() {
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
     staleTime:            0,
-    enabled:              !!vendedorId,
+    // Sin control de caja la empresa no usa turnos — no tiene sentido consultar
+    // ni mostrar errores de "no hay caja abierta" que bloquearían la venta.
+    enabled:              controlCajaActivo && !!vendedorId,
   });
 
   // Queries
@@ -9884,11 +9905,6 @@ export default function POSPage() {
   const { data: sucursales = [] } = useQuery<any[]>({
     queryKey: ['sucursales-pos'],
     queryFn:  () => api.get('/sucursales').then((r: any) => r.data?.data ?? r.data ?? []),
-  });
-  const { data: empresa } = useQuery<any>({
-    queryKey: ['empresa-config-pos'],
-    queryFn:  () => configuracionApi.getEmpresa(),
-    staleTime: 5 * 60 * 1000,
   });
 
   // tu proveedor e-CF health — null=checking, true=online, false=offline
@@ -10059,6 +10075,7 @@ export default function POSPage() {
   const totalItems    = cart.length;
 
   // Config POS — leída aquí para que propina y cambio puedan usarla
+  // controlCajaActivo ya fue derivado cerca de la declaración de empresa (antes de las queries de caja)
   const posConf                  = (empresa?.configuracion ?? {}) as Record<string, unknown>;
   // Aplicar modo por defecto desde configuración si no hay preferencia guardada
   const posModoPorDefecto = (posConf.posModoPorDefecto as string | undefined) ?? 'general';
@@ -11282,7 +11299,8 @@ export default function POSPage() {
         && (!vueltoDesproporcionado || vueltoConfirmado))
     || (!esMixto && metodoPago !== 'efectivo')
     || (!esMixto && metodoPago === 'efectivo' && montoRecibido >= totalAPagar);
-  const cajaAbierta  = cajaActivaHoy?.estado === 'abierta';
+  // Sin control de caja la empresa vende libremente — tratar como si siempre hubiera caja abierta.
+  const cajaAbierta  = !controlCajaActivo || cajaActivaHoy?.estado === 'abierta';
   // Crédito requiere cliente real seleccionado (no consumidor final por defecto)
   const clienteParaCredito = tipoPagoPos === 'CONTADO' || clienteId != null;
   const canCheckout  = canPay && (!tipoExigeRnc || rncValido) && cajaAbierta && clienteParaCredito
@@ -11310,7 +11328,7 @@ export default function POSPage() {
       background: palette.bg, fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
       color: palette.text, overflow: 'hidden',
     }}>
-      <ModalAperturaTurno open={!turnoAbierto} vendedores={vendedoresPOS} sucursales={sucursales}
+      <ModalAperturaTurno open={controlCajaActivo && !turnoAbierto} vendedores={vendedoresPOS} sucursales={sucursales}
         onAbrir={async (m, vid, sid) => {
           if (vid) {
             setVendedorId(vid);
@@ -11670,6 +11688,7 @@ export default function POSPage() {
           palette={palette}
           menuAbierto={menuNavAbierto}
           panelActivo={panelActivo}
+          controlCajaActivo={controlCajaActivo}
           onMenuToggle={() => setMenuNavAbierto(v => !v)}
           onPanelChange={async (p) => {
             if ((p as string) === 'impresora-bt') { setModalBT(true); setMenuNavAbierto(false); return; }
