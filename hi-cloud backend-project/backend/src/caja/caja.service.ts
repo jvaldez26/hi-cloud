@@ -131,6 +131,39 @@ export class CajaService {
     }
     const hoy = fechaHoyRD();
 
+    // ── Bloquear si hay una caja huérfana (abierta de un día anterior) ────────
+    // Un cajero que no cerró su turno ayer no puede abrir uno nuevo hasta cerrar
+    // el pendiente. Sin este check acumularía cajas abiertas indefinidamente.
+    // PREREQUISITO: correr el script de depuración masiva antes de desplegar este
+    // bloque, o empresas con cajas acumuladas quedarán sin poder abrir turno.
+    const where_huerfana: any[] = vendedorId
+      ? [
+          { empresaId, vendedorId,       estado: EstadoCierre.ABIERTA } as any,
+          { empresaId, vendedorId: IsNull(), estado: EstadoCierre.ABIERTA } as any,
+        ]
+      : [{ empresaId, vendedorId: IsNull(), estado: EstadoCierre.ABIERTA } as any];
+
+    const cajaHuerfana = await this.repo.findOne({
+      where: where_huerfana,
+      order: { fecha: 'ASC' }, // la más antigua primero: es la que hay que cerrar
+    });
+
+    if (cajaHuerfana) {
+      const fechaCaja = (cajaHuerfana.fecha instanceof Date
+        ? cajaHuerfana.fecha
+        : new Date(cajaHuerfana.fecha as any))
+        .toISOString().substring(0, 10);
+
+      if (fechaCaja < hoy) {
+        const [anio, mes, dia] = fechaCaja.split('-');
+        const fechaFmt = `${dia}/${mes}/${anio}`;
+        throw new BadRequestException(
+          `CAJA_HUERFANA:${cajaHuerfana.id}:` +
+          `Tienes una caja abierta desde el ${fechaFmt}. Ciérrala antes de abrir un nuevo turno.`,
+        );
+      }
+    }
+
     // Buscar caja existente para este vendedor HOY dentro de la misma empresa
     const where: any = { fecha: new Date(hoy) as any, empresaId };
     where.vendedorId = vendedorId ? vendedorId : IsNull();
