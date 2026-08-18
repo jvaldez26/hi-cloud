@@ -340,7 +340,7 @@ export default function CajaPage() {
   const [printDetalle, setPrintDetalle]     = useState(false);
   const [printLoading, setPrintLoading]     = useState(false);
 
-  // El backend ya excluye 'abierta' y filtra por mes — solo filtro local de texto
+  // Filtro local de texto; el historial ahora incluye también cajas abierta (huérfanas de días anteriores)
   const historialCerrados = useMemo(() => {
     const base: any[] = historial?.data ?? [];
     if (!searchHistorial.trim()) return base;
@@ -350,6 +350,11 @@ export default function CajaPage() {
       String(r.fecha ?? '').includes(q)
     );
   }, [historial, searchHistorial]);
+
+  // Cajas huérfanas: abiertas en días anteriores — el cajero quedó bloqueado hasta cerrarlas
+  const cajasHuerfanas = useMemo(() =>
+    (historial?.data ?? []).filter((r: any) => r.estado === 'abierta'),
+  [historial]);
 
   // Calcular diferencia en tiempo real para el modal de cierre
   const diferenciaCierre = saldoFisicoInput - (cerrarTarget?.saldoEsperado ?? 0);
@@ -884,7 +889,24 @@ ${line()}
                     style={{ width: 180 }}
                   />
                 </div>
-                {historialCerrados.length === 0 && !isLoading && (
+                {cajasHuerfanas.length > 0 && (
+                  <Alert
+                    type="error"
+                    showIcon
+                    style={{ marginBottom: 10 }}
+                    message={`${cajasHuerfanas.length === 1 ? '1 caja sin cerrar' : `${cajasHuerfanas.length} cajas sin cerrar`} de días anteriores`}
+                    description={
+                      <span>
+                        {cajasHuerfanas.map((c: any) => {
+                          const f = c.fecha ? new Date(c.fecha).toLocaleDateString('es-DO', { day:'2-digit', month:'2-digit', year:'numeric' }) : '?';
+                          return ` ${c.vendedorNombre ?? 'Admin'} (${f})`;
+                        }).join(' · ')}
+                        {' — Haz clic en la fila y ciérrala para desbloquear al cajero.'}
+                      </span>
+                    }
+                  />
+                )}
+                {historialCerrados.length === 0 && cajasHuerfanas.length === 0 && !isLoading && (
                   <Text type="secondary" style={{ fontSize: 13 }}>
                     Sin cierres registrados aún. Los cierres completados aparecerán aquí.
                   </Text>
@@ -1102,7 +1124,13 @@ ${line()}
         footer={
           <Space>
             <Button icon={<PrinterOutlined />} onClick={() => setPrintTarget(detalleCierre)}>Imprimir cierre</Button>
-            {puedeAnular && detalleCierre?.estado !== 'anulada' && (
+            {detalleCierre?.estado === 'abierta' && (
+              <Button danger icon={<LockOutlined />}
+                onClick={() => { iniciarCierre(detalleCierre); setDetalleCierre(null); }}>
+                Cerrar caja
+              </Button>
+            )}
+            {puedeAnular && detalleCierre?.estado !== 'anulada' && detalleCierre?.estado !== 'abierta' && (
               <Button danger icon={<RollbackOutlined />}
                 onClick={() => { setAnularTarget({ id: detalleCierre.id, nombre: detalleCierre.vendedorNombre ?? 'Administrador', fecha: detalleCierre.fecha }); setDetalleCierre(null); formAnular.resetFields(); }}>
                 Anular

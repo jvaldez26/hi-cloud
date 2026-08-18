@@ -565,7 +565,9 @@ export class CajaService {
   async getHistorial(page = 1, limit = 20, vendedorId?: number, mes?: number, anio?: number) {
     const empresaId  = this.tenantService.getEmpresaId();
     const sucursalId = this.tenantService.getSucursalId();
-    const where: any = { empresaId, estado: Not(EstadoCierre.ABIERTA) };
+    // Incluimos todas las cajas (incluso las ABIERTA de días anteriores)
+    // para que los admin puedan verlas y cerrarlas desde la UI.
+    const where: any = { empresaId };
     if (sucursalId) where.sucursalId = sucursalId;
     if (vendedorId !== undefined) {
       where.vendedorId = vendedorId === 0 ? IsNull() : vendedorId;
@@ -583,7 +585,6 @@ export class CajaService {
       take:  limit,
     });
 
-    // Historial solo contiene cajas cerradas — datos completos siempre para que la impresión sea íntegra
     return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
   }
 
