@@ -176,7 +176,7 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
     queryFn:  () => ecfApi.list(page, 10, estado, tipo, search),
   });
 
-  const { data: tipos } = useQuery({ queryKey: ['ecf-tipos'], queryFn: ecfApi.tipos });
+  const { data: tipos } = useQuery({ queryKey: ['ecf-tipos'], queryFn: ecfApi.tipos, staleTime: Infinity }); // catálogo estático
 
   const reenviarMut = useMutation({
     mutationFn: ecfApi.reenviar,

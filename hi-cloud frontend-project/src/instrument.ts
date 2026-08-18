@@ -80,10 +80,20 @@ if (import.meta.env.PROD && DSN) {
         // de código. Se producen cuando el SW activa mid-session y un import()
         // de hash viejo falla. El listener de vite:preloadError ya los maneja.
         const errMsg = event.exception?.values?.[0]?.value ?? '';
+        const errType = event.exception?.values?.[0]?.type ?? '';
         if (
           errMsg.includes('Failed to fetch dynamically imported module') ||
           errMsg.includes('Unable to preload CSS') ||
           (errMsg.includes('Loading chunk') && errMsg.includes('failed'))
+        ) return null;
+
+        // Google Translate (y extensiones similares) inyectan elementos <font>
+        // en el DOM, lo que rompe removeChild/insertBefore de React cuando la
+        // extensión elimina esos nodos. No es un bug nuestro y no tiene fix de código.
+        // Identificamos la huella: NotFoundError + 'removeChild' o 'insertBefore'.
+        if (
+          (errType === 'NotFoundError' || errMsg.includes('NotFoundError')) &&
+          (errMsg.includes('removeChild') || errMsg.includes('insertBefore'))
         ) return null;
 
         if (event.request) {

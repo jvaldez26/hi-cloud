@@ -1254,12 +1254,12 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
   const qc = useQueryClient();
   const [modalCambiarSucursal, setModalCambiarSucursal] = useState(false);
   const [cambiandoSucursal,    setCambiandoSucursal]    = useState(false);
-  useQuery({ queryKey: ['uom-unidades'], queryFn: () => api.get('/uom').then((r: any) => r.data?.data ?? r.data), staleTime: 5 * 60_000 });
+  useQuery({ queryKey: ['uom-unidades'], queryFn: () => api.get('/uom').then((r: any) => r.data?.data ?? r.data), staleTime: Infinity }); // catálogo estático
 
   const { data: sucursales = [] } = useQuery<{ id: number; nombre: string; esPrincipal: boolean }[]>({
     queryKey: ['mis-sucursales', empresaActual],
     queryFn: () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []),
-    staleTime: 5 * 60 * 1000,
+    staleTime: Infinity, // catálogo estático — sucursales cambian raramente
   });
   const sucursalNombre = sucursales.find(s => s.id === sucursalActual)?.nombre
     ?? localStorage.getItem('pos_sucursal_nombre') ?? undefined;
@@ -9712,8 +9712,8 @@ export default function POSPage() {
   const { data: misModulosData } = useQuery({
     queryKey: ['mis-modulos-pos'],
     queryFn: () => modulosAddonApi.misModulos(),
-    staleTime: 5 * 60_000,
-    gcTime:    10 * 60_000,
+    staleTime: Infinity, // módulos cambian solo al contratar/cancelar — catálogo estático
+    gcTime:    Infinity,
   });
   const misModulos: string[] = Array.isArray((misModulosData as any)?.modulos)
     ? (misModulosData as any).modulos
@@ -9905,15 +9905,16 @@ export default function POSPage() {
   const { data: sucursales = [] } = useQuery<any[]>({
     queryKey: ['sucursales-pos'],
     queryFn:  () => api.get('/sucursales').then((r: any) => r.data?.data ?? r.data ?? []),
+    staleTime: Infinity, // catálogo estático — cambia solo en config
   });
 
-  // tu proveedor e-CF health — null=checking, true=online, false=offline
-  // Usamos /ecf/tipos (accesible a todos los roles) en lugar de /ecf/secuencias
-  // que solo tienen ADMIN/CONTADOR — evita mostrar "Contingencia" al vendedor.
+  // Conectividad e-CF: ping al /health del backend (barato, sin DB).
+  // /ecf/tipos era el proxy anterior pero es un catálogo estático que no mide
+  // conectividad real y costaba una query DB cada 30 s por cada POS abierto.
   const { data: ecfOnline } = useQuery<boolean>({
     queryKey: ['pos-ecf-health'],
     queryFn: async () => {
-      try { await api.get('/ecf/tipos'); return true; }
+      try { await api.get('/health'); return true; }
       catch { return false; }
     },
     staleTime: 0, refetchInterval: 30_000,

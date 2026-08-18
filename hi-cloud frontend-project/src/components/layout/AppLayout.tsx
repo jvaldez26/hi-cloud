@@ -1350,7 +1350,8 @@ export default function AppLayout() {
     queryKey: ['mis-modulos-addon'],
     queryFn: () => api.get('/modulos/mis-modulos').then((r: any) => r.data?.data ?? r.data),
     enabled: !!user,
-    staleTime: 5 * 60 * 1000,
+    staleTime: Infinity, // catálogo estático — módulos cambian solo al contratar/cancelar
+    gcTime:    Infinity,
   });
   const modulosActivos: string[] = _misModulosRes?.modulos ?? [];
 
