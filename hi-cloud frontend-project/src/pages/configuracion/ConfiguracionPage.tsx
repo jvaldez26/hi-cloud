@@ -918,6 +918,46 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
     onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error'),
   });
 
+  // Control de caja — switch independiente del form, con su propio endpoint
+  const [cajaControlActivo, setCajaControlActivo] = useState<boolean>(
+    empresa?.controlCajaActivo === true,
+  );
+  useEffect(() => {
+    setCajaControlActivo(empresa?.controlCajaActivo === true);
+  }, [empresa?.controlCajaActivo]);
+
+  const cajaControlMut = useMutation({
+    mutationFn: (activo: boolean) => configuracionApi.updateControlCaja(activo),
+    onSuccess: (res: any, activo) => {
+      qc.invalidateQueries({ queryKey: ['empresa'] });
+      qc.invalidateQueries({ queryKey: ['empresa-config-pos'] });
+      setCajaControlActivo(activo);
+      const cerradas = res?.cajasAutoCerradas ?? [];
+      if (activo) {
+        message.info('Control de caja activado. El cajero deberá abrir turno antes de vender.', 6);
+      } else if (cerradas.length > 0) {
+        const nombres = cerradas.map((c: any) => c.vendedorNombre ?? `#${c.id}`).join(', ');
+        Modal.warning({
+          title: 'Control de caja desactivado',
+          content: (
+            <div>
+              <p>El control de caja fue desactivado.</p>
+              <p>Se cerraron automáticamente <strong>{cerradas.length}</strong> turno{cerradas.length !== 1 ? 's' : ''} que estaban abiertos:</p>
+              <p style={{ color: '#666', fontSize: 13 }}>{nombres}</p>
+              <p style={{ marginTop: 8, fontSize: 12, color: '#999' }}>
+                Quedaron marcados como "cerrado por sistema". No se registró diferencia ni faltante.
+              </p>
+            </div>
+          ),
+        });
+      } else {
+        message.success('Control de caja desactivado. Las ventas no requerirán abrir turno.');
+      }
+      onSaved();
+    },
+    onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error al cambiar control de caja'),
+  });
+
   const propinaActiva         = Form.useWatch('posPropinaActiva',         form);
   const modoContingencia      = Form.useWatch('posModoContingencia',      form);
   const bloquearFueraHorario  = Form.useWatch('posBloquearFueraHorario',  form);
@@ -1230,6 +1270,70 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
             </Form.Item>
           </Col>
         )}
+      </Row>
+
+      {/* ── Control de caja por turno — switch fuera del Form, endpoint propio ── */}
+      <Divider orientation="left" orientationMargin={0}>Control de Caja</Divider>
+      <Row gutter={[16, 8]}>
+        <Col xs={24}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+              <Switch
+                checked={cajaControlActivo}
+                loading={cajaControlMut.isPending}
+                onChange={activo => {
+                  if (activo) {
+                    Modal.confirm({
+                      title: 'Activar control de caja',
+                      content: (
+                        <div>
+                          <p>A partir del próximo intento de venta, el cajero deberá abrir su turno antes de facturar.</p>
+                          <p style={{ marginTop: 8, color: '#666', fontSize: 13 }}>
+                            Si el cajero ya está en el POS, el modal de apertura de turno aparecerá al intentar cobrar.
+                          </p>
+                        </div>
+                      ),
+                      okText: 'Activar',
+                      cancelText: 'Cancelar',
+                      onOk: () => cajaControlMut.mutate(true),
+                    });
+                  } else {
+                    Modal.confirm({
+                      title: 'Desactivar control de caja',
+                      content: (
+                        <div>
+                          <p>Las ventas no requerirán abrir turno.</p>
+                          <p style={{ marginTop: 8, color: '#d97706', fontSize: 13 }}>
+                            Si hay turnos abiertos en este momento, se cerrarán automáticamente
+                            como "cerrado por sistema". No se registrará diferencia ni faltante.
+                          </p>
+                        </div>
+                      ),
+                      okText: 'Desactivar',
+                      okButtonProps: { danger: true },
+                      cancelText: 'Cancelar',
+                      onOk: () => cajaControlMut.mutate(false),
+                    });
+                  }
+                }}
+              />
+              <div>
+                <Text style={{ fontSize: 13, fontWeight: 500 }}>Control de caja por turno</Text>
+                <div style={{ marginTop: 2 }}>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    Al activarlo, el cajero debe abrir turno antes de vender y cerrarlo al terminar,
+                    con conteo de efectivo. Actívalo si quieres cuadrar la gaveta cada día.
+                  </Text>
+                </div>
+                {cajaControlActivo && (
+                  <div style={{ marginTop: 6 }}>
+                    <Tag color="green" style={{ fontSize: 11 }}>✓ Activo — el cajero debe abrir turno para vender</Tag>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </Col>
       </Row>
 
       <Divider orientation="left" orientationMargin={0}>Fiscal POS</Divider>

@@ -24,6 +24,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
+import { GetUser } from '../auth/decorators/get-user.decorator';
+import { User } from '../users/users.entity';
 
 const IMAGE_FILTER = (_: any, file: { buffer: Buffer; mimetype: string; originalname: string; size: number }, cb: any) => {
   if (/^image\/(jpeg|png|svg\+xml|gif|webp|x-icon)$/.test(file.mimetype)) cb(null, true);
@@ -95,6 +97,25 @@ export class ConfiguracionController {
   @ApiOperation({ summary: 'Actualizar configuración del POS (solo ADMIN)' })
   updatePosConfig(@Body() body: { supervisorModeEnabled: boolean; maxDiscountPercent: number }) {
     return this.configuracionService.updatePosConfig(body);
+  }
+
+  @Patch('empresa/control-caja')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Activar/desactivar control de caja por turno (solo ADMIN)' })
+  updateControlCaja(
+    @Body() body: { controlCajaActivo: boolean },
+    @GetUser() user: User,
+  ) {
+    if (typeof body.controlCajaActivo !== 'boolean') {
+      throw new BadRequestException('controlCajaActivo debe ser boolean');
+    }
+    return this.configuracionService.updateControlCaja(
+      body.controlCajaActivo,
+      user.id,
+      user.nombre ?? user.email,
+    );
   }
 
   @Post('empresa/upload-logo')

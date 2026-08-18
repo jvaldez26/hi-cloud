@@ -243,6 +243,75 @@ export class ConfiguracionService implements OnModuleInit {
   }
 
   /**
+   * Actualiza controlCajaActivo para la empresa del tenant activo.
+   *
+   * Si se desactiva y hay cajas abiertas, las cierra como cerrada_por_sistema
+   * con una nota de auditoría. Nunca deja turnos colgados.
+   *
+   * Retorna el nuevo estado y la lista de cajas que fueron cerradas automáticamente.
+   */
+  async updateControlCaja(
+    activo: boolean,
+    userId: number,
+    userName: string,
+  ): Promise<{
+    controlCajaActivo: boolean;
+    cajasAutoCerradas: { id: number; vendedorNombre?: string }[];
+  }> {
+    const empresa = await this.getEmpresa();
+    const anterior = empresa.controlCajaActivo;
+
+    const cajasAutoCerradas: { id: number; vendedorNombre?: string }[] = [];
+
+    // Si se desactiva, cerrar turnos abiertos como cerrada_por_sistema
+    if (!activo && anterior) {
+      const [rows]: [{ id: number; vendedorNombre: string | null }[]] =
+        await this.empresaRepository.manager.query(
+          `SELECT id, "vendedorNombre" FROM cierres_caja
+           WHERE "empresaId" = $1 AND estado = 'abierta'`,
+          [empresa.id],
+        ) as any;
+
+      if (rows && rows.length > 0) {
+        const ahora = new Date()
+          .toLocaleString('es', {
+            timeZone: 'America/Santo_Domingo',
+            day: '2-digit', month: '2-digit', year: 'numeric',
+            hour: '2-digit', minute: '2-digit',
+          });
+        const nota =
+          `[CIERRE SISTEMA ${ahora}] Control de caja desactivado por ${userName}. ` +
+          `Turno cerrado automáticamente al apagar el control de caja.`;
+
+        await this.empresaRepository.manager.query(
+          `UPDATE cierres_caja
+              SET estado      = 'cerrada_por_sistema',
+                  notas       = COALESCE(notas || E'\\n', '') || $1,
+                  "updatedAt" = NOW()
+            WHERE "empresaId" = $2 AND estado = 'abierta'`,
+          [nota, empresa.id],
+        );
+
+        cajasAutoCerradas.push(
+          ...rows.map(r => ({ id: r.id, vendedorNombre: r.vendedorNombre ?? undefined })),
+        );
+      }
+    }
+
+    // Actualizar la columna directa
+    await this.empresaRepository.update(empresa.id, { controlCajaActivo: activo } as any);
+    await this.cache.del(CacheKeys.empresaConfig(empresa.id));
+
+    this.logger.warn(
+      `[control-caja] empresaId=${empresa.id} "${empresa.nombre}" | ` +
+      `${anterior} → ${activo} | userId=${userId} "${userName}" | ` +
+      `cajasAutoCerradas=${cajasAutoCerradas.length}`,
+    );
+
+    return { controlCajaActivo: activo, cajasAutoCerradas };
+  }
+
+  /**
    * Verifica si un RNC ya existe en otra empresa.
    * Usado por el frontend antes de mostrar el modal de confirmación.
    */
