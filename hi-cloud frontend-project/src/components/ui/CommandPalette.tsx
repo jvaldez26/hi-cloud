@@ -266,12 +266,17 @@ export default function CommandPalette({ open, onClose }: Props) {
   const { user } = useAuthStore();
   const userRole = user?.role ?? 'viewer';
 
-  // Compartir caché con AppLayout (misma queryKey)
+  // Compartir caché con AppLayout (misma queryKey + mismo staleTime).
+  // IMPORTANTE: en React Query el staleTime efectivo es el más corto entre todos
+  // los observers de la misma queryKey. Si AppLayout usa Infinity y CommandPalette
+  // usa 5 min, el efectivo es 5 min → la query se vuelve stale y se recarga al
+  // hacer foco. Ambos deben ser Infinity para evitar polls innecesarios.
   const { data: _misModulosRes } = useQuery<{ modulos: string[] }>({
     queryKey: ['mis-modulos-addon'],
     queryFn:  () => api.get('/modulos/mis-modulos').then((r: any) => r.data?.data ?? r.data),
     enabled:  !!user,
-    staleTime: 5 * 60 * 1000,
+    staleTime: Infinity, // catálogo estático — módulos cambian solo al contratar/cancelar
+    gcTime:    Infinity,
   });
   const modulosActivos: string[] = _misModulosRes?.modulos ?? [];
 

@@ -1414,7 +1414,8 @@ export default function AppLayout() {
     queryKey: ['mis-sucursales', user?.id, empresaActiva],
     queryFn:  () => api.get('/auth/mis-sucursales').then(r => r.data?.data ?? r.data ?? []),
     enabled:  !!user && !!empresaActiva,
-    staleTime: 60_000,
+    staleTime:            Infinity, // sucursales cambian raramente (solo en config)
+    refetchOnWindowFocus: false,    // evitar refetch al hacer foco con múltiples pestañas
   });
   // El nombre viene del store (localStorage) para ser inmediato al refrescar.
   // Cuando misSucursales carga, actualiza el store si el nombre cambió.
