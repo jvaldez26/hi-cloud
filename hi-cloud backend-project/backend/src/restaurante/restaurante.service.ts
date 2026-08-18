@@ -1004,7 +1004,7 @@ export class RestauranteService {
       [empresaId, desde, hasta],
     );
     const filas = await this.ds.query<any[]>(
-      `SELECT id, numero, "clienteNombre", telefono, total, estado, "repartidorNombre",
+      `SELECT id, numero, "clienteNombre", "clienteTelefono", total, estado, "repartidorNombre",
               "createdAt" AS fecha
        FROM rs_pedidos_delivery
        WHERE "empresaId"=$1 AND "createdAt"::date BETWEEN $2 AND $3
