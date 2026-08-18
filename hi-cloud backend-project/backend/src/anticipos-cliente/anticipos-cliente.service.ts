@@ -101,13 +101,23 @@ export class AnticiposClienteService implements OnModuleInit {
     // Si no hay caja abierta el anticipo se guarda igual pero sin cajaDiariaId,
     // lo que significa que NO aparecerá en el arqueo del cajero.
     // En ese caso se devuelve un aviso para que el frontend lo informe al cajero.
+    // Si el control de caja está desactivado para esta empresa, no se busca ni avisa.
+    const [empRow] = await this.ds.query<{ controlCajaActivo: boolean }[]>(
+      `SELECT "controlCajaActivo" FROM empresa WHERE id = $1 LIMIT 1`,
+      [empresaId],
+    );
+    const controlActivo = empRow?.controlCajaActivo === true;
+
     const hoy    = new Date().toISOString().split('T')[0];
-    const [caja] = await this.ds.query<{ id: number }[]>(`
-      SELECT id FROM cierres_caja
-      WHERE "empresaId" = $1 AND DATE(fecha) = $2 AND estado = 'abierta'
-      ORDER BY id DESC LIMIT 1
-    `, [empresaId, hoy]);
-    const sinCaja = !caja;
+    let caja: { id: number } | undefined;
+    if (controlActivo) {
+      [caja] = await this.ds.query<{ id: number }[]>(`
+        SELECT id FROM cierres_caja
+        WHERE "empresaId" = $1 AND DATE(fecha) = $2 AND estado = 'abierta'
+        ORDER BY id DESC LIMIT 1
+      `, [empresaId, hoy]);
+    }
+    const sinCaja = controlActivo && !caja;
     if (sinCaja) {
       this.logger.warn(
         `[anticipos] Anticipo registrado SIN caja abierta hoy — ` +

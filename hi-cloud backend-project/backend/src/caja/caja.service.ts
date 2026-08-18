@@ -136,6 +136,17 @@ export class CajaService {
     // el pendiente. Sin este check acumularía cajas abiertas indefinidamente.
     // PREREQUISITO: correr el script de depuración masiva antes de desplegar este
     // bloque, o empresas con cajas acumuladas quedarán sin poder abrir turno.
+    //
+    // Si el control de caja está desactivado para esta empresa, el check se omite:
+    // la apertura de turno no es un requisito y no debe bloquear a nadie.
+    const controlActivo = await this.controlCajaActivoParaEmpresa(empresaId);
+    if (!controlActivo) {
+      // Sin control de caja la apertura de turno es un no-op: devolvemos ok sin crear registro.
+      // Si el frontend llamó por error, no fallamos — simplemente retornamos una caja ficticia vacía.
+      this.logger.debug(`abrirCaja ignorada — controlCajaActivo=false para empresaId=${empresaId}`);
+      return { id: 0, empresaId, estado: EstadoCierre.ABIERTA } as any;
+    }
+
     const where_huerfana: any[] = vendedorId
       ? [
           { empresaId, vendedorId,       estado: EstadoCierre.ABIERTA } as any,
@@ -952,10 +963,28 @@ export class CajaService {
     };
   }
 
+  // ── Control de caja por empresa ──────────────────────────────────────────
+  /**
+   * Lee directamente desde la DB si esta empresa exige control de caja.
+   * No usa caché del ORM para garantizar la lectura correcta incluso si
+   * la entity no está cargada (p.ej. invocaciones desde otros módulos).
+   */
+  private async controlCajaActivoParaEmpresa(empresaId: number): Promise<boolean> {
+    const [row] = await this.dataSource.query<{ controlCajaActivo: boolean }[]>(
+      `SELECT "controlCajaActivo" FROM empresa WHERE id = $1 LIMIT 1`,
+      [empresaId],
+    );
+    return row?.controlCajaActivo === true;
+  }
+
   async esCajaAbiertaVendedor(
     vendedorId: number,
     empresaId:  number,
   ): Promise<{ ok: boolean; mensaje?: string }> {
+    // Si la empresa no requiere control de caja, cualquier venta está permitida.
+    const controlActivo = await this.controlCajaActivoParaEmpresa(empresaId);
+    if (!controlActivo) return { ok: true };
+
     // Buscar caja propia del vendedor O caja global (sin vendedorId asignado).
     // La caja global cubre empresas que no asocian caja por vendedor.
     const caja = await this.repo.findOne({

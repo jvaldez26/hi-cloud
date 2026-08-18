@@ -50,16 +50,26 @@ export class GastosService {
 
     // Validar que la caja indicada exista y esté abierta para la empresa.
     // Previene imputar gastos a cajas cerradas o de otros días, lo que corrompería el arqueo.
+    // La validación se salta si el control de caja está desactivado para esta empresa.
     if (dto.cajaDiariaId) {
-      const [cajaRow] = await this.dataSource.query<{ estado: string }[]>(
-        `SELECT estado FROM cierres_caja WHERE id = $1 AND "empresaId" = $2 LIMIT 1`,
-        [dto.cajaDiariaId, this.tenantService.getEmpresaId()],
+      const empresaId = this.tenantService.getEmpresaId();
+      const [empRow]  = await this.dataSource.query<{ controlCajaActivo: boolean }[]>(
+        `SELECT "controlCajaActivo" FROM empresa WHERE id = $1 LIMIT 1`,
+        [empresaId],
       );
-      if (!cajaRow) {
-        throw new BadRequestException(`La caja #${dto.cajaDiariaId} no existe o no pertenece a esta empresa.`);
-      }
-      if (cajaRow.estado !== 'abierta') {
-        throw new BadRequestException(`La caja #${dto.cajaDiariaId} ya está cerrada. No se pueden imputar gastos a una caja cerrada.`);
+      const controlActivo = empRow?.controlCajaActivo === true;
+
+      if (controlActivo) {
+        const [cajaRow] = await this.dataSource.query<{ estado: string }[]>(
+          `SELECT estado FROM cierres_caja WHERE id = $1 AND "empresaId" = $2 LIMIT 1`,
+          [dto.cajaDiariaId, empresaId],
+        );
+        if (!cajaRow) {
+          throw new BadRequestException(`La caja #${dto.cajaDiariaId} no existe o no pertenece a esta empresa.`);
+        }
+        if (cajaRow.estado !== 'abierta') {
+          throw new BadRequestException(`La caja #${dto.cajaDiariaId} ya está cerrada. No se pueden imputar gastos a una caja cerrada.`);
+        }
       }
     }
     const total = dto.monto + itbis;

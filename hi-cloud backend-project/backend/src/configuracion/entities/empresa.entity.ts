@@ -118,6 +118,17 @@ export class Empresa extends BaseEntity {
   @Column({ type: 'jsonb', nullable: true, default: {} })
   configuracion?: Record<string, unknown>;
 
+  /**
+   * Controla si la empresa exige abrir turno de caja antes de facturar.
+   * Columna directa (no en configuracion) para que ningún UPDATE parcial
+   * del blob pueda borrarla y silenciosamente impedir ventas.
+   *
+   * Default: false — sin control, vende libremente.
+   * Activar solo para empresas que usan cierres con arqueo real.
+   */
+  @Column({ default: false })
+  controlCajaActivo!: boolean;
+
   // ── Aprobación por Super Admin ────────────────────────────────────────────
   @Column({ length: 20, default: 'aprobada' })
   estadoAprobacion!: string;   // 'pendiente' | 'aprobada' | 'rechazada'
