@@ -1821,6 +1821,28 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar 
       const httpStatus = (e as any)?.response?.status;
       const errMsg: string = (e as any)?.response?.data?.errors?.[0] ?? (e as any)?.response?.data?.message ?? '';
 
+      // 400 — caja huérfana: hay una caja abierta de días anteriores sin cerrar
+      if (httpStatus === 400 && errMsg.startsWith('CAJA_HUERFANA:')) {
+        const partes = errMsg.split(':');
+        // partes[0] = 'CAJA_HUERFANA', partes[1] = cajaId, partes[2..] = mensaje
+        const mensajeHumano = partes.slice(2).join(':').trim();
+        Modal.error({
+          title: 'Caja pendiente de cierre',
+          content: (
+            <div>
+              <p style={{ marginBottom: 12 }}>{mensajeHumano}</p>
+              <p style={{ fontSize: 12, color: '#666' }}>
+                Ve al módulo <strong>Caja Diaria</strong> desde el menú principal,
+                cierra el turno pendiente y regresa para abrir el turno de hoy.
+              </p>
+            </div>
+          ),
+          okText: 'Entendido',
+        });
+        setAbriendo(false);
+        return;
+      }
+
       // 400 — caja ya cerrada hoy
       if (httpStatus === 400 && (errMsg.includes('cerrada') || errMsg.includes('ya existe') || errMsg.includes('ya abierta'))) {
         setCajaStatus('cerrada_hoy');
@@ -5882,6 +5904,11 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
       qc.invalidateQueries({ queryKey: ['pos-panel', 'anticipos'] });
       const d = res.data?.data ?? res.data;
       const anticipo = d?.anticipo;
+      // Aviso: anticipo sin caja abierta (no aparece en el arqueo del cajero)
+      const avisoCaja = d?._avisoCaja ?? anticipo?._avisoCaja;
+      if (avisoCaja) {
+        message.warning(avisoCaja, 8);
+      }
       if (anticipo) {
         message.success(`Recibo registrado + Anticipo ${anticipo.numero} (RD$ ${Number(anticipo.monto).toLocaleString('es-DO', { minimumFractionDigits: 2 })})`, 5);
       } else {
@@ -10664,6 +10691,24 @@ export default function POSPage() {
   // Sale mutation — con soporte offline
   const ventaMut = useMutation({
     mutationFn: async () => {
+      // Refrescar estado de caja justo antes de emitir. Máx. 2 s — si la red tarda
+      // o la consulta falla se procede con lo que hay en caché. El backend valida igual.
+      if (vendedorId) {
+        const vid = vendedorId;
+        await Promise.race([
+          qc.fetchQuery({
+            queryKey: ['pos-caja-abierta', vid],
+            queryFn: () => api.get(`/caja/hoy?vendedorId=${vid}`).then(r => {
+              const d = r.data?.data ?? r.data;
+              const caja = Array.isArray(d) ? d.find((c: any) => c.estado === 'abierta') ?? null : d;
+              return caja?.estado === 'abierta' ? caja : null;
+            }).catch(() => null),
+            staleTime: 0,
+          }),
+          new Promise<void>((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000)),
+        ]).catch(() => { /* timeout o error de red — continuar con caché */ });
+      }
+
       const vendedor = vendedores.find((v: any) => v.id === vendedorId);
       const tipoEcfNum = Number(tipoNcf.replace('E', ''));
       const payload = {

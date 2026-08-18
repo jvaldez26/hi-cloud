@@ -97,13 +97,23 @@ export class AnticiposClienteService implements OnModuleInit {
 
     if (monto <= 0) throw new BadRequestException('El monto debe ser mayor a 0');
 
-    // Encontrar caja diaria activa para este empresa (hoy)
+    // Encontrar caja diaria activa para este empresa (hoy).
+    // Si no hay caja abierta el anticipo se guarda igual pero sin cajaDiariaId,
+    // lo que significa que NO aparecerá en el arqueo del cajero.
+    // En ese caso se devuelve un aviso para que el frontend lo informe al cajero.
     const hoy    = new Date().toISOString().split('T')[0];
     const [caja] = await this.ds.query<{ id: number }[]>(`
       SELECT id FROM cierres_caja
       WHERE "empresaId" = $1 AND DATE(fecha) = $2 AND estado = 'abierta'
       ORDER BY id DESC LIMIT 1
     `, [empresaId, hoy]);
+    const sinCaja = !caja;
+    if (sinCaja) {
+      this.logger.warn(
+        `[anticipos] Anticipo registrado SIN caja abierta hoy — ` +
+        `empresaId=${empresaId}, monto=${monto}. El arqueo del cajero no incluirá este anticipo.`,
+      );
+    }
 
     const numero = await this.generarNumero();
 
@@ -133,7 +143,12 @@ export class AnticiposClienteService implements OnModuleInit {
 
     if (asientoId) await this.repo.update(anticipo.id, { asientoId });
 
-    return this.repo.findOneByOrFail({ id: anticipo.id });
+    const saved = await this.repo.findOneByOrFail({ id: anticipo.id });
+    // Adjuntar aviso si no hay caja abierta hoy (el anticipo se guardó igual pero
+    // sin cajaDiariaId y no aparecerá en el arqueo del cajero).
+    return sinCaja
+      ? { ...saved, _avisoCaja: 'Este anticipo se registró sin caja abierta hoy y no aparecerá en el arqueo del cajero.' }
+      : saved;
   }
 
   // ── Aplicar anticipo a una CxC ─────────────────────────────────────────────

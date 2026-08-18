@@ -559,7 +559,7 @@ export class CajaService {
        FROM cierres_caja c
        WHERE EXTRACT(MONTH FROM c.fecha) = $1
          AND EXTRACT(YEAR  FROM c.fecha) = $2
-         AND c.estado != 'abierta'
+         AND c.estado NOT IN ('abierta', 'cerrada_por_sistema')
          AND c."empresaId" = $3`,
       [mes, anio, empresaId],
     );
@@ -919,7 +919,10 @@ export class CajaService {
     };
   }
 
-  async esCajaAbiertaVendedor(vendedorId: number, empresaId: number): Promise<boolean> {
+  async esCajaAbiertaVendedor(
+    vendedorId: number,
+    empresaId:  number,
+  ): Promise<{ ok: boolean; mensaje?: string }> {
     // Buscar caja propia del vendedor O caja global (sin vendedorId asignado).
     // La caja global cubre empresas que no asocian caja por vendedor.
     const caja = await this.repo.findOne({
@@ -929,6 +932,26 @@ export class CajaService {
       ],
       order: { fecha: 'DESC' },
     });
-    return !!caja;
+
+    if (!caja) return { ok: false, mensaje: 'no_caja' };
+
+    // Detectar caja huérfana: abierta pero de un día anterior.
+    // No se filtra por fecha desde el inicio para soportar turnos que cruzan la medianoche,
+    // pero si la diferencia supera las 24 horas es una caja olvidada abierta desde días atrás.
+    const fechaCaja = (caja.fecha instanceof Date ? caja.fecha : new Date(caja.fecha as any))
+      .toISOString().substring(0, 10);
+    const hoy = fechaHoyRD();
+
+    if (fechaCaja < hoy) {
+      const [anio, mes, dia] = fechaCaja.split('-');
+      const fechaFormateada  = `${dia}/${mes}/${anio}`;
+      return {
+        ok:     false,
+        mensaje: `CAJA_HUERFANA:${caja.id}:Tienes una caja abierta desde el ${fechaFormateada}. ` +
+                 `Ciérrala antes de facturar.`,
+      };
+    }
+
+    return { ok: true };
   }
 }

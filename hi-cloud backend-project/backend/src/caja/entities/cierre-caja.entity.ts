@@ -5,9 +5,13 @@ import {
 import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
 export enum EstadoCierre {
-  ABIERTA  = 'abierta',
-  CERRADA  = 'cerrada',
-  REVISADA = 'revisada',
+  ABIERTA        = 'abierta',
+  CERRADA        = 'cerrada',
+  REVISADA       = 'revisada',
+  /** Cierre administrativo sin cuadre: se usa para depurar cajas huérfanas
+   *  (abiertas y nunca cerradas). No implica diferencia ni faltante del cajero.
+   *  Excluida de los reportes de descuadre. */
+  CERRADA_SISTEMA = 'cerrada_por_sistema',
 }
 
 @TenantScoped()

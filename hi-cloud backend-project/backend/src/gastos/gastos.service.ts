@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import {
@@ -47,6 +47,21 @@ export class GastosService {
     const info  = CATEGORIA_LABELS[dto.categoria];
     // Gasto menor (E43): ITBIS siempre 0 — todo el monto va como exento
     const itbis = info?.generaE43 ? 0 : (dto.itbis ?? 0);
+
+    // Validar que la caja indicada exista y esté abierta para la empresa.
+    // Previene imputar gastos a cajas cerradas o de otros días, lo que corrompería el arqueo.
+    if (dto.cajaDiariaId) {
+      const [cajaRow] = await this.dataSource.query<{ estado: string }[]>(
+        `SELECT estado FROM cierres_caja WHERE id = $1 AND "empresaId" = $2 LIMIT 1`,
+        [dto.cajaDiariaId, this.tenantService.getEmpresaId()],
+      );
+      if (!cajaRow) {
+        throw new BadRequestException(`La caja #${dto.cajaDiariaId} no existe o no pertenece a esta empresa.`);
+      }
+      if (cajaRow.estado !== 'abierta') {
+        throw new BadRequestException(`La caja #${dto.cajaDiariaId} ya está cerrada. No se pueden imputar gastos a una caja cerrada.`);
+      }
+    }
     const total = dto.monto + itbis;
     const fecha = new Date(dto.fecha);
     const periodo = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;

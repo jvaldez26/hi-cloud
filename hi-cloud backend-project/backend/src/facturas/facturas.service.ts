@@ -856,13 +856,17 @@ export class FacturasService {
     if (estado === FacturaEstado.EMITIDA) {
       // Verificar que hay caja abierta si la factura viene del POS (tiene vendedorId)
       if ((factura as any).vendedorId) {
-        const cajaAbierta = await this.cajaService.esCajaAbiertaVendedor(
+        const cajaCheck = await this.cajaService.esCajaAbiertaVendedor(
           (factura as any).vendedorId,
           factura.empresaId,
         );
-        if (!cajaAbierta) {
+        if (!cajaCheck.ok) {
+          const esHuerfana = cajaCheck.mensaje?.startsWith('CAJA_HUERFANA:');
           throw new BadRequestException(
-            'No hay una caja diaria abierta para este vendedor. Abre el turno antes de facturar.',
+            esHuerfana
+              // Extrae solo la parte descriptiva después de "CAJA_HUERFANA:ID:"
+              ? cajaCheck.mensaje!.split(':').slice(2).join(':').trim()
+              : 'No hay una caja diaria abierta para este vendedor. Abre el turno antes de facturar.',
           );
         }
       }
