@@ -351,10 +351,18 @@ export default function CajaPage() {
     );
   }, [historial, searchHistorial]);
 
-  // Cajas huérfanas: abiertas en días anteriores — el cajero quedó bloqueado hasta cerrarlas
-  const cajasHuerfanas = useMemo(() =>
-    (historial?.data ?? []).filter((r: any) => r.estado === 'abierta'),
-  [historial]);
+  // Cajas huérfanas: abiertas en días ANTERIORES (no hoy) — el cajero quedó bloqueado hasta cerrarlas
+  const cajasHuerfanas = useMemo(() => {
+    // Fecha de hoy en local como string YYYY-MM-DD, sin conversión UTC
+    const h = new Date();
+    const hoyStr = `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, '0')}-${String(h.getDate()).padStart(2, '0')}`;
+    return (historial?.data ?? []).filter((r: any) => {
+      if (r.estado !== 'abierta') return false;
+      // Comparamos strings YYYY-MM-DD directamente para evitar conversión de zona horaria
+      const fechaCaja = String(r.fecha ?? '').substring(0, 10);
+      return fechaCaja < hoyStr;
+    });
+  }, [historial]);
 
   // Calcular diferencia en tiempo real para el modal de cierre
   const diferenciaCierre = saldoFisicoInput - (cerrarTarget?.saldoEsperado ?? 0);
@@ -898,7 +906,10 @@ ${line()}
                     description={
                       <span>
                         {cajasHuerfanas.map((c: any) => {
-                          const f = c.fecha ? new Date(c.fecha).toLocaleDateString('es-DO', { day:'2-digit', month:'2-digit', year:'numeric' }) : '?';
+                          // Parsear como string para evitar conversión UTC→local que cambia el día
+                          const raw = String(c.fecha ?? '').substring(0, 10); // YYYY-MM-DD
+                          const [anio, mes, dia] = raw.split('-');
+                          const f = raw ? `${dia}/${mes}/${anio}` : '?';
                           return ` ${c.vendedorNombre ?? 'Admin'} (${f})`;
                         }).join(' · ')}
                         {' — Haz clic en la fila y ciérrala para desbloquear al cajero.'}
@@ -1124,12 +1135,17 @@ ${line()}
         footer={
           <Space>
             <Button icon={<PrinterOutlined />} onClick={() => setPrintTarget(detalleCierre)}>Imprimir cierre</Button>
-            {detalleCierre?.estado === 'abierta' && (
-              <Button danger icon={<LockOutlined />}
-                onClick={() => { iniciarCierre(detalleCierre); setDetalleCierre(null); }}>
-                Cerrar caja
-              </Button>
-            )}
+            {detalleCierre?.estado === 'abierta' && (() => {
+              const h = new Date();
+              const hoyStr = `${h.getFullYear()}-${String(h.getMonth()+1).padStart(2,'0')}-${String(h.getDate()).padStart(2,'0')}`;
+              const esHuerfana = String(detalleCierre.fecha ?? '').substring(0, 10) < hoyStr;
+              return esHuerfana ? (
+                <Button danger icon={<LockOutlined />}
+                  onClick={() => { iniciarCierre(detalleCierre); setDetalleCierre(null); }}>
+                  Cerrar caja
+                </Button>
+              ) : null;
+            })()}
             {puedeAnular && detalleCierre?.estado !== 'anulada' && detalleCierre?.estado !== 'abierta' && (
               <Button danger icon={<RollbackOutlined />}
                 onClick={() => { setAnularTarget({ id: detalleCierre.id, nombre: detalleCierre.vendedorNombre ?? 'Administrador', fecha: detalleCierre.fecha }); setDetalleCierre(null); formAnular.resetFields(); }}>
