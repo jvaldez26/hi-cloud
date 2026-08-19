@@ -321,7 +321,14 @@ export class DeclaracionesService {
         f.notas,
         e.numero                                        AS "encf",
         e."estadoDGII"                                  AS "estadoDgii",
-        COALESCE(c."rncReceptor", c.rfc, '')            AS "rncComprador",
+        -- Fuente prioritaria: rncComprador del e-CF (valor oficial declarado a DGII).
+        -- Fallback: rncReceptor del cliente (filtrando '000000000' que es placeholder).
+        COALESCE(
+          NULLIF(btrim(e."rncComprador"), ''),
+          NULLIF(NULLIF(btrim(c."rncReceptor"), ''), '000000000'),
+          NULLIF(c.rfc, '000000000'),
+          ''
+        )                                               AS "rncComprador",
         -- Misma razón social que se declaró en el e-CF: varios clientes pueden
         -- compartir RNC (p.ej. escuelas de un distrito educativo) y ante DGII
         -- todos van con la razón social registrada de ese contribuyente
