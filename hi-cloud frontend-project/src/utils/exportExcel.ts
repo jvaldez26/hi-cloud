@@ -43,26 +43,63 @@ export async function exportar606(data: any, mes: number, anio: number) {
 }
 
 // ── Exportar Reporte 607 ─────────────────────────────────────────────────────
+// Columnas según Formato de Envío de Ventas de Bienes y Servicios (DGII 2023)
 export async function exportar607(data: any, mes: number, anio: number) {
+  // DGII exige fecha sin guiones: YYYYMMDD
+  const fmtFecha = (f: string) => (f ? f.replace(/-/g, '').substring(0, 8) : '');
+
   const filas = (data?.filas ?? []).map((r: any) => ({
-    '#':             r.linea,
-    'RNC Comprador': r.rncComprador ?? '',
-    'e-NCF':         r.encf ?? '',
-    'Tipo NCF':      r.tipoNcf ?? '',
-    'Fecha':         r.fechaComprobante ?? '',
-    'Monto':         Number(r.montoFacturado ?? 0),
-    'ITBIS':         Number(r.itbis ?? 0),
+    'No':                             r.linea,
+    'RNC/Cédula o Pasaporte':         r.rncComprador ?? '',
+    'Tipo Identificación':            r.tipoId ?? '',
+    'Número Comprobante Fiscal':      r.encf ?? '',
+    'NCF Modificado':                 '',
+    'Tipo de Ingreso':                r.tipoIngreso ?? '',
+    'Fecha Comprobante':              fmtFecha(r.fechaComprobante),
+    'Fecha Retención':                '',
+    'Monto Facturado':                Number(r.montoFacturado ?? 0),
+    'ITBIS Facturado':                Number(r.itbis ?? 0),
+    'ITBIS Retenido Terceros':        Number(r.itbisRetenido ?? 0),
+    'Retención Renta por Terceros':   Number(r.isrRetenido ?? 0),
+    'ISR Percibido':                  0,
+    'Impuesto Selectivo al Consumo':  0,
+    'Otros Impuestos/Tasas':          0,
+    'Monto Propina Legal':            0,
+    'Efectivo':                       Number(r.efectivo ?? 0),
+    'Cheque/Transferencia/Depósito':  Number(r.chequeTransferencia ?? 0),
+    'Tarjeta Débito/Crédito':         Number(r.tarjeta ?? 0),
+    'Venta a Crédito':                Number(r.credito ?? 0),
+    'Bonos o Certificados de Regalo': Number(r.bonos ?? 0),
+    'Permuta':                        Number(r.permuta ?? 0),
+    'Otras Formas de Ventas':         Number(r.otras ?? 0),
   }));
 
   // Fila de totales
+  const t = data?.totales ?? {};
   filas.push({
-    '#':             'TOTALES',
-    'RNC Comprador': '',
-    'e-NCF':         '',
-    'Tipo NCF':      `${data?.totalLineas ?? filas.length} registros`,
-    'Fecha':         '',
-    'Monto':         Number(data?.totales?.montoFacturado ?? 0),
-    'ITBIS':         Number(data?.totales?.itbis ?? 0),
+    'No':                             'TOTALES',
+    'RNC/Cédula o Pasaporte':         '',
+    'Tipo Identificación':            '',
+    'Número Comprobante Fiscal':      `${data?.totalLineas ?? (filas.length)} registros`,
+    'NCF Modificado':                 '',
+    'Tipo de Ingreso':                '',
+    'Fecha Comprobante':              '',
+    'Fecha Retención':                '',
+    'Monto Facturado':                Number(t.montoFacturado ?? 0),
+    'ITBIS Facturado':                Number(t.itbis ?? 0),
+    'ITBIS Retenido Terceros':        0,
+    'Retención Renta por Terceros':   0,
+    'ISR Percibido':                  0,
+    'Impuesto Selectivo al Consumo':  0,
+    'Otros Impuestos/Tasas':          0,
+    'Monto Propina Legal':            0,
+    'Efectivo':                       Number(t.efectivo ?? 0),
+    'Cheque/Transferencia/Depósito':  Number(t.transferencia ?? 0),
+    'Tarjeta Débito/Crédito':         Number(t.tarjeta ?? 0),
+    'Venta a Crédito':                Number(t.credito ?? 0),
+    'Bonos o Certificados de Regalo': 0,
+    'Permuta':                        0,
+    'Otras Formas de Ventas':         0,
   });
 
   await exportarExcel(filas, `Formato-607-${anio}-${String(mes).padStart(2, '0')}`);
