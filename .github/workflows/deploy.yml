@@ -65,47 +65,11 @@ jobs:
       - name: Validar entidades TypeORM
         working-directory: 'hi-cloud backend-project/backend'
         run: |
-          # DataTypeNotSupportedError: columnas @Column sin type explícito + "!: string | null"
-          # generan metadata Object → TypeORM 0.3.28 rechaza en producción aunque TS compile OK.
-          # Columnas con type: 'text', type: 'date', etc. están BIEN — solo detectar las sin type.
-          node -e "
-            const fs = require('fs');
-            const path = require('path');
-            function walk(dir) {
-              let r = [];
-              for (const f of fs.readdirSync(dir)) {
-                const fp = path.join(dir, f);
-                if (fs.statSync(fp).isDirectory()) r = r.concat(walk(fp));
-                else if (f.endsWith('.entity.ts')) r.push(fp);
-              }
-              return r;
-            }
-            const bad = [];
-            for (const file of walk('src')) {
-              const lines = fs.readFileSync(file, 'utf8').split('\n');
-              for (let i = 0; i < lines.length; i++) {
-                const line = lines[i];
-                // Inline: @Column({...}) field!: string | null; en una sola línea sin type:
-                if (line.includes('!: string | null') && line.includes('@Column(') && !line.includes('type:')) {
-                  bad.push(file + ':' + (i+1) + ': ' + line.trim());
-                }
-                // Multi-línea: @Column en línea anterior sin type:
-                if (i > 0 && line.includes('!: string | null') && !line.includes('@Column(')) {
-                  const prev = lines[i-1].trim();
-                  if (prev.startsWith('@Column(') && !prev.includes('type:')) {
-                    bad.push(file + ':' + (i+1) + ': ' + line.trim());
-                  }
-                }
-              }
-            }
-            if (bad.length > 0) {
-              console.error('❌ Entidades con tipo incompatible con TypeORM 0.3.28 (sin type explícito):');
-              bad.forEach(b => console.error(' ', b));
-              console.error('SOLUCIÓN: Cambiar a \"?: string\" o agregar type: en el @Column()');
-              process.exit(1);
-            }
-            console.log('✅ Entidades OK');
-          "
+          # Detecta @Column sin type: explícito donde el tipo TypeScript es una unión con null/undefined.
+          # TypeORM 0.3.x + reflect-metadata emite Object para estos tipos → DataTypeNotSupportedError
+          # en AppDataSource.initialize() aunque TypeScript compile sin errores.
+          # Excluye FK columns (mirror @JoinColumn y decoradores @ManyToOne/@OneToOne).
+          node scripts/validate-entity-types.js
 
       - name: Build
         working-directory: 'hi-cloud backend-project/backend'
