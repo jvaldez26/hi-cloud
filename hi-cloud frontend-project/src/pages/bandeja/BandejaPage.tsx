@@ -17,7 +17,7 @@ import type { MensajeBandeja } from '../../api/mensajes.api';
 
 const { Text, Title, Paragraph } = Typography;
 
-// ─── Estado vacío con copy real ───────────────────────────────────────────────
+// ─── Estado vacío ─────────────────────────────────────────────────────────────
 
 function EstadoVacio({ tab }: { tab: string }) {
   const contenido: Record<string, { titulo: string; descripcion: string }> = {
@@ -56,68 +56,117 @@ function EstadoVacio({ tab }: { tab: string }) {
 function MensajeItem({
   mensaje,
   tab,
+  expanded,
+  onToggle,
   onLeer,
   onArchivar,
 }: {
-  mensaje:   MensajeBandeja;
-  tab:       string;
-  onLeer:    (id: string) => void;
-  onArchivar:(id: string) => void;
+  mensaje:    MensajeBandeja;
+  tab:        string;
+  expanded:   boolean;
+  onToggle:   (id: string) => void;
+  onLeer:     (id: string) => void;
+  onArchivar: (id: string) => void;
 }) {
   const noLeido = !mensaje.leidoEn;
-  const fecha = dayjs(mensaje.fechaPublicacion).fromNow();
+
+  const handleToggle = () => {
+    onToggle(mensaje.id);
+    // Marcar como leído al abrir si aún no lo estaba
+    if (noLeido && !expanded) onLeer(mensaje.id);
+  };
 
   return (
     <div
-      onClick={() => { if (noLeido) onLeer(mensaje.id); }}
+      role="button"
+      tabIndex={0}
+      aria-expanded={expanded}
+      onClick={handleToggle}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleToggle(); } }}
       style={{
-        padding:       '16px 20px',
+        padding:       '14px 20px',
         borderBottom:  '1px solid var(--color-border, #f0f0f0)',
-        cursor:         noLeido ? 'pointer' : 'default',
-        background:     noLeido ? 'var(--color-bg-unread, rgba(22,119,255,0.04))' : 'transparent',
+        cursor:        'pointer',
+        background:    noLeido && !expanded
+          ? 'var(--color-bg-unread, rgba(22,119,255,0.04))'
+          : expanded
+          ? 'var(--color-bg-expanded, rgba(0,0,0,0.02))'
+          : 'transparent',
         display:       'flex',
         gap:           '12px',
         alignItems:    'flex-start',
         transition:    'background 0.15s',
+        outline:       'none',
       }}
+      onFocus={e => { e.currentTarget.style.boxShadow = 'inset 0 0 0 2px rgba(22,119,255,0.35)'; }}
+      onBlur={e => { e.currentTarget.style.boxShadow = 'none'; }}
     >
       {/* Indicador de no leído */}
-      <div style={{ paddingTop: 6, flexShrink: 0 }}>
-        {noLeido
-          ? <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#1677ff' }} />
-          : <div style={{ width: 8, height: 8 }} />
-        }
+      <div style={{ paddingTop: 5, flexShrink: 0, width: 8 }}>
+        {noLeido && (
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#1677ff' }} />
+        )}
       </div>
 
       {/* Contenido */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-          <Text strong={noLeido} style={{ fontSize: 14 }}>
+        {/* Cabecera: título + fecha */}
+        <div style={{
+          display:        'flex',
+          justifyContent: 'space-between',
+          alignItems:     'baseline',
+          gap:            8,
+        }}>
+          <Text
+            strong={noLeido}
+            style={{ fontSize: 14, color: noLeido ? 'var(--color-text, inherit)' : undefined }}
+          >
             {mensaje.titulo}
             {mensaje.editadoEn && (
-              <Text type="secondary" style={{ fontSize: 11, marginLeft: 6 }}>(editado)</Text>
+              <Text type="secondary" style={{ fontSize: 11, marginLeft: 6, fontWeight: 400 }}>
+                (editado)
+              </Text>
             )}
           </Text>
-          <Text type="secondary" style={{ fontSize: 12, flexShrink: 0 }}>{fecha}</Text>
+          <Text type="secondary" style={{ fontSize: 12, flexShrink: 0 }}>
+            {dayjs(mensaje.fechaPublicacion).fromNow()}
+          </Text>
         </div>
-        <Paragraph
-          ellipsis={{ rows: 2 }}
-          type="secondary"
-          style={{ margin: '4px 0 0', fontSize: 13 }}
-        >
-          {mensaje.cuerpo}
-        </Paragraph>
+
+        {/* Resumen (2 líneas) o cuerpo completo expandido */}
+        {expanded ? (
+          <div
+            style={{
+              marginTop:    8,
+              maxWidth:     '65ch',
+              whiteSpace:   'pre-line',   // respeta \n del texto original
+              lineHeight:   1.65,
+              fontSize:     14,
+              color:        'var(--color-text-secondary, rgba(0,0,0,0.65))',
+            }}
+          >
+            {mensaje.cuerpo}
+          </div>
+        ) : (
+          <Paragraph
+            ellipsis={{ rows: 2 }}
+            type="secondary"
+            style={{ margin: '4px 0 0', fontSize: 13 }}
+          >
+            {mensaje.cuerpo}
+          </Paragraph>
+        )}
       </div>
 
-      {/* Acciones */}
+      {/* Acciones — stopPropagation para que no disparen el toggle */}
       {tab !== 'archivo' && (
-        <Space style={{ flexShrink: 0 }}>
+        <Space style={{ flexShrink: 0 }} onClick={e => e.stopPropagation()}>
           {noLeido && (
             <Tooltip title="Marcar como leído">
               <Button
                 type="text" size="small"
                 icon={<MailOpen size={14} />}
-                onClick={e => { e.stopPropagation(); onLeer(mensaje.id); }}
+                onClick={() => onLeer(mensaje.id)}
               />
             </Tooltip>
           )}
@@ -125,7 +174,7 @@ function MensajeItem({
             <Button
               type="text" size="small"
               icon={<Archive size={14} />}
-              onClick={e => { e.stopPropagation(); onArchivar(mensaje.id); }}
+              onClick={() => onArchivar(mensaje.id)}
             />
           </Tooltip>
         </Space>
@@ -138,17 +187,22 @@ function MensajeItem({
 
 function PestanaContenido({
   tab,
-  label,
 }: {
-  tab:   'principal' | 'novedades' | 'archivo';
-  label: string;
+  tab: 'principal' | 'novedades' | 'archivo';
 }) {
   const { data: mensajes = [], isLoading } = useBandeja(tab);
-  const marcarLeido        = useMarcarLeido();
-  const archivar           = useArchivar();
-  const marcarTodosLeidos  = useMarcarTodosLeidos();
+  const marcarLeido       = useMarcarLeido();
+  const archivar          = useArchivar();
+  const marcarTodosLeidos = useMarcarTodosLeidos();
+
+  // ID del mensaje actualmente expandido (null = ninguno)
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const noLeidos = mensajes.filter(m => !m.leidoEn).length;
+
+  const handleToggle = (id: string) => {
+    setExpandedId(prev => (prev === id ? null : id));
+  };
 
   if (isLoading) {
     return <div style={{ padding: 40, textAlign: 'center' }}><Spin /></div>;
@@ -159,11 +213,11 @@ function PestanaContenido({
       {/* Barra de acciones */}
       {tab !== 'archivo' && mensajes.length > 0 && (
         <div style={{
-          padding:       '8px 20px',
-          borderBottom:  '1px solid var(--color-border, #f0f0f0)',
-          display:       'flex',
-          alignItems:    'center',
-          gap:            8,
+          padding:      '8px 20px',
+          borderBottom: '1px solid var(--color-border, #f0f0f0)',
+          display:      'flex',
+          alignItems:   'center',
+          gap:           8,
         }}>
           {noLeidos > 0 && (
             <Button
@@ -186,6 +240,8 @@ function PestanaContenido({
             key={m.id}
             mensaje={m}
             tab={tab}
+            expanded={expandedId === m.id}
+            onToggle={handleToggle}
             onLeer={id => marcarLeido.mutate(id)}
             onArchivar={id => archivar.mutate(id)}
           />
@@ -210,12 +266,12 @@ export default function BandejaPage() {
           {count > 0 && <Badge count={count} size="small" />}
         </Space>
       ),
-      children: <PestanaContenido tab="principal" label="Principal" />,
+      children: <PestanaContenido tab="principal" />,
     },
     {
       key:      'novedades',
       label:    'Novedades',
-      children: <PestanaContenido tab="novedades" label="Novedades" />,
+      children: <PestanaContenido tab="novedades" />,
     },
     {
       key:      'archivo',
@@ -225,7 +281,7 @@ export default function BandejaPage() {
           Archivo
         </Space>
       ),
-      children: <PestanaContenido tab="archivo" label="Archivo" />,
+      children: <PestanaContenido tab="archivo" />,
     },
   ];
 
