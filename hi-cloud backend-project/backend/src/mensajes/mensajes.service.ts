@@ -50,11 +50,11 @@ export class MensajesService {
                      : tab === 'novedades' ? `AND m.tipo = 'novedad'`
                      : '';
 
-    // Archivo: solo mensajes que el usuario archivó (ml.archivadoEn IS NOT NULL)
-    // Principal/Novedades: excluir archivados (la row puede no existir — LEFT JOIN → null es OK)
+    // Archivo: solo mensajes que el usuario archivó y no eliminó
+    // Principal/Novedades: excluir archivados y eliminados
     const archivadoFilter = tab === 'archivo'
-      ? `AND ml."archivadoEn" IS NOT NULL`
-      : `AND (ml."archivadoEn" IS NULL)`;
+      ? `AND ml."archivadoEn" IS NOT NULL AND (ml."eliminadoEn" IS NULL)`
+      : `AND (ml."archivadoEn" IS NULL) AND (ml."eliminadoEn" IS NULL)`;
 
     return this.ds.query(`
       SELECT
@@ -97,6 +97,7 @@ export class MensajesService {
       WHERE ${MENSAJES_ACTIVOS_WHERE}
         AND (ml."leidoEn"     IS NULL)
         AND (ml."archivadoEn" IS NULL)
+        AND (ml."eliminadoEn" IS NULL)
         AND ${DESTINATARIO_FILTER}
     `, [usuarioId, empresaId]);
     return count ?? 0;
@@ -120,6 +121,7 @@ export class MensajesService {
         AND m.tipo = 'novedad'
         AND (ml."vistoEn"     IS NULL)
         AND (ml."archivadoEn" IS NULL)
+        AND (ml."eliminadoEn" IS NULL)
         AND ${DESTINATARIO_FILTER}
       ORDER BY m."fechaPublicacion" DESC
     `, [usuarioId, empresaId]);
@@ -158,6 +160,56 @@ export class MensajesService {
     `, [mensajeId, usuarioId]);
   }
 
+  /** Quita el archivado de un mensaje (vuelve a Principal o Novedades) */
+  async desarchivar(mensajeId: string, usuarioId: number): Promise<void> {
+    await this.ds.query(`
+      INSERT INTO mensajes_lectura ("mensajeId", "usuarioId", "archivadoEn")
+      VALUES ($1, $2, NULL)
+      ON CONFLICT ("mensajeId", "usuarioId")
+      DO UPDATE SET "archivadoEn" = NULL
+    `, [mensajeId, usuarioId]);
+  }
+
+  /** Soft-delete: ocultar mensaje de la bandeja del usuario */
+  async eliminar(mensajeId: string, usuarioId: number): Promise<void> {
+    await this.ds.query(`
+      INSERT INTO mensajes_lectura ("mensajeId", "usuarioId", "eliminadoEn", "leidoEn")
+      VALUES ($1, $2, now(), now())
+      ON CONFLICT ("mensajeId", "usuarioId")
+      DO UPDATE SET
+        "eliminadoEn" = now(),
+        "leidoEn"     = COALESCE(mensajes_lectura."leidoEn", EXCLUDED."leidoEn")
+    `, [mensajeId, usuarioId]);
+  }
+
+  /** Soft-delete en lote: ocultar varios mensajes a la vez */
+  async eliminarBulk(mensajeIds: string[], usuarioId: number): Promise<void> {
+    if (!mensajeIds.length) return;
+    const values = mensajeIds.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2}, now(), now())`).join(', ');
+    const params = mensajeIds.flatMap(id => [id, usuarioId]);
+    await this.ds.query(`
+      INSERT INTO mensajes_lectura ("mensajeId", "usuarioId", "eliminadoEn", "leidoEn")
+      VALUES ${values}
+      ON CONFLICT ("mensajeId", "usuarioId")
+      DO UPDATE SET
+        "eliminadoEn" = now(),
+        "leidoEn"     = COALESCE(mensajes_lectura."leidoEn", EXCLUDED."leidoEn")
+    `, params);
+  }
+
+  /** Desarchiva en lote */
+  async desarchivarBulk(mensajeIds: string[], usuarioId: number): Promise<void> {
+    if (!mensajeIds.length) return;
+    const values = mensajeIds.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2}, NULL)`).join(', ');
+    const params = mensajeIds.flatMap(id => [id, usuarioId]);
+    await this.ds.query(`
+      INSERT INTO mensajes_lectura ("mensajeId", "usuarioId", "archivadoEn")
+      VALUES ${values}
+      ON CONFLICT ("mensajeId", "usuarioId")
+      DO UPDATE SET "archivadoEn" = NULL
+    `, params);
+  }
+
   /** Marca todos los mensajes de una pestaña como leídos */
   async marcarTodosLeidos(usuarioId: number, tab: 'principal' | 'novedades'): Promise<void> {
     const empresaId = this.tenantService.getEmpresaId();
@@ -173,6 +225,7 @@ export class MensajesService {
         ${tipoFilter}
         AND (ml."leidoEn"     IS NULL)
         AND (ml."archivadoEn" IS NULL)
+        AND (ml."eliminadoEn" IS NULL)
         AND ${DESTINATARIO_FILTER}
     `, [usuarioId, empresaId]);
 

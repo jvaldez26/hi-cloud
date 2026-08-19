@@ -1,6 +1,7 @@
 import {
   Controller, Get, Patch, Post, Delete,
   Param, Query, Body, UseGuards, HttpCode, HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 
@@ -72,6 +73,36 @@ export class MensajesController {
     @Query('tab') tab: 'principal' | 'novedades' = 'principal',
   ) {
     return this.svc.marcarTodosLeidos(usuario.id, tab);
+  }
+
+  @Patch(':id/desarchivar')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Quitar el archivado de un mensaje (vuelve a la pestaña de origen)' })
+  desarchivar(@Param('id') id: string, @GetUser() usuario: User) {
+    return this.svc.desarchivar(id, usuario.id);
+  }
+
+  @Patch(':id/eliminar')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Soft-delete: ocultar mensaje de la bandeja del usuario' })
+  eliminar(@Param('id') id: string, @GetUser() usuario: User) {
+    return this.svc.eliminar(id, usuario.id);
+  }
+
+  @Post('eliminar-bulk')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Soft-delete en lote: ocultar varios mensajes a la vez' })
+  eliminarBulk(@Body('ids') ids: string[], @GetUser() usuario: User) {
+    if (!Array.isArray(ids) || !ids.length) throw new BadRequestException('ids debe ser un array no vacío');
+    return this.svc.eliminarBulk(ids, usuario.id);
+  }
+
+  @Post('desarchivar-bulk')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Desarchivar varios mensajes a la vez' })
+  desarchivarBulk(@Body('ids') ids: string[], @GetUser() usuario: User) {
+    if (!Array.isArray(ids) || !ids.length) throw new BadRequestException('ids debe ser un array no vacío');
+    return this.svc.desarchivarBulk(ids, usuario.id);
   }
 }
 

@@ -97,6 +97,18 @@ export const mensajesApi = {
   marcarTodosLeidos: (tab: 'principal' | 'novedades') =>
     api.patch('/mensajes/leer-todos', null, { params: { tab } }),
 
+  desarchivar: (id: string) =>
+    api.patch(`/mensajes/${id}/desarchivar`),
+
+  eliminar: (id: string) =>
+    api.patch(`/mensajes/${id}/eliminar`),
+
+  eliminarBulk: (ids: string[]) =>
+    api.post('/mensajes/eliminar-bulk', { ids }),
+
+  desarchivarBulk: (ids: string[]) =>
+    api.post('/mensajes/desarchivar-bulk', { ids }),
+
   // ─── Admin ───────────────────────────────────────────────
 
   adminListar: () =>

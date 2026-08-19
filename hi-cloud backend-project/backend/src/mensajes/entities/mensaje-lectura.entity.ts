@@ -41,6 +41,10 @@ export class MensajeLectura {
   @Column({ type: 'timestamp', nullable: true })
   archivadoEn: Date | null;
 
+  /** Soft-delete desde la bandeja del usuario (eliminadoEn IS NOT NULL → no aparece) */
+  @Column({ type: 'timestamp', nullable: true })
+  eliminadoEn: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 }

@@ -96,9 +96,50 @@ export function useArchivar() {
     mutationFn: (id: string) => mensajesApi.archivar(id),
     onSuccess:  () => {
       qc.invalidateQueries({ queryKey: MENSAJES_KEYS.noLeidosCount });
-      // Refrescar todas las pestañas
       qc.invalidateQueries({ queryKey: ['mensajes-bandeja'] });
     },
+  });
+}
+
+/** Desarchivar un mensaje (vuelve a Principal o Novedades) */
+export function useDesarchivar() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => mensajesApi.desarchivar(id),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['mensajes-bandeja'] }),
+  });
+}
+
+/** Soft-delete de un mensaje */
+export function useEliminar() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => mensajesApi.eliminar(id),
+    onSuccess:  () => {
+      qc.invalidateQueries({ queryKey: MENSAJES_KEYS.noLeidosCount });
+      qc.invalidateQueries({ queryKey: ['mensajes-bandeja'] });
+    },
+  });
+}
+
+/** Soft-delete en lote */
+export function useEliminarBulk() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) => mensajesApi.eliminarBulk(ids),
+    onSuccess:  () => {
+      qc.invalidateQueries({ queryKey: MENSAJES_KEYS.noLeidosCount });
+      qc.invalidateQueries({ queryKey: ['mensajes-bandeja'] });
+    },
+  });
+}
+
+/** Desarchivar en lote */
+export function useDesarchivarBulk() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) => mensajesApi.desarchivarBulk(ids),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['mensajes-bandeja'] }),
   });
 }
 
