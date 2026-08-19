@@ -623,7 +623,15 @@ export class FacturasService {
 
     if (search) {
       qb.andWhere(
-        '(f.folio ILIKE :s OR cliente.nombre ILIKE :s OR cliente.rfc ILIKE :s)',
+        `(f.folio ILIKE :s
+          OR cliente.nombre ILIKE :s
+          OR cliente.rfc   ILIKE :s
+          OR EXISTS (
+            SELECT 1 FROM ecf e
+            WHERE e."facturaId" = f.id
+              AND e."documentoOrigenTipo" = 'FACTURA'
+              AND e.numero ILIKE :s
+          ))`,
         { s: `%${search}%` },
       );
     }
