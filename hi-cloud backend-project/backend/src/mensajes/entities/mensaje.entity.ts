@@ -43,7 +43,7 @@ export class Mensaje {
    * NOTA: suscripciones.plan es un ENUM de PostgreSQL (suscripciones_plan_enum).
    * Al comparar este campo contra él en SQL crudo, usar ::text explícito.
    */
-  @Column({ length: 50, nullable: true })
+  @Column({ type: 'varchar', length: 50, nullable: true })
   destinatarioPlan: string | null;
 
   /** Puede ser futura (mensaje programado) */
