@@ -1019,7 +1019,7 @@ export class RestauranteService {
       `SELECT COALESCE(SUM(monto),0)::numeric AS "totalPropinas",
               COALESCE(AVG(monto),0)::numeric AS "propinaPromedio",
               COUNT(*)::int AS total
-       FROM rs_propinas WHERE "empresaId"=$1 AND "createdAt"::date BETWEEN $2 AND $3`,
+       FROM rs_propinas WHERE "empresaId"=$1 AND "fecha"::date BETWEEN $2 AND $3`,
       [empresaId, desde, hasta],
     );
     const filas = await this.ds.query<any[]>(
@@ -1027,7 +1027,7 @@ export class RestauranteService {
               COALESCE(SUM(p.monto),0)::numeric AS "totalPropinas",
               COALESCE(AVG(p.monto),0)::numeric AS promedio
        FROM rs_propinas p
-       WHERE p."empresaId"=$1 AND p."createdAt"::date BETWEEN $2 AND $3
+       WHERE p."empresaId"=$1 AND p."fecha"::date BETWEEN $2 AND $3
        GROUP BY p."meseroNombre" ORDER BY "totalPropinas" DESC`,
       [empresaId, desde, hasta],
     );
