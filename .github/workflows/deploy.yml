@@ -404,7 +404,7 @@ jobs:
             # y el mensaje queda enterrado. Con este check aparece explícito.
             # ──────────────────────────────────────────────────────────────────
             echo "  → Validando metadata de entidades TypeORM..."
-            timeout 30 node -e "
+            CAPA0_OUT=$(timeout 90 node -e "
               const { AppDataSource } = require('./dist/data-source');
               AppDataSource.initialize()
                 .then(ds => {
@@ -415,18 +415,23 @@ jobs:
                 .then(() => process.exit(0))
                 .catch(err => {
                   console.error('  ❌ DataSource.initialize() falló:', err.message);
+                  console.error('  STACK:', err.stack);
                   process.exit(1);
                 });
-            " || {
+            " 2>&1)
+            CAPA0_EXIT=$?
+            echo "$CAPA0_OUT"
+            if [ $CAPA0_EXIT -ne 0 ]; then
               echo "❌ CAPA 0: DataSource metadata inválido — abortando ANTES de correr migraciones"
-              echo "  → Diagnóstico típico: columna con 'string|null' o 'number|null' sin type: explícito"
-              echo "  → Buscar en las entidades nuevas: @Column() campo!: Tipo | null sin type:'...'"
+              echo "  → Salida completa:"
+              echo "$CAPA0_OUT"
+              echo "  → Exit code: $CAPA0_EXIT (124 = timeout de 90s, 1 = error en node)"
               rm -rf dist
               if [ -d /home/ubuntu/hicloud/.backup-dist ]; then
                 cp -r /home/ubuntu/hicloud/.backup-dist dist
               fi
               exit 1
-            }
+            fi
 
             echo "  → Corriendo migraciones pendientes..."
             node -e "
@@ -440,6 +445,7 @@ jobs:
                 })
                 .catch(err => {
                   console.error('  ❌ Migración falló:', err.message);
+                  console.error('  STACK:', err.stack);
                   process.exit(1);
                 });
             " || {
