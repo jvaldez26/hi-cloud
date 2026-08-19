@@ -44,15 +44,26 @@ export async function exportar606(data: any, mes: number, anio: number) {
 
 // ── Exportar Reporte 607 ─────────────────────────────────────────────────────
 export async function exportar607(data: any, mes: number, anio: number) {
-  const filas = (data?.detalle ?? []).map((r: any) => ({
-    'Folio':           r.folio,
-    'NCF':             r.ncf,
-    'RNC Receptor':    r.rncReceptor,
-    'Receptor':        r.nombreReceptor,
-    'Fecha':           r.fecha,
-    'Monto Anulado':   Number(r.montoAnulado),
-    'Fecha Anulación': r.fechaAnulacion,
+  const filas = (data?.filas ?? []).map((r: any) => ({
+    '#':             r.linea,
+    'RNC Comprador': r.rncComprador ?? '',
+    'e-NCF':         r.encf ?? '',
+    'Tipo NCF':      r.tipoNcf ?? '',
+    'Fecha':         r.fechaComprobante ?? '',
+    'Monto':         Number(r.montoFacturado ?? 0),
+    'ITBIS':         Number(r.itbis ?? 0),
   }));
+
+  // Fila de totales
+  filas.push({
+    '#':             'TOTALES',
+    'RNC Comprador': '',
+    'e-NCF':         '',
+    'Tipo NCF':      `${data?.totalLineas ?? filas.length} registros`,
+    'Fecha':         '',
+    'Monto':         Number(data?.totales?.montoFacturado ?? 0),
+    'ITBIS':         Number(data?.totales?.itbis ?? 0),
+  });
 
   await exportarExcel(filas, `Formato-607-${anio}-${String(mes).padStart(2, '0')}`);
 }
