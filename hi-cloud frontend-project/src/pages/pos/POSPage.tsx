@@ -10714,22 +10714,35 @@ export default function POSPage() {
   // Sale mutation — con soporte offline
   const ventaMut = useMutation({
     mutationFn: async () => {
-      // Refrescar estado de caja justo antes de emitir. Máx. 2 s — si la red tarda
-      // o la consulta falla se procede con lo que hay en caché. El backend valida igual.
-      if (vendedorId) {
+      // Verificar caja con dato fresco justo antes de cobrar.
+      // Regla: solo bloquear si el servidor CONFIRMA que no hay caja abierta.
+      // Si la red tarda (timeout 5 s) o falla → dejar pasar; el backend valida igual.
+      if (vendedorId && controlCajaActivo) {
         const vid = vendedorId;
-        await Promise.race([
-          qc.fetchQuery({
-            queryKey: ['pos-caja-abierta', vid],
-            queryFn: () => api.get(`/caja/hoy?vendedorId=${vid}`).then(r => {
-              const d = r.data?.data ?? r.data;
-              const caja = Array.isArray(d) ? d.find((c: any) => c.estado === 'abierta') ?? null : d;
-              return caja?.estado === 'abierta' ? caja : null;
-            }).catch(() => null),
-            staleTime: 0,
-          }),
-          new Promise<void>((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000)),
-        ]).catch(() => { /* timeout o error de red — continuar con caché */ });
+        const queryFnCaja = () =>
+          api.get(`/caja/hoy?vendedorId=${vid}`).then(r => {
+            const d = r.data?.data ?? r.data;
+            const caja = Array.isArray(d) ? d.find((c: any) => c.estado === 'abierta') ?? null : d;
+            return caja?.estado === 'abierta' ? caja : null;
+          }).catch(() => null);
+
+        let cajaStatus: 'abierta' | 'cerrada' | 'desconocida' = 'desconocida';
+        try {
+          const race = await Promise.race([
+            qc.fetchQuery({ queryKey: ['pos-caja-abierta', vid], queryFn: queryFnCaja, staleTime: 0 })
+              .then(data => ({ kind: 'ok' as const, data })),
+            new Promise<{ kind: 'timeout' }>(resolve =>
+              setTimeout(() => resolve({ kind: 'timeout' }), 5000)),
+          ]);
+          cajaStatus = race.kind === 'timeout' ? 'desconocida' : (race.data ? 'abierta' : 'cerrada');
+        } catch {
+          cajaStatus = 'desconocida'; // error de red → dejar pasar; backend decide
+        }
+
+        // Solo bloquear con dato fresco confirmado. Desconocida = timeout/error → continuar.
+        if (cajaStatus === 'cerrada') {
+          throw new Error('SIN_CAJA');
+        }
       }
 
       const vendedor = vendedores.find((v: any) => v.id === vendedorId);
@@ -11089,11 +11102,27 @@ export default function POSPage() {
     onError: (e: any) => {
       if (printWinRef.current && !printWinRef.current.closed) { printWinRef.current.close(); printWinRef.current = null; autoYaPrintedRef.current = false; }
       setEcfStatus('idle');
-      const msg: string = e?.response?.data?.errors?.[0] ?? e?.response?.data?.message ?? '';
-      if (msg.toLowerCase().includes('duplicate') || msg.toLowerCase().includes('already exists') || msg.toLowerCase().includes('23505')) {
+      const localMsg: string = e?.message ?? '';
+      const serverMsg: string = e?.response?.data?.errors?.[0] ?? e?.response?.data?.message ?? '';
+      const isSinCaja = localMsg === 'SIN_CAJA'
+        || serverMsg.toLowerCase().includes('caja')
+        || serverMsg.toLowerCase().includes('turno')
+        || serverMsg === 'no_caja';
+      if (isSinCaja) {
+        // Caja confirmada como cerrada por dato fresco del servidor.
+        // El carrito NO se perdió — el cajero puede abrir la caja y reintentar sin rehacer nada.
+        Modal.error({
+          title: '🔒 Caja no abierta',
+          content: 'El servidor confirmó que no tienes una caja abierta para hoy. Abre tu turno en Caja Diaria y vuelve a cobrar. El carrito no se perdió.',
+          okText: 'Entendido — voy a abrir la caja',
+          onOk: () => {
+            qc.invalidateQueries({ queryKey: ['pos-caja-abierta', vendedorId] });
+          },
+        });
+      } else if (serverMsg.toLowerCase().includes('duplicate') || serverMsg.toLowerCase().includes('already exists') || serverMsg.toLowerCase().includes('23505')) {
         message.error('Error al generar el número de factura. Intente nuevamente.', 5);
       } else {
-        message.error(msg || 'Error al procesar la venta');
+        message.error(serverMsg || 'Error al procesar la venta');
       }
     },
   });
@@ -11306,10 +11335,14 @@ export default function POSPage() {
     || (!esMixto && metodoPago !== 'efectivo')
     || (!esMixto && metodoPago === 'efectivo' && montoRecibido >= totalAPagar);
   // Sin control de caja la empresa vende libremente — tratar como si siempre hubiera caja abierta.
+  // cajaAbierta = solo indicador informativo para el banner. NO bloquea el botón.
+  // La regla: el frontend nunca bloquea por un dato de caché que puede estar viejo.
+  // La verificación real ocurre con un refetch en mutationFn; si falla/tarda, el backend decide.
   const cajaAbierta  = !controlCajaActivo || cajaActivaHoy?.estado === 'abierta';
   // Crédito requiere cliente real seleccionado (no consumidor final por defecto)
   const clienteParaCredito = tipoPagoPos === 'CONTADO' || clienteId != null;
-  const canCheckout  = canPay && (!tipoExigeRnc || rncValido) && cajaAbierta && clienteParaCredito
+  // cajaAbierta excluido: puede estar viejo. El refetch al cobrar es la verificación real.
+  const canCheckout  = canPay && (!tipoExigeRnc || rncValido) && clienteParaCredito
     && (!compradorNoVigente || rncNoVigenteConfirmado);
 
   // Enter / NumpadEnter confirma el cobro cuando el modal de pago está abierto
@@ -12485,18 +12518,18 @@ export default function POSPage() {
                 </>
               )}
             </AnimatePresence>
-            {!cajaAbierta && (
-              <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8,
+            {!cajaAbierta && controlCajaActivo && (
+              <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8,
                 padding: '8px 12px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 16 }}>🔒</span>
+                <span style={{ fontSize: 16 }}>⚠️</span>
                 <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#DC2626' }}>Caja no registrada</div>
-                  <div style={{ fontSize: 11, color: '#B91C1C' }}>Abre tu turno en Caja Diaria antes de facturar</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#92400E' }}>Caja no detectada en caché</div>
+                  <div style={{ fontSize: 11, color: '#78350F' }}>Se verificará en el servidor al cobrar</div>
                 </div>
               </div>
             )}
             <Tooltip
-              title={!cajaAbierta ? 'Debes abrir la caja diaria antes de facturar' : necesitaRnc && !rncValido ? 'Ingresa el RNC del comprador para continuar' : ''}
+              title={necesitaRnc && !rncValido ? 'Ingresa el RNC del comprador para continuar' : ''}
             >
               <motion.button whileTap={{ scale: canCheckout ? 0.97 : 1 }}
                 onClick={() => {
