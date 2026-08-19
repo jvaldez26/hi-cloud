@@ -322,11 +322,11 @@ export class DeclaracionesService {
         e.numero                                        AS "encf",
         e."estadoDGII"                                  AS "estadoDgii",
         -- Fuente prioritaria: rncComprador del e-CF (valor oficial declarado a DGII).
-        -- Fallback: rncReceptor del cliente (filtrando '000000000' que es placeholder).
+        -- Fallback: rncReceptor del cliente, luego rfc.
         COALESCE(
           NULLIF(btrim(e."rncComprador"), ''),
-          NULLIF(NULLIF(btrim(c."rncReceptor"), ''), '000000000'),
-          NULLIF(c.rfc, '000000000'),
+          NULLIF(btrim(c."rncReceptor"), ''),
+          c.rfc,
           ''
         )                                               AS "rncComprador",
         -- Misma razón social que se declaró en el e-CF: varios clientes pueden
