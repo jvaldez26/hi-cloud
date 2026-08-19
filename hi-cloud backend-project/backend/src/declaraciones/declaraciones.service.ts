@@ -339,13 +339,16 @@ export class DeclaracionesService {
     const filas = rows.map((r, i) => {
       const rncComprador   = r.rncComprador ?? '';
       const tipoId         = tipoIdDgii(rncComprador);
-      const montoFacturado = Number(r.total ?? 0);
+      // Monto Facturado (col 9 DGII 607) = subtotal SIN ITBIS
+      const montoFacturado = Number(r.subtotal ?? 0);
+      // Total cobrado (cols 17-23) = subtotal + ITBIS
+      const totalCobrado   = Number(r.total ?? 0);
       const itbis          = Number(r.iva ?? 0);
       const metodo         = r.notas ?? '';
-      const efectivo       = metodo.includes('Efectivo')  ? montoFacturado : 0;
-      const tarjeta        = metodo.includes('Tarjeta')   ? montoFacturado : 0;
-      const transferencia  = metodo.includes('Transfer')  ? montoFacturado : 0;
-      const credito        = (!efectivo && !tarjeta && !transferencia) ? montoFacturado : 0;
+      const efectivo       = metodo.includes('Efectivo')  ? totalCobrado : 0;
+      const tarjeta        = metodo.includes('Tarjeta')   ? totalCobrado : 0;
+      const transferencia  = metodo.includes('Transfer')  ? totalCobrado : 0;
+      const credito        = (!efectivo && !tarjeta && !transferencia) ? totalCobrado : 0;
 
       return {
         linea:               i + 1,
