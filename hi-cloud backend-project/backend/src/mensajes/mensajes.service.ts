@@ -74,7 +74,7 @@ export class MensajesService {
       -- Plan de la empresa activa para filtrar por plan
       -- El cast ::text es obligatorio: suscripciones.plan es ENUM, destinatarioPlan es varchar
       LEFT JOIN suscripciones s
-        ON s."empresaId" = $2 AND s.activa = true
+        ON s."empresaId" = $2 AND s.estado IN ('activa', 'prueba')
       WHERE ${MENSAJES_ACTIVOS_WHERE}
         ${tipoFilter}
         ${archivadoFilter}
@@ -93,7 +93,7 @@ export class MensajesService {
         ON ml."mensajeId" = m.id AND ml."usuarioId" = $1
       -- cast ::text obligatorio para comparar ENUM contra varchar
       LEFT JOIN suscripciones s
-        ON s."empresaId" = $2 AND s.activa = true
+        ON s."empresaId" = $2 AND s.estado IN ('activa', 'prueba')
       WHERE ${MENSAJES_ACTIVOS_WHERE}
         AND (ml."leidoEn"     IS NULL)
         AND (ml."archivadoEn" IS NULL)
@@ -115,7 +115,7 @@ export class MensajesService {
         ON ml."mensajeId" = m.id AND ml."usuarioId" = $1
       -- cast ::text obligatorio para ENUM vs varchar
       LEFT JOIN suscripciones s
-        ON s."empresaId" = $2 AND s.activa = true
+        ON s."empresaId" = $2 AND s.estado IN ('activa', 'prueba')
       WHERE ${MENSAJES_ACTIVOS_WHERE}
         AND m.tipo = 'novedad'
         AND (ml."vistoEn"     IS NULL)
@@ -168,7 +168,7 @@ export class MensajesService {
       SELECT m.id
       FROM mensajes m
       LEFT JOIN mensajes_lectura ml ON ml."mensajeId" = m.id AND ml."usuarioId" = $1
-      LEFT JOIN suscripciones s     ON s."empresaId" = $2 AND s.activa = true
+      LEFT JOIN suscripciones s     ON s."empresaId" = $2 AND s.estado IN ('activa', 'prueba')
       WHERE ${MENSAJES_ACTIVOS_WHERE}
         ${tipoFilter}
         AND (ml."leidoEn"     IS NULL)
