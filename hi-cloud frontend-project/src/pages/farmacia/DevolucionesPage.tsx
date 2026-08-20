@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Table, Button, Modal, Form, Input, InputNumber, Select,
   Tag, Typography, message,
@@ -96,7 +96,7 @@ export default function DevolucionesPage() {
         size="small"
         loading={isLoading}
         scroll={{ x: 'max-content' }}
-        pagination={{ current: page, pageSize: 20, total: data?.total ?? 0, onChange: setPage, showSizeChanger: false }}
+        pagination={{ current: page, pageSize: 10, total: data?.total ?? 0, onChange: setPage, showSizeChanger: false }}
       />
 
       <Modal
@@ -128,3 +128,4 @@ export default function DevolucionesPage() {
     </div>
   );
 }
+

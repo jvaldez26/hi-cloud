@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+﻿import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Input, Space,
@@ -174,7 +174,7 @@ export default function ComunicacionesPage() {
                     dataSource={cxcFiltradas}
                     rowKey="id"
                     size="middle"
-                    pagination={{ pageSize: 20 }}
+                    pagination={{ pageSize: 10 }}
                     rowClassName={(r: any) => r.diasVencida > 0 ? 'ant-table-row-warning' : ''}
                     columns={[
                       {
@@ -326,3 +326,4 @@ export default function ComunicacionesPage() {
     </div>
   );
 }
+

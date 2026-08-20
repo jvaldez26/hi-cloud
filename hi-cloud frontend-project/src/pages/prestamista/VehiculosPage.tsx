@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Table, Button, Modal, Form, Input, InputNumber, Select, DatePicker, Tag, Alert,
@@ -176,7 +176,7 @@ export default function VehiculosPage() {
         columns={filterColumns(cols as any)}
         loading={isLoading}
         scroll={{ x: 'max-content' }}
-        pagination={{ pageSize: 20, showSizeChanger: false }}
+        pagination={{ pageSize: 10, showSizeChanger: false }}
       />
 
       <Modal
@@ -250,3 +250,4 @@ export default function VehiculosPage() {
     </div>
   );
 }
+

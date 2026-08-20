@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Card, Button, Table, Typography, Row, Col, Modal, Form, Input,
   Select, message, Space, theme, InputNumber, Tag, Drawer, DatePicker,
@@ -278,7 +278,7 @@ export default function ReclamacionesArsPage() {
           loading={isLoading}
           size="small"
           scroll={{ x: 'max-content' }}
-          pagination={{ pageSize: 20 }}
+          pagination={{ pageSize: 10 }}
         />
       </Card>
 
@@ -375,3 +375,4 @@ export default function ReclamacionesArsPage() {
     </div>
   );
 }
+

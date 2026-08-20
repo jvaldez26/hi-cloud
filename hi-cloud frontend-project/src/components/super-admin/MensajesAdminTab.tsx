@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Table, Button, Modal, Form, Input, Select, DatePicker,
   Space, Tag, Typography, Popconfirm, Divider, Switch, Row, Col, Tooltip,
@@ -326,7 +326,7 @@ export function MensajesAdminTab() {
         rowKey="id"
         loading={isLoading}
         size="small"
-        pagination={{ pageSize: 20 }}
+        pagination={{ pageSize: 10 }}
       />
 
       {formMensaje !== false && (
@@ -346,3 +346,4 @@ export function MensajesAdminTab() {
     </div>
   );
 }
+

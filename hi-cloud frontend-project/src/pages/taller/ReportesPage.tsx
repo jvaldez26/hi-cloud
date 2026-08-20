@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Card, DatePicker, Button, Table, Tabs, Typography, Statistic, Row, Col, Space } from 'antd';
 import { BarChartOutlined, SearchOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
@@ -127,7 +127,7 @@ export default function ReportesPage() {
           rowKey="servicio"
           size="small"
           scroll={{ x: 'max-content' }}
-          pagination={{ pageSize: 20 }}
+          pagination={{ pageSize: 10 }}
         />
       ),
     },
@@ -141,7 +141,7 @@ export default function ReportesPage() {
           rowKey="placa"
           size="small"
           scroll={{ x: 'max-content' }}
-          pagination={{ pageSize: 20 }}
+          pagination={{ pageSize: 10 }}
         />
       ),
     },
@@ -169,3 +169,4 @@ export default function ReportesPage() {
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Table, Button, Select, DatePicker, Typography, Tag, Space, Card, message,
 } from 'antd';
@@ -134,8 +134,9 @@ export default function NarcoticoPage() {
         size="small"
         loading={isLoading}
         scroll={{ x: 'max-content' }}
-        pagination={{ pageSize: 50, showTotal: (t) => `${t} registros` }}
+        pagination={{ pageSize: 10, showTotal: (t) => `${t} registros` }}
       />
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Card, Button, Table, Typography, Row, Col, Modal, Form, Input,
   Select, message, Space, theme, InputNumber, Tag, Tabs, Statistic,
@@ -357,7 +357,7 @@ export default function InventarioOpticaPage() {
           columns={filterColumns(cols as any)} dataSource={items} rowKey="id"
           loading={isLoading} size="small"
           scroll={{ x: 'max-content' }}
-          pagination={{ pageSize: 25 }}
+          pagination={{ pageSize: 10 }}
           rowClassName={(r: any) => r.stockActual <= r.stockMinimo ? 'ant-table-row-danger' : ''}
         />
       </Card>
@@ -382,3 +382,4 @@ export default function InventarioOpticaPage() {
     </div>
   );
 }
+

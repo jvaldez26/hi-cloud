@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Table, Button, Space, Tag, Modal, Form, Input, Select,
   DatePicker, Typography, Popconfirm, message, InputNumber,
@@ -192,7 +192,7 @@ export default function MantenimientoPage() {
         loading={isLoading}
         size="small"
         pagination={{
-          current: page, pageSize: result?.limit ?? 50, total: result?.total ?? 0,
+          current: page, pageSize: result?.limit ?? 10, total: result?.total ?? 0,
           onChange: setPage, showTotal: t => `${t} registros`,
         }}
       />
@@ -247,3 +247,4 @@ export default function MantenimientoPage() {
     </div>
   );
 }
+

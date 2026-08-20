@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Card, DatePicker, Table, Tabs, Typography, Statistic,
   Row, Col, Space, Tag,
@@ -158,7 +158,7 @@ export default function ReportesTransportePage() {
             rowKey={(r: any, i) => `vj-${r.numero ?? i}`}
             size="small"
             scroll={{ x: 'max-content' }}
-            pagination={{ pageSize: 50, showTotal: t => `${t} viajes` }}
+            pagination={{ pageSize: 10, showTotal: t => `${t} viajes` }}
           />
         </div>
       ),
@@ -211,7 +211,7 @@ export default function ReportesTransportePage() {
             rowKey={(_: any, i) => `comb-${i}`}
             size="small"
             scroll={{ x: 'max-content' }}
-            pagination={{ pageSize: 50 }}
+            pagination={{ pageSize: 10 }}
           />
         </div>
       ),
@@ -261,7 +261,7 @@ export default function ReportesTransportePage() {
             rowKey={(_: any, i) => `mant-${i}`}
             size="small"
             scroll={{ x: 'max-content' }}
-            pagination={{ pageSize: 50 }}
+            pagination={{ pageSize: 10 }}
           />
         </div>
       ),
@@ -290,3 +290,4 @@ export default function ReportesTransportePage() {
     </div>
   );
 }
+

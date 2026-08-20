@@ -1,4 +1,4 @@
-import { Table, Tag } from 'antd';
+﻿import { Table, Tag } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { usePlanGuard } from '../../hooks/usePlan';
 import ModuloBloqueado from '../../components/ui/ModuloBloqueado';
@@ -35,7 +35,8 @@ export default function PlanCuentasPage() {
     <Table columns={cols} dataSource={cuentas ?? []} rowKey="id" loading={isLoading}
       size="small"
       scroll={{ x: 'max-content' }}
-      pagination={{ pageSize: 50, showSizeChanger: false }}
+      pagination={{ pageSize: 10, showSizeChanger: false }}
       rowClassName={(r: any) => r.nivel <= 2 ? 'ant-table-row-level-header' : ''} />
   );
 }
+

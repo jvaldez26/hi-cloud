@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -171,7 +171,7 @@ export default function LibroVentasPage() {
                   rowKey={(_, i) => String(i)}
                   loading={loadingV}
                   size="small"
-                  pagination={{ pageSize: 25 }}
+                  pagination={{ pageSize: 10 }}
                   scroll={{ x: 'max-content' }}
                   columns={fcVentas([
                     { title: 'Fecha',    dataIndex: 'fecha',         key: 'fecha',         width: 95 },
@@ -211,7 +211,7 @@ export default function LibroVentasPage() {
                   rowKey={(_, i) => String(i)}
                   loading={loadingC}
                   size="small"
-                  pagination={{ pageSize: 25 }}
+                  pagination={{ pageSize: 10 }}
                   columns={fcCompras([
                     { title: 'Fecha',     dataIndex: 'fecha',           key: 'fecha',           width: 95 },
                     { title: 'Folio',     dataIndex: 'folio',           key: 'folio',           width: 140, render: v => <Text strong style={{ fontFamily: 'monospace', fontSize: 11 }}>{v}</Text> },
@@ -246,3 +246,4 @@ export default function LibroVentasPage() {
     </div>
   );
 }
+

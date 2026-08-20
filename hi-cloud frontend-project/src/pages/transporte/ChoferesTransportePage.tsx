@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Table, Button, Space, Tag, Modal, Form, Input, Select,
   DatePicker, Typography, Popconfirm, message,
@@ -114,7 +114,7 @@ export default function ChoferesTransportePage() {
         <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
       </Space>
 
-      <Table dataSource={choferes} columns={filterColumns(columns)} rowKey="id" loading={isLoading} size="small" pagination={{ pageSize: 20 }} />
+      <Table dataSource={choferes} columns={filterColumns(columns)} rowKey="id" loading={isLoading} size="small" pagination={{ pageSize: 10 }} />
 
       <Modal
         open={open}
@@ -159,3 +159,4 @@ export default function ChoferesTransportePage() {
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Table, Button, Space, Tag, Typography, Modal, Form, Select, Input, InputNumber, message } from 'antd';
 import { PlusOutlined, EditOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -135,7 +135,7 @@ export default function MedicosPage() {
         rowKey="id"
         loading={isLoading}
         scroll={{ x: 'max-content' }}
-        pagination={{ pageSize: 20, showTotal: t => `${t} médicos` }}
+        pagination={{ pageSize: 10, showTotal: t => `${t} médicos` }}
       />
 
       <Modal
@@ -155,3 +155,4 @@ export default function MedicosPage() {
     </div>
   );
 }
+

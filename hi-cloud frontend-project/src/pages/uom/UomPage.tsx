@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+﻿import { useState, useMemo } from 'react';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
@@ -163,7 +163,7 @@ function UnidadesTab() {
 
       <Table columns={filterColumns(cols)} dataSource={unidadesFiltradas} rowKey="id" loading={isLoading}
         size="small"
-        scroll={{ x: 'max-content' }} pagination={{ pageSize: 20 }} />
+        scroll={{ x: 'max-content' }} pagination={{ pageSize: 10 }} />
 
       <Modal title="Nueva Unidad de Medida" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width={460}>
         <Form form={form} layout="vertical" onFinish={(v) => crearMut.mutate(v)}>
@@ -362,3 +362,4 @@ export default function UomPage() {
     </div>
   );
 }
+

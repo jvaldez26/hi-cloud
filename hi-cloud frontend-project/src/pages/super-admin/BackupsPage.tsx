@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Card, Row, Col, Table, Tag, Button, Space, Statistic, Alert,
   Tooltip, Modal, Typography, Badge,
@@ -231,7 +231,7 @@ export default function BackupsPage() {
           scroll={{ x: 'max-content' }}
           pagination={{
             current: page,
-            pageSize: 20,
+            pageSize: 10,
             total: meta.total ?? 0,
             onChange: setPage,
             showSizeChanger: false,
@@ -269,3 +269,4 @@ crontab -e
     </div>
   );
 }
+

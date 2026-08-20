@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Card, Table, Button, Input, Select, DatePicker, Modal, Form,
   Tag, Space, Typography, message, Segmented, Checkbox,
@@ -257,7 +257,7 @@ export default function OrdenesPage() {
             scroll={{ x: 'max-content' }}
             pagination={{
               current: page,
-              pageSize: 50,
+              pageSize: 10,
               total: data?.total ?? 0,
               onChange: setPage,
               showTotal: (t) => `${t} órdenes`,
@@ -360,3 +360,4 @@ export default function OrdenesPage() {
     </div>
   );
 }
+

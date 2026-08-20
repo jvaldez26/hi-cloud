@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Card, Button, Table, Typography, Row, Col, Modal, Form, Input,
   Select, message, Tag, Space, theme, DatePicker, Tabs, Badge,
@@ -115,7 +115,7 @@ function TablaView({
         </div>
       </div>
       <Table columns={filterColumns(cols as any)} dataSource={rows} rowKey="id" loading={isLoading}
-        size="small" scroll={{ x: 'max-content' }} pagination={{ pageSize: 20 }} />
+        size="small" scroll={{ x: 'max-content' }} pagination={{ pageSize: 10 }} />
     </>
   );
 }
@@ -416,3 +416,4 @@ export default function AgendaOpticaPage() {
     </div>
   );
 }
+

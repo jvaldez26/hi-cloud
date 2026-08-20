@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { Card, Select, Table, Typography, Row, Col, Statistic,
          Button, DatePicker, Space, Tag, Empty, theme } from 'antd';
@@ -157,7 +157,7 @@ export default function LibroMayorPage() {
                   rowKey={(_, i) => i!}
                   loading={isLoading}
                   size="small"
-                  pagination={{ pageSize: 25, showSizeChanger: false }}
+                  pagination={{ pageSize: 10, showSizeChanger: false }}
                   summary={() => (
                     <Table.Summary fixed>
                       <Table.Summary.Row style={{ background: '#f0f9ff' }}>
@@ -191,3 +191,4 @@ export default function LibroMayorPage() {
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Card, Button, Table, Typography, Row, Col, Modal, Form, Input,
@@ -791,7 +791,7 @@ function TablaView({ ordenes, isLoading, search, setSearch, filtroEstado, setFil
         </div>
       </div>
       <Table columns={filterColumns(cols as any)} dataSource={rows} rowKey="id" loading={isLoading}
-        size="small" scroll={{ x: 'max-content' }} pagination={{ pageSize: 20 }} />
+        size="small" scroll={{ x: 'max-content' }} pagination={{ pageSize: 10 }} />
     </>
   );
 }
@@ -994,3 +994,4 @@ export default function OrdenesTrabajoOpticaPage() {
     </div>
   );
 }
+

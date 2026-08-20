@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Table, Tag, Button, Modal, Form, Select, Input, Space,
   Typography, Badge, Tooltip, Divider, Row, Col,
@@ -151,7 +151,7 @@ export default function TicketsSoportePage() {
         size="small"
         scroll={{ x: 'max-content' }}
         rowClassName={(r: any) => r.estado === 'abierto' ? 'ant-table-row-danger' : ''}
-        pagination={{ pageSize: 20, showTotal: t => `${t} tickets`, showSizeChanger: false }}
+        pagination={{ pageSize: 10, showTotal: t => `${t} tickets`, showSizeChanger: false }}
       />
 
       {/* Modal de respuesta */}
@@ -246,3 +246,4 @@ export default function TicketsSoportePage() {
     </div>
   );
 }
+

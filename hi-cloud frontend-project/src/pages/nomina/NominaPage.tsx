@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -1095,7 +1095,7 @@ function PrestamosTab() {
         loading={isFetching}
         size="small"
         scroll={{ x: 'max-content' }}
-        pagination={{ pageSize: 20 }}
+        pagination={{ pageSize: 10 }}
       />
       <Modal title="Registrar Préstamo" open={open} onCancel={() => { setOpen(false); form.resetFields(); }}
         onOk={() => form.validateFields().then(v => crearMut.mutate(v))} okText="Registrar" confirmLoading={crearMut.isPending}>
@@ -1188,7 +1188,7 @@ function AnticiposTab() {
         loading={isFetching}
         size="small"
         scroll={{ x: 'max-content' }}
-        pagination={{ pageSize: 20 }}
+        pagination={{ pageSize: 10 }}
       />
       <Modal title="Registrar Anticipo de Nómina" open={open} onCancel={() => { setOpen(false); form.resetFields(); }}
         onOk={() => form.validateFields().then(v => crearMut.mutate(v))} okText="Registrar" confirmLoading={crearMut.isPending}>
@@ -1250,3 +1250,4 @@ export default function NominaPage() {
     </div>
   );
 }
+

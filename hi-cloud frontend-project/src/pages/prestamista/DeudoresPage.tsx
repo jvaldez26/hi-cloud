@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Table, Button, Input, Select, Modal, Form, InputNumber, Tag, Space, Tooltip, message, theme, Upload, Avatar } from 'antd';
 import { UserPlus, Search, FileText } from 'lucide-react';
@@ -156,7 +156,7 @@ export default function DeudoresPage() {
       <Table
         dataSource={(data?.data ?? []).map((r: any) => ({ ...r, key: r.id }))}
         columns={filterColumns(cols as any)} loading={isLoading} scroll={{ x: 'max-content' }}
-        pagination={{ current: page, pageSize: 20, total: data?.total ?? 0, onChange: setPage, showTotal: t => `${t} deudores` }}
+        pagination={{ current: page, pageSize: 10, total: data?.total ?? 0, onChange: setPage, showTotal: t => `${t} deudores` }}
       />
 
       <Modal title={editing ? 'Editar Deudor' : 'Nuevo Deudor'} open={open} onCancel={closeModal}
@@ -226,3 +226,4 @@ export default function DeudoresPage() {
     </div>
   );
 }
+

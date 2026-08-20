@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Table, Button, Space, Tag, Typography, Modal, Form, Select, DatePicker, Input, message, Switch, Divider } from 'antd';
 import { PlusOutlined, FilePdfOutlined, CheckOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -148,7 +148,7 @@ export default function LaboratorioPage() {
         rowKey="id"
         loading={isLoading}
         scroll={{ x: 'max-content' }}
-        pagination={{ current: page, pageSize: 20, total: data?.total ?? 0, onChange: setPage, showTotal: t => `${t} órdenes` }}
+        pagination={{ current: page, pageSize: 10, total: data?.total ?? 0, onChange: setPage, showTotal: t => `${t} órdenes` }}
       />
 
       {/* Modal Crear */}
@@ -247,3 +247,4 @@ export default function LaboratorioPage() {
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Table, Card, Row, Col, Typography, Statistic, Tag, Select,
          Button, Space, Modal, Form, Input, message, Drawer } from 'antd';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -110,7 +110,7 @@ export default function DemoRequestsPage() {
       }>
         <Table columns={cols} dataSource={data?.data ?? []} rowKey="id"
           loading={isLoading} size="small"
-          pagination={{ total: data?.meta?.total, pageSize: 20, current: page,
+          pagination={{ total: data?.meta?.total, pageSize: 10, current: page,
                         onChange: setPage, showSizeChanger: false,
                         showTotal: t => `${t} solicitudes` }} 
         scroll={{ x: 'max-content' }} />
@@ -175,3 +175,4 @@ export default function DemoRequestsPage() {
     </div>
   );
 }
+

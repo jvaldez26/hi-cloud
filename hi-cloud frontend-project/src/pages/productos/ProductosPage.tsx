@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, type ReactNode } from 'react';
+﻿import { useState, useRef, useEffect, useMemo, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { DetailDrawer } from '../../components/ui/DetailDrawer';
@@ -259,7 +259,7 @@ function VariantesTab() {
       {productoId && (
         <Table columns={cols} dataSource={variantes ?? []} rowKey="id" loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
-          pagination={{ pageSize: 20 }}
+          pagination={{ pageSize: 10 }}
           title={() => <Text type="secondary" style={{ fontSize: 12 }}>{productoSeleccionado?.nombre} — {(variantes ?? []).length} variante(s)</Text>}
         />
       )}
@@ -1527,3 +1527,4 @@ function ProductosCatalogo() {
     </>
   );
 }
+

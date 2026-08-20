@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Table, Button, Input, Modal, Form, InputNumber, Select, Switch,
   Space, Tag, Typography, Tabs, message,
@@ -139,7 +139,7 @@ export default function MenuPage() {
         loading={isLoading}
         size="small"
         scroll={{ x: 'max-content' }}
-        pagination={{ pageSize: 20 }}
+        pagination={{ pageSize: 10 }}
       />
 
       {/* Modal Ítem */}
@@ -202,3 +202,4 @@ export default function MenuPage() {
     </div>
   );
 }
+

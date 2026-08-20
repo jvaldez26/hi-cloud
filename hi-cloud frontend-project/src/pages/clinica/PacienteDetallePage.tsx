@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from 'react-router-dom';
+﻿import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Tabs, Card, Descriptions, Table, Tag, Button, Typography, Spin, Space, Row, Col } from 'antd';
 import { ArrowLeftOutlined, FilePdfOutlined, UserOutlined } from '@ant-design/icons';
@@ -143,28 +143,28 @@ export default function PacienteDetallePage() {
             key: 'signos', label: `Signos Vitales (${signosVitales.length})`,
             children: (
               <Table columns={signosCols} dataSource={signosVitales} rowKey="id" size="small"
-                scroll={{ x: 'max-content' }} pagination={{ pageSize: 20 }} />
+                scroll={{ x: 'max-content' }} pagination={{ pageSize: 10 }} />
             ),
           },
           {
             key: 'consultas', label: `Consultas (${consultas.length})`,
             children: (
               <Table columns={consultaCols} dataSource={consultas} rowKey="id" size="small"
-                scroll={{ x: 'max-content' }} pagination={{ pageSize: 20 }} />
+                scroll={{ x: 'max-content' }} pagination={{ pageSize: 10 }} />
             ),
           },
           {
             key: 'recetas', label: `Recetas (${recetas.length})`,
             children: (
               <Table columns={recetaCols} dataSource={recetas} rowKey="id" size="small"
-                scroll={{ x: 'max-content' }} pagination={{ pageSize: 20 }} />
+                scroll={{ x: 'max-content' }} pagination={{ pageSize: 10 }} />
             ),
           },
           {
             key: 'laboratorio', label: `Laboratorio (${laboratorios.length})`,
             children: (
               <Table columns={labCols} dataSource={laboratorios} rowKey="id" size="small"
-                scroll={{ x: 'max-content' }} pagination={{ pageSize: 20 }} />
+                scroll={{ x: 'max-content' }} pagination={{ pageSize: 10 }} />
             ),
           },
           {
@@ -182,7 +182,7 @@ export default function PacienteDetallePage() {
                 rowKey="id"
                 size="small"
                 scroll={{ x: 'max-content' }}
-                pagination={{ pageSize: 20 }}
+                pagination={{ pageSize: 10 }}
               />
             ),
           },
@@ -191,3 +191,4 @@ export default function PacienteDetallePage() {
     </div>
   );
 }
+

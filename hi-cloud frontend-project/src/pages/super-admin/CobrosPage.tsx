@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Table, Card, Row, Col, Typography, Tag, Button, Space,
   Modal, Form, Input, InputNumber, Select, message, Popconfirm,
@@ -439,7 +439,7 @@ export default function CobrosPage() {
                   rowKey="empresaId"
                   loading={loadRes}
                   size="small"
-                  pagination={{ pageSize: 20 }}
+                  pagination={{ pageSize: 10 }}
                   scroll={{ x: 'max-content' }}
                 />
               </Card>
@@ -802,3 +802,4 @@ export default function CobrosPage() {
     </div>
   );
 }
+

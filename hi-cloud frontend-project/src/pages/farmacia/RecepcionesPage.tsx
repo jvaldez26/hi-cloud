@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Table, Button, Modal, Form, Input, InputNumber, DatePicker, Select,
   Tag, Typography, Space, Divider, message,
@@ -166,7 +166,7 @@ export default function RecepcionesPage() {
         size="small"
         loading={isLoading}
         scroll={{ x: 'max-content' }}
-        pagination={{ current: page, pageSize: 20, total: data?.total ?? 0, onChange: setPage, showSizeChanger: false }}
+        pagination={{ current: page, pageSize: 10, total: data?.total ?? 0, onChange: setPage, showSizeChanger: false }}
       />
 
       {/* Modal nueva recepción */}
@@ -280,3 +280,4 @@ export default function RecepcionesPage() {
     </div>
   );
 }
+

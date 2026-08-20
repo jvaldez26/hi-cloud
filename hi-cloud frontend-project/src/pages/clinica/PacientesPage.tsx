@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Table, Button, Input, Space, Tag, Typography, Modal, Form, Select, DatePicker, message, Row, Col } from 'antd';
 import { PlusOutlined, SearchOutlined, EditOutlined, EyeOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -178,7 +178,7 @@ export default function PacientesPage() {
         scroll={{ x: 'max-content' }}
         pagination={{
           current: page,
-          pageSize: 20,
+          pageSize: 10,
           total: data?.total ?? 0,
           onChange: setPage,
           showTotal: (t) => `${t} pacientes`,
@@ -202,3 +202,4 @@ export default function PacientesPage() {
     </div>
   );
 }
+

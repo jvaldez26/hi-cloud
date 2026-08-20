@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+﻿import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -465,7 +465,7 @@ function LogsTab({
         }}
         pagination={{
           total: data?.meta?.total,
-          pageSize: 20,
+          pageSize: 10,
           current: page,
           onChange: setPage,
           showSizeChanger: false,
@@ -564,3 +564,4 @@ export default function AuditoriaPage() {
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+﻿import { useState, useMemo } from 'react';
 import {
   Card, Row, Col, Button, Table, Tag, Typography, Statistic,
   Modal, Form, Input, InputNumber, Select, Space, Popconfirm,
@@ -305,7 +305,7 @@ function UbicacionesTab({ almacenes }: { almacenes: any[] }) {
       </Row>
 
       <Table columns={cols} dataSource={ubicsFiltradas} rowKey="id" loading={isLoading}
-        size="small" scroll={{ x: 'max-content' }} pagination={{ pageSize: 20 }} />
+        size="small" scroll={{ x: 'max-content' }} pagination={{ pageSize: 10 }} />
 
       <Modal
         title={editTarget ? 'Editar ubicación' : 'Nueva ubicación'}
@@ -487,7 +487,7 @@ function OrdenesPickingTab({ almacenes, productos, clientes }: {
 
       <Table columns={cols} dataSource={ordenesFiltradas} rowKey="id" loading={isLoading}
         size="small" scroll={{ x: 'max-content' }}
-        pagination={{ total: data?.meta?.total, pageSize: 20, current: page, onChange: setPage, showSizeChanger: false }} />
+        pagination={{ total: data?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }} />
 
       {/* ── Modal crear orden ─────────────────────────────────────────────── */}
       <Modal title="Nueva orden de picking" open={openCreate}
@@ -729,3 +729,4 @@ export default function WmsPage() {
     </div>
   );
 }
+

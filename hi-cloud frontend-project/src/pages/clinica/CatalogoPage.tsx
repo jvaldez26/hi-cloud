@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Table, Button, Space, Tag, Typography, Modal, Form, Select, Input, InputNumber, message, Switch } from 'antd';
 import { PlusOutlined, EditOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -153,7 +153,7 @@ export default function CatalogoPage() {
         rowKey="id"
         loading={isLoading}
         scroll={{ x: 'max-content' }}
-        pagination={{ pageSize: 20, showTotal: t => `${t} servicios` }}
+        pagination={{ pageSize: 10, showTotal: t => `${t} servicios` }}
       />
 
       <Modal
@@ -172,3 +172,4 @@ export default function CatalogoPage() {
     </div>
   );
 }
+

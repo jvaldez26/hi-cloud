@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Table, Button, Modal, Form, Input, InputNumber, Select, DatePicker,
   Tag, Space, Typography, message, Popconfirm,
@@ -166,7 +166,7 @@ export default function ReservacionesPage() {
         loading={isLoading}
         size="small"
         scroll={{ x: 'max-content' }}
-        pagination={{ pageSize: 20 }}
+        pagination={{ pageSize: 10 }}
       />
 
       <Modal
@@ -209,3 +209,4 @@ export default function ReservacionesPage() {
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+﻿import { useState, useEffect, useCallback, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -608,7 +608,7 @@ export default function DeclaracionesPage() {
                 txtCargando={txt606} />
               <Table columns={flt606(cols606)} dataSource={filas606Filtradas} rowKey="linea"
                 loading={l6} size="small" scroll={{ x: 'max-content' }}
-                pagination={{ pageSize: 20, showSizeChanger: false }}
+                pagination={{ pageSize: 10, showSizeChanger: false }}
                 summary={() => f606?.filas?.length > 0 ? (
                   <Table.Summary.Row>
                     <Table.Summary.Cell index={0} colSpan={7}><Text strong>Totales</Text></Table.Summary.Cell>
@@ -658,7 +658,7 @@ export default function DeclaracionesPage() {
                 txtCargando={txt607} />
               <Table columns={flt607(cols607)} dataSource={filas607Filtradas} rowKey="linea"
                 loading={l7} size="small" scroll={{ x: 'max-content' }}
-                pagination={{ pageSize: 20, showSizeChanger: false }}
+                pagination={{ pageSize: 10, showSizeChanger: false }}
                 summary={() => f607?.totales ? (
                   <Table.Summary.Row>
                     <Table.Summary.Cell index={0} colSpan={6}><Text strong>Totales</Text></Table.Summary.Cell>
@@ -713,7 +713,7 @@ export default function DeclaracionesPage() {
                 dataSource={f608?.comprobantes ?? f608?.filas ?? []}
                 rowKey={(r: any) => r.folio ?? r.id ?? Math.random()}
                 loading={l8} size="small"
-                pagination={{ pageSize: 20, showSizeChanger: false }}
+                pagination={{ pageSize: 10, showSizeChanger: false }}
                 locale={{ emptyText: 'Sin comprobantes anulados en el período' }}
               />
             </Card>
@@ -816,3 +816,4 @@ export default function DeclaracionesPage() {
     </div>
   );
 }
+

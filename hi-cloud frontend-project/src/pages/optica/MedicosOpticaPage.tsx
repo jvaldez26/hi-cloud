@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Card, Button, Table, Typography, Row, Col, Modal, Form, Input,
   message, Space, theme,
@@ -139,7 +139,7 @@ export default function MedicosOpticaPage() {
           loading={isLoading}
           size="small"
           scroll={{ x: 'max-content' }}
-          pagination={{ pageSize: 20 }}
+          pagination={{ pageSize: 10 }}
         />
       </Card>
 
@@ -206,3 +206,4 @@ export default function MedicosOpticaPage() {
     </div>
   );
 }
+

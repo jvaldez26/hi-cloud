@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+﻿import { useState, useMemo } from 'react';
 import { useMobile } from '../../hooks/useMediaQuery';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { TableActions } from '../../components/ui/TableActions';
@@ -927,7 +927,7 @@ ${line()}
                   rowKey="id"
                   pagination={{
                     current: histPage,
-                    pageSize: 20,
+                    pageSize: 10,
                     total: historial?.meta?.total ?? 0,
                     showTotal: (t: number) => `${t} cierres`,
                     showSizeChanger: false,
@@ -1043,7 +1043,7 @@ ${line()}
                   dataSource={retirosReporte}
                   rowKey="id"
                   scroll={{ x: 'max-content' }}
-                  pagination={{ pageSize: 20, showTotal: (t: number) => `${t} retiros`, showSizeChanger: false }}
+                  pagination={{ pageSize: 10, showTotal: (t: number) => `${t} retiros`, showSizeChanger: false }}
                   rowClassName={(r: any) => r.estado === 'anulado' ? 'row-anulado' : r.estado === 'rechazado' ? 'row-rechazado' : ''}
                   columns={[
                     { title: '#', dataIndex: 'id', width: 90, fixed: 'left' as const,
@@ -1667,3 +1667,4 @@ ${line()}
     </div>
   );
 }
+

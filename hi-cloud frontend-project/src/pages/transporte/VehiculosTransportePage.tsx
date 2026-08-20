@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Table, Button, Space, Tag, Modal, Form, Input, Select,
   DatePicker, Typography, Popconfirm, message, Tooltip,
@@ -147,7 +147,7 @@ export default function VehiculosTransportePage() {
         rowKey="id"
         loading={isLoading}
         size="small"
-        pagination={{ pageSize: 20 }}
+        pagination={{ pageSize: 10 }}
       />
 
       <Modal
@@ -209,3 +209,4 @@ export default function VehiculosTransportePage() {
     </div>
   );
 }
+

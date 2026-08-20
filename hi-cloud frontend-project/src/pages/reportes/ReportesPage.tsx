@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { Card, Row, Col, Typography, Statistic, Select, DatePicker, Button,
          Table, Tabs, Spin, Tag, Progress, message, Alert, Badge, Tooltip, theme } from 'antd';
@@ -305,7 +305,7 @@ export default function ReportesPage() {
                   ]}
                   size="small"
                   rowKey="codigo"
-                  pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50'] }}
+                  pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50'] }}
                   locale={{ emptyText: '✅ Todo el inventario está en orden' }}
                 />
               </Card>
@@ -527,7 +527,7 @@ export default function ReportesPage() {
         scroll={{ x: 'max-content' }}
                   dataSource={r606?.detalle ?? []}
                   rowKey={(r: any) => `${r.folio}-${r.fecha}`}
-                  pagination={{ pageSize: 20, showSizeChanger: false, size: 'small' }}
+                  pagination={{ pageSize: 10, showSizeChanger: false, size: 'small' }}
                   locale={{ emptyText: 'Sin compras registradas para este mes' }}
                   summary={() => r606?.totales ? (
                     <Table.Summary.Row style={{ fontWeight: 700, background: token.colorFillAlter }}>
@@ -618,7 +618,7 @@ export default function ReportesPage() {
         scroll={{ x: 'max-content' }}
                   dataSource={r607?.detalle ?? []}
                   rowKey={(r: any) => `${r.folio}-${r.fecha}`}
-                  pagination={{ pageSize: 20, showSizeChanger: false, size: 'small' }}
+                  pagination={{ pageSize: 10, showSizeChanger: false, size: 'small' }}
                   locale={{ emptyText: '✅ Sin comprobantes anulados en este mes' }}
                   summary={() => r607?.totales?.comprobantesAnulados > 0 ? (
                     <Table.Summary.Row style={{ fontWeight: 700, background: token.colorErrorBg }}>
@@ -662,3 +662,4 @@ export default function ReportesPage() {
     </div>
   );
 }
+

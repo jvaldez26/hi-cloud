@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, createContext, useContext } from 'react';
+﻿import { useState, useEffect, useMemo, useCallback, createContext, useContext } from 'react';
 import {
   Table, Tag, Button, Modal, Select, InputNumber, message,
   Avatar, Tooltip, Input, Popconfirm, Form, Tabs, Badge, Dropdown,
@@ -266,7 +266,7 @@ function SolicitudesTab({ C, solicitudes, isLoading, onRefresh }:
         rowKey="id"
         size="small"
         style={{ fontSize: 13 }}
-        pagination={{ pageSize: 20 }}
+        pagination={{ pageSize: 10 }}
       />
 
       {/* Drawer de detalle / acciones */}
@@ -424,7 +424,7 @@ function PruebasTab({ C, pruebas, isLoading, onRefresh }:
         columns={columns}
         rowKey="empresaId"
         size="small"
-        pagination={{ pageSize: 20 }}
+        pagination={{ pageSize: 10 }}
         style={{ fontSize: 13 }}
       />
       <Modal
@@ -1109,7 +1109,7 @@ function ModulosAddonTab() {
           loading={isLoading}
           rowKey={(r: any) => `${r.empresaId}-${r.moduloCodigo}`}
           dataSource={filtradas as any[]}
-          pagination={{ pageSize: 20, showTotal: t => `${t} activaciones` }}
+          pagination={{ pageSize: 10, showTotal: t => `${t} activaciones` }}
           scroll={{ x: 'max-content' }}
           locale={{ emptyText: <span style={{ color: C.txt2 }}>Ninguna empresa tiene módulos activos</span> }}
           columns={[
@@ -1261,7 +1261,7 @@ function DemosTab({ C }: { C: SaTheme }) {
           rowKey="id"
           dataSource={data?.data ?? []}
           pagination={{
-            current: page, pageSize: 20,
+            current: page, pageSize: 10,
             total: data?.meta?.total,
             onChange: setPage,
             showSizeChanger: false,
@@ -3640,7 +3640,7 @@ function AuditoriaTab({ C }: { C: any }) {
               : ''
           }
           pagination={{
-            current: pagAud, pageSize: 50, total,
+            current: pagAud, pageSize: 10, total,
             onChange: p => setPagAud(p),
             showSizeChanger: false,
             showTotal: t => `${t.toLocaleString('es-DO')} registros`,
@@ -3846,3 +3846,4 @@ function AuditoriaTab({ C }: { C: any }) {
     </div>
   );
 }
+

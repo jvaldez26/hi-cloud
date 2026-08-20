@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Table, Card, Row, Col, Typography, Statistic, Tag, Button,
          Select, Modal, Form, InputNumber, Input, Space, message, Popconfirm, Tabs, Badge } from 'antd';
 import { PauseCircleOutlined, UpCircleOutlined, DollarOutlined } from '@ant-design/icons';
@@ -131,7 +131,7 @@ export default function SuperAdminPage() {
               <Card>
                 <Table columns={cols} dataSource={suscripciones ?? []} rowKey="id"
                   loading={isLoading} size="small"
-                  pagination={{ pageSize: 20, showSizeChanger: false }}
+                  pagination={{ pageSize: 10, showSizeChanger: false }}
                   scroll={{ x: 'max-content' }} />
               </Card>
             ),
@@ -170,3 +170,4 @@ export default function SuperAdminPage() {
     </div>
   );
 }
+

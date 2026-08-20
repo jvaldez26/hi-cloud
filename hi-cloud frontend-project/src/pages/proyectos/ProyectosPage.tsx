@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { TableActions } from '../../components/ui/TableActions';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { exportarExcel } from '../../utils/exportExcel';
@@ -283,7 +283,7 @@ function RegistroTiempoPanel({ proyectoId }: { proyectoId: number }) {
       <Table
         dataSource={data?.data ?? []} rowKey="id" size="small"
         scroll={{ x: 'max-content' }}
-        pagination={{ total: data?.meta?.total, pageSize: 20, showSizeChanger: false }}
+        pagination={{ total: data?.meta?.total, pageSize: 10, showSizeChanger: false }}
         columns={[
           { title: 'Fecha',       dataIndex: 'fecha',       width: 100, render: (v: string) => fmt.date(v) },
           { title: 'Usuario',     key: 'usr', render: (_: any, r: any) => r.usuario?.nombre ?? '—' },
@@ -805,3 +805,4 @@ export default function ProyectosPage() {
     </div>
   );
 }
+

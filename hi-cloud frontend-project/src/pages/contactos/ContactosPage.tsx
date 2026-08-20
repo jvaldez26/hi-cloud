@@ -197,7 +197,7 @@ export default function ContactosPage() {
             rowKey="id"
             loading={isLoading}
             size="middle"
-            pagination={{ pageSize: 20 }}
+            pagination={{ pageSize: 10 }}
             columns={filterColumns([
               {
                 title: 'Nombre', dataIndex: 'nombre', key: 'n',
@@ -253,3 +253,4 @@ export default function ContactosPage() {
     </div>
   );
 }
+

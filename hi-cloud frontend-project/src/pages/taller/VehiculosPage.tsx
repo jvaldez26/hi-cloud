@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Card, Table, Button, Input, Modal, Form, Select, InputNumber,
   Space, Tag, Typography, Switch, message,
@@ -137,7 +137,7 @@ export default function VehiculosPage() {
           scroll={{ x: 'max-content' }}
           pagination={{
             current: page,
-            pageSize: 20,
+            pageSize: 10,
             total: data?.total ?? 0,
             onChange: setPage,
             showTotal: (t) => `${t} vehículos`,
@@ -237,3 +237,4 @@ export default function VehiculosPage() {
     </div>
   );
 }
+

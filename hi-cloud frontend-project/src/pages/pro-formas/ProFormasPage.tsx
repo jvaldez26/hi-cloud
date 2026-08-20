@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   InputNumber, Space, Typography, Popconfirm, message, Divider, theme,
@@ -350,7 +350,7 @@ export default function ProFormasPage() {
           scroll={{ x: 'max-content' }}
           pagination={{
             current: page,
-            pageSize: 50,
+            pageSize: 10,
             total: totalItems,
             onChange: p => setPage(p),
             showTotal: (t) => `${t} pro formas`,
@@ -592,3 +592,4 @@ export default function ProFormasPage() {
     </div>
   );
 }
+

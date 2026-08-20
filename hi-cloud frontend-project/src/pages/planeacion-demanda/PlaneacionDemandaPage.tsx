@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Card, Row, Col, Button, Table, Tag, Typography, Statistic,
   Modal, Form, Input, InputNumber, Select, Switch, Space, Tabs,
@@ -219,7 +219,7 @@ function SugerenciasTab() {
       )}
 
       <Table columns={cols} dataSource={sugerencias} rowKey="productoId" loading={isLoading}
-        size="small" pagination={{ pageSize: 20 }}
+        size="small" pagination={{ pageSize: 10 }}
         rowClassName={(r: any) => r.urgencia === 'critica' ? 'ant-table-row-selected' : ''}
       
         scroll={{ x: 'max-content' }} />
@@ -349,3 +349,4 @@ export default function PlaneacionDemandaPage() {
     </div>
   );
 }
+

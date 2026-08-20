@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+﻿import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -248,7 +248,7 @@ export default function CajaChicaPage() {
                 rowKey="id"
                 size="small"
         scroll={{ x: 'max-content' }}
-                pagination={{ pageSize: 20 }}
+                pagination={{ pageSize: 10 }}
                 columns={filterColumns(cols)}
               />
             </Card>
@@ -339,3 +339,4 @@ export default function CajaChicaPage() {
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Card, Table, Button, Modal, Form, Input, InputNumber,
   Switch, Tag, Typography, message, Select, Space,
@@ -120,7 +120,7 @@ export default function CatalogoPage() {
           loading={isLoading}
           size="small"
           scroll={{ x: 'max-content' }}
-          pagination={{ pageSize: 20, showTotal: (t) => `${t} servicios` }}
+          pagination={{ pageSize: 10, showTotal: (t) => `${t} servicios` }}
         />
       </Card>
 
@@ -164,3 +164,4 @@ export default function CatalogoPage() {
     </div>
   );
 }
+

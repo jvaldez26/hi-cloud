@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Card, Button, Table, Typography, Row, Col, Modal, Form, Input,
@@ -178,7 +178,7 @@ export default function ConsultasOpticaPage() {
           loading={isLoading}
           size="small"
           scroll={{ x: 'max-content' }}
-          pagination={{ pageSize: 20 }}
+          pagination={{ pageSize: 10 }}
         />
       </Card>
 
@@ -335,3 +335,4 @@ export default function ConsultasOpticaPage() {
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Table, Button, Space, Tag, Typography, Modal, Form, Select, DatePicker, Input, InputNumber, message } from 'antd';
 import { PlusOutlined, EditOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -188,7 +188,7 @@ export default function ProcedimientosPage() {
         rowKey="id"
         loading={isLoading}
         scroll={{ x: 'max-content' }}
-        pagination={{ current: page, pageSize: 20, total: data?.total ?? 0, onChange: setPage, showTotal: t => `${t} procedimientos` }}
+        pagination={{ current: page, pageSize: 10, total: data?.total ?? 0, onChange: setPage, showTotal: t => `${t} procedimientos` }}
       />
 
       <Modal
@@ -207,3 +207,4 @@ export default function ProcedimientosPage() {
     </div>
   );
 }
+

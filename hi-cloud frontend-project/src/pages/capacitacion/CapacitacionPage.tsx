@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+﻿import { useState, useMemo } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { exportarExcel } from '../../utils/exportExcel';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
@@ -279,7 +279,7 @@ export default function CapacitacionPage() {
                     dataSource={registros}
                     rowKey="id"
                     size="middle"
-                    pagination={{ pageSize: 20 }}
+                    pagination={{ pageSize: 10 }}
                     columns={[
                       { title: 'Empleado ID', dataIndex: 'empleadoId', key: 'empleadoId' },
                       {
@@ -429,3 +429,4 @@ export default function CapacitacionPage() {
     </div>
   );
 }
+

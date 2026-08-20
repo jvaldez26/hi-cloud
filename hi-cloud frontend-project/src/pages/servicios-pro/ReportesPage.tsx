@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Card, Row, Col, Button, Select, DatePicker, Table, Tag, Statistic } from 'antd';
 import { FilePdfOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
@@ -78,7 +78,7 @@ export default function ReportesPage() {
             extra={<Button size="small" icon={<FilePdfOutlined />} onClick={descargarPdfTiempo}>PDF</Button>}
             size="small">
             <Table dataSource={tiempoArr} rowKey={(r: any, i: any) => `${r.profesionalId ?? i}`} size="small"
-              loading={loadTiempo} scroll={{ x: 'max-content' }} pagination={{ pageSize: 20 }}
+              loading={loadTiempo} scroll={{ x: 'max-content' }} pagination={{ pageSize: 10 }}
               columns={[
                 { title: 'Profesional', render: (_: any, r: any) => `${r.profesionalNombre ?? ''} ${r.profesionalApellidos ?? ''}`.trim() || r.profesionalId },
                 { title: 'Expediente', render: (_: any, r: any) => r.expedienteNombre ?? r.expedienteNumero ?? '' },
@@ -113,3 +113,4 @@ export default function ReportesPage() {
     </div>
   );
 }
+

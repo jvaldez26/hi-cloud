@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Table, Button, Modal, Form, Input, InputNumber, DatePicker, Select,
   Tag, Typography, Space, message,
@@ -151,7 +151,7 @@ export default function ArsPage() {
         size="small"
         loading={isLoading}
         scroll={{ x: 'max-content' }}
-        pagination={{ current: page, pageSize: 20, total: data?.total ?? 0, onChange: setPage, showSizeChanger: false }}
+        pagination={{ current: page, pageSize: 10, total: data?.total ?? 0, onChange: setPage, showSizeChanger: false }}
       />
 
       {/* Modal crear */}
@@ -215,3 +215,4 @@ export default function ArsPage() {
     </div>
   );
 }
+

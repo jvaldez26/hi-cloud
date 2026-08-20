@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import {
   Table, Button, Space, Tag, Modal, Form, Input, Select,
   DatePicker, Typography, message, InputNumber, Checkbox,
@@ -362,7 +362,7 @@ export default function ViajesPage() {
         onRow={r => ({ onClick: () => setViewId(r.id), style: { cursor: 'pointer' } })}
         pagination={{
           current:  page,
-          pageSize: result?.limit ?? 50,
+          pageSize: result?.limit ?? 10,
           total:    result?.total ?? 0,
           onChange: setPage,
           showTotal: (t) => `${t} viajes`,
@@ -710,3 +710,4 @@ export default function ViajesPage() {
     </div>
   );
 }
+

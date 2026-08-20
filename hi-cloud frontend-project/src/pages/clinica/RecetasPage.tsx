@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Table, Button, Space, Typography, Modal, Form, Select, DatePicker, Input, message, Divider, InputNumber } from 'antd';
 import { PlusOutlined, FilePdfOutlined, MinusCircleOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -103,7 +103,7 @@ export default function RecetasPage() {
         rowKey="id"
         loading={isLoading}
         scroll={{ x: 'max-content' }}
-        pagination={{ current: page, pageSize: 20, total: data?.total ?? 0, onChange: setPage, showTotal: (t) => `${t} recetas` }}
+        pagination={{ current: page, pageSize: 10, total: data?.total ?? 0, onChange: setPage, showTotal: (t) => `${t} recetas` }}
       />
 
       <Modal
@@ -195,3 +195,4 @@ export default function RecetasPage() {
     </div>
   );
 }
+

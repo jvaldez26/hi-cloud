@@ -287,10 +287,11 @@ export default function GeneradorReportesPage() {
           loading={isLoading}
           rowKey={(_, i) => String(i)}
           size="small"
-          pagination={{ pageSize: 20 }}
+          pagination={{ pageSize: 10 }}
           scroll={{ x: 'max-content' }}
         />
       </Card>
     </div>
   );
 }
+

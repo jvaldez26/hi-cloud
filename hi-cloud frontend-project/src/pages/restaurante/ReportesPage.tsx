@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Card, Row, Col, DatePicker, Button, Table, Statistic, Tag,
   Typography, Select, Space, Tabs, Divider,
@@ -83,7 +83,7 @@ export default function ReportesPage() {
           size="small"
           loading={isLoading}
           scroll={{ x: 'max-content' }}
-          pagination={{ pageSize: 20 }}
+          pagination={{ pageSize: 10 }}
           locale={{ emptyText: 'Sin datos para el período seleccionado' }}
         />
       ),
@@ -181,3 +181,4 @@ export default function ReportesPage() {
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -312,7 +312,7 @@ export default function BancosPage() {
               loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
               rowClassName={(r: any) => r.conciliado ? '' : 'ant-table-row-warning'}
-              pagination={{ total: movs?.meta?.total, pageSize: 20, current: pageMov,
+              pagination={{ total: movs?.meta?.total, pageSize: 10, current: pageMov,
                             onChange: setPageMov, showSizeChanger: false }} />
           </Card>
         </>
@@ -444,3 +444,4 @@ export default function BancosPage() {
     </div>
   );
 }
+

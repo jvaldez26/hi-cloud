@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Tabs, Table, Button, DatePicker, Space, Typography, Tag, Statistic, Row, Col, Card,
 } from 'antd';
@@ -73,7 +73,7 @@ export default function ReportesPage() {
                   size="small"
                   loading={loadMV}
                   scroll={{ x: 'max-content' }}
-                  pagination={{ pageSize: 20 }}
+                  pagination={{ pageSize: 10 }}
                   columns={[
                     { title: '#', render: (_: any, _r: any, idx: number) => idx + 1, width: 40 },
                     { title: 'Medicamento', dataIndex: 'nombreGenerico', render: (v: string, r: any) => `${v} ${r.concentracion ?? ''}` },
@@ -162,7 +162,7 @@ export default function ReportesPage() {
                 size="small"
                 loading={loadSM}
                 scroll={{ x: 'max-content' }}
-                pagination={{ pageSize: 20 }}
+                pagination={{ pageSize: 10 }}
                 columns={[
                   { title: 'Medicamento', dataIndex: 'nombreGenerico', render: (v: string, r: any) => `${v} ${r.concentracion ?? ''}` },
                   { title: 'Comercial', dataIndex: 'nombreComercial' },
@@ -230,3 +230,4 @@ export default function ReportesPage() {
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Table, Button, Input, Modal, Form, InputNumber, Select, Switch,
   Space, Tag, Typography, Tooltip, Divider, message,
@@ -146,7 +146,7 @@ export default function MedicamentosPage() {
         loading={isLoading}
         scroll={{ x: 'max-content' }}
         pagination={{
-          current: page, pageSize: 20, total: data?.total ?? 0,
+          current: page, pageSize: 10, total: data?.total ?? 0,
           onChange: setPage, showSizeChanger: false,
           showTotal: (t) => `${t} medicamentos`,
         }}
@@ -252,3 +252,4 @@ export default function MedicamentosPage() {
     </div>
   );
 }
+

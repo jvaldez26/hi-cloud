@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+﻿import { useState, useMemo } from 'react';
 import {
   Modal, Select, Radio, Button, Table, Tag, Alert, Space, Typography, Tooltip,
   Empty, Input, InputNumber, Switch, Divider, message,
@@ -373,7 +373,7 @@ export default function AjustePreciosModal({
 
             <Table<FilaAjusteProducto>
               rowKey="id" size="small" columns={columnas} dataSource={resultado.filas}
-              pagination={{ pageSize: 25, showSizeChanger: true }}
+              pagination={{ pageSize: 10, showSizeChanger: true }}
               scroll={{ x: 1050, y: 380 }}
               rowSelection={{
                 selectedRowKeys: todasVerificadas.filter(f => !excluidas.has(f.id)).map(f => f.id),
@@ -405,3 +405,4 @@ export default function AjustePreciosModal({
     </Modal>
   );
 }
+

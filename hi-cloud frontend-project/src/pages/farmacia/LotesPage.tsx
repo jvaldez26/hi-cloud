@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   Table, Button, Modal, Form, Input, InputNumber, DatePicker, Select,
   Tag, Space, Typography, Tooltip, message,
@@ -166,7 +166,7 @@ export default function LotesPage() {
           return '';
         }}
         pagination={{
-          current: page, pageSize: 50, total: data?.total ?? 0,
+          current: page, pageSize: 10, total: data?.total ?? 0,
           onChange: setPage, showSizeChanger: false,
         }}
       />
@@ -216,3 +216,4 @@ export default function LotesPage() {
     </div>
   );
 }
+

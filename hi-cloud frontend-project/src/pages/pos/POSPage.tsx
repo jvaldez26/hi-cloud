@@ -3194,7 +3194,7 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
   const [fImagenUrl,      setFImagenUrl]      = useState('');
 
   // ── estados movimientos ───────────────────────────────────────────────────
-  const [movLimit, setMovLimit] = useState(20);
+  const [movLimit, setMovLimit] = useState(10);
   const [movModal, setMovModal] = useState<{ tipo: 'entrada'|'salida' } | null>(null);
   const [mSearch,  setMSearch]  = useState('');
   const [mProd,    setMProd]    = useState<{ id: number; nombre: string } | null>(null);
@@ -12907,4 +12907,5 @@ export default function POSPage() {
     </ThemeCtx.Provider>
   );
 }
+
 

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+﻿import { useState, useCallback } from 'react';
 import { TableActions } from '../../components/ui/TableActions';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
@@ -583,7 +583,7 @@ function SerialesTab() {
       </Row>
 
       <Table columns={cols} dataSource={seriales ?? []} rowKey="id" loading={isLoading} size="small"
-        scroll={{ x: 'max-content' }} pagination={{ pageSize: 20 }} />
+        scroll={{ x: 'max-content' }} pagination={{ pageSize: 10 }} />
 
       {/* Modal registrar seriales */}
       <Modal title="Registrar números de serie" open={open} onCancel={() => { setOpen(false); form.resetFields(); setNumerosTexto(''); }} footer={null} width="min(560px, 95vw)">
@@ -730,7 +730,7 @@ function SolicitudesAjusteTab() {
         loading={isFetching}
         size="small"
         scroll={{ x: 'max-content' }}
-        pagination={{ pageSize: 20 }}
+        pagination={{ pageSize: 10 }}
         rowClassName={(r: any) => r.estado === 'pendiente' ? 'ant-table-row-selected' : ''}
       />
       {/* Modal nueva solicitud */}
@@ -794,3 +794,4 @@ export default function InventarioPage() {
     </div>
   );
 }
+
