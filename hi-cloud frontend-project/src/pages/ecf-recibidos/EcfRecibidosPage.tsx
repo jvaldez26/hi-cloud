@@ -7,7 +7,9 @@ import {
 import {
   UploadOutlined, SearchOutlined, CheckCircleOutlined,
   CloseCircleOutlined, SyncOutlined, InboxOutlined,
+  DownloadOutlined, WarningOutlined,
 } from '@ant-design/icons';
+import { exportarEcfRecibidos } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ecfRecibidosApi } from '../../api/ecf-recibidos.api';
 import { fmt } from '../../utils/formatters';
@@ -50,6 +52,7 @@ export default function EcfRecibidosPage() {
   const [rango, setRango]             = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [showResult, setShowResult]   = useState(false);
+  const [exporting, setExporting]     = useState(false);
 
   const desde = rango?.[0]?.format('YYYY-MM-DD');
   const hasta = rango?.[1]?.format('YYYY-MM-DD');
@@ -82,6 +85,28 @@ export default function EcfRecibidosPage() {
     },
   });
 
+  // ── Exportar todo el filtro activo a Excel ───────────────────────────────
+  const handleExportar = async () => {
+    setExporting(true);
+    try {
+      const res = await ecfRecibidosApi.listar({
+        desde, hasta,
+        rncEmisor: search || undefined,
+        tipoEcf,
+        exportar: true,
+      });
+      const registros: any[] = Array.isArray(res) ? res : (res?.data ?? []);
+      if (!registros.length) { message.warning('No hay registros para exportar con los filtros actuales'); return; }
+      const sufijo = desde && hasta ? `${desde}_${hasta}` : new Date().toISOString().substring(0, 10);
+      await exportarEcfRecibidos(registros, `eCF-Recibidos-${sufijo}`);
+      message.success(`${registros.length} registros exportados`);
+    } catch {
+      message.error('Error al exportar');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const columns = [
     {
       title: 'e-NCF',
@@ -105,8 +130,14 @@ export default function EcfRecibidosPage() {
     {
       title: 'Fecha',
       dataIndex: 'fechaDocumento',
-      width: 100,
-      render: (v?: string) => v ? fmt.date(v) : <Text type="secondary">—</Text>,
+      width: 110,
+      render: (v?: string) => v
+        ? fmt.date(v)
+        : (
+          <Tooltip title="Fecha no disponible — re-importa este comprobante con fecha correcta">
+            <Tag icon={<WarningOutlined />} color="warning" style={{ fontSize: 11 }}>Sin fecha</Tag>
+          </Tooltip>
+        ),
     },
     {
       title: 'Tipo',
@@ -176,6 +207,13 @@ export default function EcfRecibidosPage() {
         </Col>
         <Col>
           <Space>
+            <Button
+              icon={<DownloadOutlined />}
+              onClick={handleExportar}
+              loading={exporting}
+            >
+              Exportar Excel
+            </Button>
             <Upload
               accept=".csv"
               showUploadList={false}

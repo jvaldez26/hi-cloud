@@ -1,3 +1,48 @@
+// ── Exportar e-CF Recibidos ──────────────────────────────────────────────────
+// Fechas como celda Excel real (tipo 'd') para que sean ordenables y filtrables.
+// Montos como número, sin prefijo "RD$".
+// Filas sin fecha se marcan con "SIN FECHA ⚠" en esa columna.
+export async function exportarEcfRecibidos(registros: any[], nombre: string) {
+  const XLSX = await import('xlsx');
+
+  // Convierte "YYYY-MM-DD" o "YYYY-MM-DDTHH:mm:ss..." a Date al mediodía (evita offset TZ)
+  const toDate = (s: string | null | undefined): Date | null => {
+    if (!s) return null;
+    const ymd = s.substring(0, 10); // "YYYY-MM-DD"
+    const d = new Date(`${ymd}T12:00:00`);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
+  const filas = registros.map((r: any) => {
+    const fecha = toDate(r.fechaDocumento);
+    return {
+      'e-NCF':         r.encf ?? '',
+      'RNC Emisor':    r.rncEmisor ?? '',
+      'Emisor':        r.nombreEmisor ?? '',
+      'Fecha':         fecha ?? 'SIN FECHA ⚠',
+      'Tipo':          r.tipoEcf ? `E${r.tipoEcf}` : '',
+      'Monto Gravado': r.montoGravado != null ? Number(r.montoGravado) : '',
+      'ITBIS':         r.itbis != null ? Number(r.itbis) : '',
+      'Total':         r.total != null ? Number(r.total) : 0,
+      'Estado':        r.status ?? '',
+      'Origen':        r.fuenteImportacion ?? '',
+    };
+  });
+
+  // cellDates: true → xlsx serializa Date como celda de fecha real (no texto)
+  const ws = XLSX.utils.json_to_sheet(filas, { cellDates: true });
+
+  // Ancho de columnas
+  const headers = Object.keys(filas[0] ?? {});
+  ws['!cols'] = headers.map((k, i) => ({
+    wch: Math.max(k.length, ...filas.map(row => String((row as any)[k] ?? '').length), i === 3 ? 12 : 0) + 2,
+  }));
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'e-CF Recibidos');
+  XLSX.writeFile(wb, `${nombre}.xlsx`);
+}
+
 // ── Exportar tabla genérica ──────────────────────────────────────────────────
 export async function exportarExcel(datos: Record<string, unknown>[], nombreArchivo: string) {
   const XLSX = await import('xlsx');

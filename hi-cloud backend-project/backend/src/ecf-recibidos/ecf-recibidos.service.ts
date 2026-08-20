@@ -22,6 +22,8 @@ export interface DocumentoRecibidoNormalizado {
   fuenteImportacion: FuenteImportacion;
   /** Número de fila de origen (CSV). Interno — no se persiste. */
   _filaNum?: number;
+  /** Valor crudo de la fecha como vino en el CSV. Interno — no se persiste. */
+  _fechaRaw?: string;
 }
 
 export interface ImportResultDetalle {
@@ -133,11 +135,12 @@ export class EcfRecibidosService {
       const rncRaw = get(iRnc).replace(/\D/g, '');
       const itbisRaw = iTotalImpuestos >= 0 ? get(iTotalImpuestos) : '';
 
+      const fechaRaw = get(iFecha);
       return {
         encf:            get(iEcf),
         rncEmisor:       rncRaw || undefined,
         nombreEmisor:    get(iNombre) || undefined,
-        fechaDocumento:  this.parsearFecha(get(iFecha)),
+        fechaDocumento:  this.parsearFecha(fechaRaw),
         tipoEcf:         get(iTipo).replace(/\D/g, '') || undefined,
         total:           parseFloat(Number(get(iTotal).replace(/,/g, '') || 0).toFixed(2)),
         itbis:           itbisRaw ? parseFloat(Number(itbisRaw.replace(/,/g, '')).toFixed(2)) : undefined,
@@ -145,7 +148,8 @@ export class EcfRecibidosService {
         creadoEnMseller: this.parsearFecha(get(iCreado)),
         urlDocumento:    get(iUrlDoc) || undefined,
         fuenteImportacion: FuenteImportacion.CSV,
-        _filaNum: i + 2, // línea real en el archivo (1-based, +1 por el header)
+        _filaNum:  i + 2, // línea real en el archivo (1-based, +1 por el header)
+        _fechaRaw: fechaRaw,
       };
     });
   }
@@ -164,6 +168,20 @@ export class EcfRecibidosService {
       if (!doc.encf || doc.encf.length < 5 || !/^[A-Za-z]\d+/.test(doc.encf)) {
         result.errores++;
         result.detalles.push({ fila: filaNum, encf: doc.encf, estado: 'error', error: 'e-NCF vacío o con formato inválido' });
+        continue;
+      }
+
+      // Validación: fecha — si la celda tiene algo pero no se pudo interpretar, rechazar la fila.
+      // Guardar NULL silenciosamente impide asignar el comprobante a un período fiscal.
+      // Formatos aceptados: DD/MM/YYYY o YYYY-MM-DD.
+      if (!doc.fechaDocumento && doc._fechaRaw?.trim()) {
+        result.errores++;
+        result.detalles.push({
+          fila: filaNum,
+          encf: doc.encf,
+          estado: 'error',
+          error: `Fecha "${doc._fechaRaw}" (fila ${filaNum}) no reconocida — use DD/MM/YYYY o YYYY-MM-DD`,
+        });
         continue;
       }
 
@@ -199,7 +217,7 @@ export class EcfRecibidosService {
           result.actualizados++;
           result.detalles.push({ fila: filaNum, encf: doc.encf, estado: 'actualizado' });
         } else {
-          const { _filaNum, ...campos } = doc as any;
+          const { _filaNum, _fechaRaw, ...campos } = doc as any;
           await this.repo.save(
             this.repo.create({ empresaId, ...campos }),
           );
@@ -248,23 +266,34 @@ export class EcfRecibidosService {
     rncEmisor?: string;
     tipoEcf?: string;
     status?: string;
+    /** exportar=true: devuelve todos sin paginación (para Excel) */
+    exportar?: boolean;
   }) {
     const empresaId = this.tenantService.getEmpresaId();
+    const exportar  = opts.exportar === true;
     const page  = Math.max(1, opts.page ?? 1);
     const limit = Math.min(200, Math.max(1, opts.limit ?? 20));
 
     const qb = this.repo.createQueryBuilder('er')
       .where('er."empresaId" = :empresaId', { empresaId })
       .orderBy('er."fechaDocumento"', 'DESC', 'NULLS LAST')
-      .addOrderBy('er.id', 'DESC')
-      .skip((page - 1) * limit)
-      .take(limit);
+      .addOrderBy('er.id', 'DESC');
+
+    // En modo exportar se omite la paginación para traer todos los registros del filtro
+    if (!exportar) {
+      qb.skip((page - 1) * limit).take(limit);
+    }
 
     if (opts.desde)     qb.andWhere('er."fechaDocumento" >= :desde', { desde: opts.desde });
     if (opts.hasta)     qb.andWhere('er."fechaDocumento" <= :hasta', { hasta: opts.hasta });
     if (opts.rncEmisor) qb.andWhere('er."rncEmisor" ILIKE :rnc',    { rnc: `%${opts.rncEmisor}%` });
     if (opts.tipoEcf)   qb.andWhere('er."tipoEcf" = :tipo',         { tipo: opts.tipoEcf });
     if (opts.status)    qb.andWhere('er.status = :status',           { status: opts.status });
+
+    if (exportar) {
+      const data = await qb.getMany();
+      return { data, total: data.length, page: 1, limit: data.length, pages: 1 };
+    }
 
     const [data, total] = await qb.getManyAndCount();
     return { data, total, page, limit, pages: Math.ceil(total / limit) };

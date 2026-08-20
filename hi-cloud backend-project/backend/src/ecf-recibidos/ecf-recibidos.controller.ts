@@ -50,7 +50,7 @@ export class EcfRecibidosController {
 
   @Get()
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
-  @ApiOperation({ summary: 'Listar e-CFs recibidos con paginación y filtros' })
+  @ApiOperation({ summary: 'Listar e-CFs recibidos con paginación y filtros. exportar=true devuelve todos sin paginar.' })
   listar(
     @Query('page')       page?: string,
     @Query('limit')      limit?: string,
@@ -59,11 +59,13 @@ export class EcfRecibidosController {
     @Query('rncEmisor')  rncEmisor?: string,
     @Query('tipoEcf')    tipoEcf?: string,
     @Query('status')     status?: string,
+    @Query('exportar')   exportar?: string,
   ) {
     return this.service.listar({
-      page:  page  ? parseInt(page,  10) : undefined,
-      limit: limit ? parseInt(limit, 10) : undefined,
+      page:     page  ? parseInt(page,  10) : undefined,
+      limit:    limit ? parseInt(limit, 10) : undefined,
       desde, hasta, rncEmisor, tipoEcf, status,
+      exportar: exportar === 'true',
     });
   }
 }
