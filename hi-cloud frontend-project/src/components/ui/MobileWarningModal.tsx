@@ -2,8 +2,11 @@ import { useState, useEffect } from 'react';
 import { Modal, Checkbox, Button } from 'antd';
 import { MonitorSmartphone } from 'lucide-react';
 
-// ─── Clave en localStorage ────────────────────────────────────────────────────
+// ─── Claves de almacenamiento ────────────────────────────────────────────────
+// LS_KEY  → permanente: "no mostrar nunca más" (checked por el usuario)
+// SS_KEY  → solo esta pestaña/sesión: evita que aparezca en cada refresh
 const LS_KEY = 'hicloud-mobile-no-mostrar';
+const SS_KEY = 'hicloud-mobile-ya-mostrado';
 
 // ─── Detección de móvil ───────────────────────────────────────────────────────
 function esMobil(): boolean {
@@ -20,9 +23,14 @@ export default function MobileWarningModal() {
   const [noMostrar, setNoMostrar] = useState(false);
 
   useEffect(() => {
-    // Solo mostrar en móvil y si el usuario no eligió "no volver a mostrar"
+    // Solo mostrar en móvil
     if (!esMobil()) return;
+    // El usuario eligió "no volver a mostrar" (permanente)
     if (localStorage.getItem(LS_KEY) === 'true') return;
+    // Ya se mostró en esta sesión/pestaña (evita aparecer en cada refresh)
+    if (sessionStorage.getItem(SS_KEY) === 'true') return;
+    // Marcar como ya mostrado para esta sesión ANTES de mostrarlo
+    sessionStorage.setItem(SS_KEY, 'true');
     // Pequeño delay para no solapar con la animación de carga del layout
     const t = setTimeout(() => setVisible(true), 800);
     return () => clearTimeout(t);
@@ -45,9 +53,21 @@ export default function MobileWarningModal() {
       onCancel={handleOk}
       centered
       width={340}
+      style={{ top: 0 }}
       styles={{
-        content: { borderRadius: 20, padding: '32px 24px 24px', textAlign: 'center' },
-        mask:    { backdropFilter: 'blur(2px)' },
+        content: {
+          borderRadius: 20,
+          padding: '32px 24px 24px',
+          textAlign: 'center',
+          height: 'fit-content',
+        },
+        wrapper: {
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+        body: { padding: 0 },
+        mask: { backdropFilter: 'blur(2px)' },
       }}
     >
       {/* Ícono */}
