@@ -1440,9 +1440,8 @@ export default function AppLayout() {
     // si el JWT tiene un empresaId sin acceso válido en ese momento.
     queryFn:  () => api.get('/auth/mis-empresas').then(r => r.data?.data ?? r.data ?? []),
     enabled:  !!user,
-    staleTime:          0,        // siempre stale → datos frescos garantizados
-    refetchOnMount:     'always', // fetch en cada montaje sin importar caché
-    refetchOnWindowFocus: true,
+    staleTime:          60_000,   // las empresas no cambian durante una sesión de trabajo
+    refetchOnWindowFocus: false,  // evitar refetch en cada cambio de pestaña
     retry: false,                 // no reintentar en error — evita enmascarar fallos
   });
   const sucursalActualId   = useAuthStore(s => s.sucursalActual);

@@ -36,7 +36,7 @@ export default function ProductoSelect({
   const [search, setSearch] = useState('');
   const [selectedLabel, setSelectedLabel] = useState<string | undefined>();
 
-  const { data, isFetching } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['producto-select-search', search],
     queryFn:  () => productosApi.list(1, 50, search, true),
     enabled:  search.length >= 2,
@@ -66,7 +66,7 @@ export default function ProductoSelect({
       placeholder={placeholder ?? 'Escribe para buscar...'}
       filterOption={false}
       onSearch={setSearch}
-      loading={isFetching}
+      loading={isLoading}
       notFoundContent={search.length < 2 ? 'Escribe al menos 2 letras' : 'Sin resultados'}
       options={options}
       popupMatchSelectWidth={false}
