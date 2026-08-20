@@ -3107,7 +3107,7 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
 }
 
 type PanelId = 'items' | 'inventario' | 'facturas' | 'pre-facturas' | 'cotizaciones' | 'conduce'
-             | 'despacho' | 'clientes' | 'recibos-cobro' | 'anticipos'
+             | 'clientes' | 'recibos-cobro' | 'anticipos'
              | 'notas-credito' | 'gastos' | 'cierre-caja' | 'ventas-hoy' | 'pro-formas' | 'compras';
 
 // ── Helpers de panel ─────────────────────────────────────────────────────────
@@ -8064,7 +8064,6 @@ const PANEL_TITLES: Record<PanelId, { label: string; icon: string }> = {
   'pre-facturas':   { label: 'Pre-Facturas',      icon: '📋' },
   'cotizaciones':   { label: 'Cotizaciones',      icon: '💬' },
   'conduce':        { label: 'Conduces',          icon: '🚚' },
-  'despacho':       { label: 'Despacho',          icon: '📦' },
   'clientes':       { label: 'Clientes',          icon: '👤' },
   'recibos-cobro':  { label: 'Recibos de Cobro',  icon: '🧾' },
   'anticipos':      { label: 'Anticipos',          icon: '💰' },
@@ -8122,7 +8121,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
       if (mod === 'facturas')        return api.patch(`/facturas/${id}/estado`, { estado: 'cancelada' });
       if (mod === 'cotizaciones')    return api.patch(`/cotizaciones/${id}/estado`, { estado: 'rechazada' });
       if (mod === 'pre-facturas')    return api.patch(`/pre-facturas/${id}/rechazar`, { motivo });
-      if (mod === 'conduce' || mod === 'despacho') return api.delete(`/conduces/${id}`);
+      if (mod === 'conduce') return api.delete(`/conduces/${id}`);
       if (mod === 'notas-credito')   return api.patch(`/notas-credito/${id}/anular`);
       if (mod === 'gastos')          return api.delete(`/gastos/${id}`);
       if (mod === 'pro-formas')      return api.delete(`/pro-formas/${id}`);
@@ -8344,7 +8343,6 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
     'notas-credito': `/api/v1/notas-credito/${id}/pdf`,
     'notas-debito':  `/api/v1/notas-debito/${id}/pdf`,
     'conduce':       `/api/v1/conduces/${id}/pdf`,
-    'despacho':      `/api/v1/conduces/${id}/pdf`,
     'recibos-cobro': `/api/v1/recibos-cobro/${id}/pdf`,
     'gastos':        `/api/v1/gastos/${id}/pdf`,
   });
@@ -8620,7 +8618,6 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
         cotizaciones:    `/cotizaciones/${id}`,
         'pre-facturas':  `/pre-facturas/${id}`,
         conduce:         `/conduces/${id}`,
-        despacho:        `/conduces/${id}`,
         'recibos-cobro': `/recibos-cobro/${id}`,
         gastos:          `/gastos/${id}`,
         'notas-debito':  `/notas-debito/${id}`,
@@ -8651,7 +8648,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           nota1: `Categoría: ${doc.categoria?.replace(/_/g,' ')}`,
           nota2: doc.proveedor ? `Proveedor: ${doc.proveedor}` : undefined,
         };
-      } else if (panel === 'conduce' || panel === 'despacho') {
+      } else if (panel === 'conduce') {
         gd = {
           tipo: 'CONDUCE', numero: doc.numero ?? String(doc.id),
           fecha: String(doc.fecha ?? '').substring(0,10),
@@ -8712,7 +8709,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
     if (panel === 'cotizaciones')   return !['convertida', 'rechazada', 'anulada'].includes(estado);
     if ((panel as string) === 'pro-formas') return true;
     // FIX 3: conduces — permitir cambio de estado en cualquier estado no final
-    if ((panel as string) === 'conduce' || (panel as string) === 'despacho') return estado !== 'entregado' && estado !== 'devuelto';
+    if ((panel as string) === 'conduce') return estado !== 'entregado' && estado !== 'devuelto';
     if ((panel as string) === 'notas-credito') return estado === 'emitida';
     if ((panel as string) === 'gastos')        return true;
     return false;
@@ -8728,7 +8725,6 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
         'pre-facturas':   `/pre-facturas?limit=30${s}`,
         cotizaciones:     `/cotizaciones?limit=30${s}`,
         conduce:          `/conduces?limit=30${s}`,
-        despacho:         `/conduces?limit=30${s}`,
         clientes:         `/clientes?limit=40${s}`,
         'recibos-cobro':  `/recibos-cobro?limit=30${s}`,
         'notas-credito':  `/notas-credito?limit=30${s}`,
@@ -8838,12 +8834,6 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
       }},
     ],
     conduce: [
-      { label: 'Número',    key: 'numero',          render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span> },
-      { label: 'Cliente',   key: 'cliente',          render: (_,r) => r.cliente?.nombre ?? '—' },
-      { label: 'Dirección', key: 'direccionEntrega', render: (v) => <span style={{ fontSize: 11 }}>{v ?? '—'}</span> },
-      { label: 'Estado',    key: 'estado',           render: (v) => <span style={{ fontSize: 10, fontWeight: 700, color: v==='entregado'?C.green:v==='en_transito'?C.blue:C.orange }}>{v?.replace('_',' ')?.toUpperCase()}</span> },
-    ],
-    despacho: [
       { label: 'Número',    key: 'numero',          render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span> },
       { label: 'Cliente',   key: 'cliente',          render: (_,r) => r.cliente?.nombre ?? '—' },
       { label: 'Dirección', key: 'direccionEntrega', render: (v) => <span style={{ fontSize: 11 }}>{v ?? '—'}</span> },
@@ -9058,41 +9048,8 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
                         >
                           {imprimiendo === row.id ? '⏳' : '🖨️'}
                         </button>
-                        {/* Botones de estado para despacho (conduce usa POSConducePanel) */}
-                        {panel === 'despacho' && row.estado !== 'entregado' && row.estado !== 'devuelto' && (
-                          cambEstado === row.id ? (
-                            <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
-                              {row.estado === 'generado' && (
-                                <button onClick={() => cambiarEstadoConduce.mutate({ id: row.id, nuevoEstado: 'en_transito' })}
-                                  style={{ background: C.blue, border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', padding: '4px 8px', fontSize: 10, fontWeight: 700 }}>
-                                  🚚 En Ruta
-                                </button>
-                              )}
-                              {row.estado === 'en_transito' && (<>
-                                <button onClick={() => cambiarEstadoConduce.mutate({ id: row.id, nuevoEstado: 'entregado' })}
-                                  style={{ background: C.green, border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', padding: '4px 8px', fontSize: 10, fontWeight: 700 }}>
-                                  ✅ Entregado
-                                </button>
-                                <button onClick={() => cambiarEstadoConduce.mutate({ id: row.id, nuevoEstado: 'devuelto' })}
-                                  style={{ background: C.orange, border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', padding: '4px 8px', fontSize: 10, fontWeight: 700 }}>
-                                  ↩ Devuelto
-                                </button>
-                              </>)}
-                              <button onClick={() => setCambEstado(null)}
-                                style={{ background: 'none', border: `1px solid ${C.border2}`, borderRadius: 6, color: C.textSub, cursor: 'pointer', padding: '4px 8px', fontSize: 11 }}>
-                                ✕
-                              </button>
-                            </span>
-                          ) : (
-                            <button onClick={() => setCambEstado(row.id)} title="Cambiar estado"
-                              style={{ background: 'none', border: `1px solid ${C.border2}`, borderRadius: 6, color: C.blue, cursor: 'pointer', padding: '4px 8px', fontSize: 13, marginRight: 4 }}>
-                              🔄
-                            </button>
-                          )
-                        )}
                         {/* Anular */}
-                        {!yaAnulado && puedeAnular(row) && panel !== 'despacho' &&
-                          panel !== 'facturas' && (
+                        {!yaAnulado && puedeAnular(row) && panel !== 'facturas' && (
                           anulando === row.id ? (
                             <span style={{ fontSize: 11, color: C.textSub }}>
                               <button onClick={() => {
@@ -9355,7 +9312,6 @@ const NAV_ITEMS: Array<{ id: PanelId | 'menu'; label: string; icon: string }> = 
 const MENU_EXTRAS: Array<{ label: string; icon: string; panel: PanelId }> = [
   { label: 'Ganancias',         icon: '📈', panel: 'ventas-hoy' },
   { label: 'Conduce',          icon: '🚚', panel: 'conduce' },
-  { label: 'Despacho',         icon: '📦', panel: 'despacho' },
   { label: 'Clientes',         icon: '👤', panel: 'clientes' },
   { label: 'Recibos de Cobro', icon: '🧾', panel: 'recibos-cobro' },
   { label: 'Anticipos',        icon: '💰', panel: 'anticipos' },
@@ -9575,7 +9531,7 @@ export default function POSPage() {
   const [panelActivo, _setPanelActivo] = useState<PanelId>(() => {
     const saved = localStorage.getItem('pos_panel_activo') as PanelId | null;
     const VALID: PanelId[] = ['items','inventario','facturas','pre-facturas','cotizaciones',
-      'conduce','despacho','clientes','recibos-cobro','anticipos',
+      'conduce','clientes','recibos-cobro','anticipos',
       'notas-credito','gastos','cierre-caja','ventas-hoy','pro-formas','compras'];
     return saved && VALID.includes(saved) ? saved : 'items';
   });
