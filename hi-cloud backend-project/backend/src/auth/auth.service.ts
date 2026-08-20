@@ -433,6 +433,27 @@ export class AuthService implements OnModuleInit {
     // 9. Login exitoso — resetear contador de intentos
     await this.loginAttempts.reset(dto.email, ip);
 
+    // 10. [SESIÓN ÚNICA] Verificar si el usuario ya tiene una sesión activa.
+    //     Si la tiene y no viene forceLogin:true, pedir confirmación al frontend.
+    //     Con forceLogin:true (segundo paso) se salta este bloque y se desplaza la sesión anterior.
+    //     El contador ya fue reseteado en el paso 9 — este return no genera intento fallido.
+    if (!dto.forceLogin) {
+      const sesionActiva = await this.refreshTokenSvc.verificarSesionActiva(user.id);
+      if (sesionActiva) {
+        this.logger.log(
+          `[LOGIN] Sesión activa detectada — confirmación requerida — userId:${user.id} email:${dto.email} ip:${ip}`,
+        );
+        return {
+          requiresSessionConfirmation: true as const,
+          activeSession: {
+            device:         sesionActiva.deviceInfo   ?? null,
+            ipAddress:      sesionActiva.ipAddress    ?? null,
+            lastActivityAt: (sesionActiva.lastActivityAt ?? sesionActiva.createdAt)?.toISOString() ?? null,
+          },
+        };
+      }
+    }
+
     // Desplazar sesión anterior: nuevo sessionToken + revocar refresh tokens previos
     const sessionToken = await this.initNewSession(user.id);
     (user as any).sessionToken = sessionToken;

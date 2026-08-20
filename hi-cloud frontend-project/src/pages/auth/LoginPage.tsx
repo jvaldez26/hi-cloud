@@ -119,6 +119,10 @@ export default function LoginPage() {
   const [codigoTOTP,     setCodigoTOTP]     = useState('');
   const [blockCountdown, setBlockCountdown] = useState(0);
   const blockIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // ── Sesión única: modal de confirmación ──────────────────────────────────────
+  const [sessionConfirmOpen, setSessionConfirmOpen] = useState(false);
+  const [sessionInfo, setSessionInfo] = useState<{ device?: string; ipAddress?: string; lastActivityAt?: string } | null>(null);
+  const pendingCredsRef = useRef<{ email: string; password: string } | null>(null);
   const { login } = useAuthStore();
   const { isDark } = useThemeStore();
   const navigate  = useNavigate();
@@ -171,6 +175,14 @@ export default function LoginPage() {
       const data = await authApi.login(values.email, values.password);
       if (!data) throw new Error('Sin respuesta');
       if ((data as any).requiresTwoFactor) { setPending2FA(true); setLoading(false); return; }
+      // Sesión única: el usuario ya tiene una sesión activa en otro dispositivo
+      if ((data as any).requiresSessionConfirmation) {
+        pendingCredsRef.current = { email: values.email, password: values.password };
+        setSessionInfo((data as any).activeSession ?? null);
+        setSessionConfirmOpen(true);
+        setLoading(false);
+        return;
+      }
       login((data as any).user, (data as any).empresaActual, (data as any).empresas ?? [], (data as any).almacenActual ?? null, (data as any).sucursalActual ?? null, (data as any).sucursalNombre ?? null);
       navigate((data as any).user?.role === 'super_admin' ? '/super-admin' : '/dashboard');
     } catch (e: unknown) {
@@ -186,6 +198,24 @@ export default function LoginPage() {
           startBlockCountdown(remainingSecs);
         }
       }
+    } finally { setLoading(false); }
+  };
+
+  // Segundo paso: el usuario confirmó que quiere desplazar la sesión activa
+  const confirmarSesion = async () => {
+    if (!pendingCredsRef.current) return;
+    setSessionConfirmOpen(false);
+    setLoading(true); setError('');
+    const { email, password } = pendingCredsRef.current;
+    pendingCredsRef.current = null;
+    try {
+      const data = await authApi.login(email, password, true); // forceLogin: true
+      if (!data) throw new Error('Sin respuesta');
+      login((data as any).user, (data as any).empresaActual, (data as any).empresas ?? [], (data as any).almacenActual ?? null, (data as any).sucursalActual ?? null, (data as any).sucursalNombre ?? null);
+      navigate((data as any).user?.role === 'super_admin' ? '/super-admin' : '/dashboard');
+    } catch (e: unknown) {
+      const msg = (e as any)?.response?.data?.errors?.[0] ?? 'Error al iniciar sesión';
+      setError(msg);
     } finally { setLoading(false); }
   };
 
@@ -570,6 +600,74 @@ export default function LoginPage() {
 
       <DemoModal open={demoOpen} onClose={() => setDemoOpen(false)} />
       <ContactoModal open={contactOpen} onClose={() => setContactOpen(false)} />
+
+      {/* ── Modal: sesión activa detectada ─────────────────────────────────── */}
+      <Modal
+        open={sessionConfirmOpen}
+        onCancel={() => { setSessionConfirmOpen(false); pendingCredsRef.current = null; }}
+        centered
+        width={420}
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 34, height: 34, borderRadius: 8, background: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>
+              ⚠️
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 15, color: '#92400E' }}>Sesión activa detectada</div>
+              <div style={{ fontWeight: 400, fontSize: 12, color: '#B45309' }}>Tu cuenta ya tiene una sesión en otro dispositivo</div>
+            </div>
+          </div>
+        }
+        footer={
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Button
+              onClick={() => { setSessionConfirmOpen(false); pendingCredsRef.current = null; }}
+              style={{ borderRadius: 8 }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="primary"
+              danger
+              onClick={confirmarSesion}
+              style={{ borderRadius: 8, fontWeight: 600 }}
+            >
+              Continuar y cerrar sesión anterior
+            </Button>
+          </div>
+        }
+        styles={{ body: { padding: '12px 0 4px' } }}
+      >
+        <div style={{ fontSize: 14, color: '#374151', lineHeight: 1.6 }}>
+          <p style={{ margin: '0 0 12px' }}>
+            Tu cuenta ya está abierta en otro dispositivo o navegador. Si continúas, esa sesión se cerrará automáticamente.
+          </p>
+          {sessionInfo && (
+            <div style={{
+              background: '#F9FAFB', border: '1px solid #E5E7EB',
+              borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#6B7280',
+            }}>
+              {sessionInfo.device && (
+                <div>📱 <strong>Dispositivo:</strong> {sessionInfo.device}</div>
+              )}
+              {sessionInfo.ipAddress && (
+                <div>🌐 <strong>IP:</strong> {sessionInfo.ipAddress}</div>
+              )}
+              {sessionInfo.lastActivityAt && (
+                <div>🕐 <strong>Última actividad:</strong>{' '}
+                  {new Date(sessionInfo.lastActivityAt).toLocaleString('es-DO', {
+                    day: '2-digit', month: '2-digit', year: 'numeric',
+                    hour: '2-digit', minute: '2-digit',
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+          <p style={{ margin: '12px 0 0', fontSize: 12, color: '#9CA3AF' }}>
+            ¿No reconoces esta actividad? Cambia tu contraseña inmediatamente.
+          </p>
+        </div>
+      </Modal>
     </div>
   );
 }

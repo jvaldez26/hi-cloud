@@ -112,6 +112,44 @@ export class RefreshTokenService {
     });
   }
 
+  // ── Sesión única ─────────────────────────────────────────────────────────────
+
+  /**
+   * Verifica si el usuario tiene una sesión activa: sessionToken en users + refresh token válido.
+   * Usado en login() para el flujo de confirmación de sesión única.
+   *
+   * Retorna los datos de la sesión activa (device, IP, lastActivityAt) o null si no hay sesión.
+   */
+  async verificarSesionActiva(userId: number): Promise<{
+    deviceInfo?: string;
+    ipAddress?: string;
+    lastActivityAt?: Date;
+    createdAt: Date;
+  } | null> {
+    // 1. ¿El usuario tiene sessionToken activo? (señal de sesión en curso)
+    const rows = await this.dataSource.query<{ sessionToken: string | null }[]>(
+      `SELECT "sessionToken" FROM users WHERE id = $1 AND "isActive" = true LIMIT 1`,
+      [userId],
+    );
+    if (!rows[0]?.sessionToken) return null;
+
+    // 2. ¿Existe refresh token activo (no revocado y no expirado)?
+    const token = await this.repo.findOne({
+      where: { userId, revokedAt: IsNull() },
+      order: { createdAt: 'DESC' },
+      select: ['id', 'deviceInfo', 'ipAddress', 'lastActivityAt', 'createdAt', 'expiresAt'],
+    });
+
+    if (!token || token.expiresAt < new Date()) return null;
+
+    return {
+      deviceInfo:     token.deviceInfo     ?? undefined,
+      ipAddress:      token.ipAddress      ?? undefined,
+      lastActivityAt: token.lastActivityAt ?? undefined,
+      createdAt:      token.createdAt,
+    };
+  }
+
   /** Cron diario: elimina tokens expirados de la BD. */
   @Cron('0 3 * * *')
   async limpiarExpirados(): Promise<void> {

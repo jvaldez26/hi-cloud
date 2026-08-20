@@ -2,10 +2,10 @@ import api from './client';
 import type { LoginResponse, ApiResponse } from '../types';
 
 export const authApi = {
-  login: async (email: string, password: string) => {
+  login: async (email: string, password: string, forceLogin?: boolean) => {
     // S-23: backend setea cookie httpOnly — response solo contiene user info
-    const res = await api.post<ApiResponse<LoginResponse>>('/auth/login', { email, password });
-    return res.data.data as (LoginResponse & { requiresTwoFactor?: boolean }) | null;
+    const res = await api.post<ApiResponse<LoginResponse>>('/auth/login', { email, password, ...(forceLogin ? { forceLogin: true } : {}) });
+    return res.data.data as (LoginResponse & { requiresTwoFactor?: boolean; requiresSessionConfirmation?: boolean; activeSession?: { device?: string; ipAddress?: string; lastActivityAt?: string } }) | null;
   },
 
   complete2FALogin: async (codigo: string) => {

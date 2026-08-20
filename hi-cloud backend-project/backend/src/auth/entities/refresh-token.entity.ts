@@ -31,4 +31,8 @@ export class RefreshToken {
 
   @CreateDateColumn()
   createdAt!: Date;
+
+  /** Última vez que se actualizó la actividad de esta sesión (throttle 5 min desde TenantMiddleware). */
+  @Column({ type: 'timestamptz', nullable: true })
+  lastActivityAt?: Date;
 }
