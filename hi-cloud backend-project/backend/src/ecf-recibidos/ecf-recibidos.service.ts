@@ -78,19 +78,25 @@ export class EcfRecibidosService {
 
   private parsearFecha(str: string): Date | undefined {
     if (!str?.trim()) return undefined;
-    // YYYY-MM-DD
+    // YYYY-MM-DD  (ISO — primer check porque el año tiene 4 dígitos)
     const ymd = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (ymd) {
       const d = new Date(`${ymd[1]}-${ymd[2]}-${ymd[3]}T12:00:00`);
       return isNaN(d.getTime()) ? undefined : d;
     }
-    // DD/MM/YYYY
+    // DD-MM-YYYY  (formato real de MSeller — guiones, día primero)
+    const dmyh = str.match(/^(\d{2})-(\d{2})-(\d{4})/);
+    if (dmyh) {
+      const d = new Date(`${dmyh[3]}-${dmyh[2]}-${dmyh[1]}T12:00:00`);
+      return isNaN(d.getTime()) ? undefined : d;
+    }
+    // DD/MM/YYYY  (variante con slashes)
     const dmy = str.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
     if (dmy) {
       const d = new Date(`${dmy[3]}-${dmy[2]}-${dmy[1]}T12:00:00`);
       return isNaN(d.getTime()) ? undefined : d;
     }
-    // ISO o cualquier otro formato
+    // ISO o cualquier otro formato estándar
     const iso = new Date(str);
     return isNaN(iso.getTime()) ? undefined : iso;
   }
