@@ -46,7 +46,7 @@ export default function EcfRecibidosPage() {
   const { token } = theme.useToken();
 
   const [page, setPage]               = useState(1);
-  const [limit]                       = useState(20);
+  const [limit]                       = useState(10);
   const [search, setSearch]           = useState('');
   const [tipoEcf, setTipoEcf]         = useState<string | undefined>();
   const [rango, setRango]             = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null);
