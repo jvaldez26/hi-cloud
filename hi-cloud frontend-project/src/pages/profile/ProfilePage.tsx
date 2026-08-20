@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, Form, Input, Button, Row, Col, Typography, Tag, Avatar,
-         Space, Divider, message, Alert, Modal, Tooltip, Table, Popconfirm, Badge } from 'antd';
+         Space, Divider, message, Alert, Modal, Tooltip, Table, Popconfirm } from 'antd';
 import { UserOutlined, LockOutlined, SaveOutlined, SafetyOutlined,
          EditOutlined, CloseOutlined, GoogleOutlined, LinkOutlined,
          DesktopOutlined, LogoutOutlined } from '@ant-design/icons';
@@ -190,14 +190,55 @@ function TwoFactorSection() {
   );
 }
 
+// ─── Helpers de dispositivos y ubicación ─────────────────────────────────────
+
+function parsearDispositivo(ua: string | undefined): { nombre: string; esMovil: boolean } {
+  if (!ua) return { nombre: 'Dispositivo desconocido', esMovil: false };
+  const s = ua.toLowerCase();
+  if (s.includes('iphone'))                          return { nombre: 'Apple iPhone', esMovil: true  };
+  if (s.includes('ipad'))                            return { nombre: 'Apple iPad',   esMovil: true  };
+  if (s.includes('android'))                         return { nombre: 'Android',      esMovil: true  };
+  if (s.includes('macintosh') || s.includes('mac os x')) return { nombre: 'Mac',     esMovil: false };
+  if (s.includes('windows'))                         return { nombre: 'Windows PC',   esMovil: false };
+  if (s.includes('linux'))                           return { nombre: 'Linux',        esMovil: false };
+  return { nombre: 'Dispositivo desconocido', esMovil: false };
+}
+
+async function resolverPais(ip: string): Promise<string> {
+  if (!ip || ip.startsWith('10.') || ip.startsWith('192.168.')
+          || ip.startsWith('172.1') || ip === '127.0.0.1' || ip === '::1') return 'Local';
+  try {
+    const r = await fetch(`https://api.country.is/${ip}`);
+    const d = await r.json();
+    return (d?.country as string) || '—';
+  } catch {
+    return '—';
+  }
+}
+
+// ─── Sección de dispositivos conectados ──────────────────────────────────────
+
 function SesionesActivasSection() {
   const qc = useQueryClient();
+  const [paises, setPaises] = useState<Record<string, string>>({});
 
   const { data: sesiones, isLoading } = useQuery({
     queryKey: ['mis-sesiones'],
     queryFn: () => api.get('/auth/mis-sesiones').then(r => (r.data?.data ?? r.data) as any[]),
-    refetchInterval: 60_000, // refresca cada minuto
+    refetchInterval: 60_000,
   });
+
+  // Resolver país de cada IP única al cargar las sesiones
+  useEffect(() => {
+    if (!sesiones?.length) return;
+    const ipsUnicas = [...new Set((sesiones as any[]).map(s => s.ipAddress).filter(Boolean))] as string[];
+    ipsUnicas.forEach(async ip => {
+      if (paises[ip]) return;
+      const pais = await resolverPais(ip);
+      setPaises(prev => ({ ...prev, [ip]: pais }));
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sesiones]);
 
   const revocarMut = useMutation({
     mutationFn: (id: string) => api.delete(`/auth/sesiones/${id}`),
@@ -208,61 +249,76 @@ function SesionesActivasSection() {
     onError: () => message.error('No se pudo cerrar la sesión'),
   });
 
-  // Detectar la sesión actual: la más reciente entre las activas que no ha expirado
-  // (La sesión actual es la primera en orden descendente de createdAt — es la que usamos ahora)
+  // La sesión actual es la primera (backend la devuelve más reciente primero)
   const sesionActualId = sesiones?.[0]?.id;
 
   const columns = [
     {
-      title: 'Dispositivo',
+      title: 'Nombre del dispositivo',
       key: 'dispositivo',
-      render: (_: any, r: any) => (
-        <Space>
-          <DesktopOutlined style={{ color: '#8b9cf4' }} />
-          <div>
-            <div style={{ fontWeight: 500, fontSize: 13 }}>
-              {r.deviceInfo
-                ? r.deviceInfo.replace(/Mozilla\/[\d.]+ /, '').slice(0, 60)
-                : 'Dispositivo desconocido'}
-              {r.id === sesionActualId && (
-                <Badge status="processing" text="Esta sesión" style={{ marginLeft: 8, fontSize: 11 }} />
-              )}
+      render: (_: any, r: any) => {
+        const { nombre, esMovil } = parsearDispositivo(r.deviceInfo);
+        const esCurrent = r.id === sesionActualId;
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 20, lineHeight: 1 }}>{esMovil ? '📱' : '🖥️'}</span>
+            <div>
+              <div style={{ fontWeight: 500, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                {nombre}
+                {esCurrent && (
+                  <Tag color="green" style={{ fontSize: 11, lineHeight: '18px', marginLeft: 2 }}>
+                    Sesión actual
+                  </Tag>
+                )}
+              </div>
             </div>
-            <div style={{ fontSize: 11, color: '#94a3b8' }}>IP: {r.ipAddress ?? '—'}</div>
           </div>
-        </Space>
-      ),
+        );
+      },
     },
     {
-      title: 'Última actividad',
-      key: 'createdAt',
-      width: 150,
-      render: (_: any, r: any) => (
-        <Tooltip title={dayjs(r.createdAt).format('DD/MM/YYYY HH:mm')}>
-          <span style={{ fontSize: 13, color: '#64748b' }}>{dayjs(r.createdAt).fromNow()}</span>
-        </Tooltip>
-      ),
+      title: 'Ubicación aproximada',
+      key: 'ubicacion',
+      width: 160,
+      render: (_: any, r: any) => {
+        const pais = r.ipAddress ? (paises[r.ipAddress] ?? '…') : '—';
+        return (
+          <span style={{ color: '#1677ff', fontSize: 13 }}>
+            {pais === 'Local' ? r.ipAddress ?? 'Local' : pais}
+          </span>
+        );
+      },
     },
     {
-      title: 'Expira',
-      key: 'expiresAt',
-      width: 130,
-      render: (_: any, r: any) => (
-        <span style={{ fontSize: 12, color: '#94a3b8' }}>
-          {dayjs(r.expiresAt).format('DD/MM/YY HH:mm')}
-        </span>
-      ),
+      title: 'Actividad reciente',
+      key: 'actividad',
+      width: 170,
+      render: (_: any, r: any) => {
+        if (r.id === sesionActualId) {
+          return <span style={{ color: '#6B7280', fontSize: 13 }}>Sesión actual</span>;
+        }
+        return (
+          <Tooltip title={dayjs(r.createdAt).format('DD/MM/YYYY HH:mm')}>
+            <span style={{ fontSize: 13, color: '#6B7280', textTransform: 'capitalize' }}>
+              {dayjs(r.createdAt).fromNow()}
+            </span>
+          </Tooltip>
+        );
+      },
     },
     {
       title: '',
-      key: 'acciones',
-      width: 80,
-      render: (_: any, r: any) => (
+      key: 'cerrar',
+      width: 48,
+      render: (_: any, r: any) =>
         r.id === sesionActualId
-          ? <Tooltip title="No puedes cerrar tu sesión actual desde aquí — usa 'Cerrar sesión'">
-              <LogoutOutlined style={{ color: '#d1d5db', cursor: 'not-allowed' }} />
+          ? (
+            <Tooltip title="No puedes cerrar tu sesión actual desde aquí">
+              <Button type="text" size="small" disabled
+                icon={<LogoutOutlined style={{ color: '#d1d5db' }} />} />
             </Tooltip>
-          : <Popconfirm
+          ) : (
+            <Popconfirm
               title="¿Cerrar esta sesión?"
               description="El dispositivo quedará desconectado."
               okText="Cerrar"
@@ -270,10 +326,12 @@ function SesionesActivasSection() {
               onConfirm={() => revocarMut.mutate(r.id)}
             >
               <Tooltip title="Cerrar sesión en este dispositivo">
-                <Button size="small" danger icon={<LogoutOutlined />} loading={revocarMut.isPending} />
+                <Button type="text" size="small"
+                  icon={<LogoutOutlined style={{ color: '#9CA3AF' }} />}
+                  loading={revocarMut.isPending} />
               </Tooltip>
             </Popconfirm>
-      ),
+          ),
     },
   ];
 
@@ -304,6 +362,7 @@ function SesionesActivasSection() {
         pagination={false}
         size="small"
         locale={{ emptyText: 'No hay sesiones activas' }}
+        showHeader={!!sesiones?.length}
       />
     </Card>
   );
@@ -532,7 +591,7 @@ export default function ProfilePage() {
 
           <TwoFactorSection />
 
-          <SesionesActivasSection />
+          {['admin', 'contador'].includes(user?.role ?? '') && <SesionesActivasSection />}
 
           <Card title="Permisos de acceso" style={{ marginTop: 16 }}>
             <Row gutter={[12, 12]}>
