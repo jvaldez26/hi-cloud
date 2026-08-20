@@ -37,6 +37,7 @@ import OnboardingTour    from '../ui/OnboardingTour';
 import HelpCenter        from '../ui/HelpCenter';
 import BottomNav         from './BottomNav';
 import PwaInstallBanner  from '../ui/PwaInstallBanner';
+import MobileWarningModal from '../ui/MobileWarningModal';
 import { useRealtime, useRealtimeStatus } from '../../hooks/useRealtime';
 import { useAlertas }    from '../../hooks/useAlertas';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
@@ -2543,6 +2544,9 @@ export default function AppLayout() {
 
       {/* ── PWA install banner (solo mobile, primera visita) ─────────── */}
       {isMobile && <PwaInstallBanner />}
+
+      {/* ── Aviso "usa HiCloud desde tu computadora" (solo mobile) ───── */}
+      <MobileWarningModal />
 
       {/* ── Modal Opciones de Menú ───────────────────────────────── */}
       <Modal
