@@ -1086,6 +1086,23 @@ export class AuthService implements OnModuleInit {
     return { ok: true, nombre: sup.nombre, role: sup.role };
   }
 
+  /**
+   * Cierra la sesión actual: limpia sessionToken + revoca todos los refresh tokens.
+   * Llamado desde /auth/logout y /auth/logout-all.
+   *
+   * NOTA: el refresh_token cookie tiene path:'/api/v1/auth/refresh' → el browser
+   * nunca lo envía a /auth/logout. Por eso usamos revocarTodos() en lugar de
+   * revocarUno(): con modelo de sesión única es equivalente y no depende de la cookie.
+   */
+  async cerrarSesion(userId: number): Promise<void> {
+    await this.dataSource.query(
+      `UPDATE users SET "sessionToken" = NULL, "sessionCreatedAt" = NULL WHERE id = $1`,
+      [userId],
+    );
+    await this.refreshTokenSvc.revocarTodos(userId);
+    this.logger.log(`[LOGOUT] userId:${userId} — sessionToken limpiado + refresh tokens revocados`);
+  }
+
   /** Super admin: fuerza el logout de un usuario limpiando su sessionToken. */
   async forzarLogout(userId: number) {
     const user = await this.userRepository.findOneBy({ id: userId });

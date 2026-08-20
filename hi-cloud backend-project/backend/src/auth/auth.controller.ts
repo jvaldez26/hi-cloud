@@ -259,15 +259,16 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Cerrar sesión — revoca access+refresh tokens y limpia cookies' })
-  async logout(@GetUser() user: User, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+  async logout(@GetUser() user: User, @Res({ passthrough: true }) res: Response) {
     // S-27: revocar access token en blacklist
     const jti = (user as any).jti;
     const exp = (user as any).exp;
     if (jti && exp) await this.blacklistSvc.blacklist(jti, exp);
 
-    // S-28: revocar refresh token
-    const refreshValue = (req.cookies as Record<string, string>)?.refresh_token;
-    if (refreshValue) await this.refreshTokenSvc.revocarUno(refreshValue);
+    // Limpiar sessionToken + revocar refresh tokens.
+    // NOTA: el refresh_token cookie tiene path:'/api/v1/auth/refresh' y no llega aquí —
+    // authService.cerrarSesion() usa revocarTodos() y pone sessionToken=NULL (correcto en sesión única).
+    await this.authService.cerrarSesion(user.id);
 
     res.clearCookie('access_token', this.cookieOptions());
     res.clearCookie('refresh_token', { ...this.cookieOptions(), path: '/api/v1/auth/refresh' });
@@ -285,7 +286,7 @@ export class AuthController {
     const exp = (user as any).exp;
     if (jti && exp) await this.blacklistSvc.blacklist(jti, exp);
 
-    await this.refreshTokenSvc.revocarTodos(user.id);
+    await this.authService.cerrarSesion(user.id);
     res.clearCookie('access_token', this.cookieOptions());
     res.clearCookie('refresh_token', { ...this.cookieOptions(), path: '/api/v1/auth/refresh' });
     return { message: 'Sesión cerrada en todos los dispositivos' };

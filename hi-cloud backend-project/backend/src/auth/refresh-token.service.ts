@@ -140,7 +140,15 @@ export class RefreshTokenService {
       select: ['id', 'deviceInfo', 'ipAddress', 'lastActivityAt', 'createdAt', 'expiresAt'],
     });
 
-    if (!token || token.expiresAt < new Date()) return null;
+    if (!token || token.expiresAt < new Date()) {
+      // sessionToken colgado: el logout previo no lo limpió (bug corregido en cerrarSesion).
+      // Auto-saneamiento: deja la BD limpia para que el próximo login no muestre el modal.
+      await this.dataSource.query(
+        `UPDATE users SET "sessionToken" = NULL, "sessionCreatedAt" = NULL WHERE id = $1`,
+        [userId],
+      );
+      return null;
+    }
 
     return {
       deviceInfo:     token.deviceInfo     ?? undefined,
