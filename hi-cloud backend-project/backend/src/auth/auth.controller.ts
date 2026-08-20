@@ -137,6 +137,12 @@ export class AuthController {
       return { requiresTwoFactor: true };
     }
 
+    // Sesión activa detectada → pedir confirmación (sin cookie, sin refresh token)
+    // El frontend muestra el modal; si el usuario confirma, reenvía con forceLogin:true
+    if ('requiresSessionConfirmation' in data && data.requiresSessionConfirmation) {
+      return data;  // { requiresSessionConfirmation: true, activeSession: {...} }
+    }
+
     this.setAuthCookie(res, (data as any).accessToken);
 
     // refresh token con lifetime configurado por empresa (sesionHoras)
