@@ -92,11 +92,16 @@ export class ConduceController {
 
   @Get(':id/pdf')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
-  async pdf(@Param('id', ParseIntPipe) id: number, @Res() res: Response) {
+  async pdf(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('formato') formato: string = 'carta',
+    @Res() res: Response,
+  ) {
     try {
-      const { buffer, filename } = await this.pdfSvc.generarPDF(id);
+      const fmt = formato === 'termico' ? 'termico' : 'carta';
+      const { buffer, filename } = await this.pdfSvc.generarPDF(id, fmt);
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
       res.setHeader('Content-Length', buffer.length);
       res.end(buffer);
     } catch (e: any) {

@@ -185,6 +185,20 @@ export default function ReporteEntregaTab() {
     }
   };
 
+  // ── Abrir PDF de conduce en nueva pestaña ────────────────────────────────
+  const abrirPDF = async (conduceId: number, formato: 'carta' | 'termico') => {
+    try {
+      const res = await api.get(`/conduces/${conduceId}/pdf?formato=${formato}`, { responseType: 'blob' });
+      const blob = (res as any).data as Blob;
+      const url  = URL.createObjectURL(blob);
+      const win  = window.open(url, '_blank');
+      // Liberar la URL del objeto después de que la ventana la haya cargado
+      if (win) { win.addEventListener('load', () => URL.revokeObjectURL(url)); }
+    } catch {
+      // si falla, se muestra nada — el PDF devuelve 404 si no existe
+    }
+  };
+
   // ── Export Excel (solo disponible para tipo 'factura') ────────────────────
   const exportExcel = () => {
     if (!reporte || reporte.tipo !== 'factura') return;
@@ -500,6 +514,23 @@ export default function ReporteEntregaTab() {
                       ),
                       children: (
                         <div>
+                          {/* Botones de impresión */}
+                          <div className="no-print" style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12, gap: 8 }}>
+                            <Button
+                              size="small"
+                              icon={<PrinterOutlined />}
+                              onClick={() => abrirPDF(c.id, 'termico')}
+                            >
+                              🖨️ Térmica
+                            </Button>
+                            <Button
+                              size="small"
+                              icon={<PrinterOutlined />}
+                              onClick={() => abrirPDF(c.id, 'carta')}
+                            >
+                              📄 Carta
+                            </Button>
+                          </div>
                           <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap', marginBottom: 12 }}>
                             {c.conductor && <div><Text type="secondary" style={{ fontSize: 11 }}>Conductor</Text><div><Text>{c.conductor}{c.vehiculo ? ` · ${c.vehiculo}` : ''}</Text></div></div>}
                             {c.contactoEntrega && <div><Text type="secondary" style={{ fontSize: 11 }}>Recibido por</Text><div><Text>{c.contactoEntrega}{c.telefonoContacto ? ` · ${c.telefonoContacto}` : ''}</Text></div></div>}

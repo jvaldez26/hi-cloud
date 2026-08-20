@@ -33,7 +33,8 @@ export class ConducePDFService {
     private tenantSvc: TenantService,
   ) {}
 
-  async generarPDF(id: number): Promise<{ buffer: Buffer; filename: string }> {
+  async generarPDF(id: number, formato: 'carta' | 'termico' = 'carta'): Promise<{ buffer: Buffer; filename: string }> {
+    if (formato === 'termico') return this.generarPDFTermico(id);
     const empresaId = this.tenantSvc.getEmpresaId();
     const cond = await this.repo.findOne({
       where: { id, empresaId, isActive: true },
@@ -271,5 +272,143 @@ export class ConducePDFService {
     });
 
     return { buffer, filename: `${cond.numero}.pdf` };
+  }
+
+  // ── PDF Térmico 80mm ───────────────────────────────────────────────────────
+  private async generarPDFTermico(id: number): Promise<{ buffer: Buffer; filename: string }> {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const cond = await this.repo.findOne({
+      where: { id, empresaId, isActive: true },
+      relations: ['cliente', 'detalles'],
+    });
+    if (!cond) throw new NotFoundException(`Conduce #${id} no encontrado`);
+
+    const empresaRows: any[] = await this.repo.manager.query(
+      'SELECT * FROM empresa WHERE id = $1 AND "isActive" = true LIMIT 1',
+      [empresaId],
+    );
+    const empresa     = empresaRows[0] ?? {};
+    const nombreEmpresa: string = empresa.nombreComercial || empresa.nombre || 'Mi Empresa';
+    const estadoLabel = ESTADO_LABEL[cond.estado] ?? cond.estado;
+    const facturaFolio: string | undefined = cond.facturaId
+      ? await this.repo.manager.query(
+          'SELECT folio FROM facturas WHERE id = $1 LIMIT 1',
+          [cond.facturaId],
+        ).then((r: any[]) => r[0]?.folio ?? undefined)
+      : undefined;
+
+    const detalles: any[] = (cond as any).detalles ?? [];
+
+    // 80mm térmico: 226pt × altura generosa (recortado por la impresora)
+    const W  = 226;
+    const M  = 8;   // margen
+    const UW = W - M * 2; // ancho útil = 210pt
+
+    const buffer = await new Promise<Buffer>((resolve, reject) => {
+      const doc = new PDFDocument({ size: [W, 1800], margin: M, compress: true, autoFirstPage: true });
+      const chunks: Buffer[] = [];
+      doc.on('data',  c  => chunks.push(c));
+      doc.on('end',   () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const center = (text: string, y: number, size = 8, bold = false) => {
+        doc.fillColor('#000000')
+          .font(bold ? 'Helvetica-Bold' : 'Helvetica')
+          .fontSize(size)
+          .text(text, M, y, { width: UW, align: 'center' });
+      };
+      const line = (y: number) => {
+        doc.moveTo(M, y).lineTo(W - M, y).strokeColor('#000000').lineWidth(0.5).dash(2, { space: 2 }).stroke().undash();
+      };
+
+      let y = M;
+
+      // Cabecera empresa
+      center(nombreEmpresa, y, 9, true); y += 14;
+      if (empresa.rnc)      { center(`RNC: ${empresa.rnc}`,       y, 7); y += 10; }
+      if (empresa.telefono) { center(`Tel: ${empresa.telefono}`,  y, 7); y += 10; }
+      if (empresa.direccion){ center(empresa.direccion,           y, 7); y += 10; }
+
+      line(y); y += 6;
+
+      // Cabecera del conduce
+      center('CONDUCE / NOTA DE ENTREGA', y, 8, true); y += 12;
+      center(cond.numero, y, 11, true); y += 14;
+      doc.fillColor('#000').font('Helvetica').fontSize(7)
+        .text(`Fecha: ${fmtFecha(cond.fecha)}`, M, y); y += 10;
+      doc.fillColor('#000').font('Helvetica-Bold').fontSize(7)
+        .text(`Estado: ${estadoLabel.toUpperCase()}`, M, y); y += 10;
+      if (facturaFolio) {
+        doc.fillColor('#000').font('Helvetica').fontSize(7)
+          .text(`Ref. Factura: ${facturaFolio}`, M, y); y += 10;
+      }
+
+      line(y); y += 6;
+
+      // Cliente
+      const cli = (cond as any).cliente ?? {};
+      doc.fillColor('#000').font('Helvetica-Bold').fontSize(7).text('CLIENTE', M, y); y += 10;
+      doc.font('Helvetica').fontSize(8).text(cli.nombre || '—', M, y, { width: UW }); y += 12;
+      if (cli.rncReceptor) { doc.fontSize(7).text(`RNC: ${cli.rncReceptor}`, M, y); y += 10; }
+      if (cond.direccionEntrega) { doc.fontSize(7).text(cond.direccionEntrega, M, y, { width: UW }); y += 10; }
+      if (cond.contactoEntrega)  { doc.fontSize(7).text(`Contacto: ${cond.contactoEntrega}`, M, y); y += 10; }
+      if (cond.conductor)        { doc.fontSize(7).text(`Conductor: ${cond.conductor}`, M, y); y += 10; }
+
+      line(y); y += 6;
+
+      // Artículos
+      doc.fillColor('#000').font('Helvetica-Bold').fontSize(7).text('ARTÍCULOS', M, y); y += 10;
+
+      // Cabecera mini-tabla
+      const descW = UW - 40 - 22; // Desc | Cant | UM
+      doc.font('Helvetica-Bold').fontSize(6.5)
+        .text('DESCRIPCIÓN',          M,            y, { width: descW })
+        .text('CANT',   M + descW,    y, { width: 40,  align: 'right' })
+        .text('U.M.',   M + descW + 40, y, { width: 22, align: 'center' });
+      y += 9;
+      doc.moveTo(M, y).lineTo(W - M, y).strokeColor('#000').lineWidth(0.3).stroke(); y += 4;
+
+      if (detalles.length === 0) {
+        doc.font('Helvetica').fontSize(7).text('Sin ítems', M, y, { width: UW, align: 'center' }); y += 12;
+      } else {
+        for (const d of detalles) {
+          const cant = Number(d.cantidad).toLocaleString('es-DO', { maximumFractionDigits: 2 });
+          const nota = Number(d.cantidadDevuelta ?? 0) > 0 ? ` (Dev:${d.cantidadDevuelta})` : '';
+          doc.font('Helvetica').fontSize(7)
+            .text(d.descripcion + nota, M, y, { width: descW, ellipsis: true })
+            .text(cant,               M + descW, y, { width: 40,  align: 'right' })
+            .text(d.unidadMedida ?? 'PZA', M + descW + 40, y, { width: 22, align: 'center' });
+          y += 11;
+        }
+      }
+
+      line(y); y += 6;
+
+      // Notas
+      if (cond.notas) {
+        doc.font('Helvetica-Bold').fontSize(7).text('NOTAS:', M, y); y += 10;
+        doc.font('Helvetica').fontSize(7).text(cond.notas, M, y, { width: UW }); y += 10;
+        line(y); y += 6;
+      }
+
+      // Firmas
+      y += 8;
+      const sigW2 = (UW - 8) / 2;
+      doc.moveTo(M,             y + 22).lineTo(M + sigW2,             y + 22).strokeColor('#000').lineWidth(0.5).stroke();
+      doc.moveTo(M + sigW2 + 8, y + 22).lineTo(M + UW,                y + 22).strokeColor('#000').lineWidth(0.5).stroke();
+      doc.fillColor('#000').font('Helvetica').fontSize(6.5)
+        .text('Entregado por',    M,             y + 25, { width: sigW2, align: 'center' })
+        .text('Recibido conforme', M + sigW2 + 8, y + 25, { width: sigW2, align: 'center' });
+      y += 44;
+
+      // Pie
+      line(y); y += 6;
+      center('HiCloud ERP · República Dominicana', y, 6); y += 9;
+      center(`Generado: ${new Date().toLocaleString('es-DO')}`, y, 5.5);
+
+      doc.end();
+    });
+
+    return { buffer, filename: `${cond.numero}-termico.pdf` };
   }
 }
