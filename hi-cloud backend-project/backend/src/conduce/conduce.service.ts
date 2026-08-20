@@ -241,21 +241,24 @@ export class ConduceService {
       else conduceDirectoId = conduceRow.id;
     }
 
-    // Paso 1b: folio de factura exacto
+    // Paso 1b: folio de factura — exacto o sin prefijo FAC-
     if (!facturaId && !conduceDirectoId) {
       const [factRow] = await this.ds.query<{id: number}[]>(
         `SELECT id FROM facturas
-         WHERE folio = $1 AND "empresaId" = $2 AND "isActive" = true LIMIT 1`,
+         WHERE (folio = $1 OR folio = 'FAC-' || $1)
+           AND "empresaId" = $2 AND "isActive" = true LIMIT 1`,
         [term, empresaId],
       );
       if (factRow) facturaId = factRow.id;
     }
 
-    // Paso 1c: e-NCF exacto
+    // Paso 1c: e-NCF exacto (ecf.numero — el comprobante aceptado de la factura)
     if (!facturaId && !conduceDirectoId) {
       const [ecfRow] = await this.ds.query<{id: number}[]>(
-        `SELECT id FROM facturas
-         WHERE encf = $1 AND "empresaId" = $2 AND "isActive" = true LIMIT 1`,
+        `SELECT f.id FROM facturas f
+         JOIN ecf e ON e."facturaId" = f.id
+         WHERE e.numero = $1 AND f."empresaId" = $2 AND f."isActive" = true
+         LIMIT 1`,
         [term, empresaId],
       );
       if (ecfRow) facturaId = ecfRow.id;
@@ -290,7 +293,11 @@ export class ConduceService {
 
     // ── 3. Datos de la factura ────────────────────────────────────────────────
     const [factura] = await this.ds.query<any[]>(
-      `SELECT f.id, f.folio, f.encf, f.fecha, f.estado, f.total, f."clienteId",
+      `SELECT f.id, f.folio,
+              (SELECT e.numero FROM ecf e
+               WHERE e."facturaId" = f.id AND e."estadoDGII" = 'ACEPTADO'
+               ORDER BY e.id DESC LIMIT 1) AS encf,
+              f.fecha, f.estado, f.total, f."clienteId",
               cl.nombre AS "clienteNombre", cl."rncReceptor" AS "clienteRnc",
               cl.direccion AS "clienteDireccion", cl.telefono AS "clienteTelefono"
        FROM facturas f
