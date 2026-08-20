@@ -5169,6 +5169,7 @@ function POSConducePanel({ C, onVolver }: {
         api.get('/configuracion/empresa').then(r => r.data?.data ?? r.data).catch(() => ({})),
       ]);
       const empInfo = { nombre: empRes.razonSocial ?? empRes.nombre, rnc: empRes.rnc, direccion: empRes.direccion, telefono: empRes.telefono };
+      const factFolio: string | undefined = docRes.facturaFolio ?? docRes.factura?.folio;
       const gd: GenericDocData = {
         tipo:    'CONDUCE',
         numero:  docRes.numero ?? String(id),
@@ -5176,8 +5177,10 @@ function POSConducePanel({ C, onVolver }: {
         empresa: empInfo,
         cliente: docRes.cliente?.nombre,
         items:   (docRes.detalles ?? []).map((d: any) => ({ desc: d.descripcion, cant: Number(d.cantidad) })),
-        nota1:   docRes.direccionEntrega ? `Entrega: ${docRes.direccionEntrega}` : undefined,
-        nota2:   docRes.contactoEntrega  ? `Contacto: ${docRes.contactoEntrega}` : undefined,
+        nota1:   factFolio ? `Ref. Factura: ${factFolio}` : undefined,
+        nota2:   docRes.direccionEntrega
+          ? `Entrega: ${docRes.direccionEntrega}${docRes.contactoEntrega ? ` · ${docRes.contactoEntrega}` : ''}`
+          : docRes.contactoEntrega ? `Contacto: ${docRes.contactoEntrega}` : undefined,
         notas:   docRes.notas,
       };
       imprimirReciboTermico(buildDocTermicoHTML(gd, { tipoImpresora: ((empRes.configuracion ?? {}) as any).posTipoImpresora }), undefined, ((empRes.configuracion ?? {}) as any).posTipoImpresora);
