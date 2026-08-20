@@ -148,6 +148,24 @@ export default function EcfRecibidosPage() {
         : <Text type="secondary">—</Text>,
     },
     {
+      title: 'Monto Grav.',
+      dataIndex: 'montoGravado',
+      width: 115,
+      align: 'right' as const,
+      render: (v?: number) => v != null
+        ? <Text style={MONO}>{fmt.money(v)}</Text>
+        : <Text type="secondary">—</Text>,
+    },
+    {
+      title: 'ITBIS',
+      dataIndex: 'itbis',
+      width: 100,
+      align: 'right' as const,
+      render: (v?: number) => v != null
+        ? <Text style={MONO}>{fmt.money(v)}</Text>
+        : <Text type="secondary">—</Text>,
+    },
+    {
       title: 'Total',
       dataIndex: 'total',
       width: 120,

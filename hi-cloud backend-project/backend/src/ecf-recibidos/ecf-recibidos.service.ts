@@ -141,20 +141,31 @@ export class EcfRecibidosService {
       const rncRaw = get(iRnc).replace(/\D/g, '');
       const itbisRaw = iTotalImpuestos >= 0 ? get(iTotalImpuestos) : '';
 
-      const fechaRaw = get(iFecha);
+      const fechaRaw    = get(iFecha);
+      const totalVal    = parseFloat(Number(get(iTotal).replace(/,/g, '') || 0).toFixed(2));
+      // "Total Impuestos" en el CSV de MSeller = monto gravado (base imponible sin ITBIS).
+      // El ITBIS se deriva: itbis = total − montoGravado.
+      const montoGravado = itbisRaw
+        ? parseFloat(Number(itbisRaw.replace(/,/g, '')).toFixed(2))
+        : undefined;
+      const itbisCalculado = (montoGravado != null && totalVal > montoGravado)
+        ? parseFloat((totalVal - montoGravado).toFixed(2))
+        : undefined;
+
       return {
         encf:            get(iEcf),
         rncEmisor:       rncRaw || undefined,
         nombreEmisor:    get(iNombre) || undefined,
         fechaDocumento:  this.parsearFecha(fechaRaw),
         tipoEcf:         get(iTipo).replace(/\D/g, '') || undefined,
-        total:           parseFloat(Number(get(iTotal).replace(/,/g, '') || 0).toFixed(2)),
-        itbis:           itbisRaw ? parseFloat(Number(itbisRaw.replace(/,/g, '')).toFixed(2)) : undefined,
+        total:           totalVal,
+        montoGravado,
+        itbis:           itbisCalculado,
         status:          get(iStatus).toLowerCase() || 'received',
         creadoEnMseller: this.parsearFecha(get(iCreado)),
         urlDocumento:    get(iUrlDoc) || undefined,
         fuenteImportacion: FuenteImportacion.CSV,
-        _filaNum:  i + 2, // línea real en el archivo (1-based, +1 por el header)
+        _filaNum:  i + 2,
         _fechaRaw: fechaRaw,
       };
     });
