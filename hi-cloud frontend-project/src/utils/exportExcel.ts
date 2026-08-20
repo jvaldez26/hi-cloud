@@ -20,6 +20,7 @@ export async function exportarEcfRecibidos(registros: any[], nombre: string) {
       'RNC Emisor':    r.rncEmisor ?? '',
       'Emisor':        r.nombreEmisor ?? '',
       'Fecha':         fecha ?? 'SIN FECHA ⚠',
+      'Día':           fecha ? fecha.getDate() : '',
       'Tipo':          r.tipoEcf ? `E${r.tipoEcf}` : '',
       'Monto Gravado': r.montoGravado != null ? Number(r.montoGravado) : '',
       'ITBIS':         r.itbis != null ? Number(r.itbis) : '',
