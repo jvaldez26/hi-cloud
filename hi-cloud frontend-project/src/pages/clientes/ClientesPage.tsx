@@ -25,6 +25,8 @@ import { exportarExcel } from '../../utils/exportExcel';
 import type { Cliente } from '../../types';
 import { fmt } from '../../utils/formatters';
 import { useCanDo } from '../../hooks/useCanDo';
+import { SkeletonTabla } from '../../components/ui/SkeletonTabla';
+import { useSkeletonDelay } from '../../hooks/useSkeletonDelay';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -131,6 +133,7 @@ export default function ClientesPage() {
     queryKey: ['clientes', page, search],
     queryFn:  () => clientesApi.list(page, 15, search),
   });
+  const showSkeleton = useSkeletonDelay(isLoading, 200);
 
   // Para impedir que se cargue el RNC propio como RNC del comprador
   const { data: empresa } = useQuery<{ rnc?: string; nombre?: string } | null>({
@@ -336,6 +339,7 @@ export default function ClientesPage() {
       </Row>
 
       {isMobile ? (
+        showSkeleton ? <SkeletonTabla rows={5} cols={3} /> : (
         <div>
           {(data?.data ?? []).map((c: Cliente) => (
             <div
@@ -386,7 +390,9 @@ export default function ClientesPage() {
             </div>
           )}
         </div>
+        )
       ) : (
+        showSkeleton ? <SkeletonTabla rows={6} cols={6} /> : (
         <Table
           columns={filterColumns(columns)} dataSource={data?.data ?? []} rowKey="id"
           loading={isLoading} size="small"
@@ -397,6 +403,7 @@ export default function ClientesPage() {
             showSizeChanger: false, size: 'small',
           }}
         />
+        )
       )}
 
       {/* Modal: Portal del cliente */}

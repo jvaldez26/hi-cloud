@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Card, Row, Col, Typography, Statistic, Table, Tag, Button,
-         Space, DatePicker, Spin, Divider, Progress, Empty, Tabs } from 'antd';
+         Space, DatePicker, Spin, Divider, Progress, Empty, Tabs, Skeleton } from 'antd';
+import { SkeletonTabla } from '../../components/ui/SkeletonTabla';
+import { SkeletonTarjetas } from '../../components/ui/SkeletonTarjetas';
 import { ArrowLeftOutlined, PrinterOutlined, DownloadOutlined, FilePdfOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -54,7 +56,18 @@ export default function EstadoCuentaPage() {
     exportarExcel(filas, `Estado-Cuenta-${data.cliente?.nombre}-${dayjs().format('YYYY-MM-DD')}`);
   };
 
-  if (isLoading) return <Spin size="large" style={{ display: 'block', margin: '80px auto' }} />;
+  if (isLoading) return (
+    <div style={{ padding: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+        <Skeleton.Button active size="small" style={{ width: 100 }} />
+        <Skeleton.Input active style={{ width: 240, height: 28 }} />
+      </div>
+      <SkeletonTarjetas count={3} colSpan={8} />
+      <Card style={{ marginTop: 16 }}>
+        <SkeletonTabla rows={5} cols={7} />
+      </Card>
+    </div>
+  );
 
   const resumenPorMoneda: Record<string, any> = data?.resumenPorMoneda ?? (data?.resumen ? { DOP: data.resumen } : {});
   const monedas = Object.keys(resumenPorMoneda);

@@ -1,7 +1,8 @@
 import { useState, useRef } from 'react';
 import { EmailConCopiaModal } from '../../components/ui/EmailConCopiaModal';
 import { Button, Card, Descriptions, Table, Tag, Row, Col, Typography,
-         Statistic, Space, Spin, Steps, message, Popconfirm, Modal, Input, Tooltip, theme, Upload, Alert } from 'antd';
+         Statistic, Space, Spin, Steps, message, Popconfirm, Modal, Input, Tooltip, theme, Upload, Alert, Skeleton } from 'antd';
+import { SkeletonTabla } from '../../components/ui/SkeletonTabla';
 import { ArrowLeftOutlined, SendOutlined, MailOutlined, FilePdfOutlined, EyeOutlined,
          PaperClipOutlined, UploadOutlined, LinkOutlined } from '@ant-design/icons';
 import WhatsAppButton from '../../components/ui/WhatsAppButton';
@@ -82,7 +83,29 @@ export default function FacturaDetailPage() {
     }
   };
 
-  if (isLoading) return <Spin size="large" style={{ display: 'block', margin: '80px auto' }} />;
+  if (isLoading) return (
+    <div style={{ padding: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+        <Skeleton.Button active size="small" style={{ width: 100 }} />
+        <Skeleton.Input active style={{ width: 220, height: 28 }} />
+      </div>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} lg={16}>
+          <Card style={{ marginBottom: 16 }}>
+            <Skeleton active paragraph={{ rows: 4 }} />
+          </Card>
+          <Card>
+            <SkeletonTabla rows={5} cols={8} />
+          </Card>
+        </Col>
+        <Col xs={24} lg={8}>
+          <Card>
+            <Skeleton active paragraph={{ rows: 6 }} />
+          </Card>
+        </Col>
+      </Row>
+    </div>
+  );
   if (!factura)  return <Text type="danger">Factura no encontrada</Text>;
 
   const estado   = factura.estado as FacturaEstado;

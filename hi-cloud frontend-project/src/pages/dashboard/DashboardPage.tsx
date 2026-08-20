@@ -1,4 +1,6 @@
 import { Row, Col, Card, Table, Typography, Spin, Tag, Space, Button, theme, DatePicker, Empty, Tooltip as AntTooltip, Skeleton } from 'antd';
+import { SkeletonTabla } from '../../components/ui/SkeletonTabla';
+import { useSkeletonDelay } from '../../hooks/useSkeletonDelay';
 import {
   DollarOutlined, FileTextOutlined, RightOutlined, ReloadOutlined,
   LineChartOutlined, BarChartOutlined, DownloadOutlined,
@@ -175,6 +177,8 @@ function DashboardVendedor() {
 
   const factData = Array.isArray(misFacturas?.data) ? misFacturas.data : (Array.isArray(misFacturas) ? misFacturas : []);
   const cotData  = Array.isArray(misCotizaciones?.data) ? misCotizaciones.data : (Array.isArray(misCotizaciones) ? misCotizaciones : []);
+  const showSkFact = useSkeletonDelay(loadFact, 200);
+  const showSkCot  = useSkeletonDelay(loadCot,  200);
 
   return (
     <div>
@@ -186,26 +190,26 @@ function DashboardVendedor() {
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={12}>
           <Card title="Mis últimas facturas" extra={<Button size="small" onClick={() => navigate('/facturas')}>Ver todas</Button>}>
-            <Table dataSource={factData.slice(0, 6)} rowKey="id" size="small" loading={loadFact} pagination={false} scroll={{ x: 'max-content' }}
+            {showSkFact ? <SkeletonTabla rows={4} cols={4} /> : <Table dataSource={factData.slice(0, 6)} rowKey="id" size="small" loading={loadFact} pagination={false} scroll={{ x: 'max-content' }}
               columns={[
                 { title: 'Folio',   dataIndex: 'folio',  width: 100, render: (v: string) => <Text code style={{ fontSize: 11 }}>{v}</Text> },
                 { title: 'Cliente', key: 'cli',          ellipsis: true, render: (_: any, r: any) => r.cliente?.nombre ?? '—' },
                 { title: 'Total',   dataIndex: 'total',  width: 110, align: 'right' as const, render: (v: number) => fmt.money(v) },
                 { title: 'Estado',  dataIndex: 'estado', width: 90,
                   render: (v: string) => <Tag color={v === 'pagada' ? 'green' : v === 'emitida' ? 'blue' : 'default'} style={{ fontSize: 10 }}>{v?.toUpperCase()}</Tag> },
-              ]} />
+              ]} />}
           </Card>
         </Col>
         <Col xs={24} lg={12}>
           <Card title="Mis últimas cotizaciones" extra={<Button size="small" onClick={() => navigate('/cotizaciones')}>Ver todas</Button>}>
-            <Table dataSource={cotData.slice(0, 6)} rowKey="id" size="small" loading={loadCot} pagination={false} scroll={{ x: 'max-content' }}
+            {showSkCot ? <SkeletonTabla rows={4} cols={4} /> : <Table dataSource={cotData.slice(0, 6)} rowKey="id" size="small" loading={loadCot} pagination={false} scroll={{ x: 'max-content' }}
               columns={[
                 { title: 'Número', dataIndex: 'numero', width: 100, render: (v: string) => <Text code style={{ fontSize: 11 }}>{v}</Text> },
                 { title: 'Cliente', key: 'cli',         ellipsis: true, render: (_: any, r: any) => r.cliente?.nombre ?? '—' },
                 { title: 'Total',   dataIndex: 'total', width: 110, align: 'right' as const, render: (v: number) => fmt.money(v) },
                 { title: 'Estado',  dataIndex: 'estado', width: 90,
                   render: (v: string) => <Tag color={{ aceptada: 'green', enviada: 'blue', borrador: 'default', rechazada: 'red', vencida: 'orange' }[v] ?? 'default'} style={{ fontSize: 10 }}>{v?.toUpperCase()}</Tag> },
-              ]} />
+              ]} />}
           </Card>
         </Col>
       </Row>

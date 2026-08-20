@@ -1,4 +1,6 @@
 ﻿import { useState, useEffect, useRef } from 'react';
+import { SkeletonTabla } from '../../components/ui/SkeletonTabla';
+import { useSkeletonDelay } from '../../hooks/useSkeletonDelay';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
@@ -175,6 +177,7 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
     queryKey: ['ecf-list', page, estado, tipo, search],
     queryFn:  () => ecfApi.list(page, 10, estado, tipo, search),
   });
+  const showSkeleton = useSkeletonDelay(isLoading, 200);
 
   const { data: tipos } = useQuery({ queryKey: ['ecf-tipos'], queryFn: ecfApi.tipos, staleTime: Infinity }); // catálogo estático
 
@@ -363,9 +366,13 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
         </Col>
       </Row>
 
-      <Table columns={filterColumns(cols)} dataSource={data?.data ?? []} rowKey="id" loading={isLoading} size="small"
-        scroll={{ x: 'max-content' }}
-        pagination={{ total: data?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }} />
+      {showSkeleton ? (
+        <SkeletonTabla rows={7} cols={7} />
+      ) : (
+        <Table columns={filterColumns(cols)} dataSource={data?.data ?? []} rowKey="id" loading={isLoading} size="small"
+          scroll={{ x: 'max-content' }}
+          pagination={{ total: data?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }} />
+      )}
 
       {/* Detalle e-CF */}
       <Drawer title={<Space><Text strong>{detail?.numero}</Text><Tag color={estadoDGIIColor[detail?.estadoDGII] ?? 'default'}>{detail?.estadoDGII?.replace(/_/g,' ').toUpperCase()}</Tag></Space>}
@@ -482,6 +489,7 @@ function SecuenciasTab({ onRefresh }: { onRefresh: () => void }) {
     queryKey: ['ecf-secuencias'],
     queryFn:  () => ecfApi.secuencias(),
   });
+  const showSkeletonSec = useSkeletonDelay(isLoading, 200);
   const { data: proximas } = useQuery({ queryKey: ['ecf-proximas'], queryFn: ecfApi.secuenciasProximasVencer });
   const { data: tipos }    = useQuery({ queryKey: ['ecf-tipos'],    queryFn: ecfApi.tipos });
 
@@ -614,9 +622,13 @@ function SecuenciasTab({ onRefresh }: { onRefresh: () => void }) {
         </Col>
       </Row>
 
-      <Table columns={cols} dataSource={secuencias?.data ?? []} rowKey="id"
-        loading={isLoading} size="small"
-        scroll={{ x: 'max-content' }} pagination={false} />
+      {showSkeletonSec ? (
+        <SkeletonTabla rows={6} cols={10} />
+      ) : (
+        <Table columns={cols} dataSource={secuencias?.data ?? []} rowKey="id"
+          loading={isLoading} size="small"
+          scroll={{ x: 'max-content' }} pagination={false} />
+      )}
 
       {/* Modal: registrar nueva secuencia */}
       <Modal title="Registrar nueva secuencia autorizada" open={openCreate}

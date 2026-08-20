@@ -23,6 +23,8 @@ import { atributosApi } from '../../api/atributos.api';
 import api from '../../api/client';
 import { useCanDo } from '../../hooks/useCanDo';
 import { UomSelect } from '../../components/ui/UomSelect';
+import { SkeletonTabla } from '../../components/ui/SkeletonTabla';
+import { useSkeletonDelay } from '../../hooks/useSkeletonDelay';
 import { useAuthStore } from '../../store/auth.store';
 import { exportarCatalogo } from '../../utils/exportExcel';
 import type { Producto } from '../../types';
@@ -333,11 +335,7 @@ function HistorialProveedoresPanel({ productoId, active }: { productoId: number;
 
   if (!active) return null;
 
-  if (isLoading) return (
-    <div style={{ display: 'flex', justifyContent: 'center', padding: '48px 0' }}>
-      <Spin tip="Cargando historial..." />
-    </div>
-  );
+  if (isLoading) return <SkeletonTabla rows={4} cols={5} />;
 
   if (!data || data.lineas.length === 0) return (
     <div style={{ textAlign: 'center', padding: '48px 0', color: '#9CA3AF' }}>
@@ -575,6 +573,7 @@ function ProductosCatalogo() {
     queryKey: ['productos', page, search, categoria],
     queryFn:  () => productosApi.list(page, PAGE_SIZE, search, true),
   });
+  const showSkeleton = useSkeletonDelay(isLoading, 200);
 
   // Categorías y marcas: cargan todo el catálogo (no solo la página actual) para Selects completos
   const { data: catalogoCats } = useQuery({
@@ -993,9 +992,11 @@ function ProductosCatalogo() {
         </Col>
       </Row>
 
+      {showSkeleton && <SkeletonTabla rows={7} cols={8} />}
       <Table columns={filterColumns(columns) as any} dataSource={rows} rowKey="id"
         loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
+        style={{ display: showSkeleton ? 'none' : undefined }}
         rowClassName={(r: Producto) => {
           if (r.tipo === 'servicio') return '';
           const spa = (r as any).stockPorAlmacen as { cantidad: number }[] | undefined;
