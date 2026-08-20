@@ -182,7 +182,7 @@ export default function ProveedoresPage() {
         loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
         pagination={{
-          total: data?.meta.total, pageSize: 15, current: page,
+          total: data?.meta.total, pageSize: 10, current: page,
           onChange: setPage, showTotal: t => `${t.toLocaleString('es-DO')} proveedores`,
           showSizeChanger: false, size: 'small',
         }}

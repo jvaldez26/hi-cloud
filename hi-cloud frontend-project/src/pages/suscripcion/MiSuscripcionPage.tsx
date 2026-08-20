@@ -369,7 +369,7 @@ export default function MiSuscripcionPage() {
                     rowKey="id"
                     loading={loadingHist}
                     size="small"
-                    pagination={{ pageSize: 15, showSizeChanger: false }}
+                    pagination={{ pageSize: 10, showSizeChanger: false }}
                     scroll={{ x: 'max-content' }}
                     summary={data => {
                       const pendiente = data.reduce((acc, mov) => {

@@ -148,7 +148,7 @@ export default function DocumentosPage() {
           rowKey="id"
           loading={isLoading}
           size="middle"
-          pagination={{ pageSize: 15 }}
+          pagination={{ pageSize: 10 }}
           columns={[
             {
               title: 'Archivo', key: 'archivo',

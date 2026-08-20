@@ -124,7 +124,7 @@ function ReporteDrawer({ open, onClose }: { open: boolean; onClose: () => void }
         size="small" loading={isFetching}
         dataSource={reclamaciones} rowKey="id"
         scroll={{ x: 'max-content' }}
-        pagination={{ pageSize: 15 }}
+        pagination={{ pageSize: 10 }}
         columns={[
           { title: 'N°', dataIndex: 'numero', width: 110 },
           { title: 'Paciente', dataIndex: 'pacienteNombre', ellipsis: true },

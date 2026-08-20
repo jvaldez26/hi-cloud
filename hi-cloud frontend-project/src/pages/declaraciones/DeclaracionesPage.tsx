@@ -349,7 +349,7 @@ function HistorialPanel({ mes, anio }: { mes: number; anio: number }) {
         rowKey="id"
         loading={isLoading}
         size="small"
-        pagination={{ pageSize: 12, showSizeChanger: false }}
+        pagination={{ pageSize: 10, showSizeChanger: false }}
         locale={{ emptyText: 'Sin reportes generados aún' }}
       
         scroll={{ x: 'max-content' }} />

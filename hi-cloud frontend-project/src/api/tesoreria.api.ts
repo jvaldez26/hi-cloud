@@ -16,7 +16,7 @@ export const tesoreriaApi = {
   createCuenta: (body: CuentaBancariaPayload) =>
     api.post('/tesoreria/cuentas', body).then(r => r.data.data),
 
-  movimientos: (p = 1, limit = 15, cuentaId?: number) =>
+  movimientos: (p = 1, limit = 10, cuentaId?: number) =>
     api.get(`/tesoreria/movimientos?page=${p}&limit=${limit}${cuentaId ? `&cuentaBancariaId=${cuentaId}` : ''}`)
        .then(r => r.data.data),
 

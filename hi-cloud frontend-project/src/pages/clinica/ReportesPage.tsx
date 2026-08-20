@@ -125,7 +125,7 @@ export default function ClinicaReportesPage() {
                 rowKey={(r: any, i: any) => i}
                 size="small"
                 scroll={{ x: 'max-content' }}
-                pagination={{ pageSize: 15 }}
+                pagination={{ pageSize: 10 }}
               />
             </Card>
           </Col>

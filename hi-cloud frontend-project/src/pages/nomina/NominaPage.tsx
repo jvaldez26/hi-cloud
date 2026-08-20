@@ -492,7 +492,7 @@ function NovedadesTab() {
           </Space>
         </Col>
       </Row>
-      <Table columns={cols} dataSource={novedades ?? []} rowKey="id" loading={isLoading} size="small" pagination={{ pageSize: 15 }}
+      <Table columns={cols} dataSource={novedades ?? []} rowKey="id" loading={isLoading} size="small" pagination={{ pageSize: 10 }}
         scroll={{ x: 'max-content' }} />
 
       <Modal title="Registrar novedad" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width={520}>
@@ -669,7 +669,7 @@ function ContratosTab() {
         </Col>
       </Row>
       <Table columns={cols} dataSource={contratos ?? []} rowKey="id" loading={isLoading} size="small"
-        pagination={{ pageSize: 15 }} scroll={{ x: 'max-content' }} />
+        pagination={{ pageSize: 10 }} scroll={{ x: 'max-content' }} />
 
       <Modal title="Nuevo contrato laboral" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width={680}>
         <Form form={form} layout="vertical" onFinish={(v) => createMut.mutate(v)}>

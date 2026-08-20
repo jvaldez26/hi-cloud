@@ -154,7 +154,7 @@ export default function FidelidadPage() {
           rowKey="id"
           size="small"
         scroll={{ x: 'max-content' }}
-          pagination={{ pageSize: 15 }}
+          pagination={{ pageSize: 10 }}
           columns={filterColumns([
             {
               title: '#', key: 'rank',

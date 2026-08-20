@@ -2482,7 +2482,7 @@ export default function SuperAdminPage() {
                   size="small"
                   scroll={{ x: 'max-content' }}
                   onRow={r => ({ onClick: () => setDetalleEmpresa(r), style: { cursor: 'pointer' } })}
-                  pagination={{ pageSize: 15, showTotal: t => `${t} empresas`, showSizeChanger: true }}
+                  pagination={{ pageSize: 10, showTotal: t => `${t} empresas`, showSizeChanger: true }}
                   rowClassName={() => 'sa-row'}
                   style={{ '--sa-row-bg': C.bg, '--sa-row-hover': isDark ? '#1a2535' : '#EEF2FF' } as any}
                 />
@@ -2505,7 +2505,7 @@ export default function SuperAdminPage() {
                     rowKey="id"
                     size="small"
                     scroll={{ x: 'max-content' }}
-                    pagination={{ pageSize: 15, showTotal: t => `${t} solicitudes` }}
+                    pagination={{ pageSize: 10, showTotal: t => `${t} solicitudes` }}
                     columns={[
                       {
                         title: 'Usuario',
@@ -2686,7 +2686,7 @@ export default function SuperAdminPage() {
                 rowKey="id"
                 size="small"
                 scroll={{ x: 'max-content' }}
-                pagination={{ pageSize: 15, showTotal: t => `${t} usuarios`, showSizeChanger: true }}
+                pagination={{ pageSize: 10, showTotal: t => `${t} usuarios`, showSizeChanger: true }}
               />
             )}
 
@@ -2716,7 +2716,7 @@ export default function SuperAdminPage() {
                   loading={loadSus}
                   rowKey="id"
                   size="small"
-                  pagination={{ pageSize: 15, showTotal: t => `${t} suscripciones` }}
+                  pagination={{ pageSize: 10, showTotal: t => `${t} suscripciones` }}
                 
         scroll={{ x: 'max-content' }} />
               </>

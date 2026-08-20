@@ -372,7 +372,7 @@ export default function NotasCreditoPage() {
           rowKey="id"
           loading={isLoading}
           size="middle"
-          pagination={{ pageSize: 15 }}
+          pagination={{ pageSize: 10 }}
           scroll={{ x: 'max-content' }}
           columns={fcNC([
             { title: 'Número', key: 'n', width: 150,

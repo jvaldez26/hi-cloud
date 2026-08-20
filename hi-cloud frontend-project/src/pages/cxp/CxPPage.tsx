@@ -57,7 +57,7 @@ export default function CxPPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['cxp', page, estado, search, rango],
-    queryFn:  () => cxpApi.list(page, 15, {
+    queryFn:  () => cxpApi.list(page, 10, {
       estado,
       fechaDesde: rango?.[0].format('YYYY-MM-DD'),
       fechaHasta: rango?.[1].format('YYYY-MM-DD'),
@@ -244,7 +244,7 @@ export default function CxPPage() {
         scroll={{ x: 'max-content' }}
           pagination={{
             total: search ? rows.length : data?.meta.total,
-            pageSize: 15, current: page,
+            pageSize: 10, current: page,
             onChange: setPage,
             showTotal: t => `${t.toLocaleString('es-DO')} cuentas`,
             showSizeChanger: false, size: 'small',

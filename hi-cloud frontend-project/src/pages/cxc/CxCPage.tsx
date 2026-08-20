@@ -64,7 +64,7 @@ export default function CxCPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['cxc', page, estado, search, rango],
-    queryFn:  () => cxcApi.list(page, 15, {
+    queryFn:  () => cxcApi.list(page, 10, {
       estado,
       fechaDesde: rango?.[0].format('YYYY-MM-DD'),
       fechaHasta: rango?.[1].format('YYYY-MM-DD'),
@@ -455,7 +455,7 @@ export default function CxCPage() {
           loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
           pagination={{
-            total: data?.meta.total, pageSize: 15, current: page,
+            total: data?.meta.total, pageSize: 10, current: page,
             onChange: setPage, showTotal: t => `${t.toLocaleString('es-DO')} cuentas`,
             showSizeChanger: false, size: 'small',
           }}

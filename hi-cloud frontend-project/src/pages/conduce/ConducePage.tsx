@@ -321,7 +321,7 @@ export default function ConducePage() {
           rowKey="id"
           loading={isLoading}
           size="middle"
-          pagination={{ pageSize: 15, current: page, total: conduces?.meta?.total, onChange: setPage, showSizeChanger: false }}
+          pagination={{ pageSize: 10, current: page, total: conduces?.meta?.total, onChange: setPage, showSizeChanger: false }}
           expandable={{
             expandedRowRender: (r: any) => (
               <Steps

@@ -193,7 +193,7 @@ export default function CuotasPage() {
               />
             }
           >
-            <Table dataSource={planesFiltrados} rowKey="id" size="small" pagination={{ pageSize: 12 }}
+            <Table dataSource={planesFiltrados} rowKey="id" size="small" pagination={{ pageSize: 10 }}
               onRow={r => ({ style: { cursor: 'pointer' }, onClick: () => setPlanSel(r) })}
               columns={fcCuotas([
                 { title: 'No.', dataIndex: 'numero', key: 'n', render: (v: any) => <Text strong style={{ fontFamily: 'mono', fontSize: 11 }}>{v}</Text> },

@@ -150,7 +150,7 @@ function PlanesTab() {
               </Col>
             </Row>
             <Table columns={colsLineas} dataSource={lineas} rowKey="id" size="small"
-              pagination={{ pageSize: 15 }} scroll={{ x: 'max-content' }} />
+              pagination={{ pageSize: 10 }} scroll={{ x: 'max-content' }} />
           </>
         )}
       </Modal>

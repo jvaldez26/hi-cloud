@@ -161,7 +161,7 @@ function SolicitudesTab() {
       </Row>
 
       <Table columns={cols} dataSource={data?.data ?? []} rowKey="id" loading={isLoading} size="small"
-        pagination={{ total: data?.meta?.total, pageSize: 15, current: page, onChange: setPage, showSizeChanger: false }} 
+        pagination={{ total: data?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }} 
         scroll={{ x: 'max-content' }} />
 
       {/* Modal crear solicitud */}
@@ -398,7 +398,7 @@ function CotizacionesTab() {
 
   return (
     <>
-      <Table columns={cols} dataSource={data?.data ?? []} rowKey="id" loading={isLoading} size="small" pagination={{ pageSize: 15 }} 
+      <Table columns={cols} dataSource={data?.data ?? []} rowKey="id" loading={isLoading} size="small" pagination={{ pageSize: 10 }} 
         scroll={{ x: 'max-content' }} />
 
       <Drawer title={`Cotización ${detalle?.numero}`} open={!!detalle} onClose={() => setDetalle(null)} width={560}>

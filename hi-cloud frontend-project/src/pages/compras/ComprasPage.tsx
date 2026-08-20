@@ -76,7 +76,7 @@ export default function ComprasPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['compras', page, filters],
     refetchOnMount: 'always',
-    queryFn:  () => comprasApi.list(page, 15, filters),
+    queryFn:  () => comprasApi.list(page, 10, filters),
   });
 
   const rows = data?.data ?? [];
@@ -368,7 +368,7 @@ export default function ComprasPage() {
         scroll={{ x: 'max-content' }}
         onRow={r => ({ style: { cursor: 'pointer' }, onDoubleClick: () => navigate(`/compras/${r.id}`) })}
         pagination={{
-          total: data?.meta.total, pageSize: 15, current: page,
+          total: data?.meta.total, pageSize: 10, current: page,
           onChange: setPage, showTotal: t => `${t.toLocaleString('es-DO')} compras`,
           showSizeChanger: false, size: 'small',
         }}

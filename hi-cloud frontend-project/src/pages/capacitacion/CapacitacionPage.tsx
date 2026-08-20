@@ -220,7 +220,7 @@ export default function CapacitacionPage() {
                   dataSource={sesionesFiltradas}
                   rowKey="id"
                   size="middle"
-                  pagination={{ pageSize: 12 }}
+                  pagination={{ pageSize: 10 }}
                   onRow={row => ({ style: { cursor: 'pointer' }, onClick: () => { setSesionSeleccionada(row); setTabActiva('registros'); } })}
                   columns={[
                     {

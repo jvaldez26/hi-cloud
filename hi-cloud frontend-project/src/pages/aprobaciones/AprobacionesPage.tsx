@@ -321,7 +321,7 @@ export default function AprobacionesPage() {
           rowKey="id"
           loading={isLoading}
           size="middle"
-          pagination={{ pageSize: 15, showSizeChanger: false }}
+          pagination={{ pageSize: 10, showSizeChanger: false }}
           columns={filterColumns(cols)}
         />
       </Card>

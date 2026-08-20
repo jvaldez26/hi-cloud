@@ -95,7 +95,7 @@ export default function ReportesPage() {
         <Col xs={24} xl={10}>
           <Card title="💹 Rentabilidad por Expediente" size="small" loading={loadRent}>
             <Table dataSource={rentArr} rowKey={(r: any, i: any) => `${r.expedienteId ?? i}`} size="small"
-              scroll={{ x: 'max-content' }} pagination={{ pageSize: 15 }}
+              scroll={{ x: 'max-content' }} pagination={{ pageSize: 10 }}
               columns={[
                 { title: 'Expediente', render: (_: any, r: any) => (
                   <div>

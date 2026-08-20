@@ -863,7 +863,7 @@ function ResumenTab({ onRefresh }: { onRefresh: () => void }) {
             {pendientes?.length === 0
               ? <Text type="secondary">Sin e-CFs pendientes ✓</Text>
               : <Table dataSource={pendientes ?? []} rowKey="id" size="small"
-                  scroll={{ x: 'max-content' }} pagination={{ pageSize: 5 }}
+                  scroll={{ x: 'max-content' }} pagination={{ pageSize: 10 }}
                   columns={[
                     { title: 'Número', dataIndex: 'numero', render: (v: string) => <Text code style={{ fontSize: 11 }}>{v}</Text> },
                     { title: 'Tipo', key: 'tipo', render: (_: any, r: any) => <Tag>{r.tipoECF?.codigo}</Tag> },
@@ -921,7 +921,7 @@ function ResumenTab({ onRefresh }: { onRefresh: () => void }) {
                   rowKey="numero"
                   size="small"
                   scroll={{ x: 'max-content' }}
-                  pagination={{ pageSize: 5 }}
+                  pagination={{ pageSize: 10 }}
                   rowSelection={rowSelection}
                   columns={colsRechazados}
                 />

@@ -290,7 +290,7 @@ export default function PreFacturaPage() {
           rowKey="id"
           loading={isLoading}
           size="middle"
-          pagination={{ pageSize: 15, total: preFacturas?.meta?.total, current: page, onChange: setPage, showSizeChanger: false }}
+          pagination={{ pageSize: 10, total: preFacturas?.meta?.total, current: page, onChange: setPage, showSizeChanger: false }}
           columns={filterColumns([
             {
               title: 'Folio', dataIndex: 'folio', key: 'folio',

@@ -245,7 +245,7 @@ function ConversionesTab() {
 
       <Table columns={cols} dataSource={conversiones ?? []} rowKey="id" loading={isLoading}
         size="small"
-        scroll={{ x: 'max-content' }} pagination={{ pageSize: 30 }} />
+        scroll={{ x: 'max-content' }} pagination={{ pageSize: 10 }} />
 
       <Modal title="Nueva Conversión" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width={440}>
         <Alert type="info" showIcon style={{ marginBottom: 12, fontSize: 12 }}

@@ -157,7 +157,7 @@ export default function ValoracionStockPage() {
               loading={isLoading}
               size="small"
         scroll={{ x: 'max-content' }}
-              pagination={{ pageSize: 15 }}
+              pagination={{ pageSize: 10 }}
               columns={filterColumns([
                 {
                   title: 'Código', dataIndex: 'codigo', key: 'codigo', width: 90,

@@ -132,7 +132,7 @@ export default function DepositosPage() {
           rowKey="id"
           loading={isLoading}
           size="middle"
-          pagination={{ pageSize: 15 }}
+          pagination={{ pageSize: 10 }}
           columns={[
             { title: 'Número', dataIndex: 'numero', key: 'n', render: v => <Text strong style={{ fontFamily: 'monospace' }}>{v}</Text> },
             { title: 'Fecha', dataIndex: 'fecha', key: 'f' },

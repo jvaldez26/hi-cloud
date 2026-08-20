@@ -346,7 +346,7 @@ export default function RecibosCobrosPage() {
           loading={isLoading}
           size="middle"
           scroll={{ x: 'max-content' }}
-          pagination={{ pageSize: 15 }}
+          pagination={{ pageSize: 10 }}
           columns={filterColumns([
             { title: 'Número', dataIndex: 'numero', key: 'n', width: 115,
               render: (v: any) => <Text strong style={{ fontFamily: 'monospace', color: token.colorSuccess }}>{v}</Text> },

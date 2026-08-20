@@ -109,7 +109,7 @@ export default function IsrPage() {
                         loading={isLoading}
                         size="small"
         scroll={{ x: 'max-content' }}
-                        pagination={{ pageSize: 12 }}
+                        pagination={{ pageSize: 10 }}
                         columns={filterColumns([
                           { title: 'Empleado', dataIndex: 'nombre', key: 'n', render: v => <Text strong style={{ fontSize: 12 }}>{v}</Text> },
                           { title: 'Salario Bruto', dataIndex: 'salarioBruto', key: 'sb', align: 'right', render: v => fmt(v) },

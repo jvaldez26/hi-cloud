@@ -194,7 +194,7 @@ export default function DatafonoPage() {
                   dataSource={transaccionesFiltradas}
                   rowKey="id"
                   size="middle"
-                  pagination={{ pageSize: 15 }}
+                  pagination={{ pageSize: 10 }}
                   columns={[
                     { title: 'Fecha', dataIndex: 'fecha', key: 'fecha', sorter: (a, b) => a.fecha.localeCompare(b.fecha) },
                     { title: 'Referencia', dataIndex: 'referencia', key: 'referencia' },

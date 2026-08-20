@@ -135,7 +135,7 @@ function TabRecibos({ empleadoId, nominas }: { empleadoId: number; nominas: any[
         dataSource={nominasFiltradas}
         rowKey="periodoId"
         size="middle"
-        pagination={{ pageSize: 12 }}
+        pagination={{ pageSize: 10 }}
         columns={[
           { title: 'Período', dataIndex: 'periodo', key: 'p', render: v => <Text strong>{v}</Text> },
           { title: 'Días', dataIndex: 'diasTrabajados', key: 'd', align: 'center' as const },
@@ -422,7 +422,7 @@ function TabSolicitudes() {
         rowKey="id"
         loading={isLoading}
         size="middle"
-        pagination={{ pageSize: 12 }}
+        pagination={{ pageSize: 10 }}
         columns={[
           { title: 'Desde',   dataIndex: 'fechaInicio',    key: 'fi', render: v => fmtDate(v) },
           { title: 'Hasta',   dataIndex: 'fechaFin',       key: 'ff', render: v => fmtDate(v) },

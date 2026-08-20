@@ -168,7 +168,7 @@ export default function GruposPage() {
                       rowKey="id"
                       size="small"
         scroll={{ x: 'max-content' }}
-                      pagination={{ pageSize: 15 }}
+                      pagination={{ pageSize: 10 }}
                       columns={[
                         { title: 'Código', dataIndex: 'codigo', key: 'c', render: v => <Tag style={{ fontFamily: 'mono' }}>{v}</Tag> },
                         { title: 'Nombre', dataIndex: 'nombre', key: 'n', render: (v, r: any) => (
@@ -204,7 +204,7 @@ export default function GruposPage() {
                   dataSource={segmentosFiltrados}
                   rowKey="id"
                   size="middle"
-                  pagination={{ pageSize: 15 }}
+                  pagination={{ pageSize: 10 }}
                   columns={[
                     { title: 'Código', dataIndex: 'codigo', key: 'c', render: v => <Tag>{v}</Tag> },
                     { title: 'Segmento', dataIndex: 'nombre', key: 'n', render: v => <Text strong>{v}</Text> },

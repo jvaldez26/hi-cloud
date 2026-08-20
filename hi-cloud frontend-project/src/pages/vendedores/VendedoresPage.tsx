@@ -386,7 +386,7 @@ export default function VendedoresPage() {
                     rowKey="id"
                     size="small"
         scroll={{ x: 'max-content' }}
-                    pagination={{ pageSize: 15 }}
+                    pagination={{ pageSize: 10 }}
                     columns={filterColumns([
                       { title: 'Cliente', dataIndex: 'nombre', key: 'nombre', render: v => <Text strong>{v}</Text> },
                       { title: 'RNC/Cédula', dataIndex: 'rncReceptor', key: 'rncReceptor', render: (v, r: any) => v || r.rfc || '—' },

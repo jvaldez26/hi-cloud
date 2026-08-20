@@ -308,7 +308,7 @@ export default function NotasDebitoPage() {
 
       <Card bordered={false} style={{ borderRadius: 12 }}>
         <Table dataSource={notas?.data ?? []} rowKey="id" loading={isLoading} size="middle"
-          pagination={{ pageSize: 15 }}
+          pagination={{ pageSize: 10 }}
           columns={fcND([
             { title: 'Número', dataIndex: 'numero', key: 'n', width: 150, render: (v: string) => <Text strong style={{ fontFamily: 'monospace', fontSize: 12, color: '#d97706' }}>{v}</Text> },
             { title: 'Fecha', dataIndex: 'fecha', key: 'f', width: 100, render: (v: string) => <Text style={{ fontSize: 12 }}>{v}</Text> },

@@ -34,7 +34,7 @@ function Asientos() {
 
   const { data: asientos, isLoading } = useQuery({
     queryKey: ['asientos', page, desde, hasta, estadoFilt, tipoFilt],
-    queryFn: () => contabilidadApi.asientos(page, 15, estadoFilt, desde || undefined, hasta || undefined, tipoFilt),
+    queryFn: () => contabilidadApi.asientos(page, 10, estadoFilt, desde || undefined, hasta || undefined, tipoFilt),
   });
   const { data: cuentas } = useQuery({ queryKey: ['cuentas-sel'], queryFn: () => contabilidadApi.cuentas(true) });
 
@@ -172,7 +172,7 @@ function Asientos() {
         })}
         rowKey="id" loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
-        pagination={{ total: asientos?.meta?.total, pageSize: 15, current: page, onChange: setPage, showSizeChanger: false }} />
+        pagination={{ total: asientos?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }} />
 
       {/* Crear asiento */}
       <Modal title="Nuevo Asiento Contable" open={open} onCancel={() => setOpen(false)} footer={null} width={820}>

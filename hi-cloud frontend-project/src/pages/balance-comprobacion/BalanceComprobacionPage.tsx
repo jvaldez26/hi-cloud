@@ -141,7 +141,7 @@ export default function BalanceComprobacionPage() {
           rowKey="codigo"
           loading={isLoading}
           size="small"
-          pagination={{ pageSize: 30 }}
+          pagination={{ pageSize: 10 }}
           scroll={{ x: 'max-content' }}
           rowClassName={(r: any) => r.nivel <= 2 ? 'ant-table-row-level-parent' : ''}
           columns={[

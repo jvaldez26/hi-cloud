@@ -137,7 +137,7 @@ export default function CreditoClientePage() {
           rowKey="clienteId"
           loading={isLoading}
           size="middle"
-          pagination={{ pageSize: 15 }}
+          pagination={{ pageSize: 10 }}
           columns={filterColumns([
             {
               title: 'Cliente', dataIndex: 'clienteNombre', key: 'c',

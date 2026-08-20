@@ -140,7 +140,7 @@ export default function FacturasPage() {
   const { data, isLoading } = useQuery({
     queryKey:        ['facturas', page, filters],
     refetchOnMount:  'always',
-    queryFn:         () => facturasApi.list(page, 15, filters),
+    queryFn:         () => facturasApi.list(page, 10, filters),
     // Refrescar cada 5s si hay e-CFs en estado enviado/pendiente en la página actual
     refetchInterval: (query) => {
       const filas = (query.state.data as any)?.data ?? [];
@@ -709,8 +709,8 @@ export default function FacturasPage() {
             <div style={{ textAlign: 'center', padding: '8px 0' }}>
               <Space>
                 <Button size="small" disabled={page === 1} onClick={() => setPage(p => p - 1)}>‹ Anterior</Button>
-                <Text style={{ fontSize: 12 }}>{page} / {Math.ceil((data.meta.total ?? 0) / 15)}</Text>
-                <Button size="small" disabled={page * 15 >= (data.meta.total ?? 0)} onClick={() => setPage(p => p + 1)}>Siguiente ›</Button>
+                <Text style={{ fontSize: 12 }}>{page} / {Math.ceil((data.meta.total ?? 0) / 10)}</Text>
+                <Button size="small" disabled={page * 10 >= (data.meta.total ?? 0)} onClick={() => setPage(p => p + 1)}>Siguiente ›</Button>
               </Space>
             </div>
           )}
@@ -733,7 +733,7 @@ export default function FacturasPage() {
           })}
           pagination={{
             total:         data?.meta.total,
-            pageSize:      15,
+            pageSize:      10,
             current:       page,
             onChange:      (p) => setPage(p),
             showTotal:     (t) => `${t.toLocaleString('es-DO')} facturas`,

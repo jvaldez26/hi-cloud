@@ -140,7 +140,7 @@ export default function TesoreriaPage() {
               <Table
                 dataSource={movims?.data ?? []} rowKey="id" loading={movLoading} size="small"
         scroll={{ x: 'max-content' }}
-                pagination={{ total: movims?.meta?.total, pageSize: 15, current: page, onChange: setPage, showSizeChanger: false }}
+                pagination={{ total: movims?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }}
                 columns={filterMovCols([
                   { title: 'Fecha',       dataIndex: 'fecha',       key: 'fecha',       width: 100, render: (v: string) => fmt.date(v) },
                   { title: 'Tipo',        dataIndex: 'tipo',        key: 'tipo',        width: 140, render: (v: string) => <Tag color={tipoMovColor[v]}>{v.replace('_',' ').toUpperCase()}</Tag> },

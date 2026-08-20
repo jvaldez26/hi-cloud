@@ -186,7 +186,7 @@ export default function AnticiposClientePage() {
           rowKey="id"
           loading={isLoading}
           size="middle"
-          pagination={{ pageSize: 15 }}
+          pagination={{ pageSize: 10 }}
           columns={filterColumns([
             {
               title: 'Número', dataIndex: 'numero', key: 'n', width: 100,

@@ -87,7 +87,7 @@ export default function SimuladorPage() {
               <Table
                 dataSource={(resultado.tabla ?? []).map((r: any, i: number) => ({ ...r, key: i }))}
                 columns={cols} size="small" scroll={{ x: 'max-content' }}
-                pagination={{ pageSize: 12, size: 'small' }}
+                pagination={{ pageSize: 10, size: 'small' }}
               />
             </Card>
           </Col>

@@ -460,7 +460,7 @@ export default function AlmacenesPage() {
                   loading={loadStock} size="small"
                   scroll={{ x: 'max-content' }}
                   pagination={stockFiltrado.length > 30
-                    ? { pageSize: 30, showSizeChanger: false, size: 'small' }
+                    ? { pageSize: 10, showSizeChanger: false, size: 'small' }
                     : false
                   }
                   locale={{ emptyText: hayFiltros

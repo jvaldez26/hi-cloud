@@ -244,7 +244,7 @@ export default function ChequesPage() {
               <Table columns={filterColumns(cols)} dataSource={cheques?.data ?? []} rowKey="id"
                 loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
-                pagination={{ total: cheques?.meta?.total, pageSize: 15, current: pageCheq,
+                pagination={{ total: cheques?.meta?.total, pageSize: 10, current: pageCheq,
                               onChange: setPageCheq, showSizeChanger: false }} />
             </Card>
           ),

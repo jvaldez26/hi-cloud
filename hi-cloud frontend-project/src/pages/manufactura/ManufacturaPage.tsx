@@ -90,7 +90,7 @@ function CentrosTrabajoTab() {
         <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditing(null); form.resetFields(); setOpen(true); }}>Nuevo centro</Button>
       </Row>
       <Table columns={cols} dataSource={centros ?? []} rowKey="id" loading={isLoading} size="small"
-        scroll={{ x: 'max-content' }} pagination={{ pageSize: 15 }} />
+        scroll={{ x: 'max-content' }} pagination={{ pageSize: 10 }} />
       <Modal title={editing ? 'Editar centro de trabajo' : 'Nuevo centro de trabajo'} open={open}
         onCancel={() => { setOpen(false); setEditing(null); form.resetFields(); }} footer={null} width={560}>
         <Form form={form} layout="vertical" onFinish={(v) => crearMut.mutate(v)}>

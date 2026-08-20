@@ -79,7 +79,7 @@ function MovimientosTab() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['inventario', page, filters],
-    queryFn:  () => inventarioApi.movimientos(page, 15, filters),
+    queryFn:  () => inventarioApi.movimientos(page, 10, filters),
   });
 const { data: productosData } = useQuery({
     queryKey: ['productos-inv'],
@@ -241,7 +241,7 @@ const { data: productosData } = useQuery({
 
       <Table columns={filterColumns(columns)} dataSource={rows} rowKey="id" loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
-        pagination={{ total: data?.meta?.total, pageSize: 15, current: page, onChange: setPage, showSizeChanger: false, size: 'small' }} />
+        pagination={{ total: data?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false, size: 'small' }} />
 
       <Modal title={modal === 'entrada' ? '📦 Registrar Entrada' : '📤 Registrar Salida'}
         open={!!modal} onCancel={cerrarModal} footer={null} destroyOnClose>
@@ -404,7 +404,7 @@ function LotesTab() {
       </Row>
 
       <Table columns={cols} dataSource={rows} rowKey="id" loading={isLoading} size="small"
-        scroll={{ x: 'max-content' }} pagination={{ pageSize: 15 }} />
+        scroll={{ x: 'max-content' }} pagination={{ pageSize: 10 }} />
 
       <Modal title="Registrar lote / batch" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width="min(620px, 95vw)">
         <Form form={form} layout="vertical" onFinish={(v) => crearMut.mutate(v)}>

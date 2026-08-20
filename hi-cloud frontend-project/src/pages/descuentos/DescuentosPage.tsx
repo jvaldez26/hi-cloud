@@ -176,7 +176,7 @@ export default function DescuentosPage() {
           rowKey="id"
           loading={isLoading}
           size="middle"
-          pagination={{ pageSize: 15 }}
+          pagination={{ pageSize: 10 }}
           columns={filterColumns([
             {
               title: 'Regla', key: 'nombre',

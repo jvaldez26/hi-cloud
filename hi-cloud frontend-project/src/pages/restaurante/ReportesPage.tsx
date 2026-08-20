@@ -59,7 +59,7 @@ export default function ReportesPage() {
             size="small"
             loading={isLoading}
             scroll={{ x: 'max-content' }}
-            pagination={{ pageSize: 15 }}
+            pagination={{ pageSize: 10 }}
             locale={{ emptyText: 'Sin datos para el período seleccionado' }}
           />
         </div>
@@ -113,7 +113,7 @@ export default function ReportesPage() {
             size="small"
             loading={isLoading}
             scroll={{ x: 'max-content' }}
-            pagination={{ pageSize: 15 }}
+            pagination={{ pageSize: 10 }}
             locale={{ emptyText: 'Sin datos para el período seleccionado' }}
           />
         </div>
@@ -140,7 +140,7 @@ export default function ReportesPage() {
             size="small"
             loading={isLoading}
             scroll={{ x: 'max-content' }}
-            pagination={{ pageSize: 15 }}
+            pagination={{ pageSize: 10 }}
             locale={{ emptyText: 'Sin datos para el período seleccionado' }}
           />
         </div>

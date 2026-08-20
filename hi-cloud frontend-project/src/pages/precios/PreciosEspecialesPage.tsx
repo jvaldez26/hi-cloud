@@ -138,7 +138,7 @@ export default function PreciosEspecialesPage() {
         <Table columns={cols} dataSource={listaFiltrada} rowKey="id"
           loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
-          pagination={{ pageSize: 15, showSizeChanger: false }} />
+          pagination={{ pageSize: 10, showSizeChanger: false }} />
       </Card>
 
       <Modal title="Nuevo Precio Especial" open={open} onCancel={() => setOpen(false)} footer={null} width={560}>

@@ -238,7 +238,7 @@ export default function MantenimientoPage() {
               <Table columns={filterColumns(cols)} dataSource={ordenesFiltradas} rowKey="id"
                 loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
-                pagination={{ total: ordenes?.meta?.total, pageSize: 15, current: pageOrd,
+                pagination={{ total: ordenes?.meta?.total, pageSize: 10, current: pageOrd,
                               onChange: setPageOrd, showSizeChanger: false }} />
             </Card>
           ),

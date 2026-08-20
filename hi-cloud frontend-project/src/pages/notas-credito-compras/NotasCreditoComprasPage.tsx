@@ -184,7 +184,7 @@ export default function NotasCreditoComprasPage() {
           rowKey="id"
           loading={isLoading}
           size="middle"
-          pagination={{ pageSize: 15 }}
+          pagination={{ pageSize: 10 }}
           scroll={{ x: 'max-content' }}
           columns={filterColumns([
             { title: 'Número',    dataIndex: 'numero', key: 'n', width: 110,

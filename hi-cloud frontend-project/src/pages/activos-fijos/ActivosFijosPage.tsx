@@ -134,7 +134,7 @@ export default function ActivosFijosPage() {
       }>
         <Table columns={filterColumns(cols)} dataSource={activos?.data ?? []} rowKey="id" loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
-          pagination={{ total: activos?.meta?.total, pageSize: 12, current: page, onChange: setPage, showSizeChanger: false }} />
+          pagination={{ total: activos?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }} />
       </Card>
 
       {/* Crear activo */}

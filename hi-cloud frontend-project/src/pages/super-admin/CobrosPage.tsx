@@ -644,7 +644,7 @@ export default function CobrosPage() {
           dataSource={histEmpresa}
           rowKey="id"
           size="small"
-          pagination={{ pageSize: 15 }}
+          pagination={{ pageSize: 10 }}
           scroll={{ x: 'max-content' }}
         />
       </Modal>

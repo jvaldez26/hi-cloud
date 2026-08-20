@@ -253,7 +253,7 @@ function LogsTab({
 
   const { data, isLoading } = useQuery({
     queryKey: ['audit-logs', page, accion, modulo, filtroExitoso, nivelesParam],
-    queryFn:  () => auditoriaApi.logs(page, 20, accion, modulo, filtroExitoso, nivelesParam),
+    queryFn:  () => auditoriaApi.logs(page, 10, accion, modulo, filtroExitoso, nivelesParam),
   });
 
   const logsfiltrados = useMemo(() => {

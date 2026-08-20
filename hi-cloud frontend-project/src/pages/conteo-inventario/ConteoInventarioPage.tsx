@@ -901,7 +901,7 @@ export default function ConteoInventarioPage() {
           dataSource={conteos}
           rowKey="id"
           size="middle"
-          pagination={{ pageSize: 15, showTotal: t => `${t} conteos` }}
+          pagination={{ pageSize: 10, showTotal: t => `${t} conteos` }}
           onRow={row => ({
             style: { cursor: 'pointer' },
             onClick: () => { setConteoId(row.id); setVista('digitacion'); },
