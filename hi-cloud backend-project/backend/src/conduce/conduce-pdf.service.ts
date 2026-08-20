@@ -20,10 +20,18 @@ const ESTADO_HEX: Record<string, string> = {
   devuelto:    '#dc2626',
 };
 
+const TZ = 'America/Santo_Domingo';
+
 function fmtFecha(d: any): string {
   if (!d) return '—';
   const dt = d instanceof Date ? d : new Date(d);
-  return dt.toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return dt.toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: TZ });
+}
+
+function fmtAhora(): string {
+  return new Date().toLocaleString('es-DO', { timeZone: TZ,
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
 @Injectable()
@@ -277,7 +285,7 @@ export class ConducePDFService {
           PL, footerY + 8, { width: W, align: 'center' },
         );
       doc.fillColor('#9ca3af').fontSize(7)
-        .text(`Generado: ${new Date().toLocaleString('es-DO')}`, PL, footerY + 22, { width: W, align: 'right' });
+        .text(`Generado: ${fmtAhora()}`, PL, footerY + 22, { width: W, align: 'right' });
 
       doc.end();
     });
@@ -448,7 +456,7 @@ export class ConducePDFService {
       // Pie
       hrule(y); y += 6;
       center('HiCloud ERP · República Dominicana', y, 6); y += 10;
-      center(`Generado: ${new Date().toLocaleString('es-DO')}`, y, 5.5);
+      center(`Generado: ${fmtAhora()}`, y, 5.5);
 
       doc.end();
     });
