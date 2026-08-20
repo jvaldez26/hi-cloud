@@ -467,8 +467,13 @@ export default function App() {
       return;
     }
 
+    // Timeout de 10 s: si /auth/me cuelga (red inestable), desbloquear AppLoader
+    // en lugar de dejar al usuario viendo 3 puntos indefinidamente.
+    const abortCtrl = new AbortController();
+    const abortTimer = setTimeout(() => abortCtrl.abort(), 10_000);
+
     import('./api/client').then(({ default: api }) => {
-      api.get('/auth/me')
+      api.get('/auth/me', { signal: abortCtrl.signal })
         .then((r) => {
           const user = r.data?.data?.user ?? r.data?.user ?? r.data;
           const empresaId      = localStorage.getItem('empresaId');
@@ -485,12 +490,15 @@ export default function App() {
           if (user?.temaSidebar) setTemaSidebar(user.temaSidebar as any);
         })
         .catch(() => {
-          // Cookie inválida o expirada — marcar navegación saliente antes de limpiar
+          // Cookie inválida, expirada, o timeout de 10 s — marcar navegación saliente
           // para que Sentry/ErrorBoundary ignoren errores de teardown en la ruta actual
           markNavigatingAway();
           logout();
         })
-        .finally(() => setHydrated(true));
+        .finally(() => {
+          clearTimeout(abortTimer);
+          setHydrated(true);
+        });
     });
   }, [hydrated, login, logout, setHydrated]);
 

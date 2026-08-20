@@ -22,7 +22,7 @@ export default function NewVersionBanner() {
 
     const check = async () => {
       try {
-        const res = await fetch('/api/v1/version', { cache: 'no-store', credentials: 'omit' });
+        const res = await fetch('/api/v1/health/version', { cache: 'no-store', credentials: 'omit' });
         if (!res.ok) return;
         const json = await res.json();
         const serverBuild = json?.data?.build_id as string | undefined | null;
