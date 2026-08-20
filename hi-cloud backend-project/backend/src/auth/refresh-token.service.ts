@@ -107,7 +107,7 @@ export class RefreshTokenService {
   async sesionesActivas(userId: number) {
     return this.repo.find({
       where: { userId, revokedAt: IsNull() },
-      select: ['id', 'deviceInfo', 'ipAddress', 'createdAt', 'expiresAt'],
+      select: ['id', 'deviceInfo', 'ipAddress', 'createdAt', 'expiresAt', 'lastActivityAt'],
       order: { createdAt: 'DESC' },
     });
   }
