@@ -295,7 +295,7 @@ export class ConduceService {
     const [factura] = await this.ds.query<any[]>(
       `SELECT f.id, f.folio,
               (SELECT e.numero FROM ecf e
-               WHERE e."facturaId" = f.id AND e."estadoDGII" = 'ACEPTADO'
+               WHERE e."facturaId" = f.id AND e."estadoDGII" = 'aceptado'
                ORDER BY e.id DESC LIMIT 1) AS encf,
               f.fecha, f.estado, f.total, f."clienteId",
               cl.nombre AS "clienteNombre", cl."rncReceptor" AS "clienteRnc",
