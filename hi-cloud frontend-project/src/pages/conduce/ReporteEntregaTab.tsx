@@ -93,10 +93,24 @@ interface ConduceReporte {
   }>;
 }
 
-interface ReporteEntrega {
+interface Candidato {
   tipo: 'factura' | 'conduce_sin_factura';
+  id: number;
+  referencia: string;
+  encf?: string | null;
+  clienteNombre: string;
+  fecha: string;
+  total?: number;
+  estado: string;
+}
+
+interface ReporteEntrega {
+  tipo: 'factura' | 'conduce_sin_factura' | 'candidatos';
   busqueda: string;
   mensaje?: string;
+  // candidatos (múltiples resultados)
+  candidatos?: Candidato[];
+  // reporte de factura
   factura?: {
     id: number;
     folio: string;
@@ -106,17 +120,17 @@ interface ReporteEntrega {
     total: number;
     cliente: { id: number; nombre: string; rnc?: string | null; direccion?: string | null; telefono?: string | null };
   };
-  estadoGeneral: 'SIN_ENTREGAS' | 'PARCIAL' | 'COMPLETA';
-  hayEnTransito: boolean;
-  porcentajeEntregado: number;
-  lineas: Linea[];
-  lineasLibres: Array<{
+  estadoGeneral?: 'SIN_ENTREGAS' | 'PARCIAL' | 'COMPLETA';
+  hayEnTransito?: boolean;
+  porcentajeEntregado?: number;
+  lineas?: Linea[];
+  lineasLibres?: Array<{
     descripcion: string; unidadMedida: string;
     cantidadTotal: number; conduceNumero: string; conduceEstado: string;
   }>;
-  conduces: ConduceReporte[];
-  valorPendienteTotal: number;
-  valorEnTransitoTotal: number;
+  conduces?: ConduceReporte[];
+  valorPendienteTotal?: number;
+  valorEnTransitoTotal?: number;
   // conduce suelto
   conduce?: any;
 }
@@ -172,7 +186,7 @@ export default function ReporteEntregaTab() {
       '': 'PRODUCTO', ' ': 'UNIDAD', '  ': 'FACTURADO',
       '   ': 'ENTREGADO', '    ': 'EN TRÁNSITO', '     ': 'PENDIENTE', '      ': 'ESTADO',
     });
-    for (const l of reporte.lineas) {
+    for (const l of reporte.lineas ?? []) {
       rows.push({
         '': l.descripcion, ' ': l.unidadMedida,
         '  ': l.cantidadFacturada, '   ': l.cantidadEntregada,
@@ -180,11 +194,11 @@ export default function ReporteEntregaTab() {
       });
     }
 
-    if (reporte.conduces.length > 0) {
+    if ((reporte.conduces?.length ?? 0) > 0) {
       rows.push({});
       rows.push({ '': 'CONDUCES EMITIDOS', ' ': '', '  ': '', '   ': '', '    ': '', '     ': '' });
       rows.push({ '': 'Número', ' ': 'Fecha', '  ': 'Estado', '   ': 'Conductor', '    ': 'Contacto', '     ': 'Observaciones' });
-      for (const c of reporte.conduces) {
+      for (const c of reporte.conduces ?? []) {
         rows.push({
           '': c.numero, ' ': fmt.fecha(c.fecha), '  ': CONDUCE_ESTADO[c.estado] ?? c.estado,
           '   ': c.conductor ?? '—', '    ': c.contactoEntrega ?? '—',
@@ -241,12 +255,76 @@ export default function ReporteEntregaTab() {
       {loading && <Spin size="large" style={{ display: 'block', margin: '60px auto' }} />}
 
       {!loading && notFound && (
-        <Empty description={
-          <span>No se encontró ninguna factura, conduce o e-NCF con el término <strong>"{input}"</strong></span>
-        } />
+        <Empty
+          description={
+            <span>
+              No se encontró nada con <strong>"{input}"</strong> en esta empresa.<br />
+              <span style={{ fontSize: 12, color: '#888' }}>
+                Puedes buscar por número de factura (FAC-418 o solo 418), número de conduce (CON-12) o e-NCF completo (E320000000418).
+              </span>
+            </span>
+          }
+        />
       )}
 
-      {!loading && reporte && (
+      {/* ── Múltiples candidatos → tabla de selección ── */}
+      {!loading && reporte?.tipo === 'candidatos' && reporte.candidatos && (
+        <div style={{ maxWidth: 700 }}>
+          <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+            Se encontraron <strong>{reporte.candidatos.length}</strong> resultados para <strong>"{reporte.busqueda}"</strong>. Selecciona el que deseas ver:
+          </Text>
+          <Table
+            dataSource={reporte.candidatos}
+            rowKey={r => `${r.tipo}-${r.id}`}
+            size="small"
+            pagination={false}
+            onRow={r => ({
+              style: { cursor: 'pointer' },
+              onClick: () => {
+                const ref = r.tipo === 'factura'
+                  ? r.referencia   // folio como FAC-418
+                  : r.referencia;  // numero como CON-12
+                setInput(ref);
+                buscar(ref);
+              },
+            })}
+            columns={[
+              {
+                title: 'Referencia',
+                key: 'ref',
+                render: (_: any, r: Candidato) => (
+                  <Space size={4}>
+                    <Text code style={{ fontSize: 12 }}>{r.referencia}</Text>
+                    {r.encf && <Text type="secondary" style={{ fontSize: 11 }}>{r.encf}</Text>}
+                  </Space>
+                ),
+              },
+              { title: 'Cliente', dataIndex: 'clienteNombre', key: 'c', ellipsis: true },
+              { title: 'Fecha', dataIndex: 'fecha', key: 'f', width: 100, render: (v: string) => fmt.fecha(v) },
+              {
+                title: 'Total',
+                dataIndex: 'total',
+                key: 't',
+                width: 120,
+                align: 'right' as const,
+                render: (v?: number) => v != null ? fmt.money(v) : '—',
+              },
+              {
+                title: 'Tipo',
+                key: 'tipo',
+                width: 90,
+                render: (_: any, r: Candidato) => (
+                  <Tag color={r.tipo === 'factura' ? 'blue' : 'default'}>
+                    {r.tipo === 'factura' ? 'Factura' : 'Conduce'}
+                  </Tag>
+                ),
+              },
+            ]}
+          />
+        </div>
+      )}
+
+      {!loading && reporte && reporte.tipo !== 'candidatos' && (
         <>
           {/* ── Cabecera del reporte ── */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
@@ -300,22 +378,22 @@ export default function ReporteEntregaTab() {
           {reporte.tipo === 'factura' && (
             <div style={{ marginBottom: 20 }}>
               <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap', marginBottom: 8 }}>
-                <div><Text type="secondary" style={{ fontSize: 12 }}>Entregado</Text><div><Text strong style={{ fontSize: 18 }}>{reporte.porcentajeEntregado}%</Text></div></div>
-                {reporte.valorPendienteTotal > 0 && <div><Text type="secondary" style={{ fontSize: 12 }}>Valor pendiente</Text><div><Text strong style={{ fontSize: 18, color: '#d97706' }}>{fmt.money(reporte.valorPendienteTotal)}</Text></div></div>}
-                {reporte.hayEnTransito && reporte.valorEnTransitoTotal > 0 && <div><Text type="secondary" style={{ fontSize: 12 }}>En tránsito</Text><div><Text strong style={{ fontSize: 18, color: '#2563eb' }}>{fmt.money(reporte.valorEnTransitoTotal)}</Text></div></div>}
-                <div><Text type="secondary" style={{ fontSize: 12 }}>Conduces emitidos</Text><div><Text strong style={{ fontSize: 18 }}>{reporte.conduces.length}</Text></div></div>
+                <div><Text type="secondary" style={{ fontSize: 12 }}>Entregado</Text><div><Text strong style={{ fontSize: 18 }}>{reporte.porcentajeEntregado ?? 0}%</Text></div></div>
+                {(reporte.valorPendienteTotal ?? 0) > 0 && <div><Text type="secondary" style={{ fontSize: 12 }}>Valor pendiente</Text><div><Text strong style={{ fontSize: 18, color: '#d97706' }}>{fmt.money(reporte.valorPendienteTotal ?? 0)}</Text></div></div>}
+                {reporte.hayEnTransito && (reporte.valorEnTransitoTotal ?? 0) > 0 && <div><Text type="secondary" style={{ fontSize: 12 }}>En tránsito</Text><div><Text strong style={{ fontSize: 18, color: '#2563eb' }}>{fmt.money(reporte.valorEnTransitoTotal ?? 0)}</Text></div></div>}
+                <div><Text type="secondary" style={{ fontSize: 12 }}>Conduces emitidos</Text><div><Text strong style={{ fontSize: 18 }}>{reporte.conduces?.length ?? 0}</Text></div></div>
               </div>
-              <Progress percent={reporte.porcentajeEntregado} strokeColor={reporte.estadoGeneral === 'COMPLETA' ? '#10b981' : '#f59e0b'} style={{ maxWidth: 400 }} />
+              <Progress percent={reporte.porcentajeEntregado ?? 0} strokeColor={(reporte.estadoGeneral ?? 'PARCIAL') === 'COMPLETA' ? '#10b981' : '#f59e0b'} style={{ maxWidth: 400 }} />
             </div>
           )}
 
           {/* ── Tabla por producto ── */}
-          {reporte.tipo === 'factura' && reporte.lineas.length > 0 && (
+          {reporte.tipo === 'factura' && (reporte.lineas?.length ?? 0) > 0 && (
             <>
               <Title level={5} style={{ marginBottom: 8 }}>Detalle por Producto</Title>
               <div style={{ overflowX: 'auto', marginBottom: 24 }}>
                 <Table
-                  dataSource={reporte.lineas}
+                  dataSource={reporte.lineas ?? []}
                   rowKey="descripcion"
                   pagination={false}
                   size="small"
@@ -351,7 +429,7 @@ export default function ReporteEntregaTab() {
                       align: 'right' as const,
                       render: (v: number) => <Text style={{ color: v > 0 ? '#10b981' : undefined, fontVariantNumeric: 'tabular-nums' }}>{fmt.num(v)}</Text>,
                     },
-                    ...(reporte.hayEnTransito ? [{
+                    ...(reporte.hayEnTransito ?? false ? [{
                       title: 'En Tránsito',
                       dataIndex: 'cantidadEnTransito',
                       key: 'trans',
@@ -386,7 +464,7 @@ export default function ReporteEntregaTab() {
               </div>
 
               {/* Líneas con excedido */}
-              {reporte.lineas.some(l => l.estadoLinea === 'EXCEDIDO') && (
+              {(reporte.lineas ?? []).some(l => l.estadoLinea === 'EXCEDIDO') && (
                 <Alert
                   type="error"
                   showIcon
@@ -400,11 +478,11 @@ export default function ReporteEntregaTab() {
           )}
 
           {/* ── Líneas libres ── */}
-          {reporte.tipo === 'factura' && reporte.lineasLibres.length > 0 && (
+          {reporte.tipo === 'factura' && (reporte.lineasLibres?.length ?? 0) > 0 && (
             <div style={{ marginBottom: 24 }}>
               <Divider orientation="left"><Text type="secondary" style={{ fontSize: 13 }}>Líneas sin producto (no descuentan pendiente)</Text></Divider>
               <Table
-                dataSource={reporte.lineasLibres}
+                dataSource={reporte.lineasLibres ?? []}
                 rowKey={(r, i) => `${r.conduceNumero}-${i}`}
                 pagination={false}
                 size="small"
@@ -419,12 +497,12 @@ export default function ReporteEntregaTab() {
           )}
 
           {/* ── Conduces emitidos ── */}
-          {reporte.conduces.length > 0 ? (
+          {(reporte.conduces?.length ?? 0) > 0 ? (
             <div style={{ marginBottom: 24 }}>
-              <Title level={5} style={{ marginBottom: 8 }}>Conduces Emitidos ({reporte.conduces.length})</Title>
+              <Title level={5} style={{ marginBottom: 8 }}>Conduces Emitidos ({reporte.conduces?.length ?? 0})</Title>
               <Collapse
                 size="small"
-                items={reporte.conduces.map((c: ConduceReporte) => ({
+                items={(reporte.conduces ?? []).map((c: ConduceReporte) => ({
                   key: String(c.id),
                   label: (
                     <Space>

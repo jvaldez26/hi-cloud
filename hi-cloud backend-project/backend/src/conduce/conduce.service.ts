@@ -219,52 +219,132 @@ export class ConduceService {
   }
 
   // ── Reporte de entrega ─────────────────────────────────────────────────────
-  // Resuelve un término (conduce.numero / factura.folio / factura.encf) y
-  // devuelve el estado completo de entrega de la factura asociada.
+  // Búsqueda en cascada: exacto → sufijo numérico → parcial.
+  // Un resultado → reporte completo. Varios → lista de candidatos.
   async getReporteEntrega(q: string) {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const term = q.trim();
+    const term    = q.trim();
     if (!term) return null;
+    const termUp  = term.toUpperCase().replace(/\s+/g, '');
+    const isDigit = /^\d+$/.test(termUp);
 
-    // ── 1. Resolver el término ────────────────────────────────────────────────
-    let facturaId: number | null = null;
-    let conduceDirectoId: number | null = null;
+    // Acumuladores de IDs resueltos (deduplicados)
+    const factIdsFound = new Set<number>();
+    const condIdsFound = new Set<number>(); // solo conduces SIN facturaId
 
-    // Paso 1a: número de conduce exacto
-    const [conduceRow] = await this.ds.query<{id: number; facturaId: number | null}[]>(
+    const absorbC = (rows: Array<{ id: number; facturaId?: number | null }>) => {
+      for (const r of rows) {
+        if (r.facturaId) factIdsFound.add(r.facturaId);
+        else             condIdsFound.add(r.id);
+      }
+    };
+    const absorbF = (rows: Array<{ id: number }>) => rows.forEach(r => factIdsFound.add(r.id));
+
+    // ── PASO 1: EXACTO ────────────────────────────────────────────────────────
+    // 1a: conduce exacto
+    absorbC(await this.ds.query(
       `SELECT id, "facturaId" FROM conduces
-       WHERE numero = $1 AND "empresaId" = $2 AND "isActive" = true LIMIT 1`,
-      [term, empresaId],
-    );
-    if (conduceRow) {
-      if (conduceRow.facturaId) facturaId = conduceRow.facturaId;
-      else conduceDirectoId = conduceRow.id;
-    }
+       WHERE numero = $1 AND "empresaId" = $2 AND "isActive" = true LIMIT 3`,
+      [termUp, empresaId],
+    ));
+    // 1b: folio exacto o sin prefijo FAC-
+    absorbF(await this.ds.query(
+      `SELECT id FROM facturas
+       WHERE (folio = $1 OR folio = 'FAC-' || $1)
+         AND "empresaId" = $2 AND "isActive" = true LIMIT 3`,
+      [termUp, empresaId],
+    ));
+    // 1c: e-NCF exacto
+    absorbF(await this.ds.query(
+      `SELECT f.id FROM facturas f JOIN ecf e ON e."facturaId" = f.id
+       WHERE e.numero = $1 AND f."empresaId" = $2 AND f."isActive" = true LIMIT 3`,
+      [termUp, empresaId],
+    ));
 
-    // Paso 1b: folio de factura — exacto o sin prefijo FAC-
-    if (!facturaId && !conduceDirectoId) {
-      const [factRow] = await this.ds.query<{id: number}[]>(
+    // ── PASO 2: SUFIJO NUMÉRICO (solo dígitos, paso 1 vacío) ─────────────────
+    // Encuentra FAC-0418, CON-0418, E320000000418 cuando term = '418'
+    if (isDigit && factIdsFound.size === 0 && condIdsFound.size === 0) {
+      absorbC(await this.ds.query(
+        `SELECT id, "facturaId" FROM conduces
+         WHERE numero ~ ('^[A-Z]+-0*' || $1 || '$')
+           AND "empresaId" = $2 AND "isActive" = true LIMIT 10`,
+        [termUp, empresaId],
+      ));
+      absorbF(await this.ds.query(
         `SELECT id FROM facturas
-         WHERE (folio = $1 OR folio = 'FAC-' || $1)
-           AND "empresaId" = $2 AND "isActive" = true LIMIT 1`,
-        [term, empresaId],
-      );
-      if (factRow) facturaId = factRow.id;
+         WHERE folio ~ ('^[A-Z]+-0*' || $1 || '$')
+           AND "empresaId" = $2 AND "isActive" = true LIMIT 10`,
+        [termUp, empresaId],
+      ));
+      absorbF(await this.ds.query(
+        `SELECT f.id FROM facturas f JOIN ecf e ON e."facturaId" = f.id
+         WHERE e.numero ~ ('0*' || $1 || '$')
+           AND f."empresaId" = $2 AND f."isActive" = true LIMIT 5`,
+        [termUp, empresaId],
+      ));
     }
 
-    // Paso 1c: e-NCF exacto (ecf.numero — el comprobante aceptado de la factura)
-    if (!facturaId && !conduceDirectoId) {
-      const [ecfRow] = await this.ds.query<{id: number}[]>(
-        `SELECT f.id FROM facturas f
-         JOIN ecf e ON e."facturaId" = f.id
-         WHERE e.numero = $1 AND f."empresaId" = $2 AND f."isActive" = true
-         LIMIT 1`,
-        [term, empresaId],
-      );
-      if (ecfRow) facturaId = ecfRow.id;
+    // ── PASO 3: PARCIAL AMPLIO — último recurso, tope 20 ────────────────────
+    if (factIdsFound.size === 0 && condIdsFound.size === 0) {
+      const pat = `%${termUp}%`;
+      absorbC(await this.ds.query(
+        `SELECT id, "facturaId" FROM conduces
+         WHERE numero ILIKE $1 AND "empresaId" = $2 AND "isActive" = true LIMIT 10`,
+        [pat, empresaId],
+      ));
+      absorbF(await this.ds.query(
+        `SELECT id FROM facturas
+         WHERE folio ILIKE $1 AND "empresaId" = $2 AND "isActive" = true LIMIT 10`,
+        [pat, empresaId],
+      ));
     }
 
-    if (!facturaId && !conduceDirectoId) return null;
+    const total = factIdsFound.size + condIdsFound.size;
+    if (total === 0) return null;
+
+    // ── MÚLTIPLES RESULTADOS → lista de candidatos para que el usuario elija ──
+    if (total > 1) {
+      const candidatos: any[] = [];
+      if (factIdsFound.size > 0) {
+        const fArr = [...factIdsFound].slice(0, 18);
+        const rows = await this.ds.query<any[]>(
+          `SELECT f.id, f.folio, f.fecha, f.total, f.estado, cl.nombre AS cn,
+                  (SELECT e.numero FROM ecf e
+                   WHERE e."facturaId" = f.id AND e."estadoDGII" = 'aceptado'
+                   ORDER BY e.id DESC LIMIT 1) AS encf
+           FROM facturas f LEFT JOIN clientes cl ON cl.id = f."clienteId"
+           WHERE f.id = ANY($1::int[])
+           ORDER BY f.fecha DESC`,
+          [fArr],
+        );
+        rows.forEach(r => candidatos.push({
+          tipo: 'factura', id: r.id,
+          referencia: r.folio, encf: r.encf ?? null,
+          clienteNombre: r.cn, fecha: r.fecha,
+          total: Number(r.total ?? 0), estado: r.estado,
+        }));
+      }
+      if (condIdsFound.size > 0) {
+        const cArr = [...condIdsFound].slice(0, 5);
+        const rows = await this.ds.query<any[]>(
+          `SELECT c.id, c.numero, c.fecha, c.estado, cl.nombre AS cn
+           FROM conduces c LEFT JOIN clientes cl ON cl.id = c."clienteId"
+           WHERE c.id = ANY($1::int[])
+           ORDER BY c.fecha DESC`,
+          [cArr],
+        );
+        rows.forEach(r => candidatos.push({
+          tipo: 'conduce_sin_factura', id: r.id,
+          referencia: r.numero,
+          clienteNombre: r.cn, fecha: r.fecha, estado: r.estado,
+        }));
+      }
+      return { tipo: 'candidatos', busqueda: term, candidatos: candidatos.slice(0, 20) };
+    }
+
+    // ── RESULTADO ÚNICO → reporte completo directo ────────────────────────────
+    let facturaId: number | null = factIdsFound.size === 1 ? [...factIdsFound][0] : null;
+    let conduceDirectoId: number | null = condIdsFound.size === 1 ? [...condIdsFound][0] : null;
 
     // ── 2. Conduce suelto (sin factura) ──────────────────────────────────────
     if (conduceDirectoId) {
