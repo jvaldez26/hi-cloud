@@ -8,8 +8,9 @@ const CURRENT_BUILD = import.meta.env.VITE_SENTRY_RELEASE as string | undefined;
 
 /**
  * Detecta silenciosamente si el servidor desplegó una versión nueva (distinto
- * commit SHA en /api/v1/health → build_id) y muestra una notificación
+ * commit SHA en /api/v1/version → build_id) y muestra una notificación
  * persistente que el usuario puede cerrar o usar para recargar.
+ * Usa /version en lugar de /health para no disparar 18 queries de DB por tick.
  * Solo activo en producción y cuando VITE_SENTRY_RELEASE está definido.
  */
 export default function NewVersionBanner() {
@@ -21,7 +22,7 @@ export default function NewVersionBanner() {
 
     const check = async () => {
       try {
-        const res = await fetch('/api/v1/health', { cache: 'no-store', credentials: 'omit' });
+        const res = await fetch('/api/v1/version', { cache: 'no-store', credentials: 'omit' });
         if (!res.ok) return;
         const json = await res.json();
         const serverBuild = json?.data?.build_id as string | undefined | null;
