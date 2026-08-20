@@ -5505,7 +5505,7 @@ function POSConducePanel({ C, onVolver }: {
                 : (
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                     <thead><tr style={{ background: C.card, position: 'sticky', top: 0 }}>
-                      {['Número', 'Cliente', 'Estado', 'Acciones'].map(h => (
+                      {['Número', 'Cliente', 'Factura', 'Estado', 'Acciones'].map(h => (
                         <th key={h} style={{ padding: '8px 10px', textAlign: 'left', color: C.textSub,
                           fontWeight: 600, fontSize: 11, borderBottom: `1px solid ${C.border}` }}>{h}</th>
                       ))}
@@ -5516,24 +5516,37 @@ function POSConducePanel({ C, onVolver }: {
                         : r.estado === 'devuelto' ? C.red : C.orange;
                       const eLabel = r.estado === 'en_transito' ? 'EN RUTA'
                         : (r.estado ?? '').replace('_', ' ').toUpperCase();
+                      const folio: string | undefined = r.facturaFolio ?? r.factura?.folio;
                       return (
                         <tr key={r.id} style={{ borderBottom: `1px solid ${C.border}`, background: i % 2 === 0 ? 'transparent' : C.card }}>
+                          {/* Número conduce */}
                           <td style={{ padding: '8px 10px' }}>
                             <div style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue, fontWeight: 700 }}>{r.numero}</div>
-                            {r.facturaFolio && (
-                              <div style={{ fontSize: 10, color: C.textSub, marginTop: 1 }}>📄 {r.facturaFolio}</div>
-                            )}
+                            <div style={{ fontSize: 10, color: C.textSub, marginTop: 1 }}>
+                              {r.fecha ? new Date(r.fecha).toLocaleDateString('es-DO') : ''}
+                            </div>
                           </td>
+                          {/* Cliente */}
                           <td style={{ padding: '8px 10px', color: C.text, fontSize: 11, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
                             <div>{r.cliente?.nombre ?? '—'}</div>
                             <div style={{ fontSize: 10, color: C.textSub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.direccionEntrega ?? ''}</div>
                           </td>
+                          {/* Factura */}
+                          <td style={{ padding: '8px 10px' }}>
+                            {folio
+                              ? <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.text, background: C.card,
+                                  border: `1px solid ${C.border}`, borderRadius: 4, padding: '1px 5px' }}>{folio}</span>
+                              : <span style={{ color: C.textSub, fontSize: 11 }}>—</span>
+                            }
+                          </td>
+                          {/* Estado */}
                           <td style={{ padding: '8px 10px' }}>
                             <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 10,
                               background: eColor + '22', color: eColor, whiteSpace: 'nowrap' }}>
                               {eLabel}
                             </span>
                           </td>
+                          {/* Acciones */}
                           <td style={{ padding: '8px 8px' }}>
                             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' as const }}>
                               <button onClick={() => imprimirTermico(r.id)} disabled={imprimiendo === r.id}
@@ -5542,6 +5555,16 @@ function POSConducePanel({ C, onVolver }: {
                                   color: C.blue, cursor: 'pointer', padding: '3px 6px', fontSize: 12 }}>
                                 {imprimiendo === r.id ? '⏳' : '🖨️'}
                               </button>
+                              {folio && (
+                                <button
+                                  title="Ver reporte de entrega de esta factura"
+                                  onClick={() => window.open(`/conduces?tab=reporte&q=${encodeURIComponent(folio)}`, '_blank')}
+                                  style={{ background: C.blue + '18', border: `1px solid ${C.blue}55`, borderRadius: 5,
+                                    color: C.blue, cursor: 'pointer', padding: '3px 7px', fontSize: 10, fontWeight: 700,
+                                    whiteSpace: 'nowrap' as const }}>
+                                  📊 Entregas
+                                </button>
+                              )}
                               {r.estado === 'generado' && (
                                 <button onClick={() => cambiarEstadoMut.mutate({ id: r.id, estado: 'en_transito' })}
                                   style={{ background: C.blue + '22', border: `1px solid ${C.blue}55`, borderRadius: 5,
