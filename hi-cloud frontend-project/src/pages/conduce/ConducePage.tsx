@@ -6,7 +6,7 @@ import { TableActions } from '../../components/ui/TableActions';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   DatePicker, InputNumber, Space, Typography, Divider, Steps, Alert,
-  message, Spin, theme, Segmented,
+  message, Spin, theme, Segmented, Tabs,
 } from 'antd';
 import {
   CarOutlined, PlusOutlined, SendOutlined, CheckCircleOutlined,
@@ -22,6 +22,8 @@ import { useAuthStore } from '../../store/auth.store';
 import ProductoSelect from '../../components/ProductoSelect';
 import WhatsAppButton from '../../components/ui/WhatsAppButton';
 import PrintButton from '../../components/ui/PrintButton';
+import ReporteEntregaTab from './ReporteEntregaTab';
+import { useSearchParams } from 'react-router-dom';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -50,6 +52,8 @@ export default function ConducePage() {
   const { token } = theme.useToken();
   const sucursalActual = useAuthStore(s => s.sucursalActual);
   const empresaActual  = useAuthStore(s => s.empresaActual);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') ?? 'lista';
 
   const [search,          setSearch]          = useState('');
   const [page,            setPage]            = useState(1);
@@ -266,45 +270,53 @@ export default function ConducePage() {
 
   return (
     <div style={{ padding: '24px' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <CarOutlined style={{ fontSize: 28, color: '#1a56db' }} />
-          <div>
-            <Title level={3} style={{ margin: 0 }}>Conduces</Title>
-            <Text type="secondary">Notas de entrega · Seguimiento de despachos y envíos</Text>
-          </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
+        <CarOutlined style={{ fontSize: 28, color: '#1a56db' }} />
+        <div>
+          <Title level={3} style={{ margin: 0 }}>Conduces</Title>
+          <Text type="secondary">Notas de entrega · Seguimiento de despachos y envíos</Text>
         </div>
-        <Space>
-          <Input
-            placeholder="Buscar por número o cliente..."
-            prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1); }}
-            allowClear
-            style={{ width: 220 }}
-          />
-          <Button icon={<FileExcelOutlined />} onClick={() => {
-            const filas = (conduces?.data ?? []).map((c: any) => ({
-              'Número':   c.numero ?? '',
-              'Fecha':    c.fecha ? dayjs(c.fecha).format('DD/MM/YYYY') : '',
-              'Cliente':  c.cliente?.nombre ?? '',
-              'Factura':  c.facturaFolio ?? c.factura?.folio ?? '',
-              'Estado':   c.estado ?? '',
-              'Destino':  c.direccionEntrega ?? c.destino ?? '',
-            }));
-            exportarExcel(filas, `Conduces-${dayjs().format('YYYY-MM-DD')}`);
-          }}>Excel</Button>
-          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
-          <RefreshByKeyButton queryKey={['conduces']} />
-          <VideoTutorialButton />
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalCrear(true)}>
-            Nuevo Conduce
-          </Button>
-        </Space>
       </div>
 
-      <Card bordered={false} style={{ borderRadius: 12 }}>
-        <Table
+      <Tabs
+        activeKey={activeTab}
+        onChange={tab => setSearchParams(p => { p.set('tab', tab); return p; }, { replace: true })}
+        tabBarExtraContent={activeTab === 'lista' ? (
+          <Space>
+            <Input
+              placeholder="Buscar por número o cliente..."
+              prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1); }}
+              allowClear
+              style={{ width: 200 }}
+            />
+            <Button icon={<FileExcelOutlined />} onClick={() => {
+              const filas = (conduces?.data ?? []).map((c: any) => ({
+                'Número':   c.numero ?? '',
+                'Fecha':    c.fecha ? dayjs(c.fecha).format('DD/MM/YYYY') : '',
+                'Cliente':  c.cliente?.nombre ?? '',
+                'Factura':  c.facturaFolio ?? c.factura?.folio ?? '',
+                'Estado':   c.estado ?? '',
+                'Destino':  c.direccionEntrega ?? c.destino ?? '',
+              }));
+              exportarExcel(filas, `Conduces-${dayjs().format('YYYY-MM-DD')}`);
+            }}>Excel</Button>
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+            <RefreshByKeyButton queryKey={['conduces']} />
+            <VideoTutorialButton />
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalCrear(true)}>
+              Nuevo Conduce
+            </Button>
+          </Space>
+        ) : undefined}
+        items={[
+          {
+            key: 'lista',
+            label: '🚚 Conduces',
+            children: (
+              <Card bordered={false} style={{ borderRadius: 12 }}>
+                <Table
           dataSource={conduces?.data ?? []}
           rowKey="id"
           loading={isLoading}
@@ -368,7 +380,16 @@ export default function ConducePage() {
             },
           ])}
         />
-      </Card>
+              </Card>
+            ),
+          },
+          {
+            key: 'reporte',
+            label: '📊 Reporte de Entrega',
+            children: <ReporteEntregaTab />,
+          },
+        ]}
+      />
 
       {/* ── Modal Crear ──────────────────────────────────────────────────────── */}
       <Modal

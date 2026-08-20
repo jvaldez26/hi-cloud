@@ -81,4 +81,8 @@ export class Conduce extends TenantBaseEntity {
   /** Almacén del que sale la mercancía (para descontar stock al entregar) */
   @Column({ nullable: true })
   almacenId?: number;
+
+  /** Usuario que confirmó la entrega o devolución — se setea desde CLS, nunca del body */
+  @Column({ nullable: true })
+  entregadoPorUsuarioId?: number;
 }

@@ -83,6 +83,13 @@ export class ConduceController {
     return this.svc.getPendientesPorFactura(facturaId);
   }
 
+  @Get('reporte-entrega')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @ApiOperation({ summary: 'Reporte completo de entrega por número de conduce, factura o e-NCF' })
+  reporteEntrega(@Query('q') q = '') {
+    return this.svc.getReporteEntrega(q);
+  }
+
   @Get(':id/pdf')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   async pdf(@Param('id', ParseIntPipe) id: number, @Res() res: Response) {
@@ -127,14 +134,22 @@ export class ConduceController {
 
   @Patch(':id/entregado')
   @ApiOperation({ summary: 'Confirmar entrega del conduce' })
-  entregado(@Param('id', ParseIntPipe) id: number, @Body() dto: EntregaDto) {
-    return this.svc.marcarEntregado(id, dto.observaciones);
+  entregado(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: EntregaDto,
+    @GetUser() user: User,
+  ) {
+    return this.svc.marcarEntregado(id, dto.observaciones, user.id);
   }
 
   @Patch(':id/devuelto')
   @ApiOperation({ summary: 'Registrar devolución del conduce' })
-  devuelto(@Param('id', ParseIntPipe) id: number, @Body() dto: EntregaDto) {
-    return this.svc.marcarDevuelto(id, dto.observaciones);
+  devuelto(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: EntregaDto,
+    @GetUser() user: User,
+  ) {
+    return this.svc.marcarDevuelto(id, dto.observaciones, user.id);
   }
 
   @Delete(':id')
