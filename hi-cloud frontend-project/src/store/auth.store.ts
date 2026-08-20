@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import type { AuthUser } from '../types';
-import apiClient from '../api/client';
 import { syncSentryScope } from '../observability/sentryScope';
 
 // Callback registrado por App.tsx para limpiar React Query al cerrar sesión.
@@ -77,9 +76,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: () => {
-    // Revocar tokens en el servidor — fire-and-forget para no bloquear la UI.
-    // El backend invalida el refreshToken en BD y limpia las cookies httpOnly.
-    apiClient.post('/auth/logout').catch(() => {/* ignora si el token ya expiró */});
+    // Solo limpieza local. La llamada al servidor (authApi.logout() con keepalive:true)
+    // es responsabilidad del llamador (handleLogout en AppLayout / PortalEmpleadoLayout).
+    // SessionExpiredHandler y el interceptor de SESION_DESPLAZADA llaman logout()
+    // directamente porque el servidor ya invalidó la sesión — no necesitan notificarle.
     localStorage.removeItem('auth_user');
     localStorage.removeItem('empresaId');
     localStorage.removeItem('mis_empresas');

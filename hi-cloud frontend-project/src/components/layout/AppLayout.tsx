@@ -8,6 +8,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMisModulosAddon, useSucursalesQuery } from '../../hooks/useCatalogQueries';
 import { useNoLeidosCount, useNovedadesNoVistas, useMarcarVisto } from '../../hooks/useMensajes';
 import api from '../../api/client';
+import { authApi } from '../../api/auth.api';
 import {
   LogoutOutlined, UserOutlined, BellOutlined,
   MoonOutlined, SunOutlined, SearchOutlined,
@@ -1321,10 +1322,15 @@ export default function AppLayout() {
   const { token }                       = theme.useToken();
   const navigate                        = useNavigate();
 
-  /** Cierre de sesión unificado: siempre marca la bandera antes de navegar
-   *  para que Sentry, ErrorBoundary y el interceptor de Axios no fallen en teardown. */
-  const handleLogout = useCallback(() => {
+  /**
+   * Cierre de sesión unificado: notifica al servidor (keepalive:true — sobrevive
+   * al cierre de pestaña) y luego limpia el estado local antes de navegar.
+   * Siempre marca la bandera antes de navegar para que Sentry, ErrorBoundary
+   * y el interceptor de Axios no fallen en teardown.
+   */
+  const handleLogout = useCallback(async () => {
     markNavigatingAway();
+    try { await authApi.logout(); } catch { /* ignorar — token ya inválido o red caída */ }
     logout();
     navigate('/login');
   }, [logout, navigate]);

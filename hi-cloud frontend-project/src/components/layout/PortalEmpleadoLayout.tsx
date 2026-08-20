@@ -7,6 +7,7 @@ import { LogoutOutlined, UserOutlined, ArrowLeftOutlined } from '@ant-design/ico
 import { Outlet, Navigate, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth.store';
 import api from '../../api/client';
+import { authApi } from '../../api/auth.api';
 import { useQuery } from '@tanstack/react-query';
 
 const { Header, Content } = Layout;
@@ -26,7 +27,7 @@ export default function PortalEmpleadoLayout() {
   });
 
   const handleLogout = async () => {
-    try { await api.post('/auth/logout'); } catch { /* ignorar */ }
+    try { await authApi.logout(); } catch { /* ignorar — token ya inválido */ }
     logout();
   };
 

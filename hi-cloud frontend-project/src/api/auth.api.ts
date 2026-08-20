@@ -14,8 +14,15 @@ export const authApi = {
   },
 
   logout: async () => {
-    // S-23: backend limpia la cookie httpOnly access_token
-    await api.post('/auth/logout');
+    // fetch nativo con keepalive:true → sobrevive al cierre de pestaña o navegación.
+    // Axios no soporta keepalive; native fetch sí, y con credentials:'include' envía
+    // la cookie access_token httpOnly que el backend necesita para autenticar.
+    const base = (api.defaults.baseURL ?? '/api/v1').replace(/\/$/, '');
+    await fetch(`${base}/auth/logout`, {
+      method:      'POST',
+      credentials: 'include',
+      keepalive:   true,        // el browser encola la petición aunque la página cierre
+    });
   },
 
   me: async () => {
