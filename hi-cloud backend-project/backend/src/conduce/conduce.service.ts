@@ -109,6 +109,19 @@ export class ConduceService {
       .take(Math.min(limit, 100))
       .getManyAndCount();
 
+    // Enriquecer con folio de factura cuando el conduce fue creado desde una factura
+    const facturaIds = [...new Set(data.filter(c => c.facturaId).map(c => c.facturaId!))];
+    if (facturaIds.length > 0) {
+      const facturas = await this.ds.query<{ id: number; folio: string }[]>(
+        `SELECT id, folio FROM facturas WHERE id = ANY($1::int[])`,
+        [facturaIds],
+      );
+      const folioMap = new Map(facturas.map(f => [f.id, f.folio]));
+      data.forEach(c => {
+        if (c.facturaId) (c as any).facturaFolio = folioMap.get(c.facturaId) ?? null;
+      });
+    }
+
     return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
   }
 
@@ -116,6 +129,16 @@ export class ConduceService {
     const empresaId = this.tenantSvc.getEmpresaId();
     const c = await this.conduceRepo.findOne({ where: { id, empresaId, isActive: true } });
     if (!c) throw new NotFoundException(`Conduce #${id} no encontrado`);
+
+    // Enriquecer con folio de factura
+    if (c.facturaId) {
+      const rows = await this.ds.query<{ folio: string }[]>(
+        `SELECT folio FROM facturas WHERE id = $1 LIMIT 1`,
+        [c.facturaId],
+      );
+      if (rows[0]) (c as any).facturaFolio = rows[0].folio;
+    }
+
     return c;
   }
 

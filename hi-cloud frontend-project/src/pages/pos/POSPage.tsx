@@ -5518,7 +5518,12 @@ function POSConducePanel({ C, onVolver }: {
                         : (r.estado ?? '').replace('_', ' ').toUpperCase();
                       return (
                         <tr key={r.id} style={{ borderBottom: `1px solid ${C.border}`, background: i % 2 === 0 ? 'transparent' : C.card }}>
-                          <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontSize: 11, color: C.blue, fontWeight: 700 }}>{r.numero}</td>
+                          <td style={{ padding: '8px 10px' }}>
+                            <div style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue, fontWeight: 700 }}>{r.numero}</div>
+                            {r.facturaFolio && (
+                              <div style={{ fontSize: 10, color: C.textSub, marginTop: 1 }}>📄 {r.facturaFolio}</div>
+                            )}
+                          </td>
                           <td style={{ padding: '8px 10px', color: C.text, fontSize: 11, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
                             <div>{r.cliente?.nombre ?? '—'}</div>
                             <div style={{ fontSize: 10, color: C.textSub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.direccionEntrega ?? ''}</div>

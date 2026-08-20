@@ -57,6 +57,13 @@ export class ConducePDFService {
         ).then((r: any[]) => r[0]?.nombre ?? undefined)
       : undefined;
 
+    const facturaFolio: string | undefined = cond.facturaId
+      ? await this.repo.manager.query(
+          'SELECT folio FROM facturas WHERE id = $1 LIMIT 1',
+          [cond.facturaId],
+        ).then((r: any[]) => r[0]?.folio ?? undefined)
+      : undefined;
+
     const buffer = await new Promise<Buffer>((resolve, reject) => {
       const doc = new PDFDocument({ size: 'LETTER', margin: 50, compress: true });
       const chunks: Buffer[] = [];
@@ -87,8 +94,11 @@ export class ConducePDFService {
       let y = 98;
       doc.fillColor(brandBlue).font('Helvetica-Bold').fontSize(22)
         .text('CONDUCE / NOTA DE ENTREGA', PL, y);
+      const refLine = facturaFolio
+        ? `N°: ${cond.numero}   ·   Fecha: ${fmtFecha(cond.fecha)}   ·   Ref. Factura: ${facturaFolio}`
+        : `N°: ${cond.numero}   ·   Fecha: ${fmtFecha(cond.fecha)}`;
       doc.fillColor('#374151').font('Helvetica').fontSize(10)
-        .text(`N°: ${cond.numero}   ·   Fecha: ${fmtFecha(cond.fecha)}`, PL, y + 28);
+        .text(refLine, PL, y + 28);
 
       // ── Línea separadora ────────────────────────────────────────────────────
       y += 52;

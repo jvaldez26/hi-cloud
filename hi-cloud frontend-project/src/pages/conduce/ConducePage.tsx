@@ -257,6 +257,7 @@ export default function ConducePage() {
     { key: 'n',     label: 'No.',     defaultVisible: true  },
     { key: 'f',     label: 'Fecha',   defaultVisible: true  },
     { key: 'c',     label: 'Cliente', defaultVisible: true  },
+    { key: 'fac',   label: 'Factura', defaultVisible: true  },
     { key: 'd',     label: 'Destino', defaultVisible: false },
     { key: 'items', label: 'Items',   defaultVisible: true  },
     { key: 'e',     label: 'Estado',  defaultVisible: true  },
@@ -327,6 +328,10 @@ export default function ConducePage() {
             { title: 'No.', dataIndex: 'numero', key: 'n', render: v => <Text strong style={{ fontFamily: 'mono' }}>{v}</Text> },
             { title: 'Fecha', dataIndex: 'fecha', key: 'f' },
             { title: 'Cliente', key: 'c', render: (_, r: any) => <Text strong>{r.cliente?.nombre}</Text> },
+            { title: 'Factura', key: 'fac', render: (_, r: any) => r.facturaFolio
+              ? <Text code style={{ fontSize: 11 }}>{r.facturaFolio}</Text>
+              : <Text type="secondary" style={{ fontSize: 11 }}>—</Text>
+            },
             { title: 'Destino', key: 'd', render: (_, r: any) => <Text type="secondary" style={{ fontSize: 12 }}>{r.ciudad ? `${r.ciudad} · ` : ''}{r.direccionEntrega?.slice(0, 30)}...</Text> },
             { title: 'Ítems', key: 'items', render: (_, r: any) => <Tag>{r.detalles?.length ?? 0} ítem(s)</Tag> },
             { title: 'Estado', dataIndex: 'estado', key: 'e', render: v => <Tag color={ESTADO_CONFIG[v]?.color}>{ESTADO_CONFIG[v]?.label}</Tag> },
@@ -642,6 +647,14 @@ export default function ConducePage() {
               <Col xs={24} sm={12}><Text type="secondary">Cliente:</Text><div><Text strong>{modalDetalle.cliente?.nombre}</Text></div></Col>
               <Col xs={24} sm={12}><Text type="secondary">Destino:</Text><div><Text style={{ fontSize: 12 }}>{modalDetalle.direccionEntrega}</Text></div></Col>
             </Row>
+            {modalDetalle.facturaFolio && (
+              <Row gutter={16} style={{ marginBottom: 16 }}>
+                <Col xs={24}>
+                  <Text type="secondary">Factura de origen:</Text>
+                  <div><Text code>{modalDetalle.facturaFolio}</Text></div>
+                </Col>
+              </Row>
+            )}
             {(modalDetalle.conductor || modalDetalle.vehiculo) && (
               <Row gutter={16} style={{ marginBottom: 16 }}>
                 {modalDetalle.conductor && <Col xs={24} sm={12}><Text type="secondary">Conductor:</Text><div><Text>{modalDetalle.conductor}</Text></div></Col>}
