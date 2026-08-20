@@ -11,8 +11,10 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Input, Button, Spin, Tag, Table, Alert, Collapse, Progress,
-  Tooltip, Empty, Typography, Space, Divider,
+  Empty, Typography, Space, Divider,
 } from 'antd';
+// Space.Compact está en antd 5 como componente separado
+const { Compact } = Space;
 import {
   SearchOutlined, PrinterOutlined, FileExcelOutlined,
   CheckCircleOutlined, ClockCircleOutlined, ExclamationCircleOutlined,
@@ -214,16 +216,26 @@ export default function ReporteEntregaTab() {
 
       {/* ── Buscador ── */}
       <div className="no-print" style={{ maxWidth: 560, marginBottom: 24 }}>
-        <Input.Search
-          placeholder="Buscar por N° conduce, folio factura o e-NCF (ej. CON-3, FAC-155, E320000000033)"
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onSearch={() => buscar()}
-          enterButton={<Button type="primary" icon={<SearchOutlined />}>Buscar</Button>}
-          size="large"
-          allowClear
-          onClear={() => { setInput(''); setReporte(null); setNotFound(false); setSearchParams(p => { p.delete('q'); return p; }); }}
-        />
+        <Compact style={{ width: '100%' }}>
+          <Input
+            placeholder="Buscar por N° conduce, folio factura o e-NCF (ej. CON-3, FAC-155)"
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onPressEnter={() => buscar()}
+            allowClear
+            onClear={() => { setInput(''); setReporte(null); setNotFound(false); setSearchParams(p => { p.delete('q'); return p; }); }}
+            size="large"
+          />
+          <Button
+            type="primary"
+            icon={<SearchOutlined />}
+            onClick={() => buscar()}
+            size="large"
+            loading={loading}
+          >
+            Buscar
+          </Button>
+        </Compact>
       </div>
 
       {loading && <Spin size="large" style={{ display: 'block', margin: '60px auto' }} />}
