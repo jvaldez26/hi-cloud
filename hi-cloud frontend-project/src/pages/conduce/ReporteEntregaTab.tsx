@@ -340,11 +340,11 @@ export default function ReporteEntregaTab() {
                     <Title level={4} style={{ margin: 0 }}>{reporte.factura.folio}</Title>
                     {reporte.factura.encf && <Text code style={{ fontSize: 12 }}>{reporte.factura.encf}</Text>}
                     <Tag
-                      color={ESTADO_CHIP[reporte.estadoGeneral]?.color}
-                      icon={ESTADO_CHIP[reporte.estadoGeneral]?.icon}
+                      color={ESTADO_CHIP[reporte.estadoGeneral ?? 'SIN_ENTREGAS']?.color}
+                      icon={ESTADO_CHIP[reporte.estadoGeneral ?? 'SIN_ENTREGAS']?.icon}
                       style={{ fontSize: 13, padding: '2px 10px' }}
                     >
-                      {ESTADO_CHIP[reporte.estadoGeneral]?.label}
+                      {ESTADO_CHIP[reporte.estadoGeneral ?? 'SIN_ENTREGAS']?.label}
                     </Tag>
                   </Space>
                   <div>
