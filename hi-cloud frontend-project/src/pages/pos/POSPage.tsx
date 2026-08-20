@@ -1,4 +1,7 @@
 ﻿import { useState, useCallback, useEffect, useRef, createContext, useContext } from 'react';
+import { SkeletonTabla }     from '../../components/ui/SkeletonTabla';
+import { SkeletonProductos } from '../../components/ui/SkeletonProductos';
+import { useSkeletonDelay }  from '../../hooks/useSkeletonDelay';
 import { useRncLookup } from '../../hooks/useRncLookup';
 import QRCode from 'qrcode';
 import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover, Input, Button, Segmented, Tabs, InputNumber, Radio, Checkbox } from 'antd';
@@ -3383,7 +3386,7 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
                 </div>
                 {/* tabla */}
                 <div style={{ flex: 1, overflowY: 'auto', scrollbarWidth: 'thin' }}>
-                  {isLoading ? <div style={{ textAlign: 'center', padding: 30 }}><Spin /></div> :
+                  {isLoading ? <SkeletonTabla rows={7} cols={9} /> :
                    productos.length === 0
                     ? <Empty style={{ marginTop: 30 }} description={<span style={{ color: C.textSub }}>Sin productos</span>} />
                     : (
@@ -6456,7 +6459,7 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
   const listaFacturas = (
     <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
       {isLoading ? (
-        <div style={{ padding: 24, textAlign: 'center', color: C.textSub }}>Cargando...</div>
+        <div style={{ padding: 24, textAlign: 'center' }}><Spin size="small" /></div>
       ) : ventas.length === 0 ? (
         <div style={{ padding: 32, textAlign: 'center', color: C.textMuted, fontSize: 13 }}>No hay ventas hoy</div>
       ) : ventas.map((v: any) => (
@@ -9859,6 +9862,8 @@ export default function POSPage() {
     refetchOnWindowFocus: false,        // clave: no refetchear al hacer focus
   });
   const todosProdutos: any[] = (todosProdutosData as any)?.data ?? (todosProdutosData as any) ?? [];
+  // 200 ms de retardo: cargas rápidas (caché caliente) no llegan a mostrar el skeleton
+  const showCatalogSkeleton = useSkeletonDelay(isLoading, 200);
 
   // Precarga silenciosa de patrones de balanza — permite intercept offline en procesarScan.
   // Key con empresaActual: al cambiar de tenant el caché queda huérfano y no contamina la nueva sesión.
@@ -11678,9 +11683,9 @@ export default function POSPage() {
           {/* ── Grid de productos modernizado ─────────────────────────── */}
           <div style={{ flex:1, overflowY:'auto', padding:'14px 14px', scrollbarWidth:'thin', scrollbarColor: C.border+' transparent' }}>
             {isLoading ? (
-              <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:200 }}>
-                <Spin size="large" />
-              </div>
+              showCatalogSkeleton
+                ? <SkeletonProductos count={12} />
+                : <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:200 }}><Spin size="large" /></div>
             ) : (() => {
               const vistaDefecto   = !search && categoriaTab === '__all__' && filtroStock === 'todos';
               const mostrarRecientes = vistaDefecto && productosRecientes.length > 0;

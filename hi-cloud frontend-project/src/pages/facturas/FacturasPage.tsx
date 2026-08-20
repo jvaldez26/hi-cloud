@@ -1,4 +1,6 @@
 import { useState, useCallback } from 'react';
+import { SkeletonTabla }      from '../../components/ui/SkeletonTabla';
+import { useSkeletonDelay }   from '../../hooks/useSkeletonDelay';
 import { EmailConCopiaModal } from '../../components/ui/EmailConCopiaModal';
 import { useMobile } from '../../hooks/useMediaQuery';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
@@ -151,6 +153,7 @@ export default function FacturasPage() {
 
   // Resumen rápido desde la misma data cargada
   const resumen = data?.data ?? [];
+  const showSkeleton = useSkeletonDelay(isLoading, 200);
   const totalPagina = resumen.reduce((s, f) => s + Number(f.total ?? 0), 0);
 
   const estadoMut = useMutation({
@@ -650,8 +653,8 @@ export default function FacturasPage() {
       {/* ── Vista mobile: cards ── */}
       {isMobile ? (
         <div>
-          {isLoading ? (
-            <div style={{ padding: 24, textAlign: 'center' }}><span>Cargando...</span></div>
+          {showSkeleton ? (
+            <SkeletonTabla rows={4} cols={3} />
           ) : resumen.length === 0 ? (
             <div style={{ padding: 32, textAlign: 'center', color: token.colorTextSecondary }}>
               Sin facturas
@@ -712,6 +715,9 @@ export default function FacturasPage() {
             </div>
           )}
         </div>
+      ) : showSkeleton ? (
+        /* ── Skeleton — muestra la FORMA de la tabla mientras carga (>200 ms) ── */
+        <SkeletonTabla rows={6} cols={8} />
       ) : (
         /* ── Tabla — scroll interno para que la página no desborde ── */
         <Table

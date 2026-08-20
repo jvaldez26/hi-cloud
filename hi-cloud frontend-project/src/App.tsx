@@ -641,7 +641,7 @@ export default function App() {
             <SessionExpiredHandler />
             <NewVersionBanner />
             <ErrorBoundary>
-              <Suspense fallback={null}>
+              <Suspense fallback={<PageLoader />}>
                 <Routes>
                   {/* ── Super Admin — layout propio sin sidebar de empresa ── */}
                   <Route path="/super-admin" element={<SuperAdminRoute><SuperAdminPage /></SuperAdminRoute>} />
