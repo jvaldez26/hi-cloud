@@ -5528,6 +5528,14 @@ function POSConducePanel({ C, onVolver }: {
                             <div style={{ fontSize: 10, color: C.textSub, marginTop: 1 }}>
                               {r.fecha ? new Date(r.fecha).toLocaleDateString('es-DO') : ''}
                             </div>
+                            {r.createdAt && (
+                              <div style={{ fontSize: 10, color: C.textSub }}>
+                                {new Date(r.createdAt).toLocaleTimeString('es-DO', {
+                                  hour: '2-digit', minute: '2-digit', hour12: true,
+                                  timeZone: 'America/Santo_Domingo',
+                                })}
+                              </div>
+                            )}
                           </td>
                           {/* Cliente */}
                           <td style={{ padding: '8px 10px', color: C.text, fontSize: 11, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
