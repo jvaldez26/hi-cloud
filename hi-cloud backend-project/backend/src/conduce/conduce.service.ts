@@ -97,11 +97,16 @@ export class ConduceService {
       .createQueryBuilder('c')
       .leftJoinAndSelect('c.cliente',  'cl')
       .leftJoinAndSelect('c.detalles', 'd')
+      // JOIN a facturas solo para poder filtrar por folio (no se selecciona, ya se enriquece después)
+      .leftJoin('facturas', 'fac', 'fac.id = c."facturaId"')
       .where('c.empresaId = :eid', { eid: empresaId })
       .andWhere('c.isActive = :a',  { a: true });
 
     if (estado) qb.andWhere('c.estado = :e', { e: estado });
-    if (search) qb.andWhere('(c.numero ILIKE :s OR cl.nombre ILIKE :s)', { s: `%${search}%` });
+    if (search) qb.andWhere(
+      `(c.numero ILIKE :s OR cl.nombre ILIKE :s OR fac.folio ILIKE :s OR fac.folio = 'FAC-' || :sPlain)`,
+      { s: `%${search}%`, sPlain: search },
+    );
 
     const [data, total] = await qb
       .orderBy('c.fecha', 'DESC')

@@ -13,8 +13,6 @@ import {
   Input, Button, Spin, Tag, Table, Alert, Collapse, Progress,
   Empty, Typography, Space, Divider,
 } from 'antd';
-// Space.Compact está en antd 5 como componente separado
-const { Compact } = Space;
 import {
   SearchOutlined, PrinterOutlined, FileExcelOutlined,
   CheckCircleOutlined, ClockCircleOutlined, ExclamationCircleOutlined,
@@ -24,23 +22,25 @@ import dayjs from 'dayjs';
 import api from '../../api/client';
 import { exportarExcel } from '../../utils/exportExcel';
 
+const { Compact } = Space;
 const { Title, Text } = Typography;
 
 const fmt = {
-  num: (n: number) => Number(n).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 4 }),
-  money: (n: number) => `RD$${Number(n).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-  fecha: (d: any) => d ? dayjs(d).format('DD/MM/YYYY') : '—',
-  fechaHora: (d: any) => d ? dayjs(d).format('DD/MM/YYYY HH:mm') : '—',
+  num:      (n: number) => Number(n).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 4 }),
+  money:    (n: number) => `RD$${Number(n).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+  fecha:    (d: any)    => d ? dayjs(d).format('DD/MM/YYYY') : '—',
+  fechaHora:(d: any)    => d ? dayjs(d).format('DD/MM/YYYY HH:mm') : '—',
 };
 
-// ── Estado general ────────────────────────────────────────────────────────────
-const ESTADO_CHIP: Record<string, { color: string; label: string; icon: React.ReactNode }> = {
+// ── Mapas de estado ───────────────────────────────────────────────────────────
+type EstadoEntrega = 'SIN_ENTREGAS' | 'PARCIAL' | 'COMPLETA';
+
+const ESTADO_CHIP: Record<EstadoEntrega, { color: string; label: string; icon: React.ReactNode }> = {
   SIN_ENTREGAS: { color: 'default', label: 'Sin Entregas', icon: <MinusCircleOutlined /> },
   PARCIAL:      { color: 'warning', label: 'Parcial',      icon: <ClockCircleOutlined /> },
   COMPLETA:     { color: 'success', label: 'Completa',     icon: <CheckCircleOutlined /> },
 };
 
-// ── Estado por línea ──────────────────────────────────────────────────────────
 const LINEA_TAG: Record<string, { color: string; label: string }> = {
   COMPLETO:  { color: 'success', label: 'Completo'  },
   PARCIAL:   { color: 'warning', label: 'Parcial'   },
@@ -55,7 +55,7 @@ const CONDUCE_ESTADO: Record<string, string> = {
   devuelto:    'Devuelto',
 };
 
-// ── Tipos ─────────────────────────────────────────────────────────────────────
+// ── Tipos — unión discriminada ────────────────────────────────────────────────
 interface Linea {
   productoId?: number | null;
   descripcion: string;
@@ -68,6 +68,23 @@ interface Linea {
   precioUnitario: number;
   valorPendiente: number;
   estadoLinea: 'COMPLETO' | 'PARCIAL' | 'PENDIENTE' | 'EXCEDIDO';
+}
+
+interface LineaLibre {
+  descripcion: string;
+  unidadMedida: string;
+  cantidadTotal: number;
+  conduceNumero: string;
+  conduceEstado: string;
+}
+
+interface DetalleConduce {
+  productoId?: number | null;
+  descripcion: string;
+  cantidad: number;
+  cantidadDevuelta: number;
+  unidadMedida: string;
+  observaciones?: string | null;
 }
 
 interface ConduceReporte {
@@ -83,14 +100,15 @@ interface ConduceReporte {
   observacionesEntrega?: string;
   fechaEntregaReal?: string;
   entregadoPorNombre?: string;
-  detalles: Array<{
-    productoId?: number | null;
-    descripcion: string;
-    cantidad: number;
-    cantidadDevuelta: number;
-    unidadMedida: string;
-    observaciones?: string | null;
-  }>;
+  detalles: DetalleConduce[];
+}
+
+interface ClienteReporte {
+  id: number;
+  nombre: string;
+  rnc?: string | null;
+  direccion?: string | null;
+  telefono?: string | null;
 }
 
 interface Candidato {
@@ -104,36 +122,35 @@ interface Candidato {
   estado: string;
 }
 
-interface ReporteEntrega {
-  tipo: 'factura' | 'conduce_sin_factura' | 'candidatos';
+// Los tres brazos de la respuesta — sin campos opcionales cruzados
+interface RespuestaCandidatos {
+  tipo: 'candidatos';
   busqueda: string;
-  mensaje?: string;
-  // candidatos (múltiples resultados)
-  candidatos?: Candidato[];
-  // reporte de factura
-  factura?: {
-    id: number;
-    folio: string;
-    encf?: string | null;
-    fecha: string;
-    estado: string;
-    total: number;
-    cliente: { id: number; nombre: string; rnc?: string | null; direccion?: string | null; telefono?: string | null };
-  };
-  estadoGeneral?: 'SIN_ENTREGAS' | 'PARCIAL' | 'COMPLETA';
-  hayEnTransito?: boolean;
-  porcentajeEntregado?: number;
-  lineas?: Linea[];
-  lineasLibres?: Array<{
-    descripcion: string; unidadMedida: string;
-    cantidadTotal: number; conduceNumero: string; conduceEstado: string;
-  }>;
-  conduces?: ConduceReporte[];
-  valorPendienteTotal?: number;
-  valorEnTransitoTotal?: number;
-  // conduce suelto
-  conduce?: any;
+  candidatos: Candidato[];
 }
+
+interface RespuestaFactura {
+  tipo: 'factura';
+  busqueda: string;
+  factura: { id: number; folio: string; encf?: string | null; fecha: string; estado: string; total: number; cliente: ClienteReporte };
+  estadoGeneral: EstadoEntrega;
+  hayEnTransito: boolean;
+  porcentajeEntregado: number;
+  lineas: Linea[];
+  lineasLibres: LineaLibre[];
+  conduces: ConduceReporte[];
+  valorPendienteTotal: number;
+  valorEnTransitoTotal: number;
+}
+
+interface RespuestaConduceSuelto {
+  tipo: 'conduce_sin_factura';
+  busqueda: string;
+  mensaje: string;
+  conduce: { numero: string; clienteNombre: string; detalles: DetalleConduce[] };
+}
+
+type RespuestaReporte = RespuestaCandidatos | RespuestaFactura | RespuestaConduceSuelto;
 
 // ── Componente principal ──────────────────────────────────────────────────────
 export default function ReporteEntregaTab() {
@@ -141,10 +158,9 @@ export default function ReporteEntregaTab() {
   const qParam    = searchParams.get('q') ?? '';
   const [input,   setInput]   = useState(qParam);
   const [loading, setLoading] = useState(false);
-  const [reporte, setReporte] = useState<ReporteEntrega | null>(null);
+  const [reporte, setReporte] = useState<RespuestaReporte | null>(null);
   const [notFound, setNotFound] = useState(false);
 
-  // Cargar cuando hay `q` en la URL al montar
   useEffect(() => {
     if (qParam) buscar(qParam);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -160,8 +176,7 @@ export default function ReporteEntregaTab() {
       const res = await api.get(`/conduces/reporte-entrega?q=${encodeURIComponent(term)}`);
       const data = (res as any).data?.data ?? (res as any).data;
       if (!data) { setNotFound(true); return; }
-      setReporte(data);
-      // Sincronizar URL
+      setReporte(data as RespuestaReporte);
       setSearchParams(p => { p.set('q', term); return p; }, { replace: true });
     } catch {
       setNotFound(true);
@@ -170,23 +185,23 @@ export default function ReporteEntregaTab() {
     }
   };
 
-  // ── Export Excel ──────────────────────────────────────────────────────────
+  // ── Export Excel (solo disponible para tipo 'factura') ────────────────────
   const exportExcel = () => {
-    if (!reporte?.factura) return;
-    const f = reporte.factura;
+    if (!reporte || reporte.tipo !== 'factura') return;
+    const { factura, lineas, conduces, estadoGeneral, porcentajeEntregado } = reporte;
     const rows: Record<string, any>[] = [];
 
-    rows.push({ '': `Reporte de Entrega — ${f.folio}`, ' ': '', '  ': '', '   ': '', '    ': '', '     ': '' });
-    rows.push({ '': `Cliente: ${f.cliente.nombre}`, ' ': `RNC: ${f.cliente.rnc ?? '—'}`, '  ': '', '   ': '', '    ': '', '     ': '' });
-    if (f.encf) rows.push({ '': `e-NCF: ${f.encf}`, ' ': '', '  ': '', '   ': '', '    ': '', '     ': '' });
-    rows.push({ '': `Estado: ${reporte.estadoGeneral}`, ' ': `% Entregado: ${reporte.porcentajeEntregado}%`, '  ': '', '   ': '', '    ': '', '     ': '' });
+    rows.push({ '': `Reporte de Entrega — ${factura.folio}`, ' ': '', '  ': '', '   ': '', '    ': '', '     ': '' });
+    rows.push({ '': `Cliente: ${factura.cliente.nombre}`, ' ': `RNC: ${factura.cliente.rnc ?? '—'}`, '  ': '', '   ': '', '    ': '', '     ': '' });
+    if (factura.encf) rows.push({ '': `e-NCF: ${factura.encf}`, ' ': '', '  ': '', '   ': '', '    ': '', '     ': '' });
+    rows.push({ '': `Estado: ${estadoGeneral}`, ' ': `% Entregado: ${porcentajeEntregado}%`, '  ': '', '   ': '', '    ': '', '     ': '' });
     rows.push({});
 
     rows.push({
       '': 'PRODUCTO', ' ': 'UNIDAD', '  ': 'FACTURADO',
       '   ': 'ENTREGADO', '    ': 'EN TRÁNSITO', '     ': 'PENDIENTE', '      ': 'ESTADO',
     });
-    for (const l of reporte.lineas ?? []) {
+    for (const l of lineas) {
       rows.push({
         '': l.descripcion, ' ': l.unidadMedida,
         '  ': l.cantidadFacturada, '   ': l.cantidadEntregada,
@@ -194,11 +209,11 @@ export default function ReporteEntregaTab() {
       });
     }
 
-    if ((reporte.conduces?.length ?? 0) > 0) {
+    if (conduces.length > 0) {
       rows.push({});
       rows.push({ '': 'CONDUCES EMITIDOS', ' ': '', '  ': '', '   ': '', '    ': '', '     ': '' });
       rows.push({ '': 'Número', ' ': 'Fecha', '  ': 'Estado', '   ': 'Conductor', '    ': 'Contacto', '     ': 'Observaciones' });
-      for (const c of reporte.conduces ?? []) {
+      for (const c of conduces) {
         rows.push({
           '': c.numero, ' ': fmt.fecha(c.fecha), '  ': CONDUCE_ESTADO[c.estado] ?? c.estado,
           '   ': c.conductor ?? '—', '    ': c.contactoEntrega ?? '—',
@@ -213,13 +228,12 @@ export default function ReporteEntregaTab() {
       }
     }
 
-    exportarExcel(rows, `Reporte-Entrega-${f.folio}-${dayjs().format('YYYY-MM-DD')}`);
+    exportarExcel(rows, `Reporte-Entrega-${factura.folio}-${dayjs().format('YYYY-MM-DD')}`);
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="reporte-entrega-root">
-      {/* Estilos de impresión */}
       <style>{`
         @media print {
           .no-print { display: none !important; }
@@ -268,7 +282,7 @@ export default function ReporteEntregaTab() {
       )}
 
       {/* ── Múltiples candidatos → tabla de selección ── */}
-      {!loading && reporte?.tipo === 'candidatos' && reporte.candidatos && (
+      {!loading && reporte?.tipo === 'candidatos' && (
         <div style={{ maxWidth: 700 }}>
           <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
             Se encontraron <strong>{reporte.candidatos.length}</strong> resultados para <strong>"{reporte.busqueda}"</strong>. Selecciona el que deseas ver:
@@ -280,13 +294,7 @@ export default function ReporteEntregaTab() {
             pagination={false}
             onRow={r => ({
               style: { cursor: 'pointer' },
-              onClick: () => {
-                const ref = r.tipo === 'factura'
-                  ? r.referencia   // folio como FAC-418
-                  : r.referencia;  // numero como CON-12
-                setInput(ref);
-                buscar(ref);
-              },
+              onClick: () => { setInput(r.referencia); buscar(r.referencia); },
             })}
             columns={[
               {
@@ -324,246 +332,217 @@ export default function ReporteEntregaTab() {
         </div>
       )}
 
-      {!loading && reporte && reporte.tipo !== 'candidatos' && (
-        <>
-          {/* ── Cabecera del reporte ── */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
-            <div>
-              {reporte.tipo === 'conduce_sin_factura' ? (
-                <>
-                  <Title level={4} style={{ margin: 0 }}>Conduce {reporte.conduce?.numero}</Title>
-                  <Text type="secondary">{reporte.conduce?.clienteNombre}</Text>
-                </>
-              ) : reporte.factura ? (
-                <>
-                  <Space align="center" style={{ marginBottom: 4 }}>
-                    <Title level={4} style={{ margin: 0 }}>{reporte.factura.folio}</Title>
-                    {reporte.factura.encf && <Text code style={{ fontSize: 12 }}>{reporte.factura.encf}</Text>}
-                    <Tag
-                      color={ESTADO_CHIP[reporte.estadoGeneral ?? 'SIN_ENTREGAS']?.color}
-                      icon={ESTADO_CHIP[reporte.estadoGeneral ?? 'SIN_ENTREGAS']?.icon}
-                      style={{ fontSize: 13, padding: '2px 10px' }}
-                    >
-                      {ESTADO_CHIP[reporte.estadoGeneral ?? 'SIN_ENTREGAS']?.label}
-                    </Tag>
-                  </Space>
-                  <div>
-                    <Text strong>{reporte.factura.cliente.nombre}</Text>
-                    {reporte.factura.cliente.rnc && <Text type="secondary" style={{ marginLeft: 8 }}>RNC: {reporte.factura.cliente.rnc}</Text>}
-                  </div>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    Fecha: {fmt.fecha(reporte.factura.fecha)} · Total: {fmt.money(reporte.factura.total)}
-                    {reporte.factura.cliente.telefono ? ` · Tel: ${reporte.factura.cliente.telefono}` : ''}
-                  </Text>
-                </>
-              ) : null}
-            </div>
-            <Space className="no-print">
-              <Button icon={<FileExcelOutlined />} onClick={exportExcel} disabled={reporte.tipo === 'conduce_sin_factura'}>Excel</Button>
-              <Button icon={<PrinterOutlined />} onClick={() => window.print()}>Imprimir</Button>
-            </Space>
-          </div>
-
-          {/* ── Conduce suelto (sin factura) ── */}
-          {reporte.tipo === 'conduce_sin_factura' && (
-            <Alert
-              type="info"
-              showIcon
-              message={reporte.mensaje}
-              style={{ marginBottom: 16 }}
-            />
-          )}
-
-          {/* ── Progreso ── */}
-          {reporte.tipo === 'factura' && (
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap', marginBottom: 8 }}>
-                <div><Text type="secondary" style={{ fontSize: 12 }}>Entregado</Text><div><Text strong style={{ fontSize: 18 }}>{reporte.porcentajeEntregado ?? 0}%</Text></div></div>
-                {(reporte.valorPendienteTotal ?? 0) > 0 && <div><Text type="secondary" style={{ fontSize: 12 }}>Valor pendiente</Text><div><Text strong style={{ fontSize: 18, color: '#d97706' }}>{fmt.money(reporte.valorPendienteTotal ?? 0)}</Text></div></div>}
-                {reporte.hayEnTransito && (reporte.valorEnTransitoTotal ?? 0) > 0 && <div><Text type="secondary" style={{ fontSize: 12 }}>En tránsito</Text><div><Text strong style={{ fontSize: 18, color: '#2563eb' }}>{fmt.money(reporte.valorEnTransitoTotal ?? 0)}</Text></div></div>}
-                <div><Text type="secondary" style={{ fontSize: 12 }}>Conduces emitidos</Text><div><Text strong style={{ fontSize: 18 }}>{reporte.conduces?.length ?? 0}</Text></div></div>
+      {/* ── Reporte completo (factura o conduce suelto) ── */}
+      {!loading && reporte && reporte.tipo !== 'candidatos' && (() => {
+        // A partir de aquí TypeScript sabe que reporte es RespuestaFactura | RespuestaConduceSuelto
+        const r = reporte;
+        return (
+          <>
+            {/* ── Cabecera ── */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
+              <div>
+                {r.tipo === 'conduce_sin_factura' ? (
+                  <>
+                    <Title level={4} style={{ margin: 0 }}>Conduce {r.conduce.numero}</Title>
+                    <Text type="secondary">{r.conduce.clienteNombre}</Text>
+                  </>
+                ) : (
+                  <>
+                    <Space align="center" style={{ marginBottom: 4 }}>
+                      <Title level={4} style={{ margin: 0 }}>{r.factura.folio}</Title>
+                      {r.factura.encf && <Text code style={{ fontSize: 12 }}>{r.factura.encf}</Text>}
+                      <Tag
+                        color={ESTADO_CHIP[r.estadoGeneral].color}
+                        icon={ESTADO_CHIP[r.estadoGeneral].icon}
+                        style={{ fontSize: 13, padding: '2px 10px' }}
+                      >
+                        {ESTADO_CHIP[r.estadoGeneral].label}
+                      </Tag>
+                    </Space>
+                    <div>
+                      <Text strong>{r.factura.cliente.nombre}</Text>
+                      {r.factura.cliente.rnc && <Text type="secondary" style={{ marginLeft: 8 }}>RNC: {r.factura.cliente.rnc}</Text>}
+                    </div>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      Fecha: {fmt.fecha(r.factura.fecha)} · Total: {fmt.money(r.factura.total)}
+                      {r.factura.cliente.telefono ? ` · Tel: ${r.factura.cliente.telefono}` : ''}
+                    </Text>
+                  </>
+                )}
               </div>
-              <Progress percent={reporte.porcentajeEntregado ?? 0} strokeColor={(reporte.estadoGeneral ?? 'PARCIAL') === 'COMPLETA' ? '#10b981' : '#f59e0b'} style={{ maxWidth: 400 }} />
+              <Space className="no-print">
+                <Button icon={<FileExcelOutlined />} onClick={exportExcel} disabled={r.tipo === 'conduce_sin_factura'}>Excel</Button>
+                <Button icon={<PrinterOutlined />} onClick={() => window.print()}>Imprimir</Button>
+              </Space>
             </div>
-          )}
 
-          {/* ── Tabla por producto ── */}
-          {reporte.tipo === 'factura' && (reporte.lineas?.length ?? 0) > 0 && (
-            <>
-              <Title level={5} style={{ marginBottom: 8 }}>Detalle por Producto</Title>
-              <div style={{ overflowX: 'auto', marginBottom: 24 }}>
+            {/* ── Conduce suelto ── */}
+            {r.tipo === 'conduce_sin_factura' && (
+              <Alert type="info" showIcon message={r.mensaje} style={{ marginBottom: 16 }} />
+            )}
+
+            {/* ── Progreso (solo factura) ── */}
+            {r.tipo === 'factura' && (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap', marginBottom: 8 }}>
+                  <div><Text type="secondary" style={{ fontSize: 12 }}>Entregado</Text><div><Text strong style={{ fontSize: 18 }}>{r.porcentajeEntregado}%</Text></div></div>
+                  {r.valorPendienteTotal > 0 && <div><Text type="secondary" style={{ fontSize: 12 }}>Valor pendiente</Text><div><Text strong style={{ fontSize: 18, color: '#d97706' }}>{fmt.money(r.valorPendienteTotal)}</Text></div></div>}
+                  {r.hayEnTransito && r.valorEnTransitoTotal > 0 && <div><Text type="secondary" style={{ fontSize: 12 }}>En tránsito</Text><div><Text strong style={{ fontSize: 18, color: '#2563eb' }}>{fmt.money(r.valorEnTransitoTotal)}</Text></div></div>}
+                  <div><Text type="secondary" style={{ fontSize: 12 }}>Conduces emitidos</Text><div><Text strong style={{ fontSize: 18 }}>{r.conduces.length}</Text></div></div>
+                </div>
+                <Progress percent={r.porcentajeEntregado} strokeColor={r.estadoGeneral === 'COMPLETA' ? '#10b981' : '#f59e0b'} style={{ maxWidth: 400 }} />
+              </div>
+            )}
+
+            {/* ── Tabla por producto ── */}
+            {r.tipo === 'factura' && r.lineas.length > 0 && (
+              <>
+                <Title level={5} style={{ marginBottom: 8 }}>Detalle por Producto</Title>
+                <div style={{ overflowX: 'auto', marginBottom: 24 }}>
+                  <Table
+                    dataSource={r.lineas}
+                    rowKey="descripcion"
+                    pagination={false}
+                    size="small"
+                    rowClassName={(l: Linea) => l.estadoLinea === 'EXCEDIDO' ? 'ant-table-row-danger' : ''}
+                    style={{ marginBottom: 0 }}
+                    columns={[
+                      { title: 'Producto',  dataIndex: 'descripcion',      key: 'desc', ellipsis: true },
+                      { title: 'U.M.',      dataIndex: 'unidadMedida',     key: 'um',   width: 60, align: 'center' as const },
+                      {
+                        title: 'Facturado', dataIndex: 'cantidadFacturada', key: 'fact', width: 90, align: 'right' as const,
+                        render: (v: number) => <Text style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt.num(v)}</Text>,
+                      },
+                      {
+                        title: 'Entregado', dataIndex: 'cantidadEntregada', key: 'entr', width: 90, align: 'right' as const,
+                        render: (v: number) => <Text style={{ color: v > 0 ? '#10b981' : undefined, fontVariantNumeric: 'tabular-nums' }}>{fmt.num(v)}</Text>,
+                      },
+                      ...(r.hayEnTransito ? [{
+                        title: 'En Tránsito', dataIndex: 'cantidadEnTransito', key: 'trans', width: 100, align: 'right' as const,
+                        render: (v: number) => v > 0
+                          ? <Text style={{ color: '#2563eb', fontVariantNumeric: 'tabular-nums' }}>{fmt.num(v)}</Text>
+                          : <Text type="secondary">—</Text>,
+                      }] : []),
+                      {
+                        title: <span style={{ color: '#d97706' }}>Pendiente</span>,
+                        dataIndex: 'cantidadPendiente', key: 'pend', width: 90, align: 'right' as const,
+                        render: (v: number, l: Linea) => {
+                          const color = l.estadoLinea === 'EXCEDIDO' ? '#dc2626' : v > 0 ? '#d97706' : '#10b981';
+                          return <Text strong style={{ color, fontVariantNumeric: 'tabular-nums' }}>{fmt.num(v)}</Text>;
+                        },
+                      },
+                      {
+                        title: 'Estado', dataIndex: 'estadoLinea', key: 'estado', width: 100, align: 'center' as const,
+                        render: (v: string) => <Tag color={LINEA_TAG[v]?.color}>{LINEA_TAG[v]?.label ?? v}</Tag>,
+                      },
+                    ]}
+                  />
+                </div>
+                {r.lineas.some(l => l.estadoLinea === 'EXCEDIDO') && (
+                  <Alert
+                    type="error" showIcon icon={<ExclamationCircleOutlined />}
+                    message="Hay líneas con cantidad excedida"
+                    description="Se entregó más de lo facturado en uno o más productos. Verificar con el equipo de despacho."
+                    style={{ marginBottom: 16 }}
+                  />
+                )}
+              </>
+            )}
+
+            {/* ── Líneas libres ── */}
+            {r.tipo === 'factura' && r.lineasLibres.length > 0 && (
+              <div style={{ marginBottom: 24 }}>
+                <Divider orientation="left"><Text type="secondary" style={{ fontSize: 13 }}>Líneas sin producto (no descuentan pendiente)</Text></Divider>
                 <Table
-                  dataSource={reporte.lineas ?? []}
-                  rowKey="descripcion"
+                  dataSource={r.lineasLibres}
+                  rowKey={(l, i) => `${l.conduceNumero}-${i}`}
                   pagination={false}
                   size="small"
-                  rowClassName={(r: Linea) => r.estadoLinea === 'EXCEDIDO' ? 'ant-table-row-danger' : ''}
-                  style={{ marginBottom: 0 }}
                   columns={[
+                    { title: 'Descripción', dataIndex: 'descripcion',  key: 'd' },
+                    { title: 'Cantidad',    dataIndex: 'cantidadTotal', key: 'c', width: 80, align: 'right' as const },
+                    { title: 'U.M.',        dataIndex: 'unidadMedida',  key: 'u', width: 60 },
                     {
-                      title: 'Producto',
-                      dataIndex: 'descripcion',
-                      key: 'desc',
-                      ellipsis: true,
-                    },
-                    {
-                      title: 'U.M.',
-                      dataIndex: 'unidadMedida',
-                      key: 'um',
-                      width: 60,
-                      align: 'center' as const,
-                    },
-                    {
-                      title: 'Facturado',
-                      dataIndex: 'cantidadFacturada',
-                      key: 'fact',
-                      width: 90,
-                      align: 'right' as const,
-                      render: (v: number) => <Text style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt.num(v)}</Text>,
-                    },
-                    {
-                      title: 'Entregado',
-                      dataIndex: 'cantidadEntregada',
-                      key: 'entr',
-                      width: 90,
-                      align: 'right' as const,
-                      render: (v: number) => <Text style={{ color: v > 0 ? '#10b981' : undefined, fontVariantNumeric: 'tabular-nums' }}>{fmt.num(v)}</Text>,
-                    },
-                    ...(reporte.hayEnTransito ?? false ? [{
-                      title: 'En Tránsito',
-                      dataIndex: 'cantidadEnTransito',
-                      key: 'trans',
-                      width: 100,
-                      align: 'right' as const,
-                      render: (v: number) => v > 0 ? <Text style={{ color: '#2563eb', fontVariantNumeric: 'tabular-nums' }}>{fmt.num(v)}</Text> : <Text type="secondary">—</Text>,
-                    }] : []),
-                    {
-                      title: <span style={{ color: '#d97706' }}>Pendiente</span>,
-                      dataIndex: 'cantidadPendiente',
-                      key: 'pend',
-                      width: 90,
-                      align: 'right' as const,
-                      render: (v: number, r: Linea) => {
-                        const color = r.estadoLinea === 'EXCEDIDO' ? '#dc2626'
-                                    : v > 0 ? '#d97706' : '#10b981';
-                        return <Text strong style={{ color, fontVariantNumeric: 'tabular-nums' }}>{fmt.num(v)}</Text>;
-                      },
-                    },
-                    {
-                      title: 'Estado',
-                      dataIndex: 'estadoLinea',
-                      key: 'estado',
-                      width: 100,
-                      align: 'center' as const,
-                      render: (v: string) => (
-                        <Tag color={LINEA_TAG[v]?.color}>{LINEA_TAG[v]?.label ?? v}</Tag>
+                      title: 'Conduce', dataIndex: 'conduceNumero', key: 'n', width: 110,
+                      render: (v: string, l: LineaLibre) => (
+                        <>
+                          <Text code style={{ fontSize: 11 }}>{v}</Text>{' '}
+                          <Tag color={l.conduceEstado === 'entregado' ? 'success' : 'default'} style={{ fontSize: 10 }}>
+                            {CONDUCE_ESTADO[l.conduceEstado] ?? l.conduceEstado}
+                          </Tag>
+                        </>
                       ),
                     },
                   ]}
                 />
               </div>
+            )}
 
-              {/* Líneas con excedido */}
-              {(reporte.lineas ?? []).some(l => l.estadoLinea === 'EXCEDIDO') && (
+            {/* ── Conduces emitidos ── */}
+            {r.tipo === 'factura' && (
+              r.conduces.length > 0 ? (
+                <div style={{ marginBottom: 24 }}>
+                  <Title level={5} style={{ marginBottom: 8 }}>Conduces Emitidos ({r.conduces.length})</Title>
+                  <Collapse
+                    size="small"
+                    items={r.conduces.map((c: ConduceReporte) => ({
+                      key: String(c.id),
+                      label: (
+                        <Space>
+                          <Text code style={{ fontSize: 12 }}>{c.numero}</Text>
+                          <Text type="secondary" style={{ fontSize: 12 }}>{fmt.fecha(c.fecha)}</Text>
+                          <Tag color={c.estado === 'entregado' ? 'success' : c.estado === 'en_transito' ? 'processing' : c.estado === 'devuelto' ? 'error' : 'default'}>
+                            {CONDUCE_ESTADO[c.estado] ?? c.estado}
+                          </Tag>
+                          {c.conductor && <Text type="secondary" style={{ fontSize: 12 }}>🚗 {c.conductor}</Text>}
+                          {c.contactoEntrega && <Text type="secondary" style={{ fontSize: 12 }}>👤 {c.contactoEntrega}</Text>}
+                        </Space>
+                      ),
+                      children: (
+                        <div>
+                          <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap', marginBottom: 12 }}>
+                            {c.conductor && <div><Text type="secondary" style={{ fontSize: 11 }}>Conductor</Text><div><Text>{c.conductor}{c.vehiculo ? ` · ${c.vehiculo}` : ''}</Text></div></div>}
+                            {c.contactoEntrega && <div><Text type="secondary" style={{ fontSize: 11 }}>Recibido por</Text><div><Text>{c.contactoEntrega}{c.telefonoContacto ? ` · ${c.telefonoContacto}` : ''}</Text></div></div>}
+                            {c.entregadoPorNombre && <div><Text type="secondary" style={{ fontSize: 11 }}>Entregado por</Text><div><Text>{c.entregadoPorNombre}</Text></div></div>}
+                            {c.fechaEntregaReal && <div><Text type="secondary" style={{ fontSize: 11 }}>Fecha real de entrega</Text><div><Text>{fmt.fechaHora(c.fechaEntregaReal)}</Text></div></div>}
+                          </div>
+                          <Table
+                            dataSource={c.detalles}
+                            rowKey={(_, i) => String(i)}
+                            pagination={false}
+                            size="small"
+                            style={{ marginBottom: 8 }}
+                            columns={[
+                              { title: 'Ítem',     dataIndex: 'descripcion',     key: 'd', ellipsis: true },
+                              { title: 'Cantidad', dataIndex: 'cantidad',         key: 'c', width: 90, align: 'right' as const, render: (v: number) => fmt.num(v) },
+                              { title: 'Devuelto', dataIndex: 'cantidadDevuelta', key: 'dev', width: 80, align: 'right' as const, render: (v: number) => v > 0 ? <Text style={{ color: '#dc2626' }}>{fmt.num(v)}</Text> : <Text type="secondary">—</Text> },
+                              { title: 'U.M.',     dataIndex: 'unidadMedida',     key: 'u', width: 60 },
+                              { title: 'Nota',     dataIndex: 'observaciones',    key: 'obs', ellipsis: true, render: (v: string | null) => v ?? '—' },
+                            ]}
+                          />
+                          {(c.notas || c.observacionesEntrega) && (
+                            <div style={{ padding: '8px 12px', background: '#f9fafb', borderRadius: 6, fontSize: 12 }}>
+                              {c.notas && <div><Text type="secondary">Notas: </Text><Text>{c.notas}</Text></div>}
+                              {c.observacionesEntrega && <div><Text type="secondary">Observaciones de entrega: </Text><Text>{c.observacionesEntrega}</Text></div>}
+                            </div>
+                          )}
+                        </div>
+                      ),
+                    }))}
+                  />
+                </div>
+              ) : (
                 <Alert
-                  type="error"
-                  showIcon
-                  icon={<ExclamationCircleOutlined />}
-                  message="Hay líneas con cantidad excedida"
-                  description="Se entregó más de lo facturado en uno o más productos. Verificar con el equipo de despacho."
+                  type="info" showIcon
+                  message="Sin entregas registradas"
+                  description="Esta factura no tiene ningún conduce emitido. La cantidad pendiente es el 100% de lo facturado."
                   style={{ marginBottom: 16 }}
                 />
-              )}
-            </>
-          )}
-
-          {/* ── Líneas libres ── */}
-          {reporte.tipo === 'factura' && (reporte.lineasLibres?.length ?? 0) > 0 && (
-            <div style={{ marginBottom: 24 }}>
-              <Divider orientation="left"><Text type="secondary" style={{ fontSize: 13 }}>Líneas sin producto (no descuentan pendiente)</Text></Divider>
-              <Table
-                dataSource={reporte.lineasLibres ?? []}
-                rowKey={(r, i) => `${r.conduceNumero}-${i}`}
-                pagination={false}
-                size="small"
-                columns={[
-                  { title: 'Descripción', dataIndex: 'descripcion', key: 'd' },
-                  { title: 'Cantidad', dataIndex: 'cantidadTotal', key: 'c', width: 80, align: 'right' as const },
-                  { title: 'U.M.', dataIndex: 'unidadMedida', key: 'u', width: 60 },
-                  { title: 'Conduce', dataIndex: 'conduceNumero', key: 'n', width: 110, render: (v: string, r: any) => <><Text code style={{ fontSize: 11 }}>{v}</Text> <Tag color={r.conduceEstado === 'entregado' ? 'success' : 'default'} style={{ fontSize: 10 }}>{CONDUCE_ESTADO[r.conduceEstado] ?? r.conduceEstado}</Tag></> },
-                ]}
-              />
-            </div>
-          )}
-
-          {/* ── Conduces emitidos ── */}
-          {(reporte.conduces?.length ?? 0) > 0 ? (
-            <div style={{ marginBottom: 24 }}>
-              <Title level={5} style={{ marginBottom: 8 }}>Conduces Emitidos ({reporte.conduces?.length ?? 0})</Title>
-              <Collapse
-                size="small"
-                items={(reporte.conduces ?? []).map((c: ConduceReporte) => ({
-                  key: String(c.id),
-                  label: (
-                    <Space>
-                      <Text code style={{ fontSize: 12 }}>{c.numero}</Text>
-                      <Text type="secondary" style={{ fontSize: 12 }}>{fmt.fecha(c.fecha)}</Text>
-                      <Tag color={c.estado === 'entregado' ? 'success' : c.estado === 'en_transito' ? 'processing' : c.estado === 'devuelto' ? 'error' : 'default'}>
-                        {CONDUCE_ESTADO[c.estado] ?? c.estado}
-                      </Tag>
-                      {c.conductor && <Text type="secondary" style={{ fontSize: 12 }}>🚗 {c.conductor}</Text>}
-                      {c.contactoEntrega && <Text type="secondary" style={{ fontSize: 12 }}>👤 {c.contactoEntrega}</Text>}
-                    </Space>
-                  ),
-                  children: (
-                    <div>
-                      {/* Datos de la entrega */}
-                      <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap', marginBottom: 12 }}>
-                        {c.conductor && <div><Text type="secondary" style={{ fontSize: 11 }}>Conductor</Text><div><Text>{c.conductor}{c.vehiculo ? ` · ${c.vehiculo}` : ''}</Text></div></div>}
-                        {c.contactoEntrega && <div><Text type="secondary" style={{ fontSize: 11 }}>Recibido por</Text><div><Text>{c.contactoEntrega}{c.telefonoContacto ? ` · ${c.telefonoContacto}` : ''}</Text></div></div>}
-                        {c.entregadoPorNombre && <div><Text type="secondary" style={{ fontSize: 11 }}>Entregado por</Text><div><Text>{c.entregadoPorNombre}</Text></div></div>}
-                        {c.fechaEntregaReal && <div><Text type="secondary" style={{ fontSize: 11 }}>Fecha real de entrega</Text><div><Text>{fmt.fechaHora(c.fechaEntregaReal)}</Text></div></div>}
-                      </div>
-
-                      {/* Detalles del conduce */}
-                      <Table
-                        dataSource={c.detalles}
-                        rowKey={(_, i) => String(i)}
-                        pagination={false}
-                        size="small"
-                        style={{ marginBottom: 8 }}
-                        columns={[
-                          { title: 'Ítem', dataIndex: 'descripcion', key: 'd', ellipsis: true },
-                          { title: 'Cantidad', dataIndex: 'cantidad', key: 'c', width: 90, align: 'right' as const, render: (v: number) => fmt.num(v) },
-                          { title: 'Devuelto', dataIndex: 'cantidadDevuelta', key: 'dev', width: 80, align: 'right' as const, render: (v: number) => v > 0 ? <Text style={{ color: '#dc2626' }}>{fmt.num(v)}</Text> : <Text type="secondary">—</Text> },
-                          { title: 'U.M.', dataIndex: 'unidadMedida', key: 'u', width: 60 },
-                          { title: 'Nota', dataIndex: 'observaciones', key: 'obs', ellipsis: true, render: (v: string | null) => v ?? '—' },
-                        ]}
-                      />
-
-                      {/* Comentarios del conduce */}
-                      {(c.notas || c.observacionesEntrega) && (
-                        <div style={{ padding: '8px 12px', background: '#f9fafb', borderRadius: 6, fontSize: 12 }}>
-                          {c.notas && <div><Text type="secondary">Notas: </Text><Text>{c.notas}</Text></div>}
-                          {c.observacionesEntrega && <div><Text type="secondary">Observaciones de entrega: </Text><Text>{c.observacionesEntrega}</Text></div>}
-                        </div>
-                      )}
-                    </div>
-                  ),
-                }))}
-              />
-            </div>
-          ) : reporte.tipo === 'factura' ? (
-            <Alert
-              type="info"
-              showIcon
-              message="Sin entregas registradas"
-              description="Esta factura no tiene ningún conduce emitido. La cantidad pendiente es el 100% de lo facturado."
-              style={{ marginBottom: 16 }}
-            />
-          ) : null}
-        </>
-      )}
+              )
+            )}
+          </>
+        );
+      })()}
     </div>
   );
 }
