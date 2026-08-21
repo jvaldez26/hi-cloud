@@ -2,8 +2,6 @@ import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
 import { UsersService } from '../../users/users.service';
 import { TokenBlacklistService } from '../token-blacklist.service';
 import type { Request } from 'express';
@@ -30,7 +28,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     private configService:    ConfigService,
     private usersService:     UsersService,
     private blacklistService: TokenBlacklistService,
-    @InjectDataSource() private ds: DataSource,
   ) {
     const secret = configService.get<string>('JWT_SECRET');
     if (!secret) {
@@ -74,14 +71,23 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('CONTRASEÑA_NO_CONFIGURADA');
     }
 
-    // Sesión desplazada o revocada: SQL raw para garantizar lectura fresca de BD
-    // (evita cualquier caché de TypeORM entity / query result)
+    // Sesión desplazada o revocada.
+    //
+    // El valor viene del `user` ya cargado por findById() arriba: `sessionToken`
+    // es una columna normal de la entidad User (SIN `select: false`, a diferencia
+    // de password/googleId/twoFactorSecret), así que findOne() la trae en el mismo
+    // SELECT. La query cruda que había aquí leía la MISMA fila una segunda vez —
+    // 2 SELECT a `users` por cada request autenticado del ERP.
+    //
+    // Tampoco había caché que evitar: findById() usa findOne() sin `cache: true`,
+    // y TypeORM no cachea resultados salvo que se lo pidas explícitamente.
+    //
+    // CONTRATO: si alguien añade `select: false` a User.sessionToken, este valor
+    // llegaría `undefined` y la comparación dejaría pasar cualquier token viejo
+    // — la sesión única moriría en silencio. Eso lo ancla users.entity.spec.ts,
+    // que falla en CI si la columna cambia de configuración.
     if (payload.sessionToken) {
-      const rows = await this.ds.query(
-        `SELECT "sessionToken" FROM users WHERE id = $1 AND "isActive" = true LIMIT 1`,
-        [payload.sub],
-      );
-      const dbToken = rows[0]?.sessionToken ?? null;
+      const dbToken = user.sessionToken ?? null;
       if (!dbToken || payload.sessionToken !== dbToken) {
         throw new UnauthorizedException('SESION_DESPLAZADA');
       }
