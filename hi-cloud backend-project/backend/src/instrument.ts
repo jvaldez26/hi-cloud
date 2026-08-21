@@ -8,6 +8,8 @@ import * as Sentry from '@sentry/nestjs';
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const dsn = process.env.SENTRY_DSN;
+const esProduccion = (process.env.NODE_ENV ?? 'production') === 'production';
+
 if (dsn) {
   try {
     Sentry.init({
@@ -15,16 +17,39 @@ if (dsn) {
       release:          process.env.SENTRY_RELEASE || undefined,
       environment:      process.env.NODE_ENV || 'production',
       sendDefaultPii:   false,
-      tracesSampleRate: 0,
+      // 10% de las transacciones. Suficiente para ver dónde se va el tiempo sin
+      // convertir el tráfico del POS en un torrente de eventos de performance.
+      tracesSampleRate: 0.1,
       beforeSend,
     });
     const rel = (process.env.SENTRY_RELEASE ?? 'n/a').slice(0, 7);
     console.log(`[Sentry] Activo (env=${process.env.NODE_ENV ?? 'production'}, release=${rel})`);
   } catch (e) {
-    console.warn(`[Sentry] Error al inicializar: ${(e as Error).message}`);
+    console.error(`[Sentry] ERROR al inicializar: ${(e as Error).message}`);
   }
+} else if (esProduccion) {
+  // Esto ya pasó una vez y sobrevivió meses: el deploy inyectaba SENTRY_RELEASE
+  // pero nunca SENTRY_DSN, así que el backend arrancaba sin reportar NADA. El
+  // aviso era un console.log informativo perdido entre los mensajes de arranque
+  // y nadie lo miró.
+  //
+  // No es fatal a propósito — que el backend se niegue a arrancar por esto sería
+  // peor que quedarse sin telemetría — pero tiene que ser imposible pasarlo por
+  // alto al revisar los logs de un deploy.
+  console.error('');
+  console.error('  ╔══════════════════════════════════════════════════════════════╗');
+  console.error('  ║  SENTRY DESACTIVADO EN PRODUCCIÓN — SIN REPORTE DE ERRORES   ║');
+  console.error('  ╠══════════════════════════════════════════════════════════════╣');
+  console.error('  ║  Falta la variable de entorno SENTRY_DSN.                    ║');
+  console.error('  ║  El backend arranca igual, pero NINGÚN error del servidor     ║');
+  console.error('  ║  llegará al panel: se está volando a ciegas.                 ║');
+  console.error('  ║                                                              ║');
+  console.error('  ║  Arreglo: secret SENTRY_DSN en GitHub + inject_env en el      ║');
+  console.error('  ║  workflow de deploy (junto a SENTRY_RELEASE).                ║');
+  console.error('  ╚══════════════════════════════════════════════════════════════╝');
+  console.error('');
 } else {
-  console.log('[Sentry] Deshabilitado (SENTRY_DSN no configurado)');
+  console.log('[Sentry] Deshabilitado (SENTRY_DSN no configurado — entorno no productivo)');
 }
 
 function sanitizeUrl(url: string): string {
@@ -43,16 +68,33 @@ function sanitizeUrl(url: string): string {
  */
 const JWT_RE    = /eyJ[\w-]+\.[\w-]+\.[\w-]+/g;  // JWT
 const NCF_RE    = /\bE\d{10,12}\b/g;             // e-NCF: E + 12 díg
+const TARJETA_RE= /\b\d{15,19}\b/g;              // PAN de tarjeta (Amex 15 … Maestro 19)
 const CEDULA_RE = /\b\d{11}\b/g;                 // cédula: 11 díg exactos
 const RNC_RE    = /\b\d{9}\b/g;                  // RNC empresa: 9 díg exactos
+// UUID v4 — es la forma de sessionToken (initNewSession → randomUUID) y de jti.
+// Sin esto, un sessionToken en un mensaje de error salía del servidor en claro,
+// que es justo el secreto que sostiene la sesión única.
+const UUID_RE   = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
 
 function scrubText(text: string): string {
   return text
-    .replace(JWT_RE,    ':jwt')
-    .replace(NCF_RE,    ':ncf')
-    .replace(CEDULA_RE, ':cedula')
-    .replace(RNC_RE,    ':rnc');
+    .replace(UUID_RE,    ':uuid')   // antes que los numéricos: lleva guiones, no colisiona
+    .replace(JWT_RE,     ':jwt')
+    .replace(NCF_RE,     ':ncf')
+    // Tarjeta antes que cédula/RNC. 15-19 y no 13-19 a propósito: un timestamp
+    // en milisegundos tiene 13 dígitos y se enmascararía como tarjeta, cegando
+    // el debug sin ganar nada.
+    .replace(TARJETA_RE, ':tarjeta')
+    .replace(CEDULA_RE,  ':cedula')
+    .replace(RNC_RE,     ':rnc');
 }
+
+/**
+ * Claves cuyo VALOR nunca debe salir del servidor, se parezca a lo que se
+ * parezca. Los patrones de scrubText cubren formatos reconocibles; esto cubre
+ * lo que no tiene forma fija: una contraseña puede ser cualquier cosa.
+ */
+const CLAVES_PROHIBIDAS = /^(pass|password|contrasena|contraseña|clave|secret|token|authorization|auth|cookie|apikey|api_key|dsn|sessiontoken|refreshtoken|accesstoken|jti|twofactorsecret|privatekey)$/i;
 
 /** Aplica scrubText a los strings de un objeto (extra/contexts), in-place,
  *  acotado en profundidad y con guarda de ciclos. */
@@ -60,6 +102,12 @@ function scrubDeep(value: unknown, depth = 0, seen = new WeakSet<object>()): voi
   if (value === null || typeof value !== 'object' || depth > 5 || seen.has(value)) return;
   seen.add(value);
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    // El nombre de la clave manda sobre el contenido: si se llama `password`,
+    // da igual qué haya dentro.
+    if (CLAVES_PROHIBIDAS.test(k)) {
+      (value as Record<string, unknown>)[k] = '[redactado]';
+      continue;
+    }
     if (typeof v === 'string') (value as Record<string, unknown>)[k] = scrubText(v);
     else scrubDeep(v, depth + 1, seen);
   }
@@ -125,6 +173,21 @@ function beforeSend(event: Sentry.ErrorEvent): Sentry.ErrorEvent | null {
     }
     if (event.extra)    scrubDeep(event.extra);
     if (event.contexts) scrubDeep(event.contexts);
+
+    // Breadcrumbs: Sentry los captura SOLO, sin que nadie los declare — cada
+    // petición HTTP saliente, cada consola. Ahí acaban URLs con parámetros y
+    // datos que el resto del scrub no toca porque no pasan por `extra`.
+    // Es el camino por el que la PII se escapa sin que nadie lo escriba.
+    for (const b of event.breadcrumbs ?? []) {
+      if (typeof b.message === 'string') b.message = scrubText(b.message);
+      if (b.data) scrubDeep(b.data);
+    }
+
+    // Última red: la URL del request, ya sanitizada arriba, pasa también por el
+    // scrub de patrones por si lleva un UUID o un RNC en el path.
+    if (typeof event.request?.url === 'string') {
+      event.request.url = scrubText(event.request.url);
+    }
     return event;
   } catch {
     return null;
