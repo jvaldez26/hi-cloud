@@ -84,17 +84,29 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // Tampoco había caché que evitar: findById() usa findOne() sin `cache: true`,
     // y TypeORM no cachea resultados salvo que se lo pidas explícitamente.
     //
-    // CONTRATO: depende de que findByIdForAuth haga addSelect('u.sessionToken').
-    // La columna es select:false, así que un findById normal lo deja undefined
-    // → dbToken null → `!dbToken` lanza. FALLA CERRADO: no deja pasar sesiones
-    // viejas en silencio, saca a TODO el mundo con 401 en el primer request.
-    // Ruidoso e imposible de ignorar, pero un incidente de producción igualmente.
-    // users.entity.spec.ts lo detiene antes, en CI, si el contrato cambia.
-    if (payload.sessionToken) {
-      const dbToken = user.sessionToken ?? null;
-      if (!dbToken || payload.sessionToken !== dbToken) {
-        throw new UnauthorizedException('SESION_DESPLAZADA');
-      }
+    // Sesión única — FALLA CERRADO.
+    //
+    // Antes esto era `if (payload.sessionToken) { ...validar... }`, y ahí estaba
+    // el agujero: un token SIN el campo se saltaba la validación entera y se
+    // convertía en un pase libre. Eso es justo lo que emitían cambiarEmpresa y
+    // cambiarSucursal, así que bastaba con cambiar de empresa una vez para
+    // quedarse sin sesión única de forma permanente, y en silencio.
+    //
+    // Un access token sin sessionToken solo puede venir de un bug de emisión, de
+    // un token anterior a esta protección, o de manipulación. En ninguno de los
+    // tres casos debe pasar.
+    //
+    // Nota: el único otro JWT que existe es el temporal de 2FA, que viaja en la
+    // cookie `2fa_pending` y se verifica a mano en verify2FA. extractJwtFromRequest
+    // solo lee `access_token` y `Authorization: Bearer`, así que nunca llega aquí.
+    if (!payload.sessionToken) {
+      throw new UnauthorizedException('TOKEN_OBSOLETO');
+    }
+    // El valor de BD viene de findByIdForAuth (addSelect explícito); un findById
+    // normal lo dejaría undefined y esto lanzaría, que es el lado seguro.
+    const dbToken = user.sessionToken ?? null;
+    if (!dbToken || payload.sessionToken !== dbToken) {
+      throw new UnauthorizedException('SESION_DESPLAZADA');
     }
 
     // El sessionToken no viaja más allá de esta comprobación.

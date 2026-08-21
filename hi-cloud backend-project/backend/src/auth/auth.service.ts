@@ -128,6 +128,27 @@ export class AuthService implements OnModuleInit {
   }
 
   private buildToken(user: User, empresaId?: number, sucursalId?: number, almacenId?: number, empresaRole?: string): string {
+    // Un JWT sin sessionToken DESACTIVA la sesión única para ese dispositivo:
+    // JwtStrategy no tendría contra qué comparar. Antes esto se emitía tan
+    // tranquilamente —`user.sessionToken ?? undefined`, y JSON.stringify omite
+    // los undefined— y el fallo era invisible: nadie recibía un error, la
+    // protección simplemente dejaba de existir.
+    //
+    // Fue exactamente así como se rompió: cambiarEmpresa y cambiarSucursal
+    // cargaban el usuario con findOneBy, que no trae la columna (select:false),
+    // y bastaba con cambiar de empresa UNA vez para quedarse sin sesión única
+    // de forma permanente.
+    //
+    // Por eso lanza en vez de avisar: quien añada un camino nuevo que no
+    // propague el sessionToken se entera en el acto, no meses después.
+    if (!user.sessionToken) {
+      throw new Error(
+        'buildToken llamado sin sessionToken — la sesión única quedaría desactivada. ' +
+        'Carga el usuario con usersService.findByIdForAuth() o asigna user.sessionToken ' +
+        'desde initNewSession() antes de emitir el token.',
+      );
+    }
+
     // S-27: jti único por token — permite revocación individual en blacklist
     // S-31: roleVersion en JWT para detectar cambios de rol sin ir a BD en cada request
     // empresaRole: rol específico del usuario en la empresa activa (UsuarioEmpresa.rol)
@@ -520,7 +541,9 @@ export class AuthService implements OnModuleInit {
       empresaRole = acceso.rol;
     }
 
-    const user = await this.userRepository.findOneBy({ id: userId });
+    // ForAuth: findOneBy NO trae sessionToken (la columna es select:false) y el
+    // JWT reemitido salía sin él, desactivando la sesión única en silencio.
+    const user = await this.usersService.findByIdForAuth(userId);
     if (!user) throw new NotFoundException('Usuario no encontrado');
     const { sucursalId, almacenId, sucursalNombre } = await this.resolverContextoSucursal(userId, empresaId);
     const accessToken = this.buildToken(user, empresaId, sucursalId, almacenId, empresaRole);
@@ -555,7 +578,9 @@ export class AuthService implements OnModuleInit {
       }
     }
 
-    const user = await this.userRepository.findOneBy({ id: userId });
+    // ForAuth: mismo motivo que en cambiarEmpresa — el JWT reemitido debe
+    // conservar el sessionToken o la sesión única queda desactivada.
+    const user = await this.usersService.findByIdForAuth(userId);
     if (!user) throw new NotFoundException('Usuario no encontrado');
 
     // Obtener rol específico del usuario en esta empresa para el nuevo token

@@ -127,24 +127,41 @@ apiClient.interceptors.response.use(
         return Promise.reject(err);
       }
 
-      // Sesión desplazada: el usuario inició sesión en otro dispositivo
-      // El filter devuelve { errors: ["SESION_DESPLAZADA"] }, no { message: "..." }
+      // Fin de sesión decidido por el backend. Dos códigos, mismo tratamiento:
+      // logout limpio, sin reintentos y CONSERVANDO el carrito del POS.
+      //
+      //   SESION_DESPLAZADA — el usuario inició sesión en otro dispositivo.
+      //   TOKEN_OBSOLETO    — el JWT no lleva sessionToken. Solo puede venir de
+      //     un token emitido antes de que existiera la sesión única, o por el
+      //     bug de cambiarEmpresa/cambiarSucursal que emitía JWT sin el campo.
+      //     Esos tokens siguen en los navegadores hasta que expiren, así que
+      //     este camino se recorre de verdad tras desplegar el arreglo.
+      //
+      // El filter devuelve { errors: ["CODIGO"] }, no { message: "..." }
       // → usar `message` (ya extraído de errors[0] por extractBackendMessage)
-      if (message === 'SESION_DESPLAZADA') {
+      if (message === 'SESION_DESPLAZADA' || message === 'TOKEN_OBSOLETO') {
         localStorage.removeItem('auth_user');
         localStorage.removeItem('empresaId');
         localStorage.removeItem('mis_empresas');
         sessionStorage.setItem(
           'login_error',
-          'Tu usuario inició sesión en otro dispositivo. Esta sesión se cerró. ' +
-          'Si tenías una venta en el POS, sigue guardada: vuelve a entrar y la ' +
-          'encontrarás en el carrito. Si no fuiste tú quien inició la otra ' +
-          'sesión, cambia tu contraseña inmediatamente.',
+          message === 'TOKEN_OBSOLETO'
+            ? 'Tu sesión expiró por una actualización de seguridad. Vuelve a ' +
+              'iniciar sesión. Si tenías una venta en el POS, sigue guardada: ' +
+              'la encontrarás en el carrito al entrar.'
+            : 'Tu usuario inició sesión en otro dispositivo. Esta sesión se cerró. ' +
+              'Si tenías una venta en el POS, sigue guardada: vuelve a entrar y la ' +
+              'encontrarás en el carrito. Si no fuiste tú quien inició la otra ' +
+              'sesión, cambia tu contraseña inmediatamente.',
         );
         if (!window.location.pathname.startsWith('/login')) {
           markNavigatingAway();
+          // 'displaced' preserva el carrito del POS (ver auth.store.logout).
+          // Aplica igual a TOKEN_OBSOLETO: el cajero tampoco pidió salir.
           emitSessionEnd('displaced');
         }
+        // Reject sin reintento: markNavigatingAway() hace que el siguiente 401
+        // salga por el early-return de arriba, así que no hay bucle posible.
         return Promise.reject(err);
       }
 
