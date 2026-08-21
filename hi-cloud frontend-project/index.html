@@ -80,6 +80,152 @@
     <script>
       (function(){try{var s=localStorage.getItem('hicloud-theme');if(s&&JSON.parse(s).state&&JSON.parse(s).state.isDark===true){var l=document.getElementById('app-loader');if(l)l.style.background='#0d1117';}}catch(e){}}());
     </script>
+
+    <!--
+      ── RED DE SEGURIDAD DEL ARRANQUE ────────────────────────────────────────
+      Si el bundle principal no llega a ejecutarse (chunk borrado, red que se
+      corta a mitad de la descarga, service worker devolviendo basura), React
+      nunca monta y el #app-loader de arriba se queda fijo para siempre: un
+      "Cargando..." eterno que sobrevive a F5 y que hasta ahora solo se
+      arreglaba borrando los datos del sitio a mano.
+
+      Este script existe para que eso no pueda pasar. Reglas que lo mantienen
+      vivo cuando todo lo demás falla:
+
+        - INLINE y sin dependencias. Si dependiera de algo que se descarga,
+          moriría junto a lo que debe rescatar.
+        - ES5 estricto: var, function, sin arrow, sin template literals, sin
+          async/await. Los cajeros usan WebViews y navegadores viejos; si el
+          parser no entiende la sintaxis, el script entero no corre y perdemos
+          justo la red de seguridad.
+        - Cada paso del rescate va en su propio try/catch y, pase lo que pase,
+          se recarga igual.
+    -->
+    <script>
+      (function () {
+        var ESPERA_MS = 15000;
+
+        function tema() {
+          try {
+            var s = localStorage.getItem('hicloud-theme');
+            if (s && JSON.parse(s).state && JSON.parse(s).state.isDark === true) {
+              return { bg: '#0d1117', fg: '#e6edf3', sub: '#8b949e', card: '#161b22', borde: '#30363d' };
+            }
+          } catch (e) {}
+          return { bg: '#ffffff', fg: '#1e293b', sub: '#64748b', card: '#f8fafc', borde: '#e2e8f0' };
+        }
+
+        /* El rescate: exactamente lo que hoy se hace a mano (borrar datos del
+           sitio), en un clic. Orden: desregistrar SW -> borrar cachés -> recargar. */
+        function reintentar(boton) {
+          try {
+            if (boton) { boton.disabled = true; boton.textContent = 'Limpiando...'; }
+          } catch (e) {}
+
+          var recargado = false;
+          function recargar() {
+            if (recargado) return;
+            recargado = true;
+            try {
+              /* Cache-buster para que ni el navegador ni un proxy intermedio
+                 puedan devolver el index.html anterior. */
+              location.replace(location.pathname + '?r=' + Date.now());
+            } catch (e) {
+              try { location.reload(); } catch (e2) {}
+            }
+          }
+
+          var tareas = [];
+
+          try {
+            if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+              tareas.push(
+                navigator.serviceWorker.getRegistrations().then(function (regs) {
+                  var us = [];
+                  for (var i = 0; i < regs.length; i++) {
+                    try { us.push(regs[i].unregister()); } catch (e) {}
+                  }
+                  return Promise.all(us);
+                })
+              );
+            }
+          } catch (e) {}
+
+          try {
+            if (window.caches && caches.keys) {
+              tareas.push(
+                caches.keys().then(function (claves) {
+                  var ds = [];
+                  for (var i = 0; i < claves.length; i++) {
+                    try { ds.push(caches.delete(claves[i])); } catch (e) {}
+                  }
+                  return Promise.all(ds);
+                })
+              );
+            }
+          } catch (e) {}
+
+          /* Si la limpieza cuelga (un SW roto puede no responder), recargamos
+             igual a los 3 s: mejor recargar sin limpiar que no recargar. */
+          try { setTimeout(recargar, 3000); } catch (e) {}
+
+          try {
+            if (tareas.length && window.Promise) {
+              Promise.all(tareas).then(recargar)['catch'](recargar);
+            } else {
+              recargar();
+            }
+          } catch (e) {
+            recargar();
+          }
+        }
+
+        function mostrarFallo() {
+          var c = tema();
+          var cont = document.getElementById('app-loader');
+          if (!cont) return;
+
+          cont.style.background = c.bg;
+          cont.innerHTML =
+            '<div style="max-width:420px;padding:28px 24px;text-align:center;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;">' +
+              '<div style="font-size:40px;line-height:1;margin-bottom:14px;">&#9888;&#65039;</div>' +
+              '<div style="font-size:18px;font-weight:700;color:' + c.fg + ';margin-bottom:8px;">' +
+                'No se pudo cargar la aplicaci&oacute;n' +
+              '</div>' +
+              '<div style="font-size:13px;line-height:1.55;color:' + c.sub + ';margin-bottom:20px;">' +
+                'Es posible que la conexi&oacute;n se haya interrumpido o que haya una versi&oacute;n nueva del sistema. ' +
+                'Pulsa Reintentar: se limpian los datos guardados y se vuelve a cargar.' +
+              '</div>' +
+              '<button id="hc-reintentar" style="width:100%;height:44px;border:none;border-radius:10px;' +
+                'background:#3B82F6;color:#fff;font-size:15px;font-weight:600;cursor:pointer;">' +
+                'Reintentar' +
+              '</button>' +
+              '<div style="margin-top:14px;font-size:11px;color:' + c.sub + ';">' +
+                'Si el problema sigue, revisa la conexi&oacute;n a internet.' +
+              '</div>' +
+            '</div>';
+
+          try {
+            var b = document.getElementById('hc-reintentar');
+            if (b) {
+              b.onclick = function () { reintentar(b); };
+            }
+          } catch (e) {}
+        }
+
+        function comprobar() {
+          /* Dos señales independientes de que React arrancó: la bandera que
+             pone main.tsx y la desaparición del loader del DOM. Con que una
+             se cumpla, no hay nada que rescatar. */
+          try { if (window.__APP_MONTADA === true) return; } catch (e) {}
+          try { if (!document.getElementById('app-loader')) return; } catch (e) {}
+          mostrarFallo();
+        }
+
+        try { setTimeout(comprobar, ESPERA_MS); } catch (e) {}
+      })();
+    </script>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
