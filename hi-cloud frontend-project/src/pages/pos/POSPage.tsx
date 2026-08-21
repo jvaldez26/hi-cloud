@@ -1,4 +1,4 @@
-﻿import { useState, useCallback, useEffect, useRef, createContext, useContext } from 'react';
+﻿import { useState, useCallback, useEffect, useMemo, useRef, memo, createContext, useContext } from 'react';
 import { SkeletonTabla }     from '../../components/ui/SkeletonTabla';
 import { SkeletonProductos } from '../../components/ui/SkeletonProductos';
 import { useSkeletonDelay }  from '../../hooks/useSkeletonDelay';
@@ -288,7 +288,21 @@ function categoryIcon(cat?: string): string {
   return '📦';
 }
 
-function ProductCard({ produto, onAdd, mostrarStock = true, permitirStockNegativo = false }: {
+/**
+ * Tarjeta de producto de la grilla.
+ *
+ * React.memo: el componente padre tiene 73 useState y re-renderiza por
+ * cualquiera de ellos (una tecla, un cambio de cantidad, abrir un modal). Sin
+ * memo, cada uno de esos renders reconstruía las N tarjetas visibles aunque
+ * ningún producto hubiese cambiado. `onAdd` es estable (useCallback en el
+ * padre), así que la comparación por defecto de props basta.
+ *
+ * Era un motion.div de framer-motion, que cuesta bastante más que un div plano:
+ * cada instancia monta MotionValues y suscripciones. En una grilla de hasta 60
+ * tarjetas ese coste no compensa un hover que sube 2 píxeles, así que el efecto
+ * se hace con CSS (transform + transition) y se conserva el mismo aspecto.
+ */
+const ProductCard = memo(function ProductCard({ produto, onAdd, mostrarStock = true, permitirStockNegativo = false }: {
   produto: Prod; onAdd: (p: Prod) => void; mostrarStock?: boolean; permitirStockNegativo?: boolean;
 }) {
   const C        = useC();
@@ -312,22 +326,34 @@ function ProductCard({ produto, onAdd, mostrarStock = true, permitirStockNegativ
   const pctIva         = Number((produto as any).porcentajeIva ?? 18);
   const precioConItbis = Number(produto.precio) * (1 + pctIva / 100);
 
+  const clickable = !sinStock || permitirStockNegativo;
+
   return (
-    <motion.div
-      whileHover={(!sinStock || permitirStockNegativo) ? { y: -2, boxShadow: `0 8px 24px rgba(59,130,246,.18)` } : {}}
-      whileTap={(!sinStock || permitirStockNegativo) ? { scale: 0.96 } : {}}
-      onClick={() => (!sinStock || permitirStockNegativo) && onAdd(produto)}
+    <div
+      onClick={() => clickable && onAdd(produto)}
+      // Hover/tap con el mismo aspecto que daba framer-motion, pero tocando el
+      // DOM directamente: no dispara render y no monta MotionValues por tarjeta.
+      onMouseEnter={clickable ? (e) => {
+        e.currentTarget.style.transform = 'translateY(-2px)';
+        e.currentTarget.style.boxShadow = '0 8px 24px rgba(59,130,246,.18)';
+      } : undefined}
+      onMouseLeave={clickable ? (e) => {
+        e.currentTarget.style.transform = '';
+        e.currentTarget.style.boxShadow = '';
+      } : undefined}
+      onMouseDown={clickable ? (e) => { e.currentTarget.style.transform = 'scale(0.96)'; } : undefined}
+      onMouseUp={clickable ? (e) => { e.currentTarget.style.transform = 'translateY(-2px)'; } : undefined}
       style={{
-        cursor:       (sinStock && !permitirStockNegativo) ? 'not-allowed' : 'pointer',
+        cursor:       clickable ? 'pointer' : 'not-allowed',
         borderRadius: 14,
         background:   C.card,
         border:       `1px solid ${C.border}`,
         overflow:     'hidden',
-        opacity:      (sinStock && !permitirStockNegativo) ? 0.6 : 1,
+        opacity:      clickable ? 1 : 0.6,
         position:     'relative',
         display:      'flex', flexDirection: 'column',
         height:       148,
-        transition:   'box-shadow 0.18s',
+        transition:   'transform 0.18s, box-shadow 0.18s',
         userSelect:   'none',
       }}
     >
@@ -400,12 +426,18 @@ function ProductCard({ produto, onAdd, mostrarStock = true, permitirStockNegativ
           </button>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
-}
+});
 
 // ── Cart row ──────────────────────────────────────────────────────────────────
-function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, onLista, permitirModificarPrecio, permitirDescuentos = true, precioInputModo = 'c', onPrecioInputModoChange, requireSupervisor, precioIncluyeItbis = false }: {
+/**
+ * React.memo por el mismo motivo que ProductCard: sin él, teclear en el buscador
+ * o abrir un modal reconstruía todas las líneas del carrito. Cada CartRow tiene
+ * inputs de cantidad/precio y su propio estado interno, así que rehacerlas sin
+ * necesidad es de lo más caro que hace el POS durante una venta.
+ */
+const CartRow = memo(function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, onLista, permitirModificarPrecio, permitirDescuentos = true, precioInputModo = 'c', onPrecioInputModoChange, requireSupervisor, precioIncluyeItbis = false }: {
   item: CartItem; onQty: (d: number) => void; onQtyDirecto?: (v: number) => void; onRemove: () => void; onDescuento: (monto: number) => void;
   onPrecio?: (p: number) => void; onLista?: (lista: PrecioLista) => void;
   permitirModificarPrecio?: boolean; permitirDescuentos?: boolean;
@@ -769,7 +801,7 @@ function CartRow({ item, onQty, onQtyDirecto, onRemove, onDescuento, onPrecio, o
       </div>
     </motion.div>
   );
-}
+});
 
 // ── Helper: obtiene nombre de sucursal activa del cache de React Query ───────
 function sucursalNombreFromCache(qcClient: any): string | undefined {
@@ -9503,6 +9535,81 @@ function POSBottomNav({
   );
 }
 
+/**
+ * Máximo de tarjetas que se pintan al buscar o filtrar.
+ *
+ * Antes se pintaba el resultado completo: teclear una letra común dejaba ~2 000
+ * coincidencias y montaba 2 000 tarjetas de golpe. Nadie recorre 2 000 tarjetas
+ * con el ratón — se sigue escribiendo — así que el trabajo era puro derroche.
+ * Cuando el corte se aplica, la UI lo dice (no se ocultan resultados en silencio).
+ */
+const MAX_GRILLA = 60;
+
+/**
+ * Colator reutilizado para ordenar por nombre.
+ *
+ * `a.nombre.localeCompare(b.nombre)` construye internamente un colador en CADA
+ * comparación. Ordenar 5 000 productos son ~55 000 comparaciones, y con eso el
+ * sort dominaba el coste del filtrado. Un Intl.Collator creado una vez y
+ * reutilizado hace el mismo trabajo varias veces más rápido.
+ */
+const COLLATOR_NOMBRE = new Intl.Collator('es', { sensitivity: 'base', numeric: true });
+
+/**
+ * Filtro + orden del catálogo del POS. Función pura y fuera del componente:
+ * así no se recrea en cada render y useMemo puede compararla por dependencias.
+ *
+ * Búsqueda LOCAL sobre el catálogo en memoria — cero requests por pulsación.
+ * OJO: este es el camino de la búsqueda DIFUSA del cajero. El del escáner es
+ * otro (handleGlobalKeyDown → procesarScan, match exacto) y no pasa por aquí.
+ */
+function filtrarCatalogo(
+  todos: any[],
+  termino: string,
+  categoriaTab: string,
+  filtroStock: string,
+  orden: string,
+): any[] {
+  let list = todos;
+
+  const t = termino.trim().toLowerCase();
+  if (t) {
+    // Tokens en AND: cada palabra debe aparecer en algún campo. Tolera espacios
+    // dobles ("TUBO  ELECTRICO 3/4") y las palabras en cualquier orden.
+    const tokens = t.split(/\s+/).filter(Boolean);
+    list = list.filter((p: any) =>
+      tokens.every(tok =>
+        p.nombre?.toLowerCase().includes(tok) ||
+        p.codigo?.toLowerCase().includes(tok) ||
+        (p.codigoBarras ?? '').toLowerCase().includes(tok) ||
+        p.categoria?.toLowerCase().includes(tok),
+      )
+    );
+  }
+
+  if (categoriaTab !== '__all__') list = list.filter(p => p.categoria === categoriaTab);
+
+  if (filtroStock === 'con-stock')  list = list.filter(p => Number(p.stock) > 0);
+  if (filtroStock === 'sin-stock')  list = list.filter(p => p.tipo !== 'servicio' && Number(p.stock) <= 0);
+  if (filtroStock === 'bajo')       list = list.filter(p => Number(p.stock) > 0 && Number(p.stock) <= Number(p.stockMinimo ?? 3));
+
+  // El comparador se elige UNA vez, no dentro del sort: antes cada una de las
+  // ~55 000 comparaciones reevaluaba la cadena de ifs de `orden`.
+  const cmp: ((a: any, b: any) => number) | null =
+    orden === 'nombre-az'   ? (a, b) => COLLATOR_NOMBRE.compare(a.nombre, b.nombre) :
+    orden === 'nombre-za'   ? (a, b) => COLLATOR_NOMBRE.compare(b.nombre, a.nombre) :
+    orden === 'precio-asc'  ? (a, b) => Number(a.precio) - Number(b.precio) :
+    orden === 'precio-desc' ? (a, b) => Number(b.precio) - Number(a.precio) :
+    orden === 'stock-asc'   ? (a, b) => Number(a.stock)  - Number(b.stock)  :
+    orden === 'stock-desc'  ? (a, b) => Number(b.stock)  - Number(a.stock)  :
+    null;
+
+  // Sin criterio de orden no hay por qué copiar el array ni recorrerlo.
+  if (!cmp) return list;
+  // Copia solo si `list` sigue siendo el array original (los .filter ya copian).
+  return (list === todos ? [...list] : list).sort(cmp);
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function POSPage() {
   const navigate     = useNavigate();
@@ -9983,50 +10090,37 @@ export default function POSPage() {
   const { data: versionPing } = useVersionPing(VERSION_POLL_POS);
   const ecfOnline = versionPing ? versionPing.online : undefined;
 
-  // Derived
-  const categorias = ['__all__', ...new Set(todosProdutos
-    .map((p: any) => p.categoria).filter(Boolean) as string[])];
-  const productosFiltrados = (() => {
-    // Búsqueda LOCAL sobre el catálogo completo — cero requests al backend por keystroke
-    let list = todosProdutos as any[];
-    if (search.trim()) {
-      // Buscar por tokens (AND): cada palabra debe aparecer en algún campo.
-      // Evita fallos por espacios dobles en nombres ("TUBO  ELECTRICO 3/4")
-      // y permite escribir las palabras en cualquier orden.
-      const tokens = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
-      list = list.filter((p: any) =>
-        tokens.every(tok =>
-          p.nombre?.toLowerCase().includes(tok) ||
-          p.codigo?.toLowerCase().includes(tok) ||
-          (p.codigoBarras ?? '').toLowerCase().includes(tok) ||
-          p.categoria?.toLowerCase().includes(tok),
-        )
-      );
-    }
-    // Filtro categoría
-    if (categoriaTab !== '__all__') list = list.filter(p => p.categoria === categoriaTab);
-    // Filtro stock
-    if (filtroStock === 'con-stock')  list = list.filter(p => Number(p.stock) > 0);
-    if (filtroStock === 'sin-stock')  list = list.filter(p => (p as any).tipo !== 'servicio' && Number(p.stock) <= 0);
-    if (filtroStock === 'bajo')       list = list.filter(p => Number(p.stock) > 0 && Number(p.stock) <= Number(p.stockMinimo ?? 3));
-    // Ordenar
-    list = [...list].sort((a, b) => {
-      if (orden === 'nombre-az')    return a.nombre.localeCompare(b.nombre);
-      if (orden === 'nombre-za')    return b.nombre.localeCompare(a.nombre);
-      if (orden === 'precio-asc')   return Number(a.precio) - Number(b.precio);
-      if (orden === 'precio-desc')  return Number(b.precio) - Number(a.precio);
-      if (orden === 'stock-asc')    return Number(a.stock) - Number(b.stock);
-      if (orden === 'stock-desc')   return Number(b.stock) - Number(a.stock);
-      return 0;
-    });
-    return list;
-  })();
+  // ── Derived ────────────────────────────────────────────────────────────────
+  // Todo lo que recorre el catálogo (hasta 5 000 productos) va memoizado. Sin
+  // esto se recalculaba en CADA render, y este componente tiene 73 useState:
+  // cada tecla, cada cambio de cantidad en el carrito y cada apertura de modal
+  // volvían a filtrar y reordenar los 5 000.
+  const categorias = useMemo(
+    () => ['__all__', ...new Set(todosProdutos.map((p: any) => p.categoria).filter(Boolean) as string[])],
+    [todosProdutos],
+  );
+
+  // El filtrado usa el término DEBOUNCED: mientras el cajero teclea (o el
+  // scanner dispara su ráfaga con el foco en el buscador) el input se actualiza
+  // a cada pulsación, pero el catálogo se recorre una sola vez al parar.
+  const searchD = useDebounce(search, 200);
+  const productosFiltrados = useMemo(
+    () => filtrarCatalogo(todosProdutos, searchD, categoriaTab, filtroStock, orden),
+    [todosProdutos, searchD, categoriaTab, filtroStock, orden],
+  );
+
+  // Índice por id: productosRecientes hacía 12 × find() sobre 5 000 productos
+  // (hasta 60 000 comparaciones por render). Ahora son 12 lookups O(1).
+  const productosPorId = useMemo(
+    () => new Map<number, any>(todosProdutos.map((p: any) => [p.id, p])),
+    [todosProdutos],
+  );
 
   // Últimos 12 productos facturados (persistido en localStorage por empresa)
-  const productosRecientes = idsRecientes
-    .map(id => todosProdutos.find((p: any) => p.id === id))
-    .filter(Boolean)
-    .slice(0, 12) as any[];
+  const productosRecientes = useMemo(
+    () => idsRecientes.map(id => productosPorId.get(id)).filter(Boolean).slice(0, 12) as any[],
+    [idsRecientes, productosPorId],
+  );
 
   // Obtiene el id del consumidor final de la lista de clientes
   const consumidorFinalId = clientes?.data?.find((c: Cliente) =>
@@ -11585,10 +11679,20 @@ export default function POSPage() {
                       p.codigoBarras?.trim().toLowerCase() === qL
                     );
                     if (exacto) { addToCart(exacto as Prod); setSearch(''); return; }
-                    // 2. Una sola coincidencia en la grilla filtrada → agregar directo
-                    if (productosFiltrados.length === 1) { addToCart(productosFiltrados[0] as Prod); setSearch(''); return; }
+                    // 2. Una sola coincidencia en la grilla filtrada → agregar directo.
+                    //
+                    // productosFiltrados va con el término DEBOUNCED. Si el cajero
+                    // pulsa Enter antes de que pase el retardo, esa lista aún es la
+                    // del término anterior: usarla añadiría al carrito un producto
+                    // que ya no corresponde a lo que escribió. Cuando van
+                    // desincronizados se filtra aquí mismo con el término actual
+                    // (una sola pasada, solo al pulsar Enter).
+                    const listaActual = search === searchD
+                      ? productosFiltrados
+                      : filtrarCatalogo(todosProdutos, search, categoriaTab, filtroStock, orden);
+                    if (listaActual.length === 1) { addToCart(listaActual[0] as Prod); setSearch(''); return; }
                     // 3. Varias coincidencias → la grilla ya muestra las opciones, no hacer nada
-                    if (productosFiltrados.length > 1) return;
+                    if (listaActual.length > 1) return;
                     // 4. Cero resultados
                     message.warning(`No se encontraron productos con "${q}"`, 2);
                   }}
@@ -11743,11 +11847,16 @@ export default function POSPage() {
               const vistaDefecto   = !search && categoriaTab === '__all__' && filtroStock === 'todos';
               const mostrarRecientes = vistaDefecto && productosRecientes.length > 0;
               // En vista defecto sin recientes limitamos a 12 — buscar para ver más
+              // Tope de MAX_GRILLA en la vista de resultados: escribir una letra
+              // común ("a") podía dejar ~2 000 coincidencias y montar 2 000
+              // tarjetas de golpe, congelando el POS varios segundos. Nadie
+              // recorre 2 000 tarjetas con el ratón: se sigue escribiendo. Si
+              // hay más, se avisa abajo para que el cajero afine la búsqueda.
               const lista = mostrarRecientes
                 ? productosRecientes
                 : vistaDefecto
                   ? productosFiltrados.slice(0, 12)
-                  : productosFiltrados;
+                  : productosFiltrados.slice(0, MAX_GRILLA);
               return lista.length === 0 ? (
                 <Empty description={<span style={{color:C.textSub}}>Sin productos</span>} style={{marginTop:60}} />
               ) : (
@@ -11770,6 +11879,12 @@ export default function POSPage() {
                   {vistaDefecto && !mostrarRecientes && productosFiltrados.length > 12 && (
                     <div style={{ textAlign:'center', marginTop:14, fontSize:11, color:C.textSub }}>
                       Busca o filtra por categoría para ver todos ({productosFiltrados.length})
+                    </div>
+                  )}
+                  {/* Resultados recortados — decirlo, no ocultarlo en silencio */}
+                  {!vistaDefecto && productosFiltrados.length > MAX_GRILLA && (
+                    <div style={{ textAlign:'center', marginTop:14, fontSize:11, color:C.textSub }}>
+                      Mostrando <b style={{color:C.text}}>{MAX_GRILLA}</b> de {productosFiltrados.length} coincidencias — refina la búsqueda
                     </div>
                   )}
                 </>
