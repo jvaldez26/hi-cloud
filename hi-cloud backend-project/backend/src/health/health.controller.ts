@@ -21,19 +21,6 @@ export class HealthController {
     @Optional() @Inject(CACHE_MANAGER) private readonly cache: Cache,
   ) {}
 
-  // ── /version — endpoint liviano para el banner de nueva versión ──────────
-  // Sin DB, sin Redis, sin schema validator. Una variable de entorno, nada más.
-  @Get('version')
-  @ApiOperation({ summary: 'Versión del build — sin acceso a BD (uso interno del frontend)' })
-  version() {
-    return {
-      build_id: process.env.SENTRY_RELEASE ?? null,
-      version:  process.env.npm_package_version ?? '1.0.0',
-      env:      process.env.NODE_ENV ?? 'development',
-      uptime:   Math.round(process.uptime()),
-    };
-  }
-
   // ── /health — liviano por defecto, profundo con ?deep=true ────────────────
   @Get()
   @ApiOperation({ summary: 'Health check del sistema. ?deep=true para chequeo completo (18 queries)' })

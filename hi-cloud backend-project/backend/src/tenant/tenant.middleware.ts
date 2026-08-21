@@ -28,6 +28,7 @@ const RUTAS_SIN_TENANT = [
   '/admin/',              // Super Admin — acceso global sin tenant
   '/admin',
   '/health',
+  '/version',             // GET /api/v1/version — banner de nueva versión, público
   '/api-json',
   '/api-yaml',
   '/portal/',

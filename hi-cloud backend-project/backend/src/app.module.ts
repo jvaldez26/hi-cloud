@@ -25,6 +25,7 @@ import { ComprasModule } from './compras/compras.module';
 import { InventarioModule } from './inventario/inventario.module';
 import { ECFModule } from './ecf/ecf.module';
 import { HealthModule } from './health/health.module';
+import { VersionModule } from './version/version.module';
 import { ReportesModule } from './reportes/reportes.module';
 import { CxCModule } from './cxc/cxc.module';
 import { CxPModule } from './cxp/cxp.module';
@@ -319,6 +320,7 @@ import { GastosImportacionModule }  from './gastos-importacion/gastos-importacio
     SucursalesModule,
     RncModule,
     HealthModule,
+    VersionModule,
     PreFacturaModule,
     ConduceModule,
     CajaChicaModule,
