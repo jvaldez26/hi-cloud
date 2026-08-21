@@ -11,7 +11,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Input, Button, Spin, Tag, Table, Alert, Collapse, Progress,
-  Empty, Typography, Space, Divider,
+  Empty, Typography, Space, Divider, message,
 } from 'antd';
 import {
   SearchOutlined, PrinterOutlined, FileExcelOutlined,
@@ -21,6 +21,10 @@ import {
 import dayjs from 'dayjs';
 import api from '../../api/client';
 import { exportarExcel } from '../../utils/exportExcel';
+// Misma plantilla térmica que usa el POS para imprimir conduces — ver
+// utils/docTermico. Compartirla es lo que garantiza que el ticket sea idéntico.
+import { buildDocTermicoHTML, buildConduceDocData } from '../../utils/docTermico';
+import { imprimirReciboTermico } from '../../utils/printUtils';
 
 const { Compact } = Space;
 const { Title, Text } = Typography;
@@ -185,7 +189,37 @@ export default function ReporteEntregaTab() {
     }
   };
 
-  // ── Abrir PDF de conduce en nueva pestaña ────────────────────────────────
+  // ── Impresión térmica — MISMA que la del POS ─────────────────────────────
+  //
+  // Antes esto pedía un PDF al backend (GET /conduces/:id/pdf?formato=termico,
+  // generado con puppeteer) y el resultado no se parecía al ticket que sale del
+  // POS: otra maquetación, otro encabezado, otro pie. Un mismo conduce impreso
+  // desde dos sitios daba dos papeles distintos.
+  //
+  // Ahora usa el generador compartido (utils/docTermico), el mismo que llama
+  // POSConducePanel. No son "parecidos": es literalmente el mismo HTML, con el
+  // tipo de impresora configurado en la empresa. La impresión en CARTA sigue
+  // yendo por el PDF del backend, que ahí sí es el formato adecuado.
+  const [imprimiendo, setImprimiendo] = useState<number | null>(null);
+
+  const imprimirTermico = async (conduceId: number) => {
+    setImprimiendo(conduceId);
+    try {
+      const [docRes, empRes] = await Promise.all([
+        api.get(`/conduces/${conduceId}`).then(r => r.data?.data ?? r.data),
+        api.get('/configuracion/empresa').then(r => r.data?.data ?? r.data).catch(() => ({})),
+      ]);
+      const gd = buildConduceDocData({ ...docRes, id: conduceId }, empRes);
+      const tipoImpresora = ((empRes?.configuracion ?? {}) as any).posTipoImpresora;
+      imprimirReciboTermico(buildDocTermicoHTML(gd, { tipoImpresora }), undefined, tipoImpresora);
+    } catch {
+      message.error('Error al imprimir conduce');
+    } finally {
+      setImprimiendo(null);
+    }
+  };
+
+  // ── Abrir PDF de conduce en nueva pestaña (formato carta) ────────────────
   const abrirPDF = async (conduceId: number, formato: 'carta' | 'termico') => {
     try {
       const res = await api.get(`/conduces/${conduceId}/pdf?formato=${formato}`, { responseType: 'blob' });
@@ -519,7 +553,8 @@ export default function ReporteEntregaTab() {
                             <Button
                               size="small"
                               icon={<PrinterOutlined />}
-                              onClick={() => abrirPDF(c.id, 'termico')}
+                              loading={imprimiendo === c.id}
+                              onClick={() => imprimirTermico(c.id)}
                             >
                               🖨️ Térmica
                             </Button>

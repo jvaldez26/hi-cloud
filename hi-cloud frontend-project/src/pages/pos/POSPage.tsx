@@ -4,6 +4,12 @@ import { SkeletonProductos } from '../../components/ui/SkeletonProductos';
 import { useSkeletonDelay }  from '../../hooks/useSkeletonDelay';
 import { useVersionPing, VERSION_POLL_POS } from '../../hooks/useVersionPing';
 import { useDebounce } from '../../hooks/useDebounce';
+// Plantilla térmica compartida con el módulo Conduce (Reporte de Entrega): un
+// solo generador para que los tickets no puedan divergir. Ver utils/docTermico.
+import {
+  IMPRESORA_CONFIG, esc, buildDocTermicoHTML, buildConduceDocData,
+  type GenericDocData,
+} from '../../utils/docTermico';
 import { useRncLookup } from '../../hooks/useRncLookup';
 import QRCode from 'qrcode';
 import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover, Input, Button, Segmented, Tabs, InputNumber, Radio, Checkbox } from 'antd';
@@ -822,18 +828,6 @@ const NCF_LABEL: Record<string, [string, string]> = {
 };
 const RNC_GENERICOS_TICKET = new Set(['000000000', '00000000000', '']);
 
-function esc(s: string): string {
-  return s
-    .replace(/�/g, '')
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-const IMPRESORA_CONFIG: Record<string, { width: string; fontSize: string; paddingLR: string }> = {
-  '58mm':   { width: '58mm',  fontSize: '10pt', paddingLR: '3mm' },
-  '80mm':   { width: '80mm',  fontSize: '11pt', paddingLR: '5mm' },
-  'carta':  { width: '210mm', fontSize: '12pt', paddingLR: '15mm' },
-  'ninguna':{ width: '80mm',  fontSize: '11pt', paddingLR: '5mm' },
-};
 
 /**
  * buildSaleItemsFromDetalles — FUENTE ÚNICA de ítems para el ticket.
@@ -2094,22 +2088,6 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar 
 
 // ── Recibo térmico genérico (cotizaciones, pre-facturas, conduces, etc.) ─────
 
-interface GenericDocData {
-  tipo:        string;          // "COTIZACIÓN", "PRE-FACTURA", "CONDUCE", etc.
-  numero:      string;
-  fecha:       string;
-  empresa?:    { nombre?: string; rnc?: string; direccion?: string; telefono?: string };
-  cliente?:    string;
-  rncCliente?: string;
-  items:       Array<{ desc: string; cant?: number; precio?: number; total?: number }>;
-  subtotal?:   number;
-  itbis?:      number;
-  total?:      number;
-  nota1?:      string;         // línea extra (ej: "Factura ref: FAC-XXX")
-  nota2?:      string;
-  notas?:      string;
-}
-
 function GenericThermalDoc({ doc }: { doc: GenericDocData }) {
   const moneda = (v?: number) => v !== undefined ? `RD$${Number(v).toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2})}` : '';
   const e = doc.empresa ?? {};
@@ -2193,101 +2171,6 @@ function GenericThermalDoc({ doc }: { doc: GenericDocData }) {
   );
 }
 
-// ── Recibo térmico genérico (conduce, cobro, anticipo, notas crédito/débito) ──
-function buildDocTermicoHTML(
-  gd: GenericDocData,
-  cfg: { tipoImpresora?: string } = {},
-): string {
-  const { tipoImpresora = '80mm' } = cfg;
-  const prn  = IMPRESORA_CONFIG[tipoImpresora] ?? IMPRESORA_CONFIG['80mm'];
-  const fmt  = (n: number) => `RD$${n.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  const row  = (l: string, v: string) => `<div class="row"><span>${esc(l)}</span><span>${esc(v)}</span></div>`;
-  const line = () => '<div class="line"></div>';
-  const dbl  = () => '<div class="dbl"></div>';
-  const e    = gd.empresa ?? {};
-  const tipo = gd.tipo;
-
-  const hasTotals = gd.items.some(i => i.total !== undefined);
-  const hasCant   = gd.items.some(i => i.cant  !== undefined);
-
-  const itemsHtml = gd.items.map(item => {
-    const nom = (item.desc ?? '').length > 26 ? (item.desc ?? '').slice(0, 25) + '…' : (item.desc ?? '');
-    if (hasTotals) {
-      const qtyStr   = item.cant !== undefined && item.cant > 0 ? ` ×${item.cant}` : '';
-      const totalStr = item.total !== undefined ? item.total.toFixed(2) : '';
-      return `<div class="row"><span>${esc(nom + qtyStr)}</span><span>${totalStr}</span></div>`;
-    }
-    const qtyStr = item.cant !== undefined ? ` — ${item.cant}` : '';
-    return `<div>${esc(nom + qtyStr)}</div>`;
-  }).join('');
-
-  const footerHtml =
-      tipo.includes('CONDUCE')  ? '<div class="center bold">** DOCUMENTO DE DESPACHO **</div>'
-    : tipo.includes('ANTICIPO') ? '<div class="center bold">** RECIBO DE ANTICIPO **</div><div class="center small">Documento interno de pago</div>'
-    : tipo.includes('COBRO')    ? '<div class="center bold">** RECIBO DE COBRO **</div><div class="center small">Documento interno de pago</div>'
-    : tipo.includes('CRÉDITO')  ? '<div class="center bold">** NOTA DE CRÉDITO **</div>'
-    : tipo.includes('DÉBITO')   ? '<div class="center bold">** NOTA DE DÉBITO **</div>'
-    : tipo.includes('GASTO')    ? '<div class="center bold">** COMPROBANTE DE GASTO **</div>'
-    :                             '<div class="center small">Documento no fiscal</div>';
-
-  return `<!DOCTYPE html>
-<html lang="es"><head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=302,initial-scale=1,shrink-to-fit=no">
-<title>${esc(tipo)} ${esc(gd.numero)}</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box;overflow-wrap:break-word}
-html{margin:0;padding:0;width:${prn.width}}
-body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};font-weight:bold;line-height:1.45;
-  width:${prn.width};margin:0;padding:3mm ${prn.paddingLR};
-  color:#000;background:#fff;-webkit-font-smoothing:none;font-smooth:never}
-.center{text-align:center}
-.bold{font-weight:bold}
-.xlarge{font-size:15pt;font-weight:bold}
-.small{font-size:9pt}
-.row{display:flex;justify-content:space-between;gap:4px;margin:1px 0;width:100%}
-.row span:first-child{flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.row span:last-child{text-align:right;white-space:nowrap}
-.line{border-top:1px dashed #000;margin:4px 0}
-.dbl{border-top:2px solid #000;margin:4px 0}
-@page{size:${prn.width} auto;margin:0}
-@media print{html,body{width:${prn.width}}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-</style></head><body>
-
-${[
-  e.nombre    ? `<div class="center xlarge">${esc(e.nombre)}</div>`    : '',
-  `<div class="center small">República Dominicana</div>`,
-  e.rnc       ? `<div>RNC Emisor: ${esc(e.rnc)}</div>`                : '',
-  e.direccion ? `<div class="small">${esc(e.direccion)}</div>`         : '',
-  e.telefono  ? `<div>Tel: ${esc(e.telefono)}</div>`                   : '',
-].filter(Boolean).join('')}
-${dbl()}
-<div class="center bold">${esc(tipo)}</div>
-${line()}
-${row('Número:', gd.numero)}${row('Fecha:', gd.fecha)}${[
-  gd.cliente    ? row('Cliente:', gd.cliente)                 : '',
-  gd.rncCliente ? row('RNC:',     gd.rncCliente)              : '',
-  gd.nota1      ? `<div class="small">${esc(gd.nota1)}</div>` : '',
-].filter(Boolean).join('')}
-${line()}
-<div class="row bold"><span>DESCRIPCIÓN</span>${hasTotals ? '<span>TOTAL</span>' : hasCant ? '<span>CANT</span>' : ''}</div>
-${line()}
-${itemsHtml}
-${dbl()}
-${[
-  gd.subtotal !== undefined                    ? row('Subtotal:',    fmt(gd.subtotal)) : '',
-  gd.itbis    !== undefined && gd.itbis > 0    ? row('ITBIS (18%):', fmt(gd.itbis))   : '',
-  gd.total    !== undefined ? `<div class="row xlarge bold"><span>TOTAL:</span><span>${fmt(gd.total)}</span></div>` : '',
-].filter(Boolean).join('')}
-${line()}
-${[
-  gd.nota2 ? `<div class="small">${esc(gd.nota2)}</div>${line()}` : '',
-  gd.notas ? `<div class="small">Nota: ${esc(gd.notas)}</div>${line()}` : '',
-].filter(Boolean).join('')}
-${footerHtml}
-
-</body></html>`;
-}
 
 // ── Impresión térmica de Cierre de Caja ──────────────────────────────────────
 function buildCierreCajaHTML(params: {
@@ -5228,22 +5111,11 @@ function POSConducePanel({ C, onVolver }: {
         api.get(`/conduces/${id}`).then(r => r.data?.data ?? r.data),
         api.get('/configuracion/empresa').then(r => r.data?.data ?? r.data).catch(() => ({})),
       ]);
-      const empInfo = { nombre: empRes.razonSocial ?? empRes.nombre, rnc: empRes.rnc, direccion: empRes.direccion, telefono: empRes.telefono };
-      const factFolio: string | undefined = docRes.facturaFolio ?? docRes.factura?.folio;
-      const gd: GenericDocData = {
-        tipo:    'CONDUCE',
-        numero:  docRes.numero ?? String(id),
-        fecha:   String(docRes.fecha ?? '').substring(0, 10),
-        empresa: empInfo,
-        cliente: docRes.cliente?.nombre,
-        items:   (docRes.detalles ?? []).map((d: any) => ({ desc: d.descripcion, cant: Number(d.cantidad) })),
-        nota1:   factFolio ? `Ref. Factura: ${factFolio}` : undefined,
-        nota2:   docRes.direccionEntrega
-          ? `Entrega: ${docRes.direccionEntrega}${docRes.contactoEntrega ? ` · ${docRes.contactoEntrega}` : ''}`
-          : docRes.contactoEntrega ? `Contacto: ${docRes.contactoEntrega}` : undefined,
-        notas:   docRes.notas,
-      };
-      imprimirReciboTermico(buildDocTermicoHTML(gd, { tipoImpresora: ((empRes.configuracion ?? {}) as any).posTipoImpresora }), undefined, ((empRes.configuracion ?? {}) as any).posTipoImpresora);
+      // buildConduceDocData es compartido con el Reporte de Entrega del módulo
+      // Conduce: mismo objeto de datos y misma plantilla en los dos sitios.
+      const gd = buildConduceDocData({ ...docRes, id }, empRes);
+      const tipoImpresora = ((empRes.configuracion ?? {}) as any).posTipoImpresora;
+      imprimirReciboTermico(buildDocTermicoHTML(gd, { tipoImpresora }), undefined, tipoImpresora);
     } catch { message.error('Error al imprimir conduce'); }
     finally { setImprimiendo(null); }
   };
