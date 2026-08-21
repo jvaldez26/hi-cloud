@@ -409,13 +409,17 @@ function SessionExpiredHandler() {
   useEffect(() => {
     onSessionEnd((reason) => {
       markNavigatingAway();   // redundante si client.ts ya lo llamó, pero defensivo
-      logout();               // limpia zustand + localStorage restante + React Query cache
+
+      // 'displaced' = a este usuario lo sacó un login en otro dispositivo; no
+      // pidió salir. Conservamos su carrito del POS para que al volver a entrar
+      // siga ahí en vez de perder una venta a medio teclear. En 'expired' (y en
+      // el logout manual) se limpia como siempre.
+      logout({ preservarCarritoPOS: reason === 'displaced' });
+
       navigate('/login', { replace: true });
 
       // El mensaje de error (login_error) ya fue escrito en sessionStorage por
       // client.ts antes de emitir el evento, así que LoginPage lo mostrará.
-      // reason 'displaced' vs 'expired' no cambia el flujo aquí.
-      void reason;
     });
     // Limpiar listener al desmontar (robustez, aunque este componente vive
     // toda la sesión de la app al nivel raíz).

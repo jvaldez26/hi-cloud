@@ -25,7 +25,15 @@ interface AuthState {
   hydrated:        boolean;   // true = ya llamamos GET /auth/me
 
   login:             (user: AuthUser, empresaActual?: number | null, empresas?: EmpresaItem[], almacenActual?: number | null, sucursalActual?: number | null, sucursalNombre?: string | null) => void;
-  logout:            () => void;
+  /**
+   * @param opts.preservarCarritoPOS  No borrar el carrito ni las ventas en pausa.
+   *   Solo para el cierre por SESIÓN DESPLAZADA: el cajero no pidió salir, lo
+   *   sacó un login en otro dispositivo, y perder una venta a medio teclear es
+   *   un daño real que él no provocó. Sigue siendo seguro entre empresas porque
+   *   el carrito guarda su `empresaId` y POSPage lo descarta al restaurar si no
+   *   coincide con la empresa activa.
+   */
+  logout:            (opts?: { preservarCarritoPOS?: boolean }) => void;
   isAuth:            () => boolean;
   cambiarEmpresa:    (empresaId: number) => void;
   setSucursalActual: (sucursalId: number) => void;
@@ -75,7 +83,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ user, empresaActual: empresaActual ?? null, empresas, almacenActual: almacenActual ?? null, sucursalActual: sucursalActual ?? null, sucursalNombre: sucursalNombre ?? null, hydrated: true });
   },
 
-  logout: () => {
+  logout: (opts) => {
     // Solo limpieza local. La llamada al servidor (authApi.logout() con keepalive:true)
     // es responsabilidad del llamador (handleLogout en AppLayout / PortalEmpleadoLayout).
     // SessionExpiredHandler y el interceptor de SESION_DESPLAZADA llaman logout()
@@ -92,8 +100,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     localStorage.removeItem('pos_cajero_nombre');
     localStorage.removeItem('pos_vendedor_id');
     localStorage.removeItem('hc_empresa_nombre');
-    // SEGURIDAD MULTI-TENANT: limpiar carrito activo para que no sobreviva entre empresas
-    localStorage.removeItem('pos-carrito-activo');
+    // SEGURIDAD MULTI-TENANT: limpiar carrito activo para que no sobreviva entre empresas.
+    //
+    // Excepción: cierre por sesión desplazada (preservarCarritoPOS). El cajero no
+    // pidió salir — lo sacó un login en otro dispositivo — y borrarle una venta a
+    // medio teclear lo castiga por algo que no hizo. El aislamiento entre empresas
+    // no depende de este removeItem: el carrito se guarda como { empresaId, items }
+    // y POSPage lo descarta al restaurar si el empresaId no coincide con el activo
+    // (ver el inicializador de `cart`). AppLayout.cambiarEmpresa lo borra aparte.
+    // (Las ventas en pausa, 'pos-ventas-espera', nunca se han borrado aquí y se
+    // dejan como están: tienen el mismo guard de empresaId al restaurarse.)
+    if (!opts?.preservarCarritoPOS) {
+      localStorage.removeItem('pos-carrito-activo');
+    }
     sessionStorage.removeItem('pos_turno');
     sessionStorage.removeItem('pos_bloqueado');
     set({ user: null, empresaActual: null, empresas: [], almacenActual: null, sucursalActual: null, hydrated: true });

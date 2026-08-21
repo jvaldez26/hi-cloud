@@ -136,8 +136,10 @@ apiClient.interceptors.response.use(
         localStorage.removeItem('mis_empresas');
         sessionStorage.setItem(
           'login_error',
-          'Tu sesión fue cerrada porque iniciaste sesión en otro dispositivo. ' +
-          'Si no fuiste tú, cambia tu contraseña inmediatamente.',
+          'Tu usuario inició sesión en otro dispositivo. Esta sesión se cerró. ' +
+          'Si tenías una venta en el POS, sigue guardada: vuelve a entrar y la ' +
+          'encontrarás en el carrito. Si no fuiste tú quien inició la otra ' +
+          'sesión, cambia tu contraseña inmediatamente.',
         );
         if (!window.location.pathname.startsWith('/login')) {
           markNavigatingAway();
