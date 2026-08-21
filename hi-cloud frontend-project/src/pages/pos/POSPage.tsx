@@ -3,6 +3,7 @@ import { SkeletonTabla }     from '../../components/ui/SkeletonTabla';
 import { SkeletonProductos } from '../../components/ui/SkeletonProductos';
 import { useSkeletonDelay }  from '../../hooks/useSkeletonDelay';
 import { useVersionPing, VERSION_POLL_POS } from '../../hooks/useVersionPing';
+import { useDebounce } from '../../hooks/useDebounce';
 import { useRncLookup } from '../../hooks/useRncLookup';
 import QRCode from 'qrcode';
 import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover, Input, Button, Segmented, Tabs, InputNumber, Radio, Checkbox } from 'antd';
@@ -3223,9 +3224,12 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
   const [activeTab, setActiveTab] = useState<'productos'|'movimientos'>('productos');
 
   // ── queries ───────────────────────────────────────────────────────────────
+  // busqD (debounced) va tanto en la queryKey como en la URL: si difirieran, la
+  // clave y los datos que guarda quedarían desincronizados.
+  const busqD = useDebounce(busq, 300);
   const { data, isLoading } = useQuery<any>({
-    queryKey: ['pos-productos', busq],
-    queryFn: () => api.get(`/productos?limit=50${busq ? '&search='+encodeURIComponent(busq) : ''}&incluirSinStock=true`)
+    queryKey: ['pos-productos', busqD],
+    queryFn: () => api.get(`/productos?limit=50${busqD ? '&search='+encodeURIComponent(busqD) : ''}&incluirSinStock=true`)
       .then(r => { const d = r.data?.data ?? r.data; return d?.data ?? d ?? []; }),
     staleTime: 30_000,
   });
@@ -3963,12 +3967,13 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
   const esAdminCxP = compUser?.role === 'admin' || compUser?.role === 'contador';
 
   // Fetch compras — disabled until supervisor is active
+  const busqD = useDebounce(busq, 300);
   const { data: comprasData, isLoading, refetch } = useQuery<any>({
-    queryKey: ['compras-pos', busq, estadoFiltro],
+    queryKey: ['compras-pos', busqD, estadoFiltro],
     enabled:  supervisorActive,
     queryFn:  () => {
       const params = new URLSearchParams({ page: '1', limit: '50' });
-      if (busq)         params.set('search', busq);
+      if (busqD)        params.set('search', busqD);
       if (estadoFiltro) params.set('estado', estadoFiltro);
       return api.get(`/compras?${params}`).then(r => {
         const d = r.data?.data ?? r.data;
@@ -5068,9 +5073,16 @@ function POSConducePanel({ C, onVolver }: {
   const [imprimiendo,  setImprimiendo]  = useState<number|null>(null);
 
   // ── Queries ──
+  // Los cuatro buscadores de este panel van debounced: el valor inmediato
+  // controla el input, el debounced entra en queryKey + URL.
+  const busqD     = useDebounce(busq, 300);
+  const factBusqD = useDebounce(factBusq, 300);
+  const prodBusqD = useDebounce(prodBusq, 300);
+  const busqCliD  = useDebounce(busqCli, 300);
+
   const { data: conduces = [], isLoading } = useQuery<any[]>({
-    queryKey: ['pos-conduces', busq],
-    queryFn: () => api.get(`/conduces?limit=50${busq ? '&search=' + encodeURIComponent(busq) : ''}`)
+    queryKey: ['pos-conduces', busqD],
+    queryFn: () => api.get(`/conduces?limit=50${busqD ? '&search=' + encodeURIComponent(busqD) : ''}`)
       .then(r => { const d = r.data?.data ?? r.data; return d?.data ?? d ?? []; }),
     staleTime: 0,
     refetchInterval: 30_000,
@@ -5085,30 +5097,30 @@ function POSConducePanel({ C, onVolver }: {
 
   // Búsqueda de facturas (modo factura)
   const { data: factResults = [] } = useQuery<any[]>({
-    queryKey: ['pos-fact-conduce', factBusq],
-    queryFn: () => api.get(`/facturas?search=${encodeURIComponent(factBusq)}&limit=10`)
+    queryKey: ['pos-fact-conduce', factBusqD],
+    queryFn: () => api.get(`/facturas?search=${encodeURIComponent(factBusqD)}&limit=10`)
       .then(r => {
         const d = r.data?.data ?? r.data;
         const list: any[] = d?.data ?? d ?? [];
         return list.filter((f: any) => ['emitida', 'pagada'].includes(f.estado));
       }),
-    enabled: factBusq.length >= 2,
+    enabled: factBusqD.length >= 2,
     staleTime: 15_000,
   });
 
   // Búsqueda de productos (modo libre)
   const { data: prodResults = [], isFetching: buscandoProd } = useQuery<any[]>({
-    queryKey: ['pos-prod-conduce', prodBusq],
-    queryFn: () => api.get(`/productos?limit=20&search=${encodeURIComponent(prodBusq)}&incluirSinStock=true`)
+    queryKey: ['pos-prod-conduce', prodBusqD],
+    queryFn: () => api.get(`/productos?limit=20&search=${encodeURIComponent(prodBusqD)}&incluirSinStock=true`)
       .then(r => { const d = r.data?.data ?? r.data; return d?.data ?? d ?? []; }),
-    enabled: prodBusq.length >= 2,
+    enabled: prodBusqD.length >= 2,
     staleTime: 30_000,
   });
 
   // Clientes (modo libre)
   const { data: clientes = [] } = useQuery<any[]>({
-    queryKey: ['pos-cli-conduce', busqCli],
-    queryFn: () => api.get(`/clientes?limit=30${busqCli ? '&search=' + encodeURIComponent(busqCli) : ''}`)
+    queryKey: ['pos-cli-conduce', busqCliD],
+    queryFn: () => api.get(`/clientes?limit=30${busqCliD ? '&search=' + encodeURIComponent(busqCliD) : ''}`)
       .then(r => { const d = r.data?.data ?? r.data; return d?.data ?? d ?? []; }),
     staleTime: 30_000,
   });
@@ -5632,9 +5644,10 @@ function POSClientesPanel({ C, onVolver }: { C: Palette; onVolver: () => void })
   const [f, setF] = useState({ nombre:'', telefono:'', email:'', rnc:'', empresa:'' });
   const [busq, setBusq] = useState('');
   const { datos: rncDatos, loading: rncLoading, consultarDebounced, limpiar: limpiarRnc } = useRncLookup();
+  const busqD = useDebounce(busq, 300);
   const { data, isLoading } = useQuery<any>({
-    queryKey: ['pos-clientes', busq],
-    queryFn: () => api.get(`/clientes?limit=40${busq?'&search='+encodeURIComponent(busq):''}`)
+    queryKey: ['pos-clientes', busqD],
+    queryFn: () => api.get(`/clientes?limit=40${busqD?'&search='+encodeURIComponent(busqD):''}`)
       .then(r=>{ const d=r.data?.data??r.data; return d?.data??d??[]; }),
     staleTime: 30_000,
   });
@@ -5889,9 +5902,10 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
   const [facturaFolio,        setFacturaFolio]        = useState('');
   const [facturaSearch,       setFacturaSearch]       = useState('');
   const [showFacturaDropdown, setShowFacturaDropdown] = useState(false);
+  const busqClienteD = useDebounce(busqCliente, 300);
   const { data: clientes } = useQuery<any>({
-    queryKey: ['pos-cli-sel', busqCliente],
-    queryFn: () => api.get(`/clientes?limit=20${busqCliente?'&search='+encodeURIComponent(busqCliente):''}`)
+    queryKey: ['pos-cli-sel', busqClienteD],
+    queryFn: () => api.get(`/clientes?limit=20${busqClienteD?'&search='+encodeURIComponent(busqClienteD):''}`)
       .then(r=>{ const d=r.data?.data??r.data; return d?.data??d??[]; }),
     staleTime: 30_000,
   });
@@ -6933,9 +6947,10 @@ function POSGastosLista({ C }: { C: Palette }) {
     enabled: showForm,
   });
 
+  const busqD = useDebounce(busq, 300);
   const { data: gastos = [], isLoading, refetch } = useQuery<any[]>({
-    queryKey: ['pos-gastos', busq, sucursalActual],
-    queryFn: () => api.get(`/gastos?limit=30${busq ? `&search=${encodeURIComponent(busq)}` : ''}`)
+    queryKey: ['pos-gastos', busqD, sucursalActual],
+    queryFn: () => api.get(`/gastos?limit=30${busqD ? `&search=${encodeURIComponent(busqD)}` : ''}`)
       .then(r => { const d = r.data?.data ?? r.data; return d?.data ?? d ?? []; }),
     staleTime: 30_000,
   });
@@ -8739,10 +8754,14 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
     return false;
   };
 
+  // El panel genérico es el buscador más caro del POS: /facturas?search= hace un
+  // ILIKE '%...%' (sin índice trigram, seq scan) MÁS un COUNT(*) que repite el
+  // mismo filtro. Escribir "FAC-001234" eran 10 requests = 20 recorridos de tabla.
+  const busqD = useDebounce(busq, 300);
   const { data: rows, isLoading } = useQuery<any>({
-    queryKey: ['pos-panel', panel, busq],
+    queryKey: ['pos-panel', panel, busqD],
     queryFn: async () => {
-      const s = busq ? `&search=${encodeURIComponent(busq)}` : '';
+      const s = busqD ? `&search=${encodeURIComponent(busqD)}` : '';
       const endpoints: Record<string, string> = {
         inventario:       `/inventario/movimientos?limit=40${s}`,
         facturas:         `/facturas?limit=30${s}`,
