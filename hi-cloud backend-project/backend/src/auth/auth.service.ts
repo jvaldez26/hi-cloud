@@ -1008,7 +1008,12 @@ export class AuthService implements OnModuleInit {
 
   /** S-28: Genera un access token para un userId (usado en /auth/refresh) */
   async buildAccessTokenForUser(userId: number): Promise<string> {
-    const user = await this.usersService.findById(userId);
+    // ForAuth obligatorio: buildToken() copia user.sessionToken al nuevo JWT.
+    // Con un findById normal (sessionToken es select:false) el token renovado
+    // saldría SIN sessionToken, el `if (payload.sessionToken)` de JwtStrategy
+    // sería falso y la sesión única quedaría desactivada en silencio para toda
+    // sesión que haya pasado por /auth/refresh — es decir, casi todas.
+    const user = await this.usersService.findByIdForAuth(userId);
     const ep = await this.getEmpresaPrincipal(userId);
     return this.buildToken(user, ep?.empresaId, undefined, undefined, ep?.rol);
   }

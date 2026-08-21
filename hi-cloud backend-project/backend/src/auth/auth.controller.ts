@@ -297,8 +297,22 @@ export class AuthController {
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Verificar sesión activa y obtener datos del usuario' })
   async getMe(@GetUser() user: User) {
-    // Usado por el frontend al recargar la página para hidratar el store
-    const { password: _pw, ...profile } = user as User & { password?: string };
+    // Usado por el frontend al recargar la página para hidratar el store.
+    //
+    // El frontend guarda esta respuesta ENTERA en localStorage ('auth_user'),
+    // así que aquí no puede salir nada sensible: lo que se devuelva queda
+    // legible para cualquier XSS. Se excluyen explícitamente:
+    //   - sessionToken: secreto de la sesión única (ya lo borra JwtStrategy,
+    //     esto es la segunda capa por si alguien cambia aquel comportamiento)
+    //   - jti / exp: metadatos del JWT que el cliente no necesita y que solo
+    //     dan pistas sobre el token de la cookie httpOnly
+    const {
+      password:     _pw,
+      sessionToken: _st,
+      jti:          _jti,
+      exp:          _exp,
+      ...profile
+    } = user as User & { password?: string; jti?: string; exp?: number };
     return { user: profile };
   }
 

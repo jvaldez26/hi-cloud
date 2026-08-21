@@ -53,7 +53,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     let user: Awaited<ReturnType<typeof this.usersService.findById>> | null = null;
     try {
-      user = await this.usersService.findById(payload.sub);
+      // ForAuth: necesitamos sessionToken para el guard de sesión única de más
+      // abajo. Se borra del objeto antes de devolverlo (ver el final del método).
+      user = await this.usersService.findByIdForAuth(payload.sub);
     } catch {
       throw new UnauthorizedException('Token inválido o usuario inactivo');
     }
@@ -82,18 +84,26 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // Tampoco había caché que evitar: findById() usa findOne() sin `cache: true`,
     // y TypeORM no cachea resultados salvo que se lo pidas explícitamente.
     //
-    // CONTRATO: esto depende de que la columna se siga seleccionando por defecto.
-    // Si alguien le añade `select: false`, `user.sessionToken` llegaría undefined
-    // → dbToken null → `!dbToken` lanza. Es decir, FALLA CERRADO: no deja pasar
-    // sesiones viejas en silencio, saca a TODO el mundo con 401 en el primer
-    // request. Ruidoso e imposible de ignorar, pero un incidente de produccion.
-    // users.entity.spec.ts lo detiene antes, en CI, si la columna cambia.
+    // CONTRATO: depende de que findByIdForAuth haga addSelect('u.sessionToken').
+    // La columna es select:false, así que un findById normal lo deja undefined
+    // → dbToken null → `!dbToken` lanza. FALLA CERRADO: no deja pasar sesiones
+    // viejas en silencio, saca a TODO el mundo con 401 en el primer request.
+    // Ruidoso e imposible de ignorar, pero un incidente de producción igualmente.
+    // users.entity.spec.ts lo detiene antes, en CI, si el contrato cambia.
     if (payload.sessionToken) {
       const dbToken = user.sessionToken ?? null;
       if (!dbToken || payload.sessionToken !== dbToken) {
         throw new UnauthorizedException('SESION_DESPLAZADA');
       }
     }
+
+    // El sessionToken no viaja más allá de esta comprobación.
+    //
+    // Lo que devuelve validate() acaba en request.user, y por tanto en la
+    // respuesta de cualquier endpoint que haga `return @GetUser() user`
+    // (/auth/me, /auth/profile...). Borrarlo aquí cierra la fuga en la raíz,
+    // sin depender de que cada controller se acuerde de excluirlo.
+    delete (user as any).sessionToken;
 
     (user as any).empresaId = payload.empresaId ?? null;
     (user as any).jti       = payload.jti;

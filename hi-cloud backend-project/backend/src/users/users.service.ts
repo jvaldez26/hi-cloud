@@ -55,8 +55,36 @@ export class UsersService implements OnModuleInit {
       .getOne();
   }
 
+  /**
+   * Usuario por id, SIN secretos (sessionToken incluido — la columna es
+   * select:false). Es la variante segura: úsala salvo que necesites validar o
+   * reemitir la sesión. Su resultado se devuelve tal cual al cliente en
+   * GET /users/:id, así que no debe arrastrar nada sensible.
+   */
   async findById(id: number) {
     const user = await this.userRepository.findOne({ where: { id } });
+    if (!user) throw new NotFoundException(`Usuario #${id} no encontrado`);
+    return user;
+  }
+
+  /**
+   * Igual que findById pero incluye sessionToken — mismo patrón que
+   * findByEmailForAuth. Solo para los dos sitios que lo necesitan de verdad:
+   *
+   *  - JwtStrategy.validate(): compara el token del JWT con el de la BD.
+   *  - AuthService.buildAccessTokenForUser(): /auth/refresh reemite el access
+   *    token y debe propagar el sessionToken al nuevo JWT. Si saliera sin él,
+   *    `if (payload.sessionToken)` de JwtStrategy sería falso y la sesión única
+   *    quedaría desactivada EN SILENCIO para toda sesión ya refrescada.
+   *
+   * NUNCA devuelvas su resultado directamente en una respuesta HTTP.
+   */
+  async findByIdForAuth(id: number) {
+    const user = await this.userRepository
+      .createQueryBuilder('u')
+      .addSelect('u.sessionToken')
+      .where('u.id = :id', { id })
+      .getOne();
     if (!user) throw new NotFoundException(`Usuario #${id} no encontrado`);
     return user;
   }

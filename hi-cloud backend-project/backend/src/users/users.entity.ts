@@ -52,8 +52,17 @@ export class User extends BaseEntity {
   roleVersion!: number;
 
   // ── Session control — una sesión activa por usuario ───────────────────────
-  // sessionToken = UUID incluido en el JWT; si difiere → sesión desplazada
-  @Column({ length: 64, nullable: true })
+  // sessionToken = UUID incluido en el JWT; si difiere → sesión desplazada.
+  //
+  // select:false porque es un secreto de sesión y NO debe salir al cliente.
+  // Sin él, /auth/me y GET /users/:id lo serializaban en la respuesta y el
+  // frontend acababa guardándolo en localStorage (auth.store: 'auth_user'),
+  // legible por cualquier XSS — justo lo que el JWT en cookie httpOnly evita.
+  //
+  // Quien lo necesita lo pide explícitamente: findByIdForAuth() y
+  // findByEmailForAuth() hacen addSelect. Cualquier otra lectura de User lo
+  // recibe como undefined, que es el comportamiento seguro por defecto.
+  @Column({ length: 64, nullable: true, select: false })
   sessionToken?: string;
 
   @Column({ type: 'timestamptz', nullable: true })
