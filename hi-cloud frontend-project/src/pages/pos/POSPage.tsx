@@ -3287,7 +3287,7 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
         await api.post('/productos', body);
         message.success(`${tipoLabel} creado`);
       }
-      qc.invalidateQueries({ queryKey: ['pos-produtos'] });
+      qc.invalidateQueries({ queryKey: ['pos-productos'] });
       qc.invalidateQueries({ queryKey: ['pos-products-scan'] });
       setShowForm(false);
     } catch (e: any) {
@@ -3315,7 +3315,7 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
       }
       message.success(`${movModal?.tipo === 'entrada' ? 'Entrada' : 'Salida'} registrada`);
       qc.invalidateQueries({ queryKey: ['pos-movimientos'] });
-      qc.invalidateQueries({ queryKey: ['pos-produtos'] });
+      qc.invalidateQueries({ queryKey: ['pos-productos'] });
       qc.invalidateQueries({ queryKey: ['pos-products-scan'] });
       setMovModal(null);
     } catch (e: any) {
@@ -4034,7 +4034,7 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
       if (notasRecibir.trim()) body.notas = notasRecibir;
       await api.patch(`/compras/${recibirData.id}/recibir`, body);
       qc.invalidateQueries({ queryKey: ['compras-pos'] });
-      qc.invalidateQueries({ queryKey: ['pos-produtos'] });
+      qc.invalidateQueries({ queryKey: ['pos-productos'] });
       qc.invalidateQueries({ queryKey: ['pos-products-scan'] });
       setCantRecibidas({});
       message.success('Mercancía recibida y stock actualizado');
@@ -9845,7 +9845,7 @@ export default function POSPage() {
   // Catálogo completo: fuente principal de búsqueda, display y scanner del POS.
   // incluirSinStock=true salta el cap de 100 → devuelve hasta 5000, incluyendo
   // productos sin stock en el almacén (el stock exacto se valida al cobrar).
-  const { data: todosProdutosData, isLoading, refetch: refetchProductos } = useQuery({
+  const { data: todosProdutosData, isLoading } = useQuery({
     queryKey: ['pos-products-scan', almacenActual],
     queryFn:  () => productosApi.list(1, 5000, '', true),
     // El catálogo de 5000 productos pesa ~100 KB por respuesta.
@@ -9871,12 +9871,18 @@ export default function POSPage() {
     refetchOnWindowFocus: true,
   });
 
-  // FIX 1: también refrescar al recuperar el foco (el cajero vuelve de otra pestaña)
-  useEffect(() => {
-    const onFocus = () => { refetchProductos(); };
-    window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
-  }, [refetchProductos]);
+  // NO reintroducir un listener de window.focus que llame a refetchProductos().
+  //
+  // Hubo uno aquí ("FIX 1: refrescar al recuperar el foco") que anulaba en la
+  // práctica el `refetchOnWindowFocus: false` de la query de arriba — el mismo
+  // flood de 127 req/min que esa opción existe para evitar, reintroducido tres
+  // líneas más abajo de su propio comentario.
+  //
+  // Existía porque las mutaciones de producto invalidaban 'pos-produtos' (con
+  // typo) en vez de 'pos-productos', así que el catálogo no se refrescaba tras
+  // crear un producto o recibir mercancía, y se parcheó con un refetch al
+  // enfocar. Corregido el typo, la invalidación explícita ya cubre el caso:
+  // toda mutación que toque stock invalida 'pos-products-scan' directamente.
   const { data: clientes } = useQuery({
     queryKey: ['clientes-pos'],
     queryFn:  () => clientesApi.list(1, 100),
