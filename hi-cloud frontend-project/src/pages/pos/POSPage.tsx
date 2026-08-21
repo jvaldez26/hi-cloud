@@ -3110,6 +3110,21 @@ type PanelId = 'items' | 'inventario' | 'facturas' | 'pre-facturas' | 'cotizacio
              | 'clientes' | 'recibos-cobro' | 'anticipos'
              | 'notas-credito' | 'gastos' | 'cierre-caja' | 'ventas-hoy' | 'pro-formas' | 'compras';
 
+/**
+ * Paneles que POSPanel NO renderiza: los delega a un componente especializado
+ * que trae sus propios datos (ver el bloque de dispatch al final de POSPanel).
+ *
+ * POSPanel solo renderiza directamente: facturas, pre-facturas, cotizaciones,
+ * notas-credito y pro-formas. Para todo lo demás, su useQuery de `rows` sería
+ * una petición HTTP que nadie consume.
+ *
+ * Mantener esta lista sincronizada con el bloque de `if (panel === ...) return`.
+ */
+const PANELES_DELEGADOS = new Set<string>([
+  'ventas-hoy', 'inventario', 'clientes', 'cierre-caja',
+  'conduce', 'gastos', 'recibos-cobro', 'anticipos', 'compras',
+]);
+
 // ── Helpers de panel ─────────────────────────────────────────────────────────
 
 function PanelHeader({ title, icon, C, onVolver, onNuevo, labelNuevo, onExtra, labelExtra }:
@@ -8749,7 +8764,12 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
     staleTime:       0,
     gcTime:          0,
     refetchOnMount: 'always',
-    enabled: panel !== 'items',
+    // Solo los paneles que ESTE componente renderiza. Los de PANELES_DELEGADOS
+    // se despachan más abajo a su propio componente, que trae sus propios datos:
+    // sin este filtro, abrir Inventario/Clientes/Conduce/Gastos/Cierre de Caja
+    // disparaba una petición aquí que nadie llegaba a usar — y con staleTime 0 +
+    // refetchOnMount 'always', una por cada apertura del panel.
+    enabled: panel !== 'items' && !PANELES_DELEGADOS.has(panel as string),
     // Polling automático cuando hay facturas con ECF en estado ENVIADO
     refetchInterval: (query: any) => {
       if (panel !== 'facturas') return false;
@@ -8918,7 +8938,15 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
     ],
   };
 
-  // Despachar a componentes especializados — DESPUÉS de todos los hooks
+  // Despachar a componentes especializados — DESPUÉS de todos los hooks.
+  //
+  // El dispatch NO puede subir por encima del useQuery de `rows`: POSPanel se
+  // reutiliza entre paneles (el call site pasa `panel={panelActivo}` sin `key`,
+  // así que React reconcilia la misma instancia en vez de remontarla). Un return
+  // temprano antes de un hook cambiaría el número de hooks entre renders y React
+  // lanzaría "Rendered fewer hooks than expected" al pasar de Facturas a
+  // Inventario. Por eso los paneles delegados se excluyen vía PANELES_DELEGADOS
+  // en el `enabled` de esa query — mismo efecto, sin tocar el orden de hooks.
   if (panel === 'ventas-hoy')   return <POSVentasHoyPanel  C={C} onVolver={onVolver} />;
   if (panel === 'inventario')   return <POSInventarioPanel C={C} onVolver={onVolver} requireSupervisor={requireSupervisor} />;
   if (panel === 'clientes')     return <POSClientesPanel   C={C} onVolver={onVolver} />;
