@@ -321,6 +321,8 @@ export class ProductosService implements OnModuleInit {
         [ids, empresaId],
       );
       const stockMap = new Map<number, any[]>();
+      // Stock del almacén ACTIVO, extraído del mismo resultado — sin query extra.
+      const stockActivo = new Map<number, number>();
       for (const s of stocks) {
         const pid = Number(s.productoId);
         if (!stockMap.has(pid)) stockMap.set(pid, []);
@@ -331,9 +333,29 @@ export class ProductosService implements OnModuleInit {
           ubicacionId:     s.ubicacionId ? Number(s.ubicacionId) : undefined,
           ubicacionCodigo: s.ubicacionCodigo ?? undefined,
         });
+        if (almacenId && Number(s.almacenId) === Number(almacenId)) {
+          stockActivo.set(pid, Number(s.stock));
+        }
       }
+      // BUG CORREGIDO: esta rama devolvía `p.stock` tal cual, es decir el stock
+      // GLOBAL de la tabla productos (todos los almacenes sumados), porque el
+      // return de aquí se adelanta a la rama de más abajo que sí lo sustituye
+      // por el del almacén activo. En empresas multi-sucursal el POS mostraba
+      // el consolidado: el badge decía 12 cuando en esa sucursal había 3.
+      //
+      // Los productos sin stock siguen incluyéndose (el cajero necesita verlos);
+      // lo que cambia es QUÉ número se muestra, no QUÉ productos se devuelven.
+      //
+      // Los servicios se dejan intactos: no tienen fila en stock_almacen y
+      // ponerles 0 los marcaría como agotados.
       return {
-        data: data.map(p => ({ ...p, stockPorAlmacen: stockMap.get(p.id) ?? [] })),
+        data: data.map(p => ({
+          ...p,
+          ...(almacenId && p.tipo !== 'servicio'
+            ? { stock: stockActivo.get(p.id) ?? 0 }
+            : {}),
+          stockPorAlmacen: stockMap.get(p.id) ?? [],
+        })),
         meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
       };
     }
@@ -377,6 +399,7 @@ export class ProductosService implements OnModuleInit {
    */
   async catalogoPos() {
     const empresaId = this.tenantService.getEmpresaId();
+    const almacenId = this.tenantService.getAlmacenId() ?? undefined;
 
     // Sin getManyAndCount: el POS no usa el total y el COUNT(*) repetiría el
     // mismo filtro sobre toda la tabla para nada.
@@ -395,6 +418,25 @@ export class ProductosService implements OnModuleInit {
       .orderBy('p.nombre', 'ASC')
       .take(CATALOGO_POS_MAX)
       .getMany();
+
+    // `p.stock` de la tabla productos es el GLOBAL (todos los almacenes). El POS
+    // debe mostrar el del almacén de SU sucursal, o el badge miente en empresas
+    // multi-sucursal. Una query por lote, sin N+1.
+    //
+    // Los servicios se dejan intactos: no tienen fila en stock_almacen y
+    // ponerles 0 los marcaría como agotados.
+    if (almacenId && data.length > 0) {
+      const stocks = await this.stockAlmacenRepository.find({
+        where: { productoId: In(data.map(p => p.id)), almacenId } as any,
+      });
+      const porProducto = new Map(stocks.map(s => [s.productoId, Number(s.stock)]));
+      return {
+        data: data.map(p =>
+          p.tipo === 'servicio' ? p : { ...p, stock: porProducto.get(p.id) ?? 0 },
+        ),
+        meta: { total: data.length },
+      };
+    }
 
     return { data, meta: { total: data.length } };
   }
