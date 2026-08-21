@@ -78,6 +78,21 @@ export class ProductosController {
     return this.productosService.findAll(pagination as PaginationDto, incluirSinStock === true, tipo);
   }
 
+  @Get('catalogo-pos')
+  @Throttle({ default: { limit: 300, ttl: 60_000 } })
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @ApiOperation({
+    summary: 'Catálogo completo para el POS — solo los campos que el POS lee.',
+    description:
+      'Mismos productos que GET /productos?incluirSinStock=true (incluye los de stock 0), ' +
+      'pero sin las columnas que el POS nunca usa ni el stockPorAlmacen que se calculaba ' +
+      'con un JOIN triple y se descartaba. Tampoco expone costo ni costoPromedio. ' +
+      'El POS lo cachea en memoria: de ahí salen la búsqueda local y el escaneo instantáneo.',
+  })
+  catalogoPos() {
+    return this.productosService.catalogoPos();
+  }
+
   @Get('categorias')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Valores distintos de categoría en el catálogo (para Selects — todo el catálogo, no paginado)' })

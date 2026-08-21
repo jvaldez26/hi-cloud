@@ -25,6 +25,17 @@ export const productosApi = {
       `/productos?page=${p}&limit=${limit}&search=${search}${incluirSinStock ? '&incluirSinStock=true' : ''}`,
     ).then(r => r.data.data),
 
+  /**
+   * Catálogo completo para el POS — solo los campos que el POS lee.
+   *
+   * Sustituye a list(1, 5000, '', true) como fuente del catálogo en memoria.
+   * Mismos productos (incluidos los de stock 0), pero sin las columnas que el
+   * POS nunca consulta ni el stockPorAlmacen que se calculaba y se descartaba.
+   */
+  catalogoPos: () =>
+    api.get<ApiResponse<{ data: Producto[]; meta: { total: number } }>>('/productos/catalogo-pos')
+      .then(r => (r.data as any)?.data ?? r.data),
+
   getOne: (id: number) =>
     api.get<ApiResponse<Producto>>(`/productos/${id}`).then(r => r.data.data),
 

@@ -26,6 +26,9 @@ import { S3Service } from '../common/s3/s3.service';
 const IMAGENES_BUCKET = 'hicloud-backups-966448715183';
 const IMAGENES_FOLDER = 'imagenes/productos';
 
+/** Tope del catálogo POS — mismo que el de findAll(incluirSinStock). */
+const CATALOGO_POS_MAX = 5_000;
+
 @Injectable()
 export class ProductosService implements OnModuleInit {
   private readonly logger = new Logger(ProductosService.name);
@@ -352,6 +355,48 @@ export class ProductosService implements OnModuleInit {
       data,
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
+  }
+
+  /**
+   * Catálogo para el POS: los mismos productos que findAll(incluirSinStock),
+   * pero SOLO con los campos que el POS realmente lee.
+   *
+   * Por qué existe: el POS carga el catálogo entero en memoria (es lo que hace
+   * instantáneo el escaneo y la búsqueda local, y eso se queda). Lo que sobraba
+   * era el peso por producto: findAll devolvía las 31 columnas de la entidad más
+   * un `stockPorAlmacen` calculado con un JOIN triple sobre stock_almacen que el
+   * POS no lee en ningún punto (cero referencias en POSPage.tsx). Medido en
+   * producción: 688 bytes por producto → ~3,4 MB para un catálogo de 5 000, cada
+   * 5 minutos y en cada terminal.
+   *
+   * Además dejan de salir `costo` y `costoPromedio`: son datos de margen y no
+   * tenían por qué estar en la memoria de cada caja.
+   *
+   * Se devuelven productos sin stock a propósito (el cajero necesita verlos y
+   * poder consultarlos); el stock exacto se valida al cobrar.
+   */
+  async catalogoPos() {
+    const empresaId = this.tenantService.getEmpresaId();
+
+    // Sin getManyAndCount: el POS no usa el total y el COUNT(*) repetiría el
+    // mismo filtro sobre toda la tabla para nada.
+    const data = await this.productoRepository
+      .createQueryBuilder('p')
+      .select([
+        'p.id', 'p.nombre', 'p.codigo', 'p.codigoBarras',
+        'p.precio', 'p.precio2', 'p.precio3',
+        'p.stock', 'p.stockMinimo',
+        'p.porcentajeIva', 'p.unidadMedida', 'p.categoria', 'p.tipo',
+        'p.imagenUrl',          // ProductCard la pinta cuando existe
+        'p.esPesable', 'p.plu', // balanza: procesarScan los necesita
+      ])
+      .where('p.empresaId = :empresaId', { empresaId })
+      .andWhere('p.isActive = :active', { active: true })
+      .orderBy('p.nombre', 'ASC')
+      .take(CATALOGO_POS_MAX)
+      .getMany();
+
+    return { data, meta: { total: data.length } };
   }
 
   async findOne(id: number) {

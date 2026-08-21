@@ -9895,8 +9895,12 @@ export default function POSPage() {
   // productos sin stock en el almacén (el stock exacto se valida al cobrar).
   const { data: todosProdutosData, isLoading } = useQuery({
     queryKey: ['pos-products-scan', almacenActual],
-    queryFn:  () => productosApi.list(1, 5000, '', true),
-    // El catálogo de 5000 productos pesa ~100 KB por respuesta.
+    // /productos/catalogo-pos en vez de /productos?limit=5000&incluirSinStock=true:
+    // mismos productos, solo los 16 campos que el POS lee. La respuesta anterior
+    // traía las 31 columnas de la entidad más un stockPorAlmacen calculado con
+    // JOIN triple que el POS descartaba — medido en producción, 688 bytes por
+    // producto (~3,4 MB para un catálogo de 5 000, cada 5 min y por terminal).
+    queryFn:  () => productosApi.catalogoPos(),
     // staleTime alto + sin refetch-on-focus evita que múltiples pestañas POS
     // generen un flood al hacer foco (fenómeno observado: 127 req/min desde un solo IP).
     // El refetchInterval mantiene el catálogo fresco cada 5 min sin tormentas de foco.
