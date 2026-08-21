@@ -176,6 +176,7 @@ export class TenantMiddleware implements NestMiddleware {
     if (now - last < this.ACTIVITY_THROTTLE_MS) return;
 
     this.activityThrottle.set(sessionToken, now);
+    this.purgarThrottleVencido(now);
 
     this.empresaRepo.manager.query(
       `UPDATE refresh_tokens SET "lastActivityAt" = NOW()
@@ -185,5 +186,26 @@ export class TenantMiddleware implements NestMiddleware {
       // Error no crítico — borramos para reintentar en el siguiente request
       this.activityThrottle.delete(sessionToken);
     });
+  }
+
+  /**
+   * Purga entradas vencidas del mapa de throttle.
+   *
+   * Sin esto el mapa solo crece: una entrada por sessionToken, y cada login
+   * genera un sessionToken nuevo (initNewSession → randomUUID). Las de sesiones
+   * ya cerradas nunca se vuelven a consultar pero seguían ocupando memoria hasta
+   * el siguiente deploy, que era lo único que lo limpiaba.
+   *
+   * Una entrada más vieja que el intervalo de throttle ya no sirve para nada:
+   * si ese sessionToken vuelve a aparecer, `now - last` supera el umbral y toca
+   * UPDATE igual, exista o no la entrada. Borrarla es gratis semánticamente.
+   *
+   * Se ejecuta solo cuando una entrada pasa el throttle (como mucho una vez cada
+   * 5 min por sesión activa), no en cada request.
+   */
+  private purgarThrottleVencido(now: number): void {
+    for (const [token, ts] of this.activityThrottle) {
+      if (now - ts >= this.ACTIVITY_THROTTLE_MS) this.activityThrottle.delete(token);
+    }
   }
 }

@@ -98,7 +98,7 @@ export class ConduceService {
       .leftJoinAndSelect('c.cliente',  'cl')
       .leftJoinAndSelect('c.detalles', 'd')
       // JOIN a facturas solo para poder filtrar por folio (no se selecciona, ya se enriquece después)
-      .leftJoin('facturas', 'fac', 'fac.id = c."facturaId"')
+      .leftJoin('facturas', 'fac', 'fac.id = c."facturaId" AND fac."empresaId" = :facEid', { facEid: empresaId })
       .where('c.empresaId = :eid', { eid: empresaId })
       .andWhere('c.isActive = :a',  { a: true });
 
@@ -117,9 +117,13 @@ export class ConduceService {
     // Enriquecer con folio de factura cuando el conduce fue creado desde una factura
     const facturaIds = [...new Set(data.filter(c => c.facturaId).map(c => c.facturaId!))];
     if (facturaIds.length > 0) {
+      // El filtro por empresaId es redundante hoy (los facturaIds salen de
+      // conduces ya acotados a la empresa), pero el aislamiento de tenant no se
+      // deja depender de una invariante de la query anterior: toda lectura
+      // cruzada lleva su propio empresaId.
       const facturas = await this.ds.query<{ id: number; folio: string }[]>(
-        `SELECT id, folio FROM facturas WHERE id = ANY($1::int[])`,
-        [facturaIds],
+        `SELECT id, folio FROM facturas WHERE id = ANY($1::int[]) AND "empresaId" = $2`,
+        [facturaIds, empresaId],
       );
       const folioMap = new Map(facturas.map(f => [f.id, f.folio]));
       data.forEach(c => {
@@ -138,8 +142,8 @@ export class ConduceService {
     // Enriquecer con folio de factura
     if (c.facturaId) {
       const rows = await this.ds.query<{ folio: string }[]>(
-        `SELECT folio FROM facturas WHERE id = $1 LIMIT 1`,
-        [c.facturaId],
+        `SELECT folio FROM facturas WHERE id = $1 AND "empresaId" = $2 LIMIT 1`,
+        [c.facturaId, empresaId],
       );
       if (rows[0]) (c as any).facturaFolio = rows[0].folio;
     }
