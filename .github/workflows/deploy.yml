@@ -220,14 +220,11 @@ jobs:
           SMTP_PASS:        ${{ secrets.SMTP_PASS }}
           SMTP_FROM:        ${{ secrets.SMTP_FROM }}
           NOTIF_ADMIN_EMAIL: ${{ secrets.NOTIF_ADMIN_EMAIL }}
-          # Sin esto, instrument.ts arrancaba con "[Sentry] Deshabilitado" y el
-          # backend llevaba meses sin reportar un solo error a Sentry.
-          SENTRY_DSN:       ${{ secrets.SENTRY_DSN }}
         with:
           host:            3.137.152.75
           username:        ubuntu
           key:             ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          envs:            DB_CA_CERT,SMTP_HOST,SMTP_PORT,SMTP_SECURE,SMTP_USER,SMTP_PASS,SMTP_FROM,NOTIF_ADMIN_EMAIL,SENTRY_DSN
+          envs:            DB_CA_CERT,SMTP_HOST,SMTP_PORT,SMTP_SECURE,SMTP_USER,SMTP_PASS,SMTP_FROM,NOTIF_ADMIN_EMAIL
           timeout:         900s
           command_timeout: 15m
           script: |
@@ -325,9 +322,6 @@ jobs:
             # Release de Sentry = SHA del commit recién desplegado (HEAD tras el git reset).
             # Permite atribuir cada error al deploy que lo introdujo.
             inject_env SENTRY_RELEASE "$(git rev-parse HEAD)"
-            # DSN de Sentry — sin él instrument.ts arranca deshabilitado y el
-            # backend no reporta nada. Va junto al release, que ya se inyectaba.
-            inject_env SENTRY_DSN     "$SENTRY_DSN"
             echo "  ✅ Variables de entorno configuradas"
 
             # Chromium para Puppeteer
