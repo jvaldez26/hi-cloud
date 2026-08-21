@@ -16,6 +16,17 @@ jobs:
     name: CI Check
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # El postinstall de puppeteer descarga Chrome (~150 MB) desde
+      # storage.googleapis.com en cada `npm ci`. Aquí solo se hace typecheck:
+      # nadie lanza un navegador, así que esa descarga es puro desperdicio —
+      # y una dependencia de red externa capaz de tumbar el deploy entero.
+      # Ya lo hizo: el deploy de 5fb6906f murió con
+      #   "Failed to set up chrome v147.0.7727.57 ... server returned code 403"
+      # sin que hubiera un solo cambio de código que lo justificara.
+      # En producción puppeteer NO usa este Chrome: usa el chromium de apt vía
+      # PUPPETEER_EXECUTABLE_PATH (ver el paso "Chromium para Puppeteer").
+      PUPPETEER_SKIP_DOWNLOAD: 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -53,6 +64,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: ci
+    env:
+      # Igual que en el job `ci`: aquí solo corre `nest build` (compilación TS).
+      # No se lanza ningún navegador, así que el Chrome del postinstall sobra.
+      PUPPETEER_SKIP_DOWNLOAD: 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -327,6 +342,9 @@ jobs:
               grep -q '^PUPPETEER_EXECUTABLE_PATH=' "$ENV_FILE" 2>/dev/null \
                 && sed -i "s|^PUPPETEER_EXECUTABLE_PATH=.*|PUPPETEER_EXECUTABLE_PATH=${CHROME_PATH}|" "$ENV_FILE" \
                 || echo "PUPPETEER_EXECUTABLE_PATH=${CHROME_PATH}" >> "$ENV_FILE"
+              echo "  ✅ Chromium del sistema: ${CHROME_PATH}"
+            else
+              echo "  ⚠️  Sin Chromium del sistema — puppeteer usará el Chrome que descargue npm ci"
             fi
             set -e
 
@@ -343,6 +361,20 @@ jobs:
               exit 1
             fi
 
+            # Si el servidor ya tiene Chromium del sistema (el caso normal, ver
+            # [2/6]), puppeteer lo usa vía PUPPETEER_EXECUTABLE_PATH y el Chrome
+            # que baja su postinstall no se ejecuta jamás. Saltar esa descarga
+            # ahorra ~150 MB por deploy y — más importante — quita del camino
+            # crítico una llamada a storage.googleapis.com que ya devolvió 403 y
+            # tumbó un deploy (chrome v147.0.7727.57, run 32433927389).
+            #
+            # Si NO hay Chromium del sistema, se permite la descarga: es el único
+            # respaldo para que los PDFs sigan funcionando. Mejor un deploy lento
+            # que un deploy sin capacidad de generar documentos.
+            if [ -n "$CHROME_PATH" ]; then
+              export PUPPETEER_SKIP_DOWNLOAD=true
+              echo "  ↷ npm ci sin descarga de Chrome (se usa el del sistema)"
+            fi
             npm ci 2>&1 | tail -3
 
             # Activar el nuevo dist (PM2 todavía ejecuta el ANTERIOR)
