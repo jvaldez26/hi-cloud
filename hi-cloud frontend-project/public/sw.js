@@ -15,6 +15,30 @@
 const CACHE_NAME = 'hicloud-__BUILD_DATE__';
 const API_PREFIX = '/api/';
 
+/**
+ * Destinos para los que el SW NUNCA debe fabricar una respuesta.
+ *
+ * Un 503 con `Content-Type: application/json` es la PEOR respuesta posible para
+ * una petición de script: el navegador la recibe como éxito de red, intenta
+ * parsear JSON como módulo ES, y el módulo no ejecuta. Cuando eso le pasa al
+ * bundle principal, React nunca monta y el loader de index.html se queda fijo
+ * para siempre — el "Cargando..." eterno que solo se arreglaba borrando los
+ * datos del sitio.
+ *
+ * Dejando que el fallo sea un fallo de red REAL, cada capa hace su trabajo:
+ * el navegador rechaza el import, vite:preloadError dispara la auto-recarga y,
+ * si aun así no arranca, la red de seguridad de index.html da la salida.
+ */
+const SIN_RESPUESTA_FABRICADA = ['script', 'style', 'document', 'worker', 'sharedworker'];
+
+function noFabricar(request) {
+  // `destination` es '' en navegadores muy viejos: ahí caemos en la heurística
+  // por extensión antes que arriesgarnos a fabricar un JSON para un .js.
+  const d = request.destination;
+  if (d) return SIN_RESPUESTA_FABRICADA.indexOf(d) !== -1;
+  return /\.(js|mjs|css)(\?|$)/i.test(new URL(request.url).pathname);
+}
+
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
@@ -26,24 +50,39 @@ self.addEventListener('activate', (event) => {
   // Sin clients.claim(): las pestañas abiertas se quedan bajo el SW anterior,
   // que aún tiene sus chunks en cache. Las nuevas pestañas usan este SW.
   //
-  // Retención por ANTIGÜEDAD (3 días) en vez de por conteo.
-  // Con varios deploys al día, conservar solo N caches no es suficiente.
-  // Retener 3 días garantiza que cualquier pestaña abierta siga teniendo
-  // su caché, independientemente de cuántos deploys ocurrieron.
+  // Retención por antigüedad Y por cantidad. Las dos reglas juntas, porque
+  // ninguna basta sola con el ritmo de deploys real:
+  //
+  //   - Solo por antigüedad: con 8-10 deploys en un día se acumulaban 12+ cachés
+  //     (medido en un navegador real), cada una con su copia del bundle.
+  //   - Solo por cantidad: si un día no hay deploys, una caché vieja sobrevive
+  //     indefinidamente.
+  //
+  // Se conservan las 2 más recientes (la actual y la anterior, que es la que
+  // puede seguir usando una pestaña abierta) y, de las demás, solo las de menos
+  // de 1 día. El servidor guarda los assets 7 días, así que una pestaña cuya
+  // caché se purgue puede volver a descargarlos.
   //
   // El timestamp en base-36 tiene largo fijo (8 chars) para el año 2026:
   //   36^7 ≈ 78 B ms (año 1972) < Date.now() ≈ 1.75 T ms < 36^8 ≈ 2.8 T ms (año 2059)
   // Se parsea directamente en lugar de depender del orden lexicográfico.
-  const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+  const UN_DIA_MS   = 24 * 60 * 60 * 1000;
+  const CONSERVAR_N = 2;
   event.waitUntil(
     caches.keys().then(keys => {
-      const toDelete = keys
+      const ts = k => parseInt(k.slice('hicloud-'.length), 36);
+      const otras = keys
         .filter(k => k.startsWith('hicloud-') && k !== CACHE_NAME)
-        .filter(k => {
-          const ts = parseInt(k.slice('hicloud-'.length), 36);
-          return isNaN(ts) || (Date.now() - ts) > THREE_DAYS_MS;
-        });
-      return Promise.all(toDelete.map(k => caches.delete(k)));
+        // Más recientes primero. Las de nombre corrupto (NaN) van al final
+        // para que se eliminen antes que cualquier caché válida.
+        .sort((a, b) => (isNaN(ts(b)) ? -Infinity : ts(b)) - (isNaN(ts(a)) ? -Infinity : ts(a)));
+
+      const aBorrar = otras.filter((k, i) => {
+        if (isNaN(ts(k))) return true;              // nombre no reconocible
+        if (i >= CONSERVAR_N) return true;          // tope por cantidad
+        return (Date.now() - ts(k)) > UN_DIA_MS;    // tope por antigüedad
+      });
+      return Promise.all(aBorrar.map(k => caches.delete(k)));
     }),
   );
 });
@@ -58,9 +97,15 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (request.mode === 'navigate') {
+    // Si la red falla Y no hay nada cacheado, `caches.match` resuelve a
+    // undefined y respondWith(undefined) lanza un TypeError que deja la
+    // navegación colgada. Relanzar el error de red original hace que el
+    // navegador muestre su propia página de error, que sí es recuperable.
     event.respondWith(
-      fetch(request).catch(() =>
-        caches.match(request).then(r => r || caches.match('/')),
+      fetch(request).catch(err =>
+        caches.match(request)
+          .then(r => r || caches.match('/'))
+          .then(r => { if (r) return r; throw err; }),
       ),
     );
     return;
@@ -71,8 +116,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Camino por defecto. Cae aquí cualquier asset cuyo nombre no encaje con el
+  // patrón de hash de arriba — incluidos scripts servidos desde otra ruta — así
+  // que necesita la misma protección: nunca resolver a undefined.
   event.respondWith(
-    fetch(request).catch(() => caches.match(request)),
+    fetch(request).catch(err =>
+      caches.match(request).then(r => { if (r) return r; throw err; }),
+    ),
   );
 });
 
@@ -122,8 +172,13 @@ async function cacheFirst(request) {
       const cache = await caches.open(CACHE_NAME);
       cache.put(request, response.clone());
     }
+    // Un 404 se devuelve tal cual: el chunk ya no existe en el servidor y el
+    // navegador debe verlo como el fallo que es, no disfrazado de otra cosa.
     return response;
-  } catch {
+  } catch (err) {
+    // Scripts, estilos y documentos: propagar el fallo de red REAL.
+    // Fabricar aquí un 503 con JSON rompía el arranque de la aplicación.
+    if (noFabricar(request)) throw err;
     return new Response(
       JSON.stringify({ offline: true, swGenerated: true, message: 'Sin conexión' }),
       { status: 503, headers: { 'Content-Type': 'application/json', 'X-SW-Offline': '1' } },
