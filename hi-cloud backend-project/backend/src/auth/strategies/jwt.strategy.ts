@@ -82,10 +82,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // Tampoco había caché que evitar: findById() usa findOne() sin `cache: true`,
     // y TypeORM no cachea resultados salvo que se lo pidas explícitamente.
     //
-    // CONTRATO: si alguien añade `select: false` a User.sessionToken, este valor
-    // llegaría `undefined` y la comparación dejaría pasar cualquier token viejo
-    // — la sesión única moriría en silencio. Eso lo ancla users.entity.spec.ts,
-    // que falla en CI si la columna cambia de configuración.
+    // CONTRATO: esto depende de que la columna se siga seleccionando por defecto.
+    // Si alguien le añade `select: false`, `user.sessionToken` llegaría undefined
+    // → dbToken null → `!dbToken` lanza. Es decir, FALLA CERRADO: no deja pasar
+    // sesiones viejas en silencio, saca a TODO el mundo con 401 en el primer
+    // request. Ruidoso e imposible de ignorar, pero un incidente de produccion.
+    // users.entity.spec.ts lo detiene antes, en CI, si la columna cambia.
     if (payload.sessionToken) {
       const dbToken = user.sessionToken ?? null;
       if (!dbToken || payload.sessionToken !== dbToken) {

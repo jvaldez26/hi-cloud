@@ -9,12 +9,14 @@ import { User } from './users.entity';
  * por cada request autenticado del ERP.
  *
  * Eso solo funciona mientras la columna se seleccione por defecto. Si alguien
- * le añade `select: false`, `user.sessionToken` llegaría `undefined`, la
- * comparación dejaría pasar tokens de sesiones ya desplazadas y la sesión única
- * quedaría muerta EN SILENCIO — sin error, sin log, sin que nadie se entere.
+ * le añade `select: false`, `user.sessionToken` llegaría `undefined` → dbToken
+ * null → `!dbToken` lanza UnauthorizedException. El guard FALLA CERRADO: no
+ * deja pasar sesiones viejas, echa a TODO el mundo con 401 en el primer request.
+ * Ruidoso, sí, pero un incidente de producción en toda regla.
  *
- * Este test es la alarma: si la columna cambia de configuración, CI falla aquí
- * y quien lo cambie ve exactamente qué se rompe y dónde.
+ * Este test es la alarma temprana: si la columna cambia de configuración, CI
+ * falla aquí y quien lo cambie ve exactamente qué se rompe y dónde, en vez de
+ * enterarse cuando nadie pueda entrar al sistema.
  */
 describe('User entity — contrato de sessionToken', () => {
   const columnaSessionToken = () =>
