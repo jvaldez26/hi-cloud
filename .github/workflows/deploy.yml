@@ -358,18 +358,23 @@ jobs:
             # seguridad: backup, `nginx -t`, y si la validación falla se
             # restaura el backup y el deploy CONTINÚA. Una cabecera de caché no
             # puede tumbar un despliegue.
+            # El deploy corre como `ubuntu`; /etc/nginx y `nginx -s reload`
+            # necesitan root. En EC2 Ubuntu el usuario tiene sudo NOPASSWD.
             set +e
-            NGX_CONF=$(grep -rl "/var/www/hicloudrd.com/html" /etc/nginx/sites-enabled/ /etc/nginx/conf.d/ 2>/dev/null | head -1)
+            if ! sudo -n true 2>/dev/null; then
+              echo "  ⚠️  nginx: sin sudo sin contraseña — /sw.js sigue cacheable (aplicar a mano)"
+            else
+            NGX_CONF=$(sudo grep -rl "/var/www/hicloudrd.com/html" /etc/nginx/sites-enabled/ /etc/nginx/conf.d/ 2>/dev/null | head -1)
             if [ -z "$NGX_CONF" ]; then
               echo "  ⚠️  nginx: no se encontró el vhost de hicloudrd.com — /sw.js sigue cacheable"
-            elif grep -q "location = /sw.js" "$NGX_CONF"; then
+            elif sudo grep -q "location = /sw.js" "$NGX_CONF"; then
               echo "  ✅ nginx: /sw.js ya tiene su regla no-store"
             else
               NGX_BAK="${NGX_CONF}.bak-$(date +%Y%m%d%H%M%S)"
-              cp "$NGX_CONF" "$NGX_BAK"
+              sudo cp "$NGX_CONF" "$NGX_BAK"
               # Ancla: la directiva `root` del vhost, que está dentro del server
               # block correcto. El bloque se inserta justo después.
-              awk '
+              sudo awk '
                 !hecho && /root[[:space:]]+\/var\/www\/hicloudrd\.com\/html/ {
                   print
                   print ""
@@ -382,15 +387,16 @@ jobs:
                   next
                 }
                 { print }
-              ' "$NGX_BAK" > "$NGX_CONF"
+              ' "$NGX_BAK" | sudo tee "$NGX_CONF" > /dev/null
 
-              if nginx -t > /dev/null 2>&1; then
-                nginx -s reload && echo "  ✅ nginx: /sw.js ahora se sirve no-store (backup: $NGX_BAK)"
+              if sudo nginx -t > /dev/null 2>&1; then
+                sudo nginx -s reload && echo "  ✅ nginx: /sw.js ahora se sirve no-store (backup: $NGX_BAK)"
               else
-                cp "$NGX_BAK" "$NGX_CONF"
+                sudo cp "$NGX_BAK" "$NGX_CONF"
                 echo "  ⚠️  nginx -t falló con el bloque de /sw.js — config restaurada, deploy continúa"
-                nginx -t 2>&1 | tail -3
+                sudo nginx -t 2>&1 | tail -3
               fi
+            fi
             fi
             set -e
 
