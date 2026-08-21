@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Button, notification } from 'antd';
 import { SyncOutlined } from '@ant-design/icons';
+import { useVersionPing, VERSION_POLL_APP } from '../../hooks/useVersionPing';
 
-const POLL_MS    = 5 * 60 * 1000; // 5 minutos
 const NOTIF_KEY  = 'new-version';
 const CURRENT_BUILD = import.meta.env.VITE_SENTRY_RELEASE as string | undefined;
 
@@ -10,34 +10,24 @@ const CURRENT_BUILD = import.meta.env.VITE_SENTRY_RELEASE as string | undefined;
  * Detecta silenciosamente si el servidor desplegó una versión nueva (distinto
  * commit SHA en /api/v1/version → build_id) y muestra una notificación
  * persistente que el usuario puede cerrar o usar para recargar.
- * Usa /version en lugar de /health para no disparar 18 queries de DB por tick.
- * Solo activo en producción y cuando VITE_SENTRY_RELEASE está definido.
+ * Solo reacciona en producción y cuando VITE_SENTRY_RELEASE está definido.
+ *
+ * El sondeo lo comparte con el indicador de conectividad del POS a través de
+ * useVersionPing: una sola queryKey, un solo request. Este componente vive en
+ * la raíz de App, así que fuera del POS el intervalo es de 5 min; con el POS
+ * abierto, React Query usa el suyo (30 s) para ambos.
  */
 export default function NewVersionBanner() {
   const [showing, setShowing] = useState(false);
-  const timer  = useRef<ReturnType<typeof setInterval>>();
+  const { data } = useVersionPing(VERSION_POLL_APP);
+  const serverBuild = data?.buildId ?? null;
 
   useEffect(() => {
     if (!CURRENT_BUILD || !import.meta.env.PROD) return;
-
-    const check = async () => {
-      try {
-        const res = await fetch('/api/v1/version', { cache: 'no-store', credentials: 'omit' });
-        if (!res.ok) return;
-        const json = await res.json();
-        const serverBuild = json?.data?.build_id as string | undefined | null;
-        if (serverBuild && serverBuild !== CURRENT_BUILD) {
-          clearInterval(timer.current);
-          setShowing(true);
-        }
-      } catch {
-        // error de red — ignorar, reintentar en el próximo tick
-      }
-    };
-
-    timer.current = setInterval(check, POLL_MS);
-    return () => clearInterval(timer.current);
-  }, []);
+    // `online: false` deja buildId en null → no se confunde una caída de red
+    // con un deploy nuevo.
+    if (serverBuild && serverBuild !== CURRENT_BUILD) setShowing(true);
+  }, [serverBuild]);
 
   useEffect(() => {
     if (!showing) return;

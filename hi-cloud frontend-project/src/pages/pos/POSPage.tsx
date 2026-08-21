@@ -2,6 +2,7 @@
 import { SkeletonTabla }     from '../../components/ui/SkeletonTabla';
 import { SkeletonProductos } from '../../components/ui/SkeletonProductos';
 import { useSkeletonDelay }  from '../../hooks/useSkeletonDelay';
+import { useVersionPing, VERSION_POLL_POS } from '../../hooks/useVersionPing';
 import { useRncLookup } from '../../hooks/useRncLookup';
 import QRCode from 'qrcode';
 import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover, Input, Button, Segmented, Tabs, InputNumber, Radio, Checkbox } from 'antd';
@@ -9947,17 +9948,17 @@ export default function POSPage() {
     staleTime: Infinity, // catálogo estático — cambia solo en config
   });
 
-  // Conectividad e-CF: ping al /health del backend (barato, sin DB).
-  // /ecf/tipos era el proxy anterior pero es un catálogo estático que no mide
-  // conectividad real y costaba una query DB cada 30 s por cada POS abierto.
-  const { data: ecfOnline } = useQuery<boolean>({
-    queryKey: ['pos-ecf-health'],
-    queryFn: async () => {
-      try { await api.get('/health'); return true; }
-      catch { return false; }
-    },
-    staleTime: 0, refetchInterval: 30_000,
-  });
+  // Conectividad e-CF: sondeo compartido a /version (0 queries de BD).
+  //
+  // Antes pegaba a /health cada 30 s, que aun en su versión liviana ejecuta un
+  // SELECT 1 por tick y por cada POS abierto. /version devuelve constantes
+  // leídas al arrancar el proceso: no toca BD, ni Redis, ni auth.
+  //
+  // Comparte queryKey con NewVersionBanner, así que es UN solo request para los
+  // dos: React Query aplica el intervalo más corto de los observers montados
+  // (30 s con el POS abierto, 5 min cuando se cierra). Ver useVersionPing.
+  const { data: versionPing } = useVersionPing(VERSION_POLL_POS);
+  const ecfOnline = versionPing ? versionPing.online : undefined;
 
   // Derived
   const categorias = ['__all__', ...new Set(todosProdutos
