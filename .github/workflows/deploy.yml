@@ -348,6 +348,52 @@ jobs:
             fi
             set -e
 
+            # ── nginx: /sw.js NUNCA cacheado ──────────────────────────────────
+            # El service worker no lleva hash en el nombre, pero cae en la regla
+            # de /assets y sale con max-age=31536000, immutable. Un navegador que
+            # se quede con un sw.js viejo nunca ejecuta `activate`: no purga
+            # cachés y sigue sirviendo lo que tenga guardado, indefinidamente.
+            #
+            # Idempotente (solo actúa si el bloque no está) y con red de
+            # seguridad: backup, `nginx -t`, y si la validación falla se
+            # restaura el backup y el deploy CONTINÚA. Una cabecera de caché no
+            # puede tumbar un despliegue.
+            set +e
+            NGX_CONF=$(grep -rl "/var/www/hicloudrd.com/html" /etc/nginx/sites-enabled/ /etc/nginx/conf.d/ 2>/dev/null | head -1)
+            if [ -z "$NGX_CONF" ]; then
+              echo "  ⚠️  nginx: no se encontró el vhost de hicloudrd.com — /sw.js sigue cacheable"
+            elif grep -q "location = /sw.js" "$NGX_CONF"; then
+              echo "  ✅ nginx: /sw.js ya tiene su regla no-store"
+            else
+              NGX_BAK="${NGX_CONF}.bak-$(date +%Y%m%d%H%M%S)"
+              cp "$NGX_CONF" "$NGX_BAK"
+              # Ancla: la directiva `root` del vhost, que está dentro del server
+              # block correcto. El bloque se inserta justo después.
+              awk '
+                !hecho && /root[[:space:]]+\/var\/www\/hicloudrd\.com\/html/ {
+                  print
+                  print ""
+                  print "    # El service worker no lleva hash: si se cachea, queda uno viejo activo."
+                  print "    location = /sw.js {"
+                  print "        add_header Cache-Control \"no-store, no-cache, must-revalidate\" always;"
+                  print "        expires -1;"
+                  print "    }"
+                  hecho = 1
+                  next
+                }
+                { print }
+              ' "$NGX_BAK" > "$NGX_CONF"
+
+              if nginx -t > /dev/null 2>&1; then
+                nginx -s reload && echo "  ✅ nginx: /sw.js ahora se sirve no-store (backup: $NGX_BAK)"
+              else
+                cp "$NGX_BAK" "$NGX_CONF"
+                echo "  ⚠️  nginx -t falló con el bloque de /sw.js — config restaurada, deploy continúa"
+                nginx -t 2>&1 | tail -3
+              fi
+            fi
+            set -e
+
             # ══════════════════════════════════════════════════════════════════
             # [3/6] DEPS + DIST + MIGRACIONES
             # Si cualquier paso falla AQUÍ, el proceso anterior sigue vivo
