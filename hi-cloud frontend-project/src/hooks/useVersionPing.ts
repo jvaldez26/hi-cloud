@@ -58,6 +58,13 @@ export function useVersionPing(intervalMs: number) {
     refetchInterval: intervalMs,
     // Sin sondeo con la pestaña oculta: un POS de fondo no debe generar tráfico.
     refetchIntervalInBackground: false,
+    // ...pero SÍ al volver a ella, y esto hay que pedirlo explícitamente porque
+    // el QueryClient global trae refetchOnWindowFocus:false para todas las
+    // queries. Sin esta línea, una pestaña de fondo deja de sondear y al
+    // recuperarla tampoco refetchea: el banner de versión nueva podía tardar
+    // hasta 5 min en aparecer, justo cuando el usuario vuelve y más importa
+    // saber que hay que recargar. El coste es nulo — /version no toca BD.
+    refetchOnWindowFocus: true,
     staleTime: 0,
     // fetchVersion nunca lanza — devuelve { online: false }. Reintentar solo
     // retrasaría el cambio del indicador a rojo.

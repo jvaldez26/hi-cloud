@@ -364,12 +364,21 @@ jobs:
             if ! sudo -n true 2>/dev/null; then
               echo "  ⚠️  nginx: sin sudo sin contraseña — /sw.js sigue cacheable (aplicar a mano)"
             else
-            NGX_CONF=$(sudo grep -rl "/var/www/hicloudrd.com/html" /etc/nginx/sites-enabled/ /etc/nginx/conf.d/ 2>/dev/null | head -1)
+            # -R (no -r): sites-enabled son SYMLINKS a sites-available y `grep -r`
+            # NO los sigue. Ese fue el motivo de que las dos primeras versiones de
+            # este bloque no encontraran nada. Se busca también en nginx.conf y en
+            # sites-available por si el vhost no está enlazado de forma estándar.
+            NGX_CONF=$(sudo grep -Rl "/var/www/hicloudrd.com/html" \
+                         /etc/nginx/sites-enabled/ /etc/nginx/sites-available/ \
+                         /etc/nginx/conf.d/ /etc/nginx/nginx.conf 2>/dev/null | head -1)
             if [ -z "$NGX_CONF" ]; then
               echo "  ⚠️  nginx: no se encontró el vhost de hicloudrd.com — /sw.js sigue cacheable"
+              echo "     (buscado en sites-enabled, sites-available, conf.d y nginx.conf)"
+              sudo ls -la /etc/nginx/sites-enabled/ 2>/dev/null | head -5
             elif sudo grep -q "location = /sw.js" "$NGX_CONF"; then
               echo "  ✅ nginx: /sw.js ya tiene su regla no-store"
             else
+              echo "  → nginx: vhost encontrado en $NGX_CONF"
               NGX_BAK="${NGX_CONF}.bak-$(date +%Y%m%d%H%M%S)"
               sudo cp "$NGX_CONF" "$NGX_BAK"
               # Ancla: la directiva `root` del vhost, que está dentro del server
@@ -389,7 +398,12 @@ jobs:
                 { print }
               ' "$NGX_BAK" | sudo tee "$NGX_CONF" > /dev/null
 
-              if sudo nginx -t > /dev/null 2>&1; then
+              # Si el awk no encontró el ancla, el fichero sale idéntico: no
+              # tocamos nginx ni recargamos por nada.
+              if sudo cmp -s "$NGX_BAK" "$NGX_CONF"; then
+                echo "  ⚠️  nginx: no se encontró la directiva 'root' donde anclar el bloque"
+                sudo grep -n "hicloudrd.com/html" "$NGX_CONF" | head -3
+              elif sudo nginx -t > /dev/null 2>&1; then
                 sudo nginx -s reload && echo "  ✅ nginx: /sw.js ahora se sirve no-store (backup: $NGX_BAK)"
               else
                 sudo cp "$NGX_BAK" "$NGX_CONF"
