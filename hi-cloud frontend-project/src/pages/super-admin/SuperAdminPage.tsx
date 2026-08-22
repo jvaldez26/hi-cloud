@@ -17,7 +17,7 @@ import {
   XCircle, BarChart2, Globe, LogOut, RefreshCw, Search,
   Eye, Edit2, MessageSquare, PauseCircle, PlayCircle, Trash2,
   Crown, Settings, Moon, Sun,
-  CheckCircle, Send, Shield, Bell, MoreHorizontal,
+  CheckCircle, Send, Shield, Bell, MoreHorizontal, Database,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
@@ -25,6 +25,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
 import { demoApi, ESTADO_DEMO_LABEL, ESTADO_DEMO_COLOR } from '../../api/demo.api';
 import CobrosPage from './CobrosPage';
+import BackupsPage from './BackupsPage';
 import VideosTutorialesAdminPage from './VideosTutorialesAdminPage';
 import { MensajesAdminTab } from '../../components/super-admin/MensajesAdminTab';
 import { SECTORES_EMPRESARIALES } from '../../constants/sectores';
@@ -1437,6 +1438,20 @@ export default function SuperAdminPage() {
 
   // Estado UI
   const [tab, setTab]               = useState('empresas');
+
+  // Estado de los respaldos: alimenta el punto rojo del sidebar. Se consulta
+  // aqui y no dentro de BackupsPage para que el aviso se vea SIN entrar en la
+  // pantalla — que es justo lo que fallaba: nadie entraba.
+  const { data: respaldoData } = useQuery({
+    queryKey: ['admin-backups-estado'],
+    queryFn:  () => api.get('/admin/backups?page=1').then(r => r.data?.data ?? r.data),
+    staleTime: 5 * 60_000,
+    refetchInterval: 10 * 60_000,
+  });
+  // Si la consulta aun no respondio NO se pinta alarma; si respondio y no trae
+  // el campo "respaldo", se asume critico: un backend viejo que no manda ese
+  // dato no es prueba de que haya respaldos. Ante la duda, avisar.
+  const respaldoCritico = respaldoData ? (respaldoData.respaldo?.critico ?? true) : false;
   const [busqueda, setBusqueda]     = useState('');
   const [filtroPlan, setFiltroPlan] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('');
@@ -2400,8 +2415,16 @@ export default function SuperAdminPage() {
               { key: 'videos',        icon: <span style={{ fontSize: 15 }}>🎬</span>, label: 'Videos Tutoriales' },
               { key: 'mensajes',      icon: <span style={{ fontSize: 15 }}>📥</span>, label: 'Mensajes' },
               { key: 'herramientas',  icon: <Settings size={15} />,   label: 'Herramientas' },
+              // La pantalla existía y estaba enrutada, pero no se enlazaba desde
+              // ningún sitio: solo se llegaba escribiendo /super-admin/backups a
+              // mano. Una pantalla a la que nadie llega no vigila nada.
+              // El punto rojo aparece cuando no hay respaldo reciente — o cuando
+              // no hay NINGÚN registro, que es el caso peor y el que antes se
+              // veía igual que si todo estuviera bien.
+              { key: 'backups',       icon: <Database size={15} />,   label: 'Respaldos',
+                alerta: respaldoCritico },
               { key: 'config',        icon: <Settings size={15} />,   label: 'Configuración' },
-            ].map(t => {
+            ].map((t: any) => {
               const activo = tab === t.key;
               return (
                 <button key={t.key} onClick={() => setTab(t.key)} style={{
@@ -2418,6 +2441,14 @@ export default function SuperAdminPage() {
                   onMouseLeave={e => { if (!activo) e.currentTarget.style.background = 'none'; }}>
                   <span style={{ flexShrink: 0, color: activo ? C.gold : C.txt2 }}>{t.icon}</span>
                   <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.label}</span>
+                  {t.alerta && (
+                    <span title="Sin respaldo reciente — revisar"
+                      style={{
+                        marginLeft: 'auto', flexShrink: 0,
+                        width: 8, height: 8, borderRadius: '50%',
+                        background: C.red, boxShadow: `0 0 0 3px ${C.red}33`,
+                      }} />
+                  )}
                 </button>
               );
             })}
@@ -2853,6 +2884,13 @@ export default function SuperAdminPage() {
             {tab === 'cobros' && (
               <div style={{ padding: '0 4px' }}>
                 <CobrosAdminPanel />
+              </div>
+            )}
+
+            {/* ── TAB RESPALDOS ─────────────────────────────────────────────── */}
+            {tab === 'backups' && (
+              <div style={{ padding: '0 4px' }}>
+                <BackupsPage />
               </div>
             )}
 

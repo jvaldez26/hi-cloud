@@ -433,6 +433,17 @@ export class SuperAdminController {
     return this.backupSvc.triggerManual(user.id);
   }
 
+  /**
+   * Tamaño exacto del objeto en S3, para poder comprobar que una descarga
+   * llegó completa. `tamanio` en la fila viene de `du -sh` ("42M") y no sirve
+   * para eso.
+   */
+  @Get('backups/:id/tamanio-real')
+  @ApiOperation({ summary: 'Tamaño exacto en bytes del backup en S3' })
+  tamanioReal(@Param('id', ParseIntPipe) id: number) {
+    return this.backupSvc.tamanioRealEnS3(id);
+  }
+
   @Get('backups/:id/download')
   @ApiOperation({ summary: 'URL de descarga temporal del backup (15 min)' })
   async downloadBackup(@Param('id', ParseIntPipe) id: number, @Res() res: Response, @GetUser() user: any) {

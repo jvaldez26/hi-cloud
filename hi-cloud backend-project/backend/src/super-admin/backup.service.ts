@@ -1,10 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
+import * as Sentry from '@sentry/node';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import {
   S3Client, PutObjectCommand, GetObjectCommand,
-  ListObjectsV2Command, HeadBucketCommand,
+  ListObjectsV2Command, HeadBucketCommand, HeadObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { exec } from 'child_process';
@@ -76,6 +78,103 @@ export class BackupService {
     }));
   }
 
+  // ── Vigilancia: ¿seguimos teniendo respaldos? ─────────────────────────────
+
+  /**
+   * Umbral de alarma. El backup es diario, asi que 48h son DOS ciclos perdidos:
+   * lo bastante holgado para no gritar por un retraso puntual, lo bastante
+   * corto para no descubrirlo un mes despues.
+   */
+  private static readonly HORAS_SIN_RESPALDO_CRITICO = 48;
+
+  /**
+   * Corre todos los dias a las 8 de la mañana, hora RD — a una hora en que hay
+   * alguien mirando, no de madrugada.
+   *
+   * Hasta ahora un backup que fallaba se quedaba en /var/log/hicloud-backup.log
+   * y nadie lo leia. El unico aviso era un Alert en una pantalla del panel a la
+   * que ademas no se llegaba por menu.
+   */
+  @Cron('0 8 * * *', { timeZone: 'America/Santo_Domingo', name: 'vigilar-respaldos' })
+  async vigilarRespaldos(): Promise<void> {
+    const estado = await this.estadoRespaldo();
+    if (!estado.critico) return;
+
+    this.logger.error(`[Backup] ${estado.mensaje}`);
+    Sentry.captureMessage(`Respaldos: ${estado.mensaje}`, {
+      level: 'error',
+      tags:  { area: 'backups', motivo: estado.motivo },
+      extra: { horasDesdeUltimo: estado.horasDesdeUltimo, totalRegistros: estado.totalRegistros },
+    });
+  }
+
+  /**
+   * Estado del respaldo, para el cron y para el panel — un solo sitio que
+   * decide si esto esta bien o mal.
+   *
+   * SIN REGISTROS ES EL CASO PEOR, no el neutro. Una tabla vacia significa que
+   * o no hay respaldos, o los hay pero nadie los reporta; desde aqui las dos
+   * son indistinguibles y las dos son graves. Antes la pantalla se veia igual
+   * que si todo fuera bien.
+   */
+  async estadoRespaldo(): Promise<{
+    critico: boolean;
+    motivo: 'sin-registros' | 'desactualizado' | 'ultimo-fallido' | 'ok';
+    mensaje: string;
+    horasDesdeUltimo: number | null;
+    totalRegistros: number;
+    umbralHoras: number;
+  }> {
+    const umbralHoras = BackupService.HORAS_SIN_RESPALDO_CRITICO;
+    const totalRegistros = await this.repo.count();
+
+    if (totalRegistros === 0) {
+      return {
+        critico: true,
+        motivo: 'sin-registros',
+        mensaje:
+          'No hay NINGUN registro de respaldo. Puede que el cron no este instalado ' +
+          'en el servidor, o que este corriendo sin poder avisar al backend.',
+        horasDesdeUltimo: null, totalRegistros: 0, umbralHoras,
+      };
+    }
+
+    const ultimoExitoso = await this.repo.findOne({
+      where: { estado: 'EXITOSO' },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!ultimoExitoso) {
+      return {
+        critico: true,
+        motivo: 'ultimo-fallido',
+        mensaje: `Hay ${totalRegistros} registro(s) de respaldo y NINGUNO exitoso.`,
+        horasDesdeUltimo: null, totalRegistros, umbralHoras,
+      };
+    }
+
+    const horas = Math.floor(
+      (Date.now() - new Date(ultimoExitoso.createdAt).getTime()) / 3_600_000,
+    );
+
+    if (horas >= umbralHoras) {
+      return {
+        critico: true,
+        motivo: 'desactualizado',
+        mensaje:
+          `El ultimo respaldo exitoso fue hace ${horas} horas (umbral: ${umbralHoras}h). ` +
+          'La base lleva mas de dos ciclos sin copia.',
+        horasDesdeUltimo: horas, totalRegistros, umbralHoras,
+      };
+    }
+
+    return {
+      critico: false, motivo: 'ok',
+      mensaje: `Ultimo respaldo hace ${horas}h.`,
+      horasDesdeUltimo: horas, totalRegistros, umbralHoras,
+    };
+  }
+
   // ── Verificacion por restauracion ─────────────────────────────────────────
 
   /**
@@ -142,7 +241,10 @@ export class BackupService {
     // Stats rápidas
     const exitosos  = await this.repo.count({ where: { estado: 'EXITOSO' } });
     const fallidos  = await this.repo.count({ where: { estado: 'FALLIDO' } });
-    const tasaExito = total > 0 ? Math.round((exitosos / (exitosos + fallidos)) * 100) : 100;
+    // Sin registros NO hay tasa. Antes devolvia 100: cero de cero se presentaba
+    // como pleno exito, y el peor estado posible salia en verde.
+    const intentos  = exitosos + fallidos;
+    const tasaExito = intentos > 0 ? Math.round((exitosos / intentos) * 100) : null;
     const ultimo    = items[0] ?? null;
     const horasDesde = ultimo
       ? Math.floor((Date.now() - new Date(ultimo.createdAt).getTime()) / 3_600_000)
@@ -153,6 +255,8 @@ export class BackupService {
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
       stats: { exitosos, fallidos, tasaExito, horasDesdeUltimo: horasDesde },
       s3Habilitado: this.enabled,
+      // El panel necesita el veredicto, no los numeros crudos: vacio NO es verde.
+      respaldo: await this.estadoRespaldo(),
     };
   }
 
@@ -162,14 +266,56 @@ export class BackupService {
     const backup = await this.repo.findOne({ where: { id } });
     if (!backup?.s3Key || !this.s3) return null;
 
+    // Cuando S3 no esta configurado, el script guarda "local:/tmp/..." como
+    // clave. Eso NO es una clave de S3: firmarla producia una URL valida
+    // apuntando a un objeto inexistente, y la descarga fallaba con un XML de
+    // S3 en la cara. Peor que un boton deshabilitado, porque parecia funcionar.
+    if (backup.s3Key.startsWith('local:')) {
+      this.logger.warn(
+        `[Backup] id=${id} solo existe en el disco de la EC2 (${backup.s3Key}) — no hay nada que descargar desde S3`,
+      );
+      return null;
+    }
+
     // B-05: audit log — registrar quién descargó qué backup y cuándo
     this.logger.log(
       `[Backup] Descarga autorizada: id=${id} key=${backup.s3Key} ` +
       `by=userId:${requestedBy ?? 'unknown'}`,
     );
 
-    const cmd = new GetObjectCommand({ Bucket: this.bucket, Key: backup.s3Key });
+    const cmd = new GetObjectCommand({
+      Bucket: this.bucket,
+      Key:    backup.s3Key,
+      // Sin esto el navegador recibe la clave entera como nombre
+      // ("database/daily/db_20260822.dump") o intenta abrirlo en una pestaña.
+      // Esta descarga es la via para sacar una copia FUERA de AWS sin SSH, asi
+      // que tiene que dar un archivo con un nombre usable.
+      ResponseContentDisposition:
+        `attachment; filename="${backup.s3Key.split('/').pop() ?? 'backup.dump'}"`,
+      ResponseContentType: 'application/octet-stream',
+    });
     return getSignedUrl(this.s3, cmd, { expiresIn: 900 });
+  }
+
+  /**
+   * Tamaño REAL del objeto en S3, en bytes.
+   *
+   * `tamanio` en la fila viene de `du -sh` y es una cadena redondeada ("42M"):
+   * sirve para mirarla, no para comprobar que una descarga llego completa. Esto
+   * da el numero exacto contra el que comparar el archivo descargado.
+   */
+  async tamanioRealEnS3(id: number): Promise<{ bytes: number; key: string } | null> {
+    const backup = await this.repo.findOne({ where: { id } });
+    if (!backup?.s3Key || !this.s3 || backup.s3Key.startsWith('local:')) return null;
+    try {
+      const res = await this.s3.send(new HeadObjectCommand({
+        Bucket: this.bucket, Key: backup.s3Key,
+      }));
+      return { bytes: res.ContentLength ?? 0, key: backup.s3Key };
+    } catch (e: any) {
+      this.logger.warn(`[Backup] HeadObject fallo para id=${id}: ${e.message}`);
+      return null;
+    }
   }
 
   // ── Estado de S3 ─────────────────────────────────────────────────────────

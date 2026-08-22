@@ -64,8 +64,20 @@ export default function BackupsPage() {
   const stats      = data?.stats ?? {};
   const meta       = data?.meta  ?? {};
   const ultimo     = items[0];
-  const horasDesde = ultimo ? Math.floor((Date.now() - new Date(ultimo.createdAt).getTime()) / 3_600_000) : null;
-  const alertaVencido = horasDesde !== null && horasDesde > 25;
+
+  // El veredicto lo da el BACKEND (estadoRespaldo), no esta pantalla. Un solo
+  // sitio decide si esto está bien o mal, y es el mismo que dispara la alerta
+  // a Sentry — así no pueden discrepar.
+  //
+  // Lo que había aquí: `horasDesde !== null && horasDesde > 25`. Con la tabla
+  // VACÍA, horasDesde es null y la condición daba false: no salía ninguna
+  // alerta. O sea, "no hay ni un solo respaldo" se veía exactamente igual que
+  // "todo en orden" — el peor estado posible pintado como el mejor.
+  const respaldo = data?.respaldo;
+  const critico  = respaldo?.critico ?? (items.length === 0 && !isLoading);
+  const horasDesde = respaldo?.horasDesdeUltimo
+    ?? (ultimo ? Math.floor((Date.now() - new Date(ultimo.createdAt).getTime()) / 3_600_000) : null);
+  const sinRegistros = respaldo?.motivo === 'sin-registros' || (!isLoading && items.length === 0);
 
   const cols = [
     {
@@ -134,14 +146,32 @@ export default function BackupsPage() {
         : <Text type="secondary">—</Text>,
     },
     {
-      title: '', width: 100, align: 'right' as const,
-      render: (_: any, r: any) => (
-        <Button size="small" icon={<DownloadOutlined />}
-          disabled={r.estado !== 'EXITOSO' || !r.s3Key}
-          onClick={() => window.open(`/api/v1/admin/backups/${r.id}/download`, '_blank')}>
-          Descargar
-        </Button>
-      ),
+      // Esta descarga es la vía práctica para sacar una copia FUERA de AWS sin
+      // SSH, así que conviene que no engañe.
+      //
+      // El botón se habilitaba con cualquier s3Key no vacía. Cuando S3 no está
+      // configurado, el script guarda "local:/tmp/...", que no es una clave de
+      // S3: la descarga devolvía un XML de error. Parecía funcionar, que es
+      // peor que estar deshabilitado.
+      title: '', width: 110, align: 'right' as const,
+      render: (_: any, r: any) => {
+        const soloLocal = typeof r.s3Key === 'string' && r.s3Key.startsWith('local:');
+        const puede = r.estado === 'EXITOSO' && r.s3Key && !soloLocal;
+        const boton = (
+          <Button size="small" icon={<DownloadOutlined />} disabled={!puede}
+            onClick={() => window.open(`/api/v1/admin/backups/${r.id}/download`, '_blank')}>
+            Descargar
+          </Button>
+        );
+        if (soloLocal) {
+          return (
+            <Tooltip title="Este respaldo solo existe en el disco de la EC2, no se subió a S3. Se pierde con el servidor.">
+              {boton}
+            </Tooltip>
+          );
+        }
+        return boton;
+      },
     },
   ];
 
@@ -178,12 +208,30 @@ export default function BackupsPage() {
         </Col>
       </Row>
 
-      {/* Alerta si el último backup tiene más de 25h */}
-      {alertaVencido && (
+      {/* Estado del respaldo. VACÍO NO ES VERDE: si no hay ni un registro, esto
+          sale en rojo igual que si el último fuera de hace una semana. */}
+      {critico && (
         <Alert type="error" showIcon style={{ marginBottom: 16 }}
           icon={<ExclamationCircleOutlined />}
-          message={`⚠️ El último backup fue hace ${horasDesde} horas — verifica el cron job`}
-          description="Un backup diario debería ejecutarse cada 24 horas. Si el cron job falló, ejecuta un backup manual."
+          message={
+            sinRegistros
+              ? '🚨 Sin registros de respaldo — puede que el cron no esté instalado en el servidor'
+              : `🚨 El último respaldo fue hace ${horasDesde} horas`
+          }
+          description={
+            sinRegistros
+              ? <>
+                  No hay <strong>ninguna</strong> fila en <Text code>backup_registros</Text>. Eso significa
+                  una de dos, y las dos son graves: o no se está respaldando nada, o el respaldo corre pero
+                  no consigue avisar al backend (revisa <Text code>INTERNAL_API_KEY</Text>).
+                  {' '}Compruébalo en el servidor con <Text code>crontab -l | grep backup</Text> y{' '}
+                  <Text code>tail /var/log/hicloud-backup.log</Text>.
+                </>
+              : <>
+                  El respaldo es diario. Pasadas 48 h son dos ciclos perdidos.
+                  {respaldo?.mensaje ? ` ${respaldo.mensaje}` : ''}
+                </>
+          }
           action={
             <Button danger size="small" onClick={() => triggerMut.mutate()} loading={triggerMut.isPending}>
               Ejecutar ahora
@@ -209,19 +257,26 @@ export default function BackupsPage() {
       <Row gutter={16} style={{ marginBottom: 16 }}>
         <Col xs={12} md={6}>
           <Card size="small">
+            {/* "Nunca" salía en verde. Es el peor valor posible de esta tarjeta. */}
             <Statistic title="Último backup"
               value={ultimo ? `hace ${horasDesde}h` : 'Nunca'}
               prefix={<ClockCircleOutlined />}
-              valueStyle={{ fontSize: 16, color: alertaVencido ? '#ef4444' : '#10b981' }} />
+              valueStyle={{ fontSize: 16, color: critico ? '#ef4444' : '#10b981' }} />
             {ultimo && <Text type="secondary" style={{ fontSize: 11 }}>{ultimo.tamanio}</Text>}
           </Card>
         </Col>
         <Col xs={12} md={6}>
           <Card size="small">
+            {/* Sin registros la tasa daba 100% en verde: 0 de 0 salía como
+                pleno éxito. Sin datos no hay tasa — se dice, no se inventa. */}
             <Statistic title="Tasa de éxito"
-              value={stats.tasaExito ?? 100}
-              suffix="%"
-              valueStyle={{ fontSize: 16, color: (stats.tasaExito ?? 100) >= 95 ? '#10b981' : '#ef4444' }} />
+              value={sinRegistros ? 'Sin datos' : (stats.tasaExito ?? 0)}
+              suffix={sinRegistros ? '' : '%'}
+              valueStyle={{
+                fontSize: 16,
+                color: sinRegistros ? '#ef4444'
+                     : (stats.tasaExito ?? 0) >= 95 ? '#10b981' : '#ef4444',
+              }} />
           </Card>
         </Col>
         <Col xs={12} md={6}>
