@@ -601,12 +601,18 @@ jobs:
             # Sin esto, Node puede crecer hasta que el OOM-killer lo mata.
             export NODE_OPTIONS="--max-old-space-size=512"
             if ! pm2 list | grep -q hicloud-backend; then
+              # Sin --interpreter: PM2 reconoce un .js y usa node por su cuenta.
+              # Pasarlo explícitamente solo añade una forma de romper cuando hay
+              # espacios en las rutas, y aquí los hay ("hi-cloud backend-project").
               pm2 start /home/ubuntu/hicloud/backend-current/dist/main.js \
                 --name hicloud-backend \
                 --cwd /home/ubuntu/hicloud/backend-current \
-                --interpreter node \
                 --node-args="--max-old-space-size=512"
             else
+              # --update-env es obligatorio: sin él PM2 reutiliza el entorno
+              # cacheado del arranque y ningún cambio de variables surte efecto.
+              # Eso fue lo que hizo perder tiempo durante el incidente — se
+              # editaba el .env y el proceso seguía con los valores viejos.
               pm2 reload hicloud-backend --update-env
             fi
             pm2 save
@@ -700,8 +706,11 @@ jobs:
               fi
 
               # Recargar PM2 con el dist anterior
+              # --update-env también en el fallback: es el camino de EMERGENCIA,
+              # justo donde el entorno cacheado hace más daño. Sin él, un
+              # rollback puede levantar el código viejo con las variables nuevas.
               pm2 reload hicloud-backend --update-env 2>/dev/null || \
-                pm2 restart hicloud-backend 2>/dev/null || \
+                pm2 restart hicloud-backend --update-env 2>/dev/null || \
                 echo "  ⚠  pm2 reload/restart falló — proceso puede estar corrupto"
               pm2 save 2>/dev/null || true
 
