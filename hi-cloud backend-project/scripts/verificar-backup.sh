@@ -84,12 +84,25 @@ enviar_veredicto() {
     log "⚠️  INTERNAL_API_KEY o BACKEND_URL sin configurar — el veredicto NO llega al panel"
     return 0
   fi
-  curl -sf -X POST "$BACKEND_URL/api/v1/admin/backups/internal/verificacion" \
+
+  # Codigo HTTP explicito, igual que en backup-hicloud.sh. Un `|| true` aqui
+  # repetiria el mismo error: meses reportando a un backend que devolvia 401 sin
+  # que nadie lo supiera.
+  local CODIGO
+  CODIGO=$(curl -s -o /dev/null -w '%{http_code}' \
+    -X POST "$BACKEND_URL/api/v1/admin/backups/internal/verificacion" \
     -H "Content-Type: application/json" \
     -H "x-internal-key: $INTERNAL_KEY" \
     -d "{\"ok\":$OK,\"mensaje\":\"$MENSAJE\",\"filas\":$FILAS_JSON}" \
-    --max-time 15 >/dev/null \
-    || log "⚠️  No se pudo enviar el veredicto al backend"
+    --max-time 15) || CODIGO="000"
+
+  case "$CODIGO" in
+    2*)      log "Veredicto registrado en el panel (HTTP $CODIGO)" ;;
+    000)     log "⚠️  AVISO: el backend no respondio al veredicto (timeout o conexion rechazada)" ;;
+    401|403) log "⚠️  AVISO: el backend RECHAZO el veredicto (HTTP $CODIGO) — revisa INTERNAL_API_KEY y que la ruta no este detras de un guard de sesion" ;;
+    *)       log "⚠️  AVISO: el backend rechazo el veredicto (HTTP $CODIGO)" ;;
+  esac
+  return 0
 }
 
 # ── Borrado de la base temporal ──────────────────────────────────────────────

@@ -166,6 +166,61 @@ N_FALSE=$(grep -c 'enviar_veredicto false' "$VERIFICAR_SH")
 [ "$N_FALSE" -ge 4 ]
 ok "todos los caminos de fallo notifican ($N_FALSE encontrados)" $?
 
+# ────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "EL REPORTE AL BACKEND NO PUEDE FALLAR EN SILENCIO"
+#
+# El bug que costo meses: `curl -sf ... || true` se traga el fallo entero. El
+# backend devolvia 401 a TODOS los reportes y nadie se entero, mientras los
+# respaldos corrian y subian a S3 sin problema.
+
+# Los comentarios DOCUMENTAN el patron roto, asi que un grep a pelo sobre el
+# archivo se encuentra a si mismo. Se miran solo lineas de codigo.
+sin_comentarios() { sed 's/#.*//' "$1"; }
+
+sin_comentarios "$BACKUP_SH" | grep -q 'curl -sf'
+[ $? -ne 0 ]; ok "backup-hicloud.sh ya no usa 'curl -sf ... || true'" $?
+sin_comentarios "$VERIFICAR_SH" | grep -q 'curl -sf'
+[ $? -ne 0 ]; ok "verificar-backup.sh tampoco" $?
+grep -q "http_code" "$BACKUP_SH"
+ok "backup-hicloud.sh captura el codigo HTTP" $?
+grep -q "http_code" "$VERIFICAR_SH"
+ok "verificar-backup.sh captura el codigo HTTP" $?
+grep -q "401|403" "$BACKUP_SH"
+ok "un 401 se distingue y se explica en el log" $?
+
+# Comprobacion de verdad: se levanta un servidor que responde 401 y se mira si
+# el script deja constancia. Es el escenario exacto de produccion.
+if command -v node >/dev/null 2>&1; then
+  PUERTO=8791
+  node -e "
+    require('http').createServer((req,res)=>{res.writeHead(401,{'Content-Type':'application/json'});res.end('{\"message\":\"Token requerido\"}');})
+      .listen($PUERTO, ()=>{ setTimeout(()=>process.exit(0), 8000); });
+  " &
+  SRV=$!
+  sleep 1
+
+  SALIDA=$(
+    BACKEND_URL="http://127.0.0.1:$PUERTO" INTERNAL_KEY="una-clave" TIPO="daily" \
+    LOG_FILE=/dev/null bash -c '
+      log() { echo "$*"; }
+      '"$(sed -n "/^reportar() {/,/^}/p" "$BACKUP_SH")"'
+      reportar "admin/backups/internal/alert" "{\"mensaje\":\"prueba\"}"
+    ' 2>&1
+  )
+  kill $SRV 2>/dev/null
+  wait $SRV 2>/dev/null
+
+  echo "$SALIDA" | grep -q "AVISO"
+  ok "ante un 401 real del backend, el script escribe un AVISO" $?
+  echo "$SALIDA" | grep -q "401"
+  ok "y el AVISO incluye el codigo HTTP" $?
+  echo "$SALIDA" | grep -qi "El backup SI se hizo"
+  ok "y aclara que el backup si se hizo" $?
+else
+  echo "  (node no disponible: se omite la prueba contra un 401 real)"
+fi
+
 echo ""
 echo "$((TOTAL - FALLOS))/$TOTAL comprobaciones OK"
 exit $([ "$FALLOS" -eq 0 ] && echo 0 || echo 1)

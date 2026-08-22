@@ -1,12 +1,11 @@
 import {
   Controller, Get, Patch, Post, Delete, Body, Param, ParseIntPipe,
-  UseGuards, HttpCode, HttpStatus, Query, Res, Headers,
+  UseGuards, HttpCode, HttpStatus, Query, Res,
 } from '@nestjs/common';
 
 import type { Response } from 'express';
-import { timingSafeEqual } from 'crypto';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { IsEnum, IsInt, IsPositive, IsString, IsNotEmpty, IsOptional, IsNumber, Min, IsDateString, IsBoolean, IsObject } from 'class-validator';
+import { IsEnum, IsInt, IsPositive, IsString, IsNotEmpty, IsOptional, IsNumber, Min, IsDateString } from 'class-validator';
 import { Type } from 'class-transformer';
 import { SuperAdminService } from './super-admin.service';
 import { SuperAdminGuard }   from './super-admin.guard';
@@ -114,29 +113,6 @@ class GestionModuloDto {
   notas?: string;
 }
 
-class BackupAlertDto {
-  @IsString() @IsNotEmpty() mensaje!: string;
-  @IsOptional() @IsString() tipo?: string;
-}
-class BackupSuccessDto {
-  @IsString() @IsNotEmpty() archivo!: string;
-  @IsString() @IsNotEmpty() tamanio!: string;
-  @IsInt() @Type(() => Number)    duracion!: number;
-  @IsOptional() @IsString()       checksum?: string;
-}
-
-class BackupVerificacionDto {
-  /** Si falta, se aplica al último backup exitoso. */
-  @IsOptional() @IsInt() @Type(() => Number) backupId?: number;
-
-  @IsBoolean() @Type(() => Boolean) ok!: boolean;
-
-  /** { tabla: { restaurado, produccion } } — los dos números, ver la entidad. */
-  @IsOptional() @IsObject() filas?: Record<string, { restaurado: number; produccion: number }>;
-
-  @IsOptional() @IsString() mensaje?: string;
-}
-
 class SincronizarPlanCuentasDto {
   @IsOptional() @IsInt() @IsPositive()
   empresaId?: number;
@@ -150,21 +126,10 @@ class VencimientoManualDto {
   motivo!: string;
 }
 
-/**
- * S-64: compara la clave interna del script de backups en tiempo constante y
- * FALLA CERRADO. Antes era `key !== process.env.INTERNAL_API_KEY`: si la variable
- * no estaba definida en el entorno, un request sin el header comparaba
- * `undefined !== undefined` → false, y la petición se daba por autorizada.
- */
-export function claveInternaValida(key?: string): boolean {
-  const esperada = process.env.INTERNAL_API_KEY;
-  if (!esperada || !key) return false;
-
-  const a = Buffer.from(String(key));
-  const b = Buffer.from(esperada);
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
-}
+// La autenticacion de las rutas internas vive en clave-interna.util.ts, junto
+// a BackupInternalController, que es quien la usa. Se re-exporta porque hay
+// tests que la importan desde aqui.
+export { claveInternaValida } from './clave-interna.util';
 
 @ApiTags('Super Admin')
 @ApiBearerAuth('access-token')
@@ -455,58 +420,17 @@ export class SuperAdminController {
     (res as any).redirect(url);
   }
 
-  // ── Endpoints internos (llamados por el script bash) ──────────────────────
-
-  @Post('backups/internal/success')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: '[Interno] Registrar backup exitoso — llamado por el script bash' })
-  backupSuccess(
-    @Headers('x-internal-key') key: string,
-    @Body() dto: BackupSuccessDto,
-  ) {
-    if (!claveInternaValida(key)) return { error: 'No autorizado' };
-    return this.backupSvc.registrarExito({
-      s3Key:    dto.archivo,
-      tamanio:  dto.tamanio,
-      duracion: dto.duracion,
-      checksum: dto.checksum,
-    });
-  }
-
-  /**
-   * Veredicto de la restauración de prueba. Lo manda verificar-backup.sh
-   * después de restaurar el dump en una base temporal y cuadrar los conteos.
-   *
-   * Se acepta también el veredicto NEGATIVO a propósito: un dump que no
-   * restaura es tan grave como no tener dump, y hasta ahora no había forma de
-   * enterarse.
-   */
-  @Post('backups/internal/verificacion')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: '[Interno] Registrar el resultado de la restauración de prueba' })
-  backupVerificacion(
-    @Headers('x-internal-key') key: string,
-    @Body() dto: BackupVerificacionDto,
-  ) {
-    if (!claveInternaValida(key)) return { error: 'No autorizado' };
-    return this.backupSvc.registrarVerificacion({
-      backupId: dto.backupId,
-      ok:       dto.ok,
-      filas:    dto.filas,
-      mensaje:  dto.mensaje,
-    });
-  }
-
-  @Post('backups/internal/alert')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: '[Interno] Registrar backup fallido — llamado por el script bash' })
-  backupAlert(
-    @Headers('x-internal-key') key: string,
-    @Body() dto: BackupAlertDto,
-  ) {
-    if (!claveInternaValida(key)) return { error: 'No autorizado' };
-    return this.backupSvc.registrarFallo({ mensaje: dto.mensaje, tipo: dto.tipo });
-  }
+  // ── Endpoints internos ────────────────────────────────────────────────────
+  //
+  // Se han movido a BackupInternalController. Estaban aquí, y este controlador
+  // lleva @UseGuards(SuperAdminGuard) a nivel de CLASE: el guard corría antes
+  // del handler y exigía una sesión que un script no tiene. Devolvía 401 y la
+  // comprobación de x-internal-key nunca llegaba a ejecutarse.
+  //
+  // Resultado: los respaldos corrían y subían a S3, pero el reporte se
+  // rechazaba siempre y el panel decía "Último backup: Nunca".
+  //
+  // NO volver a traerlas aquí. Hay un test que lo impide.
 
   // ── Crons manuales (testing / forzar ejecución) ────────────────────────────
 

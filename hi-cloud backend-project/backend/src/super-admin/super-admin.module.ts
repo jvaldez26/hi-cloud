@@ -12,6 +12,7 @@ import { SuscripcionesModule }   from '../suscripciones/suscripciones.module';
 import { NotificacionesModule }  from '../notificaciones/notificaciones.module';
 import { ContabilidadModule }    from '../contabilidad/contabilidad.module';
 import { ModulosAddonModule }    from '../modulos-addon/modulos-addon.module';
+import { BackupInternalController } from './backup-internal.controller';
 
 @Module({
   imports: [
@@ -31,7 +32,7 @@ import { ModulosAddonModule }    from '../modulos-addon/modulos-addon.module';
       },
     }),
   ],
-  controllers: [SuperAdminController],
+  controllers: [SuperAdminController, BackupInternalController],
   providers:   [SuperAdminService, SuperAdminGuard, BackupService, TokenBlacklistService],
   // S-64: SuperAdminService se exporta para que PagosSuscripcionAdminController
   // pueda auditar el cambio de configuración bancaria con el mismo helper.

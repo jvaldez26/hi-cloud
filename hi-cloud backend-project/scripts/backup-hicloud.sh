@@ -83,27 +83,61 @@ LOG_FILE="/var/log/hicloud-backup.log"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 
+# ── Reportar al backend ──────────────────────────────────────────────────────
+#
+# ESTE ERA EL AGUJERO. Antes las dos funciones acababan en `curl -sf ... || true`:
+# cualquier fallo de la llamada se tragaba entero, sin una linea en el log.
+#
+# El backend llevaba MESES devolviendo 401 a todos los reportes (las rutas
+# internas heredaban un guard de sesion que un script no puede satisfacer). Los
+# respaldos corrian, se subian a S3 y nadie se enteraba de que el registro no
+# llegaba nunca. El panel decia "Ultimo backup: Nunca" con los archivos en S3.
+#
+# Ahora se captura el codigo HTTP y se escribe en el log si no es 2xx. El
+# backup NO falla por esto —un reporte perdido no invalida el dump— pero deja
+# constancia visible.
+reportar() {
+  local RUTA="$1" PAYLOAD="$2"
+
+  if [ -z "$INTERNAL_KEY" ]; then
+    log "⚠️  AVISO: INTERNAL_API_KEY vacia — el backend no se entera de este backup"
+    return 0
+  fi
+  if [ -z "$BACKEND_URL" ]; then
+    log "⚠️  AVISO: BACKEND_URL vacia — el backend no se entera de este backup"
+    return 0
+  fi
+
+  # -s silencioso, -o descarta el cuerpo, -w imprime SOLO el codigo HTTP.
+  # Sin -f: -f hace que curl no distinga el codigo, y es justo lo que hace falta.
+  local CODIGO
+  CODIGO=$(curl -s -o /dev/null -w '%{http_code}' \
+    -X POST "$BACKEND_URL/api/v1/$RUTA" \
+    -H "Content-Type: application/json" \
+    -H "x-internal-key: $INTERNAL_KEY" \
+    -d "$PAYLOAD" \
+    --max-time 10) || CODIGO="000"
+
+  case "$CODIGO" in
+    2*) log "Reporte enviado a /$RUTA (HTTP $CODIGO)" ;;
+    000) log "⚠️  AVISO: el backend no respondio al reporte a /$RUTA (timeout o conexion rechazada). El backup SI se hizo." ;;
+    401|403) log "⚠️  AVISO: el backend RECHAZO el reporte (HTTP $CODIGO) en /$RUTA — revisa INTERNAL_API_KEY y que la ruta no este detras de un guard de sesion. El backup SI se hizo." ;;
+    *) log "⚠️  AVISO: el backend rechazo el reporte (HTTP $CODIGO) en /$RUTA. El backup SI se hizo." ;;
+  esac
+  return 0
+}
+
 notificar_fallo() {
   local MSG="$1"
   log "❌ FALLO: $MSG"
-  if [ -n "$INTERNAL_KEY" ] && [ -n "$BACKEND_URL" ]; then
-    curl -sf -X POST "$BACKEND_URL/api/v1/admin/backups/internal/alert" \
-      -H "Content-Type: application/json" \
-      -H "x-internal-key: $INTERNAL_KEY" \
-      -d "{\"mensaje\":\"$MSG\",\"tipo\":\"$TIPO\"}" \
-      --max-time 10 || true
-  fi
+  reportar "admin/backups/internal/alert" \
+    "{\"mensaje\":\"$MSG\",\"tipo\":\"$TIPO\"}"
 }
 
 notificar_exito() {
   local S3_KEY="$1" TAMANIO="$2" DURACION="$3" CHECKSUM="$4"
-  if [ -n "$INTERNAL_KEY" ] && [ -n "$BACKEND_URL" ]; then
-    curl -sf -X POST "$BACKEND_URL/api/v1/admin/backups/internal/success" \
-      -H "Content-Type: application/json" \
-      -H "x-internal-key: $INTERNAL_KEY" \
-      -d "{\"archivo\":\"$S3_KEY\",\"tamanio\":\"$TAMANIO\",\"duracion\":$DURACION,\"checksum\":\"$CHECKSUM\"}" \
-      --max-time 10 || true
-  fi
+  reportar "admin/backups/internal/success" \
+    "{\"archivo\":\"$S3_KEY\",\"tamanio\":\"$TAMANIO\",\"duracion\":$DURACION,\"checksum\":\"$CHECKSUM\"}"
 }
 
 # ── Validar prerequisitos ────────────────────────────────────────────────────
