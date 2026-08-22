@@ -13,7 +13,7 @@ import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/es';
 import api from '../../api/client';
-import { dRD } from '../../utils/fechaRD';
+import { dRD, fechaHora } from '../../utils/fechaRD';
 
 dayjs.extend(relativeTime);
 dayjs.locale('es');
@@ -102,10 +102,30 @@ export default function BackupsPage() {
       render: (v: number) => v ? <Text style={{ fontSize: 12 }}>{v}s</Text> : <Text type="secondary">—</Text>,
     },
     {
-      title: 'Integridad', dataIndex: 'integridadVerificada', width: 110, align: 'center' as const,
-      render: (v: boolean) => v
-        ? <Tooltip title="SHA-256 verificado"><Tag color="green" icon={<SafetyOutlined />}>✅</Tag></Tooltip>
-        : <Tag color="default">N/A</Tag>,
+      // Esta columna decia "✅ SHA-256 verificado" para archivos que nadie habia
+      // abierto nunca: el backend levantaba la bandera sin comprobar nada. Un
+      // backup roto se veia exactamente igual que uno bueno.
+      //
+      // Ahora solo hay tick si se restauro de verdad. Y cuando no lo hay, se
+      // dice por qué — "N/A" sonaba a dato que falta, no a advertencia.
+      title: 'Restauración', dataIndex: 'integridadVerificada', width: 130, align: 'center' as const,
+      render: (v: boolean, r: any) => v
+        ? (
+          <Tooltip title={
+            `Restaurado y verificado el ${fechaHora(r.restauracionProbadaEn ?? r.verificadoEn)}` +
+            (r.filasVerificadas
+              ? ' · ' + Object.entries(r.filasVerificadas)
+                  .map(([t, n]) => `${t}: ${n}`).join(' · ')
+              : '')
+          }>
+            <Tag color="green" icon={<SafetyOutlined />}>Probada</Tag>
+          </Tooltip>
+        )
+        : (
+          <Tooltip title="Nadie ha restaurado este archivo. Que el backup se creara sin error no significa que se pueda restaurar.">
+            <Tag color="warning" icon={<ExclamationCircleOutlined />}>Sin probar</Tag>
+          </Tooltip>
+        ),
     },
     {
       title: 'S3 Key', dataIndex: 's3Key', ellipsis: true,

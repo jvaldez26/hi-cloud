@@ -37,19 +37,32 @@ export class BackupService {
 
   // ── Registrar backup exitoso (llamado por el script) ──────────────────────
 
+  /**
+   * OJO con lo que significa "EXITOSO" aquí: que el script termino sin error.
+   * Nada mas. NO quiere decir que el archivo se pueda restaurar.
+   *
+   * Antes esto escribia `integridadVerificada: true` y `verificadoEn: new Date()`
+   * sin comprobar absolutamente nada — ni el checksum contra el objeto en S3, ni
+   * que el dump se abriera. El panel mostraba un tick verde con el texto
+   * "SHA-256 verificado" para archivos que nadie habia abierto jamas.
+   *
+   * Eso es peor que no tener panel: un backup roto se veia igual que uno bueno,
+   * y el dia que hiciera falta la sorpresa llegaba en el peor momento posible.
+   *
+   * Ahora la bandera se queda en su default (false) y solo la levanta
+   * verificarRestauracion(), que restaura el dump de verdad y cuenta filas.
+   */
   async registrarExito(datos: {
     s3Key: string; tamanio: string; duracion: number; checksum?: string;
   }): Promise<BackupRegistro> {
     const tipo = this.detectarTipo(datos.s3Key);
     return this.repo.save(this.repo.create({
       tipo,
-      estado:               'EXITOSO',
-      s3Key:                datos.s3Key,
-      tamanio:              datos.tamanio,
-      duracionSegundos:     datos.duracion,
-      checksum:             datos.checksum,
-      integridadVerificada: true,
-      verificadoEn:         new Date(),
+      estado:           'EXITOSO',
+      s3Key:            datos.s3Key,
+      tamanio:          datos.tamanio,
+      duracionSegundos: datos.duracion,
+      checksum:         datos.checksum,
     }));
   }
 
