@@ -8,6 +8,9 @@ import { RetiroCaja, CategoriaRetiro, EstadoRetiro } from './entities/retiro-caj
 import { TenantService } from '../tenant/tenant.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { fechaHoyRD } from '../common/utils/fecha-local.util';
+// Fórmula única del efectivo esperado — ver efectivo-esperado.util.ts.
+// Nadie debe volver a escribirla a mano, ni aquí ni en el frontend.
+import { calcularEfectivoEsperado, calcularDiferencia } from './efectivo-esperado.util';
 
 @Injectable()
 export class CajaService {
@@ -250,13 +253,20 @@ export class CajaService {
     await this.recalcularDesdeBD(id, fechaStr, caja.vendedorId, empresaId);
 
     const fresh = await this.repo.findOne({ where: { id } }) as CierreCaja;
-    const saldoCierre = Number(fresh.saldoApertura)
-      + Number(fresh.ventasEfectivo)
-      + Number(fresh.cobrosRecibidos)
-      - Number(fresh.gastosEfectivo)
-      - Number(fresh.retiros);
 
-    const diferencia = saldoFisico - saldoCierre;
+    // Fórmula única (efectivo-esperado.util). Antes se calculaba aquí a mano y
+    // sumaba `cobrosRecibidos` entero — con transferencias y cheques dentro —
+    // y no contaba los anticipos en efectivo.
+    const saldoCierre = calcularEfectivoEsperado({
+      saldoApertura:     fresh.saldoApertura,
+      ventasEfectivo:    fresh.ventasEfectivo,
+      cobrosEfectivo:    fresh.cobrosEfectivo,
+      anticiposEfectivo: fresh.anticiposEfectivo,
+      gastosEfectivo:    fresh.gastosEfectivo,
+      retiros:           fresh.retiros,
+    });
+
+    const diferencia = calcularDiferencia(saldoFisico, saldoCierre);
 
     await this.repo.update(id, {
       estado:           EstadoCierre.CERRADA,
@@ -407,10 +417,21 @@ export class CajaService {
     );
 
     // Cobros del día — filtrados por cajaDiariaId para imputar al cajero correcto
-    const [cobros] = await this.dataSource.query<{ total: string; cantidad: string }[]>(
+    // Cobros del día, SEPARADOS POR MÉTODO.
+    //
+    // Antes se sumaba el total de todos los métodos y ese total entraba en el
+    // efectivo esperado: un cobro por transferencia inflaba el esperado y le
+    // creaba al cajero un faltante imposible de cuadrar. Solo la parte en
+    // efectivo está en el cajón; el resto se guarda aparte para que el cierre
+    // sea auditable.
+    const [cobros] = await this.dataSource.query<{
+      total: string; efectivo: string; otros: string; cantidad: string;
+    }[]>(
       `SELECT
-         COALESCE(SUM(r.monto), 0)::text AS total,
-         COUNT(r.id)::text               AS cantidad
+         COALESCE(SUM(r.monto), 0)::text                                          AS total,
+         COALESCE(SUM(r.monto) FILTER (WHERE r."metodoPago" = 'efectivo'), 0)::text AS efectivo,
+         COALESCE(SUM(r.monto) FILTER (WHERE r."metodoPago" <> 'efectivo'), 0)::text AS otros,
+         COUNT(r.id)::text                                                        AS cantidad
        FROM recibos_cobro r
        WHERE DATE(r.fecha) = $1
          AND r."isActive" = true
@@ -418,16 +439,23 @@ export class CajaService {
       [fecha, cajaId],
     );
 
-    // Anticipos del día — filtrados por cajaDiariaId
-    const [anticipos] = await this.dataSource.query<{ total: string }[]>(
-      `SELECT COALESCE(SUM(a.monto), 0)::text AS total
+    // Anticipos del día — también separados por método.
+    // `tipoPago` se guarda normalizado sin acentos y en minúsculas
+    // (anticipos-cliente.service), por eso basta comparar con 'efectivo'.
+    const [anticipos] = await this.dataSource.query<{
+      total: string; efectivo: string; otros: string;
+    }[]>(
+      `SELECT
+         COALESCE(SUM(a.monto), 0)::text                                        AS total,
+         COALESCE(SUM(a.monto) FILTER (WHERE LOWER(a."tipoPago") = 'efectivo'), 0)::text AS efectivo,
+         COALESCE(SUM(a.monto) FILTER (WHERE LOWER(a."tipoPago") <> 'efectivo'), 0)::text AS otros
        FROM anticipo_cliente a
        WHERE DATE(a."fechaRegistro") = $1
          AND a."isActive" = true
          AND a.estado != 'anulado'
          AND a."cajaDiariaId" = $2`,
       [fecha, cajaId],
-    ).catch(() => [{ total: '0' }]);
+    ).catch(() => [{ total: '0', efectivo: '0', otros: '0' }]);
 
     const [retiros] = await this.dataSource.query<{ total: string }[]>(
       `SELECT COALESCE(SUM(monto), 0)::text AS total
@@ -456,7 +484,11 @@ export class CajaService {
       ventasTransferencia:   Number(ventas?.transferencia ?? 0),
       ventasCredito:         Number(ventas?.credito       ?? 0),
       cobrosRecibidos:       Number(cobros?.total         ?? 0),
+      cobrosEfectivo:        Number(cobros?.efectivo      ?? 0),
+      cobrosOtrosMedios:     Number(cobros?.otros         ?? 0),
       totalAnticipos:        Number(anticipos?.total      ?? 0),
+      anticiposEfectivo:     Number(anticipos?.efectivo   ?? 0),
+      anticiposOtrosMedios:  Number(anticipos?.otros      ?? 0),
       cantidadTransacciones: Number(ventas?.cantidad      ?? 0),
       retiros:               Number(retiros?.total        ?? 0),
       gastosEfectivo:        gastosTotal,

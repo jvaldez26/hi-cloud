@@ -54,11 +54,29 @@ export class CierreCaja {
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   ventasCredito!: number;
 
+  /** Total de cobros del turno, TODOS los métodos. Informativo. */
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   cobrosRecibidos!: number;
 
+  /** Parte de `cobrosRecibidos` recibida en efectivo — la única que está en el cajón. */
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  cobrosEfectivo!: number;
+
+  /** Resto (transferencia, cheque, tarjeta, depósito). NO entra en el esperado. */
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  cobrosOtrosMedios!: number;
+
+  /** Total de anticipos del turno, TODOS los métodos. Informativo. */
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   totalAnticipos!: number;
+
+  /** Parte de `totalAnticipos` recibida en efectivo — sí está en el cajón. */
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  anticiposEfectivo!: number;
+
+  /** Resto de anticipos. NO entra en el esperado. */
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  anticiposOtrosMedios!: number;
 
   // Egresos
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
