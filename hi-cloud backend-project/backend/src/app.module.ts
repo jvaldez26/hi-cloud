@@ -163,16 +163,39 @@ import { GastosImportacionModule }  from './gastos-importacion/gastos-importacio
         DB_NAME:     Joi.string().default('hicloud'),
         DB_SSL:      Joi.string().valid('true', 'false').default('false'),
         DB_CA_CERT:  Joi.string().optional(),
+
+        // ── .allow('') en las OPCIONALES con validador de formato ────────────
+        //
+        // `.optional()` significa "puede no estar", NO "puede estar vacía". Una
+        // variable presente con cadena vacía SÍ se valida, y `.uri()` o
+        // `.number()` la rechazan → Nest no arranca.
+        //
+        // Eso tumbó producción 45 minutos: el deploy exportó SENTRY_DSN= vacío
+        // (secreto sin cargar), la variable del shell pisó el .env y Joi mató
+        // el arranque. El pipeline ya no exporta vacías (bloque [PRE] del
+        // deploy), pero esto es la segunda capa: una variable opcional vacía
+        // debe significar "no configurada", nunca "no arranques".
+        //
+        // Solo se relajan las OPCIONALES. Las que sostienen dinero, fiscalidad
+        // o el acceso a datos se quedan como están: ahí sí queremos que el
+        // arranque falle antes que operar con una configuración a medias.
+        //   - JWT_SECRET      → required().min(32)  (sesiones de todos)
+        //   - DB_*            → con default sensato
+        // Si mañana entran DGII/MSeller al esquema, van en required().
+
         // Redis (opcional en dev — fallback in-memory)
-        REDIS_URL: Joi.string().uri().optional(),
+        REDIS_URL: Joi.string().uri().allow('').optional(),
         // SMTP (opcionales — algunos envíos pueden deshabilitarse)
         SMTP_HOST: Joi.string().optional(),
         SMTP_USER: Joi.string().optional(),
         SMTP_PASS: Joi.string().optional(),
-        SMTP_PORT: Joi.number().optional(),
+        // SMTP_PORT era la MISMA bomba, y ya estaba armada: es .number() y ya
+        // figuraba en la lista `envs:` del deploy. Con el secreto vacío habría
+        // tumbado el arranque exactamente igual que SENTRY_DSN.
+        SMTP_PORT: Joi.number().allow('').optional(),
         // Observabilidad (opcionales — Sentry se deshabilita si falta el DSN)
-        SENTRY_DSN:     Joi.string().uri().optional(),
-        SENTRY_RELEASE: Joi.string().optional(),
+        SENTRY_DSN:     Joi.string().uri().allow('').optional(),
+        SENTRY_RELEASE: Joi.string().allow('').optional(),
       }),
       validationOptions: {
         allowUnknown: true,   // permitir otras vars de entorno (AWS, S3, etc.)

@@ -8,6 +8,30 @@ import * as Sentry from '@sentry/nestjs';
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const dsn = process.env.SENTRY_DSN;
+const esProduccion = (process.env.NODE_ENV ?? 'production') === 'production';
+
+/**
+ * `sentryActivo` lo lee el health check (/health?deep=true) para que la
+ * verificación de un deploy pueda comprobar si la telemetría quedó encendida,
+ * sin depender de que alguien lea los logs de arranque.
+ */
+export let sentryActivo = false;
+
+// Un DSN VACÍO no es lo mismo que un DSN AUSENTE: significa que alguien creyó
+// configurarlo y no llegó. Ese caso tiene que doler al leer el log, porque el
+// efecto es quedarse sin un solo stack trace del servidor justo el día que haga
+// falta. (Y hasta hace un momento, además, tumbaba el arranque: la variable
+// vacía pisaba el .env y Joi la rechazaba por no ser una URI.)
+if (dsn === '' && esProduccion) {
+  console.warn('');
+  console.warn('  ⚠️  ─────────────────────────────────────────────────────────');
+  console.warn('  ⚠️   SENTRY_DSN vacío — Sentry deshabilitado');
+  console.warn('  ⚠️   El backend arranca, pero NINGÚN error llegará al panel.');
+  console.warn('  ⚠️   Revisa el secreto SENTRY_DSN del repositorio.');
+  console.warn('  ⚠️  ─────────────────────────────────────────────────────────');
+  console.warn('');
+}
+
 if (dsn) {
   try {
     Sentry.init({
@@ -18,12 +42,14 @@ if (dsn) {
       tracesSampleRate: 0,
       beforeSend,
     });
+    sentryActivo = true;
     const rel = (process.env.SENTRY_RELEASE ?? 'n/a').slice(0, 7);
     console.log(`[Sentry] Activo (env=${process.env.NODE_ENV ?? 'production'}, release=${rel})`);
   } catch (e) {
-    console.warn(`[Sentry] Error al inicializar: ${(e as Error).message}`);
+    console.error(`[Sentry] ERROR al inicializar: ${(e as Error).message}`);
   }
-} else {
+} else if (dsn !== '') {
+  // Ausente del todo (no vacío): en desarrollo es lo normal y no merece ruido.
   console.log('[Sentry] Deshabilitado (SENTRY_DSN no configurado)');
 }
 

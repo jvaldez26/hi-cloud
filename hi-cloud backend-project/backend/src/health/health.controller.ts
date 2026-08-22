@@ -6,6 +6,9 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { TenantService } from '../tenant/tenant.service';
 import { SchemaValidatorService } from '../database/schema-validator.service';
+// instrument.ts se importa por su efecto en main.ts (antes que nada); aquí solo
+// se lee la bandera que dejó, para reportar si la telemetría quedó encendida.
+import { sentryActivo } from '../instrument';
 import { QueuesService } from '../queues/queues.service';
 
 interface ModuleStatus { module: string; status: 'OK' | 'ERROR'; detail?: string; ms?: number }
@@ -138,6 +141,11 @@ export class HealthController {
       totalMs: Date.now() - start,
       summary: { ok, errors: errors.length, total: modules.length },
       modules,
+      // Telemetría encendida o no. Se expone para que la verificación de un
+      // deploy pueda comprobarlo sin entrar por SSH a leer los logs de arranque
+      // — que es justo por lo que el backend estuvo meses sin reportar nada sin
+      // que nadie se diera cuenta. Es un booleano: no revela el DSN.
+      ...(isDeep ? { sentryEnabled: sentryActivo } : {}),
       memory: {
         heapUsedMB:  Math.round(process.memoryUsage().heapUsed  / 1024 / 1024),
         heapTotalMB: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
