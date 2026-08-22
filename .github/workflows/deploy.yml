@@ -220,16 +220,60 @@ jobs:
           SMTP_PASS:        ${{ secrets.SMTP_PASS }}
           SMTP_FROM:        ${{ secrets.SMTP_FROM }}
           NOTIF_ADMIN_EMAIL: ${{ secrets.NOTIF_ADMIN_EMAIL }}
+          # Seguro aunque el secreto no exista: el bloque [PRE] del script hace
+          # unset de las que llegan vacías, así que no pueden pisar el .env.
+          SENTRY_DSN:       ${{ secrets.SENTRY_DSN }}
         with:
           host:            3.137.152.75
           username:        ubuntu
           key:             ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          envs:            DB_CA_CERT,SMTP_HOST,SMTP_PORT,SMTP_SECURE,SMTP_USER,SMTP_PASS,SMTP_FROM,NOTIF_ADMIN_EMAIL
+          envs:            DB_CA_CERT,SMTP_HOST,SMTP_PORT,SMTP_SECURE,SMTP_USER,SMTP_PASS,SMTP_FROM,NOTIF_ADMIN_EMAIL,SENTRY_DSN
           timeout:         900s
           command_timeout: 15m
           script: |
             set -e
             cd /home/ubuntu/hicloud
+
+            # ══════════════════════════════════════════════════════════════════
+            # [PRE] DESCARTAR VARIABLES VACÍAS — 45 min de caída en producción
+            # ══════════════════════════════════════════════════════════════════
+            #
+            # `envs:` del ssh-action exporta al shell remoto TODAS las variables
+            # listadas, exista o no el secreto. Si no existe, llega como cadena
+            # VACÍA — no ausente. Y a partir de ahí:
+            #
+            #   1. `pm2 reload --update-env` le pasa ese entorno al proceso.
+            #   2. dotenv NO pisa variables que ya están en process.env, así que
+            #      el .env del servidor no puede ganar: queda anulado.
+            #   3. Joi valida el formato de un valor que SÍ está presente. Un
+            #      `.uri()` o un `.number()` rechazan la cadena vacía y Nest se
+            #      niega a arrancar.
+            #
+            # Eso fue el incidente: se añadió SENTRY_DSN a `envs:` antes de crear
+            # el secreto, llegó vacío, pisó el .env y Joi tumbó el arranque. El
+            # `.env` estaba bien; editarlo a mano no servía de nada porque la
+            # variable del shell mandaba.
+            #
+            # Omitir la variable deja que gane el .env. Escribirla vacía lo pisa.
+            # Se aplica a TODAS, no solo a la que explotó: la próxima que alguien
+            # añada con el secreto sin cargar repetiría el incidente igual.
+            echo "━━━ [PRE] Saneando variables de entorno inyectadas ━━━"
+            for _var in DB_CA_CERT SMTP_HOST SMTP_PORT SMTP_SECURE SMTP_USER \
+                        SMTP_PASS SMTP_FROM NOTIF_ADMIN_EMAIL SENTRY_DSN; do
+              eval "_val=\${$_var:-}"
+              if [ -z "$_val" ]; then
+                unset "$_var"
+                echo "  ↷ $_var vacía — se omite (gana el .env del servidor)"
+              fi
+            done
+            echo "  → Variables que SÍ llegan al proceso:"
+            for _var in DB_CA_CERT SMTP_HOST SMTP_PORT SMTP_SECURE SMTP_USER \
+                        SMTP_PASS SMTP_FROM NOTIF_ADMIN_EMAIL SENTRY_DSN; do
+              eval "_val=\${$_var:-}"
+              # Solo el nombre y la longitud: nunca el valor, que son secretos.
+              [ -n "$_val" ] && echo "      $_var (${#_val} caracteres)"
+            done
+            echo "  (las omitidas se toman del .env del servidor, si están ahí)"
 
             # ══════════════════════════════════════════════════════════════════
             # [0/6] GUARDAR ESTADO ESTABLE — ANTES de cualquier cambio
@@ -322,6 +366,9 @@ jobs:
             # Release de Sentry = SHA del commit recién desplegado (HEAD tras el git reset).
             # Permite atribuir cada error al deploy que lo introdujo.
             inject_env SENTRY_RELEASE "$(git rev-parse HEAD)"
+            # Si el secreto no está cargado, [PRE] ya hizo unset y inject_env
+            # sale por su guard de valor vacío: el .env queda intacto.
+            inject_env SENTRY_DSN     "${SENTRY_DSN:-}"
             echo "  ✅ Variables de entorno configuradas"
 
             # Chromium para Puppeteer
