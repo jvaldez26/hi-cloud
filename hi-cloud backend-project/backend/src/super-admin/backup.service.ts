@@ -76,6 +76,60 @@ export class BackupService {
     }));
   }
 
+  // ── Verificacion por restauracion ─────────────────────────────────────────
+
+  /**
+   * La UNICA via por la que `integridadVerificada` puede pasar a true.
+   *
+   * La llama verificar-backup.sh despues de restaurar el dump en una base
+   * temporal y contar filas. Aqui no se restaura nada: eso vive en el script,
+   * que es donde estan pg_restore y las credenciales. Este metodo solo guarda
+   * el veredicto — y lo guarda igual si es negativo, porque una verificacion
+   * fallida es justo lo que hay que ver en el panel.
+   *
+   * Si no llega `backupId` se aplica al ultimo backup exitoso: el flujo normal
+   * es dump -> verificar en la misma ejecucion.
+   */
+  async registrarVerificacion(datos: {
+    backupId?: number;
+    ok: boolean;
+    filas?: Record<string, { restaurado: number; produccion: number }>;
+    mensaje?: string;
+  }): Promise<BackupRegistro | null> {
+    const backup = datos.backupId
+      ? await this.repo.findOne({ where: { id: datos.backupId } })
+      : await this.repo.findOne({ where: { estado: 'EXITOSO' }, order: { createdAt: 'DESC' } });
+
+    if (!backup) {
+      this.logger.warn('registrarVerificacion: no hay backup al que aplicar el veredicto');
+      return null;
+    }
+
+    const ahora = new Date();
+    await this.repo.update(backup.id, {
+      integridadVerificada:  datos.ok,
+      verificadoEn:          ahora,
+      restauracionProbadaEn: ahora,
+      filasVerificadas:      datos.filas ?? null,
+      verificacionMensaje:   datos.ok ? null : (datos.mensaje ?? 'Verificacion fallida sin detalle'),
+    });
+
+    if (datos.ok) {
+      this.logger.log(
+        `[Backup] Restauracion verificada OK — id=${backup.id} key=${backup.s3Key} ` +
+        `tablas=${Object.keys(datos.filas ?? {}).join(',')}`,
+      );
+    } else {
+      // Un dump que no restaura es tan grave como no tener dump, y hasta ahora
+      // no habia forma de enterarse.
+      this.logger.error(
+        `[Backup] LA RESTAURACION FALLO — id=${backup.id} key=${backup.s3Key}: ${datos.mensaje}`,
+      );
+    }
+
+    return this.repo.findOne({ where: { id: backup.id } });
+  }
+
   // ── Listar backups ────────────────────────────────────────────────────────
 
   async listar(page = 1, limit = 20) {

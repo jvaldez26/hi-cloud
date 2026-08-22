@@ -6,7 +6,7 @@ import {
 import type { Response } from 'express';
 import { timingSafeEqual } from 'crypto';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { IsEnum, IsInt, IsPositive, IsString, IsNotEmpty, IsOptional, IsNumber, Min, IsDateString } from 'class-validator';
+import { IsEnum, IsInt, IsPositive, IsString, IsNotEmpty, IsOptional, IsNumber, Min, IsDateString, IsBoolean, IsObject } from 'class-validator';
 import { Type } from 'class-transformer';
 import { SuperAdminService } from './super-admin.service';
 import { SuperAdminGuard }   from './super-admin.guard';
@@ -123,6 +123,18 @@ class BackupSuccessDto {
   @IsString() @IsNotEmpty() tamanio!: string;
   @IsInt() @Type(() => Number)    duracion!: number;
   @IsOptional() @IsString()       checksum?: string;
+}
+
+class BackupVerificacionDto {
+  /** Si falta, se aplica al último backup exitoso. */
+  @IsOptional() @IsInt() @Type(() => Number) backupId?: number;
+
+  @IsBoolean() @Type(() => Boolean) ok!: boolean;
+
+  /** { tabla: { restaurado, produccion } } — los dos números, ver la entidad. */
+  @IsOptional() @IsObject() filas?: Record<string, { restaurado: number; produccion: number }>;
+
+  @IsOptional() @IsString() mensaje?: string;
 }
 
 class SincronizarPlanCuentasDto {
@@ -447,6 +459,30 @@ export class SuperAdminController {
       tamanio:  dto.tamanio,
       duracion: dto.duracion,
       checksum: dto.checksum,
+    });
+  }
+
+  /**
+   * Veredicto de la restauración de prueba. Lo manda verificar-backup.sh
+   * después de restaurar el dump en una base temporal y cuadrar los conteos.
+   *
+   * Se acepta también el veredicto NEGATIVO a propósito: un dump que no
+   * restaura es tan grave como no tener dump, y hasta ahora no había forma de
+   * enterarse.
+   */
+  @Post('backups/internal/verificacion')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '[Interno] Registrar el resultado de la restauración de prueba' })
+  backupVerificacion(
+    @Headers('x-internal-key') key: string,
+    @Body() dto: BackupVerificacionDto,
+  ) {
+    if (!claveInternaValida(key)) return { error: 'No autorizado' };
+    return this.backupSvc.registrarVerificacion({
+      backupId: dto.backupId,
+      ok:       dto.ok,
+      filas:    dto.filas,
+      mensaje:  dto.mensaje,
     });
   }
 

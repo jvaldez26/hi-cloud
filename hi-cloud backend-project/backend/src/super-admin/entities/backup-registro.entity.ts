@@ -30,11 +30,35 @@ export class BackupRegistro {
   @Column({ type: 'text', nullable: true })
   errorMensaje?: string;
 
+  /**
+   * SOLO true si el dump se restauro de verdad en una base temporal y los
+   * conteos cuadraron. Nunca se levanta por el hecho de que el backup se creara
+   * sin error: que pg_dump termine no dice nada de si el archivo sirve.
+   */
   @Column({ default: false })
   integridadVerificada!: boolean;
 
   @Column({ type: 'timestamptz', nullable: true })
   verificadoEn?: Date;
+
+  /** Cuando se restauro por ultima vez para probarlo. NULL = nunca. */
+  @Column({ type: 'timestamptz', nullable: true })
+  restauracionProbadaEn?: Date | null;
+
+  /**
+   * Conteos leidos DEL DUMP RESTAURADO, por tabla, junto al de produccion en
+   * ese momento. Se guardan los dos a proposito: entre que se toma el dump y
+   * que se verifica pasan minutos y produccion sigue facturando, asi que una
+   * diferencia pequeña es normal. Guardar solo uno obligaria a adivinar.
+   *
+   *   { "facturas": { "restaurado": 5780, "produccion": 5782 }, ... }
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  filasVerificadas?: Record<string, { restaurado: number; produccion: number }> | null;
+
+  /** Por que fallo la verificacion, si fallo. */
+  @Column({ type: 'text', nullable: true })
+  verificacionMensaje?: string | null;
 
   @Column({ nullable: true })
   iniciadoPor?: number;  // userId si fue manual
