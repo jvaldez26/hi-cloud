@@ -843,7 +843,14 @@ ${line()}
                       </Row>
                       <div style={{ marginTop: 8, fontSize: 11, color: '#94a3b8' }}>
                         {caja.cantidadTransacciones ?? 0} transacciones · {fmt.date(caja.fecha)}
-                        {caja.estado === 'cerrada' && Number(caja.diferencia) !== 0 && (
+                        {/* Con esperado negativo la diferencia NO significa lo
+                            que parece: 0 − (−X) = +X pintaba un faltante como
+                            sobrante. Se avisa en vez de mostrar el cuadre. */}
+                        {caja.esperadoInconsistente ? (
+                          <Text style={{ marginLeft: 8, fontWeight: 700, color: '#ef4444' }}>
+                            · ⚠ Retiros exceden el efectivo del turno en {fmt.money(Number(caja.excesoRetiros ?? 0))}
+                          </Text>
+                        ) : caja.estado === 'cerrada' && Number(caja.diferencia) !== 0 && (
                           <Text style={{ marginLeft: 8, fontWeight: 600, color: Number(caja.diferencia) > 0 ? '#10b981' : '#ef4444' }}>
                             · Diferencia: {fmt.money(Math.abs(Number(caja.diferencia)))} {Number(caja.diferencia) > 0 ? '(sobrante)' : '(faltante)'}
                           </Text>
@@ -959,7 +966,14 @@ ${line()}
                     { title: 'Esperado',   dataIndex: 'saldoCierre', width: 110, align: 'right' as const, render: (v: number) => fmt.money(v) },
                     { title: 'Contado',    dataIndex: 'saldoFisico', width: 110, align: 'right' as const, render: (v: number) => fmt.money(v) },
                     { title: 'Diferencia', dataIndex: 'diferencia', width: 110, align: 'right' as const,
-                      render: (v: number) => (
+                      // Tercer sitio donde se pinta la diferencia. Con esperado
+                      // negativo no es un cuadre: se marca y se explica al pasar
+                      // el ratón, en vez de mostrar un sobrante que no existe.
+                      render: (v: number, r: any) => Number(r.saldoCierre) < 0 ? (
+                        <Tooltip title={`Los retiros exceden el efectivo del turno en ${fmt.money(Math.abs(Number(r.saldoCierre)))} — revisar`}>
+                          <Text strong style={{ color: token.colorError }}>⚠ revisar</Text>
+                        </Tooltip>
+                      ) : (
                         <Text strong style={{ color: v === 0 ? token.colorSuccess : v > 0 ? token.colorPrimary : token.colorError }}>
                           {v > 0 ? '+' : ''}{fmt.money(v)}
                         </Text>
@@ -1247,14 +1261,26 @@ ${line()}
                 <Text strong>{fmt.money(Number(detalleCierre.saldoFisico ?? 0))}</Text>
               </Descriptions.Item>
               <Descriptions.Item label="Diferencia">
-                <Text strong style={{
-                  color: Number(detalleCierre.diferencia) === 0 ? token.colorSuccess
-                       : Number(detalleCierre.diferencia) > 0 ? token.colorPrimary : token.colorError,
-                  fontSize: 16,
-                }}>
-                  {Number(detalleCierre.diferencia) > 0 ? '+' : ''}{fmt.money(Number(detalleCierre.diferencia ?? 0))}
-                  {Number(detalleCierre.diferencia) === 0 ? ' ✅' : Number(detalleCierre.diferencia) > 0 ? ' ↑ sobrante' : ' ↓ faltante'}
-                </Text>
+                {/* Un esperado negativo significa que salió más efectivo del
+                    que entró. La diferencia deja de tener su significado
+                    habitual: 0 − (−5000) = +5000 se pintaba en azul como
+                    sobrante cuando era un faltante. Aquí se dice lo que pasa,
+                    no se presenta un cuadre. */}
+                {Number(detalleCierre.saldoCierre) < 0 ? (
+                  <Text strong style={{ color: token.colorError, fontSize: 15 }}>
+                    ⚠ Los retiros exceden el efectivo del turno en{' '}
+                    {fmt.money(Math.abs(Number(detalleCierre.saldoCierre ?? 0)))} — revisar
+                  </Text>
+                ) : (
+                  <Text strong style={{
+                    color: Number(detalleCierre.diferencia) === 0 ? token.colorSuccess
+                         : Number(detalleCierre.diferencia) > 0 ? token.colorPrimary : token.colorError,
+                    fontSize: 16,
+                  }}>
+                    {Number(detalleCierre.diferencia) > 0 ? '+' : ''}{fmt.money(Number(detalleCierre.diferencia ?? 0))}
+                    {Number(detalleCierre.diferencia) === 0 ? ' ✅' : Number(detalleCierre.diferencia) > 0 ? ' ↑ sobrante' : ' ↓ faltante'}
+                  </Text>
+                )}
               </Descriptions.Item>
               {detalleCierre.notas && (
                 <Descriptions.Item label="Notas" span={1}>{detalleCierre.notas}</Descriptions.Item>
