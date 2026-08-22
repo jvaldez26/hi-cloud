@@ -253,8 +253,25 @@ export default function BackupsPage() {
         />
       )}
 
-      {/* Estadísticas */}
-      <Row gutter={16} style={{ marginBottom: 16 }}>
+      {/* Estadísticas.
+          Sin un solo registro el bloque ENTERO va en alarma, no solo una cifra
+          suelta. Este cuadro en verde es la razón de que nadie mirara los
+          respaldos en meses: decía 100% de éxito sobre cero respaldos. */}
+      <div style={{
+        marginBottom: 16,
+        ...(sinRegistros ? {
+          border: '1px solid #ef4444',
+          borderRadius: 10,
+          background: '#ef44440d',
+          padding: 12,
+        } : {}),
+      }}>
+        {sinRegistros && (
+          <Text strong style={{ color: '#ef4444', fontSize: 12, display: 'block', marginBottom: 10 }}>
+            🚨 Estas cifras son de CERO respaldos — no describen un sistema sano, describen uno que no existe
+          </Text>
+        )}
+      <Row gutter={16}>
         <Col xs={12} md={6}>
           <Card size="small">
             {/* "Nunca" salía en verde. Es el peor valor posible de esta tarjeta. */}
@@ -281,8 +298,11 @@ export default function BackupsPage() {
         </Col>
         <Col xs={12} md={6}>
           <Card size="small">
-            <Statistic title="Exitosos" value={stats.exitosos ?? 0} prefix="✅"
-              valueStyle={{ fontSize: 16, color: '#10b981' }} />
+            {/* Cero exitosos NO es verde. El tick daba sensación de "todo bien"
+                justo cuando el número decía que no había ni un respaldo. */}
+            <Statistic title="Exitosos" value={stats.exitosos ?? 0}
+              prefix={(stats.exitosos ?? 0) > 0 ? '✅' : '⚠️'}
+              valueStyle={{ fontSize: 16, color: (stats.exitosos ?? 0) > 0 ? '#10b981' : '#ef4444' }} />
           </Card>
         </Col>
         <Col xs={12} md={6}>
@@ -292,6 +312,7 @@ export default function BackupsPage() {
           </Card>
         </Col>
       </Row>
+      </div>
 
       {/* Tabla */}
       <Card
