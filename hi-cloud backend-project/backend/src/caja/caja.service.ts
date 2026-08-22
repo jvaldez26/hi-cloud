@@ -13,6 +13,8 @@ import { fechaHoyRD } from '../common/utils/fecha-local.util';
 import {
   calcularEfectivoEsperado,
   calcularDiferencia,
+  esperadoEsInconsistente,
+  excesoDeRetiros,
   FORMULA_EFECTIVO_VERSION,
 } from './efectivo-esperado.util';
 
@@ -549,12 +551,49 @@ export class CajaService {
     if (!caja) return null;
     const result: any = { ...caja };
     for (const k of ['ventasEfectivo','ventasTarjeta','ventasTransferencia','ventasCredito',
-      'cobrosRecibidos','totalAnticipos','gastosEfectivo','retiros',
-      'saldoCierre','diferencia','cantidadTransacciones']) {
+      'cobrosRecibidos','cobrosEfectivo','cobrosOtrosMedios',
+      'totalAnticipos','anticiposEfectivo','anticiposOtrosMedios','gastosEfectivo','retiros',
+      'saldoCierre','diferencia','cantidadTransacciones',
+      // El esperado es EL dato que el cierre ciego oculta: si se filtrara, el
+      // cajero podría cuadrar hacia atrás en vez de contar el dinero.
+      'efectivoEsperado','esperadoInconsistente','excesoRetiros']) {
       delete result[k];
     }
     result.ciegoCajaActivo = true;
     return result;
+  }
+
+  /**
+   * Añade el efectivo esperado a una caja ABIERTA.
+   *
+   * `saldoCierre` solo se rellena al cerrar, así que para una caja abierta la
+   * API no devolvía ningún esperado — y por eso el frontend se lo calculaba por
+   * su cuenta, con una fórmula que había divergido (sumaba tarjeta y
+   * transferencia, omitía los cobros).
+   *
+   * Con esto el cliente no calcula dinero: muestra lo que llega. Se incluyen
+   * también las banderas de inconsistencia para que la UI no tenga que deducir
+   * nada del signo.
+   */
+  private conEfectivoEsperado(caja: CierreCaja | null): any {
+    if (!caja) return caja;
+    const esperado = caja.estado === EstadoCierre.ABIERTA
+      ? calcularEfectivoEsperado({
+          saldoApertura:     caja.saldoApertura,
+          ventasEfectivo:    caja.ventasEfectivo,
+          cobrosEfectivo:    caja.cobrosEfectivo,
+          anticiposEfectivo: caja.anticiposEfectivo,
+          gastosEfectivo:    caja.gastosEfectivo,
+          retiros:           caja.retiros,
+        })
+      : Number(caja.saldoCierre ?? 0);   // ya cerrada: el valor guardado manda
+
+    return {
+      ...caja,
+      efectivoEsperado:      esperado,
+      esperadoInconsistente: esperadoEsInconsistente(esperado),
+      excesoRetiros:         excesoDeRetiros(esperado),
+    };
   }
 
   // ── Cajas del día (filtradas por empresa) ─────────────────────────────────
@@ -575,7 +614,7 @@ export class CajaService {
       }
       const fresh = await this.repo.findOne({ where: { id: caja.id } });
       // getCajaHoy() solo la llaman admin/contador — nunca aplica ciego
-      return fresh;
+      return this.conEfectivoEsperado(fresh);
     }
 
     // Sin filtro de vendedor → todas las cajas del día de ESTA empresa
@@ -599,7 +638,12 @@ export class CajaService {
       order: { vendedorNombre: 'ASC' },
     });
 
-    return { cajas: frescas, totalCajas: frescas.length };
+    // Cada caja lleva su efectivoEsperado: es la lista que pinta las tarjetas
+    // del panel, donde el frontend recalculaba la fórmula por su cuenta.
+    return {
+      cajas: frescas.map(c => this.conEfectivoEsperado(c)),
+      totalCajas: frescas.length,
+    };
   }
 
   // A-1: scoped para VENDEDOR — usa userId del JWT, no acepta vendedorId del cliente
@@ -619,7 +663,8 @@ export class CajaService {
     const { cierreCajaCiego } = await this.getEmpresaCfg(empresaId);
     // Ciego solo mientras la caja está abierta; al cerrar el vendedor recibe datos completos para imprimir
     return (cierreCajaCiego && fresh?.estado === EstadoCierre.ABIERTA)
-      ? this.ocultarCamposCiego(fresh) : fresh;
+      ? this.ocultarCamposCiego(fresh)
+      : this.conEfectivoEsperado(fresh);
   }
 
   // ── Historial (filtrado por empresa) ─────────────────────────────────────

@@ -302,10 +302,13 @@ export default function CajaPage() {
 
   // ── Pre-cierre: verifica retiros pendientes antes de abrir modal de cierre ─
   const iniciarCierre = async (caja: any) => {
-    const nombre        = caja.vendedorNombre ?? 'Administrador';
-    const totalIngresos = Number(caja.ventasEfectivo ?? 0) + Number(caja.ventasTarjeta ?? 0) + Number(caja.ventasTransferencia ?? 0);
-    const saldoEsperado = Number(caja.saldoApertura ?? 0) + totalIngresos
-      - Number(caja.gastosEfectivo ?? 0) - Number(caja.retiros ?? 0);
+    const nombre = caja.vendedorNombre ?? 'Administrador';
+    // El esperado lo calcula el BACKEND (efectivo-esperado.util) y llega en
+    // `efectivoEsperado`. Aquí había una copia de la fórmula que había
+    // divergido: sumaba tarjeta y transferencia —dinero que no está en el
+    // cajón— y omitía los cobros. El cajero veía un número y se guardaba otro.
+    // El cliente no calcula dinero.
+    const saldoEsperado = Number(caja.efectivoEsperado ?? 0);
 
     try {
       const todos: any[] = await retirosApi.listar(caja.id);
@@ -794,9 +797,10 @@ ${line()}
         <>
           <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
             {cajas.map((caja, i) => {
+              // Informativo: los tres métodos a propósito. NO es el esperado.
               const totalIngresos = Number(caja.ventasEfectivo ?? 0) + Number(caja.ventasTarjeta ?? 0) + Number(caja.ventasTransferencia ?? 0);
-              const saldoEsperado = Number(caja.saldoApertura ?? 0) + totalIngresos
-                - Number(caja.gastosEfectivo ?? 0) - Number(caja.retiros ?? 0);
+              // El esperado viene del backend — ver iniciarCierre.
+              const saldoEsperado = Number(caja.efectivoEsperado ?? 0);
               const nombre = caja.vendedorNombre ?? 'Administrador';
               return (
                 <Col xs={24} lg={12} key={caja.id}>
