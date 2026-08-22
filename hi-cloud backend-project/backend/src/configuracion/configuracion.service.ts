@@ -283,11 +283,17 @@ export class ConfiguracionService implements OnModuleInit {
           `[CIERRE SISTEMA ${ahora}] Control de caja desactivado por ${userName}. ` +
           `Turno cerrado automáticamente al apagar el control de caja.`;
 
+        // formulaVersion = 0 ("sin calcular"): este cierre no pasa por ninguna
+        // fórmula — sus importes quedan como estaban porque nadie cuadró la
+        // caja. Dejarlo en 1 (el default) diría "la fórmula vieja dio estos
+        // números", y una consulta de cierres afectados por esa fórmula lo
+        // contaría como afectado sin serlo.
         await this.empresaRepository.manager.query(
           `UPDATE cierres_caja
-              SET estado      = 'cerrada_por_sistema',
-                  notas       = COALESCE(notas || E'\\n', '') || $1,
-                  "updatedAt" = NOW()
+              SET estado           = 'cerrada_por_sistema',
+                  "formulaVersion" = 0,
+                  notas            = COALESCE(notas || E'\\n', '') || $1,
+                  "updatedAt"      = NOW()
             WHERE "empresaId" = $2 AND estado = 'abierta'`,
           [nota, empresa.id],
         );

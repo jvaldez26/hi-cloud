@@ -101,11 +101,24 @@ export class CierreCaja {
    * Con qué fórmula se calculó `saldoCierre`. Hace el cierre auto-descriptivo:
    * no hay que deducir por la fecha si dos cierres son comparables.
    *
+   *   0 = SIN CALCULAR. Nadie cuadró esta caja: sus importes son 0 porque no se
+   *       calcularon, no porque una fórmula diera 0. Es el caso del cierre por
+   *       sistema al desactivar el control de caja (configuracion.service).
+   *
    *   1 = fórmula original — sumaba TODOS los cobros (también transferencia y
-   *       cheque) y no contaba los anticipos en efectivo.
+   *       cheque) y no contaba los anticipos en efectivo. Estos SÍ son cierres
+   *       afectados por el bug de la fórmula.
+   *
    *   2 = solo efectivo en el cajón (ver efectivo-esperado.util.ts).
    *
-   * Los cierres anteriores al cambio quedan en 1 y NO se recalculan.
+   * La distinción entre 0 y 1 no es cosmética: una consulta que busque cierres
+   * afectados por la fórmula vieja debe encontrar los de la 1 y NO los de la 0,
+   * que nunca pasaron por ninguna fórmula. Con ambos en 1, el alcance del
+   * problema saldría inflado justo cuando hay que decidir qué hacer con él.
+   *
+   * Los cierres anteriores al cambio quedan en 1 por el default y NO se
+   * recalculan. Los `cerrada_por_sistema` ya existentes también quedan en 1: no
+   * se tocan, pero se distinguen por su `estado`.
    */
   @Column({ type: 'int', default: 1 })
   formulaVersion!: number;

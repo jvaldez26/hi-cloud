@@ -19,15 +19,26 @@
 /**
  * Versión de esta fórmula. Se guarda en cada cierre (`formulaVersion`) para que
  * sea auto-descriptivo y no haya que deducir por la fecha si dos cierres son
- * comparables.
+ * comparables. Ver el comentario de la columna en cierre-caja.entity.ts.
  *
- *   1 = fórmula original: sumaba TODOS los cobros (transferencia y cheque
- *       incluidos) y no contaba los anticipos en efectivo.
- *   2 = solo efectivo en el cajón — la de este archivo.
+ *   0 = sin calcular (FORMULA_SIN_CALCULAR)
+ *   1 = fórmula original: sumaba TODOS los cobros y no contaba los anticipos
+ *   2 = solo efectivo en el cajón — la de este archivo
  *
  * Súbela si cambia QUÉ se suma. No por un refactor que no altere el resultado.
  */
 export const FORMULA_EFECTIVO_VERSION = 2;
+
+/**
+ * Marca de "nadie calculó nada". Para cierres que pasan a estado cerrado sin
+ * que se ejecute ninguna fórmula — hoy solo el cierre por sistema al desactivar
+ * el control de caja.
+ *
+ * Existe para que las consultas de alcance puedan separar los cierres AFECTADOS
+ * por la fórmula vieja (versión 1) de los que simplemente nunca se cuadraron.
+ * Contarlos juntos infla el problema.
+ */
+export const FORMULA_SIN_CALCULAR = 0;
 
 export interface EntradasEfectivo {
   /** Fondo con el que se abrió el turno. */
