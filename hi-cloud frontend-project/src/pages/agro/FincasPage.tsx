@@ -7,6 +7,7 @@ import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/Tab
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
 import { agroApi } from '../../api/agro.api';
+import { hoyRD } from '../../utils/fechaRD';
 
 const COLS_DEF = [
   { key: 'nombre',       label: 'Nombre',       defaultVisible: true  },
@@ -58,7 +59,7 @@ export default function FincasPage() {
       'Encargado': r.encargado ?? '',
       'Parcelas':  r.totalParcelas ?? 0,
     }));
-    exportarExcel(rows, `Fincas-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(rows, `Fincas-${hoyRD()}`);
     message.success(`${rows.length} fincas exportadas`);
   };
 

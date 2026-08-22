@@ -11,6 +11,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
 import dayjs from 'dayjs';
+import { hoyRD } from '../../utils/fechaRD';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -133,7 +134,7 @@ export default function ReservacionesPage() {
         'Notas': r.notas ?? '',
       };
     });
-    exportarExcel(filas, `Reservaciones-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Reservaciones-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

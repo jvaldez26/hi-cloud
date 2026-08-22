@@ -17,6 +17,7 @@ import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
 import { fmt } from '../../utils/formatters';
 import dayjs from 'dayjs';
+import { dRD, hoyRD } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
@@ -62,7 +63,7 @@ function TablaView({
     { title: 'Paciente', key: 'pac', ellipsis: true, render: (_: any, r: any) => r.pacienteNombre ?? '—' },
     {
       title: 'Fecha / Hora', dataIndex: 'fechaHora', width: 145,
-      render: (v: string) => v ? `${fmt.date(v)} ${dayjs(v).format('HH:mm')}` : '—',
+      render: (v: string) => v ? `${fmt.date(v)} ${dRD(v).format('HH:mm')}` : '—',
     },
     { title: 'Tipo', dataIndex: 'tipo', width: 130, render: (v: any) => v ?? '—' },
     {
@@ -147,7 +148,7 @@ function CalendarioView({ citas, openEdit, openCreate }: any) {
               status={BADGE_STATUS[c.estado] ?? 'default'}
               text={
                 <Text style={{ fontSize: 11 }} ellipsis>
-                  {dayjs(c.fechaHora).format('HH:mm')} {c.pacienteNombre}
+                  {dRD(c.fechaHora).format('HH:mm')} {c.pacienteNombre}
                 </Text>
               }
             />
@@ -209,7 +210,7 @@ function CalendarioView({ citas, openEdit, openCreate }: any) {
               <List.Item.Meta
                 title={
                   <Space>
-                    <Text strong>{dayjs(c.fechaHora).format('HH:mm')}</Text>
+                    <Text strong>{dRD(c.fechaHora).format('HH:mm')}</Text>
                     <Text>{c.pacienteNombre}</Text>
                   </Space>
                 }
@@ -368,11 +369,11 @@ export default function AgendaOpticaPage() {
     const filas = citas.map((r: any) => ({
       'N°': r.numero ?? '',
       'Paciente': r.pacienteNombre ?? '',
-      'Fecha / Hora': r.fechaHora ? `${fmt.date(r.fechaHora)} ${dayjs(r.fechaHora).format('HH:mm')}` : '',
+      'Fecha / Hora': r.fechaHora ? `${fmt.date(r.fechaHora)} ${dRD(r.fechaHora).format('HH:mm')}` : '',
       'Tipo': r.tipo ?? '',
       'Estado': r.estado ?? '',
     }));
-    exportarExcel(filas, `Citas-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Citas-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

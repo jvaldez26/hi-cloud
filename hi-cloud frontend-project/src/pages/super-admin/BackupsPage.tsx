@@ -13,6 +13,7 @@ import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/es';
 import api from '../../api/client';
+import { dRD } from '../../utils/fechaRD';
 
 dayjs.extend(relativeTime);
 dayjs.locale('es');
@@ -70,8 +71,8 @@ export default function BackupsPage() {
     {
       title: 'Fecha', dataIndex: 'createdAt', width: 155,
       render: (v: string) => (
-        <Tooltip title={dayjs(v).format('DD/MM/YYYY HH:mm:ss')}>
-          <span style={{ fontSize: 12 }}>{dayjs(v).format('DD MMM YYYY HH:mm')}</span>
+        <Tooltip title={dRD(v).format('DD/MM/YYYY HH:mm:ss')}>
+          <span style={{ fontSize: 12 }}>{dRD(v).format('DD MMM YYYY HH:mm')}</span>
         </Tooltip>
       ),
     },

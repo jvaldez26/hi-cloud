@@ -25,6 +25,7 @@ import { exportarExcel } from '../../utils/exportExcel';
 // utils/docTermico. Compartirla es lo que garantiza que el ticket sea idéntico.
 import { buildDocTermicoHTML, buildConduceDocData } from '../../utils/docTermico';
 import { imprimirReciboTermico } from '../../utils/printUtils';
+import { dRD } from '../../utils/fechaRD';
 
 const { Compact } = Space;
 const { Title, Text } = Typography;
@@ -33,7 +34,7 @@ const fmt = {
   num:      (n: number) => Number(n).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 4 }),
   money:    (n: number) => `RD$${Number(n).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
   fecha:    (d: any)    => d ? dayjs(d).format('DD/MM/YYYY') : '—',
-  fechaHora:(d: any)    => d ? dayjs(d).format('DD/MM/YYYY HH:mm') : '—',
+  fechaHora:(d: any)    => d ? dRD(d).format('DD/MM/YYYY HH:mm') : '—',
 };
 
 // ── Mapas de estado ───────────────────────────────────────────────────────────

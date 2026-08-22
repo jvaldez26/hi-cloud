@@ -8,6 +8,7 @@ import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/Tab
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
 import { agroApi } from '../../api/agro.api';
+import { hoyRD } from '../../utils/fechaRD';
 
 const COLS_DEF = [
   { key: 'numero',    label: 'N°',          defaultVisible: true  },
@@ -64,7 +65,7 @@ export default function CosechasPage() {
       'M.O. Cosecha': Number(r.costoManoObra ?? 0),
       'Inventario':   r.ingresadoInventario ? 'Sí' : 'No',
     }));
-    exportarExcel(rows, `Cosechas-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(rows, `Cosechas-${hoyRD()}`);
     message.success(`${rows.length} cosechas exportadas`);
   };
 

@@ -14,6 +14,7 @@ import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
 import { fmt } from '../../utils/formatters';
 import dayjs from 'dayjs';
+import { hoyRD } from '../../utils/fechaRD';
 
 const { Title } = Typography;
 
@@ -126,7 +127,7 @@ export default function PacientesOpticaPage() {
       'Fecha Nacimiento': r.fechaNacimiento ?? '',
       'Estado': r.isActive ? 'Activo' : 'Inactivo',
     }));
-    exportarExcel(filas, `Pacientes-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Pacientes-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

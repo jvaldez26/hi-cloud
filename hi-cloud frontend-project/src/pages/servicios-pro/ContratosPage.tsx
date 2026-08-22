@@ -8,6 +8,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
+import { hoyRD } from '../../utils/fechaRD';
 
 const ESTADO_COLOR: Record<string, string> = { borrador: 'default', enviado: 'orange', firmado: 'green', cancelado: 'red' };
 const TIPOS = ['honorarios','servicios','nda','acuerdo_pago','otro'];
@@ -68,7 +69,7 @@ export default function ContratosPage() {
       'Inicio': r.fechaInicio ? dayjs(r.fechaInicio).format('DD/MM/YYYY') : '',
       'Vence': r.fechaVencimiento ? dayjs(r.fechaVencimiento).format('DD/MM/YYYY') : '',
     }));
-    exportarExcel(filas, `Contratos-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Contratos-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

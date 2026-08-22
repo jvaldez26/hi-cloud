@@ -8,6 +8,7 @@ import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useNavigate } from 'react-router-dom';
 import { agroApi } from '../../api/agro.api';
+import { hoyRD } from '../../utils/fechaRD';
 
 const COLS_DEF = [
   { key: 'numero',              label: 'N°',            defaultVisible: true  },
@@ -78,7 +79,7 @@ export default function CiclosPage() {
       'Costo Total':   Number(r.costoTotal ?? 0),
       'Estado':        r.estado,
     }));
-    exportarExcel(rows, `Ciclos-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(rows, `Ciclos-${hoyRD()}`);
     message.success(`${rows.length} ciclos exportados`);
   };
 

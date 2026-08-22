@@ -7,6 +7,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
+import { hoyRD } from '../../utils/fechaRD';
 
 const ESPECIALIDADES = ['derecho_civil','derecho_penal','derecho_corporativo','contabilidad','auditoria','consultoria','ingenieria_civil','ingenieria_sistemas','arquitectura','otro'];
 
@@ -56,7 +57,7 @@ export default function ProfesionalesPage() {
       'Teléfono': r.telefono,
       'Activo': r.isActive ? 'Si' : 'No',
     }));
-    exportarExcel(filas, `Profesionales-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Profesionales-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

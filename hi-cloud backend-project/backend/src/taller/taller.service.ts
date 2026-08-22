@@ -6,6 +6,7 @@ import { DataSource } from 'typeorm';
 import { TenantService } from '../tenant/tenant.service';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { PreFacturaService } from '../pre-factura/pre-factura.service';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 @Injectable()
 export class TallerService {
@@ -479,7 +480,7 @@ export class TallerService {
     let preFactura: any;
     try {
       preFactura = await this.preFacturaSvc.crear(
-        { clienteId, fecha: new Date().toISOString().slice(0, 10), tipoNcf: tipoNcf ?? 'E32', detalles, notas },
+        { clienteId, fecha: fechaHoyRD(), tipoNcf: tipoNcf ?? 'E32', detalles, notas },
         usuarioId,
       );
     } catch (err: any) {

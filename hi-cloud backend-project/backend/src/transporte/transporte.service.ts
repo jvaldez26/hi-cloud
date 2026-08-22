@@ -255,7 +255,7 @@ export class TransporteService {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
       [
         empresaId, sucursalId ?? null, numero,
-        data.fecha ?? new Date().toISOString().substring(0, 10),
+        data.fecha ?? fechaHoyRD(),
         data.origen, data.destino, data.clienteId ?? null,
         data.choferId ?? null, data.vehiculoId ?? null,
         Number(data.tarifa ?? 0), data.estado ?? 'programado', data.notas ?? null,
@@ -333,7 +333,7 @@ export class TransporteService {
       ),
     ]);
 
-    const fecha = new Date().toISOString().substring(0, 10);
+    const fecha = fechaHoyRD();
     const factura = await this.facturasSvc.create(
       {
         fecha,
@@ -412,7 +412,7 @@ export class TransporteService {
     if (clienteIds.length > 1)
       throw new BadRequestException('Todos los viajes deben ser del mismo cliente');
 
-    const fecha    = new Date().toISOString().substring(0, 10);
+    const fecha    = fechaHoyRD();
     const clienteId = viajes[0].clienteId ?? undefined;
     const numeros  = viajes.map((v: any) => v.numero).join(', ');
 
@@ -595,7 +595,7 @@ export class TransporteService {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
       [
         empresaId, data.vehiculoId ?? null, data.choferId ?? null,
-        data.fecha ?? new Date().toISOString().substring(0, 10),
+        data.fecha ?? fechaHoyRD(),
         data.tipoCombustible ?? 'gasolina',
         data.galones ?? null, data.precioGalon ?? null, total,
         data.odometro ?? null, data.estacion ?? null, data.notas ?? null,
@@ -736,7 +736,7 @@ export class TransporteService {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
       [
         empresaId, data.vehiculoId ?? null,
-        data.fecha ?? new Date().toISOString().substring(0, 10),
+        data.fecha ?? fechaHoyRD(),
         data.tipo ?? 'preventivo', data.descripcion,
         Number(data.costo ?? 0), data.proveedor ?? null,
         data.odometroActual ?? null, data.proximaFecha ?? null, data.proximoKm ?? null,

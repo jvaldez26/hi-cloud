@@ -22,6 +22,7 @@ import { motion } from 'framer-motion';
 import dayjs from 'dayjs';
 import api from '../../api/client';
 import { fmt } from '../../utils/formatters';
+import { ahora } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
@@ -158,7 +159,7 @@ function TareasKanban({ proyectoId, onUpdate }: { proyectoId: number; onUpdate: 
                         </div>
                         {t.fechaVencimiento && (
                           <div>
-                            <Text type={new Date(t.fechaVencimiento) < new Date() && t.estado !== 'completada' ? 'danger' : 'secondary'}
+                            <Text type={new Date(t.fechaVencimiento) < ahora() && t.estado !== 'completada' ? 'danger' : 'secondary'}
                               style={{ fontSize: 10 }}>
                               📅 {fmt.date(t.fechaVencimiento)}
                             </Text>
@@ -614,7 +615,7 @@ export default function ProyectosPage() {
       render: (v: number) => `${Number(v ?? 0).toFixed(1)} h` },
     { title: 'Vence',       dataIndex: 'fechaFin',  key: 'fechaFin',         width: 100,
       render: (v: string) => v ? (
-        <Text type={new Date(v) < new Date() ? 'danger' : 'secondary'}>{fmt.date(v)}</Text>
+        <Text type={new Date(v) < ahora() ? 'danger' : 'secondary'}>{fmt.date(v)}</Text>
       ) : '—' },
     { title: '', key: 'del', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (

@@ -8,6 +8,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
+import { hoyRD } from '../../utils/fechaRD';
 
 const ESTADO_COLOR: Record<string, string> = { activo: 'green', pausado: 'orange', cancelado: 'red' };
 const PERIODICIDAD = ['mensual','trimestral','semestral','anual'];
@@ -74,7 +75,7 @@ export default function RetainersPage() {
       'Inicio': r.fechaInicio ? dayjs(r.fechaInicio).format('DD/MM/YYYY') : '',
       'Fin': r.fechaFin ? dayjs(r.fechaFin).format('DD/MM/YYYY') : '',
     }));
-    exportarExcel(filas, `Retainers-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Retainers-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

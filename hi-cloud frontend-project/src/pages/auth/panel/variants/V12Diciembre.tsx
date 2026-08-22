@@ -1,7 +1,8 @@
 import { PANEL_BASE, Mark, BackLink, Spacer } from '../shared';
+import { anioRD } from '../../../../utils/fechaRD';
 
 const MONO = '"IBM Plex Mono", monospace';
-const yr   = new Date().getFullYear();
+const yr   = anioRD();
 
 const KV: [string, string][] = [
   ['Ejercicio', String(yr)],

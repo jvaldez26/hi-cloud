@@ -7,6 +7,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
+import { hoyRD } from '../../utils/fechaRD';
 
 const DIAS = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
 
@@ -38,7 +39,7 @@ export default function ClasesPage() {
       'Duracion (min)': r.duracionMinutos,
       'Costo': r.costo,
     }));
-    exportarExcel(filas, `Clases-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Clases-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

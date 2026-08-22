@@ -5,6 +5,7 @@ import { PlusOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { exportarExcel } from '../../utils/exportExcel';
 import { agroApi } from '../../api/agro.api';
+import { hoyRD } from '../../utils/fechaRD';
 
 const TIPOS_CULTIVO = [
   { value: 'graminea',    label: 'Gramínea (arroz, maíz, sorgo)' },
@@ -60,7 +61,7 @@ export default function CultivosPage() {
       'Unidad Rendimiento':      r.unidadRendimiento ?? '',
       'Unidad por Área':         r.unidadPorArea ?? '',
     }));
-    exportarExcel(rows, `Cultivos-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(rows, `Cultivos-${hoyRD()}`);
     message.success(`${rows.length} cultivos exportados`);
   };
 

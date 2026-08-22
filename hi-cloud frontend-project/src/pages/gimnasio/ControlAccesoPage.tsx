@@ -2,15 +2,16 @@ import { useState, useEffect, useRef } from 'react';
 import { Input, Tag } from 'antd';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { gimnasioApi } from '../../api/gimnasio.api';
+import { ahora, fecha, hora, horaConSegundos } from '../../utils/fechaRD';
 
 export default function ControlAccesoPage() {
   const [codigo, setCodigo] = useState('');
   const [resultado, setResultado] = useState<any>(null);
-  const [hora, setHora] = useState(new Date());
+  const [reloj, setReloj] = useState(() => ahora());
   const inputRef = useRef<any>(null);
 
   useEffect(() => {
-    const timer = setInterval(() => setHora(new Date()), 1000);
+    const timer = setInterval(() => setReloj(ahora()), 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -62,7 +63,7 @@ export default function ControlAccesoPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <h1 style={{ color: '#fff', margin: 0 }}>Control de Acceso - Gimnasio</h1>
         <span style={{ fontSize: 28, fontWeight: 'bold', color: '#94a3b8' }}>
-          {hora.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          {horaConSegundos(reloj)}
         </span>
       </div>
       <div style={{ marginBottom: 24 }}>
@@ -95,7 +96,7 @@ export default function ControlAccesoPage() {
           {resultado.miembro && <div style={{ fontSize: 24, marginBottom: 8 }}>{resultado.miembro.nombre}</div>}
           {resultado.autorizado && resultado.membresia && (
             <div style={{ color: '#a7f3d0', fontSize: 16 }}>
-              Plan: {resultado.membresia.plan} · Vence: {new Date(resultado.membresia.vence).toLocaleDateString('es-DO')}
+              Plan: {resultado.membresia.plan} · Vence: {fecha(resultado.membresia.vence)}
               {resultado.membresia.diasRestantes <= 7 && (
                 <div style={{ color: '#fcd34d', marginTop: 4 }}>Membresia vence en {resultado.membresia.diasRestantes} dias</div>
               )}
@@ -115,7 +116,7 @@ export default function ControlAccesoPage() {
             background: 'rgba(255,255,255,.05)', borderRadius: 8,
           }}>
             <span style={{ color: '#64748b', width: 60, fontSize: 13 }}>
-              {new Date(a.fechaHora).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' })}
+              {hora(a.fechaHora)}
             </span>
             <span style={{ flex: 1, color: '#e2e8f0' }}>{a.miembroNombre}</span>
             <span>{a.autorizado ? '✅' : '❌'}</span>

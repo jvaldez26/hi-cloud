@@ -51,6 +51,7 @@ import { opticaApi } from '../../api/optica.api';
 import { clinicaApi } from '../../api/clinica.api';
 import { RestaurantePOS, TallerPOS, FarmaciaPOS, OpticaPOS, ClinicaPOS, GimnasioPOS } from './modos';
 import CompraFormInner from '../compras/CompraFormInner';
+import { ahora, dRD, fecha, fechaHora, fechaLarga, hora, horaConSegundos, hoyRD } from '../../utils/fechaRD';
 
 // ── Alias type ────────────────────────────────────────────────────────────────
 type Prod = Producto;
@@ -218,14 +219,16 @@ function avatarBg(name: string) {
 
 // ── Live clock ────────────────────────────────────────────────────────────────
 function LiveClock() {
-  const [t, setT] = useState(new Date());
+  // ahora() = hora del servidor. El reloj del equipo de una caja se desajusta,
+  // y esta es la hora que el cajero ve como referencia durante todo el turno.
+  const [t, setT] = useState(() => ahora());
   useEffect(() => {
-    const id = setInterval(() => setT(new Date()), 1000);
+    const id = setInterval(() => setT(ahora()), 1000);
     return () => clearInterval(id);
   }, []);
   return (
     <span style={{ fontVariantNumeric: 'tabular-nums' }}>
-      {t.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+      {horaConSegundos(t)}
     </span>
   );
 }
@@ -977,7 +980,7 @@ function buildReciboTermicoHTML(
 ): string {
   const { mostrarEcf = true, tipoImpresora = '80mm', mensajeTicket, politicaDev, tipoDoc, validezDias } = cfg;
   const prn   = IMPRESORA_CONFIG[tipoImpresora] ?? IMPRESORA_CONFIG['80mm'];
-  const ahora = dayjs();
+  const ahora = dRD();   // hora del SERVIDOR: esto se imprime en el ticket del cliente
   const fmt     = (n: number) => `RD$${n.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const row     = (l: string, v: string) => `<div class="row"><span>${esc(l)}</span><span>${esc(v)}</span></div>`;
   const rowBold = (l: string, v: string) => `<div class="row bold"><span>${esc(l)}</span><span>${esc(v)}</span></div>`;
@@ -1762,7 +1765,7 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar 
     const s = localStorage.getItem('pos_last_sucursal_id');
     return s ? Number(s) : undefined;
   });
-  const [t,           setT]          = useState(new Date());
+  const [t,           setT]          = useState(() => ahora());
   const [abriendo,    setAbriendo]   = useState(false);
 
   // Estado de la caja diaria — distingue entre sin apertura y ya cerrada
@@ -1771,7 +1774,7 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar 
 
   // Reloj
   useEffect(() => {
-    const id = setInterval(() => setT(new Date()), 1000);
+    const id = setInterval(() => setT(ahora()), 1000);
     return () => clearInterval(id);
   }, []);
 
@@ -1922,10 +1925,10 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar 
           <div style={{ fontSize: 44, marginBottom: 8 }}>🏪</div>
           <span style={{ fontSize: 18, fontWeight: 700, color: C.text, display: 'block' }}>Apertura de Turno</span>
           <span style={{ fontSize: 12, color: C.textSub, display: 'block', marginTop: 4 }}>
-            {t.toLocaleDateString('es-DO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            {fechaLarga(t)}
           </span>
           <span style={{ fontSize: 22, fontWeight: 700, color: C.blue, display: 'block', marginTop: 4, fontVariantNumeric: 'tabular-nums' }}>
-            {t.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' })}
+            {hora(t)}
           </span>
         </div>
 
@@ -2752,12 +2755,12 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
           // Sección ECF: signedDate de DGII (cuando aceptó el comprobante)
           ...((): { fechaEmision?: string; horaEmision?: string; ecfFecha: string } => {
             const fechaHeader = nc?.fecha ? String(nc.fecha).substring(0, 10).split('-').reverse().join('/') : undefined;
-            const horaHeader  = nc?.createdAt ? dayjs(nc.createdAt).format('HH:mm:ss') : undefined;
+            const horaHeader  = nc?.createdAt ? dRD(nc.createdAt).format('HH:mm:ss') : undefined;
             const signed = (ecfResult as any)?.signedDate as string | undefined;
             return {
               fechaEmision: fechaHeader,
               horaEmision:  horaHeader,
-              ecfFecha:     signed ?? (nc?.createdAt ? dayjs(nc.createdAt).format('DD-MM-YYYY HH:mm:ss') : dayjs().format('DD-MM-YYYY HH:mm:ss')),
+              ecfFecha:     signed ?? (nc?.createdAt ? dRD(nc.createdAt).format('DD-MM-YYYY HH:mm:ss') : dRD().format('DD-MM-YYYY HH:mm:ss')),
             };
           })(),
         };
@@ -3394,7 +3397,7 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
                         <tbody>{movimientos.map((m: any, i: number) => (
                           <tr key={m.id} style={{ borderBottom: `1px solid ${C.border}`, background: i%2===0?'transparent':C.card }}>
                             <td style={{ padding: '6px 8px', color: C.textSub, whiteSpace: 'nowrap', fontSize: 10 }}>
-                              {dayjs(m.createdAt).format('DD/MM HH:mm')}
+                              {dRD(m.createdAt).format('DD/MM HH:mm')}
                             </td>
                             <td style={{ padding: '6px 8px' }}>
                               <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
@@ -4592,7 +4595,7 @@ function POSCxPSubView({ C, esAdminCxP }: { C: Palette; esAdminCxP: boolean }) {
         monto,
         metodoPago: pagoMetodo,
         referencia: pagoRef || undefined,
-        fechaPago:  new Date().toISOString().substring(0, 10),
+        fechaPago:  hoyRD(),
       });
       qc.invalidateQueries({ queryKey: ['cxp-pos'] });
       qc.invalidateQueries({ queryKey: ['cxp-resumen'] });
@@ -5130,7 +5133,7 @@ function POSConducePanel({ C, onVolver }: {
       if (!fDireccion.trim())      { message.warning('Ingresa la dirección de entrega'); return; }
       crearMut.mutate({
         clienteId:        fClienteId ?? factSel.clienteId,
-        fecha:            new Date().toISOString().split('T')[0],
+        fecha:            hoyRD(),
         direccionEntrega: fDireccion.trim(),
         facturaId:        factSel.id,
         notas:            fNotas || undefined,
@@ -5142,7 +5145,7 @@ function POSConducePanel({ C, onVolver }: {
       if (!fItems.length)          { message.warning('Agrega al menos un producto'); return; }
       crearMut.mutate({
         clienteId:        fClienteId,
-        fecha:            new Date().toISOString().split('T')[0],
+        fecha:            hoyRD(),
         direccionEntrega: fDireccion.trim(),
         notas:            fNotas || undefined,
         detalles:         fItems.map(it => ({ productoId: it.productoId, descripcion: it.descripcion, cantidad: parseFloat(it.cant) || 1, unidadMedida: it.um || 'PZA' })),
@@ -5458,14 +5461,11 @@ function POSConducePanel({ C, onVolver }: {
                           <td style={{ padding: '8px 10px' }}>
                             <div style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue, fontWeight: 700 }}>{r.numero}</div>
                             <div style={{ fontSize: 10, color: C.textSub, marginTop: 1 }}>
-                              {r.fecha ? new Date(r.fecha).toLocaleDateString('es-DO') : ''}
+                              {r.fecha ? fecha(r.fecha) : ''}
                             </div>
                             {r.createdAt && (
                               <div style={{ fontSize: 10, color: C.textSub }}>
-                                {new Date(r.createdAt).toLocaleTimeString('es-DO', {
-                                  hour: '2-digit', minute: '2-digit', hour12: true,
-                                  timeZone: 'America/Santo_Domingo',
-                                })}
+                                {hora(r.createdAt)}
                               </div>
                             )}
                           </td>
@@ -5856,7 +5856,7 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
       monto:      Number(monto),
       metodoPago: metodoPagoNorm,
       concepto:   descripcion || (esAnticipo ? 'Anticipo' : 'Recibo de cobro'),
-      fecha:      new Date().toISOString().split('T')[0],
+      fecha:      hoyRD(),
       ...extras,
     };
     if (clienteId) {
@@ -6355,13 +6355,13 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
         ? String(f.fecha).substring(0, 10).split('-').reverse().join('/')
         : undefined;
       // Hora original de emisión en hora local del dispositivo (UTC-4 para RD)
-      const _horaEmision = f.createdAt ? dayjs(f.createdAt).format('HH:mm:ss') : undefined;
+      const _horaEmision = f.createdAt ? dRD(f.createdAt).format('HH:mm:ss') : undefined;
       // Fecha de firma: signedDate (ya en hora RD) → ultimoIntentoEnvio → fechaFirma
       const _ecfFecha: string | undefined = (() => {
         const signed = (f.ecf?.respuestaMSeller as any)?.signedDate as string | undefined;
         if (signed) return signed;
         const ts = f.ecf?.ultimoIntentoEnvio ?? f.ecf?.fechaFirma;
-        return ts ? dayjs(ts).format('DD-MM-YYYY HH:mm:ss') : undefined;
+        return ts ? dRD(ts).format('DD-MM-YYYY HH:mm:ss') : undefined;
       })();
       const sale: Sale = {
         folio: f.folio,
@@ -6442,7 +6442,7 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
               {v.folio} · <span style={{ fontWeight: 400, color: C.textSub }}>{v.cliente?.nombre ?? 'Consumidor Final'}</span>
             </div>
             <div style={{ fontSize: 11, color: C.textSub, marginTop: 2 }}>
-              {v.createdAt ? dayjs(v.createdAt).format('HH:mm') : '—'} · {v.metodoPago ?? v.tipoPago ?? 'Efectivo'}
+              {v.createdAt ? dRD(v.createdAt).format('HH:mm') : '—'} · {v.metodoPago ?? v.tipoPago ?? 'Efectivo'}
               {v.tipoNcf ? ` · ${v.tipoNcf}` : ''}
             </div>
           </div>
@@ -6608,7 +6608,7 @@ function buildGastoReciboHTML(
   const prn = IMP_CFG[tipoImpresora ?? '80mm'] ?? IMP_CFG['80mm'];
   const e    = (s: string) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const fmtM = (n: number) => `RD$${Number(n??0).toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
-  const ahora = dayjs();
+  const ahora = dRD();   // hora del SERVIDOR: esto se imprime en el ticket del cliente
   const row   = (l: string, v: string) => `<div class="row"><span>${e(l)}</span><span>${e(v)}</span></div>`;
   const rowB  = (l: string, v: string) => `<div class="row bold"><span>${e(l)}</span><span>${e(v)}</span></div>`;
   const numGasto = g.numero ?? `GAS-${String(g.id??0).padStart(6,'0')}`;
@@ -6691,10 +6691,10 @@ function buildRetiroReciboHTML(
   const prn = IMP_CFG[tipoImpresora ?? '80mm'] ?? IMP_CFG['80mm'];
   const e    = (s: string) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const fmtM = (n: number) => `RD$${Number(n??0).toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
-  const ahora = dayjs();
+  const ahora = dRD();   // hora del SERVIDOR: esto se imprime en el ticket del cliente
   const numRet = r.numero ?? `RET-${String(r.id??0).padStart(5,'0')}`;
   const hora = r.createdAt
-    ? dayjs(r.createdAt).format('hh:mm a')
+    ? dRD(r.createdAt).format('hh:mm a')
     : ahora.format('hh:mm a');
 
   return `<!DOCTYPE html><html lang="es"><head>
@@ -7397,7 +7397,7 @@ function POSRetirosLista({ C }: { C: Palette }) {
                         {fmt.money(r.monto??0)}
                       </td>
                       <td style={{ padding:'8px 12px', color:C.textSub, fontSize:11 }}>
-                        {r.createdAt ? new Date(r.createdAt).toLocaleTimeString('es-DO', { hour:'2-digit', minute:'2-digit' }) : '—'}
+                        {r.createdAt ? hora(r.createdAt) : '—'}
                       </td>
                       <td style={{ padding:'6px 8px', textAlign:'right' }}>
                         <button onClick={() => imprimirRetiro(r)} title="Imprimir recibo"
@@ -7523,7 +7523,7 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
 
   // ── Helpers de formato ────────────────────────────────────────────────────
   const fmtHoraPOS = (iso: string) => {
-    try { return new Date(iso).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }); }
+    try { return hora(iso); }
     catch { return ''; }
   };
   const PAGO_LABELS_POS: Record<number, string> = {
@@ -8322,12 +8322,12 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
         const _fechaEmision = f.fecha
           ? String(f.fecha).substring(0, 10).split('-').reverse().join('/')
           : undefined;
-        const _horaEmision = f.createdAt ? dayjs(f.createdAt).format('HH:mm:ss') : undefined;
+        const _horaEmision = f.createdAt ? dRD(f.createdAt).format('HH:mm:ss') : undefined;
         const _ecfFecha: string | undefined = (() => {
           const signed = (f.ecf?.respuestaMSeller as any)?.signedDate as string | undefined;
           if (signed) return signed;
           const ts = f.ecf?.ultimoIntentoEnvio ?? f.ecf?.fechaFirma;
-          return ts ? dayjs(ts).format('DD-MM-YYYY HH:mm:ss') : undefined;
+          return ts ? dRD(ts).format('DD-MM-YYYY HH:mm:ss') : undefined;
         })();
         const sale: Sale = {
           folio:       f.folio,
@@ -8519,12 +8519,12 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
               const mismaFecha = p.format('YYYY-MM-DD') === (doc.fecha ? String(doc.fecha).substring(0, 10) : null);
               return {
                 fechaEmision: fechaHeader,
-                horaEmision:  mismaFecha ? p.format('HH:mm:ss') : (doc.createdAt ? dayjs(doc.createdAt).format('HH:mm:ss') : undefined),
+                horaEmision:  mismaFecha ? p.format('HH:mm:ss') : (doc.createdAt ? dRD(doc.createdAt).format('HH:mm:ss') : undefined),
                 ecfFecha:     p.format('DD-MM-YYYY HH:mm:ss'),
               };
             }
-            const horaCreacion = doc.createdAt ? dayjs(doc.createdAt).format('HH:mm:ss') : undefined;
-            const fechaCreacion = doc.createdAt ? dayjs(doc.createdAt).format('DD-MM-YYYY HH:mm:ss') : undefined;
+            const horaCreacion = doc.createdAt ? dRD(doc.createdAt).format('HH:mm:ss') : undefined;
+            const fechaCreacion = doc.createdAt ? dRD(doc.createdAt).format('DD-MM-YYYY HH:mm:ss') : undefined;
             return {
               fechaEmision: fechaHeader,
               horaEmision:  horaCreacion,
@@ -10978,8 +10978,8 @@ export default function POSPage() {
       const qrUrl        = ecfResult?.qrUrl ?? undefined;
       const estadoEcf    = ecfResult?.estado ?? ecfResult?.estadoDGII ?? '';
       const ecfFecha     = ecfResult?.ecf?.ultimoIntentoEnvio
-        ? dayjs(ecfResult.ecf.ultimoIntentoEnvio).format('DD-MM-YYYY HH:mm:ss')
-        : dayjs().format('DD-MM-YYYY HH:mm:ss');
+        ? dRD(ecfResult.ecf.ultimoIntentoEnvio).format('DD-MM-YYYY HH:mm:ss')
+        : dRD().format('DD-MM-YYYY HH:mm:ss');
       const saleObj: Sale = {
         folio:                   factura.folio,
         total:                   totalAPagar,
@@ -11780,7 +11780,7 @@ export default function POSPage() {
               setShowNotaCredito(true); setMenuNavAbierto(false); return;
             }
             if (p === 'cierre-caja' && posConf.posSupervisorCierreCaja !== false && posConf.supervisorModeEnabled) {
-              const fecha = new Date().toLocaleString('es', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+              const fecha = fechaHora(ahora());
               const ok = await supervisor.requireSupervisorForced('Cierre de Caja', fecha);
               if (!ok) return;
             }
@@ -11986,7 +11986,7 @@ export default function POSPage() {
                     if (posConf.posBloquearFueraHorario === true) {
                       const inicio = String(posConf.posHorarioInicio ?? '08:00');
                       const fin    = String(posConf.posHorarioFin ?? '20:00');
-                      const ahora  = dayjs().format('HH:mm');
+                      const ahora  = dRD().format('HH:mm');
                       if (ahora < inicio || ahora > fin) {
                         message.error(`POS bloqueado fuera de horario permitido (${inicio} – ${fin})`);
                         return;
@@ -12162,7 +12162,7 @@ export default function POSPage() {
                       style={{ width: 46, height: 22, border: '1px solid #A5B4FC', borderRadius: 5, textAlign: 'center',
                         fontSize: 11, fontWeight: 700, color: '#3730A3', outline: 'none', background: '#EEF2FF' }} />
                     <span style={{ color: '#6B7280', fontSize: 10 }}>días · vence {
-                      new Date(Date.now() + diasCreditoPos * 86400000).toLocaleDateString('es-DO', { day: '2-digit', month: 'short' })
+                      fecha(Date.now() + diasCreditoPos * 86400000)
                     }</span>
                   </>
                 ) : (
@@ -12460,7 +12460,7 @@ export default function POSPage() {
                 <div style={{ fontSize: 24, fontWeight: 800, color: '#0F172A', fontVariantNumeric: 'tabular-nums' }}>{fmt.money(totalEfectivo)}</div>
                 <div style={{ fontSize: 12, color: '#6B7280', textAlign: 'center' }}>
                   {clienteId ? <>Plazo: <strong>{diasCreditoPos} días</strong> · vence {
-                    new Date(Date.now() + diasCreditoPos * 86400000).toLocaleDateString('es-DO', { weekday: 'short', day: '2-digit', month: 'short' })
+                    fecha(Date.now() + diasCreditoPos * 86400000)
                   }</> : <span style={{ color: '#DC2626' }}>Selecciona un cliente para continuar</span>}
                 </div>
               </div>

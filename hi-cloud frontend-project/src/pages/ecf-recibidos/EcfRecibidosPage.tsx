@@ -14,6 +14,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ecfRecibidosApi } from '../../api/ecf-recibidos.api';
 import { fmt } from '../../utils/formatters';
 import dayjs from 'dayjs';
+import { hoyRD } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -97,7 +98,7 @@ export default function EcfRecibidosPage() {
       });
       const registros: any[] = Array.isArray(res) ? res : (res?.data ?? []);
       if (!registros.length) { message.warning('No hay registros para exportar con los filtros actuales'); return; }
-      const sufijo = desde && hasta ? `${desde}_${hasta}` : new Date().toISOString().substring(0, 10);
+      const sufijo = desde && hasta ? `${desde}_${hasta}` : hoyRD();
       await exportarEcfRecibidos(registros, `eCF-Recibidos-${sufijo}`);
       message.success(`${registros.length} registros exportados`);
     } catch {

@@ -14,6 +14,7 @@ import { clientesApi } from '../../api/clientes.api';
 import { fmt } from '../../utils/formatters';
 import dayjs from 'dayjs';
 import { TableActions } from '../../components/ui/TableActions';
+import { ahora } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
@@ -97,7 +98,7 @@ export default function ContratosPage() {
       render: (v: string) => PERIODOS.find(p => p.value === v)?.label.replace('📅 ', '') ?? v },
     { title: 'Monto',     dataIndex: 'montoBase',  key: 'montoBase',          width: 120, render: (v: number) => fmt.money(v) },
     { title: 'Próxima',   dataIndex: 'proximaFactura', key: 'proximaFactura', width: 100,
-      render: (v: string) => v ? <Text type={new Date(v) < new Date() ? 'danger' : 'secondary'}>{fmt.date(v)}</Text> : '—' },
+      render: (v: string) => v ? <Text type={new Date(v) < ahora() ? 'danger' : 'secondary'}>{fmt.date(v)}</Text> : '—' },
     { title: 'Estado',    dataIndex: 'estado', key: 'estado',                 width: 100,
       render: (v: string) => <Tag color={estadoColor[v]}>{v?.toUpperCase()}</Tag> },
     { title: '', key: 'actions', width: 72, align: 'right' as const,
@@ -217,7 +218,7 @@ export default function ContratosPage() {
             <Descriptions.Item label="Inicio">{fmt.date(detail.fechaInicio)}</Descriptions.Item>
             {detail.fechaFin && <Descriptions.Item label="Fin">{fmt.date(detail.fechaFin)}</Descriptions.Item>}
             <Descriptions.Item label="Próxima factura">
-              {detail.proximaFactura ? <Text type={new Date(detail.proximaFactura) < new Date() ? 'danger' : undefined}>{fmt.date(detail.proximaFactura)}</Text> : '—'}
+              {detail.proximaFactura ? <Text type={new Date(detail.proximaFactura) < ahora() ? 'danger' : undefined}>{fmt.date(detail.proximaFactura)}</Text> : '—'}
             </Descriptions.Item>
             <Descriptions.Item label="Facturas generadas">{detail.totalFacturasGeneradas}</Descriptions.Item>
             <Descriptions.Item label="Automática">{detail.facturaAutomatica ? '✅ Sí' : '⬜ No'}</Descriptions.Item>

@@ -29,6 +29,7 @@ import { useAuthStore } from '../../store/auth.store';
 import { exportarCatalogo } from '../../utils/exportExcel';
 import type { Producto } from '../../types';
 import { fmt } from '../../utils/formatters';
+import { hoyRD } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 const { Search } = Input;
@@ -630,7 +631,7 @@ function ProductosCatalogo() {
   // ── Exportar a Excel ────────────────────────────────────────────────────────
   const [exportando, setExportando] = useState(false);
 
-  const fechaHoy = () => new Date().toISOString().split('T')[0];
+  const fechaHoy = () => hoyRD();
 
   const handleExportarTodo = async () => {
     setExportando(true);

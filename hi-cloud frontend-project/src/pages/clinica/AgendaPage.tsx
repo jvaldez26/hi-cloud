@@ -8,6 +8,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
+import { hoyRD } from '../../utils/fechaRD';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -77,7 +78,7 @@ export default function AgendaPage() {
       'Motivo': r.motivo ?? '',
       'Estado': r.estado,
     }));
-    exportarExcel(filas, `Agenda-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Agenda-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

@@ -9,6 +9,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
+import { hoyRD } from '../../utils/fechaRD';
 const fmt = (v: any) => fmtObj.date(v);
 
 const { Title } = Typography;
@@ -91,7 +92,7 @@ export default function LaboratorioPage() {
       'Urgente': r.urgente ? 'Sí' : 'No',
       'Estado': r.estado,
     }));
-    exportarExcel(filas, `Laboratorio-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Laboratorio-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

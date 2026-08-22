@@ -6,6 +6,7 @@ import { FilePdfOutlined, BarChartOutlined, AlertOutlined } from '@ant-design/ic
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { farmaciaApi } from '../../api/farmacia.api';
+import { fecha } from '../../utils/fechaRD';
 
 const { Title } = Typography;
 const { RangePicker } = DatePicker;
@@ -120,7 +121,7 @@ export default function ReportesPage() {
                   scroll={{ x: 'max-content' }}
                   pagination={false}
                   columns={[
-                    { title: 'Día', dataIndex: 'dia', width: 130, render: (v: string) => new Date(v).toLocaleDateString('es-DO') },
+                    { title: 'Día', dataIndex: 'dia', width: 130, render: (v: string) => fecha(v) },
                     { title: 'Dispensaciones', dataIndex: 'dispensaciones', width: 120 },
                     { title: 'Total', dataIndex: 'total', render: (v: number) => `RD$ ${Number(v).toFixed(2)}` },
                   ]}
@@ -167,7 +168,7 @@ export default function ReportesPage() {
                   { title: 'Medicamento', dataIndex: 'nombreGenerico', render: (v: string, r: any) => `${v} ${r.concentracion ?? ''}` },
                   { title: 'Comercial', dataIndex: 'nombreComercial' },
                   { title: 'Stock Actual', dataIndex: 'stockActual', width: 110 },
-                  { title: 'Última Venta', dataIndex: 'ultimaVenta', width: 140, render: (v: string) => v ? new Date(v).toLocaleDateString('es-DO') : 'Nunca' },
+                  { title: 'Última Venta', dataIndex: 'ultimaVenta', width: 140, render: (v: string) => v ? fecha(v) : 'Nunca' },
                 ]}
               />
             ),
@@ -215,7 +216,7 @@ export default function ReportesPage() {
                         columns={[
                           { title: 'Medicamento', dataIndex: 'nombreGenerico', ellipsis: true },
                           { title: 'Lote', dataIndex: 'numeroLote', width: 110 },
-                          { title: 'Vence', dataIndex: 'fechaVencimiento', width: 110, render: (v: string) => new Date(v).toLocaleDateString('es-DO') },
+                          { title: 'Vence', dataIndex: 'fechaVencimiento', width: 110, render: (v: string) => fecha(v) },
                           { title: 'Cant.', dataIndex: 'cantidadActual', width: 70 },
                         ]}
                       />

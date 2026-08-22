@@ -8,6 +8,7 @@ import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/Tab
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
 import { prestamistalApi } from '../../api/prestamista.api';
+import { hoyRD } from '../../utils/fechaRD';
 
 const { Option } = Select;
 
@@ -113,7 +114,7 @@ export default function SolicitudesPage() {
       'Estado': r.estado,
       'Fecha': r.fechaSolicitud?.slice(0, 10),
     }));
-    exportarExcel(filas, `Solicitudes-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Solicitudes-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

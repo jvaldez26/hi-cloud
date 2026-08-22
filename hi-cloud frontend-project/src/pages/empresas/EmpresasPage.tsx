@@ -15,6 +15,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
 import api from '../../api/client';
+import { fecha } from '../../utils/fechaRD';
 
 const COLS_DEF = [
   { key: 'usuario', label: 'Usuario',  defaultVisible: true },
@@ -391,7 +392,7 @@ export default function EmpresasPage() {
                         },
                         {
                           title: 'Vence', dataIndex: 'expiresAt', key: 'expiresAt',
-                          render: v => new Date(v).toLocaleDateString('es-DO'),
+                          render: v => fecha(v),
                         },
                         {
                           title: '', key: 'acc',

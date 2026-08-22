@@ -7,6 +7,7 @@ import { DownloadOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { restauranteApi } from '../../api/restaurante.api';
 import dayjs from 'dayjs';
+import { fecha } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -104,7 +105,7 @@ export default function ReportesPage() {
             columns={cols.length > 0 ? cols : [
               { title: 'Pedido', dataIndex: 'numero', width: 100 },
               { title: 'Cliente', dataIndex: 'clienteNombre', ellipsis: true },
-              { title: 'Fecha', dataIndex: 'fecha', width: 140, render: (v: string) => v ? new Date(v).toLocaleDateString('es-DO') : '—' },
+              { title: 'Fecha', dataIndex: 'fecha', width: 140, render: (v: string) => v ? fecha(v) : '—' },
               { title: 'Total', dataIndex: 'total', width: 110, render: (v: number) => `RD$${Number(v ?? 0).toFixed(2)}` },
               { title: 'Estado', dataIndex: 'estado', width: 110, render: (v: string) => <Tag>{v?.replace(/_/g, ' ')}</Tag> },
               { title: 'Repartidor', dataIndex: 'repartidorNombre', ellipsis: true },

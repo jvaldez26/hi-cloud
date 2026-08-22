@@ -12,6 +12,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, Cell,
 } from 'recharts';
 import { theme } from 'antd';
+import { dRD } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
@@ -39,7 +40,7 @@ function ResumenTab({ data }: { data: any }) {
     { title: 'Paciente', dataIndex: 'pacienteNombre', ellipsis: true },
     {
       title: 'Fecha / Hora', dataIndex: 'fechaHora', width: 145,
-      render: (v: string) => v ? `${fmt.date(v)} ${dayjs(v).format('HH:mm')}` : '—',
+      render: (v: string) => v ? `${fmt.date(v)} ${dRD(v).format('HH:mm')}` : '—',
     },
     {
       title: 'Estado', dataIndex: 'estado', width: 110,

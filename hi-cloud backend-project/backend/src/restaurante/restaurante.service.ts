@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import { DataSource } from 'typeorm';
 import { TenantService } from '../tenant/tenant.service';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 @Injectable()
 export class RestauranteService {
@@ -16,7 +17,7 @@ export class RestauranteService {
 
   async dashboard() {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = fechaHoyRD();
 
     const [mesasStats, comandasAbiertas, deliveryActivo, reservHoy, ventasHoy, platosMasVendidos, ventasPorHora] =
       await Promise.all([

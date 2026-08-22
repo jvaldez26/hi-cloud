@@ -12,6 +12,7 @@ import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { farmaciaApi } from '../../api/farmacia.api';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { exportarExcel } from '../../utils/exportExcel';
+import { hoyRD } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
@@ -175,7 +176,7 @@ export default function DispensacionPage() {
       'Descuento %': r.descuento,
       'Total': r.total,
     }));
-    exportarExcel(filas, `Dispensacion-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Dispensacion-${hoyRD()}`);
     message.success(`${filas.length} ítems exportados`);
   };
 

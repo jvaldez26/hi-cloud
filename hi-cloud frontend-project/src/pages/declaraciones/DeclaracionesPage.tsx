@@ -22,6 +22,7 @@ import {
 import dayjs from 'dayjs';
 import api from '../../api/client';
 import { fmt } from '../../utils/formatters';
+import { dRD, fecha } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 type TipoFormato = '606' | '607' | '608';
@@ -307,7 +308,7 @@ function HistorialPanel({ mes, anio }: { mes: number; anio: number }) {
         ? <Tooltip title="Hash SHA-256 guardado — archivo íntegro"><Tag color="green" icon={<CheckCircleOutlined />}>✅</Tag></Tooltip>
         : <Tag color="orange">N/A</Tag> },
     { title: 'Generado', dataIndex: 'createdAt', width: 140,
-      render: (v: string) => v ? dayjs(v).format('DD/MM/YY HH:mm') : '—' },
+      render: (v: string) => v ? dRD(v).format('DD/MM/YY HH:mm') : '—' },
     { title: '', width: 100, align: 'right' as const,
       render: (_: any, r: any) => (
         <Button size="small" icon={<DownloadOutlined />}
@@ -340,7 +341,7 @@ function HistorialPanel({ mes, anio }: { mes: number; anio: number }) {
       {yaExportado.length > 0 && (
         <Alert type="info" showIcon style={{ marginBottom: 12 }}
           message={`Este período (${MESES.find(m => m.value === mes)?.label} ${anio}) ya fue exportado ${yaExportado.length} vez${yaExportado.length !== 1 ? 'ces' : ''}`}
-          description={`Último: ${dayjs(yaExportado[0].createdAt).format('DD/MM/YYYY HH:mm')} — tipos: ${[...new Set(yaExportado.map((h: any) => h.tipo))].join(', ')}`}
+          description={`Último: ${dRD(yaExportado[0].createdAt).format('DD/MM/YYYY HH:mm')} — tipos: ${[...new Set(yaExportado.map((h: any) => h.tipo))].join(', ')}`}
         />
       )}
       <Table
@@ -706,8 +707,8 @@ export default function DeclaracionesPage() {
                   { title: '#', width: 45, render: (_: any,__: any, i: number) => i + 1 },
                   { title: 'NCF', dataIndex: 'folio', render: (v: string) => <Text code style={{ fontSize: 11 }}>{v || '—'}</Text> },
                   { title: 'Tipo NCF', dataIndex: 'tipoNcf', width: 80 },
-                  { title: 'Fecha Emisión', dataIndex: 'fecha', width: 120, render: (v: any) => v ? new Date(v).toLocaleDateString('es-DO') : '—' },
-                  { title: 'Fecha Anulación', dataIndex: 'fechaCancelacion', width: 130, render: (v: any) => v ? new Date(v).toLocaleDateString('es-DO') : '—' },
+                  { title: 'Fecha Emisión', dataIndex: 'fecha', width: 120, render: (v: any) => v ? fecha(v) : '—' },
+                  { title: 'Fecha Anulación', dataIndex: 'fechaCancelacion', width: 130, render: (v: any) => v ? fecha(v) : '—' },
                   { title: 'Monto', dataIndex: 'total', align: 'right' as const, render: (v: any) => fmt.money(Number(v || 0)) },
                 ]}
                 dataSource={f608?.comprobantes ?? f608?.filas ?? []}

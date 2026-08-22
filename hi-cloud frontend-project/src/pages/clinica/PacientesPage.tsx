@@ -10,6 +10,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
+import { hoyRD } from '../../utils/fechaRD';
 const fmt = (v: any) => fmtObj.date(v);
 
 const { Title } = Typography;
@@ -70,7 +71,7 @@ export default function PacientesPage() {
       'Fecha Nac.': r.fechaNacimiento,
       'Estado': r.isActive ? 'Activo' : 'Inactivo',
     }));
-    exportarExcel(filas, `Pacientes-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Pacientes-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

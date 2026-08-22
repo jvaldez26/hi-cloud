@@ -9,6 +9,7 @@ import {
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { restauranteApi } from '../../api/restaurante.api';
+import { horaConSegundos } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
@@ -238,7 +239,7 @@ function SeccionDashboard() {
     { title: 'Mesa', dataIndex: 'mesaNumero', width: 70 },
     { title: 'Comanda', dataIndex: 'numero', width: 100 },
     { title: 'Mesero', dataIndex: 'meseroNombre', ellipsis: true },
-    { title: 'Apertura', dataIndex: 'fechaApertura', width: 140, render: (v: string) => new Date(v).toLocaleTimeString('es-DO') },
+    { title: 'Apertura', dataIndex: 'fechaApertura', width: 140, render: (v: string) => horaConSegundos(v) },
     {
       title: 'Tiempo', dataIndex: 'minutos', width: 90,
       render: (v: number) => {

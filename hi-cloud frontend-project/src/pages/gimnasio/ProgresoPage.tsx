@@ -7,6 +7,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
+import { fecha, hoyRD } from '../../utils/fechaRD';
 
 const COLS_DEF = [
   { key: 'fecha', label: 'Fecha', defaultVisible: true },
@@ -37,7 +38,7 @@ export default function ProgresoPage() {
 
   const exportar = () => {
     const filas = (Array.isArray(data) ? data : []).map((r: any) => ({
-      'Fecha': r.fecha ? new Date(r.fecha).toLocaleDateString('es-DO') : '',
+      'Fecha': r.fecha ? fecha(r.fecha) : '',
       'Miembro': r.miembroNombre,
       'Peso (kg)': r.peso,
       'Talla (cm)': r.talla,
@@ -45,7 +46,7 @@ export default function ProgresoPage() {
       '% Grasa': r.grasaCorporal,
       'Masa Muscular': r.masaMuscular,
     }));
-    exportarExcel(filas, `Progreso-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Progreso-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 
@@ -56,7 +57,7 @@ export default function ProgresoPage() {
   });
 
   const columns = [
-    { key: 'fecha', title: 'Fecha', dataIndex: 'fecha', render: (v: string) => v ? new Date(v).toLocaleDateString('es-DO') : '' },
+    { key: 'fecha', title: 'Fecha', dataIndex: 'fecha', render: (v: string) => v ? fecha(v) : '' },
     { key: 'miembroNombre', title: 'Miembro', dataIndex: 'miembroNombre' },
     { key: 'peso', title: 'Peso (kg)', dataIndex: 'peso' },
     { key: 'talla', title: 'Talla (cm)', dataIndex: 'talla' },

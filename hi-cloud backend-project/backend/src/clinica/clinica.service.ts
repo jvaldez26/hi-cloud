@@ -6,6 +6,7 @@ import { DataSource } from 'typeorm';
 import { TenantService } from '../tenant/tenant.service';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { PreFacturaService } from '../pre-factura/pre-factura.service';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 function calcImc(peso: any, talla: any): number | null {
   const p = Number(peso);
@@ -353,7 +354,7 @@ export class ClinicaService {
 
   async getSalaEspera(fecha?: string, medicoId?: number) {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const fechaFiltro = fecha ?? new Date().toISOString().slice(0, 10);
+    const fechaFiltro = fecha ?? fechaHoyRD();
     const params: any[] = [empresaId, fechaFiltro];
     let where = `se."empresaId" = $1 AND DATE(se."horaLlegada") = $2`;
     if (medicoId) { params.push(medicoId); where += ` AND c."medicoId" = $${params.length}`; }
@@ -749,7 +750,7 @@ export class ClinicaService {
     let preFactura: any;
     try {
       preFactura = await this.preFacturaSvc.crear(
-        { clienteId, fecha: new Date().toISOString().slice(0, 10), tipoNcf: tipoNcf ?? 'E32',
+        { clienteId, fecha: fechaHoyRD(), tipoNcf: tipoNcf ?? 'E32',
           detalles: [{ descripcion: `Procedimiento: ${proc.nombre}`, cantidad: 1, precioUnitario: Number(proc.costo ?? 0) }] },
         usuarioId,
       );
@@ -792,7 +793,7 @@ export class ClinicaService {
       empresaId, numero, dto.pacienteId, dto.medicoId ?? null, dto.arsNombre, dto.arsNumeroAfiliado ?? null,
       dto.tipoServicio ?? null, dto.descripcion ?? null, dto.montoAutorizado ?? null,
       dto.montoCubierto ?? null, dto.montoPaciente ?? null,
-      dto.fechaSolicitud ?? new Date().toISOString().slice(0, 10), dto.observaciones ?? null,
+      dto.fechaSolicitud ?? fechaHoyRD(), dto.observaciones ?? null,
     ]);
     return row;
   }

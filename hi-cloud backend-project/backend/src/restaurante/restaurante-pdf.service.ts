@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { fechaYHoraRD, horaTextoRD } from '../common/utils/fecha-local.util';
 
 @Injectable()
 export class RestaurantePdfService {
@@ -30,7 +31,7 @@ export class RestaurantePdfService {
       doc.fontSize(9).font('Helvetica').text(`Mesa: ${comanda.mesaNumero}  Área: ${comanda.areaNombre ?? '-'}`, { align: 'center' });
       doc.text(`Mesero: ${comanda.meseroNombre ?? '-'}  Personas: ${comanda.numPersonas}`, { align: 'center' });
       doc.text(`Comanda: ${comanda.numero}`, { align: 'center' });
-      doc.text(`Fecha: ${new Date(comanda.fechaApertura).toLocaleString('es-DO')}`, { align: 'center' });
+      doc.text(`Fecha: ${fechaYHoraRD(new Date(comanda.fechaApertura))}`, { align: 'center' });
       this.separator(doc);
 
       doc.font('Helvetica-Bold').fontSize(8);
@@ -78,7 +79,7 @@ export class RestaurantePdfService {
     return this.buildBuffer((doc) => {
       doc.fontSize(14).font('Helvetica-Bold').text('COCINA', { align: 'center' });
       doc.fontSize(10).font('Helvetica').text(`COM: ${comanda.numero}  Mesa: ${comanda.mesaNumero}`, { align: 'center' });
-      doc.text(`Hora: ${new Date(comanda.fechaApertura).toLocaleTimeString('es-DO')}  Ronda: #${comanda.items?.[0]?.numeroRonda ?? 1}`, { align: 'center' });
+      doc.text(`Hora: ${horaTextoRD(new Date(comanda.fechaApertura))}  Ronda: #${comanda.items?.[0]?.numeroRonda ?? 1}`, { align: 'center' });
       if (comanda.notas) doc.text(`NOTA: ${comanda.notas}`, { align: 'center' });
       this.separator(doc);
       doc.fontSize(9).font('Helvetica');
@@ -100,8 +101,8 @@ export class RestaurantePdfService {
       doc.fontSize(13).font('Helvetica-Bold').text('CIERRE DE TURNO', { align: 'center' });
       doc.fontSize(9).font('Helvetica').text(`Turno: ${turno.numero}`, { align: 'center' });
       doc.text(`Cajero: ${turno.usuarioNombre ?? '-'}`, { align: 'center' });
-      doc.text(`Apertura: ${new Date(turno.fechaApertura).toLocaleString('es-DO')}`, { align: 'center' });
-      if (turno.fechaCierre) doc.text(`Cierre: ${new Date(turno.fechaCierre).toLocaleString('es-DO')}`, { align: 'center' });
+      doc.text(`Apertura: ${fechaYHoraRD(new Date(turno.fechaApertura))}`, { align: 'center' });
+      if (turno.fechaCierre) doc.text(`Cierre: ${fechaYHoraRD(new Date(turno.fechaCierre))}`, { align: 'center' });
       this.separator(doc);
       doc.fontSize(9).font('Helvetica');
       const row = (label: string, val: string | number) => {

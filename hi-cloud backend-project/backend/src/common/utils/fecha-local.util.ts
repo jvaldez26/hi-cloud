@@ -55,3 +55,22 @@ export function fechaTextoRD(
 ): string {
   return d.toLocaleDateString('es-DO', { timeZone: ZONA_HORARIA, ...opciones });
 }
+
+/**
+ * Solo la hora, en zona RD. Por defecto 'hh:mm a. m.'.
+ *
+ * Es la que va en los pies de los PDF ("Generado: …") y en las comandas. Sin
+ * fijar la zona salían cuatro horas adelantadas, o sea con la hora de un
+ * documento que el cliente se lleva impreso.
+ */
+export function horaTextoRD(
+  d: Date = new Date(),
+  opciones: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' },
+): string {
+  return d.toLocaleTimeString('es-DO', { timeZone: ZONA_HORARIA, ...opciones });
+}
+
+/** Fecha y hora en una sola cadena, formato corto: '22/8/2026 9:14 a. m.'. */
+export function fechaYHoraRD(d: Date = new Date()): string {
+  return `${fechaTextoRD(d)} ${horaTextoRD(d)}`;
+}

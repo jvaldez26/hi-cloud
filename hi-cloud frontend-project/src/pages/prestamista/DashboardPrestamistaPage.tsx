@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, Row, Col, Statistic, Table, Tag, Spin, theme, Alert, Button } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { prestamistalApi } from '../../api/prestamista.api';
+import { fecha } from '../../utils/fechaRD';
 
 const fmt = (n: any) => `RD$ ${Number(n ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
 
@@ -140,7 +141,7 @@ export default function DashboardPrestamistaPage() {
               dataSource={(data?.recaudacionMes ?? []).slice(-6).map((r: any, i: number) => ({ ...r, key: i }))}
               pagination={false} size="small" scroll={{ x: 'max-content' }}
               columns={[
-                { title: 'Mes', dataIndex: 'mes', render: (v: string) => new Date(v).toLocaleDateString('es-DO', { month: 'short', year: '2-digit' }) },
+                { title: 'Mes', dataIndex: 'mes', render: (v: string) => fecha(v) },
                 { title: 'Total', dataIndex: 'total', render: (v: any) => fmt(v) },
               ]}
             />

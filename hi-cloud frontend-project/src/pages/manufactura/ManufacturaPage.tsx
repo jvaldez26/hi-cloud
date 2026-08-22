@@ -21,6 +21,7 @@ import { motion } from 'framer-motion';
 import api from '../../api/client';
 import { productosApi } from '../../api/productos.api';
 import { fmt } from '../../utils/formatters';
+import { fechaHora } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
@@ -288,7 +289,7 @@ function WIPTab() {
                 { title: 'Estado', dataIndex: 'estado', width: 110,
                   render: (v: string) => <Tag color={ESTADO_ETAPA_COLOR[v]}>{v?.replace('_',' ').toUpperCase()}</Tag> },
                 { title: 'Inicio', dataIndex: 'fechaInicio', width: 130,
-                  render: (v: string) => v ? new Date(v).toLocaleString('es-DO', { dateStyle: 'short', timeStyle: 'short' }) : '—' },
+                  render: (v: string) => v ? fechaHora(v) : '—' },
                 { title: '', key: 'acc', width: 160,
                   render: (_: any, r: any) => (
                     <Space size={4}>

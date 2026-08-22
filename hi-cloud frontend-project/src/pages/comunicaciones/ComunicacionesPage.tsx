@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../api/client';
+import { fecha } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
@@ -199,7 +200,7 @@ export default function ComunicacionesPage() {
                       },
                       {
                         title: 'Vencimiento', dataIndex: 'fechaVencimiento', key: 'fv',
-                        render: v => new Date(v).toLocaleDateString('es-DO'),
+                        render: v => fecha(v),
                       },
                       {
                         title: 'Estado', dataIndex: 'diasVencida', key: 'dv',

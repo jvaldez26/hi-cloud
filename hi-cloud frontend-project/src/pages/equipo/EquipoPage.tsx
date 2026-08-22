@@ -19,6 +19,7 @@ import { motion } from 'framer-motion';
 import api from '../../api/client';
 import { fmt } from '../../utils/formatters';
 import dayjs from 'dayjs';
+import { ahora, dRD } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
@@ -299,8 +300,8 @@ export default function EquipoPage() {
     {
       title: 'Expira', dataIndex: 'expiresAt', width: 130,
       render: (v: string) => (
-        <Text type={new Date(v) < new Date() ? 'danger' : 'secondary'} style={{ fontSize: 12 }}>
-          {dayjs(v).format('DD/MM/YYYY HH:mm')}
+        <Text type={new Date(v) < ahora() ? 'danger' : 'secondary'} style={{ fontSize: 12 }}>
+          {dRD(v).format('DD/MM/YYYY HH:mm')}
         </Text>
       ),
     },

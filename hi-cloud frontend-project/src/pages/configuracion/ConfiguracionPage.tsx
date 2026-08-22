@@ -22,6 +22,7 @@ import { configuracionApi } from '../../api/configuracion.api';
 import { useAuthStore } from '../../store/auth.store';
 import { useThemeStore, TEMAS_SIDEBAR, type TemaSidebar } from '../../store/theme.store';
 import { VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { ahora, fecha, fechaHora } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -1496,7 +1497,7 @@ function SeccionECF({ empresaId }: { empresaId: number }) {
           },
           {
             title: 'Vencimiento', dataIndex: 'fechaVencimiento', width: 120,
-            render: (v: string) => v ? new Date(v).toLocaleDateString('es-DO') : '—',
+            render: (v: string) => v ? fecha(v) : '—',
           },
           {
             title: 'Estado', dataIndex: 'estado', width: 100,
@@ -1681,10 +1682,10 @@ function SeccionUsuarios({ empresaId }: { empresaId: number }) {
                 title: 'Expira', dataIndex: 'expiresAt', width: 140,
                 render: (v: string) => {
                   if (!v) return '—';
-                  const vencida = new Date(v) < new Date();
+                  const vencida = new Date(v) < ahora();
                   return (
                     <Text type={vencida ? 'danger' : 'secondary'} style={{ fontSize: 12 }}>
-                      {new Date(v).toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      {fecha(v)}
                     </Text>
                   );
                 },
@@ -1990,7 +1991,7 @@ function SeccionPlan() {
             {plan.fechaVencimiento && (
               <div style={{ marginTop: 8 }}>
                 <Text type="secondary" style={{ fontSize: 12 }}>
-                  Vence: {new Date(plan.fechaVencimiento).toLocaleDateString('es-DO')}
+                  Vence: {fecha(plan.fechaVencimiento)}
                 </Text>
               </div>
             )}
@@ -2043,7 +2044,7 @@ function SeccionAuditoria() {
         columns={[
           {
             title: 'Fecha', dataIndex: 'createdAt', width: 140,
-            render: (v: string) => new Date(v).toLocaleString('es-DO', { dateStyle: 'short', timeStyle: 'short' }),
+            render: (v: string) => fechaHora(v),
           },
           {
             title: 'Nivel', dataIndex: 'nivel', width: 100,

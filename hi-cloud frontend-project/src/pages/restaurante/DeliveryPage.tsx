@@ -6,6 +6,7 @@ import {
 import { PlusOutlined, CarOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { restauranteApi } from '../../api/restaurante.api';
+import { hora } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -88,7 +89,7 @@ export default function DeliveryPage() {
                     <Card key={p.id} size="small" style={{ marginBottom: 8, borderLeft: `3px solid ${ESTADO_COLOR[p.estado] === 'default' ? '#d9d9d9' : ESTADO_COLOR[p.estado]}` }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <Text strong style={{ fontSize: 12 }}>{p.numero}</Text>
-                        <Text style={{ fontSize: 11, color: '#888' }}>{new Date(p.createdAt).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' })}</Text>
+                        <Text style={{ fontSize: 11, color: '#888' }}>{hora(p.createdAt)}</Text>
                       </div>
                       <Text style={{ fontSize: 12, display: 'block' }}>{p.clienteNombre}</Text>
                       {p.clienteTelefono && <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>{p.clienteTelefono}</Text>}

@@ -9,6 +9,7 @@ import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useNavigate } from 'react-router-dom';
 import { agroApi } from '../../api/agro.api';
+import { hoyRD } from '../../utils/fechaRD';
 
 const COLS_DEF = [
   { key: 'arete',    label: 'Arete',     defaultVisible: true  },
@@ -83,7 +84,7 @@ export default function GanaderiaPage() {
       'Propósito': r.proposito ?? '',
       'Estado':    r.estado,
     }));
-    exportarExcel(rows, `Animales-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(rows, `Animales-${hoyRD()}`);
     message.success(`${rows.length} animales exportados`);
   };
 

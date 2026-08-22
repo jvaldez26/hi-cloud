@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { fechaHoraRD, fechaTextoRD } from '../common/utils/fecha-local.util';
+import { fechaHoraRD, fechaTextoRD, fechaYHoraRD } from '../common/utils/fecha-local.util';
 
 @Injectable()
 export class FarmaciaPdfService {
@@ -44,7 +44,7 @@ export class FarmaciaPdfService {
       doc.fontSize(10).font('Helvetica');
 
       // Info cliente
-      doc.text(`Fecha: ${new Date(disp.fecha).toLocaleString('es-DO')}`, { continued: true })
+      doc.text(`Fecha: ${fechaYHoraRD(new Date(disp.fecha))}`, { continued: true })
          .text(`   Farmacéutico: ${disp.farmaceuticoNombre ?? 'N/D'}`, { align: 'right' });
       if (disp.clienteNombre) {
         doc.text(`Cliente: ${disp.clienteNombre}${disp.clienteCedula ? ' — Cédula: ' + disp.clienteCedula : ''}`);

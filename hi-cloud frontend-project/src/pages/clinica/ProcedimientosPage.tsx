@@ -9,6 +9,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
+import { hoyRD } from '../../utils/fechaRD';
 const fmt = (v: any) => fmtObj.date(v);
 const fmtMoney = (v: any) => fmtObj.money(v);
 
@@ -78,7 +79,7 @@ export default function ProcedimientosPage() {
       'Costo': r.costo ?? '',
       'Estado': r.estado,
     }));
-    exportarExcel(filas, `Procedimientos-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Procedimientos-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

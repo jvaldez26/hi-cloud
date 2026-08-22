@@ -9,6 +9,7 @@ import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/Tab
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
 import { prestamistalApi } from '../../api/prestamista.api';
+import { hoyRD } from '../../utils/fechaRD';
 
 const { Option } = Select;
 const fmt = (n: any) => `RD$ ${Number(n ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
@@ -104,7 +105,7 @@ export default function PrestamosPage() {
       'Desembolso': r.fechaDesembolso?.slice(0, 10),
       'Vencimiento': r.fechaVencimiento?.slice(0, 10),
     }));
-    exportarExcel(filas, `Prestamos-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Prestamos-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

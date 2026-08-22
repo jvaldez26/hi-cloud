@@ -4,6 +4,7 @@ import { DataSource } from 'typeorm';
 import { TenantService } from '../tenant/tenant.service';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { PreFacturaService } from '../pre-factura/pre-factura.service';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
 
@@ -882,7 +883,7 @@ export class OpticaService {
       : `Cancelado en su totalidad. Adelanto recibido: RD$${abono.toFixed(2)}.`;
     const notasFactura = `Generada desde OT óptica #${ot.numero} — ${ot.pacienteNombre}. ${notasPago}`;
 
-    const fecha = new Date().toISOString().slice(0, 10);
+    const fecha = fechaHoyRD();
     const preFactura = await this.preFacturaSvc.crear(
       { clienteId, fecha, tipoNcf: tipoNcf ?? 'E32', detalles, notas: notasFactura },
       usuarioId,

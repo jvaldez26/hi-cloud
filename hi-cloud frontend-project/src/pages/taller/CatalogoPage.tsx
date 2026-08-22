@@ -10,6 +10,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
+import { hoyRD } from '../../utils/fechaRD';
 
 const { Title } = Typography;
 
@@ -93,7 +94,7 @@ export default function CatalogoPage() {
       'Horas estimadas': r.horasEstimadas ?? '',
       'Estado': r.isActive ? 'Activo' : 'Inactivo',
     }));
-    exportarExcel(filas, `Catalogo-Servicios-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Catalogo-Servicios-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

@@ -9,6 +9,7 @@ import type { FacturaPDFData, FacturaPDFItem } from '../templates/factura.templa
 import { generarHTMLFactura }  from '../templates/factura.template';
 import type { ReciboPOSData }  from '../templates/recibo-termico.template';
 import { generarFacturaPDF, generarReciboPOSPDF } from '../../common/pdf/factura-pdf.helper';
+import { fechaYHoraRD } from '../../common/utils/fecha-local.util';
 
 @Injectable()
 export class PDFService {
@@ -350,9 +351,9 @@ export class PDFService {
       );
     }
 
-    const now = new Date();
-    const fechaHora = now.toLocaleDateString('es-DO') + ' ' +
-      now.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
+    // Pie del PDF de la FACTURA — el documento que se lleva el cliente.
+    // Sin fijar la zona salia cuatro horas adelantado.
+    const fechaHora = fechaYHoraRD();
 
     const sucursalNombreRecibo: string | undefined = (factura as any).sucursalId
       ? await this.facturaRepo.manager.query(

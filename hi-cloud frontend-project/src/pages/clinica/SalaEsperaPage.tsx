@@ -4,6 +4,7 @@ import { PlusOutlined, ReloadOutlined, UserOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { clinicaApi } from '../../api/clinica.api';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { hora, hoyRD } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -26,7 +27,7 @@ export default function SalaEsperaPage() {
 
   const { data: citasHoy = [] } = useQuery({
     queryKey: ['clinica-citas-hoy-sala'],
-    queryFn: () => clinicaApi.listarCitas({ fecha: new Date().toISOString().slice(0, 10), limit: 100 }),
+    queryFn: () => clinicaApi.listarCitas({ fecha: hoyRD(), limit: 100 }),
     select: (d: any) => d.data ?? [],
   });
 
@@ -76,7 +77,7 @@ export default function SalaEsperaPage() {
     { title: 'Tipo Cita', dataIndex: 'tipoCita', width: 110, render: (v: any) => v ?? '—' },
     {
       title: 'Llegada', dataIndex: 'horaLlegada', width: 80,
-      render: (v: any) => v ? new Date(v).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }) : '—',
+      render: (v: any) => v ? hora(v) : '—',
     },
     {
       title: 'Espera', key: 'espera', width: 80,

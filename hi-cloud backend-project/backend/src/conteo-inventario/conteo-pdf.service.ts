@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { TenantService } from '../tenant/tenant.service';
+import { fechaTextoRD } from '../common/utils/fecha-local.util';
 
 const PDFDocument = require('pdfkit') as typeof import('pdfkit');
 const bwipjs      = require('bwip-js') as typeof import('bwip-js');
@@ -242,7 +243,7 @@ export class ConteoPdfService {
     const campos: [string, string][] = [
       ['Nombre:',    datos.nombre],
       ['Almacen:',   datos.almacen],
-      ['Fecha:',     datos.fechaGeneracion.toLocaleDateString('es-DO')],
+      ['Fecha:',     fechaTextoRD(datos.fechaGeneracion)],
       ['Modalidad:', datos.modalidad === 'ciego' ? 'Ciega' : 'Informada'],
       ['Estado:',    datos.estado.replace(/_/g, ' ')],
     ];

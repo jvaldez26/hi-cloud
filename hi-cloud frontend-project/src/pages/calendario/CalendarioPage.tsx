@@ -11,6 +11,7 @@ import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import api from '../../api/client';
 import { fmt } from '../../utils/formatters';
+import { dRD } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
@@ -41,7 +42,7 @@ const ESTADO_TAG: Record<string, { color: string; label: string; icon: any }> = 
 function CalendarioGrid({ mes, anio, eventos }: { mes: number; anio: number; eventos: any[] }) {
   const primerDia = new Date(anio, mes - 1, 1).getDay();
   const diasEnMes = new Date(anio, mes, 0).getDate();
-  const hoy       = new Date();
+  const hoy       = dRD();   // hoy en RD, no en la zona del equipo
   const DIAS_SEMANA = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
   const eventosPorDia = useMemo(() => {
@@ -62,7 +63,7 @@ function CalendarioGrid({ mes, anio, eventos }: { mes: number; anio: number; eve
   for (let d = 1; d <= diasEnMes; d++) celdas.push(d);
 
   const esHoy = (d: number) =>
-    d === hoy.getDate() && mes === hoy.getMonth() + 1 && anio === hoy.getFullYear();
+    d === hoy.date() && mes === hoy.month() + 1 && anio === hoy.year();
 
   return (
     <div>

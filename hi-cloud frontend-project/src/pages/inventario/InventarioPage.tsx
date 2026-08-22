@@ -24,6 +24,7 @@ import { productosApi } from '../../api/productos.api';
 import { exportarExcel } from '../../utils/exportExcel';
 import type { MovimientoInventario } from '../../types';
 import { fmt } from '../../utils/formatters';
+import { dRD } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -106,7 +107,7 @@ const { data: productosData } = useQuery({
   const handleExcel = useCallback(async () => {
     const all = await inventarioApi.movimientos(1, 1000, filters);
     const filas = (all?.data ?? []).map((m: MovimientoInventario) => ({
-      'Fecha': m.createdAt ? dayjs(m.createdAt).format('DD/MM/YYYY HH:mm') : '',
+      'Fecha': m.createdAt ? dRD(m.createdAt).format('DD/MM/YYYY HH:mm') : '',
       'Tipo': m.tipo,
       'Producto': (m as any).producto?.nombre ?? '',
       'Código': (m as any).producto?.codigo ?? '',
@@ -135,7 +136,7 @@ const { data: productosData } = useQuery({
 
   const columns = [
     { title: 'Fecha', dataIndex: 'createdAt', key: 'createdAt', width: 130,
-      render: (v: string) => <Text style={{ fontSize: 12 }}>{dayjs(v).format('DD/MM/YY HH:mm')}</Text> },
+      render: (v: string) => <Text style={{ fontSize: 12 }}>{dRD(v).format('DD/MM/YY HH:mm')}</Text> },
     { title: 'Tipo', dataIndex: 'tipo', key: 'tipo', width: 115,
       render: (v: string) => <Tag color={TIPO_COLOR[v] ?? 'default'} style={{ fontSize: 11, fontWeight: 600, margin: 0 }}>{TIPO_ICON[v]} {v.toUpperCase()}</Tag> },
     { title: 'Producto', key: 'producto', ellipsis: true,
@@ -701,7 +702,7 @@ function SolicitudesAjusteTab() {
     { title: 'Cant. Nueva',  dataIndex: 'cantidadNueva', align: 'center' as const, render: (v: number) => <b>{v}</b> },
     { title: 'Motivo',       dataIndex: 'motivo', ellipsis: true },
     { title: 'Solicitado por', render: (_: any, r: any) => r.user ? `${r.user.firstName ?? ''} ${r.user.lastName ?? ''}`.trim() || r.user.email : '-', width: 160 },
-    { title: 'Fecha',        dataIndex: 'createdAt', render: (v: string) => dayjs(v).format('DD/MM/YY HH:mm'), width: 130 },
+    { title: 'Fecha',        dataIndex: 'createdAt', render: (v: string) => dRD(v).format('DD/MM/YY HH:mm'), width: 130 },
     { title: 'Estado',       dataIndex: 'estado', render: (v: string) => <Tag color={estadoColor[v]}>{v.toUpperCase()}</Tag>, width: 110 },
     { title: 'Motivo Rechazo', dataIndex: 'motivoRechazo', ellipsis: true },
     {

@@ -15,6 +15,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
+import { hoyRD } from '../../utils/fechaRD';
 
 const { Title } = Typography;
 
@@ -101,7 +102,7 @@ export default function VehiculosPage() {
       'Teléfono': r.propietarioTelefono ?? '',
       'Km actual': r.kilometrajeActual ?? '',
     }));
-    exportarExcel(filas, `Vehiculos-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Vehiculos-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

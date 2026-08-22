@@ -7,6 +7,7 @@ import type { DocumentoPDFData, DocumentoPDFItem } from '../common/pdf/documento
 import { generarDocumentoPDFFactura } from '../common/pdf/documento-pdf.helper';
 import { generarReciboPOSPDF } from '../common/pdf/factura-pdf.helper';
 import type { ReciboPOSData } from '../facturas/templates/recibo-termico.template';
+import { fechaYHoraRD } from '../common/utils/fecha-local.util';
 
 const ESTADO_COLOR: Record<string, string> = {
   borrador:   'orange',
@@ -140,9 +141,7 @@ export class PreFacturaPDFService {
         ).then((r: any[]) => r[0]?.nombre ?? undefined)
       : undefined;
 
-    const now = new Date();
-    const fechaHora = now.toLocaleDateString('es-DO') + ' ' +
-      now.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
+    const fechaHora = fechaYHoraRD();
 
     const data: ReciboPOSData = {
       empresaNombre:   empresa.nombreComercial || empresa.nombre || 'Mi Empresa',

@@ -3,7 +3,7 @@
  *
  * Rota automáticamente cada mes según la fecha LOCAL del navegador (no del
  * servidor, que corre en UTC).  El mes se calcula en el cliente:
- *   new Date().getMonth()  →  0 = enero … 11 = diciembre
+ *   mesRD()  →  1 = enero … 12 = diciembre
  *
  * En entornos no-productivos, ?panel=N (1-12) fuerza una variante concreta.
  *
@@ -42,6 +42,7 @@ import V11Noviembre  from './variants/V11Noviembre';
 import V12Diciembre  from './variants/V12Diciembre';
 
 import { useSearchParams } from 'react-router-dom';
+import { mesRD } from '../../../utils/fechaRD';
 
 const VARIANTES = [
   V01Enero, V02Febrero, V03Marzo,   V04Abril,
@@ -75,7 +76,7 @@ export function PanelAcceso() {
     ? forcedRaw - 1   // convertir a índice 0-based
     : NaN;
 
-  const mes = Number.isFinite(forced) ? forced : new Date().getMonth();
+  const mes = Number.isFinite(forced) ? forced : mesRD() - 1;
 
   const Variante = VARIANTES[mes as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11];
 

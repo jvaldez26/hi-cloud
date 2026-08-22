@@ -14,6 +14,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { pagosApi, PagoSuscripcion } from '../../api/pagos.api';
 import { fmtDop } from '../../utils/fmt';
+import { fecha } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
@@ -33,9 +34,7 @@ const ESTADO_COLOR: Record<string, string> = {
 
 function fmtDate(d: string | null) {
   if (!d) return '—';
-  return new Date(d).toLocaleDateString('es-DO', {
-    day: '2-digit', month: 'short', year: 'numeric',
-  });
+  return fecha(d);
 }
 
 export default function MiSuscripcionPage() {

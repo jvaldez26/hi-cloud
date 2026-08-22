@@ -13,6 +13,7 @@ import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery } from '@tanstack/react-query';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import api from '../../api/client';
+import { anioRD } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
@@ -96,7 +97,7 @@ export default function IsrPage() {
                               'Tasa Efectiva':   `${Number(e.tasaEfectiva ?? 0).toFixed(1)}%`,
                               'Exento':          e.exento ? 'Sí' : 'No',
                             }));
-                            exportarExcel(filas, `ISR-Nomina-${new Date().getFullYear()}`);
+                            exportarExcel(filas, `ISR-Nomina-${anioRD()}`);
                           }}>Excel</Button>
                           <RefreshByKeyButton queryKey={['isr']} />
                           <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />

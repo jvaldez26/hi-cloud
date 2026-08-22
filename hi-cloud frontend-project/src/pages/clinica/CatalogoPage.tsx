@@ -8,6 +8,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
+import { hoyRD } from '../../utils/fechaRD';
 const fmtMoney = (v: any) => fmtObj.money(v);
 
 const { Title } = Typography;
@@ -70,7 +71,7 @@ export default function CatalogoPage() {
       'Req. Autorización': r.requiereAutorizacion ? 'Sí' : 'No',
       'Estado': r.isActive !== false ? 'Activo' : 'Inactivo',
     }));
-    exportarExcel(filas, `Catalogo-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Catalogo-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

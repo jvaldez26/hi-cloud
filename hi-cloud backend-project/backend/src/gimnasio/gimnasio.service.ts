@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, Logger } from '@nes
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { TenantService } from '../tenant/tenant.service';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 @Injectable()
 export class GimnasioService {
@@ -126,7 +127,7 @@ export class GimnasioService {
 
   async getMiembroMembresiaActiva(miembroId: number, empresaId: number) {
     await this.miembroOr404(empresaId, miembroId);
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = fechaHoyRD();
     const [row] = await this.ds.query<any[]>(
       `SELECT mb.*, p.nombre as planNombre FROM gm_membresias mb
        JOIN gm_planes p ON p.id=mb."planId"
@@ -343,7 +344,7 @@ export class GimnasioService {
   }
 
   async getMembresiasProximasVencer(empresaId: number) {
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = fechaHoyRD();
     return this.ds.query<any[]>(
       `SELECT mb.*, m.nombre as miembroNombre, m.telefono, p.nombre as planNombre
        FROM gm_membresias mb
@@ -707,7 +708,7 @@ export class GimnasioService {
     if (!miembro) {
       return { autorizado: false, motivo: 'Miembro no encontrado' };
     }
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = fechaHoyRD();
     const [membresia] = await this.ds.query<any[]>(
       `SELECT m.id, m."fechaFin", p.nombre as plan
        FROM gm_membresias m JOIN gm_planes p ON p.id=m."planId"
@@ -928,7 +929,7 @@ export class GimnasioService {
   // ── DASHBOARD ────────────────────────────────────────────────────────────────
 
   async getDashboard(empresaId: number) {
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = fechaHoyRD();
     const [miembrosActivos] = await this.ds.query<any[]>(
       `SELECT COUNT(*) FROM gm_miembros WHERE "empresaId"=$1 AND estado='activo'`,
       [empresaId],

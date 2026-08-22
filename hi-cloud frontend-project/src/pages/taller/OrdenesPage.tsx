@@ -18,6 +18,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
+import { hoyRD } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -188,7 +189,7 @@ export default function OrdenesPage() {
       'Total': r.total ?? 0,
       'Ingreso': r.fechaIngreso ?? '',
     }));
-    exportarExcel(filas, `Ordenes-Taller-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Ordenes-Taller-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

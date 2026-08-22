@@ -5,6 +5,7 @@ import {
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { farmaciaApi } from '../../api/farmacia.api';
+import { fecha } from '../../utils/fechaRD';
 
 const { Title } = Typography;
 
@@ -29,7 +30,7 @@ export default function FarmaciaDashboard() {
   const colsLotes = [
     { title: 'Medicamento', dataIndex: 'nombreGenerico' },
     { title: 'Lote', dataIndex: 'numeroLote', width: 120 },
-    { title: 'Vence', dataIndex: 'fechaVencimiento', width: 110, render: (v: string) => new Date(v).toLocaleDateString('es-DO') },
+    { title: 'Vence', dataIndex: 'fechaVencimiento', width: 110, render: (v: string) => fecha(v) },
     {
       title: 'Días', dataIndex: 'diasRestantes', width: 70,
       render: (v: number) => {

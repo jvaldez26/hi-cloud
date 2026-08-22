@@ -20,6 +20,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
 import { fmt } from '../../utils/formatters';
+import { dRD, hoyRD } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
@@ -219,7 +220,7 @@ function ReciboEntregaModal({ open, data, onClose }: { open: boolean; data: any;
         <div style={{ textAlign: 'center', marginBottom: 12 }}>
           <h2 style={{ margin: '0 0 4px' }}>RECIBO DE ENTREGA</h2>
           <h3 style={{ margin: 0, color: '#555' }}>{ot.numero}</h3>
-          <div style={{ marginTop: 4, color: '#888', fontSize: 13 }}>{dayjs().format('DD/MM/YYYY HH:mm')}</div>
+          <div style={{ marginTop: 4, color: '#888', fontSize: 13 }}>{dRD().format('DD/MM/YYYY HH:mm')}</div>
         </div>
         <hr style={{ borderColor: '#ddd' }} />
         <Descriptions size="small" column={1} style={{ marginTop: 12 }}>
@@ -911,7 +912,7 @@ export default function OrdenesTrabajoOpticaPage() {
       'Saldo': r.balance ?? 0,
       'Entrega': r.fechaEntrega ?? '',
     }));
-    exportarExcel(filas, `Ordenes-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Ordenes-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

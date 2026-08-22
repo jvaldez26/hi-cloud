@@ -9,6 +9,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
+import { fecha, hoyRD } from '../../utils/fechaRD';
 
 const TIPOS = ['caso_legal','proyecto','consultoria','auditoria','diseno','ingenieria','otro'];
 const ESTADOS = ['borrador','activo','pausado','completado','cancelado'];
@@ -84,10 +85,10 @@ export default function ExpedientesPage() {
       'Responsable': r.profesionalNombre ? `${r.profesionalNombre} ${r.profesionalApellidos ?? ''}`.trim() : '',
       'Estado': r.estado,
       'Tipo Facturación': r.tipoFacturacion?.replace(/_/g, ' ') ?? '',
-      'Inicio': r.fechaInicio ? new Date(r.fechaInicio).toLocaleDateString('es-DO') : '',
+      'Inicio': r.fechaInicio ? fecha(r.fechaInicio) : '',
       'Horas': r.totalHorasRegistradas,
     }));
-    exportarExcel(filas, `Expedientes-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Expedientes-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 
@@ -101,7 +102,7 @@ export default function ExpedientesPage() {
     { title: 'Responsable', key: 'profesionalNombre', dataIndex: 'profesionalNombre', render: (v: string, row: any) => v ? `${v} ${row.profesionalApellidos ?? ''}`.trim() : '—' },
     { title: 'Estado', key: 'estado', dataIndex: 'estado', render: (v: string) => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{v}</Tag> },
     { title: 'Tipo Facturación', key: 'tipoFacturacion', dataIndex: 'tipoFacturacion', render: (v: string) => v?.replace(/_/g, ' ') ?? '—' },
-    { title: 'Inicio', key: 'fechaInicio', dataIndex: 'fechaInicio', render: (v: string) => v ? new Date(v).toLocaleDateString('es-DO') : '' },
+    { title: 'Inicio', key: 'fechaInicio', dataIndex: 'fechaInicio', render: (v: string) => v ? fecha(v) : '' },
     { title: 'Horas', key: 'totalHorasRegistradas', dataIndex: 'totalHorasRegistradas', render: (v: number) => v != null ? `${Number(v).toFixed(1)}h` : '' },
     {
       title: '', key: 'acciones', width: 50,

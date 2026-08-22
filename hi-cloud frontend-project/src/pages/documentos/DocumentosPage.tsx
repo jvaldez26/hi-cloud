@@ -13,6 +13,7 @@ import {
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
+import { fecha } from '../../utils/fechaRD';
 
 const { Title, Text, Link } = Typography;
 const { Option } = Select;
@@ -184,7 +185,7 @@ export default function DocumentosPage() {
                   <Text style={{ fontSize: 12 }}>{r.nombreSubidoPor ?? `Usuario #${r.subidoPorId}`}</Text>
                   <div>
                     <Text type="secondary" style={{ fontSize: 11 }}>
-                      {new Date(r.createdAt).toLocaleDateString('es-DO')}
+                      {fecha(r.createdAt)}
                     </Text>
                   </div>
                 </div>

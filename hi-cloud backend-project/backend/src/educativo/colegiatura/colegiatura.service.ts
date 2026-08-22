@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { fechaHoyRD } from '../../common/utils/fecha-local.util';
 
 @Injectable()
 export class ColegiaturaService {
@@ -217,7 +218,7 @@ export class ColegiaturaService {
        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
       [empresaId, cargo.id, cargo.estudianteId,
        dto.monto ?? cargo.monto,
-       dto.fecha ?? new Date().toISOString().substring(0, 10),
+       dto.fecha ?? fechaHoyRD(),
        dto.metodoPago ?? 'efectivo',
        dto.referencia ?? null, dto.observaciones ?? null],
     );

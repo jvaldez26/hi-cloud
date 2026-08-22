@@ -35,7 +35,7 @@ import { randomBytes } from 'crypto';
 import { createHash } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import PDFDocument from 'pdfkit';
-import { fechaHoraRD } from '../common/utils/fecha-local.util';
+import { fechaHoraRD, fechaYHoraRD } from '../common/utils/fecha-local.util';
 
 @Injectable()
 export class NominaService {
@@ -785,7 +785,7 @@ export class NominaService {
         doc.moveTo(MAR, fy).lineTo(W - MAR, fy).lineWidth(0.4).stroke('#e2e8f0');
         doc.font('Helvetica').fontSize(7.5).fillColor('#9ca3af')
            .text(
-             `Registro ${contrato.numero}  ·  HiCloud ERP  ·  Generado el: ${hoy.toLocaleString('es-DO')}`,
+             `Registro ${contrato.numero}  ·  HiCloud ERP  ·  Generado el: ${fechaYHoraRD(hoy)}`,
              MAR, fy + 6, { width: W - MAR * 2, align: 'center' },
            );
 

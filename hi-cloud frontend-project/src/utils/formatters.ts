@@ -1,32 +1,15 @@
 /**
- * Convierte una cadena de fecha a objeto Date sin desfase de zona horaria.
- * "2026-05-04" → new Date(2026, 4, 4) en lugar de UTC midnight que en RD
- * (UTC-4) se convertiría al día anterior.
+ * El formateo de fechas vive en fechaRD.ts, con la zona de RD fijada.
+ *
+ * Antes se hacía aquí con un Intl.DateTimeFormat sin `timeZone`, o sea con la
+ * zona del navegador: en una PC con la zona mal configurada —que las hay— una
+ * factura de las 9:14 a.m. se mostraba a la 1:14 p.m. El locale 'es-DO' elige
+ * el formato, no la zona, y eso hacía que el resultado pareciera correcto.
+ *
+ * `fmt.date` y `fmt.dateTime` se mantienen porque los usa medio ERP; ahora solo
+ * delegan.
  */
-function parseLocalDate(d: string | Date): Date {
-  if (d instanceof Date) return d;
-  // Formato ISO puro YYYY-MM-DD → parsear como fecha local
-  if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
-    const [y, m, day] = d.split('-').map(Number);
-    return new Date(y, m - 1, day);
-  }
-  return new Date(d);
-}
-
-const DATE_FMT = new Intl.DateTimeFormat('es-DO', {
-  day:   '2-digit',
-  month: '2-digit',
-  year:  'numeric',
-});
-
-const DATETIME_FMT = new Intl.DateTimeFormat('es-DO', {
-  day:    '2-digit',
-  month:  '2-digit',
-  year:   'numeric',
-  hour:   '2-digit',
-  minute: '2-digit',
-  hour12: true,
-});
+import { fecha as fechaRD, fechaHora as fechaHoraRD } from './fechaRD';
 
 /** Redondea a 2 decimales de forma segura evitando errores de punto flotante. */
 export const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -51,11 +34,9 @@ export const fmt = {
   percent: (n: number) =>
     `${n.toFixed(1)}%`,
 
-  date: (d: string | Date) =>
-    d ? DATE_FMT.format(parseLocalDate(d as string)) : '',
+  date: (d: string | Date) => fechaRD(d),
 
-  dateTime: (d: string | Date) =>
-    d ? DATETIME_FMT.format(parseLocalDate(d as string)) : '',
+  dateTime: (d: string | Date) => fechaHoraRD(d),
 };
 
 export const estadoColor: Record<string, string> = {

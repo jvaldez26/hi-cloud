@@ -12,6 +12,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { contabilidadApi, type AsientoPayload, type AsientoLineaPayload } from '../../api/contabilidad.api';
 import { fmt } from '../../utils/formatters';
 import dayjs from 'dayjs';
+import { hoyRD } from '../../utils/fechaRD';
 
 const { Text } = Typography;
 
@@ -154,7 +155,7 @@ function Asientos() {
                 'Haber':       Number(a.totalHaber ?? 0),
                 'Estado':      a.estado ?? '',
               }));
-              exportarExcel(filas, `Asientos-${new Date().toISOString().split('T')[0]}`);
+              exportarExcel(filas, `Asientos-${hoyRD()}`);
               message.success(`${filas.length} asientos exportados`);
             }}>Excel</Button>
             <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />

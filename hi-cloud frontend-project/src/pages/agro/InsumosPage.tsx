@@ -8,6 +8,7 @@ import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/Tab
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
 import { agroApi } from '../../api/agro.api';
+import { hoyRD } from '../../utils/fechaRD';
 
 const COLS_DEF = [
   { key: 'nombre',    label: 'Nombre',           defaultVisible: true  },
@@ -72,7 +73,7 @@ export default function InsumosPage() {
       'Registro ICA':     r.registroIca ?? '',
       'Stock Bajo':       Number(r.stockActual) <= Number(r.stockMinimo) ? 'Sí' : 'No',
     }));
-    exportarExcel(rows, `Insumos-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(rows, `Insumos-${hoyRD()}`);
     message.success(`${rows.length} insumos exportados`);
   };
 

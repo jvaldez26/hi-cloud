@@ -1,6 +1,7 @@
 // ESC/POS Bluetooth Thermal Printer — 58mm (32 chars/line)
 // Web Bluetooth API: Chrome/Edge on Android + HTTPS only.
 import QRCode from 'qrcode';
+import { ahora, fecha as fechaRD, horaConSegundos } from '../utils/fechaRD';
 
 const CARACTERES_POR_LINEA = 32;
 
@@ -196,8 +197,11 @@ export async function generarReciboESCPOS(sale: SaleBT, empresa: EmpresaBT): Pro
   const dirEmp    = empresa.direccion ?? sale.empresaDireccion ?? '';
   const telEmp    = empresa.telefono  ?? sale.empresaTelefono  ?? '';
 
-  const fecha = sale.fechaEmision ?? new Date().toLocaleDateString('es-DO');
-  const hora  = sale.horaEmision  ?? new Date().toLocaleTimeString('es-DO');
+  // Del servidor, NUNCA del reloj de la PC: esta hora se imprime en el ticket
+  // que se lleva el cliente. Una caja con el reloj mal sellaba comprobantes con
+  // horas inventadas.
+  const fecha = sale.fechaEmision ?? fechaRD(ahora());
+  const hora  = sale.horaEmision  ?? horaConSegundos(ahora());
 
   const c = comandos().init();
 
@@ -657,8 +661,8 @@ export async function imprimirPruebaEscPos(): Promise<void> {
     cajero: 'Cajero POS',
     folio:  'PRUEBA',
     empresaNombreComercial: 'HiCloud POS',
-    fechaEmision: new Date().toLocaleDateString('es-DO'),
-    horaEmision:  new Date().toLocaleTimeString('es-DO'),
+    fechaEmision: fechaRD(ahora()),
+    horaEmision:  horaConSegundos(ahora()),
   }, {});
   await enviarDatos(bytes);
 }

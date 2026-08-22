@@ -8,6 +8,7 @@ import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/Tab
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
 import { prestamistalApi } from '../../api/prestamista.api';
+import { hoyRD } from '../../utils/fechaRD';
 
 const { Option } = Select;
 
@@ -71,7 +72,7 @@ export default function ProductosPrestamoPage() {
       'Días Gracia': r.diasGracia,
       'Activo': r.isActive ? 'Sí' : 'No',
     }));
-    exportarExcel(filas, `ProductosPrestamo-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `ProductosPrestamo-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

@@ -12,6 +12,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../api/client';
+import { anioRD } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
@@ -194,7 +195,7 @@ function ObjetivoCard({ obj, onUpdate }: { obj: any; onUpdate: () => void }) {
 export default function ObjetivosPage() {
   const { token }                   = theme.useToken();
   const [search, setSearch]         = useState('');
-  const [anio,       setAnio]       = useState(new Date().getFullYear());
+  const [anio,       setAnio]       = useState(anioRD());
   const [crearModal, setCrearModal] = useState(false);
   const [form]                      = Form.useForm();
   const qc = useQueryClient();

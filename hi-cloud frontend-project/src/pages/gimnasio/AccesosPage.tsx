@@ -7,6 +7,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
+import { hoyRD } from '../../utils/fechaRD';
 
 const COLS_DEF = [
   { key: 'fechaHora', label: 'Fecha/Hora', defaultVisible: true },
@@ -31,7 +32,7 @@ export default function AccesosPage() {
       'Autorizado': r.autorizado ? 'Si' : 'No',
       'Motivo Rechazo': r.motivoRechazo,
     }));
-    exportarExcel(filas, `Accesos-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Accesos-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

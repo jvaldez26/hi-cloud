@@ -10,6 +10,7 @@ import api from '../../api/client';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/es';
+import { dRD } from '../../utils/fechaRD';
 dayjs.extend(relativeTime);
 dayjs.locale('es');
 
@@ -298,7 +299,7 @@ function SesionesActivasSection() {
           return <span style={{ color: '#6B7280', fontSize: 13 }}>Sesión actual</span>;
         }
         return (
-          <Tooltip title={dayjs(r.createdAt).format('DD/MM/YYYY HH:mm')}>
+          <Tooltip title={dRD(r.createdAt).format('DD/MM/YYYY HH:mm')}>
             <span style={{ fontSize: 13, color: '#6B7280', textTransform: 'capitalize' }}>
               {dayjs(r.createdAt).fromNow()}
             </span>

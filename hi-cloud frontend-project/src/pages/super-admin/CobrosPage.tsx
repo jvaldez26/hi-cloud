@@ -12,12 +12,13 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { pagosAdminApi, PagoSuscripcion, ResumenCobros } from '../../api/pagos.api';
 import { fmtDop } from '../../utils/fmt';
+import { ahora, fecha } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
 function fmtDate(d: string | null) {
   if (!d) return '—';
-  return new Date(d).toLocaleDateString('es-DO', { day: '2-digit', month: 'short', year: 'numeric' });
+  return fecha(d);
 }
 
 const PLAN_LABELS:  Record<string, string> = { emprendedor: 'Emprendedor', pyme: 'PYME', pro: 'Pro', plus: 'Plus' };
@@ -229,7 +230,7 @@ export default function CobrosPage() {
           <Button size="small" icon={<DollarOutlined />}
             onClick={() => {
               const precio = r.precioMensual ?? null;
-              const mes = new Date().toLocaleDateString('es-DO', { month: 'long', year: 'numeric' });
+              const mes = fecha(ahora());
               const planLabel = PLAN_LABELS[r.plan] ?? r.plan;
               setOpenPago(r.empresaId);
               setPagoPreviewMonto(precio);
@@ -308,7 +309,7 @@ export default function CobrosPage() {
               const preview = calcularPreviewPago(Number(r.monto), r.precioMensual, r.venceSuscripcion, r.diaCorte, r.modalidad ?? 'mensual');
               if (preview.periodos === 0) return `⚠️ No extiende la suscripción. Faltan ${fmtDop(preview.faltante)} para un período.`;
               const fechaFmt = preview.nuevaFecha
-                ? new Date(preview.nuevaFecha + 'T12:00:00').toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                ? fecha(preview.nuevaFecha + 'T12:00:00')
                 : '';
               if (preview.enPasado) return `🔴 Queda vencida hasta ${fechaFmt}. Cubre ${preview.periodos} período(s).`;
               return `✅ Cubre ${preview.periodos} período(s). Nuevo vencimiento: ${fechaFmt}`;
@@ -541,7 +542,7 @@ export default function CobrosPage() {
               row.modalidad ?? 'mensual',
             );
             const fechaFmt = preview.nuevaFecha
-              ? new Date(preview.nuevaFecha + 'T12:00:00').toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' })
+              ? fecha(preview.nuevaFecha + 'T12:00:00')
               : '';
             if (preview.periodos === 0) return (
               <div style={{ marginBottom: 12, padding: '8px 12px', background: '#fefce8', border: '1px solid #fde047', borderRadius: 6 }}>
@@ -680,7 +681,7 @@ export default function CobrosPage() {
               const preview = calcularPreviewPago(Number(openComprobante.monto), openComprobante.precioMensual, openComprobante.venceSuscripcion, openComprobante.diaCorte, openComprobante.modalidad ?? 'mensual');
               if (preview.periodos === 0) return `⚠️ No extiende la suscripción. Faltan ${fmtDop(preview.faltante)} para un período.`;
               const fechaFmt = preview.nuevaFecha
-                ? new Date(preview.nuevaFecha + 'T12:00:00').toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                ? fecha(preview.nuevaFecha + 'T12:00:00')
                 : '';
               if (preview.enPasado) return `🔴 Queda vencida hasta ${fechaFmt}. Cubre ${preview.periodos} período(s).`;
               return `✅ Cubre ${preview.periodos} período(s). Nuevo vencimiento: ${fechaFmt}`;

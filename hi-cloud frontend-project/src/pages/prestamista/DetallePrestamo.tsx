@@ -10,6 +10,7 @@ import { FileExcelOutlined } from '@ant-design/icons';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { exportarExcel } from '../../utils/exportExcel';
 import { prestamistalApi } from '../../api/prestamista.api';
+import { ahora, fecha, hoyRD } from '../../utils/fechaRD';
 
 const { Option } = Select;
 const fmt = (n: any) => `RD$ ${Number(n ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
@@ -24,13 +25,13 @@ function VehiculoDetalle({ vehiculoId }: { vehiculoId: number }) {
   if (isLoading) return <Spin size="small" />;
   if (!data) return <div>Vehículo no encontrado</div>;
   const v: any = data;
-  const hoy = new Date();
+  const hoy = ahora();
   const vence = v.fechaVencePoliza ? new Date(v.fechaVencePoliza) : null;
   const dias = vence ? Math.ceil((vence.getTime() - hoy.getTime()) / 86400000) : null;
   const polizaTag = !vence ? null
     : dias! < 0 ? <Tag color="red">Póliza vencida hace {Math.abs(dias!)}d</Tag>
     : dias! <= 30 ? <Tag color="orange">Vence en {dias}d</Tag>
-    : <Tag color="green">Vigente hasta {vence.toLocaleDateString('es-DO')}</Tag>;
+    : <Tag color="green">Vigente hasta {fecha(v.fechaVencePoliza)}</Tag>;
 
   return (
     <Descriptions column={{ xs: 1, sm: 2, md: 3 }} bordered size="small">
@@ -145,7 +146,7 @@ export default function DetallePrestamo() {
       'Días Mora': r.diasMora,
       'Estado': r.estado,
     }));
-    exportarExcel(filas, `Cuotas-${prestamo.numero}-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Cuotas-${prestamo.numero}-${hoyRD()}`);
     message.success(`${filas.length} cuotas exportadas`);
   };
 
@@ -159,7 +160,7 @@ export default function DetallePrestamo() {
       'Mora': r.aplicadoMora,
       'Forma Pago': r.metodoPago,
     }));
-    exportarExcel(filas, `Pagos-${prestamo.numero}-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Pagos-${prestamo.numero}-${hoyRD()}`);
     message.success(`${filas.length} pagos exportados`);
   };
 

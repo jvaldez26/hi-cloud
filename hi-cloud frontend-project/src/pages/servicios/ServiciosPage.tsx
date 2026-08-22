@@ -16,6 +16,7 @@ import { clientesApi } from '../../api/clientes.api';
 import { productosApi } from '../../api/productos.api';
 import { fmt } from '../../utils/formatters';
 import dayjs from 'dayjs';
+import { ahora } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
@@ -159,7 +160,7 @@ export default function ServiciosPage() {
     { title: 'Estado',  dataIndex: 'estado',       key: 'estado',            width: 170,
       render: (v: EstadoOrden) => <Tag color={ESTADO_INFO[v]?.color}>{ESTADO_INFO[v]?.label}</Tag> },
     { title: 'Promesa', dataIndex: 'fechaPromesa', key: 'fechaPromesa',      width: 100,
-      render: (v: string) => v ? <Text type={new Date(v) < new Date() ? 'danger' : 'secondary'}>{fmt.date(v)}</Text> : '—' },
+      render: (v: string) => v ? <Text type={new Date(v) < ahora() ? 'danger' : 'secondary'}>{fmt.date(v)}</Text> : '—' },
     { title: 'Total',   dataIndex: 'total',        key: 'total',             width: 110, render: (v: number) => fmt.money(v) },
     { title: '', key: 'acc', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (

@@ -8,6 +8,7 @@ import {
 import { PlusOutlined, DollarOutlined, EditOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import api from '../../api/client';
 import dayjs from 'dayjs';
+import { anioRD } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
@@ -130,7 +131,7 @@ function PlanModal({ open, editing, onClose }: { open: boolean; editing?: any; o
 function GenerarCargosModal({ open, plan, onClose }: { open: boolean; plan?: any; onClose: () => void }) {
   const qc = useQueryClient();
   const [selectedMeses, setSelectedMeses] = useState<number[]>([8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6]);
-  const [anio, setAnio] = useState(new Date().getFullYear());
+  const [anio, setAnio] = useState(anioRD());
 
   const mut = useMutation({
     mutationFn: () =>
@@ -149,7 +150,7 @@ function GenerarCargosModal({ open, plan, onClose }: { open: boolean; plan?: any
       {plan && <Text type="secondary">{plan.estudianteNombre} — {fmt.format(plan.montoColegiatura)}/mes</Text>}
       <div style={{ margin: '12px 0' }}>
         <Text strong>Año: </Text>
-        <InputNumber value={anio} onChange={v => setAnio(v ?? new Date().getFullYear())} min={2020} max={2030} />
+        <InputNumber value={anio} onChange={v => setAnio(v ?? anioRD())} min={2020} max={2030} />
       </div>
       <div>
         <Text strong style={{ marginBottom: 8, display: 'block' }}>Meses a generar:</Text>

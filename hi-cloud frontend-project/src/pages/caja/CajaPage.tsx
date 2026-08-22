@@ -21,6 +21,7 @@ import { fmt } from '../../utils/formatters';
 import { imprimirReciboTermico } from '../../utils/printUtils';
 import { exportarExcel } from '../../utils/exportExcel';
 import dayjs from 'dayjs';
+import { dRD, fecha, hora, hoyRD } from '../../utils/fechaRD';
 
 // ── Constantes de retiros ──────────────────────────────────────────────────
 const CATEGORIA_OPTIONS = [
@@ -268,7 +269,7 @@ export default function CajaPage() {
       const filas = data.map((r: any) => ({
         'No.':           r.numero ?? `RET-${String(r.id).padStart(5, '0')}`,
         'Fecha caja':    String(r.cajaFecha ?? '').substring(0, 10),
-        'Hora':          r.createdAt ? new Date(r.createdAt).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }) : '',
+        'Hora':          r.createdAt ? hora(r.createdAt) : '',
         'Cajero':        r.cajeroNombre ?? '',
         'Categoría':     CATEGORIA_LABELS[r.categoria] ?? r.categoria ?? '',
         'Monto':         Number(r.monto ?? 0),
@@ -356,9 +357,9 @@ export default function CajaPage() {
 
   // Cajas huérfanas: abiertas en días ANTERIORES (no hoy) — el cajero quedó bloqueado hasta cerrarlas
   const cajasHuerfanas = useMemo(() => {
-    // Fecha de hoy en local como string YYYY-MM-DD, sin conversión UTC
-    const h = new Date();
-    const hoyStr = `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, '0')}-${String(h.getDate()).padStart(2, '0')}`;
+    // Hoy en RD, del reloj del servidor: no depende de la zona ni de la hora
+    // del equipo. Decide si una caja abierta cuenta como huérfana.
+    const hoyStr = hoyRD();
     return (historial?.data ?? []).filter((r: any) => {
       if (r.estado !== 'abierta') return false;
       // Comparamos strings YYYY-MM-DD directamente para evitar conversión de zona horaria
@@ -488,7 +489,7 @@ ${line()}
 
   // ── Helpers de formato de hora / dinero para el detalle ─────────────────
   const fmtHora = (iso: string) => {
-    try { return new Date(iso).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }); }
+    try { return hora(iso); }
     catch { return ''; }
   };
 
@@ -1069,7 +1070,7 @@ ${line()}
                     { title: 'Fecha',    dataIndex: 'cajaFecha', width: 100,
                       render: (v: string) => String(v ?? '').substring(0, 10) },
                     { title: 'Hora',     dataIndex: 'createdAt', width: 65,
-                      render: (v: string) => new Date(v).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }) },
+                      render: (v: string) => hora(v) },
                     { title: 'Cajero',   dataIndex: 'cajeroNombre', width: 140,
                       render: (v: string) => {
                         const n = v ?? 'Admin';
@@ -1154,8 +1155,7 @@ ${line()}
           <Space>
             <Button icon={<PrinterOutlined />} onClick={() => setPrintTarget(detalleCierre)}>Imprimir cierre</Button>
             {detalleCierre?.estado === 'abierta' && (() => {
-              const h = new Date();
-              const hoyStr = `${h.getFullYear()}-${String(h.getMonth()+1).padStart(2,'0')}-${String(h.getDate()).padStart(2,'0')}`;
+              const hoyStr = hoyRD();
               const esHuerfana = String(detalleCierre.fecha ?? '').substring(0, 10) < hoyStr;
               return esHuerfana ? (
                 <Button danger icon={<LockOutlined />}
@@ -1215,7 +1215,7 @@ ${line()}
                   columns={[
                     { title: '#',      dataIndex: 'id', width: 78, render: (_v: number, row: any) => row.numero ?? `RET-${String(_v).padStart(5,'0')}` },
                     { title: 'Hora',   dataIndex: 'createdAt', width: 60,
-                      render: (v: string) => new Date(v).toLocaleTimeString('es-DO',{hour:'2-digit',minute:'2-digit'}) },
+                      render: (v: string) => hora(v) },
                     { title: 'Categoría', dataIndex: 'categoria', width: 120,
                       render: (v: string) => CATEGORIA_LABELS[v] ?? v ?? '' },
                     { title: 'Monto',  dataIndex: 'monto', width: 90, align: 'right' as const,
@@ -1298,7 +1298,7 @@ ${line()}
                 style={{ marginTop: 12 }}
                 message={
                   detalleCierre.reabiertoEn
-                    ? `Cierre recerrado el ${dayjs(detalleCierre.reabiertoEn).format('DD/MM/YYYY HH:mm')}` +
+                    ? `Cierre recerrado el ${dRD(detalleCierre.reabiertoEn).format('DD/MM/YYYY HH:mm')}` +
                       (detalleCierre.reabiertoPorNombre ? ` por ${detalleCierre.reabiertoPorNombre}` : '')
                     : 'Este cierre fue recerrado'
                 }
@@ -1717,7 +1717,7 @@ ${line()}
           message="¿Estás seguro de anular este cierre?"
           description={
             <span>
-              La caja del <strong>{anularTarget?.fecha ? new Date(anularTarget.fecha + 'T00:00:00').toLocaleDateString('es-DO') : ''}</strong> de{' '}
+              La caja del <strong>{anularTarget?.fecha ? fecha(anularTarget.fecha + 'T00:00:00') : ''}</strong> de{' '}
               <strong>{anularTarget?.nombre}</strong> volverá a estado <strong>ABIERTA</strong>.
             </span>
           }

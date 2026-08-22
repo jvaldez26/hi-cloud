@@ -12,6 +12,7 @@ import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/Tab
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
 import { prestamistalApi } from '../../api/prestamista.api';
+import { anioRD, hoyRD } from '../../utils/fechaRD';
 
 const { Option } = Select;
 const fmt = (n: any) => `RD$ ${Number(n ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
@@ -116,7 +117,7 @@ export default function VehiculosPage() {
       'Vence Póliza': r.fechaVencePoliza,
       'Activo': r.activo ? 'Sí' : 'No',
     }));
-    exportarExcel(filas, `Vehiculos-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Vehiculos-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 
@@ -216,7 +217,7 @@ export default function VehiculosPage() {
               <Input placeholder="Corolla, Civic..." />
             </Form.Item>
             <Form.Item name="anio" label="Año">
-              <InputNumber style={{ width: '100%' }} min={1980} max={new Date().getFullYear() + 1} />
+              <InputNumber style={{ width: '100%' }} min={1980} max={anioRD() + 1} />
             </Form.Item>
             <Form.Item name="color" label="Color">
               <Input />

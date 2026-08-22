@@ -14,7 +14,7 @@ import { PaginationDto } from '../common/dto/pagination.dto';
 import { TenantService } from '../tenant/tenant.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { LimitesService } from '../suscripciones/limites.service';
-import { fechaHoraRD, fechaTextoRD } from '../common/utils/fecha-local.util';
+import { fechaHoraRD, fechaHoyRD, fechaTextoRD } from '../common/utils/fecha-local.util';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const PDFKit = require('pdfkit') as typeof import('pdfkit');
 
@@ -601,7 +601,7 @@ export class ClientesService {
 
     return {
       buffer,
-      filename: `Estado-Cuenta-${(data.cliente?.nombre ?? 'cliente').replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.pdf`,
+      filename: `Estado-Cuenta-${(data.cliente?.nombre ?? 'cliente').replace(/\s+/g, '-')}-${fechaHoyRD()}.pdf`,
     };
   }
 }

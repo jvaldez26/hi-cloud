@@ -10,6 +10,7 @@ import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/Tab
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
+import { fechaHora, hoyRD } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -69,11 +70,11 @@ export default function TurnosPage() {
     { title: 'Número', dataIndex: 'numero', width: 100 },
     {
       title: 'Apertura', dataIndex: 'fechaApertura', width: 150,
-      render: (v: string) => new Date(v).toLocaleString('es-DO', { dateStyle: 'short', timeStyle: 'short' }),
+      render: (v: string) => fechaHora(v),
     },
     {
       title: 'Cierre', dataIndex: 'fechaCierre', width: 150,
-      render: (v: string) => v ? new Date(v).toLocaleString('es-DO', { dateStyle: 'short', timeStyle: 'short' }) : '—',
+      render: (v: string) => v ? fechaHora(v) : '—',
     },
     { title: 'Cajero', dataIndex: 'usuarioNombre', ellipsis: true },
     {
@@ -116,7 +117,7 @@ export default function TurnosPage() {
       'Ventas': r.totalVentas ?? 0,
       'Comandas': r.totalComandas ?? 0,
     }));
-    exportarExcel(filas, `Turnos-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Turnos-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

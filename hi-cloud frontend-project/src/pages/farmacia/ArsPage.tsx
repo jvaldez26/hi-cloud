@@ -11,6 +11,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
+import { fecha, hoyRD } from '../../utils/fechaRD';
 
 const { Title } = Typography;
 
@@ -79,8 +80,8 @@ export default function ArsPage() {
   const cols = [
     { title: 'N° Reclamación', dataIndex: 'numero', key: 'numero', width: 140 },
     { title: 'ARS', dataIndex: 'arsNombre', key: 'arsNombre', width: 160 },
-    { title: 'Período Desde', dataIndex: 'periodoDesde', key: 'periodoDesde', width: 110, render: (v: string) => v ? new Date(v).toLocaleDateString('es-DO') : '-' },
-    { title: 'Período Hasta', dataIndex: 'periodoHasta', key: 'periodoHasta', width: 110, render: (v: string) => v ? new Date(v).toLocaleDateString('es-DO') : '-' },
+    { title: 'Período Desde', dataIndex: 'periodoDesde', key: 'periodoDesde', width: 110, render: (v: string) => v ? fecha(v) : '-' },
+    { title: 'Período Hasta', dataIndex: 'periodoHasta', key: 'periodoHasta', width: 110, render: (v: string) => v ? fecha(v) : '-' },
     { title: 'Dispensaciones', dataIndex: 'cantidadDispensaciones', key: 'cantidadDispensaciones', width: 120 },
     { title: 'Monto Total', dataIndex: 'montoTotal', key: 'montoTotal', width: 120, render: (v: number) => v ? `RD$ ${Number(v).toFixed(2)}` : '-' },
     { title: 'Cubierto', dataIndex: 'montoCubierto', key: 'montoCubierto', width: 120, render: (v: number) => v ? `RD$ ${Number(v).toFixed(2)}` : '-' },
@@ -91,8 +92,8 @@ export default function ArsPage() {
         return <Tag color={colors[v] ?? 'default'}>{v}</Tag>;
       },
     },
-    { title: 'Fecha Envío', dataIndex: 'fechaEnvio', key: 'fechaEnvio', width: 110, render: (v: string) => v ? new Date(v).toLocaleDateString('es-DO') : '-' },
-    { title: 'Fecha Pago', dataIndex: 'fechaPago', key: 'fechaPago', width: 110, render: (v: string) => v ? new Date(v).toLocaleDateString('es-DO') : '-' },
+    { title: 'Fecha Envío', dataIndex: 'fechaEnvio', key: 'fechaEnvio', width: 110, render: (v: string) => v ? fecha(v) : '-' },
+    { title: 'Fecha Pago', dataIndex: 'fechaPago', key: 'fechaPago', width: 110, render: (v: string) => v ? fecha(v) : '-' },
     {
       title: '', key: 'actions', width: 50,
       render: (_: any, r: any) => (
@@ -105,16 +106,16 @@ export default function ArsPage() {
     const filas = (data?.data ?? []).map((r: any) => ({
       'N° Reclamación': r.numero,
       'ARS': r.arsNombre,
-      'Período Desde': r.periodoDesde ? new Date(r.periodoDesde).toLocaleDateString('es-DO') : '',
-      'Período Hasta': r.periodoHasta ? new Date(r.periodoHasta).toLocaleDateString('es-DO') : '',
+      'Período Desde': r.periodoDesde ? fecha(r.periodoDesde) : '',
+      'Período Hasta': r.periodoHasta ? fecha(r.periodoHasta) : '',
       'Dispensaciones': r.cantidadDispensaciones ?? 0,
       'Monto Total': r.montoTotal ?? 0,
       'Cubierto': r.montoCubierto ?? 0,
       'Estado': r.estado,
-      'Fecha Envío': r.fechaEnvio ? new Date(r.fechaEnvio).toLocaleDateString('es-DO') : '',
-      'Fecha Pago': r.fechaPago ? new Date(r.fechaPago).toLocaleDateString('es-DO') : '',
+      'Fecha Envío': r.fechaEnvio ? fecha(r.fechaEnvio) : '',
+      'Fecha Pago': r.fechaPago ? fecha(r.fechaPago) : '',
     }));
-    exportarExcel(filas, `ARS-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `ARS-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

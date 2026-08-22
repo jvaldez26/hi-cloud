@@ -95,7 +95,7 @@ function MensajeForm({
   const onFinish = async (values: any) => {
     const payload = {
       ...values,
-      fechaPublicacion: values.fechaPublicacion?.toISOString() ?? new Date().toISOString(),
+      fechaPublicacion: values.fechaPublicacion?.toISOString() ?? ahora().toISOString(),
       fechaExpiracion:  values.fechaExpiracion?.toISOString()  ?? undefined,
       destinatarioIds:  values.destinatario === 'lista'
         ? (values.destinatarioIds ?? []).map(Number)
@@ -267,9 +267,7 @@ export function MensajesAdminTab() {
       title:     'Publicación',
       dataIndex: 'fechaPublicacion',
       width:     160,
-      render:    (v: string) => new Date(v).toLocaleDateString('es-DO', {
-        day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
-      }),
+      render:    (v: string) => fecha(v),
     },
     {
       title:     'Leídos',
@@ -347,3 +345,5 @@ export function MensajesAdminTab() {
   );
 }
 
+
+import { ahora, fecha } from '../../utils/fechaRD';

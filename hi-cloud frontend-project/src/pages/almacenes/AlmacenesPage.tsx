@@ -19,6 +19,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import api from '../../api/client';
 import { fmt } from '../../utils/formatters';
+import { hoyRD } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
@@ -517,7 +518,7 @@ export default function AlmacenesPage() {
       <Modal title={<><SwapOutlined /> Transferencia entre almacenes</>}
         open={transfModal} onCancel={() => setTransfModal(false)} footer={null} width={520}>
         <Form form={formTransf} layout="vertical"
-          onFinish={v => transfMut.mutate({ ...v, fecha: new Date().toISOString().slice(0,10) })}>
+          onFinish={v => transfMut.mutate({ ...v, fecha: hoyRD() })}>
           <Row gutter={12}>
             <Col xs={24} sm={12}><Form.Item name="almacenOrigenId" label="Almacén origen" rules={[{ required: true }]}>
               <Select options={(almacenes ?? []).map((a: any) => ({ value: a.id, label: a.nombre }))} />

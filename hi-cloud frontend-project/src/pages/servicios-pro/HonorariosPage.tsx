@@ -8,6 +8,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
+import { hoyRD } from '../../utils/fechaRD';
 
 const ESTADO_COLOR: Record<string, string> = { pendiente: 'orange', pagada: 'green', cancelada: 'red', vencida: 'magenta' };
 
@@ -64,7 +65,7 @@ export default function HonorariosPage() {
       'Fecha': r.fechaEmision ? dayjs(r.fechaEmision).format('DD/MM/YYYY') : '',
       'Vence': r.fechaVencimiento ? dayjs(r.fechaVencimiento).format('DD/MM/YYYY') : '',
     }));
-    exportarExcel(filas, `Honorarios-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Honorarios-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

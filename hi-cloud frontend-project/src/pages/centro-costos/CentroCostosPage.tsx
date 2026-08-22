@@ -19,6 +19,7 @@ import {
 } from 'recharts';
 import api from '../../api/client';
 import { fmt } from '../../utils/formatters';
+import { anioRD, hoyRD } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
@@ -43,7 +44,7 @@ const TIPOS = [
 ];
 
 export default function CentroCostosPage() {
-  const [anio,       setAnio]       = useState(new Date().getFullYear());
+  const [anio,       setAnio]       = useState(anioRD());
   const [ccModal,    setCCModal]    = useState(false);
   const [asigModal,  setAsigModal]  = useState<number | null>(null);
   const [editando,   setEditando]   = useState<any>(null);
@@ -329,7 +330,7 @@ export default function CentroCostosPage() {
         onCancel={() => setAsigModal(null)} footer={null} width={440}>
         <Form form={formAsig} layout="vertical"
           initialValues={{ porcentaje: 100, tipoDocumento: 'gasto' }}
-          onFinish={v => asignarMut.mutate({ ...v, centroCostoId: asigModal, fecha: v.fecha || new Date().toISOString().slice(0,10) })}>
+          onFinish={v => asignarMut.mutate({ ...v, centroCostoId: asigModal, fecha: v.fecha || hoyRD() })}>
           <Form.Item name="tipoDocumento" label="Tipo de documento">
             <Select options={[
               { value: 'factura', label: '🧾 Factura' },

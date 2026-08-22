@@ -10,6 +10,7 @@ import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/Tab
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
+import { hoyRD } from '../../utils/fechaRD';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -100,7 +101,7 @@ export default function MenuPage() {
       'Disponible': r.disponible ? 'Sí' : 'No',
       'Delivery': r.disponibleParaDelivery ? 'Sí' : 'No',
     }));
-    exportarExcel(filas, `Menu-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Menu-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

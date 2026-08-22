@@ -8,6 +8,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
+import { hoyRD } from '../../utils/fechaRD';
 
 const TIPO_COLOR: Record<string, string> = { interna: 'default', cliente: 'blue', tribunal: 'red', virtual: 'cyan', otro: 'default' };
 
@@ -61,7 +62,7 @@ export default function ReunionesPage() {
       'Lugar/URL': r.lugar,
       'Profesional': r.profesionalNombre ? `${r.profesionalNombre} ${r.profesionalApellidos ?? ''}`.trim() : '',
     }));
-    exportarExcel(filas, `Reuniones-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Reuniones-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

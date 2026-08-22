@@ -9,6 +9,7 @@ import { TenantGuard } from '../tenant/tenant.guard';
 import { ModuloAddonGuard } from '../modulos-addon/guards/modulo-addon.guard';
 import { ServiciosProService } from './servicios-pro.service';
 import { ServiciosProPdfService } from './servicios-pro-pdf.service';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 @Controller('servicios-pro')
 @UseGuards(JwtAuthGuard, TenantGuard, ModuloAddonGuard('servicios_pro'))
@@ -303,12 +304,12 @@ export class ServiciosProController {
 
   @Post('honorarios/:id/enviar')
   enviarHonorario(@Param('id', ParseIntPipe) id: number) {
-    return this.svc.actualizarHonorario(id, { estado: 'enviada', fechaEnvio: new Date().toISOString().split('T')[0] });
+    return this.svc.actualizarHonorario(id, { estado: 'enviada', fechaEnvio: fechaHoyRD() });
   }
 
   @Patch('honorarios/:id/pagar')
   marcarHonorarioPagado(@Param('id', ParseIntPipe) id: number, @Body() body: any) {
-    return this.svc.marcarHonorarioPagado(id, body.fechaPago ?? new Date().toISOString().split('T')[0]);
+    return this.svc.marcarHonorarioPagado(id, body.fechaPago ?? fechaHoyRD());
   }
 
   @Patch('contratos/:id/firmar')

@@ -2,6 +2,7 @@ import axios, { AxiosError } from 'axios';
 import * as Sentry from '@sentry/react';
 import { moduloActual } from '../observability/sentryScope';
 import { emitSessionEnd, markNavigatingAway, isNavigatingAway } from '../utils/sessionEvents';
+import { registrarHoraServidor } from '../utils/fechaRD';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '/api/v1';
 
@@ -106,11 +107,23 @@ function _waitForOtherTabRefresh(): Promise<'done' | 'failed' | 'timeout'> {
 let _recuperandoEmpresa = false;
 
 apiClient.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    // Sincronizar el reloj con el servidor. Toda respuesta HTTP trae la
+    // cabecera `Date`, así que no hace falta petición ni endpoint extra: la
+    // primera llamada de la sesión ya deja la hora buena.
+    //
+    // Importa porque el reloj de una PC de caja se desajusta —o directamente
+    // está mal— y esa hora acaba impresa en el ticket del cliente.
+    registrarHoraServidor(res.headers?.date as string | undefined);
+    return res;
+  },
 
   async (err: AxiosError) => {
     const status  = err.response?.status;
     const message = extractBackendMessage(err);
+
+    // Un error también trae la cabecera: sirve igual para sincronizar.
+    registrarHoraServidor(err.response?.headers?.date as string | undefined);
 
     // ── 401: access token expirado → intentar refresh automático (S-28) ─────
     if (status === 401) {

@@ -5,6 +5,7 @@ import { ProgramaFidelidad } from './entities/programa-fidelidad.entity';
 import { SaldoPuntos } from './entities/saldo-puntos.entity';
 import { TransaccionPuntos, TipoTransaccionPuntos } from './entities/transaccion-puntos.entity';
 import { TenantService } from '../tenant/tenant.service';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 @Injectable()
 export class FidelidadService {
@@ -74,7 +75,7 @@ export class FidelidadService {
     await this.saldoRepo.update(saldo.id, {
       puntosTotales:      +((Number(saldo.puntosTotales) + puntos)).toFixed(4),
       puntosDisponibles:  nuevoSaldo,
-      fechaUltimaActividad: new Date().toISOString().split('T')[0],
+      fechaUltimaActividad: fechaHoyRD(),
       fechaVencimiento:   vencimiento,
       totalTransacciones: saldo.totalTransacciones + 1,
     });

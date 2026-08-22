@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Card, Row, Col, Statistic, Tag, Table, Spin } from 'antd';
 import { gimnasioApi } from '../../api/gimnasio.api';
+import { fecha, hora } from '../../utils/fechaRD';
 
 export default function GimnasioDashboard() {
   const { data, isLoading } = useQuery({
@@ -27,7 +28,7 @@ export default function GimnasioDashboard() {
             <Table dataSource={data?.ultimosAccesos ?? []} rowKey="id" size="small" pagination={false} scroll={{ x: 'max-content' }}
               columns={[
                 { title: 'Miembro', dataIndex: 'miembroNombre' },
-                { title: 'Hora', dataIndex: 'fechaHora', render: (v: string) => new Date(v).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }) },
+                { title: 'Hora', dataIndex: 'fechaHora', render: (v: string) => hora(v) },
                 { title: 'Estado', dataIndex: 'autorizado', render: (v: boolean) => v ? <Tag color="green">Autorizado</Tag> : <Tag color="red">Rechazado</Tag> },
               ]}
             />
@@ -39,7 +40,7 @@ export default function GimnasioDashboard() {
               columns={[
                 { title: 'Miembro', dataIndex: 'miembroNombre' },
                 { title: 'Plan', dataIndex: 'plan' },
-                { title: 'Vence', dataIndex: 'fechaFin', render: (v: string) => new Date(v).toLocaleDateString('es-DO') },
+                { title: 'Vence', dataIndex: 'fechaFin', render: (v: string) => fecha(v) },
               ]}
             />
           </Card>

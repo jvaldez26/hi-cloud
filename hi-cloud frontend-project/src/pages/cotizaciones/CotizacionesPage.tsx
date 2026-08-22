@@ -20,6 +20,7 @@ import { cotizacionesApi } from '../../api/cotizaciones.api';
 import { configuracionApi } from '../../api/configuracion.api';
 import { useAuthStore } from '../../store/auth.store';
 import { fmt } from '../../utils/formatters';
+import { fecha, hoyRD } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
@@ -314,13 +315,13 @@ export default function CotizacionesPage() {
             <Button icon={<FileExcelOutlined />} onClick={() => {
               const filas = (data?.data ?? []).map((c: any) => ({
                 'Número':  c.numero ?? '',
-                'Fecha':   c.fecha ? new Date(c.fecha).toLocaleDateString('es-DO') : '',
+                'Fecha':   c.fecha ? fecha(c.fecha) : '',
                 'Cliente': c.cliente?.nombre ?? '',
                 'Total':   Number(c.total ?? 0),
                 'Estado':  c.estado ?? '',
-                'Vence':   c.fechaVencimiento ? new Date(c.fechaVencimiento).toLocaleDateString('es-DO') : '',
+                'Vence':   c.fechaVencimiento ? fecha(c.fechaVencimiento) : '',
               }));
-              exportarExcel(filas, `Cotizaciones-${new Date().toISOString().split('T')[0]}`);
+              exportarExcel(filas, `Cotizaciones-${hoyRD()}`);
               message.success(`${filas.length} cotizaciones exportadas`);
             }}>
               Excel

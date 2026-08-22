@@ -7,6 +7,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
+import { hoyRD } from '../../utils/fechaRD';
 
 const COLS_DEF = [
   { key: 'nombre', label: 'Nombre', defaultVisible: true },
@@ -44,7 +45,7 @@ export default function NutricionPage() {
       'Carbos (g)': r.carbohidratosGramos,
       'Grasas (g)': r.grasasGramos,
     }));
-    exportarExcel(filas, `Nutricion-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Nutricion-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

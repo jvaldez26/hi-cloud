@@ -8,6 +8,7 @@ import { SaveOutlined, FileTextOutlined, ExperimentOutlined, ArrowLeftOutlined }
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { clinicaApi } from '../../api/clinica.api';
 import { fmt as fmtObj } from '../../utils/formatters';
+import { dRD } from '../../utils/fechaRD';
 const fmt = (v: any) => fmtObj.date(v);
 
 const { Title, Text } = Typography;
@@ -23,10 +24,11 @@ function calcImc(peso: any, talla: any): number | null {
 
 function calcEdad(fecha: any): string {
   if (!fecha) return '—';
-  const dob = new Date(fecha);
-  const hoy = new Date();
-  let age = hoy.getFullYear() - dob.getFullYear();
-  if (hoy.getMonth() - dob.getMonth() < 0 || (hoy.getMonth() - dob.getMonth() === 0 && hoy.getDate() < dob.getDate())) age--;
+  // Todo en zona RD: la edad no puede cambiar segun la zona del equipo.
+  const dob = dRD(fecha);
+  const hoy = dRD();
+  let age = hoy.year() - dob.year();
+  if (hoy.month() - dob.month() < 0 || (hoy.month() - dob.month() === 0 && hoy.date() < dob.date())) age--;
   return `${age} años`;
 }
 

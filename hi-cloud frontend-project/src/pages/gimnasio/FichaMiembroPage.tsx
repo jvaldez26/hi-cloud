@@ -4,6 +4,7 @@ import { ArrowLeftOutlined, UserOutlined, TrophyOutlined, ClockCircleOutlined, F
 import { useQuery } from '@tanstack/react-query';
 import { gimnasioApi } from '../../api/gimnasio.api';
 import dayjs from 'dayjs';
+import { dRD } from '../../utils/fechaRD';
 
 const ESTADO_COLOR: Record<string, string> = {
   activo: 'green', inactivo: 'default', suspendido: 'orange', vencido: 'red',
@@ -251,7 +252,7 @@ export default function FichaMiembroPage() {
                   {
                     title: 'Fecha / Hora',
                     dataIndex: 'fechaHora',
-                    render: (v: string) => dayjs(v).format('DD/MM/YY HH:mm'),
+                    render: (v: string) => dRD(v).format('DD/MM/YY HH:mm'),
                   },
                   {
                     title: 'Tipo',

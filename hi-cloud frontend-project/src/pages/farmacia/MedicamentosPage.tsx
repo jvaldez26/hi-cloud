@@ -12,6 +12,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
+import { hoyRD } from '../../utils/fechaRD';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -103,7 +104,7 @@ export default function MedicamentosPage() {
       'Requiere Receta': r.requiereReceta ? 'Sí' : 'No',
       'Narcótico': r.esNarcotico ? 'Sí' : 'No',
     }));
-    exportarExcel(filas, `Medicamentos-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Medicamentos-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

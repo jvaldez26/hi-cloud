@@ -7,6 +7,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
+import { fecha } from '../../utils/fechaRD';
 
 const ESTADO_COLOR: Record<string, string> = { activa: 'green', vencida: 'red', congelada: 'blue', suspendida: 'orange', cancelada: 'default' };
 
@@ -46,8 +47,8 @@ export default function MembresiasPage() {
       'Numero': r.numero,
       'Miembro': r.miembroNombre,
       'Plan': r.planNombre,
-      'Inicio': r.fechaInicio ? new Date(r.fechaInicio).toLocaleDateString('es-DO') : '',
-      'Fin': r.fechaFin ? new Date(r.fechaFin).toLocaleDateString('es-DO') : '',
+      'Inicio': r.fechaInicio ? fecha(r.fechaInicio) : '',
+      'Fin': r.fechaFin ? fecha(r.fechaFin) : '',
       'Estado': r.estado,
       'Total': r.total,
     }));
@@ -82,8 +83,8 @@ export default function MembresiasPage() {
     { key: 'numero', title: 'Numero', dataIndex: 'numero', width: 100 },
     { key: 'miembroNombre', title: 'Miembro', dataIndex: 'miembroNombre' },
     { key: 'planNombre', title: 'Plan', dataIndex: 'planNombre' },
-    { key: 'fechaInicio', title: 'Inicio', dataIndex: 'fechaInicio', render: (v: string) => v ? new Date(v).toLocaleDateString('es-DO') : '' },
-    { key: 'fechaFin', title: 'Fin', dataIndex: 'fechaFin', render: (v: string) => v ? new Date(v).toLocaleDateString('es-DO') : '' },
+    { key: 'fechaInicio', title: 'Inicio', dataIndex: 'fechaInicio', render: (v: string) => v ? fecha(v) : '' },
+    { key: 'fechaFin', title: 'Fin', dataIndex: 'fechaFin', render: (v: string) => v ? fecha(v) : '' },
     { key: 'estado', title: 'Estado', dataIndex: 'estado', render: (v: string) => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{v}</Tag> },
     { key: 'total', title: 'Total', dataIndex: 'total', render: (v: number) => v != null ? `RD$${Number(v).toLocaleString('es-DO', { minimumFractionDigits: 2 })}` : '' },
     {

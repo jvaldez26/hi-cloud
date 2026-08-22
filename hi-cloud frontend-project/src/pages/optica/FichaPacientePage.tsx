@@ -12,6 +12,7 @@ import { useQuery } from '@tanstack/react-query';
 import { opticaApi } from '../../api/optica.api';
 import { fmt } from '../../utils/formatters';
 import dayjs from 'dayjs';
+import { dRD } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
@@ -79,7 +80,7 @@ export default function FichaPacientePage() {
     { title: 'N°', dataIndex: 'numero', width: 110 },
     {
       title: 'Fecha', dataIndex: 'fechaHora', width: 120,
-      render: (v: string) => v ? `${fmt.date(v)} ${dayjs(v).format('HH:mm')}` : '—',
+      render: (v: string) => v ? `${fmt.date(v)} ${dRD(v).format('HH:mm')}` : '—',
     },
     { title: 'Tipo', dataIndex: 'tipo', width: 140, render: (v: any) => v ?? '—' },
     {

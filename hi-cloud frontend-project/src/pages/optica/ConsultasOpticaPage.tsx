@@ -14,6 +14,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
 import { fmt } from '../../utils/formatters';
+import { hoyRD } from '../../utils/fechaRD';
 
 const { Title } = Typography;
 
@@ -142,7 +143,7 @@ export default function ConsultasOpticaPage() {
       'Diagnóstico': r.diagnostico ?? '',
       'Costo': r.costoConsulta ?? '',
     }));
-    exportarExcel(filas, `Consultas-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Consultas-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

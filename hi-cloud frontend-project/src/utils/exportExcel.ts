@@ -1,3 +1,5 @@
+import { fecha } from './fechaRD';
+import { hoyRD } from './fechaRD';
 // ── Exportar e-CF Recibidos ──────────────────────────────────────────────────
 // Fechas como celda Excel real (tipo 'd') para que sean ordenables y filtrables.
 // Montos como número, sin prefijo "RD$".
@@ -184,7 +186,7 @@ export async function exportarInventario(productos: any[]) {
     'Alerta':        p.alerta ? 'SÍ' : 'NO',
   }));
 
-  await exportarExcel(filas, `Inventario-${new Date().toISOString().split('T')[0]}`);
+  await exportarExcel(filas, `Inventario-${hoyRD()}`);
 }
 
 // ── Exportar hoja de conteo físico ───────────────────────────────────────────
@@ -235,7 +237,7 @@ export async function exportarHojaConteo(conteo: any) {
     { 'Campo': 'Total líneas', 'Valor': conteo.totalLineas },
     { 'Campo': 'Capturadas', 'Valor': conteo.lineasContadas },
     { 'Campo': 'Diferencias','Valor': conteo.totalDiferencias },
-    { 'Campo': 'Fecha',      'Valor': new Date(conteo.fechaGeneracion).toLocaleDateString('es-DO') },
+    { 'Campo': 'Fecha',      'Valor': fecha(conteo.fechaGeneracion) },
   ];
   const wsRes = XLSX.utils.json_to_sheet(resumen);
   wsRes['!cols'] = [{ wch: 16 }, { wch: 30 }];

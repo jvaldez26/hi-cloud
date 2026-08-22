@@ -22,6 +22,7 @@ import dayjs from 'dayjs';
 import api from '../../api/client';
 import { fmt } from '../../utils/formatters';
 import { TableActions } from '../../components/ui/TableActions';
+import { ahora, dRD } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
@@ -121,7 +122,7 @@ function KanbanCol({ etapa, items, onMover, onEditar, onEliminar }: {
               </div>
               {o.fechaCierreEsperada && (
                 <div>
-                  <Text type={new Date(o.fechaCierreEsperada) < new Date() ? 'danger' : 'secondary'}
+                  <Text type={new Date(o.fechaCierreEsperada) < ahora() ? 'danger' : 'secondary'}
                     style={{ fontSize: 10 }}>
                     📅 {fmt.date(o.fechaCierreEsperada)}
                   </Text>
@@ -575,7 +576,7 @@ export default function CRMPage() {
                 </div>
                 <div><Text style={{ fontSize: 12 }}>{a.descripcion}</Text></div>
                 <Text type="secondary" style={{ fontSize: 11 }}>
-                  {dayjs(a.fecha).format('DD/MM/YYYY HH:mm')}
+                  {dRD(a.fecha).format('DD/MM/YYYY HH:mm')}
                   {a.completada && ' · ✅ Completada'}
                 </Text>
               </div>

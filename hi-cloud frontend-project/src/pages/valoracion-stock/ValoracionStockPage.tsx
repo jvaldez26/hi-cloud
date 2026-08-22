@@ -16,6 +16,7 @@ import {
   ResponsiveContainer, Cell,
 } from 'recharts';
 import api from '../../api/client';
+import { hoyRD } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -75,7 +76,7 @@ export default function ValoracionStockPage() {
     const blob = new Blob([rows], { type: 'text/csv;charset=utf-8;' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
-    a.href = url; a.download = `valoracion-inventario-${new Date().toISOString().split('T')[0]}.csv`; a.click();
+    a.href = url; a.download = `valoracion-inventario-${hoyRD()}.csv`; a.click();
     URL.revokeObjectURL(url);
   };
 

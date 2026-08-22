@@ -16,6 +16,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
 import { exportarHojaConteo } from '../../utils/exportExcel';
+import { fecha } from '../../utils/fechaRD';
 
 const { Text, Title } = Typography;
 const { Option } = Select;
@@ -949,7 +950,7 @@ export default function ConteoInventarioPage() {
             },
             {
               title: 'Fecha', dataIndex: 'createdAt', key: 'f', width: 96,
-              render: v => v ? new Date(v).toLocaleDateString('es-DO') : '—',
+              render: v => v ? fecha(v) : '—',
             },
             {
               title: '', key: 'a', width: 80, align: 'right',

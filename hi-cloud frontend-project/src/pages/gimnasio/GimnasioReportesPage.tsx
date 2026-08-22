@@ -2,6 +2,7 @@ import { Table, Button, Tabs, Tag } from 'antd';
 import { DownloadOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { gimnasioApi } from '../../api/gimnasio.api';
+import { fecha } from '../../utils/fechaRD';
 
 export default function GimnasioReportesPage() {
   const { data: proximasData, isLoading: loadingProximas } = useQuery({
@@ -13,7 +14,7 @@ export default function GimnasioReportesPage() {
   const colProximas = [
     { title: 'Miembro', dataIndex: 'miembroNombre' },
     { title: 'Plan', dataIndex: 'planNombre' },
-    { title: 'Vence', dataIndex: 'fechaFin', render: (v: string) => v ? new Date(v).toLocaleDateString('es-DO') : '' },
+    { title: 'Vence', dataIndex: 'fechaFin', render: (v: string) => v ? fecha(v) : '' },
     { title: 'Dias Restantes', dataIndex: 'diasRestantes', render: (v: number) => <Tag color={v <= 3 ? 'red' : 'orange'}>{v} dias</Tag> },
     { title: 'Telefono', dataIndex: 'miembroTelefono' },
   ];

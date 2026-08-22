@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Empleado } from '../nomina/entities/empleado.entity';
 import { TenantService } from '../tenant/tenant.service';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 // ── Tabla ISR 2024 — Ley 11-92 RD (art. 296, modificado por Ley 253-12) ────────
 // Las tasas se aplican sobre el salario neto anual (después de AFP y SFS)
@@ -106,7 +107,7 @@ export class IsrService {
         gravados,
         totalIsrMensual:  +totalIsrMensual.toFixed(2),
         totalIsrAnual:    +totalIsrAnual.toFixed(2),
-        periodoCalculo:   new Date().toISOString().split('T')[0],
+        periodoCalculo:   fechaHoyRD(),
         leyAplicable:     'Ley 11-92 RD modificada por Ley 253-12 — Tabla vigente 2024',
       },
     };

@@ -9,6 +9,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
+import { hoyRD } from '../../utils/fechaRD';
 const fmt = (v: any) => fmtObj.date(v);
 
 const { Title } = Typography;
@@ -64,7 +65,7 @@ export default function RecetasPage() {
       'Diagnóstico': r.diagnostico ?? '',
       'Vence': r.fechaVencimiento ?? '',
     }));
-    exportarExcel(filas, `Recetas-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Recetas-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

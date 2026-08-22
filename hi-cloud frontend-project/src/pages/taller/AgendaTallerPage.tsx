@@ -11,6 +11,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
+import { dRD, hoyRD } from '../../utils/fechaRD';
 
 const { Title } = Typography;
 const ESTADO_COLOR: Record<string, string> = {
@@ -52,7 +53,7 @@ export default function AgendaTallerPage() {
     mutationFn: (vals: any) => {
       const body = {
         ...vals,
-        hora: vals.hora ? dayjs(vals.hora).format('HH:mm') : undefined,
+        hora: vals.hora ? dRD(vals.hora).format('HH:mm') : undefined,
       };
       return editingId ? tallerApi.actualizarCita(editingId, body) : tallerApi.crearCita(body);
     },
@@ -115,7 +116,7 @@ export default function AgendaTallerPage() {
       'Duración (min)': r.duracionMinutos,
       'Estado': r.estado,
     }));
-    exportarExcel(filas, `Agenda-Taller-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Agenda-Taller-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

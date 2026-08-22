@@ -9,6 +9,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
+import { hoyRD } from '../../utils/fechaRD';
 const fmt = (v: any) => fmtObj.date(v);
 const fmtMoney = (v: any) => fmtObj.money(v);
 
@@ -82,7 +83,7 @@ export default function ArsPage() {
       'Paciente Paga': r.montoPaciente ?? '',
       'Estado': r.estado,
     }));
-    exportarExcel(filas, `ARS-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `ARS-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

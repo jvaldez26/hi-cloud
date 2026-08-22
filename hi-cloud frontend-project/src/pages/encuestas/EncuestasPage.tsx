@@ -12,6 +12,7 @@ import {
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
+import { fecha } from '../../utils/fechaRD';
 
 const { Title, Text, Paragraph } = Typography;
 const { Option } = Select;
@@ -155,7 +156,7 @@ export default function EncuestasPage() {
                 </Paragraph>
               )}
               <Text type="secondary" style={{ fontSize: 12 }}>
-                Creada: {new Date(enc.createdAt).toLocaleDateString('es-DO')}
+                Creada: {fecha(enc.createdAt)}
               </Text>
             </Card>
           </Col>

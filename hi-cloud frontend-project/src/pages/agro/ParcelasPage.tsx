@@ -7,6 +7,7 @@ import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/Tab
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
 import { agroApi } from '../../api/agro.api';
+import { hoyRD } from '../../utils/fechaRD';
 
 const COLS_DEF = [
   { key: 'nombre',      label: 'Nombre',       defaultVisible: true  },
@@ -54,7 +55,7 @@ export default function ParcelasPage() {
       'Estado':    r.estado ?? '',
       'Cultivo':   r.cultivoActual ?? '',
     }));
-    exportarExcel(rows, `Parcelas-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(rows, `Parcelas-${hoyRD()}`);
     message.success(`${rows.length} parcelas exportadas`);
   };
 

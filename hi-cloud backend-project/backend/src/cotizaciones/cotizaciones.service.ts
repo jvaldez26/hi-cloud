@@ -21,6 +21,7 @@ import { TenantService } from '../tenant/tenant.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { User } from '../users/users.entity';
 import { FacturasService } from '../facturas/facturas.service';
+import { fechaYHoraRD } from '../common/utils/fecha-local.util';
 
 @Injectable()
 export class CotizacionesService {
@@ -471,9 +472,7 @@ export class CotizacionesService {
         ).then((r: any[]) => r[0]?.nombre ?? undefined)
       : undefined;
 
-    const now = new Date();
-    const fechaHora = now.toLocaleDateString('es-DO') + ' ' +
-      now.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
+    const fechaHora = fechaYHoraRD();
 
     const data: ReciboPOSData & { validezDias?: number } = {
       empresaNombre:   empresa.nombreComercial || empresa.nombre || 'Mi Empresa',

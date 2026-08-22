@@ -4,6 +4,7 @@ import { DataSource } from 'typeorm';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { TenantService } from '../tenant/tenant.service';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 @Injectable()
 export class ServiciosProService {
@@ -573,7 +574,7 @@ export class ServiciosProService {
       expedienteId: timerData.expedienteId,
       tareaId:      timerData.tareaId,
       profesionalId: timerData.profesionalId,
-      fecha:        new Date().toISOString().split('T')[0],
+      fecha:        fechaHoyRD(),
       horas,
       descripcion:  body.descripcion ?? timerData.descripcion ?? 'Tiempo registrado vía timer',
       facturable:   true,
@@ -824,7 +825,7 @@ export class ServiciosProService {
     const eid = this.empresaId;
     const exp = await this.getExpediente(body.expedienteId);
     const desde = body.desde;
-    const hasta = body.hasta ?? new Date().toISOString().split('T')[0];
+    const hasta = body.hasta ?? fechaHoyRD();
 
     // Tiempo no facturado
     const tiempos = await this.ds.query<any[]>(

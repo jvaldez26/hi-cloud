@@ -16,6 +16,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
 import { fmt } from '../../utils/formatters';
+import { hoyRD } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
@@ -295,7 +296,7 @@ export default function InventarioOpticaPage() {
       'Precio': r.precio ?? 0,
       'Stock': r.stockActual ?? 0,
     }));
-    exportarExcel(filas, `Inventario-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Inventario-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

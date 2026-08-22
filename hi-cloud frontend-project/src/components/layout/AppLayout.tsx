@@ -44,6 +44,7 @@ import { useAlertas }    from '../../hooks/useAlertas';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { MENU_CATEGORIES_DATA, ADDON_IDS, PATH_ROLES, rolPuedeVerRuta } from '../../config/menuConfig';
 import { markNavigatingAway } from '../../utils/sessionEvents';
+import { ahora, hora, horaDelDiaRD } from '../../utils/fechaRD';
 
 const { Header, Content } = Layout;
 const { Text } = Typography;
@@ -628,16 +629,16 @@ function ContentLoader() {
 
 // ── Reloj ─────────────────────────────────────────────────────────────────────
 function LiveClock() {
-  const [time, setTime] = useState(new Date());
+  const [time, setTime] = useState(() => ahora());
   useEffect(() => {
-    const id = setInterval(() => setTime(new Date()), 1000);
+    const id = setInterval(() => setTime(ahora()), 1000);
     return () => clearInterval(id);
   }, []);
   // Sin segundos y con whiteSpace:nowrap para evitar el corte "p. m."
-  const hora = time.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const horaTexto = hora(time);
   return (
     <Text type="secondary" style={{ fontSize: 12, fontFeatureSettings: '"tnum"', letterSpacing: .3, whiteSpace: 'nowrap', flexShrink: 0 }}>
-      {hora}
+      {horaTexto}
     </Text>
   );
 }
@@ -671,7 +672,7 @@ function RealtimeDot() {
 
 // ── Saludo ────────────────────────────────────────────────────────────────────
 function Greeting({ nombre }: { nombre: string }) {
-  const h      = new Date().getHours();
+  const h      = horaDelDiaRD();
   const saludo = h < 12 ? 'Buenos días' : h < 18 ? 'Buenas tardes' : 'Buenas noches';
   const emoji  = h < 12 ? '☀️' : h < 18 ? '🌤️' : '🌙';
   return (

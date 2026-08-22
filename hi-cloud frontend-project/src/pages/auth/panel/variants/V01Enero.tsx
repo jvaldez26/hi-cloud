@@ -1,8 +1,9 @@
 import { PANEL_BASE, Mark, BackLink, Spacer } from '../shared';
+import { anioRD } from '../../../../utils/fechaRD';
 
 const MONO = '"IBM Plex Mono", monospace';
 
-const yr = String(new Date().getFullYear());
+const yr = String(anioRD());
 const yrFirst = yr.slice(0, 2);
 const yrLast  = yr.slice(2);
 

@@ -18,6 +18,7 @@ import { useMemo } from 'react';
 import dayjs from 'dayjs';
 import api from '../../api/client';
 import { fmt } from '../../utils/formatters';
+import { ahora } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
@@ -261,7 +262,7 @@ export default function MantenimientoPage() {
                   { title: 'Frecuencia',   dataIndex: 'frecuenciaDias', width: 110, render: (v: number) => `Cada ${v} días` },
                   { title: 'Próximo',      dataIndex: 'proximoMantenimiento', width: 110,
                     render: (v: string) => v ? (
-                      <Text type={new Date(v) < new Date() ? 'danger' : 'secondary'}>{fmt.date(v)}</Text>
+                      <Text type={new Date(v) < ahora() ? 'danger' : 'secondary'}>{fmt.date(v)}</Text>
                     ) : '—' },
                   { title: '', key: 'del', width: 72, align: 'right' as const,
                     render: (_: any, r: any) => (

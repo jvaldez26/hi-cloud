@@ -12,6 +12,7 @@ import {
 import { motion } from 'framer-motion';
 import api from '../../api/client';
 import { fmt } from '../../utils/formatters';
+import { horaConSegundos } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
@@ -72,7 +73,7 @@ export default function KpiPage() {
             Dashboard KPI Ejecutivo
           </Title>
           <Text type="secondary" style={{ fontSize: 13 }}>
-            Actualizado: {new Date(kpi.generadoEn).toLocaleTimeString('es-DO')} · Recarga cada 2 min
+            Actualizado: {horaConSegundos(kpi.generadoEn)} · Recarga cada 2 min
           </Text>
         </Col>
       </Row>

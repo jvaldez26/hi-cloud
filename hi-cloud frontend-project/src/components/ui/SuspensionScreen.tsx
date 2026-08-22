@@ -4,6 +4,7 @@ import { LockOutlined, SendOutlined, LogoutOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { suscripcionesApi } from '../../api/suscripciones.api';
 import { useThemeStore } from '../../store/theme.store';
+import { fecha } from '../../utils/fechaRD';
 
 const WS_NUMBER = '8093081713';
 const WS_URL    = `https://wa.me/1${WS_NUMBER}`;
@@ -121,7 +122,7 @@ export default function SuspensionScreen({
 
   const planNombre = PLANES_OPCIONES.find(p => p.value === planActual)?.label.split(' —')[0] ?? planActual;
   const fechaStr   = fechaVencimiento
-    ? new Date(fechaVencimiento).toLocaleDateString('es-DO', { day: '2-digit', month: 'long', year: 'numeric' })
+    ? fecha(fechaVencimiento)
     : 'fecha desconocida';
 
   // Textos según el motivo de suspensión

@@ -14,13 +14,14 @@ import { useState, useMemo } from 'react';
 import dayjs from 'dayjs';
 import api from '../../api/client';
 import { useAuthStore } from '../../store/auth.store';
+import { fecha } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
 const fmt = (v: number) =>
   new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP', minimumFractionDigits: 2 }).format(v ?? 0);
 
-const fmtDate = (d: any) => d ? new Date(d).toLocaleDateString('es-DO') : '—';
+const fmtDate = (d: any) => d ? fecha(d) : '—';
 
 const calcAntig = (fechaIngreso: any) => {
   if (!fechaIngreso) return '—';

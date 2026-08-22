@@ -16,6 +16,7 @@ import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import api from '../../api/client';
+import { hoyRD } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -144,7 +145,7 @@ export default function CuotasPage() {
   };
 
   const cuotasVencidas = (planDetalle?.cuotas ?? []).filter((c: any) => {
-    return c.estado === 'pendiente' && c.fechaVencimiento < new Date().toISOString().split('T')[0];
+    return c.estado === 'pendiente' && c.fechaVencimiento < hoyRD();
   }).length;
 
   return (

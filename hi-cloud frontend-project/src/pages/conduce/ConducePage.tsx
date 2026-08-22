@@ -24,6 +24,7 @@ import WhatsAppButton from '../../components/ui/WhatsAppButton';
 import PrintButton from '../../components/ui/PrintButton';
 import ReporteEntregaTab from './ReporteEntregaTab';
 import { useSearchParams } from 'react-router-dom';
+import { fecha } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -330,7 +331,7 @@ export default function ConducePage() {
                 items={[
                   { title: 'Generado',    description: r.fecha },
                   { title: 'En Tránsito', description: r.fechaEntregaProgramada ?? '' },
-                  { title: 'Entregado',   description: r.fechaEntregaReal ? new Date(r.fechaEntregaReal).toLocaleDateString('es-DO') : '' },
+                  { title: 'Entregado',   description: r.fechaEntregaReal ? fecha(r.fechaEntregaReal) : '' },
                 ]}
                 style={{ padding: '12px 0' }}
               />

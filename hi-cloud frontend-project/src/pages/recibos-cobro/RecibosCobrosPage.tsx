@@ -19,6 +19,7 @@ import dayjs from 'dayjs';
 import api from '../../api/client';
 import { imprimirElemento } from '../../utils/printUtils';
 import { exportarExcel } from '../../utils/exportExcel';
+import { dRD } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -70,7 +71,7 @@ function ReciboImprimible({ recibo, empresa }: { recibo: any; empresa?: any }) {
       <div style={{ ...S.center, fontSize: 10, marginTop: 6 }}>
         <div>Recibido por: {recibo.nombreUsuario ?? '___________'}</div>
         <div style={{ marginTop: 16, borderTop: '1px solid #666', paddingTop: 4 }}>Firma y sello</div>
-        <div style={{ marginTop: 12 }}>{dayjs().format('DD/MM/YYYY HH:mm')} · HiCloud ERP</div>
+        <div style={{ marginTop: 12 }}>{dRD().format('DD/MM/YYYY HH:mm')} · HiCloud ERP</div>
       </div>
     </div>
   );

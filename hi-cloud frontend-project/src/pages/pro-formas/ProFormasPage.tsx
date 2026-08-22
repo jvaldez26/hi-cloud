@@ -16,6 +16,7 @@ import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
 import api from '../../api/client';
 import { useAuthStore } from '../../store/auth.store';
+import { hoyRD } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
@@ -298,7 +299,7 @@ export default function ProFormasPage() {
                 'Válida hasta': p.fechaVencimiento ? String(p.fechaVencimiento).substring(0, 10) : '',
                 'Estado':       p.estado ?? '',
               }));
-              exportarExcel(filas, `ProFormas-${new Date().toISOString().split('T')[0]}`);
+              exportarExcel(filas, `ProFormas-${hoyRD()}`);
               message.success(`${filas.length} pro formas exportadas`);
             }}>Excel</Button>
             <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />

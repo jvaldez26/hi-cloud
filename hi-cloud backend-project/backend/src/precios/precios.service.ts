@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { PrecioEspecial, TierPrecio } from './entities/precio-especial.entity';
 import { TenantService } from '../tenant/tenant.service';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 interface CreatePrecioDto {
   productoId:          number;
@@ -63,7 +64,7 @@ export class PreciosService {
     descuento: number;
     origen: string;
   }> {
-    const hoy = new Date().toISOString().split('T')[0];
+    const hoy = fechaHoyRD();
     const empresaId = this.tenantService.getEmpresaId();
 
     // Obtener precio base del producto

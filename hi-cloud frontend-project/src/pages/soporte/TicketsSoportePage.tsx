@@ -10,6 +10,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import api from '../../api/client';
+import { dRD } from '../../utils/fechaRD';
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -100,7 +101,7 @@ export default function TicketsSoportePage() {
     },
     {
       title: 'Fecha', dataIndex: 'createdAt', width: 110,
-      render: (v: string) => <Text style={{ fontSize: 12 }}>{dayjs(v).format('DD/MM/YY HH:mm')}</Text>,
+      render: (v: string) => <Text style={{ fontSize: 12 }}>{dRD(v).format('DD/MM/YY HH:mm')}</Text>,
     },
     {
       title: '', width: 90,
@@ -187,7 +188,7 @@ export default function TicketsSoportePage() {
                 </Col>
                 <Col span={6}>
                   <Text type="secondary" style={{ fontSize: 11 }}>FECHA</Text>
-                  <div style={{ fontSize: 12 }}>{dayjs(ticketActivo.createdAt).format('DD/MM/YYYY HH:mm')}</div>
+                  <div style={{ fontSize: 12 }}>{dRD(ticketActivo.createdAt).format('DD/MM/YYYY HH:mm')}</div>
                 </Col>
               </Row>
               <Divider style={{ margin: '10px 0' }} />
@@ -236,7 +237,7 @@ export default function TicketsSoportePage() {
                   {ticketActivo.respuesta}
                 </Paragraph>
                 <Text type="secondary" style={{ fontSize: 11 }}>
-                  {ticketActivo.fechaRespuesta ? dayjs(ticketActivo.fechaRespuesta).format('DD/MM/YYYY HH:mm') : ''}
+                  {ticketActivo.fechaRespuesta ? dRD(ticketActivo.fechaRespuesta).format('DD/MM/YYYY HH:mm') : ''}
                 </Text>
               </>
             )}

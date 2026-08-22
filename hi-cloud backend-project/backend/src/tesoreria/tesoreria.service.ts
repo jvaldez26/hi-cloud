@@ -27,6 +27,7 @@ import {
 import { CreateConciliacionDto } from './dto/create-conciliacion.dto';
 import { FiltroMovimientoDto, FiltroConciliacionDto } from './dto/filtro-tesoreria.dto';
 import { TenantService } from '../tenant/tenant.service';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 @Injectable()
 export class TesoreriaService {
@@ -266,7 +267,7 @@ export class TesoreriaService {
         cuenta.id,
         tipo,
         monto,
-        new Date().toISOString().split('T')[0],
+        fechaHoyRD(),
         descripcion,
         userId,
         origen,

@@ -20,6 +20,7 @@ import dayjs from 'dayjs';
 import api from '../../api/client';
 import { useAuthStore } from '../../store/auth.store';
 import { VideoTutorialButton } from '../../components/ui/TableToolbar';
+import { dRD, horaDelDiaRD, hoyRD } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
@@ -30,16 +31,18 @@ function ContextoHeader() {
   const navigate   = useNavigate();
   const { token }  = theme.useToken();
 
-  // Fechas calculadas UNA SOLA VEZ (hora local del navegador → ISO UTC para el backend)
+  // Fechas calculadas UNA SOLA VEZ. El dia va de medianoche a medianoche EN RD,
+  // con la hora del servidor: antes salia de la zona del navegador, asi que un
+  // equipo mal configurado le pedia al backend un 'hoy' que no era hoy.
   const params = useMemo(() => {
-    const now              = new Date();
-    const inicioHoyLocal   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-    const inicioAyerLocal  = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
-    const mismaHoraAyer    = new Date(inicioAyerLocal.getTime() + (now.getTime() - inicioHoyLocal.getTime()));
+    const now           = dRD();
+    const inicioHoy     = now.startOf('day');
+    const inicioAyer    = inicioHoy.subtract(1, 'day');
+    const mismaHoraAyer = inicioAyer.add(now.diff(inicioHoy));
     return {
-      inicioHoy:     inicioHoyLocal.toISOString(),
+      inicioHoy:     inicioHoy.toISOString(),
       ahoraLocal:    now.toISOString(),
-      inicioAyer:    inicioAyerLocal.toISOString(),
+      inicioAyer:    inicioAyer.toISOString(),
       mismaHoraAyer: mismaHoraAyer.toISOString(),
     };
   }, []);
@@ -51,7 +54,7 @@ function ContextoHeader() {
   });
 
   // Saludo según hora LOCAL del navegador
-  const hora          = new Date().getHours();
+  const hora          = horaDelDiaRD();
   const saludoTexto   = hora >= 5 && hora < 12 ? 'Buenos días' : hora >= 12 && hora < 19 ? 'Buenas tardes' : 'Buenas noches';
   const primerNombre  = (user?.nombre ?? '').split(' ')[0];
 
@@ -271,7 +274,7 @@ function DashboardAdmin() {
       ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
       URL.revokeObjectURL(url);
       const a = document.createElement('a');
-      a.download = `ingresos-gastos-${new Date().toISOString().slice(0, 10)}.png`;
+      a.download = `ingresos-gastos-${hoyRD()}.png`;
       a.href = canvas.toDataURL('image/png');
       a.click();
     };
@@ -512,7 +515,7 @@ function DashboardAdmin() {
                             </Text>
                           </div>
                           <div style={{ fontSize: 10, color: token.colorTextTertiary }}>
-                            {l.hora ?? dayjs(l.fecha).format('HH:mm')}
+                            {l.hora ?? dRD(l.fecha).format('HH:mm')}
                           </div>
                         </div>
                       </div>

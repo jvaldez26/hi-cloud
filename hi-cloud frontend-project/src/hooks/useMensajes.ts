@@ -12,6 +12,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { mensajesApi, MensajeBandeja } from '../api/mensajes.api';
+import { ahora } from '../utils/fechaRD';
 
 // ─── Keys ──────────────────────────────────────────────────────────────────────
 
@@ -71,7 +72,7 @@ export function useMarcarLeido() {
       const tabs = ['principal', 'novedades', 'archivo'] as const;
       tabs.forEach(tab => {
         qc.setQueryData<MensajeBandeja[]>(MENSAJES_KEYS.bandeja(tab), prev =>
-          prev?.map(m => m.id === id ? { ...m, leidoEn: new Date().toISOString() } : m),
+          prev?.map(m => m.id === id ? { ...m, leidoEn: ahora().toISOString() } : m),
         );
       });
     },

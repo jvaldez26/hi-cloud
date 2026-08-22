@@ -18,6 +18,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import dayjs from 'dayjs';
 import api from '../../api/client';
 import { fmt } from '../../utils/formatters';
+import { ahora } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
@@ -125,7 +126,7 @@ export default function ChequesPage() {
     { title: 'Beneficiario',dataIndex: 'beneficiario', ellipsis: true },
     { title: 'Fecha',       dataIndex: 'fecha',        width: 100,
       render: (v: string) => (
-        <Text type={new Date(v) > new Date() ? 'warning' : undefined}>{fmt.date(v)}</Text>
+        <Text type={new Date(v) > ahora() ? 'warning' : undefined}>{fmt.date(v)}</Text>
       )},
     { title: 'Monto',       dataIndex: 'monto',        width: 130,
       render: (v: number) => <Text strong style={{ color: '#1677ff' }}>{fmt.money(v)}</Text> },

@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
+import { anioRD, fecha, mesRD } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -44,7 +45,7 @@ export default function PeriodoContablePage() {
   const qc            = useQueryClient();
   const { token }     = theme.useToken();
   const ESTADO_CONFIG = useEstadoConfig();
-  const anioActual    = new Date().getFullYear();
+  const anioActual    = anioRD();
   const [search,      setSearch]      = useState('');
   const [anio,        setAnio]        = useState(anioActual);
   const [modalCrear,  setModalCrear]  = useState(false);
@@ -115,7 +116,7 @@ export default function PeriodoContablePage() {
       e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error inesperado', 5),
   });
 
-  const mesActual = new Date().getMonth() + 1;
+  const mesActual = mesRD();
 
   const dataSource = useMemo(() =>
     MESES
@@ -179,7 +180,7 @@ export default function PeriodoContablePage() {
       width: 130,
       render: (_: any, row: any) =>
         row.periodo?.fechaCierre
-          ? new Date(row.periodo.fechaCierre).toLocaleDateString('es-DO')
+          ? fecha(row.periodo.fechaCierre)
           : <Text type="secondary">—</Text>,
     },
     {
@@ -314,7 +315,7 @@ export default function PeriodoContablePage() {
         confirmLoading={crearPeriodo.isPending}
         okText="Crear">
         <Form form={formCrear} layout="vertical"
-          initialValues={{ anio, mes: new Date().getMonth() + 1 }}
+          initialValues={{ anio, mes: mesRD() }}
           onFinish={v => crearPeriodo.mutate(v)}>
           <Row gutter={12}>
             <Col xs={24} sm={12}>

@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { fechaHoyRD } from '../../common/utils/fecha-local.util';
 
 @Injectable()
 export class MatriculasService {
@@ -91,7 +92,7 @@ export class MatriculasService {
         dto.anioEscolarId ?? null,
         dto.gradoId ?? null,
         dto.seccionId ?? null,
-        dto.fechaMatricula ?? new Date().toISOString().substring(0, 10),
+        dto.fechaMatricula ?? fechaHoyRD(),
         dto.estado ?? 'activa',
         dto.tipoBeca ?? 'ninguna',
         dto.porcentajeBeca ?? 0,

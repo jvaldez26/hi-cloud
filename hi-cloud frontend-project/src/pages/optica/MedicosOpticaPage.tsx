@@ -11,6 +11,7 @@ import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/Tab
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
+import { hoyRD } from '../../utils/fechaRD';
 
 const { Title } = Typography;
 
@@ -103,7 +104,7 @@ export default function MedicosOpticaPage() {
       'Teléfono': r.telefono ?? '',
       'Email': r.email ?? '',
     }));
-    exportarExcel(filas, `Medicos-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Medicos-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 

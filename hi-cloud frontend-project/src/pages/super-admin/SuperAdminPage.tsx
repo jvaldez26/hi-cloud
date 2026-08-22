@@ -29,6 +29,7 @@ import VideosTutorialesAdminPage from './VideosTutorialesAdminPage';
 import { MensajesAdminTab } from '../../components/super-admin/MensajesAdminTab';
 import { SECTORES_EMPRESARIALES } from '../../constants/sectores';
 import { fmtDop } from '../../utils/fmt';
+import { ahora, dRD, fecha, fechaHora, horaConSegundos, hoyRD } from '../../utils/fechaRD';
 
 /** Wrapper con contexto de color del Super Admin — respeta modo oscuro */
 function CobrosAdminPanel() {
@@ -47,9 +48,7 @@ function xd(r: any) { return r?.data?.data ?? r?.data ?? r; }
 
 function fmtFecha(v: string | null | undefined): string {
   if (!v) return '—';
-  const d = new Date(v);
-  if (isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return fecha(v) || '—';
 }
 
 function fmtRelativa(v: string | null | undefined): { texto: string; color: string } {
@@ -170,9 +169,9 @@ function EstadoBadge({ activa }: { activa: boolean }) {
 
 function LiveClock() {
   const C = useSaTheme();
-  const [hora, setHora] = useState(() => new Date().toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+  const [hora, setHora] = useState(() => horaConSegundos(ahora()));
   useEffect(() => {
-    const t = setInterval(() => setHora(new Date().toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })), 1000);
+    const t = setInterval(() => setHora(horaConSegundos(ahora())), 1000);
     return () => clearInterval(t);
   }, []);
   return (
@@ -633,7 +632,7 @@ function EcfConfigTab({
               )},
               { title: 'Acciones', key: 'acc', render: (_: any, r: any) => {
                 const bloqueadaHasta = r.bloqueadoHasta ? new Date(r.bloqueadoHasta) : null;
-                const estaBloqueada  = bloqueadaHasta ? bloqueadaHasta > new Date() : false;
+                const estaBloqueada  = bloqueadaHasta ? bloqueadaHasta > ahora() : false;
                 const minRestantes   = estaBloqueada && bloqueadaHasta
                   ? Math.max(1, Math.ceil((bloqueadaHasta.getTime() - Date.now()) / 60_000))
                   : 0;
@@ -1271,7 +1270,7 @@ function DemosTab({ C }: { C: SaTheme }) {
           onRow={r => ({ onClick: () => setDetalle(r), style: { cursor: 'pointer' } })}
           columns={[
             { title: 'Fecha',   dataIndex: 'createdAt', width: 100,
-              render: (v: string) => new Date(v).toLocaleDateString('es-DO', { day:'2-digit', month:'2-digit', year:'numeric' }) },
+              render: (v: string) => fecha(v) },
             { title: 'Nombre',  dataIndex: 'nombre',  ellipsis: true },
             { title: 'Empresa', dataIndex: 'empresa', ellipsis: true },
             { title: 'Email',   dataIndex: 'email',   ellipsis: true },
@@ -1379,7 +1378,7 @@ function DemosTab({ C }: { C: SaTheme }) {
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                     <span style={{ fontSize: 12, fontWeight: 700, color: C.txt2 }}>{n.autorNombre}</span>
                     <span style={{ fontSize: 11, color: C.txt2 }}>
-                      {new Date(n.fecha).toLocaleString('es-DO', { dateStyle: 'short', timeStyle: 'short' })}
+                      {fechaHora(n.fecha)}
                     </span>
                   </div>
                   <div style={{ fontSize: 13, color: C.txt }}>{n.texto}</div>
@@ -1735,7 +1734,7 @@ export default function SuperAdminPage() {
       const matchEst  = !filtroEstado ||
         (filtroEstado === 'activa' && e.isActive) ||
         (filtroEstado === 'suspendida' && !e.isActive) ||
-        (filtroEstado === 'vencida' && e.venceSuscripcion && new Date(e.venceSuscripcion) < new Date());
+        (filtroEstado === 'vencida' && e.venceSuscripcion && new Date(e.venceSuscripcion) < ahora());
       return matchBusq && matchPlan && matchEst;
     });
   }, [empresas, busqueda, filtroPlan, filtroEstado]);
@@ -3514,10 +3513,9 @@ function AuditoriaTab({ C }: { C: any }) {
   // Fechas calculadas a partir del rango seleccionado
   const { fechaDesde, fechaHasta } = useMemo(() => {
     if (diasRango === null) return { fechaDesde: undefined, fechaHasta: undefined };
-    const hoy   = new Date();
-    const hasta = hoy.toISOString().split('T')[0];
+    const hasta = hoyRD();
     if (diasRango === 0) return { fechaDesde: hasta, fechaHasta: hasta };
-    const desde = new Date(hoy.getTime() - diasRango * 86400000).toISOString().split('T')[0];
+    const desde = dRD().subtract(diasRango, 'day').format('YYYY-MM-DD');
     return { fechaDesde: desde, fechaHasta: hasta };
   }, [diasRango]);
 
@@ -3559,7 +3557,7 @@ function AuditoriaTab({ C }: { C: any }) {
       'Éxito':    e.exitoso ? 'Sí' : 'No',
     }));
     import('../../utils/exportExcel').then(({ exportarExcel }) => {
-      exportarExcel(filas, `Auditoria-${new Date().toISOString().split('T')[0]}`);
+      exportarExcel(filas, `Auditoria-${hoyRD()}`);
     });
   };
 
@@ -3650,7 +3648,7 @@ function AuditoriaTab({ C }: { C: any }) {
           columns={[
             { title: 'Fecha', dataIndex: 'createdAt', key: 'f', width: 150,
               render: (v: any) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.txt2 }}>
-                {v ? new Date(v).toLocaleString('es-DO', { dateStyle: 'short', timeStyle: 'short' }) : '—'}
+                {v ? fechaHora(v) : '—'}
               </span> },
             { title: 'Usuario', dataIndex: 'userName', key: 'u', width: 140,
               render: (v: any, r: any) => (

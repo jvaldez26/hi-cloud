@@ -19,6 +19,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import api from '../../api/client';
 import { fmt } from '../../utils/formatters';
+import { ahora } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
@@ -109,7 +110,7 @@ export default function LicitacionesPage() {
     { title: 'Entidad',   dataIndex: 'entidadConvocante', key: 'entidadConvocante',  ellipsis: true },
     { title: 'Tipo',      dataIndex: 'tipo',              key: 'tipo',               width: 100, render: (v: string) => TIPO_LIC.find(t => t.value === v)?.label ?? v },
     { title: 'Límite',    dataIndex: 'fechaLimiteOfertas',key: 'fechaLimiteOfertas', width: 105,
-      render: (v: string) => v ? <Text type={new Date(v) < new Date() ? 'danger' : undefined}>{fmt.date(v)}</Text> : '—' },
+      render: (v: string) => v ? <Text type={new Date(v) < ahora() ? 'danger' : undefined}>{fmt.date(v)}</Text> : '—' },
     { title: 'Ofertado',  dataIndex: 'montoOfertado',     key: 'montoOfertado',      width: 130, render: (v: number) => v ? fmt.money(v) : '—' },
     { title: 'Estado',    dataIndex: 'estado',            key: 'estado',             width: 120,
       render: (v: string) => {

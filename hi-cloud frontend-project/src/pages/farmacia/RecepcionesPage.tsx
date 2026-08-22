@@ -11,6 +11,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
+import { fecha, hoyRD } from '../../utils/fechaRD';
 
 const { Title } = Typography;
 
@@ -90,7 +91,7 @@ export default function RecepcionesPage() {
 
   const cols = [
     { title: 'N° Recepción', dataIndex: 'numero', key: 'numero', width: 130 },
-    { title: 'Fecha', dataIndex: 'fecha', key: 'fecha', width: 110, render: (v: string) => new Date(v).toLocaleDateString('es-DO') },
+    { title: 'Fecha', dataIndex: 'fecha', key: 'fecha', width: 110, render: (v: string) => fecha(v) },
     { title: 'Proveedor', dataIndex: 'proveedorNombre', key: 'proveedorNombre', render: (v: string) => v ?? '-' },
     { title: 'Factura', dataIndex: 'facturaProveedor', key: 'facturaProveedor', width: 130 },
     { title: 'Total', dataIndex: 'total', key: 'total', width: 110, render: (v: number) => `RD$ ${Number(v ?? 0).toFixed(2)}` },
@@ -119,13 +120,13 @@ export default function RecepcionesPage() {
   const exportar = () => {
     const filas = (data?.data ?? []).map((r: any) => ({
       'N° Recepción': r.numero,
-      'Fecha': r.fecha ? new Date(r.fecha).toLocaleDateString('es-DO') : '',
+      'Fecha': r.fecha ? fecha(r.fecha) : '',
       'Proveedor': r.proveedorNombre ?? '',
       'Factura': r.facturaProveedor ?? '',
       'Total': r.total ?? 0,
       'Estado': r.estado,
     }));
-    exportarExcel(filas, `Recepciones-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Recepciones-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 
@@ -269,7 +270,7 @@ export default function RecepcionesPage() {
               columns={[
                 { title: 'Medicamento', dataIndex: 'nombreGenerico' },
                 { title: 'Lote', dataIndex: 'numeroLote', width: 120 },
-                { title: 'Vence', dataIndex: 'fechaVencimiento', width: 110, render: (v: string) => new Date(v).toLocaleDateString('es-DO') },
+                { title: 'Vence', dataIndex: 'fechaVencimiento', width: 110, render: (v: string) => fecha(v) },
                 { title: 'Cant.', dataIndex: 'cantidadRecibida', width: 70 },
                 { title: 'P.Compra', dataIndex: 'precioCompra', width: 100, render: (v: number) => v ? `RD$ ${Number(v).toFixed(2)}` : '-' },
               ]}

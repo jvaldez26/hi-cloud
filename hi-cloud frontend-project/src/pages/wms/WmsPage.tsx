@@ -15,6 +15,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
 import { fmt } from '../../utils/formatters';
 import dayjs from 'dayjs';
+import { dRD } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -78,7 +79,7 @@ function DashboardTab() {
     { title: 'N°', dataIndex: 'numero', width: 120, render: (v: string) => <Text code>{v}</Text> },
     { title: 'Almacén', key: 'alm', render: (_: any, r: any) => r.almacen?.nombre },
     { title: 'Despachada', dataIndex: 'fechaDespachado', width: 130,
-      render: (v: string) => v ? dayjs(v).format('DD/MM HH:mm') : '—' },
+      render: (v: string) => v ? dRD(v).format('DD/MM HH:mm') : '—' },
     { title: 'Destinatario', dataIndex: 'destinatario', ellipsis: true },
   ];
 
@@ -446,7 +447,7 @@ function OrdenesPickingTab({ almacenes, productos, clientes }: {
     { title: 'Prioridad', dataIndex: 'prioridad', width: 90,
       render: (v: number) => <Tag color={v===1?'red':v===2?'orange':'default'}>{v===1?'🔴 Urgente':v===2?'🟡 Normal':'🟢 Baja'}</Tag> },
     { title: 'Estado',   dataIndex: 'estado',     width: 120, render: (v: string) => <Tag color={ESTADO_COLOR[v]}>{v?.replace('_',' ').toUpperCase()}</Tag> },
-    { title: 'Fecha',    dataIndex: 'createdAt',  width: 110, render: (v: string) => dayjs(v).format('DD/MM HH:mm') },
+    { title: 'Fecha',    dataIndex: 'createdAt',  width: 110, render: (v: string) => dRD(v).format('DD/MM HH:mm') },
     { title: '', key: 'acc', width: 210,
       render: (_: any, r: any) => (
         <Space size={4}>

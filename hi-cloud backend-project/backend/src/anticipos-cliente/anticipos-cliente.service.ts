@@ -108,7 +108,7 @@ export class AnticiposClienteService implements OnModuleInit {
     );
     const controlActivo = empRow?.controlCajaActivo === true;
 
-    const hoy    = new Date().toISOString().split('T')[0];
+    const hoy    = fechaHoyRD();
     let caja: { id: number } | undefined;
     if (controlActivo) {
       [caja] = await this.ds.query<{ id: number }[]>(`

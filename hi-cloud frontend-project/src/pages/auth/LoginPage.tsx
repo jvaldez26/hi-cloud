@@ -9,6 +9,7 @@ import { authApi } from '../../api/auth.api';
 import api from '../../api/client';
 import DemoModal from './DemoModal';
 import { PanelAcceso } from './panel';
+import { fechaHora } from '../../utils/fechaRD';
 
 const WS_NUMBER   = '8093081713';
 const WS_URL      = `https://wa.me/1${WS_NUMBER}`;
@@ -655,10 +656,7 @@ export default function LoginPage() {
               )}
               {sessionInfo.lastActivityAt && (
                 <div>🕐 <strong>Última actividad:</strong>{' '}
-                  {new Date(sessionInfo.lastActivityAt).toLocaleString('es-DO', {
-                    day: '2-digit', month: '2-digit', year: 'numeric',
-                    hour: '2-digit', minute: '2-digit',
-                  })}
+                  {fechaHora(sessionInfo.lastActivityAt)}
                 </div>
               )}
             </div>

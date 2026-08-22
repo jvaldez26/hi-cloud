@@ -11,6 +11,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
+import { fecha, hoyRD } from '../../utils/fechaRD';
 
 const { Title } = Typography;
 
@@ -73,8 +74,8 @@ export default function LotesPage() {
     { title: 'N° Lote', dataIndex: 'numeroLote', key: 'numeroLote', width: 130 },
     { title: 'Medicamento', dataIndex: 'nombreGenerico', key: 'nombreGenerico', ellipsis: true },
     { title: 'Concentración', dataIndex: 'concentracion', key: 'concentracion', width: 120 },
-    { title: 'Fabricación', dataIndex: 'fechaFabricacion', key: 'fechaFabricacion', width: 110, render: (v: string) => v ? new Date(v).toLocaleDateString('es-DO') : '-' },
-    { title: 'Vencimiento', dataIndex: 'fechaVencimiento', key: 'fechaVencimiento', width: 110, render: (v: string) => new Date(v).toLocaleDateString('es-DO') },
+    { title: 'Fabricación', dataIndex: 'fechaFabricacion', key: 'fechaFabricacion', width: 110, render: (v: string) => v ? fecha(v) : '-' },
+    { title: 'Vencimiento', dataIndex: 'fechaVencimiento', key: 'fechaVencimiento', width: 110, render: (v: string) => fecha(v) },
     {
       title: 'Días restantes', dataIndex: 'diasRestantes', key: 'diasRestantes', width: 130,
       render: (v: number) => tagLote(v),
@@ -101,14 +102,14 @@ export default function LotesPage() {
       'N° Lote': r.numeroLote,
       'Medicamento': r.nombreGenerico,
       'Concentración': r.concentracion ?? '',
-      'Fabricación': r.fechaFabricacion ? new Date(r.fechaFabricacion).toLocaleDateString('es-DO') : '',
-      'Vencimiento': r.fechaVencimiento ? new Date(r.fechaVencimiento).toLocaleDateString('es-DO') : '',
+      'Fabricación': r.fechaFabricacion ? fecha(r.fechaFabricacion) : '',
+      'Vencimiento': r.fechaVencimiento ? fecha(r.fechaVencimiento) : '',
       'Días restantes': r.diasRestantes,
       'Cantidad inicial': r.cantidadInicial,
       'Cantidad actual': r.cantidadActual,
       'Estado': r.estado,
     }));
-    exportarExcel(filas, `Lotes-${new Date().toISOString().split('T')[0]}`);
+    exportarExcel(filas, `Lotes-${hoyRD()}`);
     message.success(`${filas.length} registros exportados`);
   };
 
