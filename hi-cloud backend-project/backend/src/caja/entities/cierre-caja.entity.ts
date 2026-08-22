@@ -95,6 +95,53 @@ export class CierreCaja {
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   diferencia!: number;
 
+  // ── Trazabilidad ──────────────────────────────────────────────────────────
+
+  /**
+   * Con qué fórmula se calculó `saldoCierre`. Hace el cierre auto-descriptivo:
+   * no hay que deducir por la fecha si dos cierres son comparables.
+   *
+   *   1 = fórmula original — sumaba TODOS los cobros (también transferencia y
+   *       cheque) y no contaba los anticipos en efectivo.
+   *   2 = solo efectivo en el cajón (ver efectivo-esperado.util.ts).
+   *
+   * Los cierres anteriores al cambio quedan en 1 y NO se recalculan.
+   */
+  @Column({ type: 'int', default: 1 })
+  formulaVersion!: number;
+
+  /**
+   * Valores del PRIMER cierre, guardados al reabrirlo.
+   *
+   * Reabrir ponía saldoCierre/saldoFisico/diferencia a 0: los números con los
+   * que se cuadró dinero real desaparecían sin dejar rastro. Ahora se conservan.
+   *
+   * NULL = nunca se recerró. Y una vez escritos NO se sobrescriben: el original
+   * es el primero, no el anterior.
+   */
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  esperadoOriginal?: number | null;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  contadoOriginal?: number | null;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  diferenciaOriginal?: number | null;
+
+  /** Con qué fórmula se calculó `esperadoOriginal`. */
+  @Column({ type: 'int', nullable: true })
+  formulaVersionOriginal?: number | null;
+
+  /** Quién reabrió y cuándo — del usuario autenticado, nunca del body. */
+  @Column({ type: 'int', nullable: true })
+  reabiertoPorUsuarioId?: number | null;
+
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  reabiertoPorNombre?: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  reabiertoEn?: Date | null;
+
   @Column({ type: 'int', default: 0 })
   cantidadTransacciones!: number;
 

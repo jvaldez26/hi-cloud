@@ -1256,6 +1256,52 @@ ${line()}
                 <Descriptions.Item label="Notas" span={1}>{detalleCierre.notas}</Descriptions.Item>
               )}
             </Descriptions>
+
+            {/* ── Recierre: los números del cierre original ──────────────────
+                Reabrir una caja es legítimo, pero antes borraba los valores con
+                los que se cuadró dinero real. Ahora se conservan y se muestran:
+                un recierre es un cambio con rastro, no una sobrescritura. */}
+            {detalleCierre.esperadoOriginal != null && (
+              <Alert
+                type="warning"
+                showIcon
+                style={{ marginTop: 12 }}
+                message={
+                  detalleCierre.reabiertoEn
+                    ? `Cierre recerrado el ${dayjs(detalleCierre.reabiertoEn).format('DD/MM/YYYY HH:mm')}` +
+                      (detalleCierre.reabiertoPorNombre ? ` por ${detalleCierre.reabiertoPorNombre}` : '')
+                    : 'Este cierre fue recerrado'
+                }
+                description={
+                  <div style={{ fontSize: 13 }}>
+                    <div style={{ marginBottom: 4 }}>Valores del cierre original:</div>
+                    <div>Esperado: <Text strong>{fmt.money(Number(detalleCierre.esperadoOriginal ?? 0))}</Text></div>
+                    <div>Contado: <Text strong>{fmt.money(Number(detalleCierre.contadoOriginal ?? 0))}</Text></div>
+                    <div>
+                      Diferencia:{' '}
+                      <Text strong style={{
+                        color: Number(detalleCierre.diferenciaOriginal) === 0 ? token.colorSuccess
+                             : Number(detalleCierre.diferenciaOriginal) > 0 ? token.colorPrimary
+                             : token.colorError,
+                      }}>
+                        {Number(detalleCierre.diferenciaOriginal) > 0 ? '+' : ''}
+                        {fmt.money(Number(detalleCierre.diferenciaOriginal ?? 0))}
+                      </Text>
+                    </div>
+                    {/* Dos fórmulas distintas conviven: sin esto habría que
+                        deducir por la fecha si los números son comparables. */}
+                    {detalleCierre.formulaVersionOriginal != null &&
+                     detalleCierre.formulaVersionOriginal !== detalleCierre.formulaVersion && (
+                      <div style={{ marginTop: 6, color: token.colorTextSecondary }}>
+                        Calculado con una fórmula anterior (v{detalleCierre.formulaVersionOriginal});
+                        el cierre actual usa la v{detalleCierre.formulaVersion}. No son comparables
+                        directamente.
+                      </div>
+                    )}
+                  </div>
+                }
+              />
+            )}
           </>
         )}
       </Drawer>

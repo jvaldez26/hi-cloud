@@ -10,7 +10,11 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { fechaHoyRD } from '../common/utils/fecha-local.util';
 // Fórmula única del efectivo esperado — ver efectivo-esperado.util.ts.
 // Nadie debe volver a escribirla a mano, ni aquí ni en el frontend.
-import { calcularEfectivoEsperado, calcularDiferencia } from './efectivo-esperado.util';
+import {
+  calcularEfectivoEsperado,
+  calcularDiferencia,
+  FORMULA_EFECTIVO_VERSION,
+} from './efectivo-esperado.util';
 
 @Injectable()
 export class CajaService {
@@ -273,6 +277,10 @@ export class CajaService {
       saldoCierre:      Number(saldoCierre.toFixed(2)),
       saldoFisico:      Number(saldoFisico.toFixed(2)),
       diferencia:       Number(diferencia.toFixed(2)),
+      // Deja constancia de con qué fórmula salieron estos números. Un recierre
+      // de un cierre viejo pasa a 2 aquí, y su versión 1 queda preservada en
+      // formulaVersionOriginal.
+      formulaVersion:   FORMULA_EFECTIVO_VERSION,
       notas:            notas ?? caja.notas,
       ...(desgloseBilletes ? { desgloseBilletes } : {}),
       ...(desglosePago     ? { desglosePago }     : {}),
@@ -298,7 +306,7 @@ export class CajaService {
 
   // ── Anular cierre de caja ─────────────────────────────────────────────────
 
-  async anularCierre(id: number, motivo: string, userId: number) {
+  async anularCierre(id: number, motivo: string, userId: number, userNombre?: string) {
     const empresaId = this.tenantService.getEmpresaId();
     const caja = await this.repo.findOne({ where: { id, empresaId } });
     if (!caja) throw new NotFoundException(`Caja #${id} no encontrada`);
@@ -315,12 +323,34 @@ export class CajaService {
       ? `${caja.notas}\n${notaAnulacion}`
       : notaAnulacion;
 
+    // Conservar los números del PRIMER cierre antes de borrarlos.
+    //
+    // Reabrir es un flujo legítimo, pero ponía saldoCierre/saldoFisico/
+    // diferencia a 0 sin dejar rastro: se perdían los valores con los que
+    // alguien cuadró dinero real.
+    //
+    // Solo se escriben si están vacíos. En un segundo recierre NO se
+    // sobrescriben: el original es el PRIMERO, no el anterior.
+    const conservarOriginal = caja.esperadoOriginal == null
+      ? {
+          esperadoOriginal:       caja.saldoCierre,
+          contadoOriginal:        caja.saldoFisico,
+          diferenciaOriginal:     caja.diferencia,
+          formulaVersionOriginal: caja.formulaVersion,
+        }
+      : {};
+
     await this.repo.update(id, {
       estado:      EstadoCierre.ABIERTA,
       saldoCierre: 0,
       saldoFisico: 0,
       diferencia:  0,
       notas:       notasActualizadas,
+      ...conservarOriginal,
+      // Del usuario autenticado, nunca del body.
+      reabiertoPorUsuarioId: userId,
+      reabiertoPorNombre:    userNombre ?? null,
+      reabiertoEn:           new Date(),
     });
 
     const quien = caja.vendedorNombre ? ` [${caja.vendedorNombre}]` : '';

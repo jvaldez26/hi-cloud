@@ -16,6 +16,19 @@
  * transferencia nunca, da igual que sean ingresos del turno.
  */
 
+/**
+ * Versión de esta fórmula. Se guarda en cada cierre (`formulaVersion`) para que
+ * sea auto-descriptivo y no haya que deducir por la fecha si dos cierres son
+ * comparables.
+ *
+ *   1 = fórmula original: sumaba TODOS los cobros (transferencia y cheque
+ *       incluidos) y no contaba los anticipos en efectivo.
+ *   2 = solo efectivo en el cajón — la de este archivo.
+ *
+ * Súbela si cambia QUÉ se suma. No por un refactor que no altere el resultado.
+ */
+export const FORMULA_EFECTIVO_VERSION = 2;
+
 export interface EntradasEfectivo {
   /** Fondo con el que se abrió el turno. */
   saldoApertura: number;

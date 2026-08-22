@@ -169,7 +169,8 @@ export class CajaController {
     @Body() dto: AnularCierreDto,
     @GetUser() usuario: User,
   ) {
-    return this.cajaService.anularCierre(id, dto.motivo, usuario.id);
+    // El nombre sale del usuario autenticado, nunca del body.
+    return this.cajaService.anularCierre(id, dto.motivo, usuario.id, usuario.nombre);
   }
 
   @Get('historial')
