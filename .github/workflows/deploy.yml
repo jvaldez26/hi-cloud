@@ -207,6 +207,32 @@ jobs:
           target:   '/home/ubuntu/hicloud/backend-dist-ci/'
           strip_components: 1
 
+      # ── Subir los scripts de respaldo ────────────────────────────────────────
+      # Antes NO se subían. El script de backup esperaba vivir en
+      # /home/ubuntu/scripts/ y llegaba ahí solo si alguien lo había copiado a
+      # mano en su día. Un respaldo que depende de eso no es un respaldo: nadie
+      # sabe si sigue ahí, ni si es la versión del repo o una de hace un año.
+      #
+      # Se copian primero a un directorio sin espacios: la ruta real es
+      # "hi-cloud backend-project/scripts", y scp-action separa las fuentes por
+      # comas y espacios — un espacio en la ruta la parte en dos y la subida
+      # falla de una forma que no es obvia al leer el log.
+      - name: Preparar scripts para SCP
+        run: |
+          mkdir -p scripts-deploy
+          cp -r "hi-cloud backend-project/scripts/." scripts-deploy/
+          ls -la scripts-deploy/
+
+      - name: Deploy scripts de respaldo via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host:     3.137.152.75
+          username: ubuntu
+          key:      ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          source:   'scripts-deploy/*'
+          target:   '/home/ubuntu/scripts/'
+          strip_components: 1
+
       # ── EC2: deploy ATÓMICO — migrar → validar esquema → reload ──────────────
       #
       # GARANTÍA: pm2 reload NUNCA ocurre si las migraciones o la validación
@@ -421,6 +447,66 @@ jobs:
               echo "  ✅ Chromium del sistema: ${CHROME_PATH}"
             else
               echo "  ⚠️  Sin Chromium del sistema — puppeteer usará el Chrome que descargue npm ci"
+            fi
+            set -e
+
+            # ── Respaldos: permisos + cron ────────────────────────────────────
+            # Los scripts acaban de subirse por SCP. Aquí se les da permiso de
+            # ejecución y se garantiza que el cron existe.
+            #
+            # Hasta ahora esto dependía de que alguien lo hubiera puesto a mano
+            # en su día: nadie sabía si el cron seguía ahí, y la única señal de
+            # que no estaba habría sido descubrirlo al necesitar restaurar.
+            #
+            # NO tumba el deploy si falla. Un cron de respaldo es importante,
+            # pero no es motivo para dejar el ERP sin desplegar.
+            set +e
+            if [ -d /home/ubuntu/scripts ]; then
+              chmod +x /home/ubuntu/scripts/*.sh 2>/dev/null
+
+              CRON_BACKUP="0 2 * * * /home/ubuntu/scripts/backup-hicloud.sh >> /var/log/hicloud-backup.log 2>&1"
+              CRON_VERIF="30 3 * * 0 /home/ubuntu/scripts/verificar-backup.sh >> /var/log/hicloud-backup.log 2>&1"
+
+              # Se trabaja sobre ficheros, no sobre cadenas multilínea: dentro
+              # de un bloque YAML la indentación se cuela en el valor y ya rompió
+              # este workflow una vez.
+              crontab -l > /tmp/cron.actual 2>/dev/null || : > /tmp/cron.actual
+              cp /tmp/cron.actual /tmp/cron.nuevo
+              CAMBIO=0
+
+              # Idempotente: se compara por la RUTA del script, no por la línea
+              # entera. Así un cambio de horario hecho a mano en el servidor se
+              # respeta en vez de duplicar la entrada en cada deploy.
+              if ! grep -q "backup-hicloud.sh" /tmp/cron.actual; then
+                echo "$CRON_BACKUP" >> /tmp/cron.nuevo
+                CAMBIO=1
+                echo "  ➕ cron: backup diario 02:00 instalado"
+              fi
+              if ! grep -q "verificar-backup.sh" /tmp/cron.actual; then
+                echo "$CRON_VERIF" >> /tmp/cron.nuevo
+                CAMBIO=1
+                echo "  ➕ cron: verificación semanal domingo 03:30 instalada"
+              fi
+
+              if [ "$CAMBIO" = "1" ]; then
+                crontab /tmp/cron.nuevo \
+                  && echo "  ✅ crontab actualizado" \
+                  || echo "  ⚠️  No se pudo escribir el crontab — instalar a mano"
+              fi
+              rm -f /tmp/cron.actual /tmp/cron.nuevo
+
+              # Verificación explícita: que el deploy DIGA si el respaldo está
+              # programado. Sin esto volveríamos a no saberlo.
+              if crontab -l 2>/dev/null | grep -q "backup-hicloud.sh"; then
+                echo "  ✅ respaldo programado: $(crontab -l 2>/dev/null | grep backup-hicloud.sh | head -1)"
+              else
+                echo "  🚨 NO HAY CRON DE RESPALDO — la base no se está respaldando"
+              fi
+              if [ ! -f /home/ubuntu/scripts/backup-hicloud.sh ]; then
+                echo "  🚨 backup-hicloud.sh NO está en el servidor"
+              fi
+            else
+              echo "  🚨 /home/ubuntu/scripts no existe — el SCP de scripts falló"
             fi
             set -e
 
