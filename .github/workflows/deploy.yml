@@ -30,6 +30,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Primero de todo: check de texto, sin dependencias ni entorno. Tarda
+      # segundos y evita gastar 10 minutos de CI para descubrir al final que el
+      # deploy iba a dejar una variable sin inyectar.
+      - name: Deploy — variables inyectadas sincronizadas
+        run: node .github/scripts/validate-deploy-envs.mjs
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -223,11 +229,27 @@ jobs:
           # Seguro aunque el secreto no exista: el bloque [PRE] del script hace
           # unset de las que llegan vacías, así que no pueden pisar el .env.
           SENTRY_DSN:       ${{ secrets.SENTRY_DSN }}
+
+          # ── FUENTE ÚNICA de la lista de variables inyectadas ────────────────
+          # Se define AQUÍ y en ningún sitio más. `envs:` la referencia y el
+          # script la recibe como una variable más, así que el bloque [PRE]
+          # itera exactamente lo que se inyecta, sin copiarlo.
+          #
+          # Antes esta lista estaba escrita TRES veces (envs:, el unset y el
+          # listado del log). Mantenerlas sincronizadas a mano era cuestión de
+          # tiempo: el día que alguien añadiera la décima variable y olvidara
+          # una de las copias, el incidente volvía idéntico.
+          #
+          # Al añadir una variable nueva basta con ponerla aquí y en el `env:`
+          # de arriba. Si se olvida aquí, no se inyecta — que es el lado seguro:
+          # gana el .env del servidor, que es el estado que ya funcionaba.
+          VARS_INYECTADAS: DB_CA_CERT,SMTP_HOST,SMTP_PORT,SMTP_SECURE,SMTP_USER,SMTP_PASS,SMTP_FROM,NOTIF_ADMIN_EMAIL,SENTRY_DSN
         with:
           host:            3.137.152.75
           username:        ubuntu
           key:             ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          envs:            DB_CA_CERT,SMTP_HOST,SMTP_PORT,SMTP_SECURE,SMTP_USER,SMTP_PASS,SMTP_FROM,NOTIF_ADMIN_EMAIL,SENTRY_DSN
+          # La propia lista viaja al servidor para que el script pueda iterarla.
+          envs:            ${{ env.VARS_INYECTADAS }},VARS_INYECTADAS
           timeout:         900s
           command_timeout: 15m
           script: |
@@ -257,9 +279,17 @@ jobs:
             # Omitir la variable deja que gane el .env. Escribirla vacía lo pisa.
             # Se aplica a TODAS, no solo a la que explotó: la próxima que alguien
             # añada con el secreto sin cargar repetiría el incidente igual.
+            # La lista NO se repite aquí: llega en VARS_INYECTADAS, la misma que
+            # alimenta `envs:`. Una sola definición, imposible desincronizar.
             echo "━━━ [PRE] Saneando variables de entorno inyectadas ━━━"
-            for _var in DB_CA_CERT SMTP_HOST SMTP_PORT SMTP_SECURE SMTP_USER \
-                        SMTP_PASS SMTP_FROM NOTIF_ADMIN_EMAIL SENTRY_DSN; do
+            _LISTA=$(echo "${VARS_INYECTADAS:-}" | tr ',' ' ')
+            if [ -z "$_LISTA" ]; then
+              # No debería pasar nunca. Si pasa, ninguna variable se inyectó y
+              # manda el .env del servidor — el estado seguro. Se avisa igual
+              # porque significa que la expresión de `envs:` no se resolvió.
+              echo "  ⚠️  VARS_INYECTADAS vacía — no se saneó nada; el proceso usará el .env"
+            fi
+            for _var in $_LISTA; do
               eval "_val=\${$_var:-}"
               if [ -z "$_val" ]; then
                 unset "$_var"
@@ -267,8 +297,7 @@ jobs:
               fi
             done
             echo "  → Variables que SÍ llegan al proceso:"
-            for _var in DB_CA_CERT SMTP_HOST SMTP_PORT SMTP_SECURE SMTP_USER \
-                        SMTP_PASS SMTP_FROM NOTIF_ADMIN_EMAIL SENTRY_DSN; do
+            for _var in $_LISTA; do
               eval "_val=\${$_var:-}"
               # Solo el nombre y la longitud: nunca el valor, que son secretos.
               [ -n "$_val" ] && echo "      $_var (${#_val} caracteres)"
@@ -714,11 +743,52 @@ jobs:
                 echo "  ⚠  pm2 reload/restart falló — proceso puede estar corrupto"
               pm2 save 2>/dev/null || true
 
-              sleep 15
+              # ── VERIFICAR QUE EL SERVICIO VOLVIÓ DE VERDAD ─────────────────
+              #
+              # Un rollback que no comprueba que el servicio responde no es un
+              # rollback: es un reinicio con esperanza. Esto fue el incidente —
+              # el rollback restauró el build bueno sobre un proceso que seguía
+              # muerto (el entorno cacheado de PM2 conservaba la variable que lo
+              # mataba), reportó "restaurado" y la producción siguió caída.
+              #
+              # Se usa /version y no /health a propósito: no toca base de datos,
+              # así que mide si el PROCESO responde, no si la BD está rápida.
+              esperar_servicio() {
+                _i=0
+                while [ $_i -lt 12 ]; do   # 12 × 5 s = hasta 60 s
+                  if curl -sfk --max-time 5 https://hicloudrd.com/api/v1/version > /dev/null 2>&1; then
+                    return 0
+                  fi
+                  _i=$((_i + 1))
+                  sleep 5
+                done
+                return 1
+              }
 
-              # Verificar que el rollback restauró el servicio
-              ROLLBACK_STATUS=$(curl -sk --max-time 10 https://hicloudrd.com/api/v1/health | \
-                python3 -c "import sys,json; print(json.load(sys.stdin)['data']['status'])" 2>/dev/null || echo "error")
+              echo "  → Verificando que el servicio responde..."
+              if esperar_servicio; then
+                ROLLBACK_STATUS="healthy"
+              else
+                # Escalada: reload/restart reutilizan el proceso y su entorno
+                # cacheado. delete + start crea uno nuevo desde cero, que es lo
+                # que resolvió el incidente a mano.
+                echo ""
+                echo "  ⚠️  El servicio NO responde tras el reload — escalando a delete + start"
+                pm2 delete hicloud-backend 2>/dev/null || true
+                pm2 start /home/ubuntu/hicloud/backend-current/dist/main.js \
+                  --name hicloud-backend \
+                  --cwd /home/ubuntu/hicloud/backend-current \
+                  --node-args="--max-old-space-size=512" 2>/dev/null || true
+                pm2 save 2>/dev/null || true
+
+                echo "  → Verificando de nuevo tras delete + start..."
+                if esperar_servicio; then
+                  ROLLBACK_STATUS="healthy"
+                  echo "  ✅ Recuperado con delete + start"
+                else
+                  ROLLBACK_STATUS="caido"
+                fi
+              fi
 
               if [ "$ROLLBACK_STATUS" = "healthy" ] || [ "$ROLLBACK_STATUS" = "degraded" ]; then
                 echo ""
@@ -727,12 +797,25 @@ jobs:
                 echo "  → El deploy nuevo FALLÓ. Diagnosticar y corregir antes de re-deployar."
               else
                 echo ""
-                echo "❌ CRÍTICO: AUTO-ROLLBACK TAMBIÉN FALLÓ ($ROLLBACK_STATUS)"
-                echo "  → ACCIÓN MANUAL URGENTE:"
+                echo "❌ ═══════════════════════════════════════════════════════"
+                echo "❌  ROLLBACK FALLIDO — PRODUCCIÓN CAÍDA"
+                echo "❌ ═══════════════════════════════════════════════════════"
+                echo ""
+                echo "  El servicio NO responde ni tras restaurar el build anterior"
+                echo "  ni tras recrear el proceso con delete + start."
+                echo "  Los clientes NO pueden facturar ahora mismo."
+                echo ""
+                echo "  Últimos errores del proceso:"
+                pm2 logs hicloud-backend --err --lines 40 --nostream 2>/dev/null || true
+                echo ""
+                echo "  ACCIÓN MANUAL URGENTE:"
                 echo "    ssh ubuntu@3.137.152.75"
-                echo "    pm2 list"
-                echo "    pm2 logs hicloud-backend --lines 100"
-                echo "    pm2 restart hicloud-backend"
+                echo "    pm2 list && pm2 logs hicloud-backend --err --lines 100"
+                echo "    # Si el log señala una variable de entorno, quítala del .env:"
+                echo "    cd '/home/ubuntu/hicloud/hi-cloud backend-project/backend'"
+                echo "    pm2 delete hicloud-backend"
+                echo "    pm2 start /home/ubuntu/hicloud/backend-current/dist/main.js \\"
+                echo "      --name hicloud-backend --cwd /home/ubuntu/hicloud/backend-current"
               fi
 
               # El step termina con código 1 para que el workflow marque el deploy como fallido
