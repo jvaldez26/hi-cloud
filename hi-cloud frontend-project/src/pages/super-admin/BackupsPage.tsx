@@ -26,6 +26,26 @@ const adminApi = {
   trigger:   ()         => api.post('/admin/backups/trigger').then(r => r.data?.data ?? r.data),
 };
 
+/**
+ * Que decir por cada motivo de fallo de S3. El backend clasifica; aqui solo se
+ * pinta. Antes los tres casos salian con el mismo "no responde".
+ */
+const MOTIVO_S3: Record<string, string> = {
+  'sin-credenciales':  'El BACKEND no tiene credenciales de AWS',
+  'sin-permisos':      'Las credenciales del backend no tienen permiso de lectura sobre el bucket',
+  'no-existe':         'El bucket no existe',
+  'region-incorrecta': 'El bucket esta en otra region',
+  'desconocido':       'S3 no responde',
+};
+
+const QUE_HACER_S3: Record<string, string> = {
+  'sin-credenciales':  'No es problema del bucket ni de los permisos: el proceso no puede firmar la peticion. Los respaldos pueden estar subiendose bien por su cuenta (el script usa sus propias credenciales). Revisa AWS_PROFILE y AWS_SHARED_CREDENTIALS_FILE en el .env del servidor, o dale un rol IAM a la instancia.',
+  'sin-permisos':      'Subir (s3:PutObject) y consultar (s3:ListBucket) son permisos distintos: el respaldo puede estar funcionando aunque esto falle.',
+  'no-existe':         'Revisa AWS_S3_BACKUP_BUCKET en el .env del servidor.',
+  'region-incorrecta': 'Revisa AWS_REGION en el .env del servidor.',
+  'desconocido':       'Mira el log del backend para el error completo.',
+};
+
 function tamanioColor(t: string) {
   if (!t) return '#94a3b8';
   const mb = parseFloat(t);
@@ -245,11 +265,21 @@ export default function BackupsPage() {
         <Alert
           type={s3.ok ? 'success' : s3.habilitado ? 'error' : 'warning'}
           showIcon style={{ marginBottom: 16 }}
+          // "S3 no responde" hacía que tres causas distintas —bucket inexistente,
+          // sin permisos, backend sin credenciales— se vieran igual. Costó tres
+          // rondas de diagnóstico descubrir que el bucket estaba perfecto y lo
+          // que faltaban eran credenciales en el backend. Ahora se dice cuál es.
           message={
             s3.ok ? `✅ S3 conectado — bucket: ${s3.bucket}` :
-            s3.habilitado ? `❌ S3 no responde — bucket: ${s3.bucket}` :
+            s3.habilitado ? `❌ ${MOTIVO_S3[s3.motivo as string] ?? 'S3 no responde'} — bucket: ${s3.bucket}` :
             '⚠️ S3 no configurado — establece AWS_S3_BACKUP_BUCKET en el .env del servidor'
           }
+          description={!s3.ok && s3.habilitado ? (
+            <div style={{ fontSize: 12 }}>
+              {QUE_HACER_S3[s3.motivo as string] ?? null}
+              {s3.detalle && <div style={{ marginTop: 4, opacity: .7 }}>Error del SDK: <Text code>{s3.detalle}</Text></div>}
+            </div>
+          ) : undefined}
         />
       )}
 

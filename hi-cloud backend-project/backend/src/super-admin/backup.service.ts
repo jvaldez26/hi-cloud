@@ -12,6 +12,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { exec } from 'child_process';
 import { createHash } from 'crypto';
 import { BackupRegistro } from './entities/backup-registro.entity';
+import { clasificarErrorS3, type MotivoFalloS3 } from './s3-error.util';
 
 @Injectable()
 export class BackupService {
@@ -320,13 +321,28 @@ export class BackupService {
 
   // ── Estado de S3 ─────────────────────────────────────────────────────────
 
-  async verificarS3(): Promise<{ ok: boolean; bucket: string; habilitado: boolean }> {
+  async verificarS3(): Promise<{
+    ok: boolean; bucket: string; habilitado: boolean;
+    motivo?: MotivoFalloS3; detalle?: string;
+  }> {
     if (!this.s3 || !this.bucket) return { ok: false, bucket: '', habilitado: false };
     try {
       await this.s3.send(new HeadBucketCommand({ Bucket: this.bucket }));
       return { ok: true, bucket: this.bucket, habilitado: true };
-    } catch {
-      return { ok: false, bucket: this.bucket, habilitado: true };
+    } catch (e: any) {
+      // El `catch {}` a secas tiraba el error a la basura y el panel solo sabia
+      // decir "S3 no responde". Costo tres rondas de diagnostico averiguar que
+      // el bucket estaba perfecto y lo que faltaban eran CREDENCIALES en el
+      // backend — justo la respuesta que este catch tenia en la mano y tiro.
+      const motivo = clasificarErrorS3(e);
+      this.logger.warn(
+        `[Backup] HeadBucket fallo sobre ${this.bucket}: motivo=${motivo} ` +
+        `name=${e?.name} status=${e?.$metadata?.httpStatusCode}`,
+      );
+      return {
+        ok: false, bucket: this.bucket, habilitado: true,
+        motivo, detalle: `${e?.name ?? 'Error'}${e?.$metadata?.httpStatusCode ? ` (HTTP ${e.$metadata.httpStatusCode})` : ''}`,
+      };
     }
   }
 
