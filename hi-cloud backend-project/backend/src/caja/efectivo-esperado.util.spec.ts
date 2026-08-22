@@ -4,6 +4,7 @@ import {
   esperadoEsInconsistente,
   excesoDeRetiros,
   calcularDisponibleParaRetiro,
+  disponibleParaAutorizar,
   type EntradasEfectivo,
 } from './efectivo-esperado.util';
 
@@ -130,5 +131,57 @@ describe('calcularDisponibleParaRetiro', () => {
   it('con retiros previos que ya vaciaron la caja, no queda nada disponible', () => {
     expect(calcularDisponibleParaRetiro(base({ ventasEfectivo: 2000, retiros: 2000 })))
       .toBe(0);
+  });
+});
+
+describe('validación de retiros — no se puede sacar lo que no está', () => {
+  it('el disponible es exactamente el mismo cálculo que el esperado', () => {
+    const turno = base({ saldoApertura: 1000, ventasEfectivo: 4000, gastosEfectivo: 200, retiros: 800 });
+    expect(calcularDisponibleParaRetiro(turno)).toBe(calcularEfectivoEsperado(turno));
+    expect(calcularDisponibleParaRetiro(turno)).toBe(4000);
+  });
+
+  it('tarjeta y transferencia NO dan margen para retirar: no entran en el tipo', () => {
+    // El disponible de un turno que solo vendió con tarjeta es el fondo de
+    // apertura, nada más. Esta es la regla que faltaba y por la que el esperado
+    // acababa negativo.
+    const soloTarjeta = base({ saldoApertura: 500 });
+    expect(calcularDisponibleParaRetiro(soloTarjeta)).toBe(500);
+  });
+
+  it('un retiro que excede el disponible se detecta comparando contra él', () => {
+    const disponible = calcularDisponibleParaRetiro(base({ saldoApertura: 1000, ventasEfectivo: 2000 }));
+    expect(disponible).toBe(3000);
+    expect(3500 > disponible).toBe(true);   // rechazado
+    expect(3000 > disponible).toBe(false);  // el retiro que vacía la caja SÍ se permite
+  });
+
+  it('autorizar: al retiro pendiente se le devuelve su propio monto antes de comparar', () => {
+    // El pendiente de 800 ya está restando (estado != anulado): el disponible
+    // vivo es 200. Sin devolverle su monto, ningún pendiente sería autorizable.
+    const disponibleVivo = calcularDisponibleParaRetiro(
+      base({ saldoApertura: 1000, retiros: 800 }),
+    );
+    expect(disponibleVivo).toBe(200);
+
+    const contraQueSeCompara = disponibleParaAutorizar(disponibleVivo, 800);
+    expect(contraQueSeCompara).toBe(1000);
+    expect(800 > contraQueSeCompara).toBe(false);  // se autoriza
+  });
+
+  it('autorizar: si la caja se vació DESPUÉS, el pendiente ya no se autoriza', () => {
+    // Mismo pendiente de 800, pero entre medias salieron 300 en gastos.
+    const disponibleVivo = calcularDisponibleParaRetiro(
+      base({ saldoApertura: 1000, gastosEfectivo: 300, retiros: 800 }),
+    );
+    expect(disponibleVivo).toBe(-100);
+
+    const contraQueSeCompara = disponibleParaAutorizar(disponibleVivo, 800);
+    expect(contraQueSeCompara).toBe(700);
+    expect(800 > contraQueSeCompara).toBe(true);   // rechazado: ya no hay fondos
+  });
+
+  it('disponibleParaAutorizar tolera importes que llegan como string de TypeORM', () => {
+    expect(disponibleParaAutorizar('200' as any, '800' as any)).toBe(1000);
   });
 });

@@ -2,7 +2,7 @@ import {
   Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, IsNull, Not, Between } from 'typeorm';
+import { Repository, DataSource, IsNull, Not, Between, EntityManager } from 'typeorm';
 import { CierreCaja, EstadoCierre } from './entities/cierre-caja.entity';
 import { RetiroCaja, CategoriaRetiro, EstadoRetiro } from './entities/retiro-caja.entity';
 import { TenantService } from '../tenant/tenant.service';
@@ -13,6 +13,8 @@ import { fechaHoyRD } from '../common/utils/fecha-local.util';
 import {
   calcularEfectivoEsperado,
   calcularDiferencia,
+  calcularDisponibleParaRetiro,
+  disponibleParaAutorizar,
   esperadoEsInconsistente,
   excesoDeRetiros,
   FORMULA_EFECTIVO_VERSION,
@@ -363,7 +365,16 @@ export class CajaService {
 
   // ── Recalcular ventas del día por vendedor ────────────────────────────────
 
-  private async recalcularDesdeBD(cajaId: number, fecha: string, vendedorId?: number, empresaId?: number) {
+  private async recalcularDesdeBD(
+    cajaId: number, fecha: string, vendedorId?: number, empresaId?: number,
+    manager?: EntityManager,
+  ) {
+    // Acepta un EntityManager para poder correr DENTRO de la transacción que
+    // bloquea la caja al registrar un retiro: allí hay que refrescar los
+    // importes antes de decidir si hay efectivo suficiente, y leer fuera de la
+    // transacción dejaría escapar lo que otra transacción esté escribiendo.
+    const db = manager ?? this.dataSource.manager;
+
     const vendedorFilter  = vendedorId
       ? `AND f."vendedorId" = ${Number(vendedorId)}`
       : `AND f."vendedorId" IS NULL`;
@@ -375,7 +386,7 @@ export class CajaService {
     // formasPago (JSONB) se usa cuando existe; si es null/vacío el fallback clasifica por notas
     // (mantiene comportamiento previo para ventas históricas sin formasPago).
     // Mapeo tipo DGII → bucket: 1=Efectivo 2=Transfer/Cheque 3=Tarjeta 4=Crédito 5=Permuta→Transfer
-    const [ventas] = await this.dataSource.query<{
+    const [ventas] = await db.query<{
       efectivo: string; tarjeta: string; transferencia: string; credito: string; cantidad: string;
     }[]>(
       `WITH nc_totales AS (
@@ -456,7 +467,7 @@ export class CajaService {
     // creaba al cajero un faltante imposible de cuadrar. Solo la parte en
     // efectivo está en el cajón; el resto se guarda aparte para que el cierre
     // sea auditable.
-    const [cobros] = await this.dataSource.query<{
+    const [cobros] = await db.query<{
       total: string; efectivo: string; otros: string; cantidad: string;
     }[]>(
       `SELECT
@@ -474,7 +485,7 @@ export class CajaService {
     // Anticipos del día — también separados por método.
     // `tipoPago` se guarda normalizado sin acentos y en minúsculas
     // (anticipos-cliente.service), por eso basta comparar con 'efectivo'.
-    const [anticipos] = await this.dataSource.query<{
+    const [anticipos] = await db.query<{
       total: string; efectivo: string; otros: string;
     }[]>(
       `SELECT
@@ -489,7 +500,7 @@ export class CajaService {
       [fecha, cajaId],
     ).catch(() => [{ total: '0', efectivo: '0', otros: '0' }]);
 
-    const [retiros] = await this.dataSource.query<{ total: string }[]>(
+    const [retiros] = await db.query<{ total: string }[]>(
       `SELECT COALESCE(SUM(monto), 0)::text AS total
        FROM retiros_caja
        WHERE "cajaDiariaId" = $1
@@ -501,7 +512,7 @@ export class CajaService {
     // El campo cajaDiariaId se llena solo cuando formaPago='01' y el usuario selecciona
     // la caja en el formulario de gastos — funciona para todas las empresas sin importar
     // si tienen uno o varios cajeros activos al mismo tiempo.
-    const [gastos] = await this.dataSource.query<{ total: string }[]>(
+    const [gastos] = await db.query<{ total: string }[]>(
       `SELECT COALESCE(SUM(g.total), 0)::text AS total
        FROM gastos g
        WHERE g."cajaDiariaId" = $1
@@ -510,7 +521,7 @@ export class CajaService {
     ).catch(() => [{ total: '0' }]);
     const gastosTotal = Number(gastos?.total ?? 0);
 
-    await this.repo.update(cajaId, {
+    await db.update(CierreCaja, cajaId, {
       ventasEfectivo:        Number(ventas?.efectivo      ?? 0),
       ventasTarjeta:         Number(ventas?.tarjeta       ?? 0),
       ventasTransferencia:   Number(ventas?.transferencia ?? 0),
@@ -741,71 +752,115 @@ export class CajaService {
   ) {
     const empresaId = this.tenantService.getEmpresaId();
 
-    // Buscar la caja específica del cajero — nunca "cualquier caja abierta de
-    // la empresa" para evitar imputar retiros al cajero equivocado.
-    const caja = await this.repo.findOne({ where: { id: cajaId, empresaId } as any });
-    if (!caja) throw new BadRequestException(`Caja #${cajaId} no encontrada`);
+    // TODO el alta va en UNA transacción con bloqueo pesimista sobre la caja.
+    //
+    // Antes no había validación de disponible en ningún sitio —ni backend ni
+    // frontend— así que se podía retirar más efectivo del que había entrado, y
+    // el esperado quedaba negativo. Además el save del retiro y la
+    // actualización del total eran dos operaciones sueltas: si la segunda
+    // fallaba, el retiro existía sin estar sumado.
+    //
+    // El bloqueo es imprescindible: sin él, dos retiros simultáneos leen el
+    // mismo disponible, ambos lo consideran suficiente y ambos pasan.
+    return this.dataSource.transaction(async (manager) => {
+      // SELECT ... FOR UPDATE sobre la caja: cualquier otro retiro sobre la
+      // misma caja espera aquí hasta que esta transacción termine.
+      const caja = await manager.findOne(CierreCaja, {
+        where: { id: cajaId, empresaId } as any,
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!caja) throw new BadRequestException(`Caja #${cajaId} no encontrada`);
 
-    if (caja.estado !== EstadoCierre.ABIERTA) {
-      const quien = caja.vendedorNombre ? ` de ${caja.vendedorNombre}` : '';
-      throw new BadRequestException(
-        `La caja${quien} ya está cerrada. No se puede registrar un retiro sin autorización de un supervisor.`,
+      if (caja.estado !== EstadoCierre.ABIERTA) {
+        const quien = caja.vendedorNombre ? ` de ${caja.vendedorNombre}` : '';
+        throw new BadRequestException(
+          `La caja${quien} ya está cerrada. No se puede registrar un retiro sin autorización de un supervisor.`,
+        );
+      }
+
+      // Un retiro no puede sacar más efectivo del que hay en el cajón.
+      const disponible = await this.disponibleEnCaja(caja.id, manager);
+      if (monto > disponible) {
+        throw this.errorRetiroExcedeDisponible(monto, disponible);
+      }
+
+      // Comprobar si el monto supera el umbral configurado por la empresa.
+      // 0 o ausente = sin restricción (no requiere autorización).
+      const cfg = await this.getEmpresaCfg(empresaId);
+      const requiereAuth = cfg.montoMaxRetiroSinAutorizacion > 0 && monto > cfg.montoMaxRetiroSinAutorizacion;
+      const estado = requiereAuth ? EstadoRetiro.PENDIENTE : EstadoRetiro.ACTIVO;
+
+      // Número secuencial por empresa — atómico vía siguiente_numero_secuencia
+      const [{ n }] = await manager.query<{ n: number }[]>(
+        `SELECT siguiente_numero_secuencia($1, 'RET') AS n`, [empresaId],
       );
-    }
+      const numero = `RET-${String(n).padStart(5, '0')}`;
 
-    // Comprobar si el monto supera el umbral configurado por la empresa.
-    // 0 o ausente = sin restricción (no requiere autorización).
-    const cfg = await this.getEmpresaCfg(empresaId);
-    const requiereAuth = cfg.montoMaxRetiroSinAutorizacion > 0 && monto > cfg.montoMaxRetiroSinAutorizacion;
-    const estado = requiereAuth ? EstadoRetiro.PENDIENTE : EstadoRetiro.ACTIVO;
+      const retiro = manager.create(RetiroCaja, {
+        empresaId,
+        cajaDiariaId: caja.id,
+        usuarioId,
+        usuarioNombre,
+        monto,
+        descripcion: descripcion.trim(),
+        categoria,
+        estado,
+        numero,
+        ...(cuentaBancariaId ? { cuentaBancariaId } : {}),
+      });
+      await manager.save(RetiroCaja, retiro);
 
-    // Número secuencial por empresa — atómico vía siguiente_numero_secuencia
-    const [{ n }] = await this.dataSource.query<{ n: number }[]>(
-      `SELECT siguiente_numero_secuencia($1, 'RET') AS n`, [empresaId],
-    );
-    const numero = `RET-${String(n).padStart(5, '0')}`;
+      // Dentro de la MISMA transacción: o quedan las dos escrituras, o ninguna.
+      await this.actualizarTotalRetiros(caja.id, manager);
+      this.realtimeService.notify(empresaId, 'caja', 'updated', caja.id);
 
-    const retiro = this.retiroRepo.create({
-      empresaId,
-      cajaDiariaId: caja.id,
-      usuarioId,
-      usuarioNombre,
-      monto,
-      descripcion: descripcion.trim(),
-      categoria,
-      estado,
-      numero,
-      ...(cuentaBancariaId ? { cuentaBancariaId } : {}),
+      return { ...retiro, requiereAuth };
     });
-    await this.retiroRepo.save(retiro);
-
-    // Actualizar columna retiros en cierres_caja (solo retiros no anulados)
-    await this.actualizarTotalRetiros(caja.id);
-    this.realtimeService.notify(empresaId, 'caja', 'updated', caja.id);
-
-    return { ...retiro, requiereAuth };
   }
 
   /** Autoriza un retiro pendiente. Solo ADMIN/CONTADOR. */
   async autorizarRetiro(id: number, autorizadorId: number, autorizadorNombre: string) {
     const empresaId = this.tenantService.getEmpresaId();
 
-    const retiro = await this.retiroRepo.findOne({ where: { id, empresaId } });
-    if (!retiro) throw new NotFoundException(`Retiro #${id} no encontrado`);
-    if (retiro.estado === EstadoRetiro.ANULADO)   throw new BadRequestException('El retiro ya está anulado');
-    if (retiro.estado === EstadoRetiro.RECHAZADO) throw new BadRequestException('El retiro fue rechazado y no puede autorizarse');
-    if (retiro.estado === EstadoRetiro.ACTIVO)     throw new BadRequestException('El retiro ya fue autorizado');
+    // Misma transacción con bloqueo que el alta: entre crear y autorizar pueden
+    // haber pasado horas, y en ese tiempo la caja puede haberse vaciado con
+    // otros retiros o gastos. Un retiro creado cuando había fondos no puede
+    // autorizarse si ya no los hay.
+    return this.dataSource.transaction(async (manager) => {
+      const retiro = await manager.findOne(RetiroCaja, { where: { id, empresaId } });
+      if (!retiro) throw new NotFoundException(`Retiro #${id} no encontrado`);
+      if (retiro.estado === EstadoRetiro.ANULADO)   throw new BadRequestException('El retiro ya está anulado');
+      if (retiro.estado === EstadoRetiro.RECHAZADO) throw new BadRequestException('El retiro fue rechazado y no puede autorizarse');
+      if (retiro.estado === EstadoRetiro.ACTIVO)     throw new BadRequestException('El retiro ya fue autorizado');
 
-    await this.retiroRepo.update(id, {
-      estado:           EstadoRetiro.ACTIVO,
-      autorizadorId,
-      autorizadorNombre,
-      autorizadoEn:     new Date(),
+      await manager.findOne(CierreCaja, {
+        where: { id: retiro.cajaDiariaId } as any,
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      // OJO: este retiro YA está restando del disponible (cuenta desde su
+      // creación, con estado != 'anulado'). Se le suma de vuelta para preguntar
+      // "¿había efectivo suficiente para este retiro?" y no compararlo contra
+      // un disponible del que él mismo ya se descontó.
+      const disponibleSinEste = disponibleParaAutorizar(
+        await this.disponibleEnCaja(retiro.cajaDiariaId, manager),
+        Number(retiro.monto),
+      );
+      if (Number(retiro.monto) > disponibleSinEste) {
+        throw this.errorRetiroExcedeDisponible(Number(retiro.monto), disponibleSinEste);
+      }
+
+      await manager.update(RetiroCaja, id, {
+        estado:           EstadoRetiro.ACTIVO,
+        autorizadorId,
+        autorizadorNombre,
+        autorizadoEn:     new Date(),
+      });
+
+      // No cambia el total — el retiro ya contaba como no-anulado desde el momento de creación
+      this.realtimeService.notify(empresaId, 'caja', 'updated', retiro.cajaDiariaId);
+      return manager.findOne(RetiroCaja, { where: { id } });
     });
-
-    // No cambia el total — el retiro ya contaba como no-anulado desde el momento de creación
-    this.realtimeService.notify(empresaId, 'caja', 'updated', retiro.cajaDiariaId);
-    return this.retiroRepo.findOne({ where: { id } });
   }
 
   /** Anula un retiro con traza. Solo ADMIN/CONTADOR. Solo mientras la caja siga abierta. */
@@ -942,15 +997,62 @@ export class CajaService {
   }
 
   /** Suma retiros vigentes (no anulados) de una caja y actualiza la columna. */
-  private async actualizarTotalRetiros(cajaDiariaId: number) {
-    const [{ total }] = await this.dataSource.query<{ total: string }[]>(
+  private async actualizarTotalRetiros(cajaDiariaId: number, manager?: EntityManager) {
+    const db = manager ?? this.dataSource.manager;
+    const [{ total }] = await db.query<{ total: string }[]>(
       `SELECT COALESCE(SUM(monto), 0)::text AS total
          FROM retiros_caja
         WHERE "cajaDiariaId" = $1
           AND estado != 'anulado'`,
       [cajaDiariaId],
     );
-    await this.repo.update(cajaDiariaId, { retiros: Number(total) });
+    await db.update(CierreCaja, cajaDiariaId, { retiros: Number(total) });
+  }
+
+  /**
+   * Efectivo disponible en una caja AHORA mismo.
+   *
+   * REFRESCA la fila antes de leerla. Los importes de la caja solo se
+   * recalculan en los GET del panel, así que la fila puede estar vieja: un
+   * cajero que vende RD$10.000 en efectivo y acto seguido registra un retiro
+   * tendría `ventasEfectivo` desactualizado y se le rechazaría un retiro
+   * perfectamente válido. Validar dinero contra un número viejo es peor que no
+   * validar: bloquea al honesto y no explica por qué.
+   *
+   * Se ejecuta dentro de la transacción que bloquea la caja (el mismo manager),
+   * para que entre el refresco, la lectura y la escritura no se cuele otro
+   * retiro.
+   */
+  private async disponibleEnCaja(cajaId: number, manager: EntityManager): Promise<number> {
+    const caja = await manager.findOne(CierreCaja, { where: { id: cajaId } });
+    if (!caja) throw new BadRequestException(`Caja #${cajaId} no encontrada`);
+
+    // Misma conversión que cerrarCaja: la columna es DATE guardada como UTC
+    // midnight y toLocaleDateString daría el día anterior.
+    const fechaDate = caja.fecha instanceof Date ? caja.fecha : new Date(caja.fecha as any);
+    await this.recalcularDesdeBD(
+      caja.id, fechaDate.toISOString().substring(0, 10),
+      caja.vendedorId, caja.empresaId, manager,
+    );
+
+    const fresh = await manager.findOne(CierreCaja, { where: { id: cajaId } }) as CierreCaja;
+    return calcularDisponibleParaRetiro({
+      saldoApertura:     fresh.saldoApertura,
+      ventasEfectivo:    fresh.ventasEfectivo,
+      cobrosEfectivo:    fresh.cobrosEfectivo,
+      anticiposEfectivo: fresh.anticiposEfectivo,
+      gastosEfectivo:    fresh.gastosEfectivo,
+      retiros:           fresh.retiros,
+    });
+  }
+
+  /** Mensaje único para los dos puntos que validan disponible. */
+  private errorRetiroExcedeDisponible(monto: number, disponible: number): BadRequestException {
+    const f = (n: number) => `RD$${n.toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
+    return new BadRequestException(
+      `El retiro de ${f(monto)} excede el efectivo disponible en caja (${f(disponible)}). ` +
+      `Diferencia: ${f(monto - disponible)}.`,
+    );
   }
 
   async listarRetiros(cajaId?: number) {

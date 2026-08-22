@@ -113,6 +113,24 @@ export function calcularDisponibleParaRetiro(e: EntradasEfectivo): number {
   return calcularEfectivoEsperado(e);
 }
 
+/**
+ * Disponible contra el que se valida un retiro que YA EXISTE (autorización de
+ * un pendiente).
+ *
+ * Un retiro pendiente ya está restando del disponible desde el instante en que
+ * se creó — cuenta con estado != 'anulado'. Si al autorizarlo lo comparásemos
+ * contra el disponible tal cual, lo estaríamos comparando contra un número del
+ * que él mismo ya se descontó, y ningún retiro podría autorizarse jamás.
+ *
+ * Se le vuelve a sumar su propio monto para responder la pregunta correcta:
+ * "¿hay/hubo efectivo suficiente para este retiro?".
+ */
+export function disponibleParaAutorizar(
+  disponibleActual: number, montoDelRetiro: number,
+): number {
+  return redondear(num(disponibleActual) + num(montoDelRetiro));
+}
+
 /** Los importes llegan de TypeORM como string (columnas decimal). */
 function num(v: unknown): number {
   const n = Number(v ?? 0);
