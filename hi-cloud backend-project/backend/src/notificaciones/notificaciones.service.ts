@@ -14,6 +14,7 @@ import { WhatsAppService } from './services/whatsapp.service';
 import { Templates } from './templates/email.templates';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { generarDocumentoPDFFactura, DocumentoPDFData, DocumentoPDFItem } from '../common/pdf/documento-pdf.helper';
+import { fechaTextoRD } from '../common/utils/fecha-local.util';
 
 @Injectable()
 export class NotificacionesService {
@@ -480,7 +481,7 @@ export class NotificacionesService {
 .c{background:#fff;border-radius:8px;padding:14px 16px;margin:8px 0;border-left:4px solid}</style></head>
 <body><div style="max-width:500px;margin:0 auto;padding:20px">
 <h2 style="color:#1a56db;margin-bottom:2px">📊 Resumen Semanal HiCloud ERP</h2>
-<p style="color:#6b7280;margin:0 0 16px;font-size:12px">${emp.nombre} · ${new Date().toLocaleDateString('es-DO',{day:'2-digit',month:'long',year:'numeric'})}</p>
+<p style="color:#6b7280;margin:0 0 16px;font-size:12px">${emp.nombre} · ${fechaTextoRD(new Date(), {day:'2-digit',month:'long',year:'numeric'})}</p>
 ${cxcVencidas > 0 ? `<div class="c" style="border-color:#dc2626">🔴 <strong>${cxcVencidas} cuenta(s) por cobrar vencida(s)</strong><br/>Monto: <strong>${fmtM(montoCxC)}</strong><br/><small style="color:#9ca3af">Requiere gestión de cobro</small></div>` : ''}
 ${cxpProximas > 0 ? `<div class="c" style="border-color:#d97706">🟡 <strong>${cxpProximas} pago(s) de CxP</strong> vencen esta semana<br/><small style="color:#9ca3af">Revise disponibilidad de caja</small></div>` : ''}
 <p style="margin-top:20px;font-size:11px;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:12px">HiCloud ERP · Resumen automático semanal</p>

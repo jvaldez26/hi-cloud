@@ -25,13 +25,14 @@ const base = (titulo: string, cuerpo: string) => `<!DOCTYPE html>
   <div class="body">${cuerpo}</div>
   <div class="footer">Este es un mensaje automático del sistema HiCloud ERP. No responder.</div>
 </div></body></html>`;
+import { fechaTextoRD } from '../../common/utils/fecha-local.util';
 
 export const Templates = {
 
   cxcVencida: (items: { folio: string; cliente: string; total: number; diasVencido: number }[]) => ({
     asunto: `⚠️ ${items.length} Cuenta(s) por Cobrar Vencida(s)`,
     html: base(
-      `Cuentas por Cobrar Vencidas — ${new Date().toLocaleDateString('es-DO')}`,
+      `Cuentas por Cobrar Vencidas — ${fechaTextoRD()}`,
       `<p>Las siguientes cuentas por cobrar se encuentran <strong>vencidas</strong>. Se requiere gestión de cobro inmediata:</p>
        <table class="tabla">
          <tr><th>Factura</th><th>Cliente</th><th>Monto</th><th>Días Vencido</th></tr>
@@ -104,7 +105,7 @@ export const Templates = {
     cxpPorVencer: number; totalCxPPorVencer: number;
     productosStockBajo: number;
   }) => ({
-    asunto: `📊 Resumen Diario HiCloud ERP — ${new Date().toLocaleDateString('es-DO')}`,
+    asunto: `📊 Resumen Diario HiCloud ERP — ${fechaTextoRD()}`,
     html: base(
       `Resumen del día`,
       `<p>Aquí tienes el resumen de alertas del día:</p>

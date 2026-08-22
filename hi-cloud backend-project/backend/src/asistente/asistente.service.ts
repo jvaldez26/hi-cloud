@@ -7,6 +7,7 @@ import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import Anthropic from '@anthropic-ai/sdk';
 import { TenantService } from '../tenant/tenant.service';
+import { fechaTextoRD } from '../common/utils/fecha-local.util';
 
 export interface MensajeChat {
   role: 'user' | 'assistant';
@@ -104,7 +105,7 @@ export class AsistenteService {
       const utilidadBruta = Number(v.total) - Number(c.total) - Number(gastos[0].total);
 
       return `
-SNAPSHOT FINANCIERO — ${new Date().toLocaleDateString('es-DO', { month: 'long', year: 'numeric' }).toUpperCase()}
+SNAPSHOT FINANCIERO — ${fechaTextoRD(new Date(), { month: 'long', year: 'numeric' }).toUpperCase()}
 
 VENTAS:
 - Total facturado: RD$ ${Number(v.total).toLocaleString('es-DO', { minimumFractionDigits: 2 })}

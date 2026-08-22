@@ -17,6 +17,7 @@ import {
   RegistrarPagoDto, ConfirmarPagoDto, RechazarPagoDto,
   AgregarCargoDto, AplicarCreditoDto, UpdateConfiguracionBancariaDto,
 } from './dto/pagos-suscripcion.dto';
+import { fechaTextoRD } from '../common/utils/fecha-local.util';
 
 
 @Injectable()
@@ -646,7 +647,7 @@ export class PagosSuscripcionService {
 
     await this.emailSvc.enviar({
       to:      adminEmail,
-      subject: `📊 HiCloud — Resumen cobros del día (${new Date().toLocaleDateString('es-DO')})`,
+      subject: `📊 HiCloud — Resumen cobros del día (${fechaTextoRD()})`,
       html,
     }).catch(e => this.logger.warn(`Resumen diario: ${e?.message}`));
   }
@@ -780,7 +781,7 @@ export class PagosSuscripcionService {
       `<tr><td>${v.nombre}</td><td>${v.plan}</td><td>${v.email}</td></tr>`
     ).join('');
 
-    return `<h2>Resumen de cobros — ${new Date().toLocaleDateString('es-DO')}</h2>
+    return `<h2>Resumen de cobros — ${fechaTextoRD()}</h2>
     ${pendientes.length > 0 ? `<h3>Comprobantes pendientes (${pendientes.length})</h3>
     <table border="1" cellpadding="6"><tr><th>Empresa</th><th>Monto</th><th>Fecha</th></tr>${pRows}</table>` : '<p>Sin comprobantes pendientes.</p>'}
     ${vencenHoy.length > 0 ? `<h3>Vencen hoy (${vencenHoy.length})</h3>

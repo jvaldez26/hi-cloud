@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { fechaTextoRD } from '../../common/utils/fecha-local.util';
 const PDFDocument = require('pdfkit');
 
 @Injectable()
@@ -133,7 +134,7 @@ export class AgroPdfService {
 
       doc.moveDown(1);
       doc.font('Helvetica').fontSize(7).fillColor('gray')
-        .text(`Generado por HiCloud ERP — ${new Date().toLocaleDateString('es-DO')}`, { align: 'right' });
+        .text(`Generado por HiCloud ERP — ${fechaTextoRD()}`, { align: 'right' });
       doc.end();
     });
   }
@@ -203,7 +204,7 @@ export class AgroPdfService {
 
         doc.moveDown(1);
         doc.font('Helvetica').fontSize(7).fillColor('gray')
-          .text(`Generado por HiCloud ERP — ${new Date().toLocaleDateString('es-DO')}`, { align: 'right' });
+          .text(`Generado por HiCloud ERP — ${fechaTextoRD()}`, { align: 'right' });
         doc.end();
       }).catch(reject);
     });
@@ -274,7 +275,7 @@ export class AgroPdfService {
 
       doc.moveDown(1);
       doc.font('Helvetica').fontSize(7).fillColor('gray')
-        .text(`Generado por HiCloud ERP — ${new Date().toLocaleDateString('es-DO')}`, { align: 'right' });
+        .text(`Generado por HiCloud ERP — ${fechaTextoRD()}`, { align: 'right' });
       doc.end();
     });
   }
@@ -294,7 +295,7 @@ export class AgroPdfService {
       doc.on('error', reject);
 
       doc.font('Helvetica-Bold').fontSize(14).text('INVENTARIO DE INSUMOS AGRÍCOLAS', { align: 'center' });
-      doc.font('Helvetica').fontSize(9).text(new Date().toLocaleDateString('es-DO'), { align: 'center' });
+      doc.font('Helvetica').fontSize(9).text(fechaTextoRD(), { align: 'center' });
       doc.moveTo(50, doc.y + 4).lineTo(545, doc.y + 4).stroke();
       doc.moveDown(0.5);
 
@@ -327,7 +328,7 @@ export class AgroPdfService {
 
       doc.moveDown(1);
       doc.font('Helvetica').fontSize(7).fillColor('gray')
-        .text(`* Rojos: stock bajo mínimo | Generado por HiCloud ERP — ${new Date().toLocaleDateString('es-DO')}`, { align: 'right' });
+        .text(`* Rojos: stock bajo mínimo | Generado por HiCloud ERP — ${fechaTextoRD()}`, { align: 'right' });
       doc.end();
     });
   }

@@ -7,7 +7,7 @@ import { CierreCaja, EstadoCierre } from './entities/cierre-caja.entity';
 import { RetiroCaja, CategoriaRetiro, EstadoRetiro } from './entities/retiro-caja.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { RealtimeService } from '../realtime/realtime.service';
-import { fechaHoyRD } from '../common/utils/fecha-local.util';
+import { fechaHoyRD, fechaHoraRD } from '../common/utils/fecha-local.util';
 // Fórmula única del efectivo esperado — ver efectivo-esperado.util.ts.
 // Nadie debe volver a escribirla a mano, ni aquí ni en el frontend.
 import {
@@ -322,7 +322,11 @@ export class CajaService {
       throw new BadRequestException('No se puede anular un cierre revisado. Contacta al administrador.');
     }
 
-    const notaAnulacion = `[CIERRE ANULADO por usuario #${userId} — ${new Date().toLocaleString('es-DO')}] Motivo: ${motivo}`;
+    // fechaHoraRD, no toLocaleString a secas: 'es-DO' elige el formato, no la
+    // zona. El servidor corre en UTC, así que un cierre anulado a las 9:14 a.m.
+    // se escribía "1:14:00 p. m.". Y aquí el texto se GUARDA en notas: el error
+    // quedaba grabado, sin nada que el cliente pudiera convertir después.
+    const notaAnulacion = `[CIERRE ANULADO por usuario #${userId} — ${fechaHoraRD()}] Motivo: ${motivo}`;
     const notasActualizadas = caja.notas
       ? `${caja.notas}\n${notaAnulacion}`
       : notaAnulacion;

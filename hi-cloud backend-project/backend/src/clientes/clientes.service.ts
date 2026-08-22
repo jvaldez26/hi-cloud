@@ -14,6 +14,7 @@ import { PaginationDto } from '../common/dto/pagination.dto';
 import { TenantService } from '../tenant/tenant.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { LimitesService } from '../suscripciones/limites.service';
+import { fechaHoraRD, fechaTextoRD } from '../common/utils/fecha-local.util';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const PDFKit = require('pdfkit') as typeof import('pdfkit');
 
@@ -460,7 +461,7 @@ export class ClientesService {
       doc.fillColor(DARK).font('Helvetica-Bold').fontSize(9)
         .text(periodoTxt, PL + W * 0.65, y, { width: W * 0.35, align: 'right' });
       doc.fillColor(GRAY).font('Helvetica').fontSize(8)
-        .text('Generado: ' + new Date().toLocaleDateString('es-DO'), PL + W * 0.65, y + 13, { width: W * 0.35, align: 'right' });
+        .text('Generado: ' + fechaTextoRD(), PL + W * 0.65, y + 13, { width: W * 0.35, align: 'right' });
       y += 38;
 
       // Separador azul
@@ -593,7 +594,7 @@ export class ClientesService {
       doc.moveTo(PL, fy).lineTo(PR, fy).strokeColor('#e5e7eb').lineWidth(0.5).stroke();
       doc.fillColor('#9ca3af').font('Helvetica').fontSize(7.5)
         .text('HiCloud ERP · Documento generado automáticamente', PL, fy + 8, { width: W / 2 });
-      doc.text(new Date().toLocaleString('es-DO'), PR - W / 2, fy + 8, { width: W / 2, align: 'right' });
+      doc.text(fechaHoraRD(), PR - W / 2, fy + 8, { width: W / 2, align: 'right' });
 
       doc.end();
     });

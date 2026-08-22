@@ -6,6 +6,7 @@ import { FiltroFechaDto } from './dto/filtro-fecha.dto';
 import { FiltroMesAnioDto } from './dto/filtro-mes-anio.dto';
 import { UserRole } from '../users/enums/user-role.enum';
 import { TenantService } from '../tenant/tenant.service';
+import { fechaTextoRD } from '../common/utils/fecha-local.util';
 
 // ── helpers de fecha ────────────────────────────────────────────────────────
 
@@ -1139,7 +1140,7 @@ export class ReportesService {
     // Fecha a usar — 'YYYY-MM-DD', si no viene usa hoy en RD
     const dia  = fecha
       ? fecha
-      : new Date().toLocaleDateString('es-DO', {
+      : fechaTextoRD(new Date(), {
           timeZone: 'America/Santo_Domingo',
           year: 'numeric', month: '2-digit', day: '2-digit',
         }).split('/').reverse().join('-');  // DD/MM/YYYY → YYYY-MM-DD

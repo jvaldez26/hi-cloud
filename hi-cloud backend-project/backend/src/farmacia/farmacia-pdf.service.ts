@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { fechaHoraRD, fechaTextoRD } from '../common/utils/fecha-local.util';
 
 @Injectable()
 export class FarmaciaPdfService {
@@ -30,7 +31,7 @@ export class FarmaciaPdfService {
     for (let i = pages.start; i < pages.start + pages.count; i++) {
       doc.switchToPage(i);
       doc.fontSize(8).font('Helvetica').fillColor('#666')
-        .text(`Página ${i - pages.start + 1} de ${pages.count} — Generado ${new Date().toLocaleString('es-DO')}`, 40, 750, { align: 'center', width: 530 });
+        .text(`Página ${i - pages.start + 1} de ${pages.count} — Generado ${fechaHoraRD()}`, 40, 750, { align: 'center', width: 530 });
     }
   }
 
@@ -173,7 +174,7 @@ export class FarmaciaPdfService {
       this.header(doc, `Reporte de Vencimientos — próximos ${dias} días`);
 
       doc.fontSize(9).font('Helvetica');
-      doc.text(`Fecha de emisión: ${new Date().toLocaleDateString('es-DO')}   Total lotes: ${lotes.length}`);
+      doc.text(`Fecha de emisión: ${fechaTextoRD()}   Total lotes: ${lotes.length}`);
       doc.moveDown(0.5);
 
       const cols = [40, 180, 290, 355, 420, 490];

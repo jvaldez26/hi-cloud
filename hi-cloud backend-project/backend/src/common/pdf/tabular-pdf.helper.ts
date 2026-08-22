@@ -5,6 +5,7 @@
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const PDFDocument = require('pdfkit') as typeof import('pdfkit');
+import { fechaHoraRD } from '../utils/fecha-local.util';
 
 // ── Tipos públicos ───────────────────────────────────────────────────────────
 
@@ -97,7 +98,7 @@ export async function generarReportePDF(data: TabularReportData): Promise<Buffer
     if (data.periodo) {
       doc.text('Período: ' + data.periodo, PL, y);
     }
-    doc.text('Generado: ' + new Date().toLocaleString('es-DO'), PL, y + 10);
+    doc.text('Generado: ' + fechaHoraRD(), PL, y + 10);
     y += 24;
 
     // ── TARJETAS RESUMEN ─────────────────────────────────────────────────────
@@ -219,7 +220,7 @@ export async function generarReportePDF(data: TabularReportData): Promise<Buffer
       .strokeColor('#cccccc').lineWidth(0.5).stroke();
     doc.fillColor('#999999').font('Helvetica').fontSize(7.5)
       .text(
-        `HiCloud ERP · ${data.empresa ?? ''}  —  Generado: ${new Date().toLocaleString('es-DO')}`,
+        `HiCloud ERP · ${data.empresa ?? ''}  —  Generado: ${fechaHoraRD()}`,
         PL, footerY + 8, { width: W, align: 'center' },
       );
 

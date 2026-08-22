@@ -6,6 +6,7 @@ import { ContratoLaboral } from '../nomina/entities/contrato-laboral.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { IsrService } from '../isr/isr.service';
 import { EmailService } from '../notificaciones/services/email.service';
+import { fechaTextoRD } from '../common/utils/fecha-local.util';
 
 @Injectable()
 export class PortalEmpleadoService {
@@ -261,7 +262,7 @@ export class PortalEmpleadoService {
       ? Math.floor((Date.now() - new Date(emp.fechaIngreso).getTime()) / (1000 * 60 * 60 * 24 * 365))
       : 0;
 
-    const fechaHoy = new Date().toLocaleDateString('es-DO', {
+    const fechaHoy = fechaTextoRD(new Date(), {
       day: 'numeric', month: 'long', year: 'numeric',
     });
 

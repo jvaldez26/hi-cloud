@@ -35,6 +35,7 @@ import { randomBytes } from 'crypto';
 import { createHash } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import PDFDocument from 'pdfkit';
+import { fechaHoraRD } from '../common/utils/fecha-local.util';
 
 @Injectable()
 export class NominaService {
@@ -1291,7 +1292,7 @@ export class NominaService {
         doc.moveTo(MAR, 800).lineTo(W - MAR, 800).stroke('#e2e8f0');
         doc.fillColor('#9ca3af').font('Helvetica').fontSize(7)
            .text('HiCloud ERP · Recibo generado automáticamente', MAR, 806)
-           .text(new Date().toLocaleString('es-DO'), 0, 806, { align: 'right', width: W - MAR });
+           .text(fechaHoraRD(), 0, 806, { align: 'right', width: W - MAR });
 
         doc.end();
       });
