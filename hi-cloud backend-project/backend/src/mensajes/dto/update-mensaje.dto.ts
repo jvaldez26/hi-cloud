@@ -17,6 +17,14 @@ export class UpdateMensajeDto {
   @MinLength(1)
   cuerpo?: string;
 
+  /**
+   * El tipo puede corregirse después de publicar —
+   * un aviso mal clasificado como novedad (o viceversa) debe poder enmendarse.
+   */
+  @IsOptional()
+  @IsIn(['aviso', 'novedad'])
+  tipo?: 'aviso' | 'novedad';
+
   @IsOptional()
   @IsBoolean()
   activo?: boolean;
