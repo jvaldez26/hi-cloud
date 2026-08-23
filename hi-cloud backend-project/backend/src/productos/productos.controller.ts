@@ -165,8 +165,21 @@ export class ProductosController {
     @UploadedFile() file: { buffer: Buffer; mimetype: string; originalname: string; size: number },
   ) {
     if (!file) throw new BadRequestException('Campo "file" requerido');
-    const url = await this.productosService.subirImagen(id, file.buffer, file.mimetype);
-    return { url };
+    const { key, signedUrl } = await this.productosService.subirImagen(id, file.buffer, file.mimetype);
+    // url: URL firmada (5 min) para preview inmediato; key: lo que queda guardado en BD
+    return { url: signedUrl ?? key, key };
+  }
+
+  @Get(':id/imagen-url')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @ApiOperation({
+    summary: 'URL firmada para la imagen del producto (válida 5 min)',
+    description:
+      'Genera una URL pre-firmada de AWS S3 para descargar la imagen del producto. ' +
+      'Requiere sesión activa; la URL expira en 300 segundos.',
+  })
+  getImagenUrl(@Param('id', ParseIntPipe) id: number) {
+    return this.productosService.getImagenUrl(id);
   }
 
   @Patch(':id')

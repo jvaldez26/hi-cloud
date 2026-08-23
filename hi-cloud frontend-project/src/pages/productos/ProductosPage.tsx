@@ -18,6 +18,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSucursalesQuery, useUomUnidadesQuery } from '../../hooks/useCatalogQueries';
 import dayjs from 'dayjs';
 import { productosApi, type ProductoPayload } from '../../api/productos.api';
+import { useProductoImagen } from '../../hooks/useProductoImagen';
 import { wmsApi } from '../../api/wms.api';
 import { atributosApi } from '../../api/atributos.api';
 import api from '../../api/client';
@@ -486,6 +487,8 @@ function ProductosCatalogo() {
   const [detalleProducto,  setDetalleProducto]  = useState<Producto | null>(null);
   const [preview,    setPreview]    = useState('');
   const [uploading,  setUploading]  = useState(false);
+  // Resuelve URL firmada de S3 cuando el producto editado tiene key en imagenUrl
+  const { src: previewSrc } = useProductoImagen(editing?.id, preview || null);
   const [drawerTab,   setDrawerTab]   = useState<'detalles' | 'historial'>('detalles');
   const [modoAvanzado, setModoAvanzado] = useState(false);
   const [form]                      = Form.useForm<ProductoPayload>();
@@ -1424,10 +1427,10 @@ function ProductosCatalogo() {
                 </Upload>
 
                 {/* Preview */}
-                {preview && (
+                {(previewSrc || preview) && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <img
-                      src={preview}
+                      src={previewSrc ?? preview}
                       alt="preview"
                       style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8, border: '1px solid #e2e8f0' }}
                       onError={() => setPreview('')}

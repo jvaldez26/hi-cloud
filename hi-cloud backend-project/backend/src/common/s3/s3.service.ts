@@ -87,6 +87,27 @@ export class S3Service {
     return url;
   }
 
+  /**
+   * Sube un archivo a S3 y retorna la KEY del objeto, no la URL completa.
+   *
+   * Usar en lugar de upload() para datos que se van a guardar en BD:
+   * la key sobrevive a cambios de bucket, región y esquema de acceso.
+   * La URL se genera on-demand con getSignedUrl() cuando se necesita mostrar.
+   */
+  async uploadKey(
+    buffer:       Buffer,
+    originalName: string,
+    contentType:  string,
+    folder        = 'uploads',
+    empresaId?:   number,
+    bucketOverride?: string,
+  ): Promise<string | null> {
+    const url = await this.upload(buffer, originalName, contentType, folder, empresaId, bucketOverride);
+    if (!url) return null;
+    // Extraer la key desde la URL: https://bucket.s3.region.amazonaws.com/<key>
+    return new URL(url).pathname.slice(1);
+  }
+
   /** Sube PDF de documento — carpeta privada, acceso por URL firmada */
   async uploadPDF(
     buffer:    Buffer,

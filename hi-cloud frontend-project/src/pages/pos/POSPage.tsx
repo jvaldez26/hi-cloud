@@ -23,6 +23,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useMobile } from '../../hooks/useMediaQuery';
 import { productosApi } from '../../api/productos.api';
+import { useProductoImagen } from '../../hooks/useProductoImagen';
 import api from '../../api/client';
 import { clientesApi } from '../../api/clientes.api';
 import { proveedoresApi, type ProveedorPayload } from '../../api/proveedores.api';
@@ -337,6 +338,10 @@ const ProductCard = memo(function ProductCard({ produto, onAdd, mostrarStock = t
 
   const clickable = !sinStock || permitirStockNegativo;
 
+  // URL firmada de S3 (válida 5 min, cacheada 4 min) para imagen del producto.
+  // Si imagenUrl es base64 se usa directo; si es key S3 o URL se firma en el backend.
+  const { src: imagenSrc } = useProductoImagen(produto.id, (produto as any).imagenUrl);
+
   return (
     <div
       onClick={() => clickable && onAdd(produto)}
@@ -383,8 +388,8 @@ const ProductCard = memo(function ProductCard({ produto, onAdd, mostrarStock = t
         flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: '8px 6px 4px',
       }}>
-        {(produto as any).imagenUrl ? (
-          <img src={(produto as any).imagenUrl} alt={produto.nombre}
+        {imagenSrc ? (
+          <img src={imagenSrc} alt={produto.nombre}
             style={{ width: 72, height: 72, objectFit: 'contain', borderRadius: 8 }}
             onError={(e) => { (e.target as HTMLImageElement).style.display='none'; }} />
         ) : (
@@ -3130,6 +3135,8 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
   const [fUnidadMedida,   setFUnidadMedida]   = useState('');
   const [fDescripcion,    setFDescripcion]    = useState('');
   const [fImagenUrl,      setFImagenUrl]      = useState('');
+  // Preview del formulario: resuelve URL firmada cuando fImagenUrl es key S3
+  const { src: imagenFormPreviewSrc } = useProductoImagen(editingProd?.id, fImagenUrl || null);
 
   // ── estados movimientos ───────────────────────────────────────────────────
   const [movLimit, setMovLimit] = useState(10);
@@ -3575,9 +3582,9 @@ function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
               </div>
               <PanelInput C={C} label="Imagen URL" value={fImagenUrl}
                 onChange={e => setFImagenUrl(e.target.value)} placeholder="https://… (opcional)" />
-              {fImagenUrl.trim() && (
+              {imagenFormPreviewSrc && (
                 <div style={{ marginBottom: 10 }}>
-                  <img src={fImagenUrl.trim()} alt="preview"
+                  <img src={imagenFormPreviewSrc} alt="preview"
                     style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8,
                       border: `1px solid ${C.border}` }}
                     onError={e => (e.currentTarget.style.display = 'none')} />

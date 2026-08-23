@@ -60,6 +60,13 @@ export const productosApi = {
   historialCompras: (id: number) =>
     api.get(`/productos/${id}/historial-compras`).then((r: any) => r.data?.data ?? r.data),
 
+  /**
+   * URL firmada de S3 para la imagen del producto (válida 5 minutos).
+   * Llamar solo cuando imagenUrl es una key S3 (no base64, no http).
+   */
+  getImagenUrl: (id: number): Promise<{ url: string; expiresAt: string }> =>
+    api.get(`/productos/${id}/imagen-url`).then((r: any) => r.data?.data ?? r.data),
+
   /** Preview del ajuste de precios al público — SOLO LECTURA, no escribe nada */
   previewAjustePrecios: (body: PreviewAjusteBody) =>
     api.post<ApiResponse<PreviewAjusteResp>>('/productos/ajuste-precios/preview', body)

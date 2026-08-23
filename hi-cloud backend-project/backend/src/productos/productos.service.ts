@@ -78,11 +78,40 @@ export class ProductosService implements OnModuleInit {
   }
 
   async onModuleInit() {
-    // Migrar imágenes base64 existentes a S3 (operación idempotente, 1 vez)
-    try {
-      await this.migrateBase64ImagesToS3();
-    } catch (err: unknown) {
+    // Migrar imágenes base64 existentes a S3 (operación idempotente)
+    try { await this.migrateBase64ImagesToS3(); }
+    catch (err: unknown) {
       this.logger.warn(`Migración base64→S3 saltada: ${(err as Error).message}`);
+    }
+    // Normalizar imagenUrl: URL absoluta → key S3 (3 filas históricas, idempotente)
+    try { await this.migrateAbsoluteUrlsToKeys(); }
+    catch (err: unknown) {
+      this.logger.warn(`Migración URL→key saltada: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Convierte las filas donde imagenUrl es una URL absoluta de S3 al formato key.
+   * Ejemplo: "https://hicloud-media-....amazonaws.com/imagenes/productos/2/abc.jpg"
+   *           → "imagenes/productos/2/abc.jpg"
+   *
+   * Idempotente: las filas que ya tienen key (sin "https://") no se tocan.
+   */
+  private async migrateAbsoluteUrlsToKeys(): Promise<void> {
+    const S3_BASE = 'https://hicloud-media-966448715183.s3.us-east-2.amazonaws.com/';
+    const productos = await this.productoRepository
+      .createQueryBuilder('p')
+      .where("p.\"imagenUrl\" LIKE :prefix", { prefix: `${S3_BASE}%` })
+      .select(['p.id', 'p.nombre', 'p.imagenUrl'])
+      .getMany();
+
+    if (productos.length === 0) return;
+
+    this.logger.log(`Normalizando ${productos.length} imagenUrl(s) de URL absoluta → key...`);
+    for (const producto of productos) {
+      const key = producto.imagenUrl!.replace(S3_BASE, '');
+      await this.productoRepository.update(producto.id, { imagenUrl: key });
+      this.logger.log(`Producto #${producto.id}: URL → key (${key})`);
     }
   }
 
@@ -100,16 +129,16 @@ export class ProductosService implements OnModuleInit {
     for (const producto of productos) {
       try {
         const { buffer, ext, mimetype } = this.parseBase64(producto.imagenUrl!);
-        const url = await this.s3Service.upload(
+        const key = await this.s3Service.uploadKey(
           buffer,
           `producto-${producto.id}.${ext}`,
           mimetype,
           IMAGENES_FOLDER,
           producto.empresaId,
         );
-        if (url) {
-          await this.productoRepository.update(producto.id, { imagenUrl: url });
-          this.logger.log(`Producto #${producto.id} (${producto.nombre}): imagen → ${url}`);
+        if (key) {
+          await this.productoRepository.update(producto.id, { imagenUrl: key });
+          this.logger.log(`Producto #${producto.id} (${producto.nombre}): imagen → ${key}`);
         }
       } catch (err: unknown) {
         this.logger.warn(`Producto #${producto.id}: error migrando imagen — ${(err as Error).message}`);
@@ -127,21 +156,54 @@ export class ProductosService implements OnModuleInit {
   }
 
   /** Sube imagen de producto a S3 desde un Buffer (multipart upload) */
-  async subirImagen(id: number, buffer: Buffer, mimetype: string): Promise<string> {
+  async subirImagen(
+    id: number,
+    buffer: Buffer,
+    mimetype: string,
+  ): Promise<{ key: string; signedUrl: string | null }> {
     const empresaId = this.tenantService.getEmpresaId();
     await this.findOne(id); // valida que el producto existe y pertenece al tenant
     const ext = mimetype.split('/')[1].replace('jpeg', 'jpg');
-    const url = await this.s3Service.upload(
+    const key = await this.s3Service.uploadKey(
       buffer,
       `producto-${id}.${ext}`,
       mimetype,
       IMAGENES_FOLDER,
       empresaId,
     );
-    if (!url) throw new BadRequestException('S3 no disponible — configura AWS_S3_BUCKET y AWS_S3_PROFILE en .env');
-    await this.productoRepository.update(id, { imagenUrl: url });
+    if (!key) throw new BadRequestException('S3 no disponible — configura AWS_S3_BUCKET y AWS_S3_PROFILE en .env');
+    await this.productoRepository.update(id, { imagenUrl: key });
     this.realtimeService.notify(empresaId, 'producto', 'updated', id);
-    return url;
+    // URL firmada (5 min) para preview inmediato en el cliente
+    const signedUrl = await this.s3Service.getSignedUrl(key, 300);
+    return { key, signedUrl };
+  }
+
+  /**
+   * Genera una URL firmada (5 min) para la imagen de un producto.
+   * Soporta retrocompatibilidad: si imagenUrl ya es una URL absoluta,
+   * extrae la key antes de firmar.
+   */
+  async getImagenUrl(id: number): Promise<{ url: string; expiresAt: string }> {
+    const empresaId = this.tenantService.getEmpresaId();
+    const producto = await this.productoRepository.findOne({ where: { id, empresaId } });
+    if (!producto) throw new NotFoundException(`Producto #${id} no encontrado`);
+
+    const imagenUrl = producto.imagenUrl;
+    if (!imagenUrl || imagenUrl.startsWith('data:')) {
+      throw new NotFoundException('Este producto no tiene imagen en S3');
+    }
+
+    // Retrocompatibilidad: si está almacenada como URL completa, extraer la key
+    const key = imagenUrl.startsWith('http')
+      ? new URL(imagenUrl).pathname.slice(1)
+      : imagenUrl;
+
+    const EXPIRY = 300; // 5 minutos
+    const url = await this.s3Service.getSignedUrl(key, EXPIRY);
+    if (!url) throw new NotFoundException('S3 no disponible para generar URL firmada');
+
+    return { url, expiresAt: new Date(Date.now() + EXPIRY * 1000).toISOString() };
   }
 
   // Inicializa o actualiza stock_almacen para un producto en un almacén dado.
@@ -515,11 +577,11 @@ export class ProductosService implements OnModuleInit {
     if (dto.imagenUrl?.startsWith('data:image')) {
       try {
         const { buffer, ext, mimetype } = this.parseBase64(dto.imagenUrl);
-        const url = await this.s3Service.upload(
+        const key = await this.s3Service.uploadKey(
           buffer, `producto-${id}.${ext}`, mimetype,
           IMAGENES_FOLDER, empresaId,
         );
-        if (url) dto.imagenUrl = url;
+        if (key) dto.imagenUrl = key;
       } catch (err: unknown) {
         this.logger.warn(`Producto #${id}: base64 no subido a S3 — ${(err as Error).message}`);
       }
