@@ -109,6 +109,67 @@ export class BackupService {
   private static readonly HORAS_SIN_RESPALDO_CRITICO = 48;
 
   /**
+   * Un backup que lleva mas de 30 minutos EN_PROGRESO sin que el script haya
+   * reportado exito o fallo es un backup muerto. Causas habituales:
+   *   - El script fue interrumpido (SIGKILL, reinicio del servidor).
+   *   - El callback a /api/.../registrar-exito|fallo no llego (red, 401, etc.).
+   *   - Bug en el script que no llego a llamar al backend.
+   *
+   * Este cron los cierra como FALLIDO con motivo "reporte no recibido" cada 15
+   * minutos. El umbral de 30 min es conservador: ningún dump de 18 MB tarda mas
+   * de 30 s, pero dejamos margen para dumps grandes y redes lentas.
+   *
+   * POR QUE NO EN onModuleInit:
+   *   No se escribe en startup para no complicar rollbacks. El primer tick del
+   *   cron despues del deploy (<=15 min) cierra los registros colgados. La tasa
+   *   de exito refleja la realidad a los 15 min de estar arriba, no a los 0.
+   */
+  @Cron('*/15 * * * *', { name: 'cerrar-backups-colgados' })
+  async cerrarColgados(): Promise<void> {
+    const LIMITE_MIN = 30;
+    const corte = new Date(Date.now() - LIMITE_MIN * 60_000);
+
+    // Buscar todos los EN_PROGRESO con más de 30 min de antigüedad
+    const colgados = await this.repo.find({
+      where: { estado: 'EN_PROGRESO' as any },
+      order: { createdAt: 'ASC' },
+    });
+
+    const vencidos = colgados.filter(b => new Date(b.createdAt) < corte);
+    if (!vencidos.length) return;
+
+    for (const backup of vencidos) {
+      const minutosEsperando = Math.round(
+        (Date.now() - new Date(backup.createdAt).getTime()) / 60_000,
+      );
+      const mensaje =
+        `reporte no recibido — backup iniciado hace ${minutosEsperando} min ` +
+        'sin confirmacion de exito o fallo (umbral: 30 min)';
+
+      await this.repo.update(backup.id, {
+        estado:       'FALLIDO',
+        errorMensaje: mensaje,
+      });
+
+      this.logger.warn(
+        `[Backup] Registro #${backup.id} (${backup.tipo}, ${minutosEsperando} min) ` +
+        'cerrado como FALLIDO por timeout — reporte no recibido',
+      );
+
+      Sentry.captureMessage('[Backup] Registro cerrado por timeout de progreso', {
+        level: 'warning',
+        tags:  { area: 'backups', motivo: 'timeout-en-progreso' },
+        extra: { backupId: backup.id, tipo: backup.tipo, minutosEsperando },
+      });
+    }
+
+    this.logger.warn(
+      `[Backup] ${vencidos.length} registro(s) EN_PROGRESO cerrado(s) como FALLIDO ` +
+      `(>${LIMITE_MIN} min sin reporte)`,
+    );
+  }
+
+  /**
    * Corre todos los dias a las 8 de la mañana, hora RD — a una hora en que hay
    * alguien mirando, no de madrugada.
    *

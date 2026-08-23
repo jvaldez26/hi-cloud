@@ -202,3 +202,66 @@ describe('registrarVerificacion — la unica via para marcar verificado', () => 
     await expect(svc.registrarVerificacion({ ok: true })).resolves.toBeNull();
   });
 });
+
+describe('cerrarColgados — backups EN_PROGRESO mas de 30 min se cierran como FALLIDO', () => {
+  const MIN = 60_000;
+
+  function repoConColgados(backups: any[]): Partial<Record<string, any>> {
+    const actualizaciones: Array<{ id: number; datos: any }> = [];
+    return {
+      find:   async () => backups,
+      update: async (id: number, datos: any) => { actualizaciones.push({ id, datos }); return datos; },
+      // Exponer las actualizaciones para los asserts
+      _actualizaciones: actualizaciones,
+    };
+  }
+
+  it('un registro EN_PROGRESO de mas de 30 min pasa a FALLIDO con mensaje claro', async () => {
+    const hace35min = new Date(Date.now() - 35 * MIN);
+    const repo = repoConColgados([{ id: 42, tipo: 'manual', createdAt: hace35min }]);
+    const svc = new BackupService(repo as any, configFalso);
+
+    await svc.cerrarColgados();
+
+    const acts = (repo as any)._actualizaciones as Array<{ id: number; datos: any }>;
+    expect(acts).toHaveLength(1);
+    expect(acts[0].id).toBe(42);
+    expect(acts[0].datos.estado).toBe('FALLIDO');
+    expect(acts[0].datos.errorMensaje).toMatch(/reporte no recibido/);
+    expect(acts[0].datos.errorMensaje).toMatch(/35 min/);
+  });
+
+  it('un registro de 29 min NO se cierra — el umbral es 30 min exactos', async () => {
+    const hace29min = new Date(Date.now() - 29 * MIN);
+    const repo = repoConColgados([{ id: 7, tipo: 'daily', createdAt: hace29min }]);
+    const svc = new BackupService(repo as any, configFalso);
+
+    await svc.cerrarColgados();
+
+    const acts = (repo as any)._actualizaciones as Array<any>;
+    expect(acts).toHaveLength(0);
+  });
+
+  it('sin registros EN_PROGRESO no hace nada', async () => {
+    const repo = repoConColgados([]);
+    const svc = new BackupService(repo as any, configFalso);
+
+    await expect(svc.cerrarColgados()).resolves.toBeUndefined();
+    expect((repo as any)._actualizaciones).toHaveLength(0);
+  });
+
+  it('cierra varios registros colgados en el mismo tick', async () => {
+    const repos = repoConColgados([
+      { id: 10, tipo: 'manual', createdAt: new Date(Date.now() - 45 * MIN) },
+      { id: 11, tipo: 'manual', createdAt: new Date(Date.now() - 120 * MIN) }, // los de hoy
+    ]);
+    const svc = new BackupService(repos as any, configFalso);
+
+    await svc.cerrarColgados();
+
+    const acts = (repos as any)._actualizaciones as Array<{ id: number; datos: any }>;
+    expect(acts).toHaveLength(2);
+    expect(acts.map(a => a.id).sort()).toEqual([10, 11]);
+    acts.forEach(a => expect(a.datos.estado).toBe('FALLIDO'));
+  });
+});
