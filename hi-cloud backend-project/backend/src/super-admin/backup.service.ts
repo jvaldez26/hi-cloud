@@ -8,6 +8,7 @@ import {
   S3Client, PutObjectCommand, GetObjectCommand,
   ListObjectsV2Command, HeadBucketCommand, HeadObjectCommand,
 } from '@aws-sdk/client-s3';
+import { fromIni } from '@aws-sdk/credential-providers';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { exec } from 'child_process';
 import { createHash } from 'crypto';
@@ -21,18 +22,37 @@ export class BackupService {
   private bucket: string;
   private enabled: boolean;
 
+  /**
+   * Perfil de credenciales usado para construir el S3Client.
+   * Expuesto como readonly para que los tests puedan verificar
+   * que no se usa el proveedor global AWS_PROFILE del proceso.
+   */
+  readonly credentialProfile: string;
+
   constructor(
     @InjectRepository(BackupRegistro)
     private readonly repo: Repository<BackupRegistro>,
     private readonly config: ConfigService,
   ) {
-    const region = config.get<string>('AWS_REGION', 'us-east-2');
-    this.bucket  = config.get<string>('AWS_S3_BACKUP_BUCKET', config.get<string>('AWS_S3_BUCKET', ''));
-    this.enabled = !!this.bucket;
+    const region   = config.get<string>('AWS_REGION', 'us-east-2');
+    this.bucket    = config.get<string>('AWS_S3_BACKUP_BUCKET', config.get<string>('AWS_S3_BUCKET', ''));
+    this.enabled   = !!this.bucket;
+
+    // Perfil explícito — nunca depende del AWS_PROFILE global del proceso.
+    // El bucket de backups tiene política de acceso más restrictiva que el de
+    // media: no puede compartir credenciales con el cliente de contenido.
+    this.credentialProfile = config.get<string>('AWS_S3_BACKUP_PROFILE', 'hicloud-backup');
+    const credFile = config.get<string>('AWS_SHARED_CREDENTIALS_FILE', '');
 
     if (this.enabled) {
-      this.s3 = new S3Client({ region });
-      this.logger.log(`Backup S3 habilitado — bucket: ${this.bucket}`);
+      this.s3 = new S3Client({
+        region,
+        credentials: fromIni({
+          profile: this.credentialProfile,
+          ...(credFile ? { filepath: credFile } : {}),
+        }),
+      });
+      this.logger.log(`Backup S3 habilitado — bucket: ${this.bucket} perfil: ${this.credentialProfile}`);
     } else {
       this.logger.warn('Backup S3 no configurado — establece AWS_S3_BACKUP_BUCKET en .env');
     }

@@ -6,6 +6,7 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
 } from '@aws-sdk/client-s3';
+import { fromIni } from '@aws-sdk/credential-providers';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import * as crypto from 'crypto';
 import * as path   from 'path';
@@ -18,16 +19,35 @@ export class S3Service {
   private region: string;
   private enabled: boolean;
 
+  /**
+   * Perfil de credenciales usado para construir el S3Client.
+   * Expuesto como readonly para que los tests puedan verificar
+   * que no se usa el proveedor global AWS_PROFILE del proceso.
+   */
+  readonly credentialProfile: string;
+
   constructor(private config: ConfigService) {
     this.region  = config.get<string>('AWS_REGION', 'us-east-2');
     this.bucket  = config.get<string>('AWS_S3_BUCKET', '');
     this.enabled = !!this.bucket;
 
-    // El cliente siempre se crea — usa el rol IAM del EC2 automáticamente
-    this.client = new S3Client({ region: this.region });
+    // Perfil explícito — nunca depende del AWS_PROFILE global del proceso.
+    // Dos buckets con requisitos de seguridad distintos (media vs backups)
+    // no pueden compartir un único AWS_PROFILE: el cliente que no corresponde
+    // se autenticaría contra el bucket equivocado si la variable cambia.
+    this.credentialProfile = config.get<string>('AWS_S3_PROFILE', 'hicloud-media');
+    const credFile = config.get<string>('AWS_SHARED_CREDENTIALS_FILE', '');
+
+    this.client = new S3Client({
+      region: this.region,
+      credentials: fromIni({
+        profile: this.credentialProfile,
+        ...(credFile ? { filepath: credFile } : {}),
+      }),
+    });
 
     if (this.enabled) {
-      this.logger.log(`S3 habilitado — bucket principal: ${this.bucket}`);
+      this.logger.log(`S3 habilitado — bucket: ${this.bucket} perfil: ${this.credentialProfile}`);
     } else {
       this.logger.warn('AWS_S3_BUCKET vacío — upload() sin bucketOverride retornará null');
     }

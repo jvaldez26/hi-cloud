@@ -22,8 +22,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { LimitesService } from '../suscripciones/limites.service';
 import { S3Service } from '../common/s3/s3.service';
 
-// Bucket dedicado para imágenes de productos
-const IMAGENES_BUCKET = 'hicloud-backups-966448715183';
+// Carpeta dentro de AWS_S3_BUCKET donde se guardan las imágenes
 const IMAGENES_FOLDER = 'imagenes/productos';
 
 /** Tope del catálogo POS — mismo que el de findAll(incluirSinStock). */
@@ -107,7 +106,6 @@ export class ProductosService implements OnModuleInit {
           mimetype,
           IMAGENES_FOLDER,
           producto.empresaId,
-          IMAGENES_BUCKET,
         );
         if (url) {
           await this.productoRepository.update(producto.id, { imagenUrl: url });
@@ -139,9 +137,8 @@ export class ProductosService implements OnModuleInit {
       mimetype,
       IMAGENES_FOLDER,
       empresaId,
-      IMAGENES_BUCKET,
     );
-    if (!url) throw new BadRequestException('S3 no disponible — configura AWS_REGION y rol IAM en EC2');
+    if (!url) throw new BadRequestException('S3 no disponible — configura AWS_S3_BUCKET y AWS_S3_PROFILE en .env');
     await this.productoRepository.update(id, { imagenUrl: url });
     this.realtimeService.notify(empresaId, 'producto', 'updated', id);
     return url;
@@ -520,7 +517,7 @@ export class ProductosService implements OnModuleInit {
         const { buffer, ext, mimetype } = this.parseBase64(dto.imagenUrl);
         const url = await this.s3Service.upload(
           buffer, `producto-${id}.${ext}`, mimetype,
-          IMAGENES_FOLDER, empresaId, IMAGENES_BUCKET,
+          IMAGENES_FOLDER, empresaId,
         );
         if (url) dto.imagenUrl = url;
       } catch (err: unknown) {

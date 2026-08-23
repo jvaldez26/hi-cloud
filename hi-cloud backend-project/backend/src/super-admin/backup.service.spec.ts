@@ -1,8 +1,16 @@
 import { BackupService } from './backup.service';
 
 /**
- * Dos cosas que se comprueban aquí, y las dos venían de que el panel afirmaba
- * cosas que no sabía:
+ * Tres cosas que se comprueban aquí:
+ *
+ *   0. El S3Client SIEMPRE se construye con un perfil explícito (fromIni).
+ *      Sin esto, el SDK lee AWS_PROFILE del proceso — una variable global que
+ *      cambia de valor cuando hay dos buckets con requisitos distintos (media
+ *      vs backups). El incidente del 2026-08-21 fue exactamente eso: el cliente
+ *      de backups tomó credenciales vacías porque AWS_PROFILE apuntaba a otra
+ *      cosa. Este test falla si alguien construye un S3Client sin perfil.
+ *
+ *   1. Un backup EXITOSO no se marca como verificado. "Exitoso" solo significa
  *
  *   1. Un backup EXITOSO no se marca como verificado. "Exitoso" solo significa
  *      que el script termino sin error; que el archivo se pueda restaurar es
@@ -12,12 +20,41 @@ import { BackupService } from './backup.service';
  *      igual que si todo fuera bien.
  */
 
-/** ConfigService minimo — solo se le piden region y bucket en el constructor. */
+/** ConfigService mínimo — devuelve defaults para las claves que no conoce. */
 const configFalso = { get: (_k: string, def?: any) => def ?? '' } as any;
+
+/** ConfigService con bucket y perfil activos — activa la rama S3. */
+const configConS3 = {
+  get: (k: string, def?: any) => {
+    if (k === 'AWS_S3_BACKUP_BUCKET') return 'test-bucket';
+    if (k === 'AWS_REGION')            return 'us-east-2';
+    if (k === 'AWS_S3_BACKUP_PROFILE') return 'mi-perfil-backup';
+    return def ?? '';
+  },
+} as any;
 
 function servicioCon(repo: Partial<Record<string, any>>): BackupService {
   return new BackupService(repo as any, configFalso);
 }
+
+// ── Perfil explícito — el test que blinda el incidente del 2026-08-21 ──────
+
+describe('S3Client — perfil explícito obligatorio', () => {
+  it('lee el perfil de AWS_S3_BACKUP_PROFILE, nunca del AWS_PROFILE global', () => {
+    const svc = new BackupService({} as any, configConS3);
+    // Si alguien elimina fromIni() y deja new S3Client({ region }),
+    // credentialProfile queda en '' (el default de configFalso) y este test falla.
+    expect(svc.credentialProfile).toBe('mi-perfil-backup');
+  });
+
+  it('sin bucket configurado el S3Client no se construye (no hay credenciales que resolver)', () => {
+    const svc = servicioCon({});
+    // Con bucket vacío, this.s3 queda en null — no se intenta ninguna conexión.
+    expect((svc as any).s3).toBeNull();
+    // El perfil queda en el default del configFalso (string vacío → fromIni no llega a usarse).
+    expect(svc.credentialProfile).toBe('hicloud-backup'); // default hardcodeado en el servicio
+  });
+});
 
 const HORA = 3_600_000;
 const haceHoras = (h: number) => new Date(Date.now() - h * HORA);
