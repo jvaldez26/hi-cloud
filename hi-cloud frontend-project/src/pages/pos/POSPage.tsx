@@ -312,8 +312,10 @@ function categoryIcon(cat?: string): string {
  * tarjetas ese coste no compensa un hover que sube 2 píxeles, así que el efecto
  * se hace con CSS (transform + transition) y se conserva el mismo aspecto.
  */
-const ProductCard = memo(function ProductCard({ produto, onAdd, mostrarStock = true, permitirStockNegativo = false }: {
+const ProductCard = memo(function ProductCard({ produto, onAdd, mostrarStock = true, permitirStockNegativo = false, imagenSrc }: {
   produto: Prod; onAdd: (p: Prod) => void; mostrarStock?: boolean; permitirStockNegativo?: boolean;
+  /** URL firmada de S3 resuelta por el padre en lote — evita una petición por tarjeta. */
+  imagenSrc?: string;
 }) {
   const C        = useC();
   const isDark   = C === darkC;
@@ -337,10 +339,6 @@ const ProductCard = memo(function ProductCard({ produto, onAdd, mostrarStock = t
   const precioConItbis = Number(produto.precio) * (1 + pctIva / 100);
 
   const clickable = !sinStock || permitirStockNegativo;
-
-  // URL firmada de S3 (válida 5 min, cacheada 4 min) para imagen del producto.
-  // Si imagenUrl es base64 se usa directo; si es key S3 o URL se firma en el backend.
-  const { src: imagenSrc } = useProductoImagen(produto.id, (produto as any).imagenUrl);
 
   return (
     <div
@@ -9894,6 +9892,22 @@ export default function POSPage() {
   // 200 ms de retardo: cargas rápidas (caché caliente) no llegan a mostrar el skeleton
   const showCatalogSkeleton = useSkeletonDelay(isLoading, 200);
 
+  // ── URLs firmadas de imágenes (una sola petición para todo el catálogo) ──────
+  // Collect only the IDs that actually have an S3 key (skip base64 — se renderizan directo).
+  const idsConImagen = useMemo(
+    () => todosProdutos
+      .filter((p: any) => { const u = p.imagenUrl; return u && !u.startsWith('data:'); })
+      .map((p: any) => p.id as number),
+    [todosProdutos],
+  );
+  const { data: imageUrlMap = {} } = useQuery<Record<number, string>>({
+    queryKey:  ['producto-imagenes-bulk', idsConImagen],
+    queryFn:   () => productosApi.bulkImagenUrls(idsConImagen),
+    enabled:   idsConImagen.length > 0,
+    staleTime: 4 * 60_000,  // 4 min — renueva antes de que expiren las URLs firmadas (5 min)
+    gcTime:    5 * 60_000,
+  });
+
   // Precarga silenciosa de patrones de balanza — permite intercept offline en procesarScan.
   // Key con empresaActual: al cambiar de tenant el caché queda huérfano y no contamina la nueva sesión.
   // refetchOnWindowFocus: true garantiza que al volver de Configuración → Balanzas se reciben patrones nuevos.
@@ -11747,7 +11761,8 @@ export default function POSPage() {
                     {lista.map((p: any) => (
                       <ProductCard key={p.id} produto={p} onAdd={addToCart}
                         mostrarStock={posConf.posMostrarStock !== false}
-                        permitirStockNegativo={posPermitirStockNegativo} />
+                        permitirStockNegativo={posPermitirStockNegativo}
+                        imagenSrc={(imageUrlMap as Record<number, string>)[p.id] ?? ((p as any).imagenUrl?.startsWith('data:') ? (p as any).imagenUrl : undefined)} />
                     ))}
                   </div>
                   {/* Hint cuando hay más productos no mostrados */}

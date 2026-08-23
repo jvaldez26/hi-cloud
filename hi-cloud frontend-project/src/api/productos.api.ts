@@ -61,11 +61,20 @@ export const productosApi = {
     api.get(`/productos/${id}/historial-compras`).then((r: any) => r.data?.data ?? r.data),
 
   /**
-   * URL firmada de S3 para la imagen del producto (válida 5 minutos).
-   * Llamar solo cuando imagenUrl es una key S3 (no base64, no http).
+   * URL firmada de S3 para la imagen de un producto (válida 5 minutos).
+   * Usar para vistas de un solo producto (modal, preview de formulario).
+   * Para el catálogo completo usar bulkImagenUrls.
    */
   getImagenUrl: (id: number): Promise<{ url: string; expiresAt: string }> =>
     api.get(`/productos/${id}/imagen-url`).then((r: any) => r.data?.data ?? r.data),
+
+  /**
+   * URL firmadas en lote (máx 500 ids, válidas 5 min).
+   * Devuelve { [productoId]: signedUrl } solo para los que tienen imagen.
+   * Una sola petición carga todas las imágenes del catálogo POS.
+   */
+  bulkImagenUrls: (ids: number[]): Promise<Record<number, string>> =>
+    api.post('/productos/imagen-urls', { ids }).then((r: any) => r.data?.data ?? r.data ?? {}),
 
   /** Preview del ajuste de precios al público — SOLO LECTURA, no escribe nada */
   previewAjustePrecios: (body: PreviewAjusteBody) =>

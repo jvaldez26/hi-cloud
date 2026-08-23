@@ -83,36 +83,49 @@ export class ProductosService implements OnModuleInit {
     catch (err: unknown) {
       this.logger.warn(`Migración base64→S3 saltada: ${(err as Error).message}`);
     }
-    // Normalizar imagenUrl: URL absoluta → key S3 (3 filas históricas, idempotente)
-    try { await this.migrateAbsoluteUrlsToKeys(); }
-    catch (err: unknown) {
-      this.logger.warn(`Migración URL→key saltada: ${(err as Error).message}`);
-    }
+    // Nota: las 3 filas históricas con URL absoluta en imagenUrl se normalizan
+    // con el script scripts/migrate-imagen-urls.sql — no en el arranque.
+    // La retrocompatibilidad en getImagenUrl() / bulkImagenUrls() cubre el
+    // período entre el script y el deploy.
   }
 
   /**
-   * Convierte las filas donde imagenUrl es una URL absoluta de S3 al formato key.
-   * Ejemplo: "https://hicloud-media-....amazonaws.com/imagenes/productos/2/abc.jpg"
-   *           → "imagenes/productos/2/abc.jpg"
+   * Genera URLs firmadas (300 s) en lote para un conjunto de productos.
+   * Filtra por empresaId del JWT (aislamiento tenant).
+   * Máximo 500 ids por llamada.
    *
-   * Idempotente: las filas que ya tienen key (sin "https://") no se tocan.
+   * @returns { [productoId]: signedUrl } — solo incluye productos con imagen S3.
    */
-  private async migrateAbsoluteUrlsToKeys(): Promise<void> {
-    const S3_BASE = 'https://hicloud-media-966448715183.s3.us-east-2.amazonaws.com/';
+  async bulkImagenUrls(ids: number[]): Promise<Record<number, string>> {
+    if (!ids.length) return {};
+    const safeIds = ids.slice(0, 500);
+    const empresaId = this.tenantService.getEmpresaId();
+
     const productos = await this.productoRepository
       .createQueryBuilder('p')
-      .where("p.\"imagenUrl\" LIKE :prefix", { prefix: `${S3_BASE}%` })
-      .select(['p.id', 'p.nombre', 'p.imagenUrl'])
+      .select(['p.id', 'p.imagenUrl'])
+      .where('p.id IN (:...ids)', { ids: safeIds })
+      .andWhere('p.empresaId = :empresaId', { empresaId })
+      .andWhere('p."imagenUrl" IS NOT NULL')
+      .andWhere("p.\"imagenUrl\" NOT LIKE 'data:%'")
+      .andWhere("p.\"imagenUrl\" != ''")
       .getMany();
 
-    if (productos.length === 0) return;
+    if (!productos.length) return {};
 
-    this.logger.log(`Normalizando ${productos.length} imagenUrl(s) de URL absoluta → key...`);
-    for (const producto of productos) {
-      const key = producto.imagenUrl!.replace(S3_BASE, '');
-      await this.productoRepository.update(producto.id, { imagenUrl: key });
-      this.logger.log(`Producto #${producto.id}: URL → key (${key})`);
-    }
+    const result: Record<number, string> = {};
+
+    await Promise.all(productos.map(async (p) => {
+      // Retrocompat: si está guardada como URL absoluta, extraer la key
+      const key = p.imagenUrl!.startsWith('http')
+        ? new URL(p.imagenUrl!).pathname.slice(1)
+        : p.imagenUrl!;
+
+      const url = await this.s3Service.getSignedUrl(key, 300);
+      if (url) result[p.id] = url;
+    }));
+
+    return result;
   }
 
   private async migrateBase64ImagesToS3(): Promise<void> {

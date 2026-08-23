@@ -149,6 +149,20 @@ export class ProductosController {
     return this.productosService.findByCodigo(codigo);
   }
 
+  @Post('imagen-urls')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @ApiOperation({
+    summary: 'URL firmadas en lote para imágenes de productos (máx 500 ids)',
+    description:
+      'Genera URL pre-firmadas de S3 (válidas 300 s) para los productos indicados. ' +
+      'Solo devuelve entradas para productos que tengan imagen y pertenezcan al tenant. ' +
+      'Diseñado para cargar todas las imágenes del catálogo POS en una sola petición.',
+  })
+  bulkImagenUrls(@Body('ids') ids: number[]) {
+    return this.productosService.bulkImagenUrls(ids ?? []);
+  }
+
   @Post(':id/imagen')
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
