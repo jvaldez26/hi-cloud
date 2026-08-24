@@ -325,6 +325,7 @@ export function MensajesAdminTab() {
         loading={isLoading}
         size="small"
         pagination={{ pageSize: 10 }}
+        scroll={{ x: 'max-content' }}
       />
 
       {formMensaje !== false && (

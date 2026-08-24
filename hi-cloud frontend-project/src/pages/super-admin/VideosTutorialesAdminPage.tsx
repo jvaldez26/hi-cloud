@@ -322,7 +322,12 @@ export default function VideosTutorialesAdminPage({ C }: Props) {
         </Button>
       </div>
 
-      {/* Tabla */}
+      {/* Tabla.
+          Sin paginar A PROPÓSITO, y es la única del panel que se salta el
+          estándar de 10 filas: es un catálogo cerrado —un video por módulo— y
+          la columna `orden` se reordena arrastrando. Paginar una lista que se
+          reordena así impide mover un elemento de la página 2 a la 1. Si algún
+          día crece, se pagina y se busca otra forma de reordenar. */}
       <Table
         dataSource={videos}
         columns={columns}
@@ -330,6 +335,7 @@ export default function VideosTutorialesAdminPage({ C }: Props) {
         loading={isLoading}
         size="small"
         pagination={false}
+        scroll={{ x: 'max-content' }}
         locale={{ emptyText: (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}

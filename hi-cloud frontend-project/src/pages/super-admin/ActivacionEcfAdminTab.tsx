@@ -171,6 +171,8 @@ export function ActivacionEcfAdminTab() {
         </Text>
       </Space>
 
+      {/* 7 columnas. Sin scroll horizontal, en pantalla estrecha se corta la
+          columna de acciones y se pierden justo los botones de gestión. */}
       <Table
         rowKey="id"
         loading={isLoading}
@@ -178,6 +180,7 @@ export function ActivacionEcfAdminTab() {
         columns={cols}
         size="small"
         pagination={{ pageSize: 10 }}
+        scroll={{ x: 'max-content' }}
       />
     </div>
   );

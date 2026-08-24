@@ -268,6 +268,7 @@ function SolicitudesTab({ C, solicitudes, isLoading, onRefresh }:
         size="small"
         style={{ fontSize: 13 }}
         pagination={{ pageSize: 10 }}
+        scroll={{ x: 'max-content' }}
       />
 
       {/* Drawer de detalle / acciones */}
@@ -426,6 +427,7 @@ function PruebasTab({ C, pruebas, isLoading, onRefresh }:
         rowKey="empresaId"
         size="small"
         pagination={{ pageSize: 10 }}
+        scroll={{ x: 'max-content' }}
         style={{ fontSize: 13 }}
       />
       <Modal
@@ -608,11 +610,15 @@ function EcfConfigTab({
         {isLoading ? <Spin /> : (configs as any[]).length === 0 ? (
           <Alert message="No hay empresas con configuración e-CF. Agrega la primera." type="info" showIcon />
         ) : (
+          /* Esta lista crece con el negocio: una fila por cada empresa a la que
+             se le activa e-CF. Sin paginar, el día que sean 80 la pantalla se
+             hace impracticable. */
           <Table
             dataSource={configs as any[]}
             rowKey="id"
             size="small"
-            pagination={false}
+            pagination={{ pageSize: 10 }}
+            scroll={{ x: 'max-content' }}
             columns={[
               { title: 'Empresa', dataIndex: 'empresaId', render: (v: number, r: any) => (
                 <div>
