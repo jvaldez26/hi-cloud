@@ -44,6 +44,35 @@ function extractBackendMessage(err: AxiosError): string {
 apiClient.interceptors.request.use((config) => {
   const empresaId = localStorage.getItem('empresaId');
   if (empresaId) config.headers['X-Empresa-ID'] = empresaId;
+
+  // ── Subidas de archivos ──────────────────────────────────────────────────
+  //
+  // El cliente se crea con 'Content-Type: application/json' por defecto, y si
+  // ese header sobrevive a una petición con FormData, axios NO manda el
+  // multipart: lo CONVIERTE A JSON. Reproducido con axios 1.18 —
+  // transformRequest hace `hasJSONContentType ? JSON.stringify(formDataToJSON(data)) : data`
+  // y el resultado es literalmente:
+  //
+  //     {"certificado":{},"clavePfx":"secreta"}
+  //
+  // El archivo se pierde —un File no tiene serialización JSON— mientras el
+  // resto de campos sí viajan. De ahí el desconcertante "falta el archivo" con
+  // el archivo seleccionado en pantalla: al backend le llega todo menos él.
+  //
+  // No es que salga sin boundary; es que no sale.
+  //
+  // Se borra aquí, en un solo sitio, y NO se sustituye por
+  // 'multipart/form-data' escrito a mano: el boundary lo tiene que generar el
+  // navegador, y ponerlo a mano es justo donde se falla.
+  //
+  // Antes cada subida tenía que acordarse de sobreescribirlo. Las que ya lo
+  // hacen siguen funcionando —fijar el mismo valor no rompe nada—, pero
+  // ninguna nueva puede olvidarse.
+  if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+    delete config.headers['Content-Type'];
+    delete (config.headers as any)['content-type'];
+  }
+
   return config;
 });
 

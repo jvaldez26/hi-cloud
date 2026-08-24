@@ -1,7 +1,7 @@
 import {
   Controller, Get, Post, Patch, Body, Param, ParseIntPipe, Query,
   UseGuards, UseInterceptors, UploadedFile, UploadedFiles, HttpCode, HttpStatus,
-  BadRequestException, Ip,
+  BadRequestException, Ip, Headers,
 } from '@nestjs/common';
 import { FileInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -17,6 +17,7 @@ import type { User } from '../users/users.entity';
 import { ActivacionEcfService } from './activacion-ecf.service';
 import { SuperAdminGuard } from '../super-admin/super-admin.guard';
 import { EstadoSolicitudActivacion } from './entities/solicitud-activacion-ecf.entity';
+import { exigirArchivo } from './archivo-faltante.util';
 
 /**
  * Tipo estructural del archivo subido. El repo no instala @types/multer, asi
@@ -122,8 +123,9 @@ export class ActivacionEcfController {
     @Body('clavePfx') clavePfx: string,
     @GetUser() user: User,
     @Ip() ip: string,
+    @Headers('content-type') contentType: string,
   ) {
-    if (!archivo?.buffer) throw new BadRequestException('Falta el archivo del certificado.');
+    exigirArchivo(archivo, contentType, 'certificado');
     return this.svc.validarCertificado(archivo.buffer, clavePfx ?? '', user.id, ip);
   }
 
@@ -201,8 +203,9 @@ export class ActivacionEcfController {
   adjuntar(
     @Param('id', ParseIntPipe) id: number,
     @UploadedFile() archivo: ArchivoSubido,
+    @Headers('content-type') contentType: string,
   ) {
-    if (!archivo?.buffer) throw new BadRequestException('Falta el archivo del comprobante.');
+    exigirArchivo(archivo, contentType, 'comprobante');
     return this.svc.adjuntarComprobante(id, archivo.buffer, archivo.originalname, archivo.mimetype);
   }
 }

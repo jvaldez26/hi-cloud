@@ -66,6 +66,9 @@ const REQUISITOS = [
  * y del calendario, y afirmarle a alguien que le corresponde uno que luego no
  * le dan es peor que no decir nada. Eso lo confirma su contador.
  */
+/** 5 MB — el mismo límite que aplica el backend. */
+const MAX_PFX_BYTES = 5 * 1024 * 1024;
+
 const BENEFICIOS = [
   {
     titulo: 'Validación con la DGII al emitir',
@@ -115,6 +118,23 @@ export default function ActivacionEcfPage() {
   /** Valida el PFX contra el backend. El archivo no se guarda en ningún sitio. */
   const validarCertificado = async (archivo: File, clave: string) => {
     if (!archivo || !clave) return;
+
+    // Se comprueba AQUÍ para que el motivo real llegue al usuario. Si el archivo
+    // viaja y lo rechaza el fileFilter de multer, el mensaje se diluye por el
+    // camino y acaba como un error genérico que no dice qué corregir.
+    if (!/\.(pfx|p12)$/i.test(archivo.name)) {
+      message.error(`"${archivo.name}" no es un certificado: el archivo debe terminar en .pfx o .p12`);
+      return;
+    }
+    if (archivo.size > MAX_PFX_BYTES) {
+      const mb = (archivo.size / 1024 / 1024).toFixed(1);
+      message.error(
+        `El archivo pesa ${mb} MB y el máximo son 5 MB. Un certificado real ocupa ` +
+        `unos pocos KB — comprueba que sea el archivo correcto.`,
+      );
+      return;
+    }
+
     setValidando(true);
     try {
       const fd = new FormData();
