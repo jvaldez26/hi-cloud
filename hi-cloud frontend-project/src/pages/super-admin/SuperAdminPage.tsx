@@ -2981,9 +2981,14 @@ export default function SuperAdminPage() {
                                 </>
                               )}
                             </div>
-                            {syncResult.errores.length > 0 && (
+                            {/* `errores` viene de la respuesta de la mutación y
+                                se asumía array. Si el backend la omitiera o la
+                                mandara nula, este .map() tumbaría el panel —
+                                justo en el momento en que hay errores que leer,
+                                que es cuando más falta hace verlos. */}
+                            {(syncResult.errores ?? []).length > 0 && (
                               <div style={{ marginTop: 8, fontSize: 11, color: '#DC2626' }}>
-                                {syncResult.errores.map((e, i) => <div key={i}>• {e}</div>)}
+                                {(syncResult.errores ?? []).map((e, i) => <div key={i}>• {e}</div>)}
                               </div>
                             )}
                           </div>

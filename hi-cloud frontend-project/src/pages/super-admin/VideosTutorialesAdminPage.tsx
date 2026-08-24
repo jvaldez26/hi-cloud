@@ -10,6 +10,7 @@ import {
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
+import { desenvolverArray } from '../../api/desenvolver';
 import { VIDEO_TUTORIAL_MODULOS, VIDEO_TUTORIAL_MODULOS_SET } from '../../constants/video-tutorial-modulos';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -112,10 +113,13 @@ export default function VideosTutorialesAdminPage({ C }: Props) {
 
   const { data: videos = [], isLoading } = useQuery<VideoTutorial[]>({
     queryKey: ['admin-videos-tutoriales'],
-    queryFn:  async () => {
-      const res = await api.get<VideoTutorial[]>('/videos-tutoriales');
-      return res.data;
-    },
+    // EL BUG: hacía `return res.data`, o sea el envoltorio { success, data }
+    // entero. La tabla le pasaba un objeto a .map() y reventaba con
+    // "T.map is not a function" justo después de un 200.
+    //
+    // desenvolverArray garantiza un array pase lo que pase: una lista vacía se
+    // pinta sola, un TypeError deja la pantalla en blanco.
+    queryFn:  async () => desenvolverArray<VideoTutorial>(await api.get('/videos-tutoriales')),
   });
 
   // ── Mutations ────────────────────────────────────────────────────────────

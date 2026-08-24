@@ -10,7 +10,8 @@
     "audit:currency": "node scripts/audit-currency.mjs",
     "verificar:fechas": "node scripts/verificar-fechas-rd.mjs",
     "verificar:termico": "node scripts/verificar-facturas-termico.mjs",
-    "verificar:subidas": "node scripts/verificar-subida-archivos.mjs"
+    "verificar:subidas": "node scripts/verificar-subida-archivos.mjs",
+    "verificar:desenvolver": "node scripts/verificar-desenvolver.mjs"
   },
   "dependencies": {
     "@ant-design/cssinjs": "^1.21.0",

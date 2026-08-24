@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
+import { desenvolver } from '../api/desenvolver';
 
 export interface VideoTutorialPublico {
   titulo:           string;
@@ -12,8 +13,14 @@ export interface VideoTutorialPublico {
 type MapaVideos = Record<string, VideoTutorialPublico>;
 
 async function fetchVideos(): Promise<MapaVideos> {
-  const res = await api.get<MapaVideos>('/videos-tutoriales/publico');
-  return res.data;
+  // Mismo bug que en VideosTutorialesAdminPage: `res.data` es el envoltorio
+  // { success, data } completo, no el mapa. Aquí no reventaba porque nadie le
+  // hace .map() — solo se leían claves que salían undefined, así que el botón
+  // de tutoriales llevaba sin encontrar ningún video y nadie lo notó.
+  //
+  // Este devuelve un MAPA, no una lista: desenvolver(), no desenvolverArray().
+  const res = await api.get('/videos-tutoriales/publico');
+  return desenvolver<MapaVideos>(res) ?? {};
 }
 
 /**
