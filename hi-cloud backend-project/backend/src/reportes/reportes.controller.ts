@@ -86,6 +86,34 @@ export class ReportesController {
     return this.reportesService.getIngresosGastosMensuales(dto.fechaDesde, dto.fechaHasta);
   }
 
+  /**
+   * Ingresos y gastos de enero a diciembre del año pedido.
+   *
+   * El rango lo decide el BACKEND. El endpoint de arriba lo recibía del cliente,
+   * que lo calculaba con la zona del navegador: el 31 de diciembre a las 8 PM
+   * en Santo Domingo el gráfico ya saltaba al año siguiente y salía vacío.
+   *
+   * Sin `anio` usa el año en curso en zona RD.
+   */
+  @Get('dashboard/ingresos-gastos-anual')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Ingresos y gastos de enero a diciembre — gráfico anual del dashboard' })
+  @ApiQuery({ name: 'anio', required: false, example: 2026, description: 'Año fiscal. Por defecto, el año en curso en RD' })
+  getIngresosGastosAnual(@Query('anio') anio?: string) {
+    const n = anio ? Number(anio) : undefined;
+    // Un año fuera de rango se ignora y cae al actual, en vez de devolver una
+    // serie vacía que parecería "no hubo movimientos".
+    const valido = n && Number.isInteger(n) && n >= 2000 && n <= 2100 ? n : undefined;
+    return this.reportesService.getIngresosGastosAnual(valido);
+  }
+
+  @Get('dashboard/anios-con-datos')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Años con facturas o gastos en esta empresa — selector del gráfico anual' })
+  getAniosConDatos() {
+    return this.reportesService.getAniosConDatos();
+  }
+
   // ── Ventas ─────────────────────────────────────────────────────────────────
 
   @Get('ventas')

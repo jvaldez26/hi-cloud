@@ -1,4 +1,4 @@
-import { Row, Col, Card, Table, Typography, Spin, Tag, Space, Button, theme, DatePicker, Empty, Tooltip as AntTooltip, Skeleton } from 'antd';
+import { Row, Col, Card, Table, Typography, Spin, Tag, Space, Button, theme, DatePicker, Empty, Tooltip as AntTooltip, Skeleton, Select } from 'antd';
 import { SkeletonTabla } from '../../components/ui/SkeletonTabla';
 import { useSkeletonDelay } from '../../hooks/useSkeletonDelay';
 import {
@@ -20,7 +20,7 @@ import dayjs from 'dayjs';
 import api from '../../api/client';
 import { useAuthStore } from '../../store/auth.store';
 import { VideoTutorialButton } from '../../components/ui/TableToolbar';
-import { dRD, horaDelDiaRD, hoyRD } from '../../utils/fechaRD';
+import { anioRD, dRD, horaDelDiaRD } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 
@@ -274,7 +274,9 @@ function DashboardAdmin() {
       ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
       URL.revokeObjectURL(url);
       const a = document.createElement('a');
-      a.download = `ingresos-gastos-${hoyRD()}.png`;
+      // El nombre lleva el AÑO del gráfico, no la fecha de descarga: el archivo
+      // se guarda y se abre meses después, y ahí lo que importa es qué año es.
+      a.download = `ingresos-gastos-${anioRef.current}.png`;
       a.href = canvas.toDataURL('image/png');
       a.click();
     };
@@ -286,7 +288,8 @@ function DashboardAdmin() {
     qc.invalidateQueries({ queryKey: ['bancos-dashboard'] });
     qc.invalidateQueries({ queryKey: ['kpis-cf'] });
     qc.invalidateQueries({ queryKey: ['actividad-cf'] });
-    qc.invalidateQueries({ queryKey: ['ingresos-gastos-mensuales'] });
+    qc.invalidateQueries({ queryKey: ['ingresos-gastos-anual'] });
+    qc.invalidateQueries({ queryKey: ['anios-con-datos'] });
     qc.invalidateQueries({ queryKey: ['fact-pend-cf'] });
     qc.invalidateQueries({ queryKey: ['antiguedad-cobrar'] });
     qc.invalidateQueries({ queryKey: ['antiguedad-pagar'] });
@@ -322,13 +325,26 @@ function DashboardAdmin() {
     staleTime: 30_000,
   });
 
-  // Ingresos + gastos agrupados por mes para el gráfico (12 meses rodantes)
-  const chartDesde = dayjs().subtract(11, 'month').startOf('month').format('YYYY-MM-DD');
-  const chartHasta = dayjs().endOf('month').format('YYYY-MM-DD');
-  const { data: chartSeriesRaw } = useQuery<any>({
-    queryKey: ['ingresos-gastos-mensuales', chartDesde, chartHasta],
+  // Ingresos + gastos del AÑO FISCAL — enero a diciembre, no 12 meses rodantes.
+  // Un gráfico que arranca en septiembre del año pasado no sirve para leer un
+  // ejercicio. El rango lo decide el BACKEND: calcularlo aquí lo dejaría a merced
+  // de la zona del navegador, que es parte de lo que esto arregla.
+  const [anioChart, setAnioChart] = useState<number>(() => anioRD());
+  // El exportador de PNG es un useCallback sin dependencias; la ref le da el
+  // año en curso sin tener que recrearlo en cada cambio del selector.
+  const anioRef = useRef(anioChart);
+  useEffect(() => { anioRef.current = anioChart; }, [anioChart]);
+
+  const { data: aniosDisponibles } = useQuery<number[]>({
+    queryKey: ['anios-con-datos'],
+    queryFn:  () => api.get('/reportes/dashboard/anios-con-datos').then((r: any) => r.data?.data ?? r.data),
+    staleTime: 600_000,
+  });
+
+  const { data: chartAnualRaw } = useQuery<any>({
+    queryKey: ['ingresos-gastos-anual', anioChart],
     queryFn:  () => api.get(
-      `/reportes/dashboard/ingresos-gastos-mensuales?fechaDesde=${chartDesde}&fechaHasta=${chartHasta}`,
+      `/reportes/dashboard/ingresos-gastos-anual?anio=${anioChart}`,
     ).then((r: any) => r.data?.data ?? r.data),
     staleTime: 120_000,
   });
@@ -351,8 +367,6 @@ function DashboardAdmin() {
 
   const auditLogs   = Array.isArray(auditRaw?.data) ? auditRaw.data : (Array.isArray(auditRaw) ? auditRaw : []);
   const facturas    = Array.isArray(factPendRaw) ? factPendRaw : [];
-  const chartSeries: { mes: number; anio: number; ingresos: number; gastos: number }[] =
-    Array.isArray(chartSeriesRaw) ? chartSeriesRaw : (chartSeriesRaw?.data ?? []);
 
   const ahora = dayjs();
 
@@ -377,14 +391,15 @@ function DashboardAdmin() {
     staleTime: 120_000,
   });
 
-  // Datos del gráfico — 12 meses rodantes con datos reales por mes
+  // Enero a diciembre del año elegido. El backend ya devuelve los 12 meses con
+  // ceros donde no hay datos: los meses futuros salen VACÍOS, no ocultos — ver
+  // el año completo con la parte que falta es información.
+  const MESES_CORTOS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const mesesAnual: any[] = Array.isArray(chartAnualRaw?.meses) ? chartAnualRaw.meses : [];
   const chartData = Array.from({ length: 12 }, (_, i) => {
-    const d    = dayjs().subtract(11 - i, 'month');
-    const mes  = d.month() + 1;
-    const anio = d.year();
-    const row  = chartSeries.find(r => r.mes === mes && r.anio === anio);
+    const row = mesesAnual.find((r: any) => Number(r.mes) === i + 1);
     return {
-      label:   d.format('MMM YYYY'),
+      label:   MESES_CORTOS[i],
       ingreso: Number(row?.ingresos ?? 0),
       gasto:   Number(row?.gastos   ?? 0),
     };
@@ -560,6 +575,18 @@ function DashboardAdmin() {
             extra={
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {/* Selector de año. Sin él, en enero el gráfico sale casi
+                      vacío y no habría forma de mirar el ejercicio recién
+                      cerrado. El año en curso siempre está en la lista, aunque
+                      todavía no tenga movimientos. */}
+                  <Select
+                    size="small"
+                    value={anioChart}
+                    onChange={setAnioChart}
+                    style={{ width: 88 }}
+                    options={(aniosDisponibles?.length ? aniosDisponibles : [anioRD()])
+                      .map(a => ({ value: a, label: String(a) }))}
+                  />
                   <AntTooltip title={chartTipo === 'line' ? 'Ver como barras' : 'Ver como línea'}>
                     <button
                       onClick={() => setChartTipo(t => {

@@ -6,7 +6,7 @@ import { FiltroFechaDto } from './dto/filtro-fecha.dto';
 import { FiltroMesAnioDto } from './dto/filtro-mes-anio.dto';
 import { UserRole } from '../users/enums/user-role.enum';
 import { TenantService } from '../tenant/tenant.service';
-import { fechaTextoRD } from '../common/utils/fecha-local.util';
+import { fechaTextoRD, fechaHoyRD } from '../common/utils/fecha-local.util';
 
 // ── helpers de fecha ────────────────────────────────────────────────────────
 
@@ -436,6 +436,81 @@ export class ReportesService {
     return [...map.values()].sort((a, b) =>
       a.anio !== b.anio ? a.anio - b.anio : a.mes - b.mes,
     );
+  }
+
+  /**
+   * Ingresos y gastos del AÑO EN CURSO (o del año que se pida), de enero a
+   * diciembre.
+   *
+   * Sustituye al rango rodante de 12 meses que decidía el frontend. Un gráfico
+   * que arranca en septiembre del año pasado no sirve para leer un ejercicio
+   * fiscal: el ejercicio va de enero a diciembre, y punto.
+   *
+   * DEVUELVE SIEMPRE LOS 12 MESES, con ceros donde no hay datos. Los meses
+   * futuros salen vacíos a propósito en vez de ocultarse: ver el año completo
+   * con la parte que falta es información, no ruido.
+   *
+   * El año por defecto se calcula en zona RD. Con la del servidor (UTC), el 31
+   * de diciembre a las 8 de la noche en Santo Domingo el gráfico ya saltaría al
+   * año siguiente y aparecería vacío.
+   *
+   * El rango lo fija AQUÍ, no el cliente: si lo decidiera el frontend volvería
+   * a depender de la zona del navegador, que es parte del problema que esto
+   * arregla.
+   */
+  async getIngresosGastosAnual(anio?: number): Promise<{
+    anio: number;
+    meses: { mes: number; anio: number; ingresos: number; gastos: number }[];
+  }> {
+    const anioResuelto = anio ?? Number(fechaHoyRD().substring(0, 4));
+
+    const filas = await this.getIngresosGastosMensuales(
+      `${anioResuelto}-01-01`,
+      `${anioResuelto}-12-31`,
+    );
+
+    const porMes = new Map(filas.map(f => [f.mes, f]));
+    const meses = Array.from({ length: 12 }, (_, i) => {
+      const mes = i + 1;
+      const f   = porMes.get(mes);
+      return {
+        mes, anio: anioResuelto,
+        ingresos: Number(f?.ingresos ?? 0),
+        gastos:   Number(f?.gastos   ?? 0),
+      };
+    });
+
+    return { anio: anioResuelto, meses };
+  }
+
+  /**
+   * Años que tienen facturas o gastos en ESTA empresa, de más reciente a más
+   * antiguo. Alimenta el selector de año del gráfico.
+   *
+   * Sin selector, en enero el gráfico sale casi vacío y no hay forma de mirar
+   * el ejercicio que acaba de cerrar.
+   *
+   * El año en curso se incluye siempre aunque todavía no tenga movimientos: es
+   * el que se muestra por defecto y la lista no puede salir sin él.
+   */
+  async getAniosConDatos(): Promise<number[]> {
+    const filas = await this.dataSource.query<{ anio: string }[]>(
+      `SELECT DISTINCT EXTRACT(YEAR FROM fecha)::int AS anio
+         FROM facturas
+        WHERE "isActive" = true AND "empresaId" = $1 AND estado IN ('emitida','pagada')
+       UNION
+       SELECT DISTINCT EXTRACT(YEAR FROM fecha)::int AS anio
+         FROM gastos
+        WHERE "isActive" = true AND "empresaId" = $1
+       ORDER BY anio DESC`,
+      [this.eid],
+    );
+
+    const anios = filas.map(f => Number(f.anio)).filter(a => a > 1900);
+    const enCurso = Number(fechaHoyRD().substring(0, 4));
+    if (!anios.includes(enCurso)) anios.unshift(enCurso);
+
+    return [...new Set(anios)].sort((a, b) => b - a);
   }
 
   // ══════════════════════════════════════════════════════════════════════════
