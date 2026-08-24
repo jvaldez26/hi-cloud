@@ -143,6 +143,7 @@ import { BalanzaModule }            from './balanza/balanza.module';
 import { VideosTutorialesModule }   from './videos-tutoriales/videos-tutoriales.module';
 import { MensajesModule }          from './mensajes/mensajes.module';
 import { GastosImportacionModule }  from './gastos-importacion/gastos-importacion.module';
+import { ActivacionEcfModule } from './activacion-ecf/activacion-ecf.module';
 
 @Module({
   imports: [
@@ -375,6 +376,7 @@ import { GastosImportacionModule }  from './gastos-importacion/gastos-importacio
     PortalEmpleadoModule,
     AsistenteModule,
     SuperAdminModule,
+    ActivacionEcfModule,
     SolicitudesCompraModule,
     PlaneacionDemandaModule,
     CuentasEstadisticasModule,
