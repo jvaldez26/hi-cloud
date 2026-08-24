@@ -74,6 +74,11 @@ function horaRD(iso: string): string {
  * anuladas no sirve para auditar. Se muestran con su monto original tachado y
  * NO suman en el total del bloque, para que ese total cuadre contra el resumen
  * —que también las excluye—.
+ *
+ * La última línea, "N facturas impresas", SÍ las cuenta: sirve para saber que
+ * el ticket trae todas y no viene recortado. No se imprime ningún tope — un
+ * cierre a medias no sirve para cuadrar, y quien quiera algo más corto tiene
+ * el PDF y el Excel.
  */
 export function bloqueFacturasTermico(detalle: DetalleCierreTermico | null | undefined): string {
   const facturas = detalle?.facturas ?? [];
@@ -113,6 +118,7 @@ export function bloqueFacturasTermico(detalle: DetalleCierreTermico | null | und
     <div class="fe-res"><span>Facturas emitidas:</span><span>${nEmitidas}</span></div>
     ${nAnuladas > 0 ? `<div class="fe-res"><span>Anuladas (no suman):</span><span>${nAnuladas}</span></div>` : ''}
     <div class="fe-res fe-bold"><span>Total facturado:</span><span>RD$${esc(money(suma))}</span></div>
+    <div class="fe-impresas">${facturas.length} factura${facturas.length === 1 ? '' : 's'} impresa${facturas.length === 1 ? '' : 's'}</div>
   `;
 }
 
@@ -133,4 +139,5 @@ export const CSS_FACTURAS_TERMICO = `
   .fe-tot{flex:1 1 30%;text-align:right;font-variant-numeric:tabular-nums}
   .fe-res{display:flex;justify-content:space-between;font-size:.85em}
   .fe-res.fe-bold{font-weight:700}
+  .fe-impresas{text-align:center;font-size:.72em;margin-top:2px}
 `;

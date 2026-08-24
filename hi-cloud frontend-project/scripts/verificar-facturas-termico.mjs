@@ -106,6 +106,19 @@ console.log('\nMétodo de pago');
   ok('sin forma de pago no rompe', sinPago.includes('—'));
 }
 
+console.log('\nN facturas impresas — para saber que están todas');
+{
+  const html = M.bloqueFacturasTermico({
+    facturas: [fac(), fac({ folio: 'FAC-000102' }), fac({ folio: 'FAC-000103', cancelada: true })],
+  });
+  // Cuenta TODAS las impresas, anuladas incluidas: la línea dice que el ticket
+  // no viene recortado, no cuántas facturaron.
+  ok('cuenta las 3 impresas, no las 2 que suman', html.includes('3 facturas impresas'));
+
+  const una = M.bloqueFacturasTermico({ facturas: [fac()] });
+  ok('singular con una sola', una.includes('1 factura impresa'));
+}
+
 console.log('\nEl bloque no calcula dinero del cuadre');
 {
   const src = outputFiles[0].text;
