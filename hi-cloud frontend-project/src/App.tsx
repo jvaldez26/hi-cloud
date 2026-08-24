@@ -777,7 +777,10 @@ export default function App() {
                     <Route path="/vacaciones"         element={<VacacionesPage />} />
                     <Route path="/crm"                element={<CRMPage />} />
                     <Route path="/proyectos"          element={<ProyectosPage />} />
-                    <Route path="/equipo"             element={<EquipoPage />} />
+                    {/* Gestiona usuarios y roles: quien entre aquí decide quién
+                        puede hacer qué. Sin guard, un cajero que escribiera la
+                        URL veía la estructura del equipo entera. */}
+                    <Route path="/equipo"             element={<RolRoute roles={['admin']}><EquipoPage /></RolRoute>} />
                     <Route path="/declaraciones"      element={<DeclaracionesPage />} />
                     <Route path="/bancos"             element={<BancosPage />} />
                     <Route path="/tss"                element={<TSSPage />} />
@@ -802,7 +805,7 @@ export default function App() {
                     <Route path="/periodo-contable"        element={<PeriodoContablePage />} />
                     <Route path="/reportes-financieros"    element={<ReportesFinancierosPage />} />
                     <Route path="/documentos"              element={<DocumentosPage />} />
-                    <Route path="/sucursales"              element={<SucursalesPage />} />
+                    <Route path="/sucursales"              element={<RolRoute roles={['admin']}><SucursalesPage /></RolRoute>} />
                     <Route path="/pre-facturas"            element={<PreFacturaPage />} />
                     <Route path="/pro-formas"              element={<ProFormasPage />} />
                     <Route path="/conduces"               element={<ConducePage />} />
@@ -823,7 +826,7 @@ export default function App() {
                     <Route path="/anticipos-cliente"      element={<AnticiposClientePage />} />
                     <Route path="/generador-reportes"     element={<GeneradorReportesPage />} />
                     <Route path="/contactos"              element={<ContactosPage />} />
-                    <Route path="/aprobaciones"           element={<AprobacionesPage />} />
+                    <Route path="/aprobaciones"           element={<RolRoute roles={['admin']}><AprobacionesPage /></RolRoute>} />
                     <Route path="/fidelidad"              element={<FidelidadPage />} />
                     <Route path="/soporte/tickets"        element={<TicketsSoportePage />} />
                     <Route path="/cuotas"                 element={<CuotasPage />} />
@@ -836,7 +839,7 @@ export default function App() {
                     {/* Admin/Contador acceden desde el sidebar, que navega a /portal-empleado */}
                     {/* ── Sistema ── */}
                     <Route path="/auditoria"          element={<AuditoriaPage />} />
-                    <Route path="/importacion"        element={<ImportacionPage />} />
+                    <Route path="/importacion"        element={<RolRoute roles={['admin']}><ImportacionPage /></RolRoute>} />
                     <Route path="/configuracion"      element={<ConfiguracionPage />} />
                     <Route path="/mi-suscripcion"     element={<MiSuscripcionPage />} />
                     <Route path="/profile"            element={<ProfilePage />} />
