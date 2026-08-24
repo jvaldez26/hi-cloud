@@ -5,6 +5,11 @@ import {
   Spin, Empty, Space, Alert, ConfigProvider, theme as antTheme, DatePicker,
 } from 'antd';
 import type { MenuProps } from 'antd';
+import { SidebarShell, useSidebarColapsado } from '../../components/layout/sidebar/SidebarShell';
+import {
+  SidebarCtx, PALETTES, FlyoutPanel,
+  type SidebarPalette, type MenuCategory,
+} from '../../components/layout/sidebar/base';
 import { ecfConfigApi } from '../../api/ecf-config.api';
 import EcfBadge, { type EstadoEcf } from '../../components/ui/EcfBadge';
 import {
@@ -1446,6 +1451,33 @@ export default function SuperAdminPage() {
   // Estado UI
   const [tab, setTab]               = useState('empresas');
 
+  // ── Menú lateral ──────────────────────────────────────────────────────────
+  // Mismo armazón que el ERP. La clave de localStorage es distinta a propósito:
+  // son dos menús diferentes y colapsar uno no debe colapsar el otro.
+  const { collapsed: menuColapsado, setCollapsed: setMenuColapsado } =
+    useSidebarColapsado('hicloud-sa-sidebar-collapsed');
+  const [grupoAbierto, setGrupoAbierto] = useState<string | null>('gestion');
+  const [panelMenu, setPanelMenu] = useState<{ id: string; top: number } | null>(null);
+
+  /**
+   * El armazón compartido espera una SidebarPalette. En vez de mantener una
+   * paleta paralela, se parte de la del ERP y se sobrescriben los colores que
+   * el panel ya tenía propios — el acento dorado, sobre todo.
+   */
+  const paletaMenu: SidebarPalette = useMemo(() => ({
+    ...(isDark ? PALETTES.dark : PALETTES.nube),
+    bg:            C.bg,
+    border:        C.border,
+    separator:     C.border,
+    accent:        C.gold,
+    text:          C.txt,
+    textActive:    C.gold,
+    textCategory:  C.txt2,
+    textSub:       C.txt2,
+    footerText:    C.txt2,
+    wordmarkColor: C.txt,
+  }), [isDark, C]);
+
   // Estado de los respaldos: alimenta el punto rojo del sidebar. Se consulta
   // aqui y no dentro de BackupsPage para que el aviso se vea SIN entrar en la
   // pantalla — que es justo lo que fallaba: nadie entraba.
@@ -2109,6 +2141,55 @@ export default function SuperAdminPage() {
     },
   ];
 
+  /**
+   * Entradas del menú lateral. Los contadores salen de las mismas consultas de
+   * siempre; lo único que cambia respecto a antes es que el armazón es ahora el
+   * compartido con el ERP.
+   */
+  const gruposMenu: MenuCategory[] = [
+    {
+      id: 'gestion', label: 'Gestión', Icon: Building2,
+      items: [
+        { path: 'empresas',      label: 'Empresas',      icono: <Building2 size={15} />,
+          badgeCount: (empresas as any[]).length },
+        { path: 'usuarios',      label: 'Usuarios',      icono: <Users size={15} />,
+          badgeCount: (usuarios as any[]).length },
+        { path: 'pendientes',    label: 'Pendientes',    icono: <ClockIcon size={15} />,
+          badgeCount: pendientesCount + empresasPendCount,
+          badgeColor: (pendientesCount + empresasPendCount) > 0 ? C.red : undefined },
+        { path: 'suscripciones', label: 'Suscripciones', icono: <Crown size={15} />,
+          badgeCount: (suscripciones as any[]).length },
+        { path: 'cobros',        label: 'Cobros',        icono: <DollarSign size={15} /> },
+        { path: 'solicitudes',   label: 'Solicitudes',   icono: <Send size={15} />,
+          badgeCount: solicitudesPendientes ?? 0, badgeColor: C.red },
+        { path: 'demos',         label: 'Demos',         icono: <MessageSquare size={15} />,
+          badgeCount: demosNuevas, badgeColor: C.red },
+        { path: 'pruebas',       label: 'En Prueba',     icono: <ClockIcon size={15} />,
+          badgeCount: (pruebas as any[]).length },
+        { path: 'auditoria',     label: 'Auditoría',     icono: <Shield size={15} /> },
+      ],
+    },
+    {
+      id: 'sistema', label: 'Sistema', Icon: Settings,
+      items: [
+        { path: 'metricas',       label: 'Métricas MRR',     icono: <BarChart2 size={15} /> },
+        { path: 'ecf',            label: 'e-CF Config',      icono: <FileText size={15} /> },
+        { path: 'modulos',        label: 'Módulos Add-on',   icono: <span style={{ fontSize: 15 }}>🧩</span> },
+        { path: 'videos',         label: 'Videos Tutoriales', icono: <span style={{ fontSize: 15 }}>🎬</span> },
+        { path: 'mensajes',       label: 'Mensajes',         icono: <span style={{ fontSize: 15 }}>📥</span> },
+        { path: 'herramientas',   label: 'Herramientas',     icono: <Settings size={15} /> },
+        { path: 'activacion-ecf', label: 'Activaciones e-CF', icono: <FileText size={15} /> },
+        // El punto rojo aparece cuando no hay respaldo reciente — o cuando no hay
+        // NINGÚN registro, que es el caso peor y el que antes se veía igual que
+        // si todo estuviera bien.
+        { path: 'backups',        label: 'Respaldos',        icono: <Database size={15} />,
+          alerta: respaldoCritico },
+        { path: 'config',         label: 'Configuración',    icono: <Settings size={15} /> },
+      ],
+    },
+  ];
+
+
   // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
@@ -2363,118 +2444,58 @@ export default function SuperAdminPage() {
         {/* ── LAYOUT: SIDEBAR + CONTENIDO ──────────────────────────────────── */}
         <div style={{ display: 'flex', gap: 0, background: C.card, borderRadius: 14, border: `1px solid ${C.border}`, overflow: 'hidden', minHeight: 560 }}>
 
-          {/* ── SIDEBAR VERTICAL IZQUIERDO ──────────────────────────────────── */}
-          <nav style={{
-            width: 220, flexShrink: 0,
-            background: C.bg, borderRight: `1px solid ${C.border}`,
-            display: 'flex', flexDirection: 'column', padding: '12px 0',
-          }}>
-            {/* Grupo GESTIÓN */}
-            <div style={{ padding: '4px 16px 6px', color: C.txt2, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', marginTop: 4 }}>
-              Gestión
-            </div>
-            {[
-              { key: 'empresas',      icon: <Building2 size={15} />,  label: 'Empresas',      count: (empresas as any[]).length, countColor: C.blue },
-              { key: 'usuarios',      icon: <Users size={15} />,      label: 'Usuarios',      count: (usuarios as any[]).length, countColor: C.blue },
-              { key: 'pendientes',    icon: <ClockIcon size={15} />,  label: 'Pendientes',    count: pendientesCount + empresasPendCount, countColor: C.red, badge: (pendientesCount + empresasPendCount) > 0 },
-              { key: 'suscripciones', icon: <Crown size={15} />,      label: 'Suscripciones', count: (suscripciones as any[]).length, countColor: C.blue },
-              { key: 'cobros',        icon: <DollarSign size={15} />, label: 'Cobros',        count: 0, countColor: C.gold },
-              { key: 'solicitudes',   icon: <Send size={15} />,       label: 'Solicitudes',   count: solicitudesPendientes ?? 0, countColor: C.red, badge: true },
-              { key: 'demos',         icon: <MessageSquare size={15} />, label: 'Demos',       count: demosNuevas, countColor: C.red, badge: demosNuevas > 0 },
-              { key: 'pruebas',       icon: <ClockIcon size={15} />,  label: 'En Prueba',     count: (pruebas as any[]).length, countColor: C.gold },
-              { key: 'auditoria',     icon: <Shield size={15} />,     label: 'Auditoría',     count: 0, countColor: C.blue },
-            ].map(t => {
-              const activo = tab === t.key;
-              return (
-                <button key={t.key} onClick={() => setTab(t.key)} style={{
-                  width: '100%', border: 'none', cursor: 'pointer',
-                  padding: '9px 16px 9px 14px',
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  borderLeft: `3px solid ${activo ? C.gold : 'transparent'}`,
-                  background: activo ? `${C.gold}18` : 'none',
-                  color: activo ? C.gold : C.txt2,
-                  fontWeight: activo ? 700 : 500, fontSize: 13,
-                  transition: 'all .15s', textAlign: 'left',
-                }}
-                  onMouseEnter={e => { if (!activo) e.currentTarget.style.background = `${C.border}66`; }}
-                  onMouseLeave={e => { if (!activo) e.currentTarget.style.background = 'none'; }}>
-                  <span style={{ flexShrink: 0, color: activo ? C.gold : C.txt2 }}>{t.icon}</span>
-                  <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.label}</span>
-                  {t.count > 0 && (
-                    <span style={{
-                      background: t.badge ? C.red : activo ? `${C.gold}33` : C.border,
-                      color: t.badge ? '#fff' : activo ? C.gold : C.txt2,
-                      borderRadius: 10, padding: '1px 7px', fontSize: 10, fontWeight: 700, flexShrink: 0,
-                    }}>{t.count}</span>
-                  )}
+          {/* ── MENÚ LATERAL ────────────────────────────────────────────────── */}
+          <SidebarCtx.Provider value={paletaMenu}>
+            <SidebarShell
+              collapsed={menuColapsado}
+              onCollapsed={setMenuColapsado}
+              tagline="SUPER ADMIN"
+              itemsRapidos={[]}
+              gruposAddon={[]}
+              gruposNormales={gruposMenu}
+              activePath={tab}
+              onNavegar={setTab}
+              onPrefetch={() => { /* son pestañas, no rutas: no hay nada que precargar */ }}
+              categoriaAbierta={grupoAbierto}
+              onToggleCategoria={id => setGrupoAbierto(g => (g === id ? null : id))}
+              panelAbiertoId={panelMenu?.id ?? null}
+              onAbrirPanel={(id, top) => setPanelMenu(p => (p?.id === id ? null : { id, top }))}
+              pie={
+                <button
+                  onClick={() => qc.invalidateQueries()}
+                  title="Actualizar datos"
+                  style={{
+                    width: '100%', background: 'none', border: `1px solid ${C.border}`,
+                    cursor: 'pointer', padding: '7px 12px', borderRadius: 6,
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    justifyContent: menuColapsado ? 'center' : 'flex-start',
+                    color: C.txt2, fontSize: 12, fontWeight: 500,
+                  }}>
+                  <RefreshCw size={13} />
+                  {!menuColapsado && 'Actualizar datos'}
                 </button>
-              );
-            })}
+              }
+            />
+          </SidebarCtx.Provider>
 
-            {/* Grupo SISTEMA */}
-            <div style={{ padding: '12px 16px 6px', color: C.txt2, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', marginTop: 8 }}>
-              Sistema
-            </div>
-            {[
-              { key: 'metricas',      icon: <BarChart2 size={15} />,  label: 'Métricas MRR' },
-              { key: 'ecf',           icon: <FileText size={15} />,   label: 'e-CF Config' },
-              { key: 'modulos',       icon: <span style={{ fontSize: 15 }}>🧩</span>, label: 'Módulos Add-on' },
-              { key: 'videos',        icon: <span style={{ fontSize: 15 }}>🎬</span>, label: 'Videos Tutoriales' },
-              { key: 'mensajes',      icon: <span style={{ fontSize: 15 }}>📥</span>, label: 'Mensajes' },
-              { key: 'herramientas',  icon: <Settings size={15} />,   label: 'Herramientas' },
-              // La pantalla existía y estaba enrutada, pero no se enlazaba desde
-              // ningún sitio: solo se llegaba escribiendo /super-admin/backups a
-              // mano. Una pantalla a la que nadie llega no vigila nada.
-              // El punto rojo aparece cuando no hay respaldo reciente — o cuando
-              // no hay NINGÚN registro, que es el caso peor y el que antes se
-              // veía igual que si todo estuviera bien.
-              { key: 'activacion-ecf', icon: <FileText size={15} />,  label: 'Activaciones e-CF' },
-              { key: 'backups',       icon: <Database size={15} />,   label: 'Respaldos',
-                alerta: respaldoCritico },
-              { key: 'config',        icon: <Settings size={15} />,   label: 'Configuración' },
-            ].map((t: any) => {
-              const activo = tab === t.key;
-              return (
-                <button key={t.key} onClick={() => setTab(t.key)} style={{
-                  width: '100%', border: 'none', cursor: 'pointer',
-                  padding: '9px 16px 9px 14px',
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  borderLeft: `3px solid ${activo ? C.gold : 'transparent'}`,
-                  background: activo ? `${C.gold}18` : 'none',
-                  color: activo ? C.gold : C.txt2,
-                  fontWeight: activo ? 700 : 500, fontSize: 13,
-                  transition: 'all .15s', textAlign: 'left',
-                }}
-                  onMouseEnter={e => { if (!activo) e.currentTarget.style.background = `${C.border}66`; }}
-                  onMouseLeave={e => { if (!activo) e.currentTarget.style.background = 'none'; }}>
-                  <span style={{ flexShrink: 0, color: activo ? C.gold : C.txt2 }}>{t.icon}</span>
-                  <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.label}</span>
-                  {t.alerta && (
-                    <span title="Sin respaldo reciente — revisar"
-                      style={{
-                        marginLeft: 'auto', flexShrink: 0,
-                        width: 8, height: 8, borderRadius: '50%',
-                        background: C.red, boxShadow: `0 0 0 3px ${C.red}33`,
-                      }} />
-                  )}
-                </button>
-              );
-            })}
-
-            {/* Separador + Refresh */}
-            <div style={{ marginTop: 'auto', borderTop: `1px solid ${C.border}`, padding: '12px 12px 4px' }}>
-              <button
-                onClick={() => qc.invalidateQueries()}
-                style={{
-                  width: '100%', background: 'none', border: `1px solid ${C.border}`,
-                  cursor: 'pointer', padding: '7px 12px', borderRadius: 6,
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  color: C.txt2, fontSize: 12, fontWeight: 500,
-                }}>
-                <RefreshCw size={13} /> Actualizar datos
-              </button>
-            </div>
-          </nav>
+          {/* Con el menú colapsado, el grupo se abre en un panel flotante — igual
+              que en el ERP. Sin esto, colapsar dejaría las entradas inalcanzables. */}
+          {menuColapsado && panelMenu && (() => {
+            const cat = gruposMenu.find(g => g.id === panelMenu.id);
+            if (!cat) return null;
+            return (
+              <FlyoutPanel
+                category={cat}
+                activePath={tab}
+                sidebarWidth={64}
+                panelTop={panelMenu.top}
+                onNavigate={p => { setTab(p); setPanelMenu(null); }}
+                onClose={() => setPanelMenu(null)}
+                planActual="plus"
+                onLocked={() => {}}
+              />
+            );
+          })()}
 
           {/* ── CONTENT AREA ────────────────────────────────────────────────── */}
           <div style={{ flex: 1, minWidth: 0, padding: 24, overflow: 'auto' }}>
