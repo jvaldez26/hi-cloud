@@ -26,6 +26,7 @@ import api from '../../api/client';
 import { demoApi, ESTADO_DEMO_LABEL, ESTADO_DEMO_COLOR } from '../../api/demo.api';
 import CobrosPage from './CobrosPage';
 import BackupsPage from './BackupsPage';
+import { ActivacionEcfAdminTab } from './ActivacionEcfAdminTab';
 import VideosTutorialesAdminPage from './VideosTutorialesAdminPage';
 import { MensajesAdminTab } from '../../components/super-admin/MensajesAdminTab';
 import { SECTORES_EMPRESARIALES } from '../../constants/sectores';
@@ -2421,6 +2422,7 @@ export default function SuperAdminPage() {
               // El punto rojo aparece cuando no hay respaldo reciente — o cuando
               // no hay NINGÚN registro, que es el caso peor y el que antes se
               // veía igual que si todo estuviera bien.
+              { key: 'activacion-ecf', icon: <FileText size={15} />,  label: 'Activaciones e-CF' },
               { key: 'backups',       icon: <Database size={15} />,   label: 'Respaldos',
                 alerta: respaldoCritico },
               { key: 'config',        icon: <Settings size={15} />,   label: 'Configuración' },
@@ -2886,6 +2888,9 @@ export default function SuperAdminPage() {
                 <CobrosAdminPanel />
               </div>
             )}
+
+            {/* ── TAB ACTIVACIONES e-CF ─────────────────────────────────────── */}
+            {tab === 'activacion-ecf' && <ActivacionEcfAdminTab />}
 
             {/* ── TAB RESPALDOS ─────────────────────────────────────────────── */}
             {tab === 'backups' && (

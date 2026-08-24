@@ -5,6 +5,7 @@ import { SolicitudActivacionEcf, EstadoSolicitudActivacion } from './entities/so
 import { CertificadoPfxService, MetadatosCertificado } from './certificado-pfx.service';
 import { TenantService } from '../tenant/tenant.service';
 import { S3Service } from '../common/s3/s3.service';
+import { IntentosCertificadoService } from './intentos-certificado.service';
 import { precioPara, tarifasVigentes, TARIFA_ACTIVACION_VERSION } from './tarifas-activacion';
 
 const COMPROBANTES_FOLDER = 'comprobantes-activacion';
@@ -19,6 +20,7 @@ export class ActivacionEcfService {
     private readonly certificadoSvc: CertificadoPfxService,
     private readonly tenantService: TenantService,
     private readonly s3Service: S3Service,
+    private readonly intentos: IntentosCertificadoService,
     private readonly ds: DataSource,
   ) {}
 
@@ -36,13 +38,30 @@ export class ActivacionEcfService {
    * El PFX NO se guarda: se abre, se leen tres metadatos y el buffer se
    * sobrescribe. Ver certificado-pfx.service.
    */
-  validarCertificado(pfx: Buffer, clave: string): {
+  async validarCertificado(
+    pfx: Buffer, clave: string, usuarioId: number, ip: string,
+  ): Promise<{
     metadatos: MetadatosCertificado;
     precio: number;
     mensaje: string | null;
-  } {
-    const metadatos = this.certificadoSvc.validar(pfx, clave);
-    const precio    = precioPara(metadatos.valido);
+  }> {
+    const empresaId = this.eid;
+
+    // Se comprueba ANTES de tocar el archivo: si esta bloqueado, el PFX ni se abre.
+    await this.intentos.exigirNoBloqueado(empresaId, ip);
+
+    let metadatos: MetadatosCertificado;
+    try {
+      metadatos = this.certificadoSvc.validar(pfx, clave);
+    } catch (e) {
+      // Clave incorrecta o archivo ilegible: cuenta como intento fallido y deja
+      // rastro con empresa y usuario — nunca con el archivo ni la clave.
+      await this.intentos.registrarFallo(empresaId, usuarioId, ip);
+      throw e;
+    }
+    await this.intentos.registrarExito(empresaId, ip);
+
+    const precio = precioPara(metadatos.valido);
 
     let mensaje: string | null = null;
     if (metadatos.vencido && metadatos.venceEn) {
@@ -74,6 +93,7 @@ export class ActivacionEcfService {
     notas?: string;
     pfx?: Buffer;
     clavePfx?: string;
+    ip?: string;
   }): Promise<SolicitudActivacionEcf> {
     const empresaId = this.eid;
 
@@ -96,7 +116,15 @@ export class ActivacionEcfService {
       valido: false, venceEn: null, titular: null, vencido: false,
     };
     if (datos.pfx?.length) {
-      metadatos = this.certificadoSvc.validar(datos.pfx, datos.clavePfx ?? '');
+      // Mismo freno que en validar-certificado: crear una solicitud tambien
+      // abre el PFX con una clave, asi que sirve igual de oraculo.
+      await this.intentos.exigirNoBloqueado(empresaId, datos.ip ?? 'desconocida');
+      try {
+        metadatos = this.certificadoSvc.validar(datos.pfx, datos.clavePfx ?? '');
+      } catch (e) {
+        await this.intentos.registrarFallo(empresaId, datos.usuarioId, datos.ip ?? 'desconocida');
+        throw e;
+      }
     }
 
     const solicitud = this.repo.create({

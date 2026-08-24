@@ -1,11 +1,12 @@
 import {
   Controller, Get, Post, Patch, Body, Param, ParseIntPipe, Query,
   UseGuards, UseInterceptors, UploadedFile, UploadedFiles, HttpCode, HttpStatus,
-  BadRequestException,
+  BadRequestException, Ip,
 } from '@nestjs/common';
 import { FileInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { IsOptional, IsString, IsEmail, IsEnum } from 'class-validator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -82,8 +83,16 @@ export class ActivacionEcfController {
    * El cliente ve el monto antes de enviar y cambia al subir el PFX. El archivo
    * se descarta en cuanto se leen los metadatos.
    */
+  //
+  // ESTE ENDPOINT ES UN ORACULO DE CLAVES: recibe un PFX y una contrasena y
+  // responde si es correcta. Con un certificado robado se podrian probar claves
+  // por fuerza bruta. Tres frenos:
+  //   1. Sesion obligatoria (JwtAuthGuard a nivel de clase) y rol admin/contador.
+  //   2. @Throttle por IP — el mismo mecanismo que el login.
+  //   3. Contador por empresa+IP con bloqueo progresivo, y rastro de cada fallo.
   @Post('validar-certificado')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 8, ttl: 60_000 } })
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @UseInterceptors(FileInterceptor('certificado', {
     storage: memoryStorage(),
@@ -99,9 +108,11 @@ export class ActivacionEcfController {
   validarCertificado(
     @UploadedFile() archivo: ArchivoSubido,
     @Body('clavePfx') clavePfx: string,
+    @GetUser() user: User,
+    @Ip() ip: string,
   ) {
     if (!archivo?.buffer) throw new BadRequestException('Falta el archivo del certificado.');
-    return this.svc.validarCertificado(archivo.buffer, clavePfx ?? '');
+    return this.svc.validarCertificado(archivo.buffer, clavePfx ?? '', user.id, ip);
   }
 
   /**
@@ -132,6 +143,7 @@ export class ActivacionEcfController {
     @Body() dto: CrearSolicitudDto,
     @GetUser() user: User,
     @UploadedFiles() archivos: { certificado?: ArchivoSubido[]; comprobante?: ArchivoSubido[] },
+    @Ip() ip: string,
   ) {
     const pfx = archivos?.certificado?.[0];
     if (pfx && pfx.size > MAX_PFX) {
@@ -146,6 +158,7 @@ export class ActivacionEcfController {
       notas:            dto.notas,
       pfx:              pfx?.buffer,
       clavePfx:         dto.clavePfx,
+      ip,
     });
 
     const comprobante = archivos?.comprobante?.[0];

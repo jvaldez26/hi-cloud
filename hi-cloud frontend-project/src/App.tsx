@@ -142,6 +142,7 @@ const AsistentePage               = lazy(() => import('./pages/asistente/Asisten
 const SuperAdminPage              = lazy(() => import('./pages/super-admin/SuperAdminPage'));
 const SetupTwoFactorGate          = lazy(() => import('./pages/super-admin/SetupTwoFactorGate'));
 const BackupsPage                 = lazy(() => import('./pages/super-admin/BackupsPage'));
+const ActivacionEcfPage           = lazy(() => import('./pages/activacion-ecf/ActivacionEcfPage'));
 const SolicitudesCompraPage       = lazy(() => import('./pages/solicitudes-compra/SolicitudesCompraPage'));
 const PlaneacionDemandaPage       = lazy(() => import('./pages/planeacion-demanda/PlaneacionDemandaPage'));
 const CuentasEstadisticasPage     = lazy(() => import('./pages/cuentas-estadisticas/CuentasEstadisticasPage'));
@@ -723,6 +724,7 @@ export default function App() {
                     {/* ── Operaciones ── */}
                     <Route path="/inventario"         element={<InventarioPage />} />
                     <Route path="/ecf"                element={<ECFPage />} />
+                    <Route path="/ecf/activar"        element={<ActivacionEcfPage />} />
                     <Route path="/ecf-recibidos"      element={<EcfRecibidosPage />} />
 
                     {/* ── Finanzas ── */}
