@@ -1456,7 +1456,7 @@ export default function SuperAdminPage() {
   // son dos menús diferentes y colapsar uno no debe colapsar el otro.
   const { collapsed: menuColapsado, setCollapsed: setMenuColapsado } =
     useSidebarColapsado('hicloud-sa-sidebar-collapsed');
-  const [grupoAbierto, setGrupoAbierto] = useState<string | null>('gestion');
+  const [grupoAbierto, setGrupoAbierto] = useState<string | null>('clientes');
   const [panelMenu, setPanelMenu] = useState<{ id: string; top: number } | null>(null);
 
   /**
@@ -2148,7 +2148,10 @@ export default function SuperAdminPage() {
    */
   const gruposMenu: MenuCategory[] = [
     {
-      id: 'gestion', label: 'Gestión', Icon: Building2,
+      // Todo lo que es "un cliente de la plataforma". Auditoría entra aquí y no
+      // en Sistema: ese registro se mira para ver qué hizo un cliente cuando
+      // llama preguntando, no para diagnosticar la plataforma.
+      id: 'clientes', label: 'Clientes', Icon: Building2,
       items: [
         { path: 'empresas',      label: 'Empresas',      icono: <Building2 size={15} />,
           badgeCount: (empresas as any[]).length },
@@ -2157,11 +2160,6 @@ export default function SuperAdminPage() {
         { path: 'pendientes',    label: 'Pendientes',    icono: <ClockIcon size={15} />,
           badgeCount: pendientesCount + empresasPendCount,
           badgeColor: (pendientesCount + empresasPendCount) > 0 ? C.red : undefined },
-        { path: 'suscripciones', label: 'Suscripciones', icono: <Crown size={15} />,
-          badgeCount: (suscripciones as any[]).length },
-        { path: 'cobros',        label: 'Cobros',        icono: <DollarSign size={15} /> },
-        { path: 'solicitudes',   label: 'Solicitudes',   icono: <Send size={15} />,
-          badgeCount: solicitudesPendientes ?? 0, badgeColor: C.red },
         { path: 'demos',         label: 'Demos',         icono: <MessageSquare size={15} />,
           badgeCount: demosNuevas, badgeColor: C.red },
         { path: 'pruebas',       label: 'En Prueba',     icono: <ClockIcon size={15} />,
@@ -2170,21 +2168,38 @@ export default function SuperAdminPage() {
       ],
     },
     {
+      // Lo que entra dinero. Métricas MRR va aquí porque mide ingreso
+      // recurrente, no salud de la plataforma.
+      id: 'facturacion', label: 'Facturación', Icon: DollarSign,
+      items: [
+        { path: 'suscripciones', label: 'Suscripciones', icono: <Crown size={15} />,
+          badgeCount: (suscripciones as any[]).length },
+        { path: 'cobros',        label: 'Cobros',        icono: <DollarSign size={15} /> },
+        { path: 'solicitudes',   label: 'Solicitudes',   icono: <Send size={15} />,
+          badgeCount: solicitudesPendientes ?? 0, badgeColor: C.red },
+        { path: 'metricas',      label: 'Métricas MRR',  icono: <BarChart2 size={15} /> },
+      ],
+    },
+    {
+      id: 'fiscal', label: 'Fiscal', Icon: FileText,
+      items: [
+        { path: 'ecf',            label: 'e-CF Config',       icono: <FileText size={15} /> },
+        { path: 'activacion-ecf', label: 'Activaciones e-CF', icono: <FileText size={15} /> },
+      ],
+    },
+    {
       id: 'sistema', label: 'Sistema', Icon: Settings,
       items: [
-        { path: 'metricas',       label: 'Métricas MRR',     icono: <BarChart2 size={15} /> },
-        { path: 'ecf',            label: 'e-CF Config',      icono: <FileText size={15} /> },
-        { path: 'modulos',        label: 'Módulos Add-on',   icono: <span style={{ fontSize: 15 }}>🧩</span> },
-        { path: 'videos',         label: 'Videos Tutoriales', icono: <span style={{ fontSize: 15 }}>🎬</span> },
-        { path: 'mensajes',       label: 'Mensajes',         icono: <span style={{ fontSize: 15 }}>📥</span> },
-        { path: 'herramientas',   label: 'Herramientas',     icono: <Settings size={15} /> },
-        { path: 'activacion-ecf', label: 'Activaciones e-CF', icono: <FileText size={15} /> },
+        { path: 'modulos',      label: 'Módulos Add-on',    icono: <span style={{ fontSize: 15 }}>🧩</span> },
+        { path: 'videos',       label: 'Videos Tutoriales', icono: <span style={{ fontSize: 15 }}>🎬</span> },
+        { path: 'mensajes',     label: 'Mensajes',          icono: <span style={{ fontSize: 15 }}>📥</span> },
         // El punto rojo aparece cuando no hay respaldo reciente — o cuando no hay
         // NINGÚN registro, que es el caso peor y el que antes se veía igual que
         // si todo estuviera bien.
-        { path: 'backups',        label: 'Respaldos',        icono: <Database size={15} />,
+        { path: 'backups',      label: 'Respaldos',         icono: <Database size={15} />,
           alerta: respaldoCritico },
-        { path: 'config',         label: 'Configuración',    icono: <Settings size={15} /> },
+        { path: 'herramientas', label: 'Herramientas',      icono: <Settings size={15} /> },
+        { path: 'config',       label: 'Configuración',     icono: <Settings size={15} /> },
       ],
     },
   ];
