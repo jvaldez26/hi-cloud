@@ -65,6 +65,32 @@ function horaRD(iso: string): string {
   } catch { return ''; }
 }
 
+const plural = (n: number, sing: string, plur: string) => `${n} ${n === 1 ? sing : plur}`;
+
+/**
+ * Línea final: dice que el ticket viene completo.
+ *
+ * Cuando hay anuladas se desglosa en la misma línea —"3 líneas impresas
+ * (2 emitidas + 1 anulada)"— porque si no, ese 3 no cuadra con el "Facturas
+ * emitidas: 2" de arriba y quien lee el papel tiene que adivinar por qué. Con
+ * el desglose delante, la resta está hecha.
+ *
+ * Los números salen del array que se acaba de imprimir, no del resumen del
+ * backend: así la suma del paréntesis SIEMPRE cuadra con el total de la línea.
+ * Si alguna vez difiriera del "Facturas emitidas" de arriba, esa discrepancia
+ * es justo lo que hay que ver, no algo que tapar aquí.
+ */
+function lineaImpresas(facturas: FacturaDetalleTermico[]): string {
+  const total    = facturas.length;
+  const anuladas = facturas.filter(f => f.cancelada).length;
+  const emitidas = total - anuladas;
+
+  if (anuladas === 0) return plural(total, 'factura impresa', 'facturas impresas');
+
+  return `${plural(total, 'línea impresa', 'líneas impresas')} ` +
+         `(${plural(emitidas, 'emitida', 'emitidas')} + ${plural(anuladas, 'anulada', 'anuladas')})`;
+}
+
 /**
  * Devuelve el HTML del bloque, o cadena vacía si no hay facturas.
  *
@@ -118,7 +144,7 @@ export function bloqueFacturasTermico(detalle: DetalleCierreTermico | null | und
     <div class="fe-res"><span>Facturas emitidas:</span><span>${nEmitidas}</span></div>
     ${nAnuladas > 0 ? `<div class="fe-res"><span>Anuladas (no suman):</span><span>${nAnuladas}</span></div>` : ''}
     <div class="fe-res fe-bold"><span>Total facturado:</span><span>RD$${esc(money(suma))}</span></div>
-    <div class="fe-impresas">${facturas.length} factura${facturas.length === 1 ? '' : 's'} impresa${facturas.length === 1 ? '' : 's'}</div>
+    <div class="fe-impresas">${lineaImpresas(facturas)}</div>
   `;
 }
 

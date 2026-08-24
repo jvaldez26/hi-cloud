@@ -106,17 +106,42 @@ console.log('\nMétodo de pago');
   ok('sin forma de pago no rompe', sinPago.includes('—'));
 }
 
-console.log('\nN facturas impresas — para saber que están todas');
+console.log('\nLínea final — el ticket viene completo, y por qué no cuadra con el de arriba');
 {
-  const html = M.bloqueFacturasTermico({
+  // Con anuladas: el desglose va en la misma línea para que nadie tenga que
+  // restar mentalmente contra el "Facturas emitidas: 2" de arriba.
+  const conAnulada = M.bloqueFacturasTermico({
     facturas: [fac(), fac({ folio: 'FAC-000102' }), fac({ folio: 'FAC-000103', cancelada: true })],
   });
-  // Cuenta TODAS las impresas, anuladas incluidas: la línea dice que el ticket
-  // no viene recortado, no cuántas facturaron.
-  ok('cuenta las 3 impresas, no las 2 que suman', html.includes('3 facturas impresas'));
+  ok('desglosa: "3 líneas impresas (2 emitidas + 1 anulada)"',
+     conAnulada.includes('3 líneas impresas (2 emitidas + 1 anulada)'));
+
+  // Sin anuladas no hay nada que explicar: sobra el paréntesis.
+  const sinAnuladas = M.bloqueFacturasTermico({
+    facturas: [fac(), fac({ folio: 'FAC-000102' }), fac({ folio: 'FAC-000103' })],
+  });
+  ok('sin anuladas dice solo "3 facturas impresas"',
+     sinAnuladas.includes('3 facturas impresas'));
+  ok('y no cuela un paréntesis vacío', !sinAnuladas.includes('impresas ('));
 
   const una = M.bloqueFacturasTermico({ facturas: [fac()] });
   ok('singular con una sola', una.includes('1 factura impresa'));
+
+  // Caso límite: el turno entero anulado. "0 emitidas" tiene que salir bien.
+  const todasAnuladas = M.bloqueFacturasTermico({
+    facturas: [fac({ cancelada: true }), fac({ folio: 'FAC-000102', cancelada: true })],
+  });
+  ok('turno entero anulado: "2 líneas impresas (0 emitidas + 2 anuladas)"',
+     todasAnuladas.includes('2 líneas impresas (0 emitidas + 2 anuladas)'));
+
+  // Una sola, y anulada: singular en los dos sitios.
+  const unaAnulada = M.bloqueFacturasTermico({ facturas: [fac({ cancelada: true })] });
+  ok('una sola anulada: "1 línea impresa (0 emitidas + 1 anulada)"',
+     unaAnulada.includes('1 línea impresa (0 emitidas + 1 anulada)'));
+
+  // La suma del paréntesis SIEMPRE cuadra con el total de la línea.
+  ok('emitidas + anuladas = impresas', conAnulada.includes('3 líneas') &&
+     conAnulada.includes('(2 emitidas + 1 anulada)'));
 }
 
 console.log('\nEl bloque no calcula dinero del cuadre');
