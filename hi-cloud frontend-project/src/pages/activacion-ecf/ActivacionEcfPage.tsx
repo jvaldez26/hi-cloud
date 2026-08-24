@@ -34,9 +34,58 @@ const ESTADO_INFO: Record<string, { label: string; color: string; texto: string 
     texto: 'La solicitud fue rechazada.' },
 };
 
+/**
+ * Lo que el cliente necesita tener. Salen del flujo real de activación, no de
+ * una lista genérica: cada uno corresponde a algo que hace falta de verdad para
+ * emitir un e-CF con este sistema.
+ */
+const REQUISITOS = [
+  {
+    titulo: 'RNC activo en la DGII',
+    detalle: 'El RNC de la empresa debe estar vigente. Es el emisor de cada comprobante.',
+  },
+  {
+    titulo: 'Datos fiscales completos',
+    detalle: 'Razón social y dirección tal como constan en la DGII — van dentro del comprobante.',
+  },
+  {
+    titulo: 'Secuencias de e-NCF autorizadas',
+    detalle: 'Se solicitan en la Oficina Virtual de la DGII. Te acompañamos en el trámite.',
+  },
+  {
+    titulo: 'Certificado digital (opcional)',
+    detalle: 'Si ya lo tienes, la implementación te sale más barata. Si no, lo gestionamos nosotros.',
+  },
+];
+
+/**
+ * Beneficios. Cada uno describe algo que este sistema HACE, comprobable.
+ *
+ * NO se promete ningún crédito fiscal ni incentivo por acogimiento voluntario:
+ * la Ley 32-23 contempla incentivos, pero dependen del tramo del contribuyente
+ * y del calendario, y afirmarle a alguien que le corresponde uno que luego no
+ * le dan es peor que no decir nada. Eso lo confirma su contador.
+ */
+const BENEFICIOS = [
+  {
+    titulo: 'Validación con la DGII al emitir',
+    detalle: 'Cada comprobante se envía y recibe respuesta de la DGII en el momento. Sabes si fue aceptado antes de que el cliente salga por la puerta.',
+  },
+  {
+    titulo: 'Se acaban las secuencias en papel',
+    detalle: 'Nada de mandar a imprimir talonarios ni llevar el control a mano: las secuencias son electrónicas y el sistema avisa cuando se están agotando.',
+  },
+  {
+    titulo: 'Los formatos 606, 607 y 608 salen solos',
+    detalle: 'Se generan desde los mismos comprobantes que ya emitiste, listos para subir a la Oficina Virtual.',
+  },
+];
+
 export default function ActivacionEcfPage() {
   const qc = useQueryClient();
   const [form] = Form.useForm();
+  /** La bienvenida solo se ve una vez; "Comenzar" da paso al formulario. */
+  const [verBienvenida, setVerBienvenida] = useState(true);
 
   const [certificado, setCertificado]   = useState<File | null>(null);
   const [comprobante, setComprobante]   = useState<File | null>(null);
@@ -178,6 +227,108 @@ export default function ActivacionEcfPage() {
             )}
           </Descriptions>
         </Card>
+      </div>
+    );
+  }
+
+  // ── Bienvenida ────────────────────────────────────────────────────────────
+  //
+  // Solo en modo 'formulario': con una solicitud abierta o con e-CF ya activo se
+  // sale antes, por los dos returns de arriba.
+  //
+  // El PRECIO va aquí, antes de que el cliente empiece nada. Enterarse del costo
+  // después de rellenar un formulario es la peor forma de contarlo.
+  if (verBienvenida) {
+    return (
+      <div style={{ maxWidth: 1040, margin: '0 auto' }}>
+        <Row gutter={[24, 24]} align="top">
+          {/* ── Izquierda ── */}
+          <Col xs={24} lg={13}>
+            <Title level={2} style={{ marginBottom: 8, lineHeight: 1.25 }}>
+              Pásate a la facturación electrónica
+            </Title>
+            <Paragraph type="secondary" style={{ fontSize: 15 }}>
+              Emite comprobantes fiscales electrónicos (e-CF) validados con la DGII
+              desde el mismo sistema donde ya facturas. Nosotros hacemos la
+              implementación completa.
+            </Paragraph>
+
+            {/* El costo, arriba y sin buscarlo */}
+            <Card
+              size="small"
+              style={{ margin: '20px 0', borderColor: '#1677ff44', background: '#1677ff0d' }}
+            >
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                Costo de implementación · pago único, sin ITBIS
+              </Text>
+              <Row gutter={16} style={{ marginTop: 8 }}>
+                <Col xs={12}>
+                  <div style={{ fontSize: 12, color: '#64748b' }}>Si ya tienes certificado</div>
+                  <Text strong style={{ fontSize: 22 }}>
+                    {tarifas ? fmt.money(tarifas.conCertificado) : '—'}
+                  </Text>
+                </Col>
+                <Col xs={12}>
+                  <div style={{ fontSize: 12, color: '#64748b' }}>Si lo gestionamos nosotros</div>
+                  <Text strong style={{ fontSize: 22 }}>
+                    {tarifas ? fmt.money(tarifas.sinCertificado) : '—'}
+                  </Text>
+                </Col>
+              </Row>
+            </Card>
+
+            <Title level={5} style={{ marginBottom: 12 }}>Requisitos previos para comenzar</Title>
+            <Space direction="vertical" size={12} style={{ width: '100%' }}>
+              {REQUISITOS.map(r => (
+                <div key={r.titulo} style={{ display: 'flex', gap: 10 }}>
+                  <FileProtectOutlined style={{ color: '#1677ff', fontSize: 16, marginTop: 3, flexShrink: 0 }} />
+                  <div>
+                    <Text strong>{r.titulo}</Text>
+                    <div style={{ fontSize: 13, color: '#64748b' }}>{r.detalle}</div>
+                  </div>
+                </div>
+              ))}
+            </Space>
+
+            <Button
+              type="primary" size="large" style={{ marginTop: 28 }}
+              onClick={() => setVerBienvenida(false)}
+            >
+              Comenzar
+            </Button>
+          </Col>
+
+          {/* ── Derecha. En móvil cae debajo (xs={24}). ── */}
+          <Col xs={24} lg={11}>
+            <Card style={{ background: '#f8fafc', borderColor: '#e2e8f0' }}>
+              <Title level={5} style={{ marginTop: 0 }}>Qué cambia para ti</Title>
+              <Space direction="vertical" size={18} style={{ width: '100%', marginTop: 8 }}>
+                {BENEFICIOS.map(b => (
+                  <div key={b.titulo} style={{ display: 'flex', gap: 10 }}>
+                    <CheckCircleOutlined style={{ color: '#10b981', fontSize: 17, marginTop: 2, flexShrink: 0 }} />
+                    <div>
+                      <Text strong>{b.titulo}</Text>
+                      <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>{b.detalle}</div>
+                    </div>
+                  </div>
+                ))}
+              </Space>
+
+              {/* Contexto legal sin prometer incentivos concretos. */}
+              <Alert
+                type="info" showIcon style={{ marginTop: 20 }}
+                message={
+                  <span style={{ fontSize: 12 }}>
+                    La Ley 32-23 establece un calendario obligatorio de facturación
+                    electrónica por tramo de contribuyente. Consulta con tu contador
+                    qué fecha te aplica y si te corresponde algún incentivo por
+                    acogerte antes.
+                  </span>
+                }
+              />
+            </Card>
+          </Col>
+        </Row>
       </div>
     );
   }
