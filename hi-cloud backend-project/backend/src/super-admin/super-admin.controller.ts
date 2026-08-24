@@ -148,6 +148,16 @@ export class SuperAdminController {
   @ApiOperation({ summary: 'Métricas globales de la plataforma' })
   getMetricas() { return this.svc.getMetricas(); }
 
+  @Get('contadores')
+  @ApiOperation({
+    summary: 'Contadores del menú lateral — una sola consulta',
+    description:
+      'Sustituye a siete listados completos que el panel pedía solo para hacer ' +
+      '.length sobre ellos. Los listados se siguen pidiendo, pero ya solo al ' +
+      'abrir su pestaña.',
+  })
+  getContadores() { return this.svc.getContadores(); }
+
   @Get('empresas')
   @ApiOperation({ summary: 'Listar todas las empresas con métricas' })
   listarEmpresas() { return this.svc.listarEmpresas(); }

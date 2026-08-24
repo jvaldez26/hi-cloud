@@ -203,8 +203,8 @@ function SolicitudesTab({ C, solicitudes, isLoading, onRefresh }:
     onSuccess: () => {
       message.success('Plan activado y solicitud aprobada');
       setDrawerSolicitud(null);
-      qc.invalidateQueries({ queryKey: ['sa-solicitudes'] });
-      qc.invalidateQueries({ queryKey: ['sa-suscripciones'] });
+      qc.invalidateQueries({ queryKey: ['sa-solicitudes'] }); qc.invalidateQueries({ queryKey: ['sa-contadores'] });
+      qc.invalidateQueries({ queryKey: ['sa-suscripciones'] }); qc.invalidateQueries({ queryKey: ['sa-contadores'] });
       onRefresh();
     },
     onError: (e: any) => {
@@ -366,7 +366,7 @@ function PruebasTab({ C, pruebas, isLoading, onRefresh }:
     onSuccess: () => {
       message.success('Prueba extendida');
       setExtModal(null);
-      qc.invalidateQueries({ queryKey: ['sa-pruebas'] });
+      qc.invalidateQueries({ queryKey: ['sa-pruebas'] }); qc.invalidateQueries({ queryKey: ['sa-contadores'] });
       onRefresh();
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al extender'),
@@ -377,8 +377,8 @@ function PruebasTab({ C, pruebas, isLoading, onRefresh }:
       api.patch(`/suscripciones/admin/${id}/activar`, { plan, meses: 1 }),
     onSuccess: () => {
       message.success('Plan activado');
-      qc.invalidateQueries({ queryKey: ['sa-pruebas'] });
-      qc.invalidateQueries({ queryKey: ['sa-suscripciones'] });
+      qc.invalidateQueries({ queryKey: ['sa-pruebas'] }); qc.invalidateQueries({ queryKey: ['sa-contadores'] });
+      qc.invalidateQueries({ queryKey: ['sa-suscripciones'] }); qc.invalidateQueries({ queryKey: ['sa-contadores'] });
       onRefresh();
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al activar'),
@@ -1191,7 +1191,7 @@ function DemosTab({ C }: { C: SaTheme }) {
   const updateMut = useMutation({
     mutationFn: ({ id, body }: { id: number; body: any }) => demoApi.actualizarEstado(id, body),
     onSuccess: (updated) => {
-      qc.invalidateQueries({ queryKey: ['sa-demos'] });
+      qc.invalidateQueries({ queryKey: ['sa-demos'] }); qc.invalidateQueries({ queryKey: ['sa-contadores'] });
       qc.invalidateQueries({ queryKey: ['sa-demo-stats'] });
       setDetalle(updated);
       message.success('Solicitud actualizada');
@@ -1206,7 +1206,7 @@ function DemosTab({ C }: { C: SaTheme }) {
       const updated = await demoApi.agregarNota(detalle.id, nuevaNota.trim());
       setDetalle(updated);
       setNuevaNota('');
-      qc.invalidateQueries({ queryKey: ['sa-demos'] });
+      qc.invalidateQueries({ queryKey: ['sa-demos'] }); qc.invalidateQueries({ queryKey: ['sa-contadores'] });
       message.success('Nota guardada');
     } catch { message.error('Error al guardar nota'); }
     finally { setGuardandoNota(false); }
@@ -1534,6 +1534,22 @@ export default function SuperAdminPage() {
 
   // ── Queries ──────────────────────────────────────────────────────────────────
 
+  /**
+   * Contadores del menú, en UNA consulta de COUNT(*).
+   *
+   * Antes cada cifra salía de traerse la colección entera y hacer .length: para
+   * pintar "38" se descargaban las 38 empresas con sus métricas de facturación.
+   * Los listados completos siguen existiendo, pero ahora se piden al abrir su
+   * pestaña (ver los `enabled` de más abajo).
+   */
+  const { data: contadores } = useQuery({
+    queryKey: ['sa-contadores'],
+    queryFn:  () => api.get('/admin/contadores').then(xd),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+  const cnt = (contadores ?? {}) as Record<string, number>;
+
   const { data: metricas, isLoading: loadMet, isError: errMet } = useQuery({
     queryKey: ['sa-metricas'],
     queryFn:  () => api.get('/admin/metricas').then(xd),
@@ -1544,28 +1560,25 @@ export default function SuperAdminPage() {
   const { data: empresas = [], isLoading: loadEmp } = useQuery({
     queryKey: ['sa-empresas'],
     queryFn:  () => api.get('/admin/empresas').then(xd),
+    enabled: ['empresas', 'metricas', 'herramientas'].includes(tab),
     staleTime: 30_000,
   });
 
   const { data: usuarios = [], isLoading: loadUsu } = useQuery({
     queryKey: ['sa-usuarios'],
     queryFn:  () => api.get('/admin/usuarios').then(xd),
+    enabled: tab === 'usuarios',
     staleTime: 30_000,
   });
 
-  // ── Demo stats — para badge en sidebar ───────────────────────────────────
-  const { data: demoStats } = useQuery({
-    queryKey: ['sa-demo-stats-main'],
-    queryFn:  demoApi.estadisticas,
-    staleTime: 60_000,
-    refetchInterval: 120_000,
-  });
-  const demosNuevas = demoStats?.nuevas ?? 0;
+  // La consulta de estadísticas de demos que había aquí solo servía para el
+  // número del menú, y ese número ahora viene en /admin/contadores.
 
   // ── Registros pendientes de aprobación ────────────────────────────────────
   const { data: pendientes = [], isLoading: loadPendientes, refetch: refetchPendientes } = useQuery({
     queryKey: ['sa-pendientes'],
     queryFn:  () => api.get('/admin/registros-pendientes').then(xd),
+    enabled: tab === 'pendientes',
     staleTime: 30_000,
     refetchInterval: 60_000,
   });
@@ -1574,8 +1587,8 @@ export default function SuperAdminPage() {
   const aprobarRegistroMut = useMutation({
     mutationFn: (id: number) => api.post(`/admin/registros-pendientes/${id}/aprobar`).then(xd),
     onSuccess: (res: any) => {
-      qc.invalidateQueries({ queryKey: ['sa-pendientes'] });
-      qc.invalidateQueries({ queryKey: ['sa-usuarios'] });
+      qc.invalidateQueries({ queryKey: ['sa-pendientes'] }); qc.invalidateQueries({ queryKey: ['sa-contadores'] });
+      qc.invalidateQueries({ queryKey: ['sa-usuarios'] }); qc.invalidateQueries({ queryKey: ['sa-contadores'] });
       message.success(res?.mensaje ?? 'Cuenta aprobada');
     },
     onError: () => message.error('Error al aprobar'),
@@ -1588,8 +1601,8 @@ export default function SuperAdminPage() {
     mutationFn: ({ id, motivo }: { id: number; motivo: string }) =>
       api.post(`/admin/registros-pendientes/${id}/rechazar`, { motivo }).then(xd),
     onSuccess: (res: any) => {
-      qc.invalidateQueries({ queryKey: ['sa-pendientes'] });
-      qc.invalidateQueries({ queryKey: ['sa-usuarios'] });
+      qc.invalidateQueries({ queryKey: ['sa-pendientes'] }); qc.invalidateQueries({ queryKey: ['sa-contadores'] });
+      qc.invalidateQueries({ queryKey: ['sa-usuarios'] }); qc.invalidateQueries({ queryKey: ['sa-contadores'] });
       setRechazarModal(null);
       setMotivoRechazo('');
       message.success(res?.mensaje ?? 'Solicitud rechazada');
@@ -1601,6 +1614,7 @@ export default function SuperAdminPage() {
   const { data: empresasPend = [], isLoading: loadEmpPend, refetch: refetchEmpPend } = useQuery({
     queryKey: ['sa-empresas-pendientes'],
     queryFn:  () => api.get('/admin/empresas-pendientes-aprobacion').then(xd),
+    enabled: tab === 'pendientes',
     staleTime: 30_000,
     refetchInterval: 60_000,
   });
@@ -1612,8 +1626,8 @@ export default function SuperAdminPage() {
   const aprobarEmpresaMut = useMutation({
     mutationFn: (id: number) => api.post(`/admin/empresas/${id}/aprobar-empresa`).then(xd),
     onSuccess: (res: any) => {
-      qc.invalidateQueries({ queryKey: ['sa-empresas-pendientes'] });
-      qc.invalidateQueries({ queryKey: ['sa-empresas'] });
+      qc.invalidateQueries({ queryKey: ['sa-empresas-pendientes'] }); qc.invalidateQueries({ queryKey: ['sa-contadores'] });
+      qc.invalidateQueries({ queryKey: ['sa-empresas'] }); qc.invalidateQueries({ queryKey: ['sa-contadores'] });
       message.success(res?.mensaje ?? 'Empresa aprobada');
       refetchEmpPend();
     },
@@ -1624,7 +1638,7 @@ export default function SuperAdminPage() {
     mutationFn: ({ id, motivo }: { id: number; motivo: string }) =>
       api.post(`/admin/empresas/${id}/rechazar-empresa`, { motivo }).then(xd),
     onSuccess: (res: any) => {
-      qc.invalidateQueries({ queryKey: ['sa-empresas-pendientes'] });
+      qc.invalidateQueries({ queryKey: ['sa-empresas-pendientes'] }); qc.invalidateQueries({ queryKey: ['sa-contadores'] });
       setRechazarEmpModal(null); setMotivoRechEmp('');
       message.success(res?.mensaje ?? 'Empresa rechazada');
     },
@@ -1641,7 +1655,7 @@ export default function SuperAdminPage() {
   const eliminarUsuarioMut = useMutation({
     mutationFn: (id: number) => api.delete(`/admin/usuarios/${id}`).then(xd),
     onSuccess: (res: any) => {
-      qc.invalidateQueries({ queryKey: ['sa-usuarios'] });
+      qc.invalidateQueries({ queryKey: ['sa-usuarios'] }); qc.invalidateQueries({ queryKey: ['sa-contadores'] });
       message.success(res?.mensaje ?? 'Usuario eliminado');
       setEliminarModal(null);
     },
@@ -1650,13 +1664,13 @@ export default function SuperAdminPage() {
 
   const suspenderUsuarioMut = useMutation({
     mutationFn: (id: number) => api.patch(`/admin/usuarios/${id}/suspender`).then(xd),
-    onSuccess: (res: any) => { qc.invalidateQueries({ queryKey: ['sa-usuarios'] }); message.success(res?.mensaje ?? 'Usuario suspendido'); },
+    onSuccess: (res: any) => { qc.invalidateQueries({ queryKey: ['sa-usuarios'] }); qc.invalidateQueries({ queryKey: ['sa-contadores'] }); message.success(res?.mensaje ?? 'Usuario suspendido'); },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
   });
 
   const activarUsuarioMut = useMutation({
     mutationFn: (id: number) => api.patch(`/admin/usuarios/${id}/activar`).then(xd),
-    onSuccess: (res: any) => { qc.invalidateQueries({ queryKey: ['sa-usuarios'] }); message.success(res?.mensaje ?? 'Usuario activado'); },
+    onSuccess: (res: any) => { qc.invalidateQueries({ queryKey: ['sa-usuarios'] }); qc.invalidateQueries({ queryKey: ['sa-contadores'] }); message.success(res?.mensaje ?? 'Usuario activado'); },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
   });
 
@@ -1664,7 +1678,7 @@ export default function SuperAdminPage() {
     mutationFn: ({ id, confirmacion }: { id: number; confirmacion: string }) =>
       api.delete(`/admin/usuarios/${id}/permanente`, { data: { confirmacion } }).then(xd),
     onSuccess: (res: any) => {
-      qc.invalidateQueries({ queryKey: ['sa-usuarios'] });
+      qc.invalidateQueries({ queryKey: ['sa-usuarios'] }); qc.invalidateQueries({ queryKey: ['sa-contadores'] });
       message.success(res?.mensaje ?? 'Eliminado permanentemente');
       setHardDeleteUsu(null); setConfirmHardUsu('');
     },
@@ -1675,7 +1689,7 @@ export default function SuperAdminPage() {
     mutationFn: ({ id, confirmacion }: { id: number; confirmacion: string }) =>
       api.delete(`/admin/empresas/${id}/permanente`, { data: { confirmacion } }).then(xd),
     onSuccess: (res: any) => {
-      qc.invalidateQueries({ queryKey: ['sa-empresas'] });
+      qc.invalidateQueries({ queryKey: ['sa-empresas'] }); qc.invalidateQueries({ queryKey: ['sa-contadores'] });
       message.success(res?.mensaje ?? 'Empresa eliminada permanentemente');
       setHardDeleteEmp(null); setConfirmHardEmp('');
     },
@@ -1689,7 +1703,7 @@ export default function SuperAdminPage() {
     mutationFn: ({ id, rol }: { id: number; rol: string }) =>
       api.patch(`/admin/usuarios/${id}/rol`, { rol }).then(xd),
     onSuccess: (res: any) => {
-      qc.invalidateQueries({ queryKey: ['sa-usuarios'] });
+      qc.invalidateQueries({ queryKey: ['sa-usuarios'] }); qc.invalidateQueries({ queryKey: ['sa-contadores'] });
       message.success(res?.mensaje ?? 'Rol actualizado');
       setRolModal(null);
     },
@@ -1700,25 +1714,30 @@ export default function SuperAdminPage() {
   const { data: ecfConfigs = [] } = useQuery({
     queryKey: ['ecf-configs'],
     queryFn:  ecfConfigApi.listar,
+    enabled: tab === 'empresas',
     staleTime: 30_000,
   });
 
   const { data: suscripciones = [], isLoading: loadSus } = useQuery({
     queryKey: ['sa-suscripciones'],
     queryFn:  () => api.get('/admin/suscripciones').then(xd),
+    enabled: tab === 'suscripciones',
     staleTime: 30_000,
   });
 
   const { data: solicitudes = [], isLoading: loadSolicitudes } = useQuery({
     queryKey: ['sa-solicitudes'],
     queryFn:  () => api.get('/suscripciones/admin/solicitudes').then(xd),
+    enabled: tab === 'solicitudes',
     staleTime: 15_000,
   });
-  const solicitudesPendientes: number = (solicitudes as any[]).filter((s: any) => s.estado === 'pendiente').length;
+  // El número de solicitudes pendientes del menú viene de /admin/contadores.
+  // La pestaña de Solicitudes calcula el suyo sobre la lista ya cargada.
 
   const { data: pruebas = [], isLoading: loadPruebas } = useQuery({
     queryKey: ['sa-pruebas'],
     queryFn:  () => api.get('/suscripciones/admin/pruebas').then(xd),
+    enabled: tab === 'pruebas',
     staleTime: 30_000,
   });
 
@@ -1733,19 +1752,19 @@ export default function SuperAdminPage() {
 
   const suspenderMut = useMutation({
     mutationFn: (id: number) => api.patch(`/admin/empresas/${id}/suspender`, {}),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['sa-empresas'] }); message.success('Empresa suspendida'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['sa-empresas'] }); qc.invalidateQueries({ queryKey: ['sa-contadores'] }); message.success('Empresa suspendida'); },
     onError: () => message.error('Error al suspender empresa'),
   });
 
   const activarMut = useMutation({
     mutationFn: (id: number) => api.patch(`/admin/empresas/${id}/activar`, {}),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['sa-empresas'] }); message.success('Empresa activada'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['sa-empresas'] }); qc.invalidateQueries({ queryKey: ['sa-contadores'] }); message.success('Empresa activada'); },
     onError: () => message.error('Error al activar empresa'),
   });
 
   const eliminarMut = useMutation({
     mutationFn: (id: number) => api.delete(`/admin/empresas/${id}`),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['sa-empresas'] }); message.success('Empresa eliminada'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['sa-empresas'] }); qc.invalidateQueries({ queryKey: ['sa-contadores'] }); message.success('Empresa eliminada'); },
     onError: () => message.error('Error al eliminar empresa'),
   });
 
@@ -1753,8 +1772,8 @@ export default function SuperAdminPage() {
     mutationFn: ({ id, plan, meses }: { id: number; plan: string; meses: number }) =>
       api.patch(`/admin/empresas/${id}/plan`, { plan, meses }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['sa-empresas'] });
-      qc.invalidateQueries({ queryKey: ['sa-suscripciones'] });
+      qc.invalidateQueries({ queryKey: ['sa-empresas'] }); qc.invalidateQueries({ queryKey: ['sa-contadores'] });
+      qc.invalidateQueries({ queryKey: ['sa-suscripciones'] }); qc.invalidateQueries({ queryKey: ['sa-contadores'] });
       qc.invalidateQueries({ queryKey: ['sa-metricas'] });
       setModalPlan(null);
       message.success('Plan actualizado correctamente');
@@ -1772,7 +1791,7 @@ export default function SuperAdminPage() {
     mutationFn: ({ id, fecha, motivo }: { id: number; fecha: string; motivo: string }) =>
       api.patch(`/admin/empresas/${id}/vencimiento-manual`, { fecha, motivo }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['sa-empresas'] });
+      qc.invalidateQueries({ queryKey: ['sa-empresas'] }); qc.invalidateQueries({ queryKey: ['sa-contadores'] });
       setModalVence(null); setVenceFecha(null); setVenceMotivo('');
       message.success('Vencimiento manual fijado');
     },
@@ -2146,6 +2165,11 @@ export default function SuperAdminPage() {
    * siempre; lo único que cambia respecto a antes es que el armazón es ahora el
    * compartido con el ERP.
    */
+  // El menú suma las dos fuentes de "pendiente": usuarios sin aprobar y
+  // empresas sin aprobar. Sale del contador global y no de las listas, que
+  // ahora solo se cargan al abrir esa pestaña.
+  const pendientesMenu = (cnt.registrosPendientes ?? 0) + (cnt.empresasPendientes ?? 0);
+
   const gruposMenu: MenuCategory[] = [
     {
       // Todo lo que es "un cliente de la plataforma". Auditoría entra aquí y no
@@ -2154,16 +2178,16 @@ export default function SuperAdminPage() {
       id: 'clientes', label: 'Clientes', Icon: Building2,
       items: [
         { path: 'empresas',      label: 'Empresas',      icono: <Building2 size={15} />,
-          badgeCount: (empresas as any[]).length },
+          badgeCount: cnt.empresas ?? 0 },
         { path: 'usuarios',      label: 'Usuarios',      icono: <Users size={15} />,
-          badgeCount: (usuarios as any[]).length },
+          badgeCount: cnt.usuarios ?? 0 },
         { path: 'pendientes',    label: 'Pendientes',    icono: <ClockIcon size={15} />,
-          badgeCount: pendientesCount + empresasPendCount,
-          badgeColor: (pendientesCount + empresasPendCount) > 0 ? C.red : undefined },
+          badgeCount: pendientesMenu,
+          badgeColor: pendientesMenu > 0 ? C.red : undefined },
         { path: 'demos',         label: 'Demos',         icono: <MessageSquare size={15} />,
-          badgeCount: demosNuevas, badgeColor: C.red },
+          badgeCount: cnt.demosNuevas ?? 0, badgeColor: C.red },
         { path: 'pruebas',       label: 'En Prueba',     icono: <ClockIcon size={15} />,
-          badgeCount: (pruebas as any[]).length },
+          badgeCount: cnt.pruebas ?? 0 },
         { path: 'auditoria',     label: 'Auditoría',     icono: <Shield size={15} /> },
       ],
     },
@@ -2173,10 +2197,10 @@ export default function SuperAdminPage() {
       id: 'facturacion', label: 'Facturación', Icon: DollarSign,
       items: [
         { path: 'suscripciones', label: 'Suscripciones', icono: <Crown size={15} />,
-          badgeCount: (suscripciones as any[]).length },
+          badgeCount: cnt.suscripciones ?? 0 },
         { path: 'cobros',        label: 'Cobros',        icono: <DollarSign size={15} /> },
         { path: 'solicitudes',   label: 'Solicitudes',   icono: <Send size={15} />,
-          badgeCount: solicitudesPendientes ?? 0, badgeColor: C.red },
+          badgeCount: cnt.solicitudesPendientes ?? 0, badgeColor: C.red },
         { path: 'metricas',      label: 'Métricas MRR',  icono: <BarChart2 size={15} /> },
       ],
     },

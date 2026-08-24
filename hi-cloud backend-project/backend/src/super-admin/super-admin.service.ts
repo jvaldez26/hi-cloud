@@ -1188,6 +1188,48 @@ export class SuperAdminService {
     return cnt ?? 0;
   }
 
+  /**
+   * Contadores del menú lateral de Super Admin, en una sola consulta.
+   *
+   * Antes cada número salía de traerse la colección entera al navegador y hacer
+   * `.length`: para pintar "38" se descargaban las 38 empresas con sus métricas
+   * de facturación. Eso no es un problema de número de peticiones, es un
+   * problema que empeora solo según crecen las empresas.
+   *
+   * CADA subconsulta replica el filtro EXACTO de su listado. Si un filtro cambia
+   * allí y no aquí, el contador miente respecto a lo que se ve al abrir la
+   * pestaña — y una cifra que miente es peor que no tener cifra. Los listados de
+   * referencia son: listarEmpresas, listarUsuarios, getEmpresasPendientesAprobacion
+   * y listarSuscripciones (aquí), y listarSolicitudes / listarEmpresasEnPrueba en
+   * SuscripcionesService.
+   */
+  async getContadores() {
+    const [c] = await this.ds.query<any[]>(`
+      SELECT
+        (SELECT COUNT(*)::int FROM empresa)                             AS "empresas",
+        (SELECT COUNT(*)::int FROM users)                               AS "usuarios",
+        -- Mismo filtro que contarRegistrosPendientes()
+        (SELECT COUNT(*)::int FROM users
+           WHERE "accountStatus" = 'pendiente'
+             AND "isActive" = true
+             AND role != 'super_admin')                                 AS "registrosPendientes",
+        (SELECT COUNT(*)::int FROM empresa
+           WHERE "estadoAprobacion" = 'pendiente'
+             AND "isActive" = true)                                     AS "empresasPendientes",
+        -- listarSuscripciones() hace JOIN (no LEFT JOIN) con empresa: una
+        -- suscripcion huerfana no sale en la tabla, asi que tampoco debe contar.
+        (SELECT COUNT(*)::int FROM suscripciones s
+           JOIN empresa e ON e.id = s."empresaId")                      AS "suscripciones",
+        (SELECT COUNT(*)::int FROM solicitud_cambio_plan
+           WHERE estado = 'pendiente')                                  AS "solicitudesPendientes",
+        (SELECT COUNT(*)::int FROM demo_requests
+           WHERE estado = 'nuevo')                                      AS "demosNuevas",
+        (SELECT COUNT(*)::int FROM suscripciones
+           WHERE estado = 'prueba')                                     AS "pruebas"
+    `);
+    return c;
+  }
+
   async aprobarRegistro(userId: number, superAdminId: number) {
     const [u] = await this.ds.query<any[]>(
       `SELECT id, nombre, email, "accountStatus", provider, "passwordConfigured" FROM users WHERE id = $1`,
