@@ -45,6 +45,28 @@ export class ENCFGeneratorService {
    * @throws EcfSecuenciaAgotadaError    El rango está completamente usado
    */
   async generateNext(empresaId: number, tipoEcf: number): Promise<string> {
+    return this.dataSource.transaction(
+      (manager: EntityManager) => this.generateNextEnTransaccion(manager, empresaId, tipoEcf),
+    );
+  }
+
+  /**
+   * Igual que generateNext, pero dentro de una transacción que abre QUIEN LLAMA.
+   *
+   * Existe para que el número y el registro `ecf` se escriban en la MISMA
+   * transacción. Antes el incremento commiteaba por su cuenta y la fila del e-CF
+   * se creaba después, en otra: si algo fallaba entre medias, el número quedaba
+   * consumido sin ninguna fila que lo respaldara — un hueco en la secuencia sin
+   * nada que enseñarle a la DGII.
+   *
+   * El bloqueo pesimista y el filtro por empresaId son EXACTAMENTE los mismos.
+   * Lo único que cambia es de dónde sale el EntityManager.
+   */
+  async generateNextEnTransaccion(
+    manager: EntityManager,
+    empresaId: number,
+    tipoEcf: number,
+  ): Promise<string> {
     // Buscar el tipo para obtener su ID y prefijo
     const tipo = await this.tipoRepo.findOne({
       where: { codigo: `E${String(tipoEcf).padStart(2, '0')}` },
@@ -56,7 +78,7 @@ export class ENCFGeneratorService {
       throw new EcfSecuenciaSinConfigError(empresaId, tipoEcf);
     }
 
-    return this.dataSource.transaction(async (manager: EntityManager) => {
+    return (async () => {
       // ── Bloqueo pesimista: solo un proceso a la vez puede leer y
       //    modificar la secuencia activa de este tipo y empresa ──────
       const sec = await manager
@@ -119,7 +141,7 @@ export class ENCFGeneratorService {
       );
 
       return encf;
-    });
+    })();
   }
 
   /** Consulta cuántos números quedan disponibles sin reservar ninguno. */

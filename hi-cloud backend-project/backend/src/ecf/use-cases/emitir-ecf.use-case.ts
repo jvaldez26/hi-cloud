@@ -25,7 +25,6 @@ import {
 import {
   EcfDuplicadoError,
   EcfConfigFaltanteError,
-  EcfRncRequeridoError,
   EcfComunicacionError,
   EcfValidacionError,
   EcfNcfReferenciadoError,
@@ -217,9 +216,20 @@ export class EmitirECFUseCase {
       return new Date(Date.UTC(y, m - 1, d, 16));
     })();
 
-    // ── 3. GENERAR eNCF (TRANSACCIÓN ATÓMICA) ────────────────────────────────
-    const encf = await this.generator.generateNext(empresaId, tipoEcf);
-    this.logger.log(`eNCF generado: ${encf}`);
+    // ── 3. (el eNCF ya NO se pide aquí) ──────────────────────────────────────
+    //
+    // Antes se pedía en este punto, ANTES de las validaciones que vienen abajo.
+    // Siete de ellas pueden abortar la emisión, y como el número ya estaba
+    // consumido y commiteado, cada aborto dejaba un hueco en la secuencia sin
+    // ninguna fila que lo respaldara: nada que enseñarle a la DGII.
+    //
+    // Los siete casos eran: nota sin factura original, e-CF original rechazado,
+    // NCF referenciado inexistente, NC de anulación total con monto distinto,
+    // monto de NC sobre el saldo disponible, RNC del comprador no vigente en el
+    // padrón, y RNC requerido (E32 ≥ 250.000 y el resto de builders).
+    //
+    // Ahora el número se pide en el paso 6, cuando lo único que puede fallar ya
+    // es el envío a MSeller — y para eso la fila del e-CF ya existe.
 
     // ── 4. RESOLVER infoReferencia para E33/E34 ──────────────────────────────
     let infoReferencia = infoRefInput;
@@ -321,11 +331,22 @@ export class EmitirECFUseCase {
       tipoEcf, factura, datosComprador?.confirmaRncNoVigente === true,
     );
 
-    // ── 5. CONSTRUIR PAYLOAD JSON ─────────────────────────────────────────────
-    let payload: MSellerPayload;
-    try {
+    // ── 5. VALIDAR EL PAYLOAD EN SECO, SIN CONSUMIR NÚMERO ───────────────────
+    //
+    // Los builders validan reglas que hacen fallar la emisión: el RNC del
+    // comprador obligatorio en E31/E34/E41/E44/E45/E46, y en E32 a partir de
+    // RD$250.000. Esas reglas viven en siete builders distintos; sacarlas de ahí
+    // para comprobarlas antes significaría duplicarlas siete veces y que se
+    // separen con el tiempo.
+    //
+    // En su lugar se construye el payload DOS veces. `buildECF` es una función
+    // pura —sin consultas, sin escrituras, sin fechas ni aleatorios— y el eNCF
+    // solo se copia al resultado, así que una construcción con un número de
+    // marcador ejecuta exactamente las mismas validaciones. Si lanza, no se ha
+    // tocado la secuencia. Este payload se descarta.
+    const armarPayload = (numeroEcf: string): MSellerPayload => {
       const buildInput: ECFBuildInput = {
-        encf,
+        encf:              numeroEcf,
         factura:           factura as Factura,
         config,
         fechaVencSec,
@@ -333,16 +354,24 @@ export class EmitirECFUseCase {
         nombreExtranjero,
         paisExtranjero,
       };
-      payload = this.builder.build(tipoEcf, buildInput);
-      this.logger.debug(
-        `[E${tipoEcf}] Payload JSON → MSeller:\n${JSON.stringify(payload, null, 2)}`,
-      );
-    } catch (err) {
-      if (err instanceof EcfRncRequeridoError) throw err;
-      throw err;
-    }
+      return this.builder.build(tipoEcf, buildInput);
+    };
 
-    // ── 5. CREAR REGISTRO ECF EN BD ───────────────────────────────────────────
+    // El marcador nunca sale de aquí. Mismo formato que un eNCF real para que
+    // cualquier validación de forma se comporte igual.
+    armarPayload(`E${String(tipoEcf).padStart(2, '0')}${'0'.repeat(10)}`);
+
+    // ── 6. PEDIR EL NÚMERO Y CREAR LA FILA — UNA SOLA TRANSACCIÓN ────────────
+    //
+    // Aquí ya no queda ninguna validación que pueda abortar: lo único que puede
+    // fallar a partir de este punto es el envío a MSeller, y para eso la fila ya
+    // existe (queda en error, que es lo correcto: un número emitido SIEMPRE
+    // tiene su fila).
+    //
+    // El incremento de la secuencia y el INSERT del e-CF van en la MISMA
+    // transacción. Antes el incremento commiteaba por su cuenta y la fila se
+    // creaba después: si algo fallaba en medio, el número quedaba huérfano. Un
+    // fallo aquí revierte las dos cosas y la secuencia no avanza.
     const tipoEcfEntity = secParaTipo?.tipoECF
       ?? await this.ds.getRepository('tipos_ecf').findOne({ where: { codigo: `E${String(tipoEcf).padStart(2,'0')}` } }) as any;
 
@@ -351,43 +380,30 @@ export class EmitirECFUseCase {
     const montoItbis   = Number(iva);
     const montoTotal   = Number(total);
 
-    const ecfRecord = this.ecfRepo.create({
-      empresaId,
-      numero:              encf,
-      tipoECFId:           tipoEcfEntity?.id ?? 0,
-      secuenciaId:         secParaTipo?.id ?? 0,
-      facturaId:           documentoOrigenTipo === DocumentoOrigenTipo.FACTURA ? documentoOrigenId : undefined,
-      documentoOrigenTipo,
-      documentoOrigenId,
-      estadoDGII:          EstadoDGII.PENDIENTE_ENVIO,
-      codigoSeguridad:     String(Math.floor(100000 + Math.random() * 900000)),
-      rncComprador:        (factura as Factura).cliente?.rncReceptor ?? (factura as Factura).rncComprador ?? undefined,
-      // Misma fuente que el RazonSocialComprador del XML, para que el registro
-      // guardado (y el PDF, que lo lee de aquí) no diverja de lo declarado
-      razonSocialComprador: razonSocialFiscal(
-        (factura as Factura).cliente,
-        (factura as Factura).cliente?.nombre ?? '',
-      ) || undefined,
-      direccionComprador:  (factura as Factura).cliente?.direccion ?? undefined,
-      montoExento:         0,
-      montoGravado,
-      montoItbis,
-      montoTotal,
-      jsonEnviado:         payload as unknown as Record<string, unknown>,
-      intentosEnvio:       0,
-      // Campos específicos por tipo
-      ...(infoReferencia ? {
-        ncfModificado:      infoReferencia.NCFModificado,
-        codigoModificacion: infoReferencia.CodigoModificacion,
-      } : {}),
-    } as any);
+    const { encf, payload, ecfSaved } = await this.ds.transaction(async (manager) => {
+      const numero = await this.generator.generateNextEnTransaccion(manager, empresaId, tipoEcf);
+      this.logger.log(`eNCF generado: ${numero}`);
 
-    const ecfSaved = await this.ecfRepo.save(ecfRecord) as unknown as ECF;
+      const payloadReal = armarPayload(numero);
+      this.logger.debug(
+        `[E${tipoEcf}] Payload JSON → MSeller:\n${JSON.stringify(payloadReal, null, 2)}`,
+      );
+
+      const fila = this.construirRegistroEcf({
+        encf: numero, payload: payloadReal, empresaId, tipoEcfEntity, secParaTipo,
+        factura: factura as Factura, documentoOrigenTipo, documentoOrigenId,
+        montoGravado, montoItbis, montoTotal, infoReferencia,
+      });
+
+      const guardado = await manager.save(ECF, fila) as unknown as ECF;
+      return { encf: numero, payload: payloadReal, ecfSaved: guardado };
+    });
+
     await this.registrarEvento(ecfSaved.id, TipoEcfEvento.CREADO, {
       encf, tipoEcf, documentoOrigenTipo, documentoOrigenId,
     });
 
-    // ── 5b. MODO CONTINGENCIA PROACTIVO — no enviar a MSeller ────────────────
+    // ── 7. MODO CONTINGENCIA PROACTIVO — no enviar a MSeller ────────────────
     //    El administrador activó "Modo contingencia" en Configuración → POS.
     //    Se guarda en CONTINGENCIA directamente. El cron de rescate (cada 30 min)
     //    lo reintentará cuando MSeller/DGII vuelva a estar disponible.
@@ -411,13 +427,13 @@ export class EmitirECFUseCase {
       };
     }
 
-    // ── 6. ENVIAR A MSELLER ───────────────────────────────────────────────────
+    // ── 8. ENVIAR A MSELLER ───────────────────────────────────────────────────
     try {
       const t0 = Date.now();
       const respuesta = await this.mseller.enviarDocumento(payload, empresaId, timeout);
       const latencia  = Date.now() - t0;
 
-      // ── 7. ACTUALIZAR ESTADO → ACEPTADO (MSeller recibió el documento) ────
+      // ── 9. ACTUALIZAR ESTADO → ACEPTADO (MSeller recibió el documento) ────
       const fechaFirmaECF = parseMSellerSignedDate(respuesta.signedDate);
       await this.ecfRepo.update(ecfSaved.id, {
         estadoDGII:         EstadoDGII.ENVIADO,
@@ -565,6 +581,57 @@ ${JSON.stringify(payload, null, 2)}`;
    * protege del error fiscal, no puede convertirse en un punto de caída de la
    * facturación.
    */
+  /**
+   * Arma la fila del e-CF. Extraído tal cual estaba en el flujo, sin cambiar un
+   * solo campo, para que el INSERT pueda ejecutarse dentro de la transacción
+   * que incrementa la secuencia.
+   */
+  private construirRegistroEcf(p: {
+    encf: string;
+    payload: MSellerPayload;
+    empresaId: number;
+    tipoEcfEntity: any;
+    secParaTipo: SecuenciaECF | null;
+    factura: Factura;
+    documentoOrigenTipo: DocumentoOrigenTipo;
+    documentoOrigenId: number;
+    montoGravado: number;
+    montoItbis: number;
+    montoTotal: number;
+    infoReferencia?: MSellerInfoReferencia;
+  }): ECF {
+    return this.ecfRepo.create({
+      empresaId:           p.empresaId,
+      numero:              p.encf,
+      tipoECFId:           p.tipoEcfEntity?.id ?? 0,
+      secuenciaId:         p.secParaTipo?.id ?? 0,
+      facturaId:           p.documentoOrigenTipo === DocumentoOrigenTipo.FACTURA ? p.documentoOrigenId : undefined,
+      documentoOrigenTipo: p.documentoOrigenTipo,
+      documentoOrigenId:   p.documentoOrigenId,
+      estadoDGII:          EstadoDGII.PENDIENTE_ENVIO,
+      codigoSeguridad:     String(Math.floor(100000 + Math.random() * 900000)),
+      rncComprador:        p.factura.cliente?.rncReceptor ?? p.factura.rncComprador ?? undefined,
+      // Misma fuente que el RazonSocialComprador del XML, para que el registro
+      // guardado (y el PDF, que lo lee de aquí) no diverja de lo declarado
+      razonSocialComprador: razonSocialFiscal(
+        p.factura.cliente,
+        p.factura.cliente?.nombre ?? '',
+      ) || undefined,
+      direccionComprador:  p.factura.cliente?.direccion ?? undefined,
+      montoExento:         0,
+      montoGravado:        p.montoGravado,
+      montoItbis:          p.montoItbis,
+      montoTotal:          p.montoTotal,
+      jsonEnviado:         p.payload as unknown as Record<string, unknown>,
+      intentosEnvio:       0,
+      // Campos específicos por tipo
+      ...(p.infoReferencia ? {
+        ncfModificado:      p.infoReferencia.NCFModificado,
+        codigoModificacion: p.infoReferencia.CodigoModificacion,
+      } : {}),
+    } as any) as unknown as ECF;
+  }
+
   private async validarCompradorVigente(
     tipoEcf: number,
     documento: any,
