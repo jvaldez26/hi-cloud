@@ -68,6 +68,7 @@ export const PATH_ROLES: Record<string, string[]> = {
   '/flujo-caja':            ADMIN_CONT,
   '/distribucion-costos':   ADMIN_CONT,
   '/ecf':                   ADMIN_CONT,
+  '/ecf/activar':           ADMIN_CONT,
   '/ecf-recibidos':         ADMIN_CONT,
   '/retenciones':           ADMIN_CONT,
   '/declaraciones':         ADMIN_CONT,

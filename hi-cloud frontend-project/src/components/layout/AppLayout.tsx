@@ -22,7 +22,7 @@ import {
   FileText, BookOpen, PieChart, Database, Truck,
   UserCheck, Calculator, Shield, Bell, Globe, Wrench, Stethoscope, Pill,
   Factory, Target, Banknote, ClipboardList, Tags,
-  X, Lock, ChevronLeft, ChevronRight, MoreHorizontal, UtensilsCrossed, Landmark, Sprout, GraduationCap,
+  FileCheck, X, Lock, ChevronLeft, ChevronRight, MoreHorizontal, UtensilsCrossed, Landmark, Sprout, GraduationCap,
   type LucideIcon,
 } from 'lucide-react';
 import { usePlan, type PlanTipo } from '../../hooks/usePlan';
@@ -549,6 +549,10 @@ interface MenuCategory {
 const QUICK_ITEMS: QuickItem[] = [
   { path: '/dashboard', label: 'Inicio',             Icon: Home },
   { path: '/bandeja',   label: 'Bandeja de entrada', Icon: Inbox },
+  // La visibilidad NO se decide aquí: la da GET /activacion-ecf/estado, el mismo
+  // veredicto que usa la pantalla. Si el menú calculara por su cuenta podrían
+  // discrepar y llevaría a algo que no toca.
+  { path: '/ecf/activar', label: 'Activar factura electrónica', Icon: FileCheck },
   { path: '/pos',       label: 'Punto de Venta',     Icon: ShoppingCart, badge: 'POS' },
   { path: '/caja',      label: 'Caja Diaria',        Icon: Wallet },
 ];
@@ -1341,6 +1345,18 @@ export default function AppLayout() {
 
   const userRole = user?.role ?? 'viewer';
 
+  // Veredicto UNICO sobre el modulo de activacion: lo da el backend y lo
+  // comparten el menu y la pantalla. Solo se consulta para los roles que
+  // pueden verlo — para el resto el endpoint devolveria 403.
+  const { data: activacionEstado } = useQuery<any>({
+    queryKey: ['activacion-ecf-estado'],
+    queryFn:  () => api.get('/activacion-ecf/estado').then((r: any) => r.data?.data ?? r.data),
+    enabled:  userRole === 'admin' || userRole === 'contador',
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const activacionVisible = activacionEstado?.visible === true;
+
   // ── Preferencias de menú — DECLARAR ANTES de categoriasFiltradas ─────────
   // (evita TDZ: categoriasFiltradas usa menuActivos, que debe estar declarado primero)
   const [modalMenu,  setModalMenu]  = useState(false);
@@ -2096,7 +2112,14 @@ export default function AppLayout() {
         )}
 
         <div style={{ marginBottom: 6 }}>
-          {QUICK_ITEMS.filter(item => rolPuedeVerRuta(item.path, userRole)).map(item => (
+          {QUICK_ITEMS
+            .filter(item => rolPuedeVerRuta(item.path, userRole))
+            // La entrada de activación desaparece cuando la empresa ya factura
+            // electrónicamente. Mientras la consulta no responda NO se pinta:
+            // es preferible que aparezca un instante después a que parpadee y
+            // se vaya.
+            .filter(item => item.path !== '/ecf/activar' || activacionVisible === true)
+            .map(item => (
             <QuickItemComp
               key={item.path}
               item={item.path === '/bandeja'

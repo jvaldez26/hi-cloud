@@ -50,10 +50,13 @@ export default function ActivacionEcfPage() {
     staleTime: 600_000,
   });
 
-  const { data: solicitud, isLoading } = useQuery<any>({
-    queryKey: ['activacion-mi-solicitud'],
-    queryFn:  () => api.get('/activacion-ecf/mi-solicitud').then(r => r.data?.data ?? r.data),
+  // EL MISMO veredicto que usa el menu. La pantalla no decide por su cuenta:
+  // si lo hiciera, el menu podria mostrar la entrada y la pantalla otra cosa.
+  const { data: estado, isLoading } = useQuery<any>({
+    queryKey: ['activacion-ecf-estado'],
+    queryFn:  () => api.get('/activacion-ecf/estado').then(r => r.data?.data ?? r.data),
   });
+  const solicitud = estado?.solicitud ?? null;
 
   // El precio en vivo: sin certificado válido, la tarifa alta.
   const precioActual = validacion?.precio
@@ -88,7 +91,7 @@ export default function ActivacionEcfPage() {
     },
     onSuccess: () => {
       message.success('Solicitud enviada');
-      qc.invalidateQueries({ queryKey: ['activacion-mi-solicitud'] });
+      qc.invalidateQueries({ queryKey: ['activacion-ecf-estado'] });
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'No se pudo enviar la solicitud'),
   });
@@ -101,12 +104,26 @@ export default function ActivacionEcfPage() {
     },
     onSuccess: () => {
       message.success('Comprobante adjuntado');
-      qc.invalidateQueries({ queryKey: ['activacion-mi-solicitud'] });
+      qc.invalidateQueries({ queryKey: ['activacion-ecf-estado'] });
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'No se pudo adjuntar'),
   });
 
   if (isLoading) return <Spin style={{ display: 'block', margin: '80px auto' }} />;
+
+  // ── Ya factura electronicamente: no hay nada que solicitar ────────────────
+  // Se llega aqui escribiendo la URL, porque la entrada del menu ya no aparece.
+  if (estado?.modo === 'ya-activo') {
+    return (
+      <div style={{ maxWidth: 620, margin: '0 auto' }}>
+        <Result
+          status="success"
+          title="Tu facturación electrónica ya está activa"
+          subTitle="No hace falta solicitar nada. Si necesitas cambiar la configuración, escríbenos."
+        />
+      </div>
+    );
+  }
 
   // ── Ya hay solicitud: se muestra su estado ─────────────────────────────────
   if (solicitud) {

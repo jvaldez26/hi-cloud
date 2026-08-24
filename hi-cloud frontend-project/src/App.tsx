@@ -388,6 +388,31 @@ function GuestRoute({ children }: { children: React.ReactNode }) {
 // S-65: además exige 2FA configurada. SetupTwoFactorGate deja pasar si ya la
 // tiene y, si no, muestra el enrollment obligatorio (la sesión sigue viva, así
 // que se configura en el momento y el panel se desbloquea solo).
+/**
+ * Guard de rol para una ruta concreta.
+ *
+ * OJO CON LO QUE HABÍA: el resto de rutas de la app NO tienen guard de rol. El
+ * filtrado por rol vive solo en el MENÚ (AppLayout filtra con rolPuedeVerRuta),
+ * así que quien escriba una URL a mano llega a la pantalla igual. El backend le
+ * devuelve 403 en cada llamada, pero la pantalla la ve — vacía y con errores,
+ * que es peor que un "no tienes acceso" claro.
+ *
+ * Ocultar el enlace no es control de acceso. De momento se envuelve SOLO
+ * /ecf/activar; el resto está inventariado aparte para decidir el alcance.
+ */
+function RolRoute({ roles, children }: { roles: string[]; children: React.ReactNode }) {
+  const { hydrated } = useAuthStore();
+  const user   = useAuthStore((s) => s.user);
+  const isAuth = useAuthStore((s) => s.isAuth());
+  if (!hydrated) return <AppLoader />;
+  if (!isAuth) return <Navigate to="/login" replace />;
+  // super_admin pasa siempre: opera la plataforma entera.
+  if (user?.role !== 'super_admin' && !roles.includes(user?.role ?? '')) {
+    return <Navigate to={homeForRole(user?.role)} replace />;
+  }
+  return <>{children}</>;
+}
+
 function SuperAdminRoute({ children }: { children: React.ReactNode }) {
   const { hydrated } = useAuthStore();
   const user   = useAuthStore((s) => s.user);
@@ -724,7 +749,7 @@ export default function App() {
                     {/* ── Operaciones ── */}
                     <Route path="/inventario"         element={<InventarioPage />} />
                     <Route path="/ecf"                element={<ECFPage />} />
-                    <Route path="/ecf/activar"        element={<ActivacionEcfPage />} />
+                    <Route path="/ecf/activar"        element={<RolRoute roles={['admin','contador']}><ActivacionEcfPage /></RolRoute>} />
                     <Route path="/ecf-recibidos"      element={<EcfRecibidosPage />} />
 
                     {/* ── Finanzas ── */}

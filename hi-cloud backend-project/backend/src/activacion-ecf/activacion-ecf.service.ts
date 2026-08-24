@@ -151,6 +151,62 @@ export class ActivacionEcfService {
     return guardada;
   }
 
+  /**
+   * Decide si el módulo debe verse y en qué modo.
+   *
+   * UN SOLO SITIO DECIDE. Lo consultan el menú y la pantalla: si cada uno
+   * calculara por su cuenta acabarían discrepando, y el usuario vería una
+   * entrada que lleva a algo que no le corresponde.
+   *
+   * `ya-activo` cuando la empresa ya factura electrónicamente:
+   *
+   *   (config activa Y en PRODUCCIÓN Y con credenciales MSeller)
+   *   O la última solicitud está en 'activada'
+   *
+   * Las tres condiciones de la config son necesarias. Una config en **TEST** es
+   * una activación a medias: la empresa todavía no factura de verdad, y
+   * ocultarle el módulo la dejaría sin vía para pedir que se lo terminen. Y
+   * `activo = true` sin credenciales es una fila creada pero sin configurar.
+   *
+   * La segunda rama tapa una ventana real: si se marca la solicitud como
+   * activada ANTES de configurar MSeller, sin ella al cliente le volvería a
+   * salir el formulario de alta como si nunca hubiera pedido nada.
+   */
+  async estado(): Promise<{
+    visible: boolean;
+    modo: 'formulario' | 'estado-solicitud' | 'ya-activo';
+    solicitud: SolicitudActivacionEcf | null;
+  }> {
+    const empresaId = this.eid;
+
+    const [cfg] = await this.ds.query<{
+      activo: boolean; modo: string; tieneCredenciales: boolean;
+    }[]>(
+      `SELECT activo, modo,
+              ("msellerEmail" IS NOT NULL AND "msellerPasswordEnc" IS NOT NULL) AS "tieneCredenciales"
+         FROM empresa_ecf_config
+        WHERE "empresaId" = $1
+        LIMIT 1`,
+      [empresaId],
+    );
+
+    const configLista = !!cfg?.activo && cfg?.modo === 'PRODUCCION' && !!cfg?.tieneCredenciales;
+    const solicitud   = await this.miSolicitud();
+    const yaActivada  = solicitud?.estado === EstadoSolicitudActivacion.ACTIVADA;
+
+    if (configLista || yaActivada) {
+      return { visible: false, modo: 'ya-activo', solicitud };
+    }
+
+    // Una solicitud rechazada no bloquea: el cliente puede volver a intentarlo.
+    const enCurso = solicitud && solicitud.estado !== EstadoSolicitudActivacion.RECHAZADA;
+    return {
+      visible: true,
+      modo:    enCurso ? 'estado-solicitud' : 'formulario',
+      solicitud: enCurso ? solicitud : null,
+    };
+  }
+
   /** La solicitud de ESTA empresa. Sin filtro no hay aislamiento. */
   async miSolicitud(): Promise<SolicitudActivacionEcf | null> {
     return this.repo.findOne({

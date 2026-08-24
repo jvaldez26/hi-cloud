@@ -72,6 +72,18 @@ export class ActivacionEcfController {
   @ApiOperation({ summary: 'Tarifas vigentes de implementación — el frontend no las hardcodea' })
   tarifas() { return this.svc.tarifas(); }
 
+  /**
+   * Veredicto único: si el módulo se ve y en qué modo.
+   *
+   * Lo consultan el MENÚ y la PANTALLA. Si cada uno decidiera por su cuenta
+   * podrían discrepar, y el usuario acabaría viendo una entrada que lleva a
+   * algo que no le toca.
+   */
+  @Get('estado')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Si el módulo debe verse y en qué modo — lo usan el menú y la pantalla' })
+  estado() { return this.svc.estado(); }
+
   @Get('mi-solicitud')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Solicitud de activación de esta empresa, si existe' })
