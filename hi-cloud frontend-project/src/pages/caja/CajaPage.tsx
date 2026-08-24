@@ -22,6 +22,7 @@ import { imprimirReciboTermico } from '../../utils/printUtils';
 import { exportarExcel } from '../../utils/exportExcel';
 import dayjs from 'dayjs';
 import { dRD, fecha, hora, hoyRD } from '../../utils/fechaRD';
+import { bloqueFacturasTermico, CSS_FACTURAS_TERMICO } from '../../utils/cierreFacturasTermico';
 
 // ── Constantes de retiros ──────────────────────────────────────────────────
 const CATEGORIA_OPTIONS = [
@@ -371,7 +372,7 @@ export default function CajaPage() {
   // Calcular diferencia en tiempo real para el modal de cierre
   const diferenciaCierre = saldoFisicoInput - (cerrarTarget?.saldoEsperado ?? 0);
 
-  const imprimirCierre = async (r: any) => {
+  const imprimirCierre = async (r: any, detalle: any = null) => {
     const empRes = await api.get('/configuracion/empresa')
       .then(res => res.data?.data ?? res.data)
       .catch(() => ({}));
@@ -426,6 +427,7 @@ export default function CajaPage() {
   .sep{color:#000;margin:2px 0}
   .small{font-size:0.85em}
   .xlarge{font-size:1.2em;font-weight:900}
+  ${CSS_FACTURAS_TERMICO}
 </style></head><body>
 ${empRes.razonSocial ?? empRes.nombre ? `<div class="center bold">${esc(empRes.razonSocial ?? empRes.nombre)}</div>` : ''}
 ${empRes.rnc        ? `<div class="center small">RNC: ${esc(empRes.rnc)}</div>` : ''}
@@ -453,13 +455,14 @@ ${row('Retiros:', f(Number(r.retiros        ?? 0)))}
 ${line()}
 <div class="small bold">CUADRE</div>
 ${row('Apertura:',          f(Number(r.saldoApertura ?? 0)))}
-${row('Efectivo esperado:', f(Number(r.saldoCierre   ?? 0)))}
+${row('Efectivo esperado:', f(Number(r.efectivoEsperado ?? r.saldoCierre ?? 0)))}
 ${row('Efectivo contado:',  f(Number(r.saldoFisico   ?? 0)))}
 ${line()}
 <div class="center xlarge">${esc(difLabel)}</div>
 ${billetesRows ? `${line()}<div class="small bold">DESGLOSE DE BILLETES</div>\n${billetesRows}\n${row('Total billetes:', f(totalBilletes), true)}` : ''}
 ${pagoRows     ? `${line()}<div class="small bold">DESGLOSE DE PAGO</div>\n${pagoRows}` : ''}
 ${r.notas      ? `${line()}<div class="small">Nota: ${esc(r.notas)}</div>` : ''}
+${bloqueFacturasTermico(detalle)}
 ${line()}
 <div class="center bold">** CIERRE DE CAJA **</div>
 <div class="center small">Documento interno</div>
@@ -591,6 +594,7 @@ ${line()}
   .sep{color:#000;margin:2px 0}
   .small{font-size:0.85em}
   .xlarge{font-size:1.2em;font-weight:900}
+  ${CSS_FACTURAS_TERMICO}
 </style></head><body>
 ${empRes.razonSocial ?? empRes.nombre ? `<div class="center bold">${esc(empRes.razonSocial ?? empRes.nombre)}</div>` : ''}
 ${empRes.rnc        ? `<div class="center small">RNC: ${esc(empRes.rnc)}</div>` : ''}
@@ -618,7 +622,7 @@ ${row('Retiros:', f(Number(r.retiros        ?? 0)))}
 ${line()}
 <div class="small bold">CUADRE</div>
 ${row('Apertura:',          f(Number(r.saldoApertura ?? 0)))}
-${row('Efectivo esperado:', f(Number(r.saldoCierre   ?? 0)))}
+${row('Efectivo esperado:', f(Number(r.efectivoEsperado ?? r.saldoCierre ?? 0)))}
 ${row('Efectivo contado:',  f(Number(r.saldoFisico   ?? 0)))}
 ${line()}
 <div class="center xlarge">${esc(difLabel)}</div>
@@ -626,6 +630,7 @@ ${billetesRows ? `${line()}<div class="small bold">DESGLOSE DE BILLETES</div>\n$
 ${pagoRows     ? `${line()}<div class="small bold">DESGLOSE DE PAGO</div>\n${pagoRows}` : ''}
 ${seccionDetalle}
 ${r.notas      ? `${line()}<div class="small">Nota: ${esc(r.notas)}</div>` : ''}
+${bloqueFacturasTermico(detalle)}
 ${line()}
 <div class="center bold">** CIERRE DE CAJA **</div>
 <div class="center small">Documento interno</div>
@@ -721,14 +726,15 @@ ${line()}
   const ejecutarImpresion = async (r: any, formato: 'ticket'|'pdf'|'excel', conDetalle: boolean) => {
     setPrintLoading(true);
     try {
+      // El ticket usa EL MISMO endpoint que el PDF y el Excel. Si trajera los
+      // datos por otra vía acabaría discrepando de ellos ante la misma caja.
       let detalle: any = null;
-      if (conDetalle && (formato === 'pdf' || formato === 'excel')) {
+      if (conDetalle) {
         detalle = await cajaApi.facturasDetalle(r.id);
       }
 
       if (formato === 'ticket') {
-        // Ticket: siempre resumen (sin detalle de facturas)
-        await imprimirCierre(r);
+        await imprimirCierre(r, conDetalle ? detalle : null);
       } else if (formato === 'pdf') {
         if (conDetalle && detalle?.facturas?.length > 0) {
           // PDF con detalle: generar HTML extendido e imprimir
@@ -1546,14 +1552,14 @@ ${line()}
         <div>
           <Checkbox
             checked={printDetalle}
-            disabled={printFormat === 'ticket'}
             onChange={e => setPrintDetalle(e.target.checked)}
           >
             Incluir detalle de facturas emitidas
           </Checkbox>
-          {printFormat === 'ticket' && (
-            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4, paddingLeft: 24 }}>
-              El ticket térmico siempre muestra solo el resumen.
+          {printDetalle && printFormat === 'ticket' && (
+            <div style={{ fontSize: 12, color: '#64748b', marginTop: 4, paddingLeft: 24 }}>
+              Una línea por factura: número, hora, método de pago y monto. Las anuladas
+              se incluyen marcadas y no suman en el total.
             </div>
           )}
           {printDetalle && printFormat !== 'ticket' && (

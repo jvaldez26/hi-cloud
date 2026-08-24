@@ -53,6 +53,7 @@ import { clinicaApi } from '../../api/clinica.api';
 import { RestaurantePOS, TallerPOS, FarmaciaPOS, OpticaPOS, ClinicaPOS, GimnasioPOS } from './modos';
 import CompraFormInner from '../compras/CompraFormInner';
 import { ahora, dRD, fecha, fechaHora, fechaLarga, hora, horaConSegundos, hoyRD } from '../../utils/fechaRD';
+import { bloqueFacturasTermico, CSS_FACTURAS_TERMICO } from '../../utils/cierreFacturasTermico';
 
 // ── Alias type ────────────────────────────────────────────────────────────────
 type Prod = Producto;
@@ -2191,6 +2192,9 @@ function buildCierreCajaHTML(params: {
   totalFisico:   number;
   nota?:    string;
   tipoImpresora?: string;
+  /** Detalle de facturas del turno. Viene de GET /caja/:id/facturas-detalle,
+   *  el mismo endpoint que alimenta el PDF y el Excel. */
+  detalleFacturas?: any;
 }): string {
   const prn = IMPRESORA_CONFIG[params.tipoImpresora ?? '80mm'] ?? IMPRESORA_CONFIG['80mm'];
   const esc = (s: string) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -2242,6 +2246,7 @@ function buildCierreCajaHTML(params: {
   .sep{color:#000;margin:2px 0}
   .small{font-size:0.85em}
   .xlarge{font-size:1.2em;font-weight:900}
+  ${CSS_FACTURAS_TERMICO}
   .title{font-size:1.1em;font-weight:900;text-align:center;letter-spacing:1px;margin:4px 0}
 </style>
 <script>
@@ -2290,6 +2295,7 @@ ${pagoRows ? `${line()}
 <div class="small bold">DESGLOSE DE PAGO</div>
 ${pagoRows}` : ''}
 ${params.nota ? `${line()}<div class="small">Nota: ${esc(params.nota)}</div>` : ''}
+${bloqueFacturasTermico(params.detalleFacturas)}
 ${line()}
 <div class="center bold">** CIERRE DE CAJA **</div>
 <div class="center small">Documento interno</div>
@@ -7583,7 +7589,9 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
         .then(r => r.data?.data ?? r.data)
         .catch(() => ({}));
       const empConf    = (empRes.configuracion ?? {}) as any;
-      const esperado   = Number(snap.saldoCierre ?? 0);
+      // efectivoEsperado lo calcula el backend con la formula unica; saldoCierre
+      // solo esta relleno si la caja ya cerro.
+      const esperado   = Number(snap.efectivoEsperado ?? snap.saldoCierre ?? 0);
       const buildParams = {
         empresa:  { nombre: empRes.razonSocial ?? empRes.nombre, rnc: empRes.rnc, direccion: empRes.direccion, telefono: empRes.telefono },
         caja:     { id: snap.id, numero: snap.numero, fecha: snap.fecha, cajeroNombre: snap.vendedorNombre, estado: snap.estado, cantidadTransacciones: snap.cantidadTransacciones },
@@ -7598,13 +7606,17 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
         tipoImpresora: empConf.posTipoImpresora,
       };
 
+      // El ticket usa EL MISMO endpoint que el PDF y el Excel.
       let detalle: any = null;
-      if (conDetalle && (formato === 'pdf' || formato === 'excel')) {
+      if (conDetalle) {
         detalle = await api.get(`/caja/${snap.id}/facturas-detalle`).then(r => r.data?.data ?? r.data);
       }
 
       if (formato === 'ticket') {
-        imprimirReciboTermico(buildCierreCajaHTML(buildParams), undefined, empConf.posTipoImpresora);
+        imprimirReciboTermico(
+          buildCierreCajaHTML({ ...buildParams, detalleFacturas: conDetalle ? detalle : null }),
+          undefined, empConf.posTipoImpresora,
+        );
 
       } else if (formato === 'pdf') {
         if (conDetalle && detalle?.facturas?.length > 0) {
@@ -7982,14 +7994,14 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
         <div>
           <Checkbox
             checked={printDetalle}
-            disabled={printFormat === 'ticket'}
             onChange={e => setPrintDetalle(e.target.checked)}
           >
             Incluir detalle de facturas emitidas
           </Checkbox>
-          {printFormat === 'ticket' && (
-            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4, paddingLeft: 24 }}>
-              El ticket térmico siempre muestra solo el resumen.
+          {printDetalle && printFormat === 'ticket' && (
+            <div style={{ fontSize: 12, color: '#64748b', marginTop: 4, paddingLeft: 24 }}>
+              Una línea por factura: número, hora, método de pago y monto. Las anuladas
+              se incluyen marcadas y no suman en el total.
             </div>
           )}
           {printDetalle && printFormat !== 'ticket' && (
