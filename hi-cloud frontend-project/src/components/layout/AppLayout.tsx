@@ -53,7 +53,6 @@ import {
   type SidebarPalette, type QuickItem, type SubItem, type MenuCategory,
 } from './sidebar/base';
 import { SidebarShell, useSidebarColapsado } from './sidebar/SidebarShell';
-import { SidebarContenedor } from './sidebar/SidebarContenedor';
 const { Header, Content } = Layout;
 const { Text } = Typography;
 
@@ -1217,16 +1216,55 @@ export default function AppLayout() {
         {/* ══ SIDEBAR + FLYOUT — envueltos en el proveedor de tema ══ */}
         <SidebarCtx.Provider value={C}>
 
-        {/* ══ SIDEBAR — columna en escritorio, cajón en mobile ══════ */}
-        <SidebarContenedor
-          ref={sidebarRef}
-          esMovil={isMobile}
-          colapsado={collapsed}
-          abierto={mobileOpen}
-          onCerrar={() => setMobileOpen(false)}
-        >
-          {SidebarContent}
-        </SidebarContenedor>
+        {/* ══ SIDEBAR DESKTOP (oculto en mobile) ═══════════════════ */}
+        {!isMobile && (
+          <div
+            ref={sidebarRef}
+            style={{
+              width:       collapsed ? 64 : 240,
+              minWidth:    collapsed ? 64 : 240,
+              height:      '100%',
+              flexShrink:  0,
+              transition:  'width 0.25s ease, min-width 0.25s ease',
+              boxShadow:   '2px 0 8px rgba(0,0,0,0.18)',
+              zIndex:      100,
+              overflow:    'hidden',
+            }}
+          >
+            {SidebarContent}
+          </div>
+        )}
+
+        {/* ══ SIDEBAR MOBILE — drawer overlay ════════════════════════ */}
+        {isMobile && (
+          <>
+            {/* Overlay oscuro */}
+            {mobileOpen && (
+              <div
+                className="mobile-drawer-overlay"
+                onClick={() => setMobileOpen(false)}
+              />
+            )}
+            {/* Drawer */}
+            <div
+              ref={sidebarRef}
+              style={{
+                position:   'fixed',
+                top:        0,
+                left:       0,
+                height:     '100%',
+                width:      240,
+                zIndex:     200,
+                transform:  mobileOpen ? 'translateX(0)' : 'translateX(-240px)',
+                transition: 'transform 0.25s ease',
+                overflowY:  'hidden',
+                boxShadow:  mobileOpen ? '4px 0 20px rgba(0,0,0,0.3)' : 'none',
+              }}
+            >
+              {SidebarContent}
+            </div>
+          </>
+        )}
 
         {/* ══ FLYOUT PANEL ═══════════════════════════════════════════ */}
         <AnimatePresence>
