@@ -20,6 +20,7 @@ export class UpdateMensajeDto {
   /**
    * El tipo puede corregirse después de publicar —
    * un aviso mal clasificado como novedad (o viceversa) debe poder enmendarse.
+   * El servicio lo escribe y marca editadoEn: ver adminEditar().
    */
   @IsOptional()
   @IsIn(['aviso', 'novedad'])

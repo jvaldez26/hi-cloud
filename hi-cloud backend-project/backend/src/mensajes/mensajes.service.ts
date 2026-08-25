@@ -286,8 +286,14 @@ export class MensajesService {
   }
 
   /**
-   * Permite editar un mensaje ya publicado.
-   * Si se edita el cuerpo o título, actualiza editadoEn para registro de auditoría.
+   * Permite editar un mensaje ya publicado — incluido su tipo.
+   *
+   * Un comunicado publicado con el tipo equivocado se corrige aquí. La
+   * alternativa era borrarlo y rehacerlo, que le cambia el id, lo reordena y
+   * lo devuelve a "no leído" para todo el mundo por una errata de un campo.
+   *
+   * Si cambia algo que el lector ve (título, cuerpo o tipo) se marca editadoEn
+   * como registro de auditoría.
    */
   async adminEditar(id: string, dto: UpdateMensajeDto): Promise<void> {
     const existing = await this.ds.query(
@@ -296,34 +302,38 @@ export class MensajesService {
     );
     if (!existing.length) throw new NotFoundException(`Mensaje ${id} no encontrado`);
 
-    const editaCuerpo = dto.titulo !== undefined || dto.cuerpo !== undefined;
+    // Título, cuerpo y tipo son lo que el lector ve: cambiarlos marca editadoEn.
+    // El tipo cuenta porque un aviso y una novedad no se leen igual — corregirlo
+    // es una enmienda visible, no un ajuste de metadatos.
+    const editaContenido =
+      dto.titulo !== undefined || dto.cuerpo !== undefined || dto.tipo !== undefined;
 
-    // El tipo ('aviso'|'novedad') no se puede cambiar post-publicación.
-    // El cuerpo y título sí pueden editarse; editadoEn queda como registro.
     await this.ds.query(`
       UPDATE mensajes SET
         titulo             = COALESCE($2, titulo),
         cuerpo             = COALESCE($3, cuerpo),
-        destinatario       = COALESCE($4, destinatario),
-        "destinatarioIds"  = COALESCE($5, "destinatarioIds"),
-        "destinatarioPlan" = COALESCE($6, "destinatarioPlan"),
-        "fechaPublicacion" = COALESCE($7, "fechaPublicacion"),
-        "fechaExpiracion"  = COALESCE($8, "fechaExpiracion"),
-        activo             = COALESCE($9, activo),
-        "editadoEn"        = CASE WHEN $10 THEN now() ELSE "editadoEn" END,
+        tipo               = COALESCE($4, tipo),
+        destinatario       = COALESCE($5, destinatario),
+        "destinatarioIds"  = COALESCE($6, "destinatarioIds"),
+        "destinatarioPlan" = COALESCE($7, "destinatarioPlan"),
+        "fechaPublicacion" = COALESCE($8, "fechaPublicacion"),
+        "fechaExpiracion"  = COALESCE($9, "fechaExpiracion"),
+        activo             = COALESCE($10, activo),
+        "editadoEn"        = CASE WHEN $11 THEN now() ELSE "editadoEn" END,
         "updatedAt"        = now()
       WHERE id = $1
     `, [
       id,
       dto.titulo           ?? null,
       dto.cuerpo           ?? null,
+      dto.tipo             ?? null,
       dto.destinatario     ?? null,
       dto.destinatarioIds  ?? null,
       dto.destinatarioPlan ?? null,
       dto.fechaPublicacion ?? null,
       dto.fechaExpiracion  ?? null,
       dto.activo           ?? null,
-      editaCuerpo,
+      editaContenido,
     ]);
   }
 
