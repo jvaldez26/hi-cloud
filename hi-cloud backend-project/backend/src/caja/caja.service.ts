@@ -1192,12 +1192,19 @@ export class CajaService {
   }
 
   async esCajaAbiertaVendedor(
-    vendedorId: number,
+    vendedorId: number | null | undefined,
     empresaId:  number,
   ): Promise<{ ok: boolean; mensaje?: string }> {
     // Si la empresa no requiere control de caja, cualquier venta está permitida.
     const controlActivo = await this.controlCajaActivoParaEmpresa(empresaId);
     if (!controlActivo) return { ok: true };
+
+    // Sin vendedor no hay turno contra el que comprobar: la venta no se imputará
+    // a ninguna caja, la haya abierta o no. Se responde explícitamente en vez de
+    // dejar que TypeORM ignore el undefined y devuelva la primera caja abierta
+    // que encuentre, que sería un "ok" falso. Quien llama decide qué hacer;
+    // facturas.cambiarEstado() lo documenta y no bloquea.
+    if (vendedorId == null) return { ok: false, mensaje: 'sin_vendedor' };
 
     // Buscar caja propia del vendedor O caja global (sin vendedorId asignado).
     // La caja global cubre empresas que no asocian caja por vendedor.
