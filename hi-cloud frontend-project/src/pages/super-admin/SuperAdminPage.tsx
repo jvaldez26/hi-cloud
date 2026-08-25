@@ -6,6 +6,8 @@ import {
 } from 'antd';
 import type { MenuProps } from 'antd';
 import { SidebarShell, useSidebarColapsado } from '../../components/layout/sidebar/SidebarShell';
+import { SidebarContenedor } from '../../components/layout/sidebar/SidebarContenedor';
+import { useMobile } from '../../hooks/useMediaQuery';
 import {
   SidebarCtx, PALETTES, FlyoutPanel,
   type SidebarPalette, type MenuCategory,
@@ -23,6 +25,7 @@ import {
   Eye, Edit2, MessageSquare, PauseCircle, PlayCircle, Trash2,
   Crown, Settings, Moon, Sun,
   CheckCircle, Send, Shield, Bell, MoreHorizontal, Database,
+  Menu as MenuIcon,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
@@ -1456,6 +1459,17 @@ export default function SuperAdminPage() {
   // son dos menús diferentes y colapsar uno no debe colapsar el otro.
   const { collapsed: menuColapsado, setCollapsed: setMenuColapsado } =
     useSidebarColapsado('hicloud-sa-sidebar-collapsed');
+
+  // En móvil el menú pasa a cajón sobre el contenido. Sin esto se comía 240 de
+  // los 375 px de un teléfono y no quedaba sitio para nada más.
+  const esMovil = useMobile();
+  const [menuAbierto, setMenuAbierto] = useState(false);
+
+  /** Elegir una entrada cierra el cajón, como en el ERP. */
+  const irATab = useCallback((clave: string) => {
+    setTab(clave);
+    setMenuAbierto(false);
+  }, []);
   const [grupoAbierto, setGrupoAbierto] = useState<string | null>('clientes');
   const [panelMenu, setPanelMenu] = useState<{ id: string; top: number } | null>(null);
 
@@ -2391,13 +2405,30 @@ export default function SuperAdminPage() {
 
         {/* ── TÍTULO + ACCIONES ─────────────────────────────────────────────── */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
-          <div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, minWidth: 0 }}>
+            {/* En móvil el menú está oculto en el cajón: sin este botón no hay
+                forma de llegar a las otras pestañas. */}
+            {esMovil && (
+              <button
+                onClick={() => setMenuAbierto(v => !v)}
+                aria-label="Abrir menú"
+                style={{
+                  background: 'none', border: `1px solid ${C.border}`, borderRadius: 8,
+                  cursor: 'pointer', color: C.txt, flexShrink: 0,
+                  width: 44, height: 44,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                <MenuIcon size={20} />
+              </button>
+            )}
+          <div style={{ minWidth: 0 }}>
             <h1 style={{ color: C.txt, fontWeight: 800, fontSize: 22, margin: 0 }}>
               Administración Global
             </h1>
             <p style={{ color: C.txt2, margin: '4px 0 0', fontSize: 13 }}>
               Control total de empresas, usuarios y suscripciones de HiCloud ERP
             </p>
+          </div>
           </div>
           <button
             onClick={() => { qc.invalidateQueries(); }}
@@ -2485,15 +2516,23 @@ export default function SuperAdminPage() {
 
           {/* ── MENÚ LATERAL ────────────────────────────────────────────────── */}
           <SidebarCtx.Provider value={paletaMenu}>
+            <SidebarContenedor
+              esMovil={esMovil}
+              colapsado={menuColapsado}
+              abierto={menuAbierto}
+              onCerrar={() => setMenuAbierto(false)}
+            >
             <SidebarShell
-              collapsed={menuColapsado}
+              /* En el cajón nunca se muestra colapsado: ahí el ancho lo da el
+                 cajón, y un menú de iconos sueltos no ayuda a nadie. */
+              collapsed={esMovil ? false : menuColapsado}
               onCollapsed={setMenuColapsado}
               tagline="SUPER ADMIN"
               itemsRapidos={[]}
               gruposAddon={[]}
               gruposNormales={gruposMenu}
               activePath={tab}
-              onNavegar={setTab}
+              onNavegar={irATab}
               onPrefetch={() => { /* son pestañas, no rutas: no hay nada que precargar */ }}
               categoriaAbierta={grupoAbierto}
               onToggleCategoria={id => setGrupoAbierto(g => (g === id ? null : id))}
@@ -2515,11 +2554,13 @@ export default function SuperAdminPage() {
                 </button>
               }
             />
+            </SidebarContenedor>
           </SidebarCtx.Provider>
 
           {/* Con el menú colapsado, el grupo se abre en un panel flotante — igual
-              que en el ERP. Sin esto, colapsar dejaría las entradas inalcanzables. */}
-          {menuColapsado && panelMenu && (() => {
+              que en el ERP. Sin esto, colapsar dejaría las entradas inalcanzables.
+              En móvil no aplica: allí el menú va desplegado dentro del cajón. */}
+          {!esMovil && menuColapsado && panelMenu && (() => {
             const cat = gruposMenu.find(g => g.id === panelMenu.id);
             if (!cat) return null;
             return (
@@ -2528,7 +2569,7 @@ export default function SuperAdminPage() {
                 activePath={tab}
                 sidebarWidth={64}
                 panelTop={panelMenu.top}
-                onNavigate={p => { setTab(p); setPanelMenu(null); }}
+                onNavigate={p => { irATab(p); setPanelMenu(null); }}
                 onClose={() => setPanelMenu(null)}
                 planActual="plus"
                 onLocked={() => {}}
