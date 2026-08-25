@@ -1752,12 +1752,19 @@ function CategoriasSidebar({ categorias, selected, onSelect }: {
 }
 
 // ── Apertura de turno ─────────────────────────────────────────────────────────
-function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar }: {
+/**
+ * `soloVendedor` — modo ligero para las empresas que no usan control de caja:
+ * pregunta quién vende y nada más. Sin caja diaria, sin monto de apertura y sin
+ * llamadas a /caja. Existe porque estas empresas necesitan que la venta quede
+ * imputada a alguien, no que se les imponga un flujo de turnos que no usan.
+ */
+function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar, soloVendedor = false }: {
   open: boolean;
   vendedores: any[];
   sucursales: any[];
   onAbrir: (monto: number, vendedorId?: number, sucursalId?: number) => void;
   onCancelar: () => void;
+  soloVendedor?: boolean;
 }) {
   const C = useC();
   const [monto,       setMonto]      = useState(0);
@@ -1807,7 +1814,7 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar 
 
   // Consultar caja del día para este vendedor — se re-ejecuta al cambiar vendedorId
   useEffect(() => {
-    if (!open) return;
+    if (!open || soloVendedor) return;   // sin turnos no hay caja diaria que consultar
     if (!vendedorId) { setCajaStatus('sin_apertura'); return; }
     setCajaStatus('loading');
     api.get(`/caja/hoy?vendedorId=${vendedorId}`)
@@ -1832,9 +1839,10 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar 
 
   const sinVendedores     = vendedores.length === 0;
   const vendedorRequerido = !vendedorId;          // siempre obligatorio
-  const turnoYaCerrado    = cajaStatus === 'cerrada_hoy';
+  const turnoYaCerrado    = !soloVendedor && cajaStatus === 'cerrada_hoy';
   const bloqueado         = vendedorRequerido || turnoYaCerrado;
-  const cargando          = cajaStatus === 'loading' || abriendo;
+  // En modo ligero cajaStatus se queda en 'loading' porque nunca se consulta.
+  const cargando          = (!soloVendedor && cajaStatus === 'loading') || abriendo;
 
   const handleAbrir = async () => {
     if (bloqueado || cargando) return;
@@ -1843,18 +1851,22 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar 
       localStorage.setItem('pos_last_vendedor_id', String(vendedorId));
       localStorage.setItem('pos_vendedor_id', String(vendedorId));
     }
-    if (sucursalSel) localStorage.setItem('pos_last_sucursal_id', String(sucursalSel));
+    // El selector de sucursal no se muestra en modo ligero: no se toca la que ya
+    // tenga la sesión (sucursalSel se rehidrata de localStorage aunque esté oculto,
+    // y arrastrarlo dispararía un cambio de sucursal que nadie pidió).
+    const sucursalAAplicar = soloVendedor ? undefined : sucursalSel;
+    if (sucursalAAplicar) localStorage.setItem('pos_last_sucursal_id', String(sucursalAAplicar));
     const vendedorSeleccionado = vendedores.find((v: any) => v.id === vendedorId);
     const nombreVendedor       = vendedorSeleccionado?.nombre ?? undefined;
     try {
-      if (cajaStatus === 'sin_apertura') {
+      if (!soloVendedor && cajaStatus === 'sin_apertura') {
         await api.post('/caja/abrir', {
           saldoApertura:  monto,
           vendedorId,
           vendedorNombre: nombreVendedor,
         });
       }
-      onAbrir(monto, vendedorId, sucursalSel);
+      onAbrir(monto, vendedorId, sucursalAAplicar);
     } catch (e: any) {
       const httpStatus = (e as any)?.response?.status;
       const errMsg: string = (e as any)?.response?.data?.errors?.[0] ?? (e as any)?.response?.data?.message ?? '';
@@ -1926,8 +1938,10 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar 
               onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = C.inputBg; (e.currentTarget as HTMLButtonElement).style.color = C.textSub; (e.currentTarget as HTMLButtonElement).style.borderColor = C.border2; }}
             >✕</button>
           </Tooltip>
-          <div style={{ fontSize: 44, marginBottom: 8 }}>🏪</div>
-          <span style={{ fontSize: 18, fontWeight: 700, color: C.text, display: 'block' }}>Apertura de Turno</span>
+          <div style={{ fontSize: 44, marginBottom: 8 }}>{soloVendedor ? '👤' : '🏪'}</div>
+          <span style={{ fontSize: 18, fontWeight: 700, color: C.text, display: 'block' }}>
+            {soloVendedor ? '¿Quién está vendiendo?' : 'Apertura de Turno'}
+          </span>
           <span style={{ fontSize: 12, color: C.textSub, display: 'block', marginTop: 4 }}>
             {fechaLarga(t)}
           </span>
@@ -1937,6 +1951,7 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar 
         </div>
 
         {/* Estado de la caja diaria */}
+        {!soloVendedor && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10,
           borderRadius: 10, padding: '10px 14px',
@@ -1980,11 +1995,14 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar 
             )}
           </div>
         </div>
+        )}
 
         {/* Cajero / vendedor */}
         {vendedores.length > 0 && (
           <div>
-            <span style={{ fontSize: 12, color: C.textSub, marginBottom: 8, display: 'block' }}>Cajero responsable</span>
+            <span style={{ fontSize: 12, color: C.textSub, marginBottom: 8, display: 'block' }}>
+              {soloVendedor ? 'Vendedor' : 'Cajero responsable'}
+            </span>
             {vendedores.length === 1 ? (
               <div style={{
                 padding: '8px 12px', borderRadius: 8,
@@ -2011,7 +2029,7 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar 
         )}
 
         {/* Sucursal */}
-        {sucursales.length > 1 && (
+        {!soloVendedor && sucursales.length > 1 && (
           <div>
             <span style={{ fontSize: 12, color: C.textSub, marginBottom: 8, display: 'block' }}>Sucursal</span>
             <Select
@@ -2028,6 +2046,7 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar 
         )}
 
         {/* Monto inicial — solo editable si la caja está cerrada */}
+        {!soloVendedor && (
         <div>
           <span style={{ fontSize: 12, color: C.textSub, marginBottom: 8, display: 'block' }}>
             Monto inicial en caja (RD$)
@@ -2051,20 +2070,26 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar 
             </div>
           )}
         </div>
+        )}
 
         {/* Advertencias */}
         {sinVendedores && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: C.red+'18', border: `1px solid ${C.red}44`, borderRadius: 8, padding: '8px 12px' }}>
             <span style={{ fontSize: 13 }}>🚫</span>
             <span style={{ fontSize: 12, color: C.red, fontWeight: 500 }}>
-              No hay vendedores configurados. Ve a <strong>Comercial &amp; Servicios → Vendedores</strong> para agregar uno antes de abrir el turno.
+              No hay vendedores configurados. Ve a <strong>Comercial &amp; Servicios → Vendedores</strong> para agregar uno
+              {soloVendedor ? ' antes de facturar.' : ' antes de abrir el turno.'}
             </span>
           </div>
         )}
         {!sinVendedores && vendedorRequerido && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: C.orange+'18', border: `1px solid ${C.orange}44`, borderRadius: 8, padding: '8px 12px' }}>
             <span style={{ fontSize: 13 }}>⚠️</span>
-            <span style={{ fontSize: 12, color: C.orange, fontWeight: 500 }}>Debes seleccionar el cajero responsable para abrir el turno.</span>
+            <span style={{ fontSize: 12, color: C.orange, fontWeight: 500 }}>
+              {soloVendedor
+                ? 'Sin vendedor la venta no queda imputada a nadie ni aparece en los reportes por vendedor.'
+                : 'Debes seleccionar el cajero responsable para abrir el turno.'}
+            </span>
           </div>
         )}
         {turnoYaCerrado && (
@@ -2086,7 +2111,10 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar 
             boxShadow: (bloqueado || cargando) ? 'none' : '0 4px 16px rgba(16,185,129,.35)',
             transition: 'all 0.2s',
           }}>
-          {abriendo ? '⏳ Abriendo...' : turnoYaCerrado ? '🔒 Turno cerrado' : '🏪 Abrir Turno'}
+          {abriendo         ? (soloVendedor ? '⏳ Guardando...' : '⏳ Abriendo...')
+           : turnoYaCerrado ? '🔒 Turno cerrado'
+           : soloVendedor   ? '👤 Continuar'
+           :                  '🏪 Abrir Turno'}
         </button>
       </div>
     </Modal>
@@ -9856,6 +9884,21 @@ export default function POSPage() {
       .catch(() => {});
   }, []);   // solo al montar
 
+  // Un turno abierto sin cajero es un estado imposible: hay que volver a pedirlo.
+  //
+  // El turno vive en sessionStorage y el cajero en localStorage. Son dos almacenes
+  // con ciclos de vida distintos y se desincronizan (así se perdieron 5 facturas
+  // de la caja #446: el POS se creía en turno y facturaba sin vendedor, y esas
+  // ventas no entran en ningún cierre porque el cuadre las reúne por vendedorId).
+  // En vez de perseguir cada vía que borra uno y deja el otro, se comprueba la
+  // condición: si falta el cajero, el turno no vale y el modal vuelve a salir.
+  useEffect(() => {
+    if (controlCajaActivo && turnoAbierto && !vendedorId) {
+      setTurnoAbierto(false);
+      sessionStorage.removeItem('pos_turno');
+    }
+  }, [controlCajaActivo, turnoAbierto, vendedorId]);
+
   // Verificar que la caja del cajero activo esté abierta.
   // vendedorId está en el queryKey → se re-ejecuta automáticamente cuando cambia el estado.
   const { data: cajaActivaHoy } = useQuery<any>({
@@ -9956,16 +9999,43 @@ export default function POSPage() {
   });
   // Vendedor vinculado al usuario logueado — solo se restringe para usuarios con rol vendedor
   const esRolVendedor = user?.role === 'vendedor';
+  // Se consulta siempre, no solo para el rol vendedor: es la forma de saber a
+  // quién imputar la venta cuando la empresa no usa turnos y el modal de
+  // apertura —que era donde se elegía el cajero— nunca llega a abrirse.
   const { data: miVendedor = null } = useQuery<any | null>({
     queryKey: ['mi-vendedor-pos'],
     queryFn:  () => api.get('/vendedores/mi-perfil').then((r: any) => {
       const d = r.data?.data ?? r.data;
       return (d && typeof d === 'object' && d.id) ? d : null;
     }).catch(() => null),
-    enabled:  esRolVendedor,
     staleTime: 10 * 60_000,
   });
   const vendedoresPOS: any[] = (esRolVendedor && miVendedor) ? [miVendedor] : vendedores;
+
+  // ── Vendedor en empresas SIN control de caja ──────────────────────────────
+  //
+  // El modal de apertura de turno era el único sitio donde se elegía el cajero.
+  // Al condicionarlo a `controlCajaActivo` (commit 2fa2586d) estas empresas
+  // dejaron de tener dónde asignarlo y desde entonces facturan con vendedorId
+  // NULL: 148 facturas en MOTO REPUESTO MANOLIN, 8 en GRUPO SUS.
+  //
+  // Se resuelve sin devolverles los turnos, que no usan y no queremos imponerles:
+  //   1. el vendedor vinculado al usuario, si lo hay;
+  //   2. el único vendedor de la empresa, si solo hay uno (el caso de las dos
+  //      empresas afectadas — cero fricción, no ven nada);
+  //   3. y solo si hay varios y ninguno vinculado, se pregunta una vez.
+  useEffect(() => {
+    if (controlCajaActivo || vendedorId) return;
+    const auto = miVendedor?.id
+      ?? (vendedoresPOS.length === 1 ? vendedoresPOS[0].id : undefined);
+    if (!auto) return;
+    setVendedorId(auto);
+    localStorage.setItem('pos_vendedor_id', String(auto));
+  }, [controlCajaActivo, vendedorId, miVendedor, vendedoresPOS]);
+
+  /** Hay que preguntar quién vende: varios candidatos y ninguno deducible. */
+  const pedirVendedorSinTurno =
+    !controlCajaActivo && !vendedorId && !miVendedor && vendedoresPOS.length > 1;
   // Usuarios activos de la empresa con email — para Cambiar Usuario
   const { data: usuariosEmpresa = [] } = useQuery<any[]>({
     queryKey: ['pos-cajeros'],
@@ -11304,8 +11374,15 @@ export default function POSPage() {
     if (!usuario?.email) { setErrCambio('Usuario inválido'); setCambiandoUser(false); return; }
     try {
       await api.post('/auth/login', { email: usuario.email, password: pwCambio });
-      // Login exitoso → limpiar datos del cajero anterior y recargar
+      // Login exitoso → limpiar datos del cajero anterior y recargar.
+      //
+      // `pos_turno` va con ellos. El turno vive en sessionStorage y el cajero en
+      // localStorage; al borrar solo el cajero, el POS volvía tras el reload con
+      // el turno dado por abierto y sin nadie a quien imputar las ventas: el modal
+      // de apertura no salía y las facturas se grababan con vendedorId NULL,
+      // fuera de todo cierre de caja.
       sessionStorage.removeItem('pos_bloqueado');
+      sessionStorage.removeItem('pos_turno');
       localStorage.removeItem('pos_cajero_nombre');
       localStorage.removeItem('pos_vendedor_id');
       setModalCambiarUser(false);
@@ -11420,7 +11497,10 @@ export default function POSPage() {
       background: palette.bg, fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
       color: palette.text, overflow: 'hidden',
     }}>
-      <ModalAperturaTurno open={controlCajaActivo && !turnoAbierto} vendedores={vendedoresPOS} sucursales={sucursales}
+      <ModalAperturaTurno
+        open={controlCajaActivo ? !turnoAbierto : pedirVendedorSinTurno}
+        soloVendedor={!controlCajaActivo}
+        vendedores={vendedoresPOS} sucursales={sucursales}
         onAbrir={async (m, vid, sid) => {
           if (vid) {
             setVendedorId(vid);
@@ -11445,10 +11525,14 @@ export default function POSPage() {
               localStorage.setItem('pos_sucursal_id', String(sid));
             }
           }
-          setTurnoAbierto(true);
-          sessionStorage.setItem('pos_turno', '1');
-          qc.invalidateQueries({ queryKey: ['pos-caja-hoy'] });
-          if (vid) qc.invalidateQueries({ queryKey: ['pos-caja-abierta', vid] });
+          // Sin control de caja no hay turno que marcar: el modal solo sirvió para
+          // saber quién vende.
+          if (controlCajaActivo) {
+            setTurnoAbierto(true);
+            sessionStorage.setItem('pos_turno', '1');
+            qc.invalidateQueries({ queryKey: ['pos-caja-hoy'] });
+            if (vid) qc.invalidateQueries({ queryKey: ['pos-caja-abierta', vid] });
+          }
         }}
         onCancelar={() => navigate('/dashboard')} />
       <ModalExito sale={sale} onNueva={() => setSale(null)}
