@@ -118,8 +118,21 @@ export function horaDelDiaRD(): number {
 // Formateo — todo pinneado a la zona de RD
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 'YYYY-MM-DD' a secas: una fecha de calendario, sin hora y sin zona. */
-const SOLO_FECHA = /^(\d{4})-(\d{2})-(\d{2})$/;
+/**
+ * Fecha de calendario: 'YYYY-MM-DD', con o sin una medianoche pegada detrás.
+ *
+ * La medianoche sin zona ('2026-08-25T00:00:00') cuenta como fecha de
+ * calendario a propósito. Quien escribe eso quiere decir *ese día*, no
+ * "medianoche en Londres": tratarla como instante UTC la formatea en RD (−4)
+ * como el día ANTERIOR. Paso exactamente eso en el modal de anular cierre —
+ * un `+ 'T00:00:00'` bienintencionado hacía que un cierre del 25 se anunciara
+ * como "la caja del 24/08/2026", y el cajero no reconocía su propio turno.
+ *
+ * Solo se acepta 00:00:00 clavado: cualquier otra hora sí es un instante y se
+ * convierte de zona como debe ser. La marca de zona explícita manda siempre —
+ * un '...T00:00:00Z' es un instante de verdad y no entra aquí.
+ */
+const SOLO_FECHA = /^(\d{4})-(\d{2})-(\d{2})(?:T00:00:00(?:\.0+)?)?$/;
 
 /** Lleva marca de zona ('Z' o '+04:00')? Entonces es un instante inequívoco. */
 const CON_ZONA = /(Z|[+-]\d{2}:?\d{2})$/;
@@ -213,10 +226,15 @@ export function fechaHora(v: unknown): string {
  */
 export function dRD(v?: unknown): Dayjs {
   if (v == null) return ahoraRD();
-  if (typeof v === 'string' && SOLO_FECHA.test(v.trim())) {
-    // Fecha de calendario: se ancla al mediodía RD para que ningún formateo
-    // posterior la empuje al día anterior.
-    return dayjs.tz(v.trim() + ' 12:00:00', ZONA_RD);
+  if (typeof v === 'string') {
+    const m = SOLO_FECHA.exec(v.trim());
+    if (m) {
+      // Fecha de calendario: se ancla al mediodía RD para que ningún formateo
+      // posterior la empuje al día anterior. Se reconstruye desde los grupos y
+      // no por concatenación: la cadena puede traer una medianoche pegada
+      // ('...T00:00:00') y pegarle ' 12:00:00' detrás daría una fecha inválida.
+      return dayjs.tz(`${m[1]}-${m[2]}-${m[3]} 12:00:00`, ZONA_RD);
+    }
   }
   const d = aInstante(v);
   return dayjs(d ?? undefined).tz(ZONA_RD);

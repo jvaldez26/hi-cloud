@@ -1723,7 +1723,10 @@ ${line()}
           message="¿Estás seguro de anular este cierre?"
           description={
             <span>
-              La caja del <strong>{anularTarget?.fecha ? fecha(anularTarget.fecha + 'T00:00:00') : ''}</strong> de{' '}
+              {/* Sin 'T00:00:00': fecha() ya trata la 'YYYY-MM-DD' como día de
+                  calendario. Pegarle la medianoche la volvía un instante UTC y
+                  el modal anunciaba el día anterior al del cierre. */}
+              La caja del <strong>{anularTarget?.fecha ? fecha(anularTarget.fecha) : ''}</strong> de{' '}
               <strong>{anularTarget?.nombre}</strong> volverá a estado <strong>ABIERTA</strong>.
             </span>
           }

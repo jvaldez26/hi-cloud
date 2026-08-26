@@ -66,6 +66,37 @@ ok('...tampoco en fin de año',                 M.fecha('2026-01-01'), '01/01/20
 ok('fechaHora no le inventa una hora',         M.fechaHora('2026-08-22'), '22/08/2026');
 ok('dRD la ancla al mediodía y no se cae de día', M.dRD('2026-08-22').format('YYYY-MM-DD'), '2026-08-22');
 
+console.log('\nMedianoche sin zona — el modal de anular cierre');
+// Un `+ 'T00:00:00'` en el modal convertía la fecha del cierre en un instante
+// UTC: formateado en RD (−4) salía el día ANTERIOR. Jean pulsaba el cierre del
+// 25 y el modal decía "la caja del 24/08/2026". El id enviado siempre fue el
+// correcto —era cosmético— pero el cajero no reconocía su turno y no anulaba.
+//
+// Estos son los cuatro casos con los que se reprodujo el bug.
+ok("'2026-08-01T00:00:00' no retrocede al mes anterior", M.fecha('2026-08-01T00:00:00'), '01/08/2026');
+ok("'2026-08-24T00:00:00' se queda en su día",           M.fecha('2026-08-24T00:00:00'), '24/08/2026');
+ok('EL BUG: el cierre del 25 no se anuncia como el 24',  M.fecha('2026-08-25T00:00:00'), '25/08/2026');
+ok('...y el 31/12 no se lleva el año por delante',       M.fecha('2026-12-31T00:00:00'), '31/12/2026');
+
+// La medianoche pegada no puede cambiar el resultado: con y sin ella, lo mismo.
+for (const d of ['2026-08-01', '2026-08-24', '2026-08-25', '2026-12-31']) {
+  ok(`'${d}' da igual con o sin la medianoche detrás`, M.fecha(`${d}T00:00:00`), M.fecha(d));
+}
+
+ok('con milisegundos a cero también',       M.fecha('2026-12-31T00:00:00.000'), '31/12/2026');
+ok('fechaHora tampoco le inventa una hora', M.fechaHora('2026-12-31T00:00:00'), '31/12/2026');
+ok('dRD no se cae de día ni se vuelve inválida',
+   M.dRD('2026-12-31T00:00:00').format('YYYY-MM-DD'), '2026-12-31');
+
+// El límite: solo 00:00:00 clavado es fecha de calendario. Con cualquier otra
+// hora, o con marca de zona, sí es un instante y se convierte como debe.
+ok('una hora distinta de medianoche SÍ es un instante',
+   M.fecha('2026-12-31T05:00:00'), '31/12/2026');           // 05:00 UTC = 01:00 RD, mismo día
+ok('la Z manda: medianoche UTC es el día anterior en RD',
+   M.fecha('2026-12-31T00:00:00Z'), '30/12/2026');
+ok('un instante de madrugada UTC sigue cayendo el día antes en RD',
+   M.fecha('2026-12-31T02:00:00Z'), '30/12/2026');
+
 console.log('\nValores vacíos');
 for (const v of [null, undefined, '', 'no soy una fecha']) {
   ok(`fecha(${JSON.stringify(v)}) no da "Invalid Date"`, M.fecha(v), '');
