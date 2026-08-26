@@ -70,6 +70,7 @@ import { FlujoCajaModule } from './flujo-caja/flujo-caja.module';
 import { MantenimientoModule } from './mantenimiento/mantenimiento.module';
 import { EvaluacionesModule } from './evaluaciones/evaluaciones.module';
 import { KpiModule } from './kpi/kpi.module';
+import { PreferenciasModule } from './preferencias/preferencias.module';
 import { LicitacionesModule } from './licitaciones/licitaciones.module';
 import { FlotaModule } from './flota/flota.module';
 import { ObjetivosModule } from './objetivos/objetivos.module';
@@ -332,6 +333,7 @@ import { ActivacionEcfModule } from './activacion-ecf/activacion-ecf.module';
     MantenimientoModule,
     EvaluacionesModule,
     KpiModule,
+    PreferenciasModule,
     LicitacionesModule,
     FlotaModule,
     ObjetivosModule,
