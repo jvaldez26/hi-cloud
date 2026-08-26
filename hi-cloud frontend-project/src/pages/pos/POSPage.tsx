@@ -16,6 +16,7 @@ import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover, I
 import { SearchOutlined, ShoppingCartOutlined, CheckCircleOutlined, DisconnectOutlined, LogoutOutlined, PrinterOutlined, LockOutlined, UserSwitchOutlined, SwapOutlined, EyeOutlined, EyeInvisibleOutlined, ShopOutlined, MailOutlined, FileExcelOutlined, FilePdfOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import ChoferInput from '../../components/ChoferInput';
 import { imprimirConduceTermico } from '../../utils/imprimirConduce';
+import ModalDevolucion from '../../components/ModalDevolucion';
 import { VideoPlayerModal } from '../../components/ui/VideoPlayerModal';
 import { useVideosTutoriales } from '../../hooks/useVideosTutoriales';
 import { useAuthStore } from '../../store/auth.store';
@@ -5141,14 +5142,28 @@ function POSConducePanel({ C, onVolver }: {
   const cambiarEstadoMut = useMutation({
     mutationFn: ({ id, estado }: { id: number; estado: string }) => {
       if (estado === 'en_transito') return api.patch(`/conduces/${id}/en-transito`);
-      if (estado === 'entregado')   return api.patch(`/conduces/${id}/entregado`);
-      return api.patch(`/conduces/${id}/devuelto`);
+      return api.patch(`/conduces/${id}/entregado`);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['pos-conduces'] });
       qc.invalidateQueries({ queryKey: ['pos-conduces-resumen'] });
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
+  });
+
+  // Devolver sale del mutation genérico de estados: necesita motivo y
+  // confirmación, no puede seguir siendo un botón que dispara al primer clic.
+  const [modalDevolucion, setModalDevolucion] = useState<{ id: number; numero?: string } | null>(null);
+  const devolverMut = useMutation({
+    mutationFn: ({ id, motivo }: { id: number; motivo: string }) =>
+      api.patch(`/conduces/${id}/devuelto`, { motivo }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pos-conduces'] });
+      qc.invalidateQueries({ queryKey: ['pos-conduces-resumen'] });
+      setModalDevolucion(null);
+      message.success('Devolución registrada');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al registrar la devolución', 5),
   });
 
   const imprimirTermico = async (id: number) => {
@@ -5570,7 +5585,7 @@ function POSConducePanel({ C, onVolver }: {
                                     color: C.green, cursor: 'pointer', padding: '3px 6px', fontSize: 10, fontWeight: 700 }}>
                                   ✅ Entregado
                                 </button>
-                                <button onClick={() => cambiarEstadoMut.mutate({ id: r.id, estado: 'devuelto' })}
+                                <button onClick={() => setModalDevolucion({ id: r.id, numero: r.numero })}
                                   style={{ background: C.orange + '22', border: `1px solid ${C.orange}55`, borderRadius: 5,
                                     color: C.orange, cursor: 'pointer', padding: '3px 6px', fontSize: 10, fontWeight: 700 }}>
                                   ↩ Dev.
@@ -5586,6 +5601,14 @@ function POSConducePanel({ C, onVolver }: {
           </div>
         </>
       )}
+
+      {/* Mismo modal que el módulo Conduce: pide el motivo y hace de confirmación */}
+      <ModalDevolucion
+        conduce={modalDevolucion}
+        onCancel={() => setModalDevolucion(null)}
+        onConfirm={motivo => devolverMut.mutate({ id: modalDevolucion!.id, motivo })}
+        confirmando={devolverMut.isPending}
+      />
     </div>
   );
 }
@@ -8089,7 +8112,6 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
   const [busq,          setBusq]          = useState('');
   const [anulando,      setAnulando]      = useState<number | null>(null);
   const [imprimiendo,   setImprimiendo]   = useState<number | null>(null);
-  const [cambEstado,    setCambEstado]    = useState<number | null>(null);
   const [cobrarPF,      setCobrarPF]      = useState<{ id: number; folio: string; total: number; cliente: string } | null>(null);
   const [cobrarPFMetodo, setCobrarPFMetodo] = useState<string>('Efectivo');
   const [cobrarPFMonto,  setCobrarPFMonto]  = useState<string>('');
@@ -8311,25 +8333,6 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
     onError: (e: any) => {
       message.error(e?.response?.data?.message ?? 'Error al cobrar cotización');
     },
-  });
-
-  // FIX 3: Cambiar estado de conduce desde el POS
-  const cambiarEstadoConduce = useMutation({
-    mutationFn: async ({ id, nuevoEstado }: { id: number; nuevoEstado: string }) => {
-      const endpoint: Record<string, string> = {
-        en_transito: `/conduces/${id}/en-transito`,
-        entregado:   `/conduces/${id}/entregado`,
-        devuelto:    `/conduces/${id}/devuelto`,
-      };
-      return api.patch(endpoint[nuevoEstado], {});
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['pos-panel', panel] });
-      qc.refetchQueries({ queryKey: ['pos-panel', panel] });
-      message.success('Estado actualizado');
-      setCambEstado(null);
-    },
-    onError: (e: any) => message.error(e?.response?.data?.message ?? 'No se pudo cambiar el estado'),
   });
 
   // ── Mapa de endpoints PDF A4 por panel ─────────────────────────────

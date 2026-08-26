@@ -22,8 +22,20 @@ let _falloWatchAdvertisements = false; // watchAdvertisements no disponible en e
 
 // Elimina tildes y diacríticos para que la impresora térmica los muestre correctamente.
 function sanear(txt: string): string {
+  // El texto sale por TextEncoder (UTF-8) y estas impresoras interpretan CP437:
+  // cualquier carácter fuera de ASCII se imprime como dos o tres símbolos basura.
+  // Los guiones y comillas tipográficos entran por los datos (un nombre pegado
+  // desde Word, un guion largo de fallback) y hay que bajarlos a su equivalente
+  // ASCII antes de mandarlos.
+  const ascii = txt
+    .replace(/[‐-―]/g, '-')   // ‐ ‑ ‒ – —
+    .replace(/[‘’]/g, "'")    // ' '
+    .replace(/[“”]/g, '"')    // " "
+    .replace(/…/g, '...')          // …
+    .replace(/·/g, '-')            // · (ya se usaba como separador y salía basura)
+    .replace(/ /g, ' ');           // espacio duro
   // NFD descompone ó → o + combining accent; luego borramos los combining marks
-  return txt.normalize('NFD').replace(/[̀-ͯ]/g, '');
+  return ascii.normalize('NFD').replace(/[̀-ͯ]/g, '');
 }
 
 export function envolver(texto: string, maxLen = CARACTERES_POR_LINEA): string[] {

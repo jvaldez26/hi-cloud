@@ -21,6 +21,7 @@ import api from '../../api/client';
 import { useAuthStore } from '../../store/auth.store';
 import ProductoSelect from '../../components/ProductoSelect';
 import ChoferInput from '../../components/ChoferInput';
+import ModalDevolucion from '../../components/ModalDevolucion';
 import { imprimirConduceTermico, abrirConducePDF } from '../../utils/imprimirConduce';
 import WhatsAppButton from '../../components/ui/WhatsAppButton';
 import PrintButton from '../../components/ui/PrintButton';
@@ -62,7 +63,11 @@ export default function ConducePage() {
   const [page,            setPage]            = useState(1);
   const [modalCrear,      setModalCrear]      = useState(false);
   const [modalDetalle,    setModalDetalle]    = useState<any>(null);
-  const [modalEntrega,    setModalEntrega]    = useState<{ id: number; tipo: 'entregado' | 'devuelto' } | null>(null);
+  // Entrega y devolución dejan de compartir modal: la entrega admite una nota
+  // opcional, la devolución exige un motivo y confirma una acción que revierte
+  // la entrega. Son dos cosas distintas y ya no se parecen ni en el formulario.
+  const [modalEntrega,    setModalEntrega]    = useState<{ id: number } | null>(null);
+  const [modalDevolucion, setModalDevolucion] = useState<{ id: number; numero?: string } | null>(null);
   const [pdfPending,      setPdfPending]      = useState<number | null>(null);
 
   // Modo del formulario de creación
@@ -186,16 +191,28 @@ export default function ConducePage() {
   });
 
   const confirmarEntrega = useMutation({
-    mutationFn: ({ id, obs, tipo }: { id: number; obs?: string; tipo: string }) =>
-      api.patch(`/conduces/${id}/${tipo === 'entregado' ? 'entregado' : 'devuelto'}`, { observaciones: obs }),
-    onSuccess: (_, v) => {
+    mutationFn: ({ id, obs }: { id: number; obs?: string }) =>
+      api.patch(`/conduces/${id}/entregado`, { observaciones: obs }),
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['conduces'] });
       qc.invalidateQueries({ queryKey: ['conduces-resumen'] });
       setModalEntrega(null);
       formEntrega.resetFields();
-      message.success(v.tipo === 'entregado' ? '¡Entrega confirmada!' : 'Devolución registrada');
+      message.success('¡Entrega confirmada!');
     },
     onError: (e: any) => onErr(e, 'Error al confirmar entrega'),
+  });
+
+  const registrarDevolucion = useMutation({
+    mutationFn: ({ id, motivo }: { id: number; motivo: string }) =>
+      api.patch(`/conduces/${id}/devuelto`, { motivo }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['conduces'] });
+      qc.invalidateQueries({ queryKey: ['conduces-resumen'] });
+      setModalDevolucion(null);
+      message.success('Devolución registrada');
+    },
+    onError: (e: any) => onErr(e, 'Error al registrar la devolución'),
   });
 
   const eliminar = useMutation({
@@ -361,8 +378,8 @@ export default function ConducePage() {
                       { key: 'transito', label: 'Marcar En Tránsito', icon: <SendOutlined />, onClick: () => enTransito.mutate(r.id) },
                     ] : []),
                     ...(r.estado === 'en_transito' ? [
-                      { key: 'entregar', label: 'Confirmar Entrega', icon: <CheckCircleOutlined />, onClick: () => setModalEntrega({ id: r.id, tipo: 'entregado' }) },
-                      { key: 'devolver', label: 'Registrar Devolución', icon: <RollbackOutlined />, onClick: () => setModalEntrega({ id: r.id, tipo: 'devuelto' }) },
+                      { key: 'entregar', label: 'Confirmar Entrega', icon: <CheckCircleOutlined />, onClick: () => setModalEntrega({ id: r.id }) },
+                      { key: 'devolver', label: 'Registrar Devolución', icon: <RollbackOutlined />, onClick: () => setModalDevolucion({ id: r.id, numero: r.numero }) },
                     ] : []),
                     { type: 'divider' as const },
                     { key: 'eliminar', label: 'Eliminar', icon: <DeleteOutlined />, danger: true,
@@ -703,22 +720,33 @@ export default function ConducePage() {
         )}
       </Modal>
 
-      {/* ── Modal Entrega/Devolución ── */}
+      {/* ── Modal Entrega ── */}
       <Modal
-        title={modalEntrega?.tipo === 'entregado' ? 'Confirmar Entrega' : 'Registrar Devolución'}
+        title="Confirmar Entrega"
         open={!!modalEntrega}
         onCancel={() => { setModalEntrega(null); formEntrega.resetFields(); }}
         onOk={() => formEntrega.submit()}
-        okText={modalEntrega?.tipo === 'entregado' ? 'Confirmar Entrega' : 'Registrar Devolución'}
-        okButtonProps={{ style: { background: modalEntrega?.tipo === 'entregado' ? '#059669' : '#ef4444', borderColor: 'transparent' } }}
+        okText="Confirmar Entrega"
+        confirmLoading={confirmarEntrega.isPending}
+        okButtonProps={{ style: { background: '#059669', borderColor: 'transparent' } }}
       >
         <Form form={formEntrega} layout="vertical"
-          onFinish={v => confirmarEntrega.mutate({ id: modalEntrega!.id, obs: v.observaciones, tipo: modalEntrega!.tipo })}>
-          <Form.Item name="observaciones" label="Observaciones">
-            <Input.TextArea rows={3} placeholder={modalEntrega?.tipo === 'entregado' ? 'Recibido conforme por...' : 'Motivo de la devolución...'} />
+          onFinish={v => confirmarEntrega.mutate({ id: modalEntrega!.id, obs: v.observaciones })}>
+          {/* Nota de la ENTREGA — no confundir con el motivo de devolución, que
+              tiene su propio modal y su propia columna. */}
+          <Form.Item name="observaciones" label="Observaciones de la entrega (opcional)">
+            <Input.TextArea rows={3} placeholder="Recibido conforme por..." />
           </Form.Item>
         </Form>
       </Modal>
+
+      {/* ── Modal Devolución — el mismo que usan los dos paneles del POS ── */}
+      <ModalDevolucion
+        conduce={modalDevolucion}
+        onCancel={() => setModalDevolucion(null)}
+        onConfirm={motivo => registrarDevolucion.mutate({ id: modalDevolucion!.id, motivo })}
+        confirmando={registrarDevolucion.isPending}
+      />
     </div>
   );
 }

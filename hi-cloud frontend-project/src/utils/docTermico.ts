@@ -56,6 +56,27 @@ export interface GenericDocData {
   barcode?:    string;
   /** Bloque de firma del receptor: firma, nombre, cédula y fecha/hora. */
   firmaRecepcion?: boolean;
+  /** Bloque de devolución. Solo se pasa cuando el documento está devuelto. */
+  devolucion?: { motivo: string; quien: string; cuando: string };
+}
+
+/**
+ * Bloque de DEVOLUCIÓN — solo aparece si el conduce volvió.
+ *
+ * Va marcado y arriba del todo del pie, no escondido: quien recoge el papel
+ * tiene que ver que la mercancía regresó y por qué.
+ */
+function _devolucionHTML(d: { motivo: string; quien: string; cuando: string }): string {
+  return [
+    '<div class="dbl"></div>',
+    '<div class="center bold">** DEVOLUCION **</div>',
+    '<div class="line"></div>',
+    '<div class="small">MOTIVO</div>',
+    `<div class="bold">${esc(d.motivo)}</div>`,
+    '<div class="gap"></div>',
+    `<div class="small">Registrada por: ${esc(d.quien)}</div>`,
+    `<div class="small">Fecha: ${esc(d.cuando)}</div>`,
+  ].join('');
 }
 
 /** Raya para rellenar a mano, del ancho que quede tras la etiqueta. */
@@ -224,6 +245,7 @@ ${[
   gd.nota2 ? `<div class="small">${esc(gd.nota2)}</div>${line()}` : '',
   gd.notas ? `<div class="small">Nota: ${esc(gd.notas)}</div>${line()}` : '',
 ].filter(Boolean).join('')}
+${gd.devolucion ? _devolucionHTML(gd.devolucion) : ''}
 ${gd.firmaRecepcion ? _firmaHTML() : ''}
 ${gd.barcode ? _barcodeHTML(gd.barcode) : ''}
 ${footerHtml}
@@ -262,6 +284,23 @@ export function buildConduceDocData(docRes: any, empRes: any): GenericDocData {
     ] as Array<[string, string]>,
     barcode:        docRes.numero ?? undefined,
     firmaRecepcion: true,
+    // Solo si volvió. Un conduce viejo devuelto no tiene motivo guardado: sale
+    // "No registrado", nunca "undefined".
+    devolucion: docRes.estado === 'devuelto'
+      ? {
+          motivo: String(docRes.motivoDevolucion ?? '').trim() || 'No registrado',
+          // Fallbacks en ASCII: el ticket térmico imprime CP437 y un guion largo
+          // saldría como símbolos sueltos.
+          quien:  String(docRes.devueltoPorNombre ?? '').trim() || 'No registrado',
+          cuando: docRes.fechaDevolucion
+            ? new Date(docRes.fechaDevolucion).toLocaleString('es-DO', {
+                timeZone: 'America/Santo_Domingo',
+                day: '2-digit', month: '2-digit', year: 'numeric',
+                hour: '2-digit', minute: '2-digit', hour12: true,
+              })
+            : '-',
+        }
+      : undefined,
     items:   (docRes.detalles ?? []).map((d: any) => ({ desc: d.descripcion, cant: Number(d.cantidad) })),
     nota1:   factFolio ? `Ref. Factura: ${factFolio}` : undefined,
     nota2:   docRes.direccionEntrega

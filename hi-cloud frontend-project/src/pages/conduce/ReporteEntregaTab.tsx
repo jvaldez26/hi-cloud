@@ -101,9 +101,13 @@ interface ConduceReporte {
   contactoEntrega?: string;
   telefonoContacto?: string;
   notas?: string;
+  /** Nota de la ENTREGA. El motivo de la devolución es motivoDevolucion. */
   observacionesEntrega?: string;
   fechaEntregaReal?: string;
   entregadoPorNombre?: string;
+  motivoDevolucion?: string | null;
+  devueltoPorNombre?: string | null;
+  fechaDevolucion?: string | null;
   detalles: DetalleConduce[];
 }
 
@@ -151,7 +155,29 @@ interface RespuestaConduceSuelto {
   tipo: 'conduce_sin_factura';
   busqueda: string;
   mensaje: string;
-  conduce: { numero: string; clienteNombre: string; detalles: DetalleConduce[] };
+  conduce: ConduceReporte & { clienteNombre: string };
+}
+
+/**
+ * Bloque de devolución — el mismo en la vista de factura y en la de conduce
+ * suelto. Quien mira este reporte y ve un conduce devuelto se pregunta
+ * exactamente esto, así que va marcado y no en una nota al pie.
+ */
+function BloqueDevolucion({ c }: { c: ConduceReporte }) {
+  if (c.estado !== 'devuelto') return null;
+  return (
+    <div style={{ padding: '10px 12px', background: '#fef2f2', border: '1px solid #fecaca',
+      borderRadius: 6, fontSize: 12, marginBottom: 8 }}>
+      <div style={{ color: '#dc2626', fontWeight: 700, marginBottom: 4 }}>↩️ DEVOLUCIÓN</div>
+      <div><Text>{(c.motivoDevolucion ?? '').trim() || 'Motivo no registrado'}</Text></div>
+      <div style={{ marginTop: 4 }}>
+        <Text type="secondary" style={{ fontSize: 11 }}>
+          Registrada por {c.devueltoPorNombre || '—'}
+          {c.fechaDevolucion ? ` · ${fmt.fechaHora(c.fechaDevolucion)}` : ''}
+        </Text>
+      </div>
+    </div>
+  );
 }
 
 type RespuestaReporte = RespuestaCandidatos | RespuestaFactura | RespuestaConduceSuelto;
@@ -397,7 +423,10 @@ export default function ReporteEntregaTab() {
 
             {/* ── Conduce suelto ── */}
             {r.tipo === 'conduce_sin_factura' && (
-              <Alert type="info" showIcon message={r.mensaje} style={{ marginBottom: 16 }} />
+              <>
+                <BloqueDevolucion c={r.conduce} />
+                <Alert type="info" showIcon message={r.mensaje} style={{ marginBottom: 16 }} />
+              </>
             )}
 
             {/* ── Progreso (solo factura) ── */}
@@ -557,6 +586,7 @@ export default function ReporteEntregaTab() {
                               { title: 'Nota',     dataIndex: 'observaciones',    key: 'obs', ellipsis: true, render: (v: string | null) => v ?? '—' },
                             ]}
                           />
+                          <BloqueDevolucion c={c} />
                           {(c.notas || c.observacionesEntrega) && (
                             <div style={{ padding: '8px 12px', background: '#f9fafb', borderRadius: 6, fontSize: 12 }}>
                               {c.notas && <div><Text type="secondary">Notas: </Text><Text>{c.notas}</Text></div>}

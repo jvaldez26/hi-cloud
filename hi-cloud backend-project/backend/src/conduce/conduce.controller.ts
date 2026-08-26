@@ -4,7 +4,7 @@ import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import {
   IsString, IsOptional, IsInt, IsPositive, IsNumber, IsArray,
-  ValidateNested, Min, IsDateString, IsNotEmpty, MaxLength,
+  ValidateNested, Min, IsDateString, IsNotEmpty, MaxLength, MinLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -47,6 +47,15 @@ class CreateConduceDto {
 
 class EntregaDto {
   @IsOptional() @IsString() observaciones?: string;
+}
+
+/**
+ * El motivo es obligatorio. El mínimo real lo impone el servicio, que es por
+ * donde pasan los tres caminos; aquí se repite para que el 400 llegue con un
+ * mensaje claro sin tocar la base.
+ */
+class DevolucionDto {
+  @IsString() @IsNotEmpty() @MinLength(10) @MaxLength(500) motivo!: string;
 }
 
 @ApiTags('Conduces')
@@ -151,13 +160,13 @@ export class ConduceController {
   }
 
   @Patch(':id/devuelto')
-  @ApiOperation({ summary: 'Registrar devolución del conduce' })
+  @ApiOperation({ summary: 'Registrar devolución del conduce (motivo obligatorio)' })
   devuelto(
     @Param('id', ParseIntPipe) id: number,
-    @Body() dto: EntregaDto,
+    @Body() dto: DevolucionDto,
     @GetUser() user: User,
   ) {
-    return this.svc.marcarDevuelto(id, dto.observaciones, user.id);
+    return this.svc.marcarDevuelto(id, dto.motivo, user.id);
   }
 
   @Delete(':id')

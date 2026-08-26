@@ -30,6 +30,14 @@ function fmtFecha(d: any): string {
   return dt.toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: TZ });
 }
 
+function fmtFechaHora(d: any): string {
+  if (!d) return '—';
+  const dt = d instanceof Date ? d : new Date(d);
+  return dt.toLocaleString('es-DO', { timeZone: TZ,
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: true });
+}
+
 function fmtAhora(): string {
   return new Date().toLocaleString('es-DO', { timeZone: TZ,
     day: '2-digit', month: '2-digit', year: 'numeric',
@@ -72,6 +80,14 @@ export class ConducePDFService {
           'SELECT folio FROM facturas WHERE id = $1 LIMIT 1',
           [cond.facturaId],
         ).then((r: any[]) => r[0]?.folio ?? undefined)
+      : undefined;
+
+    // Quién registró la devolución. Solo se consulta si el conduce está devuelto.
+    const devueltoPorNombre: string | undefined = cond.devueltoPorUsuarioId
+      ? await this.repo.manager.query(
+          'SELECT nombre FROM users WHERE id = $1 LIMIT 1',
+          [cond.devueltoPorUsuarioId],
+        ).then((r: any[]) => r[0]?.nombre ?? undefined)
       : undefined;
 
     const detalles: any[] = (cond as any).detalles ?? [];
@@ -336,6 +352,28 @@ export class ConducePDFService {
         doc.fillColor('#374151').font('Helvetica').fontSize(9)
           .text(cond.notas, PL, y, { width: W });
         y += doc.heightOfString(cond.notas, { width: W }) + 8;
+      }
+
+      // ── Devolución — solo si el conduce está devuelto ──────────────────────
+      //
+      // En rojo y con marco: quien recoge este papel tiene que ver de un
+      // vistazo que la mercancía volvió y por qué, sin buscarlo en un pie.
+      if (cond.estado === 'devuelto') {
+        const motivo   = (cond.motivoDevolucion ?? '').trim() || 'No registrado';
+        const quien    = devueltoPorNombre ?? '—';
+        const cuando   = cond.fechaDevolucion ? fmtFechaHora(cond.fechaDevolucion) : '—';
+        const motivoH  = doc.heightOfString(motivo, { width: W - 24 });
+        const cajaH    = 20 + motivoH + 6 + 12 + 10;
+
+        if (y + cajaH > LIMITE) paginaContinuacion();
+        doc.roundedRect(PL, y, W, cajaH, 4).fillAndStroke('#fef2f2', '#dc2626');
+        doc.fillColor('#dc2626').font('Helvetica-Bold').fontSize(9)
+          .text('DEVOLUCIÓN', PL + 12, y + 7);
+        doc.fillColor('#111827').font('Helvetica').fontSize(9)
+          .text(motivo, PL + 12, y + 20, { width: W - 24 });
+        doc.fillColor('#6b7280').font('Helvetica').fontSize(8)
+          .text(`Registrada por ${quien}  ·  ${cuando}`, PL + 12, y + 20 + motivoH + 6, { width: W - 24 });
+        y += cajaH + 10;
       }
 
       // ── Bloque de recepción — siempre en la última página ───────────────────
