@@ -11,7 +11,7 @@ import {
 import {
   CarOutlined, PlusOutlined, SendOutlined, CheckCircleOutlined,
   RollbackOutlined, DeleteOutlined, EyeOutlined, FileExcelOutlined,
-  PrinterOutlined, LoadingOutlined, SearchOutlined,
+  PrinterOutlined, LoadingOutlined, SearchOutlined, FilePdfOutlined,
 } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -20,6 +20,9 @@ import dayjs from 'dayjs';
 import api from '../../api/client';
 import { useAuthStore } from '../../store/auth.store';
 import ProductoSelect from '../../components/ProductoSelect';
+import ChoferInput from '../../components/ChoferInput';
+import ModalDevolucion from '../../components/ModalDevolucion';
+import { imprimirConduceTermico, abrirConducePDF } from '../../utils/imprimirConduce';
 import WhatsAppButton from '../../components/ui/WhatsAppButton';
 import PrintButton from '../../components/ui/PrintButton';
 import ReporteEntregaTab from './ReporteEntregaTab';
@@ -60,7 +63,11 @@ export default function ConducePage() {
   const [page,            setPage]            = useState(1);
   const [modalCrear,      setModalCrear]      = useState(false);
   const [modalDetalle,    setModalDetalle]    = useState<any>(null);
-  const [modalEntrega,    setModalEntrega]    = useState<{ id: number; tipo: 'entregado' | 'devuelto' } | null>(null);
+  // Entrega y devolución dejan de compartir modal: la entrega admite una nota
+  // opcional, la devolución exige un motivo y confirma una acción que revierte
+  // la entrega. Son dos cosas distintas y ya no se parecen ni en el formulario.
+  const [modalEntrega,    setModalEntrega]    = useState<{ id: number } | null>(null);
+  const [modalDevolucion, setModalDevolucion] = useState<{ id: number; numero?: string } | null>(null);
   const [pdfPending,      setPdfPending]      = useState<number | null>(null);
 
   // Modo del formulario de creación
@@ -169,6 +176,8 @@ export default function ConducePage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['conduces'] });
       qc.invalidateQueries({ queryKey: ['conduces-resumen'] });
+      // El chofer recién tecleado tiene que salir en el autocompletado del siguiente.
+      qc.invalidateQueries({ queryKey: ['conduces-conductores'] });
       resetModal();
       message.success('Conduce generado');
     },
@@ -182,16 +191,28 @@ export default function ConducePage() {
   });
 
   const confirmarEntrega = useMutation({
-    mutationFn: ({ id, obs, tipo }: { id: number; obs?: string; tipo: string }) =>
-      api.patch(`/conduces/${id}/${tipo === 'entregado' ? 'entregado' : 'devuelto'}`, { observaciones: obs }),
-    onSuccess: (_, v) => {
+    mutationFn: ({ id, obs }: { id: number; obs?: string }) =>
+      api.patch(`/conduces/${id}/entregado`, { observaciones: obs }),
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['conduces'] });
       qc.invalidateQueries({ queryKey: ['conduces-resumen'] });
       setModalEntrega(null);
       formEntrega.resetFields();
-      message.success(v.tipo === 'entregado' ? '¡Entrega confirmada!' : 'Devolución registrada');
+      message.success('¡Entrega confirmada!');
     },
     onError: (e: any) => onErr(e, 'Error al confirmar entrega'),
+  });
+
+  const registrarDevolucion = useMutation({
+    mutationFn: ({ id, motivo }: { id: number; motivo: string }) =>
+      api.patch(`/conduces/${id}/devuelto`, { motivo }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['conduces'] });
+      qc.invalidateQueries({ queryKey: ['conduces-resumen'] });
+      setModalDevolucion(null);
+      message.success('Devolución registrada');
+    },
+    onError: (e: any) => onErr(e, 'Error al registrar la devolución'),
   });
 
   const eliminar = useMutation({
@@ -200,26 +221,18 @@ export default function ConducePage() {
     onError: (e: any) => onErr(e, 'Error al eliminar conduce'),
   });
 
+  // Los dos formatos, como ya hacían el POS y el Reporte de Entrega: este módulo
+  // solo ofrecía la hoja carta, y quien despacha desde aquí con una térmica al
+  // lado no tenía forma de sacar el ticket.
+  const imprimirTicket = async (item: any) => {
+    setPdfPending(item.id);
+    try { await imprimirConduceTermico(item.id); }
+    finally { setPdfPending(null); }
+  };
+
   const imprimirPDF = async (item: any) => {
     setPdfPending(item.id);
-    try {
-      const eid = localStorage.getItem('empresaId') ?? '';
-      const res = await fetch(`/api/v1/conduces/${item.id}/pdf`, {
-        credentials: 'include',
-        headers: { 'X-Empresa-ID': eid },
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        message.error(`Error PDF: ${(err as any)?.message ?? res.status}`); return;
-      }
-      const blob = await res.blob();
-      const url  = URL.createObjectURL(blob);
-      const win  = window.open(url, '_blank');
-      if (!win) { message.warning('El navegador bloqueó la ventana emergente'); URL.revokeObjectURL(url); return; }
-      win.addEventListener('load', () => {
-        setTimeout(() => { win.print(); setTimeout(() => URL.revokeObjectURL(url), 1_000); }, 500);
-      });
-    } catch (e: any) { message.error(`No se pudo generar el PDF: ${e?.message ?? ''}`); }
+    try { await abrirConducePDF(item.id); }
     finally { setPdfPending(null); }
   };
 
@@ -232,7 +245,7 @@ export default function ConducePage() {
       ciudad:                 v.ciudad,
       contactoEntrega:        v.contactoEntrega,
       telefonoContacto:       v.telefonoContacto,
-      conductor:              v.conductor,
+      conductor:              String(v.conductor ?? '').trim(),
       vehiculo:               v.vehiculo,
       notas:                  v.notas,
       sucursalId:             v.sucursalId,
@@ -355,15 +368,18 @@ export default function ConducePage() {
                   onView={() => setModalDetalle(r)}
                   viewLabel="Ver detalle"
                   items={[
-                    { key: 'pdf', label: pdfPending === r.id ? 'Generando...' : 'Imprimir',
+                    { key: 'ticket', label: pdfPending === r.id ? 'Generando...' : 'Imprimir ticket',
                       icon: pdfPending === r.id ? <LoadingOutlined /> : <PrinterOutlined />,
+                      disabled: pdfPending === r.id, onClick: () => imprimirTicket(r) },
+                    { key: 'pdf', label: pdfPending === r.id ? 'Generando...' : 'PDF hoja carta',
+                      icon: pdfPending === r.id ? <LoadingOutlined /> : <FilePdfOutlined />,
                       disabled: pdfPending === r.id, onClick: () => imprimirPDF(r) },
                     ...(r.estado === 'generado' ? [
                       { key: 'transito', label: 'Marcar En Tránsito', icon: <SendOutlined />, onClick: () => enTransito.mutate(r.id) },
                     ] : []),
                     ...(r.estado === 'en_transito' ? [
-                      { key: 'entregar', label: 'Confirmar Entrega', icon: <CheckCircleOutlined />, onClick: () => setModalEntrega({ id: r.id, tipo: 'entregado' }) },
-                      { key: 'devolver', label: 'Registrar Devolución', icon: <RollbackOutlined />, onClick: () => setModalEntrega({ id: r.id, tipo: 'devuelto' }) },
+                      { key: 'entregar', label: 'Confirmar Entrega', icon: <CheckCircleOutlined />, onClick: () => setModalEntrega({ id: r.id }) },
+                      { key: 'devolver', label: 'Registrar Devolución', icon: <RollbackOutlined />, onClick: () => setModalDevolucion({ id: r.id, numero: r.numero }) },
                     ] : []),
                     { type: 'divider' as const },
                     { key: 'eliminar', label: 'Eliminar', icon: <DeleteOutlined />, danger: true,
@@ -640,8 +656,9 @@ export default function ConducePage() {
           </Row>
           <Row gutter={12}>
             <Col xs={24} sm={12}>
-              <Form.Item name="conductor" label="Conductor">
-                <Input placeholder="Nombre del conductor" />
+              <Form.Item name="conductor" label="Chofer"
+                rules={[{ required: true, whitespace: true, message: 'Indica quién lleva la mercancía' }]}>
+                <ChoferInput />
               </Form.Item>
             </Col>
             <Col xs={24} sm={sucursales.length > 1 ? 6 : 12}>
@@ -703,22 +720,33 @@ export default function ConducePage() {
         )}
       </Modal>
 
-      {/* ── Modal Entrega/Devolución ── */}
+      {/* ── Modal Entrega ── */}
       <Modal
-        title={modalEntrega?.tipo === 'entregado' ? 'Confirmar Entrega' : 'Registrar Devolución'}
+        title="Confirmar Entrega"
         open={!!modalEntrega}
         onCancel={() => { setModalEntrega(null); formEntrega.resetFields(); }}
         onOk={() => formEntrega.submit()}
-        okText={modalEntrega?.tipo === 'entregado' ? 'Confirmar Entrega' : 'Registrar Devolución'}
-        okButtonProps={{ style: { background: modalEntrega?.tipo === 'entregado' ? '#059669' : '#ef4444', borderColor: 'transparent' } }}
+        okText="Confirmar Entrega"
+        confirmLoading={confirmarEntrega.isPending}
+        okButtonProps={{ style: { background: '#059669', borderColor: 'transparent' } }}
       >
         <Form form={formEntrega} layout="vertical"
-          onFinish={v => confirmarEntrega.mutate({ id: modalEntrega!.id, obs: v.observaciones, tipo: modalEntrega!.tipo })}>
-          <Form.Item name="observaciones" label="Observaciones">
-            <Input.TextArea rows={3} placeholder={modalEntrega?.tipo === 'entregado' ? 'Recibido conforme por...' : 'Motivo de la devolución...'} />
+          onFinish={v => confirmarEntrega.mutate({ id: modalEntrega!.id, obs: v.observaciones })}>
+          {/* Nota de la ENTREGA — no confundir con el motivo de devolución, que
+              tiene su propio modal y su propia columna. */}
+          <Form.Item name="observaciones" label="Observaciones de la entrega (opcional)">
+            <Input.TextArea rows={3} placeholder="Recibido conforme por..." />
           </Form.Item>
         </Form>
       </Modal>
+
+      {/* ── Modal Devolución — el mismo que usan los dos paneles del POS ── */}
+      <ModalDevolucion
+        conduce={modalDevolucion}
+        onCancel={() => setModalDevolucion(null)}
+        onConfirm={motivo => registrarDevolucion.mutate({ id: modalDevolucion!.id, motivo })}
+        confirmando={registrarDevolucion.isPending}
+      />
     </div>
   );
 }

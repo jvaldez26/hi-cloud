@@ -72,6 +72,14 @@ export class Conduce extends TenantBaseEntity {
   @Column({ type: 'timestamp', nullable: true })
   fechaEntregaReal?: Date;
 
+  /**
+   * Nota de la ENTREGA — lo que el repartidor apunta al dejar la mercancía
+   * ("se entregó en el almacén trasero", "faltaba una caja, la firmó igual").
+   *
+   * NO es el motivo de una devolución: eso vive en motivoDevolucion, en su
+   * propia columna. Son dos preguntas distintas y mezclarlas hace imposible
+   * responder ninguna de las dos después.
+   */
   @Column({ type: 'text', nullable: true })
   observacionesEntrega?: string;
 
@@ -85,4 +93,24 @@ export class Conduce extends TenantBaseEntity {
   /** Usuario que confirmó la entrega o devolución — se setea desde CLS, nunca del body */
   @Column({ nullable: true })
   entregadoPorUsuarioId?: number;
+
+  /**
+   * Por qué volvió la mercancía — obligatorio al pasar a DEVUELTO, validado en
+   * el servicio y no solo en el DTO.
+   *
+   * Distinto de observacionesEntrega, que es la nota de la entrega. Los tres
+   * conduces devueltos que había al crear la columna tenían las dos cosas en
+   * null, así que no se migró nada de un campo al otro: aquí no hay motivos
+   * viejos escondidos, solo salen guiones.
+   */
+  @Column({ length: 500, nullable: true })
+  motivoDevolucion?: string;
+
+  /** Quién registró la devolución — del CLS, nunca del body (igual que entregadoPorUsuarioId) */
+  @Column({ nullable: true })
+  devueltoPorUsuarioId?: number;
+
+  /** Cuándo se registró la devolución — la pone el servidor, no llega del cliente */
+  @Column({ type: 'timestamp', nullable: true })
+  fechaDevolucion?: Date;
 }

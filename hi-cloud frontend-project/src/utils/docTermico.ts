@@ -1,3 +1,5 @@
+import JsBarcode from 'jsbarcode';
+
 /**
  * Documento térmico genérico — CONDUCE, recibo de cobro, anticipo, notas de
  * crédito/débito, comprobante de gasto.
@@ -44,6 +46,107 @@ export interface GenericDocData {
   nota1?:      string;         // línea extra (ej: "Ref. Factura: FAC-XXX")
   nota2?:      string;
   notas?:      string;
+  /**
+   * Bloques etiqueta/valor con su propio sitio. Van en DOS líneas, no en una
+   * fila izquierda/derecha: en 32 caracteres, un valor largo como el nombre de
+   * un chofer se come la etiqueta y sale "C…Miguel Angel Fernandez".
+   */
+  infoRows?:   Array<[string, string]>;
+  /** Valor Code128 tal cual — sin prefijos ni ceros añadidos, para que escanee. */
+  barcode?:    string;
+  /** Bloque de firma del receptor: firma, nombre, cédula y fecha/hora. */
+  firmaRecepcion?: boolean;
+  /** Bloque de devolución. Solo se pasa cuando el documento está devuelto. */
+  devolucion?: { motivo: string; quien: string; cuando: string };
+}
+
+/**
+ * Bloque de DEVOLUCIÓN — solo aparece si el conduce volvió.
+ *
+ * Va marcado y arriba del todo del pie, no escondido: quien recoge el papel
+ * tiene que ver que la mercancía regresó y por qué.
+ */
+function _devolucionHTML(d: { motivo: string; quien: string; cuando: string }): string {
+  return [
+    '<div class="dbl"></div>',
+    '<div class="center bold">** DEVOLUCION **</div>',
+    '<div class="line"></div>',
+    '<div class="small">MOTIVO</div>',
+    `<div class="bold">${esc(d.motivo)}</div>`,
+    '<div class="gap"></div>',
+    `<div class="small">Registrada por: ${esc(d.quien)}</div>`,
+    `<div class="small">Fecha: ${esc(d.cuando)}</div>`,
+  ].join('');
+}
+
+/** Raya para rellenar a mano, del ancho que quede tras la etiqueta. */
+function _lineaFirma(label: string, ancho = 30): string {
+  return `${label} ${'_'.repeat(Math.max(6, ancho - label.length - 1))}`;
+}
+
+/**
+ * Bloque de recepción — se firma en la puerta de un negocio, de pie, así que
+ * lleva aire de sobra entre renglones (las clases gap se traducen a saltos
+ * reales tanto en el navegador como en ESC/POS).
+ */
+function _firmaHTML(): string {
+  return [
+    '<div class="line"></div>',
+    '<div class="center bold">RECIBIDO CONFORME</div>',
+    '<div class="gap"></div>',
+    `<div>${_lineaFirma('Firma:')}</div>`,
+    '<div class="gap2"></div>',
+    `<div>${_lineaFirma('Nombre:')}</div>`,
+    '<div class="small">(en letra de molde)</div>',
+    '<div class="gap"></div>',
+    `<div>${_lineaFirma('Cedula:')}</div>`,
+    '<div class="gap"></div>',
+    `<div>${_lineaFirma('Fecha/Hora:')}</div>`,
+    '<div class="gap"></div>',
+  ].join('');
+}
+
+/**
+ * Code128 como imagen; el número va aparte, como texto, que se lee mejor en
+ * térmica que el que dibuja la propia librería.
+ *
+ * El data-barcode no es decorativo: la ruta Bluetooth descarta las <img> y lo
+ * usa para rasterizar el código como GS v 0. Sin ese atributo, el barcode se
+ * perdería en silencio en las impresoras BT.
+ */
+function _barcodeHTML(valor: string): string {
+  const src = _barcodeDataURI(valor);
+  return [
+    '<div class="line"></div>',
+    `<div class="center"><img class="barcode" data-barcode="${esc(valor)}"${src ? ` src="${src}"` : ''} alt="${esc(valor)}"></div>`,
+    `<div class="center bold">${esc(valor)}</div>`,
+  ].join('');
+}
+
+/**
+ * Code128 a data URI, para que el HTML del ticket sea autónomo: se escribe en
+ * una ventana nueva con document.write y ahí no hay React que lo pinte después.
+ *
+ * El valor va tal cual, sin prefijos ni ceros: escanearlo tiene que dar lo
+ * mismo que teclearlo en el buscador del reporte de entrega.
+ */
+function _barcodeDataURI(valor: string): string {
+  try {
+    const canvas = document.createElement('canvas');
+    JsBarcode(canvas, valor, {
+      format:       'CODE128',
+      width:        2,
+      height:       55,
+      displayValue: false,
+      margin:       0,
+      background:   '#ffffff',
+      lineColor:    '#000000',
+    });
+    return canvas.toDataURL('image/png');
+  } catch (err) {
+    console.warn('[BARCODE] No se pudo generar el código de barras:', err);
+    return '';
+  }
 }
 
 /** Recibo térmico genérico (conduce, cobro, anticipo, notas crédito/débito). */
@@ -103,6 +206,9 @@ body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};font-
 .row span:last-child{text-align:right;white-space:nowrap}
 .line{border-top:1px dashed #000;margin:4px 0}
 .dbl{border-top:2px solid #000;margin:4px 0}
+.gap{height:5mm}
+.gap2{height:9mm}
+.barcode{display:block;margin:2mm auto 1mm;max-width:100%;height:auto;image-rendering:pixelated}
 @page{size:${prn.width} auto;margin:0}
 @media print{html,body{width:${prn.width}}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 </style></head><body>
@@ -122,6 +228,8 @@ ${row('Número:', gd.numero)}${row('Fecha:', gd.fecha)}${[
   gd.rncCliente ? row('RNC:',     gd.rncCliente)              : '',
   gd.nota1      ? `<div class="small">${esc(gd.nota1)}</div>` : '',
 ].filter(Boolean).join('')}
+${(gd.infoRows ?? []).map(([l, v]) =>
+  `<div class="small">${esc(l)}</div><div class="bold">${esc(v)}</div>`).join('')}
 ${line()}
 <div class="row bold"><span>DESCRIPCIÓN</span>${hasTotals ? '<span>TOTAL</span>' : hasCant ? '<span>CANT</span>' : ''}</div>
 ${line()}
@@ -137,6 +245,9 @@ ${[
   gd.nota2 ? `<div class="small">${esc(gd.nota2)}</div>${line()}` : '',
   gd.notas ? `<div class="small">Nota: ${esc(gd.notas)}</div>${line()}` : '',
 ].filter(Boolean).join('')}
+${gd.devolucion ? _devolucionHTML(gd.devolucion) : ''}
+${gd.firmaRecepcion ? _firmaHTML() : ''}
+${gd.barcode ? _barcodeHTML(gd.barcode) : ''}
 ${footerHtml}
 
 </body></html>`;
@@ -163,6 +274,33 @@ export function buildConduceDocData(docRes: any, empRes: any): GenericDocData {
       telefono:  empRes?.telefono,
     },
     cliente: docRes.cliente?.nombre,
+    // El chofer va arriba, con su etiqueta. Si el conduce es de los viejos y no
+    // lo tiene, sale la raya para escribirlo a mano — nunca 'undefined'.
+    infoRows: [
+      ['CHOFER',   String(docRes.conductor ?? '').trim() || '_______________________'],
+      ...(String(docRes.vehiculo ?? '').trim()
+        ? [['VEHICULO', String(docRes.vehiculo).trim()] as [string, string]]
+        : []),
+    ] as Array<[string, string]>,
+    barcode:        docRes.numero ?? undefined,
+    firmaRecepcion: true,
+    // Solo si volvió. Un conduce viejo devuelto no tiene motivo guardado: sale
+    // "No registrado", nunca "undefined".
+    devolucion: docRes.estado === 'devuelto'
+      ? {
+          motivo: String(docRes.motivoDevolucion ?? '').trim() || 'No registrado',
+          // Fallbacks en ASCII: el ticket térmico imprime CP437 y un guion largo
+          // saldría como símbolos sueltos.
+          quien:  String(docRes.devueltoPorNombre ?? '').trim() || 'No registrado',
+          cuando: docRes.fechaDevolucion
+            ? new Date(docRes.fechaDevolucion).toLocaleString('es-DO', {
+                timeZone: 'America/Santo_Domingo',
+                day: '2-digit', month: '2-digit', year: 'numeric',
+                hour: '2-digit', minute: '2-digit', hour12: true,
+              })
+            : '-',
+        }
+      : undefined,
     items:   (docRes.detalles ?? []).map((d: any) => ({ desc: d.descripcion, cant: Number(d.cantidad) })),
     nota1:   factFolio ? `Ref. Factura: ${factFolio}` : undefined,
     nota2:   docRes.direccionEntrega

@@ -168,7 +168,7 @@ export function buildReciboTermicoHTML(
 
   const tipoCode = sale.tipoNcf ?? 'E32';
   const [ncfL1, ncfL2] = tipoDoc
-    ? [tipoDoc, tipoDoc === 'PRE-FACTURA' ? 'Documento No Fiscal' : tipoDoc === 'PRO-FORMA' ? 'Presupuesto Informativo · Sin NCF' : 'No válida como comprobante fiscal']
+    ? [tipoDoc, tipoDoc === 'PRE-FACTURA' ? 'Documento No Fiscal' : tipoDoc === 'PRO-FORMA' ? 'Presupuesto Informativo - Sin NCF' : 'No válida como comprobante fiscal']
     : (NCF_LABEL[tipoCode] ?? ['FACTURA ELECTRÓNICA', `(${esc(tipoCode)})`]);
   const esExento = tipoCode === 'E44';
   const mostrarComprador = !!(sale.rncComprador && !RNC_GENERICOS_TICKET.has(sale.rncComprador));
@@ -194,16 +194,21 @@ export function buildReciboTermicoHTML(
       ? (item as any).balanzaTotalFijo * factor
       : precioNeto * item.cantidad * factor;
     const maxNom     = compacto ? 22 : 26;
-    const nom        = item.produto.nombre.length > maxNom ? item.produto.nombre.slice(0, maxNom - 1) + '…' : item.produto.nombre;
+    // Marca de recorte '>', la misma que usa lineaLR(). Los puntos suspensivos
+    // tipograficos se convierten en tres puntos camino del Bluetooth y se comen
+    // dos caracteres del ancho que el recorte ya habia contado.
+    const nom        = item.produto.nombre.length > maxNom ? item.produto.nombre.slice(0, maxNom - 1) + '>' : item.produto.nombre;
     const modMark    = item.precioModificado ? ' *' : '';
-    const balMark    = (item as any).esBalanza ? ' ⚖' : '';
+    // Sin simbolo de balanza: no existe en CP437 y la linea de cantidad ya lleva
+  // la unidad ("1.234 KG"), que es lo que informa.
+  const balMark    = '';
     // Cantidad con unidad correcta para balanza
     const cantStr    = (item as any).esBalanza
       ? `${item.cantidad.toFixed(3)} ${(item as any).balanzaUnidad ?? ''}`
       : String(item.cantidad);
     const detalle    = (item as any).balanzaTipoDato === 'precio'
       ? 'Precio fijo etiqueta'
-      : `${cantStr} × RD$${(precioNeto * factor).toFixed(2)}`;
+      : `${cantStr} x RD${(precioNeto * factor).toFixed(2)}`;
     const descTxt    = item.descuentoMonto > 0
       ? `Desc: -RD$${(item.descuentoMonto * factor).toFixed(2)} c/u (orig. RD$${(item.precio * factor).toFixed(2)})`
       : '';
@@ -218,16 +223,14 @@ export function buildReciboTermicoHTML(
     return `<div style="page-break-inside:avoid;break-inside:avoid">${itemLine}${unitLine}${descLine}</div>`;
   }).join('');
 
-  const MODO_INFO: Record<string, { icono: string; label: string }> = {
-    restaurante: { icono: '🍽️', label: 'Restaurante' },
-    taller:      { icono: '🔧', label: 'Taller'      },
-    farmacia:    { icono: '💊', label: 'Farmacia'     },
-    optica:      { icono: '👓', label: 'Óptica'       },
-    clinica:     { icono: '🏥', label: 'Clínica'      },
-    gimnasio:    { icono: '🏋️', label: 'Gimnasio'    },
+  // Sin iconos: los emoji no existen en CP437 y por Bluetooth salen como basura.
+  // La etiqueta ya dice de qué módulo es; el icono era decoración de pantalla.
+  const MODO_LABEL: Record<string, string> = {
+    restaurante: 'Restaurante', taller: 'Taller',   farmacia: 'Farmacia',
+    optica:      'Óptica',      clinica: 'Clínica', gimnasio: 'Gimnasio',
   };
-  const modoInfo = sale.modoContexto && sale.modoContexto !== 'general'
-    ? MODO_INFO[sale.modoContexto] : null;
+  const modoLabel = sale.modoContexto && sale.modoContexto !== 'general'
+    ? MODO_LABEL[sale.modoContexto] : null;
 
   // ── Bloque de totales ──────────────────────────────────────────────────────
   // Los montos base + ITBIS por tasa se toman de calcularDesgloseITBIS() —
@@ -335,10 +338,12 @@ export function buildReciboTermicoHTML(
       : '';
     if (compacto) {
       // Pagado + cambio + ítems en un solo renglón, como manda la maqueta.
-      const der: string[] = [];
-      if (Number(sale.cambio) > 0) der.push(`Cambio ${num(Number(sale.cambio))}`);
-      der.push(`${totalLineas} ít.`);
-      return [row(`Pagado ${num(pagoMostrar)}`, der.join(' · ')), ...detalleMixto, plazo]
+      // El conteo de items va entre parentesis, no detras de un guion: entre dos
+      // cifras de dinero un guion se lee como una resta.
+      const der = Number(sale.cambio) > 0
+        ? `Cambio ${num(Number(sale.cambio))} (${totalLineas} ít.)`
+        : `${totalLineas} ít.`;
+      return [row(`Pagado ${num(pagoMostrar)}`, der), ...detalleMixto, plazo]
         .filter(Boolean).join('\n');
     }
     return [
@@ -374,8 +379,8 @@ export function buildReciboTermicoHTML(
   // Emisor — RNC del emisor es intocable, va en los dos formatos.
   const nombreEmp = sale.empresaNombreComercial ?? 'NOMBRE EMPRESA';
   if (compacto) {
-    B.push(`<div class="center bold">${esc(sale.empresaRnc ? `${nombreEmp} · RNC ${sale.empresaRnc}` : nombreEmp)}</div>`);
-    const contacto = [sale.empresaDireccion, sale.empresaTelefono].filter(Boolean).join(' · ');
+    B.push(`<div class="center bold">${esc(sale.empresaRnc ? `${nombreEmp} - RNC ${sale.empresaRnc}` : nombreEmp)}</div>`);
+    const contacto = [sale.empresaDireccion, sale.empresaTelefono].filter(Boolean).join(' - ');
     if (contacto) B.push(`<div class="center small">${esc(contacto)}</div>`);
   } else {
     B.push(`<div class="center xlarge">${esc(nombreEmp)}</div>`);
@@ -405,8 +410,8 @@ export function buildReciboTermicoHTML(
     const emisor = [
       sale.cajero ? `Cajero: ${sale.cajero}` : '',
       (sale.sucursalNombre && variasSucursales) ? sale.sucursalNombre : '',
-      modoInfo ? `${modoInfo.icono} ${modoInfo.label}` : '',
-    ].filter(Boolean).join(' · ');
+      modoLabel ?? '',
+    ].filter(Boolean).join(' - ');
     if (emisor) B.push(txt(emisor));
   } else {
     B.push(row('Fecha:', fechaTicket));
@@ -414,13 +419,13 @@ export function buildReciboTermicoHTML(
     B.push(rowBold(tipoDoc ? `${tipoDoc}:` : 'Factura:', sale.folio));
     if (sale.cajero)         B.push(row('Cajero:', sale.cajero));
     if (sale.sucursalNombre) B.push(row('Sucursal:', sale.sucursalNombre));
-    if (modoInfo)            B.push(row('Módulo:', `${modoInfo.icono} ${modoInfo.label}`));
+    if (modoLabel)           B.push(row('Módulo:', modoLabel));
   }
 
   // Comprador — cuando el cliente declaró RNC.
   if (mostrarComprador) {
     if (compacto) {
-      B.push(txt([`RNC ${sale.rncComprador ?? ''}`, sale.razonSocial].filter(Boolean).join(' · ')));
+      B.push(txt([`RNC ${sale.rncComprador ?? ''}`, sale.razonSocial].filter(Boolean).join(' - ')));
     } else {
       B.push(line());
       B.push('<div class="bold">COMPRADOR:</div>');
@@ -433,14 +438,14 @@ export function buildReciboTermicoHTML(
   if (sale.facturaOriginalFolio || sale.ncfOriginal || sale.codigoModificacion || sale.descripcionMotivo) {
     B.push(line());
     if (compacto) {
-      B.push('<div class="center bold">── MODIFICA A ──</div>');
+      B.push('<div class="center bold">-- MODIFICA A --</div>');
       if (sale.facturaOriginalFolio || sale.ncfOriginal) {
         B.push(row(sale.facturaOriginalFolio ? `Fact. ${sale.facturaOriginalFolio}` : '', sale.ncfOriginal ?? ''));
       }
       if (sale.codigoModificacion) B.push(txt(`Cód. modif. ${sale.codigoModificacion}`));
       if (sale.descripcionMotivo)  B.push(small(sale.descripcionMotivo));
     } else {
-      B.push('<div class="center bold">── MODIFICA A ──</div>');
+      B.push('<div class="center bold">-- MODIFICA A --</div>');
       if (sale.facturaOriginalFolio) B.push(row('Factura orig.:', sale.facturaOriginalFolio));
       if (sale.ncfOriginal)          B.push(row('e-NCF orig.:', sale.ncfOriginal));
       if (sale.codigoModificacion)   B.push(row('Cód.Modif.:', sale.codigoModificacion));
@@ -503,13 +508,13 @@ export function buildReciboTermicoHTML(
       }
       if (sale.ecfPendiente) {
         B.push(compacto
-          ? '<div class="center bold">&#9888; COMPROBANTE EN PROCESO DE VALIDACIÓN DGII</div>'
-          : `${line()}<div class="center box"><div class="bold">&#9888; COMPROBANTE EN PROCESO</div><div>DE VALIDACIÓN DGII</div><div class="small">Será enviado cuando sea procesado.</div></div>`);
+          ? '<div class="center bold">COMPROBANTE EN PROCESO DE VALIDACIÓN DGII</div>'
+          : `${line()}<div class="center box"><div class="bold">COMPROBANTE EN PROCESO</div><div>DE VALIDACIÓN DGII</div><div class="small">Será enviado cuando sea procesado.</div></div>`);
       }
     } else {
       B.push(compacto
-        ? '<div class="center bold">&#9888; COMPROBANTE EN PROCESO DE VALIDACIÓN DGII</div>'
-        : '<div class="center box"><div class="bold">&#9888; COMPROBANTE EN PROCESO</div><div>DE VALIDACIÓN DGII</div></div>');
+        ? '<div class="center bold">COMPROBANTE EN PROCESO DE VALIDACIÓN DGII</div>'
+        : '<div class="center box"><div class="bold">COMPROBANTE EN PROCESO</div><div>DE VALIDACIÓN DGII</div></div>');
     }
   }
 
@@ -530,14 +535,14 @@ export function buildReciboTermicoHTML(
   const cierre = tipoDoc === 'PRE-FACTURA'
     ? ['** DOCUMENTO NO FISCAL **', 'Presente este ticket para pagar']
     : tipoDoc === 'COTIZACIÓN'
-    ? ['** COTIZACIÓN — NO ES FACTURA **']
+    ? ['** COTIZACION - NO ES FACTURA **']
     : tipoDoc === 'PRO-FORMA'
-    ? ['** PRO FORMA — NO ES FACTURA **', 'No válida como comprobante fiscal']
+    ? ['** PRO FORMA - NO ES FACTURA **', 'No válida como comprobante fiscal']
     : ['Gracias por su compra'];
   const firmaSistema = (tipoDoc || !sale.encf || !mostrarEcf || compacto) ? 'HiCloud ERP' : '';
   if (compacto) {
     B.push(line());
-    B.push(`<div class="center small">${esc([politicaDev?.trim(), ...cierre, firmaSistema].filter(Boolean).join(' · '))}</div>`);
+    B.push(`<div class="center small">${esc([politicaDev?.trim(), ...cierre, firmaSistema].filter(Boolean).join(' - '))}</div>`);
   } else {
     if (politicaDev?.trim()) {
       B.push(`${line()}<div class="small"><strong>POLÍTICA DE DEVOLUCIONES:</strong><br/>${esc(politicaDev.trim())}</div>`);

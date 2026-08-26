@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import type { Repository } from 'typeorm';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const PDFDocument = require('pdfkit') as typeof import('pdfkit');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const bwipjs = require('bwip-js') as typeof import('bwip-js');
 import { Conduce } from './entities/conduce.entity';
 import { TenantService } from '../tenant/tenant.service';
 
@@ -28,6 +30,14 @@ function fmtFecha(d: any): string {
   return dt.toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: TZ });
 }
 
+function fmtFechaHora(d: any): string {
+  if (!d) return '—';
+  const dt = d instanceof Date ? d : new Date(d);
+  return dt.toLocaleString('es-DO', { timeZone: TZ,
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: true });
+}
+
 function fmtAhora(): string {
   return new Date().toLocaleString('es-DO', { timeZone: TZ,
     day: '2-digit', month: '2-digit', year: 'numeric',
@@ -41,9 +51,7 @@ export class ConducePDFService {
     private tenantSvc: TenantService,
   ) {}
 
-  async generarPDF(id: number, formato: 'carta' | 'termico' = 'carta'): Promise<{ buffer: Buffer; filename: string }> {
-    if (formato === 'termico') return this.generarPDFTermico(id);
-
+  async generarPDF(id: number): Promise<{ buffer: Buffer; filename: string }> {
     const empresaId = this.tenantSvc.getEmpresaId();
     const cond = await this.repo.findOne({
       where: { id, empresaId, isActive: true },
@@ -74,8 +82,44 @@ export class ConducePDFService {
         ).then((r: any[]) => r[0]?.folio ?? undefined)
       : undefined;
 
+    // Quién registró la devolución. Solo se consulta si el conduce está devuelto.
+    const devueltoPorNombre: string | undefined = cond.devueltoPorUsuarioId
+      ? await this.repo.manager.query(
+          'SELECT nombre FROM users WHERE id = $1 LIMIT 1',
+          [cond.devueltoPorUsuarioId],
+        ).then((r: any[]) => r[0]?.nombre ?? undefined)
+      : undefined;
+
     const detalles: any[] = (cond as any).detalles ?? [];
     const cli = (cond as any).cliente ?? {};
+
+    // ── Código de barras Code128 del número del conduce ─────────────────────
+    // El valor va tal cual, sin prefijos ni ceros de relleno: escanearlo tiene
+    // que caer en la misma rama exacta del buscador del reporte de entrega que
+    // teclearlo a mano. includetext va en false porque el número se dibuja
+    // debajo con la fuente del PDF, que se lee mejor que la de la librería.
+    let barcodeBuf: Buffer | null = null;
+    try {
+      barcodeBuf = await bwipjs.toBuffer({
+        bcid:          'code128',
+        text:          cond.numero,
+        scale:         3,
+        height:        9,
+        includetext:   false,
+        // Zona muda de 10 módulos a cada lado: es lo que pide Code128 y sin ella
+        // hay escáneres que no enganchan el arranque.
+        paddingwidth:  10,
+        paddingheight: 2,
+        // Fondo blanco explícito. bwip-js genera el PNG con fondo TRANSPARENTE, y
+        // aunque sobre la hoja se vea igual, un lector que no componga el alpha
+        // sobre blanco no lo decodifica: comprobado con zxing, no lee el PNG
+        // transparente y sí el opaco.
+        backgroundcolor: 'FFFFFF',
+      });
+    } catch (e: any) {
+      // Un conduce sin barcode se sigue imprimiendo; sin conduce, no.
+      barcodeBuf = null;
+    }
 
     // ── Pre-calcular altura de sección cliente para derivar espacio disponible ──
     // Columna izq: label(14) + nombre(14) + campos opcionales
@@ -91,30 +135,46 @@ export class ConducePDFService {
     ];
     if (cond.fechaEntregaProgramada) infoRowsArr.push(['Entrega programada', fmtFecha(cond.fechaEntregaProgramada)]);
     if (cond.contactoEntrega)        infoRowsArr.push(['Contacto', cond.contactoEntrega + (cond.telefonoContacto ? '  ' + cond.telefonoContacto : '')]);
-    if (cond.conductor)              infoRowsArr.push(['Conductor', cond.conductor]);
+    // El chofer va SIEMPRE, tenga valor o no: los conduces emitidos antes de que
+    // el campo fuera obligatorio salen con la raya para escribirlo a mano, nunca
+    // en blanco ni con 'undefined'.
+    infoRowsArr.push(['Chofer', (cond.conductor ?? '').trim() || '__________________________']);
     if (cond.vehiculo)               infoRowsArr.push(['Vehículo',  cond.vehiculo]);
     if (sucursalNombre)              infoRowsArr.push(['Sucursal',  sucursalNombre]);
     const rightH = 14 + infoRowsArr.length * 24;
 
     const clientSectionH = Math.max(leftH, rightH);
 
-    // ── Calcular rowH dinámico para que todo quepa en una hoja LETTER ──
-    //   y arranca en 98, avanza 52 (título+ref) → 150
-    //   luego: clientSection + 16 (margen) + 1 (sep) + 12 (sep advance) + 16 (título tabla) + 18 (header)
-    //   después de items: 16 + notas(~0) + 12 (sep firmas) + 20 (espacio) + 60 (firmas) + 38 (footer)
-    const LETTER_H     = 792;
-    const FOOTER_H     = 38;
-    const SIG_SPACE    = 12 + 20 + 60; // sep + espacio + firmas+etiquetas
-    const BEFORE_ITEMS = 150 + clientSectionH + 16 + 13 + 16 + 18; // y=150, client, advance, sep, título, header
-    const AFTER_ITEMS  = 16 + SIG_SPACE + FOOTER_H + 10; // tras ítems
-    const AVAILABLE    = LETTER_H - BEFORE_ITEMS - AFTER_ITEMS;
-    const itemCount    = Math.max(detalles.length, 1);
-    // Entre 14pt mínimo y 20pt máximo
-    const rowH: number = Math.min(20, Math.max(14, Math.floor(AVAILABLE / itemCount)));
-    const rowFs: number = rowH <= 15 ? 7 : 8; // font size de las filas
+    // ── Medidas del pie y del bloque de recepción ───────────────────────────
+    //
+    // Antes se comprimía la altura de fila para que todo cupiera en una hoja, con
+    // un mínimo de 14pt que no se respetaba a sí mismo: pasados los veinte ítems
+    // la tabla se salía igual y cada text() fuera de la hoja abría una página
+    // nueva a medio dibujar. Ahora la fila mide siempre lo mismo y es la tabla la
+    // que pasa de página cuando toca, con su cabecera repetida.
+    const FOOTER_H   = 38;
+    // Bloque de recepción: separador + título + tres renglones con aire para
+    // escribir a mano. Esto se firma de pie en la puerta de un negocio, así que
+    // el espacio entre rayas es el que hace falta para escribir, no el que sobra.
+    const SIG_TITULO = 12 + 18;      // separador + título RECIBIDO CONFORME
+    const SIG_FILA   = 46;           // alto de cada renglón (raya + etiqueta + aire)
+    const SIG_SPACE  = SIG_TITULO + SIG_FILA * 3;
+    const rowH       = 18;
+    const rowFs      = 8;
 
     const buffer = await new Promise<Buffer>((resolve, reject) => {
-      const doc = new PDFDocument({ size: 'LETTER', margin: 50, compress: true });
+      // Márgenes verticales a cero a propósito: TODO en esta plantilla se dibuja
+      // con coordenadas absolutas, y el pie va en page.height - 38, por debajo del
+      // margen inferior de 50. pdfkit reacciona a eso abriendo una página nueva
+      // por cada text() que cae ahí, así que el conduce salía en tres hojas: la
+      // buena y dos con solo el pie. Con el margen vertical en cero, la única
+      // página es la que se dibuja.
+      const doc = new PDFDocument({
+        size: 'LETTER',
+        margins: { top: 0, bottom: 0, left: 50, right: 50 },
+        compress: true,
+        bufferPages: true,   // el pie se pinta al final, cuando se sabe cuántas hay
+      });
       const chunks: Buffer[] = [];
       doc.on('data',  c  => chunks.push(c));
       doc.on('end',   () => resolve(Buffer.concat(chunks)));
@@ -147,7 +207,16 @@ export class ConducePDFService {
         ? `N°: ${cond.numero}   ·   Fecha: ${fmtFecha(cond.fecha)}   ·   Ref. Factura: ${facturaFolio}`
         : `N°: ${cond.numero}   ·   Fecha: ${fmtFecha(cond.fecha)}`;
       doc.fillColor('#374151').font('Helvetica').fontSize(10)
-        .text(refLine, PL, y + 26);
+        .text(refLine, PL, y + 26, { width: W - 180 });
+
+      // Código de barras arriba a la derecha, donde se ve sin desdoblar la hoja.
+      if (barcodeBuf) {
+        const bcW = 165;
+        const bcX = PR - bcW;
+        doc.image(barcodeBuf, bcX, y - 8, { width: bcW, height: 34 });
+        doc.fillColor('#111827').font('Helvetica-Bold').fontSize(8)
+          .text(cond.numero, bcX, y + 28, { width: bcW, align: 'center' });
+      }
       y += 52;
 
       // ── Línea separadora ────────────────────────────────────────────────────
@@ -202,14 +271,37 @@ export class ConducePDFService {
       const headers   = ['#', 'Descripción', 'Cantidad', 'U.M.', 'Obs / Dev.'];
       const aligns    = ['center', 'left', 'right', 'center', 'left'] as const;
 
-      doc.rect(PL, y, W, 18).fill('#1e3a8a');
-      doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(8);
-      let hx = PL;
-      for (let i = 0; i < headers.length; i++) {
-        doc.text(headers[i], hx + 3, y + 4, { width: colWidths[i] - 6, align: aligns[i] });
-        hx += colWidths[i];
-      }
-      y += 18;
+      // Fondo útil: por debajo de aquí empieza el pie.
+      const LIMITE  = doc.page.height - FOOTER_H - 10;
+      const TOP_CONT = 62;   // y inicial de las páginas de continuación
+
+      const cabeceraTabla = () => {
+        doc.rect(PL, y, W, 18).fill('#1e3a8a');
+        doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(8);
+        let hx = PL;
+        for (let i = 0; i < headers.length; i++) {
+          doc.text(headers[i], hx + 3, y + 4, { width: colWidths[i] - 6, align: aligns[i] });
+          hx += colWidths[i];
+        }
+        y += 18;
+      };
+
+      // Página de continuación: franja fina que identifica la hoja suelta —
+      // quién emite, qué conduce y para quién es. Sin eso, la segunda hoja de un
+      // conduce de treinta líneas no se sabe de dónde salió.
+      const paginaContinuacion = () => {
+        doc.addPage();
+        doc.rect(0, 0, doc.page.width, 44).fill(brandBlue);
+        doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(11)
+          .text(nombreEmpresa, PL, 12, { width: W * 0.6 });
+        doc.font('Helvetica').fontSize(8)
+          .text(`CONDUCE ${cond.numero}  ·  ${cli.nombre ?? ''}`, PL, 27, { width: W * 0.6 });
+        doc.font('Helvetica-Bold').fontSize(9)
+          .text('(continuación)', PR - 120, 20, { width: 120, align: 'right' });
+        y = TOP_CONT;
+      };
+
+      cabeceraTabla();
 
       if (detalles.length === 0) {
         doc.rect(PL, y, W, rowH + 2).fill('#f9fafb').stroke();
@@ -218,6 +310,7 @@ export class ConducePDFService {
         y += rowH + 2;
       } else {
         detalles.forEach((d: any, idx: number) => {
+          if (y + rowH > LIMITE) { paginaContinuacion(); cabeceraTabla(); }
           const bg   = idx % 2 === 0 ? '#f9fafb' : '#ffffff';
           doc.rect(PL, y, W, rowH).fill(bg).stroke('#e5e7eb');
 
@@ -261,206 +354,85 @@ export class ConducePDFService {
         y += doc.heightOfString(cond.notas, { width: W }) + 8;
       }
 
-      // ── Área de firmas — siempre en la misma página ─────────────────────────
-      y += 10;
-      doc.moveTo(PL, y).lineTo(PR, y).strokeColor('#e5e7eb').lineWidth(0.8).stroke();
-      y += 20;
+      // ── Devolución — solo si el conduce está devuelto ──────────────────────
+      //
+      // En rojo y con marco: quien recoge este papel tiene que ver de un
+      // vistazo que la mercancía volvió y por qué, sin buscarlo en un pie.
+      if (cond.estado === 'devuelto') {
+        const motivo   = (cond.motivoDevolucion ?? '').trim() || 'No registrado';
+        const quien    = devueltoPorNombre ?? '—';
+        const cuando   = cond.fechaDevolucion ? fmtFechaHora(cond.fechaDevolucion) : '—';
+        const motivoH  = doc.heightOfString(motivo, { width: W - 24 });
+        const cajaH    = 20 + motivoH + 6 + 12 + 10;
 
-      const sigW   = W / 3 - 8;
-      const sigGap = 12;
-      const sigs   = ['Preparado por', 'Entregado por', 'Recibido conforme'];
-      for (let i = 0; i < 3; i++) {
-        const sx = PL + i * (sigW + sigGap);
-        doc.moveTo(sx, y + 36).lineTo(sx + sigW, y + 36).strokeColor('#374151').lineWidth(0.5).stroke();
+        if (y + cajaH > LIMITE) paginaContinuacion();
+        doc.roundedRect(PL, y, W, cajaH, 4).fillAndStroke('#fef2f2', '#dc2626');
+        doc.fillColor('#dc2626').font('Helvetica-Bold').fontSize(9)
+          .text('DEVOLUCIÓN', PL + 12, y + 7);
+        doc.fillColor('#111827').font('Helvetica').fontSize(9)
+          .text(motivo, PL + 12, y + 20, { width: W - 24 });
         doc.fillColor('#6b7280').font('Helvetica').fontSize(8)
-          .text(sigs[i], sx, y + 40, { width: sigW, align: 'center' });
+          .text(`Registrada por ${quien}  ·  ${cuando}`, PL + 12, y + 20 + motivoH + 6, { width: W - 24 });
+        y += cajaH + 10;
       }
 
-      // ── Pie de página ──────────────────────────────────────────────────────
-      const footerY = doc.page.height - 38;
-      doc.rect(0, footerY, doc.page.width, 38).fill('#f1f5f9');
-      doc.fillColor('#6b7280').font('Helvetica').fontSize(8)
-        .text(
-          `Este conduce certifica la entrega de la mercancía descrita. La firma del receptor acredita conformidad.  ·  HiCloud ERP`,
-          PL, footerY + 8, { width: W, align: 'center' },
-        );
-      doc.fillColor('#9ca3af').fontSize(7)
-        .text(`Generado: ${fmtAhora()}`, PL, footerY + 22, { width: W, align: 'right' });
+      // ── Bloque de recepción — siempre en la última página ───────────────────
+      //
+      // Antes eran tres rayas cortas de 60pt en fila (preparado / entregado /
+      // recibido) donde no cabía una firma. Esto se firma de pie, apoyado en un
+      // mostrador: cada dato tiene su renglón, del ancho de la hoja, y con aire
+      // suficiente para escribir a mano.
+      const sigTop = doc.page.height - FOOTER_H - SIG_SPACE - 10;
+      // Si lo que queda de hoja no da para firmar, el bloque se lleva entero a la
+      // siguiente: media firma partida entre dos hojas no vale para nada.
+      if (y + 10 + SIG_SPACE > LIMITE) paginaContinuacion();
+      y = Math.max(y + 10, sigTop);
+      doc.moveTo(PL, y).lineTo(PR, y).strokeColor('#e5e7eb').lineWidth(0.8).stroke();
+      y += 12;
+
+      doc.fillColor(brandBlue).font('Helvetica-Bold').fontSize(9)
+        .text('RECIBIDO CONFORME', PL, y);
+      y += 18;
+
+      // Cada renglón: raya larga abajo del hueco, etiqueta pequeña debajo.
+      const renglon = (label: string, x: number, ancho: number) => {
+        doc.moveTo(x, y + 30).lineTo(x + ancho, y + 30)
+          .strokeColor('#374151').lineWidth(0.6).stroke();
+        doc.fillColor('#6b7280').font('Helvetica').fontSize(7.5)
+          .text(label, x, y + 34, { width: ancho });
+      };
+
+      renglon('Firma del receptor', PL, W * 0.58 - 10);
+      renglon('Cédula', PL + W * 0.58, W * 0.42);
+      y += SIG_FILA;
+      renglon('Nombre en LETRA DE MOLDE', PL, W);
+      y += SIG_FILA;
+      renglon('Fecha y hora de recibido', PL, W * 0.58 - 10);
+      renglon('Vehículo / placa', PL + W * 0.58, W * 0.42);
+
+      // ── Pie de página, en todas las hojas ──────────────────────────────────
+      const rango = doc.bufferedPageRange();
+      for (let i = rango.start; i < rango.start + rango.count; i++) {
+        doc.switchToPage(i);
+        const footerY = doc.page.height - FOOTER_H;
+        doc.rect(0, footerY, doc.page.width, FOOTER_H).fill('#f1f5f9');
+        doc.fillColor('#6b7280').font('Helvetica').fontSize(8)
+          .text(
+            `Este conduce certifica la entrega de la mercancía descrita. La firma del receptor acredita conformidad.  ·  HiCloud ERP`,
+            PL, footerY + 8, { width: W, align: 'center' },
+          );
+        doc.fillColor('#9ca3af').fontSize(7)
+          .text(`Generado: ${fmtAhora()}`, PL, footerY + 22, { width: W * 0.5 });
+        if (rango.count > 1) {
+          doc.fillColor('#9ca3af').fontSize(7)
+            .text(`Página ${i - rango.start + 1} de ${rango.count}`, PL + W * 0.5, footerY + 22,
+              { width: W * 0.5, align: 'right' });
+        }
+      }
 
       doc.end();
     });
 
     return { buffer, filename: `${cond.numero}.pdf` };
-  }
-
-  // ── PDF Térmico 80mm — altura exacta al contenido ─────────────────────────
-  private async generarPDFTermico(id: number): Promise<{ buffer: Buffer; filename: string }> {
-    const empresaId = this.tenantSvc.getEmpresaId();
-    const cond = await this.repo.findOne({
-      where: { id, empresaId, isActive: true },
-      relations: ['cliente', 'detalles'],
-    });
-    if (!cond) throw new NotFoundException(`Conduce #${id} no encontrado`);
-
-    const empresaRows: any[] = await this.repo.manager.query(
-      'SELECT * FROM empresa WHERE id = $1 AND "isActive" = true LIMIT 1',
-      [empresaId],
-    );
-    const empresa      = empresaRows[0] ?? {};
-    const nombreEmpresa: string = empresa.nombreComercial || empresa.nombre || 'Mi Empresa';
-    const estadoLabel  = ESTADO_LABEL[cond.estado] ?? cond.estado;
-    const facturaFolio: string | undefined = cond.facturaId
-      ? await this.repo.manager.query(
-          'SELECT folio FROM facturas WHERE id = $1 LIMIT 1',
-          [cond.facturaId],
-        ).then((r: any[]) => r[0]?.folio ?? undefined)
-      : undefined;
-
-    const detalles: any[] = (cond as any).detalles ?? [];
-    const cli = (cond as any).cliente ?? {};
-
-    // ── Pre-calcular la altura exacta de la página ─────────────────────────
-    // (así la impresora térmica imprime exactamente el contenido, sin papel en blanco)
-    const W  = 226;   // 80mm ≈ 226pt
-    const M  = 8;
-    const UW = W - M * 2;
-
-    let estH = M;
-    estH += 14;                              // nombre empresa
-    if (empresa.rnc)       estH += 10;
-    if (empresa.telefono)  estH += 10;
-    if (empresa.direccion) estH += 10;
-    estH += 6;                               // separador
-    estH += 12;                              // label CONDUCE
-    estH += 14;                              // numero grande
-    estH += 10;                              // fecha
-    estH += 10;                              // estado
-    if (facturaFolio)      estH += 10;
-    estH += 6;                               // separador
-    estH += 10;                              // label CLIENTE
-    estH += 12;                              // nombre cliente
-    if (cli.rncReceptor)       estH += 10;
-    if (cond.direccionEntrega)  estH += 10;
-    if (cond.contactoEntrega)   estH += 10;
-    if (cond.conductor)         estH += 10;
-    estH += 6;                               // separador
-    estH += 10;                              // label ARTÍCULOS
-    estH += 13;                              // cabecera mini-tabla
-    estH += 4;                               // línea bajo header
-    estH += Math.max(detalles.length, 1) * 11; // filas
-    estH += 6;                               // separador post-tabla
-    if (cond.notas) estH += 20;
-    estH += 6 + 8 + 44;                     // separador + espacio + firmas
-    estH += 6 + 10 + 10;                    // pie: sep + 2 líneas texto
-    estH += M + 6;                           // margen inferior
-
-    const buffer = await new Promise<Buffer>((resolve, reject) => {
-      const doc = new PDFDocument({ size: [W, estH], margin: M, compress: true, autoFirstPage: true });
-      const chunks: Buffer[] = [];
-      doc.on('data',  c  => chunks.push(c));
-      doc.on('end',   () => resolve(Buffer.concat(chunks)));
-      doc.on('error', reject);
-
-      const center = (text: string, y: number, size = 8, bold = false) => {
-        doc.fillColor('#000000')
-          .font(bold ? 'Helvetica-Bold' : 'Helvetica')
-          .fontSize(size)
-          .text(text, M, y, { width: UW, align: 'center' });
-      };
-      const hrule = (y: number) => {
-        doc.moveTo(M, y).lineTo(W - M, y)
-          .strokeColor('#000000').lineWidth(0.4)
-          .dash(3, { space: 2 }).stroke().undash();
-      };
-
-      let y = M;
-
-      // Cabecera empresa
-      center(nombreEmpresa, y, 9, true); y += 14;
-      if (empresa.rnc)       { center(`RNC: ${empresa.rnc}`,      y, 7); y += 10; }
-      if (empresa.telefono)  { center(`Tel: ${empresa.telefono}`, y, 7); y += 10; }
-      if (empresa.direccion) { center(empresa.direccion,          y, 7, false); y += 10; }
-
-      hrule(y); y += 6;
-
-      // Cabecera del conduce
-      center('CONDUCE / NOTA DE ENTREGA', y, 7, true); y += 12;
-      center(cond.numero, y, 11, true); y += 14;
-      doc.fillColor('#000').font('Helvetica').fontSize(7)
-        .text(`Fecha: ${fmtFecha(cond.fecha)}`, M, y); y += 10;
-      doc.fillColor('#000').font('Helvetica-Bold').fontSize(7)
-        .text(`Estado: ${estadoLabel.toUpperCase()}`, M, y); y += 10;
-      if (facturaFolio) {
-        doc.fillColor('#000').font('Helvetica').fontSize(7)
-          .text(`Ref. Factura: ${facturaFolio}`, M, y); y += 10;
-      }
-
-      hrule(y); y += 6;
-
-      // Cliente
-      doc.fillColor('#000').font('Helvetica-Bold').fontSize(7).text('CLIENTE', M, y); y += 10;
-      doc.font('Helvetica').fontSize(8).text(cli.nombre || '—', M, y, { width: UW }); y += 12;
-      if (cli.rncReceptor)      { doc.fontSize(7).text(`RNC: ${cli.rncReceptor}`, M, y); y += 10; }
-      if (cond.direccionEntrega){ doc.fontSize(7).text(cond.direccionEntrega, M, y, { width: UW }); y += 10; }
-      if (cond.contactoEntrega) { doc.fontSize(7).text(`Contacto: ${cond.contactoEntrega}`, M, y); y += 10; }
-      if (cond.conductor)       { doc.fontSize(7).text(`Conductor: ${cond.conductor}`, M, y); y += 10; }
-
-      hrule(y); y += 6;
-
-      // Artículos
-      doc.fillColor('#000').font('Helvetica-Bold').fontSize(7).text('ARTÍCULOS', M, y); y += 10;
-
-      const descW = UW - 38 - 20;
-      doc.font('Helvetica-Bold').fontSize(6.5)
-        .text('DESCRIPCIÓN',            M,            y, { width: descW })
-        .text('CANT',    M + descW,     y, { width: 38, align: 'right' })
-        .text('UM',      M + descW + 38, y, { width: 20, align: 'center' });
-      y += 9;
-      doc.moveTo(M, y).lineTo(W - M, y).strokeColor('#000').lineWidth(0.3).stroke();
-      y += 4;
-
-      if (detalles.length === 0) {
-        doc.font('Helvetica').fontSize(7).text('Sin ítems', M, y, { width: UW, align: 'center' }); y += 11;
-      } else {
-        for (const d of detalles) {
-          const cant  = Number(d.cantidad).toLocaleString('es-DO', { maximumFractionDigits: 2 });
-          const dev   = Number(d.cantidadDevuelta ?? 0) > 0 ? ` (D:${d.cantidadDevuelta})` : '';
-          const desc  = (d.descripcion ?? '') + dev;
-          doc.font('Helvetica').fontSize(7)
-            .text(desc,                    M,             y, { width: descW, ellipsis: true })
-            .text(cant,                    M + descW,     y, { width: 38, align: 'right' })
-            .text(d.unidadMedida ?? 'PZA', M + descW + 38, y, { width: 20, align: 'center' });
-          y += 11;
-        }
-      }
-
-      hrule(y); y += 6;
-
-      // Notas
-      if (cond.notas) {
-        doc.font('Helvetica-Bold').fontSize(7).text('NOTAS:', M, y); y += 10;
-        doc.font('Helvetica').fontSize(7).text(cond.notas, M, y, { width: UW }); y += 10;
-        hrule(y); y += 6;
-      }
-
-      // Firmas
-      y += 8;
-      const sigW2 = Math.floor((UW - 8) / 2);
-      doc.moveTo(M,              y + 22).lineTo(M + sigW2,      y + 22).strokeColor('#000').lineWidth(0.5).stroke();
-      doc.moveTo(M + sigW2 + 8,  y + 22).lineTo(M + UW,         y + 22).strokeColor('#000').lineWidth(0.5).stroke();
-      doc.fillColor('#000').font('Helvetica').fontSize(6.5)
-        .text('Entregado por',     M,            y + 25, { width: sigW2, align: 'center' })
-        .text('Recibido conforme', M + sigW2 + 8, y + 25, { width: sigW2, align: 'center' });
-      y += 44;
-
-      // Pie
-      hrule(y); y += 6;
-      center('HiCloud ERP · República Dominicana', y, 6); y += 10;
-      center(`Generado: ${fmtAhora()}`, y, 5.5);
-
-      doc.end();
-    });
-
-    return { buffer, filename: `${cond.numero}-termico.pdf` };
   }
 }

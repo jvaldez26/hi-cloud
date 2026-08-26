@@ -23,8 +23,7 @@ import api from '../../api/client';
 import { exportarExcel } from '../../utils/exportExcel';
 // Misma plantilla térmica que usa el POS para imprimir conduces — ver
 // utils/docTermico. Compartirla es lo que garantiza que el ticket sea idéntico.
-import { buildDocTermicoHTML, buildConduceDocData } from '../../utils/docTermico';
-import { imprimirReciboTermico } from '../../utils/printUtils';
+import { imprimirConduceTermico, abrirConducePDF } from '../../utils/imprimirConduce';
 import { dRD } from '../../utils/fechaRD';
 
 const { Compact } = Space;
@@ -102,9 +101,13 @@ interface ConduceReporte {
   contactoEntrega?: string;
   telefonoContacto?: string;
   notas?: string;
+  /** Nota de la ENTREGA. El motivo de la devolución es motivoDevolucion. */
   observacionesEntrega?: string;
   fechaEntregaReal?: string;
   entregadoPorNombre?: string;
+  motivoDevolucion?: string | null;
+  devueltoPorNombre?: string | null;
+  fechaDevolucion?: string | null;
   detalles: DetalleConduce[];
 }
 
@@ -152,7 +155,29 @@ interface RespuestaConduceSuelto {
   tipo: 'conduce_sin_factura';
   busqueda: string;
   mensaje: string;
-  conduce: { numero: string; clienteNombre: string; detalles: DetalleConduce[] };
+  conduce: ConduceReporte & { clienteNombre: string };
+}
+
+/**
+ * Bloque de devolución — el mismo en la vista de factura y en la de conduce
+ * suelto. Quien mira este reporte y ve un conduce devuelto se pregunta
+ * exactamente esto, así que va marcado y no en una nota al pie.
+ */
+function BloqueDevolucion({ c }: { c: ConduceReporte }) {
+  if (c.estado !== 'devuelto') return null;
+  return (
+    <div style={{ padding: '10px 12px', background: '#fef2f2', border: '1px solid #fecaca',
+      borderRadius: 6, fontSize: 12, marginBottom: 8 }}>
+      <div style={{ color: '#dc2626', fontWeight: 700, marginBottom: 4 }}>↩️ DEVOLUCIÓN</div>
+      <div><Text>{(c.motivoDevolucion ?? '').trim() || 'Motivo no registrado'}</Text></div>
+      <div style={{ marginTop: 4 }}>
+        <Text type="secondary" style={{ fontSize: 11 }}>
+          Registrada por {c.devueltoPorNombre || '—'}
+          {c.fechaDevolucion ? ` · ${fmt.fechaHora(c.fechaDevolucion)}` : ''}
+        </Text>
+      </div>
+    </div>
+  );
 }
 
 type RespuestaReporte = RespuestaCandidatos | RespuestaFactura | RespuestaConduceSuelto;
@@ -190,49 +215,20 @@ export default function ReporteEntregaTab() {
     }
   };
 
-  // ── Impresión térmica — MISMA que la del POS ─────────────────────────────
+  // ── Impresión — el mismo camino que el módulo y el POS ───────────────────
   //
-  // Antes esto pedía un PDF al backend (GET /conduces/:id/pdf?formato=termico,
-  // generado con puppeteer) y el resultado no se parecía al ticket que sale del
-  // POS: otra maquetación, otro encabezado, otro pie. Un mismo conduce impreso
-  // desde dos sitios daba dos papeles distintos.
-  //
-  // Ahora usa el generador compartido (utils/docTermico), el mismo que llama
-  // POSConducePanel. No son "parecidos": es literalmente el mismo HTML, con el
-  // tipo de impresora configurado en la empresa. La impresión en CARTA sigue
-  // yendo por el PDF del backend, que ahí sí es el formato adecuado.
+  // Estas quince líneas estaban copiadas aquí, en el panel del POS y en el
+  // módulo. Ahora viven en utils/imprimirConduce y las tres pantallas llaman
+  // a la misma función, así que el ticket no puede volver a divergir.
   const [imprimiendo, setImprimiendo] = useState<number | null>(null);
 
   const imprimirTermico = async (conduceId: number) => {
     setImprimiendo(conduceId);
-    try {
-      const [docRes, empRes] = await Promise.all([
-        api.get(`/conduces/${conduceId}`).then(r => r.data?.data ?? r.data),
-        api.get('/configuracion/empresa').then(r => r.data?.data ?? r.data).catch(() => ({})),
-      ]);
-      const gd = buildConduceDocData({ ...docRes, id: conduceId }, empRes);
-      const tipoImpresora = ((empRes?.configuracion ?? {}) as any).posTipoImpresora;
-      imprimirReciboTermico(buildDocTermicoHTML(gd, { tipoImpresora }), undefined, tipoImpresora);
-    } catch {
-      message.error('Error al imprimir conduce');
-    } finally {
-      setImprimiendo(null);
-    }
+    try { await imprimirConduceTermico(conduceId); }
+    finally { setImprimiendo(null); }
   };
 
-  // ── Abrir PDF de conduce en nueva pestaña (formato carta) ────────────────
-  const abrirPDF = async (conduceId: number, formato: 'carta' | 'termico') => {
-    try {
-      const res = await api.get(`/conduces/${conduceId}/pdf?formato=${formato}`, { responseType: 'blob' });
-      const blob = (res as any).data as Blob;
-      const url  = URL.createObjectURL(blob);
-      const win  = window.open(url, '_blank');
-      // Liberar la URL del objeto después de que la ventana la haya cargado
-      if (win) { win.addEventListener('load', () => URL.revokeObjectURL(url)); }
-    } catch {
-      // si falla, se muestra nada — el PDF devuelve 404 si no existe
-    }
-  };
+  const abrirPDF = abrirConducePDF;
 
   // ── Export Excel (solo disponible para tipo 'factura') ────────────────────
   const exportExcel = () => {
@@ -427,7 +423,10 @@ export default function ReporteEntregaTab() {
 
             {/* ── Conduce suelto ── */}
             {r.tipo === 'conduce_sin_factura' && (
-              <Alert type="info" showIcon message={r.mensaje} style={{ marginBottom: 16 }} />
+              <>
+                <BloqueDevolucion c={r.conduce} />
+                <Alert type="info" showIcon message={r.mensaje} style={{ marginBottom: 16 }} />
+              </>
             )}
 
             {/* ── Progreso (solo factura) ── */}
@@ -562,7 +561,7 @@ export default function ReporteEntregaTab() {
                             <Button
                               size="small"
                               icon={<PrinterOutlined />}
-                              onClick={() => abrirPDF(c.id, 'carta')}
+                              onClick={() => abrirPDF(c.id)}
                             >
                               📄 Carta
                             </Button>
@@ -587,6 +586,7 @@ export default function ReporteEntregaTab() {
                               { title: 'Nota',     dataIndex: 'observaciones',    key: 'obs', ellipsis: true, render: (v: string | null) => v ?? '—' },
                             ]}
                           />
+                          <BloqueDevolucion c={c} />
                           {(c.notas || c.observacionesEntrega) && (
                             <div style={{ padding: '8px 12px', background: '#f9fafb', borderRadius: 6, fontSize: 12 }}>
                               {c.notas && <div><Text type="secondary">Notas: </Text><Text>{c.notas}</Text></div>}

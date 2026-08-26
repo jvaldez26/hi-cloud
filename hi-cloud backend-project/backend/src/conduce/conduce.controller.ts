@@ -4,7 +4,7 @@ import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import {
   IsString, IsOptional, IsInt, IsPositive, IsNumber, IsArray,
-  ValidateNested, Min, IsDateString,
+  ValidateNested, Min, IsDateString, IsNotEmpty, MaxLength, MinLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -36,7 +36,7 @@ class CreateConduceDto {
   @IsOptional() @IsString()                          ciudad?: string;
   @IsOptional() @IsString()                          contactoEntrega?: string;
   @IsOptional() @IsString()                          telefonoContacto?: string;
-  @IsOptional() @IsString()                          conductor?: string;
+  @IsString() @IsNotEmpty() @MaxLength(150)          conductor!: string;
   @IsOptional() @IsString()                          vehiculo?: string;
   @IsOptional() @IsString()                          notas?: string;
   @IsOptional() @IsInt() @Type(() => Number)         sucursalId?: number;
@@ -47,6 +47,15 @@ class CreateConduceDto {
 
 class EntregaDto {
   @IsOptional() @IsString() observaciones?: string;
+}
+
+/**
+ * El motivo es obligatorio. El mínimo real lo impone el servicio, que es por
+ * donde pasan los tres caminos; aquí se repite para que el 400 llegue con un
+ * mensaje claro sin tocar la base.
+ */
+class DevolucionDto {
+  @IsString() @IsNotEmpty() @MinLength(10) @MaxLength(500) motivo!: string;
 }
 
 @ApiTags('Conduces')
@@ -83,6 +92,11 @@ export class ConduceController {
     return this.svc.getPendientesPorFactura(facturaId);
   }
 
+  @Get('conductores')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @ApiOperation({ summary: 'Choferes ya usados por la empresa (autocompletado)' })
+  conductores() { return this.svc.listarConductores(); }
+
   @Get('reporte-entrega')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Reporte completo de entrega por número de conduce, factura o e-NCF' })
@@ -94,12 +108,10 @@ export class ConduceController {
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   async pdf(
     @Param('id', ParseIntPipe) id: number,
-    @Query('formato') formato: string = 'carta',
     @Res() res: Response,
   ) {
     try {
-      const fmt = formato === 'termico' ? 'termico' : 'carta';
-      const { buffer, filename } = await this.pdfSvc.generarPDF(id, fmt);
+      const { buffer, filename } = await this.pdfSvc.generarPDF(id);
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
       res.setHeader('Content-Length', buffer.length);
@@ -148,13 +160,13 @@ export class ConduceController {
   }
 
   @Patch(':id/devuelto')
-  @ApiOperation({ summary: 'Registrar devolución del conduce' })
+  @ApiOperation({ summary: 'Registrar devolución del conduce (motivo obligatorio)' })
   devuelto(
     @Param('id', ParseIntPipe) id: number,
-    @Body() dto: EntregaDto,
+    @Body() dto: DevolucionDto,
     @GetUser() user: User,
   ) {
-    return this.svc.marcarDevuelto(id, dto.observaciones, user.id);
+    return this.svc.marcarDevuelto(id, dto.motivo, user.id);
   }
 
   @Delete(':id')

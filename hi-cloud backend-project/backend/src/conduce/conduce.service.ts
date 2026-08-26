@@ -27,7 +27,7 @@ interface CreateConduceDto {
   ciudad?:                string;
   contactoEntrega?:       string;
   telefonoContacto?:      string;
-  conductor?:             string;
+  conductor:              string;
   vehiculo?:              string;
   notas?:                 string;
   sucursalId?:            number;
@@ -51,6 +51,29 @@ export class ConduceService {
   private async generarNumero(): Promise<string> {
     const empresaId = this.tenantSvc.getEmpresaId();
     return generarNumeroSecuencial(this.ds, 'conduces', 'numero', '^CON-[0-9]+$', 'CON-', 1, empresaId);
+  }
+
+  /**
+   * Choferes ya usados por la empresa, del mas reciente al mas antiguo.
+   *
+   * No hay tabla de choferes y no hace falta: el catalogo es el historico.
+   * El primero que se teclea queda disponible para el siguiente conduce, y un
+   * chofer eventual no obliga a pasar por Configuracion. Si algun dia hay que
+   * guardar cedula o licencia, este DISTINCT es la semilla de esa tabla.
+   */
+  async listarConductores(): Promise<string[]> {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const rows = await this.ds.query<Array<{ conductor: string }>>(
+      `SELECT btrim(conductor) AS conductor
+         FROM conduces
+        WHERE "empresaId" = $1 AND "isActive" = true
+          AND conductor IS NOT NULL AND btrim(conductor) <> ''
+        GROUP BY btrim(conductor)
+        ORDER BY MAX(id) DESC
+        LIMIT 100`,
+      [empresaId],
+    );
+    return rows.map(r => r.conductor);
   }
 
   async crear(dto: CreateConduceDto, usuarioId: number) {
@@ -148,6 +171,16 @@ export class ConduceService {
       if (rows[0]) (c as any).facturaFolio = rows[0].folio;
     }
 
+    // Enriquecer con quién registró la devolución — el ticket y la ficha muestran
+    // el nombre, no el id.
+    if (c.devueltoPorUsuarioId) {
+      const rows = await this.ds.query<{ nombre: string }[]>(
+        `SELECT nombre FROM users WHERE id = $1 LIMIT 1`,
+        [c.devueltoPorUsuarioId],
+      );
+      if (rows[0]) (c as any).devueltoPorNombre = rows[0].nombre;
+    }
+
     return c;
   }
 
@@ -196,12 +229,40 @@ export class ConduceService {
     return this.findOne(id);
   }
 
-  async marcarDevuelto(id: number, observaciones?: string, usuarioId?: number) {
+  /**
+   * Longitud mínima del motivo de devolución. No es un número mágico: es el
+   * filtro para que "x" o "." no cuenten como motivo. Da para "No lo quiso" y
+   * corta las pulsaciones sueltas.
+   */
+  private static readonly MOTIVO_DEVOLUCION_MIN = 10;
+
+  /**
+   * Devolver revierte una entrega y mueve el reporte de entrega, así que el
+   * motivo se exige AQUÍ y no solo en el DTO: por el endpoint entran tres
+   * pantallas distintas y da igual cuál de ellas se olvide de pedirlo.
+   */
+  async marcarDevuelto(id: number, motivo?: string, usuarioId?: number) {
     const c = await this.findOne(id);
+
+    const limpio = String(motivo ?? '').trim();
+    if (!limpio) {
+      throw new BadRequestException('Indica el motivo de la devolución');
+    }
+    if (limpio.length < ConduceService.MOTIVO_DEVOLUCION_MIN) {
+      throw new BadRequestException(
+        `El motivo de la devolución debe explicar qué pasó ` +
+        `(mínimo ${ConduceService.MOTIVO_DEVOLUCION_MIN} caracteres)`,
+      );
+    }
+
     await this.conduceRepo.update(id, {
-      estado:                EstadoConduce.DEVUELTO,
-      observacionesEntrega:  observaciones,
-      entregadoPorUsuarioId: usuarioId || undefined,
+      estado:               EstadoConduce.DEVUELTO,
+      motivoDevolucion:     limpio.slice(0, 500),
+      // Del CLS, nunca del body — mismo criterio que entregadoPorUsuarioId.
+      devueltoPorUsuarioId: usuarioId || undefined,
+      fechaDevolucion:      new Date(),
+      // observacionesEntrega NO se toca: es la nota de la entrega y significa
+      // otra cosa. Ver los comentarios de la entidad.
     });
     this.realtimeService.notify(c.empresaId, 'conduce', 'updated', id);
     return this.findOne(id);
@@ -361,9 +422,12 @@ export class ConduceService {
         `SELECT c.id, c.numero, c.fecha, c.estado, c.conductor, c.vehiculo,
                 c."contactoEntrega", c."telefonoContacto", c.notas,
                 c."observacionesEntrega", c."fechaEntregaReal",
+                c."motivoDevolucion", c."fechaDevolucion",
+                ud.nombre AS "devueltoPorNombre",
                 cl.nombre AS "clienteNombre"
          FROM conduces c
          LEFT JOIN clientes cl ON cl.id = c."clienteId"
+         LEFT JOIN users ud ON ud.id = c."devueltoPorUsuarioId"
          WHERE c.id = $1 AND c."isActive" = true`,
         [conduceDirectoId],
       );
@@ -413,9 +477,12 @@ export class ConduceService {
               c."contactoEntrega", c."telefonoContacto", c.notas,
               c."observacionesEntrega", c."fechaEntregaReal",
               c."entregadoPorUsuarioId",
-              u.nombre AS "entregadoPorNombre"
+              c."motivoDevolucion", c."fechaDevolucion",
+              u.nombre  AS "entregadoPorNombre",
+              ud.nombre AS "devueltoPorNombre"
        FROM conduces c
-       LEFT JOIN users u ON u.id = c."entregadoPorUsuarioId"
+       LEFT JOIN users u  ON u.id  = c."entregadoPorUsuarioId"
+       LEFT JOIN users ud ON ud.id = c."devueltoPorUsuarioId"
        WHERE c."facturaId" = $1 AND c."empresaId" = $2 AND c."isActive" = true
        ORDER BY c.fecha, c.id`,
       [facturaId, empresaId],
