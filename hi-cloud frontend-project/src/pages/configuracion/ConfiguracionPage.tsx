@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Form, Input, Button, Card, Row, Col, Typography, message, Tag, Table,
   Select, InputNumber, Switch, Divider, Avatar, Modal, Space, Badge,
@@ -23,6 +23,9 @@ import { useAuthStore } from '../../store/auth.store';
 import { useThemeStore, TEMAS_SIDEBAR, type TemaSidebar } from '../../store/theme.store';
 import { VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ahora, fecha, fechaHora } from '../../utils/fechaRD';
+import { buildReciboTermicoHTML, ventaEjemploTicket } from '../../utils/ticketTermico';
+import { generarQrTicket, normalizarLogoAltura, QR_LADO_MM, type FormatoTicket } from '../../utils/configTicket';
+import { IMPRESORA_CONFIG } from '../../utils/docTermico';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -860,6 +863,208 @@ function SeccionFacturacion({ empresa, onSaved }: { empresa: any; onSaved: () =>
   );
 }
 
+// ── Vista previa del ticket ───────────────────────────────────────────────────
+// Los dos formatos, lado a lado, con el alto aproximado de cada uno. La idea es
+// que la decisión se tome aquí y no gastando rollos en pruebas.
+//
+// Dibuja con buildReciboTermicoHTML — la MISMA función que imprime. Una maqueta
+// aparte habría empezado a mentir el primer día que cambiara el ticket.
+
+/** URL de verificación de la DGII con la pinta y la longitud de las reales:
+ *  de su longitud sale la versión del QR, y de ahí el tamaño de cada módulo. */
+const URL_QR_EJEMPLO =
+  'https://ecf.dgii.gov.do/ecf/ConsultaTimbre?RncEmisor=132716507&RncComprador=101010101' +
+  '&ENCF=E320000000719&FechaEmision=25-08-2026&MontoTotal=3600.00' +
+  '&FechaFirma=25-08-2026%2011:19:39&CodigoSeguridad=fkv1cT';
+
+/** px → mm a 96 dpi, que es como el navegador interpreta los mm del CSS. */
+const PX_A_MM = 25.4 / 96;
+
+/** Alturas de logo que ofrece el selector, con su etiqueta. */
+const OPCIONES_LOGO: Array<{ mm: number; label: string }> = [
+  { mm: 25, label: 'Alto (25 mm)' },
+  { mm: 11, label: 'Bajo (11 mm)' },
+  { mm: 0,  label: 'Sin logo'      },
+];
+
+/**
+ * Un ticket renderizado, y su alto medido.
+ *
+ * `visible=false` lo dibuja fuera de pantalla: así se puede medir lo que mide
+ * cada opción de logo sin enseñar cinco tickets al mismo tiempo.
+ */
+function TicketMedido({ formato, logoAlturaMm, tipoImpresora, logoEmpresa, visible, onAlto }: {
+  formato:       FormatoTicket;
+  logoAlturaMm:  number;
+  tipoImpresora: string;
+  logoEmpresa?:  string | null;
+  visible:       boolean;
+  onAlto:        (mm: number) => void;
+}) {
+  const [qr, setQr] = useState<string | null>(null);
+  const [html, setHtml] = useState('');
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  useEffect(() => {
+    let vivo = true;
+    generarQrTicket(URL_QR_EJEMPLO, formato)
+      .then(d => { if (vivo) setQr(d); })
+      .catch(() => { if (vivo) setQr(null); });
+    return () => { vivo = false; };
+  }, [formato]);
+
+  useEffect(() => {
+    setHtml(buildReciboTermicoHTML(ventaEjemploTicket(logoEmpresa), qr, {
+      formato, logoAlturaMm, tipoImpresora,
+      mostrarEcf: true,
+      soloVista:  true,
+    }));
+  }, [qr, formato, logoAlturaMm, tipoImpresora, logoEmpresa]);
+
+  // Se mide el <body>, no el documento: el scrollHeight del raíz se queda con el
+  // alto del viewport del iframe y los tickets cortos medirían todos lo mismo.
+  // Se mide dos veces —al cargar y 250 ms después— porque el logo y el QR
+  // terminan de decodificarse más tarde y hasta entonces el alto sale corto.
+  const medir = useCallback(() => {
+    const doc = iframeRef.current?.contentDocument;
+    if (!doc?.body) return;
+    const mm = doc.body.getBoundingClientRect().height * PX_A_MM;
+    if (mm > 0) onAlto(mm);
+  }, [onAlto]);
+
+  useEffect(() => {
+    if (!html) return;
+    const t = setTimeout(medir, 250);
+    return () => clearTimeout(t);
+  }, [html, medir]);
+
+  const anchoPapel = IMPRESORA_CONFIG[tipoImpresora]?.width ?? '80mm';
+
+  return (
+    <iframe
+      ref={iframeRef}
+      title={`Ticket ${formato} ${logoAlturaMm}mm`}
+      srcDoc={html}
+      onLoad={medir}
+      sandbox="allow-same-origin"
+      aria-hidden={!visible}
+      style={visible
+        ? { width: anchoPapel, height: 620, border: '1px solid #d9d9d9',
+            borderRadius: 6, background: '#fff', display: 'block' }
+        : { width: anchoPapel, height: 900, border: 0,
+            position: 'absolute', left: -9999, top: 0, pointerEvents: 'none' }}
+    />
+  );
+}
+
+function VistaPreviaTicket({ formatoElegido, logoAlturaMm, tipoImpresora, logoEmpresa, onAlturasLogo }: {
+  formatoElegido: FormatoTicket;
+  logoAlturaMm:   number;
+  tipoImpresora:  string;
+  logoEmpresa?:   string | null;
+  /** Alto del ticket con cada opción de logo, para etiquetar el selector. */
+  onAlturasLogo:  (mm: Record<number, number>) => void;
+}) {
+  const [altos, setAltos] = useState<{ normal?: number; compacto?: number }>({});
+  const [porLogo, setPorLogo] = useState<Record<number, number>>({});
+
+  const guardar = useCallback((clave: 'normal' | 'compacto', mm: number) =>
+    setAltos(a => (Math.abs((a[clave] ?? 0) - mm) < 0.2 ? a : { ...a, [clave]: mm })), []);
+  const setAltoNormal   = useCallback((mm: number) => guardar('normal', mm),   [guardar]);
+  const setAltoCompacto = useCallback((mm: number) => guardar('compacto', mm), [guardar]);
+
+  const guardarLogo = useCallback((mmLogo: number) => (mm: number) =>
+    setPorLogo(p => (Math.abs((p[mmLogo] ?? 0) - mm) < 0.2 ? p : { ...p, [mmLogo]: mm })), []);
+
+  useEffect(() => { onAlturasLogo(porLogo); }, [porLogo, onAlturasLogo]);
+  // Al cambiar de formato o de logo las medidas viejas ya no valen.
+  useEffect(() => { setPorLogo({}); }, [formatoElegido, tipoImpresora, logoEmpresa]);
+
+  // El ticket de carta no es térmico: la vista previa no aplica.
+  if (tipoImpresora === 'carta' || tipoImpresora === 'ninguna') {
+    return (
+      <Alert
+        type="info"
+        showIcon
+        message="Sin vista previa"
+        description="El formato compacto aplica a las impresoras térmicas. Con hoja carta o sin impresora no cambia nada."
+        style={{ marginBottom: 16 }}
+      />
+    );
+  }
+
+  const ahorroMm  = (altos.normal ?? 0) - (altos.compacto ?? 0);
+  const ahorroPct = altos.normal ? (ahorroMm / altos.normal) * 100 : 0;
+  const hayMedida = !!(altos.normal && altos.compacto);
+
+  // ¿El ajuste de logo hace algo de verdad con ESTE logo? Con un logotipo
+  // apaisado el ancho del papel se agota antes que el alto y las opciones se
+  // quedan en nada. Vale más decirlo que dejar que el cliente lo descubra
+  // gastando rollos.
+  // Solo cuentan las dos opciones CON logo: “sin logo” siempre ahorra, y meterla
+  // en la comparación taparía justo el caso que hay que avisar.
+  const conLogo = OPCIONES_LOGO.filter(o => o.mm > 0).map(o => porLogo[o.mm]);
+  const logoInerte = conLogo.every(v => v != null)
+    && Math.abs((conLogo[0] as number) - (conLogo[1] as number)) < 3;
+
+  const etiqueta = (f: FormatoTicket, alto?: number) => (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
+      <Text strong style={{ fontSize: 13 }}>{f === 'normal' ? 'Normal' : 'Compacto'}</Text>
+      {formatoElegido === f && <Tag color="blue" style={{ marginInlineEnd: 0 }}>En uso</Tag>}
+      <Text type="secondary" style={{ fontSize: 12, marginLeft: 'auto' }}>
+        {alto ? `≈ ${alto.toFixed(0)} mm` : 'midiendo…'}
+      </Text>
+    </div>
+  );
+
+  return (
+    <div style={{ marginBottom: 16, position: 'relative' }}>
+      <Row gutter={16}>
+        <Col xs={24} md={12} style={{ marginBottom: 12 }}>
+          {etiqueta('normal', altos.normal)}
+          <TicketMedido formato="normal" logoAlturaMm={logoAlturaMm} visible
+            tipoImpresora={tipoImpresora} logoEmpresa={logoEmpresa} onAlto={setAltoNormal} />
+        </Col>
+        <Col xs={24} md={12} style={{ marginBottom: 12 }}>
+          {etiqueta('compacto', altos.compacto)}
+          <TicketMedido formato="compacto" logoAlturaMm={logoAlturaMm} visible
+            tipoImpresora={tipoImpresora} logoEmpresa={logoEmpresa} onAlto={setAltoCompacto} />
+        </Col>
+      </Row>
+
+      {/* Medición del alto con cada opción de logo — fuera de pantalla. */}
+      {OPCIONES_LOGO.map(o => (
+        <TicketMedido key={o.mm} formato={formatoElegido} logoAlturaMm={o.mm} visible={false}
+          tipoImpresora={tipoImpresora} logoEmpresa={logoEmpresa} onAlto={guardarLogo(o.mm)} />
+      ))}
+
+      {logoInerte && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="El ajuste de logo casi no cambia el alto con tu logo"
+          description={
+            'Tu logo es apaisado: en ' + (IMPRESORA_CONFIG[tipoImpresora]?.width ?? '80mm') +
+            ' de papel se le acaba el ancho antes de llegar al alto pedido, así que “alto” y “bajo” ' +
+            'terminan midiendo casi lo mismo. Si quieres ahorrar papel de verdad aquí, la opción ' +
+            'que sirve es “Sin logo”; para las otras dos, sube un logo menos apaisado.'
+          }
+        />
+      )}
+
+      <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
+        {hayMedida
+          ? `Con esta venta de ejemplo el compacto ahorra ${ahorroMm.toFixed(0)} mm por ticket (${ahorroPct.toFixed(0)} %).`
+          : 'Midiendo el alto de los dos formatos…'}
+        {' '}Es el alto <strong>renderizado</strong>: no incluye el avance de papel ni el margen de corte,
+        que suman unos milímetros más en cada impresión. Ningún campo desaparece en compacto — se
+        reparten distinto. El alto real depende de cuántas líneas tenga la venta.
+      </Text>
+    </div>
+  );
+}
+
 // ── Sección: Punto de Venta ───────────────────────────────────────────────────
 
 function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void }) {
@@ -909,7 +1114,11 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
       posPrecioConsultaClinica:    conf.posPrecioConsultaClinica ?? 0,
       cierreCajaCiego:             conf.cierreCajaCiego ?? false,
       umbralDescuadreCaja:         conf.umbralDescuadreCaja ?? 100,
-      posLogoAltura:               conf.posLogoAltura ?? 20,
+      posFormatoTicket:            conf.posFormatoTicket ?? 'normal',
+      // Los valores viejos (20/30/40/60 mm) se redondean a la opción vigente más
+      // cercana; si no, el selector saldría en blanco y el primer guardado le
+      // borraría el valor al cliente sin avisar.
+      posLogoAltura:               normalizarLogoAltura(conf.posLogoAltura ?? 25),
     });
   }, [empresa]);
 
@@ -966,6 +1175,15 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
   const supervisorActivo      = Form.useWatch('supervisorModeEnabled',    form);
   const inactividadMinutos    = Form.useWatch('posInactividadMinutos',    form);
   const cierreCiego           = Form.useWatch('cierreCajaCiego',          form);
+  // La vista previa se redibuja con lo que hay en el formulario, no con lo
+  // guardado: así se compara antes de decidir, sin imprimir pruebas.
+  const formatoTicket         = (Form.useWatch('posFormatoTicket', form) ?? 'normal') as FormatoTicket;
+  const logoAlturaTicket      = normalizarLogoAltura(Form.useWatch('posLogoAltura', form) ?? 25);
+  const tipoImpresoraTicket   = (Form.useWatch('posTipoImpresora', form) ?? '80mm') as string;
+  // Alto del ticket con cada opción de logo, medido sobre el render real y con
+  // el logo de esta empresa. Va en el propio selector: un ajuste que promete un
+  // ahorro que no da es peor que no tenerlo.
+  const [alturasLogo, setAlturasLogo] = useState<Record<number, number>>({});
 
   return (
     <Form form={form} layout="vertical" onFinish={v => mut.mutate(v)}>
@@ -992,16 +1210,38 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
           </Form.Item>
         </Col>
         <Col xs={24} sm={8}>
-          <Form.Item name="posLogoAltura" label="Altura del logo en ticket (mm)">
+          <Form.Item name="posFormatoTicket" label="Formato del ticket"
+            tooltip="Compacto reorganiza el ticket para gastar menos papel. No se quita ningún dato: los mismos campos se reparten distinto.">
             <Select>
-              <Option value={20}>Pequeño (20 mm)</Option>
-              <Option value={30}>Mediano (30 mm)</Option>
-              <Option value={40}>Grande (40 mm)</Option>
-              <Option value={60}>Muy grande (60 mm)</Option>
+              <Option value="normal">Normal</Option>
+              <Option value="compacto">Compacto</Option>
+            </Select>
+          </Form.Item>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Form.Item name="posLogoAltura" label="Logo en el ticket"
+            tooltip="Independiente del formato. Los milímetros son un tope: si el logo es apaisado, el ancho del papel se agota antes y no llega a ese alto. El alto real de cada opción sale al lado, medido con tu logo.">
+            <Select>
+              {OPCIONES_LOGO.map(o => (
+                <Option key={o.mm} value={o.mm}>
+                  {o.label}
+                  {alturasLogo[o.mm]
+                    ? <Text type="secondary"> — ticket ≈ {alturasLogo[o.mm].toFixed(0)} mm</Text>
+                    : null}
+                </Option>
+              ))}
             </Select>
           </Form.Item>
         </Col>
       </Row>
+
+      <Divider orientation="left" orientationMargin={0}>Vista previa del ticket</Divider>
+      <VistaPreviaTicket
+        formatoElegido={formatoTicket}
+        logoAlturaMm={logoAlturaTicket}
+        tipoImpresora={tipoImpresoraTicket}
+        logoEmpresa={empresa?.logo}
+        onAlturasLogo={setAlturasLogo} />
 
       <Form.Item name="posMensajeTicket" label="Mensaje en ticket (máx 200 chars)">
         <Input.TextArea rows={2} maxLength={200} placeholder="¡Gracias por su visita!" />

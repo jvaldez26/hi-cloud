@@ -86,11 +86,22 @@ export function imprimirHtml(html: string): void {
 // Fallback: overlay en la página actual + window.print() — no requiere popup
 // ni gesto del usuario, funciona en Android/iOS desde cualquier contexto async.
 
-export function imprimirReciboTermico(html: string, onDone?: () => void, tipoImpresora?: string): void {
+export function imprimirReciboTermico(
+  html: string,
+  onDone?: () => void,
+  tipoImpresora?: string,
+  onError?: (err: any) => void,
+): void {
   if (tipoImpresora === 'bluetooth') {
     imprimirHtmlEnBT(html)
       .then(() => onDone?.())
-      .catch(err => { console.error('[BT] Error al imprimir:', err?.message); onDone?.(); });
+      .catch(err => {
+        console.error('[BT] Error al imprimir:', err?.message);
+        // Sin esto el fallo de la BT era mudo: el modal se cerraba como si
+        // hubiera impreso y el cajero se enteraba al mirar la impresora.
+        onError?.(err);
+        onDone?.();
+      });
     return;
   }
   // En Android/tablet la app de impresión BT intercepta window.open() antes de

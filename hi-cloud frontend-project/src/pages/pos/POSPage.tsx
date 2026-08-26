@@ -10,6 +10,11 @@ import {
   IMPRESORA_CONFIG, esc, buildDocTermicoHTML, buildConduceDocData,
   type GenericDocData,
 } from '../../utils/docTermico';
+import {
+  resolverConfigTicket, generarQrTicket, QR_LADO_MM,
+  type ConfigTicket,
+} from '../../utils/configTicket';
+import { buildReciboTermicoHTML } from '../../utils/ticketTermico';
 import { useRncLookup } from '../../hooks/useRncLookup';
 import QRCode from 'qrcode';
 import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover, Input, Button, Segmented, Tabs, InputNumber, Radio, Checkbox } from 'antd';
@@ -40,7 +45,7 @@ import { resolverNombreComprador, resolverRncComprador } from '../../utils/factu
 import { descuentoFinalABase, descuentoBaseAFinal, pctIvaEfectivo, round4 } from '../../utils/descuentoItbis';
 import { imprimirElemento, imprimirReciboTermico, imprimirPDFA4, imprimirFacturaPreviewA4, imprimirHtml } from '../../utils/printUtils';
 import { exportarExcel } from '../../utils/exportExcel';
-import { imprimirReciboEscPos, conectarImpresora, desconectarImpresora, estaConectada, getNombreImpresora, imprimirPruebaEscPos, autoReconectarImpresora, bluetoothAutoReconexionDisponible, huboFalloWatchAdvertisements } from '../../services/thermalPrinter';
+import { conectarImpresora, desconectarImpresora, estaConectada, getNombreImpresora, imprimirPruebaEscPos, autoReconectarImpresora, bluetoothAutoReconexionDisponible, huboFalloWatchAdvertisements } from '../../services/thermalPrinter';
 import { useThemeStore } from '../../store/theme.store';
 import { useOfflineQueue } from '../../hooks/useOfflineQueue';
 import { useSupervisor } from '../../hooks/useSupervisor';
@@ -828,15 +833,28 @@ function sucursalNombreFromCache(qcClient: any): string | undefined {
     ?? localStorage.getItem('pos_sucursal_nombre') ?? undefined;
 }
 
+/** ¿La empresa tiene más de una sucursal?
+ *  En el ticket compacto la sucursal solo se imprime si la respuesta es sí: en
+ *  un negocio de local único es una línea que no le dice nada a nadie.
+ *  Misma fuente que sucursalNombreFromCache, con respaldo en localStorage porque
+ *  la caché de react-query se vacía al recargar y el ticket puede salir antes de
+ *  que la query vuelva a responder. */
+function variasSucursalesFromCache(qcClient: any): boolean {
+  const empresaActual = useAuthStore.getState().empresaActual;
+  const lista: any[] = qcClient.getQueryData?.(['mis-sucursales', empresaActual]) ?? [];
+  if (lista.length) return lista.length > 1;
+  return Number(localStorage.getItem('pos_sucursales_count') ?? '0') > 1;
+}
+
+/** Aviso único cuando falla la impresora Bluetooth. Antes cada sitio de
+ *  impresión repetía este mismo catch con su propia redacción. */
+function avisarErrorBT(err: any): void {
+  message.error(err?.message?.includes('no conectada') || !err?.message
+    ? 'Impresora BT no conectada. Ve a Menú → Impresora BT para conectar.'
+    : `Error impresora BT: ${err.message}`);
+}
+
 // ── Thermal receipt — HTML puro para impresión directa ───────────────────────
-const NCF_LABEL: Record<string, [string, string]> = {
-  E32: ['FACTURA DE CONSUMO',       'ELECTRÓNICA (E32)'],
-  E31: ['FACTURA CRÉDITO FISCAL',   'ELECTRÓNICA (E31)'],
-  E34: ['NOTA DE CRÉDITO',          'ELECTRÓNICA (E34)'],
-  E44: ['FACTURA RÉGIMEN ESPECIAL', 'ZONA FRANCA (E44)'],
-  E45: ['FACTURA GUBERNAMENTAL',    'ELECTRÓNICA (E45)'],
-};
-const RNC_GENERICOS_TICKET = new Set(['000000000', '00000000000', '']);
 
 
 /**
@@ -951,289 +969,6 @@ function buildSaleTotalesFromFactura(f: any): {
   };
 }
 
-/** Agrupa los ítems del carrito por tasa de ITBIS — mismo criterio que el builder ECF.
- *  Devuelve bases imponibles y montos de ITBIS por tasa para el desglose del ticket.
- *  - gravado18: MontoGravadoI1 (base al 18%)
- *  - gravado16: MontoGravadoI2 (base al 16%)
- *  - exento:    MontoExento
- *  - itbis18:   TotalITBIS1
- *  - itbis16:   TotalITBIS2
- *  balanzaTotalFijo es la base pre-ITBIS del ítem de balanza (etiqueta de precio fijo). */
-function calcularDesgloseITBIS(items: CartItem[], esExento: boolean) {
-  let g18 = 0, g16 = 0, ext = 0, i18 = 0, i16 = 0;
-  for (const item of items) {
-    const pct     = esExento ? 0 : Number(item.produto.porcentajeIva ?? 18);
-    const descUnit = item.descuentoMonto ?? 0;
-    const base    = (item as any).balanzaTotalFijo != null
-      ? (item as any).balanzaTotalFijo
-      : (item.precio - descUnit) * item.cantidad;
-    if (pct === 18)      { g18 += base; i18 += base * 0.18; }
-    else if (pct === 16) { g16 += base; i16 += base * 0.16; }
-    else                 { ext += base; }
-  }
-  return {
-    gravado18: round2(g18),
-    gravado16: round2(g16),
-    exento:    round2(ext),
-    itbis18:   round2(i18),
-    itbis16:   round2(i16),
-  };
-}
-
-function buildReciboTermicoHTML(
-  sale: Sale,
-  qrDataUrl: string | null,
-  cfg: { mostrarEcf?: boolean; tipoImpresora?: string; mensajeTicket?: string; politicaDev?: string; tipoDoc?: 'PRE-FACTURA' | 'COTIZACIÓN' | 'PRO-FORMA'; validezDias?: number; posLogoAltura?: number } = {},
-): string {
-  const { mostrarEcf = true, tipoImpresora = '80mm', mensajeTicket, politicaDev, tipoDoc, validezDias } = cfg;
-  const prn   = IMPRESORA_CONFIG[tipoImpresora] ?? IMPRESORA_CONFIG['80mm'];
-  const ahora = dRD();   // hora del SERVIDOR: esto se imprime en el ticket del cliente
-  const fmt     = (n: number) => `RD$${n.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  const row     = (l: string, v: string) => `<div class="row"><span>${esc(l)}</span><span>${esc(v)}</span></div>`;
-  const rowBold = (l: string, v: string) => `<div class="row bold"><span>${esc(l)}</span><span>${esc(v)}</span></div>`;
-  const line    = () => '<div class="line"></div>';
-  const dbl     = () => '<div class="dbl"></div>';
-
-  const tipoCode = sale.tipoNcf ?? 'E32';
-  const [ncfL1, ncfL2] = tipoDoc
-    ? [tipoDoc, tipoDoc === 'PRE-FACTURA' ? 'Documento No Fiscal' : tipoDoc === 'PRO-FORMA' ? 'Presupuesto Informativo · Sin NCF' : 'No válida como comprobante fiscal']
-    : (NCF_LABEL[tipoCode] ?? ['FACTURA ELECTRÓNICA', `(${esc(tipoCode)})`]);
-  const esExento = tipoCode === 'E44';
-  const mostrarComprador = !!(sale.rncComprador && !RNC_GENERICOS_TICKET.has(sale.rncComprador));
-  const metodoLabel = METODOS.find(m => m.key === sale.metodo)?.label ?? 'Pago';
-  const formasPagoRecibo = sale.formasPago ?? [];
-  const esMixtoRecibo    = formasPagoRecibo.length > 1;
-  const pagoMostrar = esMixtoRecibo
-    ? round2(formasPagoRecibo.reduce((s, fp) => s + fp.monto, 0))
-    : (sale.pagoRecibido ?? (sale.metodo === 'efectivo' && sale.cambio > 0 ? sale.total + sale.cambio : sale.total));
-  const TIPO_LABEL_RECIBO: Record<number, string> = { 1: 'Efectivo', 2: 'Transferencia', 3: 'Tarjeta', 4: 'Crédito', 5: 'Permuta', 6: 'Nota crédito' };
-
-  const tieneModificados = sale.items.some(i => i.precioModificado);
-  const itemsHtml = sale.items.map(item => {
-    const ivaPct     = esExento ? 0 : Number(item.produto.porcentajeIva ?? 18) / 100;
-    const factor     = 1 + ivaPct;
-    const precioNeto = item.precio - item.descuentoMonto;
-    // Balanza precio fijo: el total es el embebido en la etiqueta
-    const sub        = (item as any).balanzaTotalFijo != null
-      ? (item as any).balanzaTotalFijo * factor
-      : precioNeto * item.cantidad * factor;
-    const nom        = item.produto.nombre.length > 26 ? item.produto.nombre.slice(0, 25) + '…' : item.produto.nombre;
-    const modMark    = item.precioModificado ? ' *' : '';
-    const balMark    = (item as any).esBalanza ? ' ⚖' : '';
-    // Cantidad con unidad correcta para balanza
-    const cantStr    = (item as any).esBalanza
-      ? `${item.cantidad.toFixed(3)} ${(item as any).balanzaUnidad ?? ''}`
-      : String(item.cantidad);
-    const unitLine   = (item as any).balanzaTipoDato === 'precio'
-      ? `<div class="row small"><span>  Precio fijo etiqueta</span></div>`
-      : `<div class="row small"><span>  ${cantStr} × RD$${(precioNeto * factor).toFixed(2)}</span></div>`;
-    const itemLine   = `<div class="row"><span>${esc(nom + modMark + balMark)}</span><span>${sub.toFixed(2)}</span></div>`;
-    const descLine   = item.descuentoMonto > 0
-      ? `<div class="row small"><span>  Desc: -RD$${(item.descuentoMonto * factor).toFixed(2)} c/u (orig. RD$${(item.precio * factor).toFixed(2)})</span></div>`
-      : '';
-    return `<div style="page-break-inside:avoid;break-inside:avoid">${itemLine}${unitLine}${descLine}</div>`;
-  }).join('');
-
-  const compradorHtml = mostrarComprador ? `
-    ${line()}
-    <div class="bold">COMPRADOR:</div>
-    <div>RNC: ${esc(sale.rncComprador ?? '')}</div>
-    ${sale.razonSocial ? `<div>${esc(sale.razonSocial)}</div>` : ''}` : '';
-
-  const modificaHtml = (sale.facturaOriginalFolio || sale.ncfOriginal || sale.codigoModificacion || sale.descripcionMotivo)
-    ? `${line()}
-    <div class="center bold">── MODIFICA A ──</div>
-    ${sale.facturaOriginalFolio ? row('Factura orig.:', sale.facturaOriginalFolio) : ''}
-    ${sale.ncfOriginal          ? row('e-NCF orig.:',   sale.ncfOriginal)          : ''}
-    ${sale.codigoModificacion   ? row('Cód.Modif.:',    sale.codigoModificacion)   : ''}
-    ${sale.descripcionMotivo    ? `<div class="small">${esc(sale.descripcionMotivo)}</div>` : ''}`
-    : '';
-
-  let ecfHtml = '';
-  if (!tipoDoc) {
-    if (sale.encf && mostrarEcf) {
-      ecfHtml = `${line()}
-    ${row('e-NCF:', sale.encf)}
-    ${row('Fecha:', sale.ecfFecha ?? ahora.format('DD-MM-YYYY HH:mm:ss'))}
-    ${sale.securityCode ? row('Cód.Seg.:', sale.securityCode) : ''}
-    <div class="center" style="font-size:9pt;margin-top:4px;">Generado por HiCloud ERP</div>
-    ${line()}
-    ${qrDataUrl && !sale.ecfPendiente
-      ? `<div class="center"><img src="${qrDataUrl}" width="130" height="130" alt="QR DGII"></div>
-         <div class="center small">Escanea para verificar en DGII</div>`
-      : '<div class="center small">Verifica en: dgii.gov.do</div>'}
-    ${sale.ecfPendiente ? `${line()}<div class="center box"><div class="bold">&#9888; COMPROBANTE EN PROCESO</div><div>DE VALIDACIÓN DGII</div><div class="small">Será enviado cuando sea procesado.</div></div>` : ''}`;
-    } else {
-      ecfHtml = `<div class="center box"><div class="bold">&#9888; COMPROBANTE EN PROCESO</div><div>DE VALIDACIÓN DGII</div></div>`;
-    }
-  }
-
-  const MODO_INFO: Record<string, { icono: string; label: string }> = {
-    restaurante: { icono: '🍽️', label: 'Restaurante' },
-    taller:      { icono: '🔧', label: 'Taller'      },
-    farmacia:    { icono: '💊', label: 'Farmacia'     },
-    optica:      { icono: '👓', label: 'Óptica'       },
-    clinica:     { icono: '🏥', label: 'Clínica'      },
-    gimnasio:    { icono: '🏋️', label: 'Gimnasio'    },
-  };
-  const modoInfo = sale.modoContexto && sale.modoContexto !== 'general'
-    ? MODO_INFO[sale.modoContexto] : null;
-
-  // ── Bloque de totales ──────────────────────────────────────────────────────
-  // Los montos base + ITBIS por tasa se toman de calcularDesgloseITBIS() —
-  // mismo criterio que el builder del e-CF (MontoGravadoI1/I2, MontoExento,
-  // TotalITBIS1/2). No se derivan del subtotal combinado sino de los ítems.
-  const { gravado18, gravado16, exento: montoExento, itbis18, itbis16 } =
-    calcularDesgloseITBIS(sale.items, esExento);
-
-  const descGlobalBase  = sale.descuentoGlobal ?? 0;
-  const descGlobalPact  = sale.descuentoGlobalFinal ?? descGlobalBase;
-  const hayDescGlobal   = descGlobalBase > 0;
-  const baseImponible   = round2(sale.subtotal - descGlobalBase);
-
-  // La propina se suma DESPUÉS del total de la venta.
-  const totalMercancia = round2(sale.total - (sale.propina ?? 0));
-  // Cantidad de líneas del carrito (no suma de cantidades — con pesables sería decimal)
-  const totalLineas    = sale.items.length;
-
-  const hayExento = montoExento > 0;
-  const hayI1     = itbis18 > 0;
-  const hayI2     = itbis16 > 0;
-  const gravadoTotal = round2(gravado18 + gravado16);
-
-  let totalesHtml: string;
-  let desgloseFiscalHtml = '';
-
-  if (hayDescGlobal) {
-    // CON descuento global: el recibo habla en pesos c/ITBIS (lo pactado con el
-    // cliente). El desglose fiscal va debajo del TOTAL.
-    totalesHtml = [
-      row('Subtotal (c/ITBIS):', fmt(round2(totalMercancia + descGlobalPact))),
-      row('Descuento:', `-${fmt(descGlobalPact)}`),
-    ].join('\n');
-    desgloseFiscalHtml = esExento
-      ? `${line()}<div class="row small"><span>Monto exento (ZF):</span><span>${fmt(baseImponible)}</span></div>`
-      : `${line()}<div class="row small"><span>Base imponible:</span><span>${fmt(baseImponible)}</span></div>` +
-        `<div class="row small"><span>ITBIS (18%):</span><span>${fmt(sale.iva)}</span></div>`;
-  } else if (esExento) {
-    // E44 Zona Franca: sin desglose de ITBIS
-    totalesHtml = row('Subtotal:', fmt(sale.subtotal));
-  } else {
-    // Desglose fiscal completo por tasa (visible solo las líneas que aplican)
-    const lineas: string[] = [];
-    if (gravadoTotal > 0 && !hayExento) {
-      lineas.push(row('Subtotal:', fmt(gravadoTotal)));
-    } else if (gravadoTotal > 0 && hayExento) {
-      lineas.push(row('Subtotal Gravado:', fmt(gravadoTotal)));
-      lineas.push(row('Subtotal Exento:', fmt(montoExento)));
-    } else if (hayExento) {
-      // Solo exentos (sin tasa gravada)
-      lineas.push(row('Subtotal:', fmt(montoExento)));
-    }
-    if (hayI1) lineas.push(row('ITBIS (18%):', fmt(itbis18)));
-    if (hayI2) lineas.push(row('ITBIS (16%):', fmt(itbis16)));
-    if (hayI1 && hayI2) lineas.push(row('Total ITBIS:', fmt(round2(itbis18 + itbis16))));
-    totalesHtml = lineas.join('\n');
-  }
-
-  const pagoHtml = tipoDoc === 'COTIZACIÓN' || tipoDoc === 'PRO-FORMA'
-    ? row('Validez:', `${validezDias ?? 30} días`)
-    : tipoDoc === 'PRE-FACTURA'
-    ? row('Estado:', 'PENDIENTE DE PAGO')
-    : [
-        row('PAGADO:', fmt(pagoMostrar)),
-        ...(esMixtoRecibo
-          ? formasPagoRecibo.map(fp => row(`  ${TIPO_LABEL_RECIBO[fp.tipo] ?? 'Otro'}:`, fmt(fp.monto)))
-          : (sale.metodo !== 'efectivo' ? [row(`  ${esc(metodoLabel)}:`, fmt(pagoMostrar))] : [])),
-        sale.metodo === 'credito' && sale.diasCredito ? row('Plazo:', `${sale.diasCredito} días`) : '',
-        Number(sale.cambio) > 0 ? rowBold('CAMBIO:', fmt(Number(sale.cambio))) : '',
-      ].join('\n');
-  const footerHtml = tipoDoc === 'PRE-FACTURA'
-    ? '<div class="center bold">** DOCUMENTO NO FISCAL **</div><div class="center small">Presente este ticket para pagar</div>'
-    : tipoDoc === 'COTIZACIÓN'
-    ? '<div class="center bold">** COTIZACIÓN — NO ES FACTURA **</div>'
-    : tipoDoc === 'PRO-FORMA'
-    ? '<div class="center bold">** PRO FORMA — NO ES FACTURA **</div><div class="center small">No válida como comprobante fiscal</div>'
-    : '<div class="center">— Gracias por su compra —</div>';
-
-  return `<!DOCTYPE html>
-<html lang="es"><head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=302,initial-scale=1,shrink-to-fit=no">
-<title>Recibo ${esc(sale.folio)}</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box;overflow-wrap:break-word}
-html{margin:0;padding:0;width:${prn.width}}
-body{font-family:'Courier New',Courier,monospace;font-size:${prn.fontSize};font-weight:bold;line-height:1.45;
-  width:${prn.width};margin:0;padding:3mm ${prn.paddingLR};
-  color:#000;background:#fff;
-  -webkit-font-smoothing:none;font-smooth:never}
-.center{text-align:center}
-.bold{font-weight:bold}
-.large{font-size:13pt;font-weight:bold}
-.xlarge{font-size:15pt;font-weight:bold}
-.small{font-size:9pt}
-.row{display:flex;justify-content:space-between;gap:4px;margin:1px 0;width:100%}
-.row span:first-child{flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.row span:last-child{text-align:right;white-space:nowrap}
-.line{border-top:1px dashed #000;margin:4px 0}
-.dbl{border-top:2px solid #000;margin:4px 0}
-.box{border:1px dashed #000;padding:3px 2px;margin:3px 0}
-img{display:block;margin:4px auto}
-@page{size:${prn.width} auto;margin:0}
-@media print{html,body{width:${prn.width}}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-</style>
-<script>
-window.addEventListener('load',function(){setTimeout(function(){window.print()},350)});
-window.addEventListener('afterprint',function(){setTimeout(function(){
-  try{window.close()}catch(e){}
-  setTimeout(function(){if(!window.closed){document.body.innerHTML='<div style="text-align:center;padding:40px;font-family:sans-serif"><h2 style="color:#059669">&#10003; Impresión lista</h2><p style="margin-top:8px;color:#666">Puede cerrar esta ventana</p></div>'}},600)
-},300)});
-</script>
-</head><body>
-
-${sale.empresaLogo ? `<div class="center" style="margin-bottom:4px"><img src="${sale.empresaLogo}" style="max-width:80%;max-height:${cfg.posLogoAltura ?? 20}mm;height:auto;display:block;margin:0 auto" alt=""></div>` : ''}
-<div class="center xlarge">${esc(sale.empresaNombreComercial ?? 'NOMBRE EMPRESA')}</div>
-<div class="center small">República Dominicana</div>
-${sale.empresaRnc ? `<div>RNC Emisor: ${esc(sale.empresaRnc)}</div>` : ''}
-${sale.empresaDireccion ? `<div class="small">${esc(sale.empresaDireccion)}</div>` : ''}
-${sale.empresaTelefono ? `<div>Tel: ${esc(sale.empresaTelefono)}</div>` : ''}
-${dbl()}
-<div class="center bold">${esc(ncfL1)}</div>
-<div class="center bold">${esc(ncfL2)}</div>
-${line()}
-${row('Fecha:', sale.fechaEmision ?? ahora.format('DD/MM/YYYY'))}
-${row('Hora:', sale.horaEmision ?? ahora.format('HH:mm:ss'))}
-${rowBold(tipoDoc ? `${tipoDoc}:` : 'Factura:', sale.folio)}
-${sale.cajero ? row('Cajero:', sale.cajero) : ''}
-${sale.sucursalNombre ? row('Sucursal:', sale.sucursalNombre) : ''}
-${modoInfo ? `${row('Módulo:', modoInfo.icono + ' ' + modoInfo.label)}` : ''}
-${compradorHtml}
-${modificaHtml}
-${line()}
-<div class="row bold"><span>DESCRIPCIÓN</span><span>IMPORTE</span></div>
-${line()}
-${itemsHtml}
-${line()}
-${totalesHtml}
-${(sale.propina ?? 0) > 0 ? row('Propina:', fmt(sale.propina!)) : ''}
-${dbl()}
-<div class="row xlarge bold"><span>TOTAL:</span><span>${fmt(sale.total)}</span></div>
-${desgloseFiscalHtml}
-${line()}
-${pagoHtml}
-${row('Total Ítems:', String(totalLineas))}
-${ecfHtml}
-${dbl()}
-${tieneModificados ? `${line()}<div class="small">* Precio modificado en venta</div>` : ''}
-${mensajeTicket?.trim() ? `${line()}<div style="text-align:center;white-space:pre-wrap;word-break:break-word;">${esc(mensajeTicket.trim())}</div>` : ''}
-${politicaDev?.trim() ? `${line()}<div class="small"><strong>POLÍTICA DE DEVOLUCIONES:</strong><br/>${esc(politicaDev.trim())}</div>` : ''}
-${line()}
-${footerHtml}
-${(tipoDoc || !sale.encf || !mostrarEcf) ? '<div class="center" style="font-size:9pt;margin-top:4px;">Generado por HiCloud ERP</div>' : ''}
-
-</body></html>`;
-}
 
 const ECF_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   E32: { bg: 'rgba(107,114,128,.2)',  text: '#D1D5DB', border: 'rgba(107,114,128,.4)' },
@@ -1307,6 +1042,11 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
   useEffect(() => {
     if (sucursalNombre) localStorage.setItem('pos_sucursal_nombre', sucursalNombre);
   }, [sucursalNombre]);
+  // Cuántas sucursales hay: el ticket compacto solo imprime la sucursal si hay
+  // más de una, y puede tener que decidirlo antes de que esta query responda.
+  useEffect(() => {
+    if (sucursales.length) localStorage.setItem('pos_sucursales_count', String(sucursales.length));
+  }, [sucursales.length]);
 
   async function handleCambiarSucursal(sucursalId: number) {
     setCambiandoSucursal(true);
@@ -2335,13 +2075,12 @@ ${line()}
 }
 
 // ── Modal éxito post-venta ────────────────────────────────────────────────────
-function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir, mostrarEcf = true, posConfig = {} }: {
+function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir, cfgTicket }: {
   sale: Sale | null;
   onNueva: () => void;
   onCrearConduce?: () => void;
   autoImprimir?: boolean;
-  mostrarEcf?: boolean;
-  posConfig?: { tipoImpresora?: string; mensajeTicket?: string; politicaDev?: string; posLogoAltura?: number };
+  cfgTicket: ConfigTicket & { variasSucursales?: boolean };
 }) {
   const C = useC();
   const [countdown, setCountdown] = useState(10);
@@ -2353,14 +2092,28 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir, mostrarEcf = 
   const autoPrintedFolioRef = useRef<string | null>(null);
   useEffect(() => {
     if (!sale?.qrUrl || sale.ecfPendiente) { setQrDataUrl(null); return; }
-    QRCode.toDataURL(sale.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' })
+    generarQrTicket(sale.qrUrl, cfgTicket.formato)
       .then(setQrDataUrl).catch(() => setQrDataUrl(null));
-  }, [sale?.qrUrl, sale?.ecfPendiente]);
+    // El formato entra en las dependencias: el QR se genera al tamaño al que se
+    // va a imprimir, y compacto y normal no lo imprimen igual.
+  }, [sale?.qrUrl, sale?.ecfPendiente, cfgTicket.formato]);
 
   const cancelarContador = useCallback(() => {
     if (printTimerRef.current) { clearTimeout(printTimerRef.current);  printTimerRef.current  = null; }
     if (intervalRef.current)   { clearInterval(intervalRef.current);   intervalRef.current    = null; }
   }, []);
+
+  // Un solo camino de impresión para navegador y Bluetooth: mismo HTML, misma
+  // plantilla, mismo formato. La conversión a ESC/POS pasa dentro de
+  // imprimirReciboTermico.
+  const imprimirTicket = (venta: Sale, qr: string | null) => {
+    imprimirReciboTermico(
+      buildReciboTermicoHTML(venta, qr, cfgTicket),
+      onNueva,
+      cfgTicket.tipoImpresora,
+      avisarErrorBT,
+    );
+  };
 
   useEffect(() => {
     if (!sale) return;
@@ -2383,53 +2136,32 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir, mostrarEcf = 
     if (!sale || !autoImprimir) return;
     if (autoPrintedFolioRef.current === sale.folio) return;
     autoPrintedFolioRef.current = sale.folio;
-    if (posConfig.tipoImpresora === 'ninguna') { cancelarContador(); onNueva(); return; }
-    if (posConfig.tipoImpresora === 'carta' && sale.facturaId) {
+    if (cfgTicket.tipoImpresora === 'ninguna') { cancelarContador(); onNueva(); return; }
+    if (cfgTicket.tipoImpresora === 'carta' && sale.facturaId) {
       cancelarContador();
       imprimirFacturaPreviewA4(sale.facturaId).then(onNueva).catch(() => onNueva());
       return;
     }
-    if (posConfig.tipoImpresora === 'bluetooth') {
-      cancelarContador();
-      imprimirReciboEscPos(sale as any, {})
-        .catch((btErr: any) => {
-          message.error(btErr?.message?.includes('no conectada') || !btErr?.message
-            ? 'Impresora BT no conectada. Ve a Menu → Impresora BT para conectar.'
-            : `Error BT: ${btErr.message}`);
-        })
-        .finally(() => onNueva());
-      return;
-    }
     let cancelled = false;
     const qrPromise: Promise<string | null> = sale.qrUrl && !sale.ecfPendiente
-      ? QRCode.toDataURL(sale.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }).catch(() => null)
+      ? generarQrTicket(sale.qrUrl, cfgTicket.formato).catch(() => null)
       : Promise.resolve(null);
     qrPromise.then(qr => {
       if (cancelled) return;
       cancelarContador();
-      imprimirReciboTermico(buildReciboTermicoHTML(sale, qr, { mostrarEcf, ...posConfig }), onNueva);
+      imprimirTicket(sale, qr);
     });
     return () => { cancelled = true; };
   }, [sale?.folio, autoImprimir]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePrint = () => {
     cancelarContador();
-    if (posConfig.tipoImpresora === 'ninguna') { onNueva(); return; }
-    if (posConfig.tipoImpresora === 'carta' && sale!.facturaId) {
+    if (cfgTicket.tipoImpresora === 'ninguna') { onNueva(); return; }
+    if (cfgTicket.tipoImpresora === 'carta' && sale!.facturaId) {
       imprimirFacturaPreviewA4(sale!.facturaId).then(onNueva).catch(() => onNueva());
       return;
     }
-    if (posConfig.tipoImpresora === 'bluetooth') {
-      imprimirReciboEscPos(sale as any, {})
-        .catch((btErr: any) => {
-          message.error(btErr?.message?.includes('no conectada') || !btErr?.message
-            ? 'Impresora BT no conectada. Ve a Menu → Impresora BT para conectar.'
-            : `Error BT: ${btErr.message}`);
-        })
-        .finally(() => onNueva());
-      return;
-    }
-    imprimirReciboTermico(buildReciboTermicoHTML(sale!, qrDataUrl, { mostrarEcf, ...posConfig }), onNueva);
+    imprimirTicket(sale!, qrDataUrl);
   };
 
 
@@ -2760,6 +2492,7 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
       try {
         const empRes  = await api.get('/configuracion/empresa').then(r => r.data?.data ?? r.data).catch(() => ({}));
         const empConf = (empRes.configuracion ?? {}) as any;
+        const cfgTicket = resolverConfigTicket(empRes);
         const estadoEcf: string = ecfResult?.estado ?? '';
         const ecfPendiente = ['pendiente_envio', 'pendiente', 'contingencia'].includes(estadoEcf);
         const ncSubtotal   = Number(nc?.subtotal ?? 0) || (det ?? []).reduce((s: number, d: any) => s + Number(d.precioUnitario) * Number(d.cantidad), 0);
@@ -2805,26 +2538,23 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
           })(),
         };
         const qrDUrl = ecfResult?.qrUrl && !ecfPendiente
-          ? await QRCode.toDataURL(ecfResult.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }).catch(() => null)
+          ? await generarQrTicket(ecfResult.qrUrl, cfgTicket.formato).catch(() => null)
           : null;
         if (empConf.posTipoImpresora === 'ninguna') {
           // sin impresora → no imprimir
         } else if (empConf.posTipoImpresora === 'carta' && nc?.id) {
           await imprimirPDFA4(`/api/v1/notas-credito/${nc.id}/pdf`);
-        } else if (empConf.posTipoImpresora === 'bluetooth') {
-          imprimirReciboEscPos(saleNC as any, {}).catch((btErr: any) => {
-            message.error(btErr?.message?.includes('no conectada') || !btErr?.message
-              ? 'Impresora BT no conectada. Ve a Menu → Impresora BT para conectar.'
-              : `Error BT: ${btErr.message}`);
-          });
         } else {
-          imprimirReciboTermico(buildReciboTermicoHTML(saleNC, qrDUrl, {
-            mostrarEcf:    true,
-            tipoImpresora: empConf.posTipoImpresora,
-            mensajeTicket: empConf.posMensajeTicket,
-            politicaDev:   empConf.posPoliticaDev,
-            posLogoAltura: empConf.posLogoAltura ? Number(empConf.posLogoAltura) : undefined,
-          }));
+          imprimirReciboTermico(
+            buildReciboTermicoHTML(saleNC, qrDUrl, {
+              ...cfgTicket,
+              variasSucursales: variasSucursalesFromCache(qc),
+              mostrarEcf: true,   // el e-NCF de una NC se imprime siempre
+            }),
+            undefined,
+            cfgTicket.tipoImpresora,
+            avisarErrorBT,
+          );
         }
       } catch { /* impresión no crítica */ }
     },
@@ -4033,6 +3763,7 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
         api.get('/configuracion/empresa').then(r => r.data?.data ?? r.data).catch(() => ({})),
       ]);
       const empConf = (empRes.configuracion ?? {}) as any;
+      const cfgTicket = resolverConfigTicket(empRes);
       const gd: GenericDocData = {
         tipo:    'ORDEN DE COMPRA',
         numero:  ocRes.folio ?? String(id),
@@ -5862,6 +5593,7 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
         nota1:   `Método: ${r.tipoPago ?? r.metodoPago ?? '—'}`,
       };
       const empConf = (empRes.configuracion ?? {}) as any;
+      const cfgTicket = resolverConfigTicket(empRes);
       imprimirReciboTermico(buildDocTermicoHTML(gd, { tipoImpresora: empConf.posTipoImpresora }), undefined, empConf.posTipoImpresora);
     } catch { /* silencio */ }
     finally { setImprimiendoId(null); }
@@ -6455,19 +6187,26 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
         empresaRnc: empresa.rnc, empresaDireccion: empresa.direccion, empresaTelefono: empresa.telefono,
         empresaLogo: empresa.logo,
       };
+      const empConf = (empresa.configuracion ?? {}) as any;
+      // El tamaño del QR depende del formato: la config del ticket va primero.
+      const cfgTicket = resolverConfigTicket(empresa);
       let qrDUrl: string | null = null;
       if (f.ecf?.qrUrl && f.ecf?.numero) {
-        try { qrDUrl = await QRCode.toDataURL(f.ecf.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }); }
+        try { qrDUrl = await generarQrTicket(f.ecf.qrUrl, cfgTicket.formato); }
         catch { /* sin QR */ }
       }
-      const empConf = (empresa.configuracion ?? {}) as any;
-      if (empConf.posTipoImpresora === 'bluetooth') {
+      if (cfgTicket.tipoImpresora === 'bluetooth') {
+        // La BT no usa la ventana pre-abierta, pero hay que cerrarla igual.
         if (printWin && !printWin.closed) { try { printWin.close(); } catch { /* noop */ } }
-        imprimirReciboEscPos(sale, {}).catch((btErr: any) => {
-          message.error(btErr?.message?.includes('no conectada') || !btErr?.message
-            ? 'Impresora BT no conectada. Ve a Menu → Impresora BT para conectar.'
-            : `Error BT: ${btErr.message}`);
-        });
+        imprimirReciboTermico(
+          buildReciboTermicoHTML(sale, qrDUrl, {
+            ...cfgTicket,
+            variasSucursales: variasSucursalesFromCache(qc),
+          }),
+          undefined,
+          'bluetooth',
+          avisarErrorBT,
+        );
         return;
       }
       if (empConf.posTipoImpresora === 'carta' && f.id) {
@@ -6476,10 +6215,8 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
         return;
       }
       const html = buildReciboTermicoHTML(sale, qrDUrl, {
-        tipoImpresora: empConf.posTipoImpresora,
-        mensajeTicket: empConf.posMensajeTicket,
-        politicaDev:   empConf.posPoliticaDev,
-        posLogoAltura: empConf.posLogoAltura ? Number(empConf.posLogoAltura) : undefined,
+        ...cfgTicket,
+        variasSucursales: variasSucursalesFromCache(qc),
       });
       if (printWin && !printWin.closed) {
         printWin.document.open();
@@ -6492,7 +6229,7 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
           setTimeout(() => { try { printWin.close(); } catch { /* noop */ } }, 60_000);
         }, 400);
       } else {
-        imprimirReciboTermico(html);
+        imprimirReciboTermico(html, undefined, cfgTicket.tipoImpresora, avisarErrorBT);
       }
     } catch {
       if (printWin && !printWin.closed) printWin.close();
@@ -6939,6 +6676,7 @@ function POSGastosLista({ C }: { C: Palette }) {
     try {
       const empRes   = await api.get('/configuracion/empresa').then(r => r.data?.data ?? r.data).catch(() => ({}));
       const empConf  = (empRes.configuracion ?? {}) as any;
+      const cfgTicket  = resolverConfigTicket(empRes);
       const tipoImp  = empConf.posTipoImpresora as string | undefined;
       const qrW      = tipoImp === '58mm' ? 160 : 200;
 
@@ -7650,6 +7388,7 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
         .then(r => r.data?.data ?? r.data)
         .catch(() => ({}));
       const empConf    = (empRes.configuracion ?? {}) as any;
+      const cfgTicket    = resolverConfigTicket(empRes);
       // efectivoEsperado lo calcula el backend con la formula unica; saldoCierre
       // solo esta relleno si la caja ya cerro.
       const esperado   = Number(snap.efectivoEsperado ?? snap.saldoCierre ?? 0);
@@ -8233,26 +7972,22 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
             empresaDireccion: empRes.direccion, empresaTelefono: empRes.telefono,
             empresaLogo: empRes.logo,
           };
+          // El tamaño del QR depende del formato: la config del ticket va primero.
+          const cfgTicket = resolverConfigTicket(empRes);
           let qrDUrl: string | null = null;
           if (f.ecf?.qrUrl && f.ecf?.numero) {
-            try { qrDUrl = await QRCode.toDataURL(f.ecf.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }); }
+            try { qrDUrl = await generarQrTicket(f.ecf.qrUrl, cfgTicket.formato); }
             catch { /* sin QR */ }
           }
-          const empConf = (empRes.configuracion ?? {}) as any;
-          if (empConf.posTipoImpresora === 'bluetooth') {
-            imprimirReciboEscPos(saleObj as any, {}).catch((btErr: any) => {
-              message.error(btErr?.message?.includes('no conectada') || !btErr?.message
-                ? 'Impresora BT no conectada. Ve a Menu → Impresora BT para conectar.'
-                : `Error BT: ${btErr.message}`);
-            });
-          } else {
-            imprimirReciboTermico(buildReciboTermicoHTML(saleObj, qrDUrl, {
-              tipoImpresora: empConf.posTipoImpresora,
-              mensajeTicket: empConf.posMensajeTicket,
-              politicaDev:   empConf.posPoliticaDev,
-              posLogoAltura: empConf.posLogoAltura ? Number(empConf.posLogoAltura) : undefined,
-            }));
-          }
+          imprimirReciboTermico(
+            buildReciboTermicoHTML(saleObj, qrDUrl, {
+              ...cfgTicket,
+              variasSucursales: variasSucursalesFromCache(qc),
+            }),
+            undefined,
+            cfgTicket.tipoImpresora,
+            avisarErrorBT,
+          );
         } catch { /* error de impresión no bloquea */ }
       }
     },
@@ -8307,26 +8042,22 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
             empresaDireccion: empRes.direccion, empresaTelefono: empRes.telefono,
             empresaLogo: empRes.logo,
           };
+          // El tamaño del QR depende del formato: la config del ticket va primero.
+          const cfgTicket = resolverConfigTicket(empRes);
           let qrDUrl: string | null = null;
           if (f.ecf?.qrUrl && f.ecf?.numero) {
-            try { qrDUrl = await QRCode.toDataURL(f.ecf.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }); }
+            try { qrDUrl = await generarQrTicket(f.ecf.qrUrl, cfgTicket.formato); }
             catch { /* sin QR */ }
           }
-          const empConf = (empRes.configuracion ?? {}) as any;
-          if (empConf.posTipoImpresora === 'bluetooth') {
-            imprimirReciboEscPos(saleObj as any, {}).catch((btErr: any) => {
-              message.error(btErr?.message?.includes('no conectada') || !btErr?.message
-                ? 'Impresora BT no conectada. Ve a Menu → Impresora BT para conectar.'
-                : `Error BT: ${btErr.message}`);
-            });
-          } else {
-            imprimirReciboTermico(buildReciboTermicoHTML(saleObj, qrDUrl, {
-              tipoImpresora: empConf.posTipoImpresora,
-              mensajeTicket: empConf.posMensajeTicket,
-              politicaDev:   empConf.posPoliticaDev,
-              posLogoAltura: empConf.posLogoAltura ? Number(empConf.posLogoAltura) : undefined,
-            }));
-          }
+          imprimirReciboTermico(
+            buildReciboTermicoHTML(saleObj, qrDUrl, {
+              ...cfgTicket,
+              variasSucursales: variasSucursalesFromCache(qc),
+            }),
+            undefined,
+            cfgTicket.tipoImpresora,
+            avisarErrorBT,
+          );
         } catch { /* error de impresión no bloquea */ }
       }
     },
@@ -8412,26 +8143,23 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           empresaLogo: empresa.logo,
         };
         // Generar QR antes de construir el HTML
+        const empConfPanel = (empresa.configuracion ?? {}) as any;
+        // El tamaño del QR depende del formato: la config del ticket va primero.
+        const cfgTicket = resolverConfigTicket(empresa);
         let qrDUrl: string | null = null;
         if (f.ecf?.qrUrl && f.ecf?.numero) {
-          try { qrDUrl = await QRCode.toDataURL(f.ecf.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }); }
+          try { qrDUrl = await generarQrTicket(f.ecf.qrUrl, cfgTicket.formato); }
           catch { /* sin QR */ }
         }
-        const empConfPanel = (empresa.configuracion ?? {}) as any;
-        if (_tipoImp === 'bluetooth') {
-          imprimirReciboEscPos(sale, empInfo).catch((btErr: any) => {
-            message.error(btErr?.message?.includes('no conectada') || !btErr?.message
-              ? 'Impresora BT no conectada. Ve a Menú → Impresora BT para conectar.'
-              : `Error impresora BT: ${btErr.message}`);
-          });
-          return;
-        }
-        imprimirReciboTermico(buildReciboTermicoHTML(sale, qrDUrl, {
-          tipoImpresora: empConfPanel.posTipoImpresora,
-          mensajeTicket: empConfPanel.posMensajeTicket,
-          politicaDev:   empConfPanel.posPoliticaDev,
-          posLogoAltura: empConfPanel.posLogoAltura ? Number(empConfPanel.posLogoAltura) : undefined,
-        }));
+        imprimirReciboTermico(
+          buildReciboTermicoHTML(sale, qrDUrl, {
+            ...cfgTicket,
+            variasSucursales: variasSucursalesFromCache(qc),
+          }),
+          undefined,
+          cfgTicket.tipoImpresora,
+          avisarErrorBT,
+        );
         return;
       }
 
@@ -8466,20 +8194,18 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           empresaLogo:             empresa.logo,
         };
         const empConfPanel = (empresa.configuracion ?? {}) as any;
-        if (empConfPanel.posTipoImpresora === 'bluetooth') {
-          imprimirReciboEscPos(docSale as any, empInfo).catch((btErr: any) => {
-            message.error(btErr?.message?.includes('no conectada') || !btErr?.message
-              ? 'Impresora BT no conectada. Ve a Menú → Impresora BT para conectar.'
-              : `Error impresora BT: ${btErr.message}`);
-          });
-          return;
-        }
-        imprimirReciboTermico(buildReciboTermicoHTML(docSale, null, {
-          tipoImpresora: empConfPanel.posTipoImpresora,
-          tipoDoc,
-          validezDias:   doc.validezDias,
-          posLogoAltura: empConfPanel.posLogoAltura ? Number(empConfPanel.posLogoAltura) : undefined,
-        }));
+        const cfgTicket = resolverConfigTicket(empresa);
+        imprimirReciboTermico(
+          buildReciboTermicoHTML(docSale, null, {
+            ...cfgTicket,
+            variasSucursales: variasSucursalesFromCache(qc),
+            tipoDoc,
+            validezDias:   doc.validezDias,
+          }),
+          undefined,
+          cfgTicket.tipoImpresora,
+          avisarErrorBT,
+        );
         return;
       }
 
@@ -8510,20 +8236,18 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           empresaLogo:             empresa.logo,
         };
         const empConfPanel = (empresa.configuracion ?? {}) as any;
-        if (empConfPanel.posTipoImpresora === 'bluetooth') {
-          imprimirReciboEscPos(pfSale as any, empInfo).catch((btErr: any) => {
-            message.error(btErr?.message?.includes('no conectada') || !btErr?.message
-              ? 'Impresora BT no conectada. Ve a Menú → Impresora BT para conectar.'
-              : `Error impresora BT: ${btErr.message}`);
-          });
-          return;
-        }
-        imprimirReciboTermico(buildReciboTermicoHTML(pfSale, null, {
-          tipoImpresora: empConfPanel.posTipoImpresora,
-          tipoDoc:       'PRO-FORMA',
-          validezDias:   doc.validezDias,
-          posLogoAltura: empConfPanel.posLogoAltura ? Number(empConfPanel.posLogoAltura) : undefined,
-        }));
+        const cfgTicket = resolverConfigTicket(empresa);
+        imprimirReciboTermico(
+          buildReciboTermicoHTML(pfSale, null, {
+            ...cfgTicket,
+            variasSucursales: variasSucursalesFromCache(qc),
+            tipoDoc:       'PRO-FORMA',
+            validezDias:   doc.validezDias,
+          }),
+          undefined,
+          cfgTicket.tipoImpresora,
+          avisarErrorBT,
+        );
         return;
       }
 
@@ -8590,27 +8314,24 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
             };
           })(),
         };
+        const empConfPanel = (empresa.configuracion ?? {}) as any;
+        // El tamaño del QR depende del formato: la config del ticket va primero.
+        const cfgTicket = resolverConfigTicket(empresa);
         let qrDUrl: string | null = null;
         if (doc.ecf?.qrUrl && doc.ecf?.numero) {
-          try { qrDUrl = await QRCode.toDataURL(doc.ecf.qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }); }
+          try { qrDUrl = await generarQrTicket(doc.ecf.qrUrl, cfgTicket.formato); }
           catch { /* sin QR */ }
         }
-        const empConfPanel = (empresa.configuracion ?? {}) as any;
-        if (empConfPanel.posTipoImpresora === 'bluetooth') {
-          imprimirReciboEscPos(ncSale as any, empInfo).catch((btErr: any) => {
-            message.error(btErr?.message?.includes('no conectada') || !btErr?.message
-              ? 'Impresora BT no conectada. Ve a Menú → Impresora BT para conectar.'
-              : `Error impresora BT: ${btErr.message}`);
-          });
-          return;
-        }
-        imprimirReciboTermico(buildReciboTermicoHTML(ncSale, qrDUrl, {
-          mostrarEcf:    true,
-          tipoImpresora: empConfPanel.posTipoImpresora,
-          mensajeTicket: empConfPanel.posMensajeTicket,
-          politicaDev:   empConfPanel.posPoliticaDev,
-          posLogoAltura: empConfPanel.posLogoAltura ? Number(empConfPanel.posLogoAltura) : undefined,
-        }));
+        imprimirReciboTermico(
+          buildReciboTermicoHTML(ncSale, qrDUrl, {
+            ...cfgTicket,
+            variasSucursales: variasSucursalesFromCache(qc),
+            mostrarEcf: true,   // el e-NCF de una NC se imprime siempre
+          }),
+          undefined,
+          cfgTicket.tipoImpresora,
+          avisarErrorBT,
+        );
         return;
       }
 
@@ -8685,6 +8406,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
       }
 
       const empConfPanel = (empresa.configuracion ?? {}) as any;
+      const cfgTicket = resolverConfigTicket(empresa);
       imprimirReciboTermico(buildDocTermicoHTML(gd, { tipoImpresora: empConfPanel.posTipoImpresora }), undefined, empConfPanel.posTipoImpresora);
     } catch (e: any) {
       message.error('Error al imprimir: ' + (e.message ?? ''));
@@ -10215,6 +9937,12 @@ export default function POSPage() {
   // Config POS — leída aquí para que propina y cambio puedan usarla
   // controlCajaActivo ya fue derivado cerca de la declaración de empresa (antes de las queries de caja)
   const posConf                  = (empresa?.configuracion ?? {}) as Record<string, unknown>;
+  // Config del ticket resuelta en un solo sitio. La sucursal va en null: la capa
+  // por sucursal todavía no existe (ver docs/estado-actual.md).
+  const cfgTicketPos = {
+    ...resolverConfigTicket(empresa, null),
+    variasSucursales: variasSucursalesFromCache(qc),
+  };
   // Aplicar modo por defecto desde configuración si no hay preferencia guardada
   const posModoPorDefecto = (posConf.posModoPorDefecto as string | undefined) ?? 'general';
   useEffect(() => {
@@ -11137,17 +10865,24 @@ export default function POSPage() {
         modoContexto,
       };
       // Auto-imprimir — BT funciona directo en móvil sin ventana pre-abierta
-      const _tipoImpCobro = posConf.posTipoImpresora as string | undefined;
+      const _tipoImpCobro = cfgTicketPos.tipoImpresora;
       if (_tipoImpCobro === 'bluetooth') {
         // BT térmica — cerrar ventana pre-abierta si existe (no la necesitamos)
         if (printWinRef.current && !printWinRef.current.closed) { try { printWinRef.current.close(); } catch { /* noop */ } printWinRef.current = null; }
         autoYaPrintedRef.current = true;
-        const _empBT = { nombre: empresa?.nombre, rnc: empresa?.rnc, direccion: empresa?.direccion, telefono: empresa?.telefono };
-        imprimirReciboEscPos(saleObj, _empBT).catch((btErr: any) => {
-          message.error(btErr?.message?.includes('no conectada') || !btErr?.message
-            ? 'Impresora BT no conectada. Ve a Menú → Impresora BT para conectar.'
-            : `Error impresora BT: ${btErr.message}`);
-        });
+        // Mismo HTML que la térmica del navegador: la conversión a ESC/POS pasa
+        // dentro de imprimirReciboTermico.
+        const _mandarBT = (qr: string | null) => imprimirReciboTermico(
+          buildReciboTermicoHTML(saleObj, qr, cfgTicketPos),
+          undefined,
+          'bluetooth',
+          avisarErrorBT,
+        );
+        if (qrUrl && !saleObj.ecfPendiente) {
+          generarQrTicket(qrUrl, cfgTicketPos.formato).then(_mandarBT).catch(() => _mandarBT(null));
+        } else {
+          _mandarBT(null);
+        }
       } else if (printWinRef.current && !printWinRef.current.closed) {
         // Auto-imprimir con ventana pre-abierta — mantiene el gesto del usuario en tablets iOS/Android
         const pw = printWinRef.current;
@@ -11179,17 +10914,15 @@ export default function POSPage() {
         } else {
           // Térmica 58/80mm → comportamiento original
           autoYaPrintedRef.current = true;
-          const _mostrarEcf = posConf.posMostrarEcfEnRecibo !== false;
-          const _pCfg = { tipoImpresora: _tipoImpCobro, mensajeTicket: posConf.posMensajeTicket as string | undefined, politicaDev: posConf.posPoliticaDev as string | undefined, posLogoAltura: posConf.posLogoAltura ? Number(posConf.posLogoAltura) : undefined };
           const doprint = (qr: string | null) => {
-            const html = buildReciboTermicoHTML(saleObj, qr, { mostrarEcf: _mostrarEcf, ..._pCfg });
+            const html = buildReciboTermicoHTML(saleObj, qr, cfgTicketPos);
             if (pw.closed) { imprimirReciboTermico(html); return; }
             pw.document.open(); pw.document.write(html); pw.document.close(); pw.focus();
             pw.addEventListener('afterprint', () => { try { pw.close(); } catch { /* noop */ } }, { once: true });
             setTimeout(() => { try { if (!pw.closed) pw.close(); } catch { /* noop */ } }, 30_000);
           };
           if (qrUrl && !saleObj.ecfPendiente) {
-            QRCode.toDataURL(qrUrl, { width: 130, margin: 1, errorCorrectionLevel: 'M' }).then(doprint).catch(() => doprint(null));
+            generarQrTicket(qrUrl, cfgTicketPos.formato).then(doprint).catch(() => doprint(null));
           } else {
             doprint(null);
           }
@@ -11560,13 +11293,7 @@ export default function POSPage() {
           setSale(null); setPanelActivo('conduce');
         }}
         autoImprimir={empresa?.configuracion?.posImpresionAuto === true && !autoYaPrintedRef.current}
-        mostrarEcf={posConf.posMostrarEcfEnRecibo !== false}
-        posConfig={{
-          tipoImpresora:  posConf.posTipoImpresora  as string | undefined,
-          mensajeTicket:  posConf.posMensajeTicket  as string | undefined,
-          politicaDev:    posConf.posPoliticaDev    as string | undefined,
-          posLogoAltura:  posConf.posLogoAltura ? Number(posConf.posLogoAltura) : undefined,
-        }} />
+        cfgTicket={cfgTicketPos} />
       <POSNotaCreditoModal open={showNotaCredito} onClose={() => setShowNotaCredito(false)} palette={palette}
         requireSupervisor={supervisor.supervisorModeEnabled ? supervisor.requireSupervisor : undefined} />
 
