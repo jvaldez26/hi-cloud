@@ -752,6 +752,12 @@ export async function imprimirHtmlEnBT(html: string): Promise<void> {
   await enviarDatos(bytes);
 }
 
+/**
+ * Impresión de prueba. Incluye un Code128 como el que lleva el conduce, para
+ * poder comprobar en la impresora de verdad que el raster sale legible y que un
+ * escáner lo lee: un código de barras que no escanea es peor que no ponerlo, y
+ * eso no se sabe hasta que sale en papel.
+ */
 export async function imprimirPruebaEscPos(): Promise<void> {
   const bytes = await generarReciboESCPOS({
     total: 0,
@@ -763,4 +769,18 @@ export async function imprimirPruebaEscPos(): Promise<void> {
     horaEmision:  horaConSegundos(ahora()),
   }, {});
   await enviarDatos(bytes);
+
+  // Segundo ticket: la prueba del código de barras del conduce.
+  const VALOR = 'CON-128';
+  const c = comandos().init();
+  c.alignCenter().bold(true).texto(centrar('PRUEBA CODIGO DE BARRAS')).bold(false);
+  c.texto(separador('-')).alignLeft();
+  const bmp = await _renderBarcodeToBitmap(VALOR);
+  if (bmp) c.bitmap(bmp.data, bmp.w, bmp.h);
+  else     c.texto(centrar('(no se pudo generar)'));
+  c.alignCenter().bold(true).texto(centrar(VALOR)).bold(false);
+  c.texto(separador('-'));
+  c.texto(centrar('Escanealo: debe leer')).texto(centrar(VALOR));
+  c.alignLeft().salto(3).cortar();
+  await enviarDatos(c.build());
 }
