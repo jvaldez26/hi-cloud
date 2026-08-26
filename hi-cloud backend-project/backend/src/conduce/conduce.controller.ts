@@ -4,7 +4,7 @@ import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import {
   IsString, IsOptional, IsInt, IsPositive, IsNumber, IsArray,
-  ValidateNested, Min, IsDateString,
+  ValidateNested, Min, IsDateString, IsNotEmpty, MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -36,7 +36,7 @@ class CreateConduceDto {
   @IsOptional() @IsString()                          ciudad?: string;
   @IsOptional() @IsString()                          contactoEntrega?: string;
   @IsOptional() @IsString()                          telefonoContacto?: string;
-  @IsOptional() @IsString()                          conductor?: string;
+  @IsString() @IsNotEmpty() @MaxLength(150)          conductor!: string;
   @IsOptional() @IsString()                          vehiculo?: string;
   @IsOptional() @IsString()                          notas?: string;
   @IsOptional() @IsInt() @Type(() => Number)         sucursalId?: number;
@@ -82,6 +82,11 @@ export class ConduceController {
   pendientesPorFactura(@Param('facturaId', ParseIntPipe) facturaId: number) {
     return this.svc.getPendientesPorFactura(facturaId);
   }
+
+  @Get('conductores')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @ApiOperation({ summary: 'Choferes ya usados por la empresa (autocompletado)' })
+  conductores() { return this.svc.listarConductores(); }
 
   @Get('reporte-entrega')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)

@@ -27,7 +27,7 @@ interface CreateConduceDto {
   ciudad?:                string;
   contactoEntrega?:       string;
   telefonoContacto?:      string;
-  conductor?:             string;
+  conductor:              string;
   vehiculo?:              string;
   notas?:                 string;
   sucursalId?:            number;
@@ -51,6 +51,29 @@ export class ConduceService {
   private async generarNumero(): Promise<string> {
     const empresaId = this.tenantSvc.getEmpresaId();
     return generarNumeroSecuencial(this.ds, 'conduces', 'numero', '^CON-[0-9]+$', 'CON-', 1, empresaId);
+  }
+
+  /**
+   * Choferes ya usados por la empresa, del mas reciente al mas antiguo.
+   *
+   * No hay tabla de choferes y no hace falta: el catalogo es el historico.
+   * El primero que se teclea queda disponible para el siguiente conduce, y un
+   * chofer eventual no obliga a pasar por Configuracion. Si algun dia hay que
+   * guardar cedula o licencia, este DISTINCT es la semilla de esa tabla.
+   */
+  async listarConductores(): Promise<string[]> {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const rows = await this.ds.query<Array<{ conductor: string }>>(
+      `SELECT btrim(conductor) AS conductor
+         FROM conduces
+        WHERE "empresaId" = $1 AND "isActive" = true
+          AND conductor IS NOT NULL AND btrim(conductor) <> ''
+        GROUP BY btrim(conductor)
+        ORDER BY MAX(id) DESC
+        LIMIT 100`,
+      [empresaId],
+    );
+    return rows.map(r => r.conductor);
   }
 
   async crear(dto: CreateConduceDto, usuarioId: number) {

@@ -20,6 +20,7 @@ import dayjs from 'dayjs';
 import api from '../../api/client';
 import { useAuthStore } from '../../store/auth.store';
 import ProductoSelect from '../../components/ProductoSelect';
+import ChoferInput from '../../components/ChoferInput';
 import WhatsAppButton from '../../components/ui/WhatsAppButton';
 import PrintButton from '../../components/ui/PrintButton';
 import ReporteEntregaTab from './ReporteEntregaTab';
@@ -169,6 +170,8 @@ export default function ConducePage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['conduces'] });
       qc.invalidateQueries({ queryKey: ['conduces-resumen'] });
+      // El chofer recién tecleado tiene que salir en el autocompletado del siguiente.
+      qc.invalidateQueries({ queryKey: ['conduces-conductores'] });
       resetModal();
       message.success('Conduce generado');
     },
@@ -232,7 +235,7 @@ export default function ConducePage() {
       ciudad:                 v.ciudad,
       contactoEntrega:        v.contactoEntrega,
       telefonoContacto:       v.telefonoContacto,
-      conductor:              v.conductor,
+      conductor:              String(v.conductor ?? '').trim(),
       vehiculo:               v.vehiculo,
       notas:                  v.notas,
       sucursalId:             v.sucursalId,
@@ -640,8 +643,9 @@ export default function ConducePage() {
           </Row>
           <Row gutter={12}>
             <Col xs={24} sm={12}>
-              <Form.Item name="conductor" label="Conductor">
-                <Input placeholder="Nombre del conductor" />
+              <Form.Item name="conductor" label="Chofer"
+                rules={[{ required: true, whitespace: true, message: 'Indica quién lleva la mercancía' }]}>
+                <ChoferInput />
               </Form.Item>
             </Col>
             <Col xs={24} sm={sucursales.length > 1 ? 6 : 12}>

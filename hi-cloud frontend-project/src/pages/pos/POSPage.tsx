@@ -14,6 +14,7 @@ import { useRncLookup } from '../../hooks/useRncLookup';
 import QRCode from 'qrcode';
 import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover, Input, Button, Segmented, Tabs, InputNumber, Radio, Checkbox } from 'antd';
 import { SearchOutlined, ShoppingCartOutlined, CheckCircleOutlined, DisconnectOutlined, LogoutOutlined, PrinterOutlined, LockOutlined, UserSwitchOutlined, SwapOutlined, EyeOutlined, EyeInvisibleOutlined, ShopOutlined, MailOutlined, FileExcelOutlined, FilePdfOutlined, PlayCircleOutlined } from '@ant-design/icons';
+import ChoferInput from '../../components/ChoferInput';
 import { VideoPlayerModal } from '../../components/ui/VideoPlayerModal';
 import { useVideosTutoriales } from '../../hooks/useVideosTutoriales';
 import { useAuthStore } from '../../store/auth.store';
@@ -5023,6 +5024,7 @@ function POSConducePanel({ C, onVolver }: {
   const [fClienteId,   setFClienteId]   = useState<number|null>(ssClienteId ?? null);
   const [fDireccion,   setFDireccion]   = useState('');
   const [fNotas,       setFNotas]       = useState('');
+  const [fChofer,      setFChofer]      = useState('');
   const [prodBusq,     setProdBusq]     = useState('');
   const [showProdDrop, setShowProdDrop] = useState(false);
   const [fItems,       setFItems]       = useState<Array<{ productoId?: number; descripcion: string; cant: string; um: string }>>([]);
@@ -5116,7 +5118,7 @@ function POSConducePanel({ C, onVolver }: {
 
   const resetForm = () => {
     setFactBusq(''); setFactSel(null); setPendientes([]); setCantidades({}); setTodosDespach(false);
-    setBusqCli(''); setFClienteId(null); setFDireccion(''); setFNotas('');
+    setBusqCli(''); setFClienteId(null); setFDireccion(''); setFNotas(''); setFChofer('');
     setProdBusq(''); setFItems([]); setShowProdDrop(false);
   };
 
@@ -5125,6 +5127,8 @@ function POSConducePanel({ C, onVolver }: {
     onSuccess: (res: any) => {
       qc.invalidateQueries({ queryKey: ['pos-conduces'] });
       qc.invalidateQueries({ queryKey: ['pos-conduces-resumen'] });
+      // El chofer recién tecleado tiene que salir en el autocompletado del siguiente.
+      qc.invalidateQueries({ queryKey: ['conduces-conductores'] });
       const num = res.data?.data?.numero ?? res.data?.numero ?? '';
       message.success(`Conduce ${num} creado`);
       setVista('lista');
@@ -5170,10 +5174,12 @@ function POSConducePanel({ C, onVolver }: {
         .map(d => ({ productoId: d.productoId, descripcion: d.descripcion, unidadMedida: d.unidadMedida, cantidad: cantidades[d.facturaDetalleId] }));
       if (!detallesValidos.length) { message.warning('Selecciona al menos un producto con cantidad > 0'); return; }
       if (!fDireccion.trim())      { message.warning('Ingresa la dirección de entrega'); return; }
+      if (!fChofer.trim())         { message.warning('Indica quién lleva la mercancía'); return; }
       crearMut.mutate({
         clienteId:        fClienteId ?? factSel.clienteId,
         fecha:            hoyRD(),
         direccionEntrega: fDireccion.trim(),
+        conductor:        fChofer.trim(),
         facturaId:        factSel.id,
         notas:            fNotas || undefined,
         detalles:         detallesValidos,
@@ -5182,10 +5188,12 @@ function POSConducePanel({ C, onVolver }: {
       if (!fClienteId)             { message.warning('Selecciona un cliente'); return; }
       if (!fDireccion.trim())      { message.warning('Ingresa la dirección de entrega'); return; }
       if (!fItems.length)          { message.warning('Agrega al menos un producto'); return; }
+      if (!fChofer.trim())         { message.warning('Indica quién lleva la mercancía'); return; }
       crearMut.mutate({
         clienteId:        fClienteId,
         fecha:            hoyRD(),
         direccionEntrega: fDireccion.trim(),
+        conductor:        fChofer.trim(),
         notas:            fNotas || undefined,
         detalles:         fItems.map(it => ({ productoId: it.productoId, descripcion: it.descripcion, cantidad: parseFloat(it.cant) || 1, unidadMedida: it.um || 'PZA' })),
       });
@@ -5442,6 +5450,15 @@ function POSConducePanel({ C, onVolver }: {
                   </div>
                 </div>
               </>
+            )}
+
+            {/* Chofer (ambos modos) — mismo componente que el módulo Conduce */}
+            {(factSel || fModo === 'libre') && (
+              <div style={{ marginBottom: 12 }}>
+                {label('Chofer *')}
+                <ChoferInput value={fChofer} onChange={setFChofer}
+                  placeholder="¿Quién lleva la mercancía?" />
+              </div>
             )}
 
             {/* Notas (ambos modos) */}
@@ -9630,6 +9647,10 @@ export default function POSPage() {
     return global ? Number(global) : (local ? Number(local) : undefined);
   });
   const [modoFacturacion,    setModoFacturacion]    = useState<ModoFacturacion>('factura');
+  // Modo Conduce: el chofer y la dirección se piden ANTES del POST, no se inventan.
+  const [showConduceDatos,   setShowConduceDatos]   = useState(false);
+  const [condChofer,         setCondChofer]         = useState('');
+  const [condDireccion,      setCondDireccion]      = useState('');
   const [showNotaCredito,    setShowNotaCredito]    = useState(false);
   // Barra superior — controles
   const [modoBarcode,        setModoBarcode]        = useState(false);
@@ -11280,12 +11301,15 @@ export default function POSPage() {
       }
       if (modoFacturacion === 'conduce') {
         const cliente = clientes?.data.find((c: Cliente) => c.id === clienteId);
+        // El chofer y la dirección vienen del modal que abre el botón: este camino
+        // ya no inventa un 'Por definir' que sale a la calle sin saber a dónde va.
         return api.post('/conduces', {
           clienteId:        base.clienteId,
           fecha:            base.fecha,
           sucursalId:       base.sucursalId,
           notas:            base.notas,
-          direccionEntrega: cliente?.direccion ?? 'Por definir',
+          direccionEntrega: condDireccion.trim(),
+          conductor:        condChofer.trim(),
           contactoEntrega:  cliente?.nombre,
           detalles: cart.map(i => ({
             productoId:   i.produto.id > 0 ? i.produto.id : undefined,
@@ -11307,6 +11331,12 @@ export default function POSPage() {
         'pre-factura': 'pre-facturas',
         'conduce':     'conduce',
       };
+      if (modoFacturacion === 'conduce') {
+        setShowConduceDatos(false);
+        setCondChofer(''); setCondDireccion('');
+        // El chofer recién tecleado tiene que salir en el autocompletado del siguiente.
+        qc.invalidateQueries({ queryKey: ['conduces-conductores'] });
+      }
       const panelKey = panelMap[modoFacturacion];
       if (panelKey) {
         // invalidate (marca stale) + refetch (fuerza actualización inmediata si está montado)
@@ -12134,7 +12164,17 @@ export default function POSPage() {
                 </motion.button>
               ) : (
                 <motion.button whileTap={{ scale: 0.97 }}
-                  onClick={() => modoAltMut.mutate()}
+                  onClick={() => {
+                    // El conduce sale a la calle: antes de crearlo hay que saber
+                    // quién lo lleva y a dónde. Los demás modos no lo necesitan.
+                    if (modoFacturacion === 'conduce') {
+                      const cli = clientes?.data.find((c: Cliente) => c.id === clienteId);
+                      setCondDireccion(prev => prev || cli?.direccion || '');
+                      setShowConduceDatos(true);
+                      return;
+                    }
+                    modoAltMut.mutate();
+                  }}
                   disabled={modoAltMut.isPending}
                   style={{ width: '100%', height: 52, borderRadius: 12, border: 'none',
                     background: modoAltMut.isPending ? '#94A3B8' : 'linear-gradient(135deg,#2563EB,#3B82F6)',
@@ -12165,6 +12205,33 @@ export default function POSPage() {
           </div>
         </div>
       </div>
+
+      {/* ── Datos de despacho del conduce ──────────────────────────────────────
+           Este camino disparaba el POST directo, sin pedir nada: el chofer
+           quedaba vacío y la dirección se inventaba como 'Por definir'. Un
+           conduce sin quién lo lleva ni a dónde va no sirve de mucho. */}
+      <Modal maskClosable={false} open={showConduceDatos} centered width={420}
+        title="🚚 Datos del despacho"
+        okText={modoAltMut.isPending ? 'Creando...' : 'Crear conduce'}
+        cancelText="Cancelar"
+        confirmLoading={modoAltMut.isPending}
+        onCancel={() => setShowConduceDatos(false)}
+        onOk={() => {
+          if (!condChofer.trim())    { message.warning('Indica quién lleva la mercancía'); return; }
+          if (!condDireccion.trim()) { message.warning('Indica la dirección de entrega'); return; }
+          modoAltMut.mutate();
+        }}>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Chofer *</div>
+          <ChoferInput value={condChofer} onChange={setCondChofer} autoFocus
+            placeholder="¿Quién lleva la mercancía?" />
+        </div>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Dirección de entrega *</div>
+          <Input value={condDireccion} onChange={e => setCondDireccion(e.target.value)}
+            placeholder="Dirección completa de entrega" />
+        </div>
+      </Modal>
 
       {/* ── Payment modal ─────────────────────────────────────────────────────── */}
       <Modal maskClosable={false} open={showPago} onCancel={() => setShowPago(false)} footer={null} width={420} centered closable={false} destroyOnClose
