@@ -41,6 +41,7 @@ function sanear(txt: string): string {
     .replace(/·/g, '-')            // · (ya se usaba como separador y salía basura)
     .replace(/×/g, 'x')            // línea de cantidad: 3 × RD$1200.00
     .replace(/⚠/g, '!')            // aviso del comprobante en proceso
+    .replace(/[\u2500-\u257F]/g, '-')  // filetes de caja: ── MODIFICA A ──
     // Marca de pesable. Se cae sin más: la línea de detalle ya lo dice en texto
     // ("12.500 KG x RD$96.00", o "Precio fijo etiqueta" cuando la balanza no
     // reporta unidad), así que quitarla no pierde información.
@@ -540,10 +541,15 @@ export async function htmlAEscPos(html: string): Promise<Uint8Array> {
       if (!cacheBarras.has(codigo)) cacheBarras.set(codigo, await _renderBarcodeToBitmap(codigo));
       bmp = cacheBarras.get(codigo) ?? null;
     } else if (img.getAttribute('alt') === 'QR DGII' && src.startsWith('data:image/')) {
-      // QR de verificación de la DGII, al ancho al que se va a imprimir.
-      const anchoMm = parseFloat(
-        (img.getAttribute('style') ?? '').match(/width:\s*([\d.]+)mm/)?.[1] ?? '19',
-      );
+      // QR de verificación de la DGII, al ancho al que se va a imprimir. El
+      // compacto lo pide en mm; el formato normal conserva el <img> de siempre,
+      // con el ancho en píxeles CSS, que a 96 dpi son 130 px = 34,4 mm.
+      const estilo  = img.getAttribute('style') ?? '';
+      const enMm    = parseFloat(estilo.match(/width:\s*([\d.]+)mm/)?.[1] ?? '');
+      const enPx    = parseFloat(img.getAttribute('width') ?? '');
+      const anchoMm = Number.isFinite(enMm) ? enMm
+                    : Number.isFinite(enPx) ? enPx * 25.4 / 96
+                    : 19;
       bmp = await _imgDataUrlABitmap(src, Math.round(anchoMm * PUNTOS_POR_MM));
     }
     // El logo se sigue omitiendo en BT: tampoco se imprimía antes, y en 58 mm de

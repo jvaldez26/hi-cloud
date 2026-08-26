@@ -2092,7 +2092,7 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir, cfgTicket }: 
   const autoPrintedFolioRef = useRef<string | null>(null);
   useEffect(() => {
     if (!sale?.qrUrl || sale.ecfPendiente) { setQrDataUrl(null); return; }
-    generarQrTicket(sale.qrUrl, QR_LADO_MM[cfgTicket.formato])
+    generarQrTicket(sale.qrUrl, cfgTicket.formato)
       .then(setQrDataUrl).catch(() => setQrDataUrl(null));
     // El formato entra en las dependencias: el QR se genera al tamaño al que se
     // va a imprimir, y compacto y normal no lo imprimen igual.
@@ -2144,7 +2144,7 @@ function ModalExito({ sale, onNueva, onCrearConduce, autoImprimir, cfgTicket }: 
     }
     let cancelled = false;
     const qrPromise: Promise<string | null> = sale.qrUrl && !sale.ecfPendiente
-      ? generarQrTicket(sale.qrUrl, QR_LADO_MM[cfgTicket.formato]).catch(() => null)
+      ? generarQrTicket(sale.qrUrl, cfgTicket.formato).catch(() => null)
       : Promise.resolve(null);
     qrPromise.then(qr => {
       if (cancelled) return;
@@ -2538,7 +2538,7 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
           })(),
         };
         const qrDUrl = ecfResult?.qrUrl && !ecfPendiente
-          ? await generarQrTicket(ecfResult.qrUrl, QR_LADO_MM[cfgTicket.formato]).catch(() => null)
+          ? await generarQrTicket(ecfResult.qrUrl, cfgTicket.formato).catch(() => null)
           : null;
         if (empConf.posTipoImpresora === 'ninguna') {
           // sin impresora → no imprimir
@@ -6192,7 +6192,7 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
       const cfgTicket = resolverConfigTicket(empresa);
       let qrDUrl: string | null = null;
       if (f.ecf?.qrUrl && f.ecf?.numero) {
-        try { qrDUrl = await generarQrTicket(f.ecf.qrUrl, QR_LADO_MM[cfgTicket.formato]); }
+        try { qrDUrl = await generarQrTicket(f.ecf.qrUrl, cfgTicket.formato); }
         catch { /* sin QR */ }
       }
       if (cfgTicket.tipoImpresora === 'bluetooth') {
@@ -7976,7 +7976,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           const cfgTicket = resolverConfigTicket(empRes);
           let qrDUrl: string | null = null;
           if (f.ecf?.qrUrl && f.ecf?.numero) {
-            try { qrDUrl = await generarQrTicket(f.ecf.qrUrl, QR_LADO_MM[cfgTicket.formato]); }
+            try { qrDUrl = await generarQrTicket(f.ecf.qrUrl, cfgTicket.formato); }
             catch { /* sin QR */ }
           }
           imprimirReciboTermico(
@@ -8046,7 +8046,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           const cfgTicket = resolverConfigTicket(empRes);
           let qrDUrl: string | null = null;
           if (f.ecf?.qrUrl && f.ecf?.numero) {
-            try { qrDUrl = await generarQrTicket(f.ecf.qrUrl, QR_LADO_MM[cfgTicket.formato]); }
+            try { qrDUrl = await generarQrTicket(f.ecf.qrUrl, cfgTicket.formato); }
             catch { /* sin QR */ }
           }
           imprimirReciboTermico(
@@ -8148,7 +8148,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
         const cfgTicket = resolverConfigTicket(empresa);
         let qrDUrl: string | null = null;
         if (f.ecf?.qrUrl && f.ecf?.numero) {
-          try { qrDUrl = await generarQrTicket(f.ecf.qrUrl, QR_LADO_MM[cfgTicket.formato]); }
+          try { qrDUrl = await generarQrTicket(f.ecf.qrUrl, cfgTicket.formato); }
           catch { /* sin QR */ }
         }
         imprimirReciboTermico(
@@ -8319,7 +8319,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
         const cfgTicket = resolverConfigTicket(empresa);
         let qrDUrl: string | null = null;
         if (doc.ecf?.qrUrl && doc.ecf?.numero) {
-          try { qrDUrl = await generarQrTicket(doc.ecf.qrUrl, QR_LADO_MM[cfgTicket.formato]); }
+          try { qrDUrl = await generarQrTicket(doc.ecf.qrUrl, cfgTicket.formato); }
           catch { /* sin QR */ }
         }
         imprimirReciboTermico(
@@ -10879,7 +10879,7 @@ export default function POSPage() {
           avisarErrorBT,
         );
         if (qrUrl && !saleObj.ecfPendiente) {
-          generarQrTicket(qrUrl, QR_LADO_MM[cfgTicketPos.formato]).then(_mandarBT).catch(() => _mandarBT(null));
+          generarQrTicket(qrUrl, cfgTicketPos.formato).then(_mandarBT).catch(() => _mandarBT(null));
         } else {
           _mandarBT(null);
         }
@@ -10922,7 +10922,7 @@ export default function POSPage() {
             setTimeout(() => { try { if (!pw.closed) pw.close(); } catch { /* noop */ } }, 30_000);
           };
           if (qrUrl && !saleObj.ecfPendiente) {
-            generarQrTicket(qrUrl, QR_LADO_MM[cfgTicketPos.formato]).then(doprint).catch(() => doprint(null));
+            generarQrTicket(qrUrl, cfgTicketPos.formato).then(doprint).catch(() => doprint(null));
           } else {
             doprint(null);
           }

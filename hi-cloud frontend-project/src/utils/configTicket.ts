@@ -81,7 +81,12 @@ export function resolverConfigTicket(
 
   return {
     formato:       normalizarFormato(conf.posFormatoTicket),
-    logoAlturaMm:  normalizarLogoAltura(conf.posLogoAltura ?? 25),
+    // Sin normalizar y con el default de SIEMPRE (20 mm). El valor guardado es la
+    // verdad: normalizar aquí le cambiaría el logo a quien nunca abrió la pantalla
+    // y a quien tenga 30/40/60 mm guardado, y el formato normal no puede cambiarle
+    // el ticket a nadie que no haya pedido el compacto. La normalización a 25/11/0
+    // vive solo en el selector de Configuración, donde es una elección del admin.
+    logoAlturaMm:  conf.posLogoAltura != null ? Number(conf.posLogoAltura) : 20,
     tipoImpresora: (conf.posTipoImpresora as string | undefined) ?? '80mm',
     mensajeTicket: conf.posMensajeTicket as string | undefined,
     politicaDev:   conf.posPoliticaDev   as string | undefined,
@@ -119,7 +124,14 @@ const QR_MARGEN_MODULOS = 2;
  * la norma, no la excepción: un QR que no escanea no ahorra papel, genera
  * reimpresiones.
  */
-export async function generarQrTicket(url: string, ladoMm: number): Promise<string> {
+export async function generarQrTicket(url: string, formato: FormatoTicket): Promise<string> {
+  if (formato === 'normal') {
+    // Bit a bit lo que se imprimía antes del modo compacto: 130 px y margen 1.
+    // Normal es el formato por defecto; su ticket no puede moverse ni un pelo
+    // porque alguien haya añadido un formato nuevo al lado.
+    return QRCode.toDataURL(url, { width: 130, margin: 1, errorCorrectionLevel: 'M' });
+  }
+  const ladoMm = QR_LADO_MM[formato];
   const modulos = QRCode.create(url, { errorCorrectionLevel: 'M' }).modules.size
     + QR_MARGEN_MODULOS * 2;
   const puntosImpresora = Math.round(ladoMm * PUNTOS_POR_MM);

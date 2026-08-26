@@ -907,7 +907,7 @@ function TicketMedido({ formato, logoAlturaMm, tipoImpresora, logoEmpresa, visib
 
   useEffect(() => {
     let vivo = true;
-    generarQrTicket(URL_QR_EJEMPLO, QR_LADO_MM[formato])
+    generarQrTicket(URL_QR_EJEMPLO, formato)
       .then(d => { if (vivo) setQr(d); })
       .catch(() => { if (vivo) setQr(null); });
     return () => { vivo = false; };

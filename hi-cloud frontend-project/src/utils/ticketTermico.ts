@@ -377,7 +377,14 @@ export function buildReciboTermicoHTML(
   // motivo, y eso dejaba las dos opciones de alto dando lo mismo en logotipos
   // apaisados — el ajuste no hacía nada.
   if (sale.empresaLogo && logoAlturaMm > 0) {
-    B.push(`<div class="center" style="margin-bottom:${compacto ? 2 : 4}px"><img src="${sale.empresaLogo}" style="max-width:100%;max-height:${logoAlturaMm}mm;width:auto;height:auto;display:block;margin:0 auto" alt=""></div>`);
+    const logoCss = compacto
+      // Compacto: todo el ancho útil, para que el alto elegido mande de verdad.
+      ? `max-width:100%;max-height:${logoAlturaMm}mm;width:auto;height:auto`
+      // Normal: la geometría de siempre, al milímetro. Es el formato por defecto
+      // y no puede cambiarle el logo a nadie que no haya pedido el compacto —
+      // aunque eso deje el selector de altura casi inerte con logos apaisados.
+      : `max-width:80%;max-height:${logoAlturaMm}mm;height:auto`;
+    B.push(`<div class="center" style="margin-bottom:${compacto ? 2 : 4}px"><img src="${sale.empresaLogo}" style="${logoCss};display:block;margin:0 auto" alt=""></div>`);
   }
 
   // Emisor — RNC del emisor es intocable, va en los dos formatos.
@@ -442,14 +449,14 @@ export function buildReciboTermicoHTML(
   if (sale.facturaOriginalFolio || sale.ncfOriginal || sale.codigoModificacion || sale.descripcionMotivo) {
     B.push(line());
     if (compacto) {
-      B.push('<div class="center bold">-- MODIFICA A --</div>');
+      B.push('<div class="center bold">── MODIFICA A ──</div>');
       if (sale.facturaOriginalFolio || sale.ncfOriginal) {
         B.push(row(sale.facturaOriginalFolio ? `Fact. ${sale.facturaOriginalFolio}` : '', sale.ncfOriginal ?? ''));
       }
       if (sale.codigoModificacion) B.push(txt(`Cód. modif. ${sale.codigoModificacion}`));
       if (sale.descripcionMotivo)  B.push(small(sale.descripcionMotivo));
     } else {
-      B.push('<div class="center bold">-- MODIFICA A --</div>');
+      B.push('<div class="center bold">── MODIFICA A ──</div>');
       if (sale.facturaOriginalFolio) B.push(row('Factura orig.:', sale.facturaOriginalFolio));
       if (sale.ncfOriginal)          B.push(row('e-NCF orig.:', sale.ncfOriginal));
       if (sale.codigoModificacion)   B.push(row('Cód.Modif.:', sale.codigoModificacion));
@@ -492,7 +499,10 @@ export function buildReciboTermicoHTML(
         B.push(txt(`Firma DGII ${firma}`));
       } else {
         B.push(row('e-NCF:', sale.encf));
-        B.push(row('Fecha firma:', firma));
+        // 'Fecha:' y no 'Fecha firma:': es la etiqueta que ya imprimía el ticket.
+        // Cambiarla lo mejoraría, pero no en un despliegue cuyo trato es que
+        // nadie vea nada distinto hasta pedir el compacto.
+        B.push(row('Fecha:', firma));
         if (sale.securityCode) B.push(row('Cód.Seg.:', sale.securityCode));
         B.push('<div class="center" style="font-size:9pt;margin-top:4px;">Generado por HiCloud ERP</div>');
         B.push(line());
@@ -504,7 +514,9 @@ export function buildReciboTermicoHTML(
           // ~34mm de alto a los 19mm que mide el propio QR.
           B.push(`<div class="qrrow"><img src="${qrDataUrl}" style="width:${ladoMm}mm;height:${ladoMm}mm" alt="QR DGII"><div class="small">Escanea para verificar en DGII</div></div>`);
         } else {
-          B.push(`<div class="center"><img src="${qrDataUrl}" style="width:${ladoMm}mm;height:${ladoMm}mm" alt="QR DGII"></div>`);
+          // 130x130 px, exactamente el <img> de antes. En compacto el QR sí se
+          // pide en mm, porque ahí cambia de tamaño a propósito.
+          B.push(`<div class="center"><img src="${qrDataUrl}" width="130" height="130" alt="QR DGII"></div>`);
           B.push('<div class="center small">Escanea para verificar en DGII</div>');
         }
       } else {
@@ -521,6 +533,10 @@ export function buildReciboTermicoHTML(
         : '<div class="center box"><div class="bold">&#9888; COMPROBANTE EN PROCESO</div><div>DE VALIDACIÓN DGII</div></div>');
     }
   }
+
+  // El separador grueso va AQUI, cerrando el bloque e-CF, como ha ido siempre.
+  // En compacto no: alli el grueso se reserva para anunciar el TOTAL.
+  if (!compacto) B.push(dbl());
 
   // Nota de precio modificado.
   if (tieneModificados) {
@@ -542,7 +558,7 @@ export function buildReciboTermicoHTML(
     ? ['** COTIZACION - NO ES FACTURA **']
     : tipoDoc === 'PRO-FORMA'
     ? ['** PRO FORMA - NO ES FACTURA **', 'No válida como comprobante fiscal']
-    : ['Gracias por su compra'];
+    : [compacto ? 'Gracias por su compra' : '— Gracias por su compra —'];
   const firmaSistema = (tipoDoc || !sale.encf || !mostrarEcf || compacto) ? 'HiCloud ERP' : '';
   if (compacto) {
     B.push(line());
@@ -551,7 +567,7 @@ export function buildReciboTermicoHTML(
     if (politicaDev?.trim()) {
       B.push(`${line()}<div class="small"><strong>POLÍTICA DE DEVOLUCIONES:</strong><br/>${esc(politicaDev.trim())}</div>`);
     }
-    B.push(dbl());
+    // Aquí solo el filete fino: el grueso ya se puso al cerrar el bloque e-CF.
     B.push(line());
     B.push(`<div class="center${tipoDoc ? ' bold' : ''}">${esc(cierre[0])}</div>`);
     for (const extra of cierre.slice(1)) B.push(`<div class="center small">${esc(extra)}</div>`);
@@ -588,7 +604,7 @@ img{display:block;margin:4px auto}
 .qrrow img{margin:0;flex:0 0 auto}
 /* Nearest-neighbour: un QR reescalado con suavizado se emborrona en el borde
    de cada módulo, que es justo donde el lector se apoya. */
-img[alt="QR DGII"]{image-rendering:pixelated;image-rendering:crisp-edges}
+body.compacto img[alt="QR DGII"]{image-rendering:pixelated;image-rendering:crisp-edges}
 /* Compacto: mismos cuerpos de letra, menos aire. El separador grueso conserva
    su margen porque es el que anuncia el TOTAL. */
 body.compacto{line-height:1.22;padding-top:2mm}
@@ -604,7 +620,7 @@ window.addEventListener('afterprint',function(){setTimeout(function(){
   setTimeout(function(){if(!window.closed){document.body.innerHTML='<div style="text-align:center;padding:40px;font-family:sans-serif"><h2 style="color:#059669">&#10003; Impresión lista</h2><p style="margin-top:8px;color:#666">Puede cerrar esta ventana</p></div>'}},600)
 },300)});
 </script>`}
-</head><body class="${compacto ? 'compacto' : ''}">
+</head><body${compacto ? ' class="compacto"' : ''}>
 
 ${B.filter(Boolean).join('\n')}
 
