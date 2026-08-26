@@ -4,8 +4,30 @@
 > qué cambió. Esto cuenta **qué está a medias, qué no es obvio desde el código y qué no hay
 > que volver a decidir.**
 >
-> **Última actualización: 2026-08-25** · HEAD `f7dc2763`
+> **Última actualización: 2026-08-26** · HEAD `d22e5cb8`
 > Al cerrar o abrir un trabajo, actualizá la sección y la fecha de arriba.
+
+---
+
+## ⚠️ Antes que nada: hay dos árboles de backend y uno está muerto
+
+**El que se despliega es `hi-cloud backend-project/backend`.** Lo dicen
+`docker-compose.yml` (`context: ./hi-cloud backend-project/backend`) y
+[`reglas-deploy.md`](reglas-deploy.md).
+
+**`backend/` está congelado desde el 4 de julio de 2026** (`714b175e`). No se compila, no se
+despliega y no se borra. Tiene la misma estructura de carpetas y casi los mismos nombres de
+archivo, así que **parece el bueno**: quien abra `backend/src/configuracion/...` está leyendo
+código que **no existe en producción**, y no hay nada en el archivo que se lo avise.
+
+Ya ha costado tiempo más de una vez. Ejemplo real: en `backend/` la plantilla
+`recibo-termico.template.ts` no la usa nadie y parece borrable entera; en el árbol vivo el
+mismo archivo exporta el tipo `ReciboPOSData` del que cuelgan cuatro módulos. Misma ruta
+relativa, misma pinta, conclusión opuesta.
+
+**Regla:** toda ruta de backend en un informe, un ticket o un commit se escribe completa,
+empezando por `hi-cloud backend-project/backend/`. Si ves una ruta que empieza por `backend/`
+a secas, desconfía antes de actuar sobre ella.
 
 ---
 
@@ -111,6 +133,31 @@ visibilidad, y la da la alerta agrupada por empresa y día de `acumularFacturaSi
 ---
 
 ## 3. Trabajos abiertos
+
+### `posTipoImpresora` es global — bug vivo, sin arreglar
+
+La configuración del POS vive entera en `empresa.configuracion` (JSONB), **una sola fila por
+empresa**. Entre esas claves está `posTipoImpresora` (`58mm` / `80mm` / `bluetooth` / `carta` /
+`ninguna`), que decide el ancho del papel y la tipografía del ticket (`IMPRESORA_CONFIG` en
+`src/utils/docTermico.ts`).
+
+**Un cliente con una térmica de 58mm en una sucursal y una de 80mm en otra no tiene forma de
+configurarlo.** El POS lee el valor de la empresa y lo aplica igual en las dos: una de las dos
+imprime siempre con el ancho equivocado. No hay override por sucursal ni por dispositivo — el
+POS ya sabe en qué sucursal está (`authStore.sucursalActual`), pero nunca lo consulta para
+elegir impresora.
+
+Esto **no lo causó** el modo compacto del ticket: es anterior y sigue ahí después.
+
+**Por qué no se arregló de una vez.** `sucursales` no tiene columna `configuracion`, así que el
+override por sucursal necesita una migración SQL a mano (no hay carpeta de migrations en el
+proyecto — ver `backend/scripts/generate-migration.js` y su regla de camelCase). Se decidió
+dejarlo fuera del alcance de ese trabajo en vez de colar una migración de contrabando.
+
+**La puerta quedó abierta.** El ticket se configura a través de
+`resolverConfigTicket(empresa, sucursal)` (`src/utils/configTicket.ts`), que hoy se llama
+siempre con `sucursal = null`. Añadir la capa de sucursal es rellenar esa función y darle el
+dato: no hay que tocar los sitios que imprimen.
 
 ### Ventana del deploy — decidido, sin implementar
 `.github/workflows/deploy.yml` sube el frontend **por SCP directo al document root en vivo**
