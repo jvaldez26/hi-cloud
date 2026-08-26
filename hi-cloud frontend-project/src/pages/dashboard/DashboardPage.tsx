@@ -287,7 +287,6 @@ function DashboardAdmin() {
   const refreshAll = useCallback(() => {
     qc.invalidateQueries({ queryKey: ['bancos-dashboard'] });
     qc.invalidateQueries({ queryKey: ['kpis-cf'] });
-    qc.invalidateQueries({ queryKey: ['actividad-cf'] });
     qc.invalidateQueries({ queryKey: ['ingresos-gastos-anual'] });
     qc.invalidateQueries({ queryKey: ['anios-con-datos'] });
     qc.invalidateQueries({ queryKey: ['fact-pend-cf'] });
@@ -316,13 +315,6 @@ function DashboardAdmin() {
     queryKey: ['kpis-cf', mesActual, anioActual],
     queryFn:  () => reportesApi.kpis(mesActual, anioActual),
     staleTime: 120_000,
-  });
-
-  // Actividad (audit log — se mantiene para otros usos futuros)
-  const { data: auditRaw } = useQuery<any>({
-    queryKey: ['actividad-cf'],
-    queryFn:  () => api.get('/auditoria?limit=12').then((r: any) => r.data?.data ?? r.data),
-    staleTime: 30_000,
   });
 
   // Ingresos + gastos del AÑO FISCAL — enero a diciembre, no 12 meses rodantes.
@@ -365,7 +357,6 @@ function DashboardAdmin() {
   const actHoy    = tesoreriaRaw?.actividad?.hoy    ?? [];
   const actSemana = tesoreriaRaw?.actividad?.semana ?? [];
 
-  const auditLogs   = Array.isArray(auditRaw?.data) ? auditRaw.data : (Array.isArray(auditRaw) ? auditRaw : []);
   const facturas    = Array.isArray(factPendRaw) ? factPendRaw : [];
 
   const ahora = dayjs();
