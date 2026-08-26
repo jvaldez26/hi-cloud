@@ -1,6 +1,5 @@
 // ESC/POS Bluetooth Thermal Printer — 58mm (32 chars/line)
 // Web Bluetooth API: Chrome/Edge on Android + HTTPS only.
-import QRCode from 'qrcode';
 import { ahora, fecha as fechaRD, horaConSegundos } from '../utils/fechaRD';
 
 const CARACTERES_POR_LINEA = 32;
@@ -69,7 +68,13 @@ function comandos() {
     alignCenter()     { b(0x1B, 0x61, 0x01); return api; },
     alignLeft()       { b(0x1B, 0x61, 0x00); return api; },
     bold(on: boolean) { b(0x1B, 0x45, on ? 1 : 0); return api; },
-    doble(on: boolean){ b(0x1D, 0x21, on ? 0x11 : 0x00); return api; },
+    alignRight()      { b(0x1B, 0x61, 0x02); return api; },
+    // Doble alto y ancho con ESC ! — NO con GS !.
+    // En la BT-58UB, GS ! deja ESC a (la alineación) inservible para todo lo que
+    // venga después, y no se recupera. Como el TOTAL va a doble altura en los dos
+    // formatos, con GS ! el resto del ticket salía desalineado siempre.
+    // 0x38 = énfasis (0x08) + doble alto (0x10) + doble ancho (0x20).
+    doble(on: boolean){ b(0x1B, 0x21, on ? 0x38 : 0x00); return api; },
     texto(txt: string){ t(txt); return api; },
     salto(n = 1)      { for (let i = 0; i < n; i++) b(0x0A); return api; },
     cortar()          { b(0x1D, 0x56, 0x42, 0x00); return api; },
@@ -98,21 +103,41 @@ function comandos() {
   return api;
 }
 
-// Renderiza el QR como bitmap 1-bit para GS v 0 (compatible con térmicas sin GS(k 2D).
-// Pre-render antes de armar el buffer ESC/POS porque toCanvas es async.
-async function _renderQrToBitmap(
-  data: string,
+/** Puntos por mm de las térmicas del parque (203 dpi). */
+const PUNTOS_POR_MM = 8;
+
+// Rasteriza una imagen (data URL) a bitmap 1-bit para GS v 0 — el mismo camino
+// que ya usaba el QR, ahora alimentado desde el <img> del HTML del ticket.
+//
+// El escalado es NEAREST-NEIGHBOUR a propósito (imageSmoothingEnabled = false).
+// Con suavizado, cada módulo del QR queda con el borde gris, el umbral lo parte
+// por la mitad y el lector pierde justo el canto en el que se apoya.
+async function _imgDataUrlABitmap(
+  src: string,
+  anchoDots: number,
 ): Promise<{ data: Uint8Array; w: number; h: number } | null> {
   try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload  = () => resolve(el);
+      el.onerror = () => reject(new Error('no se pudo decodificar la imagen del ticket'));
+      el.src = src;
+    });
+    // Múltiplo de 8: GS v 0 trabaja por bytes y así no sobra media columna.
+    const w = Math.max(8, Math.round(anchoDots / 8) * 8);
+    const h = Math.max(8, Math.round(w * (img.height / img.width)));
     const canvas = document.createElement('canvas');
-    await QRCode.toCanvas(canvas, data, { width: 160, margin: 2, errorCorrectionLevel: 'M' });
+    canvas.width  = w;
+    canvas.height = h;
     const ctx = canvas.getContext('2d');
     if (!ctx) {
       console.warn('[QR-BT] getContext() null — se omite QR del ticket');
       return null;
     }
-    const w = canvas.width;
-    const h = canvas.height;
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
     const byteWidth = Math.ceil(w / 8);
     const { data: pixels } = ctx.getImageData(0, 0, w, h); // RGBA flat array
     const out = new Uint8Array(byteWidth * h);
@@ -132,211 +157,6 @@ async function _renderQrToBitmap(
     console.warn('[QR-BT] Error al renderizar QR a bitmap — se omite QR del ticket:', err);
     return null;
   }
-}
-
-// ── Types ──────────────────────────────────────────────────────────────────────
-
-export interface EmpresaBT {
-  nombre?:    string;
-  rnc?:       string;
-  direccion?: string;
-  telefono?:  string;
-}
-
-export interface SaleBT {
-  folio?:                  string;
-  total:                   number;
-  cambio?:                 number;
-  metodo?:                 string;
-  items:                   Array<{
-    produto: { nombre: string; porcentajeIva?: number };
-    cantidad: number;
-    precio: number;
-    /** descuento por unidad en BASE imponible (convención B del POS) */
-    descuentoMonto?: number;
-    /** balanza modo-precio: total base pre-ITBIS de la etiqueta (bloqueado) */
-    balanzaTotalFijo?: number;
-  }>;
-  iva?:                    number;
-  subtotal?:               number;
-  /** descuento global en BASE imponible — alimenta el desglose fiscal */
-  descuentoGlobal?:        number;
-  /** importe PACTADO con el cliente (c/ITBIS) — es el que se imprime */
-  descuentoGlobalFinal?:   number;
-  encf?:                   string;
-  ecfPendiente?:           boolean;
-  cajero?:                 string;
-  cliente?:                string;
-  fechaEmision?:           string;
-  horaEmision?:            string;
-  securityCode?:           string;
-  qrUrl?:                  string;
-  empresaNombreComercial?: string;
-  empresaRnc?:             string;
-  empresaDireccion?:       string;
-  empresaTelefono?:        string;
-}
-
-// ── Receipt generator ──────────────────────────────────────────────────────────
-
-function fmtMonto(n: number): string {
-  return n.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-const r2BT = (n: number) => Math.round(n * 100) / 100;
-
-export async function generarReciboESCPOS(sale: SaleBT, empresa: EmpresaBT): Promise<Uint8Array> {
-  // Pre-renderizar QR antes de armar el buffer (toCanvas es async; el buffer es síncrono)
-  let qrBitmapResult: { data: Uint8Array; w: number; h: number } | null = null;
-  if (sale.qrUrl && !sale.ecfPendiente) {
-    qrBitmapResult = await _renderQrToBitmap(sale.qrUrl);
-  }
-
-  const nombreEmp = empresa.nombre ?? sale.empresaNombreComercial ?? 'HiCloud POS';
-  const rncEmp    = empresa.rnc    ?? sale.empresaRnc    ?? '';
-  const dirEmp    = empresa.direccion ?? sale.empresaDireccion ?? '';
-  const telEmp    = empresa.telefono  ?? sale.empresaTelefono  ?? '';
-
-  // Del servidor, NUNCA del reloj de la PC: esta hora se imprime en el ticket
-  // que se lleva el cliente. Una caja con el reloj mal sellaba comprobantes con
-  // horas inventadas.
-  const fecha = sale.fechaEmision ?? fechaRD(ahora());
-  const hora  = sale.horaEmision  ?? horaConSegundos(ahora());
-
-  const c = comandos().init();
-
-  // ── Header ─────────────────────────────────────────────────────────────────
-  // GS! (doble) resetea ESC a en BT-58UB de forma irrecuperable para las líneas siguientes.
-  // Se usa solo bold() — igual que el bloque e-CF que funciona — para garantizar centrado.
-  c.alignCenter();
-  c.bold(true).texto(centrar(nombreEmp)).bold(false);
-  if (rncEmp) c.texto(centrar(`RNC: ${rncEmp}`));
-  if (dirEmp) { for (const l of envolver(dirEmp)) c.texto(centrar(l)); }
-  if (telEmp) c.texto(centrar(`Tel: ${telEmp}`));
-  c.salto(1);
-
-  // ── Encabezado de venta ────────────────────────────────────────────────────
-  c.alignLeft();
-  c.texto(separador());
-  c.texto(lineaLR('Fecha:', fecha));
-  c.texto(lineaLR('Hora:', hora));
-  if (sale.cajero)  c.texto(lineaLR('Cajero:', sale.cajero.slice(0, 20)));
-  if (sale.cliente) c.texto(lineaLR('Cliente:', sale.cliente.slice(0, 19)));
-  if (sale.folio)   c.texto(lineaLR('Folio:', sale.folio));
-
-  // ── Items ──────────────────────────────────────────────────────────────────
-  c.texto(separador());
-  const subtotalBT = sale.subtotal ?? 0;
-  const ivaBT      = sale.iva      ?? 0;
-  const ivaFactor  = subtotalBT > 0 ? 1 + ivaBT / subtotalBT : 1;
-  for (const item of sale.items) {
-    const lines    = envolver(item.produto.nombre, CARACTERES_POR_LINEA - 8);
-    // Factor del propio ítem cuando se conoce su tasa; si no, el factor global del ticket
-    const factor   = item.produto.porcentajeIva !== undefined
-      ? 1 + Number(item.produto.porcentajeIva) / 100
-      : ivaFactor;
-    const descUnit = Number(item.descuentoMonto ?? 0);
-    // MISMO criterio que el ticket HTML: el importe de línea es el NETO de descuento
-    const precioConIva = (item.precio - descUnit) * factor;
-    const totalItem    = fmtMonto(item.cantidad * precioConIva);
-    c.texto(lineaLR(lines[0], totalItem));
-    for (let i = 1; i < lines.length; i++) c.texto('  ' + lines[i]);
-    c.texto(`  ${item.cantidad} x ${fmtMonto(precioConIva)}`);
-    if (descUnit > 0) {
-      c.texto(`  Desc: -${fmtMonto(descUnit * factor)} c/u (orig. ${fmtMonto(item.precio * factor)})`);
-    }
-  }
-
-  // ── Totales ────────────────────────────────────────────────────────────────
-  // Desglose ITBIS por tasa — mismo criterio que el builder ECF.
-  // (MontoGravadoI1/I2, MontoExento, TotalITBIS1/2)
-  let bG18 = 0, bG16 = 0, bExt = 0, bI18 = 0, bI16 = 0;
-  for (const item of sale.items) {
-    const pct  = Number(item.produto.porcentajeIva ?? 18);
-    const desc = item.descuentoMonto ?? 0;
-    const base = item.balanzaTotalFijo != null
-      ? item.balanzaTotalFijo
-      : (item.precio - desc) * item.cantidad;
-    if (pct === 18)      { bG18 += base; bI18 += base * 0.18; }
-    else if (pct === 16) { bG16 += base; bI16 += base * 0.16; }
-    else                 { bExt += base; }
-  }
-  const g18BT      = r2BT(bG18), g16BT = r2BT(bG16), extBT = r2BT(bExt);
-  const i18BT      = r2BT(bI18), i16BT = r2BT(bI16);
-  const gravTotalBT = r2BT(g18BT + g16BT);
-  const hayExtBT   = extBT > 0;
-  const hayI1BT    = i18BT > 0;
-  const hayI2BT    = i16BT > 0;
-
-  c.texto(separador());
-  const descBaseBT  = sale.descuentoGlobal ?? 0;
-  const descPactoBT = sale.descuentoGlobalFinal ?? descBaseBT;
-  if (descBaseBT > 0) {
-    // CON descuento global: el bloque habla en pesos c/ITBIS (lo pactado)
-    c.texto(lineaLR('Subtotal (c/ITBIS):', `RD$${fmtMonto(r2BT(sale.total + descPactoBT))}`));
-    c.texto(lineaLR('Descuento:', `-RD$${fmtMonto(descPactoBT)}`));
-  } else {
-    // SIN descuento: desglose fiscal por tasa (solo líneas con valor > 0)
-    if (gravTotalBT > 0 && !hayExtBT) {
-      c.texto(lineaLR('Subtotal:', `RD$${fmtMonto(gravTotalBT)}`));
-    } else if (gravTotalBT > 0 && hayExtBT) {
-      c.texto(lineaLR('Sub.Gravado:', `RD$${fmtMonto(gravTotalBT)}`));
-      c.texto(lineaLR('Sub.Exento:', `RD$${fmtMonto(extBT)}`));
-    } else if (hayExtBT) {
-      c.texto(lineaLR('Subtotal:', `RD$${fmtMonto(extBT)}`));
-    } else if (sale.subtotal !== undefined) {
-      c.texto(lineaLR('Subtotal:', `RD$${fmtMonto(sale.subtotal)}`));
-    }
-    if (hayI1BT) c.texto(lineaLR('ITBIS (18%):', `RD$${fmtMonto(i18BT)}`));
-    if (hayI2BT) c.texto(lineaLR('ITBIS (16%):', `RD$${fmtMonto(i16BT)}`));
-    if (hayI1BT && hayI2BT) c.texto(lineaLR('Total ITBIS:', `RD$${fmtMonto(r2BT(i18BT + i16BT))}`));
-  }
-  c.bold(true).texto(lineaLR('TOTAL:', `RD$${fmtMonto(sale.total)}`)).bold(false);
-  if (descBaseBT > 0 && sale.subtotal !== undefined) {
-    c.texto(lineaLR('Base imponible:', `RD$${fmtMonto(r2BT(sale.subtotal - descBaseBT))}`));
-    if (sale.iva !== undefined && sale.iva > 0) c.texto(lineaLR('ITBIS:', `RD$${fmtMonto(sale.iva)}`));
-  }
-  if (sale.cambio !== undefined && sale.cambio > 0) c.texto(lineaLR('Cambio:', `RD$${fmtMonto(sale.cambio)}`));
-  if (sale.metodo) {
-    const m = sale.metodo.charAt(0).toUpperCase() + sanear(sale.metodo.slice(1));
-    c.texto(lineaLR('Metodo:', m));
-  }
-  c.texto(lineaLR('Total Items:', String(sale.items.length)));
-
-  // ── e-CF / Comprobante Fiscal ──────────────────────────────────────────────
-  if (sale.encf) {
-    c.texto(separador());
-    c.alignCenter();
-    c.bold(true).texto(centrar('COMPROBANTE FISCAL')).bold(false);
-    c.texto(centrar(sale.encf));
-
-    // Código de seguridad (firma DGII)
-    if (sale.securityCode) {
-      c.salto(1);
-      c.texto(centrar('Codigo de Seguridad:'));
-      c.texto(centrar(sale.securityCode));
-    }
-
-    // QR de verificación DGII (raster GS v 0 — compatible BT-58UB)
-    if (sale.qrUrl && !sale.ecfPendiente) {
-      c.salto(1);
-      if (qrBitmapResult) c.qrBitmap(qrBitmapResult.data, qrBitmapResult.w, qrBitmapResult.h);
-      c.salto(1);
-      c.texto(centrar('Escanea para verificar'));
-    }
-
-    c.alignLeft();
-  } else if (sale.ecfPendiente) {
-    c.texto(separador());
-    c.alignCenter();
-    c.texto(centrar('e-CF PENDIENTE'));
-    c.alignLeft();
-  }
-
-  c.salto(1).alignCenter().texto(centrar('Gracias por su compra!')).salto(1)
-    .texto(centrar('Generado por HiCloud ERP')).salto(3).cortar();
-
-  return c.build();
 }
 
 // ── Bluetooth connection ────────────────────────────────────────────────────────
@@ -579,21 +399,46 @@ async function enviarDatos(bytes: Uint8Array): Promise<void> {
   }
 }
 
-export async function imprimirReciboEscPos(sale: SaleBT, empresa: EmpresaBT): Promise<void> {
-  const bytes = await generarReciboESCPOS(sale, empresa);
-  await enviarDatos(bytes);
-}
-
 // ── Convertir HTML térmico del POS a ESC/POS ────────────────────────────────
 // Entiende las clases CSS que producen buildReciboTermicoHTML, buildDocTermicoHTML
-// y buildCierreCajaHTML: row, center, bold, xlarge, line, dbl.
-function htmlAEscPos(html: string): Uint8Array {
+// y buildCierreCajaHTML: row, center, r, bold, xlarge, line, dbl.
+//
+// Este es el ÚNICO camino del ticket de venta a la impresora Bluetooth. Antes el
+// BT tenía su propio generador escrito a mano (`generarReciboESCPOS`) y llevaba
+// tiempo divergiendo del ticket del navegador: no imprimía la sucursal, el
+// módulo, el RNC del comprador, el bloque "MODIFICA A", el mensaje del ticket ni
+// la política de devoluciones — y tampoco la fecha de firma de la DGII, que es
+// exigible. Ese generador se borró en vez de arrastrarlo: dos plantillas del
+// mismo ticket no se mantienen sincronizadas solas, ya pasó con los conduces.
+/** Exportada para poder medirla: la prueba cuenta saltos de línea y alto del
+ *  ráster del QR sin tener que gastar papel. */
+export async function htmlAEscPos(html: string): Promise<Uint8Array> {
   const doc  = new DOMParser().parseFromString(html, 'text/html');
   const c    = comandos().init();
 
+  // Las imágenes se rasterizan ANTES: armar el buffer ESC/POS es síncrono y
+  // decodificar un data URL no lo es.
+  const bitmaps = new Map<Element, { data: Uint8Array; w: number; h: number }>();
+  for (const img of Array.from(doc.querySelectorAll('img'))) {
+    const src = img.getAttribute('src') ?? '';
+    // Solo el QR de verificación DGII. El logo se sigue omitiendo en BT: no lo
+    // imprimía antes tampoco, y en 58 mm de ancho real gasta papel sin informar.
+    if (img.getAttribute('alt') !== 'QR DGII' || !src.startsWith('data:image/')) continue;
+    const anchoMm = parseFloat(
+      (img.getAttribute('style') ?? '').match(/width:\s*([\d.]+)mm/)?.[1] ?? '19',
+    );
+    const bmp = await _imgDataUrlABitmap(src, Math.round(anchoMm * PUNTOS_POR_MM));
+    if (bmp) bitmaps.set(img, bmp);
+  }
+
   function proc(el: Element, isCentrado = false) {
     const tag = el.tagName.toLowerCase();
-    if (['style', 'script', 'head', 'img'].includes(tag)) return;
+    if (['style', 'script', 'head'].includes(tag)) return;
+    if (tag === 'img') {
+      const bmp = bitmaps.get(el);
+      if (bmp) c.qrBitmap(bmp.data, bmp.w, bmp.h);
+      return;
+    }
     if (tag === 'hr') { c.alignLeft(); c.texto(separador('-')); return; }
 
     const cls      = (el.className ?? '') as string;
@@ -603,6 +448,9 @@ function htmlAEscPos(html: string): Uint8Array {
     const esBold   = cls.includes('bold') || cls.includes('xlarge');
     const esXl     = cls.includes('xlarge');
     const esCentro = cls.includes('center') || isCentrado;
+    // .r — la línea de cantidad del formato compacto va pegada a la derecha,
+    // debajo del importe al que corresponde.
+    const esDerecha = / r( |$)/.test(' ' + cls);
 
     if (esLinea) { c.alignLeft(); c.texto(separador('.')); return; }
     if (esDoble) { c.alignLeft(); c.texto(separador('=')); return; }
@@ -612,11 +460,12 @@ function htmlAEscPos(html: string): Uint8Array {
       if (spans.length >= 2) {
         const izq = spans[0].textContent?.trim() ?? '';
         const der = spans[1].textContent?.trim() ?? '';
-        if (esBold)  c.bold(true);
+        // ESC ! (no GS !) — ver el comentario en doble().
         if (esXl)    c.doble(true);
+        else if (esBold) c.bold(true);
         c.alignLeft().texto(lineaLR(izq, der));
         if (esXl)    c.doble(false);
-        if (esBold)  c.bold(false);
+        else if (esBold) c.bold(false);
         return;
       }
     }
@@ -632,15 +481,17 @@ function htmlAEscPos(html: string): Uint8Array {
     const texto = el.textContent?.trim() ?? '';
     if (!texto) return;
 
-    if (esBold)  c.bold(true);
-    if (esXl)    c.doble(true);
-    if (esCentro) c.alignCenter(); else c.alignLeft();
+    if (esXl)        c.doble(true);
+    else if (esBold) c.bold(true);
+    if (esCentro)       c.alignCenter();
+    else if (esDerecha) c.alignRight();
+    else                c.alignLeft();
 
     for (const linea of envolver(texto)) {
       c.texto(esCentro ? centrar(linea) : linea);
     }
-    if (esXl)    c.doble(false);
-    if (esBold)  c.bold(false);
+    if (esXl)        c.doble(false);
+    else if (esBold) c.bold(false);
   }
 
   for (const ch of doc.body.children) proc(ch);
@@ -650,19 +501,25 @@ function htmlAEscPos(html: string): Uint8Array {
 
 /** Imprime cualquier HTML térmico del POS en la impresora BT (sin diálogo del navegador). */
 export async function imprimirHtmlEnBT(html: string): Promise<void> {
-  const bytes = htmlAEscPos(html);
+  const bytes = await htmlAEscPos(html);
   await enviarDatos(bytes);
 }
 
+/** Prueba de impresora — comprueba conexión, alineación y doble altura.
+ *  No arma un ticket: un ticket de mentira sería una segunda plantilla que
+ *  mantener, y es exactamente lo que se acaba de quitar de en medio. */
 export async function imprimirPruebaEscPos(): Promise<void> {
-  const bytes = await generarReciboESCPOS({
-    total: 0,
-    items: [],
-    cajero: 'Cajero POS',
-    folio:  'PRUEBA',
-    empresaNombreComercial: 'HiCloud POS',
-    fechaEmision: fechaRD(ahora()),
-    horaEmision:  horaConSegundos(ahora()),
-  }, {});
-  await enviarDatos(bytes);
+  const c = comandos().init();
+  c.alignCenter().bold(true).texto(centrar('PRUEBA DE IMPRESORA')).bold(false);
+  c.texto(centrar('HiCloud ERP'));
+  c.alignLeft().texto(separador());
+  c.texto(lineaLR('Fecha:', fechaRD(ahora())));
+  c.texto(lineaLR('Hora:',  horaConSegundos(ahora())));
+  c.texto(lineaLR('Impresora:', getNombreImpresora() || 'BT'));
+  c.texto(separador());
+  c.doble(true).texto(lineaLR('TOTAL:', 'RD$0.00')).doble(false);
+  // Si esta línea sale desalineada, el doble alto rompió ESC a en esta impresora.
+  c.alignCenter().texto(centrar('Alineacion OK')).alignLeft();
+  c.salto(3).cortar();
+  await enviarDatos(c.build());
 }
