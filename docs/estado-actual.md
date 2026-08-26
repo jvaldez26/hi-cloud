@@ -4,7 +4,7 @@
 > qué cambió. Esto cuenta **qué está a medias, qué no es obvio desde el código y qué no hay
 > que volver a decidir.**
 >
-> **Última actualización: 2026-08-26** · HEAD `d22e5cb8`
+> **Última actualización: 2026-08-26** · HEAD `197ee701`
 > Al cerrar o abrir un trabajo, actualizá la sección y la fecha de arriba.
 
 ---
@@ -33,13 +33,15 @@ a secas, desconfía antes de actuar sobre ella.
 
 ## 1. Bug del `vendedorId` — 🟡 a medias
 
-**Qué pasó.** El cierre de caja reúne las ventas por `vendedorId + fecha`. Cuando el POS perdía
-el `localStorage`, la factura se grababa con `vendedorId` NULL y **desaparecía de todos los
-cuadres sin avisar**. Nadie lo vio durante un mes porque la validación de caja estaba envuelta
-en un `if (factura.vendedorId)`: justo la factura rota era la única que nadie miraba.
+**Qué pasó.** El cierre de caja reúne las ventas por `vendedorId + fecha`. Una factura con
+`vendedorId` NULL **desaparece de todos los cuadres sin avisar**. Nadie lo vio durante un mes
+porque la validación de caja estaba envuelta en un `if (factura.vendedorId)`: justo la factura
+rota era la única que nadie miraba.
 
-- **Causa:** commit `2fa2586d` (17 de agosto).
-- **Alcance:** 163 facturas en agosto, RD$395,718.09.
+- **Causa: no es una sola.** El commit `2fa2586d` (17 de agosto) disparó el brote de agosto en el
+  POS, pero **hay siete caminos que crean facturas y ninguno resuelve el vendedor** (ver abajo).
+  Por eso hay huérfanas desde junio, meses antes de ese commit.
+- **Alcance:** **249 facturas en 11 empresas** — verificado contra producción el 2026-08-26.
 - **Caso urgente:** caja #446 de FERRETERÍA PAVEL — 5 de 16 facturas, RD$16,574.99 fuera del
   arqueo. Ya resuelto con un backfill acotado a esas 5.
 
@@ -47,7 +49,7 @@ en un `if (factura.vendedorId)`: justo la factura rota era la única que nadie m
 
 | Fase | Qué es | Estado |
 |---|---|---|
-| **1 — Backend** | `resolverVendedor()`: el vendedor se deriva del usuario autenticado, no se acepta del navegador | ✅ **Desplegada** (`f7dc2763`) |
+| **1 — Backend** | `resolverVendedor()`: el vendedor se deriva del usuario autenticado, no se acepta del navegador | ✅ **Desplegada** (`f7dc2763`) — pero **solo cubre `create()`** |
 | **2 — POS** | Fix del frontend para que no dependa del `localStorage` | ❌ **Sin pushear** — solo existe en la otra máquina |
 | **3 — Backfill** | Script para recuperar las facturas huérfanas | ❌ **Sin pushear** — solo existe en la otra máquina |
 
@@ -55,39 +57,90 @@ en un `if (factura.vendedorId)`: justo la factura rota era la única que nadie m
 > `origin/worktree-agent-abf8e6ad46f3b89c8` (esa rama está *detrás* de main, ya fusionada).
 > **No las reescribas** — hay que traerlas de la otra máquina.
 
-### Las huérfanas que quedan — ⚠️ conteo SIN CONFIRMAR
+### Las huérfanas que quedan — 249 en 11 empresas
 
-Las facturas con `vendedorId` NULL **no se pueden recuperar** con el backfill tal como está. El
-script deriva el vendedor desde `vendedores."usuarioId"`, y esa columna **solo está poblada en
-la empresa 61**. Para las demás no hay desde dónde derivar.
+Consultado en producción el **2026-08-26**:
 
-**Bloqueante:** poblar `vendedores."usuarioId"` en las empresas **42, 64, 57 y 44**. Hasta
-entonces el backfill no tiene nada que hacer con esas facturas.
+| Empresa | Facturas | Dato relevante |
+|---|---:|---|
+| MOTO REPUESTO MANOLIN (empresa 42) | 158 | sigue generando; usuario sin vendedor asociado |
+| R&M | 41 | **arranca el 27 de junio** — anterior a `2fa2586d` |
+| VALDEZ GONZÁLEZ | 12 | |
+| MULTISERVICIOS | 10 | |
+| GRUPO SUS | 9 | RD$287,982 |
+| LUBRI GOMAS | 7 | RD$424,770 |
+| PRO LIMPIA | 5 | |
+| MÉLIDA RODRÍGUEZ | 4 | **una es de hoy (26-ago)** — ver abajo |
+| FERRETERÍA PAVEL (empresa 61) | 1 | RD$217,323 en **una sola factura** del 4 de agosto |
+| ANT ROS | 1 | **arranca el 27 de julio** — anterior a `2fa2586d` |
+| ALEX SAZÓN | 1 | |
+| **Total** | **249** | |
 
-> **El número exacto está sin verificar contra producción.** Las cifras que circulan
-> (163 detectadas, 5 recuperadas en la caja #446, ~157 restantes) vienen de la sesión en que se
-> cazó el bug, no de una consulta reciente. Además no cuadran solas: 163 − 5 = **158**, no 157.
-> No uses ninguna de esas cifras en un reporte sin correr esto primero:
+La cifra que circulaba antes (163 en agosto, ~158 restantes) medía **un solo mes y una sola vía**.
+El problema es más viejo y más ancho que eso.
+
+La de PAVEL **sí es recuperable hoy**: la empresa 61 es la única con `vendedores."usuarioId"`
+poblado, así que el backfill puede derivarle el vendedor desde `usuarioId`. Las otras 248 no,
+mientras esa columna siga vacía en sus empresas.
+
+### Por qué Fase 1 no las cubre — siete caminos, un solo guardián
+
+`resolverVendedor()` vive **únicamente** en `facturas.service.ts:500`, dentro de `create()`.
+Todos estos otros crean facturas sin pasar por ahí y **ninguno escribe `vendedorId`**:
+
+| Camino | Dónde | Cómo se reconoce la factura |
+|---|---|---|
+| Convertir cotización | `cotizaciones.service.ts:191` | `notas` = «Convertida desde cotización …» |
+| Pre-factura → factura | `pre-factura.service.ts:253` | folio `FAC-<n>`, estado `emitida`, `tipoNcf` E32 |
+| Contrato (cron y manual) | `contratos.service.ts:147` | `notas` = «Contrato …» |
+| Orden de servicio | `servicios.service.ts:223` | `notas` = «Servicio técnico: …» |
+| Factura recurrente (cron) | `facturas-recurrentes.service.ts:199` | `facturaRecurrenteId` no nulo |
+| Comanda de restaurante | `restaurante.service.ts:639` | `INSERT` crudo; hay fila en `rs_comandas` |
+| **Duplicar factura** | `facturas.service.ts:1522` | copia todo menos el vendedor |
+
+`duplicar()` es el más traicionero: copia cliente, moneda, `tipoNcf`, `tipoPago`, notas y
+detalles — y deja fuera `vendedorId`. Duplicar una factura bien atribuida produce una huérfana.
+
+Los siete son anteriores a `2fa2586d` por meses y explican las huérfanas de junio y julio.
+
+**Consulta para clasificar las 249 por origen** (read-only):
 
 ```sql
--- Facturas huérfanas por empresa. Read-only.
-SELECT "empresaId",
-       COUNT(*)                    AS facturas,
-       ROUND(SUM(total)::numeric, 2) AS monto,
-       MIN("createdAt")::date      AS desde,
-       MAX("createdAt")::date      AS hasta
-  FROM facturas
- WHERE "vendedorId" IS NULL
-   AND estado <> 'anulada'
- GROUP BY "empresaId"
+SELECT f."empresaId",
+       CASE
+         WHEN f."facturaRecurrenteId" IS NOT NULL           THEN 'recurrente'
+         WHEN f.notas LIKE 'Convertida desde cotización%'   THEN 'cotizacion'
+         WHEN f.notas LIKE 'Contrato %'                     THEN 'contrato'
+         WHEN f.notas LIKE 'Servicio técnico:%'             THEN 'servicios'
+         WHEN f.notas LIKE 'Factura recurrente:%'           THEN 'recurrente'
+         WHEN EXISTS (SELECT 1 FROM rs_comandas c WHERE c."facturaId" = f.id)
+                                                            THEN 'restaurante'
+         ELSE 'create() o duplicar()'
+       END                            AS origen,
+       COUNT(*)                       AS facturas,
+       MIN(f.fecha)                   AS desde,
+       MAX(f.fecha)                   AS hasta,
+       ROUND(SUM(f.total)::numeric,2) AS monto
+  FROM facturas f
+ WHERE f."vendedorId" IS NULL
+   AND f.estado <> 'anulada'
+ GROUP BY 1, 2
  ORDER BY facturas DESC;
 ```
 
-Cuando lo corras, **pegá el resultado acá y borrá este aviso.**
+### Pendiente de comprobar: la huérfana de hoy (MÉLIDA RODRÍGUEZ, 26-ago)
 
-<sub>Por qué no está corrido ya: la máquina donde se escribió este doc es un clon limpio sin
-credenciales — no hay `.env`, ni `~/.ssh`, ni `psql`/`aws`/`gh`. El host y la clave de la BD
-viven en los secrets de GitHub y en la EC2. Desde un checkout nuevo no se llega.</sub>
+Con Fase 1 desplegada, una huérfana nueva solo puede venir de dos sitios, y la diferencia decide
+si esto está funcionando o sigue roto:
+
+1. **La rama documentada** — usuario sin vendedor asociado. `resolverVendedor()` no tiene de
+   dónde derivar, la factura se emite igual (nunca se bloquea una venta) y **queda registrada**.
+   Funciona como se diseñó; lo que corta este caso es Fase 2.
+2. **Uno de los siete caminos de arriba** — no se registró nada y nadie se enteró.
+
+**Cómo distinguirlas:** si fue (1) hay un evento en Sentry con tag `facturas.sinVendedor` para
+esa empresa con fecha `2026-08-26` — lo emite `emitirAlertaSinVendedor()`
+(`facturas.service.ts:185`), agrupado por empresa y día. Si no hay evento, fue (2).
 
 ---
 
@@ -125,10 +178,14 @@ Es tentador exigir vendedor al facturar. No lo hagas todavía:
    **~5.800 veces al mes** sin vendedor asociado. Bloquearlos los deja sin vender.
 
 **Cuándo se puede endurecer:** cuando `vendedores."usuarioId"` esté poblado en las empresas que
-faltan (las mismas 42, 64, 57, 44). Ahí `resolverVendedor()` siempre resuelve, esa rama deja de
-alcanzarse sola, y recién entonces tiene sentido. Mientras tanto lo que se necesita es
-visibilidad, y la da la alerta agrupada por empresa y día de `acumularFacturaSinVendedor()`
+faltan — que **no son cuatro sino once**, ver el conteo del 26-ago en la sección 1. Ahí
+`resolverVendedor()` siempre resuelve, esa rama deja de alcanzarse sola, y recién entonces
+tiene sentido. Mientras tanto lo que se necesita es visibilidad, y la da la alerta agrupada por
+empresa y día de `acumularFacturaSinVendedor()`
 — agrupada, porque siete avisos diarios se vuelven ruido que nadie mira en una semana.
+
+Ojo: endurecer `create()` tampoco bastaría por sí solo. Los otros seis caminos de la sección 1
+seguirían creando facturas sin vendedor por su cuenta.
 
 ---
 
