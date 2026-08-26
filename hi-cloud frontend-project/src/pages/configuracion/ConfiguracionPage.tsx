@@ -24,7 +24,7 @@ import { useThemeStore, TEMAS_SIDEBAR, type TemaSidebar } from '../../store/them
 import { VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ahora, fecha, fechaHora } from '../../utils/fechaRD';
 import { buildReciboTermicoHTML, ventaEjemploTicket } from '../../utils/ticketTermico';
-import { generarQrTicket, normalizarLogoAltura, QR_LADO_MM, type FormatoTicket } from '../../utils/configTicket';
+import { generarQrTicket, type FormatoTicket } from '../../utils/configTicket';
 import { IMPRESORA_CONFIG } from '../../utils/docTermico';
 
 const { Title, Text } = Typography;
@@ -1115,10 +1115,13 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
       cierreCajaCiego:             conf.cierreCajaCiego ?? false,
       umbralDescuadreCaja:         conf.umbralDescuadreCaja ?? 100,
       posFormatoTicket:            conf.posFormatoTicket ?? 'normal',
-      // Los valores viejos (20/30/40/60 mm) se redondean a la opción vigente más
-      // cercana; si no, el selector saldría en blanco y el primer guardado le
-      // borraría el valor al cliente sin avisar.
-      posLogoAltura:               normalizarLogoAltura(conf.posLogoAltura ?? 25),
+      // El valor GUARDADO, tal cual. Redondearlo aquí a la opción más cercana
+      // parecía cortés y era una trampa: el admin entraba a activar el formato
+      // compacto, le daba a Guardar, y el mismo guardado le cambiaba el alto del
+      // logo de 20 a 25 mm sin que lo hubiera tocado. Si el valor no está entre
+      // las opciones, el selector lo añade como opción propia (ver OPCIONES_LOGO
+      // más abajo) en vez de moverlo.
+      posLogoAltura:               conf.posLogoAltura != null ? Number(conf.posLogoAltura) : 20,
     });
   }, [empresa]);
 
@@ -1178,12 +1181,19 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
   // La vista previa se redibuja con lo que hay en el formulario, no con lo
   // guardado: así se compara antes de decidir, sin imprimir pruebas.
   const formatoTicket         = (Form.useWatch('posFormatoTicket', form) ?? 'normal') as FormatoTicket;
-  const logoAlturaTicket      = normalizarLogoAltura(Form.useWatch('posLogoAltura', form) ?? 25);
+  const logoAlturaTicket      = Number(Form.useWatch('posLogoAltura', form) ?? 20);
   const tipoImpresoraTicket   = (Form.useWatch('posTipoImpresora', form) ?? '80mm') as string;
   // Alto del ticket con cada opción de logo, medido sobre el render real y con
   // el logo de esta empresa. Va en el propio selector: un ajuste que promete un
   // ahorro que no da es peor que no tenerlo.
   const [alturasLogo, setAlturasLogo] = useState<Record<number, number>>({});
+  // Opciones del selector: las tres vigentes, mas la que tenga guardada esta
+  // empresa si no es ninguna de ellas. Asi el selector nunca sale en blanco y
+  // tampoco le mueve el valor a nadie por el hecho de abrir la pantalla.
+  const opcionesLogo = OPCIONES_LOGO.some(o => o.mm === logoAlturaTicket)
+    ? OPCIONES_LOGO
+    : [...OPCIONES_LOGO, { mm: logoAlturaTicket, label: `Actual (${logoAlturaTicket} mm)` }]
+        .sort((a, b) => b.mm - a.mm);
 
   return (
     <Form form={form} layout="vertical" onFinish={v => mut.mutate(v)}>
@@ -1222,7 +1232,11 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
           <Form.Item name="posLogoAltura" label="Logo en el ticket"
             tooltip="Independiente del formato. Los milímetros son un tope: si el logo es apaisado, el ancho del papel se agota antes y no llega a ese alto. El alto real de cada opción sale al lado, medido con tu logo.">
             <Select>
-              {OPCIONES_LOGO.map(o => (
+              {/* El valor guardado, si no está entre las opciones, se añade como
+                  una más — con su etiqueta de "actual". Antes se redondeaba al
+                  vecino más cercano y el primer Guardar se lo cambiaba al cliente
+                  sin que hubiera tocado nada. */}
+              {opcionesLogo.map(o => (
                 <Option key={o.mm} value={o.mm}>
                   {o.label}
                   {alturasLogo[o.mm]

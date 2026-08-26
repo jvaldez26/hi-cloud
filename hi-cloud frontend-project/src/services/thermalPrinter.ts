@@ -73,13 +73,29 @@ export function centrar(texto: string, ancho = CARACTERES_POR_LINEA): string {
   return ' '.repeat(pad) + txt;
 }
 
+/**
+ * Empareja izquierda y derecha en una línea, midiendo ANTES de unirlas.
+ *
+ * Si no caben juntas devuelve DOS líneas: la izquierda entera y la derecha
+ * debajo, pegada al margen derecho. Nunca recorta.
+ *
+ * Antes recortaba la izquierda y le pegaba un '>' al final. En un ticket con
+ * importes de cinco cifras eso convertía "Subtotal 169,491.53" en "Subtotal 169>"
+ * — que no es un subtotal recortado, es un número equivocado. Gastar un renglón
+ * es más barato que imprimir un dato que parece completo y no lo está.
+ */
 export function lineaLR(izq: string, der: string, ancho = CARACTERES_POR_LINEA): string {
-  const i2  = sanear(izq);
-  const d2  = sanear(der);
-  const maxIzq = ancho - d2.length - 1;
-  const i = i2.length > maxIzq ? i2.slice(0, maxIzq - 1) + '>' : i2;
-  const espacio = ancho - i.length - d2.length;
-  return i + ' '.repeat(Math.max(1, espacio)) + d2;
+  const i = sanear(izq);
+  const d = sanear(der);
+  if (!d) return i;
+  if (i.length + 1 + d.length <= ancho) {
+    return i + ' '.repeat(ancho - i.length - d.length) + d;
+  }
+  // No caben: la derecha baja a su propia línea, alineada a la derecha. Si ni
+  // siquiera ella cabe sola, se imprime tal cual y que envuelva la impresora —
+  // mejor una línea partida que un dato mutilado.
+  const pad = Math.max(0, ancho - d.length);
+  return i + '\n' + ' '.repeat(pad) + d;
 }
 
 export function separador(char = '-', ancho = CARACTERES_POR_LINEA): string {

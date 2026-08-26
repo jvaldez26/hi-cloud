@@ -121,6 +121,12 @@ jobs:
         # || true: evita que un timeout de registry.npmjs.org (504) rompa el CI.
         run: npm audit --audit-level=critical --omit=dev || true
 
+      - name: Ticket compacto — ningún campo recortado
+        # Salió a producción truncando el e-NCF y el subtotal en tickets reales:
+        # la maqueta estaba dibujada más ancha que el papel. Esto lo afirma en
+        # 58mm y 80mm sobre la plantilla real, sin necesidad de impresora.
+        run: npm run verificar:compacto
+
       - name: Verificar claves de videos tutoriales vs rutas
         run: node scripts/check-video-modulos.mjs
 

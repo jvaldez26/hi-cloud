@@ -25,6 +25,37 @@ export const IMPRESORA_CONFIG: Record<string, { width: string; fontSize: string;
   'ninguna':{ width: '80mm',  fontSize: '11pt', paddingLR: '5mm' },
 };
 
+
+/**
+ * Caracteres que caben de verdad en una línea, por tipo de papel.
+ *
+ * MEDIDO en Chrome sobre el ancho útil real (el del papel menos el padding del
+ * cuerpo) dividido por el avance de un carácter en la Courier del ticket. No
+ * estimado: el formato compacto se diseñó sobre una maqueta dibujada más ancha
+ * que esto y salió truncando el e-NCF en tickets reales.
+ *
+ * `carta` no aparece a propósito: esa hoja no es monoespaciada ni lleva formato
+ * compacto, así que emparejar por conteo de caracteres no tiene sentido ahí.
+ */
+export const CARACTERES_POR_LINEA: Record<string, number> = {
+  '58mm':     24,
+  '80mm':     30,
+  // La BT-58UB imprime 32 columnas de hardware, pero su ticket se maqueta y se
+  // previsualiza con el CSS de 80mm, que da 30. Manda el mas estrecho de los dos.
+  'bluetooth': 30,
+  'ninguna':  30,
+};
+
+/** Lado del QR de verificación DGII, en mm, por formato de ticket.
+ *  Vive aquí y no junto al generador porque es una medida de maquetación: la
+ *  usan la plantilla y la vista previa, que no generan ningún QR. */
+export const QR_LADO_MM = { normal: 34, compacto: 19 } as const;
+
+/** Capacidad de línea del papel configurado, con el 80mm como red. */
+export function capacidadLinea(tipoImpresora?: string): number {
+  return CARACTERES_POR_LINEA[tipoImpresora ?? '80mm'] ?? CARACTERES_POR_LINEA['80mm'];
+}
+
 /** Escapa HTML y elimina el carácter de reemplazo que algunas impresoras inyectan. */
 export function esc(s: string): string {
   return s

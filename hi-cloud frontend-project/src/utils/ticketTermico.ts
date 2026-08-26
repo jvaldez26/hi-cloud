@@ -13,9 +13,8 @@
  */
 import { round2 } from './formatters';
 import { dRD } from './fechaRD';
-import { IMPRESORA_CONFIG, esc } from './docTermico';
+import { IMPRESORA_CONFIG, esc, capacidadLinea, QR_LADO_MM } from './docTermico';
 import type { ConfigTicket } from './configTicket';
-import { QR_LADO_MM } from './configTicket';
 
 export interface TicketItem {
   produto:           { nombre: string; porcentajeIva?: number };
@@ -166,6 +165,53 @@ export function buildReciboTermicoHTML(
   const line    = () => '<div class="line"></div>';
   const dbl     = () => '<div class="dbl"></div>';
 
+  // ── Emparejado que MIDE antes de unir ──────────────────────────────────────
+  // El formato compacto se diseñó sobre una maqueta dibujada más ancha que el
+  // papel. En 80mm caben 30 caracteres y en 58mm caben 24, y pares como
+  // "e-NCF E320000000719 | Seg. fkv1cT" (31) no entraban: el navegador los
+  // cortaba con puntos suspensivos y el Bluetooth con un '>'. Un e-NCF truncado
+  // es peor que uno ausente — parece que está y no está.
+  const cols = capacidadLinea(tipoImpresora);
+  const SALTO = String.fromCharCode(10);
+
+  /** true si los dos textos caben juntos, con su separación. */
+  const cabenJuntos = (izq: string, der: string) => izq.length + 1 + der.length <= cols;
+
+  /**
+   * Empareja SOLO si cabe. Si no, el segundo baja a su propia línea, alineado a
+   * la derecha. Nunca recorta: preferimos gastar un renglón a mentir un dato.
+   */
+  const par = (izq: string, der: string): string =>
+    !der            ? txt(izq)
+    : !izq          ? `<div class="r">${esc(der)}</div>`
+    : cabenJuntos(izq, der) ? row(izq, der)
+    : `${txt(izq)}\n<div class="r">${esc(der)}</div>`;
+
+  /**
+   * Une con separador SOLO si el resultado cabe entero. Si no, cada trozo va en
+   * su línea: un separador colgando al final del renglón, con el dato en la
+   * siguiente, se lee como si el dato faltara.
+   */
+  const unir = (partes: Array<string | undefined | false>, sep = ' - '): string[] => {
+    const ps = partes.filter(Boolean) as string[];
+    if (!ps.length) return [];
+    const lineas: string[] = [];
+    let actual = ps[0];
+    for (const p of ps.slice(1)) {
+      if ((actual + sep + p).length <= cols) actual += sep + p;
+      else { lineas.push(actual); actual = p; }
+    }
+    lineas.push(actual);
+    return lineas;
+  };
+
+  /**
+   * Campo fiscal: SIEMPRE su propia línea completa, nunca compartida.
+   * e-NCF, código de seguridad, RNC del emisor, tipo de comprobante y las cifras
+   * del desglose de ITBIS. Aunque cueste papel.
+   */
+  const fiscal = (t: string): string => txt(t);
+
   const tipoCode = sale.tipoNcf ?? 'E32';
   const [ncfL1, ncfL2] = tipoDoc
     ? [tipoDoc, tipoDoc === 'PRE-FACTURA' ? 'Documento No Fiscal' : tipoDoc === 'PRO-FORMA' ? 'Presupuesto Informativo - Sin NCF' : 'No válida como comprobante fiscal']
@@ -193,7 +239,12 @@ export function buildReciboTermicoHTML(
     const sub        = (item as any).balanzaTotalFijo != null
       ? (item as any).balanzaTotalFijo * factor
       : precioNeto * item.cantidad * factor;
-    const maxNom     = compacto ? 22 : 26;
+    const importeTxt = sub.toFixed(2);
+    // El recorte del nombre se mide contra lo que deja libre el importe, no
+    // contra un número fijo: con importes de seis cifras un 22 fijo se pasaba
+    // del ancho y el renglón lo cortaba el navegador.
+    const marcas     = (item.precioModificado ? 2 : 0) + ((item as any).esBalanza ? 2 : 0);
+    const maxNom     = compacto ? Math.max(8, cols - importeTxt.length - 1 - marcas) : 26;
     const nom        = item.produto.nombre.length > maxNom ? item.produto.nombre.slice(0, maxNom - 1) + '…' : item.produto.nombre;
     const modMark    = item.precioModificado ? ' *' : '';
     // Marca de pesable. En Bluetooth el simbolo se cae (no existe en CP437),
@@ -211,7 +262,7 @@ export function buildReciboTermicoHTML(
     const descTxt    = item.descuentoMonto > 0
       ? `Desc: -RD$${(item.descuentoMonto * factor).toFixed(2)} c/u (orig. RD$${(item.precio * factor).toFixed(2)})`
       : '';
-    const itemLine   = `<div class="row"><span>${esc(nom + modMark + balMark)}</span><span>${sub.toFixed(2)}</span></div>`;
+    const itemLine   = `<div class="row"><span>${esc(nom + modMark + balMark)}</span><span>${importeTxt}</span></div>`;
     const unitLine   = compacto
       ? `<div class="r small">${esc(detalle)}</div>`
       : `<div class="row small"><span>  ${esc(detalle)}</span></div>`;
@@ -265,38 +316,47 @@ export function buildReciboTermicoHTML(
     // CON descuento global: el recibo habla en pesos c/ITBIS (lo pactado con el
     // cliente). El desglose fiscal va debajo del TOTAL.
     totalesHtml = compacto
-      ? row(`Subtotal c/ITBIS ${num(round2(totalMercancia + descGlobalPact))}`, `Desc. -${num(descGlobalPact)}`)
+      // Cifras del desglose: fiscales, una por línea.
+      ? [fiscal(`Subtotal c/ITBIS ${num(round2(totalMercancia + descGlobalPact))}`),
+         fiscal(`Descuento -${num(descGlobalPact)}`)].join(SALTO)
       : [
           row('Subtotal (c/ITBIS):', fmt(round2(totalMercancia + descGlobalPact))),
           row('Descuento:', `-${fmt(descGlobalPact)}`),
         ].join('\n');
     desgloseFiscalHtml = esExento
       ? (compacto
-          ? `<div class="row small"><span>Monto exento (ZF)</span><span>${num(baseImponible)}</span></div>`
+          ? fiscal(`Monto exento (ZF) ${num(baseImponible)}`)
           : `${line()}<div class="row small"><span>Monto exento (ZF):</span><span>${fmt(baseImponible)}</span></div>`)
       : (compacto
-          ? `<div class="row small"><span>Base imponible ${num(baseImponible)}</span><span>ITBIS 18% ${num(sale.iva)}</span></div>`
+          ? [fiscal(`Base imponible ${num(baseImponible)}`),
+             fiscal(`ITBIS 18% ${num(sale.iva)}`)].join(SALTO)
           : `${line()}<div class="row small"><span>Base imponible:</span><span>${fmt(baseImponible)}</span></div>` +
             `<div class="row small"><span>ITBIS (18%):</span><span>${fmt(sale.iva)}</span></div>`);
   } else if (esExento) {
     // E44 Zona Franca: sin desglose de ITBIS
     totalesHtml = compacto
-      ? row(`Subtotal ${num(sale.subtotal)}`, 'Exento (ZF)')
+      // Zona franca: el subtotal y la marca de exento son desglose fiscal.
+      ? [fiscal(`Subtotal ${num(sale.subtotal)}`), fiscal('Exento (ZF)')].join('\n')
       : row('Subtotal:', fmt(sale.subtotal));
   } else if (compacto) {
-    // Compacto: subtotal e ITBIS emparejados en un renglón. Las líneas que no
-    // aplican no se imprimen, igual que en normal.
-    const izq = gravadoTotal > 0 ? `Subtotal ${num(gravadoTotal)}`
-              : hayExento       ? `Subtotal ${num(montoExento)}`
-              :                   `Subtotal ${num(sale.subtotal)}`;
-    const partesDer: string[] = [];
-    if (hayI1) partesDer.push(`ITBIS 18% ${num(itbis18)}`);
-    if (hayI2) partesDer.push(`ITBIS 16% ${num(itbis16)}`);
-    if (hayI1 && hayI2) partesDer.push(`Total ${num(round2(itbis18 + itbis16))}`);
-    const filas = [row(izq, partesDer.shift() ?? 'ITBIS 0.00')];
-    // Con dos tasas el renglón no da: el resto baja a la derecha, sin perderse.
-    for (const p of partesDer) filas.push(`<div class="r">${esc(p)}</div>`);
-    if (gravadoTotal > 0 && hayExento) filas.push(row(`Gravado ${num(gravadoTotal)}`, `Exento ${num(montoExento)}`));
+    // Desglose de ITBIS: exigible por la DGII. Cada cifra en su propia línea,
+    // completa. Emparejarlas ahorraba un par de milímetros y truncaba importes
+    // de cinco cifras — "Subtotal 169…" no es un subtotal, es una errata.
+    const filas: string[] = [];
+    if (gravadoTotal > 0 && hayExento) {
+      filas.push(fiscal(`Subtotal gravado ${num(gravadoTotal)}`));
+      filas.push(fiscal(`Subtotal exento ${num(montoExento)}`));
+    } else if (gravadoTotal > 0) {
+      filas.push(fiscal(`Subtotal ${num(gravadoTotal)}`));
+    } else if (hayExento) {
+      filas.push(fiscal(`Subtotal ${num(montoExento)}`));
+    } else {
+      filas.push(fiscal(`Subtotal ${num(sale.subtotal)}`));
+    }
+    if (hayI1) filas.push(fiscal(`ITBIS 18% ${num(itbis18)}`));
+    if (hayI2) filas.push(fiscal(`ITBIS 16% ${num(itbis16)}`));
+    if (hayI1 && hayI2) filas.push(fiscal(`Total ITBIS ${num(round2(itbis18 + itbis16))}`));
+    if (!hayI1 && !hayI2 && !hayExento && gravadoTotal <= 0) filas.push(fiscal('ITBIS 0.00'));
     totalesHtml = filas.join('\n');
   } else {
     // Desglose fiscal completo por tasa (visible solo las líneas que aplican)
@@ -320,12 +380,12 @@ export function buildReciboTermicoHTML(
   const pagoHtml = (() => {
     if (tipoDoc === 'COTIZACIÓN' || tipoDoc === 'PRO-FORMA') {
       return compacto
-        ? row(`Validez ${validezDias ?? 30} días`, `${totalLineas} ít.`)
+        ? par(`Validez ${validezDias ?? 30} días`, `${totalLineas} ít.`)
         : row('Validez:', `${validezDias ?? 30} días`) + '\n' + row('Total Ítems:', String(totalLineas));
     }
     if (tipoDoc === 'PRE-FACTURA') {
       return compacto
-        ? row('PENDIENTE DE PAGO', `${totalLineas} ít.`)
+        ? par('PENDIENTE DE PAGO', `${totalLineas} ít.`)
         : row('Estado:', 'PENDIENTE DE PAGO') + '\n' + row('Total Ítems:', String(totalLineas));
     }
     const detalleMixto = esMixtoRecibo
@@ -347,7 +407,7 @@ export function buildReciboTermicoHTML(
       const der = Number(sale.cambio) > 0
         ? `Cambio ${num(Number(sale.cambio))} (${totalLineas} ít.)`
         : `${totalLineas} ít.`;
-      return [row(`Pagado ${num(pagoMostrar)}`, der), ...detalleMixto, plazo]
+      return [par(`Pagado ${num(pagoMostrar)}`, der), ...detalleMixto, plazo]
         .filter(Boolean).join('\n');
     }
     return [
@@ -390,9 +450,14 @@ export function buildReciboTermicoHTML(
   // Emisor — RNC del emisor es intocable, va en los dos formatos.
   const nombreEmp = sale.empresaNombreComercial ?? 'NOMBRE EMPRESA';
   if (compacto) {
-    B.push(`<div class="center bold">${esc(sale.empresaRnc ? `${nombreEmp} - RNC ${sale.empresaRnc}` : nombreEmp)}</div>`);
-    const contacto = [sale.empresaDireccion, sale.empresaTelefono].filter(Boolean).join(' - ');
-    if (contacto) B.push(`<div class="center small">${esc(contacto)}</div>`);
+    // El RNC del emisor es dato fiscal: o cabe entero en la misma línea que el
+    // nombre, o baja a la suya. Nunca con el guion colgando al final.
+    for (const l of unir([nombreEmp, sale.empresaRnc && `RNC ${sale.empresaRnc}`])) {
+      B.push(`<div class="center bold">${esc(l)}</div>`);
+    }
+    for (const l of unir([sale.empresaDireccion, sale.empresaTelefono])) {
+      B.push(`<div class="center small">${esc(l)}</div>`);
+    }
   } else {
     B.push(`<div class="center xlarge">${esc(nombreEmp)}</div>`);
     B.push('<div class="center small">República Dominicana</div>');
@@ -404,7 +469,11 @@ export function buildReciboTermicoHTML(
   // Tipo de comprobante — intocable.
   B.push(compacto ? line() : dbl());
   if (compacto) {
-    B.push(`<div class="center bold">${esc(`${ncfL1} ${ncfL2}`)}</div>`);
+    // Tipo de comprobante: fiscal. Si las dos mitades no caben juntas, dos
+    // líneas — que es como ya sale en el formato normal.
+    for (const l of unir([ncfL1, ncfL2], ' ')) {
+      B.push(`<div class="center bold">${esc(l)}</div>`);
+    }
   } else {
     B.push(`<div class="center bold">${esc(ncfL1)}</div>`);
     B.push(`<div class="center bold">${esc(ncfL2)}</div>`);
@@ -415,15 +484,15 @@ export function buildReciboTermicoHTML(
   const horaTicket  = sale.horaEmision  ?? ahora.format('HH:mm:ss');
   B.push(line());
   if (compacto) {
-    B.push(row(`${fechaTicket} ${horaTicket}`, sale.folio));
+    B.push(par(`${fechaTicket} ${horaTicket}`, sale.folio));
     // La sucursal solo cuando hay más de una: en un negocio de local único es
     // una línea que no informa de nada.
     const emisor = [
       sale.cajero ? `Cajero: ${sale.cajero}` : '',
       (sale.sucursalNombre && variasSucursales) ? sale.sucursalNombre : '',
       modoInfo ? `${modoInfo.icono} ${modoInfo.label}` : '',
-    ].filter(Boolean).join(' - ');
-    if (emisor) B.push(txt(emisor));
+    ];
+    for (const l of unir(emisor)) B.push(txt(l));
   } else {
     B.push(row('Fecha:', fechaTicket));
     B.push(row('Hora:', horaTicket));
@@ -436,7 +505,9 @@ export function buildReciboTermicoHTML(
   // Comprador — cuando el cliente declaró RNC.
   if (mostrarComprador) {
     if (compacto) {
-      B.push(txt([`RNC ${sale.rncComprador ?? ''}`, sale.razonSocial].filter(Boolean).join(' - ')));
+      // RNC del comprador: fiscal, entero y en su línea.
+      B.push(fiscal(`RNC ${sale.rncComprador ?? ''}`));
+      if (sale.razonSocial) for (const l of unir([sale.razonSocial])) B.push(txt(l));
     } else {
       B.push(line());
       B.push('<div class="bold">COMPRADOR:</div>');
@@ -450,9 +521,9 @@ export function buildReciboTermicoHTML(
     B.push(line());
     if (compacto) {
       B.push('<div class="center bold">── MODIFICA A ──</div>');
-      if (sale.facturaOriginalFolio || sale.ncfOriginal) {
-        B.push(row(sale.facturaOriginalFolio ? `Fact. ${sale.facturaOriginalFolio}` : '', sale.ncfOriginal ?? ''));
-      }
+      if (sale.facturaOriginalFolio) B.push(txt(`Fact. ${sale.facturaOriginalFolio}`));
+      // e-NCF del comprobante modificado: fiscal, entero.
+      if (sale.ncfOriginal) B.push(fiscal(sale.ncfOriginal));
       if (sale.codigoModificacion) B.push(txt(`Cód. modif. ${sale.codigoModificacion}`));
       if (sale.descripcionMotivo)  B.push(small(sale.descripcionMotivo));
     } else {
@@ -495,8 +566,12 @@ export function buildReciboTermicoHTML(
       const firma = sale.ecfFecha ?? ahora.format('DD-MM-YYYY HH:mm:ss');
       B.push(line());
       if (compacto) {
-        B.push(row(`e-NCF ${sale.encf}`, sale.securityCode ? `Seg. ${sale.securityCode}` : ''));
-        B.push(txt(`Firma DGII ${firma}`));
+        // e-NCF, código de seguridad y fecha de firma: exigibles por la DGII.
+        // Cada uno en su línea completa, nunca emparejados. Un e-NCF cortado
+        // es peor que uno ausente: parece que está y no está.
+        B.push(fiscal(`e-NCF ${sale.encf}`));
+        if (sale.securityCode) B.push(fiscal(`Cod.Seg. ${sale.securityCode}`));
+        B.push(fiscal(`Firma DGII ${firma}`));
       } else {
         B.push(row('e-NCF:', sale.encf));
         // 'Fecha:' y no 'Fecha firma:': es la etiqueta que ya imprimía el ticket.

@@ -14,11 +14,9 @@
  */
 
 import QRCode from 'qrcode';
+import { QR_LADO_MM as LADO } from './docTermico';
 
 export type FormatoTicket = 'normal' | 'compacto';
-
-/** Alturas de logo que ofrece el selector. 0 = sin logo. */
-export const LOGO_ALTURAS_MM = [25, 11, 0] as const;
 
 export interface ConfigTicket {
   /** Distribución del ticket. Por defecto NORMAL: nadie se encuentra el ticket cambiado sin pedirlo. */
@@ -36,23 +34,6 @@ export interface ConfigTicket {
 /** Lo que hoy se lee de una sucursal. Vacío a propósito: la capa aún no existe. */
 export interface SucursalConfigTicket {
   configuracion?: Record<string, unknown> | null;
-}
-
-/**
- * Normaliza la altura del logo a una de las opciones vigentes.
- *
- * El selector ofrecía 20/30/40/60 mm. Al pasar a 25/11/0 los clientes que ya
- * tenían un valor viejo guardado seguirían imprimiendo bien (es un número en un
- * `max-height`), pero el `<Select>` les saldría en blanco y el primer guardado
- * les borraría el valor sin avisar. Se redondea al más cercano.
- */
-export function normalizarLogoAltura(valor: unknown): number {
-  const n = Number(valor);
-  if (!Number.isFinite(n) || n < 0) return 25;
-  if (n === 0) return 0;
-  return LOGO_ALTURAS_MM.reduce((mejor, opcion) =>
-    Math.abs(opcion - n) < Math.abs(mejor - n) ? opcion : mejor,
-  LOGO_ALTURAS_MM[0]);
 }
 
 function normalizarFormato(valor: unknown): FormatoTicket {
@@ -96,8 +77,7 @@ export function resolverConfigTicket(
 
 // ── QR de verificación DGII ──────────────────────────────────────────────────
 
-/** Lado del QR en el ticket, en mm. Medido: el BT ya imprime a 20mm y escanea. */
-export const QR_LADO_MM = { normal: 34, compacto: 19 } as const;
+export { QR_LADO_MM } from './docTermico';
 
 /** Puntos por mm de las térmicas del parque (203 dpi). */
 const PUNTOS_POR_MM = 8;
@@ -131,7 +111,7 @@ export async function generarQrTicket(url: string, formato: FormatoTicket): Prom
     // porque alguien haya añadido un formato nuevo al lado.
     return QRCode.toDataURL(url, { width: 130, margin: 1, errorCorrectionLevel: 'M' });
   }
-  const ladoMm = QR_LADO_MM[formato];
+  const ladoMm = LADO[formato];
   const modulos = QRCode.create(url, { errorCorrectionLevel: 'M' }).modules.size
     + QR_MARGEN_MODULOS * 2;
   const puntosImpresora = Math.round(ladoMm * PUNTOS_POR_MM);
