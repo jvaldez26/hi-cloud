@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { TenantService } from '../tenant/tenant.service';
+import { VendedorResolverService } from '../facturas/vendedor/vendedor-resolver.service';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
@@ -11,6 +12,7 @@ export class RestauranteService {
   constructor(
     private readonly ds: DataSource,
     private readonly tenantSvc: TenantService,
+    private readonly vendedorResolver: VendedorResolverService,
   ) {}
 
   // ── DASHBOARD ────────────────────────────────────────────────────────────
@@ -564,6 +566,19 @@ export class RestauranteService {
   async cobrarComanda(comandaId: number, dto: any) {
     const empresaId  = this.tenantSvc.getEmpresaId();
     const userId     = this.tenantSvc.getUserId();
+
+    // Antes esto caia en `userId ?? 0` al insertar la factura. El usuario 0 no
+    // existe: la factura quedaba sin dueno Y sin vendedor, y nadie se enteraba.
+    // Este endpoint va detras de JwtAuthGuard y getEmpresaId() —que lanza 403 si
+    // no hay contexto— corre una linea antes, y el middleware pone empresaId y
+    // userId en lineas consecutivas: si llegamos aqui, userId existe. Si algun dia
+    // deja de existir es que se rompio ese invariante, y entonces lo correcto es
+    // no crear la fila, no inventarle un dueno.
+    if (!userId) {
+      throw new BadRequestException(
+        'No hay usuario en el contexto de la peticion; no se puede cobrar la comanda.',
+      );
+    }
     const sucursalId = this.tenantSvc.getSucursalId();
 
     const comanda = await this.obtenerComanda(comandaId);
@@ -634,25 +649,30 @@ export class RestauranteService {
       ivaFac      = +ivaFac.toFixed(2);
       const totalFac = +(subtotalFac + ivaFac).toFixed(2);
 
+      // Esta factura nace EMITIDA por INSERT crudo: ni pasa por facturas.create()
+      // ni por cambiarEstado(), asi que el vendedor hay que resolverlo aqui a mano.
+      const { vendedorId, nombreVendedor } =
+        await this.vendedorResolver.resolverVendedor({}, userId, empresaId);
+
       // 4. Insertar factura
       const facturaRows = await qr.query(`
         INSERT INTO facturas (
-          folio, fecha, estado, "empresaId", "usuarioId", "sucursalId", "clienteId",
+          folio, fecha, estado, "empresaId", "usuarioId", "vendedorId", "nombreVendedor", "sucursalId", "clienteId",
           subtotal, iva, total, "tipoPago", "diasCredito", "tipoNcf",
           moneda, "tipoCambio", "aplicaRetenciones",
           "retieneItbis", "porcentajeRetencionItbis", "montoRetencionItbis",
           "retieneIsr",   "porcentajeRetencionIsr",   "montoRetencionIsr",
           "netoCobrar", "isActive", "createdAt", "updatedAt"
         ) VALUES (
-          $1, NOW(), 'emitida', $2, $3, $4, $5,
+          $1, NOW(), 'emitida', $2, $3, $9, $10, $4, $5,
           $6, $7, $8, 'CONTADO', 0, 'E32',
           'DOP', 1, false,
           false, 30, 0,
           false, 10, 0,
           $8, true, NOW(), NOW()
         ) RETURNING id`,
-        [facturaFolio, empresaId, userId ?? 0, sucursalId ?? null, comanda.clienteId ?? null,
-         subtotalFac, ivaFac, totalFac],
+        [facturaFolio, empresaId, userId, sucursalId ?? null, comanda.clienteId ?? null,
+         subtotalFac, ivaFac, totalFac, vendedorId, nombreVendedor],
       ) as { id: number }[];
       facturaId = facturaRows[0].id;
 

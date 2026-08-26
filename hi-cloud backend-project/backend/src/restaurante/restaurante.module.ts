@@ -17,6 +17,7 @@ import { RsKdsEstacion } from './entities/rs-kds.entity';
 import { RsPropina } from './entities/rs-propina.entity';
 import { TenantModule } from '../tenant/tenant.module';
 import { ModulosAddonModule } from '../modulos-addon/modulos-addon.module';
+import { VendedorResolverModule } from '../facturas/vendedor/vendedor-resolver.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { ModulosAddonModule } from '../modulos-addon/modulos-addon.module';
     ]),
     TenantModule,
     ModulosAddonModule,
+    VendedorResolverModule,
   ],
   controllers: [RestauranteController],
   providers: [RestauranteService, RestaurantePdfService],

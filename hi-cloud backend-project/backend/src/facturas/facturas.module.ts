@@ -14,6 +14,7 @@ import { ContabilidadModule } from '../contabilidad/contabilidad.module';
 import { SuscripcionesModule } from '../suscripciones/suscripciones.module';
 import { CajaModule } from '../caja/caja.module';
 import { RncModule } from '../rnc/rnc.module';
+import { VendedorResolverModule } from './vendedor/vendedor-resolver.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { RncModule } from '../rnc/rnc.module';
     ClientesModule, ProductosModule, InventarioModule,
     ECFModule, CxCModule, ContabilidadModule,
     SuscripcionesModule, CajaModule, RncModule,
+    VendedorResolverModule,
     PdfModule,           // PDFService + NumeroLetrasService encapsulados aquí
   ],
   controllers: [FacturasController],

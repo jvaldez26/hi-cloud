@@ -11,6 +11,7 @@ import { Factura, FacturaEstado } from '../facturas/entities/factura.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { FacturasService } from '../facturas/facturas.service';
+import { VendedorResolverService } from '../facturas/vendedor/vendedor-resolver.service';
 
 interface DetalleDto {
   productoId?: number;
@@ -42,6 +43,7 @@ export class PreFacturaService {
     private tenantSvc: TenantService,
     @InjectDataSource() private ds: DataSource,
     private facturasService: FacturasService,
+    private vendedorResolver: VendedorResolverService,
   ) {}
 
   // ─── Folio ────────────────────────────────────────────────────────────────────
@@ -250,11 +252,19 @@ export class PreFacturaService {
       .getRawOne<{ maxNum: number | null }>();
     const folio = `FAC-${Math.max(101, (fRes?.maxNum ?? 100) + 1)}`;
 
+    // Esta factura nace EMITIDA: no pasa por cambiarEstado(), que es donde se
+    // resuelve el vendedor para los caminos que crean borradores. Aqui hay que
+    // pedirlo explicitamente o entra al cuadre sin nadie a quien imputarsela.
+    const { vendedorId, nombreVendedor } =
+      await this.vendedorResolver.resolverVendedor({}, usuarioId, empresaId);
+
     const factura = this.facturaRepo.create({
       empresaId,
       folio,
       fecha:     new Date(),
       estado:    FacturaEstado.EMITIDA,
+      vendedorId:     vendedorId     ?? undefined,
+      nombreVendedor: nombreVendedor ?? undefined,
       clienteId: pf.clienteId,
       usuarioId,
       subtotal:  pf.subtotal,

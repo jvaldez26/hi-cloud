@@ -1,7 +1,7 @@
-import { FacturasService } from './facturas.service';
-import { reportServiceError } from '../common/observability/sentry';
+import { VendedorResolverService } from './vendedor-resolver.service';
+import { reportServiceError } from '../../common/observability/sentry';
 
-jest.mock('../common/observability/sentry', () => ({
+jest.mock('../../common/observability/sentry', () => ({
   reportServiceError: jest.fn(),
 }));
 
@@ -25,7 +25,7 @@ describe('resolverVendedor', () => {
     filas.forEach(f => query.mockResolvedValueOnce(f));
     query.mockResolvedValue([]);
 
-    const svc: any = Object.create(FacturasService.prototype);
+    const svc: any = Object.create(VendedorResolverService.prototype);
     svc.logger            = { warn: jest.fn(), log: jest.fn(), error: jest.fn() };
     svc.dataSource        = { query };
     svc.sinVendedorBuffer = new Map();
@@ -87,7 +87,7 @@ describe('resolverVendedor', () => {
 
 describe('alertas de facturas sin vendedor', () => {
   const crearService = () => {
-    const svc: any = Object.create(FacturasService.prototype);
+    const svc: any = Object.create(VendedorResolverService.prototype);
     svc.logger            = { warn: jest.fn() };
     svc.sinVendedorBuffer = new Map();
     return svc;
