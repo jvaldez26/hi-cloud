@@ -26,12 +26,28 @@ function sanear(txt: string): string {
   // Los guiones y comillas tipográficos entran por los datos (un nombre pegado
   // desde Word, un guion largo de fallback) y hay que bajarlos a su equivalente
   // ASCII antes de mandarlos.
+  //
+  // La degradación vive AQUÍ y solo aquí. El ticket del navegador es una página
+  // rasterizada y dibuja estos glifos perfectamente; no tiene por qué
+  // empobrecerse porque la BT-58UB no pueda con ellos. La plantilla se queda con
+  // el carácter bueno y este es el único camino que lo baja.
   const ascii = txt
     .replace(/[‐-―]/g, '-')   // ‐ ‑ ‒ – —
     .replace(/[‘’]/g, "'")    // ' '
     .replace(/[“”]/g, '"')    // " "
-    .replace(/…/g, '...')          // …
+    // Marca de recorte del nombre del producto. Un punto y no tres: el recorte
+    // ya contó un carácter, y tres se comen dos del ancho de la línea.
+    .replace(/…/g, '.')
     .replace(/·/g, '-')            // · (ya se usaba como separador y salía basura)
+    .replace(/×/g, 'x')            // línea de cantidad: 3 × RD$1200.00
+    .replace(/⚠/g, '!')            // aviso del comprobante en proceso
+    // Marca de pesable. Se cae sin más: la línea de detalle ya lo dice en texto
+    // ("12.500 KG x RD$96.00", o "Precio fijo etiqueta" cuando la balanza no
+    // reporta unidad), así que quitarla no pierde información.
+    .replace(/ ?⚖/g, '')
+    // Iconos de módulo. Se van con el espacio que los sigue para no dejar un
+    // hueco doble delante de la etiqueta, que es la que informa.
+    .replace(/[🌀-🫿]️? ?/gu, '')
     .replace(/ /g, ' ');           // espacio duro
   // NFD descompone ó → o + combining accent; luego borramos los combining marks
   return ascii.normalize('NFD').replace(/[̀-ͯ]/g, '');

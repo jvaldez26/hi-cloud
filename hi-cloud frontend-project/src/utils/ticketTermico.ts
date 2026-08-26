@@ -194,21 +194,20 @@ export function buildReciboTermicoHTML(
       ? (item as any).balanzaTotalFijo * factor
       : precioNeto * item.cantidad * factor;
     const maxNom     = compacto ? 22 : 26;
-    // Marca de recorte '>', la misma que usa lineaLR(). Los puntos suspensivos
-    // tipograficos se convierten en tres puntos camino del Bluetooth y se comen
-    // dos caracteres del ancho que el recorte ya habia contado.
-    const nom        = item.produto.nombre.length > maxNom ? item.produto.nombre.slice(0, maxNom - 1) + '>' : item.produto.nombre;
+    const nom        = item.produto.nombre.length > maxNom ? item.produto.nombre.slice(0, maxNom - 1) + '…' : item.produto.nombre;
     const modMark    = item.precioModificado ? ' *' : '';
-    // Sin simbolo de balanza: no existe en CP437 y la linea de cantidad ya lleva
-  // la unidad ("1.234 KG"), que es lo que informa.
-  const balMark    = '';
+    // Marca de pesable. En Bluetooth el simbolo se cae (no existe en CP437),
+    // pero la informacion no se pierde: la linea de detalle siempre la lleva en
+    // texto — "12.500 KG x RD$96.00" en modo peso, "Precio fijo etiqueta" en
+    // modo precio, donde la balanza no reporta unidad.
+    const balMark    = (item as any).esBalanza ? ' ⚖' : '';
     // Cantidad con unidad correcta para balanza
     const cantStr    = (item as any).esBalanza
       ? `${item.cantidad.toFixed(3)} ${(item as any).balanzaUnidad ?? ''}`
       : String(item.cantidad);
     const detalle    = (item as any).balanzaTipoDato === 'precio'
       ? 'Precio fijo etiqueta'
-      : `${cantStr} x RD${(precioNeto * factor).toFixed(2)}`;
+      : `${cantStr} × RD$${(precioNeto * factor).toFixed(2)}`;
     const descTxt    = item.descuentoMonto > 0
       ? `Desc: -RD$${(item.descuentoMonto * factor).toFixed(2)} c/u (orig. RD$${(item.precio * factor).toFixed(2)})`
       : '';
@@ -223,14 +222,19 @@ export function buildReciboTermicoHTML(
     return `<div style="page-break-inside:avoid;break-inside:avoid">${itemLine}${unitLine}${descLine}</div>`;
   }).join('');
 
-  // Sin iconos: los emoji no existen en CP437 y por Bluetooth salen como basura.
-  // La etiqueta ya dice de qué módulo es; el icono era decoración de pantalla.
-  const MODO_LABEL: Record<string, string> = {
-    restaurante: 'Restaurante', taller: 'Taller',   farmacia: 'Farmacia',
-    optica:      'Óptica',      clinica: 'Clínica', gimnasio: 'Gimnasio',
+  // El icono se queda: el ticket del navegador es una página rasterizada y lo
+  // dibuja perfectamente. En Bluetooth lo quita sanear(), que es donde vive la
+  // limitación que estorba, y ahí queda la etiqueta, que es lo que informa.
+  const MODO_INFO: Record<string, { icono: string; label: string }> = {
+    restaurante: { icono: '🍽️', label: 'Restaurante' },
+    taller:      { icono: '🔧', label: 'Taller'      },
+    farmacia:    { icono: '💊', label: 'Farmacia'     },
+    optica:      { icono: '👓', label: 'Óptica'       },
+    clinica:     { icono: '🏥', label: 'Clínica'      },
+    gimnasio:    { icono: '🏋️', label: 'Gimnasio'    },
   };
-  const modoLabel = sale.modoContexto && sale.modoContexto !== 'general'
-    ? MODO_LABEL[sale.modoContexto] : null;
+  const modoInfo = sale.modoContexto && sale.modoContexto !== 'general'
+    ? MODO_INFO[sale.modoContexto] : null;
 
   // ── Bloque de totales ──────────────────────────────────────────────────────
   // Los montos base + ITBIS por tasa se toman de calcularDesgloseITBIS() —
@@ -410,7 +414,7 @@ export function buildReciboTermicoHTML(
     const emisor = [
       sale.cajero ? `Cajero: ${sale.cajero}` : '',
       (sale.sucursalNombre && variasSucursales) ? sale.sucursalNombre : '',
-      modoLabel ?? '',
+      modoInfo ? `${modoInfo.icono} ${modoInfo.label}` : '',
     ].filter(Boolean).join(' - ');
     if (emisor) B.push(txt(emisor));
   } else {
@@ -419,7 +423,7 @@ export function buildReciboTermicoHTML(
     B.push(rowBold(tipoDoc ? `${tipoDoc}:` : 'Factura:', sale.folio));
     if (sale.cajero)         B.push(row('Cajero:', sale.cajero));
     if (sale.sucursalNombre) B.push(row('Sucursal:', sale.sucursalNombre));
-    if (modoLabel)           B.push(row('Módulo:', modoLabel));
+    if (modoInfo)            B.push(row('Módulo:', `${modoInfo.icono} ${modoInfo.label}`));
   }
 
   // Comprador — cuando el cliente declaró RNC.
@@ -508,13 +512,13 @@ export function buildReciboTermicoHTML(
       }
       if (sale.ecfPendiente) {
         B.push(compacto
-          ? '<div class="center bold">COMPROBANTE EN PROCESO DE VALIDACIÓN DGII</div>'
-          : `${line()}<div class="center box"><div class="bold">COMPROBANTE EN PROCESO</div><div>DE VALIDACIÓN DGII</div><div class="small">Será enviado cuando sea procesado.</div></div>`);
+          ? '<div class="center bold">&#9888; COMPROBANTE EN PROCESO DE VALIDACIÓN DGII</div>'
+          : `${line()}<div class="center box"><div class="bold">&#9888; COMPROBANTE EN PROCESO</div><div>DE VALIDACIÓN DGII</div><div class="small">Será enviado cuando sea procesado.</div></div>`);
       }
     } else {
       B.push(compacto
-        ? '<div class="center bold">COMPROBANTE EN PROCESO DE VALIDACIÓN DGII</div>'
-        : '<div class="center box"><div class="bold">COMPROBANTE EN PROCESO</div><div>DE VALIDACIÓN DGII</div></div>');
+        ? '<div class="center bold">&#9888; COMPROBANTE EN PROCESO DE VALIDACIÓN DGII</div>'
+        : '<div class="center box"><div class="bold">&#9888; COMPROBANTE EN PROCESO</div><div>DE VALIDACIÓN DGII</div></div>');
     }
   }
 

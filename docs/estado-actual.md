@@ -134,6 +134,39 @@ visibilidad, y la da la alerta agrupada por empresa y día de `acumularFacturaSi
 
 ## 3. Trabajos abiertos
 
+### La térmica no imprime acentos — sin arreglar, a propósito
+
+`DESCRIPCIÓN` sale `DESCRIPCION` en toda impresión por Bluetooth, y lleva así desde
+siempre. La causa está en `sanear()` (`src/services/thermalPrinter.ts`): el texto se manda
+con `TextEncoder`, que emite **UTF-8**, y estas impresoras leen **CP437**. Un `Ó` en UTF-8
+son dos bytes y la impresora los pinta como dos símbolos basura, así que `sanear()` los
+descompone y borra la tilde antes de mandarlos. Feo, pero legible.
+
+**El arreglo de verdad no es tocar la plantilla.** CP437 **sí tiene** `á é í ó ú ñ Ñ`. Hay
+que dejar de mandar UTF-8: una tabla de traducción de ~128 entradas, codificar a bytes CP437
+y seleccionar la página de códigos con `ESC t` al inicializar. Unas 40 líneas.
+
+**Por qué no se ha hecho:**
+
+- Cambia **toda** impresión térmica de **todos** los clientes: tickets, conduces, cierres de
+  caja, recibos de cobro. No es un cambio acotado.
+- Hay que probarlo en una **BT-58UB real**. `ESC t` acepta distintos números de página según
+  el firmware y hay clones que lo ignoran; si se elige la página equivocada, los acentos
+  salen peor que ahora, no mejor. Eso no se sabe hasta que sale en papel.
+- Lo que hoy se pierde es cosmético y **no toca ningún campo exigible por la DGII**: el
+  e-NCF, el código de seguridad, el RNC y los montos son ASCII de nacimiento.
+
+**Qué NO hacer mientras tanto:** quitar los acentos de la plantilla para que los dos caminos
+coincidan. El ticket del navegador es una página rasterizada y los imprime perfectamente; no
+se empobrece el camino bueno para igualarlo al limitado. Ese es el mismo criterio por el que
+el `×` de la línea de cantidad, el `⚠` del comprobante en proceso, los iconos de módulo y la
+marca de pesable `⚖` **se quedan en el HTML** y es `sanear()` quien los baja a ASCII solo de
+camino al Bluetooth.
+
+La excepción es el separador del formato compacto: ahí se eligió un guion ASCII en los dos
+caminos a propósito, porque aparece en casi todas las líneas y verlo distinto según la
+impresora confunde — sobre todo cuando el cliente manda una foto del ticket.
+
 ### `posTipoImpresora` es global — bug vivo, sin arreglar
 
 La configuración del POS vive entera en `empresa.configuracion` (JSONB), **una sola fila por
