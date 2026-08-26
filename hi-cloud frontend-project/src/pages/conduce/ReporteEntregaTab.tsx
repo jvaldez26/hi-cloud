@@ -192,8 +192,8 @@ export default function ReporteEntregaTab() {
 
   // ── Impresión térmica — MISMA que la del POS ─────────────────────────────
   //
-  // Antes esto pedía un PDF al backend (GET /conduces/:id/pdf?formato=termico,
-  // generado con puppeteer) y el resultado no se parecía al ticket que sale del
+  // Antes esto pedía un PDF térmico al backend (una plantilla aparte, ya
+  // borrada) y el resultado no se parecía al ticket que sale del
   // POS: otra maquetación, otro encabezado, otro pie. Un mismo conduce impreso
   // desde dos sitios daba dos papeles distintos.
   //
@@ -220,10 +220,10 @@ export default function ReporteEntregaTab() {
     }
   };
 
-  // ── Abrir PDF de conduce en nueva pestaña (formato carta) ────────────────
-  const abrirPDF = async (conduceId: number, formato: 'carta' | 'termico') => {
+  // ── Abrir PDF de conduce en nueva pestaña (hoja carta) ───────────────────
+  const abrirPDF = async (conduceId: number) => {
     try {
-      const res = await api.get(`/conduces/${conduceId}/pdf?formato=${formato}`, { responseType: 'blob' });
+      const res = await api.get(`/conduces/${conduceId}/pdf`, { responseType: 'blob' });
       const blob = (res as any).data as Blob;
       const url  = URL.createObjectURL(blob);
       const win  = window.open(url, '_blank');
@@ -562,7 +562,7 @@ export default function ReporteEntregaTab() {
                             <Button
                               size="small"
                               icon={<PrinterOutlined />}
-                              onClick={() => abrirPDF(c.id, 'carta')}
+                              onClick={() => abrirPDF(c.id)}
                             >
                               📄 Carta
                             </Button>
