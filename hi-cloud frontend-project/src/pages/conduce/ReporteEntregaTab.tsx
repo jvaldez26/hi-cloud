@@ -23,8 +23,7 @@ import api from '../../api/client';
 import { exportarExcel } from '../../utils/exportExcel';
 // Misma plantilla térmica que usa el POS para imprimir conduces — ver
 // utils/docTermico. Compartirla es lo que garantiza que el ticket sea idéntico.
-import { buildDocTermicoHTML, buildConduceDocData } from '../../utils/docTermico';
-import { imprimirReciboTermico } from '../../utils/printUtils';
+import { imprimirConduceTermico, abrirConducePDF } from '../../utils/imprimirConduce';
 import { dRD } from '../../utils/fechaRD';
 
 const { Compact } = Space;
@@ -190,49 +189,20 @@ export default function ReporteEntregaTab() {
     }
   };
 
-  // ── Impresión térmica — MISMA que la del POS ─────────────────────────────
+  // ── Impresión — el mismo camino que el módulo y el POS ───────────────────
   //
-  // Antes esto pedía un PDF térmico al backend (una plantilla aparte, ya
-  // borrada) y el resultado no se parecía al ticket que sale del
-  // POS: otra maquetación, otro encabezado, otro pie. Un mismo conduce impreso
-  // desde dos sitios daba dos papeles distintos.
-  //
-  // Ahora usa el generador compartido (utils/docTermico), el mismo que llama
-  // POSConducePanel. No son "parecidos": es literalmente el mismo HTML, con el
-  // tipo de impresora configurado en la empresa. La impresión en CARTA sigue
-  // yendo por el PDF del backend, que ahí sí es el formato adecuado.
+  // Estas quince líneas estaban copiadas aquí, en el panel del POS y en el
+  // módulo. Ahora viven en utils/imprimirConduce y las tres pantallas llaman
+  // a la misma función, así que el ticket no puede volver a divergir.
   const [imprimiendo, setImprimiendo] = useState<number | null>(null);
 
   const imprimirTermico = async (conduceId: number) => {
     setImprimiendo(conduceId);
-    try {
-      const [docRes, empRes] = await Promise.all([
-        api.get(`/conduces/${conduceId}`).then(r => r.data?.data ?? r.data),
-        api.get('/configuracion/empresa').then(r => r.data?.data ?? r.data).catch(() => ({})),
-      ]);
-      const gd = buildConduceDocData({ ...docRes, id: conduceId }, empRes);
-      const tipoImpresora = ((empRes?.configuracion ?? {}) as any).posTipoImpresora;
-      imprimirReciboTermico(buildDocTermicoHTML(gd, { tipoImpresora }), undefined, tipoImpresora);
-    } catch {
-      message.error('Error al imprimir conduce');
-    } finally {
-      setImprimiendo(null);
-    }
+    try { await imprimirConduceTermico(conduceId); }
+    finally { setImprimiendo(null); }
   };
 
-  // ── Abrir PDF de conduce en nueva pestaña (hoja carta) ───────────────────
-  const abrirPDF = async (conduceId: number) => {
-    try {
-      const res = await api.get(`/conduces/${conduceId}/pdf`, { responseType: 'blob' });
-      const blob = (res as any).data as Blob;
-      const url  = URL.createObjectURL(blob);
-      const win  = window.open(url, '_blank');
-      // Liberar la URL del objeto después de que la ventana la haya cargado
-      if (win) { win.addEventListener('load', () => URL.revokeObjectURL(url)); }
-    } catch {
-      // si falla, se muestra nada — el PDF devuelve 404 si no existe
-    }
-  };
+  const abrirPDF = abrirConducePDF;
 
   // ── Export Excel (solo disponible para tipo 'factura') ────────────────────
   const exportExcel = () => {

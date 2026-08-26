@@ -11,7 +11,7 @@ import {
 import {
   CarOutlined, PlusOutlined, SendOutlined, CheckCircleOutlined,
   RollbackOutlined, DeleteOutlined, EyeOutlined, FileExcelOutlined,
-  PrinterOutlined, LoadingOutlined, SearchOutlined,
+  PrinterOutlined, LoadingOutlined, SearchOutlined, FilePdfOutlined,
 } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -21,6 +21,7 @@ import api from '../../api/client';
 import { useAuthStore } from '../../store/auth.store';
 import ProductoSelect from '../../components/ProductoSelect';
 import ChoferInput from '../../components/ChoferInput';
+import { imprimirConduceTermico, abrirConducePDF } from '../../utils/imprimirConduce';
 import WhatsAppButton from '../../components/ui/WhatsAppButton';
 import PrintButton from '../../components/ui/PrintButton';
 import ReporteEntregaTab from './ReporteEntregaTab';
@@ -203,26 +204,18 @@ export default function ConducePage() {
     onError: (e: any) => onErr(e, 'Error al eliminar conduce'),
   });
 
+  // Los dos formatos, como ya hacían el POS y el Reporte de Entrega: este módulo
+  // solo ofrecía la hoja carta, y quien despacha desde aquí con una térmica al
+  // lado no tenía forma de sacar el ticket.
+  const imprimirTicket = async (item: any) => {
+    setPdfPending(item.id);
+    try { await imprimirConduceTermico(item.id); }
+    finally { setPdfPending(null); }
+  };
+
   const imprimirPDF = async (item: any) => {
     setPdfPending(item.id);
-    try {
-      const eid = localStorage.getItem('empresaId') ?? '';
-      const res = await fetch(`/api/v1/conduces/${item.id}/pdf`, {
-        credentials: 'include',
-        headers: { 'X-Empresa-ID': eid },
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        message.error(`Error PDF: ${(err as any)?.message ?? res.status}`); return;
-      }
-      const blob = await res.blob();
-      const url  = URL.createObjectURL(blob);
-      const win  = window.open(url, '_blank');
-      if (!win) { message.warning('El navegador bloqueó la ventana emergente'); URL.revokeObjectURL(url); return; }
-      win.addEventListener('load', () => {
-        setTimeout(() => { win.print(); setTimeout(() => URL.revokeObjectURL(url), 1_000); }, 500);
-      });
-    } catch (e: any) { message.error(`No se pudo generar el PDF: ${e?.message ?? ''}`); }
+    try { await abrirConducePDF(item.id); }
     finally { setPdfPending(null); }
   };
 
@@ -358,8 +351,11 @@ export default function ConducePage() {
                   onView={() => setModalDetalle(r)}
                   viewLabel="Ver detalle"
                   items={[
-                    { key: 'pdf', label: pdfPending === r.id ? 'Generando...' : 'Imprimir',
+                    { key: 'ticket', label: pdfPending === r.id ? 'Generando...' : 'Imprimir ticket',
                       icon: pdfPending === r.id ? <LoadingOutlined /> : <PrinterOutlined />,
+                      disabled: pdfPending === r.id, onClick: () => imprimirTicket(r) },
+                    { key: 'pdf', label: pdfPending === r.id ? 'Generando...' : 'PDF hoja carta',
+                      icon: pdfPending === r.id ? <LoadingOutlined /> : <FilePdfOutlined />,
                       disabled: pdfPending === r.id, onClick: () => imprimirPDF(r) },
                     ...(r.estado === 'generado' ? [
                       { key: 'transito', label: 'Marcar En Tránsito', icon: <SendOutlined />, onClick: () => enTransito.mutate(r.id) },

@@ -15,6 +15,7 @@ import QRCode from 'qrcode';
 import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover, Input, Button, Segmented, Tabs, InputNumber, Radio, Checkbox } from 'antd';
 import { SearchOutlined, ShoppingCartOutlined, CheckCircleOutlined, DisconnectOutlined, LogoutOutlined, PrinterOutlined, LockOutlined, UserSwitchOutlined, SwapOutlined, EyeOutlined, EyeInvisibleOutlined, ShopOutlined, MailOutlined, FileExcelOutlined, FilePdfOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import ChoferInput from '../../components/ChoferInput';
+import { imprimirConduceTermico } from '../../utils/imprimirConduce';
 import { VideoPlayerModal } from '../../components/ui/VideoPlayerModal';
 import { useVideosTutoriales } from '../../hooks/useVideosTutoriales';
 import { useAuthStore } from '../../store/auth.store';
@@ -5152,17 +5153,9 @@ function POSConducePanel({ C, onVolver }: {
 
   const imprimirTermico = async (id: number) => {
     setImprimiendo(id);
-    try {
-      const [docRes, empRes] = await Promise.all([
-        api.get(`/conduces/${id}`).then(r => r.data?.data ?? r.data),
-        api.get('/configuracion/empresa').then(r => r.data?.data ?? r.data).catch(() => ({})),
-      ]);
-      // buildConduceDocData es compartido con el Reporte de Entrega del módulo
-      // Conduce: mismo objeto de datos y misma plantilla en los dos sitios.
-      const gd = buildConduceDocData({ ...docRes, id }, empRes);
-      const tipoImpresora = ((empRes.configuracion ?? {}) as any).posTipoImpresora;
-      imprimirReciboTermico(buildDocTermicoHTML(gd, { tipoImpresora }), undefined, tipoImpresora);
-    } catch { message.error('Error al imprimir conduce'); }
+    // Mismo camino que el módulo Conduce y el Reporte de Entrega — ver
+    // utils/imprimirConduce. Un solo sitio arma el ticket para los tres.
+    try { await imprimirConduceTermico(id); }
     finally { setImprimiendo(null); }
   };
 
@@ -8654,18 +8647,10 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           nota2: doc.proveedor ? `Proveedor: ${doc.proveedor}` : undefined,
         };
       } else if (panel === 'conduce') {
-        gd = {
-          tipo: 'CONDUCE', numero: doc.numero ?? String(doc.id),
-          fecha: String(doc.fecha ?? '').substring(0,10),
-          empresa: empInfo,
-          cliente: doc.cliente?.nombre,
-          items: (doc.detalles ?? []).map((d: any) => ({
-            desc: d.descripcion, cant: Number(d.cantidad),
-          })),
-          nota1: `Entrega: ${doc.direccionEntrega ?? '—'}`,
-          nota2: doc.contactoEntrega ? `Contacto: ${doc.contactoEntrega}` : undefined,
-          notas: doc.notas,
-        };
+        // Este panel armaba el conduce a mano y se quedaba sin chofer, sin bloque
+        // de firma y sin código de barras. buildConduceDocData es el mismo que
+        // usan el módulo y el panel de conduces: cuatro sitios, un solo ticket.
+        gd = { ...buildConduceDocData(doc, {}), empresa: empInfo };
       } else if ((panel as string) === 'notas-debito') {
         gd = {
           tipo: 'NOTA DE DÉBITO', numero: doc.numero ?? String(doc.id),

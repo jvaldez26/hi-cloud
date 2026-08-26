@@ -1,6 +1,7 @@
 // ESC/POS Bluetooth Thermal Printer — 58mm (32 chars/line)
 // Web Bluetooth API: Chrome/Edge on Android + HTTPS only.
 import QRCode from 'qrcode';
+import JsBarcode from 'jsbarcode';
 import { ahora, fecha as fechaRD, horaConSegundos } from '../utils/fechaRD';
 
 const CARACTERES_POR_LINEA = 32;
@@ -74,9 +75,11 @@ function comandos() {
     salto(n = 1)      { for (let i = 0; i < n; i++) b(0x0A); return api; },
     cortar()          { b(0x1D, 0x56, 0x42, 0x00); return api; },
 
-    // QR raster bitmap — GS v 0 — compatible con térmicas BT-58UB y similares que
-    // no implementan GS ( k (2D nativo). Los bytes ya vienen pre-renderizados desde canvas.
-    qrBitmap(data: Uint8Array, w: number, h: number) {
+    // Raster bitmap — GS v 0 — compatible con térmicas BT-58UB y similares que
+    // no implementan los comandos nativos de QR (GS ( k) ni de barras (GS k).
+    // Los bytes ya vienen pre-renderizados desde canvas. Lo usan el QR de la
+    // DGII y el código de barras del conduce.
+    bitmap(data: Uint8Array, w: number, h: number) {
       const byteWidth = Math.ceil(w / 8);
       b(0x1B, 0x61, 0x01);                                                 // centrar
       b(0x1D, 0x76, 0x30, 0x00,
@@ -130,6 +133,76 @@ async function _renderQrToBitmap(
     return { data: out, w, h };
   } catch (err) {
     console.warn('[QR-BT] Error al renderizar QR a bitmap — se omite QR del ticket:', err);
+    return null;
+  }
+}
+
+/**
+ * Rasteriza un Code128 a bitmap 1-bit para GS v 0.
+ *
+ * Mismo motivo que el QR de la DGII: las BT-58UB y parientes no implementan
+ * GS k, así que el código va como imagen. Y por el mismo motivo no vale con
+ * dejar el <img> en el HTML — htmlAEscPos descarta las imágenes, así que un
+ * barcode puesto solo como <img> se perdería en silencio por Bluetooth.
+ *
+ * El ancho se limita a 376 dots (múltiplo de 8, cabe en 58mm) reduciendo el
+ * grosor de barra antes que escalar el bitmap: un Code128 reescalado deja de
+ * escanear.
+ */
+const BT_ANCHO_DOTS = 376;
+
+async function _renderBarcodeToBitmap(
+  valor: string,
+): Promise<{ data: Uint8Array; w: number; h: number } | null> {
+  try {
+    let canvas: HTMLCanvasElement | null = null;
+    // De más grueso a más fino: la barra más gruesa que quepa es la que mejor
+    // escanea en una térmica de 203 dpi.
+    for (const barWidth of [3, 2, 1]) {
+      const c = document.createElement('canvas');
+      JsBarcode(c, valor, {
+        format:       'CODE128',
+        width:        barWidth,
+        height:       60,
+        displayValue: false,   // el número va debajo como texto ESC/POS, más nítido
+        margin:       0,
+        background:   '#ffffff',
+        lineColor:    '#000000',
+      });
+      canvas = c;
+      if (c.width <= BT_ANCHO_DOTS) break;
+    }
+    if (!canvas) return null;
+    if (canvas.width > BT_ANCHO_DOTS) {
+      console.warn(`[BARCODE-BT] ${valor} no cabe en 58mm ni con barra de 1 dot — se omite`);
+      return null;
+    }
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      console.warn('[BARCODE-BT] getContext() null — se omite el código de barras');
+      return null;
+    }
+    const w = canvas.width;
+    const h = canvas.height;
+    const byteWidth = Math.ceil(w / 8);
+    const { data: pixels } = ctx.getImageData(0, 0, w, h); // RGBA plano
+    const out = new Uint8Array(byteWidth * h);
+    for (let row = 0; row < h; row++) {
+      for (let col = 0; col < byteWidth; col++) {
+        let byte = 0;
+        for (let bit = 0; bit < 8; bit++) {
+          const x = col * 8 + bit;
+          if (x >= w) continue;   // relleno del último byte: blanco, no la fila siguiente
+          const px = row * w + x;
+          // Canal R con umbral <128 → bit encendido (punto negro).
+          if (pixels[px * 4] < 128) byte |= (0x80 >> bit); // MSB-first
+        }
+        out[row * byteWidth + col] = byte;
+      }
+    }
+    return { data: out, w, h };
+  } catch (err) {
+    console.warn('[BARCODE-BT] Error al rasterizar el código de barras — se omite:', err);
     return null;
   }
 }
@@ -320,7 +393,7 @@ export async function generarReciboESCPOS(sale: SaleBT, empresa: EmpresaBT): Pro
     // QR de verificación DGII (raster GS v 0 — compatible BT-58UB)
     if (sale.qrUrl && !sale.ecfPendiente) {
       c.salto(1);
-      if (qrBitmapResult) c.qrBitmap(qrBitmapResult.data, qrBitmapResult.w, qrBitmapResult.h);
+      if (qrBitmapResult) c.bitmap(qrBitmapResult.data, qrBitmapResult.w, qrBitmapResult.h);
       c.salto(1);
       c.texto(centrar('Escanea para verificar'));
     }
@@ -587,13 +660,36 @@ export async function imprimirReciboEscPos(sale: SaleBT, empresa: EmpresaBT): Pr
 // ── Convertir HTML térmico del POS a ESC/POS ────────────────────────────────
 // Entiende las clases CSS que producen buildReciboTermicoHTML, buildDocTermicoHTML
 // y buildCierreCajaHTML: row, center, bold, xlarge, line, dbl.
-function htmlAEscPos(html: string): Uint8Array {
+/**
+ * Convierte el HTML de un ticket en bytes ESC/POS. Exportada para poder
+ * verificar la conversión (sobre todo el raster del código de barras) sin tener
+ * delante una impresora emparejada.
+ */
+export async function htmlAEscPos(html: string): Promise<Uint8Array> {
   const doc  = new DOMParser().parseFromString(html, 'text/html');
   const c    = comandos().init();
 
+  // Los códigos de barras se rasterizan ANTES de recorrer el DOM: proc() es
+  // síncrono y JsBarcode necesita un canvas. Mismo patrón que el QR del ticket.
+  const barcodes = new Map<string, { data: Uint8Array; w: number; h: number }>();
+  for (const img of Array.from(doc.querySelectorAll('img[data-barcode]'))) {
+    const valor = img.getAttribute('data-barcode') ?? '';
+    if (!valor || barcodes.has(valor)) continue;
+    const bmp = await _renderBarcodeToBitmap(valor);
+    if (bmp) barcodes.set(valor, bmp);
+  }
+
   function proc(el: Element, isCentrado = false) {
     const tag = el.tagName.toLowerCase();
-    if (['style', 'script', 'head', 'img'].includes(tag)) return;
+    // Las <img> no se imprimen por Bluetooth salvo que sean un código de barras,
+    // que va como raster porque estas impresoras no traen GS k.
+    if (tag === 'img') {
+      const valor = el.getAttribute('data-barcode') ?? '';
+      const bmp   = valor ? barcodes.get(valor) : undefined;
+      if (bmp) c.bitmap(bmp.data, bmp.w, bmp.h);
+      return;
+    }
+    if (['style', 'script', 'head'].includes(tag)) return;
     if (tag === 'hr') { c.alignLeft(); c.texto(separador('-')); return; }
 
     const cls      = (el.className ?? '') as string;
@@ -606,6 +702,8 @@ function htmlAEscPos(html: string): Uint8Array {
 
     if (esLinea) { c.alignLeft(); c.texto(separador('.')); return; }
     if (esDoble) { c.alignLeft(); c.texto(separador('=')); return; }
+    // Aire en blanco — el bloque de firma se rellena a mano y necesita sitio.
+    if (cls.includes('gap')) { c.salto(cls.includes('gap2') ? 2 : 1); return; }
 
     if (esRow) {
       const spans = Array.from(el.querySelectorAll(':scope > span'));
@@ -650,7 +748,7 @@ function htmlAEscPos(html: string): Uint8Array {
 
 /** Imprime cualquier HTML térmico del POS en la impresora BT (sin diálogo del navegador). */
 export async function imprimirHtmlEnBT(html: string): Promise<void> {
-  const bytes = htmlAEscPos(html);
+  const bytes = await htmlAEscPos(html);
   await enviarDatos(bytes);
 }
 
