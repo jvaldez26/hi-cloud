@@ -121,6 +121,16 @@ ok('el catálogo del backend declara roles por gráfica',
    /roles:\s*(TODOS|NO_VIEWER)/.test(catalogo),
    'sin roles por gráfica no hay nada que filtrar');
 
+const topeBack  = (catalogo.match(/MAX_WIDGETS\s*=\s*(\d+)/) ?? [])[1];
+const topeFront = (hook.match(/MAX_WIDGETS\s*=\s*(\d+)/) ?? [])[1];
+ok('el tope de gráficas es el mismo en front y back',
+   Boolean(topeBack) && topeBack === topeFront,
+   `back=${topeBack ?? '(no encontrado)'} front=${topeFront ?? '(no encontrado)'} — si el front deja pasar más de las que acepta el back, la gráfica aparece, el servidor la rechaza y desaparece sola`);
+
+ok('el guardado avisa cuando el servidor lo rechaza',
+   /message\.error/.test(hook),
+   'un optimista que revierte en silencio es peor que no ser optimista');
+
 // ── 6. Ningún queryKey lleva dentro la lista de widgets ────────────────────
 console.log('\nNingún queryKey lleva dentro la lista activa');
 const archivosConQuery = [

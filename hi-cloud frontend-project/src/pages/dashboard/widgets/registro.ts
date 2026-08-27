@@ -9,6 +9,8 @@ import { WidgetTopClientes } from './WidgetTopClientes';
 import { WidgetTopProductos } from './WidgetTopProductos';
 import { WidgetVentasPorDia, WidgetComprasPorDia } from './WidgetPorDiaDelMes';
 import { WidgetComprasPorProveedor } from './WidgetComprasPorProveedor';
+import { WidgetInventarioValor } from './WidgetInventarioValor';
+import { WidgetHorasPico } from './WidgetHorasPico';
 
 /**
  * Registro de gráficas del dashboard.
@@ -102,6 +104,21 @@ export const REGISTRO_WIDGETS: Record<string, DefinicionWidget> = {
     titulo: 'Compras por proveedor',
     ancho: 'tarjeta',
     Componente: WidgetComprasPorProveedor,
+  },
+
+  // ── Lote 4 de la Fase 4 — con esto el catalogo queda completo ───────────
+  'inventario-valor-categoria': {
+    slug: 'inventario-valor-categoria',
+    titulo: 'Valor de inventario por categoría',
+    ancho: 'tarjeta',
+    Componente: WidgetInventarioValor,
+  },
+  'horas-pico': {
+    slug: 'horas-pico',
+    titulo: 'Horas y días pico de venta',
+    // Rejilla de 7 filas por las horas de apertura: necesita ancho.
+    ancho: 'principal',
+    Componente: WidgetHorasPico,
   }
 };
 

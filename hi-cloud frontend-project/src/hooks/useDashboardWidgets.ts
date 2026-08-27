@@ -1,10 +1,18 @@
 import { useCallback } from 'react';
+import { message } from 'antd';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { preferenciasApi, type RespuestaWidgets } from '../api/preferencias.api';
 import { SLUGS_IMPLEMENTADOS } from '../pages/dashboard/widgets/registro';
 
 /** Clave de la PREFERENCIA. Nunca lleva dentro la lista de gráficas activas. */
 export const CLAVE_PREFERENCIA = ['dashboard-widgets'] as const;
+
+/**
+ * Tope de graficas por usuario. Tiene que coincidir con MAX_WIDGETS del backend
+ * (src/preferencias/dashboard-widgets.catalogo.ts): el catalogo tiene 14 y el
+ * tope es 12, asi que el choque es alcanzable de verdad, no teorico.
+ */
+export const MAX_WIDGETS = 12;
 
 /**
  * Las cuatro de siempre. Duplican los defaults del backend a propósito: si la
@@ -57,8 +65,14 @@ export function useDashboardWidgets() {
       return { anterior };
     },
 
-    onError: (_err, _vars, ctx) => {
+    onError: (err: any, _vars, ctx) => {
       if (ctx?.anterior) qc.setQueryData([...CLAVE_PREFERENCIA], ctx.anterior);
+      // Un optimista que revierte sin decir nada es peor que no ser optimista:
+      // la grafica aparece, desaparece sola y nadie sabe por que.
+      const detalle = err?.response?.data?.message
+        ?? err?.response?.data?.errors?.[0]
+        ?? 'No se pudo guardar tu selección de gráficas.';
+      message.error(String(detalle));
     },
 
     // Sin onSettled con invalidate: el servidor devuelve la misma lista que ya
@@ -77,6 +91,15 @@ export function useDashboardWidgets() {
 
   const agregar = useCallback((slug: string) => {
     if (slugs.includes(slug)) return;
+    // Se corta aqui, antes del optimista: si se dejara pasar, la grafica
+    // apareceria, el servidor devolveria 400 por el tope y desapareceria sola.
+    // Mejor decirlo antes de pintarla.
+    if (slugs.length >= MAX_WIDGETS) {
+      message.warning(
+        `El panel admite ${MAX_WIDGETS} gráficas. Quita alguna antes de agregar otra.`,
+      );
+      return;
+    }
     aplicar([...slugs, slug]);
   }, [slugs, aplicar]);
 
