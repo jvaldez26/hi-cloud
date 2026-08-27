@@ -5,6 +5,9 @@ import { WidgetResumenGastos } from './WidgetResumenGastos';
 import { WidgetEcfEstado } from './WidgetEcfEstado';
 import { WidgetVentasPorVendedor } from './WidgetVentasPorVendedor';
 import { WidgetVentasTendencia } from './WidgetVentasTendencia';
+import { WidgetTopClientes } from './WidgetTopClientes';
+import { WidgetTopProductos } from './WidgetTopProductos';
+import { WidgetVentasPorDia } from './WidgetPorDiaDelMes';
 
 /**
  * Registro de gráficas del dashboard.
@@ -63,6 +66,27 @@ export const REGISTRO_WIDGETS: Record<string, DefinicionWidget> = {
     // Doce puntos en el eje X: en un tercio de ancho las etiquetas se pisan.
     ancho: 'principal',
     Componente: WidgetVentasTendencia,
+  },
+
+  // ── Lote 2 de la Fase 4 ─────────────────────────────────────────────────
+  'top-clientes': {
+    slug: 'top-clientes',
+    titulo: 'Top clientes',
+    ancho: 'tarjeta',
+    Componente: WidgetTopClientes,
+  },
+  'top-productos': {
+    slug: 'top-productos',
+    titulo: 'Top productos',
+    ancho: 'tarjeta',
+    Componente: WidgetTopProductos,
+  },
+  'ventas-por-dia-mes': {
+    slug: 'ventas-por-dia-mes',
+    titulo: 'Ventas por día del mes',
+    // Hasta 31 barras: en un tercio de ancho no se distinguen.
+    ancho: 'principal',
+    Componente: WidgetVentasPorDia,
   }
 };
 
