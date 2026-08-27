@@ -2,6 +2,9 @@ import type { DefinicionWidget } from './tipos';
 import { WidgetIngresosGastos } from './WidgetIngresosGastos';
 import { WidgetAntiguedadCobrar, WidgetAntiguedadPagar } from './WidgetAntiguedad';
 import { WidgetResumenGastos } from './WidgetResumenGastos';
+import { WidgetEcfEstado } from './WidgetEcfEstado';
+import { WidgetVentasPorVendedor } from './WidgetVentasPorVendedor';
+import { WidgetVentasTendencia } from './WidgetVentasTendencia';
 
 /**
  * Registro de gráficas del dashboard.
@@ -40,6 +43,27 @@ export const REGISTRO_WIDGETS: Record<string, DefinicionWidget> = {
     ancho: 'tarjeta',
     Componente: WidgetResumenGastos,
   },
+
+  // ── Lote 1 de la Fase 4 ─────────────────────────────────────────────────
+  'ecf-estado-mes': {
+    slug: 'ecf-estado-mes',
+    titulo: 'e-CF por estado DGII (mes)',
+    ancho: 'tarjeta',
+    Componente: WidgetEcfEstado,
+  },
+  'ventas-por-vendedor': {
+    slug: 'ventas-por-vendedor',
+    titulo: 'Ventas por vendedor',
+    ancho: 'tarjeta',
+    Componente: WidgetVentasPorVendedor,
+  },
+  'ventas-tendencia-12m': {
+    slug: 'ventas-tendencia-12m',
+    titulo: 'Ventas mensuales (12 meses)',
+    // Doce puntos en el eje X: en un tercio de ancho las etiquetas se pisan.
+    ancho: 'principal',
+    Componente: WidgetVentasTendencia,
+  }
 };
 
 export const widgetPorSlug = (slug: string): DefinicionWidget | undefined =>

@@ -112,6 +112,15 @@ ok('la caché de la preferencia se toca a mano (setQueryData)',
 ok('el guardado es optimista (onMutate) y revierte si falla (onError)',
    /onMutate/.test(hook) && /onError/.test(hook));
 
+// ── 5b. El menú se llena con lo que autoriza el SERVIDOR ───────────────────
+console.log('\nFiltrado por rol');
+ok('las disponibles salen del catálogo del servidor, no del registro local',
+   /disponibles\s*=\s*\(respuesta\?\.catalogo/.test(hook),
+   'si el menú se llenara del registro local, un viewer podría agregar una gráfica de /reportes y llevarse un 403');
+ok('el catálogo del backend declara roles por gráfica',
+   /roles:\s*(TODOS|NO_VIEWER)/.test(catalogo),
+   'sin roles por gráfica no hay nada que filtrar');
+
 // ── 6. Ningún queryKey lleva dentro la lista de widgets ────────────────────
 console.log('\nNingún queryKey lleva dentro la lista activa');
 const archivosConQuery = [
