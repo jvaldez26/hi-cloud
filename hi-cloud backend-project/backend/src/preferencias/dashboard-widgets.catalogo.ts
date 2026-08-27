@@ -88,6 +88,16 @@ export const widgetPermitido = (slug: string, rol: UserRole) =>
 export const catalogoParaRol = (rol: UserRole) =>
   CATALOGO_WIDGETS.filter(w => w.roles.includes(rol));
 
-/** Los defaults que ese rol puede ver de verdad. */
-export const defectoParaRol = (rol: UserRole) =>
-  WIDGETS_POR_DEFECTO.filter(s => widgetPermitido(s, rol));
+/**
+ * Los defaults que ese rol puede ver de verdad.
+ *
+ * Las cuatro de siempre viven en /reportes, que NO admite viewer: un viewer que
+ * entra por primera vez se quedaria con cero graficas y el mensaje de "las
+ * quitaste todas", que ademas es mentira. Cuando ningun default le sirve, se le
+ * dan las primeras del catalogo que si puede ver — las de /analytics.
+ */
+export const defectoParaRol = (rol: UserRole) => {
+  const permitidos = WIDGETS_POR_DEFECTO.filter(s => widgetPermitido(s, rol));
+  if (permitidos.length > 0) return permitidos;
+  return catalogoParaRol(rol).slice(0, 4).map(w => w.slug);
+};

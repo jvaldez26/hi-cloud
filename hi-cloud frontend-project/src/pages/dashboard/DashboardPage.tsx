@@ -1,4 +1,4 @@
-import { Row, Col, Card, Table, Typography, Tag, Button, theme, DatePicker, Skeleton } from 'antd';
+import { Row, Col, Card, Table, Typography, Tag, Button, theme, DatePicker, Skeleton, message } from 'antd';
 import { SkeletonTabla } from '../../components/ui/SkeletonTabla';
 import { useSkeletonDelay } from '../../hooks/useSkeletonDelay';
 import { DollarOutlined, FileTextOutlined } from '@ant-design/icons';
@@ -16,6 +16,10 @@ import { dRD, horaDelDiaRD } from '../../utils/fechaRD';
 import { useDashboardWidgets } from '../../hooks/useDashboardWidgets';
 import { widgetPorSlug } from './widgets/registro';
 import { CardWidget } from './widgets/CardWidget';
+import { MarcoWidget } from './widgets/MarcoWidget';
+import { MontarAlVerse } from './widgets/MontarAlVerse';
+import { BotonAgregarGrafica } from './widgets/BotonAgregarGrafica';
+import { PanelSinGraficas, AvisoPreferenciaDegradada } from './widgets/PanelSinGraficas';
 
 const { Text } = Typography;
 
@@ -225,7 +229,44 @@ function DashboardAdmin() {
 
   // Que graficas ve ESTE usuario en ESTA empresa. Si la preferencia falla, el
   // hook cae a las cuatro de siempre: nadie se queda sin panel por eso.
-  const { slugs } = useDashboardWidgets();
+  const {
+    slugs, disponibles, porDefecto, degradado,
+    agregar, quitar, aplicar, reponerPorDefecto,
+  } = useDashboardWidgets();
+
+  // Confirmacion breve con deshacer. El deshacer manda otro PUT en vez de
+  // retrasar el primero: un guardado pendiente se pierde si el usuario navega,
+  //  y perder una preferencia por ahorrar una peticion no compensa.
+  const avisar = useCallback((texto: string, listaAnterior: string[]) => {
+    message.open({
+      type: 'success',
+      content: (
+        <span>
+          {texto}{' '}
+          <a onClick={() => { message.destroy(); aplicar(listaAnterior); }}>Deshacer</a>
+        </span>
+      ),
+      duration: 4,
+    });
+  }, [aplicar]);
+
+  const alAgregar = useCallback((slug: string) => {
+    const antes = slugs;
+    const w = widgetPorSlug(slug);
+    agregar(slug);
+    avisar(`${w?.titulo ?? 'Gráfica'} agregada.`, antes);
+  }, [slugs, agregar, avisar]);
+
+  const alQuitar = useCallback((slug: string) => {
+    const antes = slugs;
+    const w = widgetPorSlug(slug);
+    quitar(slug);
+    avisar(`${w?.titulo ?? 'Gráfica'} quitada.`, antes);
+  }, [slugs, quitar, avisar]);
+
+  const botonAgregar = (
+    <BotonAgregarGrafica disponibles={disponibles} onAgregar={alAgregar} />
+  );
   const tarjetas  = slugs
     .map(widgetPorSlug)
     .filter((w): w is NonNullable<typeof w> => !!w && w.ancho === 'tarjeta');
@@ -278,6 +319,17 @@ function DashboardAdmin() {
   return (
     <div>
       <ContextoHeader />
+
+      {degradado && <AvisoPreferenciaDegradada />}
+
+      {/* El boton vive arriba, junto al saludo: es lo que convierte el panel en
+          algo que se configura, y tiene que verse sin buscarlo. */}
+      <div style={{
+        display: 'flex', justifyContent: 'flex-end',
+        marginBottom: 12,
+      }}>
+        {botonAgregar}
+      </div>
 
       <Row gutter={[16, 0]}>
         {/* ══ Columna izquierda ══════════════════════════════════════ */}
@@ -439,12 +491,19 @@ function DashboardAdmin() {
         {/* ══ Columna derecha ════════════════════════════════════════ */}
         <Col xs={24} lg={15}>
 
-          {/* Gráficas anchas elegidas por el usuario. Cada una trae su propia
-              consulta: si no está en la lista, no se monta y no pide nada. */}
+          {/* Gráficas anchas. Cada una trae su consulta dentro y solo se monta
+              cuando el hueco se acerca a la pantalla: si no está montada, no
+              pide nada. */}
           {slugs.map(slug => {
             const w = widgetPorSlug(slug);
             if (!w || w.ancho !== 'principal') return null;
-            return <w.Componente key={slug} />;
+            return (
+              <MontarAlVerse key={slug} alto={340}>
+                <MarcoWidget titulo={w.titulo} onQuitar={() => alQuitar(slug)}>
+                  <w.Componente />
+                </MarcoWidget>
+              </MontarAlVerse>
+            );
           })}
 
           {/* Widget: Facturas & Cobros */}
@@ -516,8 +575,20 @@ function DashboardAdmin() {
         }}
           className="dashboard-widgets-row"
         >
-          {tarjetas.map(w => <w.Componente key={w.slug} />)}
+          {tarjetas.map(w => (
+            <MontarAlVerse key={w.slug} alto={300}>
+              <MarcoWidget titulo={w.titulo} onQuitar={() => alQuitar(w.slug)}>
+                <w.Componente />
+              </MarcoWidget>
+            </MontarAlVerse>
+          ))}
         </div>
+      )}
+
+      {/* Se quedó sin ninguna: mensaje con las dos salidas, nunca un vacío
+          del que no se sepa salir. */}
+      {slugs.length === 0 && (
+        <PanelSinGraficas onReponer={reponerPorDefecto} botonAgregar={botonAgregar} />
       )}
     </div>
   );

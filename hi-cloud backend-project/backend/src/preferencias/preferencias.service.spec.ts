@@ -89,6 +89,19 @@ describe('PreferenciasService — widgets del dashboard', () => {
     expect((await svc.getWidgetsDashboard()).widgets).toEqual(['ventas-por-vendedor']);
   });
 
+  it('un viewer no entra a un panel vacio', async () => {
+    // Las cuatro por defecto viven en /reportes, que no admite viewer. Sin
+    // respaldo, su primera visita seria una pantalla en blanco con el mensaje
+    // de "las quitaste todas", que ademas es falso.
+    const { svc } = crear(null, UserRole.VIEWER);
+    const r = await svc.getWidgetsDashboard();
+
+    expect(r.widgets.length).toBeGreaterThan(0);
+    expect(r.porDefecto).toBe(true);
+    // Y todas tienen que ser cosas que de verdad pueda pedir.
+    for (const s of r.widgets) expect(r.catalogo.map((w: any) => w.slug)).toContain(s);
+  });
+
   it('el catalogo llega filtrado por rol', async () => {
     const { svc: admin }  = crear(null, UserRole.ADMIN);
     const { svc: viewer } = crear(null, UserRole.VIEWER);

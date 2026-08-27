@@ -95,5 +95,67 @@ for (const d of defaults) {
      'un default que el front no sabe pintar deja el panel vacío al entrar por primera vez');
 }
 
+// ── 5. Guardar no puede arrastrar a las gráficas ───────────────────────────
+console.log('\nGuardar no dispara consultas de gráficas');
+const hook = leer('src/hooks/useDashboardWidgets.ts');
+
+// Se busca la LLAMADA (`algo.invalidateQueries(`), no la palabra: el propio
+// hook la nombra en un comentario para explicar por qué no está.
+ok('el hook no invalida nada al guardar',
+   !/\w\.invalidateQueries\s*\(/.test(hook),
+   'un invalidateQueries aquí volvería a pedir los datos de TODAS las gráficas montadas cada vez que se agrega o quita una');
+
+ok('la caché de la preferencia se toca a mano (setQueryData)',
+   /setQueryData/.test(hook),
+   'sin esto el cambio no se ve hasta que vuelva la respuesta del servidor');
+
+ok('el guardado es optimista (onMutate) y revierte si falla (onError)',
+   /onMutate/.test(hook) && /onError/.test(hook));
+
+// ── 6. Ningún queryKey lleva dentro la lista de widgets ────────────────────
+console.log('\nNingún queryKey lleva dentro la lista activa');
+const archivosConQuery = [
+  'src/hooks/useDashboardWidgets.ts',
+  PAGE,
+  ...archivosWidget.map(f => join(DIR, f)),
+];
+for (const f of archivosConQuery) {
+  const lineas = leer(f).split(LINEAS).filter(l => /queryKey:/.test(l));
+  // Un queryKey que interpole la lista haría que agregar o quitar cualquier
+  // gráfica cambiase la clave de las demás — y las volviera a pedir todas.
+  const sospechosa = lineas.find(l => /queryKey:.*\b(slugs|widgets|tarjetas|disponibles)\b/.test(l));
+  ok(`${f.split('/').pop()} no mete la lista en ningún queryKey`, !sospechosa,
+     sospechosa ? `línea: ${sospechosa.trim()}` : '');
+}
+
+// ── 7. Móvil: el botón de quitar no depende del hover ──────────────────────
+console.log('\nMóvil');
+const marco = leer(join(DIR, 'MarcoWidget.tsx'));
+ok('el botón de quitar es visible en móvil sin hover',
+   /isMobile\s*\|\|\s*hover/.test(marco),
+   'en táctil no hay hover: un botón que solo aparece al pasar el ratón no existe');
+ok('el área táctil es de 44px',
+   /width:\s*44[,\s]/.test(marco) && /height:\s*44[,\s]/.test(marco),
+   'por debajo de 44px se falla el toque y se acaba pulsando la gráfica');
+
+// ── 8. Carga por visibilidad ───────────────────────────────────────────────
+console.log('\nCarga por visibilidad');
+const lazy = leer(join(DIR, 'MontarAlVerse.tsx'));
+ok('MontarAlVerse usa IntersectionObserver', /IntersectionObserver/.test(lazy));
+ok('reserva altura mientras no está montada', /height:\s*alto/.test(lazy),
+   'sin altura reservada el panel pega saltos cuando entra cada gráfica');
+ok('el panel envuelve sus gráficas en MontarAlVerse',
+   (page.match(/<MontarAlVerse/g) ?? []).length >= 2,
+   'diez gráficas apiladas en un móvil dispararían diez peticiones al abrir');
+
+// ── 9. Estado vacío con salida ─────────────────────────────────────────────
+console.log('\nEstado vacío');
+ok('hay salida cuando no queda ninguna gráfica',
+   /slugs\.length === 0/.test(page) && /PanelSinGraficas/.test(page),
+   'nadie puede quedarse mirando una pantalla vacía sin saber cómo salir');
+const vacio = leer(join(DIR, 'PanelSinGraficas.tsx'));
+ok('el estado vacío ofrece reponer las de siempre', /onReponer/.test(vacio));
+ok('el estado vacío ofrece agregar una concreta', /botonAgregar/.test(vacio));
+
 console.log(`\n${fallos === 0 ? '✅' : '❌'} ${total - fallos}/${total} comprobaciones`);
 process.exit(fallos === 0 ? 0 : 1);
