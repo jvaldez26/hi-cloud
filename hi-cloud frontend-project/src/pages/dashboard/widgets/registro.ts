@@ -7,7 +7,8 @@ import { WidgetVentasPorVendedor } from './WidgetVentasPorVendedor';
 import { WidgetVentasTendencia } from './WidgetVentasTendencia';
 import { WidgetTopClientes } from './WidgetTopClientes';
 import { WidgetTopProductos } from './WidgetTopProductos';
-import { WidgetVentasPorDia } from './WidgetPorDiaDelMes';
+import { WidgetVentasPorDia, WidgetComprasPorDia } from './WidgetPorDiaDelMes';
+import { WidgetComprasPorProveedor } from './WidgetComprasPorProveedor';
 
 /**
  * Registro de gráficas del dashboard.
@@ -87,6 +88,20 @@ export const REGISTRO_WIDGETS: Record<string, DefinicionWidget> = {
     // Hasta 31 barras: en un tercio de ancho no se distinguen.
     ancho: 'principal',
     Componente: WidgetVentasPorDia,
+  },
+
+  // ── Lote 3 de la Fase 4 ─────────────────────────────────────────────────
+  'compras-por-dia-mes': {
+    slug: 'compras-por-dia-mes',
+    titulo: 'Compras por día del mes',
+    ancho: 'principal',
+    Componente: WidgetComprasPorDia,
+  },
+  'compras-por-proveedor': {
+    slug: 'compras-por-proveedor',
+    titulo: 'Compras por proveedor',
+    ancho: 'tarjeta',
+    Componente: WidgetComprasPorProveedor,
   }
 };
 
