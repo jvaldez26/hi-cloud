@@ -1,24 +1,14 @@
 import type { ComponentType } from 'react';
 
 /**
- * Ancho que pide una gráfica dentro de la rejilla.
+ * Ancho que pide una gráfica.
  *
- * No es una decisión de maquetación suelta: es una propiedad de la gráfica.
- *
- *   'ancha' → ocupa 2 columnas. Eje temporal o muchas categorías en X: 31 barras
- *             de un mes o 12 meses de serie comprimidos a media pantalla dejan de
- *             leerse.
- *   'media' → 1 columna. Donuts y rankings de 8 filas ganan poco con más ancho.
- *
- * Con 2 columnas, 'ancha' es el ancho completo; con 3, son dos tercios.
+ * No es una decisión de maquetación suelta: es una propiedad de la gráfica. Una
+ * serie de doce meses necesita ancho para leerse; un donut de cinco categorías
+ * se lee igual de bien en una tarjeta de un tercio. Por eso vive en el registro
+ * y no en el layout.
  */
-export type AnchoWidget = 'ancha' | 'media';
-
-/** Alto mínimo de cada tipo. La celda puede crecer si su fila es más alta. */
-export const ALTO_MINIMO: Record<AnchoWidget, number> = {
-  ancha: 400,
-  media: 340,
-};
+export type AnchoWidget = 'principal' | 'tarjeta';
 
 export type DefinicionWidget = {
   /** Debe coincidir EXACTAMENTE con el slug del catálogo del backend. */

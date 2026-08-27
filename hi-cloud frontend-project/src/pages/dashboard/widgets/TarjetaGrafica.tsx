@@ -11,7 +11,7 @@ import { ReloadOutlined } from '@ant-design/icons';
  * reinvente el borde, el radio y el color del pie.
  */
 export function TarjetaGrafica({
-  titulo, subtitulo, onRefresh, vacio, mensajeVacio,
+  titulo, subtitulo, onRefresh, vacio, mensajeVacio, alto = 260,
   pieEtiqueta, pieValor, pieColor, children,
 }: {
   titulo:        string;
@@ -20,6 +20,7 @@ export function TarjetaGrafica({
   /** true cuando no hay datos que pintar. */
   vacio?:        boolean;
   mensajeVacio?: string;
+  alto?:         number;
   pieEtiqueta?:  string;
   pieValor?:     string;
   pieColor?:     string;
@@ -32,12 +33,10 @@ export function TarjetaGrafica({
       background: token.colorBgContainer,
       border: `1px solid ${token.colorBorderSecondary}`,
       borderRadius: 12, overflow: 'hidden',
-      flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0,
     }}>
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '14px 16px', borderBottom: `1px solid ${token.colorBorderSecondary}`,
-        flexShrink: 0,
         // Deja sitio a la papelera del MarcoWidget, que se posiciona encima.
         paddingRight: 56,
       }}>
@@ -58,28 +57,21 @@ export function TarjetaGrafica({
 
       {vacio ? (
         <div style={{
-          display: 'flex', flexDirection: 'column',
+          height: alto, display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center', gap: 8,
-          flex: 1,
         }}>
           <div style={{ fontSize: 32 }}>📊</div>
           <div style={{ fontSize: 13, color: token.colorTextTertiary, textAlign: 'center', padding: '0 16px' }}>
             {mensajeVacio ?? 'Sin datos para este período'}
           </div>
         </div>
-      ) : (
-        // El cuerpo crece con la celda: si la fila es alta porque otra grafica
-        // lo es, esta la acompana en vez de dejar aire debajo.
-        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-          {children}
-        </div>
-      )}
+      ) : children}
 
       {!vacio && pieEtiqueta && (
         <div style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           padding: '10px 16px', borderTop: `1px solid ${token.colorBorderSecondary}`,
-          background: token.colorFillAlter, flexShrink: 0,
+          background: token.colorFillAlter,
         }}>
           <span style={{
             fontSize: 11, fontWeight: 700, color: token.colorTextTertiary,

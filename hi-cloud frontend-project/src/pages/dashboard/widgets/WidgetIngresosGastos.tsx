@@ -166,8 +166,8 @@ export function WidgetIngresosGastos() {
         </div>
       </div>
       {/* Gráfico */}
-      <div ref={chartContainerRef} style={{ padding: '0 8px 16px', flex: 1, minHeight: 0 }}>
-        <ResponsiveContainer width="100%" height="100%">
+      <div ref={chartContainerRef} style={{ padding: '0 8px 16px' }}>
+        <ResponsiveContainer width="100%" height={isMobile ? 200 : 240}>
           {chartTipo === 'line' ? (
             <LineChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={token.colorBorderSecondary} vertical={false} />

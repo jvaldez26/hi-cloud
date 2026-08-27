@@ -61,7 +61,7 @@ export function WidgetEcfEstado() {
       // acción, y ahogado entre los aceptados no se ve.
       pieColor={rechazados > 0 ? '#EF4444' : token.colorText}
     >
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height={260}>
         <PieChart>
           <Pie data={datos} cx="50%" cy="45%" innerRadius={60} outerRadius={95}
             paddingAngle={2} dataKey="value" nameKey="label">

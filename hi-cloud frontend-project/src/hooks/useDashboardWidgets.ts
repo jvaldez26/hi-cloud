@@ -20,10 +20,8 @@ export const MAX_WIDGETS = 12;
  * útil, no en blanco.
  */
 export const WIDGETS_POR_DEFECTO = [
-  // MISMO ORDEN que el backend, y por la misma razon: con una media en cuarto
-  // lugar el panel no deja hueco a dos columnas. Ver el catalogo del servidor.
-  'antiguedad-cobrar',
   'ingresos-gastos-anual',
+  'antiguedad-cobrar',
   'antiguedad-pagar',
   'resumen-gastos',
 ];

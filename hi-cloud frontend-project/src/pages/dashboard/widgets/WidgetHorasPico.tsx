@@ -58,11 +58,12 @@ export function WidgetHorasPico() {
       onRefresh={() => { void refetch(); }}
       vacio={filas.length === 0}
       mensajeVacio="Sin ventas en los últimos 3 meses"
+      alto={260}
       pieEtiqueta="MÁS MOVIDO"
       pieValor={mejor ? `${mejor.dia} ${mejor.hora} · ${mejor.cantidad}` : '—'}
       pieColor="#0EA5E9"
     >
-      <div style={{ padding: '14px 16px 16px', overflowX: 'auto', flex: 1 }}>
+      <div style={{ padding: '14px 16px 16px', overflowX: 'auto' }}>
         <div style={{
           display: 'grid',
           gridTemplateColumns: `34px repeat(${columnas.length}, minmax(16px, 1fr))`,

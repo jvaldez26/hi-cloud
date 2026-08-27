@@ -28,25 +28,25 @@ export const REGISTRO_WIDGETS: Record<string, DefinicionWidget> = {
   'ingresos-gastos-anual': {
     slug: 'ingresos-gastos-anual',
     titulo: 'Ingresos & Gastos',
-    ancho: 'ancha',
+    ancho: 'principal',
     Componente: WidgetIngresosGastos,
   },
   'antiguedad-cobrar': {
     slug: 'antiguedad-cobrar',
     titulo: 'Antigüedad por Cobrar',
-    ancho: 'media',
+    ancho: 'tarjeta',
     Componente: WidgetAntiguedadCobrar,
   },
   'antiguedad-pagar': {
     slug: 'antiguedad-pagar',
     titulo: 'Antigüedad por Pagar',
-    ancho: 'media',
+    ancho: 'tarjeta',
     Componente: WidgetAntiguedadPagar,
   },
   'resumen-gastos': {
     slug: 'resumen-gastos',
     titulo: 'Resumen de Gastos',
-    ancho: 'media',
+    ancho: 'tarjeta',
     Componente: WidgetResumenGastos,
   },
 
@@ -54,19 +54,20 @@ export const REGISTRO_WIDGETS: Record<string, DefinicionWidget> = {
   'ecf-estado-mes': {
     slug: 'ecf-estado-mes',
     titulo: 'e-CF por estado DGII (mes)',
-    ancho: 'media',
+    ancho: 'tarjeta',
     Componente: WidgetEcfEstado,
   },
   'ventas-por-vendedor': {
     slug: 'ventas-por-vendedor',
     titulo: 'Ventas por vendedor',
-    ancho: 'media',
+    ancho: 'tarjeta',
     Componente: WidgetVentasPorVendedor,
   },
   'ventas-tendencia-12m': {
     slug: 'ventas-tendencia-12m',
     titulo: 'Ventas mensuales (12 meses)',
-    ancho: 'ancha',
+    // Doce puntos en el eje X: en un tercio de ancho las etiquetas se pisan.
+    ancho: 'principal',
     Componente: WidgetVentasTendencia,
   },
 
@@ -74,19 +75,20 @@ export const REGISTRO_WIDGETS: Record<string, DefinicionWidget> = {
   'top-clientes': {
     slug: 'top-clientes',
     titulo: 'Top clientes',
-    ancho: 'media',
+    ancho: 'tarjeta',
     Componente: WidgetTopClientes,
   },
   'top-productos': {
     slug: 'top-productos',
     titulo: 'Top productos',
-    ancho: 'media',
+    ancho: 'tarjeta',
     Componente: WidgetTopProductos,
   },
   'ventas-por-dia-mes': {
     slug: 'ventas-por-dia-mes',
     titulo: 'Ventas por día del mes',
-    ancho: 'ancha',
+    // Hasta 31 barras: en un tercio de ancho no se distinguen.
+    ancho: 'principal',
     Componente: WidgetVentasPorDia,
   },
 
@@ -94,13 +96,13 @@ export const REGISTRO_WIDGETS: Record<string, DefinicionWidget> = {
   'compras-por-dia-mes': {
     slug: 'compras-por-dia-mes',
     titulo: 'Compras por día del mes',
-    ancho: 'ancha',
+    ancho: 'principal',
     Componente: WidgetComprasPorDia,
   },
   'compras-por-proveedor': {
     slug: 'compras-por-proveedor',
     titulo: 'Compras por proveedor',
-    ancho: 'media',
+    ancho: 'tarjeta',
     Componente: WidgetComprasPorProveedor,
   },
 
@@ -108,13 +110,14 @@ export const REGISTRO_WIDGETS: Record<string, DefinicionWidget> = {
   'inventario-valor-categoria': {
     slug: 'inventario-valor-categoria',
     titulo: 'Valor de inventario por categoría',
-    ancho: 'media',
+    ancho: 'tarjeta',
     Componente: WidgetInventarioValor,
   },
   'horas-pico': {
     slug: 'horas-pico',
     titulo: 'Horas y días pico de venta',
-    ancho: 'ancha',
+    // Rejilla de 7 filas por las horas de apertura: necesita ancho.
+    ancho: 'principal',
     Componente: WidgetHorasPico,
   }
 };
