@@ -67,8 +67,18 @@ export const CATALOGO_WIDGETS: readonly WidgetDashboard[] = [
  * nadie se encuentra su panel cambiado el dia del despliegue.
  */
 export const WIDGETS_POR_DEFECTO = [
-  'ingresos-gastos-anual',
+  // El ORDEN importa, no solo el contenido.
+  //
+  // Las tres tarjetas fijas del panel (Bancos, Actividad, Facturas & Cobros) son
+  // tres, impares. Si la cuarta celda la pidiera una grafica ANCHA —Ingresos &
+  // Gastos— a dos columnas no cabria en la columna que sobra y dejaria un hueco
+  // en mitad del panel, que ademas es la configuracion mas comun de todas.
+  //
+  // Poniendo una MEDIA en cuarto lugar, las cuatro primeras celdas se llenan
+  // solas y la ancha empieza fila limpia. Es un cambio de datos, no de layout, y
+  // no toca el orden estricto: lo que se ve sigue siendo lo que se guardo.
   'antiguedad-cobrar',
+  'ingresos-gastos-anual',
   'antiguedad-pagar',
   'resumen-gastos',
 ] as const;

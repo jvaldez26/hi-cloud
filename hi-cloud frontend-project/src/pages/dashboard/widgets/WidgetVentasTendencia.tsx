@@ -56,7 +56,7 @@ export function WidgetVentasTendencia() {
       pieValor={fmt.money(total)}
       pieColor="#0EA5E9"
     >
-      <ResponsiveContainer width="100%" height={260}>
+      <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={datos} margin={{ top: 10, right: 14, bottom: 0, left: 10 }}>
           <defs>
             <linearGradient id="gradVentasTendencia" x1="0" y1="0" x2="0" y2="1">

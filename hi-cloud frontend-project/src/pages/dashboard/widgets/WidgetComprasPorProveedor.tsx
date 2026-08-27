@@ -51,7 +51,7 @@ export function WidgetComprasPorProveedor() {
       pieValor={fmt.money(total)}
       pieColor="#F59E0B"
     >
-      <ResponsiveContainer width="100%" height={260}>
+      <ResponsiveContainer width="100%" height="100%">
         <BarChart data={datos} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={token.colorBorderSecondary} />
           <XAxis type="number" tick={{ fontSize: 10, fill: token.colorTextTertiary }}

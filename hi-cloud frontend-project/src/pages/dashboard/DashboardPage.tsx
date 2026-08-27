@@ -1,9 +1,7 @@
 import { Row, Col, Card, Table, Typography, Tag, Button, theme, DatePicker, Skeleton, message } from 'antd';
 import { SkeletonTabla } from '../../components/ui/SkeletonTabla';
 import { useSkeletonDelay } from '../../hooks/useSkeletonDelay';
-import { DollarOutlined, FileTextOutlined } from '@ant-design/icons';
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useMobile } from '../../hooks/useMediaQuery';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { reportesApi } from '../../api/reportes.api';
@@ -15,7 +13,11 @@ import { VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { dRD, horaDelDiaRD } from '../../utils/fechaRD';
 import { useDashboardWidgets } from '../../hooks/useDashboardWidgets';
 import { widgetPorSlug } from './widgets/registro';
-import { CardWidget } from './widgets/CardWidget';
+import { RejillaDashboard, CeldaWidget, useColumnasDashboard } from './widgets/RejillaDashboard';
+import { ALTO_MINIMO } from './widgets/tipos';
+import { WidgetCuentasBancos } from './widgets/WidgetCuentasBancos';
+import { WidgetActividad } from './widgets/WidgetActividad';
+import { WidgetFacturasCobros } from './widgets/WidgetFacturasCobros';
 import { MarcoWidget } from './widgets/MarcoWidget';
 import { MontarAlVerse } from './widgets/MontarAlVerse';
 import { BotonAgregarGrafica } from './widgets/BotonAgregarGrafica';
@@ -221,22 +223,34 @@ function DashboardVendedor() {
 
 // ── Dashboard Admin — estilo Cashflow ─────────────────────────────────────────
 function DashboardAdmin() {
-  const navigate  = useNavigate();
-  const { token } = theme.useToken();
-  const qc        = useQueryClient();
-  const isMobile  = useMobile();
-  const [grupoAbierto,  setGrupoAbierto]  = useState(true);
+  const columnas = useColumnasDashboard();
+  const qc       = useQueryClient();
 
   // Que graficas ve ESTE usuario en ESTA empresa. Si la preferencia falla, el
   // hook cae a las cuatro de siempre: nadie se queda sin panel por eso.
   const {
-    slugs, disponibles, porDefecto, degradado,
+    slugs, disponibles, degradado,
     agregar, quitar, aplicar, reponerPorDefecto,
   } = useDashboardWidgets();
 
+  // Listener del evento 'dashboard:refresh' que dispara el logo del sidebar.
+  // Invalida, no consulta: las consultas viven dentro de cada widget.
+  const refreshAll = useCallback(() => {
+    for (const clave of [
+      'bancos-dashboard', 'fact-pend-cf',
+      'ingresos-gastos-anual', 'anios-con-datos',
+      'antiguedad-cobrar', 'antiguedad-pagar', 'resumen-gastos-dash',
+    ]) qc.invalidateQueries({ queryKey: [clave] });
+  }, [qc]);
+
+  useEffect(() => {
+    window.addEventListener('dashboard:refresh', refreshAll);
+    return () => window.removeEventListener('dashboard:refresh', refreshAll);
+  }, [refreshAll]);
+
   // Confirmacion breve con deshacer. El deshacer manda otro PUT en vez de
   // retrasar el primero: un guardado pendiente se pierde si el usuario navega,
-  //  y perder una preferencia por ahorrar una peticion no compensa.
+  // y perder una preferencia por ahorrar una peticion no compensa.
   const avisar = useCallback((texto: string, listaAnterior: string[]) => {
     message.open({
       type: 'success',
@@ -267,55 +281,18 @@ function DashboardAdmin() {
   const botonAgregar = (
     <BotonAgregarGrafica disponibles={disponibles} onAgregar={alAgregar} />
   );
-  const tarjetas  = slugs
-    .map(widgetPorSlug)
-    .filter((w): w is NonNullable<typeof w> => !!w && w.ancho === 'tarjeta');
-  // Listener para el evento 'dashboard:refresh' disparado por el logo del sidebar
-  const refreshAll = useCallback(() => {
-    qc.invalidateQueries({ queryKey: ['bancos-dashboard'] });
-    qc.invalidateQueries({ queryKey: ['ingresos-gastos-anual'] });
-    qc.invalidateQueries({ queryKey: ['anios-con-datos'] });
-    qc.invalidateQueries({ queryKey: ['fact-pend-cf'] });
-    qc.invalidateQueries({ queryKey: ['antiguedad-cobrar'] });
-    qc.invalidateQueries({ queryKey: ['antiguedad-pagar'] });
-    qc.invalidateQueries({ queryKey: ['resumen-gastos-dash'] });
-  }, [qc]);
 
-  useEffect(() => {
-    window.addEventListener('dashboard:refresh', refreshAll);
-    return () => window.removeEventListener('dashboard:refresh', refreshAll);
-  }, [refreshAll]);
+  /**
+   * Las tres fijas van DENTRO de la misma rejilla que las configurables.
+   * Si se quedaran fuera, en su propia fila, el hueco que este rediseno viene a
+   * quitar solo se mudaria arriba.
+   */
+  const FIJAS = [
+    { clave: 'bancos',    Componente: WidgetCuentasBancos },
+    { clave: 'actividad', Componente: WidgetActividad },
+    { clave: 'facturas',  Componente: WidgetFacturasCobros },
+  ];
 
-  // Widget tesorería: cuentas + balance + actividad financiera
-  const { data: tesoreriaRaw } = useQuery<any>({
-    queryKey: ['bancos-dashboard'],
-    queryFn:  () => api.get('/tesoreria/dashboard').then((r: any) => r.data?.data ?? r.data),
-    staleTime: 120_000,
-  });
-
-  // Facturas pendientes
-  const { data: factPendRaw } = useQuery<any>({
-    queryKey: ['fact-pend-cf'],
-    queryFn:  () => api.get('/facturas?limit=8&estado=emitida').then((r: any) => {
-      const d = r.data?.data ?? r.data;
-      return Array.isArray(d) ? d : (d?.data ?? []);
-    }),
-    staleTime: 60_000,
-  });
-
-  // Normalizar datos
-  const bancos      = tesoreriaRaw?.cuentas ?? [];
-  const balanceBancos = tesoreriaRaw?.balanceTotal ?? 0;
-  const actHoy    = tesoreriaRaw?.actividad?.hoy    ?? [];
-  const actSemana = tesoreriaRaw?.actividad?.semana ?? [];
-
-  const facturas    = Array.isArray(factPendRaw) ? factPendRaw : [];
-
-  const ahora = dayjs();
-
-  // Enero a diciembre del año elegido. El backend ya devuelve los 12 meses con
-  // ceros donde no hay datos: los meses futuros salen VACÍOS, no ocultos — ver
-  // el año completo con la parte que falta es información.
   return (
     <div>
       <ContextoHeader />
@@ -324,269 +301,38 @@ function DashboardAdmin() {
 
       {/* El boton vive arriba, junto al saludo: es lo que convierte el panel en
           algo que se configura, y tiene que verse sin buscarlo. */}
-      <div style={{
-        display: 'flex', justifyContent: 'flex-end',
-        marginBottom: 12,
-      }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
         {botonAgregar}
       </div>
 
-      <Row gutter={[16, 0]}>
-        {/* ══ Columna izquierda ══════════════════════════════════════ */}
-        <Col xs={24} lg={9}>
+      <RejillaDashboard columnas={columnas}>
+        {FIJAS.map(({ clave, Componente }) => (
+          <CeldaWidget key={clave} ancho="media" columnas={columnas}>
+            <MontarAlVerse alto={ALTO_MINIMO.media}>
+              <Componente />
+            </MontarAlVerse>
+          </CeldaWidget>
+        ))}
 
-          {/* Widget: Cuentas de Bancos */}
-          <CardWidget
-            title="Cuentas de Bancos"
-            extra={
-              <Button type="text" size="small" style={{ color: token.colorTextTertiary, fontSize: 18, lineHeight: 1, padding: '0 4px' }}
-                onClick={() => navigate('/bancos')}>⋯</Button>
-            }
-          >
-            {/* Grupo expandible */}
-            <div
-              onClick={() => setGrupoAbierto(v => !v)}
-              style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                padding: '10px 16px', cursor: 'pointer',
-                background: grupoAbierto ? token.colorFillAlter : 'transparent',
-                borderBottom: `1px solid ${token.colorBorderSecondary}`,
-              }}
-            >
-              <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: token.colorTextSecondary }}>
-                <span style={{ fontSize: 10 }}>{grupoAbierto ? '▾' : '›'}</span>
-                Efectivo y Cuentas
-              </span>
-              <Text style={{ fontSize: 13, fontWeight: 500 }}>
-                {fmt.money(balanceBancos)}
-              </Text>
-            </div>
-
-            {/* Cuentas individuales */}
-            {grupoAbierto && (
-              bancos.length === 0 ? (
-                <div style={{ padding: '20px 16px', textAlign: 'center', borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
-                  <Text type="secondary" style={{ fontSize: 13 }}>Sin cuentas configuradas</Text>
-                  <div>
-                    <Button type="link" size="small" onClick={() => navigate('/bancos')}>
-                      Ir a Bancos →
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                bancos.slice(0, 5).map((b: any, i: number) => (
-                  <div key={b.id ?? i} style={{
-                    display: 'flex', alignItems: 'center', gap: 12,
-                    padding: '10px 16px 10px 24px',
-                    borderBottom: `1px solid ${token.colorBorderSecondary}`,
-                  }}>
-                    <div style={{
-                      width: 36, height: 36, borderRadius: '50%', background: '#10B981',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                    }}>
-                      <DollarOutlined style={{ color: '#FFF', fontSize: 16 }} />
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 500 }}>{b.nombre ?? 'Cuenta'}</div>
-                      <div style={{ fontSize: 11, color: token.colorTextTertiary }}>
-                        {b.tipo ?? 'corriente'} · {b.moneda ?? 'DOP'}
-                      </div>
-                    </div>
-                    <Text style={{ fontSize: 13, fontWeight: 500 }}>
-                      {fmt.money(Number(b.saldo ?? 0))}
-                    </Text>
-                  </div>
-                ))
-              )
-            )}
-
-            {/* Balance total */}
-            <div style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              padding: '12px 16px', background: token.colorFillAlter,
-            }}>
-              <Text strong style={{ fontSize: 14 }}>Balance</Text>
-              <Text strong style={{ fontSize: 14, color: '#0EA5E9' }}>
-                DOP${balanceBancos.toLocaleString('es-DO', { minimumFractionDigits: 2 })}
-              </Text>
-            </div>
-          </CardWidget>
-
-          {/* Widget: Actividad */}
-          <CardWidget title="Actividad">
-            {actHoy.length === 0 && actSemana.length === 0 ? (
-              <>
-                <div style={{ padding: '10px 16px 12px' }}>
-                  <Text style={{ fontSize: 12, color: token.colorTextTertiary }}>Hoy</Text>
-                  <div style={{ height: 1, background: token.colorBorderSecondary, margin: '4px 0 10px' }} />
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: token.colorBorderSecondary, flexShrink: 0 }} />
-                    <Text type="secondary" style={{ fontSize: 12 }}>No hay data para mostrar...</Text>
-                  </div>
-                </div>
-                <div style={{ padding: '10px 16px 16px', borderTop: `1px solid ${token.colorBorderSecondary}` }}>
-                  <Text style={{ fontSize: 12, color: token.colorTextTertiary }}>Esta semana</Text>
-                  <div style={{ height: 1, background: token.colorBorderSecondary, margin: '4px 0 10px' }} />
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: token.colorBorderSecondary, flexShrink: 0 }} />
-                    <Text type="secondary" style={{ fontSize: 12 }}>No hay data para mostrar...</Text>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div style={{ maxHeight: 300, overflowY: 'auto' }}>
-                {actHoy.length > 0 && (
-                  <div style={{ padding: '10px 16px' }}>
-                    <Text style={{ fontSize: 12, color: token.colorTextTertiary }}>Hoy</Text>
-                    <div style={{ height: 1, background: token.colorBorderSecondary, margin: '4px 0 8px' }} />
-                    {actHoy.slice(0, 5).map((l: any, i: number) => (
-                      <div key={i} style={{ display: 'flex', gap: 10, padding: '4px 0', alignItems: 'flex-start' }}>
-                        <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, marginTop: 5,
-                          background: l.tipo === 'ingreso' ? '#10B981' : '#EF4444' }} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 4 }}>
-                            <Text style={{ fontSize: 12 }}>{l.descripcion ?? '—'}</Text>
-                            <Text style={{ fontSize: 12, fontWeight: 600, flexShrink: 0,
-                              color: l.tipo === 'ingreso' ? '#10B981' : '#EF4444' }}>
-                              {l.tipo === 'ingreso' ? '+' : '-'}RD${Number(l.monto).toLocaleString('es-DO', { minimumFractionDigits: 2 })}
-                            </Text>
-                          </div>
-                          <div style={{ fontSize: 10, color: token.colorTextTertiary }}>
-                            {l.hora ?? dRD(l.fecha).format('HH:mm')}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {actSemana.length > 0 && (
-                  <div style={{ padding: '10px 16px', borderTop: `1px solid ${token.colorBorderSecondary}` }}>
-                    <Text style={{ fontSize: 12, color: token.colorTextTertiary }}>Esta semana</Text>
-                    <div style={{ height: 1, background: token.colorBorderSecondary, margin: '4px 0 8px' }} />
-                    {actSemana.slice(0, 5).map((l: any, i: number) => (
-                      <div key={i} style={{ display: 'flex', gap: 10, padding: '4px 0', alignItems: 'flex-start' }}>
-                        <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, marginTop: 5,
-                          background: l.tipo === 'ingreso' ? '#10B981' : '#EF4444' }} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 4 }}>
-                            <Text style={{ fontSize: 12 }}>{l.descripcion ?? '—'}</Text>
-                            <Text style={{ fontSize: 12, fontWeight: 600, flexShrink: 0,
-                              color: l.tipo === 'ingreso' ? '#10B981' : '#EF4444' }}>
-                              {l.tipo === 'ingreso' ? '+' : '-'}RD${Number(l.monto).toLocaleString('es-DO', { minimumFractionDigits: 2 })}
-                            </Text>
-                          </div>
-                          <div style={{ fontSize: 10, color: token.colorTextTertiary }}>
-                            {dayjs(l.fecha).format('DD/MM')}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </CardWidget>
-        </Col>
-
-        {/* ══ Columna derecha ════════════════════════════════════════ */}
-        <Col xs={24} lg={15}>
-
-          {/* Gráficas anchas. Cada una trae su consulta dentro y solo se monta
-              cuando el hueco se acerca a la pantalla: si no está montada, no
-              pide nada. */}
-          {slugs.map(slug => {
-            const w = widgetPorSlug(slug);
-            if (!w || w.ancho !== 'principal') return null;
-            return (
-              <MontarAlVerse key={slug} alto={340}>
+        {/* Las del usuario, en SU orden. Sin relleno denso: el panel no reordena
+            lo que la persona coloco. */}
+        {slugs.map(slug => {
+          const w = widgetPorSlug(slug);
+          if (!w) return null;
+          return (
+            <CeldaWidget key={slug} ancho={w.ancho} columnas={columnas}>
+              <MontarAlVerse alto={ALTO_MINIMO[w.ancho]}>
                 <MarcoWidget titulo={w.titulo} onQuitar={() => alQuitar(slug)}>
                   <w.Componente />
                 </MarcoWidget>
               </MontarAlVerse>
-            );
-          })}
+            </CeldaWidget>
+          );
+        })}
+      </RejillaDashboard>
 
-          {/* Widget: Facturas & Cobros */}
-          <CardWidget
-            title="Facturas & Cobros"
-            extra={
-              <Button type="link" size="small" onClick={() => navigate('/cxc')}
-                style={{ fontSize: 12 }}>Ver todo →</Button>
-            }
-          >
-            {facturas.length === 0 ? (
-              <div style={{ padding: '24px 16px', textAlign: 'center' }}>
-                <Text type="secondary" style={{ fontSize: 13 }}>Sin facturas pendientes de cobro</Text>
-                <div style={{ marginTop: 8 }}>
-                  <Button type="link" size="small" onClick={() => navigate('/facturas')}>Ir a Facturas →</Button>
-                </div>
-              </div>
-            ) : (
-              <div>
-                {facturas.slice(0, 8).map((f: any, i: number) => (
-                  <div
-                    key={f.id ?? i}
-                    onClick={() => navigate(`/facturas/${f.id}`)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 12,
-                      padding: '10px 16px',
-                      borderBottom: i < Math.min(facturas.length, 8) - 1
-                        ? `1px solid ${token.colorBorderSecondary}` : 'none',
-                      cursor: 'pointer', transition: 'background 0.12s',
-                    }}
-                    onMouseEnter={e => ((e.currentTarget as HTMLElement).style.background = token.colorFillAlter)}
-                    onMouseLeave={e => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
-                  >
-                    <div style={{
-                      width: 36, height: 36, borderRadius: 8, flexShrink: 0,
-                      background: '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      <FileTextOutlined style={{ color: '#0EA5E9', fontSize: 16 }} />
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={{ fontSize: 13, fontWeight: 500, display: 'block' }} ellipsis>
-                        {f.cliente?.nombre ?? 'Cliente'}
-                      </Text>
-                      <Text type="secondary" style={{ fontSize: 11 }}>
-                        {f.folio ?? f.numero} · {f.fecha ? dayjs(f.fecha).format('DD/MM/YYYY') : ''}
-                      </Text>
-                    </div>
-                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#0EA5E9' }}>
-                        {fmt.money(Number(f.total ?? 0))}
-                      </div>
-                      <Tag color="blue" style={{ fontSize: 10, margin: 0 }}>PENDIENTE</Tag>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardWidget>
-        </Col>
-      </Row>
-
-      {/* Gráficas de tarjeta, en rejilla de tres. En móvil se apilan. */}
-      {tarjetas.length > 0 && (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
-          gap: 16,
-          marginTop: 16,
-        }}
-          className="dashboard-widgets-row"
-        >
-          {tarjetas.map(w => (
-            <MontarAlVerse key={w.slug} alto={300}>
-              <MarcoWidget titulo={w.titulo} onQuitar={() => alQuitar(w.slug)}>
-                <w.Componente />
-              </MarcoWidget>
-            </MontarAlVerse>
-          ))}
-        </div>
-      )}
-
-      {/* Se quedó sin ninguna: mensaje con las dos salidas, nunca un vacío
-          del que no se sepa salir. */}
+      {/* Se quedo sin ninguna: mensaje con las dos salidas, nunca un vacio del
+          que no se sepa salir. */}
       {slugs.length === 0 && (
         <PanelSinGraficas onReponer={reponerPorDefecto} botonAgregar={botonAgregar} />
       )}
