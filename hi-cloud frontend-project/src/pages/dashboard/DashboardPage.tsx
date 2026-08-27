@@ -1,18 +1,10 @@
-import { Row, Col, Card, Table, Typography, Spin, Tag, Space, Button, theme, DatePicker, Empty, Tooltip as AntTooltip, Skeleton, Select } from 'antd';
+import { Row, Col, Card, Table, Typography, Tag, Button, theme, DatePicker, Skeleton } from 'antd';
 import { SkeletonTabla } from '../../components/ui/SkeletonTabla';
 import { useSkeletonDelay } from '../../hooks/useSkeletonDelay';
-import {
-  DollarOutlined, FileTextOutlined, RightOutlined, ReloadOutlined,
-  LineChartOutlined, BarChartOutlined, DownloadOutlined,
-} from '@ant-design/icons';
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { DollarOutlined, FileTextOutlined } from '@ant-design/icons';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useMobile } from '../../hooks/useMediaQuery';
-import { useQueryClient } from '@tanstack/react-query';
-import { useQuery } from '@tanstack/react-query';
-import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, BarChart, Bar, Cell, PieChart, Pie, Legend,
-} from 'recharts';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { reportesApi } from '../../api/reportes.api';
 import { fmt } from '../../utils/formatters';
@@ -20,9 +12,12 @@ import dayjs from 'dayjs';
 import api from '../../api/client';
 import { useAuthStore } from '../../store/auth.store';
 import { VideoTutorialButton } from '../../components/ui/TableToolbar';
-import { anioRD, dRD, horaDelDiaRD } from '../../utils/fechaRD';
+import { dRD, horaDelDiaRD } from '../../utils/fechaRD';
+import { useDashboardWidgets } from '../../hooks/useDashboardWidgets';
+import { widgetPorSlug } from './widgets/registro';
+import { CardWidget } from './widgets/CardWidget';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 // ── Saludo contextual + línea de contexto ────────────────────────────────────
 function ContextoHeader() {
@@ -220,30 +215,6 @@ function DashboardVendedor() {
   );
 }
 
-// ── Widget base reutilizable ─────────────────────────────────────────────────
-function CardWidget({ title, extra, children, noPad }: {
-  title: string; extra?: React.ReactNode;
-  children: React.ReactNode; noPad?: boolean;
-}) {
-  const { token } = theme.useToken();
-  return (
-    <div style={{
-      background: token.colorBgContainer,
-      border: `1px solid ${token.colorBorderSecondary}`,
-      borderRadius: 12, overflow: 'hidden', marginBottom: 16,
-    }}>
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        padding: '14px 16px', borderBottom: `1px solid ${token.colorBorderSecondary}`,
-      }}>
-        <Text strong style={{ fontSize: 15 }}>{title}</Text>
-        {extra}
-      </div>
-      <div style={noPad ? undefined : undefined}>{children}</div>
-    </div>
-  );
-}
-
 // ── Dashboard Admin — estilo Cashflow ─────────────────────────────────────────
 function DashboardAdmin() {
   const navigate  = useNavigate();
@@ -251,38 +222,13 @@ function DashboardAdmin() {
   const qc        = useQueryClient();
   const isMobile  = useMobile();
   const [grupoAbierto,  setGrupoAbierto]  = useState(true);
-  const [chartTipo, setChartTipo] = useState<'line' | 'bar'>(
-    () => (localStorage.getItem('dash_chartTipo') as 'line' | 'bar') ?? 'line',
-  );
-  const chartContainerRef = useRef<HTMLDivElement>(null);
 
-  const descargarGrafico = useCallback(() => {
-    const container = chartContainerRef.current;
-    if (!container) return;
-    const svg = container.querySelector('svg');
-    if (!svg) return;
-    const { width, height } = svg.getBoundingClientRect();
-    const svgData = new XMLSerializer().serializeToString(svg);
-    const blob    = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-    const url     = URL.createObjectURL(blob);
-    const canvas  = document.createElement('canvas');
-    canvas.width  = width  || 800;
-    canvas.height = height || 280;
-    const ctx  = canvas.getContext('2d');
-    const img  = new Image();
-    img.onload = () => {
-      ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
-      URL.revokeObjectURL(url);
-      const a = document.createElement('a');
-      // El nombre lleva el AÑO del gráfico, no la fecha de descarga: el archivo
-      // se guarda y se abre meses después, y ahí lo que importa es qué año es.
-      a.download = `ingresos-gastos-${anioRef.current}.png`;
-      a.href = canvas.toDataURL('image/png');
-      a.click();
-    };
-    img.src = url;
-  }, []);
-
+  // Que graficas ve ESTE usuario en ESTA empresa. Si la preferencia falla, el
+  // hook cae a las cuatro de siempre: nadie se queda sin panel por eso.
+  const { slugs } = useDashboardWidgets();
+  const tarjetas  = slugs
+    .map(widgetPorSlug)
+    .filter((w): w is NonNullable<typeof w> => !!w && w.ancho === 'tarjeta');
   // Listener para el evento 'dashboard:refresh' disparado por el logo del sidebar
   const refreshAll = useCallback(() => {
     qc.invalidateQueries({ queryKey: ['bancos-dashboard'] });
@@ -306,30 +252,6 @@ function DashboardAdmin() {
     staleTime: 120_000,
   });
 
-  // Ingresos + gastos del AÑO FISCAL — enero a diciembre, no 12 meses rodantes.
-  // Un gráfico que arranca en septiembre del año pasado no sirve para leer un
-  // ejercicio. El rango lo decide el BACKEND: calcularlo aquí lo dejaría a merced
-  // de la zona del navegador, que es parte de lo que esto arregla.
-  const [anioChart, setAnioChart] = useState<number>(() => anioRD());
-  // El exportador de PNG es un useCallback sin dependencias; la ref le da el
-  // año en curso sin tener que recrearlo en cada cambio del selector.
-  const anioRef = useRef(anioChart);
-  useEffect(() => { anioRef.current = anioChart; }, [anioChart]);
-
-  const { data: aniosDisponibles } = useQuery<number[]>({
-    queryKey: ['anios-con-datos'],
-    queryFn:  () => api.get('/reportes/dashboard/anios-con-datos').then((r: any) => r.data?.data ?? r.data),
-    staleTime: 600_000,
-  });
-
-  const { data: chartAnualRaw } = useQuery<any>({
-    queryKey: ['ingresos-gastos-anual', anioChart],
-    queryFn:  () => api.get(
-      `/reportes/dashboard/ingresos-gastos-anual?anio=${anioChart}`,
-    ).then((r: any) => r.data?.data ?? r.data),
-    staleTime: 120_000,
-  });
-
   // Facturas pendientes
   const { data: factPendRaw } = useQuery<any>({
     queryKey: ['fact-pend-cf'],
@@ -350,41 +272,9 @@ function DashboardAdmin() {
 
   const ahora = dayjs();
 
-  // Antigüedad CxC
-  const { data: antiguedadCxC, refetch: refetchCxC } = useQuery<any>({
-    queryKey: ['antiguedad-cobrar'],
-    queryFn:  () => api.get('/reportes/dashboard/antiguedad-cobrar').then((r: any) => r.data?.data ?? r.data),
-    staleTime: 120_000,
-  });
-
-  // Antigüedad CxP
-  const { data: antiguedadCxP, refetch: refetchCxP } = useQuery<any>({
-    queryKey: ['antiguedad-pagar'],
-    queryFn:  () => api.get('/reportes/dashboard/antiguedad-pagar').then((r: any) => r.data?.data ?? r.data),
-    staleTime: 120_000,
-  });
-
-  // Resumen gastos
-  const { data: resumenGastos, refetch: refetchGastos } = useQuery<any>({
-    queryKey: ['resumen-gastos-dash'],
-    queryFn:  () => api.get('/reportes/dashboard/resumen-gastos').then((r: any) => r.data?.data ?? r.data),
-    staleTime: 120_000,
-  });
-
   // Enero a diciembre del año elegido. El backend ya devuelve los 12 meses con
   // ceros donde no hay datos: los meses futuros salen VACÍOS, no ocultos — ver
   // el año completo con la parte que falta es información.
-  const MESES_CORTOS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-  const mesesAnual: any[] = Array.isArray(chartAnualRaw?.meses) ? chartAnualRaw.meses : [];
-  const chartData = Array.from({ length: 12 }, (_, i) => {
-    const row = mesesAnual.find((r: any) => Number(r.mes) === i + 1);
-    return {
-      label:   MESES_CORTOS[i],
-      ingreso: Number(row?.ingresos ?? 0),
-      gasto:   Number(row?.gastos   ?? 0),
-    };
-  });
-
   return (
     <div>
       <ContextoHeader />
@@ -549,113 +439,13 @@ function DashboardAdmin() {
         {/* ══ Columna derecha ════════════════════════════════════════ */}
         <Col xs={24} lg={15}>
 
-          {/* Widget: Ingresos & Gastos */}
-          <CardWidget
-            title="Ingresos & Gastos"
-            extra={
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {/* Selector de año. Sin él, en enero el gráfico sale casi
-                      vacío y no habría forma de mirar el ejercicio recién
-                      cerrado. El año en curso siempre está en la lista, aunque
-                      todavía no tenga movimientos. */}
-                  <Select
-                    size="small"
-                    value={anioChart}
-                    onChange={setAnioChart}
-                    style={{ width: 88 }}
-                    options={(aniosDisponibles?.length ? aniosDisponibles : [anioRD()])
-                      .map(a => ({ value: a, label: String(a) }))}
-                  />
-                  <AntTooltip title={chartTipo === 'line' ? 'Ver como barras' : 'Ver como línea'}>
-                    <button
-                      onClick={() => setChartTipo(t => {
-                        const next = t === 'line' ? 'bar' : 'line';
-                        localStorage.setItem('dash_chartTipo', next);
-                        return next;
-                      })}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer',
-                        color: token.colorPrimary, padding: '2px 4px', borderRadius: 4,
-                        display: 'flex', alignItems: 'center', fontSize: 14 }}
-                    >
-                      {chartTipo === 'line' ? <BarChartOutlined /> : <LineChartOutlined />}
-                    </button>
-                  </AntTooltip>
-                  <AntTooltip title="Actualizar datos">
-                    <button
-                      onClick={() => qc.invalidateQueries({ queryKey: ['ingresos-gastos-anual'] })}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer',
-                        color: token.colorPrimary, padding: '2px 4px', borderRadius: 4,
-                        display: 'flex', alignItems: 'center', fontSize: 14 }}
-                    >
-                      <ReloadOutlined />
-                    </button>
-                  </AntTooltip>
-                  <AntTooltip title="Guardar como imagen">
-                    <button
-                      onClick={descargarGrafico}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer',
-                        color: token.colorPrimary, padding: '2px 4px', borderRadius: 4,
-                        display: 'flex', alignItems: 'center', fontSize: 14 }}
-                    >
-                      <DownloadOutlined />
-                    </button>
-                  </AntTooltip>
-                </div>
-                <Text style={{ fontSize: 11, color: token.colorPrimary }}>
-                  {chartTipo === 'line' ? 'Switch to Bar Chart' : 'Switch to Line Chart'}
-                </Text>
-              </div>
-            }
-          >
-            {/* Leyenda */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '12px 16px 4px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#10B981' }} />
-                <Text style={{ fontSize: 12 }}>Ingresos</Text>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#E5E7EB' }} />
-                <Text style={{ fontSize: 12 }}>Gastos</Text>
-              </div>
-            </div>
-            {/* Gráfico */}
-            <div ref={chartContainerRef} style={{ padding: '0 8px 16px' }}>
-              <ResponsiveContainer width="100%" height={isMobile ? 200 : 240}>
-                {chartTipo === 'line' ? (
-                  <LineChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={token.colorBorderSecondary} vertical={false} />
-                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: token.colorTextTertiary }}
-                      axisLine={false} tickLine={false} tickFormatter={v => v.split(' ')[0]} />
-                    <YAxis tickFormatter={v => v === 0 ? '0' : `${(v / 1000).toFixed(0)}k`}
-                      tick={{ fontSize: 10, fill: token.colorTextTertiary }} axisLine={false} tickLine={false} />
-                    <Tooltip
-                      formatter={(v: number, n: string) => [fmt.money(v), n === 'ingreso' ? 'Ingresos' : 'Gastos']}
-                      contentStyle={{ background: token.colorBgElevated,
-                        border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, fontSize: 12 }} />
-                    <Line type="monotone" dataKey="ingreso" stroke="#10B981" strokeWidth={2}
-                      dot={false} activeDot={{ r: 4 }} />
-                    <Line type="monotone" dataKey="gasto" stroke="#9CA3AF" strokeWidth={2}
-                      dot={false} activeDot={{ r: 4 }} strokeDasharray="4 4" />
-                  </LineChart>
-                ) : (
-                  <BarChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={token.colorBorderSecondary} vertical={false} />
-                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: token.colorTextTertiary }}
-                      axisLine={false} tickLine={false} tickFormatter={v => v.split(' ')[0]} />
-                    <YAxis tickFormatter={v => v === 0 ? '0' : `${(v / 1000).toFixed(0)}k`}
-                      tick={{ fontSize: 10, fill: token.colorTextTertiary }} axisLine={false} tickLine={false} />
-                    <Tooltip
-                      formatter={(v: number, n: string) => [fmt.money(v), n === 'ingreso' ? 'Ingresos' : 'Gastos']}
-                      contentStyle={{ background: token.colorBgElevated,
-                        border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, fontSize: 12 }} />
-                    <Bar dataKey="ingreso" fill="#10B981" radius={[3, 3, 0, 0]} maxBarSize={20} />
-                    <Bar dataKey="gasto"   fill="#9CA3AF" radius={[3, 3, 0, 0]} maxBarSize={20} />
-                  </BarChart>
-                )}
-              </ResponsiveContainer>
-            </div>
-          </CardWidget>
+          {/* Gráficas anchas elegidas por el usuario. Cada una trae su propia
+              consulta: si no está en la lista, no se monta y no pide nada. */}
+          {slugs.map(slug => {
+            const w = widgetPorSlug(slug);
+            if (!w || w.ancho !== 'principal') return null;
+            return <w.Componente key={slug} />;
+          })}
 
           {/* Widget: Facturas & Cobros */}
           <CardWidget
@@ -716,208 +506,23 @@ function DashboardAdmin() {
         </Col>
       </Row>
 
-      {/* ══ Fila 2: Antigüedad CxC | Antigüedad CxP | Resumen Gastos ══ */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
-        gap: 16,
-        marginTop: 16,
-      }}
-        className="dashboard-widgets-row"
-      >
-        {/* ── Antigüedad por Cobrar ── */}
-        <WidgetAntiguedad
-          titulo="Antigüedad por Cobrar"
-          data={antiguedadCxC}
-          labelTotal="POR COBRAR TOTAL"
-          colorTotal="#10B981"
-          onRefresh={refetchCxC}
-        />
-
-        {/* ── Antigüedad por Pagar ── */}
-        <WidgetAntiguedad
-          titulo="Antigüedad por Pagar"
-          data={antiguedadCxP}
-          labelTotal="POR PAGAR TOTAL"
-          colorTotal="#EF4444"
-          onRefresh={refetchCxP}
-        />
-
-        {/* ── Resumen de Gastos ── */}
-        <WidgetResumenGastos
-          data={resumenGastos}
-          onRefresh={refetchGastos}
-        />
-      </div>
-    </div>
-  );
-}
-
-// ── Widget Antigüedad (CxC o CxP) ────────────────────────────────────────────
-const ANTIGUEDAD_CONFIG = [
-  { key: 'corriente',   rango: 'Corriente', color: '#10B981' },
-  { key: 'dias_0_30',   rango: '0-30',      color: '#0EA5E9' },
-  { key: 'dias_31_60',  rango: '31-60',     color: '#F59E0B' },
-  { key: 'dias_61_90',  rango: '61-90',     color: '#F97316' },
-  { key: 'dias_90_plus',rango: '90+',       color: '#EF4444' },
-];
-
-function WidgetAntiguedad({ titulo, data, labelTotal, colorTotal, onRefresh }: {
-  titulo: string; data: any; labelTotal: string;
-  colorTotal: string; onRefresh: () => void;
-}) {
-  const { token } = theme.useToken();
-  const chartData = ANTIGUEDAD_CONFIG.map(c => ({
-    rango:  c.rango,
-    monto:  Number(data?.[c.key] ?? 0),
-    color:  c.color,
-  }));
-  const total = Number(data?.total ?? 0);
-
-  return (
-    <div style={{
-      background: token.colorBgContainer,
-      border: `1px solid ${token.colorBorderSecondary}`,
-      borderRadius: 12, overflow: 'hidden',
-    }}>
-      {/* Header */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '14px 16px', borderBottom: `1px solid ${token.colorBorderSecondary}`,
-      }}>
-        <span style={{ fontWeight: 600, fontSize: 14 }}>{titulo}</span>
-        <Button type="text" size="small" icon={<ReloadOutlined />} onClick={onRefresh}
-          style={{ color: token.colorTextTertiary }} />
-      </div>
-
-      {/* Gráfica */}
-      <div style={{ padding: '8px 0 0' }}>
-        <ResponsiveContainer width="100%" height={220}>
-          <BarChart data={chartData} layout="vertical"
-            margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" horizontal={false}
-              stroke={token.colorBorderSecondary} />
-            <XAxis type="number"
-              tick={{ fontSize: 10, fill: token.colorTextTertiary }}
-              axisLine={false} tickLine={false}
-              tickFormatter={v => v === 0 ? '0' : `${(v / 1000).toFixed(0)}K`} />
-            <YAxis type="category" dataKey="rango" width={58}
-              tick={{ fontSize: 11, fill: token.colorTextTertiary }}
-              axisLine={false} tickLine={false} />
-            <Tooltip
-              contentStyle={{
-                background: token.colorBgElevated,
-                border: `1px solid ${token.colorBorderSecondary}`,
-                borderRadius: 8, fontSize: 12,
-              }}
-              formatter={(v: number) => [fmt.money(v), 'Monto']}
-            />
-            <Bar dataKey="monto" radius={[0, 4, 4, 0]} maxBarSize={18}>
-              {chartData.map((entry, i) => (
-                <Cell key={i} fill={entry.color} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Footer total */}
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        padding: '10px 16px', borderTop: `1px solid ${token.colorBorderSecondary}`,
-        background: token.colorFillAlter,
-      }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: token.colorTextTertiary,
-          textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          {labelTotal}
-        </span>
-        <span style={{ fontSize: 14, fontWeight: 700, color: colorTotal }}>
-          {fmt.money(total)}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-// ── Widget Resumen de Gastos (donut) ─────────────────────────────────────────
-const COLORES_GASTOS = ['#0EA5E9','#10B981','#F59E0B','#8B5CF6','#EF4444','#F97316','#EC4899','#06B6D4'];
-
-function WidgetResumenGastos({ data, onRefresh }: { data: any; onRefresh: () => void }) {
-  const { token } = theme.useToken();
-  const gastos: any[] = data?.gastos ?? [];
-  const total = Number(data?.total ?? 0);
-  const mes   = data?.mes ?? '';
-
-  return (
-    <div style={{
-      background: token.colorBgContainer,
-      border: `1px solid ${token.colorBorderSecondary}`,
-      borderRadius: 12, overflow: 'hidden',
-    }}>
-      {/* Header */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '14px 16px', borderBottom: `1px solid ${token.colorBorderSecondary}`,
-      }}>
-        <div>
-          <span style={{ fontWeight: 600, fontSize: 14 }}>Resumen de Gastos</span>
-          {mes && <span style={{ fontSize: 11, color: token.colorTextTertiary, marginLeft: 8 }}>{mes}</span>}
-        </div>
-        <Button type="text" size="small" icon={<ReloadOutlined />} onClick={onRefresh}
-          style={{ color: token.colorTextTertiary }} />
-      </div>
-
-      {/* Gráfica */}
-      {gastos.length === 0 ? (
-        <div style={{ height: 260, display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-          <div style={{ fontSize: 36 }}>📊</div>
-          <div style={{ fontSize: 13, color: token.colorTextTertiary }}>
-            Sin gastos registrados este mes
-          </div>
-        </div>
-      ) : (
-        <ResponsiveContainer width="100%" height={260}>
-          <PieChart>
-            <Pie data={gastos} cx="50%" cy="45%" innerRadius={60} outerRadius={95}
-              paddingAngle={2} dataKey="monto" nameKey="categoria">
-              {gastos.map((_: any, i: number) => (
-                <Cell key={i} fill={COLORES_GASTOS[i % COLORES_GASTOS.length]} />
-              ))}
-            </Pie>
-            <Tooltip
-              contentStyle={{
-                background: token.colorBgElevated,
-                border: `1px solid ${token.colorBorderSecondary}`,
-                borderRadius: 8, fontSize: 12,
-              }}
-              formatter={(v: number, name: string) => [fmt.money(v), name]}
-            />
-            <Legend iconType="circle" iconSize={8}
-              wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />
-          </PieChart>
-        </ResponsiveContainer>
-      )}
-
-      {/* Footer total */}
-      {total > 0 && (
+      {/* Gráficas de tarjeta, en rejilla de tres. En móvil se apilan. */}
+      {tarjetas.length > 0 && (
         <div style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          padding: '10px 16px', borderTop: `1px solid ${token.colorBorderSecondary}`,
-          background: token.colorFillAlter,
-        }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: token.colorTextTertiary,
-            textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            TOTAL GASTOS
-          </span>
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#EF4444' }}>
-            {fmt.money(total)}
-          </span>
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+          gap: 16,
+          marginTop: 16,
+        }}
+          className="dashboard-widgets-row"
+        >
+          {tarjetas.map(w => <w.Componente key={w.slug} />)}
         </div>
       )}
     </div>
   );
 }
+
 
 export default function DashboardPage() {
   const { user } = useAuthStore();
