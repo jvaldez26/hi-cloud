@@ -6,6 +6,9 @@
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const PDFDocument = require('pdfkit') as typeof import('pdfkit');
+import {
+  repartirAnchos, altoDeLinea, celdaSinEnvolver, celdaQueEnvuelve,
+} from './columnas-numericas.helper';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -281,6 +284,13 @@ export async function generarDocumentoPDFFactura(
     // ── TABLA DE PRODUCTOS ────────────────────────────────────────────────────
     // Mismas columnas que la factura (sin Descuento — cotizaciones no tienen descuento por línea)
 
+    // Los % son el MÍNIMO: cada columna se estira hasta caber el importe más
+    // largo que aparece de verdad y la Descripción cede el resto. Con el 10%
+    // fijo, la columna de ITBIS daba 43pt de texto y "RD$ 180.00" ocupa 45.36:
+    // se partía en dos líneas en casi cualquier cotización.
+    const CELL_PAD = 8;    // 4pt a cada lado, igual que al dibujar (col.w - 8)
+    const DESC_MIN = 120;  // suelo de la Descripción
+
     const rawCols = [
       { label: 'Descripción', pct: 0.34, align: 'left'   as const },
       { label: 'Cant.',       pct: 0.08, align: 'right'  as const },
@@ -290,12 +300,38 @@ export async function generarDocumentoPDFFactura(
       { label: 'ITBIS',       pct: 0.10, align: 'right'  as const },
       { label: 'Total',       pct: 0.13, align: 'right'  as const },
     ];
-    const cols = rawCols.map((c, i) => ({
-      ...c,
-      w: i < rawCols.length - 1
-        ? Math.floor(W * c.pct)
-        : W - rawCols.slice(0, -1).reduce((s, x) => s + Math.floor(W * x.pct), 0),
-    }));
+
+    // Las celdas se calculan antes de dibujar: hay que medirlas para repartir
+    // los anchos, y así la cabecera ya sale con la tabla definitiva.
+    const filas: string[][] = d.items.map(item => [
+      item.descripcion.toUpperCase(),
+      String(item.cantidad),
+      item.unidadMedida ?? 'UN',
+      fmtM(item.precioUnitario),
+      fmtM(item.subtotal),
+      item.itbisPct === 0 ? 'EXENTO' : fmtM(item.importeItbis),
+      fmtM(item.total),
+    ]);
+
+    const anchos = repartirAnchos(
+      doc,
+      rawCols.map((c, i) => ({
+        label:    c.label,
+        align:    c.align,
+        minW:     Math.floor(W * c.pct),
+        envuelve: i === 0,
+        bold:     i === rawCols.length - 1,   // la columna Total va en bold
+      })),
+      filas,
+      {
+        W, pad: CELL_PAD, descMin: DESC_MIN,
+        fuenteCelda: 'Helvetica',         tamanoCelda: 8.5,
+        fuenteCabecera: 'Helvetica-Bold', tamanoCabecera: 7.5,
+      },
+    );
+    const cols = rawCols.map((c, i) => ({ ...c, w: anchos[i] }));
+
+    const LINE_H = altoDeLinea(doc, 'Helvetica', 8.5);
 
     // Header azul oscuro (igual que factura)
     const thH = 22;
@@ -313,8 +349,8 @@ export async function generarDocumentoPDFFactura(
     // Filas de productos — altura dinámica: la descripción puede ocupar varias líneas
     const ROW_MIN = 18;
     const ROW_PAD = 10; // padding vertical total (5 arriba + 5 abajo)
-    for (const item of d.items) {
-      const descText = item.descripcion.toUpperCase();
+    for (const cells of filas) {
+      const descText = cells[0];
       doc.font('Helvetica').fontSize(8.5);
       const descH = doc.heightOfString(descText, { width: cols[0].w - 8 });
       const rowH  = Math.max(ROW_MIN, Math.ceil(descH) + ROW_PAD);
@@ -325,31 +361,20 @@ export async function generarDocumentoPDFFactura(
       doc.rect(PL, y, W, rowH).strokeColor('#dddddd').lineWidth(0.5).stroke();
       doc.lineWidth(1);
 
-      const itbisVal = item.itbisPct === 0 ? 'EXENTO' : fmtM(item.importeItbis);
-      const cells = [
-        descText,
-        String(item.cantidad),
-        item.unidadMedida ?? 'UN',
-        fmtM(item.precioUnitario),
-        fmtM(item.subtotal),
-        itbisVal,
-        fmtM(item.total),
-      ];
-
       let rx = PL;
       for (let i = 0; i < cols.length; i++) {
         const col    = cols[i];
         const isBold = i === cols.length - 1;
         const isDesc = i === 0;
-        // Descripción: alineada al tope con wrap; resto: centradas verticalmente, sin wrap
+        // Descripción: alineada al tope y envolviendo; el resto centradas
+        // verticalmente y resueltas en una sola línea.
         const cellY = isDesc ? y + 5 : y + (rowH - 8.5) / 2;
         doc.fillColor(DARK)
           .font(isBold ? 'Helvetica-Bold' : 'Helvetica')
           .fontSize(8.5)
-          .text(cells[i], rx + 4, cellY, {
-            width: col.w - 8, align: col.align,
-            lineBreak: isDesc,
-          });
+          .text(cells[i], rx + 4, cellY, isDesc
+            ? celdaQueEnvuelve(col.w - 8, col.align)
+            : celdaSinEnvolver(col.w - 8, col.align, LINE_H));
         rx += col.w;
       }
       y += rowH;
@@ -382,16 +407,31 @@ export async function generarDocumentoPDFFactura(
       ['ITBIS Total (18%)', fmtM(d.itbisTotal)],
     ];
 
-    const labelW2 = Math.round(totW * 0.57);
-    const valueW2 = totW - labelW2;
+    // El importe manda, igual que en la tabla: la columna de valores se
+    // dimensiona al más largo que va a salir —el total va a 13.5pt— y la
+    // etiqueta se queda el resto.
+    const totalLabelTxt = d.tipo === 'COTIZACIÓN' ? 'TOTAL COTIZACIÓN:'
+      : d.tipo === 'PRO FORMA' ? 'TOTAL PRO FORMA:' : 'TOTAL PRE-FACTURA:';
+    doc.font('Helvetica').fontSize(9.5);
+    let valMax = Math.max(...totals.map(([, v]) => doc.widthOfString(v)));
+    doc.font('Helvetica-Bold').fontSize(13.5);
+    valMax = Math.max(valMax, doc.widthOfString(fmtM(d.totalGeneral)));
+    doc.font('Helvetica-Bold').fontSize(11);
+    const labelMin = Math.ceil(doc.widthOfString(totalLabelTxt)) + 6;
+    const valueW2  = Math.min(Math.ceil(valMax) + 6, totW - labelMin);
+    const labelW2  = totW - valueW2;
+
+    const LINE_H_TOT = altoDeLinea(doc, 'Helvetica', 9.5);
 
     let ty = y;
     for (const [label, val] of totals) {
       doc.fillColor(GRAY).font('Helvetica').fontSize(9.5)
         .text(label + ':', totX, ty, { width: labelW2, align: 'left' });
       doc.fillColor(DARK).font('Helvetica').fontSize(9.5)
-        .text(val, totX + labelW2, ty, { width: valueW2, align: 'right' });
-      ty += 14;
+        .text(val, totX + labelW2, ty, celdaSinEnvolver(valueW2, 'right', LINE_H_TOT));
+      // La etiqueta sí puede envolver — la fila crece con ella, no se solapa
+      doc.font('Helvetica').fontSize(9.5);
+      ty += Math.max(14, Math.ceil(doc.heightOfString(label + ':', { width: labelW2 })));
     }
 
     // Línea total
@@ -401,11 +441,12 @@ export async function generarDocumentoPDFFactura(
     doc.lineWidth(1);
     ty += 8;
 
-    const totalLabel = d.tipo === 'COTIZACIÓN' ? 'TOTAL COTIZACIÓN:' : d.tipo === 'PRO FORMA' ? 'TOTAL PRO FORMA:' : 'TOTAL PRE-FACTURA:';
     doc.fillColor(DARK).font('Helvetica-Bold').fontSize(11)
-      .text(totalLabel, totX, ty, { width: labelW2, align: 'left' });
-    doc.fillColor(DARK).font('Helvetica-Bold').fontSize(13.5)
-      .text(fmtM(d.totalGeneral), totX + labelW2, ty - 1, { width: valueW2, align: 'right' });
+      .text(totalLabelTxt, totX, ty, { width: labelW2, align: 'left' });
+    const lhTotal = altoDeLinea(doc, 'Helvetica-Bold', 13.5);
+    doc.fillColor(DARK)
+      .text(fmtM(d.totalGeneral), totX + labelW2, ty - 1,
+        celdaSinEnvolver(valueW2, 'right', lhTotal));
 
     y = ty + 32;
 
