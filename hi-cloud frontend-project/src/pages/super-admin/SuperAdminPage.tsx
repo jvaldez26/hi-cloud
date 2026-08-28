@@ -22,7 +22,7 @@ import {
   XCircle, BarChart2, Globe, LogOut, RefreshCw, Search,
   Eye, Edit2, MessageSquare, PauseCircle, PlayCircle, Trash2,
   Crown, Settings, Moon, Sun,
-  CheckCircle, Send, Shield, Bell, MoreHorizontal, Database,
+  CheckCircle, Send, Shield, Bell, MoreHorizontal, Database, Home,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
@@ -130,19 +130,32 @@ const PLAN_MRR_DOP:  Record<string, number> = Object.fromEntries(PLANES.map(p =>
 
 // ── Sub-componentes ───────────────────────────────────────────────────────────
 
-function KpiCard({ icon, label, value, sub, subColor, accent }:
-  { icon: React.ReactNode; label: string; value: string | number; sub?: string; subColor?: string; accent: string }) {
+function KpiCard({ icon, label, value, sub, subColor, accent, fondo }:
+  { icon: React.ReactNode; label: string; value: string | number; sub?: string; subColor?: string;
+    accent: string;
+    /**
+     * Relleno de la tarjeta. Por defecto `C.card`, que es lo correcto sobre el
+     * fondo de la página. Dentro de la pestaña Inicio la superficie ya ES
+     * `C.card`, así que ahí se pasa `C.bg`: sin esto, en modo claro serían
+     * tarjetas blancas sobre blanco y solo se verían por el borde.
+     */
+    fondo?: string }) {
   const C = useSaTheme();
   return (
     <div style={{
-      background: C.card, borderRadius: 12, padding: '20px 22px',
+      background: fondo ?? C.card, borderRadius: 12, padding: '20px 22px',
       border: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', gap: 8,
       borderTop: `3px solid ${accent}`,
       transition: 'all 300ms ease',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ color: C.txt2, fontSize: 13 }}>{label}</span>
-        <span style={{ color: accent }}>{icon}</span>
+      {/* minHeight de dos líneas: dentro de la pestaña Inicio las columnas son
+          más estrechas que a ancho de página y etiquetas como "e-CFs Generados
+          Hoy" envuelven. Sin esta reserva, las tarjetas que envuelven bajan su
+          cifra y la fila queda con los números a distinta altura. */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
+        gap: 8, minHeight: 36 }}>
+        <span style={{ color: C.txt2, fontSize: 13, lineHeight: 1.3 }}>{label}</span>
+        <span style={{ color: accent, flexShrink: 0 }}>{icon}</span>
       </div>
       <div style={{ fontSize: 32, fontWeight: 800, color: C.txt, lineHeight: 1 }}>{value}</div>
       {sub && <div style={{ fontSize: 12, color: subColor ?? C.txt2 }}>{sub}</div>}
@@ -1449,7 +1462,10 @@ export default function SuperAdminPage() {
   };
 
   // Estado UI
-  const [tab, setTab]               = useState('empresas');
+  // Arranca en Inicio: es la vista de resumen, y hasta ahora sus 8 tarjetas se
+  // pintaban encima de TODAS las pestañas, empujando el contenido ~300px hacia
+  // abajo. Metidas en su propia pestaña, la tabla de Empresas arranca arriba.
+  const [tab, setTab]               = useState('inicio');
 
   // ── Menú lateral ──────────────────────────────────────────────────────────
   // Mismo armazón que el ERP. La clave de localStorage es distinta a propósito:
@@ -2406,80 +2422,6 @@ export default function SuperAdminPage() {
           </button>
         </div>
 
-        {/* ── KPI CARDS ─────────────────────────────────────────────────────── */}
-        {loadMet ? (
-          <div style={{ textAlign: 'center', padding: 32 }}><Spin size="large" /></div>
-        ) : errMet ? (
-          <div style={{ padding: '16px 20px', marginBottom: 28, background: '#fff1f0', border: '1px solid #ffa39e', borderRadius: 8, color: '#cf1322', fontSize: 13 }}>
-            ⚠ Error al cargar métricas — el endpoint devolvió un error inesperado. Revisa los logs del servidor.
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 28 }}>
-            <KpiCard
-              icon={<Building2 size={20} />}
-              label="Empresas Activas"
-              value={metricas?.empresasActivas ?? 0}
-              sub={`${metricas?.totalEmpresas ?? 0} total en la plataforma`}
-              accent={C.blue}
-            />
-            <KpiCard
-              icon={<Users size={20} />}
-              label="Usuarios Totales"
-              value={metricas?.totalUsuarios ?? 0}
-              sub={metricas?.nuevosHoy > 0 ? `+${metricas.nuevosHoy} nuevos hoy` : 'Sin nuevos hoy'}
-              subColor={metricas?.nuevosHoy > 0 ? C.green : C.txt2}
-              accent={C.green}
-            />
-            <KpiCard
-              icon={<FileText size={20} />}
-              label="Facturas del Mes"
-              value={metricas?.facturasMes ?? 0}
-              sub={metricas?.montoFacturasMes > 0 ? `RD$ ${Number(metricas.montoFacturasMes).toLocaleString('es-DO', { maximumFractionDigits: 0 })} facturado` : `${metricas?.facturasHoy ?? 0} hoy`}
-              subColor={C.txt2}
-              accent="#F97316"
-            />
-            <KpiCard
-              icon={<DollarSign size={20} />}
-              label="MRR Suscripciones"
-              value={fmtDop(metricas?.mrr ?? 0)}
-              sub="RD$ · ingresos propios del SaaS"
-              subColor={C.gold}
-              accent={C.gold}
-            />
-            <KpiCard
-              icon={<ClockIcon size={20} />}
-              label="Empresas en Trial"
-              value={metricas?.empresasEnTrial ?? 0}
-              sub={metricas?.trialsProximosVencer > 0 ? `⚠ ${metricas.trialsProximosVencer} vencen en 7 días` : 'Sin vencimientos próximos'}
-              subColor={metricas?.trialsProximosVencer > 0 ? C.gold : C.txt2}
-              accent={C.gold}
-            />
-            <KpiCard
-              icon={<XCircle size={20} />}
-              label="Suscripciones Vencidas"
-              value={metricas?.suscripcionesVencidas ?? 0}
-              sub={metricas?.suscripcionesVencidas > 0 ? '⚠ Requieren atención' : 'Todo al día'}
-              subColor={metricas?.suscripcionesVencidas > 0 ? C.red : C.green}
-              accent={metricas?.suscripcionesVencidas > 0 ? C.red : C.green}
-            />
-            <KpiCard
-              icon={<BarChart2 size={20} />}
-              label="e-CFs Generados Hoy"
-              value={metricas?.ecfHoy ?? 0}
-              sub="Comprobantes fiscales electrónicos"
-              accent={C.purple}
-            />
-            <KpiCard
-              icon={<Globe size={20} />}
-              label="Sesiones Activas"
-              value={metricas?.sesionesActivas ?? 0}
-              sub="Usuarios con token vigente"
-              subColor={C.txt2}
-              accent={C.blue}
-            />
-          </div>
-        )}
-
         {/* ── LAYOUT: SIDEBAR + CONTENIDO ──────────────────────────────────── */}
         <div style={{ display: 'flex', gap: 0, background: C.card, borderRadius: 14, border: `1px solid ${C.border}`, overflow: 'hidden', minHeight: 560 }}>
 
@@ -2489,7 +2431,10 @@ export default function SuperAdminPage() {
               collapsed={menuColapsado}
               onCollapsed={setMenuColapsado}
               tagline="SUPER ADMIN"
-              itemsRapidos={[]}
+              // Inicio va como item rápido y no dentro de un grupo: es la vista
+              // de resumen, no pertenece a Clientes ni a Facturación ni a
+              // Sistema. Mismo sitio que ocupa en el menú del ERP.
+              itemsRapidos={[{ path: 'inicio', label: 'Inicio', Icon: Home }]}
               gruposAddon={[]}
               gruposNormales={gruposMenu}
               activePath={tab}
@@ -2538,6 +2483,93 @@ export default function SuperAdminPage() {
 
           {/* ── CONTENT AREA ────────────────────────────────────────────────── */}
           <div style={{ flex: 1, minWidth: 0, padding: 24, overflow: 'auto' }}>
+
+            {/* ── TAB INICIO ────────────────────────────────────────────────── */}
+            {tab === 'inicio' && (
+              <>
+                {/* ── KPI CARDS ─────────────────────────────────────────────────────── */}
+                {loadMet ? (
+                  <div style={{ textAlign: 'center', padding: 32 }}><Spin size="large" /></div>
+                ) : errMet ? (
+                  <div style={{ padding: '16px 20px', marginBottom: 28, background: '#fff1f0', border: '1px solid #ffa39e', borderRadius: 8, color: '#cf1322', fontSize: 13 }}>
+                    ⚠ Error al cargar métricas — el endpoint devolvió un error inesperado. Revisa los logs del servidor.
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+                    <KpiCard
+                      fondo={C.bg}
+                      icon={<Building2 size={20} />}
+                      label="Empresas Activas"
+                      value={metricas?.empresasActivas ?? 0}
+                      sub={`${metricas?.totalEmpresas ?? 0} total en la plataforma`}
+                      accent={C.blue}
+                    />
+                    <KpiCard
+                      fondo={C.bg}
+                      icon={<Users size={20} />}
+                      label="Usuarios Totales"
+                      value={metricas?.totalUsuarios ?? 0}
+                      sub={metricas?.nuevosHoy > 0 ? `+${metricas.nuevosHoy} nuevos hoy` : 'Sin nuevos hoy'}
+                      subColor={metricas?.nuevosHoy > 0 ? C.green : C.txt2}
+                      accent={C.green}
+                    />
+                    <KpiCard
+                      fondo={C.bg}
+                      icon={<FileText size={20} />}
+                      label="Facturas del Mes"
+                      value={metricas?.facturasMes ?? 0}
+                      sub={metricas?.montoFacturasMes > 0 ? `RD$ ${Number(metricas.montoFacturasMes).toLocaleString('es-DO', { maximumFractionDigits: 0 })} facturado` : `${metricas?.facturasHoy ?? 0} hoy`}
+                      subColor={C.txt2}
+                      accent="#F97316"
+                    />
+                    <KpiCard
+                      fondo={C.bg}
+                      icon={<DollarSign size={20} />}
+                      label="MRR Suscripciones"
+                      value={fmtDop(metricas?.mrr ?? 0)}
+                      sub="RD$ · ingresos propios del SaaS"
+                      subColor={C.gold}
+                      accent={C.gold}
+                    />
+                    <KpiCard
+                      fondo={C.bg}
+                      icon={<ClockIcon size={20} />}
+                      label="Empresas en Trial"
+                      value={metricas?.empresasEnTrial ?? 0}
+                      sub={metricas?.trialsProximosVencer > 0 ? `⚠ ${metricas.trialsProximosVencer} vencen en 7 días` : 'Sin vencimientos próximos'}
+                      subColor={metricas?.trialsProximosVencer > 0 ? C.gold : C.txt2}
+                      accent={C.gold}
+                    />
+                    <KpiCard
+                      fondo={C.bg}
+                      icon={<XCircle size={20} />}
+                      label="Suscripciones Vencidas"
+                      value={metricas?.suscripcionesVencidas ?? 0}
+                      sub={metricas?.suscripcionesVencidas > 0 ? '⚠ Requieren atención' : 'Todo al día'}
+                      subColor={metricas?.suscripcionesVencidas > 0 ? C.red : C.green}
+                      accent={metricas?.suscripcionesVencidas > 0 ? C.red : C.green}
+                    />
+                    <KpiCard
+                      fondo={C.bg}
+                      icon={<BarChart2 size={20} />}
+                      label="e-CFs Generados Hoy"
+                      value={metricas?.ecfHoy ?? 0}
+                      sub="Comprobantes fiscales electrónicos"
+                      accent={C.purple}
+                    />
+                    <KpiCard
+                      fondo={C.bg}
+                      icon={<Globe size={20} />}
+                      label="Sesiones Activas"
+                      value={metricas?.sesionesActivas ?? 0}
+                      sub="Usuarios con token vigente"
+                      subColor={C.txt2}
+                      accent={C.blue}
+                    />
+                  </div>
+                )}
+              </>
+            )}
 
             {/* ── TAB EMPRESAS ──────────────────────────────────────────────── */}
             {tab === 'empresas' && (
