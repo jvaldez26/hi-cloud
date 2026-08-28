@@ -147,10 +147,34 @@ export class Factura extends TenantBaseEntity {
   @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true, default: null })
   descuentoGeneralFinal?: number;
 
-  // ── Comprador (cuando se ingresa RNC/cédula sin seleccionar cliente) ────────
-  /** RNC o cédula del comprador capturado manualmente en el formulario */
+  // ── Comprador declarado — SNAPSHOT FISCAL ─────────────────────────────────
+  //
+  // `rncComprador` y `razonSocialComprador` son la verdad de lo que se le
+  // declaró a la DGII cuando se emitió el e-CF de esta factura. Se escriben una
+  // sola vez, en la misma transacción que crea el e-CF, y no se vuelven a
+  // tocar.
+  //
+  // NO son lo mismo que `cliente`, y no deben sincronizarse con él:
+  //
+  //   snapshot  → dueño: la emisión del e-CF. Momento: al emitir. Inmutable.
+  //               Lo leen las notas de crédito/débito y toda reimpresión.
+  //   clienteId → dueño: el vínculo comercial. Momento: puede cambiar después.
+  //               Lo leen estados de cuenta, top clientes e historial.
+  //
+  // Si mañana el cliente cambia de razón social, la nota de crédito de una
+  // factura vieja tiene que seguir saliendo con el nombre con el que se emitió
+  // — si no, la DGII la rechaza con código 615. Por eso el vínculo nunca
+  // reescribe el snapshot, ni al crear el cliente ni al vincularlo.
+  //
+  // Ver comprador.section.ts (resolverCompradorNota) y emitir-ecf.use-case.ts.
+
+  /** RNC o cédula del comprador tal como se declaró. Snapshot: no reescribir. */
   @Column({ length: 11, nullable: true, default: null })
   rncComprador?: string;
+
+  /** Razón social del comprador tal como se declaró. Snapshot: no reescribir. */
+  @Column({ length: 300, nullable: true, default: null })
+  razonSocialComprador?: string;
 
   // ── Orden de Compra ───────────────────────────────────────────────────────
   @Column({ length: 100, nullable: true, default: null })

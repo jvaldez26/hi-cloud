@@ -31,26 +31,37 @@ import {
   EcfNcfReferenciadoError,
   EcfMontoAnulacionError,
 } from '../errors/ecf.errors';
-import { fmtFecha, razonSocialFiscal } from '../builders/base-ecf.builder';
+import { fmtFecha, razonSocialFiscal, normalizarRnc } from '../builders/base-ecf.builder';
 
 const TIMEOUT_POS      = 8_000;
 const TIMEOUT_REGULAR  = 30_000;
 
 /**
- * Comprador declarado en un e-CF ya emitido, para referenciarlo desde una nota.
+ * Comprador declarado en un comprobante ya emitido, para referenciarlo desde
+ * una nota de crédito o débito.
  *
- * La fuente primaria es `jsonEnviado` — el JSON literal que se le mandó a
- * MSeller, y por tanto el único registro fiel de lo que la DGII recibió. Las
- * columnas denormalizadas son el respaldo: `rncComprador` solo se pobló en una
- * fracción de los e-CF históricos, así que leer de ahí devolvería vacío para la
- * inmensa mayoría de las facturas y la guarda no protegería nada.
+ * Manda el snapshot fiscal de la factura (`rncComprador` /
+ * `razonSocialComprador`): es el dueño del dato y no cambia aunque el cliente
+ * vinculado cambie después. Ver el comentario en factura.entity.ts.
+ *
+ * Detrás va `jsonEnviado` —el JSON literal que se le mandó a MSeller, registro
+ * fiel de lo que la DGII recibió— para las facturas que el backfill no alcanzó,
+ * y por último las columnas denormalizadas del e-CF.
+ *
+ * Los dos campos se escriben siempre juntos y desde el mismo payload, así que
+ * el COALESCE campo a campo no puede mezclar compradores de dos fuentes.
+ *
+ * Nunca cae al cliente vinculado: esa caída es exactamente la que hizo que la
+ * NC E340000000009 saliera a "consumidor final" y la DGII la rechazara con 615.
  */
-export function leerCompradorDeclarado(ecf: ECF): CompradorOriginal {
+export function leerCompradorDeclarado(ecf: ECF, factura?: Factura | null): CompradorOriginal {
   const comprador = (ecf.jsonEnviado as any)?.ECF?.Encabezado?.Comprador ?? {};
   return {
-    rnc:         comprador.RNCComprador         ?? ecf.rncComprador,
-    razonSocial: comprador.RazonSocialComprador ?? ecf.razonSocialComprador,
-    direccion:   comprador.DireccionComprador   ?? ecf.direccionComprador,
+    rnc:         factura?.rncComprador
+                   ?? comprador.RNCComprador         ?? ecf.rncComprador,
+    razonSocial: factura?.razonSocialComprador
+                   ?? comprador.RazonSocialComprador ?? ecf.razonSocialComprador,
+    direccion:   comprador.DireccionComprador        ?? ecf.direccionComprador,
   };
 }
 
@@ -341,7 +352,7 @@ export class EmitirECFUseCase {
         // Preservar CodigoModificacion del input si fue proporcionado; default '3'
         CodigoModificacion: infoRefInput?.CodigoModificacion ?? '3',
       };
-      compradorOriginal = leerCompradorDeclarado(ecfOriginal);
+      compradorOriginal = leerCompradorDeclarado(ecfOriginal, facturaOrig);
     }
 
     // ── 4-ter. COMPRADOR DE LA NOTA = EL DEL COMPROBANTE QUE MODIFICA ────────
@@ -362,7 +373,12 @@ export class EmitirECFUseCase {
         where: { numero: infoReferencia.NCFModificado, empresaId },
         order: { createdAt: 'DESC' },
       });
-      if (ecfRef) compradorOriginal = leerCompradorDeclarado(ecfRef);
+      if (ecfRef) {
+        const facturaRef = ecfRef.documentoOrigenId
+          ? await this.facturaRepo.findOne({ where: { id: ecfRef.documentoOrigenId, empresaId } })
+          : null;
+        compradorOriginal = leerCompradorDeclarado(ecfRef, facturaRef);
+      }
     }
 
     // ── 4-bis. COMPRADOR VIGENTE ANTE LA DGII ────────────────────────────────
@@ -441,6 +457,37 @@ export class EmitirECFUseCase {
       });
 
       const guardado = await manager.save(ECF, fila) as unknown as ECF;
+
+      // ── SNAPSHOT FISCAL EN LA FACTURA ────────────────────────────────────
+      //
+      // Congelar en la factura el comprador que acaba de irse en el XML. Se
+      // toma del payload, no del cliente: el payload ES lo declarado, así que
+      // factura y e-CF no pueden divergir.
+      //
+      // Va en esta transacción a propósito. Si se escribiera después y algo
+      // fallara en medio, quedaría un e-CF declarando un comprador y una
+      // factura sin saber cuál — que es la situación que este campo viene a
+      // eliminar.
+      //
+      // Se escribe UNA vez y no se vuelve a tocar: es el dueño fiscal del dato.
+      // El vínculo comercial (clienteId) tiene otro dueño y otro momento, y no
+      // reescribe esto nunca. Ver el comentario en factura.entity.ts.
+      if (documentoOrigenTipo === DocumentoOrigenTipo.FACTURA
+          || documentoOrigenTipo === DocumentoOrigenTipo.VENTA_POS) {
+        const declarado = (payloadReal.ECF?.Encabezado as any)?.Comprador ?? {};
+        // El RNC de todo ceros es el centinela de "sin comprador identificado",
+        // no un dato: guardarlo haría que la guarda de las notas creyera que el
+        // comprobante se declaró a consumidor final a propósito.
+        const rncDeclarado   = normalizarRnc(declarado.RNCComprador);
+        const razonDeclarada = String(declarado.RazonSocialComprador ?? '').trim();
+        if (rncDeclarado || razonDeclarada) {
+          await manager.update(Factura, { id: documentoOrigenId, empresaId }, {
+            ...(rncDeclarado   ? { rncComprador:         rncDeclarado }   : {}),
+            ...(razonDeclarada ? { razonSocialComprador: razonDeclarada } : {}),
+          });
+        }
+      }
+
       return { encf: numero, payload: payloadReal, ecfSaved: guardado };
     });
 

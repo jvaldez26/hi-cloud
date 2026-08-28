@@ -464,7 +464,14 @@ export class ReintentoECFJob {
       const ecfOrig = await this.ecfRepo.findOne({
         where: { numero: ecf.ncfModificado, empresaId: empresaId! },
       });
-      if (ecfOrig) compradorOriginal = leerCompradorDeclarado(ecfOrig);
+      if (ecfOrig) {
+        const facturaOrig = ecfOrig.documentoOrigenId
+          ? await this.facturaRepo.findOne({
+              where: { id: ecfOrig.documentoOrigenId, empresaId: empresaId! },
+            })
+          : null;
+        compradorOriginal = leerCompradorDeclarado(ecfOrig, facturaOrig);
+      }
       infoReferencia = {
         NCFModificado:      ecf.ncfModificado,
         FechaNCFModificado: fmtFecha(ecfOrig?.fechaUso ?? ecfOrig?.createdAt ?? new Date()),

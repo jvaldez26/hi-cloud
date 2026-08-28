@@ -159,22 +159,26 @@ export class PDFService {
     const itbisTotal      = Number(factura.iva   ?? 0);
     const totalGeneral    = Number(factura.total  ?? 0);
 
-    // ── Comprador: fuente ÚNICA = snapshot del e-CF (lo que se ENVIÓ a DGII) ──
-    // El registro `ecf` ya se cargó arriba (SELECT e.*), así que NO hay consulta
-    // extra ni re-resolución del cliente. El comprador se toma del MISMO snapshot
-    // que usó el XML (ecf.rncComprador / ecf.razonSocialComprador / ecf.direccionComprador).
-    // Solo si el documento NO es fiscal (sin e-CF) se cae a la relación `cliente`.
-    // Esto une PDF y XML en una sola fuente y evita que el merge en memoria de
-    // emitir-ecf (que nunca se persiste al clienteId) haga que el PDF muestre
-    // "Consumidor Final" mientras el XML/DGII tiene el comprador real.
+    // ── Comprador: manda el snapshot fiscal de la factura ────────────────────
+    // `factura.rncComprador` / `factura.razonSocialComprador` se congelan al
+    // emitir, desde el mismo payload que se le mandó a la DGII. Son el dueño del
+    // dato y no cambian aunque el cliente vinculado cambie después — ver el
+    // comentario en factura.entity.ts.
+    //
+    // Detrás va el e-CF (ya cargado arriba con SELECT e.*, sin consulta extra)
+    // para las facturas que el backfill no alcanzó. La relación `cliente` es el
+    // último recurso y solo debería usarse en documentos NO fiscales: caer al
+    // cliente en uno fiscal es justo lo que hacía que el PDF dijera "Consumidor
+    // Final" mientras el XML tenía el comprador real.
     const compradorRNC: string | undefined =
-      ecf?.rncComprador
-      ?? (factura as any).rncComprador
+      (factura as any).rncComprador
+      ?? ecf?.rncComprador
       ?? factura.cliente?.rncReceptor
       ?? factura.cliente?.rfc
       ?? undefined;
     const compradorNombre: string =
-      ecf?.razonSocialComprador
+      (factura as any).razonSocialComprador
+      || ecf?.razonSocialComprador
       || factura.cliente?.nombre
       || 'Consumidor Final';
     const compradorDireccion: string | undefined =
@@ -413,12 +417,17 @@ export class PDFService {
       itbis16:         sI16     > 0 ? sI16     : undefined,
       totalLineas:     (factura.detalles || []).length || undefined,
       qrBase64,
-      rncComprador:         ecf?.rncComprador
-                              ?? (factura as any).rncComprador
+      // Misma cascada que el PDF A4: manda el snapshot fiscal de la factura.
+      // Aquí importa el doble, porque este e-CF se carga por `factura.ecfId` y
+      // esa columna está en NULL en miles de facturas — el snapshot no depende
+      // de ella.
+      rncComprador:         (factura as any).rncComprador
+                              ?? ecf?.rncComprador
                               ?? factura.cliente?.rncReceptor
                               ?? factura.cliente?.rfc
                               ?? undefined,
-      razonSocialComprador: ecf?.razonSocialComprador
+      razonSocialComprador: (factura as any).razonSocialComprador
+                              || ecf?.razonSocialComprador
                               || factura.cliente?.nombre
                               || undefined,
     };

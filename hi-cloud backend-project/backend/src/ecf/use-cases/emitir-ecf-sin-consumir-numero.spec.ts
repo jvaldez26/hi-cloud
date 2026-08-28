@@ -76,6 +76,7 @@ function montarCaso(opts: {
   const sec = opts.secuencia ?? crearSecuencia();
   const tipoDoc = opts.tipoDoc ?? DocumentoOrigenTipo.FACTURA;
   const filasGuardadas: any[] = [];
+  const snapshotsEscritos: any[] = [];
 
   // Generador falso que se comporta como el real: incrementa la secuencia.
   // Si alguna validación lo alcanza indebidamente, el contador se mueve y el
@@ -136,11 +137,16 @@ function montarCaso(opts: {
       getRepository: () => ({ findOne: async () => ({ id: 3, codigo: 'E32', prefijo: 'E32' }) }),
       transaction: async (cb: any) => cb({
         save: async (_e: any, x: any) => { filasGuardadas.push(x); return { id: 99, ...x }; },
+        // El snapshot fiscal del comprador se escribe en la factura DENTRO de
+        // esta misma transacción, para que factura y e-CF no puedan divergir.
+        update: async (_e: any, criterio: any, campos: any) => {
+          snapshotsEscritos.push({ criterio, campos }); return { affected: 1 };
+        },
       }),
     } as any,
   );
 
-  return { uc, sec, filasGuardadas, tipoDoc };
+  return { uc, sec, filasGuardadas, snapshotsEscritos, tipoDoc };
 }
 
 /** Ejecuta esperando fallo y devuelve cuánto se movió la secuencia. */
@@ -295,5 +301,28 @@ describe('emitir e-CF — ninguna validación quema un número', () => {
     // filasGuardadas solo recoge lo que pasó por manager.save dentro de
     // ds.transaction. Si el INSERT saliera fuera, estaría vacío.
     expect(caso.filasGuardadas).toHaveLength(1);
+  });
+
+  it('el snapshot del comprador se congela en la factura, en la misma transacción', async () => {
+    // Si esta escritura sale de la transacción, un fallo en medio deja un e-CF
+    // declarando un comprador y una factura que no sabe cuál — que es la
+    // situación que el snapshot viene a eliminar.
+    const caso = montarCaso({ documento: facturaBase() });
+    await caso.uc.execute({
+      empresaId: 1,
+      documentoOrigenTipo: DocumentoOrigenTipo.FACTURA,
+      documentoOrigenId: 1,
+      tipoEcf: 32,
+    });
+
+    expect(caso.snapshotsEscritos).toHaveLength(1);
+    const { criterio, campos } = caso.snapshotsEscritos[0];
+    expect(criterio).toEqual({ id: 1, empresaId: 1 });
+    // Lo declarado en el XML, no lo que diga el cliente vinculado.
+    expect(campos.rncComprador).toBe('131000001');
+    expect(campos.razonSocialComprador).toBe('CLIENTE SRL');
+    expect(campos.rncComprador).toBe(
+      caso.filasGuardadas[0].jsonEnviado.ECF.Encabezado.Comprador.RNCComprador,
+    );
   });
 });
