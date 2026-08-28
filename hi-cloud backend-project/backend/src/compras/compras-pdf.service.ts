@@ -8,6 +8,7 @@ import { Empresa } from '../configuracion/entities/empresa.entity';
 import { TenantService } from '../tenant/tenant.service';
 import type { DocData } from '../common/doc.template';
 import { generarDocumentoPDF } from '../common/pdf/doc-pdf.helper';
+import { altoDeLinea, celdaSinEnvolver } from '../common/pdf/columnas-numericas.helper';
 
 const ESTADO_COLOR: Record<string, string> = {
   recibida: 'green', pagada: 'blue', pendiente: 'orange', anulada: 'red',
@@ -224,6 +225,8 @@ export class ComprasPdfService {
           imp:    { x: M + CW - 70,       w: 70 },
         };
 
+        const LINE_H = altoDeLinea(doc, 'Helvetica', 7.5);
+
         // Cabecera tabla
         doc.rect(M, y, CW, 16).fillColor('#1a2c5b').fill();
         doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#ffffff');
@@ -247,12 +250,20 @@ export class ComprasPdfService {
             doc.rect(M, y, CW, rowH).fillColor('#f8f9fa').fill();
           }
           doc.fontSize(7.5).font('Helvetica').fillColor('#333333');
-          doc.text(String(i + 1),           COL.num.x + 2,    y + 4, { width: COL.num.w                   });
-          doc.text(d.descripcion ?? '',      COL.desc.x + 2,   y + 4, { width: COL.desc.w - 4, ellipsis: true });
-          doc.text(String(Number(d.cantidad)), COL.cant.x,     y + 4, { width: COL.cant.w,  align: 'center' });
-          doc.text(fmt(Number(d.precioUnitario)), COL.precio.x, y + 4, { width: COL.precio.w, align: 'right'  });
-          doc.text(`${pct.toFixed(0)}%`,     COL.itbis.x,      y + 4, { width: COL.itbis.w, align: 'center' });
-          doc.text(fmt(tot),                 COL.imp.x,        y + 4, { width: COL.imp.w,   align: 'right'  });
+          // rowH es FIJO (16pt) y cada celda se dibuja a y+4: si un texto no
+          // cabe y PDFKit lo envuelve, la segunda línea cae encima de la fila
+          // siguiente, porque la altura no crece con el contenido. Un documento
+          // solapado se lee peor que uno recortado, así que toda celda va en una
+          // sola línea. `ellipsis: true` a secas NO basta — hace falta el
+          // `height`; ver columnas-numericas.helper.ts.
+          const unaLinea = (w: number, align: 'left' | 'right' | 'center' = 'left') =>
+            celdaSinEnvolver(w, align, LINE_H);
+          doc.text(String(i + 1),           COL.num.x + 2,    y + 4, unaLinea(COL.num.w));
+          doc.text(d.descripcion ?? '',      COL.desc.x + 2,   y + 4, unaLinea(COL.desc.w - 4));
+          doc.text(String(Number(d.cantidad)), COL.cant.x,     y + 4, unaLinea(COL.cant.w,  'center'));
+          doc.text(fmt(Number(d.precioUnitario)), COL.precio.x, y + 4, unaLinea(COL.precio.w, 'right'));
+          doc.text(`${pct.toFixed(0)}%`,     COL.itbis.x,      y + 4, unaLinea(COL.itbis.w, 'center'));
+          doc.text(fmt(tot),                 COL.imp.x,        y + 4, unaLinea(COL.imp.w,   'right'));
           y += rowH;
         });
 
@@ -267,12 +278,17 @@ export class ComprasPdfService {
         const itbisTotal   = Number(compra.itbis);
         const totalGen     = Number(compra.total);
 
+        // La fila avanza 13pt fijos: el importe también va en una sola línea,
+        // por el mismo motivo que las de la tabla.
+        const LINE_H_TOT = altoDeLinea(doc, 'Helvetica', 8);
+
         const addTotalRow = (label: string, valor: number, bold = false, color = '#333333') => {
           doc.fontSize(8)
              .font(bold ? 'Helvetica-Bold' : 'Helvetica')
              .fillColor(color)
              .text(label, TX, y, { width: TW * 0.55 })
-             .text(fmt(valor), TX + TW * 0.55, y, { width: TW * 0.45, align: 'right' });
+             .text(fmt(valor), TX + TW * 0.55, y,
+               celdaSinEnvolver(TW * 0.45, 'right', LINE_H_TOT));
           y += 13;
         };
 

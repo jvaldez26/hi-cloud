@@ -6,6 +6,7 @@
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const PDFDocument = require('pdfkit') as typeof import('pdfkit');
 import { fechaHoraRD } from '../utils/fecha-local.util';
+import { altoDeLinea, celdaSinEnvolver } from './columnas-numericas.helper';
 
 // ── Tipos públicos ───────────────────────────────────────────────────────────
 
@@ -130,6 +131,14 @@ export async function generarReportePDF(data: TabularReportData): Promise<Buffer
 
     const ROW_H = 18;
 
+    // La fila mide ROW_H FIJO y cada celda se dibuja a y+4. Si un texto no cabe
+    // y PDFKit lo envuelve, la segunda línea cae encima de la fila siguiente,
+    // porque la altura no crece con el contenido. Un documento solapado se lee
+    // peor que uno con el texto recortado, así que toda celda se resuelve en una
+    // sola línea. Ojo: `ellipsis: true` por sí solo NO lo consigue — hace falta
+    // el `height`. Ver columnas-numericas.helper.ts.
+    const LINE_H = altoDeLinea(doc, 'Helvetica', 7.5);
+
     // Función para dibujar cabecera de tabla (reutilizable en new pages)
     const drawTableHeader = () => {
       doc.rect(PL, y, W, ROW_H).fill('#1a3c8f');
@@ -138,9 +147,8 @@ export async function generarReportePDF(data: TabularReportData): Promise<Buffer
       for (let i = 0; i < data.columns.length; i++) {
         const col = data.columns[i];
         const cw  = colWidths[i];
-        doc.text(col.header.toUpperCase(), hx + 3, y + 4, {
-          width: cw - 6, align: col.align ?? 'left',
-        });
+        doc.text(col.header.toUpperCase(), hx + 3, y + 4,
+          celdaSinEnvolver(cw - 6, col.align ?? 'left', LINE_H));
         hx += cw;
       }
       y += ROW_H;
@@ -179,9 +187,8 @@ export async function generarReportePDF(data: TabularReportData): Promise<Buffer
           txt = String(raw);
         }
         doc.fillColor(DARK).font('Helvetica').fontSize(7.5)
-          .text(txt, rx + 3, y + 4, {
-            width: cw - 6, align: col.align ?? 'left', ellipsis: true,
-          });
+          .text(txt, rx + 3, y + 4,
+            celdaSinEnvolver(cw - 6, col.align ?? 'left', LINE_H));
         rx += cw;
       }
       y += ROW_H;
@@ -207,7 +214,9 @@ export async function generarReportePDF(data: TabularReportData): Promise<Buffer
         const txt = raw !== undefined
           ? (col.money ? fmtM(Number(raw)) : String(raw))
           : '';
-        doc.text(txt, tx + 3, y + 5, { width: cw - 6, align: col.align ?? 'left' });
+        doc.text(txt, tx + 3, y + 5,
+          celdaSinEnvolver(cw - 6, col.align ?? 'left', altoDeLinea(doc, 'Helvetica-Bold', 8)));
+        doc.font('Helvetica-Bold').fontSize(8);
         tx += cw;
       }
       y += ROW_H + 12;
