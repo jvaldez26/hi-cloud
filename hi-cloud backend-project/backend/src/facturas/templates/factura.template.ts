@@ -87,6 +87,15 @@ export interface FacturaPDFItem {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * Toda celda numérica lleva esto. Un importe como "RD$ 1,080.00" tiene un
+ * espacio, así que el navegador lo puede partir entre "RD$" y la cifra si la
+ * columna se le queda estrecha — y en papel eso se ve como el importe roto en
+ * dos líneas. Con nowrap el ancho mínimo de la celda pasa a ser el del importe
+ * completo y la única columna que cede es la Descripción, que sí puede envolver.
+ */
+const NOWRAP = 'white-space:nowrap;';
+
 function moneyWithSimbolo(n: number | undefined | null, simbolo: string): string {
   if (n == null) return `${simbolo} 0.00`;
   return `${simbolo} ` + Number(n).toLocaleString('es-DO', {
@@ -213,12 +222,12 @@ export function generarHTMLFactura(d: FacturaPDFData): string {
     return (
       `<tr style="background:#fff;border-bottom:1px solid #ddd;">` +
       `<td style="padding:6px 10px;font-size:9px;color:${DARK};text-transform:uppercase;">${esc(item.descripcion)}</td>` +
-      `<td style="padding:6px 8px;font-size:9px;color:${DARK};text-align:right;">${Number(item.cantidad).toLocaleString('es-DO', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>` +
-      `<td style="padding:6px 8px;font-size:9px;color:${DARK};text-align:right;">${money(item.precioUnitario)}</td>` +
-      `<td style="padding:6px 8px;font-size:9px;color:${DARK};text-align:center;">${descVal}</td>` +
-      `<td style="padding:6px 8px;font-size:9px;color:${DARK};text-align:right;">${money(item.subtotal)}</td>` +
-      `<td style="padding:6px 8px;font-size:9px;text-align:right;">${itbisVal}</td>` +
-      `<td style="padding:6px 10px;font-size:9px;color:${DARK};font-weight:700;text-align:right;">${money(item.total)}</td>` +
+      `<td style="padding:6px 8px;font-size:9px;color:${DARK};text-align:right;${NOWRAP}">${Number(item.cantidad).toLocaleString('es-DO', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>` +
+      `<td style="padding:6px 8px;font-size:9px;color:${DARK};text-align:right;${NOWRAP}">${money(item.precioUnitario)}</td>` +
+      `<td style="padding:6px 8px;font-size:9px;color:${DARK};text-align:center;${NOWRAP}">${descVal}</td>` +
+      `<td style="padding:6px 8px;font-size:9px;color:${DARK};text-align:right;${NOWRAP}">${money(item.subtotal)}</td>` +
+      `<td style="padding:6px 8px;font-size:9px;text-align:right;${NOWRAP}">${itbisVal}</td>` +
+      `<td style="padding:6px 10px;font-size:9px;color:${DARK};font-weight:700;text-align:right;${NOWRAP}">${money(item.total)}</td>` +
       `</tr>`
     );
   }).join('');
@@ -275,9 +284,9 @@ export function generarHTMLFactura(d: FacturaPDFData): string {
 
   // BUG5: Sin border-bottom entre subtotales — solo la línea antes del TOTAL GENERAL
   const totalesRowsHtml = totalesFilas.map(([label, val]) =>
-    `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;">` +
-    `<span style="font-size:9.5px;color:${GRAY};">${label}:</span>` +
-    `<span style="font-size:9.5px;color:${DARK};">${val}</span>` +
+    `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:4px 0;">` +
+    `<span style="font-size:9.5px;color:${GRAY};min-width:0;">${label}:</span>` +
+    `<span style="font-size:9.5px;color:${DARK};${NOWRAP}flex-shrink:0;">${val}</span>` +
     `</div>`
   ).join('');
 
@@ -390,19 +399,19 @@ export function generarHTMLFactura(d: FacturaPDFData): string {
     <thead>
       <tr style="background:${TH_BG};">
         <th style="padding:8px 10px;font-size:8px;font-weight:700;color:${TH_TEXT};
-                   text-transform:uppercase;text-align:left;width:35%;">Descripción</th>
+                   text-transform:uppercase;text-align:left;width:30%;">Descripción</th>
         <th style="padding:8px 8px;font-size:8px;font-weight:700;color:${TH_TEXT};
-                   text-transform:uppercase;text-align:right;width:8%;">Cant.</th>
+                   text-transform:uppercase;text-align:right;width:7%;${NOWRAP}">Cant.</th>
         <th style="padding:8px 8px;font-size:8px;font-weight:700;color:${TH_TEXT};
-                   text-transform:uppercase;text-align:right;width:13%;">Precio U.</th>
+                   text-transform:uppercase;text-align:right;width:14%;${NOWRAP}">Precio U.</th>
         <th style="padding:8px 8px;font-size:8px;font-weight:700;color:${TH_TEXT};
-                   text-transform:uppercase;text-align:center;width:8%;">Desc.</th>
+                   text-transform:uppercase;text-align:center;width:9%;${NOWRAP}">Desc.</th>
         <th style="padding:8px 8px;font-size:8px;font-weight:700;color:${TH_TEXT};
-                   text-transform:uppercase;text-align:right;width:13%;">Subtotal</th>
+                   text-transform:uppercase;text-align:right;width:14%;${NOWRAP}">Subtotal</th>
         <th style="padding:8px 8px;font-size:8px;font-weight:700;color:${TH_TEXT};
-                   text-transform:uppercase;text-align:right;width:10%;">ITBIS</th>
+                   text-transform:uppercase;text-align:right;width:12%;${NOWRAP}">ITBIS</th>
         <th style="padding:8px 10px;font-size:8px;font-weight:700;color:${TH_TEXT};
-                   text-transform:uppercase;text-align:right;width:13%;">Total</th>
+                   text-transform:uppercase;text-align:right;width:14%;${NOWRAP}">Total</th>
       </tr>
     </thead>
     <tbody>${itemRows}</tbody>
@@ -421,17 +430,17 @@ export function generarHTMLFactura(d: FacturaPDFData): string {
     <div style="flex:1;">
       ${totalesRowsHtml}
       <!-- TOTAL GENERAL A PAGAR -->
-      <div style="display:flex;justify-content:space-between;align-items:baseline;
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;
                   padding:8px 0;border-top:2px solid ${DARK};margin-top:3px;">
-        <span style="font-size:11px;font-weight:700;color:${DARK};">TOTAL GENERAL A PAGAR:</span>
+        <span style="font-size:11px;font-weight:700;color:${DARK};min-width:0;">TOTAL GENERAL A PAGAR:</span>
         <span style="font-size:14px;font-weight:900;color:${DARK};
-                     font-family:monospace;">${money(d.totalGeneral)}</span>
+                     font-family:monospace;${NOWRAP}flex-shrink:0;">${money(d.totalGeneral)}</span>
       </div>
       ${d.aplicaRetenciones && (d.netoCobrar ?? 0) > 0
-        ? `<div style="display:flex;justify-content:space-between;align-items:baseline;
+        ? `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;
                 padding:6px 0;border-top:2px solid #059669;margin-top:2px;">
-            <span style="font-size:11px;font-weight:700;color:#059669;">NETO A COBRAR (después de retenciones):</span>
-            <span style="font-size:14px;font-weight:900;color:#059669;font-family:monospace;">${money(d.netoCobrar)}</span>
+            <span style="font-size:11px;font-weight:700;color:#059669;min-width:0;">NETO A COBRAR (después de retenciones):</span>
+            <span style="font-size:14px;font-weight:900;color:#059669;font-family:monospace;${NOWRAP}flex-shrink:0;">${money(d.netoCobrar)}</span>
            </div>`
         : ''}
       ${d.montoEnLetras

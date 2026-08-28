@@ -243,7 +243,15 @@ export async function generarFacturaPDF(
 
     // ── TABLA DE PRODUCTOS ───────────────────────────────────────────
 
-    // Anchos de columna (% del ancho útil W)
+    // Anchos de columna. Los % son el MÍNIMO — el aspecto de siempre cuando los
+    // importes son cortos. Pero un ITBIS de 51pt no da para "RD$ 1,080.00" (52pt
+    // a Helvetica 8.5), y PDFKit parte por el espacio de "RD$ ": el importe sale
+    // en dos líneas. Así que cada columna numérica se estira hasta caber el
+    // importe más largo que va a aparecer de verdad, y la Descripción —la única
+    // que puede envolver sin que se lea mal— cede lo que haga falta.
+    const CELL_PAD = 8;    // 4pt a cada lado, igual que al dibujar (col.w - 8)
+    const DESC_MIN = 120;  // suelo de la Descripción
+
     const rawCols = [
       { label: 'Descripción', pct: 0.35, align: 'left'   as const },
       { label: 'Cant.',       pct: 0.08, align: 'right'  as const },
@@ -253,13 +261,58 @@ export async function generarFacturaPDF(
       { label: 'ITBIS',       pct: 0.10, align: 'right'  as const },
       { label: 'Total',       pct: 0.13, align: 'right'  as const },
     ];
-    // Convertir % a pts; la última columna absorbe los decimales
+
+    // Las celdas se calculan antes de dibujar: hay que medirlas para repartir
+    // los anchos, y así el encabezado ya sale con la tabla definitiva.
+    const filas: string[][] = d.items.map(item => {
+      const descVal  = item.descuentoPct > 0 ? `${item.descuentoPct}%` : '-';
+      // E46 exportaciones: 0% = Tasa Cero (no exento). Otros tipos con 0% = EXENTO.
+      const itbisVal = item.itbisPct === 0
+        ? (d.ecfTipo === 'E46' ? 'Tasa 0%' : 'EXENTO')
+        : fmtM(item.importeItbis);
+      return [
+        item.descripcion.toUpperCase(),
+        String(item.cantidad),
+        fmtM(item.precioUnitario),
+        descVal,
+        fmtM(item.subtotal),
+        itbisVal,
+        fmtM(item.total),
+      ];
+    });
+
+    // Ancho que necesita una columna numérica: el texto más ancho que va a
+    // contener —encabezado incluido— más el padding.
+    const anchoNecesario = (i: number): number => {
+      doc.font('Helvetica-Bold').fontSize(7.5);
+      let max = doc.widthOfString(rawCols[i].label.toUpperCase());
+      const esTotal = i === rawCols.length - 1;   // la columna Total va en bold
+      doc.font(esTotal ? 'Helvetica-Bold' : 'Helvetica').fontSize(8.5);
+      for (const celdas of filas) max = Math.max(max, doc.widthOfString(celdas[i]));
+      return Math.ceil(max) + CELL_PAD;
+    };
+
     const cols = rawCols.map((c, i) => ({
       ...c,
-      w: i < rawCols.length - 1
-        ? Math.floor(W * c.pct)
-        : W - rawCols.slice(0, -1).reduce((s, x) => s + Math.floor(W * x.pct), 0),
+      w: i === 0 ? 0 : Math.max(Math.floor(W * c.pct), anchoNecesario(i)),
     }));
+
+    // La Descripción se queda con el resto. Si ni así llega al suelo (importes
+    // absurdamente largos), se recortan las numéricas a prorrata: entonces se
+    // elipsan, pero nunca envuelven.
+    const numW = cols.slice(1).reduce((s, c) => s + c.w, 0);
+    if (W - numW < DESC_MIN) {
+      const factor = (W - DESC_MIN) / numW;
+      for (let i = 1; i < cols.length; i++) cols[i].w = Math.floor(cols[i].w * factor);
+    }
+    cols[0].w = W - cols.slice(1).reduce((s, c) => s + c.w, 0);
+
+    // Alto de una línea a 8.5pt. Pasarlo como `height` con `ellipsis` obliga a
+    // PDFKit a resolver la celda en UNA sola línea: si no cabe, recorta — no
+    // parte. `lineBreak:false` por sí solo no basta, PDFKit igual envuelve
+    // cuando se le da un `width`.
+    doc.font('Helvetica').fontSize(8.5);
+    const LINE_H = doc.currentLineHeight(true);
 
     // Header azul oscuro
     const thH = 22;
@@ -275,22 +328,7 @@ export async function generarFacturaPDF(
     y += thH;
 
     // Filas de productos (fondo blanco, borde inferior fino)
-    for (const item of d.items) {
-      const descVal  = item.descuentoPct > 0 ? `${item.descuentoPct}%` : '-';
-      // E46 exportaciones: 0% = Tasa Cero (no exento). Otros tipos con 0% = EXENTO.
-      const itbisVal = item.itbisPct === 0
-        ? (d.ecfTipo === 'E46' ? 'Tasa 0%' : 'EXENTO')
-        : fmtM(item.importeItbis);
-      const cells    = [
-        item.descripcion.toUpperCase(),
-        String(item.cantidad),
-        fmtM(item.precioUnitario),
-        descVal,
-        fmtM(item.subtotal),
-        itbisVal,
-        fmtM(item.total),
-      ];
-
+    for (const cells of filas) {
       // Altura dinámica: medir la descripción antes de dibujar el rect
       doc.font('Helvetica').fontSize(8.5);
       const descH = doc.heightOfString(cells[0], { width: cols[0].w - 8, lineBreak: true });
@@ -317,7 +355,8 @@ export async function generarFacturaPDF(
             width:     col.w - 8,
             align:     col.align,
             lineBreak: isDesc,
-            ...(isDesc ? {} : { ellipsis: true }),
+            // Las numéricas se resuelven en una línea sí o sí (ver LINE_H)
+            ...(isDesc ? {} : { height: LINE_H, ellipsis: true }),
           });
         rx += col.w;
       }
@@ -396,33 +435,48 @@ export async function generarFacturaPDF(
       ['ITBIS Total (18%)',  fmtM(d.itbisTotal)],
     ];
 
-    const labelW2 = Math.round(totW * 0.57);
-    const valueW2 = totW - labelW2;
+    // Descuento general (si aplica) — importe en base imponible (cuadra con el
+    // bloque fiscal); la etiqueta menciona lo pactado c/ITBIS, que es la cifra
+    // que el cliente escuchó.
+    if (d.descuentoTotal > 0) {
+      const descLabel = d.descuentoGeneralTipo === 'porcentaje'
+        ? `(-) Descuento general (${d.descuentoGeneralValor}%)`
+        : (d.descuentoGeneralFinal ?? 0) > d.descuentoTotal
+          ? `(-) Descuento general (${fmtM(d.descuentoGeneralFinal!)} c/ITBIS)`
+          : '(-) Descuento general';
+      totals.push([descLabel, '-' + fmtM(d.descuentoTotal)]);
+    }
+
+    // Misma lógica que en la tabla: el importe manda. La columna de valores se
+    // dimensiona al más largo que va a salir —el TOTAL GENERAL va a 13.5pt— y
+    // la etiqueta se queda el resto, que sí puede envolver.
+    const totalGeneralStr = fmtM(d.totalGeneral);
+    doc.font('Helvetica').fontSize(9.5);
+    let valMax = Math.max(...totals.map(([, v]) => doc.widthOfString(v)));
+    doc.font('Helvetica-Bold').fontSize(13.5);
+    valMax = Math.max(valMax, doc.widthOfString(totalGeneralStr));
+    // Techo: la etiqueta del total ('TOTAL GENERAL A PAGAR:') no debe partirse
+    doc.font('Helvetica-Bold').fontSize(11);
+    const labelMin = Math.ceil(doc.widthOfString('TOTAL GENERAL A PAGAR:')) + 6;
+    const valueW2  = Math.min(Math.ceil(valMax) + 6, totW - labelMin);
+    const labelW2  = totW - valueW2;
+
+    doc.font('Helvetica').fontSize(9.5);
+    const LINE_H_TOT = doc.currentLineHeight(true);
 
     // BUG5 (consistencia con HTML): sin líneas separadoras entre subtotales
     let ty = y;
     for (const [label, val] of totals) {
       doc.fillColor(GRAY).font('Helvetica').fontSize(9.5)
         .text(label + ':', totX, ty, { width: labelW2, align: 'left' });
+      // Una sola línea: el importe nunca se parte
       doc.fillColor(DARK).font('Helvetica').fontSize(9.5)
-        .text(val, totX + labelW2, ty, { width: valueW2, align: 'right' });
-      ty += 11;
-    }
-
-    // Descuento general (si aplica)
-    if (d.descuentoTotal > 0) {
-      // Importe en base imponible (cuadra con el bloque fiscal); la etiqueta
-      // menciona lo pactado c/ITBIS, que es la cifra que el cliente escuchó.
-      const descLabel = d.descuentoGeneralTipo === 'porcentaje'
-        ? `(-) Descuento general (${d.descuentoGeneralValor}%):`
-        : (d.descuentoGeneralFinal ?? 0) > d.descuentoTotal
-          ? `(-) Descuento general (${fmtM(d.descuentoGeneralFinal!)} c/ITBIS):`
-          : '(-) Descuento general:';
-      doc.fillColor(GRAY).font('Helvetica').fontSize(9.5)
-        .text(descLabel, totX, ty, { width: labelW2, align: 'left' });
-      doc.fillColor(DARK).font('Helvetica').fontSize(9.5)
-        .text('-' + fmtM(d.descuentoTotal), totX + labelW2, ty, { width: valueW2, align: 'right' });
-      ty += 11;
+        .text(val, totX + labelW2, ty, {
+          width: valueW2, align: 'right', height: LINE_H_TOT, ellipsis: true,
+        });
+      // La etiqueta sí puede envolver — la fila crece con ella y no se solapan
+      doc.font('Helvetica').fontSize(9.5);
+      ty += Math.max(11, Math.ceil(doc.heightOfString(label + ':', { width: labelW2 })));
     }
 
     // TOTAL GENERAL A PAGAR
@@ -434,8 +488,12 @@ export async function generarFacturaPDF(
 
     doc.fillColor(DARK).font('Helvetica-Bold').fontSize(11)
       .text('TOTAL GENERAL A PAGAR:', totX, ty, { width: labelW2, align: 'left' });
-    doc.fillColor(DARK).font('Helvetica-Bold').fontSize(13.5)
-      .text(fmtM(d.totalGeneral), totX + labelW2, ty - 1, { width: valueW2, align: 'right' });
+    doc.font('Helvetica-Bold').fontSize(13.5);
+    doc.fillColor(DARK)
+      .text(totalGeneralStr, totX + labelW2, ty - 1, {
+        width: valueW2, align: 'right',
+        height: doc.currentLineHeight(true), ellipsis: true,
+      });
 
     y += Math.max(qrBoxH, ty - y + 28) + 10;
 
