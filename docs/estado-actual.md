@@ -187,6 +187,37 @@ empresa y día de `acumularFacturaSinVendedor()`
 Ojo: endurecer `create()` tampoco bastaría por sí solo. Los otros seis caminos de la sección 1
 seguirían creando facturas sin vendedor por su cuenta.
 
+### En PDFKit, `lineBreak: false` y `ellipsis: true` **no** impiden que el texto envuelva
+
+Si vas a escribir una tabla en PDFKit, lee esto antes. Es contraintuitivo y ya se escribió mal
+tres veces: en `factura-pdf.helper.ts`, en `documento-pdf.helper.ts` y en `nota-pdf.helper.ts`.
+Las tres tenían la columna de ITBIS partiendo `RD$ 180.00` en dos líneas.
+
+| Opción | Lo que parece que hace | Lo que hace de verdad |
+|---|---|---|
+| `lineBreak: false` | desactivar el envolvido | solo se salta el cálculo del `width` por defecto. Si le pasas un `width` explícito —y se lo pasas, porque hace falta para `align: 'right'`— el `LineWrapper` entra igual y parte por el espacio |
+| `ellipsis: true` | recortar lo que no quepa a lo ancho | solo se dispara al topar el límite de **altura**. Sin `height` no hace absolutamente nada |
+
+Lo único que resuelve una celda en **una sola línea** es pasar las dos juntas:
+
+```ts
+doc.text(txt, x, y, { width, align, lineBreak: false, height: altoDeUnaLinea, ellipsis: true });
+```
+
+Que es lo que encapsula `celdaSinEnvolver()` en `common/pdf/columnas-numericas.helper.ts`. Úsalo,
+no lo escribas a mano.
+
+**Por qué importa tanto:** un importe partido en dos líneas se lee como un dato roto, y con
+`RD$ ` delante pasa antes de lo que parece — la columna de ITBIS daba 43pt de texto y
+`RD$ 180.00` ya ocupa 45.36pt a Helvetica 8.5. Y si la tabla tiene la **altura de fila fija**
+(`compras-pdf.service.ts`, `tabular-pdf.helper.ts`), la segunda línea no ensancha la fila: se
+dibuja **encima de la siguiente**. Un documento solapado es peor que uno recortado.
+
+**Cómo se prueba:** no con aserciones sobre el cálculo de anchos — eso comprueba la aritmética
+del propio test. Hay que mirar el render: descomprimir el content stream, extraer los fragmentos
+de texto con su posición y agruparlos por línea base. La firma de un importe partido es un
+fragmento que contiene solo `RD$ `. Está en `common/pdf/inspeccion-pdf.testing.ts`.
+
 ---
 
 ## 3. Trabajos abiertos
