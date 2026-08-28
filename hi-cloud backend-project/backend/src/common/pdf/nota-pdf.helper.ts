@@ -66,6 +66,10 @@ export interface NotaPDFData {
   estado:             string;
 }
 
+import {
+  repartirAnchos, altoDeLinea, celdaSinEnvolver,
+} from './columnas-numericas.helper';
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmtM(v: number): string {
@@ -229,17 +233,46 @@ export async function generarNotaPDF(d: NotaPDFData): Promise<Buffer> {
 
     // ── TABLA DE ÍTEMS ────────────────────────────────────────────────────────
 
+    // Los anchos fijos son el MÍNIMO: cada columna se estira hasta caber el
+    // importe más largo que aparece de verdad y la Descripción cede el resto.
+    // Sin esto, la columna de ITBIS daba 62pt de texto y "RD$ 16,000,000.00"
+    // no cabía: el importe salía partido en dos líneas.
     const NUM_W  = 24;
-    const DESC_W = W - NUM_W - 50 - 85 - 60 - 68 - 80;
-    const cols: { label: string; width: number; align: 'left' | 'right' | 'center' }[] = [
-      { label: '#',          width: NUM_W,  align: 'center' },
-      { label: 'Descripción',width: DESC_W, align: 'left'   },
-      { label: 'Cant.',      width: 50,     align: 'right'  },
-      { label: 'P. Unit.',   width: 85,     align: 'right'  },
-      { label: 'ITBIS %',    width: 60,     align: 'center' },
-      { label: 'ITBIS',      width: 68,     align: 'right'  },
-      { label: 'Total',      width: 80,     align: 'right'  },
+    const CELL_PAD = 6;    // 3pt a cada lado, igual que al dibujar (width - 6)
+    const DESC_MIN = 90;
+
+    const CELDAS: string[][] = d.items.map((item, idx) => [
+      String(idx + 1),
+      item.descripcion,
+      String(item.cantidad),
+      fmtM(item.precioUnitario),
+      item.porcentajeIva + '%',
+      fmtM(item.importeIva),
+      fmtM(item.total),
+    ]);
+
+    const DEFS = [
+      { label: '#',           align: 'center' as const, minW: NUM_W },
+      { label: 'Descripción', align: 'left'   as const, minW: DESC_MIN, envuelve: true },
+      { label: 'Cant.',       align: 'right'  as const, minW: 50 },
+      { label: 'P. Unit.',    align: 'right'  as const, minW: 85 },
+      { label: 'ITBIS %',     align: 'center' as const, minW: 60 },
+      { label: 'ITBIS',       align: 'right'  as const, minW: 68 },
+      { label: 'Total',       align: 'right'  as const, minW: 80 },
     ];
+
+    const anchos = repartirAnchos(doc, DEFS, CELDAS, {
+      W, pad: CELL_PAD, descMin: DESC_MIN,
+      fuenteCelda: 'Helvetica',         tamanoCelda: 7.5,
+      fuenteCabecera: 'Helvetica-Bold', tamanoCabecera: 7,
+    });
+
+    const cols = DEFS.map((c, i) => ({ label: c.label, align: c.align, width: anchos[i] }));
+
+    // La fila mide 18pt fijos: NINGUNA celda puede envolver, ni la descripción.
+    // Si lo hiciera, la segunda línea se comería la fila siguiente, y un
+    // documento solapado se lee peor que uno con el texto recortado.
+    const LINE_H = altoDeLinea(doc, 'Helvetica', 7.5);
 
     // Cabecera
     doc.rect(PL, y, W, 18).fill(THEAD);
@@ -260,21 +293,13 @@ export async function generarNotaPDF(d: NotaPDFData): Promise<Buffer> {
       doc.moveTo(PL, y + 18).lineTo(PR, y + 18).strokeColor('#e8e8e8').lineWidth(0.5).stroke();
       doc.lineWidth(1);
 
-      const cells: { text: string; width: number; align: 'left' | 'right' | 'center' }[] = [
-        { text: String(idx + 1),           width: NUM_W,  align: 'center' },
-        { text: item.descripcion,           width: DESC_W, align: 'left'   },
-        { text: String(item.cantidad),      width: 50,     align: 'right'  },
-        { text: fmtM(item.precioUnitario),  width: 85,     align: 'right'  },
-        { text: item.porcentajeIva + '%',   width: 60,     align: 'center' },
-        { text: fmtM(item.importeIva),      width: 68,     align: 'right'  },
-        { text: fmtM(item.total),           width: 80,     align: 'right'  },
-      ];
-
       let rx = PL;
-      for (const cell of cells) {
+      for (let ci = 0; ci < cols.length; ci++) {
+        const col = cols[ci];
         doc.fillColor(DARK).font('Helvetica').fontSize(7.5)
-          .text(cell.text, rx + 3, y + 5, { width: cell.width - 6, align: cell.align, ellipsis: true });
-        rx += cell.width;
+          .text(CELDAS[idx][ci], rx + 3, y + 5,
+            celdaSinEnvolver(col.width - 6, col.align, LINE_H));
+        rx += col.width;
       }
       y += 18;
     }
@@ -309,11 +334,14 @@ export async function generarNotaPDF(d: NotaPDFData): Promise<Buffer> {
     const totX  = PR - totW;
     const signo = esDebito ? '+' : '-';
 
+    const LINE_H_TOT = altoDeLinea(doc, 'Helvetica', 9.5);
+
     const addTotalRow = (label: string, valor: number, bold = false, color = DARK) => {
       doc.fillColor(GRAY).font('Helvetica').fontSize(9.5)
         .text(label + ':', totX, y, { width: 140 });
       doc.fillColor(color).font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(9.5)
-        .text(fmtM(valor), totX + 140, y, { width: totW - 140, align: 'right' });
+        .text(fmtM(valor), totX + 140, y,
+          celdaSinEnvolver(totW - 140, 'right', LINE_H_TOT));
       doc.moveTo(totX, y + 14).lineTo(PR, y + 14).strokeColor('#e8e8e8').lineWidth(0.5).stroke();
       doc.lineWidth(1);
       y += 15;
@@ -330,8 +358,10 @@ export async function generarNotaPDF(d: NotaPDFData): Promise<Buffer> {
     doc.fillColor(DARK).font('Helvetica-Bold').fontSize(11)
       .text(totalLabel + ':', totX, y, { width: 155 });
     const totalColor = esDebito ? '#1a6e2a' : '#cc1818';
-    doc.font('Helvetica-Bold').fontSize(15).fillColor(totalColor)
-      .text(signo + fmtM(d.total), totX + 140, y - 1, { width: totW - 140, align: 'right' });
+    const lhTotal = altoDeLinea(doc, 'Helvetica-Bold', 15);
+    doc.fillColor(totalColor)
+      .text(signo + fmtM(d.total), totX + 140, y - 1,
+        celdaSinEnvolver(totW - 140, 'right', lhTotal));
     y += 26;
 
     // ── NOTAS ─────────────────────────────────────────────────────────────────
