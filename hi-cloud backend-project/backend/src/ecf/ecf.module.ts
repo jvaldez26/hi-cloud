@@ -33,6 +33,7 @@ import { ENCFGeneratorService } from './services/encf-generator.service';
 import { ECFBuilderService }    from './services/ecf-builder.service';
 import { MSellerClientService }    from './services/mseller-client.service';
 import { EcfEfectosNcService }     from './services/ecf-efectos-nc.service';
+import { VinculoClienteCompradorService } from './services/vinculo-cliente-comprador.service';
 
 // Casos de uso (Fase 4)
 import { EmitirECFUseCase } from './use-cases/emitir-ecf.use-case';
@@ -90,6 +91,8 @@ import { RncModule }             from '../rnc/rnc.module';
     ResumenEcfPendientesJob,
     // Efectos secundarios de NC sobre facturas
     EcfEfectosNcService,
+    // Vinculo comercial de la factura con el cliente real del comprador
+    VinculoClienteCompradorService,
     // Guards
     SuperAdminGuard,
     TokenBlacklistService,

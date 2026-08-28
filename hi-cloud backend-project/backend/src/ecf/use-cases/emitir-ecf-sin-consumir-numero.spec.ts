@@ -77,6 +77,7 @@ function montarCaso(opts: {
   const tipoDoc = opts.tipoDoc ?? DocumentoOrigenTipo.FACTURA;
   const filasGuardadas: any[] = [];
   const snapshotsEscritos: any[] = [];
+  const vinculosPedidos:   any[] = [];
 
   // Generador falso que se comporta como el real: incrementa la secuencia.
   // Si alguna validación lo alcanza indebidamente, el contador se mueve y el
@@ -132,6 +133,11 @@ function montarCaso(opts: {
     { enviarDocumento: async () => ({ internalTrackId: 'T1', securityCode: 'ABC', qr_url: 'u' }) } as any,
     { } as any,                                                     // configSvc
     { consultarRNC: async () => opts.padronRnc ?? { encontrado: true, estado: 'ACTIVO' } } as any,
+    { // vinculoCliente — comercial, fuera de la transacción y falla abierta
+      vincular: async (facturaId: number, empresaId: number) => {
+        vinculosPedidos.push({ facturaId, empresaId }); return 'vinculado';
+      },
+    } as any,
     { // DataSource
       query: async () => [{ ncAplicadas: opts.ncAplicadas ?? '0' }],
       getRepository: () => ({ findOne: async () => ({ id: 3, codigo: 'E32', prefijo: 'E32' }) }),
@@ -146,7 +152,7 @@ function montarCaso(opts: {
     } as any,
   );
 
-  return { uc, sec, filasGuardadas, snapshotsEscritos, tipoDoc };
+  return { uc, sec, filasGuardadas, snapshotsEscritos, vinculosPedidos, tipoDoc };
 }
 
 /** Ejecuta esperando fallo y devuelve cuánto se movió la secuencia. */
@@ -324,5 +330,24 @@ describe('emitir e-CF — ninguna validación quema un número', () => {
     expect(campos.rncComprador).toBe(
       caso.filasGuardadas[0].jsonEnviado.ECF.Encabezado.Comprador.RNCComprador,
     );
+  });
+
+  it('el vínculo comercial se pide aparte y no escribe el snapshot', async () => {
+    // Dos campos, dos dueños, dos momentos. El snapshot se congela dentro de la
+    // transacción; el vínculo se resuelve fuera y solo toca clienteId. Si algún
+    // día el vínculo empieza a escribir rncComprador/razonSocialComprador, una
+    // nota sobre una factura vieja saldrá con el nombre de hoy y la DGII la
+    // rechazará con 615.
+    const caso = montarCaso({ documento: facturaBase() });
+    await caso.uc.execute({
+      empresaId: 1,
+      documentoOrigenTipo: DocumentoOrigenTipo.FACTURA,
+      documentoOrigenId: 1,
+      tipoEcf: 32,
+    });
+
+    expect(caso.vinculosPedidos).toEqual([{ facturaId: 1, empresaId: 1 }]);
+    // Una sola escritura del snapshot, la de la transacción.
+    expect(caso.snapshotsEscritos).toHaveLength(1);
   });
 });

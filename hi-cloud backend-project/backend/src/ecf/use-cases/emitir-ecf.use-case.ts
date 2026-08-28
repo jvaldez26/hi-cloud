@@ -19,6 +19,7 @@ import { MSellerClientService } from '../services/mseller-client.service';
 import { esErrorYaExiste, consultarExistenciaEncf } from '../services/reconciliacion-ecf.helper';
 import { EcfConfigService } from '../services/ecf-config.service';
 import { RncService } from '../../rnc/rnc.service';
+import { VinculoClienteCompradorService } from '../services/vinculo-cliente-comprador.service';
 import {
   esCreditoFiscal, evaluarCompradorFiscal, payloadCompradorNoVigente,
 } from '../rules/comprador-vigente.rule';
@@ -154,6 +155,7 @@ export class EmitirECFUseCase {
     private readonly mseller:    MSellerClientService,
     private readonly configSvc:  EcfConfigService,
     private readonly rncService: RncService,
+    private readonly vinculoCliente: VinculoClienteCompradorService,
     private readonly ds:         DataSource,
   ) {}
 
@@ -494,6 +496,21 @@ export class EmitirECFUseCase {
     await this.registrarEvento(ecfSaved.id, TipoEcfEvento.CREADO, {
       encf, tipoEcf, documentoOrigenTipo, documentoOrigenId,
     });
+
+    // ── 6-bis. VÍNCULO COMERCIAL ────────────────────────────────────────────
+    //
+    // El snapshot de arriba resuelve lo fiscal; esto resuelve lo comercial. Sin
+    // él la venta a un RNC tecleado en el POS no aparece en el estado de cuenta
+    // del cliente, ni en top clientes, ni en su historial: la factura sigue
+    // apuntando al genérico.
+    //
+    // Fuera de la transacción y fallando abierta a propósito: es un dato
+    // comercial y no puede tumbar una emisión fiscal que ya salió bien. Y no
+    // escribe el snapshot — otro dueño, otro momento. Ver el servicio.
+    if (documentoOrigenTipo === DocumentoOrigenTipo.FACTURA
+        || documentoOrigenTipo === DocumentoOrigenTipo.VENTA_POS) {
+      await this.vinculoCliente.vincular(documentoOrigenId, empresaId);
+    }
 
     // ── 7. MODO CONTINGENCIA PROACTIVO — no enviar a MSeller ────────────────
     //    El administrador activó "Modo contingencia" en Configuración → POS.

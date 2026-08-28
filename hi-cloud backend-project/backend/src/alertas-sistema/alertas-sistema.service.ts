@@ -53,6 +53,7 @@ export class AlertasSistemaService {
       this.alertasECFAtascados(alertas, eid),
       this.alertasSecuenciasECF(alertas, eid),
       this.alertasCierreDiferencia(alertas, eid),
+      this.alertasCompradorSinVincular(alertas, eid),
     ]);
 
     const resultado = {
@@ -183,6 +184,49 @@ export class AlertasSistemaService {
       descripcion: `${n} factura(s) llevan más de 3 días sin emitir`,
       cantidad: n, ruta: '/facturas', emoji: '🧾',
     });
+  }
+
+  /**
+   * Facturas emitidas a un RNC real que siguen apuntando a un cliente genérico.
+   *
+   * El vínculo automático resuelve por RNC: uno → vincula, ninguno → crea. Las
+   * que quedan aquí son las de "varios": clientes distintos que comparten el
+   * mismo RNC —sucursales de un contribuyente registradas por separado— donde
+   * elegir una al azar mandaría la venta a la cuenta equivocada.
+   *
+   * No hay tabla de pendientes a propósito: el caso se deriva de los mismos
+   * datos, así que en cuanto alguien deja un solo cliente activo con ese RNC
+   * (o vincula la factura a mano) la alerta desaparece sola.
+   *
+   * Es solo comercial: fiscalmente estas facturas están bien: el snapshot tiene
+   * el comprador correcto y las notas de crédito salen a su nombre.
+   */
+  private async alertasCompradorSinVincular(out: Alerta[], eid: number) {
+    try {
+      const res = await this.ds.query<{ cantidad: string }[]>(`
+        SELECT COUNT(*)::text AS cantidad
+        FROM facturas f
+        JOIN clientes c ON c.id = f."clienteId"
+        WHERE f."empresaId" = $1 AND f."isActive" = true
+          AND regexp_replace(COALESCE(f."rncComprador", ''), '^0+$', '') <> ''
+          AND regexp_replace(
+                COALESCE(NULLIF(c."rncReceptor", ''), NULLIF(c.rfc, ''), ''), '^0+$', '')
+              <> regexp_replace(COALESCE(f."rncComprador", ''), '^0+$', '')
+          AND regexp_replace(
+                COALESCE(NULLIF(c."rncReceptor", ''), NULLIF(c.rfc, ''), ''), '^0+$', '') = ''
+      `, [eid]);
+      const n = Number(res[0]?.cantidad ?? 0);
+      if (n > 0) out.push({
+        id: 'comprador-sin-vincular', tipo: 'facturas', severidad: 'baja',
+        titulo: 'Ventas sin vincular a su cliente',
+        descripcion: `${n} factura(s) se emitieron a un RNC pero siguen en un cliente genérico. ` +
+          `No salen en el estado de cuenta ni en el historial de ese cliente. ` +
+          `Suele pasar cuando hay más de un cliente con el mismo RNC.`,
+        cantidad: n, ruta: '/facturas', emoji: '🔗',
+      });
+    } catch (e) {
+      this.logger.warn(`alertasCompradorSinVincular: ${(e as Error).message}`);
+    }
   }
 
   private async alertasCreditoExcedido(out: Alerta[], eid: number) {
