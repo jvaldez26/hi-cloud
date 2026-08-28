@@ -8,6 +8,9 @@
 const PDFDocument = require('pdfkit') as typeof import('pdfkit');
 import type { FacturaPDFData } from '../../facturas/templates/factura.template';
 import { sanitizeText } from '../utils/text.utils';
+import {
+  repartirAnchos, altoDeLinea, celdaSinEnvolver, celdaQueEnvuelve,
+} from './columnas-numericas.helper';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -281,38 +284,25 @@ export async function generarFacturaPDF(
       ];
     });
 
-    // Ancho que necesita una columna numérica: el texto más ancho que va a
-    // contener —encabezado incluido— más el padding.
-    const anchoNecesario = (i: number): number => {
-      doc.font('Helvetica-Bold').fontSize(7.5);
-      let max = doc.widthOfString(rawCols[i].label.toUpperCase());
-      const esTotal = i === rawCols.length - 1;   // la columna Total va en bold
-      doc.font(esTotal ? 'Helvetica-Bold' : 'Helvetica').fontSize(8.5);
-      for (const celdas of filas) max = Math.max(max, doc.widthOfString(celdas[i]));
-      return Math.ceil(max) + CELL_PAD;
-    };
+    const anchos = repartirAnchos(
+      doc,
+      rawCols.map((c, i) => ({
+        label:    c.label,
+        align:    c.align,
+        minW:     Math.floor(W * c.pct),
+        envuelve: i === 0,
+        bold:     i === rawCols.length - 1,   // la columna Total va en bold
+      })),
+      filas,
+      {
+        W, pad: CELL_PAD, descMin: DESC_MIN,
+        fuenteCelda: 'Helvetica',      tamanoCelda: 8.5,
+        fuenteCabecera: 'Helvetica-Bold', tamanoCabecera: 7.5,
+      },
+    );
+    const cols = rawCols.map((c, i) => ({ ...c, w: anchos[i] }));
 
-    const cols = rawCols.map((c, i) => ({
-      ...c,
-      w: i === 0 ? 0 : Math.max(Math.floor(W * c.pct), anchoNecesario(i)),
-    }));
-
-    // La Descripción se queda con el resto. Si ni así llega al suelo (importes
-    // absurdamente largos), se recortan las numéricas a prorrata: entonces se
-    // elipsan, pero nunca envuelven.
-    const numW = cols.slice(1).reduce((s, c) => s + c.w, 0);
-    if (W - numW < DESC_MIN) {
-      const factor = (W - DESC_MIN) / numW;
-      for (let i = 1; i < cols.length; i++) cols[i].w = Math.floor(cols[i].w * factor);
-    }
-    cols[0].w = W - cols.slice(1).reduce((s, c) => s + c.w, 0);
-
-    // Alto de una línea a 8.5pt. Pasarlo como `height` con `ellipsis` obliga a
-    // PDFKit a resolver la celda en UNA sola línea: si no cabe, recorta — no
-    // parte. `lineBreak:false` por sí solo no basta, PDFKit igual envuelve
-    // cuando se le da un `width`.
-    doc.font('Helvetica').fontSize(8.5);
-    const LINE_H = doc.currentLineHeight(true);
+    const LINE_H = altoDeLinea(doc, 'Helvetica', 8.5);
 
     // Header azul oscuro
     const thH = 22;
@@ -351,13 +341,9 @@ export async function generarFacturaPDF(
         doc.fillColor(DARK)
           .font(isBold ? 'Helvetica-Bold' : 'Helvetica')
           .fontSize(8.5)
-          .text(cells[i], rx + 4, cellY, {
-            width:     col.w - 8,
-            align:     col.align,
-            lineBreak: isDesc,
-            // Las numéricas se resuelven en una línea sí o sí (ver LINE_H)
-            ...(isDesc ? {} : { height: LINE_H, ellipsis: true }),
-          });
+          .text(cells[i], rx + 4, cellY, isDesc
+            ? celdaQueEnvuelve(col.w - 8, col.align)
+            : celdaSinEnvolver(col.w - 8, col.align, LINE_H));
         rx += col.w;
       }
       y += rowH;
@@ -461,8 +447,7 @@ export async function generarFacturaPDF(
     const valueW2  = Math.min(Math.ceil(valMax) + 6, totW - labelMin);
     const labelW2  = totW - valueW2;
 
-    doc.font('Helvetica').fontSize(9.5);
-    const LINE_H_TOT = doc.currentLineHeight(true);
+    const LINE_H_TOT = altoDeLinea(doc, 'Helvetica', 9.5);
 
     // BUG5 (consistencia con HTML): sin líneas separadoras entre subtotales
     let ty = y;
@@ -471,9 +456,7 @@ export async function generarFacturaPDF(
         .text(label + ':', totX, ty, { width: labelW2, align: 'left' });
       // Una sola línea: el importe nunca se parte
       doc.fillColor(DARK).font('Helvetica').fontSize(9.5)
-        .text(val, totX + labelW2, ty, {
-          width: valueW2, align: 'right', height: LINE_H_TOT, ellipsis: true,
-        });
+        .text(val, totX + labelW2, ty, celdaSinEnvolver(valueW2, 'right', LINE_H_TOT));
       // La etiqueta sí puede envolver — la fila crece con ella y no se solapan
       doc.font('Helvetica').fontSize(9.5);
       ty += Math.max(11, Math.ceil(doc.heightOfString(label + ':', { width: labelW2 })));
@@ -488,12 +471,10 @@ export async function generarFacturaPDF(
 
     doc.fillColor(DARK).font('Helvetica-Bold').fontSize(11)
       .text('TOTAL GENERAL A PAGAR:', totX, ty, { width: labelW2, align: 'left' });
-    doc.font('Helvetica-Bold').fontSize(13.5);
+    const lhTotal = altoDeLinea(doc, 'Helvetica-Bold', 13.5);
     doc.fillColor(DARK)
-      .text(totalGeneralStr, totX + labelW2, ty - 1, {
-        width: valueW2, align: 'right',
-        height: doc.currentLineHeight(true), ellipsis: true,
-      });
+      .text(totalGeneralStr, totX + labelW2, ty - 1,
+        celdaSinEnvolver(valueW2, 'right', lhTotal));
 
     y += Math.max(qrBoxH, ty - y + 28) + 10;
 

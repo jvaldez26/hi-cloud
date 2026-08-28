@@ -11,59 +11,10 @@
  * escribe en el content stream— no el cálculo de anchos.
  */
 
-import * as zlib from 'zlib';
 import { generarFacturaPDF } from '../common/pdf/factura-pdf.helper';
+import { lineas, simbolosSueltos } from '../common/pdf/inspeccion-pdf.testing';
 import { generarHTMLFactura } from './templates/factura.template';
 import type { FacturaPDFData, FacturaPDFItem } from './templates/factura.template';
-
-// ── Extracción de texto dibujado ────────────────────────────────────────────
-
-interface Fragmento { x: number; y: number; texto: string }
-
-function fragmentos(pdf: Buffer): Fragmento[] {
-  const streams: string[] = [];
-  let i = 0;
-  while ((i = pdf.indexOf('stream', i)) > -1) {
-    let s = i + 'stream'.length;
-    if (pdf[s] === 0x0d) s++;
-    if (pdf[s] === 0x0a) s++;
-    const e = pdf.indexOf('endstream', s);
-    if (e < 0) break;
-    try {
-      streams.push(zlib.inflateSync(pdf.subarray(s, e)).toString('latin1'));
-    } catch {
-      /* stream no inflable (imagen, fuente) — no interesa */
-    }
-    i = e;
-  }
-
-  const out: Fragmento[] = [];
-  const bloque = /BT\s+1 0 0 1 (-?[\d.]+) (-?[\d.]+) Tm\s+\/\S+ [\d.]+ Tf\s+\[([\s\S]*?)\]\s*TJ/g;
-  for (const stream of streams) {
-    let m: RegExpExecArray | null;
-    while ((m = bloque.exec(stream)) !== null) {
-      const texto = (m[3].match(/<([0-9a-fA-F]*)>/g) ?? [])
-        .map(h => h.slice(1, -1))
-        .join('')
-        .replace(/../g, (par: string) => String.fromCharCode(parseInt(par, 16)));
-      if (texto.trim()) out.push({ x: +m[1], y: +m[2], texto });
-    }
-  }
-  return out;
-}
-
-/** Junta los fragmentos que comparten línea base (misma y). */
-function lineas(pdf: Buffer): string[] {
-  const grupos = new Map<string, Fragmento[]>();
-  for (const f of fragmentos(pdf)) {
-    const clave = f.y.toFixed(1);
-    if (!grupos.has(clave)) grupos.set(clave, []);
-    grupos.get(clave)!.push(f);
-  }
-  return [...grupos.values()].map(g =>
-    g.sort((a, b) => a.x - b.x).map(f => f.texto).join(''),
-  );
-}
 
 // ── Datos de prueba ─────────────────────────────────────────────────────────
 
@@ -193,8 +144,7 @@ describe('PDF de factura — importes largos en columnas numéricas', () => {
 
     // El síntoma exacto del bug: "RD$" dibujado como fragmento suelto porque
     // la cifra se fue a la línea de abajo.
-    const sueltos = fragmentos(pdf).filter(f => /^(RD\$|US\$|€)\s*$/.test(f.texto));
-    expect(sueltos).toEqual([]);
+    expect(simbolosSueltos(pdf)).toEqual([]);
   });
 
   it('mantiene el importe del TOTAL GENERAL en una sola línea', async () => {
@@ -229,7 +179,7 @@ describe('PDF de factura — importes largos en columnas numéricas', () => {
     const d   = factura();   // ITBIS de la línea = RD$ 180.00
     const pdf = await generarFacturaPDF(d);
 
-    expect(fragmentos(pdf).filter(f => /^(RD\$|US\$|€)\s*$/.test(f.texto))).toEqual([]);
+    expect(simbolosSueltos(pdf)).toEqual([]);
     for (const importe of importesEsperados(d)) {
       expect(lineas(pdf).some(l => l.includes(importe))).toBe(true);
     }
@@ -242,7 +192,7 @@ describe('PDF de factura — importes largos en columnas numéricas', () => {
     });
     const pdf = await generarFacturaPDF(d);
 
-    expect(fragmentos(pdf).filter(f => /^(RD\$|US\$|€)\s*$/.test(f.texto))).toEqual([]);
+    expect(simbolosSueltos(pdf)).toEqual([]);
     for (const importe of importesEsperados(d)) {
       expect(lineas(pdf).some(l => l.includes(importe))).toBe(true);
     }
