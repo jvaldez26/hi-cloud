@@ -655,7 +655,15 @@ ${JSON.stringify(payload, null, 2)}`;
       documentoOrigenId:   p.documentoOrigenId,
       estadoDGII:          EstadoDGII.PENDIENTE_ENVIO,
       codigoSeguridad:     String(Math.floor(100000 + Math.random() * 900000)),
-      rncComprador:        p.factura.cliente?.rncReceptor ?? p.factura.rncComprador ?? undefined,
+      // `?? rfc` no es cosmético: la mayoría de los clientes guarda el RNC en
+      // `rfc` y no en `rncReceptor`, así que sin esa rama la columna quedaba
+      // vacía en 13.453 de 13.565 e-CF aceptados — y es la primera fuente de
+      // la cascada que leen el PDF y las vistas para el RNC del comprador.
+      // Los builders siempre miraron `rncReceptor ?? rfc`; esto los iguala.
+      rncComprador:        p.factura.cliente?.rncReceptor
+                             ?? p.factura.cliente?.rfc
+                             ?? p.factura.rncComprador
+                             ?? undefined,
       // Misma fuente que el RazonSocialComprador del XML, para que el registro
       // guardado (y el PDF, que lo lee de aquí) no diverja de lo declarado
       razonSocialComprador: razonSocialFiscal(

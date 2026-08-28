@@ -10851,8 +10851,16 @@ export default function POSPage() {
         encf:                    encfFinal,
         ecfPendiente:            ['pendiente_envio', 'pendiente', 'contingencia'].includes(estadoEcf),
         ecfFecha,
-        rncComprador:            clienteTieneRNC ? rncCliente : (rncComprador || undefined),
-        razonSocial:             clienteTieneRNC ? razonSocialFiscalCliente : (razonSocialComp || undefined),
+        // El e-CF que acaba de volver manda sobre el estado local: cuando el
+        // cajero cobra antes de que termine el lookup DGII del navegador,
+        // razonSocialComp está vacío y es el BACKEND quien resuelve el nombre
+        // (ver cambiarEstado en facturas.service). Sin esta línea el primer
+        // ticket salía sin comprador y solo la reimpresión —que sí lee el
+        // e-CF— lo mostraba. Misma cascada que resolverNombreComprador.
+        rncComprador:            ecfResult?.ecf?.rncComprador
+                                   || (clienteTieneRNC ? rncCliente : (rncComprador || undefined)),
+        razonSocial:             ecfResult?.ecf?.razonSocialComprador
+                                   || (clienteTieneRNC ? razonSocialFiscalCliente : (razonSocialComp || undefined)),
         securityCode,
         qrUrl,
         cajero:                  cajeroNombre,
