@@ -127,3 +127,31 @@ export class EcfDocumentoModificadoError extends EcfError {
     );
   }
 }
+
+/**
+ * El comprador que saldría en una nota (E33/E34) no es el que se le declaró a
+ * la DGII en el comprobante que la nota modifica.
+ *
+ * La DGII compara el RNCComprador de la nota contra el de la factura
+ * referenciada y rechaza con código 615 si difieren — quemando la secuencia.
+ * Este error se lanza en la construcción en seco del payload, ANTES de pedir
+ * número, para que un desajuste no consuma un e-NCF.
+ */
+export class EcfCompradorNotaError extends EcfError {
+  constructor(
+    tipoEcf: number,
+    encfModificado: string,
+    public readonly rncOriginal: string,
+    public readonly rncNota: string,
+  ) {
+    super(
+      `El RNC del comprador de la nota (E${tipoEcf}) no coincide con el del comprobante ` +
+      `${encfModificado} que modifica: la factura se declaró a nombre de ` +
+      `${rncOriginal || 'un comprador sin RNC'} y la nota saldría con ` +
+      `${rncNota || 'un comprador sin RNC'}. ` +
+      `La DGII rechaza este caso con código 615 y quema la secuencia, así que no se emitió. ` +
+      `Corrija el cliente de la nota para que sea el mismo comprador de la factura original.`,
+      'ECF_COMPRADOR_NOTA_NO_COINCIDE',
+    );
+  }
+}

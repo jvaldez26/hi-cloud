@@ -10,7 +10,7 @@ import {
   buildEmisor, assertEmisorOrder, toEmpresaConfig,
   buildIdDoc, fmtFecha, addDias,
   buildCompradorRNC,
-  razonSocialFiscal,
+  resolverCompradorNota,
   buildItemsE33,
   resolverMoneda,
   round2,
@@ -26,7 +26,7 @@ function cap4(n: number | string): number { return parseFloat(Number(n).toFixed(
 // NCFModificado acepta series E, A, B y P
 
 export function buildE33(input: ECFBuildInput): MSellerPayload {
-  const { encf, factura, config, fechaVencSec, infoReferencia } = input;
+  const { encf, factura, config, fechaVencSec, infoReferencia, compradorOriginal } = input;
 
   if (!infoReferencia?.NCFModificado) {
     throw new Error('E33 requiere infoReferencia.NCFModificado (eNCF de la factura original)');
@@ -43,8 +43,11 @@ export function buildE33(input: ECFBuildInput): MSellerPayload {
   const emisor     = buildEmisor(toEmpresaConfig(config), fecha);
   assertEmisorOrder(emisor);
 
-  const cliente = factura.cliente as any;
-  const rnc     = cliente?.rncReceptor ?? cliente?.rfc ?? '00000000000';
+  // El comprador sale del e-CF que la nota modifica, no del cliente vinculado:
+  // la DGII compara ambos RNC y rechaza con 615 si difieren. Si no coinciden,
+  // resolverCompradorNota lanza aquí — en la construcción en seco, sin número.
+  const cliente   = factura.cliente as any;
+  const comprador = resolverCompradorNota(33, ncfModificado, cliente, compradorOriginal);
 
   // ── ITEMS: DOP como principal, OtraMonedaDetalle si USD ──────────────────
   const items = detallesME.map((d: any, idx: number) => {
@@ -151,8 +154,9 @@ export function buildE33(input: ECFBuildInput): MSellerPayload {
           fechaLimitePago:       fechaLimitePagoECF,
         }),
         Emisor:    emisor,
-        Comprador: buildCompradorRNC(rnc, razonSocialFiscal(cliente),
-          cliente?.direccion ? { DireccionComprador: cliente.direccion } : undefined,
+        Comprador: buildCompradorRNC(comprador.rnc, comprador.razonSocial,
+          comprador.direccion ? { DireccionComprador: comprador.direccion } : undefined,
+          encf,
         ),
         Totales:   totales,
         ...(otraMoneda ? { OtraMoneda: otraMoneda } : {}),

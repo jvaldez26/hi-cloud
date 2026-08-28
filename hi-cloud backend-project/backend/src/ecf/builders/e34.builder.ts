@@ -10,7 +10,8 @@ import {
   buildEmisor, assertEmisorOrder, toEmpresaConfig,
   buildIdDoc, addDias,
   buildCompradorRNC,
-  razonSocialFiscal,
+  resolverCompradorNota,
+  normalizarRnc,
   buildTotalesCero,
   EcfRncRequeridoError,
   resolverMoneda,
@@ -47,7 +48,7 @@ function calcIndicadorNC(fechaNcfModificado: string): '0' | '1' {
 }
 
 export function buildE34(input: ECFBuildInput): MSellerPayload {
-  const { encf, factura, config, infoReferencia } = input;
+  const { encf, factura, config, infoReferencia, compradorOriginal } = input;
 
   if (!infoReferencia?.NCFModificado) {
     throw new Error('E34 requiere infoReferencia.NCFModificado (eNCF de la factura original)');
@@ -61,26 +62,24 @@ export function buildE34(input: ECFBuildInput): MSellerPayload {
     );
   }
 
+  // El comprador sale del e-CF que la nota modifica, no del cliente vinculado.
+  // La DGII compara el RNCComprador de la nota contra el de la factura
+  // referenciada y rechaza con código 615 quemando la secuencia; leer del
+  // cliente hacía salir "consumidor final" en notas sobre facturas emitidas a
+  // un contribuyente real. Si no coinciden, esto lanza en la construcción en
+  // seco — antes de pedir número.
   const cliente      = factura.cliente as any;
-  const rnc          = cliente?.rncReceptor ?? cliente?.rfc ?? '';
+  const comprador    = resolverCompradorNota(34, infoReferencia.NCFModificado, cliente, compradorOriginal);
+  const rnc          = comprador.rnc;
   const tipoOriginal = infoReferencia.NCFModificado.substring(0, 3);
-  if (tipoOriginal === 'E31' && (!rnc || rnc === '00000000000')) {
+  // normalizarRnc colapsa cualquier largo de ceros: el centinela literal de 11
+  // ceros dejaba pasar el '000000000' de 9 que llevan los clientes genéricos.
+  if (tipoOriginal === 'E31' && !normalizarRnc(rnc)) {
     throw new EcfRncRequeridoError(34, Number(factura.total));
   }
 
-  // Validación de formato (warn sin bloquear) — RNC debe ser 9 dígitos (empresa)
-  // o 11 dígitos (cédula persona natural). Ambos van en RNCComprador según spec MSeller.
-  // Si el formato falla, la emisión continúa pero se registra para corrección de datos.
-  if (rnc && rnc !== '00000000000') {
-    const digits = rnc.replace(/\D/g, '');
-    if (digits.length !== 9 && digits.length !== 11) {
-      logger.warn(
-        `[E34] RNCComprador con formato inválido: "${rnc}" (${digits.length} dígitos; ` +
-        `esperado 9=RNC o 11=cédula). Cliente: "${cliente?.nombre ?? 'desconocido'}". ` +
-        `La emisión continúa — revisar datos del cliente en DB.`,
-      );
-    }
-  }
+  // El aviso de formato inválido (ni 9 ni 11 dígitos) lo emite buildCompradorRNC,
+  // que ahora recibe el encf para identificar el documento en el log.
 
   const mc         = resolverMoneda(factura);
   const detallesME = factura.detalles as any[] ?? [];
@@ -188,8 +187,9 @@ export function buildE34(input: ECFBuildInput): MSellerPayload {
         Emisor:    emisor,
         Comprador: buildCompradorRNC(
           rnc || '00000000000',
-          razonSocialFiscal(cliente),
-          cliente?.direccion ? { DireccionComprador: cliente.direccion } : undefined,
+          comprador.razonSocial,
+          comprador.direccion ? { DireccionComprador: comprador.direccion } : undefined,
+          encf,
         ),
         Totales:   totales,
         ...(otraMoneda ? { OtraMoneda: otraMoneda } : {}),

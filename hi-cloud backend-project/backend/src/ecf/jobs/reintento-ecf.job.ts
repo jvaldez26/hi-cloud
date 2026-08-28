@@ -17,6 +17,8 @@ import { EcfConfigService } from '../services/ecf-config.service';
 import { EcfDocumentoModificadoError, EcfValidacionError } from '../errors/ecf.errors';
 import { reportServiceError } from '../../common/observability/sentry';
 import { fmtFecha } from '../builders/base-ecf.builder';
+import type { CompradorOriginal } from '../builders/base-ecf.builder';
+import { leerCompradorDeclarado } from '../use-cases/emitir-ecf.use-case';
 
 const MAX_INTENTOS = 5;
 
@@ -454,10 +456,15 @@ export class ReintentoECFJob {
 
     // InfoReferencia para E33/E34 — reconstruida desde los campos guardados en la entidad
     let infoReferencia: MSellerInfoReferencia | undefined;
+    // El comprador de la nota sale del e-CF que modifica, igual que en la emisión
+    // original: sin esto el reintento reconstruiría el payload desde el cliente
+    // vinculado y volvería a mandar el RNC equivocado (rechazo DGII 615).
+    let compradorOriginal: CompradorOriginal | undefined;
     if ((tipoNumerico === 33 || tipoNumerico === 34) && ecf.ncfModificado) {
       const ecfOrig = await this.ecfRepo.findOne({
         where: { numero: ecf.ncfModificado, empresaId: empresaId! },
       });
+      if (ecfOrig) compradorOriginal = leerCompradorDeclarado(ecfOrig);
       infoReferencia = {
         NCFModificado:      ecf.ncfModificado,
         FechaNCFModificado: fmtFecha(ecfOrig?.fechaUso ?? ecfOrig?.createdAt ?? new Date()),
@@ -471,6 +478,7 @@ export class ReintentoECFJob {
       config,
       fechaVencSec,
       infoReferencia,
+      compradorOriginal,
       nombreExtranjero: ecf.razonSocialComprador ?? undefined,
     });
   }

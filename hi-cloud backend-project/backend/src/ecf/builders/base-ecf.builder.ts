@@ -12,7 +12,10 @@ export {
   buildCompradorRNC,
   buildCompradorExtranjero,
   razonSocialFiscal,
+  normalizarRnc,
+  resolverCompradorNota,
 } from './sections/comprador.section';
+export type { CompradorOriginal } from './sections/comprador.section';
 export { buildIdDoc, fmtFecha, addDias } from './sections/id-doc.section';
 export {
   round2,
@@ -30,6 +33,7 @@ export { EcfRncRequeridoError } from '../errors/ecf.errors';
 import { EmpresaEcfConfig } from '../entities/empresa-ecf-config.entity';
 import { EmpresaConfig }    from './sections/emisor.section';
 import { Factura }          from '../../facturas/entities/factura.entity';
+import type { CompradorOriginal } from './sections/comprador.section';
 
 // ── Tipos públicos compartidos ────────────────────────────────────────────────
 
@@ -59,6 +63,12 @@ export interface ECFBuildInput {
   config:            EmpresaEcfConfig;
   fechaVencSec:      Date;
   infoReferencia?:   MSellerInfoReferencia;   // E33 / E34
+  /**
+   * Comprador declarado en el e-CF que la nota modifica (E33 / E34).
+   * Es la fuente del RNCComprador de la nota: lo que se le declaró a la DGII,
+   * no el cliente vinculado hoy. Ver resolverCompradorNota.
+   */
+  compradorOriginal?: CompradorOriginal;
   nombreExtranjero?: string;                  // E46 / E47
   paisExtranjero?:   string;                  // E46 / E47 — ISO 2 letras
 }

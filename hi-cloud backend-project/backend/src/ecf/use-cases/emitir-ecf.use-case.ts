@@ -14,6 +14,7 @@ import { Gasto } from '../../gastos/entities/gasto.entity';
 
 import { ENCFGeneratorService } from '../services/encf-generator.service';
 import { ECFBuilderService, ECFBuildInput, MSellerInfoReferencia, MSellerPayload } from '../services/ecf-builder.service';
+import type { CompradorOriginal } from '../builders/base-ecf.builder';
 import { MSellerClientService } from '../services/mseller-client.service';
 import { esErrorYaExiste, consultarExistenciaEncf } from '../services/reconciliacion-ecf.helper';
 import { EcfConfigService } from '../services/ecf-config.service';
@@ -34,6 +35,24 @@ import { fmtFecha, razonSocialFiscal } from '../builders/base-ecf.builder';
 
 const TIMEOUT_POS      = 8_000;
 const TIMEOUT_REGULAR  = 30_000;
+
+/**
+ * Comprador declarado en un e-CF ya emitido, para referenciarlo desde una nota.
+ *
+ * La fuente primaria es `jsonEnviado` — el JSON literal que se le mandó a
+ * MSeller, y por tanto el único registro fiel de lo que la DGII recibió. Las
+ * columnas denormalizadas son el respaldo: `rncComprador` solo se pobló en una
+ * fracción de los e-CF históricos, así que leer de ahí devolvería vacío para la
+ * inmensa mayoría de las facturas y la guarda no protegería nada.
+ */
+export function leerCompradorDeclarado(ecf: ECF): CompradorOriginal {
+  const comprador = (ecf.jsonEnviado as any)?.ECF?.Encabezado?.Comprador ?? {};
+  return {
+    rnc:         comprador.RNCComprador         ?? ecf.rncComprador,
+    razonSocial: comprador.RazonSocialComprador ?? ecf.razonSocialComprador,
+    direccion:   comprador.DireccionComprador   ?? ecf.direccionComprador,
+  };
+}
 
 export interface DatosCompradorECF {
   rnc?:               string;
@@ -233,6 +252,9 @@ export class EmitirECFUseCase {
 
     // ── 4. RESOLVER infoReferencia para E33/E34 ──────────────────────────────
     let infoReferencia = infoRefInput;
+    // Comprador tal como se le declaró a la DGII en el comprobante que la nota
+    // modifica. Es la fuente del RNCComprador de la nota — ver paso 4-ter.
+    let compradorOriginal: CompradorOriginal | undefined;
     // Auto-resolver cuando: (a) no se proporcionó infoReferencia, o (b) se proporcionó
     // solo CodigoModificacion sin NCFModificado (caso típico del controller).
     if ((tipoEcf === 33 || tipoEcf === 34) && !infoReferencia?.NCFModificado) {
@@ -319,6 +341,28 @@ export class EmitirECFUseCase {
         // Preservar CodigoModificacion del input si fue proporcionado; default '3'
         CodigoModificacion: infoRefInput?.CodigoModificacion ?? '3',
       };
+      compradorOriginal = leerCompradorDeclarado(ecfOriginal);
+    }
+
+    // ── 4-ter. COMPRADOR DE LA NOTA = EL DEL COMPROBANTE QUE MODIFICA ────────
+    //
+    // La DGII compara el RNCComprador de una E33/E34 contra el de la factura
+    // referenciada, y si difieren rechaza con código 615 — quemando el número.
+    // El builder venía leyéndolo del cliente vinculado a la nota, que no es la
+    // misma cosa: cuando el POS cobra a un RNC tecleado, la factura queda
+    // apuntando al cliente genérico "consumidor final" aunque el XML haya
+    // salido a nombre de un contribuyente real. La nota heredaba ese cliente y
+    // salía a nombre equivocado.
+    //
+    // El e-CF guardado es la verdad de lo que se declaró, así que de ahí sale.
+    // Si el llamador trajo su propio NCFModificado, el bloque anterior no cargó
+    // nada: se busca por número para que la guarda cubra también ese camino.
+    if ((tipoEcf === 33 || tipoEcf === 34) && infoReferencia?.NCFModificado && !compradorOriginal) {
+      const ecfRef = await this.ecfRepo.findOne({
+        where: { numero: infoReferencia.NCFModificado, empresaId },
+        order: { createdAt: 'DESC' },
+      });
+      if (ecfRef) compradorOriginal = leerCompradorDeclarado(ecfRef);
     }
 
     // ── 4-bis. COMPRADOR VIGENTE ANTE LA DGII ────────────────────────────────
@@ -351,6 +395,7 @@ export class EmitirECFUseCase {
         config,
         fechaVencSec,
         infoReferencia,
+        compradorOriginal,
         nombreExtranjero,
         paisExtranjero,
       };
