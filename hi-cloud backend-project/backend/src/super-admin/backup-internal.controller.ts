@@ -45,6 +45,15 @@ class BackupSuccessDto {
   @IsString() @IsNotEmpty() tamanio!: string;
   @IsInt() @Type(() => Number) duracion!: number;
   @IsOptional() @IsString()    checksum?: string;
+
+  /**
+   * Fila que hay que CERRAR, cuando el respaldo lo pidio el boton manual.
+   *
+   * Lo manda el script desde `BACKUP_REGISTRO_ID`, que le pasa
+   * `triggerManual()` por entorno. Ausente en el cron: ahi no hay fila previa
+   * y el reporte da de alta una nueva.
+   */
+  @IsOptional() @IsInt() @Type(() => Number) registroId?: number;
 }
 
 class BackupAlertDto {
@@ -92,10 +101,11 @@ export class BackupInternalController {
   success(@Headers('x-internal-key') key: string, @Body() dto: BackupSuccessDto) {
     this.exigirClave(key);
     return this.backupSvc.registrarExito({
-      s3Key:    dto.archivo,
-      tamanio:  dto.tamanio,
-      duracion: dto.duracion,
-      checksum: dto.checksum,
+      s3Key:      dto.archivo,
+      tamanio:    dto.tamanio,
+      duracion:   dto.duracion,
+      checksum:   dto.checksum,
+      registroId: dto.registroId,
     });
   }
 

@@ -12,7 +12,25 @@ export class BackupRegistro {
   @Column({ type: 'varchar', length: 10, default: 'daily' })
   tipo!: BackupTipo;
 
-  @Column({ type: 'varchar', length: 20, default: 'EN_PROGRESO' })
+  /**
+   * SIN DEFAULT A PROPOSITO. Quien inserte, que diga en que estado.
+   *
+   * Estaba declarado `default: 'EN_PROGRESO'`. Los tres sitios que insertan lo
+   * fijan siempre, asi que no lo usaba nadie — pero dejaba puesta la trampa
+   * para el siguiente INSERT: omitir `estado` creaba una fila ABIERTA sin que
+   * saltara nada.
+   *
+   * Y abierta no es inocuo: `cerrarColgados()` la cierra como FALLIDO a los 30
+   * minutos con el motivo "reporte no recibido", y eso entra en la tasa de
+   * exito del panel. Un respaldo que nunca existio pasa a contar como un
+   * respaldo que fallo. Es justo lo que hacia el boton manual antes de que
+   * `registrarExito` aprendiera a cerrar su propia fila.
+   *
+   * Ahora el olvido revienta con NOT NULL en el sitio y en el momento, en vez
+   * de convertirse en una metrica sucia que alguien mira meses despues.
+   * Ver migracion QuitarDefaultEstadoBackups1761500000000.
+   */
+  @Column({ type: 'varchar', length: 20 })
   estado!: BackupEstado;
 
   @Column({ length: 300, nullable: true })
