@@ -5,6 +5,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
 import { fmt } from '../../utils/formatters';
 import { fecha, fechaHora } from '../../utils/fechaRD';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 
 const { Text } = Typography;
 
@@ -75,9 +77,20 @@ export function ActivacionEcfAdminTab() {
     });
   };
 
+  const COLS_DEF = [
+    { key: 'empresaNombre', label: 'Empresa'     },
+    { key: 'createdAt',     label: 'Fecha'       },
+    { key: 'certificado',   label: 'Certificado' },
+    { key: 'montoAcordado', label: 'Monto'       },
+    { key: 'comprobante',   label: 'Comprobante' },
+    { key: 'estado',        label: 'Estado'      },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } =
+    useColumnVisibility('sa-activacion-ecf', COLS_DEF);
+
   const cols = [
     {
-      title: 'Empresa', dataIndex: 'empresaNombre',
+      title: 'Empresa', dataIndex: 'empresaNombre', key: 'empresaNombre',
       render: (v: string, r: any) => (
         <div>
           <div style={{ fontWeight: 600 }}>{v}</div>
@@ -86,11 +99,11 @@ export function ActivacionEcfAdminTab() {
       ),
     },
     {
-      title: 'Fecha', dataIndex: 'createdAt', width: 140,
+      title: 'Fecha', dataIndex: 'createdAt', key: 'createdAt', width: 140,
       render: (v: string) => <span style={{ fontSize: 12 }}>{fechaHora(v)}</span>,
     },
     {
-      title: 'Certificado', width: 170, align: 'center' as const,
+      title: 'Certificado', key: 'certificado', width: 170, align: 'center' as const,
       render: (_: any, r: any) => {
         if (r.tieneCertificado) {
           return (
@@ -107,7 +120,7 @@ export function ActivacionEcfAdminTab() {
       },
     },
     {
-      title: 'Monto', dataIndex: 'montoAcordado', width: 120, align: 'right' as const,
+      title: 'Monto', dataIndex: 'montoAcordado', key: 'montoAcordado', width: 120, align: 'right' as const,
       render: (v: number) => (
         <Tooltip title="Congelado al crear la solicitud — no cambia si sube la tarifa">
           <Text strong>{fmt.money(Number(v))}</Text>
@@ -115,20 +128,20 @@ export function ActivacionEcfAdminTab() {
       ),
     },
     {
-      title: 'Comprobante', width: 120, align: 'center' as const,
+      title: 'Comprobante', key: 'comprobante', width: 120, align: 'center' as const,
       render: (_: any, r: any) => r.comprobantePagoKey
         ? <Button size="small" icon={<EyeOutlined />} onClick={() => verComprobante(r.id)}>Ver</Button>
         : <Tag color="orange">Sin subir</Tag>,
     },
     {
-      title: 'Estado', dataIndex: 'estado', width: 150,
+      title: 'Estado', dataIndex: 'estado', key: 'estado', width: 150,
       render: (v: string) => {
         const i = infoEstado(v);
         return <Tag color={i?.color}>{i?.label ?? v}</Tag>;
       },
     },
     {
-      title: '', width: 210, align: 'right' as const,
+      title: '', key: 'acc', width: 210, align: 'right' as const,
       render: (_: any, r: any) => (
         <Space size={4}>
           {r.estado === 'pendiente_pago' && (
@@ -160,7 +173,7 @@ export function ActivacionEcfAdminTab() {
 
   return (
     <div style={{ padding: '0 4px' }}>
-      <Space style={{ marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
         <Select
           allowClear placeholder="Todos los estados" style={{ width: 200 }}
           value={filtro} onChange={setFiltro}
@@ -169,7 +182,10 @@ export function ActivacionEcfAdminTab() {
         <Text type="secondary" style={{ fontSize: 12 }}>
           Los certificados no se almacenan — aquí solo se ven sus metadatos.
         </Text>
-      </Space>
+        <div style={{ marginLeft: 'auto' }}>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+        </div>
+      </div>
 
       {/* 7 columnas. Sin scroll horizontal, en pantalla estrecha se corta la
           columna de acciones y se pierden justo los botones de gestión. */}
@@ -177,7 +193,7 @@ export function ActivacionEcfAdminTab() {
         rowKey="id"
         loading={isLoading}
         dataSource={data ?? []}
-        columns={cols}
+        columns={filterColumns(cols as any)}
         size="small"
         pagination={{ pageSize: 10 }}
         scroll={{ x: 'max-content' }}

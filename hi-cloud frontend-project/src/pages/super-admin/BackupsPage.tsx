@@ -14,6 +14,8 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/es';
 import api from '../../api/client';
 import { dRD, fechaHora } from '../../utils/fechaRD';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 
 dayjs.extend(relativeTime);
 dayjs.locale('es');
@@ -116,9 +118,21 @@ export default function BackupsPage() {
     ?? (ultimo ? Math.floor((Date.now() - new Date(ultimo.createdAt).getTime()) / 3_600_000) : null);
   const sinRegistros = respaldo?.motivo === 'sin-registros' || (!isLoading && items.length === 0);
 
+  const COLS_DEF = [
+    { key: 'createdAt',            label: 'Fecha'        },
+    { key: 'tipo',                 label: 'Tipo'         },
+    { key: 'estado',               label: 'Estado'       },
+    { key: 'tamanio',              label: 'Tamaño'       },
+    { key: 'duracionSegundos',     label: 'Duración'     },
+    { key: 'integridadVerificada', label: 'Restauración' },
+    { key: 's3Key',                label: 'S3 Key'       },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } =
+    useColumnVisibility('sa-backups', COLS_DEF);
+
   const cols = [
     {
-      title: 'Fecha', dataIndex: 'createdAt', width: 155,
+      title: 'Fecha', dataIndex: 'createdAt', key: 'createdAt', width: 155,
       render: (v: string) => (
         <Tooltip title={dRD(v).format('DD/MM/YYYY HH:mm:ss')}>
           <span style={{ fontSize: 12 }}>{dRD(v).format('DD MMM YYYY HH:mm')}</span>
@@ -126,14 +140,14 @@ export default function BackupsPage() {
       ),
     },
     {
-      title: 'Tipo', dataIndex: 'tipo', width: 90,
+      title: 'Tipo', dataIndex: 'tipo', key: 'tipo', width: 90,
       render: (v: string) => {
         const colors: Record<string, string> = { daily:'blue', weekly:'purple', monthly:'orange', manual:'cyan' };
         return <Tag color={colors[v] ?? 'default'} style={{ fontSize: 11 }}>{v.toUpperCase()}</Tag>;
       },
     },
     {
-      title: 'Estado', dataIndex: 'estado', width: 120,
+      title: 'Estado', dataIndex: 'estado', key: 'estado', width: 120,
       render: (v: string) => {
         if (v === 'EXITOSO')      return <Tag color="green"  icon={<CheckCircleOutlined />}>Exitoso</Tag>;
         if (v === 'FALLIDO')      return <Tag color="red"    icon={<CloseCircleOutlined />}>Fallido</Tag>;
@@ -141,13 +155,13 @@ export default function BackupsPage() {
       },
     },
     {
-      title: 'Tamaño', dataIndex: 'tamanio', width: 90, align: 'right' as const,
+      title: 'Tamaño', dataIndex: 'tamanio', key: 'tamanio', width: 90, align: 'right' as const,
       render: (v: string) => v
         ? <Text style={{ color: tamanioColor(v), fontSize: 12, fontFamily: 'monospace' }}>{v}</Text>
         : <Text type="secondary">—</Text>,
     },
     {
-      title: 'Duración', dataIndex: 'duracionSegundos', width: 90, align: 'right' as const,
+      title: 'Duración', dataIndex: 'duracionSegundos', key: 'duracionSegundos', width: 90, align: 'right' as const,
       render: (v: number) => v ? <Text style={{ fontSize: 12 }}>{v}s</Text> : <Text type="secondary">—</Text>,
     },
     {
@@ -157,7 +171,7 @@ export default function BackupsPage() {
       //
       // Ahora solo hay tick si se restauro de verdad. Y cuando no lo hay, se
       // dice por qué — "N/A" sonaba a dato que falta, no a advertencia.
-      title: 'Restauración', dataIndex: 'integridadVerificada', width: 130, align: 'center' as const,
+      title: 'Restauración', dataIndex: 'integridadVerificada', key: 'integridadVerificada', width: 130, align: 'center' as const,
       render: (v: boolean, r: any) => {
         if (v) {
           return (
@@ -196,7 +210,7 @@ export default function BackupsPage() {
       },
     },
     {
-      title: 'S3 Key', dataIndex: 's3Key', ellipsis: true,
+      title: 'S3 Key', dataIndex: 's3Key', key: 's3Key', ellipsis: true,
       render: (v: string) => v
         ? <Text code style={{ fontSize: 10 }}>{v}</Text>
         : <Text type="secondary">—</Text>,
@@ -209,7 +223,7 @@ export default function BackupsPage() {
       // configurado, el script guarda "local:/tmp/...", que no es una clave de
       // S3: la descarga devolvía un XML de error. Parecía funcionar, que es
       // peor que estar deshabilitado.
-      title: '', width: 110, align: 'right' as const,
+      title: '', key: 'acc', width: 110, align: 'right' as const,
       render: (_: any, r: any) => {
         const soloLocal = typeof r.s3Key === 'string' && r.s3Key.startsWith('local:');
         const puede = r.estado === 'EXITOSO' && r.s3Key && !soloLocal;
@@ -383,10 +397,15 @@ export default function BackupsPage() {
       {/* Tabla */}
       <Card
         title={<Space><DatabaseOutlined /> Historial de backups</Space>}
-        extra={<Badge count={meta.total ?? 0} style={{ background: '#6b7280' }} showZero />}
+        extra={
+          <Space size={4}>
+            <Badge count={meta.total ?? 0} style={{ background: '#6b7280' }} showZero />
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          </Space>
+        }
       >
         <Table
-          columns={cols}
+          columns={filterColumns(cols as any)}
           dataSource={items}
           rowKey="id"
           loading={isLoading}

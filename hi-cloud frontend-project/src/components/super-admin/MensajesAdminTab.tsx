@@ -13,6 +13,8 @@ import {
   useMensajeAdminStats,
 } from '../../hooks/useMensajes';
 import type { MensajeAdmin } from '../../api/mensajes.api';
+import { ColumnToggle } from '../ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 
 const { Text, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -231,10 +233,21 @@ export function MensajesAdminTab() {
   const { data: mensajes = [], isLoading } = useMensajesAdmin();
   const desactivar = useDesactivarMensaje();
 
+  const COLS_DEF = [
+    { key: 'titulo',           label: 'Título'        },
+    { key: 'tipo',             label: 'Tipo'          },
+    { key: 'destinatario',     label: 'Destinatarios' },
+    { key: 'fechaPublicacion', label: 'Publicación'   },
+    { key: 'totalLeidos',      label: 'Leídos'        },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } =
+    useColumnVisibility('sa-mensajes', COLS_DEF);
+
   const columns = [
     {
       title:     'Título',
       dataIndex: 'titulo',
+      key:       'titulo',
       render:    (v: string, r: MensajeAdmin) => (
         <Space direction="vertical" size={2}>
           <Text strong={r.activo}>{v}</Text>
@@ -246,6 +259,7 @@ export function MensajesAdminTab() {
     {
       title:     'Tipo',
       dataIndex: 'tipo',
+      key:       'tipo',
       width:     100,
       render:    (v: string) => (
         <Tag color={v === 'novedad' ? 'blue' : 'orange'}>
@@ -256,6 +270,7 @@ export function MensajesAdminTab() {
     {
       title:     'Destinatarios',
       dataIndex: 'destinatario',
+      key:       'destinatario',
       width:     150,
       render:    (v: string, r: MensajeAdmin) => {
         if (v === 'todas') return <Tag>Todas las empresas</Tag>;
@@ -266,18 +281,21 @@ export function MensajesAdminTab() {
     {
       title:     'Publicación',
       dataIndex: 'fechaPublicacion',
+      key:       'fechaPublicacion',
       width:     160,
       render:    (v: string) => fecha(v),
     },
     {
       title:     'Leídos',
       dataIndex: 'totalLeidos',
+      key:       'totalLeidos',
       width:     80,
       align:     'center' as const,
       render:    (v: number) => <Text type={v > 0 ? 'success' : 'secondary'}>{v}</Text>,
     },
     {
       title:  'Acciones',
+      key:    'acc',
       width:  120,
       render: (_: any, r: MensajeAdmin) => (
         <Space>
@@ -313,14 +331,17 @@ export function MensajesAdminTab() {
     <div style={{ padding: '24px 0' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <Typography.Title level={5} style={{ margin: 0 }}>Mensajes a clientes</Typography.Title>
-        <Button type="primary" icon={<Plus size={14} />} onClick={() => setFormMensaje(null)}>
-          Redactar mensaje
-        </Button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <Button type="primary" icon={<Plus size={14} />} onClick={() => setFormMensaje(null)}>
+            Redactar mensaje
+          </Button>
+        </div>
       </div>
 
       <Table
         dataSource={mensajes}
-        columns={columns}
+        columns={filterColumns(columns as any)}
         rowKey="id"
         loading={isLoading}
         size="small"
