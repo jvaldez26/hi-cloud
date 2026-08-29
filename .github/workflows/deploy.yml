@@ -465,7 +465,10 @@ jobs:
               chmod +x /home/ubuntu/scripts/*.sh 2>/dev/null
 
               CRON_BACKUP="0 2 * * * /home/ubuntu/scripts/backup-hicloud.sh >> /var/log/hicloud-backup.log 2>&1"
-              CRON_VERIF="30 3 * * 0 /home/ubuntu/scripts/verificar-backup.sh >> /var/log/hicloud-backup.log 2>&1"
+              # DIARIO, no semanal. Un respaldo probado ayer vale mas que uno
+              # probado el domingo pasado, y la verificacion completa cuesta
+              # ~1-2 min en una ventana sin trafico.
+              CRON_VERIF="30 3 * * * /home/ubuntu/scripts/verificar-backup.sh >> /var/log/hicloud-backup.log 2>&1"
 
               # Se trabaja sobre ficheros, no sobre cadenas multilínea: dentro
               # de un bloque YAML la indentación se cuela en el valor y ya rompió
@@ -485,7 +488,29 @@ jobs:
               if ! grep -q "verificar-backup.sh" /tmp/cron.actual; then
                 echo "$CRON_VERIF" >> /tmp/cron.nuevo
                 CAMBIO=1
-                echo "  ➕ cron: verificación semanal domingo 03:30 instalada"
+                echo "  ➕ cron: verificación diaria 03:30 instalada"
+              elif grep -q "^30 3 \* \* 0 /home/ubuntu/scripts/verificar-backup.sh" /tmp/cron.actual; then
+                # Migración semanal → diaria.
+                #
+                # La regla de arriba (idempotente por RUTA) existe para no pisar
+                # un horario que alguien haya ajustado a mano en el servidor, y
+                # eso se mantiene: aquí se sustituye SOLO la línea semanal exacta
+                # que este mismo workflow instaló en su día. Cualquier otro
+                # horario se respeta.
+                #
+                # Sin esto el cambio a diario no llegaría nunca: el grep de
+                # arriba encuentra "verificar-backup.sh" y no toca nada.
+                #
+                # Se quita la línea y se vuelve a añadir, en vez de un `sed s|||`:
+                # $CRON_VERIF termina en "2>&1", y en el reemplazo de sed un `&`
+                # significa "todo lo que emparejó el patrón". Esa sustitución
+                # habría escrito un crontab corrupto — y un crontab corrupto no
+                # avisa, simplemente deja de ejecutar.
+                grep -v "verificar-backup.sh" /tmp/cron.nuevo > /tmp/cron.sinverif
+                mv /tmp/cron.sinverif /tmp/cron.nuevo
+                echo "$CRON_VERIF" >> /tmp/cron.nuevo
+                CAMBIO=1
+                echo "  🔁 cron: verificación pasa de semanal (domingo) a DIARIA 03:30"
               fi
 
               if [ "$CAMBIO" = "1" ]; then
@@ -504,6 +529,23 @@ jobs:
               fi
               if [ ! -f /home/ubuntu/scripts/backup-hicloud.sh ]; then
                 echo "  🚨 backup-hicloud.sh NO está en el servidor"
+              fi
+
+              # La misma comprobación para la VERIFICACIÓN. No estaba, y su
+              # ausencia costó una investigación entera: el panel no mostraba
+              # respaldos probados y no había forma de saber desde fuera si el
+              # cron seguía instalado o había desaparecido. Hubo que consultar
+              # la base de datos de producción para responderlo.
+              #
+              # Un respaldo que nadie prueba es un archivo; una prueba que nadie
+              # vigila es la misma trampa un nivel más arriba.
+              if crontab -l 2>/dev/null | grep -q "verificar-backup.sh"; then
+                echo "  ✅ verificación programada: $(crontab -l 2>/dev/null | grep verificar-backup.sh | head -1)"
+              else
+                echo "  🚨 NO HAY CRON DE VERIFICACIÓN — nadie está probando que los respaldos restauren"
+              fi
+              if [ ! -f /home/ubuntu/scripts/verificar-backup.sh ]; then
+                echo "  🚨 verificar-backup.sh NO está en el servidor"
               fi
             else
               echo "  🚨 /home/ubuntu/scripts no existe — el SCP de scripts falló"

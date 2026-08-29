@@ -56,9 +56,24 @@ export class BackupRegistro {
   @Column({ type: 'jsonb', nullable: true })
   filasVerificadas?: Record<string, { restaurado: number; produccion: number }> | null;
 
-  /** Por que fallo la verificacion, si fallo. */
+  /**
+   * Que paso en la verificacion. Se guarda TAMBIEN cuando salio bien.
+   *
+   * Antes solo se rellenaba en el fallo y en el exito se escribia null. Eso
+   * tiraba el detalle (duracion, sha256 contrastado) justo en el caso en que
+   * sirve para ver una tendencia: lo que avisa de que algo se degrada no es el
+   * primer fallo, es que el tiempo empiece a subir semanas antes.
+   */
   @Column({ type: 'text', nullable: true })
   verificacionMensaje?: string | null;
+
+  /**
+   * Cuanto tardo la verificacion completa (bajar de S3 + checksum + restaurar +
+   * contar), en segundos. Se guarda en exito Y en fallo — un fallo lento y uno
+   * inmediato tienen causas distintas.
+   */
+  @Column({ type: 'int', nullable: true })
+  verificacionSegundos?: number | null;
 
   @Column({ nullable: true })
   iniciadoPor?: number;  // userId si fue manual

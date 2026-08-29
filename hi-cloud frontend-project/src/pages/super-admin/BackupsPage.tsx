@@ -46,6 +46,23 @@ const QUE_HACER_S3: Record<string, string> = {
   'desconocido':       'Mira el log del backend para el error completo.',
 };
 
+/**
+ * Conteos del tooltip de "Probada".
+ *
+ * Cada valor es `{ restaurado, produccion }`, un OBJETO. Interpolarlo en una
+ * plantilla daba literalmente "facturas: [object Object]" — el tooltip llevaba
+ * desde el primer día sin decir nada.
+ *
+ * Se pintan los dos números a propósito. El dump es de las 02:00 y producción
+ * se cuenta al verificar: una diferencia pequeña es deriva normal, no un fallo,
+ * y con un solo número habría que adivinar cuál es cuál.
+ */
+function resumenFilas(filas: Record<string, { restaurado: number; produccion: number }>) {
+  return Object.entries(filas)
+    .map(([tabla, n]) => `${tabla}: ${n?.restaurado ?? '?'}/${n?.produccion ?? '?'}`)
+    .join(' · ');
+}
+
 function tamanioColor(t: string) {
   if (!t) return '#94a3b8';
   const mb = parseFloat(t);
@@ -141,23 +158,42 @@ export default function BackupsPage() {
       // Ahora solo hay tick si se restauro de verdad. Y cuando no lo hay, se
       // dice por qué — "N/A" sonaba a dato que falta, no a advertencia.
       title: 'Restauración', dataIndex: 'integridadVerificada', width: 130, align: 'center' as const,
-      render: (v: boolean, r: any) => v
-        ? (
-          <Tooltip title={
-            `Restaurado y verificado el ${fechaHora(r.restauracionProbadaEn ?? r.verificadoEn)}` +
-            (r.filasVerificadas
-              ? ' · ' + Object.entries(r.filasVerificadas)
-                  .map(([t, n]) => `${t}: ${n}`).join(' · ')
-              : '')
-          }>
-            <Tag color="green" icon={<SafetyOutlined />}>Probada</Tag>
-          </Tooltip>
-        )
-        : (
+      render: (v: boolean, r: any) => {
+        if (v) {
+          return (
+            <Tooltip title={
+              `Bajado de S3, contrastado su SHA-256 y restaurado el ${fechaHora(r.restauracionProbadaEn ?? r.verificadoEn)}` +
+              (r.verificacionSegundos ? ` · tardó ${r.verificacionSegundos}s` : '') +
+              (r.filasVerificadas ? ' · ' + resumenFilas(r.filasVerificadas) : '')
+            }>
+              <Tag color="green" icon={<SafetyOutlined />}>Probada</Tag>
+            </Tooltip>
+          );
+        }
+
+        // Que la prueba FALLARA y que nadie la haya hecho no son el mismo
+        // estado, y hasta ahora los dos salían como "Sin probar". Un dump que
+        // no restaura pintado como "todavía no lo hemos mirado" es la misma
+        // mentira tranquilizadora que el tick verde sin restaurar: lo urgente
+        // se ve igual que lo pendiente.
+        if (r.verificadoEn) {
+          return (
+            <Tooltip title={
+              `LA RESTAURACIÓN FALLÓ el ${fechaHora(r.verificadoEn)}` +
+              (r.verificacionSegundos ? ` (tras ${r.verificacionSegundos}s)` : '') +
+              `. ${r.verificacionMensaje ?? 'Sin detalle.'}`
+            }>
+              <Tag color="error" icon={<CloseCircleOutlined />}>Falló</Tag>
+            </Tooltip>
+          );
+        }
+
+        return (
           <Tooltip title="Nadie ha restaurado este archivo. Que el backup se creara sin error no significa que se pueda restaurar.">
             <Tag color="warning" icon={<ExclamationCircleOutlined />}>Sin probar</Tag>
           </Tooltip>
-        ),
+        );
+      },
     },
     {
       title: 'S3 Key', dataIndex: 's3Key', ellipsis: true,
@@ -382,14 +418,27 @@ BACKUP_SCRIPT_PATH=/home/ubuntu/scripts/backup-hicloud.sh`}
             </pre>
           </Col>
           <Col xs={24} md={12}>
-            <Text strong style={{ display: 'block', marginBottom: 8 }}>Configurar crontab (02:00 AM diario):</Text>
+            {/*
+              Las DOS líneas, no solo la del respaldo.
+              Quien montara un servidor siguiendo esto se quedaba con respaldos
+              que nadie prueba — justo el agujero que la columna "Restauración"
+              existe para enseñar. El deploy instala ambos crones solo, pero esta
+              pantalla decía la mitad.
+            */}
+            <Text strong style={{ display: 'block', marginBottom: 8 }}>Configurar crontab (respaldo 02:00, verificación 03:30):</Text>
             <pre style={{ background: '#f1f5f9', padding: 12, borderRadius: 6, fontSize: 12, margin: 0 }}>
-{`# En el servidor EC2:
-chmod +x /home/ubuntu/scripts/backup-hicloud.sh
+{`# En el servidor EC2 (el deploy ya lo hace solo):
+chmod +x /home/ubuntu/scripts/*.sh
 crontab -e
-# Agregar esta línea:
-0 2 * * * /home/ubuntu/scripts/backup-hicloud.sh`}
+# Agregar estas dos líneas:
+0 2 * * * /home/ubuntu/scripts/backup-hicloud.sh
+30 3 * * * /home/ubuntu/scripts/verificar-backup.sh`}
             </pre>
+            <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 8 }}>
+              La segunda línea es la que baja el respaldo de S3, comprueba su SHA-256
+              y lo restaura en una base temporal. Sin ella ningún respaldo llega a
+              marcarse como <Text code style={{ fontSize: 11 }}>Probada</Text>.
+            </Text>
           </Col>
         </Row>
       </Card>

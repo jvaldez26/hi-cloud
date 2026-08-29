@@ -182,7 +182,6 @@ describe('registrarVerificacion — la unica via para marcar verificado', () => 
     expect(u.integridadVerificada).toBe(true);
     expect(u.filasVerificadas).toEqual(filas);
     expect(u.restauracionProbadaEn).toBeInstanceOf(Date);
-    expect(u.verificacionMensaje).toBeNull();
   });
 
   it('un veredicto NEGATIVO tambien se guarda — si no, el fallo vuelve a ser silencioso', async () => {
@@ -197,9 +196,74 @@ describe('registrarVerificacion — la unica via para marcar verificado', () => 
     expect(u.restauracionProbadaEn).toBeInstanceOf(Date);
   });
 
+  // EL DATO DEL CASO BUENO NO SE TIRA.
+  //
+  // Antes esto era `verificacionMensaje: ok ? null : mensaje`: en cuanto la
+  // verificacion salia bien se borraba el detalle —duracion y sha256— que el
+  // script se habia molestado en calcular. Lo que avisa de que algo se degrada
+  // no es el primer fallo, es la TENDENCIA: una verificacion que pasa de 90s a
+  // 300s en un mes sigue saliendo verde y es la unica señal previa.
+  it('en EXITO tambien guarda el mensaje y la duracion', async () => {
+    const { svc, actualizaciones } = svcConUltimo({ id: 7, s3Key: 'k' });
+
+    await svc.registrarVerificacion({
+      ok: true,
+      mensaje: 'Restaurado y verificado en 96s (sha256 138ce42c6d11…)',
+      duracionSegundos: 96,
+    });
+
+    const u = actualizaciones[0];
+    expect(u.verificacionMensaje).toContain('sha256');
+    expect(u.verificacionSegundos).toBe(96);
+  });
+
+  it('en FALLO guarda la duracion tambien — un fallo lento y uno inmediato no son lo mismo', async () => {
+    const { svc, actualizaciones } = svcConUltimo({ id: 7, s3Key: 'k' });
+
+    await svc.registrarVerificacion({ ok: false, mensaje: 'checksum no coincide', duracionSegundos: 8 });
+
+    expect(actualizaciones[0].verificacionSegundos).toBe(8);
+  });
+
   it('sin ningun backup al que aplicarlo, no revienta', async () => {
     const svc = servicioCon({ findOne: async () => null, update: async () => ({}) });
     await expect(svc.registrarVerificacion({ ok: true })).resolves.toBeNull();
+  });
+});
+
+/**
+ * Lo que hace que el tick verde signifique algo: el script pregunta QUE archivo
+ * verificar y contra que contrastarlo. Sin esto volveria a verificar un dump
+ * recien hecho y a estampar el veredicto sobre un objeto de S3 que nadie abrio.
+ */
+describe('ultimoParaVerificar — el respaldo REAL que hay que probar', () => {
+  it('devuelve id, clave de S3 y checksum del ultimo exitoso', async () => {
+    const svc = servicioCon({
+      findOne: async () => ({
+        id: 42, s3Key: 'database/daily/db_20260829_020001.dump',
+        checksum: 'a'.repeat(64), tamanio: '20M', tipo: 'daily', createdAt: new Date(),
+      }),
+    });
+
+    const r = await svc.ultimoParaVerificar();
+
+    expect(r?.id).toBe(42);
+    expect(r?.s3Key).toContain('database/daily/');
+    expect(r?.checksum).toHaveLength(64);
+  });
+
+  it('un respaldo que se quedo en local NO es verificable desde S3', async () => {
+    // S3 sin configurar: el script guarda "local:/tmp/...". No hay nada que
+    // bajar, y darlo por verificable seria mentir otra vez.
+    const svc = servicioCon({
+      findOne: async () => ({ id: 9, s3Key: 'local:/tmp/hicloud-backups/db.dump', tipo: 'daily' }),
+    });
+    await expect(svc.ultimoParaVerificar()).resolves.toBeNull();
+  });
+
+  it('sin ningun respaldo exitoso devuelve null en vez de reventar', async () => {
+    const svc = servicioCon({ findOne: async () => null });
+    await expect(svc.ultimoParaVerificar()).resolves.toBeNull();
   });
 });
 

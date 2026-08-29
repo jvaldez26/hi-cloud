@@ -168,6 +168,90 @@ ok "todos los caminos de fallo notifican ($N_FALSE encontrados)" $?
 
 # ────────────────────────────────────────────────────────────────────────────
 echo ""
+echo "SE VERIFICA EL ARCHIVO REAL DE S3, NO UN DUMP RECIEN HECHO"
+#
+# El agujero: el script generaba un dump NUEVO a las 03:30 y verificaba ESE,
+# pero el veredicto se estampaba sobre el respaldo de las 02:00 que estaba en
+# S3. La fila del panel decia "Probada" sobre un archivo que nadie habia
+# abierto. Una subida truncada salia en verde.
+
+grep -q 'aws s3 cp "s3://\$S3_BUCKET/\$S3_KEY"' "$VERIFICAR_SH"
+ok "el camino por defecto BAJA el objeto de S3" $?
+grep -q 'internal/ultimo' "$VERIFICAR_SH"
+ok "pregunta al backend cual es el respaldo a verificar" $?
+grep -q 'CHECKSUM_ESPERADO' "$VERIFICAR_SH"
+ok "contrasta el SHA-256 contra el registrado al crearlo" $?
+
+# Los dos fallos que el usuario pidio que quedaran como VEREDICTO NEGATIVO y no
+# como error de infraestructura: si no se puede bajar, o si no cuadra el hash,
+# eso ES que el respaldo no sirve.
+sed -n '/No se pudo bajar el respaldo/p' "$VERIFICAR_SH" | grep -q 'enviar_veredicto false'
+ok "una descarga fallida se registra como verificacion FALLIDA" $?
+sed -n '/NO coincide con el checksum/p' "$VERIFICAR_SH" | grep -q 'enviar_veredicto false'
+ok "un checksum que no cuadra se registra como verificacion FALLIDA" $?
+
+# El veredicto tiene que clavarse en la fila del archivo que se probo, no en
+# "el ultimo exitoso que hubiera al terminar".
+grep -q 'CAMPO_ID="\\"backupId\\":\$BACKUP_ID,"' "$VERIFICAR_SH"
+ok "el veredicto va contra el backupId exacto" $?
+
+# BACKUP_ID tiene que estar puesto ANTES de los enviar_veredicto de la descarga
+# y el checksum; si no, esos dos fallos irian a parar a la fila equivocada.
+LINEA_ID=$(grep -n '^  BACKUP_ID=\$(json_numero' "$VERIFICAR_SH" | head -1 | cut -d: -f1)
+LINEA_DESCARGA=$(grep -n 'No se pudo bajar el respaldo' "$VERIFICAR_SH" | head -1 | cut -d: -f1)
+[ -n "$LINEA_ID" ] && [ -n "$LINEA_DESCARGA" ] && [ "$LINEA_ID" -lt "$LINEA_DESCARGA" ]
+ok "BACKUP_ID (linea $LINEA_ID) se conoce antes del fallo de descarga (linea $LINEA_DESCARGA)" $?
+
+# ────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "LA DURACION SE MANDA TAMBIEN EN EL CASO BUENO"
+# Descartarla en exito era tirar el dato justo cuando sirve para ver una
+# tendencia: lo que avisa de una degradacion no es el primer fallo.
+grep -q '\\"duracion\\":\$DURACION' "$VERIFICAR_SH"
+ok "el payload del veredicto lleva la duracion" $?
+sed -n '/^enviar_veredicto() {/,/^}/p' "$VERIFICAR_SH" | grep -q 'DURACION=\$(( \$(date +%s) - INICIO ))'
+ok "la duracion se calcula dentro de enviar_veredicto (todos los caminos)" $?
+
+# ────────────────────────────────────────────────────────────────────────────
+echo ""
+echo "EL CONTRASTE DE CONTEOS AGUANTA UN DUMP DE HACE HORA Y MEDIA"
+#
+# Antes se comparaba un dump de hacia SEGUNDOS, y "el dump tiene mas filas que
+# produccion" se trataba como imposible. Verificando el archivo de las 02:00 a
+# las 03:30 ya no lo es: en hora y media alguien borra un cliente y el dump pasa
+# a tener legitimamente mas filas. Con la regla vieja, un borrado normal salia
+# como verificacion FALLIDA — y un panel que grita en falso se deja de mirar.
+grep -q 'TOLERANCIA_EXCESO_PCT' "$VERIFICAR_SH"
+ok "hay tolerancia para la deriva por borrados" $?
+
+comparar() {
+  local RESTAURADO="$1" PRODUCCION="$2"
+  TOLERANCIA_EXCESO_PCT=10 bash -c '
+    set -uo pipefail
+    N_RESTAURADO='"$RESTAURADO"'; N_PRODUCCION='"$PRODUCCION"'; FALLOS=""
+    if [ "$N_RESTAURADO" -eq 0 ] && [ "$N_PRODUCCION" -gt 0 ]; then
+      FALLOS="vacia"
+    elif [ "$N_RESTAURADO" -gt "$N_PRODUCCION" ]; then
+      UMBRAL=$(( N_PRODUCCION + (N_PRODUCCION * TOLERANCIA_EXCESO_PCT / 100) + 1 ))
+      [ "$N_RESTAURADO" -gt "$UMBRAL" ] && FALLOS="exceso"
+    fi
+    [ -n "$FALLOS" ] && echo "FALLO:$FALLOS" || echo "OK"
+  '
+}
+
+[ "$(comparar 12377 12380)" = "OK" ]
+ok "produccion con unas filas mas que el dump: normal (siguen facturando)" $?
+[ "$(comparar 128 127)" = "OK" ]
+ok "un cliente borrado desde que se tomo el dump: normal, no es fallo" $?
+[ "$(comparar 0 12377)" = "FALLO:vacia" ]
+ok "tabla vacia en el dump con filas en produccion: FALLO" $?
+[ "$(comparar 5000 100)" = "FALLO:exceso" ]
+ok "el dump con 50x las filas de produccion: FALLO (borrado masivo o dump ajeno)" $?
+[ "$(comparar 0 0)" = "OK" ]
+ok "las dos vacias no es fallo (tabla legitimamente sin datos)" $?
+
+# ────────────────────────────────────────────────────────────────────────────
+echo ""
 echo "EL REPORTE AL BACKEND NO PUEDE FALLAR EN SILENCIO"
 #
 # El bug que costo meses: `curl -sf ... || true` se traga el fallo entero. El

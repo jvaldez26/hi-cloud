@@ -52,10 +52,17 @@ describe('BackupInternalController — autenticación por x-internal-key', () =>
   let app: INestApplication;
   const llamadas: Record<string, any[]> = { exito: [], fallo: [], verificacion: [] };
 
+  // Lo que devuelve ultimoParaVerificar(); se cambia por test.
+  let ultimoFalso: any = {
+    id: 42, s3Key: 'database/daily/db_20260829_020001.dump',
+    checksum: 'a'.repeat(64), tamanio: '20M', tipo: 'daily', createdAt: new Date(),
+  };
+
   const backupSvcFalso = {
     registrarExito:        async (d: any) => { llamadas.exito.push(d);        return { id: 1, ...d }; },
     registrarFallo:        async (d: any) => { llamadas.fallo.push(d);        return { id: 2, ...d }; },
     registrarVerificacion: async (d: any) => { llamadas.verificacion.push(d); return { id: 3, ...d }; },
+    ultimoParaVerificar:   async () => ultimoFalso,
   };
 
   beforeAll(async () => {
@@ -167,6 +174,55 @@ describe('BackupInternalController — autenticación por x-internal-key', () =>
       .send({ mensaje: 'x' });
 
     expect(res.status).toBe(401);
+  });
+
+  // ── La duración del caso bueno llega hasta el servicio ────────────────────
+
+  it('verificacion pasa la duracion al servicio tambien cuando ok=true', async () => {
+    // Si el DTO no declara `duracion`, el ValidationPipe con whitelist:true la
+    // descarta en silencio y el dato muere aquí, no en el servicio.
+    const res = await request(app.getHttpServer())
+      .post('/admin/backups/internal/verificacion')
+      .set('x-internal-key', CLAVE)
+      .send({ backupId: 42, ok: true, duracion: 96, mensaje: 'Restaurado y verificado en 96s' });
+
+    expect(res.status).toBe(200);
+    expect(llamadas.verificacion[0].duracionSegundos).toBe(96);
+    expect(llamadas.verificacion[0].backupId).toBe(42);
+  });
+
+  // ── El script pregunta QUÉ archivo verificar ──────────────────────────────
+
+  it('ultimo devuelve id, s3Key y checksum con la clave interna', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/admin/backups/internal/ultimo')
+      .set('x-internal-key', CLAVE);
+
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(42);
+    expect(res.body.s3Key).toContain('database/daily/');
+    expect(res.body.checksum).toHaveLength(64);
+  });
+
+  it('ultimo sin clave interna responde 401, como las demás', async () => {
+    const res = await request(app.getHttpServer()).get('/admin/backups/internal/ultimo');
+    expect(res.status).toBe(401);
+  });
+
+  it('sin respaldo que verificar responde 404 — el script lo distingue de un fallo', async () => {
+    // 404 aquí significa "todavía no hay respaldo", que NO es "el respaldo no
+    // sirve". Si esto devolviera 500 o 200-con-null, el script marcaría como
+    // fallida una verificación que nunca llegó a empezar.
+    const previo = ultimoFalso;
+    ultimoFalso = null;
+    try {
+      const res = await request(app.getHttpServer())
+        .get('/admin/backups/internal/ultimo')
+        .set('x-internal-key', CLAVE);
+      expect(res.status).toBe(404);
+    } finally {
+      ultimoFalso = previo;
+    }
   });
 
   // ── Las rutas no pueden cambiar sin cambiar el script ─────────────────────

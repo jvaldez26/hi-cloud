@@ -1,5 +1,6 @@
 import {
-  Controller, Post, Body, Headers, HttpCode, HttpStatus, UnauthorizedException,
+  Controller, Post, Get, Body, Headers, HttpCode, HttpStatus,
+  UnauthorizedException, NotFoundException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { IsString, IsNotEmpty, IsOptional, IsInt, IsBoolean, IsObject } from 'class-validator';
@@ -61,6 +62,9 @@ class BackupVerificacionDto {
   @IsOptional() @IsObject() filas?: Record<string, { restaurado: number; produccion: number }>;
 
   @IsOptional() @IsString() mensaje?: string;
+
+  /** Cuanto tardo la verificacion completa, en segundos. */
+  @IsOptional() @IsInt() @Type(() => Number) duracion?: number;
 }
 
 @ApiTags('Super Admin')
@@ -113,10 +117,36 @@ export class BackupInternalController {
   verificacion(@Headers('x-internal-key') key: string, @Body() dto: BackupVerificacionDto) {
     this.exigirClave(key);
     return this.backupSvc.registrarVerificacion({
-      backupId: dto.backupId,
-      ok:       dto.ok,
-      filas:    dto.filas,
-      mensaje:  dto.mensaje,
+      backupId:         dto.backupId,
+      ok:               dto.ok,
+      filas:            dto.filas,
+      mensaje:          dto.mensaje,
+      duracionSegundos: dto.duracion,
     });
+  }
+
+  /**
+   * Qué respaldo hay que verificar. Lo pregunta verificar-backup.sh ANTES de
+   * bajar nada de S3.
+   *
+   * Existe porque la verificación pasó a probar el archivo REAL que está en S3
+   * en vez de un dump nuevo hecho en el momento. Para eso el script necesita
+   * tres cosas que solo sabe el backend: qué objeto bajar (`s3Key`), contra qué
+   * contrastarlo (`checksum`) y en qué fila clavar el veredicto (`id`).
+   *
+   * 404 cuando no hay ningún respaldo subido a S3. Es un caso legítimo, no un
+   * error: el script lo distingue y termina sin marcar nada como fallido —
+   * "todavía no hay respaldo" no es lo mismo que "el respaldo no sirve", y de
+   * la tabla vacía ya avisa `estadoRespaldo()` por su cuenta.
+   */
+  @Get('ultimo')
+  @ApiOperation({ summary: '[Interno] Último respaldo subido a S3 — lo consulta verificar-backup.sh' })
+  async ultimo(@Headers('x-internal-key') key: string) {
+    this.exigirClave(key);
+    const backup = await this.backupSvc.ultimoParaVerificar();
+    if (!backup) {
+      throw new NotFoundException('No hay ningún respaldo exitoso subido a S3 que verificar');
+    }
+    return backup;
   }
 }

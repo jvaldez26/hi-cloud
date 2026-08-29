@@ -276,6 +276,7 @@ export class BackupService {
     ok: boolean;
     filas?: Record<string, { restaurado: number; produccion: number }>;
     mensaje?: string;
+    duracionSegundos?: number;
   }): Promise<BackupRegistro | null> {
     const backup = datos.backupId
       ? await this.repo.findOne({ where: { id: datos.backupId } })
@@ -292,13 +293,18 @@ export class BackupService {
       verificadoEn:          ahora,
       restauracionProbadaEn: ahora,
       filasVerificadas:      datos.filas ?? null,
-      verificacionMensaje:   datos.ok ? null : (datos.mensaje ?? 'Verificacion fallida sin detalle'),
+      // El mensaje se guarda TAMBIEN en exito. Antes aqui iba `datos.ok ? null`,
+      // que borraba la duracion y el sha256 contrastado justo cuando sirven:
+      // para ver la tendencia. Una verificacion que pasa de 90s a 300s en un mes
+      // sigue saliendo verde, y es la unica señal previa al fallo.
+      verificacionMensaje:   datos.mensaje ?? (datos.ok ? null : 'Verificacion fallida sin detalle'),
+      verificacionSegundos:  datos.duracionSegundos ?? null,
     });
 
     if (datos.ok) {
       this.logger.log(
         `[Backup] Restauracion verificada OK — id=${backup.id} key=${backup.s3Key} ` +
-        `tablas=${Object.keys(datos.filas ?? {}).join(',')}`,
+        `duracion=${datos.duracionSegundos ?? '?'}s tablas=${Object.keys(datos.filas ?? {}).join(',')}`,
       );
     } else {
       // Un dump que no restaura es tan grave como no tener dump, y hasta ahora
@@ -309,6 +315,48 @@ export class BackupService {
     }
 
     return this.repo.findOne({ where: { id: backup.id } });
+  }
+
+  /**
+   * El respaldo que toca verificar: el ultimo EXITOSO que llego a subirse.
+   *
+   * Lo pregunta verificar-backup.sh antes de bajar nada. Devuelve el `id` a
+   * proposito, para que el veredicto se clave en ESTA fila y no en "el ultimo
+   * exitoso que hubiera al terminar": entre que empieza la verificacion y que
+   * acaba pueden pasar minutos, y con el respaldo diario a las 02:00 y la
+   * verificacion a las 03:30 esa carrera es real.
+   *
+   * Y devuelve el `checksum` registrado al crearlo, que es contra lo que el
+   * script contrasta el archivo bajado. Sin eso no hay forma de distinguir un
+   * objeto de S3 intacto de uno truncado en la subida.
+   *
+   * Se exige `s3Key`: un registro EXITOSO sin clave de S3 es un dump que se
+   * quedo en local (S3 no configurado). No hay nada que bajar, y darlo por
+   * verificable seria mentir otra vez.
+   */
+  async ultimoParaVerificar(): Promise<{
+    id: number;
+    s3Key: string;
+    checksum: string | null;
+    tamanio: string | null;
+    tipo: BackupRegistro['tipo'];
+    createdAt: Date;
+  } | null> {
+    const backup = await this.repo.findOne({
+      where: { estado: 'EXITOSO' },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!backup?.s3Key || backup.s3Key.startsWith('local:')) return null;
+
+    return {
+      id:        backup.id,
+      s3Key:     backup.s3Key,
+      checksum:  backup.checksum ?? null,
+      tamanio:   backup.tamanio ?? null,
+      tipo:      backup.tipo,
+      createdAt: backup.createdAt,
+    };
   }
 
   // ── Listar backups ────────────────────────────────────────────────────────
