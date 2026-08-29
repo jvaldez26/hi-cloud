@@ -13,7 +13,8 @@
     "verificar:subidas": "node scripts/verificar-subida-archivos.mjs",
     "verificar:desenvolver": "node scripts/verificar-desenvolver.mjs",
     "verificar:compacto": "node scripts/verificar-ticket-compacto.mjs",
-    "verificar:widgets": "node scripts/verificar-dashboard-widgets.mjs"
+    "verificar:widgets": "node scripts/verificar-dashboard-widgets.mjs",
+    "verificar:columnas": "node --experimental-strip-types scripts/verificar-columnas.mjs"
   },
   "dependencies": {
     "@ant-design/cssinjs": "^1.21.0",

@@ -321,6 +321,38 @@ Relacionado: los scripts de respaldo ahora se suben en cada deploy. Antes vivía
 
 ---
 
+## 5. Columnas de tabla: la preferencia y el móvil
+
+La preferencia de columnas (`useColumnVisibility` + `ColumnToggle`, 126 tablas) guarda **los
+cambios respecto al default**, no la lista de visibles. Guardando las visibles, cada columna
+nueva quedaba oculta para todo el que hubiera tocado el selector alguna vez — y como estaba
+oculta no la veía, y como no la veía no sabía que existía para poder activarla.
+
+Son dos listas (`ocultas` y `mostradas`) porque hay 147 columnas declaradas
+`defaultVisible: false` en 84 páginas: con una sola lista, esas empezarían a aparecer, que es el
+mismo bug al revés. Reglas verificadas en `npm run verificar:columnas`.
+
+**Cuando se retome el móvil de Super Admin** — hoy no tiene ninguno: ni `isMobile`, ni tarjetas;
+sus tablas hacen scroll horizontal — el diseño acordado es:
+
+- **La tarjeta CONSUME la preferencia, no compite con ella.** La línea secundaria de cada
+  tarjeta sale de las columnas visibles; las fijas (identidad de la fila y acciones) van
+  siempre. Una sola lista manda sobre las dos vistas.
+- **Una clave por tabla, nunca por viewport.** Si la preferencia se guardara distinta en móvil y
+  en escritorio, el resultado es "en el teléfono me salen otras columnas", que es una llamada de
+  soporte garantizada.
+- **Mientras no haya tarjetas, el selector se muestra igual**: la tabla con scroll horizontal es
+  justo donde más sirve poder quitar columnas. Precedente en `FacturasPage`, donde
+  `filterColumns` se aplica a la tabla y la tarjeta lo ignora, sin romper nada.
+
+Pendiente relacionado: hay columnas declaradas en tablas que NO están en su `COLS_DEF`, así que
+hoy no las ve nadie y no hay forma de activarlas. `filterColumns` sigue ignorándolas a propósito
+— sacarlas a la luz es un cambio visible en varias páginas del ERP y va en su propio commit, con
+captura. Ojo al contarlas: la mayoría de lo que parece una columna huérfana son `key` de items
+dentro de `TableActions`, no columnas.
+
+---
+
 ## Ver también
 
 - [`reglas-deploy.md`](reglas-deploy.md) — obligatorio antes de cada push
