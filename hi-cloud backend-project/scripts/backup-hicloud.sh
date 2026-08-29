@@ -34,6 +34,35 @@
 # ============================================================================
 set -euo pipefail
 
+# ── Una ejecucion a la vez ───────────────────────────────────────────────────
+#
+# El nombre del archivo se deriva del reloj AL SEGUNDO:
+#
+#     DATE=$(date +%Y%m%d_%H%M%S)
+#     ARCHIVO_LOCAL="$BACKUP_LOCAL/db_${DATE}.dump"
+#     S3_KEY="database/$TIPO/db_${DATE}.dump"
+#
+# Dos ejecuciones que arranquen en el MISMO segundo comparten archivo temporal
+# y clave de S3. Los dos pg_dump escriben el mismo path a la vez, y el
+# sha256sum de cada uno se calcula sobre un archivo que el otro sigue
+# escribiendo: el checksum registrado puede no corresponder al objeto subido.
+# Como verificar-backup.sh contrasta contra ese checksum, el sintoma seria un
+# fallo de verificacion cuya causa real es esta carrera, no un S3 malo.
+#
+# La ventana es de un segundo y hace falta que coincidan el cron y un disparo
+# manual. Improbable, pero silenciosa: no deja ni una linea en el log. Una
+# linea de flock la cierra.
+#
+# -n = no esperar. Si ya hay un respaldo corriendo se sale con codigo 0: el
+# dump que importa lo esta haciendo el otro proceso, no hay nada que reportar
+# como fallo. Se avisa en el log y ya.
+exec 200>/var/lock/hicloud-backup.lock
+if ! flock -n 200; then
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] Ya hay un respaldo en curso — esta ejecucion se omite" \
+    | tee -a /var/log/hicloud-backup.log
+  exit 0
+fi
+
 # ── Cargar variables de entorno ──────────────────────────────────────────────
 for ENV_PATH in /home/ubuntu/.env /home/ubuntu/hicloud/.env /opt/hicloud/.env; do
   if [ -f "$ENV_PATH" ]; then
@@ -78,6 +107,17 @@ INTERNAL_KEY="${INTERNAL_API_KEY:-}"
 
 BACKUP_LOCAL="/tmp/hicloud-backups"
 LOG_FILE="/var/log/hicloud-backup.log"
+
+# Fila que este respaldo tiene que CERRAR, si lo lanzo el boton del panel.
+#
+# triggerManual() abre una fila EN_PROGRESO antes de lanzar este script —para
+# que el panel muestre algo mientras corre— y pasa su id por entorno. Al
+# devolverlo en el reporte de exito, el backend cierra ESA fila en vez de
+# insertar otra. Sin esto cada manual exitoso dejaba dos filas: la buena y una
+# huerfana que el reaper marcaba como FALLIDO media hora despues.
+#
+# Vacio cuando lo lanza el cron: ahi no hay fila previa y el alta es correcta.
+REGISTRO_ID="${BACKUP_REGISTRO_ID:-}"
 
 # ── Funciones ────────────────────────────────────────────────────────────────
 
@@ -136,8 +176,14 @@ notificar_fallo() {
 
 notificar_exito() {
   local S3_KEY="$1" TAMANIO="$2" DURACION="$3" CHECKSUM="$4"
+  # registroId solo va en el payload si existe: el DTO lo tiene como opcional y
+  # mandar `"registroId":` vacio lo tumbaria con un 400.
+  local EXTRA=""
+  if [ -n "$REGISTRO_ID" ]; then
+    EXTRA=",\"registroId\":$REGISTRO_ID"
+  fi
   reportar "admin/backups/internal/success" \
-    "{\"archivo\":\"$S3_KEY\",\"tamanio\":\"$TAMANIO\",\"duracion\":$DURACION,\"checksum\":\"$CHECKSUM\"}"
+    "{\"archivo\":\"$S3_KEY\",\"tamanio\":\"$TAMANIO\",\"duracion\":$DURACION,\"checksum\":\"$CHECKSUM\"$EXTRA}"
 }
 
 # ── Validar prerequisitos ────────────────────────────────────────────────────

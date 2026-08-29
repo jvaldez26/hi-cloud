@@ -74,18 +74,58 @@ export class BackupService {
    *
    * Ahora la bandera se queda en su default (false) y solo la levanta
    * verificarRestauracion(), que restaura el dump de verdad y cuenta filas.
+   *
+   * ── POR QUE HAY DOS CAMINOS AQUI ──────────────────────────────────────────
+   *
+   * El cron no tiene fila previa: cuando termina, esta es la primera noticia
+   * que tiene la base de ese respaldo. Ahi INSERT es lo correcto.
+   *
+   * El boton manual SI la tiene — `triggerManual()` abre una fila EN_PROGRESO
+   * antes de lanzar el script para que el panel muestre algo mientras corre. Si
+   * aqui insertaramos siempre, esa fila no se cerraria nunca por la via normal
+   * (`triggerManual` solo la toca en la rama de ERROR de exec) y cada backup
+   * manual exitoso dejaria DOS filas: una EXITOSO y una EN_PROGRESO huerfana
+   * que `cerrarColgados()` marcaria como FALLIDO media hora despues, con el
+   * motivo equivocado y ensuciando la tasa de exito del panel con fallos que
+   * nunca ocurrieron.
+   *
+   * Por eso el script devuelve el id que recibio al arrancar
+   * (`BACKUP_REGISTRO_ID`) y aqui se cierra ESA fila.
    */
   async registrarExito(datos: {
-    s3Key: string; tamanio: string; duracion: number; checksum?: string;
+    s3Key: string; tamanio: string; duracion: number;
+    checksum?: string; registroId?: number;
   }): Promise<BackupRegistro> {
-    const tipo = this.detectarTipo(datos.s3Key);
-    return this.repo.save(this.repo.create({
-      tipo,
-      estado:           'EXITOSO',
+    const comunes = {
+      estado:           'EXITOSO' as const,
       s3Key:            datos.s3Key,
       tamanio:          datos.tamanio,
       duracionSegundos: datos.duracion,
       checksum:         datos.checksum,
+    };
+
+    if (datos.registroId) {
+      const abierto = await this.repo.findOne({ where: { id: datos.registroId } });
+      if (abierto) {
+        // OJO: no se toca `tipo` ni `iniciadoPor`. El script deriva el tipo de
+        // la fecha y nunca produce 'manual' —un disparo manual sube a
+        // database/daily/—, asi que dejar que detectarTipo() pisara el valor
+        // convertiria todo backup pedido a mano en 'daily' y se perderia el
+        // rastro de quien lo pidio.
+        await this.repo.update(abierto.id, comunes);
+        return (await this.repo.findOne({ where: { id: abierto.id } }))!;
+      }
+      // La fila pudo borrarse a mano entre el disparo y el reporte. Perder el
+      // registro de un respaldo que SI se hizo es peor que tener una fila de
+      // mas, asi que se cae al INSERT en vez de descartar el reporte.
+      this.logger.warn(
+        `[Backup] registrarExito: la fila #${datos.registroId} ya no existe — se registra como alta nueva`,
+      );
+    }
+
+    return this.repo.save(this.repo.create({
+      ...comunes,
+      tipo: this.detectarTipo(datos.s3Key),
     }));
   }
 
@@ -498,24 +538,36 @@ export class BackupService {
 
   // ── Trigger manual (ejecuta el script en EC2) ────────────────────────────
 
-  async triggerManual(userId: number): Promise<{ mensaje: string }> {
+  async triggerManual(userId: number): Promise<{ mensaje: string; registroId: number }> {
     const registro = await this.repo.save(this.repo.create({
       tipo: 'manual', estado: 'EN_PROGRESO', iniciadoPor: userId,
     }));
 
     const scriptPath = process.env.BACKUP_SCRIPT_PATH ?? '/home/ubuntu/scripts/backup-hicloud.sh';
 
-    // Fire-and-forget — el script notifica al completar
-    exec(scriptPath, { timeout: 900_000 }, (err, stdout, stderr) => {
-      if (err) {
-        this.logger.error(`Backup manual falló (id=${registro.id}): ${err.message}`);
-        this.repo.update(registro.id, { estado: 'FALLIDO', errorMensaje: err.message });
-      } else {
-        this.logger.log(`Backup manual completado (id=${registro.id})`);
-      }
-    });
+    // El id viaja al script por entorno, y el script lo devuelve en el reporte
+    // de exito. Es lo que permite CERRAR esta fila en vez de insertar otra.
+    // Sin esto cada manual exitoso deja una huerfana en EN_PROGRESO.
+    exec(
+      scriptPath,
+      {
+        timeout: 900_000,
+        env: { ...process.env, BACKUP_REGISTRO_ID: String(registro.id) },
+      },
+      (err, stdout, stderr) => {
+        if (err) {
+          this.logger.error(`Backup manual falló (id=${registro.id}): ${err.message}`);
+          this.repo.update(registro.id, { estado: 'FALLIDO', errorMensaje: err.message });
+        } else {
+          this.logger.log(`Backup manual completado (id=${registro.id})`);
+        }
+      },
+    );
 
-    return { mensaje: `Backup manual iniciado (id: ${registro.id}). Se notificará al completar.` };
+    return {
+      mensaje:    `Backup manual iniciado (id: ${registro.id}). Se notificará al completar.`,
+      registroId: registro.id,
+    };
   }
 
   // ── Privado ───────────────────────────────────────────────────────────────
