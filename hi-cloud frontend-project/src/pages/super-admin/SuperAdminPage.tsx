@@ -2343,34 +2343,37 @@ export default function SuperAdminPage() {
         borderBottom: `1px solid ${C.border}`,
         padding: '0 32px',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        // El gap garantiza aire entre el rótulo y los controles en pantallas
+        // donde la mitad derecha no da de sí: sin él llegan a tocarse.
+        gap: 24,
         height: 64,
       }}>
-        {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{
-            width: 40, height: 40, borderRadius: 10,
-            background: `linear-gradient(135deg, ${C.gold}, #FCD34D)`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontWeight: 900, fontSize: 18, color: '#0A1628',
-          }}>H</div>
-          <div>
-            <div style={{ color: C.txt, fontWeight: 800, fontSize: 15, lineHeight: 1 }}>HiCloud ERP</div>
-            <span style={{
-              background: `${C.gold}22`, color: C.gold, border: `1px solid ${C.gold}66`,
-              borderRadius: 4, padding: '1px 7px', fontSize: 10, fontWeight: 700,
-              letterSpacing: '0.08em',
-            }}>SUPER ADMIN</span>
-          </div>
-        </div>
+        {/* Espaciador. Aquí vivía un bloque de marca —badge "H", "HiCloud ERP" y
+            la píldora "SUPER ADMIN"— que repetía letra por letra lo que el menú
+            lateral pinta debajo como wordmark y tagline; dos marcas a 200px una
+            de otra no orientan más que una.
+            Sin este hueco el rótulo se iba al borde izquierdo y caía justo
+            encima del <h1> "Administración Global", y ahí sí se leían como una
+            repetición. Centrado no. */}
+        <div style={{ flex: '1 1 0' }} />
 
-        {/* Centro */}
-        <div style={{ color: C.txt2, fontWeight: 600, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+        {/* Identificación de la pantalla. Se queda aunque el <h1> diga algo
+            parecido: la barra es fija y sigue nombrando el área cuando el
+            título se va con el scroll. */}
+        <div style={{ color: C.txt2, fontWeight: 600, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}>
           <Shield size={16} style={{ color: C.gold }} />
           Panel de Administración Global
         </div>
 
-        {/* Derecha */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        {/* Derecha. Mismo `flex` que el espaciador: los dos lados crecen igual,
+            así que el rótulo queda en el centro real de la barra.
+            `minWidth: max-content` es lo que impide que se rompa: con basis 0 y
+            shrink 1 este bloque encogía por debajo de su contenido y el reloj se
+            partía en dos líneas contra el rótulo. Con el suelo puesto, si los
+            controles no caben en su mitad se ensanchan y empujan el rótulo hacia
+            la izquierda, que es feo pero legible. */}
+        <div style={{ flex: '1 1 0', minWidth: 'max-content',
+          display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 16 }}>
           <LiveClock />
           <span style={{ color: C.txt2, fontSize: 13 }}>{user?.email}</span>
 
