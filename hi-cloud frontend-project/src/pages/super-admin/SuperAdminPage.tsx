@@ -37,6 +37,8 @@ import { MensajesAdminTab } from '../../components/super-admin/MensajesAdminTab'
 import { SECTORES_EMPRESARIALES } from '../../constants/sectores';
 import { fmtDop } from '../../utils/fmt';
 import { ahora, dRD, fecha, fechaHora, horaConSegundos, hoyRD } from '../../utils/fechaRD';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 
 /** Wrapper con contexto de color del Super Admin — respeta modo oscuro */
 function CobrosAdminPanel() {
@@ -244,6 +246,16 @@ function SolicitudesTab({ C, solicitudes, isLoading, onRefresh }:
     pendiente: '#F59E0B', aprobada: '#10B981', rechazada: '#EF4444',
   };
 
+  const COLS_DEF = [
+    { key: 'empresa',   label: 'Empresa'         },
+    { key: 'plan',      label: 'Plan solicitado' },
+    { key: 'modalidad', label: 'Modalidad'       },
+    { key: 'fecha',     label: 'Fecha'           },
+    { key: 'estado',    label: 'Estado'          },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } =
+    useColumnVisibility('sa-solicitudes', COLS_DEF);
+
   const columns = [
     { title: 'Empresa', dataIndex: ['empresa', 'nombre'], key: 'empresa', render: (v: string, r: any) => (
       <div>
@@ -276,12 +288,15 @@ function SolicitudesTab({ C, solicitudes, isLoading, onRefresh }:
             </span>
           )}
         </h3>
-        <Button size="small" onClick={onRefresh}>Actualizar</Button>
+        <Space>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <Button size="small" onClick={onRefresh}>Actualizar</Button>
+        </Space>
       </div>
       <Table
         loading={isLoading}
         dataSource={solicitudes}
-        columns={columns}
+        columns={filterColumns(columns as any)}
         rowKey="id"
         size="small"
         style={{ fontSize: 13 }}
@@ -397,6 +412,15 @@ function PruebasTab({ C, pruebas, isLoading, onRefresh }:
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al activar'),
   });
 
+  const COLS_DEF = [
+    { key: 'empresa', label: 'Empresa'        },
+    { key: 'plan',    label: 'Plan'           },
+    { key: 'fin',     label: 'Vence'          },
+    { key: 'dias',    label: 'Días restantes' },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } =
+    useColumnVisibility('sa-pruebas', COLS_DEF);
+
   const columns = [
     { title: 'Empresa', key: 'empresa', render: (_: any, r: any) => (
       <div>
@@ -436,12 +460,15 @@ function PruebasTab({ C, pruebas, isLoading, onRefresh }:
     <div>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
         <h3 style={{ color: C.txt, margin: 0, fontWeight: 700 }}>Empresas en período de prueba ({pruebas.length})</h3>
-        <Button size="small" onClick={onRefresh}>Actualizar</Button>
+        <Space>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <Button size="small" onClick={onRefresh}>Actualizar</Button>
+        </Space>
       </div>
       <Table
         loading={isLoading}
         dataSource={pruebas}
-        columns={columns}
+        columns={filterColumns(columns as any)}
         rowKey="empresaId"
         size="small"
         pagination={{ pageSize: 10 }}
@@ -588,6 +615,15 @@ function EcfConfigTab({
     }
   };
 
+  const COLS_DEF = [
+    { key: 'empresaId',    label: 'Empresa'    },
+    { key: 'msellerEmail', label: 'Email e-CF' },
+    { key: 'modo',         label: 'Modo'       },
+    { key: 'estado',       label: 'Estado'     },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } =
+    useColumnVisibility('sa-ecf-config', COLS_DEF);
+
   // Calcular estado e-CF de cada empresa
   const getEstadoEcf = (cfg: any) => {
     if (!cfg) return 'sin_config';
@@ -619,10 +655,13 @@ function EcfConfigTab({
       <div style={{ background: C.card, borderRadius: 12, border: `1px solid ${C.border}`, padding: 20 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
           <h3 style={{ color: C.txt, fontWeight: 700, fontSize: 15, margin: 0 }}>Configuraciones e-CF por Empresa</h3>
-          <Button type="primary" size="small" loading={!!checkingId}
-            onClick={() => { form.resetFields(); setFormModal({}); }}>
-            + Nueva config
-          </Button>
+          <Space>
+            <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+            <Button type="primary" size="small" loading={!!checkingId}
+              onClick={() => { form.resetFields(); setFormModal({}); }}>
+              + Nueva config
+            </Button>
+          </Space>
         </div>
 
         {isLoading ? <Spin /> : (configs as any[]).length === 0 ? (
@@ -637,15 +676,15 @@ function EcfConfigTab({
             size="small"
             pagination={{ pageSize: 10 }}
             scroll={{ x: 'max-content' }}
-            columns={[
-              { title: 'Empresa', dataIndex: 'empresaId', render: (v: number, r: any) => (
+            columns={filterColumns([
+              { title: 'Empresa', dataIndex: 'empresaId', key: 'empresaId', render: (v: number, r: any) => (
                 <div>
                   <div style={{ color: C.txt, fontWeight: 600, fontSize: 13 }}>#{v}</div>
                   <div style={{ color: C.txt2, fontSize: 11 }}>{r.rncEmisor}</div>
                 </div>
               )},
-              { title: 'Email e-CF', dataIndex: 'msellerEmail', render: (v: string) => <span style={{ color: C.txt2, fontSize: 12 }}>{v}</span> },
-              { title: 'Modo', dataIndex: 'modo', render: (v: string) => (
+              { title: 'Email e-CF', dataIndex: 'msellerEmail', key: 'msellerEmail', render: (v: string) => <span style={{ color: C.txt2, fontSize: 12 }}>{v}</span> },
+              { title: 'Modo', dataIndex: 'modo', key: 'modo', render: (v: string) => (
                 <Tag color={v === 'PRODUCCION' ? 'green' : v === 'CERTIFICACION' ? 'blue' : 'orange'}>{v}</Tag>
               )},
               { title: 'Estado', key: 'estado', render: (_: any, r: any) => (
@@ -692,7 +731,7 @@ function EcfConfigTab({
                 </Space>
                 );
               }},
-            ]}
+            ] as any)}
           />
         )}
       </div>
@@ -1087,6 +1126,17 @@ function ModulosAddonTab() {
     ? (activaciones as any[]).filter((a: any) => a.moduloCodigo === filtroModulo)
     : activaciones;
 
+  const COLS_DEF = [
+    { key: 'empresa',           label: 'Empresa'       },
+    { key: 'modulo',            label: 'Módulo'        },
+    { key: 'fechaActivacion',   label: 'F. Activación' },
+    { key: 'fechaVencimiento',  label: 'Vencimiento'   },
+    { key: 'activadoPorNombre', label: 'Activado por'  },
+    { key: 'notas',             label: 'Notas'         },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } =
+    useColumnVisibility('sa-modulos-addon', COLS_DEF);
+
   return (
     <div>
       {/* Tarjetas resumen por módulo */}
@@ -1128,6 +1178,9 @@ function ModulosAddonTab() {
       )}
 
       {/* Tabla de activaciones */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+      </div>
       <div style={{ background: C.card, borderRadius: 12, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
         <Table
           size="small"
@@ -1137,7 +1190,7 @@ function ModulosAddonTab() {
           pagination={{ pageSize: 10, showTotal: t => `${t} activaciones` }}
           scroll={{ x: 'max-content' }}
           locale={{ emptyText: <span style={{ color: C.txt2 }}>Ninguna empresa tiene módulos activos</span> }}
-          columns={[
+          columns={filterColumns([
             {
               title: 'Empresa', key: 'empresa',
               render: (_: any, r: any) => (
@@ -1154,24 +1207,24 @@ function ModulosAddonTab() {
               ),
             },
             {
-              title: 'F. Activación', dataIndex: 'fechaActivacion', width: 120,
+              title: 'F. Activación', dataIndex: 'fechaActivacion', key: 'fechaActivacion', width: 120,
               render: (v: string) => <span style={{ color: C.txt2, fontSize: 12 }}>{fmtFecha(v)}</span>,
             },
             {
-              title: 'Vencimiento', dataIndex: 'fechaVencimiento', width: 130,
+              title: 'Vencimiento', dataIndex: 'fechaVencimiento', key: 'fechaVencimiento', width: 130,
               render: (v: string) => v
                 ? <span style={{ color: C.txt2, fontSize: 12 }}>{fmtFecha(v)}</span>
                 : <span style={{ color: C.txt2, fontSize: 12 }}>Sin vencimiento</span>,
             },
             {
-              title: 'Activado por', dataIndex: 'activadoPorNombre', width: 150,
+              title: 'Activado por', dataIndex: 'activadoPorNombre', key: 'activadoPorNombre', width: 150,
               render: (v: string) => <span style={{ color: C.txt2 }}>{v ?? '—'}</span>,
             },
             {
-              title: 'Notas', dataIndex: 'notas', ellipsis: true,
+              title: 'Notas', dataIndex: 'notas', key: 'notas', ellipsis: true,
               render: (v: string) => v ? <span style={{ color: C.txt2, fontSize: 12 }}>{v}</span> : null,
             },
-          ]}
+          ] as any)}
         />
       </div>
     </div>
@@ -1227,6 +1280,19 @@ function DemosTab({ C }: { C: SaTheme }) {
 
   const ESTADOS = Object.entries(ESTADO_DEMO_LABEL).map(([k, v]) => ({ value: k, label: v }));
 
+  const COLS_DEF = [
+    { key: 'createdAt', label: 'Fecha'   },
+    { key: 'nombre',    label: 'Nombre'  },
+    { key: 'empresa',   label: 'Empresa' },
+    { key: 'email',     label: 'Email'   },
+    { key: 'telefono',  label: 'Tel.'    },
+    { key: 'pais',      label: 'País'    },
+    { key: 'estado',    label: 'Estado'  },
+    { key: 'notas',     label: 'Notas'   },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } =
+    useColumnVisibility('sa-demos', COLS_DEF);
+
   // Métricas
   const total     = stats?.total      ?? 0;
   const nuevas    = stats?.nuevas     ?? 0;
@@ -1275,6 +1341,7 @@ function DemosTab({ C }: { C: SaTheme }) {
         <span style={{ color: C.txt2, fontSize: 12, marginLeft: 'auto' }}>
           {data?.meta?.total ?? 0} solicitudes
         </span>
+        <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
       </div>
 
       {/* Tabla */}
@@ -1294,15 +1361,15 @@ function DemosTab({ C }: { C: SaTheme }) {
             style: { padding: '8px 16px', borderTop: `1px solid ${C.border}` },
           }}
           onRow={r => ({ onClick: () => setDetalle(r), style: { cursor: 'pointer' } })}
-          columns={[
-            { title: 'Fecha',   dataIndex: 'createdAt', width: 100,
+          columns={filterColumns([
+            { title: 'Fecha',   dataIndex: 'createdAt', key: 'createdAt', width: 100,
               render: (v: string) => fecha(v) },
-            { title: 'Nombre',  dataIndex: 'nombre',  ellipsis: true },
-            { title: 'Empresa', dataIndex: 'empresa', ellipsis: true },
-            { title: 'Email',   dataIndex: 'email',   ellipsis: true },
-            { title: 'Tel.',    dataIndex: 'telefono', width: 120 },
-            { title: 'País',    dataIndex: 'pais',    width: 100 },
-            { title: 'Estado',  dataIndex: 'estado',  width: 160,
+            { title: 'Nombre',  dataIndex: 'nombre',  key: 'nombre',  ellipsis: true },
+            { title: 'Empresa', dataIndex: 'empresa', key: 'empresa', ellipsis: true },
+            { title: 'Email',   dataIndex: 'email',   key: 'email',   ellipsis: true },
+            { title: 'Tel.',    dataIndex: 'telefono', key: 'telefono', width: 120 },
+            { title: 'País',    dataIndex: 'pais',    key: 'pais',    width: 100 },
+            { title: 'Estado',  dataIndex: 'estado',  key: 'estado',  width: 160,
               render: (v: string) => (
                 <Tag color={ESTADO_DEMO_COLOR[v] ?? 'default'} style={{ fontSize: 11 }}>
                   {ESTADO_DEMO_LABEL[v] ?? v}
@@ -1312,7 +1379,7 @@ function DemosTab({ C }: { C: SaTheme }) {
               render: (_: any, r: any) => r.notas?.length > 0
                 ? <span style={{ color: C.gold, fontSize: 12 }}>💬 {r.notas.length}</span>
                 : null },
-          ]}
+          ] as any)}
         />
       </div>
 
@@ -1847,6 +1914,55 @@ export default function SuperAdminPage() {
     .slice(0, 10);
 
   // ── Columnas tablas ──────────────────────────────────────────────────────────
+
+  const COLS_EMPRESAS = [
+    { key: 'id',       label: 'ID'          },
+    { key: 'empresa',  label: 'Empresa'     },
+    { key: 'plan',     label: 'Plan'        },
+    { key: 'estado',   label: 'Estado'      },
+    { key: 'vence',    label: 'Vencimiento' },
+    { key: 'telefono', label: 'Teléfono'    },
+    { key: 'sector',   label: 'Sector'      },
+  ];
+  const colVisEmpresas = useColumnVisibility('sa-empresas', COLS_EMPRESAS);
+
+  const COLS_PEND_USU = [
+    { key: 'usuario',   label: 'Usuario'      },
+    { key: 'empresa',   label: 'Empresa'      },
+    { key: 'plan',      label: 'Plan'         },
+    { key: 'provider',  label: 'Registro via' },
+    { key: 'createdAt', label: 'Fecha'        },
+  ];
+  const colVisPendUsu = useColumnVisibility('sa-pendientes-usuarios', COLS_PEND_USU);
+
+  const COLS_PEND_EMP = [
+    { key: 'empresa',     label: 'Empresa'     },
+    { key: 'sector',      label: 'Sector'      },
+    { key: 'solicitante', label: 'Solicitante' },
+    { key: 'createdAt',   label: 'Fecha'       },
+  ];
+  const colVisPendEmp = useColumnVisibility('sa-pendientes-empresas', COLS_PEND_EMP);
+
+  const COLS_USUARIOS = [
+    { key: 'id',       label: 'ID'       },
+    { key: 'usuario',  label: 'Usuario'  },
+    { key: 'role',     label: 'Rol'      },
+    { key: 'empresas', label: 'Empresas' },
+    { key: 'estado',   label: 'Estado'   },
+    { key: 'reg',      label: 'Registro' },
+  ];
+  const colVisUsuarios = useColumnVisibility('sa-usuarios', COLS_USUARIOS);
+
+  const COLS_SUSCRIPCIONES = [
+    { key: 'empresa', label: 'Empresa'     },
+    { key: 'rnc',     label: 'RNC'         },
+    { key: 'plan',    label: 'Plan'        },
+    { key: 'mrr',     label: 'RD$/mes'     },
+    { key: 'inicio',  label: 'Inicio'      },
+    { key: 'vence',   label: 'Vencimiento' },
+    { key: 'estado',  label: 'Estado'      },
+  ];
+  const colVisSuscripciones = useColumnVisibility('sa-suscripciones', COLS_SUSCRIPCIONES);
 
   const colsEmpresas = [
     // ── ID ────────────────────────────────────────────────────────────────────
@@ -2605,11 +2721,14 @@ export default function SuperAdminPage() {
                   <div style={{ marginLeft: 'auto', color: C.txt2, fontSize: 13, display: 'flex', alignItems: 'center' }}>
                     {empresasFiltradas.length} de {(empresas as any[]).length} empresas
                   </div>
+                  <ColumnToggle columns={COLS_EMPRESAS}
+                    visibleColumns={colVisEmpresas.visibleColumns}
+                    onChange={colVisEmpresas.updateVisibility} />
                 </div>
 
                 <Table
                   dataSource={empresasFiltradas}
-                  columns={colsEmpresas}
+                  columns={colVisEmpresas.filterColumns(colsEmpresas as any)}
                   loading={loadEmp}
                   rowKey="id"
                   size="small"
@@ -2632,6 +2751,12 @@ export default function SuperAdminPage() {
                     <p style={{ color: C.txt2, fontSize: 15 }}>No hay solicitudes pendientes</p>
                   </div>
                 ) : (
+                  <>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                    <ColumnToggle columns={COLS_PEND_USU}
+                      visibleColumns={colVisPendUsu.visibleColumns}
+                      onChange={colVisPendUsu.updateVisibility} />
+                  </div>
                   <Table
                     dataSource={pendientes as any[]}
                     loading={loadPendientes}
@@ -2639,9 +2764,9 @@ export default function SuperAdminPage() {
                     size="small"
                     scroll={{ x: 'max-content' }}
                     pagination={{ pageSize: 10, showTotal: t => `${t} solicitudes` }}
-                    columns={[
+                    columns={colVisPendUsu.filterColumns([
                       {
-                        title: 'Usuario',
+                        title: 'Usuario', key: 'usuario',
                         render: (_: any, r: any) => (
                           <div>
                             <div style={{ fontWeight: 600, color: C.txt }}>{r.nombre}</div>
@@ -2650,7 +2775,7 @@ export default function SuperAdminPage() {
                         ),
                       },
                       {
-                        title: 'Empresa',
+                        title: 'Empresa', key: 'empresa',
                         render: (_: any, r: any) => r.empresa
                           ? <span style={{ color: C.txt }}>{r.empresa} <span style={{ color: C.txt2 }}>({r.rnc})</span></span>
                           : <span style={{ color: C.txt2 }}>—</span>,
@@ -2658,11 +2783,13 @@ export default function SuperAdminPage() {
                       {
                         title: 'Plan',
                         dataIndex: 'plan',
+                        key: 'plan',
                         render: (v: string) => v ? <Tag color="gold">{v}</Tag> : '—',
                       },
                       {
                         title: 'Registro via',
                         dataIndex: 'provider',
+                        key: 'provider',
                         render: (v: string) => (
                           <Tag color={v === 'GOOGLE' ? 'blue' : 'default'}>{v === 'GOOGLE' ? '🔵 Google' : '✉ Email'}</Tag>
                         ),
@@ -2670,10 +2797,11 @@ export default function SuperAdminPage() {
                       {
                         title: 'Fecha',
                         dataIndex: 'createdAt',
+                        key: 'createdAt',
                         render: (v: string) => fmtFecha(v),
                       },
                       {
-                        title: 'Acciones',
+                        title: 'Acciones', key: 'acc',
                         render: (_: any, r: any) => (
                           <Space>
                             <Button
@@ -2706,8 +2834,9 @@ export default function SuperAdminPage() {
                           </Space>
                         ),
                       },
-                    ]}
+                    ] as any)}
                   />
+                  </>
                 )}
 
                 {/* Modal rechazar */}
@@ -2739,6 +2868,11 @@ export default function SuperAdminPage() {
                     {empresasPendCount > 0 && (
                       <span style={{ background: C.red, color: '#fff', borderRadius: 12, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>{empresasPendCount}</span>
                     )}
+                    <div style={{ marginLeft: 'auto' }}>
+                      <ColumnToggle columns={COLS_PEND_EMP}
+                        visibleColumns={colVisPendEmp.visibleColumns}
+                        onChange={colVisPendEmp.updateVisibility} />
+                    </div>
                   </div>
                   {empresasPendCount === 0 && !loadEmpPend ? (
                     <p style={{ color: C.txt2, fontSize: 13 }}>No hay empresas pendientes de aprobación</p>
@@ -2750,22 +2884,22 @@ export default function SuperAdminPage() {
                       size="small"
                       scroll={{ x: 'max-content' }}
                       pagination={{ pageSize: 10, showTotal: t => `${t} empresas` }}
-                      columns={[
-                        { title: 'Empresa', render: (_: any, r: any) => (
+                      columns={colVisPendEmp.filterColumns([
+                        { title: 'Empresa', key: 'empresa', render: (_: any, r: any) => (
                           <div>
                             <div style={{ fontWeight: 600, color: C.txt }}>{r.nombre}</div>
                             <div style={{ color: C.txt2, fontSize: 12 }}>RNC: {r.rnc}</div>
                           </div>
                         )},
-                        { title: 'Sector', dataIndex: 'sector', render: (v: string) => v ? <Tag>{v}</Tag> : '—' },
-                        { title: 'Solicitante', render: (_: any, r: any) => (
+                        { title: 'Sector', dataIndex: 'sector', key: 'sector', render: (v: string) => v ? <Tag>{v}</Tag> : '—' },
+                        { title: 'Solicitante', key: 'solicitante', render: (_: any, r: any) => (
                           <div>
                             <div style={{ color: C.txt }}>{r.solicitanteNombre ?? '—'}</div>
                             <div style={{ color: C.txt2, fontSize: 12 }}>{r.solicitanteEmail ?? '—'}</div>
                           </div>
                         )},
-                        { title: 'Fecha', dataIndex: 'createdAt', render: (v: string) => fmtFecha(v) },
-                        { title: 'Acciones', render: (_: any, r: any) => (
+                        { title: 'Fecha', dataIndex: 'createdAt', key: 'createdAt', render: (v: string) => fmtFecha(v) },
+                        { title: 'Acciones', key: 'acc', render: (_: any, r: any) => (
                           <Space>
                             <Button type="primary" size="small" icon={<CheckCircle size={13} />}
                               style={{ background: C.green, borderColor: C.green }}
@@ -2784,7 +2918,7 @@ export default function SuperAdminPage() {
                             </Button>
                           </Space>
                         )},
-                      ]}
+                      ] as any)}
                     />
                   )}
                 </div>
@@ -2812,15 +2946,22 @@ export default function SuperAdminPage() {
             )}
 
             {tab === 'usuarios' && (
+              <>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                <ColumnToggle columns={COLS_USUARIOS}
+                  visibleColumns={colVisUsuarios.visibleColumns}
+                  onChange={colVisUsuarios.updateVisibility} />
+              </div>
               <Table
                 dataSource={usuarios as any[]}
-                columns={colsUsuarios}
+                columns={colVisUsuarios.filterColumns(colsUsuarios as any)}
                 loading={loadUsu}
                 rowKey="id"
                 size="small"
                 scroll={{ x: 'max-content' }}
                 pagination={{ pageSize: 10, showTotal: t => `${t} usuarios`, showSizeChanger: true }}
               />
+              </>
             )}
 
             {/* ── TAB SUSCRIPCIONES ─────────────────────────────────────────── */}
@@ -2841,11 +2982,16 @@ export default function SuperAdminPage() {
                       </div>
                     ) : null;
                   })}
+                  <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
+                    <ColumnToggle columns={COLS_SUSCRIPCIONES}
+                      visibleColumns={colVisSuscripciones.visibleColumns}
+                      onChange={colVisSuscripciones.updateVisibility} />
+                  </div>
                 </div>
 
                 <Table
                   dataSource={suscripciones as any[]}
-                  columns={colsSuscripciones}
+                  columns={colVisSuscripciones.filterColumns(colsSuscripciones as any)}
                   loading={loadSus}
                   rowKey="id"
                   size="small"
@@ -3668,6 +3814,18 @@ function AuditoriaTab({ C }: { C: any }) {
     return { fechaDesde: desde, fechaHasta: hasta };
   }, [diasRango]);
 
+  const COLS_DEF = [
+    { key: 'f',  label: 'Fecha'       },
+    { key: 'u',  label: 'Usuario'     },
+    { key: 'm',  label: 'Módulo'      },
+    { key: 'a',  label: 'Acción'      },
+    { key: 'd',  label: 'Descripción' },
+    { key: 'ip', label: 'IP'          },
+    { key: 's',  label: 'Status'      },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } =
+    useColumnVisibility('sa-auditoria', COLS_DEF);
+
   // Módulos disponibles (dinámico desde la BD)
   const { data: modulosDisp = [] } = useQuery<string[]>({
     queryKey: ['sa-audit-modulos'],
@@ -3765,6 +3923,7 @@ function AuditoriaTab({ C }: { C: any }) {
           padding: '4px 10px', borderRadius: 7, fontSize: 12, cursor: 'pointer',
           border: `1px solid ${C.border}`, background: 'transparent', color: C.txt2, outline: 'none',
         }}>⟳</button>
+        <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
       </div>
 
       {/* Tabla — solo lectura */}
@@ -3794,7 +3953,7 @@ function AuditoriaTab({ C }: { C: any }) {
             style: { padding: '8px 16px', borderTop: `1px solid ${C.border}` },
           }}
           locale={{ emptyText: isLoading ? 'Cargando...' : 'Sin registros de auditoría para estos filtros' }}
-          columns={[
+          columns={filterColumns([
             { title: 'Fecha', dataIndex: 'createdAt', key: 'f', width: 150,
               render: (v: any) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.txt2 }}>
                 {v ? fechaHora(v) : '—'}
@@ -3829,7 +3988,7 @@ function AuditoriaTab({ C }: { C: any }) {
                   {v ?? '—'}
                 </span>
               )},
-            { title: '', key: '_ver', width: 40, fixed: 'right' as const,
+            { title: '', key: 'acc', width: 40, fixed: 'right' as const,
               render: (_: any, r: any) => (
                 <Tooltip title="Ver detalle">
                   <button
@@ -3844,7 +4003,7 @@ function AuditoriaTab({ C }: { C: any }) {
                   </button>
                 </Tooltip>
               )},
-          ]}
+          ] as any)}
         />
       </div>
       <div style={{ fontSize: 11, color: C.txt2, marginTop: 6, textAlign: 'right' }}>

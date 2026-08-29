@@ -12,6 +12,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
 import { desenvolverArray } from '../../api/desenvolver';
 import { VIDEO_TUTORIAL_MODULOS, VIDEO_TUTORIAL_MODULOS_SET } from '../../constants/video-tutorial-modulos';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -227,6 +229,17 @@ export default function VideosTutorialesAdminPage({ C }: Props) {
 
   // ── Tabla ─────────────────────────────────────────────────────────────────
 
+  const COLS_DEF = [
+    { key: 'modulo',    label: 'Módulo'     },
+    { key: 'titulo',    label: 'Título'     },
+    { key: 'proveedor', label: 'Plataforma' },
+    { key: 'duracion',  label: 'Duración'   },
+    { key: 'orden',     label: 'Orden'      },
+    { key: 'activo',    label: 'Activo'     },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } =
+    useColumnVisibility('sa-videos-tutoriales', COLS_DEF);
+
   const columns = [
     {
       title: 'Módulo', dataIndex: 'modulo', key: 'modulo',
@@ -312,14 +325,17 @@ export default function VideosTutorialesAdminPage({ C }: Props) {
             {videos.length} de 83 módulos con video · Los botones se ocultan si no hay video activo
           </p>
         </div>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={openCrear}
-          disabled={modulosUsados.size >= VIDEO_TUTORIAL_MODULOS.length}
-        >
-          Agregar video
-        </Button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={openCrear}
+            disabled={modulosUsados.size >= VIDEO_TUTORIAL_MODULOS.length}
+          >
+            Agregar video
+          </Button>
+        </div>
       </div>
 
       {/* Tabla.
@@ -330,7 +346,7 @@ export default function VideosTutorialesAdminPage({ C }: Props) {
           día crece, se pagina y se busca otra forma de reordenar. */}
       <Table
         dataSource={videos}
-        columns={columns}
+        columns={filterColumns(columns as any)}
         rowKey="id"
         loading={isLoading}
         size="small"

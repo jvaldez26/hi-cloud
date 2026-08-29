@@ -13,6 +13,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { pagosAdminApi, PagoSuscripcion, ResumenCobros } from '../../api/pagos.api';
 import { fmtDop } from '../../utils/fmt';
 import { ahora, fecha } from '../../utils/fechaRD';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 
 const { Title, Text } = Typography;
 
@@ -142,10 +144,41 @@ export default function CobrosPage() {
   });
 
   // ── Columnas tabla resumen ────────────────────────────────────────────────
+  const COLS_RESUMEN = [
+    { key: 'nombre',                 label: 'Empresa'     },
+    { key: 'plan',                   label: 'Plan'        },
+    { key: 'estadoSuscripcion',      label: 'Suscripción' },
+    { key: 'venceSuscripcion',       label: 'Vencimiento' },
+    { key: 'saldo',                  label: 'Saldo'       },
+    { key: 'ultimoPago',             label: 'Último pago' },
+    { key: 'pendientesConfirmacion', label: 'Pendientes'  },
+  ];
+  const colVisResumen = useColumnVisibility('sa-cobros-resumen', COLS_RESUMEN);
+
+  const COLS_PENDIENTES = [
+    { key: 'empresaNombre',  label: 'Empresa'     },
+    { key: 'monto',          label: 'Monto'       },
+    { key: 'referencia',     label: 'Referencia'  },
+    { key: 'creadoEn',       label: 'Fecha'       },
+    { key: 'notas',          label: 'Notas'       },
+    { key: 'comprobanteUrl', label: 'Comprobante' },
+  ];
+  const colVisPendientes = useColumnVisibility('sa-cobros-pendientes', COLS_PENDIENTES);
+
+  const COLS_HIST = [
+    { key: 'creadoEn', label: 'Fecha'    },
+    { key: 'concepto', label: 'Concepto' },
+    { key: 'tipo',     label: 'Tipo'     },
+    { key: 'monto',    label: 'Monto'    },
+    { key: 'estado',   label: 'Estado'   },
+  ];
+  const colVisHist = useColumnVisibility('sa-cobros-historial', COLS_HIST);
+
   const colsResumen = [
     {
       title: 'Empresa',
       dataIndex: 'nombre',
+      key: 'nombre',
       render: (v: string, r: ResumenCobros) => (
         <Space direction="vertical" size={0}>
           <Text strong>{v}</Text>
@@ -156,6 +189,7 @@ export default function CobrosPage() {
     {
       title: 'Plan',
       dataIndex: 'plan',
+      key: 'plan',
       width: 110,
       render: (v: string) => (
         <Tag color={PLAN_COLOR[v] ?? 'default'}>
@@ -166,12 +200,14 @@ export default function CobrosPage() {
     {
       title: 'Suscripción',
       dataIndex: 'estadoSuscripcion',
+      key: 'estadoSuscripcion',
       width: 110,
       render: (v: string) => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{(v ?? '').toUpperCase()}</Tag>,
     },
     {
       title: 'Vencimiento',
       dataIndex: 'venceSuscripcion',
+      key: 'venceSuscripcion',
       width: 130,
       render: (v: string, r: ResumenCobros) => {
         const dias = v ? Math.ceil((new Date(v).getTime() - Date.now()) / 86400000) : null;
@@ -192,6 +228,7 @@ export default function CobrosPage() {
     {
       title: 'Saldo',
       dataIndex: 'saldo',
+      key: 'saldo',
       width: 120,
       align: 'right' as const,
       render: (v: number | string) => {
@@ -211,12 +248,14 @@ export default function CobrosPage() {
     {
       title: 'Último pago',
       dataIndex: 'ultimoPago',
+      key: 'ultimoPago',
       width: 110,
       render: (v: string) => fmtDate(v),
     },
     {
       title: 'Pendientes',
       dataIndex: 'pendientesConfirmacion',
+      key: 'pendientesConfirmacion',
       width: 90,
       render: (v: number) =>
         v > 0 ? <Badge count={v} color="orange" /> : <Text type="secondary">—</Text>,
@@ -268,19 +307,21 @@ export default function CobrosPage() {
 
   // ── Columnas comprobantes pendientes ─────────────────────────────────────
   const colsPendientes = [
-    { title: 'Empresa', dataIndex: 'empresaNombre', render: (v: string) => <Text strong>{v}</Text> },
+    { title: 'Empresa', dataIndex: 'empresaNombre', key: 'empresaNombre', render: (v: string) => <Text strong>{v}</Text> },
     {
       title: 'Monto',
       dataIndex: 'monto',
+      key: 'monto',
       width: 110,
       render: (v: number) => <Text strong>{fmtDop(v)}</Text>,
     },
-    { title: 'Referencia', dataIndex: 'referencia', width: 130, render: (v: string) => v ?? '—' },
-    { title: 'Fecha', dataIndex: 'creadoEn', width: 110, render: (v: string) => fmtDate(v) },
-    { title: 'Notas', dataIndex: 'notas', ellipsis: true, render: (v: string) => v ?? '—' },
+    { title: 'Referencia', dataIndex: 'referencia', key: 'referencia', width: 130, render: (v: string) => v ?? '—' },
+    { title: 'Fecha', dataIndex: 'creadoEn', key: 'creadoEn', width: 110, render: (v: string) => fmtDate(v) },
+    { title: 'Notas', dataIndex: 'notas', key: 'notas', ellipsis: true, render: (v: string) => v ?? '—' },
     {
       title: 'Comprobante',
       dataIndex: 'comprobanteUrl',
+      key: 'comprobanteUrl',
       width: 140,
       render: (url: string, r: PagoSuscripcion) => url ? (
         <Button
@@ -337,14 +378,14 @@ export default function CobrosPage() {
 
   // ── Columnas historial empresa ────────────────────────────────────────────
   const colsHist = [
-    { title: 'Fecha', dataIndex: 'creadoEn', width: 110, render: (v: string) => fmtDate(v) },
-    { title: 'Concepto', dataIndex: 'concepto', ellipsis: true },
+    { title: 'Fecha', dataIndex: 'creadoEn', key: 'creadoEn', width: 110, render: (v: string) => fmtDate(v) },
+    { title: 'Concepto', dataIndex: 'concepto', key: 'concepto', ellipsis: true },
     {
-      title: 'Tipo', dataIndex: 'tipo', width: 120,
+      title: 'Tipo', dataIndex: 'tipo', key: 'tipo', width: 120,
       render: (v: string) => <Tag>{v}</Tag>,
     },
     {
-      title: 'Monto', dataIndex: 'monto', width: 120, align: 'right' as const,
+      title: 'Monto', dataIndex: 'monto', key: 'monto', width: 120, align: 'right' as const,
       render: (v: number | string, r: PagoSuscripcion) => {
         const monto = Number(v ?? 0);
         const esCargo = r.tipo === 'CARGO';
@@ -356,7 +397,7 @@ export default function CobrosPage() {
       },
     },
     {
-      title: 'Estado', dataIndex: 'estado', width: 100,
+      title: 'Estado', dataIndex: 'estado', key: 'estado', width: 100,
       render: (v: string) => (
         <Tag color={{ PENDIENTE: 'orange', CONFIRMADO: 'green', RECHAZADO: 'red' }[v] ?? 'default'}>
           {v}
@@ -433,9 +474,13 @@ export default function CobrosPage() {
             key: 'cobros',
             label: 'Cobros por empresa',
             children: (
-              <Card>
+              <Card extra={
+                <ColumnToggle columns={COLS_RESUMEN}
+                  visibleColumns={colVisResumen.visibleColumns}
+                  onChange={colVisResumen.updateVisibility} />
+              }>
                 <Table
-                  columns={colsResumen}
+                  columns={colVisResumen.filterColumns(colsResumen as any)}
                   dataSource={resumen}
                   rowKey="empresaId"
                   loading={loadRes}
@@ -454,14 +499,18 @@ export default function CobrosPage() {
               </Badge>
             ),
             children: (
-              <Card>
+              <Card extra={
+                <ColumnToggle columns={COLS_PENDIENTES}
+                  visibleColumns={colVisPendientes.visibleColumns}
+                  onChange={colVisPendientes.updateVisibility} />
+              }>
                 {pendientes.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>
                     ✅ Sin comprobantes pendientes de revisión
                   </div>
                 ) : (
                   <Table
-                    columns={colsPendientes}
+                    columns={colVisPendientes.filterColumns(colsPendientes as any)}
                     dataSource={pendientes}
                     rowKey="id"
                     loading={loadPend}
@@ -640,8 +689,13 @@ export default function CobrosPage() {
         open={!!openHist} onCancel={() => setOpenHist(null)} footer={null}
         width={700}
       >
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+          <ColumnToggle columns={COLS_HIST}
+            visibleColumns={colVisHist.visibleColumns}
+            onChange={colVisHist.updateVisibility} />
+        </div>
         <Table
-          columns={colsHist}
+          columns={colVisHist.filterColumns(colsHist as any)}
           dataSource={histEmpresa}
           rowKey="id"
           size="small"
