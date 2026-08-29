@@ -345,11 +345,21 @@ sus tablas hacen scroll horizontal — el diseño acordado es:
   justo donde más sirve poder quitar columnas. Precedente en `FacturasPage`, donde
   `filterColumns` se aplica a la tabla y la tarjeta lo ignora, sin romper nada.
 
-Pendiente relacionado: hay columnas declaradas en tablas que NO están en su `COLS_DEF`, así que
-hoy no las ve nadie y no hay forma de activarlas. `filterColumns` sigue ignorándolas a propósito
-— sacarlas a la luz es un cambio visible en varias páginas del ERP y va en su propio commit, con
-captura. Ojo al contarlas: la mayoría de lo que parece una columna huérfana son `key` de items
-dentro de `TableActions`, no columnas.
+### Pendiente: las columnas que no están en su `COLS_DEF`
+
+Hay columnas declaradas en tablas que NO aparecen en el `COLS_DEF` de su página. `filterColumns`
+solo muestra lo que está en esa lista, así que **hoy no las ve nadie y no hay forma de
+activarlas**. Sigue ignorándolas a propósito: sacarlas a la luz es un cambio visible en varias
+páginas del ERP y va en su propio commit, con captura.
+
+**Ojo al contarlas — un conteo automático da un número inflado.** Un barrido con regex sobre
+`key:` dio 48 páginas, y estaba mal: casi todo eran `key` de items dentro de `TableActions`
+(`editar`, `eliminar`, `pdf`, `aprobar`, `anular`…), que viven en el `render` de la columna de
+acciones y no son columnas. Se verificó en `ProductosPage`: sus supuestas columnas huérfanas
+`editar` y `eliminar` son entradas del menú de acciones.
+
+Las huérfanas de verdad son sustantivos (`tipoCredito`, `baja`, `cli`, `var`), no verbos. Antes
+de tocar nada hace falta **una pasada manual** tabla por tabla; no fiarse del barrido.
 
 ---
 

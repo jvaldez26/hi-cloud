@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { message } from 'antd';
 import type { ColumnType } from 'antd/es/table';
 
 export interface ColDef {
@@ -82,6 +83,12 @@ export function calcularCambios(visibles: string[], todas: ColDef[]): CambiosCol
 const claveNueva = (modulo: string) => `hicloud-cols-cambios-${modulo}`;
 const claveVieja = (modulo: string) => `hicloud-columns-${modulo}`;
 
+/**
+ * Marca de que ya se avisó del límite de la migración. Es global y no por tabla:
+ * quien tenga cinco tablas migradas no necesita el mismo aviso cinco veces.
+ */
+const CLAVE_AVISO = 'hicloud-cols-aviso-migracion';
+
 function leerJSON<T>(clave: string): T | null {
   try {
     const s = localStorage.getItem(clave);
@@ -119,6 +126,38 @@ export function useColumnVisibility(moduloKey: string, allColumns: ColDef[]) {
     }
     return VACIO;
   });
+
+  /**
+   * El límite de la migración, dicho a quien lo sufre.
+   *
+   * Una columna añadida antes de este cambio sigue oculta para quien ya tuviera
+   * preferencia guardada, y no hay forma de detectarlo desde el código: "la
+   * escondió" y "no existía cuando guardó" son la misma ausencia. Quien lo
+   * padece no va a leer el comentario del hook, así que se le dice una vez y se
+   * le señala la salida.
+   *
+   * El aviso es global y no por tabla —quien tenga cinco migradas no necesita
+   * verlo cinco veces— y se marca en localStorage para que no vuelva nunca.
+   *
+   * La condición se lee de localStorage y NO de una bandera puesta al migrar.
+   * Con una bandera en ref no funciona: StrictMode desmonta y vuelve a montar en
+   * desarrollo, y en el segundo montaje la clave nueva ya existe, así que no se
+   * migra, el ref nace en false y el aviso no sale nunca. Se comprobó: la marca
+   * quedaba en null. La presencia de la clave vieja sí sobrevive al remontaje.
+   */
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(CLAVE_AVISO)) return;
+      // Solo tiene sentido avisar a quien venía del formato viejo.
+      if (!localStorage.getItem(claveVieja(moduloKey))) return;
+      localStorage.setItem(CLAVE_AVISO, '1');
+    } catch { return; }   // sin localStorage no hay marca: mejor callar que repetir
+    message.info({
+      content: 'Cambiamos cómo se guardan las columnas de las tablas. Si echas en falta alguna, '
+             + 'usa «Restaurar columnas» en el menú ☰ de la tabla.',
+      duration: 10,
+    });
+  }, [moduloKey]);
 
   const visibleColumns = calcularVisibles(cambios, allColumns);
 
