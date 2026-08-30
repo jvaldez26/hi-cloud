@@ -10,15 +10,27 @@ import { FacturaDetalle } from '../facturas/entities/factura-detalle.entity';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { User } from '../users/users.entity';
 import { TenantService } from '../tenant/tenant.service';
-import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { EmailService } from '../notificaciones/services/email.service';
 import { PDFService } from '../facturas/services/pdf.service';
 import { fechaHoyRD } from '../common/utils/fecha-local.util';
 import { CreateRecurrenteDto, UpdateRecurrenteDto } from './dto/factura-recurrente.dto';
 import {
-  ReglaCalendario, primeraGeneracion, siguienteGeneracion,
-  aFechaISO, explicarDiaMes,
+  ReglaCalendario, primeraGeneracion, aFechaISO, explicarDiaMes,
 } from './calendario-recurrente';
+import {
+  GeneracionRecurrenteService, ResultadoCiclo,
+} from './services/generacion-recurrente.service';
+
+/** Lo que se le cuenta a los administradores de una empresa tras el barrido. */
+interface ResumenEmpresa {
+  generadas: number;
+  errores:   number;
+  folios:    string[];
+  /** Plantillas que se saltaron ciclos porque el servidor no corrió. */
+  saltos:    Array<{ nombre: string; ciclos: number }>;
+  /** Plantillas que no pudieron generar, con el motivo en palabras. */
+  fallos:    Array<{ nombre: string; motivo: string }>;
+}
 
 @Injectable()
 export class FacturasRecurrentesService {
@@ -29,12 +41,11 @@ export class FacturasRecurrentesService {
     private recurrenteRepository: Repository<FacturaRecurrente>,
     @InjectRepository(Factura)
     private facturaRepository: Repository<Factura>,
-    @InjectRepository(FacturaDetalle)
-    private detalleRepository: Repository<FacturaDetalle>,
     @InjectDataSource() private ds: DataSource,
     private tenantService: TenantService,
     private emailService:  EmailService,
     private pdfService:    PDFService,
+    private generacion:    GeneracionRecurrenteService,
   ) {}
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -379,123 +390,6 @@ export class FacturasRecurrentesService {
   }
 
   // ──────────────────────────────────────────────────────────────────
-  // Helper principal: genera una factura a partir de la plantilla
-  // ──────────────────────────────────────────────────────────────────
-
-  private async generarDesdeTemplate(rec: FacturaRecurrente, fecha: Date): Promise<{ factura: Factura; folio: string }> {
-    // 1. Guardia: la plantilla debe tener ítems
-    const rawDetalles = Array.isArray(rec.detalles) ? rec.detalles : [];
-    if (rawDetalles.length === 0) {
-      throw new Error(`Plantilla "${rec.nombre}" no tiene ítems — no se puede generar factura`);
-    }
-
-    // 2. Calcular totales con fallback a precio del producto cuando precioUnitario = 0
-    //    El JSON puede devolver valores como strings o números — se normaliza con parseFloat(String())
-    let subtotal = 0, iva = 0;
-    const detallesData: Array<{
-      descripcion: string; productoId?: number;
-      precioUnitario: number; cantidad: number; porcentajeIva: number;
-      subtotal: number; importeIva: number; total: number;
-    }> = [];
-
-    for (let idx = 0; idx < rawDetalles.length; idx++) {
-      const d = rawDetalles[idx] as any;
-      let precio = parseFloat(String(d.precioUnitario ?? d.precio ?? 0)) || 0;
-
-      // ── FALLBACK: si precio = 0 pero hay productoId, buscar precio actual en BD ──
-      if (precio === 0 && d.productoId) {
-        const [prod] = await this.ds.query<{ precio: string }[]>(
-          `SELECT precio FROM productos WHERE id = $1 AND "isActive" = true AND "empresaId" = $2 LIMIT 1`,
-          [d.productoId, rec.empresaId],
-        );
-        if (prod?.precio) {
-          precio = parseFloat(String(prod.precio)) || 0;
-          this.logger.log(
-            `[Recurrentes] "${rec.nombre}" ítem ${idx + 1}: precioUnitario=0 en plantilla → ` +
-            `usando precio del producto #${d.productoId}: ${precio}`,
-          );
-        }
-      }
-
-      const cantidad    = parseFloat(String(d.cantidad ?? 1)) || 1;
-      const pctIva      = parseFloat(String(d.porcentajeIva ?? d.iva ?? 0)) || 0;
-      const descripcion = (String(d.descripcion ?? d.concepto ?? d.nombre ?? '')).trim() || `Ítem ${idx + 1}`;
-      const sub         = +(precio * cantidad).toFixed(2);
-      const impIva      = +(sub * (pctIva / 100)).toFixed(2);
-
-      subtotal = +(subtotal + sub).toFixed(2);
-      iva      = +(iva + impIva).toFixed(2);
-
-      detallesData.push({
-        descripcion,
-        productoId:     d.productoId != null ? Number(d.productoId) : undefined,
-        precioUnitario: precio,
-        cantidad,
-        porcentajeIva:  pctIva,
-        subtotal:       sub,
-        importeIva:     impIva,
-        total:          +(sub + impIva).toFixed(2),
-      });
-    }
-
-    if (subtotal === 0) {
-      this.logger.warn(
-        `[Recurrentes] Plantilla "${rec.nombre}" (#${rec.id}) subtotal=0 después del fallback. ` +
-        `Detalles raw: ${JSON.stringify(rawDetalles).slice(0, 300)}`,
-      );
-    }
-
-    // 3. Folio atómico
-    const folio = await generarNumeroSecuencial(
-      this.ds, 'facturas', 'folio', '^FAC-[0-9]+$', 'FAC-', 1, rec.empresaId!,
-    );
-
-    // 4. Insertar cabecera de la factura
-    const factura = await this.facturaRepository.save(
-      this.facturaRepository.create({
-        empresaId:           rec.empresaId,
-        folio,
-        fecha,
-        estado:              FacturaEstado.BORRADOR,
-        clienteId:           rec.clienteId,
-        usuarioId:           rec.userId,
-        notas:               `Factura recurrente: ${rec.nombre}`,
-        subtotal,
-        iva,
-        total:               +(subtotal + iva).toFixed(2),
-        facturaRecurrenteId: rec.id,
-      }),
-    );
-
-    // 5. Insertar detalles
-    await this.detalleRepository.save(
-      this.detalleRepository.create(
-        detallesData.map(d => ({ ...d, facturaId: factura.id })),
-      ),
-    );
-
-    // 6. RECALCULAR totales desde la BD para garantizar coherencia
-    //    (cubre cualquier edge-case de tipado entre el JSON de la plantilla y la BD)
-    await this.ds.query(
-      `UPDATE facturas
-          SET subtotal  = (SELECT COALESCE(SUM(subtotal),    0) FROM factura_detalles WHERE "facturaId" = $1 AND "isActive" = true),
-              iva       = (SELECT COALESCE(SUM("importeIva"), 0) FROM factura_detalles WHERE "facturaId" = $1 AND "isActive" = true),
-              total     = (SELECT COALESCE(SUM(total),        0) FROM factura_detalles WHERE "facturaId" = $1 AND "isActive" = true)
-        WHERE id = $1`,
-      [factura.id],
-    );
-
-    // 7. Leer la factura actualizada
-    const facturaFinal = await this.facturaRepository.findOne({ where: { id: factura.id } }) as Factura;
-
-    this.logger.log(
-      `[Recurrentes] "${rec.nombre}" → ${folio} | subtotal=${facturaFinal.subtotal} total=${facturaFinal.total}`,
-    );
-
-    return { factura: facturaFinal, folio };
-  }
-
-  // ──────────────────────────────────────────────────────────────────
   // Cron diario: generar facturas que toca hoy
   // ──────────────────────────────────────────────────────────────────
   //
@@ -511,7 +405,6 @@ export class FacturasRecurrentesService {
   @Cron('10 5 * * *')
   async generarFacturasDiarias() {
     const hoyISO = fechaHoyRD();
-    const hoy    = new Date(`${hoyISO}T00:00:00`);
 
     const pendientes = await this.recurrenteRepository.find({
       where: {
@@ -526,36 +419,37 @@ export class FacturasRecurrentesService {
 
     this.logger.log(`Generando ${pendientes.length} facturas recurrentes...`);
 
-    const resumenPorEmpresa = new Map<number, { generadas: number; errores: number; folios: string[] }>();
+    const resumenPorEmpresa = new Map<number, ResumenEmpresa>();
+    const resumenDe = (empresaId: number): ResumenEmpresa => {
+      const r = resumenPorEmpresa.get(empresaId)
+        ?? { generadas: 0, errores: 0, folios: [], saltos: [], fallos: [] };
+      resumenPorEmpresa.set(empresaId, r);
+      return r;
+    };
 
     for (const rec of pendientes) {
+      const resumen = rec.empresaId ? resumenDe(rec.empresaId) : null;
       try {
-        const fin = aFechaISO(rec.fechaFin);
-        if (fin && fin < hoyISO) {
-          await this.recurrenteRepository.update(rec.id, { activa: false });
+        const ciclo = await this.generacion.ejecutarCiclo(rec, hoyISO);
+
+        if (ciclo.estado === 'finalizada') continue;
+        if (ciclo.estado === 'omitida') {
+          this.logger.log(`[Recurrentes] "${rec.nombre}" omitida: ${ciclo.motivo}`);
           continue;
         }
 
-        const { factura, folio } = await this.generarDesdeTemplate(rec, hoy);
-
-        const proxima = siguienteGeneracion(this.regla(rec), hoyISO);
-        await this.recurrenteRepository.update(rec.id, {
-          ultimaEjecucion:  hoyISO as unknown as Date,
-          proximaEjecucion: proxima as unknown as Date,
-          totalGeneradas:   rec.totalGeneradas + 1,
-        });
-
-        if (rec.empresaId) {
-          const emp = resumenPorEmpresa.get(rec.empresaId) ?? { generadas: 0, errores: 0, folios: [] };
-          emp.generadas++;
-          emp.folios.push(folio);
-          resumenPorEmpresa.set(rec.empresaId, emp);
+        if (resumen) {
+          resumen.generadas++;
+          resumen.folios.push(ciclo.folio);
+          if (ciclo.saltados > 0) {
+            resumen.saltos.push({ nombre: rec.nombre, ciclos: ciclo.saltados });
+          }
         }
 
         // Enviar email al cliente (non-blocking)
         if (rec.empresaId) {
           this.facturaRepository.findOne({
-            where: { id: factura.id },
+            where: { id: ciclo.factura.id },
             relations: ['cliente', 'detalles', 'detalles.producto'],
           }).then(fConRel => {
             if (!fConRel) return;
@@ -564,14 +458,13 @@ export class FacturasRecurrentesService {
             this.logger.warn(`[EmailFactura] Falló cron "${rec.nombre}": ${e?.message}`),
           );
         }
-
-        this.logger.log(`✅ Factura recurrente "${rec.nombre}" → ${folio} (próxima: ${proxima})`);
       } catch (err) {
-        this.logger.error(`Error generando recurrente #${rec.id}: ${(err as Error).message}`);
-        if (rec.empresaId) {
-          const emp = resumenPorEmpresa.get(rec.empresaId) ?? { generadas: 0, errores: 0, folios: [] };
-          emp.errores++;
-          resumenPorEmpresa.set(rec.empresaId, emp);
+        const motivo = (err as Error).message;
+        this.logger.error(`Error generando recurrente #${rec.id}: ${motivo}`);
+        await this.registrarError(rec.id, motivo);
+        if (resumen) {
+          resumen.errores++;
+          resumen.fallos.push({ nombre: rec.nombre, motivo });
         }
       }
     }
@@ -581,8 +474,16 @@ export class FacturasRecurrentesService {
     );
   }
 
+  /** Deja escrito en la plantilla por qué falló el último ciclo. */
+  private async registrarError(id: number, motivo: string): Promise<void> {
+    await this.recurrenteRepository.update(id, {
+      ultimoError:   motivo.substring(0, 2000),
+      ultimoErrorAt: new Date(),
+    }).catch(() => null);
+  }
+
   private async notificarResumen(
-    resumen: Map<number, { generadas: number; errores: number; folios: string[] }>,
+    resumen: Map<number, ResumenEmpresa>,
   ): Promise<void> {
     if (resumen.size === 0) return;
 
@@ -624,8 +525,24 @@ export class FacturasRecurrentesService {
               <ul style="margin:0 0 12px;padding-left:20px;color:#475569;font-size:13px">
                 ${foliosList.map(f => `<li>${f}</li>`).join('')}
               </ul>
-              ${r.errores > 0 ? `<p style="color:#DC2626;font-size:13px">⚠ ${r.errores} factura(s) no se pudieron generar por errores. Revisa los logs.</p>` : ''}
-              <p style="color:#94A3B8;font-size:11px;margin:8px 0 0">Las facturas están en estado <strong>Borrador</strong> — revisar y emitir.</p>
+              ${r.fallos.length ? `
+                <p style="margin:12px 0 4px;color:#DC2626;font-size:13px;font-weight:600">
+                  ⚠ ${r.fallos.length} no se pudieron generar:
+                </p>
+                <ul style="margin:0 0 12px;padding-left:20px;color:#DC2626;font-size:12px">
+                  ${r.fallos.map(f => `<li><strong>${f.nombre}</strong>: ${f.motivo}</li>`).join('')}
+                </ul>` : ''}
+              ${r.saltos.length ? `
+                <p style="margin:12px 0 4px;color:#B45309;font-size:13px;font-weight:600">
+                  ⏭ Ciclos saltados (el servidor no corrió esos días):
+                </p>
+                <ul style="margin:0 0 8px;padding-left:20px;color:#B45309;font-size:12px">
+                  ${r.saltos.map(s => `<li><strong>${s.nombre}</strong>: ${s.ciclos} ciclo(s). Se generó UNA factura, no ${s.ciclos + 1}.</li>`).join('')}
+                </ul>
+                <p style="color:#B45309;font-size:11px;margin:0 0 8px">
+                  Si las atrasadas hacen falta, hay que emitirlas a mano.
+                </p>` : ''}
+              <p style="color:#94A3B8;font-size:11px;margin:8px 0 0">Revisa el módulo de Facturas Recurrentes para ver el detalle de cada una.</p>
             </div>
           </div>`;
 
@@ -710,29 +627,45 @@ export class FacturasRecurrentesService {
     this.logger.log(`[EmailFactura] Enviada ${folio} a ${clienteEmail}`);
   }
 
+  /**
+   * Generar ahora, sin esperar al cron.
+   *
+   * Pasa por el mismo ciclo transaccional que el cron, así que la guarda de
+   * duplicado también aplica aquí: si el cron ya generó esta madrugada, este
+   * botón no saca una segunda factura. Antes eran dos caminos distintos y el
+   * botón no comprobaba nada.
+   */
   async ejecutarAhora(id: number) {
     const rec    = await this.findById(id);
     const hoyISO = fechaHoyRD();
-    const hoy    = new Date(`${hoyISO}T00:00:00`);
 
-    const { factura, folio } = await this.generarDesdeTemplate(rec, hoy);
+    let ciclo: ResultadoCiclo;
+    try {
+      ciclo = await this.generacion.ejecutarCiclo(rec, hoyISO, true);
+    } catch (err) {
+      const motivo = (err as Error).message;
+      await this.registrarError(id, motivo);
+      throw new BadRequestException(`No se pudo generar la factura: ${motivo}`);
+    }
 
-    const proxima = siguienteGeneracion(this.regla(rec), hoyISO);
-    await this.recurrenteRepository.update(id, {
-      ultimaEjecucion:  hoyISO as unknown as Date,
-      proximaEjecucion: proxima as unknown as Date,
-      totalGeneradas:   rec.totalGeneradas + 1,
-    });
+    if (ciclo.estado === 'finalizada') {
+      throw new BadRequestException(
+        `"${rec.nombre}" ya pasó su fecha de fin (${aFechaISO(rec.fechaFin)}) y quedó pausada.`,
+      );
+    }
+    if (ciclo.estado === 'omitida') {
+      throw new BadRequestException(ciclo.motivo);
+    }
 
     this.logger.log(
-      `✅ Ejecución manual "${rec.nombre}" → ${folio} (próxima: ${proxima})`,
+      `✅ Ejecución manual "${rec.nombre}" → ${ciclo.folio} (próxima: ${ciclo.proxima})`,
     );
 
     // Enviar email al cliente (non-blocking, no falla la generación)
     const clienteEmail = rec.cliente?.email ?? null;
     if (rec.empresaId) {
       const facturaConRelaciones = await this.facturaRepository.findOne({
-        where: { id: factura.id },
+        where: { id: ciclo.factura.id },
         relations: ['cliente', 'detalles', 'detalles.producto'],
       });
       if (facturaConRelaciones) {
@@ -744,7 +677,8 @@ export class FacturasRecurrentesService {
 
     const recurrente = await this.findById(id);
     return Object.assign(recurrente, {
-      folio,
+      folio:        ciclo.folio,
+      facturaId:    ciclo.factura.id,
       emailEnviado: !!clienteEmail,
       emailDestino: clienteEmail,
     });

@@ -412,6 +412,13 @@ export class CajaService {
          WHERE DATE(f.fecha) = $1
            AND f.estado IN ('emitida', 'pagada')
            AND f."isActive" = true
+           -- Las recurrentes no entran en el arqueo. Las genera un cron de
+           -- madrugada, con la forma de pago que dice la plantilla y con el
+           -- vendedor del contrato: contarlas aquí metería en el cuadre de un
+           -- turno un efectivo que nadie recibió por caja, y el cajero saldría
+           -- corto por dinero que nunca tocó. Es la misma excepción por ORIGEN
+           -- que se aplica al exigir caja abierta en facturas.cambiarEstado().
+           AND f."facturaRecurrenteId" IS NULL
            ${vendedorFilter}
            ${empresaFilter}
        ),
@@ -1126,6 +1133,9 @@ export class CajaService {
          AND f."empresaId" = $2
          AND f."isActive" = true
          AND f.estado IN ('emitida', 'pagada', 'cancelada')
+         -- Fuera del detalle del arqueo por lo mismo que del recálculo: una
+         -- recurrente no pertenece a ningún turno. Ver recalcularDesdeBD().
+         AND f."facturaRecurrenteId" IS NULL
          ${vendedorFilter}
        ORDER BY f."createdAt" ASC`,
       [fechaStr, empresaId],
