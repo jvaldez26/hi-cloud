@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { FacturasService } from './facturas.service';
 import { FacturasController } from './facturas.controller';
 import { PdfModule } from './pdf.module';
+import { FacturaEmailModule } from './factura-email.module';
 import { Factura } from './entities/factura.entity';
 import { FacturaDetalle } from './entities/factura-detalle.entity';
 import { ClientesModule } from '../clientes/clientes.module';
@@ -24,6 +25,7 @@ import { VendedorResolverModule } from './vendedor/vendedor-resolver.module';
     SuscripcionesModule, CajaModule, RncModule,
     VendedorResolverModule,
     PdfModule,           // PDFService + NumeroLetrasService encapsulados aquí
+    FacturaEmailModule,  // envio/reenvio de la factura por correo
   ],
   controllers: [FacturasController],
   providers: [FacturasService],

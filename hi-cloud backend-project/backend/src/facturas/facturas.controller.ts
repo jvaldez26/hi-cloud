@@ -21,6 +21,8 @@ import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { FacturasService } from './facturas.service';
 import { PDFService } from './services/pdf.service';
+import { FacturaEmailService } from './services/factura-email.service';
+import { TenantService } from '../tenant/tenant.service';
 import { CreateFacturaDto } from './dto/create-factura.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -127,6 +129,8 @@ export class FacturasController {
   constructor(
     private facturasService: FacturasService,
     private pdfService:      PDFService,
+    private facturaEmail:    FacturaEmailService,
+    private tenantService:   TenantService,
   ) {}
 
   @Post()
@@ -267,6 +271,24 @@ export class FacturasController {
     return this.facturasService.emitirEcfIndividual(
       id, usuario, body?.confirmaRncNoVigente === true,
     );
+  }
+
+  /**
+   * Reenviar la factura por correo al cliente, con el PDF adjunto.
+   *
+   * El envío automático de las recurrentes era fire-and-forget: si el correo
+   * del cliente rebotaba o el SMTP estaba caído no quedaba rastro y no había
+   * forma de reintentarlo. Ahora el resultado se guarda en la factura
+   * (emailEstado/emailError/emailIntentos) y esto es el botón de reenviar.
+   *
+   * Sirve para cualquier factura, no sólo las recurrentes.
+   */
+  @Post(':id/enviar-email')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Enviar (o reenviar) la factura por correo al cliente' })
+  enviarPorEmail(@Param('id', ParseIntPipe) id: number) {
+    return this.facturaEmail.enviar(id, this.tenantService.getEmpresaId());
   }
 
   // ── PDF ────────────────────────────────────────────────────────────

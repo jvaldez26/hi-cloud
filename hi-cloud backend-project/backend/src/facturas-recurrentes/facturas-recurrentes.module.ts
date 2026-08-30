@@ -12,6 +12,7 @@ import { EmailService } from '../notificaciones/services/email.service';
 import { FacturasModule } from '../facturas/facturas.module';
 import { VendedorResolverModule } from '../facturas/vendedor/vendedor-resolver.module';
 import { RncModule } from '../rnc/rnc.module';
+import { FacturaEmailModule } from '../facturas/factura-email.module';
 
 @Module({
   imports: [
@@ -24,6 +25,9 @@ import { RncModule } from '../rnc/rnc.module';
     VendedorResolverModule,
     // Vigencia del RNC del comprador antes de emitir un comprobante de credito fiscal.
     RncModule,
+    // El envio al cliente es el mismo servicio que usa el boton de reenviar
+    // del modulo de facturas: un solo sitio que sabe mandar una factura.
+    FacturaEmailModule,
   ],
   controllers: [FacturasRecurrentesController],
   providers: [

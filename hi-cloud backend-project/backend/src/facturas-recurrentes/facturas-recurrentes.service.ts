@@ -6,13 +6,12 @@ import { ConfigService } from '@nestjs/config';
 import {
   FacturaRecurrente, Frecuencia, ModoEmision, FormaPago,
 } from './entities/factura-recurrente.entity';
-import { Factura, FacturaEstado } from '../facturas/entities/factura.entity';
-import { FacturaDetalle } from '../facturas/entities/factura-detalle.entity';
+import { Factura } from '../facturas/entities/factura.entity';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { User } from '../users/users.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { EmailService } from '../notificaciones/services/email.service';
-import { PDFService } from '../facturas/services/pdf.service';
+import { FacturaEmailService } from '../facturas/services/factura-email.service';
 import { fechaHoyRD } from '../common/utils/fecha-local.util';
 import { CreateRecurrenteDto, UpdateRecurrenteDto } from './dto/factura-recurrente.dto';
 import {
@@ -40,6 +39,8 @@ interface ResumenEmpresa {
   emisionesFallidas: Array<{
     nombre: string; folio: string; motivo: string; fase: 'previa' | 'envio';
   }>;
+  /** Facturas generadas cuyo correo al cliente no salio. No deshacen nada. */
+  correosFallidos: Array<{ folio: string; destino: string | null; motivo: string }>;
 }
 
 @Injectable()
@@ -54,7 +55,7 @@ export class FacturasRecurrentesService {
     @InjectDataSource() private ds: DataSource,
     private tenantService: TenantService,
     private emailService:  EmailService,
-    private pdfService:    PDFService,
+    private facturaEmail:  FacturaEmailService,
     private generacion:    GeneracionRecurrenteService,
     private emision:       EmisionRecurrenteService,
     private config:        ConfigService,
@@ -434,7 +435,8 @@ export class FacturasRecurrentesService {
     const resumenPorEmpresa = new Map<number, ResumenEmpresa>();
     const resumenDe = (empresaId: number): ResumenEmpresa => {
       const r = resumenPorEmpresa.get(empresaId)
-        ?? { generadas: 0, errores: 0, folios: [], saltos: [], fallos: [], emisionesFallidas: [] };
+        ?? { generadas: 0, errores: 0, folios: [], saltos: [], fallos: [],
+             emisionesFallidas: [], correosFallidos: [] };
       resumenPorEmpresa.set(empresaId, r);
       return r;
     };
@@ -474,17 +476,21 @@ export class FacturasRecurrentesService {
           }
         }
 
-        // Enviar email al cliente (non-blocking)
-        if (rec.empresaId) {
-          this.facturaRepository.findOne({
-            where: { id: ciclo.factura.id },
-            relations: ['cliente', 'detalles', 'detalles.producto'],
-          }).then(fConRel => {
-            if (!fConRel) return;
-            return this.enviarEmailFactura(fConRel, rec, rec.empresaId!);
-          }).catch(e =>
-            this.logger.warn(`[EmailFactura] Falló cron "${rec.nombre}": ${e?.message}`),
-          );
+        // El correo va al final y no rompe nada: la factura ya existe y, si
+        // lleva comprobante, ya se le declaró a la DGII. Un correo que rebota
+        // deja constancia en la factura (emailEstado/emailError) y se reenvía
+        // a mano desde ella.
+        if (rec.emailCliente && rec.empresaId) {
+          const envio = await this.facturaEmail
+            .enviar(ciclo.factura.id, rec.empresaId, { automatico: true })
+            .catch(e => ({ ok: false, destino: null, error: e?.message, copias: [] }));
+          if (!envio.ok && envio.error) {
+            resumen?.correosFallidos.push({
+              folio:   ciclo.folio,
+              destino: envio.destino,
+              motivo:  envio.error,
+            });
+          }
         }
       } catch (err) {
         const motivo = (err as Error).message;
@@ -526,7 +532,8 @@ export class FacturasRecurrentesService {
 
         const hayProblemas = r.fallos.length > 0
           || r.saltos.length > 0
-          || r.emisionesFallidas.length > 0;
+          || r.emisionesFallidas.length > 0
+          || r.correosFallidos.length > 0;
 
         // La empresa puede apagar el resumen diario, pero no los avisos de que
         // algo salió mal: con e-CF automático, enterarse tarde de que un
@@ -590,6 +597,17 @@ export class FacturasRecurrentesService {
                         : 'El número está emitido y tiene su fila; falló el envío. Reintenta desde la factura.'}</span>
                     </li>`).join('')}
                 </ul>` : ''}
+              ${r.correosFallidos.length ? `
+                <p style="margin:12px 0 4px;color:#B45309;font-size:13px;font-weight:600">
+                  ✉ ${r.correosFallidos.length} correo(s) no llegaron al cliente:
+                </p>
+                <ul style="margin:0 0 8px;padding-left:20px;color:#B45309;font-size:12px">
+                  ${r.correosFallidos.map(c => `
+                    <li><strong>${c.folio}</strong>${c.destino ? ` → ${c.destino}` : ''}: ${c.motivo}</li>`).join('')}
+                </ul>
+                <p style="color:#B45309;font-size:11px;margin:0 0 8px">
+                  La factura está bien: sólo falló el correo. Se reenvía desde la factura.
+                </p>` : ''}
               ${r.saltos.length ? `
                 <p style="margin:12px 0 4px;color:#B45309;font-size:13px;font-weight:600">
                   ⏭ Ciclos saltados (el servidor no corrió esos días):
@@ -621,74 +639,6 @@ export class FacturasRecurrentesService {
         this.logger.warn(`[Recurrentes] Error notificando empresa #${empresaId}: ${(err as Error).message}`);
       }
     }
-  }
-
-  // ──────────────────────────────────────────────────────────────────
-  // Email automático al cliente cuando se genera una factura recurrente
-  // ──────────────────────────────────────────────────────────────────
-
-  private async enviarEmailFactura(
-    factura: Factura,
-    _rec: FacturaRecurrente,
-    empresaId: number,
-  ): Promise<void> {
-    const clienteEmail = factura.cliente?.email;
-    if (!clienteEmail) {
-      this.logger.debug(`[EmailFactura] Cliente #${factura.clienteId} sin email — se omite`);
-      return;
-    }
-
-    const [emp] = await this.ds.query<{ configuracion: any; nombre: string; nombreComercial: string | null }[]>(
-      `SELECT configuracion, nombre, "nombreComercial" FROM empresa WHERE id = $1 AND "isActive" = true`,
-      [empresaId],
-    );
-    if (!emp) return;
-    const cfg = (emp.configuracion ?? {}) as Record<string, unknown>;
-    if (cfg.autoEmailFacturaRecurrente === false) {
-      this.logger.debug(`[EmailFactura] autoEmailFacturaRecurrente desactivado para empresa #${empresaId}`);
-      return;
-    }
-
-    const { buffer, filename } = await this.pdfService.generarPDFDesdeEntidad(factura, empresaId);
-
-    const empresaNombre = emp.nombreComercial || emp.nombre || 'HiCloud ERP';
-    const clienteNombre = factura.cliente?.nombre || 'Cliente';
-    const folio         = factura.folio;
-    const total         = Number(factura.total ?? 0).toLocaleString('es-DO', {
-      style: 'currency', currency: factura.moneda || 'DOP',
-    });
-
-    const html = `
-      <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
-        <div style="background:#0F172A;padding:20px 24px;border-radius:10px 10px 0 0">
-          <div style="color:#F59E0B;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em">
-            📄 Factura — ${empresaNombre}
-          </div>
-        </div>
-        <div style="background:#fff;padding:24px;border:1px solid #E2E8F0;border-top:none;border-radius:0 0 10px 10px">
-          <p style="margin:0 0 12px;color:#0F172A;font-size:14px">
-            Estimado/a <strong>${clienteNombre}</strong>,
-          </p>
-          <p style="margin:0 0 16px;color:#475569;font-size:13px">
-            Adjunto encontrará la factura <strong>${folio}</strong> por un total de <strong>${total}</strong>.
-          </p>
-          <p style="margin:0 0 8px;color:#475569;font-size:13px">
-            Para consultas sobre esta factura, no dude en contactarnos.
-          </p>
-          <p style="color:#94A3B8;font-size:11px;margin:16px 0 0;border-top:1px solid #F1F5F9;padding-top:12px">
-            ${empresaNombre} · Factura generada automáticamente por HiCloud ERP
-          </p>
-        </div>
-      </div>`;
-
-    await this.emailService.enviar({
-      to:      clienteEmail,
-      subject: `Factura ${folio} — ${empresaNombre}`,
-      html,
-      attachments: [{ filename, content: buffer, contentType: 'application/pdf' }],
-    });
-
-    this.logger.log(`[EmailFactura] Enviada ${folio} a ${clienteEmail}`);
   }
 
   /**
@@ -737,26 +687,24 @@ export class FacturasRecurrentesService {
       if (!r.ok) await this.registrarError(id, r.motivo);
     }
 
-    // Enviar email al cliente (non-blocking, no falla la generación)
-    const clienteEmail = rec.cliente?.email ?? null;
-    if (rec.empresaId) {
-      const facturaConRelaciones = await this.facturaRepository.findOne({
-        where: { id: ciclo.factura.id },
-        relations: ['cliente', 'detalles', 'detalles.producto'],
-      });
-      if (facturaConRelaciones) {
-        this.enviarEmailFactura(facturaConRelaciones, rec, rec.empresaId).catch(e =>
-          this.logger.warn(`[EmailFactura] Falló envío manual "${rec.nombre}": ${e?.message}`),
-        );
-      }
+    // El correo no deshace nada: si falla, queda registrado en la factura y se
+    // reenvía desde ella.
+    let envio: { ok: boolean; destino: string | null; error?: string } = {
+      ok: false, destino: null,
+    };
+    if (rec.emailCliente && rec.empresaId) {
+      envio = await this.facturaEmail
+        .enviar(ciclo.factura.id, rec.empresaId, { automatico: true })
+        .catch(e => ({ ok: false, destino: null, error: e?.message }));
     }
 
     const recurrente = await this.findById(id);
     return Object.assign(recurrente, {
       folio:        ciclo.folio,
       facturaId:    ciclo.factura.id,
-      emailEnviado: !!clienteEmail,
-      emailDestino: clienteEmail,
+      emailEnviado: envio.ok,
+      emailDestino: envio.destino,
+      emailError:   envio.error ?? null,
       ecfEmitido:   emision ? emision.ok : null,
       ecfNumero:    emision?.encf ?? null,
       ecfError:     emision && !emision.ok ? emision.motivo : null,
