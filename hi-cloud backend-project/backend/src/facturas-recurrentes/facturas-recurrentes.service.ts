@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, Logger } from '@nes
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, LessThanOrEqual, DataSource, ILike } from 'typeorm';
 import { Cron } from '@nestjs/schedule';
+import { ConfigService } from '@nestjs/config';
 import {
   FacturaRecurrente, Frecuencia, ModoEmision, FormaPago,
 } from './entities/factura-recurrente.entity';
@@ -20,6 +21,7 @@ import {
 import {
   GeneracionRecurrenteService, ResultadoCiclo,
 } from './services/generacion-recurrente.service';
+import { EmisionRecurrenteService } from './services/emision-recurrente.service';
 
 /** Lo que se le cuenta a los administradores de una empresa tras el barrido. */
 interface ResumenEmpresa {
@@ -30,6 +32,14 @@ interface ResumenEmpresa {
   saltos:    Array<{ nombre: string; ciclos: number }>;
   /** Plantillas que no pudieron generar, con el motivo en palabras. */
   fallos:    Array<{ nombre: string; motivo: string }>;
+  /**
+   * Facturas que se generaron pero NO se pudieron emitir con e-CF.
+   * `fase: 'previa'` = no se pidió número y la factura sigue en borrador.
+   * `fase: 'envio'`  = el número existe con su fila; falló el envío a MSeller.
+   */
+  emisionesFallidas: Array<{
+    nombre: string; folio: string; motivo: string; fase: 'previa' | 'envio';
+  }>;
 }
 
 @Injectable()
@@ -46,6 +56,8 @@ export class FacturasRecurrentesService {
     private emailService:  EmailService,
     private pdfService:    PDFService,
     private generacion:    GeneracionRecurrenteService,
+    private emision:       EmisionRecurrenteService,
+    private config:        ConfigService,
   ) {}
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -422,7 +434,7 @@ export class FacturasRecurrentesService {
     const resumenPorEmpresa = new Map<number, ResumenEmpresa>();
     const resumenDe = (empresaId: number): ResumenEmpresa => {
       const r = resumenPorEmpresa.get(empresaId)
-        ?? { generadas: 0, errores: 0, folios: [], saltos: [], fallos: [] };
+        ?? { generadas: 0, errores: 0, folios: [], saltos: [], fallos: [], emisionesFallidas: [] };
       resumenPorEmpresa.set(empresaId, r);
       return r;
     };
@@ -443,6 +455,22 @@ export class FacturasRecurrentesService {
           resumen.folios.push(ciclo.folio);
           if (ciclo.saltados > 0) {
             resumen.saltos.push({ nombre: rec.nombre, ciclos: ciclo.saltados });
+          }
+        }
+
+        // La emisión va DESPUÉS de que la transacción del ciclo haya cerrado:
+        // pide números a la DGII y habla con un servicio externo, nada de eso
+        // puede vivir dentro de la transacción que crea la factura.
+        if (rec.modoEmision === ModoEmision.ECF) {
+          const emision = await this.emision.emitir(rec, ciclo.factura);
+          if (!emision.ok) {
+            await this.registrarError(rec.id, emision.motivo);
+            resumen?.emisionesFallidas.push({
+              nombre: rec.nombre,
+              folio:  ciclo.folio,
+              motivo: emision.motivo,
+              fase:   emision.fase,
+            });
           }
         }
 
@@ -495,7 +523,15 @@ export class FacturasRecurrentesService {
         );
         if (!emp) continue;
         const cfg = (emp.configuracion ?? {}) as Record<string, unknown>;
-        if (cfg.notifFactRecurrente === false) continue;
+
+        const hayProblemas = r.fallos.length > 0
+          || r.saltos.length > 0
+          || r.emisionesFallidas.length > 0;
+
+        // La empresa puede apagar el resumen diario, pero no los avisos de que
+        // algo salió mal: con e-CF automático, enterarse tarde de que un
+        // comprobante no salió cuesta bastante más que un correo de más.
+        if (cfg.notifFactRecurrente === false && !hayProblemas) continue;
 
         const admins = await this.ds.query<{ email: string; nombre: string }[]>(
           `SELECT u.email, u.nombre FROM users u
@@ -505,7 +541,16 @@ export class FacturasRecurrentesService {
            LIMIT 5`,
           [empresaId],
         );
-        if (!admins.length) continue;
+
+        // Copia al administrativo. Sale de NOTIF_ADMIN_EMAIL, que es donde ya
+        // viven los avisos de e-CF del resto del sistema — nunca de un correo
+        // escrito en el código.
+        const destinatarios = [...admins.map(a => a.email)];
+        const adminGlobal = this.config.get<string>('NOTIF_ADMIN_EMAIL', '').trim();
+        if (adminGlobal && hayProblemas && !destinatarios.includes(adminGlobal)) {
+          destinatarios.push(adminGlobal);
+        }
+        if (!destinatarios.length) continue;
 
         const foliosList = r.folios.length > 5
           ? [...r.folios.slice(0, 5), `... y ${r.folios.length - 5} más`]
@@ -532,6 +577,19 @@ export class FacturasRecurrentesService {
                 <ul style="margin:0 0 12px;padding-left:20px;color:#DC2626;font-size:12px">
                   ${r.fallos.map(f => `<li><strong>${f.nombre}</strong>: ${f.motivo}</li>`).join('')}
                 </ul>` : ''}
+              ${r.emisionesFallidas.length ? `
+                <p style="margin:12px 0 4px;color:#DC2626;font-size:13px;font-weight:600">
+                  ⚠ ${r.emisionesFallidas.length} factura(s) sin comprobante fiscal:
+                </p>
+                <ul style="margin:0 0 8px;padding-left:20px;color:#DC2626;font-size:12px">
+                  ${r.emisionesFallidas.map(f => `
+                    <li>
+                      <strong>${f.folio}</strong> (${f.nombre}): ${f.motivo}
+                      <br><span style="color:#94A3B8">${f.fase === 'previa'
+                        ? 'La factura quedó en BORRADOR y NO se consumió número de secuencia.'
+                        : 'El número está emitido y tiene su fila; falló el envío. Reintenta desde la factura.'}</span>
+                    </li>`).join('')}
+                </ul>` : ''}
               ${r.saltos.length ? `
                 <p style="margin:12px 0 4px;color:#B45309;font-size:13px;font-weight:600">
                   ⏭ Ciclos saltados (el servidor no corrió esos días):
@@ -546,13 +604,19 @@ export class FacturasRecurrentesService {
             </div>
           </div>`;
 
+        const pendientes = r.fallos.length + r.emisionesFallidas.length;
         await this.emailService.enviar({
-          to:      admins.map(a => a.email),
-          subject: `🔄 ${r.generadas} factura(s) recurrente(s) generadas — ${emp.nombre}`,
+          to: destinatarios,
+          subject: pendientes > 0
+            ? `⚠ ${pendientes} recurrente(s) requieren atención — ${emp.nombre}`
+            : `🔄 ${r.generadas} factura(s) recurrente(s) generadas — ${emp.nombre}`,
           html,
         });
 
-        this.logger.log(`[Recurrentes] Email enviado a empresa #${empresaId}: ${r.generadas} generadas`);
+        this.logger.log(
+          `[Recurrentes] Aviso enviado a empresa #${empresaId}: ` +
+          `${r.generadas} generadas, ${pendientes} con problemas`,
+        );
       } catch (err) {
         this.logger.warn(`[Recurrentes] Error notificando empresa #${empresaId}: ${(err as Error).message}`);
       }
@@ -661,6 +725,18 @@ export class FacturasRecurrentesService {
       `✅ Ejecución manual "${rec.nombre}" → ${ciclo.folio} (próxima: ${ciclo.proxima})`,
     );
 
+    // Mismo camino de emisión que el cron. Si no se puede emitir, la factura
+    // queda generada (en borrador, con el motivo) y se devuelve el aviso: la
+    // generación no se deshace por un comprobante que no salió.
+    let emision: { ok: boolean; motivo?: string; encf?: string | null } | null = null;
+    if (rec.modoEmision === ModoEmision.ECF) {
+      const r = await this.emision.emitir(rec, ciclo.factura);
+      emision = r.ok
+        ? { ok: true, encf: r.encf }
+        : { ok: false, motivo: r.motivo };
+      if (!r.ok) await this.registrarError(id, r.motivo);
+    }
+
     // Enviar email al cliente (non-blocking, no falla la generación)
     const clienteEmail = rec.cliente?.email ?? null;
     if (rec.empresaId) {
@@ -681,6 +757,9 @@ export class FacturasRecurrentesService {
       facturaId:    ciclo.factura.id,
       emailEnviado: !!clienteEmail,
       emailDestino: clienteEmail,
+      ecfEmitido:   emision ? emision.ok : null,
+      ecfNumero:    emision?.encf ?? null,
+      ecfError:     emision && !emision.ok ? emision.motivo : null,
     });
   }
 }

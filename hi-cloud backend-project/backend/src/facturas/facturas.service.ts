@@ -916,7 +916,22 @@ export class FacturasService {
 
       const vendedorFactura = (factura as any).vendedorId ?? null;
 
-      if (vendedorFactura) {
+      // ── Las facturas recurrentes no pertenecen a ningún turno ──────────────
+      //
+      // Las genera un cron de madrugada a partir de una plantilla. Exigirles
+      // caja abierta las haría fallar siempre en las empresas con control de
+      // caja activo, porque a esa hora no hay ninguna abierta en ninguna parte.
+      //
+      // La excepción es por ORIGEN, no por "no hay caja abierta": se mira
+      // facturaRecurrenteId, que sólo escribe el generador de recurrentes.
+      // Exceptuar por ausencia de caja sería abrir el agujero justo en el POS,
+      // que es donde el control tiene que apretar.
+      //
+      // Por lo mismo salen del arqueo (ver caja.service.recalcularDesdeBD): no
+      // se le puede cargar a un cajero un efectivo que nadie recibió por caja.
+      const esRecurrente = (factura as any).facturaRecurrenteId != null;
+
+      if (vendedorFactura && !esRecurrente) {
         const cajaCheck = await this.cajaService.esCajaAbiertaVendedor(
           vendedorFactura,
           factura.empresaId,
