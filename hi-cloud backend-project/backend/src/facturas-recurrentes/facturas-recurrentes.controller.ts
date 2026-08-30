@@ -1,10 +1,9 @@
 import {
-  Controller, Get, Post, Patch, Delete, Body,
+  Controller, Get, Post, Patch, Put, Delete, Body,
   Param, Query, ParseIntPipe, HttpCode, HttpStatus, UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { FacturasRecurrentesService } from './facturas-recurrentes.service';
-import { Frecuencia } from './entities/factura-recurrente.entity';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -12,33 +11,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
 import { User } from '../users/users.entity';
-import {
-  IsString, IsInt, IsPositive, IsEnum, IsArray,
-  IsOptional, IsDateString, IsNumber, ValidateNested,
-} from 'class-validator';
-import { Type } from 'class-transformer';
-
-class DetalleDto {
-  @IsOptional() @IsInt() @Type(() => Number) productoId?: number;
-  @IsString() descripcion: string;
-  @IsInt() @IsPositive() @Type(() => Number) cantidad: number;
-  @IsNumber({ maxDecimalPlaces: 2 }) @IsPositive() @Type(() => Number) precioUnitario: number;
-  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Type(() => Number) porcentajeIva?: number;
-}
-
-class CreateRecurrenteDto {
-  @IsString() nombre: string;
-  @IsInt() @IsPositive() @Type(() => Number) clienteId: number;
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => DetalleDto)
-  detalles: DetalleDto[];
-  @IsEnum(Frecuencia) frecuencia: Frecuencia;
-  @IsInt() @IsPositive() @Type(() => Number) diaEjecucion: number;
-  @IsDateString() fechaInicio: string;
-  @IsOptional() @IsDateString() fechaFin?: string;
-  @IsOptional() @IsString() notas?: string;
-}
+import { CreateRecurrenteDto, UpdateRecurrenteDto } from './dto/factura-recurrente.dto';
 
 @ApiTags('Facturas Recurrentes')
 @ApiBearerAuth('access-token')
@@ -52,12 +25,12 @@ export class FacturasRecurrentesController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Crear factura recurrente (auto-facturación)' })
   crear(@Body() dto: CreateRecurrenteDto, @GetUser() usuario: User) {
-    return this.svc.crear(dto as any, usuario);
+    return this.svc.crear(dto, usuario);
   }
 
   @Get()
-  @ApiOperation({ summary: 'Listar facturas recurrentes activas' })
-  listar(@Query() pagination: PaginationDto) {
+  @ApiOperation({ summary: 'Listar facturas recurrentes' })
+  listar(@Query() pagination: PaginationDto & { activa?: string; modoEmision?: string }) {
     return this.svc.listar(pagination);
   }
 
@@ -65,6 +38,12 @@ export class FacturasRecurrentesController {
   @ApiOperation({ summary: 'Detalle de una factura recurrente' })
   findById(@Param('id', ParseIntPipe) id: number) {
     return this.svc.findById(id);
+  }
+
+  @Put(':id')
+  @ApiOperation({ summary: 'Editar la plantilla recurrente' })
+  actualizar(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateRecurrenteDto) {
+    return this.svc.actualizar(id, dto);
   }
 
   @Get(':id/historial')

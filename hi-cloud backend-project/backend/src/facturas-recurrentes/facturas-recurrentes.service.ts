@@ -1,8 +1,10 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
-import { Repository, LessThanOrEqual, DataSource } from 'typeorm';
+import { Repository, LessThanOrEqual, DataSource, ILike } from 'typeorm';
 import { Cron } from '@nestjs/schedule';
-import { FacturaRecurrente, Frecuencia } from './entities/factura-recurrente.entity';
+import {
+  FacturaRecurrente, Frecuencia, ModoEmision, FormaPago,
+} from './entities/factura-recurrente.entity';
 import { Factura, FacturaEstado } from '../facturas/entities/factura.entity';
 import { FacturaDetalle } from '../facturas/entities/factura-detalle.entity';
 import { PaginationDto } from '../common/dto/pagination.dto';
@@ -11,17 +13,12 @@ import { TenantService } from '../tenant/tenant.service';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { EmailService } from '../notificaciones/services/email.service';
 import { PDFService } from '../facturas/services/pdf.service';
-
-interface CreateRecurrenteDto {
-  nombre:        string;
-  clienteId:     number;
-  detalles:      FacturaRecurrente['detalles'];
-  frecuencia:    Frecuencia;
-  diaEjecucion:  number;
-  fechaInicio:   string;
-  fechaFin?:     string;
-  notas?:        string;
-}
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
+import { CreateRecurrenteDto, UpdateRecurrenteDto } from './dto/factura-recurrente.dto';
+import {
+  ReglaCalendario, primeraGeneracion, siguienteGeneracion,
+  aFechaISO, explicarDiaMes,
+} from './calendario-recurrente';
 
 @Injectable()
 export class FacturasRecurrentesService {
@@ -40,51 +37,283 @@ export class FacturasRecurrentesService {
     private pdfService:    PDFService,
   ) {}
 
-  private calcularProxima(frecuencia: Frecuencia, diaEjecucion: number, desde: Date): Date {
-    const prox = new Date(desde);
-    switch (frecuencia) {
-      case Frecuencia.DIARIA:
-        prox.setDate(prox.getDate() + 1); break;
-      case Frecuencia.SEMANAL:
-        prox.setDate(prox.getDate() + 7); break;
-      case Frecuencia.MENSUAL:
-        prox.setMonth(prox.getMonth() + 1);
-        prox.setDate(Math.min(diaEjecucion, new Date(prox.getFullYear(), prox.getMonth() + 1, 0).getDate()));
-        break;
-      case Frecuencia.ANUAL:
-        prox.setFullYear(prox.getFullYear() + 1); break;
-    }
-    return prox;
+  // ──────────────────────────────────────────────────────────────────────────
+  // Calendario
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /** La plantilla, vista como regla de calendario. */
+  private regla(rec: FacturaRecurrente): ReglaCalendario {
+    return {
+      frecuencia:  rec.frecuencia,
+      diaMes:      rec.diaMes,
+      diaSemana:   rec.diaSemana,
+      fechaInicio: aFechaISO(rec.fechaInicio) ?? fechaHoyRD(),
+    };
   }
+
+  /**
+   * Comprueba que la frecuencia trae el día que necesita.
+   *
+   * El campo viejo (`diaEjecucion`) se pedía siempre y sólo se miraba en la
+   * rama mensual: en semanal, diaria y anual el número que tecleaba el usuario
+   * no hacía nada. Ahora cada frecuencia declara lo que usa y se rechaza lo que
+   * no encaja, en vez de aceptarlo y tirarlo.
+   */
+  private validarRegla(
+    frecuencia: Frecuencia, diaMes?: number | null, diaSemana?: number | null,
+  ): { diaMes: number | null; diaSemana: number | null } {
+    if (frecuencia === Frecuencia.SEMANAL) {
+      if (!diaSemana) {
+        throw new BadRequestException(
+          'Una recurrente semanal necesita el día de la semana (1=lunes … 7=domingo).',
+        );
+      }
+      return { diaMes: null, diaSemana };
+    }
+
+    if (frecuencia === Frecuencia.MENSUAL || frecuencia === Frecuencia.ANUAL) {
+      if (!diaMes) {
+        throw new BadRequestException(
+          `Una recurrente ${frecuencia} necesita el día del mes (1 al 31).`,
+        );
+      }
+      return { diaMes, diaSemana: null };
+    }
+
+    // Diaria: no hay día que elegir.
+    return { diaMes: null, diaSemana: null };
+  }
+
+  /** Normaliza los ítems que llegan del formulario. */
+  private normalizarDetalles(detalles: CreateRecurrenteDto['detalles']) {
+    return detalles.map((d, i) => ({
+      descripcion:    String(d.descripcion ?? '').trim() || `Ítem ${i + 1}`,
+      productoId:     d.productoId != null ? Number(d.productoId) : undefined,
+      cantidad:       Number(d.cantidad),
+      precioUnitario: Number(d.precioUnitario),
+      porcentajeIva:  Number(d.porcentajeIva ?? 0),
+    }));
+  }
+
+  /**
+   * Comprueba la coherencia entre modo de emisión, tipo de e-CF y forma de pago.
+   *
+   * Aquí sólo se valida la FORMA (que los campos encajen entre sí). Que la
+   * empresa tenga secuencia viva para ese tipo y configuración de MSeller se
+   * comprueba en cada generación, porque una secuencia se agota o se vence
+   * después de haber guardado la plantilla.
+   */
+  private validarEmisionYPago(dto: {
+    modoEmision?: ModoEmision; tipoEcf?: string;
+    formaPago?: number; diasCredito?: number;
+  }) {
+    const modo = dto.modoEmision ?? ModoEmision.BORRADOR;
+    if (modo === ModoEmision.ECF && !dto.tipoEcf) {
+      throw new BadRequestException(
+        'Para emitir con comprobante fiscal hay que elegir el tipo de e-CF.',
+      );
+    }
+    if (modo === ModoEmision.BORRADOR && dto.tipoEcf) {
+      throw new BadRequestException(
+        'El tipo de e-CF sólo aplica cuando la plantilla emite con comprobante fiscal.',
+      );
+    }
+
+    const forma = dto.formaPago ?? FormaPago.EFECTIVO;
+    const dias  = Number(dto.diasCredito ?? 0);
+    if (forma === FormaPago.CREDITO && dias <= 0) {
+      throw new BadRequestException(
+        'Una recurrente a crédito necesita el plazo en días: de ahí sale la fecha ' +
+        'de vencimiento de la cuenta por cobrar.',
+      );
+    }
+    if (forma !== FormaPago.CREDITO && dias > 0) {
+      throw new BadRequestException(
+        'El plazo en días sólo aplica a la forma de pago "crédito".',
+      );
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // CRUD
+  // ──────────────────────────────────────────────────────────────────────────
 
   async crear(dto: CreateRecurrenteDto, usuario: User) {
-    const prox = new Date(dto.fechaInicio);
-    const rec = this.recurrenteRepository.create({
-      empresaId:       this.tenantService.getEmpresaId(),
-      nombre:          dto.nombre,
-      clienteId:       dto.clienteId,
-      detalles:        dto.detalles,
-      frecuencia:      dto.frecuencia,
-      diaEjecucion:    dto.diaEjecucion,
-      proximaEjecucion: prox,
-      fechaFin:        dto.fechaFin ? new Date(dto.fechaFin) : undefined,
-      notas:           dto.notas,
-      userId:          usuario.id,
-      activa:          true,
+    const { diaMes, diaSemana } = this.validarRegla(
+      dto.frecuencia, dto.diaMes, dto.diaSemana,
+    );
+    this.validarEmisionYPago(dto);
+
+    const fechaInicio = dto.fechaInicio.substring(0, 10);
+    const fechaFin    = dto.fechaFin ? dto.fechaFin.substring(0, 10) : null;
+    if (fechaFin && fechaFin < fechaInicio) {
+      throw new BadRequestException('La fecha de fin no puede ser anterior a la de inicio.');
+    }
+
+    const proxima = primeraGeneracion({
+      frecuencia: dto.frecuencia, diaMes, diaSemana, fechaInicio,
     });
-    return this.recurrenteRepository.save(rec);
+    if (fechaFin && proxima > fechaFin) {
+      throw new BadRequestException(
+        `Con esa fecha de fin (${fechaFin}) no llega a generarse ninguna factura: ` +
+        `la primera caería el ${proxima}.`,
+      );
+    }
+
+    const rec = this.recurrenteRepository.create({
+      empresaId:        this.tenantService.getEmpresaId(),
+      nombre:           dto.nombre.trim(),
+      clienteId:        dto.clienteId,
+      detalles:         this.normalizarDetalles(dto.detalles),
+      frecuencia:       dto.frecuencia,
+      diaMes:           diaMes ?? undefined,
+      diaSemana:        diaSemana ?? undefined,
+      fechaInicio:      fechaInicio as unknown as Date,
+      proximaEjecucion: proxima as unknown as Date,
+      fechaFin:         (fechaFin ?? undefined) as unknown as Date | undefined,
+      modoEmision:      dto.modoEmision ?? ModoEmision.BORRADOR,
+      tipoEcf:          dto.tipoEcf,
+      formaPago:        dto.formaPago ?? FormaPago.EFECTIVO,
+      diasCredito:      Number(dto.diasCredito ?? 0),
+      emailCliente:     dto.emailCliente ?? true,
+      avisoPrevioDias:  Number(dto.avisoPrevioDias ?? 0),
+      notas:            dto.notas,
+      userId:           usuario.id,
+      activa:           true,
+    });
+
+    const guardada = await this.recurrenteRepository.save(rec);
+    this.logger.log(
+      `[Recurrentes] Creada "${guardada.nombre}" (#${guardada.id}) | ` +
+      `${guardada.frecuencia} | primera generación ${proxima} | ` +
+      `${guardada.modoEmision === ModoEmision.ECF ? guardada.tipoEcf : 'borrador'}`,
+    );
+    return this.findById(guardada.id);
   }
 
-  async listar(pagination: PaginationDto) {
-    const { limit = 10, page = 1 } = pagination;
+  /**
+   * Editar la plantilla.
+   *
+   * Sin esto sólo se podía borrar y rehacer, y con e-CF automático de por medio
+   * eso puede acabar en dos comprobantes el mismo mes: la plantilla nueva
+   * arranca con `ultimaEjecucion` en blanco, así que la guarda de duplicado ya
+   * no ve la factura que sacó la vieja.
+   *
+   * Cambiar la frecuencia o el día recalcula la próxima generación desde HOY,
+   * no desde el arranque original: si alguien mueve una mensual del 5 al 20 el
+   * día 10, quiere que la próxima sea el 20 de este mes.
+   */
+  async actualizar(id: number, dto: UpdateRecurrenteDto) {
+    const rec = await this.findById(id);
+
+    const frecuencia = dto.frecuencia ?? rec.frecuencia;
+    const cambiaRegla = dto.frecuencia !== undefined
+      || dto.diaMes    !== undefined
+      || dto.diaSemana !== undefined
+      || dto.fechaInicio !== undefined;
+
+    const { diaMes, diaSemana } = this.validarRegla(
+      frecuencia,
+      dto.diaMes    !== undefined ? dto.diaMes    : rec.diaMes,
+      dto.diaSemana !== undefined ? dto.diaSemana : rec.diaSemana,
+    );
+
+    this.validarEmisionYPago({
+      modoEmision: dto.modoEmision ?? rec.modoEmision,
+      // Cambiar a borrador limpia el tipo; si no, se conserva el que hubiera.
+      tipoEcf: dto.modoEmision === ModoEmision.BORRADOR
+        ? undefined
+        : (dto.tipoEcf ?? rec.tipoEcf),
+      formaPago:   dto.formaPago   ?? rec.formaPago,
+      diasCredito: dto.diasCredito ?? rec.diasCredito,
+    });
+
+    const fechaInicio = dto.fechaInicio
+      ? dto.fechaInicio.substring(0, 10)
+      : (aFechaISO(rec.fechaInicio) ?? fechaHoyRD());
+
+    const fechaFin = dto.fechaFin === undefined
+      ? aFechaISO(rec.fechaFin)
+      : (dto.fechaFin ? dto.fechaFin.substring(0, 10) : null);
+
+    if (fechaFin && fechaFin < fechaInicio) {
+      throw new BadRequestException('La fecha de fin no puede ser anterior a la de inicio.');
+    }
+
+    const patch: Partial<FacturaRecurrente> = {};
+    if (dto.nombre    !== undefined) patch.nombre    = dto.nombre.trim();
+    if (dto.clienteId !== undefined) patch.clienteId = dto.clienteId;
+    if (dto.detalles  !== undefined) patch.detalles  = this.normalizarDetalles(dto.detalles);
+    if (dto.notas     !== undefined) patch.notas     = dto.notas;
+    if (dto.activa    !== undefined) patch.activa    = dto.activa;
+    if (dto.emailCliente    !== undefined) patch.emailCliente    = dto.emailCliente;
+    if (dto.avisoPrevioDias !== undefined) patch.avisoPrevioDias = dto.avisoPrevioDias;
+    if (dto.formaPago       !== undefined) patch.formaPago       = dto.formaPago;
+    if (dto.diasCredito     !== undefined) patch.diasCredito     = dto.diasCredito;
+
+    if (dto.modoEmision !== undefined) {
+      patch.modoEmision = dto.modoEmision;
+      patch.tipoEcf = dto.modoEmision === ModoEmision.BORRADOR
+        ? undefined
+        : (dto.tipoEcf ?? rec.tipoEcf);
+    } else if (dto.tipoEcf !== undefined) {
+      patch.tipoEcf = dto.tipoEcf;
+    }
+
+    patch.frecuencia  = frecuencia;
+    patch.diaMes      = diaMes    ?? undefined;
+    patch.diaSemana   = diaSemana ?? undefined;
+    patch.fechaInicio = fechaInicio as unknown as Date;
+    patch.fechaFin    = (fechaFin ?? undefined) as unknown as Date | undefined;
+
+    if (cambiaRegla) {
+      const hoy   = fechaHoyRD();
+      const desde = fechaInicio > hoy ? fechaInicio : hoy;
+      patch.proximaEjecucion = primeraGeneracion({
+        frecuencia, diaMes, diaSemana, fechaInicio: desde,
+      }) as unknown as Date;
+    }
+
+    await this.recurrenteRepository.update(id, patch as any);
+
+    const actualizada = await this.findById(id);
+    this.logger.log(
+      `[Recurrentes] Editada "${actualizada.nombre}" (#${id})` +
+      (cambiaRegla ? ` | próxima generación → ${aFechaISO(actualizada.proximaEjecucion)}` : ''),
+    );
+    return actualizada;
+  }
+
+  async listar(pagination: PaginationDto & { activa?: string; modoEmision?: string }) {
+    const { limit = 10, page = 1, search } = pagination;
+    const empresaId = this.tenantService.getEmpresaId();
+
+    // El buscador del listado mandaba ?search= desde el primer día y aquí no se
+    // leía nunca: escribir en la caja no filtraba nada.
+    const where: Record<string, unknown> = { empresaId, isActive: true };
+    if (pagination.activa === 'true')  where.activa = true;
+    if (pagination.activa === 'false') where.activa = false;
+    if (pagination.modoEmision) where.modoEmision = pagination.modoEmision;
+
+    const filtros = search?.trim()
+      ? [
+          { ...where, nombre: ILike(`%${search.trim()}%`) },
+          { ...where, cliente: { nombre: ILike(`%${search.trim()}%`) } },
+        ]
+      : where;
+
     const [data, total] = await this.recurrenteRepository.findAndCount({
-      where: { empresaId: this.tenantService.getEmpresaId(), isActive: true },
+      where: filtros as any,
       relations: ['cliente', 'user'],
-      order: { proximaEjecucion: 'ASC' },
+      order: { activa: 'DESC', proximaEjecucion: 'ASC' },
       skip: (page - 1) * limit,
       take: limit,
     });
-    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+
+    return {
+      data: data.map(r => this.conProximaLegible(r)),
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 
   async findById(id: number) {
@@ -93,7 +322,29 @@ export class FacturasRecurrentesService {
       relations: ['cliente', 'user'],
     });
     if (!r) throw new NotFoundException(`Factura recurrente #${id} no encontrada`);
-    return r;
+    return this.conProximaLegible(r);
+  }
+
+  /**
+   * Añade a la plantilla la fecha exacta de la próxima generación y la frase
+   * que explica qué pasa en los meses cortos, para que la interfaz no tenga que
+   * reimplementar el calendario.
+   */
+  private conProximaLegible(rec: FacturaRecurrente): FacturaRecurrente & {
+    proximaGeneracion: string | null;
+    explicacionDia:    string | null;
+  } {
+    const proxima = aFechaISO(rec.proximaEjecucion);
+    const fin     = aFechaISO(rec.fechaFin);
+    const vigente = rec.activa && (!fin || !proxima || proxima <= fin);
+
+    return Object.assign(rec, {
+      proximaGeneracion: vigente ? proxima : null,
+      explicacionDia:
+        rec.frecuencia === Frecuencia.MENSUAL && rec.diaMes
+          ? explicarDiaMes(rec.diaMes)
+          : null,
+    });
   }
 
   async toggleActiva(id: number) {
@@ -118,7 +369,11 @@ export class FacturasRecurrentesService {
       order:  { createdAt: 'DESC' },
       skip:   (page - 1) * limit,
       take:   limit,
-      select: ['id', 'folio', 'fecha', 'estado', 'total', 'subtotal', 'iva', 'createdAt', 'clienteId'],
+      select: [
+        'id', 'folio', 'fecha', 'estado', 'total', 'subtotal', 'iva',
+        'createdAt', 'clienteId', 'tipoNcf', 'ecfId', 'notas',
+        'emailEstado', 'emailEnviadoAt', 'emailDestino', 'emailError',
+      ],
     });
     return { data, meta: { total, page, pageSize: limit } };
   }
@@ -243,17 +498,26 @@ export class FacturasRecurrentesService {
   // ──────────────────────────────────────────────────────────────────
   // Cron diario: generar facturas que toca hoy
   // ──────────────────────────────────────────────────────────────────
+  //
+  // 05:10 UTC = 01:10 en República Dominicana.
+  //
+  // Antes era '15 0 * * *', que en un servidor UTC dispara a las 20:15 hora RD
+  // del día ANTERIOR. Con la factura en borrador daba igual; en cuanto la
+  // plantilla emite e-CF, no: la fecha de la factura salía del `new Date()` del
+  // proceso —es decir, la fecha UTC, ya del día siguiente— y una FechaEmision
+  // en el futuro es un rechazo de la DGII. Ahora la hora cae de madrugada RD y
+  // la fecha sale de fechaHoyRD().
 
-  @Cron('15 0 * * *')
+  @Cron('10 5 * * *')
   async generarFacturasDiarias() {
-    const hoy = new Date();
-    hoy.setHours(0, 0, 0, 0);
+    const hoyISO = fechaHoyRD();
+    const hoy    = new Date(`${hoyISO}T00:00:00`);
 
     const pendientes = await this.recurrenteRepository.find({
       where: {
         activa: true,
         isActive: true,
-        proximaEjecucion: LessThanOrEqual(hoy),
+        proximaEjecucion: LessThanOrEqual(hoyISO as unknown as Date),
       },
       relations: ['cliente'],
     });
@@ -266,17 +530,18 @@ export class FacturasRecurrentesService {
 
     for (const rec of pendientes) {
       try {
-        if (rec.fechaFin && new Date(rec.fechaFin) < hoy) {
+        const fin = aFechaISO(rec.fechaFin);
+        if (fin && fin < hoyISO) {
           await this.recurrenteRepository.update(rec.id, { activa: false });
           continue;
         }
 
         const { factura, folio } = await this.generarDesdeTemplate(rec, hoy);
 
-        const proxima = this.calcularProxima(rec.frecuencia, rec.diaEjecucion, hoy);
+        const proxima = siguienteGeneracion(this.regla(rec), hoyISO);
         await this.recurrenteRepository.update(rec.id, {
-          ultimaEjecucion:  hoy,
-          proximaEjecucion: proxima,
+          ultimaEjecucion:  hoyISO as unknown as Date,
+          proximaEjecucion: proxima as unknown as Date,
           totalGeneradas:   rec.totalGeneradas + 1,
         });
 
@@ -300,7 +565,7 @@ export class FacturasRecurrentesService {
           );
         }
 
-        this.logger.log(`✅ Factura recurrente "${rec.nombre}" → ${folio} (próxima: ${proxima.toDateString()})`);
+        this.logger.log(`✅ Factura recurrente "${rec.nombre}" → ${folio} (próxima: ${proxima})`);
       } catch (err) {
         this.logger.error(`Error generando recurrente #${rec.id}: ${(err as Error).message}`);
         if (rec.empresaId) {
@@ -446,21 +711,21 @@ export class FacturasRecurrentesService {
   }
 
   async ejecutarAhora(id: number) {
-    const rec = await this.findById(id);
-    const hoy = new Date();
-    hoy.setHours(0, 0, 0, 0);
+    const rec    = await this.findById(id);
+    const hoyISO = fechaHoyRD();
+    const hoy    = new Date(`${hoyISO}T00:00:00`);
 
     const { factura, folio } = await this.generarDesdeTemplate(rec, hoy);
 
-    const proxima = this.calcularProxima(rec.frecuencia, rec.diaEjecucion, hoy);
+    const proxima = siguienteGeneracion(this.regla(rec), hoyISO);
     await this.recurrenteRepository.update(id, {
-      ultimaEjecucion:  hoy,
-      proximaEjecucion: proxima,
+      ultimaEjecucion:  hoyISO as unknown as Date,
+      proximaEjecucion: proxima as unknown as Date,
       totalGeneradas:   rec.totalGeneradas + 1,
     });
 
     this.logger.log(
-      `✅ Ejecución manual "${rec.nombre}" → ${folio} (próxima: ${proxima.toDateString()})`,
+      `✅ Ejecución manual "${rec.nombre}" → ${folio} (próxima: ${proxima})`,
     );
 
     // Enviar email al cliente (non-blocking, no falla la generación)

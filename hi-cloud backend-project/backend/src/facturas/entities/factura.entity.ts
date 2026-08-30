@@ -86,6 +86,30 @@ export class Factura extends TenantBaseEntity {
   @Column({ nullable: true })
   facturaRecurrenteId?: number;
 
+  // ── Envío por correo al cliente ───────────────────────────────────────────
+  //
+  // El envío de las recurrentes existía desde el principio, pero era un
+  // fire-and-forget con un logger.warn en el catch: si el correo del cliente
+  // rebotaba o el SMTP estaba caído, no quedaba rastro en ninguna parte y no
+  // había forma de reintentarlo. La factura no se deshace por un correo — pero
+  // el fallo tiene que verse y poder reenviarse a mano.
+
+  /** 'enviado' | 'fallido' — null si nunca se intentó. */
+  @Column({ type: 'varchar', length: 12, nullable: true })
+  emailEstado?: string;
+
+  @Column({ type: 'timestamp', nullable: true })
+  emailEnviadoAt?: Date;
+
+  @Column({ type: 'varchar', length: 320, nullable: true })
+  emailDestino?: string;
+
+  @Column({ type: 'text', nullable: true })
+  emailError?: string;
+
+  @Column({ type: 'int', default: 0 })
+  emailIntentos!: number;
+
   // ── Crédito ───────────────────────────────────────────────────────────────
   @Column({ length: 10, default: 'CONTADO' })
   tipoPago!: string;             // 'CONTADO' | 'CREDITO'
