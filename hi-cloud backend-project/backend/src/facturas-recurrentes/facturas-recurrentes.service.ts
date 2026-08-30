@@ -15,10 +15,10 @@ import { FacturaEmailService } from '../facturas/services/factura-email.service'
 import { fechaHoyRD } from '../common/utils/fecha-local.util';
 import { CreateRecurrenteDto, UpdateRecurrenteDto } from './dto/factura-recurrente.dto';
 import {
-  ReglaCalendario, primeraGeneracion, aFechaISO, explicarDiaMes,
+  ReglaCalendario, primeraGeneracion, aFechaISO, explicarDiaMes, sumarDias,
 } from './calendario-recurrente';
 import {
-  GeneracionRecurrenteService, ResultadoCiclo,
+  GeneracionRecurrenteService, ResultadoCiclo, LineaCalculada,
 } from './services/generacion-recurrente.service';
 import { EmisionRecurrenteService } from './services/emision-recurrente.service';
 
@@ -308,6 +308,110 @@ export class FacturasRecurrentesService {
     return actualizada;
   }
 
+  /** Tipos de e-CF que la empresa puede emitir hoy, para el selector. */
+  tiposEcfDisponibles() {
+    return this.emision.tiposDisponibles(this.tenantService.getEmpresaId());
+  }
+
+  /**
+   * Cómo quedará la factura, sin guardar nada.
+   *
+   * Resuelve los mismos precios que resolvería el cron (incluida la caída al
+   * precio actual del producto), calcula los totales, dice qué día saldrá la
+   * primera y avisa de lo que impediría emitirla — antes de guardar, no el día
+   * 1 a la una de la mañana.
+   */
+  async previsualizar(dto: CreateRecurrenteDto, usuario: User) {
+    const { diaMes, diaSemana } = this.validarRegla(
+      dto.frecuencia, dto.diaMes, dto.diaSemana,
+    );
+    this.validarEmisionYPago(dto);
+
+    const empresaId   = this.tenantService.getEmpresaId();
+    const fechaInicio = dto.fechaInicio.substring(0, 10);
+    const proxima     = primeraGeneracion({
+      frecuencia: dto.frecuencia, diaMes, diaSemana, fechaInicio,
+    });
+
+    const lineas   = await this.generacion.calcularLineas(
+      this.normalizarDetalles(dto.detalles), empresaId, dto.nombre,
+    );
+    const subtotal = +lineas.reduce((s, l) => s + l.subtotal, 0).toFixed(2);
+    const iva      = +lineas.reduce((s, l) => s + l.importeIva, 0).toFixed(2);
+    const total    = +(subtotal + iva).toFixed(2);
+
+    const [cliente] = await this.ds.query<{
+      nombre: string; email: string | null; rncReceptor: string | null; rfc: string | null;
+    }[]>(
+      `SELECT nombre, email, "rncReceptor", rfc FROM clientes
+        WHERE id = $1 AND "empresaId" = $2 AND "isActive" = true`,
+      [dto.clienteId, empresaId],
+    );
+
+    const formaPago   = dto.formaPago ?? FormaPago.EFECTIVO;
+    const esCredito   = formaPago === FormaPago.CREDITO;
+    const diasCredito = esCredito ? Number(dto.diasCredito ?? 0) : 0;
+
+    // Las comprobaciones de emisión se corren contra una factura simulada: los
+    // mismos datos que tendrá la real, sin escribir nada.
+    let avisoEmision: string | null = null;
+    if ((dto.modoEmision ?? ModoEmision.BORRADOR) === ModoEmision.ECF) {
+      const plantillaSimulada = {
+        ...dto, empresaId, tipoEcf: dto.tipoEcf,
+        detalles: this.normalizarDetalles(dto.detalles),
+      } as unknown as FacturaRecurrente;
+      const facturaSimulada = {
+        clienteId: dto.clienteId, total, subtotal, iva,
+        cliente: cliente ?? {},
+      } as unknown as Factura;
+      avisoEmision = await this.emision.avisosDe(plantillaSimulada, facturaSimulada);
+    }
+
+    return {
+      proximaGeneracion: proxima,
+      explicacionDia: dto.frecuencia === Frecuencia.MENSUAL && diaMes
+        ? explicarDiaMes(diaMes)
+        : null,
+      cliente: cliente
+        ? { nombre: cliente.nombre, email: cliente.email, rnc: cliente.rncReceptor ?? cliente.rfc }
+        : null,
+      lineas,
+      subtotal,
+      iva,
+      total,
+      pago: {
+        formaPago,
+        tipoPago:    esCredito ? 'CREDITO' : 'CONTADO',
+        diasCredito,
+        fechaVencimiento: esCredito ? sumarDias(proxima, diasCredito) : null,
+      },
+      emision: {
+        modo:    dto.modoEmision ?? ModoEmision.BORRADOR,
+        tipoEcf: dto.tipoEcf ?? null,
+        aviso:   avisoEmision,
+      },
+      correo: {
+        activo:  dto.emailCliente ?? true,
+        destino: cliente?.email ?? null,
+        aviso:   (dto.emailCliente ?? true) && !cliente?.email
+          ? 'El cliente no tiene correo en su ficha: la factura se generará igual, pero no se le enviará.'
+          : null,
+      },
+      vendedor: await this.vendedorPrevisto(usuario.id, empresaId),
+    };
+  }
+
+  /** A quién se le va a imputar la venta, para enseñarlo en la vista previa. */
+  private async vendedorPrevisto(userId: number, empresaId: number) {
+    const [v] = await this.ds.query<{ id: number; nombre: string }[]>(
+      `SELECT id, nombre FROM vendedores
+        WHERE "usuarioId" = $1 AND "empresaId" = $2 AND "isActive" = true
+        ORDER BY activo DESC, id ASC LIMIT 1`,
+      [userId, empresaId],
+    );
+    return v ?? null;
+  }
+
   async listar(pagination: PaginationDto & { activa?: string; modoEmision?: string }) {
     const { limit = 10, page = 1, search } = pagination;
     const empresaId = this.tenantService.getEmpresaId();
@@ -505,6 +609,153 @@ export class FacturasRecurrentesService {
 
     await this.notificarResumen(resumenPorEmpresa).catch(e =>
       this.logger.warn(`[Recurrentes] Email resumen falló: ${e?.message}`),
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Aviso previo: qué va a salir dentro de unos días
+  // ──────────────────────────────────────────────────────────────────
+  //
+  // 12:00 UTC = 08:00 en República Dominicana, a hora de oficina.
+  //
+  // Con e-CF automático, saber qué se va a emitir ANTES de que pase vale
+  // bastante: da margen para pausar una plantilla, corregir un precio o añadir
+  // el RNC que falta, en vez de enterarse cuando el comprobante ya está
+  // declarado a la DGII.
+
+  @Cron('0 12 * * *')
+  async avisarProximasGeneraciones() {
+    const hoy = fechaHoyRD();
+
+    const proximas = await this.recurrenteRepository.find({
+      where: { activa: true, isActive: true },
+      relations: ['cliente'],
+    });
+
+    const porEmpresa = new Map<number, Array<{
+      rec: FacturaRecurrente; fecha: string; total: number;
+    }>>();
+
+    for (const rec of proximas) {
+      if (!rec.empresaId || !rec.avisoPrevioDias) continue;
+
+      const fecha = aFechaISO(rec.proximaEjecucion);
+      if (!fecha) continue;
+
+      // El aviso sale exactamente cuando faltan los días configurados.
+      if (sumarDias(hoy, rec.avisoPrevioDias) !== fecha) continue;
+
+      // Y una sola vez por generación: si el cron corre dos veces, la segunda
+      // ve la fecha ya marcada y no repite el correo.
+      if (aFechaISO(rec.avisoPrevioEnviadoPara) === fecha) continue;
+
+      const fin = aFechaISO(rec.fechaFin);
+      if (fin && fecha > fin) continue;
+
+      const lineas = await this.generacion
+        .calcularLineas(rec.detalles, rec.empresaId, rec.nombre)
+        .catch((): LineaCalculada[] => []);
+      const total = +lineas.reduce((s, l) => s + l.total, 0).toFixed(2);
+
+      const lista = porEmpresa.get(rec.empresaId) ?? [];
+      lista.push({ rec, fecha, total });
+      porEmpresa.set(rec.empresaId, lista);
+    }
+
+    for (const [empresaId, items] of porEmpresa.entries()) {
+      try {
+        await this.enviarAvisoPrevio(empresaId, items);
+        await this.recurrenteRepository.update(
+          items.map(i => i.rec.id),
+          { avisoPrevioEnviadoPara: items[0].fecha as unknown as Date },
+        );
+      } catch (err) {
+        this.logger.warn(
+          `[Recurrentes] Aviso previo de la empresa #${empresaId} falló: ${(err as Error).message}`,
+        );
+      }
+    }
+  }
+
+  private async enviarAvisoPrevio(
+    empresaId: number,
+    items: Array<{ rec: FacturaRecurrente; fecha: string; total: number }>,
+  ): Promise<void> {
+    const [emp] = await this.ds.query<{ nombre: string }[]>(
+      `SELECT nombre FROM empresa WHERE id = $1 AND "isActive" = true`,
+      [empresaId],
+    );
+    if (!emp) return;
+
+    const admins = await this.ds.query<{ email: string }[]>(
+      `SELECT u.email FROM users u
+       JOIN usuario_empresa ue ON ue."userId" = u.id
+       WHERE ue."empresaId" = $1 AND ue."isActive" = true
+         AND u."isActive" = true AND u.role IN ('admin','contador')
+       LIMIT 5`,
+      [empresaId],
+    );
+
+    const destinatarios = admins.map(a => a.email);
+    const adminGlobal = this.config.get<string>('NOTIF_ADMIN_EMAIL', '').trim();
+    if (adminGlobal && !destinatarios.includes(adminGlobal)) destinatarios.push(adminGlobal);
+    if (!destinatarios.length) return;
+
+    const conEcf = items.filter(i => i.rec.modoEmision === ModoEmision.ECF);
+    const dinero = (n: number) =>
+      n.toLocaleString('es-DO', { style: 'currency', currency: 'DOP' });
+
+    const html = `
+      <div style="font-family:sans-serif;max-width:560px;margin:0 auto">
+        <div style="background:#0F172A;padding:20px 24px;border-radius:10px 10px 0 0">
+          <div style="color:#F59E0B;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em">
+            🔔 Se van a generar — ${emp.nombre}
+          </div>
+        </div>
+        <div style="background:#fff;padding:20px 24px;border:1px solid #E2E8F0;border-top:none;border-radius:0 0 10px 10px">
+          <p style="margin:0 0 4px;color:#0F172A;font-size:14px">
+            El <strong>${items[0].fecha}</strong> se generarán
+            <strong>${items.length} factura(s)</strong> recurrente(s)${
+              conEcf.length ? `, de las cuales <strong>${conEcf.length}</strong> se emitirán con comprobante fiscal` : ''
+            }.
+          </p>
+          <p style="margin:0 0 14px;color:#64748B;font-size:12px">
+            Si algo no debe salir, hay tiempo de pausarlo o corregirlo.
+          </p>
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <tr style="color:#64748B;text-align:left">
+              <th style="padding:4px 0;border-bottom:1px solid #E2E8F0">Plantilla</th>
+              <th style="padding:4px 0;border-bottom:1px solid #E2E8F0">Cliente</th>
+              <th style="padding:4px 0;border-bottom:1px solid #E2E8F0">Emite</th>
+              <th style="padding:4px 0;border-bottom:1px solid #E2E8F0;text-align:right">Total</th>
+            </tr>
+            ${items.map(i => `
+              <tr style="color:#0F172A">
+                <td style="padding:6px 0;border-bottom:1px solid #F1F5F9">${i.rec.nombre}</td>
+                <td style="padding:6px 0;border-bottom:1px solid #F1F5F9">${i.rec.cliente?.nombre ?? '—'}</td>
+                <td style="padding:6px 0;border-bottom:1px solid #F1F5F9">${
+                  i.rec.modoEmision === ModoEmision.ECF
+                    ? `<strong style="color:#B45309">${i.rec.tipoEcf}</strong>`
+                    : '<span style="color:#94A3B8">borrador</span>'
+                }</td>
+                <td style="padding:6px 0;border-bottom:1px solid #F1F5F9;text-align:right">${dinero(i.total)}</td>
+              </tr>`).join('')}
+          </table>
+          <p style="color:#94A3B8;font-size:11px;margin:14px 0 0">
+            Los totales son estimados con los precios de hoy.
+          </p>
+        </div>
+      </div>`;
+
+    await this.emailService.enviar({
+      to: destinatarios,
+      subject: `🔔 ${items.length} recurrente(s) se generan el ${items[0].fecha} — ${emp.nombre}`,
+      html,
+    });
+
+    this.logger.log(
+      `[Recurrentes] Aviso previo enviado a la empresa #${empresaId}: ` +
+      `${items.length} plantillas para el ${items[0].fecha}`,
     );
   }
 

@@ -10,6 +10,7 @@ import {
   esCreditoFiscal, evaluarCompradorFiscal,
 } from '../../ecf/rules/comprador-vigente.rule';
 import { fechaHoyRD } from '../../common/utils/fecha-local.util';
+import { TIPOS_ECF_VENTA } from '../dto/factura-recurrente.dto';
 
 /** Tipos que exigen SIEMPRE el RNC del comprador (ver los builders e31/e41/e44/e45/e46). */
 const TIPOS_RNC_OBLIGATORIO = [31, 41, 44, 45, 46];
@@ -64,6 +65,45 @@ export class EmisionRecurrenteService {
     private readonly tenantService:   TenantService,
     private readonly rncService:      RncService,
   ) {}
+
+  /**
+   * Tipos de e-CF que esta empresa puede emitir HOY: los que tienen secuencia
+   * activa, con números y sin vencer.
+   *
+   * El selector de la plantilla se llena con esto en vez de con la lista fija
+   * de tipos: ofrecer un E44 a una empresa que no tiene secuencia de E44 es
+   * ofrecer una plantilla que va a fallar el primer día que corra.
+   */
+  async tiposDisponibles(empresaId: number): Promise<Array<{
+    codigo: string; nombre: string; disponibles: number; vence: string;
+  }>> {
+    return this.ds.query(
+      `SELECT t.codigo,
+              t.descripcion                               AS nombre,
+              (s."secuenciaFinal" - s."secuenciaActual" + 1) AS disponibles,
+              to_char(s."fechaVencimiento", 'YYYY-MM-DD')  AS vence
+         FROM secuencias_ecf s
+         JOIN tipos_ecf t ON t.id = s."tipoECFId"
+        WHERE s."empresaId" = $1
+          AND s."isActive" = true AND s."isActiva" = true AND s."isAgotada" = false
+          AND s."secuenciaActual" <= s."secuenciaFinal"
+          AND s."fechaVencimiento" >= $3::date
+          AND t.codigo = ANY($2::text[])
+        ORDER BY t.codigo`,
+      [empresaId, TIPOS_ECF_VENTA, fechaHoyRD()],
+    );
+  }
+
+  /**
+   * Las mismas comprobaciones previas, pero sin emitir nada: lo que la vista
+   * previa enseña antes de guardar la plantilla.
+   */
+  async avisosDe(
+    rec: FacturaRecurrente, facturaSimulada: Factura,
+  ): Promise<string | null> {
+    const tipoEcfNum = parseInt(String(rec.tipoEcf ?? 'E32').replace('E', ''), 10);
+    return this.comprobacionesPrevias(rec, facturaSimulada, tipoEcfNum, rec.empresaId!);
+  }
 
   async emitir(rec: FacturaRecurrente, factura: Factura): Promise<ResultadoEmision> {
     const empresaId  = rec.empresaId!;

@@ -34,6 +34,25 @@ export class FacturasRecurrentesController {
     return this.svc.listar(pagination);
   }
 
+  /**
+   * Tipos de e-CF que esta empresa puede emitir hoy.
+   *
+   * Va ANTES de @Get(':id') a propósito: si no, 'tipos-ecf' entraría por el
+   * parámetro y ParseIntPipe devolvería un 400.
+   */
+  @Get('tipos-ecf')
+  @ApiOperation({ summary: 'Tipos de e-CF con secuencia disponible en la empresa' })
+  tiposEcf() {
+    return this.svc.tiposEcfDisponibles();
+  }
+
+  @Post('vista-previa')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Cómo quedará la factura, sin guardar la plantilla' })
+  vistaPrevia(@Body() dto: CreateRecurrenteDto, @GetUser() usuario: User) {
+    return this.svc.previsualizar(dto, usuario);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Detalle de una factura recurrente' })
   findById(@Param('id', ParseIntPipe) id: number) {

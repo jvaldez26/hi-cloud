@@ -9,6 +9,18 @@ import {
   ReglaCalendario, siguienteGeneracion, ciclosSaltados, sumarDias, aFechaISO,
 } from '../calendario-recurrente';
 
+/** Una línea de la plantilla ya resuelta a importes. */
+export interface LineaCalculada {
+  descripcion:    string;
+  productoId?:    number;
+  precioUnitario: number;
+  cantidad:       number;
+  porcentajeIva:  number;
+  subtotal:       number;
+  importeIva:     number;
+  total:          number;
+}
+
 export type ResultadoCiclo =
   | {
       estado:    'generada';
@@ -19,17 +31,6 @@ export type ResultadoCiclo =
     }
   | { estado: 'omitida'; motivo: string }
   | { estado: 'finalizada' };
-
-interface LineaCalculada {
-  descripcion:    string;
-  productoId?:    number;
-  precioUnitario: number;
-  cantidad:       number;
-  porcentajeIva:  number;
-  subtotal:       number;
-  importeIva:     number;
-  total:          number;
-}
 
 /**
  * Genera la factura de un ciclo de una plantilla recurrente.
@@ -112,7 +113,7 @@ export class GeneracionRecurrenteService {
     // se avisa. Nunca en silencio.
     const saltados = manual ? 0 : ciclosSaltados(this.regla(rec), prevista, hoyISO);
 
-    const lineas = await this.calcularLineas(rec);
+    const lineas = await this.calcularLineas(rec.detalles, rec.empresaId!, rec.nombre);
     if (lineas.length === 0) {
       return {
         estado: 'omitida',
@@ -188,8 +189,10 @@ export class GeneracionRecurrenteService {
    *
    * El JSON puede devolver los números como cadenas, de ahí el parseFloat(String()).
    */
-  private async calcularLineas(rec: FacturaRecurrente): Promise<LineaCalculada[]> {
-    const raw = Array.isArray(rec.detalles) ? rec.detalles : [];
+  async calcularLineas(
+    detalles: FacturaRecurrente['detalles'], empresaId: number, nombre = 'plantilla',
+  ): Promise<LineaCalculada[]> {
+    const raw = Array.isArray(detalles) ? detalles : [];
     const lineas: LineaCalculada[] = [];
 
     for (let idx = 0; idx < raw.length; idx++) {
@@ -200,12 +203,12 @@ export class GeneracionRecurrenteService {
         const [prod] = await this.ds.query<{ precio: string }[]>(
           `SELECT precio FROM productos
             WHERE id = $1 AND "isActive" = true AND "empresaId" = $2 LIMIT 1`,
-          [d.productoId, rec.empresaId],
+          [d.productoId, empresaId],
         );
         if (prod?.precio) {
           precio = parseFloat(String(prod.precio)) || 0;
           this.logger.log(
-            `[Recurrentes] "${rec.nombre}" ítem ${idx + 1}: precio 0 en la plantilla → ` +
+            `[Recurrentes] "${nombre}" ítem ${idx + 1}: precio 0 en la plantilla → ` +
             `precio actual del producto #${d.productoId}: ${precio}`,
           );
         }
