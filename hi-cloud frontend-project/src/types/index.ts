@@ -122,6 +122,9 @@ export interface Factura {
   isActive:            boolean;
   createdAt:           string;
   anulacionPendiente?: boolean;
+  /** Por qué esta factura quedó emitida sin comprobante fiscal. */
+  ecfError?:           string | null;
+  ecfErrorAt?:         string | null;
 }
 
 // ── Compras ───────────────────────────────────────────────────────────────────

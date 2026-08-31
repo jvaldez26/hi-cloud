@@ -147,16 +147,37 @@ export class RehacerFacturasRecurrentes1761500000000 implements MigrationInterfa
         ADD COLUMN IF NOT EXISTS "emailError"     TEXT         NULL,
         ADD COLUMN IF NOT EXISTS "emailIntentos"  INTEGER      NOT NULL DEFAULT 0
     `);
+
+    // ── Por qué esta factura se quedó sin comprobante ──────────────────────
+    //
+    // Una factura EMITIDA sin e-CF era indistinguible en el listado de una
+    // pendiente de emitir legítima: las dos enseñan el mismo botón "Emitir".
+    // Con emisión automática eso importa, porque no hay nadie mirando en el
+    // momento: una factura así, si nadie la ve, se queda así para siempre.
+    await qr.query(`
+      ALTER TABLE facturas
+        ADD COLUMN IF NOT EXISTS "ecfError"   TEXT      NULL,
+        ADD COLUMN IF NOT EXISTS "ecfErrorAt" TIMESTAMP NULL
+    `);
+
+    // Índice parcial: son pocas filas y se consultan por "las que fallaron".
+    await qr.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_facturas_ecf_error"
+        ON facturas ("empresaId") WHERE "ecfError" IS NOT NULL
+    `);
   }
 
   public async down(qr: QueryRunner): Promise<void> {
+    await qr.query(`DROP INDEX IF EXISTS "IDX_facturas_ecf_error"`);
     await qr.query(`
       ALTER TABLE facturas
         DROP COLUMN IF EXISTS "emailEstado",
         DROP COLUMN IF EXISTS "emailEnviadoAt",
         DROP COLUMN IF EXISTS "emailDestino",
         DROP COLUMN IF EXISTS "emailError",
-        DROP COLUMN IF EXISTS "emailIntentos"
+        DROP COLUMN IF EXISTS "emailIntentos",
+        DROP COLUMN IF EXISTS "ecfError",
+        DROP COLUMN IF EXISTS "ecfErrorAt"
     `);
 
     await qr.query(`DROP TABLE IF EXISTS facturas_recurrentes`);

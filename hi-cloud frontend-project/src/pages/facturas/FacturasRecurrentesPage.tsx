@@ -517,8 +517,19 @@ export default function FacturasRecurrentesPage() {
             )},
           { title: 'Fecha', dataIndex: 'fecha', width: 100,
             render: (v: string) => fmt.date(v) },
-          { title: 'Estado', dataIndex: 'estado', width: 90,
-            render: (v: string) => <Tag color={facturaEstadoColor[v] ?? 'default'}>{v}</Tag> },
+          { title: 'Estado', dataIndex: 'estado', width: 110,
+            render: (v: string, r: any) => (
+              <span>
+                <Tag color={facturaEstadoColor[v] ?? 'default'} style={{ marginInlineEnd: 0 }}>{v}</Tag>
+                {r.ecfError && (
+                  <Tooltip title={r.ecfError}>
+                    <Tag color="error" style={{ marginInlineEnd: 0, marginTop: 2, fontSize: 10, lineHeight: '16px' }}>
+                      <WarningOutlined /> Sin e-CF
+                    </Tag>
+                  </Tooltip>
+                )}
+              </span>
+            )},
           { title: 'Correo', key: 'correo', width: 90,
             render: (_: any, r: any) => {
               if (r.emailEstado === 'enviado') {

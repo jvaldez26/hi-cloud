@@ -1384,7 +1384,14 @@ export class FacturasService {
       });
 
       if (result?.ecf?.id) {
-        await this.facturaRepository.update(id, { ecfId: result.ecf.id });
+        // Se limpia la marca de "emitida sin comprobante": si alguien entró por
+        // este botón, era justo para resolverla. Dejarla encendida sobre algo ya
+        // resuelto convierte el aviso en ruido, y el ruido se deja de mirar.
+        await this.facturaRepository.update(id, {
+          ecfId:      result.ecf.id,
+          ecfError:   null as any,
+          ecfErrorAt: null as any,
+        });
       }
       return result;
     } catch (err: any) {

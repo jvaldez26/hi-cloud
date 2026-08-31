@@ -20,7 +20,24 @@ import {
 import {
   GeneracionRecurrenteService, ResultadoCiclo, LineaCalculada,
 } from './services/generacion-recurrente.service';
-import { EmisionRecurrenteService } from './services/emision-recurrente.service';
+import { EmisionRecurrenteService, FaseFallo } from './services/emision-recurrente.service';
+
+/**
+ * Qué le pasó exactamente a la factura, en los términos que le importan a quien
+ * lee el aviso: si se quemó un número y si hay algo que arreglar hoy.
+ */
+const EXPLICACION_FASE: Record<FaseFallo, string> = {
+  previa:
+    'La factura quedó en BORRADOR y NO se consumió número de secuencia. ' +
+    'Corrige lo de arriba y emítela a mano.',
+  construccion:
+    'NO se consumió número de secuencia, pero la factura quedó EMITIDA sin ' +
+    'comprobante. Aparece marcada en el listado de Facturas: corrige el dato y ' +
+    'emítela desde ahí.',
+  envio:
+    'El número YA está emitido y tiene su fila; lo que falló fue el envío. ' +
+    'Reinténtalo desde la factura.',
+};
 
 /** Lo que se le cuenta a los administradores de una empresa tras el barrido. */
 interface ResumenEmpresa {
@@ -37,7 +54,7 @@ interface ResumenEmpresa {
    * `fase: 'envio'`  = el número existe con su fila; falló el envío a MSeller.
    */
   emisionesFallidas: Array<{
-    nombre: string; folio: string; motivo: string; fase: 'previa' | 'envio';
+    nombre: string; folio: string; motivo: string; fase: FaseFallo;
   }>;
   /** Facturas generadas cuyo correo al cliente no salio. No deshacen nada. */
   correosFallidos: Array<{ folio: string; destino: string | null; motivo: string }>;
@@ -501,6 +518,8 @@ export class FacturasRecurrentesService {
         'id', 'folio', 'fecha', 'estado', 'total', 'subtotal', 'iva',
         'createdAt', 'clienteId', 'tipoNcf', 'ecfId', 'notas',
         'emailEstado', 'emailEnviadoAt', 'emailDestino', 'emailError',
+        // Para que el historial marque las que quedaron emitidas sin e-CF.
+        'ecfError', 'ecfErrorAt',
       ],
     });
     return { data, meta: { total, page, pageSize: limit } };
@@ -843,11 +862,15 @@ export class FacturasRecurrentesService {
                   ${r.emisionesFallidas.map(f => `
                     <li>
                       <strong>${f.folio}</strong> (${f.nombre}): ${f.motivo}
-                      <br><span style="color:#94A3B8">${f.fase === 'previa'
-                        ? 'La factura quedó en BORRADOR y NO se consumió número de secuencia.'
-                        : 'El número está emitido y tiene su fila; falló el envío. Reintenta desde la factura.'}</span>
+                      <br><span style="color:#94A3B8">${EXPLICACION_FASE[f.fase]}</span>
                     </li>`).join('')}
-                </ul>` : ''}
+                </ul>
+                ${r.emisionesFallidas.some(f => f.fase !== 'previa') ? `
+                  <p style="background:#FEF2F2;border-left:3px solid #DC2626;padding:8px 10px;margin:0 0 12px;color:#7F1D1D;font-size:12px">
+                    Las marcadas como EMITIDA están en el listado de Facturas con la
+                    señal de <strong>“Sin e-CF”</strong> y el motivo. Mientras no se
+                    emitan, son ventas declaradas en tus libros que la DGII no tiene.
+                  </p>` : ''}` : ''}
               ${r.correosFallidos.length ? `
                 <p style="margin:12px 0 4px;color:#B45309;font-size:13px;font-weight:600">
                   ✉ ${r.correosFallidos.length} correo(s) no llegaron al cliente:

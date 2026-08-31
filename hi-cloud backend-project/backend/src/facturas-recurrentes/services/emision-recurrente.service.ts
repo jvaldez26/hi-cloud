@@ -21,9 +21,26 @@ const E32_MONTO_RNC_OBLIGATORIO = 250_000;
 /** ITBIS que admite una E32. */
 const E32_PORCENTAJES_VALIDOS = [0, 16, 18];
 
+/**
+ * Dónde se quedó una emisión que no salió. Las tres dejan la factura en un
+ * estado distinto, así que el aviso tiene que decir cuál fue:
+ *
+ *  · `previa`       — no pasó las comprobaciones. La factura sigue en BORRADOR
+ *                     y no se pidió número.
+ *  · `construccion` — pasó las comprobaciones pero el payload no se pudo armar.
+ *                     TAMPOCO se consumió secuencia (el caso de uso construye en
+ *                     seco antes de pedir el número), pero la factura ya pasó a
+ *                     EMITIDA, porque cambiarEstado() mueve el estado —y con él
+ *                     inventario, CxC y asiento— antes de emitir. Queda una
+ *                     factura emitida SIN comprobante: hay que verla.
+ *  · `envio`        — el número se emitió y tiene su fila; falló el envío a
+ *                     MSeller. Se reintenta desde la factura.
+ */
+export type FaseFallo = 'previa' | 'construccion' | 'envio';
+
 export type ResultadoEmision =
   | { ok: true;  encf: string | null; estado: string }
-  | { ok: false; motivo: string; fase: 'previa' | 'envio' };
+  | { ok: false; motivo: string; fase: FaseFallo };
 
 /**
  * Emite el comprobante fiscal de una factura recurrente.
@@ -135,24 +152,86 @@ export class EmisionRecurrenteService {
 
       if (resultado?.ecfEmitido === false) {
         const motivo = String(resultado.ecfError ?? 'Error desconocido al emitir el e-CF');
-        this.logger.error(
-          `[Recurrentes] "${rec.nombre}" → ${factura.folio}: el envío del e-CF falló — ${motivo}`,
-        );
-        return { ok: false, motivo, fase: 'envio' };
+        return this.fallo(rec, factura, motivo);
       }
 
       const encf = resultado?.encf ?? resultado?.ecf?.numero ?? null;
       this.logger.log(
         `[Recurrentes] "${rec.nombre}" → ${factura.folio} emitida con ${encf ?? rec.tipoEcf}`,
       );
+      // Un intento anterior pudo dejar la factura marcada; si esta vez salió, se
+      // limpia para que no quede un aviso rojo permanente sobre algo resuelto.
+      await this.limpiarMarca(factura.id);
       return { ok: true, encf, estado: resultado?.estado ?? 'enviado' };
     } catch (err) {
-      const motivo = (err as Error).message;
-      this.logger.error(
-        `[Recurrentes] "${rec.nombre}" → ${factura.folio}: emisión abortada — ${motivo}`,
-      );
-      return { ok: false, motivo, fase: 'envio' };
+      return this.fallo(rec, factura, (err as Error).message);
     }
+  }
+
+  /**
+   * Clasifica el fallo posterior a las comprobaciones y MARCA la factura.
+   *
+   * La diferencia entre "se quemó un número" y "no se quemó" no se adivina: se
+   * mira si existe fila de e-CF para esta factura. El caso de uso crea la fila
+   * y consume la secuencia en la misma transacción, así que la fila es la
+   * prueba de que el número salió.
+   *
+   * En los dos casos la factura queda EMITIDA sin comprobante y hay que poder
+   * verlo desde el listado de facturas — no sólo desde el módulo de recurrentes.
+   */
+  private async fallo(
+    rec: FacturaRecurrente, factura: Factura, motivo: string,
+  ): Promise<ResultadoEmision> {
+    const [fila] = await this.ds.query<{ numero: string }[]>(
+      `SELECT numero FROM ecf
+        WHERE "documentoOrigenTipo" = 'FACTURA' AND "documentoOrigenId" = $1
+          AND "empresaId" = $2
+        ORDER BY "createdAt" DESC LIMIT 1`,
+      [factura.id, rec.empresaId],
+    ).catch(() => [] as { numero: string }[]);
+
+    const fase: FaseFallo = fila ? 'envio' : 'construccion';
+
+    this.logger.error(
+      `[Recurrentes] "${rec.nombre}" → ${factura.folio}: ${
+        fase === 'envio'
+          ? `el envío del e-CF ${fila.numero} falló`
+          : 'no se pudo construir el comprobante (secuencia intacta), la factura queda EMITIDA sin e-CF'
+      } — ${motivo}`,
+    );
+
+    await this.marcarFactura(factura.id, motivo);
+    return { ok: false, motivo, fase };
+  }
+
+  /**
+   * Deja el motivo en la propia factura.
+   *
+   * Sin esto, una factura emitida sin comprobante era indistinguible en el
+   * listado de una pendiente de emitir legítima: las dos enseñaban el mismo
+   * botón "Emitir" punteado. Una factura así, si nadie la ve, se queda así para
+   * siempre.
+   */
+  private async marcarFactura(facturaId: number, motivo: string): Promise<void> {
+    await this.ds.query(
+      `UPDATE facturas
+          SET "ecfError" = $2, "ecfErrorAt" = now(), "updatedAt" = now()
+        WHERE id = $1`,
+      [facturaId, motivo.substring(0, 2000)],
+    ).catch(err =>
+      this.logger.warn(
+        `[Recurrentes] No se pudo marcar la factura #${facturaId}: ${err?.message}`,
+      ),
+    );
+  }
+
+  private async limpiarMarca(facturaId: number): Promise<void> {
+    await this.ds.query(
+      `UPDATE facturas
+          SET "ecfError" = NULL, "ecfErrorAt" = NULL, "updatedAt" = now()
+        WHERE id = $1 AND "ecfError" IS NOT NULL`,
+      [facturaId],
+    ).catch(() => null);
   }
 
   // ──────────────────────────────────────────────────────────────────────────

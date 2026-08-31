@@ -17,6 +17,7 @@ import {
   FilePdfOutlined, LoadingOutlined, ReloadOutlined, SearchOutlined,
   FileExcelOutlined, FilterOutlined, CopyOutlined, ControlOutlined,
   EditOutlined, MailOutlined, FileTextOutlined, RightOutlined,
+  WarningOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -348,17 +349,33 @@ export default function FacturasPage() {
         if (r.estado === 'borrador') return null;
 
         if (!ecf) {
+          // Una factura que se quedó sin comprobante por un fallo NO puede
+          // verse igual que una pendiente de emitir legítima: las dos enseñaban
+          // el mismo botón punteado, y con emisión automática de recurrentes no
+          // hay nadie mirando en el momento. La que falló se marca en rojo y
+          // dice por qué. Ver factura.ecfError.
+          const fallo = (r as any).ecfError as string | undefined;
           return (
-            <Tooltip title="Emitir comprobante fiscal electrónico">
-              <Button
-                size="small" type="dashed" icon={<SendOutlined />}
-                loading={emitirEcfMut.isPending && emitirEcfMut.variables?.id === r.id}
-                onClick={e => { e.stopPropagation(); emitirEcfMut.mutate({ id: r.id }); }}
-                style={{ fontSize: 11 }}
-              >
-                Emitir
-              </Button>
-            </Tooltip>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {fallo && (
+                <Tooltip title={fallo}>
+                  <Tag color="error" style={{ marginInlineEnd: 0, fontSize: 10, lineHeight: '16px' }}>
+                    <WarningOutlined /> Sin e-CF
+                  </Tag>
+                </Tooltip>
+              )}
+              <Tooltip title={fallo ?? 'Emitir comprobante fiscal electrónico'}>
+                <Button
+                  size="small" type={fallo ? 'primary' : 'dashed'} danger={!!fallo}
+                  icon={<SendOutlined />}
+                  loading={emitirEcfMut.isPending && emitirEcfMut.variables?.id === r.id}
+                  onClick={e => { e.stopPropagation(); emitirEcfMut.mutate({ id: r.id }); }}
+                  style={{ fontSize: 11 }}
+                >
+                  {fallo ? 'Reintentar' : 'Emitir'}
+                </Button>
+              </Tooltip>
+            </div>
           );
         }
 

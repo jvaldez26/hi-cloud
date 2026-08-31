@@ -110,6 +110,20 @@ export class Factura extends TenantBaseEntity {
   @Column({ type: 'int', default: 0 })
   emailIntentos!: number;
 
+  // ── Por qué esta factura se quedó sin comprobante ─────────────────────────
+  //
+  // Se llena cuando la emisión falla DESPUÉS de que la factura pasó a EMITIDA.
+  // Sin esto, una factura emitida sin e-CF es indistinguible en el listado de
+  // una pendiente de emitir legítima: las dos enseñan el mismo botón "Emitir".
+  // Con emisión automática eso importa, porque no hay nadie mirando en el
+  // momento. Se limpia en cuanto la emisión sale bien.
+
+  @Column({ type: 'text', nullable: true })
+  ecfError?: string;
+
+  @Column({ type: 'timestamp', nullable: true })
+  ecfErrorAt?: Date;
+
   // ── Crédito ───────────────────────────────────────────────────────────────
   @Column({ length: 10, default: 'CONTADO' })
   tipoPago!: string;             // 'CONTADO' | 'CREDITO'
