@@ -604,9 +604,21 @@ export class FacturasRecurrentesService {
         // deja constancia en la factura (emailEstado/emailError) y se reenvía
         // a mano desde ella.
         if (rec.emailCliente && rec.empresaId) {
+          // enviar() ya registra y loguea cualquier fallo, incluidos los de las
+          // búsquedas previas, y sólo devuelve. Este catch es la última red por
+          // si el propio registro falla — y ahora deja rastro en vez de tragarse
+          // la causa, que fue justo lo que impidió diagnosticar la primera
+          // prueba real.
           const envio = await this.facturaEmail
             .enviar(ciclo.factura.id, rec.empresaId, { automatico: true })
-            .catch(e => ({ ok: false, destino: null, error: e?.message, copias: [] }));
+            .catch((e: unknown) => {
+              const error = e instanceof Error ? e.message : String(e);
+              this.logger.error(
+                `[Recurrentes] "${rec.nombre}" → ${ciclo.folio}: el correo ni siquiera ` +
+                `se pudo registrar — ${error}`,
+              );
+              return { ok: false, destino: null, error, copias: [] as string[] };
+            });
           if (!envio.ok && envio.error) {
             resumen?.correosFallidos.push({
               folio:   ciclo.folio,

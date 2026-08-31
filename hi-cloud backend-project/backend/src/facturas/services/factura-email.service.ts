@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { Factura } from '../entities/factura.entity';
 import { PDFService } from './pdf.service';
 import { EmailService } from '../../notificaciones/services/email.service';
+import { urlVerificacionDgii } from '../../common/ecf/url-verificacion-dgii';
 
 export interface ResultadoEnvio {
   ok:       boolean;
@@ -12,6 +13,12 @@ export interface ResultadoEnvio {
   error?:   string;
   /** Copias que fueron con el envío (administrativo). */
   copias:   string[];
+  /**
+   * No se envió porque la empresa tiene el envío automático apagado. No es un
+   * fallo ni un éxito: no se intentó. Se distingue para que la pantalla no
+   * anuncie un envío que no ocurrió.
+   */
+  omitido?: boolean;
 }
 
 /**
@@ -47,10 +54,47 @@ export class FacturaEmailService {
    *                    respeta el interruptor `autoEmailFacturaRecurrente` de la
    *                    empresa. Un reenvío a mano siempre manda.
    */
+  /**
+   * Envuelve TODO el envío, incluidas las búsquedas previas.
+   *
+   * Antes las dos búsquedas —factura y empresa— quedaban fuera del try, así
+   * que si cualquiera de ellas fallaba se lanzaba sin registrar nada: la
+   * factura se quedaba con emailIntentos = 0 y emailEstado NULL, exactamente
+   * igual que si nunca se hubiera intentado. Y quien llamaba desde el cron lo
+   * recogía con un `.catch` que devolvía el mensaje y no lo escribía en ningún
+   * sitio, así que la causa se perdía del todo.
+   *
+   * Pasó en la primera prueba real y no hubo forma de saber por qué. La regla
+   * que faltaba es la misma que ya aplicamos al e-CF: un intento que falla deja
+   * rastro, siempre, aunque falle antes de empezar.
+   */
   async enviar(
     facturaId: number,
     empresaId: number,
     opts: { automatico?: boolean; conCopiaAdmin?: boolean } = {},
+  ): Promise<ResultadoEnvio> {
+    // Lo que se sepa cuando algo falle, para que el registro no salga vacío.
+    const ctx: { destino: string | null; copias: string[] } = { destino: null, copias: [] };
+    try {
+      return await this.intentar(facturaId, empresaId, opts, ctx);
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `[FacturaEmail] factura #${facturaId} (empresa ${empresaId}): ${error}`,
+        err instanceof Error ? err.stack : undefined,
+      );
+      await this.registrar(facturaId, { ok: false, ...ctx, error });
+      // Un reenvío a mano sí devuelve el error a quien pulsó el botón.
+      if (!opts.automatico) throw new BadRequestException(`No se pudo enviar el correo: ${error}`);
+      return { ok: false, ...ctx, error };
+    }
+  }
+
+  private async intentar(
+    facturaId: number,
+    empresaId: number,
+    opts: { automatico?: boolean; conCopiaAdmin?: boolean },
+    ctx: { destino: string | null; copias: string[] },
   ): Promise<ResultadoEnvio> {
     const factura = await this.facturaRepo.findOne({
       where: { id: facturaId, empresaId, isActive: true },
@@ -73,17 +117,18 @@ export class FacturaEmailService {
       this.logger.debug(
         `[FacturaEmail] autoEmailFacturaRecurrente apagado en la empresa #${empresaId} — se omite`,
       );
-      return { ok: true, destino: null, copias: [] };
+      // `omitido`, no `ok`: no se envió nada. Devolverlo como éxito hacía que
+      // la pantalla dijera "enviada a null" cuando nadie había mandado nada.
+      return { ok: false, omitido: true, destino: null, copias: [] };
     }
 
     const destino = String(factura.cliente?.email ?? '').trim();
     if (!destino) {
-      const error = `El cliente "${factura.cliente?.nombre ?? factura.clienteId}" no tiene correo en su ficha.`;
-      await this.registrar(factura.id, { ok: false, destino: null, error, copias: [] });
-      if (!opts.automatico) throw new BadRequestException(error);
-      this.logger.debug(`[FacturaEmail] ${factura.folio}: ${error}`);
-      return { ok: false, destino: null, error, copias: [] };
+      throw new Error(
+        `El cliente "${factura.cliente?.nombre ?? factura.clienteId}" no tiene correo en su ficha.`,
+      );
     }
+    ctx.destino = destino;
 
     const copias: string[] = [];
     if (opts.conCopiaAdmin !== false) {
@@ -94,57 +139,61 @@ export class FacturaEmailService {
       const copia = adminEmpresa || adminGlobal;
       if (copia && copia.toLowerCase() !== destino.toLowerCase()) copias.push(copia);
     }
+    ctx.copias = copias;
 
-    try {
-      const { buffer, filename } = await this.pdfService.generarPDFDesdeEntidad(factura, empresaId);
-      const encf = await this.encfDe(factura);
+    // Sin try: lo que falle de aquí en adelante lo recoge enviar(), que ya sabe
+    // el destino y las copias por `ctx`. Un solo sitio que registra el fallo.
+    const { buffer, filename } = await this.pdfService.generarPDFDesdeEntidad(factura, empresaId);
+    const ecf = await this.ecfDe(factura);
 
-      const resultado = await this.emailService.enviar({
-        to:  destino,
-        // Oculta: el cliente no tiene por qué ver el correo interno de la empresa.
-        bcc: copias.length ? copias : undefined,
-        replyTo: emp.email ?? undefined,
-        subject: encf
-          ? `Factura ${factura.folio} (${encf}) — ${emp.nombreComercial || emp.nombre}`
-          : `Factura ${factura.folio} — ${emp.nombreComercial || emp.nombre}`,
-        html: this.cuerpo(factura, emp, encf),
-        attachments: [{ filename, content: buffer, contentType: 'application/pdf' }],
-      });
+    const resultado = await this.emailService.enviar({
+      to:  destino,
+      // Oculta: el cliente no tiene por qué ver el correo interno de la empresa.
+      bcc: copias.length ? copias : undefined,
+      replyTo: emp.email ?? undefined,
+      subject: ecf
+        ? `Factura ${factura.folio} (${ecf.numero}) — ${emp.nombreComercial || emp.nombre}`
+        : `Factura ${factura.folio} — ${emp.nombreComercial || emp.nombre}`,
+      html: this.cuerpo(factura, emp, ecf),
+      attachments: [{ filename, content: buffer, contentType: 'application/pdf' }],
+    });
 
-      if (!resultado.exitoso) throw new Error(resultado.error ?? 'El servidor de correo rechazó el envío');
-
-      await this.registrar(factura.id, { ok: true, destino, copias });
-      this.logger.log(
-        `[FacturaEmail] ${factura.folio} enviada a ${destino}` +
-        (copias.length ? ` (copia a ${copias.join(', ')})` : ''),
-      );
-      return { ok: true, destino, copias };
-    } catch (err) {
-      const error = (err as Error).message;
-      await this.registrar(factura.id, { ok: false, destino, error, copias });
-      this.logger.error(`[FacturaEmail] ${factura.folio} falló hacia ${destino}: ${error}`);
-      // Un reenvío a mano sí devuelve el error a quien pulsó el botón.
-      if (!opts.automatico) throw new BadRequestException(`No se pudo enviar el correo: ${error}`);
-      return { ok: false, destino, error, copias };
+    if (!resultado.exitoso) {
+      throw new Error(resultado.error ?? 'El servidor de correo rechazó el envío');
     }
+
+    await this.registrar(factura.id, { ok: true, destino, copias });
+    this.logger.log(
+      `[FacturaEmail] ${factura.folio} enviada a ${destino}` +
+      (copias.length ? ` (copia a ${copias.join(', ')})` : ''),
+    );
+    return { ok: true, destino, copias };
   }
 
   // ──────────────────────────────────────────────────────────────────────────
 
-  /** eNCF del comprobante fiscal de la factura, si lo lleva. */
-  private async encfDe(factura: Factura): Promise<string | null> {
+  /**
+   * El comprobante de la factura: su número y su URL de verificación.
+   *
+   * La URL sale de `ecf.qrUrl` —la que devolvió MSeller y la misma que va en el
+   * QR del ticket—, nunca se arma aquí. Ver urlVerificacionDgii().
+   */
+  private async ecfDe(
+    factura: Factura,
+  ): Promise<{ numero: string; verificacion: string | null } | null> {
     if (!factura.ecfId) return null;
-    const [ecf] = await this.ds.query<{ numero: string }[]>(
-      `SELECT numero FROM ecf WHERE id = $1 LIMIT 1`,
+    const [ecf] = await this.ds.query<{ numero: string; qrUrl: string | null }[]>(
+      `SELECT numero, "qrUrl" FROM ecf WHERE id = $1 LIMIT 1`,
       [factura.ecfId],
     );
-    return ecf?.numero ?? null;
+    if (!ecf?.numero) return null;
+    return { numero: ecf.numero, verificacion: urlVerificacionDgii(ecf) };
   }
 
   private cuerpo(
     factura: Factura,
     emp: { nombre: string; nombreComercial: string | null; rnc: string | null },
-    encf: string | null,
+    ecf: { numero: string; verificacion: string | null } | null,
   ): string {
     const empresaNombre = emp.nombreComercial || emp.nombre || 'HiCloud ERP';
     const clienteNombre = factura.cliente?.nombre || 'Cliente';
@@ -152,9 +201,6 @@ export class FacturaEmailService {
       style: 'currency', currency: factura.moneda || 'DOP',
     });
 
-    const consulta = encf && emp.rnc
-      ? `https://ecf.dgii.gov.do/ECF/ConsultaResultado?RNCEmisor=${emp.rnc}&eNCF=${encf}`
-      : null;
 
     const vence = factura.fechaVencimiento
       ? new Date(factura.fechaVencimiento).toLocaleDateString('es-DO', {
@@ -177,14 +223,14 @@ export class FacturaEmailService {
             Adjunto encontrará la factura <strong>${factura.folio}</strong> por un total de
             <strong>${total}</strong>.
           </p>
-          ${encf ? `
+          ${ecf ? `
             <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:12px 14px;margin:0 0 16px">
               <div style="color:#64748B;font-size:11px;text-transform:uppercase;letter-spacing:.06em">
                 Comprobante Fiscal Electrónico
               </div>
-              <div style="color:#0F172A;font-size:15px;font-weight:700;margin-top:2px">${encf}</div>
-              ${consulta ? `
-                <a href="${consulta}" style="color:#2563EB;font-size:12px;text-decoration:none">
+              <div style="color:#0F172A;font-size:15px;font-weight:700;margin-top:2px">${ecf.numero}</div>
+              ${ecf.verificacion ? `
+                <a href="${ecf.verificacion}" style="color:#2563EB;font-size:12px;text-decoration:none">
                   Verificarlo en el portal de la DGII →
                 </a>` : ''}
             </div>` : ''}
