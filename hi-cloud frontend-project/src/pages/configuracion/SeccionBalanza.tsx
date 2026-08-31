@@ -318,7 +318,80 @@ function TabProbador() {
 
 // ── Tab 2: Patrones CRUD ──────────────────────────────────────────────────────
 
-const PREFIJOS = ['2', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29'];
+/**
+ * Prefijos EAN admitidos para un patrón de balanza. Refleja PREFIJOS_BALANZA
+ * del backend (balanza-parser.ts) — si cambia allí, cambia aquí.
+ *
+ *  '2'       — prefijo de un dígito, patrón clásico de Mettler Toledo.
+ *  '20'-'29' — bloque reservado por GS1 para circulación restringida / uso
+ *              interno de tienda. Rango seguro.
+ *  '30'-'99' — prefijos de país/empresa ya asignados por GS1. Se admiten, pero
+ *              el formulario avisa (ver PAISES_PREFIJO_EAN).
+ */
+const PREFIJOS = ['2', ...Array.from({ length: 80 }, (_, i) => String(20 + i))];
+
+/** true si el prefijo cae fuera del bloque reservado 20-29. */
+const prefijoFueraDeBloqueReservado = (prefijo?: string): boolean =>
+  !!prefijo && /^\d{2}$/.test(prefijo) && Number(prefijo) >= 30;
+
+/**
+ * A qué corresponde cada prefijo EAN de 2 dígitos según GS1.
+ *
+ * Un prefijo de 2 dígitos "NN" abarca el bloque de 3 dígitos NN0-NN9, así que
+ * varios cubren más de un país; se nombra lo representativo. Sirve para que
+ * quien configura la balanza vea con qué se arriesga a chocar — no es una
+ * lista normativa ni se usa para validar nada.
+ */
+const PAISES_PREFIJO_EAN: Record<string, string> = {
+  '30': 'Francia',  '31': 'Francia',  '32': 'Francia',  '33': 'Francia',
+  '34': 'Francia',  '35': 'Francia',  '36': 'Francia',  '37': 'Francia y Mónaco',
+  '38': 'los Balcanes (Bulgaria, Eslovenia, Croacia…)',
+  '39': 'Kosovo',
+  '40': 'Alemania', '41': 'Alemania', '42': 'Alemania', '43': 'Alemania',
+  '44': 'Alemania',
+  '45': 'Japón',
+  '46': 'Rusia',
+  '47': 'el Báltico y Asia Central (Taiwán, Estonia, Letonia…)',
+  '48': 'Filipinas, Ucrania, Hong Kong y otros',
+  '49': 'Japón',
+  '50': 'Reino Unido',
+  '52': 'Grecia, Líbano y Chipre',
+  '53': 'Albania, Macedonia del Norte, Malta e Irlanda',
+  '54': 'Bélgica y Luxemburgo',
+  '56': 'Portugal e Islandia',
+  '57': 'Dinamarca, Islas Feroe y Groenlandia',
+  '59': 'Polonia, Rumanía y Hungría',
+  '60': 'Sudáfrica y África occidental',
+  '61': 'el norte y oeste de África (Marruecos, Argelia, Nigeria…)',
+  '62': 'Oriente Medio (Egipto, Arabia Saudí, Emiratos…)',
+  '63': 'Qatar y Namibia',
+  '64': 'Finlandia',
+  '69': 'China',
+  '70': 'Noruega',
+  '72': 'Israel',
+  '73': 'Suecia',
+  '74': 'Centroamérica y el Caribe — incluida República Dominicana (746)',
+  '75': 'México, Canadá y Venezuela',
+  '76': 'Suiza',
+  '77': 'Sudamérica (Colombia, Perú, Bolivia, Argentina…)',
+  '78': 'Chile, Paraguay, Ecuador y Brasil',
+  '79': 'Brasil',
+  '80': 'Italia',   '81': 'Italia',   '82': 'Italia',   '83': 'Italia',
+  '84': 'España',
+  '85': 'Cuba, Eslovaquia y Chequia',
+  '86': 'Serbia, Turquía y Mongolia',
+  '87': 'Países Bajos',
+  '88': 'Corea del Sur, Tailandia y Singapur',
+  '89': 'India, Vietnam, Pakistán e Indonesia',
+  '90': 'Austria',  '91': 'Austria',
+  '93': 'Australia',
+  '94': 'Nueva Zelanda',
+  '95': 'la Oficina Global GS1 y Malasia',
+  '96': 'la Oficina Global GS1 (GTIN-8)',
+  '97': 'publicaciones — ISBN (libros) e ISSN (revistas)',
+  '98': 'recibos de reembolso y cupones',
+  '99': 'cupones',
+};
 
 function FormPatron({
   initial, onFinish, loading,
@@ -338,6 +411,11 @@ function FormPatron({
   const bonus = tieneCheckValor ? 1 : 0;
   const suma = (prefijo?.length ?? 0) + (longitudPlu ?? 0) + (longitudValor ?? 0) + bonus + 1;
   const geoOk = suma === longitudTotal;
+
+  // Prefijos 30-99 son bloques de país asignados por GS1: se permiten, pero
+  // pueden capturar EAN-13 de fabricante. Se avisa, no se bloquea.
+  const prefijoRiesgo = prefijoFueraDeBloqueReservado(prefijo);
+  const paisPrefijo   = prefijo ? PAISES_PREFIJO_EAN[prefijo] : undefined;
 
   return (
     <Form
@@ -373,10 +451,61 @@ function FormPatron({
       </Form.Item>
 
       <Form.Item name="prefijo" label="Prefijo EAN" rules={[{ required: true }]}>
-        <Select placeholder="Ej: 2, 20, 21…">
-          {PREFIJOS.map(p => <Option key={p} value={p}>{p}</Option>)}
+        <Select
+          placeholder="Ej: 2, 20, 21…"
+          showSearch
+          optionFilterProp="value"
+          optionLabelProp="value"
+          listHeight={280}
+        >
+          {PREFIJOS.map(p => (
+            <Option key={p} value={p}>
+              {p}
+              {prefijoFueraDeBloqueReservado(p) && (
+                <Text type="warning" style={{ marginLeft: 8, fontSize: 12 }}>
+                  · {PAISES_PREFIJO_EAN[p] ?? 'fuera del bloque reservado'}
+                </Text>
+              )}
+            </Option>
+          ))}
         </Select>
       </Form.Item>
+
+      {prefijoRiesgo && (
+        <Alert
+          type="warning"
+          showIcon
+          icon={<WarningOutlined />}
+          style={{ marginTop: -12, marginBottom: 16 }}
+          message={
+            paisPrefijo
+              ? `El prefijo ${prefijo} está asignado a ${paisPrefijo}`
+              : `El prefijo ${prefijo} está fuera del bloque reservado (20-29)`
+          }
+          description={
+            <>
+              <Paragraph style={{ marginBottom: 8 }}>
+                Solo el rango <Text strong>20-29</Text> lo reserva el estándar EAN para
+                artículos de peso variable y uso interno de tienda. Del 30 al 99 son
+                prefijos de fábrica{paisPrefijo ? '' : ' o sin asignar todavía'}: un patrón
+                aquí puede <Text strong>capturar códigos EAN-13 legítimos</Text> que no
+                vienen de la balanza, si ese producto no está en el catálogo local.
+              </Paragraph>
+              <Paragraph style={{ marginBottom: 0 }}>
+                Puede guardarlo igual — si su balanza está configurada así, es la opción
+                correcta.{' '}
+                {!tieneCheckValor && (
+                  <Text strong>
+                    Active abajo el dígito verificador interno si su balanza lo soporta:
+                    con este prefijo es la única defensa que queda, y descarta unos 9 de
+                    cada 10 códigos de fabricante que, si no, se colarían.
+                  </Text>
+                )}
+              </Paragraph>
+            </>
+          }
+        />
+      )}
 
       <Form.Item name="longitudTotal" label="Longitud total" rules={[{ required: true }]}>
         <Select>
@@ -415,7 +544,16 @@ function FormPatron({
         <InputNumber min={0} max={6} style={{ width: '100%' }} />
       </Form.Item>
 
-      <Form.Item name="tieneCheckValor" label="¿Tiene dígito verificador interno?" valuePropName="checked">
+      <Form.Item
+        name="tieneCheckValor"
+        label="¿Tiene dígito verificador interno?"
+        valuePropName="checked"
+        extra={
+          prefijoRiesgo && !tieneCheckValor
+            ? `Recomendado con el prefijo ${prefijo}: al estar fuera del bloque reservado 20-29, este dígito es lo único que distingue una etiqueta de balanza de un EAN-13 de fabricante — descarta unos 9 de cada 10. Actívelo si su balanza lo emite.`
+            : undefined
+        }
+      >
         <Switch checkedChildren="Sí" unCheckedChildren="No" />
       </Form.Item>
 
@@ -496,7 +634,39 @@ function TabPatrones({ isAdmin }: { isAdmin: boolean }) {
 
   const columns = [
     { title: 'Nombre', dataIndex: 'nombre', key: 'nombre' },
-    { title: 'Pref.', dataIndex: 'prefijo', key: 'prefijo', width: 55 },
+    {
+      title: 'Pref.',
+      dataIndex: 'prefijo',
+      key: 'prefijo',
+      width: 80,
+      // Un patrón guardado con prefijo fuera de 20-29 es exactamente el que puede
+      // capturar EAN-13 de fabricante, y sin marca aquí sería invisible: el aviso
+      // del formulario solo lo ve quien está creando uno nuevo.
+      render: (v: string, r: Patron) => {
+        if (!prefijoFueraDeBloqueReservado(v)) return v;
+        const pais = PAISES_PREFIJO_EAN[v];
+        return (
+          <Tooltip
+            title={
+              <>
+                {pais
+                  ? `El prefijo ${v} está asignado a ${pais}.`
+                  : `El prefijo ${v} está fuera del bloque reservado 20-29.`}{' '}
+                Este patrón puede capturar códigos EAN-13 de fabricante que no estén
+                en el catálogo local.
+                {!r.tieneCheckValor &&
+                  ' Además no exige dígito verificador interno, así que no tiene ninguna defensa contra esas colisiones.'}
+              </>
+            }
+          >
+            <span style={{ whiteSpace: 'nowrap', cursor: 'help' }}>
+              {v}{' '}
+              <WarningOutlined style={{ color: r.tieneCheckValor ? '#faad14' : '#ff4d4f' }} />
+            </span>
+          </Tooltip>
+        );
+      },
+    },
     { title: 'PLU', dataIndex: 'longitudPlu', key: 'longitudPlu', width: 50 },
     { title: 'Tipo', dataIndex: 'tipoDato', key: 'tipoDato', width: 65,
       render: (v: TipoDato) => <Tag color={v === 'peso' ? 'cyan' : 'purple'}>{v}</Tag> },
