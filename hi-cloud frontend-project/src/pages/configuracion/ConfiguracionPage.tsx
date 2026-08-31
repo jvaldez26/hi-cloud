@@ -730,6 +730,9 @@ function SeccionFacturacion({ empresa, onSaved }: { empresa: any; onSaved: () =>
       factMostrarWeb:              conf.factMostrarWeb ?? false,
       factMostrarOC:               conf.factMostrarOC ?? false,
       autoEmailFacturaRecurrente:  conf.autoEmailFacturaRecurrente ?? true,
+      // Apagado por defecto: es nuevo, y encenderlo solo pondría a todas las
+      // empresas a mandarle correo a sus clientes sin haberlo pedido.
+      autoEmailFacturaEmitida:     conf.autoEmailFacturaEmitida ?? false,
       notifFactRecurrente:         conf.notifFactRecurrente ?? true,
     });
   }, [empresa]);
@@ -833,10 +836,24 @@ function SeccionFacturacion({ empresa, onSaved }: { empresa: any; onSaved: () =>
       <Divider orientation="left" orientationMargin={0}>Notificaciones automáticas</Divider>
       <Row gutter={[16, 8]}>
         <Col xs={24} sm={12}>
+          <Form.Item name="autoEmailFacturaEmitida" valuePropName="checked" style={{ marginBottom: 2 }}>
+            <Switch size="small" />
+          </Form.Item>
+          <Text style={{ fontSize: 13, fontWeight: 600 }}>Enviar la factura al emitirla</Text>
+          <br />
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            Al emitir una factura desde el listado, le manda el PDF al correo del cliente,
+            con el comprobante fiscal ya incluido. No aplica al Punto de Venta ni al
+            restaurante, donde el cliente se lleva su ticket.
+          </Text>
+        </Col>
+        <Col xs={24} sm={12}>
+          {/* El título decía sólo "Enviar factura al cliente por email", y quien
+              lo leía entendía que cubría todas las facturas. Cubre una sola cosa. */}
           <Form.Item name="autoEmailFacturaRecurrente" valuePropName="checked" style={{ marginBottom: 2 }}>
             <Switch size="small" />
           </Form.Item>
-          <Text style={{ fontSize: 13, fontWeight: 600 }}>Enviar factura al cliente por email</Text>
+          <Text style={{ fontSize: 13, fontWeight: 600 }}>Enviar la factura recurrente al generarse</Text>
           <br />
           <Text type="secondary" style={{ fontSize: 12 }}>
             Al generar una factura recurrente, adjunta el PDF y lo envía automáticamente al correo del cliente.

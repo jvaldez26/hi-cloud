@@ -225,6 +225,24 @@ export default function FacturasPage() {
     onError: (e: any) => message.error(e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error al enviar email'),
   });
 
+  /**
+   * Reenvío del envío automático, al correo que ya tiene el cliente en su ficha.
+   * Es el mismo endpoint que usa el historial de las recurrentes, y deja rastro
+   * en la factura. Distinto del modal de "Enviar factura por email", donde se
+   * teclea el destinatario.
+   */
+  const reenviarEmailMut = useMutation({
+    mutationFn: (id: number) =>
+      api.post(`/facturas/${id}/enviar-email`).then(r => r.data?.data ?? r.data),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ['facturas'] });
+      message.success(`Factura enviada a ${r?.destino}`);
+    },
+    onError: (e: any) => message.error(
+      e?.response?.data?.message ?? 'No se pudo reenviar el correo', 8,
+    ),
+  });
+
   const confirmarEliminar = (r: Factura) =>
     Modal.confirm({
       title: `¿Eliminar ${r.folio}?`,
@@ -271,6 +289,7 @@ export default function FacturasPage() {
     { key: 'estado',   label: 'Estado',   defaultVisible: true  },
     { key: 'sucursal', label: 'Sucursal', defaultVisible: false },
     { key: 'ecf',      label: 'e-CF',     defaultVisible: true  },
+    { key: 'email',    label: 'Correo',   defaultVisible: true  },
   ];
   const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('facturas', COLS_DEF);
 
@@ -339,6 +358,39 @@ export default function FacturasPage() {
         return nombre
           ? <Tooltip title={nombre}><Text style={{ ...TRUNCAR, maxWidth: 120, fontSize: 12 }}>{nombre}</Text></Tooltip>
           : <Text type="secondary" style={{ fontSize: 11 }}>—</Text>;
+      },
+    },
+    // ── Correo — sólo aparece si el envío automático falló ────────────────────
+    //
+    // Un correo que no salió y que nadie ve es un cliente convencido de que no
+    // se le facturó. Mismo criterio que la marca de "Sin e-CF": lo que quedó a
+    // medias se ve desde el listado, con el botón para resolverlo.
+    {
+      title: 'Correo', key: 'email', width: 120,
+      render: (_: unknown, r: Factura) => {
+        const estado = (r as any).emailEstado as string | undefined;
+        if (estado === 'fallido') {
+          return (
+            <Tooltip title={(r as any).emailError ?? 'El envío falló'}>
+              <Button
+                size="small" danger icon={<MailOutlined />}
+                loading={reenviarEmailMut.isPending && reenviarEmailMut.variables === r.id}
+                onClick={e => { e.stopPropagation(); reenviarEmailMut.mutate(r.id); }}
+                style={{ fontSize: 11 }}
+              >
+                Reenviar
+              </Button>
+            </Tooltip>
+          );
+        }
+        if (estado === 'enviado') {
+          return (
+            <Tooltip title={`Enviada a ${(r as any).emailDestino}`}>
+              <Tag color="green" style={{ marginInlineEnd: 0, fontSize: 10 }}>Enviado</Tag>
+            </Tooltip>
+          );
+        }
+        return <Text type="secondary" style={{ fontSize: 11 }}>—</Text>;
       },
     },
     // ── e-CF — badge compacto + botón emitir/reenviar ─────────────────────────

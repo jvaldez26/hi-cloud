@@ -124,6 +124,9 @@ export interface Factura {
   anulacionPendiente?: boolean;
   /** Por qué esta factura quedó emitida sin comprobante fiscal. */
   ecfError?:           string | null;
+  emailEstado?:        string | null;
+  emailDestino?:       string | null;
+  emailError?:         string | null;
   ecfErrorAt?:         string | null;
 }
 

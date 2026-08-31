@@ -7,6 +7,15 @@ import { PDFService } from './pdf.service';
 import { EmailService } from '../../notificaciones/services/email.service';
 import { urlVerificacionDgii } from '../../common/ecf/url-verificacion-dgii';
 
+export interface EnvioOpts {
+  /** Lo dispara el sistema, no una persona: respeta el interruptor de la empresa. */
+  automatico?:    boolean;
+  /** Por defecto sí. Sólo se apaga para un envío que no debe copiar a nadie. */
+  conCopiaAdmin?: boolean;
+  /** Qué interruptor manda. Ver envioAutomaticoEncendido(). */
+  origen?:        'recurrente' | 'emision';
+}
+
 export interface ResultadoEnvio {
   ok:       boolean;
   destino:  string | null;
@@ -50,11 +59,6 @@ export class FacturaEmailService {
   ) {}
 
   /**
-   * @param automatico  true cuando lo dispara el cron de recurrentes: entonces
-   *                    respeta el interruptor `autoEmailFacturaRecurrente` de la
-   *                    empresa. Un reenvío a mano siempre manda.
-   */
-  /**
    * Envuelve TODO el envío, incluidas las búsquedas previas.
    *
    * Antes las dos búsquedas —factura y empresa— quedaban fuera del try, así
@@ -71,7 +75,7 @@ export class FacturaEmailService {
   async enviar(
     facturaId: number,
     empresaId: number,
-    opts: { automatico?: boolean; conCopiaAdmin?: boolean } = {},
+    opts: EnvioOpts = {},
   ): Promise<ResultadoEnvio> {
     // Lo que se sepa cuando algo falle, para que el registro no salga vacío.
     const ctx: { destino: string | null; copias: string[] } = { destino: null, copias: [] };
@@ -93,7 +97,7 @@ export class FacturaEmailService {
   private async intentar(
     facturaId: number,
     empresaId: number,
-    opts: { automatico?: boolean; conCopiaAdmin?: boolean },
+    opts: EnvioOpts,
     ctx: { destino: string | null; copias: string[] },
   ): Promise<ResultadoEnvio> {
     const factura = await this.facturaRepo.findOne({
@@ -113,9 +117,10 @@ export class FacturaEmailService {
     if (!emp) throw new NotFoundException(`Empresa #${empresaId} no encontrada`);
 
     const cfg = (emp.configuracion ?? {}) as Record<string, unknown>;
-    if (opts.automatico && cfg.autoEmailFacturaRecurrente === false) {
+    if (opts.automatico && !this.envioAutomaticoEncendido(cfg, opts.origen)) {
       this.logger.debug(
-        `[FacturaEmail] autoEmailFacturaRecurrente apagado en la empresa #${empresaId} — se omite`,
+        `[FacturaEmail] envío automático (${opts.origen ?? 'recurrente'}) apagado ` +
+        `en la empresa #${empresaId} — se omite`,
       );
       // `omitido`, no `ok`: no se envió nada. Devolverlo como éxito hacía que
       // la pantalla dijera "enviada a null" cuando nadie había mandado nada.
@@ -171,6 +176,28 @@ export class FacturaEmailService {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Si la empresa quiere que este envío salga solo.
+   *
+   * Son dos interruptores distintos porque son dos decisiones distintas, y sus
+   * valores por defecto se eligen al revés a propósito:
+   *
+   *  · `autoEmailFacturaRecurrente` viene ENCENDIDO si nadie lo tocó. Es el
+   *    comportamiento que ya tenían las empresas y quitárselo en silencio sería
+   *    un cambio a sus espaldas.
+   *
+   *  · `autoEmailFacturaEmitida` viene APAGADO. Es nuevo: encenderlo por
+   *    defecto pondría a todas las empresas a mandarle correo a todos sus
+   *    clientes sin que nadie lo haya pedido. Que lo encienda quien lo quiera.
+   */
+  private envioAutomaticoEncendido(
+    cfg: Record<string, unknown>, origen?: 'recurrente' | 'emision',
+  ): boolean {
+    return origen === 'emision'
+      ? cfg.autoEmailFacturaEmitida === true
+      : cfg.autoEmailFacturaRecurrente !== false;
+  }
 
   /**
    * El comprobante de la factura: su número y su URL de verificación.

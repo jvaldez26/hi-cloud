@@ -22,6 +22,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { User } from '../users/users.entity';
 import { LimitesService } from '../suscripciones/limites.service';
 import { EmitirECFUseCase, DatosCompradorECF } from '../ecf/use-cases/emitir-ecf.use-case';
+import { FacturaEmailService } from './services/factura-email.service';
 import { DocumentoOrigenTipo, ECF } from '../ecf/entities/ecf.entity';
 import { ReintentoECFJob } from '../ecf/jobs/reintento-ecf.job';
 import { TipoClienteECF } from '../clientes/entities/cliente.entity';
@@ -57,6 +58,7 @@ export class FacturasService {
     private s3Service:         S3Service,
     private cajaService:       CajaService,
     private rncService:        RncService,
+    private facturaEmail:      FacturaEmailService,
     @InjectDataSource() private dataSource: DataSource,
     private vendedorResolver: VendedorResolverService,
   ) {}
@@ -842,6 +844,21 @@ export class FacturasService {
    * @param datosComprador     datos del comprador capturados en POS
    * @param modoContingencia   true = crear e-CF en CONTINGENCIA sin llamar a MSeller
    */
+  /**
+   * @param avisarCliente  Mandarle la factura al cliente por correo cuando el
+   *   comprobante haya salido bien. Es opt-in a propósito, no opt-out: mandarle
+   *   un correo a un cliente que no lo espera no tiene vuelta atrás, así que
+   *   cada camino que emite dice si le corresponde o no.
+   *
+   *   Lo piden el botón de emitir del listado de facturas —que es por donde
+   *   salen contratos, órdenes de servicio y las que se preparan a mano— y la
+   *   conversión de cotización.
+   *
+   *   NO lo piden, y no es un olvido: el POS y el restaurante, donde el cliente
+   *   está delante con su ticket y la mayoría son consumidor final sin correo;
+   *   y las recurrentes, que mandan el suyo por su cuenta (con su propio
+   *   interruptor) y aquí saldría duplicado.
+   */
   async cambiarEstado(
     id: number,
     estado: FacturaEstado,
@@ -849,6 +866,7 @@ export class FacturasService {
     tipoEcfOverride?: number,
     datosComprador?: DatosCompradorECF,
     modoContingencia?: boolean,
+    avisarCliente = false,
   ) {
     const factura = await this.findOne(id);
 
@@ -1138,6 +1156,7 @@ export class FacturasService {
             await this.facturaRepository.update(id, posPatch as any);
             this.realtimeService.notify(factura.empresaId, 'factura', 'updated', id);
           }
+          this.avisarClienteSiProcede(avisarCliente, id, factura.empresaId);
         }
 
         return ecfResult;
@@ -1155,6 +1174,12 @@ export class FacturasService {
             await this.facturaRepository.update(id, updates as any);
             if (!esCredito) this.realtimeService.notify(factura.empresaId, 'factura', 'updated', id);
           }
+          // El correo va DESPUÉS de que el comprobante haya salido, no antes:
+          // el PDF adjunto lleva el eNCF y el QR de verificación, y mandarlo
+          // sin ellos le entrega al cliente una factura que archivará sin
+          // comprobante. Si el e-CF falla, esto no se alcanza (va en el .then,
+          // no en el .catch) y no sale nada: es preferible.
+          this.avisarClienteSiProcede(avisarCliente, id, factura.empresaId);
         })
         .catch(async (err) => {
           // SIEMPRE loggear como ERROR para que sea visible (nunca silencioso).
@@ -1221,6 +1246,31 @@ export class FacturasService {
     await this.facturaRepository.update(id, { estado });
     this.realtimeService.notify(factura.empresaId, 'factura', 'updated', id);
     return this.findOne(id);
+  }
+
+  /**
+   * Manda la factura al cliente, si el camino lo pidió y la empresa lo tiene
+   * encendido (`autoEmailFacturaEmitida`, apagado por defecto).
+   *
+   * No se espera: la factura ya está emitida y declarada, y un correo no puede
+   * deshacer eso ni hacer esperar a quien pulsó "emitir". Pero tampoco se
+   * pierde — FacturaEmailService escribe el resultado en la propia factura
+   * (emailEstado/emailError), y un fallo sale marcado en el listado con el
+   * botón de reenviar.
+   */
+  private avisarClienteSiProcede(
+    avisar: boolean, facturaId: number, empresaId: number,
+  ): void {
+    if (!avisar) return;
+    this.facturaEmail
+      .enviar(facturaId, empresaId, { automatico: true, origen: 'emision' })
+      .catch((err: unknown) => {
+        // enviar() ya registra y loguea; esto es la última red.
+        this.logger.error(
+          `[Factura] el correo de la factura #${facturaId} ni se pudo registrar: ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
   }
 
   async remove(id: number) {

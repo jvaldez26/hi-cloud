@@ -610,7 +610,7 @@ export class FacturasRecurrentesService {
           // la causa, que fue justo lo que impidió diagnosticar la primera
           // prueba real.
           const envio = await this.facturaEmail
-            .enviar(ciclo.factura.id, rec.empresaId, { automatico: true })
+            .enviar(ciclo.factura.id, rec.empresaId, { automatico: true, origen: 'recurrente' })
             .catch((e: unknown) => {
               const error = e instanceof Error ? e.message : String(e);
               this.logger.error(
@@ -980,7 +980,7 @@ export class FacturasRecurrentesService {
     };
     if (rec.emailCliente && rec.empresaId) {
       envio = await this.facturaEmail
-        .enviar(ciclo.factura.id, rec.empresaId, { automatico: true })
+        .enviar(ciclo.factura.id, rec.empresaId, { automatico: true, origen: 'recurrente' })
         .catch(e => ({ ok: false, destino: null, error: e?.message }));
     }
 

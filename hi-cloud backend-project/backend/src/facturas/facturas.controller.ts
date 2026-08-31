@@ -191,7 +191,13 @@ export class FacturasController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CambiarEstadoDto,
   ) {
-    return this.facturasService.cambiarEstado(id, dto.estado, false);
+    // Ésta es la puerta por la que se emiten las facturas "normales": las que
+    // se preparan a mano y las que nacen en borrador desde un contrato o una
+    // orden de servicio. Aquí sí se avisa al cliente si la empresa lo tiene
+    // encendido; el POS tiene su propio endpoint y no avisa.
+    return this.facturasService.cambiarEstado(
+      id, dto.estado, false, undefined, undefined, undefined, true,
+    );
   }
 
   /**
