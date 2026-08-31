@@ -34,6 +34,24 @@ jobs:
       - name: TypeScript check
         run: npx tsc --noEmit
 
+      # ── Suite de tests ────────────────────────────────────────────────────
+      # Sin este paso los tests no protegian nada: se escribian, se verificaban
+      # en rojo en local, y CI no los ejecutaba nunca.
+      #
+      # Ejemplo de lo que estaba sin vigilar: siete-caminos.spec.ts fija que
+      # ninguna factura llega a EMITIDA sin vendedor, por cualquiera de los
+      # siete caminos que crean facturas. Habia 249 facturas con vendedorId
+      # NULL en 11 empresas, invisibles para los cierres de caja. Hasta hoy,
+      # un octavo camino sin resolver vendedor pasaba el CI sin ruido.
+      #
+      # Va en este job y no en uno aparte: la suite tarda ~15s en local y el
+      # job entero esta en ~1min, muy por debajo del timeout-minutes de 10.
+      #
+      # Los specs que necesitan BD o credenciales (DB_HOST, MSeller) se
+      # auto-skipean cuando no estan, asi que no hace falta darle secretos.
+      - name: Tests
+        run: npm test -- --ci
+
       - name: Security audit — deps (bloquea en high/critical)
         # || true: evita que un timeout de registry.npmjs.org (504) rompa el CI.
         run: npm audit --audit-level=high --omit=dev || true

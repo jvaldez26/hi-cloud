@@ -11,6 +11,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
 import { BalanzaService } from './balanza.service';
 import { CreatePatronDto } from './dto/create-patron.dto';
+import { UpdatePatronDto } from './dto/update-patron.dto';
 import { CreateFormatoDto } from './dto/create-formato.dto';
 
 class ProbarCodigoDto {
@@ -51,7 +52,7 @@ export class BalanzaController {
   @ApiOperation({ summary: 'Actualizar patrón de decodificación' })
   actualizarPatron(
     @Param('id', ParseIntPipe) id: number,
-    @Body() dto: Partial<CreatePatronDto>,
+    @Body() dto: UpdatePatronDto,
   ) { return this.svc.actualizarPatron(id, dto); }
 
   @Delete('patrones/:id')
