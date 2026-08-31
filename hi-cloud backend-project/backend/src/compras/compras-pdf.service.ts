@@ -9,6 +9,7 @@ import { TenantService } from '../tenant/tenant.service';
 import type { DocData } from '../common/doc.template';
 import { generarDocumentoPDF } from '../common/pdf/doc-pdf.helper';
 import { altoDeLinea, celdaSinEnvolver } from '../common/pdf/columnas-numericas.helper';
+import { urlVerificacionDgii } from '../common/ecf/url-verificacion-dgii';
 
 const ESTADO_COLOR: Record<string, string> = {
   recibida: 'green', pagada: 'blue', pendiente: 'orange', anulada: 'red',
@@ -128,10 +129,9 @@ export class ComprasPdfService {
     // Generar QR
     let qrBase64 = '';
     const empresaRnc = empresa?.rnc ?? '';
-    const urlQR = ecf.qrUrl
-      ?? `https://ecf.dgii.gov.do/ECF/ConsultaResultado?RNCEmisor=${empresaRnc}&eNCF=${ecf.numero}` +
-         (ecf.codigoSeguridad ? `&CodigoSeguridadNCF=${ecf.codigoSeguridad}` : '');
+    const urlQR = urlVerificacionDgii(ecf);
     try {
+      if (!urlQR) throw new Error('el e-CF no tiene URL de verificacion guardada');
       const dataUrl = await qrcode.toDataURL(urlQR, { width: 180, margin: 1, color: { dark: '#000000', light: '#ffffff' } });
       qrBase64 = dataUrl.replace('data:image/png;base64,', '');
     } catch (err: any) {

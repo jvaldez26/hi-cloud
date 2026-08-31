@@ -4,6 +4,7 @@ import type { Repository } from 'typeorm';
 import * as qrcode from 'qrcode';
 import { Gasto } from './entities/gasto.entity';
 import { TenantService } from '../tenant/tenant.service';
+import { urlVerificacionDgii } from '../common/ecf/url-verificacion-dgii';
 
 const PDFDocument = require('pdfkit') as typeof import('pdfkit');
 
@@ -73,10 +74,8 @@ export class GastoPDFService {
 
     // Generar QR DGII si hay ECF
     let qrBase64 = '';
-    if (ecf?.numero && empresa.rnc) {
-      const urlQR = ecf.qrUrl
-        ?? `https://ecf.dgii.gov.do/ECF/ConsultaResultado?RNCEmisor=${empresa.rnc}&eNCF=${ecf.numero}` +
-           (ecf.codigoSeguridad ? `&CodigoSeguridadNCF=${ecf.codigoSeguridad}` : '');
+    const urlQR = urlVerificacionDgii(ecf);
+    if (urlQR) {
       qrBase64 = await qrcode.toDataURL(urlQR, { width: 180, margin: 1, color: { dark: '#000', light: '#fff' } })
         .then(u => u.replace('data:image/png;base64,', ''))
         .catch(err => { this.logger.warn(`[GastoPDF] QR error: ${err.message}`); return ''; });

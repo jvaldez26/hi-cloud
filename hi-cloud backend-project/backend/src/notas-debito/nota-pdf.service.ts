@@ -6,6 +6,7 @@ import { NotaDebito }       from './entities/nota-debito.entity';
 import { TenantService }    from '../tenant/tenant.service';
 import { generarNotaPDF }   from '../common/pdf/nota-pdf.helper';
 import type { NotaPDFData } from '../common/pdf/nota-pdf.helper';
+import { urlVerificacionDgii } from '../common/ecf/url-verificacion-dgii';
 
 const MOTIVO_LABEL: Record<string, string> = {
   cargo_adicional:   'Cargo adicional',
@@ -54,11 +55,8 @@ export class NotaDebitoPDFService {
 
     // Generar QR DGII
     let qrBase64 = '';
-    if (ecf?.numero && empresa.rnc) {
-      const urlQR = ecf.qrUrl
-        ?? `https://ecf.dgii.gov.do/ECF/ConsultaResultado?RNCEmisor=${empresa.rnc}` +
-           `&eNCF=${ecf.numero}` +
-           (ecf.codigoSeguridad ? `&CodigoSeguridadNCF=${ecf.codigoSeguridad}` : '');
+    const urlQR = urlVerificacionDgii(ecf);
+    if (urlQR) {
       qrBase64 = await qrcode.toDataURL(urlQR, {
         width: 180, margin: 1, color: { dark: '#000000', light: '#ffffff' },
       })

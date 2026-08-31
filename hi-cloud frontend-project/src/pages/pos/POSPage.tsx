@@ -6681,13 +6681,14 @@ function POSGastosLista({ C }: { C: Palette }) {
       const qrW      = tipoImp === '58mm' ? 160 : 200;
 
       let qrDataUrl: string | null = null;
-      if (g.ecfNumero) {
-        // Preferir el qrUrl oficial devuelto por la DGII al emitir el e-CF;
-        // si no existe (e-CF antiguo), construir el URL de consulta manualmente.
-        const urlQR = g.ecfQrUrl
-          ?? (`https://ecf.dgii.gov.do/ECF/ConsultaResultado?RNCEmisor=${encodeURIComponent(empRes.rnc ?? '')}&eNCF=${encodeURIComponent(g.ecfNumero)}`
-             + (g.ecfCodigoSeguridad ? `&CodigoSeguridadNCF=${encodeURIComponent(g.ecfCodigoSeguridad)}` : ''));
-        qrDataUrl = await QRCode.toDataURL(urlQR, { width: qrW, margin: 1, color: { dark: '#000000', light: '#ffffff' } })
+      // La URL de verificación la devuelve MSeller al emitir y se guarda en el
+      // e-CF. Aquí NO se arma: la que se construía a mano
+      // (ecf.dgii.gov.do/ECF/ConsultaResultado) no resuelve la consulta — le
+      // faltan el monto y el código de seguridad, y va a otro host y otra ruta
+      // que además cambia entre producción y pruebas. Sin URL no se imprime QR:
+      // un código que no lleva a ninguna parte es peor que ninguno.
+      if (g.ecfNumero && g.ecfQrUrl) {
+        qrDataUrl = await QRCode.toDataURL(g.ecfQrUrl, { width: qrW, margin: 1, color: { dark: '#000000', light: '#ffffff' } })
           .catch(() => null);
       }
 

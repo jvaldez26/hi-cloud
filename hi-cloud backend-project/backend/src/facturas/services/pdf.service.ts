@@ -10,6 +10,7 @@ import { generarHTMLFactura }  from '../templates/factura.template';
 import type { ReciboPOSData }  from '../templates/recibo-termico.template';
 import { generarFacturaPDF, generarReciboPOSPDF } from '../../common/pdf/factura-pdf.helper';
 import { fechaYHoraRD } from '../../common/utils/fecha-local.util';
+import { urlVerificacionDgii } from '../../common/ecf/url-verificacion-dgii';
 
 @Injectable()
 export class PDFService {
@@ -83,12 +84,8 @@ export class PDFService {
     ).then((r: any[]) => r[0] ?? null);
 
     let qrBase64 = '';
-    if (ecf?.numero && empresa.rnc) {
-      const urlQR = ecf.qrUrl
-        ?? `https://ecf.dgii.gov.do/ECF/ConsultaResultado?RNCEmisor=${empresa.rnc}&eNCF=${ecf.numero}` +
-           (ecf.codigoSeguridad ? `&CodigoSeguridadNCF=${ecf.codigoSeguridad}` : '');
-      qrBase64 = await this.generarQR(urlQR);
-    }
+    const urlQR = urlVerificacionDgii(ecf);
+    if (urlQR) qrBase64 = await this.generarQR(urlQR);
 
     const factConf   = (empresa.configuracion ?? {}) as Record<string, unknown>;
     const logoBuf    = factConf.factMostrarLogo !== false
@@ -350,9 +347,8 @@ export class PDFService {
 
     let qrBase64 = '';
     if (ecf?.numero && empresa.rnc) {
-      qrBase64 = await this.generarQR(
-        `https://ecf.dgii.gov.do/consulta?encf=${ecf.numero}&rnc=${empresa.rnc}`,
-      );
+      const urlQR = urlVerificacionDgii(ecf);
+      if (urlQR) qrBase64 = await this.generarQR(urlQR);
     }
 
     // Pie del PDF de la FACTURA — el documento que se lleva el cliente.
