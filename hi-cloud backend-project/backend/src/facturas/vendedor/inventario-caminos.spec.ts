@@ -45,9 +45,11 @@ const INVENTARIO: Record<string, { sitios: number; estrategia: Estrategia; nota:
     sitios: 1, estrategia: 'borrador',
     nota: 'orden de servicio -> factura',
   },
-  'src/facturas-recurrentes/facturas-recurrentes.service.ts': {
+  'src/facturas-recurrentes/services/generacion-recurrente.service.ts': {
     sitios: 1, estrategia: 'borrador',
-    nota: 'cron: nadie vendio nada al generarla desde la plantilla',
+    nota: 'cron: nace BORRADOR, pero a diferencia de los otros crones SI imputa ' +
+          'vendedor — el dueno de la plantilla. insertarFactura() recibe ya ' +
+          'resuelto lo que ejecutarCiclo() saco del resolver.',
   },
 };
 
