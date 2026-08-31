@@ -44,8 +44,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * entidades mapean a camelCase tal cual. Con snake_case el backend arranca y
  * revienta al primer SELECT con "la columna no existe".
  */
-export class RehacerFacturasRecurrentes1761500000000 implements MigrationInterface {
-  name = 'RehacerFacturasRecurrentes1761500000000';
+export class RehacerFacturasRecurrentes1761600000000 implements MigrationInterface {
+  name = 'RehacerFacturasRecurrentes1761600000000';
 
   public async up(qr: QueryRunner): Promise<void> {
     // ── Guarda: si alguien creó plantillas entre el reconocimiento y el deploy,
