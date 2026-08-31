@@ -1,7 +1,7 @@
 ﻿import { useState, useRef, useEffect, useMemo, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
-import { DetailDrawer } from '../../components/ui/DetailDrawer';
+import { DetailDrawer, DetailSections } from '../../components/ui/DetailDrawer';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Table, Button, Input, Space, Tag, Modal, Form, Row, Col,
@@ -1482,11 +1482,14 @@ function ProductosCatalogo() {
               key: 'detalles',
               label: 'Detalles',
               children: (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 16px' }}>
-                  {([
+                // El mismo componente que pinta los bloques del panel de
+                // detalle. Antes esto era una copia del marcado de DetailDrawer,
+                // y una copia es lo que permite que las pantallas se separen.
+                <DetailSections sections={[{
+                  fields: [
                     { label: 'Código',    value: detalleProducto?.codigo },
                     { label: 'SKU',       value: (detalleProducto as any)?.sku },
-                    { label: 'Nombre',    value: detalleProducto?.nombre,    span: 2 as const },
+                    { label: 'Nombre',    value: detalleProducto?.nombre, span: 2 },
                     { label: 'Categoría', value: detalleProducto?.categoria },
                     { label: 'Precio',    value: detalleProducto?.precio !== undefined
                         ? `RD$${Number(detalleProducto.precio).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`
@@ -1495,15 +1498,8 @@ function ProductosCatalogo() {
                         ? `${detalleProducto.stock} unidades` : undefined },
                     { label: 'Estado',    value: <Tag color={detalleProducto?.isActive !== false ? 'green' : 'red'}>
                         {detalleProducto?.isActive !== false ? 'Activo' : 'Inactivo'}</Tag> },
-                  ] as { label: string; value?: ReactNode; span?: 2 }[]).map((f, i) => (
-                    <div key={i} style={{ gridColumn: f.span === 2 ? '1 / -1' : undefined }}>
-                      <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.45)', marginBottom: 3 }}>{f.label}</div>
-                      <div style={{ fontSize: 13, fontWeight: 500, wordBreak: 'break-word' }}>
-                        {f.value ?? <span style={{ color: 'rgba(0,0,0,0.25)' }}>—</span>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                  ],
+                }]} />
               ),
             },
             {

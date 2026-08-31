@@ -4,7 +4,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { TableActions } from '../../components/ui/TableActions';
-import { DetailDrawer } from '../../components/ui/DetailDrawer';
+import { DetailDrawer, DetailSections } from '../../components/ui/DetailDrawer';
 import { exportarExcel } from '../../utils/exportExcel';
 import { Table, Button, Tag, Card, Row, Col, Typography, Space,
          Modal, Form, Input, InputNumber, Select, AutoComplete, message,
@@ -624,88 +624,101 @@ export default function FacturasRecurrentesPage() {
                           } />
                       )}
 
-                      <Descriptions column={2} size="small" bordered>
-                        <Descriptions.Item label="Cliente" span={2}>
-                          {det?.cliente?.nombre ?? '—'}
-                          {det?.cliente?.email && (
-                            <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
-                              {det.cliente.email}
-                            </Text>
-                          )}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Frecuencia">
-                          {frecuenciaLabel[det?.frecuencia] ?? det?.frecuencia}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Día">
-                          {det?.diaSemana
-                            ? DIAS_SEMANA.find(d => d.value === det.diaSemana)?.label
-                            : det?.diaMes
-                              ? `Día ${det.diaMes} del mes`
-                              : 'Todos los días'}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Próxima generación" span={2}>
-                          {det?.proximaGeneracion ? (
-                            <>
-                              <Text strong style={{ color: token.colorPrimary }}>
-                                {dayjs(det.proximaGeneracion).format('dddd, D [de] MMMM [de] YYYY')}
-                              </Text>
-                              {det.explicacionDia && (
-                                <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
-                                  {det.explicacionDia}
+                      {/* Los bloques del panel de detalle del ERP — el mismo
+                          componente que usan Gastos, Caja y Proveedores. */}
+                      <DetailSections sections={[
+                        {
+                          title: 'Datos de la plantilla',
+                          fields: [
+                            { label: 'Cliente', span: 2, value: (
+                              <>
+                                {det?.cliente?.nombre ?? '—'}
+                                {det?.cliente?.email && (
+                                  <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
+                                    {det.cliente.email}
+                                  </Text>
+                                )}
+                              </>
+                            )},
+                            { label: 'Frecuencia',
+                              value: frecuenciaLabel[det?.frecuencia] ?? det?.frecuencia },
+                            { label: 'Día',
+                              value: det?.diaSemana
+                                ? DIAS_SEMANA.find(d => d.value === det.diaSemana)?.label
+                                : det?.diaMes
+                                  ? `Día ${det.diaMes} del mes`
+                                  : 'Todos los días' },
+                            { label: 'Próxima generación', span: 2, value: det?.proximaGeneracion ? (
+                              <>
+                                <Text strong style={{ color: token.colorPrimary }}>
+                                  {dayjs(det.proximaGeneracion).format('dddd, D [de] MMMM [de] YYYY')}
                                 </Text>
-                              )}
-                            </>
-                          ) : (
-                            <Text type="secondary">
-                              {det?.activa ? '—' : 'Pausada: no generará hasta reanudarla'}
-                            </Text>
-                          )}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Emite">
-                          {det?.modoEmision === 'ecf'
-                            ? <Tag color="gold">{det.tipoEcf}</Tag>
-                            : <Tag>Borrador</Tag>}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Forma de pago">
-                          {formaPagoLabel(det?.formaPago)}
-                          {det?.formaPago === 4 && (
-                            <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
-                              {det.diasCredito} días de plazo
-                            </Text>
-                          )}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Correo al cliente">
-                          {det?.emailCliente
-                            ? <Tag color="blue" icon={<MailOutlined />}>Sí</Tag>
-                            : <Tag icon={<CloseCircleOutlined />}>No</Tag>}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Aviso previo">
-                          {det?.avisoPrevioDias
-                            ? `${det.avisoPrevioDias} días antes`
-                            : <Text type="secondary">Sin aviso</Text>}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Últ. generación">
-                          {det?.ultimaEjecucion ? dayjs(det.ultimaEjecucion).format('DD/MM/YYYY') : '—'}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Total generadas">
-                          <Text strong style={{ color: token.colorPrimary }}>{det?.totalGeneradas ?? 0}</Text>
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Fecha de inicio">
-                          {det?.fechaInicio ? dayjs(det.fechaInicio).format('DD/MM/YYYY') : '—'}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Fecha de fin">
-                          {det?.fechaFin ? dayjs(det.fechaFin).format('DD/MM/YYYY') : 'Sin fecha de fin'}
-                        </Descriptions.Item>
-                        {det?.notas && (
-                          <Descriptions.Item label="Notas" span={2}>
-                            <Text type="secondary" style={{ fontSize: 12 }}>{det.notas}</Text>
-                          </Descriptions.Item>
-                        )}
-                      </Descriptions>
+                                {det.explicacionDia && (
+                                  <Text type="secondary" style={{ fontSize: 11, display: 'block', fontWeight: 400 }}>
+                                    {det.explicacionDia}
+                                  </Text>
+                                )}
+                              </>
+                            ) : (
+                              <Text type="secondary">
+                                {det?.activa ? '—' : 'Pausada: no generará hasta reanudarla'}
+                              </Text>
+                            )},
+                            { label: 'Fecha de inicio',
+                              value: det?.fechaInicio ? dayjs(det.fechaInicio).format('DD/MM/YYYY') : null },
+                            { label: 'Fecha de fin',
+                              value: det?.fechaFin
+                                ? dayjs(det.fechaFin).format('DD/MM/YYYY')
+                                : <Text type="secondary">Sin fecha de fin</Text> },
+                            { label: 'Última generación',
+                              value: det?.ultimaEjecucion ? dayjs(det.ultimaEjecucion).format('DD/MM/YYYY') : null },
+                            { label: 'Total generadas', value: (
+                              <Text strong style={{ color: token.colorPrimary }}>{det?.totalGeneradas ?? 0}</Text>
+                            )},
+                            { label: 'Notas', span: 2, hidden: !det?.notas, value: (
+                              <Text type="secondary" style={{ fontSize: 12 }}>{det?.notas}</Text>
+                            )},
+                          ],
+                        },
+                        {
+                          title: 'Configuración de emisión',
+                          fields: [
+                            { label: 'Al generarse', value: det?.modoEmision === 'ecf'
+                              ? <Tag color="gold" style={{ marginInlineEnd: 0 }}>{det.tipoEcf}</Tag>
+                              : <Tag style={{ marginInlineEnd: 0 }}>Borrador</Tag> },
+                            { label: 'Correo al cliente', value: det?.emailCliente
+                              ? <Tag color="blue" icon={<MailOutlined />} style={{ marginInlineEnd: 0 }}>Sí</Tag>
+                              : <Tag icon={<CloseCircleOutlined />} style={{ marginInlineEnd: 0 }}>No</Tag> },
+                            { label: 'Aviso previo', span: 2, value: det?.avisoPrevioDias
+                              ? `${det.avisoPrevioDias} días antes de generar`
+                              : <Text type="secondary">Sin aviso</Text> },
+                          ],
+                        },
+                        {
+                          title: 'Forma de pago',
+                          fields: [
+                            { label: 'Cómo se cobra', value: formaPagoLabel(det?.formaPago) },
+                            { label: 'Plazo', hidden: det?.formaPago !== 4,
+                              value: `${det?.diasCredito} días` },
+                            { label: 'Vencimiento', span: 2, hidden: det?.formaPago !== 4, value: (
+                              <Text type="secondary" style={{ fontSize: 12 }}>
+                                Se cuenta desde la fecha de generación de cada factura.
+                              </Text>
+                            )},
+                          ],
+                        },
+                      ]} />
 
-                      <Divider orientation="left" plain style={{ fontSize: 12, marginTop: 16 }}>
+                      {/* Misma cabecera que los bloques de arriba, para que el
+                          cuarto grupo no parezca de otra pantalla. */}
+                      <div style={{
+                        fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+                        letterSpacing: '0.06em', color: token.colorTextTertiary,
+                        marginBottom: 10, paddingBottom: 6,
+                        borderBottom: `1px solid ${token.colorSplit}`,
+                      }}>
                         Ítems de la plantilla
-                      </Divider>
+                      </div>
                       {(det?.detalles ?? []).map((d: any, i: number) => {
                         const desc   = d.descripcion ?? d.concepto ?? d.nombre ?? '—';
                         const cant   = Number(d.cantidad ?? 1);
