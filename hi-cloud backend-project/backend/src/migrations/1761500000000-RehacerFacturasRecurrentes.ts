@@ -119,6 +119,16 @@ export class RehacerFacturasRecurrentes1761500000000 implements MigrationInterfa
           CHECK ("diaSemana" IS NULL OR ("diaSemana" BETWEEN 1 AND 7)),
         CONSTRAINT "CHK_facturas_recurrentes_modoEmision"
           CHECK ("modoEmision" IN ('borrador', 'ecf')),
+        -- Emitir con e-CF sin decir qué tipo es una plantilla que falla el
+        -- primer día que corre. El servicio ya lo rechaza; esto lo cierra
+        -- también para cualquier INSERT que no pase por él. Y al revés: un
+        -- tipo de comprobante en una plantilla que sólo deja borradores es un
+        -- dato que nadie mira y que engaña al que lo lee.
+        CONSTRAINT "CHK_facturas_recurrentes_tipoEcf"
+          CHECK (
+            ("modoEmision" = 'ecf'      AND "tipoEcf" IS NOT NULL) OR
+            ("modoEmision" = 'borrador' AND "tipoEcf" IS NULL)
+          ),
         -- Códigos DGII: 1=Efectivo 2=Cheque/Transferencia 3=Tarjeta 4=Crédito
         CONSTRAINT "CHK_facturas_recurrentes_formaPago"
           CHECK ("formaPago" BETWEEN 1 AND 6),
