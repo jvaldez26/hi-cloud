@@ -18,6 +18,9 @@ import {
   AgregarCargoDto, AplicarCreditoDto, UpdateConfiguracionBancariaDto,
 } from './dto/pagos-suscripcion.dto';
 import { fechaTextoRD } from '../common/utils/fecha-local.util';
+import {
+  calcularPreviewPago, fechaDeVencimiento, PreviewPago,
+} from './preview-pago.util';
 
 
 @Injectable()
@@ -196,7 +199,7 @@ export class PagosSuscripcionService {
       SELECT p.*,
              e.nombre AS "empresaNombre", e.rnc,
              s.plan, s.estado AS "estadoSuscripcion",
-             s."fechaVencimiento"::date AS "venceSuscripcion"
+             to_char(s."fechaVencimiento", 'YYYY-MM-DD') AS "venceSuscripcion"
       FROM pagos_suscripcion p
       JOIN empresa e     ON e.id = p."empresaId"
       LEFT JOIN suscripciones s ON s."empresaId" = p."empresaId"
@@ -212,7 +215,7 @@ export class PagosSuscripcionService {
     const rows = await this.ds.query<any[]>(`
       SELECT p.*,
              e.nombre AS "empresaNombre", e.email AS "empresaEmail",
-             s."fechaVencimiento"::date AS "venceSuscripcion",
+             to_char(s."fechaVencimiento", 'YYYY-MM-DD') AS "venceSuscripcion",
              s."diaCorte",
              s.modalidad,
              pc.precio::float AS "precioMensual"
@@ -223,7 +226,26 @@ export class PagosSuscripcionService {
       WHERE p.tipo = 'TRANSFERENCIA' AND p.estado = 'PENDIENTE'
       ORDER BY p."creadoEn" DESC
     `);
-    return rows.map(r => ({ ...r, monto: Number(r.monto ?? 0), precioMensual: Number(r.precioMensual ?? 0) }));
+    // Cada fila viaja con su preview ya calculado: el admin confirma con el
+    // mismo número que el backend va a aplicar, no con una segunda cuenta
+    // hecha en el navegador.
+    return rows.map(r => {
+      const monto         = Number(r.monto ?? 0);
+      const precioMensual = Number(r.precioMensual ?? 0);
+      return {
+        ...r,
+        monto,
+        precioMensual,
+        preview: r.venceSuscripcion == null || r.diaCorte == null
+          ? null
+          : calcularPreviewPago({
+              monto, precioMensual,
+              venceSuscripcion: r.venceSuscripcion,
+              diaCorte:         Number(r.diaCorte),
+              modalidad:        r.modalidad ?? 'mensual',
+            }),
+      };
+    });
   }
 
   /** Resumen por empresa para el panel de cobros */
@@ -237,7 +259,7 @@ export class PagosSuscripcionService {
         s.estado AS "estadoSuscripcion",
         s.modalidad,
         s."diaCorte",
-        s."fechaVencimiento"::date AS "venceSuscripcion",
+        to_char(s."fechaVencimiento", 'YYYY-MM-DD') AS "venceSuscripcion",
         pc.precio::float AS "precioMensual",
         COALESCE(SUM(
           CASE
@@ -266,24 +288,42 @@ export class PagosSuscripcionService {
     }));
   }
 
-  /** Calcula la nueva fechaVencimiento aplicando N períodos al ancla diaCorte. */
-  private calcularNuevaFecha(
-    fechaStr: string,
-    diaCorte: number,
-    periodos: number,
-    modalidad: string,
-  ): string {
-    const [y, m] = fechaStr.slice(0, 7).split('-').map(Number);
-    let ny = y, nm = m;
-    if (modalidad === 'anual') {
-      ny += periodos;
-    } else {
-      nm += periodos;
-      while (nm > 12) { nm -= 12; ny += 1; }
+  /**
+   * Qué haría este pago: períodos que cubre y vencimiento resultante.
+   *
+   * Lo llama el panel de cobros mientras el admin teclea el monto, para que el
+   * aviso que lee ANTES de registrar salga de la misma fórmula que se aplica
+   * DESPUÉS. Ver preview-pago.util.ts.
+   */
+  async previewPago(
+    empresaId: number,
+    monto: number,
+  ): Promise<PreviewPago & { sinSuscripcion: boolean }> {
+    const [sus] = await this.ds.query<any[]>(`
+      SELECT s.modalidad, s."fechaVencimiento", s."diaCorte",
+             pc.precio::float AS precio
+      FROM suscripciones s
+      LEFT JOIN plan_configuracion pc ON pc.clave = s.plan::text AND pc.activo = true
+      WHERE s."empresaId" = $1
+    `, [empresaId]);
+
+    if (!sus) {
+      return {
+        sinSuscripcion: true, sinPrecio: false, periodos: 0,
+        precioPorPeriodo: 0, nuevaFecha: null, faltante: 0, enPasado: false,
+      };
     }
-    const ultimoDia = new Date(ny, nm, 0).getDate();
-    const nd = Math.min(diaCorte, ultimoDia);
-    return `${ny}-${String(nm).padStart(2, '0')}-${String(nd).padStart(2, '0')}`;
+
+    return {
+      sinSuscripcion: false,
+      ...calcularPreviewPago({
+        monto:            Number(monto ?? 0),
+        precioMensual:    Number(sus.precio ?? 0),
+        venceSuscripcion: sus.fechaVencimiento,
+        diaCorte:         Number(sus.diaCorte),
+        modalidad:        sus.modalidad ?? 'mensual',
+      }),
+    };
   }
 
   async registrarPago(empresaId: number, dto: RegistrarPagoDto, adminId: number) {
@@ -296,32 +336,35 @@ export class PagosSuscripcionService {
       WHERE s."empresaId" = $1
     `, [empresaId]);
 
-    // ── 2. Calcular períodos cubiertos ──────────────────────────────────────
+    // ── 2. Períodos cubiertos y vencimiento resultante (fórmula única) ──────
     const modalidad = sus?.modalidad ?? 'mensual';
     const precio    = Number(sus?.precio ?? 0);
-    const precioPorPeriodo = modalidad === 'anual' ? precio * 12 : precio;
+    const preview   = sus
+      ? calcularPreviewPago({
+          monto:            dto.monto,
+          precioMensual:    precio,
+          venceSuscripcion: sus.fechaVencimiento,
+          diaCorte:         Number(sus.diaCorte),
+          modalidad,
+        })
+      : null;
 
-    if (sus && (!Number.isFinite(precioPorPeriodo) || precioPorPeriodo <= 0)) {
+    if (preview?.sinPrecio) {
       throw new BadRequestException(
         `El plan "${sus.plan ?? 'desconocido'}" no tiene precio configurado`,
       );
     }
 
-    const periodos = sus ? Math.floor(dto.monto / precioPorPeriodo) : 0;
+    const precioPorPeriodo = preview?.precioPorPeriodo ?? 0;
+    const periodos         = preview?.periodos ?? 0;
+    const nuevaFechaVenc   = preview?.nuevaFecha ?? null;
 
-    // ── 3. Calcular nueva fechaVencimiento si hay al menos 1 período ────────
-    let nuevaFechaVenc: string | null = null;
+    // ── 3. Período que cubre el pago, si el dto no lo trae ──────────────────
     let periodoInicio = dto.periodoInicio ? new Date(dto.periodoInicio) : null;
     let periodoFin    = dto.periodoFin    ? new Date(dto.periodoFin)    : null;
 
-    if (sus && periodos >= 1) {
-      const fechaStr = typeof sus.fechaVencimiento === 'string'
-        ? sus.fechaVencimiento.split('T')[0]
-        : (sus.fechaVencimiento as Date).toISOString().split('T')[0];
-      const diaCorte = Number(sus.diaCorte);
-
-      nuevaFechaVenc = this.calcularNuevaFecha(fechaStr, diaCorte, periodos, modalidad);
-
+    if (sus && nuevaFechaVenc) {
+      const fechaStr = fechaDeVencimiento(sus.fechaVencimiento);
       if (!periodoInicio) periodoInicio = new Date(fechaStr + 'T00:00:00');
       if (!periodoFin)    periodoFin    = new Date(nuevaFechaVenc + 'T00:00:00');
     }
@@ -345,9 +388,7 @@ export class PagosSuscripcionService {
 
     // ── 5. Avanzar fechaVencimiento y reactivar (solo si periodos >= 1) ─────
     if (sus && periodos >= 1 && nuevaFechaVenc) {
-      const fechaAnterior = typeof sus.fechaVencimiento === 'string'
-        ? sus.fechaVencimiento.split('T')[0]
-        : (sus.fechaVencimiento as Date).toISOString().split('T')[0];
+      const fechaAnterior = fechaDeVencimiento(sus.fechaVencimiento);
 
       await this.ds.query(`
         UPDATE suscripciones
@@ -401,18 +442,23 @@ export class PagosSuscripcionService {
       WHERE s."empresaId" = $1
     `, [pago.empresaId]);
 
-    let precioPorPeriodo = 0;
-    let modalidad = 'mensual';
-    let precio = 0;
-    if (sus) {
-      modalidad = sus.modalidad ?? 'mensual';
-      precio    = Number(sus.precio ?? 0);
-      precioPorPeriodo = modalidad === 'anual' ? precio * 12 : precio;
-      if (!Number.isFinite(precioPorPeriodo) || precioPorPeriodo <= 0) {
-        throw new BadRequestException(
-          `El plan "${sus.plan ?? 'desconocido'}" no tiene precio configurado`,
-        );
-      }
+    // Misma fórmula que el preview que el admin acaba de leer en el Popconfirm.
+    const modalidad = sus?.modalidad ?? 'mensual';
+    const precio    = Number(sus?.precio ?? 0);
+    const preview   = sus
+      ? calcularPreviewPago({
+          monto:            Number(pago.monto),
+          precioMensual:    precio,
+          venceSuscripcion: sus.fechaVencimiento,
+          diaCorte:         Number(sus.diaCorte),
+          modalidad,
+        })
+      : null;
+
+    if (preview?.sinPrecio) {
+      throw new BadRequestException(
+        `El plan "${sus.plan ?? 'desconocido'}" no tiene precio configurado`,
+      );
     }
 
     // ── Confirmar el pago ────────────────────────────────────────────────────
@@ -424,16 +470,13 @@ export class PagosSuscripcionService {
     });
 
     // ── Avanzar fechaVencimiento si cubre al menos 1 período ─────────────────
-    if (sus && precioPorPeriodo > 0) {
+    if (preview) {
       const montoNum = Number(pago.monto);
-      const periodos = Math.floor(montoNum / precioPorPeriodo);
+      const periodos = preview.periodos;
 
-      if (periodos >= 1) {
-        const fechaStr = typeof sus.fechaVencimiento === 'string'
-          ? sus.fechaVencimiento.split('T')[0]
-          : (sus.fechaVencimiento as Date).toISOString().split('T')[0];
-        const diaCorte = Number(sus.diaCorte);
-        const nuevaFecha = this.calcularNuevaFecha(fechaStr, diaCorte, periodos, modalidad);
+      if (periodos >= 1 && preview.nuevaFecha) {
+        const fechaStr   = fechaDeVencimiento(sus.fechaVencimiento);
+        const nuevaFecha = preview.nuevaFecha;
 
         await this.ds.query(`
           UPDATE suscripciones
@@ -452,7 +495,7 @@ export class PagosSuscripcionService {
       } else {
         this.logger.log(
           `[TRANSFERENCIA-ABONO] Empresa #${pago.empresaId} | RD$${montoNum} — ` +
-          `no cubre 1 período (precio: ${precioPorPeriodo}). Queda como abono.`,
+          `no cubre 1 período (precio: ${preview.precioPorPeriodo}). Queda como abono.`,
         );
       }
     }

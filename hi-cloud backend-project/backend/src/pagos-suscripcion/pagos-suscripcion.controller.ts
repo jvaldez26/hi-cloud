@@ -108,6 +108,22 @@ export class PagosSuscripcionAdminController {
     return this.svc.getHistorialEmpresa(id);
   }
 
+  /**
+   * GET /admin/pagos-suscripcion/empresa/:id/preview-pago?monto=
+   *
+   * Qué haría ese monto: períodos que cubre y vencimiento resultante. El panel
+   * lo pide mientras se teclea para no calcular dinero por su cuenta.
+   */
+  @Get('empresa/:id/preview-pago')
+  previewPago(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('monto') monto: string,
+  ) {
+    const n = Number(monto);
+    if (!Number.isFinite(n) || n < 0) throw new BadRequestException('Monto inválido');
+    return this.svc.previewPago(id, n);
+  }
+
   /** POST /admin/pagos-suscripcion/empresa/:id/pago */
   @Post('empresa/:id/pago')
   registrarPago(

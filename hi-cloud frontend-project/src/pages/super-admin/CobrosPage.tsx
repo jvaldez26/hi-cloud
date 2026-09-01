@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import {
   Table, Card, Row, Col, Typography, Tag, Button, Space,
   Modal, Form, Input, InputNumber, Select, message, Popconfirm,
@@ -10,9 +10,9 @@ import {
   BankOutlined, SettingOutlined, EyeOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { pagosAdminApi, PagoSuscripcion, ResumenCobros } from '../../api/pagos.api';
+import { pagosAdminApi, PagoSuscripcion, PreviewPago, ResumenCobros } from '../../api/pagos.api';
 import { fmtDop } from '../../utils/fmt';
-import { ahora, fecha } from '../../utils/fechaRD';
+import { ahora, diasHasta, fecha } from '../../utils/fechaRD';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 
@@ -25,26 +25,43 @@ function fmtDate(d: string | null) {
 
 const PLAN_LABELS:  Record<string, string> = { emprendedor: 'Emprendedor', pyme: 'PYME', pro: 'Pro', plus: 'Plus' };
 
-interface PreviewPago {
-  periodos:     number;
-  nuevaFecha:   string | null;
-  faltante:     number;
-  enPasado:     boolean;
+/**
+ * El texto del aviso a partir del preview que manda el backend.
+ *
+ * Aquí ya no se calcula nada: `periodos`, `nuevaFecha` y `faltante` vienen
+ * hechos del servidor con la misma fórmula que se aplicará al confirmar. Esta
+ * pantalla solo elige las palabras y el color.
+ *
+ * `corto` es para el Popconfirm, donde no cabe la frase entera.
+ */
+function avisoPreview(p: PreviewPago | null | undefined, corto = false): { texto: string; tono: 'ok' | 'aviso' | 'malo' } | null {
+  if (!p) return null;
+  if (p.sinSuscripcion) return { texto: 'Esta empresa no tiene suscripción: el pago queda como abono.', tono: 'aviso' };
+  if (p.sinPrecio)      return { texto: 'El plan no tiene precio configurado: el pago será rechazado.', tono: 'malo' };
+  if (p.periodos === 0) return {
+    texto: corto
+      ? `⚠️ No extiende la suscripción. Faltan ${fmtDop(p.faltante)} para un período.`
+      : `⚠️ Este pago NO extiende la suscripción. Faltan ${fmtDop(p.faltante)} para completar un período.`,
+    tono: 'aviso',
+  };
+  const hasta = fecha(p.nuevaFecha);
+  if (p.enPasado) return {
+    texto: `🔴 Queda vencida hasta ${hasta}. Este pago cubre ${p.periodos} período(s).`,
+    tono: 'malo',
+  };
+  return {
+    texto: corto
+      ? `✅ Cubre ${p.periodos} período(s). Nuevo vencimiento: ${hasta}`
+      : `✅ Este pago cubre ${p.periodos} período(s). Nuevo vencimiento: ${hasta}`,
+    tono: 'ok',
+  };
 }
 
-function calcularPreviewPago(monto: number, precioMensual: number, venceSuscripcion: string, diaCorte: number, modalidad: string): PreviewPago {
-  const precioPorPeriodo = modalidad === 'anual' ? precioMensual * 12 : precioMensual;
-  const periodos = precioPorPeriodo > 0 ? Math.floor(monto / precioPorPeriodo) : 0;
-  if (periodos === 0) return { periodos, nuevaFecha: null, faltante: precioPorPeriodo - monto, enPasado: false };
-  const [y, m] = venceSuscripcion.slice(0, 7).split('-').map(Number);
-  let ny = y, nm = m;
-  if (modalidad === 'anual') { ny += periodos; }
-  else { nm += periodos; while (nm > 12) { nm -= 12; ny += 1; } }
-  const ultimoDia = new Date(ny, nm, 0).getDate();
-  const nd = Math.min(diaCorte, ultimoDia);
-  const nuevaFecha = `${ny}-${String(nm).padStart(2,'0')}-${String(nd).padStart(2,'0')}`;
-  return { periodos, nuevaFecha, faltante: 0, enPasado: new Date(nuevaFecha + 'T12:00:00').getTime() < Date.now() };
-}
+const TONO_AVISO = {
+  ok:    { fondo: '#f0fdf4', borde: '#86efac', texto: '#166534' },
+  aviso: { fondo: '#fefce8', borde: '#fde047', texto: '#854d0e' },
+  malo:  { fondo: '#fef2f2', borde: '#fca5a5', texto: '#991b1b' },
+} as const;
 
 const ESTADO_COLOR: Record<string, string> = {
   activa: 'green', suspendida: 'red', prueba: 'cyan', vencida: 'red', cancelada: 'default',
@@ -58,6 +75,9 @@ export default function CobrosPage() {
 
   const [openPago,         setOpenPago]         = useState<number | null>(null);  // empresaId
   const [pagoPreviewMonto, setPagoPreviewMonto] = useState<number | null>(null);
+  // El monto con el que se le pregunta al servidor. Va detrás del que se
+  // teclea para no lanzar una petición por tecla.
+  const [montoConsultado,  setMontoConsultado]  = useState<number | null>(null);
   const [openCargo,        setOpenCargo]        = useState<number | null>(null);
   const [openCredito,      setOpenCredito]      = useState<number | null>(null);
   const [openHist,         setOpenHist]         = useState<number | null>(null);
@@ -96,12 +116,36 @@ export default function CobrosPage() {
     queryFn:  pagosAdminApi.getConfigBancaria,
   });
 
+  useEffect(() => {
+    const t = setTimeout(() => setMontoConsultado(pagoPreviewMonto), 350);
+    return () => clearTimeout(t);
+  }, [pagoPreviewMonto]);
+
+  /**
+   * Qué haría este pago, según el servidor.
+   *
+   * Es la misma fórmula que se aplica al registrar (preview-pago.util.ts). El
+   * frontend la tenía copiada y le prometía al admin un vencimiento que el
+   * backend recalculaba después — mismo criterio que el efectivo esperado del
+   * cierre de caja: aquí no se calcula dinero, se muestra lo que llega.
+   */
+  const { data: previewPago, isFetching: previewCargando } = useQuery({
+    queryKey: ['preview-pago', openPago, montoConsultado],
+    queryFn:  () => pagosAdminApi.previewPago(openPago!, montoConsultado!),
+    enabled:  !!openPago && montoConsultado != null && montoConsultado > 0,
+  });
+
+  // Mientras el monto tecleado no sea el que se consultó, el aviso de abajo
+  // hablaría de otra cifra. Antes que enseñar un número que ya no es, se dice
+  // que se está calculando.
+  const previewAlDia = pagoPreviewMonto === montoConsultado && !previewCargando;
+
   // ── Mutations ────────────────────────────────────────────────────────────
   const pagoMut = useMutation({
     mutationFn: ({ id, ...d }: any) => pagosAdminApi.registrarPago(id, d),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['cobros-resumen'] });
-      setOpenPago(null); setPagoPreviewMonto(null); formPago.resetFields();
+      setOpenPago(null); setPagoPreviewMonto(null); setMontoConsultado(null); formPago.resetFields();
       message.success('Pago registrado');
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
@@ -174,6 +218,27 @@ export default function CobrosPage() {
   ];
   const colVisHist = useColumnVisibility('sa-cobros-historial', COLS_HIST);
 
+  /**
+   * El nombre de la empresa, que es lo que el admin reconoce.
+   *
+   * Los títulos decían "Empresa #42": el id no le dice nada a nadie y es lo
+   * primero que se lee al confirmar un cargo.
+   */
+  const nombreEmpresa = (id: number | null) =>
+    resumen.find(r => r.empresaId === id)?.nombre ?? (id ? `Empresa #${id}` : '');
+
+  /**
+   * Cerrar un modal deja el formulario limpio.
+   *
+   * Antes solo se limpiaba en onSuccess: abrir → escribir → cancelar → abrir
+   * con OTRA empresa arrastraba el concepto y el monto anteriores. En una
+   * pantalla de cargos y créditos eso le aplica dinero a quien no es.
+   */
+  const cerrar = (setOpen: (v: null) => void, form: { resetFields: () => void }) => () => {
+    setOpen(null);
+    form.resetFields();
+  };
+
   const colsResumen = [
     {
       title: 'Empresa',
@@ -209,8 +274,12 @@ export default function CobrosPage() {
       dataIndex: 'venceSuscripcion',
       key: 'venceSuscripcion',
       width: 130,
-      render: (v: string, r: ResumenCobros) => {
-        const dias = v ? Math.ceil((new Date(v).getTime() - Date.now()) / 86400000) : null;
+      render: (v: string) => {
+        // Un vencimiento es una fecha de calendario. Restarle Date.now() a
+        // `new Date('2026-08-31')` lo lee como medianoche UTC y en RD (−4) da
+        // un día menos; diasHasta cuenta días en RD. Vencer HOY tampoco es
+        // estar vencida: la suscripción vale todo el día.
+        const dias = diasHasta(v);
         return (
           <Space direction="vertical" size={0}>
             <Space size={4}>
@@ -218,7 +287,7 @@ export default function CobrosPage() {
             </Space>
             {dias !== null && (
               <Text style={{ fontSize: 11, color: dias <= 3 ? '#ef4444' : dias <= 7 ? '#f59e0b' : '#6b7280' }}>
-                {dias > 0 ? `${dias}d` : 'Vencida'}
+                {dias > 0 ? `${dias}d` : dias === 0 ? 'Vence hoy' : 'Vencida'}
               </Text>
             )}
           </Space>
@@ -273,6 +342,10 @@ export default function CobrosPage() {
               const planLabel = PLAN_LABELS[r.plan] ?? r.plan;
               setOpenPago(r.empresaId);
               setPagoPreviewMonto(precio);
+              setMontoConsultado(precio);
+              // Sin el reset, la referencia y las notas de la empresa anterior
+              // siguen ahí: setFieldsValue solo pisa los campos que nombra.
+              formPago.resetFields();
               formPago.setFieldsValue({
                 tipo: 'MANUAL',
                 monto: precio,
@@ -282,12 +355,12 @@ export default function CobrosPage() {
             Pago
           </Button>
           <Button size="small" icon={<PlusOutlined />}
-            onClick={() => { setOpenCargo(r.empresaId); }}
+            onClick={() => { formCargo.resetFields(); setOpenCargo(r.empresaId); }}
             danger>
             Cargo
           </Button>
           <Button size="small" icon={<MinusOutlined />}
-            onClick={() => { setOpenCredito(r.empresaId); }}
+            onClick={() => { formCredito.resetFields(); setOpenCredito(r.empresaId); }}
             style={{ color: '#10b981', borderColor: '#10b981' }}>
             Crédito
           </Button>
@@ -345,16 +418,8 @@ export default function CobrosPage() {
         <Space>
           <Popconfirm
             title="¿Confirmar este pago?"
-            description={(() => {
-              if (!r.precioMensual || !r.venceSuscripcion || r.diaCorte == null) return 'Esto activará o extenderá la suscripción de la empresa.';
-              const preview = calcularPreviewPago(Number(r.monto), r.precioMensual, r.venceSuscripcion, r.diaCorte, r.modalidad ?? 'mensual');
-              if (preview.periodos === 0) return `⚠️ No extiende la suscripción. Faltan ${fmtDop(preview.faltante)} para un período.`;
-              const fechaFmt = preview.nuevaFecha
-                ? fecha(preview.nuevaFecha + 'T12:00:00')
-                : '';
-              if (preview.enPasado) return `🔴 Queda vencida hasta ${fechaFmt}. Cubre ${preview.periodos} período(s).`;
-              return `✅ Cubre ${preview.periodos} período(s). Nuevo vencimiento: ${fechaFmt}`;
-            })()}
+            description={avisoPreview(r.preview, true)?.texto
+              ?? 'Esto activará o extenderá la suscripción de la empresa.'}
             onConfirm={() => confirmarMut.mutate(r.id)}
             okText="Confirmar" cancelText="Cancelar"
           >
@@ -367,7 +432,7 @@ export default function CobrosPage() {
           </Popconfirm>
           <Button
             size="small" danger icon={<CloseOutlined />}
-            onClick={() => setOpenRechazo(r.id)}
+            onClick={() => { formRechazo.resetFields(); setOpenRechazo(r.id); }}
           >
             Rechazar
           </Button>
@@ -417,6 +482,7 @@ export default function CobrosPage() {
         <Col>
           <Button icon={<BankOutlined />} onClick={() => {
             setOpenBanco(true);
+            formBanco.resetFields();
             if (configBanco) formBanco.setFieldsValue(configBanco);
           }}>
             Datos bancarios
@@ -525,10 +591,16 @@ export default function CobrosPage() {
         ]}
       />
 
-      {/* Modal: Registrar pago */}
+      {/* Modal: Registrar pago.
+          Sin destroyOnClose a propósito: este formulario se PRERRELLENA al
+          abrirlo (plan, monto y concepto) y el setFieldsValue del botón corre
+          antes de que el modal monte. La limpieza va explícita, al abrir y al
+          cerrar. */}
       <Modal
-        title={`💵 Registrar pago — Empresa #${openPago}`}
-        open={!!openPago} onCancel={() => { setOpenPago(null); setPagoPreviewMonto(null); }} footer={null}
+        title={`💵 Registrar pago — ${nombreEmpresa(openPago)}`}
+        open={!!openPago}
+        onCancel={() => { setOpenPago(null); setPagoPreviewMonto(null); setMontoConsultado(null); formPago.resetFields(); }}
+        footer={null}
       >
         {(() => {
           const row = resumen.find(r => r.empresaId === openPago);
@@ -581,37 +653,12 @@ export default function CobrosPage() {
             />
           </Form.Item>
           {(() => {
-            const row = resumen.find(r => r.empresaId === openPago);
-            if (!row || pagoPreviewMonto == null || !row.venceSuscripcion || row.diaCorte == null) return null;
-            const preview = calcularPreviewPago(
-              pagoPreviewMonto,
-              row.precioMensual ?? 0,
-              row.venceSuscripcion,
-              row.diaCorte,
-              row.modalidad ?? 'mensual',
-            );
-            const fechaFmt = preview.nuevaFecha
-              ? fecha(preview.nuevaFecha + 'T12:00:00')
-              : '';
-            if (preview.periodos === 0) return (
-              <div style={{ marginBottom: 12, padding: '8px 12px', background: '#fefce8', border: '1px solid #fde047', borderRadius: 6 }}>
-                <Text style={{ color: '#854d0e', fontSize: 13 }}>
-                  ⚠️ Este pago NO extiende la suscripción. Faltan {fmtDop(preview.faltante)} para completar un período.
-                </Text>
-              </div>
-            );
-            if (preview.enPasado) return (
-              <div style={{ marginBottom: 12, padding: '8px 12px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 6 }}>
-                <Text style={{ color: '#991b1b', fontSize: 13 }}>
-                  🔴 Queda vencida hasta {fechaFmt}. Este pago cubre {preview.periodos} período(s).
-                </Text>
-              </div>
-            );
+            if (pagoPreviewMonto == null || pagoPreviewMonto <= 0) return null;
+            const aviso = previewAlDia ? avisoPreview(previewPago) : null;
+            const c = aviso ? TONO_AVISO[aviso.tono] : { fondo: '#f8fafc', borde: '#e2e8f0', texto: '#64748b' };
             return (
-              <div style={{ marginBottom: 12, padding: '8px 12px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 6 }}>
-                <Text style={{ color: '#166534', fontSize: 13 }}>
-                  ✅ Este pago cubre {preview.periodos} período(s). Nuevo vencimiento: {fechaFmt}
-                </Text>
+              <div style={{ marginBottom: 12, padding: '8px 12px', background: c.fondo, border: `1px solid ${c.borde}`, borderRadius: 6 }}>
+                <Text style={{ color: c.texto, fontSize: 13 }}>{aviso?.texto ?? 'Calculando…'}</Text>
               </div>
             );
           })()}
@@ -622,7 +669,7 @@ export default function CobrosPage() {
             <Input.TextArea rows={2} />
           </Form.Item>
           <Row justify="end" gutter={8}>
-            <Col><Button onClick={() => setOpenPago(null)}>Cancelar</Button></Col>
+            <Col><Button onClick={() => { setOpenPago(null); setPagoPreviewMonto(null); setMontoConsultado(null); formPago.resetFields(); }}>Cancelar</Button></Col>
             <Col><Button type="primary" htmlType="submit" loading={pagoMut.isPending}>Registrar</Button></Col>
           </Row>
         </Form>
@@ -630,8 +677,9 @@ export default function CobrosPage() {
 
       {/* Modal: Cargo adicional */}
       <Modal
-        title={`📌 Agregar cargo — Empresa #${openCargo}`}
-        open={!!openCargo} onCancel={() => setOpenCargo(null)} footer={null}
+        title={`📌 Agregar cargo — ${nombreEmpresa(openCargo)}`}
+        open={!!openCargo} destroyOnClose
+        onCancel={cerrar(setOpenCargo, formCargo)} footer={null}
       >
         <Form form={formCargo} layout="vertical"
           onFinish={v => cargoMut.mutate({ id: openCargo, ...v })}>
@@ -645,7 +693,7 @@ export default function CobrosPage() {
             <Input.TextArea rows={2} />
           </Form.Item>
           <Row justify="end" gutter={8}>
-            <Col><Button onClick={() => setOpenCargo(null)}>Cancelar</Button></Col>
+            <Col><Button onClick={cerrar(setOpenCargo, formCargo)}>Cancelar</Button></Col>
             <Col><Button type="primary" danger htmlType="submit" loading={cargoMut.isPending}>Agregar cargo</Button></Col>
           </Row>
         </Form>
@@ -653,8 +701,9 @@ export default function CobrosPage() {
 
       {/* Modal: Crédito / descuento */}
       <Modal
-        title={`✅ Aplicar crédito — Empresa #${openCredito}`}
-        open={!!openCredito} onCancel={() => setOpenCredito(null)} footer={null}
+        title={`✅ Aplicar crédito — ${nombreEmpresa(openCredito)}`}
+        open={!!openCredito} destroyOnClose
+        onCancel={cerrar(setOpenCredito, formCredito)} footer={null}
       >
         <Form form={formCredito} layout="vertical"
           onFinish={v => creditoMut.mutate({ id: openCredito, ...v })}>
@@ -668,7 +717,7 @@ export default function CobrosPage() {
             <Input.TextArea rows={2} />
           </Form.Item>
           <Row justify="end" gutter={8}>
-            <Col><Button onClick={() => setOpenCredito(null)}>Cancelar</Button></Col>
+            <Col><Button onClick={cerrar(setOpenCredito, formCredito)}>Cancelar</Button></Col>
             <Col>
               <Button
                 type="primary"
@@ -685,7 +734,7 @@ export default function CobrosPage() {
 
       {/* Modal: Historial empresa */}
       <Modal
-        title={`📋 Historial — Empresa #${openHist}`}
+        title={`📋 Historial — ${nombreEmpresa(openHist)}`}
         open={!!openHist} onCancel={() => setOpenHist(null)} footer={null}
         width={700}
       >
@@ -722,6 +771,7 @@ export default function CobrosPage() {
             onClick={() => {
               const id = openComprobante!.id;
               setOpenComprobante(null);
+              formRechazo.resetFields();
               setOpenRechazo(id);
             }}
           >
@@ -730,16 +780,8 @@ export default function CobrosPage() {
           <Popconfirm
             key="confirmar"
             title="¿Confirmar este pago?"
-            description={(() => {
-              if (!openComprobante?.precioMensual || !openComprobante?.venceSuscripcion || openComprobante?.diaCorte == null) return 'Esto activará o extenderá la suscripción de la empresa.';
-              const preview = calcularPreviewPago(Number(openComprobante.monto), openComprobante.precioMensual, openComprobante.venceSuscripcion, openComprobante.diaCorte, openComprobante.modalidad ?? 'mensual');
-              if (preview.periodos === 0) return `⚠️ No extiende la suscripción. Faltan ${fmtDop(preview.faltante)} para un período.`;
-              const fechaFmt = preview.nuevaFecha
-                ? fecha(preview.nuevaFecha + 'T12:00:00')
-                : '';
-              if (preview.enPasado) return `🔴 Queda vencida hasta ${fechaFmt}. Cubre ${preview.periodos} período(s).`;
-              return `✅ Cubre ${preview.periodos} período(s). Nuevo vencimiento: ${fechaFmt}`;
-            })()}
+            description={avisoPreview(openComprobante?.preview, true)?.texto
+              ?? 'Esto activará o extenderá la suscripción de la empresa.'}
             onConfirm={() => {
               confirmarMut.mutate(openComprobante!.id);
               setOpenComprobante(null);
@@ -802,7 +844,8 @@ export default function CobrosPage() {
       {/* Modal: Rechazar transferencia */}
       <Modal
         title="❌ Rechazar comprobante"
-        open={!!openRechazo} onCancel={() => setOpenRechazo(null)} footer={null}
+        open={!!openRechazo} destroyOnClose
+        onCancel={cerrar(setOpenRechazo, formRechazo)} footer={null}
       >
         <Form form={formRechazo} layout="vertical"
           onFinish={v => rechazarMut.mutate({ pagoId: openRechazo, motivo: v.motivoRechazo })}>
@@ -817,7 +860,7 @@ export default function CobrosPage() {
             />
           </Form.Item>
           <Row justify="end" gutter={8}>
-            <Col><Button onClick={() => setOpenRechazo(null)}>Cancelar</Button></Col>
+            <Col><Button onClick={cerrar(setOpenRechazo, formRechazo)}>Cancelar</Button></Col>
             <Col><Button danger type="primary" htmlType="submit" loading={rechazarMut.isPending}>Rechazar</Button></Col>
           </Row>
         </Form>

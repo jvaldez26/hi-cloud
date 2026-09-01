@@ -15,6 +15,29 @@ export interface ResumenSuscripcion {
   saldo:            number;
 }
 
+/**
+ * Qué haría un pago: cuántos períodos cubre y qué vencimiento deja.
+ *
+ * Lo calcula el BACKEND (preview-pago.util.ts), con la misma fórmula que
+ * aplica al confirmar. El frontend lo tuvo duplicado y prometía en un
+ * Popconfirm un vencimiento que el servidor volvía a calcular a su manera.
+ */
+export interface PreviewPago {
+  /** Períodos completos que cubre el pago. 0 = queda como abono. */
+  periodos:         number;
+  precioPorPeriodo: number;
+  /** Vencimiento resultante, 'YYYY-MM-DD'. null si no cubre ni un período. */
+  nuevaFecha:       string | null;
+  /** Lo que falta para completar un período. 0 si ya lo cubre. */
+  faltante:         number;
+  /** El nuevo vencimiento sigue en el pasado: venía muy atrasada. */
+  enPasado:         boolean;
+  /** El plan no tiene precio configurado: no hay nada que calcular. */
+  sinPrecio:        boolean;
+  /** Solo en el preview en vivo: la empresa no tiene suscripción. */
+  sinSuscripcion?:  boolean;
+}
+
 export interface PagoSuscripcion {
   id:             number;
   empresaId:      number;
@@ -40,6 +63,8 @@ export interface PagoSuscripcion {
   diaCorte?:          number;
   modalidad?:         string;
   precioMensual?:     number;
+  /** Solo en comprobantes-pendientes: qué haría confirmar este pago. */
+  preview?:           PreviewPago | null;
 }
 
 export interface ConfiguracionBancaria {
@@ -136,6 +161,14 @@ export const pagosAdminApi = {
       const raw = unwrap<any>(r);
       return Array.isArray(raw) ? raw : [];
     }),
+
+  /**
+   * Qué haría un pago de `monto` en esa empresa. Se pide al servidor en vez
+   * de calcularlo aquí: es la misma cuenta que se va a aplicar al registrar.
+   */
+  previewPago: (empresaId: number, monto: number): Promise<PreviewPago> =>
+    apiClient.get(`${ADMIN}/empresa/${empresaId}/preview-pago`, { params: { monto } })
+      .then(r => unwrap<PreviewPago>(r)),
 
   /** Historial completo de una empresa */
   historialEmpresa: (empresaId: number): Promise<PagoSuscripcion[]> =>

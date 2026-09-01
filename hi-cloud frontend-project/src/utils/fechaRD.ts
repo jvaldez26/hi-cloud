@@ -219,6 +219,24 @@ export function fechaHora(v: unknown): string {
 }
 
 /**
+ * Días de calendario que faltan para una fecha, contados en RD.
+ *
+ * Un vencimiento es una fecha de calendario, no un instante. Restar
+ * `new Date('2026-08-31').getTime()` de `Date.now()` lo lee como medianoche
+ * UTC, que en RD (−4) es todavía el día 30: el contador de la tabla de cobros
+ * decía un día menos. Aquí se comparan DÍAS, no milisegundos.
+ *
+ * Negativo = ya pasó. 0 = vence hoy, que no es lo mismo que estar vencida.
+ * null si no hay fecha que contar.
+ */
+export function diasHasta(v: unknown): number | null {
+  if (v == null || v === '') return null;
+  const esFechaCalendario = typeof v === 'string' && SOLO_FECHA.test(v.trim());
+  if (!esFechaCalendario && !aInstante(v)) return null;
+  return dRD(v).startOf('day').diff(ahoraRD().startOf('day'), 'day');
+}
+
+/**
  * dayjs ya pinneado a RD, para los sitios que necesitan un formato propio
  * (`.format('DD-MM-YYYY HH:mm:ss')` de los e-CF, por ejemplo).
  *

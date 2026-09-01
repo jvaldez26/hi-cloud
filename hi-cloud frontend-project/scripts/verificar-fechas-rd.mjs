@@ -122,6 +122,25 @@ ok('anioRD', M.anioRD(), 2026);
 ok('mesRD',  M.mesRD(),  8);
 ok('horaDelDiaRD', M.horaDelDiaRD(), 21);
 
+console.log('');
+console.log('diasHasta — el contador de vencimientos');
+// Seguimos con el reloj del servidor en 22/08 21:00 RD (23/08 01:00 UTC).
+// Ahí es donde la cuenta vieja se rompía: `new Date('2026-08-31').getTime()`
+// es medianoche UTC, o sea el 30 a las 8pm en RD, así que el panel de cobros
+// mostraba un día menos del que quedaba de suscripción.
+ok('hoy son 0 días, no -1',              M.diasHasta('2026-08-22'), 0);
+ok('mañana es 1',                        M.diasHasta('2026-08-23'), 1);
+ok('ayer es -1',                         M.diasHasta('2026-08-21'), -1);
+ok('EL BUG: al 31/08 le quedan 9 días, no 8', M.diasHasta('2026-08-31'), 9);
+ok('cruza el mes sin perderse',          M.diasHasta('2026-09-01'), 10);
+ok('la medianoche pegada no cambia nada', M.diasHasta('2026-08-31T00:00:00'), 9);
+ok('un instante también se cuenta por días', M.diasHasta('2026-08-22T13:14:00.000Z'), 0);
+ok('a las 9pm RD el vencimiento de mañana sigue siendo 1 día',
+   M.diasHasta('2026-08-23T00:00:00'), 1);
+for (const v of [null, undefined, '', 'no soy una fecha']) {
+  ok(`diasHasta(${JSON.stringify(v)}) es null, no 0`, M.diasHasta(v), null);
+}
+
 try { unlinkSync(dest); } catch { /* da igual */ }
 
 console.log(`\n${total - fallos}/${total} comprobaciones OK`);
