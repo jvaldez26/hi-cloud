@@ -14,6 +14,17 @@ export interface ProductoPayload {
   marca?: string;
   modelo?: string;
   referencia?: string;
+  /**
+   * Proveedor que vende el producto. OPCIONAL. No es columna de `productos`: el
+   * backend lo saca del payload y crea el par en `producto_proveedor`.
+   */
+  proveedorId?: number;
+  /**
+   * El código del artículo en el catálogo DEL proveedor. Va al par, no al
+   * producto. NO confundir con `referencia`, que es la interna del negocio.
+   * Solo tiene efecto acompañado de `proveedorId`.
+   */
+  codigoProveedor?: string;
   // Balanzas etiquetadoras
   plu?: number | null;
   esPesable?: boolean;

@@ -267,29 +267,63 @@ export class ProductoProveedorService {
    *
    * @returns true si quedó vinculado (o ya lo estaba), false si no se pudo.
    */
-  async vincularAlCrear(productoId: number, proveedorId: number): Promise<boolean> {
+  async vincularAlCrear(
+    productoId: number,
+    proveedorId: number,
+    codigoProveedor?: string | null,
+    hacerPreferente = false,
+  ): Promise<boolean> {
     try {
       const empresaId = this.tenantService.getEmpresaId();
+      // Cadena vacía = el usuario dejó el campo en blanco, no "borra el código".
+      const codigo = codigoProveedor?.trim() ? codigoProveedor.trim() : undefined;
 
       const existente = await this.repo.findOne({ where: { empresaId, productoId, proveedorId } });
-      if (existente?.isActive) return true;
+
+      // ¿Este vínculo debe quedar como preferente?
+      //
+      // `hacerPreferente` lo pide el formulario de producto: elegir un proveedor
+      // en la ficha es una acción deliberada —el usuario está diciendo cuál es el
+      // suyo—, así que MUEVE el preferente aunque ya hubiera otro. Sin ese aviso
+      // (compra rápida, importación) se mantiene la regla conservadora: preferente
+      // solo si el producto no tiene ninguno, porque ahí el proveedor es
+      // incidental al flujo y nadie ha dicho que sea el principal.
+      const debeSerPreferente = hacerPreferente || await this.sinPreferente(productoId);
+
+      if (existente?.isActive) {
+        // Ya vinculado: esta vía puede aportar el código del proveedor y, si se
+        // pidió explícitamente, moverle el preferente.
+        if (codigo && codigo !== existente.codigoProveedor) {
+          await this.repo.update(existente.id, { codigoProveedor: codigo });
+        }
+        if (debeSerPreferente && !existente.esPreferente) {
+          await this.moverPreferente(productoId, existente.id);
+        }
+        return true;
+      }
 
       if (existente) {
         await this.repo.update(existente.id, {
           isActive: true,
-          esPreferente: await this.sinPreferente(productoId),
+          ...(codigo ? { codigoProveedor: codigo } : {}),
         });
+        if (debeSerPreferente) await this.moverPreferente(productoId, existente.id);
         return true;
       }
 
-      await this.repo.save(this.repo.create({
+      const creado = await this.repo.save(this.repo.create({
         empresaId, productoId, proveedorId,
         origen: 'manual',
         monedaPactada: 'DOP',
         precioPactado: null,
         precioPactadoAt: null,
-        esPreferente: await this.sinPreferente(productoId),
+        codigoProveedor: codigo ?? null,
+        // Se crea SIN marca y se mueve después: el índice único parcial rechaza
+        // dos preferentes vivos, así que hay que apagar el anterior antes de
+        // encender este. Insertarlo ya marcado reventaría cuando ya hubiera otro.
+        esPreferente: false,
       }));
+      if (debeSerPreferente) await this.moverPreferente(productoId, creado.id);
       return true;
     } catch (err) {
       this.logger.warn(
@@ -326,12 +360,28 @@ export class ProductoProveedorService {
     const empresaId = this.tenantService.getEmpresaId();
     const vinculo = await this.repo.findOne({ where: { id, empresaId } });
     if (!vinculo) throw new NotFoundException(`Vínculo #${id} no encontrado`);
+    await this.moverPreferente(vinculo.productoId, id);
+  }
 
+  /**
+   * Apaga el preferente anterior del producto y enciende este, en una
+   * transacción.
+   *
+   * El orden no es opcional: el índice único parcial
+   * `(empresaId, productoId) WHERE esPreferente AND isActive` rechaza dos
+   * preferentes vivos a la vez, así que encender antes de apagar revienta.
+   *
+   * Compartido por `marcarPreferente()` (pantalla de reposición) y por
+   * `vincularAlCrear(..., hacerPreferente)` (ficha de producto) para que la
+   * regla viva en un solo sitio.
+   */
+  private async moverPreferente(productoId: number, vinculoId: number): Promise<void> {
+    const empresaId = this.tenantService.getEmpresaId();
     await this.dataSource.transaction(async (mgr) => {
       await mgr.update(ProductoProveedor,
-        { empresaId, productoId: vinculo.productoId, esPreferente: true },
+        { empresaId, productoId, esPreferente: true },
         { esPreferente: false });
-      await mgr.update(ProductoProveedor, { id }, { esPreferente: true });
+      await mgr.update(ProductoProveedor, { id: vinculoId }, { esPreferente: true });
     });
   }
 
