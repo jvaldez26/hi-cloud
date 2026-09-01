@@ -179,3 +179,90 @@ describe('ProductoProveedorService — cuánto pedir', () => {
     expect(query.mock.calls[0][1]).toEqual([7, 5, 42]);
   });
 });
+
+/**
+ * Vínculo al crear un producto.
+ *
+ * Los tres mecanismos de poblado originales —backfill, enganche al recibir
+ * compra y alta manual desde reposición— dejaban fuera el alta de producto. Un
+ * producto recién creado no se vinculaba a nadie, ni siquiera cuando el
+ * proveedor estaba a la vista en el mismo formulario (el modal rápido de la
+ * orden de compra).
+ */
+describe('ProductoProveedorService.vincularAlCrear', () => {
+  const construir = (existente: any = null, preferenteExistente: any = null) => {
+    const save   = jest.fn(async (x: any) => ({ id: 99, ...x }));
+    const update = jest.fn().mockResolvedValue(undefined);
+    const create = jest.fn((x: any) => x);
+    // findOne se llama dos veces: el par existente y luego el preferente activo.
+    const findOne = jest.fn()
+      .mockResolvedValueOnce(existente)
+      .mockResolvedValueOnce(preferenteExistente);
+
+    const svc = new ProductoProveedorService(
+      { save, update, create, findOne } as any,
+      {} as any,
+      { getEmpresaId: () => 1 } as any,
+    );
+    return { svc, save, update, create, findOne };
+  };
+
+  it('crea el par con origen manual', async () => {
+    const { svc, save } = construir();
+    await expect(svc.vincularAlCrear(10, 5)).resolves.toBe(true);
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save.mock.calls[0][0]).toMatchObject({
+      productoId: 10, proveedorId: 5, origen: 'manual',
+    });
+  });
+
+  it('el par nace SIN precio — el costo del formulario es un estimado de compra', async () => {
+    const { svc, save } = construir();
+    await svc.vincularAlCrear(10, 5);
+    expect(save.mock.calls[0][0]).toMatchObject({
+      precioPactado: null,
+      precioPactadoAt: null,
+    });
+  });
+
+  it('marca preferente cuando el producto no tiene ninguno activo', async () => {
+    const { svc, save } = construir(null, null);
+    await svc.vincularAlCrear(10, 5);
+    expect(save.mock.calls[0][0].esPreferente).toBe(true);
+  });
+
+  it('NO marca preferente si el producto ya tiene uno', async () => {
+    // La condición es "no tiene preferente activo", no "es el primer proveedor":
+    // el enganche de compras crea pares SIN preferente, así que un producto puede
+    // tener varios proveedores y ninguno marcado. Con la regla del "primero" esos
+    // se quedarían huérfanos para siempre.
+    const { svc, save } = construir(null, { id: 7 });
+    await svc.vincularAlCrear(10, 5);
+    expect(save.mock.calls[0][0].esPreferente).toBe(false);
+  });
+
+  it('un par ya activo no se duplica ni se toca', async () => {
+    const { svc, save, update } = construir({ id: 3, isActive: true });
+    await expect(svc.vincularAlCrear(10, 5)).resolves.toBe(true);
+    expect(save).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('un par desvinculado se reactiva en vez de duplicarse', async () => {
+    const { svc, save, update } = construir({ id: 3, isActive: false }, null);
+    await expect(svc.vincularAlCrear(10, 5)).resolves.toBe(true);
+    expect(save).not.toHaveBeenCalled();
+    expect(update).toHaveBeenCalledWith(3, { isActive: true, esPreferente: true });
+  });
+
+  it('NO lanza si el vínculo falla — el producto ya está creado', async () => {
+    // Bloquear un alta de producto por un dato accesorio entorpecería el
+    // mostrador, que es justo lo que se quiere evitar.
+    const svc = new ProductoProveedorService(
+      { findOne: jest.fn().mockRejectedValue(new Error('BD caída')) } as any,
+      {} as any,
+      { getEmpresaId: () => 1 } as any,
+    );
+    await expect(svc.vincularAlCrear(10, 5)).resolves.toBe(false);
+  });
+});

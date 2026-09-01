@@ -206,7 +206,12 @@ export class ProductoProveedorService {
 
       if (existente) {
         if (!existente.isActive) {
-          await this.repo.update(existente.id, { isActive: true, origen: 'manual', ...datos });
+          await this.repo.update(existente.id, {
+            isActive: true,
+            origen: 'manual',
+            ...datos,
+            esPreferente: await this.sinPreferente(productoId),
+          });
           creados++;
         }
         continue;
@@ -218,11 +223,80 @@ export class ProductoProveedorService {
         monedaPactada: datos?.monedaPactada ?? 'DOP',
         precioPactadoAt: datos?.precioPactado != null ? new Date() : null,
         ...datos,
+        esPreferente: await this.sinPreferente(productoId),
       }));
       creados++;
     }
 
     return { creados, yaExistian: productoIds.length - creados };
+  }
+
+  /**
+   * ¿Este producto se ha quedado sin proveedor preferente?
+   *
+   * La condición NO es «es el primer proveedor del producto». No es lo mismo: el
+   * enganche al recibir compras crea pares SIN marcar preferente, así que un
+   * producto puede tener tres proveedores y ninguno preferente. Con la regla del
+   * «primero» esos se quedarían huérfanos para siempre; con esta, el primero que
+   * alguien vincule a mano ocupa el hueco.
+   *
+   * El índice único parcial es la red: si dos altas simultáneas creyeran ambas
+   * que no hay preferente, la segunda falla en la BD en vez de dejar dos.
+   */
+  private async sinPreferente(productoId: number): Promise<boolean> {
+    const empresaId = this.tenantService.getEmpresaId();
+    const yaHay = await this.repo.findOne({
+      where: { empresaId, productoId, esPreferente: true, isActive: true },
+      select: ['id'],
+    });
+    return !yaHay;
+  }
+
+  /**
+   * Vincula UN producto a UN proveedor en el momento de crearlo.
+   *
+   * Lo usan el alta de producto (formulario y modal rápido de la orden de compra)
+   * y la importación masiva. Se separa de `vincular()` porque no lanza: un
+   * producto se crea aunque el vínculo falle. Bloquear un alta de producto por un
+   * dato accesorio entorpecería el mostrador, que es justo lo que se quiere evitar.
+   *
+   * El par nace SIN precio a propósito. El costo que se teclea en el formulario de
+   * producto es un estimado de compra, no un precio pactado con ese proveedor;
+   * meterlo aquí repetiría el problema que ya resolvimos marcando el backfill como
+   * «estimado». La pantalla de reposición lo pedirá cuando haga falta.
+   *
+   * @returns true si quedó vinculado (o ya lo estaba), false si no se pudo.
+   */
+  async vincularAlCrear(productoId: number, proveedorId: number): Promise<boolean> {
+    try {
+      const empresaId = this.tenantService.getEmpresaId();
+
+      const existente = await this.repo.findOne({ where: { empresaId, productoId, proveedorId } });
+      if (existente?.isActive) return true;
+
+      if (existente) {
+        await this.repo.update(existente.id, {
+          isActive: true,
+          esPreferente: await this.sinPreferente(productoId),
+        });
+        return true;
+      }
+
+      await this.repo.save(this.repo.create({
+        empresaId, productoId, proveedorId,
+        origen: 'manual',
+        monedaPactada: 'DOP',
+        precioPactado: null,
+        precioPactadoAt: null,
+        esPreferente: await this.sinPreferente(productoId),
+      }));
+      return true;
+    } catch (err) {
+      this.logger.warn(
+        `Producto #${productoId} creado sin vincular al proveedor #${proveedorId}: ${(err as Error).message}`,
+      );
+      return false;
+    }
   }
 
   async actualizar(id: number, datos: Partial<ProductoProveedor>): Promise<ProductoProveedor> {

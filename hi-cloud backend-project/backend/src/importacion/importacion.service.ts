@@ -5,12 +5,19 @@ import { Cliente }   from '../clientes/entities/cliente.entity';
 import { Producto }  from '../productos/entities/producto.entity';
 import { Proveedor } from '../proveedores/entities/proveedor.entity';
 import { TenantService } from '../tenant/tenant.service';
+import { ProductoProveedorService } from '../productos/producto-proveedor.service';
 
 export interface ImportResult {
   total:     number;
   exitosos:  number;
   errores:   number;
-  detalles:  Array<{ fila: number; error?: string; estado: 'ok' | 'error' }>;
+  /**
+   * Filas que se importaron bien pero con una salvedad — hoy solo un proveedor
+   * que no se pudo resolver. Se cuentan aparte de `errores` a propósito: la fila
+   * entró, y mezclarlas haría que un CSV correcto pareciera fallido.
+   */
+  avisos?:   number;
+  detalles:  Array<{ fila: number; error?: string; aviso?: string; estado: 'ok' | 'error' }>;
 }
 
 @Injectable()
@@ -23,6 +30,7 @@ export class ImportacionService {
     @InjectRepository(Proveedor) private proveedorRepository: Repository<Proveedor>,
     @InjectDataSource()          private ds: DataSource,
     private tenantService: TenantService,
+    private productoProveedorSvc: ProductoProveedorService,
   ) {}
 
   // ──────────────────────────────────────────────────────────────────
@@ -84,9 +92,9 @@ export class ImportacionService {
   getPlantillaProductos(): string {
     return [
       'sep=,',
-      'codigo,nombre,precio,precio2,precio3,porcentajeItbis,unidadMedida,stock,stockMinimo,categoria,descripcion,tipo,almacen',
-      'PROD001,Producto Ejemplo,1500.00,1400.00,1300.00,18,PZA,50,5,General,Descripcion del producto,producto,Principal',
-      'SERV001,Servicio Ejemplo,2500.00,,,18,HR,0,0,Servicios,Descripcion del servicio,servicio,',
+      'codigo,nombre,precio,precio2,precio3,porcentajeItbis,unidadMedida,stock,stockMinimo,categoria,descripcion,tipo,almacen,proveedor',
+      'PROD001,Producto Ejemplo,1500.00,1400.00,1300.00,18,PZA,50,5,General,Descripcion del producto,producto,Principal,Ferreteria Central SRL',
+      'SERV001,Servicio Ejemplo,2500.00,,,18,HR,0,0,Servicios,Descripcion del servicio,servicio,,',
     ].join('\r\n');
   }
 
@@ -322,8 +330,37 @@ export class ImportacionService {
           }
         }
 
+        // ── Vínculo con el proveedor (columna opcional) ─────────────────────
+        //
+        // A diferencia de `almacen`, aquí NO hay respaldo si el nombre no cuadra.
+        // Un almacén equivocado es recuperable —el stock está en algún sitio y se
+        // mueve—, pero un proveedor equivocado ensucia la pantalla de reposición
+        // con productos que ese proveedor no vende, y nadie lo va a notar: no hay
+        // ningún síntoma hasta que alguien pide de más a quien no debía.
+        //
+        // Se avisa en el detalle de la fila, que se importó igual: el producto es
+        // el dato importante y el vínculo es accesorio.
+        const proveedorNombre = idx('proveedor') >= 0 ? fila[idx('proveedor')]?.trim() || '' : '';
+        let avisoProveedor: string | undefined;
+
+        if (proveedorNombre) {
+          const [prov] = await this.ds.query<{ id: number }[]>(
+            `SELECT id FROM proveedores
+              WHERE "empresaId" = $1 AND LOWER(nombre) = LOWER($2) AND "isActive" = true
+              LIMIT 1`,
+            [empresaId, proveedorNombre],
+          );
+
+          if (prov) {
+            await this.productoProveedorSvc.vincularAlCrear(producto.id, prov.id);
+          } else {
+            avisoProveedor = `Proveedor "${proveedorNombre}" no encontrado — el producto se importó sin vincular`;
+            result.avisos = (result.avisos ?? 0) + 1;
+          }
+        }
+
         result.exitosos++;
-        result.detalles.push({ fila: fNum, estado: 'ok' });
+        result.detalles.push({ fila: fNum, estado: 'ok', ...(avisoProveedor ? { aviso: avisoProveedor } : {}) });
       } catch (err) {
         this.logger.error(`[Import Productos] fila ${fNum}: ${(err as Error).message}`);
         result.errores++;

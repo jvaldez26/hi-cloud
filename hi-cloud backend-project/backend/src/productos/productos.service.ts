@@ -18,6 +18,7 @@ import { PaginationDto } from '../common/dto/pagination.dto';
 import { PreviewAjustePreciosDto, AplicarAjustePreciosDto } from './dto/ajuste-precios.dto';
 import { calcularFila } from './ajuste-precios.util';
 import { TenantService } from '../tenant/tenant.service';
+import { ProductoProveedorService } from './producto-proveedor.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { LimitesService } from '../suscripciones/limites.service';
 import { S3Service } from '../common/s3/s3.service';
@@ -45,6 +46,7 @@ export class ProductosService implements OnModuleInit {
     private realtimeService: RealtimeService,
     private limitesService:  LimitesService,
     private s3Service:       S3Service,
+    private productoProveedorSvc: ProductoProveedorService,
   ) {}
 
   /** Devuelve todas las categorías distintas del catálogo de la empresa (para Selects). */
@@ -272,7 +274,15 @@ export class ProductosService implements OnModuleInit {
       if (byCodigo) throw new ConflictException(`Ya existe un producto con el código '${dto.codigo}'`);
     }
 
-    const { almacenId: almacenIdDto, ubicacionId: ubicacionIdDto, ...productoData } = dto;
+    // proveedorId se extrae aquí: no es columna de `productos` sino un vínculo en
+    // producto_proveedor, y si se colara en productoData TypeORM lo ignoraría en
+    // silencio (o peor, el validador de esquema empezaría a quejarse).
+    const {
+      almacenId: almacenIdDto,
+      ubicacionId: ubicacionIdDto,
+      proveedorId,
+      ...productoData
+    } = dto;
     const almacenId = almacenIdDto ?? this.tenantService.getAlmacenId() ?? undefined;
 
     // Validación anti-IDOR: ubicacionId debe pertenecer al almacén Y a la empresa del tenant
@@ -324,6 +334,13 @@ export class ProductosService implements OnModuleInit {
           } as any),
         ).catch((err: Error) => this.logger.warn(`movimiento inicial no registrado para producto #${saved.id}: ${err.message}`));
       }
+    }
+
+    // Vincular al proveedor, si el alta lo indicó. Opcional a propósito: un
+    // producto sin proveedor conocido es legítimo. vincularAlCrear() no lanza —
+    // el producto ya está guardado y no se pierde por un dato accesorio.
+    if (proveedorId) {
+      await this.productoProveedorSvc.vincularAlCrear(saved.id, proveedorId);
     }
 
     this.realtimeService.notify(empresaId, 'producto', 'created', saved.id);

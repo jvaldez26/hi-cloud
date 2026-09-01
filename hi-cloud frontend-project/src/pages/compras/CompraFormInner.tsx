@@ -573,6 +573,16 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
             categoria:        vals.categoria  || undefined,
             unidadMedida:     vals.unidadMedida || undefined,
             codigoBarras:     vals.codigoBarras || undefined,
+            // El proveedor de la orden que se está capturando. Es el único sitio
+            // del sistema donde el par producto↔proveedor es deducible sin
+            // preguntar nada: ya está elegido arriba en este mismo formulario.
+            //
+            // No espera a la recepción: el enganche de compras vincula al recibir,
+            // pero una orden puede quedarse en borrador mucho tiempo — y es justo
+            // ahí cuando quieres ver el catálogo del proveedor en reposición.
+            //
+            // El `costo` NO viaja como precio pactado: es un estimado de compra.
+            proveedorId:      form.getFieldValue('proveedorId') || undefined,
             esCreacionRapida: true,
             porcentajeIva:    18,
           })}
