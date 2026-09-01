@@ -166,6 +166,52 @@ orden) + `generarOrdenCompraPDF()`. Si las líneas seleccionadas mezclan monedas
 **la pantalla lo dice y obliga a elegir** — una `compra` tiene una sola `moneda`,
 y convertir por detrás sería inventarse un tipo de cambio.
 
+### El poblado son CUATRO mecanismos, no tres
+
+Al alta de producto se le añadió el vínculo (era el hueco: backfill, enganche de
+compras y alta manual no la cubrían).
+
+| Dónde | Cómo |
+|---|---|
+| Modal rápido del **formulario de compra** | Automático — el `proveedorId` ya está elegido arriba, no se pregunta nada |
+| **Importación CSV** | Columna `proveedor` opcional, resuelta por nombre |
+| Formulario de producto | ⏳ **pendiente** — ver abajo |
+| POS | ❌ **fuera a propósito** — no hay proveedor en contexto (es una venta) y meter un selector con un cliente delante es fricción en el mostrador. Se vinculará cuando el producto entre en una compra |
+
+**Reglas, iguales en todas las vías:** el proveedor es **opcional** (un producto
+sin proveedor conocido es legítimo y bloquear el alta entorpece el mostrador); el
+par nace con **precio NULO** —el costo del formulario es un estimado de compra,
+no un precio pactado—; y se marca preferente **si el producto no tiene ya uno
+activo**, que no es lo mismo que «si es el primer proveedor»: el enganche de
+compras crea pares sin preferente, así que con la regla del «primero» esos
+productos se quedarían huérfanos para siempre.
+
+**En la importación NO hay respaldo si el nombre del proveedor no cuadra**, a
+diferencia de `almacen`, que cae al primero. Un almacén equivocado es
+recuperable; un proveedor equivocado ensucia la pantalla de reposición y **nadie
+lo nota**, porque no hay síntoma hasta que alguien le pide de más a quien no
+debía. La fila se importa igual y se cuenta en `avisos`, aparte de `errores`.
+
+### ⏳ Antes de tocar el formulario de producto: mirar `referencia`
+
+El campo `referencia` (texto libre, 100 chars) tiene de placeholder **«Referencia
+interna o del proveedor»**. Es muy posible que haya gente usándolo desde hace
+tiempo como código de proveedor. Si es así, el `Select` nuevo debe **ofrecerse
+explicando la diferencia**, no cambiarle el significado por debajo a un campo que
+ya tiene datos.
+
+```sql
+SELECT "empresaId",
+       count(*)                                              AS productos,
+       count(*) FILTER (WHERE btrim(COALESCE(referencia,'')) <> '') AS con_referencia,
+       round(100.0 * count(*) FILTER (WHERE btrim(COALESCE(referencia,'')) <> '')
+             / NULLIF(count(*),0), 1)                        AS pct
+  FROM productos
+ WHERE "isActive"
+ GROUP BY 1
+ ORDER BY con_referencia DESC;
+```
+
 ### ⏳ Revisar a los pocos días de que esto entre
 
 Cuando el enganche lleve unos días poblando la tabla, **mirar cuántos pares hay

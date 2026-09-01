@@ -145,6 +145,22 @@ export class CreateProductoDto {
   @IsBoolean()
   esCreacionRapida?: boolean;
 
+  /**
+   * Proveedor que vende este producto. OPCIONAL, y debe seguir siéndolo.
+   *
+   * Un producto sin proveedor conocido es un caso legítimo, y bloquear el alta
+   * por eso entorpece el mostrador. Si viene, se crea el par en
+   * `producto_proveedor`; si no, no pasa nada y el producto se vinculará solo
+   * cuando entre en una compra.
+   *
+   * No es una columna de `productos`: el service lo saca del payload antes de
+   * construir la entidad.
+   */
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  proveedorId?: number;
+
   // ── Balanzas etiquetadoras ────────────────────────────────────────────────
   @IsOptional()
   @IsInt()
