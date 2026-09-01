@@ -4,7 +4,7 @@
 > qué cambió. Esto cuenta **qué está a medias, qué no es obvio desde el código y qué no hay
 > que volver a decidir.**
 >
-> **Última actualización: 2026-09-01** · HEAD `ad3f50e1`
+> **Última actualización: 2026-09-01** · HEAD `383750ff`
 > Al cerrar o abrir un trabajo, actualizá la sección y la fecha de arriba.
 
 ---
@@ -132,11 +132,12 @@ con dos preferentes y nadie sabiendo cuál gana. Por eso `marcarPreferente()` va
 en transacción (apagar el anterior antes de encender el nuevo) y `desvincular()`
 apaga también la marca.
 
-**El poblado son TRES mecanismos, y el backfill es el menos importante.** El
-permanente es el enganche al recibir compra (`ComprasService`, en recepción total
-y parcial): una empresa sin ningún historial llena su catálogo por proveedor solo
-operando. El backfill de la migración solo pone al día a quien ya llevaba tiempo.
-El tercero es el alta manual, que es el caso que motivó todo. **Cero filas en una
+**El backfill es el mecanismo MENOS importante.** El permanente es el enganche al
+recibir compra (`ComprasService`, en recepción total y parcial): una empresa sin
+ningún historial llena su catálogo por proveedor solo operando. El backfill de la
+migración solo pone al día a quien ya llevaba tiempo. Los otros dos son el alta
+manual desde reposición —el caso que motivó todo— y el vínculo al crear el
+producto (ver «El poblado son CUATRO mecanismos» más abajo). **Cero filas en una
 empresa nueva es lo correcto, no un fallo** — por eso la pantalla vacía abre en
 modo alta en vez de ser un callejón sin salida.
 
@@ -310,9 +311,14 @@ rota era la única que nadie miraba.
 | **2 — POS** | Fix del frontend para que no dependa del `localStorage` | ❌ **Sin pushear** — solo existe en la otra máquina |
 | **3 — Backfill** | Script para recuperar las facturas huérfanas | ❌ **Sin pushear** — solo existe en la otra máquina |
 
-> ⚠️ **Fases 2 y 3 no están en ningún remoto.** Se verificó: no están en `origin/main` ni en
-> `origin/worktree-agent-abf8e6ad46f3b89c8` (esa rama está *detrás* de main, ya fusionada).
-> **No las reescribas** — hay que traerlas de la otra máquina.
+> ⚠️ **Fases 2 y 3 no están en ningún remoto.** Sigue siendo cierto, pero la evidencia
+> cambió: la rama `origin/worktree-agent-abf8e6ad46f3b89c8`, que era el otro sitio donde
+> mirar, **ya no existe**. El 2026-09-01 se comprobó que estaba enteramente contenida en
+> `main` —cero commits propios, 923 por detrás, ancestro directo— y se borró en la limpieza
+> del repo. Su punta era `8ccc6413` (20 de junio) por si alguna vez hiciera falta.
+>
+> Con esa rama descartada y `main` revisado, **hoy el único remoto es `origin/main` y ahí no
+> están.** **No las reescribas** — hay que traerlas de la otra máquina.
 
 ### Las huérfanas que quedan — 249 en 11 empresas
 
