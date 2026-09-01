@@ -671,6 +671,7 @@ export default function AppLayout() {
       '/solicitudes-compra':     () => import('../../pages/solicitudes-compra/SolicitudesCompraPage'),
       '/compras':                () => import('../../pages/compras/ComprasPage'),
       '/proveedores':            () => import('../../pages/proveedores/ProveedoresPage'),
+      '/reposicion-proveedor':   () => import('../../pages/proveedores/ReposicionProveedorPage'),
       '/cxp':                    () => import('../../pages/cxp/CxPPage'),
       '/notas-credito-compras':  () => import('../../pages/notas-credito-compras/NotasCreditoComprasPage'),
       '/gastos':                 () => import('../../pages/gastos/GastosPage'),

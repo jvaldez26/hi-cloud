@@ -31,6 +31,7 @@ const ComprasPage        = lazy(() => import('./pages/compras/ComprasPage'));
 const CompraFormPage     = lazy(() => import('./pages/compras/CompraFormPage'));
 const CompraDetailPage   = lazy(() => import('./pages/compras/CompraDetailPage'));
 const ProveedoresPage    = lazy(() => import('./pages/proveedores/ProveedoresPage'));
+const ReposicionProveedorPage = lazy(() => import('./pages/proveedores/ReposicionProveedorPage'));
 const InventarioPage     = lazy(() => import('./pages/inventario/InventarioPage'));
 const CxCPage            = lazy(() => import('./pages/cxc/CxCPage'));
 const CxPPage            = lazy(() => import('./pages/cxp/CxPPage'));
@@ -739,6 +740,7 @@ export default function App() {
                     <Route path="/compras/nueva"      element={<CompraFormPage />} />
                     <Route path="/compras/:id"        element={<CompraDetailPage />} />
                     <Route path="/proveedores"        element={<ProveedoresPage />} />
+                    <Route path="/reposicion-proveedor" element={<ReposicionProveedorPage />} />
                     <Route path="/solicitudes-compra"  element={<SolicitudesCompraPage />} />
                     <Route path="/planeacion-demanda"      element={<PlaneacionDemandaPage />} />
                     <Route path="/cuentas-estadisticas"   element={<CuentasEstadisticasPage />} />

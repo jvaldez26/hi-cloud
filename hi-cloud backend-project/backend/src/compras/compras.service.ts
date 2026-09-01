@@ -10,6 +10,7 @@ import { CompraDetalle } from './entities/compra-detalle.entity';
 import { CreateCompraDto } from './dto/create-compra.dto';
 import { ProveedoresService } from '../proveedores/proveedores.service';
 import { ProductosService } from '../productos/productos.service';
+import { ProductoProveedorService } from '../productos/producto-proveedor.service';
 import { InventarioService } from '../inventario/inventario.service';
 import { ValoracionStockService } from '../valoracion-stock/valoracion-stock.service';
 import { CxPService } from '../cxp/cxp.service';
@@ -32,6 +33,7 @@ export class ComprasService {
     private detalleRepository:  Repository<CompraDetalle>,
     private proveedoresService: ProveedoresService,
     private productosService:   ProductosService,
+    private productoProveedorSvc: ProductoProveedorService,
     private inventarioService:  InventarioService,
     private valoracionService:  ValoracionStockService,
     private cxpService:         CxPService,
@@ -328,6 +330,13 @@ export class ComprasService {
           [pidsRecibidos, this.tenantService.getEmpresaId()],
         );
       }
+
+      // 5. Registrar qué productos vende este proveedor.
+      //    Es el mecanismo PERMANENTE de poblado de producto_proveedor: el
+      //    backfill de la migración solo pone al día a quien ya tenía historial;
+      //    una empresa nueva llena su catálogo por proveedor solo con operar.
+      //    No lanza: una compra se recibe aunque esto falle.
+      await this.productoProveedorSvc.registrarDesdeCompra(compra.id);
     }
 
     if (estado === CompraEstado.CANCELADA && compra.estado === CompraEstado.RECIBIDA) {
@@ -467,6 +476,11 @@ export class ComprasService {
         [pidsRecibidos, this.tenantService.getEmpresaId()],
       );
     }
+
+    // Registrar qué productos vende este proveedor. Va también en la recepción
+    // PARCIAL: lo recibido ya demuestra que se lo vende, y esperar a la recepción
+    // total dejaría fuera las compras que nunca se completan. Es idempotente.
+    await this.productoProveedorSvc.registrarDesdeCompra(compra.id);
 
     const updatePayload: Partial<Compra> = { estado: nuevoEstado };
     if (dto.notas !== undefined) updatePayload.notas = dto.notas;

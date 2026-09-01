@@ -12,6 +12,15 @@ export interface CompraPayload {
   notas?: string; numeroFacturaProveedor?: string;
   tipoPago?: 'contado' | 'credito';
   diasCredito?: number;
+  /**
+   * El backend (CreateCompraDto) acepta estos tres desde hace tiempo; faltaban
+   * aquí. `moneda` importa porque una compra tiene UNA sola: la pantalla de
+   * reposición por proveedor obliga a elegir cuando las líneas mezclan monedas,
+   * en vez de convertir por detrás.
+   */
+  moneda?: string;
+  tipoCambio?: number;
+  almacenId?: number;
 }
 
 export const comprasApi = {
