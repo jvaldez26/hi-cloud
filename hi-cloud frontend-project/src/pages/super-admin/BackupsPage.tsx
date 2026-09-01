@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+﻿import { useMemo, useState } from 'react';
 import {
   Card, Row, Col, Table, Tag, Button, Space, Statistic, Alert,
   Tooltip, Modal, Typography, Badge,
@@ -16,11 +16,37 @@ import api from '../../api/client';
 import { dRD, fechaHora } from '../../utils/fechaRD';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { medianaBytes, evaluarTamanio } from '../../utils/tamanioBackup';
 
 dayjs.extend(relativeTime);
 dayjs.locale('es');
 
 const { Text, Title } = Typography;
+
+/**
+ * Ruta de la API para NAVEGACIONES del navegador —la descarga de un respaldo—,
+ * no para las XHR de axios.
+ *
+ * Sale de la misma VITE_API_URL que usa axios, pero se queda con la RUTA y
+ * descarta el host a propósito. La sesión viaja en la cookie httpOnly
+ * `access_token` con SameSite=strict, y esa cookie solo acompaña a una
+ * navegación del MISMO ORIGEN: una URL absoluta a otro host llegaría sin ella y
+ * el guard respondería 401 en una pestaña nueva.
+ *
+ * Con eso, los dos entornos funcionan por la misma razón y no por casualidad:
+ * en producción VITE_API_URL ya es '/api/v1'; en desarrollo es
+ * http://localhost:3000/api/v1 —otro origen— y el dev server proxea /api a ese
+ * mismo puerto, así que la ruta relativa es la que sí lleva la cookie.
+ *
+ * Si algún día la API vive de verdad en otro host, esto se romperá a la vista
+ * en lugar de en silencio, y el arreglo no será otro prefijo: será pedir la URL
+ * prefirmada por XHR y abrir esa.
+ */
+const API_PATH = (() => {
+  const v = import.meta.env.VITE_API_URL ?? '/api/v1';
+  try { return new URL(v, window.location.origin).pathname.replace(/\/+$/, ''); }
+  catch { return '/api/v1'; }
+})();
 
 const adminApi = {
   backups:   (page = 1) => api.get(`/admin/backups?page=${page}`).then(r => r.data?.data ?? r.data),
@@ -65,18 +91,9 @@ function resumenFilas(filas: Record<string, { restaurado: number; produccion: nu
     .join(' · ');
 }
 
-function tamanioColor(t: string) {
-  if (!t) return '#94a3b8';
-  const mb = parseFloat(t);
-  if (t.includes('G')) return '#ef4444';
-  if (mb > 100) return '#f59e0b';
-  return '#10b981';
-}
-
 export default function BackupsPage() {
   const qc = useQueryClient();
   const [page, setPage] = useState(1);
-  const [confirming, setConfirming] = useState(false);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['admin-backups', page],
@@ -94,7 +111,11 @@ export default function BackupsPage() {
     mutationFn: adminApi.trigger,
     onSuccess: (r) => {
       Modal.success({ title: 'Backup iniciado', content: r?.mensaje ?? 'El backup está en progreso. Se notificará al completar.' });
-      setTimeout(() => { qc.invalidateQueries({ queryKey: ['admin-backups'] }); refetch(); }, 3000);
+      // invalidateQueries por sí solo ya refetchea las queries montadas, y esta
+      // lo está: `refetch()` detrás disparaba una SEGUNDA petición idéntica.
+      // La clave sin página invalida todas — el backup nuevo puede caer en
+      // cualquiera de ellas, no solo en la que se está mirando.
+      setTimeout(() => qc.invalidateQueries({ queryKey: ['admin-backups'] }), 3000);
     },
     onError: () => Modal.error({ title: 'Error', content: 'No se pudo iniciar el backup.' }),
   });
@@ -113,10 +134,37 @@ export default function BackupsPage() {
   // alerta. O sea, "no hay ni un solo respaldo" se veía exactamente igual que
   // "todo en orden" — el peor estado posible pintado como el mejor.
   const respaldo = data?.respaldo;
-  const critico  = respaldo?.critico ?? (items.length === 0 && !isLoading);
+
+  // CUÁNTOS RESPALDOS HAY EN LA TABLA, no cuántos caben en esta página.
+  //
+  // `items.length === 0` es cierto también en una página vacía de un historial
+  // sano —la última, tras borrar filas, o cualquiera si se navega fuera de
+  // rango— y ahí el panel entero se ponía a gritar "no hay ni un respaldo,
+  // revisa el cron" con doce respaldos correctos en la base. Una alarma que
+  // grita cuando todo está bien es una alarma que se aprende a ignorar, y esta
+  // pantalla existe precisamente porque nadie miraba los respaldos.
+  //
+  // El total autoritativo es el del backend (`respaldo.totalRegistros`, el
+  // mismo número con el que decide `critico`); `meta.total` es el de la
+  // paginación. Solo si faltan los dos se cae a la página, y únicamente en la
+  // primera, que es la única donde vacío sí implica tabla vacía.
+  const totalRegistros: number | undefined =
+    typeof respaldo?.totalRegistros === 'number' ? respaldo.totalRegistros
+    : typeof meta.total === 'number'             ? meta.total
+    : undefined;
+
+  const tablaVacia = totalRegistros !== undefined
+    ? totalRegistros === 0
+    : page === 1 && items.length === 0;
+
+  const critico  = respaldo?.critico ?? (tablaVacia && !isLoading);
   const horasDesde = respaldo?.horasDesdeUltimo
     ?? (ultimo ? Math.floor((Date.now() - new Date(ultimo.createdAt).getTime()) / 3_600_000) : null);
-  const sinRegistros = respaldo?.motivo === 'sin-registros' || (!isLoading && items.length === 0);
+  const sinRegistros = respaldo?.motivo === 'sin-registros' || (!isLoading && tablaVacia);
+
+  // Referencia de tamaño "normal" para detectar dumps truncados. Se recalcula
+  // por página: es la muestra que el frontend tiene delante.
+  const refTamanio = useMemo(() => medianaBytes(items), [items]);
 
   const COLS_DEF = [
     { key: 'createdAt',            label: 'Fecha'        },
@@ -156,9 +204,16 @@ export default function BackupsPage() {
     },
     {
       title: 'Tamaño', dataIndex: 'tamanio', key: 'tamanio', width: 90, align: 'right' as const,
-      render: (v: string) => v
-        ? <Text style={{ color: tamanioColor(v), fontSize: 12, fontFamily: 'monospace' }}>{v}</Text>
-        : <Text type="secondary">—</Text>,
+      render: (v: string) => {
+        if (!v) return <Text type="secondary">—</Text>;
+        const { color, aviso } = evaluarTamanio(v, refTamanio);
+        const texto = (
+          <Text style={{ color, fontSize: 12, fontFamily: 'monospace' }}>
+            {aviso ? '⚠ ' : ''}{v}
+          </Text>
+        );
+        return aviso ? <Tooltip title={aviso}>{texto}</Tooltip> : texto;
+      },
     },
     {
       title: 'Duración', dataIndex: 'duracionSegundos', key: 'duracionSegundos', width: 90, align: 'right' as const,
@@ -177,6 +232,9 @@ export default function BackupsPage() {
           return (
             <Tooltip title={
               `Bajado de S3, contrastado su SHA-256 y restaurado el ${fechaHora(r.restauracionProbadaEn ?? r.verificadoEn)}` +
+              // ^ aquí el fallback a verificadoEn sí es legítimo: la bandera ya
+              //   está en true, o sea que hubo restauración real; solo se busca
+              //   su fecha, y en las filas más viejas vive en verificadoEn.
               (r.verificacionSegundos ? ` · tardó ${r.verificacionSegundos}s` : '') +
               (r.filasVerificadas ? ' · ' + resumenFilas(r.filasVerificadas) : '')
             }>
@@ -190,10 +248,24 @@ export default function BackupsPage() {
         // no restaura pintado como "todavía no lo hemos mirado" es la misma
         // mentira tranquilizadora que el tick verde sin restaurar: lo urgente
         // se ve igual que lo pendiente.
-        if (r.verificadoEn) {
+        //
+        // El discriminante es `restauracionProbadaEn`, NO `verificadoEn`.
+        //
+        // `verificadoEn` es una columna heredada: el código viejo la escribía en
+        // cada backup exitoso sin comprobar nada, igual que levantaba la bandera
+        // verde. Un timestamp suyo no prueba que se intentara restaurar nada, y
+        // leerlo aquí convierte "nadie lo miró nunca" en un "LA RESTAURACIÓN
+        // FALLÓ" en rojo — la falsa alarma es la misma mentira del otro lado.
+        //
+        // `restauracionProbadaEn` nació con la verificación real (migración
+        // AddVerificacionRestauracionBackups) y solo la escribe
+        // registrarVerificacion(), que es quien restaura de verdad. Si está,
+        // hubo intento; si no está, no lo hubo. Sin depender de que ninguna
+        // migración de limpieza pasara por esta base.
+        if (r.restauracionProbadaEn) {
           return (
             <Tooltip title={
-              `LA RESTAURACIÓN FALLÓ el ${fechaHora(r.verificadoEn)}` +
+              `LA RESTAURACIÓN FALLÓ el ${fechaHora(r.restauracionProbadaEn)}` +
               (r.verificacionSegundos ? ` (tras ${r.verificacionSegundos}s)` : '') +
               `. ${r.verificacionMensaje ?? 'Sin detalle.'}`
             }>
@@ -229,7 +301,17 @@ export default function BackupsPage() {
         const puede = r.estado === 'EXITOSO' && r.s3Key && !soloLocal;
         const boton = (
           <Button size="small" icon={<DownloadOutlined />} disabled={!puede}
-            onClick={() => window.open(`/api/v1/admin/backups/${r.id}/download`, '_blank')}>
+            // Sin cabeceras de axios A PROPÓSITO, y funciona por diseño, no por
+            // suerte: SuperAdminGuard saca el JWT con extractJwtFromRequest(),
+            // que lee PRIMERO la cookie httpOnly `access_token` y solo después
+            // el `Authorization: Bearer`. Una navegación top-level al mismo
+            // origen lleva esa cookie sola — SameSite=strict la permite; lo que
+            // bloquea es la petición cross-site, y por eso API_PATH es relativo.
+            //
+            // El endpoint responde 302 a una URL prefirmada de S3 de 15 min, así
+            // que tampoco podría ir por axios: seguir ese redirect con
+            // `Authorization` puesto lo rompería contra S3.
+            onClick={() => window.open(`${API_PATH}/admin/backups/${r.id}/download`, '_blank')}>
             Descargar
           </Button>
         );
@@ -263,13 +345,11 @@ export default function BackupsPage() {
             <Button type="primary" icon={<CloudUploadOutlined />}
               loading={triggerMut.isPending}
               onClick={() => {
-                setConfirming(true);
                 Modal.confirm({
                   title: 'Ejecutar backup manual',
                   content: 'Se ejecutará pg_dump y se subirá a S3. Puede tardar 1-3 minutos.',
                   okText: 'Ejecutar', cancelText: 'Cancelar',
-                  onOk: () => { setConfirming(false); triggerMut.mutate(); },
-                  onCancel: () => setConfirming(false),
+                  onOk: () => triggerMut.mutate(),
                 });
               }}>
               Backup manual
@@ -354,12 +434,23 @@ export default function BackupsPage() {
       <Row gutter={16}>
         <Col xs={12} md={6}>
           <Card size="small">
-            {/* "Nunca" salía en verde. Es el peor valor posible de esta tarjeta. */}
+            {/* "Nunca" salía en verde. Es el peor valor posible de esta tarjeta.
+
+                Y "Nunca" se decide por la TABLA, no por `ultimo` —items[0]—,
+                que es el primero de la página abierta. Mismo defecto que tenía
+                sinRegistros: en una página vacía de un historial sano la
+                tarjeta anunciaba que no se ha respaldado nunca.
+
+                El tamaño de abajo sí es el de items[0], así que solo se enseña
+                en la página 1, donde esa fila es de verdad la más reciente. En
+                la 3 estaba etiquetando como "último" un respaldo de hace días. */}
             <Statistic title="Último backup"
-              value={ultimo ? `hace ${horasDesde}h` : 'Nunca'}
+              value={tablaVacia ? 'Nunca' : horasDesde !== null ? `hace ${horasDesde}h` : '—'}
               prefix={<ClockCircleOutlined />}
               valueStyle={{ fontSize: 16, color: critico ? '#ef4444' : '#10b981' }} />
-            {ultimo && <Text type="secondary" style={{ fontSize: 11 }}>{ultimo.tamanio}</Text>}
+            {page === 1 && ultimo?.tamanio && (
+              <Text type="secondary" style={{ fontSize: 11 }}>{ultimo.tamanio}</Text>
+            )}
           </Card>
         </Col>
         <Col xs={12} md={6}>
@@ -420,7 +511,11 @@ export default function BackupsPage() {
             showTotal: (t) => `${t} backups`,
           }}
           rowClassName={(r: any) => r.estado === 'FALLIDO' ? 'ant-table-row-error' : ''}
-          locale={{ emptyText: 'Sin backups registrados aún — ejecuta el primero manualmente' }}
+          // Mismo cuidado que en la alarma: "no hay ni un respaldo" y "esta
+          // página no trae ninguno" son cosas distintas y decían lo mismo.
+          locale={{ emptyText: tablaVacia
+            ? 'Sin backups registrados aún — ejecuta el primero manualmente'
+            : 'Esta página no tiene filas — vuelve a la primera' }}
         />
       </Card>
 
