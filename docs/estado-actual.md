@@ -4,7 +4,7 @@
 > qué cambió. Esto cuenta **qué está a medias, qué no es obvio desde el código y qué no hay
 > que volver a decidir.**
 >
-> **Última actualización: 2026-09-01** · HEAD `25c4af20`
+> **Última actualización: 2026-09-01** · HEAD `ad3f50e1`
 > Al cerrar o abrir un trabajo, actualizá la sección y la fecha de arriba.
 
 ---
@@ -37,7 +37,7 @@ seguridad **no es este**, es el tope absoluto de la Fase B, que se calcula en el
 desde `users.sessionCreatedAt` y no se puede falsificar. No lo «endurezcas» volviendo a
 inferir actividad del tráfico: eso *es* el bug.
 
-### Fase A — desplegable a cualquier hora ✅ (sin pushear)
+### Fase A — ✅ desplegada en producción el 2026-09-01 (`ad3f50e1`)
 
 No cierra ni una sesión. Es seguro deployarla en horario laboral.
 
@@ -93,6 +93,130 @@ config a una hora elegida, no en un deploy.
 4. **Hora:** ni viernes, ni fin/principio de mes (facturación y cierres), ni el 20
    (declaraciones DGII). Pendiente de confirmar si hay KDS de restaurante abierto de
    madrugada.
+
+---
+
+## 0-bis. Reposición por proveedor — ✅ desplegada el 2026-09-01
+
+**Qué resuelve.** El proveedor llega al negocio y quien atiende quiere ver, de lo
+que ese proveedor vende, qué falta **en esa sucursal**, y pedirlo en el momento.
+
+**Lo que no existía:** la relación producto↔proveedor. Se deducía encadenando
+`compra_detalles → compras."proveedorId"`, que solo responde «qué le he comprado»
+— nunca «qué me vende», que incluye lo que aún no le has comprado y es justo lo
+que uno quiere pedir. Esa ausencia ya había bloqueado antes el conteo por
+proveedor (ver el comentario en `conteo-inventario.entity.ts`).
+
+Ahora hay tabla `producto_proveedor` (migración `1761700000000`).
+
+### Decisiones que no se deducen del código
+
+**`pedidoMinimo` y `multiploEmpaque` son dos campos, no uno.** «No te vendo menos
+de 6» y «solo de 12 en 12» son reglas distintas y en ferretería conviven. Se
+aplican **en ese orden**: primero el mínimo, después el múltiplo. Al revés, un
+mínimo de 6 con empaque de 4 daría 4 — por debajo del mínimo. Ambos NULL = sin
+regla, y la sugerencia es el faltante sin redondear. Cubierto por tests.
+
+**Sello de fecha, no vigencia.** Se descartó `validoHasta` a propósito: un precio
+«vigente hasta» que nadie actualizó miente igual que uno viejo, pero con más
+confianza. Con `precioPactadoAt` la pantalla dice «pactado hace 8 meses» y decide
+quien compra.
+
+**Un costo histórico NO es un precio pactado.** Mientras `origen <> 'manual'` la
+pantalla lo marca «est.» y lo explica. Tocar el precio a mano lo asciende a
+`origen='manual'` y le pone fecha nueva.
+
+**El preferente lo garantiza la BASE DE DATOS**, con un índice único parcial
+`WHERE "esPreferente" AND "isActive"`. Esa regla en el servicio es como se acaba
+con dos preferentes y nadie sabiendo cuál gana. Por eso `marcarPreferente()` va
+en transacción (apagar el anterior antes de encender el nuevo) y `desvincular()`
+apaga también la marca.
+
+**El poblado son TRES mecanismos, y el backfill es el menos importante.** El
+permanente es el enganche al recibir compra (`ComprasService`, en recepción total
+y parcial): una empresa sin ningún historial llena su catálogo por proveedor solo
+operando. El backfill de la migración solo pone al día a quien ya llevaba tiempo.
+El tercero es el alta manual, que es el caso que motivó todo. **Cero filas en una
+empresa nueva es lo correcto, no un fallo** — por eso la pantalla vacía abre en
+modo alta en vez de ser un callejón sin salida.
+
+`DO NOTHING` salta también las filas desvinculadas a mano: una compra nueva no
+deshace por la puerta de atrás una decisión de una persona.
+
+### Dos trampas que habrían hecho la pantalla inútil
+
+**El mínimo por almacén es 0 por defecto.** `stock_almacen."stockMinimo"` es
+`DEFAULT 0`, así que todo producto sin mínimo propio en ese almacén daría
+faltante 0 — «no falta nada» — en silencio y para casi todo el catálogo de quien
+solo configuró el mínimo global. Se resuelve con
+`COALESCE(NULLIF(sa."stockMinimo",0), p."stockMinimo", 0)` **y la fila dice de
+cuál de los dos habla** (`alm.` / `prod.` / `sin mín.`). No quites esa marca: sin
+ella una ausencia de configuración parece un dato.
+
+**El almacén del JWT puede no existir.** Sale de `sucursal.almacenPrincipalId` en
+`resolverContextoSucursal()`, y hay tres caminos que lo dejan indefinido. Cuando
+no hay, el endpoint responde 400 con `codigo: 'ALMACEN_REQUERIDO'` y la pantalla
+**pregunta**. Nunca cae al stock global: el proveedor está parado en una sucursal
+y el total de la empresa es el número equivocado dicho con toda la confianza.
+
+### La orden de compra
+
+Sale por el camino que ya existía: `POST /compras` en `borrador` (que *es* la
+orden) + `generarOrdenCompraPDF()`. Si las líneas seleccionadas mezclan monedas,
+**la pantalla lo dice y obliga a elegir** — una `compra` tiene una sola `moneda`,
+y convertir por detrás sería inventarse un tipo de cambio.
+
+### ⏳ Revisar a los pocos días de que esto entre
+
+Cuando el enganche lleve unos días poblando la tabla, **mirar cuántos pares hay
+por empresa y si el preferente elegido tiene sentido.**
+
+El backfill parte de «a quién le compré más», que es una inferencia razonable
+pero no siempre la correcta: el preferente real puede ser otro —el que entrega
+antes, el que da mejor precio hoy, el único que lo tiene— y el más frecuente
+puede serlo solo por inercia. El riesgo no es que se equivoque, es que **nadie lo
+corrija porque nadie mira esa columna**: es un dato que se escribió solo y que
+la pantalla presenta con la misma autoridad que uno confirmado a mano.
+
+```sql
+-- Cuántos pares hay y cuántos vienen de una inferencia sin confirmar
+SELECT "empresaId",
+       COUNT(*)                                        AS pares,
+       COUNT(*) FILTER (WHERE "origen" = 'backfill')   AS del_historico,
+       COUNT(*) FILTER (WHERE "origen" = 'compra')     AS del_enganche,
+       COUNT(*) FILTER (WHERE "origen" = 'manual')     AS confirmados,
+       COUNT(*) FILTER (WHERE "esPreferente")          AS preferentes
+  FROM producto_proveedor
+ WHERE "isActive"
+ GROUP BY 1
+ ORDER BY pares DESC;
+
+-- Productos con varios proveedores donde el preferente NO es el más barato
+-- conocido: los candidatos a estar mal elegidos.
+SELECT pp."empresaId", pp."productoId",
+       COUNT(*)                                              AS proveedores,
+       MIN(pp."precioPactado")                               AS mejor_precio,
+       MIN(pp."precioPactado") FILTER (WHERE pp."esPreferente") AS precio_preferente
+  FROM producto_proveedor pp
+ WHERE pp."isActive" AND pp."precioPactado" IS NOT NULL
+ GROUP BY 1, 2
+HAVING COUNT(*) > 1
+   AND MIN(pp."precioPactado") FILTER (WHERE pp."esPreferente")
+       > MIN(pp."precioPactado")
+ ORDER BY 1, 2;
+```
+
+Si sale que casi nada tiene `origen='manual'` pasadas unas semanas, la señal no
+es que el backfill acertara: es que **nadie está revisando**, y conviene provocar
+la revisión desde la pantalla en vez de esperarla.
+
+### Anotado para después — NO entró en esta tanda
+
+- **Conteo de inventario por proveedor.** El `ConteoTipo 'proveedor'` quedó fuera
+  por falta de esta tabla; ahora se puede añadir al union type y al CHECK.
+- **Puente RFQ → compra.** En `solicitudes-compra`, `seleccionar` marca la
+  cotización ganadora, rechaza las demás y deja la solicitud en `PROCESADA` — y
+  **no crea ninguna compra**. Quien gana una licitación teclea la orden a mano.
 
 ---
 

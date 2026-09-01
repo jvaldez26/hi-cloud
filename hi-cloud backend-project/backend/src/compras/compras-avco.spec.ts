@@ -118,14 +118,18 @@ function buildService(d: Deps): ComprasService {
     d.detalleRepo as any,
     {} as any,                    // proveedoresService (no se usa en estos caminos)
     {} as any,                    // productosService
+    // productoProveedorSvc — registra qué vende cada proveedor al recibir.
+    // Es fire-and-forget y no debe afectar al AVCO, pero se stubea porque
+    // cambiarEstado() y recibir() lo llaman.
+    { registrarDesdeCompra: jest.fn() } as any,
     d.inventarioSvc as any,
     d.valoracionSvc as any,
     d.cxpSvc as any,
     d.asientosSvc as any,
     d.tenantSvc as any,
     d.realtimeSvc as any,
-    d.gastosImportacionSvc as any, // posición 11 — GastosImportacionService
-    d.ds as any,                   // posición 12 — DataSource
+    d.gastosImportacionSvc as any, // posición 12 — GastosImportacionService
+    d.ds as any,                   // posición 13 — DataSource
   );
 }
 
