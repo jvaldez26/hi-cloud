@@ -1,4 +1,4 @@
-import { readFileSync } from 'fs';
+import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { ActividadInterceptor } from './actividad.interceptor';
 import { RefreshTokenService } from './refresh-token.service';
@@ -135,5 +135,68 @@ describe('Actividad de sesión', () => {
     const ruta = join(__dirname, '..', 'tenant', 'tenant.middleware.ts');
     const codigo = sinComentarios(readFileSync(ruta, 'utf8'));
     expect(codigo).not.toContain('lastActivityAt');
+  });
+});
+
+/**
+ * No vuelven los keep-alives de sesión.
+ *
+ * Contexto: `CompraFormInner` tenía un `setInterval` que hacía `GET /auth/me`
+ * cada 8 minutos con el comentario «Mantener la sesión activa mientras el
+ * formulario está abierto (previene logout por idle)». Es exactamente lo que la
+ * caducidad de sesiones vino a eliminar: un temporizador que sostiene una sesión
+ * que ninguna persona está usando.
+ *
+ * Borrarlo no basta. Mientras el patrón exista en algún sitio, alguien lo copia;
+ * y alguien que lea la intención original puede «arreglarlo» para que vuelva a
+ * funcionar, reabriendo el agujero entero. Este test hace que reaparecer cueste
+ * un CI en rojo.
+ *
+ * Si un formulario largo necesita no perder trabajo cuando la sesión caduque,
+ * eso es OTRA funcionalidad —guardar borrador— y se hace bien, no manteniendo la
+ * sesión viva artificialmente.
+ */
+describe('Keep-alives de sesión — ninguno', () => {
+  const raizFront = join(__dirname, '..', '..', '..', '..', 'hi-cloud frontend-project', 'src');
+
+  /** Endpoints que solo se sondearían para tocar la sesión, nunca para pintar datos. */
+  const ENDPOINTS_DE_SESION = /\/auth\/me|\/auth\/refresh|\/health/;
+
+  const listarFuentes = (dir: string, acc: string[] = []): string[] => {
+    for (const entrada of readdirSync(dir, { withFileTypes: true })) {
+      const ruta = join(dir, entrada.name);
+      if (entrada.isDirectory()) listarFuentes(ruta, acc);
+      else if (/\.tsx?$/.test(entrada.name)) acc.push(ruta);
+    }
+    return acc;
+  };
+
+  it('ningún setInterval sondea un endpoint de sesión', () => {
+    const fuentes = listarFuentes(raizFront);
+    // Si esto falla, el test se está mirando a un directorio vacío y no vigila nada.
+    expect(fuentes.length).toBeGreaterThan(100);
+
+    const culpables: string[] = [];
+
+    for (const ruta of fuentes) {
+      const codigo = readFileSync(ruta, 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/\/\/.*$/gm, '');
+
+      let desde = 0;
+      for (;;) {
+        const i = codigo.indexOf('setInterval', desde);
+        if (i === -1) break;
+        // El cuerpo del temporizador: lo que venga justo después basta para ver
+        // a qué le pega. 400 caracteres cubren de sobra un callback de sondeo.
+        const cuerpo = codigo.slice(i, i + 400);
+        if (ENDPOINTS_DE_SESION.test(cuerpo)) {
+          culpables.push(`${ruta.split('src')[1]}: ${cuerpo.split('\n')[0].trim()}`);
+        }
+        desde = i + 1;
+      }
+    }
+
+    expect(culpables).toEqual([]);
   });
 });

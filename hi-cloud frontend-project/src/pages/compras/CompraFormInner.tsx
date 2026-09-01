@@ -86,13 +86,6 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
     else if (sucursalActual) form.setFieldValue('sucursalId', sucursalActual);
   }, [sucursales, sucursalActual]);
 
-  // Mantener la sesión activa mientras el formulario está abierto (previene logout por idle).
-  // Cada 8 minutos hace un GET /auth/me que activa el interceptor de refresco si el token expiró.
-  useEffect(() => {
-    const iv = setInterval(() => { api.get('/auth/me').catch(() => {}); }, 8 * 60 * 1000);
-    return () => clearInterval(iv);
-  }, []);
-
   const createMut = useMutation({
     mutationFn: comprasApi.create,
     onSuccess: (data: any) => {
