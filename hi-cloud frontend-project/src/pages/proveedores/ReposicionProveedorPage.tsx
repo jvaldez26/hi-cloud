@@ -6,6 +6,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
+import { desenvolverArray } from '../../api/desenvolver';
 import { productoProveedorApi, type LineaReposicion } from '../../api/productoProveedor.api';
 import { proveedoresApi } from '../../api/proveedores.api';
 import { productosApi } from '../../api/productos.api';
@@ -49,7 +50,9 @@ export default function ReposicionProveedorPage() {
 
   const { data: almacenes } = useQuery<AlmacenLite[]>({
     queryKey: ['almacenes-reposicion'],
-    queryFn:  () => api.get('/almacenes').then(r => r.data?.data ?? r.data ?? []),
+    // desenvolverArray y no `r.data?.data ?? r.data ?? []`: ese patrón copiado a
+    // mano es justo el que creó el helper ("T.map is not a function" tras un 200).
+    queryFn:  () => api.get('/almacenes').then(desenvolverArray<AlmacenLite>),
     staleTime: 5 * 60_000,
   });
 
