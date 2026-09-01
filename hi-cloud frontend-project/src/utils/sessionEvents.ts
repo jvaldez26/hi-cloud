@@ -15,7 +15,19 @@
  *   - el propio interceptor → evita un doble-ciclo de refresh/logout
  */
 
-export type SessionEndReason = 'expired' | 'displaced';
+/**
+ * Por qué terminó la sesión. Determina si se conserva el carrito del POS.
+ *
+ *   'expired'   — el refresh falló y no sabemos por qué. Limpieza completa.
+ *   'displaced' — el usuario entró desde otro dispositivo (SESION_DESPLAZADA)
+ *                 o traía un token sin sessionToken (TOKEN_OBSOLETO).
+ *   'caducada'  — la sesión llegó a su tope absoluto o al límite de inactividad.
+ *                 El cajero tampoco pidió salir: se le conserva el carrito, igual
+ *                 que en 'displaced'. Sin este caso, encender el tope absoluto
+ *                 borraría las ventas a medio teclear de todo el que estuviera
+ *                 facturando en ese momento.
+ */
+export type SessionEndReason = 'expired' | 'displaced' | 'caducada';
 
 type SessionEndListener = (reason: SessionEndReason) => void;
 let _listener: SessionEndListener | null = null;

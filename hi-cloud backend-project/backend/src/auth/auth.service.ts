@@ -19,6 +19,7 @@ import * as bcrypt from 'bcrypt';
 import { UsersService } from '../users/users.service';
 import { TokenBlacklistService } from './token-blacklist.service';
 import { RefreshTokenService } from './refresh-token.service';
+import { SessionLifetimeService } from './session-lifetime.service';
 import { TwoFactorService } from './two-factor.service';
 import { EmailService } from '../notificaciones/services/email.service';
 import { User } from '../users/users.entity';
@@ -42,6 +43,7 @@ export class AuthService implements OnModuleInit {
     private emailService:       EmailService,
     private blacklistSvc:       TokenBlacklistService,
     private refreshTokenSvc:    RefreshTokenService,
+    private sessionLifetime:    SessionLifetimeService,
     private twoFactorService:   TwoFactorService,
     @InjectRepository(User)
     private userRepository: Repository<User>,
@@ -1434,31 +1436,14 @@ export class AuthService implements OnModuleInit {
 
   /**
    * Devuelve el lifetime de sesión en ms para una empresa.
-   * El global es el TOPE: empresa.sesionHoras ≤ global siempre.
-   * Rango: [1h, global].
+   *
+   * Delega en SessionLifetimeService, que es la fuente única de esta regla.
+   * Antes este método tenía una copia literal de la lógica que también vivía en
+   * RefreshTokenService; se dejan de mantener dos versiones de "el global es el
+   * tope". Se conserva el método porque es la API que usa login().
    */
   async getEffectiveSessionMs(empresaId?: number): Promise<number> {
-    let globalHoras = 24;
-    try {
-      const rows = await this.dataSource.query<{ valor: string }[]>(
-        `SELECT valor FROM configuracion_sistema WHERE clave = 'SESION_HORAS' LIMIT 1`,
-      );
-      const h = parseInt(rows[0]?.valor ?? '24', 10);
-      globalHoras = isNaN(h) ? 24 : Math.min(720, Math.max(1, h));
-    } catch { /* usar 24 */ }
-
-    let horas = globalHoras;
-    if (empresaId) {
-      try {
-        const emp = await this.empresaRepository.findOne({ where: { id: empresaId }, select: ['configuracion'] as any });
-        const override = (emp?.configuracion as Record<string, unknown> | undefined)?.['sesionHoras'];
-        if (typeof override === 'number' && Number.isFinite(override)) {
-          horas = Math.min(override, globalHoras); // empresa nunca puede ser más laxa que el global
-        }
-      } catch { /* usar global */ }
-    }
-
-    return Math.min(globalHoras, Math.max(1, horas)) * 3_600_000;
+    return this.sessionLifetime.paraEmpresa(empresaId);
   }
 
   // ── Stats públicas de plataforma (sin auth, caché 24 h en proceso) ──────────

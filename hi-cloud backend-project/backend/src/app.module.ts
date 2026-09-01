@@ -145,6 +145,8 @@ import { VideosTutorialesModule }   from './videos-tutoriales/videos-tutoriales.
 import { MensajesModule }          from './mensajes/mensajes.module';
 import { GastosImportacionModule }  from './gastos-importacion/gastos-importacion.module';
 import { ActivacionEcfModule } from './activacion-ecf/activacion-ecf.module';
+import { JWT_EXPIRES_IN_DEFAULT } from './auth/auth.constants';
+import { ActividadInterceptor } from './auth/actividad.interceptor';
 
 @Module({
   imports: [
@@ -155,8 +157,11 @@ import { ActivacionEcfModule } from './activacion-ecf/activacion-ecf.module';
         NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
         // JWT — crítico: sin esta variable los tokens no se pueden firmar ni verificar
         JWT_SECRET: Joi.string().min(32).required(),
-        JWT_EXPIRES_IN:         Joi.string().default('15m'),
-        JWT_REFRESH_EXPIRES_IN: Joi.string().default('7d'),
+        JWT_EXPIRES_IN:         Joi.string().default(JWT_EXPIRES_IN_DEFAULT),
+        // JWT_REFRESH_EXPIRES_IN eliminado: era un mando desconectado. Se validaba
+        // aquí al arrancar y NADIE lo leía — la vida del refresh token la fija
+        // SessionLifetimeService (SESION_HORAS / empresa.sesionHoras). Reconectarlo
+        // habría creado una cuarta duración compitiendo por lo mismo.
         // Base de datos
         DB_HOST:     Joi.string().default('localhost'),
         DB_PORT:     Joi.number().default(5432),
@@ -412,6 +417,10 @@ import { ActivacionEcfModule } from './activacion-ecf/activacion-ecf.module';
     AppService,
     { provide: APP_GUARD,       useClass: CustomThrottlerGuard },
     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
+    // Respaldo de la señal de actividad: solo mutaciones, nunca GET.
+    // Global (y no dentro de TenantMiddleware) a propósito: el middleware sale
+    // temprano en RUTAS_SIN_TENANT y dejaba a '/admin/' sin registrar actividad.
+    { provide: APP_INTERCEPTOR, useClass: ActividadInterceptor },
   ],
 })
 export class AppModule implements NestModule {

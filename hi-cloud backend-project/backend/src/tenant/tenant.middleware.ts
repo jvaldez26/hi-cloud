@@ -49,17 +49,6 @@ const RUTAS_SIN_TENANT = [
 export class TenantMiddleware implements NestMiddleware {
   private readonly logger = new Logger(TenantMiddleware.name);
 
-  /**
-   * Mapa de throttle para lastActivityAt: sessionToken → timestamp del último UPDATE.
-   *
-   * NOTA PM2/cluster: PM2 reinicia en cada deploy (~176 deploys) y borra este mapa,
-   * causando un UPDATE extra por sesión activa post-deploy. Comportamiento aceptable.
-   * En modo cluster (múltiples procesos PM2) el mapa es por proceso → más UPDATEs,
-   * también aceptable. Si se mueve a cluster en el futuro, considerar Redis para el throttle.
-   */
-  private readonly activityThrottle = new Map<string, number>();
-  private readonly ACTIVITY_THROTTLE_MS = 5 * 60 * 1000; // 5 minutos
-
   constructor(
     private readonly tenantSvc: TenantService,
     private readonly jwtSvc: JwtService,
@@ -154,8 +143,18 @@ export class TenantMiddleware implements NestMiddleware {
       if (payload.sucursalId) this.tenantSvc.setSucursalId(payload.sucursalId);
       if (payload.almacenId)  this.tenantSvc.setAlmacenId(payload.almacenId);
 
-      // Actualizar lastActivityAt con throttle de 5 min (fire-and-forget, no bloquea el request)
-      if (payload.sessionToken) this.actualizarActivity(userId, payload.sessionToken);
+      // Aquí NO se escribe lastActivityAt. Antes sí, y era el bug: este middleware
+      // ve TRÁFICO, no personas. El POS sondea cada 30 s y la caja cada 5 s, así que
+      // una pestaña olvidada se marcaba como activa indefinidamente.
+      //
+      // Además este middleware sale temprano en las rutas de RUTAS_SIN_TENANT, y
+      // '/admin/' es una de ellas: la actividad del Super Admin no se registraba
+      // nunca, así que la «última actividad» del modal de sesión única se quedaba
+      // congelada en la hora del login. Moverlo fuera de aquí arregla ese punto
+      // ciego sin necesidad de un caso especial.
+      //
+      // Ahora la escribe POST /auth/actividad, que el frontend llama solo ante
+      // eventos de entrada reales. Ver registrarActividad() en refresh-token.service.ts.
 
     } catch (err) {
       if (err instanceof ForbiddenException) return next(err);
@@ -163,49 +162,5 @@ export class TenantMiddleware implements NestMiddleware {
     }
 
     next();
-  }
-
-  /**
-   * Actualiza lastActivityAt del refresh token activo del usuario (fire-and-forget).
-   * Usa EntityManager directo — sin importar AuthModule, sin dependencia circular.
-   * Throttle de 5 min por sessionToken: evita un UPDATE por cada request HTTP.
-   */
-  private actualizarActivity(userId: number, sessionToken: string): void {
-    const now  = Date.now();
-    const last = this.activityThrottle.get(sessionToken) ?? 0;
-    if (now - last < this.ACTIVITY_THROTTLE_MS) return;
-
-    this.activityThrottle.set(sessionToken, now);
-    this.purgarThrottleVencido(now);
-
-    this.empresaRepo.manager.query(
-      `UPDATE refresh_tokens SET "lastActivityAt" = NOW()
-       WHERE "userId" = $1 AND "revokedAt" IS NULL AND "expiresAt" > NOW()`,
-      [userId],
-    ).catch(() => {
-      // Error no crítico — borramos para reintentar en el siguiente request
-      this.activityThrottle.delete(sessionToken);
-    });
-  }
-
-  /**
-   * Purga entradas vencidas del mapa de throttle.
-   *
-   * Sin esto el mapa solo crece: una entrada por sessionToken, y cada login
-   * genera un sessionToken nuevo (initNewSession → randomUUID). Las de sesiones
-   * ya cerradas nunca se vuelven a consultar pero seguían ocupando memoria hasta
-   * el siguiente deploy, que era lo único que lo limpiaba.
-   *
-   * Una entrada más vieja que el intervalo de throttle ya no sirve para nada:
-   * si ese sessionToken vuelve a aparecer, `now - last` supera el umbral y toca
-   * UPDATE igual, exista o no la entrada. Borrarla es gratis semánticamente.
-   *
-   * Se ejecuta solo cuando una entrada pasa el throttle (como mucho una vez cada
-   * 5 min por sesión activa), no en cada request.
-   */
-  private purgarThrottleVencido(now: number): void {
-    for (const [token, ts] of this.activityThrottle) {
-      if (now - ts >= this.ACTIVITY_THROTTLE_MS) this.activityThrottle.delete(token);
-    }
   }
 }

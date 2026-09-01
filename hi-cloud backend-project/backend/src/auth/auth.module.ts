@@ -8,6 +8,8 @@ import { AuthController } from './auth.controller';
 import { LoginAttemptsService } from './login-attempts.service';
 import { TokenBlacklistService } from './token-blacklist.service';
 import { RefreshTokenService } from './refresh-token.service';
+import { SessionLifetimeService } from './session-lifetime.service';
+import { JWT_EXPIRES_IN_DEFAULT } from './auth.constants';
 import { RefreshToken } from './entities/refresh-token.entity';
 import { RolesGuard } from './guards/roles.guard';
 import { TwoFactorService } from './two-factor.service';
@@ -39,7 +41,7 @@ import { ContabilidadModule } from '../contabilidad/contabilidad.module';
           secret,
           // S-28: access token de corta duración — refresh token renueva la sesión
           signOptions: {
-            expiresIn:  (config.get<string>('JWT_EXPIRES_IN', '15m')) as any,
+            expiresIn:  (config.get<string>('JWT_EXPIRES_IN', JWT_EXPIRES_IN_DEFAULT)) as any,
             algorithm:  'HS256',   // S-46: algoritmo explícito — previene alg confusion
           },
           verifyOptions: { algorithms: ['HS256'] },
@@ -48,7 +50,7 @@ import { ContabilidadModule } from '../contabilidad/contabilidad.module';
     }),
   ],
   controllers: [AuthController, TwoFactorController],
-  providers: [AuthService, JwtStrategy, GoogleStrategy, TwoFactorService, TokenBlacklistService, RefreshTokenService, RolesGuard, LoginAttemptsService],
-  exports: [JwtModule, PassportModule, TokenBlacklistService, RefreshTokenService, RolesGuard],
+  providers: [AuthService, JwtStrategy, GoogleStrategy, TwoFactorService, TokenBlacklistService, RefreshTokenService, SessionLifetimeService, RolesGuard, LoginAttemptsService],
+  exports: [JwtModule, PassportModule, TokenBlacklistService, RefreshTokenService, SessionLifetimeService, RolesGuard],
 })
 export class AuthModule {}

@@ -18,6 +18,11 @@ import { GetUser } from './decorators/get-user.decorator';
 import { User } from '../users/users.entity';
 import { TokenBlacklistService } from './token-blacklist.service';
 import { RefreshTokenService } from './refresh-token.service';
+import {
+  JWT_EXPIRES_IN_DEFAULT,
+  JWT_EXPIRES_IN_DEFAULT_MS,
+  COOKIE_JWT_BUFFER_MS,
+} from './auth.constants';
 
 class CambiarEmpresaDto {
   @IsInt() @IsPositive()
@@ -292,6 +297,34 @@ export class AuthController {
     return { message: 'Sesión cerrada en todos los dispositivos' };
   }
 
+  /**
+   * Señal de que una PERSONA está usando la sesión.
+   *
+   * La llama el frontend (useActividadUsuario) SOLO cuando ha habido un evento de
+   * entrada real —ratón, teclado, scroll, tacto— desde el último envío, con un
+   * throttle de 5 min por pestaña. RefreshTokenService throttlea otra vez del lado
+   * del servidor, así que un cliente que ignore el suyo no genera más UPDATEs.
+   *
+   * Por qué la actividad NO se deduce del tráfico: ver registrarActividad() en
+   * refresh-token.service.ts. Resumen: hay ~40 refetchInterval en el frontend y
+   * ninguna de esas peticiones la hace una persona.
+   *
+   * El límite de 60/min es holgado a propósito. Con el throttle de 5 min bastarían
+   * 12/hora; el margen cubre varias pestañas del mismo usuario tras un F5, sin
+   * dejar hueco para usarlo como canal de tráfico.
+   */
+  @Post('actividad')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Reportar actividad real del usuario (no sondeo) — actualiza lastActivityAt' })
+  registrarActividad(@GetUser() user: User): void {
+    // Fire-and-forget: el cliente no espera nada y un fallo de escritura no debe
+    // devolver error. 204 sin cuerpo.
+    this.refreshTokenSvc.registrarActividad(user.id);
+  }
+
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
@@ -544,27 +577,30 @@ export class AuthController {
     const isProd = process.env.NODE_ENV === 'production';
     // La cookie debe durar ligeramente más que el JWT para que el navegador la
     // envíe al endpoint cuando el token expire y se dispare el refresh.
-    // JWT_EXPIRES_IN default = '15m'; agregamos 5 min de margen.
-    const jwtMs = this.parseJwtExpiry(process.env.JWT_EXPIRES_IN ?? '15m');
+    // El default sale de auth.constants — NO lo repitas aquí: era uno de los
+    // cinco sitios donde JWT_EXPIRES_IN estaba definido, con dos valores distintos.
+    const jwtMs = this.parseJwtExpiry(process.env.JWT_EXPIRES_IN ?? JWT_EXPIRES_IN_DEFAULT);
     return {
       httpOnly:  true,
       secure:    isProd,
       sameSite:  'strict' as const,
-      maxAge:    jwtMs + 5 * 60_000, // expiry JWT + 5 min buffer
+      maxAge:    jwtMs + COOKIE_JWT_BUFFER_MS,
       path:      '/',
     };
   }
 
   private parseJwtExpiry(exp: string): number {
     const m = exp.match(/^(\d+)(s|m|h|d)$/);
-    if (!m) return 15 * 60_000;
+    // Sin recursión sobre el default: si alguien cambiara JWT_EXPIRES_IN_DEFAULT a
+    // un formato que este regex no acepta, la recursión no terminaría.
+    if (!m) return JWT_EXPIRES_IN_DEFAULT_MS;
     const n = parseInt(m[1], 10);
     switch (m[2]) {
       case 's': return n * 1_000;
       case 'm': return n * 60_000;
       case 'h': return n * 3_600_000;
       case 'd': return n * 86_400_000;
-      default:  return 15 * 60_000;
+      default:  return JWT_EXPIRES_IN_DEFAULT_MS;
     }
   }
 
