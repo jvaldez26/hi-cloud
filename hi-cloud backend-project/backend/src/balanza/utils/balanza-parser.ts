@@ -43,7 +43,7 @@ export type TipoDatoBal = 'peso' | 'precio';
 /** Patrón de decodificación tal como llega de la BD. */
 export interface BalanzaPatronConfig {
   id:              number;
-  prefijo:         string;        // '2', '20'…'29'
+  prefijo:         string;        // '2', '20'…'99' (ver PREFIJOS_BALANZA)
   longitudPlu:     number;        // 4, 5 o 6
   tipoDato:        TipoDatoBal;
   /** Dígitos de valor PUROS (sin incluir el check interno). */
@@ -186,7 +186,33 @@ export function parsearCodigoBalanza(
 
 // ── Asistente de calibración ──────────────────────────────────────────────────
 
-const PREFIJOS_BALANZA = ['2', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29'];
+/**
+ * Prefijos EAN admitidos para un patrón de balanza.
+ *
+ *  '2'       — prefijo de un dígito, patrón clásico de Mettler Toledo.
+ *  '20'-'29' — bloque que GS1 reserva para circulación restringida / uso interno
+ *              de tienda. Es el rango seguro: ningún fabricante emite ahí.
+ *  '30'-'99' — prefijos de país/empresa YA ASIGNADOS por GS1 (30-37 Francia,
+ *              40-44 Alemania, 84 España, 74x Centroamérica y Caribe…).
+ *              Se admiten porque hay balanzas configuradas de fábrica fuera del
+ *              bloque reservado y el cliente sabe cuál tiene — pero un patrón
+ *              aquí puede capturar EAN-13 legítimos de fabricante que no estén
+ *              en el catálogo local. El formulario avisa al elegirlos
+ *              (ver PAISES_PREFIJO_EAN en SeccionBalanza.tsx) y recomienda
+ *              activar tieneCheckValor, que es la única defensa que queda.
+ *
+ * No se admite '00'-'19': colisiona con UPC-A / EE.UU. y no cubre ningún caso real.
+ */
+export const PREFIJOS_BALANZA: string[] = [
+  '2',
+  ...Array.from({ length: 80 }, (_, i) => String(20 + i)),   // '20' … '99'
+];
+
+/** true si el prefijo cae fuera del bloque reservado 20-29 (riesgo de colisión). */
+export function prefijoFueraDeBloqueReservado(prefijo: string): boolean {
+  return /^\d{2}$/.test(prefijo) && Number(prefijo) >= 30;
+}
+
 const PLU_LENGTHS      = [4, 5, 6];
 const TIPOS_DATO       = ['peso', 'precio'] as const;
 const DECIMALES_PESO   = [0, 1, 2, 3];

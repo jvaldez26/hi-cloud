@@ -295,6 +295,30 @@ sigue ahí; hace falta otro enfoque.
 ### Centro de monitoreo — pendiente
 Sin empezar.
 
+### El repo no fija la versión de Node — sin arreglar
+No hay `.nvmrc` ni `engines` en ningún `package.json`. El CI usa Node 20
+(`.github/workflows/ci.yml`, `setup-node@v4` con `node-version: '20'`), pero en local
+cada quien corre lo que tenga instalado — el 2026-08-31 se verificó la suite completa
+sobre Node 26 antes de añadir `npm test` al CI, y no había forma de reproducir el 20.
+
+Salió bien, pero es la clase de diferencia que se descubre tarde: una API que cambia de
+comportamiento entre mayores da verde en local y rojo en CI, o peor, al revés.
+
+**Arreglo:** un `.nvmrc` con `20` en la raíz y `engines.node` en los dos `package.json`.
+
+### `tsconfig.json` excluye los specs — un error de tipos en un test no lo ve nadie
+`hi-cloud backend-project/backend/tsconfig.json` tiene `"exclude": [..., "**/*.spec.ts", ...]`.
+Consecuencia: el paso **TypeScript check** del CI (`npx tsc --noEmit`) **no mira ningún test**.
+Tampoco eslint — sobre cualquier spec da `Parsing error: ... was not found by the project
+service`, no solo sobre los nuevos.
+
+Los specs solo se compilan al ejecutarlos, con `ts-jest`. Como desde `e9eed479` el CI sí corre
+`npm test`, un error de tipos en un test ahora se ve —pero como fallo de test, tarde y con un
+mensaje peor que el de `tsc`. Y un spec que nadie ejecuta no lo revisa nada.
+
+**Arreglo:** un `tsconfig.spec.json` que los incluya, o sacarlos del `exclude` y apuntar
+eslint ahí. Ojo: al incluirlos aparecerán errores de tipos que hoy están escondidos.
+
 ### ~~PATCH de mensajes~~ — ✅ cerrado (2026-08-25)
 `544b5c82` agregó `tipo` al `UpdateMensajeDto` y el PATCH dejó de devolver 400, pero el `UPDATE`
 del servicio nunca escribía la columna: respondía 200 y no hacía nada, en silencio. El DTO y el

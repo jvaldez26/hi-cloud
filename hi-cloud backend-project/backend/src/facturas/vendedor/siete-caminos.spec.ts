@@ -5,7 +5,7 @@ import { CotizacionesService }        from '../../cotizaciones/cotizaciones.serv
 import { PreFacturaService }          from '../../pre-factura/pre-factura.service';
 import { ContratosService }           from '../../contratos/contratos.service';
 import { ServiciosService }           from '../../servicios/servicios.service';
-import { FacturasRecurrentesService } from '../../facturas-recurrentes/facturas-recurrentes.service';
+import { GeneracionRecurrenteService }  from '../../facturas-recurrentes/services/generacion-recurrente.service';
 import { RestauranteService }         from '../../restaurante/restaurante.service';
 
 jest.mock('../../common/observability/sentry', () => ({
@@ -151,25 +151,6 @@ const caminosBorrador = [
     },
   },
   {
-    nombre: '6. factura recurrente (cron)',
-    crear: async () => {
-      const facturaRepository = repoCaptor();
-      const svc: any = Object.create(FacturasRecurrentesService.prototype);
-      svc.facturaRepository = facturaRepository;
-      svc.detalleRepository = repoCaptor();
-      svc.ds     = { query: jest.fn().mockResolvedValue([{ max: 100 }]) };
-      svc.logger = { warn: jest.fn(), log: jest.fn(), error: jest.fn() };
-      await svc.generarDesdeTemplate(
-        {
-          id: 1, empresaId: EMPRESA, clienteId: 5, userId: 94, nombre: 'Hosting',
-          detalles: [{ descripcion: 'Hosting mensual', precioUnitario: 1000, cantidad: 1, porcentajeIva: 18 }],
-        } as any,
-        new Date(),
-      ).catch(() => null);
-      return facturaRepository.capturado[0];
-    },
-  },
-  {
     nombre: '7. duplicar factura',
     crear: async () => {
       const facturaRepository = repoCaptor();
@@ -215,10 +196,117 @@ describe('caminos que crean BORRADOR', () => {
   });
 
   it('7. duplicar NO hereda el vendedor de la factura original', async () => {
-    const duplicado = await caminosBorrador[4].crear();
+    const duplicado = await caminosBorrador.find(c => c.nombre.startsWith('7.'))!.crear();
     // Atribuir la venta de hoy a quien vendio hace seis meses es peor que dejarlo
     // nulo hasta que alguien la emita.
     expect(duplicado.vendedorId ?? null).toBeNull();
+  });
+});
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// La recurrente: nace BORRADOR, pero CON vendedor — es la excepcion
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Este camino estaba con los demas BORRADOR, afirmando que nacia sin vendedor.
+ * Dejo de ser cierto cuando la generacion se movio a GeneracionRecurrenteService:
+ * ahora resuelve el vendedor al crear, y el propio servicio lo documenta —
+ * "a diferencia de otros crones, en una recurrente si hay a quien imputar:
+ * el dueno de la plantilla".
+ *
+ * Es mejor comportamiento, no una regresion, asi que el test afirma lo nuevo en
+ * vez de forzar lo viejo. Sigue naciendo BORRADOR: cambiarEstado() es la unica
+ * puerta a EMITIDA y el vendedor ya resuelto le sobrevive.
+ *
+ * Se ejercita insertarFactura() —el sitio que el inventario declara— alimentado
+ * con lo que ejecutarCiclo() saca del resolver REAL, que es como corre en vivo.
+ */
+describe('6. factura recurrente (cron) — nace BORRADOR y CON vendedor', () => {
+  const PLANTILLA = {
+    id: 1, empresaId: EMPRESA, clienteId: 5, userId: USUARIO.id,
+    nombre: 'Hosting', formaPago: 1, diasCredito: 0, tipoEcf: 'E32',
+  } as any;
+
+  const LINEA = {
+    descripcion: 'Hosting mensual', precioUnitario: 1000, cantidad: 1,
+    porcentajeIva: 18, subtotal: 1000, importeIva: 180, total: 1180,
+  };
+
+  /** EntityManager falso que captura lo que se manda a create(Factura, ...). */
+  const managerCaptor = () => {
+    const capturado: any[] = [];
+    const manager: any = {
+      capturado,
+      create: jest.fn((entidad: any, x: any) => {
+        if (entidad?.name === 'Factura') capturado.push(x);
+        return { id: 777, ...x };
+      }),
+      save:   jest.fn(async (_e: any, x: any) => x),
+      query:  jest.fn().mockResolvedValue([{ numero: 100 }]),
+      findOneOrFail: jest.fn(async () => ({ id: 777, ...capturado[0] })),
+    };
+    return manager;
+  };
+
+  /** Resuelve el vendedor como lo hace ejecutarCiclo(), y luego inserta. */
+  async function generar() {
+    const svc: any = Object.create(GeneracionRecurrenteService.prototype);
+    svc.logger           = { warn: jest.fn(), log: jest.fn(), error: jest.fn() };
+    svc.vendedorResolver = resolverReal();
+
+    const { vendedorId, nombreVendedor } = await svc.vendedorResolver.resolverVendedor(
+      {}, PLANTILLA.userId, PLANTILLA.empresaId,
+    );
+
+    const manager = managerCaptor();
+    await svc.insertarFactura(manager, PLANTILLA, '2026-08-31', [LINEA], vendedorId, nombreVendedor);
+    return manager.capturado[0];
+  }
+
+  it('nace en BORRADOR', async () => {
+    expect((await generar()).estado).toBe(FacturaEstado.BORRADOR);
+  });
+
+  it('lleva el vendedor del dueno de la plantilla', async () => {
+    expect(await generar()).toMatchObject({
+      vendedorId:     VENDEDOR.id,
+      nombreVendedor: VENDEDOR.nombre,
+    });
+  });
+
+  /**
+   * cambiarEstado() solo resuelve `if (!factura.vendedorId)`. Como la recurrente
+   * ya llega con vendedor, no vuelve a preguntar ni reescribe nada: el vendedor
+   * con el que nacio le sobrevive a la emision. Lo que se afirma aqui es que no
+   * lo toca — ni para recalcularlo ni para borrarlo.
+   */
+  it('al emitirlo no lo vuelve a resolver: el vendedor que trae le sobrevive', async () => {
+    const borrador = await generar();
+
+    const facturaRepository = repoCaptor();
+    const resolver = resolverReal();
+    jest.spyOn(resolver, 'resolverVendedor');
+
+    const svc: any = Object.create(FacturasService.prototype);
+    svc.logger            = { warn: jest.fn(), log: jest.fn(), error: jest.fn() };
+    svc.facturaRepository = facturaRepository;
+    svc.vendedorResolver  = resolver;
+    svc.tenantService     = { getUserId: () => USUARIO.id, getEmpresaId: () => EMPRESA };
+    svc.cajaService       = { esCajaAbiertaVendedor: jest.fn().mockResolvedValue({ ok: true }) };
+    svc.limitesService    = { verificarLimiteIngresos: jest.fn().mockRejectedValue(ALTO) };
+    svc.findOne           = jest.fn().mockResolvedValue({
+      id: 777, empresaId: EMPRESA, estado: FacturaEstado.BORRADOR,
+      folio: 'FAC-777', total: 1180, notas: borrador.notas,
+      vendedorId: borrador.vendedorId, nombreVendedor: borrador.nombreVendedor,
+    });
+
+    await expect(svc.cambiarEstado(777, FacturaEstado.EMITIDA)).rejects.toBe(ALTO);
+
+    expect(resolver.resolverVendedor).not.toHaveBeenCalled();
+    const tocaVendedor = facturaRepository.update.mock.calls
+      .some(([, payload]: any[]) => payload && 'vendedorId' in payload);
+    expect(tocaVendedor).toBe(false);
   });
 });
 

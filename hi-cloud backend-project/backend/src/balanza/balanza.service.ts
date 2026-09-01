@@ -14,6 +14,7 @@ import {
   inferirPatrones,
   filtrarCandidatos,
   validarEAN,
+  prefijoFueraDeBloqueReservado,
   BalanzaPatronConfig,
   CandidatoPatron,
   TipoDatoBal,
@@ -52,7 +53,9 @@ export class BalanzaService {
       ...dto,
       empresaId: this.empresaId,
     });
-    return this.patronRepo.save(patron);
+    const guardado = await this.patronRepo.save(patron);
+    this.avisarPrefijoFueraDeBloque(guardado);
+    return guardado;
   }
 
   async actualizarPatron(id: number, dto: Partial<CreatePatronDto>): Promise<BalanzaPatron> {
@@ -62,7 +65,9 @@ export class BalanzaService {
     if (!patron) throw new NotFoundException(`Patrón ${id} no encontrado`);
     const actualizado = this.patronRepo.merge(patron, dto);
     this.validarGeometriaPatron(actualizado);
-    return this.patronRepo.save(actualizado);
+    const guardado = await this.patronRepo.save(actualizado);
+    this.avisarPrefijoFueraDeBloque(guardado);
+    return guardado;
   }
 
   async eliminarPatron(id: number): Promise<void> {
@@ -72,6 +77,26 @@ export class BalanzaService {
     if (!patron) throw new NotFoundException(`Patrón ${id} no encontrado`);
     patron.isActive = false;
     await this.patronRepo.save(patron);
+  }
+
+  /**
+   * Deja rastro cuando se guarda un patrón fuera del bloque reservado 20-29.
+   *
+   * El formulario ya avisa al usuario, pero si más adelante alguien reporta que
+   * el POS "agarra productos que no son de balanza", este log dice exactamente
+   * qué patrón lo provoca — y si tenía activado el check interno, que es lo
+   * único que filtra los EAN-13 de fabricante con ese prefijo.
+   */
+  private avisarPrefijoFueraDeBloque(patron: BalanzaPatron): void {
+    if (!prefijoFueraDeBloqueReservado(patron.prefijo)) return;
+    const sinDefensa = patron.tieneCheckValor
+      ? ''
+      : ' ← sin ninguna defensa contra colisiones';
+    this.logger.warn(
+      `Patrón ${patron.id} ("${patron.nombre}", empresa ${patron.empresaId}) usa el ` +
+        `prefijo ${patron.prefijo}, fuera del bloque reservado 20-29: puede capturar ` +
+        `EAN-13 de fabricante. tieneCheckValor=${patron.tieneCheckValor}${sinDefensa}`,
+    );
   }
 
   private validarGeometriaPatron(dto: Partial<CreatePatronDto>): void {

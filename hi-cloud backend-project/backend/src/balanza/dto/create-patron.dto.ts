@@ -3,6 +3,7 @@ import {
   Min, Max, MaxLength, ValidateIf,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { PREFIJOS_BALANZA } from '../utils/balanza-parser';
 
 export class CreatePatronDto {
   @IsString()
@@ -10,8 +11,15 @@ export class CreatePatronDto {
   @MaxLength(100)
   nombre!: string;
 
+  /**
+   * '2' o '20'…'99'. Fuente única: PREFIJOS_BALANZA (balanza-parser.ts).
+   *
+   * 20-29 es el bloque reservado por GS1 para uso interno. 30-99 se admite
+   * porque hay balanzas configuradas de fábrica fuera de ese bloque, pero
+   * puede capturar EAN-13 de fabricante: el formulario avisa al elegirlo.
+   */
   @IsString()
-  @IsIn(['2', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29'])
+  @IsIn(PREFIJOS_BALANZA)
   prefijo!: string;
 
   @IsInt()
