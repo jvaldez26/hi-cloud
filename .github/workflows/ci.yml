@@ -145,6 +145,25 @@ jobs:
         # 58mm y 80mm sobre la plantilla real, sin necesidad de impresora.
         run: npm run verificar:compacto
 
+      - name: Fechas en zona RD — nada se pinta con un día de menos
+        # El frontend no tiene runner de tests: estos scripts transpilan el
+        # módulo REAL con esbuild y lo ejecutan. Este corre con TZ forzado a
+        # una zona que no es RD, que es el escenario a cubrir — la PC de una
+        # caja con la zona mal puesta.
+        run: npm run verificar:fechas
+
+      - name: Ticket térmico del cierre — el bloque de facturas emitidas
+        run: npm run verificar:termico
+
+      - name: Subida de archivos — el FormData sale como multipart, no como JSON
+        run: npm run verificar:subidas
+
+      - name: Desenvolver respuestas — quien pide una lista recibe un array
+        run: npm run verificar:desenvolver
+
+      - name: Dashboard configurable — cada gráfica trae su propia consulta
+        run: npm run verificar:widgets
+
       - name: Verificar claves de videos tutoriales vs rutas
         run: node scripts/check-video-modulos.mjs
 
