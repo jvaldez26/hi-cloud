@@ -12,6 +12,7 @@ import { useAuthStore, registerLogoutCallback }  from './store/auth.store';
 import { onSessionEnd, markNavigatingAway }      from './utils/sessionEvents';
 import { useThemeStore } from './store/theme.store';
 import AppLayout                from './components/layout/AppLayout';
+import ActividadGuard           from './components/auth/ActividadGuard';
 import PortalEmpleadoLayout     from './components/layout/PortalEmpleadoLayout';
 import ErrorBoundary     from './components/ui/ErrorBoundary';
 import PageLoader        from './components/ui/PageLoader';
@@ -436,11 +437,13 @@ function SessionExpiredHandler() {
     onSessionEnd((reason) => {
       markNavigatingAway();   // redundante si client.ts ya lo llamó, pero defensivo
 
-      // 'displaced' = a este usuario lo sacó un login en otro dispositivo; no
-      // pidió salir. Conservamos su carrito del POS para que al volver a entrar
-      // siga ahí en vez de perder una venta a medio teclear. En 'expired' (y en
-      // el logout manual) se limpia como siempre.
-      logout({ preservarCarritoPOS: reason === 'displaced' });
+      // 'displaced' = a este usuario lo sacó un login en otro dispositivo.
+      // 'caducada'  = la sesión llegó a su tope absoluto o al límite de inactividad.
+      //
+      // En ninguno de los dos pidió salir, así que conservamos su carrito del POS
+      // para que al volver a entrar siga ahí en vez de perder una venta a medio
+      // teclear. En 'expired' (y en el logout manual) se limpia como siempre.
+      logout({ preservarCarritoPOS: reason === 'displaced' || reason === 'caducada' });
 
       navigate('/login', { replace: true });
 
@@ -677,6 +680,10 @@ export default function App() {
           <BrowserRouter>
             <ScrollToTop />
             <SessionExpiredHandler />
+            {/* Reporta actividad real al backend y cierra por inactividad.
+                En la raíz a propósito: antes vivía dentro de AppLayout y dejaba
+                sin cubrir /super-admin/* y el portal de empleados. */}
+            <ActividadGuard />
             <NewVersionBanner />
             <ErrorBoundary>
               <Suspense fallback={<PageLoader />}>

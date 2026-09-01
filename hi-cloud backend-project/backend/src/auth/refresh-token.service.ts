@@ -4,16 +4,28 @@ import { Repository, IsNull, LessThan, DataSource } from 'typeorm';
 import { createHash, randomBytes } from 'crypto';
 import { Cron } from '@nestjs/schedule';
 import { RefreshToken } from './entities/refresh-token.entity';
+import { SessionLifetimeService } from './session-lifetime.service';
 
 const GRACE_PERIOD_MS = 15_000; // 15 s — ventana para race condition multi-pestaña
 
+/**
+ * Throttle de escritura de `lastActivityAt`. La actividad la reporta el frontend
+ * (POST /auth/actividad) como mucho cada 5 min, pero el throttle vive aquí para
+ * que un cliente que ignore su propio throttle no genere un UPDATE por llamada.
+ */
+const ACTIVITY_THROTTLE_MS = 5 * 60 * 1000;
+
 @Injectable()
 export class RefreshTokenService {
+  /** userId → timestamp del último UPDATE de lastActivityAt. Se purga por TTL. */
+  private readonly activityThrottle = new Map<number, number>();
+
   constructor(
     @InjectRepository(RefreshToken)
     private repo: Repository<RefreshToken>,
     @InjectDataSource()
     private dataSource: DataSource,
+    private sessionLifetime: SessionLifetimeService,
   ) {}
 
   /** Genera un refresh token aleatorio, lo guarda en BD y devuelve el valor en texto plano. */
@@ -38,7 +50,7 @@ export class RefreshTokenService {
         throw new UnauthorizedException('Sesión expirada. Por favor inicia sesión de nuevo.');
       }
 
-      const sessionLifetimeMs = await this.getSessionLifetimeMs(stored.userId);
+      const sessionLifetimeMs = await this.sessionLifetime.paraUsuario(stored.userId);
 
       // Crear el token nuevo primero para obtener su ID (necesario para nextTokenId)
       const { id: newId, value: newValue } = await this.crearRegistro(
@@ -69,7 +81,7 @@ export class RefreshTokenService {
       revocado.revokedAt &&
       Date.now() - revocado.revokedAt.getTime() < GRACE_PERIOD_MS
     ) {
-      const sessionLifetimeMs = await this.getSessionLifetimeMs(revocado.userId);
+      const sessionLifetimeMs = await this.sessionLifetime.paraUsuario(revocado.userId);
       const newValue = await this.crear(revocado.userId, deviceInfo, ipAddress, sessionLifetimeMs);
       return { userId: revocado.userId, newRefreshValue: newValue };
     }
@@ -110,6 +122,60 @@ export class RefreshTokenService {
       select: ['id', 'deviceInfo', 'ipAddress', 'createdAt', 'expiresAt', 'lastActivityAt'],
       order: { createdAt: 'DESC' },
     });
+  }
+
+  // ── Actividad real del usuario ───────────────────────────────────────────────
+
+  /**
+   * Marca que una PERSONA está usando la sesión. Fire-and-forget.
+   *
+   * ── Por qué esto no se deduce del tráfico ────────────────────────────────
+   * Antes lo escribía TenantMiddleware en cada request autenticado. Eso medía
+   * tráfico, no presencia: hay ~40 `refetchInterval` en el frontend (el POS
+   * sondea cada 30 s, la caja cada 5 s) y ninguna de esas peticiones la hace
+   * una persona. Un POS olvidado en el mostrador toda la noche se marcaba como
+   * activo hasta la mañana siguiente.
+   *
+   * No se puede clasificar la petición: leer un reporte o navegar el ERP son
+   * GET igual que un sondeo, y el mismo endpoint lo llaman el `refetchInterval`
+   * y el usuario al pulsar refrescar. El único sitio que sabe POR QUÉ ocurre
+   * una petición es el cliente, y la única señal que un sondeo no puede
+   * falsificar es la entrada física: ratón, teclado, scroll, tacto.
+   *
+   * Por eso la actividad la reporta el frontend desde los eventos de entrada
+   * (useActividadUsuario) y no se infiere aquí de nada.
+   *
+   * ── Sobre confiar en el cliente ──────────────────────────────────────────
+   * Sí, esto es autoinformado. No baja el listón: quien tiene una sesión válida
+   * ya podía mantenerla viva sondeando, que es más fácil que llamar a esto. El
+   * control de seguridad NO es este — es el tope absoluto de sesión, que se
+   * calcula en el servidor desde `users.sessionCreatedAt` y no se puede
+   * falsificar. Esto es un control de comodidad contra la pestaña olvidada.
+   * No lo "endurezcas" volviendo a inferirlo del tráfico: eso es el bug.
+   */
+  registrarActividad(userId: number): void {
+    const now  = Date.now();
+    const last = this.activityThrottle.get(userId) ?? 0;
+    if (now - last < ACTIVITY_THROTTLE_MS) return;
+
+    this.activityThrottle.set(userId, now);
+    this.purgarActivityThrottle(now);
+
+    this.repo.manager.query(
+      `UPDATE refresh_tokens SET "lastActivityAt" = NOW()
+       WHERE "userId" = $1 AND "revokedAt" IS NULL AND "expiresAt" > NOW()`,
+      [userId],
+    ).catch(() => {
+      // No crítico — borramos la marca para reintentar en la siguiente señal.
+      this.activityThrottle.delete(userId);
+    });
+  }
+
+  /** Purga entradas vencidas del throttle. Solo corre cuando una pasa el umbral. */
+  private purgarActivityThrottle(now: number): void {
+    for (const [userId, ts] of this.activityThrottle) {
+      if (now - ts >= ACTIVITY_THROTTLE_MS) this.activityThrottle.delete(userId);
+    }
   }
 
   // ── Sesión única ─────────────────────────────────────────────────────────────
@@ -165,41 +231,6 @@ export class RefreshTokenService {
   }
 
   // ── Helpers privados ────────────────────────────────────────────────────────
-
-  /**
-   * Devuelve el lifetime de sesión en ms para un usuario.
-   * El global es el TOPE: empresa.sesionHoras ≤ global siempre.
-   * Rango: [1h, global].
-   */
-  private async getSessionLifetimeMs(userId: number): Promise<number> {
-    // 1. Leer el global primero (es el tope máximo)
-    let globalHoras = 24;
-    try {
-      const globalRows = await this.dataSource.query<{ valor: string }[]>(
-        `SELECT valor FROM configuracion_sistema WHERE clave = 'SESION_HORAS' LIMIT 1`,
-      );
-      const h = parseInt(globalRows[0]?.valor ?? '24', 10);
-      globalHoras = isNaN(h) ? 24 : Math.min(720, Math.max(1, h));
-    } catch { /* usar 24 */ }
-
-    // 2. Override por empresa — nunca puede superar el global
-    try {
-      const rows = await this.dataSource.query<{ configuracion: Record<string, unknown> }[]>(`
-        SELECT e.configuracion
-        FROM empresa e
-        JOIN usuario_empresa ue ON ue."empresaId" = e.id
-        WHERE ue."userId" = $1 AND ue."isPrincipal" = true AND ue."isActive" = true
-        LIMIT 1
-      `, [userId]);
-      const conf  = rows[0]?.configuracion;
-      const horas = conf?.['sesionHoras'];
-      if (typeof horas === 'number' && Number.isFinite(horas)) {
-        return Math.min(globalHoras, Math.max(1, horas)) * 3_600_000;
-      }
-    } catch { /* ignorar — caer al global */ }
-
-    return Math.min(720, Math.max(1, globalHoras)) * 3_600_000;
-  }
 
   private async crearRegistro(
     userId: number,

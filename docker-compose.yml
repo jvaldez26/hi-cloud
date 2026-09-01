@@ -38,7 +38,7 @@ services:
       DB_PASSWORD:     ${DB_PASSWORD:-Higlobal4691}
       DB_NAME:         ${DB_NAME:-hicloud}
       JWT_SECRET:      ${JWT_SECRET:-hicloud_jwt_secret_change_in_prod}
-      JWT_EXPIRES_IN:  ${JWT_EXPIRES_IN:-1d}
+      JWT_EXPIRES_IN:  ${JWT_EXPIRES_IN:-15m}
       CORS_ORIGIN:     ${CORS_ORIGIN:-http://localhost}
       ECF_RNC_EMISOR:  ${ECF_RNC_EMISOR:-}
       ECF_RAZON_SOCIAL:${ECF_RAZON_SOCIAL:-HiCloud ERP}

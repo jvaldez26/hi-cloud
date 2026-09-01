@@ -4,8 +4,95 @@
 > qué cambió. Esto cuenta **qué está a medias, qué no es obvio desde el código y qué no hay
 > que volver a decidir.**
 >
-> **Última actualización: 2026-08-26** · HEAD `197ee701`
+> **Última actualización: 2026-09-01** · HEAD `25c4af20`
 > Al cerrar o abrir un trabajo, actualizá la sección y la fecha de arriba.
+
+---
+
+## 0. Caducidad de sesiones — 🟡 Fase A hecha, Fase B **apagada a propósito**
+
+**El problema.** `SESION_HORAS` prometía «tiempo antes de que expire la sesión» y medía
+otra cosa: el hueco máximo **entre refrescos**. `rotar()` creaba el token nuevo con el
+lifetime completo otra vez, sin arrastrar el inicio de la cadena, así que no había tope
+absoluto. Cualquier petición autenticada cada <24 h renovaba la sesión para siempre — y
+como el frontend tiene ~40 `refetchInterval`, un POS visible en el mostrador la renovaba
+solo. Configurado: 24 h. Real: ilimitado.
+
+### La regla que no hay que volver a discutir
+
+**Un GET nunca es actividad.** Es lo único que separa a una persona de un sondeo: leer un
+reporte y sondear la caja son el mismo verbo HTTP contra el mismo endpoint. No se puede
+clasificar la petición; hay que medir la entrada física (ratón, teclado, scroll, tacto),
+que es la señal que un `refetchInterval` no puede falsificar.
+
+Por eso `lastActivityAt` ya **no** se escribe desde `TenantMiddleware`. La escribe
+`POST /auth/actividad`, que emite `<ActividadGuard/>` solo ante eventos de entrada reales.
+Hay un respaldo estrecho —solo mutaciones, nunca GET— en `ActividadInterceptor`, para que
+un fallo de JS en el tracker no eche a un cajero a mitad de venta. `actividad.spec.ts`
+falla si alguien devuelve la escritura al middleware o hace que un GET cuente.
+
+**Sobre confiar en el cliente:** sí, la actividad es autoinformada. No baja el listón —
+quien tiene sesión válida ya la mantenía viva sondeando, que es más fácil. El control de
+seguridad **no es este**, es el tope absoluto de la Fase B, que se calcula en el servidor
+desde `users.sessionCreatedAt` y no se puede falsificar. No lo «endurezcas» volviendo a
+inferir actividad del tráfico: eso *es* el bug.
+
+### Fase A — desplegable a cualquier hora ✅ (sin pushear)
+
+No cierra ni una sesión. Es seguro deployarla en horario laboral.
+
+| Cambio | Dónde |
+|---|---|
+| Caché del lifetime + fuente única (se elimina la lógica duplicada en dos servicios) | `auth/session-lifetime.service.ts` |
+| `JWT_EXPIRES_IN` unificado `1d` → **`15m`** en los 5 sitios | `auth/auth.constants.ts` + compose + los dos `.env.example` |
+| `JWT_REFRESH_EXPIRES_IN` eliminado — mando desconectado | `app.module.ts` |
+| Actividad fuera de `TenantMiddleware` → endpoint propio | `auth/actividad.interceptor.ts`, `ActividadGuard.tsx` |
+| `SESION_CADUCADA` reconocido y **preserva el carrito del POS** | `api/client.ts`, `App.tsx` |
+
+> **El orden importó y debe respetarse en cualquier cambio futuro:** la caché entra
+> **antes** de bajar `JWT_EXPIRES_IN`. Con `15m` las rotaciones se multiplican por ~96 y
+> cada una hacía dos SELECT extra sobre la RDS t3.small.
+
+**Por qué `15m` y no `1d`:** no es estética. La precisión del cierre por inactividad está
+limitada por la vida del access token, porque el punto de control es la rotación. Con `1d`
+un ajuste de «30 min de inactividad» es incumplible. Con `15m` el cierre cae entre X y
+X+15 min — y **eso tiene que decirlo la ayuda del ajuste en la UI**, o repetimos el
+problema de origen.
+
+**Dos arreglos que salieron gratis:** `/admin/` está en `RUTAS_SIN_TENANT`, así que la
+actividad del Super Admin no se registraba nunca y la «última actividad» del modal de
+sesión única mentía; y `/super-admin/backups` está fuera de `AppLayout`, así que no tenía
+cierre por inactividad mientras sondeaba cada 30 s. Al mover el tracking a la raíz, ambos
+dejan de ser casos especiales.
+
+### Fase B — escrita a medias, **no encender sin leer esto** ❌
+
+Falta: propagar `users.sessionCreatedAt` como origen de la cadena en `rotar()`, rechazar
+con `SESION_CADUCADA` cuando `now - inicio > tope`, y el ajuste separado de inactividad.
+Deben desplegarse **apagados** (centinela en configuración = sin límite) y encenderse por
+config a una hora elegida, no en un deploy.
+
+1. **El alcance es mayor de lo que parece.** No se cierran «las sesiones de más de 24 h».
+   Como hoy nada caduca, `sessionCreatedAt` puede tener **meses**: al encender se cierran
+   casi todas. Medirlo antes con:
+   ```sql
+   SELECT count(*) FILTER (WHERE "sessionCreatedAt" IS NULL)                        AS sin_fecha,
+          count(*) FILTER (WHERE "sessionCreatedAt" < now() - interval '24 hours')  AS mas_24h,
+          count(*)                                                                  AS vivas,
+          min("sessionCreatedAt")                                                    AS mas_antigua
+     FROM users WHERE "sessionToken" IS NOT NULL;
+   ```
+2. **Backfill de gracia, decidido:** poner los `NULL` y los ya vencidos a la hora del
+   encendido. Convierte «todos fuera ya» en «todos fuera escalonados por su propio uso».
+   Los `NULL` existen porque la columna se creó con `ADD COLUMN IF NOT EXISTS` y solo se
+   llena desde entonces.
+3. **Sin `SESION_CADUCADA` no hay hora buena.** Una caducidad devuelve 401 genérico → el
+   interceptor emite `'expired'` → `App.tsx` limpia el carrito del POS. Por eso el código
+   nuevo ya va en la Fase A: encender el tope sin él borraría las ventas a medio teclear
+   de todo el que estuviera facturando.
+4. **Hora:** ni viernes, ni fin/principio de mes (facturación y cierres), ni el 20
+   (declaraciones DGII). Pendiente de confirmar si hay KDS de restaurante abierto de
+   madrugada.
 
 ---
 

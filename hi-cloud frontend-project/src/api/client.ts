@@ -181,6 +181,28 @@ apiClient.interceptors.response.use(
       //
       // El filter devuelve { errors: ["CODIGO"] }, no { message: "..." }
       // → usar `message` (ya extraído de errors[0] por extractBackendMessage)
+      // SESION_CADUCADA — la sesión llegó a su tope absoluto o al límite de
+      // inactividad del backend. Todavía no lo emite nadie: el backend que lo
+      // lanza llega en la Fase B y se enciende por configuración. El cliente lo
+      // reconoce desde ya para que el encendido no dependa de un deploy de
+      // frontend, y sobre todo para que no borre carritos del POS cuando ocurra.
+      if (message === 'SESION_CADUCADA') {
+        localStorage.removeItem('auth_user');
+        localStorage.removeItem('empresaId');
+        localStorage.removeItem('mis_empresas');
+        sessionStorage.setItem(
+          'login_error',
+          'Tu sesión alcanzó su duración máxima y se cerró por seguridad. Vuelve a ' +
+          'iniciar sesión. Si tenías una venta en el POS, sigue guardada: la ' +
+          'encontrarás en el carrito al entrar.',
+        );
+        if (!window.location.pathname.startsWith('/login')) {
+          markNavigatingAway();
+          emitSessionEnd('caducada');   // preserva el carrito del POS
+        }
+        return Promise.reject(err);
+      }
+
       if (message === 'SESION_DESPLAZADA' || message === 'TOKEN_OBSOLETO') {
         localStorage.removeItem('auth_user');
         localStorage.removeItem('empresaId');
