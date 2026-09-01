@@ -266,3 +266,68 @@ describe('ProductoProveedorService.vincularAlCrear', () => {
     await expect(svc.vincularAlCrear(10, 5)).resolves.toBe(false);
   });
 });
+
+/**
+ * El código del proveedor en el vínculo.
+ *
+ * Es un campo DISTINTO de `productos.referencia`. Aquel es la referencia interna
+ * del negocio y vive en el producto; este lo pone el proveedor, sirve para
+ * pedirle, y vive en el par. Mezclarlos fue la ambigüedad que arrastraba el
+ * placeholder «Referencia interna o del proveedor».
+ */
+describe('ProductoProveedorService.vincularAlCrear — codigoProveedor', () => {
+  const construir = (existente: any = null, preferenteExistente: any = null) => {
+    const save   = jest.fn(async (x: any) => ({ id: 99, ...x }));
+    const update = jest.fn().mockResolvedValue(undefined);
+    const create = jest.fn((x: any) => x);
+    const findOne = jest.fn()
+      .mockResolvedValueOnce(existente)
+      .mockResolvedValueOnce(preferenteExistente);
+    const svc = new ProductoProveedorService(
+      { save, update, create, findOne } as any,
+      {} as any,
+      { getEmpresaId: () => 1 } as any,
+    );
+    return { svc, save, update };
+  };
+
+  it('guarda el código en el par nuevo', async () => {
+    const { svc, save } = construir();
+    await svc.vincularAlCrear(10, 5, 'FC-4471-B');
+    expect(save.mock.calls[0][0].codigoProveedor).toBe('FC-4471-B');
+  });
+
+  it('sin código, el par nace con null y no con cadena vacía', async () => {
+    const { svc, save } = construir();
+    await svc.vincularAlCrear(10, 5);
+    expect(save.mock.calls[0][0].codigoProveedor).toBeNull();
+  });
+
+  it('un campo dejado en blanco no se guarda como código', async () => {
+    const { svc, save } = construir();
+    await svc.vincularAlCrear(10, 5, '   ');
+    expect(save.mock.calls[0][0].codigoProveedor).toBeNull();
+  });
+
+  it('sobre un par YA activo, actualiza solo el código', async () => {
+    // Editar un producto ya vinculado y corregirle el código del proveedor tiene
+    // que funcionar; lo que no puede es re-tocar preferente ni precio.
+    const { svc, save, update } = construir({ id: 3, isActive: true, codigoProveedor: 'VIEJO' });
+    await expect(svc.vincularAlCrear(10, 5, 'NUEVO')).resolves.toBe(true);
+    expect(save).not.toHaveBeenCalled();
+    expect(update).toHaveBeenCalledWith(3, { codigoProveedor: 'NUEVO' });
+  });
+
+  it('sobre un par ya activo y sin código nuevo, no escribe nada', async () => {
+    const { svc, save, update } = construir({ id: 3, isActive: true, codigoProveedor: 'X' });
+    await svc.vincularAlCrear(10, 5);
+    expect(save).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('el mismo código sobre un par activo no genera escritura', async () => {
+    const { svc, update } = construir({ id: 3, isActive: true, codigoProveedor: 'IGUAL' });
+    await svc.vincularAlCrear(10, 5, 'IGUAL');
+    expect(update).not.toHaveBeenCalled();
+  });
+});

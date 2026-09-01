@@ -18,6 +18,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSucursalesQuery, useUomUnidadesQuery } from '../../hooks/useCatalogQueries';
 import dayjs from 'dayjs';
 import { productosApi, type ProductoPayload } from '../../api/productos.api';
+import { proveedoresApi } from '../../api/proveedores.api';
+import { productoProveedorApi } from '../../api/productoProveedor.api';
 import { useProductoImagen } from '../../hooks/useProductoImagen';
 import { wmsApi } from '../../api/wms.api';
 import { atributosApi } from '../../api/atributos.api';
@@ -590,6 +592,15 @@ function ProductosCatalogo() {
     queryFn: productosApi.marcas,
     staleTime: 5 * 60_000,
   });
+
+  // Proveedores para el Select del formulario. El vínculo producto↔proveedor es
+  // OPCIONAL: un producto sin proveedor conocido es un caso legítimo y exigirlo
+  // entorpecería el mostrador.
+  const { data: proveedoresLista } = useQuery({
+    queryKey: ['proveedores-form-producto'],
+    queryFn:  () => proveedoresApi.list(1, 500, ''),
+    staleTime: 5 * 60_000,
+  });
   const categorias = catalogoCats ?? [];
   const marcas     = catalogoMarcas ?? [];
   // Ajustar precios al público toca precios de venta: solo ADMIN (el backend lo exige igual)
@@ -718,6 +729,33 @@ function ProductosCatalogo() {
     onSuccess:  () => { invalidarProductos(); message.success('Eliminado'); },
     onError:    (e: any) => message.error(e?.response?.data?.message ?? 'Error al eliminar producto'),
   });
+
+  /**
+   * Vínculos del producto que se está editando, para precargar el Select.
+   *
+   * Se consulta solo con el modal abierto en modo edición: es un dato del
+   * formulario, no de la tabla, y pedirlo por cada fila de la lista sería
+   * gratuito para nada.
+   */
+  const { data: vinculosProducto } = useQuery({
+    queryKey: ['producto-proveedores', editing?.id],
+    queryFn:  () => productoProveedorApi.porProducto(editing!.id),
+    enabled:  open && !!editing?.id,
+    staleTime: 30_000,
+  });
+
+  // Precargar el preferente cuando llega la respuesta. Si el producto no tiene
+  // preferente, se toma el primer vínculo activo: es más útil enseñar el que hay
+  // que dejar el campo vacío como si no hubiera ninguno.
+  useEffect(() => {
+    if (!open || !editing || !vinculosProducto) return;
+    const preferido = vinculosProducto.find((v: any) => v.esPreferente) ?? vinculosProducto[0];
+    if (!preferido) return;
+    form.setFieldsValue({
+      proveedorId:     preferido.proveedorId,
+      codigoProveedor: preferido.codigoProveedor ?? '',
+    });
+  }, [open, editing, vinculosProducto, form]);
 
   const openCreate = () => {
     dupCheckNonce.current++;  // invalida cualquier check async pendiente
@@ -1267,8 +1305,15 @@ function ProductosCatalogo() {
               </Col>
             )}
             <Col xs={24} sm={8}>
-              <Form.Item name="referencia" label="Referencia">
-                <Input placeholder="Referencia interna o del proveedor" maxLength={100} />
+              <Form.Item
+                name="referencia"
+                label="Referencia"
+                tooltip="Tu referencia interna. El código que usa el proveedor va en su propio campo, más abajo."
+              >
+                {/* El placeholder decía «Referencia interna o del proveedor», y esa
+                    ambigüedad ya no tiene sentido: el código del proveedor tiene
+                    campo propio y va a producto_proveedor, no al producto. */}
+                <Input placeholder="Referencia interna del negocio" maxLength={100} />
               </Form.Item>
             </Col>
             {modoAvanzado && (
@@ -1276,6 +1321,55 @@ function ProductosCatalogo() {
                 <Form.Item name="categoria" label="Categoría"><Input /></Form.Item>
               </Col>
             )}
+
+            {/* ── Proveedor ─────────────────────────────────────────────────────
+                OPCIONAL siempre. Un producto sin proveedor conocido es un caso
+                legítimo y bloquear el alta por eso entorpece el mostrador.
+
+                Si se elige, se crea el par en producto_proveedor con
+                origen='manual', precio NULO —el costo de arriba es un estimado de
+                compra, no un precio pactado— y como preferente solo si el
+                producto no tiene ya uno activo.
+
+                Vaciar el Select NO desvincula: quitar un proveedor tiene
+                consecuencias y su sitio es la pantalla de reposición, donde se ve
+                lo que se hace. */}
+            <Col xs={24} sm={8}>
+              <Form.Item
+                name="proveedorId"
+                label="Proveedor"
+                tooltip="Opcional. Quién te vende este producto — aparecerá en Reposición por proveedor."
+              >
+                <Select
+                  showSearch
+                  allowClear
+                  optionFilterProp="label"
+                  placeholder="Sin proveedor"
+                  options={(proveedoresLista?.data ?? []).map((p: any) => ({
+                    value: p.id, label: p.nombre,
+                  }))}
+                />
+              </Form.Item>
+            </Col>
+
+            {/* El código del artículo en el catálogo DEL proveedor. Campo propio y
+                no mezclado con `referencia`: aquel es la referencia interna del
+                negocio y vive en el producto; este lo pone el proveedor, sirve
+                para pedirle, y va al par. Solo se ofrece con proveedor elegido,
+                porque sin par no hay dónde guardarlo. */}
+            <Form.Item noStyle shouldUpdate={(prev, cur) => prev.proveedorId !== cur.proveedorId}>
+              {({ getFieldValue }) => getFieldValue('proveedorId') ? (
+                <Col xs={24} sm={8}>
+                  <Form.Item
+                    name="codigoProveedor"
+                    label="Código del proveedor"
+                    tooltip="El código con el que ESE proveedor identifica el artículo. Es el que él busca cuando le pides."
+                  >
+                    <Input placeholder="Ej: FC-4471-B" maxLength={100} />
+                  </Form.Item>
+                </Col>
+              ) : null}
+            </Form.Item>
 
             {/* Sucursal — solo en avanzado, cuando el usuario tiene acceso a varias */}
             {modoAvanzado && !esServicio && sucursales.length > 1 && (

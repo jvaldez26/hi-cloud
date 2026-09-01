@@ -161,6 +161,23 @@ export class CreateProductoDto {
   @IsPositive()
   proveedorId?: number;
 
+  /**
+   * El código del artículo en el catálogo DEL PROVEEDOR. Va a
+   * `producto_proveedor.codigoProveedor`, no a `productos`.
+   *
+   * NO confundir con `referencia`, que es la referencia INTERNA del negocio y
+   * vive en el producto. Son dos cosas distintas y por eso son dos campos: el de
+   * arriba lo pone el proveedor y sirve para pedirle; `referencia` la pone la
+   * empresa y no significa nada fuera de ella.
+   *
+   * Solo tiene efecto si viene `proveedorId`: sin proveedor no hay par donde
+   * guardarlo.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  codigoProveedor?: string;
+
   // ── Balanzas etiquetadoras ────────────────────────────────────────────────
   @IsOptional()
   @IsInt()

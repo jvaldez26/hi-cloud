@@ -267,17 +267,32 @@ export class ProductoProveedorService {
    *
    * @returns true si quedó vinculado (o ya lo estaba), false si no se pudo.
    */
-  async vincularAlCrear(productoId: number, proveedorId: number): Promise<boolean> {
+  async vincularAlCrear(
+    productoId: number,
+    proveedorId: number,
+    codigoProveedor?: string | null,
+  ): Promise<boolean> {
     try {
       const empresaId = this.tenantService.getEmpresaId();
+      // Cadena vacía = el usuario dejó el campo en blanco, no "borra el código".
+      const codigo = codigoProveedor?.trim() ? codigoProveedor.trim() : undefined;
 
       const existente = await this.repo.findOne({ where: { empresaId, productoId, proveedorId } });
-      if (existente?.isActive) return true;
+
+      if (existente?.isActive) {
+        // Ya vinculado: lo único que puede aportar esta vía es el código del
+        // proveedor si aún no lo tenía o si cambió.
+        if (codigo && codigo !== existente.codigoProveedor) {
+          await this.repo.update(existente.id, { codigoProveedor: codigo });
+        }
+        return true;
+      }
 
       if (existente) {
         await this.repo.update(existente.id, {
           isActive: true,
           esPreferente: await this.sinPreferente(productoId),
+          ...(codigo ? { codigoProveedor: codigo } : {}),
         });
         return true;
       }
@@ -288,6 +303,7 @@ export class ProductoProveedorService {
         monedaPactada: 'DOP',
         precioPactado: null,
         precioPactadoAt: null,
+        codigoProveedor: codigo ?? null,
         esPreferente: await this.sinPreferente(productoId),
       }));
       return true;

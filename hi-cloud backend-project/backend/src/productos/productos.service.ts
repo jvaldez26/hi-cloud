@@ -281,6 +281,7 @@ export class ProductosService implements OnModuleInit {
       almacenId: almacenIdDto,
       ubicacionId: ubicacionIdDto,
       proveedorId,
+      codigoProveedor,
       ...productoData
     } = dto;
     const almacenId = almacenIdDto ?? this.tenantService.getAlmacenId() ?? undefined;
@@ -340,7 +341,7 @@ export class ProductosService implements OnModuleInit {
     // producto sin proveedor conocido es legítimo. vincularAlCrear() no lanza —
     // el producto ya está guardado y no se pierde por un dato accesorio.
     if (proveedorId) {
-      await this.productoProveedorSvc.vincularAlCrear(saved.id, proveedorId);
+      await this.productoProveedorSvc.vincularAlCrear(saved.id, proveedorId, codigoProveedor);
     }
 
     this.realtimeService.notify(empresaId, 'producto', 'created', saved.id);
@@ -617,8 +618,17 @@ export class ProductosService implements OnModuleInit {
       }
     }
 
-    // stock se ignora en update — solo modificable mediante movimientos de inventario
-    const { almacenId, ubicacionId: ubicacionIdDto, stock: _stock, ...updateData } = dto as any;
+    // stock se ignora en update — solo modificable mediante movimientos de inventario.
+    // proveedorId y codigoProveedor tampoco son columnas de `productos`: van al par
+    // en producto_proveedor, más abajo.
+    const {
+      almacenId,
+      ubicacionId: ubicacionIdDto,
+      stock: _stock,
+      proveedorId,
+      codigoProveedor,
+      ...updateData
+    } = dto as any;
     // Limpiar flag de creación rápida: cualquier edición manual del producto lo completa
     updateData.esCreacionRapida = false;
 
@@ -644,6 +654,19 @@ export class ProductosService implements OnModuleInit {
         `UPDATE stock_almacen SET "ubicacionId" = $1 WHERE "productoId" = $2 AND "almacenId" = $3 AND "empresaId" = $4`,
         [ubicacionIdDto || null, id, almacenId, empresaId],
       );
+    }
+
+    // Vincular al proveedor desde la EDICIÓN, no solo desde el alta: un producto
+    // que ya existe también tiene que poder vincularse sin pasar por la pantalla
+    // de reposición. Mismas reglas — opcional, precio nulo, preferente solo si no
+    // hay ya uno activo — y tampoco lanza: la edición ya se guardó.
+    //
+    // No se DESVINCULA nada al dejar el Select vacío. Quitar un proveedor tiene
+    // consecuencias (puede dejar al producto sin preferente) y su sitio es la
+    // pantalla de reposición, donde se ve lo que se hace. Un formulario que borra
+    // vínculos por omisión sería una trampa: bastaría guardar sin mirar el campo.
+    if (proveedorId) {
+      await this.productoProveedorSvc.vincularAlCrear(id, proveedorId, codigoProveedor);
     }
 
     this.realtimeService.notify(empresaId, 'producto', 'updated', id);
