@@ -201,7 +201,9 @@ describe('ProductoProveedorService.vincularAlCrear', () => {
 
     const svc = new ProductoProveedorService(
       { save, update, create, findOne } as any,
-      {} as any,
+      // El par se inserta sin marca y se promueve en una transacción aparte, así
+      // que el DataSource falso necesita `transaction` aunque el test no la mire.
+      { transaction: jest.fn(async (cb: any) => cb({ update: jest.fn() })) } as any,
       { getEmpresaId: () => 1 } as any,
     );
     return { svc, save, update, create, findOne };
@@ -225,34 +227,31 @@ describe('ProductoProveedorService.vincularAlCrear', () => {
     });
   });
 
-  it('marca preferente cuando el producto no tiene ninguno activo', async () => {
-    const { svc, save } = construir(null, null);
-    await svc.vincularAlCrear(10, 5);
-    expect(save.mock.calls[0][0].esPreferente).toBe(true);
-  });
-
   it('NO marca preferente si el producto ya tiene uno', async () => {
     // La condición es "no tiene preferente activo", no "es el primer proveedor":
     // el enganche de compras crea pares SIN preferente, así que un producto puede
     // tener varios proveedores y ninguno marcado. Con la regla del "primero" esos
     // se quedarían huérfanos para siempre.
+    //
+    // El par se inserta siempre sin marca; quién queda preferente lo decide la
+    // promoción posterior, cubierta en el describe de «preferente».
     const { svc, save } = construir(null, { id: 7 });
     await svc.vincularAlCrear(10, 5);
     expect(save.mock.calls[0][0].esPreferente).toBe(false);
   });
 
-  it('un par ya activo no se duplica ni se toca', async () => {
-    const { svc, save, update } = construir({ id: 3, isActive: true });
+  it('un par ya activo y ya preferente no se duplica ni se toca', async () => {
+    const { svc, save, update } = construir({ id: 3, isActive: true, esPreferente: true }, null);
     await expect(svc.vincularAlCrear(10, 5)).resolves.toBe(true);
     expect(save).not.toHaveBeenCalled();
     expect(update).not.toHaveBeenCalled();
   });
 
   it('un par desvinculado se reactiva en vez de duplicarse', async () => {
-    const { svc, save, update } = construir({ id: 3, isActive: false }, null);
+    const { svc, save, update } = construir({ id: 3, isActive: false }, { id: 7 });
     await expect(svc.vincularAlCrear(10, 5)).resolves.toBe(true);
     expect(save).not.toHaveBeenCalled();
-    expect(update).toHaveBeenCalledWith(3, { isActive: true, esPreferente: true });
+    expect(update).toHaveBeenCalledWith(3, { isActive: true });
   });
 
   it('NO lanza si el vínculo falla — el producto ya está creado', async () => {
@@ -285,7 +284,9 @@ describe('ProductoProveedorService.vincularAlCrear — codigoProveedor', () => {
       .mockResolvedValueOnce(preferenteExistente);
     const svc = new ProductoProveedorService(
       { save, update, create, findOne } as any,
-      {} as any,
+      // El par se inserta sin marca y se promueve en una transacción aparte, así
+      // que el DataSource falso necesita `transaction` aunque el test no la mire.
+      { transaction: jest.fn(async (cb: any) => cb({ update: jest.fn() })) } as any,
       { getEmpresaId: () => 1 } as any,
     );
     return { svc, save, update };
@@ -312,7 +313,9 @@ describe('ProductoProveedorService.vincularAlCrear — codigoProveedor', () => {
   it('sobre un par YA activo, actualiza solo el código', async () => {
     // Editar un producto ya vinculado y corregirle el código del proveedor tiene
     // que funcionar; lo que no puede es re-tocar preferente ni precio.
-    const { svc, save, update } = construir({ id: 3, isActive: true, codigoProveedor: 'VIEJO' });
+    const { svc, save, update } = construir(
+      { id: 3, isActive: true, esPreferente: true, codigoProveedor: 'VIEJO' }, null,
+    );
     await expect(svc.vincularAlCrear(10, 5, 'NUEVO')).resolves.toBe(true);
     expect(save).not.toHaveBeenCalled();
     expect(update).toHaveBeenCalledWith(3, { codigoProveedor: 'NUEVO' });
@@ -329,5 +332,82 @@ describe('ProductoProveedorService.vincularAlCrear — codigoProveedor', () => {
     const { svc, update } = construir({ id: 3, isActive: true, codigoProveedor: 'IGUAL' });
     await svc.vincularAlCrear(10, 5, 'IGUAL');
     expect(update).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Mover el preferente desde la ficha de producto.
+ *
+ * Elegir un proveedor en la ficha es una acción DELIBERADA: el usuario está
+ * diciendo cuál es el suyo. Si no moviera el preferente, el Select parecería
+ * hacer algo sin hacerlo, que es peor que no tenerlo.
+ *
+ * Las vías donde el proveedor es INCIDENTAL al flujo —el modal rápido de la
+ * orden de compra, la importación CSV— conservan la regla conservadora: marcan
+ * preferente solo si el producto no tiene ninguno. Nadie ha dicho ahí que ese
+ * proveedor sea el principal.
+ */
+describe('ProductoProveedorService.vincularAlCrear — preferente', () => {
+  const construir = (existente: any, preferenteExistente: any) => {
+    const save    = jest.fn(async (x: any) => ({ id: 99, ...x }));
+    const update  = jest.fn().mockResolvedValue(undefined);
+    const create  = jest.fn((x: any) => x);
+    const findOne = jest.fn()
+      .mockResolvedValueOnce(existente)
+      .mockResolvedValueOnce(preferenteExistente);
+    const mgrUpdate = jest.fn().mockResolvedValue(undefined);
+    const transaction = jest.fn(async (cb: any) => cb({ update: mgrUpdate }));
+    const svc = new ProductoProveedorService(
+      { save, update, create, findOne } as any,
+      { transaction } as any,
+      { getEmpresaId: () => 1 } as any,
+    );
+    return { svc, save, update, transaction, mgrUpdate };
+  };
+
+  it('con hacerPreferente, mueve el preferente aunque ya hubiera otro', async () => {
+    const { svc, transaction, mgrUpdate } = construir(null, { id: 7 });
+    await svc.vincularAlCrear(10, 5, undefined, true);
+    expect(transaction).toHaveBeenCalledTimes(1);
+    // Primero apagar el anterior, después encender el nuevo: el índice único
+    // parcial rechaza dos preferentes vivos a la vez.
+    expect(mgrUpdate.mock.calls[0][2]).toEqual({ esPreferente: false });
+    expect(mgrUpdate.mock.calls[1][2]).toEqual({ esPreferente: true });
+  });
+
+  it('el par nuevo se INSERTA sin marca y se marca después', async () => {
+    // Insertarlo ya marcado reventaría contra el índice cuando ya hubiera otro.
+    const { svc, save } = construir(null, { id: 7 });
+    await svc.vincularAlCrear(10, 5, undefined, true);
+    expect(save.mock.calls[0][0].esPreferente).toBe(false);
+  });
+
+  it('SIN hacerPreferente, un producto que ya tiene preferente no lo pierde', async () => {
+    // Es el caso de la compra rápida y la importación: el proveedor es
+    // incidental al flujo y nadie dijo que fuera el principal.
+    const { svc, transaction } = construir(null, { id: 7 });
+    await svc.vincularAlCrear(10, 5);
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it('sin preferente previo, cualquier vía lo marca', async () => {
+    const { svc, transaction } = construir(null, null);
+    await svc.vincularAlCrear(10, 5);
+    expect(transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('sobre un par YA activo y no preferente, con hacerPreferente lo promueve', async () => {
+    // Reelegir en la ficha un proveedor que ya estaba vinculado pero no era el
+    // principal: es exactamente "quiero que este sea el mío".
+    const { svc, transaction } = construir({ id: 3, isActive: true, esPreferente: false }, { id: 7 });
+    await svc.vincularAlCrear(10, 5, undefined, true);
+    expect(transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('reelegir el que YA es preferente no genera transacción', async () => {
+    // Abrir la ficha, no tocar el Select y guardar: no debe escribir nada.
+    const { svc, transaction } = construir({ id: 3, isActive: true, esPreferente: true }, null);
+    await svc.vincularAlCrear(10, 5, undefined, true);
+    expect(transaction).not.toHaveBeenCalled();
   });
 });

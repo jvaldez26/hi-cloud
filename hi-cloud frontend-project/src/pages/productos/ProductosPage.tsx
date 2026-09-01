@@ -744,18 +744,31 @@ function ProductosCatalogo() {
     staleTime: 30_000,
   });
 
-  // Precargar el preferente cuando llega la respuesta. Si el producto no tiene
-  // preferente, se toma el primer vínculo activo: es más útil enseñar el que hay
-  // que dejar el campo vacío como si no hubiera ninguno.
+  /**
+   * Precargar el proveedor PREFERENTE, y solo ese.
+   *
+   * Antes había un respaldo —«si no hay preferente, enseña el primer vínculo»—
+   * y ahora sería una trampa: elegir proveedor en esta ficha MUEVE el preferente,
+   * así que un producto con vínculos pero sin preferente (caso real: el enganche
+   * de compras los crea sin marcar) mostraría uno cualquiera, y quien abriera la
+   * ficha solo para corregir el precio lo promovería sin haberlo elegido.
+   *
+   * Con el campo vacío, no tocarlo no hace nada. Es la diferencia entre un
+   * control que actúa por descuido y uno que actúa cuando se lo pides.
+   */
   useEffect(() => {
     if (!open || !editing || !vinculosProducto) return;
-    const preferido = vinculosProducto.find((v: any) => v.esPreferente) ?? vinculosProducto[0];
+    const preferido = vinculosProducto.find((v: any) => v.esPreferente);
     if (!preferido) return;
     form.setFieldsValue({
       proveedorId:     preferido.proveedorId,
       codigoProveedor: preferido.codigoProveedor ?? '',
     });
   }, [open, editing, vinculosProducto, form]);
+
+  /** Vínculos que existen pero no son el preferente — para avisar sin precargar. */
+  const vinculosSinPreferente = !!vinculosProducto?.length
+    && !vinculosProducto.some((v: any) => v.esPreferente);
 
   const openCreate = () => {
     dupCheckNonce.current++;  // invalida cualquier check async pendiente
@@ -1337,8 +1350,13 @@ function ProductosCatalogo() {
             <Col xs={24} sm={8}>
               <Form.Item
                 name="proveedorId"
-                label="Proveedor"
-                tooltip="Opcional. Quién te vende este producto — aparecerá en Reposición por proveedor."
+                label="Proveedor principal"
+                tooltip="Opcional. Elegir uno aquí lo marca como preferente del producto. Vaciarlo no desvincula nada — eso se hace desde Reposición por proveedor."
+                extra={
+                  vinculosSinPreferente
+                    ? `Este producto ya tiene ${vinculosProducto!.length} proveedor(es), ninguno marcado como principal.`
+                    : undefined
+                }
               >
                 <Select
                   showSearch

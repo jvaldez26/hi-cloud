@@ -341,7 +341,8 @@ export class ProductosService implements OnModuleInit {
     // producto sin proveedor conocido es legítimo. vincularAlCrear() no lanza —
     // el producto ya está guardado y no se pierde por un dato accesorio.
     if (proveedorId) {
-      await this.productoProveedorSvc.vincularAlCrear(saved.id, proveedorId, codigoProveedor);
+      // hacerPreferente: elegir proveedor en la ficha es una acción deliberada.
+      await this.productoProveedorSvc.vincularAlCrear(saved.id, proveedorId, codigoProveedor, true);
     }
 
     this.realtimeService.notify(empresaId, 'producto', 'created', saved.id);
@@ -666,7 +667,7 @@ export class ProductosService implements OnModuleInit {
     // pantalla de reposición, donde se ve lo que se hace. Un formulario que borra
     // vínculos por omisión sería una trampa: bastaría guardar sin mirar el campo.
     if (proveedorId) {
-      await this.productoProveedorSvc.vincularAlCrear(id, proveedorId, codigoProveedor);
+      await this.productoProveedorSvc.vincularAlCrear(id, proveedorId, codigoProveedor, true);
     }
 
     this.realtimeService.notify(empresaId, 'producto', 'updated', id);
