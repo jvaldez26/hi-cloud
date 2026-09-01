@@ -12,6 +12,9 @@ import { proveedoresApi } from '../../api/proveedores.api';
 import { productosApi } from '../../api/productos.api';
 import { comprasApi } from '../../api/compras.api';
 import { useAuthStore } from '../../store/auth.store';
+import { TableToolbar } from '../../components/ui/TableToolbar';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 
 const { Title, Text } = Typography;
 
@@ -56,7 +59,7 @@ export default function ReposicionProveedorPage() {
     staleTime: 5 * 60_000,
   });
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['reposicion-proveedor', proveedorId, almacenId],
     queryFn:  () => productoProveedorApi.reposicion(proveedorId!, almacenId),
     enabled:  !!proveedorId,
@@ -134,7 +137,7 @@ export default function ReposicionProveedorPage() {
       const opciones = [...monedasEnJuego.entries()];
       Modal.confirm({
         title: 'Las líneas tienen precios en monedas distintas',
-        width: 460,
+        width: 'min(460px, 92vw)',
         content: (
           <div>
             <p style={{ marginTop: 8 }}>
@@ -162,10 +165,34 @@ export default function ReposicionProveedorPage() {
     crearOrden.mutate([...monedasEnJuego.keys()][0]);
   };
 
+  /**
+   * Columnas que el usuario puede ocultar.
+   *
+   * Las CUATRO fijas —producto, existencia, faltan y pedir— **no están aquí a
+   * propósito**. `filterColumns()` solo conserva lo que esté en `visibleColumns`
+   * (más las de acciones), así que dejarlas fuera de COLS_DEF las hace
+   * permanentes por construcción y, sobre todo, hace que el selector no ofrezca
+   * ocultarlas: un control que se deja pulsar y no hace nada es peor que no
+   * tenerlo. Son las cuatro que responden la pregunta de la pantalla —qué es,
+   * cuánto hay, cuánto falta y cuánto pedir—; sin cualquiera de ellas la tabla
+   * deja de servir para lo que existe.
+   */
+  const COLS_DEF = [
+    { key: 'codigo',          label: 'Código',         defaultVisible: true  },
+    { key: 'codigoProveedor', label: 'Cód. proveedor', defaultVisible: true  },
+    { key: 'minimo',          label: 'Mínimo',         defaultVisible: true  },
+    { key: 'precio',          label: 'Precio',         defaultVisible: true  },
+    { key: 'diasEntrega',     label: 'Entrega',        defaultVisible: false },
+  ];
+  const { visibleColumns, updateVisibility } = useColumnVisibility('reposicion-proveedor', COLS_DEF);
+
+  /** Las cuatro que nunca se ocultan. */
+  const COLUMNAS_FIJAS = ['nombre', 'existencia', 'faltante', 'pedir'];
+
   const columnas = [
-    { title: 'Código', dataIndex: 'codigo', width: 110, ellipsis: true },
+    { title: 'Código', dataIndex: 'codigo', key: 'codigo', width: 110, ellipsis: true },
     {
-      title: 'Producto', dataIndex: 'nombre', ellipsis: true,
+      title: 'Producto', dataIndex: 'nombre', key: 'nombre', ellipsis: true,
       render: (v: string, r: LineaReposicion) => (
         <Space size={4}>
           {v}
@@ -174,11 +201,11 @@ export default function ReposicionProveedorPage() {
       ),
     },
     {
-      title: 'Cód. proveedor', dataIndex: 'codigoProveedor', width: 130, ellipsis: true,
+      title: 'Cód. proveedor', dataIndex: 'codigoProveedor', key: 'codigoProveedor', width: 130, ellipsis: true,
       render: (v: string | null) => v ?? <Text type="secondary">—</Text>,
     },
     {
-      title: 'Existencia', dataIndex: 'existencia', width: 110, align: 'right' as const,
+      title: 'Existencia', dataIndex: 'existencia', key: 'existencia', width: 110, align: 'right' as const,
       render: (v: number, r: LineaReposicion) => (
         <span style={{ color: v <= 0 ? '#ef4444' : undefined, fontWeight: v <= 0 ? 600 : 400 }}>
           {v} <Text type="secondary" style={{ fontSize: 11 }}>{r.unidadMedida}</Text>
@@ -186,7 +213,7 @@ export default function ReposicionProveedorPage() {
       ),
     },
     {
-      title: 'Mínimo', dataIndex: 'minimo', width: 130, align: 'right' as const,
+      title: 'Mínimo', dataIndex: 'minimo', key: 'minimo', width: 130, align: 'right' as const,
       // Decir de qué mínimo habla no es un detalle: stock_almacen."stockMinimo"
       // es 0 por defecto, así que sin esta marca un "no falta nada" por mínimo
       // sin configurar parecería un dato y es una ausencia.
@@ -210,7 +237,7 @@ export default function ReposicionProveedorPage() {
       ),
     },
     {
-      title: 'Faltan', dataIndex: 'faltante', width: 90, align: 'right' as const,
+      title: 'Faltan', dataIndex: 'faltante', key: 'faltante', width: 90, align: 'right' as const,
       render: (v: number) => v > 0
         ? <b style={{ color: '#ef4444' }}>{v}</b>
         : <Text type="secondary">0</Text>,
@@ -252,7 +279,7 @@ export default function ReposicionProveedorPage() {
       },
     },
     {
-      title: 'Entrega', dataIndex: 'diasEntrega', width: 90, align: 'right' as const,
+      title: 'Entrega', dataIndex: 'diasEntrega', key: 'diasEntrega', width: 90, align: 'right' as const,
       render: (v: number | null) => v != null ? `${v} d` : <Text type="secondary">—</Text>,
     },
   ];
@@ -266,6 +293,29 @@ export default function ReposicionProveedorPage() {
           ? <>en <b>{almacenNombre}</b></>
           : <>en el almacén seleccionado</>}.
       </Text>
+
+      <TableToolbar
+        onRefresh={refetch}
+        columnToggle={
+          <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+        }
+        accionPrincipal={
+          // UNA sola acción principal, que es para lo que existe la ranura. Meter
+          // aquí los dos botones desbordaba a 375px: el grupo derecho de
+          // TableToolbar lleva `flexShrink: 0`, así que no encoge — envolvía a una
+          // segunda línea y seguía midiendo más que la pantalla. «Agregar
+          // productos» se fue abajo, junto a los selectores, que además es donde
+          // corresponde: depende del proveedor elegido.
+          <Button
+            type="primary"
+            disabled={seleccionadas.length === 0}
+            loading={crearOrden.isPending}
+            onClick={generar}
+          >
+            Generar orden ({seleccionadas.length})
+          </Button>
+        }
+      />
 
       <Card size="small" style={{ marginTop: 12 }}>
         <Row gutter={[12, 12]} align="middle">
@@ -290,20 +340,16 @@ export default function ReposicionProveedorPage() {
               options={(almacenes ?? []).map(a => ({ value: a.id, label: a.nombre }))}
             />
           </Col>
-          <Col xs={24} md={6} style={{ textAlign: 'right' }}>
-            <Space>
-              <Button onClick={() => setModalAgregar(true)} disabled={!proveedorId}>
-                Agregar productos
-              </Button>
-              <Button
-                type="primary"
-                disabled={seleccionadas.length === 0}
-                loading={crearOrden.isPending}
-                onClick={generar}
-              >
-                Generar orden ({seleccionadas.length})
-              </Button>
-            </Space>
+          <Col xs={24} md={6}>
+            {/* Ancho completo en móvil: a 375px un botón suelto alineado a la
+                derecha deja un hueco raro y roza el borde. */}
+            <Button
+              block
+              onClick={() => setModalAgregar(true)}
+              disabled={!proveedorId}
+            >
+              Agregar productos
+            </Button>
           </Col>
         </Row>
       </Card>
@@ -333,8 +379,18 @@ export default function ReposicionProveedorPage() {
             size="small"
             loading={isLoading}
             dataSource={lineas}
-            columns={columnas as any}
-            scroll={{ x: 1100 }}
+            // Las cuatro fijas siempre; el resto según la preferencia del usuario.
+            // No se usa filterColumns() del hook porque descartaría las fijas: solo
+            // conserva lo que esté en COLS_DEF (más las de acciones), y las fijas
+            // están deliberadamente fuera para que el selector no las ofrezca.
+            columns={columnas.filter(c =>
+              COLUMNAS_FIJAS.includes(c.key as string) || visibleColumns.includes(c.key as string),
+            ) as any}
+            // 'max-content' en vez de un ancho fijo: el scroll horizontal queda
+            // DENTRO de la tabla y se ajusta a las columnas que estén visibles.
+            // Con `x: 1100` el ancho no dependía de eso — ocultar columnas dejaba
+            // hueco sobrante, y con todas visibles apretaba el contenido.
+            scroll={{ x: 'max-content' }}
             pagination={{ pageSize: 50, showSizeChanger: true }}
             rowSelection={{
               selectedRowKeys: seleccion,
@@ -426,7 +482,8 @@ function ModalAgregarProductos({
       okText={`Vincular (${ids.length})`}
       okButtonProps={{ disabled: ids.length === 0, loading: vincular.isPending }}
       onOk={() => vincular.mutate()}
-      width={620}
+      // 620 fijo desbordaba a 375px. min() lo deja responsivo sin tocar escritorio.
+      width={'min(620px, 92vw)'}
     >
       <Text type="secondary" style={{ fontSize: 12 }}>
         Busca en tu catálogo y marca lo que este proveedor te vende. Sirve también
