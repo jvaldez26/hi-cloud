@@ -11004,13 +11004,37 @@ export default function POSPage() {
   // ── Mutación para modos alternativos (sin cobro) ────────────────────────────
   const modoAltMut = useMutation({
     mutationFn: async () => {
-      const detalles = cart.map(i => ({
-        productoId:         i.produto.id > 0 ? i.produto.id : undefined,
-        descripcion:        i.produto.nombre,
-        cantidad:           i.cantidad,
-        precioUnitario:     i.precio - i.descuentoMonto,
-        porcentajeIva:      Number((i.produto as any).porcentajeIva ?? 18),
-      }));
+      // El precio que se envía es la BASE IMPONIBLE NETA por unidad — la misma
+      // que ya se le enseñó al cliente en pantalla. Lleva dentro las tres cosas:
+      //
+      //   1. el descuento por ítem,
+      //   2. la conversión desde precio c/ITBIS cuando `posPrecioIncluyeItbis`,
+      //   3. la parte que le toca del descuento GLOBAL.
+      //
+      // Cotización, pro-forma y pre-factura no tienen todavía columnas de
+      // descuento, y sus backends hacen `precio × cantidad + ITBIS` y nada más.
+      // Antes se enviaba `i.precio - i.descuentoMonto`: eso metía el descuento
+      // por ítem en el precio pero perdía los otros dos, así que el documento
+      // salía por MÁS de lo que la caja acababa de mostrar — la diferencia
+      // completa del descuento global. Sale de `lineasConDesc`, que es el mismo
+      // reparto proporcional que hace facturas.service.
+      //
+      // Mientras el descuento viaje dentro del precio el cliente no lo VE en el
+      // PDF; eso se arregla al darles sus propias columnas de descuento. Lo que
+      // esto cierra es que el importe esté mal.
+      const detalles = cart.map((i, idx) => {
+        const subtotFinal = lineasConDesc[idx]?.subtotFinal ?? 0;
+        const cant        = Number(i.cantidad) || 0;
+        return {
+          productoId:     i.produto.id > 0 ? i.produto.id : undefined,
+          descripcion:    i.produto.nombre,
+          cantidad:       i.cantidad,
+          // 4dp: el importe sale de una división y los DTO validan 4 decimales
+          precioUnitario: cant > 0 ? round4(subtotFinal / cant) : 0,
+          // E44 (Zona Franca) no lleva ITBIS — igual que en el camino de cobro
+          porcentajeIva:  tipoNcf === 'E44' ? 0 : Number((i.produto as any).porcentajeIva ?? 18),
+        };
+      });
       const base = {
         clienteId: clienteId ?? undefined,
         fecha:     dayjs().format('YYYY-MM-DD'),
