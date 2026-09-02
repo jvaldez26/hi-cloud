@@ -261,6 +261,64 @@ describe('avisos — cuándo se manda y cuántas veces', () => {
   });
 });
 
+describe('configuración del precio', () => {
+  /** ds falso con estado, para poder leer lo que se escribió. */
+  function montarConfig(precioInicial = 0) {
+    const estado = { precio: precioInicial, por: null as number | null, updatedAt: new Date() };
+    const consultas: string[] = [];
+    const ds: any = {
+      query: async (sql: string, params: any[]) => {
+        consultas.push(sql);
+        if (sql.includes('INSERT INTO configuracion_cobros')) return [];
+        if (sql.includes('UPDATE configuracion_cobros')) {
+          estado.precio = Number(params[0]); estado.por = params[1]; return [];
+        }
+        if (sql.includes('FROM configuracion_cobros')) {
+          return [{ precioEcfExcedente: String(estado.precio), actualizadoPor: estado.por, updatedAt: estado.updatedAt }];
+        }
+        return [];
+      },
+    };
+    return { svc: new CuotaEcfService(ds, { notificarCuotaEcf: async () => {} } as any), consultas, estado };
+  }
+
+  it('devuelve el precio con su rastro de quién y cuándo', async () => {
+    const { svc } = montarConfig(3);
+    const cfg = await svc.getConfiguracionCobros();
+    expect(cfg.precioEcfExcedente).toBe(3);
+    expect(cfg).toHaveProperty('actualizadoPor');
+    expect(cfg).toHaveProperty('updatedAt');
+  });
+
+  it('la fila se recrea si faltara: el panel no puede reventar por eso', async () => {
+    const { svc, consultas } = montarConfig();
+    await svc.getConfiguracionCobros();
+    expect(consultas.some(s => s.includes('INSERT INTO configuracion_cobros'))).toBe(true);
+    expect(consultas.find(s => s.includes('INSERT INTO configuracion_cobros'))).toContain('ON CONFLICT');
+  });
+
+  it('actualizar guarda el precio y quién lo tocó', async () => {
+    const { svc, estado } = montarConfig(0);
+    const cfg = await svc.actualizarPrecioExcedente(3.5, 7);
+    expect(estado.precio).toBe(3.5);
+    expect(estado.por).toBe(7);
+    expect(cfg.precioEcfExcedente).toBe(3.5);
+  });
+
+  it('numeric de PostgreSQL llega como texto y se devuelve como número', async () => {
+    // '3.50' + 412 sería '3.50412' en vez de 415.5. El bug clásico de numeric.
+    const { svc } = montarConfig(3.5);
+    expect(typeof (await svc.getConfiguracionCobros()).precioEcfExcedente).toBe('number');
+    expect(typeof (await svc.precioExcedente())).toBe('number');
+  });
+
+  it('poner el precio a 0 vuelve a "sin configurar", no a gratis', async () => {
+    const { svc } = montarConfig(3);
+    await svc.actualizarPrecioExcedente(0, 7);
+    expect((await svc.getConfiguracionCobros()).precioEcfExcedente).toBe(0);
+  });
+});
+
 describe('precio del excedente', () => {
   it('0 significa sin configurar y viaja tal cual al aviso', async () => {
     const { svc, avisos } = montar({ emitidos: 6_412 });

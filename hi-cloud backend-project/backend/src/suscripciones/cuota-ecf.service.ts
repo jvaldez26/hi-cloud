@@ -130,6 +130,57 @@ export class CuotaEcfService {
   }
 
   /**
+   * La configuración de cobros con su rastro: quién la tocó y cuándo.
+   *
+   * La fila se siembra en la migración, pero se recrea aquí si faltara: que el
+   * panel de cobros reviente por una fila ausente sería absurdo.
+   */
+  async getConfiguracionCobros(): Promise<{
+    precioEcfExcedente: number;
+    actualizadoPor: number | null;
+    updatedAt: Date | null;
+  }> {
+    await this.ds.query(
+      `INSERT INTO configuracion_cobros (id, "precioEcfExcedente")
+       VALUES (1, 0) ON CONFLICT (id) DO NOTHING`,
+    );
+    const [r] = await this.ds.query<
+      { precioEcfExcedente: string; actualizadoPor: number | null; updatedAt: Date }[]
+    >(`SELECT "precioEcfExcedente", "actualizadoPor", "updatedAt"
+         FROM configuracion_cobros WHERE id = 1`);
+    return {
+      precioEcfExcedente: Number(r?.precioEcfExcedente ?? 0),
+      actualizadoPor:     r?.actualizadoPor ?? null,
+      updatedAt:          r?.updatedAt ?? null,
+    };
+  }
+
+  /**
+   * Cambia el precio del excedente.
+   *
+   * NO reprecia nada de lo ya cobrado: el precio de un cargo se congela en su
+   * fila de `ecf_consumo_ciclo` cuando se genera. Este valor solo afecta a lo
+   * que se calcule a partir de ahora. Mismo criterio que
+   * `TARIFA_ACTIVACION_VERSION` en las solicitudes de activación.
+   */
+  async actualizarPrecioExcedente(
+    precio: number,
+    adminId: number | null,
+  ): Promise<{ precioEcfExcedente: number; actualizadoPor: number | null; updatedAt: Date | null }> {
+    await this.getConfiguracionCobros();   // garantiza la fila
+    await this.ds.query(
+      `UPDATE configuracion_cobros
+          SET "precioEcfExcedente" = $1, "actualizadoPor" = $2, "updatedAt" = now()
+        WHERE id = 1`,
+      [precio, adminId],
+    );
+    this.logger.warn(
+      `[cuota-ecf] precio del excedente cambiado a RD$${precio} por el admin #${adminId ?? '?'}`,
+    );
+    return this.getConfiguracionCobros();
+  }
+
+  /**
    * Reclama el derecho a mandar UN aviso, de forma atómica.
    *
    * Devuelve true solo al primero que llegue. La comprobación y la marca van en

@@ -5,11 +5,12 @@ import {
 
 import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { IsEnum, IsInt, IsPositive, IsString, IsNotEmpty, IsOptional, IsNumber, Min, IsDateString } from 'class-validator';
+import { IsEnum, IsInt, IsPositive, IsString, IsNotEmpty, IsOptional, IsNumber, Min, Max, IsDateString } from 'class-validator';
 import { Type } from 'class-transformer';
 import { SuperAdminService } from './super-admin.service';
 import { SuperAdminGuard }   from './super-admin.guard';
 import { SuscripcionesService } from '../suscripciones/suscripciones.service';
+import { CuotaEcfService } from '../suscripciones/cuota-ecf.service';
 import { BackupService } from './backup.service';
 import { ContabilidadService } from '../contabilidad/services/contabilidad.service';
 import { ModulosAddonService } from '../modulos-addon/modulos-addon.service';
@@ -69,6 +70,20 @@ class UpdatePlanDto {
   @IsOptional() @IsString()         nombre?:      string;
   @IsOptional() @IsNumber() @Min(0) precio?:      number;
   @IsOptional() @IsString()         descripcion?: string;
+}
+
+class UpdatePrecioExcedenteDto {
+  /**
+   * RD$ por cada e-CF por encima del cupo del plan.
+   *
+   * El tope de 1.000 no es una regla de negocio, es una red contra el error de
+   * tecleo. Este número se multiplica por CIENTOS de comprobantes: escribir
+   * 3000 donde iba 3.00 convierte un cargo de RD$1.236 en uno de RD$1.236.000
+   * en la cuenta de un cliente. Un precio por comprobante de más de mil pesos
+   * no existe; si algún día existiera, se sube el tope a conciencia.
+   */
+  @IsNumber() @Min(0) @Max(1000)
+  precioEcfExcedente!: number;
 }
 
 class EnviarMensajeDto {
@@ -142,6 +157,7 @@ export class SuperAdminController {
     private backupSvc:        BackupService,
     private contabilidadSvc:  ContabilidadService,
     private modulosSvc:       ModulosAddonService,
+    private cuotaEcf:         CuotaEcfService,
   ) {}
 
   @Get('metricas')
@@ -380,6 +396,35 @@ export class SuperAdminController {
         precioMensual: antes.precioMensual,
       } : null,
       { ...dto },
+      admin.id,
+    );
+    return res;
+  }
+
+  // ── Configuración de cobros (precio del excedente de e-CF) ────────────────
+
+  @Get('cobros/configuracion')
+  @ApiOperation({ summary: 'Precio vigente del excedente de e-CF' })
+  getConfiguracionCobros() {
+    return this.cuotaEcf.getConfiguracionCobros();
+  }
+
+  @Patch('cobros/configuracion')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Cambiar el precio del excedente de e-CF — no reprecia lo ya cobrado' })
+  async updateConfiguracionCobros(
+    @Body() dto: UpdatePrecioExcedenteDto,
+    @GetUser() admin: User,
+  ) {
+    // El valor anterior se lee ANTES de escribir: sin él la auditoría dice qué
+    // quedó pero no desde dónde, que es justo lo que hace falta para deshacer
+    // un error en un número que multiplica cientos de comprobantes.
+    const antes = await this.cuotaEcf.getConfiguracionCobros();
+    const res   = await this.cuotaEcf.actualizarPrecioExcedente(dto.precioEcfExcedente, admin.id);
+
+    await this.svc.auditarCambioPrecioExcedenteEcf(
+      antes.precioEcfExcedente,
+      dto.precioEcfExcedente,
       admin.id,
     );
     return res;

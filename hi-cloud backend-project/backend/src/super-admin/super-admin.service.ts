@@ -960,6 +960,33 @@ export class SuperAdminService {
     });
   }
 
+  /**
+   * S-64: auditoría del precio del excedente de e-CF.
+   *
+   * Mismo criterio que el precio de un plan: es un número que multiplica dinero
+   * en la cuenta de TODOS los clientes que se pasen, así que no puede cambiar
+   * sin dejar quién, cuándo y desde qué valor. Con la diferencia de que este
+   * multiplica por cientos —un cargo típico son cientos de comprobantes—, así
+   * que el valor anterior importa todavía más para poder deshacer un error.
+   */
+  async auditarCambioPrecioExcedenteEcf(
+    anterior: number,
+    nuevo: number,
+    adminId?: number,
+  ): Promise<void> {
+    await this.auditarAccionGlobal({
+      accion:      'update',
+      modulo:      'super-admin/cobros',
+      descripcion: `Precio del excedente de e-CF: RD$${anterior} → RD$${nuevo}`,
+      adminId,
+      entidad:     'configuracion_cobros',
+      entidadId:   '1',
+      valorAnterior: { precioEcfExcedente: anterior },
+      valorNuevo:    { precioEcfExcedente: nuevo },
+      ruta:        '/admin/cobros/configuracion',
+    });
+  }
+
   /** S-64: rastro de activación/desactivación de un módulo add-on de pago. */
   async auditarCambioModuloAddon(
     empresaId: number,
