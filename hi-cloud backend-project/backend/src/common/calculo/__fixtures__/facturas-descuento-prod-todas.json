@@ -1,0 +1,3150 @@
+[
+  {
+    "folio": "FAC-1105",
+    "fecha": "2026-07-04",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 84.11,
+          "precioOriginal": 101.69,
+          "descuentoPct": 0,
+          "descuentoMonto": 17.58,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 84.11,
+          "importeIva": 15.14,
+          "total": 99.25
+        }
+      ],
+      "subtotal": 84.11,
+      "iva": 15.14,
+      "total": 99.25
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-2124",
+    "fecha": "2026-07-10",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 1850,
+          "precioOriginal": 1900,
+          "descuentoPct": 0,
+          "descuentoMonto": 50,
+          "porcentajeIva": 0
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 1850,
+          "importeIva": 0,
+          "total": 1850
+        }
+      ],
+      "subtotal": 1850,
+      "iva": 0,
+      "total": 1850
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-107",
+    "fecha": "2026-07-10",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 175,
+          "precioOriginal": 255,
+          "descuentoPct": 0,
+          "descuentoMonto": 80,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 175,
+          "importeIva": 31.5,
+          "total": 206.5
+        }
+      ],
+      "subtotal": 175,
+      "iva": 31.5,
+      "total": 206.5
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-117",
+    "fecha": "2026-07-11",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 1526,
+          "precioOriginal": 1600,
+          "descuentoPct": 0,
+          "descuentoMonto": 74,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 1526,
+          "importeIva": 274.68,
+          "total": 1800.68
+        }
+      ],
+      "subtotal": 1526,
+      "iva": 274.68,
+      "total": 1800.68
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-2602",
+    "fecha": "2026-07-13",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 62.03,
+          "precioOriginal": 72.03,
+          "descuentoPct": 0,
+          "descuentoMonto": 10,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 2",
+          "cantidad": 1,
+          "precioUnitario": 45.08,
+          "precioOriginal": 55.08,
+          "descuentoPct": 0,
+          "descuentoMonto": 10,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 3",
+          "cantidad": 1,
+          "precioUnitario": 117.12,
+          "precioOriginal": 127.12,
+          "descuentoPct": 0,
+          "descuentoMonto": 10,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 4",
+          "cantidad": 1,
+          "precioUnitario": 155.25,
+          "precioOriginal": 165.25,
+          "descuentoPct": 0,
+          "descuentoMonto": 10,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 5",
+          "cantidad": 2,
+          "precioUnitario": 62.03,
+          "precioOriginal": 72.03,
+          "descuentoPct": 0,
+          "descuentoMonto": 10,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 6",
+          "cantidad": 1,
+          "precioUnitario": 55.08,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 62.03,
+          "importeIva": 11.17,
+          "total": 73.2
+        },
+        {
+          "subtotal": 45.08,
+          "importeIva": 8.11,
+          "total": 53.19
+        },
+        {
+          "subtotal": 117.12,
+          "importeIva": 21.08,
+          "total": 138.2
+        },
+        {
+          "subtotal": 155.25,
+          "importeIva": 27.95,
+          "total": 183.2
+        },
+        {
+          "subtotal": 124.06,
+          "importeIva": 22.33,
+          "total": 146.39
+        },
+        {
+          "subtotal": 55.08,
+          "importeIva": 9.91,
+          "total": 64.99
+        }
+      ],
+      "subtotal": 558.62,
+      "iva": 100.55,
+      "total": 659.17
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-123",
+    "fecha": "2026-07-13",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 2,
+          "precioUnitario": 594,
+          "precioOriginal": 635,
+          "descuentoPct": 0,
+          "descuentoMonto": 41,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 1188,
+          "importeIva": 213.84,
+          "total": 1401.84
+        }
+      ],
+      "subtotal": 1188,
+      "iva": 213.84,
+      "total": 1401.84
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-135",
+    "fecha": "2026-07-15",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 12,
+          "precioUnitario": 263,
+          "precioOriginal": 339,
+          "descuentoPct": 0,
+          "descuentoMonto": 76,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 3156,
+          "importeIva": 568.08,
+          "total": 3724.08
+        }
+      ],
+      "subtotal": 3156,
+      "iva": 568.08,
+      "total": 3724.08
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-136",
+    "fecha": "2026-07-15",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 12,
+          "precioUnitario": 263,
+          "precioOriginal": 339,
+          "descuentoPct": 0,
+          "descuentoMonto": 76,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 2",
+          "cantidad": 12,
+          "precioUnitario": 263,
+          "precioOriginal": 339,
+          "descuentoPct": 0,
+          "descuentoMonto": 76,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 3156,
+          "importeIva": 568.08,
+          "total": 3724.08
+        },
+        {
+          "subtotal": 3156,
+          "importeIva": 568.08,
+          "total": 3724.08
+        }
+      ],
+      "subtotal": 6312,
+      "iva": 1136.16,
+      "total": 7448.16
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-137",
+    "fecha": "2026-07-15",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 339,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 2",
+          "cantidad": 1,
+          "precioUnitario": 130,
+          "precioOriginal": 170,
+          "descuentoPct": 0,
+          "descuentoMonto": 40,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 3",
+          "cantidad": 1,
+          "precioUnitario": 1442,
+          "precioOriginal": 1526,
+          "descuentoPct": 0,
+          "descuentoMonto": 84,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 339,
+          "importeIva": 61.02,
+          "total": 400.02
+        },
+        {
+          "subtotal": 130,
+          "importeIva": 23.4,
+          "total": 153.4
+        },
+        {
+          "subtotal": 1442,
+          "importeIva": 259.56,
+          "total": 1701.56
+        }
+      ],
+      "subtotal": 1911,
+      "iva": 343.98,
+      "total": 2254.98
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-139",
+    "fecha": "2026-07-15",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 2,
+          "precioUnitario": 1486,
+          "precioOriginal": 1526,
+          "descuentoPct": 0,
+          "descuentoMonto": 40,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 2972,
+          "importeIva": 534.96,
+          "total": 3506.96
+        }
+      ],
+      "subtotal": 2972,
+      "iva": 534.96,
+      "total": 3506.96
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-141",
+    "fecha": "2026-07-16",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 339,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 2",
+          "cantidad": 1,
+          "precioUnitario": 261,
+          "precioOriginal": 339,
+          "descuentoPct": 0,
+          "descuentoMonto": 78,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 3",
+          "cantidad": 5,
+          "precioUnitario": 339,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 339,
+          "importeIva": 61.02,
+          "total": 400.02
+        },
+        {
+          "subtotal": 261,
+          "importeIva": 46.98,
+          "total": 307.98
+        },
+        {
+          "subtotal": 1695,
+          "importeIva": 305.1,
+          "total": 2000.1
+        }
+      ],
+      "subtotal": 2295,
+      "iva": 413.1,
+      "total": 2708.1
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-142",
+    "fecha": "2026-07-16",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 5155,
+          "precioOriginal": 5255,
+          "descuentoPct": 0,
+          "descuentoMonto": 100,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 5155,
+          "importeIva": 927.9,
+          "total": 6082.9
+        }
+      ],
+      "subtotal": 5155,
+      "iva": 927.9,
+      "total": 6082.9
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-118",
+    "fecha": "2026-07-17",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 69.75,
+          "precioOriginal": 84.75,
+          "descuentoPct": 0,
+          "descuentoMonto": 15,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 69.75,
+          "importeIva": 12.56,
+          "total": 82.31
+        }
+      ],
+      "subtotal": 69.75,
+      "iva": 12.56,
+      "total": 82.31
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-146",
+    "fecha": "2026-07-17",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 1600,
+          "precioOriginal": 1700,
+          "descuentoPct": 0,
+          "descuentoMonto": 100,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 1600,
+          "importeIva": 288,
+          "total": 1888
+        }
+      ],
+      "subtotal": 1600,
+      "iva": 288,
+      "total": 1888
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-147",
+    "fecha": "2026-07-17",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 89,
+          "precioOriginal": 339,
+          "descuentoPct": 0,
+          "descuentoMonto": 250,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 2",
+          "cantidad": 4,
+          "precioUnitario": 339,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 89,
+          "importeIva": 16.02,
+          "total": 105.02
+        },
+        {
+          "subtotal": 1356,
+          "importeIva": 244.08,
+          "total": 1600.08
+        }
+      ],
+      "subtotal": 1445,
+      "iva": 260.1,
+      "total": 1705.1
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-148",
+    "fecha": "2026-07-17",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 297,
+          "precioOriginal": 339,
+          "descuentoPct": 0,
+          "descuentoMonto": 42,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 297,
+          "importeIva": 53.46,
+          "total": 350.46
+        }
+      ],
+      "subtotal": 297,
+      "iva": 53.46,
+      "total": 350.46
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-149",
+    "fecha": "2026-07-17",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 1446,
+          "precioOriginal": 1526,
+          "descuentoPct": 0,
+          "descuentoMonto": 80,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 1446,
+          "importeIva": 260.28,
+          "total": 1706.28
+        }
+      ],
+      "subtotal": 1446,
+      "iva": 260.28,
+      "total": 1706.28
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-3719",
+    "fecha": "2026-07-18",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 25,
+          "precioUnitario": 38,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 0
+        },
+        {
+          "descripcion": "Item 2",
+          "cantidad": 2,
+          "precioUnitario": 75,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 0
+        },
+        {
+          "descripcion": "Item 3",
+          "cantidad": 2,
+          "precioUnitario": 50,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 0
+        },
+        {
+          "descripcion": "Item 4",
+          "cantidad": 0.76,
+          "precioUnitario": 135,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 0
+        },
+        {
+          "descripcion": "Item 5",
+          "cantidad": 1,
+          "precioUnitario": 42.37,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 6",
+          "cantidad": 0.54,
+          "precioUnitario": 185,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 0
+        },
+        {
+          "descripcion": "Item 7",
+          "cantidad": 0.77,
+          "precioUnitario": 150,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 0
+        },
+        {
+          "descripcion": "Item 8",
+          "cantidad": 0.68,
+          "precioUnitario": 150,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 0
+        },
+        {
+          "descripcion": "Item 9",
+          "cantidad": 1.12,
+          "precioUnitario": 90,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 0
+        },
+        {
+          "descripcion": "Item 10",
+          "cantidad": 1,
+          "precioUnitario": 65,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 0
+        },
+        {
+          "descripcion": "Item 11",
+          "cantidad": 1,
+          "precioUnitario": 135.59,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 12",
+          "cantidad": 1,
+          "precioUnitario": 56.03,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 16
+        },
+        {
+          "descripcion": "Item 13",
+          "cantidad": 1,
+          "precioUnitario": 138.31,
+          "precioOriginal": 148.31,
+          "descuentoPct": 0,
+          "descuentoMonto": 10,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 14",
+          "cantidad": 1,
+          "precioUnitario": 63.56,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 15",
+          "cantidad": 1,
+          "precioUnitario": 76.27,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 16",
+          "cantidad": 1,
+          "precioUnitario": 93.22,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 17",
+          "cantidad": 3,
+          "precioUnitario": 60,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 0
+        },
+        {
+          "descripcion": "Item 18",
+          "cantidad": 1,
+          "precioUnitario": 29.66,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 19",
+          "cantidad": 1,
+          "precioUnitario": 72.03,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 20",
+          "cantidad": 2,
+          "precioUnitario": 15,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 0
+        },
+        {
+          "descripcion": "Item 21",
+          "cantidad": 3,
+          "precioUnitario": 15,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 0
+        },
+        {
+          "descripcion": "Item 22",
+          "cantidad": 1,
+          "precioUnitario": 189.66,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 16
+        },
+        {
+          "descripcion": "Item 23",
+          "cantidad": 1,
+          "precioUnitario": 72.03,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 24",
+          "cantidad": 1,
+          "precioUnitario": 72.03,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 25",
+          "cantidad": 1,
+          "precioUnitario": 25.42,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 26",
+          "cantidad": 1,
+          "precioUnitario": 55.08,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 27",
+          "cantidad": 2,
+          "precioUnitario": 29.66,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 28",
+          "cantidad": 1,
+          "precioUnitario": 93.22,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 29",
+          "cantidad": 1,
+          "precioUnitario": 150.86,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 16
+        },
+        {
+          "descripcion": "Item 30",
+          "cantidad": 2,
+          "precioUnitario": 85,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 0
+        },
+        {
+          "descripcion": "Item 31",
+          "cantidad": 1,
+          "precioUnitario": 12.71,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 32",
+          "cantidad": 1,
+          "precioUnitario": 76.27,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 33",
+          "cantidad": 1,
+          "precioUnitario": 76.27,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 34",
+          "cantidad": 1,
+          "precioUnitario": 245.69,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 16
+        },
+        {
+          "descripcion": "Item 35",
+          "cantidad": 1,
+          "precioUnitario": 100,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 0
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 950,
+          "importeIva": 0,
+          "total": 950
+        },
+        {
+          "subtotal": 150,
+          "importeIva": 0,
+          "total": 150
+        },
+        {
+          "subtotal": 100,
+          "importeIva": 0,
+          "total": 100
+        },
+        {
+          "subtotal": 102.6,
+          "importeIva": 0,
+          "total": 102.6
+        },
+        {
+          "subtotal": 42.37,
+          "importeIva": 7.63,
+          "total": 50
+        },
+        {
+          "subtotal": 99.9,
+          "importeIva": 0,
+          "total": 99.9
+        },
+        {
+          "subtotal": 115.5,
+          "importeIva": 0,
+          "total": 115.5
+        },
+        {
+          "subtotal": 102,
+          "importeIva": 0,
+          "total": 102
+        },
+        {
+          "subtotal": 100.8,
+          "importeIva": 0,
+          "total": 100.8
+        },
+        {
+          "subtotal": 65,
+          "importeIva": 0,
+          "total": 65
+        },
+        {
+          "subtotal": 135.59,
+          "importeIva": 24.41,
+          "total": 160
+        },
+        {
+          "subtotal": 56.03,
+          "importeIva": 8.96,
+          "total": 64.99
+        },
+        {
+          "subtotal": 138.31,
+          "importeIva": 24.9,
+          "total": 163.21
+        },
+        {
+          "subtotal": 63.56,
+          "importeIva": 11.44,
+          "total": 75
+        },
+        {
+          "subtotal": 76.27,
+          "importeIva": 13.73,
+          "total": 90
+        },
+        {
+          "subtotal": 93.22,
+          "importeIva": 16.78,
+          "total": 110
+        },
+        {
+          "subtotal": 180,
+          "importeIva": 0,
+          "total": 180
+        },
+        {
+          "subtotal": 29.66,
+          "importeIva": 5.34,
+          "total": 35
+        },
+        {
+          "subtotal": 72.03,
+          "importeIva": 12.97,
+          "total": 85
+        },
+        {
+          "subtotal": 30,
+          "importeIva": 0,
+          "total": 30
+        },
+        {
+          "subtotal": 45,
+          "importeIva": 0,
+          "total": 45
+        },
+        {
+          "subtotal": 189.66,
+          "importeIva": 30.35,
+          "total": 220.01
+        },
+        {
+          "subtotal": 72.03,
+          "importeIva": 12.97,
+          "total": 85
+        },
+        {
+          "subtotal": 72.03,
+          "importeIva": 12.97,
+          "total": 85
+        },
+        {
+          "subtotal": 25.42,
+          "importeIva": 4.58,
+          "total": 30
+        },
+        {
+          "subtotal": 55.08,
+          "importeIva": 9.91,
+          "total": 64.99
+        },
+        {
+          "subtotal": 59.32,
+          "importeIva": 10.68,
+          "total": 70
+        },
+        {
+          "subtotal": 93.22,
+          "importeIva": 16.78,
+          "total": 110
+        },
+        {
+          "subtotal": 150.86,
+          "importeIva": 24.14,
+          "total": 175
+        },
+        {
+          "subtotal": 170,
+          "importeIva": 0,
+          "total": 170
+        },
+        {
+          "subtotal": 12.71,
+          "importeIva": 2.29,
+          "total": 15
+        },
+        {
+          "subtotal": 76.27,
+          "importeIva": 13.73,
+          "total": 90
+        },
+        {
+          "subtotal": 76.27,
+          "importeIva": 13.73,
+          "total": 90
+        },
+        {
+          "subtotal": 245.69,
+          "importeIva": 39.31,
+          "total": 285
+        },
+        {
+          "subtotal": 100,
+          "importeIva": 0,
+          "total": 100
+        }
+      ],
+      "subtotal": 4146.4,
+      "iva": 317.6,
+      "total": 4464
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-162",
+    "fecha": "2026-07-18",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 2,
+          "precioUnitario": 4710,
+          "precioOriginal": 5510,
+          "descuentoPct": 0,
+          "descuentoMonto": 800,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 9420,
+          "importeIva": 1695.6,
+          "total": 11115.6
+        }
+      ],
+      "subtotal": 9420,
+      "iva": 1695.6,
+      "total": 11115.6
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-101",
+    "fecha": "2026-07-20",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 400,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 25,
+          "porcentajeIva": 0
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 375,
+          "importeIva": 0,
+          "total": 375
+        }
+      ],
+      "subtotal": 375,
+      "iva": 0,
+      "total": 375
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-177",
+    "fecha": "2026-07-21",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 551,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 2",
+          "cantidad": 1,
+          "precioUnitario": 170,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 3",
+          "cantidad": 3,
+          "precioUnitario": 309,
+          "precioOriginal": 339,
+          "descuentoPct": 0,
+          "descuentoMonto": 30,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 4",
+          "cantidad": 1,
+          "precioUnitario": 382,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 551,
+          "importeIva": 99.18,
+          "total": 650.18
+        },
+        {
+          "subtotal": 170,
+          "importeIva": 30.6,
+          "total": 200.6
+        },
+        {
+          "subtotal": 927,
+          "importeIva": 166.86,
+          "total": 1093.86
+        },
+        {
+          "subtotal": 382,
+          "importeIva": 68.76,
+          "total": 450.76
+        }
+      ],
+      "subtotal": 2030,
+      "iva": 365.4,
+      "total": 2395.4
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-180",
+    "fecha": "2026-07-21",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 2,
+          "precioUnitario": 2551,
+          "precioOriginal": 3051,
+          "descuentoPct": 0,
+          "descuentoMonto": 500,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 5102,
+          "importeIva": 918.36,
+          "total": 6020.36
+        }
+      ],
+      "subtotal": 5102,
+      "iva": 918.36,
+      "total": 6020.36
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-185",
+    "fecha": "2026-07-22",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 2,
+          "precioUnitario": 3180,
+          "precioOriginal": 3820,
+          "descuentoPct": 0,
+          "descuentoMonto": 640,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 6360,
+          "importeIva": 1144.8,
+          "total": 7504.8
+        }
+      ],
+      "subtotal": 6360,
+      "iva": 1144.8,
+      "total": 7504.8
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-187",
+    "fecha": "2026-07-23",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 189,
+          "precioOriginal": 339,
+          "descuentoPct": 0,
+          "descuentoMonto": 150,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 2",
+          "cantidad": 6,
+          "precioUnitario": 339,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 189,
+          "importeIva": 34.02,
+          "total": 223.02
+        },
+        {
+          "subtotal": 2034,
+          "importeIva": 366.12,
+          "total": 2400.12
+        }
+      ],
+      "subtotal": 2223,
+      "iva": 400.14,
+      "total": 2623.14
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-189",
+    "fecha": "2026-07-23",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 172,
+          "precioOriginal": 212,
+          "descuentoPct": 0,
+          "descuentoMonto": 40,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 172,
+          "importeIva": 30.96,
+          "total": 202.96
+        }
+      ],
+      "subtotal": 172,
+      "iva": 30.96,
+      "total": 202.96
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-196",
+    "fecha": "2026-07-23",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 5110,
+          "precioOriginal": 5510,
+          "descuentoPct": 0,
+          "descuentoMonto": 400,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 5110,
+          "importeIva": 919.8,
+          "total": 6029.8
+        }
+      ],
+      "subtotal": 5110,
+      "iva": 919.8,
+      "total": 6029.8
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-200",
+    "fecha": "2026-07-24",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 197,
+          "precioOriginal": 297,
+          "descuentoPct": 0,
+          "descuentoMonto": 100,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 2",
+          "cantidad": 3,
+          "precioUnitario": 299,
+          "precioOriginal": 339,
+          "descuentoPct": 0,
+          "descuentoMonto": 40,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 3",
+          "cantidad": 1,
+          "precioUnitario": 339,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 197,
+          "importeIva": 35.46,
+          "total": 232.46
+        },
+        {
+          "subtotal": 897,
+          "importeIva": 161.46,
+          "total": 1058.46
+        },
+        {
+          "subtotal": 339,
+          "importeIva": 61.02,
+          "total": 400.02
+        }
+      ],
+      "subtotal": 1433,
+      "iva": 257.94,
+      "total": 1690.94
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-202",
+    "fecha": "2026-07-24",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 2,
+          "precioUnitario": 1700,
+          "precioOriginal": 3400,
+          "descuentoPct": 0,
+          "descuentoMonto": 1700,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 3400,
+          "importeIva": 612,
+          "total": 4012
+        }
+      ],
+      "subtotal": 3400,
+      "iva": 612,
+      "total": 4012
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-208",
+    "fecha": "2026-07-24",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 3,
+          "precioUnitario": 299,
+          "precioOriginal": 339,
+          "descuentoPct": 0,
+          "descuentoMonto": 40,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 897,
+          "importeIva": 161.46,
+          "total": 1058.46
+        }
+      ],
+      "subtotal": 897,
+      "iva": 161.46,
+      "total": 1058.46
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-221",
+    "fecha": "2026-07-26",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 255,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 2",
+          "cantidad": 5,
+          "precioUnitario": 619,
+          "precioOriginal": 635,
+          "descuentoPct": 0,
+          "descuentoMonto": 16,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 3",
+          "cantidad": 1,
+          "precioUnitario": 297,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 4",
+          "cantidad": 1,
+          "precioUnitario": 297,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 5",
+          "cantidad": 1,
+          "precioUnitario": 296.99,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 255,
+          "importeIva": 45.9,
+          "total": 300.9
+        },
+        {
+          "subtotal": 3095,
+          "importeIva": 557.1,
+          "total": 3652.1
+        },
+        {
+          "subtotal": 297,
+          "importeIva": 53.46,
+          "total": 350.46
+        },
+        {
+          "subtotal": 297,
+          "importeIva": 53.46,
+          "total": 350.46
+        },
+        {
+          "subtotal": 296.99,
+          "importeIva": 53.46,
+          "total": 350.45
+        }
+      ],
+      "subtotal": 4240.99,
+      "iva": 763.38,
+      "total": 5004.37
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-224",
+    "fecha": "2026-07-26",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 342,
+          "precioOriginal": 382,
+          "descuentoPct": 0,
+          "descuentoMonto": 40,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 342,
+          "importeIva": 61.56,
+          "total": 403.56
+        }
+      ],
+      "subtotal": 342,
+      "iva": 61.56,
+      "total": 403.56
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-227",
+    "fecha": "2026-07-27",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 255,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 2",
+          "cantidad": 1,
+          "precioUnitario": 177,
+          "precioOriginal": 212,
+          "descuentoPct": 0,
+          "descuentoMonto": 35,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 3",
+          "cantidad": 4,
+          "precioUnitario": 339,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 255,
+          "importeIva": 45.9,
+          "total": 300.9
+        },
+        {
+          "subtotal": 177,
+          "importeIva": 31.86,
+          "total": 208.86
+        },
+        {
+          "subtotal": 1356,
+          "importeIva": 244.08,
+          "total": 1600.08
+        }
+      ],
+      "subtotal": 1788,
+      "iva": 321.84,
+      "total": 2109.84
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-228",
+    "fecha": "2026-07-27",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 5,
+          "precioUnitario": 382,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 2",
+          "cantidad": 1,
+          "precioUnitario": 249,
+          "precioOriginal": 339,
+          "descuentoPct": 0,
+          "descuentoMonto": 90,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 1910,
+          "importeIva": 343.8,
+          "total": 2253.8
+        },
+        {
+          "subtotal": 249,
+          "importeIva": 44.82,
+          "total": 293.82
+        }
+      ],
+      "subtotal": 2159,
+      "iva": 388.62,
+      "total": 2547.62
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-229",
+    "fecha": "2026-07-27",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 5,
+          "precioUnitario": 382,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 2",
+          "cantidad": 1,
+          "precioUnitario": 249,
+          "precioOriginal": 339,
+          "descuentoPct": 0,
+          "descuentoMonto": 90,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 1910,
+          "importeIva": 343.8,
+          "total": 2253.8
+        },
+        {
+          "subtotal": 249,
+          "importeIva": 44.82,
+          "total": 293.82
+        }
+      ],
+      "subtotal": 2159,
+      "iva": 388.62,
+      "total": 2547.62
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-230",
+    "fecha": "2026-07-27",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 5,
+          "precioUnitario": 382,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 2",
+          "cantidad": 1,
+          "precioUnitario": 249,
+          "precioOriginal": 339,
+          "descuentoPct": 0,
+          "descuentoMonto": 90,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 1910,
+          "importeIva": 343.8,
+          "total": 2253.8
+        },
+        {
+          "subtotal": 249,
+          "importeIva": 44.82,
+          "total": 293.82
+        }
+      ],
+      "subtotal": 2159,
+      "iva": 388.62,
+      "total": 2547.62
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-231",
+    "fecha": "2026-07-27",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 5,
+          "precioUnitario": 382,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 2",
+          "cantidad": 1,
+          "precioUnitario": 249,
+          "precioOriginal": 339,
+          "descuentoPct": 0,
+          "descuentoMonto": 90,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 1910,
+          "importeIva": 343.8,
+          "total": 2253.8
+        },
+        {
+          "subtotal": 249,
+          "importeIva": 44.82,
+          "total": 293.82
+        }
+      ],
+      "subtotal": 2159,
+      "iva": 388.62,
+      "total": 2547.62
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-108",
+    "fecha": "2026-07-28",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 42225,
+          "precioOriginal": null,
+          "descuentoPct": 15,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 35891.25,
+          "importeIva": 6460.43,
+          "total": 42351.68
+        }
+      ],
+      "subtotal": 35891.25,
+      "iva": 6460.43,
+      "total": 42351.68
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-121",
+    "fecha": "2026-08-01",
+    "entrada": {
+      "descuentoGeneralTipo": "monto",
+      "descuentoGeneralValor": 3500,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 7500,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 0
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 4000,
+          "importeIva": 0,
+          "total": 4000
+        }
+      ],
+      "subtotal": 4000,
+      "iva": 0,
+      "total": 4000
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-131",
+    "fecha": "2026-08-06",
+    "entrada": {
+      "descuentoGeneralTipo": "monto",
+      "descuentoGeneralValor": 8000,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 20000,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 0
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 12000,
+          "importeIva": 0,
+          "total": 12000
+        }
+      ],
+      "subtotal": 12000,
+      "iva": 0,
+      "total": 12000
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-132",
+    "fecha": "2026-08-06",
+    "entrada": {
+      "descuentoGeneralTipo": "monto",
+      "descuentoGeneralValor": 3000,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 10000,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 0
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 7000,
+          "importeIva": 0,
+          "total": 7000
+        }
+      ],
+      "subtotal": 7000,
+      "iva": 0,
+      "total": 7000
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-133",
+    "fecha": "2026-08-06",
+    "entrada": {
+      "descuentoGeneralTipo": "monto",
+      "descuentoGeneralValor": 3000,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 10000,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 0
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 7000,
+          "importeIva": 0,
+          "total": 7000
+        }
+      ],
+      "subtotal": 7000,
+      "iva": 0,
+      "total": 7000
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-245",
+    "fecha": "2026-08-11",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 4,
+          "precioUnitario": 11653,
+          "precioOriginal": 11700,
+          "descuentoPct": 0,
+          "descuentoMonto": 47,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 46612,
+          "importeIva": 8390.16,
+          "total": 55002.16
+        }
+      ],
+      "subtotal": 46612,
+      "iva": 8390.16,
+      "total": 55002.16
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-137",
+    "fecha": "2026-08-11",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 0.56,
+          "precioUnitario": 157.49,
+          "precioOriginal": 169.49,
+          "descuentoPct": 0,
+          "descuentoMonto": 12,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 88.19,
+          "importeIva": 15.87,
+          "total": 104.06
+        }
+      ],
+      "subtotal": 88.19,
+      "iva": 15.87,
+      "total": 104.06
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-138",
+    "fecha": "2026-08-11",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 0.86,
+          "precioUnitario": 97.49,
+          "precioOriginal": 169.49,
+          "descuentoPct": 0,
+          "descuentoMonto": 72,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 83.84,
+          "importeIva": 15.09,
+          "total": 98.93
+        }
+      ],
+      "subtotal": 83.84,
+      "iva": 15.09,
+      "total": 98.93
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-139",
+    "fecha": "2026-08-11",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 6.21,
+          "precioUnitario": 159.49,
+          "precioOriginal": 169.49,
+          "descuentoPct": 0,
+          "descuentoMonto": 10,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 990.43,
+          "importeIva": 178.28,
+          "total": 1168.71
+        }
+      ],
+      "subtotal": 990.43,
+      "iva": 178.28,
+      "total": 1168.71
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-140",
+    "fecha": "2026-08-11",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 159.49,
+          "precioOriginal": 169.49,
+          "descuentoPct": 0,
+          "descuentoMonto": 10,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 159.49,
+          "importeIva": 28.71,
+          "total": 188.2
+        }
+      ],
+      "subtotal": 159.49,
+      "iva": 28.71,
+      "total": 188.2
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-143",
+    "fecha": "2026-08-11",
+    "entrada": {
+      "descuentoGeneralTipo": "monto",
+      "descuentoGeneralValor": 8.48,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 0.56,
+          "precioUnitario": 169.49,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 86.43,
+          "importeIva": 15.56,
+          "total": 101.99
+        }
+      ],
+      "subtotal": 86.43,
+      "iva": 15.56,
+      "total": 101.99
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-144",
+    "fecha": "2026-08-11",
+    "entrada": {
+      "descuentoGeneralTipo": "monto",
+      "descuentoGeneralValor": 10,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 100,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 0
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 90,
+          "importeIva": 0,
+          "total": 90
+        }
+      ],
+      "subtotal": 90,
+      "iva": 0,
+      "total": 90
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-145",
+    "fecha": "2026-08-11",
+    "entrada": {
+      "descuentoGeneralTipo": "monto",
+      "descuentoGeneralValor": 10,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 100,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 0
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 90,
+          "importeIva": 0,
+          "total": 90
+        }
+      ],
+      "subtotal": 90,
+      "iva": 0,
+      "total": 90
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-147",
+    "fecha": "2026-08-11",
+    "entrada": {
+      "descuentoGeneralTipo": null,
+      "descuentoGeneralValor": null,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 165.25,
+          "precioOriginal": 169.49,
+          "descuentoPct": 0,
+          "descuentoMonto": 4.2373,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 165.25,
+          "importeIva": 29.74,
+          "total": 194.99
+        }
+      ],
+      "subtotal": 165.25,
+      "iva": 29.74,
+      "total": 194.99
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-247",
+    "fecha": "2026-08-12",
+    "entrada": {
+      "descuentoGeneralTipo": "monto",
+      "descuentoGeneralValor": 84.7458,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 297,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 2",
+          "cantidad": 6,
+          "precioUnitario": 382,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 3",
+          "cantidad": 1,
+          "precioUnitario": 382,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 288.53,
+          "importeIva": 51.94,
+          "total": 340.47
+        },
+        {
+          "subtotal": 2226.62,
+          "importeIva": 400.79,
+          "total": 2627.41
+        },
+        {
+          "subtotal": 371.1,
+          "importeIva": 66.8,
+          "total": 437.9
+        }
+      ],
+      "subtotal": 2886.25,
+      "iva": 519.53,
+      "total": 3405.78
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-253",
+    "fecha": "2026-08-18",
+    "entrada": {
+      "descuentoGeneralTipo": "monto",
+      "descuentoGeneralValor": 290.57,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 297,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 2",
+          "cantidad": 1,
+          "precioUnitario": 297,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 3",
+          "cantidad": 1,
+          "precioUnitario": 382,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 4",
+          "cantidad": 5,
+          "precioUnitario": 635,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 276.21,
+          "importeIva": 49.72,
+          "total": 325.93
+        },
+        {
+          "subtotal": 276.21,
+          "importeIva": 49.72,
+          "total": 325.93
+        },
+        {
+          "subtotal": 355.26,
+          "importeIva": 63.95,
+          "total": 419.21
+        },
+        {
+          "subtotal": 2952.75,
+          "importeIva": 531.5,
+          "total": 3484.25
+        }
+      ],
+      "subtotal": 3860.43,
+      "iva": 694.89,
+      "total": 4555.32
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-256",
+    "fecha": "2026-08-18",
+    "entrada": {
+      "descuentoGeneralTipo": "monto",
+      "descuentoGeneralValor": 294.84,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 170,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 2",
+          "cantidad": 3,
+          "precioUnitario": 635,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 3",
+          "cantidad": 1,
+          "precioUnitario": 382,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 149.6,
+          "importeIva": 26.93,
+          "total": 176.53
+        },
+        {
+          "subtotal": 1676.4,
+          "importeIva": 301.75,
+          "total": 1978.15
+        },
+        {
+          "subtotal": 336.16,
+          "importeIva": 60.51,
+          "total": 396.67
+        }
+      ],
+      "subtotal": 2162.16,
+      "iva": 389.19,
+      "total": 2551.35
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-257",
+    "fecha": "2026-08-19",
+    "entrada": {
+      "descuentoGeneralTipo": "monto",
+      "descuentoGeneralValor": 118.8,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 170,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 2",
+          "cantidad": 2,
+          "precioUnitario": 212,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 136,
+          "importeIva": 24.48,
+          "total": 160.48
+        },
+        {
+          "subtotal": 339.2,
+          "importeIva": 61.06,
+          "total": 400.26
+        }
+      ],
+      "subtotal": 475.2,
+      "iva": 85.54,
+      "total": 560.74
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-264",
+    "fecha": "2026-08-19",
+    "entrada": {
+      "descuentoGeneralTipo": "monto",
+      "descuentoGeneralValor": 275.11,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 297,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 2",
+          "cantidad": 4,
+          "precioUnitario": 551,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 264.33,
+          "importeIva": 47.58,
+          "total": 311.91
+        },
+        {
+          "subtotal": 1961.56,
+          "importeIva": 353.08,
+          "total": 2314.64
+        }
+      ],
+      "subtotal": 2225.89,
+      "iva": 400.66,
+      "total": 2626.55
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-267",
+    "fecha": "2026-08-20",
+    "entrada": {
+      "descuentoGeneralTipo": "monto",
+      "descuentoGeneralValor": 131.7,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 600,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 2",
+          "cantidad": 6,
+          "precioUnitario": 339,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 570,
+          "importeIva": 102.6,
+          "total": 672.6
+        },
+        {
+          "subtotal": 1932.3,
+          "importeIva": 347.81,
+          "total": 2280.11
+        }
+      ],
+      "subtotal": 2502.3,
+      "iva": 450.41,
+      "total": 2952.71
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-272",
+    "fecha": "2026-08-20",
+    "entrada": {
+      "descuentoGeneralTipo": "monto",
+      "descuentoGeneralValor": 42.5,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 170,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 127.5,
+          "importeIva": 22.95,
+          "total": 150.45
+        }
+      ],
+      "subtotal": 127.5,
+      "iva": 22.95,
+      "total": 150.45
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-769",
+    "fecha": "2026-08-23",
+    "entrada": {
+      "descuentoGeneralTipo": "monto",
+      "descuentoGeneralValor": 8.4746,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 2,
+          "precioUnitario": 449.15,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 889.83,
+          "importeIva": 160.17,
+          "total": 1050
+        }
+      ],
+      "subtotal": 889.83,
+      "iva": 160.17,
+      "total": 1050
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-292",
+    "fecha": "2026-08-26",
+    "entrada": {
+      "descuentoGeneralTipo": "monto",
+      "descuentoGeneralValor": 191,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 382,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 191,
+          "importeIva": 34.38,
+          "total": 225.38
+        }
+      ],
+      "subtotal": 191,
+      "iva": 34.38,
+      "total": 225.38
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-297",
+    "fecha": "2026-08-26",
+    "entrada": {
+      "descuentoGeneralTipo": "monto",
+      "descuentoGeneralValor": 81.44,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 2,
+          "precioUnitario": 255,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 2",
+          "cantidad": 1,
+          "precioUnitario": 1526,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 489.6,
+          "importeIva": 88.13,
+          "total": 577.73
+        },
+        {
+          "subtotal": 1464.96,
+          "importeIva": 263.69,
+          "total": 1728.65
+        }
+      ],
+      "subtotal": 1954.56,
+      "iva": 351.82,
+      "total": 2306.38
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-307",
+    "fecha": "2026-08-28",
+    "entrada": {
+      "descuentoGeneralTipo": "monto",
+      "descuentoGeneralValor": 255,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 1700,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 1445,
+          "importeIva": 260.1,
+          "total": 1705.1
+        }
+      ],
+      "subtotal": 1445,
+      "iva": 260.1,
+      "total": 1705.1
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-310",
+    "fecha": "2026-08-29",
+    "entrada": {
+      "descuentoGeneralTipo": "monto",
+      "descuentoGeneralValor": 850,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 8500,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 7650,
+          "importeIva": 1377,
+          "total": 9027
+        }
+      ],
+      "subtotal": 7650,
+      "iva": 1377,
+      "total": 9027
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-318",
+    "fecha": "2026-09-01",
+    "entrada": {
+      "descuentoGeneralTipo": "monto",
+      "descuentoGeneralValor": 91.56,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 1526,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 1434.44,
+          "importeIva": 258.2,
+          "total": 1692.64
+        }
+      ],
+      "subtotal": 1434.44,
+      "iva": 258.2,
+      "total": 1692.64
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-321",
+    "fecha": "2026-09-01",
+    "entrada": {
+      "descuentoGeneralTipo": "monto",
+      "descuentoGeneralValor": 190.8,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 636,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 445.2,
+          "importeIva": 80.14,
+          "total": 525.34
+        }
+      ],
+      "subtotal": 445.2,
+      "iva": 80.14,
+      "total": 525.34
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-322",
+    "fecha": "2026-09-01",
+    "entrada": {
+      "descuentoGeneralTipo": "monto",
+      "descuentoGeneralValor": 116.9994,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 296.99,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 2",
+          "cantidad": 1,
+          "precioUnitario": 297,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        },
+        {
+          "descripcion": "Item 3",
+          "cantidad": 4,
+          "precioUnitario": 339,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 279.17,
+          "importeIva": 50.25,
+          "total": 329.42
+        },
+        {
+          "subtotal": 279.18,
+          "importeIva": 50.25,
+          "total": 329.43
+        },
+        {
+          "subtotal": 1274.64,
+          "importeIva": 229.44,
+          "total": 1504.08
+        }
+      ],
+      "subtotal": 1832.99,
+      "iva": 329.94,
+      "total": 2162.93
+    },
+    "lanzaInvariante": false
+  },
+  {
+    "folio": "FAC-323",
+    "fecha": "2026-09-02",
+    "entrada": {
+      "descuentoGeneralTipo": "monto",
+      "descuentoGeneralValor": 16,
+      "lineas": [
+        {
+          "descripcion": "Item 1",
+          "cantidad": 1,
+          "precioUnitario": 1600,
+          "precioOriginal": null,
+          "descuentoPct": 0,
+          "descuentoMonto": 0,
+          "porcentajeIva": 18
+        }
+      ]
+    },
+    "head": {
+      "lineas": [
+        {
+          "subtotal": 1584,
+          "importeIva": 285.12,
+          "total": 1869.12
+        }
+      ],
+      "subtotal": 1584,
+      "iva": 285.12,
+      "total": 1869.12
+    },
+    "lanzaInvariante": false
+  }
+]

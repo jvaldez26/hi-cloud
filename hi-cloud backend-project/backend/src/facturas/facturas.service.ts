@@ -31,6 +31,11 @@ import { CajaService } from '../caja/caja.service';
 import { RncService } from '../rnc/rnc.service';
 import { reportServiceError } from '../common/observability/sentry';
 import { fechaHoyRD } from '../common/utils/fecha-local.util';
+import {
+  calcularTotalesConDescuento,
+  validarInvarianteConvencionB,
+  type LineaDescuentoInput,
+} from '../common/calculo/descuento-documento';
 import { VendedorResolverService } from './vendedor/vendedor-resolver.service';
 
 @Injectable()
@@ -159,7 +164,8 @@ export class FacturasService {
     const r2 = (n: number) => Math.round(n * 100) / 100;
 
     const detalles: Partial<FacturaDetalle>[] = [];
-    let subtotalBase = 0; // suma de subtotales netos por línea (pre descuento general)
+    // Líneas normalizadas para el cálculo compartido con cotización/pro-forma/pre-factura
+    const lineasCalculo: LineaDescuentoInput[] = [];
 
     const productoIds = dto.detalles.map(d => d.productoId).filter((id): id is number => id != null);
     const productosMap = await this.productosService.findByIds(productoIds);
@@ -188,50 +194,19 @@ export class FacturasService {
       const dm = Number(item.descuentoMonto ?? 0);
       const dp = Number(item.descuentoPct   ?? 0);
 
-      // ── Contrato de descuento por línea ────────────────────────────────────
-      // Convención A — Facturas regular (sin precioOriginal):
-      //   precioUnitario = precio BRUTO antes de descuento
-      //   descuentoMonto = descuento TOTAL de la línea
-      //   subtotal = precioUnitario × cantidad − descuentoMonto
-      //
-      // Convención B — POS con descuento por ítem (precioOriginal presente):
-      //   precioUnitario = precio NETO ya descontado por unidad
-      //   precioOriginal = precio BRUTO original por unidad
-      //   descuentoMonto = descuento POR UNIDAD (no por línea)
-      //   Invariante: precioOriginal − descuentoMonto ≈ precioUnitario (±0.05)
-      //   subtotal = precioOriginal × cantidad − descuentoMonto × cantidad
-      //            = precioUnitario × cantidad  (descuento ya está en precio)
-      let precioRaw: number;
-      let descLinea = 0;
-
-      if (item.precioOriginal != null && dm > 0) {
-        // Convención B: base desde precioOriginal; descuento = dm × cantidad
-        const precioOrig = Number(item.precioOriginal);
-        const precioNeto = Number(item.precioUnitario);
-        const diff = Math.abs((precioOrig - dm) - precioNeto);
-        if (diff > 0.05) {
-          throw new BadRequestException(
-            `[precio] "${item.descripcion ?? 'ítem'}": ` +
-            `precioOriginal (${precioOrig}) − descuentoMonto (${dm}) ≠ precioUnitario (${precioNeto}) ` +
-            `(diff=${diff.toFixed(4)}). El precio enviado ya incluye el descuento.`,
-          );
-        }
-        precioRaw = precioOrig * item.cantidad;
-        descLinea = r2(dm * item.cantidad);
-      } else {
-        // Convención A: base desde precioUnitario; descuentoMonto es total de la línea
-        precioRaw = Number(item.precioUnitario) * item.cantidad;
-        const brutoA = r2(precioRaw);
-        if (dm > 0) {
-          descLinea = r2(Math.min(dm, brutoA));
-        } else if (dp > 0) {
-          descLinea = r2(brutoA * (dp / 100));
-        }
-      }
-
-      const bruto = r2(precioRaw);
-      const subtotalLinea = r2(bruto - descLinea);
-      subtotalBase += subtotalLinea;
+      const linea: LineaDescuentoInput = {
+        descripcion:    item.descripcion,
+        cantidad:       item.cantidad,
+        precioUnitario: Number(item.precioUnitario),
+        precioOriginal: item.precioOriginal ?? null,
+        descuentoPct:   dp,
+        descuentoMonto: dm,
+        porcentajeIva,
+      };
+      // Se valida aquí, dentro del bucle, para que el orden de los errores sea el
+      // mismo de siempre: primero los de esta línea, después los de la siguiente.
+      validarInvarianteConvencionB(linea);
+      lineasCalculo.push(linea);
 
       detalles.push({
         productoId:        producto ? item.productoId : undefined,
@@ -244,50 +219,28 @@ export class FacturasService {
         descuentoMonto:    dm,
         precioOriginal:    item.precioOriginal ?? undefined,
         costoUnitario:     Number(producto?.costoPromedio ?? 0),
-        // subtotal, importeIva, total se calculan después (tras distribuir descuento general)
-        subtotal:   subtotalLinea,
-        importeIva: 0,  // provisional
-        total:      0,  // provisional
+        // subtotal, importeIva y total los fija calcularTotalesConDescuento
+        subtotal:   0,
+        importeIva: 0,
+        total:      0,
       });
-      // Base sin redondear intermedio para calcular IVA con precisión completa en el segundo loop
-      (detalles[detalles.length - 1] as any)._baseRaw = precioRaw - descLinea;
     }
 
-    subtotalBase = r2(subtotalBase);
+    // Descuento por línea (convenciones A y B), descuento general prorrateado e
+    // ITBIS sobre la base ya descontada — ver common/calculo/descuento-documento.ts
+    const totales = calcularTotalesConDescuento(lineasCalculo, {
+      tipo:  dto.descuentoGeneralTipo,
+      valor: dto.descuentoGeneralValor,
+    });
 
-    // Descuento general sobre el subtotal acumulado
-    let descGeneral = 0;
-    const dgt = dto.descuentoGeneralTipo;
-    const dgv = Number(dto.descuentoGeneralValor ?? 0);
-    if (dgt === 'monto' && dgv > 0) {
-      descGeneral = r2(Math.min(dgv, subtotalBase));
-    } else if (dgt === 'porcentaje' && dgv > 0) {
-      descGeneral = r2(subtotalBase * (dgv / 100));
-    }
-    const baseGravable = r2(subtotalBase - descGeneral);
+    totales.lineas.forEach((l, i) => {
+      detalles[i].subtotal   = l.subtotal;
+      detalles[i].importeIva = l.importeIva;
+      detalles[i].total      = l.total;
+    });
 
-    // Distribuir descuento general proporcionalmente y recalcular IVA por línea
-    let subtotalFactura = 0;
-    let ivaFactura = 0;
-    for (const d of detalles) {
-      const baseRaw: number = (d as any)._baseRaw ?? Number(d.subtotal!);
-      const subtotNeto = Number(d.subtotal!);
-      // Proporción de este detalle sobre el total pre-desc-general
-      const descProp = subtotalBase > 0
-        ? r2((subtotNeto / subtotalBase) * descGeneral)
-        : 0;
-      const subtotFinal = r2(subtotNeto - descProp);
-      // IVA sobre base cruda (sin redondeo intermedio) para evitar error de ±1 centavo
-      const rawFinal = subtotNeto > 0 ? baseRaw * (subtotFinal / subtotNeto) : subtotFinal;
-      const ivaLinea    = r2(rawFinal * (Number(d.porcentajeIva) / 100));
-      d.subtotal   = subtotFinal;
-      d.importeIva = ivaLinea;
-      d.total      = r2(subtotFinal + ivaLinea);
-      subtotalFactura += subtotFinal;
-      ivaFactura      += ivaLinea;
-    }
-    subtotalFactura = r2(subtotalFactura);
-    ivaFactura      = r2(ivaFactura);
+    const subtotalFactura = totales.subtotal;
+    const ivaFactura      = totales.iva;
 
     const folio = await this.generarFolio();
 
@@ -431,7 +384,7 @@ export class FacturasService {
     const r2u = (n: number) => Math.round(n * 100) / 100;
 
     const detalles: Partial<FacturaDetalle>[] = [];
-    let subtotalBaseU = 0;
+    const lineasCalculoU: LineaDescuentoInput[] = [];
 
     const productoIds = dto.detalles.map(d => d.productoId).filter((id): id is number => id != null);
     const productosMap = await this.productosService.findByIds(productoIds);
@@ -460,38 +413,17 @@ export class FacturasService {
       const dmU = Number(item.descuentoMonto ?? 0);
       const dpU = Number(item.descuentoPct   ?? 0);
 
-      // Mismo contrato A/B que en create() — ver comentario allá
-      let precioRawU: number;
-      let descLineaU = 0;
-
-      if (item.precioOriginal != null && dmU > 0) {
-        // Convención B (POS): base desde precioOriginal; descuento = dm × cantidad
-        const precioOrigU = Number(item.precioOriginal);
-        const precioNetoU = Number(item.precioUnitario);
-        const diffU = Math.abs((precioOrigU - dmU) - precioNetoU);
-        if (diffU > 0.05) {
-          throw new BadRequestException(
-            `[precio] "${item.descripcion ?? 'ítem'}": ` +
-            `precioOriginal (${precioOrigU}) − descuentoMonto (${dmU}) ≠ precioUnitario (${precioNetoU}) ` +
-            `(diff=${diffU.toFixed(4)}). El precio enviado ya incluye el descuento.`,
-          );
-        }
-        precioRawU = precioOrigU * item.cantidad;
-        descLineaU = r2u(dmU * item.cantidad);
-      } else {
-        // Convención A (Facturas): base desde precioUnitario; descuentoMonto es total de la línea
-        precioRawU = Number(item.precioUnitario) * item.cantidad;
-        const brutoA = r2u(precioRawU);
-        if (dmU > 0) {
-          descLineaU = r2u(Math.min(dmU, brutoA));
-        } else if (dpU > 0) {
-          descLineaU = r2u(brutoA * (dpU / 100));
-        }
-      }
-
-      const brutoU = r2u(precioRawU);
-      const subtotalLineaU = r2u(brutoU - descLineaU);
-      subtotalBaseU += subtotalLineaU;
+      const lineaU: LineaDescuentoInput = {
+        descripcion:    item.descripcion,
+        cantidad:       item.cantidad,
+        precioUnitario: Number(item.precioUnitario),
+        precioOriginal: item.precioOriginal ?? null,
+        descuentoPct:   dpU,
+        descuentoMonto: dmU,
+        porcentajeIva,
+      };
+      validarInvarianteConvencionB(lineaU);
+      lineasCalculoU.push(lineaU);
 
       detalles.push({
         productoId:          producto ? item.productoId : undefined,
@@ -503,43 +435,29 @@ export class FacturasService {
         descuentoPct:        dpU,
         descuentoMonto:      dmU,
         precioOriginal:      item.precioOriginal ?? undefined,
-        subtotal:   subtotalLineaU,
+        subtotal:   0,
         importeIva: 0,
         total:      0,
       });
-      (detalles[detalles.length - 1] as any)._baseRaw = precioRawU - descLineaU;
     }
 
-    subtotalBaseU = r2u(subtotalBaseU);
-
-    let descGeneralU = 0;
     const dgtU = dto.descuentoGeneralTipo;
     const dgvU = Number(dto.descuentoGeneralValor ?? 0);
-    if (dgtU === 'monto' && dgvU > 0) {
-      descGeneralU = r2u(Math.min(dgvU, subtotalBaseU));
-    } else if (dgtU === 'porcentaje' && dgvU > 0) {
-      descGeneralU = r2u(subtotalBaseU * (dgvU / 100));
-    }
 
-    let subtotalFactura = 0;
-    let ivaFactura = 0;
-    for (const d of detalles) {
-      const baseRaw: number = (d as any)._baseRaw ?? Number(d.subtotal!);
-      const subtotNeto = Number(d.subtotal!);
-      const descProp = subtotalBaseU > 0
-        ? r2u((subtotNeto / subtotalBaseU) * descGeneralU)
-        : 0;
-      const subtotFinal = r2u(subtotNeto - descProp);
-      const rawFinal = subtotNeto > 0 ? baseRaw * (subtotFinal / subtotNeto) : subtotFinal;
-      const ivaLinea    = r2u(rawFinal * (Number(d.porcentajeIva) / 100));
-      d.subtotal   = subtotFinal;
-      d.importeIva = ivaLinea;
-      d.total      = r2u(subtotFinal + ivaLinea);
-      subtotalFactura += subtotFinal;
-      ivaFactura      += ivaLinea;
-    }
-    subtotalFactura = r2u(subtotalFactura);
-    ivaFactura      = r2u(ivaFactura);
+    // Mismo cálculo compartido que en create() — ver common/calculo/descuento-documento.ts
+    const totalesU = calcularTotalesConDescuento(lineasCalculoU, {
+      tipo:  dgtU,
+      valor: dgvU,
+    });
+
+    totalesU.lineas.forEach((l, i) => {
+      detalles[i].subtotal   = l.subtotal;
+      detalles[i].importeIva = l.importeIva;
+      detalles[i].total      = l.total;
+    });
+
+    const subtotalFactura = totalesU.subtotal;
+    const ivaFactura      = totalesU.iva;
 
     const moneda        = dto.moneda ?? 'DOP';
     const tipoCambio    = dto.tipoCambio ?? 1;
