@@ -38,6 +38,16 @@ export interface PlanConfig {
   nombre:                     string;
   limiteIngresosMensualesDop: number;
   limiteUsuarios:             number;
+  /**
+   * e-CF incluidos por CICLO de facturación (no por mes calendario — ver
+   * `ciclo-facturacion.util.ts`). Pasarse NO bloquea la emisión: se cuenta, se
+   * avisa, y el super admin decide si genera el cargo por el excedente.
+   *
+   * Es el único de los tres límites que mide al cliente que más factura: la
+   * empresa 44 gasta el 47% de su cupo de ingresos y el 94% del de e-CF, y ya
+   * está en el plan más alto — sin excedente no habría nada que cobrarle.
+   */
+  limiteEcfMensual:           number;
   diasPrueba:                 number;
   precio:                     number;
   maxUsuarios:                number;
@@ -53,38 +63,38 @@ export const PLANES: Record<PlanTipo, PlanConfig> = {
   // ── Planes activos ─────────────────────────────────────────────────────────
   [PlanTipo.EMPRENDEDOR]: {
     nombre: 'Emprendedor',
-    limiteIngresosMensualesDop: 125_000, limiteUsuarios: 2,
+    limiteIngresosMensualesDop: 125_000, limiteUsuarios: 2, limiteEcfMensual: 500,
     diasPrueba: 15, precio: 1700,
     maxUsuarios: 2, maxFacturasMes: -1, maxProductos: -1, maxClientes: -1, maxSucursales: -1,
     modulos: ['*'], soporte: '24/7',
   },
   [PlanTipo.PYME]: {
     nombre: 'Pyme',
-    limiteIngresosMensualesDop: 500_000, limiteUsuarios: 3,
+    limiteIngresosMensualesDop: 500_000, limiteUsuarios: 3, limiteEcfMensual: 1_000,
     diasPrueba: 15, precio: 3500,
     maxUsuarios: 3, maxFacturasMes: -1, maxProductos: -1, maxClientes: -1, maxSucursales: -1,
     modulos: ['*'], soporte: '24/7',
   },
   [PlanTipo.PRO]: {
     nombre: 'Pro',
-    limiteIngresosMensualesDop: 1_250_000, limiteUsuarios: 4,
+    limiteIngresosMensualesDop: 1_250_000, limiteUsuarios: 4, limiteEcfMensual: 2_500,
     diasPrueba: 15, precio: 5200,
     maxUsuarios: 4, maxFacturasMes: -1, maxProductos: -1, maxClientes: -1, maxSucursales: -1,
     modulos: ['*'], soporte: '24/7',
   },
   [PlanTipo.PLUS]: {
     nombre: 'Plus',
-    limiteIngresosMensualesDop: 6_250_000, limiteUsuarios: 10,
+    limiteIngresosMensualesDop: 6_250_000, limiteUsuarios: 10, limiteEcfMensual: 6_000,
     diasPrueba: 15, precio: 7600,
     maxUsuarios: 10, maxFacturasMes: -1, maxProductos: -1, maxClientes: -1, maxSucursales: -1,
     modulos: ['*'], soporte: '24/7',
   },
   // ── Legado (mantenidos para datos históricos) ──────────────────────────────
-  [PlanTipo.TRIAL]:       { nombre: 'Trial',       limiteIngresosMensualesDop: 500_000,   limiteUsuarios: -1, diasPrueba: 15, precio: 0,     maxUsuarios: -1, maxFacturasMes: -1, maxProductos: -1, maxClientes: -1, maxSucursales: -1, modulos: ['*'], soporte: '24/7' },
-  [PlanTipo.BASICO]:      { nombre: 'Básico',       limiteIngresosMensualesDop: 125_000,   limiteUsuarios: 2,  diasPrueba: 0,  precio: 1500,  maxUsuarios: 2,  maxFacturasMes: -1, maxProductos: -1, maxClientes: -1, maxSucursales: -1, modulos: ['*'], soporte: '24/7' },
-  [PlanTipo.PROFESIONAL]: { nombre: 'Profesional',  limiteIngresosMensualesDop: 500_000,   limiteUsuarios: 3,  diasPrueba: 0,  precio: 3500,  maxUsuarios: 3,  maxFacturasMes: -1, maxProductos: -1, maxClientes: -1, maxSucursales: -1, modulos: ['*'], soporte: '24/7' },
-  [PlanTipo.EMPRESARIAL]: { nombre: 'Empresarial',  limiteIngresosMensualesDop: 1_250_000, limiteUsuarios: 10, diasPrueba: 0,  precio: 7000,  maxUsuarios: 10, maxFacturasMes: -1, maxProductos: -1, maxClientes: -1, maxSucursales: -1, modulos: ['*'], soporte: '24/7' },
-  [PlanTipo.ENTERPRISE]:  { nombre: 'Enterprise',   limiteIngresosMensualesDop: -1,        limiteUsuarios: -1, diasPrueba: 0,  precio: 15000, maxUsuarios: -1, maxFacturasMes: -1, maxProductos: -1, maxClientes: -1, maxSucursales: -1, modulos: ['*'], soporte: '24/7' },
+  [PlanTipo.TRIAL]:       { nombre: 'Trial',       limiteIngresosMensualesDop: 500_000,   limiteUsuarios: -1, limiteEcfMensual: 500, diasPrueba: 15, precio: 0,     maxUsuarios: -1, maxFacturasMes: -1, maxProductos: -1, maxClientes: -1, maxSucursales: -1, modulos: ['*'], soporte: '24/7' },
+  [PlanTipo.BASICO]:      { nombre: 'Básico',       limiteIngresosMensualesDop: 125_000,   limiteUsuarios: 2,  limiteEcfMensual: 500, diasPrueba: 0,  precio: 1500,  maxUsuarios: 2,  maxFacturasMes: -1, maxProductos: -1, maxClientes: -1, maxSucursales: -1, modulos: ['*'], soporte: '24/7' },
+  [PlanTipo.PROFESIONAL]: { nombre: 'Profesional',  limiteIngresosMensualesDop: 500_000,   limiteUsuarios: 3,  limiteEcfMensual: 1_000, diasPrueba: 0,  precio: 3500,  maxUsuarios: 3,  maxFacturasMes: -1, maxProductos: -1, maxClientes: -1, maxSucursales: -1, modulos: ['*'], soporte: '24/7' },
+  [PlanTipo.EMPRESARIAL]: { nombre: 'Empresarial',  limiteIngresosMensualesDop: 1_250_000, limiteUsuarios: 10, limiteEcfMensual: 2_500, diasPrueba: 0,  precio: 7000,  maxUsuarios: 10, maxFacturasMes: -1, maxProductos: -1, maxClientes: -1, maxSucursales: -1, modulos: ['*'], soporte: '24/7' },
+  [PlanTipo.ENTERPRISE]:  { nombre: 'Enterprise',   limiteIngresosMensualesDop: -1,        limiteUsuarios: -1, limiteEcfMensual: 6_000, diasPrueba: 0,  precio: 15000, maxUsuarios: -1, maxFacturasMes: -1, maxProductos: -1, maxClientes: -1, maxSucursales: -1, modulos: ['*'], soporte: '24/7' },
 };
 
 export function planPorIngresos(avgDop: number): PlanTipo {
