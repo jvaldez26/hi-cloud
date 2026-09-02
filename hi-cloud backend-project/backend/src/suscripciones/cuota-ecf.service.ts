@@ -209,20 +209,36 @@ export class CuotaEcfService {
     // Al reclamar el de 100 se da por servido también el de 80: mandar "vas por
     // el 80%" DESPUÉS de "lo superaste" no tiene ningún sentido, y pasa cuando
     // un ciclo cruza los dos umbrales de golpe o cambia el plan a la baja.
+    //
+    // El UPDATE va envuelto en un CTE para que la sentencia de arriba sea un
+    // SELECT. NO es cosmético: `DataSource.query()` solo garantiza devolver un
+    // array de filas para un SELECT; con un `UPDATE ... RETURNING` devuelve la
+    // estructura cruda del driver, y `filas.length > 0` daba SIEMPRE true.
+    //
+    // Eso ya se escapó a producción: la empresa 44 recibió un correo por cada
+    // comprobante emitido —16 en cuatro emisiones, camino de ~760 al día— con
+    // la marca del ciclo correctamente puesta desde el primero. Contar filas de
+    // un SELECT es un contrato que no depende del driver.
     const sql = umbral === 100
-      ? `UPDATE ecf_consumo_ciclo
-            SET "aviso100EnviadoEn" = now(),
-                "aviso80EnviadoEn"  = COALESCE("aviso80EnviadoEn", now()),
-                "updatedAt"         = now()
-          WHERE "empresaId" = $1 AND "cicloInicio" = $2 AND "aviso100EnviadoEn" IS NULL
-          RETURNING id`
-      : `UPDATE ecf_consumo_ciclo
-            SET "aviso80EnviadoEn" = now(), "updatedAt" = now()
-          WHERE "empresaId" = $1 AND "cicloInicio" = $2 AND "aviso80EnviadoEn" IS NULL
-          RETURNING id`;
+      ? `WITH reclamado AS (
+           UPDATE ecf_consumo_ciclo
+              SET "aviso100EnviadoEn" = now(),
+                  "aviso80EnviadoEn"  = COALESCE("aviso80EnviadoEn", now()),
+                  "updatedAt"         = now()
+            WHERE "empresaId" = $1 AND "cicloInicio" = $2 AND "aviso100EnviadoEn" IS NULL
+            RETURNING id
+         )
+         SELECT COUNT(*)::int AS n FROM reclamado`
+      : `WITH reclamado AS (
+           UPDATE ecf_consumo_ciclo
+              SET "aviso80EnviadoEn" = now(), "updatedAt" = now()
+            WHERE "empresaId" = $1 AND "cicloInicio" = $2 AND "aviso80EnviadoEn" IS NULL
+            RETURNING id
+         )
+         SELECT COUNT(*)::int AS n FROM reclamado`;
 
-    const filas = await this.ds.query<{ id: number }[]>(sql, [empresaId, ciclo.inicio]);
-    return filas.length > 0;
+    const [r] = await this.ds.query<{ n: number }[]>(sql, [empresaId, ciclo.inicio]);
+    return Number(r?.n ?? 0) > 0;
   }
 
   /**

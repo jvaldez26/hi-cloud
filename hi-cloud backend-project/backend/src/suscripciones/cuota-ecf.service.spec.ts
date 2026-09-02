@@ -32,11 +32,17 @@ function montar(opts: {
       if (sql.includes('FROM configuracion_cobros')) return [{ p: String(opts.precio ?? 0) }];
       if (sql.includes('INSERT INTO ecf_consumo_ciclo')) return [];
       if (sql.includes('UPDATE ecf_consumo_ciclo')) {
+        // La reclamación es un SELECT sobre un CTE, así que devuelve el CONTEO
+        // de filas actualizadas. El mock anterior devolvía `[{id:1}]` / `[]`,
+        // imitando un `UPDATE ... RETURNING` — y eso fue justo lo que dejó pasar
+        // el bug: `ds.query` no garantiza un array de filas fuera de un SELECT,
+        // así que en producción `filas.length > 0` era siempre true y cada
+        // comprobante emitido mandaba otra tanda de correos.
         const umbral = sql.includes('aviso100EnviadoEn" = now()') ? 100 : 80;
-        if (puesto[umbral]) return [];          // ya reclamado: 0 filas
+        if (puesto[umbral]) return [{ n: 0 }];   // ya reclamado
         puesto[umbral] = true;
-        if (umbral === 100) puesto[80] = true;  // el de 100 da por servido el de 80
-        return [{ id: 1 }];
+        if (umbral === 100) puesto[80] = true;   // el de 100 da por servido el de 80
+        return [{ n: 1 }];
       }
       return [{ n: opts.emitidos ?? 0 }];
     },
@@ -201,6 +207,22 @@ describe('avisos — cuándo se manda y cuántas veces', () => {
     await svc.revisarTrasEmision(44);
     await svc.revisarTrasEmision(44);
     expect(avisos).toHaveLength(1);
+  });
+
+  it('la reclamación se resuelve con un SELECT, no con un UPDATE ... RETURNING pelado', async () => {
+    // El bug que llegó a producción: `DataSource.query()` solo garantiza
+    // devolver un array de filas para un SELECT. Con `UPDATE ... RETURNING`
+    // devuelve la estructura cruda del driver, así que contar su longitud daba
+    // siempre "reclamado" y cada comprobante emitido mandaba otra tanda de
+    // correos — 16 en cuatro emisiones antes de detectarlo.
+    //
+    // Envolver el UPDATE en un CTE deja arriba un SELECT, cuyo contrato de
+    // retorno sí es estable. Este test fija esa forma, no el comportamiento.
+    const { svc, consultas } = montar({ emitidos: 4_800 });
+    await svc.revisarTrasEmision(44);
+    const claim = consultas.find(c => c.sql.includes('UPDATE ecf_consumo_ciclo'))!;
+    expect(claim.sql.trim()).toMatch(/^WITH/i);
+    expect(claim.sql).toMatch(/SELECT COUNT\(\*\)/i);
   });
 
   it('la reclamación es UNA sentencia: nunca se lee la marca para escribirla después', async () => {
