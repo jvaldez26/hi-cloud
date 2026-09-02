@@ -1,7 +1,7 @@
 import {
   IsInt, IsPositive, IsDateString, IsOptional,
   IsString, IsArray, ValidateNested, ArrayMinSize,
-  IsNumber, Min, Max, MaxLength,
+  IsNumber, Min, Max, MaxLength, IsIn,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -21,6 +21,18 @@ export class CreateCotizacionDetalleDto {
 
   @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(100)
   porcentajeIva?: number;
+
+  // ── Descuento por línea — mismas reglas que CreateFacturaDto ──────────────
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(100)
+  descuentoPct?: number;
+
+  /** 4 decimales: el importe sale de dividir entre (1 + ITBIS) */
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0)
+  descuentoMonto?: number;
+
+  /** Presente ⇒ convención B (POS): precioUnitario ya viene neto */
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @IsPositive()
+  precioOriginal?: number;
 }
 
 export class CreateCotizacionDto {
@@ -52,4 +64,16 @@ export class CreateCotizacionDto {
 
   @IsOptional() @IsInt() @IsPositive()
   sucursalId?: number;
+
+  // ── Descuento general — mismo contrato que CreateFacturaDto ───────────────
+  @IsOptional() @IsIn(['monto', 'porcentaje'])
+  descuentoGeneralTipo?: string;
+
+  /** Importe en BASE imponible, o el porcentaje. 4 decimales por la división. */
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0)
+  descuentoGeneralValor?: number;
+
+  /** Importe pactado c/ITBIS — solo se imprime, no entra en el cálculo. */
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0)
+  descuentoGeneralFinal?: number;
 }

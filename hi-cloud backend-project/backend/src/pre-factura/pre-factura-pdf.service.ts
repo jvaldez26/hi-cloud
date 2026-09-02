@@ -4,6 +4,10 @@ import type { Repository } from 'typeorm';
 import { PreFactura } from './entities/pre-factura.entity';
 import { TenantService } from '../tenant/tenant.service';
 import type { DocumentoPDFData, DocumentoPDFItem } from '../common/pdf/documento-pdf.helper';
+import {
+  calcularTotalesConDescuento,
+  type LineaDescuentoInput,
+} from '../common/calculo/descuento-documento';
 import { generarDocumentoPDFFactura } from '../common/pdf/documento-pdf.helper';
 import { generarReciboPOSPDF } from '../common/pdf/factura-pdf.helper';
 import type { ReciboPOSData } from '../facturas/templates/recibo-termico.template';
@@ -50,22 +54,37 @@ export class PreFacturaPDFService {
       }
     }
 
-    // Construir ítems con cálculo de subtotales gravado/exento
-    const items: DocumentoPDFItem[] = ((pf as any).detalles ?? []).map((d: any) => {
-      const itbisPct    = Number(d.porcentajeIva ?? 18);
-      const subtotal    = Number(d.precioUnitario) * Number(d.cantidad);
-      const importeItbis = Number(d.iva ?? d.importeIva ?? subtotal * (itbisPct / 100));
-      return {
-        descripcion:    d.descripcion,
-        cantidad:       Number(d.cantidad),
-        unidadMedida:   d.unidadMedida ?? 'UN',
-        precioUnitario: Number(d.precioUnitario),
-        itbisPct,
-        importeItbis,
-        subtotal,
-        total:          Number(d.total ?? subtotal + importeItbis),
-      };
+    // Las filas van POST descuento de línea y PRE descuento general; el general
+    // baja a su propia fila en los totales — igual que factura y cotización.
+    const detallesPf: any[] = (pf as any).detalles ?? [];
+    const lineasPdf: LineaDescuentoInput[] = detallesPf.map(d => ({
+      descripcion:    d.descripcion,
+      cantidad:       Number(d.cantidad),
+      precioUnitario: Number(d.precioUnitario),
+      precioOriginal: d.precioOriginal ?? null,
+      descuentoPct:   Number(d.descuentoPct   ?? 0),
+      descuentoMonto: Number(d.descuentoMonto ?? 0),
+      porcentajeIva:  Number(d.porcentajeIva ?? 18),
+    }));
+    const preGeneral = calcularTotalesConDescuento(lineasPdf);
+    const conGeneral = calcularTotalesConDescuento(lineasPdf, {
+      tipo:  (pf as any).descuentoGeneralTipo,
+      valor: (pf as any).descuentoGeneralValor,
     });
+
+    const items: DocumentoPDFItem[] = detallesPf.map((d, k) => ({
+      descripcion:    d.descripcion,
+      cantidad:       Number(d.cantidad),
+      unidadMedida:   d.unidadMedida ?? 'UN',
+      precioUnitario: Number(d.precioUnitario),
+      precioOriginal: d.precioOriginal != null ? Number(d.precioOriginal) : undefined,
+      descuentoLinea: preGeneral.lineas[k].descuentoLinea,
+      descuentoPct:   Number(d.descuentoPct ?? 0),
+      itbisPct:       Number(d.porcentajeIva ?? 18),
+      importeItbis:   preGeneral.lineas[k].importeIva,
+      subtotal:       preGeneral.lineas[k].subtotal,
+      total:          preGeneral.lineas[k].total,
+    }));
 
     const subtotalGravado = items.filter(i => i.itbisPct > 0).reduce((s, i) => s + i.subtotal, 0);
     const subtotalExento  = items.filter(i => i.itbisPct === 0).reduce((s, i) => s + i.subtotal, 0);
@@ -112,6 +131,12 @@ export class PreFacturaPDFService {
       subtotalGravado,
       subtotalExento,
       subtotalGeneral:  subtotalGravado + subtotalExento,
+      descuentoTotal:        conGeneral.descuentoGeneral,
+      descuentoGeneralTipo:  (pf as any).descuentoGeneralTipo,
+      descuentoGeneralValor: (pf as any).descuentoGeneralValor != null
+        ? Number((pf as any).descuentoGeneralValor) : undefined,
+      descuentoGeneralFinal: (pf as any).descuentoGeneralFinal != null
+        ? Number((pf as any).descuentoGeneralFinal) : undefined,
       itbisTotal:       Number(pf.iva ?? 0),
       totalGeneral:     Number(pf.total ?? 0),
       notas:            pf.notas ?? undefined,

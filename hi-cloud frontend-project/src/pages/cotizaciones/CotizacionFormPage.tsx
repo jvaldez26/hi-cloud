@@ -17,6 +17,25 @@ const { Title } = Typography;
 interface Linea {
   key: string; productoId?: number; descripcion?: string;
   cantidad: number; precioUnitario: number; porcentajeIva: number;
+  /** Descuento de la línea: RD$ sobre el bruto, o % */
+  descuentoTipo?: 'monto' | 'pct';
+  descuentoValor?: number;
+}
+
+const r2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * Descuento de una línea en BASE imponible, con el mismo tope que aplica el
+ * backend (`common/calculo/descuento-documento.ts`): nunca puede pasarse del
+ * bruto de la propia línea.
+ */
+function descuentoDeLinea(l: Linea): number {
+  const bruto = r2(l.precioUnitario * l.cantidad);
+  const v = Math.max(0, Number(l.descuentoValor) || 0);
+  if (!v) return 0;
+  return l.descuentoTipo === 'pct'
+    ? r2(bruto * Math.min(v, 100) / 100)
+    : r2(Math.min(v, bruto));
 }
 
 export default function CotizacionFormPage() {
@@ -36,6 +55,11 @@ export default function CotizacionFormPage() {
     setPrecioInputModo(m);
     try { localStorage.setItem('cot_precio_input_modo', m); } catch {}
   };
+
+  // Descuento general — mismo modelo que la factura: 'monto' en RD$ sobre el
+  // subtotal, o 'porcentaje'
+  const [descuentoGeneralTipo,  setDescuentoGeneralTipo]  = useState<'monto' | 'porcentaje'>('monto');
+  const [descuentoGeneralValor, setDescuentoGeneralValor] = useState<number>(0);
 
   const sucursalActual = useAuthStore(s => s.sucursalActual);
   const empresaActual  = useAuthStore(s => s.empresaActual);
@@ -69,12 +93,34 @@ export default function CotizacionFormPage() {
         vendedorId:      cotExistente.vendedorId,
         sucursalId:      (cotExistente as any).sucursalId,
       });
+      // El descuento general vuelve tal como se guardó; si no lo hubo, a cero
+      setDescuentoGeneralTipo((cotExistente as any).descuentoGeneralTipo === 'porcentaje'
+        ? 'porcentaje' : 'monto');
+      setDescuentoGeneralValor(Number((cotExistente as any).descuentoGeneralValor ?? 0));
+
       if (cotExistente.detalles?.length) {
-        setLineas(cotExistente.detalles.map((d: any, i: number) => ({
-          key: String(i + 1), productoId: d.productoId, descripcion: d.descripcion,
-          cantidad: Number(d.cantidad), precioUnitario: Number(d.precioUnitario),
-          porcentajeIva: Number(d.porcentajeIva),
-        })));
+        setLineas(cotExistente.detalles.map((d: any, i: number) => {
+          const dm   = Number(d.descuentoMonto ?? 0);
+          const dp   = Number(d.descuentoPct   ?? 0);
+          const cant = Number(d.cantidad);
+          // Convención B (viene del POS): precioUnitario está NETO y el
+          // descuento es POR UNIDAD. Este formulario edita en convención A, que
+          // espera el precio BRUTO — si se cargara el neto, el descuento se
+          // volvería a restar sobre un precio que ya lo tenía dentro.
+          const esConvencionB = d.precioOriginal != null && dm > 0;
+          return {
+            key: String(i + 1), productoId: d.productoId, descripcion: d.descripcion,
+            cantidad: cant,
+            precioUnitario: esConvencionB ? Number(d.precioOriginal) : Number(d.precioUnitario),
+            porcentajeIva: Number(d.porcentajeIva),
+            ...(dm > 0
+              ? { descuentoTipo: 'monto' as const,
+                  descuentoValor: esConvencionB ? r2(dm * cant) : dm }
+              : dp > 0
+                ? { descuentoTipo: 'pct' as const, descuentoValor: dp }
+                : {}),
+          };
+        }));
       }
     }
   }, [cotExistente, esEditar, form]);
@@ -100,9 +146,36 @@ export default function CotizacionFormPage() {
     onError: (e: any) => message.error(e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error al actualizar'),
   });
 
-  const subtotal = lineas.reduce((s, l) => s + l.precioUnitario * l.cantidad, 0);
-  const iva      = lineas.reduce((s, l) => s + l.precioUnitario * l.cantidad * (l.porcentajeIva / 100), 0);
-  const total    = subtotal + iva;
+  // ── Totales — misma aritmética que common/calculo/descuento-documento.ts ───
+  // Se replica aquí para que la pantalla enseñe exactamente lo que va a guardar
+  // el backend: subtotal redondeado por línea, ITBIS sobre la base CRUDA, y el
+  // descuento general repartido en proporción al subtotal de cada línea.
+  const lineasCalc = lineas.map(l => {
+    const brutoRaw  = l.precioUnitario * l.cantidad;
+    const descLinea = descuentoDeLinea(l);
+    const subtotal  = r2(r2(brutoRaw) - descLinea);
+    return { ...l, descLinea, subtotal, baseRaw: brutoRaw - descLinea };
+  });
+
+  const subtotalBase = r2(lineasCalc.reduce((s, l) => s + l.subtotal, 0));
+
+  const descGenVal = Math.max(0, Number(descuentoGeneralValor) || 0);
+  const descGeneral = !descGenVal ? 0
+    : descuentoGeneralTipo === 'porcentaje'
+      ? r2(subtotalBase * Math.min(descGenVal, 100) / 100)
+      : r2(Math.min(descGenVal, subtotalBase));
+
+  const lineasFinales = lineasCalc.map(l => {
+    const descProp    = subtotalBase > 0 ? r2((l.subtotal / subtotalBase) * descGeneral) : 0;
+    const subtotFinal = r2(l.subtotal - descProp);
+    const rawFinal    = l.subtotal > 0 ? l.baseRaw * (subtotFinal / l.subtotal) : subtotFinal;
+    return { subtotFinal, ivaLinea: r2(rawFinal * (l.porcentajeIva / 100)) };
+  });
+
+  const subtotal = r2(lineasFinales.reduce((s, l) => s + l.subtotFinal, 0));
+  const iva      = r2(lineasFinales.reduce((s, l) => s + l.ivaLinea, 0));
+  const total    = r2(subtotal + iva);
+  const descuentoLineasTotal = r2(lineasCalc.reduce((s, l) => s + l.descLinea, 0));
 
   const onProductoChange = (productoId: number, idx: number) => {
     const prod = productos?.data.find(p => p.id === productoId);
@@ -114,10 +187,21 @@ export default function CotizacionFormPage() {
 
   const handleSubmit = (values: any) => {
     const vendedor = vendedores.find((v: any) => v.id === values.vendedorId);
-    const detalles: CotizacionDetallePayload[] = lineas.map(l => ({
-      productoId: l.productoId, descripcion: l.descripcion!,
-      cantidad: l.cantidad, precioUnitario: l.precioUnitario, porcentajeIva: l.porcentajeIva,
-    }));
+    // Convención A: precioUnitario BRUTO y descuentoMonto TOTAL de la línea —
+    // igual que el formulario de facturas. El backend lo recalcula con el mismo
+    // helper, así que lo que se ve arriba es lo que se guarda.
+    const detalles: CotizacionDetallePayload[] = lineas.map(l => {
+      const desc = descuentoDeLinea(l);
+      return {
+        productoId: l.productoId, descripcion: l.descripcion!,
+        cantidad: l.cantidad, precioUnitario: l.precioUnitario, porcentajeIva: l.porcentajeIva,
+        ...(desc > 0
+          ? l.descuentoTipo === 'pct'
+            ? { descuentoPct: Number(l.descuentoValor) }
+            : { descuentoMonto: desc }
+          : {}),
+      };
+    });
     const payload = {
       clienteId:       values.clienteId,
       fecha:           values.fecha.format('YYYY-MM-DD'),
@@ -128,6 +212,15 @@ export default function CotizacionFormPage() {
       nombreVendedor:  vendedor?.nombre,
       sucursalId:      (values as any).sucursalId ?? sucursalActual,
       detalles,
+      ...(descGeneral > 0 ? {
+        descuentoGeneralTipo:  descuentoGeneralTipo,
+        descuentoGeneralValor: descGenVal,
+        // El mismo descuento visto en pesos FINALES (c/ITBIS): es lo que el PDF
+        // enseña entre paréntesis, porque es la cifra que el cliente negoció.
+        // Se usa la tasa EFECTIVA del documento (iva/subtotal), que funciona con
+        // mezcla de 18% / 16% / exentos igual que el reparto proporcional.
+        descuentoGeneralFinal: r2(descGeneral * (1 + (subtotal > 0 ? iva / subtotal : 0))),
+      } : {}),
     };
     if (esEditar) {
       updateMut.mutate(payload);
@@ -175,18 +268,41 @@ export default function CotizacionFormPage() {
             }} />
         );
       }},
+    { title: 'Descuento', key: 'desc', width: 150,
+      render: (_: any, r: Linea, idx: number) => (
+        <Space.Compact style={{ width: '100%' }}>
+          <InputNumber min={0} precision={2} value={r.descuentoValor ?? 0}
+            style={{ width: '62%' }} placeholder="0"
+            max={r.descuentoTipo === 'pct' ? 100 : undefined}
+            onChange={v => { const u=[...lineas]; u[idx].descuentoValor = v ?? 0; setLineas(u); }} />
+          <Select style={{ width: '38%' }} value={r.descuentoTipo ?? 'monto'}
+            onChange={v => { const u=[...lineas]; u[idx].descuentoTipo = v; setLineas(u); }}
+            options={[{ value: 'monto', label: 'RD$' }, { value: 'pct', label: '%' }]} />
+        </Space.Compact>
+      )},
     { title: 'ITBIS %', key: 'iva', width: 80,
       render: (_: any, r: Linea, idx: number) => (
         <InputNumber min={0} max={100} value={r.porcentajeIva} style={{ width:'100%' }}
           onChange={v => { const u=[...lineas]; u[idx].porcentajeIva=v??18; setLineas(u); }} />
       )},
-    { title: 'Subtotal', key: 'sub', width: 110,
+    { title: 'Subtotal', key: 'sub', width: 130,
       render: (_: any, r: Linea) => {
-        const pct = r.porcentajeIva / 100;
-        const val = precioInputModo === 'c' && pct > 0
-          ? r.precioUnitario * r.cantidad * (1 + pct)
-          : r.precioUnitario * r.cantidad;
-        return fmt.money(val);
+        const pct   = r.porcentajeIva / 100;
+        const desc  = descuentoDeLinea(r);
+        const neto  = r2(r.precioUnitario * r.cantidad) - desc;
+        // En modo c/ITBIS la columna enseña el importe final, igual que antes
+        const val   = precioInputModo === 'c' && pct > 0 ? neto * (1 + pct) : neto;
+        if (desc <= 0) return fmt.money(val);
+        const bruto = r2(r.precioUnitario * r.cantidad);
+        const brutoMostrado = precioInputModo === 'c' && pct > 0 ? bruto * (1 + pct) : bruto;
+        return (
+          <div style={{ lineHeight: 1.25 }}>
+            <div style={{ textDecoration: 'line-through', color: '#999', fontSize: 11 }}>
+              {fmt.money(brutoMostrado)}
+            </div>
+            <div>{fmt.money(val)}</div>
+          </div>
+        );
       }},
     { title: '', key: 'del', width: 40,
       render: (_: any, _r: Linea, idx: number) => (
@@ -285,8 +401,41 @@ export default function CotizacionFormPage() {
           <Row justify="end">
             <Col xs={24} sm={10}>
               <Space direction="vertical" style={{ width: '100%' }}>
+                {/* El descuento se enseña desglosado: precio de partida, lo que
+                    se rebaja y el neto. Un total ya rebajado sin decir cuánto le
+                    quita valor a la concesión que se está haciendo. */}
+                {descuentoLineasTotal > 0 && (
+                  <>
+                    <Row justify="space-between" style={{ color: '#888' }}>
+                      <span>Subtotal bruto:</span>
+                      <span>{fmt.money(r2(subtotalBase + descuentoLineasTotal))}</span>
+                    </Row>
+                    <Row justify="space-between" style={{ color: '#cf1322' }}>
+                      <span>Descuento por línea:</span>
+                      <span>−{fmt.money(descuentoLineasTotal)}</span>
+                    </Row>
+                  </>
+                )}
+                <Row justify="space-between" align="middle">
+                  <span>Descuento general:</span>
+                  <Space.Compact style={{ width: 170 }}>
+                    <InputNumber min={0} precision={2} value={descuentoGeneralValor}
+                      style={{ width: '60%' }} placeholder="0"
+                      max={descuentoGeneralTipo === 'porcentaje' ? 100 : undefined}
+                      onChange={v => setDescuentoGeneralValor(v ?? 0)} />
+                    <Select style={{ width: '40%' }} value={descuentoGeneralTipo}
+                      onChange={v => setDescuentoGeneralTipo(v)}
+                      options={[{ value: 'monto', label: 'RD$' }, { value: 'porcentaje', label: '%' }]} />
+                  </Space.Compact>
+                </Row>
+                {descGeneral > 0 && (
+                  <Row justify="space-between" style={{ color: '#cf1322' }}>
+                    <span>Descuento general aplicado:</span>
+                    <span>−{fmt.money(descGeneral)}</span>
+                  </Row>
+                )}
                 <Row justify="space-between"><span>Subtotal:</span><strong>{fmt.money(subtotal)}</strong></Row>
-                <Row justify="space-between"><span>ITBIS (18%):</span><strong>{fmt.money(iva)}</strong></Row>
+                <Row justify="space-between"><span>ITBIS:</span><strong>{fmt.money(iva)}</strong></Row>
                 <Divider style={{ margin: '8px 0' }} />
                 <Row justify="space-between">
                   <span style={{ fontSize: 16 }}>Total cotización:</span>

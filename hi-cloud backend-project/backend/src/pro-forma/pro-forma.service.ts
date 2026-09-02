@@ -7,6 +7,11 @@ import { TenantService } from '../tenant/tenant.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import type { DocumentoPDFData, DocumentoPDFItem } from '../common/pdf/documento-pdf.helper';
 import { generarDocumentoPDFFactura } from '../common/pdf/documento-pdf.helper';
+import {
+  calcularTotalesConDescuento,
+  validarInvarianteConvencionB,
+  type LineaDescuentoInput,
+} from '../common/calculo/descuento-documento';
 
 interface ItemDto {
   productoId?: number;
@@ -14,6 +19,11 @@ interface ItemDto {
   cantidad: number;
   precioUnitario: number;
   porcentajeIva?: number;
+  // Descuento por línea — mismo contrato que factura y cotización
+  descuentoPct?: number;
+  descuentoMonto?: number;
+  /** Presente ⇒ convención B (POS): precioUnitario ya viene neto */
+  precioOriginal?: number;
 }
 
 interface CreateProFormaDto {
@@ -23,6 +33,9 @@ interface CreateProFormaDto {
   notas?: string;
   validezDias?: number;
   detalles: ItemDto[];
+  descuentoGeneralTipo?: string;
+  descuentoGeneralValor?: number;
+  descuentoGeneralFinal?: number;
 }
 
 @Injectable()
@@ -45,6 +58,48 @@ export class ProFormaService {
     return `PF-${row.numero}`;
   }
 
+  /**
+   * Ítems y totales — vía única, la comparten crear() y actualizar().
+   *
+   * Delega en el mismo helper que facturas y cotizaciones. La pro-forma nombra
+   * sus columnas distinto (`precio`, `porcentajeItbis`, `itbis`), pero la
+   * aritmética del dinero tiene que ser la misma: una pro-forma se convierte en
+   * factura y el total no puede moverse por el camino.
+   */
+  private calcularItems(dto: Pick<CreateProFormaDto,
+    'detalles' | 'descuentoGeneralTipo' | 'descuentoGeneralValor'>) {
+    const detalles = dto.detalles ?? [];
+
+    const lineas: LineaDescuentoInput[] = detalles.map(d => {
+      const linea: LineaDescuentoInput = {
+        descripcion:    d.descripcion,
+        cantidad:       Number(d.cantidad),
+        precioUnitario: Number(d.precioUnitario),
+        precioOriginal: d.precioOriginal ?? null,
+        descuentoPct:   Number(d.descuentoPct   ?? 0),
+        descuentoMonto: Number(d.descuentoMonto ?? 0),
+        porcentajeIva:  d.porcentajeIva ?? 18,
+      };
+      validarInvarianteConvencionB(linea);
+      return linea;
+    });
+
+    const totales = calcularTotalesConDescuento(lineas, {
+      tipo:  dto.descuentoGeneralTipo,
+      valor: dto.descuentoGeneralValor,
+    });
+
+    const itemsData = detalles.map((d, i) => ({
+      ...d,
+      pct:      d.porcentajeIva ?? 18,
+      subtotal: totales.lineas[i].subtotal,
+      itbis:    totales.lineas[i].importeIva,
+      total:    totales.lineas[i].total,
+    }));
+
+    return { itemsData, subtotal: totales.subtotal, itbis: totales.iva, total: totales.total };
+  }
+
   async crear(dto: CreateProFormaDto, usuarioId: number): Promise<ProForma> {
     const empresaId   = this.tenantSvc.getEmpresaId();
     const numero      = await this.generarNumero();
@@ -52,16 +107,7 @@ export class ProFormaService {
     const fechaVenc   = new Date();
     fechaVenc.setDate(fechaVenc.getDate() + validezDias);
 
-    const itemsData = (dto.detalles ?? []).map(d => {
-      const pct      = d.porcentajeIva ?? 18;
-      const subtotal = +(Number(d.cantidad) * Number(d.precioUnitario)).toFixed(2);
-      const itbis    = +(subtotal * pct / 100).toFixed(2);
-      return { pct, subtotal, itbis, ...d };
-    });
-
-    const subtotal = itemsData.reduce((s, i) => s + i.subtotal, 0);
-    const itbis    = itemsData.reduce((s, i) => s + i.itbis,    0);
-    const total    = +(subtotal + itbis).toFixed(2);
+    const { itemsData, subtotal, itbis, total } = this.calcularItems(dto);
 
     const pf = this.pfRepo.create({
       empresaId,
@@ -69,9 +115,16 @@ export class ProFormaService {
       clienteId:        dto.clienteId,
       sucursalId:       dto.sucursalId,
       vendedorId:       dto.vendedorId ?? usuarioId,
-      subtotal:         +subtotal.toFixed(2),
-      itbis:            +itbis.toFixed(2),
+      subtotal,
+      itbis,
       total,
+      descuentoGeneralTipo:  dto.descuentoGeneralTipo ?? undefined,
+      descuentoGeneralValor: Number(dto.descuentoGeneralValor ?? 0) > 0
+        ? dto.descuentoGeneralValor
+        : undefined,
+      descuentoGeneralFinal: Number(dto.descuentoGeneralFinal ?? 0) > 0
+        ? dto.descuentoGeneralFinal
+        : undefined,
       notas:            dto.notas,
       validezDias,
       estado:           ProFormaEstado.ACTIVA,
@@ -91,6 +144,9 @@ export class ProFormaService {
           cantidad:        Number(i.cantidad),
           precio:          Number(i.precioUnitario),
           porcentajeItbis: i.pct,
+          descuentoPct:    Number(i.descuentoPct   ?? 0),
+          descuentoMonto:  Number(i.descuentoMonto ?? 0),
+          precioOriginal:  i.precioOriginal ?? undefined,
           itbis:           i.itbis,
           subtotal:        i.subtotal,
         }))),
@@ -181,16 +237,7 @@ export class ProFormaService {
     const fechaVenc = new Date();
     fechaVenc.setDate(fechaVenc.getDate() + validezDias);
 
-    const itemsData = (dto.detalles ?? []).map(d => {
-      const pct      = d.porcentajeIva ?? 18;
-      const subtotal = +(Number(d.cantidad) * Number(d.precioUnitario)).toFixed(2);
-      const itbis    = +(subtotal * pct / 100).toFixed(2);
-      return { pct, subtotal, itbis, ...d };
-    });
-
-    const subtotal = itemsData.reduce((s, i) => s + i.subtotal, 0);
-    const itbis    = itemsData.reduce((s, i) => s + i.itbis, 0);
-    const total    = +(subtotal + itbis).toFixed(2);
+    const { itemsData, subtotal, itbis, total } = this.calcularItems(dto);
 
     await this.pfRepo.update({ id }, {
       clienteId:        dto.clienteId  ?? pf.clienteId,
@@ -199,9 +246,17 @@ export class ProFormaService {
       notas:            dto.notas ?? pf.notas,
       validezDias,
       fechaVencimiento: fechaVenc,
-      subtotal:         +subtotal.toFixed(2),
-      itbis:            +itbis.toFixed(2),
+      subtotal,
+      itbis,
       total,
+      // Si el usuario quita el descuento al editar, tiene que desaparecer
+      descuentoGeneralTipo:  dto.descuentoGeneralTipo ?? null,
+      descuentoGeneralValor: Number(dto.descuentoGeneralValor ?? 0) > 0
+        ? dto.descuentoGeneralValor
+        : null,
+      descuentoGeneralFinal: Number(dto.descuentoGeneralFinal ?? 0) > 0
+        ? dto.descuentoGeneralFinal
+        : null,
     } as any);
 
     if (itemsData.length > 0) {
@@ -215,6 +270,9 @@ export class ProFormaService {
           cantidad:        Number(i.cantidad),
           precio:          Number(i.precioUnitario),
           porcentajeItbis: i.pct,
+          descuentoPct:    Number(i.descuentoPct   ?? 0),
+          descuentoMonto:  Number(i.descuentoMonto ?? 0),
+          precioOriginal:  i.precioOriginal ?? undefined,
           itbis:           i.itbis,
           subtotal:        i.subtotal,
         }))),
@@ -254,19 +312,36 @@ export class ProFormaService {
       if (cli) { clienteNombre = cli.nombre; clienteRNC = cli.rncReceptor; }
     }
 
-    const items: DocumentoPDFItem[] = pf.items.map(i => {
-      const subtotal = Number(i.subtotal);
-      return {
-        descripcion:    i.descripcion,
-        cantidad:       Number(i.cantidad),
-        unidadMedida:   'UN',
-        precioUnitario: Number(i.precio),
-        itbisPct:       Number(i.porcentajeItbis),
-        importeItbis:   Number(i.itbis),
-        subtotal,
-        total:          subtotal + Number(i.itbis),
-      };
+    // Las filas van POST descuento de línea y PRE descuento general; el general
+    // baja a su propia fila en los totales — igual que factura y cotización.
+    const lineasPdf: LineaDescuentoInput[] = pf.items.map(i => ({
+      descripcion:    i.descripcion,
+      cantidad:       Number(i.cantidad),
+      precioUnitario: Number(i.precio),
+      precioOriginal: i.precioOriginal ?? null,
+      descuentoPct:   Number(i.descuentoPct   ?? 0),
+      descuentoMonto: Number(i.descuentoMonto ?? 0),
+      porcentajeIva:  Number(i.porcentajeItbis),
+    }));
+    const preGeneral = calcularTotalesConDescuento(lineasPdf);
+    const conGeneral = calcularTotalesConDescuento(lineasPdf, {
+      tipo:  (pf as any).descuentoGeneralTipo,
+      valor: (pf as any).descuentoGeneralValor,
     });
+
+    const items: DocumentoPDFItem[] = pf.items.map((i, k) => ({
+      descripcion:    i.descripcion,
+      cantidad:       Number(i.cantidad),
+      unidadMedida:   'UN',
+      precioUnitario: Number(i.precio),
+      precioOriginal: i.precioOriginal != null ? Number(i.precioOriginal) : undefined,
+      descuentoLinea: preGeneral.lineas[k].descuentoLinea,
+      descuentoPct:   Number(i.descuentoPct ?? 0),
+      itbisPct:       Number(i.porcentajeItbis),
+      importeItbis:   preGeneral.lineas[k].importeIva,
+      subtotal:       preGeneral.lineas[k].subtotal,
+      total:          preGeneral.lineas[k].total,
+    }));
 
     const subtotalGravado = items.filter(i => i.itbisPct > 0).reduce((s, i) => s + i.subtotal, 0);
     const subtotalExento  = items.filter(i => i.itbisPct === 0).reduce((s, i) => s + i.subtotal, 0);
@@ -292,6 +367,12 @@ export class ProFormaService {
       clienteNombre,
       clienteRNC,
       items,
+      descuentoTotal:        conGeneral.descuentoGeneral,
+      descuentoGeneralTipo:  (pf as any).descuentoGeneralTipo,
+      descuentoGeneralValor: (pf as any).descuentoGeneralValor != null
+        ? Number((pf as any).descuentoGeneralValor) : undefined,
+      descuentoGeneralFinal: (pf as any).descuentoGeneralFinal != null
+        ? Number((pf as any).descuentoGeneralFinal) : undefined,
       subtotalGravado,
       subtotalExento,
       subtotalGeneral:  subtotalGravado + subtotalExento,

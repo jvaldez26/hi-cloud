@@ -78,6 +78,14 @@ export interface DocumentoPDFData {
   subtotalGeneral:   number;
   itbisTotal:        number;
   totalGeneral:      number;
+  /** Descuento general aplicado, en base imponible. 0 o ausente = no hubo. */
+  descuentoTotal?:        number;
+  /** 'monto' | 'porcentaje' — solo para redactar la etiqueta */
+  descuentoGeneralTipo?:  string;
+  /** El valor pactado: importe en base, o el porcentaje */
+  descuentoGeneralValor?: number;
+  /** Importe pactado c/ITBIS — se muestra cuando difiere del de base */
+  descuentoGeneralFinal?: number;
   // ── Extras ─────────────────────────────────────────────────────────────────
   notas?:            string;
   /** Mostrar sección de firma/aceptación al final (solo cotización) */
@@ -88,11 +96,18 @@ export interface DocumentoPDFItem {
   descripcion:    string;
   cantidad:       number;
   unidadMedida?:  string;
+  /** Precio NETO por unidad, ya descontado */
   precioUnitario: number;
   itbisPct:       number;
   importeItbis:   number;
   subtotal:       number;
   total:          number;
+  /** Precio BRUTO por unidad, antes del descuento. Solo si hubo descuento. */
+  precioOriginal?: number;
+  /** Descuento TOTAL de la línea, en base imponible. */
+  descuentoLinea?: number;
+  /** % de descuento, cuando se pactó como porcentaje */
+  descuentoPct?:   number;
 }
 
 // ── Generador ─────────────────────────────────────────────────────────────────
@@ -282,7 +297,11 @@ export async function generarDocumentoPDFFactura(
     y = cliBoxTop + cliBoxH + 10;
 
     // ── TABLA DE PRODUCTOS ────────────────────────────────────────────────────
-    // Mismas columnas que la factura (sin Descuento — cotizaciones no tienen descuento por línea)
+    // Mismas columnas que la factura. La de Descuento solo aparece si en este
+    // documento hay alguna línea con descuento: un total ya rebajado sin decir
+    // cuánto se rebajó le quita valor a la concesión, pero una columna de
+    // guiones en los documentos sin descuento solo roba ancho a la descripción.
+    const hayDescuentoLinea = d.items.some(i => (i.descuentoLinea ?? 0) > 0);
 
     // Los % son el MÍNIMO: cada columna se estira hasta caber el importe más
     // largo que aparece de verdad y la Descripción cede el resto. Con el 10%
@@ -291,27 +310,47 @@ export async function generarDocumentoPDFFactura(
     const CELL_PAD = 8;    // 4pt a cada lado, igual que al dibujar (col.w - 8)
     const DESC_MIN = 120;  // suelo de la Descripción
 
+    // La octava columna no cabe a 8.5pt: con importes de siete cifras
+    // (RD$ 1,343,784.00) se partían en dos líneas Precio, Descuento, Subtotal,
+    // ITBIS y Total a la vez. Bajar el suelo de la Descripción no bastaba —
+    // el ancho simplemente no da. A 7.5pt entra todo, medido con el importe más
+    // largo que puede salir. Los documentos sin descuento siguen a 8.5.
+    const FS_CELDA = hayDescuentoLinea ? 7.5 : 8.5;
+
     const rawCols = [
-      { label: 'Descripción', pct: 0.34, align: 'left'   as const },
+      { label: 'Descripción', pct: hayDescuentoLinea ? 0.28 : 0.34, align: 'left'   as const },
       { label: 'Cant.',       pct: 0.08, align: 'right'  as const },
       { label: 'U/M',         pct: 0.07, align: 'center' as const },
-      { label: 'Precio U.',   pct: 0.15, align: 'right'  as const },
-      { label: 'Subtotal',    pct: 0.13, align: 'right'  as const },
+      // Con descuento, "Precio U." es el precio ORIGINAL: el cliente tiene que
+      // ver de cuánto se partía, no solo lo que acabó pagando.
+      { label: 'Precio U.', pct: 0.13, align: 'right' as const },
+      ...(hayDescuentoLinea
+        ? [{ label: 'Desc.', pct: 0.12, align: 'right' as const }]
+        : []),
+      { label: 'Subtotal',    pct: hayDescuentoLinea ? 0.12 : 0.13, align: 'right'  as const },
       { label: 'ITBIS',       pct: 0.10, align: 'right'  as const },
-      { label: 'Total',       pct: 0.13, align: 'right'  as const },
+      { label: 'Total',       pct: hayDescuentoLinea ? 0.12 : 0.13, align: 'right'  as const },
     ];
 
     // Las celdas se calculan antes de dibujar: hay que medirlas para repartir
     // los anchos, y así la cabecera ya sale con la tabla definitiva.
-    const filas: string[][] = d.items.map(item => [
-      item.descripcion.toUpperCase(),
-      String(item.cantidad),
-      item.unidadMedida ?? 'UN',
-      fmtM(item.precioUnitario),
-      fmtM(item.subtotal),
-      item.itbisPct === 0 ? 'EXENTO' : fmtM(item.importeItbis),
-      fmtM(item.total),
-    ]);
+    const filas: string[][] = d.items.map(item => {
+      const desc = item.descuentoLinea ?? 0;
+      return [
+        item.descripcion.toUpperCase(),
+        String(item.cantidad),
+        item.unidadMedida ?? 'UN',
+        // El precio de partida: el original si hubo descuento, si no el neto
+        fmtM(item.precioOriginal ?? item.precioUnitario),
+        // Solo el importe. El "(10%)" al lado costaba 12pt de ancho y con
+        // importes largos era lo que empujaba a las demás columnas a partirse;
+        // lo que el cliente necesita ver es cuántos pesos se le rebajaron.
+        ...(hayDescuentoLinea ? [desc > 0 ? `-${fmtM(desc)}` : '—'] : []),
+        fmtM(item.subtotal),
+        item.itbisPct === 0 ? 'EXENTO' : fmtM(item.importeItbis),
+        fmtM(item.total),
+      ];
+    });
 
     const anchos = repartirAnchos(
       doc,
@@ -325,13 +364,13 @@ export async function generarDocumentoPDFFactura(
       filas,
       {
         W, pad: CELL_PAD, descMin: DESC_MIN,
-        fuenteCelda: 'Helvetica',         tamanoCelda: 8.5,
+        fuenteCelda: 'Helvetica',         tamanoCelda: FS_CELDA,
         fuenteCabecera: 'Helvetica-Bold', tamanoCabecera: 7.5,
       },
     );
     const cols = rawCols.map((c, i) => ({ ...c, w: anchos[i] }));
 
-    const LINE_H = altoDeLinea(doc, 'Helvetica', 8.5);
+    const LINE_H = altoDeLinea(doc, 'Helvetica', FS_CELDA);
 
     // Header azul oscuro (igual que factura)
     const thH = 22;
@@ -351,7 +390,7 @@ export async function generarDocumentoPDFFactura(
     const ROW_PAD = 10; // padding vertical total (5 arriba + 5 abajo)
     for (const cells of filas) {
       const descText = cells[0];
-      doc.font('Helvetica').fontSize(8.5);
+      doc.font('Helvetica').fontSize(FS_CELDA);
       const descH = doc.heightOfString(descText, { width: cols[0].w - 8 });
       const rowH  = Math.max(ROW_MIN, Math.ceil(descH) + ROW_PAD);
 
@@ -368,10 +407,10 @@ export async function generarDocumentoPDFFactura(
         const isDesc = i === 0;
         // Descripción: alineada al tope y envolviendo; el resto centradas
         // verticalmente y resueltas en una sola línea.
-        const cellY = isDesc ? y + 5 : y + (rowH - 8.5) / 2;
+        const cellY = isDesc ? y + 5 : y + (rowH - FS_CELDA) / 2;
         doc.fillColor(DARK)
           .font(isBold ? 'Helvetica-Bold' : 'Helvetica')
-          .fontSize(8.5)
+          .fontSize(FS_CELDA)
           .text(cells[i], rx + 4, cellY, isDesc
             ? celdaQueEnvuelve(col.w - 8, col.align)
             : celdaSinEnvolver(col.w - 8, col.align, LINE_H));
@@ -400,10 +439,28 @@ export async function generarDocumentoPDFFactura(
     const totW = Math.round(W * 0.55);
     const totX = PR - totW;
 
+    // El descuento general va ENTRE el subtotal y el ITBIS, que es el orden en
+    // que se aplica y el mismo sitio que ocupa en la factura. Etiqueta igual que
+    // en factura.template.ts: si se pactó en %, se dice el %; si se pactó un
+    // importe c/ITBIS, se dice ese importe, que es el número que el cliente
+    // recuerda haber negociado.
+    const descGeneral = Number(d.descuentoTotal ?? 0);
+    const filaDescuento: Array<[string, string]> = descGeneral > 0
+      ? [[
+          d.descuentoGeneralTipo === 'porcentaje'
+            ? `(-) Descuento general (${d.descuentoGeneralValor}%)`
+            : (d.descuentoGeneralFinal ?? 0) > descGeneral
+              ? `(-) Descuento general (${fmtM(d.descuentoGeneralFinal!)} c/ITBIS)`
+              : '(-) Descuento general',
+          `-${fmtM(descGeneral)}`,
+        ]]
+      : [];
+
     const totals: Array<[string, string]> = [
       ['Subtotal Gravado',  fmtM(d.subtotalGravado)],
       ['Subtotal Exento',   fmtM(d.subtotalExento)],
       ['Subtotal General',  fmtM(d.subtotalGeneral)],
+      ...filaDescuento,
       ['ITBIS Total (18%)', fmtM(d.itbisTotal)],
     ];
 

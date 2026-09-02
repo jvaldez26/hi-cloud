@@ -167,6 +167,28 @@ const RUTAS = {
   '/admin/pagos-suscripcion/excedentes-ecf':          () => EXCEDENTES,
   '/admin/pagos-suscripcion/comprobantes-pendientes': () => [],
   '/admin/pagos-suscripcion/config-bancaria':         () => ({ banco: 'Popular', cuenta: '000', activo: true }),
+  // ── Lo mínimo para abrir un formulario de venta (cotización, factura…) ────
+  // Sin esto la ruta cae al `[]` de abajo y los selectores salen vacíos: la
+  // pantalla se ve, pero no se puede capturar con datos dentro.
+  '/clientes': () => ({
+    data: [
+      { id: 1, nombre: 'FERRETERÍA LA ECONÓMICA', rfc: '131234567', rncCompartido: false },
+      { id: 2, nombre: 'DISTRIBUIDORA DEL ESTE',  rfc: '130987654', rncCompartido: false },
+    ],
+    meta: { total: 2, page: 1, limit: 10, totalPages: 1 },
+  }),
+  '/productos': () => ({
+    data: [
+      { id: 1, codigo: 'ACE-10W40', nombre: 'Aceite REPSOL 10W40', precio: 950,  porcentajeIva: 18, unidadMedida: 'UN' },
+      { id: 2, codigo: 'FIL-17801', nombre: 'Filtro de aire 17801-23030', precio: 1250, porcentajeIva: 18, unidadMedida: 'UN' },
+      { id: 3, codigo: 'SRV-MO',    nombre: 'Mano de obra', precio: 3500, porcentajeIva: 18, unidadMedida: 'HR' },
+      { id: 4, codigo: 'LIB-001',   nombre: 'Manual técnico (exento)', precio: 800, porcentajeIva: 0, unidadMedida: 'UN' },
+    ],
+    meta: { total: 4, page: 1, limit: 5000, totalPages: 1 },
+  }),
+  '/vendedores': () => ({ data: [{ id: 7, codigo: 'V01', nombre: 'JUAN PÉREZ' }] }),
+  '/auth/mis-sucursales': () => ([{ id: 1, nombre: 'Sucursal Principal' }]),
+
   '/admin/pagos-suscripcion/resumen-cobros':          () => ([
     { empresaId: 44, nombre: 'Ventas Populares R&M', email: 'cliente@ejemplo.com',
       plan: 'plus', estadoSuscripcion: 'activa', modalidad: 'mensual', diaCorte: 5,

@@ -39,4 +39,21 @@ export class CotizacionDetalle extends BaseEntity {
 
   @Column({ type: 'decimal', precision: 12, scale: 2 })
   total!: number;
+
+  // ── Descuento por línea — mismo contrato que factura_detalles ─────────────
+  // Convención A (formulario): precioUnitario es BRUTO y descuentoMonto es el
+  // descuento TOTAL de la línea. Convención B (POS): precioOriginal presente,
+  // precioUnitario ya viene NETO y descuentoMonto es POR UNIDAD.
+  // Lo calcula common/calculo/descuento-documento.ts, igual que la factura: si
+  // aquí se calculara distinto, el total cambiaría al convertir.
+  @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
+  descuentoPct!: number;
+
+  /** Descuento en BASE IMPONIBLE. 4 decimales: sale de dividir entre 1 + ITBIS. */
+  @Column({ type: 'decimal', precision: 12, scale: 4, default: 0 })
+  descuentoMonto!: number;
+
+  /** Precio bruto por unidad antes del descuento. Presente ⇒ convención B. */
+  @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true })
+  precioOriginal?: number;
 }

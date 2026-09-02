@@ -12,6 +12,11 @@ import { TenantService } from '../tenant/tenant.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { FacturasService } from '../facturas/facturas.service';
 import { VendedorResolverService } from '../facturas/vendedor/vendedor-resolver.service';
+import {
+  calcularTotalesConDescuento,
+  validarInvarianteConvencionB,
+  type LineaDescuentoInput,
+} from '../common/calculo/descuento-documento';
 
 interface DetalleDto {
   productoId?: number;
@@ -20,6 +25,11 @@ interface DetalleDto {
   cantidad:      number;
   precioUnitario: number;
   porcentajeIva?: number;
+  // Descuento por línea — mismo contrato que factura y cotización
+  descuentoPct?:   number;
+  descuentoMonto?: number;
+  /** Presente ⇒ convención B (POS): precioUnitario ya viene neto */
+  precioOriginal?: number;
 }
 
 interface CreatePreFacturaDto {
@@ -30,6 +40,9 @@ interface CreatePreFacturaDto {
   notas?:             string;
   sucursalId?:        number;
   detalles:           DetalleDto[];
+  descuentoGeneralTipo?:  string;
+  descuentoGeneralValor?: number;
+  descuentoGeneralFinal?: number;
 }
 
 @Injectable()
@@ -57,20 +70,50 @@ export class PreFacturaService {
 
   // ─── Calcular totales ─────────────────────────────────────────────────────────
 
-  private calcularDetalles(detalles: DetalleDto[]) {
-    return detalles.map(d => {
-      const pctIva   = d.porcentajeIva ?? 18;
-      const subtotal = +(d.cantidad * d.precioUnitario).toFixed(2);
-      const iva      = +(subtotal * pctIva / 100).toFixed(2);
-      return {
-        ...d,
-        unidadMedida: d.unidadMedida ?? 'PZA',
-        porcentajeIva: pctIva,
-        subtotal,
-        iva,
-        total: +(subtotal + iva).toFixed(2),
+  /**
+   * Detalles y totales, con el MISMO cálculo que factura y cotización — ver
+   * common/calculo/descuento-documento.ts. Una pre-factura acaba siendo factura:
+   * si el descuento se calculara aquí aparte, el total cambiaría al convertirla.
+   */
+  private calcularDetalles(
+    detalles: DetalleDto[],
+    descuentoGeneral: { tipo?: string; valor?: number } = {},
+  ) {
+    const lineas: LineaDescuentoInput[] = detalles.map(d => {
+      const linea: LineaDescuentoInput = {
+        descripcion:    d.descripcion,
+        cantidad:       Number(d.cantidad),
+        precioUnitario: Number(d.precioUnitario),
+        precioOriginal: d.precioOriginal ?? null,
+        descuentoPct:   Number(d.descuentoPct   ?? 0),
+        descuentoMonto: Number(d.descuentoMonto ?? 0),
+        porcentajeIva:  d.porcentajeIva ?? 18,
       };
+      validarInvarianteConvencionB(linea);
+      return linea;
     });
+
+    const totales = calcularTotalesConDescuento(lineas, {
+      tipo:  descuentoGeneral.tipo,
+      valor: descuentoGeneral.valor,
+    });
+
+    return {
+      detalles: detalles.map((d, i) => ({
+        ...d,
+        unidadMedida:   d.unidadMedida ?? 'PZA',
+        porcentajeIva:  d.porcentajeIva ?? 18,
+        descuentoPct:   Number(d.descuentoPct   ?? 0),
+        descuentoMonto: Number(d.descuentoMonto ?? 0),
+        precioOriginal: d.precioOriginal ?? undefined,
+        subtotal: totales.lineas[i].subtotal,
+        iva:      totales.lineas[i].importeIva,
+        total:    totales.lineas[i].total,
+      })),
+      subtotal: totales.subtotal,
+      iva:      totales.iva,
+      total:    totales.total,
+    };
   }
 
   // ─── CRUD ─────────────────────────────────────────────────────────────────────
@@ -78,10 +121,10 @@ export class PreFacturaService {
   async crear(dto: CreatePreFacturaDto, usuarioId: number) {
     const empresaId = this.tenantSvc.getEmpresaId();
     const folio     = await this.generarFolio();
-    const detalles  = this.calcularDetalles(dto.detalles);
-
-    const subtotal = detalles.reduce((s, d) => s + d.subtotal, 0);
-    const iva      = detalles.reduce((s, d) => s + d.iva,      0);
+    const { detalles, subtotal, iva, total } = this.calcularDetalles(dto.detalles, {
+      tipo:  dto.descuentoGeneralTipo,
+      valor: dto.descuentoGeneralValor,
+    });
 
     // Guardar cabecera SIN cascade (cascade falla silenciosamente con @TenantScoped)
     const saved = await this.pfRepo.save(this.pfRepo.create({
@@ -94,9 +137,16 @@ export class PreFacturaService {
       tipoNcf:          dto.tipoNcf ?? 'E32',
       notas:            dto.notas,
       sucursalId:       dto.sucursalId,
-      subtotal:         +subtotal.toFixed(2),
-      iva:              +iva.toFixed(2),
-      total:            +(subtotal + iva).toFixed(2),
+      subtotal,
+      iva,
+      total,
+      descuentoGeneralTipo:  dto.descuentoGeneralTipo ?? undefined,
+      descuentoGeneralValor: Number(dto.descuentoGeneralValor ?? 0) > 0
+        ? dto.descuentoGeneralValor
+        : undefined,
+      descuentoGeneralFinal: Number(dto.descuentoGeneralFinal ?? 0) > 0
+        ? dto.descuentoGeneralFinal
+        : undefined,
     }));
 
     // Guardar detalles explícitamente con empresaId del tenant
@@ -176,9 +226,10 @@ export class PreFacturaService {
       const empresaId = this.tenantSvc.getEmpresaId();
       // Eliminar detalles viejos y guardar los nuevos explícitamente
       await this.pfDetRepo.delete({ preFacturaId: id });
-      const detalles = this.calcularDetalles(dto.detalles);
-      const subtotal = detalles.reduce((s, d) => s + d.subtotal, 0);
-      const iva      = detalles.reduce((s, d) => s + d.iva, 0);
+      const { detalles, subtotal, iva, total } = this.calcularDetalles(dto.detalles, {
+        tipo:  dto.descuentoGeneralTipo,
+        valor: dto.descuentoGeneralValor,
+      });
       // Actualizar cabecera sin detalles en cascade
       await this.pfRepo.update(id, {
         clienteId:        (dto as any).clienteId,
@@ -187,9 +238,17 @@ export class PreFacturaService {
         fechaVencimiento: (dto as any).fechaVencimiento,
         notas:            (dto as any).notas,
         vendedorId:       (dto as any).vendedorId,
-        subtotal: +subtotal.toFixed(2),
-        iva:      +iva.toFixed(2),
-        total:    +(subtotal + iva).toFixed(2),
+        subtotal,
+        iva,
+        total,
+        // Quitar el descuento al editar tiene que borrarlo, no dejarlo pegado
+        descuentoGeneralTipo:  dto.descuentoGeneralTipo ?? null,
+        descuentoGeneralValor: Number(dto.descuentoGeneralValor ?? 0) > 0
+          ? dto.descuentoGeneralValor
+          : null,
+        descuentoGeneralFinal: Number(dto.descuentoGeneralFinal ?? 0) > 0
+          ? dto.descuentoGeneralFinal
+          : null,
       } as any);
       // Guardar detalles explícitamente con empresaId
       await this.pfDetRepo.save(

@@ -6,6 +6,13 @@ export interface CotizacionDetallePayload {
   cantidad: number;
   precioUnitario: number;
   porcentajeIva?: number;
+  // Descuento por línea — mismo contrato que la factura, para que el total no
+  // cambie al convertir. Convención A (formulario): precioUnitario es BRUTO y
+  // descuentoMonto es el descuento TOTAL de la línea. Convención B (POS):
+  // precioOriginal presente, precioUnitario ya NETO, descuentoMonto POR UNIDAD.
+  descuentoPct?:    number;
+  descuentoMonto?:  number;
+  precioOriginal?:  number;
 }
 
 export interface CotizacionPayload {
@@ -17,6 +24,12 @@ export interface CotizacionPayload {
   notas?:          string;
   vendedorId?:     number;
   nombreVendedor?: string;
+  /** 'monto' = RD$ sobre el subtotal | 'porcentaje' = % sobre el subtotal */
+  descuentoGeneralTipo?:  'monto' | 'porcentaje';
+  /** Importe en BASE imponible, o el porcentaje */
+  descuentoGeneralValor?: number;
+  /** Importe pactado c/ITBIS — solo se imprime */
+  descuentoGeneralFinal?: number;
 }
 
 export const cotizacionesApi = {

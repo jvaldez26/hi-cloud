@@ -11004,33 +11004,39 @@ export default function POSPage() {
   // ── Mutación para modos alternativos (sin cobro) ────────────────────────────
   const modoAltMut = useMutation({
     mutationFn: async () => {
-      // El precio que se envía es la BASE IMPONIBLE NETA por unidad — la misma
-      // que ya se le enseñó al cliente en pantalla. Lleva dentro las tres cosas:
+      // El descuento se manda COMO DESCUENTO, no escondido dentro del precio.
       //
-      //   1. el descuento por ítem,
-      //   2. la conversión desde precio c/ITBIS cuando `posPrecioIncluyeItbis`,
-      //   3. la parte que le toca del descuento GLOBAL.
+      // Cotización, pro-forma y pre-factura ya tienen las mismas columnas que la
+      // factura (descuentoMonto / precioOriginal por línea, descuentoGeneral* en
+      // la cabecera) y las calcula el mismo helper. Así el cliente ve en el PDF
+      // el precio original, lo que se le rebajó y el neto — que es el sentido de
+      // hacer una concesión: que se note.
       //
-      // Cotización, pro-forma y pre-factura no tienen todavía columnas de
-      // descuento, y sus backends hacen `precio × cantidad + ITBIS` y nada más.
-      // Antes se enviaba `i.precio - i.descuentoMonto`: eso metía el descuento
-      // por ítem en el precio pero perdía los otros dos, así que el documento
-      // salía por MÁS de lo que la caja acababa de mostrar — la diferencia
-      // completa del descuento global. Sale de `lineasConDesc`, que es el mismo
-      // reparto proporcional que hace facturas.service.
+      // Convención B, igual que el camino de cobro: `precioOriginal` es el bruto
+      // por unidad, `precioUnitario` el neto, y `descuentoMonto` el descuento
+      // POR UNIDAD. El backend valida que precioOriginal − descuento = precio.
       //
-      // Mientras el descuento viaje dentro del precio el cliente no lo VE en el
-      // PDF; eso se arregla al darles sus propias columnas de descuento. Lo que
-      // esto cierra es que el importe esté mal.
-      const detalles = cart.map((i, idx) => {
-        const subtotFinal = lineasConDesc[idx]?.subtotFinal ?? 0;
-        const cant        = Number(i.cantidad) || 0;
+      // Todo va en BASE IMPONIBLE: si la empresa tiene posPrecioIncluyeItbis los
+      // precios del carrito llevan ITBIS dentro y hay que sacarlo, o el backend
+      // se lo sumaría por segunda vez.
+      const detalles = cart.map(i => {
+        const pct       = Number((i.produto as any).porcentajeIva ?? 0) / 100;
+        const aBase     = (v: number) =>
+          precioIncluyeItbis && pct > 0 ? v / (1 + pct) : v;
+        const brutoBase = round4(aBase(i.precio));
+        const descBase  = round4(aBase(i.descuentoMonto));
+        const netoBase  = round4(brutoBase - descBase);
+
         return {
           productoId:     i.produto.id > 0 ? i.produto.id : undefined,
           descripcion:    i.produto.nombre,
           cantidad:       i.cantidad,
-          // 4dp: el importe sale de una división y los DTO validan 4 decimales
-          precioUnitario: cant > 0 ? round4(subtotFinal / cant) : 0,
+          precioUnitario: netoBase,
+          // precioOriginal solo cuando hay descuento: es lo que activa la
+          // convención B en el backend
+          ...(descBase > 0
+            ? { precioOriginal: brutoBase, descuentoMonto: descBase }
+            : {}),
           // E44 (Zona Franca) no lleva ITBIS — igual que en el camino de cobro
           porcentajeIva:  tipoNcf === 'E44' ? 0 : Number((i.produto as any).porcentajeIva ?? 18),
         };
@@ -11042,6 +11048,16 @@ export default function POSPage() {
         vendedorId, nombreVendedor: vendedores.find((v: any) => v.id === vendedorId)?.nombre,
         sucursalId,
         notas: `POS · ${MODOS_FACTURACION.find(m => m.id === modoFacturacion)?.label}`,
+        // Descuento GLOBAL — mismo envío que el camino de cobro: siempre como
+        // 'monto' en BASE imponible (descGlobalMonto ya viene convertido desde
+        // los pesos finales que tecleó el cajero). Sin esto el documento vuelve
+        // a declarar un total mayor que el que se enseñó en pantalla.
+        ...(descGlobalMonto > 0 ? {
+          descuentoGeneralTipo:  'monto' as const,
+          descuentoGeneralValor: descGlobalMonto,
+          // lo pactado con el cliente (c/ITBIS) — es lo que se imprime
+          descuentoGeneralFinal: descGlobalFinal,
+        } : {}),
       };
 
       if (modoFacturacion === 'cotizacion') {

@@ -22,6 +22,11 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { User } from '../users/users.entity';
 import { FacturasService } from '../facturas/facturas.service';
 import { fechaYHoraRD } from '../common/utils/fecha-local.util';
+import {
+  calcularTotalesConDescuento,
+  validarInvarianteConvencionB,
+  type LineaDescuentoInput,
+} from '../common/calculo/descuento-documento';
 
 @Injectable()
 export class CotizacionesService {
@@ -53,6 +58,64 @@ export class CotizacionesService {
     );
   }
 
+  /**
+   * Líneas y totales de una cotización — vía única, la comparten create() y
+   * actualizar().
+   *
+   * Delega en `calcularTotalesConDescuento`, el mismo helper que usa
+   * facturas.service. Ahí viven las dos convenciones de descuento por línea (A
+   * del formulario, B del POS), el reparto proporcional del descuento general y
+   * el ITBIS sobre la base ya descontada.
+   *
+   * Que sea el MISMO código y no uno equivalente es el punto entero: una
+   * cotización se convierte en factura, y si cada uno calculara el dinero por su
+   * cuenta el total cambiaría al convertirla.
+   */
+  private calcularDetalles(dto: Pick<CreateCotizacionDto,
+    'detalles' | 'descuentoGeneralTipo' | 'descuentoGeneralValor'>) {
+    const lineas: LineaDescuentoInput[] = dto.detalles!.map(item => {
+      const linea: LineaDescuentoInput = {
+        descripcion:    item.descripcion,
+        cantidad:       item.cantidad,
+        precioUnitario: Number(item.precioUnitario),
+        precioOriginal: item.precioOriginal ?? null,
+        descuentoPct:   Number(item.descuentoPct   ?? 0),
+        descuentoMonto: Number(item.descuentoMonto ?? 0),
+        porcentajeIva:  item.porcentajeIva ?? 18,
+      };
+      // Dentro del bucle, igual que en facturas.service: si dos líneas fallan,
+      // el error que sale es el de la primera.
+      validarInvarianteConvencionB(linea);
+      return linea;
+    });
+
+    const totales = calcularTotalesConDescuento(lineas, {
+      tipo:  dto.descuentoGeneralTipo,
+      valor: dto.descuentoGeneralValor,
+    });
+
+    const detallesData: Partial<CotizacionDetalle>[] = dto.detalles!.map((item, i) => ({
+      productoId:     item.productoId,
+      descripcion:    item.descripcion,
+      precioUnitario: item.precioUnitario,
+      cantidad:       item.cantidad,
+      porcentajeIva:  item.porcentajeIva ?? 18,
+      descuentoPct:   Number(item.descuentoPct   ?? 0),
+      descuentoMonto: Number(item.descuentoMonto ?? 0),
+      precioOriginal: item.precioOriginal ?? undefined,
+      subtotal:       totales.lineas[i].subtotal,
+      importeIva:     totales.lineas[i].importeIva,
+      total:          totales.lineas[i].total,
+    }));
+
+    return {
+      detallesData,
+      subtotal: totales.subtotal,
+      iva:      totales.iva,
+      total:    totales.total,
+    };
+  }
+
   // ──────────────────────────────────────────────────────────────────
   // CRUD
   // ──────────────────────────────────────────────────────────────────
@@ -62,27 +125,10 @@ export class CotizacionesService {
     const fechaVencimiento = new Date(dto.fecha);
     fechaVencimiento.setDate(fechaVencimiento.getDate() + validez);
 
-    const detallesData: Partial<CotizacionDetalle>[] = [];
-    let subtotal = 0, iva = 0;
-
-    for (const item of dto.detalles) {
-      const pIva   = item.porcentajeIva ?? 18;
-      const sub    = Number(item.precioUnitario) * item.cantidad;
-      const impIva = Number((sub * pIva / 100).toFixed(2));
-      const total  = sub + impIva;
-      subtotal += sub; iva += impIva;
-
-      detallesData.push({
-        productoId:     item.productoId,
-        descripcion:    item.descripcion,
-        precioUnitario: item.precioUnitario,
-        cantidad:       item.cantidad,
-        porcentajeIva:  pIva,
-        subtotal:       sub,
-        importeIva:     impIva,
-        total,
-      });
-    }
+    // Descuentos e ITBIS: EXACTAMENTE el mismo cálculo que la factura. Si esto
+    // se calculara aquí por su cuenta, el total cambiaría al convertir la
+    // cotización en factura — ver common/calculo/descuento-documento.ts
+    const { detallesData, subtotal, iva, total } = this.calcularDetalles(dto);
 
     const numero     = await this.generarNumero();
     const sucursalId = await this.tenantService.resolveSucursalId((dto as any).sucursalId);
@@ -100,9 +146,16 @@ export class CotizacionesService {
         vendedorId:       (dto as any).vendedorId,
         nombreVendedor:   (dto as any).nombreVendedor,
         sucursalId,
-        subtotal:         Number(subtotal.toFixed(2)),
-        iva:              Number(iva.toFixed(2)),
-        total:            Number((subtotal + iva).toFixed(2)),
+        subtotal,
+        iva,
+        total,
+        descuentoGeneralTipo:  dto.descuentoGeneralTipo ?? undefined,
+        descuentoGeneralValor: Number(dto.descuentoGeneralValor ?? 0) > 0
+          ? dto.descuentoGeneralValor
+          : undefined,
+        descuentoGeneralFinal: Number(dto.descuentoGeneralFinal ?? 0) > 0
+          ? dto.descuentoGeneralFinal
+          : undefined,
       }),
     );
 
@@ -201,10 +254,18 @@ export class CotizacionesService {
         iva:        Number(cot.iva),
         total:      Number(cot.total),
         sucursalId: (cot as any).sucursalId ?? undefined,
+        // El descuento viaja con el documento. Sin esto la factura saldría por
+        // el subtotal ya rebajado pero sin decir por qué, y una nota de crédito
+        // o una reimpresión no podrían reconstruir lo que se pactó.
+        descuentoGeneralTipo:  cot.descuentoGeneralTipo  ?? undefined,
+        descuentoGeneralValor: cot.descuentoGeneralValor ?? undefined,
+        descuentoGeneralFinal: cot.descuentoGeneralFinal ?? undefined,
       }),
     );
 
-    // Copiar detalles
+    // Copiar detalles — importes incluidos, tal cual se aceptaron. No se
+    // recalculan: la cotización ya los calculó con el mismo helper que la
+    // factura, y recalcular aquí solo abriría la puerta a que difieran.
     await this.facturaDetalleRepository.save(
       this.facturaDetalleRepository.create(
         cot.detalles.map(d => ({
@@ -214,6 +275,9 @@ export class CotizacionesService {
           precioUnitario: Number(d.precioUnitario),
           cantidad:       d.cantidad,
           porcentajeIva:  Number(d.porcentajeIva),
+          descuentoPct:   Number(d.descuentoPct   ?? 0),
+          descuentoMonto: Number(d.descuentoMonto ?? 0),
+          precioOriginal: d.precioOriginal ?? undefined,
           subtotal:       Number(d.subtotal),
           importeIva:     Number(d.importeIva),
           total:          Number(d.total),
@@ -292,12 +356,19 @@ export class CotizacionesService {
         notas:            notasFactura,
         diasCredito:      diasCred || undefined,
         fechaVencimiento: vencimiento,
+        // Igual que en convertirAFactura(): el descuento acompaña al documento
+        descuentoGeneralTipo:  cot.descuentoGeneralTipo  ?? undefined,
+        descuentoGeneralValor: cot.descuentoGeneralValor ?? undefined,
+        descuentoGeneralFinal: cot.descuentoGeneralFinal ?? undefined,
         detalles:   cot.detalles.map(det => ({
           productoId:     det.productoId,
           descripcion:    det.descripcion,
           cantidad:       Math.round(Number(det.cantidad)),
           precioUnitario: Number(det.precioUnitario),
           porcentajeIva:  Number(det.porcentajeIva),
+          descuentoPct:   Number(det.descuentoPct   ?? 0),
+          descuentoMonto: Number(det.descuentoMonto ?? 0),
+          precioOriginal: det.precioOriginal ?? undefined,
           subtotal:       Number(det.subtotal),
           importeIva:     Number(det.importeIva),
           total:          Number(det.total),
@@ -391,22 +462,41 @@ export class CotizacionesService {
       cot.estado === 'rechazada'  ? 'red'    :
       cot.estado === 'vencida'    ? 'red'    : 'orange';
 
-    // Calcular subtotales gravado/exento
-    const items: DocumentoPDFItem[] = (cot.detalles || []).map(d => {
-      const itbisPct   = Number((d as any).porcentajeIva ?? 18);
-      const subtotal   = Number(d.precioUnitario) * Number(d.cantidad);
-      const importeItbis = Number((d as any).importeIva ?? subtotal * (itbisPct / 100));
-      return {
-        descripcion:    d.descripcion,
-        cantidad:       Number(d.cantidad),
-        unidadMedida:   (d as any).producto?.unidadMedida ?? 'UN',
-        precioUnitario: Number(d.precioUnitario),
-        itbisPct,
-        importeItbis,
-        subtotal,
-        total:          Number(d.total ?? subtotal + importeItbis),
-      };
+    // Las filas se muestran POST descuento de línea pero PRE descuento general,
+    // y el general aparece en su propia fila abajo — igual que en la factura
+    // (facturas/services/pdf.service.ts). Si se mostraran ya netas del general,
+    // restarlo otra vez en los totales descuadraría el papel.
+    const lineasPdf: LineaDescuentoInput[] = (cot.detalles || []).map(d => ({
+      descripcion:    d.descripcion,
+      cantidad:       Number(d.cantidad),
+      precioUnitario: Number(d.precioUnitario),
+      precioOriginal: d.precioOriginal ?? null,
+      descuentoPct:   Number(d.descuentoPct   ?? 0),
+      descuentoMonto: Number(d.descuentoMonto ?? 0),
+      porcentajeIva:  Number(d.porcentajeIva ?? 18),
+    }));
+
+    const preGeneral = calcularTotalesConDescuento(lineasPdf);
+    const conGeneral = calcularTotalesConDescuento(lineasPdf, {
+      tipo:  cot.descuentoGeneralTipo,
+      valor: cot.descuentoGeneralValor,
     });
+
+    const items: DocumentoPDFItem[] = (cot.detalles || []).map((d, i) => ({
+      descripcion:    d.descripcion,
+      cantidad:       Number(d.cantidad),
+      unidadMedida:   (d as any).producto?.unidadMedida ?? 'UN',
+      // Con descuento se enseña el precio de LISTA: el cliente tiene que ver de
+      // cuánto se partía, no solo lo que acabó pagando
+      precioUnitario: Number(d.precioUnitario),
+      precioOriginal: d.precioOriginal != null ? Number(d.precioOriginal) : undefined,
+      descuentoLinea: preGeneral.lineas[i].descuentoLinea,
+      descuentoPct:   Number(d.descuentoPct ?? 0),
+      itbisPct:       Number(d.porcentajeIva ?? 18),
+      importeItbis:   preGeneral.lineas[i].importeIva,
+      subtotal:       preGeneral.lineas[i].subtotal,
+      total:          preGeneral.lineas[i].total,
+    }));
 
     const subtotalGravado = items.filter(i => i.itbisPct > 0).reduce((s, i) => s + i.subtotal, 0);
     const subtotalExento  = items.filter(i => i.itbisPct === 0).reduce((s, i) => s + i.subtotal, 0);
@@ -448,6 +538,11 @@ export class CotizacionesService {
       subtotalGravado,
       subtotalExento,
       subtotalGeneral:   subtotalGravado + subtotalExento,
+      // El descuento general, en su propia fila entre el subtotal y el ITBIS
+      descuentoTotal:         conGeneral.descuentoGeneral,
+      descuentoGeneralTipo:   cot.descuentoGeneralTipo,
+      descuentoGeneralValor:  cot.descuentoGeneralValor != null ? Number(cot.descuentoGeneralValor) : undefined,
+      descuentoGeneralFinal:  cot.descuentoGeneralFinal != null ? Number(cot.descuentoGeneralFinal) : undefined,
       itbisTotal:        Number(cot.iva ?? 0),
       totalGeneral:      Number(cot.total ?? 0),
       notas:             cot.notas ?? undefined,
@@ -531,6 +626,11 @@ export class CotizacionesService {
         total:           original.total,
         notas:           original.notas,
         condicionesPago: original.condicionesPago,
+        // Duplicar sin el descuento dejaría los totales copiados sin la razón
+        // que los explica: el documento cuadraría solo por casualidad
+        descuentoGeneralTipo:  original.descuentoGeneralTipo  ?? undefined,
+        descuentoGeneralValor: original.descuentoGeneralValor ?? undefined,
+        descuentoGeneralFinal: original.descuentoGeneralFinal ?? undefined,
         userId,
       } as any) as any,
     ) as unknown as Cotizacion;
@@ -544,6 +644,9 @@ export class CotizacionesService {
           cantidad:      d.cantidad,
           precioUnitario:d.precioUnitario,
           porcentajeIva: d.porcentajeIva,
+          descuentoPct:   Number(d.descuentoPct   ?? 0),
+          descuentoMonto: Number(d.descuentoMonto ?? 0),
+          precioOriginal: d.precioOriginal ?? undefined,
           importeIva:    d.importeIva,
           subtotal:      d.subtotal,
           total:         d.total,
@@ -572,26 +675,31 @@ export class CotizacionesService {
 
     // Recalcular totales si vienen detalles nuevos
     if (dto.detalles?.length) {
-      let subtotal = 0, iva = 0;
-      const detallesNuevos: Partial<CotizacionDetalle>[] = dto.detalles.map(item => {
-        const pIva   = item.porcentajeIva ?? 18;
-        const sub    = Number(item.precioUnitario) * item.cantidad;
-        const impIva = Number((sub * pIva / 100).toFixed(2));
-        subtotal += sub; iva += impIva;
-        return { productoId: item.productoId, descripcion: item.descripcion,
-          precioUnitario: item.precioUnitario, cantidad: item.cantidad,
-          porcentajeIva: pIva, subtotal: sub, importeIva: impIva, total: sub + impIva };
+      // Mismo cálculo que create() — y que la factura
+      const { detallesData, subtotal, iva, total } = this.calcularDetalles({
+        detalles:              dto.detalles,
+        descuentoGeneralTipo:  dto.descuentoGeneralTipo,
+        descuentoGeneralValor: dto.descuentoGeneralValor,
       });
 
       await this.detalleRepository.delete({ cotizacionId: id });
       await this.detalleRepository.save(
-        detallesNuevos.map(d => ({ ...d, cotizacionId: id })) as any,
+        detallesData.map(d => ({ ...d, cotizacionId: id })) as any,
       );
       await this.cotizacionRepository.update(id, {
         clienteId:    dto.clienteId    ?? cot.clienteId,
-        subtotal:     Number(subtotal.toFixed(2)),
-        iva:          Number(iva.toFixed(2)),
-        total:        Number((subtotal + iva).toFixed(2)),
+        subtotal,
+        iva,
+        total,
+        // El descuento general se reemplaza por lo que venga en el DTO: si el
+        // usuario lo quita al editar, tiene que desaparecer, no quedarse pegado.
+        descuentoGeneralTipo:  dto.descuentoGeneralTipo ?? null,
+        descuentoGeneralValor: Number(dto.descuentoGeneralValor ?? 0) > 0
+          ? dto.descuentoGeneralValor
+          : null,
+        descuentoGeneralFinal: Number(dto.descuentoGeneralFinal ?? 0) > 0
+          ? dto.descuentoGeneralFinal
+          : null,
         notas:        dto.notas        ?? cot.notas,
         condicionesPago: dto.condicionesPago ?? cot.condicionesPago,
         ...(dto.fecha ? { fecha: new Date(dto.fecha), fechaVencimiento: (() => {

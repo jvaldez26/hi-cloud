@@ -76,4 +76,19 @@ export class PreFactura extends TenantBaseEntity {
 
   @Column({ type: 'text', nullable: true })
   motivoRechazo?: string;
+
+  // ── Descuento general ─────────────────────────────────────────────────────
+  // Mismo modelo que facturas: se reparte proporcionalmente entre las líneas y
+  // el ITBIS se recalcula sobre la base ya descontada.
+  /** 'monto' = RD$ fijo sobre subtotal | 'porcentaje' = % sobre subtotal */
+  @Column({ length: 10, nullable: true, default: null })
+  descuentoGeneralTipo?: string;
+
+  /** Importe RD$ en BASE IMPONIBLE, o el porcentaje. 4 decimales por la división. */
+  @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true, default: null })
+  descuentoGeneralValor?: number;
+
+  /** Importe FINAL pactado c/ITBIS. Solo para presentación; no entra en cálculos. */
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true, default: null })
+  descuentoGeneralFinal?: number;
 }

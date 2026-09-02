@@ -61,6 +61,26 @@ export class Cotizacion extends TenantBaseEntity {
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   total!: number;
 
+  // ── Descuento general ─────────────────────────────────────────────────────
+  // Copia exacta del bloque de facturas: mismo nombre, mismo tipo, misma
+  // semántica. Se reparte proporcionalmente entre las líneas y el ITBIS se
+  // recalcula sobre la base ya descontada.
+  /** 'monto' = RD$ fijo sobre subtotal | 'porcentaje' = % sobre subtotal */
+  @Column({ length: 10, nullable: true, default: null })
+  descuentoGeneralTipo?: string;
+
+  /** Importe RD$ en BASE IMPONIBLE, o el porcentaje. 4 decimales por la división. */
+  @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true, default: null })
+  descuentoGeneralValor?: number;
+
+  /**
+   * Importe FINAL pactado con el cliente (c/ITBIS). Solo para presentación:
+   * total + descuentoGeneralFinal = suma de las líneas mostradas c/ITBIS.
+   * No interviene en ningún cálculo.
+   */
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true, default: null })
+  descuentoGeneralFinal?: number;
+
   @Column({ length: 200, nullable: true })
   condicionesPago?: string;
 
