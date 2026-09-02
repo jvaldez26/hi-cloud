@@ -222,6 +222,40 @@ export class NotificacionesService {
     return rows.length;
   }
 
+  /**
+   * Aviso de consumo de e-CF: al 80% del plan y al superarlo.
+   *
+   * La idempotencia NO vive aquí sino en `ecf_consumo_ciclo` (una marca por
+   * ciclo y umbral, reclamada con un UPDATE condicional). Este método solo
+   * manda: quien llama ya se aseguró de que le toca. Si viviera aquí, la
+   * empresa que emite 300 comprobantes al día mandaría 300 correos.
+   */
+  async notificarCuotaEcf(
+    empresaId: number,
+    umbral: 80 | 100,
+    d: {
+      plan: string; emitidos: number; cupo: number; excedente: number;
+      porcentaje: number; cicloInicio: string; cicloFin: string;
+      precioExcedente: number;
+    },
+  ): Promise<void> {
+    const { asunto, html } = umbral === 100
+      ? Templates.ecfCuotaExcedida(d)
+      : Templates.ecfCuota80(d);
+
+    await this.enviarEmailsEmpresa(
+      empresaId,
+      umbral === 100 ? TipoNotificacion.ECF_CUOTA_EXCEDIDA : TipoNotificacion.ECF_CUOTA_80,
+      asunto,
+      html,
+      `cuota-ecf:${empresaId}:${d.cicloInicio}:${umbral}`,
+    );
+    this.logger.log(
+      `Aviso cuota e-CF ${umbral}% enviado a empresa ${empresaId} ` +
+      `(${d.emitidos}/${d.cupo}, ciclo ${d.cicloInicio})`,
+    );
+  }
+
   async enviarResumenDiario(empresaId: number): Promise<void> {
     const [cxcRows, cxpRows, stockRows] = await Promise.all([
       this.dataSource.query<{ cantidad: string; total: string }[]>(

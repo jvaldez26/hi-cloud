@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { PLANES, PlanTipo } from './entities/suscripcion.entity';
 import { Ciclo, cicloVigente, estaCerrado } from './ciclo-facturacion.util';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 
 export interface UsoCuotaEcf {
   /** e-CF emitidos en el ciclo, sin contar los de prueba. */
@@ -42,7 +43,10 @@ export interface UsoCuotaEcf {
 export class CuotaEcfService {
   private readonly logger = new Logger(CuotaEcfService.name);
 
-  constructor(private readonly ds: DataSource) {}
+  constructor(
+    private readonly ds: DataSource,
+    private readonly notificaciones: NotificacionesService,
+  ) {}
 
   /**
    * Plan y día de corte de una empresa.
@@ -117,31 +121,103 @@ export class CuotaEcfService {
     };
   }
 
+  /** El precio vigente del excedente. 0 = sin configurar, no gratis. */
+  async precioExcedente(): Promise<number> {
+    const [r] = await this.ds.query<{ p: string }[]>(
+      `SELECT "precioEcfExcedente" AS p FROM configuracion_cobros WHERE id = 1`,
+    );
+    return Number(r?.p ?? 0);
+  }
+
+  /**
+   * Reclama el derecho a mandar UN aviso, de forma atómica.
+   *
+   * Devuelve true solo al primero que llegue. La comprobación y la marca van en
+   * el mismo UPDATE a propósito: leer primero y escribir después deja una
+   * ventana en la que dos emisiones simultáneas ven la marca vacía y mandan las
+   * dos. No es teórico — la empresa que más factura emite ~300 comprobantes al
+   * día desde varias cajas a la vez.
+   *
+   * Se marca ANTES de enviar. Si el correo falla, se pierde un aviso; al revés,
+   * un fallo tras enviar reabriría la puerta a una tanda de correos repetidos.
+   * Perder un aviso es recuperable —viene el del 100%, y el panel lo enseña—;
+   * inundar al cliente no.
+   */
+  private async reclamarAviso(
+    empresaId: number,
+    ciclo: Ciclo,
+    umbral: 80 | 100,
+  ): Promise<boolean> {
+    await this.ds.query(
+      `INSERT INTO ecf_consumo_ciclo ("empresaId","cicloInicio","cicloFin")
+       VALUES ($1,$2,$3)
+       ON CONFLICT ("empresaId","cicloInicio") DO NOTHING`,
+      [empresaId, ciclo.inicio, ciclo.fin],
+    );
+
+    // Al reclamar el de 100 se da por servido también el de 80: mandar "vas por
+    // el 80%" DESPUÉS de "lo superaste" no tiene ningún sentido, y pasa cuando
+    // un ciclo cruza los dos umbrales de golpe o cambia el plan a la baja.
+    const sql = umbral === 100
+      ? `UPDATE ecf_consumo_ciclo
+            SET "aviso100EnviadoEn" = now(),
+                "aviso80EnviadoEn"  = COALESCE("aviso80EnviadoEn", now()),
+                "updatedAt"         = now()
+          WHERE "empresaId" = $1 AND "cicloInicio" = $2 AND "aviso100EnviadoEn" IS NULL
+          RETURNING id`
+      : `UPDATE ecf_consumo_ciclo
+            SET "aviso80EnviadoEn" = now(), "updatedAt" = now()
+          WHERE "empresaId" = $1 AND "cicloInicio" = $2 AND "aviso80EnviadoEn" IS NULL
+          RETURNING id`;
+
+    const filas = await this.ds.query<{ id: number }[]>(sql, [empresaId, ciclo.inicio]);
+    return filas.length > 0;
+  }
+
   /**
    * Se llama después de emitir un e-CF, fuera de la transacción fiscal y sin
    * esperar el resultado.
    *
-   * De momento solo mide y deja constancia en el log cuando se cruza un umbral.
-   * Los avisos al cliente (correo + banner, con su idempotencia por ciclo en
-   * `ecf_consumo_ciclo`) entran en el paso siguiente; separarlos permite
-   * comprobar en producción que este enganche corre y lo que cuesta, antes de
-   * colgarle el envío de correos.
+   * Por debajo del 80% no escribe NADA: el caso normal son dos SELECT y a otra
+   * cosa. La fila del ciclo solo nace cuando hay algo que recordar.
    */
   async revisarTrasEmision(empresaId: number): Promise<void> {
     const uso = await this.usoDelCiclo(empresaId);
-    if (uso.ilimitado) return;
+    if (uso.ilimitado || (!uso.alerta && !uso.excedida)) return;
 
-    if (uso.excedida) {
+    const umbral: 80 | 100 = uso.excedida ? 100 : 80;
+    if (!(await this.reclamarAviso(empresaId, uso.ciclo, umbral))) return;
+
+    if (umbral === 100) {
       this.logger.warn(
         `[cuota-ecf] empresa #${empresaId} EXCEDIÓ su plan ${uso.planNombre}: ` +
-        `${uso.emitidos}/${uso.cupo} (${uso.porcentaje}%), ${uso.excedente} excedente(s) ` +
+        `${uso.emitidos}/${uso.cupo}, ${uso.excedente} excedente(s) ` +
         `en el ciclo ${uso.ciclo.inicio}→${uso.ciclo.fin}`,
       );
-    } else if (uso.alerta) {
+    } else {
       this.logger.log(
         `[cuota-ecf] empresa #${empresaId} al ${uso.porcentaje}% de su plan ` +
-        `${uso.planNombre}: ${uso.emitidos}/${uso.cupo} en el ciclo ` +
-        `${uso.ciclo.inicio}→${uso.ciclo.fin}`,
+        `${uso.planNombre}: ${uso.emitidos}/${uso.cupo} en el ciclo ${uso.ciclo.inicio}`,
+      );
+    }
+
+    // El aviso ya está reclamado: si el correo falla, se registra y se sigue.
+    // Nunca puede propagar hacia el camino de emisión.
+    try {
+      await this.notificaciones.notificarCuotaEcf(empresaId, umbral, {
+        plan:            uso.planNombre,
+        emitidos:        uso.emitidos,
+        cupo:            uso.cupo,
+        excedente:       uso.excedente,
+        porcentaje:      uso.porcentaje,
+        cicloInicio:     uso.ciclo.inicio,
+        cicloFin:        uso.ciclo.fin,
+        precioExcedente: await this.precioExcedente(),
+      });
+    } catch (err) {
+      this.logger.error(
+        `[cuota-ecf] aviso ${umbral}% de empresa #${empresaId} quedó marcado pero NO se envió: ` +
+        `${(err as Error).message}`,
       );
     }
   }

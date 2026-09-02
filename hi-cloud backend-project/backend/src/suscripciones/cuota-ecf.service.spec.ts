@@ -9,8 +9,18 @@ function montar(opts: {
   diaCorte?: number;
   estado?: string;
   emitidos?: number;
+  precio?: number;
+  /** Marcas ya puestas en ecf_consumo_ciclo: simula un aviso ya mandado. */
+  aviso80Puesto?: boolean;
+  aviso100Puesto?: boolean;
+  /** El envío del correo revienta. */
+  emailRoto?: boolean;
 }) {
   const consultas: { sql: string; params: any[] }[] = [];
+  const avisos: { umbral: number; d: any }[] = [];
+  // Estado del UPDATE condicional, para que la segunda llamada no reclame.
+  const puesto = { 80: !!opts.aviso80Puesto, 100: !!opts.aviso100Puesto };
+
   const ds: any = {
     query: async (sql: string, params: any[]) => {
       consultas.push({ sql, params });
@@ -19,10 +29,27 @@ function montar(opts: {
           ? []
           : [{ plan: opts.plan ?? 'plus', diaCorte: opts.diaCorte ?? 5, estado: opts.estado ?? 'activa' }];
       }
+      if (sql.includes('FROM configuracion_cobros')) return [{ p: String(opts.precio ?? 0) }];
+      if (sql.includes('INSERT INTO ecf_consumo_ciclo')) return [];
+      if (sql.includes('UPDATE ecf_consumo_ciclo')) {
+        const umbral = sql.includes('aviso100EnviadoEn" = now()') ? 100 : 80;
+        if (puesto[umbral]) return [];          // ya reclamado: 0 filas
+        puesto[umbral] = true;
+        if (umbral === 100) puesto[80] = true;  // el de 100 da por servido el de 80
+        return [{ id: 1 }];
+      }
       return [{ n: opts.emitidos ?? 0 }];
     },
   };
-  return { svc: new CuotaEcfService(ds), consultas };
+
+  const notificaciones: any = {
+    notificarCuotaEcf: async (_e: number, umbral: number, d: any) => {
+      if (opts.emailRoto) throw new Error('SMTP caído');
+      avisos.push({ umbral, d });
+    },
+  };
+
+  return { svc: new CuotaEcfService(ds, notificaciones), consultas, avisos };
 }
 
 const conteo = (c: { sql: string }[]) => c.find(x => x.sql.includes('FROM ecf'))!;
@@ -132,5 +159,119 @@ describe('revisarTrasEmision — nunca bloquea', () => {
   it('sale sin consultar nada si el plan no tiene tope', async () => {
     const { svc } = montar({ plan: null, emitidos: 10 });
     await expect(svc.revisarTrasEmision(44)).resolves.toBeUndefined();
+  });
+
+  it('si el correo revienta, la revisión termina en silencio', async () => {
+    const { svc } = montar({ emitidos: 5_000, emailRoto: true });
+    await expect(svc.revisarTrasEmision(44)).resolves.toBeUndefined();
+  });
+});
+
+describe('avisos — cuándo se manda y cuántas veces', () => {
+  it('por debajo del 80% no avisa NI escribe la fila del ciclo', async () => {
+    const { svc, avisos, consultas } = montar({ emitidos: 4_000 });   // 67%
+    await svc.revisarTrasEmision(44);
+    expect(avisos).toHaveLength(0);
+    // El caso normal son dos SELECT: la fila del ciclo solo nace cuando hay
+    // algo que recordar. Si esto se rompe, la empresa que emite 300 al día
+    // hace 300 escrituras diarias para nada.
+    expect(consultas.some(c => /INSERT|UPDATE/.test(c.sql))).toBe(false);
+  });
+
+  it('al 80% manda el aviso de 80', async () => {
+    const { svc, avisos } = montar({ emitidos: 4_800 });
+    await svc.revisarTrasEmision(44);
+    expect(avisos).toHaveLength(1);
+    expect(avisos[0].umbral).toBe(80);
+  });
+
+  it('al pasarse manda el de excedida, con el excedente y el precio vigente', async () => {
+    const { svc, avisos } = montar({ emitidos: 6_412, precio: 3 });
+    await svc.revisarTrasEmision(44);
+    expect(avisos).toHaveLength(1);
+    expect(avisos[0].umbral).toBe(100);
+    expect(avisos[0].d).toMatchObject({ excedente: 412, cupo: 6000, precioExcedente: 3 });
+  });
+
+  it('DOS EMISIONES SEGUIDAS NO MANDAN DOS CORREOS', async () => {
+    // Lo que pasaría sin la reclamación atómica: 300 emisiones al día en la
+    // empresa 44 son 300 correos.
+    const { svc, avisos } = montar({ emitidos: 4_800 });
+    await svc.revisarTrasEmision(44);
+    await svc.revisarTrasEmision(44);
+    await svc.revisarTrasEmision(44);
+    expect(avisos).toHaveLength(1);
+  });
+
+  it('la reclamación es UNA sentencia: nunca se lee la marca para escribirla después', async () => {
+    // Este es el invariante de verdad, y el único que un mock puede fijar. Con
+    // un SELECT previo hay una ventana entre leer y marcar en la que dos cajas
+    // ven la marca vacía y mandan las dos; con el UPDATE ... WHERE ... IS NULL
+    // el candado lo pone PostgreSQL sobre la fila.
+    const { svc, consultas } = montar({ emitidos: 4_800 });
+    await svc.revisarTrasEmision(44);
+    const lecturasDeMarca = consultas.filter(c =>
+      /^\s*SELECT/i.test(c.sql.trim()) && c.sql.includes('ecf_consumo_ciclo'));
+    expect(lecturasDeMarca).toHaveLength(0);
+    expect(consultas.filter(c => c.sql.includes('UPDATE ecf_consumo_ciclo'))).toHaveLength(1);
+  });
+
+  it('dos emisiones SIMULTÁNEAS tampoco', async () => {
+    const { svc, avisos } = montar({ emitidos: 6_100 });
+    await Promise.all([
+      svc.revisarTrasEmision(44), svc.revisarTrasEmision(44), svc.revisarTrasEmision(44),
+    ]);
+    expect(avisos).toHaveLength(1);
+  });
+
+  it('el de 80 no se manda después del de excedida', async () => {
+    // Un ciclo que cruza los dos umbrales de golpe: "vas por el 80%" detrás de
+    // "lo superaste" no tiene sentido.
+    const { svc, avisos } = montar({ emitidos: 6_500 });
+    await svc.revisarTrasEmision(44);       // manda el de 100 y da por servido el de 80
+    expect(avisos.map(a => a.umbral)).toEqual([100]);
+  });
+
+  it('tras avisar al 80, pasarse manda además el de excedida', async () => {
+    const { svc, avisos } = montar({ emitidos: 6_412, aviso80Puesto: true });
+    await svc.revisarTrasEmision(44);
+    expect(avisos.map(a => a.umbral)).toEqual([100]);
+  });
+
+  it('con el aviso ya marcado no se repite aunque siga emitiendo', async () => {
+    const { svc, avisos } = montar({ emitidos: 6_412, aviso80Puesto: true, aviso100Puesto: true });
+    await svc.revisarTrasEmision(44);
+    expect(avisos).toHaveLength(0);
+  });
+
+  it('la marca se pone ANTES de enviar: un correo fallido no reabre la puerta', async () => {
+    const { svc, consultas } = montar({ emitidos: 5_000, emailRoto: true });
+    await svc.revisarTrasEmision(44);
+    const iUpdate = consultas.findIndex(c => c.sql.includes('UPDATE ecf_consumo_ciclo'));
+    const iPrecio = consultas.findIndex(c => c.sql.includes('configuracion_cobros'));
+    expect(iUpdate).toBeGreaterThanOrEqual(0);
+    expect(iUpdate).toBeLessThan(iPrecio);   // se marcó antes de armar el correo
+  });
+
+  it('el aviso lleva el ciclo real de la empresa, no el mes', async () => {
+    const { svc, avisos } = montar({ emitidos: 4_800, diaCorte: 22 });
+    await svc.revisarTrasEmision(44);
+    expect(avisos[0].d.cicloInicio.slice(-2)).toBe('22');
+    expect(avisos[0].d.cicloFin.slice(-2)).toBe('22');
+  });
+});
+
+describe('precio del excedente', () => {
+  it('0 significa sin configurar y viaja tal cual al aviso', async () => {
+    const { svc, avisos } = montar({ emitidos: 6_412 });
+    await svc.revisarTrasEmision(44);
+    expect(avisos[0].d.precioExcedente).toBe(0);
+  });
+
+  it('se lee de configuracion_cobros en cada aviso, no se cachea', async () => {
+    const { svc, consultas } = montar({ emitidos: 6_412, precio: 4.5 });
+    await svc.revisarTrasEmision(44);
+    expect(consultas.filter(c => c.sql.includes('configuracion_cobros'))).toHaveLength(1);
+    expect(await svc.precioExcedente()).toBe(4.5);
   });
 });

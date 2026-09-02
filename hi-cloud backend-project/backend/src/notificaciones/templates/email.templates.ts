@@ -27,6 +27,36 @@ const base = (titulo: string, cuerpo: string) => `<!DOCTYPE html>
 </div></body></html>`;
 import { fechaTextoRD } from '../../common/utils/fecha-local.util';
 
+/**
+ * 'YYYY-MM-DD' → 'DD/MM/YYYY', partiendo el texto y sin pasar por Date.
+ *
+ * `new Date('2026-08-05')` se interpreta como medianoche UTC, que en RD (UTC-4)
+ * es el día 4 a las 8 de la noche: la fecha saldría con un día de menos. Es la
+ * misma trampa que documenta `fecha-local.util.ts`, y aquí no hay nada que
+ * convertir — la cadena ya es una fecha de calendario.
+ */
+const fechaDO = (iso: string): string => {
+  const [a, m, d] = iso.slice(0, 10).split('-');
+  return `${d}/${m}/${a}`;
+};
+
+/**
+ * El último día que SÍ pertenece al ciclo.
+ *
+ * `cicloFin` es exclusivo —es el primer día del ciclo siguiente— porque así el
+ * borde no cuenta dos veces el mismo comprobante. Pero al cliente hay que
+ * enseñarle el rango que es suyo: un ciclo que va del 5 de agosto al 5 de
+ * septiembre le está atribuyendo un día que ya se le cuenta en el siguiente.
+ *
+ * Se resta con Date.UTC y se lee en UTC, así que no hay zona horaria de por
+ * medio en ninguno de los dos extremos.
+ */
+const finInclusivoDO = (iso: string): string => {
+  const [a, m, d] = iso.slice(0, 10).split('-').map(Number);
+  const t = new Date(Date.UTC(a, m - 1, d) - 86_400_000);
+  return fechaDO(t.toISOString().slice(0, 10));
+};
+
 export const Templates = {
 
   cxcVencida: (items: { folio: string; cliente: string; total: number; diasVencido: number }[]) => ({
@@ -97,6 +127,82 @@ export const Templates = {
          }).join('')}
        </table>
        <div class="alerta">⚠️ Solicita nueva autorización de secuencias en la DGII antes de que se agoten para evitar interrupciones en la facturación electrónica.</div>`,
+    ),
+  }),
+
+  /**
+   * Va por el 80% de los e-CF incluidos en su plan.
+   *
+   * Se avisa al 80% y no al 95% como el límite de ingresos, porque aquel avisa
+   * antes de BLOQUEAR y este no bloquea nada. Y porque en volumen alto el
+   * margen engaña: quien emite 300 e-CF al día se come el último 5% en una
+   * jornada. Al 80% todavía quedan un par de semanas para decidir.
+   */
+  ecfCuota80: (d: {
+    plan: string; emitidos: number; cupo: number; porcentaje: number;
+    cicloInicio: string; cicloFin: string; precioExcedente: number;
+  }) => ({
+    asunto: `📈 Vas por el ${d.porcentaje}% de los comprobantes de tu plan ${d.plan}`,
+    html: base(
+      `Consumo de comprobantes electrónicos`,
+      `<p>En tu ciclo actual llevas <strong>${d.emitidos.toLocaleString('es-DO')}</strong> de los
+        <strong>${d.cupo.toLocaleString('es-DO')}</strong> comprobantes electrónicos incluidos en tu
+        plan <strong>${d.plan}</strong>.</p>
+       <table class="tabla">
+         <tr><th>Ciclo</th><th>Emitidos</th><th>Incluidos</th><th>Consumo</th></tr>
+         <tr>
+           <td>${fechaDO(d.cicloInicio)} al ${finInclusivoDO(d.cicloFin)}</td>
+           <td>${d.emitidos.toLocaleString('es-DO')}</td>
+           <td>${d.cupo.toLocaleString('es-DO')}</td>
+           <td><span class="badge badge-warn">${d.porcentaje}%</span></td>
+         </tr>
+       </table>
+       <div class="alerta">
+         ✅ <strong>Puedes seguir facturando con normalidad.</strong> Este aviso es solo informativo:
+         al superar los comprobantes incluidos no se bloquea nada, el excedente simplemente se
+         factura aparte${d.precioExcedente > 0
+           ? ` a RD$${d.precioExcedente.toLocaleString('es-DO', { minimumFractionDigits: 2 })} por comprobante`
+           : ''}.
+       </div>
+       <p style="font-size:13px;color:#6b7280">Si prevés un mes fuerte y prefieres un plan con más
+        comprobantes incluidos, escríbenos y lo ajustamos antes de que cierre el ciclo.</p>`,
+    ),
+  }),
+
+  /**
+   * Pasó los comprobantes incluidos. Este SÍ lleva el precio: si el cliente se
+   * entera del precio cuando le llega el cargo, el cargo se discute.
+   */
+  ecfCuotaExcedida: (d: {
+    plan: string; emitidos: number; cupo: number; excedente: number;
+    cicloInicio: string; cicloFin: string; precioExcedente: number;
+  }) => ({
+    asunto: `📄 Superaste los comprobantes incluidos en tu plan ${d.plan}`,
+    html: base(
+      `Comprobantes por encima de tu plan`,
+      `<p>En tu ciclo actual has emitido <strong>${d.emitidos.toLocaleString('es-DO')}</strong>
+        comprobantes electrónicos, por encima de los <strong>${d.cupo.toLocaleString('es-DO')}</strong>
+        que incluye tu plan <strong>${d.plan}</strong>.</p>
+       <table class="tabla">
+         <tr><th>Ciclo</th><th>Emitidos</th><th>Incluidos</th><th>Excedente</th></tr>
+         <tr>
+           <td>${fechaDO(d.cicloInicio)} al ${finInclusivoDO(d.cicloFin)}</td>
+           <td>${d.emitidos.toLocaleString('es-DO')}</td>
+           <td>${d.cupo.toLocaleString('es-DO')}</td>
+           <td><span class="badge badge-danger">${d.excedente.toLocaleString('es-DO')}</span></td>
+         </tr>
+       </table>
+       <div class="alerta">
+         ✅ <strong>Tu facturación no se detiene.</strong> Puedes seguir emitiendo sin límite.
+         ${d.precioExcedente > 0
+           ? `Los comprobantes por encima de tu plan se facturan a
+              <strong>RD$${d.precioExcedente.toLocaleString('es-DO', { minimumFractionDigits: 2 })}</strong>
+              cada uno y aparecerán en tu próxima factura de suscripción.`
+           : `Los comprobantes por encima de tu plan se facturan aparte; te contactaremos para
+              coordinarlo.`}
+       </div>
+       <p style="font-size:13px;color:#6b7280">Si este ritmo se va a mantener, puede salirte más a
+        cuenta un plan con más comprobantes incluidos. Escríbenos y lo revisamos contigo.</p>`,
     ),
   }),
 

@@ -13,6 +13,10 @@ export enum TipoNotificacion {
   CXP_POR_VENCER       = 'cxp_por_vencer',
   STOCK_BAJO           = 'stock_bajo',
   ECF_SECUENCIA_VENCE  = 'ecf_secuencia_vence',
+  /** Va por el 80% de los e-CF incluidos en su plan. */
+  ECF_CUOTA_80         = 'ecf_cuota_80',
+  /** Pasó los e-CF incluidos: desde aquí el exceso se factura aparte. */
+  ECF_CUOTA_EXCEDIDA   = 'ecf_cuota_excedida',
   NOMINA_PENDIENTE     = 'nomina_pendiente',
   MANUAL               = 'manual',
 }
