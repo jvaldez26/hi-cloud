@@ -582,6 +582,35 @@ mensaje peor que el de `tsc`. Y un spec que nadie ejecuta no lo revisa nada.
 **Arreglo:** un `tsconfig.spec.json` que los incluya, o sacarlos del `exclude` y apuntar
 eslint ahí. Ojo: al incluirlos aparecerán errores de tipos que hoy están escondidos.
 
+### Los precios de `factura_detalles` están en 2 decimales y el POS envía 4 — sin arreglar
+
+`factura_detalles.precioUnitario` y `precioOriginal` son `NUMERIC(12,2)`. El POS envía las dos
+cosas con **4 decimales** (`POSPage.tsx`: `parseFloat((i.precio - i.descuentoMonto).toFixed(4))`,
+y `precioOriginal` igual), y el DTO las acepta con 4. Al guardar se redondean a 2.
+
+Consecuencia: **el dato guardado no es el que entró al cálculo.** Los importes de la factura
+son correctos —se calcularon con los 4 decimales—, pero ya no se pueden reproducir leyendo la
+fila. Se descubrió el 2026-09-02 al montar la prueba de caracterización de
+`common/calculo/descuento-documento.ts`: cuatro facturas (FAC-139, FAC-143 y FAC-147 del
+11-ago, FAC-769 del 23-ago) no cuadraban por **un centavo** al recalcularlas desde la base, y
+con el valor de 4dp original cuadran exactas.
+
+Lo incoherente es que las otras dos columnas de la misma aritmética **ya están en 4dp a
+propósito**: `factura_detalles.descuentoMonto` y `facturas.descuentoGeneralValor` son
+`NUMERIC(12,4)`, precisamente porque el importe sale de dividir entre `1 + ITBIS` lo que tecleó
+el cajero (`10 / 1.18 = 8.4746`). El precio sobre el que se aplica ese descuento se guarda con
+menos precisión que el descuento mismo.
+
+Hoy son cuatro facturas y un centavo, y no hay nada que corregir en ellas —están emitidas y
+declaradas, y nada las recalcula: la reimpresión lee los importes de la base—. Pero es una
+pérdida de precisión **estructural** en columnas de dinero, no un caso raro: le pasa a toda
+factura del POS cuyo precio no caiga justo en dos decimales.
+
+**Arreglo:** migrar las dos columnas a `NUMERIC(12,4)`, como ya lo son las de descuento.
+**No hacerlo de pasada** — es un `ALTER` sobre las columnas de dinero de facturas ya emitidas,
+y toca revisar de paso qué otras lecturas asumen 2 decimales (plantillas de PDF, e-CF, 606).
+Merece su propio momento y su propia verificación.
+
 ### ~~PATCH de mensajes~~ — ✅ cerrado (2026-08-25)
 `544b5c82` agregó `tipo` al `UpdateMensajeDto` y el PATCH dejó de devolver 400, pero el `UPDATE`
 del servicio nunca escribía la columna: respondía 200 y no hacía nada, en silencio. El DTO y el
