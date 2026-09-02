@@ -76,6 +76,25 @@ export interface ConfiguracionBancaria {
   rnc:          string | null;
 }
 
+/**
+ * Un ciclo CERRADO con excedente de e-CF sin cobrar.
+ *
+ * Todas las cifras las calcula el servidor. El panel las pinta; no recalcula
+ * nada, y el botón solo devuelve el ciclo.
+ */
+export interface ExcedenteEcf {
+  empresaId:  number;
+  empresa:    string;
+  plan:       string;
+  planNombre: string;
+  ciclo:      { inicio: string; fin: string };
+  emitidos:   number;
+  cupo:       number;
+  excedente:  number;
+  precioUnitario: number;
+  monto:      number;
+}
+
 export interface ResumenCobros {
   empresaId:              number;
   nombre:                 string;
@@ -154,6 +173,24 @@ export const pagosAdminApi = {
       const raw = unwrap<any>(r);
       return Array.isArray(raw) ? raw : [];
     }),
+
+  /** Ciclos cerrados con excedente de e-CF que todavía no se han cobrado */
+  excedentesEcf: (): Promise<ExcedenteEcf[]> =>
+    apiClient.get(`${ADMIN}/excedentes-ecf`).then(r => {
+      const raw = unwrap<any>(r);
+      return Array.isArray(raw) ? raw : [];
+    }),
+
+  /**
+   * Genera el cargo por el excedente de un ciclo.
+   *
+   * Se manda SOLO el ciclo. El monto no viaja: el servidor recuenta los
+   * comprobantes y relee el precio al cobrar. Mismo criterio que el preview de
+   * pago — el cliente no calcula dinero, muestra lo que llega.
+   */
+  cargoExcedenteEcf: (empresaId: number, cicloInicio: string) =>
+    apiClient.post(`${ADMIN}/empresa/${empresaId}/cargo-excedente-ecf`, { cicloInicio })
+      .then(r => unwrap<any>(r)),
 
   /** Comprobantes de transferencia pendientes de confirmación */
   comprobantesPendientes: (): Promise<PagoSuscripcion[]> =>

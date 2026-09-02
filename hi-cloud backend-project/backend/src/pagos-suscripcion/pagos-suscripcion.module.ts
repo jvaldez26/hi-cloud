@@ -11,6 +11,7 @@ import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 import { TenantModule }         from '../tenant/tenant.module';
 import { S3Module }             from '../common/s3/s3.module';
 import { SuperAdminModule }     from '../super-admin/super-admin.module';
+import { SuscripcionesModule }  from '../suscripciones/suscripciones.module';
 
 @Module({
   imports: [
@@ -19,6 +20,10 @@ import { SuperAdminModule }     from '../super-admin/super-admin.module';
     TenantModule,
     S3Module,
     SuperAdminModule,
+    // Para CuotaEcfService: el cargo por excedente recuenta los comprobantes y
+    // relee el precio en el momento de cobrar. Sin ciclo — SuscripcionesModule
+    // no importa este.
+    SuscripcionesModule,
   ],
   controllers: [PagosSuscripcionController, PagosSuscripcionAdminController],
   providers:   [PagosSuscripcionService],

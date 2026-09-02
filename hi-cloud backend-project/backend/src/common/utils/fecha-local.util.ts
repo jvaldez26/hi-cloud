@@ -28,6 +28,23 @@ export function mesHoyRD(): string {
 }
 
 /**
+ * 'YYYY-MM-DD' → 'DD/MM/YYYY', partiendo el texto y sin pasar por Date.
+ *
+ * Para fechas de CALENDARIO que ya vienen como cadena: un ciclo de facturación,
+ * un vencimiento, una fecha de corte. No hay nada que convertir, así que
+ * convertirlas es justamente donde se pierde el día: `new Date('2026-08-05')`
+ * es medianoche UTC, que en RD es el día 4 a las 8 de la noche.
+ *
+ * Para un Date de verdad, usar `fechaTextoRD`.
+ *
+ * @example fechaISOaDO('2026-08-05') // '05/08/2026'
+ */
+export function fechaISOaDO(iso: string): string {
+  const [a, m, d] = iso.slice(0, 10).split('-');
+  return `${d}/${m}/${a}`;
+}
+
+/**
  * Fecha y hora para MOSTRARLE a un dominicano: '22/8/2026, 9:14:00 a. m.'
  *
  * El locale 'es-DO' elige el FORMATO, no la zona horaria: `toLocaleString('es-DO')`

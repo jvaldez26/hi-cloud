@@ -1,8 +1,36 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import {
+  Injectable, Logger, NotFoundException, BadRequestException, ConflictException,
+} from '@nestjs/common';
+import { DataSource, EntityManager } from 'typeorm';
 import { PLANES, PlanTipo } from './entities/suscripcion.entity';
-import { Ciclo, cicloVigente, estaCerrado } from './ciclo-facturacion.util';
+import { Ciclo, cicloVigente, ciclosRecientes, estaCerrado } from './ciclo-facturacion.util';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
+
+/** Una fila del panel de excedentes. */
+export interface ExcedentePendiente {
+  empresaId:  number;
+  empresa:    string;
+  plan:       PlanTipo;
+  planNombre: string;
+  ciclo:      Ciclo;
+  emitidos:   number;
+  cupo:       number;
+  excedente:  number;
+  precioUnitario: number;
+  monto:      number;
+}
+
+/** Las cifras autoritativas con las que se genera un cargo. */
+export interface DatosCargo {
+  ciclo:      Ciclo;
+  plan:       PlanTipo;
+  planNombre: string;
+  emitidos:   number;
+  cupo:       number;
+  excedente:  number;
+  precioUnitario: number;
+  monto:      number;
+}
 
 export interface UsoCuotaEcf {
   /** e-CF emitidos en el ciclo, sin contar los de prueba. */
@@ -119,6 +147,209 @@ export class CuotaEcfService {
       plan:         plan,
       planNombre:   cfg?.nombre ?? '—',
     };
+  }
+
+  // ── Panel de excedentes ────────────────────────────────────────────────────
+
+  /**
+   * Ciclos CERRADOS con excedente que todavía no se han cobrado.
+   *
+   * Tres filtros, los tres deliberados:
+   *
+   *  · **Cerrados.** Un ciclo en curso todavía puede sumar comprobantes; un
+   *    cargo emitido a mitad de período quedaría corto en cuanto el cliente
+   *    facture otra vez.
+   *  · **Suscripción activa.** Una empresa en prueba o suspendida que revienta
+   *    su cupo es una conversación de ventas, no un cargo.
+   *  · **Sin cargo.** La fila con `cargoId` puesto es el recibo: si existe, ese
+   *    ciclo ya se cobró y no vuelve a aparecer.
+   *
+   * Se miran los últimos 6 ciclos de cada empresa. Cubre a quien lleve medio
+   * año sin cobrar y evita recorrer el histórico entero cada vez que se abre el
+   * panel.
+   */
+  async excedentesPendientes(): Promise<ExcedentePendiente[]> {
+    const empresas = await this.ds.query<{
+      empresaId: number; nombre: string; plan: PlanTipo; diaCorte: number;
+    }[]>(
+      `SELECT e.id AS "empresaId", e.nombre, s.plan, COALESCE(s."diaCorte", 1) AS "diaCorte"
+         FROM empresa e
+         JOIN suscripciones s ON s."empresaId" = e.id
+        WHERE e."isActive" = true AND s.estado = 'activa'
+        ORDER BY e.id`,
+    );
+
+    const precio = await this.precioExcedente();
+    const salida: ExcedentePendiente[] = [];
+
+    for (const emp of empresas) {
+      const cfg  = PLANES[emp.plan];
+      const cupo = cfg?.limiteEcfMensual ?? -1;
+      if (cupo === -1) continue;
+
+      for (const ciclo of ciclosRecientes(Number(emp.diaCorte), 6)) {
+        if (!estaCerrado(ciclo)) continue;
+
+        const emitidos  = await this.contarEmitidos(emp.empresaId, ciclo);
+        const excedente = emitidos - cupo;
+        if (excedente <= 0) continue;
+
+        const [fila] = await this.ds.query<{ cargoId: number | null }[]>(
+          `SELECT "cargoId" FROM ecf_consumo_ciclo
+            WHERE "empresaId" = $1 AND "cicloInicio" = $2::date`,
+          [emp.empresaId, ciclo.inicio],
+        );
+        if (fila?.cargoId) continue;   // ya cobrado
+
+        salida.push({
+          empresaId:  emp.empresaId,
+          empresa:    emp.nombre,
+          plan:       emp.plan,
+          planNombre: cfg.nombre,
+          ciclo,
+          emitidos,
+          cupo,
+          excedente,
+          precioUnitario: precio,
+          monto: +(excedente * precio).toFixed(2),
+        });
+      }
+    }
+
+    // Lo más caro primero: es lo que el super admin quiere mirar antes.
+    return salida.sort((a, b) => b.monto - a.monto || b.excedente - a.excedente);
+  }
+
+  /**
+   * Recuenta un ciclo concreto y devuelve las cifras con las que se cobraría.
+   *
+   * La usa el endpoint del cargo: el monto NUNCA llega en el body. El que
+   * teclea es el super admin y el que paga es otro, así que el servidor
+   * recuenta los comprobantes y relee el precio en el mismo momento de cobrar.
+   * Mismo criterio que el preview de pago: el cliente no calcula dinero.
+   *
+   * Lanza si el ciclo no se puede cobrar, con el motivo exacto.
+   */
+  async datosParaCargo(empresaId: number, cicloInicio: string): Promise<DatosCargo> {
+    const [sus] = await this.ds.query<{ plan: PlanTipo; diaCorte: number; estado: string }[]>(
+      `SELECT plan, COALESCE("diaCorte", 1) AS "diaCorte", estado
+         FROM suscripciones WHERE "empresaId" = $1`,
+      [empresaId],
+    );
+    if (!sus) throw new NotFoundException(`La empresa #${empresaId} no tiene suscripción.`);
+    if (sus.estado !== 'activa') {
+      throw new BadRequestException(
+        `La suscripción de la empresa #${empresaId} está en "${sus.estado}". ` +
+        `Solo se cobran excedentes de suscripciones activas.`,
+      );
+    }
+
+    const cfg  = PLANES[sus.plan];
+    const cupo = cfg?.limiteEcfMensual ?? -1;
+    if (cupo === -1) {
+      throw new BadRequestException(`El plan ${sus.plan} no tiene cupo de e-CF.`);
+    }
+
+    // El ciclo se REDERIVA del diaCorte, no se acepta tal cual del cliente: así
+    // un `cicloInicio` inventado no puede colar un período que no existe.
+    const ciclo = ciclosRecientes(Number(sus.diaCorte), 12)
+      .find(c => c.inicio === cicloInicio);
+    if (!ciclo) {
+      throw new BadRequestException(
+        `El ciclo que empieza el ${cicloInicio} no corresponde al día de corte ` +
+        `${sus.diaCorte} de esta empresa.`,
+      );
+    }
+    if (!estaCerrado(ciclo)) {
+      throw new BadRequestException(
+        `El ciclo ${ciclo.inicio} sigue abierto (cierra el ${ciclo.fin}). ` +
+        `Todavía puede sumar comprobantes: no se cobra hasta que cierre.`,
+      );
+    }
+
+    const [yaCobrado] = await this.ds.query<{ cargoId: number | null }[]>(
+      `SELECT "cargoId" FROM ecf_consumo_ciclo
+        WHERE "empresaId" = $1 AND "cicloInicio" = $2::date`,
+      [empresaId, ciclo.inicio],
+    );
+    if (yaCobrado?.cargoId) {
+      throw new BadRequestException(
+        `Ese ciclo ya se cobró con el cargo #${yaCobrado.cargoId}.`,
+      );
+    }
+
+    const emitidos  = await this.contarEmitidos(empresaId, ciclo);
+    const excedente = emitidos - cupo;
+    if (excedente <= 0) {
+      throw new BadRequestException(
+        `La empresa emitió ${emitidos} de ${cupo} comprobantes en ese ciclo: ` +
+        `no se pasó, no hay nada que cobrar.`,
+      );
+    }
+
+    const precioUnitario = await this.precioExcedente();
+    if (precioUnitario <= 0) {
+      throw new BadRequestException(
+        'El precio del excedente de e-CF está sin configurar. ' +
+        'Ponlo en Super Admin → Planes y Precios antes de generar cargos.',
+      );
+    }
+
+    return {
+      ciclo, plan: sus.plan, planNombre: cfg.nombre,
+      emitidos, cupo, excedente, precioUnitario,
+      monto: +(excedente * precioUnitario).toFixed(2),
+    };
+  }
+
+  /**
+   * Sella la fila del ciclo como cobrada. Va DENTRO de la transacción del cargo.
+   *
+   * El `UPDATE` exige `cargoId IS NULL`: si dos pulsaciones llegan a la vez,
+   * solo una sella y la otra se encuentra 0 filas y revienta la transacción
+   * entera —cargo incluido—. Es la misma guarda que la de los avisos, y se lee
+   * igual: envuelta en un CTE, porque `query()` sobre un UPDATE devuelve
+   * `[filas, rowCount]` y contar su longitud da siempre 2.
+   */
+  async sellarCargo(
+    manager: EntityManager,
+    empresaId: number,
+    d: DatosCargo,
+    cargoId: number,
+    adminId: number | null,
+  ): Promise<void> {
+    await manager.query(
+      `INSERT INTO ecf_consumo_ciclo ("empresaId","cicloInicio","cicloFin")
+       VALUES ($1,$2::date,$3::date)
+       ON CONFLICT ("empresaId","cicloInicio") DO NOTHING`,
+      [empresaId, d.ciclo.inicio, d.ciclo.fin],
+    );
+
+    const [sello] = await manager.query<{ n: number }[]>(
+      `WITH sellado AS (
+         UPDATE ecf_consumo_ciclo
+            SET "planCobrado"      = $3,
+                "cupoCobrado"      = $4,
+                "emitidosCobrados" = $5,
+                "precioUnitario"   = $6,
+                "monto"            = $7,
+                "cargoId"          = $8,
+                "cobradoEn"        = now(),
+                "cobradoPor"       = $9,
+                "updatedAt"        = now()
+          WHERE "empresaId" = $1 AND "cicloInicio" = $2::date AND "cargoId" IS NULL
+        RETURNING id
+       )
+       SELECT COUNT(*)::int AS n FROM sellado`,
+      [empresaId, d.ciclo.inicio, d.plan, d.cupo, d.emitidos,
+       d.precioUnitario, d.monto, cargoId, adminId],
+    );
+
+    if (Number(sello?.n ?? 0) === 0) {
+      throw new ConflictException(
+        'Ese ciclo se cobró mientras se generaba este cargo. No se duplica.',
+      );
+    }
   }
 
   /** El precio vigente del excedente. 0 = sin configurar, no gratis. */

@@ -2,7 +2,7 @@
 import {
   Table, Card, Row, Col, Typography, Tag, Button, Space,
   Modal, Form, Input, InputNumber, Select, message, Popconfirm,
-  Tabs, Badge, Descriptions, Image, Statistic,
+  Tabs, Badge, Descriptions, Image, Statistic, Alert,
 } from 'antd';
 import {
   CheckOutlined, CloseOutlined, DollarOutlined,
@@ -10,7 +10,9 @@ import {
   BankOutlined, SettingOutlined, EyeOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { pagosAdminApi, PagoSuscripcion, PreviewPago, ResumenCobros } from '../../api/pagos.api';
+import {
+  pagosAdminApi, PagoSuscripcion, PreviewPago, ResumenCobros, ExcedenteEcf,
+} from '../../api/pagos.api';
 import { fmtDop } from '../../utils/fmt';
 import { ahora, diasHasta, fecha } from '../../utils/fechaRD';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
@@ -97,6 +99,96 @@ export default function CobrosPage() {
     queryFn:  pagosAdminApi.resumenCobros,
   });
   const resumen: ResumenCobros[] = Array.isArray(resumenRaw) ? resumenRaw : [];
+
+  // ── Excedentes de e-CF ────────────────────────────────────────────────────
+  const { data: excedentesRaw, isLoading: loadExc } = useQuery({
+    queryKey: ['sa-excedentes-ecf'],
+    queryFn:  pagosAdminApi.excedentesEcf,
+    staleTime: 30_000,
+  });
+  const excedentes: ExcedenteEcf[] = Array.isArray(excedentesRaw) ? excedentesRaw : [];
+
+  const cargoExcMut = useMutation({
+    mutationFn: ({ empresaId, cicloInicio }: { empresaId: number; cicloInicio: string }) =>
+      pagosAdminApi.cargoExcedenteEcf(empresaId, cicloInicio),
+    onSuccess: (res: any) => {
+      qc.invalidateQueries({ queryKey: ['sa-excedentes-ecf'] });
+      qc.invalidateQueries({ queryKey: ['sa-resumen-cobros'] });
+      qc.invalidateQueries({ queryKey: ['sa-pagos'] });
+      const d = res?.detalle;
+      message.success(
+        d ? `Cargo generado: ${d.excedente} excedentes × ${fmtDop(d.precioUnitario)} = ${fmtDop(d.monto)}`
+          : 'Cargo generado',
+      );
+    },
+    onError: (e: any) =>
+      message.error(e?.response?.data?.message ?? 'No se pudo generar el cargo'),
+  });
+
+  /** dd/mm/aaaa a partir de 'YYYY-MM-DD', sin pasar por Date (pierde el día). */
+  const fechaCiclo = (iso: string) => iso.slice(0, 10).split('-').reverse().join('/');
+  /** El último día que SÍ es del ciclo: `fin` es exclusivo. */
+  const finInclusivo = (fin: string) => {
+    const [a, m, d] = fin.slice(0, 10).split('-').map(Number);
+    return fechaCiclo(new Date(Date.UTC(a, m - 1, d) - 86_400_000).toISOString().slice(0, 10));
+  };
+
+  const colsExcedentes = [
+    { title: 'Empresa', dataIndex: 'empresa', key: 'empresa',
+      render: (v: string, r: ExcedenteEcf) => (
+        <div>
+          <div style={{ fontWeight: 600 }}>{v}</div>
+          <div style={{ fontSize: 11, color: '#9ca3af' }}>Plan {r.planNombre}</div>
+        </div>
+      ) },
+    { title: 'Ciclo', key: 'ciclo',
+      render: (_: any, r: ExcedenteEcf) =>
+        <span style={{ whiteSpace: 'nowrap' }}>
+          {fechaCiclo(r.ciclo.inicio)} al {finInclusivo(r.ciclo.fin)}
+        </span> },
+    { title: 'Emitidos', dataIndex: 'emitidos', key: 'emitidos', align: 'right' as const,
+      render: (v: number) => v.toLocaleString('es-DO') },
+    { title: 'Incluidos', dataIndex: 'cupo', key: 'cupo', align: 'right' as const,
+      render: (v: number) => v.toLocaleString('es-DO') },
+    { title: 'Excedente', dataIndex: 'excedente', key: 'excedente', align: 'right' as const,
+      render: (v: number) => <Tag color="red">{v.toLocaleString('es-DO')}</Tag> },
+    { title: 'Precio', dataIndex: 'precioUnitario', key: 'precio', align: 'right' as const,
+      render: (v: number) => v > 0
+        ? <span style={{ whiteSpace: 'nowrap' }}>{fmtDop(v)}</span>
+        : <Tag color="orange">Sin configurar</Tag> },
+    { title: 'Total', dataIndex: 'monto', key: 'monto', align: 'right' as const,
+      render: (v: number) => <strong style={{ whiteSpace: 'nowrap' }}>{fmtDop(v)}</strong> },
+    { title: '', key: 'accion', align: 'right' as const,
+      render: (_: any, r: ExcedenteEcf) => (
+        <Popconfirm
+          title="Generar el cargo"
+          description={
+            <div style={{ maxWidth: 320, fontSize: 13 }}>
+              Se añadirá un cargo a la cuenta de <strong>{r.empresa}</strong> por el
+              excedente del ciclo {fechaCiclo(r.ciclo.inicio)} al {finInclusivo(r.ciclo.fin)}.
+              <div style={{ marginTop: 6, color: '#6b7280' }}>
+                El servidor volverá a contar los comprobantes y a leer el precio al
+                generarlo, así que el total puede variar respecto al de la tabla.
+              </div>
+            </div>
+          }
+          okText="Generar cargo"
+          cancelText="Cancelar"
+          disabled={r.precioUnitario <= 0}
+          onConfirm={() => cargoExcMut.mutate({
+            empresaId: r.empresaId, cicloInicio: r.ciclo.inicio,
+          })}
+        >
+          <Button
+            type="primary" size="small"
+            disabled={r.precioUnitario <= 0}
+            loading={cargoExcMut.isPending}
+          >
+            Generar cargo
+          </Button>
+        </Popconfirm>
+      ) },
+  ];
 
   const { data: pendientesRaw, isLoading: loadPend } = useQuery({
     queryKey: ['comprobantes-pendientes'],
@@ -554,6 +646,51 @@ export default function CobrosPage() {
                   pagination={{ pageSize: 10 }}
                   scroll={{ x: 'max-content' }}
                 />
+              </Card>
+            ),
+          },
+          {
+            key: 'excedentes',
+            label: (
+              <Badge count={excedentes.length} offset={[8, 0]}>
+                Excedentes de e-CF
+              </Badge>
+            ),
+            children: (
+              <Card>
+                {excedentes.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>
+                    ✅ Ningún ciclo cerrado con excedente pendiente de cobro
+                  </div>
+                ) : (
+                  <>
+                    {/* Sin precio no se puede cobrar nada, y hay que decirlo
+                        antes de que alguien pulse y se lleve un error. */}
+                    {excedentes.some(e => e.precioUnitario <= 0) && (
+                      <Alert
+                        type="warning" showIcon
+                        style={{ marginBottom: 12 }}
+                        message="El precio del excedente está sin configurar"
+                        description="Ponlo en Super Admin → Planes y Precios. Hasta entonces no se puede generar ningún cargo."
+                      />
+                    )}
+                    <Alert
+                      type="info" showIcon
+                      style={{ marginBottom: 12 }}
+                      message="Solo ciclos ya cerrados, y nada se cobra solo."
+                      description="El cargo lo generas tú. Al pulsar, el servidor vuelve a contar los comprobantes y relee el precio: lo que se cobra es lo que salga en ese momento, no lo que muestra esta tabla."
+                    />
+                    <Table
+                      columns={colsExcedentes as any}
+                      dataSource={excedentes}
+                      rowKey={r => `${r.empresaId}:${r.ciclo.inicio}`}
+                      loading={loadExc}
+                      size="small"
+                      pagination={{ pageSize: 10 }}
+                      scroll={{ x: 'max-content' }}
+                    />
+                  </>
+                )}
               </Card>
             ),
           },

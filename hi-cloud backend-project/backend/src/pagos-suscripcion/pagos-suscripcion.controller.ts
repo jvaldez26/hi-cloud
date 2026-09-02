@@ -11,6 +11,22 @@ import { GetUser }         from '../auth/decorators/get-user.decorator';
 import { SuperAdminGuard } from '../super-admin/super-admin.guard';
 import { SuperAdminService } from '../super-admin/super-admin.service';
 import { PagosSuscripcionService } from './pagos-suscripcion.service';
+import { CuotaEcfService } from '../suscripciones/cuota-ecf.service';
+import { IsString, Matches } from 'class-validator';
+
+/**
+ * Lo único que el cliente elige del cargo por excedente: QUÉ ciclo.
+ *
+ * Ni monto, ni excedente, ni precio. Todo eso lo recuenta el servidor al
+ * generar el cargo — ver `generarCargoExcedenteEcf`. Y el propio `cicloInicio`
+ * se rederiva del día de corte de la empresa, así que una fecha inventada no
+ * cuela un período que no existe.
+ */
+class CargoExcedenteEcfDto {
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'cicloInicio debe ser YYYY-MM-DD' })
+  cicloInicio!: string;
+}
 import {
   RegistrarPagoDto, ConfirmarPagoDto, RechazarPagoDto,
   AgregarCargoDto, AplicarCreditoDto,
@@ -82,6 +98,7 @@ export class PagosSuscripcionAdminController {
   constructor(
     private svc: PagosSuscripcionService,
     private superAdminSvc: SuperAdminService,
+    private cuotaEcf: CuotaEcfService,
   ) {}
 
   /** GET /admin/pagos-suscripcion — todos los pagos (filtrable por estado) */
@@ -142,6 +159,31 @@ export class PagosSuscripcionAdminController {
     @GetUser('id') adminId: number,
   ) {
     return this.svc.agregarCargo(id, dto, adminId);
+  }
+
+  /**
+   * GET /admin/pagos-suscripcion/excedentes-ecf
+   * Ciclos cerrados con excedente que todavía no se han cobrado.
+   */
+  @Get('excedentes-ecf')
+  excedentesEcf() {
+    return this.cuotaEcf.excedentesPendientes();
+  }
+
+  /**
+   * POST /admin/pagos-suscripcion/empresa/:id/cargo-excedente-ecf
+   *
+   * El body lleva SOLO el ciclo. El monto no viaja: el servidor recuenta los
+   * comprobantes y relee el precio al generar el cargo. El que pulsa es el
+   * super admin y el que paga es otro.
+   */
+  @Post('empresa/:id/cargo-excedente-ecf')
+  cargoExcedenteEcf(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CargoExcedenteEcfDto,
+    @GetUser('id') adminId: number,
+  ) {
+    return this.svc.generarCargoExcedenteEcf(id, dto.cicloInicio, adminId);
   }
 
   /** POST /admin/pagos-suscripcion/empresa/:id/credito */

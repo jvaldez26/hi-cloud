@@ -122,3 +122,19 @@ export function ultimoCicloCerrado(diaCorte: number, hoy: string = fechaHoyRD())
 export function estaCerrado(ciclo: Ciclo, hoy: string = fechaHoyRD()): boolean {
   return hoy.slice(0, 10) >= ciclo.fin;
 }
+
+/**
+ * El último día que SÍ pertenece al ciclo, en 'YYYY-MM-DD'.
+ *
+ * `fin` es exclusivo —es el primer día del siguiente— porque así el borde no
+ * cuenta dos veces el mismo comprobante. Pero todo lo que ve una persona (el
+ * correo del aviso, el concepto del cargo, el panel) tiene que enseñar el rango
+ * que es suyo: un ciclo "del 5 de agosto al 5 de septiembre" le atribuye un día
+ * que ya se le cuenta en el siguiente, y sobre un cargo eso es una discusión.
+ *
+ * Se resta con Date.UTC y se lee en UTC: sin zona horaria de por medio.
+ */
+export function finInclusivo(fin: string): string {
+  const [a, m, d] = fin.slice(0, 10).split('-').map(Number);
+  return new Date(Date.UTC(a, m - 1, d) - 86_400_000).toISOString().slice(0, 10);
+}

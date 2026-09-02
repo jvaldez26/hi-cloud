@@ -6,7 +6,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, EntityManager } from 'typeorm';
 import { Cron } from '@nestjs/schedule';
 import { S3Service }           from '../common/s3/s3.service';
 import { EmailService }        from '../notificaciones/services/email.service';
@@ -17,7 +17,9 @@ import {
   RegistrarPagoDto, ConfirmarPagoDto, RechazarPagoDto,
   AgregarCargoDto, AplicarCreditoDto, UpdateConfiguracionBancariaDto,
 } from './dto/pagos-suscripcion.dto';
-import { fechaTextoRD } from '../common/utils/fecha-local.util';
+import { fechaTextoRD, fechaISOaDO } from '../common/utils/fecha-local.util';
+import { finInclusivo } from '../suscripciones/ciclo-facturacion.util';
+import { CuotaEcfService } from '../suscripciones/cuota-ecf.service';
 import {
   calcularPreviewPago, fechaDeVencimiento, PreviewPago,
 } from './preview-pago.util';
@@ -36,6 +38,7 @@ export class PagosSuscripcionService {
     private s3:         S3Service,
     private emailSvc:   EmailService,
     private tenantSvc:  TenantService,
+    private cuotaEcf:   CuotaEcfService,
   ) {}
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -530,8 +533,19 @@ export class PagosSuscripcionService {
     return { ok: true };
   }
 
-  async agregarCargo(empresaId: number, dto: AgregarCargoDto, adminId: number) {
-    const pago = this.pagoRepo.create({
+  /**
+   * Crea un CARGO en la cuenta de una empresa.
+   *
+   * `manager` permite crearlo DENTRO de una transacción ajena, que es lo que
+   * necesita el cargo por excedente de e-CF: el cargo y el sello del ciclo
+   * tienen que ir juntos o no ir. Sin él habría que duplicar este INSERT, y
+   * entonces habría dos sitios creando cargos que se separarían con el tiempo.
+   */
+  async agregarCargo(
+    empresaId: number, dto: AgregarCargoDto, adminId: number, manager?: EntityManager,
+  ) {
+    const repo = manager ? manager.getRepository(PagoSuscripcion) : this.pagoRepo;
+    const pago = repo.create({
       empresaId,
       tipo:          TipoPago.CARGO,
       concepto:      dto.concepto,
@@ -542,7 +556,47 @@ export class PagosSuscripcionService {
       confirmadoPor: adminId,
       confirmadoEn:  new Date(),
     });
-    return this.pagoRepo.save(pago);
+    return repo.save(pago);
+  }
+
+  /**
+   * Genera el cargo por el excedente de e-CF de un ciclo cerrado.
+   *
+   * Del cliente solo llega la empresa y el ciclo. El monto NO viaja en el body:
+   * el servidor recuenta los comprobantes y relee el precio aquí mismo. El que
+   * pulsa es el super admin y el que paga es otro; un monto que llegue de fuera
+   * es un monto que alguien pudo teclear mal o manipular.
+   *
+   * Todo en UNA transacción: si el sello del ciclo falla, el cargo no queda. Un
+   * cargo sin su recibo es un cobro que nadie sabe explicar, y uno duplicado es
+   * el error caro de este módulo.
+   */
+  async generarCargoExcedenteEcf(empresaId: number, cicloInicio: string, adminId: number) {
+    // Valida y recuenta ANTES de abrir la transacción: si el ciclo no se puede
+    // cobrar, se sale con el motivo exacto sin haber tocado nada.
+    const d = await this.cuotaEcf.datosParaCargo(empresaId, cicloInicio);
+
+    const concepto =
+      `Excedente de e-CF — ciclo ${fechaISOaDO(d.ciclo.inicio)} al ${fechaISOaDO(finInclusivo(d.ciclo.fin))}\n` +
+      `${d.emitidos.toLocaleString('es-DO')} emitidos, cupo ${d.planNombre} ` +
+      `${d.cupo.toLocaleString('es-DO')} → ${d.excedente.toLocaleString('es-DO')} excedentes ` +
+      `× RD$${d.precioUnitario.toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
+
+    const pago = await this.ds.transaction(async (manager) => {
+      const creado = await this.agregarCargo(
+        empresaId, { concepto, monto: d.monto }, adminId, manager,
+      );
+      await this.cuotaEcf.sellarCargo(manager, empresaId, d, creado.id, adminId);
+      return creado;
+    });
+
+    this.logger.warn(
+      `[cuota-ecf] cargo #${pago.id} por excedente: empresa #${empresaId}, ` +
+      `ciclo ${d.ciclo.inicio}, ${d.excedente} × RD$${d.precioUnitario} = RD$${d.monto} ` +
+      `(super admin #${adminId})`,
+    );
+
+    return { ...pago, detalle: d };
   }
 
   async aplicarCredito(empresaId: number, dto: AplicarCreditoDto, adminId: number) {

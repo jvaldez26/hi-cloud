@@ -25,37 +25,12 @@ const base = (titulo: string, cuerpo: string) => `<!DOCTYPE html>
   <div class="body">${cuerpo}</div>
   <div class="footer">Este es un mensaje automático del sistema HiCloud ERP. No responder.</div>
 </div></body></html>`;
-import { fechaTextoRD } from '../../common/utils/fecha-local.util';
+import { fechaTextoRD, fechaISOaDO } from '../../common/utils/fecha-local.util';
+import { finInclusivo } from '../../suscripciones/ciclo-facturacion.util';
 
-/**
- * 'YYYY-MM-DD' → 'DD/MM/YYYY', partiendo el texto y sin pasar por Date.
- *
- * `new Date('2026-08-05')` se interpreta como medianoche UTC, que en RD (UTC-4)
- * es el día 4 a las 8 de la noche: la fecha saldría con un día de menos. Es la
- * misma trampa que documenta `fecha-local.util.ts`, y aquí no hay nada que
- * convertir — la cadena ya es una fecha de calendario.
- */
-const fechaDO = (iso: string): string => {
-  const [a, m, d] = iso.slice(0, 10).split('-');
-  return `${d}/${m}/${a}`;
-};
-
-/**
- * El último día que SÍ pertenece al ciclo.
- *
- * `cicloFin` es exclusivo —es el primer día del ciclo siguiente— porque así el
- * borde no cuenta dos veces el mismo comprobante. Pero al cliente hay que
- * enseñarle el rango que es suyo: un ciclo que va del 5 de agosto al 5 de
- * septiembre le está atribuyendo un día que ya se le cuenta en el siguiente.
- *
- * Se resta con Date.UTC y se lee en UTC, así que no hay zona horaria de por
- * medio en ninguno de los dos extremos.
- */
-const finInclusivoDO = (iso: string): string => {
-  const [a, m, d] = iso.slice(0, 10).split('-').map(Number);
-  const t = new Date(Date.UTC(a, m - 1, d) - 86_400_000);
-  return fechaDO(t.toISOString().slice(0, 10));
-};
+/** Alias locales: el ciclo se pinta igual aquí que en el concepto del cargo. */
+const fechaDO        = (iso: string) => fechaISOaDO(iso);
+const finInclusivoDO = (iso: string) => fechaISOaDO(finInclusivo(iso));
 
 export const Templates = {
 
