@@ -1,5 +1,5 @@
 import { Button, Progress } from 'antd';
-import { AlertTriangle, Zap, Crown, X } from 'lucide-react';
+import { AlertTriangle, Zap, Crown, X, FileText } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
@@ -176,6 +176,66 @@ export default function PlanBanner() {
           style={{ borderColor: '#D97706', color: '#92400E' }}>
           Actualizar plan
         </Button>
+      </div>
+    );
+  }
+
+  // ── Cuota de comprobantes electrónicos ────────────────────────────────────
+  //
+  // Va DESPUÉS de los límites bloqueantes a propósito: si a alguien le frenan
+  // la facturación por ingresos o por usuarios, eso es lo urgente y este aviso
+  // sobra. Y nunca se pinta en rojo ni dice "límite alcanzado", porque este
+  // límite NO bloquea: el excedente se factura aparte y la caja sigue abierta.
+  // Un banner rojo hace que un cajero llame asustado por algo que no le impide
+  // vender.
+  const ecf = (limites as any)?.ecf;
+  if (ecf && !ecf.ilimitado && (ecf.excedida || ecf.alerta)) {
+    const excedida = ecf.excedida === true;
+    return (
+      <div style={{
+        background:   excedida ? '#FFFBEB' : '#EFF6FF',
+        borderBottom: `2px solid ${excedida ? '#F59E0B' : '#3B82F6'}`,
+        padding: '10px 20px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <FileText size={16} color={excedida ? '#D97706' : '#3B82F6'} />
+          <span style={{ color: excedida ? '#92400E' : '#1E40AF', fontSize: 13 }}>
+            {excedida ? (
+              <>
+                Llevas <strong>{ecf.emitidos.toLocaleString('es-DO')}</strong> comprobantes
+                electrónicos de los <strong>{ecf.cupo.toLocaleString('es-DO')}</strong> que
+                incluye tu plan. <strong>Puedes seguir facturando</strong>: el excedente se
+                factura aparte.
+              </>
+            ) : (
+              <>
+                Vas por el <strong>{ecf.porcentaje}%</strong> de los comprobantes electrónicos
+                de tu plan ({ecf.emitidos.toLocaleString('es-DO')} de {ecf.cupo.toLocaleString('es-DO')}).
+                No se bloquea nada.
+              </>
+            )}
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Button size="small" onClick={() => navigate('/suscripcion/planes')}
+            style={excedida
+              ? { borderColor: '#D97706', color: '#92400E' }
+              : { borderColor: '#3B82F6', color: '#1E40AF' }}>
+            Ver planes
+          </Button>
+          <button
+            onClick={() => cerrarBanner()}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer', padding: 4,
+              display: 'flex', alignItems: 'center',
+              color: excedida ? '#92400E' : '#1E40AF', opacity: 0.6,
+            }}
+            title="Cerrar"
+          >
+            <X size={14} />
+          </button>
+        </div>
       </div>
     );
   }

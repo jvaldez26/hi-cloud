@@ -60,6 +60,20 @@ function parseArgs(argv) {
 }
 
 // ── Ciclos ──────────────────────────────────────────────────────────────────
+//
+// Esto es una RÉPLICA de `src/suscripciones/ciclo-facturacion.util.ts`, y la
+// réplica es deliberada pero no queda suelta.
+//
+// Por qué no se importa el original: es TypeScript y sus imports van sin
+// extensión, que es lo normal en Nest pero ESM no lo resuelve, así que
+// `--experimental-strip-types` falla; y `dist/` no sirve porque puede estar
+// obsoleto. Tirar de ts-node desde un script de mano es peor remedio.
+//
+// Lo que impide que diverjan es `medir-consumo-ecf.parity.spec.ts`: compara las
+// dos implementaciones —y la tabla CUPO contra PLANES— sobre cientos de
+// combinaciones de día de corte y fecha. Si alguien toca una y no la otra, CI
+// se pone rojo. Es una garantía más fuerte que el import, porque cubre también
+// los cupos, que tampoco se pueden importar desde aquí.
 
 /** Día real del corte en un mes concreto: 31 en abril es 30. */
 function diaAnclado(anio, mes /* 1-12 */, diaCorte) {
@@ -117,6 +131,13 @@ function pintarCsv(filas) {
       f.excedente ?? '', f.cargo ?? '',
     ].join(','));
   }
+}
+
+// Requerido como módulo (desde el test de paridad) exporta las funciones puras
+// y NO se conecta a nada. Ejecutado a mano, corre el informe.
+if (require.main !== module) {
+  module.exports = { CUPO, diaAnclado, ciclosDe };
+  return;
 }
 
 (async () => {
