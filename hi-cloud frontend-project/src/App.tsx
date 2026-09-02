@@ -523,9 +523,18 @@ export default function App() {
           // Sincronizar tema del sidebar: el servidor es fuente de verdad (cross-device)
           if (user?.temaSidebar) setTemaSidebar(user.temaSidebar as any);
         })
-        .catch(() => {
+        .catch((err) => {
           // Cookie inválida, expirada, o timeout de 10 s — marcar navegación saliente
           // para que Sentry/ErrorBoundary ignoren errores de teardown en la ruta actual
+          //
+          // El motivo se registra a propósito. Este catch cubre TODO el .then()
+          // de arriba, no solo la petición: si `login()` o cualquier línea
+          // posterior lanza, el usuario acaba en /login sin un solo rastro de
+          // por qué. Un cierre de sesión silencioso es indepurable tanto en el
+          // navegador de un cajero como en el arnés de desarrollo.
+          // eslint-disable-next-line no-console
+          console.warn('[auth] hidratación fallida → cerrando sesión:',
+            (err as any)?.message ?? err, (err as any)?.response?.status ?? '');
           markNavigatingAway();
           logout();
         })
