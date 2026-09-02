@@ -11072,8 +11072,16 @@ export default function POSPage() {
           })),
         });
       }
-      // valor-fiscal → factura normal
-      return facturasApi.create({ ...base, tipoNcf, clienteId: base.clienteId ?? 1 });
+      // Los cuatro modos alternativos están cubiertos arriba. El único que queda
+      // en el tipo es 'factura', y ese no entra aquí: se cobra por cobrarMut, con
+      // su modal de pago, sus formas de pago y su e-CF.
+      //
+      // Aquí vivía `return facturasApi.create(...)` con el comentario
+      // "valor-fiscal → factura normal". Ese modo ya no existe en
+      // ModoFacturacion, así que era inalcanzable — y peligroso de leer: parecía
+      // que desde este camino se emitían facturas reales, con un `base` que no
+      // lleva formas de pago ni descuento general.
+      throw new Error(`Modo de facturación no soportado en este camino: ${modoFacturacion}`);
     },
     onSuccess: () => {
       const modo = MODOS_FACTURACION.find(m => m.id === modoFacturacion);
