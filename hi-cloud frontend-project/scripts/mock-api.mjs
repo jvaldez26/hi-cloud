@@ -206,6 +206,21 @@ const RUTAS = {
   '/balanza/patrones': () => ([]),
   '/vendedores': () => ({ data: [{ id: 7, codigo: 'V01', nombre: 'JUAN PÉREZ' }] }),
   '/auth/mis-sucursales': () => ([{ id: 1, nombre: 'Sucursal Principal' }]),
+  // Mensajes: devuelve un ID pendiente de notificar para que MensajeNotificador
+  // se dispare al cargar. Los PATCH (marcarVisto, etc.) los acepta el handler
+  // genérico de escrituras más abajo.
+  '/mensajes/novedades-no-vistas': () => ({ ids: ['mock-msg-1'] }),
+  '/mensajes/no-leidos-count':     () => ({ count: 1 }),
+  '/mensajes/bandeja': () => ([
+    {
+      id: 'mock-msg-1',
+      titulo: 'Nueva función: Notificaciones en tiempo real',
+      cuerpo: 'A partir de hoy recibirás avisos importantes de HiCloud directamente en la pantalla, sin tener que revisar la bandeja manualmente.',
+      tipo: 'novedad',
+      fechaPublicacion: new Date().toISOString(),
+      editadoEn: null, leidoEn: null, vistoEn: null, archivadoEn: null,
+    },
+  ]),
 
   '/admin/pagos-suscripcion/resumen-cobros':          () => ([
     { empresaId: 44, nombre: 'Ventas Populares R&M', email: 'cliente@ejemplo.com',

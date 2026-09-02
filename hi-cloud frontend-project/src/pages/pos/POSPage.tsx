@@ -53,6 +53,7 @@ import { useSupervisor } from '../../hooks/useSupervisor';
 import { UomSelect } from '../../components/ui/UomSelect';
 import { AvisoRncNoVigente } from '../../components/ui/RncNoVigente';
 import type { Producto, Cliente } from '../../types';
+import { posEstado } from '../../utils/posEstado';
 import dayjs from 'dayjs';
 import { useModuloAddon } from '../../hooks/useModuloAddon';
 import { modulosAddonApi } from '../../api/modulos-addon.api';
@@ -9578,6 +9579,14 @@ export default function POSPage() {
       return () => clearTimeout(t);
     }
   }, [showPago, formasPagoList, tipoPagoPos]);
+
+  // Informa al MensajeNotificador que hay una venta en curso para que no
+  // interrumpa con un toast mientras el cajero está cobrando.
+  useEffect(() => {
+    posEstado.modalCobroAbierto = showPago;
+    // Limpia al desmontar por si el componente se desmonta con el modal abierto
+    return () => { posEstado.modalCobroAbierto = false; };
+  }, [showPago]);
 
   // Offline detection
   useEffect(() => {

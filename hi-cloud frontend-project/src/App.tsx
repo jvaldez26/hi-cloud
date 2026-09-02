@@ -13,6 +13,7 @@ import { onSessionEnd, markNavigatingAway }      from './utils/sessionEvents';
 import { useThemeStore } from './store/theme.store';
 import AppLayout                from './components/layout/AppLayout';
 import ActividadGuard           from './components/auth/ActividadGuard';
+import MensajeNotificador       from './components/ui/MensajeNotificador';
 import PortalEmpleadoLayout     from './components/layout/PortalEmpleadoLayout';
 import ErrorBoundary     from './components/ui/ErrorBoundary';
 import PageLoader        from './components/ui/PageLoader';
@@ -694,6 +695,10 @@ export default function App() {
                 En la raíz a propósito: antes vivía dentro de AppLayout y dejaba
                 sin cubrir /super-admin/* y el portal de empleados. */}
             <ActividadGuard />
+            {/* Notificador de mensajes nuevos del Super Admin.
+                En la raíz por la misma razón que ActividadGuard: el POS y
+                /super-admin/* viven fuera de AppLayout. */}
+            <MensajeNotificador />
             <NewVersionBanner />
             <ErrorBoundary>
               <Suspense fallback={<PageLoader />}>
