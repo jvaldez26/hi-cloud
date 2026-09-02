@@ -1383,7 +1383,15 @@ export class AuthService implements OnModuleInit {
       );
       const n = parseInt(rows[0]?.valor ?? '5', 10);
       global = isNaN(n) ? 5 : Math.min(10, Math.max(3, n));
-    } catch { /* usar 5 */ }
+    } catch (err) {
+      // El fallback es el correcto, pero en silencio significa que si mañana
+      // esa tabla se renombra o la consulta falla, el número de intentos
+      // permitidos cambia para TODA la plataforma y nadie se entera.
+      this.logger.warn(
+        `No se pudo leer MAX_INTENTOS_LOGIN de configuracion_sistema ` +
+        `(${(err as Error).message}) — usando 5 intentos.`,
+      );
+    }
 
     let effective = global;
     if (empresaId) {
@@ -1393,7 +1401,12 @@ export class AuthService implements OnModuleInit {
         if (typeof override === 'number' && Number.isFinite(override)) {
           effective = Math.min(override, global); // empresa nunca puede ser más laxa que el global
         }
-      } catch { /* usar global */ }
+      } catch (err) {
+        this.logger.warn(
+          `No se pudo leer el override "maxIntentos" de la empresa #${empresaId} ` +
+          `(${(err as Error).message}) — usando el global de ${global}.`,
+        );
+      }
     }
 
     return Math.min(global, Math.max(3, effective));

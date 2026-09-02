@@ -282,6 +282,29 @@ apiClient.interceptors.response.use(
           _setTabRefreshState('failed');
           _bc?.postMessage({ type: 'hc_refresh_failed' });
           processRefreshQueue(refreshErr);
+
+          // Por qué se registra: a partir de aquí el usuario acaba en /login
+          // con "Tu sesión ha expirado", y ese mensaje es el MISMO tanto si el
+          // refresh token caducó de verdad —correcto— como si el backend
+          // devolvió un 500 o se cayó la red. Sin esto no hay forma de
+          // distinguir una sesión cerrada a propósito de un bug, y con la
+          // Fase B cerrando sesiones de verdad esa diferencia es justo la que
+          // hace falta para saber si hay algo roto.
+          const motivo = (refreshErr as AxiosError | undefined);
+          const estado = motivo?.response?.status;
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[auth] refresh fallido (${estado ?? 'sin respuesta'}) → cerrando sesión:`,
+            motivo?.message ?? refreshErr,
+          );
+          // Un 401 aquí es lo esperado: el refresh token ya no vale. Cualquier
+          // otra cosa —500, timeout, red— es un incidente y va a Sentry.
+          if (estado !== 401) {
+            Sentry.captureException(refreshErr, {
+              tags:  { modulo: 'auth', fase: 'refresh-token' },
+              extra: { estado: estado ?? null, ruta: original?.url },
+            });
+          }
           // Refresh falló definitivamente → fallthrough al logout
         } finally {
           _isRefreshing = false;
@@ -371,7 +394,13 @@ apiClient.interceptors.response.use(
           _recuperandoEmpresa = false;
           return apiClient.request(original);
         }
-      } catch { /* */ }
+      } catch (recErr) {
+        // Sin esto, el reintento no ocurre y el usuario ve el 401 original sin
+        // ninguna pista de que hubo un intento de recuperar la empresa.
+        // eslint-disable-next-line no-console
+        console.warn('[auth] no se pudo recuperar la empresa activa tras un 401:',
+          (recErr as Error)?.message ?? recErr);
+      }
       _recuperandoEmpresa = false;
     }
 

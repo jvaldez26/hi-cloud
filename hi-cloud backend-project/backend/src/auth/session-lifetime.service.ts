@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
@@ -33,6 +33,8 @@ import { DataSource } from 'typeorm';
  */
 @Injectable()
 export class SessionLifetimeService {
+  private readonly logger = new Logger(SessionLifetimeService.name);
+
   /** TTL de la caché. Corto a propósito: un ajuste de seguridad no debe tardar en aplicarse. */
   private static readonly TTL_MS = 60_000;
 
@@ -127,7 +129,17 @@ export class SessionLifetimeService {
       );
       const h = parseInt(rows[0]?.valor ?? String(SessionLifetimeService.DEFAULT_HORAS), 10);
       horas = isNaN(h) ? SessionLifetimeService.DEFAULT_HORAS : this.aHoras(h);
-    } catch { /* usar el default */ }
+    } catch (err) {
+      // Este es el que más duele en silencio: decide cuánto dura la sesión de
+      // TODA la plataforma. Si la lectura falla, la diferencia entre "lo
+      // configuramos en 8 horas" y "llevan un mes con el default" no la nota
+      // nadie hasta que un cliente se queja.
+      this.logger.warn(
+        `No se pudo leer SESION_HORAS de configuracion_sistema ` +
+        `(${(err as Error).message}) — usando el default de ` +
+        `${SessionLifetimeService.DEFAULT_HORAS} h.`,
+      );
+    }
 
     this.globalCache = { horas, at: now };
     return horas;
