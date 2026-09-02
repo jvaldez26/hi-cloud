@@ -78,6 +78,7 @@ function montarCaso(opts: {
   const filasGuardadas: any[] = [];
   const snapshotsEscritos: any[] = [];
   const vinculosPedidos:   any[] = [];
+  const cuotaRevisada:     any[] = [];
 
   // Generador falso que se comporta como el real: incrementa la secuencia.
   // Si alguna validación lo alcanza indebidamente, el contador se mueve y el
@@ -138,6 +139,9 @@ function montarCaso(opts: {
         vinculosPedidos.push({ facturaId, empresaId }); return 'vinculado';
       },
     } as any,
+    { // cuotaEcf — cuenta la cuota del plan, nunca bloquea ni se espera
+      revisarTrasEmision: async (empresaId: number) => { cuotaRevisada.push(empresaId); },
+    } as any,
     { // DataSource
       query: async () => [{ ncAplicadas: opts.ncAplicadas ?? '0' }],
       getRepository: () => ({ findOne: async () => ({ id: 3, codigo: 'E32', prefijo: 'E32' }) }),
@@ -152,7 +156,7 @@ function montarCaso(opts: {
     } as any,
   );
 
-  return { uc, sec, filasGuardadas, snapshotsEscritos, vinculosPedidos, tipoDoc };
+  return { uc, sec, filasGuardadas, snapshotsEscritos, vinculosPedidos, cuotaRevisada, tipoDoc };
 }
 
 /** Ejecuta esperando fallo y devuelve cuánto se movió la secuencia. */
@@ -306,6 +310,43 @@ describe('emitir e-CF — ninguna validación quema un número', () => {
     });
     // filasGuardadas solo recoge lo que pasó por manager.save dentro de
     // ds.transaction. Si el INSERT saliera fuera, estaría vacío.
+    expect(caso.filasGuardadas).toHaveLength(1);
+  });
+
+  it('la cuota del plan se revisa al emitir, y el modo del ambiente queda en la fila', async () => {
+    // El use-case es el punto único por donde pasan los siete caminos que
+    // emiten: si la revisión no cuelga de aquí, algún camino queda sin contar.
+    const caso = montarCaso({ documento: facturaBase() });
+    await caso.uc.execute({
+      empresaId: 1,
+      documentoOrigenTipo: DocumentoOrigenTipo.FACTURA,
+      documentoOrigenId: 1,
+      tipoEcf: 32,
+    });
+    expect(caso.cuotaRevisada).toEqual([1]);
+    // El ambiente se copia del config que se usó para emitir, no del modo que
+    // la empresa tenga mañana: sin esto, pasar de TEST a PRODUCCIÓN arrastraría
+    // los comprobantes de prueba a la cuota de ciclos ya cerrados. Este caso
+    // emite en TEST, así que la fila tiene que decir TEST y no la constante de
+    // producción.
+    expect(caso.filasGuardadas[0].modoEmision).toBe('TEST');
+  });
+
+  it('si la revisión de cuota falla, la emisión sigue adelante', async () => {
+    // La cuota NUNCA bloquea. Pararle la caja al cliente que más factura sería
+    // exactamente lo contrario de lo que se quiere.
+    const caso = montarCaso({ documento: facturaBase() });
+    (caso.uc as any).cuotaEcf = {
+      revisarTrasEmision: async () => { throw new Error('BD caída'); },
+    };
+    const antes = caso.sec.secuenciaActual;
+    await expect(caso.uc.execute({
+      empresaId: 1,
+      documentoOrigenTipo: DocumentoOrigenTipo.FACTURA,
+      documentoOrigenId: 1,
+      tipoEcf: 32,
+    })).resolves.toBeDefined();
+    expect(caso.sec.secuenciaActual).toBe(antes + 1);
     expect(caso.filasGuardadas).toHaveLength(1);
   });
 

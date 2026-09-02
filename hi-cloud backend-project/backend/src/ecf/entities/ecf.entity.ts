@@ -124,6 +124,23 @@ export class ECF extends BaseEntity {
   @Column({ length: 100, nullable: true })
   proveedorReferencia?: string;
 
+  /**
+   * Ambiente en el que se emitió: 'TEST' | 'CERTIFICACION' | 'PRODUCCION'.
+   *
+   * Copia del `empresa_ecf_config.modo` que se usó para emitir, no el modo
+   * actual de la empresa. Lo necesita la cuota de e-CF: un comprobante de
+   * prueba no llega a la DGII y no puede contar para el cargo del excedente,
+   * y sin esta columna una empresa que pasa de TEST a PRODUCCIÓN arrastraría
+   * sus comprobantes de prueba a ciclos ya cerrados. `qrUrl` no distingue los
+   * ambientes — los dos producen los mismos hosts de la DGII.
+   *
+   * NOT NULL con default 'PRODUCCION': una marca que falte no puede eximir de
+   * la cuota, y el predicado simple deja que el conteo del ciclo resuelva por
+   * Index Only Scan en vez de recorrer la tabla.
+   */
+  @Column({ length: 15, default: 'PRODUCCION' })
+  modoEmision!: string;
+
   // ── Integración MSeller ──────────────────────────────────────────────────
 
   /**

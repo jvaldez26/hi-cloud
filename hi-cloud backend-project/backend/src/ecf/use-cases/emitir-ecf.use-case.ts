@@ -18,6 +18,7 @@ import type { CompradorOriginal } from '../builders/base-ecf.builder';
 import { MSellerClientService } from '../services/mseller-client.service';
 import { esErrorYaExiste, consultarExistenciaEncf } from '../services/reconciliacion-ecf.helper';
 import { EcfConfigService } from '../services/ecf-config.service';
+import { CuotaEcfService } from '../../suscripciones/cuota-ecf.service';
 import { RncService } from '../../rnc/rnc.service';
 import { VinculoClienteCompradorService } from '../services/vinculo-cliente-comprador.service';
 import {
@@ -156,6 +157,7 @@ export class EmitirECFUseCase {
     private readonly configSvc:  EcfConfigService,
     private readonly rncService: RncService,
     private readonly vinculoCliente: VinculoClienteCompradorService,
+    private readonly cuotaEcf:   CuotaEcfService,
     private readonly ds:         DataSource,
   ) {}
 
@@ -456,6 +458,7 @@ export class EmitirECFUseCase {
         encf: numero, payload: payloadReal, empresaId, tipoEcfEntity, secParaTipo,
         factura: factura as Factura, documentoOrigenTipo, documentoOrigenId,
         montoGravado, montoItbis, montoTotal, infoReferencia,
+        modoEmision: config.modo,
       });
 
       const guardado = await manager.save(ECF, fila) as unknown as ECF;
@@ -496,6 +499,21 @@ export class EmitirECFUseCase {
     await this.registrarEvento(ecfSaved.id, TipoEcfEvento.CREADO, {
       encf, tipoEcf, documentoOrigenTipo, documentoOrigenId,
     });
+
+    // ── 6-ter. CUOTA DE e-CF DEL PLAN ───────────────────────────────────────
+    //
+    // Este es el punto ÚNICO por el que pasan los siete caminos que emiten un
+    // comprobante —facturas, POS, notas de crédito y débito, compras, gastos e
+    // intereses de préstamo—, así que contar aquí no deja ninguno fuera.
+    //
+    // Ni se espera ni puede fallar hacia fuera: la cuota NUNCA bloquea una
+    // emisión. Si el cliente se pasa, el único efecto es que el super admin ve
+    // el ciclo en el panel de excedentes y decide si genera el cargo. Pararle
+    // la caja al que más factura sería exactamente lo contrario de lo que se
+    // quiere. Mismo criterio que `actualizarCacheIngresos` en facturas.
+    this.cuotaEcf.revisarTrasEmision(empresaId).catch(err =>
+      this.logger.warn(`[cuota-ecf] empresa #${empresaId}: ${(err as Error).message}`),
+    );
 
     // ── 6-bis. VÍNCULO COMERCIAL ────────────────────────────────────────────
     //
@@ -708,10 +726,15 @@ ${JSON.stringify(payload, null, 2)}`;
     montoItbis: number;
     montoTotal: number;
     infoReferencia?: MSellerInfoReferencia;
+    modoEmision?: string;
   }): ECF {
     return this.ecfRepo.create({
       empresaId:           p.empresaId,
       numero:              p.encf,
+      // Ambiente REAL de esta emisión, no el modo que la empresa tenga mañana.
+      // Sin esto, una empresa que pasa de TEST a PRODUCCIÓN arrastraría sus
+      // comprobantes de prueba a la cuota de ciclos ya cerrados.
+      modoEmision:         p.modoEmision,
       tipoECFId:           p.tipoEcfEntity?.id ?? 0,
       secuenciaId:         p.secParaTipo?.id ?? 0,
       facturaId:           p.documentoOrigenTipo === DocumentoOrigenTipo.FACTURA ? p.documentoOrigenId : undefined,

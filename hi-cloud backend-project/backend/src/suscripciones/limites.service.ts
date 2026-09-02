@@ -4,6 +4,7 @@ import { Repository, DataSource } from 'typeorm';
 import {
   Suscripcion, PlanTipo, SuscripcionEstado, PLANES, planTieneModulo,
 } from './entities/suscripcion.entity';
+import { CuotaEcfService, UsoCuotaEcf } from './cuota-ecf.service';
 
 export interface UsoLimite {
   usado:      number;
@@ -37,6 +38,12 @@ export interface LimitesActuales {
   productos:   UsoLimite;
   clientes:    UsoLimite;
   sucursales:  UsoLimite;
+  /**
+   * Cuota de e-CF del ciclo. A diferencia de `ingresos` y `usuarios`, pasarse
+   * NO bloquea nada: el exceso se factura aparte y el cargo lo genera el super
+   * admin a mano. Ver `cuota-ecf.service.ts`.
+   */
+  ecf:         UsoCuotaEcf;
   modulos:     string[];
 }
 
@@ -48,6 +55,7 @@ export class LimitesService {
     @InjectRepository(Suscripcion)
     private repo: Repository<Suscripcion>,
     private ds:   DataSource,
+    private cuotaEcf: CuotaEcfService,
   ) {}
 
   // ── Obtener suscripción activa ────────────────────────────────────────────
@@ -263,13 +271,14 @@ export class LimitesService {
   async getLimitesActuales(empresaId: number): Promise<LimitesActuales> {
     const sus   = await this.getSuscripcion(empresaId);
     const cfg   = PLANES[sus.plan];
-    const [facturas, usuarios, productos, clientes, sucursales, ingresos] = await Promise.all([
+    const [facturas, usuarios, productos, clientes, sucursales, ingresos, ecf] = await Promise.all([
       this.contarFacturasMes(empresaId),
       this.contarUsuarios(empresaId),
       this.contarProductos(empresaId),
       this.contarClientes(empresaId),
       this.contarSucursales(empresaId),
       this.getUsoIngresos(empresaId),
+      this.cuotaEcf.usoDelCiclo(empresaId),
     ]);
     return {
       plan: sus.plan,
@@ -280,6 +289,7 @@ export class LimitesService {
       productos:  this.calcUso(productos,  cfg.maxProductos),
       clientes:   this.calcUso(clientes,   cfg.maxClientes),
       sucursales: this.calcUso(sucursales, cfg.maxSucursales),
+      ecf,
       modulos:    cfg.modulos,
     };
   }

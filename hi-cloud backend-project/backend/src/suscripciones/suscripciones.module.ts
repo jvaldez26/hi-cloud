@@ -4,6 +4,7 @@ import { SuscripcionesService } from './suscripciones.service';
 import { SuscripcionesController } from './suscripciones.controller';
 import { PlanesPublicosController } from './planes-publicos.controller';
 import { LimitesService } from './limites.service';
+import { CuotaEcfService } from './cuota-ecf.service';
 import { PlanGuard } from './guards/plan.guard';
 import { Suscripcion } from './entities/suscripcion.entity';
 import { PlanConfiguracion } from './entities/plan-configuracion.entity';
@@ -24,7 +25,7 @@ import { NotificacionesModule } from '../notificaciones/notificaciones.module';
     NotificacionesModule,
   ],
   controllers: [SuscripcionesController, PlanesPublicosController],
-  providers: [SuscripcionesService, LimitesService, PlanGuard],
-  exports: [SuscripcionesService, LimitesService, PlanGuard, TypeOrmModule],
+  providers: [SuscripcionesService, LimitesService, CuotaEcfService, PlanGuard],
+  exports: [SuscripcionesService, LimitesService, CuotaEcfService, PlanGuard, TypeOrmModule],
 })
 export class SuscripcionesModule {}
