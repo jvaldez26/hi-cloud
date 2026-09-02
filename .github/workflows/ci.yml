@@ -108,6 +108,26 @@ jobs:
       - name: "CAPA 3 — Verificar que columnas de entity tienen migración TypeScript"
         run: node scripts/check-entity-migrations.js
 
+      # CAPA 5 — Guardas rotas sobre el resultado de un UPDATE/DELETE.
+      #
+      # query() de TypeORM solo devuelve filas planas en un SELECT; con
+      # UPDATE/DELETE devuelve [filas, rowCount], de longitud 2 aunque no haya
+      # tocado nada. Leerlo con .length o desestructurando [row] es un fallo
+      # silencioso: siempre parece que hubo filas.
+      #
+      # El 2026-09-02 costó dos cosas el mismo día: 40 correos repetidos a un
+      # cliente, y una guarda de duplicado de facturas recurrentes que no salía
+      # nunca —dos comprobantes fiscales del mismo concepto a la DGII si dos
+      # corridas coincidían—.
+      #
+      # El autotest va primero: un verificador que no se comprueba a sí mismo
+      # puede llevar meses en verde sin mirar nada.
+      - name: "CAPA 5 — El verificador de UPDATE/RETURNING se prueba a sí mismo"
+        run: node scripts/validate-update-returning.js --autotest
+
+      - name: "CAPA 5 — Guardas sobre UPDATE/DELETE (query() devuelve [filas, rowCount])"
+        run: node scripts/validate-update-returning.js
+
   # ── Frontend: TypeScript + Build ─────────────────────────────────────────────
   frontend:
     name: Frontend CI
