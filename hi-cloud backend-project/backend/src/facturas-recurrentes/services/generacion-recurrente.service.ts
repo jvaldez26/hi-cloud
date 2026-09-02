@@ -135,21 +135,35 @@ export class GeneracionRecurrenteService {
       // Si otra corrida ya generó hoy, este UPDATE toca cero filas y salimos
       // sin haber creado nada. Ponerlo antes del INSERT evita gastar un folio
       // en una transacción que sabemos que se va a deshacer.
-      const avance = await manager.query<{ id: number }[]>(
-        `UPDATE facturas_recurrentes
-            SET "ultimaEjecucion"  = $2::date,
-                "proximaEjecucion" = $3::date,
-                "totalGeneradas"   = "totalGeneradas" + 1,
-                "ciclosSaltados"   = "ciclosSaltados" + $4,
-                "ultimoError"      = NULL,
-                "ultimoErrorAt"    = NULL,
-                "updatedAt"        = now()
-          WHERE id = $1
-            AND ("ultimaEjecucion" IS NULL OR "ultimaEjecucion" < $2::date)
-        RETURNING id`,
+      // El UPDATE va envuelto en un CTE para que la sentencia de arriba sea un
+      // SELECT. NO es cosmético: `query()` solo garantiza devolver un array de
+      // filas para un SELECT; con `UPDATE ... RETURNING` devuelve
+      // `[filas, rowCount]` —un array de DOS elementos incluso cuando no tocó
+      // nada—, así que `avance.length` valía 2 y esta guarda no salía JAMÁS.
+      //
+      // Lo que dejaba pasar: dos corridas simultáneas (el botón "Ejecutar
+      // ahora" durante el barrido del cron, o dos clics seguidos) generaban las
+      // dos su factura. Con un e-CF por factura eso no son dos facturas, son
+      // dos comprobantes fiscales del mismo concepto declarados a la DGII.
+      // Ver generacion-recurrente.duplicado.spec.ts.
+      const [avance] = await manager.query<{ n: number }[]>(
+        `WITH avance AS (
+           UPDATE facturas_recurrentes
+              SET "ultimaEjecucion"  = $2::date,
+                  "proximaEjecucion" = $3::date,
+                  "totalGeneradas"   = "totalGeneradas" + 1,
+                  "ciclosSaltados"   = "ciclosSaltados" + $4,
+                  "ultimoError"      = NULL,
+                  "ultimoErrorAt"    = NULL,
+                  "updatedAt"        = now()
+            WHERE id = $1
+              AND ("ultimaEjecucion" IS NULL OR "ultimaEjecucion" < $2::date)
+          RETURNING id
+         )
+         SELECT COUNT(*)::int AS n FROM avance`,
         [rec.id, hoyISO, proxima, saltados],
       );
-      if (!avance.length) return null;
+      if (Number(avance?.n ?? 0) === 0) return null;
 
       const factura = await this.insertarFactura(
         manager, rec, hoyISO, lineas, vendedorId, nombreVendedor,
