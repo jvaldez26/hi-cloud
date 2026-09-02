@@ -926,6 +926,138 @@ function PlanesEditor({ C }: { C: typeof SA_DARK }) {
           />
         </Form>
       </Modal>
+
+      <PrecioExcedenteEcf C={C} />
+    </div>
+  );
+}
+
+// ── Precio del excedente de e-CF ──────────────────────────────────────────────
+//
+// Un solo valor global, no por plan. Vive en `configuracion_cobros` y NO en
+// `configuraciones_sistema`: aquella tabla la puede tocar el admin de cualquier
+// empresa cliente, o sea que un cliente podría bajarse el precio de su propio
+// excedente.
+//
+// 0 significa SIN CONFIGURAR, no gratis: mientras valga 0 no se pueden generar
+// cargos de excedente y el panel lo dice.
+function PrecioExcedenteEcf({ C }: { C: typeof SA_DARK }) {
+  const qc = useQueryClient();
+  const [abierto, setAbierto] = useState(false);
+  const [borrador, setBorrador] = useState<number | null>(null);
+
+  const { data: cfg, isLoading } = useQuery({
+    queryKey: ['sa-cobros-config'],
+    queryFn:  () => api.get('/admin/cobros/configuracion').then(xd),
+    staleTime: 30_000,
+  });
+
+  const precio = Number(cfg?.precioEcfExcedente ?? 0);
+
+  const updateMut = useMutation({
+    mutationFn: (precioEcfExcedente: number) =>
+      api.patch('/admin/cobros/configuracion', { precioEcfExcedente }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sa-cobros-config'] });
+      setAbierto(false);
+      message.success('Precio actualizado — no afecta a los cargos ya generados');
+    },
+    onError: (e: any) =>
+      message.error(e?.response?.data?.message?.[0] ?? e?.response?.data?.message ?? 'Error'),
+  });
+
+  // El ciclo real de la empresa que más factura, para que el número de la
+  // vista previa no sea inventado: 6.412 emitidos con cupo Plus de 6.000.
+  const EJEMPLO_EXCEDENTE = 412;
+  const previsto = borrador != null ? borrador * EJEMPLO_EXCEDENTE : 0;
+
+  return (
+    <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <div>
+          <div style={{ color: C.txt, fontWeight: 600, fontSize: 13 }}>Excedente de e-CF</div>
+          <div style={{ color: C.txt2, fontSize: 11, marginTop: 2 }}>
+            Por cada comprobante por encima del cupo del plan
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {isLoading ? <Spin size="small" /> : (
+            <span style={{
+              color: precio > 0 ? C.gold : '#F59E0B',
+              fontWeight: 700, fontFamily: 'monospace', whiteSpace: 'nowrap',
+            }}>
+              {precio > 0
+                ? `RD$${precio.toLocaleString('es-DO', { minimumFractionDigits: 2 })}`
+                : 'Sin configurar'}
+            </span>
+          )}
+          <Button
+            size="small"
+            icon={<Edit2 size={12} />}
+            onClick={() => { setBorrador(precio); setAbierto(true); }}
+            style={{ color: C.txt2, background: 'transparent', border: `1px solid ${C.border}` }}
+          >
+            Editar
+          </Button>
+        </div>
+      </div>
+
+      {precio === 0 && !isLoading && (
+        <Alert
+          type="warning" showIcon
+          message="Sin precio no se pueden generar cargos por excedente."
+          style={{ fontSize: 12, marginTop: 10 }}
+        />
+      )}
+
+      <Modal
+        open={abierto}
+        title={<span style={{ color: C.txt }}>Precio del excedente de e-CF</span>}
+        onCancel={() => setAbierto(false)}
+        onOk={() => borrador != null && updateMut.mutate(borrador)}
+        confirmLoading={updateMut.isPending}
+        okText="Guardar precio"
+        okButtonProps={{ style: { background: C.gold, borderColor: C.gold }, disabled: borrador == null }}
+      >
+        <div style={{ marginTop: 16 }}>
+          <label style={{ display: 'block', fontSize: 13, marginBottom: 6 }}>
+            RD$ por comprobante excedente
+          </label>
+          <InputNumber
+            style={{ width: '100%' }}
+            min={0} max={1000} precision={2} autoFocus
+            value={borrador}
+            onChange={v => setBorrador(v as number | null)}
+            placeholder="3.00"
+          />
+
+          {/* La vista previa es lo que atrapa el error de tecleo. Un precio se
+              lee igual de bien con dos ceros de más; el total, no. */}
+          <div style={{
+            marginTop: 14, padding: '10px 12px', borderRadius: 6,
+            background: 'rgba(148,163,184,.12)', fontSize: 12,
+          }}>
+            Un ciclo con <strong>{EJEMPLO_EXCEDENTE}</strong> comprobantes de excedente
+            {' '}(el caso real más grande de hoy) generaría un cargo de{' '}
+            <strong style={{ fontFamily: 'monospace' }}>
+              RD${previsto.toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+            </strong>
+          </div>
+
+          <Alert
+            type="info" showIcon
+            message="Cambiar el precio NO reprecia los cargos ya generados: cada cargo guarda el precio con el que se calculó."
+            style={{ fontSize: 12, marginTop: 12 }}
+          />
+          {borrador === 0 && (
+            <Alert
+              type="warning" showIcon
+              message="Con 0 el precio queda SIN CONFIGURAR y no se podrán generar cargos."
+              style={{ fontSize: 12, marginTop: 8 }}
+            />
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }
