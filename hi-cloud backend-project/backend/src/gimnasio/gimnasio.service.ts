@@ -110,7 +110,9 @@ export class GimnasioService {
     fields.push(`"updatedAt"=NOW()`);
     args.push(id, empresaId);
     const [row] = await this.ds.query(
-      `UPDATE gm_miembros SET ${fields.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *`,
+      `WITH fila AS (
+         UPDATE gm_miembros SET ${fields.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *
+       ) SELECT * FROM fila`,
       args,
     );
     return row;
@@ -221,7 +223,9 @@ export class GimnasioService {
     if (!fields.length) throw new BadRequestException('Sin campos para actualizar');
     args.push(id, empresaId);
     const [row] = await this.ds.query(
-      `UPDATE gm_planes SET ${fields.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *`,
+      `WITH fila AS (
+         UPDATE gm_planes SET ${fields.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *
+       ) SELECT * FROM fila`,
       args,
     );
     return row;
@@ -292,7 +296,9 @@ export class GimnasioService {
     if (!fields.length) throw new BadRequestException('Sin campos para actualizar');
     args.push(id, empresaId);
     const [row] = await this.ds.query(
-      `UPDATE gm_membresias SET ${fields.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *`,
+      `WITH fila AS (
+         UPDATE gm_membresias SET ${fields.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *
+       ) SELECT * FROM fila`,
       args,
     );
     return row;
@@ -322,8 +328,10 @@ export class GimnasioService {
     const mem = await this.membresiaOr404(empresaId, id);
     if (mem.congelada) throw new BadRequestException('La membresía ya está congelada');
     const [row] = await this.ds.query<any[]>(
-      `UPDATE gm_membresias SET congelada=true,"fechaCongelamiento"=CURRENT_DATE,"motivoCongelamiento"=$1
-       WHERE id=$2 AND "empresaId"=$3 RETURNING *`,
+      `WITH fila AS (
+         UPDATE gm_membresias SET congelada=true,"fechaCongelamiento"=CURRENT_DATE,"motivoCongelamiento"=$1
+         WHERE id=$2 AND "empresaId"=$3 RETURNING *
+       ) SELECT * FROM fila`,
       [data.motivo ?? null, id, empresaId],
     );
     return row;
@@ -336,8 +344,10 @@ export class GimnasioService {
     const nuevaFin = new Date(mem.fechaFin);
     nuevaFin.setDate(nuevaFin.getDate() + diasCongelados);
     const [row] = await this.ds.query<any[]>(
-      `UPDATE gm_membresias SET congelada=false,"diasCongelados"="diasCongelados"+$1,"fechaFin"=$2,"fechaCongelamiento"=null
-       WHERE id=$3 AND "empresaId"=$4 RETURNING *`,
+      `WITH fila AS (
+         UPDATE gm_membresias SET congelada=false,"diasCongelados"="diasCongelados"+$1,"fechaFin"=$2,"fechaCongelamiento"=null
+         WHERE id=$3 AND "empresaId"=$4 RETURNING *
+       ) SELECT * FROM fila`,
       [diasCongelados, nuevaFin.toISOString().split('T')[0], id, empresaId],
     );
     return row;
@@ -490,7 +500,9 @@ export class GimnasioService {
 
   async cancelarReserva(id: number, empresaId: number) {
     const [row] = await this.ds.query<any[]>(
-      `UPDATE gm_reservas_clases SET estado='cancelada' WHERE id=$1 AND "empresaId"=$2 RETURNING *`,
+      `WITH fila AS (
+         UPDATE gm_reservas_clases SET estado='cancelada' WHERE id=$1 AND "empresaId"=$2 RETURNING *
+       ) SELECT * FROM fila`,
       [id, empresaId],
     );
     if (!row) throw new NotFoundException(`Reserva #${id} no encontrada`);
@@ -499,7 +511,9 @@ export class GimnasioService {
 
   async registrarAsistencia(id: number, estado: string, empresaId: number) {
     const [row] = await this.ds.query<any[]>(
-      `UPDATE gm_reservas_clases SET estado=$1 WHERE id=$2 AND "empresaId"=$3 RETURNING *`,
+      `WITH fila AS (
+         UPDATE gm_reservas_clases SET estado=$1 WHERE id=$2 AND "empresaId"=$3 RETURNING *
+       ) SELECT * FROM fila`,
       [estado, id, empresaId],
     );
     if (!row) throw new NotFoundException(`Reserva #${id} no encontrada`);
@@ -550,7 +564,9 @@ export class GimnasioService {
     if (!fields.length) throw new BadRequestException('Sin campos para actualizar');
     args.push(id, empresaId);
     const [row] = await this.ds.query(
-      `UPDATE gm_sesiones_ep SET ${fields.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *`,
+      `WITH fila AS (
+         UPDATE gm_sesiones_ep SET ${fields.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *
+       ) SELECT * FROM fila`,
       args,
     );
     return row;
@@ -644,7 +660,9 @@ export class GimnasioService {
     if (!fields.length) throw new BadRequestException('Sin campos para actualizar');
     args.push(id, empresaId);
     const [row] = await this.ds.query(
-      `UPDATE gm_rutinas SET ${fields.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *`,
+      `WITH fila AS (
+         UPDATE gm_rutinas SET ${fields.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *
+       ) SELECT * FROM fila`,
       args,
     );
     return row;
@@ -785,7 +803,9 @@ export class GimnasioService {
     if (!locker) throw new NotFoundException('Locker no encontrado');
     if (locker.estado !== 'disponible') throw new BadRequestException('El locker no está disponible');
     const [row] = await this.ds.query<any[]>(
-      `UPDATE gm_lockers SET estado='ocupado',"miembroId"=$1,"fechaAsignacion"=CURRENT_DATE WHERE id=$2 AND "empresaId"=$3 RETURNING *`,
+      `WITH fila AS (
+         UPDATE gm_lockers SET estado='ocupado',"miembroId"=$1,"fechaAsignacion"=CURRENT_DATE WHERE id=$2 AND "empresaId"=$3 RETURNING *
+       ) SELECT * FROM fila`,
       [data.miembroId, data.lockerId, empresaId],
     );
     return row;
@@ -793,7 +813,9 @@ export class GimnasioService {
 
   async liberarLocker(id: number, empresaId: number) {
     const [row] = await this.ds.query<any[]>(
-      `UPDATE gm_lockers SET estado='disponible',"miembroId"=null,"fechaAsignacion"=null WHERE id=$1 AND "empresaId"=$2 RETURNING *`,
+      `WITH fila AS (
+         UPDATE gm_lockers SET estado='disponible',"miembroId"=null,"fechaAsignacion"=null WHERE id=$1 AND "empresaId"=$2 RETURNING *
+       ) SELECT * FROM fila`,
       [id, empresaId],
     );
     if (!row) throw new NotFoundException(`Locker #${id} no encontrado`);
@@ -818,7 +840,9 @@ export class GimnasioService {
     if (data.precioMes !== undefined) { fields.push(`"precioMes"=$${args.length + 1}`); args.push(data.precioMes); }
     if (!fields.length) throw new BadRequestException('Sin campos para actualizar');
     const [row] = await this.ds.query<any[]>(
-      `UPDATE gm_lockers SET ${fields.join(',')} WHERE "empresaId"=$1 AND id=$2 AND "isActive"=true RETURNING *`,
+      `WITH fila AS (
+         UPDATE gm_lockers SET ${fields.join(',')} WHERE "empresaId"=$1 AND id=$2 AND "isActive"=true RETURNING *
+       ) SELECT * FROM fila`,
       args,
     );
     if (!row) throw new NotFoundException(`Locker #${id} no encontrado`);
@@ -915,7 +939,9 @@ export class GimnasioService {
     }
     if (!fields.length) throw new BadRequestException('Sin campos para actualizar');
     const [row] = await this.ds.query<any[]>(
-      `UPDATE gm_productos_tienda SET ${fields.join(',')} WHERE "empresaId"=$1 AND id=$2 AND "isActive"=true RETURNING *`,
+      `WITH fila AS (
+         UPDATE gm_productos_tienda SET ${fields.join(',')} WHERE "empresaId"=$1 AND id=$2 AND "isActive"=true RETURNING *
+       ) SELECT * FROM fila`,
       args,
     );
     if (!row) throw new NotFoundException(`Producto #${id} no encontrado`);

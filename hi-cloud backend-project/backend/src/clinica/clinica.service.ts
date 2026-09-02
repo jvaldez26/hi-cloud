@@ -172,7 +172,9 @@ export class ClinicaService {
     if (!sets.length) return this.obtenerPaciente(id);
     params.push(id, empresaId);
     const [row] = await this.ds.query<any[]>(
-      `UPDATE cl_pacientes SET ${sets.join(', ')}, "updatedAt" = NOW() WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *`,
+      `WITH fila AS (
+         UPDATE cl_pacientes SET ${sets.join(', ')}, "updatedAt" = NOW() WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *
+       ) SELECT * FROM fila`,
       params,
     );
     return row;
@@ -263,7 +265,9 @@ export class ClinicaService {
     }
     params.push(id, empresaId);
     const [row] = await this.ds.query<any[]>(
-      `UPDATE cl_medicos SET ${sets.join(', ')} WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *`,
+      `WITH fila AS (
+         UPDATE cl_medicos SET ${sets.join(', ')} WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *
+       ) SELECT * FROM fila`,
       params,
     );
     if (!row) throw new NotFoundException(`Médico #${id} no encontrado`);
@@ -319,7 +323,9 @@ export class ClinicaService {
     if (!sets.length) return null;
     params.push(id, empresaId);
     const [row] = await this.ds.query<any[]>(
-      `UPDATE cl_citas SET ${sets.join(', ')} WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *`,
+      `WITH fila AS (
+         UPDATE cl_citas SET ${sets.join(', ')} WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *
+       ) SELECT * FROM fila`,
       params,
     );
     if (!row) throw new NotFoundException(`Cita #${id} no encontrada`);
@@ -329,7 +335,9 @@ export class ClinicaService {
   async cambiarEstadoCita(id: number, estado: string) {
     const empresaId = this.tenantSvc.getEmpresaId();
     const [row] = await this.ds.query<any[]>(
-      `UPDATE cl_citas SET estado = $1 WHERE id = $2 AND "empresaId" = $3 RETURNING *`,
+      `WITH fila AS (
+         UPDATE cl_citas SET estado = $1 WHERE id = $2 AND "empresaId" = $3 RETURNING *
+       ) SELECT * FROM fila`,
       [estado, id, empresaId],
     );
     if (!row) throw new NotFoundException(`Cita #${id} no encontrada`);
@@ -388,7 +396,9 @@ export class ClinicaService {
   async llamarPaciente(id: number) {
     const empresaId = this.tenantSvc.getEmpresaId();
     const [row] = await this.ds.query<any[]>(
-      `UPDATE cl_sala_espera SET estado = 'llamado', "horaLlamada" = NOW() WHERE id = $1 AND "empresaId" = $2 RETURNING *`,
+      `WITH fila AS (
+         UPDATE cl_sala_espera SET estado = 'llamado', "horaLlamada" = NOW() WHERE id = $1 AND "empresaId" = $2 RETURNING *
+       ) SELECT * FROM fila`,
       [id, empresaId],
     );
     if (!row) throw new NotFoundException(`Registro sala espera #${id} no encontrado`);
@@ -398,7 +408,9 @@ export class ClinicaService {
   async marcarAtendido(id: number) {
     const empresaId = this.tenantSvc.getEmpresaId();
     const [row] = await this.ds.query<any[]>(
-      `UPDATE cl_sala_espera SET estado = 'atendido', "horaAtencion" = NOW() WHERE id = $1 AND "empresaId" = $2 RETURNING *`,
+      `WITH fila AS (
+         UPDATE cl_sala_espera SET estado = 'atendido', "horaAtencion" = NOW() WHERE id = $1 AND "empresaId" = $2 RETURNING *
+       ) SELECT * FROM fila`,
       [id, empresaId],
     );
     if (!row) throw new NotFoundException(`Registro sala espera #${id} no encontrado`);
@@ -732,7 +744,9 @@ export class ClinicaService {
     if (!sets.length) return null;
     params.push(id, empresaId);
     const [row] = await this.ds.query<any[]>(
-      `UPDATE cl_procedimientos SET ${sets.join(', ')} WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *`,
+      `WITH fila AS (
+         UPDATE cl_procedimientos SET ${sets.join(', ')} WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *
+       ) SELECT * FROM fila`,
       params,
     );
     if (!row) throw new NotFoundException(`Procedimiento #${id} no encontrado`);
@@ -809,7 +823,9 @@ export class ClinicaService {
     if (!sets.length) return null;
     params.push(id, empresaId);
     const [row] = await this.ds.query<any[]>(
-      `UPDATE cl_autorizaciones_ars SET ${sets.join(', ')} WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *`,
+      `WITH fila AS (
+         UPDATE cl_autorizaciones_ars SET ${sets.join(', ')} WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *
+       ) SELECT * FROM fila`,
       params,
     );
     if (!row) throw new NotFoundException(`Autorización ARS #${id} no encontrada`);
@@ -849,7 +865,9 @@ export class ClinicaService {
     if (!sets.length) return null;
     params.push(id, empresaId);
     const [row] = await this.ds.query<any[]>(
-      `UPDATE cl_catalogo_servicios SET ${sets.join(', ')} WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *`,
+      `WITH fila AS (
+         UPDATE cl_catalogo_servicios SET ${sets.join(', ')} WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *
+       ) SELECT * FROM fila`,
       params,
     );
     if (!row) throw new NotFoundException(`Catálogo #${id} no encontrado`);

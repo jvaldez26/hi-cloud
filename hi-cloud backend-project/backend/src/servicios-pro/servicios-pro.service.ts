@@ -149,7 +149,9 @@ export class ServiciosProService {
     if (data.isActive   !== undefined) set('isActive',   data.isActive);
     if (!campos.length) throw new Error('No hay campos para actualizar');
     const rows = await this.ds.query(
-      `UPDATE sp_profesionales SET ${campos.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *`,
+      `WITH fila AS (
+         UPDATE sp_profesionales SET ${campos.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *
+       ) SELECT * FROM fila`,
       vals,
     );
     return rows[0];
@@ -268,7 +270,9 @@ export class ServiciosProService {
     if (data.prioridad        !== undefined) set('prioridad',        data.prioridad);
     if (data.notas            !== undefined) set('notas',            data.notas);
     const rows = await this.ds.query(
-      `UPDATE sp_expedientes SET ${campos.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *`,
+      `WITH fila AS (
+         UPDATE sp_expedientes SET ${campos.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *
+       ) SELECT * FROM fila`,
       vals,
     );
     return rows[0];
@@ -433,7 +437,9 @@ export class ServiciosProService {
     if (data.facturable      !== undefined) set('facturable',      data.facturable);
     if (data.orden           !== undefined) set('orden',           data.orden);
     const rows = await this.ds.query(
-      `UPDATE sp_tareas SET ${campos.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *`,
+      `WITH fila AS (
+         UPDATE sp_tareas SET ${campos.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *
+       ) SELECT * FROM fila`,
       vals,
     );
     return rows[0];
@@ -531,7 +537,9 @@ export class ServiciosProService {
     if (data.aprobado    !== undefined) set('aprobado',    data.aprobado);
     if (!campos.length) throw new Error('No hay campos para actualizar');
     const rows = await this.ds.query(
-      `UPDATE sp_tiempo SET ${campos.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *`,
+      `WITH fila AS (
+         UPDATE sp_tiempo SET ${campos.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *
+       ) SELECT * FROM fila`,
       vals,
     );
     return rows[0];
@@ -637,7 +645,9 @@ export class ServiciosProService {
     if (data.reembolsado  !== undefined) set('reembolsado',  data.reembolsado);
     if (!campos.length) throw new Error('No hay campos para actualizar');
     const rows = await this.ds.query(
-      `UPDATE sp_gastos_expediente SET ${campos.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *`,
+      `WITH fila AS (
+         UPDATE sp_gastos_expediente SET ${campos.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *
+       ) SELECT * FROM fila`,
       vals,
     );
     return rows[0];
@@ -713,7 +723,9 @@ export class ServiciosProService {
     if (data.notas             !== undefined) set('notas',             data.notas);
     if (!campos.length) throw new Error('No hay campos para actualizar');
     const rows = await this.ds.query(
-      `UPDATE sp_contratos SET ${campos.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *`,
+      `WITH fila AS (
+         UPDATE sp_contratos SET ${campos.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *
+       ) SELECT * FROM fila`,
       vals,
     );
     return rows[0];
@@ -796,7 +808,9 @@ export class ServiciosProService {
     if (data.horasRegistradas       !== undefined) set('horasRegistradas',      data.horasRegistradas);
     if (!campos.length) throw new Error('No hay campos para actualizar');
     const rows = await this.ds.query(
-      `UPDATE sp_reuniones SET ${campos.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *`,
+      `WITH fila AS (
+         UPDATE sp_reuniones SET ${campos.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *
+       ) SELECT * FROM fila`,
       vals,
     );
     return rows[0];
@@ -905,7 +919,9 @@ export class ServiciosProService {
     if (data.notas            !== undefined) set('notas',            data.notas);
     if (!campos.length) throw new Error('No hay campos para actualizar');
     const rows = await this.ds.query(
-      `UPDATE sp_facturas_honorarios SET ${campos.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *`,
+      `WITH fila AS (
+         UPDATE sp_facturas_honorarios SET ${campos.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *
+       ) SELECT * FROM fila`,
       vals,
     );
     return rows[0];
@@ -1054,8 +1070,10 @@ export class ServiciosProService {
 
   async marcarContratoFirmado(id: number) {
     const rows = await this.ds.query<any[]>(
-      `UPDATE sp_contratos SET estado='firmado', "fechaFirmaCliente"=NOW()
-       WHERE id=$1 AND "empresaId"=$2 RETURNING *`,
+      `WITH fila AS (
+         UPDATE sp_contratos SET estado='firmado', "fechaFirmaCliente"=NOW()
+         WHERE id=$1 AND "empresaId"=$2 RETURNING *
+       ) SELECT * FROM fila`,
       [id, this.empresaId],
     );
     if (!rows.length) throw new NotFoundException('Contrato no encontrado');
@@ -1064,8 +1082,10 @@ export class ServiciosProService {
 
   async marcarHonorarioPagado(id: number, fechaPago: string) {
     const rows = await this.ds.query<any[]>(
-      `UPDATE sp_facturas_honorarios SET estado='pagada', "fechaPago"=$1
-       WHERE id=$2 AND "empresaId"=$3 RETURNING *`,
+      `WITH fila AS (
+         UPDATE sp_facturas_honorarios SET estado='pagada', "fechaPago"=$1
+         WHERE id=$2 AND "empresaId"=$3 RETURNING *
+       ) SELECT * FROM fila`,
       [fechaPago, id, this.empresaId],
     );
     if (!rows.length) throw new NotFoundException('Honorario no encontrado');
@@ -1091,7 +1111,9 @@ export class ServiciosProService {
     if (!campos.length) throw new Error('Sin campos');
     vals.push(id); vals.push(this.empresaId);
     const rows = await this.ds.query<any[]>(
-      `UPDATE sp_retainers SET ${campos.join(',')} WHERE id=$${vals.length - 1} AND "empresaId"=$${vals.length} RETURNING *`,
+      `WITH fila AS (
+         UPDATE sp_retainers SET ${campos.join(',')} WHERE id=$${vals.length - 1} AND "empresaId"=$${vals.length} RETURNING *
+       ) SELECT * FROM fila`,
       vals,
     );
     return rows[0];

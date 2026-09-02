@@ -111,8 +111,10 @@ export class SolicitudesService {
     const estado = aprobado ? 'aprobada' : 'rechazada';
     const motivoFinal = data.motivoRechazo ?? data.motivoDecision ?? null;
     const [row] = await this.ds.query(
-      `UPDATE pr_solicitudes SET estado=$1,"montoAprobado"=$2,"tasaAprobada"=$3,"fechaDecision"=CURRENT_DATE,
-        "decididoPor"=$4,"motivoRechazo"=$5 WHERE id=$6 AND "empresaId"=$7 RETURNING *`,
+      `WITH fila AS (
+         UPDATE pr_solicitudes SET estado=$1,"montoAprobado"=$2,"tasaAprobada"=$3,"fechaDecision"=CURRENT_DATE,
+          "decididoPor"=$4,"motivoRechazo"=$5 WHERE id=$6 AND "empresaId"=$7 RETURNING *
+       ) SELECT * FROM fila`,
       [estado, data.montoAprobado ?? null, data.tasaAprobada ?? null, uid != null ? String(uid) : null,
        motivoFinal, id, empresaId],
     );
@@ -134,7 +136,9 @@ export class SolicitudesService {
     if (!fields.length) throw new BadRequestException('Sin campos para actualizar');
     args.push(id, empresaId);
     const [row] = await this.ds.query(
-      `UPDATE pr_solicitudes SET ${fields.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *`, args,
+      `WITH fila AS (
+         UPDATE pr_solicitudes SET ${fields.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *
+       ) SELECT * FROM fila`, args,
     );
     return row;
   }

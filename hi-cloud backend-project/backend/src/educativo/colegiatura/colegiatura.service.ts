@@ -37,9 +37,11 @@ export class ColegiaturaService {
     );
     if (existing) {
       const [row] = await this.ds.query<any[]>(
-        `UPDATE ed_planes_pago
-         SET "montoColegiatura" = $3, "montoMatricula" = $4, "diaCobro" = $5, descuento = $6
-         WHERE id = $1 AND "empresaId" = $2 RETURNING *`,
+        `WITH fila AS (
+         UPDATE ed_planes_pago
+           SET "montoColegiatura" = $3, "montoMatricula" = $4, "diaCobro" = $5, descuento = $6
+           WHERE id = $1 AND "empresaId" = $2 RETURNING *
+       ) SELECT * FROM fila`,
         [existing.id, empresaId,
          dto.montoColegiatura, dto.montoMatricula ?? 0, dto.diaCobro ?? 1, dto.descuento ?? 0],
       );
@@ -170,7 +172,9 @@ export class ColegiaturaService {
     if (!fields.length) return exists;
     const sets = fields.map((f, i) => `"${f}" = $${i + 3}`).join(', ');
     const [row] = await this.ds.query(
-      `UPDATE ed_cargos SET ${sets} WHERE id = $1 AND "empresaId" = $2 RETURNING *`,
+      `WITH fila AS (
+         UPDATE ed_cargos SET ${sets} WHERE id = $1 AND "empresaId" = $2 RETURNING *
+       ) SELECT * FROM fila`,
       [id, empresaId, ...fields.map(f => dto[f])],
     );
     return row;

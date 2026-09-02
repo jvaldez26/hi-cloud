@@ -55,7 +55,9 @@ export class InsumosService {
     if (!sets.length) return exists;
     sets.push(`"actualizadoPor"=$${vals.length + 1}`); vals.push(this.tenantSvc.getUserId());
     const [row] = await this.ds.query(
-      `UPDATE ag_insumos SET ${sets.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *`, vals,
+      `WITH fila AS (
+         UPDATE ag_insumos SET ${sets.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *
+       ) SELECT * FROM fila`, vals,
     );
     return row;
   }

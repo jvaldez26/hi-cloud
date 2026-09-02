@@ -129,7 +129,9 @@ export class DeudoresService {
     fields.push(`"updatedAt"=NOW()`);
     args.push(id, empresaId);
     const [row] = await this.ds.query(
-      `UPDATE pr_deudores SET ${fields.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *`, args,
+      `WITH fila AS (
+         UPDATE pr_deudores SET ${fields.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *
+       ) SELECT * FROM fila`, args,
     );
     return row;
   }

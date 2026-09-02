@@ -101,7 +101,9 @@ export class TransporteService {
     sets.push(`"updatedAt"=NOW()`);
     vals.push(id, empresaId);
     const [row] = await this.ds.query<any[]>(
-      `UPDATE tr_choferes SET ${sets.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *`,
+      `WITH fila AS (
+         UPDATE tr_choferes SET ${sets.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *
+       ) SELECT * FROM fila`,
       vals,
     );
     return row;
@@ -180,7 +182,9 @@ export class TransporteService {
     sets.push(`"updatedAt"=NOW()`);
     vals.push(id, empresaId);
     const [row] = await this.ds.query<any[]>(
-      `UPDATE tr_vehiculos SET ${sets.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *`,
+      `WITH fila AS (
+         UPDATE tr_vehiculos SET ${sets.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *
+       ) SELECT * FROM fila`,
       vals,
     );
     return row;
@@ -294,7 +298,9 @@ export class TransporteService {
     sets.push(`"updatedAt"=NOW()`);
     vals.push(id, empresaId);
     const [row] = await this.ds.query<any[]>(
-      `UPDATE tr_viajes SET ${sets.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *`,
+      `WITH fila AS (
+         UPDATE tr_viajes SET ${sets.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *
+       ) SELECT * FROM fila`,
       vals,
     );
     if (!row) throw new NotFoundException(`Viaje #${id} no encontrado`);
@@ -642,7 +648,9 @@ export class TransporteService {
 
     vals.push(id, empresaId);
     const [row] = await this.ds.query<any[]>(
-      `UPDATE tr_combustible SET ${sets.join(',')} WHERE id=$${idx} AND "empresaId"=$${idx + 1} RETURNING *`,
+      `WITH fila AS (
+         UPDATE tr_combustible SET ${sets.join(',')} WHERE id=$${idx} AND "empresaId"=$${idx + 1} RETURNING *
+       ) SELECT * FROM fila`,
       vals,
     );
     return row;
@@ -767,7 +775,9 @@ export class TransporteService {
     sets.push(`"updatedAt"=NOW()`);
     vals.push(id, empresaId);
     const [row] = await this.ds.query<any[]>(
-      `UPDATE tr_mantenimiento SET ${sets.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *`,
+      `WITH fila AS (
+         UPDATE tr_mantenimiento SET ${sets.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *
+       ) SELECT * FROM fila`,
       vals,
     );
     return row;

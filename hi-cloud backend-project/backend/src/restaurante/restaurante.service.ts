@@ -118,7 +118,9 @@ export class RestauranteService {
     if (dto.isActive !== undefined)       { params.push(dto.isActive);        sets.push(`"isActive"=$${params.length}`); }
     if (!sets.length) return this.ds.query(`SELECT * FROM rs_areas WHERE id=$1 AND "empresaId"=$2`, [id, empresaId]);
     const [area] = await this.ds.query<any[]>(
-      `UPDATE rs_areas SET ${sets.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *`, params,
+      `WITH fila AS (
+         UPDATE rs_areas SET ${sets.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *
+       ) SELECT * FROM fila`, params,
     );
     return area;
   }
@@ -196,7 +198,9 @@ export class RestauranteService {
     }
     if (!sets.length) return;
     const [mesa] = await this.ds.query<any[]>(
-      `UPDATE rs_mesas SET ${sets.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *`, params,
+      `WITH fila AS (
+         UPDATE rs_mesas SET ${sets.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *
+       ) SELECT * FROM fila`, params,
     );
     return mesa;
   }
@@ -231,7 +235,9 @@ export class RestauranteService {
       if (dto[k] !== undefined) { params.push(dto[k]); sets.push(`${col}=$${params.length}`); }
     }
     if (!sets.length) return;
-    const [cat] = await this.ds.query<any[]>(`UPDATE rs_categorias_menu SET ${sets.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *`, params);
+    const [cat] = await this.ds.query<any[]>(`WITH fila AS (
+         UPDATE rs_categorias_menu SET ${sets.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *
+       ) SELECT * FROM fila`, params);
     return cat;
   }
 
@@ -300,7 +306,9 @@ export class RestauranteService {
     }
     if (!sets.length) return this.obtenerMenuItem(id);
     const [item] = await this.ds.query<any[]>(
-      `UPDATE rs_menu_items SET ${sets.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *`, params,
+      `WITH fila AS (
+         UPDATE rs_menu_items SET ${sets.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *
+       ) SELECT * FROM fila`, params,
     );
     return item;
   }
@@ -308,7 +316,9 @@ export class RestauranteService {
   async toggleDisponibilidad(id: number) {
     const empresaId = this.tenantSvc.getEmpresaId();
     const [item] = await this.ds.query<any[]>(
-      `UPDATE rs_menu_items SET disponible = NOT disponible WHERE id=$1 AND "empresaId"=$2 RETURNING id, disponible`,
+      `WITH fila AS (
+         UPDATE rs_menu_items SET disponible = NOT disponible WHERE id=$1 AND "empresaId"=$2 RETURNING id, disponible
+       ) SELECT * FROM fila`,
       [id, empresaId],
     );
     return item;
@@ -402,7 +412,9 @@ export class RestauranteService {
     }
     if (!sets.length) return;
     const [res] = await this.ds.query<any[]>(
-      `UPDATE rs_reservaciones SET ${sets.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *`, params,
+      `WITH fila AS (
+         UPDATE rs_reservaciones SET ${sets.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *
+       ) SELECT * FROM fila`, params,
     );
     return res;
   }
@@ -410,7 +422,9 @@ export class RestauranteService {
   async sentarReservacion(id: number) {
     const empresaId = this.tenantSvc.getEmpresaId();
     const [res] = await this.ds.query<any[]>(
-      `UPDATE rs_reservaciones SET estado='sentada' WHERE id=$1 AND "empresaId"=$2 RETURNING *`,
+      `WITH fila AS (
+         UPDATE rs_reservaciones SET estado='sentada' WHERE id=$1 AND "empresaId"=$2 RETURNING *
+       ) SELECT * FROM fila`,
       [id, empresaId],
     );
     return res;
@@ -776,8 +790,10 @@ export class RestauranteService {
   async kdsIniciarItem(itemId: number) {
     const empresaId = this.tenantSvc.getEmpresaId();
     const [item] = await this.ds.query<any[]>(
-      `UPDATE rs_comanda_items SET "estadoCocina"='en_preparacion', "enviadoCocinaAt"=COALESCE("enviadoCocinaAt", NOW())
-       WHERE id=$1 AND "empresaId"=$2 RETURNING *`,
+      `WITH fila AS (
+         UPDATE rs_comanda_items SET "estadoCocina"='en_preparacion', "enviadoCocinaAt"=COALESCE("enviadoCocinaAt", NOW())
+         WHERE id=$1 AND "empresaId"=$2 RETURNING *
+       ) SELECT * FROM fila`,
       [itemId, empresaId],
     );
     return item;
@@ -786,8 +802,10 @@ export class RestauranteService {
   async kdsMarcarListo(itemId: number) {
     const empresaId = this.tenantSvc.getEmpresaId();
     const [item] = await this.ds.query<any[]>(
-      `UPDATE rs_comanda_items SET "estadoCocina"='listo', "listoCocinaAt"=NOW()
-       WHERE id=$1 AND "empresaId"=$2 RETURNING *`,
+      `WITH fila AS (
+         UPDATE rs_comanda_items SET "estadoCocina"='listo', "listoCocinaAt"=NOW()
+         WHERE id=$1 AND "empresaId"=$2 RETURNING *
+       ) SELECT * FROM fila`,
       [itemId, empresaId],
     );
     // Si todos los items de la comanda están listos → actualizar comanda
@@ -858,7 +876,9 @@ export class RestauranteService {
     const empresaId = this.tenantSvc.getEmpresaId();
     const extraSets = estado === 'entregado' ? `, "fechaEntregaReal"=NOW()` : '';
     const [pedido] = await this.ds.query<any[]>(
-      `UPDATE rs_pedidos_delivery SET estado=$1${extraSets} WHERE id=$2 AND "empresaId"=$3 RETURNING *`,
+      `WITH fila AS (
+         UPDATE rs_pedidos_delivery SET estado=$1${extraSets} WHERE id=$2 AND "empresaId"=$3 RETURNING *
+       ) SELECT * FROM fila`,
       [estado, id, empresaId],
     );
     return pedido;
@@ -867,8 +887,10 @@ export class RestauranteService {
   async asignarRepartidor(id: number, dto: any) {
     const empresaId = this.tenantSvc.getEmpresaId();
     const [pedido] = await this.ds.query<any[]>(
-      `UPDATE rs_pedidos_delivery SET "repartidorNombre"=$1, "repartidorTelefono"=$2, estado='en_camino'
-       WHERE id=$3 AND "empresaId"=$4 RETURNING *`,
+      `WITH fila AS (
+         UPDATE rs_pedidos_delivery SET "repartidorNombre"=$1, "repartidorTelefono"=$2, estado='en_camino'
+         WHERE id=$3 AND "empresaId"=$4 RETURNING *
+       ) SELECT * FROM fila`,
       [dto.repartidorNombre, dto.repartidorTelefono ?? null, id, empresaId],
     );
     return pedido;
@@ -915,8 +937,10 @@ export class RestauranteService {
     if (!turno) throw new NotFoundException('Turno no encontrado');
     const diferencia = efectivoContado !== null ? efectivoContado - turno.totalEfectivo : null;
     const [cerrado] = await this.ds.query<any[]>(
-      `UPDATE rs_turnos SET estado='cerrado', "fechaCierre"=NOW(), "efectivoContado"=$1, diferencia=$2, notas=$3
-       WHERE id=$4 AND "empresaId"=$5 RETURNING *`,
+      `WITH fila AS (
+         UPDATE rs_turnos SET estado='cerrado', "fechaCierre"=NOW(), "efectivoContado"=$1, diferencia=$2, notas=$3
+         WHERE id=$4 AND "empresaId"=$5 RETURNING *
+       ) SELECT * FROM fila`,
       [efectivoContado, diferencia, dto.notas ?? null, id, empresaId],
     );
     return cerrado;

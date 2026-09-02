@@ -57,7 +57,9 @@ export class GarantiasService {
     if (!fields.length) return this.findOne(empresaId, id);
     args.push(id, empresaId);
     const [row] = await this.ds.query(
-      `UPDATE pr_garantias SET ${fields.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *`, args,
+      `WITH fila AS (
+         UPDATE pr_garantias SET ${fields.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *
+       ) SELECT * FROM fila`, args,
     );
     return row;
   }

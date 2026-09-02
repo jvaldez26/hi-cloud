@@ -57,7 +57,9 @@ export class FincasService {
     });
     if (!sets.length) return this.orFail(empresaId, id);
     const [row] = await this.ds.query(
-      `UPDATE ag_fincas SET ${sets.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *`, vals,
+      `WITH fila AS (
+         UPDATE ag_fincas SET ${sets.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *
+       ) SELECT * FROM fila`, vals,
     );
     return row;
   }
@@ -94,7 +96,9 @@ export class FincasService {
     });
     if (!sets.length) return exists;
     const [row] = await this.ds.query(
-      `UPDATE ag_parcelas SET ${sets.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *`, vals,
+      `WITH fila AS (
+         UPDATE ag_parcelas SET ${sets.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *
+       ) SELECT * FROM fila`, vals,
     );
     return row;
   }

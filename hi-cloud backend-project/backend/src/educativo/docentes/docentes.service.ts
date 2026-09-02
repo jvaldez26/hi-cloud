@@ -70,7 +70,9 @@ export class DocentesService {
     if (!fields.length) return this.findOne(empresaId, id);
     const sets = fields.map((f, i) => `"${f}" = $${i + 3}`).join(', ');
     const [row] = await this.ds.query(
-      `UPDATE ed_docentes SET ${sets} WHERE id = $1 AND "empresaId" = $2 RETURNING *`,
+      `WITH fila AS (
+         UPDATE ed_docentes SET ${sets} WHERE id = $1 AND "empresaId" = $2 RETURNING *
+       ) SELECT * FROM fila`,
       [id, empresaId, ...fields.map(f => dto[f])],
     );
     return row;

@@ -141,7 +141,9 @@ export class VehiculosService {
 
     args.push(id, empresaId);
     const [row] = await this.ds.query(
-      `UPDATE pr_vehiculos SET ${fields.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *`,
+      `WITH fila AS (
+         UPDATE pr_vehiculos SET ${fields.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *
+       ) SELECT * FROM fila`,
       args,
     );
     return row;

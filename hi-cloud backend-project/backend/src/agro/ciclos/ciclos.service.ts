@@ -155,7 +155,9 @@ export class CiclosService {
     });
     sets.push(`"actualizadoPor"=$${vals.length + 1}`); vals.push(this.tenantSvc.getUserId());
     const [row] = await this.ds.query(
-      `UPDATE ag_ciclos SET ${sets.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *`, vals,
+      `WITH fila AS (
+         UPDATE ag_ciclos SET ${sets.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *
+       ) SELECT * FROM fila`, vals,
     );
     return row;
   }
@@ -166,9 +168,11 @@ export class CiclosService {
     // un 2º intento (doble-click / concurrencia) afecta 0 filas → 409, sin recalcular
     // ni re-liberar la parcela. Reemplaza el read-then-write anterior.
     const cerrado = await this.ds.query<any[]>(
-      `UPDATE ag_ciclos SET estado='cerrado', "fechaCosechaReal"=$3, "ingresoVentas"=$4,
-         "actualizadoPor"=$5, "updatedAt"=NOW()
-        WHERE id=$1 AND "empresaId"=$2 AND estado <> 'cerrado' RETURNING *`,
+      `WITH fila AS (
+         UPDATE ag_ciclos SET estado='cerrado', "fechaCosechaReal"=$3, "ingresoVentas"=$4,
+           "actualizadoPor"=$5, "updatedAt"=NOW()
+          WHERE id=$1 AND "empresaId"=$2 AND estado <> 'cerrado' RETURNING *
+       ) SELECT * FROM fila`,
       // M4: era new Date().toISOString(), la fecha UTC. Entre las 8 de la noche
       // y medianoche en RD eso devuelve el día siguiente, así que un ciclo
       // cerrado por la noche quedaba fechado mañana.
@@ -293,7 +297,9 @@ export class CiclosService {
     if (!sets.length) return exists;
     sets.push(`"actualizadoPor"=$${vals.length + 1}`); vals.push(this.tenantSvc.getUserId());
     const [row] = await this.ds.query(
-      `UPDATE ag_labores SET ${sets.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *`, vals,
+      `WITH fila AS (
+         UPDATE ag_labores SET ${sets.join(',')} WHERE id=$1 AND "empresaId"=$2 RETURNING *
+       ) SELECT * FROM fila`, vals,
     );
     await this.recalcularCostos(exists.cicloId, empresaId);
     return row;

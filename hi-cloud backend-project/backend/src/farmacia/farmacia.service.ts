@@ -175,7 +175,9 @@ export class FarmaciaService {
     if (!sets.length) return this.medOr404(empresaId, id);
     params.push(id, empresaId);
     const [m] = await this.ds.query<any[]>(
-      `UPDATE fa_medicamentos SET ${sets.join(', ')}, "updatedAt" = NOW() WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *`,
+      `WITH fila AS (
+         UPDATE fa_medicamentos SET ${sets.join(', ')}, "updatedAt" = NOW() WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *
+       ) SELECT * FROM fila`,
       params,
     );
     return m;
@@ -239,7 +241,9 @@ export class FarmaciaService {
   async actualizarLote(id: number, dto: any) {
     const empresaId = this.tenantSvc.getEmpresaId();
     const [lote] = await this.ds.query<any[]>(
-      `UPDATE fa_lotes SET estado = COALESCE($1, estado) WHERE id = $2 AND "empresaId" = $3 RETURNING *`,
+      `WITH fila AS (
+         UPDATE fa_lotes SET estado = COALESCE($1, estado) WHERE id = $2 AND "empresaId" = $3 RETURNING *
+       ) SELECT * FROM fila`,
       [dto.estado ?? null, id, empresaId],
     );
     if (!lote) throw new NotFoundException(`Lote #${id} no encontrado`);
@@ -582,7 +586,9 @@ export class FarmaciaService {
     if (!sets.length) throw new BadRequestException('Sin campos a actualizar');
     params.push(id, empresaId);
     const [ars] = await this.ds.query<any[]>(
-      `UPDATE fa_reclamaciones_ars SET ${sets.join(', ')} WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *`,
+      `WITH fila AS (
+         UPDATE fa_reclamaciones_ars SET ${sets.join(', ')} WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *
+       ) SELECT * FROM fila`,
       params,
     );
     if (!ars) throw new NotFoundException(`ARS #${id} no encontrada`);

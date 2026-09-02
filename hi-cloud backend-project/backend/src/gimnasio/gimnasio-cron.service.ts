@@ -27,7 +27,9 @@ export class GimnasioCronService {
   async marcarVencidas() {
     try {
       const result = await this.ds.query<any[]>(
-        `UPDATE gm_membresias SET estado='vencida' WHERE estado='activa' AND "fechaFin" < CURRENT_DATE RETURNING id`,
+        `WITH fila AS (
+         UPDATE gm_membresias SET estado='vencida' WHERE estado='activa' AND "fechaFin" < CURRENT_DATE RETURNING id
+       ) SELECT * FROM fila`,
       );
       if (result.length > 0) {
         this.logger.log(`${result.length} membresías marcadas como vencidas`);

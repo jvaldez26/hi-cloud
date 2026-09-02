@@ -96,7 +96,9 @@ export class EdConfigService {
     if (!fields.length) return existing;
     const sets = fields.map((f, i) => `"${f}" = $${i + 3}`).join(', ');
     const [row] = await this.ds.query(
-      `UPDATE ed_anios_escolares SET ${sets} WHERE id = $1 AND "empresaId" = $2 RETURNING *`,
+      `WITH fila AS (
+         UPDATE ed_anios_escolares SET ${sets} WHERE id = $1 AND "empresaId" = $2 RETURNING *
+       ) SELECT * FROM fila`,
       [id, empresaId, ...fields.map(f => dto[f])],
     );
     return row;
@@ -139,7 +141,9 @@ export class EdConfigService {
     if (!fields.length) return existing;
     const sets = fields.map((f, i) => `"${f}" = $${i + 3}`).join(', ');
     const [row] = await this.ds.query(
-      `UPDATE ed_periodos SET ${sets} WHERE id = $1 AND "empresaId" = $2 RETURNING *`,
+      `WITH fila AS (
+         UPDATE ed_periodos SET ${sets} WHERE id = $1 AND "empresaId" = $2 RETURNING *
+       ) SELECT * FROM fila`,
       [id, empresaId, ...fields.map(f => dto[f])],
     );
     return row;

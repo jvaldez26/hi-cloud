@@ -28,7 +28,9 @@ export class EstructuraService {
     if (!fields.length) throw new NotFoundException('Sin campos a actualizar');
     const sets = fields.map((f, i) => `"${f}" = $${i + 3}`).join(', ');
     const [row] = await this.ds.query(
-      `UPDATE ed_niveles SET ${sets} WHERE id = $1 AND "empresaId" = $2 RETURNING *`,
+      `WITH fila AS (
+         UPDATE ed_niveles SET ${sets} WHERE id = $1 AND "empresaId" = $2 RETURNING *
+       ) SELECT * FROM fila`,
       [id, empresaId, ...fields.map(f => dto[f])],
     );
     if (!row) throw new NotFoundException('Nivel no encontrado');
@@ -64,7 +66,9 @@ export class EstructuraService {
     if (!fields.length) throw new NotFoundException('Sin campos a actualizar');
     const sets = fields.map((f, i) => `"${f}" = $${i + 3}`).join(', ');
     const [row] = await this.ds.query(
-      `UPDATE ed_grados SET ${sets} WHERE id = $1 AND "empresaId" = $2 RETURNING *`,
+      `WITH fila AS (
+         UPDATE ed_grados SET ${sets} WHERE id = $1 AND "empresaId" = $2 RETURNING *
+       ) SELECT * FROM fila`,
       [id, empresaId, ...fields.map(f => dto[f])],
     );
     if (!row) throw new NotFoundException('Grado no encontrado');
@@ -133,7 +137,9 @@ export class EstructuraService {
     if (!fields.length) throw new NotFoundException('Sin campos a actualizar');
     const sets = fields.map((f, i) => `"${f}" = $${i + 3}`).join(', ');
     const [row] = await this.ds.query(
-      `UPDATE ed_secciones SET ${sets} WHERE id = $1 AND "empresaId" = $2 RETURNING *`,
+      `WITH fila AS (
+         UPDATE ed_secciones SET ${sets} WHERE id = $1 AND "empresaId" = $2 RETURNING *
+       ) SELECT * FROM fila`,
       [id, empresaId, ...fields.map(f => dto[f])],
     );
     if (!row) throw new NotFoundException('Sección no encontrada');
@@ -163,7 +169,9 @@ export class EstructuraService {
     if (!fields.length) throw new NotFoundException('Sin campos a actualizar');
     const sets = fields.map((f, i) => `"${f}" = $${i + 3}`).join(', ');
     const [row] = await this.ds.query(
-      `UPDATE ed_asignaturas SET ${sets} WHERE id = $1 AND "empresaId" = $2 RETURNING *`,
+      `WITH fila AS (
+         UPDATE ed_asignaturas SET ${sets} WHERE id = $1 AND "empresaId" = $2 RETURNING *
+       ) SELECT * FROM fila`,
       [id, empresaId, ...fields.map(f => dto[f])],
     );
     if (!row) throw new NotFoundException('Asignatura no encontrada');

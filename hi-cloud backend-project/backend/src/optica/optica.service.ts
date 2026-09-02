@@ -233,8 +233,10 @@ export class OpticaService {
     if (!sets.length) return this.pacienteOr404(empresaId, id);
     params.push(id, empresaId);
     const [row] = await this.ds.query<any[]>(
-      `UPDATE op_pacientes SET ${sets.join(', ')}, "updatedAt" = NOW()
-       WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *`,
+      `WITH fila AS (
+         UPDATE op_pacientes SET ${sets.join(', ')}, "updatedAt" = NOW()
+         WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *
+       ) SELECT * FROM fila`,
       params,
     );
     return row;
@@ -297,8 +299,10 @@ export class OpticaService {
     if (!sets.length) return this.medicoOr404(empresaId, id);
     params.push(id, empresaId);
     const [row] = await this.ds.query<any[]>(
-      `UPDATE op_medicos SET ${sets.join(', ')}, "updatedAt" = NOW()
-       WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *`,
+      `WITH fila AS (
+         UPDATE op_medicos SET ${sets.join(', ')}, "updatedAt" = NOW()
+         WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *
+       ) SELECT * FROM fila`,
       params,
     );
     return row;
@@ -393,8 +397,10 @@ export class OpticaService {
     if (!sets.length) return this.citaOr404(empresaId, id);
     params.push(id, empresaId);
     const [row] = await this.ds.query<any[]>(
-      `UPDATE op_citas SET ${sets.join(', ')}, "updatedAt" = NOW()
-       WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *`,
+      `WITH fila AS (
+         UPDATE op_citas SET ${sets.join(', ')}, "updatedAt" = NOW()
+         WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *
+       ) SELECT * FROM fila`,
       params,
     );
     return row;
@@ -516,8 +522,10 @@ export class OpticaService {
     if (!sets.length) return this.consultaOr404(empresaId, id);
     params.push(id, empresaId);
     const [row] = await this.ds.query<any[]>(
-      `UPDATE op_consultas SET ${sets.join(', ')}, "updatedAt" = NOW()
-       WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *`,
+      `WITH fila AS (
+         UPDATE op_consultas SET ${sets.join(', ')}, "updatedAt" = NOW()
+         WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *
+       ) SELECT * FROM fila`,
       params,
     );
     return row;
@@ -615,8 +623,10 @@ export class OpticaService {
     if (!sets.length) return this.recetaOr404(empresaId, id);
     params.push(id, empresaId);
     const [row] = await this.ds.query<any[]>(
-      `UPDATE op_recetas SET ${sets.join(', ')}, "updatedAt" = NOW()
-       WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *`,
+      `WITH fila AS (
+         UPDATE op_recetas SET ${sets.join(', ')}, "updatedAt" = NOW()
+         WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *
+       ) SELECT * FROM fila`,
       params,
     );
     return row;
@@ -718,8 +728,10 @@ export class OpticaService {
     if (!sets.length) return this.otOr404(empresaId, id);
     params.push(id, empresaId);
     const [row] = await this.ds.query<any[]>(
-      `UPDATE op_ordenes_trabajo SET ${sets.join(', ')}, "updatedAt" = NOW()
-       WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *`,
+      `WITH fila AS (
+         UPDATE op_ordenes_trabajo SET ${sets.join(', ')}, "updatedAt" = NOW()
+         WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *
+       ) SELECT * FROM fila`,
       params,
     );
     return row;
@@ -739,10 +751,12 @@ export class OpticaService {
     const nuevoBalance = Math.max(0, balance - dto.montoCobrado);
     const nuevoAbono   = Number(ot.abono ?? 0) + dto.montoCobrado;
     const [row] = await this.ds.query<any[]>(
-      `UPDATE op_ordenes_trabajo
-       SET estado = 'entregada', "fechaEntrega" = NOW()::date,
-           abono = $1, balance = $2, "updatedAt" = NOW()
-       WHERE id = $3 AND "empresaId" = $4 RETURNING *`,
+      `WITH fila AS (
+         UPDATE op_ordenes_trabajo
+         SET estado = 'entregada', "fechaEntrega" = NOW()::date,
+             abono = $1, balance = $2, "updatedAt" = NOW()
+         WHERE id = $3 AND "empresaId" = $4 RETURNING *
+       ) SELECT * FROM fila`,
       [nuevoAbono, nuevoBalance, id, empresaId],
     );
     return { ...row, montoCobrado: dto.montoCobrado, metodoPago: dto.metodoPago };
@@ -828,8 +842,10 @@ export class OpticaService {
     if (!sets.length) return this.arsOr404(empresaId, id);
     params.push(id, empresaId);
     const [row] = await this.ds.query<any[]>(
-      `UPDATE op_reclamaciones_ars SET ${sets.join(', ')}, "updatedAt" = NOW()
-       WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *`,
+      `WITH fila AS (
+         UPDATE op_reclamaciones_ars SET ${sets.join(', ')}, "updatedAt" = NOW()
+         WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *
+       ) SELECT * FROM fila`,
       params,
     );
     return row;
@@ -1072,7 +1088,9 @@ export class OpticaService {
     fields.push(`"updatedAt" = NOW()`);
     params.push(id, empresaId);
     const [row] = await this.ds.query<any[]>(
-      `UPDATE op_inventario SET ${fields.join(', ')} WHERE id = $${p++} AND "empresaId" = $${p} RETURNING *`,
+      `WITH fila AS (
+         UPDATE op_inventario SET ${fields.join(', ')} WHERE id = $${p++} AND "empresaId" = $${p} RETURNING *
+       ) SELECT * FROM fila`,
       params,
     );
     if (!row) throw new NotFoundException(`Item inventario #${id} no encontrado`);
@@ -1082,9 +1100,11 @@ export class OpticaService {
   async ajustarStock(id: number, delta: number, motivo?: string) {
     const empresaId = this.tenantSvc.getEmpresaId();
     const [row] = await this.ds.query<any[]>(
-      `UPDATE op_inventario
-       SET "stockActual" = GREATEST(0, "stockActual" + $1), "updatedAt" = NOW()
-       WHERE id = $2 AND "empresaId" = $3 RETURNING *`,
+      `WITH fila AS (
+         UPDATE op_inventario
+         SET "stockActual" = GREATEST(0, "stockActual" + $1), "updatedAt" = NOW()
+         WHERE id = $2 AND "empresaId" = $3 RETURNING *
+       ) SELECT * FROM fila`,
       [delta, id, empresaId],
     );
     if (!row) throw new NotFoundException(`Item inventario #${id} no encontrado`);

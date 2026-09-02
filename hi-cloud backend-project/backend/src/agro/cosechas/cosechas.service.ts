@@ -89,9 +89,11 @@ export class CosechasService {
 
       // Ganar el flag de forma atómica: solo pasa de false→true una vez.
       const marcada = await manager.query<any[]>(
-        `UPDATE ag_cosechas SET "ingresadoInventario"=true, "actualizadoPor"=$3
-          WHERE id=$1 AND "empresaId"=$2 AND "ingresadoInventario"=false
-        RETURNING *`,
+        `WITH fila AS (
+         UPDATE ag_cosechas SET "ingresadoInventario"=true, "actualizadoPor"=$3
+            WHERE id=$1 AND "empresaId"=$2 AND "ingresadoInventario"=false
+          RETURNING *
+       ) SELECT * FROM fila`,
         [id, empresaId, this.tenantSvc.getUserId()],
       );
       if (!marcada.length) {
@@ -103,7 +105,9 @@ export class CosechasService {
       // Si el producto no pertenece a la empresa → RETURNING vacío → excepción →
       // rollback de toda la transacción (el flag NO queda marcado).
       const prod = await manager.query<any[]>(
-        `UPDATE productos SET stock = stock + $1 WHERE id=$2 AND "empresaId"=$3 RETURNING id`,
+        `WITH fila AS (
+         UPDATE productos SET stock = stock + $1 WHERE id=$2 AND "empresaId"=$3 RETURNING id
+       ) SELECT * FROM fila`,
         [cosecha.cantidad, cosecha.productoId, empresaId],
       );
       if (!prod.length) {

@@ -56,7 +56,9 @@ export class ProductosPrestamoService {
     if (!fields.length) throw new BadRequestException('Sin campos para actualizar');
     args.push(id, empresaId);
     const [row] = await this.ds.query(
-      `UPDATE pr_productos_prestamo SET ${fields.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *`, args,
+      `WITH fila AS (
+         UPDATE pr_productos_prestamo SET ${fields.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *
+       ) SELECT * FROM fila`, args,
     );
     return row;
   }

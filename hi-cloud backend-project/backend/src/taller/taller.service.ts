@@ -188,7 +188,9 @@ export class TallerService {
     if (!sets.length) return this.obtenerVehiculo(id);
     params.push(id, empresaId);
     const [row] = await this.ds.query<any[]>(
-      `UPDATE tm_vehiculos SET ${sets.join(', ')}, "updatedAt" = NOW() WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *`,
+      `WITH fila AS (
+         UPDATE tm_vehiculos SET ${sets.join(', ')}, "updatedAt" = NOW() WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *
+       ) SELECT * FROM fila`,
       params,
     );
     return row;
@@ -263,7 +265,9 @@ export class TallerService {
     }
     params.push(id, empresaId);
     const [row] = await this.ds.query<any[]>(
-      `UPDATE tm_tecnicos SET ${sets.join(', ')}, "updatedAt" = NOW() WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *`,
+      `WITH fila AS (
+         UPDATE tm_tecnicos SET ${sets.join(', ')}, "updatedAt" = NOW() WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *
+       ) SELECT * FROM fila`,
       params,
     );
     if (!row) throw new NotFoundException(`Técnico #${id} no encontrado`);
@@ -454,11 +458,11 @@ export class TallerService {
   async aprobarOrden(id: number, dto: any) {
     const empresaId = this.tenantSvc.getEmpresaId();
     await this.ordenOr404(empresaId, id);
-    const [row] = await this.ds.query<any[]>(`
-      UPDATE tm_ordenes SET "presupuestoAprobado" = true, "aprobadoPor" = $1, "formaAprobacion" = $2,
-        "aprobadoFecha" = NOW(), estado = 'aprobado', "updatedAt" = NOW()
-      WHERE id = $3 AND "empresaId" = $4 RETURNING *
-    `, [dto.aprobadoPor ?? null, dto.formaAprobacion ?? null, id, empresaId]);
+    const [row] = await this.ds.query<any[]>(`WITH fila AS (
+         UPDATE tm_ordenes SET "presupuestoAprobado" = true, "aprobadoPor" = $1, "formaAprobacion" = $2,
+          "aprobadoFecha" = NOW(), estado = 'aprobado', "updatedAt" = NOW()
+        WHERE id = $3 AND "empresaId" = $4 RETURNING *
+       ) SELECT * FROM fila`, [dto.aprobadoPor ?? null, dto.formaAprobacion ?? null, id, empresaId]);
     return row;
   }
 
@@ -530,8 +534,10 @@ export class TallerService {
     if (!sets.length) return null;
     params.push(servicioId, ordenId, empresaId);
     const [row] = await this.ds.query<any[]>(
-      `UPDATE tm_orden_servicios SET ${sets.join(', ')}, total = ROUND((cantidad * "precioUnitario" - descuento), 2)
-       WHERE id = $${params.length - 2} AND "ordenId" = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *`,
+      `WITH fila AS (
+         UPDATE tm_orden_servicios SET ${sets.join(', ')}, total = ROUND((cantidad * "precioUnitario" - descuento), 2)
+         WHERE id = $${params.length - 2} AND "ordenId" = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *
+       ) SELECT * FROM fila`,
       params,
     );
     if (!row) throw new NotFoundException(`Servicio #${servicioId} no encontrado`);
@@ -584,8 +590,10 @@ export class TallerService {
     if (!sets.length) return null;
     params.push(repuestoId, ordenId, empresaId);
     const [row] = await this.ds.query<any[]>(
-      `UPDATE tm_orden_repuestos SET ${sets.join(', ')}, total = ROUND((cantidad * "precioUnitario" - descuento), 2)
-       WHERE id = $${params.length - 2} AND "ordenId" = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *`,
+      `WITH fila AS (
+         UPDATE tm_orden_repuestos SET ${sets.join(', ')}, total = ROUND((cantidad * "precioUnitario" - descuento), 2)
+         WHERE id = $${params.length - 2} AND "ordenId" = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *
+       ) SELECT * FROM fila`,
       params,
     );
     if (!row) throw new NotFoundException(`Repuesto #${repuestoId} no encontrado`);
@@ -664,7 +672,9 @@ export class TallerService {
       if (!cols.length) return existing;
       const sets = cols.map((c, i) => `"${c}" = $${i + 1}`).join(', ');
       const [row] = await this.ds.query<any[]>(
-        `UPDATE tm_checklist SET ${sets}, "updatedAt" = NOW() WHERE "ordenId" = $${cols.length + 1} AND "empresaId" = $${cols.length + 2} RETURNING *`,
+        `WITH fila AS (
+         UPDATE tm_checklist SET ${sets}, "updatedAt" = NOW() WHERE "ordenId" = $${cols.length + 1} AND "empresaId" = $${cols.length + 2} RETURNING *
+       ) SELECT * FROM fila`,
         [...vals, ordenId, empresaId],
       );
       return row;
@@ -734,7 +744,9 @@ export class TallerService {
     if (!sets.length) return null;
     params.push(id, empresaId);
     const [row] = await this.ds.query<any[]>(
-      `UPDATE tm_citas SET ${sets.join(', ')}, "updatedAt" = NOW() WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *`,
+      `WITH fila AS (
+         UPDATE tm_citas SET ${sets.join(', ')}, "updatedAt" = NOW() WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *
+       ) SELECT * FROM fila`,
       params,
     );
     if (!row) throw new NotFoundException(`Cita #${id} no encontrada`);
@@ -771,7 +783,9 @@ export class TallerService {
     if (!sets.length) return null;
     params.push(id, empresaId);
     const [row] = await this.ds.query<any[]>(
-      `UPDATE tm_catalogo_servicios SET ${sets.join(', ')}, "updatedAt" = NOW() WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *`,
+      `WITH fila AS (
+         UPDATE tm_catalogo_servicios SET ${sets.join(', ')}, "updatedAt" = NOW() WHERE id = $${params.length - 1} AND "empresaId" = $${params.length} RETURNING *
+       ) SELECT * FROM fila`,
       params,
     );
     if (!row) throw new NotFoundException(`Catálogo #${id} no encontrado`);
