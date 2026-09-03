@@ -777,6 +777,54 @@ export class FacturasService {
    *   y las recurrentes, que mandan el suyo por su cuenta (con su propio
    *   interruptor) y aquí saldría duplicado.
    */
+  /**
+   * Guard: no dejar sellar una factura como PAGADA si no hay ningún rastro de
+   * cobro detrás. Nace de la auditoría de 2026-09 (scripts/auditoria-cobros-sin-recibo.sql):
+   * facturas de CONTADO se sellaban PAGADA solo porque tipoPago !== 'CREDITO',
+   * sin verificar que el cajero de verdad hubiera declarado un cobro.
+   *
+   * "Rastro" = al menos uno de:
+   *   1) facturas."formasPago" con al menos una entrada (contado/POS)
+   *   2) un recibo de cobro activo apuntando a esta factura
+   *   3) un pago (incl. anticipo aplicado) sobre su cuenta por cobrar
+   *   4) una nota de crédito emitida con efectosAplicados=true
+   *
+   * TIPO A (efecto de dinero): reporta a Sentry y PROPAGA — nunca sella
+   * PAGADA a ciegas.
+   */
+  private async verificarRastroCobro(factura: Factura): Promise<void> {
+    const { formasPago } = factura;
+    if (Array.isArray(formasPago) && formasPago.length > 0) return;
+
+    const [{ existe }] = await this.dataSource.query<{ existe: boolean }[]>(
+      `SELECT (
+          EXISTS (SELECT 1 FROM recibos_cobro WHERE "facturaId" = $1 AND "isActive" = true)
+          OR EXISTS (
+            SELECT 1 FROM cuentas_por_cobrar cxc
+            JOIN pagos_cobrados pc ON pc."cuentaPorCobrarId" = cxc.id
+            WHERE cxc."facturaId" = $1
+          )
+          OR EXISTS (
+            SELECT 1 FROM notas_credito
+            WHERE "facturaOriginalId" = $1 AND estado = 'emitida' AND "efectosAplicados" = true
+          )
+       ) AS existe`,
+      [factura.id],
+    );
+
+    if (!existe) {
+      const err = new BadRequestException(
+        'No existe rastro de cobro para marcar esta factura como pagada',
+      );
+      reportServiceError(err, 'factura_pagada_sin_rastro', {
+        facturaId: String(factura.id),
+        empresaId: String(factura.empresaId ?? ''),
+        folio: factura.folio,
+      });
+      throw err;
+    }
+  }
+
   async cambiarEstado(
     id: number,
     estado: FacturaEstado,
@@ -1069,12 +1117,28 @@ export class FacturasService {
           const ecfIdPOS = (ecfResult as any)?.ecf?.id;
           const posPatch: Record<string, unknown> = {};
           if (ecfIdPOS) posPatch.ecfId = ecfIdPOS;
-          if (!esCredito) posPatch.estado = FacturaEstado.PAGADA;
+
+          // El guard se resuelve ANTES de tocar la BD para no dejar la factura
+          // a medio sellar, pero el ecfId se persiste igual aunque el guard
+          // rechace: el e-CF ya lo aceptó DGII, eso no se pierde — lo único
+          // que se bloquea es el sello PAGADA sin cobro detrás.
+          let rastroErr: Error | null = null;
+          if (!esCredito) {
+            try {
+              await this.verificarRastroCobro(factura);
+              posPatch.estado = FacturaEstado.PAGADA;
+            } catch (err) {
+              // ya reportado a Sentry dentro de verificarRastroCobro
+              rastroErr = err instanceof Error ? err : new Error(String(err));
+            }
+          }
           if (Object.keys(posPatch).length) {
             await this.facturaRepository.update(id, posPatch as any);
             this.realtimeService.notify(factura.empresaId, 'factura', 'updated', id);
           }
           this.avisarClienteSiProcede(avisarCliente, id, factura.empresaId);
+          // TIPO A: detiene el flujo — se propaga después de dejar la BD consistente.
+          if (rastroErr) throw rastroErr;
         }
 
         return ecfResult;
@@ -1086,11 +1150,27 @@ export class FacturasService {
         .then(async result => {
           const updates: Record<string, unknown> = {};
           if (result?.ecf?.id) updates.ecfId = result.ecf.id;
-          // CONTADO: sellar PAGADA ahora que la emisión no lanzó
-          if (!esCredito) updates.estado = FacturaEstado.PAGADA;
+          // CONTADO: sellar PAGADA ahora que la emisión no lanzó — pero antes,
+          // el guard de rastro de cobro. Se atrapa aparte (no en el .catch de
+          // abajo, que es para fallos de e-CF): el e-CF SÍ se emitió bien, solo
+          // se bloquea el sello de PAGADA. Ya quedó reportado a Sentry dentro
+          // de verificarRastroCobro (TIPO A).
+          let sellarPagada = false;
+          if (!esCredito) {
+            try {
+              await this.verificarRastroCobro(factura);
+              sellarPagada = true;
+            } catch (guardErr) {
+              this.logger.error(
+                `[Factura] ${factura.folio} emitida pero SIN sellar PAGADA: ` +
+                `${guardErr instanceof Error ? guardErr.message : String(guardErr)}`,
+              );
+            }
+          }
+          if (sellarPagada) updates.estado = FacturaEstado.PAGADA;
           if (Object.keys(updates).length) {
             await this.facturaRepository.update(id, updates as any);
-            if (!esCredito) this.realtimeService.notify(factura.empresaId, 'factura', 'updated', id);
+            if (sellarPagada) this.realtimeService.notify(factura.empresaId, 'factura', 'updated', id);
           }
           // El correo va DESPUÉS de que el comprobante haya salido, no antes:
           // el PDF adjunto lleva el eNCF y el QR de verificación, y mandarlo
