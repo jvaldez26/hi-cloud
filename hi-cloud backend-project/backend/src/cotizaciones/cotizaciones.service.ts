@@ -303,6 +303,27 @@ export class CotizacionesService {
   // Sin vendedorId para saltarse el check de caja en cambiarEstado.
   // ──────────────────────────────────────────────────────────────────
 
+  /**
+   * Mapea el texto del botón que pulsó el cajero (Efectivo/Tarjeta/Transferencia/
+   * Crédito) al tipo numérico DGII que espera `factura.formasPago`. Devuelve
+   * undefined ante cualquier valor que no reconozca — mejor dejar la factura
+   * SIN formasPago (y que el guard de abajo la bloquee) que inventar un tipo.
+   *
+   * Catálogo DGII: 1=Efectivo 2=Cheque/Transferencia 3=Tarjeta 4=Crédito
+   * 5=Permuta 6=Nota Crédito.
+   */
+  private tipoDgiiDeMetodo(metodoPago: string): number | undefined {
+    switch (metodoPago.trim().toLowerCase()) {
+      case 'efectivo':      return 1;
+      case 'transferencia':
+      case 'cheque':        return 2;
+      case 'tarjeta':       return 3;
+      case 'crédito':
+      case 'credito':       return 4;
+      default:              return undefined;
+    }
+  }
+
   async cobrarDesdePos(id: number, usuarioId: number, dto: { metodoPago: string; diasCredito?: number }) {
     const empresaId = this.tenantService.getEmpresaId();
     const cot = await this.findById(id);
@@ -356,6 +377,14 @@ export class CotizacionesService {
         notas:            notasFactura,
         diasCredito:      diasCred || undefined,
         fechaVencimiento: vencimiento,
+        // Sin esto la factura nace CONTADO sin ningún rastro de cobro: el
+        // guard de facturas.service (verificarRastroCobro) la bloquea al
+        // sellar PAGADA — con razón, porque de verdad no hay nada detrás. El
+        // crédito no lleva formasPago (no hay cobro todavía, solo CxC).
+        formasPago: esCredito ? undefined : (() => {
+          const tipo = this.tipoDgiiDeMetodo(dto.metodoPago);
+          return tipo ? [{ tipo, monto: Number(cot.total) }] : undefined;
+        })(),
         // Igual que en convertirAFactura(): el descuento acompaña al documento
         descuentoGeneralTipo:  cot.descuentoGeneralTipo  ?? undefined,
         descuentoGeneralValor: cot.descuentoGeneralValor ?? undefined,
