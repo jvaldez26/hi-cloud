@@ -174,6 +174,8 @@ const RUTAS = {
     data: [
       { id: 1, nombre: 'FERRETERÍA LA ECONÓMICA', rfc: '131234567', rncCompartido: false },
       { id: 2, nombre: 'DISTRIBUIDORA DEL ESTE',  rfc: '130987654', rncCompartido: false },
+      { id: 3, nombre: 'ESCUELA BÁSICA LOS ALCARRIZOS #3', rfc: '401500123', razonSocial: 'DISTRITO EDUCATIVO 10-04', direccion: 'C/ Duarte 12', ciudad: 'Los Alcarrizos', rncCompartido: true },
+      { id: 4, nombre: 'ESCUELA BÁSICA LOS ALCARRIZOS #7', rfc: '401500123', razonSocial: 'DISTRITO EDUCATIVO 10-04', direccion: 'C/ Mella 45', ciudad: 'Los Alcarrizos', rncCompartido: true },
     ],
     meta: { total: 2, page: 1, limit: 10, totalPages: 1 },
   }),
@@ -185,6 +187,13 @@ const RUTAS = {
       { id: 4, codigo: 'LIB-001',   nombre: 'Manual técnico (exento)', precio: 800, porcentajeIva: 0, unidadMedida: 'UN' },
     ],
     meta: { total: 4, page: 1, limit: 5000, totalPages: 1 },
+  }),
+  '/clientes/rnc/401500123': () => ({
+    rnc: '401500123', total: 2,
+    clientes: [
+      { id: 3, nombre: 'ESCUELA BÁSICA LOS ALCARRIZOS #3', razonSocial: 'DISTRITO EDUCATIVO 10-04', rfc: '401500123', direccion: 'C/ Duarte 12', ciudad: 'Los Alcarrizos', telefono: '809-555-0103' },
+      { id: 4, nombre: 'ESCUELA BÁSICA LOS ALCARRIZOS #7', razonSocial: 'DISTRITO EDUCATIVO 10-04', rfc: '401500123', direccion: 'C/ Mella 45', ciudad: 'Los Alcarrizos', telefono: '809-555-0107' },
+    ],
   }),
   '/vendedores': () => ({ data: [{ id: 7, codigo: 'V01', nombre: 'JUAN PÉREZ' }] }),
   '/auth/mis-sucursales': () => ([{ id: 1, nombre: 'Sucursal Principal' }]),

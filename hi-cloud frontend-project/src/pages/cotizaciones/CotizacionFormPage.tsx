@@ -5,7 +5,7 @@ import { PlusOutlined, DeleteOutlined, ArrowLeftOutlined } from '@ant-design/ico
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { cotizacionesApi, type CotizacionDetallePayload } from '../../api/cotizaciones.api';
-import { clientesApi } from '../../api/clientes.api';
+import SelectClienteConAlta from '../../components/clientes/SelectClienteConAlta';
 import { productosApi } from '../../api/productos.api';
 import { fmt } from '../../utils/formatters';
 import api from '../../api/client';
@@ -63,7 +63,8 @@ export default function CotizacionFormPage() {
 
   const sucursalActual = useAuthStore(s => s.sucursalActual);
   const empresaActual  = useAuthStore(s => s.empresaActual);
-  const { data: clientes  } = useQuery({ queryKey: ['clientes-sel'],  queryFn: () => clientesApi.list(1, 100) });
+  // La lista de clientes la carga SelectClienteConAlta (misma queryKey
+  // 'clientes-sel', así que comparten caché con el resto de pantallas)
   const { data: productos } = useQuery({ queryKey: ['productos-sel'], queryFn: () => productosApi.list(1, 5000, '', true), staleTime: 5 * 60_000, refetchOnWindowFocus: false });
   const { data: vendedores = [] } = useQuery<any[]>({ queryKey: ['vendedores-sel'], queryFn: () => api.get('/vendedores').then((r: any) => r.data?.data?.data ?? r.data?.data ?? []) });
   const { data: sucursales = [] } = useQuery<any[]>({ queryKey: ['mis-sucursales', empresaActual], queryFn: () => api.get('/auth/mis-sucursales').then((r: any) => r.data?.data ?? r.data ?? []) });
@@ -326,9 +327,10 @@ export default function CotizacionFormPage() {
         <Card style={{ marginBottom: 16 }}>
           <Row gutter={16}>
             <Col xs={24} sm={10}>
+              {/* El mismo selector que la factura: buscar, y dar de alta sin
+                  salir de aquí. Antes había que irse a Clientes y volver. */}
               <Form.Item name="clienteId" label="Cliente" rules={[{ required: true }]}>
-                <Select showSearch filterOption={(i, o) => String(o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
-                  options={clientes?.data.map(c => ({ value: c.id, label: `${c.rfc} — ${c.nombre}` }))} />
+                <SelectClienteConAlta style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col xs={12} sm={4}>

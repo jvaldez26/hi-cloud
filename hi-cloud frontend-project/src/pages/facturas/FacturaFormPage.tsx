@@ -17,6 +17,7 @@ import { fmt } from '../../utils/formatters';
 import { TIPOS_NCF } from '../../components/ui/NCFSelector';
 import { useRncLookup } from '../../hooks/useRncLookup';
 import RncBadge from '../../components/ui/RncBadge';
+import SelectClienteConAlta from '../../components/clientes/SelectClienteConAlta';
 import type { Cliente } from '../../types';
 import dayjs from 'dayjs';
 
@@ -66,9 +67,6 @@ export default function FacturaFormPage() {
   // RNC lookup — campo principal
   const rnc = useRncLookup();
   const [rncInput, setRncInput] = useState('');
-
-  // RNC lookup — modal "Crear cliente rápido"
-  const crearClienteRnc = useRncLookup();
 
   // Descuento general
   const [descGeneralTipo,  setDescGeneralTipo]  = useState<'monto' | 'porcentaje'>('monto');
@@ -249,45 +247,20 @@ export default function FacturaFormPage() {
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al aplicar anticipo', 5),
   });
 
-  // ── Creación rápida de cliente ─────────────────────────────────────────────
-  const [showCrearCliente, setShowCrearCliente] = useState(false);
-  const [crearClienteForm] = Form.useForm();
-  const [clienteSearch, setClienteSearch] = useState('');
-
-  // Auto-lookup DGII cuando se tipea un RNC (9 dígitos) o Cédula (11 dígitos) sin cliente existente
-  const isRncPattern = /^\d{9}$|^\d{11}$/.test(clienteSearch);
-  const existeClienteRnc = isRncPattern
-    ? clientes?.data.find((c: Cliente) => c.rfc === clienteSearch)
-    : null;
-  const { data: dgiiRnc, isFetching: buscandoDgii } = useQuery<any>({
-    queryKey: ['dgii-rnc-cliente', clienteSearch],
-    queryFn:  () => api.get(`/rnc/consultar?rnc=${encodeURIComponent(clienteSearch)}`).then(r => r.data?.data ?? r.data),
-    enabled:  isRncPattern && !existeClienteRnc,
-    staleTime: 24 * 60 * 60 * 1000,
-  });
-
-  // Auto-rellenar nombre del cliente cuando DGII responde en el modal
-  useEffect(() => {
-    if (crearClienteRnc.datos?.encontrado && crearClienteRnc.datos.nombre) {
-      crearClienteForm.setFieldsValue({ nombre: crearClienteRnc.datos.nombre });
-    }
-  }, [crearClienteRnc.datos, crearClienteForm]);
-
+  // ── Alta automática desde el campo RNC del comprador ───────────────────────
+  // OJO: esto NO es el alta del selector de cliente — esa se fue a
+  // SelectClienteConAlta con su modal y su comprobación de RNC repetido.
+  //
+  // Este camino es otro: cuando se teclea un RNC arriba, no hay cliente con ese
+  // RNC y el padrón lo encuentra, se crea el cliente SOLO, sin preguntar (ver el
+  // efecto de más abajo, paso 3). Se mantiene como estaba.
   const crearClienteMut = useMutation({
     mutationFn: (body: any) => clientesApi.create(body),
     onSuccess: (cli: any) => {
       qc.invalidateQueries({ queryKey: ['clientes-sel'] });
       form.setFieldValue('clienteId', cli.id);
       onClienteChange(cli.id);
-      setShowCrearCliente(false);
-      crearClienteForm.resetFields();
-      crearClienteRnc.limpiar();
-      const esAutoDGII = !showCrearCliente;
-      message.success(
-        esAutoDGII
-          ? `✓ Cliente "${cli.nombre}" registrado desde DGII y seleccionado`
-          : `Cliente "${cli.nombre}" creado y seleccionado`
-      );
+      message.success(`✓ Cliente "${cli.nombre}" registrado desde DGII y seleccionado`);
     },
     onError: (e: any) => message.error(e?.friendlyMessage ?? e?.response?.data?.message ?? 'Error al crear cliente'),
   });
@@ -704,58 +677,13 @@ export default function FacturaFormPage() {
             <Col xs={24} sm={10}>
               <Form.Item name="clienteId" label={<span style={{ fontSize: 12 }}>Cliente <span style={{ color: 'red' }}>*</span></span>}
                 rules={[{ required: true, message: 'Selecciona un cliente' }]} style={fi}>
-                <Select showSearch placeholder="Buscar por nombre o RNC..."
-                  popupMatchSelectWidth={false}
-                  dropdownStyle={{ minWidth: 360 }}
-                  filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
-                  options={clientes?.data.map((c: Cliente) => ({
-                    value: c.id,
-                    // Con RNC compartido el nombre y el RNC no bastan para
-                    // distinguirlos: se agrega la dirección
-                    label: [
-                      c.rfc ? `${c.rfc} — ${c.nombre}` : c.nombre,
-                      c.rncCompartido ? (c.direccion || c.ciudad || 'sin dirección') : '',
-                    ].filter(Boolean).join(' · '),
-                  }))}
+                {/* Este selector vivía aquí entero. Se movió a
+                    components/clientes/SelectClienteConAlta para que cotización
+                    —y mañana el POS— usen el mismo, y de paso comprueba si el
+                    RNC ya lo usa otro cliente antes de crear un duplicado. */}
+                <SelectClienteConAlta
+                  style={{ width: '100%' }}
                   onChange={onClienteChange}
-                  onSearch={v => setClienteSearch(v)}
-                  dropdownRender={menu => (
-                    <>
-                      {menu}
-                      <Divider style={{ margin: '4px 0' }} />
-                      {isRncPattern && !existeClienteRnc ? (
-                        buscandoDgii ? (
-                          <div style={{ padding: '6px 12px', fontSize: 12, color: token.colorTextSecondary }}>
-                            <Spin size="small" style={{ marginRight: 6 }} />Consultando DGII…
-                          </div>
-                        ) : dgiiRnc?.encontrado ? (
-                          <Button type="link" icon={<PlusOutlined />}
-                            style={{ width: '100%', textAlign: 'left', paddingLeft: 12 }}
-                            onMouseDown={e => e.preventDefault()}
-                            onClick={() => {
-                              crearClienteForm.setFieldsValue({ rfc: clienteSearch, nombre: dgiiRnc.nombre });
-                              setShowCrearCliente(true);
-                            }}>
-                            {dgiiRnc.nombre} ({clienteSearch}) — Crear como cliente
-                          </Button>
-                        ) : dgiiRnc ? (
-                          <div style={{ padding: '4px 12px', fontSize: 11, color: token.colorTextSecondary }}>
-                            RNC {clienteSearch} no encontrado en DGII
-                          </div>
-                        ) : null
-                      ) : clienteSearch.length >= 2 && !isRncPattern ? (
-                        <Button type="link" icon={<PlusOutlined />}
-                          style={{ width: '100%', textAlign: 'left', paddingLeft: 12 }}
-                          onMouseDown={e => e.preventDefault()}
-                          onClick={() => {
-                            crearClienteForm.setFieldsValue({ nombre: clienteSearch });
-                            setShowCrearCliente(true);
-                          }}>
-                          Crear &ldquo;{clienteSearch}&rdquo; como nuevo cliente
-                        </Button>
-                      ) : null}
-                    </>
-                  )}
                 />
               </Form.Item>
               {!editMode && anticiposCliente.length > 0 && (
@@ -1212,92 +1140,6 @@ export default function FacturaFormPage() {
           </Form>
         </Modal>
       )}
-      {/* ── Modal: crear cliente rápido desde la factura ──────────────── */}
-      <Modal
-        title="Crear cliente rápido"
-        open={showCrearCliente}
-        onCancel={() => { setShowCrearCliente(false); crearClienteForm.resetFields(); crearClienteRnc.limpiar(); }}
-        footer={null}
-        destroyOnClose
-        width={480}
-      >
-        <Form
-          form={crearClienteForm}
-          layout="vertical"
-          onFinish={vals => crearClienteMut.mutate({
-            rfc:          vals.rfc || undefined,
-            nombre:       vals.nombre,
-            telefono:     vals.telefono || undefined,
-            email:        vals.email    || undefined,
-            regimenFiscal: vals.regimenFiscal || undefined,
-          })}
-        >
-          <Row gutter={12}>
-            <Col span={10}>
-              <Form.Item name="rfc" label="RNC / Cédula"
-                rules={[{
-                  validator: (_, v) => {
-                    if (!v) return Promise.resolve();
-                    return /^\d{9}$|^\d{11}$/.test(v)
-                      ? Promise.resolve()
-                      : Promise.reject('9 dígitos (RNC) u 11 (Cédula)');
-                  },
-                }]}>
-                <Input
-                  placeholder="9 u 11 dígitos"
-                  maxLength={11}
-                  onChange={e => {
-                    const v = e.target.value.replace(/\D/g, '');
-                    crearClienteForm.setFieldsValue({ rfc: v });
-                    crearClienteRnc.consultarDebounced(v);
-                  }}
-                />
-              </Form.Item>
-              <RncBadge datos={crearClienteRnc.datos} loading={crearClienteRnc.loading} />
-            </Col>
-            <Col span={14}>
-              <Form.Item name="nombre" label="Nombre / Razón Social"
-                rules={[{ required: true, message: 'El nombre es obligatorio' }]}>
-                <Input autoFocus />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Row gutter={12}>
-            <Col span={12}>
-              <Form.Item name="telefono" label="Teléfono">
-                <Input placeholder="(809) 000-0000" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="email" label="Email" rules={[{ type: 'email', message: 'Email inválido' }]}>
-                <Input placeholder="correo@ejemplo.com" />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Form.Item name="regimenFiscal" label="Régimen Fiscal">
-            <Select allowClear>
-              <Select.Option value="ORDINARIO">Ordinario</Select.Option>
-              <Select.Option value="PST">PST — Pequeño contribuyente</Select.Option>
-              <Select.Option value="RST">RST — Simplificado</Select.Option>
-              <Select.Option value="EXENTO">Exento</Select.Option>
-            </Select>
-          </Form.Item>
-          <Alert type="info" showIcon style={{ marginBottom: 16 }}
-            message="Creación rápida — completa los datos del cliente en el módulo Clientes después." />
-          <Row gutter={8} justify="end">
-            <Col>
-              <Button onClick={() => { setShowCrearCliente(false); crearClienteForm.resetFields(); crearClienteRnc.limpiar(); }}>
-                Cancelar
-              </Button>
-            </Col>
-            <Col>
-              <Button type="primary" htmlType="submit" loading={crearClienteMut.isPending} icon={<PlusOutlined />}>
-                Crear y seleccionar
-              </Button>
-            </Col>
-          </Row>
-        </Form>
-      </Modal>
     </div>
   );
 }
