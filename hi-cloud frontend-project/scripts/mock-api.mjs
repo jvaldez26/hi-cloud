@@ -195,6 +195,15 @@ const RUTAS = {
       { id: 4, nombre: 'ESCUELA BÁSICA LOS ALCARRIZOS #7', razonSocial: 'DISTRITO EDUCATIVO 10-04', rfc: '401500123', direccion: 'C/ Mella 45', ciudad: 'Los Alcarrizos', telefono: '809-555-0107' },
     ],
   }),
+  // El POS pide su catalogo por aqui, no por /productos
+  '/productos/catalogo-pos': () => ([
+    { id: 1, codigo: 'ACE-10W40', nombre: 'Aceite REPSOL 10W40', precio: 950,  porcentajeIva: 18, unidadMedida: 'UN', stock: 50, categoria: 'Lubricantes' },
+    { id: 2, codigo: 'FIL-17801', nombre: 'Filtro de aire',       precio: 1250, porcentajeIva: 18, unidadMedida: 'UN', stock: 30, categoria: 'Filtros' },
+    { id: 4, codigo: 'LIB-001',   nombre: 'Manual tecnico',       precio: 800,  porcentajeIva: 0,  unidadMedida: 'UN', stock: 10, categoria: 'Otros' },
+  ]),
+  '/vendedores/mi-perfil': () => ({ id: 7, codigo: 'V01', nombre: 'JUAN PEREZ', activo: true }),
+  '/sucursales': () => ([{ id: 1, nombre: 'Sucursal Principal', esPrincipal: true }]),
+  '/balanza/patrones': () => ([]),
   '/vendedores': () => ({ data: [{ id: 7, codigo: 'V01', nombre: 'JUAN PÉREZ' }] }),
   '/auth/mis-sucursales': () => ([{ id: 1, nombre: 'Sucursal Principal' }]),
 

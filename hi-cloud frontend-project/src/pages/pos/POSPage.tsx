@@ -43,6 +43,7 @@ import { fmt, round2 } from '../../utils/formatters';
 import { validarEAN, parsearBalanza, type BalanzaPatronFrontend, type BalanzaMatchFrontend } from '../../utils/balanza-scan';
 import { resolverNombreComprador, resolverRncComprador } from '../../utils/facturaComprador';
 import { descuentoFinalABase, descuentoBaseAFinal, pctIvaEfectivo, round4 } from '../../utils/descuentoItbis';
+import { calcularTotalesCarritoPOS } from '../../utils/totalesCarritoPOS';
 import { imprimirElemento, imprimirReciboTermico, imprimirPDFA4, imprimirFacturaPreviewA4, imprimirHtml } from '../../utils/printUtils';
 import { exportarExcel } from '../../utils/exportExcel';
 import { conectarImpresora, desconectarImpresora, estaConectada, getNombreImpresora, imprimirPruebaEscPos, autoReconectarImpresora, bluetoothAutoReconexionDisponible, huboFalloWatchAdvertisements } from '../../services/thermalPrinter';
@@ -9877,62 +9878,37 @@ export default function POSPage() {
   // El switch está deshabilitado en Configuración → POS con la misma explicación.
   // Para reactivarlo hay que desglosar el precio ANTES de armar el payload.
   const precioIncluyeItbis = false;
-  // Base cruda por línea (sin redondeo intermedio) — subtotal e ITBIS se redondean
-  // POR LÍNEA igual que facturas.service, para que el total que cobra la caja sea
-  // EXACTAMENTE el que guarda el backend y el que se declara a DGII.
-  const lineasBase = cart.map(i => {
-    const pct      = Number((i.produto as any).porcentajeIva ?? 0) / 100;
-    const lineaRaw = (i.precio - i.descuentoMonto) * i.cantidad;
-    const baseRaw  = precioIncluyeItbis && pct > 0 ? lineaRaw / (1 + pct) : lineaRaw;
-    return { pct, baseRaw, subtotal: round2(baseRaw) };
+
+  // Los totales del carrito viven en utils/totalesCarritoPOS.ts. Se movieron tal
+  // cual —mismo orden de operaciones, mismos redondeos, mismos nombres— porque
+  // aquí dentro no había forma de probarlos, y esto decide lo que cobra la caja.
+  // El util se compara contra el bloque anterior sobre 5.000 carritos.
+  //
+  // El destructuring va en forma CORTA a propósito, sin renombrar ninguna: así
+  // el nombre de la variable es la clave del objeto y cruzar dos es
+  // sintácticamente imposible. Son catorce números; un cruce compilaría igual y
+  // cambiaría lo que se cobra sin ningún síntoma.
+  const {
+    lineasBase,
+    subtotal,
+    iva,
+    descGlobalVal,
+    pctIvaCarrito,
+    totalConItbis,
+    descGlobalMonto,
+    descGlobalFinal,
+    lineasConDesc,
+    subtotalConDesc,
+    ivaConDesc,
+    total,
+    ivaEfectivo,
+    totalEfectivo,
+  } = calcularTotalesCarritoPOS(cart as any, {
+    descGlobal,
+    descGlobalTipo,
+    precioIncluyeItbis,
+    tipoNcf,
   });
-  const subtotal = round2(lineasBase.reduce((s, l) => s + l.subtotal, 0));
-  const iva      = round2(lineasBase.reduce((s, l) => s + round2(l.baseRaw * l.pct), 0));
-  // ── Descuento global ───────────────────────────────────────────────────────
-  // El cajero teclea en pesos FINALES (c/ITBIS) — MISMA regla que el descuento
-  // por ítem (descuentoFinalABase). Se guarda en BASE imponible porque el ITBIS
-  // se recalcula sobre la base ya descontada.
-  //   fijo:       RD$10 tecleados  → el total baja EXACTAMENTE RD$10
-  //   porcentaje: 10% tecleado     → el total baja EXACTAMENTE 10%
-  // La tasa usada es la EFECTIVA del carrito (iva/subtotal), así funciona con
-  // mezcla de 18% / 16% / exentos igual que el reparto proporcional del backend.
-  const descGlobalVal   = Math.max(0, parseFloat(descGlobal) || 0);
-  // E44 (Zona Franca) no cobra ITBIS: el precio que ve el cajero YA es el final,
-  // así que el descuento tecleado no se convierte.
-  const pctIvaCarrito   = tipoNcf === 'E44' ? 0 : pctIvaEfectivo(subtotal, iva);
-  const totalConItbis   = tipoNcf === 'E44' ? subtotal : round2(subtotal + iva);
-  // 4 decimales, no 2: el importe sale de una división y redondearlo aquí
-  // desviaría el total hasta un centavo respecto de lo que cobra la caja.
-  // La columna es NUMERIC(12,4) y el DTO valida 4dp.
-  const descGlobalMonto = round4(descGlobalTipo === 'pct'
-    // % sobre la base → el total baja ese mismo % (proporcional, no requiere conversión)
-    ? subtotal * Math.min(descGlobalVal, 100) / 100
-    // monto en pesos finales → base imponible, capeado al total cobrable
-    : Math.min(
-        descuentoFinalABase(Math.min(descGlobalVal, totalConItbis), pctIvaCarrito, precioIncluyeItbis),
-        subtotal,
-      ));
-  // Equivalente en pesos FINALES del descuento global — SOLO para pantalla.
-  // En modo fijo es exactamente lo que tecleó el cajero (tras el cap); en % es la
-  // rebaja real sobre lo que paga el cliente.
-  const descGlobalFinal = descGlobalTipo === 'fijo'
-    ? round2(Math.min(descGlobalVal, totalConItbis))
-    : descuentoBaseAFinal(descGlobalMonto, pctIvaCarrito, precioIncluyeItbis);
-  // Reparto proporcional del descuento y recálculo del ITBIS — MISMO orden de
-  // operaciones que facturas.service.create(). Escalar el ITBIS ya redondeado
-  // (iva × ratio) desviaba hasta 1 centavo del total guardado y declarado.
-  const lineasConDesc = lineasBase.map(l => {
-    const descProp    = subtotal > 0 ? round2((l.subtotal / subtotal) * descGlobalMonto) : 0;
-    const subtotFinal = round2(l.subtotal - descProp);
-    const rawFinal    = l.subtotal > 0 ? l.baseRaw * (subtotFinal / l.subtotal) : subtotFinal;
-    return { subtotFinal, ivaLinea: round2(rawFinal * l.pct) };
-  });
-  const subtotalConDesc = round2(lineasConDesc.reduce((s, l) => s + l.subtotFinal, 0));
-  const ivaConDesc      = round2(lineasConDesc.reduce((s, l) => s + l.ivaLinea,    0));
-  const total           = round2(subtotalConDesc + ivaConDesc);
-  // E44 (Zona Franca): ITBIS = 0 — Opción B: precio base sin ITBIS
-  const ivaEfectivo   = tipoNcf === 'E44' ? 0 : ivaConDesc;
-  const totalEfectivo = tipoNcf === 'E44' ? subtotalConDesc : total;
   const totalItems    = cart.length;
 
   // Config POS — leída aquí para que propina y cambio puedan usarla

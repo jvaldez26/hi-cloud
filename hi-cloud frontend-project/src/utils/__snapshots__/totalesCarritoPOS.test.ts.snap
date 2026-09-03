@@ -1,0 +1,14 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`canario — valores distintos dos a dos, para cazar un nombre cruzado > deja los valores por escrito, para cotejarlos a ojo al reconectar 1`] = `
+{
+  "descGlobalFinal": 337,
+  "descGlobalMonto": 337,
+  "iva": 865.14,
+  "ivaConDesc": 825.02,
+  "ivaEfectivo": 0,
+  "subtotal": 7265.6,
+  "total": 7753.63,
+  "totalEfectivo": 6928.61,
+}
+`;
