@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, theme } from 'antd';
 import { MessageOutlined, CloseOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { mensajesApi, type MensajeBandeja } from '../../api/mensajes.api';
 import { MENSAJES_KEYS } from '../../hooks/useMensajes';
 import { useAuthStore } from '../../store/auth.store';
 import { posEstado } from '../../utils/posEstado';
+import { getGlobalSocket, useRealtimeStatus } from '../../hooks/useRealtime';
 
 /** Cada cuánto se consulta al servidor si hay mensajes nuevos.
  *  NUNCA bajar de 1 min — hay clientes con el POS abierto todo el día. */
@@ -58,11 +59,18 @@ function estiloDeTipo(tipo: TipoMensaje, token: Record<string, any>) {
  * Antes de mostrar consulta posEstado.modalCobroAbierto. Si el POS tiene
  * el modal de cobro abierto, espera (tick de 1 s) hasta que se cierre.
  *
- * ── Por qué no usa el canal WebSocket ───────────────────────────────────────
- * useRealtime solo emite `cambio` para entidades de negocio (facturas,
- * productos, clientes…). Los mensajes del Super Admin no pasan por ese canal;
- * añadirlos requeriría cambios en el gateway. Un sondeo cada 5 min es
- * suficiente para notificaciones de esta naturaleza y no genera carga perceptible.
+ * ── Cómo llega el aviso: canal primero, sondeo de respaldo ──────────────────
+ * Al publicar, el backend emite `mensaje:nuevo` por el mismo socket que ya usa
+ * el ERP, y aquí se consulta al instante. El sondeo de 5 min se queda como
+ * respaldo y NO se toca: es la única vía cuando no hay canal (/portal-empleado,
+ * sin empresaId, pestaña dormida o socket caído — Socket.IO no reencola nada).
+ *
+ * Bajar el intervalo del sondeo no era la respuesta: con el POS abierto todo el
+ * día, sondear cada pocos segundos son miles de peticiones diarias por usuario
+ * para algo que ocurre una vez a la semana.
+ *
+ * Un mensaje PROGRAMADO no dispara evento a su hora: nadie lo está esperando.
+ * Lo recoge el sondeo, así que puede tardar hasta 5 minutos en aparecer.
  *
  * ── Por qué este sondeo NO cuenta como actividad de sesión ──────────────────
  * ActividadGuard mide eventos de entrada del usuario (mouse, teclado, scroll).
@@ -72,6 +80,9 @@ function estiloDeTipo(tipo: TipoMensaje, token: Record<string, any>) {
 export default function MensajeNotificador() {
   const { token } = theme.useToken();
   const navigate  = useNavigate();
+  const qc        = useQueryClient();
+  // Solo para re-enganchar el listener cuando el socket conecta o reconecta
+  const estadoRealtime = useRealtimeStatus();
   const isAuth    = useAuthStore(s => s.isAuth());
   const user      = useAuthStore(s => s.user);
 
@@ -101,6 +112,37 @@ export default function MensajeNotificador() {
     refetchOnWindowFocus: false,
     staleTime:       POLL_MS,
   });
+
+  // ── Aviso inmediato por el canal en tiempo real ───────────────────────────
+  // El sondeo de arriba tarda hasta 5 min. Cuando el Super Admin publica, el
+  // backend emite `mensaje:nuevo` por el socket y aquí se consulta al instante.
+  //
+  // El evento viene VACÍO a propósito: solo dice "vuelve a preguntar". El
+  // contenido y el filtrado por destinatario siguen en el servidor, así que por
+  // el socket no viaja ningún mensaje que no fuera para este usuario.
+  //
+  // ── El sondeo NO se sustituye, se adelanta ─────────────────────────────────
+  // Sigue siendo la única vía cuando no hay canal, y hay tres casos reales:
+  //   · /portal-empleado — queda fuera de AppLayout, que es donde se monta
+  //     useRealtime, así que ahí NUNCA hay socket;
+  //   · sin `empresaId` en localStorage, useRealtime no llega a conectar;
+  //   · pestaña dormida o socket caído: el navegador suspende los WebSocket en
+  //     segundo plano y Socket.IO no reencola lo que se perdió.
+  //
+  // Se re-engancha cuando cambia el estado de la conexión: el notificador vive
+  // en la raíz y se monta ANTES que AppLayout, así que al principio el socket
+  // todavía no existe.
+  useEffect(() => {
+    if (!activo) return;
+    const socket = getGlobalSocket();
+    if (!socket) return;
+
+    const alPublicarse = () => {
+      qc.invalidateQueries({ queryKey: MENSAJES_KEYS.mensajesNoVistos });
+    };
+    socket.on('mensaje:nuevo', alPublicarse);
+    return () => { socket.off('mensaje:nuevo', alPublicarse); };
+  }, [activo, estadoRealtime, qc]);
 
   // Cuando el servidor devuelve IDs nuevos, los encola.
   //

@@ -105,6 +105,8 @@ const EXCEDENTES = [
  * Rutas SIN el prefijo /api/v1. Lo que no esté aquí devuelve [] y sale como
  * "SIN MOCK" en el log: así se ve de un vistazo qué le falta a la pantalla.
  */
+let publicado = false;
+
 const RUTAS = {
   '/version':               () => ({ version: 'dev' }),
   // El backend real devuelve el usuario dentro de `user`, y la hidratación lo
@@ -206,12 +208,18 @@ const RUTAS = {
   '/balanza/patrones': () => ([]),
   '/vendedores': () => ({ data: [{ id: 7, codigo: 'V01', nombre: 'JUAN PÉREZ' }] }),
   '/auth/mis-sucursales': () => ([{ id: 1, nombre: 'Sucursal Principal' }]),
-  // Mensajes: devuelve un ID pendiente de notificar para que MensajeNotificador
-  // se dispare al cargar. Los PATCH (marcarVisto, etc.) los acepta el handler
-  // genérico de escrituras más abajo.
+  // Mensajes: arranca SIN nada pendiente. Los PATCH (marcarVisto, etc.) los
+  // acepta el handler generico de escrituras mas abajo.
   // ?solo=aviso devuelve el aviso operativo; sin query, la novedad.
-  // Sirve para capturar los dos aspectos del toast sin tocar el codigo.
-  '/mensajes/no-vistos': (q) => ({ ids: q?.solo === 'aviso' ? ['mock-av-1'] : ['mock-msg-1'] }),
+  // /dev/publicar simula la publicacion del Super Admin: hasta que se llama,
+  // no hay nada pendiente. Asi se captura el ANTES y el DESPUES del evento.
+  '/mensajes/no-vistos': (q) => ({
+    ids: !publicado ? []
+       : q?.solo === 'aviso' ? ['mock-av-1']
+       : ['mock-msg-1'],
+  }),
+  '/dev/publicar': () => { publicado = true;  return { ok: true }; },
+  '/dev/retirar':  () => { publicado = false; return { ok: true }; },
   '/mensajes/no-leidos-count':     () => ({ count: 1 }),
   // Filtra por tab como el backend: sin esto el mismo mensaje sale en las dos
   // pestañas y el notificador lo cuenta dos veces.

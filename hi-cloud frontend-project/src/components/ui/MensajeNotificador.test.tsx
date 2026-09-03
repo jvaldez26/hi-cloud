@@ -29,6 +29,25 @@ const mensajesApiMock = vi.hoisted(() => ({
 }));
 vi.mock('../../api/mensajes.api', () => ({ mensajesApi: mensajesApiMock }));
 
+// Socket falso: guarda los listeners para poder disparar el evento a mano
+const socketFalso = vi.hoisted(() => {
+  const handlers = new Map<string, Set<(...a: any[]) => void>>();
+  return {
+    on:  vi.fn((ev: string, fn: any) => {
+      if (!handlers.has(ev)) handlers.set(ev, new Set());
+      handlers.get(ev)!.add(fn);
+    }),
+    off: vi.fn((ev: string, fn: any) => { handlers.get(ev)?.delete(fn); }),
+    emitir: (ev: string, payload?: any) => handlers.get(ev)?.forEach(fn => fn(payload)),
+    tieneListener: (ev: string) => (handlers.get(ev)?.size ?? 0) > 0,
+    limpiar: () => handlers.clear(),
+  };
+});
+vi.mock('../../hooks/useRealtime', () => ({
+  getGlobalSocket:   () => socketFalso,
+  useRealtimeStatus: () => 'connected',
+}));
+
 // El componente solo actúa si hay sesión y no es super_admin
 vi.mock('../../store/auth.store', () => ({
   useAuthStore: (selector: any) => selector({
@@ -60,6 +79,7 @@ function montar() {
 beforeEach(() => {
   vi.clearAllMocks();
   posEstado.modalCobroAbierto = false;
+  socketFalso.limpiar();
   mensajesApiMock.getMensajesNoVistos.mockResolvedValue(['msg-1']);
   mensajesApiMock.getBandeja.mockImplementation((tab: string) =>
     Promise.resolve(tab === 'novedades' ? [MENSAJE] : []));
@@ -183,6 +203,40 @@ describe('MensajeNotificador — no se marca visto antes de verse', () => {
     // Con uno operativo en el lote, el toast se pinta como aviso
     expect(screen.getByText('Aviso de HiCloud')).toBeInTheDocument();
   }, 15_000);
+
+  it('el evento del canal adelanta la consulta: no hay que esperar al sondeo', async () => {
+    // El sondeo es de 5 min. Al publicar, el backend emite `mensaje:nuevo` y el
+    // notificador consulta al instante — sin bajar el intervalo, que con el POS
+    // abierto todo el día serían miles de peticiones diarias por usuario.
+    mensajesApiMock.getMensajesNoVistos.mockResolvedValue([]);   // al montar, nada
+    montar();
+
+    await waitFor(() => expect(mensajesApiMock.getMensajesNoVistos).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(socketFalso.tieneListener('mensaje:nuevo')).toBe(true));
+    expect(screen.queryByText(MENSAJE.titulo)).toBeNull();
+
+    // Ahora el Super Admin publica
+    mensajesApiMock.getMensajesNoVistos.mockResolvedValue(['msg-1']);
+    socketFalso.emitir('mensaje:nuevo', { ts: Date.now() });
+
+    // Vuelve a consultar sin esperar los 5 min, y el toast sale
+    await waitFor(() => expect(mensajesApiMock.getMensajesNoVistos.mock.calls.length).toBeGreaterThan(1));
+    expect(await screen.findByText(MENSAJE.titulo, {}, { timeout: 4000 })).toBeInTheDocument();
+  }, 15_000);
+
+  it('el evento no trae contenido: lo que se muestra sale de consultar', async () => {
+    // Por el socket no viaja ningún mensaje, solo el aviso de que hay algo. Así
+    // el filtrado por destinatario sigue en el servidor y nadie recibe lo ajeno.
+    mensajesApiMock.getMensajesNoVistos.mockResolvedValue([]);
+    montar();
+    await waitFor(() => expect(socketFalso.tieneListener('mensaje:nuevo')).toBe(true));
+
+    // Un evento con un id dentro NO debe bastar para pintar nada
+    socketFalso.emitir('mensaje:nuevo', { ids: ['msg-1'], titulo: 'no deberia salir' });
+    await new Promise(r => setTimeout(r, 800));
+    expect(screen.queryByText('no deberia salir')).toBeNull();
+    expect(screen.queryByText(MENSAJE.titulo)).toBeNull();
+  }, 12_000);
 
   it('el super admin no recibe notificaciones: ni siquiera consulta', async () => {
     vi.resetModules();

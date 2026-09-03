@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Optional, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource }       from 'typeorm';
 import { TenantService }    from '../tenant/tenant.service';
 import { CreateMensajeDto } from './dto/create-mensaje.dto';
 import { UpdateMensajeDto } from './dto/update-mensaje.dto';
+import { RealtimeService }  from '../realtime/realtime.service';
 
 // Filtro WHERE compartido por múltiples queries
 // IMPORTANTE: suscripciones.plan es un ENUM de PostgreSQL (suscripciones_plan_enum).
@@ -25,9 +26,14 @@ const MENSAJES_ACTIVOS_WHERE = `
 
 @Injectable()
 export class MensajesService {
+  private readonly logger = new Logger(MensajesService.name);
+
   constructor(
     @InjectDataSource() private readonly ds: DataSource,
     private readonly tenantService: TenantService,
+    // Optional: en los tests el módulo de realtime no está, y publicar un
+    // mensaje no puede depender de que el canal exista.
+    @Optional() private readonly realtime?: RealtimeService,
   ) {}
 
   // ─────────────────────────────────────────────────────────
@@ -276,6 +282,90 @@ export class MensajesService {
     `);
   }
 
+  /**
+   * ¿A qué salas del canal hay que avisar de este mensaje?
+   *
+   * Las salas del gateway son por EMPRESA (`empresa:N`), pero los destinatarios
+   * de un mensaje no siempre lo son, así que hay que traducir:
+   *
+   *   lista  → las empresas de destinatarioIds, tal cual
+   *   plan   → hay que resolverlo: la relación empresa↔plan vive en
+   *            `suscripciones`, el gateway no puede saberlo solo
+   *   todas  → 'todas', que el gateway emite a todo el namespace
+   *
+   * Devuelve null cuando no hay a quién avisar (una lista vacía, por ejemplo).
+   */
+  private async empresasDestinatarias(
+    destinatario: string,
+    destinatarioIds?: number[] | null,
+    destinatarioPlan?: string | null,
+  ): Promise<number[] | 'todas' | null> {
+    if (destinatario === 'todas') return 'todas';
+
+    if (destinatario === 'lista') {
+      const ids = (destinatarioIds ?? []).filter(n => Number.isFinite(n));
+      return ids.length ? ids : null;
+    }
+
+    if (destinatario === 'plan' && destinatarioPlan) {
+      const rows = await this.ds.query(
+        `SELECT "empresaId" FROM suscripciones
+         WHERE plan::text = $1 AND estado IN ('activa', 'prueba')`,
+        [destinatarioPlan],
+      );
+      const ids = rows.map((r: any) => Number(r.empresaId)).filter((n: number) => Number.isFinite(n));
+      return ids.length ? ids : null;
+    }
+
+    return null;
+  }
+
+  /**
+   * Avisa por el canal en tiempo real de que hay un mensaje nuevo.
+   *
+   * Solo si el mensaje está VIGENTE ahora mismo: un mensaje programado para
+   * mañana no tiene a quién avisar hoy —la consulta del cliente filtra
+   * `fechaPublicacion <= now()` y devolvería vacío—.
+   *
+   * ── LOS MENSAJES PROGRAMADOS SE NOTIFICAN POR EL SONDEO ─────────────────────
+   * Uno programado para las 8:00 no dispara ningún evento a esa hora: nadie lo
+   * está esperando. Lo recoge el sondeo del notificador, así que puede tardar
+   * HASTA 5 MINUTOS en aparecer. Es aceptable para un comunicado, pero quien lo
+   * programe no debe esperar que salte al segundo.
+   *
+   * Si algún día molesta, lo cierra un cron que recorra los mensajes cuya
+   * fechaPublicacion acaba de pasar y emita el evento entonces.
+   *
+   * Nunca lanza: que falle el aviso no puede tumbar la publicación del mensaje.
+   */
+  private async avisarMensajeNuevo(m: {
+    fechaPublicacion?: string | Date | null;
+    fechaExpiracion?: string | Date | null;
+    activo?: boolean | null;
+    destinatario: string;
+    destinatarioIds?: number[] | null;
+    destinatarioPlan?: string | null;
+  }): Promise<void> {
+    try {
+      if (m.activo === false) return;
+
+      const ahora   = Date.now();
+      const publica = m.fechaPublicacion ? new Date(m.fechaPublicacion).getTime() : ahora;
+      const expira  = m.fechaExpiracion  ? new Date(m.fechaExpiracion).getTime()  : null;
+      if (publica > ahora) return;              // programado: lo recoge el sondeo
+      if (expira !== null && expira <= ahora) return;  // ya expirado
+
+      const destino = await this.empresasDestinatarias(
+        m.destinatario, m.destinatarioIds, m.destinatarioPlan,
+      );
+      if (!destino) return;
+
+      this.realtime?.notificarMensajeNuevo(destino);
+    } catch (e: any) {
+      this.logger?.warn(`[mensajes] no se pudo avisar por el canal: ${e?.message}`);
+    }
+  }
+
   async adminCrear(dto: CreateMensajeDto, createdBy: number): Promise<{ id: string }> {
     const [{ id }] = await this.ds.query(`
       INSERT INTO mensajes (
@@ -297,6 +387,16 @@ export class MensajesService {
       dto.activo ?? true,
       createdBy,
     ]);
+
+    await this.avisarMensajeNuevo({
+      fechaPublicacion: dto.fechaPublicacion,
+      fechaExpiracion:  dto.fechaExpiracion,
+      activo:           dto.activo ?? true,
+      destinatario:     dto.destinatario,
+      destinatarioIds:  dto.destinatarioIds,
+      destinatarioPlan: dto.destinatarioPlan,
+    });
+
     return { id };
   }
 
@@ -350,6 +450,22 @@ export class MensajesService {
       dto.activo           ?? null,
       editaContenido,
     ]);
+
+    // Editar también publica: se puede adelantar la fechaPublicacion o
+    // reactivar un mensaje apagado. Si el aviso solo saliera en adminCrear, ese
+    // camino se quedaría sin notificar.
+    //
+    // El estado final se lee con un SELECT aparte y no con UPDATE ... RETURNING:
+    // query() de TypeORM devuelve [filas, rowCount] fuera de un SELECT, y leer
+    // eso como si fueran filas es el fallo que costó 40 correos repetidos a un
+    // cliente. Una consulta de más a cambio de que no haya nada que interpretar.
+    const [m] = await this.ds.query(
+      `SELECT "fechaPublicacion", "fechaExpiracion", activo,
+              destinatario, "destinatarioIds", "destinatarioPlan"
+       FROM mensajes WHERE id = $1`,
+      [id],
+    );
+    if (m) await this.avisarMensajeNuevo(m);
   }
 
   async adminDesactivar(id: string): Promise<void> {
