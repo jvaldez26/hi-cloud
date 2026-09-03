@@ -209,11 +209,22 @@ const RUTAS = {
   // Mensajes: devuelve un ID pendiente de notificar para que MensajeNotificador
   // se dispare al cargar. Los PATCH (marcarVisto, etc.) los acepta el handler
   // genérico de escrituras más abajo.
-  '/mensajes/novedades-no-vistas': () => ({ ids: ['mock-msg-1'] }),
+  // ?solo=aviso devuelve el aviso operativo; sin query, la novedad.
+  // Sirve para capturar los dos aspectos del toast sin tocar el codigo.
+  '/mensajes/no-vistos': (q) => ({ ids: q?.solo === 'aviso' ? ['mock-av-1'] : ['mock-msg-1'] }),
   '/mensajes/no-leidos-count':     () => ({ count: 1 }),
   // Filtra por tab como el backend: sin esto el mismo mensaje sale en las dos
   // pestañas y el notificador lo cuenta dos veces.
-  '/mensajes/bandeja': (q) => (q?.tab === 'principal' ? [] : [
+  '/mensajes/bandeja': (q) => (q?.tab === 'principal' ? [
+    {
+      id: 'mock-av-1',
+      titulo: 'Interrupción temporal del servicio',
+      cuerpo: 'El sistema estuvo inaccesible entre 2:10 y 2:35 a. m. por mantenimiento del proveedor. Ya está restablecido.',
+      tipo: 'aviso',
+      fechaPublicacion: new Date().toISOString(),
+      editadoEn: null, leidoEn: null, vistoEn: null, archivadoEn: null,
+    },
+  ] : [
     {
       id: 'mock-msg-1',
       titulo: 'Nueva función: Notificaciones en tiempo real',

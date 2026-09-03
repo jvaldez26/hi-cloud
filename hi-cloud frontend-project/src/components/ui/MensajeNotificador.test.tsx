@@ -23,7 +23,7 @@ import { posEstado } from '../../utils/posEstado';
  */
 
 const mensajesApiMock = vi.hoisted(() => ({
-  getNovedadesNoVistas: vi.fn(),
+  getMensajesNoVistos: vi.fn(),
   getBandeja:           vi.fn(),
   marcarVisto:          vi.fn(),
 }));
@@ -60,7 +60,7 @@ function montar() {
 beforeEach(() => {
   vi.clearAllMocks();
   posEstado.modalCobroAbierto = false;
-  mensajesApiMock.getNovedadesNoVistas.mockResolvedValue(['msg-1']);
+  mensajesApiMock.getMensajesNoVistos.mockResolvedValue(['msg-1']);
   mensajesApiMock.getBandeja.mockImplementation((tab: string) =>
     Promise.resolve(tab === 'novedades' ? [MENSAJE] : []));
   mensajesApiMock.marcarVisto.mockResolvedValue(undefined);
@@ -74,7 +74,7 @@ describe('MensajeNotificador — no se marca visto antes de verse', () => {
     montar();
 
     // El poll ya devolvió el id y está encolado…
-    await waitFor(() => expect(mensajesApiMock.getNovedadesNoVistas).toHaveBeenCalled());
+    await waitFor(() => expect(mensajesApiMock.getMensajesNoVistos).toHaveBeenCalled());
 
     // …pero mientras se cobra, ni toast ni visto. Dos ticks de margen.
     await new Promise(r => setTimeout(r, 2300));
@@ -98,7 +98,7 @@ describe('MensajeNotificador — no se marca visto antes de verse', () => {
     await waitFor(() => expect(mensajesApiMock.marcarVisto).toHaveBeenCalledWith('msg-1'));
 
     // Origen, acciones y aspa
-    expect(screen.getByText('Mensaje de HiCloud')).toBeInTheDocument();
+    expect(screen.getByText('Novedad de HiCloud')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Ver mensaje/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Después' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cerrar' })).toBeInTheDocument();
@@ -129,7 +129,7 @@ describe('MensajeNotificador — no se marca visto antes de verse', () => {
 
   it('un solo toast cuando llegan varios mensajes', async () => {
     const segundo = { ...MENSAJE, id: 'msg-2', titulo: 'Otro aviso' };
-    mensajesApiMock.getNovedadesNoVistas.mockResolvedValue(['msg-1', 'msg-2']);
+    mensajesApiMock.getMensajesNoVistos.mockResolvedValue(['msg-1', 'msg-2']);
     mensajesApiMock.getBandeja.mockImplementation((tab: string) =>
       Promise.resolve(tab === 'novedades' ? [MENSAJE, segundo] : []));
 
@@ -140,6 +140,48 @@ describe('MensajeNotificador — no se marca visto antes de verse', () => {
     // No se apilan: ninguno de los títulos sueltos aparece
     expect(screen.queryByText(MENSAJE.titulo)).toBeNull();
     await waitFor(() => expect(mensajesApiMock.marcarVisto).toHaveBeenCalledTimes(2));
+  }, 15_000);
+
+  it('un AVISO también se notifica, no solo las novedades', async () => {
+    // Este es el fallo que se descubrió en producción: la consulta filtraba
+    // `tipo = 'novedad'` y los avisos —caídas de servicio, e-CF rechazados— no
+    // llegaban a nadie. El tipo no decide si se notifica.
+    const aviso = { ...MENSAJE, id: 'av-1', tipo: 'aviso',
+      titulo: 'Interrupción temporal del servicio' };
+    mensajesApiMock.getMensajesNoVistos.mockResolvedValue(['av-1']);
+    mensajesApiMock.getBandeja.mockImplementation((tab: string) =>
+      Promise.resolve(tab === 'principal' ? [aviso] : []));
+
+    montar();
+
+    expect(await screen.findByText(aviso.titulo, {}, { timeout: 4000 })).toBeInTheDocument();
+    await waitFor(() => expect(mensajesApiMock.marcarVisto).toHaveBeenCalledWith('av-1'));
+  }, 15_000);
+
+  it('el tipo cambia la etiqueta: aviso y novedad se ven distintos', async () => {
+    const aviso = { ...MENSAJE, id: 'av-1', tipo: 'aviso', titulo: 'Servicio interrumpido' };
+    mensajesApiMock.getMensajesNoVistos.mockResolvedValue(['av-1']);
+    mensajesApiMock.getBandeja.mockImplementation((tab: string) =>
+      Promise.resolve(tab === 'principal' ? [aviso] : []));
+
+    montar();
+
+    expect(await screen.findByText('Aviso de HiCloud', {}, { timeout: 4000 })).toBeInTheDocument();
+    expect(screen.queryByText('Novedad de HiCloud')).toBeNull();
+  }, 15_000);
+
+  it('mezclando tipos manda el aviso: lo urgente no se esconde', async () => {
+    const aviso = { ...MENSAJE, id: 'av-1', tipo: 'aviso', titulo: 'Servicio interrumpido' };
+    mensajesApiMock.getMensajesNoVistos.mockResolvedValue(['msg-1', 'av-1']);
+    mensajesApiMock.getBandeja.mockImplementation((tab: string) =>
+      Promise.resolve(tab === 'principal' ? [aviso] : [MENSAJE]));
+
+    montar();
+
+    expect(await screen.findByText('Tienes 2 mensajes nuevos de HiCloud', {}, { timeout: 4000 }))
+      .toBeInTheDocument();
+    // Con uno operativo en el lote, el toast se pinta como aviso
+    expect(screen.getByText('Aviso de HiCloud')).toBeInTheDocument();
   }, 15_000);
 
   it('el super admin no recibe notificaciones: ni siquiera consulta', async () => {
@@ -158,6 +200,6 @@ describe('MensajeNotificador — no se marca visto antes de verse', () => {
       </QueryClientProvider>,
     );
     await new Promise(r => setTimeout(r, 500));
-    expect(mensajesApiMock.getNovedadesNoVistas).not.toHaveBeenCalled();
+    expect(mensajesApiMock.getMensajesNoVistos).not.toHaveBeenCalled();
   });
 });

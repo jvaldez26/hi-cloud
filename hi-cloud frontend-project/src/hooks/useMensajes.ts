@@ -7,7 +7,7 @@
  *   o al marcar leído/archivar. Cero polling.
  * - bandeja: staleTime 30s — el usuario espera datos frescos al abrirla,
  *   pero no hace falta refetch por foco de ventana.
- * - novedades-no-vistas: la consulta vive en MensajeNotificador (sondeo de 5 min);
+ * - no-vistos: la consulta vive en MensajeNotificador (sondeo de 5 min);
  *   aquí solo queda su clave, para que quien invalide use la misma cadena.
  */
 
@@ -20,7 +20,7 @@ import { ahora } from '../utils/fechaRD';
 export const MENSAJES_KEYS = {
   noLeidosCount:     ['mensajes-no-leidos-count']     as const,
   bandeja:           (tab: string) => ['mensajes-bandeja', tab] as const,
-  novedadesNoVistas: ['mensajes-novedades-no-vistas'] as const,
+  mensajesNoVistos:  ['mensajes-no-vistos']            as const,
   adminLista:        ['mensajes-admin-lista']          as const,
   adminStats:        (id: string) => ['mensajes-admin-stats', id] as const,
 };

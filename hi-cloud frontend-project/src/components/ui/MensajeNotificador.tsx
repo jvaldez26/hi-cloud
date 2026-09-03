@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Button, theme } from 'antd';
-import { MessageOutlined, CloseOutlined } from '@ant-design/icons';
+import { MessageOutlined, CloseOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { mensajesApi, type MensajeBandeja } from '../../api/mensajes.api';
 import { MENSAJES_KEYS } from '../../hooks/useMensajes';
 import { useAuthStore } from '../../store/auth.store';
@@ -18,6 +18,34 @@ const AUTOCLOSE = 10_000;
 /** Veces que se reintenta registrar el visto antes de rendirse. Sin tope, un
  *  endpoint caído repetiría el toast cada 10 s para siempre. */
 const MAX_REINTENTOS_VISTO = 3;
+
+/**
+ * EL TIPO NO DECIDE SI SE NOTIFICA. DECIDE CÓMO SE VE.
+ *
+ * Los dos tipos interrumpen igual. Lo que cambia es el icono, el color de acento
+ * y la etiqueta, para que se vea de un vistazo si es "el sistema estuvo caído" o
+ * "hay una función nueva".
+ *
+ * Antes el tipo sí decidía: la consulta filtraba `tipo = 'novedad'` y los avisos
+ * no se notificaban nunca. En producción eso significó que los cinco mensajes
+ * que existían —caídas de servicio, e-CF rechazados— no llegaran a nadie, que es
+ * justo lo contrario de lo razonable.
+ *
+ * Si algún día hace falta un tipo que NO interrumpa, eso es un campo propio
+ * ("notificar sí/no" en el formulario de redacción), no un efecto lateral de
+ * elegir un tipo u otro. Nadie puede adivinar desde el formulario que escoger
+ * "Aviso" significaba "que no lo vea nadie".
+ *
+ * Nada de rojo: esto informa, no alarma.
+ */
+type TipoMensaje = 'aviso' | 'novedad' | string;
+
+function estiloDeTipo(tipo: TipoMensaje, token: Record<string, any>) {
+  // Aviso operativo: ámbar. Novedad de producto: el azul de la marca.
+  return tipo === 'aviso'
+    ? { acento: token.colorWarning, etiqueta: 'Aviso de HiCloud',   esAviso: true  }
+    : { acento: token.colorPrimary, etiqueta: 'Novedad de HiCloud', esAviso: false };
+}
 
 /**
  * Notificador flotante de mensajes nuevos del Super Admin.
@@ -66,8 +94,8 @@ export default function MensajeNotificador() {
   const { data: novedadesIds = [] } = useQuery({
     // La clave sale de MENSAJES_KEYS y no como literal: si otro sitio
     // invalida esta consulta, tiene que ser exactamente la misma cadena.
-    queryKey:        MENSAJES_KEYS.novedadesNoVistas,
-    queryFn:         mensajesApi.getNovedadesNoVistas,
+    queryKey:        MENSAJES_KEYS.mensajesNoVistos,
+    queryFn:         mensajesApi.getMensajesNoVistos,
     enabled:         activo,
     refetchInterval: POLL_MS,
     refetchOnWindowFocus: false,
@@ -176,6 +204,13 @@ export default function MensajeNotificador() {
   const count = msgs.length;
   const first = msgs[0];
 
+  // Con varios a la vez manda el aviso: si entre ellos hay uno operativo, el
+  // toast se pinta como aviso. Rebajarlo a "novedad" escondería lo urgente
+  // detrás de lo accesorio.
+  const hayAviso = msgs.some(m => m.tipo === 'aviso');
+  const { acento, etiqueta, esAviso } = estiloDeTipo(hayAviso ? 'aviso' : 'novedad', token);
+  const Icono = esAviso ? InfoCircleOutlined : MessageOutlined;
+
   return (
     <>
       <style>{`
@@ -199,6 +234,8 @@ export default function MensajeNotificador() {
           boxShadow:    '0 8px 32px rgba(0,0,0,0.15)',
           background:   token.colorBgElevated,
           border:       `1px solid ${token.colorBorderSecondary}`,
+          // Franja de acento: distingue aviso de novedad sin tener que leer
+          borderLeft:   `3px solid ${acento}`,
           animation:    'hc-notif-in 0.28s cubic-bezier(.22,.68,0,1.2)',
         }}
       >
@@ -221,7 +258,7 @@ export default function MensajeNotificador() {
             marginBottom:   8,
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-              <MessageOutlined style={{ color: token.colorPrimary, fontSize: 14 }} />
+              <Icono style={{ color: acento, fontSize: 14 }} />
               <span style={{
                 fontSize:      11,
                 color:         token.colorTextSecondary,
@@ -229,7 +266,7 @@ export default function MensajeNotificador() {
                 textTransform: 'uppercase',
                 letterSpacing: '0.05em',
               }}>
-                Mensaje de HiCloud
+                {etiqueta}
               </span>
             </div>
             <Button

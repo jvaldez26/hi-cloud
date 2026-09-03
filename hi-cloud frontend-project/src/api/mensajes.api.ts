@@ -75,11 +75,11 @@ export const mensajesApi = {
     api.get('/mensajes/no-leidos-count').then(r => (unwrap<{ count: number }>(r)?.count ?? 0)),
 
   /**
-   * IDs de novedades cuyo toast aún no se ha mostrado.
+   * IDs de mensajes (de cualquier tipo) cuyo toast aún no se ha mostrado.
    * El backend devuelve { success, data: { ids: string[] }, timestamp }.
    */
-  getNovedadesNoVistas: () =>
-    api.get('/mensajes/novedades-no-vistas').then(r => {
+  getMensajesNoVistos: () =>
+    api.get('/mensajes/no-vistos').then(r => {
       const ids = unwrap<{ ids: string[] }>(r)?.ids;
       return Array.isArray(ids) ? ids : [];
     }),

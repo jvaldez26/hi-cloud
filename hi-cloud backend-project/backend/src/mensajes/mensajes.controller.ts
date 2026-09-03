@@ -38,10 +38,22 @@ export class MensajesController {
     return this.svc.getNoLeidosCount(usuario.id).then(count => ({ count }));
   }
 
+  @Get('no-vistos')
+  @ApiOperation({ summary: 'IDs de mensajes (de cualquier tipo) cuyo toast aún no se ha mostrado al usuario' })
+  getMensajesNoVistos(@GetUser() usuario: User) {
+    return this.svc.getMensajesNoVistos(usuario.id).then(ids => ({ ids }));
+  }
+
+  /**
+   * @deprecated Se llamaba así cuando solo devolvía novedades. Se mantiene
+   * porque durante un despliegue hay pestañas abiertas con el bundle anterior
+   * pidiendo esta ruta: sin el alias les daría 404 y perderían la notificación.
+   * Quitar cuando ya no queden clientes viejos.
+   */
   @Get('novedades-no-vistas')
-  @ApiOperation({ summary: 'IDs de novedades cuyo toast aún no se ha mostrado al usuario' })
+  @ApiOperation({ summary: '[obsoleto] Alias de no-vistos' })
   getNovedadesNoVistas(@GetUser() usuario: User) {
-    return this.svc.getNovedadesNoVistas(usuario.id).then(ids => ({ ids }));
+    return this.svc.getMensajesNoVistos(usuario.id).then(ids => ({ ids }));
   }
 
   @Patch(':id/leer')
@@ -53,7 +65,7 @@ export class MensajesController {
 
   @Post(':id/visto')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Registrar que el toast de novedad fue mostrado (vistoEn)' })
+  @ApiOperation({ summary: 'Registrar que el toast del mensaje fue mostrado (vistoEn)' })
   marcarVisto(@Param('id') id: string, @GetUser() usuario: User) {
     return this.svc.marcarVisto(id, usuario.id);
   }

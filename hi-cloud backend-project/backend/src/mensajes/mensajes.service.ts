@@ -104,10 +104,26 @@ export class MensajesService {
   }
 
   /**
-   * Novedades que el usuario no ha visto como toast todavía.
-   * Se llama al montar AppLayout; el frontend muestra el toast y llama marcarVisto.
+   * Mensajes que el usuario no ha visto como toast todavía — de CUALQUIER tipo.
+   *
+   * El frontend los muestra y entonces llama a marcarVisto (ese orden importa:
+   * marcarlo antes perdía mensajes si el toast no llegaba a aparecer).
+   *
+   * ── El tipo NO decide si se notifica ────────────────────────────────────────
+   * Decide cómo se VE: el toast pinta un aviso operativo distinto de una novedad
+   * de producto. Pero los dos interrumpen igual.
+   *
+   * Antes esto filtraba `m.tipo = 'novedad'`, y el resultado era que los
+   * mensajes más urgentes eran justo los que nadie veía: los cinco mensajes que
+   * existían en producción eran avisos —caídas de servicio, e-CF rechazados— y
+   * ninguno llegó a notificarse nunca.
+   *
+   * Si algún día hace falta un tipo que no interrumpa, eso es un campo PROPIO
+   * ("notificar sí/no" en el formulario de redacción), no un efecto lateral de
+   * elegir un tipo u otro. Quien lo lea sin conocer la historia no puede
+   * adivinar que "Aviso" significaba "no molestar".
    */
-  async getNovedadesNoVistas(usuarioId: number): Promise<string[]> {
+  async getMensajesNoVistos(usuarioId: number): Promise<string[]> {
     const empresaId = this.tenantService.getEmpresaId();
     const rows = await this.ds.query(`
       SELECT m.id
@@ -118,7 +134,6 @@ export class MensajesService {
       LEFT JOIN suscripciones s
         ON s."empresaId" = $2 AND s.estado IN ('activa', 'prueba')
       WHERE ${MENSAJES_ACTIVOS_WHERE}
-        AND m.tipo = 'novedad'
         AND (ml."vistoEn"     IS NULL)
         AND (ml."archivadoEn" IS NULL)
         AND (ml."eliminadoEn" IS NULL)
