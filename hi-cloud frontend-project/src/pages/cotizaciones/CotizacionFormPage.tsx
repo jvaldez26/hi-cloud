@@ -8,6 +8,7 @@ import { cotizacionesApi, type CotizacionDetallePayload } from '../../api/cotiza
 import SelectClienteConAlta from '../../components/clientes/SelectClienteConAlta';
 import { productosApi } from '../../api/productos.api';
 import { fmt } from '../../utils/formatters';
+import { calcularTotalesDocumento, descuentoDeLinea, r2 } from '../../utils/totalesDocumento';
 import api from '../../api/client';
 import { useAuthStore } from '../../store/auth.store';
 import dayjs from 'dayjs';
@@ -22,21 +23,8 @@ interface Linea {
   descuentoValor?: number;
 }
 
-const r2 = (n: number) => Math.round(n * 100) / 100;
-
-/**
- * Descuento de una línea en BASE imponible, con el mismo tope que aplica el
- * backend (`common/calculo/descuento-documento.ts`): nunca puede pasarse del
- * bruto de la propia línea.
- */
-function descuentoDeLinea(l: Linea): number {
-  const bruto = r2(l.precioUnitario * l.cantidad);
-  const v = Math.max(0, Number(l.descuentoValor) || 0);
-  if (!v) return 0;
-  return l.descuentoTipo === 'pct'
-    ? r2(bruto * Math.min(v, 100) / 100)
-    : r2(Math.min(v, bruto));
-}
+// La aritmética vive en utils/totalesDocumento.ts, con su prueba de contrato
+// contra la fórmula del backend. Aquí solo se pinta.
 
 export default function CotizacionFormPage() {
   const { id }   = useParams<{ id?: string }>();
@@ -147,36 +135,16 @@ export default function CotizacionFormPage() {
     onError: (e: any) => message.error(e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error al actualizar'),
   });
 
-  // ── Totales — misma aritmética que common/calculo/descuento-documento.ts ───
-  // Se replica aquí para que la pantalla enseñe exactamente lo que va a guardar
-  // el backend: subtotal redondeado por línea, ITBIS sobre la base CRUDA, y el
-  // descuento general repartido en proporción al subtotal de cada línea.
-  const lineasCalc = lineas.map(l => {
-    const brutoRaw  = l.precioUnitario * l.cantidad;
-    const descLinea = descuentoDeLinea(l);
-    const subtotal  = r2(r2(brutoRaw) - descLinea);
-    return { ...l, descLinea, subtotal, baseRaw: brutoRaw - descLinea };
+  // Totales — los calcula utils/totalesDocumento.ts, que replica la fórmula del
+  // backend y tiene una prueba que compara las dos sobre 3.000 documentos. Lo
+  // que se ve aquí es lo que va a quedar guardado.
+  const {
+    subtotalBase, descGeneral, descuentoLineasTotal, subtotal, iva, total,
+  } = calcularTotalesDocumento(lineas, {
+    tipo:  descuentoGeneralTipo,
+    valor: descuentoGeneralValor,
   });
-
-  const subtotalBase = r2(lineasCalc.reduce((s, l) => s + l.subtotal, 0));
-
   const descGenVal = Math.max(0, Number(descuentoGeneralValor) || 0);
-  const descGeneral = !descGenVal ? 0
-    : descuentoGeneralTipo === 'porcentaje'
-      ? r2(subtotalBase * Math.min(descGenVal, 100) / 100)
-      : r2(Math.min(descGenVal, subtotalBase));
-
-  const lineasFinales = lineasCalc.map(l => {
-    const descProp    = subtotalBase > 0 ? r2((l.subtotal / subtotalBase) * descGeneral) : 0;
-    const subtotFinal = r2(l.subtotal - descProp);
-    const rawFinal    = l.subtotal > 0 ? l.baseRaw * (subtotFinal / l.subtotal) : subtotFinal;
-    return { subtotFinal, ivaLinea: r2(rawFinal * (l.porcentajeIva / 100)) };
-  });
-
-  const subtotal = r2(lineasFinales.reduce((s, l) => s + l.subtotFinal, 0));
-  const iva      = r2(lineasFinales.reduce((s, l) => s + l.ivaLinea, 0));
-  const total    = r2(subtotal + iva);
-  const descuentoLineasTotal = r2(lineasCalc.reduce((s, l) => s + l.descLinea, 0));
 
   const onProductoChange = (productoId: number, idx: number) => {
     const prod = productos?.data.find(p => p.id === productoId);

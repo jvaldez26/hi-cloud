@@ -153,6 +153,23 @@ jobs:
       - name: TypeScript check
         run: npx tsc --noEmit
 
+      # ── Suite de tests (Vitest) ───────────────────────────────────────────
+      # Va aquí y no en un job aparte por lo mismo que la del backend: tarda
+      # ~35s y el job entero sigue muy por debajo del timeout-minutes de 10.
+      #
+      # NO sustituye a los `verificar:*` de abajo. Aquellos transpilan un módulo
+      # con esbuild y lo ejecutan sin runner; siguen tal cual y siguen siendo el
+      # sitio donde vive lo que no necesita DOM. Vitest es para lo que sí lo
+      # necesita —componentes— y para la aritmética que se replica entre
+      # frontend y backend.
+      #
+      # Lo primero que cubre: utils/descuentoItbis (la conversión entre lo que
+      # teclea el cajero y lo que se guarda), utils/totalesDocumento —que compara
+      # su fórmula contra la del backend sobre 3.000 documentos, porque son dos
+      # copias que pueden separarse— y el alta de cliente con RNC compartido.
+      - name: Tests (Vitest)
+        run: npm test
+
       - name: Security audit — deps (bloquea en critical)
         # xlsx@* tiene 2 high sin parche disponible en npm (SheetJS abandonó npm).
         # Bloqueamos en critical; los high de xlsx se revisan manualmente en cada release.

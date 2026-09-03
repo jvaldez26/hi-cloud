@@ -1,3 +1,4 @@
+/// <reference types="vitest" />
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { readFileSync, writeFileSync } from 'fs';
@@ -55,6 +56,29 @@ export default defineConfig({
   },
   resolve: {
     dedupe: ['react', 'react-dom'],
+  },
+  // ── Tests ──────────────────────────────────────────────────────────────────
+  // Vitest reutiliza esta misma config —plugins, alias, resolve—, así que no hay
+  // una segunda configuración de transformación que mantener sincronizada.
+  //
+  // No sustituye a los `verificar:*` de scripts/: aquellos transpilan un módulo
+  // con esbuild y lo ejecutan, y siguen tal cual. Esto es para lo que necesita
+  // DOM o un runner de verdad.
+  test: {
+    environment: 'jsdom',
+    globals: true,                       // describe/it/expect sin importar, como en el backend
+    setupFiles: ['./src/test/setup.ts'],
+    css: false,                          // antd trae mucho CSS y no se afirma nada sobre él
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    // Los scripts de scripts/ se ejecutan con `npm run verificar:*`, no aquí
+    exclude: ['node_modules/**', 'dist/**', 'scripts/**'],
+    // Sin esto, un test que deja un timer colgado bloquea el CI hasta el timeout
+    testTimeout: 10_000,
+    coverage: {
+      provider: 'v8',
+      include: ['src/utils/**', 'src/components/**'],
+      reporter: ['text-summary'],
+    },
   },
   build: {
     // 'hidden': genera .map pero NO añade //# sourceMappingURL al JS (cliente no los descarga).
