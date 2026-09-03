@@ -371,6 +371,24 @@ export class PreFacturaService {
   // Convierte la pre-factura a factura oficial con ECF + descuento de stock.
   // Acepta pre-facturas en cualquier estado activo (no CONVERTIDA/RECHAZADA).
 
+  /**
+   * Mismo mapeo que en cotizaciones.service — se duplica y no se comparte
+   * porque los dos flujos ya duplican el resto de esta rutina (vendedorId,
+   * folio) por su cuenta; ver ese archivo para el porqué de cada caso.
+   *
+   * Catálogo DGII: 1=Efectivo 2=Cheque/Transferencia 3=Tarjeta 4=Crédito
+   * 5=Permuta 6=Nota Crédito. Esta pantalla no ofrece crédito.
+   */
+  private tipoDgiiDeMetodo(metodoPago: string): number | undefined {
+    switch (metodoPago.trim().toLowerCase()) {
+      case 'efectivo':      return 1;
+      case 'transferencia':
+      case 'cheque':        return 2;
+      case 'tarjeta':       return 3;
+      default:              return undefined;
+    }
+  }
+
   async cobrarDesdePos(id: number, usuarioId: number, dto: { metodoPago: string }) {
     const empresaId = this.tenantSvc.getEmpresaId();
     const pf = await this.findOne(id);
@@ -414,6 +432,14 @@ export class PreFacturaService {
         total:      Number(pf.total),
         tipoNcf:    pf.tipoNcf ?? 'E32',
         notas:      dto.metodoPago,
+        // Sin esto la factura nace CONTADO (default de la entidad) sin ningún
+        // rastro de cobro: el guard de facturas.service (verificarRastroCobro)
+        // la bloquea al sellar PAGADA — con razón, porque de verdad no hay
+        // nada detrás.
+        formasPago: (() => {
+          const tipo = this.tipoDgiiDeMetodo(dto.metodoPago);
+          return tipo ? [{ tipo, monto: Number(pf.total) }] : undefined;
+        })(),
         detalles:   (pf.detalles ?? []).map(det => ({
           productoId:     det.productoId,
           descripcion:    det.descripcion,
