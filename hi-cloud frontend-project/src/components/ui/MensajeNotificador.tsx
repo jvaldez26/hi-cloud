@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Button, theme } from 'antd';
 import { MessageOutlined, CloseOutlined } from '@ant-design/icons';
 import { mensajesApi, type MensajeBandeja } from '../../api/mensajes.api';
+import { MENSAJES_KEYS } from '../../hooks/useMensajes';
 import { useAuthStore } from '../../store/auth.store';
 import { posEstado } from '../../utils/posEstado';
 
@@ -13,6 +14,10 @@ const POLL_MS   = 5 * 60 * 1000;
 
 /** El toast se cierra solo a los 10 s. */
 const AUTOCLOSE = 10_000;
+
+/** Veces que se reintenta registrar el visto antes de rendirse. Sin tope, un
+ *  endpoint caído repetiría el toast cada 10 s para siempre. */
+const MAX_REINTENTOS_VISTO = 3;
 
 /**
  * Notificador flotante de mensajes nuevos del Super Admin.
@@ -50,6 +55,8 @@ export default function MensajeNotificador() {
   const procesadosRef = useRef<Set<string>>(new Set());
   // IDs pendientes de mostrar (esperando que el POS cierre su modal de cobro)
   const pendingRef    = useRef<string[]>([]);
+  // Cuántas veces ha fallado ya el registro del visto, por id
+  const reintentosRef = useRef<Map<string, number>>(new Map());
 
   const [visible,  setVisible]  = useState(false);
   const [msgs,     setMsgs]     = useState<MensajeBandeja[]>([]);
@@ -57,7 +64,9 @@ export default function MensajeNotificador() {
 
   // ── Polling ────────────────────────────────────────────────────────────────
   const { data: novedadesIds = [] } = useQuery({
-    queryKey:        ['mensajes-novedades-no-vistas'],
+    // La clave sale de MENSAJES_KEYS y no como literal: si otro sitio
+    // invalida esta consulta, tiene que ser exactamente la misma cadena.
+    queryKey:        MENSAJES_KEYS.novedadesNoVistas,
     queryFn:         mensajesApi.getNovedadesNoVistas,
     enabled:         activo,
     refetchInterval: POLL_MS,
@@ -65,20 +74,23 @@ export default function MensajeNotificador() {
     staleTime:       POLL_MS,
   });
 
-  // Cuando el servidor devuelve IDs nuevos, los encola
+  // Cuando el servidor devuelve IDs nuevos, los encola.
+  //
+  // Aquí NO se marca visto. Se marca cuando el toast aparece de verdad, en
+  // mostrarPendiente() — que es el contrato que documenta el backend
+  // ("el frontend muestra el toast y llama marcarVisto").
+  //
+  // Marcarlo aquí perdía mensajes: si el cajero tenía el modal de cobro abierto
+  // y recargaba antes de que el tick lo mostrara, el mensaje quedaba visto en el
+  // servidor y no se enseñaba nunca. Justo el escenario que la espera del POS
+  // pretende proteger.
   useEffect(() => {
     if (!novedadesIds.length) return;
     const nuevos = novedadesIds.filter(id => !procesadosRef.current.has(id));
     if (!nuevos.length) return;
 
-    nuevos.forEach(id => {
-      procesadosRef.current.add(id);
-      // Marca visto en el servidor para que el próximo poll no lo repita.
-      // Fire-and-forget: si falla una sola vez no pasa nada grave — el siguiente
-      // poll lo devolverá y el procesadosRef lo filtrará en esta sesión.
-      mensajesApi.marcarVisto(id).catch(() => {});
-    });
-
+    // procesadosRef solo evita re-encolar el mismo id en cada poll de 5 min
+    nuevos.forEach(id => procesadosRef.current.add(id));
     pendingRef.current = [...new Set([...pendingRef.current, ...nuevos])];
   }, [novedadesIds]);
 
@@ -93,13 +105,37 @@ export default function MensajeNotificador() {
         mensajesApi.getBandeja('principal'),
         mensajesApi.getBandeja('novedades'),
       ]);
-      const todos      = [...principal, ...novedades];
-      const relevantes = todos.filter(m => ids.includes(m.id));
+      // Deduplicado por id: si un mensaje sale en las dos pestañas, sin esto se
+      // cuenta dos veces y el toast anuncia "2 mensajes nuevos" habiendo uno.
+      const porId = new Map<string, MensajeBandeja>();
+      for (const m of [...principal, ...novedades]) {
+        if (ids.includes(m.id)) porId.set(m.id, m);
+      }
+      const relevantes = [...porId.values()];
       if (!relevantes.length) return; // ya archivados o eliminados
       setMsgs(relevantes);
       setVisible(true);
+
+      // El toast ya está en pantalla: AHORA se registra el visto.
+      //
+      // Si el POST falla, el id vuelve a la cola para que el siguiente tick lo
+      // reintente. Tragarse el error dejaba al servidor sin constancia de que se
+      // mostró, así que al recargar volvía a salir igualmente — con la
+      // diferencia de que nadie se enteraba de que el registro no se hizo.
+      //
+      // Reintentos acotados: si el endpoint está caído, sin tope el toast se
+      // repetiría cada 10 s indefinidamente.
+      for (const m of relevantes) {
+        mensajesApi.marcarVisto(m.id).catch(() => {
+          const intentos = (reintentosRef.current.get(m.id) ?? 0) + 1;
+          reintentosRef.current.set(m.id, intentos);
+          if (intentos >= MAX_REINTENTOS_VISTO) return;
+          procesadosRef.current.delete(m.id);
+          pendingRef.current = [...new Set([...pendingRef.current, m.id])];
+        });
+      }
     } catch {
-      // Red caída: devolvemos los IDs para el siguiente tick
+      // Red caída al leer la bandeja: devolvemos los IDs para el siguiente tick
       pendingRef.current = ids;
     }
   }, []);

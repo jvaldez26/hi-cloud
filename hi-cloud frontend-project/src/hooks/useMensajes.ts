@@ -7,7 +7,8 @@
  *   o al marcar leído/archivar. Cero polling.
  * - bandeja: staleTime 30s — el usuario espera datos frescos al abrirla,
  *   pero no hace falta refetch por foco de ventana.
- * - novedades-no-vistas: staleTime Infinity — solo se consulta una vez por sesión.
+ * - novedades-no-vistas: la consulta vive en MensajeNotificador (sondeo de 5 min);
+ *   aquí solo queda su clave, para que quien invalide use la misma cadena.
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -49,17 +50,12 @@ export function useBandeja(tab: 'principal' | 'novedades' | 'archivo', enabled =
   });
 }
 
-/** IDs de novedades cuyo toast aún no se mostró — consulta única por sesión */
-export function useNovedadesNoVistas(enabled = true) {
-  return useQuery({
-    queryKey:             MENSAJES_KEYS.novedadesNoVistas,
-    queryFn:              mensajesApi.getNovedadesNoVistas,
-    enabled,
-    staleTime:            Infinity,
-    gcTime:               Infinity,
-    refetchOnWindowFocus: false,
-  });
-}
+// useNovedadesNoVistas y useMarcarVisto vivían aquí. Los usaba el toast de
+// novedades de AppLayout, que se retiró al unificar el aviso en
+// MensajeNotificador — ese consulta `mensajesApi` directamente porque necesita
+// controlar CUÁNDO se marca el visto (al mostrar el toast, no al recibir el id).
+// Se borran para no dejar una segunda vía de leer y marcar novedades justo
+// después de haberlas unificado.
 
 /** Marcar un mensaje como leído e invalidar el badge */
 export function useMarcarLeido() {
@@ -75,17 +71,6 @@ export function useMarcarLeido() {
           prev?.map(m => m.id === id ? { ...m, leidoEn: ahora().toISOString() } : m),
         );
       });
-    },
-  });
-}
-
-/** Marcar toast de novedad como visto (vistoEn) sin marcar como leído */
-export function useMarcarVisto() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => mensajesApi.marcarVisto(id),
-    onSuccess:  () => {
-      qc.invalidateQueries({ queryKey: MENSAJES_KEYS.novedadesNoVistas });
     },
   });
 }

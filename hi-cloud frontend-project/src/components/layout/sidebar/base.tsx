@@ -11,11 +11,10 @@ import { useEffect, useState, useCallback, useRef, createContext, useContext, Su
 import { useMobile, useTablet } from '../../../hooks/useMediaQuery';
 import {
   Layout, Avatar, Dropdown, Typography, Badge, Space,
-  Button, Tooltip, theme, Select, Tag, Modal, Input, Divider, Checkbox, message, notification,
+  Button, Tooltip, theme, Select, Tag, Modal, Input, Divider, Checkbox, message,
 } from 'antd';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMisModulosAddon, useSucursalesQuery } from '../../../hooks/useCatalogQueries';
-import { useNoLeidosCount, useNovedadesNoVistas, useMarcarVisto } from '../../../hooks/useMensajes';
 import api from '../../../api/client';
 import { authApi } from '../../../api/auth.api';
 import {

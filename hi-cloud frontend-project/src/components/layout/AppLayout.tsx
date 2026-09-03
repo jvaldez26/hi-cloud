@@ -2,11 +2,11 @@
 import { useMobile, useTablet } from '../../hooks/useMediaQuery';
 import {
   Layout, Avatar, Dropdown, Typography, Badge, Space,
-  Button, Tooltip, theme, Select, Tag, Modal, Input, Divider, Checkbox, message, notification,
+  Button, Tooltip, theme, Select, Tag, Modal, Input, Divider, Checkbox, message,
 } from 'antd';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMisModulosAddon, useSucursalesQuery } from '../../hooks/useCatalogQueries';
-import { useNoLeidosCount, useNovedadesNoVistas, useMarcarVisto } from '../../hooks/useMensajes';
+import { useNoLeidosCount } from '../../hooks/useMensajes';
 import api from '../../api/client';
 import { authApi } from '../../api/auth.api';
 import {
@@ -304,25 +304,9 @@ export default function AppLayout() {
 
   // ── Bandeja de entrada ────────────────────────────────────────────────────
   // Una sola petición al entrar; se invalida manualmente al abrir bandeja o marcar leído.
+  // Solo el contador del badge: el aviso de novedades lo da MensajeNotificador,
+  // montado en la raíz (App.tsx) para que también cubra el POS y /super-admin.
   const { data: noLeidosCount = 0 }       = useNoLeidosCount(!!user);
-  const { data: novedadesNoVistas = [] }  = useNovedadesNoVistas(!!user);
-  const marcarVisto                        = useMarcarVisto();
-
-  // Toast de novedad — una sola vez por novedad (vistoEn escrito en DB).
-  // Se muestra al entrar a la app, no interrumpe, desaparece en 8 s.
-  useEffect(() => {
-    if (!novedadesNoVistas.length) return;
-    novedadesNoVistas.forEach(id => marcarVisto.mutate(id));
-    notification.info({
-      message:     '¡Hay novedades en HiCloud!',
-      description: 'Nuevas funcionalidades disponibles para ti.',
-      placement:   'bottomRight',
-      duration:    8,
-      onClick:     () => window.location.assign('/bandeja?tab=novedades'),
-    });
-  // Solo cuando carga por primera vez — no re-ejecutar al mutar
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [novedadesNoVistas.length > 0]);
   const queryClient                     = useQueryClient();
 
   const currentUserRole = user?.role ?? 'viewer';

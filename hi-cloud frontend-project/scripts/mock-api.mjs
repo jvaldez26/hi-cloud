@@ -211,7 +211,9 @@ const RUTAS = {
   // genérico de escrituras más abajo.
   '/mensajes/novedades-no-vistas': () => ({ ids: ['mock-msg-1'] }),
   '/mensajes/no-leidos-count':     () => ({ count: 1 }),
-  '/mensajes/bandeja': () => ([
+  // Filtra por tab como el backend: sin esto el mismo mensaje sale en las dos
+  // pestañas y el notificador lo cuenta dos veces.
+  '/mensajes/bandeja': (q) => (q?.tab === 'principal' ? [] : [
     {
       id: 'mock-msg-1',
       titulo: 'Nueva función: Notificaciones en tiempo real',
@@ -234,6 +236,8 @@ const PREFIJO = /^\/api(\/v1)?/;
 
 http.createServer((req, res) => {
   const ruta = req.url.replace(PREFIJO, '').split('?')[0];
+  // La query se pasa a la ruta: algunos endpoints filtran por ella (bandeja?tab=)
+  const query = Object.fromEntries(new URL(req.url, 'http://x').searchParams);
   const hay  = Boolean(RUTAS[ruta]);
   console.log(`${req.method.padEnd(6)} ${ruta.padEnd(48)} ${hay ? 'ok' : 'SIN MOCK'}`);
 
@@ -263,7 +267,7 @@ http.createServer((req, res) => {
   // objeto pelado deja las pantallas vacías sin un solo error: la petición sale
   // 200, el componente recibe `undefined` y no pinta nada.
   res.writeHead(200);
-  res.end(JSON.stringify({ data: hay ? RUTAS[ruta]() : [] }));
+  res.end(JSON.stringify({ data: hay ? RUTAS[ruta](query) : [] }));
 }).listen(PORT, () => {
   console.log(`\n  API falsa en http://localhost:${PORT}  (prefijo /api/v1, precio ${PRECIO})`);
   console.log('  Siembra la sesión en la consola del navegador antes de entrar:\n');
