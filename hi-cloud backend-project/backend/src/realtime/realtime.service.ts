@@ -29,4 +29,16 @@ export class RealtimeService {
   ) {
     this.gateway?.notificarPOS(empresaId, facturaId, payload);
   }
+
+  /**
+   * Avisa de que hay un mensaje nuevo del Super Admin. Sin contenido: el
+   * cliente consulta y el servidor vuelve a filtrar por destinatario.
+   *
+   * No sustituye al sondeo del notificador, lo adelanta. El sondeo sigue siendo
+   * la garantía para quien no tiene canal: /portal-empleado nunca lo monta, una
+   * pestaña dormida pierde los eventos y Socket.IO no reencola nada.
+   */
+  notificarMensajeNuevo(empresaIds: number[] | 'todas') {
+    this.gateway?.notificarMensajeNuevo(empresaIds);
+  }
 }

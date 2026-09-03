@@ -75,6 +75,30 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       .emit('cambio', { entidad, accion, id, ts: Date.now() });
   }
 
+  /**
+   * Avisa de que hay un mensaje nuevo del Super Admin.
+   *
+   * El evento va VACÍO a propósito: solo dice "consulta otra vez". El contenido
+   * y —sobre todo— el filtrado por destinatario siguen ocurriendo en el
+   * servidor cuando el cliente pregunta. Así nadie recibe por el socket un
+   * mensaje que no era para él, ni siquiera su título.
+   *
+   * Por eso el caso `todas` puede emitirse a todo el namespace sin riesgo: el
+   * que no tenga mensajes pendientes preguntará y recibirá una lista vacía.
+   *
+   * @param empresaIds lista de empresas destinatarias, o 'todas'
+   */
+  notificarMensajeNuevo(empresaIds: number[] | 'todas') {
+    const evento = { ts: Date.now() };
+    if (empresaIds === 'todas') {
+      this.server.emit('mensaje:nuevo', evento);
+      return;
+    }
+    for (const id of empresaIds) {
+      this.server.to(`empresa:${id}`).emit('mensaje:nuevo', evento);
+    }
+  }
+
   /** Notifica al POS sobre el estado del e-CF (para UX optimista) */
   notificarPOS(
     empresaId: number,
