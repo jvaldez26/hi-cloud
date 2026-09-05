@@ -477,7 +477,13 @@ export default function FacturasPage() {
     {
       title: '', key: 'acciones', width: 72, align: 'right' as const, fixed: 'right' as const,
       render: (_: unknown, r: Factura) => {
-        const siguientes = TRANSICIONES[r.estado];
+        // Con e-CF asociado (en cualquier estado DGII — pendiente, aceptado,
+        // observado, contingencia, rechazado — sin excepción) no se cancela
+        // directo desde acá: hace falta una Nota de Crédito. El backend aplica
+        // el mismo guard (cambiarEstado), esto es solo para no ofrecer una
+        // opción que el servidor va a rechazar.
+        const tieneEcf = !!(r as any).ecf;
+        const siguientes = TRANSICIONES[r.estado].filter(s => s !== 'cancelada' || !tieneEcf);
 
         const menuItems = [
           {
