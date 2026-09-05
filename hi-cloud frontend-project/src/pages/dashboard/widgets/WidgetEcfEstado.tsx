@@ -3,7 +3,7 @@ import { theme } from 'antd';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import api from '../../../api/client';
 import { dRD } from '../../../utils/fechaRD';
-import { TarjetaGrafica, SEMANTICO, GRIS_RESTO } from './TarjetaGrafica';
+import { TarjetaGrafica, SEMANTICO, GRIS_RESTO, estiloTooltip, useAltoGrafica } from './TarjetaGrafica';
 
 /**
  * Colores POR ESTADO, no por posición.
@@ -34,6 +34,7 @@ const colorDe = (estado: string) =>
 
 export function WidgetEcfEstado() {
   const { token } = theme.useToken();
+  const altoGrafica = useAltoGrafica();
 
   // El mes en curso en zona RD: con la del navegador, un equipo mal configurado
   // pediría el mes equivocado el día 1.
@@ -59,6 +60,7 @@ export function WidgetEcfEstado() {
       titulo="e-CF por estado DGII"
       subtitulo={ahora.format('MMMM YYYY')}
       onRefresh={() => { void refetch(); }}
+      alto={altoGrafica}
       cargando={isPending}
       error={isError}
       vacio={datos.length === 0}
@@ -75,18 +77,14 @@ export function WidgetEcfEstado() {
         `Comprobantes electrónicos por estado DGII. ${total} en total: ` +
         datos.map(d => `${d.label}, ${d.value}`).join('; ')
       }>
-      <ResponsiveContainer width="100%" height={260}>
+      <ResponsiveContainer width="100%" height={altoGrafica}>
         <PieChart>
           <Pie data={datos} cx="50%" cy="45%" innerRadius={60} outerRadius={95}
             paddingAngle={2} dataKey="value" nameKey="label">
             {datos.map((d, i) => <Cell key={i} fill={colorDe(d.label)} />)}
           </Pie>
           <Tooltip
-            contentStyle={{
-              background: token.colorBgElevated,
-              border: `1px solid ${token.colorBorderSecondary}`,
-              borderRadius: 8, fontSize: 12,
-            }}
+            contentStyle={estiloTooltip(token)}
             formatter={(v: number, name: string) => [`${v} comprobante${v === 1 ? '' : 's'}`, name]}
           />
           <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />

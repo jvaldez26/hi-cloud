@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
-import { EstadoGrafica, estadoDe, ejeMonto, RAMPA_SEVERIDAD, SEMANTICO } from './TarjetaGrafica';
+import { EstadoGrafica, estadoDe, ejeMonto, RAMPA_SEVERIDAD, SEMANTICO, estiloTooltip } from './TarjetaGrafica';
 
 const ANTIGUEDAD_CONFIG = [
   { key: 'corriente',   rango: 'Corriente', color: RAMPA_SEVERIDAD[0] },
@@ -76,11 +76,7 @@ function WidgetAntiguedad({ titulo, endpoint, queryKey, labelTotal, colorTotal }
               tick={{ fontSize: 11, fill: token.colorTextTertiary }}
               axisLine={false} tickLine={false} />
             <Tooltip
-              contentStyle={{
-                background: token.colorBgElevated,
-                border: `1px solid ${token.colorBorderSecondary}`,
-                borderRadius: 8, fontSize: 12,
-              }}
+              contentStyle={estiloTooltip(token)}
               formatter={(v: number) => [fmt.money(v), 'Monto']}
             />
             <Bar dataKey="monto" radius={[0, 4, 4, 0]} maxBarSize={18}>

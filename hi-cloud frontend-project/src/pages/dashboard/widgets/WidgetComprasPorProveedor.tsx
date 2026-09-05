@@ -6,7 +6,7 @@ import {
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
 import { dRD } from '../../../utils/fechaRD';
-import { TarjetaGrafica, COLORES, ejeMonto, SEMANTICO } from './TarjetaGrafica';
+import { TarjetaGrafica, COLORES, ejeMonto, SEMANTICO, estiloTooltip, useAltoGrafica } from './TarjetaGrafica';
 import { recorta } from './WidgetTopClientes';
 
 /**
@@ -19,6 +19,7 @@ import { recorta } from './WidgetTopClientes';
  */
 export function WidgetComprasPorProveedor() {
   const { token } = theme.useToken();
+  const altoGrafica = useAltoGrafica();
 
   const ahora = dRD();
   const desde = ahora.startOf('year').format('YYYY-MM-DD');
@@ -45,6 +46,7 @@ export function WidgetComprasPorProveedor() {
       titulo="Compras por proveedor"
       subtitulo={`año ${ahora.year()}`}
       onRefresh={() => { void refetch(); }}
+      alto={altoGrafica}
       cargando={isPending}
       error={isError}
       vacio={datos.length === 0}
@@ -53,7 +55,7 @@ export function WidgetComprasPorProveedor() {
       pieValor={fmt.money(total)}
       pieColor={SEMANTICO.alerta}
     >
-      <ResponsiveContainer width="100%" height={260}>
+      <ResponsiveContainer width="100%" height={altoGrafica}>
         <BarChart accessibilityLayer data={datos} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={token.colorBorderSecondary} />
           <XAxis type="number" tick={{ fontSize: 10, fill: token.colorTextTertiary }}
@@ -62,11 +64,7 @@ export function WidgetComprasPorProveedor() {
             tick={{ fontSize: 11, fill: token.colorTextTertiary }}
             axisLine={false} tickLine={false} tickFormatter={(v: string) => recorta(v)} />
           <Tooltip
-            contentStyle={{
-              background: token.colorBgElevated,
-              border: `1px solid ${token.colorBorderSecondary}`,
-              borderRadius: 8, fontSize: 12,
-            }}
+            contentStyle={estiloTooltip(token)}
             formatter={(v: number, _n, p: any) => [
               `${fmt.money(v)} · ${p?.payload?.compras ?? 0} compras`, 'Comprado',
             ]}

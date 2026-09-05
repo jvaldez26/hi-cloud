@@ -2,7 +2,7 @@ import { Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Tooltip as AntTooltip, theme } from 'antd';
 import api from '../../../api/client';
-import { TarjetaGrafica, SEMANTICO } from './TarjetaGrafica';
+import { TarjetaGrafica, SEMANTICO, useAltoGrafica } from './TarjetaGrafica';
 
 const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
@@ -24,6 +24,7 @@ const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
  */
 export function WidgetHorasPico() {
   const { token } = theme.useToken();
+  const altoGrafica = useAltoGrafica();
 
   const { data, refetch, isPending, isError } = useQuery<any[]>({
     queryKey: ['w-horas-pico'],
@@ -56,11 +57,11 @@ export function WidgetHorasPico() {
       titulo="Horas y días pico"
       subtitulo="últimos 3 meses"
       onRefresh={() => { void refetch(); }}
+      alto={altoGrafica}
       cargando={isPending}
       error={isError}
       vacio={filas.length === 0}
       mensajeVacio="Sin ventas en los últimos 3 meses"
-      alto={260}
       pieEtiqueta="MÁS MOVIDO"
       pieValor={mejor ? `${mejor.dia} ${mejor.hora} · ${mejor.cantidad}` : '—'}
       pieColor={SEMANTICO.neutro}

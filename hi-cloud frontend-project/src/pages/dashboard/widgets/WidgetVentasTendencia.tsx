@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
-import { TarjetaGrafica, ejeMonto, SEMANTICO } from './TarjetaGrafica';
+import { TarjetaGrafica, ejeMonto, SEMANTICO, estiloTooltip, useAltoGrafica } from './TarjetaGrafica';
 
 const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 
@@ -28,6 +28,7 @@ function etiquetaMes(periodo: string, anioActual: number) {
  */
 export function WidgetVentasTendencia() {
   const { token } = theme.useToken();
+  const altoGrafica = useAltoGrafica();
 
   const { data, refetch, isPending, isError } = useQuery<any[]>({
     queryKey: ['w-ventas-tendencia'],
@@ -50,6 +51,7 @@ export function WidgetVentasTendencia() {
       titulo="Ventas mensuales"
       subtitulo="últimos 12 meses"
       onRefresh={() => { void refetch(); }}
+      alto={altoGrafica}
       cargando={isPending}
       error={isError}
       vacio={datos.length === 0}
@@ -58,7 +60,7 @@ export function WidgetVentasTendencia() {
       pieValor={fmt.money(total)}
       pieColor={SEMANTICO.neutro}
     >
-      <ResponsiveContainer width="100%" height={260}>
+      <ResponsiveContainer width="100%" height={altoGrafica}>
         <AreaChart accessibilityLayer data={datos} margin={{ top: 10, right: 14, bottom: 0, left: 10 }}>
           <defs>
             <linearGradient id="gradVentasTendencia" x1="0" y1="0" x2="0" y2="1">
@@ -67,16 +69,12 @@ export function WidgetVentasTendencia() {
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={token.colorBorderSecondary} />
-          <XAxis dataKey="label" tick={{ fontSize: 10, fill: token.colorTextTertiary }}
+          <XAxis dataKey="label" interval="preserveStartEnd" tick={{ fontSize: 10, fill: token.colorTextTertiary }}
             axisLine={false} tickLine={false} />
           <YAxis tickFormatter={ejeMonto} tick={{ fontSize: 10, fill: token.colorTextTertiary }}
             axisLine={false} tickLine={false} />
           <Tooltip
-            contentStyle={{
-              background: token.colorBgElevated,
-              border: `1px solid ${token.colorBorderSecondary}`,
-              borderRadius: 8, fontSize: 12,
-            }}
+            contentStyle={estiloTooltip(token)}
             formatter={(v: number, _n, p: any) => [
               `${fmt.money(v)} · ${p?.payload?.facturas ?? 0} facturas`, 'Ventas',
             ]}

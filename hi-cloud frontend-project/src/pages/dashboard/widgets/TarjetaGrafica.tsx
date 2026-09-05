@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { Button, theme } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
+import { useMobile } from '../../../hooks/useMediaQuery';
 
 /**
  * Armazón común de las gráficas del panel.
@@ -270,3 +271,41 @@ export const GRIS_RESTO = '#94A3B8';
 // verificar-ejes.mjs pueda transpilarlo y ejecutarlo. Se reexporta aquí para no
 // cambiarle el import a los seis widgets que ya lo usaban.
 export { ejeMonto } from './formatoEje';
+
+/**
+ * Estilo del tooltip de Recharts, en un solo sitio.
+ *
+ * Estaba copiado en las 12 gráficas: cinco líneas idénticas por archivo,
+ * esperando a que alguien cambiara una sola y el panel quedara descuadrado. Es
+ * la misma deriva que tuvo la paleta.
+ *
+ * Se pasa como `contentStyle={estiloTooltip(token)}` y no como componente para
+ * no envolver <Tooltip> de Recharts: cada gráfica sigue poniendo su propio
+ * `formatter`, que es lo único que de verdad cambia entre ellas.
+ */
+export function estiloTooltip(token: {
+  colorBgElevated: string; colorBorderSecondary: string;
+}): CSSProperties {
+  return {
+    background:   token.colorBgElevated,
+    border:       `1px solid ${token.colorBorderSecondary}`,
+    borderRadius: 8,
+    fontSize:     12,
+  };
+}
+
+/**
+ * Alto de la gráfica según el ancho de pantalla.
+ *
+ * Estaba fijo en 260 en las nueve tarjetas. En un móvil de 375px eso deja una
+ * gráfica casi cuadrada que se come la pantalla: con dos o tres widgets en el
+ * panel hay que hacer scroll para ver el siguiente título, y el panel se navega
+ * peor justo donde menos sitio hay.
+ *
+ * El mismo valor se le pasa a TarjetaGrafica como `alto` para que el esqueleto
+ * de carga y el estado vacío midan lo mismo que la gráfica: si no, la tarjeta
+ * pega un salto al llegar los datos.
+ */
+export function useAltoGrafica(): number {
+  return useMobile() ? 200 : 260;
+}

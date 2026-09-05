@@ -3,7 +3,7 @@ import { theme } from 'antd';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
-import { TarjetaGrafica, COLORES, GRIS_RESTO } from './TarjetaGrafica';
+import { TarjetaGrafica, COLORES, GRIS_RESTO, estiloTooltip, useAltoGrafica } from './TarjetaGrafica';
 
 /**
  * Valor del inventario por categoría.
@@ -18,6 +18,7 @@ import { TarjetaGrafica, COLORES, GRIS_RESTO } from './TarjetaGrafica';
  */
 export function WidgetInventarioValor() {
   const { token } = theme.useToken();
+  const altoGrafica = useAltoGrafica();
 
   const { data, refetch, isPending, isError } = useQuery<any>({
     queryKey: ['w-inventario-valor'],
@@ -49,6 +50,7 @@ export function WidgetInventarioValor() {
         ? `${unidades.toLocaleString('es-DO', { maximumFractionDigits: 0 })} unidades`
         : undefined}
       onRefresh={() => { void refetch(); }}
+      alto={altoGrafica}
       cargando={isPending}
       error={isError}
       vacio={datos.length === 0 || totalValor === 0}
@@ -64,7 +66,7 @@ export function WidgetInventarioValor() {
         `${datos.length} grupos: ` +
         datos.map(d => `${d.label}, ${fmt.money(Number(d.value ?? 0))}`).join('; ')
       }>
-      <ResponsiveContainer width="100%" height={260}>
+      <ResponsiveContainer width="100%" height={altoGrafica}>
         <PieChart>
           <Pie data={datos} cx="50%" cy="45%" innerRadius={60} outerRadius={95}
             paddingAngle={2} dataKey="value" nameKey="label">
@@ -74,11 +76,7 @@ export function WidgetInventarioValor() {
             ))}
           </Pie>
           <Tooltip
-            contentStyle={{
-              background: token.colorBgElevated,
-              border: `1px solid ${token.colorBorderSecondary}`,
-              borderRadius: 8, fontSize: 12,
-            }}
+            contentStyle={estiloTooltip(token)}
             formatter={(v: number, name: string) => [fmt.money(v), name]}
           />
           <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />

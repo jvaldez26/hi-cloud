@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
-import { EstadoGrafica, estadoDe, SEMANTICO, COLORES } from './TarjetaGrafica';
+import { EstadoGrafica, estadoDe, SEMANTICO, COLORES, estiloTooltip, useAltoGrafica } from './TarjetaGrafica';
 
 // ── Widget Resumen de Gastos (donut) ─────────────────────────────────────────
 // Las categorías de gasto no significan nada por su color: solo hay que poder
@@ -13,6 +13,7 @@ import { EstadoGrafica, estadoDe, SEMANTICO, COLORES } from './TarjetaGrafica';
 
 export function WidgetResumenGastos() {
   const { token } = theme.useToken();
+  const altoGrafica = useAltoGrafica();
 
   // La consulta vive DENTRO del widget: si no esta en el panel, no se pide.
   const { data, refetch, isPending, isError } = useQuery<any>({
@@ -61,7 +62,7 @@ export function WidgetResumenGastos() {
           `${gastos.length} categorías: ` +
           gastos.map((g: any) => `${g.categoria}, ${fmt.money(Number(g.monto ?? 0))}`).join('; ')
         }>
-        <ResponsiveContainer width="100%" height={260}>
+        <ResponsiveContainer width="100%" height={altoGrafica}>
           <PieChart>
             <Pie data={gastos} cx="50%" cy="45%" innerRadius={60} outerRadius={95}
               paddingAngle={2} dataKey="monto" nameKey="categoria">
@@ -70,11 +71,7 @@ export function WidgetResumenGastos() {
               ))}
             </Pie>
             <Tooltip
-              contentStyle={{
-                background: token.colorBgElevated,
-                border: `1px solid ${token.colorBorderSecondary}`,
-                borderRadius: 8, fontSize: 12,
-              }}
+              contentStyle={estiloTooltip(token)}
               formatter={(v: number, name: string) => [fmt.money(v), name]}
             />
             <Legend iconType="circle" iconSize={8}
