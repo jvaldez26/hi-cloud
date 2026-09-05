@@ -15,6 +15,7 @@
     "verificar:compacto": "node scripts/verificar-ticket-compacto.mjs",
     "verificar:widgets": "node scripts/verificar-dashboard-widgets.mjs",
     "verificar:columnas": "node --experimental-strip-types scripts/verificar-columnas.mjs",
+    "verificar:ejes": "node scripts/verificar-ejes.mjs",
     "verificar:backups": "node --experimental-strip-types scripts/verificar-backups.mjs"
   },
   "dependencies": {

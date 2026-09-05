@@ -8,7 +8,7 @@ import {
 } from 'recharts';
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
-import { EstadoGrafica, estadoDe, SEMANTICO } from './TarjetaGrafica';
+import { EstadoGrafica, estadoDe, ejeMonto, SEMANTICO } from './TarjetaGrafica';
 import { anioRD } from '../../../utils/fechaRD';
 import { useMobile } from '../../../hooks/useMediaQuery';
 import { CardWidget } from './CardWidget';
@@ -187,7 +187,7 @@ export function WidgetIngresosGastos() {
               <CartesianGrid strokeDasharray="3 3" stroke={token.colorBorderSecondary} vertical={false} />
               <XAxis dataKey="label" tick={{ fontSize: 10, fill: token.colorTextTertiary }}
                 axisLine={false} tickLine={false} tickFormatter={v => v.split(' ')[0]} />
-              <YAxis tickFormatter={v => v === 0 ? '0' : `${(v / 1000).toFixed(0)}k`}
+              <YAxis tickFormatter={ejeMonto}
                 tick={{ fontSize: 10, fill: token.colorTextTertiary }} axisLine={false} tickLine={false} />
               <Tooltip
                 formatter={(v: number, n: string) => [fmt.money(v), n === 'ingreso' ? 'Ingresos' : 'Gastos']}
@@ -203,7 +203,7 @@ export function WidgetIngresosGastos() {
               <CartesianGrid strokeDasharray="3 3" stroke={token.colorBorderSecondary} vertical={false} />
               <XAxis dataKey="label" tick={{ fontSize: 10, fill: token.colorTextTertiary }}
                 axisLine={false} tickLine={false} tickFormatter={v => v.split(' ')[0]} />
-              <YAxis tickFormatter={v => v === 0 ? '0' : `${(v / 1000).toFixed(0)}k`}
+              <YAxis tickFormatter={ejeMonto}
                 tick={{ fontSize: 10, fill: token.colorTextTertiary }} axisLine={false} tickLine={false} />
               <Tooltip
                 formatter={(v: number, n: string) => [fmt.money(v), n === 'ingreso' ? 'Ingresos' : 'Gastos']}

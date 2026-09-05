@@ -242,7 +242,6 @@ export const COLORES = [
   '#0EA5E9', '#10B981', '#F59E0B', '#8B5CF6',
   '#EF4444', '#F97316', '#EC4899', '#06B6D4',
 ];
-
 /**
  * Rampa de severidad — para tramos ORDENADOS que van de bien a mal.
  *
@@ -257,8 +256,6 @@ export const RAMPA_SEVERIDAD = [
   '#10B981', '#0EA5E9', '#F59E0B', '#F97316', '#EF4444',
 ];
 
-/** Ejes y rejilla con el mismo aspecto en todas las gráficas. */
-export const ejeMonto = (v: number) => (v === 0 ? '0' : `${(v / 1000).toFixed(0)}K`);
 
 /**
  * Gris de «esto no es una categoría».
@@ -268,3 +265,8 @@ export const ejeMonto = (v: number) => (v === 0 ? '0' : `${(v / 1000).toFixed(0)
  * color de un cliente cualquiera y parecería una categoría más.
  */
 export const GRIS_RESTO = '#94A3B8';
+
+// ejeMonto vive en formatoEje.ts —módulo puro, sin React— para que
+// verificar-ejes.mjs pueda transpilarlo y ejecutarlo. Se reexporta aquí para no
+// cambiarle el import a los seis widgets que ya lo usaban.
+export { ejeMonto } from './formatoEje';

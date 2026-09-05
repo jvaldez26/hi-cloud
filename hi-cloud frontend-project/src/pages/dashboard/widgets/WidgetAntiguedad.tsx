@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
-import { EstadoGrafica, estadoDe, RAMPA_SEVERIDAD, SEMANTICO } from './TarjetaGrafica';
+import { EstadoGrafica, estadoDe, ejeMonto, RAMPA_SEVERIDAD, SEMANTICO } from './TarjetaGrafica';
 
 const ANTIGUEDAD_CONFIG = [
   { key: 'corriente',   rango: 'Corriente', color: RAMPA_SEVERIDAD[0] },
@@ -71,7 +71,7 @@ function WidgetAntiguedad({ titulo, endpoint, queryKey, labelTotal, colorTotal }
             <XAxis type="number"
               tick={{ fontSize: 10, fill: token.colorTextTertiary }}
               axisLine={false} tickLine={false}
-              tickFormatter={v => v === 0 ? '0' : `${(v / 1000).toFixed(0)}K`} />
+              tickFormatter={ejeMonto} />
             <YAxis type="category" dataKey="rango" width={58}
               tick={{ fontSize: 11, fill: token.colorTextTertiary }}
               axisLine={false} tickLine={false} />
