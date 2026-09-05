@@ -2,7 +2,13 @@
  * E34 — Nota de Crédito Electrónica
  * InformacionReferencia: NCFModificado → FechaNCFModificado → CodigoModificacion
  * FechaVencimientoSecuencia: NO incluir (doc de modificación).
- * IndicadorNotaCredito: calculado dinámicamente (≤30d=0, >30d=1).
+ * IndicadorNotaCredito: calculado dinámicamente (≤30d=0, >30d=1). Valor y
+ * posición dentro de IdDoc (después de eNCF, antes de IndicadorEnvioDiferido)
+ * verificados contra el "Formato Comprobante Fiscal Electrónico (e-CF) v1.0"
+ * de la DGII (oct-2025) — no requiere '1'/'2' por tener o no referencia; ese
+ * indicador solo existe para E34 y solo depende de los 30 días calendario.
+ * Si FechaNCFModificado queda en el futuro, calcIndicadorNC lanza (dato de
+ * origen corrupto: ver caso E340000000007).
  * Si moneda extranjera: montos principales en RD$, OtraMoneda/OtraMonedaDetalle.
  */
 import {
@@ -32,19 +38,33 @@ const CODIGOS_MODIFICACION_E34: Record<string, string> = {
 };
 
 function calcIndicadorNC(fechaNcfModificado: string): '0' | '1' {
-  try {
-    const parts = fechaNcfModificado.split('-');
-    if (parts.length !== 3) return '0';
-    const [dd, mm, yyyy] = parts.map(Number);
-    // Anclar ambas fechas al mediodía RD (16:00 UTC) para comparación calendar-day estable.
-    // Evita que la diferencia de UTC-4 cruce el límite de día en horas nocturnas RD.
-    const orig = new Date(Date.UTC(yyyy, mm - 1, dd, 16));
-    const rdHoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santo_Domingo' })
-      .format(new Date()).split('-').map(Number);
-    const hoy  = new Date(Date.UTC(rdHoy[0], rdHoy[1] - 1, rdHoy[2], 16));
-    const dias = Math.round((hoy.getTime() - orig.getTime()) / 86_400_000);
-    return dias <= 30 ? '0' : '1';
-  } catch { return '0'; }
+  if (!fechaNcfModificado) return '0';
+  const parts = fechaNcfModificado.split('-');
+  if (parts.length !== 3) return '0';
+  const [dd, mm, yyyy] = parts.map(Number);
+  if (![dd, mm, yyyy].every(Number.isFinite)) return '0';
+  // Anclar ambas fechas al mediodía RD (16:00 UTC) para comparación calendar-day estable.
+  // Evita que la diferencia de UTC-4 cruce el límite de día en horas nocturnas RD.
+  const orig = new Date(Date.UTC(yyyy, mm - 1, dd, 16));
+  const rdHoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santo_Domingo' })
+    .format(new Date()).split('-').map(Number);
+  const hoy  = new Date(Date.UTC(rdHoy[0], rdHoy[1] - 1, rdHoy[2], 16));
+  const dias = Math.round((hoy.getTime() - orig.getTime()) / 86_400_000);
+  // dias < 0 = el comprobante que se modifica queda fechado DESPUÉS de hoy — un
+  // dato de origen corrupto (factura con año mal tecleado, típicamente). DGII
+  // rechaza el IndicadorNotaCredito resultante con error 156 ("no es válido")
+  // porque no hay un valor 0/1 coherente para una referencia futura. Se corta
+  // aquí, en la construcción en seco previa a pedir el eNCF (ver más abajo),
+  // en vez de quemar una secuencia real para terminar en el mismo rechazo.
+  // Caso real: E340000000007 (empresa 59) referenciaba una factura fechada
+  // "2027" por error de captura, un año después de su propia fecha de emisión.
+  if (dias < 0) {
+    throw new Error(
+      `[E34] La fecha del comprobante que se modifica (${fechaNcfModificado}) es posterior a hoy. ` +
+      'Corrija la fecha de la factura/e-CF original antes de emitir la Nota de Crédito.',
+    );
+  }
+  return dias <= 30 ? '0' : '1';
 }
 
 export function buildE34(input: ECFBuildInput): MSellerPayload {
