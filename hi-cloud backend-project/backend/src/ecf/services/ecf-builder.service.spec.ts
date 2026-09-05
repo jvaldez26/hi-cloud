@@ -370,6 +370,20 @@ describe('ECFBuilderService', () => {
       expect((p.ECF.Encabezado.IdDoc as any).IndicadorNotaCredito).toBe('1');
     });
 
+    // Caso real: E340000000007 (empresa 59) — la factura original quedó
+    // fechada un año en el futuro por error de captura. Un IndicadorNotaCredito
+    // calculado sobre esa referencia futura es incoherente (ni "≤30" ni ">30"
+    // tienen sentido para una fecha posterior a hoy) y DGII lo rechazó con
+    // error 156 "IndicadorNotaCredito ... no es válido" después de quemar la
+    // secuencia. Debe cortar en seco, antes de pedir el eNCF.
+    it('lanza si FechaNCFModificado queda en el futuro (dato de origen corrupto)', () => {
+      expect(() => service.build(34, makeInput({
+        tipoEcf:          34,
+        facturaOverrides: { cliente: CLIENTE_CON_RNC },
+        infoReferencia:   refConFecha(-365),
+      }))).toThrow(/posterior a hoy/);
+    });
+
     it('E34 tiene IndicadorEnvioDiferido=1 y IndicadorMontoGravado', () => {
       const idDoc = service.build(34, makeInput({
         tipoEcf:          34,
