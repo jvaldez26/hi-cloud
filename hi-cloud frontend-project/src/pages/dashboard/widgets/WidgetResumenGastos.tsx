@@ -52,7 +52,15 @@ export function WidgetResumenGastos() {
         mensajeVacio="Sin gastos registrados este mes"
         onRefresh={onRefresh}
       />
+      {/* Los donuts no admiten accessibilityLayer de Recharts —solo lo tienen las
+          cartesianas— así que sin este nombre accesible un lector de pantalla no
+          anuncia absolutamente nada de la tarjeta. */}
       {estado === 'ok' && (
+        <div role="img" aria-label={
+          `Gastos por categoría. Total ${fmt.money(total)} repartido en ` +
+          `${gastos.length} categorías: ` +
+          gastos.map((g: any) => `${g.categoria}, ${fmt.money(Number(g.monto ?? 0))}`).join('; ')
+        }>
         <ResponsiveContainer width="100%" height={260}>
           <PieChart>
             <Pie data={gastos} cx="50%" cy="45%" innerRadius={60} outerRadius={95}
@@ -73,6 +81,7 @@ export function WidgetResumenGastos() {
               wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />
           </PieChart>
         </ResponsiveContainer>
+        </div>
       )}
 
       {/* Footer total */}

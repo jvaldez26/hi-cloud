@@ -59,7 +59,7 @@ export function WidgetVentasTendencia() {
       pieColor={SEMANTICO.neutro}
     >
       <ResponsiveContainer width="100%" height={260}>
-        <AreaChart data={datos} margin={{ top: 10, right: 14, bottom: 0, left: 10 }}>
+        <AreaChart accessibilityLayer data={datos} margin={{ top: 10, right: 14, bottom: 0, left: 10 }}>
           <defs>
             <linearGradient id="gradVentasTendencia" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%"   stopColor={SEMANTICO.neutro} stopOpacity={0.35} />

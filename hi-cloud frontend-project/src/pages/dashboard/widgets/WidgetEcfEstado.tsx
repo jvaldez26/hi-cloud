@@ -69,6 +69,12 @@ export function WidgetEcfEstado() {
       // acción, y ahogado entre los aceptados no se ve.
       pieColor={rechazados > 0 ? SEMANTICO.gasto : token.colorText}
     >
+      {/* Nombre accesible: los donuts no admiten accessibilityLayer de Recharts,
+          que solo existe para las gráficas cartesianas. */}
+      <div role="img" aria-label={
+        `Comprobantes electrónicos por estado DGII. ${total} en total: ` +
+        datos.map(d => `${d.label}, ${d.value}`).join('; ')
+      }>
       <ResponsiveContainer width="100%" height={260}>
         <PieChart>
           <Pie data={datos} cx="50%" cy="45%" innerRadius={60} outerRadius={95}
@@ -86,6 +92,7 @@ export function WidgetEcfEstado() {
           <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />
         </PieChart>
       </ResponsiveContainer>
+      </div>
     </TarjetaGrafica>
   );
 }

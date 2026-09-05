@@ -54,7 +54,7 @@ export function WidgetComprasPorProveedor() {
       pieColor={SEMANTICO.alerta}
     >
       <ResponsiveContainer width="100%" height={260}>
-        <BarChart data={datos} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
+        <BarChart accessibilityLayer data={datos} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={token.colorBorderSecondary} />
           <XAxis type="number" tick={{ fontSize: 10, fill: token.colorTextTertiary }}
             axisLine={false} tickLine={false} tickFormatter={ejeMonto} />

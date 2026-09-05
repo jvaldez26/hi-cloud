@@ -57,6 +57,13 @@ export function WidgetInventarioValor() {
       pieValor={fmt.money(totalValor)}
       pieColor={COLORES[3]}
     >
+      {/* Nombre accesible: los donuts no admiten accessibilityLayer de Recharts,
+          que solo existe para las gráficas cartesianas. */}
+      <div role="img" aria-label={
+        `Valor de inventario por categoría. Total ${fmt.money(totalValor)} en ` +
+        `${datos.length} grupos: ` +
+        datos.map(d => `${d.label}, ${fmt.money(Number(d.value ?? 0))}`).join('; ')
+      }>
       <ResponsiveContainer width="100%" height={260}>
         <PieChart>
           <Pie data={datos} cx="50%" cy="45%" innerRadius={60} outerRadius={95}
@@ -77,6 +84,7 @@ export function WidgetInventarioValor() {
           <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />
         </PieChart>
       </ResponsiveContainer>
+      </div>
     </TarjetaGrafica>
   );
 }

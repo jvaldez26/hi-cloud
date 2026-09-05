@@ -64,7 +64,7 @@ function WidgetAntiguedad({ titulo, endpoint, queryKey, labelTotal, colorTotal }
       {estado === "ok" && (
       <div style={{ padding: "8px 0 0" }}>
         <ResponsiveContainer width="100%" height={220}>
-          <BarChart data={chartData} layout="vertical"
+          <BarChart accessibilityLayer data={chartData} layout="vertical"
             margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" horizontal={false}
               stroke={token.colorBorderSecondary} />

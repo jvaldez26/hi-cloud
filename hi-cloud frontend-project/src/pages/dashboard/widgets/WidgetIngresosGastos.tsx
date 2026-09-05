@@ -183,7 +183,7 @@ export function WidgetIngresosGastos() {
       <div ref={chartContainerRef} style={{ padding: "0 8px 16px" }}>
         <ResponsiveContainer width="100%" height={isMobile ? 200 : 240}>
           {chartTipo === 'line' ? (
-            <LineChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>
+            <LineChart accessibilityLayer data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={token.colorBorderSecondary} vertical={false} />
               <XAxis dataKey="label" tick={{ fontSize: 10, fill: token.colorTextTertiary }}
                 axisLine={false} tickLine={false} tickFormatter={v => v.split(' ')[0]} />
@@ -199,7 +199,7 @@ export function WidgetIngresosGastos() {
                 dot={false} activeDot={{ r: 4 }} strokeDasharray="4 4" />
             </LineChart>
           ) : (
-            <BarChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>
+            <BarChart accessibilityLayer data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={token.colorBorderSecondary} vertical={false} />
               <XAxis dataKey="label" tick={{ fontSize: 10, fill: token.colorTextTertiary }}
                 axisLine={false} tickLine={false} tickFormatter={v => v.split(' ')[0]} />

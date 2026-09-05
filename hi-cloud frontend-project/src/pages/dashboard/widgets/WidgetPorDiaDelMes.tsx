@@ -65,7 +65,7 @@ function PorDiaDelMes({
       pieColor={color}
     >
       <ResponsiveContainer width="100%" height={260}>
-        <BarChart data={datos} margin={{ top: 10, right: 14, bottom: 0, left: 10 }}>
+        <BarChart accessibilityLayer data={datos} margin={{ top: 10, right: 14, bottom: 0, left: 10 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={token.colorBorderSecondary} />
           <XAxis
             dataKey="dia"
