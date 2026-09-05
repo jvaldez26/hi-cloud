@@ -24,7 +24,7 @@ import {
   round2,
 } from './base-ecf.builder';
 import { fmtFecha } from './sections/id-doc.section';
-import { Logger } from '@nestjs/common';
+import { Logger, BadRequestException } from '@nestjs/common';
 import { buildItems } from './sections/items.section';
 
 const logger = new Logger('E34Builder');
@@ -59,7 +59,10 @@ function calcIndicadorNC(fechaNcfModificado: string): '0' | '1' {
   // Caso real: E340000000007 (empresa 59) referenciaba una factura fechada
   // "2027" por error de captura, un año después de su propia fecha de emisión.
   if (dias < 0) {
-    throw new Error(
+    // BadRequestException, no Error: así el filtro global de NestJS lo devuelve
+    // como 400 con este mensaje. Como Error crudo, el usuario solo veía
+    // "Error interno del servidor" — el mensaje real quedaba solo en el log.
+    throw new BadRequestException(
       `[E34] La fecha del comprobante que se modifica (${fechaNcfModificado}) es posterior a hoy. ` +
       'Corrija la fecha de la factura/e-CF original antes de emitir la Nota de Crédito.',
     );

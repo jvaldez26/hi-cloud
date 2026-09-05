@@ -72,6 +72,8 @@ function montarCaso(opts: {
   ncAplicadas?: string;
   ecfOriginalActivo?: any;
   ecfRechazado?: any;
+  /** Solo para el caso FechaNCFModificado — normalmente null en el resto de tests. */
+  facturaOriginal?: any;
 }) {
   const sec = opts.secuencia ?? crearSecuencia();
   const tipoDoc = opts.tipoDoc ?? DocumentoOrigenTipo.FACTURA;
@@ -124,7 +126,10 @@ function montarCaso(opts: {
       },
     } as any,
     { findOne: async () => CONFIG } as any,                         // configRepo
-    { findOne: async () => (tipoDoc === DocumentoOrigenTipo.FACTURA ? opts.documento : null) } as any,
+    // facturaRepo: sirve la factura de origen normal (tipoDoc FACTURA) y, para
+    // el caso FechaNCFModificado, la factura ORIGINAL referenciada por una NC
+    // (facturaOriginal) — ambos casos son consultas distintas del mismo repo.
+    { findOne: async () => (tipoDoc === DocumentoOrigenTipo.FACTURA ? opts.documento : (opts.facturaOriginal ?? null)) } as any,
     repoVacio as any,                                               // notaDebitoRepo
     { findOne: async () => (tipoDoc === DocumentoOrigenTipo.NOTA_CREDITO ? opts.documento : null) } as any,
     repoVacio as any,                                               // compraRepo
@@ -244,6 +249,42 @@ describe('emitir e-CF — ninguna validación quema un número', () => {
     expect(r.lanzo).toBe(true);
     expect(r.despues).toBe(r.antes);
     expect(r.filas).toBe(0);
+  });
+
+  // Caso real: FAC-124 (empresa 59) quedó fechada un año en el futuro por
+  // error de captura, y ese año equivocado SÍ llegó a DGII (fue aceptado
+  // así). FechaNCFModificado se resolvía con
+  // `ecfOriginal.fechaUso ?? facturaOrig?.fecha ?? ecfOriginal.createdAt` —
+  // con fechaUso vacío (lo normal: solo se llena si la NC lo pide explícito),
+  // caía en factura.fecha, la fecha mala, y e34.builder.ts la rechazaba por
+  // "posterior a hoy" — bloqueando la ÚNICA vía para corregir la factura que
+  // ya estaba mal. El orden correcto (createdAt del e-CF, que pone el
+  // sistema al firmar con DGII, antes que factura.fecha, editable a mano)
+  // usa la fecha real y deja pasar la emisión.
+  it('6· factura original con la fecha mal tecleada (año en el futuro) no bloquea la NC — usa el createdAt del e-CF', async () => {
+    const unAnoAdelante = new Date();
+    unAnoAdelante.setFullYear(unAnoAdelante.getFullYear() + 1);
+
+    const caso = montarCaso({
+      documento: { ...notaBase(), facturaOriginalId: 5 },
+      tipoDoc: DocumentoOrigenTipo.NOTA_CREDITO,
+      ecfOriginalActivo: {
+        id: 4, numero: 'E310000000050', estadoDGII: EstadoDGII.ACEPTADO,
+        montoTotal: 1180, fechaUso: null, createdAt: new Date(), // ← la fecha buena
+      },
+      facturaOriginal: facturaBase({ fecha: unAnoAdelante }),      // ← la fecha mala
+    });
+
+    const antes = caso.sec.secuenciaActual;
+    await caso.uc.execute({
+      empresaId: 1, documentoOrigenTipo: caso.tipoDoc, documentoOrigenId: 1,
+      tipoEcf: 34, infoReferencia: { CodigoModificacion: '3' },
+    });
+
+    // Si hubiera vuelto a caer en factura.fecha, e34.builder.ts habría
+    // lanzado "posterior a hoy" y esto nunca habría llegado aquí.
+    expect(caso.sec.secuenciaActual).toBe(antes + 1);
+    expect(caso.filasGuardadas.length).toBe(1);
   });
 
   // ── Facturas normales: las dos que NO son de notas ──────────────────────

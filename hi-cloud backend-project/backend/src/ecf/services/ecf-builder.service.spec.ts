@@ -1,6 +1,7 @@
 import { ECFBuilderService, ECFBuildInput } from './ecf-builder.service';
 import { ModoEcf } from '../entities/empresa-ecf-config.entity';
 import { EcfRncRequeridoError } from '../errors/ecf.errors';
+import { BadRequestException } from '@nestjs/common';
 
 // ── Factories de datos de prueba ──────────────────────────────────────────────
 
@@ -377,11 +378,16 @@ describe('ECFBuilderService', () => {
     // error 156 "IndicadorNotaCredito ... no es válido" después de quemar la
     // secuencia. Debe cortar en seco, antes de pedir el eNCF.
     it('lanza si FechaNCFModificado queda en el futuro (dato de origen corrupto)', () => {
-      expect(() => service.build(34, makeInput({
+      const construir = () => service.build(34, makeInput({
         tipoEcf:          34,
         facturaOverrides: { cliente: CLIENTE_CON_RNC },
         infoReferencia:   refConFecha(-365),
-      }))).toThrow(/posterior a hoy/);
+      }));
+      expect(construir).toThrow(/posterior a hoy/);
+      // BadRequestException, no un Error crudo: así el filtro global de NestJS
+      // lo devuelve como 400 con este mensaje. Antes del fix, el usuario solo
+      // veía "Error interno del servidor" — el mensaje real quedaba en el log.
+      expect(construir).toThrow(BadRequestException);
     });
 
     it('E34 tiene IndicadorEnvioDiferido=1 y IndicadorMontoGravado', () => {

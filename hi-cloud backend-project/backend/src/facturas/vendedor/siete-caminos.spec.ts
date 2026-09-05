@@ -81,6 +81,7 @@ async function emitir(borrador: any) {
     estado:    FacturaEstado.BORRADOR,
     folio:     'FAC-777',
     total:     1000,
+    fecha:     new Date(), // el guard de fecha (±30 días) exige el campo
     notas:     borrador.notas,
     vendedorId: borrador.vendedorId ?? null,
   });
@@ -297,6 +298,7 @@ describe('6. factura recurrente (cron) — nace BORRADOR y CON vendedor', () => 
     svc.limitesService    = { verificarLimiteIngresos: jest.fn().mockRejectedValue(ALTO) };
     svc.findOne           = jest.fn().mockResolvedValue({
       id: 777, empresaId: EMPRESA, estado: FacturaEstado.BORRADOR,
+      fecha: new Date(), // el guard de fecha (±30 días) exige el campo
       folio: 'FAC-777', total: 1180, notas: borrador.notas,
       vendedorId: borrador.vendedorId, nombreVendedor: borrador.nombreVendedor,
     });

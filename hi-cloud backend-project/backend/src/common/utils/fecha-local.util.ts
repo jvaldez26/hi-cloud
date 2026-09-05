@@ -91,3 +91,26 @@ export function horaTextoRD(
 export function fechaYHoraRD(d: Date = new Date()): string {
   return `${fechaTextoRD(d)} ${horaTextoRD(d)}`;
 }
+
+/**
+ * Días de calendario entre `fecha` y hoy (RD), sin horas de por medio.
+ * Positivo = `fecha` quedó en el pasado; negativo = en el futuro.
+ *
+ * Ancla ambas fechas al mediodía UTC antes de restar — mismo truco que ya usa
+ * calcIndicadorNC en e34.builder.ts para esto mismo: comparar por DÍA sin que
+ * la resta de dos `Date` a medianoche cruce el borde por el desfase UTC-4 de
+ * RD. Acepta 'YYYY-MM-DD' o un Date (columnas `date` de Postgres llegan como
+ * Date a medianoche UTC del día que se guardó).
+ *
+ * @example diferenciaDiasRD('2027-09-07') // negativo: un año en el futuro
+ */
+export function diferenciaDiasRD(fecha: Date | string): number {
+  const iso = typeof fecha === 'string' ? fecha.slice(0, 10) : fecha.toISOString().slice(0, 10);
+  const [yyyy, mm, dd] = iso.split('-').map(Number);
+  const objetivo = new Date(Date.UTC(yyyy, mm - 1, dd, 12));
+
+  const [hy, hm, hd] = fechaHoyRD().split('-').map(Number);
+  const hoy = new Date(Date.UTC(hy, hm - 1, hd, 12));
+
+  return Math.round((hoy.getTime() - objetivo.getTime()) / 86_400_000);
+}
