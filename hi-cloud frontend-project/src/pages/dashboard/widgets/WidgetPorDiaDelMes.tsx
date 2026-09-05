@@ -6,7 +6,7 @@ import {
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
 import { dRD } from '../../../utils/fechaRD';
-import { TarjetaGrafica, ejeMonto } from './TarjetaGrafica';
+import { TarjetaGrafica, ejeMonto, SEMANTICO } from './TarjetaGrafica';
 
 /**
  * Un mes día a día, en barras. Sirve igual para ventas que para compras: los dos
@@ -30,7 +30,7 @@ function PorDiaDelMes({
   const anio  = ahora.year();
   const diasDelMes = ahora.daysInMonth();
 
-  const { data, refetch } = useQuery<any>({
+  const { data, refetch, isPending, isError } = useQuery<any>({
     queryKey: [claveQuery, mes, anio],
     queryFn:  () => api.get(`${endpoint}?mes=${mes}&anio=${anio}`)
       .then((r: any) => r.data?.data ?? r.data),
@@ -56,6 +56,8 @@ function PorDiaDelMes({
       titulo={titulo}
       subtitulo={ahora.format('MMMM YYYY')}
       onRefresh={() => { void refetch(); }}
+      cargando={isPending}
+      error={isError}
       vacio={detalle.length === 0}
       mensajeVacio="Sin movimientos este mes"
       pieEtiqueta={etiquetaPie}
@@ -63,7 +65,7 @@ function PorDiaDelMes({
       pieColor={color}
     >
       <ResponsiveContainer width="100%" height={260}>
-        <BarChart data={datos} margin={{ top: 10, right: 14, bottom: 0, left: 10 }}>
+        <BarChart accessibilityLayer data={datos} margin={{ top: 10, right: 14, bottom: 0, left: 10 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={token.colorBorderSecondary} />
           <XAxis
             dataKey="dia"
@@ -100,7 +102,7 @@ export const WidgetVentasPorDia = () => (
     titulo="Ventas por día"
     endpoint="/reportes/ventas/por-dia"
     claveQuery="w-ventas-por-dia"
-    color="#10B981"
+    color={SEMANTICO.ingreso}
     etiquetaPie="VENDIDO ESTE MES"
   />
 );
@@ -110,7 +112,7 @@ export const WidgetComprasPorDia = () => (
     titulo="Compras por día"
     endpoint="/reportes/compras/por-dia"
     claveQuery="w-compras-por-dia"
-    color="#F59E0B"
+    color={SEMANTICO.alerta}
     etiquetaPie="COMPRADO ESTE MES"
   />
 );

@@ -4,15 +4,18 @@ import { useQuery } from '@tanstack/react-query';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
+import { EstadoGrafica, estadoDe, SEMANTICO, COLORES } from './TarjetaGrafica';
 
 // ── Widget Resumen de Gastos (donut) ─────────────────────────────────────────
-const COLORES_GASTOS = ['#0EA5E9','#10B981','#F59E0B','#8B5CF6','#EF4444','#F97316','#EC4899','#06B6D4'];
+// Las categorías de gasto no significan nada por su color: solo hay que poder
+// distinguirlas. Es la rampa categórica, no una lista propia — antes era una
+// copia literal de COLORES que había que mantener a mano.
 
 export function WidgetResumenGastos() {
   const { token } = theme.useToken();
 
   // La consulta vive DENTRO del widget: si no esta en el panel, no se pide.
-  const { data, refetch } = useQuery<any>({
+  const { data, refetch, isPending, isError } = useQuery<any>({
     queryKey: ['resumen-gastos-dash'],
     queryFn:  () => api.get('/reportes/dashboard/resumen-gastos').then((r: any) => r.data?.data ?? r.data),
     staleTime: 120_000,
@@ -21,6 +24,7 @@ export function WidgetResumenGastos() {
   const gastos: any[] = data?.gastos ?? [];
   const total = Number(data?.total ?? 0);
   const mes   = data?.mes ?? '';
+  const estado = estadoDe({ cargando: isPending, error: isError, vacio: gastos.length === 0 });
 
   return (
     <div style={{
@@ -42,21 +46,27 @@ export function WidgetResumenGastos() {
       </div>
 
       {/* Gráfica */}
-      {gastos.length === 0 ? (
-        <div style={{ height: 260, display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-          <div style={{ fontSize: 36 }}>📊</div>
-          <div style={{ fontSize: 13, color: token.colorTextTertiary }}>
-            Sin gastos registrados este mes
-          </div>
-        </div>
-      ) : (
+      <EstadoGrafica
+        estado={estado}
+        titulo="Resumen de Gastos"
+        mensajeVacio="Sin gastos registrados este mes"
+        onRefresh={onRefresh}
+      />
+      {/* Los donuts no admiten accessibilityLayer de Recharts —solo lo tienen las
+          cartesianas— así que sin este nombre accesible un lector de pantalla no
+          anuncia absolutamente nada de la tarjeta. */}
+      {estado === 'ok' && (
+        <div role="img" aria-label={
+          `Gastos por categoría. Total ${fmt.money(total)} repartido en ` +
+          `${gastos.length} categorías: ` +
+          gastos.map((g: any) => `${g.categoria}, ${fmt.money(Number(g.monto ?? 0))}`).join('; ')
+        }>
         <ResponsiveContainer width="100%" height={260}>
           <PieChart>
             <Pie data={gastos} cx="50%" cy="45%" innerRadius={60} outerRadius={95}
               paddingAngle={2} dataKey="monto" nameKey="categoria">
               {gastos.map((_: any, i: number) => (
-                <Cell key={i} fill={COLORES_GASTOS[i % COLORES_GASTOS.length]} />
+                <Cell key={i} fill={COLORES[i % COLORES.length]} />
               ))}
             </Pie>
             <Tooltip
@@ -71,6 +81,7 @@ export function WidgetResumenGastos() {
               wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />
           </PieChart>
         </ResponsiveContainer>
+        </div>
       )}
 
       {/* Footer total */}
@@ -84,7 +95,7 @@ export function WidgetResumenGastos() {
             textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             TOTAL GASTOS
           </span>
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#EF4444' }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: SEMANTICO.gasto }}>
             {fmt.money(total)}
           </span>
         </div>

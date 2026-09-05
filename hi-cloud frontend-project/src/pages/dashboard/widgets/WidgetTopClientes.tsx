@@ -6,7 +6,7 @@ import {
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
 import { dRD } from '../../../utils/fechaRD';
-import { TarjetaGrafica, COLORES, ejeMonto } from './TarjetaGrafica';
+import { TarjetaGrafica, COLORES, ejeMonto, SEMANTICO } from './TarjetaGrafica';
 
 /** Corta un nombre largo sin dejarlo en mitad de una palabra a lo bruto. */
 export const recorta = (v: string, n = 14) =>
@@ -26,7 +26,7 @@ export function WidgetTopClientes() {
   const desde = ahora.startOf('year').format('YYYY-MM-DD');
   const hasta = ahora.format('YYYY-MM-DD');
 
-  const { data, refetch } = useQuery<any[]>({
+  const { data, refetch, isPending, isError } = useQuery<any[]>({
     queryKey: ['w-top-clientes', desde, hasta],
     queryFn:  () => api.get(`/analytics/top-clientes?limit=8&desde=${desde}&hasta=${hasta}`)
       .then((r: any) => r.data?.data ?? r.data),
@@ -46,14 +46,16 @@ export function WidgetTopClientes() {
       titulo="Top clientes"
       subtitulo={`año ${ahora.year()}`}
       onRefresh={() => { void refetch(); }}
+      cargando={isPending}
+      error={isError}
       vacio={datos.length === 0}
       mensajeVacio="Sin ventas registradas este año"
       pieEtiqueta="SUMAN ENTRE LOS 8"
       pieValor={fmt.money(total)}
-      pieColor="#0EA5E9"
+      pieColor={SEMANTICO.neutro}
     >
       <ResponsiveContainer width="100%" height={260}>
-        <BarChart data={datos} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
+        <BarChart accessibilityLayer data={datos} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={token.colorBorderSecondary} />
           <XAxis type="number" tick={{ fontSize: 10, fill: token.colorTextTertiary }}
             axisLine={false} tickLine={false} tickFormatter={ejeMonto} />

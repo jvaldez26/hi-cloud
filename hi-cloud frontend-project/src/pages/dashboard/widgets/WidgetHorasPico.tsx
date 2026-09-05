@@ -2,7 +2,7 @@ import { Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Tooltip as AntTooltip, theme } from 'antd';
 import api from '../../../api/client';
-import { TarjetaGrafica } from './TarjetaGrafica';
+import { TarjetaGrafica, SEMANTICO } from './TarjetaGrafica';
 
 const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
@@ -25,7 +25,7 @@ const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 export function WidgetHorasPico() {
   const { token } = theme.useToken();
 
-  const { data, refetch } = useQuery<any[]>({
+  const { data, refetch, isPending, isError } = useQuery<any[]>({
     queryKey: ['w-horas-pico'],
     queryFn:  () => api.get('/analytics/horas-pico?meses=3')
       .then((r: any) => r.data?.data ?? r.data),
@@ -56,12 +56,14 @@ export function WidgetHorasPico() {
       titulo="Horas y días pico"
       subtitulo="últimos 3 meses"
       onRefresh={() => { void refetch(); }}
+      cargando={isPending}
+      error={isError}
       vacio={filas.length === 0}
       mensajeVacio="Sin ventas en los últimos 3 meses"
       alto={260}
       pieEtiqueta="MÁS MOVIDO"
       pieValor={mejor ? `${mejor.dia} ${mejor.hora} · ${mejor.cantidad}` : '—'}
-      pieColor="#0EA5E9"
+      pieColor={SEMANTICO.neutro}
     >
       <div style={{ padding: '14px 16px 16px', overflowX: 'auto' }}>
         <div style={{

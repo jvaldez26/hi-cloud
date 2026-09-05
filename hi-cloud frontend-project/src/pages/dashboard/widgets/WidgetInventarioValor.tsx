@@ -3,7 +3,7 @@ import { theme } from 'antd';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
-import { TarjetaGrafica, COLORES } from './TarjetaGrafica';
+import { TarjetaGrafica, COLORES, GRIS_RESTO } from './TarjetaGrafica';
 
 /**
  * Valor del inventario por categoría.
@@ -19,7 +19,7 @@ import { TarjetaGrafica, COLORES } from './TarjetaGrafica';
 export function WidgetInventarioValor() {
   const { token } = theme.useToken();
 
-  const { data, refetch } = useQuery<any>({
+  const { data, refetch, isPending, isError } = useQuery<any>({
     queryKey: ['w-inventario-valor'],
     queryFn:  () => api.get('/reportes/inventario/valor')
       .then((r: any) => r.data?.data ?? r.data),
@@ -49,19 +49,28 @@ export function WidgetInventarioValor() {
         ? `${unidades.toLocaleString('es-DO', { maximumFractionDigits: 0 })} unidades`
         : undefined}
       onRefresh={() => { void refetch(); }}
+      cargando={isPending}
+      error={isError}
       vacio={datos.length === 0 || totalValor === 0}
       mensajeVacio="Sin existencias valorizadas"
       pieEtiqueta="VALOR TOTAL"
       pieValor={fmt.money(totalValor)}
-      pieColor="#8B5CF6"
+      pieColor={COLORES[3]}
     >
+      {/* Nombre accesible: los donuts no admiten accessibilityLayer de Recharts,
+          que solo existe para las gráficas cartesianas. */}
+      <div role="img" aria-label={
+        `Valor de inventario por categoría. Total ${fmt.money(totalValor)} en ` +
+        `${datos.length} grupos: ` +
+        datos.map(d => `${d.label}, ${fmt.money(Number(d.value ?? 0))}`).join('; ')
+      }>
       <ResponsiveContainer width="100%" height={260}>
         <PieChart>
           <Pie data={datos} cx="50%" cy="45%" innerRadius={60} outerRadius={95}
             paddingAngle={2} dataKey="value" nameKey="label">
             {datos.map((d, i) => (
               // «Otras» siempre en gris: no es una categoría, es un cajón de sastre.
-              <Cell key={i} fill={d.label.startsWith('Otras') ? '#94A3B8' : COLORES[i % COLORES.length]} />
+              <Cell key={i} fill={d.label.startsWith('Otras') ? GRIS_RESTO : COLORES[i % COLORES.length]} />
             ))}
           </Pie>
           <Tooltip
@@ -75,6 +84,7 @@ export function WidgetInventarioValor() {
           <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />
         </PieChart>
       </ResponsiveContainer>
+      </div>
     </TarjetaGrafica>
   );
 }

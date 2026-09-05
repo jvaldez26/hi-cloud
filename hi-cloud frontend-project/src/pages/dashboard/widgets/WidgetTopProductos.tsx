@@ -6,7 +6,7 @@ import {
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
 import { dRD } from '../../../utils/fechaRD';
-import { TarjetaGrafica, COLORES, ejeMonto } from './TarjetaGrafica';
+import { TarjetaGrafica, COLORES, ejeMonto, SEMANTICO } from './TarjetaGrafica';
 import { recorta } from './WidgetTopClientes';
 
 /**
@@ -24,7 +24,7 @@ export function WidgetTopProductos() {
   const desde = ahora.startOf('year').format('YYYY-MM-DD');
   const hasta = ahora.format('YYYY-MM-DD');
 
-  const { data, refetch } = useQuery<any[]>({
+  const { data, refetch, isPending, isError } = useQuery<any[]>({
     queryKey: ['w-top-productos', desde, hasta],
     queryFn:  () => api.get(`/analytics/top-productos?limit=8&desde=${desde}&hasta=${hasta}`)
       .then((r: any) => r.data?.data ?? r.data),
@@ -44,14 +44,16 @@ export function WidgetTopProductos() {
       titulo="Top productos"
       subtitulo={`año ${ahora.year()}`}
       onRefresh={() => { void refetch(); }}
+      cargando={isPending}
+      error={isError}
       vacio={datos.length === 0}
       mensajeVacio="Sin ventas registradas este año"
       pieEtiqueta="SUMAN ENTRE LOS 8"
       pieValor={fmt.money(total)}
-      pieColor="#10B981"
+      pieColor={SEMANTICO.ingreso}
     >
       <ResponsiveContainer width="100%" height={260}>
-        <BarChart data={datos} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
+        <BarChart accessibilityLayer data={datos} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={token.colorBorderSecondary} />
           <XAxis type="number" tick={{ fontSize: 10, fill: token.colorTextTertiary }}
             axisLine={false} tickLine={false} tickFormatter={ejeMonto} />

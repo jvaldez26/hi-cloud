@@ -8,6 +8,7 @@ import {
 } from 'recharts';
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
+import { EstadoGrafica, estadoDe, SEMANTICO } from './TarjetaGrafica';
 import { anioRD } from '../../../utils/fechaRD';
 import { useMobile } from '../../../hooks/useMediaQuery';
 import { CardWidget } from './CardWidget';
@@ -74,7 +75,7 @@ export function WidgetIngresosGastos() {
     staleTime: 600_000,
   });
 
-  const { data: chartAnualRaw } = useQuery<any>({
+  const { data: chartAnualRaw, refetch: refetchAnual, isPending: cargandoAnual, isError: errorAnual } = useQuery<any>({
     queryKey: ['ingresos-gastos-anual', anioChart],
     queryFn:  () => api.get(
       `/reportes/dashboard/ingresos-gastos-anual?anio=${anioChart}`,
@@ -93,6 +94,15 @@ export function WidgetIngresosGastos() {
       ingreso: Number(row?.ingresos ?? 0),
       gasto:   Number(row?.gastos   ?? 0),
     };
+  });
+
+  // El backend rellena los 12 meses con ceros, asi que chartData NUNCA esta
+  // vacio: sin este estado, cargando y fallando pintaban doce meses a cero —
+  // que no parece "no hay datos", parece un ano sin ingresos ni gastos.
+  const estadoAnual = estadoDe({
+    cargando: cargandoAnual,
+    error:    errorAnual,
+    vacio:    chartData.every(d => d.ingreso === 0 && d.gasto === 0),
   });
 
   return (
@@ -157,19 +167,23 @@ export function WidgetIngresosGastos() {
       {/* Leyenda */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '12px 16px 4px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#10B981' }} />
+          <div style={{ width: 10, height: 10, borderRadius: '50%', background: SEMANTICO.ingreso }} />
           <Text style={{ fontSize: 12 }}>Ingresos</Text>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#E5E7EB' }} />
+          <div style={{ width: 10, height: 10, borderRadius: '50%', background: token.colorTextTertiary }} />
           <Text style={{ fontSize: 12 }}>Gastos</Text>
         </div>
       </div>
       {/* Gráfico */}
-      <div ref={chartContainerRef} style={{ padding: '0 8px 16px' }}>
+      <EstadoGrafica estado={estadoAnual} alto={200} titulo="Ingresos & Gastos"
+        mensajeVacio="Sin movimientos en el año seleccionado"
+        onRefresh={() => { void refetchAnual(); }} />
+      {estadoAnual === "ok" && (
+      <div ref={chartContainerRef} style={{ padding: "0 8px 16px" }}>
         <ResponsiveContainer width="100%" height={isMobile ? 200 : 240}>
           {chartTipo === 'line' ? (
-            <LineChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>
+            <LineChart accessibilityLayer data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={token.colorBorderSecondary} vertical={false} />
               <XAxis dataKey="label" tick={{ fontSize: 10, fill: token.colorTextTertiary }}
                 axisLine={false} tickLine={false} tickFormatter={v => v.split(' ')[0]} />
@@ -179,13 +193,13 @@ export function WidgetIngresosGastos() {
                 formatter={(v: number, n: string) => [fmt.money(v), n === 'ingreso' ? 'Ingresos' : 'Gastos']}
                 contentStyle={{ background: token.colorBgElevated,
                   border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, fontSize: 12 }} />
-              <Line type="monotone" dataKey="ingreso" stroke="#10B981" strokeWidth={2}
+              <Line type="monotone" dataKey="ingreso" stroke={SEMANTICO.ingreso} strokeWidth={2}
                 dot={false} activeDot={{ r: 4 }} />
-              <Line type="monotone" dataKey="gasto" stroke="#9CA3AF" strokeWidth={2}
+              <Line type="monotone" dataKey="gasto" stroke={token.colorTextTertiary} strokeWidth={2}
                 dot={false} activeDot={{ r: 4 }} strokeDasharray="4 4" />
             </LineChart>
           ) : (
-            <BarChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>
+            <BarChart accessibilityLayer data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={token.colorBorderSecondary} vertical={false} />
               <XAxis dataKey="label" tick={{ fontSize: 10, fill: token.colorTextTertiary }}
                 axisLine={false} tickLine={false} tickFormatter={v => v.split(' ')[0]} />
@@ -195,12 +209,13 @@ export function WidgetIngresosGastos() {
                 formatter={(v: number, n: string) => [fmt.money(v), n === 'ingreso' ? 'Ingresos' : 'Gastos']}
                 contentStyle={{ background: token.colorBgElevated,
                   border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, fontSize: 12 }} />
-              <Bar dataKey="ingreso" fill="#10B981" radius={[3, 3, 0, 0]} maxBarSize={20} />
-              <Bar dataKey="gasto"   fill="#9CA3AF" radius={[3, 3, 0, 0]} maxBarSize={20} />
+              <Bar dataKey="ingreso" fill={SEMANTICO.ingreso} radius={[3, 3, 0, 0]} maxBarSize={20} />
+              <Bar dataKey="gasto"   fill={token.colorTextTertiary} radius={[3, 3, 0, 0]} maxBarSize={20} />
             </BarChart>
           )}
         </ResponsiveContainer>
       </div>
+      )}
     </CardWidget>
 
   );

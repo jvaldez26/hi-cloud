@@ -3,7 +3,7 @@ import { theme } from 'antd';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import api from '../../../api/client';
 import { dRD } from '../../../utils/fechaRD';
-import { TarjetaGrafica } from './TarjetaGrafica';
+import { TarjetaGrafica, SEMANTICO, GRIS_RESTO } from './TarjetaGrafica';
 
 /**
  * Colores POR ESTADO, no por posición.
@@ -13,18 +13,24 @@ import { TarjetaGrafica } from './TarjetaGrafica';
  * vistazo y entiende lo contrario de lo que pasa. Es la gráfica que un dueño
  * mira para saber si la DGII le está aceptando las facturas.
  */
+// Los estados de la DGII son su propio vocabulario, no la rampa categórica del
+// panel: aquí el color SÍ significa, pero significa algo que solo existe en
+// e-CF. Por eso los dos que no encajan en SEMANTICO se quedan literales — lima
+// para el aceptado con reparos (verde pero no del todo) y violeta para el no
+// encontrado (ni bien ni mal: no está). Forzarlos a la paleta genérica los
+// haría parecer categorías intercambiables, que es justo lo que no son.
 const COLOR_ESTADO: Record<string, string> = {
-  aceptado:            '#10B981',
+  aceptado:            SEMANTICO.ingreso,
   'aceptado condicional': '#84CC16',
-  rechazado:           '#EF4444',
-  'en proceso':        '#F59E0B',
-  enviado:             '#0EA5E9',
-  pendiente:           '#94A3B8',
+  rechazado:           SEMANTICO.gasto,
+  'en proceso':        SEMANTICO.alerta,
+  enviado:             SEMANTICO.neutro,
+  pendiente:           GRIS_RESTO,
   'no encontrado':     '#8B5CF6',
 };
 
 const colorDe = (estado: string) =>
-  COLOR_ESTADO[String(estado).toLowerCase()] ?? '#94A3B8';
+  COLOR_ESTADO[String(estado).toLowerCase()] ?? GRIS_RESTO;
 
 export function WidgetEcfEstado() {
   const { token } = theme.useToken();
@@ -35,7 +41,7 @@ export function WidgetEcfEstado() {
   const mes   = ahora.month() + 1;
   const anio  = ahora.year();
 
-  const { data, refetch } = useQuery<any>({
+  const { data, refetch, isPending, isError } = useQuery<any>({
     queryKey: ['w-ecf-estado', mes, anio],
     queryFn:  () => api.get(`/reportes/fiscal/ecf?mes=${mes}&anio=${anio}`)
       .then((r: any) => r.data?.data ?? r.data),
@@ -53,14 +59,22 @@ export function WidgetEcfEstado() {
       titulo="e-CF por estado DGII"
       subtitulo={ahora.format('MMMM YYYY')}
       onRefresh={() => { void refetch(); }}
+      cargando={isPending}
+      error={isError}
       vacio={datos.length === 0}
       mensajeVacio="Sin comprobantes emitidos este mes"
       pieEtiqueta={rechazados > 0 ? 'RECHAZADOS' : 'TOTAL DEL MES'}
       pieValor={rechazados > 0 ? String(rechazados) : String(total)}
       // El pie destaca lo rechazado cuando lo hay: es lo único que exige una
       // acción, y ahogado entre los aceptados no se ve.
-      pieColor={rechazados > 0 ? '#EF4444' : token.colorText}
+      pieColor={rechazados > 0 ? SEMANTICO.gasto : token.colorText}
     >
+      {/* Nombre accesible: los donuts no admiten accessibilityLayer de Recharts,
+          que solo existe para las gráficas cartesianas. */}
+      <div role="img" aria-label={
+        `Comprobantes electrónicos por estado DGII. ${total} en total: ` +
+        datos.map(d => `${d.label}, ${d.value}`).join('; ')
+      }>
       <ResponsiveContainer width="100%" height={260}>
         <PieChart>
           <Pie data={datos} cx="50%" cy="45%" innerRadius={60} outerRadius={95}
@@ -78,6 +92,7 @@ export function WidgetEcfEstado() {
           <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />
         </PieChart>
       </ResponsiveContainer>
+      </div>
     </TarjetaGrafica>
   );
 }
