@@ -24,7 +24,7 @@ export function WidgetTopProductos() {
   const desde = ahora.startOf('year').format('YYYY-MM-DD');
   const hasta = ahora.format('YYYY-MM-DD');
 
-  const { data, refetch } = useQuery<any[]>({
+  const { data, refetch, isPending, isError } = useQuery<any[]>({
     queryKey: ['w-top-productos', desde, hasta],
     queryFn:  () => api.get(`/analytics/top-productos?limit=8&desde=${desde}&hasta=${hasta}`)
       .then((r: any) => r.data?.data ?? r.data),
@@ -44,6 +44,8 @@ export function WidgetTopProductos() {
       titulo="Top productos"
       subtitulo={`año ${ahora.year()}`}
       onRefresh={() => { void refetch(); }}
+      cargando={isPending}
+      error={isError}
       vacio={datos.length === 0}
       mensajeVacio="Sin ventas registradas este año"
       pieEtiqueta="SUMAN ENTRE LOS 8"

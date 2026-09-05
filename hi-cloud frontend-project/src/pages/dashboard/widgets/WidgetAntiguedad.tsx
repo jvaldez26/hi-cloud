@@ -6,6 +6,7 @@ import {
 } from 'recharts';
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
+import { EstadoGrafica, estadoDe } from './TarjetaGrafica';
 
 const ANTIGUEDAD_CONFIG = [
   { key: 'corriente',   rango: 'Corriente', color: '#10B981' },
@@ -22,7 +23,7 @@ function WidgetAntiguedad({ titulo, endpoint, queryKey, labelTotal, colorTotal }
   const { token } = theme.useToken();
 
   // La consulta vive DENTRO del widget: si no esta en el panel, no se pide.
-  const { data, refetch } = useQuery<any>({
+  const { data, refetch, isPending, isError } = useQuery<any>({
     queryKey: [queryKey],
     queryFn:  () => api.get(endpoint).then((r: any) => r.data?.data ?? r.data),
     staleTime: 120_000,
@@ -34,6 +35,12 @@ function WidgetAntiguedad({ titulo, endpoint, queryKey, labelTotal, colorTotal }
     color:  c.color,
   }));
   const total = Number(data?.total ?? 0);
+  // Sin esto, cargando y fallando pintaban cinco barras a cero: no dice «no hay
+  // datos», dice «todo vale cero», que es peor porque parece un dato.
+  const estado = estadoDe({
+    cargando: isPending, error: isError,
+    vacio: chartData.every(d => d.monto === 0),
+  });
 
   return (
     <div style={{
@@ -52,7 +59,10 @@ function WidgetAntiguedad({ titulo, endpoint, queryKey, labelTotal, colorTotal }
       </div>
 
       {/* Gráfica */}
-      <div style={{ padding: '8px 0 0' }}>
+      <EstadoGrafica estado={estado} alto={220} titulo={titulo}
+        mensajeVacio="Sin saldos pendientes" onRefresh={onRefresh} />
+      {estado === "ok" && (
+      <div style={{ padding: "8px 0 0" }}>
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={chartData} layout="vertical"
             margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
@@ -81,8 +91,10 @@ function WidgetAntiguedad({ titulo, endpoint, queryKey, labelTotal, colorTotal }
           </BarChart>
         </ResponsiveContainer>
       </div>
+      )}
 
-      {/* Footer total */}
+      {/* Footer total — oculto mientras no haya datos reales que totalizar. */}
+      {estado === "ok" && (
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         padding: '10px 16px', borderTop: `1px solid ${token.colorBorderSecondary}`,
@@ -96,6 +108,7 @@ function WidgetAntiguedad({ titulo, endpoint, queryKey, labelTotal, colorTotal }
           {fmt.money(total)}
         </span>
       </div>
+      )}
     </div>
   );
 }

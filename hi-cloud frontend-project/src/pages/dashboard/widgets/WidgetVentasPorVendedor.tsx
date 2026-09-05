@@ -23,7 +23,7 @@ export function WidgetVentasPorVendedor() {
   const desde = ahora.startOf('month').format('YYYY-MM-DD');
   const hasta = ahora.format('YYYY-MM-DD');
 
-  const { data, refetch } = useQuery<any[]>({
+  const { data, refetch, isPending, isError } = useQuery<any[]>({
     queryKey: ['w-ventas-vendedor', desde, hasta],
     queryFn:  () => api.get(`/analytics/ventas-por-vendedor?desde=${desde}&hasta=${hasta}`)
       .then((r: any) => r.data?.data ?? r.data),
@@ -43,6 +43,8 @@ export function WidgetVentasPorVendedor() {
       titulo="Ventas por vendedor"
       subtitulo={ahora.format('MMMM YYYY')}
       onRefresh={() => { void refetch(); }}
+      cargando={isPending}
+      error={isError}
       vacio={datos.length === 0}
       mensajeVacio="Sin ventas este mes"
       pieEtiqueta="TOTAL DEL MES"

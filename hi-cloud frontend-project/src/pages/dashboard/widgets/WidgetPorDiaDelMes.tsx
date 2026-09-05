@@ -30,7 +30,7 @@ function PorDiaDelMes({
   const anio  = ahora.year();
   const diasDelMes = ahora.daysInMonth();
 
-  const { data, refetch } = useQuery<any>({
+  const { data, refetch, isPending, isError } = useQuery<any>({
     queryKey: [claveQuery, mes, anio],
     queryFn:  () => api.get(`${endpoint}?mes=${mes}&anio=${anio}`)
       .then((r: any) => r.data?.data ?? r.data),
@@ -56,6 +56,8 @@ function PorDiaDelMes({
       titulo={titulo}
       subtitulo={ahora.format('MMMM YYYY')}
       onRefresh={() => { void refetch(); }}
+      cargando={isPending}
+      error={isError}
       vacio={detalle.length === 0}
       mensajeVacio="Sin movimientos este mes"
       pieEtiqueta={etiquetaPie}

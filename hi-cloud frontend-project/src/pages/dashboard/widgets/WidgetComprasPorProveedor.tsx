@@ -24,7 +24,7 @@ export function WidgetComprasPorProveedor() {
   const desde = ahora.startOf('year').format('YYYY-MM-DD');
   const hasta = ahora.format('YYYY-MM-DD');
 
-  const { data, refetch } = useQuery<any>({
+  const { data, refetch, isPending, isError } = useQuery<any>({
     queryKey: ['w-compras-proveedor', desde, hasta],
     queryFn:  () => api.get(
       `/reportes/compras/por-proveedor?fechaDesde=${desde}&fechaHasta=${hasta}`,
@@ -45,6 +45,8 @@ export function WidgetComprasPorProveedor() {
       titulo="Compras por proveedor"
       subtitulo={`año ${ahora.year()}`}
       onRefresh={() => { void refetch(); }}
+      cargando={isPending}
+      error={isError}
       vacio={datos.length === 0}
       mensajeVacio="Sin compras registradas este año"
       pieEtiqueta="COMPRADO EN EL AÑO"

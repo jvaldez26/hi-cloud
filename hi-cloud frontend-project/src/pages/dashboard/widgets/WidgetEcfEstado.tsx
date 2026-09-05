@@ -35,7 +35,7 @@ export function WidgetEcfEstado() {
   const mes   = ahora.month() + 1;
   const anio  = ahora.year();
 
-  const { data, refetch } = useQuery<any>({
+  const { data, refetch, isPending, isError } = useQuery<any>({
     queryKey: ['w-ecf-estado', mes, anio],
     queryFn:  () => api.get(`/reportes/fiscal/ecf?mes=${mes}&anio=${anio}`)
       .then((r: any) => r.data?.data ?? r.data),
@@ -53,6 +53,8 @@ export function WidgetEcfEstado() {
       titulo="e-CF por estado DGII"
       subtitulo={ahora.format('MMMM YYYY')}
       onRefresh={() => { void refetch(); }}
+      cargando={isPending}
+      error={isError}
       vacio={datos.length === 0}
       mensajeVacio="Sin comprobantes emitidos este mes"
       pieEtiqueta={rechazados > 0 ? 'RECHAZADOS' : 'TOTAL DEL MES'}

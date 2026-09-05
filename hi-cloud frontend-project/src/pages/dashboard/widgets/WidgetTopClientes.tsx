@@ -26,7 +26,7 @@ export function WidgetTopClientes() {
   const desde = ahora.startOf('year').format('YYYY-MM-DD');
   const hasta = ahora.format('YYYY-MM-DD');
 
-  const { data, refetch } = useQuery<any[]>({
+  const { data, refetch, isPending, isError } = useQuery<any[]>({
     queryKey: ['w-top-clientes', desde, hasta],
     queryFn:  () => api.get(`/analytics/top-clientes?limit=8&desde=${desde}&hasta=${hasta}`)
       .then((r: any) => r.data?.data ?? r.data),
@@ -46,6 +46,8 @@ export function WidgetTopClientes() {
       titulo="Top clientes"
       subtitulo={`año ${ahora.year()}`}
       onRefresh={() => { void refetch(); }}
+      cargando={isPending}
+      error={isError}
       vacio={datos.length === 0}
       mensajeVacio="Sin ventas registradas este año"
       pieEtiqueta="SUMAN ENTRE LOS 8"

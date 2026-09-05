@@ -8,6 +8,7 @@ import {
 } from 'recharts';
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
+import { EstadoGrafica, estadoDe } from './TarjetaGrafica';
 import { anioRD } from '../../../utils/fechaRD';
 import { useMobile } from '../../../hooks/useMediaQuery';
 import { CardWidget } from './CardWidget';
@@ -74,7 +75,7 @@ export function WidgetIngresosGastos() {
     staleTime: 600_000,
   });
 
-  const { data: chartAnualRaw } = useQuery<any>({
+  const { data: chartAnualRaw, refetch: refetchAnual, isPending: cargandoAnual, isError: errorAnual } = useQuery<any>({
     queryKey: ['ingresos-gastos-anual', anioChart],
     queryFn:  () => api.get(
       `/reportes/dashboard/ingresos-gastos-anual?anio=${anioChart}`,
@@ -93,6 +94,15 @@ export function WidgetIngresosGastos() {
       ingreso: Number(row?.ingresos ?? 0),
       gasto:   Number(row?.gastos   ?? 0),
     };
+  });
+
+  // El backend rellena los 12 meses con ceros, asi que chartData NUNCA esta
+  // vacio: sin este estado, cargando y fallando pintaban doce meses a cero —
+  // que no parece "no hay datos", parece un ano sin ingresos ni gastos.
+  const estadoAnual = estadoDe({
+    cargando: cargandoAnual,
+    error:    errorAnual,
+    vacio:    chartData.every(d => d.ingreso === 0 && d.gasto === 0),
   });
 
   return (
@@ -166,7 +176,11 @@ export function WidgetIngresosGastos() {
         </div>
       </div>
       {/* Gráfico */}
-      <div ref={chartContainerRef} style={{ padding: '0 8px 16px' }}>
+      <EstadoGrafica estado={estadoAnual} alto={200} titulo="Ingresos & Gastos"
+        mensajeVacio="Sin movimientos en el año seleccionado"
+        onRefresh={() => { void refetchAnual(); }} />
+      {estadoAnual === "ok" && (
+      <div ref={chartContainerRef} style={{ padding: "0 8px 16px" }}>
         <ResponsiveContainer width="100%" height={isMobile ? 200 : 240}>
           {chartTipo === 'line' ? (
             <LineChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>
@@ -201,6 +215,7 @@ export function WidgetIngresosGastos() {
           )}
         </ResponsiveContainer>
       </div>
+      )}
     </CardWidget>
 
   );

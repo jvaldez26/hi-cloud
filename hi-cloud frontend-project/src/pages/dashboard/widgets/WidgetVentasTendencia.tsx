@@ -29,7 +29,7 @@ function etiquetaMes(periodo: string, anioActual: number) {
 export function WidgetVentasTendencia() {
   const { token } = theme.useToken();
 
-  const { data, refetch } = useQuery<any[]>({
+  const { data, refetch, isPending, isError } = useQuery<any[]>({
     queryKey: ['w-ventas-tendencia'],
     queryFn:  () => api.get('/analytics/ventas-tendencia?meses=12')
       .then((r: any) => r.data?.data ?? r.data),
@@ -50,6 +50,8 @@ export function WidgetVentasTendencia() {
       titulo="Ventas mensuales"
       subtitulo="últimos 12 meses"
       onRefresh={() => { void refetch(); }}
+      cargando={isPending}
+      error={isError}
       vacio={datos.length === 0}
       mensajeVacio="Sin ventas en los últimos 12 meses"
       pieEtiqueta="TOTAL DEL PERÍODO"

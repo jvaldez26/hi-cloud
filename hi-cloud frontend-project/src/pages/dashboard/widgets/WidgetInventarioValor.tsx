@@ -19,7 +19,7 @@ import { TarjetaGrafica, COLORES } from './TarjetaGrafica';
 export function WidgetInventarioValor() {
   const { token } = theme.useToken();
 
-  const { data, refetch } = useQuery<any>({
+  const { data, refetch, isPending, isError } = useQuery<any>({
     queryKey: ['w-inventario-valor'],
     queryFn:  () => api.get('/reportes/inventario/valor')
       .then((r: any) => r.data?.data ?? r.data),
@@ -49,6 +49,8 @@ export function WidgetInventarioValor() {
         ? `${unidades.toLocaleString('es-DO', { maximumFractionDigits: 0 })} unidades`
         : undefined}
       onRefresh={() => { void refetch(); }}
+      cargando={isPending}
+      error={isError}
       vacio={datos.length === 0 || totalValor === 0}
       mensajeVacio="Sin existencias valorizadas"
       pieEtiqueta="VALOR TOTAL"

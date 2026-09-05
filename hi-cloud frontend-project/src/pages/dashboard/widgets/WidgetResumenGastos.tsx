@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
+import { EstadoGrafica, estadoDe } from './TarjetaGrafica';
 
 // ── Widget Resumen de Gastos (donut) ─────────────────────────────────────────
 const COLORES_GASTOS = ['#0EA5E9','#10B981','#F59E0B','#8B5CF6','#EF4444','#F97316','#EC4899','#06B6D4'];
@@ -12,7 +13,7 @@ export function WidgetResumenGastos() {
   const { token } = theme.useToken();
 
   // La consulta vive DENTRO del widget: si no esta en el panel, no se pide.
-  const { data, refetch } = useQuery<any>({
+  const { data, refetch, isPending, isError } = useQuery<any>({
     queryKey: ['resumen-gastos-dash'],
     queryFn:  () => api.get('/reportes/dashboard/resumen-gastos').then((r: any) => r.data?.data ?? r.data),
     staleTime: 120_000,
@@ -21,6 +22,7 @@ export function WidgetResumenGastos() {
   const gastos: any[] = data?.gastos ?? [];
   const total = Number(data?.total ?? 0);
   const mes   = data?.mes ?? '';
+  const estado = estadoDe({ cargando: isPending, error: isError, vacio: gastos.length === 0 });
 
   return (
     <div style={{
@@ -42,15 +44,13 @@ export function WidgetResumenGastos() {
       </div>
 
       {/* Gráfica */}
-      {gastos.length === 0 ? (
-        <div style={{ height: 260, display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-          <div style={{ fontSize: 36 }}>📊</div>
-          <div style={{ fontSize: 13, color: token.colorTextTertiary }}>
-            Sin gastos registrados este mes
-          </div>
-        </div>
-      ) : (
+      <EstadoGrafica
+        estado={estado}
+        titulo="Resumen de Gastos"
+        mensajeVacio="Sin gastos registrados este mes"
+        onRefresh={onRefresh}
+      />
+      {estado === 'ok' && (
         <ResponsiveContainer width="100%" height={260}>
           <PieChart>
             <Pie data={gastos} cx="50%" cy="45%" innerRadius={60} outerRadius={95}
