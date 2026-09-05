@@ -858,6 +858,18 @@ export class FacturasService {
       );
     }
 
+    // Con e-CF asociado (en CUALQUIER estado DGII: pendiente, aceptado,
+    // observado, contingencia, rechazado — sin excepción) no se cancela
+    // directo: el comprobante ya salió y anularlo fiscalmente requiere una
+    // Nota de Crédito (E34), no solo un cambio de estado local. Sin ecfId
+    // (borrador, o e-CF que nunca se llegó a linkear) sí se puede.
+    if (estado === FacturaEstado.CANCELADA && factura.ecfId) {
+      throw new BadRequestException(
+        'No se puede cancelar directamente una factura con e-CF asociado. ' +
+          'Emite una Nota de Crédito (E34) para anularla fiscalmente.',
+      );
+    }
+
     if (estado === FacturaEstado.EMITIDA) {
       // ── El vendedor se fija AQUI, al emitir ────────────────────────────────
       //
