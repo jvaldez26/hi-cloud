@@ -1,5 +1,5 @@
-import { IsString, IsOptional, IsIn } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsString, IsOptional } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 
 /** DTO para emitir e-CF E33 (Nota de Débito). */
 export class EmitirEcfNotaDebitoDto {
@@ -20,21 +20,15 @@ export class EmitirEcfNotaDebitoDto {
   fechaNcfModificado?: string;
 }
 
-/** DTO para emitir e-CF E34 (Nota de Crédito). */
+/**
+ * DTO para emitir e-CF E34 (Nota de Crédito).
+ *
+ * `codigoModificacion` NO se acepta aquí: se fijó al crear la nota
+ * (`POST /notas-credito`) y el endpoint lo lee de esa fila — pedirlo nuevo acá
+ * era redundante (y un vector para enviar uno distinto al que se validó en
+ * creación). Ver `ecf.controller#emitirEcfNotaCredito`.
+ */
 export class EmitirEcfNotaCreditoDto {
-  @ApiProperty({
-    description:
-      'Código de modificación (STRING): ' +
-      '"1"=Anulación total, "2"=Corrección de texto, ' +
-      '"3"=Corrección de montos, "4"=Reemplazo de contingencia, ' +
-      '"5"=Referencia a Factura de Consumo.',
-    enum: ['1', '2', '3', '4', '5'],
-    example: '3',
-  })
-  @IsString()
-  @IsIn(['1', '2', '3', '4', '5'])
-  codigoModificacion!: string;
-
   @ApiPropertyOptional({
     description: 'e-NCF del comprobante original. Se resuelve automáticamente si se omite.',
     example: 'E310000000001',

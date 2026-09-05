@@ -180,6 +180,9 @@ export class NotasCreditoService {
       subtotal:               +subtotal.toFixed(2),
       iva:                    +iva.toFixed(2),
       total:                  +(subtotal + iva).toFixed(2),
+      // Se fija aquí, en creación, para no volver a preguntarlo al emitir el
+      // e-CF: ecf.controller#emitirEcfNotaCredito lo lee de la fila.
+      codigoModificacion:     dto.codigoModificacion ?? '3',
       detalles:               detalles as unknown as NotaCreditoDetalle[],
     });
 

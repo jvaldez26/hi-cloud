@@ -96,4 +96,13 @@ export class NotaCredito extends TenantBaseEntity {
   /** true después de que los efectos sobre la factura original ya se aplicaron (DGII aceptó) */
   @Column({ default: false })
   efectosAplicados!: boolean;
+
+  /**
+   * Código de modificación DGII elegido al crear la nota (1=Anulación total,
+   * 2=Corrección de texto, 3=Corrección de montos, 4=Reemplazo de contingencia,
+   * 5=Referencia a Factura de Consumo). Se fija en `crear()` y el endpoint de
+   * emisión lo lee de aquí — no se vuelve a pedir ni se acepta del body.
+   */
+  @Column({ length: 1, nullable: true })
+  codigoModificacion?: string;
 }
