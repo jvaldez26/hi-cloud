@@ -6,7 +6,7 @@ import {
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
 import { dRD } from '../../../utils/fechaRD';
-import { TarjetaGrafica, ejeMonto } from './TarjetaGrafica';
+import { TarjetaGrafica, ejeMonto, SEMANTICO } from './TarjetaGrafica';
 
 /**
  * Un mes día a día, en barras. Sirve igual para ventas que para compras: los dos
@@ -102,7 +102,7 @@ export const WidgetVentasPorDia = () => (
     titulo="Ventas por día"
     endpoint="/reportes/ventas/por-dia"
     claveQuery="w-ventas-por-dia"
-    color="#10B981"
+    color={SEMANTICO.ingreso}
     etiquetaPie="VENDIDO ESTE MES"
   />
 );
@@ -112,7 +112,7 @@ export const WidgetComprasPorDia = () => (
     titulo="Compras por día"
     endpoint="/reportes/compras/por-dia"
     claveQuery="w-compras-por-dia"
-    color="#F59E0B"
+    color={SEMANTICO.alerta}
     etiquetaPie="COMPRADO ESTE MES"
   />
 );

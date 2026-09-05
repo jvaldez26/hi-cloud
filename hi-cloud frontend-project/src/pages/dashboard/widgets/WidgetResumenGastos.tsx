@@ -4,10 +4,12 @@ import { useQuery } from '@tanstack/react-query';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
-import { EstadoGrafica, estadoDe } from './TarjetaGrafica';
+import { EstadoGrafica, estadoDe, SEMANTICO, COLORES } from './TarjetaGrafica';
 
 // ── Widget Resumen de Gastos (donut) ─────────────────────────────────────────
-const COLORES_GASTOS = ['#0EA5E9','#10B981','#F59E0B','#8B5CF6','#EF4444','#F97316','#EC4899','#06B6D4'];
+// Las categorías de gasto no significan nada por su color: solo hay que poder
+// distinguirlas. Es la rampa categórica, no una lista propia — antes era una
+// copia literal de COLORES que había que mantener a mano.
 
 export function WidgetResumenGastos() {
   const { token } = theme.useToken();
@@ -56,7 +58,7 @@ export function WidgetResumenGastos() {
             <Pie data={gastos} cx="50%" cy="45%" innerRadius={60} outerRadius={95}
               paddingAngle={2} dataKey="monto" nameKey="categoria">
               {gastos.map((_: any, i: number) => (
-                <Cell key={i} fill={COLORES_GASTOS[i % COLORES_GASTOS.length]} />
+                <Cell key={i} fill={COLORES[i % COLORES.length]} />
               ))}
             </Pie>
             <Tooltip
@@ -84,7 +86,7 @@ export function WidgetResumenGastos() {
             textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             TOTAL GASTOS
           </span>
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#EF4444' }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: SEMANTICO.gasto }}>
             {fmt.money(total)}
           </span>
         </div>

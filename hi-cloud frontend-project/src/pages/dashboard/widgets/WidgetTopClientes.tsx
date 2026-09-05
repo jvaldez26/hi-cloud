@@ -6,7 +6,7 @@ import {
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
 import { dRD } from '../../../utils/fechaRD';
-import { TarjetaGrafica, COLORES, ejeMonto } from './TarjetaGrafica';
+import { TarjetaGrafica, COLORES, ejeMonto, SEMANTICO } from './TarjetaGrafica';
 
 /** Corta un nombre largo sin dejarlo en mitad de una palabra a lo bruto. */
 export const recorta = (v: string, n = 14) =>
@@ -52,7 +52,7 @@ export function WidgetTopClientes() {
       mensajeVacio="Sin ventas registradas este año"
       pieEtiqueta="SUMAN ENTRE LOS 8"
       pieValor={fmt.money(total)}
-      pieColor="#0EA5E9"
+      pieColor={SEMANTICO.neutro}
     >
       <ResponsiveContainer width="100%" height={260}>
         <BarChart data={datos} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>

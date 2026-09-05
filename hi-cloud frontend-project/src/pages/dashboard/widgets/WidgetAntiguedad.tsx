@@ -6,14 +6,14 @@ import {
 } from 'recharts';
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
-import { EstadoGrafica, estadoDe } from './TarjetaGrafica';
+import { EstadoGrafica, estadoDe, RAMPA_SEVERIDAD, SEMANTICO } from './TarjetaGrafica';
 
 const ANTIGUEDAD_CONFIG = [
-  { key: 'corriente',   rango: 'Corriente', color: '#10B981' },
-  { key: 'dias_0_30',   rango: '0-30',      color: '#0EA5E9' },
-  { key: 'dias_31_60',  rango: '31-60',     color: '#F59E0B' },
-  { key: 'dias_61_90',  rango: '61-90',     color: '#F97316' },
-  { key: 'dias_90_plus',rango: '90+',       color: '#EF4444' },
+  { key: 'corriente',   rango: 'Corriente', color: RAMPA_SEVERIDAD[0] },
+  { key: 'dias_0_30',   rango: '0-30',      color: RAMPA_SEVERIDAD[1] },
+  { key: 'dias_31_60',  rango: '31-60',     color: RAMPA_SEVERIDAD[2] },
+  { key: 'dias_61_90',  rango: '61-90',     color: RAMPA_SEVERIDAD[3] },
+  { key: 'dias_90_plus',rango: '90+',       color: RAMPA_SEVERIDAD[4] },
 ];
 
 function WidgetAntiguedad({ titulo, endpoint, queryKey, labelTotal, colorTotal }: {
@@ -121,7 +121,7 @@ export const WidgetAntiguedadCobrar = () => (
     endpoint="/reportes/dashboard/antiguedad-cobrar"
     queryKey="antiguedad-cobrar"
     labelTotal="POR COBRAR TOTAL"
-    colorTotal="#10B981"
+    colorTotal={SEMANTICO.ingreso}
   />
 );
 
@@ -132,6 +132,6 @@ export const WidgetAntiguedadPagar = () => (
     endpoint="/reportes/dashboard/antiguedad-pagar"
     queryKey="antiguedad-pagar"
     labelTotal="POR PAGAR TOTAL"
-    colorTotal="#EF4444"
+    colorTotal={SEMANTICO.gasto}
   />
 );

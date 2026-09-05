@@ -8,7 +8,7 @@ import {
 } from 'recharts';
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
-import { EstadoGrafica, estadoDe } from './TarjetaGrafica';
+import { EstadoGrafica, estadoDe, SEMANTICO } from './TarjetaGrafica';
 import { anioRD } from '../../../utils/fechaRD';
 import { useMobile } from '../../../hooks/useMediaQuery';
 import { CardWidget } from './CardWidget';
@@ -167,11 +167,11 @@ export function WidgetIngresosGastos() {
       {/* Leyenda */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '12px 16px 4px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#10B981' }} />
+          <div style={{ width: 10, height: 10, borderRadius: '50%', background: SEMANTICO.ingreso }} />
           <Text style={{ fontSize: 12 }}>Ingresos</Text>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#E5E7EB' }} />
+          <div style={{ width: 10, height: 10, borderRadius: '50%', background: token.colorTextTertiary }} />
           <Text style={{ fontSize: 12 }}>Gastos</Text>
         </div>
       </div>
@@ -193,9 +193,9 @@ export function WidgetIngresosGastos() {
                 formatter={(v: number, n: string) => [fmt.money(v), n === 'ingreso' ? 'Ingresos' : 'Gastos']}
                 contentStyle={{ background: token.colorBgElevated,
                   border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, fontSize: 12 }} />
-              <Line type="monotone" dataKey="ingreso" stroke="#10B981" strokeWidth={2}
+              <Line type="monotone" dataKey="ingreso" stroke={SEMANTICO.ingreso} strokeWidth={2}
                 dot={false} activeDot={{ r: 4 }} />
-              <Line type="monotone" dataKey="gasto" stroke="#9CA3AF" strokeWidth={2}
+              <Line type="monotone" dataKey="gasto" stroke={token.colorTextTertiary} strokeWidth={2}
                 dot={false} activeDot={{ r: 4 }} strokeDasharray="4 4" />
             </LineChart>
           ) : (
@@ -209,8 +209,8 @@ export function WidgetIngresosGastos() {
                 formatter={(v: number, n: string) => [fmt.money(v), n === 'ingreso' ? 'Ingresos' : 'Gastos']}
                 contentStyle={{ background: token.colorBgElevated,
                   border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, fontSize: 12 }} />
-              <Bar dataKey="ingreso" fill="#10B981" radius={[3, 3, 0, 0]} maxBarSize={20} />
-              <Bar dataKey="gasto"   fill="#9CA3AF" radius={[3, 3, 0, 0]} maxBarSize={20} />
+              <Bar dataKey="ingreso" fill={SEMANTICO.ingreso} radius={[3, 3, 0, 0]} maxBarSize={20} />
+              <Bar dataKey="gasto"   fill={token.colorTextTertiary} radius={[3, 3, 0, 0]} maxBarSize={20} />
             </BarChart>
           )}
         </ResponsiveContainer>

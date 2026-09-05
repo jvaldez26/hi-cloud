@@ -6,7 +6,7 @@ import {
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
 import { dRD } from '../../../utils/fechaRD';
-import { TarjetaGrafica, COLORES, ejeMonto } from './TarjetaGrafica';
+import { TarjetaGrafica, COLORES, ejeMonto, SEMANTICO } from './TarjetaGrafica';
 import { recorta } from './WidgetTopClientes';
 
 /**
@@ -51,7 +51,7 @@ export function WidgetComprasPorProveedor() {
       mensajeVacio="Sin compras registradas este año"
       pieEtiqueta="COMPRADO EN EL AÑO"
       pieValor={fmt.money(total)}
-      pieColor="#F59E0B"
+      pieColor={SEMANTICO.alerta}
     >
       <ResponsiveContainer width="100%" height={260}>
         <BarChart data={datos} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>

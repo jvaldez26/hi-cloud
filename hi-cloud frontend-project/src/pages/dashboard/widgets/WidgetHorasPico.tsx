@@ -2,7 +2,7 @@ import { Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Tooltip as AntTooltip, theme } from 'antd';
 import api from '../../../api/client';
-import { TarjetaGrafica } from './TarjetaGrafica';
+import { TarjetaGrafica, SEMANTICO } from './TarjetaGrafica';
 
 const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
@@ -63,7 +63,7 @@ export function WidgetHorasPico() {
       alto={260}
       pieEtiqueta="MÁS MOVIDO"
       pieValor={mejor ? `${mejor.dia} ${mejor.hora} · ${mejor.cantidad}` : '—'}
-      pieColor="#0EA5E9"
+      pieColor={SEMANTICO.neutro}
     >
       <div style={{ padding: '14px 16px 16px', overflowX: 'auto' }}>
         <div style={{

@@ -200,11 +200,71 @@ export function EstadoGrafica({
   );
 }
 
-/** Paleta del panel. Misma que ya usaba el donut de gastos. */
+/**
+ * ── Colores del panel ───────────────────────────────────────────────────────
+ *
+ * Hay DOS cosas distintas aquí y antes estaban mezcladas, con el resultado de
+ * que `#10B981` hacía las dos según el archivo:
+ *
+ *   SEMANTICO — el color ES el significado. Ingreso es verde porque es ingreso.
+ *               Cambiarlo cambia lo que dice la gráfica. No se asigna por
+ *               posición y no se reordena nunca.
+ *
+ *   CATEGORICO — el color solo separa una serie de la siguiente. Qué cliente
+ *                sale azul y cuál verde no significa nada; se asigna por índice.
+ *
+ * Mezclarlas es como se llega a que el verde signifique «ingreso» en una tarjeta
+ * y «el tercer proveedor» en la de al lado.
+ *
+ * Antes de esto había 13 hexadecimales sueltos repartidos por los widgets y una
+ * constante COLORES que solo la mitad importaba. Si añades una gráfica, coge de
+ * aquí; no escribas un hex en el archivo del widget.
+ */
+export const SEMANTICO = {
+  /** Dinero que entra: ventas, cobros, ingresos. */
+  ingreso: '#10B981',
+  /** Dinero que sale: gastos, compras, cuentas por pagar. */
+  gasto:   '#EF4444',
+  /** Atención sin ser un problema todavía: por vencer, pendiente. */
+  alerta:  '#F59E0B',
+  /** Neutro: totales, referencias, series de apoyo. */
+  neutro:  '#0EA5E9',
+} as const;
+
+/**
+ * Rampa categórica — para series donde el color solo distingue, no significa.
+ *
+ * El orden importa por contraste entre vecinos, no por jerarquía: los dos
+ * primeros son los que más se diferencian entre sí, porque la mayoría de las
+ * gráficas del panel enseñan dos o tres categorías.
+ */
 export const COLORES = [
   '#0EA5E9', '#10B981', '#F59E0B', '#8B5CF6',
   '#EF4444', '#F97316', '#EC4899', '#06B6D4',
 ];
 
+/**
+ * Rampa de severidad — para tramos ORDENADOS que van de bien a mal.
+ *
+ * Es un tercer tipo y no encaja en los otros dos: no es semántico (ningún tramo
+ * tiene un significado fijo por sí solo) ni categórico (el orden sí importa;
+ * barajarlos rompe la lectura). La usa la antigüedad de saldos, donde el salto
+ * de verde a rojo ES la información.
+ *
+ * Va de índice 0 = corriente a 4 = el tramo más vencido.
+ */
+export const RAMPA_SEVERIDAD = [
+  '#10B981', '#0EA5E9', '#F59E0B', '#F97316', '#EF4444',
+];
+
 /** Ejes y rejilla con el mismo aspecto en todas las gráficas. */
 export const ejeMonto = (v: number) => (v === 0 ? '0' : `${(v / 1000).toFixed(0)}K`);
+
+/**
+ * Gris de «esto no es una categoría».
+ *
+ * Para el cajón de sastre —«Otras», «Pendiente», lo desconocido—. Va aparte de
+ * la rampa categórica a propósito: si entrara en ella, el resto acabaría del
+ * color de un cliente cualquiera y parecería una categoría más.
+ */
+export const GRIS_RESTO = '#94A3B8';

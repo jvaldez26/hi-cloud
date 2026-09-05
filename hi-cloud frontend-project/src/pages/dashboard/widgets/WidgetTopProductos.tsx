@@ -6,7 +6,7 @@ import {
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
 import { dRD } from '../../../utils/fechaRD';
-import { TarjetaGrafica, COLORES, ejeMonto } from './TarjetaGrafica';
+import { TarjetaGrafica, COLORES, ejeMonto, SEMANTICO } from './TarjetaGrafica';
 import { recorta } from './WidgetTopClientes';
 
 /**
@@ -50,7 +50,7 @@ export function WidgetTopProductos() {
       mensajeVacio="Sin ventas registradas este año"
       pieEtiqueta="SUMAN ENTRE LOS 8"
       pieValor={fmt.money(total)}
-      pieColor="#10B981"
+      pieColor={SEMANTICO.ingreso}
     >
       <ResponsiveContainer width="100%" height={260}>
         <BarChart data={datos} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>

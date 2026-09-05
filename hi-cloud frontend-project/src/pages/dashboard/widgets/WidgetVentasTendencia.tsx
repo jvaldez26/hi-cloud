@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
-import { TarjetaGrafica, ejeMonto } from './TarjetaGrafica';
+import { TarjetaGrafica, ejeMonto, SEMANTICO } from './TarjetaGrafica';
 
 const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 
@@ -56,14 +56,14 @@ export function WidgetVentasTendencia() {
       mensajeVacio="Sin ventas en los últimos 12 meses"
       pieEtiqueta="TOTAL DEL PERÍODO"
       pieValor={fmt.money(total)}
-      pieColor="#0EA5E9"
+      pieColor={SEMANTICO.neutro}
     >
       <ResponsiveContainer width="100%" height={260}>
         <AreaChart data={datos} margin={{ top: 10, right: 14, bottom: 0, left: 10 }}>
           <defs>
             <linearGradient id="gradVentasTendencia" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%"   stopColor="#0EA5E9" stopOpacity={0.35} />
-              <stop offset="100%" stopColor="#0EA5E9" stopOpacity={0.02} />
+              <stop offset="0%"   stopColor={SEMANTICO.neutro} stopOpacity={0.35} />
+              <stop offset="100%" stopColor={SEMANTICO.neutro} stopOpacity={0.02} />
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={token.colorBorderSecondary} />
@@ -81,7 +81,7 @@ export function WidgetVentasTendencia() {
               `${fmt.money(v)} · ${p?.payload?.facturas ?? 0} facturas`, 'Ventas',
             ]}
           />
-          <Area type="monotone" dataKey="total" stroke="#0EA5E9" strokeWidth={2}
+          <Area type="monotone" dataKey="total" stroke={SEMANTICO.neutro} strokeWidth={2}
             fill="url(#gradVentasTendencia)" />
         </AreaChart>
       </ResponsiveContainer>

@@ -3,7 +3,7 @@ import { theme } from 'antd';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
-import { TarjetaGrafica, COLORES } from './TarjetaGrafica';
+import { TarjetaGrafica, COLORES, GRIS_RESTO } from './TarjetaGrafica';
 
 /**
  * Valor del inventario por categoría.
@@ -55,7 +55,7 @@ export function WidgetInventarioValor() {
       mensajeVacio="Sin existencias valorizadas"
       pieEtiqueta="VALOR TOTAL"
       pieValor={fmt.money(totalValor)}
-      pieColor="#8B5CF6"
+      pieColor={COLORES[3]}
     >
       <ResponsiveContainer width="100%" height={260}>
         <PieChart>
@@ -63,7 +63,7 @@ export function WidgetInventarioValor() {
             paddingAngle={2} dataKey="value" nameKey="label">
             {datos.map((d, i) => (
               // «Otras» siempre en gris: no es una categoría, es un cajón de sastre.
-              <Cell key={i} fill={d.label.startsWith('Otras') ? '#94A3B8' : COLORES[i % COLORES.length]} />
+              <Cell key={i} fill={d.label.startsWith('Otras') ? GRIS_RESTO : COLORES[i % COLORES.length]} />
             ))}
           </Pie>
           <Tooltip

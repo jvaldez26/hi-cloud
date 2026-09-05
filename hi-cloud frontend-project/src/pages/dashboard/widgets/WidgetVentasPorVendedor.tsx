@@ -6,7 +6,7 @@ import {
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
 import { dRD } from '../../../utils/fechaRD';
-import { TarjetaGrafica, COLORES, ejeMonto } from './TarjetaGrafica';
+import { TarjetaGrafica, COLORES, ejeMonto, SEMANTICO } from './TarjetaGrafica';
 
 /**
  * Ventas por vendedor del mes en curso.
@@ -49,7 +49,7 @@ export function WidgetVentasPorVendedor() {
       mensajeVacio="Sin ventas este mes"
       pieEtiqueta="TOTAL DEL MES"
       pieValor={fmt.money(total)}
-      pieColor="#10B981"
+      pieColor={SEMANTICO.ingreso}
     >
       <ResponsiveContainer width="100%" height={260}>
         <BarChart data={datos} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
@@ -70,7 +70,7 @@ export function WidgetVentasPorVendedor() {
           />
           <Bar dataKey="total" radius={[0, 4, 4, 0]} maxBarSize={18}>
             {datos.map((d, i) => (
-              <Cell key={i} fill={d.sinVendedor ? '#EF4444' : COLORES[i % COLORES.length]} />
+              <Cell key={i} fill={d.sinVendedor ? SEMANTICO.gasto : COLORES[i % COLORES.length]} />
             ))}
           </Bar>
         </BarChart>
