@@ -18,6 +18,9 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import type { Response } from 'express';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { NotaCredito } from '../notas-credito/entities/nota-credito.entity';
 import { ECFService } from './ecf.service';
 import { ReintentoECFJob } from './jobs/reintento-ecf.job';
 import { ConsultarEstadoECFJob } from './jobs/consultar-estado-ecf.job';
@@ -53,6 +56,8 @@ export class ECFController {
     private reintentoJob:    ReintentoECFJob,
     private consultarJob:    ConsultarEstadoECFJob,
     private tenantService:   TenantService,
+    @InjectRepository(NotaCredito)
+    private ncRepo:          Repository<NotaCredito>,
   ) {}
 
   // ── Tipos ──────────────────────────────────────────────────────────
@@ -254,30 +259,32 @@ export class ECFController {
   ) {
     const empresaId = this.tenantService.getEmpresaId();
 
+    // El código de modificación NO viene del body: se fijó al crear la nota
+    // (notas-credito.service#crear) y se lee de esa fila. Así no se vuelve a
+    // pedir en el modal de emisión, ni se puede colar uno distinto al que ya
+    // se validó (código 1 exige igualdad exacta con el total de la factura).
+    const nota = await this.ncRepo.findOne({ where: { id, empresaId, isActive: true } });
+    if (!nota) throw new BadRequestException(`Nota de Crédito #${id} no encontrada`);
+    const codigoModificacion = nota.codigoModificacion ?? '3';
+
     // Si el caller no provee ncfModificado, pasa undefined para que el use-case
     // auto-resuelva el NCF original desde la nota (busca en tabla ecf).
     // Si lo provee, forma el objeto completo en orden correcto (NCFModificado primero).
-    const infoReferencia: import('./services/ecf-builder.service').MSellerInfoReferencia | undefined =
+    const infoReferencia: import('./services/ecf-builder.service').MSellerInfoReferencia =
       dto.ncfModificado
         ? {
             NCFModificado:      dto.ncfModificado,
             FechaNCFModificado: dto.fechaNcfModificado ?? '',
-            CodigoModificacion: dto.codigoModificacion,
+            CodigoModificacion: codigoModificacion,
           }
-        : undefined;
-
-    // CodigoModificacion se pasa como parte de infoReferencia o se setea via auto-resolve.
-    // Para que el auto-resolve use el código correcto, inyectarlo en infoReferencia parcial.
-    const infoRefFinal = infoReferencia ?? (dto.codigoModificacion
-      ? { NCFModificado: '', FechaNCFModificado: '', CodigoModificacion: dto.codigoModificacion } as any
-      : undefined);
+        : ({ NCFModificado: '', FechaNCFModificado: '', CodigoModificacion: codigoModificacion } as any);
 
     return this.emitirUseCase.execute({
       empresaId,
       documentoOrigenTipo: DocumentoOrigenTipo.NOTA_CREDITO,
       documentoOrigenId:   id,
       tipoEcf:             34,
-      infoReferencia:      infoRefFinal,
+      infoReferencia,
     });
   }
 

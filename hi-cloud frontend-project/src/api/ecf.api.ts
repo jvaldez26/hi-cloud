@@ -95,10 +95,9 @@ export const ecfApi = {
     api.post(`/ecf/nota-debito/${notaId}/emitir`, body ?? {}).then(r => r.data.data),
 
   // E34: Nota de Crédito
-  // CodigoModificacion es STRING: "1"=Anulación, "2"=Corrección texto, "3"=Corrección montos,
-  // "4"=Reemplazo contingencia, "5"=Referencia a Factura de Consumo
+  // codigoModificacion NO se manda: el backend lo lee del propio registro de
+  // la NC (se fijó al crearla) — no se vuelve a pedir al emitir.
   emitirEcfNotaCredito: (notaId: number, body: {
-    codigoModificacion: '1' | '2' | '3' | '4' | '5';
     ncfModificado?: string;
     fechaNcfModificado?: string;
   }) =>

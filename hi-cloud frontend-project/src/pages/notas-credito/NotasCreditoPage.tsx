@@ -157,12 +157,12 @@ export default function NotasCreditoPage() {
   });
 
   const [ecfModal,      setEcfModal]      = useState<any>(null);
-  const [ecfCodigo,     setEcfCodigo]     = useState<string>('3');
   const [ecfResultEncf, setEcfResultEncf] = useState<string | null>(null);
 
   const emitirEcfMut = useMutation({
-    mutationFn: ({ id, codigo }: { id: number; codigo: string }) =>
-      ecfApi.emitirEcfNotaCredito(id, { codigoModificacion: codigo as any }),
+    // codigoModificacion ya no se pasa: el backend lo lee del propio registro
+    // de la NC (se fijó al crearla).
+    mutationFn: ({ id }: { id: number }) => ecfApi.emitirEcfNotaCredito(id, {}),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['notas-credito'] });
       setEcfModal(null);
@@ -463,7 +463,7 @@ export default function NotasCreditoPage() {
                       !['aceptado', 'enviado', 'pendiente_envio', 'aceptado_condicion'].includes(r.ecf?.estadoDGII)) ? {
                       key: 'ecf',
                       label: 'e-CF E34',
-                      onClick: () => { setEcfModal(r); setEcfCodigo('3'); },
+                      onClick: () => { setEcfModal(r); },
                     } : null,
                     r.estado === 'emitida' ? {
                       key: 'anular',
@@ -801,44 +801,41 @@ export default function NotasCreditoPage() {
         title={<Space><AuditOutlined style={{ color: '#7c3aed' }} />Emitir e-CF E34 — Nota de Crédito</Space>}
         open={!!ecfModal}
         onCancel={() => setEcfModal(null)}
-        onOk={() => ecfModal && emitirEcfMut.mutate({ id: ecfModal.id, codigo: ecfCodigo })}
+        onOk={() => ecfModal && emitirEcfMut.mutate({ id: ecfModal.id })}
         confirmLoading={emitirEcfMut.isPending}
         okText="Emitir e-CF E34"
         okButtonProps={{ style: { background: '#7c3aed', borderColor: '#7c3aed' } }}
         destroyOnClose
         width={460}
       >
-        {ecfModal && (
-          <div style={{ paddingTop: 8 }}>
-            <p style={{ margin: '0 0 16px', color: '#6b7280', fontSize: 13 }}>
-              NC <strong>{ecfModal.numero}</strong> · Cliente: <strong>{ecfModal.cliente?.nombre ?? '—'}</strong>
-              · Total: <strong>{fmt(ecfModal.total)}</strong>
-            </p>
-            <div style={{ marginBottom: 12 }}>
-              <label style={{ fontWeight: 600, display: 'block', marginBottom: 6 }}>
-                Código de Modificación <span style={{ color: 'red' }}>*</span>
-              </label>
-              <Select
-                value={ecfCodigo}
-                onChange={v => setEcfCodigo(v as string)}
-                style={{ width: '100%' }}
-                size="large"
-              >
-                <Select.Option value="1">1 — Anulación total</Select.Option>
-                <Select.Option value="2">2 — Corrección de texto</Select.Option>
-                <Select.Option value="3">3 — Corrección de montos</Select.Option>
-                <Select.Option value="4">4 — Reemplazo de contingencia</Select.Option>
-                <Select.Option value="5">5 — Referencia a Factura de Consumo</Select.Option>
-              </Select>
-            </div>
-            {ecfCodigo === '1' && (
-              <div style={{ background: token.colorErrorBg, border: `1px solid ${token.colorErrorBorder}`, borderRadius: 8, padding: '10px 14px' }}>
-                <strong style={{ color: '#dc2626' }}>Anulación total:</strong>
-                <span style={{ color: '#7f1d1d', fontSize: 13 }}> El monto de la nota debe ser igual al de la factura original. La factura original quedará marcada como anulada en DGII.</span>
+        {ecfModal && (() => {
+          // El código de modificación NO se vuelve a pedir: ya se fijó al crear
+          // la NC (formulario "Nueva Nota de Crédito") y viaja en el propio
+          // registro. El backend lo lee de ahí — esto es solo para confirmar
+          // al usuario cuál quedó guardado antes de emitir.
+          const codigoNC = ecfModal.codigoModificacion ?? '3';
+          const infoCodigo = CODIGOS_MODIFICACION.find(c => c.value === codigoNC);
+          return (
+            <div style={{ paddingTop: 8 }}>
+              <p style={{ margin: '0 0 16px', color: '#6b7280', fontSize: 13 }}>
+                NC <strong>{ecfModal.numero}</strong> · Cliente: <strong>{ecfModal.cliente?.nombre ?? '—'}</strong>
+                · Total: <strong>{fmt(ecfModal.total)}</strong>
+              </p>
+              <div style={{ marginBottom: 12 }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>Código de Modificación DGII (fijado al crear la nota)</Text>
+                <div style={{ fontWeight: 600, marginTop: 2 }}>
+                  {codigoNC} — {infoCodigo?.label ?? 'Referencia a Factura de Consumo'}
+                </div>
               </div>
-            )}
-          </div>
-        )}
+              {codigoNC === '1' && (
+                <div style={{ background: token.colorErrorBg, border: `1px solid ${token.colorErrorBorder}`, borderRadius: 8, padding: '10px 14px' }}>
+                  <strong style={{ color: '#dc2626' }}>Anulación total:</strong>
+                  <span style={{ color: '#7f1d1d', fontSize: 13 }}> El monto de la nota debe ser igual al de la factura original. La factura original quedará marcada como anulada en DGII.</span>
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </Modal>
 
       {/* Modal email */}
