@@ -52,6 +52,18 @@
   --hcl-radius-sm: 9px;
   --hcl-maxw:      1200px;
   --hcl-shadow:    0 1px 2px rgba(10, 26, 63, .06), 0 12px 32px -12px rgba(10, 26, 63, .18);
+  /* Sombra más marcada para elementos elevados (cards al hover, capa del hero) */
+  --hcl-shadow-lg: 0 4px 12px rgba(10, 26, 63, .10), 0 24px 48px -16px rgba(10, 26, 63, .28);
+
+  /* ── Motion ───────────────────────────────────────────────────────────────
+     Curvas y duraciones únicas para toda la landing — evita que cada regla
+     invente su propio `ease`/duración suelta. Ver emil-design-eng: los easings
+     nativos de CSS son débiles; estas son variantes reforzadas. */
+  --hcl-ease-out:    cubic-bezier(0.23, 1, 0.32, 1);
+  --hcl-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --hcl-dur-fast:    160ms;
+  --hcl-dur-base:    220ms;
+  --hcl-dur-slow:    420ms;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -70,6 +82,7 @@
     --hcl-dgii-050:   #0E3A2A;
     --hcl-alert-600:  #F97B4F;
     --hcl-shadow:     0 1px 2px rgba(0, 0, 0, .4), 0 14px 34px -14px rgba(0, 0, 0, .6);
+    --hcl-shadow-lg:  0 6px 16px rgba(0, 0, 0, .45), 0 28px 56px -18px rgba(0, 0, 0, .7);
   }
 }
 
@@ -89,6 +102,7 @@
   --hcl-dgii-050:   #0E3A2A;
   --hcl-alert-600:  #F97B4F;
   --hcl-shadow:     0 1px 2px rgba(0, 0, 0, .4), 0 14px 34px -14px rgba(0, 0, 0, .6);
+  --hcl-shadow-lg:  0 6px 16px rgba(0, 0, 0, .45), 0 28px 56px -18px rgba(0, 0, 0, .7);
 }
 
 [data-theme='light'] {
@@ -106,4 +120,5 @@
   --hcl-dgii-050:   #E6F6EF;
   --hcl-alert-600:  #C2410C;
   --hcl-shadow:     0 1px 2px rgba(10, 26, 63, .06), 0 12px 32px -12px rgba(10, 26, 63, .18);
+  --hcl-shadow-lg:  0 4px 12px rgba(10, 26, 63, .10), 0 24px 48px -16px rgba(10, 26, 63, .28);
 }

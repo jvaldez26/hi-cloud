@@ -96,6 +96,19 @@
   text-transform: uppercase;
   color: var(--hcl-text-2);
   margin: 0 0 0.9rem;
+  /* Acento editorial: una línea corta, no un ícono ni un badge — refuerzo
+     estático de jerarquía, sin movimiento. */
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+.hcl-eyebrow::before {
+  content: '';
+  width: 20px;
+  height: 2px;
+  background: currentColor;
+  opacity: 0.5;
+  flex: none;
 }
 .hcl-sec--ink .hcl-eyebrow { color: var(--hcl-on-ink-2); }
 
@@ -119,11 +132,15 @@
   padding: 0.75rem 1.5rem;
   border-radius: 10px;
   border: 1.5px solid transparent;
-  transition: transform 0.16s ease, background-color 0.16s ease, border-color 0.16s ease;
+  transition: transform var(--hcl-dur-fast) var(--hcl-ease-out),
+              background-color var(--hcl-dur-fast) var(--hcl-ease-out),
+              border-color var(--hcl-dur-fast) var(--hcl-ease-out);
   white-space: nowrap;
   cursor: pointer;
 }
 .hcl-btn:hover { transform: translateY(-1px); }
+/* Feedback de presión — mismo criterio que un botón real, no solo hover */
+.hcl-btn:active { transform: scale(0.98); }
 .hcl-btn--primary { background: var(--hcl-blue-600); color: #fff; }
 .hcl-btn--primary:hover { background: var(--hcl-blue-500); }
 .hcl-btn--ghost { border-color: var(--hcl-line-strong); color: var(--hcl-text); background: transparent; }
@@ -146,6 +163,11 @@
   border: 1px solid var(--hcl-line-strong);
   color: var(--hcl-text-2);
   background: var(--hcl-surface);
+  /* El texto y el color cambian de estado en HeroDemo (mismo nodo, cambia la
+     clase) — sin esto el salto de "Enviando…" a "ACEPTADO" es un corte seco. */
+  transition: color var(--hcl-dur-base) var(--hcl-ease-out),
+              background-color var(--hcl-dur-base) var(--hcl-ease-out),
+              border-color var(--hcl-dur-base) var(--hcl-ease-out);
 }
 .hcl-chip--ok {
   color: var(--hcl-dgii-500);
@@ -160,6 +182,16 @@
 .hcl-chip .hcl-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
 .hcl-hero .hcl-chip { background: rgba(255, 255, 255, .06); border-color: rgba(234, 240, 255, .22); color: var(--hcl-on-ink-2); }
 .hcl-hero .hcl-chip--ok { color: #4FE0A5; border-color: rgba(79, 224, 165, .4); background: rgba(18, 166, 106, .14); }
+.hcl-hero .hcl-chip--wait { color: #FFA36B; border-color: rgba(255, 163, 107, .4); background: rgba(194, 65, 12, .14); }
+
+/* Un solo pulso al confirmar "ACEPTADO" — indica el cambio de estado, no
+   decora. Sin `infinite`: juega una vez por transición y se queda quieto. */
+.hcl-chip--pulse { animation: hcl-chip-pulse var(--hcl-dur-slow) var(--hcl-ease-out); }
+@keyframes hcl-chip-pulse {
+  0%   { transform: scale(1); box-shadow: 0 0 0 0 rgba(79, 224, 165, .45); }
+  40%  { transform: scale(1.05); box-shadow: 0 0 0 5px rgba(79, 224, 165, 0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(79, 224, 165, 0); }
+}
 
 /* ===== NAV =============================================================== */
 .hcl-nav {
@@ -194,7 +226,7 @@
   cursor: pointer;
 }
 .hcl-axis-trigger:hover { background: var(--hcl-surface-2); }
-.hcl-caret { width: 10px; height: 10px; transition: transform 0.18s ease; opacity: 0.55; }
+.hcl-caret { width: 10px; height: 10px; transition: transform var(--hcl-dur-base) var(--hcl-ease-out); opacity: 0.55; }
 .hcl-axis-trigger[aria-expanded='true'] .hcl-caret { transform: rotate(180deg); }
 
 .hcl-panel {
@@ -207,6 +239,16 @@
   box-shadow: var(--hcl-shadow);
   padding: 1.1rem;
   z-index: 70;
+  /* Entra desde el trigger, no desde el centro — el panel se desmonta del todo
+     al cerrar (conditional render en Nav.tsx), así que cada apertura es un
+     montaje nuevo y el keyframe se repite solo. Sin animación de salida: se
+     cierra al instante, que es la simplificación aceptada (ver informe). */
+  transform-origin: top left;
+  animation: hcl-panel-in var(--hcl-dur-base) var(--hcl-ease-out);
+}
+@keyframes hcl-panel-in {
+  from { opacity: 0; transform: scale(0.96) translateY(-4px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0); }
 }
 .hcl-panel h4 {
   font-size: 0.72rem;
@@ -263,8 +305,13 @@
 /* ===== HERO ============================================================== */
 .hcl-hero {
   background:
+    /* Textura técnica muy discreta — puntos finos, sin blobs ni glow extra.
+       Es una sola capa de background-image: no agrega nodos ni JS, no se
+       mueve. Aporta la sensación "de sistema" que pide el acabado premium. */
+    radial-gradient(rgba(234, 240, 255, .05) 1px, transparent 1px),
     radial-gradient(90rem 40rem at 78% -10%, rgba(30, 75, 168, .55), transparent 62%),
     linear-gradient(180deg, var(--hcl-ink-900), var(--hcl-ink-800));
+  background-size: 22px 22px, auto, auto;
   color: var(--hcl-on-ink);
   padding-block: clamp(3.5rem, 7vw, 6rem) clamp(3rem, 6vw, 5rem);
   overflow: hidden;
@@ -283,6 +330,55 @@
 .hcl-hero-bullets svg { width: 19px; height: 19px; flex: none; margin-top: 0.28rem; color: var(--hcl-dgii-500); }
 .hcl-hero-cta { display: flex; flex-wrap: wrap; gap: 0.8rem; align-items: center; }
 .hcl-hero-note { font-size: 0.85rem; color: var(--hcl-on-ink-2); margin-top: 1rem; }
+
+/* ── Entrada del hero — una sola vez al cargar, nunca se repite ────────────
+   Cada hijo directo de .hcl-hero-copy entra con un pequeño stagger. Es
+   `animation` (no `transition`) porque es una entrada de montaje, igual que
+   el resto de entradas de esta landing — no hay reintervención del usuario
+   que la interrumpa a medio camino. */
+.hcl-hero-copy > * {
+  opacity: 0;
+  animation: hcl-hero-in var(--hcl-dur-slow) var(--hcl-ease-out) forwards;
+}
+.hcl-hero-copy > *:nth-child(1) { animation-delay: 0ms; }
+.hcl-hero-copy > *:nth-child(2) { animation-delay: 60ms; }
+.hcl-hero-copy > *:nth-child(3) { animation-delay: 120ms; }
+.hcl-hero-copy > *:nth-child(4) { animation-delay: 180ms; }
+.hcl-hero-copy > *:nth-child(5) { animation-delay: 240ms; }
+.hcl-hero-copy > *:nth-child(6) { animation-delay: 300ms; }
+@keyframes hcl-hero-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Composición en capas del lado derecho (dirección C) ───────────────────
+   Una segunda tarjeta, estática y discreta, asoma detrás de la demo — sugiere
+   "un sistema con varias partes" sin agregar contenido ni movimiento propio.
+   Sin blur pesado (más caro en Safari) ni glassmorphism: solo opacidad y
+   desplazamiento fijos. */
+.hcl-hero-shot-stack { position: relative; }
+.hcl-hero-shot-shadow {
+  position: absolute;
+  inset: 14px -14px -14px 14px;
+  background: var(--hcl-surface);
+  border: 1px solid rgba(234, 240, 255, .14);
+  border-radius: var(--hcl-radius);
+  opacity: 0.5;
+  z-index: 0;
+}
+.hcl-hero-shot-stack .hcl-shot {
+  position: relative;
+  z-index: 1;
+  opacity: 0;
+  /* Un poco más de profundidad que el resto de mockups de la página: este es
+     el protagonista visual del hero. */
+  box-shadow: var(--hcl-shadow-lg);
+  animation: hcl-hero-shot-in var(--hcl-dur-slow) var(--hcl-ease-out) 260ms forwards;
+}
+@keyframes hcl-hero-shot-in {
+  from { opacity: 0; transform: scale(0.97) translateY(8px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0); }
+}
 
 /* ===== MOCKUP / CAPTURAS ================================================= */
 .hcl-shot {
@@ -331,6 +427,38 @@
 .hcl-shot-chips { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .hcl-shot-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
 
+/* ===== DEMO DEL HERO (HeroDemo) ===========================================
+   Nada se desmonta entre fases — solo cambia opacidad/transform vía
+   `.is-visible`. Así la tarjeta nunca cambia de alto y no hay layout shift
+   al pasar de una fase a otra. */
+.hcl-demo-chip-right {
+  opacity: 0;
+  transform: scale(0.92);
+  transition: opacity var(--hcl-dur-base) var(--hcl-ease-out),
+              transform var(--hcl-dur-base) var(--hcl-ease-out),
+              color var(--hcl-dur-base) var(--hcl-ease-out),
+              background-color var(--hcl-dur-base) var(--hcl-ease-out),
+              border-color var(--hcl-dur-base) var(--hcl-ease-out);
+}
+.hcl-demo-chip-right.is-visible { opacity: 1; transform: scale(1); }
+
+.hcl-demo-rows { display: grid; }
+.hcl-demo-row {
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity var(--hcl-dur-base) var(--hcl-ease-out),
+              transform var(--hcl-dur-base) var(--hcl-ease-out);
+}
+.hcl-demo-rows.is-visible .hcl-demo-row { opacity: 1; transform: translateY(0); }
+
+.hcl-demo-fade {
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity var(--hcl-dur-base) var(--hcl-ease-out),
+              transform var(--hcl-dur-base) var(--hcl-ease-out);
+}
+.hcl-demo-fade.is-visible { opacity: 1; transform: translateY(0); }
+
 /* ===== PRUEBA SOCIAL ===================================================== */
 .hcl-proof { background: var(--hcl-surface); border-bottom: 1px solid var(--hcl-line); padding-block: clamp(2rem, 4vw, 3rem); }
 .hcl-proof-label {
@@ -368,9 +496,19 @@
   border: 1px solid var(--hcl-line);
   border-radius: var(--hcl-radius);
   padding: 1.4rem;
-  transition: border-color 0.18s ease, transform 0.18s ease;
+  /* Profundidad real en vez de solo borde: sombra apenas perceptible en
+     reposo, más marcada al hover — separa la card del fondo sin depender
+     de un borde más oscuro. */
+  box-shadow: 0 1px 2px rgba(10, 26, 63, .04);
+  transition: border-color var(--hcl-dur-base) var(--hcl-ease-out),
+              transform    var(--hcl-dur-base) var(--hcl-ease-out),
+              box-shadow   var(--hcl-dur-base) var(--hcl-ease-out);
 }
-.hcl-card:hover { border-color: var(--hcl-line-strong); transform: translateY(-2px); }
+.hcl-card:hover {
+  border-color: var(--hcl-line-strong);
+  transform: translateY(-3px);
+  box-shadow: var(--hcl-shadow-lg);
+}
 .hcl-ico {
   width: 34px; height: 34px;
   border-radius: 9px;
@@ -499,7 +637,19 @@
   .hcl-nav-toggle { display: inline-flex; }
 
   .hcl-nav-mobile { display: none; border-top: 1px solid var(--hcl-line); background: var(--hcl-surface); }
-  .hcl-nav-mobile.is-open { display: block; padding: 1rem 0 1.5rem; }
+  /* `display` no se puede transicionar: pasa a block/opaco en el mismo
+     frame que se abre, y un frame después Nav.tsx agrega `.is-entrado`
+     (rAF), que es lo que realmente dispara el fundido. Cierre instantáneo —
+     misma asimetría que los dropdowns del nav de escritorio. */
+  .hcl-nav-mobile.is-open {
+    display: block;
+    padding: 1rem 0 1.5rem;
+    opacity: 0;
+    transform: translateY(-6px);
+    transition: opacity var(--hcl-dur-base) var(--hcl-ease-out),
+                transform var(--hcl-dur-base) var(--hcl-ease-out);
+  }
+  .hcl-nav-mobile.is-open.is-entrado { opacity: 1; transform: translateY(0); }
   .hcl-nav-mobile .hcl-axis { margin-bottom: 0.3rem; }
   .hcl-nav-mobile .hcl-axis-trigger {
     width: 100%;

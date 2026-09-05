@@ -26,6 +26,18 @@ export default function Nav() {
   const navRef = useRef<HTMLElement>(null);
   const triggers = useRef<Record<string, HTMLButtonElement | null>>({});
 
+  // Entrada del menú móvil: `display:none→block` no se puede transicionar, así
+  // que primero se monta (is-open) y UN frame después se activa la clase que
+  // dispara la transición de opacidad/transform (mismo patrón data-mounted
+  // documentado para navegadores sin @starting-style). Al cerrar, vuelve a
+  // display:none al instante — misma asimetría que los dropdowns de abajo.
+  const [entradaMovil, setEntradaMovil] = useState(false);
+  useEffect(() => {
+    if (!movil) { setEntradaMovil(false); return; }
+    const id = requestAnimationFrame(() => setEntradaMovil(true));
+    return () => cancelAnimationFrame(id);
+  }, [movil]);
+
   // Escape cierra y devuelve el foco al disparador que lo abrió
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -168,7 +180,7 @@ export default function Nav() {
       </div>
 
       {/* ── Menú móvil: mismos 3 ejes, en acordeón ───────────────────────── */}
-      <div className={`hcl-nav-mobile${movil ? ' is-open' : ''}`} id="nav-movil">
+      <div className={`hcl-nav-mobile${movil ? ' is-open' : ''}${entradaMovil ? ' is-entrado' : ''}`} id="nav-movil">
         <div className="hcl-wrap">
           <div className="hcl-axis">
             <button

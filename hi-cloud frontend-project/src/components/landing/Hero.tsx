@@ -1,14 +1,14 @@
 /** Hero — sección 2. Título sobre lo que hace el producto, no sobre su categoría. */
 import Icon from './LandingIcons';
 import LandingLink from './LandingLink';
-import ProductShot from './ProductShot';
-import { HERO, HERO_SHOT, LANDING_ROUTES } from '../../config/landing-content';
+import HeroDemo from './HeroDemo';
+import { HERO, LANDING_ROUTES } from '../../config/landing-content';
 
 export default function Hero() {
   return (
     <section className="hcl-hero">
       <div className="hcl-wrap hcl-hero-grid">
-        <div>
+        <div className="hcl-hero-copy">
           <p className="hcl-eyebrow">{HERO.eyebrow}</p>
           <h1>
             {HERO.titleStart}
@@ -36,17 +36,12 @@ export default function Hero() {
           <p className="hcl-hero-note">{HERO.note}</p>
         </div>
 
-        <ProductShot
-          url={HERO_SHOT.url}
-          label={HERO_SHOT.label}
-          chipLeft={HERO_SHOT.chipLeft}
-          chipRight={HERO_SHOT.chipRight}
-          rows={HERO_SHOT.rows}
-          totalLabel={HERO_SHOT.totalLabel}
-          total={HERO_SHOT.total}
-          meta={HERO_SHOT.meta}
-          ariaLabel="Captura del punto de venta de HiCloud con un comprobante e-CF aceptado"
-        />
+        {/* Segunda tarjeta estática detrás (aria-hidden: es puro fondo, la
+            demo real ya lleva su propia descripción accesible) + la demo. */}
+        <div className="hcl-hero-shot-stack">
+          <div className="hcl-hero-shot-shadow" aria-hidden="true" />
+          <HeroDemo />
+        </div>
       </div>
     </section>
   );
