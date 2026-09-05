@@ -352,7 +352,13 @@ export class EmitirECFUseCase {
 
       infoReferencia = {
         NCFModificado:      ecfOriginal.numero,
-        FechaNCFModificado: fmtFecha(ecfOriginal.fechaUso ?? facturaOrig?.fecha ?? ecfOriginal.createdAt),
+        // fechaUso primero (fecha real de uso del NCF); si no hay, createdAt del
+        // e-CF (lo pone el sistema al firmar con DGII, no se teclea). factura.fecha
+        // NUNCA antes que createdAt: es editable a mano y un año mal tecleado ahí
+        // (caso real: E340000000007, empresa 59) termina bloqueando la NC con un
+        // "posterior a hoy" en vez de usar la fecha que DGII de verdad tiene. Mismo
+        // orden que reintento-ecf.job.ts, que nunca tuvo este bug.
+        FechaNCFModificado: fmtFecha(ecfOriginal.fechaUso ?? ecfOriginal.createdAt ?? facturaOrig?.fecha),
         // Preservar CodigoModificacion del input si fue proporcionado; default '3'
         CodigoModificacion: infoRefInput?.CodigoModificacion ?? '3',
       };

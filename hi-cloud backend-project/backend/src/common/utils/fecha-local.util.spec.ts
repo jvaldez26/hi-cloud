@@ -1,4 +1,4 @@
-import { fechaHoraRD, fechaTextoRD, horaTextoRD, fechaYHoraRD } from './fecha-local.util';
+import { fechaHoraRD, fechaTextoRD, horaTextoRD, fechaYHoraRD, diferenciaDiasRD, fechaHoyRD } from './fecha-local.util';
 
 /**
  * El bug real: un cierre de caja anulado a las 9:14 de la mañana quedó escrito
@@ -68,5 +68,54 @@ describe('horaTextoRD y fechaYHoraRD — pies de PDF y comandas', () => {
     const conSeg = horaTextoRD(new Date('2026-08-22T13:14:05Z'),
       { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     expect(conSeg).toContain('9:14:05');
+  });
+});
+
+/**
+ * EL BUG REAL: FAC-124 (empresa 59) quedó fechada "2027-09-07" por un año mal
+ * tecleado. La factura se emitió igual, y hasta DGII la aceptó así — el error
+ * solo salió a la luz al intentar la Nota de Crédito, que rechaza referencias
+ * a fechas futuras (ver e34.builder.ts). diferenciaDiasRD es la pieza que
+ * ahora corta esto ANTES, al emitir (ver facturas.service.ts).
+ *
+ * No hay parámetro de "ahora" inyectable —usa fechaHoyRD() por dentro—, así
+ * que las fechas de prueba se calculan relativas a hoy, no fijas: el test
+ * tiene que valer sin importar qué día corra.
+ */
+describe('diferenciaDiasRD', () => {
+  const sumarDiasISO = (dias: number) => {
+    const [y, m, d] = fechaHoyRD().split('-').map(Number);
+    const fecha = new Date(Date.UTC(y, m - 1, d + dias, 12));
+    return fecha.toISOString().slice(0, 10);
+  };
+
+  it('hoy mismo da 0', () => {
+    expect(diferenciaDiasRD(fechaHoyRD())).toBe(0);
+  });
+
+  it('EL BUG: un año en el futuro (el caso real de FAC-124) da negativo, no una excepción', () => {
+    const unAnoAdelante = sumarDiasISO(365);
+    expect(diferenciaDiasRD(unAnoAdelante)).toBeLessThan(-300);
+  });
+
+  it('una fecha en el pasado da positivo', () => {
+    expect(diferenciaDiasRD(sumarDiasISO(-40))).toBe(40);
+  });
+
+  it('una fecha en el futuro da negativo, con el mismo valor absoluto', () => {
+    expect(diferenciaDiasRD(sumarDiasISO(40))).toBe(-40);
+  });
+
+  it('acepta un Date igual que un string ISO', () => {
+    const iso = sumarDiasISO(-10);
+    const comoDate = new Date(`${iso}T00:00:00.000Z`);
+    expect(diferenciaDiasRD(comoDate)).toBe(diferenciaDiasRD(iso));
+  });
+
+  it('no cruza de día por el desfase UTC-4 de RD — el motivo del ancla al mediodía', () => {
+    // Sin anclar a mediodía, restar dos medianoches UTC puede quedar a medio
+    // día de diferencia y redondear para el lado equivocado justo en el borde.
+    expect(diferenciaDiasRD(sumarDiasISO(30))).toBe(-30);
+    expect(diferenciaDiasRD(sumarDiasISO(31))).toBe(-31);
   });
 });

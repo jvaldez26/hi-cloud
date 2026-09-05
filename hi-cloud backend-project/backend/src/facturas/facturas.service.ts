@@ -30,7 +30,7 @@ import { S3Service } from '../common/s3/s3.service';
 import { CajaService } from '../caja/caja.service';
 import { RncService } from '../rnc/rnc.service';
 import { reportServiceError } from '../common/observability/sentry';
-import { fechaHoyRD } from '../common/utils/fecha-local.util';
+import { fechaHoyRD, diferenciaDiasRD } from '../common/utils/fecha-local.util';
 import {
   calcularTotalesConDescuento,
   validarInvarianteConvencionB,
@@ -871,6 +871,26 @@ export class FacturasService {
     }
 
     if (estado === FacturaEstado.EMITIDA) {
+      // ── Guard: la fecha de la factura no puede estar a más de 30 días de hoy ──
+      //
+      // Nace del caso real de FAC-124 (empresa 59): "2027" en vez de "2026" por
+      // error de captura. Esa factura, con la fecha ya mal tecleada, se pudo
+      // emitir y hasta DGII la aceptó con `fechaemision=07-09-2027` — el error
+      // solo salió a la luz después, al intentar la Nota de Crédito, que
+      // rechaza referencias a fechas futuras (ver e34.builder.ts). Cortar aquí,
+      // al emitir, evita que un año mal tecleado llegue siquiera a DGII.
+      //
+      // ±30 días: cubre facturas fechadas unos días atrás (captura tardía) o
+      // unos días adelante (emisión programada), sin abrir la puerta a un año
+      // completo de diferencia.
+      const diasDeDiferencia = Math.abs(diferenciaDiasRD(factura.fecha));
+      if (diasDeDiferencia > 30) {
+        throw new BadRequestException(
+          `La fecha de la factura (${factura.fecha instanceof Date ? factura.fecha.toISOString().slice(0, 10) : factura.fecha}) ` +
+          `difiere de hoy por más de 30 días (${diasDeDiferencia}). Verifique que el día/mes/año sean correctos antes de emitir.`,
+        );
+      }
+
       // ── El vendedor se fija AQUI, al emitir ────────────────────────────────
       //
       // Cinco de los siete caminos que crean facturas la dejan en BORRADOR sin
