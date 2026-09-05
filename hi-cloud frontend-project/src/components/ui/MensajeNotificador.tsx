@@ -48,6 +48,15 @@ function estiloDeTipo(tipo: TipoMensaje, token: Record<string, any>) {
     : { acento: token.colorPrimary, etiqueta: 'Novedad de HiCloud', esAviso: false };
 }
 
+// ── Accesibilidad: mismo patrón que SkeletonTabla.tsx / SkeletonProductos.tsx ──
+// Sin suscripción a cambios en vivo (igual que en esos dos archivos): se lee al
+// renderizar, que es cuando el toast se monta — no hace falta más para esto.
+function usePrefersReducedMotion(): boolean {
+  return typeof window !== 'undefined'
+    ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    : false;
+}
+
 /**
  * Notificador flotante de mensajes nuevos del Super Admin.
  *
@@ -99,7 +108,7 @@ export default function MensajeNotificador() {
 
   const [visible,  setVisible]  = useState(false);
   const [msgs,     setMsgs]     = useState<MensajeBandeja[]>([]);
-  const [progreso, setProgreso] = useState(100);
+  const reducirMovimiento = usePrefersReducedMotion();
 
   // ── Polling ────────────────────────────────────────────────────────────────
   const { data: novedadesIds = [] } = useQuery({
@@ -223,22 +232,20 @@ export default function MensajeNotificador() {
   }, [activo, visible, mostrarPendiente]);
 
   // ── Auto-cierre con barra de progreso ─────────────────────────────────────
+  // La barra ya no depende de estado de React: es una animación CSS de
+  // `transform: scaleX()` que corre sola durante AUTOCLOSE ms (ver el JSX más
+  // abajo). Antes se recalculaba con setInterval cada 80ms y forzaba un
+  // re-render de todo el componente en cada tick (~125 renders por toast); el
+  // cierre real siempre fue este setTimeout, independiente de esos renders.
   const cerrar = useCallback(() => {
     setVisible(false);
     setMsgs([]);
-    setProgreso(100);
   }, []);
 
   useEffect(() => {
     if (!visible) return;
-    setProgreso(100);
-    const inicio  = Date.now();
-    const tickId  = setInterval(() => {
-      const elapsed = Date.now() - inicio;
-      setProgreso(Math.max(0, 100 - (elapsed / AUTOCLOSE) * 100));
-    }, 80);
     const closeId = setTimeout(cerrar, AUTOCLOSE);
-    return () => { clearInterval(tickId); clearTimeout(closeId); };
+    return () => clearTimeout(closeId);
   }, [visible, cerrar]);
 
   if (!visible || !msgs.length) return null;
@@ -260,6 +267,15 @@ export default function MensajeNotificador() {
           from { transform: translateY(-116%); opacity: 0; }
           to   { transform: translateY(0);      opacity: 1; }
         }
+        /* prefers-reduced-motion: se queda el fundido, se quita el desplazamiento */
+        @keyframes hc-notif-in-reducida {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+        @keyframes hc-progreso {
+          from { transform: scaleX(1); }
+          to   { transform: scaleX(0); }
+        }
       `}</style>
       <div
         role="status"
@@ -278,16 +294,27 @@ export default function MensajeNotificador() {
           border:       `1px solid ${token.colorBorderSecondary}`,
           // Franja de acento: distingue aviso de novedad sin tener que leer
           borderLeft:   `3px solid ${acento}`,
-          animation:    'hc-notif-in 0.28s cubic-bezier(.22,.68,0,1.2)',
+          animation: reducirMovimiento
+            ? 'hc-notif-in-reducida 0.28s ease-out'
+            : 'hc-notif-in 0.28s cubic-bezier(.22,.68,0,1.2)',
         }}
       >
-        {/* Barra de progreso — se vacía en 10 s */}
+        {/* Barra de progreso — se vacía en 10 s.
+            `transform: scaleX()` en vez de `width`: no dispara layout/paint en
+            cada frame, solo compositing. `transform-origin: left` para que se
+            achique hacia la derecha manteniendo el borde izquierdo fijo —
+            igual que se veía con el `width` decreciente. Con reduced-motion
+            se queda fija y llena: el autocierre (el setTimeout de arriba) no
+            depende de esto y sigue funcionando igual. */}
         <div style={{ height: 3, background: token.colorFillTertiary }}>
           <div style={{
-            height:     '100%',
-            width:      `${progreso}%`,
-            background: token.colorPrimary,
-            transition: 'width 80ms linear',
+            height:         '100%',
+            width:          '100%',
+            transformOrigin: 'left',
+            background:     token.colorPrimary,
+            ...(reducirMovimiento
+              ? { transform: 'scaleX(1)' }
+              : { animation: `hc-progreso ${AUTOCLOSE}ms linear forwards` }),
           }} />
         </div>
 
