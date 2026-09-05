@@ -6,7 +6,7 @@ import {
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
 import { dRD } from '../../../utils/fechaRD';
-import { TarjetaGrafica, ejeMonto, SEMANTICO } from './TarjetaGrafica';
+import { TarjetaGrafica, ejeMonto, SEMANTICO, estiloTooltip, useAltoGrafica } from './TarjetaGrafica';
 
 /**
  * Un mes día a día, en barras. Sirve igual para ventas que para compras: los dos
@@ -24,6 +24,7 @@ function PorDiaDelMes({
   color: string; etiquetaPie: string;
 }) {
   const { token } = theme.useToken();
+  const altoGrafica = useAltoGrafica();
 
   const ahora = dRD();
   const mes   = ahora.month() + 1;
@@ -56,6 +57,7 @@ function PorDiaDelMes({
       titulo={titulo}
       subtitulo={ahora.format('MMMM YYYY')}
       onRefresh={() => { void refetch(); }}
+      alto={altoGrafica}
       cargando={isPending}
       error={isError}
       vacio={detalle.length === 0}
@@ -64,7 +66,7 @@ function PorDiaDelMes({
       pieValor={fmt.money(total)}
       pieColor={color}
     >
-      <ResponsiveContainer width="100%" height={260}>
+      <ResponsiveContainer width="100%" height={altoGrafica}>
         <BarChart accessibilityLayer data={datos} margin={{ top: 10, right: 14, bottom: 0, left: 10 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={token.colorBorderSecondary} />
           <XAxis
@@ -80,11 +82,7 @@ function PorDiaDelMes({
             axisLine={false} tickLine={false} />
           <Tooltip
             cursor={{ fill: token.colorFillAlter }}
-            contentStyle={{
-              background: token.colorBgElevated,
-              border: `1px solid ${token.colorBorderSecondary}`,
-              borderRadius: 8, fontSize: 12,
-            }}
+            contentStyle={estiloTooltip(token)}
             labelFormatter={(d: number) => `Día ${d}`}
             formatter={(v: number, _n, p: any) => [
               `${fmt.money(v)} · ${p?.payload?.cantidad ?? 0} doc.`, 'Total',

@@ -8,7 +8,7 @@ import {
 } from 'recharts';
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
-import { EstadoGrafica, estadoDe, SEMANTICO } from './TarjetaGrafica';
+import { EstadoGrafica, estadoDe, ejeMonto, SEMANTICO, estiloTooltip } from './TarjetaGrafica';
 import { anioRD } from '../../../utils/fechaRD';
 import { useMobile } from '../../../hooks/useMediaQuery';
 import { CardWidget } from './CardWidget';
@@ -185,14 +185,13 @@ export function WidgetIngresosGastos() {
           {chartTipo === 'line' ? (
             <LineChart accessibilityLayer data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={token.colorBorderSecondary} vertical={false} />
-              <XAxis dataKey="label" tick={{ fontSize: 10, fill: token.colorTextTertiary }}
+              <XAxis dataKey="label" interval="preserveStartEnd" tick={{ fontSize: 10, fill: token.colorTextTertiary }}
                 axisLine={false} tickLine={false} tickFormatter={v => v.split(' ')[0]} />
-              <YAxis tickFormatter={v => v === 0 ? '0' : `${(v / 1000).toFixed(0)}k`}
+              <YAxis tickFormatter={ejeMonto}
                 tick={{ fontSize: 10, fill: token.colorTextTertiary }} axisLine={false} tickLine={false} />
               <Tooltip
                 formatter={(v: number, n: string) => [fmt.money(v), n === 'ingreso' ? 'Ingresos' : 'Gastos']}
-                contentStyle={{ background: token.colorBgElevated,
-                  border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, fontSize: 12 }} />
+                contentStyle={estiloTooltip(token)} />
               <Line type="monotone" dataKey="ingreso" stroke={SEMANTICO.ingreso} strokeWidth={2}
                 dot={false} activeDot={{ r: 4 }} />
               <Line type="monotone" dataKey="gasto" stroke={token.colorTextTertiary} strokeWidth={2}
@@ -201,14 +200,13 @@ export function WidgetIngresosGastos() {
           ) : (
             <BarChart accessibilityLayer data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={token.colorBorderSecondary} vertical={false} />
-              <XAxis dataKey="label" tick={{ fontSize: 10, fill: token.colorTextTertiary }}
+              <XAxis dataKey="label" interval="preserveStartEnd" tick={{ fontSize: 10, fill: token.colorTextTertiary }}
                 axisLine={false} tickLine={false} tickFormatter={v => v.split(' ')[0]} />
-              <YAxis tickFormatter={v => v === 0 ? '0' : `${(v / 1000).toFixed(0)}k`}
+              <YAxis tickFormatter={ejeMonto}
                 tick={{ fontSize: 10, fill: token.colorTextTertiary }} axisLine={false} tickLine={false} />
               <Tooltip
                 formatter={(v: number, n: string) => [fmt.money(v), n === 'ingreso' ? 'Ingresos' : 'Gastos']}
-                contentStyle={{ background: token.colorBgElevated,
-                  border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 8, fontSize: 12 }} />
+                contentStyle={estiloTooltip(token)} />
               <Bar dataKey="ingreso" fill={SEMANTICO.ingreso} radius={[3, 3, 0, 0]} maxBarSize={20} />
               <Bar dataKey="gasto"   fill={token.colorTextTertiary} radius={[3, 3, 0, 0]} maxBarSize={20} />
             </BarChart>
