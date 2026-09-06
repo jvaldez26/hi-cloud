@@ -370,19 +370,31 @@ export class CuotaEcfService {
     precioEcfExcedente: number;
     actualizadoPor: number | null;
     updatedAt: Date | null;
+    /**
+     * Fecha de corte del cargo automático de renovación de suscripción
+     * (ver `SuscripcionesService.generarCargosRenovacion`). Solo lectura
+     * aquí — se siembra en una migración, a propósito: no hay PATCH para
+     * moverla desde este servicio.
+     */
+    cargoAutomaticoSuscripcionDesde: string | null;
   }> {
     await this.ds.query(
       `INSERT INTO configuracion_cobros (id, "precioEcfExcedente")
        VALUES (1, 0) ON CONFLICT (id) DO NOTHING`,
     );
     const [r] = await this.ds.query<
-      { precioEcfExcedente: string; actualizadoPor: number | null; updatedAt: Date }[]
-    >(`SELECT "precioEcfExcedente", "actualizadoPor", "updatedAt"
+      {
+        precioEcfExcedente: string; actualizadoPor: number | null; updatedAt: Date;
+        cargoAutomaticoSuscripcionDesde: string | null;
+      }[]
+    >(`SELECT "precioEcfExcedente", "actualizadoPor", "updatedAt",
+              "cargoAutomaticoSuscripcionDesde"::text AS "cargoAutomaticoSuscripcionDesde"
          FROM configuracion_cobros WHERE id = 1`);
     return {
-      precioEcfExcedente: Number(r?.precioEcfExcedente ?? 0),
-      actualizadoPor:     r?.actualizadoPor ?? null,
-      updatedAt:          r?.updatedAt ?? null,
+      precioEcfExcedente:               Number(r?.precioEcfExcedente ?? 0),
+      actualizadoPor:                   r?.actualizadoPor ?? null,
+      updatedAt:                        r?.updatedAt ?? null,
+      cargoAutomaticoSuscripcionDesde:  r?.cargoAutomaticoSuscripcionDesde ?? null,
     };
   }
 

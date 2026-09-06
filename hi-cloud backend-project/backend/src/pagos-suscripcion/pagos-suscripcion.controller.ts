@@ -12,6 +12,7 @@ import { SuperAdminGuard } from '../super-admin/super-admin.guard';
 import { SuperAdminService } from '../super-admin/super-admin.service';
 import { PagosSuscripcionService } from './pagos-suscripcion.service';
 import { CuotaEcfService } from '../suscripciones/cuota-ecf.service';
+import { SuscripcionesService } from '../suscripciones/suscripciones.service';
 import { IsString, Matches } from 'class-validator';
 
 /**
@@ -29,7 +30,7 @@ class CargoExcedenteEcfDto {
 }
 import {
   RegistrarPagoDto, ConfirmarPagoDto, RechazarPagoDto,
-  AgregarCargoDto, AplicarCreditoDto,
+  AgregarCargoDto, AplicarCreditoDto, CancelarSuscripcionDto,
   UpdateConfiguracionBancariaDto,
   SubirComprobanteDto,
 } from './dto/pagos-suscripcion.dto';
@@ -99,6 +100,7 @@ export class PagosSuscripcionAdminController {
     private svc: PagosSuscripcionService,
     private superAdminSvc: SuperAdminService,
     private cuotaEcf: CuotaEcfService,
+    private suscripcionesSvc: SuscripcionesService,
   ) {}
 
   /** GET /admin/pagos-suscripcion — todos los pagos (filtrable por estado) */
@@ -159,6 +161,22 @@ export class PagosSuscripcionAdminController {
     @GetUser('id') adminId: number,
   ) {
     return this.svc.agregarCargo(id, dto, adminId);
+  }
+
+  /**
+   * PATCH /admin/pagos-suscripcion/empresa/:id/cancelar
+   *
+   * Detiene el devengo del cargo automático de renovación. `adminId` sale de
+   * `@GetUser`, nunca del body — es quien queda como autor. El motivo es
+   * obligatorio (lo exige el DTO y, otra vez, el servicio).
+   */
+  @Patch('empresa/:id/cancelar')
+  cancelarSuscripcion(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CancelarSuscripcionDto,
+    @GetUser('id') adminId: number,
+  ) {
+    return this.suscripcionesSvc.cancelar(id, dto.motivo, adminId);
   }
 
   /**

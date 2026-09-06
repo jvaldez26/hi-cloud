@@ -40,6 +40,18 @@ export class RechazarPagoDto {
   motivoRechazo: string;
 }
 
+// ── Cancelar suscripción ───────────────────────────────────────────────────────
+export class CancelarSuscripcionDto {
+  /**
+   * Obligatorio: cancelar detiene el devengo del cargo automático de
+   * renovación, así que tiene que quedar por qué — igual que un cierre de
+   * caja anulado. Quién y cuándo NO viajan aquí: salen del CLS en el
+   * controller (`@GetUser`), nunca del body.
+   */
+  @IsString() @IsNotEmpty() @MaxLength(500)
+  motivo: string;
+}
+
 // ── Cargo adicional ───────────────────────────────────────────────────────────
 export class AgregarCargoDto {
   @IsString() @IsNotEmpty() @MaxLength(500)

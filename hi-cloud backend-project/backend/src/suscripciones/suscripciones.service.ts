@@ -10,6 +10,8 @@ import {
 import { PlanConfiguracion } from './entities/plan-configuracion.entity';
 import { SolicitudCambioPlan, EstadoSolicitud } from './entities/solicitud-cambio-plan.entity';
 import { SuscripcionAuditoria, AccionAuditoria } from './entities/suscripcion-auditoria.entity';
+import { fechaHoyRD, fechaISOaDO } from '../common/utils/fecha-local.util';
+import { ciclosPorCobrar } from './ciclos-por-cobrar.util';
 
 /** Jerarquía de planes activos — mayor número = plan superior */
 const PLAN_TIER: Record<string, number> = {
@@ -211,6 +213,51 @@ export class SuscripcionesService implements OnModuleInit {
     return this.getSuscripcion(empresaId);
   }
 
+  /**
+   * Cancela una suscripción — detiene el devengo del cargo automático de
+   * renovación (`generarCargosRenovacion`, más abajo). No es lo mismo que
+   * suspender: una suspendida sigue siendo cliente y sigue acumulando lo que
+   * debe; una cancelada, no. Sin este camino, una empresa cortada durante
+   * meses acumularía cargo tras cargo sin que nadie pudiera detenerlo.
+   *
+   * `superAdminId` sale del CLS (`@GetUser` en el controller) — nunca del
+   * body: es quien queda registrado como autor. El motivo es obligatorio,
+   * a diferencia de `suspender()` — cancelar detiene dinero que se estaba
+   * cobrando, así que tiene que quedar por qué, igual que un cierre de caja
+   * anulado.
+   */
+  async cancelar(empresaId: number, motivo: string, superAdminId: number) {
+    if (!motivo?.trim()) {
+      throw new BadRequestException('El motivo de cancelación es obligatorio');
+    }
+    const s = await this.repo.findOne({ where: { empresaId } });
+    if (!s) throw new NotFoundException(`Suscripción de la empresa #${empresaId} no encontrada`);
+    if (s.estado === SuscripcionEstado.CANCELADA) {
+      throw new BadRequestException('Esta suscripción ya está cancelada');
+    }
+
+    const estadoAnterior = s.estado;
+    await this.repo.update(s.id, {
+      estado:            SuscripcionEstado.CANCELADA,
+      motivoCancelacion: motivo.trim(),
+      canceladaEn:       new Date(),
+      canceladaPor:      superAdminId,
+    });
+
+    this.auditoriaRepo.save(this.auditoriaRepo.create({
+      suscripcionId: s.id,
+      empresaId,
+      accion:        AccionAuditoria.CANCELACION,
+      superAdminId,
+      motivo:        motivo.trim(),
+      valorAnterior: { estado: estadoAnterior },
+      valorNuevo:    { estado: SuscripcionEstado.CANCELADA },
+    })).catch(e => this.logger.warn(`Auditoría cancelar empresa #${empresaId}: ${(e as Error).message}`));
+
+    this.logger.warn(`[cancelar] Suscripción empresa #${empresaId} cancelada por admin #${superAdminId}: ${motivo.trim()}`);
+    return this.getSuscripcion(empresaId);
+  }
+
   async listarTodasLasSuscripciones() {
     const rows = await this.repo.find({ order: { createdAt: 'DESC' } });
     const hoy  = new Date();
@@ -321,6 +368,142 @@ export class SuscripcionesService implements OnModuleInit {
     }
     if (graciaVencida.length > 0)
       this.logger.warn(`${graciaVencida.length} suscripciones: gracia vencida → SUSPENDIDA`);
+  }
+
+  // ── Cron: cargo automático al vencer un ciclo (diario 00:20 UTC) ──────────
+  //
+  // Nace de un panel de cobros que mentía: 13 empresas vencidas, ninguna con
+  // cargo generado para el ciclo nuevo, 9 mostrando "a favor" en vez de
+  // deuda — RD$70,100 invisibles. El único cargo automático que existía era
+  // el de excedente de e-CF; la renovación de la suscripción misma nunca
+  // generó nada, así que "saldo" solo reflejaba lo que alguien tecleó a mano.
+  //
+  // DISTINTO de procesarVencimientosPrueba/enPeriodoGracia a propósito:
+  // enPeriodoGracia es un flag, no un contador — pasa a `true` una sola vez
+  // y se queda ahí hasta el próximo pago. Si se usara como disparador del
+  // cargo, una suscripción con varios ciclos sin pagar solo generaría el
+  // primero (caso real: "COMPRA Y VENTA DE INSUMOS AGRICOLA", 34 días
+  // vencida, dos ciclos de por medio). Por eso esto recorre CADA ciclo
+  // elapsado — ver ciclos-por-cobrar.util.ts — y no comparte disparador con
+  // la gracia, que sigue existiendo solo para lo suyo (los 5 días antes de
+  // suspender).
+  //
+  // ACTIVA y SUSPENDIDA devengan por igual: una suspensión no es una
+  // cancelación, el cliente lo sigue siendo y el día que pague tiene que
+  // pagar lo acumulado. CANCELADA no devenga — cancelar (`cancelar()`,
+  // arriba) es el único tope, a propósito: un límite automático de "máximo
+  // N ciclos" premiaría al que no paga con un techo artificial.
+  //
+  // `cargoAutomaticoSuscripcionDesde` (configuracion_cobros): fecha de corte
+  // fija, sembrada en una migración — nunca "hoy" calculado aquí. Sin ella
+  // (NULL = sin configurar), o antes de ella, no se genera nada: es el
+  // backlog que se resuelve a mano con el "+ Cargo" que ya existe en el
+  // panel. Solo los ciclos que arrancan en o después de esa fecha se
+  // generan solos.
+  //
+  // Precio congelado en el momento de CADA cargo — mismo criterio que el
+  // excedente de e-CF (`EcfConsumoCiclo.precioUnitario`): cambiar el precio
+  // del plan después no reprecia lo ya generado.
+  //
+  // Idempotencia en dos capas: esto pregunta primero (no repite un
+  // `periodoInicio` que ya ve), y el índice único parcial de
+  // `pagos_suscripcion` (empresaId, periodoInicio) WHERE tipo='CARGO' es el
+  // resguardo final si dos corridas se solapan.
+  @Cron('20 0 * * *')
+  async generarCargosRenovacion() {
+    const [cfg] = await this.ds.query<{ f: string | null }[]>(
+      `SELECT "cargoAutomaticoSuscripcionDesde"::text AS f FROM configuracion_cobros WHERE id = 1`,
+    );
+    const fechaCorte = cfg?.f ?? null;
+    if (!fechaCorte) {
+      this.logger.debug('[cargo-renovacion] cargoAutomaticoSuscripcionDesde sin configurar — no se genera nada');
+      return;
+    }
+
+    const hoy = fechaHoyRD();
+    const vencidas = await this.ds.query<{
+      id: number; empresaId: number; plan: string; modalidad: string;
+      diaCorte: number; fechaVencimiento: string;
+    }[]>(`
+      SELECT id, "empresaId", plan, modalidad, "diaCorte",
+             to_char("fechaVencimiento", 'YYYY-MM-DD') AS "fechaVencimiento"
+      FROM suscripciones
+      WHERE estado IN ('activa', 'suspendida')
+        AND "fechaVencimiento" < $1::date
+    `, [hoy]);
+
+    let cargosCreados = 0;
+    for (const s of vencidas) {
+      try {
+        const existentes = await this.ds.query<{ periodoInicio: string }[]>(`
+          SELECT to_char("periodoInicio", 'YYYY-MM-DD') AS "periodoInicio"
+          FROM pagos_suscripcion
+          WHERE "empresaId" = $1 AND tipo = 'CARGO' AND "periodoInicio" IS NOT NULL
+        `, [s.empresaId]);
+
+        const ciclos = ciclosPorCobrar({
+          fechaVencimiento: s.fechaVencimiento,
+          diaCorte:         Number(s.diaCorte),
+          modalidad:        s.modalidad,
+          hoy,
+          fechaCorte,
+          cargosExistentes: existentes.map(e => e.periodoInicio),
+        });
+
+        for (const ciclo of ciclos) {
+          const [planRow] = await this.ds.query<{ precio: string }[]>(
+            `SELECT precio::text FROM plan_configuracion WHERE clave = $1 AND activo = true`,
+            [s.plan],
+          );
+          const precioMensual = Number(planRow?.precio ?? 0);
+          if (precioMensual <= 0) {
+            this.logger.warn(
+              `[cargo-renovacion] plan "${s.plan}" sin precio configurado — ` +
+              `empresa #${s.empresaId}, ciclo ${ciclo.periodoInicio}: no se genera cargo`,
+            );
+            continue;
+          }
+          const monto = s.modalidad === 'anual' ? precioMensual * 12 : precioMensual;
+          const nombrePlan = PLANES[s.plan as PlanTipo]?.nombre ?? s.plan;
+          const concepto =
+            `Renovación plan ${nombrePlan} — ciclo ${fechaISOaDO(ciclo.periodoInicio)} ` +
+            `al ${fechaISOaDO(ciclo.periodoFin)}`;
+
+          try {
+            await this.ds.query(`
+              INSERT INTO pagos_suscripcion
+                ("empresaId", tipo, concepto, monto, estado,
+                 "periodoInicio", "periodoFin", "confirmadoEn", "creadoEn")
+              VALUES ($1, 'CARGO', $2, $3, 'CONFIRMADO', $4, $5, now(), now())
+            `, [s.empresaId, concepto, monto, ciclo.periodoInicio, ciclo.periodoFin]);
+            cargosCreados++;
+            this.logger.warn(
+              `[cargo-renovacion] empresa #${s.empresaId}: RD$${monto} por ciclo ` +
+              `${ciclo.periodoInicio} → ${ciclo.periodoFin}`,
+            );
+          } catch (err: any) {
+            // 23505 = violación del índice único: otro proceso ya lo creó.
+            // No es un fallo, es el resguardo funcionando.
+            if (err?.code === '23505') {
+              this.logger.debug(
+                `[cargo-renovacion] empresa #${s.empresaId}, ciclo ${ciclo.periodoInicio}: ya existía`,
+              );
+              continue;
+            }
+            throw err;
+          }
+        }
+      } catch (e: any) {
+        this.logger.error(`[cargo-renovacion] empresa #${s.empresaId}: ${e.message}`);
+      }
+    }
+
+    if (vencidas.length > 0) {
+      this.logger.warn(
+        `[cargo-renovacion] ${cargosCreados} cargo(s) generado(s) sobre ` +
+        `${vencidas.length} suscripción(es) vencida(s) (corte: ${fechaCorte})`,
+      );
+    }
   }
 
   // ── Cron: recordatorios de vencimiento (8 AM hora RD = 12:00 UTC) ─────────

@@ -182,6 +182,19 @@ export class Suscripcion {
   @Column({ type: 'text', nullable: true })
   motivoSuspension?: string;
 
+  // ── Cancelación — detiene el devengo del cargo automático ────────────────
+  // NOT NULL a nivel de aplicación (SuscripcionesService.cancelar lo exige);
+  // no aquí, porque las filas existentes no tienen valor que darle.
+  @Column({ type: 'text', nullable: true })
+  motivoCancelacion?: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  canceladaEn?: Date | null;
+
+  /** userId del super admin que canceló — del CLS, nunca del body. */
+  @Column({ type: 'int', nullable: true })
+  canceladaPor?: number | null;
+
   @Column({ type: 'int', default: 0 })
   facturasMesUsadas!: number;
 

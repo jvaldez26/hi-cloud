@@ -27,6 +27,18 @@ export class ConfiguracionCobros {
   @Column({ type: 'numeric', precision: 10, scale: 2, default: 0 })
   precioEcfExcedente!: number;
 
+  /**
+   * Desde qué fecha el cron de renovación puede generar cargos automáticos
+   * (ver `SuscripcionesService.generarCargosRenovacion`). NULL = sin
+   * configurar: el cron no hace nada, igual que `precioEcfExcedente = 0`.
+   *
+   * Fija y escrita en una migración, nunca calculada en tiempo de ejecución:
+   * un redeploy o un rollback no puede moverla y disparar cargos retroactivos
+   * que nadie aprobó.
+   */
+  @Column({ type: 'date', nullable: true })
+  cargoAutomaticoSuscripcionDesde?: string | null;
+
   /** userId del super admin que lo cambió por última vez. */
   @Column({ type: 'int', nullable: true })
   actualizadoPor?: number | null;
