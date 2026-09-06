@@ -7,6 +7,7 @@ import { TenantService } from '../tenant/tenant.service';
 import { IsrService } from '../isr/isr.service';
 import { EmailService } from '../notificaciones/services/email.service';
 import { fechaTextoRD } from '../common/utils/fecha-local.util';
+import { reportServiceError } from '../common/observability/sentry';
 
 @Injectable()
 export class PortalEmpleadoService {
@@ -64,28 +65,46 @@ export class PortalEmpleadoService {
     const empresaId = this.tenantSvc.getEmpresaId();
     const emp = await this.getMiPerfil(usuarioId);
 
+    // BUG CORREGIDO (2026-09-06): las tablas reales son nomina_periodos y
+    // nomina_lineas (orden de palabras invertido en el original: periodos_nomina
+    // / lineas_nomina no existen). Además, diasTrabajados/salarioBruto/etc. son
+    // columnas de la LÍNEA (por empleado), no del período — el original las leía
+    // con el alias del período (pn.), que ni siquiera las tiene. El SELECT
+    // fallaba SIEMPRE; el .catch(() => []) lo tragaba y "Mis recibos" del portal
+    // del empleado mostraba lista vacía para TODOS los empleados, indefinidamente.
+    //
+    // Mapeo de nombres — el frontend (PortalEmpleadoPage.tsx, TabRecibos) espera
+    // descuentoAfp/descuentoSfs/descuentoIsr, pero NominaLinea no tiene columnas
+    // con esos nombres literales. Son el mismo concepto con el nombre que usa la
+    // ley dominicana en el entity:
+    //   descuentoAfp -> ln.tssAfpEmpleado  (TSS Empleado, Ley 87-01 — AFP)
+    //   descuentoSfs -> ln.tssSfsEmpleado  (TSS Empleado, Ley 87-01 — SFS)
+    //   descuentoIsr -> ln.isr             (ISR, Ley 179-09)
     const nominas = await this.dataSource.query<any[]>(`
       SELECT
-        pn.id            AS "periodoId",
-        ln.id            AS "lineaId",
+        pn.id                    AS "periodoId",
+        ln.id                    AS "lineaId",
         pn.periodo,
-        pn."diasTrabajados",
-        pn."salarioBruto"::text,
-        pn."descuentoAfp"::text,
-        pn."descuentoSfs"::text,
-        pn."descuentoIsr"::text,
-        pn."otrosDescuentos"::text,
-        pn."salarioNeto"::text,
+        ln."diasTrabajados",
+        ln."salarioBruto"::text,
+        ln."tssAfpEmpleado"::text AS "descuentoAfp",
+        ln."tssSfsEmpleado"::text AS "descuentoSfs",
+        ln.isr::text              AS "descuentoIsr",
+        ln."salarioNeto"::text,
         pn.estado,
         pn."fechaPago"::text
-      FROM periodos_nomina pn
-      JOIN lineas_nomina ln ON ln."periodoId" = pn.id
+      FROM nomina_periodos pn
+      JOIN nomina_lineas ln ON ln."periodoId" = pn.id
       WHERE ln."empleadoId" = $1
         AND pn."empresaId"  = $2
         AND pn."isActive"   = true
       ORDER BY pn.periodo DESC
       LIMIT 24
-    `, [emp.id, empresaId]).catch(() => []);
+    `, [emp.id, empresaId]).catch((err: Error) => {
+      reportServiceError(err, 'portalEmpleado.getMisNominas.leerNominas', { empresaId, usuarioId });
+      this.logger.error(`No se pudo leer nomina_periodos/nomina_lineas para empleado #${emp.id}: ${err.message}`);
+      return [];
+    });
 
     return { empleado: emp, nominas };
   }
@@ -130,21 +149,38 @@ export class PortalEmpleadoService {
     const empresaId = this.tenantSvc.getEmpresaId();
     const emp = await this.getMiPerfil(usuarioId);
 
+    // BUG CORREGIDO (2026-09-06): la consulta original apuntaba a una tabla
+    // "vacaciones" que nunca existió — la tabla real es solicitudes_vacacion
+    // (entity SolicitudVacacion) y traía dos columnas inventadas (una de ellas
+    // pretendía llamarse igual que este mismo concepto). La columna de días es
+    // diasSolicitados, no la que usaba el original. La consulta fallaba
+    // siempre, el .catch(() => []) lo tragaba en silencio, y "Mis vacaciones"
+    // del portal del empleado mostraba historial vacío y 0 días usados para
+    // TODOS los empleados, indefinidamente.
+    //
+    // La columna inventada no se reemplaza por nada: SolicitudVacacion no
+    // tiene ese concepto (confirmado contra getMisSolicitudes(), que sí lee
+    // esta tabla correctamente, y contra PortalEmpleadoPage.tsx, que no
+    // renderiza ningún campo así). Cada fila de esta tabla YA es una solicitud
+    // de vacaciones; no hace falta distinguir un tipo.
     const vacaciones = await this.dataSource.query<any[]>(`
       SELECT
-        v.tipo,
-        v."fechaInicio"::text,
-        v."fechaFin"::text,
-        v.dias,
-        v.estado,
-        v.motivo
-      FROM vacaciones v
-      WHERE v."empleadoId" = $1
-        AND v."empresaId"  = $2
-        AND v."isActive"   = true
-      ORDER BY v."fechaInicio" DESC
+        "fechaInicio"::text,
+        "fechaFin"::text,
+        "diasSolicitados" AS dias,
+        estado,
+        motivo
+      FROM solicitudes_vacacion
+      WHERE "empleadoId" = $1
+        AND "empresaId"  = $2
+        AND "isActive"   = true
+      ORDER BY "fechaInicio" DESC
       LIMIT 20
-    `, [emp.id, empresaId]).catch(() => []);
+    `, [emp.id, empresaId]).catch((err: Error) => {
+      reportServiceError(err, 'portalEmpleado.getMisVacaciones.leerSolicitudes', { empresaId, usuarioId });
+      this.logger.error(`No se pudo leer solicitudes_vacacion para empleado #${emp.id}: ${err.message}`);
+      return [];
+    });
 
     // Días acumulados por Ley 16-92 RD (14 días primeros 5 años, 18 días después)
     const aniosServicio = emp.fechaIngreso
@@ -152,7 +188,7 @@ export class PortalEmpleadoService {
       : 0;
     const diasPorLey    = aniosServicio >= 5 ? 18 : 14;
     const diasUsados    = vacaciones
-      .filter((v: any) => v.estado === 'aprobada' && v.tipo === 'vacaciones')
+      .filter((v: any) => v.estado === 'aprobada')
       .reduce((s: number, v: any) => s + Number(v.dias ?? 0), 0);
 
     return {

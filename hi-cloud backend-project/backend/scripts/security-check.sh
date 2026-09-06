@@ -265,6 +265,21 @@ else
   ok "Sin referencias a 'usuarios' (la tabla real es 'users')"
 fi
 
+# ─── CHECK 13: SQL crudo con nombres de tabla escritos a mano — patrón general ─
+header "SQL crudo con nombres de tabla no reconocidos (forma general del incidente 2026-09-06)..."
+# Los CHECK 9/11/12 persiguen nombres concretos ya confirmados como bug.
+# Este persigue la FORMA: cualquier FROM/JOIN/UPDATE/INSERT INTO en SQL crudo
+# cuyo nombre no corresponda a ningún @Entity ni CREATE TABLE del código. Cada
+# hit nuevo que se confirme como bug real se persigue luego con un check
+# dedicado como los anteriores. Advertencia, no bloqueo — ver cabecera de
+# check-raw-sql-tables.js: es heurístico y puede tener falsos positivos en
+# casos no vistos todavía.
+RESULTADO=$(node scripts/check-raw-sql-tables.js)
+echo "$RESULTADO"
+if echo "$RESULTADO" | grep -q '^⚠️'; then
+  ADVERTENCIAS=$((ADVERTENCIAS+1))
+fi
+
 # ─── RESUMEN ─────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════════"
