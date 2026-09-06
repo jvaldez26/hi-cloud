@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "files": [
+          "hi-cloud backend-project/backend/src/suscripciones/suscripciones.service.ts"
+        ],
+        "createdAt": "2026-09-06T13:02:31.069Z",
+        "reason": "Pre-existente, fuera del diff de este commit (confirmado con git show) - plantillas HTML de correo transaccional (aviso de gracia/vencimiento), no UI de la app. Inter+sans-serif es una eleccion conservadora apropiada para email, donde el soporte de fuentes es muy limitado."
+      }
+    ]
+  }
+}
