@@ -20,7 +20,7 @@ describe('SessionLifetimeService', () => {
   /** DataSource falso que cuenta consultas y responde según el SQL. */
   const fakeDataSource = (opts: { globalHoras?: string | null; sesionHoras?: unknown } = {}) => {
     const query = jest.fn(async (sql: string) => {
-      if (sql.includes('configuracion_sistema')) {
+      if (sql.includes('configuraciones_sistema')) {
         return opts.globalHoras === null ? [] : [{ valor: opts.globalHoras ?? '24' }];
       }
       if ('sesionHoras' in opts) return [{ configuracion: { sesionHoras: opts.sesionHoras } }];

@@ -227,6 +227,44 @@ else
   ok "Sin FK sobre empresaId en migraciones"
 fi
 
+# ─── CHECK 11: Tabla "configuracion_sistema" (singular) — la tabla real es
+#     "configuraciones_sistema" (plural, la del @Entity) ─────────────────────
+header "Tabla 'configuracion_sistema' (singular) en SQL — debe ser 'configuraciones_sistema'..."
+# Incidente 2026-09-06: auth.service.ts y session-lifetime.service.ts leían
+# MAX_INTENTOS_LOGIN y SESION_HORAS de "configuracion_sistema", que nunca
+# existió. El SELECT fallaba en cada login y cada rotación de refresh token,
+# el catch lo tragaba y caía al default en silencio — meses sin que nadie lo
+# notara, y carga constante de más sobre una RDS que ya iba al límite.
+RESULTADO=$(grep -rn \
+  -E '(FROM|JOIN|REFERENCES|UPDATE|INSERT\s+INTO)\s+"?configuracion_sistema"?\b' \
+  "$SRC" "src/migrations" "src/seeds" --include="*.ts" 2>/dev/null \
+  | grep -v "\.spec\.ts\|nosec" \
+  || true)
+if [ -n "$RESULTADO" ]; then
+  fail "Referencia a tabla 'configuracion_sistema' (singular) — la tabla real es 'configuraciones_sistema':"
+  echo "$RESULTADO" | head -10
+else
+  ok "Sin referencias a 'configuracion_sistema' (singular)"
+fi
+
+# ─── CHECK 12: Tabla "usuarios" en SQL — la tabla real es "users" ────────────
+header "Tabla 'usuarios' en SQL — la tabla real de usuarios es 'users'..."
+# Mismo patrón que el CHECK 11, otro sitio: cobranza.service.ts hacía
+# LEFT JOIN usuarios sin try/catch — 500 garantizado en cada llamada, no un
+# fallo silencioso, pero el mismo nombre-a-mano que no correspondía a ninguna
+# tabla real del proyecto.
+RESULTADO=$(grep -rn \
+  -E '(FROM|JOIN|REFERENCES|UPDATE|INSERT\s+INTO)\s+"?usuarios"?\b' \
+  "$SRC" "src/migrations" "src/seeds" --include="*.ts" 2>/dev/null \
+  | grep -v "\.spec\.ts\|nosec" \
+  || true)
+if [ -n "$RESULTADO" ]; then
+  fail "Referencia a tabla 'usuarios' — la tabla real de usuarios es 'users' (sin traducir):"
+  echo "$RESULTADO" | head -10
+else
+  ok "Sin referencias a 'usuarios' (la tabla real es 'users')"
+fi
+
 # ─── RESUMEN ─────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════════"

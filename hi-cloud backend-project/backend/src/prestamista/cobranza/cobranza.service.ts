@@ -38,7 +38,7 @@ export class CobranzaService {
   async gestionesByPrestamo(empresaId: number, prestamoId: number) {
     return this.ds.query(
       `SELECT c.*, u.nombre AS "cobradorNombreU"
-       FROM pr_cobranzas c LEFT JOIN usuarios u ON u.id=c."cobradorId"
+       FROM pr_cobranzas c LEFT JOIN users u ON u.id=c."cobradorId"
        WHERE c."prestamoId"=$1 AND c."empresaId"=$2 ORDER BY c.fecha DESC`,
       [prestamoId, empresaId],
     );

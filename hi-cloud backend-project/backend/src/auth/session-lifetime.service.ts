@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { reportServiceError } from '../common/observability/sentry';
 
 /**
  * Fuente ÚNICA de la duración de sesión.
@@ -125,7 +126,7 @@ export class SessionLifetimeService {
     let horas = SessionLifetimeService.DEFAULT_HORAS;
     try {
       const rows = await this.dataSource.query<{ valor: string }[]>(
-        `SELECT valor FROM configuracion_sistema WHERE clave = 'SESION_HORAS' LIMIT 1`,
+        `SELECT valor FROM configuraciones_sistema WHERE clave = 'SESION_HORAS' LIMIT 1`,
       );
       const h = parseInt(rows[0]?.valor ?? String(SessionLifetimeService.DEFAULT_HORAS), 10);
       horas = isNaN(h) ? SessionLifetimeService.DEFAULT_HORAS : this.aHoras(h);
@@ -133,12 +134,14 @@ export class SessionLifetimeService {
       // Este es el que más duele en silencio: decide cuánto dura la sesión de
       // TODA la plataforma. Si la lectura falla, la diferencia entre "lo
       // configuramos en 8 horas" y "llevan un mes con el default" no la nota
-      // nadie hasta que un cliente se queja.
+      // nadie hasta que un cliente se queja. Por eso también va a Sentry: un
+      // log que nadie mira no cuenta como aviso.
       this.logger.warn(
-        `No se pudo leer SESION_HORAS de configuracion_sistema ` +
+        `No se pudo leer SESION_HORAS de configuraciones_sistema ` +
         `(${(err as Error).message}) — usando el default de ` +
         `${SessionLifetimeService.DEFAULT_HORAS} h.`,
       );
+      reportServiceError(err, 'sessionLifetime.globalHoras.leerConfigGlobal');
     }
 
     this.globalCache = { horas, at: now };

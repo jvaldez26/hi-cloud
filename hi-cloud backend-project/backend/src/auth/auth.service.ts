@@ -32,6 +32,7 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { UserRole } from '../users/enums/user-role.enum';
 import { LoginAttemptsService } from './login-attempts.service';
+import { reportServiceError } from '../common/observability/sentry';
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -1379,7 +1380,7 @@ export class AuthService implements OnModuleInit {
     let global = 5;
     try {
       const rows = await this.dataSource.query<{ valor: string }[]>(
-        `SELECT valor FROM configuracion_sistema WHERE clave = 'MAX_INTENTOS_LOGIN' LIMIT 1`,
+        `SELECT valor FROM configuraciones_sistema WHERE clave = 'MAX_INTENTOS_LOGIN' LIMIT 1`,
       );
       const n = parseInt(rows[0]?.valor ?? '5', 10);
       global = isNaN(n) ? 5 : Math.min(10, Math.max(3, n));
@@ -1387,10 +1388,12 @@ export class AuthService implements OnModuleInit {
       // El fallback es el correcto, pero en silencio significa que si mañana
       // esa tabla se renombra o la consulta falla, el número de intentos
       // permitidos cambia para TODA la plataforma y nadie se entera.
+      // Por eso también va a Sentry: un log que nadie mira no cuenta como aviso.
       this.logger.warn(
-        `No se pudo leer MAX_INTENTOS_LOGIN de configuracion_sistema ` +
+        `No se pudo leer MAX_INTENTOS_LOGIN de configuraciones_sistema ` +
         `(${(err as Error).message}) — usando 5 intentos.`,
       );
+      reportServiceError(err, 'auth.getEffectiveMaxIntentos.leerConfigGlobal');
     }
 
     let effective = global;

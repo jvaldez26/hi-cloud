@@ -9,7 +9,7 @@ import type { Cache } from 'cache-manager';
  *
  * El umbral de bloqueo (maxIntentos) es configurable por empresa en
  * empresa.configuracion.maxIntentos (JSONB) con fallback al global
- * configuracion_sistema.MAX_INTENTOS_LOGIN (default 5).
+ * configuraciones_sistema.MAX_INTENTOS_LOGIN (default 5).
  * Rango permitido: [3, 10] — aplicado en auth.service.ts antes de llamar aquí.
  */
 @Injectable()
