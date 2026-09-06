@@ -365,13 +365,24 @@ export class ProductosService implements OnModuleInit {
 
     // Si hay almacén activo en el JWT y no se pide ver todos → filtrar por stock en ese almacén.
     // Los servicios (tipo='servicio') no tienen stock_almacen y siempre se incluyen.
+    //
+    // EXISTS en vez de LEFT JOIN a propósito: esta query pagina con
+    // getManyAndCount(), y TypeORM protege su COUNT con SELECT DISTINCT en
+    // cuanto detecta un JOIN, para no contar de más si la relación duplicara
+    // filas — algo que aquí no puede pasar (un producto tiene a lo sumo una
+    // fila de stock_almacen por almacén). El JOIN pagaba ese DISTINCT sin
+    // necesitarlo, en la query de búsqueda más llamada del POS. EXISTS es un
+    // semi-join: no añade filas a deduplicar, así que no dispara el DISTINCT.
     if (almacenId && !incluirSinStock) {
-      qb.leftJoin(
-        'stock_almacen',
-        'sa',
-        'sa."productoId" = producto.id AND sa."almacenId" = :almacenId',
+      qb.andWhere(
+        `(producto.tipo = 'servicio' OR EXISTS (
+           SELECT 1 FROM stock_almacen sa
+           WHERE sa."productoId" = producto.id
+             AND sa."almacenId" = :almacenId
+             AND sa.stock > 0
+         ))`,
         { almacenId },
-      ).andWhere("(producto.tipo = 'servicio' OR sa.stock > 0)");
+      );
     }
 
     if (search) {
