@@ -395,7 +395,12 @@ export default function CobrosPage() {
       render: (v: number | string) => {
         const saldo = Number(v ?? 0);
         if (saldo > 0)
-          return <Text strong style={{ color: '#ef4444' }}>{fmtDop(saldo)}</Text>;
+          return (
+            <Space direction="vertical" size={0} style={{ textAlign: 'right' }}>
+              <Text strong style={{ color: '#ef4444' }}>{fmtDop(saldo)}</Text>
+              <Text style={{ fontSize: 10, color: '#ef4444' }}>pendiente</Text>
+            </Space>
+          );
         if (saldo < 0)
           return (
             <Space direction="vertical" size={0} style={{ textAlign: 'right' }}>
