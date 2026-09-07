@@ -146,6 +146,29 @@ export default function MiSuscripcionPage() {
 
   const saldo = resumen?.saldo ?? 0;
 
+  /**
+   * Lo que el modal de comprobante propone como monto transferido.
+   *
+   * Si hay saldo pendiente, ES el saldo — no el precio mensual. Alguien con dos
+   * meses vencidos ve «Saldo pendiente RD$10,000.00» en la tarjeta y el
+   * formulario le proponía RD$5,200: el precio de UN período. Enviar ese
+   * comprobante deja la suscripción igual de vencida y obliga a una segunda
+   * transferencia, y a nosotros a conciliar dos pagos por una deuda.
+   *
+   * Sin saldo pendiente (o con crédito a favor) el precio mensual sí es la
+   * propuesta correcta: se está pagando el período siguiente.
+   *
+   * Es una propuesta, no un tope — el campo se sigue pudiendo editar, que es lo
+   * que hace falta para un abono parcial.
+   */
+  const montoSugerido = saldo > 0 ? saldo : resumen?.precioMensual;
+
+  /** Abre el modal con el monto del momento, no con el de la primera carga. */
+  const abrirComprobante = () => {
+    comprobanteForm.setFieldsValue({ monto: montoSugerido });
+    setShowComprobante(true);
+  };
+
   return (
     <div style={{ padding: '24px', maxWidth: 960, margin: '0 auto' }}>
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
@@ -285,7 +308,7 @@ export default function MiSuscripcionPage() {
                           block
                           icon={<BankOutlined />}
                           style={{ marginTop: 8 }}
-                          onClick={() => setShowComprobante(true)}
+                          onClick={abrirComprobante}
                         >
                           Pagar ahora
                         </Button>
@@ -312,7 +335,7 @@ export default function MiSuscripcionPage() {
                         <Button
                           type="primary"
                           icon={<UploadOutlined />}
-                          onClick={() => setShowComprobante(true)}
+                          onClick={abrirComprobante}
                         >
                           Subir comprobante
                         </Button>
@@ -465,7 +488,10 @@ export default function MiSuscripcionPage() {
             name="monto"
             label="Monto transferido (RD$)"
             rules={[{ required: true, message: 'Ingresa el monto' }]}
-            initialValue={resumen?.precioMensual}
+            // El valor lo pone abrirComprobante() al abrir: initialValue solo se
+            // aplica al montar el campo, y para entonces el saldo puede no haber
+            // llegado todavía — o haber cambiado desde entonces.
+            initialValue={montoSugerido}
           >
             <InputNumber
               prefix="RD$"
