@@ -505,6 +505,26 @@ export class CxCService {
           p.id, p.monto, p.fecha, p."metodoPago", p.referencia, p.notas, p.moneda, p."tipoCambio",
           p.numero,
           cxc."montoPendiente" AS "montoPendiente",
+          -- Pendiente JUSTO DESPUÉS de este cobro, calculado desde el original y
+          -- los cobros hasta este inclusive.
+          --
+          -- No se puede usar cxc."montoPendiente": registrarPago() ya lo dejó
+          -- descontado, así que restarle el monto otra vez lo cuenta DOS VECES.
+          -- Es lo que pasaba — FAC-1161: total 117,300.06, cobro 37,000, la CxC
+          -- decía 80,300.06 y el recibo impreso decía 43,300.06.
+          --
+          -- Y tampoco vale a secas, porque un recibo se reimprime: si tomara el
+          -- pendiente de hoy, el mismo RDP enseñaría un número distinto cada vez
+          -- que se imprime, según los cobros posteriores. Un recibo entregado al
+          -- cliente tiene que decir siempre lo que decía el día que se entregó.
+          (cxc."montoOriginal" - COALESCE((
+             SELECT SUM(p2.monto)
+               FROM pagos_cobrados p2
+              WHERE p2."cuentaPorCobrarId" = p."cuentaPorCobrarId"
+                AND p2."isActive" = true
+                -- fecha es DATE, sin hora: el id desempata los del mismo día.
+                AND (p2.fecha < p.fecha OR (p2.fecha = p.fecha AND p2.id <= p.id))
+           ), 0)) AS "pendienteTrasCobro",
           f.folio,
           cl.nombre AS "clienteNombre", cl."rncReceptor" AS "clienteRnc",
           cl.telefono AS "clienteTel", cl.email AS "clienteEmail", cl.direccion AS "clienteDir",
@@ -533,7 +553,9 @@ export class CxCService {
       ? r.fecha.toISOString().split('T')[0]
       : String(r.fecha).split('T')[0];
 
-    const pendienteTrasCobro = Math.max(0, Number(r.montoPendiente) - Number(r.monto));
+    // Lo calcula la consulta. NO restes aquí `r.monto` de `r.montoPendiente`:
+    // ese descuento ya lo hizo registrarPago() y volver a aplicarlo fue el bug.
+    const pendienteTrasCobro = Math.max(0, Number(r.pendienteTrasCobro ?? 0));
 
     const data: DocData = {
       tipo:   'RECIBO DE PAGO',
