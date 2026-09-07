@@ -348,7 +348,11 @@ export default function CotizacionFormPage() {
           extra={
             <Space>
               {(['c', 's'] as const).map(m => (
-                <button key={m} onClick={() => cambiarModo(m)}
+                // type="button" NO es decorativo: el default de HTML es "submit",
+                // y este botón vive dentro del <Form>. Sin él, cambiar de c/ITBIS
+                // a s/ITBIS enviaba el formulario: la cotización se guardaba y la
+                // pantalla se cerraba en medio de la edición.
+                <button key={m} type="button" onClick={() => cambiarModo(m)}
                   style={{
                     fontSize: 11, padding: '2px 8px', borderRadius: 4, border: 'none',
                     cursor: 'pointer', fontWeight: 600,

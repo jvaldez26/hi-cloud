@@ -198,6 +198,9 @@ jobs:
       - name: Desenvolver respuestas — quien pide una lista recibe un array
         run: npm run verificar:desenvolver
 
+      - name: Botones dentro de formularios — un <button> sin type los envía
+        run: npm run verificar:botones
+
       - name: Ejes de importe — RD$500 no son «1K» y 1,2 millones no son «1200K»
         run: npm run verificar:ejes
 
