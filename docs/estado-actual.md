@@ -485,6 +485,21 @@ fragmento que contiene solo `RD$ `. Está en `common/pdf/inspeccion-pdf.testing.
 
 ## 3. Trabajos abiertos
 
+### El botón que no hace nada — cerrado, y con guardia
+
+En Recibos de Cobro, «Imprimir» llamaba a `imprimirElemento('hc-recibo-cobro-print')` y el
+div oculto estaba registrado como `…-print-wrapper`. `getElementById` devolvía `null`,
+`imprimirElemento` hacía `console.warn` y volvía. **Sin excepción, sin petición fallida, sin
+nada en pantalla**: el cajero pulsaba y no salía papel. Duró hasta que lo reportó un cliente.
+
+Ahora ese botón pasa por `buildDocTermicoHTML` + `imprimirReciboTermico`, el mismo camino que
+el POS, así que hereda cabecera real de la empresa, ancho de papel configurado y Bluetooth.
+De paso se tiró la plantilla local, que además nunca recibió su prop `empresa` y encabezaba
+el papel del cliente con «HiCloud ERP».
+
+`npm run verificar:ids-impresion` comprueba que todo id que se manda a imprimir exista como
+`id=` en su archivo. Va en CI y se probó en rojo contra el código anterior.
+
 ### La térmica no imprime acentos — sin arreglar, a propósito
 
 `DESCRIPCIÓN` sale `DESCRIPCION` en toda impresión por Bluetooth, y lleva así desde
