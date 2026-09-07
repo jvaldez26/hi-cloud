@@ -176,7 +176,7 @@ export class NotificacionesService {
     }[]>(
       `SELECT codigo, nombre, stock::text, "stockMinimo"::text
        FROM productos
-       WHERE "isActive" = true AND "empresaId" = $1 AND stock <= "stockMinimo"
+       WHERE "isActive" = true AND "empresaId" = $1 AND tipo <> 'servicio' AND "stockMinimo" > 0 AND stock <= "stockMinimo"
        ORDER BY stock ASC
        LIMIT 30`,
       [empresaId],
@@ -274,7 +274,7 @@ export class NotificacionesService {
       ),
       this.dataSource.query<{ cantidad: string }[]>(
         `SELECT COUNT(*) AS cantidad FROM productos
-         WHERE "isActive"=true AND "empresaId"=$1 AND stock <= "stockMinimo"`,
+         WHERE "isActive"=true AND "empresaId"=$1 AND tipo <> 'servicio' AND "stockMinimo" > 0 AND stock <= "stockMinimo"`,
         [empresaId],
       ),
     ]);

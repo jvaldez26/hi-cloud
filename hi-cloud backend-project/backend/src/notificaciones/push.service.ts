@@ -159,7 +159,7 @@ export class PushService implements OnModuleInit {
            AND "fechaVencimiento" < CURRENT_DATE AND "isActive"=true`, [empresaId]),
         this.dataSource.query<{c:string}[]>(
           `SELECT COUNT(id)::text AS c FROM productos
-           WHERE "empresaId"=$1 AND "isActive"=true AND stock <= "stockMinimo"`, [empresaId]),
+           WHERE "empresaId"=$1 AND "isActive"=true AND tipo <> 'servicio' AND "stockMinimo" > 0 AND stock <= "stockMinimo"`, [empresaId]),
         this.dataSource.query<{c:string}[]>(
           `SELECT COUNT(id)::text AS c FROM cuentas_por_pagar
            WHERE "empresaId"=$1 AND estado IN ('pendiente','pagada_parcial')

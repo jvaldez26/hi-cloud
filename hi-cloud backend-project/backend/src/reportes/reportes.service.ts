@@ -132,7 +132,7 @@ export class ReportesService {
 
   private async countStockBajo(): Promise<number> {
     const r = await this.dataSource.query<{ c: string }[]>(
-      `SELECT COUNT(*) AS c FROM productos WHERE "isActive" = true AND "empresaId" = $1 AND stock <= "stockMinimo"`,
+      `SELECT COUNT(*) AS c FROM productos WHERE "isActive" = true AND "empresaId" = $1 AND tipo <> 'servicio' AND "stockMinimo" > 0 AND stock <= "stockMinimo"`,
       [this.eid],
     );
     return Number(r[0].c);
@@ -998,7 +998,7 @@ export class ReportesService {
     }[]>(
       `SELECT id, codigo, nombre, stock::text, "stockMinimo"::text, "unidadMedida"
        FROM productos
-       WHERE "isActive" = true AND stock <= "stockMinimo" AND "empresaId" = $1
+       WHERE "isActive" = true AND tipo <> 'servicio' AND "stockMinimo" > 0 AND stock <= "stockMinimo" AND "empresaId" = $1
        ORDER BY stock ASC`,
       [this.eid],
     );
