@@ -397,7 +397,12 @@ export class RecibosCobrosService {
              r.fecha,
              r."clienteId",
              r."clienteNombre",
-             r."metodoPago",
+             -- ::text en LAS DOS ramas. recibos_cobro.metodoPago y
+             -- pagos_cobrados.metodoPago son enums de Postgres DISTINTOS
+             -- (MetodoPagoRecibo vs MetodoPago), y un UNION no sabe convertir
+             -- uno en el otro: revienta con «could not convert type». Castear
+             -- solo una rama no arregla nada — tienen que ser las dos.
+             r."metodoPago"::text        AS "metodoPago",
              r.monto,
              r.concepto,
              r."facturaFolio",
@@ -415,7 +420,7 @@ export class RecibosCobrosService {
              p.fecha,
              cxc."clienteId",
              cl.nombre         AS "clienteNombre",
-             p."metodoPago",
+             p."metodoPago"::text        AS "metodoPago",
              p.monto,
              'Cobro sobre factura ' || f.folio AS concepto,
              f.folio           AS "facturaFolio",
