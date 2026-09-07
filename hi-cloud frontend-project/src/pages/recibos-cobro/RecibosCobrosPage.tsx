@@ -266,11 +266,22 @@ export default function RecibosCobrosPage() {
     setTimeout(() => imprimirElemento(RECIBO_PRINT_ID, '80mm auto'), 200);
   };
 
+  /**
+   * La lista une dos series y los id de sus tablas COLISIONAN: el recibo REC #5
+   * y el pago RDP #5 son documentos distintos. Cada endpoint solo entiende los
+   * suyos, así que la ruta se elige por `origen` — sin esto, imprimir una fila
+   * RDP sacaría el recibo REC con ese mismo id: otro cliente, otro monto.
+   */
+  const rutaPdf = (item: any) =>
+    item.origen === 'pago'
+      ? `/api/v1/cxc/pagos/${item.id}/pdf`
+      : `/api/v1/recibos-cobro/${item.id}/pdf`;
+
   const imprimirPDF = async (item: any) => {
     setPdfPending(item.id);
     try {
       const eid = localStorage.getItem('empresaId') ?? '';
-      const res = await fetch(`/api/v1/recibos-cobro/${item.id}/pdf`, {
+      const res = await fetch(rutaPdf(item), {
         credentials: 'include',
         headers: { 'X-Empresa-ID': eid },
       });
@@ -343,14 +354,29 @@ export default function RecibosCobrosPage() {
       <Card bordered={false} style={{ borderRadius: 12 }}>
         <Table
           dataSource={recibos?.data ?? []}
-          rowKey="id"
+          // Clave compuesta: los id de recibos_cobro y pagos_cobrados colisionan,
+          // y con rowKey="id" React reutilizaría la fila de un documento para otro.
+          rowKey={(r: any) => `${r.origen ?? "recibo"}-${r.id}`}
           loading={isLoading}
           size="middle"
           scroll={{ x: 'max-content' }}
           pagination={{ pageSize: 10 }}
           columns={filterColumns([
-            { title: 'Número', dataIndex: 'numero', key: 'n', width: 115,
-              render: (v: any) => <Text strong style={{ fontFamily: 'monospace', color: token.colorSuccess }}>{v}</Text> },
+            { title: 'Número', dataIndex: 'numero', key: 'n', width: 165,
+              render: (v: any, r: any) => (
+                <Space size={4}>
+                  <Text strong style={{ fontFamily: 'monospace', color: token.colorSuccess }}>{v}</Text>
+                  {/* El prefijo ya distingue REC de RDP, pero solo si sabes qué
+                      significan. La etiqueta dice de dónde salió y, sobre todo,
+                      que ese cobro no pasó por una caja: cxc.registrarPago() no
+                      imputa cajaDiariaId, así que no suma en ningún arqueo. */}
+                  {r.origen === 'pago' && (
+                    <Tooltip title="Cobro registrado desde Cuentas por Cobrar. No está imputado a ninguna caja, así que no suma en el cierre.">
+                      <Tag color="orange" style={{ marginInlineEnd: 0, fontSize: 10 }}>CxC</Tag>
+                    </Tooltip>
+                  )}
+                </Space>
+              ) },
             { title: 'Fecha', dataIndex: 'fecha', key: 'f', width: 108 },
             { title: 'Cliente', dataIndex: 'clienteNombre', key: 'c', ellipsis: true,
               render: (v: any) => <Text strong>{v}</Text> },
@@ -369,7 +395,17 @@ export default function RecibosCobrosPage() {
                 <TableActions
                   onView={() => setDetalleRecibo(r)}
                   viewLabel="Ver detalle"
-                  items={[
+                  // Un RDP viene de Cuentas por Cobrar y solo comparte con un REC
+                  // el PDF. Anularlo, cambiarle la forma de pago o imprimirlo en
+                  // 80mm son operaciones de recibos_cobro: aplicadas a un id de
+                  // pagos_cobrados tocarían otro documento. Se ofrecen solo donde
+                  // significan algo, en vez de dejarlas fallar al pulsarlas.
+                  items={r.origen === 'pago' ? [
+                    { key: 'pdf', label: pdfPending === r.id ? 'Generando PDF...' : 'Imprimir A4',
+                      icon: pdfPending === r.id ? <LoadingOutlined /> : <PrinterOutlined />,
+                      disabled: pdfPending === r.id,
+                      onClick: () => imprimirPDF(r) },
+                  ] : [
                     { key: 'imprimir', label: 'Imprimir recibo', icon: <PrinterOutlined />,
                       onClick: () => handleImprimir(r) },
                     { key: 'pdf',      label: pdfPending === r.id ? 'Generando PDF...' : 'Imprimir A4',

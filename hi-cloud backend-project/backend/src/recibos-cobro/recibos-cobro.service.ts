@@ -337,20 +337,122 @@ export class RecibosCobrosService {
     return recibo;
   }
 
+  /**
+   * Todos los cobros del cliente, de las DOS series que existen.
+   *
+   * ── Por qué es una unión y no un findAndCount ────────────────────────────
+   * Hay dos tablas y dos numeraciones para lo que el usuario llama «recibos»:
+   *
+   *   REC-…  recibos_cobro   ← lo emite este módulo
+   *   RDP-…  pagos_cobrados  ← lo emite Cuentas por Cobrar (POST /cxc/:id/pago)
+   *
+   * La separación fue deliberada para que los números no colisionaran (ver la
+   * migración 1755400000000), pero nadie unió las dos en la pantalla. Y los RDP
+   * se IMPRIMEN: GET /cxc/pagos/:id/pdf saca un papel titulado «RECIBO DE PAGO»
+   * con número y sello. El cliente se lleva un recibo que después no aparecía en
+   * ningún listado — el caso que lo destapó fue RDP-00038 de Ferretería Pavel,
+   * que existía en papel y no en pantalla.
+   *
+   * ── El discriminador NO es decorativo ────────────────────────────────────
+   * Los id de las dos tablas colisionan: recibos_cobro#5 y pagos_cobrados#5 son
+   * documentos distintos. Sin `origen`, pulsar «Imprimir» en una fila RDP
+   * llamaría a /recibos-cobro/5/pdf y sacaría OTRO recibo, de otro cliente y
+   * otro monto. Por eso viaja en cada fila y el frontend enruta con él.
+   */
   async listar(pagination: PaginationDto, clienteId?: number) {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const { limit = 10, page = 1 } = pagination;
-    const where: any = { empresaId, isActive: true };
-    if (clienteId) where.clienteId = clienteId;
+    const { limit = 10, page = 1, search } = pagination;
+    const take = Math.min(limit, 100);
+    const skip = (page - 1) * take;
 
-    const [data, total] = await this.repo.findAndCount({
-      where,
-      order: { fecha: 'DESC', createdAt: 'DESC' },
-      skip:  (page - 1) * limit,
-      take:  Math.min(limit, 100),
-    });
+    // El filtro por cliente se aplica en las dos ramas: en recibos_cobro por su
+    // propia columna, en pagos_cobrados a través de la CxC.
+    const params: any[] = [empresaId];
 
-    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+    let filtroRecibo = '';
+    let filtroPago   = '';
+
+    if (clienteId) {
+      params.push(clienteId);
+      filtroRecibo += ` AND r."clienteId" = $${params.length}`;
+      filtroPago   += ` AND cxc."clienteId" = $${params.length}`;
+    }
+
+    // El buscador de la pantalla —«número, cliente o factura»— se enviaba al
+    // servidor desde siempre y aquí NUNCA se leía: escribir en la caja no
+    // filtraba nada. Se implementa ahora que la lista une dos series, donde
+    // encontrar un recibo concreto importa más.
+    const texto = search?.trim();
+    if (texto) {
+      params.push(`%${texto}%`);
+      const n = params.length;
+      filtroRecibo += ` AND (r.numero ILIKE $${n} OR r."clienteNombre" ILIKE $${n} OR r."facturaFolio" ILIKE $${n})`;
+      filtroPago   += ` AND (p.numero ILIKE $${n} OR cl.nombre ILIKE $${n} OR f.folio ILIKE $${n})`;
+    }
+
+    const union = `
+      SELECT 'recibo'          AS origen,
+             r.id,
+             r.numero,
+             r.fecha,
+             r."clienteId",
+             r."clienteNombre",
+             r."metodoPago",
+             r.monto,
+             r.concepto,
+             r."facturaFolio",
+             r."cajaDiariaId",
+             r."nombreUsuario",
+             r.moneda
+        FROM recibos_cobro r
+       WHERE r."empresaId" = $1 AND r."isActive" = true ${filtroRecibo}
+
+      UNION ALL
+
+      SELECT 'pago'            AS origen,
+             p.id,
+             p.numero,
+             p.fecha,
+             cxc."clienteId",
+             cl.nombre         AS "clienteNombre",
+             p."metodoPago",
+             p.monto,
+             'Cobro sobre factura ' || f.folio AS concepto,
+             f.folio           AS "facturaFolio",
+             -- Un RDP nunca se imputa a una caja: cxc.registrarPago() no toca
+             -- cajaDiariaId. Va explícito en NULL para que la pantalla lo pueda
+             -- señalar en vez de dejarlo parecer un cobro que sí entró al arqueo.
+             NULL::int         AS "cajaDiariaId",
+             u.nombre          AS "nombreUsuario",
+             p.moneda
+        FROM pagos_cobrados p
+        JOIN cuentas_por_cobrar cxc ON cxc.id = p."cuentaPorCobrarId"
+        JOIN facturas f             ON f.id  = cxc."facturaId"
+        JOIN clientes cl            ON cl.id = cxc."clienteId"
+        LEFT JOIN users u           ON u.id  = p."userId"
+       WHERE f."empresaId" = $1 AND p."isActive" = true ${filtroPago}
+    `;
+
+    const [{ total }] = await this.dataSource.query<{ total: string }[]>(
+      `SELECT COUNT(*)::text AS total FROM (${union}) AS todos`,
+      params,
+    );
+
+    const data = await this.dataSource.query<any[]>(
+      `SELECT * FROM (${union}) AS todos
+        ORDER BY fecha DESC, numero DESC
+        LIMIT ${take} OFFSET ${skip}`,
+      params,
+    );
+
+    return {
+      data,
+      meta: {
+        total: Number(total),
+        page, limit: take,
+        totalPages: Math.ceil(Number(total) / take),
+      },
+    };
   }
 
   async findOne(id: number) {
@@ -470,10 +572,38 @@ export class RecibosCobrosService {
     return { reciboAnulado: numeroAnterior, reciboNuevo };
   }
 
+  /**
+   * Totales de cobros — de las DOS series, igual que el listado.
+   *
+   * Si el resumen contara solo los REC y la lista enseñara REC + RDP, la
+   * pantalla diría «3 recibos hoy» encima de una tabla con cinco filas. Es el
+   * mismo criterio que en las alertas de stock: una sola definición, o el
+   * contador y la lista discuten entre ellos.
+   */
   async resumen() {
     const empresaId = this.tenantSvc.getEmpresaId();
     const hoy = fechaHoyRD();
     const mes = mesHoyRD();
+
+    // Los RDP viven en otra tabla y se suman aparte para no duplicar el SQL de
+    // la unión: aquí solo hacen falta importes y conteos, no las columnas.
+    const pagosDe = async (filtroFecha: string, valor: string) => {
+      const [row] = await this.dataSource.query<{ total: string; cantidad: string }[]>(
+        `SELECT COALESCE(SUM(p.monto),0)::text AS total, COUNT(p.id)::text AS cantidad
+           FROM pagos_cobrados p
+           JOIN cuentas_por_cobrar cxc ON cxc.id = p."cuentaPorCobrarId"
+           JOIN facturas f             ON f.id  = cxc."facturaId"
+          WHERE f."empresaId" = $1 AND p."isActive" = true ${filtroFecha}`,
+        valor ? [empresaId, valor] : [empresaId],
+      );
+      return { total: Number(row?.total ?? 0), cantidad: Number(row?.cantidad ?? 0) };
+    };
+
+    const [pagosHoy, pagosMes, pagosTotal] = await Promise.all([
+      pagosDe('AND p.fecha = $2', hoy),
+      pagosDe(`AND TO_CHAR(p.fecha::date, 'YYYY-MM') = $2`, mes),
+      pagosDe('', ''),
+    ]);
 
     const [hoyR, mesR, totalR] = await Promise.all([
       this.repo
@@ -503,9 +633,17 @@ export class RecibosCobrosService {
     ]);
 
     return {
-      hoy:   { total: +Number(hoyR?.total   ?? 0).toFixed(2), cantidad: Number(hoyR?.cantidad  ?? 0) },
-      mes:   { total: +Number(mesR?.total   ?? 0).toFixed(2) },
-      total: { total: +Number(totalR?.total ?? 0).toFixed(2), cantidad: Number(totalR?.cantidad ?? 0) },
+      hoy: {
+        total:    +(Number(hoyR?.total ?? 0) + pagosHoy.total).toFixed(2),
+        cantidad:  Number(hoyR?.cantidad ?? 0) + pagosHoy.cantidad,
+      },
+      mes: {
+        total:    +(Number(mesR?.total ?? 0) + pagosMes.total).toFixed(2),
+      },
+      total: {
+        total:    +(Number(totalR?.total ?? 0) + pagosTotal.total).toFixed(2),
+        cantidad:  Number(totalR?.cantidad ?? 0) + pagosTotal.cantidad,
+      },
     };
   }
 }
