@@ -74,6 +74,15 @@ export interface GenericDocData {
   subtotal?:   number;
   itbis?:      number;
   total?:      number;
+  /**
+   * Moneda de los importes. Por defecto DOP — así los doce sitios que ya
+   * imprimían pesos siguen imprimiendo exactamente lo mismo.
+   *
+   * Existe porque hay documentos en dólares (recibos de cobro, sobre todo) y el
+   * ticket los sacaba con «RD$» delante: un comprobante que se le entrega al
+   * cliente diciéndole que pagó 100 pesos cuando pagó 100 dólares.
+   */
+  moneda?:     'DOP' | 'USD' | string;
   nota1?:      string;         // línea extra (ej: "Ref. Factura: FAC-XXX")
   nota2?:      string;
   notas?:      string;
@@ -187,7 +196,8 @@ export function buildDocTermicoHTML(
 ): string {
   const { tipoImpresora = '80mm' } = cfg;
   const prn  = IMPRESORA_CONFIG[tipoImpresora] ?? IMPRESORA_CONFIG['80mm'];
-  const fmt  = (n: number) => `RD$${n.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const simbolo = gd.moneda === 'USD' ? 'US$' : 'RD$';
+  const fmt  = (n: number) => `${simbolo}${n.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const row  = (l: string, v: string) => `<div class="row"><span>${esc(l)}</span><span>${esc(v)}</span></div>`;
   const line = () => '<div class="line"></div>';
   const dbl  = () => '<div class="dbl"></div>';

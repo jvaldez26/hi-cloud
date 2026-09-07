@@ -21,7 +21,8 @@
     "verificar:columnas": "node --experimental-strip-types scripts/verificar-columnas.mjs",
     "verificar:botones": "node scripts/verificar-botones-form.mjs",
     "verificar:ejes": "node scripts/verificar-ejes.mjs",
-    "verificar:backups": "node --experimental-strip-types scripts/verificar-backups.mjs"
+    "verificar:backups": "node --experimental-strip-types scripts/verificar-backups.mjs",
+    "verificar:ids-impresion": "node scripts/verificar-ids-impresion.mjs"
   },
   "dependencies": {
     "@ant-design/cssinjs": "^1.21.0",

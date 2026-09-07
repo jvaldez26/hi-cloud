@@ -17,9 +17,11 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import api from '../../api/client';
-import { imprimirElemento } from '../../utils/printUtils';
+import { imprimirReciboTermico } from '../../utils/printUtils';
+import { buildDocTermicoHTML, type GenericDocData } from '../../utils/docTermico';
+import { resolverConfigTicket } from '../../utils/configTicket';
 import { exportarExcel } from '../../utils/exportExcel';
-import { dRD, fecha as fmtFecha } from '../../utils/fechaRD';
+import { fecha as fmtFecha } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -38,46 +40,6 @@ const METODOS = [
   { value: 'otro',          label: '📦 Otro' },
 ];
 
-// Recibo imprimible
-function ReciboImprimible({ recibo, empresa }: { recibo: any; empresa?: any }) {
-  const S: Record<string, React.CSSProperties> = {
-    wrap:   { fontFamily: '"Courier New", monospace', fontSize: 12, width: 300, padding: '8px 4px', background: '#fff', color: '#000' },
-    center: { textAlign: 'center' },
-    row:    { display: 'flex', justifyContent: 'space-between', marginBottom: 4 },
-    dash:   { borderTop: '1px dashed #666', margin: '6px 0' },
-    bold:   { fontWeight: 700 },
-    large:  { fontSize: 18, fontWeight: 900, textAlign: 'center' as const },
-  };
-  const metodo = METODOS.find(m => m.value === recibo.metodoPago);
-  return (
-    <div style={S.wrap}>
-      <div style={{ ...S.center, marginBottom: 6 }}>
-        <div style={{ fontSize: 16, fontWeight: 900 }}>{empresa?.nombre ?? 'HiCloud ERP'}</div>
-        {empresa?.rnc && <div style={{ fontSize: 10 }}>RNC: {empresa.rnc}</div>}
-        <div style={{ fontSize: 10 }}>RECIBO DE COBRO</div>
-      </div>
-      <div style={S.dash} />
-      <div style={S.row}><span>Recibo No.:</span><span style={S.bold}>{recibo.numero}</span></div>
-      <div style={S.row}><span>Fecha:</span><span>{fmtFecha(recibo.fecha)}</span></div>
-      <div style={S.row}><span>Cliente:</span><span style={{ ...S.bold, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{recibo.clienteNombre}</span></div>
-      <div style={S.dash} />
-      <div style={{ marginBottom: 4 }}><span>Concepto: </span><span>{recibo.concepto}</span></div>
-      {recibo.facturaFolio && <div style={S.row}><span>Factura ref.:</span><span>{recibo.facturaFolio}</span></div>}
-      {recibo.referencia   && <div style={S.row}><span>Referencia:</span><span>{recibo.referencia}</span></div>}
-      <div style={S.dash} />
-      <div style={S.large}>{fmt(recibo.monto, recibo.moneda)}</div>
-      <div style={{ ...S.center, fontSize: 11, marginTop: 2 }}>Forma de pago: {metodo?.label ?? recibo.metodoPago}</div>
-      <div style={S.dash} />
-      <div style={{ ...S.center, fontSize: 10, marginTop: 6 }}>
-        <div>Recibido por: {recibo.nombreUsuario ?? '___________'}</div>
-        <div style={{ marginTop: 16, borderTop: '1px solid #666', paddingTop: 4 }}>Firma y sello</div>
-        <div style={{ marginTop: 12 }}>{dRD().format('DD/MM/YYYY HH:mm')} · HiCloud ERP</div>
-      </div>
-    </div>
-  );
-}
-
-const RECIBO_PRINT_ID = 'hc-recibo-cobro-print';
 
 export default function RecibosCobrosPage() {
   const qc = useQueryClient();
@@ -95,7 +57,6 @@ export default function RecibosCobrosPage() {
   const [search,           setSearch]           = useState('');
   const [page,             setPage]             = useState(1);
   const [modalCrear,       setModalCrear]       = useState(false);
-  const [reciboImprimir,   setReciboImprimir]   = useState<any>(null);
   const [emailRecibo,      setEmailRecibo]       = useState<any>(null);
   const [pdfPending,       setPdfPending]        = useState<number | null>(null);
   const [detalleRecibo,    setDetalleRecibo]     = useState<any>(null);
@@ -219,7 +180,6 @@ export default function RecibosCobrosPage() {
       } else {
         message.success(`Recibo ${recibo?.numero ?? ''} generado`);
       }
-      setReciboImprimir(recibo);
     },
     onError: (e: any) => {
       const msg: string = e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? '';
@@ -261,9 +221,61 @@ export default function RecibosCobrosPage() {
     onError: (e: any) => message.error(errMsg(e), 6),
   });
 
-  const handleImprimir = (recibo: any) => {
-    setReciboImprimir(recibo);
-    setTimeout(() => imprimirElemento(RECIBO_PRINT_ID, '80mm auto'), 200);
+  /**
+   * Imprime el recibo en papel térmico, con el MISMO generador que el POS.
+   *
+   * El botón no fallaba: no hacía nada. Llamaba a `imprimirElemento` con el id
+   * `hc-recibo-cobro-print`, pero el div oculto se registraba como
+   * `…-print-wrapper`; getElementById devolvía null, la función avisaba por
+   * consola y volvía. En el mostrador nadie mira la consola.
+   *
+   * No se arregla el id, se tira la plantilla local: además de invisible, se
+   * renderizaba SIN la prop `empresa` —el único sitio que la usaba nunca se la
+   * pasó—, así que el papel que se lleva el cliente salía encabezado «HiCloud
+   * ERP», sin RNC ni dirección. Pasando por buildDocTermicoHTML el ticket lo
+   * hereda todo del generador único: cabecera real, ancho de papel configurado
+   * (58/80mm) y la ruta Bluetooth, que la plantilla local no tenía.
+   */
+  const handleImprimir = async (recibo: any) => {
+    try {
+      const empresa = await api.get('/configuracion/empresa')
+        .then(r => r.data?.data ?? r.data)
+        .catch(() => ({} as any));
+      const cfg = resolverConfigTicket(empresa);
+      const metodo = METODOS.find(m => m.value === recibo.metodoPago);
+      const gd: GenericDocData = {
+        tipo:    'RECIBO DE COBRO',
+        numero:  recibo.numero ?? String(recibo.id),
+        // Formateada aquí, no en la plantilla: gd.fecha es texto y se imprime
+        // tal cual. El POS le mete un substring(0,10) y saca 2026-08-04.
+        fecha:   fmtFecha(recibo.fecha),
+        empresa: {
+          nombre:    empresa?.razonSocial ?? empresa?.nombre,
+          rnc:       empresa?.rnc,
+          direccion: empresa?.direccion,
+          telefono:  empresa?.telefono,
+        },
+        cliente: recibo.clienteNombre,
+        items:   [{ desc: recibo.concepto || 'Cobro recibido', total: Number(recibo.monto ?? 0) }],
+        total:   Number(recibo.monto ?? 0),
+        // Sin esto un recibo en dólares se imprimía con «RD$» delante.
+        moneda:  recibo.moneda ?? 'DOP',
+        // El label de METODOS lleva emoji y una térmica no los imprime: sale un
+        // cuadro o basura. Va la etiqueta sin el símbolo.
+        nota1:   `Método: ${(metodo?.label ?? recibo.metodoPago ?? '—').replace(/^\S+\s/, '')}`,
+        nota2:   recibo.facturaFolio ? `Factura ref.: ${recibo.facturaFolio}` : undefined,
+        notas:   recibo.nombreUsuario ? `Recibido por: ${recibo.nombreUsuario}` : undefined,
+      };
+      imprimirReciboTermico(
+        buildDocTermicoHTML(gd, { tipoImpresora: cfg.tipoImpresora }),
+        undefined,
+        cfg.tipoImpresora,
+        (err: any) => message.error(`No se pudo imprimir: ${err?.message ?? 'la impresora Bluetooth no respondió'}`, 6),
+      );
+    } catch (e: any) {
+      // El fallo mudo es justo lo que se está arreglando; este catch no lo repite.
+      message.error(`No se pudo imprimir el recibo: ${e?.message ?? ''}`, 5);
+    }
   };
 
   /**
@@ -302,11 +314,6 @@ export default function RecibosCobrosPage() {
 
   return (
     <div style={{ padding: 24 }}>
-      {/* Elemento oculto para impresión */}
-      <div id={`${RECIBO_PRINT_ID}-wrapper`} style={{ display: 'none' }}>
-        {reciboImprimir && <ReciboImprimible recibo={reciboImprimir} />}
-      </div>
-
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <FileTextOutlined style={{ fontSize: 28, color: token.colorSuccess }} />
@@ -399,12 +406,18 @@ export default function RecibosCobrosPage() {
                 <TableActions
                   onView={() => setDetalleRecibo(r)}
                   viewLabel="Ver detalle"
-                  // Un RDP viene de Cuentas por Cobrar y solo comparte con un REC
-                  // el PDF. Anularlo, cambiarle la forma de pago o imprimirlo en
-                  // 80mm son operaciones de recibos_cobro: aplicadas a un id de
-                  // pagos_cobrados tocarían otro documento. Se ofrecen solo donde
-                  // significan algo, en vez de dejarlas fallar al pulsarlas.
+                  // Un RDP viene de Cuentas por Cobrar. Lo que NO se le ofrece son
+                  // las operaciones que van por id contra /recibos-cobro/:id
+                  // —email, cambiar forma de pago, anular—: los id de las dos
+                  // tablas colisionan, así que tocarían OTRO documento.
+                  //
+                  // Imprimir sí, en las dos: el térmico se arma con los datos de
+                  // la fila y el A4 elige ruta por `origen`. Ninguno pregunta por
+                  // un id ajeno, y un RDP es un cobro real del que el cliente se
+                  // lleva su papel.
                   items={r.origen === 'pago' ? [
+                    { key: 'imprimir', label: 'Imprimir recibo', icon: <PrinterOutlined />,
+                      onClick: () => handleImprimir(r) },
                     { key: 'pdf', label: pdfPending === r.id ? 'Generando PDF...' : 'Imprimir A4',
                       icon: pdfPending === r.id ? <LoadingOutlined /> : <PrinterOutlined />,
                       disabled: pdfPending === r.id,
@@ -450,19 +463,19 @@ export default function RecibosCobrosPage() {
           // defecto, así que los de la izquierda se salían del Drawer y quedaban
           // cortados — se veía «… A4» sin su icono ni el botón anterior.
           <Space wrap style={{ justifyContent: 'flex-end', width: '100%' }}>
-            {/* Un RDP viene de pagos_cobrados y con los REC solo comparte el PDF.
-                Imprimir en 80mm, enviar por email, cambiar la forma de pago y
-                anular son operaciones de recibos_cobro: llamadas con un id de
-                pagos_cobrados irían a OTRO documento —los id de las dos tablas
-                colisionan— y «Anular» borraría el recibo equivocado.
+            {/* Enviar por email, cambiar la forma de pago y anular llaman a
+                /recibos-cobro/:id. Con un id de pagos_cobrados irían a OTRO
+                documento —los id de las dos tablas colisionan— y «Anular»
+                borraría el recibo equivocado.
 
                 El menú de la fila ya lo distinguía; este pie no, y era el mismo
-                riesgo con un botón rojo delante. */}
-            {detalleRecibo?.origen !== 'pago' && (
-              <Button icon={<PrinterOutlined />} onClick={() => detalleRecibo && handleImprimir(detalleRecibo)}>
-                Imprimir
-              </Button>
-            )}
+                riesgo con un botón rojo delante.
+
+                Los dos «Imprimir» se quedan en ambas series: ninguno consulta un
+                id ajeno. */}
+            <Button icon={<PrinterOutlined />} onClick={() => detalleRecibo && handleImprimir(detalleRecibo)}>
+              Imprimir
+            </Button>
             <Button
               icon={pdfPending === detalleRecibo?.id ? <LoadingOutlined /> : <PrinterOutlined />}
               disabled={pdfPending === detalleRecibo?.id}
