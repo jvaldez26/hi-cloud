@@ -19,7 +19,7 @@ import dayjs from 'dayjs';
 import api from '../../api/client';
 import { imprimirElemento } from '../../utils/printUtils';
 import { exportarExcel } from '../../utils/exportExcel';
-import { dRD } from '../../utils/fechaRD';
+import { dRD, fecha as fmtFecha } from '../../utils/fechaRD';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -58,7 +58,7 @@ function ReciboImprimible({ recibo, empresa }: { recibo: any; empresa?: any }) {
       </div>
       <div style={S.dash} />
       <div style={S.row}><span>Recibo No.:</span><span style={S.bold}>{recibo.numero}</span></div>
-      <div style={S.row}><span>Fecha:</span><span>{recibo.fecha}</span></div>
+      <div style={S.row}><span>Fecha:</span><span>{fmtFecha(recibo.fecha)}</span></div>
       <div style={S.row}><span>Cliente:</span><span style={{ ...S.bold, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{recibo.clienteNombre}</span></div>
       <div style={S.dash} />
       <div style={{ marginBottom: 4 }}><span>Concepto: </span><span>{recibo.concepto}</span></div>
@@ -377,7 +377,11 @@ export default function RecibosCobrosPage() {
                   )}
                 </Space>
               ) },
-            { title: 'Fecha', dataIndex: 'fecha', key: 'f', width: 108 },
+            // fmtFecha y no el valor crudo: la consulta devuelve 'YYYY-MM-DD' y el
+            // resto del ERP enseña DD/MM/YYYY. El util corta en seco las cadenas
+            // de solo fecha, así que no hay desplazamiento de zona horaria.
+            { title: 'Fecha', dataIndex: 'fecha', key: 'f', width: 108,
+              render: (v: any) => fmtFecha(v) },
             { title: 'Cliente', dataIndex: 'clienteNombre', key: 'c', ellipsis: true,
               render: (v: any) => <Text strong>{v}</Text> },
             {
@@ -442,10 +446,23 @@ export default function RecibosCobrosPage() {
         onClose={() => setDetalleRecibo(null)}
         width={420}
         footer={
-          <Space style={{ justifyContent: 'flex-end', width: '100%' }}>
-            <Button icon={<PrinterOutlined />} onClick={() => detalleRecibo && handleImprimir(detalleRecibo)}>
-              Imprimir
-            </Button>
+          // `wrap`: cinco botones no caben en 420px y Space no envuelve por
+          // defecto, así que los de la izquierda se salían del Drawer y quedaban
+          // cortados — se veía «… A4» sin su icono ni el botón anterior.
+          <Space wrap style={{ justifyContent: 'flex-end', width: '100%' }}>
+            {/* Un RDP viene de pagos_cobrados y con los REC solo comparte el PDF.
+                Imprimir en 80mm, enviar por email, cambiar la forma de pago y
+                anular son operaciones de recibos_cobro: llamadas con un id de
+                pagos_cobrados irían a OTRO documento —los id de las dos tablas
+                colisionan— y «Anular» borraría el recibo equivocado.
+
+                El menú de la fila ya lo distinguía; este pie no, y era el mismo
+                riesgo con un botón rojo delante. */}
+            {detalleRecibo?.origen !== 'pago' && (
+              <Button icon={<PrinterOutlined />} onClick={() => detalleRecibo && handleImprimir(detalleRecibo)}>
+                Imprimir
+              </Button>
+            )}
             <Button
               icon={pdfPending === detalleRecibo?.id ? <LoadingOutlined /> : <PrinterOutlined />}
               disabled={pdfPending === detalleRecibo?.id}
@@ -453,20 +470,24 @@ export default function RecibosCobrosPage() {
             >
               Imprimir A4
             </Button>
-            <Button icon={<MailOutlined />}
-              onClick={() => { setEmailRecibo(detalleRecibo); setDetalleRecibo(null); }}>
-              Email
-            </Button>
-            <Button icon={<SwapOutlined />}
-              disabled={detalleRecibo?.isActive === false}
-              onClick={() => { setNuevaFormaVal(''); setReferenciaVal(''); setModalCambiarForma(detalleRecibo); }}>
-              Cambiar pago
-            </Button>
-            <Button danger icon={<StopOutlined />}
-              disabled={detalleRecibo?.isActive === false}
-              onClick={() => { const r = detalleRecibo; setDetalleRecibo(null); confirmarAnulacion(r); }}>
-              Anular
-            </Button>
+            {detalleRecibo?.origen !== 'pago' && (
+              <>
+                <Button icon={<MailOutlined />}
+                  onClick={() => { setEmailRecibo(detalleRecibo); setDetalleRecibo(null); }}>
+                  Email
+                </Button>
+                <Button icon={<SwapOutlined />}
+                  disabled={detalleRecibo?.isActive === false}
+                  onClick={() => { setNuevaFormaVal(''); setReferenciaVal(''); setModalCambiarForma(detalleRecibo); }}>
+                  Cambiar pago
+                </Button>
+                <Button danger icon={<StopOutlined />}
+                  disabled={detalleRecibo?.isActive === false}
+                  onClick={() => { const r = detalleRecibo; setDetalleRecibo(null); confirmarAnulacion(r); }}>
+                  Anular
+                </Button>
+              </>
+            )}
           </Space>
         }
       >
@@ -477,7 +498,7 @@ export default function RecibosCobrosPage() {
                 {detalleRecibo.numero}
               </Text>
             </Descriptions.Item>
-            <Descriptions.Item label="Fecha">{detalleRecibo.fecha}</Descriptions.Item>
+            <Descriptions.Item label="Fecha">{fmtFecha(detalleRecibo.fecha)}</Descriptions.Item>
             <Descriptions.Item label="Cliente">
               <Text strong>{detalleRecibo.clienteNombre ?? '—'}</Text>
             </Descriptions.Item>

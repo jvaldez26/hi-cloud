@@ -394,7 +394,12 @@ export class RecibosCobrosService {
       SELECT 'recibo'          AS origen,
              r.id,
              r.numero,
-             r.fecha,
+             -- ::text a proposito. La entidad declara fecha como columna 'date' y
+             -- TypeORM la devolvia como 'YYYY-MM-DD'; esta consulta es CRUDA y el
+             -- driver la convierte en Date, que se serializa como
+             -- 2026-09-07T00:00:00.000Z y asi se pintaba en la tabla y en el detalle.
+             -- Castear aqui conserva el contrato que ya tenian las pantallas.
+             r.fecha::text               AS fecha,
              r."clienteId",
              r."clienteNombre",
              -- ::text en LAS DOS ramas. recibos_cobro.metodoPago y
@@ -417,7 +422,7 @@ export class RecibosCobrosService {
       SELECT 'pago'            AS origen,
              p.id,
              p.numero,
-             p.fecha,
+             p.fecha::text               AS fecha,
              cxc."clienteId",
              cl.nombre         AS "clienteNombre",
              p."metodoPago"::text        AS "metodoPago",
