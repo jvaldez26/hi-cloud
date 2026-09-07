@@ -567,6 +567,8 @@ export class ProductosService implements OnModuleInit {
       .createQueryBuilder('p')
       .where('p.empresaId = :empresaId', { empresaId })
       .andWhere('p.isActive = :active', { active: true })
+      // Un servicio no tiene existencias: alertarlo es ruido garantizado.
+      .andWhere("p.tipo <> 'servicio'")
       .andWhere('p.stock <= p.stockMinimo')
       .orderBy('p.stock', 'ASC')
       .getMany();

@@ -124,6 +124,7 @@ export class KpiService {
       // Productos con stock bajo
       this.prodRepo.createQueryBuilder('p')
         .where('p.empresaId = :eid', { eid })
+        .andWhere("p.tipo <> 'servicio'")
         .andWhere('p.stock <= p."stockMinimo"')
         .andWhere('p.isActive = true')
         .getCount(),
