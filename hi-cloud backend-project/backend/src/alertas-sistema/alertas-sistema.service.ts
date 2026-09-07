@@ -91,7 +91,7 @@ export class AlertasSistemaService {
     const res = await this.ds.query<{ cantidad: string }[]>(`
       SELECT COUNT(id)::text AS cantidad
       FROM productos
-      WHERE "empresaId" = $1 AND "isActive" = true AND tipo <> 'servicio' AND stock <= "stockMinimo"
+      WHERE "empresaId" = $1 AND "isActive" = true AND tipo <> 'servicio' AND "stockMinimo" > 0 AND stock <= "stockMinimo"
     `, [eid]);
     const n = Number(res[0]?.cantidad ?? 0);
     if (n > 0) out.push({

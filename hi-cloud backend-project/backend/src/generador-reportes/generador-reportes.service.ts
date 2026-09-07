@@ -96,6 +96,7 @@ export class GeneradorReportesService {
       FROM productos p
       WHERE p."isActive" = true AND p."empresaId" = $1
         AND p.tipo <> 'servicio'
+        AND p."stockMinimo" > 0
         AND p.stock <= p."stockMinimo" * 1.5
       ORDER BY p.stock / NULLIF(p."stockMinimo",0) ASC, p.nombre ASC
     `, [this.eid]);

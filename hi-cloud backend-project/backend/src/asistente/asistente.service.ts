@@ -91,7 +91,7 @@ export class AsistenteService {
 
         this.ds.query<any[]>(`
           SELECT COUNT(id) AS cantidad FROM productos
-          WHERE "empresaId"=$1 AND "isActive"=true AND tipo <> 'servicio' AND stock <= "stockMinimo"
+          WHERE "empresaId"=$1 AND "isActive"=true AND tipo <> 'servicio' AND "stockMinimo" > 0 AND stock <= "stockMinimo"
         `, [empresaId]),
 
         this.ds.query<any[]>(`

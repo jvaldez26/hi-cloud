@@ -82,4 +82,47 @@ describe('Alertas de stock bajo — los servicios quedan fuera', () => {
 
     expect(culpables).toEqual([]);
   });
+
+  /**
+   * Un mínimo de cero no es un umbral: es un campo que nadie configuró.
+   *
+   * `productos.stockMinimo` tiene DEFAULT 0, así que hoy «no me avises de este
+   * producto» y «avísame cuando llegue a cero» se guardan igual — y con
+   * `stock <= stockMinimo` las dos alertaban. Por eso el correo llegaba lleno de
+   * filas 0/0 que no le decían nada a nadie.
+   *
+   * La definición de «stock bajo» pasa a ser: hay un mínimo configurado Y el
+   * stock cayó a él. Se exige en las DOCE consultas y no solo en el correo,
+   * porque si el conteo del panel y la lista usan definiciones distintas, el
+   * badge dice un número y la pantalla enseña otro.
+   *
+   * Si algún día se quiere distinguir de verdad las dos intenciones, hay que
+   * hacer `stockMinimo` nullable (NULL = sin configurar, 0 = avísame al llegar a
+   * cero) — es migración y toca todo lo que asume que nunca es nulo.
+   */
+  it('toda consulta de stock bajo exige un mínimo configurado (> 0)', () => {
+    const culpables: string[] = [];
+
+    for (const ruta of listar(raizSrc)) {
+      const codigo = sinComentarios(readFileSync(ruta, 'utf8'));
+      const lineas = codigo.split('\n');
+
+      lineas.forEach((linea, i) => {
+        if (!ES_STOCK_BAJO.test(linea)) return;
+        if (/\bWHEN\b/i.test(linea)) return;
+
+        const bloque = lineas.slice(Math.max(0, i - 16), i + 3).join('\n');
+        const esProductos = /\bFROM\s+productos\b/i.test(bloque)
+          || /createQueryBuilder\(\s*['"]p['"]\s*\)/.test(bloque)
+          || /productoRepository/.test(bloque);
+        if (!esProductos) return;
+
+        if (!/"?stockMinimo"?\s*>\s*0/.test(bloque)) {
+          culpables.push(`${ruta.split('src')[1]}:${i + 1} → ${linea.trim()}`);
+        }
+      });
+    }
+
+    expect(culpables).toEqual([]);
+  });
 });

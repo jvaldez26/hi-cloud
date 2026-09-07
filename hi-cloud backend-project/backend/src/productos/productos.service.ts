@@ -569,6 +569,7 @@ export class ProductosService implements OnModuleInit {
       .andWhere('p.isActive = :active', { active: true })
       // Un servicio no tiene existencias: alertarlo es ruido garantizado.
       .andWhere("p.tipo <> 'servicio'")
+      .andWhere('p.stockMinimo > 0')
       .andWhere('p.stock <= p.stockMinimo')
       .orderBy('p.stock', 'ASC')
       .getMany();

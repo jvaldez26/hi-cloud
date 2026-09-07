@@ -248,6 +248,7 @@ export class InventarioService {
       .where('p.empresaId = :eid', { eid: empresaId })
       .andWhere('p.isActive = :active', { active: true })
       .andWhere("p.tipo <> 'servicio'")
+      .andWhere('p.stockMinimo > 0')
       .andWhere('p.stock <= p.stockMinimo')
       .orderBy('p.stock', 'ASC')
       .take(200)
@@ -552,6 +553,7 @@ export class InventarioService {
         WHERE p."isActive"   = true
           AND p."stockMinimo" > 0
           AND p.tipo <> 'servicio'
+          AND p."stockMinimo" > 0
           AND p.stock <= p."stockMinimo"
         ORDER BY p."empresaId", p.nombre
       `);
