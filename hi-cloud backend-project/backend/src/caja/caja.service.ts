@@ -668,14 +668,66 @@ export class CajaService {
     };
   }
 
-  // A-1: scoped para VENDEDOR — usa userId del JWT, no acepta vendedorId del cliente
+  /**
+   * La caja de HOY del usuario autenticado.
+   *
+   * A-1: scoped para VENDEDOR — todo se deriva del JWT, nunca de un parámetro
+   * del cliente, así que un vendedor sigue sin poder mirar la caja de otro.
+   *
+   * ── Por qué no basta con userId ──────────────────────────────────────────
+   * `cierres_caja` guarda DOS personas y no son la misma cosa:
+   *
+   *     userId      quién PULSÓ abrir
+   *     vendedorId  para QUIÉN es el turno
+   *
+   * abrirCaja() recibe `usuario.id` del que abre y el `vendedorId` del cajero
+   * elegido (caja.controller.ts:141). Cuando un encargado le abre la caja al
+   * cajero —que es lo normal a primera hora— las dos columnas salen distintas.
+   *
+   * Buscando solo por userId, ese cajero entraba al POS y le decía «la caja no
+   * ha sido abierta hoy» mientras Caja Diaria la enseñaba ABIERTA con su nombre,
+   * porque el historial la identifica por vendedorNombre. Le pasó a Adalberta
+   * Reyes en Ferretería Pavel.
+   *
+   * La pregunta correcta no es «¿abrí yo una caja?» sino «¿hay una caja PARA MÍ
+   * abierta?», y eso son las dos columnas.
+   *
+   * OJO: la segunda vía depende de que `vendedores.usuarioId` esté poblado. Hoy
+   * solo lo está en la empresa 61 (ver docs/estado-actual.md §1), así que en el
+   * resto esto se comporta igual que antes — ahí el arreglo de fondo sigue
+   * siendo poblar esa columna, la misma que arrastra el bug del vendedorId.
+   */
   async getCajaHoyByUserId(userId: number) {
     const empresaId = this.tenantService.getEmpresaId();
     const hoy = fechaHoyRD();
 
-    const caja = await this.repo.findOne({
-      where: { fecha: new Date(hoy) as any, empresaId, userId } as any,
-    });
+    // El perfil de vendedor del usuario autenticado. Derivado del JWT, no del
+    // cliente: no abre ninguna puerta a mirar cajas ajenas.
+    const perfilRows = await this.dataSource.query<{ id: number }[]>(
+      `SELECT id FROM vendedores
+        WHERE "usuarioId" = $1 AND "empresaId" = $2 AND "isActive" = true
+        LIMIT 1`,
+      [userId, empresaId],
+    ).catch(() => []);
+    const miVendedorId = perfilRows[0]?.id;
+
+    const qb = this.repo.createQueryBuilder('c')
+      .where('c.fecha = :hoy', { hoy })
+      .andWhere('c.empresaId = :empresaId', { empresaId });
+
+    if (miVendedorId) {
+      qb.andWhere('(c.userId = :userId OR c.vendedorId = :miVendedorId)', { userId, miVendedorId });
+    } else {
+      qb.andWhere('c.userId = :userId', { userId });
+    }
+
+    // Si por lo que sea hubiera dos —una abierta por él y otra a su nombre—
+    // manda la ABIERTA: es la que puede usar para vender.
+    const caja = await qb
+      .orderBy(`CASE WHEN c.estado = 'abierta' THEN 0 ELSE 1 END`, 'ASC')
+      .addOrderBy('c.id', 'DESC')
+      .getOne();
+
     if (!caja) return { estado: 'sin_apertura', mensaje: 'La caja no ha sido abierta hoy' };
 
     if (caja.estado === EstadoCierre.ABIERTA) {
