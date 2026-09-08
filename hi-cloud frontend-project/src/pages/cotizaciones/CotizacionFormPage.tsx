@@ -9,6 +9,7 @@ import SelectClienteConAlta from '../../components/clientes/SelectClienteConAlta
 import { productosApi } from '../../api/productos.api';
 import { fmt } from '../../utils/formatters';
 import { calcularTotalesDocumento, descuentoDeLinea, r2 } from '../../utils/totalesDocumento';
+import { round4 } from '../../utils/descuentoItbis';
 import api from '../../api/client';
 import { useAuthStore } from '../../store/auth.store';
 import dayjs from 'dayjs';
@@ -163,7 +164,7 @@ export default function CotizacionFormPage() {
       const desc = descuentoDeLinea(l);
       return {
         productoId: l.productoId, descripcion: l.descripcion!,
-        cantidad: l.cantidad, precioUnitario: l.precioUnitario, porcentajeIva: l.porcentajeIva,
+        cantidad: round4(l.cantidad), precioUnitario: l.precioUnitario, porcentajeIva: l.porcentajeIva,
         ...(desc > 0
           ? l.descuentoTipo === 'pct'
             ? { descuentoPct: Number(l.descuentoValor) }
@@ -214,9 +215,18 @@ export default function CotizacionFormPage() {
         <Input value={r.descripcion}
           onChange={e => { const u=[...lineas]; u[idx].descripcion=e.target.value; setLineas(u); }} />
       )},
+    // `min={0.0001}` y sin `precision`: exactamente lo que usa el formulario de
+    // facturas. Media funda de cemento o medio metro de arena son la venta
+    // normal de una ferretería, y la columna es decimal(12,4) — el DTO acepta
+    // cuatro decimales. Lo único que lo impedía era este widget.
+    //
+    // `precision={0}` no solo bloqueaba el 0.5: con un valor decimal ya guardado
+    // —los que entran desde el POS— el input PINTABA 3 teniendo 2.5 en estado, y
+    // al salir del campo disparaba onChange con 3. Bastaba pasar por la celda
+    // para reescribir la cantidad y guardarla redondeada.
     { title: 'Cant.', key: 'qty', width: 80,
       render: (_: any, r: Linea, idx: number) => (
-        <InputNumber min={1} precision={0} value={r.cantidad} style={{ width:'100%' }}
+        <InputNumber min={0.0001} value={r.cantidad} style={{ width:'100%' }}
           onChange={v => { const u=[...lineas]; u[idx].cantidad=v??1; setLineas(u); }} />
       )},
     { title: precioInputModo === 'c' ? 'Precio c/ITBIS (RD$)' : 'Precio s/ITBIS (RD$)', key: 'price', width: 150,

@@ -485,6 +485,27 @@ fragmento que contiene solo `RD$ `. Está en `common/pdf/inspeccion-pdf.testing.
 
 ## 3. Trabajos abiertos
 
+### La cotización redondeaba la cantidad al abrirla — cerrado, y con guardia
+
+«Cant.» en el formulario de cotización era `<InputNumber min={1} precision={0}>`. No se podía
+teclear medio metro de arena, y la columna es `decimal(12,4)` con un DTO que valida cuatro
+decimales: **lo único que lo impedía era el widget**.
+
+Lo grave no era el bloqueo. Con una cantidad decimal ya guardada —las que entran desde el
+POS— el input **no mostraba lo que tenía**: `min={1}` subía 0.5 a 1, `precision={0}` pintaba 3
+teniendo 2.5, y al salir del campo disparaba `onChange` con el valor alterado. Bastaba pasar
+por la celda al editar cualquier otra cosa para reescribir la cantidad y guardarla mal. Pasó
+en producción: una cotización creada en el POS con 0.5 volvió con 1 tras abrirla.
+
+**Las cotizaciones de origen POS editadas antes del 07/09/2026 pueden tener cantidades
+redondeadas hacia arriba, y no hay forma de distinguirlas del código: no se guarda el valor
+anterior.** Si alguna cuadra mal, es el primer sitio donde mirar.
+
+`src/test/cantidad-decimales.test.ts` lee el código de los seis formularios de venta y falla
+si alguno vuelve a topar la cantidad al entero o a exigir una unidad mínima. Probado en rojo
+contra el código anterior. Los verticales (farmacia, taller, gimnasio, clínica) quedan fuera
+a propósito.
+
 ### El botón que no hace nada — cerrado, y con guardia
 
 En Recibos de Cobro, «Imprimir» llamaba a `imprimirElemento('hc-recibo-cobro-print')` y el
