@@ -485,6 +485,25 @@ fragmento que contiene solo `RD$ `. Está en `common/pdf/inspeccion-pdf.testing.
 
 ## 3. Trabajos abiertos
 
+### La caja cuadrada se pintaba de faltante — cerrado, y con guardia
+
+En el historial de cierres, la columna «Diferencia» mostraba `RD$0.00` **en rojo** en las
+cajas que cuadraban. La comparación era `v === 0` y `cierres_caja.diferencia` es
+`decimal(12,2)`: una columna decimal llega por TypeORM/pg como **cadena**, así que
+`"0.00" === 0` es `false` y el valor caía en la rama del faltante.
+
+Lo que hace difícil verlo: la comparación de al lado, `v > 0`, **sí funciona** —el `>`
+convierte la cadena y el `===` no—, así que el fallo se esconde entre dos líneas que parecen
+iguales. Y la firma del render declara `v: number`, de modo que `tsc` no tenía nada que decir.
+Hay 315 columnas declaradas así en el proyecto: **la firma no es una garantía, es un deseo**.
+
+De paso, el modal de cierre calculaba la diferencia restando dos importes en coma flotante y
+comparaba con `=== 0`. Cuando el arqueo cuadraba exacto la resta podía valer `1.8e-12` y el
+modal anunciaba «↓ Faltante RD$0.00» justo donde el cajero decide si cierra.
+
+`utils/diferenciaCaja.ts` es ahora la única que decide cuadrado/sobrante/faltante —seis sitios
+la usan, incluidos los dos tickets térmicos— con medio centavo de tolerancia y su prueba.
+
 ### La cotización redondeaba la cantidad al abrirla — cerrado, y con guardia
 
 «Cant.» en el formulario de cotización era `<InputNumber min={1} precision={0}>`. No se podía

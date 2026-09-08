@@ -23,6 +23,7 @@ import { exportarExcel } from '../../utils/exportExcel';
 import dayjs from 'dayjs';
 import { dRD, fecha, hora, hoyRD } from '../../utils/fechaRD';
 import { bloqueFacturasTermico, CSS_FACTURAS_TERMICO } from '../../utils/cierreFacturasTermico';
+import { estadoDiferencia } from '../../utils/diferenciaCaja';
 
 // ── Constantes de retiros ──────────────────────────────────────────────────
 const CATEGORIA_OPTIONS = [
@@ -95,6 +96,19 @@ function avatarColor(name: string) {
 export default function CajaPage() {
   const { token }  = theme.useToken();
   const isMobile   = useMobile();
+
+  /**
+   * Color de una diferencia de arqueo. Los cuatro sitios que la pintan usan
+   * este, para que no vuelva a pasar lo de la columna de la tabla: allí la
+   * comparación era `v === 0` contra la CADENA "0.00" que devuelve una columna
+   * decimal, así que una caja cuadrada se pintaba de rojo.
+   */
+  const colorDif = (valor: unknown) => {
+    const estado = estadoDiferencia(valor);
+    return estado === 'cuadrado' ? token.colorSuccess
+         : estado === 'sobrante' ? token.colorPrimary
+         :                         token.colorError;
+  };
   const [cerrarTarget, setCerrarTarget] = useState<{
     id: number; nombre: string;
     saldoEsperado: number; saldoApertura: number;
@@ -393,7 +407,13 @@ export default function CajaPage() {
 
     const totalIngresos = Number(r.ventasEfectivo ?? 0) + Number(r.ventasTarjeta ?? 0) + Number(r.ventasTransferencia ?? 0);
     const diferencia    = Number(r.diferencia ?? 0);
-    const difLabel = diferencia === 0 ? 'CUADRADO' : diferencia > 0 ? `+${f(diferencia)} SOBRANTE` : `${f(diferencia)} FALTANTE`;
+    // Misma decisión que la pantalla, del mismo sitio: un ticket que dice
+    // CUADRADO mientras la tabla pinta un faltante en rojo no lo aclara, lo
+    // enreda.
+    const estadoDif = estadoDiferencia(diferencia);
+    const difLabel = estadoDif === 'cuadrado' ? 'CUADRADO'
+                   : estadoDif === 'sobrante' ? `+${f(diferencia)} SOBRANTE`
+                   :                            `${f(diferencia)} FALTANTE`;
 
     // Desglose de billetes (si existe)
     const desgloseBilletes: Record<string,number> = r.desgloseBilletes ?? {};
@@ -528,7 +548,13 @@ ${line()}
 
     const totalIngresos = Number(r.ventasEfectivo ?? 0) + Number(r.ventasTarjeta ?? 0) + Number(r.ventasTransferencia ?? 0);
     const diferencia    = Number(r.diferencia ?? 0);
-    const difLabel = diferencia === 0 ? 'CUADRADO' : diferencia > 0 ? `+${f(diferencia)} SOBRANTE` : `${f(diferencia)} FALTANTE`;
+    // Misma decisión que la pantalla, del mismo sitio: un ticket que dice
+    // CUADRADO mientras la tabla pinta un faltante en rojo no lo aclara, lo
+    // enreda.
+    const estadoDif = estadoDiferencia(diferencia);
+    const difLabel = estadoDif === 'cuadrado' ? 'CUADRADO'
+                   : estadoDif === 'sobrante' ? `+${f(diferencia)} SOBRANTE`
+                   :                            `${f(diferencia)} FALTANTE`;
 
     // Sección detalle de facturas
     let seccionDetalle = '';
@@ -981,8 +1007,8 @@ ${line()}
                           <Text strong style={{ color: token.colorError }}>⚠ revisar</Text>
                         </Tooltip>
                       ) : (
-                        <Text strong style={{ color: v === 0 ? token.colorSuccess : v > 0 ? token.colorPrimary : token.colorError }}>
-                          {v > 0 ? '+' : ''}{fmt.money(v)}
+                        <Text strong style={{ color: colorDif(v) }}>
+                          {estadoDiferencia(v) === 'sobrante' ? '+' : ''}{fmt.money(v)}
                         </Text>
                       )},
                     { title: 'Trans.', dataIndex: 'cantidadTransacciones', width: 70, align: 'center' as const },
@@ -1278,13 +1304,12 @@ ${line()}
                     {fmt.money(Math.abs(Number(detalleCierre.saldoCierre ?? 0)))} — revisar
                   </Text>
                 ) : (
-                  <Text strong style={{
-                    color: Number(detalleCierre.diferencia) === 0 ? token.colorSuccess
-                         : Number(detalleCierre.diferencia) > 0 ? token.colorPrimary : token.colorError,
-                    fontSize: 16,
-                  }}>
-                    {Number(detalleCierre.diferencia) > 0 ? '+' : ''}{fmt.money(Number(detalleCierre.diferencia ?? 0))}
-                    {Number(detalleCierre.diferencia) === 0 ? ' ✅' : Number(detalleCierre.diferencia) > 0 ? ' ↑ sobrante' : ' ↓ faltante'}
+                  <Text strong style={{ color: colorDif(detalleCierre.diferencia), fontSize: 16 }}>
+                    {estadoDiferencia(detalleCierre.diferencia) === 'sobrante' ? '+' : ''}
+                    {fmt.money(Number(detalleCierre.diferencia ?? 0))}
+                    {estadoDiferencia(detalleCierre.diferencia) === 'cuadrado' ? ' ✅'
+                      : estadoDiferencia(detalleCierre.diferencia) === 'sobrante' ? ' ↑ sobrante'
+                      : ' ↓ faltante'}
                   </Text>
                 )}
               </Descriptions.Item>
@@ -1315,12 +1340,8 @@ ${line()}
                     <div>Contado: <Text strong>{fmt.money(Number(detalleCierre.contadoOriginal ?? 0))}</Text></div>
                     <div>
                       Diferencia:{' '}
-                      <Text strong style={{
-                        color: Number(detalleCierre.diferenciaOriginal) === 0 ? token.colorSuccess
-                             : Number(detalleCierre.diferenciaOriginal) > 0 ? token.colorPrimary
-                             : token.colorError,
-                      }}>
-                        {Number(detalleCierre.diferenciaOriginal) > 0 ? '+' : ''}
+                      <Text strong style={{ color: colorDif(detalleCierre.diferenciaOriginal) }}>
+                        {estadoDiferencia(detalleCierre.diferenciaOriginal) === 'sobrante' ? '+' : ''}
                         {fmt.money(Number(detalleCierre.diferenciaOriginal ?? 0))}
                       </Text>
                     </div>
@@ -1463,8 +1484,16 @@ ${line()}
 
           {/* Diferencia en tiempo real */}
           {saldoFisicoInput > 0 && (() => {
-            const difColor = diferenciaCierre === 0 ? token.colorSuccess : diferenciaCierre > 0 ? token.colorPrimary : token.colorError;
-            const difBg    = diferenciaCierre === 0 ? token.colorSuccessBg : diferenciaCierre > 0 ? token.colorPrimaryBg : token.colorErrorBg;
+            // `diferenciaCierre` es una resta de dos importes en coma flotante:
+            // cuando el arqueo cuadra exacto puede valer 1.8e-12, y `=== 0` daba
+            // false. El modal anunciaba «↓ Faltante RD$0.00» justo donde el
+            // cajero decide si cierra. estadoDiferencia trae el medio centavo de
+            // tolerancia.
+            const estadoDif = estadoDiferencia(diferenciaCierre);
+            const difColor = colorDif(diferenciaCierre);
+            const difBg    = estadoDif === 'cuadrado' ? token.colorSuccessBg
+                           : estadoDif === 'sobrante' ? token.colorPrimaryBg
+                           :                            token.colorErrorBg;
             return (
               <div style={{
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -1473,9 +1502,9 @@ ${line()}
               }}>
                 <span style={{ fontSize: 13, fontWeight: 500, color: token.colorText }}>Diferencia</span>
                 <span style={{ fontSize: 15, fontWeight: 700, color: difColor, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {diferenciaCierre === 0 ? '✅' : diferenciaCierre > 0 ? '↑' : '↓'}
-                  {' '}{fmt.money(Math.abs(diferenciaCierre))}
-                  {diferenciaCierre === 0 ? ' Cuadrado' : diferenciaCierre > 0 ? ' Sobrante' : ' Faltante'}
+                  {estadoDif === 'cuadrado' ? '✅' : estadoDif === 'sobrante' ? '↑' : '↓'}
+                  {' '}{fmt.money(estadoDif === 'cuadrado' ? 0 : Math.abs(diferenciaCierre))}
+                  {estadoDif === 'cuadrado' ? ' Cuadrado' : estadoDif === 'sobrante' ? ' Sobrante' : ' Faltante'}
                 </span>
               </div>
             );
