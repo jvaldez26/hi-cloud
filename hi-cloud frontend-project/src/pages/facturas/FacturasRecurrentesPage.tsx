@@ -994,7 +994,10 @@ export default function FacturasRecurrentesPage() {
                 />
               </Col>
               <Col xs={8} sm={3}>
-                <InputNumber placeholder="Cant." min={1} value={l.cantidad} style={{ width:'100%' }}
+                {/* min={0.0001}, como en factura y cotización: el DTO de la
+                    recurrente acepta cuatro decimales y media unidad de algo se
+                    factura igual todos los meses. */}
+                <InputNumber placeholder="Cant." min={0.0001} value={l.cantidad} style={{ width:'100%' }}
                   onChange={v => { const u=[...lineas]; u[i].cantidad=Number(v)||1; setLineas(u); }} />
               </Col>
               <Col xs={8} sm={5}>
