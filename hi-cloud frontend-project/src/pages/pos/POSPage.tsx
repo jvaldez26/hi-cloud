@@ -2484,7 +2484,18 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
       let ecfResult: any = null;
       let ecfError: string | null = null;
       try {
-        const ecfRes = await api.post(`/ecf/nota-credito/${nc.id}/emitir`, { codigoModificacion: codigoMod });
+        // Cuerpo VACÍO. `codigoModificacion` no va aquí: el controller lo lee de
+        // la propia nota, donde se fijó al crearla, para que no se pueda colar
+        // uno distinto al que ya se validó. Al sacarlo del DTO
+        // —EmitirEcfNotaCreditoDto solo admite ncfModificado y
+        // fechaNcfModificado— el ValidationPipe global, con
+        // forbidNonWhitelisted, empezó a devolver 400 «property
+        // codigoModificacion should not exist» a quien lo siguiera mandando.
+        //
+        // El escritorio se actualizó; este llamado del POS se quedó atrás. Y
+        // como el error caía en un `catch` vacío, TODAS las NC emitidas desde el
+        // POS se quedaron sin su e-CF E34 sin que nadie lo viera.
+        const ecfRes = await api.post(`/ecf/nota-credito/${nc.id}/emitir`, {});
         ecfResult = ecfRes.data?.data ?? ecfRes.data;
       } catch (e: any) {
         ecfError = e?.response?.data?.message
