@@ -46,16 +46,27 @@ export class RolesGuard implements CanActivate {
     }
 
     // B-03: verificar membresía activa en la empresa del JWT (con cache 30s)
+    //
+    // El rol contra el que se autoriza es el de `usuario_empresa` para ESA
+    // empresa, no el global de `users`: `users.role` solo se mantiene
+    // sincronizado con la empresa PRINCIPAL del usuario (ver
+    // `cambiarRolUsuario` en multi-empresa.service.ts), así que un usuario
+    // admin en una empresa secundaria y contador en la principal quedaba
+    // bloqueado (403 "Forbidden resource") en cualquier mutación de esa
+    // empresa secundaria — y, al revés, un admin global solo viewer en una
+    // empresa secundaria pasaba como admin ahí. `users.role` sigue siendo el
+    // que decide fuera de un contexto de empresa (rutas de super admin).
     const empresaId = (user as any).empresaId as number | null | undefined;
+    let effRole = dbRole;
     if (empresaId) {
-      const activo = await this.checkMembresia(user.id, empresaId);
-      if (!activo) throw new UnauthorizedException('Sin acceso a esta empresa');
+      const membresia = await this.checkMembresia(user.id, empresaId);
+      if (!membresia.activo) throw new UnauthorizedException('Sin acceso a esta empresa');
+      if (membresia.rol) effRole = membresia.rol;
     }
 
-    // Usar el rol de BD (fuente de verdad), no el del JWT
     // super_admin tiene acceso irrestricto — pasa cualquier @Roles()
     if (dbRole === UserRole.SUPER_ADMIN) return true;
-    return requiredRoles.some((role) => dbRole === role);
+    return requiredRoles.some((role) => effRole === role);
   }
 
   private async getCachedRoleInfo(userId: number): Promise<{ version: number; role: string }> {
@@ -77,19 +88,21 @@ export class RolesGuard implements CanActivate {
     return data;
   }
 
-  private async checkMembresia(userId: number, empresaId: number): Promise<boolean> {
-    // B-03: validar que el usuario sigue siendo miembro activo de la empresa
+  private async checkMembresia(userId: number, empresaId: number): Promise<{ activo: boolean; rol?: string }> {
+    // B-03: validar que el usuario sigue siendo miembro activo de la empresa,
+    // y de paso traer su rol EN ESA EMPRESA — es lo que autoriza el @Roles()
+    // de cualquier ruta con contexto de empresa (ver canActivate).
     const cacheKey = membresiaCacheKey(userId, empresaId);
-    const cached = (await this.cacheManager.get(cacheKey)) as boolean | undefined | null;
+    const cached = (await this.cacheManager.get(cacheKey)) as { activo: boolean; rol?: string } | undefined | null;
     if (cached !== undefined && cached !== null) return cached;
 
-    const rows = await this.ds.query(
-      `SELECT 1 FROM usuario_empresa WHERE "userId" = $1 AND "empresaId" = $2 AND "isActive" = true LIMIT 1`,
+    const rows = await this.ds.query<{ rol: string }[]>(
+      `SELECT rol FROM usuario_empresa WHERE "userId" = $1 AND "empresaId" = $2 AND "isActive" = true LIMIT 1`,
       [userId, empresaId],
     );
-    const activo = rows.length > 0;
-    await this.cacheManager.set(cacheKey, activo, CACHE_TTL_MS);
-    return activo;
+    const data = rows.length > 0 ? { activo: true, rol: rows[0].rol } : { activo: false };
+    await this.cacheManager.set(cacheKey, data, CACHE_TTL_MS);
+    return data;
   }
 }
 

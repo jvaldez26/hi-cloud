@@ -402,6 +402,11 @@ export class MultiEmpresaService {
 
     await this.usuarioEmpresaRepo.update(asignacion.id, { rol: rol as UserRole });
 
+    // RolesGuard autoriza contra ESTE rol (usuario_empresa) para cualquier
+    // ruta con contexto de esta empresa — invalidar su cache para que el
+    // cambio surta efecto de inmediato, no en ≤30s (TTL de B-03).
+    await invalidateMembresiaCache(this.cacheManager, userId, empresaId);
+
     // Sincronizar el rol en users si esta empresa es la principal del usuario
     if (asignacion.isPrincipal) {
       // S-31: incrementar roleVersion invalida los JWT emitidos con el rol anterior;
