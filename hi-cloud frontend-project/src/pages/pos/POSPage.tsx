@@ -8504,7 +8504,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
       { label: 'Folio',    key: 'folio',    render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span> },
       { label: 'Fecha',    key: 'fecha',    render: (v) => <span style={{ fontSize: 11, color: C.textSub }}>{fmt.date(v)}</span> },
       { label: 'Cliente',  key: 'cliente',  render: (_,r) => r.cliente?.nombre ?? '—' },
-      { label: 'Total',    key: 'total',    render: (v) => <span style={{ fontWeight: 700, color: C.green }}>{fmt.money(v)}</span> },
+      { label: 'Total',    key: 'total',    render: (v,r) => <span style={{ fontWeight: 700, color: C.green }}>{fmt.moneyM(v, r.moneda)}</span> },
       { label: 'Pago',     key: 'formasPago', render: (v: any, r: any) => {
         const TIPO_LABEL: Record<number, string> = { 1: 'Efectivo', 2: 'Transfer.', 3: 'Tarjeta', 4: 'Crédito', 5: 'Permuta', 6: 'N.Crédito' };
         if (v?.length > 1) return <span style={{ fontSize: 10, fontWeight: 600, color: C.blue }}>Mixto</span>;
