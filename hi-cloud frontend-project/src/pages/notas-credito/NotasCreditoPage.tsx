@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import { EmailConCopiaModal } from '../../components/ui/EmailConCopiaModal';
 import { TableActions } from '../../components/ui/TableActions';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
@@ -20,6 +20,7 @@ import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import api from '../../api/client';
+import { useSearchParams } from 'react-router-dom';
 import { ecfApi } from '../../api/ecf.api';
 import EcfResultModal from '../../components/ui/EcfResultModal';
 import EcfBadge, { type EstadoEcf } from '../../components/ui/EcfBadge';
@@ -311,6 +312,36 @@ export default function NotasCreditoPage() {
     if (facturaPresel) handleSeleccionarFactura(facturaPresel);
     setModalCrear(true);
   };
+
+  /**
+   * Entrada desde la factura: `/notas-credito?facturaId=182`.
+   *
+   * La pantalla de la factura ya no ofrece «Cancelar» cuando hay un e-CF —el
+   * backend lo rechaza y hay que emitir una E34—, así que manda aquí con la
+   * factura puesta. Sin esto, el usuario aterrizaba en una lista y tenía que
+   * buscar a mano la factura de la que venía.
+   *
+   * El parámetro se borra al abrir: si no, cerrar el modal y recargar lo volvía
+   * a abrir, y no se puede salir de la pantalla.
+   */
+  const [params, setParams] = useSearchParams();
+  const precargada = useRef(false);
+  useEffect(() => {
+    const facturaId = params.get('facturaId');
+    if (!facturaId || precargada.current) return;
+    precargada.current = true;
+    api.get(`/facturas/${facturaId}`)
+      .then(r => {
+        const f = r.data?.data ?? r.data;
+        if (f?.id) abrirDesdeFactura(f);
+        else message.error('No se encontró la factura de origen');
+      })
+      .catch(() => message.error('No se pudo cargar la factura de origen'))
+      .finally(() => {
+        params.delete('facturaId');
+        setParams(params, { replace: true });
+      });
+  }, [params]);
 
 
   const COLS_DEF = [

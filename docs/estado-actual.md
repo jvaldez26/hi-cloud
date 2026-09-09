@@ -485,6 +485,26 @@ fragmento que contiene solo `RD$ `. Está en `common/pdf/inspeccion-pdf.testing.
 
 ## 3. Trabajos abiertos
 
+### «Cancelar» sobre una factura ya aceptada por la DGII — cerrado, y con guardia
+
+El detalle de la factura pintaba un botón rojo «✗ Cancelar» en una E32 **ACEPTADA POR LA
+DGII**. No había riesgo fiscal: `cambiarEstado` corta en seco con cualquier `ecfId`, en
+cualquier estado DGII, porque anular un comprobante emitido exige una Nota de Crédito (E34).
+El botón simplemente **no podía funcionar nunca**.
+
+Lo que lo delata como descuido: `FacturasPage` **ya filtraba** esa opción, con su comentario
+explicando que es «solo para no ofrecer una opción que el servidor va a rechazar». El detalle
+se quedó sin el filtro. Un mismo botón en dos pantallas, y una sola acertando.
+
+Ahora el detalle filtra igual y, en su lugar, ofrece **«Nota de Crédito»**, que lleva a
+`/notas-credito?facturaId=N` con la factura precargada —`abrirDesdeFactura` ya existía y no
+tenía quien lo llamara desde fuera—. Antes de esto no había ningún camino desde la factura
+hacia su NC: había que aterrizar en la lista y buscarla a mano.
+
+`src/test/cancelar-factura-con-ecf.test.ts` exige que toda pantalla que calcule transiciones
+con 'cancelada' entre ellas consulte el e-CF en ese cálculo. Probado en rojo contra el código
+anterior.
+
 ### La caja cuadrada se pintaba de faltante — cerrado, y con guardia
 
 En el historial de cierres, la columna «Diferencia» mostraba `RD$0.00` **en rojo** en las
