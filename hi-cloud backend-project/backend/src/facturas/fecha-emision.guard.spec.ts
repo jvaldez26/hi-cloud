@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { FacturasService } from './facturas.service';
 import { FacturaEstado } from './entities/factura.entity';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 jest.mock('../common/observability/sentry', () => ({
   reportServiceError: jest.fn(),
@@ -24,6 +25,26 @@ jest.mock('../common/observability/sentry', () => ({
 
 const EMPRESA = 61;
 const ALTO = Symbol('alto-tras-el-guard-de-fecha');
+
+/**
+ * `offsetDias` días desde "hoy" anclado al mismo huso que usa la función real
+ * (`fechaHoyRD` → `diferenciaDiasRD`, ambas en `fecha-local.util.ts`), no al
+ * reloj/zona horaria de la máquina que corre el test.
+ *
+ * FALLO REAL que esto corrige: `new Date(); setDate(getDate() - 31)` usa el
+ * "hoy" de la máquina (CI corre en UTC), mientras el guard compara contra
+ * `fechaHoyRD()` (huso RD, UTC-4). Entre las 8pm y medianoche hora RD
+ * (00:00–03:59 UTC) esos dos "hoy" caen en días de calendario distintos, y
+ * el caso límite de 31 días se convertía en 30 — exactamente el corte que
+ * el test "justo en el límite" pone a prueba. Fallaba en CI (corre en UTC)
+ * y localmente según la hora del día, sin que el guard tuviera ningún bug.
+ */
+function diasDesdeHoyRD(offsetDias: number): string {
+  const [y, m, d] = fechaHoyRD().split('-').map(Number);
+  const fecha = new Date(Date.UTC(y, m - 1, d, 12));
+  fecha.setUTCDate(fecha.getUTCDate() + offsetDias);
+  return fecha.toISOString().slice(0, 10);
+}
 
 const repoCaptor = () => ({
   update:  jest.fn().mockResolvedValue({ affected: 1 }),
@@ -63,22 +84,15 @@ describe('cambiarEstado — la fecha de la factura no puede estar a más de 30 d
   });
 
   it('hoy mismo no bloquea — sigue de largo hasta el siguiente paso', async () => {
-    await expect(emitirConFecha(new Date())).rejects.toBe(ALTO);
+    await expect(emitirConFecha(diasDesdeHoyRD(0))).rejects.toBe(ALTO);
   });
 
   it('dentro de los 30 días (pasado o futuro) no bloquea', async () => {
-    const hace20Dias = new Date();
-    hace20Dias.setDate(hace20Dias.getDate() - 20);
-    await expect(emitirConFecha(hace20Dias)).rejects.toBe(ALTO);
-
-    const en20Dias = new Date();
-    en20Dias.setDate(en20Dias.getDate() + 20);
-    await expect(emitirConFecha(en20Dias)).rejects.toBe(ALTO);
+    await expect(emitirConFecha(diasDesdeHoyRD(-20))).rejects.toBe(ALTO);
+    await expect(emitirConFecha(diasDesdeHoyRD(20))).rejects.toBe(ALTO);
   });
 
   it('justo en el límite de 31 días sí bloquea — el corte está en >30, no en ≥30', async () => {
-    const hace31Dias = new Date();
-    hace31Dias.setDate(hace31Dias.getDate() - 31);
-    await expect(emitirConFecha(hace31Dias)).rejects.toThrow(BadRequestException);
+    await expect(emitirConFecha(diasDesdeHoyRD(-31))).rejects.toThrow(BadRequestException);
   });
 });
