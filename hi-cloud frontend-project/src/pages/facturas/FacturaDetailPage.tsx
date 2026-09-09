@@ -4,7 +4,7 @@ import { Button, Card, Descriptions, Table, Tag, Row, Col, Typography,
          Statistic, Space, Spin, Steps, message, Popconfirm, Modal, Input, Tooltip, theme, Upload, Alert, Skeleton } from 'antd';
 import { SkeletonTabla } from '../../components/ui/SkeletonTabla';
 import { ArrowLeftOutlined, SendOutlined, MailOutlined, FilePdfOutlined, EyeOutlined,
-         PaperClipOutlined, UploadOutlined, LinkOutlined } from '@ant-design/icons';
+         PaperClipOutlined, UploadOutlined, LinkOutlined, AuditOutlined } from '@ant-design/icons';
 import WhatsAppButton from '../../components/ui/WhatsAppButton';
 import EcfSeccion from '../../components/ui/EcfSeccion';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -110,7 +110,20 @@ export default function FacturaDetailPage() {
 
   const estado   = factura.estado as FacturaEstado;
   const pasoActual = estado === 'cancelada' ? -1 : ESTADOS.indexOf(estado);
-  const siguientes = TRANSICIONES[estado];
+
+  /**
+   * Con e-CF asociado —en CUALQUIER estado DGII: pendiente, aceptado, observado,
+   * contingencia, rechazado— no se cancela desde aquí. El backend lo rechaza en
+   * `cambiarEstado`: el comprobante ya salió y anularlo fiscalmente pide una
+   * Nota de Crédito (E34).
+   *
+   * El listado de facturas ya filtraba esto; esta pantalla se había quedado sin
+   * el filtro y ofrecía un botón rojo que solo podía devolver un error. En su
+   * lugar va el botón que lleva a lo que de verdad hay que hacer.
+   */
+  const tieneEcf   = !!(factura as any).ecf;
+  const siguientes = TRANSICIONES[estado].filter(s => s !== 'cancelada' || !tieneEcf);
+  const puedeAnularConNC = tieneEcf && estado !== 'cancelada';
 
   const detallesCols = [
     { title: '#',          key: 'idx',           width: 40, render: (_: any, __: any, i: number) => i + 1 },
@@ -229,6 +242,15 @@ export default function FacturaDetailPage() {
                 </Button>
               </Popconfirm>
             ))}
+            {puedeAnularConNC && (
+              <Tooltip title="El e-CF ya salió a la DGII: anular esta factura requiere una Nota de Crédito (E34), no un cambio de estado">
+                <Button
+                  icon={<AuditOutlined />}
+                  onClick={() => navigate(`/notas-credito?facturaId=${factura.id}`)}>
+                  Nota de Crédito
+                </Button>
+              </Tooltip>
+            )}
           </Space>
         </Col>
       </Row>
