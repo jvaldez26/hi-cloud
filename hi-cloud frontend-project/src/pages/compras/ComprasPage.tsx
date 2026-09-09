@@ -11,7 +11,7 @@ import {
 import {
   PlusOutlined, EyeOutlined, DownOutlined, SearchOutlined,
   FileExcelOutlined, FilterOutlined, MailOutlined, PrinterOutlined,
-  LoadingOutlined, AuditOutlined, CopyOutlined, CheckCircleOutlined,
+  LoadingOutlined, AuditOutlined, CopyOutlined, CheckCircleOutlined, EditOutlined,
 } from '@ant-design/icons';
 import { SolicitarAprobacionModal } from '../../components/ui/SolicitarAprobacionModal';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -275,6 +275,12 @@ export default function ComprasPage() {
           onClick: () => estadoMut.mutate({ id: r.id, estado: s }),
         }));
         const menuItems2 = [
+          // «Editar» solo en borrador, y encabezando el menú: es lo primero que
+          // se busca en una orden a medio hacer. En cualquier otro estado el
+          // backend lo rechaza, así que no se ofrece.
+          ...(r.estado === 'borrador' ? [
+            { key: 'editar', label: 'Editar compra', icon: <EditOutlined />, onClick: () => navigate(`/compras/${r.id}/editar`) },
+          ] : []),
           { key: 'pdf', label: pdfPending === r.id ? 'Generando...' : 'Imprimir', icon: pdfPending === r.id ? <LoadingOutlined /> : <PrinterOutlined />, disabled: pdfPending === r.id, onClick: () => imprimirPDF(r) },
           { key: 'email', label: 'Enviar email al proveedor', icon: <MailOutlined />, onClick: () => { setEmailCompra(r); } },
           { key: 'duplicar', label: 'Duplicar compra', icon: <CopyOutlined />, onClick: () => duplicarMut.mutate(r.id) },

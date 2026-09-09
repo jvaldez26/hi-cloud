@@ -31,9 +31,12 @@ const fmtMon = (v: number, moneda = 'DOP') => {
 interface Props {
   onSuccess?: (orden: any) => void;
   onCancel?: () => void;
+  /** Presente = modo edición. Solo borradores; el backend lo vuelve a exigir. */
+  compraId?: number;
 }
 
-export default function CompraFormInner({ onSuccess, onCancel }: Props) {
+export default function CompraFormInner({ onSuccess, onCancel, compraId }: Props) {
+  const esEdicion = compraId != null;
   const [form] = Form.useForm();
   const { token } = theme.useToken();
   const sucursalActual = useAuthStore(s => s.sucursalActual);
@@ -87,13 +90,74 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
   }, [sucursales, sucursalActual]);
 
   const createMut = useMutation({
-    mutationFn: comprasApi.create,
+    mutationFn: (body: any) => esEdicion
+      ? comprasApi.update(compraId!, body)
+      : comprasApi.create(body),
     onSuccess: (data: any) => {
       qc.invalidateQueries({ queryKey: ['compras'] });
+      if (esEdicion) qc.invalidateQueries({ queryKey: ['compra', compraId] });
       onSuccess?.(data?.data ?? data);
     },
-    onError: (e: any) => message.error(e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error al crear compra'),
+    onError: (e: any) => message.error(
+      (e as any)?.friendlyMessage ?? e?.response?.data?.message ?? e?.response?.data?.errors?.[0]
+        ?? `Error al ${esEdicion ? 'guardar' : 'crear'} la compra`,
+      8,
+    ),
   });
+
+  /**
+   * Modo edición: traer el borrador y volcarlo en el formulario.
+   *
+   * `almacenId` se toma del que tiene guardado la compra, no del localStorage:
+   * el borrador pudo hacerse para otro almacén y no puede cambiar de sitio solo
+   * porque lo abra alguien situado en otro.
+   */
+  const { data: compraEdit, isLoading: cargandoCompra } = useQuery({
+    queryKey: ['compra', compraId],
+    queryFn:  () => comprasApi.getOne(compraId!),
+    enabled:  esEdicion,
+  });
+
+  useEffect(() => {
+    if (!compraEdit) return;
+    const c = compraEdit as any;
+    form.setFieldsValue({
+      proveedorId:            c.proveedorId,
+      fecha:                  dayjs(c.fecha),
+      numeroFacturaProveedor: c.numeroFacturaProveedor,
+      notas:                  c.notas,
+      sucursalId:             c.sucursalId,
+    });
+    setProveedorSelId(c.proveedorId ?? null);
+    setTipoPago(c.tipoPago === 'credito' ? 'credito' : 'contado');
+    setDiasCredito(Number(c.diasCredito ?? 30));
+    setMoneda((c.moneda ?? 'DOP') as 'DOP' | 'USD' | 'EUR');
+    setTipoCambio(Number(c.tipoCambio ?? 1));
+    setAlmacenId(c.almacenId ?? undefined);
+    setRetieneItbis(!!c.retieneItbis);
+    setPctItbis(Number(c.porcentajeRetencionItbis ?? 30));
+    setRetieneIsr(!!c.retieneIsr);
+    setPctIsr(Number(c.porcentajeRetencionIsr ?? 10));
+
+    const dets = (c.detalles ?? []) as any[];
+    if (dets.length) {
+      setLineas(dets.map((d, i) => ({
+        key:                String(i + 1),
+        productoId:         d.productoId,
+        descripcion:        d.descripcion,
+        cantidad:           Number(d.cantidad),
+        cantidadBonificada: Number(d.cantidadBonificada ?? 0),
+        precioUnitario:     Number(d.precioUnitario),
+        porcentajeItbis:    Number(d.porcentajeItbis ?? 18),
+      })));
+      // Sin esto el Select de cada línea sale vacío: los productos del borrador
+      // no están en los resultados de la búsqueda, que arranca sin texto.
+      setSelectedProds(new Map(dets.map(d => [
+        d.productoId,
+        d.producto?.codigo ? `${d.producto.codigo} — ${d.producto.nombre}` : (d.descripcion ?? ''),
+      ])));
+    }
+  }, [compraEdit, form]);
 
   const crearProdMut = useMutation({
     mutationFn: (body: any) => api.post('/productos', body).then((r: any) => r.data?.data ?? r.data),
@@ -538,8 +602,10 @@ export default function CompraFormInner({ onSuccess, onCancel }: Props) {
                   </Col>
                 )}
                 <Col span={onCancel ? 16 : 24}>
-                  <Button type="primary" htmlType="submit" block size="large" loading={createMut.isPending}>
-                    Crear Orden de Compra
+                  <Button type="primary" htmlType="submit" block size="large"
+                    loading={createMut.isPending || cargandoCompra}
+                    disabled={cargandoCompra}>
+                    {esEdicion ? 'Guardar cambios' : 'Crear Orden de Compra'}
                   </Button>
                 </Col>
               </Row>

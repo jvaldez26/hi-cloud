@@ -99,6 +99,23 @@ export class ComprasController {
     return this.comprasService.findOne(id);
   }
 
+  // Va ANTES de `:id/estado` y `:id/recibir` solo por orden de lectura: son
+  // rutas distintas y no compiten entre sí.
+  @Patch(':id')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({
+    summary: 'Editar compra en borrador — actualiza cabecera y reemplaza líneas',
+    description:
+      'Solo en estado borrador, y solo si no hay una solicitud de aprobación pendiente ' +
+      '(el aprobador vería un monto distinto al que autoriza).',
+  })
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreateCompraDto,
+  ) {
+    return this.comprasService.update(id, dto);
+  }
+
   @Patch(':id/estado')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({

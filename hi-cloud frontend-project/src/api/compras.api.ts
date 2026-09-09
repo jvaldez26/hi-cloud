@@ -39,6 +39,10 @@ export const comprasApi = {
   create: (body: CompraPayload) =>
     api.post<ApiResponse<Compra>>('/compras', body).then(r => r.data.data),
 
+  /** Solo en borrador, y solo sin solicitud de aprobación pendiente. */
+  update: (id: number, body: CompraPayload) =>
+    api.patch<ApiResponse<Compra>>(`/compras/${id}`, body).then(r => r.data.data),
+
   cambiarEstado: (id: number, estado: CompraEstado) =>
     api.patch(`/compras/${id}/estado`, { estado }).then(r => r.data),
 

@@ -759,6 +759,7 @@ export default function App() {
                     {/* ── Compras ── */}
                     <Route path="/compras"            element={<ComprasPage />} />
                     <Route path="/compras/nueva"      element={<CompraFormPage />} />
+                    <Route path="/compras/:id/editar" element={<CompraFormPage />} />
                     <Route path="/compras/:id"        element={<CompraDetailPage />} />
                     <Route path="/proveedores"        element={<ProveedoresPage />} />
                     <Route path="/reposicion-proveedor" element={<ReposicionProveedorPage />} />
