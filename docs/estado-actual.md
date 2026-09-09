@@ -485,6 +485,42 @@ fragmento que contiene solo `RD$ `. Está en `common/pdf/inspeccion-pdf.testing.
 
 ## 3. Trabajos abiertos
 
+### Una orden de compra en borrador no se podía editar — cerrado, y con guardia
+
+No era que faltara el botón: **no existía en ninguna capa**. Sin `PATCH /compras/:id`, sin
+`update()` en el servicio, sin pantalla. El único modo de corregir un borrador equivocado era
+eliminarlo y rehacerlo, y «Duplicar compra» no ayudaba — crea otro borrador que tampoco se
+puede editar.
+
+Asimetría, no criterio: facturas, cotizaciones, pre-facturas y pro-formas ya tenían su
+edición de borrador. Compras se quedó fuera y nadie lo notó, porque un módulo sin endpoint no
+falla: simplemente no está.
+
+Dos cosas comprobadas antes de escribir el endpoint:
+
+1. **Un BORRADOR es inerte.** `create()` no toca inventario, ni AVCO, ni `producto_proveedor`:
+   todo eso vive en `cambiarEstado(RECIBIDA)` y en `recibir()`. Reemplazar sus líneas no deja
+   nada que deshacer.
+2. **La aprobación guarda el monto del momento** en `aprobaciones.monto`. Editar con una
+   solicitud pendiente dejaría al aprobador autorizando otra cifra → con una pendiente **no se
+   edita**, y el error lo dice.
+
+La aritmética de líneas y totales se extrajo a `calcularDetalles()` y la comparten `create` y
+`update`: duplicarla habría puesto el `costoUnitarioReal` —lo que alimenta el AVCO— en dos
+sitios que luego se separan.
+
+`src/compras/editar-borrador.spec.ts` vigila las dos mitades en las cinco familias de
+documentos: que exista el `PATCH :id` y que el servicio lo limite a su estado editable.
+
+#### Hallazgos abiertos que salieron de esa prueba
+
+- **`pro-forma.actualizar()` NO tiene guard de estado.** Su `@ApiOperation` promete «solo
+  ACTIVA» y el servicio no mira el estado en ningún momento: una pro-forma convertida,
+  cancelada o vencida se puede editar. Es el bug **inverso** al de compras y sigue abierto —
+  por eso `pro-forma` está excluida de la mitad del guard en esa prueba.
+- **Pre-facturas y pro-formas tienen `PATCH /:id` en el backend pero ninguna ruta `/editar`
+  en el frontend.** Se pueden editar por API y no por pantalla.
+
 ### «Error al sincronizar CxC» sin decir cuál — cerrado, y con guardia
 
 El botón Sincronizar de Cuentas por Cobrar fallaba y la pantalla solo decía «Error al

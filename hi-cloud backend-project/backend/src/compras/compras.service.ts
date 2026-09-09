@@ -51,9 +51,20 @@ export class ComprasService {
     return generarNumeroSecuencial(this.ds, 'compras', 'folio', '^COM-[0-9]+$', prefijo, 1, empresaId, 'COM');
   }
 
-  async create(dto: CreateCompraDto, usuario: User) {
-    await this.proveedoresService.findOne(dto.proveedorId);
-
+  /**
+   * Líneas y totales de una compra a partir del DTO.
+   *
+   * Vive aparte porque la usan `create` y `update`. Duplicarla sería repetir la
+   * aritmética fiscal —subtotal sobre lo facturado, ITBIS por línea y
+   * `costoUnitarioReal`, que es lo que alimenta el AVCO al recibir— en dos
+   * sitios que luego se separan. Es exactamente la deuda que este repo ya paga
+   * en otros módulos.
+   */
+  private async calcularDetalles(dto: CreateCompraDto): Promise<{
+    detallesData: Partial<CompraDetalle>[];
+    subtotalCompra: number;
+    itbisCompra: number;
+  }> {
     const detallesData: Partial<CompraDetalle>[] = [];
     let subtotalCompra = 0;
     let itbisCompra = 0;
@@ -103,6 +114,14 @@ export class ComprasService {
         costoUnitarioReal,
       });
     }
+
+    return { detallesData, subtotalCompra, itbisCompra };
+  }
+
+  async create(dto: CreateCompraDto, usuario: User) {
+    await this.proveedoresService.findOne(dto.proveedorId);
+
+    const { detallesData, subtotalCompra, itbisCompra } = await this.calcularDetalles(dto);
 
     const folio      = await this.generarFolio();
     const empresaId  = this.tenantService.getEmpresaId();
@@ -239,6 +258,112 @@ export class ComprasService {
     });
     if (!compra) throw new NotFoundException(`Compra #${id} no encontrada`);
     return compra;
+  }
+
+  /**
+   * Editar una orden de compra en BORRADOR — cabecera y líneas.
+   *
+   * No existía. Facturas y Cotizaciones sí tienen su edición de borrador con
+   * este mismo guard; Compras se quedó fuera, y el único modo de corregir un
+   * borrador equivocado era eliminarlo y rehacerlo desde cero. «Duplicar» no
+   * servía: crea otro borrador que tampoco se puede editar.
+   *
+   * Dos cosas comprobadas antes de escribir esto:
+   *
+   *   1. Un BORRADOR es INERTE. `create` no toca inventario, ni AVCO, ni
+   *      `producto_proveedor`: todo eso vive en `cambiarEstado(RECIBIDA)` y en
+   *      `recibir`. Por eso reemplazar sus líneas no deja nada que deshacer.
+   *   2. La aprobación guarda el MONTO del momento en `aprobaciones.monto`. Si
+   *      se editara con una solicitud pendiente, el aprobador estaría mirando
+   *      una cifra distinta de la que autoriza. Con una pendiente no se edita.
+   */
+  async update(id: number, dto: CreateCompraDto) {
+    const compra = await this.findOne(id);
+
+    if (compra.estado !== CompraEstado.BORRADOR) {
+      throw new BadRequestException(
+        `Solo se pueden editar compras en estado borrador. Esta está "${compra.estado}".`,
+      );
+    }
+
+    const empresaId = this.tenantService.getEmpresaId();
+
+    const [aprobPendiente] = await this.ds.query<{ id: number }[]>(
+      `SELECT id FROM aprobaciones
+        WHERE "empresaId" = $1 AND tipo = 'compra' AND "entidadId" = $2
+          AND estado = 'pendiente' AND "isActive" = true
+        LIMIT 1`,
+      [empresaId, id],
+    );
+    if (aprobPendiente) {
+      throw new BadRequestException(
+        'Esta compra tiene una solicitud de aprobación pendiente. ' +
+        'El aprobador vería un monto distinto al que autoriza: cancela la solicitud antes de editarla.',
+      );
+    }
+
+    await this.proveedoresService.findOne(dto.proveedorId);
+
+    const { detallesData, subtotalCompra, itbisCompra } = await this.calcularDetalles(dto);
+
+    const tipoPago    = dto.tipoPago ?? 'credito';
+    const diasCredito = dto.diasCredito ?? 30;
+    let fechaVencimiento: Date | null = null;
+    if (tipoPago === 'credito') {
+      fechaVencimiento = new Date(dto.fecha);
+      fechaVencimiento.setDate(fechaVencimiento.getDate() + diasCredito);
+    }
+
+    const retieneItbis        = dto.retieneItbis ?? false;
+    const pctItbis            = dto.porcentajeRetencionItbis ?? 30;
+    const retieneIsr          = dto.retieneIsr ?? false;
+    const pctIsr              = dto.porcentajeRetencionIsr ?? 10;
+    const montoItbisTotal     = Number(itbisCompra.toFixed(2));
+    const montoRetencionItbis = retieneItbis ? Number((montoItbisTotal * pctItbis / 100).toFixed(2)) : 0;
+    const montoRetencionIsr   = retieneIsr   ? Number((subtotalCompra * pctIsr / 100).toFixed(2)) : 0;
+    const totalBruto          = Number((subtotalCompra + itbisCompra).toFixed(2));
+    const netoPagar           = Number((totalBruto - montoRetencionItbis - montoRetencionIsr).toFixed(2));
+
+    // El folio, el usuario que la creó y la empresa NO se tocan: identifican el
+    // documento. Las líneas se reemplazan enteras, como en la edición de
+    // facturas — casar línea a línea con lo que hay no aporta nada aquí y
+    // dejaría huérfanos los detalles que el formulario borró.
+    await this.ds.transaction(async (em) => {
+      await em.getRepository(Compra).update(
+        { id, empresaId },
+        {
+          fecha:                  new Date(dto.fecha),
+          proveedorId:            dto.proveedorId,
+          notas:                  dto.notas,
+          numeroFacturaProveedor: dto.numeroFacturaProveedor,
+          subtotal:               Number(subtotalCompra.toFixed(2)),
+          itbis:                  montoItbisTotal,
+          total:                  totalBruto,
+          tipoPago,
+          diasCredito,
+          fechaVencimiento:       fechaVencimiento ?? undefined,
+          moneda:                 dto.moneda ?? 'DOP',
+          tipoCambio:             dto.tipoCambio ?? 1,
+          retieneItbis,
+          porcentajeRetencionItbis: pctItbis,
+          montoRetencionItbis,
+          retieneIsr,
+          porcentajeRetencionIsr: pctIsr,
+          montoRetencionIsr,
+          netoPagar,
+          almacenId:              dto.almacenId ?? (compra as any).almacenId,
+        } as any,
+      );
+
+      const detalleRepo = em.getRepository(CompraDetalle);
+      await detalleRepo.delete({ compraId: id });
+      await detalleRepo.save(
+        detalleRepo.create(detallesData.map(d => ({ ...d, compraId: id }))),
+      );
+    });
+
+    this.realtimeService.notify(empresaId, 'compra', 'updated', id);
+    return this.findOne(id);
   }
 
   async cambiarEstado(id: number, estado: CompraEstado, notas?: string) {
