@@ -2469,18 +2469,46 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
       // Paso 2: Emitir NC (BORRADOR → EMITIDA); código 1 cancela la factura original
       await api.patch(`/notas-credito/${nc.id}/emitir`, { codigoModificacion: codigoMod });
 
-      // Paso 3: Generar e-CF E34 (no crítico — si no hay config ECF se omite silenciosamente)
+      // Paso 3: Generar e-CF E34.
+      //
+      // Aquí había un `catch {}` vacío con el comentario «si no hay config ECF
+      // se omite silenciosamente». Por ahí se colaba TODO lo demás sin decir
+      // palabra: factura original sin e-CF aceptado o rechazada, monto de la NC
+      // sobre el saldo disponible, secuencia E34 agotada o inexistente, RNC del
+      // comprador fuera del padrón, proveedor caído, certificado vencido. La NC
+      // quedaba EMITIDA con Estado DGII en «—» y el cajero veía un visto verde.
+      //
+      // El paso NO es crítico —la NC ya está creada y emitida, y eso no se
+      // pierde—, pero el fallo tiene que verse: falta el timbre fiscal y alguien
+      // tiene que reintentarlo. Se devuelve el motivo en vez de tragárselo.
       let ecfResult: any = null;
+      let ecfError: string | null = null;
       try {
         const ecfRes = await api.post(`/ecf/nota-credito/${nc.id}/emitir`, { codigoModificacion: codigoMod });
         ecfResult = ecfRes.data?.data ?? ecfRes.data;
-      } catch { /* sin config ECF → NC ya emitida, solo sin timbre fiscal */ }
+      } catch (e: any) {
+        ecfError = e?.response?.data?.message
+                ?? e?.response?.data?.errors?.[0]
+                ?? e?.message
+                ?? 'No se pudo emitir el e-CF E34';
+      }
 
-      return { nc, ecfResult, detalles };
+      return { nc, ecfResult, ecfError, detalles };
     },
     onSuccess: async (result: any) => {
-      const { nc, ecfResult, detalles: det } = result ?? {};
-      message.success('Nota de Crédito emitida y e-CF E34 generado ✓');
+      const { nc, ecfResult, ecfError, detalles: det } = result ?? {};
+      // El aviso dice lo que de verdad pasó. Antes cantaba «e-CF E34 generado ✓»
+      // aunque el paso 3 hubiera fallado, y nadie se enteraba hasta ver la
+      // columna Estado DGII en «—».
+      if (ecfError) {
+        message.warning(
+          `${nc?.folio ?? 'Nota de Crédito'} emitida, pero SIN e-CF E34: ${ecfError}. ` +
+          `Reintenta el timbre desde el panel de Notas de Crédito.`,
+          12,
+        );
+      } else {
+        message.success('Nota de Crédito emitida y e-CF E34 generado ✓');
+      }
       qc.invalidateQueries({ queryKey: ['pos-panel', 'notas-credito'] });
       qc.refetchQueries({ queryKey: ['pos-panel', 'notas-credito'] });
       onClose();
@@ -7897,6 +7925,39 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
     },
   });
 
+  /**
+   * Reintentar el timbre E34 de una Nota de Crédito que se quedó sin e-CF.
+   *
+   * El POS emitía la NC y pedía su e-CF en un `catch` vacío: si el timbre
+   * fallaba —secuencia E34 agotada, saldo insuficiente, proveedor caído— la
+   * nota quedaba EMITIDA con Estado DGII en «—» y desde el POS no había forma
+   * de arreglarla: el panel solo ofrecía imprimir y anular. Había que salir al
+   * escritorio.
+   *
+   * El endpoint no recibe el código de modificación a propósito: lo lee de la
+   * propia nota, donde se fijó al crearla.
+   */
+  const [timbrandoId, setTimbrandoId] = useState<number | null>(null);
+  const timbrarNcMut = useMutation({
+    mutationFn: (id: number) => api.post(`/ecf/nota-credito/${id}/emitir`, {}).then(r => r.data?.data ?? r.data),
+    onMutate:   (id) => setTimbrandoId(id),
+    onSuccess:  (res: any) => {
+      qc.invalidateQueries({ queryKey: ['pos-panel', 'notas-credito'] });
+      qc.refetchQueries({ queryKey: ['pos-panel', 'notas-credito'] });
+      message.success(res?.encf ? `e-CF E34 emitido: ${res.encf}` : 'e-CF E34 emitido ✓');
+      setTimbrandoId(null);
+    },
+    onError: (e: any) => {
+      // El motivo, tal cual lo da el backend. Es justo lo que el `catch` vacío
+      // se comía y por lo que nadie sabía qué había pasado.
+      message.error(
+        e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'No se pudo emitir el e-CF E34',
+        12,
+      );
+      setTimbrandoId(null);
+    },
+  });
+
   // ── Emitir factura borrador desde POS ────────────────────────────────────────
   const [emitiendoId, setEmitiendoId] = useState<number | null>(null);
   const emitirFacturaMut = useMutation({
@@ -8765,6 +8826,23 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
                             style={{ background: '#16a34a', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', padding: '4px 10px', fontSize: 12, fontWeight: 700, marginRight: 6 }}
                           >
                             Cobrar
+                          </button>
+                        )}
+                        {/* Timbrar e-CF E34 — solo en NC emitidas que se quedaron sin comprobante */}
+                        {panel === 'notas-credito'
+                          && (row.estado ?? '').toLowerCase() === 'emitida'
+                          && !row.ecf?.estadoDGII && (
+                          <button
+                            onClick={() => timbrarNcMut.mutate(row.id)}
+                            disabled={timbrandoId === row.id}
+                            title="Esta NC no tiene e-CF E34. Reintentar el timbre fiscal ante la DGII"
+                            style={{
+                              background: '#d97706', border: 'none', borderRadius: 6, color: '#fff',
+                              cursor: 'pointer', padding: '4px 10px', fontSize: 12, fontWeight: 700,
+                              marginRight: 6, opacity: timbrandoId === row.id ? 0.5 : 1,
+                            }}
+                          >
+                            {timbrandoId === row.id ? 'Timbrando…' : '⚠ Timbrar e-CF'}
                           </button>
                         )}
                         {/* Imprimir */}

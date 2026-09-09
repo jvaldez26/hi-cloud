@@ -485,6 +485,29 @@ fragmento que contiene solo `RD$ `. Está en `common/pdf/inspeccion-pdf.testing.
 
 ## 3. Trabajos abiertos
 
+### Las NC del POS se quedaban sin e-CF E34 y nadie se enteraba — cerrado, y con guardia
+
+El POS emite la Nota de Crédito en tres pasos y el tercero —pedir el e-CF E34— iba envuelto en
+un `catch {}` vacío, con el comentario «si no hay config ECF se omite silenciosamente». Por
+ahí se colaba **todo lo demás**: secuencia E34 agotada o inexistente, factura original sin
+e-CF aceptado o rechazada, monto de la NC sobre el saldo disponible, RNC del comprador fuera
+del padrón, proveedor caído, certificado vencido. Y justo después, sin condición:
+`message.success('Nota de Crédito emitida y e-CF E34 generado ✓')`.
+
+Resultado: NC en `EMITIDA` con Estado DGII en «—», el cajero viendo un visto verde, y el
+problema apareciendo días después al cuadrar con la DGII. El panel de NC del POS solo ofrecía
+imprimir y anular, así que desde el POS esa nota **no se podía arreglar**.
+
+Ahora el motivo se muestra tal cual lo da el backend, el aviso distingue los dos casos, y el
+panel tiene un botón **«⚠ Timbrar e-CF»** en las NC emitidas sin comprobante. El número de
+secuencia no se pierde en el fallo: la transacción del use-case lo revierte.
+
+Lo que **no** hacía falta tocar: el ticket térmico ya imprime «⚠ COMPROBANTE EN PROCESO DE
+VALIDACIÓN DGII» cuando no hay `encf`, por la rama `else` de `ticketTermico.ts`.
+
+`src/test/ecf-sin-catch-mudo.test.ts` falla si algún `catch` alrededor de una emisión de e-CF
+se queda sin hacer nada con el error. Probado en rojo contra el código anterior.
+
 ### «Cancelar» sobre una factura ya aceptada por la DGII — cerrado, y con guardia
 
 El detalle de la factura pintaba un botón rojo «✗ Cancelar» en una E32 **ACEPTADA POR LA
