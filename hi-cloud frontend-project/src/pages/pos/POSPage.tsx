@@ -1178,25 +1178,22 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
             <>
               <div onClick={() => setShowNcfMenu(false)} style={{ position: 'fixed', inset: 0, zIndex: 500 }} />
               <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 501,
-                background: '#1E293B', border: '1px solid #334155', borderRadius: 10, overflow: 'hidden',
-                minWidth: 190, boxShadow: '0 8px 24px rgba(0,0,0,.4)' }}>
-                {NCF_OPTS.map((opt, i) => {
-                  const oc = ECF_COLORS[opt.code];
-                  return (
-                    <button key={opt.code} onClick={() => { onTipoNcfChange(opt.code); setShowNcfMenu(false); }}
-                      style={{ width: '100%', padding: '10px 14px', border: 'none',
-                        borderBottom: i < NCF_OPTS.length - 1 ? '1px solid #334155' : 'none',
-                        background: tipoNcf === opt.code ? 'rgba(255,255,255,.06)' : 'transparent',
-                        cursor: 'pointer', outline: 'none', textAlign: 'left',
-                        display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <span style={{ fontSize: 12, fontWeight: 800, fontFamily: 'monospace',
-                        background: oc.bg, color: oc.text, border: `1px solid ${oc.border}`,
-                        borderRadius: 5, padding: '2px 7px', letterSpacing: '0.5px' }}>{opt.code}</span>
-                      <span style={{ fontSize: 12, color: '#F1F5F9', fontWeight: tipoNcf === opt.code ? 700 : 400 }}>{opt.label}</span>
-                      {tipoNcf === opt.code && <span style={{ marginLeft: 'auto', color: oc.text }}>✓</span>}
-                    </button>
-                  );
-                })}
+                background: '#fff', border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden',
+                minWidth: 190, boxShadow: '0 8px 24px rgba(0,0,0,.18)' }}>
+                {NCF_OPTS.map((opt, i) => (
+                  <button key={opt.code} onClick={() => { onTipoNcfChange(opt.code); setShowNcfMenu(false); }}
+                    style={{ width: '100%', padding: '10px 14px', border: 'none',
+                      borderBottom: i < NCF_OPTS.length - 1 ? '1px solid #F1F5F9' : 'none',
+                      background: tipoNcf === opt.code ? '#F8FAFC' : '#fff',
+                      cursor: 'pointer', outline: 'none', textAlign: 'left',
+                      display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: 12, fontWeight: 800, fontFamily: 'monospace',
+                      background: `${opt.color}1A`, color: opt.color, border: `1px solid ${opt.color}40`,
+                      borderRadius: 5, padding: '2px 7px', letterSpacing: '0.5px' }}>{opt.code}</span>
+                    <span style={{ fontSize: 12, color: '#1E293B', fontWeight: tipoNcf === opt.code ? 700 : 400 }}>{opt.label}</span>
+                    {tipoNcf === opt.code && <span style={{ marginLeft: 'auto', color: opt.color }}>✓</span>}
+                  </button>
+                ))}
               </div>
             </>
           )}
