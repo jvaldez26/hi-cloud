@@ -122,7 +122,7 @@ export default function ComprasPage() {
       qc.invalidateQueries({ queryKey: ['compras'] });
       message.success(`Compra duplicada → ${nueva?.folio ?? 'borrador'}`);
     },
-    onError: () => message.error('Error al duplicar'),
+    onError: (e: any) => message.error(e?.friendlyMessage ?? 'Error al duplicar'),
   });
 
   const emitirEcfE41 = useMutation({

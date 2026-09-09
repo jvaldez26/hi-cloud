@@ -212,7 +212,7 @@ export default function FacturasPage() {
       qc.invalidateQueries({ queryKey: ['facturas'] });
       message.success(`Factura duplicada → ${nueva?.folio ?? 'borrador'}`);
     },
-    onError: () => message.error('Error al duplicar'),
+    onError: (e: any) => message.error(e?.friendlyMessage ?? 'Error al duplicar'),
   });
 
   const emailMut = useMutation({

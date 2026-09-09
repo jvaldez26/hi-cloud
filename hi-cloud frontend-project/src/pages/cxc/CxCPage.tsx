@@ -122,7 +122,12 @@ export default function CxCPage() {
         message.success(`${creadas} CxC creada${creadas > 1 ? 's' : ''}: ${folios}`, 6);
       }
     },
-    onError: () => message.error('Error al sincronizar CxC'),
+    // `friendlyMessage` lo pone el interceptor de api/client.ts para esto
+    // exactamente: «para que los componentes puedan mostrarlo directamente sin
+    // parsear la respuesta». Aquí se ignoraba, así que un 403 por permisos, un
+    // 500 y una caída de red se veían todos como el mismo «Error al sincronizar
+    // CxC» y no había forma de saber cuál era.
+    onError: (e: any) => message.error(e?.friendlyMessage ?? 'Error al sincronizar CxC', 8),
   });
 
   const handleExcel = useCallback(async () => {

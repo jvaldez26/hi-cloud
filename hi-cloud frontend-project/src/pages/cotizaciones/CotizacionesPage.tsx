@@ -144,7 +144,7 @@ export default function CotizacionesPage() {
       qc.invalidateQueries({ queryKey: ['cotizaciones'] });
       message.success(`Cotización duplicada → ${nueva?.numero ?? 'borrador'}`);
     },
-    onError: () => message.error('Error al duplicar'),
+    onError: (e: any) => message.error(e?.friendlyMessage ?? 'Error al duplicar'),
   });
 
   const deleteMut = useMutation({

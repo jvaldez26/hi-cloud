@@ -78,7 +78,7 @@ export default function RestaurantePOS({ palette }: ModoPOSProps) {
       setMesaSel((prev: any) => prev ? { ...prev, estado: 'ocupada', comandaActualId: cmd.id, comandaNumero: cmd.numero } : null);
       message.success(`Comanda ${cmd.numero} abierta`);
     },
-    onError: () => message.error('Error abriendo comanda'),
+    onError: (e: any) => message.error(e?.friendlyMessage ?? 'Error abriendo comanda'),
   });
 
   const agregarItemMut = useMutation({
@@ -87,20 +87,20 @@ export default function RestaurantePOS({ palette }: ModoPOSProps) {
         menuItemId: itemMenu.id, cantidad: 1, precioUnitario: itemMenu.precio,
       }),
     onSuccess: () => invalidateComanda(),
-    onError: () => message.error('Error agregando ítem'),
+    onError: (e: any) => message.error(e?.friendlyMessage ?? 'Error agregando ítem'),
   });
 
   const cancelarItemMut = useMutation({
     mutationFn: ({ itemId }: { itemId: number }) =>
       restauranteApi.cancelarItem(mesaSel!.comandaActualId, itemId, {}),
     onSuccess: () => invalidateComanda(),
-    onError: () => message.error('Error cancelando ítem'),
+    onError: (e: any) => message.error(e?.friendlyMessage ?? 'Error cancelando ítem'),
   });
 
   const enviarCocinaMut = useMutation({
     mutationFn: () => restauranteApi.enviarACocina(mesaSel!.comandaActualId),
     onSuccess: () => { invalidateComanda(); message.success('Enviado a cocina'); },
-    onError: () => message.error('Error enviando a cocina'),
+    onError: (e: any) => message.error(e?.friendlyMessage ?? 'Error enviando a cocina'),
   });
 
   const cobrarMut = useMutation({
@@ -114,7 +114,7 @@ export default function RestaurantePOS({ palette }: ModoPOSProps) {
       const folio = data?.facturaFolio ?? data?.data?.facturaFolio;
       message.success(folio ? `Factura ${folio} generada ✓` : 'Comanda cobrada exitosamente');
     },
-    onError: () => message.error('Error cobrando comanda'),
+    onError: (e: any) => message.error(e?.friendlyMessage ?? 'Error cobrando comanda'),
   });
 
   const areaActual = (mapa as any[]).find((a: any) => a.id === areaActiva);
