@@ -3900,7 +3900,7 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
                 const isTerminada = ['recibida','pagada','cancelada'].includes(c.estado);
                 return (
                   <tr key={c.id} style={{ borderBottom: `1px solid ${C.border}`, background: i%2===0?'transparent':C.card }}>
-                    <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{c.folio}</td>
+                    <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontSize: 11, color: C.blue, whiteSpace: 'nowrap' }}>{c.folio}</td>
                     <td style={{ padding: '8px 10px', color: C.text, fontWeight: 600, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {c.proveedor?.nombre ?? `#${c.proveedorId}`}
                     </td>
@@ -5256,7 +5256,7 @@ function POSConducePanel({ C, onVolver }: {
                         <tr key={r.id} style={{ borderBottom: `1px solid ${C.border}`, background: i % 2 === 0 ? 'transparent' : C.card }}>
                           {/* Número conduce */}
                           <td style={{ padding: '8px 10px' }}>
-                            <div style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue, fontWeight: 700 }}>{r.numero}</div>
+                            <div style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue, fontWeight: 700, whiteSpace: 'nowrap' }}>{r.numero}</div>
                             <div style={{ fontSize: 10, color: C.textSub, marginTop: 1 }}>
                               {r.fecha ? fecha(r.fecha) : ''}
                             </div>
@@ -8501,7 +8501,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
       { label: 'Fecha',     key: 'fecha',     render: (v) => v?.substring(0,10) ?? '—' },
     ],
     facturas: [
-      { label: 'Folio',    key: 'folio',    render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span> },
+      { label: 'Folio',    key: 'folio',    render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue, whiteSpace: 'nowrap' }}>{v}</span> },
       { label: 'Fecha',    key: 'fecha',    render: (v) => <span style={{ fontSize: 11, color: C.textSub }}>{fmt.date(v)}</span> },
       { label: 'Cliente',  key: 'cliente',  render: (_,r) => r.cliente?.nombre ?? '—' },
       { label: 'Total',    key: 'total',    render: (v,r) => <span style={{ fontWeight: 700, color: C.green }}>{fmt.moneyM(v, r.moneda)}</span> },
@@ -8539,7 +8539,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
       }},
     ],
     'pre-facturas': [
-      { label: 'Folio',    key: 'folio',    render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span> },
+      { label: 'Folio',    key: 'folio',    render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue, whiteSpace: 'nowrap' }}>{v}</span> },
       { label: 'Fecha',    key: 'fecha',    render: (v) => <span style={{ fontSize: 11, color: C.textSub }}>{fmt.date(v)}</span> },
       { label: 'Cliente',  key: 'cliente',  render: (_,r) => r.cliente?.nombre ?? '—' },
       { label: 'Total',    key: 'total',    render: (v) => <span style={{ fontWeight: 700, color: C.orange }}>{fmt.money(v)}</span> },
@@ -8550,7 +8550,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
       }},
     ],
     cotizaciones: [
-      { label: 'Número',   key: 'numero',   render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span> },
+      { label: 'Número',   key: 'numero',   render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue, whiteSpace: 'nowrap' }}>{v}</span> },
       { label: 'Fecha',    key: 'fecha',    render: (v) => <span style={{ fontSize: 11, color: C.textSub }}>{fmt.date(v)}</span> },
       { label: 'Cliente',  key: 'cliente',  render: (_,r) => r.cliente?.nombre ?? '—' },
       { label: 'Total',    key: 'total',    render: (v) => <span style={{ fontWeight: 700, color: C.orange }}>{fmt.money(v)}</span> },
@@ -8561,7 +8561,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
       }},
     ],
     conduce: [
-      { label: 'Número',    key: 'numero',          render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span> },
+      { label: 'Número',    key: 'numero',          render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue, whiteSpace: 'nowrap' }}>{v}</span> },
       { label: 'Cliente',   key: 'cliente',          render: (_,r) => r.cliente?.nombre ?? '—' },
       { label: 'Dirección', key: 'direccionEntrega', render: (v) => <span style={{ fontSize: 11 }}>{v ?? '—'}</span> },
       { label: 'Estado',    key: 'estado',           render: (v) => <span style={{ fontSize: 10, fontWeight: 700, color: v==='entregado'?C.green:v==='en_transito'?C.blue:C.orange }}>{v?.replace('_',' ')?.toUpperCase()}</span> },
@@ -8573,7 +8573,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
       { label: 'Email',   key: 'email',       render: (v) => <span style={{ fontSize: 11 }}>{v ?? '—'}</span> },
     ],
     'recibos-cobro': [
-      { label: 'Número',  key: 'numero',      render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span> },
+      { label: 'Número',  key: 'numero',      render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue, whiteSpace: 'nowrap' }}>{v}</span> },
       { label: 'Cliente', key: 'clienteNombre', render: (v) => v ?? '—' },
       { label: 'Monto',   key: 'monto',       render: (v) => <span style={{ fontWeight: 700, color: C.green }}>{fmt.money(v)}</span> },
       { label: 'Método',  key: 'metodoPago',  render: (v) => <span style={{ fontSize: 10, fontWeight: 700 }}>{v?.toUpperCase()}</span> },
@@ -8584,7 +8584,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
         const afectado = r.ecf?.ncfModificado ?? r.facturaOriginalFolio;
         return (
           <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.3 }}>
-            <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span>
+            <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue, whiteSpace: 'nowrap' }}>{v}</span>
             {afectado && <span style={{ fontFamily: 'monospace', fontSize: 9, color: C.textSub, whiteSpace: 'nowrap' }}>↩ afecta {afectado}</span>}
           </div>
         );
@@ -8626,7 +8626,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
       { label: 'Cierre',    key: 'montoCierre',   render: (v) => fmt.money(v ?? 0) },
     ],
     'pro-formas': [
-      { label: 'Número',      key: 'numero',          render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue }}>{v}</span> },
+      { label: 'Número',      key: 'numero',          render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.blue, whiteSpace: 'nowrap' }}>{v}</span> },
       { label: 'Cliente',     key: 'clienteNombre',   render: (v) => v ?? '—' },
       { label: 'Total',       key: 'total',           render: (v) => <span style={{ fontWeight: 700, color: C.blue }}>{fmt.money(v)}</span> },
       { label: 'Válida hasta', key: 'fechaVencimiento', render: (v) => v ? String(v).substring(0,10) : '—' },
