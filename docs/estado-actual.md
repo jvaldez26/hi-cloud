@@ -485,6 +485,30 @@ fragmento que contiene solo `RD$ `. Está en `common/pdf/inspeccion-pdf.testing.
 
 ## 3. Trabajos abiertos
 
+### «Error al sincronizar CxC» sin decir cuál — cerrado, y con guardia
+
+El botón Sincronizar de Cuentas por Cobrar fallaba y la pantalla solo decía «Error al
+sincronizar CxC». El handler era `onError: () => message.error('…')`: **sin recibir el error**,
+así que un 403 por permisos, un 500 y una caída de red se veían idénticos.
+
+El interceptor de `api/client.ts` ya deja `.friendlyMessage` en cada error «para que los
+componentes puedan mostrarlo directamente sin parsear la respuesta». Esas pantallas lo usan en
+casi todos sus handlers: los nueve que lo descartaban eran la excepción.
+
+**Causa probable de este caso concreto** (a confirmar con el mensaje que salga ahora):
+`POST /cxc/sincronizar` va con `@Roles(ADMIN, CONTADOR)` y desde `db786dac` (08/09/2026) el
+RolesGuard autoriza contra el rol **por empresa** (`usuario_empresa.rol`), no el global. Un
+admin en su empresa principal con otro rol en una secundaria recibe ahora un 403 correcto —el
+propio commit lo advierte: «un admin global solo viewer en una empresa secundaria pasaba como
+admin ahí»—. Si es eso, se arregla dando el rol en `usuario_empresa`, no en el código.
+
+Arreglados los nueve de las pantallas de dinero y documentos fiscales.
+`src/test/errores-visibles-dinero.test.ts` falla si algún `onError` de esas carpetas vuelve a
+declararse sin parámetro. Probado en rojo: los lista todos.
+
+**Quedan ~65 iguales en los verticales** (clínica, farmacia, gimnasio, agro, taller). Mismo
+arreglo mecánico, tanda aparte, fuera del alcance de esa prueba.
+
 ### Las NC del POS se quedaban sin e-CF E34 y nadie se enteraba — cerrado, y con guardia
 
 El POS emite la Nota de Crédito en tres pasos y el tercero —pedir el e-CF E34— iba envuelto en
