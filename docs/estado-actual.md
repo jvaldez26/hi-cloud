@@ -508,6 +508,20 @@ VALIDACIÓN DGII» cuando no hay `encf`, por la rama `else` de `ticketTermico.ts
 `src/test/ecf-sin-catch-mudo.test.ts` falla si algún `catch` alrededor de una emisión de e-CF
 se queda sin hacer nada con el error. Probado en rojo contra el código anterior.
 
+**La causa, ya visible gracias a lo anterior:** `property codigoModificacion should not exist`.
+El POS mandaba `{ codigoModificacion }` en el cuerpo, y ese campo se había sacado del DTO a
+propósito —el controller lo lee de la propia nota para que no se pueda colar uno distinto al
+validado—. Con `forbidNonWhitelisted: true` en el ValidationPipe global, eso es un 400 seco.
+El escritorio se actualizó; el llamado del POS se quedó atrás. **No era intermitente: fallaba
+siempre**, así que toda NC emitida desde el POS desde ese cambio se quedó sin su E34. Se
+recuperan una a una con el botón «⚠ Timbrar e-CF».
+
+Nada podía detectarlo antes: `api.post` recibe `any`, los dos proyectos son npm distintos y no
+comparten tipos, y el 400 solo aparece en ejecución.
+`src/test/ecf-body-vs-dto.test.ts` compara ahora los dos lados leyendo el código — extrae las
+claves que manda el frontend y las propiedades que declara el DTO del backend, y falla si
+sobra alguna. Probado en rojo: señala archivo, línea, ruta y propiedad.
+
 ### «Cancelar» sobre una factura ya aceptada por la DGII — cerrado, y con guardia
 
 El detalle de la factura pintaba un botón rojo «✗ Cancelar» en una E32 **ACEPTADA POR LA
