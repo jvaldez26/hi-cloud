@@ -1266,17 +1266,17 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
           <>
             <div onClick={() => setShowAtalhos(false)} style={{ position: 'fixed', inset: 0, zIndex: 500 }} />
             <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, zIndex: 501,
-              background: '#1E293B', border: '1px solid #334155', borderRadius: 10,
-              padding: '12px 0', minWidth: 200, boxShadow: '0 8px 24px rgba(0,0,0,.4)' }}>
-              <div style={{ fontSize: 10, color: '#64748B', fontWeight: 700, textTransform: 'uppercase',
+              background: '#fff', border: '1px solid #E2E8F0', borderRadius: 10,
+              padding: '12px 0', minWidth: 200, boxShadow: '0 8px 24px rgba(0,0,0,.18)' }}>
+              <div style={{ fontSize: 10, color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase',
                 letterSpacing: '0.8px', padding: '0 14px 8px' }}>Atajos de teclado</div>
               {ATAJOS_POS.map(a => (
                 <div key={a.tecla} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                   padding: '6px 14px', gap: 16 }}>
-                  <kbd style={{ background: '#0F172A', border: '1px solid #475569', borderRadius: 5,
-                    padding: '2px 8px', fontSize: 11, fontFamily: 'monospace', color: '#F1F5F9',
-                    fontWeight: 700, boxShadow: '0 1px 0 #475569' }}>{a.tecla}</kbd>
-                  <span style={{ fontSize: 12, color: '#94A3B8' }}>{a.accion}</span>
+                  <kbd style={{ background: '#F1F5F9', border: '1px solid #E2E8F0', borderRadius: 5,
+                    padding: '2px 8px', fontSize: 11, fontFamily: 'monospace', color: '#1E293B',
+                    fontWeight: 700, boxShadow: '0 1px 0 #E2E8F0' }}>{a.tecla}</kbd>
+                  <span style={{ fontSize: 12, color: '#475569' }}>{a.accion}</span>
                 </div>
               ))}
             </div>
