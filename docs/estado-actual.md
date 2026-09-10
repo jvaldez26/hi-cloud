@@ -485,6 +485,25 @@ fragmento que contiene solo `RD$ `. Está en `common/pdf/inspeccion-pdf.testing.
 
 ## 3. Trabajos abiertos
 
+### El selector de unidad salía aplastado — cerrado (sin guardia: es visual)
+
+En el formulario de producto, «Unidad de Medida» se encogía al tamaño de su contenido —«pza» y
+poco más— y el desplegable, que copia el ancho del control, truncaba todo: `GAL — Galón (gal)`
+salía como `GA...` y «+ Configurar unidades» se partía en una palabra por línea.
+
+`UomSelect` era el único `<Select>` del proyecto sin `style={{ width: '100%' }}`.
+
+**Por qué parecía cosa de una empresa concreta:** el componente tiene dos ramas. Con catálogo
+UOM configurado (`opts.length > 0`) renderiza el `<Select>` roto; sin catálogo cae a un
+`<Input>` libre, que sí ocupa el ancho completo. Así que el aplastamiento aparecía **solo en
+las empresas que tienen unidades cargadas** — no era la empresa, era la rama.
+
+Además `popupMatchSelectWidth={false}` para que el menú se mida por su contenido, y de paso
+`dropdownRender` → `popupRender`, que estaba deprecado y llenaba la consola de avisos.
+
+Sin prueba de regresión a propósito: es maquetación y jsdom no calcula anchos. Un test que
+solo compruebe que el `style` existe sería tautológico. Se verifica mirándolo.
+
 ### Una orden de compra en borrador no se podía editar — cerrado, y con guardia
 
 No era que faltara el botón: **no existía en ninguna capa**. Sin `PATCH /compras/:id`, sin
