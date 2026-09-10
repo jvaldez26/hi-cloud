@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { Repository, DataSource, In, EntityManager } from 'typeorm';
+import { Repository, DataSource, In, IsNull, EntityManager } from 'typeorm';
 import { generarNumeroSecuencial } from '../../common/utils/generar-numero.util';
 import { CuentaContable } from '../entities/cuenta-contable.entity';
 import { AsientoContable, TipoOrigenAsiento, EstadoAsiento } from '../entities/asiento-contable.entity';
@@ -999,6 +999,174 @@ export class AsientosAutomaticosService {
       this.reportarFalloAsiento(err, 'asiento_gasto_importacion', {
         tipoOrigen: TipoOrigenAsiento.IMPORTACION, referenciaId: String(params.gastoId), referenciaFolio: `GIMP-${params.gastoId}`,
       });
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Nota de Crédito aceptada por DGII → mismo criterio de cuentas que
+  // asientoDevolucionVenta (reversa: Ventas/ITBIS debitados, Clientes
+  // acreditado), pero con su propio tipoOrigen para no colisionar con
+  // devoluciones/gastos/nómina/mantenimiento en revertirAsiento().
+  // Sirve tanto para NC total (nc.total == factura.total → efecto neto cero
+  // al sumarla con la factura) como para NC parcial (ajuste proporcional).
+  // ──────────────────────────────────────────────────────────────────
+
+  async asientoNotaCredito(
+    ncId:     number,
+    total:    number,
+    subtotal: number,
+    iva:      number,
+    numero:   string,
+    userId:   number,
+  ): Promise<void> {
+    try {
+      const asiento = await this._crearAsientoContabilizado({
+        descripcion:     `Nota de crédito ${numero}`,
+        tipoOrigen:      TipoOrigenAsiento.NOTA_CREDITO,
+        referenciaId:    ncId,
+        referenciaFolio: numero,
+        userId,
+        lineas: [
+          { codigo: COD.VENTAS,          descripcion: `Reversa venta — NC ${numero}`, debe: subtotal, haber: 0 },
+          { codigo: COD.ITBIS_POR_PAGAR, descripcion: `Reversa ITBIS — NC ${numero}`, debe: iva,      haber: 0 },
+          { codigo: COD.CLIENTES,        descripcion: `Nota de crédito ${numero}`,    debe: 0,        haber: total },
+        ],
+      });
+      if (asiento) {
+        this.logger.log(`Asiento nota de crédito ${numero} generado`);
+      } else {
+        this.logger.warn(`Asiento nota de crédito ${numero} NO generado (cuenta faltante) — ver Sentry`);
+      }
+    } catch (err) {
+      this.logger.error(`Error asiento nota de crédito ${numero}: ${(err as Error).message}`);
+      this.reportarFalloAsiento(err, 'asiento_nota_credito', {
+        tipoOrigen: TipoOrigenAsiento.NOTA_CREDITO, referenciaId: String(ncId), referenciaFolio: numero,
+      });
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Reversas — contra-asiento NUEVO, nunca se borra/edita/desactiva el
+  // original.
+  //
+  // REGLA DE DISEÑO (no reabrir): el original conserva su fecha; el
+  // contra-asiento lleva la fecha del EVENTO de reversión (fechaReversion,
+  // pásale fechaHoyRD() — nunca la fecha del documento original), así un
+  // período ya cerrado no cambia retroactivamente.
+  //
+  // Idempotente vía asientoRevertidoId: si ya existe un contra-asiento para
+  // el original encontrado, lo retorna sin duplicar. Si no encuentra el
+  // asiento original (el documento nunca se contabilizó), reporta a Sentry y
+  // retorna null sin romper — igual que el resto de este servicio, nunca
+  // lanza: quien llama no necesita su propio try/catch.
+  //
+  // referenciaFolio es opcional pero se recomienda pasarlo siempre: tipoOrigen
+  // (sobre todo 'cobro' y 'ajuste') se reutiliza entre varios tipos de
+  // documento, cada uno con su propio espacio de referenciaId — dos tablas
+  // distintas pueden coincidir en el mismo id numérico. El folio (p. ej.
+  // "CXC-47", "ANT-12") sí es único porque lleva el prefijo del tipo.
+  // ──────────────────────────────────────────────────────────────────
+
+  async revertirAsiento(
+    tipoOrigen:      TipoOrigenAsiento,
+    referenciaId:    number,
+    fechaReversion:  string,
+    motivo:          string,
+    referenciaFolio?: string,
+  ): Promise<AsientoContable | null> {
+    try {
+      const empresaId = this.eid;
+
+      const whereOriginal: any = {
+        tipoOrigen,
+        referenciaId,
+        estado: EstadoAsiento.CONTABILIZADO,
+        asientoRevertidoId: IsNull(),
+      };
+      if (empresaId) whereOriginal.empresaId = empresaId;
+      if (referenciaFolio) whereOriginal.referenciaFolio = referenciaFolio;
+
+      const original = await this.asientoRepository.findOne({
+        where: whereOriginal,
+        relations: ['lineas'],
+        order: { id: 'ASC' },
+      });
+
+      if (!original) {
+        this.logger.warn(
+          `revertirAsiento: no se encontró asiento original tipoOrigen=${tipoOrigen} ` +
+          `referenciaId=${referenciaId}${referenciaFolio ? ` referenciaFolio=${referenciaFolio}` : ''} — ` +
+          `el documento nunca se contabilizó`,
+        );
+        this.reportarFalloAsiento(
+          new Error(
+            `No existe asiento original para revertir (tipoOrigen=${tipoOrigen}, ` +
+            `referenciaId=${referenciaId}${referenciaFolio ? `, referenciaFolio=${referenciaFolio}` : ''})`,
+          ),
+          'asiento_reversa_original_no_encontrado',
+          { tipoOrigen, referenciaId: String(referenciaId), referenciaFolio: referenciaFolio ?? '' },
+        );
+        return null;
+      }
+
+      // Idempotencia: ¿ya existe un contra-asiento para este original?
+      const whereExistente: any = { asientoRevertidoId: original.id };
+      if (empresaId) whereExistente.empresaId = empresaId;
+      const existente = await this.asientoRepository.findOne({ where: whereExistente });
+      if (existente) {
+        this.logger.warn(
+          `revertirAsiento: ya existe contra-asiento #${existente.id} (${existente.numero}) ` +
+          `para el asiento #${original.id} (${original.numero}) — no se duplica`,
+        );
+        return existente;
+      }
+
+      // Invertir cada línea: debe <-> haber. Mismas cuentas que el original —
+      // no hay que volver a resolverlas por código, ya sabemos su id.
+      const lineasInvertidas = original.lineas.map((l) => ({
+        cuentaContableId: l.cuentaContableId,
+        descripcion:      `Reversa: ${l.descripcion}`.slice(0, 200),
+        debe:             Number(l.haber),
+        haber:            Number(l.debe),
+      }));
+      const totalDebe  = lineasInvertidas.reduce((s, l) => s + l.debe,  0);
+      const totalHaber = lineasInvertidas.reduce((s, l) => s + l.haber, 0);
+
+      const numero = await this.generarNumero(empresaId);
+
+      const asientoInstance = this.asientoRepository.create({
+        ...(empresaId ? { empresaId } : {}),
+        numero,
+        fecha:           fechaReversion as unknown as Date, // string 'YYYY-MM-DD', nunca new Date(string)
+        descripcion:     `Reversa de asiento #${original.numero} — ${motivo}`.slice(0, 300),
+        tipoOrigen:      original.tipoOrigen,
+        referenciaId:    original.referenciaId,
+        referenciaFolio: original.referenciaFolio,
+        estado:          EstadoAsiento.CONTABILIZADO,
+        totalDebe:       Number(totalDebe.toFixed(2)),
+        totalHaber:      Number(totalHaber.toFixed(2)),
+        userId:          this.tenantService.getUserId() ?? 0,
+        asientoRevertidoId: original.id,
+      });
+      const asiento = await this.asientoRepository.save(asientoInstance);
+
+      const lineasInstances = this.lineaRepository.create(
+        lineasInvertidas.map((l) => ({ asientoId: asiento.id, ...l })),
+      );
+      await this.lineaRepository.save(lineasInstances);
+
+      this.logger.log(
+        `Reversa generada: asiento #${asiento.id} (${numero}) revierte #${original.id} (${original.numero}) — ${motivo}`,
+      );
+      return asiento;
+    } catch (err) {
+      this.logger.error(
+        `Error revertirAsiento tipoOrigen=${tipoOrigen} referenciaId=${referenciaId}: ${(err as Error).message}`,
+      );
+      this.reportarFalloAsiento(err, 'asiento_reversion_generica', {
+        tipoOrigen, referenciaId: String(referenciaId), referenciaFolio: referenciaFolio ?? '',
+      });
+      return null;
     }
   }
 }

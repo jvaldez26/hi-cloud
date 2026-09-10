@@ -14,6 +14,12 @@ export enum TipoOrigenAsiento {
   MANUFACTURA   = 'manufactura',
   PRESTAMISTA   = 'prestamista',
   IMPORTACION   = 'importacion',
+  // Asiento propio de una Nota de Crédito aceptada por DGII. Namespace propio
+  // (no 'ajuste') para que revertirAsiento() no colisione con gastos, nómina,
+  // mantenimiento o devoluciones, que también usan 'ajuste' con su propio
+  // espacio de referenciaId — dos documentos de distinta tabla pueden compartir
+  // el mismo id numérico (cada tabla tiene su propio auto-increment).
+  NOTA_CREDITO  = 'nota_credito',
 }
 
 export enum EstadoAsiento {
@@ -42,6 +48,16 @@ export class AsientoContable extends TenantBaseEntity {
 
   @Column({ length: 50, nullable: true })
   referenciaFolio?: string;
+
+  // Vincula un contra-asiento de reversa con el asiento CONTABILIZADO original
+  // que revierte. NULL en el original; apunta al id del original en la reversa.
+  // Reversa = contra-asiento NUEVO con débitos/créditos invertidos — el
+  // original NUNCA se borra, desactiva ni edita (ver revertirAsiento() en
+  // AsientosAutomaticosService). Esta columna es lo que hace idempotente esa
+  // función: si ya existe un asiento con asientoRevertidoId = original.id, no
+  // se genera otro.
+  @Column({ nullable: true })
+  asientoRevertidoId?: number;
 
   @Column({ type: 'enum', enum: EstadoAsiento, default: EstadoAsiento.BORRADOR })
   estado!: EstadoAsiento;
