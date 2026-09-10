@@ -10,6 +10,7 @@ import { PaginationDto } from '../common/dto/pagination.dto';
 import { TenantService } from '../tenant/tenant.service';
 import { EmitirECFUseCase } from '../ecf/use-cases/emitir-ecf.use-case';
 import { DocumentoOrigenTipo } from '../ecf/entities/ecf.entity';
+import { reportServiceError } from '../common/observability/sentry';
 
 interface CreateGastoDto {
   fecha:        string;
@@ -98,14 +99,21 @@ export class GastosService {
       }),
     );
 
-    // Asiento contable automático
+    // Asiento contable automático. asientoGasto() ya reporta internamente sus
+    // propios fallos (fire-and-forget por convención); este catch es defensa
+    // adicional para un error síncrono inesperado antes/durante el await.
+    // TIPO B: el gasto ya se guardó — reportar a Sentry SIN romper el flujo.
     try {
       await this.asientosService.asientoGasto(
         gasto.id, total, dto.monto, itbis,
         `${info.emoji} ${info.label}: ${dto.descripcion}`,
         dto.userId,
       );
-    } catch { /* no bloquear si falla */ }
+    } catch (err) {
+      reportServiceError(err, 'gasto_asiento_contable', {
+        gastoId: String(gasto.id), empresaId: String(empresaId),
+      });
+    }
 
     // Auto-emitir E43 si la categoría lo requiere (Gasto Menor DGII)
     if (info?.generaE43) {
