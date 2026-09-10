@@ -4,6 +4,7 @@ import { Form, Input, Button, Card, Row, Col, Select, DatePicker, Table,
 import { PlusOutlined, DeleteOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSucursalesQuery } from '../../hooks/useCatalogQueries';
+import { useDebounce } from '../../hooks/useDebounce';
 import { comprasApi, type CompraDetallePayload } from '../../api/compras.api';
 import { proveedoresApi } from '../../api/proveedores.api';
 import { productosApi } from '../../api/productos.api';
@@ -67,10 +68,16 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId }: Props
   const [crearProdForm] = Form.useForm();
 
   const { data: proveedores } = useQuery({ queryKey: ['proveedores-sel'], queryFn: () => proveedoresApi.list(1, 200) });
+  // Debounced: sin esto, cada tecla dispara un fetch nuevo y cambia las
+  // `options` del Select a mitad de un clic — el usuario ve el producto,
+  // hace clic, y ese clic cae sobre una lista que ya se reordenó/reemplazó
+  // debajo del cursor. Mismo patrón que ya usa el buscador de compras del POS
+  // (useDebounce(busq, 300) en POSComprasPanel) — aquí faltaba.
+  const productoSearchD = useDebounce(productoSearch, 300);
   const { data: productosBusqueda, isFetching: buscandoProd } = useQuery({
-    queryKey: ['productos-compra-search', productoSearch],
-    queryFn:  () => api.get(`/productos?page=1&limit=50&search=${encodeURIComponent(productoSearch)}&incluirSinStock=true`).then(r => r.data?.data ?? r.data),
-    enabled:  productoSearch.length >= 2,
+    queryKey: ['productos-compra-search', productoSearchD],
+    queryFn:  () => api.get(`/productos?page=1&limit=50&search=${encodeURIComponent(productoSearchD)}&incluirSinStock=true`).then(r => r.data?.data ?? r.data),
+    enabled:  productoSearchD.length >= 2,
     staleTime: 30_000,
   });
   const { data: almacenes = [] } = useQuery<any[]>({
