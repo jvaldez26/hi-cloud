@@ -1103,6 +1103,48 @@ export class AsientosAutomaticosService {
   }
 
   // ──────────────────────────────────────────────────────────────────
+  // Nota de Crédito de Compra (devolución a proveedor) al recibirse → mismo
+  // criterio de cuentas que asientoCompraRecibida, pero invertido (reversa
+  // proporcional): Haber Inventario + Haber ITBIS Crédito Fiscal / Debe
+  // Proveedores. Namespace propio (NOTA_CREDITO_COMPRA) para no colisionar
+  // en revertirAsiento().
+  // ──────────────────────────────────────────────────────────────────
+
+  async asientoNotaCreditoCompra(
+    nccId:    number,
+    total:    number,
+    subtotal: number,
+    iva:      number,
+    numero:   string,
+    userId:   number,
+  ): Promise<void> {
+    try {
+      const asiento = await this._crearAsientoContabilizado({
+        descripcion:     `Nota de crédito de compra ${numero}`,
+        tipoOrigen:      TipoOrigenAsiento.NOTA_CREDITO_COMPRA,
+        referenciaId:    nccId,
+        referenciaFolio: numero,
+        userId,
+        lineas: [
+          { codigo: COD.PROVEEDORES,   descripcion: `Devolución a proveedor — NCC ${numero}`, debe: total, haber: 0 },
+          { codigo: COD.INVENTARIO,    descripcion: `Reversa mercancía — NCC ${numero}`,       debe: 0,     haber: subtotal },
+          { codigo: COD.ITBIS_CREDITO, descripcion: `Reversa ITBIS crédito — NCC ${numero}`,   debe: 0,     haber: iva },
+        ],
+      });
+      if (asiento) {
+        this.logger.log(`Asiento nota de crédito de compra ${numero} generado`);
+      } else {
+        this.logger.warn(`Asiento nota de crédito de compra ${numero} NO generado (cuenta faltante) — ver Sentry`);
+      }
+    } catch (err) {
+      this.logger.error(`Error asiento nota de crédito de compra ${numero}: ${(err as Error).message}`);
+      this.reportarFalloAsiento(err, 'asiento_nota_credito_compra', {
+        tipoOrigen: TipoOrigenAsiento.NOTA_CREDITO_COMPRA, referenciaId: String(nccId), referenciaFolio: numero,
+      });
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
   // Reversas — contra-asiento NUEVO, nunca se borra/edita/desactiva el
   // original.
   //

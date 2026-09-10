@@ -22,6 +22,9 @@ export enum TipoOrigenAsiento {
   NOTA_CREDITO  = 'nota_credito',
   // Asiento propio de una Nota de Débito (E33) al emitirse.
   NOTA_DEBITO   = 'nota_debito',
+  // Asiento propio de una Nota de Crédito de Compra (devolución a proveedor)
+  // al recibirse.
+  NOTA_CREDITO_COMPRA = 'nota_credito_compra',
 }
 
 export enum EstadoAsiento {

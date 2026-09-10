@@ -7,6 +7,9 @@ import { NotaCreditoCompraDetalle } from './entities/nota-credito-compra-detalle
 import { Producto } from '../productos/entities/producto.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
+import { AsientosAutomaticosService } from '../contabilidad/services/asientos-automaticos.service';
+import { TipoOrigenAsiento } from '../contabilidad/entities/asiento-contable.entity';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 interface DetalleDto {
   productoId?:    number;
@@ -36,6 +39,7 @@ export class NotasCreditoComprasService {
     @InjectRepository(Producto)                 private prodRepo:  Repository<Producto>,
     private dataSource:  DataSource,
     private tenantSvc:   TenantService,
+    private asientosService: AsientosAutomaticosService,
   ) {}
 
   private async generarNumero(): Promise<string> {
@@ -123,6 +127,12 @@ export class NotasCreditoComprasService {
       await em.getRepository(NotaCreditoCompra).update(id, { estado: EstadoNCCompra.RECIBIDA });
     });
 
+    // Asiento propio: reversa proporcional de la compra — Debe Proveedores /
+    // Haber Inventario + ITBIS Crédito Fiscal.
+    await this.asientosService.asientoNotaCreditoCompra(
+      ncc.id, Number(ncc.total), Number(ncc.subtotal), Number(ncc.iva), ncc.numero, ncc.usuarioId,
+    );
+
     return this.findOne(id);
   }
 
@@ -130,6 +140,17 @@ export class NotasCreditoComprasService {
     const ncc = await this.findOne(id);
     if (ncc.estado === EstadoNCCompra.ANULADA) throw new BadRequestException('Ya está anulada');
     await this.nccRepo.update(id, { estado: EstadoNCCompra.ANULADA });
+
+    // Reversa contable: si la NCC ya estaba RECIBIDA y tenía su propio
+    // asiento, lo revierte. Si seguía en BORRADOR (nunca se generó),
+    // revertirAsiento no encuentra nada, lo reporta a Sentry y no rompe.
+    await this.asientosService.revertirAsiento(
+      TipoOrigenAsiento.NOTA_CREDITO_COMPRA,
+      id,
+      fechaHoyRD(),
+      `Anulación de nota de crédito de compra ${ncc.numero}`,
+    );
+
     return this.findOne(id);
   }
 
