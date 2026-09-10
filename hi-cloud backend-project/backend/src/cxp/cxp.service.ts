@@ -287,12 +287,42 @@ export class CxPService {
     };
   }
 
+  /**
+   * ¿La compra origen tiene un e-CF (E41) confirmado por DGII (aceptado u
+   * observado)? Mismo criterio que CxCService.facturaTieneEcfConfirmado —
+   * ver ese comentario.
+   */
+  private async compraTieneEcfConfirmado(compraId: number): Promise<boolean> {
+    const [ecf] = await this.compraRepository.manager.query<{ estadoDGII: string }[]>(
+      `SELECT "estadoDGII" FROM ecf
+       WHERE "documentoOrigenTipo" = 'COMPRA' AND "documentoOrigenId" = $1 AND "isActive" = true
+       ORDER BY "createdAt" DESC LIMIT 1`,
+      [compraId],
+    );
+    return ecf?.estadoDGII === 'aceptado' || ecf?.estadoDGII === 'observado';
+  }
+
   async anular(id: number) {
     const cuenta = await this.findById(id);
 
     if (cuenta.estado === EstadoCuenta.PAGADA || cuenta.estado === EstadoCuenta.ANULADA) {
       throw new BadRequestException(
         `No se puede anular una cuenta en estado "${cuenta.estado}"`,
+      );
+    }
+
+    // Mismo criterio que CxCService.anular — ver esos comentarios.
+    if (cuenta.compraId && await this.compraTieneEcfConfirmado(cuenta.compraId)) {
+      throw new BadRequestException(
+        `No se puede anular: la compra tiene un e-CF (E41) confirmado por DGII (aceptado u observado). ` +
+        `Corrija mediante una nota de crédito de compra en vez de anular el asiento directamente.`,
+      );
+    }
+
+    if (Number(cuenta.montoPagado) > 0) {
+      throw new BadRequestException(
+        `No se puede anular: esta cuenta tiene ${Number(cuenta.montoPagado).toFixed(2)} pagado. ` +
+        `Revierta primero los pagos aplicados a esta cuenta y vuelva a intentar.`,
       );
     }
 

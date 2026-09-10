@@ -20,7 +20,7 @@ function makeService(factura: any) {
   };
   const tenantService     = { getEmpresaId: () => factura.empresaId, getUserId: () => 5 };
   const inventarioService = { registrarDevolucion: jest.fn().mockResolvedValue({}) };
-  const cxcService        = { anularPorFacturaId: jest.fn().mockResolvedValue(undefined) };
+  const cxcService        = { anularPorFacturaId: jest.fn().mockResolvedValue('anulada') };
   const asientosService   = { revertirAsiento: jest.fn().mockResolvedValue({ id: 1 }) };
   const realtimeService   = { notify: jest.fn() };
 
@@ -64,5 +64,31 @@ describe('FacturasService.cambiarEstado → CANCELADA revierte el asiento de ven
 
     await expect(svc.cambiarEstado(78, FacturaEstado.CANCELADA)).rejects.toThrow();
     expect(asientosService.revertirAsiento).not.toHaveBeenCalled();
+  });
+
+  it('CxC bloqueada (abonos aplicados o e-CF confirmado): NO revierte el asiento de venta', async () => {
+    const factura = {
+      id: 79, folio: 'FAC-79', empresaId: 7, estado: FacturaEstado.EMITIDA,
+      ecfId: null, detalles: [], usuarioId: 5,
+    };
+    const { svc, asientosService, cxcService } = makeService(factura);
+    cxcService.anularPorFacturaId.mockResolvedValueOnce('bloqueada');
+
+    await svc.cambiarEstado(79, FacturaEstado.CANCELADA);
+
+    expect(asientosService.revertirAsiento).not.toHaveBeenCalled();
+  });
+
+  it('factura de contado sin CxC ("sin_cxc"): igual revierte el asiento de venta', async () => {
+    const factura = {
+      id: 80, folio: 'FAC-80', empresaId: 7, estado: FacturaEstado.EMITIDA,
+      ecfId: null, detalles: [], usuarioId: 5,
+    };
+    const { svc, asientosService, cxcService } = makeService(factura);
+    cxcService.anularPorFacturaId.mockResolvedValueOnce('sin_cxc');
+
+    await svc.cambiarEstado(80, FacturaEstado.CANCELADA);
+
+    expect(asientosService.revertirAsiento).toHaveBeenCalled();
   });
 });
