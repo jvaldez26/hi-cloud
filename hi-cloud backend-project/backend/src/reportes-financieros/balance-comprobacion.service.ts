@@ -50,8 +50,9 @@ export class BalanceComprobacionService {
         AND ac.estado = 'contabilizado'
         AND ac."isActive" = true
         AND ac.fecha <= $1
+        AND ac."empresaId" = $2
       WHERE cc."isActive" = true
-        AND (ac."empresaId" = $2 OR ac."empresaId" IS NULL)
+        AND cc."empresaId" = $2
       GROUP BY cc.id, cc.codigo, cc.nombre, cc.tipo, cc.naturaleza, cc."nivel"
       HAVING COALESCE(SUM(al.debe), 0) != 0 OR COALESCE(SUM(al.haber), 0) != 0
       ORDER BY cc.codigo

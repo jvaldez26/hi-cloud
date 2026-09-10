@@ -7,6 +7,7 @@ import { CuentaContable } from '../entities/cuenta-contable.entity';
 import { AsientoContable, TipoOrigenAsiento, EstadoAsiento } from '../entities/asiento-contable.entity';
 import { AsientoLinea } from '../entities/asiento-linea.entity';
 import { TenantService } from '../../tenant/tenant.service';
+import { reportServiceError } from '../../common/observability/sentry';
 
 // Códigos del plan de cuentas dominicano
 const COD = {
@@ -49,6 +50,21 @@ export class AsientosAutomaticosService {
 
   private get eid(): number | undefined {
     try { return this.tenantService.getEmpresaId(); } catch { return undefined; }
+  }
+
+  /**
+   * Reporta a Sentry un fallo de generacion de asiento SIN romper el flujo que lo
+   * invoca (patron TIPO B): un asiento contable es fire-and-forget por convencion,
+   * la venta/compra/cobro/etc. ya ocurrio y no puede caerse por un problema contable.
+   * Antes de este fix estos catches solo hacian logger.error() — invisibles fuera
+   * de la consola del servidor.
+   */
+  private reportarFalloAsiento(
+    err: unknown,
+    operation: string,
+    extra: Record<string, string> = {},
+  ): void {
+    reportServiceError(err, operation, { empresaId: String(this.eid ?? ''), ...extra });
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -102,6 +118,19 @@ export class AsientosAutomaticosService {
       const cuenta = cuentaMap.get(l.codigo);
       if (!cuenta) {
         this.logger.warn(`Cuenta ${l.codigo} no encontrada — asiento omitido`);
+        // Reportado aqui mismo (no en cada uno de los 18 callers) para que ninguno
+        // pueda omitirlo: falta una cuenta en el catalogo de la empresa y el
+        // documento origen (factura, compra, cobro...) se procesa igual sin asiento.
+        this.reportarFalloAsiento(
+          new Error(`Cuenta contable ${l.codigo} no encontrada — asiento omitido`),
+          'asiento_cuenta_no_encontrada',
+          {
+            tipoOrigen:      params.tipoOrigen,
+            referenciaId:    String(params.referenciaId),
+            referenciaFolio: params.referenciaFolio,
+            codigoCuenta:    l.codigo,
+          },
+        );
         return null;
       }
       lineasResueltas.push({ cuenta, ...l });
@@ -190,7 +219,7 @@ export class AsientosAutomaticosService {
     }
 
     try {
-      await this._crearAsientoContabilizado({
+      const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Venta según factura ${folio}`,
         tipoOrigen:      TipoOrigenAsiento.FACTURA,
         referenciaId:    facturaId,
@@ -198,9 +227,16 @@ export class AsientosAutomaticosService {
         userId,
         lineas,
       });
-      this.logger.log(`Asiento factura ${folio} generado`);
+      if (asiento) {
+        this.logger.log(`Asiento factura ${folio} generado`);
+      } else {
+        this.logger.warn(`Asiento factura ${folio} NO generado (cuenta faltante) — ver Sentry`);
+      }
     } catch (err) {
       this.logger.error(`Error asiento factura ${folio}: ${(err as Error).message}`);
+      this.reportarFalloAsiento(err, 'asiento_factura_emitida', {
+        tipoOrigen: TipoOrigenAsiento.FACTURA, referenciaId: String(facturaId), referenciaFolio: folio,
+      });
     }
   }
 
@@ -236,7 +272,7 @@ export class AsientosAutomaticosService {
     }
 
     try {
-      await this._crearAsientoContabilizado({
+      const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Compra según orden ${folio}`,
         tipoOrigen:      TipoOrigenAsiento.COMPRA,
         referenciaId:    compraId,
@@ -244,9 +280,16 @@ export class AsientosAutomaticosService {
         userId,
         lineas,
       });
-      this.logger.log(`Asiento compra ${folio} generado`);
+      if (asiento) {
+        this.logger.log(`Asiento compra ${folio} generado`);
+      } else {
+        this.logger.warn(`Asiento compra ${folio} NO generado (cuenta faltante) — ver Sentry`);
+      }
     } catch (err) {
       this.logger.error(`Error asiento compra ${folio}: ${(err as Error).message}`);
+      this.reportarFalloAsiento(err, 'asiento_compra_recibida', {
+        tipoOrigen: TipoOrigenAsiento.COMPRA, referenciaId: String(compraId), referenciaFolio: folio,
+      });
     }
   }
 
@@ -260,7 +303,7 @@ export class AsientosAutomaticosService {
     userId: number,
   ): Promise<void> {
     try {
-      await this._crearAsientoContabilizado({
+      const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Cobro CxC #${cxcId}`,
         tipoOrigen:      TipoOrigenAsiento.COBRO,
         referenciaId:    cxcId,
@@ -271,9 +314,16 @@ export class AsientosAutomaticosService {
           { codigo: COD.CLIENTES,  descripcion: `Cancelación CxC #${cxcId}`,    debe: 0,     haber: monto },
         ],
       });
-      this.logger.log(`Asiento cobro CxC #${cxcId} generado`);
+      if (asiento) {
+        this.logger.log(`Asiento cobro CxC #${cxcId} generado`);
+      } else {
+        this.logger.warn(`Asiento cobro CxC #${cxcId} NO generado (cuenta faltante) — ver Sentry`);
+      }
     } catch (err) {
       this.logger.error(`Error asiento cobro CxC #${cxcId}: ${(err as Error).message}`);
+      this.reportarFalloAsiento(err, 'asiento_cobro', {
+        tipoOrigen: TipoOrigenAsiento.COBRO, referenciaId: String(cxcId), referenciaFolio: `CXC-${cxcId}`,
+      });
     }
   }
 
@@ -308,7 +358,7 @@ export class AsientosAutomaticosService {
     }
 
     try {
-      await this._crearAsientoContabilizado({
+      const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Cobro ${moneda} CxC #${cxcId}`,
         tipoOrigen:      TipoOrigenAsiento.COBRO,
         referenciaId:    cxcId,
@@ -316,9 +366,16 @@ export class AsientosAutomaticosService {
         userId,
         lineas,
       });
-      this.logger.log(`Asiento cobro ME CxC #${cxcId} — diff cambiaria: ${diff} RD$`);
+      if (asiento) {
+        this.logger.log(`Asiento cobro ME CxC #${cxcId} — diff cambiaria: ${diff} RD$`);
+      } else {
+        this.logger.warn(`Asiento cobro ME CxC #${cxcId} NO generado (cuenta faltante) — ver Sentry`);
+      }
     } catch (err) {
       this.logger.error(`Error asiento cobro ME CxC #${cxcId}: ${(err as Error).message}`);
+      this.reportarFalloAsiento(err, 'asiento_cobro_me', {
+        tipoOrigen: TipoOrigenAsiento.COBRO, referenciaId: String(cxcId), referenciaFolio: `CXC-${cxcId}`,
+      });
     }
   }
 
@@ -353,7 +410,7 @@ export class AsientosAutomaticosService {
     }
 
     try {
-      await this._crearAsientoContabilizado({
+      const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Pago ${moneda} CxP #${cxpId}`,
         tipoOrigen:      TipoOrigenAsiento.PAGO,
         referenciaId:    cxpId,
@@ -361,9 +418,16 @@ export class AsientosAutomaticosService {
         userId,
         lineas,
       });
-      this.logger.log(`Asiento pago ME CxP #${cxpId} — diff cambiaria: ${diff} RD$`);
+      if (asiento) {
+        this.logger.log(`Asiento pago ME CxP #${cxpId} — diff cambiaria: ${diff} RD$`);
+      } else {
+        this.logger.warn(`Asiento pago ME CxP #${cxpId} NO generado (cuenta faltante) — ver Sentry`);
+      }
     } catch (err) {
       this.logger.error(`Error asiento pago ME CxP #${cxpId}: ${(err as Error).message}`);
+      this.reportarFalloAsiento(err, 'asiento_pago_me', {
+        tipoOrigen: TipoOrigenAsiento.PAGO, referenciaId: String(cxpId), referenciaFolio: `CXP-${cxpId}`,
+      });
     }
   }
 
@@ -380,7 +444,7 @@ export class AsientosAutomaticosService {
   ): Promise<void> {
     const cuentaDebito = metodoPago === 'efectivo' ? COD.CAJA : COD.BANCOS;
     try {
-      await this._crearAsientoContabilizado({
+      const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Recibo de cobro #${reciboId}`,
         tipoOrigen:      TipoOrigenAsiento.COBRO,
         referenciaId:    reciboId,
@@ -391,9 +455,16 @@ export class AsientosAutomaticosService {
           { codigo: COD.CLIENTES, descripcion: `Cobro recibido REC-${reciboId}`, debe: 0,  haber: monto },
         ],
       });
-      this.logger.log(`Asiento recibo de cobro #${reciboId} generado`);
+      if (asiento) {
+        this.logger.log(`Asiento recibo de cobro #${reciboId} generado`);
+      } else {
+        this.logger.warn(`Asiento recibo de cobro #${reciboId} NO generado (cuenta faltante) — ver Sentry`);
+      }
     } catch (err) {
       this.logger.error(`Error asiento recibo #${reciboId}: ${(err as Error).message}`);
+      this.reportarFalloAsiento(err, 'asiento_recibo', {
+        tipoOrigen: TipoOrigenAsiento.COBRO, referenciaId: String(reciboId), referenciaFolio: `REC-${reciboId}`,
+      });
     }
   }
 
@@ -407,7 +478,7 @@ export class AsientosAutomaticosService {
     userId: number,
   ): Promise<void> {
     try {
-      await this._crearAsientoContabilizado({
+      const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Pago CxP #${cxpId}`,
         tipoOrigen:      TipoOrigenAsiento.PAGO,
         referenciaId:    cxpId,
@@ -418,9 +489,16 @@ export class AsientosAutomaticosService {
           { codigo: COD.BANCOS,      descripcion: `Pago realizado CxP #${cxpId}`, debe: 0,     haber: monto },
         ],
       });
-      this.logger.log(`Asiento pago CxP #${cxpId} generado`);
+      if (asiento) {
+        this.logger.log(`Asiento pago CxP #${cxpId} generado`);
+      } else {
+        this.logger.warn(`Asiento pago CxP #${cxpId} NO generado (cuenta faltante) — ver Sentry`);
+      }
     } catch (err) {
       this.logger.error(`Error asiento pago CxP #${cxpId}: ${(err as Error).message}`);
+      this.reportarFalloAsiento(err, 'asiento_pago', {
+        tipoOrigen: TipoOrigenAsiento.PAGO, referenciaId: String(cxpId), referenciaFolio: `CXP-${cxpId}`,
+      });
     }
   }
 
@@ -440,7 +518,7 @@ export class AsientosAutomaticosService {
   ): Promise<void> {
     try {
       const costoTotal = totalBruto + totalTSSPatronal;
-      await this._crearAsientoContabilizado({
+      const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Nómina ${periodo}`,
         tipoOrigen:      TipoOrigenAsiento.AJUSTE,
         referenciaId:    periodoId,
@@ -454,9 +532,16 @@ export class AsientosAutomaticosService {
           { codigo: COD.ISR_X_PAGAR,     descripcion: `ISR retenido nómina ${periodo}`,   debe: 0,               haber: totalISR },
         ].filter((l) => l.debe > 0 || l.haber > 0),
       });
-      this.logger.log(`Asiento nómina ${periodo} generado. Costo total: ${costoTotal.toFixed(2)}`);
+      if (asiento) {
+        this.logger.log(`Asiento nómina ${periodo} generado. Costo total: ${costoTotal.toFixed(2)}`);
+      } else {
+        this.logger.warn(`Asiento nómina ${periodo} NO generado (cuenta faltante) — ver Sentry`);
+      }
     } catch (err) {
       this.logger.error(`Error asiento nómina ${periodo}: ${(err as Error).message}`);
+      this.reportarFalloAsiento(err, 'asiento_nomina', {
+        tipoOrigen: TipoOrigenAsiento.AJUSTE, referenciaId: String(periodoId), referenciaFolio: `NOM-${periodo}`,
+      });
     }
   }
 
@@ -470,7 +555,7 @@ export class AsientosAutomaticosService {
     userId: number,
   ): Promise<void> {
     try {
-      await this._crearAsientoContabilizado({
+      const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Depreciación activos fijos ${periodo}`,
         tipoOrigen:      TipoOrigenAsiento.AJUSTE,
         referenciaId:    0,
@@ -481,9 +566,16 @@ export class AsientosAutomaticosService {
           { codigo: '1.2.2.01', descripcion: `Depreciación acum. ${periodo}`,  debe: 0, haber: montoTotal },
         ],
       });
-      this.logger.log(`Asiento depreciación ${periodo}: ${montoTotal.toFixed(2)}`);
+      if (asiento) {
+        this.logger.log(`Asiento depreciación ${periodo}: ${montoTotal.toFixed(2)}`);
+      } else {
+        this.logger.warn(`Asiento depreciación ${periodo} NO generado (cuenta faltante) — ver Sentry`);
+      }
     } catch (err) {
       this.logger.error(`Error asiento depreciación ${periodo}: ${(err as Error).message}`);
+      this.reportarFalloAsiento(err, 'asiento_depreciacion', {
+        tipoOrigen: TipoOrigenAsiento.AJUSTE, referenciaId: '0', referenciaFolio: `DEP-${periodo}`,
+      });
     }
   }
 
@@ -500,7 +592,7 @@ export class AsientosAutomaticosService {
     userId: number,
   ): Promise<void> {
     try {
-      await this._crearAsientoContabilizado({
+      const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Devolución de venta ${numero}`,
         tipoOrigen:      TipoOrigenAsiento.AJUSTE,
         referenciaId:    devolucionId,
@@ -512,9 +604,16 @@ export class AsientosAutomaticosService {
           { codigo: COD.CLIENTES,        descripcion: `Nota crédito ${numero}`,     debe: 0,        haber: total },
         ],
       });
-      this.logger.log(`Asiento devolución ${numero} generado`);
+      if (asiento) {
+        this.logger.log(`Asiento devolución ${numero} generado`);
+      } else {
+        this.logger.warn(`Asiento devolución ${numero} NO generado (cuenta faltante) — ver Sentry`);
+      }
     } catch (err) {
       this.logger.error(`Error asiento devolución ${numero}: ${(err as Error).message}`);
+      this.reportarFalloAsiento(err, 'asiento_devolucion_venta', {
+        tipoOrigen: TipoOrigenAsiento.AJUSTE, referenciaId: String(devolucionId), referenciaFolio: numero,
+      });
     }
   }
 
@@ -538,7 +637,7 @@ export class AsientosAutomaticosService {
         { codigo: COD.BANCOS, descripcion: `Pago ${descripcion}`, debe: 0, haber: total },
       ];
 
-      await this._crearAsientoContabilizado({
+      const asiento = await this._crearAsientoContabilizado({
         descripcion,
         tipoOrigen:      TipoOrigenAsiento.AJUSTE,
         referenciaId:    gastoId,
@@ -546,9 +645,16 @@ export class AsientosAutomaticosService {
         userId,
         lineas,
       });
-      this.logger.log(`Asiento gasto #${gastoId} generado: ${total.toFixed(2)}`);
+      if (asiento) {
+        this.logger.log(`Asiento gasto #${gastoId} generado: ${total.toFixed(2)}`);
+      } else {
+        this.logger.warn(`Asiento gasto #${gastoId} NO generado (cuenta faltante) — ver Sentry`);
+      }
     } catch (err) {
       this.logger.error(`Error asiento gasto #${gastoId}: ${(err as Error).message}`);
+      this.reportarFalloAsiento(err, 'asiento_gasto', {
+        tipoOrigen: TipoOrigenAsiento.AJUSTE, referenciaId: String(gastoId), referenciaFolio: `GST-${gastoId}`,
+      });
     }
   }
 
@@ -578,10 +684,17 @@ export class AsientosAutomaticosService {
           { codigo: COD.ANTICIPOS_CLIENTES,  descripcion: `Anticipo recibido de cliente #${anticipoId}`, debe: 0,   haber: monto },
         ],
       });
-      this.logger.log(`Asiento anticipo #${anticipoId} generado`);
+      if (asiento) {
+        this.logger.log(`Asiento anticipo #${anticipoId} generado`);
+      } else {
+        this.logger.warn(`Asiento anticipo #${anticipoId} NO generado (cuenta faltante) — ver Sentry`);
+      }
       return asiento?.id ?? null;
     } catch (err) {
       this.logger.error(`Error asiento anticipo #${anticipoId}: ${(err as Error).message}`);
+      this.reportarFalloAsiento(err, 'asiento_anticipo', {
+        tipoOrigen: TipoOrigenAsiento.COBRO, referenciaId: String(anticipoId), referenciaFolio: `ANT-${anticipoId}`,
+      });
       return null;
     }
   }
@@ -599,7 +712,7 @@ export class AsientosAutomaticosService {
     userId:     number,
   ): Promise<void> {
     try {
-      await this._crearAsientoContabilizado({
+      const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Aplicación anticipo #${anticipoId} → CxC #${cxcId}`,
         tipoOrigen:      TipoOrigenAsiento.COBRO,
         referenciaId:    anticipoId,
@@ -610,9 +723,16 @@ export class AsientosAutomaticosService {
           { codigo: COD.CLIENTES,           descripcion: `Abono CxC #${cxcId} por anticipo`,  debe: 0,     haber: monto },
         ],
       });
-      this.logger.log(`Asiento aplicación anticipo #${anticipoId} → CxC #${cxcId}`);
+      if (asiento) {
+        this.logger.log(`Asiento aplicación anticipo #${anticipoId} → CxC #${cxcId}`);
+      } else {
+        this.logger.warn(`Asiento aplicación anticipo #${anticipoId} NO generado (cuenta faltante) — ver Sentry`);
+      }
     } catch (err) {
       this.logger.error(`Error asiento aplicar anticipo #${anticipoId}: ${(err as Error).message}`);
+      this.reportarFalloAsiento(err, 'asiento_aplicar_anticipo', {
+        tipoOrigen: TipoOrigenAsiento.COBRO, referenciaId: String(anticipoId), referenciaFolio: `ANT-${anticipoId}`,
+      });
     }
   }
 
@@ -629,7 +749,7 @@ export class AsientosAutomaticosService {
     userId:    number,
   ): Promise<void> {
     try {
-      await this._crearAsientoContabilizado({
+      const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Reversión ${tipo} #${reciboId} — CxC #${cxcId}`,
         tipoOrigen:      TipoOrigenAsiento.AJUSTE,
         referenciaId:    reciboId,
@@ -640,9 +760,16 @@ export class AsientosAutomaticosService {
           { codigo: COD.BANCOS,   descripcion: `Reversar ingreso ${tipo} #${reciboId}`, debe: 0, haber: monto },
         ],
       });
-      this.logger.log(`Asiento reversión ${tipo} #${reciboId} generado`);
+      if (asiento) {
+        this.logger.log(`Asiento reversión ${tipo} #${reciboId} generado`);
+      } else {
+        this.logger.warn(`Asiento reversión ${tipo} #${reciboId} NO generado (cuenta faltante) — ver Sentry`);
+      }
     } catch (err) {
       this.logger.error(`Error asiento reversión ${tipo} #${reciboId}: ${(err as Error).message}`);
+      this.reportarFalloAsiento(err, 'asiento_reversion', {
+        tipoOrigen: TipoOrigenAsiento.AJUSTE, referenciaId: String(reciboId), referenciaFolio: `REV-${reciboId}`,
+      });
     }
   }
 
@@ -663,7 +790,7 @@ export class AsientosAutomaticosService {
     userId:  number,
   ): Promise<void> {
     try {
-      await this._crearAsientoContabilizado({
+      const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Gasto mantenimiento ${numero}`,
         tipoOrigen:      TipoOrigenAsiento.AJUSTE,
         referenciaId:    ordenId,
@@ -674,9 +801,16 @@ export class AsientosAutomaticosService {
           { codigo: COD.PROVEEDORES,   descripcion: `CxP mantenimiento ${numero}`,   debe: 0,     haber: costo },
         ],
       });
-      this.logger.log(`Asiento mantenimiento ${numero}: ${costo.toFixed(2)}`);
+      if (asiento) {
+        this.logger.log(`Asiento mantenimiento ${numero}: ${costo.toFixed(2)}`);
+      } else {
+        this.logger.warn(`Asiento mantenimiento ${numero} NO generado (cuenta faltante) — ver Sentry`);
+      }
     } catch (err) {
       this.logger.error(`Error asiento mantenimiento ${numero}: ${(err as Error).message}`);
+      this.reportarFalloAsiento(err, 'asiento_mantenimiento', {
+        tipoOrigen: TipoOrigenAsiento.AJUSTE, referenciaId: String(ordenId), referenciaFolio: numero,
+      });
     }
   }
 
@@ -709,7 +843,7 @@ export class AsientosAutomaticosService {
   ): Promise<void> {
     const cuentaHaber = formaPago === 'efectivo' ? COD.CAJA : COD.BANCOS;
     try {
-      await this._crearAsientoContabilizado({
+      const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Desembolso préstamo ${numero}`,
         tipoOrigen:      TipoOrigenAsiento.PRESTAMISTA,
         referenciaId:    prestamoId,
@@ -720,9 +854,16 @@ export class AsientosAutomaticosService {
           { codigo: cuentaHaber, descripcion: `Desembolso préstamo ${numero}`, debe: 0, haber: monto },
         ],
       });
-      this.logger.log(`Asiento desembolso préstamo ${numero} generado`);
+      if (asiento) {
+        this.logger.log(`Asiento desembolso préstamo ${numero} generado`);
+      } else {
+        this.logger.warn(`Asiento desembolso préstamo ${numero} NO generado (cuenta faltante) — ver Sentry`);
+      }
     } catch (err) {
       this.logger.error(`Error asiento desembolso ${numero}: ${(err as Error).message}`);
+      this.reportarFalloAsiento(err, 'asiento_desembolso_prestamo', {
+        tipoOrigen: TipoOrigenAsiento.PRESTAMISTA, referenciaId: String(prestamoId), referenciaFolio: numero,
+      });
     }
   }
 
@@ -753,7 +894,7 @@ export class AsientosAutomaticosService {
     if (moraAplicada > 0)
       lineas.push({ codigo: '4.1.2.02', descripcion: `Mora préstamo ${numeroPrestamo}`, debe: 0, haber: moraAplicada });
     try {
-      await this._crearAsientoContabilizado({
+      const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Pago préstamo ${numeroPago} — ${numeroPrestamo}`,
         tipoOrigen:      TipoOrigenAsiento.PRESTAMISTA,
         referenciaId:    pagoId,
@@ -761,9 +902,16 @@ export class AsientosAutomaticosService {
         userId,
         lineas,
       });
-      this.logger.log(`Asiento pago ${numeroPago} generado`);
+      if (asiento) {
+        this.logger.log(`Asiento pago ${numeroPago} generado`);
+      } else {
+        this.logger.warn(`Asiento pago ${numeroPago} NO generado (cuenta faltante) — ver Sentry`);
+      }
     } catch (err) {
       this.logger.error(`Error asiento pago ${numeroPago}: ${(err as Error).message}`);
+      this.reportarFalloAsiento(err, 'asiento_pago_prestamo', {
+        tipoOrigen: TipoOrigenAsiento.PRESTAMISTA, referenciaId: String(pagoId), referenciaFolio: numeroPago,
+      });
     }
   }
 
@@ -807,7 +955,7 @@ export class AsientosAutomaticosService {
       // Dentro de una transacción externa: propagar el error para que el caller
       // haga rollback completo. El inventario y el mayor contable deben quedar
       // siempre en sintonía.
-      await this._crearAsientoContabilizado(
+      const asientoTx = await this._crearAsientoContabilizado(
         {
           descripcion:     `Gasto importación: ${params.concepto} — ${params.compraFolio}`,
           tipoOrigen:      TipoOrigenAsiento.IMPORTACION,
@@ -818,16 +966,20 @@ export class AsientosAutomaticosService {
         },
         manager,
       );
-      this.logger.log(
-        `Asiento gasto importación #${params.gastoId} generado (en tx) — ${params.montoDOP} DOP`,
-      );
+      if (asientoTx) {
+        this.logger.log(
+          `Asiento gasto importación #${params.gastoId} generado (en tx) — ${params.montoDOP} DOP`,
+        );
+      } else {
+        this.logger.warn(`Asiento gasto importación #${params.gastoId} NO generado (cuenta faltante) — ver Sentry`);
+      }
       return;
     }
 
     // Sin manager (Caso A — llamado desde aplicarGastosPendientes fuera de tx):
     // el asiento es best-effort; un fallo no interrumpe la recepción ya confirmada.
     try {
-      await this._crearAsientoContabilizado({
+      const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Gasto importación: ${params.concepto} — ${params.compraFolio}`,
         tipoOrigen:      TipoOrigenAsiento.IMPORTACION,
         referenciaId:    params.gastoId,
@@ -835,11 +987,18 @@ export class AsientosAutomaticosService {
         userId:          params.usuarioId,
         lineas,
       });
-      this.logger.log(`Asiento gasto importación #${params.gastoId} generado — ${params.montoDOP} DOP`);
+      if (asiento) {
+        this.logger.log(`Asiento gasto importación #${params.gastoId} generado — ${params.montoDOP} DOP`);
+      } else {
+        this.logger.warn(`Asiento gasto importación #${params.gastoId} NO generado (cuenta faltante) — ver Sentry`);
+      }
     } catch (err) {
       this.logger.error(
         `Error asiento gasto importación #${params.gastoId}: ${(err as Error).message}`,
       );
+      this.reportarFalloAsiento(err, 'asiento_gasto_importacion', {
+        tipoOrigen: TipoOrigenAsiento.IMPORTACION, referenciaId: String(params.gastoId), referenciaFolio: `GIMP-${params.gastoId}`,
+      });
     }
   }
 }
