@@ -212,6 +212,7 @@ export class PresupuestosService {
        WHERE a.estado = 'contabilizado' AND a."isActive" = true AND l."isActive" = true
          AND c.tipo IN ('gasto','costo')
          AND a."empresaId" = $2
+         AND c."empresaId" = $2
          AND EXTRACT(YEAR FROM a.fecha) = $1
        GROUP BY EXTRACT(MONTH FROM a.fecha)`,
       [anio, empresaId],
