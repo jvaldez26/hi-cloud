@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Body,
   Param,
   Query,
@@ -91,5 +92,12 @@ export class CxPController {
   @ApiOperation({ summary: 'Anular cuenta por pagar (solo ADMIN)' })
   anular(@Param('id', ParseIntPipe) id: number) {
     return this.cxpService.anular(id);
+  }
+
+  @Delete('pagos/:pagoId')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Anular un pago realizado y revertir saldos de la CxP' })
+  anularPago(@Param('pagoId', ParseIntPipe) pagoId: number) {
+    return this.cxpService.anularPago(pagoId);
   }
 }

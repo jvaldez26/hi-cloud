@@ -220,10 +220,14 @@ export class RecibosCobrosService {
         otro:          MetodoPago.OTRO,
       };
 
+      // Id propio del pago (pagos_cobrados) — el asiento de cobro se etiqueta
+      // por este id, no por cxc.id, para que revertirAsiento() pueda apuntar
+      // a este pago sin ambigüedad si algún día se necesita revertirlo aparte.
+      let pagoId = 0;
       await this.dataSource.transaction(async (em) => {
         // 1. Registrar pago en pagos_cobrados → alimenta el historial de cobros
         const pagoRepo = em.getRepository(PagoCobrado);
-        await pagoRepo.save(pagoRepo.create({
+        const pagoGuardado = await pagoRepo.save(pagoRepo.create({
           cuentaPorCobrarId: cxc!.id,
           monto:      montoParaCxc,
           fecha:      dto.fecha ? new Date(dto.fecha) : new Date(),
@@ -236,6 +240,7 @@ export class RecibosCobrosService {
           numero:     rdpNumero,   // RDP-XXXXX — NOT NULL en pagos_cobrados
           empresaId,               // necesario para el índice único (empresaId, numero)
         }));
+        pagoId = pagoGuardado.id;
 
         // 2. Actualizar saldos de CxC
         await em.getRepository(CuentaPorCobrar).update(cxc!.id, {
@@ -256,8 +261,8 @@ export class RecibosCobrosService {
       });
 
       // Asiento contable: DÉBITO Bancos, CRÉDITO Clientes (solo por el monto aplicado a CxC)
-      await this.asientosService.asientoCobro(montoParaCxc, cxc.id, usuarioId).catch(err =>
-        this.logger.error(`Error asiento cobro ${recibo.numero}: ${err.message}`),
+      await this.asientosService.asientoCobro(montoParaCxc, pagoId, cxc.id, usuarioId).catch(err =>
+        this.logger.error(`Error asiento cobro ${recibo.numero} — pago #${pagoId}: ${err.message}`),
       );
 
       // Tesorería: movimiento de entrada (monto total recibido)

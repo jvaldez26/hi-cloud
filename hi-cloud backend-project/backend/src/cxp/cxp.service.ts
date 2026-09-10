@@ -111,7 +111,7 @@ export class CxPService {
       moneda,
       tipoCambio: tasaHoy,
     });
-    await this.pagoRepository.save(pago);
+    const pagoGuardado = await this.pagoRepository.save(pago);
 
     await this.cxpRepository.update(id, {
       montoPagado:    nuevoPagado,
@@ -128,12 +128,12 @@ export class CxPService {
 
     // Asiento contable: Proveedores / Bancos (con diferencia cambiaria si aplica)
     if (moneda !== 'DOP') {
-      await this.asientosService.asientoPagoME(dto.monto, moneda, tasaHoy, tasaOrig, id, userId).catch(err =>
-        this.logger.error(`Error asiento pago ME CxP #${id}: ${err?.message ?? err}`),
+      await this.asientosService.asientoPagoME(dto.monto, moneda, tasaHoy, tasaOrig, pagoGuardado.id, id, userId).catch(err =>
+        this.logger.error(`Error asiento pago ME CxP #${id} — pago #${pagoGuardado.id}: ${err?.message ?? err}`),
       );
     } else {
-      await this.asientosService.asientoPago(dto.monto, id, userId).catch(err =>
-        this.logger.error(`Error asiento pago CxP #${id}: ${err?.message ?? err}`),
+      await this.asientosService.asientoPago(dto.monto, pagoGuardado.id, id, userId).catch(err =>
+        this.logger.error(`Error asiento pago CxP #${id} — pago #${pagoGuardado.id}: ${err?.message ?? err}`),
       );
     }
 
@@ -203,6 +203,63 @@ export class CxPService {
       relations: ['user'],
       order: { fecha: 'DESC' },
     });
+  }
+
+  /**
+   * Anula un PagoRealizado individual y revierte los saldos de la CxP y su
+   * propio asiento de pago. Homólogo de CxCService.anularPago — no existe un
+   * concepto de "recibo de pago a proveedor" en este módulo (PagoRealizado
+   * solo se crea desde registrarPago), así que no hace falta ese guard.
+   *
+   * asientoPago/asientoPagoME etiquetan el asiento por el id de ESTE pago
+   * (no por el de la CxP), así que revertirAsiento() lo encuentra sin
+   * ambigüedad aunque la cuenta tenga otros abonos activos.
+   */
+  async anularPago(pagoId: number): Promise<{ ok: boolean; mensaje: string }> {
+    const empresaId = this.tenantService.getEmpresaId();
+
+    const pago = await this.pagoRepository.findOne({
+      where: { id: pagoId, isActive: true },
+    });
+    if (!pago) throw new NotFoundException(`Pago #${pagoId} no encontrado`);
+
+    const cuenta = await this.cxpRepository.findOne({
+      where: { id: pago.cuentaPorPagarId, empresaId, isActive: true },
+    });
+    if (!cuenta) throw new NotFoundException(`Cuenta por pagar no encontrada`);
+
+    const monto = Number(pago.monto);
+    const nuevoMontoPagado    = Math.max(0, +(Number(cuenta.montoPagado) - monto).toFixed(2));
+    const nuevoMontoPendiente = +(Number(cuenta.montoOriginal) - nuevoMontoPagado).toFixed(2);
+    const nuevoEstado: EstadoCuenta =
+      nuevoMontoPagado <= 0   ? EstadoCuenta.PENDIENTE :
+      nuevoMontoPendiente > 0 ? EstadoCuenta.PAGADA_PARCIAL :
+                                 EstadoCuenta.PAGADA;
+
+    await this.compraRepository.manager.transaction(async (em) => {
+      await em.getRepository(PagoRealizado).update(pagoId, { isActive: false } as any);
+      await em.getRepository(CuentaPorPagar).update(cuenta.id, {
+        montoPagado:    nuevoMontoPagado,
+        montoPendiente: nuevoMontoPendiente,
+        estado:         nuevoEstado as any,
+      });
+      // Revertir compra a RECIBIDA si había quedado PAGADA por este pago
+      if (cuenta.compraId && nuevoEstado !== EstadoCuenta.PAGADA) {
+        await em.getRepository(Compra).update(cuenta.compraId, { estado: CompraEstado.RECIBIDA });
+      }
+    });
+
+    // Reversa contable del asiento de ESTE pago (Debe Proveedores/Haber Bancos).
+    await this.asientosService.revertirAsiento(
+      TipoOrigenAsiento.PAGO,
+      pagoId,
+      fechaHoyRD(),
+      `Anulación de pago #${pagoId}`,
+      `PAGOCXP-${pagoId}`,
+    );
+
+    this.logger.log(`Pago #${pagoId} anulado — CxP #${cuenta.id} revertida (nuevo estado: ${nuevoEstado})`);
+    return { ok: true, mensaje: `Pago anulado y saldo revertido` };
   }
 
   async getCuentasVencidas() {

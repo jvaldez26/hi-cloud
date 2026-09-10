@@ -297,32 +297,38 @@ export class AsientosAutomaticosService {
   // Cobro recibido (CxC) → Bancos / Clientes
   // ──────────────────────────────────────────────────────────────────
 
+  // referenciaId es el id del PAGO (pagos_cobrados), no el de la CxC: dos
+  // abonos sobre la misma cuenta generan dos asientos distintos, y
+  // revertirAsiento() necesita poder apuntar a uno solo sin ambigüedad.
+  // cxcId es solo para la descripción/legibilidad del asiento.
   async asientoCobro(
     monto: number,
+    pagoId: number,
     cxcId: number,
     userId: number,
   ): Promise<void> {
+    const folio = `PAGO-${pagoId}`;
     try {
       const asiento = await this._crearAsientoContabilizado({
-        descripcion:     `Cobro CxC #${cxcId}`,
+        descripcion:     `Cobro CxC #${cxcId} — pago #${pagoId}`,
         tipoOrigen:      TipoOrigenAsiento.COBRO,
-        referenciaId:    cxcId,
-        referenciaFolio: `CXC-${cxcId}`,
+        referenciaId:    pagoId,
+        referenciaFolio: folio,
         userId,
         lineas: [
-          { codigo: COD.BANCOS,    descripcion: `Cobro recibido CxC #${cxcId}`, debe: monto, haber: 0 },
-          { codigo: COD.CLIENTES,  descripcion: `Cancelación CxC #${cxcId}`,    debe: 0,     haber: monto },
+          { codigo: COD.BANCOS,    descripcion: `Cobro recibido CxC #${cxcId} — pago #${pagoId}`, debe: monto, haber: 0 },
+          { codigo: COD.CLIENTES,  descripcion: `Cancelación CxC #${cxcId} — pago #${pagoId}`,    debe: 0,     haber: monto },
         ],
       });
       if (asiento) {
-        this.logger.log(`Asiento cobro CxC #${cxcId} generado`);
+        this.logger.log(`Asiento cobro CxC #${cxcId} — pago #${pagoId} generado`);
       } else {
-        this.logger.warn(`Asiento cobro CxC #${cxcId} NO generado (cuenta faltante) — ver Sentry`);
+        this.logger.warn(`Asiento cobro CxC #${cxcId} — pago #${pagoId} NO generado (cuenta faltante) — ver Sentry`);
       }
     } catch (err) {
-      this.logger.error(`Error asiento cobro CxC #${cxcId}: ${(err as Error).message}`);
+      this.logger.error(`Error asiento cobro CxC #${cxcId} — pago #${pagoId}: ${(err as Error).message}`);
       this.reportarFalloAsiento(err, 'asiento_cobro', {
-        tipoOrigen: TipoOrigenAsiento.COBRO, referenciaId: String(cxcId), referenciaFolio: `CXC-${cxcId}`,
+        tipoOrigen: TipoOrigenAsiento.COBRO, referenciaId: String(pagoId), referenciaFolio: folio,
       });
     }
   }
@@ -334,47 +340,50 @@ export class AsientosAutomaticosService {
   // Diferencia → GANANCIA_CAMBIARIA o PÉRDIDA_CAMBIARIA
   // ──────────────────────────────────────────────────────────────────
 
+  // Ver nota de asientoCobro: referenciaId es el id del pago, no el de la CxC.
   async asientoCobroME(
     montoME:  number,
     moneda:   string,
     tasaHoy:  number,
     tasaOrig: number,
+    pagoId:   number,
     cxcId:    number,
     userId:   number,
   ): Promise<void> {
     const montoReal = parseFloat((montoME * tasaHoy).toFixed(2));
     const montoLib  = parseFloat((montoME * tasaOrig).toFixed(2));
     const diff      = parseFloat((montoReal - montoLib).toFixed(2));
+    const folio     = `PAGO-${pagoId}`;
 
     const lineas: { codigo: string; descripcion: string; debe: number; haber: number }[] = [
-      { codigo: COD.BANCOS,   descripcion: `Cobro ${moneda} CxC #${cxcId}`,   debe: montoReal, haber: 0        },
-      { codigo: COD.CLIENTES, descripcion: `Cancelación CxC #${cxcId}`,        debe: 0,         haber: montoLib },
+      { codigo: COD.BANCOS,   descripcion: `Cobro ${moneda} CxC #${cxcId} — pago #${pagoId}`, debe: montoReal, haber: 0        },
+      { codigo: COD.CLIENTES, descripcion: `Cancelación CxC #${cxcId} — pago #${pagoId}`,       debe: 0,         haber: montoLib },
     ];
 
     if (diff > 0.005) {
-      lineas.push({ codigo: COD.GANANCIA_CAMBIARIA, descripcion: `Ganancia cambiaria CxC #${cxcId} (${moneda})`, debe: 0,    haber: diff });
+      lineas.push({ codigo: COD.GANANCIA_CAMBIARIA, descripcion: `Ganancia cambiaria CxC #${cxcId} (${moneda}) — pago #${pagoId}`, debe: 0,    haber: diff });
     } else if (diff < -0.005) {
-      lineas.push({ codigo: COD.PERDIDA_CAMBIARIA,  descripcion: `Pérdida cambiaria CxC #${cxcId} (${moneda})`,  debe: -diff, haber: 0   });
+      lineas.push({ codigo: COD.PERDIDA_CAMBIARIA,  descripcion: `Pérdida cambiaria CxC #${cxcId} (${moneda}) — pago #${pagoId}`,  debe: -diff, haber: 0   });
     }
 
     try {
       const asiento = await this._crearAsientoContabilizado({
-        descripcion:     `Cobro ${moneda} CxC #${cxcId}`,
+        descripcion:     `Cobro ${moneda} CxC #${cxcId} — pago #${pagoId}`,
         tipoOrigen:      TipoOrigenAsiento.COBRO,
-        referenciaId:    cxcId,
-        referenciaFolio: `CXC-${cxcId}`,
+        referenciaId:    pagoId,
+        referenciaFolio: folio,
         userId,
         lineas,
       });
       if (asiento) {
-        this.logger.log(`Asiento cobro ME CxC #${cxcId} — diff cambiaria: ${diff} RD$`);
+        this.logger.log(`Asiento cobro ME CxC #${cxcId} — pago #${pagoId} — diff cambiaria: ${diff} RD$`);
       } else {
-        this.logger.warn(`Asiento cobro ME CxC #${cxcId} NO generado (cuenta faltante) — ver Sentry`);
+        this.logger.warn(`Asiento cobro ME CxC #${cxcId} — pago #${pagoId} NO generado (cuenta faltante) — ver Sentry`);
       }
     } catch (err) {
-      this.logger.error(`Error asiento cobro ME CxC #${cxcId}: ${(err as Error).message}`);
+      this.logger.error(`Error asiento cobro ME CxC #${cxcId} — pago #${pagoId}: ${(err as Error).message}`);
       this.reportarFalloAsiento(err, 'asiento_cobro_me', {
-        tipoOrigen: TipoOrigenAsiento.COBRO, referenciaId: String(cxcId), referenciaFolio: `CXC-${cxcId}`,
+        tipoOrigen: TipoOrigenAsiento.COBRO, referenciaId: String(pagoId), referenciaFolio: folio,
       });
     }
   }
@@ -386,47 +395,50 @@ export class AsientosAutomaticosService {
   // Diferencia → GANANCIA_CAMBIARIA o PÉRDIDA_CAMBIARIA
   // ──────────────────────────────────────────────────────────────────
 
+  // Ver nota de asientoCobro: referenciaId es el id del pago, no el de la CxP.
   async asientoPagoME(
     montoME:  number,
     moneda:   string,
     tasaHoy:  number,
     tasaOrig: number,
+    pagoId:   number,
     cxpId:    number,
     userId:   number,
   ): Promise<void> {
     const montoReal = parseFloat((montoME * tasaHoy).toFixed(2));
     const montoLib  = parseFloat((montoME * tasaOrig).toFixed(2));
     const diff      = parseFloat((montoLib - montoReal).toFixed(2)); // positivo = ganancia (pagamos menos DOP)
+    const folio     = `PAGOCXP-${pagoId}`;
 
     const lineas: { codigo: string; descripcion: string; debe: number; haber: number }[] = [
-      { codigo: COD.PROVEEDORES, descripcion: `Cancelación CxP #${cxpId}`,       debe: montoLib,  haber: 0        },
-      { codigo: COD.BANCOS,      descripcion: `Pago ${moneda} CxP #${cxpId}`,    debe: 0,         haber: montoReal },
+      { codigo: COD.PROVEEDORES, descripcion: `Cancelación CxP #${cxpId} — pago #${pagoId}`,    debe: montoLib,  haber: 0        },
+      { codigo: COD.BANCOS,      descripcion: `Pago ${moneda} CxP #${cxpId} — pago #${pagoId}`, debe: 0,         haber: montoReal },
     ];
 
     if (diff > 0.005) {
-      lineas.push({ codigo: COD.GANANCIA_CAMBIARIA, descripcion: `Ganancia cambiaria CxP #${cxpId} (${moneda})`, debe: 0,    haber: diff });
+      lineas.push({ codigo: COD.GANANCIA_CAMBIARIA, descripcion: `Ganancia cambiaria CxP #${cxpId} (${moneda}) — pago #${pagoId}`, debe: 0,    haber: diff });
     } else if (diff < -0.005) {
-      lineas.push({ codigo: COD.PERDIDA_CAMBIARIA,  descripcion: `Pérdida cambiaria CxP #${cxpId} (${moneda})`,  debe: -diff, haber: 0   });
+      lineas.push({ codigo: COD.PERDIDA_CAMBIARIA,  descripcion: `Pérdida cambiaria CxP #${cxpId} (${moneda}) — pago #${pagoId}`,  debe: -diff, haber: 0   });
     }
 
     try {
       const asiento = await this._crearAsientoContabilizado({
-        descripcion:     `Pago ${moneda} CxP #${cxpId}`,
+        descripcion:     `Pago ${moneda} CxP #${cxpId} — pago #${pagoId}`,
         tipoOrigen:      TipoOrigenAsiento.PAGO,
-        referenciaId:    cxpId,
-        referenciaFolio: `CXP-${cxpId}`,
+        referenciaId:    pagoId,
+        referenciaFolio: folio,
         userId,
         lineas,
       });
       if (asiento) {
-        this.logger.log(`Asiento pago ME CxP #${cxpId} — diff cambiaria: ${diff} RD$`);
+        this.logger.log(`Asiento pago ME CxP #${cxpId} — pago #${pagoId} — diff cambiaria: ${diff} RD$`);
       } else {
-        this.logger.warn(`Asiento pago ME CxP #${cxpId} NO generado (cuenta faltante) — ver Sentry`);
+        this.logger.warn(`Asiento pago ME CxP #${cxpId} — pago #${pagoId} NO generado (cuenta faltante) — ver Sentry`);
       }
     } catch (err) {
-      this.logger.error(`Error asiento pago ME CxP #${cxpId}: ${(err as Error).message}`);
+      this.logger.error(`Error asiento pago ME CxP #${cxpId} — pago #${pagoId}: ${(err as Error).message}`);
       this.reportarFalloAsiento(err, 'asiento_pago_me', {
-        tipoOrigen: TipoOrigenAsiento.PAGO, referenciaId: String(cxpId), referenciaFolio: `CXP-${cxpId}`,
+        tipoOrigen: TipoOrigenAsiento.PAGO, referenciaId: String(pagoId), referenciaFolio: folio,
       });
     }
   }
@@ -472,32 +484,35 @@ export class AsientosAutomaticosService {
   // Pago realizado (CxP) → Proveedores / Bancos
   // ──────────────────────────────────────────────────────────────────
 
+  // Ver nota de asientoCobro: referenciaId es el id del pago, no el de la CxP.
   async asientoPago(
     monto: number,
+    pagoId: number,
     cxpId: number,
     userId: number,
   ): Promise<void> {
+    const folio = `PAGOCXP-${pagoId}`;
     try {
       const asiento = await this._crearAsientoContabilizado({
-        descripcion:     `Pago CxP #${cxpId}`,
+        descripcion:     `Pago CxP #${cxpId} — pago #${pagoId}`,
         tipoOrigen:      TipoOrigenAsiento.PAGO,
-        referenciaId:    cxpId,
-        referenciaFolio: `CXP-${cxpId}`,
+        referenciaId:    pagoId,
+        referenciaFolio: folio,
         userId,
         lineas: [
-          { codigo: COD.PROVEEDORES, descripcion: `Cancelación CxP #${cxpId}`,    debe: monto, haber: 0 },
-          { codigo: COD.BANCOS,      descripcion: `Pago realizado CxP #${cxpId}`, debe: 0,     haber: monto },
+          { codigo: COD.PROVEEDORES, descripcion: `Cancelación CxP #${cxpId} — pago #${pagoId}`,    debe: monto, haber: 0 },
+          { codigo: COD.BANCOS,      descripcion: `Pago realizado CxP #${cxpId} — pago #${pagoId}`, debe: 0,     haber: monto },
         ],
       });
       if (asiento) {
-        this.logger.log(`Asiento pago CxP #${cxpId} generado`);
+        this.logger.log(`Asiento pago CxP #${cxpId} — pago #${pagoId} generado`);
       } else {
-        this.logger.warn(`Asiento pago CxP #${cxpId} NO generado (cuenta faltante) — ver Sentry`);
+        this.logger.warn(`Asiento pago CxP #${cxpId} — pago #${pagoId} NO generado (cuenta faltante) — ver Sentry`);
       }
     } catch (err) {
-      this.logger.error(`Error asiento pago CxP #${cxpId}: ${(err as Error).message}`);
+      this.logger.error(`Error asiento pago CxP #${cxpId} — pago #${pagoId}: ${(err as Error).message}`);
       this.reportarFalloAsiento(err, 'asiento_pago', {
-        tipoOrigen: TipoOrigenAsiento.PAGO, referenciaId: String(cxpId), referenciaFolio: `CXP-${cxpId}`,
+        tipoOrigen: TipoOrigenAsiento.PAGO, referenciaId: String(pagoId), referenciaFolio: folio,
       });
     }
   }

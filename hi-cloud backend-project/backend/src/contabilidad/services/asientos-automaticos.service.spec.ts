@@ -98,7 +98,7 @@ describe('AsientosAutomaticosService — visibilidad de fallos', () => {
 
   it('el reporte de cuenta faltante se emite una sola vez, sin importar el caller', async () => {
     const svc = makeService({ empresaId: 7, cuentas: [] });
-    await svc.asientoCobro(500, 99, 5);
+    await svc.asientoCobro(500, 900, 99, 5);
 
     const reportesDeCuentaFaltante = (reportServiceError as jest.Mock).mock.calls
       .filter(([, operation]) => operation === 'asiento_cuenta_no_encontrada');
@@ -111,7 +111,7 @@ describe('AsientosAutomaticosService — visibilidad de fallos', () => {
     const svc = makeService({ empresaId: 7 });
     svc.cuentaRepository.find.mockRejectedValueOnce(new Error('conexion a BD perdida'));
 
-    await expect(svc.asientoCobro(500, 99, 5)).resolves.toBeUndefined(); // no rechaza
+    await expect(svc.asientoCobro(500, 900, 99, 5)).resolves.toBeUndefined(); // no rechaza
 
     expect(reportServiceError).toHaveBeenCalledWith(
       expect.any(Error),
@@ -119,8 +119,8 @@ describe('AsientosAutomaticosService — visibilidad de fallos', () => {
       expect.objectContaining({
         empresaId:       '7',
         tipoOrigen:      TipoOrigenAsiento.COBRO,
-        referenciaId:    '99',
-        referenciaFolio: 'CXC-99',
+        referenciaId:    '900',
+        referenciaFolio: 'PAGO-900',
       }),
     );
   });
@@ -144,7 +144,7 @@ describe('AsientosAutomaticosService — visibilidad de fallos', () => {
       cuentas: [cuenta('1.1.1.03', 1), cuenta('1.1.2.01', 2)], // BANCOS, CLIENTES
     });
 
-    await svc.asientoCobro(500, 99, 5);
+    await svc.asientoCobro(500, 900, 99, 5);
 
     expect(svc.asientoRepository.save).toHaveBeenCalled();
     expect(svc.logger.log).toHaveBeenCalledWith(expect.stringContaining('generado'));

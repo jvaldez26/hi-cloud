@@ -102,8 +102,8 @@ it('revertir el recibo y luego anular la CxC deja el balance en cero', async () 
 
   // Venta a crédito: Debe Clientes 1180 / Haber Ventas 1000 + ITBIS 180.
   await svc.asientoFacturaEmitida(10, 1180, 1000, 180, 'FAC-10', 5);
-  // Abono de 400 contra la CxC #50: Debe Bancos 400 / Haber Clientes 400.
-  await svc.asientoCobro(400, 50, 5);
+  // Abono de 400 contra la CxC #50 (pago #900): Debe Bancos 400 / Haber Clientes 400.
+  await svc.asientoCobro(400, 900, 50, 5);
 
   // El usuario revierte el recibo (recibos-cobro.service.ts:eliminar):
   // Debe Clientes 400 / Haber Bancos 400 — deja montoPagado en 0 otra vez.

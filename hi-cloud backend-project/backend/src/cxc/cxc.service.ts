@@ -196,12 +196,12 @@ export class CxCService {
     const montoDOP = moneda !== 'DOP' ? parseFloat((dto.monto * tasaHoy).toFixed(2)) : dto.monto;
 
     if (moneda !== 'DOP') {
-      await this.asientosService.asientoCobroME(dto.monto, moneda, tasaHoy, tasaOrig, id, userId).catch(err =>
-        this.logger.error(`Error asiento cobro ME CxC #${id}: ${err.message}`),
+      await this.asientosService.asientoCobroME(dto.monto, moneda, tasaHoy, tasaOrig, ultimoPagoId, id, userId).catch(err =>
+        this.logger.error(`Error asiento cobro ME CxC #${id} — pago #${ultimoPagoId}: ${err.message}`),
       );
     } else {
-      await this.asientosService.asientoCobro(dto.monto, id, userId).catch(err =>
-        this.logger.error(`Error asiento cobro CxC #${id}: ${err.message}`),
+      await this.asientosService.asientoCobro(dto.monto, ultimoPagoId, id, userId).catch(err =>
+        this.logger.error(`Error asiento cobro CxC #${id} — pago #${ultimoPagoId}: ${err.message}`),
       );
     }
 
@@ -444,8 +444,18 @@ export class CxCService {
   }
 
   /**
-   * Anula un PagoCobrado individual y revierte los saldos de la CxC.
-   * Usado desde el historial de cobros para pagos sin recibo asociado.
+   * Anula un PagoCobrado individual y revierte los saldos de la CxC y su
+   * propio asiento de cobro.
+   *
+   * Usado desde el historial de cobros para pagos SIN recibo asociado — un
+   * pago vinculado a un recibo (notas empieza con "Recibo ...") se revierte
+   * SOLO desde recibos-cobro.service.ts:eliminar(), nunca desde aquí: ambos
+   * caminos apuntarían al mismo asiento y revertirlo dos veces infla
+   * Clientes en vez de corregirlo.
+   *
+   * asientoCobro/asientoCobroME etiquetan el asiento por el id de ESTE pago
+   * (no por el de la CxC), así que revertirAsiento() lo encuentra sin
+   * ambigüedad aunque la cuenta tenga otros abonos activos.
    */
   async anularPago(pagoId: number): Promise<{ ok: boolean; mensaje: string }> {
     const empresaId = this.tenantService.getEmpresaId();
@@ -460,17 +470,45 @@ export class CxCService {
     });
     if (!cxc) throw new NotFoundException(`Cuenta por cobrar no encontrada`);
 
-    // Contención inmediata: este método dejaba montoPagado en 0 sin revertir
-    // el asiento de cobro (Debe Bancos/Haber Clientes) — Bancos quedaba con
-    // dinero sin contrapartida, y la cuenta pasaba el filtro de anulación de
-    // anular() como si nunca hubiera tenido abonos. Bloqueado hasta que se
-    // reactive con su reversa correcta (ver granularidad de referenciaId en
-    // asientoCobro/asientoPago).
-    throw new BadRequestException(
-      `No se puede anular el pago #${pagoId} directamente: este método no revierte su asiento contable ` +
-      `(Bancos quedaría con el dinero cobrado sin contrapartida). Revierta el cobro desde el recibo de ` +
-      `cobro asociado (recibos-cobro), que sí revierte correctamente su asiento.`,
+    if (pago.notas?.match(/^Recibo (REC-\d+)/)) {
+      throw new BadRequestException(
+        `No se puede anular el pago #${pagoId} directamente: está vinculado a un recibo de cobro. ` +
+        `Revierta el recibo asociado en su lugar (recibos-cobro).`,
+      );
+    }
+
+    const monto = Number(pago.monto);
+    const nuevoMontoPagado    = Math.max(0, +(Number(cxc.montoPagado) - monto).toFixed(2));
+    const nuevoMontoPendiente = +(Number(cxc.montoOriginal) - nuevoMontoPagado).toFixed(2);
+    const nuevoEstado: EstadoCuenta =
+      nuevoMontoPagado <= 0   ? EstadoCuenta.PENDIENTE :
+      nuevoMontoPendiente > 0 ? EstadoCuenta.PAGADA_PARCIAL :
+                                 EstadoCuenta.PAGADA;
+
+    await this.dataSource.transaction(async (em) => {
+      await em.getRepository(PagoCobrado).update(pagoId, { isActive: false } as any);
+      await em.getRepository(CuentaPorCobrar).update(cxc.id, {
+        montoPagado:    nuevoMontoPagado,
+        montoPendiente: nuevoMontoPendiente,
+        estado:         nuevoEstado as any,
+      });
+      // Revertir factura a EMITIDA si había quedado PAGADA por este pago
+      if (cxc.facturaId && nuevoEstado !== EstadoCuenta.PAGADA) {
+        await em.getRepository(Factura).update(cxc.facturaId, { estado: FacturaEstado.EMITIDA });
+      }
+    });
+
+    // Reversa contable del asiento de ESTE pago (Debe Clientes/Haber Bancos).
+    await this.asientosService.revertirAsiento(
+      TipoOrigenAsiento.COBRO,
+      pagoId,
+      fechaHoyRD(),
+      `Anulación de pago #${pagoId}`,
+      `PAGO-${pagoId}`,
     );
+
+    this.logger.log(`Pago #${pagoId} anulado — CxC #${cxc.id} revertida (nuevo estado: ${nuevoEstado})`);
+    return { ok: true, mensaje: `Pago anulado y saldo revertido` };
   }
 
   /**
