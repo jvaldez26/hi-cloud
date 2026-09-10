@@ -8,6 +8,9 @@ import { NotaCreditoDetalle } from './entities/nota-credito-detalle.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
+import { AsientosAutomaticosService } from '../contabilidad/services/asientos-automaticos.service';
+import { TipoOrigenAsiento } from '../contabilidad/entities/asiento-contable.entity';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 interface DetalleDto {
   productoId?:    number;
@@ -42,6 +45,7 @@ export class NotasCreditoService {
     @InjectRepository(NotaCreditoDetalle) private detRepo:    Repository<NotaCreditoDetalle>,
     private tenantSvc: TenantService,
     @InjectDataSource() private ds: DataSource,
+    private asientosService: AsientosAutomaticosService,
   ) {}
 
   // ─── Folio (atómico con SELECT FOR UPDATE) ────────────────────────────────────
@@ -332,6 +336,19 @@ export class NotasCreditoService {
       throw new BadRequestException('La nota ya está anulada');
     }
     await this.ncRepo.update(id, { estado: EstadoNotaCredito.ANULADA });
+
+    // Reversa contable: si esta NC ya tenía su propio asiento (generado al
+    // ser aceptada por DGII — ver ecf-efectos-nc.service.ts), lo revierte.
+    // Si nunca se generó (NC en borrador, rechazada por DGII, o nacida de una
+    // devolución — cuyo asiento está referenciado al id de la devolución, no
+    // al de la NC), revertirAsiento no encuentra nada, lo reporta y no rompe.
+    await this.asientosService.revertirAsiento(
+      TipoOrigenAsiento.NOTA_CREDITO,
+      id,
+      fechaHoyRD(),
+      `Anulación de nota de crédito ${nc.numero}`,
+    );
+
     return this.findOne(id);
   }
 
