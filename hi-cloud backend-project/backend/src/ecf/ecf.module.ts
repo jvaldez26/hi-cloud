@@ -47,6 +47,7 @@ import { ResumenEcfPendientesJob }  from './jobs/resumen-ecf-pendientes.job';
 import { SuperAdminGuard }       from '../super-admin/super-admin.guard';
 import { TokenBlacklistService } from '../auth/token-blacklist.service';
 import { RncModule }             from '../rnc/rnc.module';
+import { ContabilidadModule }    from '../contabilidad/contabilidad.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { RncModule }             from '../rnc/rnc.module';
     RncModule,
     SuscripcionesModule,
     NotificacionesModule,
+    ContabilidadModule,
     JwtModule.registerAsync({
       imports:    [ConfigModule],
       useFactory: (cfg: ConfigService) => {

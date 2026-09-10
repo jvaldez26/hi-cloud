@@ -10,6 +10,7 @@ import { generarDocumentoPDF } from '../common/pdf/doc-pdf.helper';
 import type { DocData } from '../common/doc.template';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { AsientosAutomaticosService } from '../contabilidad/services/asientos-automaticos.service';
+import { TipoOrigenAsiento } from '../contabilidad/entities/asiento-contable.entity';
 import { TesoreriaService } from '../tesoreria/tesoreria.service';
 import { TipoMovimientoBancario, OrigenMovimiento } from '../tesoreria/entities/movimiento-bancario.entity';
 import { CuentaPorCobrar } from './entities/cuenta-por-cobrar.entity';
@@ -20,6 +21,7 @@ import { FiltroCuentasDto } from '../common/dto/filtro-cuentas.dto';
 import { EstadoCuenta } from '../common/enums/estado-cuenta.enum';
 import { RealtimeService } from '../realtime/realtime.service';
 import { TenantService } from '../tenant/tenant.service';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 @Injectable()
 export class CxCService {
@@ -387,6 +389,19 @@ export class CxCService {
     }
 
     await this.cxcRepository.update(id, { estado: EstadoCuenta.ANULADA });
+
+    // Reversa contable: revierte el asiento de venta de la factura que
+    // originó esta CxC (Debe Clientes/Haber Ventas+ITBIS). Idempotente si la
+    // factura ya se canceló por su cuenta (facturas.service.ts) — no duplica.
+    if (cuenta.facturaId) {
+      await this.asientosService.revertirAsiento(
+        TipoOrigenAsiento.FACTURA,
+        cuenta.facturaId,
+        fechaHoyRD(),
+        `Anulación de CxC #${id}`,
+      );
+    }
+
     return this.findById(id);
   }
 
@@ -453,6 +468,16 @@ export class CxCService {
     }
     await this.cxcRepository.update(cuenta.id, { estado: EstadoCuenta.ANULADA });
     this.logger.log(`CxC #${cuenta.id} anulada por cancelación de factura #${facturaId}`);
+
+    // Reversa contable. facturas.service.ts:cambiarEstado ya llama
+    // revertirAsiento() para la misma factura al cancelarla — idempotente:
+    // la segunda llamada solo encuentra el contra-asiento ya creado.
+    await this.asientosService.revertirAsiento(
+      TipoOrigenAsiento.FACTURA,
+      facturaId,
+      fechaHoyRD(),
+      `CxC anulada por cancelación de factura #${facturaId}`,
+    );
   }
 
   // ──────────────────────────────────────────────────────────────────

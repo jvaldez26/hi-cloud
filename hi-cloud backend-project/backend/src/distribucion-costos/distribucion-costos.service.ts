@@ -121,20 +121,36 @@ export class DistribucionCostosService {
       })),
     ];
 
-    // Insertar asiento en la BD directamente
-    const { rows: [asiento] } = await this.dataSource.query(`
+    // Insertar asiento en la BD directamente.
+    //
+    // Corregido junto con la falta de empresaId en asiento_lineas (abajo) —
+    // los tres bugs viven en el mismo bloque de 15 líneas y sin arreglarlos
+    // juntos el fix de empresaId nunca llega a ejecutarse:
+    //   1. dataSource.query() de TypeORM devuelve el array de filas
+    //      directamente (mismo patrón que el resto del proyecto,
+    //      `const [row] = await this.dataSource.query(...)`), no un objeto
+    //      { rows: [...] } al estilo driver pg crudo — desestructurar
+    //      `.rows` lanzaba "Cannot destructure property 'rows' of
+    //      undefined" en cada ejecución.
+    //   2. La columna es "tipoOrigen" (enum TipoOrigenAsiento), no "tipo" —
+    //      esa columna no existe en asientos_contables.
+    //   3. estado 'borrador' nunca aparece en ningún reporte (todos filtran
+    //      estado = 'contabilizado'): un asiento "ejecutado" por el usuario
+    //      debe nacer CONTABILIZADO, igual que el resto del motor de
+    //      asientos automáticos.
+    const [asiento] = await this.dataSource.query<{ id: number }[]>(`
       INSERT INTO asientos_contables
-        ("empresaId", fecha, tipo, descripcion, estado, "totalDebe", "totalHaber", "userId")
-      VALUES ($1, $2, 'manual', $3, 'borrador', $4, $4, $5)
+        ("empresaId", fecha, "tipoOrigen", descripcion, estado, "totalDebe", "totalHaber", "userId")
+      VALUES ($1, $2, 'manual', $3, 'contabilizado', $4, $4, $5)
       RETURNING id
     `, [empresaId, fecha, lineaDescripcion, monto, userId]);
 
     for (const l of asientoLineas) {
       await this.dataSource.query(`
         INSERT INTO asiento_lineas
-          ("asientoId", "cuentaContableId", descripcion, debe, haber)
-        VALUES ($1, $2, $3, $4, $5)
-      `, [asiento.id, l.cuentaContableId, l.descripcion, l.debe, l.haber]);
+          ("empresaId", "asientoId", "cuentaContableId", descripcion, debe, haber)
+        VALUES ($1, $2, $3, $4, $5, $6)
+      `, [empresaId, asiento.id, l.cuentaContableId, l.descripcion, l.debe, l.haber]);
     }
 
     // Actualizar estadísticas de la regla

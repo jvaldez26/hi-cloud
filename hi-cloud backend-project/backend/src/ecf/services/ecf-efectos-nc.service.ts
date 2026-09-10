@@ -5,6 +5,7 @@ import { ECF, DocumentoOrigenTipo, EstadoDGII } from '../entities/ecf.entity';
 import { Factura, FacturaEstado } from '../../facturas/entities/factura.entity';
 import { NotaCredito, EstadoNotaCredito } from '../../notas-credito/entities/nota-credito.entity';
 import { reportServiceError } from '../../common/observability/sentry';
+import { AsientosAutomaticosService } from '../../contabilidad/services/asientos-automaticos.service';
 
 /**
  * Aplica los efectos financieros de una Nota de Crédito sobre su factura
@@ -45,6 +46,7 @@ export class EcfEfectosNcService {
     private readonly ncRepo: Repository<NotaCredito>,
 
     private readonly dataSource: DataSource,
+    private readonly asientosService: AsientosAutomaticosService,
   ) {}
 
   /**
@@ -69,6 +71,15 @@ export class EcfEfectosNcService {
       EstadoDGII.CONTINGENCIA,
     ];
     if (!estadosAccionables.includes(nuevoEstado)) return;
+
+    // Poblado dentro de la transacción cuando corresponde generar el asiento
+    // propio de la NC; se dispara DESPUÉS de que la transacción confirme (el
+    // motor de asientos es fire-and-forget por convención en todo el
+    // proyecto — nunca dentro de la transacción de negocio).
+    let asientoNcAGenerar: {
+      ncId: number; total: number; subtotal: number; iva: number;
+      numero: string; usuarioId: number;
+    } | null = null;
 
     try {
       await this.dataSource.transaction(async (em) => {
@@ -145,6 +156,26 @@ export class EcfEfectosNcService {
             { efectosAplicados: true },
           );
 
+          // Asiento propio de la NC — SALVO que ya nace reversada: cuando la
+          // NC viene de una devolución (devoluciones.service.ts:procesar),
+          // esa ya generó su propio asientoDevolucionVenta en el momento de
+          // procesar la devolución, referenciando el id de la DEVOLUCIÓN, no
+          // el de la NC. Generar otro aquí duplicaría la reversa contable.
+          const [devRow] = await em.query<{ id: number }[]>(
+            `SELECT id FROM devoluciones WHERE "notaCreditoId" = $1 AND "isActive" = true LIMIT 1`,
+            [nc.id],
+          );
+          if (!devRow) {
+            asientoNcAGenerar = {
+              ncId:      nc.id,
+              total:     Number(nc.total),
+              subtotal:  Number(nc.subtotal),
+              iva:       Number(nc.iva),
+              numero:    nc.numero,
+              usuarioId: nc.usuarioId,
+            };
+          }
+
           if (nuevoEstado === EstadoDGII.OBSERVADO) {
             this.logger.warn(`[EcfEfectosNc] NC ${ecf.numero} OBSERVADA — revisar observaciones en portal DGII`);
           }
@@ -195,6 +226,29 @@ export class EcfEfectosNcService {
         estadoIntentado:   nuevoEstado,
       });
       throw err;
+    }
+
+    // Asiento contable de la NC — fuera de la transacción de negocio (fire-and-
+    // forget, mismo patrón que el resto del proyecto): la transacción de
+    // arriba ya confirmó (cancelación de factura o ajuste de CxC), así que un
+    // fallo aquí no debe hacer rollback de un efecto financiero ya aplicado.
+    // TS estrecha `asientoNcAGenerar` a `null` fuera de la función anidada que
+    // lo reasigna (no analiza el cuerpo de closures pasadas a funciones
+    // opacas como dataSource.transaction) — se re-tipa explícitamente para
+    // leer el valor real que sí quedó asignado en tiempo de ejecución.
+    const pendiente = asientoNcAGenerar as {
+      ncId: number; total: number; subtotal: number; iva: number;
+      numero: string; usuarioId: number;
+    } | null;
+    if (pendiente) {
+      await this.asientosService.asientoNotaCredito(
+        pendiente.ncId,
+        pendiente.total,
+        pendiente.subtotal,
+        pendiente.iva,
+        pendiente.numero,
+        pendiente.usuarioId,
+      );
     }
   }
 }
