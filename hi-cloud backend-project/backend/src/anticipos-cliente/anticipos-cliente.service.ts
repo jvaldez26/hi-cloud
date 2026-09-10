@@ -12,6 +12,7 @@ import { Factura, FacturaEstado } from '../facturas/entities/factura.entity';
 import { EstadoCuenta } from '../common/enums/estado-cuenta.enum';
 import { MetodoPago } from '../common/enums/metodo-pago.enum';
 import { AsientosAutomaticosService } from '../contabilidad/services/asientos-automaticos.service';
+import { TipoOrigenAsiento } from '../contabilidad/entities/asiento-contable.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
 
@@ -245,6 +246,19 @@ export class AnticiposClienteService implements OnModuleInit {
       throw new BadRequestException('No se puede anular un anticipo ya aplicado por completo');
     }
     await this.repo.update(id, { estado: EstadoAnticipo.ANULADO, isActive: false });
+
+    // Reversa contable: revierte el asiento del anticipo (Debe Caja/Banco,
+    // Haber Anticipos de Clientes). tipoOrigen COBRO se comparte con CxC y
+    // recibos de cobro (cada uno con su propio espacio de id) — se pasa el
+    // referenciaFolio ("ANT-<id>") para no confundir el asiento correcto.
+    await this.asientosService.revertirAsiento(
+      TipoOrigenAsiento.COBRO,
+      id,
+      fechaHoyRD(),
+      `Anulación de anticipo ${anticipo.numero}`,
+      `ANT-${id}`,
+    );
+
     return { ok: true, mensaje: `Anticipo ${anticipo.numero} anulado` };
   }
 
