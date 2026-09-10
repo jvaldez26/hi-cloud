@@ -460,29 +460,17 @@ export class CxCService {
     });
     if (!cxc) throw new NotFoundException(`Cuenta por cobrar no encontrada`);
 
-    const monto = Number(pago.monto);
-    const nuevoMontoPagado    = Math.max(0, +(Number(cxc.montoPagado) - monto).toFixed(2));
-    const nuevoMontoPendiente = +(Number(cxc.montoOriginal) - nuevoMontoPagado).toFixed(2);
-    const nuevoEstado: EstadoCuenta =
-      nuevoMontoPagado <= 0   ? EstadoCuenta.PENDIENTE :
-      nuevoMontoPendiente > 0 ? EstadoCuenta.PAGADA_PARCIAL :
-                                 EstadoCuenta.PAGADA;
-
-    await this.dataSource.transaction(async (em) => {
-      await em.getRepository(PagoCobrado).update(pagoId, { isActive: false } as any);
-      await em.getRepository(CuentaPorCobrar).update(cxc.id, {
-        montoPagado:    nuevoMontoPagado,
-        montoPendiente: nuevoMontoPendiente,
-        estado:         nuevoEstado as any,
-      });
-      // Revertir factura a EMITIDA si había quedado PAGADA por este pago
-      if (cxc.facturaId && nuevoEstado !== EstadoCuenta.PAGADA) {
-        await em.getRepository(Factura).update(cxc.facturaId, { estado: FacturaEstado.EMITIDA });
-      }
-    });
-
-    this.logger.log(`Pago #${pagoId} anulado — CxC #${cxc.id} revertida (nuevo estado: ${nuevoEstado})`);
-    return { ok: true, mensaje: `Pago anulado y saldo revertido` };
+    // Contención inmediata: este método dejaba montoPagado en 0 sin revertir
+    // el asiento de cobro (Debe Bancos/Haber Clientes) — Bancos quedaba con
+    // dinero sin contrapartida, y la cuenta pasaba el filtro de anulación de
+    // anular() como si nunca hubiera tenido abonos. Bloqueado hasta que se
+    // reactive con su reversa correcta (ver granularidad de referenciaId en
+    // asientoCobro/asientoPago).
+    throw new BadRequestException(
+      `No se puede anular el pago #${pagoId} directamente: este método no revierte su asiento contable ` +
+      `(Bancos quedaría con el dinero cobrado sin contrapartida). Revierta el cobro desde el recibo de ` +
+      `cobro asociado (recibos-cobro), que sí revierte correctamente su asiento.`,
+    );
   }
 
   /**
