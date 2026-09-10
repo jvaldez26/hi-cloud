@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, LessThan } from 'typeorm';
 import { Cron } from '@nestjs/schedule';
 import { AsientosAutomaticosService } from '../contabilidad/services/asientos-automaticos.service';
+import { TipoOrigenAsiento } from '../contabilidad/entities/asiento-contable.entity';
 import { TesoreriaService } from '../tesoreria/tesoreria.service';
 import { TipoMovimientoBancario, OrigenMovimiento } from '../tesoreria/entities/movimiento-bancario.entity';
 import { CuentaPorPagar } from './entities/cuenta-por-pagar.entity';
@@ -18,6 +19,7 @@ import { FiltroCuentasDto } from '../common/dto/filtro-cuentas.dto';
 import { EstadoCuenta } from '../common/enums/estado-cuenta.enum';
 import { RealtimeService } from '../realtime/realtime.service';
 import { TenantService } from '../tenant/tenant.service';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 @Injectable()
 export class CxPService {
@@ -295,6 +297,18 @@ export class CxPService {
     }
 
     await this.cxpRepository.update(id, { estado: EstadoCuenta.ANULADA });
+
+    // Reversa contable: revierte el asiento de la compra que originó esta CxP
+    // (Debe Inventario+ITBIS/Haber Proveedores).
+    if (cuenta.compraId) {
+      await this.asientosService.revertirAsiento(
+        TipoOrigenAsiento.COMPRA,
+        cuenta.compraId,
+        fechaHoyRD(),
+        `Anulación de CxP #${id}`,
+      );
+    }
+
     return this.findById(id);
   }
 
