@@ -18,7 +18,17 @@ export function UomSelect({ value, onChange }: { value?: string; onChange?: (v: 
         value={value} onChange={onChange}
         placeholder="Seleccionar o buscar unidad"
         options={opts}
-        dropdownRender={menu => (
+        // Sin `width: 100%` este Select se encogía al tamaño de su contenido
+        // —«pza» y poco más— en vez de ocupar su columna. Es la convención del
+        // resto del proyecto y aquí faltaba.
+        style={{ width: '100%' }}
+        // Y el desplegable copia el ancho del control: con el control encogido,
+        // «GAL — Galón (gal)» salía como «GA...» y el enlace de abajo se partía
+        // en una palabra por línea. Con `false` el menú se mide por su contenido
+        // y el minWidth evita que quede más estrecho que el propio campo.
+        popupMatchSelectWidth={false}
+        styles={{ popup: { root: { minWidth: 240 } } }}
+        popupRender={menu => (
           <>
             {menu}
             <div style={{ padding: '4px 8px', borderTop: '1px solid #f0f0f0' }}>
