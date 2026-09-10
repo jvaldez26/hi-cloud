@@ -389,11 +389,21 @@ export class ProductosService implements OnModuleInit {
       // Búsqueda por tokens: cada palabra debe aparecer en algún campo.
       // Esto resuelve: espacios dobles en nombres ("TUBO  ELECTRICO"), orden
       // de palabras distinto y cualquier variación de espaciado.
+      //
+      // codigoBarras entra aquí a propósito: sin él, escanear un código de
+      // barras en cualquier buscador que use este endpoint (p.ej. el Select
+      // de producto de la Orden de Compra en el POS) solo encontraba el
+      // producto cuando el código escaneado coincidía por casualidad con el
+      // `codigo` (SKU interno) — el caso normal, con el EAN/UPC real guardado
+      // aparte en `codigoBarras`, no traía resultados. El carrito principal
+      // del POS no sufre esto: procesarScan() en POSPage.tsx ya compara contra
+      // `codigo` Y `codigoBarras` en el catálogo local, sin pasar por aquí.
       const tokens = search.trim().split(/\s+/).filter(Boolean);
       tokens.forEach((token, i) => {
         const param = `srch${i}`;
         qb.andWhere(
-          `(producto.nombre ILIKE :${param} OR producto.codigo ILIKE :${param} OR producto.categoria ILIKE :${param})`,
+          `(producto.nombre ILIKE :${param} OR producto.codigo ILIKE :${param}
+            OR producto.categoria ILIKE :${param} OR producto."codigoBarras" ILIKE :${param})`,
           { [param]: `%${token}%` },
         );
       });
