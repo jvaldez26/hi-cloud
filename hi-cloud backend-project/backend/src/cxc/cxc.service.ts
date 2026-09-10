@@ -379,12 +379,50 @@ export class CxCService {
     };
   }
 
+  /**
+   * ¿La factura origen tiene un e-CF confirmado por DGII (aceptado u
+   * observado)? Si sí, el comprobante ya está declarado — revertir el
+   * asiento de venta directamente desalinearía el 607 (la venta
+   * desaparecería de contabilidad mientras el comprobante sigue vigente en
+   * DGII). La corrección fiscalmente correcta es una Nota de Crédito, que ya
+   * genera su propio asiento (asientoNotaCredito, ver ecf-efectos-nc.service.ts).
+   */
+  private async facturaTieneEcfConfirmado(facturaId: number): Promise<boolean> {
+    const [ecf] = await this.dataSource.query<{ estadoDGII: string }[]>(
+      `SELECT "estadoDGII" FROM ecf
+       WHERE "facturaId" = $1 AND "isActive" = true
+       ORDER BY "createdAt" DESC LIMIT 1`,
+      [facturaId],
+    );
+    return ecf?.estadoDGII === 'aceptado' || ecf?.estadoDGII === 'observado';
+  }
+
   async anular(id: number) {
     const cuenta = await this.findById(id);
 
     if (cuenta.estado === EstadoCuenta.PAGADA || cuenta.estado === EstadoCuenta.ANULADA) {
       throw new BadRequestException(
         `No se puede anular una cuenta en estado "${cuenta.estado}"`,
+      );
+    }
+
+    // Problema 2: comprobante ya declarado ante DGII — no se revierte el
+    // asiento directo, se corrige con NC.
+    if (cuenta.facturaId && await this.facturaTieneEcfConfirmado(cuenta.facturaId)) {
+      throw new BadRequestException(
+        `No se puede anular: la factura tiene un e-CF confirmado por DGII (aceptado u observado). ` +
+        `Emita una Nota de Crédito para corregirla — anular el asiento directamente desalinearía la declaración 607.`,
+      );
+    }
+
+    // Problema 1: con abonos aplicados, revertir el asiento completo de la
+    // venta rompe el balance (Clientes queda negativo, Bancos conserva el
+    // cobro sin contrapartida). Solo una cuenta sin abonos (PENDIENTE) se
+    // anula directo.
+    if (Number(cuenta.montoPagado) > 0) {
+      throw new BadRequestException(
+        `No se puede anular: esta cuenta tiene ${Number(cuenta.montoPagado).toFixed(2)} abonado. ` +
+        `Revierta primero los recibos de cobro (o pagos) aplicados a esta cuenta y vuelva a intentar.`,
       );
     }
 
@@ -449,23 +487,47 @@ export class CxCService {
 
   /**
    * Anula la CxC vinculada a una factura cuando ésta se cancela.
-   * - Si no existe CxC (factura de contado) → no hace nada.
-   * - Si ya está ANULADA → no hace nada (idempotente).
-   * - Si está PAGADA → la deja intacta; el cobro ya fue procesado.
-   * - En cualquier otro estado (PENDIENTE, VENCIDA, PAGADA_PARCIAL) → la anula.
+   * - Si no existe CxC (factura de contado) → 'sin_cxc'. facturas.service.ts
+   *   sigue adelante y revierte el asiento de venta igual (no hay abonos que
+   *   proteger).
+   * - Si ya está ANULADA → 'anulada' (idempotente).
+   * - Si está PAGADA, tiene abonos aplicados, o la factura tiene un e-CF
+   *   confirmado por DGII → 'bloqueada'. facturas.service.ts NO debe
+   *   revertir el asiento de venta en ese caso — mismos motivos que
+   *   anular(): revertir solo la venta con abonos vivos rompe el balance, y
+   *   revertir con e-CF confirmado desalinea el 607.
+   * - En cualquier otro estado (PENDIENTE sin abonos) → la anula y revierte
+   *   su asiento, retorna 'anulada'.
    */
-  async anularPorFacturaId(facturaId: number): Promise<void> {
+  async anularPorFacturaId(facturaId: number): Promise<'anulada' | 'sin_cxc' | 'bloqueada'> {
     const cuenta = await this.cxcRepository.findOne({
       where: { facturaId, isActive: true },
     });
-    if (!cuenta) return;
-    if (cuenta.estado === EstadoCuenta.ANULADA) return;
+    if (!cuenta) return 'sin_cxc';
+    if (cuenta.estado === EstadoCuenta.ANULADA) return 'anulada';
+
     if (cuenta.estado === EstadoCuenta.PAGADA) {
       this.logger.warn(
         `anularPorFacturaId: CxC #${cuenta.id} (factura #${facturaId}) ya está PAGADA — se omite`,
       );
-      return;
+      return 'bloqueada';
     }
+
+    if (await this.facturaTieneEcfConfirmado(facturaId)) {
+      this.logger.warn(
+        `anularPorFacturaId: factura #${facturaId} tiene e-CF confirmado por DGII — se omite, requiere Nota de Crédito`,
+      );
+      return 'bloqueada';
+    }
+
+    if (Number(cuenta.montoPagado) > 0) {
+      this.logger.warn(
+        `anularPorFacturaId: CxC #${cuenta.id} (factura #${facturaId}) tiene abonos aplicados — ` +
+        `se omite, revierta primero los recibos de cobro`,
+      );
+      return 'bloqueada';
+    }
+
     await this.cxcRepository.update(cuenta.id, { estado: EstadoCuenta.ANULADA });
     this.logger.log(`CxC #${cuenta.id} anulada por cancelación de factura #${facturaId}`);
 
@@ -478,6 +540,7 @@ export class CxCService {
       fechaHoyRD(),
       `CxC anulada por cancelación de factura #${facturaId}`,
     );
+    return 'anulada';
   }
 
   // ──────────────────────────────────────────────────────────────────

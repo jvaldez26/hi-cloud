@@ -1265,29 +1265,46 @@ export class FacturasService {
           factura.folio,
         );
       }
+    }
 
-      // Anular CxC vinculada (si la factura era a crédito)
-      await this.cxcService.anularPorFacturaId(id).catch(err =>
+    // Anular CxC vinculada (si la factura era a crédito) y decidir, con el
+    // mismo criterio que cxc.service.ts, si el asiento de venta se puede
+    // revertir. Fuera del bloque de arriba a propósito: una factura PAGADA
+    // cancelada también tiene que pasar por este chequeo — su CxC, si existe,
+    // está PAGADA (abonos aplicados) y bloquea la reversa igual que una
+    // PAGADA_PARCIAL.
+    let bloqueadaPorCxc = false;
+    if (estado === FacturaEstado.CANCELADA) {
+      const resultadoCxc = await this.cxcService.anularPorFacturaId(id).catch(err => {
         this.logger.warn(
           `Cancelación factura #${id}: no se pudo anular CxC — ${(err as Error).message}`,
-        ),
-      );
+        );
+        return 'error' as const;
+      });
+      bloqueadaPorCxc = resultadoCxc === 'bloqueada';
     }
 
     // Reversa contable: contra-asiento NUEVO que invierte el asiento de venta
     // (Debe Clientes/Haber Ventas+ITBIS), fechado HOY (evento de reversión),
-    // nunca la fecha original de la factura. Se aplica en toda cancelación,
-    // venga de EMITIDA o de PAGADA (a diferencia del bloque de arriba, que
-    // solo corre desde EMITIDA) — el asiento de venta existe siempre que la
-    // factura llegó a emitirse. Idempotente: si cxcService.anularPorFacturaId
-    // ya la revirtió (o si se llama dos veces), no duplica.
+    // nunca la fecha original de la factura. Idempotente: si
+    // cxcService.anularPorFacturaId ya la revirtió, no duplica. Si la CxC
+    // tiene abonos aplicados o un e-CF confirmado por DGII, NO se revierte —
+    // revertir solo la venta y dejar el cobro vivo (o desalinear el 607)
+    // rompería el balance igual que anular la CxC directamente.
     if (estado === FacturaEstado.CANCELADA) {
-      await this.asientosService.revertirAsiento(
-        TipoOrigenAsiento.FACTURA,
-        id,
-        fechaHoyRD(),
-        `Cancelación de factura ${factura.folio}`,
-      );
+      if (bloqueadaPorCxc) {
+        this.logger.warn(
+          `Cancelación factura #${id}: NO se revierte el asiento de venta — la CxC tiene ` +
+          `abonos aplicados o un e-CF confirmado por DGII. Revierta los pagos o emita una Nota de Crédito.`,
+        );
+      } else {
+        await this.asientosService.revertirAsiento(
+          TipoOrigenAsiento.FACTURA,
+          id,
+          fechaHoyRD(),
+          `Cancelación de factura ${factura.folio}`,
+        );
+      }
     }
 
     await this.facturaRepository.update(id, { estado });
