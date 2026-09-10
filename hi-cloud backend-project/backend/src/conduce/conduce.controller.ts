@@ -18,10 +18,14 @@ import { ConduceService } from './conduce.service';
 import { ConducePDFService } from './conduce-pdf.service';
 import { EstadoConduce } from './entities/conduce.entity';
 
+// descripcion (300) y unidadMedida (20) deben coincidir con las columnas de
+// conduce_detalles (conduce-detalle.entity.ts) — sin el límite, un texto más
+// largo que la columna tumba el INSERT con un 500 sin manejar en vez de un
+// 400 claro (mismo bug real que Sentry #7724484308 en create-factura.dto.ts).
 class DetalleConduceDto {
   @IsOptional() @IsInt() @IsPositive() @Type(() => Number) productoId?: number;
-  @IsString()                                               descripcion!: string;
-  @IsOptional() @IsString()                                 unidadMedida?: string;
+  @IsString() @MaxLength(300)                               descripcion!: string;
+  @IsOptional() @IsString() @MaxLength(20)                  unidadMedida?: string;
   @IsNumber() @Min(0.0001) @Type(() => Number)              cantidad!: number;
   @IsOptional() @IsString()                                 observaciones?: string;
 }

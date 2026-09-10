@@ -71,8 +71,12 @@ export class CreateFacturaDetalleDto {
   @IsPositive()
   opticaInventarioId?: number;
 
+  // Debe coincidir con factura_detalles.descripcion (@Column({ length: 200 })
+  // en factura-detalle.entity.ts) — con 2000 la validación dejaba pasar
+  // valores que el INSERT rechazaba después con un 500 sin manejar
+  // ("value too long for type character varying(200)", Sentry #7724484308).
   @IsOptional()
-  @IsString() @MaxLength(2000)
+  @IsString() @MaxLength(200)
   descripcion?: string;
 
   @IsNumber({ maxDecimalPlaces: 4 })

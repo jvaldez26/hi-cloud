@@ -4,7 +4,7 @@ import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import {
   IsString, IsOptional, IsInt, IsPositive, IsNumber, IsArray,
-  ValidateNested, Min, IsDateString, IsEnum,
+  ValidateNested, Min, IsDateString, IsEnum, MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -18,10 +18,14 @@ import { NotasCreditoService } from './notas-credito.service';
 import { NotaCreditoPDFService } from './nc-pdf.service';
 import { MotivoNotaCredito } from './entities/nota-credito.entity';
 
+// descripcion (300) y unidadMedida (20) deben coincidir con las columnas de
+// nota_credito_detalles — sin el límite, un texto más largo que la columna
+// tumba el INSERT con un 500 sin manejar (mismo bug real que Sentry
+// #7724484308 en create-factura.dto.ts).
 class DetalleDto {
   @IsOptional() @IsInt() @IsPositive() @Type(() => Number) productoId?: number;
-  @IsString()                                               descripcion!: string;
-  @IsOptional() @IsString()                                 unidadMedida?: string;
+  @IsString() @MaxLength(300)                               descripcion!: string;
+  @IsOptional() @IsString() @MaxLength(20)                  unidadMedida?: string;
   @IsNumber() @Min(0.0001) @Type(() => Number)              cantidad!: number;
   @IsNumber() @Min(0) @Type(() => Number)                   precioUnitario!: number;
   @IsOptional() @IsNumber() @Min(0) @Type(() => Number)     porcentajeIva?: number;

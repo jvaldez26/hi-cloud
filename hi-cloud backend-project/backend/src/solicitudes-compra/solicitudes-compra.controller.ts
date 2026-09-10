@@ -5,7 +5,7 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import {
   IsString, IsOptional, IsEnum, IsNumber, IsInt, IsPositive,
-  Min, IsDateString, IsArray, ValidateNested, ArrayMinSize,
+  Min, IsDateString, IsArray, ValidateNested, ArrayMinSize, MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { SolicitudesCompraService } from './solicitudes-compra.service';
@@ -17,10 +17,14 @@ import { GetUser } from '../auth/decorators/get-user.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
 import { User } from '../users/users.entity';
 
+// descripcion (300) y unidad (30) deben coincidir con las columnas de
+// solicitud_compra_lineas — sin el límite, un texto más largo que la
+// columna tumba el INSERT con un 500 sin manejar (mismo bug real que
+// Sentry #7724484308 en create-factura.dto.ts).
 class LineaSolicitudDto {
-  @IsString()                           descripcion!:         string;
+  @IsString() @MaxLength(300)           descripcion!:         string;
   @IsNumber() @Min(0.0001)              cantidad!:            number;
-  @IsOptional() @IsString()             unidad?:              string;
+  @IsOptional() @IsString() @MaxLength(30) unidad?:           string;
   @IsOptional() @IsInt() @IsPositive()  productoId?:          number;
   @IsOptional() @IsNumber() @Min(0)     presupuestoUnitario?: number;
   @IsOptional() @IsString()             especificaciones?:    string;
@@ -42,12 +46,14 @@ class CambiarEstadoSolicitudDto {
   @IsOptional() @IsString()        comentario?:  string;
 }
 
+// descripcion (300) y unidad (100) deben coincidir con las columnas de
+// cotizacion_proveedor_lineas — mismo criterio que LineaSolicitudDto arriba.
 class LineaCotizacionDto {
-  @IsString()                           descripcion!:       string;
+  @IsString() @MaxLength(300)           descripcion!:       string;
   @IsNumber() @Min(0.0001)              cantidad!:          number;
   @IsNumber() @Min(0)                   precioUnitario!:    number;
   @IsOptional() @IsNumber() @Min(0)     porcentajeItbis?:   number;
-  @IsOptional() @IsString()             unidad?:            string;
+  @IsOptional() @IsString() @MaxLength(100) unidad?:        string;
   @IsOptional() @IsInt() @IsPositive()  productoId?:        number;
 }
 

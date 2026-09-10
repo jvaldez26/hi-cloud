@@ -4,7 +4,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { IsNumber, IsOptional, IsString, IsArray, ValidateNested, IsInt } from 'class-validator';
+import { IsNumber, IsOptional, IsString, IsArray, ValidateNested, IsInt, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ProFormaService } from './pro-forma.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
@@ -15,9 +15,12 @@ import { GetUser } from '../auth/decorators/get-user.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
 import { User } from '../users/users.entity';
 
+// descripcion debe coincidir con pro_forma_items.descripcion (length: 255) —
+// sin el límite, un texto más largo tumba el INSERT con un 500 sin manejar
+// (mismo bug real que Sentry #7724484308 en create-factura.dto.ts).
 class ItemDto {
   @IsOptional() @IsInt() productoId?: number;
-  @IsString() descripcion!: string;
+  @IsString() @MaxLength(255) descripcion!: string;
   @IsNumber() cantidad!: number;
   @IsNumber() precioUnitario!: number;
   @IsOptional() @IsNumber() porcentajeIva?: number;

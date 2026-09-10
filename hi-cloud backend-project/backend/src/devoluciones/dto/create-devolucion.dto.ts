@@ -11,7 +11,10 @@ export class CreateDevolucionDetalleDto {
   @IsOptional() @IsInt() @IsPositive()
   productoId?: number;
 
-  @IsString() @MaxLength(2000) @IsNotEmpty()
+  // Debe coincidir con devolucion_detalles.descripcion (@Column({ length: 200 })
+  // en devolucion-detalle.entity.ts) — mismo mismatch DTO/columna que ya
+  // tumbó POST /facturas con 500 (Sentry #7724484308, create-factura.dto.ts).
+  @IsString() @MaxLength(200) @IsNotEmpty()
   descripcion: string;
 
   @IsNumber({ maxDecimalPlaces: 4 }) @IsPositive() @Min(0.0001)
