@@ -20,6 +20,8 @@ export enum TipoOrigenAsiento {
   // espacio de referenciaId — dos documentos de distinta tabla pueden compartir
   // el mismo id numérico (cada tabla tiene su propio auto-increment).
   NOTA_CREDITO  = 'nota_credito',
+  // Asiento propio de una Nota de Débito (E33) al emitirse.
+  NOTA_DEBITO   = 'nota_debito',
 }
 
 export enum EstadoAsiento {

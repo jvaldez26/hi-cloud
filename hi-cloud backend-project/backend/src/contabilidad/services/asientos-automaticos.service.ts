@@ -1046,6 +1046,48 @@ export class AsientosAutomaticosService {
   }
 
   // ──────────────────────────────────────────────────────────────────
+  // Nota de Débito (E33) al emitirse → mismo criterio de cuentas que
+  // asientoFacturaEmitida (no es una reversa: una ND aumenta lo que debe el
+  // cliente, igual que una venta). Debe Clientes / Haber Ventas + ITBIS por
+  // Pagar. Namespace propio (NOTA_DEBITO) para no colisionar en
+  // revertirAsiento().
+  // ──────────────────────────────────────────────────────────────────
+
+  async asientoNotaDebito(
+    ndId:     number,
+    total:    number,
+    subtotal: number,
+    iva:      number,
+    numero:   string,
+    userId:   number,
+  ): Promise<void> {
+    try {
+      const asiento = await this._crearAsientoContabilizado({
+        descripcion:     `Nota de débito ${numero}`,
+        tipoOrigen:      TipoOrigenAsiento.NOTA_DEBITO,
+        referenciaId:    ndId,
+        referenciaFolio: numero,
+        userId,
+        lineas: [
+          { codigo: COD.CLIENTES,        descripcion: `Cta. por cobrar — ND ${numero}`,   debe: total,    haber: 0 },
+          { codigo: COD.VENTAS,          descripcion: `Cargo adicional — ND ${numero}`,    debe: 0,        haber: subtotal },
+          { codigo: COD.ITBIS_POR_PAGAR, descripcion: `ITBIS débito fiscal — ND ${numero}`, debe: 0,        haber: iva },
+        ],
+      });
+      if (asiento) {
+        this.logger.log(`Asiento nota de débito ${numero} generado`);
+      } else {
+        this.logger.warn(`Asiento nota de débito ${numero} NO generado (cuenta faltante) — ver Sentry`);
+      }
+    } catch (err) {
+      this.logger.error(`Error asiento nota de débito ${numero}: ${(err as Error).message}`);
+      this.reportarFalloAsiento(err, 'asiento_nota_debito', {
+        tipoOrigen: TipoOrigenAsiento.NOTA_DEBITO, referenciaId: String(ndId), referenciaFolio: numero,
+      });
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
   // Reversas — contra-asiento NUEVO, nunca se borra/edita/desactiva el
   // original.
   //

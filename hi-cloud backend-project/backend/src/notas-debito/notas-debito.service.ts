@@ -6,6 +6,9 @@ import { NotaDebito, EstadoNotaDebito } from './entities/nota-debito.entity';
 import { NotaDebitoDetalle } from './entities/nota-debito-detalle.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
+import { AsientosAutomaticosService } from '../contabilidad/services/asientos-automaticos.service';
+import { TipoOrigenAsiento } from '../contabilidad/entities/asiento-contable.entity';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 interface DetalleDto {
   productoId?:    number;
@@ -38,6 +41,7 @@ export class NotasDebitoService {
     @InjectRepository(NotaDebitoDetalle) private detRepo: Repository<NotaDebitoDetalle>,
     private tenantSvc: TenantService,
     @InjectDataSource() private ds: DataSource,
+    private asientosService: AsientosAutomaticosService,
   ) {}
 
   // ─── Folio ────────────────────────────────────────────────────────────────────
@@ -197,6 +201,18 @@ export class NotasDebitoService {
       throw new BadRequestException('Solo se puede emitir notas en BORRADOR');
     }
     await this.ndRepo.update(id, { estado: EstadoNotaDebito.EMITIDA });
+
+    // Asiento propio: Debe Clientes / Haber Ventas + ITBIS por Pagar — una ND
+    // aumenta lo que debe el cliente, igual que una venta.
+    await this.asientosService.asientoNotaDebito(
+      id,
+      Number(nd.total),
+      Number(nd.subtotal),
+      Number(nd.iva),
+      nd.numero,
+      nd.usuarioId,
+    );
+
     return this.findOne(id);
   }
 
@@ -206,6 +222,17 @@ export class NotasDebitoService {
       throw new BadRequestException('La nota ya está anulada');
     }
     await this.ndRepo.update(id, { estado: EstadoNotaDebito.ANULADA });
+
+    // Reversa contable: si la ND ya estaba EMITIDA y tenía su propio asiento,
+    // lo revierte. Si seguía en BORRADOR (nunca se generó), revertirAsiento
+    // no encuentra nada, lo reporta a Sentry y no rompe.
+    await this.asientosService.revertirAsiento(
+      TipoOrigenAsiento.NOTA_DEBITO,
+      id,
+      fechaHoyRD(),
+      `Anulación de nota de débito ${nd.numero}`,
+    );
+
     return this.findOne(id);
   }
 
