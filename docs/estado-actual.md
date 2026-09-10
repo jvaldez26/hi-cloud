@@ -485,6 +485,40 @@ fragmento que contiene solo `RD$ `. Está en `common/pdf/inspeccion-pdf.testing.
 
 ## 3. Trabajos abiertos
 
+### Un cajero veía a los demás cajeros y podía abrir turno a su nombre — cerrado a medias
+
+Visto en producción: un usuario con rol `vendedor` **sin perfil vinculado** abría el POS y el
+desplegable «Cajero responsable» le mostraba a sus compañeros. La condición era:
+
+```ts
+const vendedoresPOS = (esRolVendedor && miVendedor) ? [miVendedor] : vendedores;
+```
+
+Con `miVendedor` en `null` el `&&` falla y cae al `else`: **la lista entera**. Y `mi-perfil`
+devuelve `null` siempre que `vendedores.usuarioId` esté vacío — que es como nacen los
+vendedores recién creados. La restricción se desactivaba sola justo en el caso en que hacía
+falta. (Es el mismo `usuarioId` vacío que ya causó las facturas huérfanas, la imputación de
+recibos a caja y la caja de Adalberta: cuarta aparición.)
+
+Ahora el rol decide la rama: con rol vendedor, o su propio perfil o **nada**, y el modal
+explica que hay que pedirle a un administrador que lo vincule. También se limpia el
+`pos_last_vendedor_id` de `localStorage`: sin eso, quien ya había elegido a un compañero
+conservaba ese id y el botón seguía habilitado aunque la lista estuviera vacía.
+
+`src/test/pos-vendedor-no-ve-la-lista.test.ts` vigila la forma de esa expresión. Probado en
+rojo contra el código anterior.
+
+#### Lo que sigue abierto — la puerta, no la pantalla
+
+**`POST /caja/abrir` no valida nada.** Está abierto a `VENDEDOR` y acepta cualquier
+`vendedorId` de la empresa: solo lo usa para resolver el nombre. `GET /vendedores` tampoco
+filtra por usuario — `listar()` devuelve la empresa entera a cualquier rol.
+
+Es decir: **esto cierra la pantalla, no el acceso.** Cambiando el id en la petición, un
+vendedor todavía puede abrir turno a nombre de otro. La barrera de verdad es que `abrirCaja`
+rechace un `vendedorId` que no sea el del usuario cuando su rol en la empresa es `vendedor`.
+Pendiente, y es la que cierra las tres vías de golpe.
+
 ### El selector de unidad salía aplastado — cerrado (sin guardia: es visual)
 
 En el formulario de producto, «Unidad de Medida» se encogía al tamaño de su contenido —«pza» y

@@ -1500,13 +1500,18 @@ function CategoriasSidebar({ categorias, selected, onSelect }: {
  * llamadas a /caja. Existe porque estas empresas necesitan que la venta quede
  * imputada a alguien, no que se les imponga un flujo de turnos que no usan.
  */
-function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar, soloVendedor = false }: {
+function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar, soloVendedor = false,
+  vendedorSinVincular = false, cargandoVendedor = false }: {
   open: boolean;
   vendedores: any[];
   sucursales: any[];
   onAbrir: (monto: number, vendedorId?: number, sucursalId?: number) => void;
   onCancelar: () => void;
   soloVendedor?: boolean;
+  /** Rol vendedor sin perfil vinculado: la lista viene vacía a propósito. */
+  vendedorSinVincular?: boolean;
+  /** Aún no se sabe si tiene perfil — no se afirma nada mientras tanto. */
+  cargandoVendedor?: boolean;
 }) {
   const C = useC();
   const [monto,       setMonto]      = useState(0);
@@ -1541,12 +1546,21 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar,
   }, [vendedores, vendedorId]);
 
   // Validar que el vendedor/sucursal guardados sigan existiendo en las listas
+  //
+  // `vendedorSinVincular` va aparte porque ahí la lista está VACÍA y la primera
+  // condición no se cumple: sin esto, un cajero que antes de este arreglo eligió
+  // a un compañero se quedaba con ese id en localStorage, el botón seguía
+  // habilitado y podía abrir el turno a nombre del otro aunque ya no lo viera.
   useEffect(() => {
-    if (vendedores.length > 0 && vendedorId && !vendedores.find((v: any) => v.id === vendedorId)) {
+    const guardadoNoValido =
+      vendedorSinVincular ||
+      (vendedores.length > 0 && !vendedores.find((v: any) => v.id === vendedorId));
+    if (vendedorId && guardadoNoValido) {
       setVendedorId(undefined);
       localStorage.removeItem('pos_last_vendedor_id');
+      localStorage.removeItem('pos_vendedor_id');
     }
-  }, [vendedores, vendedorId]);
+  }, [vendedores, vendedorId, vendedorSinVincular]);
   useEffect(() => {
     if (sucursales.length > 0 && sucursalSel && !sucursales.find((s: any) => s.id === sucursalSel)) {
       setSucursalSel(undefined);
@@ -1713,6 +1727,7 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar,
               {cajaStatus === 'loading'      ? 'Verificando caja diaria...'                  :
                cajaStatus === 'abierta'      ? 'Caja diaria ya abierta hoy'                  :
                cajaStatus === 'cerrada_hoy'  ? 'Este cajero ya cerró su turno hoy'           :
+               vendedorSinVincular           ? 'Tu usuario no está vinculado a un vendedor'   :
                sinVendedores                 ? 'No hay vendedores — configúralos primero'    :
                vendedorId                    ? 'La caja diaria se abrirá junto con el turno' :
                                                'Selecciona el cajero para verificar su caja'}
@@ -1815,7 +1830,17 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar,
         )}
 
         {/* Advertencias */}
-        {sinVendedores && (
+        {vendedorSinVincular && (
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, background: C.red+'18', border: `1px solid ${C.red}44`, borderRadius: 8, padding: '8px 12px' }}>
+            <span style={{ fontSize: 13 }}>🔗</span>
+            <span style={{ fontSize: 12, color: C.red, fontWeight: 500 }}>
+              Tu usuario no está vinculado a ningún vendedor, así que no se puede saber a quién
+              imputar {soloVendedor ? 'las ventas' : 'el turno'}. Pídele a un administrador que lo vincule
+              en <strong>Comercial &amp; Servicios → Vendedores</strong>.
+            </span>
+          </div>
+        )}
+        {sinVendedores && !vendedorSinVincular && !cargandoVendedor && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: C.red+'18', border: `1px solid ${C.red}44`, borderRadius: 8, padding: '8px 12px' }}>
             <span style={{ fontSize: 13 }}>🚫</span>
             <span style={{ fontSize: 12, color: C.red, fontWeight: 500 }}>
@@ -9830,7 +9855,7 @@ export default function POSPage() {
   // Se consulta siempre, no solo para el rol vendedor: es la forma de saber a
   // quién imputar la venta cuando la empresa no usa turnos y el modal de
   // apertura —que era donde se elegía el cajero— nunca llega a abrirse.
-  const { data: miVendedor = null } = useQuery<any | null>({
+  const { data: miVendedor = null, isPending: cargandoMiVendedor } = useQuery<any | null>({
     queryKey: ['mi-vendedor-pos'],
     queryFn:  () => api.get('/vendedores/mi-perfil').then((r: any) => {
       const d = r.data?.data ?? r.data;
@@ -9838,7 +9863,28 @@ export default function POSPage() {
     }).catch(() => null),
     staleTime: 10 * 60_000,
   });
-  const vendedoresPOS: any[] = (esRolVendedor && miVendedor) ? [miVendedor] : vendedores;
+
+  /**
+   * Un usuario con rol vendedor ve SOLO su propio perfil. Nunca la lista.
+   *
+   * Antes la condición era `(esRolVendedor && miVendedor) ? [miVendedor] :
+   * vendedores`: si `mi-perfil` devolvía null —y lo devuelve siempre que
+   * `vendedores.usuarioId` esté vacío, que es como nacen los vendedores recién
+   * creados— el `&&` fallaba y caía a la lista COMPLETA. El cajero veía a todos
+   * sus compañeros en el desplegable y podía abrir turno a nombre de cualquiera.
+   *
+   * Ahora, sin perfil vinculado, la lista queda vacía y el modal lo dice: no es
+   * que falten vendedores, es que a este usuario le falta el suyo y eso lo
+   * arregla un administrador.
+   *
+   * `cargandoMiVendedor` importa: mientras la consulta va en camino `miVendedor`
+   * ya vale null, y sin distinguirlo el aviso saldría en cada apertura antes de
+   * saber si es cierto.
+   */
+  const vendedorSinVincular = esRolVendedor && !cargandoMiVendedor && !miVendedor;
+  const vendedoresPOS: any[] = esRolVendedor
+    ? (miVendedor ? [miVendedor] : [])
+    : vendedores;
 
   // ── Vendedor en empresas SIN control de caja ──────────────────────────────
   //
@@ -11380,6 +11426,8 @@ export default function POSPage() {
         open={controlCajaActivo ? !turnoAbierto : pedirVendedorSinTurno}
         soloVendedor={!controlCajaActivo}
         vendedores={vendedoresPOS} sucursales={sucursales}
+        vendedorSinVincular={vendedorSinVincular}
+        cargandoVendedor={esRolVendedor && cargandoMiVendedor}
         onAbrir={async (m, vid, sid) => {
           if (vid) {
             setVendedorId(vid);
