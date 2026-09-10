@@ -5,6 +5,9 @@ export interface CompraDetallePayload {
   productoId: number; cantidad: number; precioUnitario: number;
   porcentajeItbis?: number; descripcion?: string;
   cantidadBonificada?: number;
+  /** Descuento por línea — se manda solo uno, el backend deriva el otro. */
+  descuentoPct?: number;
+  descuentoMonto?: number;
 }
 export interface CompraPayload {
   proveedorId: number; fecha: string;

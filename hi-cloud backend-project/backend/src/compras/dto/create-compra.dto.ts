@@ -47,6 +47,26 @@ export class CreateCompraDetalleDto {
   @Min(0)
   @Max(100)
   porcentajeItbis?: number;
+
+  /**
+   * Descuento POR LÍNEA — se captura como % o como monto (el frontend
+   * enlaza los dos inputs); lo que persiste y decide todo cálculo es
+   * SIEMPRE descuentoMonto. Que no sea negativo ni supere el importe bruto
+   * de la línea (precioUnitario × cantidad) se valida en el service —
+   * ahí es donde se conoce ese importe.
+   */
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100)
+  @Type(() => Number)
+  descuentoPct?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0)
+  @Type(() => Number)
+  descuentoMonto?: number;
 }
 
 export class CreateCompraDto {

@@ -45,11 +45,20 @@ export class Compra extends TenantBaseEntity {
   @OneToMany(() => CompraDetalle, (d) => d.compra, { cascade: true })
   detalles!: CompraDetalle[];
 
+  /**
+   * Base gravable = Σ (precioUnitario × cantidad − descuentoMonto) por línea.
+   * Ya viene NETA de descuento — con descuentoTotal = 0 es idéntica a la
+   * suma bruta de siempre, así que las OC sin descuento no cambian.
+   */
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   subtotal!: number;
 
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   itbis!: number;
+
+  /** Σ compra_detalles.descuentoMonto — denormalizado para el pie de la orden. */
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  descuentoTotal!: number;
 
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   total!: number;

@@ -96,17 +96,26 @@ export class ComprasPdfService {
         ...(sucursalNombre ? [{ label: 'Sucursal', valor: sucursalNombre }] : []),
       ],
       items: (compra.detalles ?? []).map((d: any) => {
-        const sub  = Number(d.precioUnitario) * Number(d.cantidad);
-        const itbs = sub * (Number(d.porcentajeItbis ?? 18) / 100);
+        // d.total ya viene NETO de descuento + ITBIS de la línea (calcularDetalles
+        // en compras.service.ts) — no se recalcula aquí para no perder el descuento.
+        const descLinea = Number(d.descuentoMonto ?? 0);
         return {
           descripcion:    d.descripcion,
           cantidad:       Number(d.cantidad),
           precioUnitario: Number(d.precioUnitario),
-          importe:        sub + itbs,
+          importe:        Number(d.total),
+          nota:           descLinea > 0 ? `Descuento: RD$ ${descLinea.toFixed(2)}` : undefined,
         };
       }),
       totales: [
-        { label: 'Subtotal',    valor: Number(compra.subtotal) },
+        // "Subtotal" bruto (antes de descuento) para que el pie lea
+        // Subtotal → Descuento → ITBIS → Total, como en la factura del
+        // proveedor. compra.subtotal ya es neto — se reconstruye sumando
+        // descuentoTotal, sin duplicar el dato.
+        { label: 'Subtotal',    valor: Number(compra.subtotal) + Number(compra.descuentoTotal ?? 0) },
+        ...(Number(compra.descuentoTotal ?? 0) > 0
+          ? [{ label: 'Descuento', valor: -Number(compra.descuentoTotal), color: '#d97706' }]
+          : []),
         { label: 'ITBIS (18%)', valor: Number(compra.itbis) },
         { label: 'Total Orden', valor: Number(compra.total), bold: true },
       ],
@@ -216,13 +225,16 @@ export class ComprasPdfService {
         y += 10;
 
         // ── TABLA DE PRODUCTOS ─────────────────────────────────────────────
+        // itbis termina bien antes de imp (que se ancla al borde derecho) —
+        // ese hueco es donde entra la columna de descuento sin apretar nada.
         const COL = {
-          num:    { x: M,                 w: 20 },
-          desc:   { x: M + 20,            w: CW * 0.38 },
-          cant:   { x: M + 20 + CW*0.38,  w: 40 },
-          precio: { x: M + 20 + CW*0.38 + 40, w: 80 },
-          itbis:  { x: M + 20 + CW*0.38 + 120, w: 45 },
-          imp:    { x: M + CW - 70,       w: 70 },
+          num:    { x: M,                      w: 20 },
+          desc:   { x: M + 20,                 w: CW * 0.38 },
+          cant:   { x: M + 20 + CW*0.38,       w: 40 },
+          precio: { x: M + 20 + CW*0.38 + 40,  w: 80 },
+          itbis:  { x: M + 20 + CW*0.38 + 120, w: 40 },
+          dsc:    { x: M + 20 + CW*0.38 + 160, w: 55 },
+          imp:    { x: M + CW - 70,            w: 70 },
         };
 
         const LINE_H = altoDeLinea(doc, 'Helvetica', 7.5);
@@ -235,15 +247,17 @@ export class ComprasPdfService {
         doc.text('CANT.',       COL.cant.x,        y + 4, { width: COL.cant.w,  align: 'center' });
         doc.text('P. UNIT.',    COL.precio.x,      y + 4, { width: COL.precio.w,align: 'right'  });
         doc.text('ITBIS%',      COL.itbis.x,       y + 4, { width: COL.itbis.w, align: 'center' });
+        doc.text('DESC.',       COL.dsc.x,         y + 4, { width: COL.dsc.w,   align: 'right'  });
         doc.text('IMPORTE',     COL.imp.x,         y + 4, { width: COL.imp.w,   align: 'right'  });
         y += 16;
 
         const detalles = (compra.detalles ?? []) as any[];
         detalles.forEach((d, i) => {
-          const sub  = Number(d.precioUnitario) * Number(d.cantidad);
-          const pct  = Number(d.porcentajeItbis ?? 18);
-          const itb  = sub * (pct / 100);
-          const tot  = sub + itb;
+          const pct   = Number(d.porcentajeItbis ?? 18);
+          const desc  = Number(d.descuentoMonto ?? 0);
+          // d.total ya viene NETO de descuento + ITBIS de la línea
+          // (calcularDetalles en compras.service.ts) — no se recalcula aquí.
+          const tot   = Number(d.total);
           const rowH = 16;
 
           if (i % 2 === 0) {
@@ -263,6 +277,7 @@ export class ComprasPdfService {
           doc.text(String(Number(d.cantidad)), COL.cant.x,     y + 4, unaLinea(COL.cant.w,  'center'));
           doc.text(fmt(Number(d.precioUnitario)), COL.precio.x, y + 4, unaLinea(COL.precio.w, 'right'));
           doc.text(`${pct.toFixed(0)}%`,     COL.itbis.x,      y + 4, unaLinea(COL.itbis.w, 'center'));
+          doc.text(desc > 0 ? fmt(desc) : '—', COL.dsc.x,      y + 4, unaLinea(COL.dsc.w,   'right'));
           doc.text(fmt(tot),                 COL.imp.x,        y + 4, unaLinea(COL.imp.w,   'right'));
           y += rowH;
         });
@@ -274,7 +289,12 @@ export class ComprasPdfService {
         // ── TOTALES ────────────────────────────────────────────────────────
         const TW = 160;
         const TX = M + CW - TW;
-        const subtotalGrav = Number(compra.subtotal);
+        // compra.subtotal ya es NETO de descuento (calcularDetalles en
+        // compras.service.ts) — se reconstruye el bruto sumando descuentoTotal
+        // para que el pie lea Subtotal → Descuento → ITBIS → Total, igual que
+        // la factura del proveedor.
+        const descuentoTotal = Number(compra.descuentoTotal ?? 0);
+        const subtotalGrav = Number(compra.subtotal) + descuentoTotal;
         const itbisTotal   = Number(compra.itbis);
         const totalGen     = Number(compra.total);
 
@@ -293,6 +313,9 @@ export class ComprasPdfService {
         };
 
         addTotalRow('Subtotal Gravado:',  subtotalGrav);
+        if (descuentoTotal > 0) {
+          addTotalRow('Descuento:', -descuentoTotal, false, '#d97706');
+        }
         addTotalRow('Subtotal Exento:',   0);
         addTotalRow('ITBIS Total (18%):', itbisTotal, false, '#e07000');
         doc.moveTo(TX, y).lineTo(TX + TW, y).lineWidth(0.5).strokeColor('#999999').stroke();

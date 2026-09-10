@@ -20,6 +20,9 @@ interface Linea {
   cantidadBonificada: number;
   precioUnitario: number;
   porcentajeItbis: number;
+  /** Descuento por línea — se persiste el monto; el % es solo ayuda de captura. */
+  descuentoPct: number;
+  descuentoMonto: number;
   permiteDecimales?: boolean;
   precioIncluyeItbis?: boolean;
 }
@@ -44,7 +47,7 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId }: Props
   const empresaActual  = useAuthStore(s => s.empresaActual);
   const qc = useQueryClient();
 
-  const [lineas, setLineas] = useState<Linea[]>([{ key: '1', cantidad: 1, cantidadBonificada: 0, precioUnitario: 0, porcentajeItbis: 18 }]);
+  const [lineas, setLineas] = useState<Linea[]>([{ key: '1', cantidad: 1, cantidadBonificada: 0, precioUnitario: 0, porcentajeItbis: 18, descuentoPct: 0, descuentoMonto: 0 }]);
   const [tipoPago, setTipoPago]         = useState<'contado' | 'credito'>('contado');
   const [diasCredito, setDiasCredito]   = useState(30);
   const [moneda, setMoneda]             = useState<'DOP' | 'USD' | 'EUR'>('DOP');
@@ -156,6 +159,8 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId }: Props
         cantidadBonificada: Number(d.cantidadBonificada ?? 0),
         precioUnitario:     Number(d.precioUnitario),
         porcentajeItbis:    Number(d.porcentajeItbis ?? 18),
+        descuentoPct:       Number(d.descuentoPct ?? 0),
+        descuentoMonto:     Number(d.descuentoMonto ?? 0),
       })));
       // Sin esto el Select de cada línea sale vacío: los productos del borrador
       // no están en los resultados de la búsqueda, que arranca sin texto.
@@ -192,9 +197,15 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId }: Props
     onError: (e: any) => message.error(e?.friendlyMessage ?? e?.response?.data?.message ?? 'Error al crear producto'),
   });
 
-  const subtotal = lineas.reduce((s, l) => s + l.precioUnitario * l.cantidad, 0);
-  const itbis    = lineas.reduce((s, l) => s + l.precioUnitario * l.cantidad * (l.porcentajeItbis / 100), 0);
+  // Preview en el frontend — el backend recalcula esto mismo, línea por
+  // línea con su propia tasa, al guardar (calcularDetalles en
+  // compras.service.ts). subtotal ya es NETO de descuento (base gravable);
+  // subtotalBruto se reconstruye para el pie: Subtotal → Descuento → ITBIS.
+  const descuentoTotal = lineas.reduce((s, l) => s + (l.descuentoMonto || 0), 0);
+  const subtotal = lineas.reduce((s, l) => s + (l.precioUnitario * l.cantidad - (l.descuentoMonto || 0)), 0);
+  const itbis    = lineas.reduce((s, l) => s + (l.precioUnitario * l.cantidad - (l.descuentoMonto || 0)) * (l.porcentajeItbis / 100), 0);
   const total    = subtotal + itbis;
+  const subtotalBruto = subtotal + descuentoTotal;
 
   const montoRetItbis = (esInformal && retieneItbis) ? Number((itbis   * pctItbis / 100).toFixed(2)) : 0;
   const montoRetIsr   = (esInformal && retieneIsr)   ? Number((subtotal * pctIsr   / 100).toFixed(2)) : 0;
@@ -249,6 +260,10 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId }: Props
       productoId: l.productoId!, descripcion: l.descripcion,
       cantidad: l.cantidad, cantidadBonificada: l.cantidadBonificada || undefined,
       precioUnitario: l.precioUnitario, porcentajeItbis: l.porcentajeItbis,
+      // Lo que decide el cálculo en el backend es SIEMPRE el monto — se manda
+      // aunque sea 0 (a diferencia de cantidadBonificada) para que una línea
+      // editada a "sin descuento" limpie lo que tenía antes.
+      descuentoMonto: l.descuentoMonto || 0,
     }));
     createMut.mutate({
       proveedorId: values.proveedorId,
@@ -379,6 +394,38 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId }: Props
           />
         );
       }},
+    { title: 'Desc.', key: 'descuento', width: 126,
+      render: (_: unknown, r: Linea, idx: number) => {
+        // % y monto enlazados: el usuario teclea uno, el otro se calcula solo.
+        // Lo que persiste (y decide el cálculo, incluido en el backend) es
+        // siempre descuentoMonto — el % es solo ayuda de captura.
+        const bruto = r.precioUnitario * r.cantidad;
+        const actualizar = (pct: number, monto: number) => {
+          const u = [...lineas];
+          u[idx] = { ...u[idx], descuentoPct: pct, descuentoMonto: monto };
+          setLineas(u);
+        };
+        return (
+          <div style={{ display: 'flex', gap: 4 }}>
+            <Tooltip title="Descuento en %">
+              <InputNumber controls={false} min={0} max={100} precision={2}
+                value={r.descuentoPct} style={{ width: 54 }}
+                onChange={v => {
+                  const pct = v ?? 0;
+                  actualizar(pct, Number((bruto * (pct / 100)).toFixed(4)));
+                }} />
+            </Tooltip>
+            <Tooltip title={`Descuento en ${moneda === 'USD' ? 'US$' : moneda === 'EUR' ? '€' : 'RD$'}`}>
+              <InputNumber controls={false} min={0} max={bruto} precision={2}
+                value={r.descuentoMonto} style={{ width: 64 }}
+                onChange={v => {
+                  const monto = Math.min(v ?? 0, bruto);
+                  actualizar(bruto > 0 ? Number(((monto / bruto) * 100).toFixed(2)) : 0, monto);
+                }} />
+            </Tooltip>
+          </div>
+        );
+      }},
     { title: 'ITBIS %', key: 'itbis', width: 100,
       render: (_: unknown, r: Linea, idx: number) => (
         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
@@ -397,7 +444,8 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId }: Props
         </div>
       )},
     { title: 'Subtotal', key: 'sub', width: 98,
-      render: (_: unknown, r: Linea) => fmtMon(r.precioUnitario * r.cantidad, moneda) },
+      // NETO de descuento — la base gravable de la línea, no el bruto.
+      render: (_: unknown, r: Linea) => fmtMon(r.precioUnitario * r.cantidad - (r.descuentoMonto || 0), moneda) },
     { title: '', key: 'del', width: 44,
       render: (_: unknown, _r: Linea, idx: number) => (
         <Button type="text" danger icon={<DeleteOutlined />} onClick={() => setLineas(lineas.filter((_, i) => i !== idx))} />
@@ -516,7 +564,7 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId }: Props
       </Card>
 
       <Card title="Ítems" style={{ marginBottom: 16 }}
-        extra={<Button icon={<PlusOutlined />} onClick={() => setLineas([...lineas, { key: Date.now().toString(), cantidad: 1, cantidadBonificada: 0, precioUnitario: 0, porcentajeItbis: 18 }])}>Agregar</Button>}>
+        extra={<Button icon={<PlusOutlined />} onClick={() => setLineas([...lineas, { key: Date.now().toString(), cantidad: 1, cantidadBonificada: 0, precioUnitario: 0, porcentajeItbis: 18, descuentoPct: 0, descuentoMonto: 0 }])}>Agregar</Button>}>
         <Table columns={lineaCols as any} dataSource={lineas} rowKey="key" pagination={false} size="small"
           tableLayout="fixed" style={{ overflowX: 'auto' }} />
       </Card>
@@ -560,7 +608,14 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId }: Props
         <Row justify="end">
           <Col xs={24} sm={10}>
             <Space direction="vertical" style={{ width: '100%' }}>
-              <Row justify="space-between"><span>Subtotal:</span><strong>{fmtMon(subtotal, moneda)}</strong></Row>
+              {/* Subtotal BRUTO (antes de descuento) — el pie lee Subtotal →
+                  Descuento → ITBIS → Total, igual que la factura del proveedor. */}
+              <Row justify="space-between"><span>Subtotal:</span><strong>{fmtMon(subtotalBruto, moneda)}</strong></Row>
+              {descuentoTotal > 0 && (
+                <Row justify="space-between" style={{ color: '#d97706' }}>
+                  <span>Descuento:</span><strong>-{fmtMon(descuentoTotal, moneda)}</strong>
+                </Row>
+              )}
               <Row justify="space-between"><span>ITBIS (18%):</span><strong>{fmtMon(itbis, moneda)}</strong></Row>
               <Divider style={{ margin: '8px 0' }} />
               <Row justify="space-between">

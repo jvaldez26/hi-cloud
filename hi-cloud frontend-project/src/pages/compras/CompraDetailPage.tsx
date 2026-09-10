@@ -102,6 +102,8 @@ export default function CompraDetailPage() {
     { title: 'Descripción',  dataIndex: 'descripcion',  ellipsis: true },
     { title: 'Cant.',        dataIndex: 'cantidad',     width: 70,  render: (v: number) => fmt.number(v) },
     { title: 'Precio Unit.', dataIndex: 'precioUnitario', width: 120, render: (v: number) => fmt.money(v) },
+    { title: 'Desc.',        dataIndex: 'descuentoMonto', width: 90,
+      render: (v: number) => Number(v) > 0 ? fmt.money(v) : '—' },
     { title: 'ITBIS %',      dataIndex: 'porcentajeItbis', width: 80, render: (v: number) => `${v}%` },
     { title: 'Subtotal',     dataIndex: 'subtotal',     width: 120, render: (v: number) => fmt.money(v) },
     { title: 'ITBIS',        dataIndex: 'importeItbis', width: 100, render: (v: number) => fmt.money(v) },
@@ -245,7 +247,7 @@ export default function CompraDetailPage() {
               summary={() => (
                 <Table.Summary fixed>
                   <Table.Summary.Row>
-                    <Table.Summary.Cell index={0} colSpan={5} align="right">
+                    <Table.Summary.Cell index={0} colSpan={6} align="right">
                       <Text strong>Totales:</Text>
                     </Table.Summary.Cell>
                     <Table.Summary.Cell index={1}>
@@ -269,6 +271,11 @@ export default function CompraDetailPage() {
             <Space direction="vertical" style={{ width: '100%' }} size={16}>
               <Statistic title="Subtotal (sin ITBIS)" value={(compra as any).subtotal}
                 formatter={v => fmt.money(Number(v))} />
+              {Number((compra as any).descuentoTotal ?? 0) > 0 && (
+                <Statistic title="Descuento" value={(compra as any).descuentoTotal}
+                  formatter={v => fmt.money(Number(v))}
+                  valueStyle={{ color: '#d97706' }} />
+              )}
               <Statistic title="ITBIS" value={(compra as any).itbis}
                 formatter={v => fmt.money(Number(v))}
                 valueStyle={{ color: '#fa8c16' }} />

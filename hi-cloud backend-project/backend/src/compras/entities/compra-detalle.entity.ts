@@ -41,7 +41,11 @@ export class CompraDetalle extends BaseEntity {
   @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true })
   cantidadRecibida?: number;
 
-  /** Costo real por unidad = subtotal ÷ cantidadTotal (precio proveedor para AVCO) */
+  /**
+   * Costo real por unidad = subtotal (ya NETO de descuento) ÷ cantidadTotal
+   * (precio proveedor para AVCO). El descuento SÍ entra aquí — es lo que
+   * hace que el costo que ve inventario sea el que de verdad se pagó.
+   */
   @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true })
   costoUnitarioReal?: number;
 
@@ -55,6 +59,23 @@ export class CompraDetalle extends BaseEntity {
   @Column({ type: 'decimal', precision: 5, scale: 2, default: 18 })
   porcentajeItbis!: number;
 
+  /**
+   * Descuento POR LÍNEA — solo ayuda de captura (%), nunca se usa para
+   * calcular. Lo que decide todo cálculo es descuentoMonto.
+   */
+  @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
+  descuentoPct!: number;
+
+  /**
+   * Descuento en BASE (pre-ITBIS): a diferencia de facturas (POS), aquí NO
+   * se convierte desde pesos finales — la OC no lleva ITBIS ya incluido en
+   * el precio, así que lo que se teclea o deriva de descuentoPct es
+   * directamente la base a restar. 4 decimales por si sale de un %.
+   */
+  @Column({ type: 'decimal', precision: 12, scale: 4, default: 0 })
+  descuentoMonto!: number;
+
+  /** Base gravable de la línea = (precioUnitario × cantidad) − descuentoMonto */
   @Column({ type: 'decimal', precision: 12, scale: 2 })
   subtotal!: number;
 

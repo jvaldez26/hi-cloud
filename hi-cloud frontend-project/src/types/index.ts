@@ -151,6 +151,8 @@ export interface Compra {
   proveedor:  Proveedor;
   subtotal:   number;
   itbis:      number;
+  /** Suma de descuentoMonto de las líneas — 0 cuando ninguna tiene descuento. */
+  descuentoTotal?: number;
   total:      number;
   isActive:   boolean;
   createdAt:  string;
