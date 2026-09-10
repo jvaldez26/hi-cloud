@@ -500,9 +500,16 @@ const CartRow = memo(function CartRow({ item, onQty, onQtyDirecto, onRemove, onD
     setQtyDraft(item.cantidad);
   }
   // Para balanza precio: el total es el embebido en la etiqueta (fijo)
-  const sub = item.balanzaTotalFijo != null
+  const subBase = item.balanzaTotalFijo != null
     ? item.balanzaTotalFijo
     : (item.precio - item.descuentoMonto) * item.cantidad;
+  // Total de la línea en pesos FINALES (c/ITBIS) — es lo que el cliente paga
+  // por esa línea, no el subtotal antes de impuesto. Misma conversión que ya
+  // usa el precio unitario y el descuento (descuentoBaseAFinal). El precio de
+  // balanza YA es final (viene impreso en la etiqueta) — no se vuelve a convertir.
+  const sub = item.balanzaTotalFijo != null
+    ? subBase
+    : descuentoBaseAFinal(subBase, pctIvaItem, precioIncluyeItbis);
   const showDesc = descFocus || item.descuentoMonto > 0;
 
   const confirmarPrecio = (raw: string) => {
