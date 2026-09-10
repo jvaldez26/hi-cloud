@@ -16,6 +16,7 @@ import { InventarioService } from '../inventario/inventario.service';
 import { ECFService } from '../ecf/ecf.service';
 import { CxCService } from '../cxc/cxc.service';
 import { AsientosAutomaticosService } from '../contabilidad/services/asientos-automaticos.service';
+import { TipoOrigenAsiento } from '../contabilidad/entities/asiento-contable.entity';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { TenantService } from '../tenant/tenant.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -1270,6 +1271,22 @@ export class FacturasService {
         this.logger.warn(
           `Cancelación factura #${id}: no se pudo anular CxC — ${(err as Error).message}`,
         ),
+      );
+    }
+
+    // Reversa contable: contra-asiento NUEVO que invierte el asiento de venta
+    // (Debe Clientes/Haber Ventas+ITBIS), fechado HOY (evento de reversión),
+    // nunca la fecha original de la factura. Se aplica en toda cancelación,
+    // venga de EMITIDA o de PAGADA (a diferencia del bloque de arriba, que
+    // solo corre desde EMITIDA) — el asiento de venta existe siempre que la
+    // factura llegó a emitirse. Idempotente: si cxcService.anularPorFacturaId
+    // ya la revirtió (o si se llama dos veces), no duplica.
+    if (estado === FacturaEstado.CANCELADA) {
+      await this.asientosService.revertirAsiento(
+        TipoOrigenAsiento.FACTURA,
+        id,
+        fechaHoyRD(),
+        `Cancelación de factura ${factura.folio}`,
       );
     }
 
