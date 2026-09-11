@@ -275,9 +275,9 @@ export class CajaController {
   }
 
   @Get(':id/facturas-detalle')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
-  @ApiOperation({ summary: 'Detalle de facturas del turno para impresión de cierre' })
-  getFacturasDetalle(@Param('id', ParseIntPipe) id: number) {
-    return this.cajaService.getFacturasDetalle(id);
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Detalle de facturas del turno para impresión de cierre — VENDEDOR solo su propia caja' })
+  getFacturasDetalle(@Param('id', ParseIntPipe) id: number, @GetUser() usuario: User) {
+    return this.cajaService.getFacturasDetalle(id, usuario);
   }
 }

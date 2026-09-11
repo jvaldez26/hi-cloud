@@ -5,6 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, IsNull, Not, Between, EntityManager } from 'typeorm';
 import { CierreCaja, EstadoCierre } from './entities/cierre-caja.entity';
 import { RetiroCaja, CategoriaRetiro, EstadoRetiro } from './entities/retiro-caja.entity';
+import { UserRole } from '../users/enums/user-role.enum';
 import { TenantService } from '../tenant/tenant.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { fechaHoyRD, fechaHoraRD } from '../common/utils/fecha-local.util';
@@ -1141,11 +1142,32 @@ export class CajaService {
   }
 
   // ── Detalle de facturas del turno para impresión ──────────────────────────
-  async getFacturasDetalle(cajaId: number) {
+  /**
+   * `usuario` solo se exige para VENDEDOR: mismo criterio que
+   * getCajaHoyByUserId — un cajero solo puede pedir el detalle de SU PROPIA
+   * caja, derivado del JWT y nunca del cajaId que mande el cliente. ADMIN y
+   * CONTADOR no tienen esta restricción, igual que en el resto del módulo.
+   */
+  async getFacturasDetalle(cajaId: number, usuario?: { id: number; role?: string }) {
     const empresaId = this.tenantService.getEmpresaId();
 
     const caja = await this.repo.findOne({ where: { id: cajaId, empresaId } as any });
     if (!caja) throw new NotFoundException('Cierre de caja no encontrado');
+
+    if (usuario?.role === UserRole.VENDEDOR) {
+      const perfilRows = await this.dataSource.query<{ id: number }[]>(
+        `SELECT id FROM vendedores
+          WHERE "usuarioId" = $1 AND "empresaId" = $2 AND "isActive" = true
+          LIMIT 1`,
+        [usuario.id, empresaId],
+      ).catch(() => []);
+      const miVendedorId = perfilRows[0]?.id;
+      const esPropia = caja.userId === usuario.id
+        || (miVendedorId != null && caja.vendedorId === miVendedorId);
+      if (!esPropia) {
+        throw new ForbiddenException('Solo puedes ver el detalle de facturas de tu propia caja');
+      }
+    }
 
     const fechaStr = (caja.fecha instanceof Date
       ? caja.fecha.toISOString()
