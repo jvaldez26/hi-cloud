@@ -9532,6 +9532,21 @@ export default function POSPage() {
   const rncDGII = useRncLookup();
   const [numeroOrdenCompra,  setNumeroOrdenCompra]  = useState('');
   const [guardarRncPerfil,   setGuardarRncPerfil]   = useState(false);
+  /**
+   * Limpia TODO lo que el modal de Cobro fue llenando sobre el comprador
+   * (RNC, razón social, tipo de e-CF, el resultado del lookup a DGII).
+   *
+   * Antes solo se limpiaba `rncComprador`/`razonSocialComp` en los dos
+   * caminos de éxito — cerrar el modal con la ✕, o que la factura fallara
+   * antes de intentar emitir (SIN_CAJA, red, validación), dejaba el RNC del
+   * comprador "enganchado" para la siguiente venta, aunque el cajero
+   * cambiara de cliente o volviera a Consumidor Final.
+   */
+  const resetDatosComprador = () => {
+    setRncComprador(''); setRazonSocialComp(''); setNumeroOrdenCompra(''); setGuardarRncPerfil(false);
+    setTipoNcf('E32');
+    rncDGII.limpiar();
+  };
   const [ecfStatus,          setEcfStatus]          = useState<'idle'|'loading'|'ok'|'pendiente'>('idle');
   const [ecfEncf,            setEcfEncf]            = useState<string>('');
   const printWinRef      = useRef<Window | null>(null); // ventana pre-abierta para auto-imprimir en tablets
@@ -10926,7 +10941,7 @@ export default function POSPage() {
           okText: 'Entendido',
         });
         setShowPago(false);
-        setRncComprador(''); setRazonSocialComp(''); setNumeroOrdenCompra(''); setGuardarRncPerfil(false);
+        resetDatosComprador();
         setCart([]); resetCliente(); setMontoRecibido(0);
         setTipoPagoPos('CONTADO'); setDiasCreditoPos(30); setPropinaValor(''); resetDescGlobal();
         qc.invalidateQueries({ queryKey: ['pos-panel', 'facturas'] });
@@ -11070,7 +11085,7 @@ export default function POSPage() {
       localStorage.setItem(`pos_recientes_${_eid}`, JSON.stringify(_merged));
       setIdsRecientes(_merged);
       setShowPago(false);
-      setRncComprador(''); setRazonSocialComp(''); setNumeroOrdenCompra(''); setGuardarRncPerfil(false);
+      resetDatosComprador();
       setCart([]); resetCliente(); setMontoRecibido(0);
       setTipoPagoPos('CONTADO'); setDiasCreditoPos(30); setPropinaValor(''); resetDescGlobal();
 
@@ -12132,7 +12147,7 @@ export default function POSPage() {
       </Modal>
 
       {/* ── Payment modal ─────────────────────────────────────────────────────── */}
-      <Modal maskClosable={false} open={showPago} onCancel={() => setShowPago(false)} footer={null} width={420} centered closable={false} destroyOnClose
+      <Modal maskClosable={false} open={showPago} onCancel={() => { setShowPago(false); resetDatosComprador(); }} footer={null} width={420} centered closable={false} destroyOnClose
         styles={{ body: { padding: 0 }, content: { borderRadius: 20, overflow: 'hidden', padding: 0, background: C.card } }}>
         <div style={{ display: 'flex', flexDirection: 'column', height: 'min(90vh,590px)', overflow: 'hidden', fontFamily: "'Inter',sans-serif" }}>
 
@@ -12144,7 +12159,7 @@ export default function POSPage() {
               </span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 11, color: 'rgba(255,255,255,.65)', fontVariantNumeric: 'tabular-nums' }}><LiveClock /></span>
-                <button onClick={() => setShowPago(false)} style={{ width: 24, height: 24, borderRadius: 6, border: 'none', background: 'rgba(255,255,255,.12)', color: '#fff', cursor: 'pointer', outline: 'none', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+                <button onClick={() => { setShowPago(false); resetDatosComprador(); }} style={{ width: 24, height: 24, borderRadius: 6, border: 'none', background: 'rgba(255,255,255,.12)', color: '#fff', cursor: 'pointer', outline: 'none', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
               </div>
             </div>
             <div style={{ fontSize: 28, fontWeight: 800, color: '#fff', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{fmt.money(totalAPagar)}</div>
