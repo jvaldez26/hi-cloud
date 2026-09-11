@@ -283,7 +283,14 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId }: Props
   };
 
   const lineaCols = [
-    { title: 'Producto', key: 'prod',
+    // `width` explícito, como el resto. La tabla va con `tableLayout="fixed"`:
+    // las columnas con ancho fijo se reparten primero y esta, que era la única
+    // sin declararlo, se quedaba con lo que sobrara. Al añadir la columna
+    // «Desc.» (126px) dejó de sobrar nada dentro del modal de 960px del POS y
+    // el buscador de producto se colapsó a cero: se escribía y no aparecía
+    // nada, ni los productos ni el enlace de creación rápida, porque el Select
+    // no tenía dónde dibujarse.
+    { title: 'Producto', key: 'prod', width: 220,
       render: (_: unknown, _r: Linea, idx: number) => {
         const busquedaOpts = productosBusquedaData.map((p: any) => ({
           value: p.id, label: p.codigo ? `${p.codigo} — ${p.nombre}` : p.nombre,
@@ -565,8 +572,12 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId }: Props
 
       <Card title="Ítems" style={{ marginBottom: 16 }}
         extra={<Button icon={<PlusOutlined />} onClick={() => setLineas([...lineas, { key: Date.now().toString(), cantidad: 1, cantidadBonificada: 0, precioUnitario: 0, porcentajeItbis: 18, descuentoPct: 0, descuentoMonto: 0 }])}>Agregar</Button>}>
+        {/* `scroll.x` en vez de `overflowX` a mano: con todas las columnas ya
+            acotadas, la suma supera el ancho del modal del POS y hace falta que
+            la tabla scrollee de verdad en lugar de repartir a la fuerza. Es el
+            mismo patrón de la pantalla de reposición. */}
         <Table columns={lineaCols as any} dataSource={lineas} rowKey="key" pagination={false} size="small"
-          tableLayout="fixed" style={{ overflowX: 'auto' }} />
+          tableLayout="fixed" scroll={{ x: 'max-content' }} />
       </Card>
 
       {esInformal && (
