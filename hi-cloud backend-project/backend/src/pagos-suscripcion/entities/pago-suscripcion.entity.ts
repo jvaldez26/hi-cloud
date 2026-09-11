@@ -34,6 +34,14 @@ export class PagoSuscripcion {
   @Column({ type: 'numeric', precision: 10, scale: 2 })
   monto: number;
 
+  /**
+   * Solo tiene sentido en filas tipo=CARGO: cuánto de ese cargo ya se
+   * liquidó vía imputación (registrarPago, confirmarTransferencia o un
+   * crédito dirigido a este cargo). saldoPendiente = monto - montoPagado.
+   */
+  @Column({ type: 'numeric', precision: 10, scale: 2, default: 0 })
+  montoPagado: number;
+
   @Column({ type: 'varchar', length: 20, default: EstadoPago.PENDIENTE })
   estado: EstadoPago;
 

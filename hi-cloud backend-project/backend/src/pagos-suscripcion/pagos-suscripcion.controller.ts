@@ -32,7 +32,7 @@ import {
   RegistrarPagoDto, ConfirmarPagoDto, RechazarPagoDto,
   AgregarCargoDto, AplicarCreditoDto, CancelarSuscripcionDto,
   UpdateConfiguracionBancariaDto,
-  SubirComprobanteDto,
+  SubirComprobanteDto, OVERRIDES_IMPUTACION, OverrideImputacionDto,
 } from './dto/pagos-suscripcion.dto';
 
 // ── CLIENTE (empresa) ─────────────────────────────────────────────────────────
@@ -128,19 +128,24 @@ export class PagosSuscripcionAdminController {
   }
 
   /**
-   * GET /admin/pagos-suscripcion/empresa/:id/preview-pago?monto=
+   * GET /admin/pagos-suscripcion/empresa/:id/preview-pago?monto=&override=
    *
-   * Qué haría ese monto: períodos que cubre y vencimiento resultante. El panel
-   * lo pide mientras se teclea para no calcular dinero por su cuenta.
+   * Qué haría ese monto: cargos que liquida, períodos que cubre y vencimiento
+   * resultante. El panel lo pide mientras se teclea para no calcular dinero
+   * por su cuenta — una sola fórmula, ver imputacion-pago.util.ts.
    */
   @Get('empresa/:id/preview-pago')
   previewPago(
     @Param('id', ParseIntPipe) id: number,
     @Query('monto') monto: string,
+    @Query('override') override?: string,
   ) {
     const n = Number(monto);
     if (!Number.isFinite(n) || n < 0) throw new BadRequestException('Monto inválido');
-    return this.svc.previewPago(id, n);
+    if (override && !OVERRIDES_IMPUTACION.includes(override as OverrideImputacionDto)) {
+      throw new BadRequestException('override inválido');
+    }
+    return this.svc.previewPago(id, n, (override as OverrideImputacionDto) || null);
   }
 
   /** POST /admin/pagos-suscripcion/empresa/:id/pago */

@@ -2,7 +2,7 @@
 import {
   Table, Card, Row, Col, Typography, Tag, Button, Space,
   Modal, Form, Input, InputNumber, Select, message, Popconfirm,
-  Tabs, Badge, Descriptions, Image, Statistic, Alert,
+  Tabs, Badge, Descriptions, Image, Statistic, Alert, Checkbox,
 } from 'antd';
 import {
   CheckOutlined, CloseOutlined, DollarOutlined,
@@ -12,6 +12,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   pagosAdminApi, PagoSuscripcion, PreviewPago, ResumenCobros, ExcedenteEcf,
+  OverrideImputacion,
 } from '../../api/pagos.api';
 import { fmtDop } from '../../utils/fmt';
 import { ahora, diasHasta, fecha } from '../../utils/fechaRD';
@@ -28,35 +29,53 @@ function fmtDate(d: string | null) {
 const PLAN_LABELS:  Record<string, string> = { emprendedor: 'Emprendedor', pyme: 'PYME', pro: 'Pro', plus: 'Plus' };
 
 /**
- * El texto del aviso a partir del preview que manda el backend.
+ * El aviso a partir de la imputación que manda el backend (cargos → períodos
+ * → abono, ver imputacion-pago.util.ts).
  *
- * Aquí ya no se calcula nada: `periodos`, `nuevaFecha` y `faltante` vienen
- * hechos del servidor con la misma fórmula que se aplicará al confirmar. Esta
- * pantalla solo elige las palabras y el color.
+ * Aquí ya no se calcula nada: qué cargos se liquidan, cuántos períodos avanza
+ * y cuánto queda de abono vienen hechos del servidor con la misma fórmula que
+ * se aplicará al confirmar. Esta pantalla solo elige las palabras y el color.
  *
- * `corto` es para el Popconfirm, donde no cabe la frase entera.
+ * `corto` es para el Popconfirm, donde no cabe el desglose completo — una
+ * sola línea. La vista larga (recuadro verde) devuelve `lineas` para pintar
+ * el desglose real: qué liquida, cuánto avanza, cuánto queda de abono.
  */
-function avisoPreview(p: PreviewPago | null | undefined, corto = false): { texto: string; tono: 'ok' | 'aviso' | 'malo' } | null {
+function avisoPreview(
+  p: PreviewPago | null | undefined, corto = false,
+): { texto: string; lineas?: string[]; tono: 'ok' | 'aviso' | 'malo' } | null {
   if (!p) return null;
   if (p.sinSuscripcion) return { texto: 'Esta empresa no tiene suscripción: el pago queda como abono.', tono: 'aviso' };
   if (p.sinPrecio)      return { texto: 'El plan no tiene precio configurado: el pago será rechazado.', tono: 'malo' };
-  if (p.periodos === 0) return {
-    texto: corto
-      ? `⚠️ No extiende la suscripción. Faltan ${fmtDop(p.faltante)} para un período.`
-      : `⚠️ Este pago NO extiende la suscripción. Faltan ${fmtDop(p.faltante)} para completar un período.`,
-    tono: 'aviso',
-  };
-  const hasta = fecha(p.nuevaFecha);
-  if (p.enPasado) return {
-    texto: `🔴 Queda vencida hasta ${hasta}. Este pago cubre ${p.periodos} período(s).`,
-    tono: 'malo',
-  };
-  return {
-    texto: corto
-      ? `✅ Cubre ${p.periodos} período(s). Nuevo vencimiento: ${hasta}`
-      : `✅ Este pago cubre ${p.periodos} período(s). Nuevo vencimiento: ${hasta}`,
-    tono: 'ok',
-  };
+
+  const cargosTxt = p.cargosLiquidados.length > 0
+    ? p.cargosLiquidados
+        .map(c => `${c.concepto} ${fmtDop(c.montoAplicado)}${c.saldoRestante > 0 ? ` (queda ${fmtDop(c.saldoRestante)})` : ''}`)
+        .join(', ')
+    : null;
+  const tono: 'ok' | 'aviso' | 'malo' = p.enPasado
+    ? 'malo'
+    : (p.periodos > 0 || p.montoACargos > 0) ? 'ok' : 'aviso';
+
+  if (corto) {
+    const partes: string[] = [];
+    if (cargosTxt) partes.push(`Liquida: ${cargosTxt}`);
+    if (p.periodos > 0 && p.nuevaFecha) partes.push(`Avanza ${p.periodos} período(s) → ${fecha(p.nuevaFecha)}`);
+    else if (p.faltante > 0) partes.push(`Faltan ${fmtDop(p.faltante)} para un período`);
+    if (p.abonoFinal > 0) partes.push(`Abono: ${fmtDop(p.abonoFinal)}`);
+    return { texto: partes.length > 0 ? partes.join(' · ') : 'Este pago no tiene ningún efecto.', tono };
+  }
+
+  const lineas: string[] = [];
+  if (cargosTxt) lineas.push(`Liquida: ${cargosTxt}`);
+  if (p.periodos > 0 && p.nuevaFecha) {
+    lineas.push(`Avanza: ${p.periodos} período(s) · Nuevo vencimiento ${fecha(p.nuevaFecha)}`);
+  } else if (p.faltante > 0) {
+    lineas.push(`No avanza ningún período — faltan ${fmtDop(p.faltante)} para completar uno.`);
+  }
+  lineas.push(`Abono restante: ${fmtDop(p.abonoFinal)}`);
+  if (p.enPasado) lineas.push(`🔴 La suscripción queda vencida hasta ${fecha(p.nuevaFecha)}.`);
+
+  return { texto: lineas.join('\n'), lineas, tono };
 }
 
 const TONO_AVISO = {
@@ -80,6 +99,11 @@ export default function CobrosPage() {
   // El monto con el que se le pregunta al servidor. Va detrás del que se
   // teclea para no lanzar una petición por tecla.
   const [montoConsultado,  setMontoConsultado]  = useState<number | null>(null);
+  // Override del orden automático de imputación (cargos → períodos → abono).
+  // Colapsado por defecto — solo se usa en el caso raro donde el admin quiere
+  // forzar el destino del dinero.
+  const [avanzadoAbierto,  setAvanzadoAbierto]  = useState(false);
+  const [overridePago,     setOverridePago]     = useState<OverrideImputacion>(null);
   const [openCargo,        setOpenCargo]        = useState<number | null>(null);
   const [openCredito,      setOpenCredito]      = useState<number | null>(null);
   const [openHist,         setOpenHist]         = useState<number | null>(null);
@@ -203,6 +227,17 @@ export default function CobrosPage() {
   });
   const histEmpresa: PagoSuscripcion[] = Array.isArray(histEmpresaRaw) ? histEmpresaRaw : [];
 
+  // Cargos pendientes de la empresa del modal de Crédito — para poder dirigir
+  // el crédito a uno específico en vez de al abono general.
+  const { data: histCreditoRaw } = useQuery({
+    queryKey: ['hist-empresa', openCredito],
+    queryFn:  () => pagosAdminApi.historialEmpresa(openCredito!),
+    enabled:  !!openCredito,
+  });
+  const cargosPendientesCredito = (Array.isArray(histCreditoRaw) ? histCreditoRaw : [])
+    .filter(p => p.tipo === 'CARGO' && (Number(p.monto) - Number(p.montoPagado ?? 0)) > 0.001)
+    .map(p => ({ id: p.id, concepto: p.concepto, saldoPendiente: Number(p.monto) - Number(p.montoPagado ?? 0) }));
+
   const { data: configBanco } = useQuery({
     queryKey: ['config-bancaria-admin'],
     queryFn:  pagosAdminApi.getConfigBancaria,
@@ -222,8 +257,8 @@ export default function CobrosPage() {
    * cierre de caja: aquí no se calcula dinero, se muestra lo que llega.
    */
   const { data: previewPago, isFetching: previewCargando } = useQuery({
-    queryKey: ['preview-pago', openPago, montoConsultado],
-    queryFn:  () => pagosAdminApi.previewPago(openPago!, montoConsultado!),
+    queryKey: ['preview-pago', openPago, montoConsultado, overridePago],
+    queryFn:  () => pagosAdminApi.previewPago(openPago!, montoConsultado!, overridePago ?? undefined),
     enabled:  !!openPago && montoConsultado != null && montoConsultado > 0,
   });
 
@@ -238,6 +273,7 @@ export default function CobrosPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['cobros-resumen'] });
       setOpenPago(null); setPagoPreviewMonto(null); setMontoConsultado(null); formPago.resetFields();
+      setAvanzadoAbierto(false); setOverridePago(null);
       message.success('Pago registrado');
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
@@ -390,25 +426,23 @@ export default function CobrosPage() {
       title: 'Saldo',
       dataIndex: 'saldo',
       key: 'saldo',
-      width: 120,
+      width: 150,
       align: 'right' as const,
-      render: (v: number | string) => {
-        const saldo = Number(v ?? 0);
-        if (saldo > 0)
-          return (
-            <Space direction="vertical" size={0} style={{ textAlign: 'right' }}>
-              <Text strong style={{ color: '#ef4444' }}>{fmtDop(saldo)}</Text>
-              <Text style={{ fontSize: 10, color: '#ef4444' }}>pendiente</Text>
-            </Space>
-          );
-        if (saldo < 0)
-          return (
-            <Space direction="vertical" size={0} style={{ textAlign: 'right' }}>
-              <Text strong style={{ color: '#10b981' }}>{fmtDop(Math.abs(saldo))}</Text>
-              <Text style={{ fontSize: 10, color: '#10b981' }}>a favor</Text>
-            </Space>
-          );
-        return <Text type="secondary">—</Text>;
+      // Desglosado: cargos por servicios y deuda de suscripción son cosas
+      // distintas (ver imputacion-pago.util.ts / deuda-suscripcion.util.ts) —
+      // un número solo mezclaba las dos.
+      render: (_: any, r: ResumenCobros) => {
+        const cargos = Number(r.saldoCargos ?? 0);
+        const susc   = Number(r.saldoSuscripcion ?? 0);
+        const abono  = Number(r.abonoDisponible ?? 0);
+        if (cargos <= 0 && susc <= 0 && abono <= 0) return <Text type="secondary">—</Text>;
+        return (
+          <Space direction="vertical" size={0} style={{ textAlign: 'right' }}>
+            {cargos > 0 && <Text style={{ fontSize: 12, color: '#ef4444' }}>Cargos {fmtDop(cargos)}</Text>}
+            {susc   > 0 && <Text style={{ fontSize: 12, color: '#ef4444' }}>Suscr. {fmtDop(susc)}</Text>}
+            {abono  > 0 && <Text style={{ fontSize: 12, color: '#10b981' }}>Abono {fmtDop(abono)}</Text>}
+          </Space>
+        );
       },
     },
     {
@@ -440,6 +474,8 @@ export default function CobrosPage() {
               setOpenPago(r.empresaId);
               setPagoPreviewMonto(precio);
               setMontoConsultado(precio);
+              setAvanzadoAbierto(false);
+              setOverridePago(null);
               // Sin el reset, la referencia y las notas de la empresa anterior
               // siguen ahí: setFieldsValue solo pisa los campos que nombra.
               formPago.resetFields();
@@ -602,7 +638,7 @@ export default function CobrosPage() {
           <Card size="small">
             <Statistic
               title="Con saldo pendiente"
-              value={resumen.filter(r => Number(r.saldo) > 0).length}
+              value={resumen.filter(r => Number(r.saldoCargos ?? 0) > 0 || Number(r.saldoSuscripcion ?? 0) > 0).length}
               valueStyle={{ color: '#ef4444' }}
             />
           </Card>
@@ -741,7 +777,10 @@ export default function CobrosPage() {
       <Modal
         title={`💵 Registrar pago — ${nombreEmpresa(openPago)}`}
         open={!!openPago}
-        onCancel={() => { setOpenPago(null); setPagoPreviewMonto(null); setMontoConsultado(null); formPago.resetFields(); }}
+        onCancel={() => {
+          setOpenPago(null); setPagoPreviewMonto(null); setMontoConsultado(null);
+          formPago.resetFields(); setAvanzadoAbierto(false); setOverridePago(null);
+        }}
         footer={null}
       >
         {(() => {
@@ -749,6 +788,9 @@ export default function CobrosPage() {
           if (!row) return null;
           const precio = row.precioMensual ?? null;
           const planLabel = PLAN_LABELS[row.plan] ?? row.plan;
+          const saldoCargos      = Number(row.saldoCargos ?? 0);
+          const saldoSuscripcion = Number(row.saldoSuscripcion ?? 0);
+          const abono             = Number(row.abonoDisponible ?? 0);
           return (
             <div style={{ marginBottom: 16, padding: '10px 14px', background: '#f8fafc',
               borderRadius: 8, border: '1px solid #e2e8f0' }}>
@@ -759,25 +801,32 @@ export default function CobrosPage() {
                   <div style={{ fontWeight: 600 }}>{planLabel}{precio != null ? ` — RD$${precio.toLocaleString('es-DO')}/mes` : ''}</div>
                 </Col>
                 <Col span={12}>
-                  <Text type="secondary" style={{ fontSize: 11 }}>SALDO PENDIENTE</Text>
-                  <div style={{ fontWeight: 600, color: Number(row.saldo) > 0 ? '#dc2626' : '#16a34a' }}>
-                    {fmtDop(Number(row.saldo))}
-                  </div>
-                </Col>
-                <Col span={12} style={{ marginTop: 6 }}>
                   <Text type="secondary" style={{ fontSize: 11 }}>VENCIMIENTO</Text>
                   <div style={{ fontSize: 13 }}>{fmtDate(row.venceSuscripcion)}</div>
                 </Col>
-                <Col span={12} style={{ marginTop: 6 }}>
-                  <Text type="secondary" style={{ fontSize: 11 }}>ESTADO</Text>
-                  <div style={{ fontSize: 13 }}>{row.estadoSuscripcion}</div>
+                <Col span={24} style={{ marginTop: 6 }}>
+                  <Text type="secondary" style={{ fontSize: 11 }}>SALDO PENDIENTE</Text>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>
+                    <span style={{ color: saldoCargos > 0 ? '#dc2626' : '#16a34a' }}>
+                      Cargos pendientes {fmtDop(saldoCargos)}
+                    </span>
+                    {' · '}
+                    <span style={{ color: saldoSuscripcion > 0 ? '#dc2626' : '#16a34a' }}>
+                      Suscripción {fmtDop(saldoSuscripcion)}
+                    </span>
+                  </div>
+                  {abono > 0 && (
+                    <div style={{ fontSize: 12, color: '#16a34a', marginTop: 2 }}>
+                      Abono disponible: {fmtDop(abono)}
+                    </div>
+                  )}
                 </Col>
               </Row>
             </div>
           );
         })()}
         <Form form={formPago} layout="vertical"
-          onFinish={v => pagoMut.mutate({ id: openPago, ...v })}>
+          onFinish={v => pagoMut.mutate({ id: openPago, ...v, override: overridePago ?? undefined })}>
           <Form.Item name="tipo" label="Tipo de pago" rules={[{ required: true }]}>
             <Select options={[
               { value: 'MANUAL',        label: '📋 Manual (efectivo / otro)' },
@@ -800,7 +849,13 @@ export default function CobrosPage() {
             const c = aviso ? TONO_AVISO[aviso.tono] : { fondo: '#f8fafc', borde: '#e2e8f0', texto: '#64748b' };
             return (
               <div style={{ marginBottom: 12, padding: '8px 12px', background: c.fondo, border: `1px solid ${c.borde}`, borderRadius: 6 }}>
-                <Text style={{ color: c.texto, fontSize: 13 }}>{aviso?.texto ?? 'Calculando…'}</Text>
+                {aviso?.lineas ? (
+                  aviso.lineas.map((l, i) => (
+                    <div key={i} style={{ color: c.texto, fontSize: 13 }}>{l}</div>
+                  ))
+                ) : (
+                  <Text style={{ color: c.texto, fontSize: 13 }}>{aviso?.texto ?? 'Calculando…'}</Text>
+                )}
               </div>
             );
           })()}
@@ -810,8 +865,37 @@ export default function CobrosPage() {
           <Form.Item name="notas" label="Notas">
             <Input.TextArea rows={2} />
           </Form.Item>
+          <div style={{ marginBottom: 12 }}>
+            <Checkbox
+              checked={avanzadoAbierto}
+              onChange={e => { setAvanzadoAbierto(e.target.checked); if (!e.target.checked) setOverridePago(null); }}
+            >
+              Opciones avanzadas de imputación
+            </Checkbox>
+            {avanzadoAbierto && (
+              <div style={{ marginTop: 8 }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  Por defecto el pago se reparte automático: primero cargos pendientes, luego períodos, el resto queda de abono.
+                </Text>
+                <Select
+                  allowClear
+                  style={{ width: '100%', marginTop: 6 }}
+                  placeholder="Automático (recomendado)"
+                  value={overridePago ?? undefined}
+                  onChange={v => setOverridePago((v as OverrideImputacion) ?? null)}
+                  options={[
+                    { value: 'solo_cargos',       label: 'Solo a cargos pendientes (ignora períodos)' },
+                    { value: 'solo_suscripcion',  label: 'Solo a períodos de suscripción (ignora cargos)' },
+                  ]}
+                />
+              </div>
+            )}
+          </div>
           <Row justify="end" gutter={8}>
-            <Col><Button onClick={() => { setOpenPago(null); setPagoPreviewMonto(null); setMontoConsultado(null); formPago.resetFields(); }}>Cancelar</Button></Col>
+            <Col><Button onClick={() => {
+              setOpenPago(null); setPagoPreviewMonto(null); setMontoConsultado(null);
+              formPago.resetFields(); setAvanzadoAbierto(false); setOverridePago(null);
+            }}>Cancelar</Button></Col>
             <Col><Button type="primary" htmlType="submit" loading={pagoMut.isPending}>Registrar</Button></Col>
           </Row>
         </Form>
@@ -854,6 +938,17 @@ export default function CobrosPage() {
           </Form.Item>
           <Form.Item name="monto" label="Monto (RD$)" rules={[{ required: true }]}>
             <InputNumber prefix="RD$" min={0.01} precision={2} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="cargoId" label="Aplicar contra un cargo específico (opcional)">
+            <Select
+              allowClear
+              placeholder="Sin seleccionar: va directo al abono general"
+              options={cargosPendientesCredito.map(c => ({
+                value: c.id,
+                label: `${c.concepto} — ${fmtDop(c.saldoPendiente)} pendiente`,
+              }))}
+              notFoundContent="Esta empresa no tiene cargos pendientes"
+            />
           </Form.Item>
           <Form.Item name="notas" label="Notas internas">
             <Input.TextArea rows={2} />

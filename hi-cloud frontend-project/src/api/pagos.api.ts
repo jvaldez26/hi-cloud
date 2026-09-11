@@ -13,20 +13,42 @@ export interface ResumenSuscripcion {
   diasTotales:      number;
   porcentajeUsado:  number;
   saldo:            number;
+  /** Deuda por períodos vencidos — ver deuda-suscripcion.util.ts. RD$0.00 si
+   *  está al día. No incluye cargos por servicios, eso viaja aparte. */
+  saldoSuscripcion: number;
 }
 
+/** Un cargo (u otro pendiente) que un pago liquidó, total o parcialmente. */
+export interface CargoLiquidado {
+  cargoId:       number;
+  concepto:      string;
+  montoAplicado: number;
+  /** 0 si el cargo quedó totalmente liquidado con este pago. */
+  saldoRestante: number;
+}
+
+/** 'solo_cargos' ignora los períodos aunque sobre dinero después de liquidar
+ *  cargos (el resto queda de abono); 'solo_suscripcion' ignora los cargos y
+ *  aplica todo a períodos. null/undefined = orden automático (cargos → períodos → abono). */
+export type OverrideImputacion = 'solo_cargos' | 'solo_suscripcion' | null;
+
 /**
- * Qué haría un pago: cuántos períodos cubre y qué vencimiento deja.
+ * Qué haría un pago: qué cargos liquida, cuántos períodos cubre el resto y
+ * qué vencimiento deja.
  *
- * Lo calcula el BACKEND (preview-pago.util.ts), con la misma fórmula que
- * aplica al confirmar. El frontend lo tuvo duplicado y prometía en un
- * Popconfirm un vencimiento que el servidor volvía a calcular a su manera.
+ * Lo calcula el BACKEND (imputacion-pago.util.ts), con la misma fórmula que
+ * aplica al confirmar. El frontend NO la replica — una sola fuente de verdad.
  */
 export interface PreviewPago {
-  /** Períodos completos que cubre el pago. 0 = queda como abono. */
+  /** monto + abono previo de la empresa — lo que en total se repartió. */
+  montoTotalImputado: number;
+  cargosLiquidados:   CargoLiquidado[];
+  montoACargos:       number;
+  montoAPeriodos:     number;
+  /** Períodos completos que cubre el remanente tras los cargos. 0 = no avanza. */
   periodos:         number;
   precioPorPeriodo: number;
-  /** Vencimiento resultante, 'YYYY-MM-DD'. null si no cubre ni un período. */
+  /** Vencimiento resultante, 'YYYY-MM-DD'. null si no avanza ningún período. */
   nuevaFecha:       string | null;
   /** Lo que falta para completar un período. 0 si ya lo cubre. */
   faltante:         number;
@@ -34,6 +56,8 @@ export interface PreviewPago {
   enPasado:         boolean;
   /** El plan no tiene precio configurado: no hay nada que calcular. */
   sinPrecio:        boolean;
+  /** Lo que sobró tras cargos y períodos — queda de abono. */
+  abonoFinal:       number;
   /** Solo en el preview en vivo: la empresa no tiene suscripción. */
   sinSuscripcion?:  boolean;
 }
@@ -44,6 +68,8 @@ export interface PagoSuscripcion {
   tipo:           'TARJETA' | 'TRANSFERENCIA' | 'MANUAL' | 'CREDITO' | 'CARGO';
   concepto:       string;
   monto:          number;
+  /** Solo tiene sentido en filas tipo=CARGO: cuánto ya se liquidó de ese cargo. */
+  montoPagado?:   number;
   estado:         'PENDIENTE' | 'CONFIRMADO' | 'RECHAZADO';
   comprobanteUrl: string | null;
   referencia:     string | null;
@@ -65,6 +91,8 @@ export interface PagoSuscripcion {
   precioMensual?:     number;
   /** Solo en comprobantes-pendientes: qué haría confirmar este pago. */
   preview?:           PreviewPago | null;
+  /** Solo en la respuesta de registrarPago: el desglose real aplicado. */
+  imputacion?:        PreviewPago;
 }
 
 export interface ConfiguracionBancaria {
@@ -104,7 +132,15 @@ export interface ResumenCobros {
   modalidad:              string;
   diaCorte:               number;
   venceSuscripcion:       string;
+  /** Saldo global anterior — cargos y pagos/créditos confirmados, mezclados.
+   *  Ver saldoCargos / saldoSuscripcion para el desglose real. */
   saldo:                  number;
+  /** Cargos por servicios pendientes (activación e-CF, excedente, etc.). */
+  saldoCargos:            number;
+  /** Deuda por períodos de plan vencidos — ver deuda-suscripcion.util.ts. */
+  saldoSuscripcion:       number;
+  /** Abono/crédito acumulado que no se ha consumido todavía. */
+  abonoDisponible:        number;
   precioMensual:          number;
   ultimoPago:             string | null;
   pendientesConfirmacion: number;
@@ -200,12 +236,14 @@ export const pagosAdminApi = {
     }),
 
   /**
-   * Qué haría un pago de `monto` en esa empresa. Se pide al servidor en vez
-   * de calcularlo aquí: es la misma cuenta que se va a aplicar al registrar.
+   * Qué haría un pago de `monto` en esa empresa (qué cargos liquida, cuántos
+   * períodos avanza). Se pide al servidor en vez de calcularlo aquí: es la
+   * misma cuenta que se va a aplicar al registrar.
    */
-  previewPago: (empresaId: number, monto: number): Promise<PreviewPago> =>
-    apiClient.get(`${ADMIN}/empresa/${empresaId}/preview-pago`, { params: { monto } })
-      .then(r => unwrap<PreviewPago>(r)),
+  previewPago: (empresaId: number, monto: number, override?: OverrideImputacion): Promise<PreviewPago> =>
+    apiClient.get(`${ADMIN}/empresa/${empresaId}/preview-pago`, {
+      params: { monto, ...(override ? { override } : {}) },
+    }).then(r => unwrap<PreviewPago>(r)),
 
   /** Historial completo de una empresa */
   historialEmpresa: (empresaId: number): Promise<PagoSuscripcion[]> =>
@@ -219,6 +257,7 @@ export const pagosAdminApi = {
     tipo: string; concepto: string; monto: number;
     referencia?: string; notas?: string;
     periodoInicio?: string; periodoFin?: string;
+    override?: OverrideImputacion;
   }): Promise<PagoSuscripcion> =>
     apiClient.post(`${ADMIN}/empresa/${empresaId}/pago`, data).then(r => r.data),
 
@@ -228,9 +267,13 @@ export const pagosAdminApi = {
   }): Promise<PagoSuscripcion> =>
     apiClient.post(`${ADMIN}/empresa/${empresaId}/cargo`, data).then(r => r.data),
 
-  /** Aplicar crédito / descuento */
+  /**
+   * Aplicar crédito / descuento — con `cargoId` se dirige a ese cargo
+   * específico (hasta su saldo pendiente, el excedente va al abono general);
+   * sin él, va directo al abono general.
+   */
   aplicarCredito: (empresaId: number, data: {
-    concepto: string; monto: number; notas?: string;
+    concepto: string; monto: number; notas?: string; cargoId?: number;
   }): Promise<PagoSuscripcion> =>
     apiClient.post(`${ADMIN}/empresa/${empresaId}/credito`, data).then(r => r.data),
 

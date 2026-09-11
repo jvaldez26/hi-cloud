@@ -195,6 +195,14 @@ export class Suscripcion {
   @Column({ type: 'int', nullable: true })
   canceladaPor?: number | null;
 
+  /**
+   * Dinero ya pagado que no alcanzó para un período de plan ni se aplicó a
+   * ningún cargo — ver imputacion-pago.util.ts. Se suma al PRÓXIMO pago
+   * antes de volver a imputar, para que no quede huérfano.
+   */
+  @Column({ type: 'numeric', precision: 10, scale: 2, default: 0 })
+  abonoDisponible!: number;
+
   @Column({ type: 'int', default: 0 })
   facturasMesUsadas!: number;
 
