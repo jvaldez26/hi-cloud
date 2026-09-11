@@ -70,6 +70,16 @@ export interface GenericDocData {
   empresa?:    { nombre?: string; rnc?: string; direccion?: string; telefono?: string };
   cliente?:    string;
   rncCliente?: string;
+  /**
+   * Cómo se llama la otra parte en ESTE documento. Por defecto «Cliente».
+   *
+   * Existe porque la orden de compra reutiliza `cliente` para el proveedor y el
+   * ticket salía diciendo «Cliente: villa garcía srl» en un papel que se le
+   * entrega justamente al proveedor. La etiqueta va como dato y no deducida del
+   * `tipo`: quien arme un documento nuevo decide cómo se llama su contraparte
+   * en vez de depender de que el generador acierte con el nombre.
+   */
+  etiquetaContraparte?: string;
   items:       Array<{ desc: string; cant?: number; precio?: number; total?: number }>;
   subtotal?:   number;
   itbis?:      number;
@@ -265,7 +275,7 @@ ${dbl()}
 <div class="center bold">${esc(tipo)}</div>
 ${line()}
 ${row('Número:', gd.numero)}${row('Fecha:', gd.fecha)}${[
-  gd.cliente    ? row('Cliente:', gd.cliente)                 : '',
+  gd.cliente    ? row(`${gd.etiquetaContraparte ?? 'Cliente'}:`, gd.cliente) : '',
   gd.rncCliente ? row('RNC:',     gd.rncCliente)              : '',
   gd.nota1      ? `<div class="small">${esc(gd.nota1)}</div>` : '',
 ].filter(Boolean).join('')}
