@@ -4109,13 +4109,24 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
         open={modalNuevaOC}
         onCancel={() => setModalNuevaOC(false)}
         footer={null}
-        width={960}
+        // 95vw con tope de 1600: es un formulario de captura y el usuario está
+        // digitando con la factura del proveedor delante — no puede tener
+        // columnas escondidas. En pantallas chicas se adapta solo.
+        width="95vw"
         destroyOnClose
-        style={{ top: 20 }}
-        styles={{ body: { maxHeight: 'calc(100vh - 120px)', overflowY: 'auto', padding: '16px 24px' } }}
+        style={{ top: 16, maxWidth: 1600, paddingBottom: 0 }}
+        // Alto fijo, no `maxHeight` con scroll de todo el cuerpo: así el modal
+        // reparte el espacio y solo la lista de ítems desplaza. `overflow:
+        // hidden` es lo que impide que el scroll se lo quede el modal entero.
+        styles={{ body: {
+          height: 'calc(100vh - 110px)',
+          display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          padding: '16px 24px',
+        } }}
       >
         {modalNuevaOC && (
           <CompraFormInner
+            altoCompleto
             onSuccess={() => {
               qc.invalidateQueries({ queryKey: ['compras-pos'] });
               setModalNuevaOC(false);
