@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Card, Row, Col, Typography, Statistic, Table, Tag, Button,
          Space, Spin, Progress, Alert, Empty, Form, Input, Select,
          message, Tabs, Modal, Descriptions, theme, Tooltip } from 'antd';
-import { DownloadOutlined, FileTextOutlined, CheckCircleOutlined,
+import { DownloadOutlined, FileTextOutlined, CheckCircleOutlined, EyeOutlined,
          CustomerServiceOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
@@ -58,6 +58,42 @@ export default function ClientPortalPage() {
     await qc.invalidateQueries({ queryKey: ['portal-tickets',  token] });
     setRefreshing(false);
     message.success('Datos actualizados', 2);
+  };
+
+  /**
+   * Ver la factura sin descargarla.
+   *
+   * Se pide el PDF y se muestra en un iframe sobre un blob local. No hace falta
+   * tocar el endpoint: el `Content-Disposition: attachment` que manda el
+   * servidor no afecta a un blob creado aquí, y así el cliente no se lleva un
+   * archivo al disco solo por querer mirar cuánto le facturaron.
+   *
+   * Se evita `window.open` a propósito: es lo primero que bloquea el navegador
+   * cuando la llamada viene de una promesa, y el portal lo abre gente desde el
+   * enlace de un correo. El «abrir en pestaña nueva» queda dentro del modal,
+   * donde el clic sí es un gesto directo del usuario.
+   */
+  const [verPdf, setVerPdf] = useState<{ url: string; folio: string } | null>(null);
+  const [viendo, setViendo] = useState<number | null>(null);
+
+  const handleVer = async (facturaId: number, folio: string) => {
+    setViendo(facturaId);
+    try {
+      const res = await fetch(`/api/v1/portal/${token}/facturas/${facturaId}/pdf`);
+      if (!res.ok) throw new Error(`El servidor respondió ${res.status}`);
+      const blob = await res.blob();
+      setVerPdf({ url: URL.createObjectURL(blob), folio });
+    } catch (err: any) {
+      message.error(`No se pudo abrir la factura: ${err?.message ?? 'Error desconocido'}`, 5);
+    } finally {
+      setViendo(null);
+    }
+  };
+
+  const cerrarVistaPdf = () => {
+    // Sin revocar, cada factura abierta deja su blob en memoria hasta recargar.
+    if (verPdf) URL.revokeObjectURL(verPdf.url);
+    setVerPdf(null);
   };
 
   const handleDescargar = async (facturaId: number, folio: string) => {
@@ -200,18 +236,35 @@ export default function ClientPortalPage() {
                     render: (v: number) => <strong>{fmt.money(v)}</strong> },
                   { title: 'Estado', dataIndex: 'estado', width: 100,
                     render: (v: string) => <Tag color={estadoColor[v]}>{v.toUpperCase()}</Tag> },
-                  { title: '', key: 'dl', width: 100,
-                    render: (_: any, r: any) => (
-                      <Button
-                        size="small"
-                        icon={<DownloadOutlined />}
-                        loading={downloading === r.id}
-                        onClick={() => handleDescargar(r.id, r.folio ?? r.numero ?? String(r.id))}
-                      >
-                        PDF
-                      </Button>
-                    )},
+                  { title: '', key: 'dl', width: 170,
+                    render: (_: any, r: any) => {
+                      const folio = r.folio ?? r.numero ?? String(r.id);
+                      return (
+                        <Space size={4} wrap>
+                          <Button
+                            size="small" type="primary" ghost
+                            icon={<EyeOutlined />}
+                            loading={viendo === r.id}
+                            onClick={() => handleVer(r.id, folio)}
+                          >
+                            Ver
+                          </Button>
+                          <Button
+                            size="small"
+                            icon={<DownloadOutlined />}
+                            loading={downloading === r.id}
+                            onClick={() => handleDescargar(r.id, folio)}
+                          >
+                            PDF
+                          </Button>
+                        </Space>
+                      );
+                    }},
                 ]}
+                // El portal se abre casi siempre desde el móvil, con el enlace
+                // de un correo: que la tabla scrollee en vez de apretujar las
+                // columnas hasta que el folio deje de leerse.
+                scroll={{ x: 'max-content' }}
               />
             )}
           </Card>
@@ -226,6 +279,31 @@ export default function ClientPortalPage() {
           Portal seguro · Generado por HiCloud ERP · © 2026
         </Text>
       </div>
+
+      {/* Vista de la factura — el PDF dentro del portal */}
+      <Modal
+        open={!!verPdf}
+        onCancel={cerrarVistaPdf}
+        title={`Factura ${verPdf?.folio ?? ''}`}
+        width="min(900px, 96vw)"
+        style={{ top: 16 }}
+        footer={[
+          // En iOS el iframe con PDF suele quedarse en blanco; la salida es
+          // abrirlo aparte, y aquí el clic sí es un gesto directo del usuario.
+          <Button key="tab" onClick={() => verPdf && window.open(verPdf.url, '_blank')}>
+            Abrir en pestaña nueva
+          </Button>,
+          <Button key="close" type="primary" onClick={cerrarVistaPdf}>Cerrar</Button>,
+        ]}
+      >
+        {verPdf && (
+          <iframe
+            src={verPdf.url}
+            title={`Factura ${verPdf.folio}`}
+            style={{ width: '100%', height: '70vh', border: 'none', borderRadius: 8 }}
+          />
+        )}
+      </Modal>
     </div>
   );
 }
