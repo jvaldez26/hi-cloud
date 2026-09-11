@@ -256,19 +256,19 @@ export default function ClientPortalPage() {
                 size="small"
                 pagination={{ pageSize: 10, showSizeChanger: false }}
                 columns={[
-                  { title: 'Folio',  dataIndex: 'folio',  width: 150,
+                  { title: 'Folio',  dataIndex: 'folio',  width: 100,
                     render: (v: string) => <Text code style={{ fontSize: 11 }}>{v}</Text> },
-                  { title: 'Fecha',  dataIndex: 'fecha',  width: 100, render: (v: string) => fmt.date(v) },
-                  { title: 'Total',  dataIndex: 'total',  width: 130,
+                  { title: 'Fecha',  dataIndex: 'fecha',  width: 92, render: (v: string) => fmt.date(v) },
+                  { title: 'Total',  dataIndex: 'total',  width: 106, align: 'right' as const,
                     render: (v: number) => <strong>{fmt.money(v)}</strong> },
                   // Lo que queda por pagar de cada una. Es el dato que el
                   // cliente viene a buscar y la tabla solo daba el total, que
                   // en una factura a medio pagar no le dice nada.
-                  { title: 'Pendiente', dataIndex: 'pendiente', width: 120,
+                  { title: 'Pendiente', dataIndex: 'pendiente', width: 106, align: 'right' as const,
                     render: (v: number) => Number(v) > 0.005
                       ? <Text style={{ color: '#ef4444', fontWeight: 600 }}>{fmt.money(Number(v))}</Text>
                       : <Text type="secondary">—</Text> },
-                  { title: 'Estado', dataIndex: 'estado', width: 110,
+                  { title: 'Estado', dataIndex: 'estado', width: 96, align: 'center' as const,
                     render: (v: string, r: any) => r.vencida
                       // Vencida se pinta aparte: con el mapa de colores de antes
                       // se veía idéntica a una al día, que en un portal de
@@ -277,11 +277,14 @@ export default function ClientPortalPage() {
                           <Tag color="red">VENCIDA</Tag>
                         </Tooltip>
                       : <Tag color={estadoColor[v]}>{v.toUpperCase()}</Tag> },
-                  { title: '', key: 'dl', width: 170,
+                  // «Ver» conserva su texto —es la acción que el cliente busca—
+                  // y la descarga pasa a icono con tooltip: entre las dos
+                  // etiquetas se iban 60px que no cabían.
+                  { title: '', key: 'dl', width: 104, align: 'right' as const,
                     render: (_: any, r: any) => {
                       const folio = r.folio ?? r.numero ?? String(r.id);
                       return (
-                        <Space size={4} wrap>
+                        <Space size={4}>
                           <Button
                             size="small" type="primary" ghost
                             icon={<EyeOutlined />}
@@ -290,22 +293,30 @@ export default function ClientPortalPage() {
                           >
                             Ver
                           </Button>
-                          <Button
-                            size="small"
-                            icon={<DownloadOutlined />}
-                            loading={downloading === r.id}
-                            onClick={() => handleDescargar(r.id, folio)}
-                          >
-                            PDF
-                          </Button>
+                          <Tooltip title="Descargar PDF">
+                            <Button
+                              size="small"
+                              icon={<DownloadOutlined />}
+                              loading={downloading === r.id}
+                              onClick={() => handleDescargar(r.id, folio)}
+                              aria-label={`Descargar ${folio} en PDF`}
+                            />
+                          </Tooltip>
                         </Space>
                       );
                     }},
                 ]}
-                // El portal se abre casi siempre desde el móvil, con el enlace
-                // de un correo: que la tabla scrollee en vez de apretujar las
-                // columnas hasta que el folio deje de leerse.
-                scroll={{ x: 'max-content' }}
+                // Ancho MÍNIMO, no `max-content`. Con `max-content` la tabla se
+                // estira a lo que ocupe su contenido aunque quepa de sobra, así
+                // que salía barra de scroll y el botón de descarga quedaba
+                // cortado. Con un número, la barra solo aparece cuando el ancho
+                // disponible baja de ahí — o sea, en el móvil, que es donde
+                // scrollear sí es lo correcto.
+                //
+                // 604 = 100+92+106+106+96+104, la suma de las columnas. El ancho
+                // disponible en el portal es ~720px (800 de caja menos los
+                // paddings), así que en escritorio no aparece barra.
+                scroll={{ x: 604 }}
               />
               </>
             )}
