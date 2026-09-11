@@ -42,6 +42,13 @@ const fmtMon = (v: number, moneda = 'DOP') => {
  */
 const ANCHO_MINIMO_ITEMS = 300 + 96 + 74 + 68 + 86 + 84 + 126 + 88 + 96 + 44;
 
+/**
+ * Form.Item de la cabecera: el margen inferior por defecto de antd son 24px,
+ * que multiplicados por los campos de la fila eran la mitad del alto que se
+ * comía la cabecera. 8px separan lo justo.
+ */
+const ITEM_COMPACTO = { marginBottom: 8 } as const;
+
 /** Un importe del pie: etiqueta arriba, valor debajo. */
 function Dato({ etiqueta, valor, color, grande }: {
   etiqueta: string; valor: string; color?: string; grande?: boolean;
@@ -515,12 +522,18 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
       style={altoCompleto
         ? { display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }
         : undefined}>
-      <Card style={{ marginBottom: 16, flexShrink: 0 }}>
-        {/* Fila 1 — Documento */}
-        <Row gutter={[16, 0]}>
-          <Col xs={24} sm={10}>
-            <Form.Item name="proveedorId" label="Proveedor" rules={[{ required: true }]}>
-              <Select showSearch filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
+      {/* Cabecera en UNA fila.
+          Antes eran dos filas de Cols con span fijo más un Alert de bloque:
+          unos 280px para siete campos y una línea de texto, con la tabla de
+          ítems —que es donde se trabaja— arrinconada debajo.
+          `Col flex="crecer encoger base"` deja que la fila envuelva sola cuando
+          no caben, en vez de repartir spans a mano según qué campos estén
+          visibles (había un ternario anidado calculando el ancho de Notas). */}
+      <Card style={{ marginBottom: 12, flexShrink: 0 }} styles={{ body: { padding: '12px 16px' } }}>
+        <Row gutter={[12, 0]} align="bottom">
+          <Col flex="2 1 240px">
+            <Form.Item name="proveedorId" label="Proveedor" rules={[{ required: true }]} style={ITEM_COMPACTO}>
+              <Select size="small" showSearch filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
                 options={(proveedores?.data ?? []).map((p: any) => ({
                   value: p.id,
                   label: `${(p as any).rnc || 'Sin RNC'} — ${p.nombre}${(p as any).esInformal ? ' ⚠ Informal' : ''}`,
@@ -529,18 +542,18 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
               />
             </Form.Item>
           </Col>
-          <Col xs={12} sm={5}>
-            <Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}>
-              <DatePicker style={{ width:'100%' }} format="DD/MM/YYYY" />
+          <Col flex="1 1 108px">
+            <Form.Item name="fecha" label="Fecha" rules={[{ required: true }]} style={ITEM_COMPACTO}>
+              <DatePicker size="small" style={{ width:'100%' }} format="DD/MM/YYYY" />
             </Form.Item>
           </Col>
-          <Col xs={12} sm={5}>
-            <Form.Item name="numeroFacturaProveedor" label="NCF Proveedor">
-              <Input placeholder="B01-00000001" />
+          <Col flex="1 1 120px">
+            <Form.Item name="numeroFacturaProveedor" label="NCF Proveedor" style={ITEM_COMPACTO}>
+              <Input size="small" placeholder="B01-00000001" />
             </Form.Item>
           </Col>
-          <Col xs={24} sm={4}>
-            <Form.Item
+          <Col flex="1 1 140px">
+            <Form.Item style={ITEM_COMPACTO}
               label={
                 <Space size={4}>
                   Almacén destino
@@ -550,7 +563,7 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
                 </Space>
               }
             >
-              <Select
+              <Select size="small"
                 allowClear placeholder="Almacén..."
                 value={almacenId} onChange={(v) => setAlmacenId(v ?? undefined)}
                 showSearch filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
@@ -560,12 +573,9 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
               />
             </Form.Item>
           </Col>
-        </Row>
-        {/* Fila 2 — Pago y configuración */}
-        <Row gutter={[16, 0]}>
-          <Col xs={12} sm={5}>
-            <Form.Item label="Moneda">
-              <Select value={moneda} onChange={handleMonedaChange} style={{ width: '100%' }}>
+          <Col flex="1 1 120px">
+            <Form.Item label="Moneda" style={ITEM_COMPACTO}>
+              <Select size="small" value={moneda} onChange={handleMonedaChange} style={{ width: '100%' }}>
                 <Select.Option value="DOP">DOP — Pesos</Select.Option>
                 <Select.Option value="USD">USD — Dólares</Select.Option>
                 <Select.Option value="EUR">EUR — Euros</Select.Option>
@@ -573,54 +583,56 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
             </Form.Item>
           </Col>
           {moneda !== 'DOP' && (
-            <Col xs={12} sm={4}>
-              <Form.Item label={`Tasa RD$/${moneda}`}>
-                <InputNumber controls={false} value={tipoCambio} min={1} precision={4} style={{ width: '100%' }}
+            <Col flex="1 1 130px">
+              <Form.Item label={`Tasa RD$/${moneda}`} style={ITEM_COMPACTO}>
+                <InputNumber size="small" controls={false} value={tipoCambio} min={1} precision={4} style={{ width: '100%' }}
                   onChange={v => setTipoCambio(v ?? 1)} addonBefore="RD$" />
               </Form.Item>
             </Col>
           )}
-          <Col xs={12} sm={5}>
-            <Form.Item label="Tipo de pago" required>
-              <Select value={tipoPago} onChange={v => setTipoPago(v)} style={{ width: '100%' }}>
+          <Col flex="1 1 130px">
+            <Form.Item label="Tipo de pago" required style={ITEM_COMPACTO}>
+              <Select size="small" value={tipoPago} onChange={v => setTipoPago(v)} style={{ width: '100%' }}>
                 <Select.Option value="contado">Contado</Select.Option>
                 <Select.Option value="credito">Crédito</Select.Option>
               </Select>
             </Form.Item>
           </Col>
           {tipoPago === 'credito' && (
-            <Col xs={12} sm={4}>
-              <Form.Item label="Días crédito">
-                <InputNumber controls={false} min={1} max={365} value={diasCredito}
+            <Col flex="1 1 120px">
+              <Form.Item label="Días crédito" style={ITEM_COMPACTO}>
+                <InputNumber size="small" controls={false} min={1} max={365} value={diasCredito}
                   onChange={v => setDiasCredito(v ?? 30)} style={{ width: '100%' }} addonAfter="días" />
               </Form.Item>
             </Col>
           )}
           {sucursales.length > 1 && (
-            <Col xs={24} sm={5}>
-              <Form.Item name="sucursalId" label="Sucursal" rules={[{ required: true, message: 'Selecciona una sucursal' }]}>
-                <Select placeholder="Seleccionar sucursal" options={sucursales.map((s: any) => ({ value: s.id, label: s.nombre }))} />
+            <Col flex="1 1 140px">
+              <Form.Item name="sucursalId" label="Sucursal" rules={[{ required: true, message: 'Selecciona una sucursal' }]} style={ITEM_COMPACTO}>
+                <Select size="small" placeholder="Seleccionar sucursal" options={sucursales.map((s: any) => ({ value: s.id, label: s.nombre }))} />
               </Form.Item>
             </Col>
           )}
-          <Col xs={24} sm={tipoPago === 'credito' ? (sucursales.length > 1 ? 5 : 10) : (sucursales.length > 1 ? 9 : 14)}>
-            <Form.Item name="notas" label="Notas"><Input.TextArea rows={1} /></Form.Item>
+          <Col flex="2 1 180px">
+            <Form.Item name="notas" label="Notas" style={ITEM_COMPACTO}>
+              <Input.TextArea size="small" autoSize={{ minRows: 1, maxRows: 3 }} />
+            </Form.Item>
           </Col>
         </Row>
+
+        {/* El aviso de pago, en una línea de texto pequeño. Era un Alert de
+            bloque: una franja entera con fondo para una frase. El mensaje se
+            mantiene —es información útil— pero no a ese tamaño. */}
         {tipoPago === 'credito' && fechaVencimientoCalc && (
-          <Alert type="info" showIcon style={{ marginTop: 4 }}
-            message={
-              <span>
-                Vence el <strong>{fechaVencimientoCalc.format('DD/MM/YYYY')}</strong>
-                {' '}<Tag color="blue">{diasCredito} días crédito</Tag>
-                — se creará una Cuenta por Pagar automáticamente al recibir.
-              </span>
-            }
-          />
+          <div style={{ fontSize: 12, color: '#1677ff', marginTop: 2 }}>
+            Vence el <strong>{fechaVencimientoCalc.format('DD/MM/YYYY')}</strong> ({diasCredito} días)
+            {' '}— se creará una Cuenta por Pagar automáticamente al recibir.
+          </div>
         )}
         {tipoPago === 'contado' && (
-          <Alert type="success" showIcon style={{ marginTop: 4 }}
-            message="Pago de contado — no se generará Cuenta por Pagar." />
+          <div style={{ fontSize: 12, color: '#059669', marginTop: 2 }}>
+            Pago de contado — no se generará Cuenta por Pagar.
+          </div>
         )}
       </Card>
 
