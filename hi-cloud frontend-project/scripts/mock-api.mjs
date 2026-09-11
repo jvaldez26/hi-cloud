@@ -249,6 +249,42 @@ const RUTAS = {
       venceSuscripcion: '2026-10-05', precioMensual: 7600, saldo: 0,
       ultimoPago: null, pendientesConfirmacion: 0 },
   ]),
+
+  // ── Órdenes de Compra — para capturar el modal "Recibir Mercancía" sin
+  //    tocar el backend real (RecibirMercanciaModal, compartido entre
+  //    /compras y el POS). 101 = enviada (recepción completa), 102 =
+  //    parcial (para ver "Completar recepción" con lo ya recibido).
+  '/compras': () => ({
+    data: [
+      { id: 101, folio: 'COM-00101', fecha: '2026-09-08', estado: 'enviada',
+        proveedor: { id: 1, nombre: 'VALDEZ GONZÁLEZ OUTSOURCING SRL', rnc: '131234567' },
+        proveedorId: 1, subtotal: 800, itbis: 144, total: 944, moneda: 'DOP', tipoPago: 'credito' },
+      { id: 102, folio: 'COM-00102', fecha: '2026-09-05', estado: 'recibida_parcial',
+        proveedor: { id: 2, nombre: 'DISTRIBUIDORA DEL ESTE SRL', rnc: '130987654' },
+        proveedorId: 2, subtotal: 1000, itbis: 180, total: 1180, moneda: 'DOP', tipoPago: 'credito' },
+    ],
+    meta: { total: 2, page: 1, limit: 10, totalPages: 1 },
+  }),
+  '/compras/101': () => ({
+    id: 101, folio: 'COM-00101', fecha: '2026-09-08', estado: 'enviada',
+    proveedor: { id: 1, nombre: 'VALDEZ GONZÁLEZ OUTSOURCING SRL', rnc: '131234567' },
+    proveedorId: 1, subtotal: 800, itbis: 144, total: 944, moneda: 'DOP', tipoPago: 'credito',
+    detalles: [
+      { id: 1001, productoId: 2, producto: { id: 2, nombre: 'PRODUCTO DE PRUEBA 2' },
+        descripcion: 'PRODUCTO DE PRUEBA 2', precioUnitario: 400, cantidad: 2, cantidadTotal: 2,
+        cantidadRecibida: null, porcentajeItbis: 18, subtotal: 800, importeItbis: 144, total: 944 },
+    ],
+  }),
+  '/compras/102': () => ({
+    id: 102, folio: 'COM-00102', fecha: '2026-09-05', estado: 'recibida_parcial',
+    proveedor: { id: 2, nombre: 'DISTRIBUIDORA DEL ESTE SRL', rnc: '130987654' },
+    proveedorId: 2, subtotal: 1000, itbis: 180, total: 1180, moneda: 'DOP', tipoPago: 'credito',
+    detalles: [
+      { id: 1002, productoId: 1, producto: { id: 1, nombre: 'Aceite REPSOL 10W40' },
+        descripcion: 'Aceite REPSOL 10W40', precioUnitario: 200, cantidad: 5, cantidadTotal: 5,
+        cantidadRecibida: 3, porcentajeItbis: 18, subtotal: 1000, importeItbis: 180, total: 1180 },
+    ],
+  }),
 };
 
 const PREFIJO = /^\/api(\/v1)?/;

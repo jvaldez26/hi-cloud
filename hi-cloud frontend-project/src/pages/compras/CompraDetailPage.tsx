@@ -10,25 +10,37 @@ import { ecfApi } from '../../api/ecf.api';
 import { fmt, estadoColor } from '../../utils/formatters';
 import type { CompraEstado } from '../../types';
 import EcfSeccion from '../../components/ui/EcfSeccion';
+import RecibirMercanciaModal from '../../components/compras/RecibirMercanciaModal';
 
 const { Title, Text } = Typography;
 
 const ESTADOS_ORDEN: CompraEstado[] = ['borrador', 'enviada', 'recibida', 'pagada'];
 
+/**
+ * A qué estados se puede pasar con un botón directo (Popconfirm + PATCH
+ * .../estado). 'recibida' se maneja aparte — ver `abreModal` más abajo —:
+ * recibir siempre pasa por RecibirMercanciaModal, el mismo que usa el POS,
+ * con verificación de cantidades y soporte de recepción parcial.
+ */
 const TRANSICIONES: Record<CompraEstado, CompraEstado[]> = {
-  borrador:  ['enviada', 'recibida', 'cancelada'],
-  enviada:   ['recibida', 'cancelada'],
-  recibida:  ['pagada',   'cancelada'],
-  pagada:    [],
-  cancelada: [],
+  borrador:         ['enviada', 'recibida', 'cancelada'],
+  enviada:          ['recibida', 'cancelada'],
+  recibida_parcial: ['recibida', 'cancelada'],
+  recibida:         ['pagada',   'cancelada'],
+  pagada:           [],
+  cancelada:        [],
 };
 
 const TRANS_LABEL: Record<string, string> = {
   enviada:   '📤 Marcar enviada',
-  recibida:  '📦 Marcar recibida',
+  recibida:  '📦 Recibir mercancía',
   pagada:    '✅ Marcar pagada',
   cancelada: '✗ Cancelar',
 };
+
+/** 'recibida' (y 'recibida_parcial' → 'recibida', o sea "Completar") abren
+ *  el modal de recepción en vez de cambiar el estado de un tirón. */
+const abreModal = (sig: CompraEstado) => sig === 'recibida';
 
 export default function CompraDetailPage() {
   const { token: themeToken } = theme.useToken();
@@ -36,6 +48,7 @@ export default function CompraDetailPage() {
   const navigate = useNavigate();
   const qc       = useQueryClient();
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [showRecibir, setShowRecibir] = useState(false);
 
   const imprimirPDF = async () => {
     setPdfLoading(true);
@@ -95,7 +108,11 @@ export default function CompraDetailPage() {
 
   const estado     = (compra as any).estado as CompraEstado;
   const siguientes = TRANSICIONES[estado] ?? [];
-  const pasoActual = estado === 'cancelada' ? -1 : ESTADOS_ORDEN.indexOf(estado);
+  // recibida_parcial no tiene su propio paso en el Stepper — cuenta como
+  // "en Recibida" (a medias) en vez de no resaltar ningún paso.
+  const pasoActual = estado === 'cancelada'
+    ? -1
+    : ESTADOS_ORDEN.indexOf(estado === 'recibida_parcial' ? 'recibida' : estado);
 
   const detallesCols = [
     { title: '#',            key: 'idx',    width: 40,  render: (_: any, __: any, i: number) => i + 1 },
@@ -129,7 +146,13 @@ export default function CompraDetailPage() {
               onClick={imprimirPDF} disabled={pdfLoading}>
               Imprimir
             </Button>
-            {siguientes.map(sig => (
+            {siguientes.map(sig => abreModal(sig) ? (
+              <Button key={sig} type="primary" icon={<SendOutlined />}
+                style={{ background: '#10b981', borderColor: '#10b981' }}
+                onClick={() => setShowRecibir(true)}>
+                {estado === 'recibida_parcial' ? '📦 Completar recepción' : TRANS_LABEL[sig]}
+              </Button>
+            ) : (
               <Popconfirm key={sig}
                 title={`¿${TRANS_LABEL[sig]}?`}
                 onConfirm={() => estadoMut.mutate({ estado: sig })}>
@@ -137,7 +160,7 @@ export default function CompraDetailPage() {
                   type={sig === 'cancelada' ? 'default' : 'primary'}
                   danger={sig === 'cancelada'}
                   loading={estadoMut.isPending}
-                  icon={sig === 'recibida' ? <SendOutlined /> : sig === 'pagada' ? <CheckCircleOutlined /> : <CloseCircleOutlined />}>
+                  icon={sig === 'pagada' ? <CheckCircleOutlined /> : <CloseCircleOutlined />}>
                   {TRANS_LABEL[sig]}
                 </Button>
               </Popconfirm>
@@ -292,6 +315,17 @@ export default function CompraDetailPage() {
           )}
         </Col>
       </Row>
+
+      <RecibirMercanciaModal
+        open={showRecibir}
+        compra={compra as any}
+        onClose={() => setShowRecibir(false)}
+        onSuccess={() => {
+          qc.invalidateQueries({ queryKey: ['compra', id] });
+          qc.invalidateQueries({ queryKey: ['compras'] });
+          message.success('Mercancía recibida y stock actualizado');
+        }}
+      />
     </div>
   );
 }

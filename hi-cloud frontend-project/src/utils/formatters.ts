@@ -42,9 +42,11 @@ export const fmt = {
 export const estadoColor: Record<string, string> = {
   borrador:     'default',
   emitida:      'blue',
+  enviada:      'blue',
   pagada:       'green',
   cancelada:    'red',
   recibida:     'cyan',
+  recibida_parcial: 'orange',
   pendiente:    'orange',
   pagada_parcial: 'gold',
   vencida:      'red',

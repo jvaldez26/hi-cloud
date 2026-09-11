@@ -28,27 +28,13 @@ import type { Compra, CompraEstado } from '../../types';
 import { fmt, estadoColor } from '../../utils/formatters';
 import EcfResultModal from '../../components/ui/EcfResultModal';
 import EcfBadge, { type EstadoEcf } from '../../components/ui/EcfBadge';
+import RecibirMercanciaModal from '../../components/compras/RecibirMercanciaModal';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 const { Option } = Select;
 
-const ESTADOS_COMPRA: CompraEstado[] = ['borrador', 'enviada', 'recibida', 'pagada', 'cancelada'];
-
-const TRANSICIONES: Record<CompraEstado, CompraEstado[]> = {
-  borrador:  ['enviada', 'recibida', 'cancelada'],
-  enviada:   ['recibida', 'cancelada'],
-  recibida:  ['pagada',   'cancelada'],
-  pagada:    [],
-  cancelada: [],
-};
-
-const TRANS_LABEL: Record<string, string> = {
-  enviada:  '📤 Marcar enviada',
-  recibida: '📦 Recibir mercancía',
-  pagada:   '✅ Marcar pagada',
-  cancelada: '❌ Cancelar',
-};
+const ESTADOS_COMPRA: CompraEstado[] = ['borrador', 'enviada', 'recibida_parcial', 'recibida', 'pagada', 'cancelada'];
 
 export default function ComprasPage() {
   const { token } = theme.useToken();
@@ -65,6 +51,12 @@ export default function ComprasPage() {
   const [emailCompra,  setEmailCompra]  = useState<any>(null);
   const [ecfEncf,      setEcfEncf]      = useState<string | null>(null);
   const [aprobCompra,  setAprobCompra]  = useState<any>(null);
+  // Recibir mercancía: la fila de la tabla no trae `detalles` (findAll no los
+  // selecciona) — hay que pedir la compra completa antes de poder mostrar el
+  // modal con cantidades por línea. Mismo modal que usa el POS — una sola
+  // fuente de verdad, ver components/compras/RecibirMercanciaModal.tsx.
+  const [recibirCompra,   setRecibirCompra]   = useState<Compra | null>(null);
+  const [cargandoRecibir, setCargandoRecibir] = useState<number | null>(null);
 
   const filters = {
     search: search || undefined,
@@ -109,6 +101,23 @@ export default function ComprasPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['compras'] }); message.success('Estado actualizado'); },
     onError:   (e: any) => message.error(e?.response?.data?.errors?.[0] ?? 'Error'),
   });
+
+  /**
+   * Abre el modal de recepción — pide la compra completa (con detalles) antes,
+   * porque la fila de la tabla no los trae. "Recibir" en borrador/enviada y
+   * "Completar" en recibida_parcial usan exactamente este mismo camino.
+   */
+  const abrirRecibir = async (id: number) => {
+    setCargandoRecibir(id);
+    try {
+      const full = await comprasApi.getOne(id);
+      setRecibirCompra(full);
+    } catch (e: any) {
+      message.error(e?.response?.data?.message ?? 'No se pudo cargar la orden de compra');
+    } finally {
+      setCargandoRecibir(null);
+    }
+  };
 
   const deleteMut = useMutation({
     mutationFn: comprasApi.remove,
@@ -267,13 +276,39 @@ export default function ComprasPage() {
     {
       title: '', key: 'actions', width: 110, align: 'right' as const,
       render: (_: unknown, r: Compra) => {
-        const sigs = TRANSICIONES[r.estado];
-        const items = sigs.map(s => ({
-          key: s,
-          label: TRANS_LABEL[s] ?? s,
-          danger: s === 'cancelada',
-          onClick: () => estadoMut.mutate({ id: r.id, estado: s }),
-        }));
+        // Mismas acciones que el POS ofrece por estado — un solo flujo de
+        // recepción, con verificación de cantidades y soporte de recepción
+        // parcial (ver RecibirMercanciaModal). "Recibir mercancía" ya NO
+        // cambia el estado de un tirón: abre el modal.
+        const recibiendoEsta = cargandoRecibir === r.id;
+        const itemRecibir = {
+          key: 'recibir',
+          label: recibiendoEsta ? 'Cargando...' : '📦 Recibir mercancía',
+          disabled: recibiendoEsta,
+          onClick: () => abrirRecibir(r.id),
+        };
+        const itemCompletar = {
+          key: 'completar',
+          label: recibiendoEsta ? 'Cargando...' : '📦 Completar recepción',
+          disabled: recibiendoEsta,
+          onClick: () => abrirRecibir(r.id),
+        };
+        const itemCancelar = {
+          key: 'cancelada', label: '❌ Cancelar', danger: true,
+          onClick: () => estadoMut.mutate({ id: r.id, estado: 'cancelada' as CompraEstado }),
+        };
+        const items =
+          r.estado === 'borrador' ? [
+            { key: 'enviada', label: '📤 Marcar enviada', onClick: () => estadoMut.mutate({ id: r.id, estado: 'enviada' as CompraEstado }) },
+            itemCancelar,
+          ]
+          : r.estado === 'enviada' ? [itemRecibir, itemCancelar]
+          : r.estado === 'recibida_parcial' ? [itemCompletar, itemCancelar]
+          : r.estado === 'recibida' ? [
+              { key: 'pagada', label: '✅ Marcar pagada', onClick: () => estadoMut.mutate({ id: r.id, estado: 'pagada' as CompraEstado }) },
+              itemCancelar,
+            ]
+          : [];
         const menuItems2 = [
           // «Editar» solo en borrador, y encabezando el menú: es lo primero que
           // se busca en una orden a medio hacer. En cualquier otro estado el
@@ -403,6 +438,16 @@ export default function ComprasPage() {
       )}
 
       <EcfResultModal encf={ecfEncf} onClose={() => setEcfEncf(null)} />
+
+      <RecibirMercanciaModal
+        open={!!recibirCompra}
+        compra={recibirCompra}
+        onClose={() => setRecibirCompra(null)}
+        onSuccess={() => {
+          qc.invalidateQueries({ queryKey: ['compras'] });
+          message.success('Mercancía recibida y stock actualizado');
+        }}
+      />
     </Card>
   );
 }

@@ -131,7 +131,7 @@ export interface Factura {
 }
 
 // ── Compras ───────────────────────────────────────────────────────────────────
-export type CompraEstado = 'borrador' | 'enviada' | 'recibida' | 'pagada' | 'cancelada';
+export type CompraEstado = 'borrador' | 'enviada' | 'recibida' | 'recibida_parcial' | 'pagada' | 'cancelada';
 
 export interface Proveedor {
   id:        number;
@@ -140,6 +140,24 @@ export interface Proveedor {
   telefono?: string;
   email?:    string;
   isActive:  boolean;
+}
+
+export interface CompraDetalleOut {
+  id:                  number;
+  productoId:          number;
+  producto?:           { id: number; nombre: string };
+  descripcion:         string;
+  precioUnitario:      number;
+  cantidad:            number;
+  cantidadBonificada?: number;
+  /** Total que entra al inventario (facturada + bonificada). */
+  cantidadTotal?:      number;
+  /** Unidades ya recibidas — undefined/null = pendiente de recepción. */
+  cantidadRecibida?:   number | null;
+  porcentajeItbis:     number;
+  subtotal:            number;
+  importeItbis:        number;
+  total:               number;
 }
 
 export interface Compra {
@@ -154,6 +172,8 @@ export interface Compra {
   /** Suma de descuentoMonto de las líneas — 0 cuando ninguna tiene descuento. */
   descuentoTotal?: number;
   total:      number;
+  notas?:     string;
+  detalles?:  CompraDetalleOut[];
   isActive:   boolean;
   createdAt:  string;
 }

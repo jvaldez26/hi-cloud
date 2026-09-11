@@ -49,6 +49,18 @@ export const comprasApi = {
   cambiarEstado: (id: number, estado: CompraEstado) =>
     api.patch(`/compras/${id}/estado`, { estado }).then(r => r.data),
 
+  /**
+   * Recibir mercancía con cantidades reales por línea (soporta recepción
+   * parcial: lo que falte queda pendiente y la orden queda en
+   * 'recibida_parcial' hasta completarse). Actualiza inventario y AVCO por
+   * las cantidades NUEVAS de esta recepción — nunca por el total pedido.
+   */
+  recibir: (id: number, body: {
+    detalles: { detalleId: number; cantidadRecibida: number }[];
+    notas?: string;
+  }) =>
+    api.patch<ApiResponse<Compra>>(`/compras/${id}/recibir`, body).then(r => r.data.data),
+
   remove: (id: number) =>
     api.delete(`/compras/${id}`).then(r => r.data),
 };
