@@ -485,6 +485,28 @@ fragmento que contiene solo `RD$ `. Está en `common/pdf/inspeccion-pdf.testing.
 
 ## 3. Trabajos abiertos
 
+### El buscador de producto de la OC se colapsó a cero — cerrado, y con guardia
+
+En «Nueva Orden de Compra» del POS se escribía y no aparecía nada: ni productos ni el enlace
+de creación rápida.
+
+La tabla de ítems va con `tableLayout="fixed"`. Con ese modo, las columnas que declaran ancho
+se reparten primero y la que no lo declara se queda con **lo que sobre**. «Producto» era la
+única sin `width`. Mientras sobró espacio se vio bien; al añadir la columna «Desc.» (126 px)
+en `c9af1ee7` la suma de anchos fijos pasó de 678 a 804 px y dentro del modal de 960 px del
+POS dejó de sobrar: el `<Select>` se quedó sin sitio donde dibujarse.
+
+**No hubo ningún cambio en el buscador.** El commit que añadió la columna no tocó una línea de
+esa lógica, la pantalla siguió compilando, y el fallo salió en otro sitio y días después. Por
+eso cuesta relacionarlo.
+
+Arreglado con `width: 220` en «Producto» —el mismo que usa el formulario de Factura, que
+declara el ancho de sus ocho columnas y nunca se rompió por esto— y `scroll={{ x: 'max-content' }}`
+en vez del `overflowX` a mano, que con `tableLayout` fijo no scrollea: reparte a la fuerza.
+
+`src/test/tabla-fixed-columnas-con-ancho.test.ts` exige que toda columna de una tabla
+`tableLayout="fixed"` declare su ancho. Probado en rojo contra el código anterior.
+
 ### Un cajero veía a los demás cajeros y podía abrir turno a su nombre — cerrado a medias
 
 Visto en producción: un usuario con rol `vendedor` **sin perfil vinculado** abría el POS y el
