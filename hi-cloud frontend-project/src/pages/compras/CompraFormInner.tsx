@@ -32,14 +32,48 @@ const fmtMon = (v: number, moneda = 'DOP') => {
   return `${sym} ${v.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
+/**
+ * Suma de los anchos de las columnas de ítems. Es el ancho por debajo del cual
+ * la tabla sí tiene que scrollear.
+ *
+ * Se declara aquí y no suelto en el JSX para que quien toque un `width` de la
+ * tabla vea que hay un número que actualizar — y porque el día que entren las
+ * columnas de descuento (Bruto, Desc, Neto) este número sube.
+ */
+const ANCHO_MINIMO_ITEMS = 300 + 96 + 74 + 68 + 86 + 84 + 126 + 88 + 96 + 44;
+
+/** Un importe del pie: etiqueta arriba, valor debajo. */
+function Dato({ etiqueta, valor, color, grande }: {
+  etiqueta: string; valor: string; color?: string; grande?: boolean;
+}) {
+  return (
+    <div style={{ lineHeight: 1.25 }}>
+      <div style={{ fontSize: 11, color: '#8c8c8c', whiteSpace: 'nowrap' }}>{etiqueta}</div>
+      <div style={{
+        fontSize: grande ? 20 : 14,
+        fontWeight: grande ? 700 : 600,
+        color, whiteSpace: 'nowrap',
+      }}>{valor}</div>
+    </div>
+  );
+}
+
 interface Props {
   onSuccess?: (orden: any) => void;
   onCancel?: () => void;
   /** Presente = modo edición. Solo borradores; el backend lo vuelve a exigir. */
   compraId?: number;
+  /**
+   * El formulario ocupa todo el alto que le den, con la cabecera y el pie
+   * fijos y solo la lista de ítems desplazándose.
+   *
+   * Lo usa el modal del POS. La pantalla de Compras no lo pasa: allí la página
+   * scrollea entera, que es lo natural en un documento a pantalla completa.
+   */
+  altoCompleto?: boolean;
 }
 
-export default function CompraFormInner({ onSuccess, onCancel, compraId }: Props) {
+export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCompleto = false }: Props) {
   const esEdicion = compraId != null;
   const [form] = Form.useForm();
   const { token } = theme.useToken();
@@ -290,7 +324,7 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId }: Props
     // el buscador de producto se colapsó a cero: se escribía y no aparecía
     // nada, ni los productos ni el enlace de creación rápida, porque el Select
     // no tenía dónde dibujarse.
-    { title: 'Producto', key: 'prod', width: 220,
+    { title: 'Producto', key: 'prod', width: 300,
       render: (_: unknown, _r: Linea, idx: number) => {
         const busquedaOpts = productosBusquedaData.map((p: any) => ({
           value: p.id, label: p.codigo ? `${p.codigo} — ${p.nombre}` : p.nombre,
@@ -302,7 +336,13 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId }: Props
           const saved = selectedProds.get(pid);
           return saved ? [{ value: pid, label: saved }, ...busquedaOpts] : busquedaOpts;
         })();
+        // El nombre completo del producto seleccionado, para el tooltip: en la
+        // celda se trunca con ellipsis —un código de barras más el nombre no
+        // cabe en ninguna columna razonable— y el usuario necesita poder
+        // confirmarlo sin abrir el desplegable.
+        const etiquetaSel = opts.find((o: any) => o.value === _r.productoId)?.label as string | undefined;
         return (
+          <Tooltip title={etiquetaSel} mouseEnterDelay={0.6} placement="topLeft">
           <Select style={{ width: '100%' }} showSearch placeholder="Escribe para buscar..."
             filterOption={false}
             onSearch={(v) => { setProductoSearch(v); }}
@@ -311,9 +351,12 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId }: Props
             options={opts}
             value={_r.productoId}
             popupMatchSelectWidth={false}
-            dropdownStyle={{ minWidth: 380 }}
+            // `styles.popup.root` y `popupRender`: `dropdownStyle` y
+            // `dropdownRender` están deprecados en antd 5.29 y avisan en consola
+            // en cada render de la tabla.
+            styles={{ popup: { root: { minWidth: 380 } } }}
             onChange={(v) => onProductoChange(v, idx)}
-            dropdownRender={(menu) => (
+            popupRender={(menu) => (
               <>
                 {menu}
                 {productoSearch.length >= 2 && (
@@ -337,14 +380,18 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId }: Props
               </>
             )}
           />
+          </Tooltip>
         );
       }},
-    { title: 'Descripción', key: 'desc', width: 100,
+    { title: 'Descripción', key: 'desc', width: 96,
       render: (_: unknown, r: Linea, idx: number) => (
-        <Input value={r.descripcion} style={{ overflow: 'hidden' }}
+        // `title` nativo y no <Tooltip>: es un campo que se teclea y un tooltip
+        // de antd encima estorba al escribir. El navegador lo muestra al posar
+        // el ratón y desaparece en cuanto se enfoca.
+        <Input value={r.descripcion} style={{ overflow: 'hidden' }} title={r.descripcion}
           onChange={e => { const u=[...lineas]; u[idx].descripcion=e.target.value; setLineas(u); }} />
       )},
-    { title: 'Cantidad', key: 'qty', width: 82,
+    { title: 'Cantidad', key: 'qty', width: 74,
       render: (_: unknown, r: Linea, idx: number) => (
         <InputNumber
           controls={false}
@@ -353,7 +400,7 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId }: Props
           style={{ width:'100%' }}
           onChange={v => { const u=[...lineas]; u[idx].cantidad=v??0.001; setLineas(u); }} />
       )},
-    { title: 'Bonif.', key: 'bon', width: 72,
+    { title: 'Bonif.', key: 'bon', width: 68,
       render: (_: unknown, r: Linea, idx: number) => (
         <InputNumber
           controls={false}
@@ -363,7 +410,7 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId }: Props
           placeholder="0"
           onChange={v => { const u=[...lineas]; u[idx].cantidadBonificada=v??0; setLineas(u); }} />
       )},
-    { title: 'Inv. / Costo', key: 'inv', width: 92,
+    { title: 'Inv. / Costo', key: 'inv', width: 86,
       render: (_: unknown, r: Linea) => {
         const tot = r.cantidad + r.cantidadBonificada;
         const costo = tot > 0 ? r.precioUnitario * r.cantidad / tot : r.precioUnitario;
@@ -378,7 +425,7 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId }: Props
           </div>
         );
       }},
-    { title: 'Precio', key: 'price', width: 90,
+    { title: 'Precio', key: 'price', width: 84,
       render: (_: unknown, r: Linea, idx: number) => {
         const pct = r.porcentajeItbis || 0;
         const displayVal = r.precioIncluyeItbis
@@ -433,7 +480,7 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId }: Props
           </div>
         );
       }},
-    { title: 'ITBIS %', key: 'itbis', width: 100,
+    { title: 'ITBIS %', key: 'itbis', width: 88,
       render: (_: unknown, r: Linea, idx: number) => (
         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
           <InputNumber controls={false} min={0} max={100} value={r.porcentajeItbis}
@@ -450,7 +497,7 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId }: Props
           </Tooltip>
         </div>
       )},
-    { title: 'Subtotal', key: 'sub', width: 98,
+    { title: 'Subtotal', key: 'sub', width: 96,
       // NETO de descuento — la base gravable de la línea, no el bruto.
       render: (_: unknown, r: Linea) => fmtMon(r.precioUnitario * r.cantidad - (r.descuentoMonto || 0), moneda) },
     { title: '', key: 'del', width: 44,
@@ -460,8 +507,15 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId }: Props
   ];
 
   return (
-    <Form form={form} layout="vertical" onFinish={handleSubmit} initialValues={{ fecha: dayjs() }}>
-      <Card style={{ marginBottom: 16 }}>
+    <Form form={form} layout="vertical" onFinish={handleSubmit} initialValues={{ fecha: dayjs() }}
+      // En modo alto completo el formulario es una columna flex: cabecera y pie
+      // no se encogen y la lista de ítems se queda con el resto. `minHeight: 0`
+      // no es opcional — sin él un hijo flex no baja de su alto de contenido y
+      // el scroll se lo come el modal entero en vez de la lista.
+      style={altoCompleto
+        ? { display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }
+        : undefined}>
+      <Card style={{ marginBottom: 16, flexShrink: 0 }}>
         {/* Fila 1 — Documento */}
         <Row gutter={[16, 0]}>
           <Col xs={24} sm={10}>
@@ -570,14 +624,26 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId }: Props
         )}
       </Card>
 
-      <Card title="Ítems" style={{ marginBottom: 16 }}
+      {/* La ÚNICA sección que desplaza cuando hay muchos ítems: la cabecera y
+          el pie de totales se quedan a la vista mientras se captura. */}
+      <Card title="Ítems"
+        style={altoCompleto
+          ? { marginBottom: 16, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }
+          : { marginBottom: 16 }}
+        styles={altoCompleto ? { body: { flex: 1, minHeight: 0, overflowY: 'auto' } } : undefined}
         extra={<Button icon={<PlusOutlined />} onClick={() => setLineas([...lineas, { key: Date.now().toString(), cantidad: 1, cantidadBonificada: 0, precioUnitario: 0, porcentajeItbis: 18, descuentoPct: 0, descuentoMonto: 0 }])}>Agregar</Button>}>
-        {/* `scroll.x` en vez de `overflowX` a mano: con todas las columnas ya
-            acotadas, la suma supera el ancho del modal del POS y hace falta que
-            la tabla scrollee de verdad en lugar de repartir a la fuerza. Es el
-            mismo patrón de la pantalla de reposición. */}
+        {/* Ancho MÍNIMO (1062 = la suma de las columnas), no `max-content`.
+            Esta es una tabla de CAPTURA, no de consulta: el usuario teclea
+            mirando la factura del proveedor y no puede tener columnas
+            escondidas. `max-content` estiraba la tabla a lo que ocupara su
+            contenido aunque cupiera, así que salía barra siempre; con un número
+            solo aparece cuando el ancho disponible baja de ahí, que es el
+            último recurso y no el comportamiento normal.
+
+            La convención de `x: 'max-content'` sigue en pie para las tablas de
+            consulta — ahí el criterio es el contrario. */}
         <Table columns={lineaCols as any} dataSource={lineas} rowKey="key" pagination={false} size="small"
-          tableLayout="fixed" scroll={{ x: 'max-content' }} />
+          tableLayout="fixed" scroll={{ x: ANCHO_MINIMO_ITEMS }} />
       </Card>
 
       {esInformal && (
@@ -615,76 +681,63 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId }: Props
         </Card>
       )}
 
-      <Card>
-        <Row justify="end">
-          <Col xs={24} sm={10}>
-            <Space direction="vertical" style={{ width: '100%' }}>
-              {/* Subtotal BRUTO (antes de descuento) — el pie lee Subtotal →
+      <Card style={{ flexShrink: 0 }}>
+        {/* Los totales en una franja horizontal, no en una columna pegada a la
+            derecha con media tarjeta vacía. Cada importe es una celda que se
+            envuelve sola, así que las que vienen —Total descuento, exento,
+            gravado— entran sin rediseñar nada. Y gana la altura que hacía falta
+            para que el botón de crear no quede fuera de pantalla. */}
+        <Row justify="space-between" align="bottom" gutter={[16, 12]} style={{ marginBottom: 12 }}>
+          <Col flex="auto">
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px 28px', alignItems: 'flex-end' }}>
+              {/* Subtotal BRUTO (antes de descuento) — se lee Subtotal →
                   Descuento → ITBIS → Total, igual que la factura del proveedor. */}
-              <Row justify="space-between"><span>Subtotal:</span><strong>{fmtMon(subtotalBruto, moneda)}</strong></Row>
+              <Dato etiqueta="Subtotal" valor={fmtMon(subtotalBruto, moneda)} />
               {descuentoTotal > 0 && (
-                <Row justify="space-between" style={{ color: '#d97706' }}>
-                  <span>Descuento:</span><strong>-{fmtMon(descuentoTotal, moneda)}</strong>
-                </Row>
+                <Dato etiqueta="Descuento" valor={`-${fmtMon(descuentoTotal, moneda)}`} color="#d97706" />
               )}
-              <Row justify="space-between"><span>ITBIS (18%):</span><strong>{fmtMon(itbis, moneda)}</strong></Row>
-              <Divider style={{ margin: '8px 0' }} />
-              <Row justify="space-between">
-                <span style={{ fontSize: 16 }}>Total bruto:</span>
-                <strong style={{ fontSize: 16 }}>{fmtMon(total, moneda)}</strong>
-              </Row>
+              <Dato etiqueta="ITBIS (18%)" valor={fmtMon(itbis, moneda)} />
               {(montoRetItbis > 0 || montoRetIsr > 0) && (
-                <>
-                  {montoRetItbis > 0 && (
-                    <Row justify="space-between" style={{ color: '#d97706' }}>
-                      <span>(-) Retención ITBIS ({pctItbis}%):</span>
-                      <span>-{fmtMon(montoRetItbis, moneda)}</span>
-                    </Row>
-                  )}
-                  {montoRetIsr > 0 && (
-                    <Row justify="space-between" style={{ color: '#d97706' }}>
-                      <span>(-) Retención ISR ({pctIsr}%):</span>
-                      <span>-{fmtMon(montoRetIsr, moneda)}</span>
-                    </Row>
-                  )}
-                  <Divider style={{ margin: '6px 0' }} />
-                  <Row justify="space-between">
-                    <span style={{ fontSize: 16, fontWeight: 700 }}>NETO A PAGAR:</span>
-                    <strong style={{ fontSize: 18, color: '#059669' }}>{fmtMon(netoPagar, moneda)}</strong>
-                  </Row>
-                </>
+                <Dato etiqueta="Total bruto" valor={fmtMon(total, moneda)} />
               )}
-              {!(montoRetItbis > 0 || montoRetIsr > 0) && (
-                <Row justify="space-between">
-                  <span style={{ fontSize: 16 }}>Total:</span>
-                  <strong style={{ fontSize: 18, color: '#1677ff' }}>{fmtMon(total, moneda)}</strong>
-                </Row>
+              {montoRetItbis > 0 && (
+                <Dato etiqueta={`(-) Ret. ITBIS ${pctItbis}%`} valor={`-${fmtMon(montoRetItbis, moneda)}`} color="#d97706" />
+              )}
+              {montoRetIsr > 0 && (
+                <Dato etiqueta={`(-) Ret. ISR ${pctIsr}%`} valor={`-${fmtMon(montoRetIsr, moneda)}`} color="#d97706" />
               )}
               {moneda !== 'DOP' && tipoCambio > 1 && (
-                <Row justify="space-between" style={{ color: '#888', fontSize: 12 }}>
-                  <span>Equivalente RD$:</span>
-                  <span>{fmtMon((montoRetItbis > 0 || montoRetIsr > 0 ? netoPagar : total) * tipoCambio, 'DOP')}</span>
-                </Row>
+                <Dato etiqueta="Equivalente RD$"
+                  valor={fmtMon((montoRetItbis > 0 || montoRetIsr > 0 ? netoPagar : total) * tipoCambio, 'DOP')}
+                  color="#888" />
               )}
-              <Row gutter={8} style={{ marginTop: 4 }}>
-                {onCancel && (
-                  <Col span={8}>
-                    <Button block size="large" onClick={onCancel} disabled={createMut.isPending}>
-                      Cancelar
-                    </Button>
-                  </Col>
-                )}
-                <Col span={onCancel ? 16 : 24}>
-                  <Button type="primary" htmlType="submit" block size="large"
-                    loading={createMut.isPending || cargandoCompra}
-                    disabled={cargandoCompra}>
-                    {esEdicion ? 'Guardar cambios' : 'Crear Orden de Compra'}
-                  </Button>
-                </Col>
-              </Row>
-            </Space>
+            </div>
+          </Col>
+          <Col flex="none">
+            {(montoRetItbis > 0 || montoRetIsr > 0) ? (
+              <Dato etiqueta="NETO A PAGAR" valor={fmtMon(netoPagar, moneda)} color="#059669" grande />
+            ) : (
+              <Dato etiqueta="Total" valor={fmtMon(total, moneda)} color="#1677ff" grande />
+            )}
           </Col>
         </Row>
+        {/* Los botones ya no van dentro de una columna a media anchura: con los
+            totales en franja, aquí sobra sitio y el bloque baja de tres filas a
+            una. */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+          {onCancel && (
+            <Button size="large" onClick={onCancel} disabled={createMut.isPending}
+              style={{ minWidth: 120 }}>
+              Cancelar
+            </Button>
+          )}
+          <Button type="primary" htmlType="submit" size="large"
+            style={{ minWidth: 220 }}
+            loading={createMut.isPending || cargandoCompra}
+            disabled={cargandoCompra}>
+            {esEdicion ? 'Guardar cambios' : 'Crear Orden de Compra'}
+          </Button>
+        </div>
       </Card>
       {/* ── Modal: crear producto rápido desde la OC ─────────────────── */}
       <Modal
