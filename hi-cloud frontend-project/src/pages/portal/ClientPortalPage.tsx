@@ -40,7 +40,7 @@ export default function ClientPortalPage() {
   const [refreshing,  setRefreshing]  = useState(false);
   const qc = useQueryClient();
 
-  const { data: cliente, isLoading: loadCliente, isError } = useQuery({
+  const { data: cliente, isLoading: loadCliente, isError, error: errorCliente } = useQuery({
     queryKey: ['portal-cliente', token],
     queryFn:  () => portalApi.getCliente(token!),
     enabled:  !!token,
@@ -114,19 +114,35 @@ export default function ClientPortalPage() {
     </div>
   );
 
-  if (isError || !cliente) return (
-    <div style={{ minHeight: '100vh', background: '#0d1117', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <Card style={{ maxWidth: 400, textAlign: 'center', borderRadius: 16 }}>
-        <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
-        <Title level={4}>Enlace inválido</Title>
-        <Text type="secondary">Este enlace no es válido o ha expirado. Contacta a la empresa para obtener uno nuevo.</Text>
-      </Card>
-    </div>
-  );
+  if (isError || !cliente) {
+    // El backend distingue «no existe» de «ha expirado» y explica qué hacer en
+    // cada caso. La pantalla lo sustituía por un genérico y esa distinción se
+    // perdía justo cuando más falta hace.
+    const motivo = (errorCliente as any)?.friendlyMessage
+      ?? (errorCliente as any)?.response?.data?.message;
+    const expirado = typeof motivo === 'string' && /expirad/i.test(motivo);
+    return (
+      <div style={{ minHeight: '100vh', background: '#0d1117', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <Card style={{ maxWidth: 420, textAlign: 'center', borderRadius: 16 }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>{expirado ? '⌛' : '🔒'}</div>
+          <Title level={4}>{expirado ? 'Enlace expirado' : 'Enlace inválido'}</Title>
+          <Text type="secondary">
+            {motivo ?? 'Este enlace no es válido o ha expirado. Contacta a la empresa para obtener uno nuevo.'}
+          </Text>
+        </Card>
+      </div>
+    );
+  }
 
   const pctCobrado = estadoCuenta?.totalFacturado > 0
     ? Math.round((estadoCuenta.totalCobrado / estadoCuenta.totalFacturado) * 100)
     : 100;
+
+  // `/facturas` pasó a devolver `{ items, total, mostradas }` para poder avisar
+  // cuando la lista viene recortada por el tope de 50. El `?? facturas` mantiene
+  // en pie la pantalla si alguna caché vieja aún trae el array pelado.
+  const listaFacturas: any[] = facturas?.items ?? (Array.isArray(facturas) ? facturas : []);
+  const hayMasFacturas = !!facturas?.total && facturas.total > (facturas.mostradas ?? 0);
 
   return (
     <div style={{ minHeight: '100vh', background: themeToken.colorFillAlter }}>
@@ -143,10 +159,16 @@ export default function ClientPortalPage() {
               background: 'rgba(255,255,255,.25)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 18, fontWeight: 700, color: '#fff',
-            }}>H</div>
+            }}>{(cliente.empresa?.nombre ?? 'H').charAt(0).toUpperCase()}</div>
             <div>
-              <Text strong style={{ color: '#fff', fontSize: 18 }}>HiCloud ERP</Text>
-              <Text style={{ color: 'rgba(255,255,255,.7)', display: 'block', fontSize: 12 }}>Portal del Cliente</Text>
+              {/* El nombre de la empresa EMISORA, no el del ERP: el cliente
+                  entra a ver sus facturas y tiene que reconocer de quién son. */}
+              <Text strong style={{ color: '#fff', fontSize: 18 }}>
+                {cliente.empresa?.nombre ?? 'HiCloud ERP'}
+              </Text>
+              <Text style={{ color: 'rgba(255,255,255,.7)', display: 'block', fontSize: 12 }}>
+                Portal del Cliente{cliente.empresa?.rnc ? ` · RNC ${cliente.empresa.rnc}` : ''}
+              </Text>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
@@ -220,11 +242,16 @@ export default function ClientPortalPage() {
         {/* Facturas */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: .15 }}>
           <Card style={{ borderRadius: 12 }} title="🧾 Tus facturas">
-            {loadFacturas ? <Spin /> : !facturas?.length ? (
+            {loadFacturas ? <Spin /> : !listaFacturas.length ? (
               <Empty description="No tienes facturas registradas" />
             ) : (
+              <>
+              {hayMasFacturas && (
+                <Alert type="info" showIcon style={{ marginBottom: 12 }}
+                  message={`Se muestran las ${facturas.mostradas} facturas más recientes de ${facturas.total}. Los totales de arriba incluyen todas.`} />
+              )}
               <Table
-                dataSource={facturas}
+                dataSource={listaFacturas}
                 rowKey="id"
                 size="small"
                 pagination={{ pageSize: 10, showSizeChanger: false }}
@@ -234,8 +261,22 @@ export default function ClientPortalPage() {
                   { title: 'Fecha',  dataIndex: 'fecha',  width: 100, render: (v: string) => fmt.date(v) },
                   { title: 'Total',  dataIndex: 'total',  width: 130,
                     render: (v: number) => <strong>{fmt.money(v)}</strong> },
-                  { title: 'Estado', dataIndex: 'estado', width: 100,
-                    render: (v: string) => <Tag color={estadoColor[v]}>{v.toUpperCase()}</Tag> },
+                  // Lo que queda por pagar de cada una. Es el dato que el
+                  // cliente viene a buscar y la tabla solo daba el total, que
+                  // en una factura a medio pagar no le dice nada.
+                  { title: 'Pendiente', dataIndex: 'pendiente', width: 120,
+                    render: (v: number) => Number(v) > 0.005
+                      ? <Text style={{ color: '#ef4444', fontWeight: 600 }}>{fmt.money(Number(v))}</Text>
+                      : <Text type="secondary">—</Text> },
+                  { title: 'Estado', dataIndex: 'estado', width: 110,
+                    render: (v: string, r: any) => r.vencida
+                      // Vencida se pinta aparte: con el mapa de colores de antes
+                      // se veía idéntica a una al día, que en un portal de
+                      // cobros es justo lo que no puede pasar.
+                      ? <Tooltip title={`Venció el ${fmt.date(r.fechaVencimiento)}`}>
+                          <Tag color="red">VENCIDA</Tag>
+                        </Tooltip>
+                      : <Tag color={estadoColor[v]}>{v.toUpperCase()}</Tag> },
                   { title: '', key: 'dl', width: 170,
                     render: (_: any, r: any) => {
                       const folio = r.folio ?? r.numero ?? String(r.id);
@@ -266,6 +307,7 @@ export default function ClientPortalPage() {
                 // columnas hasta que el folio deje de leerse.
                 scroll={{ x: 'max-content' }}
               />
+              </>
             )}
           </Card>
         </motion.div>

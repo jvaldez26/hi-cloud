@@ -485,6 +485,39 @@ fragmento que contiene solo `RD$ `. Está en `common/pdf/inspeccion-pdf.testing.
 
 ## 3. Trabajos abiertos
 
+### El portal del cliente decía «has pagado RD$0.00» con todo pagado — cerrado, y con guardia
+
+Un cliente con 15 facturas, **todas PAGADA**, veía «Total facturado RD$2,284.73 · Total pagado
+RD$0.00 · 0%». El estado de cuenta salía de `SUM(cxc."montoPagado")` con un LEFT JOIN, y **una
+factura de contado nunca genera CxC** — regla explícita de `facturas.service`. Toda venta de
+contado contaba como cobro cero.
+
+**Y mentía en las dos direcciones.** Una factura de contado EMITIDA y sin cobrar tampoco tiene
+CxC, así que no sumaba pendiente: el portal anunciaba «¡Estás al día! No tienes saldos
+pendientes» a quien debe dinero. Ese es el lado caro.
+
+Ahora el pendiente sale de la CxC cuando existe y, si no, del estado de la factura; el cobrado
+se deduce restando. Con `DISTINCT ON` para que una factura con dos filas de CxC no se cuente
+dos veces.
+
+De la misma revisión:
+
+- **El enlace caducado no se anunciaba.** `GET /:token` hacía su propio `findOne` sin mirar
+  `portalTokenExpiry` —a diferencia de `validarToken`—, así que pintaba «Bienvenido, Fulano» y
+  fallaba por dentro. Ahora pasa por `validarToken` y la pantalla muestra el motivo real en vez
+  de un genérico.
+- **El portal llevaba la marca del ERP.** La cabecera decía «HiCloud ERP»: el cliente entra a
+  ver sus facturas y lo recibía el nombre del ERP, no el de su proveedor. Ahora va la empresa
+  emisora con su RNC. (Ojo: la tabla es `empresa`, en singular, y **no tiene `razonSocial`** —
+  es `nombre` / `nombreComercial`.)
+- **El tope de 50 facturas** recortaba la lista en silencio mientras los totales sumaban todas.
+  `/facturas` devuelve ahora `{ items, total, mostradas }` y la pantalla lo avisa.
+- **Faltaba el pendiente por factura** y el estado **vencida**, que se veía igual que una al día.
+
+`src/portal/estado-cuenta-contado.spec.ts` vigila que lo cobrado no vuelva a deducirse solo de
+CxC, que se contemple la factura sin CxC y que la cabecera valide la expiración. Probado en
+rojo: los tres fallan contra el código anterior.
+
 ### El buscador de producto de la OC se colapsó a cero — cerrado, y con guardia
 
 En «Nueva Orden de Compra» del POS se escribía y no aparecía nada: ni productos ni el enlace
