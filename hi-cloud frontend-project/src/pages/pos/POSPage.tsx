@@ -9533,18 +9533,18 @@ export default function POSPage() {
   const [numeroOrdenCompra,  setNumeroOrdenCompra]  = useState('');
   const [guardarRncPerfil,   setGuardarRncPerfil]   = useState(false);
   /**
-   * Limpia TODO lo que el modal de Cobro fue llenando sobre el comprador
-   * (RNC, razón social, tipo de e-CF, el resultado del lookup a DGII).
+   * Limpia lo que el modal de Cobro fue llenando sobre el comprador (RNC,
+   * razón social, número de orden de compra, el resultado del lookup a
+   * DGII). El tipo de e-CF (tipoNcf) NO se toca aquí — igual que
+   * onClienteChange, que respeta el E31/E44/E45 elegido a mano: cerrar el
+   * modal sin emitir no debe hacer que el cajero pierda su selección.
    *
-   * Antes solo se limpiaba `rncComprador`/`razonSocialComp` en los dos
-   * caminos de éxito — cerrar el modal con la ✕, o que la factura fallara
-   * antes de intentar emitir (SIN_CAJA, red, validación), dejaba el RNC del
-   * comprador "enganchado" para la siguiente venta, aunque el cajero
-   * cambiara de cliente o volviera a Consumidor Final.
+   * Antes esto no se limpiaba en absoluto al cerrar el modal con la ✕ o si
+   * la factura fallaba antes de intentar emitir (SIN_CAJA, red, validación)
+   * — el RNC del comprador quedaba "enganchado" para la siguiente venta.
    */
   const resetDatosComprador = () => {
     setRncComprador(''); setRazonSocialComp(''); setNumeroOrdenCompra(''); setGuardarRncPerfil(false);
-    setTipoNcf('E32');
     rncDGII.limpiar();
   };
   const [ecfStatus,          setEcfStatus]          = useState<'idle'|'loading'|'ok'|'pendiente'>('idle');
