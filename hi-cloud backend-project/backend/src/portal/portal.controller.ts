@@ -159,10 +159,22 @@ export class PortalController {
   @Get(':token')
   @ApiOperation({ summary: 'Obtener info del cliente por token de portal (PÚBLICO)' })
   async getClientePorToken(@Param('token') token: string) {
-    const cliente = await this.clienteRepository.findOne({
-      where: { portalToken: token, isActive: true },
-    });
-    if (!cliente) throw new NotFoundException('Enlace de portal inválido o expirado');
+    // Pasa por `validarToken` como el resto. Antes miraba solo que el token
+    // existiera, sin comprobar `portalTokenExpiry`: con un enlace caducado la
+    // cabecera cargaba «Bienvenido, Fulano» y luego fallaba por dentro, cuando
+    // el propio backend ya tenía preparado el mensaje que explica qué hacer.
+    const cliente = await this.validarToken(token);
+
+    // La empresa emisora. El portal se presentaba como «HiCloud ERP»: el
+    // cliente entra a ver SUS facturas y lo recibe el nombre del ERP en vez del
+    // de su proveedor.
+    // Tabla `empresa`, en singular, y sin columna `razonSocial`: el nombre
+    // comercial si lo hay y, si no, el legal.
+    const [empresa] = await this.dataSource.query<{ nombre: string; rnc: string | null }[]>(
+      `SELECT COALESCE(NULLIF("nombreComercial", ''), nombre) AS nombre, rnc
+         FROM empresa WHERE id = $1 LIMIT 1`,
+      [cliente.empresaId],
+    );
 
     return {
       nombre:       cliente.nombre,
@@ -170,6 +182,10 @@ export class PortalController {
       email:        cliente.email,
       ciudad:       cliente.ciudad,
       regimenFiscal: cliente.regimenFiscal,
+      empresa: empresa ? { nombre: empresa.nombre, rnc: empresa.rnc } : null,
+      // Para avisar antes de que el enlace deje de funcionar, en vez de que el
+      // cliente se encuentre la puerta cerrada un día cualquiera.
+      portalTokenExpiry: cliente.portalTokenExpiry ?? null,
     };
   }
 
@@ -178,30 +194,73 @@ export class PortalController {
   async getFacturasPortal(@Param('token') token: string) {
     const cliente = await this.validarToken(token);
 
+    const LIMITE = 50;
+
+    // `pendiente` por la misma regla que el estado de cuenta: la CxC si existe
+    // y, si no, el estado de la factura. Es el dato que el cliente busca y la
+    // tabla no lo tenía — solo el total, que en una factura a medio pagar no
+    // dice nada.
     const facturas = await this.dataSource.query<{
       id: number; folio: string; fecha: string; estado: string;
       subtotal: string; iva: string; total: string;
+      pendiente: string; fechaVencimiento: string | null;
     }[]>(
-      `SELECT f.id, f.folio, f.fecha::text, f.estado,
-              f.subtotal::text, f.iva::text, f.total::text
-       FROM facturas f
-       WHERE f."clienteId" = $1
-         AND f."isActive" = true
-         AND f.estado NOT IN ('borrador','cancelada')
-       ORDER BY f.fecha DESC
-       LIMIT 50`,
+      `SELECT DISTINCT ON (f.id)
+              f.id, f.folio, f.fecha::text, f.estado,
+              f.subtotal::text, f.iva::text, f.total::text,
+              f."fechaVencimiento"::text AS "fechaVencimiento",
+              COALESCE(
+                cxc."montoPendiente"::numeric,
+                CASE WHEN f.estado = 'pagada' THEN 0 ELSE f.total::numeric END
+              )::text AS pendiente
+         FROM facturas f
+         LEFT JOIN cuentas_por_cobrar cxc
+                ON cxc."facturaId" = f.id AND cxc."isActive" = true
+        WHERE f."clienteId" = $1
+          AND f."isActive" = true
+          AND f.estado NOT IN ('borrador','cancelada')
+        ORDER BY f.id, cxc.id DESC
+        LIMIT $2`,
+      [cliente.id, LIMITE],
+    );
+
+    // Se ordena aquí: el DISTINCT ON obliga a ordenar por f.id en la consulta,
+    // así que el orden por fecha que ve el cliente se aplica después.
+    facturas.sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
+
+    const [{ total: totalFacturas }] = await this.dataSource.query<{ total: string }[]>(
+      `SELECT COUNT(*)::text AS total FROM facturas
+        WHERE "clienteId" = $1 AND "isActive" = true
+          AND estado NOT IN ('borrador','cancelada')`,
       [cliente.id],
     );
 
-    return facturas.map(f => ({
-      id:       f.id,
-      folio:    f.folio,
-      fecha:    f.fecha,
-      estado:   f.estado,
-      subtotal: Number(f.subtotal),
-      iva:      Number(f.iva),
-      total:    Number(f.total),
-    }));
+    const hoy = new Date().toISOString().substring(0, 10);
+
+    const items = facturas.map(f => {
+      const pendiente = Number(f.pendiente);
+      return {
+        id:       f.id,
+        folio:    f.folio,
+        fecha:    f.fecha,
+        estado:   f.estado,
+        subtotal: Number(f.subtotal),
+        iva:      Number(f.iva),
+        total:    Number(f.total),
+        pendiente,
+        fechaVencimiento: f.fechaVencimiento,
+        // Vencida = queda saldo y la fecha límite ya pasó. La pantalla la
+        // pintaba igual que una al día, que es justo lo que no puede ser en un
+        // portal de cobros.
+        vencida: pendiente > 0.005 && !!f.fechaVencimiento && f.fechaVencimiento < hoy,
+      };
+    });
+
+    // `total` y `mostradas` aparte: el LIMIT de 50 recortaba la lista en
+    // silencio mientras el estado de cuenta sumaba TODAS las facturas. Un
+    // cliente con más de 50 veía una lista incompleta sin saberlo y los totales
+    // no le cuadraban con lo que tenía delante.
+    return { items, total: Number(totalFacturas), mostradas: items.length, limite: LIMITE };
   }
 
   @Get(':token/estado-cuenta')
@@ -209,19 +268,45 @@ export class PortalController {
   async getEstadoCuentaPortal(@Param('token') token: string) {
     const cliente = await this.validarToken(token);
 
+    // El pendiente sale de la CxC cuando existe y, si no, del propio estado de
+    // la factura.
+    //
+    // Antes esto era `SUM(cxc."montoPagado")` con un LEFT JOIN, y **una factura
+    // de contado nunca genera CxC** —regla explícita de facturas.service—, así
+    // que toda venta de contado contaba como cobro CERO. El cliente veía «te
+    // facturamos X, has pagado RD$0.00, 0%» con cada línea diciendo PAGADA.
+    //
+    // Y mentía en las dos direcciones: una factura de contado EMITIDA y sin
+    // cobrar tampoco tiene CxC, así que no sumaba pendiente y el portal le
+    // decía «¡Estás al día!» a quien debe dinero. Ese era el lado caro.
+    //
+    // El DISTINCT ON protege de una factura con más de una fila en
+    // cuentas_por_cobrar: sin él, el SUM(f.total) la contaría dos veces.
     const [resumen] = await this.dataSource.query<{
       totalFacturado: string; totalCobrado: string; saldoPendiente: string; cantidad: string;
     }[]>(
-      `SELECT
-         COALESCE(SUM(f.total), 0)::text AS "totalFacturado",
-         COALESCE(SUM(cxc."montoPagado"), 0)::text AS "totalCobrado",
-         COALESCE(SUM(cxc."montoPendiente"), 0)::text AS "saldoPendiente",
-         COUNT(f.id)::text AS cantidad
-       FROM facturas f
-       LEFT JOIN cuentas_por_cobrar cxc ON cxc."facturaId" = f.id
-       WHERE f."clienteId" = $1
-         AND f."isActive" = true
-         AND f.estado NOT IN ('borrador','cancelada')`,
+      `WITH por_factura AS (
+         SELECT DISTINCT ON (f.id)
+                f.id,
+                f.total::numeric AS total,
+                COALESCE(
+                  cxc."montoPendiente"::numeric,
+                  CASE WHEN f.estado = 'pagada' THEN 0 ELSE f.total::numeric END
+                ) AS pendiente
+           FROM facturas f
+           LEFT JOIN cuentas_por_cobrar cxc
+                  ON cxc."facturaId" = f.id AND cxc."isActive" = true
+          WHERE f."clienteId" = $1
+            AND f."isActive" = true
+            AND f.estado NOT IN ('borrador','cancelada')
+          ORDER BY f.id, cxc.id DESC
+       )
+       SELECT
+         COALESCE(SUM(total), 0)::text                       AS "totalFacturado",
+         GREATEST(COALESCE(SUM(total - pendiente), 0), 0)::text AS "totalCobrado",
+         COALESCE(SUM(pendiente), 0)::text                   AS "saldoPendiente",
+         COUNT(*)::text                                      AS cantidad
+       FROM por_factura`,
       [cliente.id],
     );
 
