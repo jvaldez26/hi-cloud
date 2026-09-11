@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Form, Input, Button, Card, Row, Col, Select, DatePicker, Table,
          InputNumber, Space, Divider, message, Tag, Alert, Checkbox, theme, Tooltip, Modal } from 'antd';
 import { PlusOutlined, DeleteOutlined, InfoCircleOutlined } from '@ant-design/icons';
@@ -102,6 +102,41 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
   const defaultAlmacenId = (() => { try { const v = localStorage.getItem('almacenId'); return v ? Number(v) : undefined; } catch { return undefined; } })();
   const [almacenId, setAlmacenId] = useState<number | undefined>(defaultAlmacenId);
 
+  /**
+   * Al agregar una línea, el cursor queda en su buscador de producto.
+   *
+   * La OC se captura con el lector en la mano: sin esto había que soltarlo,
+   * llevar el ratón al Select de la fila nueva y hacer clic antes de cada
+   * escaneo. Se guarda la CLAVE de la línea y no su índice — borrar una fila de
+   * arriba correría los índices y el foco acabaría en otra.
+   */
+  const refsProducto = useRef<Map<string, { focus: () => void } | null>>(new Map());
+  const [focoLinea, setFocoLinea] = useState<string | null>(null);
+
+  /** Las notas arrancan plegadas; se abren con un clic o si la compra ya trae. */
+  const [mostrarNotas, setMostrarNotas] = useState(false);
+
+  const seqLinea = useRef(0);
+
+  const agregarLinea = () => {
+    // `Date.now()` a secas repetía clave si se pulsaba dos veces en el mismo
+    // milisegundo — dos filas con la misma key son una fila para React y,
+    // ahora, también un foco que va a la equivocada. El contador lo hace único.
+    const key = `l${Date.now()}-${++seqLinea.current}`;
+    setLineas(prev => [...prev, {
+      key, cantidad: 1, cantidadBonificada: 0, precioUnitario: 0,
+      porcentajeItbis: 18, descuentoPct: 0, descuentoMonto: 0,
+    }]);
+    setFocoLinea(key);
+  };
+
+  useEffect(() => {
+    if (!focoLinea) return;
+    // El efecto corre después de montar la fila, así que el Select ya existe.
+    refsProducto.current.get(focoLinea)?.focus();
+    setFocoLinea(null);
+  }, [focoLinea]);
+
   const [productoSearch, setProductoSearch] = useState('');
   // Guarda label del producto seleccionado por row para mostrarlo aunque no esté en los resultados de búsqueda
   const [selectedProds, setSelectedProds] = useState<Map<number, string>>(new Map());
@@ -180,6 +215,9 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
       sucursalId:             c.sucursalId,
     });
     setProveedorSelId(c.proveedorId ?? null);
+    // Si el borrador trae notas, la cabecera las muestra: plegarlas escondería
+    // algo que alguien escribió a propósito.
+    if (c.notas) setMostrarNotas(true);
     setTipoPago(c.tipoPago === 'credito' ? 'credito' : 'contado');
     setDiasCredito(Number(c.diasCredito ?? 30));
     setMoneda((c.moneda ?? 'DOP') as 'DOP' | 'USD' | 'EUR');
@@ -351,6 +389,10 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
         return (
           <Tooltip title={etiquetaSel} mouseEnterDelay={0.6} placement="topLeft">
           <Select style={{ width: '100%' }} showSearch placeholder="Escribe para buscar..."
+            ref={(el) => {
+              if (el) refsProducto.current.set(_r.key, el);
+              else    refsProducto.current.delete(_r.key);   // fila borrada
+            }}
             filterOption={false}
             onSearch={(v) => { setProductoSearch(v); }}
             loading={buscandoProd}
@@ -613,11 +655,24 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
               </Form.Item>
             </Col>
           )}
-          <Col flex="2 1 180px">
-            <Form.Item name="notas" label="Notas" style={ITEM_COMPACTO}>
-              <Input.TextArea size="small" autoSize={{ minRows: 1, maxRows: 3 }} />
-            </Form.Item>
-          </Col>
+          {/* Notas, plegadas. Casi ninguna OC las lleva y se comían una fila
+              entera de la cabecera —y con ella el alto de la tabla de ítems—
+              para un campo vacío. Al editar una compra que sí las tiene se
+              abren solas: no se puede esconder lo que el usuario escribió. */}
+          {mostrarNotas ? (
+            <Col flex="2 1 180px">
+              <Form.Item name="notas" label="Notas" style={ITEM_COMPACTO}>
+                <Input.TextArea size="small" autoSize={{ minRows: 1, maxRows: 3 }} autoFocus />
+              </Form.Item>
+            </Col>
+          ) : (
+            <Col flex="none" style={{ alignSelf: 'flex-end', paddingBottom: 12 }}>
+              <Button type="link" size="small" icon={<PlusOutlined />}
+                onClick={() => setMostrarNotas(true)} style={{ paddingLeft: 0 }}>
+                Notas
+              </Button>
+            </Col>
+          )}
         </Row>
 
         {/* El aviso de pago, en una línea de texto pequeño. Era un Alert de
@@ -643,7 +698,7 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
           ? { marginBottom: 16, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }
           : { marginBottom: 16 }}
         styles={altoCompleto ? { body: { flex: 1, minHeight: 0, overflowY: 'auto' } } : undefined}
-        extra={<Button icon={<PlusOutlined />} onClick={() => setLineas([...lineas, { key: Date.now().toString(), cantidad: 1, cantidadBonificada: 0, precioUnitario: 0, porcentajeItbis: 18, descuentoPct: 0, descuentoMonto: 0 }])}>Agregar</Button>}>
+        extra={<Button icon={<PlusOutlined />} onClick={agregarLinea}>Agregar</Button>}>
         {/* Ancho MÍNIMO (1062 = la suma de las columnas), no `max-content`.
             Esta es una tabla de CAPTURA, no de consulta: el usuario teclea
             mirando la factura del proveedor y no puede tener columnas
