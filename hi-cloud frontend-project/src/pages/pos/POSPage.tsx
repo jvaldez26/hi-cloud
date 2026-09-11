@@ -3844,8 +3844,11 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
           direccion: empRes.direccion,
           telefono:  empRes.telefono,
         },
-        cliente:    ocRes.proveedor?.nombre,
-        rncCliente: ocRes.proveedor?.rnc,
+        // La orden de compra reutiliza el hueco de `cliente` para el proveedor,
+        // así que la etiqueta va explícita: el papel se le entrega a él.
+        cliente:             ocRes.proveedor?.nombre,
+        rncCliente:          ocRes.proveedor?.rnc,
+        etiquetaContraparte: 'Proveedor',
         items: (ocRes.detalles ?? []).map((d: any) => ({
           desc:  d.descripcion ?? d.nombre ?? '',
           cant:  Number(d.cantidad),
