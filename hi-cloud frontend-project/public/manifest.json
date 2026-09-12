@@ -19,7 +19,7 @@
       "src": "/icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ],
   "categories": [
@@ -44,8 +44,9 @@
       "description": "Abrir punto de venta",
       "icons": [
         {
-          "src": "/icons/icon.svg",
-          "sizes": "any"
+          "src": "/brand/hicloud-mark-128.png",
+          "sizes": "128x128",
+          "type": "image/png"
         }
       ]
     },
@@ -56,8 +57,9 @@
       "description": "Crear nueva factura e-CF",
       "icons": [
         {
-          "src": "/icons/icon.svg",
-          "sizes": "any"
+          "src": "/brand/hicloud-mark-128.png",
+          "sizes": "128x128",
+          "type": "image/png"
         }
       ]
     },
@@ -68,8 +70,9 @@
       "description": "Ver métricas del día",
       "icons": [
         {
-          "src": "/icons/icon.svg",
-          "sizes": "any"
+          "src": "/brand/hicloud-mark-128.png",
+          "sizes": "128x128",
+          "type": "image/png"
         }
       ]
     },
@@ -80,8 +83,9 @@
       "description": "Gestionar caja del día",
       "icons": [
         {
-          "src": "/icons/icon.svg",
-          "sizes": "any"
+          "src": "/brand/hicloud-mark-128.png",
+          "sizes": "128x128",
+          "type": "image/png"
         }
       ]
     }

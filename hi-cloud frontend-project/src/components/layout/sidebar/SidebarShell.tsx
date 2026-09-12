@@ -2,6 +2,7 @@ import { useState, useCallback, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { ChevronLeft } from 'lucide-react';
 import type { PlanTipo } from '../../../hooks/usePlan';
+import { useThemeStore } from '../../../store/theme.store';
 import {
   useC, QuickItemComp, CategoryAccordion, CategoryBtnCollapsed, isActivePath,
   type QuickItem, type SubItem, type MenuCategory,
@@ -103,6 +104,7 @@ export function SidebarShell({
   barra, pie,
 }: SidebarShellProps) {
   const C = useC();
+  const isDark = useThemeStore(s => s.isDark);
 
   /** Un grupo se pinta igual sea add-on o normal; solo cambia dónde va. */
   const renderGrupo = (cat: MenuCategory) => (
@@ -164,7 +166,7 @@ export function SidebarShell({
         display:        'flex',
         alignItems:     'center',
         justifyContent: collapsed ? 'center' : 'space-between',
-        padding:        collapsed ? '12px 10px 11px' : '12px 16px 11px',
+        padding:        collapsed ? '12px 6px 11px' : '12px 16px 11px',
         flexShrink:     0,
         background:     C.headerGlow,
         borderBottom:   `1px solid ${C.border}`,
@@ -175,26 +177,29 @@ export function SidebarShell({
           title={collapsed ? 'Expandir menú' : 'Colapsar menú'}
           style={{ display: 'flex', alignItems: 'center', gap: collapsed ? 0 : 10, cursor: 'pointer' }}
         >
-          {/* ── Badge 46×46 ──────────────────────────────────────── */}
-          <div style={{
-            width: 46, height: 46, borderRadius: 13, flexShrink: 0,
-            background:  'linear-gradient(135deg, #4C86E8 0%, #1E4BA8 100%)',
-            boxShadow:   '0 2px 10px rgba(28,70,180,.5), inset 0 1px 0 rgba(255,255,255,.20)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            {/* ── Logo SVG placeholder — sustituir paths por el SVG real del logo ── */}
-            <svg width="27" height="27" viewBox="0 0 27 27" fill="none" aria-hidden="true">
-              <path
-                d="M7.5 18a4.5 4.5 0 01-.5-8.95A6 6 0 0119.5 11.5h.5a3.5 3.5 0 010 7h-12z"
-                fill="rgba(255,255,255,.95)"
-              />
-              <path
-                d="M10 14.5l2.2 2.2 4.3-4.3"
-                stroke="#4C86E8" strokeWidth="1.85" strokeLinecap="round" strokeLinejoin="round"
-              />
-            </svg>
-            {/* ── Fin placeholder ─────────────────────────────────── */}
-          </div>
+          {/* ── Marca ────────────────────────────────────────────
+              Expandido: el logo va directo sobre el fondo del sidebar, sin
+              tile — a color en claro, silueta blanca en oscuro (un logo con
+              degradado azul se pierde sobre el fondo oscuro del sidebar).
+              Colapsado: a 32px el calado del logo a color ya no se lee, así
+              que se mantiene un tile azul con la silueta blanca adentro. */}
+          {collapsed ? (
+            <div style={{
+              width: 52, height: 52, borderRadius: 14, flexShrink: 0,
+              background:  'linear-gradient(135deg, #4C86E8 0%, #1E4BA8 100%)',
+              boxShadow:   '0 2px 10px rgba(28,70,180,.5), inset 0 1px 0 rgba(255,255,255,.20)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <img src="/brand/hicloud-mark-blanco-48.png" alt="HiCloud" width={36} height={36} style={{ display: 'block' }} />
+            </div>
+          ) : (
+            <img
+              src={isDark ? '/brand/hicloud-mark-blanco-64.png' : '/brand/hicloud-mark-64.png'}
+              alt="HiCloud"
+              width={64} height={64}
+              style={{ display: 'block', flexShrink: 0 }}
+            />
+          )}
 
           {/* Wordmark + tagline — oculto cuando colapsado */}
           {!collapsed && (
