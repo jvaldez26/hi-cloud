@@ -180,11 +180,17 @@ export function SidebarShell({
         background:     C.headerGlow,
         borderBottom:   `1px solid ${C.border}`,
       }}>
-        {/* Lockup: badge + wordmark — click colapsa/expande */}
+        {/* Lockup: badge + wordmark — solo colapsa, nunca expande. Con el
+            sidebar ya colapsado, presionar el logo lo deja igual (el ícono
+            de empresa es quien expande, además de abrir el cambio de
+            empresa — ver identidad en AppLayout.tsx). */}
         <div
-          onClick={() => onCollapsed(!collapsed)}
-          title={collapsed ? 'Expandir menú' : 'Colapsar menú'}
-          style={{ display: 'flex', alignItems: 'center', gap: collapsed ? 0 : 10, cursor: 'pointer' }}
+          onClick={() => { if (!collapsed) onCollapsed(true); }}
+          title={collapsed ? undefined : 'Colapsar menú'}
+          style={{
+            display: 'flex', alignItems: 'center', gap: collapsed ? 0 : 10,
+            cursor: collapsed ? 'default' : 'pointer',
+          }}
         >
           {/* ── Marca ────────────────────────────────────────────
               Expandido: el logo va directo sobre el fondo del sidebar, sin
