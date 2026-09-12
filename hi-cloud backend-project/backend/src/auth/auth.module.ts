@@ -5,6 +5,8 @@ import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
+import { EquipoSesionesController } from './equipo-sesiones.controller';
+import { EquipoSesionesService } from './equipo-sesiones.service';
 import { LoginAttemptsService } from './login-attempts.service';
 import { TokenBlacklistService } from './token-blacklist.service';
 import { RefreshTokenService } from './refresh-token.service';
@@ -23,6 +25,7 @@ import { UsuarioEmpresa } from '../multi-empresa/entities/usuario-empresa.entity
 import { Empresa } from '../configuracion/entities/empresa.entity';
 import { Sucursal } from '../configuracion/entities/sucursal.entity';
 import { ContabilidadModule } from '../contabilidad/contabilidad.module';
+import { AuditoriaModule } from '../auditoria/auditoria.module';
 
 @Module({
   imports: [
@@ -30,6 +33,7 @@ import { ContabilidadModule } from '../contabilidad/contabilidad.module';
     UsersModule,
     NotificacionesModule,
     ContabilidadModule,
+    AuditoriaModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -49,8 +53,8 @@ import { ContabilidadModule } from '../contabilidad/contabilidad.module';
       },
     }),
   ],
-  controllers: [AuthController, TwoFactorController],
-  providers: [AuthService, JwtStrategy, GoogleStrategy, TwoFactorService, TokenBlacklistService, RefreshTokenService, SessionLifetimeService, RolesGuard, LoginAttemptsService],
+  controllers: [AuthController, TwoFactorController, EquipoSesionesController],
+  providers: [AuthService, JwtStrategy, GoogleStrategy, TwoFactorService, TokenBlacklistService, RefreshTokenService, SessionLifetimeService, RolesGuard, LoginAttemptsService, EquipoSesionesService],
   exports: [JwtModule, PassportModule, TokenBlacklistService, RefreshTokenService, SessionLifetimeService, RolesGuard],
 })
 export class AuthModule {}

@@ -33,6 +33,8 @@ import { LoginDto } from './dto/login.dto';
 import { UserRole } from '../users/enums/user-role.enum';
 import { LoginAttemptsService } from './login-attempts.service';
 import { reportServiceError } from '../common/observability/sentry';
+import { AuditoriaService } from '../auditoria/auditoria.service';
+import { AccionAuditoria, NivelAuditoria } from '../auditoria/entities/audit-log.entity';
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -57,6 +59,7 @@ export class AuthService implements OnModuleInit {
     private contabilidadService: ContabilidadService,
     @InjectDataSource() private dataSource: DataSource,
     private loginAttempts: LoginAttemptsService,
+    private auditoriaSvc: AuditoriaService,
   ) {}
 
   async onModuleInit() {
@@ -1136,8 +1139,26 @@ export class AuthService implements OnModuleInit {
     this.logger.log(`[LOGOUT] userId:${userId} — sessionToken limpiado + refresh tokens revocados`);
   }
 
-  /** Super admin: fuerza el logout de un usuario limpiando su sessionToken. */
-  async forzarLogout(userId: number) {
+  /**
+   * Cierra la sesión de OTRO usuario: sessionToken=NULL + revoca todos sus
+   * refresh tokens. Cierre REAL, no cosmético — JwtStrategy compara
+   * `payload.sessionToken` contra `users.sessionToken` en CADA request (no
+   * solo al emitir el token), así que el access token que esa persona ya
+   * tiene en el navegador falla con SESION_DESPLAZADA en su siguiente
+   * petición, sin esperar a que expire (hasta 15 min).
+   *
+   * Único punto que hace este cierre — lo usan tanto el super admin
+   * (cualquier usuario, `POST /auth/usuarios/:id/cerrar-sesion`) como el
+   * admin de empresa (equipo-sesiones.service.ts, que ya validó pertenencia
+   * + jerarquía ANTES de llegar aquí). Por eso audita SIEMPRE aquí adentro
+   * y no en cada caller: un cierre de sesión ajena sin rastro es
+   * exactamente lo que impide investigar un cierre malicioso.
+   */
+  async forzarLogout(
+    userId: number,
+    actor: { id: number; nombre: string; role: string; empresaId?: number | null },
+    ip?: string,
+  ): Promise<{ message: string }> {
     const user = await this.userRepository.findOneBy({ id: userId });
     if (!user) throw new BadRequestException(`Usuario #${userId} no encontrado`);
     // Usar SQL raw: TypeORM ignora `undefined` en .update(), NULL requiere query explícita
@@ -1146,7 +1167,28 @@ export class AuthService implements OnModuleInit {
       [userId],
     );
     await this.refreshTokenSvc.revocarTodos(userId);
-    this.logger.log(`Super admin forzó logout del usuario #${userId}`);
+    this.logger.log(`${actor.nombre} (#${actor.id}) forzó el logout del usuario #${userId} (${user.nombre})`);
+
+    // AuditoriaService.registrar() nunca lanza (catch interno) — un fallo de
+    // auditoría no debe impedir ni deshacer un cierre de sesión ya aplicado.
+    await this.auditoriaSvc.registrar({
+      userId:      actor.id,
+      userName:    actor.nombre,
+      userRole:    actor.role,
+      empresaId:   actor.empresaId ?? undefined,
+      accion:      AccionAuditoria.LOGOUT,
+      nivel:       NivelAuditoria.IMPORTANTE,
+      modulo:      'sesiones',
+      entidad:     'usuario',
+      entidadId:   String(userId),
+      descripcion: `${actor.nombre} cerró la sesión activa de ${user.nombre} (usuario #${userId})`,
+      metodo:      'POST',
+      ruta:        `usuarios/${userId}/cerrar-sesion`,
+      statusCode:  200,
+      exitoso:     true,
+      ipAddress:   ip,
+    });
+
     return { message: `Sesión del usuario #${userId} cerrada correctamente` };
   }
 

@@ -18,6 +18,7 @@ import { GetUser } from './decorators/get-user.decorator';
 import { User } from '../users/users.entity';
 import { TokenBlacklistService } from './token-blacklist.service';
 import { RefreshTokenService } from './refresh-token.service';
+import { obtenerIP } from './utils/obtener-ip.util';
 import {
   JWT_EXPIRES_IN_DEFAULT,
   JWT_EXPIRES_IN_DEFAULT_MS,
@@ -669,7 +670,15 @@ export class AuthController {
   @Roles(UserRole.SUPER_ADMIN)
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Super admin: cerrar sesión activa de un usuario (S-32: DB lookup vía RolesGuard)' })
-  forzarLogout(@Param('id', ParseIntPipe) id: number) {
-    return this.authService.forzarLogout(id);
+  forzarLogout(
+    @Param('id', ParseIntPipe) id: number,
+    @GetUser() user: User,
+    @Req() req: Request,
+  ) {
+    return this.authService.forzarLogout(
+      id,
+      { id: user.id, nombre: user.nombre, role: user.role },
+      obtenerIP(req),
+    );
   }
 }

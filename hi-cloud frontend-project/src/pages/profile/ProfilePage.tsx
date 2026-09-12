@@ -3,7 +3,7 @@ import { Card, Form, Input, Button, Row, Col, Typography, Tag, Avatar,
          Space, Divider, message, Alert, Modal, Tooltip, Table, Popconfirm } from 'antd';
 import { UserOutlined, LockOutlined, SaveOutlined, SafetyOutlined,
          EditOutlined, CloseOutlined, GoogleOutlined, LinkOutlined,
-         DesktopOutlined, LogoutOutlined } from '@ant-design/icons';
+         DesktopOutlined, LogoutOutlined, TeamOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
 import api from '../../api/client';
@@ -22,6 +22,7 @@ const roleColor: Record<string, string> = {
 
 const roleLabel: Record<string, string> = {
   admin: 'Administrador', contador: 'Contador', vendedor: 'Vendedor', viewer: 'Solo Lectura',
+  empleado: 'Empleado',
 };
 
 function TwoFactorSection() {
@@ -369,6 +370,132 @@ function SesionesActivasSection() {
   );
 }
 
+// ─── Sección de sesiones del equipo (solo admin) ─────────────────────────────
+
+/**
+ * Vista de administrador: sesiones activas de los usuarios de su empresa.
+ * El backend ya excluye la sesión del propio admin (queda arriba, en
+ * "Dispositivos conectados") y hace todo el trabajo de seguridad — esta
+ * sección solo pinta lo que llega:
+ *   - dispositivo y ubicación ya vienen parseados a texto simple (nunca el
+ *     User-Agent crudo ni la IP completa: eso va al log de auditoría, no a
+ *     la pantalla — ver equipo-sesiones.service.ts en el backend).
+ *   - `puedeSerCerrada` decide si la fila lleva botón. Las que no puede
+ *     cerrar por jerarquía (otro admin) se muestran igual, sin botón — para
+ *     que el admin pueda supervisar quién tiene sesión abierta, sin ofrecer
+ *     una acción que el backend rechazaría.
+ */
+function EquipoSesionesSection() {
+  const qc = useQueryClient();
+
+  const { data: sesiones, isLoading } = useQuery({
+    queryKey: ['equipo-sesiones'],
+    queryFn: () => api.get('/equipo/sesiones').then(r => (r.data?.data ?? r.data) as any[]),
+    refetchInterval: 60_000,
+  });
+
+  const cerrarMut = useMutation({
+    mutationFn: (usuarioId: number) => api.delete(`/equipo/sesiones/${usuarioId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['equipo-sesiones'] });
+      message.success('Sesión cerrada correctamente');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'No se pudo cerrar la sesión'),
+  });
+
+  const columns = [
+    {
+      title: 'Usuario',
+      key: 'usuario',
+      render: (_: any, r: any) => (
+        <div>
+          <div style={{ fontWeight: 500, fontSize: 13 }}>{r.usuarioNombre}</div>
+          <Tag color={roleColor[r.rol]} style={{ fontSize: 11, marginTop: 2 }}>
+            {roleLabel[r.rol] ?? r.rol}
+          </Tag>
+        </div>
+      ),
+    },
+    {
+      title: 'Sucursal',
+      dataIndex: 'sucursal',
+      key: 'sucursal',
+      width: 150,
+      render: (v: string | null) => v ?? <Text type="secondary">—</Text>,
+    },
+    {
+      title: 'Dispositivo',
+      key: 'dispositivo',
+      width: 160,
+      render: (_: any, r: any) => (
+        <span style={{ fontSize: 13 }}>
+          <span style={{ marginRight: 6 }}>{r.esMovil ? '📱' : '🖥️'}</span>{r.dispositivo}
+        </span>
+      ),
+    },
+    {
+      title: 'Ubicación aproximada',
+      dataIndex: 'ubicacion',
+      key: 'ubicacion',
+      width: 150,
+      render: (v: string) => <span style={{ color: '#1677ff', fontSize: 13 }}>{v}</span>,
+    },
+    {
+      title: 'Actividad reciente',
+      key: 'actividad',
+      width: 160,
+      render: (_: any, r: any) => (
+        <Tooltip title={dRD(r.ultimaActividad).format('DD/MM/YYYY HH:mm')}>
+          <span style={{ fontSize: 13, color: '#6B7280', textTransform: 'capitalize' }}>
+            {dayjs(r.ultimaActividad).fromNow()}
+          </span>
+        </Tooltip>
+      ),
+    },
+    {
+      title: '',
+      key: 'cerrar',
+      width: 48,
+      render: (_: any, r: any) =>
+        // Sin jerarquía para cerrarla: sin botón, no un botón que el backend
+        // rechazaría — el admin sigue viendo la fila para supervisar.
+        !r.puedeSerCerrada ? null : (
+          <Popconfirm
+            title={`¿Cerrar la sesión de ${r.usuarioNombre}?`}
+            description="Esta persona quedará desconectada de inmediato."
+            okText="Cerrar sesión"
+            okButtonProps={{ danger: true }}
+            onConfirm={() => cerrarMut.mutate(r.usuarioId)}
+          >
+            <Tooltip title={`Cerrar sesión de ${r.usuarioNombre}`}>
+              <Button type="text" size="small"
+                icon={<LogoutOutlined style={{ color: '#9CA3AF' }} />}
+                loading={cerrarMut.isPending} />
+            </Tooltip>
+          </Popconfirm>
+        ),
+    },
+  ];
+
+  return (
+    <Card
+      title={<><TeamOutlined /> Sesiones del equipo</>}
+      style={{ marginTop: 16 }}
+    >
+      <Table
+        dataSource={sesiones ?? []}
+        columns={columns}
+        rowKey={(r: any) => String(r.usuarioId)}
+        loading={isLoading}
+        pagination={false}
+        size="small"
+        locale={{ emptyText: 'Nadie de tu equipo tiene una sesión activa ahora mismo' }}
+        showHeader={!!sesiones?.length}
+      />
+    </Card>
+  );
+}
+
 export default function ProfilePage() {
   const { user, updateUser, empresaActual } = useAuthStore();
   const [form]   = Form.useForm();
@@ -593,6 +720,8 @@ export default function ProfilePage() {
           <TwoFactorSection />
 
           {['admin', 'contador'].includes(user?.role ?? '') && <SesionesActivasSection />}
+
+          {user?.role === 'admin' && <EquipoSesionesSection />}
 
           <Card title="Permisos de acceso" style={{ marginTop: 16 }}>
             <Row gutter={[12, 12]}>

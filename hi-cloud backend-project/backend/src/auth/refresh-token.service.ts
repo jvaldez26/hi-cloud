@@ -124,6 +124,55 @@ export class RefreshTokenService {
     });
   }
 
+  /**
+   * Sesiones activas de TODOS los usuarios de una empresa — para la vista de
+   * administrador "sesiones del equipo" (equipo-sesiones.service.ts). A
+   * diferencia de sesionesActivas(), cruza con usuario_empresa y sucursales:
+   * el admin necesita saber DE QUIÉN es cada sesión y en qué sucursal
+   * trabaja, no solo el dispositivo.
+   *
+   * Solo cuenta usuarios con `sessionToken` activo — es la señal autoritativa
+   * de sesión única (ver users.sessionToken). Un refresh_token no revocado
+   * sin sessionToken es un rastro colgado (logout que no lo limpió), el
+   * mismo caso que verificarSesionActiva() sanea; no debe aparecer como
+   * "sesión activa" en la vista del admin.
+   */
+  async sesionesActivasEquipo(empresaId: number, excluirUserId: number): Promise<{
+    usuarioId: number;
+    usuarioNombre: string;
+    rol: string;
+    sucursalNombre: string | null;
+    sesionId: string;
+    deviceInfo: string | null;
+    ipAddress: string | null;
+    creadaEn: Date;
+    ultimaActividad: Date | null;
+  }[]> {
+    return this.dataSource.query(
+      `SELECT
+         u.id                AS "usuarioId",
+         u.nombre            AS "usuarioNombre",
+         ue.rol              AS "rol",
+         s.nombre            AS "sucursalNombre",
+         rt.id               AS "sesionId",
+         rt."deviceInfo"     AS "deviceInfo",
+         rt."ipAddress"      AS "ipAddress",
+         rt."createdAt"      AS "creadaEn",
+         rt."lastActivityAt" AS "ultimaActividad"
+       FROM usuario_empresa ue
+       JOIN users u  ON u.id = ue."userId" AND u."isActive" = true
+       JOIN refresh_tokens rt ON rt."userId" = u.id
+         AND rt."revokedAt" IS NULL AND rt."expiresAt" > NOW()
+       LEFT JOIN sucursales s ON s.id = ue."sucursalId"
+       WHERE ue."empresaId" = $1
+         AND ue."isActive"  = true
+         AND u.id          <> $2
+         AND u."sessionToken" IS NOT NULL
+       ORDER BY u.nombre ASC, rt."createdAt" DESC`,
+      [empresaId, excluirUserId],
+    );
+  }
+
   // ── Actividad real del usuario ───────────────────────────────────────────────
 
   /**
