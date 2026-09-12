@@ -872,11 +872,14 @@ export default function AppLayout() {
         flexShrink:     0,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: collapsed ? undefined : 1 }}>
-          {/* Avatar con iniciales — solo visible cuando el sidebar está colapsado */}
+          {/* Avatar con iniciales — solo visible cuando el sidebar está colapsado.
+              Sigue expandiendo el sidebar (comportamiento que ya tenía) y
+              ADEMÁS abre el modal de cambiar empresa — igual que el botón
+              "..." de al lado cuando el sidebar está expandido. */}
           {collapsed && (
             <div
-              onClick={() => setCollapsedPersisted(false)}
-              title={empresaNombreDisplay || undefined}
+              onClick={() => { setCollapsedPersisted(false); setModalEmpresa(true); }}
+              title={empresaNombreDisplay ? `Cambiar empresa (actual: ${empresaNombreDisplay})` : 'Cambiar empresa'}
               style={{
                 width: 28, height: 28, borderRadius: 6, flexShrink: 0,
                 background: getEmpresaColor(empresaNombreDisplay || 'H'),
