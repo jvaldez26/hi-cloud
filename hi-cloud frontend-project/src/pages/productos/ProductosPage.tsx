@@ -966,7 +966,7 @@ function ProductosCatalogo() {
       render: (_: unknown, r: Producto) => (
         <TableActions
           onView={() => setDetalleProducto(r)}
-          viewLabel="Editar producto"
+          viewLabel="Detalles e históricos"
           items={[
             ...(puedeEditar ? [{ key: 'editar', label: 'Editar', icon: <EditOutlined />, onClick: () => openEdit(r) }] : []),
             ...(puedeEliminar ? [
