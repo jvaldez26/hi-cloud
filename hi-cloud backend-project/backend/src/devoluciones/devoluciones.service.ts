@@ -121,17 +121,26 @@ export class DevolucionesService {
   // ─── Generada automáticamente desde una NC aceptada por DGII ─────────────────
 
   /**
-   * Crea una devolución PENDIENTE a partir de una NC de código 1 o 3
-   * aceptada por DGII — llamada únicamente desde ecf-efectos-nc.service.ts,
+   * Crea una devolución ya PROCESADA a partir de una NC de código 1 o 3
+   * aceptada por DGII, moviendo el inventario de una vez con las cantidades
+   * exactas de la NC — llamada únicamente desde ecf-efectos-nc.service.ts,
    * fire-and-forget, después de que esa NC ya aplicó sus propios efectos.
-   * Ese servicio corre también desde el cron de consulta de estado (sin
-   * contexto de tenant), así que este método NUNCA usa TenantService:
-   * `empresaId` llega explícito en `payload`.
+   * Decisión explícita: se confía en el monto de la NC, nadie elige almacén
+   * ni ajusta cantidades — revierte la decisión original de "alguien tiene
+   * que recibir físicamente la mercancía primero" (pasaba por PENDIENTE).
    *
-   * No mueve stock ni genera asiento propio — el de la NC ya lo generó
-   * ecf-efectos-nc — ni una segunda NC: eso se decide al confirmar la
-   * recepción, en procesar() (guard bidireccional: notaCreditoId ya
-   * asignado desde la creación, no solo al procesar).
+   * Ese servicio corre también desde el cron de consulta de estado (sin
+   * contexto de tenant), así que este método NUNCA usa TenantService
+   * directo: `empresaId` llega explícito en `payload`, y el movimiento de
+   * inventario se envuelve en `tenantService.runForEmpresa()` porque
+   * InventarioService.obtenerProducto() sí depende internamente de
+   * TenantService.getEmpresaId() sin forma de recibirlo explícito.
+   *
+   * No genera asiento propio ni una segunda NC — los de la NC ya existen
+   * (ecf-efectos-nc.service.ts los generó al aceptar DGII); repetirlos
+   * aquí duplicaría la reversa contable. Mismo guard que procesar() aplica
+   * para las devoluciones "pendiente" históricas creadas antes de este
+   * cambio (ver notaCreditoId ya asignado desde la creación, ahí abajo).
    *
    * Devuelve null (nunca lanza) cuando no hay nada que crear:
    *   - ya existe una devolución para esta NC (reintento del cron o carrera
@@ -203,10 +212,10 @@ export class DevolucionesService {
       // TOTAL. Código 3 nace solo con lo que la NC afecta — PARCIAL, aunque
       // por casualidad cubra el monto completo de alguna línea.
       tipo:       codigoModificacion === 1 ? TipoDevolucion.TOTAL : TipoDevolucion.PARCIAL,
-      estado:     EstadoDevolucion.PENDIENTE,
+      estado:     EstadoDevolucion.PROCESADA,
       facturaId:  facturaOriginalId,
       clienteId,
-      motivo:     `Generada automáticamente al aceptar DGII la NC ${ncNumero} (código ${codigoModificacion}) — pendiente de recibir mercancía`,
+      motivo:     `Generada y procesada automáticamente al aceptar DGII la NC ${ncNumero} (código ${codigoModificacion})`,
       userId:     usuarioId,
       generadaDesdeNc: true,
       subtotal:   +subtotal.toFixed(2),
@@ -220,6 +229,21 @@ export class DevolucionesService {
       this.detalleRepository.create(detallesData.map(d => ({ ...d, devolucionId: dev.id }))),
     );
 
+    // Mueve el inventario de una vez, al almacén por defecto de la empresa
+    // (sin almacenId explícito — cae al fallback de syncStockAlmacen, el
+    // mismo que anular() usará simétricamente si algún día hay que
+    // revertir esto). runForEmpresa() crea el contexto CLS que este método
+    // deliberadamente no tiene (ver comentario de la función).
+    await this.tenantService.runForEmpresa(empresaId, async () => {
+      for (const d of detallesData) {
+        await this.inventarioService.registrarDevolucion(
+          d.productoId, d.cantidad, usuarioId,
+          `Devolución ${numero} — generada automáticamente al aceptar DGII la NC ${ncNumero}`,
+          numero,
+        );
+      }
+    });
+
     // Vínculo simétrico en la NC — para mostrar "Devolución relacionada" en
     // su detalle sin un JOIN.
     await this.ncRepository.update(
@@ -227,7 +251,7 @@ export class DevolucionesService {
       { devolucionId: dev.id, devolucionNumero: numero } as any,
     );
 
-    this.logger.log(`[Devoluciones] ${numero} generada automáticamente desde NC ${ncNumero} (pendiente de recepción)`);
+    this.logger.log(`[Devoluciones] ${numero} generada y procesada automáticamente desde NC ${ncNumero} — inventario movido`);
     return dev;
   }
 

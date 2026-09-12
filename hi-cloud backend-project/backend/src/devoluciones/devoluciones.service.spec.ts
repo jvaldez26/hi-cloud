@@ -2,10 +2,12 @@
  * DevolucionesService — flujo NC → Devolución (código 1/3 aceptado por DGII)
  * y el guard bidireccional en procesar().
  *
- * COBERTURA (de la tarea "alimentar Devoluciones desde las notas de crédito"):
- * 1. crearDesdeNotaCredito con líneas con productoId: crea devolución
- *    PENDIENTE, vínculo NC↔devolución en ambos sentidos, nunca toca
- *    TenantService (corre fuera de contexto HTTP, desde el cron de DGII).
+ * COBERTURA (de la tarea "alimentar Devoluciones desde las notas de crédito"
+ * + su auto-procesamiento posterior):
+ * 1. crearDesdeNotaCredito con líneas con productoId: crea devolución ya
+ *    PROCESADA, mueve inventario de una vez vía runForEmpresa (nunca
+ *    TenantService.getEmpresaId() directo — corre fuera de contexto HTTP,
+ *    desde el cron de DGII), vínculo NC↔devolución en ambos sentidos.
  * 2. Sin productoId en ninguna línea: no crea nada, reporta a Sentry, no lanza.
  * 3. Ya existe una devolución para esa NC (reintento del cron / carrera
  *    webhook+cron): no crea una segunda.
@@ -76,7 +78,14 @@ function makeDevService() {
     registrarSalida:     jest.fn().mockResolvedValue(undefined),
   };
   const asientosService   = { asientoDevolucionVenta: jest.fn().mockResolvedValue(undefined) };
-  const tenantService     = { getEmpresaId: jest.fn(() => 7) };
+  const tenantService = {
+    getEmpresaId: jest.fn(() => 7),
+    // Igual que la implementación real cuando ya hay CLS activo: solo corre
+    // fn() — el fake no necesita simular el cambio de contexto en sí mismo,
+    // los tests verifican QUE se llamó, no el aislamiento de CLS (eso ya lo
+    // cubre TenantService en su propio spec).
+    runForEmpresa: jest.fn((_empresaId: number, fn: () => Promise<any>) => fn()),
+  };
 
   let detallesNcFixture: any[] = [];
   const ds = {
@@ -120,8 +129,8 @@ function seedDevolucion(devRows: any[], overrides: any = {}) {
 const usuario = { id: 9 } as User;
 
 describe('DevolucionesService.crearDesdeNotaCredito', () => {
-  it('con productoId en las líneas: crea devolución PENDIENTE, vínculo NC↔devolución, sin TenantService', async () => {
-    const { svc, ncRepository, tenantService, setDetallesNc } = makeDevService();
+  it('con productoId en las líneas: crea devolución PROCESADA, mueve inventario vía runForEmpresa, vínculo NC↔devolución', async () => {
+    const { svc, ncRepository, tenantService, inventarioService, setDetallesNc } = makeDevService();
     setDetallesNc([
       { productoId: 55, descripcion: 'Prod A', cantidad: '2', precioUnitario: '100', porcentajeIva: '18', subtotal: '200', iva: '36', total: '236' },
     ]);
@@ -133,15 +142,20 @@ describe('DevolucionesService.crearDesdeNotaCredito', () => {
 
     expect(dev).not.toBeNull();
     expect(dev!.empresaId).toBe(7);
-    expect(dev!.estado).toBe(EstadoDevolucion.PENDIENTE);
+    expect(dev!.estado).toBe(EstadoDevolucion.PROCESADA);
     expect(dev!.notaCreditoId).toBe(900);
     expect(dev!.notaCreditoNumero).toBe('NC-900');
     expect(ncRepository.update).toHaveBeenCalledWith(
       { id: 900, empresaId: 7 },
       expect.objectContaining({ devolucionId: dev!.id, devolucionNumero: dev!.numero }),
     );
-    // No mueve stock ni genera asiento — eso pasa al confirmar la recepción.
+    // Mueve stock de una vez, envuelto en runForEmpresa (nunca
+    // TenantService.getEmpresaId() directo — corre fuera de contexto HTTP).
     expect(tenantService.getEmpresaId).not.toHaveBeenCalled();
+    expect(tenantService.runForEmpresa).toHaveBeenCalledWith(7, expect.any(Function));
+    expect(inventarioService.registrarDevolucion).toHaveBeenCalledWith(
+      55, 2, 9, expect.any(String), dev!.numero,
+    );
   });
 
   it('código 1 (anulación total): tipo TOTAL — código 3: tipo PARCIAL', async () => {
