@@ -89,4 +89,14 @@ export class Devolucion extends BaseEntity {
    */
   @Column({ default: false })
   generadaDesdeNc!: boolean;
+
+  /**
+   * Almacén donde procesar() metió la mercancía al confirmar la recepción
+   * (ProcesarDevolucionDto.almacenId) — se guarda para que anular() sepa
+   * de dónde sacar la reversa de stock si la devolución ya está procesada.
+   * NULL cuando el usuario no eligió almacén al procesar (cayó al
+   * fallback de syncStockAlmacen — el activo de menor id de la empresa).
+   */
+  @Column({ nullable: true })
+  almacenId?: number;
 }

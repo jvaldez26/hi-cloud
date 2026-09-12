@@ -303,7 +303,10 @@ export class DevolucionesService {
     // aquí duplicaría la reversa contable y crearía una NC fantasma sin
     // factura real que la respalde. Solo queda marcarla procesada.
     if (dev.notaCreditoId) {
-      await this.devRepository.update(id, { estado: EstadoDevolucion.PROCESADA });
+      await this.devRepository.update(id, {
+        estado: EstadoDevolucion.PROCESADA,
+        almacenId: dto?.almacenId,
+      });
       this.logger.log(
         `Devolución ${dev.numero} procesada (nacida de NC ${dev.notaCreditoNumero} — sin asiento ni NC propios)`,
       );
@@ -368,6 +371,7 @@ export class DevolucionesService {
       estado:            EstadoDevolucion.PROCESADA,
       notaCreditoId:     nc.id,
       notaCreditoNumero: ncNumero,
+      almacenId:         dto?.almacenId,
     });
 
     this.logger.log(`Devolución ${dev.numero} procesada → Nota de Crédito E34 ${ncNumero} generada automáticamente`);
@@ -376,11 +380,38 @@ export class DevolucionesService {
 
   // ─── Anular ───────────────────────────────────────────────────────────────────
 
-  async anular(id: number) {
+  async anular(id: number, usuario: User) {
     const dev = await this.findById(id);
-    if (dev.estado === EstadoDevolucion.PROCESADA) {
-      throw new BadRequestException('No se puede anular una devolución ya procesada');
+
+    if (dev.estado === EstadoDevolucion.ANULADA) {
+      throw new BadRequestException('Esta devolución ya está anulada');
     }
+
+    // Una devolución "procesada" ya movió inventario (entrada al almacenId
+    // guardado por procesar() — ver Devolucion.almacenId). Anularla implica
+    // revertir esa entrada con una salida simétrica, mismo producto/
+    // cantidad/almacén, ANTES de marcarla anulada. Si algún producto no
+    // tiene stock suficiente (se vendió de nuevo después de la devolución),
+    // registrarSalida lanza 400 y la anulación completa se aborta — no
+    // queremos una devolución a medio anular con solo parte del stock
+    // revertido.
+    if (dev.estado === EstadoDevolucion.PROCESADA) {
+      for (const detalle of dev.detalles) {
+        if (!detalle.productoId) continue;
+        const cantidad = Number(detalle.cantidad);
+        if (cantidad <= 0) continue;
+        await this.inventarioService.registrarSalida(
+          detalle.productoId,
+          cantidad,
+          usuario.id,
+          `Anulación de devolución ${dev.numero} — reversa de inventario`,
+          dev.numero,
+          dev.almacenId,
+        );
+      }
+      this.logger.log(`Devolución ${dev.numero} (procesada) anulada — inventario revertido`);
+    }
+
     await this.devRepository.update(id, { estado: EstadoDevolucion.ANULADA });
     return this.findById(id);
   }

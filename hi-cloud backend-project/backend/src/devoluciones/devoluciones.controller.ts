@@ -65,8 +65,11 @@ export class DevolucionesController {
 
   @Patch(':id/anular')
   @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Anular devolución pendiente (solo ADMIN)' })
-  anular(@Param('id', ParseIntPipe) id: number) {
-    return this.devService.anular(id);
+  @ApiOperation({
+    summary: 'Anular devolución (solo ADMIN) — si está procesada, revierte' +
+      ' el inventario que había entrado al confirmar la recepción',
+  })
+  anular(@Param('id', ParseIntPipe) id: number, @GetUser() usuario: User) {
+    return this.devService.anular(id, usuario);
   }
 }

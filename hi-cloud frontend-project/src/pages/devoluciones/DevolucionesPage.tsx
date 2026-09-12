@@ -244,10 +244,13 @@ export default function DevolucionesPage() {
                 onClick: () => abrirRecepcion(r) },
             ] : []),
             { type: 'divider' as const },
-            ...(r.estado === 'pendiente' ? [
+            ...(r.estado !== 'anulada' ? [
               { key: 'anular', label: 'Anular devolución', danger: true,
                 onClick: () => Modal.confirm({
                   title: '¿Anular esta devolución?',
+                  content: r.estado === 'procesada'
+                    ? 'Esta devolución ya está procesada: al anularla se revierte de una vez el inventario que había entrado a bodega.'
+                    : undefined,
                   okText: 'Confirmar',
                   cancelText: 'Cancelar',
                   okButtonProps: { danger: true },

@@ -16,6 +16,9 @@
  *    una segunda NC — su NC y el asiento de esa NC ya existen.
  * 6. procesar() de una devolución creada manualmente: sigue generando su
  *    propio asiento y su propia NC, exactamente como antes de esta tarea.
+ * 7. anular() de una devolución PROCESADA: revierte el inventario (salida
+ *    simétrica al almacenId que procesar() persistió) antes de anular; si
+ *    no hay stock suficiente, aborta completo sin marcar nada.
  */
 import { DevolucionesService } from './devoluciones.service';
 import { EstadoDevolucion, TipoDevolucion } from './entities/devolucion.entity';
@@ -68,7 +71,10 @@ function makeDevService() {
     save: jest.fn().mockResolvedValue([]),
   };
 
-  const inventarioService = { registrarDevolucion: jest.fn().mockResolvedValue(undefined) };
+  const inventarioService = {
+    registrarDevolucion: jest.fn().mockResolvedValue(undefined),
+    registrarSalida:     jest.fn().mockResolvedValue(undefined),
+  };
   const asientosService   = { asientoDevolucionVenta: jest.fn().mockResolvedValue(undefined) };
   const tenantService     = { getEmpresaId: jest.fn(() => 7) };
 
@@ -248,5 +254,58 @@ describe('DevolucionesService.procesar — guard bidireccional', () => {
     expect(inventarioService.registrarDevolucion).toHaveBeenCalledWith(
       55, 1, 9, expect.any(String), 'DEV-500', 4,
     );
+  });
+
+  it('persiste el almacenId elegido en la devolución al procesar', async () => {
+    const { svc, devRows, devRepository } = makeDevService();
+    seedDevolucion(devRows, { id: 504 });
+
+    await svc.procesar(504, usuario, { almacenId: 4 } as any);
+
+    expect(devRepository.update).toHaveBeenCalledWith(
+      504, expect.objectContaining({ almacenId: 4 }),
+    );
+  });
+});
+
+describe('DevolucionesService.anular', () => {
+  it('pendiente: solo marca anulada, no toca inventario', async () => {
+    const { svc, devRows, devRepository, inventarioService } = makeDevService();
+    seedDevolucion(devRows, { id: 601 });
+
+    await svc.anular(601, usuario);
+
+    expect(inventarioService.registrarSalida).not.toHaveBeenCalled();
+    expect(devRepository.update).toHaveBeenCalledWith(601, { estado: EstadoDevolucion.ANULADA });
+  });
+
+  it('procesada: revierte el inventario (salida simétrica) al mismo almacén antes de anular', async () => {
+    const { svc, devRows, inventarioService, devRepository } = makeDevService();
+    seedDevolucion(devRows, { id: 602, estado: EstadoDevolucion.PROCESADA, almacenId: 4 });
+
+    await svc.anular(602, usuario);
+
+    expect(inventarioService.registrarSalida).toHaveBeenCalledWith(
+      55, 2, 9, expect.any(String), 'DEV-500', 4,
+    );
+    expect(devRepository.update).toHaveBeenCalledWith(602, { estado: EstadoDevolucion.ANULADA });
+  });
+
+  it('ya anulada: rechaza sin tocar inventario ni volver a actualizar', async () => {
+    const { svc, devRows, inventarioService, devRepository } = makeDevService();
+    seedDevolucion(devRows, { id: 603, estado: EstadoDevolucion.ANULADA });
+
+    await expect(svc.anular(603, usuario)).rejects.toThrow('ya está anulada');
+    expect(inventarioService.registrarSalida).not.toHaveBeenCalled();
+    expect(devRepository.update).not.toHaveBeenCalled();
+  });
+
+  it('procesada sin stock suficiente: registrarSalida lanza y la anulación se aborta (no queda a medias)', async () => {
+    const { svc, devRows, inventarioService, devRepository } = makeDevService();
+    seedDevolucion(devRows, { id: 604, estado: EstadoDevolucion.PROCESADA, almacenId: 4 });
+    inventarioService.registrarSalida.mockRejectedValueOnce(new Error('Stock insuficiente'));
+
+    await expect(svc.anular(604, usuario)).rejects.toThrow('Stock insuficiente');
+    expect(devRepository.update).not.toHaveBeenCalled();
   });
 });
