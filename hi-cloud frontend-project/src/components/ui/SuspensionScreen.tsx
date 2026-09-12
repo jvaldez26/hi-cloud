@@ -1,10 +1,13 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button, Modal, Form, Input, Select, message, Typography, Space } from 'antd';
-import { LockOutlined, SendOutlined, LogoutOutlined } from '@ant-design/icons';
+import { LockOutlined, SendOutlined, LogoutOutlined, CreditCardOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { suscripcionesApi } from '../../api/suscripciones.api';
+import { pagosApi } from '../../api/pagos.api';
 import { useThemeStore } from '../../store/theme.store';
 import { fecha } from '../../utils/fechaRD';
+import { fmtDop } from '../../utils/fmt';
 
 const WS_NUMBER = '8093081713';
 const WS_URL    = `https://wa.me/1${WS_NUMBER}`;
@@ -99,6 +102,7 @@ export default function SuspensionScreen({
   const [enviado,   setEnviado]   = useState(false);
   const [form] = Form.useForm();
   const qc = useQueryClient();
+  const navigate = useNavigate();
 
   const { data: solicitudExistente } = useQuery({
     queryKey: ['mi-solicitud'],
@@ -106,6 +110,16 @@ export default function SuspensionScreen({
     retry: false,
   });
   const tienePendiente = solicitudExistente?.estado === 'pendiente';
+
+  // Saldo pendiente — informativo, para que quien ve el candado sepa cuánto
+  // debe sin tener que abrir un ticket a soporte para averiguarlo. La misma
+  // fuente que usa /mi-suscripcion, que es adonde lleva el botón de abajo.
+  const { data: resumenPago } = useQuery({
+    queryKey: ['mi-suscripcion-resumen'],
+    queryFn:  pagosApi.resumen,
+    retry: false,
+  });
+  const saldo = resumenPago?.saldo ?? 0;
 
   const solicitarMut = useMutation({
     mutationFn: (vals: { planSolicitado: string; modalidad: string; comentario?: string }) =>
@@ -167,6 +181,32 @@ export default function SuspensionScreen({
         <Text style={{ color: T.textColor, display: 'block', marginBottom: 24, fontSize: 15, lineHeight: 1.6 }}>
           {subtexto}
         </Text>
+
+        {/* Saldo pendiente + acceso a Suscripción y pagos — informativo, no
+            requiere que la licencia esté activa: es la única pantalla que
+            sigue abierta detrás del candado (ver AppLayout). */}
+        {resumenPago && (
+          <div style={{
+            background: T.sectionBg, border: `1px solid ${T.sectionBorder}`,
+            borderRadius: 12, padding: '16px 20px', marginBottom: 20,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+          }}>
+            <div style={{ textAlign: 'left' }}>
+              <Text style={{ color: T.textMuted, fontSize: 12, display: 'block' }}>
+                {saldo > 0 ? 'Saldo pendiente' : saldo < 0 ? 'Crédito disponible' : 'Balance'}
+              </Text>
+              <Text style={{ color: saldo > 0 ? '#EF4444' : T.successText, fontSize: 22, fontWeight: 700 }}>
+                {fmtDop(Math.abs(saldo))}
+              </Text>
+            </div>
+            <Button
+              icon={<CreditCardOutlined />}
+              onClick={() => navigate('/mi-suscripcion')}
+            >
+              Suscripción y pagos
+            </Button>
+          </div>
+        )}
 
         {enviado || tienePendiente ? (
           <div style={{

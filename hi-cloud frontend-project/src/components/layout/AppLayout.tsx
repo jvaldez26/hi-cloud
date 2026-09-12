@@ -1124,6 +1124,26 @@ export default function AppLayout() {
 
   // ── Guards (después de todos los hooks para no violar la regla de orden) ──
   if (suspendida) {
+    // /mi-suscripcion sigue accesible con la licencia vencida — es ahí donde
+    // el usuario ve su saldo pendiente y sube el comprobante de pago. Un
+    // candado que no deja pagar la deuda que lo puso ahí no sirve de nada.
+    // Sin sidebar (la empresa está bloqueada); solo un "Volver" para no
+    // dejar a alguien varado en una pantalla sin salida visible.
+    if (activePath === '/mi-suscripcion') {
+      return (
+        <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
+          <div style={{
+            padding: '10px 20px', borderBottom: '1px solid #e2e8f0',
+            background: '#fff', display: 'flex', alignItems: 'center',
+          }}>
+            <Button type="text" onClick={() => navigate('/dashboard')}>
+              ← Volver
+            </Button>
+          </div>
+          <Outlet />
+        </div>
+      );
+    }
     return (
       <SuspensionScreen
         planActual={suscripcion?.plan}
