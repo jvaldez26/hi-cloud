@@ -523,7 +523,19 @@ export default function NotasCreditoPage() {
                       key: 'anular',
                       label: 'Anular',
                       danger: true,
-                      onClick: () => anular.mutate(r.id),
+                      onClick: () => Modal.confirm({
+                        title: '¿Anular esta nota de crédito?',
+                        content: r.devolucionNumero
+                          ? `Esta NC generó la devolución ${r.devolucionNumero}, que ya movió inventario. ` +
+                            'Anular la NC NO revierte ese inventario — solo reversa el asiento contable. ' +
+                            `Si necesitas devolver la mercancía a stock, anula la devolución ${r.devolucionNumero} aparte.`
+                          : 'Anular la NC no revierte ningún movimiento de inventario por sí sola — ' +
+                            'solo reversa el asiento contable. Si esta NC generó una devolución, anúlala aparte para revertir el stock.',
+                        okText: 'Confirmar',
+                        cancelText: 'Cancelar',
+                        okButtonProps: { danger: true },
+                        onOk: () => anular.mutate(r.id),
+                      }),
                     } : null,
                     r.estado === 'rechazada' ? {
                       key: 'reemitir',
