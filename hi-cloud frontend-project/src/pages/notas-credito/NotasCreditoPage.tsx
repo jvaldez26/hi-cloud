@@ -20,7 +20,7 @@ import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import api from '../../api/client';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { ecfApi } from '../../api/ecf.api';
 import EcfResultModal from '../../components/ui/EcfResultModal';
 import EcfBadge, { type EstadoEcf } from '../../components/ui/EcfBadge';
@@ -325,6 +325,7 @@ export default function NotasCreditoPage() {
    * a abrir, y no se puede salir de la pantalla.
    */
   const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
   const precargada = useRef(false);
   useEffect(() => {
     const facturaId = params.get('facturaId');
@@ -341,6 +342,20 @@ export default function NotasCreditoPage() {
         params.delete('facturaId');
         setParams(params, { replace: true });
       });
+  }, [params]);
+
+  /**
+   * Llega desde "Devolución relacionada" en Devoluciones (mismo patrón que
+   * ?facturaId= arriba, pero sin fetch: solo precarga el buscador con el
+   * número exacto). Se borra al usarse — igual razón que ?facturaId=.
+   */
+  useEffect(() => {
+    const numero = params.get('numero');
+    if (!numero) return;
+    setSearch(numero);
+    setPage(1);
+    params.delete('numero');
+    setParams(params, { replace: true });
   }, [params]);
 
 
@@ -419,6 +434,14 @@ export default function NotasCreditoPage() {
                           ↩ afecta {afectado}
                         </Text>
                       </Tooltip>
+                    )}
+                    {r.devolucionNumero && (
+                      <Text
+                        style={{ fontSize: 10, whiteSpace: 'nowrap', fontFamily: 'monospace', color: '#1677ff', cursor: 'pointer' }}
+                        onClick={() => navigate(`/devoluciones?numero=${encodeURIComponent(r.devolucionNumero)}`)}
+                      >
+                        ⇄ devolución {r.devolucionNumero}
+                      </Text>
                     )}
                   </div>
                 );

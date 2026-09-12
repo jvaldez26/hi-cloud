@@ -48,6 +48,7 @@ import { SuperAdminGuard }       from '../super-admin/super-admin.guard';
 import { TokenBlacklistService } from '../auth/token-blacklist.service';
 import { RncModule }             from '../rnc/rnc.module';
 import { ContabilidadModule }    from '../contabilidad/contabilidad.module';
+import { DevolucionesModule }    from '../devoluciones/devoluciones.module';
 
 @Module({
   imports: [
@@ -64,6 +65,9 @@ import { ContabilidadModule }    from '../contabilidad/contabilidad.module';
     SuscripcionesModule,
     NotificacionesModule,
     ContabilidadModule,
+    // Efectos de una NC aceptada por DGII pueden generar una devolución
+    // pendiente — ver EcfEfectosNcService.
+    DevolucionesModule,
     JwtModule.registerAsync({
       imports:    [ConfigModule],
       useFactory: (cfg: ConfigService) => {

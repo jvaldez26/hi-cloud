@@ -6,6 +6,7 @@ import { Factura, FacturaEstado } from '../../facturas/entities/factura.entity';
 import { NotaCredito, EstadoNotaCredito } from '../../notas-credito/entities/nota-credito.entity';
 import { reportServiceError } from '../../common/observability/sentry';
 import { AsientosAutomaticosService } from '../../contabilidad/services/asientos-automaticos.service';
+import { DevolucionesService } from '../../devoluciones/devoluciones.service';
 
 /**
  * Aplica los efectos financieros de una Nota de Crédito sobre su factura
@@ -47,6 +48,7 @@ export class EcfEfectosNcService {
 
     private readonly dataSource: DataSource,
     private readonly asientosService: AsientosAutomaticosService,
+    private readonly devolucionesService: DevolucionesService,
   ) {}
 
   /**
@@ -79,6 +81,17 @@ export class EcfEfectosNcService {
     let asientoNcAGenerar: {
       ncId: number; total: number; subtotal: number; iva: number;
       numero: string; usuarioId: number;
+    } | null = null;
+
+    // Poblado dentro de la transacción cuando esta NC (código 1 o 3, la
+    // única familia con efecto financiero) no nació de una devolución —
+    // mismo guard que decide el asiento propio, ver más abajo. Se dispara
+    // DESPUÉS de confirmar, fire-and-forget: crear la devolución nunca debe
+    // romper el procesamiento de efectos de la NC ya aplicados.
+    let devolucionAGenerar: {
+      empresaId: number; ncId: number; ncNumero: string;
+      facturaOriginalId: number; clienteId: number; usuarioId: number;
+      codigoModificacion: 1 | 3;
     } | null = null;
 
     try {
@@ -174,6 +187,27 @@ export class EcfEfectosNcService {
               numero:    nc.numero,
               usuarioId: nc.usuarioId,
             };
+
+            // Devoluciones ← NC: la misma condición que exime el asiento
+            // (!devRow, esta NC no nació de una devolución) es la que evita
+            // el ciclo en el sentido contrario — generar una devolución para
+            // una NC que YA vino de una devolución la duplicaría sin fin.
+            // Solo código 1 (anulación total) y 3 (ajuste/devolución) —
+            // decisión de negocio, los únicos con retorno físico posible.
+            if (
+              (ecf.codigoModificacion === 1 || ecf.codigoModificacion === 3) &&
+              nc.facturaOriginalId
+            ) {
+              devolucionAGenerar = {
+                empresaId:          ecf.empresaId!,
+                ncId:               nc.id,
+                ncNumero:           nc.numero,
+                facturaOriginalId:  nc.facturaOriginalId,
+                clienteId:          nc.clienteId,
+                usuarioId:          nc.usuarioId,
+                codigoModificacion: ecf.codigoModificacion as 1 | 3,
+              };
+            }
           }
 
           if (nuevoEstado === EstadoDGII.OBSERVADO) {
@@ -249,6 +283,28 @@ export class EcfEfectosNcService {
         pendiente.numero,
         pendiente.usuarioId,
       );
+    }
+
+    // Devolución generada desde la NC — TIPO B: nunca debe romper el
+    // procesamiento de efectos ya confirmado (misma razón que el bloque de
+    // arriba: fuera de la transacción de negocio, que ya confirmó).
+    const devPendiente = devolucionAGenerar as {
+      empresaId: number; ncId: number; ncNumero: string;
+      facturaOriginalId: number; clienteId: number; usuarioId: number;
+      codigoModificacion: 1 | 3;
+    } | null;
+    if (devPendiente) {
+      await this.devolucionesService.crearDesdeNotaCredito(devPendiente).catch((err: unknown) => {
+        this.logger.warn(
+          `[EcfEfectosNc] crear devolución desde NC ${devPendiente.ncNumero} falló (no bloquea el procesamiento): ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+        );
+        reportServiceError(err, 'ecf_efectos_nc_crear_devolucion', {
+          ncId:      String(devPendiente.ncId),
+          empresaId: String(devPendiente.empresaId),
+          numero:    devPendiente.ncNumero,
+        });
+      });
     }
   }
 }

@@ -7,17 +7,20 @@ import {
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
-import { Devolucion, EstadoDevolucion } from './entities/devolucion.entity';
+import { Devolucion, EstadoDevolucion, TipoDevolucion } from './entities/devolucion.entity';
 import { DevolucionDetalle } from './entities/devolucion-detalle.entity';
 import { Factura } from '../facturas/entities/factura.entity';
 import { NotaCredito, EstadoNotaCredito, MotivoNotaCredito } from '../notas-credito/entities/nota-credito.entity';
 import { NotaCreditoDetalle } from '../notas-credito/entities/nota-credito-detalle.entity';
 import { CreateDevolucionDto } from './dto/create-devolucion.dto';
+import { ProcesarDevolucionDto } from './dto/procesar-devolucion.dto';
 import { InventarioService } from '../inventario/inventario.service';
 import { AsientosAutomaticosService } from '../contabilidad/services/asientos-automaticos.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { TenantService } from '../tenant/tenant.service';
 import { User } from '../users/users.entity';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
+import { reportServiceError } from '../common/observability/sentry';
 
 @Injectable()
 export class DevolucionesService {
@@ -37,8 +40,14 @@ export class DevolucionesService {
 
   // ─── Folios ───────────────────────────────────────────────────────────────────
 
-  private async generarNumero(): Promise<string> {
-    const empresaId = this.tenantService.getEmpresaId();
+  /**
+   * `empresaId` explícito por defecto sale de TenantService (todo caller
+   * normal, dentro de un request HTTP). crearDesdeNotaCredito() lo pasa a
+   * mano: corre fire-and-forget desde ecf-efectos-nc.service.ts, que puede
+   * disparar desde el cron de consulta de estado DGII — sin CLS, sin
+   * contexto de tenant, TenantService.getEmpresaId() ahí lanzaría.
+   */
+  private async generarNumero(empresaId: number = this.tenantService.getEmpresaId()): Promise<string> {
     return generarNumeroSecuencial(
       this.ds, 'devoluciones', 'numero', '^DEV-[0-9]+$', 'DEV-', 1, empresaId,
     );
@@ -109,6 +118,119 @@ export class DevolucionesService {
     return this.findById(dev.id);
   }
 
+  // ─── Generada automáticamente desde una NC aceptada por DGII ─────────────────
+
+  /**
+   * Crea una devolución PENDIENTE a partir de una NC de código 1 o 3
+   * aceptada por DGII — llamada únicamente desde ecf-efectos-nc.service.ts,
+   * fire-and-forget, después de que esa NC ya aplicó sus propios efectos.
+   * Ese servicio corre también desde el cron de consulta de estado (sin
+   * contexto de tenant), así que este método NUNCA usa TenantService:
+   * `empresaId` llega explícito en `payload`.
+   *
+   * No mueve stock ni genera asiento propio — el de la NC ya lo generó
+   * ecf-efectos-nc — ni una segunda NC: eso se decide al confirmar la
+   * recepción, en procesar() (guard bidireccional: notaCreditoId ya
+   * asignado desde la creación, no solo al procesar).
+   *
+   * Devuelve null (nunca lanza) cuando no hay nada que crear:
+   *   - ya existe una devolución para esta NC (reintento del cron o carrera
+   *     webhook+cron — notaCreditoId es la idempotencia);
+   *   - ninguna línea de la NC tiene productoId identificable (ajuste de
+   *     monto puro — no hay mercancía que recibir). Se reporta a Sentry como
+   *     caso a revisar, no como error: la NC se procesó bien, solo no hay
+   *     nada físico que devolver.
+   */
+  async crearDesdeNotaCredito(payload: {
+    empresaId:          number;
+    ncId:               number;
+    ncNumero:           string;
+    facturaOriginalId:  number;
+    clienteId:          number;
+    usuarioId:          number;
+    codigoModificacion: 1 | 3;
+  }): Promise<Devolucion | null> {
+    const { empresaId, ncId, ncNumero, facturaOriginalId, clienteId, usuarioId, codigoModificacion } = payload;
+
+    const yaExiste = await this.devRepository.findOne({
+      where: { notaCreditoId: ncId, isActive: true } as any,
+    });
+    if (yaExiste) return null;
+
+    const detallesNc = await this.ds.query<{
+      productoId: number | null; descripcion: string; cantidad: string;
+      precioUnitario: string; porcentajeIva: string; subtotal: string; iva: string; total: string;
+    }[]>(
+      `SELECT "productoId", descripcion, cantidad, "precioUnitario",
+              "porcentajeIva", subtotal, iva, total
+       FROM nota_credito_detalles WHERE "notaCreditoId" = $1 ORDER BY id`,
+      [ncId],
+    );
+
+    // Solo líneas con producto identificable — un ajuste de monto sin
+    // productoId (33 líneas históricas conocidas, código 1 con tasas
+    // promediadas) no describe ninguna mercancía física que recibir.
+    const conProducto = detallesNc.filter(d => d.productoId != null);
+    if (conProducto.length === 0) {
+      const msg = `NC ${ncNumero} (código ${codigoModificacion}) aceptada sin productoId en ninguna línea — no se genera devolución`;
+      this.logger.warn(`[Devoluciones] ${msg}`);
+      reportServiceError(new Error(msg), 'devolucion_desde_nc_sin_producto', {
+        ncId: String(ncId), empresaId: String(empresaId), codigoModificacion: String(codigoModificacion),
+      });
+      return null;
+    }
+
+    const detallesData = conProducto.map(d => ({
+      productoId:     d.productoId as number,
+      descripcion:    d.descripcion,
+      precioUnitario: Number(d.precioUnitario),
+      cantidad:       Number(d.cantidad),
+      porcentajeIva:  Number(d.porcentajeIva ?? 18),
+      subtotal:       Number(d.subtotal),
+      importeIva:     Number(d.iva ?? 0),
+      total:          Number(d.total),
+    }));
+    const subtotal = detallesData.reduce((s, d) => s + d.subtotal, 0);
+    const iva      = detallesData.reduce((s, d) => s + d.importeIva, 0);
+
+    const numero = await this.generarNumero(empresaId);
+
+    const dev = await this.devRepository.save(this.devRepository.create({
+      empresaId,
+      numero,
+      fecha:      fechaHoyRD() as unknown as Date,
+      // Código 1 (anulación total) nace con TODAS las líneas de la factura —
+      // TOTAL. Código 3 nace solo con lo que la NC afecta — PARCIAL, aunque
+      // por casualidad cubra el monto completo de alguna línea.
+      tipo:       codigoModificacion === 1 ? TipoDevolucion.TOTAL : TipoDevolucion.PARCIAL,
+      estado:     EstadoDevolucion.PENDIENTE,
+      facturaId:  facturaOriginalId,
+      clienteId,
+      motivo:     `Generada automáticamente al aceptar DGII la NC ${ncNumero} (código ${codigoModificacion}) — pendiente de recibir mercancía`,
+      userId:     usuarioId,
+      generadaDesdeNc: true,
+      subtotal:   +subtotal.toFixed(2),
+      iva:        +iva.toFixed(2),
+      total:      +(subtotal + iva).toFixed(2),
+      notaCreditoId:     ncId,
+      notaCreditoNumero: ncNumero,
+    }));
+
+    await this.detalleRepository.save(
+      this.detalleRepository.create(detallesData.map(d => ({ ...d, devolucionId: dev.id }))),
+    );
+
+    // Vínculo simétrico en la NC — para mostrar "Devolución relacionada" en
+    // su detalle sin un JOIN.
+    await this.ncRepository.update(
+      { id: ncId, empresaId } as any,
+      { devolucionId: dev.id, devolucionNumero: numero } as any,
+    );
+
+    this.logger.log(`[Devoluciones] ${numero} generada automáticamente desde NC ${ncNumero} (pendiente de recepción)`);
+    return dev;
+  }
+
   // ─── Listar ───────────────────────────────────────────────────────────────────
 
   async findAll(pagination: PaginationDto) {
@@ -146,27 +268,50 @@ export class DevolucionesService {
 
   // ─── Procesar + generar Nota de Crédito E34 ──────────────────────────────────
 
-  async procesar(id: number, usuario: User) {
+  async procesar(id: number, usuario: User, dto?: ProcesarDevolucionDto) {
     const dev = await this.findById(id);
 
     if (dev.estado !== EstadoDevolucion.PENDIENTE) {
       throw new BadRequestException(`La devolución está "${dev.estado}" — ya fue procesada o anulada`);
     }
 
-    // 1. Devolver inventario
+    // Cantidades ajustables por línea — el cliente devolvió menos de lo que
+    // la devolución solicitaba. Sin ajuste, se procesa la línea completa.
+    const cantidadAjustada = new Map<number, number>();
+    for (const a of dto?.detalles ?? []) cantidadAjustada.set(a.detalleId, a.cantidad);
+
+    // 1. Devolver inventario — al almacén que el usuario elige al confirmar
+    //    la recepción. Siempre, sea cual sea el origen de la devolución.
     for (const detalle of dev.detalles) {
-      if (detalle.productoId) {
-        await this.inventarioService.registrarDevolucion(
-          detalle.productoId,
-          detalle.cantidad,
-          usuario.id,
-          `Devolución ${dev.numero} — ${dev.motivo}`,
-          dev.numero,
-        );
-      }
+      if (!detalle.productoId) continue;
+      const cantidad = cantidadAjustada.get(detalle.id) ?? Number(detalle.cantidad);
+      if (cantidad <= 0) continue;
+      await this.inventarioService.registrarDevolucion(
+        detalle.productoId,
+        cantidad,
+        usuario.id,
+        `Devolución ${dev.numero} — ${dev.motivo}`,
+        dev.numero,
+        dto?.almacenId,
+      );
     }
 
-    // 2. Asiento contable de reversa
+    // Guard bidireccional (decisión #4/#5): esta devolución NACIÓ de una NC
+    // — notaCreditoId ya viene asignado desde crearDesdeNotaCredito(), antes
+    // de procesar cualquier cosa. Su NC y el asiento de esa NC ya existen
+    // (ecf-efectos-nc.service.ts los generó al aceptar DGII); repetirlos
+    // aquí duplicaría la reversa contable y crearía una NC fantasma sin
+    // factura real que la respalde. Solo queda marcarla procesada.
+    if (dev.notaCreditoId) {
+      await this.devRepository.update(id, { estado: EstadoDevolucion.PROCESADA });
+      this.logger.log(
+        `Devolución ${dev.numero} procesada (nacida de NC ${dev.notaCreditoNumero} — sin asiento ni NC propios)`,
+      );
+      return this.findById(id);
+    }
+
+    // 2. Asiento contable de reversa (solo cuando esta devolución generó
+    //    todo desde cero — creada manualmente, no desde una NC)
     await this.asientosService.asientoDevolucionVenta(
       dev.id,
       Number(dev.total),
@@ -195,6 +340,11 @@ export class DevolucionesService {
         iva:                  Number(dev.iva),
         total:                Number(dev.total),
         estado:               EstadoNotaCredito.EMITIDA,
+        // Vínculo simétrico — devoluciones."notaCreditoId" ya apunta a esta
+        // NC (se asigna más abajo); esto permite mostrar "Devolución
+        // relacionada" en el detalle de la NC sin un JOIN.
+        devolucionId:         dev.id,
+        devolucionNumero:     dev.numero,
       }),
     );
 

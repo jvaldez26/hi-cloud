@@ -105,4 +105,17 @@ export class NotaCredito extends TenantBaseEntity {
    */
   @Column({ length: 1, nullable: true })
   codigoModificacion?: string;
+
+  /**
+   * Devolución vinculada — en cualquier dirección: la que generó esta NC al
+   * procesarse (devoluciones.service.ts#procesar), o la que esta NC generó
+   * automáticamente al ser aceptada por DGII con código 1/3
+   * (devoluciones.service.ts#crearDesdeNotaCredito). El guard contra el
+   * ciclo vive en el código — ver ecf-efectos-nc.service.ts.
+   */
+  @Column({ nullable: true })
+  devolucionId?: number;
+
+  @Column({ length: 20, nullable: true })
+  devolucionNumero?: string;
 }

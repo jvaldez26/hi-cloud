@@ -5,6 +5,7 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { DevolucionesService } from './devoluciones.service';
 import { CreateDevolucionDto } from './dto/create-devolucion.dto';
+import { ProcesarDevolucionDto } from './dto/procesar-devolucion.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -50,9 +51,16 @@ export class DevolucionesController {
   @Post(':id/procesar')
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
-  @ApiOperation({ summary: 'Procesar devolución: revierte inventario + asiento contable' })
-  procesar(@Param('id', ParseIntPipe) id: number, @GetUser() usuario: User) {
-    return this.devService.procesar(id, usuario);
+  @ApiOperation({
+    summary: 'Confirmar recepción: entra a inventario en el almacén elegido' +
+      ' + asiento contable — salvo que la devolución haya nacido de una NC ya aceptada',
+  })
+  procesar(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ProcesarDevolucionDto,
+    @GetUser() usuario: User,
+  ) {
+    return this.devService.procesar(id, usuario, dto);
   }
 
   @Patch(':id/anular')

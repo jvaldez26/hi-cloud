@@ -71,10 +71,22 @@ export class Devolucion extends BaseEntity {
   @Column()
   userId!: number;
 
-  // Nota de Crédito E34 generada automáticamente al procesar
+  // Nota de Crédito E34 vinculada — la que esta devolución generó al
+  // procesarse (flujo manual), o la que generó ESTA devolución al ser
+  // aceptada por DGII (flujo NC → devolución, generadaDesdeNc=true).
   @Column({ nullable: true })
   notaCreditoId?: number;
 
   @Column({ length: 20, nullable: true })
   notaCreditoNumero?: string;
+
+  /**
+   * true si esta devolución nació de una NC de código 1/3 aceptada por DGII
+   * (ver DevolucionesService.crearDesdeNotaCredito) — nunca la toca
+   * procesar(). Sin este flag, una manual y una nacida de NC quedan
+   * idénticas por fuera después de procesar() (las dos terminan con
+   * notaCreditoId asignado), y la lista no podría mostrar el origen real.
+   */
+  @Column({ default: false })
+  generadaDesdeNc!: boolean;
 }

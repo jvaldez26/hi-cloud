@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { TableActions } from '../../components/ui/TableActions';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
@@ -6,14 +7,14 @@ import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
 import { Table, Button, Tag, Card, Row, Col, Typography, Statistic, Space,
          Modal, Form, Input, Select, InputNumber, DatePicker, message,
-         Drawer, Descriptions } from 'antd';
-import { PlusOutlined, CheckOutlined, FileExcelOutlined } from '@ant-design/icons';
+         Drawer, Descriptions, Alert, Tooltip } from 'antd';
+import { PlusOutlined, CheckOutlined, FileExcelOutlined, InboxOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
 import { fmt } from '../../utils/formatters';
 import dayjs from 'dayjs';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
 type EstadoDev = 'pendiente' | 'procesada' | 'anulada';
 
@@ -22,17 +23,27 @@ const estadoColor: Record<EstadoDev, string> = {
 };
 
 const devolucionesApi = {
-  list:    (p = 1, limit = 10) => api.get(`/devoluciones?page=${p}&limit=${limit}`).then(r => r.data?.data ?? r.data),
+  list:    (p = 1, limit = 10, search?: string) =>
+    api.get(`/devoluciones?page=${p}&limit=${limit}${search ? `&search=${encodeURIComponent(search)}` : ''}`)
+      .then(r => r.data?.data ?? r.data),
   getOne:  (id: number)        => api.get(`/devoluciones/${id}`).then(r => r.data?.data ?? r.data),
   resumen: ()                  => api.get('/devoluciones/resumen').then(r => r.data?.data ?? r.data),
   create:  (body: any)         => api.post('/devoluciones', body).then(r => r.data?.data ?? r.data),
-  procesar:(id: number)        => api.post(`/devoluciones/${id}/procesar`).then(r => r.data?.data ?? r.data),
+  procesar:(id: number, body?: { almacenId?: number; detalles?: { detalleId: number; cantidad: number }[] }) =>
+    api.post(`/devoluciones/${id}/procesar`, body ?? {}).then(r => r.data?.data ?? r.data),
   anular:  (id: number)        => api.patch(`/devoluciones/${id}/anular`).then(r => r.data?.data ?? r.data),
 };
 
 const facturasApi = {
   buscar: (search: string) => api.get(`/facturas?search=${search}&limit=10`).then(r => r.data?.data ?? r.data),
   getOne: (id: number)     => api.get(`/facturas/${id}`).then(r => r.data?.data ?? r.data),
+};
+
+const almacenesApi = {
+  list: () => api.get('/almacenes?limit=200').then((r: any) => {
+    const d = r.data?.data ?? r.data;
+    return Array.isArray(d) ? d : (d?.data ?? []);
+  }),
 };
 
 export default function DevolucionesPage() {
@@ -44,9 +55,38 @@ export default function DevolucionesPage() {
   const [lineas, setLineas] = useState<any[]>([]);
   const [facturaOptions, setFacturaOptions] = useState<{ value: number; label: string }[]>([]);
   const [buscandoFacturas, setBuscandoFacturas] = useState(false);
+  const [search, setSearch] = useState('');
   const qc = useQueryClient();
 
-  const { data, isLoading } = useQuery({ queryKey: ['devoluciones', page], queryFn: () => devolucionesApi.list(page) });
+  // Confirmar recepción — reemplaza el antiguo Modal.confirm: aquí se elige
+  // el almacén de entrada y, si el cliente devolvió menos de lo solicitado,
+  // se ajusta la cantidad por línea. El movimiento de inventario ocurre acá,
+  // no al crear la devolución.
+  const [recepcion, setRecepcion] = useState<any>(null);
+  const [formRecepcion] = Form.useForm();
+  const [cantidadesRecepcion, setCantidadesRecepcion] = useState<Record<number, number>>({});
+  const { data: almacenes = [] } = useQuery<any[]>({ queryKey: ['almacenes-sel'], queryFn: almacenesApi.list });
+
+  /**
+   * Llega desde "⇄ devolución" en Notas de Crédito — mismo patrón que
+   * ?numero= allá: precarga el buscador con el número exacto y se borra al
+   * usarse, para que recargar la pantalla no lo vuelva a aplicar.
+   */
+  const [params, setParams] = useSearchParams();
+  const precargado = useRef(false);
+  useEffect(() => {
+    const numero = params.get('numero');
+    if (!numero || precargado.current) return;
+    precargado.current = true;
+    setSearch(numero);
+    params.delete('numero');
+    setParams(params, { replace: true });
+  }, [params]);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['devoluciones', page, search],
+    queryFn:  () => devolucionesApi.list(page, 10, search || undefined),
+  });
 
   const { data: facturaDetalle } = useQuery({
     queryKey: ['factura-detalle', facturaSelId],
@@ -61,14 +101,16 @@ export default function DevolucionesPage() {
   });
 
   const procesarMut = useMutation({
-    mutationFn: devolucionesApi.procesar,
+    mutationFn: (vars: { id: number; almacenId?: number; detalles?: { detalleId: number; cantidad: number }[] }) =>
+      devolucionesApi.procesar(vars.id, { almacenId: vars.almacenId, detalles: vars.detalles }),
     onSuccess: (res: any) => {
       qc.invalidateQueries({ queryKey: ['devoluciones'] });
+      setRecepcion(null); setCantidadesRecepcion({}); formRecepcion.resetFields();
       const ncNumero = res?.notaCreditoNumero ?? res?.data?.notaCreditoNumero;
       message.success(
         ncNumero
           ? `✅ Devolución procesada. Nota de Crédito E34 ${ncNumero} generada automáticamente.`
-          : 'Devolución procesada: inventario y contabilidad actualizados',
+          : 'Devolución procesada: inventario actualizado',
         5,
       );
     },
@@ -85,6 +127,16 @@ export default function DevolucionesPage() {
     setFacturaSelId(id);
     const detalles = facturaDetalle?.detalles ?? [];
     setLineas(detalles.map((d: any) => ({ ...d, devolver: d.cantidad })));
+  };
+
+  /** Abre "Confirmar recepción" precargado con la cantidad completa de cada
+   *  línea — el usuario solo ajusta las que de verdad devolvió menos. */
+  const abrirRecepcion = (r: any) => {
+    const init: Record<number, number> = {};
+    for (const d of r.detalles ?? []) init[d.id] = Number(d.cantidad);
+    setCantidadesRecepcion(init);
+    formRecepcion.resetFields();
+    setRecepcion(r);
   };
 
   const handleSubmit = (values: any) => {
@@ -105,6 +157,7 @@ export default function DevolucionesPage() {
 
   const COLS_DEF = [
     { key: 'numero',  label: 'Número',         defaultVisible: true  },
+    { key: 'origen',  label: 'Origen',          defaultVisible: true  },
     { key: 'fecha',   label: 'Fecha',           defaultVisible: true  },
     { key: 'tipo',    label: 'Tipo',            defaultVisible: true  },
     { key: 'cli',     label: 'Cliente',         defaultVisible: true  },
@@ -117,6 +170,19 @@ export default function DevolucionesPage() {
 
   const cols = [
     { key: 'numero',  title: 'Número',   dataIndex: 'numero',  width: 170, render: (v: string) => <code>{v}</code> },
+    { key: 'origen',  title: 'Origen',   width: 190,
+      render: (_: any, r: any) => {
+        if (!r.generadaDesdeNc) return <Tag style={{ fontSize: 11 }}>Manual</Tag>;
+        const pendienteDeRecibir = r.estado === 'pendiente';
+        return (
+          <Tooltip title={r.notaCreditoNumero ? `Generada desde NC ${r.notaCreditoNumero}` : 'Generada desde una Nota de Crédito'}>
+            <Tag icon={pendienteDeRecibir ? <InboxOutlined /> : undefined}
+              color={pendienteDeRecibir ? 'processing' : 'blue'} style={{ fontSize: 11 }}>
+              {pendienteDeRecibir ? 'Desde NC — recibir mercancía' : 'Desde NC'}
+            </Tag>
+          </Tooltip>
+        );
+      } },
     { key: 'fecha',   title: 'Fecha',    dataIndex: 'fecha',   width: 100, render: (v: string) => fmt.date(v) },
     { key: 'tipo',    title: 'Tipo',     dataIndex: 'tipo',    width: 80,  render: (v: string) => <Tag>{v.toUpperCase()}</Tag> },
     { key: 'cli',     title: 'Cliente',  ellipsis: true,                   render: (_: any, r: any) => r.cliente?.nombre },
@@ -138,13 +204,8 @@ export default function DevolucionesPage() {
           viewLabel="Ver devolución"
           items={[
             ...(r.estado === 'pendiente' ? [
-              { key: 'procesar', label: 'Procesar devolución', icon: <CheckOutlined />,
-                onClick: () => Modal.confirm({
-                  title: '¿Procesar? Se revertirá el inventario y se generará la NC E34.',
-                  okText: 'Confirmar',
-                  cancelText: 'Cancelar',
-                  onOk: () => procesarMut.mutate(r.id),
-                }) },
+              { key: 'procesar', label: 'Confirmar recepción', icon: <CheckOutlined />,
+                onClick: () => abrirRecepcion(r) },
             ] : []),
             { type: 'divider' as const },
             ...(r.estado === 'pendiente' ? [
@@ -168,9 +229,16 @@ export default function DevolucionesPage() {
 
       <Card extra={
         <Space>
+          <Input.Search
+            placeholder="Número, cliente o factura..."
+            allowClear
+            style={{ width: 220 }}
+            onSearch={v => { setSearch(v); setPage(1); }}
+          />
           <Button icon={<FileExcelOutlined />} onClick={() => {
             const filas = (data?.data ?? []).map((d: any) => ({
               'Número':    d.numero ?? '',
+              'Origen':    d.generadaDesdeNc ? 'Desde NC' : 'Manual',
               'Fecha':     d.fecha ?? '',
               'Cliente':   d.cliente?.nombre ?? '',
               'Factura':   d.facturaFolio ?? d.factura?.folio ?? '',
@@ -190,6 +258,8 @@ export default function DevolucionesPage() {
       }>
         <Table columns={filterColumns(cols)} dataSource={data?.data ?? []} rowKey="id" loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
+          onRow={(r: any) => r.generadaDesdeNc && r.estado === 'pendiente'
+            ? { style: { background: '#fff7e6' } } : {}}
           pagination={{ total: data?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }} />
       </Card>
 
@@ -278,6 +348,16 @@ export default function DevolucionesPage() {
               <Descriptions.Item label="Fecha">{fmt.date(detail.fecha)}</Descriptions.Item>
               <Descriptions.Item label="Cliente">{detail.cliente?.nombre}</Descriptions.Item>
               <Descriptions.Item label="Factura original">{detail.factura?.folio}</Descriptions.Item>
+              <Descriptions.Item label="Origen">
+                {detail.generadaDesdeNc
+                  ? <Tag color="blue">Desde NC {detail.notaCreditoNumero ?? ''}</Tag>
+                  : <Tag>Manual</Tag>}
+              </Descriptions.Item>
+              {!detail.generadaDesdeNc && detail.notaCreditoNumero && (
+                <Descriptions.Item label="NC generada">
+                  <Tag color="green">✓ {detail.notaCreditoNumero}</Tag>
+                </Descriptions.Item>
+              )}
               <Descriptions.Item label="Motivo" span={2}>{detail.motivo}</Descriptions.Item>
             </Descriptions>
             <Table size="small"
@@ -296,6 +376,69 @@ export default function DevolucionesPage() {
           </>
         )}
       </Drawer>
+
+      {/* Confirmar recepción — el movimiento de inventario ocurre aquí, no al
+          crear la devolución. Elige almacén de entrada y, si el cliente
+          devolvió menos de lo solicitado, ajusta la cantidad por línea. */}
+      <Modal
+        title={`Confirmar recepción — ${recepcion?.numero ?? ''}`}
+        open={!!recepcion}
+        onCancel={() => { setRecepcion(null); setCantidadesRecepcion({}); formRecepcion.resetFields(); }}
+        footer={null}
+        width={560}
+        destroyOnClose
+      >
+        {recepcion && (
+          <Form form={formRecepcion} layout="vertical"
+            onFinish={() => {
+              const detalles = (recepcion.detalles ?? [])
+                .map((d: any) => ({ detalleId: d.id, cantidad: Number(cantidadesRecepcion[d.id] ?? d.cantidad) }))
+                .filter((d: any) => d.cantidad > 0);
+              procesarMut.mutate({ id: recepcion.id, almacenId: formRecepcion.getFieldValue('almacenId'), detalles });
+            }}
+          >
+            {recepcion.generadaDesdeNc && (
+              <Alert
+                type="info" showIcon style={{ marginBottom: 16 }}
+                message={`Generada automáticamente desde la NC ${recepcion.notaCreditoNumero ?? ''}`}
+                description="Ya tiene su Nota de Crédito y su asiento contable — aquí solo se confirma que la mercancía entró físicamente."
+              />
+            )}
+
+            <Form.Item name="almacenId" label="Almacén de entrada">
+              <Select
+                allowClear
+                placeholder="Almacén por defecto de la empresa"
+                options={almacenes.map((a: any) => ({ value: a.id, label: a.nombre }))}
+              />
+            </Form.Item>
+
+            <Text strong style={{ display: 'block', marginBottom: 8 }}>Cantidades recibidas</Text>
+            <Table
+              size="small" pagination={false} scroll={{ x: 'max-content' }}
+              dataSource={(recepcion.detalles ?? []).map((d: any) => ({ ...d, key: d.id }))}
+              columns={[
+                { title: 'Producto',   dataIndex: 'descripcion', ellipsis: true },
+                { title: 'Solicitado', dataIndex: 'cantidad',    width: 90 },
+                { title: 'Recibido',   key: 'recibido', width: 120,
+                  render: (_: any, d: any) => (
+                    <InputNumber
+                      min={0} max={Number(d.cantidad)} precision={4}
+                      value={cantidadesRecepcion[d.id] ?? Number(d.cantidad)}
+                      style={{ width: '100%' }}
+                      onChange={v => setCantidadesRecepcion(prev => ({ ...prev, [d.id]: v ?? 0 }))}
+                    />
+                  ) },
+              ]}
+            />
+
+            <Row justify="end" gutter={8} style={{ marginTop: 16 }}>
+              <Col><Button onClick={() => { setRecepcion(null); setCantidadesRecepcion({}); formRecepcion.resetFields(); }}>Cancelar</Button></Col>
+              <Col><Button type="primary" htmlType="submit" loading={procesarMut.isPending}>Confirmar recepción</Button></Col>
+            </Row>
+          </Form>
+        )}
+      </Modal>
     </div>
   );
 }
