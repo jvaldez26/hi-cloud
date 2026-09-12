@@ -53,6 +53,7 @@ import {
   type SidebarPalette, type QuickItem, type SubItem, type MenuCategory,
 } from './sidebar/base';
 import { SidebarShell, useSidebarColapsado } from './sidebar/SidebarShell';
+import { useFlyoutSidebar } from './sidebar/useFlyoutSidebar';
 const { Header, Content } = Layout;
 const { Text } = Typography;
 
@@ -291,11 +292,7 @@ export default function AppLayout() {
   // el sidebar siempre arranque completamente colapsado en cada sesión.
   const [openCategories, setOpenCategories] = useState<string | null>(null);
 
-  // Flyout (modo colapsado): qué categoría activa el panel secundario
-  // { id, top } → id del grupo + posición Y del botón que lo abrió
-  const [activePanel, setActivePanel] = useState<{ id: string; top: number } | null>(null);
-
-  // Refs para detectar clicks fuera del flyout
+  // Ref del sidebar: el flyout la usa para saber que un clic dentro no es afuera
   const sidebarRef = useRef<HTMLDivElement>(null);
 
   const { total: totalAlertas, criticas: alertasCriticas, alertas } = useAlertas();
@@ -576,35 +573,16 @@ export default function AppLayout() {
   }, []);
 
   // ── Flyout (colapsado) ───────────────────────────────────────────────────────
-  const closePanel  = useCallback(() => setActivePanel(null), []);
-  const togglePanel = useCallback((id: string, top: number) =>
-    setActivePanel(prev => (prev?.id === id ? null : { id, top })), []);
+  // Hover, retardo de cierre, fijar por clic, clic afuera y Escape viven en
+  // useFlyoutSidebar, el mismo que usa SuperAdminPage. Al expandir el sidebar
+  // el hook cierra el panel solo.
+  const {
+    panel: activePanel, panelRef: flyoutRef, cerrar: closePanel,
+    clicEnIcono: togglePanel, hoverIcono, hoverPanel,
+  } = useFlyoutSidebar({ activo: collapsed, sidebarRef });
 
-  // Al expandir el sidebar → cerrar cualquier panel flyout abierto
-  useEffect(() => { if (!collapsed) closePanel(); }, [collapsed, closePanel]);
-
-  // B) Cerrar flyout al cambiar de ruta
+  // Cerrar flyout al cambiar de ruta
   useEffect(() => { closePanel(); }, [location.pathname, closePanel]);
-
-  // A) Click fuera del sidebar cuando el panel está abierto → cerrar flyout
-  // (el overlay del FlyoutPanel cubre el área de contenido directamente)
-  useEffect(() => {
-    if (!activePanel) return;
-    const handler = (e: MouseEvent) => {
-      if (sidebarRef.current && !sidebarRef.current.contains(e.target as Node)) {
-        closePanel();
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [activePanel, closePanel]);
-
-  // D) ESC → cerrar flyout
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') closePanel(); };
-    document.addEventListener('keydown', h);
-    return () => document.removeEventListener('keydown', h);
-  }, [closePanel]);
 
   // Navegar y cerrar panel
   const isMobile  = useMobile();
@@ -880,6 +858,7 @@ export default function AppLayout() {
       onToggleCategoria={toggleCategory}
       panelAbiertoId={activePanel?.id ?? null}
       onAbrirPanel={togglePanel}
+      hoverIcono={hoverIcono}
       planActual={planActual}
       onBloqueado={handleLocked}
       identidad={
@@ -1219,7 +1198,7 @@ export default function AppLayout() {
             if (!cat) return null;
             return (
               <FlyoutPanel
-                key={activePanel.id}
+                key="flyout"
                 category={cat}
                 activePath={activePath}
                 sidebarWidth={collapsed ? 64 : 240}
@@ -1228,6 +1207,9 @@ export default function AppLayout() {
                 onClose={closePanel}
                 planActual={planActual}
                 onLocked={handleLocked}
+                panelRef={flyoutRef}
+                onPointerEnter={hoverPanel.onPointerEnter}
+                onPointerLeave={hoverPanel.onPointerLeave}
               />
             );
           })()}
