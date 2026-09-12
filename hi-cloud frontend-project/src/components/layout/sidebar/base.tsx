@@ -873,21 +873,28 @@ export function AccordionSubItem({
 
 // ── MODO COLAPSADO: Botón de categoría solo ícono ─────────────────────────────
 export function CategoryBtnCollapsed({
-  category, activePath, isActive, onClick,
+  category, activePath, isActive, onClick, onPointerEnter, onPointerLeave,
 }: {
   category:   MenuCategory;
   activePath: string;
   isActive:   boolean;
   onClick:    (e: React.MouseEvent<HTMLButtonElement>) => void;
+  /** Hover que abre el flyout. Los filtra por `pointerType` useFlyoutSidebar. */
+  onPointerEnter?: (e: React.PointerEvent<HTMLButtonElement>) => void;
+  onPointerLeave?: (e: React.PointerEvent<HTMLButtonElement>) => void;
 }) {
   const C = useC();
   const [hover, setHover] = useState(false);
   const hasActiveSub = category.items.some(i => isActivePath(activePath, i.path));
 
   return (
-    <Tooltip title={category.label} placement="right">
+    // Sin tooltip cuando su propio flyout está abierto: la cabecera del panel ya
+    // dice el nombre, y dos rótulos iguales uno junto al otro solo estorban.
+    <Tooltip title={isActive ? undefined : category.label} placement="right">
       <button
         onClick={onClick}
+        onPointerEnter={onPointerEnter}
+        onPointerLeave={onPointerLeave}
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => setHover(false)}
         style={{
@@ -916,6 +923,7 @@ export function CategoryBtnCollapsed({
 // ── Panel secundario (flyout) ─────────────────────────────────────────────────
 export function FlyoutPanel({
   category, activePath, sidebarWidth, panelTop, onNavigate, onClose, planActual, onLocked,
+  panelRef, onPointerEnter, onPointerLeave,
 }: {
   category:     MenuCategory;
   activePath:   string;
@@ -925,6 +933,10 @@ export function FlyoutPanel({
   onClose:      () => void;
   planActual:   PlanTipo;
   onLocked:     (item: SubItem, planMinimo: PlanTipo) => void;
+  /** Para que el clic-afuera sepa que un clic aquí dentro NO es afuera. */
+  panelRef?:        React.Ref<HTMLDivElement>;
+  onPointerEnter?:  (e: React.PointerEvent<HTMLDivElement>) => void;
+  onPointerLeave?:  (e: React.PointerEvent<HTMLDivElement>) => void;
 }) {
   const C = useC();
 
@@ -940,18 +952,18 @@ export function FlyoutPanel({
 
   return (
     <>
-      {/* Overlay full-screen: captura clicks fuera del flyout y del sidebar */}
-      <div
-        onMouseDown={onClose}
-        style={{
-          position: 'fixed',
-          inset:    0,
-          zIndex:   149,
-        }}
-      />
-
+      {/* Aquí había un overlay `fixed; inset: 0; z-index: 149` para el clic
+          afuera. Tapaba el sidebar (z-index 100): con un flyout abierto no se
+          podía pasar a otro ícono ni ver su nombre. El clic afuera lo resuelve
+          ahora useFlyoutSidebar con un listener en document. */}
       <motion.div
-        key={category.id}
+        ref={panelRef}
+        onPointerEnter={onPointerEnter}
+        onPointerLeave={onPointerLeave}
+        // Sin `key` por categoría: al cambiar de menú por hover el panel se
+        // queda montado y solo cambia su contenido. Con la key, cada ícono
+        // recorrido lanzaba una salida y una entrada solapadas a alturas
+        // distintas, que es justo el parpadeo que no puede haber.
         initial={{ opacity: 0, x: -8, scale: 0.97 }}
         animate={{ opacity: 1, x: 0,  scale: 1    }}
         exit={{    opacity: 0, x: -8, scale: 0.97 }}

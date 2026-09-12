@@ -80,6 +80,14 @@ export interface SidebarShellProps {
   onToggleCategoria: (id: string) => void;
   panelAbiertoId?:   string | null;
   onAbrirPanel:      (id: string, top: number) => void;
+  /**
+   * Handlers de hover de cada ícono colapsado — los da useFlyoutSidebar.
+   * Opcional: sin ellos el flyout sigue abriendo por clic.
+   */
+  hoverIcono?: (id: string) => {
+    onPointerEnter: (e: React.PointerEvent<HTMLElement>) => void;
+    onPointerLeave: (e: React.PointerEvent<HTMLElement>) => void;
+  };
 
   /**
    * Candado por plan. Opcional: el panel de Super Admin no tiene plan.
@@ -99,7 +107,7 @@ export function SidebarShell({
   itemsRapidos, etiquetaPrincipal = 'PRINCIPAL',
   gruposAddon, gruposNormales,
   activePath, onNavegar, onPrefetch,
-  categoriaAbierta, onToggleCategoria, panelAbiertoId, onAbrirPanel,
+  categoriaAbierta, onToggleCategoria, panelAbiertoId, onAbrirPanel, hoverIcono,
   planActual, onBloqueado,
   barra, pie,
 }: SidebarShellProps) {
@@ -132,6 +140,7 @@ export function SidebarShell({
             const rect = e.currentTarget.getBoundingClientRect();
             onAbrirPanel(cat.id, rect.top);
           }}
+          {...(hoverIcono?.(cat.id) ?? {})}
         />
       ) : (
         <CategoryAccordion

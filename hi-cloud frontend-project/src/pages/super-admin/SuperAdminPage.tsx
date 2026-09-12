@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useMemo, useCallback, createContext, useContext } from 'react';
+﻿import { useState, useEffect, useMemo, useCallback, createContext, useContext, useRef } from 'react';
 import {
   Table, Tag, Button, Modal, Select, InputNumber, message,
   Avatar, Tooltip, Input, Popconfirm, Form, Tabs, Badge, Dropdown,
@@ -6,6 +6,7 @@ import {
 } from 'antd';
 import type { MenuProps } from 'antd';
 import { SidebarShell, useSidebarColapsado } from '../../components/layout/sidebar/SidebarShell';
+import { useFlyoutSidebar } from '../../components/layout/sidebar/useFlyoutSidebar';
 import {
   SidebarCtx, PALETTES, FlyoutPanel,
   type SidebarPalette, type MenuCategory,
@@ -1672,7 +1673,15 @@ export default function SuperAdminPage() {
   const { collapsed: menuColapsado, setCollapsed: setMenuColapsado } =
     useSidebarColapsado('hicloud-sa-sidebar-collapsed');
   const [grupoAbierto, setGrupoAbierto] = useState<string | null>('clientes');
-  const [panelMenu, setPanelMenu] = useState<{ id: string; top: number } | null>(null);
+  // Flyout del menú colapsado: el mismo hook que el ERP —hover, retardo de
+  // cierre, fijar por clic, clic afuera y Escape—, para que los dos menús no
+  // diverjan. Aquí el overlay que se quitó era el ÚNICO modo de cerrarlo al
+  // pulsar fuera: sin el ref del menú, el panel no se cerraría nunca.
+  const menuRef = useRef<HTMLDivElement>(null);
+  const {
+    panel: panelMenu, panelRef: flyoutMenuRef, cerrar: cerrarMenu,
+    clicEnIcono: clicMenu, hoverIcono: hoverIconoMenu, hoverPanel: hoverPanelMenu,
+  } = useFlyoutSidebar({ activo: menuColapsado, sidebarRef: menuRef });
 
   /**
    * El armazón compartido espera una SidebarPalette. En vez de mantener una
@@ -2678,6 +2687,9 @@ export default function SuperAdminPage() {
 
           {/* ── MENÚ LATERAL ────────────────────────────────────────────────── */}
           <SidebarCtx.Provider value={paletaMenu}>
+            {/* display: contents — el div no ocupa caja ni toca el flex del
+                layout; solo está para que el clic-afuera sepa qué es el menú. */}
+            <div ref={menuRef} style={{ display: 'contents' }}>
             <SidebarShell
               collapsed={menuColapsado}
               onCollapsed={setMenuColapsado}
@@ -2694,7 +2706,8 @@ export default function SuperAdminPage() {
               categoriaAbierta={grupoAbierto}
               onToggleCategoria={id => setGrupoAbierto(g => (g === id ? null : id))}
               panelAbiertoId={panelMenu?.id ?? null}
-              onAbrirPanel={(id, top) => setPanelMenu(p => (p?.id === id ? null : { id, top }))}
+              onAbrirPanel={clicMenu}
+              hoverIcono={hoverIconoMenu}
               pie={
                 <button
                   onClick={() => qc.invalidateQueries()}
@@ -2711,6 +2724,7 @@ export default function SuperAdminPage() {
                 </button>
               }
             />
+            </div>
           </SidebarCtx.Provider>
 
           {/* Con el menú colapsado, el grupo se abre en un panel flotante — igual
@@ -2724,8 +2738,11 @@ export default function SuperAdminPage() {
                 activePath={tab}
                 sidebarWidth={64}
                 panelTop={panelMenu.top}
-                onNavigate={p => { setTab(p); setPanelMenu(null); }}
-                onClose={() => setPanelMenu(null)}
+                onNavigate={p => { setTab(p); cerrarMenu(); }}
+                onClose={cerrarMenu}
+                panelRef={flyoutMenuRef}
+                onPointerEnter={hoverPanelMenu.onPointerEnter}
+                onPointerLeave={hoverPanelMenu.onPointerLeave}
                 planActual="plus"
                 onLocked={() => {}}
               />
