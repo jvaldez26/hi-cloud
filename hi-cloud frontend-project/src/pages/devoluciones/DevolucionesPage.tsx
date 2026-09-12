@@ -131,6 +131,23 @@ export default function DevolucionesPage() {
   };
 
   /**
+   * "Ver devolución" — mismo problema que abrirRecepcion() más abajo: `r`
+   * viene de la fila de la tabla (findAll(), sin detalles). Abre el drawer
+   * de una vez con lo que ya hay (nada de espera visible) y lo reemplaza en
+   * cuanto llega el registro completo — así el drawer nunca queda vacío ni
+   * bloqueado esperando la red.
+   */
+  const abrirDetalle = async (r: any) => {
+    setDetail(r);
+    try {
+      const full = await devolucionesApi.getOne(r.id);
+      setDetail(full);
+    } catch {
+      // se queda con lo que ya tenía — no vale la pena romper el drawer por esto
+    }
+  };
+
+  /**
    * Abre "Confirmar recepción" precargado con la cantidad completa de cada
    * línea — el usuario solo ajusta las que de verdad devolvió menos.
    *
@@ -217,7 +234,7 @@ export default function DevolucionesPage() {
     { title: '', key: 'acciones', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
         <TableActions
-          onView={() => setDetail(r)}
+          onView={() => abrirDetalle(r)}
           viewLabel="Ver devolución"
           items={[
             ...(r.estado === 'pendiente' ? [
