@@ -139,7 +139,14 @@ describe('EquipoSesionesService.cerrarSesionDeUsuario — jerarquía', () => {
 });
 
 describe('EquipoSesionesService.listar', () => {
-  it('excluye al propio solicitante y marca puedeSerCerrada según el rol', async () => {
+  const fetchOriginal = global.fetch;
+  afterEach(() => { global.fetch = fetchOriginal; });
+
+  it('excluye al propio solicitante, marca puedeSerCerrada según el rol y resuelve ubicación a "Ciudad, PAÍS"', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      json: async () => ({ success: true, city: 'Santo Domingo', country_code: 'DO' }),
+    }) as any;
+
     const { svc, refreshTokenSvc } = makeSvc();
     refreshTokenSvc.sesionesActivasEquipo.mockResolvedValue([
       {
@@ -163,11 +170,27 @@ describe('EquipoSesionesService.listar', () => {
     expect(vendedor.puedeSerCerrada).toBe(true);
     expect(vendedor.dispositivo).toBe('Windows PC');
     expect(vendedor.esMovil).toBe(false);
+    expect(vendedor.ubicacion).toBe('Santo Domingo, DO'); // ciudad, no solo país
 
     const otroAdmin = filas.find(f => f.usuarioId === 21)!;
     expect(otroAdmin.puedeSerCerrada).toBe(false);
     expect(otroAdmin.dispositivo).toBe('Android');
     expect(otroAdmin.esMovil).toBe(true);
+    expect(otroAdmin.ubicacion).toBe('—'); // sin IP registrada, no se resuelve nada
+  });
+
+  it('si el servicio de geolocalización falla, degrada a "—" sin romper la lista', async () => {
+    global.fetch = jest.fn().mockRejectedValue(new Error('timeout')) as any;
+
+    const { svc, refreshTokenSvc } = makeSvc();
+    refreshTokenSvc.sesionesActivasEquipo.mockResolvedValue([{
+      usuarioId: 20, usuarioNombre: 'Vendedor Uno', rol: UserRole.VENDEDOR,
+      sucursalNombre: null, sesionId: 's1', deviceInfo: undefined,
+      ipAddress: '190.80.1.1', creadaEn: new Date(), ultimaActividad: null,
+    }]);
+
+    const [fila] = await svc.listar(7, 1);
+    expect(fila.ubicacion).toBe('—');
   });
 
   it('nunca expone el deviceInfo crudo (User-Agent) ni la IP completa — solo nombre parseado y país', async () => {

@@ -407,6 +407,7 @@ function EquipoSesionesSection() {
     {
       title: 'Usuario',
       key: 'usuario',
+      width: 180,
       render: (_: any, r: any) => (
         <div>
           <div style={{ fontWeight: 500, fontSize: 13 }}>{r.usuarioNombre}</div>
@@ -437,7 +438,7 @@ function EquipoSesionesSection() {
       title: 'Ubicación aproximada',
       dataIndex: 'ubicacion',
       key: 'ubicacion',
-      width: 150,
+      width: 190,
       render: (v: string) => <span style={{ color: '#1677ff', fontSize: 13 }}>{v}</span>,
     },
     {
@@ -489,6 +490,7 @@ function EquipoSesionesSection() {
         loading={isLoading}
         pagination={false}
         size="small"
+        scroll={{ x: 'max-content' }}
         locale={{ emptyText: 'Nadie de tu equipo tiene una sesión activa ahora mismo' }}
         showHeader={!!sesiones?.length}
       />

@@ -34,12 +34,12 @@ export class EquipoSesionesService {
   private readonly logger = new Logger(EquipoSesionesService.name);
 
   /**
-   * IP → país resuelto. Vive en el proceso (no en Redis/BD): es una
-   * optimización de una llamada externa, no un dato que necesite
-   * consistencia entre instancias PM2 — el mismo trade-off que
+   * IP → ubicación resuelta ("Ciudad, PAÍS"). Vive en el proceso (no en
+   * Redis/BD): es una optimización de una llamada externa, no un dato que
+   * necesite consistencia entre instancias PM2 — el mismo trade-off que
    * `activityThrottle` en RefreshTokenService.
    */
-  private readonly cachePais = new Map<string, string>();
+  private readonly cacheUbicacion = new Map<string, string>();
 
   constructor(
     @InjectRepository(UsuarioEmpresa)
@@ -59,7 +59,7 @@ export class EquipoSesionesService {
     const filas = await this.refreshTokenSvc.sesionesActivasEquipo(empresaId, solicitanteId);
 
     const ipsUnicas = [...new Set(filas.map(f => f.ipAddress).filter((ip): ip is string => !!ip))];
-    await Promise.all(ipsUnicas.map(ip => this.resolverPais(ip)));
+    await Promise.all(ipsUnicas.map(ip => this.resolverUbicacion(ip)));
 
     return filas.map(f => {
       const { nombre, esMovil } = this.parsearDispositivo(f.deviceInfo ?? undefined);
@@ -70,7 +70,7 @@ export class EquipoSesionesService {
         sucursal:        f.sucursalNombre,
         dispositivo:     nombre,
         esMovil,
-        ubicacion:       f.ipAddress ? (this.cachePais.get(f.ipAddress) ?? '—') : '—',
+        ubicacion:       f.ipAddress ? (this.cacheUbicacion.get(f.ipAddress) ?? '—') : '—',
         ultimaActividad: (f.ultimaActividad ?? f.creadaEn).toISOString(),
         puedeSerCerrada: ROLES_CERRABLES_POR_ADMIN.includes(f.rol),
       };
@@ -145,21 +145,32 @@ export class EquipoSesionesService {
     return { nombre: 'Dispositivo desconocido', esMovil: false };
   }
 
-  /** País aproximado — nunca se manda la IP al navegador del admin, se
-   *  resuelve aquí y solo el nombre del país llega a la pantalla. */
-  private async resolverPais(ip: string): Promise<void> {
-    if (this.cachePais.has(ip)) return;
+  /**
+   * Ubicación aproximada a nivel de ciudad — nunca se manda la IP al
+   * navegador del admin, se resuelve aquí y solo "Ciudad, PAÍS" llega a la
+   * pantalla. ipwho.is da ciudad/región (no solo país, como el servicio
+   * anterior) y funciona por HTTPS sin API key para este volumen de uso.
+   */
+  private async resolverUbicacion(ip: string): Promise<void> {
+    if (this.cacheUbicacion.has(ip)) return;
     if (ip.startsWith('10.') || ip.startsWith('192.168.') || ip.startsWith('172.1')
         || ip === '127.0.0.1' || ip === '::1') {
-      this.cachePais.set(ip, 'Local');
+      this.cacheUbicacion.set(ip, 'Local');
       return;
     }
     try {
-      const r = await fetch(`https://api.country.is/${ip}`);
+      // Timeout corto: si ipwho.is está lento o caído, la pantalla del admin
+      // no debe quedarse esperando — degrada a "—" en vez de colgarse.
+      const r = await fetch(`https://ipwho.is/${ip}`, { signal: AbortSignal.timeout(3000) });
       const d = await r.json();
-      this.cachePais.set(ip, (d?.country as string) || '—');
+      if (!d?.success) {
+        this.cacheUbicacion.set(ip, '—');
+        return;
+      }
+      const partes = [d.city, d.country_code || d.country].filter(Boolean);
+      this.cacheUbicacion.set(ip, partes.length ? partes.join(', ') : '—');
     } catch {
-      this.cachePais.set(ip, '—');
+      this.cacheUbicacion.set(ip, '—');
     }
   }
 }
