@@ -11,6 +11,42 @@
         ],
         "createdAt": "2026-09-06T13:02:31.069Z",
         "reason": "Pre-existente, fuera del diff de este commit (confirmado con git show) - plantillas HTML de correo transaccional (aviso de gracia/vencimiento), no UI de la app. Inter+sans-serif es una eleccion conservadora apropiada para email, donde el soporte de fuentes es muy limitado."
+      },
+      {
+        "rule": "layout-transition",
+        "value": "*",
+        "files": [
+          "hi-cloud frontend-project/src/components/layout/sidebar/SidebarShell.tsx"
+        ],
+        "createdAt": "2026-09-12T17:58:07.213Z",
+        "reason": "animación de ancho preexistente del colapsar/expandir sidebar, no tocada en la tarea de branding (solo assets del logo); cambiarla a transform sería un refactor de UX no pedido"
+      },
+      {
+        "rule": "layout-transition",
+        "value": "*",
+        "files": [
+          "hi-cloud frontend-project/src/components/layout/AppLayout.tsx"
+        ],
+        "createdAt": "2026-09-12T17:58:32.426Z",
+        "reason": "misma animación de colapsar/expandir sidebar, preexistente, fuera del alcance de la tarea de branding"
+      },
+      {
+        "rule": "bounce-easing",
+        "value": "hc-bounce",
+        "files": [
+          "hi-cloud frontend-project/index.html"
+        ],
+        "createdAt": "2026-09-12T17:58:32.836Z",
+        "reason": "spinner de carga preexistente, ya en producción, no forma parte de la tarea de branding"
+      },
+      {
+        "rule": "pulsing-dot",
+        "value": "*",
+        "files": [
+          "hi-cloud frontend-project/index.html"
+        ],
+        "createdAt": "2026-09-12T17:58:33.242Z",
+        "reason": "puntos del spinner de carga preexistente, ya en producción, no forma parte de la tarea de branding"
       }
     ]
   }
