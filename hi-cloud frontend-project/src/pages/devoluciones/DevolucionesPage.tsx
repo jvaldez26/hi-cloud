@@ -63,6 +63,7 @@ export default function DevolucionesPage() {
   // se ajusta la cantidad por línea. El movimiento de inventario ocurre acá,
   // no al crear la devolución.
   const [recepcion, setRecepcion] = useState<any>(null);
+  const [cargandoRecepcion, setCargandoRecepcion] = useState<number | null>(null);
   const [formRecepcion] = Form.useForm();
   const [cantidadesRecepcion, setCantidadesRecepcion] = useState<Record<number, number>>({});
   const { data: almacenes = [] } = useQuery<any[]>({ queryKey: ['almacenes-sel'], queryFn: almacenesApi.list });
@@ -129,14 +130,30 @@ export default function DevolucionesPage() {
     setLineas(detalles.map((d: any) => ({ ...d, devolver: d.cantidad })));
   };
 
-  /** Abre "Confirmar recepción" precargado con la cantidad completa de cada
-   *  línea — el usuario solo ajusta las que de verdad devolvió menos. */
-  const abrirRecepcion = (r: any) => {
-    const init: Record<number, number> = {};
-    for (const d of r.detalles ?? []) init[d.id] = Number(d.cantidad);
-    setCantidadesRecepcion(init);
-    formRecepcion.resetFields();
-    setRecepcion(r);
+  /**
+   * Abre "Confirmar recepción" precargado con la cantidad completa de cada
+   * línea — el usuario solo ajusta las que de verdad devolvió menos.
+   *
+   * `r` llega de la fila de la TABLA (findAll(), que solo hace
+   * leftJoinAndSelect de cliente/factura — nunca de detalles, aunque la
+   * entidad los declare eager: eso solo aplica a find()/findOne(), no a
+   * QueryBuilder). Sin volver a pedir el registro completo, el modal se
+   * abría con detalles=undefined → "No hay datos".
+   */
+  const abrirRecepcion = async (r: any) => {
+    setCargandoRecepcion(r.id);
+    try {
+      const full = await devolucionesApi.getOne(r.id);
+      const init: Record<number, number> = {};
+      for (const d of full.detalles ?? []) init[d.id] = Number(d.cantidad);
+      setCantidadesRecepcion(init);
+      formRecepcion.resetFields();
+      setRecepcion(full);
+    } catch (e: any) {
+      message.error(e?.response?.data?.message ?? 'No se pudo cargar la devolución');
+    } finally {
+      setCargandoRecepcion(null);
+    }
   };
 
   const handleSubmit = (values: any) => {
@@ -204,7 +221,9 @@ export default function DevolucionesPage() {
           viewLabel="Ver devolución"
           items={[
             ...(r.estado === 'pendiente' ? [
-              { key: 'procesar', label: 'Confirmar recepción', icon: <CheckOutlined />,
+              { key: 'procesar',
+                label: cargandoRecepcion === r.id ? 'Cargando...' : 'Confirmar recepción',
+                icon: <CheckOutlined />, disabled: cargandoRecepcion === r.id,
                 onClick: () => abrirRecepcion(r) },
             ] : []),
             { type: 'divider' as const },
