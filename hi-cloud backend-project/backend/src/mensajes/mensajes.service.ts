@@ -89,11 +89,26 @@ export class MensajesService {
     `, [usuarioId, empresaId]);
   }
 
-  /** Conteo de mensajes no leídos (no archivados) para el badge del menú */
-  async getNoLeidosCount(usuarioId: number): Promise<number> {
+  /**
+   * Conteo de mensajes no leídos, desglosado por tipo — para el badge del
+   * menú (total) Y el de cada pestaña de la Bandeja.
+   *
+   * Antes devolvía un único número global (sin filtrar por m.tipo, a
+   * diferencia de getBandeja() y marcarTodosLeidos() de aquí abajo, que sí
+   * lo hacen) y BandejaPage.tsx lo pintaba pegado a la etiqueta "Principal"
+   * — un aviso sin leer se contaba igual que una novedad sin leer, así que
+   * el badge de "Principal" podía mostrar un no-leído que en realidad era
+   * una novedad, sin ningún indicador en la pestaña "Novedades" (que nunca
+   * tuvo badge propio). `total` sigue siendo el número correcto para el
+   * badge del sidebar, que sí representa la bandeja completa.
+   */
+  async getNoLeidosCount(usuarioId: number): Promise<{ principal: number; novedades: number; total: number }> {
     const empresaId = this.tenantService.getEmpresaId();
-    const [{ count }] = await this.ds.query(`
-      SELECT COUNT(*)::int AS count
+    const [{ principal, novedades, total }] = await this.ds.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE m.tipo = 'aviso')   ::int AS principal,
+        COUNT(*) FILTER (WHERE m.tipo = 'novedad') ::int AS novedades,
+        COUNT(*)                                   ::int AS total
       FROM mensajes m
       LEFT JOIN mensajes_lectura ml
         ON ml."mensajeId" = m.id AND ml."usuarioId" = $1
@@ -106,7 +121,7 @@ export class MensajesService {
         AND (ml."eliminadoEn" IS NULL)
         AND ${DESTINATARIO_FILTER}
     `, [usuarioId, empresaId]);
-    return count ?? 0;
+    return { principal: principal ?? 0, novedades: novedades ?? 0, total: total ?? 0 };
   }
 
   /**

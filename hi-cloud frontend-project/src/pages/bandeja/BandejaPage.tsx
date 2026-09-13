@@ -405,7 +405,12 @@ function PestanaContenido({
 
 export default function BandejaPage() {
   const [tab, setTab] = useState<'principal' | 'novedades' | 'archivo'>('principal');
-  const { data: count = 0 } = useNoLeidosCount();
+  // Desglosado por pestaña — antes era un solo número global que este badge
+  // de "Principal" mostraba aunque el no-leído fuera en realidad una
+  // novedad. "Novedades" no tenía badge propio; ahora sí.
+  const { data: noLeidos } = useNoLeidosCount();
+  const countPrincipal = noLeidos?.principal ?? 0;
+  const countNovedades = noLeidos?.novedades ?? 0;
 
   const items = [
     {
@@ -413,14 +418,19 @@ export default function BandejaPage() {
       label:    (
         <Space>
           Principal
-          {count > 0 && <Badge count={count} size="small" />}
+          {countPrincipal > 0 && <Badge count={countPrincipal} size="small" />}
         </Space>
       ),
       children: <PestanaContenido tab="principal" />,
     },
     {
       key:      'novedades',
-      label:    'Novedades',
+      label:    (
+        <Space>
+          Novedades
+          {countNovedades > 0 && <Badge count={countNovedades} size="small" />}
+        </Space>
+      ),
       children: <PestanaContenido tab="novedades" />,
     },
     {

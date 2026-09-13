@@ -326,7 +326,10 @@ export default function AppLayout() {
   // Una sola petición al entrar; se invalida manualmente al abrir bandeja o marcar leído.
   // Solo el contador del badge: el aviso de novedades lo da MensajeNotificador,
   // montado en la raíz (App.tsx) para que también cubra el POS y /super-admin.
-  const { data: noLeidosCount = 0 }       = useNoLeidosCount(!!user);
+  // .total: la bandeja completa (avisos + novedades) — el badge del sidebar
+  // representa "Bandeja de entrada" en conjunto, no una pestaña específica.
+  const { data: noLeidos }                = useNoLeidosCount(!!user);
+  const noLeidosCount                     = noLeidos?.total ?? 0;
   const queryClient                     = useQueryClient();
 
   const currentUserRole = user?.role ?? 'viewer';

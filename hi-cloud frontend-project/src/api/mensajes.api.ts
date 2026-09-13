@@ -68,11 +68,17 @@ export const mensajesApi = {
     api.get('/mensajes/bandeja', { params: { tab } }).then(r => unwrapList<MensajeBandeja>(r)),
 
   /**
-   * Conteo de mensajes no leídos para el badge del menú.
-   * El backend devuelve { success, data: { count: N }, timestamp }.
+   * Conteo de mensajes no leídos, desglosado por pestaña — antes era un
+   * único número global (sin distinguir aviso/novedad) que BandejaPage
+   * pintaba pegado a "Principal": una novedad sin leer subía ese badge
+   * aunque el mensaje estuviera en "Novedades", que nunca tuvo badge
+   * propio. `total` sigue siendo el correcto para el badge del sidebar.
+   * El backend devuelve { success, data: { principal, novedades, total }, timestamp }.
    */
   getNoLeidosCount: () =>
-    api.get('/mensajes/no-leidos-count').then(r => (unwrap<{ count: number }>(r)?.count ?? 0)),
+    api.get('/mensajes/no-leidos-count').then(r =>
+      unwrap<{ principal: number; novedades: number; total: number }>(r) ?? { principal: 0, novedades: 0, total: 0 },
+    ),
 
   /**
    * IDs de mensajes (de cualquier tipo) cuyo toast aún no se ha mostrado.

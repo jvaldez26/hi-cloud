@@ -33,9 +33,9 @@ export class MensajesController {
   }
 
   @Get('no-leidos-count')
-  @ApiOperation({ summary: 'Conteo de mensajes no leídos (para el badge del menú)' })
+  @ApiOperation({ summary: 'Conteo de mensajes no leídos, desglosado por pestaña (principal/novedades) y total' })
   getNoLeidosCount(@GetUser() usuario: User) {
-    return this.svc.getNoLeidosCount(usuario.id).then(count => ({ count }));
+    return this.svc.getNoLeidosCount(usuario.id);
   }
 
   @Get('no-vistos')
