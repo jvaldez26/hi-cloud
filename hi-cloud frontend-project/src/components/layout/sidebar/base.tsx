@@ -619,8 +619,10 @@ export function QuickItemComp({
         margin:         '1px 8px',
       }}
     >
-      {/* Contenedor de ícono 28×28 */}
+      {/* Contenedor de ícono 28×28 — relative para poder anclar el badge
+          encima cuando el sidebar está colapsado y la etiqueta no se ve. */}
       <span style={{
+        position: 'relative',
         width: 28, height: 28, borderRadius: 7, flexShrink: 0,
         background: active ? C.bgActive : C.iconBg,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -631,6 +633,18 @@ export function QuickItemComp({
           strokeWidth={active ? 2.2 : 1.8}
           style={{ color: active ? C.accent : hover ? C.text : C.iconColor }}
         />
+        {collapsed && !!item.badgeCount && item.badgeCount > 0 && (
+          <span style={{
+            position: 'absolute', top: -4, right: -4,
+            minWidth: 15, height: 15, borderRadius: 8,
+            background: '#ff4d4f', color: '#fff',
+            fontSize: 8.5, fontWeight: 700, lineHeight: '15px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '0 3px', boxShadow: '0 0 0 1.5px rgba(0,0,0,.15)',
+          }}>
+            {item.badgeCount > 99 ? '99+' : item.badgeCount}
+          </span>
+        )}
       </span>
 
       {!collapsed && (
