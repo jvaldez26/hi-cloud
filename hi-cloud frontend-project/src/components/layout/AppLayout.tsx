@@ -871,7 +871,16 @@ export default function AppLayout() {
 
   const SidebarContent = (
     <SidebarShell
-      collapsed={collapsed}
+      // El drawer móvil (más abajo) es un panel de ancho fijo (240px) que se
+      // desliza entero dentro/fuera de pantalla — nunca tuvo un estado
+      // "colapsado" propio. Con la preferencia de colapsado ahora
+      // sincronizada entre dispositivos, un usuario que colapsó el sidebar
+      // en su PC podía abrir el drawer en el celular y encontrarse el
+      // SidebarShell interno pintando solo 64px dentro del panel de 240px:
+      // el hueco restante dejaba ver el overlay oscuro de fondo, como una
+      // sombra vertical. En mobile no hay "modo colapsado" que mostrar, así
+      // que aquí siempre va expandido — solo el desktop respeta `collapsed`.
+      collapsed={isMobile ? false : collapsed}
       onCollapsed={setCollapsedSincronizado}
       tagline="ERP · DGII"
       itemsRapidos={itemsRapidosMenu}
