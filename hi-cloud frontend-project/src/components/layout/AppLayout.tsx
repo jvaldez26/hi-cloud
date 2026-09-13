@@ -269,6 +269,29 @@ export default function AppLayout() {
   const { collapsed, setCollapsed: setCollapsedPersisted } =
     useSidebarColapsado('hicloud-sidebar-collapsed');
 
+  // Sincroniza esa preferencia entre dispositivos vía backend — localStorage es
+  // solo el pintado inicial (sin esperar red) de ESTE dispositivo; sin esto,
+  // colapsar el menú en la PC de la oficina no se reflejaba al entrar desde el
+  // celular. Se reconcilia una sola vez al llegar la respuesta (porDefecto:true
+  // significa que el usuario nunca lo ha tocado en ningún dispositivo — ahí se
+  // respeta lo que ya había en localStorage en vez de forzar "expandido").
+  const { data: prefSidebar } = useQuery({
+    queryKey: ['preferencias-sidebar-colapsado'],
+    queryFn:  () => api.get('/preferencias/sidebar-colapsado').then(r => r.data?.data ?? r.data),
+    staleTime: 60_000,
+  });
+  useEffect(() => {
+    if (prefSidebar && !prefSidebar.porDefecto && prefSidebar.colapsado !== collapsed) {
+      setCollapsedPersisted(prefSidebar.colapsado);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefSidebar]);
+
+  const setCollapsedSincronizado = useCallback((next: boolean) => {
+    setCollapsedPersisted(next);
+    api.put('/preferencias/sidebar-colapsado', { colapsado: next }).catch(() => {});
+  }, [setCollapsedPersisted]);
+
   const [cmdOpen,         setCmdOpen]         = useState(false);
   const [helpOpen,        setHelpOpen]        = useState(false);
   const [mobileOpen,      setMobileOpen]      = useState(false);
@@ -846,7 +869,7 @@ export default function AppLayout() {
   const SidebarContent = (
     <SidebarShell
       collapsed={collapsed}
-      onCollapsed={setCollapsedPersisted}
+      onCollapsed={setCollapsedSincronizado}
       tagline="ERP · DGII"
       itemsRapidos={itemsRapidosMenu}
       gruposAddon={addonCats}

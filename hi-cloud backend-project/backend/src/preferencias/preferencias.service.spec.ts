@@ -178,6 +178,67 @@ describe('PreferenciasService — widgets del dashboard', () => {
   });
 });
 
+/**
+ * El sidebar colapsado/expandido vivía SOLO en localStorage: colapsarlo en
+ * la PC de la oficina no se reflejaba al entrar desde el celular. Mismo
+ * (usuario, empresa, clave) que los widgets del dashboard, sin migración.
+ */
+describe('PreferenciasService — sidebar colapsado', () => {
+  const USER    = 94;
+  const EMPRESA = 61;
+
+  const crear = (fila: any = null) => {
+    const repo = {
+      findOne: jest.fn().mockResolvedValue(fila),
+      upsert:  jest.fn().mockResolvedValue({}),
+    };
+    const svc: any = Object.create(PreferenciasService.prototype);
+    svc.logger = { warn: jest.fn(), log: jest.fn(), error: jest.fn() };
+    svc.repo   = repo;
+    svc.tenantService = { getUserId: () => USER, getEmpresaId: () => EMPRESA };
+    return { svc, repo };
+  };
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it('quien nunca lo ha tocado recibe expandido (false) y porDefecto:true', async () => {
+    const { svc } = crear(null);
+    await expect(svc.getSidebarColapsado()).resolves.toEqual({ colapsado: false, porDefecto: true });
+  });
+
+  it('devuelve lo guardado', async () => {
+    const { svc } = crear({ valor: true });
+    await expect(svc.getSidebarColapsado()).resolves.toEqual({ colapsado: true, porDefecto: false });
+  });
+
+  it('busca por usuario Y empresa — dos empresas del mismo contador pueden diferir', async () => {
+    const { svc, repo } = crear(null);
+    await svc.getSidebarColapsado();
+
+    expect(repo.findOne).toHaveBeenCalledWith({
+      where: { userId: USER, empresaId: EMPRESA, clave: 'sidebar.colapsado', isActive: true },
+    });
+  });
+
+  it('guarda contra (usuario, empresa, clave) — upsert, no crea duplicados', async () => {
+    const { svc, repo } = crear(null);
+    await expect(svc.setSidebarColapsado(true)).resolves.toEqual({ colapsado: true });
+
+    expect(repo.upsert).toHaveBeenCalledWith(
+      { userId: USER, empresaId: EMPRESA, clave: 'sidebar.colapsado', valor: true, isActive: true },
+      expect.objectContaining({ conflictPaths: ['userId', 'empresaId', 'clave'] }),
+    );
+  });
+
+  it('sin usuario en contexto no se toca ninguna fila', async () => {
+    const { svc, repo } = crear(null);
+    svc.tenantService.getUserId = () => null;
+
+    await expect(svc.setSidebarColapsado(true)).rejects.toThrow(/usuario/i);
+    expect(repo.upsert).not.toHaveBeenCalled();
+  });
+});
+
 describe('catalogo de widgets', () => {
   it('los defaults existen en el catalogo', () => {
     const slugs = CATALOGO_WIDGETS.map(w => w.slug);

@@ -6,6 +6,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
 import { PreferenciasService } from './preferencias.service';
 import { SetWidgetsDto } from './dto/set-widgets.dto';
+import { SetSidebarColapsadoDto } from './dto/set-sidebar-colapsado.dto';
 
 @ApiTags('Preferencias de usuario')
 @ApiBearerAuth('access-token')
@@ -36,5 +37,23 @@ export class PreferenciasController {
   })
   setDashboardWidgets(@Body() dto: SetWidgetsDto) {
     return this.svc.setWidgetsDashboard(dto.widgets);
+  }
+
+  @Get('sidebar-colapsado')
+  @ApiOperation({
+    summary: 'Preferencia de sidebar colapsado/expandido para el usuario y la empresa actuales',
+    description:
+      'Sincroniza entre dispositivos: sin esto, colapsar el menú en un equipo no se ' +
+      'reflejaba al entrar desde otro. `porDefecto: true` si nunca lo ha tocado.',
+  })
+  getSidebarColapsado() {
+    return this.svc.getSidebarColapsado();
+  }
+
+  @Put('sidebar-colapsado')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Guardar la preferencia de sidebar colapsado/expandido' })
+  setSidebarColapsado(@Body() dto: SetSidebarColapsadoDto) {
+    return this.svc.setSidebarColapsado(dto.colapsado);
   }
 }

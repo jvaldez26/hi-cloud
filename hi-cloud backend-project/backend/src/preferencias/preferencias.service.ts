@@ -13,6 +13,9 @@ import {
   widgetPermitido,
 } from './dashboard-widgets.catalogo';
 
+/** Sin migración, mismo criterio que CLAVE_DASHBOARD_WIDGETS: una fila más en preferencias_usuario. */
+const CLAVE_SIDEBAR_COLAPSADO = 'sidebar.colapsado';
+
 @Injectable()
 export class PreferenciasService {
   private readonly logger = new Logger(PreferenciasService.name);
@@ -81,6 +84,40 @@ export class PreferenciasService {
     );
 
     return { widgets: limpios };
+  }
+
+  // ── Sidebar: colapsado o expandido, sincronizado entre dispositivos ────────
+
+  /**
+   * Preferencia del sidebar (colapsado/expandido) para este usuario en esta
+   * empresa. Antes vivía SOLO en localStorage: cada dispositivo tenía su
+   * propia preferencia, y un usuario que colapsaba el menú en su PC lo veía
+   * expandido de nuevo al entrar desde el celular. `porDefecto: true` cuando
+   * nunca lo ha tocado — el frontend sigue arrancando desde localStorage
+   * (primer pintado sin esperar red) y reconcilia con esto en cuanto responde.
+   */
+  async getSidebarColapsado(): Promise<{ colapsado: boolean; porDefecto: boolean }> {
+    const userId    = this.exigirUserId();
+    const empresaId = this.tenantService.getEmpresaId();
+
+    const fila = await this.repo.findOne({
+      where: { userId, empresaId, clave: CLAVE_SIDEBAR_COLAPSADO, isActive: true },
+    });
+
+    if (!fila) return { colapsado: false, porDefecto: true };
+    return { colapsado: fila.valor === true, porDefecto: false };
+  }
+
+  async setSidebarColapsado(colapsado: boolean): Promise<{ colapsado: boolean }> {
+    const userId    = this.exigirUserId();
+    const empresaId = this.tenantService.getEmpresaId();
+
+    await this.repo.upsert(
+      { userId, empresaId, clave: CLAVE_SIDEBAR_COLAPSADO, valor: colapsado, isActive: true },
+      { conflictPaths: ['userId', 'empresaId', 'clave'], skipUpdateIfNoValuesChanged: true },
+    );
+
+    return { colapsado };
   }
 
   // ── Validacion ────────────────────────────────────────────────────────────
