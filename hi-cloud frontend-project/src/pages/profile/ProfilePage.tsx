@@ -255,7 +255,6 @@ function UsernameSection() {
           onChange={e => setValor(e.target.value)}
           placeholder="caja01"
           maxLength={30}
-          prefix={<span style={{ color: '#9CA3AF' }}>@</span>}
         />
         <Button
           type="primary"
@@ -275,7 +274,7 @@ function UsernameSection() {
         {estado === 'disponible'  && <Text style={{ color: '#16a34a' }}>✓ Disponible</Text>}
         {estado === 'ocupado'     && <Text type="danger">✕ Este nombre de usuario ya está en uso.</Text>}
         {estado === 'idle' && actual && (
-          <Text type="secondary">Actual: <strong>@{actual}</strong></Text>
+          <Text type="secondary">Actual: <strong>{actual}</strong></Text>
         )}
       </div>
     </Card>
