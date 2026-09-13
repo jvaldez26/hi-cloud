@@ -34,12 +34,12 @@ export class AcademicoService {
     const [row] = await this.ds.query<any[]>(
       `INSERT INTO ed_evaluaciones (
          "empresaId","seccionId","asignaturaId","periodoId",
-         nombre, tipo, fecha, "valorMaximo", porcentaje
+         nombre, tipo, fecha, "puntajeMaximo", ponderacion
        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
       [
         empresaId, dto.seccionId, dto.asignaturaId, dto.periodoId ?? null,
         dto.nombre, dto.tipo ?? 'evaluacion',
-        dto.fecha ?? null, dto.valorMaximo ?? 100, dto.porcentaje ?? 100,
+        dto.fecha ?? null, dto.puntajeMaximo ?? 100, dto.ponderacion ?? 100,
       ],
     );
     return row;
@@ -51,7 +51,7 @@ export class AcademicoService {
       [id, empresaId],
     );
     if (!exists) throw new NotFoundException('Evaluación no encontrada');
-    const FIELDS = ['nombre', 'tipo', 'fecha', 'valorMaximo', 'porcentaje', 'isActive'];
+    const FIELDS = ['nombre', 'tipo', 'fecha', 'puntajeMaximo', 'ponderacion', 'estado'];
     const fields = FIELDS.filter(f => dto[f] !== undefined);
     if (!fields.length) return exists;
     const sets = fields.map((f, i) => `"${f}" = $${i + 3}`).join(', ');
@@ -132,7 +132,7 @@ export class AcademicoService {
     );
 
     const registros = await this.ds.query<any[]>(
-      `SELECT a."estudianteId", a.estado, a.observaciones, a.id
+      `SELECT a."estudianteId", a.estado, a.justificacion, a.id
        FROM ed_asistencia a
        WHERE a."seccionId" = $1 AND a.fecha = $2 AND a."empresaId" = $3`,
       [seccionId, fecha, empresaId],
@@ -149,10 +149,17 @@ export class AcademicoService {
     items: Array<{ estudianteId: number; estado: string; observaciones?: string }>) {
     let saved = 0;
     for (const item of items) {
+      // El UNIQUE real de ed_asistencia es ("estudianteId", fecha, "asignaturaId"),
+      // no ("estudianteId","seccionId",fecha) — este endpoint es por sección/día y
+      // no recibe asignaturaId, así que queda NULL en cada fila. Postgres nunca
+      // considera dos NULL como iguales para efectos de UNIQUE, por lo que el
+      // ON CONFLICT de abajo no evitará filas duplicadas al reenviar la misma
+      // asistencia (no revienta con error de Postgres, pero no es idempotente).
+      // Documentado en el README del módulo; no se rediseña aquí.
       await this.ds.query(
-        `INSERT INTO ed_asistencia ("empresaId","estudianteId","seccionId",fecha,estado,observaciones)
+        `INSERT INTO ed_asistencia ("empresaId","estudianteId","seccionId",fecha,estado,justificacion)
          VALUES ($1,$2,$3,$4,$5,$6)
-         ON CONFLICT ("estudianteId","seccionId",fecha) DO UPDATE SET estado = $5, observaciones = $6`,
+         ON CONFLICT ("estudianteId", fecha, "asignaturaId") DO UPDATE SET estado = $5, justificacion = $6`,
         [empresaId, item.estudianteId, seccionId, fecha, item.estado, item.observaciones ?? null],
       );
       saved++;

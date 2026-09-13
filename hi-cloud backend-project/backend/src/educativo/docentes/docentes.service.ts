@@ -7,7 +7,7 @@ export class DocentesService {
   constructor(@InjectDataSource() private readonly ds: DataSource) {}
 
   async list(empresaId: number, q?: string) {
-    const conds: string[] = [`"empresaId" = $1`];
+    const conds: string[] = [`d."empresaId" = $1`];
     const params: any[] = [empresaId];
     if (q) {
       conds.push(`(nombres ILIKE $2 OR apellidos ILIKE $2 OR cedula ILIKE $2 OR especialidad ILIKE $2)`);
@@ -17,7 +17,7 @@ export class DocentesService {
       `SELECT d.*,
               COUNT(DISTINCT sm."seccionId")::int AS "totalSecciones"
        FROM ed_docentes d
-       LEFT JOIN ed_seccion_materias sm ON sm."docenteId" = d.id
+       LEFT JOIN ed_asignaciones_docente sm ON sm."docenteId" = d.id
        WHERE ${conds.join(' AND ')}
        GROUP BY d.id
        ORDER BY d.apellidos, d.nombres`,
@@ -35,7 +35,7 @@ export class DocentesService {
     const secciones = await this.ds.query<any[]>(
       `SELECT sm.*, s.nombre AS "seccionNombre", g.nombre AS "gradoNombre",
               a.nombre AS "asignaturaNombre"
-       FROM ed_seccion_materias sm
+       FROM ed_asignaciones_docente sm
        JOIN ed_secciones s ON s.id = sm."seccionId"
        LEFT JOIN ed_grados g ON g.id = s."gradoId"
        LEFT JOIN ed_asignaturas a ON a.id = sm."asignaturaId"

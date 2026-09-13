@@ -7,7 +7,7 @@ export class TutoresService {
   constructor(@InjectDataSource() private readonly ds: DataSource) {}
 
   async list(empresaId: number, q?: string) {
-    const conds: string[] = [`"empresaId" = $1`];
+    const conds: string[] = [`t."empresaId" = $1`];
     const params: any[] = [empresaId];
     if (q) {
       conds.push(`(nombres ILIKE $2 OR apellidos ILIKE $2 OR cedula ILIKE $2 OR telefono ILIKE $2)`);

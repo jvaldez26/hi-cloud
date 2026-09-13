@@ -16,33 +16,45 @@ export class EdConfigService {
     return row ?? null;
   }
 
+  /**
+   * El código original asumía un diseño de tabla (branding institucional:
+   * nombreInstitucion, director, logoUrl, colores) que nunca existió en
+   * Postgres — la tabla real es de configuración académica/de notas
+   * (nombreCentro, codigoMinerd, escalas, periodos, moneda de colegiatura),
+   * que es la que usan academico.service.ts y colegiatura.service.ts. Se
+   * reescribe upsertConfig() contra el esquema real; no se migra la tabla.
+   */
   async upsertConfig(empresaId: number, dto: any) {
     const d = (k: string) => dto[k] ?? null;
+    // escalaLetras es JSONB (arreglo). Si se serializa como array JS, el driver
+    // de pg lo manda como literal ARRAY de Postgres ("{...}"), no como JSON —
+    // por eso se convierte a texto JSON explícitamente antes de enviarlo.
+    const escalaLetras = dto.escalaLetras != null ? JSON.stringify(dto.escalaLetras) : null;
     await this.ds.query(
       `INSERT INTO ed_config (
-         "empresaId", "nombreInstitucion", siglas, "logoUrl", "nivelEducativo",
-         director, vicedirector, secretaria, direccion, telefono, email,
-         "sitioWeb", "colorPrimario", "colorSecundario"
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         "empresaId", "nombreCentro", "codigoMinerd", regional, "distritoEducativo",
+         "escalaMinima", "escalaMaxima", "notaMinimaAprobar", "usaLetras", "escalaLetras",
+         "cantidadPeriodos", "tipoPeriodo", "monedaColegiatura"
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
        ON CONFLICT ("empresaId") DO UPDATE SET
-         "nombreInstitucion" = EXCLUDED."nombreInstitucion",
-         siglas              = EXCLUDED.siglas,
-         "logoUrl"           = EXCLUDED."logoUrl",
-         "nivelEducativo"    = EXCLUDED."nivelEducativo",
-         director            = EXCLUDED.director,
-         vicedirector        = EXCLUDED.vicedirector,
-         secretaria          = EXCLUDED.secretaria,
-         direccion           = EXCLUDED.direccion,
-         telefono            = EXCLUDED.telefono,
-         email               = EXCLUDED.email,
-         "sitioWeb"          = EXCLUDED."sitioWeb",
-         "colorPrimario"     = EXCLUDED."colorPrimario",
-         "colorSecundario"   = EXCLUDED."colorSecundario"`,
+         "nombreCentro"       = EXCLUDED."nombreCentro",
+         "codigoMinerd"       = EXCLUDED."codigoMinerd",
+         regional             = EXCLUDED.regional,
+         "distritoEducativo"  = EXCLUDED."distritoEducativo",
+         "escalaMinima"       = EXCLUDED."escalaMinima",
+         "escalaMaxima"       = EXCLUDED."escalaMaxima",
+         "notaMinimaAprobar"  = EXCLUDED."notaMinimaAprobar",
+         "usaLetras"          = EXCLUDED."usaLetras",
+         "escalaLetras"       = EXCLUDED."escalaLetras",
+         "cantidadPeriodos"   = EXCLUDED."cantidadPeriodos",
+         "tipoPeriodo"        = EXCLUDED."tipoPeriodo",
+         "monedaColegiatura"  = EXCLUDED."monedaColegiatura"`,
       [
         empresaId,
-        d('nombreInstitucion'), d('siglas'), d('logoUrl'), d('nivelEducativo'),
-        d('director'), d('vicedirector'), d('secretaria'), d('direccion'),
-        d('telefono'), d('email'), d('sitioWeb'), d('colorPrimario'), d('colorSecundario'),
+        d('nombreCentro'), d('codigoMinerd'), d('regional'), d('distritoEducativo'),
+        dto.escalaMinima ?? 0, dto.escalaMaxima ?? 100, dto.notaMinimaAprobar ?? 70,
+        dto.usaLetras ?? false, escalaLetras,
+        dto.cantidadPeriodos ?? 4, dto.tipoPeriodo ?? 'trimestre', dto.monedaColegiatura ?? 'DOP',
       ],
     );
     return this.getConfig(empresaId);

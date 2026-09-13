@@ -80,14 +80,14 @@ export class EstudiantesService {
     const [row] = await this.ds.query<any[]>(
       `INSERT INTO ed_estudiantes (
          "empresaId", nombres, apellidos, sexo, "fechaNacimiento", cedula, foto,
-         direccion, telefono, email, "grupoSanguineo", alergias, condiciones, notas
+         direccion, telefono, email, "tipoSangre", alergias, "condicionesMedicas", observaciones
        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
       [
         empresaId, dto.nombres, dto.apellidos,
         dto.sexo ?? null, dto.fechaNacimiento ?? null, dto.cedula ?? null,
         dto.foto ?? null, dto.direccion ?? null, dto.telefono ?? null,
-        dto.email ?? null, dto.grupoSanguineo ?? null,
-        dto.alergias ?? null, dto.condiciones ?? null, dto.notas ?? null,
+        dto.email ?? null, dto.tipoSangre ?? null,
+        dto.alergias ?? null, dto.condicionesMedicas ?? null, dto.observaciones ?? null,
       ],
     );
     return row;
@@ -101,8 +101,8 @@ export class EstudiantesService {
     if (!exists) throw new NotFoundException('Estudiante no encontrado');
     const FIELDS = [
       'nombres', 'apellidos', 'sexo', 'fechaNacimiento', 'cedula', 'foto',
-      'direccion', 'telefono', 'email', 'grupoSanguineo', 'alergias',
-      'condiciones', 'notas', 'isActive',
+      'direccion', 'telefono', 'email', 'tipoSangre', 'alergias',
+      'condicionesMedicas', 'observaciones', 'isActive',
     ];
     const fields = FIELDS.filter(f => dto[f] !== undefined);
     if (!fields.length) return this.findOne(empresaId, id);
@@ -121,10 +121,10 @@ export class EstudiantesService {
     );
     if (!est) throw new NotFoundException('Estudiante no encontrado');
     await this.ds.query(
-      `INSERT INTO ed_estudiante_tutores ("estudianteId","tutorId","esPrincipal")
-       VALUES ($1,$2,$3)
-       ON CONFLICT ("estudianteId","tutorId") DO UPDATE SET "esPrincipal" = $3`,
-      [estudianteId, tutorId, esPrincipal ?? false],
+      `INSERT INTO ed_estudiante_tutores ("empresaId","estudianteId","tutorId","esPrincipal")
+       VALUES ($1,$2,$3,$4)
+       ON CONFLICT ("estudianteId","tutorId") DO UPDATE SET "esPrincipal" = $4`,
+      [empresaId, estudianteId, tutorId, esPrincipal ?? false],
     );
     return this.findOne(empresaId, estudianteId);
   }

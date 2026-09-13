@@ -84,7 +84,7 @@ export class MatriculasService {
     const [row] = await this.ds.query<any[]>(
       `INSERT INTO ed_matriculas (
          "empresaId", "estudianteId", "anioEscolarId", "gradoId", "seccionId",
-         "fechaMatricula", estado, "tipoBeca", "porcentajeBeca", observaciones
+         "fechaMatricula", estado, "becaId", "descuentoBeca", notas
        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
       [
         empresaId,
@@ -94,9 +94,10 @@ export class MatriculasService {
         dto.seccionId ?? null,
         dto.fechaMatricula ?? fechaHoyRD(),
         dto.estado ?? 'activa',
-        dto.tipoBeca ?? 'ninguna',
-        dto.porcentajeBeca ?? 0,
-        dto.observaciones ?? null,
+        // becaId es FK a ed_becas (no un enum de texto): sin beca es NULL, no 'ninguna'.
+        dto.becaId ?? null,
+        dto.descuentoBeca ?? 0,
+        dto.notas ?? null,
       ],
     );
     return this.findOne(empresaId, row.id);
@@ -110,7 +111,7 @@ export class MatriculasService {
     if (!exists) throw new NotFoundException('Matrícula no encontrada');
 
     const FIELDS = ['gradoId', 'seccionId', 'anioEscolarId', 'fechaMatricula',
-                    'estado', 'tipoBeca', 'porcentajeBeca', 'observaciones'];
+                    'estado', 'becaId', 'descuentoBeca', 'notas'];
     const fields = FIELDS.filter(f => dto[f] !== undefined);
     if (!fields.length) return this.findOne(empresaId, id);
     const sets = fields.map((f, i) => `"${f}" = $${i + 3}`).join(', ');
@@ -130,9 +131,9 @@ export class MatriculasService {
     const [resumen] = await this.ds.query<any[]>(
       `SELECT
          COUNT(*)::int AS total,
-         COUNT(*) FILTER (WHERE m."tipoBeca" != 'ninguna')::int AS "conBeca",
-         COUNT(*) FILTER (WHERE m.sexo = 'M')::int AS masculinos,
-         COUNT(*) FILTER (WHERE m.sexo = 'F')::int AS femeninos
+         COUNT(*) FILTER (WHERE m."becaId" IS NOT NULL)::int AS "conBeca",
+         COUNT(*) FILTER (WHERE e.sexo = 'M')::int AS masculinos,
+         COUNT(*) FILTER (WHERE e.sexo = 'F')::int AS femeninos
        FROM ed_matriculas m
        JOIN ed_estudiantes e ON e.id = m."estudianteId"
        WHERE ${where}`,
