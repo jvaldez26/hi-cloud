@@ -55,6 +55,35 @@ export class UsersService implements OnModuleInit {
       .getOne();
   }
 
+  /** Igual que findByEmailForAuth pero busca por username — mismo LOWER() en
+   *  ambos lados: el username se guarda ya normalizado a minúsculas, pero el
+   *  lookup debe tolerar cualquier capitalización que teclee la persona.
+   *  Usado únicamente por AuthService.login() cuando el identificador
+   *  ingresado no contiene '@'. */
+  findByUsernameForAuth(username: string) {
+    return this.userRepository
+      .createQueryBuilder('u')
+      .addSelect('u.password')
+      .addSelect('u.sessionToken')
+      .where('LOWER(u.username) = LOWER(:username)', { username })
+      .getOne();
+  }
+
+  /**
+   * ¿Está libre este username? Excluye siempre al propio usuario autenticado
+   * (para que revisar tu username actual no diga "ocupado"). Responde SOLO
+   * disponible: true/false — nunca a quién pertenece uno ocupado, para que
+   * el endpoint no sirva de enumerador de quién trabaja dónde.
+   */
+  async isUsernameDisponible(username: string, excludeUserId: number): Promise<boolean> {
+    const existente = await this.userRepository
+      .createQueryBuilder('u')
+      .where('LOWER(u.username) = LOWER(:username)', { username })
+      .andWhere('u.id != :excludeUserId', { excludeUserId })
+      .getOne();
+    return !existente;
+  }
+
   /**
    * Usuario por id, SIN secretos (sessionToken incluido — la columna es
    * select:false). Es la variante segura: úsala salvo que necesites validar o

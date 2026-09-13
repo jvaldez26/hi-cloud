@@ -12,6 +12,21 @@ export class User extends BaseEntity {
   @Column({ unique: true, length: 150 })
   email!: string;
 
+  /**
+   * Alias de acceso opcional — NO es una identidad nueva. Verificación de
+   * cuenta, recuperación de contraseña, notificaciones y Google OAuth siguen
+   * colgando exclusivamente de `email`; username solo resuelve a un usuario
+   * al iniciar sesión (ver AuthService.login()).
+   *
+   * Único GLOBALMENTE (no por empresa) y case-insensitive: la garantía real
+   * vive en el índice único parcial sobre LOWER(username) de la migración
+   * 1763100000000, no aquí — `unique: true` a nivel de columna exigiría
+   * coincidencia exacta de mayúsculas, que es justo lo que no queremos.
+   * Se guarda siempre en minúsculas (ver SetUsernameDto).
+   */
+  @Column({ length: 30, nullable: true })
+  username?: string;
+
   @Column({ select: false })
   password!: string;
 

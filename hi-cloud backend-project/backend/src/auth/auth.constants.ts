@@ -37,3 +37,27 @@ export const COOKIE_JWT_BUFFER_MS = 5 * 60_000;
  * jwt-expiry.spec.ts falla si dejan de coincidir.
  */
 export const JWT_EXPIRES_IN_DEFAULT_MS = 15 * 60_000;
+
+// ── Username (login alterno) ──────────────────────────────────────────────────
+
+export const USERNAME_MIN_LENGTH = 4;
+export const USERNAME_MAX_LENGTH = 30;
+
+/** Solo ASCII a propósito: rechaza por construcción acentos, homoglifos y
+ *  caracteres invisibles (espacios de ancho cero, marcas combinantes) sin
+ *  necesidad de normalización Unicode aparte — ninguno de esos cae en este
+ *  rango. */
+export const USERNAME_REGEX = /^[a-z0-9._-]+$/;
+
+/**
+ * Nombres bloqueados — únicos, en minúsculas (la comparación siempre corre
+ * sobre el username ya normalizado a minúsculas).
+ *
+ * `hiccloud` con doble c es intencional: los nombres parecidos a la marca
+ * son justamente los que hay que bloquear para que nadie se haga pasar por
+ * soporte.
+ */
+export const USERNAME_RESERVADOS: readonly string[] = [
+  'admin', 'administrator', 'root', 'system', 'superadmin', 'support', 'soporte',
+  'hicloud', 'hiccloud', 'api', 'dgii', 'contabilidad', 'info', 'noreply', 'test',
+];

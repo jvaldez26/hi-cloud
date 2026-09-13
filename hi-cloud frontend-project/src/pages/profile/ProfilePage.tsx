@@ -11,6 +11,7 @@ import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/es';
 import { dRD } from '../../utils/fechaRD';
+import { useDebounce } from '../../hooks/useDebounce';
 dayjs.extend(relativeTime);
 dayjs.locale('es');
 
@@ -188,6 +189,95 @@ function TwoFactorSection() {
           </Space>
         )}
       </Modal>
+    </Card>
+  );
+}
+
+// ─── Sección de nombre de usuario ─────────────────────────────────────────────
+
+/**
+ * Alias de acceso opcional para entrar sin teclear el correo completo —
+ * pensado para cajeros/vendedores que inician sesión varias veces al día
+ * desde una pantalla táctil. NO reemplaza el correo como identidad: sigue
+ * pudiendo entrar con su email de siempre.
+ *
+ * La disponibilidad se revisa en vivo con debounce (una consulta cuando la
+ * persona deja de teclear, no una por tecla) contra
+ * GET /auth/username-disponible, que además excluye siempre al propio
+ * usuario — así el username actual nunca aparece como "ocupado".
+ */
+function UsernameSection() {
+  const { user, updateUser } = useAuthStore();
+  const [valor, setValor]     = useState(user?.username ?? '');
+  const valorDebounced        = useDebounce(valor.trim().toLowerCase(), 400);
+  const actual                = user?.username ?? '';
+
+  const FORMATO_OK = /^[a-z0-9._-]{4,30}$/.test(valorDebounced);
+  const cambio      = valorDebounced !== actual.toLowerCase() && valorDebounced.length > 0;
+
+  const { data: disponibilidad, isFetching: comprobando } = useQuery({
+    queryKey: ['username-disponible', valorDebounced],
+    queryFn:  () => api.get('/auth/username-disponible', { params: { valor: valorDebounced } })
+      .then(r => (r.data?.data ?? r.data) as { disponible: boolean }),
+    enabled:  FORMATO_OK && cambio,
+    staleTime: 0,
+  });
+
+  const guardarMut = useMutation({
+    mutationFn: (username: string) => api.patch('/auth/username', { username }).then(r => r.data?.data ?? r.data),
+    onSuccess: (data: any) => {
+      updateUser({ username: data.username });
+      message.success('Nombre de usuario actualizado');
+    },
+    onError: (e: any) => {
+      const msg = e?.response?.data?.errors?.[0] ?? e?.response?.data?.message ?? 'No se pudo guardar el nombre de usuario';
+      message.error(msg);
+    },
+  });
+
+  let estado: 'idle' | 'formato' | 'comprobando' | 'disponible' | 'ocupado' = 'idle';
+  if (cambio) {
+    if (!FORMATO_OK) estado = 'formato';
+    else if (comprobando) estado = 'comprobando';
+    else if (disponibilidad) estado = disponibilidad.disponible ? 'disponible' : 'ocupado';
+  }
+
+  return (
+    <Card title={<><UserOutlined /> Nombre de usuario</>} style={{ marginTop: 16 }}>
+      <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 12 }}>
+        Opcional — te permite entrar con un nombre corto en vez del correo completo.
+        Tu correo sigue funcionando igual para iniciar sesión.
+      </Text>
+
+      <Space.Compact style={{ width: '100%', maxWidth: 360 }}>
+        <Input
+          value={valor}
+          onChange={e => setValor(e.target.value)}
+          placeholder="caja01"
+          maxLength={30}
+          prefix={<span style={{ color: '#9CA3AF' }}>@</span>}
+        />
+        <Button
+          type="primary"
+          disabled={estado !== 'disponible'}
+          loading={guardarMut.isPending}
+          onClick={() => guardarMut.mutate(valorDebounced)}
+        >
+          Guardar
+        </Button>
+      </Space.Compact>
+
+      <div style={{ marginTop: 8, minHeight: 20, fontSize: 13 }}>
+        {estado === 'formato' && (
+          <Text type="danger">4-30 caracteres: solo letras, números, punto, guion y guion bajo — sin espacios ni acentos.</Text>
+        )}
+        {estado === 'comprobando' && <Text type="secondary">Comprobando disponibilidad…</Text>}
+        {estado === 'disponible'  && <Text style={{ color: '#16a34a' }}>✓ Disponible</Text>}
+        {estado === 'ocupado'     && <Text type="danger">✕ Este nombre de usuario ya está en uso.</Text>}
+        {estado === 'idle' && actual && (
+          <Text type="secondary">Actual: <strong>@{actual}</strong></Text>
+        )}
+      </div>
     </Card>
   );
 }
@@ -718,6 +808,8 @@ export default function ProfilePage() {
               </Button>
             </Form>
           </Card>
+
+          <UsernameSection />
 
           <TwoFactorSection />
 

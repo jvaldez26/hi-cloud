@@ -4,7 +4,11 @@ import type { Cache } from 'cache-manager';
 
 /**
  * Bloqueo progresivo por intentos fallidos de login.
- * Clave: email (normalizado) + IP — cada combinación tiene su propio contador.
+ * Clave: identificador (normalizado) + IP — cada combinación tiene su propio
+ * contador. El identificador es el email o el username tal cual se intentó
+ * el login (o, si AuthService.login() ya resolvió una cuenta real, su email
+ * canónico — así alternar "juan@x.com"/"juan" contra la MISMA cuenta no abre
+ * dos cubetas distintas para esquivar el bloqueo).
  * Usa CACHE_MANAGER (Redis en producción) para persistir contadores y bloqueos.
  *
  * El umbral de bloqueo (maxIntentos) es configurable por empresa en
@@ -16,44 +20,44 @@ import type { Cache } from 'cache-manager';
 export class LoginAttemptsService {
   constructor(@Inject(CACHE_MANAGER) private cache: Cache) {}
 
-  private attemptsKey(email: string, ip: string): string {
-    return `login_attempts:${email.toLowerCase()}:${ip}`;
+  private attemptsKey(identificador: string, ip: string): string {
+    return `login_attempts:${identificador.toLowerCase()}:${ip}`;
   }
 
-  private blockedKey(email: string, ip: string): string {
-    return `login_blocked:${email.toLowerCase()}:${ip}`;
+  private blockedKey(identificador: string, ip: string): string {
+    return `login_blocked:${identificador.toLowerCase()}:${ip}`;
   }
 
-  async isBlocked(email: string, ip: string): Promise<{ blocked: boolean; remainingSeconds?: number }> {
-    const data = await this.cache.get<{ blockedUntil: number }>(this.blockedKey(email, ip));
+  async isBlocked(identificador: string, ip: string): Promise<{ blocked: boolean; remainingSeconds?: number }> {
+    const data = await this.cache.get<{ blockedUntil: number }>(this.blockedKey(identificador, ip));
     if (data && data.blockedUntil > Date.now()) {
       return { blocked: true, remainingSeconds: Math.ceil((data.blockedUntil - Date.now()) / 1000) };
     }
     return { blocked: false };
   }
 
-  async increment(email: string, ip: string): Promise<number> {
-    const key     = this.attemptsKey(email, ip);
+  async increment(identificador: string, ip: string): Promise<number> {
+    const key     = this.attemptsKey(identificador, ip);
     const current = (await this.cache.get<number>(key)) ?? 0;
     const newVal  = current + 1;
     await this.cache.set(key, newVal, 86_400_000); // 24h en ms
     return newVal;
   }
 
-  async reset(email: string, ip: string): Promise<void> {
-    await this.cache.del(this.attemptsKey(email, ip));
-    await this.cache.del(this.blockedKey(email, ip));
+  async reset(identificador: string, ip: string): Promise<void> {
+    await this.cache.del(this.attemptsKey(identificador, ip));
+    await this.cache.del(this.blockedKey(identificador, ip));
   }
 
   /**
    * Aplica bloqueo progresivo si el número de intentos supera maxIntentos.
    * @param maxIntentos - umbral configurable por empresa [3-10], default 5.
    */
-  async block(email: string, ip: string, attempts: number, maxIntentos = 5): Promise<number> {
+  async block(identificador: string, ip: string, attempts: number, maxIntentos = 5): Promise<number> {
     const blockSeconds = this.getBlockDuration(attempts, maxIntentos);
     if (blockSeconds > 0) {
       const blockedUntil = Date.now() + blockSeconds * 1000;
-      await this.cache.set(this.blockedKey(email, ip), { blockedUntil }, blockSeconds * 1000);
+      await this.cache.set(this.blockedKey(identificador, ip), { blockedUntil }, blockSeconds * 1000);
     }
     return blockSeconds;
   }

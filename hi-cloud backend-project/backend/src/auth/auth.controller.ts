@@ -1,5 +1,5 @@
 import {
-  Controller, Post, Get, Patch, Delete, Body, Param, ParseIntPipe,
+  Controller, Post, Get, Patch, Delete, Body, Param, Query, ParseIntPipe,
   HttpCode, HttpStatus, UseGuards, Req, Res, BadRequestException,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
@@ -10,6 +10,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { SetUsernameDto } from './dto/set-username.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { Roles } from './decorators/roles.decorator';
@@ -455,10 +456,44 @@ export class AuthController {
   @Post('resend-verification')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 3, ttl: 3_600_000 } }) // 3 reenvíos por hora
-  @ApiOperation({ summary: 'Reenviar correo de verificación' })
-  resendVerification(@Body('email') email: string) {
-    if (!email) throw new (require('@nestjs/common').BadRequestException)('Email requerido');
-    return this.authService.resendVerificationEmail(email);
+  @ApiOperation({
+    summary: 'Reenviar correo de verificación',
+    description: 'Acepta email o userId — este último es el que usa el login por username, ' +
+      'que nunca recibe el correo completo del usuario, solo enmascarado.',
+  })
+  resendVerification(@Body('email') email?: string, @Body('userId') userId?: number) {
+    if (!email && !userId) throw new BadRequestException('Email o userId requerido');
+    return this.authService.resendVerificationEmail({ email, userId });
+  }
+
+  // ── Username (login alterno) ────────────────────────────────────────────────
+
+  @Get('username-disponible')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } }) // 20/min por IP — sin esto es un enumerador
+  @ApiOperation({
+    summary: 'Verificar si un nombre de usuario está disponible',
+    description: 'Solo responde disponible: true/false — nunca a quién pertenece uno ocupado. Excluye siempre al propio usuario autenticado.',
+  })
+  async usernameDisponible(@Query('valor') valor: string, @GetUser() user: User) {
+    if (!valor || valor.trim().length < 1) return { disponible: false };
+    const disponible = await this.authService.isUsernameDisponible(valor.trim().toLowerCase(), user.id);
+    return { disponible };
+  }
+
+  @Patch('username')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @Throttle({ default: { limit: 10, ttl: 3_600_000 } })
+  @ApiOperation({ summary: 'Asignar o cambiar el nombre de usuario del usuario autenticado' })
+  setUsername(@GetUser() user: User, @Body() dto: SetUsernameDto) {
+    return this.authService.setUsername(
+      user.id,
+      { nombre: user.nombre, role: user.role, empresaId: (user as any).empresaId },
+      dto.username,
+    );
   }
 
   // ── Tour onboarding ───────────────────────────────────────────────────────

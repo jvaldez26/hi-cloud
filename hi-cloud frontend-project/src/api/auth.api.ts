@@ -2,10 +2,16 @@ import api from './client';
 import type { LoginResponse, ApiResponse } from '../types';
 
 export const authApi = {
-  login: async (email: string, password: string, forceLogin?: boolean) => {
+  /** `identificador`: correo o nombre de usuario, en el mismo campo — el
+   *  backend decide cuál es mirando si contiene '@' (LoginDto.identificador). */
+  login: async (identificador: string, password: string, forceLogin?: boolean) => {
     // S-23: backend setea cookie httpOnly — response solo contiene user info
-    const res = await api.post<ApiResponse<LoginResponse>>('/auth/login', { email, password, ...(forceLogin ? { forceLogin: true } : {}) });
-    return res.data.data as (LoginResponse & { requiresTwoFactor?: boolean; requiresSessionConfirmation?: boolean; activeSession?: { device?: string; ipAddress?: string; lastActivityAt?: string } }) | null;
+    const res = await api.post<ApiResponse<LoginResponse>>('/auth/login', { identificador, password, ...(forceLogin ? { forceLogin: true } : {}) });
+    return res.data.data as (LoginResponse & {
+      requiresTwoFactor?: boolean;
+      requiresSessionConfirmation?: boolean;
+      activeSession?: { device?: string; ipAddress?: string; lastActivityAt?: string };
+    }) | null;
   },
 
   complete2FALogin: async (codigo: string) => {
@@ -69,9 +75,22 @@ export const authApi = {
     return res.data?.data ?? res.data;
   },
 
-  resendVerification: async (email: string) => {
-    const res = await api.post('/auth/resend-verification', { email });
+  /** Acepta email O userId — el login por username nunca recibe el correo
+   *  completo del usuario (solo enmascarado), así que ese flujo reenvía por
+   *  userId y el backend resuelve el correo real internamente. */
+  resendVerification: async (target: { email?: string; userId?: number }) => {
+    const res = await api.post('/auth/resend-verification', target);
     return res.data?.data ?? res.data;
+  },
+
+  usernameDisponible: async (valor: string) => {
+    const res = await api.get('/auth/username-disponible', { params: { valor } });
+    return (res.data?.data ?? res.data) as { disponible: boolean };
+  },
+
+  setUsername: async (username: string) => {
+    const res = await api.patch('/auth/username', { username });
+    return (res.data?.data ?? res.data) as { username: string };
   },
 
   cambiarEmpresa: async (empresaId: number) => {

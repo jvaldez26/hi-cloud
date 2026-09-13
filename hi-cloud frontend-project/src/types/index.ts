@@ -6,6 +6,7 @@ export interface AuthUser {
   nombre:          string;
   apellido?:       string;  // presente en respuestas del backend
   email:           string;
+  username?:       string | null; // alias de acceso opcional — no es una identidad nueva, ver LoginPage/ProfilePage
   role:            UserRole;
   tourCompletado?: boolean;
   provider?:       string;  // 'LOCAL' | 'GOOGLE' — para mostrar candado en email

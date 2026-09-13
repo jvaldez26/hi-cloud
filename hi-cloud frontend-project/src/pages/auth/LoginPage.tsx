@@ -112,10 +112,11 @@ export default function LoginPage() {
   const [recordarPassword, setRecordarPassword] = useState<boolean>(
     () => localStorage.getItem('hicloud_recordar_pw') === 'true',
   );
-  const [correoNoVerif,  setCorreoNoVerif]  = useState(false);
-  const [emailIngresado, setEmailIngresado] = useState('');
-  const [reenviando,     setReenviando]     = useState(false);
-  const [reenviado,      setReenviado]      = useState(false);
+  const [correoNoVerif,     setCorreoNoVerif]     = useState(false);
+  const [emailEnmascarado,  setEmailEnmascarado]  = useState('');
+  const [userIdNoVerif,     setUserIdNoVerif]     = useState<number | null>(null);
+  const [reenviando,        setReenviando]        = useState(false);
+  const [reenviado,         setReenviado]         = useState(false);
   const [pending2FA,     setPending2FA]     = useState(false);
   const [codigoTOTP,     setCodigoTOTP]     = useState('');
   const [blockCountdown, setBlockCountdown] = useState(0);
@@ -123,7 +124,7 @@ export default function LoginPage() {
   // ── Sesión única: modal de confirmación ──────────────────────────────────────
   const [sessionConfirmOpen, setSessionConfirmOpen] = useState(false);
   const [sessionInfo, setSessionInfo] = useState<{ device?: string; ipAddress?: string; lastActivityAt?: string } | null>(null);
-  const pendingCredsRef = useRef<{ email: string; password: string } | null>(null);
+  const pendingCredsRef = useRef<{ identificador: string; password: string } | null>(null);
   const { login } = useAuthStore();
   const { isDark } = useThemeStore();
   const navigate  = useNavigate();
@@ -163,22 +164,21 @@ export default function LoginPage() {
 
   const reenviarVerificacion = async () => {
     setReenviando(true);
-    try { await authApi.resendVerification(emailIngresado); }
+    try { await authApi.resendVerification({ userId: userIdNoVerif ?? undefined }); }
     catch { /* respuesta neutra */ }
     finally { setReenviando(false); setReenviado(true); }
   };
 
-  const onFinish = async (values: { email: string; password: string }) => {
+  const onFinish = async (values: { identificador: string; password: string }) => {
     if (blockCountdown > 0) return; // bloqueo activo — no enviar
     setLoading(true); setError(''); setCorreoNoVerif(false); setReenviado(false);
-    setEmailIngresado(values.email);
     try {
-      const data = await authApi.login(values.email, values.password);
+      const data = await authApi.login(values.identificador, values.password);
       if (!data) throw new Error('Sin respuesta');
       if ((data as any).requiresTwoFactor) { setPending2FA(true); setLoading(false); return; }
       // Sesión única: el usuario ya tiene una sesión activa en otro dispositivo
       if ((data as any).requiresSessionConfirmation) {
-        pendingCredsRef.current = { email: values.email, password: values.password };
+        pendingCredsRef.current = { identificador: values.identificador, password: values.password };
         setSessionInfo((data as any).activeSession ?? null);
         setSessionConfirmOpen(true);
         setLoading(false);
@@ -192,6 +192,11 @@ export default function LoginPage() {
       const remainingSecs  = responseData?.remainingSeconds as number | undefined;
 
       if (msg === 'CORREO_NO_VERIFICADO') {
+        // emailMasked/userId viajan junto al error (nunca el correo completo,
+        // ver AuthService.login() paso 6) — con login por username no hay
+        // otra forma de saber a qué correo se le reenviará ni de mostrárselo.
+        setEmailEnmascarado(responseData?.emailMasked ?? '');
+        setUserIdNoVerif(responseData?.userId ?? null);
         setCorreoNoVerif(true);
       } else {
         setError(msg);
@@ -207,10 +212,10 @@ export default function LoginPage() {
     if (!pendingCredsRef.current) return;
     setSessionConfirmOpen(false);
     setLoading(true); setError('');
-    const { email, password } = pendingCredsRef.current;
+    const { identificador, password } = pendingCredsRef.current;
     pendingCredsRef.current = null;
     try {
-      const data = await authApi.login(email, password, true); // forceLogin: true
+      const data = await authApi.login(identificador, password, true); // forceLogin: true
       if (!data) throw new Error('Sin respuesta');
       login((data as any).user, (data as any).empresaActual, (data as any).empresas ?? [], (data as any).almacenActual ?? null, (data as any).sucursalActual ?? null, (data as any).sucursalNombre ?? null);
       navigate((data as any).user?.role === 'super_admin' ? '/super-admin' : '/dashboard');
@@ -358,7 +363,8 @@ export default function LoginPage() {
             <Alert type="warning" showIcon style={{ marginBottom:16, borderRadius:10 }}
               message="Correo no verificado"
               description={reenviado ? '✅ Correo enviado. Revisa tu bandeja de entrada.' : (
-                <span>Debes verificar tu correo antes de iniciar sesión.{' '}
+                <span>
+                  Debes verificar tu correo{emailEnmascarado ? <> ({emailEnmascarado})</> : ''} antes de iniciar sesión.{' '}
                   <button onClick={reenviarVerificacion} disabled={reenviando}
                     style={{ background:'none', border:'none', color:'#d97706', fontWeight:600, cursor:reenviando?'wait':'pointer', padding:0, textDecoration:'underline' }}>
                     {reenviando ? 'Enviando…' : 'Reenviar correo'}
@@ -417,11 +423,15 @@ export default function LoginPage() {
           {/* Formulario principal */}
           <div className="login-panel" style={{ display: pending2FA ? 'none' : undefined }}>
             <Form layout="vertical" onFinish={onFinish} size="large" requiredMark={false}>
-              <Form.Item name="email" label="Correo electrónico"
-                rules={[{ required:true, message:'El correo es requerido' },{ type:'email', message:'Correo inválido' }]}>
+              <Form.Item name="identificador" label="Correo o nombre de usuario"
+                rules={[{ required:true, message:'El correo o nombre de usuario es requerido' }]}>
                 <Input
-                  placeholder="usuario@empresa.com"
-                  autoComplete="email" type="email"
+                  placeholder="usuario@empresa.com o caja01"
+                  autoComplete="username"
+                  inputMode="text"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                 />
               </Form.Item>
 

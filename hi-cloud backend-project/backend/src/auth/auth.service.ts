@@ -35,6 +35,25 @@ import { LoginAttemptsService } from './login-attempts.service';
 import { reportServiceError } from '../common/observability/sentry';
 import { AuditoriaService } from '../auditoria/auditoria.service';
 import { AccionAuditoria, NivelAuditoria } from '../auditoria/entities/audit-log.entity';
+import { USERNAME_RESERVADOS } from './auth.constants';
+
+/**
+ * Hash bcrypt (costo 12, igual que los hashes reales — ver bcrypt.hash(..., 12)
+ * en register()/changePassword()) de una contraseña que no pertenece a nadie.
+ *
+ * login() lo usa cuando el identificador no resuelve a ningún usuario: sin
+ * esto, "la cuenta no existe" se detecta sin llamar a bcrypt.compare() y
+ * responde en ~1ms, mientras que "la cuenta existe pero la clave está mal"
+ * sí llama a bcrypt (costo 12, ~100ms) — la diferencia de tiempo es un
+ * oráculo que revela qué identificadores tienen cuenta, sin importar que el
+ * mensaje de error sea idéntico en ambos casos.
+ *
+ * Precalculado (no generado por request: generarlo tendría el mismo costo
+ * que el propio bcrypt.compare, así que hacerlo en cada login duplicaría el
+ * trabajo sin necesidad) con:
+ *   bcrypt.hash('dummy-password-para-tiempo-constante-no-es-real', 12)
+ */
+const DUMMY_PASSWORD_HASH = '$2b$12$DqBQW43QbABBN1qSfAgFzuEs8EyYhh7wSY/E.JGy.STQuLjcSEHri';
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -342,8 +361,24 @@ export class AuthService implements OnModuleInit {
   // ─── Login ───────────────────────────────────────────────────────────────────
 
   async login(dto: LoginDto, ip: string) {
-    // 1. Verificar bloqueo activo antes de cualquier consulta a BD
-    const blockStatus = await this.loginAttempts.isBlocked(dto.email, ip);
+    const inputTrim = dto.identificador.trim();
+    const esEmail    = inputTrim.includes('@');
+
+    // Resolver el usuario ANTES del check de bloqueo y usar SIEMPRE la misma
+    // función de búsqueda existente para cada caso (nunca duplicada aquí):
+    // findByEmailForAuth / findByUsernameForAuth. Resolverlo primero, en vez
+    // de bloquear-luego-buscar como antes, permite usar el EMAIL REAL de la
+    // cuenta como clave de intentos fallidos sea cual sea el identificador
+    // que se haya usado — así alternar "juan@x.com"/"juan" contra la misma
+    // cuenta no abre dos cubetas distintas para esquivar el bloqueo.
+    const user = esEmail
+      ? await this.usersService.findByEmailForAuth(inputTrim)
+      : await this.usersService.findByUsernameForAuth(inputTrim);
+
+    const claveIntentos = (user?.email ?? inputTrim).toLowerCase();
+
+    // 1. Verificar bloqueo activo antes de comparar contraseña
+    const blockStatus = await this.loginAttempts.isBlocked(claveIntentos, ip);
     if (blockStatus.blocked) {
       const tiempo = this.loginAttempts.formatTime(blockStatus.remainingSeconds!);
       throw new HttpException(
@@ -356,11 +391,15 @@ export class AuthService implements OnModuleInit {
       );
     }
 
-    // 2. Buscar usuario y verificar contraseña
-    const user        = await this.usersService.findByEmailForAuth(dto.email);
-    const isValid     = user?.isActive
+    // 2. Verificar contraseña — bcrypt.compare() corre SIEMPRE, exista o no
+    //    la cuenta (contra DUMMY_PASSWORD_HASH si no existe o está inactiva),
+    //    para que ambos caminos tarden parecido. Sin esto, "no existe" se
+    //    detecta sin llamar a bcrypt y responde mucho más rápido que "existe
+    //    con clave mala" — un oráculo de tiempo, aunque el mensaje final sea
+    //    idéntico en los dos casos.
+    const isValid = user?.isActive
       ? await bcrypt.compare(dto.password, user.password)
-      : false;
+      : await bcrypt.compare(dto.password, DUMMY_PASSWORD_HASH);
 
     // Leer maxIntentos de la empresa del usuario (con fallback al global)
     const empresaParaConf = user?.isActive ? await this.getEmpresaPrincipal(user.id) : undefined;
@@ -368,12 +407,12 @@ export class AuthService implements OnModuleInit {
 
     // 3. Credenciales inválidas (usuario inexistente, inactivo o contraseña incorrecta)
     if (!user || !user.isActive || !isValid) {
-      const attempts    = await this.loginAttempts.increment(dto.email, ip);
-      const blockSecs   = await this.loginAttempts.block(dto.email, ip, attempts, maxIntentos);
+      const attempts    = await this.loginAttempts.increment(claveIntentos, ip);
+      const blockSecs   = await this.loginAttempts.block(claveIntentos, ip, attempts, maxIntentos);
 
       if (blockSecs > 0) {
         const tiempo = this.loginAttempts.formatTime(blockSecs);
-        this.logger.warn(`[LOGIN] Cuenta bloqueada ${tiempo} — email:${dto.email} ip:${ip} intentos:${attempts}`);
+        this.logger.warn(`[LOGIN] Cuenta bloqueada ${tiempo} — id:${claveIntentos} ip:${ip} intentos:${attempts}`);
         throw new HttpException(
           {
             message:          `Demasiados intentos fallidos. Cuenta bloqueada por ${tiempo}.`,
@@ -384,14 +423,14 @@ export class AuthService implements OnModuleInit {
         );
       }
 
-      this.logger.warn(`[LOGIN] Intento fallido #${attempts} — email:${dto.email} ip:${ip}`);
+      this.logger.warn(`[LOGIN] Intento fallido #${attempts} — id:${claveIntentos} ip:${ip}`);
       const restantes = Math.max(0, maxIntentos - attempts);
       if (restantes > 0) {
         throw new UnauthorizedException(
-          `Credenciales incorrectas. ${restantes} intento(s) antes del bloqueo temporal.`,
+          `Correo/usuario o contraseña incorrectos. ${restantes} intento(s) antes del bloqueo temporal.`,
         );
       }
-      throw new UnauthorizedException('Credenciales incorrectas.');
+      throw new UnauthorizedException('Correo/usuario o contraseña incorrectos.');
     }
 
     // 4. Cuenta pendiente de aprobación del Super Admin
@@ -410,15 +449,24 @@ export class AuthService implements OnModuleInit {
     //    devolver 'CORREO_NO_VERIFICADO' no filtra existencia de emails a un atacante:
     //    con clave incorrecta se corta antes en el paso 3 con "Credenciales incorrectas".
     //    El frontend (LoginPage) reconoce este código y muestra "Reenviar correo".
+    //    emailMasked/userId van con el error a propósito: si el login fue por
+    //    username, el frontend no tiene el correo real para reenviar ni para
+    //    mostrárselo a la persona — nunca el correo completo (enmascarar es
+    //    gratis y cierra la duda), y userId para que /auth/resend-verification
+    //    resuelva el correo internamente sin que el cliente lo necesite.
     if (!user.emailVerifiedAt) {
       this.sendVerificationEmail(user.id, user.email, user.nombre).catch(() => null);
-      throw new UnauthorizedException('CORREO_NO_VERIFICADO');
+      throw new UnauthorizedException({
+        message:     'CORREO_NO_VERIFICADO',
+        emailMasked: this.maskEmail(user.email),
+        userId:      user.id,
+      });
     }
 
     // 7. Si 2FA está activo → devolver indicador + token temporal
     if (user.twoFactorEnabled) {
       // Resetear contador: la contraseña ya fue verificada correctamente
-      await this.loginAttempts.reset(dto.email, ip);
+      await this.loginAttempts.reset(claveIntentos, ip);
       const pending2FAToken = this.jwtService.sign(
         { sub: user.id, tfa: 1 },
         { expiresIn: '5m' },
@@ -436,12 +484,12 @@ export class AuthService implements OnModuleInit {
       const tieneEmpresaActiva = ues.some(e => e.empresa?.isActive === true);
 
       if (!tieneEmpresaActiva) {
-        const attempts  = await this.loginAttempts.increment(dto.email, ip);
-        const blockSecs = await this.loginAttempts.block(dto.email, ip, attempts, maxIntentos);
+        const attempts  = await this.loginAttempts.increment(claveIntentos, ip);
+        const blockSecs = await this.loginAttempts.block(claveIntentos, ip, attempts, maxIntentos);
 
         if (blockSecs > 0) {
           const tiempo = this.loginAttempts.formatTime(blockSecs);
-          this.logger.warn(`[LOGIN] Empresa suspendida — bloqueado ${tiempo} — email:${dto.email} ip:${ip} intentos:${attempts}`);
+          this.logger.warn(`[LOGIN] Empresa suspendida — bloqueado ${tiempo} — id:${claveIntentos} ip:${ip} intentos:${attempts}`);
           throw new HttpException(
             {
               message:          `Demasiados intentos. Cuenta bloqueada por ${tiempo}.`,
@@ -452,13 +500,13 @@ export class AuthService implements OnModuleInit {
           );
         }
 
-        this.logger.warn(`[LOGIN] Empresa suspendida — intento #${attempts} — email:${dto.email} ip:${ip}`);
+        this.logger.warn(`[LOGIN] Empresa suspendida — intento #${attempts} — id:${claveIntentos} ip:${ip}`);
         throw new ForbiddenException('Tu empresa ha sido suspendida. Contacta al administrador de HiCloud.');
       }
     }
 
     // 9. Login exitoso — resetear contador de intentos
-    await this.loginAttempts.reset(dto.email, ip);
+    await this.loginAttempts.reset(claveIntentos, ip);
 
     // 10. [SESIÓN ÚNICA] Verificar si el usuario ya tiene una sesión activa.
     //     Si la tiene y no viene forceLogin:true, pedir confirmación al frontend.
@@ -468,7 +516,7 @@ export class AuthService implements OnModuleInit {
       const sesionActiva = await this.refreshTokenSvc.verificarSesionActiva(user.id);
       if (sesionActiva) {
         this.logger.log(
-          `[LOGIN] Sesión activa detectada — confirmación requerida — userId:${user.id} email:${dto.email} ip:${ip}`,
+          `[LOGIN] Sesión activa detectada — confirmación requerida — userId:${user.id} id:${claveIntentos} ip:${ip}`,
         );
         return {
           requiresSessionConfirmation: true as const,
@@ -519,8 +567,25 @@ export class AuthService implements OnModuleInit {
           rol:         e.rol,
           isPrincipal: e.isPrincipal,
         })),
-      user: { id: user.id, nombre: user.nombre, email: user.email, role: user.role, tourCompletado: (user as any).tourCompletado ?? false },
+      user: {
+        id: user.id, nombre: user.nombre, email: user.email,
+        username: (user as any).username ?? null,
+        role: user.role, tourCompletado: (user as any).tourCompletado ?? false,
+      },
     };
+  }
+
+  /**
+   * j***@dominio.com — nunca el correo completo. Se usa SOLO cuando el gate
+   * de correo no verificado ya confirmó la contraseña correcta (login() paso
+   * 6): en ese punto mostrar algo del correo real no filtra nada a un
+   * atacante que no la tuviera, pero enmascarar sigue siendo gratis y evita
+   * exponer el dominio/usuario completos en la respuesta HTTP.
+   */
+  private maskEmail(email: string): string {
+    const [usuario, dominio] = email.split('@');
+    if (!dominio) return '***';
+    return `${usuario[0] ?? '*'}***@${dominio}`;
   }
 
   // ─── Cambiar empresa activa ───────────────────────────────────────────────────
@@ -901,11 +966,29 @@ export class AuthService implements OnModuleInit {
     return { message: '¡Correo verificado exitosamente! Ya puedes iniciar sesión.' };
   }
 
-  async resendVerificationEmail(email: string): Promise<{ message: string }> {
-    const user = await this.userRepository.findOne({
-      where: { email: ILike(email), isActive: true },
-      select: ['id', 'nombre', 'email', 'emailVerifiedAt'] as any,
-    });
+  /**
+   * Reenvía el correo de verificación. Acepta email O userId — el login por
+   * username no expone el correo real al frontend (solo enmascarado, ver
+   * login() paso 6), así que cuando el reenvío se dispara desde ese flujo se
+   * identifica por userId y este método resuelve el correo real aquí adentro,
+   * nunca en el cliente.
+   */
+  async resendVerificationEmail(target: { email?: string; userId?: number }): Promise<{ message: string }> {
+    // 'emailVerificationExpires' es select:false en la entidad Y faltaba en
+    // este select explícito — el rate limit de 5 min de abajo lo lee, pero
+    // como TypeORM nunca lo traía, (user as any).emailVerificationExpires
+    // era SIEMPRE undefined y ese rate limit nunca actuó (el único límite
+    // real era el @Throttle de 3/hora por IP del controller). Detectado al
+    // tocar este método para aceptar userId además de email.
+    const user = target.userId
+      ? await this.userRepository.findOne({
+          where: { id: target.userId, isActive: true },
+          select: ['id', 'nombre', 'email', 'emailVerifiedAt', 'emailVerificationExpires'] as any,
+        })
+      : await this.userRepository.findOne({
+          where: { email: ILike(target.email!), isActive: true },
+          select: ['id', 'nombre', 'email', 'emailVerifiedAt', 'emailVerificationExpires'] as any,
+        });
 
     // Respuesta neutra — no revelar si el email existe
     const response = { message: 'Si el correo existe y no está verificado, recibirás un nuevo enlace.' };
@@ -989,6 +1072,73 @@ export class AuthService implements OnModuleInit {
     await this.userRepository.update(userId, { nombre: trimmed });
     this.logger.log(`[PROFILE] Nombre actualizado para usuario #${userId}: "${trimmed}"`);
     return { ok: true, nombre: trimmed };
+  }
+
+  /** Delegado a UsersService — el controller de auth no depende de UsersService
+   *  directamente (mismo criterio que el resto de sus endpoints, todos vía
+   *  AuthService), así que la disponibilidad de username entra por aquí. */
+  isUsernameDisponible(username: string, excludeUserId: number): Promise<boolean> {
+    return this.usersService.isUsernameDisponible(username, excludeUserId);
+  }
+
+  /**
+   * PATCH /auth/username — asigna o cambia el username del usuario
+   * autenticado. Solo desde el propio perfil (no hay ruta para que un admin
+   * lo asigne a otro usuario en esta tarea).
+   *
+   * La condición de carrera se resuelve con la constraint, no con un chequeo
+   * previo: se intenta el UPDATE directo y se traduce la violación de
+   * unicidad de Postgres (23505, sobre el índice de LOWER(username) de la
+   * migración) a un mensaje claro — nunca "verificar si existe y luego
+   * guardar", que deja una ventana entre las dos operaciones.
+   */
+  async setUsername(
+    userId: number,
+    actor: { nombre: string; role: string; empresaId?: number | null },
+    username: string,
+  ): Promise<{ username: string }> {
+    if (USERNAME_RESERVADOS.includes(username)) {
+      throw new BadRequestException('Ese nombre de usuario no está disponible');
+    }
+
+    const anterior = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'username'] as any,
+    });
+
+    try {
+      await this.userRepository.update(userId, { username } as any);
+    } catch (e: any) {
+      if (e?.code === '23505') {
+        throw new ConflictException('Ese nombre de usuario ya está en uso');
+      }
+      throw e;
+    }
+
+    this.logger.log(`[USERNAME] Usuario #${userId} fijó su username: "${username}"`);
+
+    // AuditoriaService.registrar() nunca lanza (catch interno) — un fallo de
+    // auditoría no debe impedir un cambio de username ya aplicado.
+    await this.auditoriaSvc.registrar({
+      userId,
+      userName:      actor.nombre,
+      userRole:      actor.role,
+      empresaId:     actor.empresaId ?? undefined,
+      accion:        AccionAuditoria.UPDATE,
+      nivel:         NivelAuditoria.NORMAL,
+      modulo:        'perfil',
+      entidad:       'usuario',
+      entidadId:     String(userId),
+      descripcion:   `${actor.nombre} cambió su nombre de usuario de "${(anterior as any)?.username ?? '(ninguno)'}" a "${username}"`,
+      valorAnterior: (anterior as any)?.username ?? undefined,
+      valorNuevo:    username,
+      metodo:        'PATCH',
+      ruta:          'auth/username',
+      statusCode:    200,
+      exitoso:       true,
+    });
+
+    return { username };
   }
 
   private async enviarEmailBienvenida(userId: number, nombre: string, email: string, empresaId: number): Promise<void> {
@@ -1225,7 +1375,11 @@ export class AuthService implements OnModuleInit {
         empresaId:   e.empresaId, nombre: e.empresa?.nombre,
         rnc:         e.empresa?.rnc, rol: e.rol, isPrincipal: e.isPrincipal,
       })),
-      user: { id: user.id, nombre: user.nombre, email: user.email, role: user.role, tourCompletado: (user as any).tourCompletado ?? false },
+      user: {
+        id: user.id, nombre: user.nombre, email: user.email,
+        username: (user as any).username ?? null,
+        role: user.role, tourCompletado: (user as any).tourCompletado ?? false,
+      },
     };
   }
 
@@ -1380,6 +1534,7 @@ export class AuthService implements OnModuleInit {
         id:             user.id,
         nombre:         user.nombre,
         email:          user.email,
+        username:       (user as any).username ?? null,
         role:           user.role,
         tourCompletado: (user as any).tourCompletado ?? false,
       },
@@ -1407,7 +1562,11 @@ export class AuthService implements OnModuleInit {
         rol:         e.rol,
         isPrincipal: e.isPrincipal,
       })),
-      user: { id: user.id, nombre: user.nombre, email: user.email, role: user.role, tourCompletado: (user as any).tourCompletado ?? false },
+      user: {
+        id: user.id, nombre: user.nombre, email: user.email,
+        username: (user as any).username ?? null,
+        role: user.role, tourCompletado: (user as any).tourCompletado ?? false,
+      },
     };
   }
 
