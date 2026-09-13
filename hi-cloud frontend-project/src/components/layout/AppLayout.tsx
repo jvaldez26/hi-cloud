@@ -871,16 +871,7 @@ export default function AppLayout() {
 
   const SidebarContent = (
     <SidebarShell
-      // El drawer móvil (más abajo) es un panel de ancho fijo (240px) que se
-      // desliza entero dentro/fuera de pantalla — nunca tuvo un estado
-      // "colapsado" propio. Con la preferencia de colapsado ahora
-      // sincronizada entre dispositivos, un usuario que colapsó el sidebar
-      // en su PC podía abrir el drawer en el celular y encontrarse el
-      // SidebarShell interno pintando solo 64px dentro del panel de 240px:
-      // el hueco restante dejaba ver el overlay oscuro de fondo, como una
-      // sombra vertical. En mobile no hay "modo colapsado" que mostrar, así
-      // que aquí siempre va expandido — solo el desktop respeta `collapsed`.
-      collapsed={isMobile ? false : collapsed}
+      collapsed={collapsed}
       onCollapsed={setCollapsedSincronizado}
       tagline="ERP · DGII"
       itemsRapidos={itemsRapidosMenu}
@@ -1228,7 +1219,14 @@ export default function AppLayout() {
                 onClick={() => setMobileOpen(false)}
               />
             )}
-            {/* Drawer */}
+            {/* Drawer — el ancho y el desplazamiento para ocultarlo siguen a
+                `collapsed`, igual que el SidebarShell de adentro. Antes el
+                panel era 240px fijo sin importar collapsed: si collapsed
+                estaba en true, SidebarShell pintaba solo 64px y el resto del
+                panel quedaba sin fondo propio, dejando ver el overlay oscuro
+                de atrás (la "sombra" reportada). Con el ancho sincronizado
+                no hay hueco que muestre nada detrás, y colapsar sigue
+                funcionando en mobile como ya lo hacía. */}
             <div
               ref={sidebarRef}
               style={{
@@ -1236,10 +1234,10 @@ export default function AppLayout() {
                 top:        0,
                 left:       0,
                 height:     '100%',
-                width:      240,
+                width:      collapsed ? 64 : 240,
                 zIndex:     200,
-                transform:  mobileOpen ? 'translateX(0)' : 'translateX(-240px)',
-                transition: 'transform 0.25s ease',
+                transform:  mobileOpen ? 'translateX(0)' : `translateX(-${collapsed ? 64 : 240}px)`,
+                transition: 'transform 0.25s ease, width 0.25s ease',
                 overflowY:  'hidden',
                 boxShadow:  mobileOpen ? '4px 0 20px rgba(0,0,0,0.3)' : 'none',
               }}
