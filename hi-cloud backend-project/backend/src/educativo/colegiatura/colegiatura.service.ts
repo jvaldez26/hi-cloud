@@ -47,14 +47,28 @@ export class ColegiaturaService {
       );
       return row;
     }
+    // "nombre" es NOT NULL sin default en ed_planes_pago; el formulario del
+    // frontend no lo pide (piensa el plan como "de este estudiante", sin
+    // nombre propio) — sin esto el INSERT revienta con 23502 en cada intento
+    // de crear un plan nuevo. Se genera un nombre descriptivo por defecto.
+    const nombre = dto.nombre ?? await this.nombrePlanPorDefecto(empresaId, dto.estudianteId, dto.anioEscolarId);
     const [row] = await this.ds.query<any[]>(
       `INSERT INTO ed_planes_pago (
-         "empresaId","estudianteId","anioEscolarId","montoColegiatura","montoMatricula","diaCobro",descuento
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [empresaId, dto.estudianteId, dto.anioEscolarId,
+         "empresaId", nombre, "estudianteId","anioEscolarId","montoColegiatura","montoMatricula","diaCobro",descuento
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [empresaId, nombre, dto.estudianteId, dto.anioEscolarId,
        dto.montoColegiatura, dto.montoMatricula ?? 0, dto.diaCobro ?? 1, dto.descuento ?? 0],
     );
     return row;
+  }
+
+  private async nombrePlanPorDefecto(empresaId: number, estudianteId: number, anioEscolarId: number) {
+    const [[est], [anio]] = await Promise.all([
+      this.ds.query<any[]>(`SELECT nombres, apellidos FROM ed_estudiantes WHERE id = $1 AND "empresaId" = $2`, [estudianteId, empresaId]),
+      this.ds.query<any[]>(`SELECT nombre FROM ed_anios_escolares WHERE id = $1 AND "empresaId" = $2`, [anioEscolarId, empresaId]),
+    ]);
+    if (!est) return 'Plan de colegiatura';
+    return `Plan de ${est.nombres} ${est.apellidos}${anio ? ` — ${anio.nombre}` : ''}`;
   }
 
   // ── Generación de cargos ────────────────────────────────────────────────────
