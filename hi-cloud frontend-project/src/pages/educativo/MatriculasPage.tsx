@@ -17,13 +17,6 @@ const ESTADO_OPTS = [
   { value: 'traslado',  label: 'Traslado',  color: 'orange' },
 ];
 
-const BECA_OPTS = [
-  { value: 'ninguna',  label: 'Sin beca' },
-  { value: 'parcial',  label: 'Beca parcial' },
-  { value: 'completa', label: 'Beca completa' },
-  { value: 'descuento', label: 'Descuento' },
-];
-
 function estadoColor(e?: string) {
   return ESTADO_OPTS.find(o => o.value === e)?.color ?? 'default';
 }
@@ -43,7 +36,6 @@ function MatriculaModal({ open, editing, onClose }: { open: boolean; editing?: a
   const qc = useQueryClient();
   const [form] = Form.useForm();
   const [selectedGradoId, setSelectedGradoId] = useState<number | undefined>(editing?.gradoId);
-  const [tipoBeca, setTipoBeca] = useState<string>(editing?.tipoBeca ?? 'ninguna');
 
   const { data: anios = [] } = useEdData('anios-escolares', open);
   const { data: estudiantes = [] } = useEdData('estudiantes', open);
@@ -86,10 +78,9 @@ function MatriculaModal({ open, editing, onClose }: { open: boolean; editing?: a
       afterOpenChange={visible => {
         if (visible) {
           setSelectedGradoId(editing?.gradoId);
-          setTipoBeca(editing?.tipoBeca ?? 'ninguna');
           form.setFieldsValue(editing
             ? { ...editing, fechaMatricula: editing.fechaMatricula ? dayjs(editing.fechaMatricula) : dayjs() }
-            : { fechaMatricula: dayjs(), estado: 'activa', tipoBeca: 'ninguna', porcentajeBeca: 0 });
+            : { fechaMatricula: dayjs(), estado: 'activa', descuentoBeca: 0 });
         } else {
           form.resetFields();
         }
@@ -157,19 +148,17 @@ function MatriculaModal({ open, editing, onClose }: { open: boolean; editing?: a
             </Form.Item>
           </Col>
           <Col span={12}>
-            <Form.Item name="tipoBeca" label="Tipo de beca">
-              <Select options={BECA_OPTS} onChange={v => setTipoBeca(v)} />
+            {/* No hay catálogo de becas expuesto todavía (ed_becas existe pero
+                sin endpoint) — descuentoBeca es un porcentaje libre sobre la
+                matrícula, sin ligarlo a una beca específica. Asignar una beca
+                real (becaId) queda para cuando exista esa pantalla. */}
+            <Form.Item name="descuentoBeca" label="Descuento (%)">
+              <InputNumber min={0} max={100} style={{ width: '100%' }} />
             </Form.Item>
           </Col>
         </Row>
 
-        {tipoBeca !== 'ninguna' && (
-          <Form.Item name="porcentajeBeca" label="Porcentaje de beca (%)">
-            <InputNumber min={0} max={100} style={{ width: '100%' }} />
-          </Form.Item>
-        )}
-
-        <Form.Item name="observaciones" label="Observaciones">
+        <Form.Item name="notas" label="Notas">
           <Input.TextArea rows={2} />
         </Form.Item>
       </Form>
@@ -289,10 +278,10 @@ export default function MatriculasPage() {
           { title: 'Grado', dataIndex: 'gradoNombre', render: (v: any) => v ?? '—' },
           { title: 'Sección', dataIndex: 'seccionNombre', render: (v: any) => v ?? '—' },
           {
-            title: 'Beca',
+            title: 'Descuento',
             render: (_: any, r: any) =>
-              r.tipoBeca && r.tipoBeca !== 'ninguna'
-                ? <Tag color="blue">{r.tipoBeca}{r.porcentajeBeca ? ` ${r.porcentajeBeca}%` : ''}</Tag>
+              r.descuentoBeca > 0
+                ? <Tag color="blue">{r.descuentoBeca}%</Tag>
                 : <span style={{ color: '#999' }}>—</span>,
           },
           { title: 'Fecha', dataIndex: 'fechaMatricula', render: (v: any) => v?.substring(0, 10) ?? '—' },

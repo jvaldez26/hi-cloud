@@ -105,7 +105,7 @@ function EstudianteModal({ open, editing, onClose }: { open: boolean; editing?: 
         <Form.Item name="direccion" label="Dirección"><Input.TextArea rows={2} /></Form.Item>
         <Row gutter={12}>
           <Col span={8}>
-            <Form.Item name="grupoSanguineo" label="Grupo sanguíneo">
+            <Form.Item name="tipoSangre" label="Grupo sanguíneo">
               <Select allowClear options={SANGRE_OPTS} />
             </Form.Item>
           </Col>
@@ -113,8 +113,8 @@ function EstudianteModal({ open, editing, onClose }: { open: boolean; editing?: 
             <Form.Item name="alergias" label="Alergias"><Input /></Form.Item>
           </Col>
         </Row>
-        <Form.Item name="condiciones" label="Condiciones médicas"><Input.TextArea rows={2} /></Form.Item>
-        <Form.Item name="notas" label="Notas internas"><Input.TextArea rows={2} /></Form.Item>
+        <Form.Item name="condicionesMedicas" label="Condiciones médicas"><Input.TextArea rows={2} /></Form.Item>
+        <Form.Item name="observaciones" label="Notas internas"><Input.TextArea rows={2} /></Form.Item>
         {editing && (
           <Form.Item name="isActive" label="Estado">
             <Select options={[{ value: true, label: 'Activo' }, { value: false, label: 'Inactivo' }]} />
@@ -225,10 +225,10 @@ function PerfilDrawer({ id, onEdit }: { id: number | null; onEdit: (est: any) =>
                       <Descriptions.Item label="Teléfono">{data.telefono ?? '—'}</Descriptions.Item>
                       <Descriptions.Item label="Email">{data.email ?? '—'}</Descriptions.Item>
                       <Descriptions.Item label="Dirección">{data.direccion ?? '—'}</Descriptions.Item>
-                      <Descriptions.Item label="Grupo sanguíneo">{data.grupoSanguineo ?? '—'}</Descriptions.Item>
+                      <Descriptions.Item label="Grupo sanguíneo">{data.tipoSangre ?? '—'}</Descriptions.Item>
                       <Descriptions.Item label="Alergias">{data.alergias ?? '—'}</Descriptions.Item>
-                      <Descriptions.Item label="Condiciones">{data.condiciones ?? '—'}</Descriptions.Item>
-                      {data.notas && <Descriptions.Item label="Notas">{data.notas}</Descriptions.Item>}
+                      <Descriptions.Item label="Condiciones">{data.condicionesMedicas ?? '—'}</Descriptions.Item>
+                      {data.observaciones && <Descriptions.Item label="Notas">{data.observaciones}</Descriptions.Item>}
                     </Descriptions>
                   </div>
                 ),

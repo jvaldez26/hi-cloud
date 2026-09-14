@@ -49,7 +49,7 @@ function EvaluacionModal({ open, seccionId, asignaturaId, periodoId, onClose }: 
       confirmLoading={mut.isPending} destroyOnClose
       afterOpenChange={v => { if (!v) form.resetFields(); }}>
       <Form form={form} layout="vertical"
-        initialValues={{ tipo: 'examen', valorMaximo: 100, porcentaje: 100 }}>
+        initialValues={{ tipo: 'examen', puntajeMaximo: 100, ponderacion: 100 }}>
         <Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input /></Form.Item>
         <Form.Item name="tipo" label="Tipo">
           <Select options={TIPO_EVAL} />
@@ -57,10 +57,10 @@ function EvaluacionModal({ open, seccionId, asignaturaId, periodoId, onClose }: 
         <Form.Item name="fecha" label="Fecha">
           <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
         </Form.Item>
-        <Form.Item name="valorMaximo" label="Valor máximo">
+        <Form.Item name="puntajeMaximo" label="Valor máximo">
           <InputNumber min={1} max={1000} style={{ width: '100%' }} />
         </Form.Item>
-        <Form.Item name="porcentaje" label="Peso (%)">
+        <Form.Item name="ponderacion" label="Peso (%)">
           <InputNumber min={1} max={100} style={{ width: '100%' }} />
         </Form.Item>
       </Form>
@@ -154,7 +154,7 @@ export default function PlanillaNotasPage() {
       title: (
         <div style={{ textAlign: 'center', minWidth: 80 }}>
           <div style={{ fontWeight: 600, fontSize: 12 }}>{ev.nombre}</div>
-          <Text type="secondary" style={{ fontSize: 10 }}>{ev.tipo} · /{ev.valorMaximo}</Text>
+          <Text type="secondary" style={{ fontSize: 10 }}>{ev.tipo} · /{ev.puntajeMaximo}</Text>
         </div>
       ),
       key: `eval_${ev.id}`,
@@ -164,7 +164,7 @@ export default function PlanillaNotasPage() {
         <InputNumber
           size="small"
           min={0}
-          max={ev.valorMaximo}
+          max={ev.puntajeMaximo}
           step={0.5}
           style={{ width: 70 }}
           value={notas[`${ev.id}_${r.id}`] ?? undefined}
