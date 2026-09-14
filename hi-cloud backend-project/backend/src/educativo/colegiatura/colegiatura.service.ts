@@ -2,10 +2,54 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { fechaHoyRD } from '../../common/utils/fecha-local.util';
+import { redondearMoneda } from '../../common/utils/moneda.util';
+import { BecasService, BecaAplicable } from '../becas/becas.service';
 
 @Injectable()
 export class ColegiaturaService {
-  constructor(@InjectDataSource() private readonly ds: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly ds: DataSource,
+    private readonly becasSvc: BecasService,
+  ) {}
+
+  /**
+   * Descuento combinado de plan.descuento (%, comercial) + becas activas del
+   * catálogo (aplicaA scoped) sobre un cargo. Las dos fuentes se calculan
+   * SIEMPRE sobre montoBase (nunca en cascada — un 10% de plan + una beca del
+   * 20% es 30% del original, no 10% y luego 20% sobre el resto), se suman, y
+   * el total se topa a montoBase (nunca negativo, nunca mayor al original).
+   *
+   * Trazabilidad sin tablas nuevas: se devuelve un "concepto" compacto para
+   * ed_cargos.concepto (VARCHAR(200), sin ningún consumidor hoy) con el
+   * formato `plan:<monto>;beca:<becaId>:<monto>;...;topado` — el nombre de
+   * la beca no se guarda (se resuelve con JOIN a ed_becas por becaId al
+   * mostrarlo, así nunca queda desincronizado si la beca se renombra).
+   * "topado" solo aparece si la suma bruta superó montoBase.
+   */
+  private calcularDescuento(montoBase: number, descuentoPlanPct: number, becas: BecaAplicable[]) {
+    const contribuciones: { fuente: 'plan' | 'beca'; becaId?: number; monto: number }[] = [];
+
+    const montoPlan = redondearMoneda(montoBase * (Number(descuentoPlanPct ?? 0) / 100));
+    if (montoPlan > 0) contribuciones.push({ fuente: 'plan', monto: montoPlan });
+
+    for (const b of becas) {
+      const monto = b.tipo === 'porcentaje'
+        ? redondearMoneda(montoBase * (Number(b.valor) / 100))
+        : redondearMoneda(Number(b.valor));
+      if (monto > 0) contribuciones.push({ fuente: 'beca', becaId: b.becaId, monto });
+    }
+
+    const totalBruto = redondearMoneda(contribuciones.reduce((s, c) => s + c.monto, 0));
+    const descuento = redondearMoneda(Math.min(Math.max(totalBruto, 0), montoBase));
+    const topado = totalBruto > montoBase;
+
+    const concepto = contribuciones.length
+      ? contribuciones.map(c => c.fuente === 'plan' ? `plan:${c.monto}` : `beca:${c.becaId}:${c.monto}`).join(';')
+        + (topado ? ';topado' : '')
+      : null;
+
+    return { descuento, concepto, topado };
+  }
 
   // ── Planes de pago ──────────────────────────────────────────────────────────
 
@@ -94,7 +138,9 @@ export class ColegiaturaService {
       // "montoOriginal" coexistían sin relación entre sí, deuda de
       // FixColegiaturaSchema):
       //   montoOriginal   antes de descuento, se fija al crear.
-      //   descuento       monto en pesos (no %) aplicado, se fija al crear.
+      //   descuento       monto en pesos (no %), suma de plan.descuento +
+      //                   becas activas con aplicaA IN ('colegiatura','ambos')
+      //                   — ver calcularDescuento(). Se fija al crear.
       //   montoMora       la mantiene el cron de mora (no implementado
       //                   todavía) — 0 al crear.
       //   montoTotal      = montoOriginal - descuento + montoMora. Derivado.
@@ -102,17 +148,18 @@ export class ColegiaturaService {
       //   saldoPendiente  = montoTotal - montoPagado. Derivado, mismo punto
       //                   de escritura que montoPagado — nunca por separado.
       const montoOriginal = Number(plan.montoColegiatura);
-      const descuento = +(montoOriginal * (Number(plan.descuento ?? 0) / 100)).toFixed(2);
+      const becas = await this.becasSvc.becasAplicables(empresaId, plan.estudianteId, plan.anioEscolarId, 'colegiatura');
+      const { descuento, concepto } = this.calcularDescuento(montoOriginal, plan.descuento, becas);
       const montoTotal = montoOriginal - descuento;
       const vencimiento = `${anio}-${String(mes).padStart(2, '0')}-${String(plan.diaCobro ?? 5).padStart(2, '0')}`;
       await this.ds.query(
         `INSERT INTO ed_cargos (
-           "empresaId","estudianteId","planPagoId",tipo,descripcion,
+           "empresaId","estudianteId","planPagoId",tipo,descripcion,concepto,
            "montoOriginal",descuento,"montoTotal","montoPagado","saldoPendiente",
            "fechaVencimiento",estado,mes,anio
-         ) VALUES ($1,$2,$3,'colegiatura',$4,$5,$6,$7,0,$7,$8,'pendiente',$9,$10)`,
+         ) VALUES ($1,$2,$3,'colegiatura',$4,$5,$6,$7,$8,0,$8,$9,'pendiente',$10,$11)`,
         [empresaId, plan.estudianteId, planId,
-         `Colegiatura ${MESES[mes - 1]} ${anio}`, montoOriginal, descuento, montoTotal, vencimiento, mes, anio],
+         `Colegiatura ${MESES[mes - 1]} ${anio}`, concepto, montoOriginal, descuento, montoTotal, vencimiento, mes, anio],
       );
       created++;
     }
@@ -133,16 +180,21 @@ export class ColegiaturaService {
       [planId, anio],
     );
     if (exists) throw new BadRequestException('Ya existe un cargo de matrícula para este año');
-    // Sin descuento — generarMatricula() nunca lo aplicó y eso no cambia
-    // aquí (comportamiento existente, solo se reconcilia el modelo).
+    // plan.descuento nunca se aplicó a la matrícula (comportamiento
+    // existente, sin cambios — es un descuento del PLAN de colegiatura, no
+    // se extiende aquí). Las becas con aplicaA IN ('inscripcion','ambos')
+    // sí aplican — antes ni siquiera se consultaban.
     const montoOriginal = Number(plan.montoMatricula);
+    const becas = await this.becasSvc.becasAplicables(empresaId, plan.estudianteId, plan.anioEscolarId, 'inscripcion');
+    const { descuento, concepto } = this.calcularDescuento(montoOriginal, 0, becas);
+    const montoTotal = montoOriginal - descuento;
     const [row] = await this.ds.query<any[]>(
       `INSERT INTO ed_cargos (
-         "empresaId","estudianteId","planPagoId",tipo,descripcion,
+         "empresaId","estudianteId","planPagoId",tipo,descripcion,concepto,
          "montoOriginal",descuento,"montoTotal","montoPagado","saldoPendiente",
          "fechaVencimiento",estado,anio
-       ) VALUES ($1,$2,$3,'matricula',$4,$5,0,$5,0,$5,CURRENT_DATE,'pendiente',$6) RETURNING *`,
-      [empresaId, plan.estudianteId, planId, `Matrícula ${anio}`, montoOriginal, anio],
+       ) VALUES ($1,$2,$3,'matricula',$4,$5,$6,$7,$8,0,$8,CURRENT_DATE,'pendiente',$9) RETURNING *`,
+      [empresaId, plan.estudianteId, planId, `Matrícula ${anio}`, concepto, montoOriginal, descuento, montoTotal, anio],
     );
     return row;
   }
@@ -206,6 +258,11 @@ export class ColegiaturaService {
     // en SQL crudo — el estilo de todo este service) — si se edita
     // montoOriginal/descuento a la vez que un pago está en curso sobre el
     // mismo cargo, uno de los dos espera al otro en vez de pisarlo.
+    //
+    // Nota: editar descuento aquí no actualiza "concepto" (la traza de
+    // plan/becas que lo compone) — es una corrección manual del monto, no
+    // un recálculo de becas. El concepto de creación queda como referencia
+    // histórica de por qué se generó ese descuento originalmente.
     return this.ds.transaction(async (manager) => {
       const [cargo] = await manager.query<any[]>(
         `SELECT * FROM ed_cargos WHERE id = $1 AND "empresaId" = $2 FOR UPDATE`,

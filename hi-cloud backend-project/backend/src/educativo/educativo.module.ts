@@ -19,6 +19,8 @@ import { EdAsistencia }   from './entities/ed-asistencia.entity';
 import { EdPlanPago }     from './entities/ed-plan-pago.entity';
 import { EdCargo }        from './entities/ed-cargo.entity';
 import { EdPago }         from './entities/ed-pago.entity';
+import { EdBeca }         from './entities/ed-beca.entity';
+import { EdEstudianteBeca } from './entities/ed-estudiante-beca.entity';
 // EdDisciplina, EdLibro, EdPrestamo, EdRuta, EdComunicado y EdNotaPeriodo
 // (más abajo) NO se importan aquí a propósito — ver la nota junto a
 // TypeOrmModule.forFeature.
@@ -41,6 +43,8 @@ import { AcademicoService }       from './academico/academico.service';
 import { AcademicoController }   from './academico/academico.controller';
 import { ColegiaturaService }    from './colegiatura/colegiatura.service';
 import { ColegiaturaController } from './colegiatura/colegiatura.controller';
+import { BecasService }          from './becas/becas.service';
+import { BecasController }       from './becas/becas.controller';
 
 @Module({
   imports: [
@@ -55,7 +59,7 @@ import { ColegiaturaController } from './colegiatura/colegiatura.controller';
       EdConfig, EdAnioEscolar, EdNivel, EdGrado, EdAsignatura, EdSeccion, EdPeriodo,
       EdEstudiante, EdTutor, EdDocente, EdMatricula,
       EdEvaluacion, EdCalificacion, EdAsistencia,
-      EdPlanPago, EdCargo, EdPago,
+      EdPlanPago, EdCargo, EdPago, EdBeca, EdEstudianteBeca,
     ]),
     TenantModule,
   ],
@@ -69,6 +73,7 @@ import { ColegiaturaController } from './colegiatura/colegiatura.controller';
     MatriculasController,
     AcademicoController,
     ColegiaturaController,
+    BecasController,
   ],
   providers: [
     EdConfigService,
@@ -80,6 +85,7 @@ import { ColegiaturaController } from './colegiatura/colegiatura.controller';
     MatriculasService,
     AcademicoService,
     ColegiaturaService,
+    BecasService,
   ],
   exports: [EdConfigService, EstructuraService],
 })

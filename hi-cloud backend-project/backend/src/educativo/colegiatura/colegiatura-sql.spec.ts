@@ -2,6 +2,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { DataSource } from 'typeorm';
 import { ColegiaturaService } from './colegiatura.service';
+import { BecasService } from '../becas/becas.service';
 
 /**
  * Contrato: upsertPlan() debe incluir "nombre" en el INSERT a
@@ -245,7 +246,7 @@ const TIENE_BD = !!process.env['DB_HOST'];
   });
 
   it('plan → cargos → pago parcial → segundo parcial → pago final: estados y saldos cuadran', async () => {
-    const svc = new ColegiaturaService(dataSource);
+    const svc = new ColegiaturaService(dataSource, new BecasService(dataSource));
     const plan = await svc.upsertPlan(EMPRESA, {
       estudianteId, anioEscolarId: null, montoColegiatura: 1000, descuento: 10,
     });
@@ -275,7 +276,7 @@ const TIENE_BD = !!process.env['DB_HOST'];
   });
 
   it('dos pagos concurrentes sobre el mismo cargo no descuadran el saldo (bloqueo pesimista)', async () => {
-    const svc = new ColegiaturaService(dataSource);
+    const svc = new ColegiaturaService(dataSource, new BecasService(dataSource));
     const plan = await svc.upsertPlan(EMPRESA, {
       estudianteId, anioEscolarId: null, montoColegiatura: 1000, descuento: 0,
     });

@@ -21,6 +21,7 @@ de septiembre 2026.
 | Matrículas | `matriculas/` | CRUD + stats. Beca es FK a `ed_becas` (`becaId`), no un enum de texto. |
 | Académico | `academico/` | Evaluaciones, calificaciones (bulk), asistencia (bulk + stats). |
 | Colegiatura | `colegiatura/` | Planes de pago **por estudiante** (no por grado — ver abajo), cargos, pagos, resumen financiero. |
+| Becas | `becas/` | Catálogo (`ed_becas`) + asignación a estudiantes (`ed_estudiante_becas`) — conectado a `generarCargos()`/`generarMatricula()`, ver "Becas" abajo. Sin UI de frontend todavía. |
 
 Todos los 9 controllers llevan `JwtAuthGuard, RolesGuard, TenantGuard,
 ModuloAddonGuard('educativo')` — el guard estándar de add-on contratado
@@ -78,6 +79,62 @@ un colegio interesado.
   no se migran fuera por ahora; si alguien construye facturación por cohorte
   de grado en el futuro, ya están ahí.
 
+## Becas
+
+`ed_becas` (catálogo, con `aplicaA`: colegiatura/inscripcion/ambos) y
+`ed_estudiante_becas` (asignación a estudiantes, N:N — un estudiante puede
+tener varias becas activas a la vez) existían desde la migración original
+pero nunca se consultaban. `becas/becas.service.ts` los conecta:
+
+- `becasAplicables(empresaId, estudianteId, anioEscolarId, aplicaA)` — becas
+  activas del estudiante (y de la beca en el catálogo) que aplican a
+  `'colegiatura'` o `'inscripcion'` (una beca con `aplicaA='ambos'` cuenta
+  para las dos). Una asignación con `anioEscolarId` null no está atada a un
+  año puntual y siempre cuenta.
+- `colegiatura.service.ts` (`calcularDescuento()`, privado) combina
+  `plan.descuento` (comercial, % suelto en el plan — ver más abajo) con las
+  becas aplicables: **cada fuente se calcula sobre el monto ORIGINAL, nunca
+  en cascada** — 10% de plan + 20% de beca es 30% del original, no 10% y
+  después 20% sobre el resto (con cascada el resultado depende del orden y
+  nadie puede auditarlo). El total se topa al monto del cargo — nunca
+  negativo, nunca mayor al original.
+- `generarCargos()` solo consulta becas `aplicaA IN ('colegiatura','ambos')`;
+  `generarMatricula()` solo `aplicaA IN ('inscripcion','ambos')`.
+  `plan.descuento` sigue aplicando solo a la colegiatura, como siempre
+  (`generarMatricula()` nunca lo extendió y eso no cambió).
+
+**`plan.descuento` vs. el catálogo de becas — decisión tomada:** son cosas de
+naturaleza distinta, no lo mismo duplicado dos veces. `plan.descuento` es un
+% comercial de UN plan, sin categoría ni rastro de aprobación, con frontend
+real (`PlanModal`/`TabPlanes` en `ColegiaturaPage.tsx`). El catálogo de becas
+es formal, categorizado (`aplicaA`), con `motivo`/`aprobadoPor` para
+auditoría. Se decidió sumarlos (ver arriba) en vez de migrar todo a una sola
+vía — evita tocar el frontend existente y no hay nada en el código que
+obligue a unificarlos.
+
+**Trazabilidad sin tablas nuevas:** `ed_cargos.concepto` (`VARCHAR(200)`, sin
+ningún consumidor en el código ni en el frontend) guarda de dónde vino el
+descuento: `plan:<monto>;beca:<becaId>:<monto>;...;topado`. El nombre de la
+beca no se guarda ahí — se resuelve con un `JOIN` a `ed_becas` por `becaId`
+al mostrarlo, así nunca queda desincronizado si la beca se renombra.
+`topado` solo aparece si la suma bruta superó el monto del cargo. Si no hubo
+ningún descuento, `concepto` queda `null`. `updateCargo()` no recalcula esta
+traza si se edita `montoOriginal`/`descuento` a mano — el `concepto` de
+creación queda como referencia histórica de por qué se generó ese descuento
+originalmente, no se sincroniza con ediciones manuales posteriores.
+
+**Hallazgo adicional durante la verificación:** `ed_pagos."montoPagado"` es
+`NOT NULL` desde la migración base y tampoco se llenaba — mismo patrón
+exacto que `montoOriginal` en `ed_cargos` (`FixColegiaturaSchema` agregó
+`monto` al lado sin llenar la original). `registrarPago()` nunca se había
+ejecutado hasta la verificación de la Fase 1. Desbloqueo mínimo aplicado
+(mismo valor en ambas columnas); el diseño completo de `ed_pagos` sigue sin
+reconciliar — no estaba en el alcance de ese bloque.
+
+**Sin frontend todavía.** No hay pantalla para crear becas ni para
+asignarlas a un estudiante — solo la API. Un admin las gestiona vía API
+directa hasta que exista esa UI.
+
 ## Limitaciones conocidas, no corregidas en esta tarea
 
 - **`bulkAsistencia()` no es idempotente.** El UNIQUE real de `ed_asistencia`
@@ -111,7 +168,7 @@ pendiente sobre este archivo.
 ## Tests
 
 Un `*-sql.spec.ts` por service corregido (`config`, `estudiantes`,
-`matriculas`, `academico`, `docentes`, `tutores`, `colegiatura`) — capa
+`matriculas`, `academico`, `docentes`, `tutores`, `colegiatura`, `becas`) — capa
 estática que lee el código fuente y confirma que usa las columnas/tablas
 reales, más una capa gateada por `DB_HOST` (real, se salta en CI y en
 cualquier entorno sin BD) que valida las sentencias con `EXPLAIN` (o, para el
