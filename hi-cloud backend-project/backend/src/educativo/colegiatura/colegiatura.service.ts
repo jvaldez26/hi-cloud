@@ -90,14 +90,20 @@ export class ColegiaturaService {
       );
       if (exists) continue;
 
-      const monto = plan.montoColegiatura * (1 - (plan.descuento ?? 0) / 100);
+      // "montoOriginal" es NOT NULL desde la migración base y ningún camino
+      // de creación de cargos la llenaba — cada INSERT reventaba con 23502.
+      // Va el monto ANTES de descuentos; "monto" (columna simplificada de
+      // FixColegiaturaSchema) sigue con el valor ya descontado por ahora —
+      // el diseño final de ambas columnas se reconcilia por separado.
+      const montoOriginal = plan.montoColegiatura;
+      const monto = montoOriginal * (1 - (plan.descuento ?? 0) / 100);
       const vencimiento = `${anio}-${String(mes).padStart(2, '0')}-${String(plan.diaCobro ?? 5).padStart(2, '0')}`;
       await this.ds.query(
         `INSERT INTO ed_cargos (
-           "empresaId","estudianteId","planPagoId",tipo,descripcion,monto,"fechaVencimiento",estado,mes,anio
-         ) VALUES ($1,$2,$3,'colegiatura',$4,$5,$6,'pendiente',$7,$8)`,
+           "empresaId","estudianteId","planPagoId",tipo,descripcion,"montoOriginal",monto,"fechaVencimiento",estado,mes,anio
+         ) VALUES ($1,$2,$3,'colegiatura',$4,$5,$6,$7,'pendiente',$8,$9)`,
         [empresaId, plan.estudianteId, planId,
-         `Colegiatura ${MESES[mes - 1]} ${anio}`, monto, vencimiento, mes, anio],
+         `Colegiatura ${MESES[mes - 1]} ${anio}`, montoOriginal, monto, vencimiento, mes, anio],
       );
       created++;
     }
@@ -120,8 +126,8 @@ export class ColegiaturaService {
     if (exists) throw new BadRequestException('Ya existe un cargo de matrícula para este año');
     const [row] = await this.ds.query<any[]>(
       `INSERT INTO ed_cargos (
-         "empresaId","estudianteId","planPagoId",tipo,descripcion,monto,"fechaVencimiento",estado,anio
-       ) VALUES ($1,$2,$3,'matricula',$4,$5,CURRENT_DATE,'pendiente',$6) RETURNING *`,
+         "empresaId","estudianteId","planPagoId",tipo,descripcion,"montoOriginal",monto,"fechaVencimiento",estado,anio
+       ) VALUES ($1,$2,$3,'matricula',$4,$5,$5,CURRENT_DATE,'pendiente',$6) RETURNING *`,
       [empresaId, plan.estudianteId, planId, `Matrícula ${anio}`, plan.montoMatricula, anio],
     );
     return row;
@@ -166,8 +172,8 @@ export class ColegiaturaService {
     if (!est) throw new NotFoundException('Estudiante no encontrado');
     const [row] = await this.ds.query<any[]>(
       `INSERT INTO ed_cargos (
-         "empresaId","estudianteId","planPagoId",tipo,descripcion,monto,"fechaVencimiento",estado,mes,anio
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,'pendiente',$8,$9) RETURNING *`,
+         "empresaId","estudianteId","planPagoId",tipo,descripcion,"montoOriginal",monto,"fechaVencimiento",estado,mes,anio
+       ) VALUES ($1,$2,$3,$4,$5,$6,$6,$7,'pendiente',$8,$9) RETURNING *`,
       [empresaId, dto.estudianteId, dto.planPagoId ?? null,
        dto.tipo ?? 'otro', dto.descripcion, dto.monto,
        dto.fechaVencimiento ?? null, dto.mes ?? null, dto.anio ?? null],

@@ -38,6 +38,38 @@ describe('SQL crudo de colegiatura.service.ts — upsertPlan()', () => {
   });
 });
 
+/**
+ * Contrato: los tres caminos que crean filas en ed_cargos (generarCargos,
+ * generarMatricula, addCargo) deben incluir "montoOriginal" — es
+ * NOT NULL desde la migración base y ninguno la llenaba: cada INSERT
+ * reventaba con 23502 (not-null violation), así que ningún cargo se podía
+ * crear por ningún camino (confirmado en vivo contra hicloud_test,
+ * 2026-09-14, antes de este fix).
+ */
+describe('SQL crudo de colegiatura.service.ts — creación de ed_cargos (montoOriginal)', () => {
+  const leer = (...ruta: string[]) => readFileSync(join(__dirname, ...ruta), 'utf8');
+  const src = () => leer('colegiatura.service.ts');
+  const bloque = (inicio: string, fin: string) => {
+    const s = src();
+    return s.slice(s.indexOf(inicio), s.indexOf(fin));
+  };
+
+  it('generarCargos() incluye "montoOriginal" en el INSERT', () => {
+    const b = bloque('async generarCargos(', 'async generarMatricula(');
+    expect(b).toMatch(/INSERT INTO ed_cargos \(\s*"empresaId","estudianteId","planPagoId",tipo,descripcion,"montoOriginal",monto,/);
+  });
+
+  it('generarMatricula() incluye "montoOriginal" en el INSERT', () => {
+    const b = bloque('async generarMatricula(', '// ── Cargos');
+    expect(b).toMatch(/INSERT INTO ed_cargos \(\s*"empresaId","estudianteId","planPagoId",tipo,descripcion,"montoOriginal",monto,/);
+  });
+
+  it('addCargo() incluye "montoOriginal" en el INSERT', () => {
+    const b = bloque('async addCargo(', 'async updateCargo(');
+    expect(b).toMatch(/INSERT INTO ed_cargos \(\s*"empresaId","estudianteId","planPagoId",tipo,descripcion,"montoOriginal",monto,/);
+  });
+});
+
 // ── Verificación real contra Postgres — requiere BD ───────────────────────────
 const TIENE_BD = !!process.env['DB_HOST'];
 
@@ -75,6 +107,48 @@ const TIENE_BD = !!process.env['DB_HOST'];
            "empresaId", nombre, "estudianteId","anioEscolarId","montoColegiatura","montoMatricula","diaCobro",descuento
          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
         [-1, 'Plan de prueba — no persiste', null, null, 100, 0, 5, 0],
+      );
+      expect(rows.length).toBe(1);
+    } finally {
+      await qr.rollbackTransaction();
+      await qr.release();
+    }
+  });
+});
+
+(TIENE_BD ? describe : describe.skip)('ed_cargos — INSERT real contra Postgres (con ROLLBACK)', () => {
+  let dataSource: DataSource;
+
+  beforeAll(async () => {
+    dataSource = new DataSource({
+      type:     'postgres',
+      host:     process.env['DB_HOST'],
+      port:     Number(process.env['DB_PORT'] ?? 5432),
+      username: process.env['DB_USERNAME'],
+      password: process.env['DB_PASSWORD'],
+      database: process.env['DB_NAME'],
+      ssl:      process.env['DB_SSL'] === 'true' ? { rejectUnauthorized: false } : false,
+    });
+    await dataSource.initialize();
+  });
+
+  afterAll(async () => {
+    await dataSource?.destroy();
+  });
+
+  it('el INSERT con "montoOriginal" satisface el NOT NULL (transacción con ROLLBACK)', async () => {
+    const qr = dataSource.createQueryRunner();
+    await qr.connect();
+    await qr.startTransaction();
+    try {
+      const [est] = await qr.query(
+        `INSERT INTO ed_estudiantes ("empresaId", nombres, apellidos) VALUES (-1, 'Prueba', 'MontoOriginal') RETURNING id`,
+      );
+      const rows = await qr.query(
+        `INSERT INTO ed_cargos (
+           "empresaId","estudianteId","planPagoId",tipo,descripcion,"montoOriginal",monto,"fechaVencimiento",estado,mes,anio
+         ) VALUES ($1,$2,$3,'colegiatura',$4,$5,$6,$7,'pendiente',$8,$9) RETURNING id`,
+        [-1, est.id, null, 'Cargo de prueba — no persiste', 5000, 4500, '2026-08-05', 8, 2026],
       );
       expect(rows.length).toBe(1);
     } finally {
