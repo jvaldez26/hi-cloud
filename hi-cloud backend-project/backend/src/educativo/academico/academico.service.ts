@@ -149,17 +149,21 @@ export class AcademicoService {
     items: Array<{ estudianteId: number; estado: string; observaciones?: string }>) {
     let saved = 0;
     for (const item of items) {
-      // El UNIQUE real de ed_asistencia es ("estudianteId", fecha, "asignaturaId"),
-      // no ("estudianteId","seccionId",fecha) — este endpoint es por sección/día y
-      // no recibe asignaturaId, así que queda NULL en cada fila. Postgres nunca
-      // considera dos NULL como iguales para efectos de UNIQUE, por lo que el
-      // ON CONFLICT de abajo no evitará filas duplicadas al reenviar la misma
-      // asistencia (no revienta con error de Postgres, pero no es idempotente).
-      // Documentado en el README del módulo; no se rediseña aquí.
+      // Este endpoint es asistencia GENERAL del día (por sección, no por
+      // materia) — nunca manda asignaturaId, así que siempre queda NULL.
+      // El UNIQUE de la tabla ("estudianteId", fecha, "asignaturaId") no
+      // protege ese caso (Postgres no empata NULLs en un UNIQUE); por eso
+      // el ON CONFLICT apunta al índice único parcial
+      // uq_ed_asistencia_general_por_dia (migración
+      // AsistenciaGeneralUnicaPorDia1763200000000), que sí cubre
+      // exactamente "una fila por estudiante+fecha cuando asignaturaId es
+      // NULL". Si algún día se agrega asistencia por materia, ese otro
+      // camino usará el UNIQUE original de 3 columnas, no este.
       await this.ds.query(
         `INSERT INTO ed_asistencia ("empresaId","estudianteId","seccionId",fecha,estado,justificacion)
          VALUES ($1,$2,$3,$4,$5,$6)
-         ON CONFLICT ("estudianteId", fecha, "asignaturaId") DO UPDATE SET estado = $5, justificacion = $6`,
+         ON CONFLICT ("estudianteId", fecha) WHERE "asignaturaId" IS NULL
+         DO UPDATE SET estado = $5, justificacion = $6`,
         [empresaId, item.estudianteId, seccionId, fecha, item.estado, item.observaciones ?? null],
       );
       saved++;

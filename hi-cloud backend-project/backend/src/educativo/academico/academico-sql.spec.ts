@@ -42,12 +42,16 @@ describe('SQL crudo de academico.service.ts', () => {
     expect(b).not.toContain('a.observaciones');
   });
 
-  it('bulkAsistencia() usa justificacion y el ON CONFLICT real ("estudianteId", fecha, "asignaturaId")', () => {
+  it('bulkAsistencia() usa justificacion y el ON CONFLICT apunta al índice parcial (asignaturaId IS NULL)', () => {
     const b = bloque('async bulkAsistencia(', 'async statsAsistencia(');
     expect(b).toContain('justificacion');
     expect(b).not.toContain('"empresaId","estudianteId","seccionId",fecha,estado,observaciones');
-    expect(b).toContain('ON CONFLICT ("estudianteId", fecha, "asignaturaId")');
+    // uq_ed_asistencia_general_por_dia (AsistenciaGeneralUnicaPorDia1763200000000) —
+    // este endpoint nunca manda asignaturaId, así que el arbiter debe ser el
+    // índice parcial, no el UNIQUE de 3 columnas (que nunca empataría con NULL).
+    expect(b).toContain('ON CONFLICT ("estudianteId", fecha) WHERE "asignaturaId" IS NULL');
     expect(b).not.toContain('ON CONFLICT ("estudianteId","seccionId",fecha)');
+    expect(b).not.toContain('ON CONFLICT ("estudianteId", fecha, "asignaturaId")');
   });
 });
 
@@ -94,11 +98,54 @@ const TIENE_BD = !!process.env['DB_HOST'];
   });
 
   it('el INSERT/ON CONFLICT de bulkAsistencia() es válido contra el esquema real (EXPLAIN, no ejecuta)', async () => {
+    // Requiere la migración AsistenciaGeneralUnicaPorDia1763200000000 aplicada
+    // (crea uq_ed_asistencia_general_por_dia) — si esto falla con "no unique
+    // or exclusion constraint matching the ON CONFLICT specification", el
+    // índice parcial no está.
     await expect(dataSource.query(
       `EXPLAIN INSERT INTO ed_asistencia ("empresaId","estudianteId","seccionId",fecha,estado,justificacion)
        VALUES ($1,$2,$3,$4,$5,$6)
-       ON CONFLICT ("estudianteId", fecha, "asignaturaId") DO UPDATE SET estado = $5, justificacion = $6`,
+       ON CONFLICT ("estudianteId", fecha) WHERE "asignaturaId" IS NULL
+       DO UPDATE SET estado = $5, justificacion = $6`,
       [-1, -1, -1, '2026-01-01', 'presente', null],
     )).resolves.toBeDefined();
+  });
+
+  it('reenviar la misma asistencia general no duplica filas (idempotente con el índice parcial)', async () => {
+    const qr = dataSource.createQueryRunner();
+    await qr.connect();
+    await qr.startTransaction();
+    try {
+      // "estudianteId" y "seccionId" tienen FK real — hace falta una fila de
+      // cada una (dentro de la transacción, nunca se confirma) para probar
+      // el INSERT de verdad en vez de EXPLAIN.
+      const [est] = await qr.query(
+        `INSERT INTO ed_estudiantes ("empresaId", nombres, apellidos) VALUES (-999, 'Prueba', 'Idempotencia') RETURNING id`,
+      );
+      const [grado] = await qr.query(
+        `INSERT INTO ed_grados ("empresaId", nombre) VALUES (-999, 'Prueba') RETURNING id`,
+      );
+      const [seccion] = await qr.query(
+        `INSERT INTO ed_secciones ("empresaId", "gradoId", nombre) VALUES (-999, $1, 'Prueba') RETURNING id`,
+        [grado.id],
+      );
+      const insertar = () => qr.query(
+        `INSERT INTO ed_asistencia ("empresaId","estudianteId","seccionId",fecha,estado,justificacion)
+         VALUES ($1,$2,$3,$4,$5,$6)
+         ON CONFLICT ("estudianteId", fecha) WHERE "asignaturaId" IS NULL
+         DO UPDATE SET estado = $5, justificacion = $6`,
+        [-999, est.id, seccion.id, '2026-01-01', 'presente', null],
+      );
+      await insertar();
+      await insertar(); // reenvío — debe actualizar, no duplicar
+      const rows = await qr.query(
+        `SELECT COUNT(*)::int AS n FROM ed_asistencia WHERE "estudianteId" = $1 AND fecha = '2026-01-01'`,
+        [est.id],
+      );
+      expect(rows[0].n).toBe(1);
+    } finally {
+      await qr.rollbackTransaction();
+      await qr.release();
+    }
   });
 });
