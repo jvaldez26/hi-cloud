@@ -196,7 +196,7 @@ function PagoModal({ open, cargo, onClose }: { open: boolean; cargo?: any; onClo
       })}
       confirmLoading={mut.isPending} destroyOnClose
       afterOpenChange={v => {
-        if (v && cargo) form.setFieldsValue({ monto: cargo.monto, fecha: dayjs(), metodoPago: 'efectivo' });
+        if (v && cargo) form.setFieldsValue({ monto: cargo.saldoPendiente, fecha: dayjs(), metodoPago: 'efectivo' });
         else if (!v) form.resetFields();
       }}>
       {cargo && (
@@ -297,12 +297,13 @@ function TabCargos({ anioId }: { anioId?: number }) {
   const ESTADO_OPTS = [
     { value: undefined, label: 'Todos' },
     { value: 'pendiente', label: 'Pendiente' },
+    { value: 'parcial',   label: 'Pago parcial' },
     { value: 'pagado',    label: 'Pagado' },
     { value: 'anulado',   label: 'Anulado' },
   ];
 
   const estadoColor = (e: string) =>
-    e === 'pagado' ? 'green' : e === 'anulado' ? 'default' : e === 'pendiente' ? 'orange' : 'red';
+    e === 'pagado' ? 'green' : e === 'anulado' ? 'default' : e === 'pendiente' ? 'orange' : e === 'parcial' ? 'blue' : 'red';
 
   return (
     <>
@@ -320,13 +321,14 @@ function TabCargos({ anioId }: { anioId?: number }) {
         columns={[
           { title: 'Estudiante', dataIndex: 'estudianteNombre', ellipsis: true },
           { title: 'Descripción', dataIndex: 'descripcion' },
-          { title: 'Monto', dataIndex: 'monto', render: (v: any) => fmt.format(v), align: 'right' },
+          { title: 'Monto', dataIndex: 'montoTotal', render: (v: any) => fmt.format(v), align: 'right' },
+          { title: 'Saldo', dataIndex: 'saldoPendiente', render: (v: any) => v > 0 ? fmt.format(v) : '—', align: 'right' },
           { title: 'Vencimiento', dataIndex: 'fechaVencimiento', render: (v: any) => v?.substring(0, 10) ?? '—' },
           { title: 'Estado', dataIndex: 'estado', render: (v: string) => <Tag color={estadoColor(v)}>{v}</Tag> },
           {
             title: '',
             render: (_: any, r: any) =>
-              r.estado === 'pendiente' && (
+              (r.estado === 'pendiente' || r.estado === 'parcial') && (
                 <Button size="small" type="primary" icon={<DollarOutlined />}
                   onClick={() => setPagoModal({ open: true, cargo: r })}>
                   Pagar

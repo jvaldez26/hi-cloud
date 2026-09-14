@@ -87,7 +87,12 @@ export class AddCargoDto {
   @IsDefined({ message: 'El monto es requerido' })
   @IsNumber({}, { message: 'El monto debe ser un número' })
   @Min(0, { message: 'El monto no puede ser negativo' })
-  monto: number;
+  montoOriginal: number;
+
+  @IsOptional()
+  @IsNumber({}, { message: 'El descuento debe ser un número' })
+  @Min(0, { message: 'El descuento no puede ser negativo' })
+  descuento?: number;
 
   @IsOptional()
   @IsDateString({}, { message: 'La fecha de vencimiento debe ser una fecha válida (YYYY-MM-DD)' })
@@ -114,15 +119,21 @@ export class UpdateCargoDto {
   @IsOptional()
   @IsNumber({}, { message: 'El monto debe ser un número' })
   @Min(0, { message: 'El monto no puede ser negativo' })
-  monto?: number;
+  montoOriginal?: number;
+
+  @IsOptional()
+  @IsNumber({}, { message: 'El descuento debe ser un número' })
+  @Min(0, { message: 'El descuento no puede ser negativo' })
+  descuento?: number;
 
   @IsOptional()
   @IsDateString({}, { message: 'La fecha de vencimiento debe ser una fecha válida (YYYY-MM-DD)' })
   fechaVencimiento?: string;
 
-  @IsOptional()
-  @IsIn(['pendiente', 'pagado', 'anulado', 'vencido'], { message: 'Estado de cargo inválido' })
-  estado?: string;
+  // "estado" no es editable aquí a propósito — es derivado de montoPagado/
+  // saldoPendiente y solo registrarPago() lo actualiza, en el mismo punto
+  // donde recalcula esos dos. Editarlo por este camino los desincronizaría
+  // (un cargo "pagado" sin pago real, o "pendiente" con plata ya cobrada).
 }
 
 export class RegistrarPagoDto {

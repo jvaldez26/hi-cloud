@@ -23,9 +23,10 @@ export class EdCargo {
   @Column({ default: 0 }) diasMora!: number;
   @Column({ nullable: true }) facturaId?: number;
   @CreateDateColumn() createdAt!: Date;
-  // Columnas simplificadas (migración FixColegiaturaSchema)
+  // Columnas simplificadas (migración FixColegiaturaSchema). "monto" se quitó
+  // en DropMontoDuplicadoEdCargos — duplicaba montoOriginal/montoTotal sin
+  // ningún consumidor real (ver esa migración).
   @Column({ nullable: true }) planPagoId?: number;
-  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true }) monto?: number;
   @Column({ length: 200, nullable: true }) descripcion?: string;
   @Column({ nullable: true }) mes?: number;
   @Column({ nullable: true }) anio?: number;

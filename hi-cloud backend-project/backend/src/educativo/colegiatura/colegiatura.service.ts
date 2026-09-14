@@ -18,8 +18,8 @@ export class ColegiaturaService {
               e.nombres || ' ' || e.apellidos AS "estudianteNombre",
               e.cedula AS "estudianteCedula",
               a.nombre AS "anioNombre",
-              (SELECT COUNT(*) FROM ed_cargos c WHERE c."planPagoId" = p.id AND c.estado = 'pendiente')::int AS "cargosPendientes",
-              (SELECT COALESCE(SUM(c.monto),0) FROM ed_cargos c WHERE c."planPagoId" = p.id AND c.estado = 'pendiente') AS "saldoPendiente"
+              (SELECT COUNT(*) FROM ed_cargos c WHERE c."planPagoId" = p.id AND c.estado IN ('pendiente','parcial'))::int AS "cargosPendientes",
+              (SELECT COALESCE(SUM(c."saldoPendiente"),0) FROM ed_cargos c WHERE c."planPagoId" = p.id AND c.estado IN ('pendiente','parcial')) AS "saldoPendiente"
        FROM ed_planes_pago p
        JOIN ed_estudiantes e ON e.id = p."estudianteId"
        LEFT JOIN ed_anios_escolares a ON a.id = p."anioEscolarId"
@@ -90,20 +90,29 @@ export class ColegiaturaService {
       );
       if (exists) continue;
 
-      // "montoOriginal" es NOT NULL desde la migración base y ningún camino
-      // de creación de cargos la llenaba — cada INSERT reventaba con 23502.
-      // Va el monto ANTES de descuentos; "monto" (columna simplificada de
-      // FixColegiaturaSchema) sigue con el valor ya descontado por ahora —
-      // el diseño final de ambas columnas se reconcilia por separado.
-      const montoOriginal = plan.montoColegiatura;
-      const monto = montoOriginal * (1 - (plan.descuento ?? 0) / 100);
+      // Modelo de dinero de ed_cargos (reconciliado — antes "monto" y
+      // "montoOriginal" coexistían sin relación entre sí, deuda de
+      // FixColegiaturaSchema):
+      //   montoOriginal   antes de descuento, se fija al crear.
+      //   descuento       monto en pesos (no %) aplicado, se fija al crear.
+      //   montoMora       la mantiene el cron de mora (no implementado
+      //                   todavía) — 0 al crear.
+      //   montoTotal      = montoOriginal - descuento + montoMora. Derivado.
+      //   montoPagado     lo abonado. Derivado, solo lo toca registrarPago().
+      //   saldoPendiente  = montoTotal - montoPagado. Derivado, mismo punto
+      //                   de escritura que montoPagado — nunca por separado.
+      const montoOriginal = Number(plan.montoColegiatura);
+      const descuento = +(montoOriginal * (Number(plan.descuento ?? 0) / 100)).toFixed(2);
+      const montoTotal = montoOriginal - descuento;
       const vencimiento = `${anio}-${String(mes).padStart(2, '0')}-${String(plan.diaCobro ?? 5).padStart(2, '0')}`;
       await this.ds.query(
         `INSERT INTO ed_cargos (
-           "empresaId","estudianteId","planPagoId",tipo,descripcion,"montoOriginal",monto,"fechaVencimiento",estado,mes,anio
-         ) VALUES ($1,$2,$3,'colegiatura',$4,$5,$6,$7,'pendiente',$8,$9)`,
+           "empresaId","estudianteId","planPagoId",tipo,descripcion,
+           "montoOriginal",descuento,"montoTotal","montoPagado","saldoPendiente",
+           "fechaVencimiento",estado,mes,anio
+         ) VALUES ($1,$2,$3,'colegiatura',$4,$5,$6,$7,0,$7,$8,'pendiente',$9,$10)`,
         [empresaId, plan.estudianteId, planId,
-         `Colegiatura ${MESES[mes - 1]} ${anio}`, montoOriginal, monto, vencimiento, mes, anio],
+         `Colegiatura ${MESES[mes - 1]} ${anio}`, montoOriginal, descuento, montoTotal, vencimiento, mes, anio],
       );
       created++;
     }
@@ -124,11 +133,16 @@ export class ColegiaturaService {
       [planId, anio],
     );
     if (exists) throw new BadRequestException('Ya existe un cargo de matrícula para este año');
+    // Sin descuento — generarMatricula() nunca lo aplicó y eso no cambia
+    // aquí (comportamiento existente, solo se reconcilia el modelo).
+    const montoOriginal = Number(plan.montoMatricula);
     const [row] = await this.ds.query<any[]>(
       `INSERT INTO ed_cargos (
-         "empresaId","estudianteId","planPagoId",tipo,descripcion,"montoOriginal",monto,"fechaVencimiento",estado,anio
-       ) VALUES ($1,$2,$3,'matricula',$4,$5,$5,CURRENT_DATE,'pendiente',$6) RETURNING *`,
-      [empresaId, plan.estudianteId, planId, `Matrícula ${anio}`, plan.montoMatricula, anio],
+         "empresaId","estudianteId","planPagoId",tipo,descripcion,
+         "montoOriginal",descuento,"montoTotal","montoPagado","saldoPendiente",
+         "fechaVencimiento",estado,anio
+       ) VALUES ($1,$2,$3,'matricula',$4,$5,0,$5,0,$5,CURRENT_DATE,'pendiente',$6) RETURNING *`,
+      [empresaId, plan.estudianteId, planId, `Matrícula ${anio}`, montoOriginal, anio],
     );
     return row;
   }
@@ -170,34 +184,66 @@ export class ColegiaturaService {
       [dto.estudianteId, empresaId],
     );
     if (!est) throw new NotFoundException('Estudiante no encontrado');
+    const montoOriginal = Number(dto.montoOriginal);
+    const descuento = Number(dto.descuento ?? 0);
+    const montoTotal = montoOriginal - descuento;
     const [row] = await this.ds.query<any[]>(
       `INSERT INTO ed_cargos (
-         "empresaId","estudianteId","planPagoId",tipo,descripcion,"montoOriginal",monto,"fechaVencimiento",estado,mes,anio
-       ) VALUES ($1,$2,$3,$4,$5,$6,$6,$7,'pendiente',$8,$9) RETURNING *`,
+         "empresaId","estudianteId","planPagoId",tipo,descripcion,
+         "montoOriginal",descuento,"montoTotal","montoPagado","saldoPendiente",
+         "fechaVencimiento",estado,mes,anio
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,0,$8,$9,'pendiente',$10,$11) RETURNING *`,
       [empresaId, dto.estudianteId, dto.planPagoId ?? null,
-       dto.tipo ?? 'otro', dto.descripcion, dto.monto,
+       dto.tipo ?? 'otro', dto.descripcion, montoOriginal, descuento, montoTotal,
        dto.fechaVencimiento ?? null, dto.mes ?? null, dto.anio ?? null],
     );
     return row;
   }
 
   async updateCargo(empresaId: number, id: number, dto: any) {
-    const [exists] = await this.ds.query<any[]>(
-      `SELECT id FROM ed_cargos WHERE id = $1 AND "empresaId" = $2`,
-      [id, empresaId],
-    );
-    if (!exists) throw new NotFoundException('Cargo no encontrado');
-    const FIELDS = ['descripcion', 'monto', 'fechaVencimiento', 'estado'];
-    const fields = FIELDS.filter(f => dto[f] !== undefined);
-    if (!fields.length) return exists;
-    const sets = fields.map((f, i) => `"${f}" = $${i + 3}`).join(', ');
-    const [row] = await this.ds.query(
-      `WITH fila AS (
-         UPDATE ed_cargos SET ${sets} WHERE id = $1 AND "empresaId" = $2 RETURNING *
-       ) SELECT * FROM fila`,
-      [id, empresaId, ...fields.map(f => dto[f])],
-    );
-    return row;
+    // Bloqueo pesimista sobre el cargo (mismo mecanismo que
+    // lock: { mode: 'pessimistic_write' } de caja.service.ts:833, expresado
+    // en SQL crudo — el estilo de todo este service) — si se edita
+    // montoOriginal/descuento a la vez que un pago está en curso sobre el
+    // mismo cargo, uno de los dos espera al otro en vez de pisarlo.
+    return this.ds.transaction(async (manager) => {
+      const [cargo] = await manager.query<any[]>(
+        `SELECT * FROM ed_cargos WHERE id = $1 AND "empresaId" = $2 FOR UPDATE`,
+        [id, empresaId],
+      );
+      if (!cargo) throw new NotFoundException('Cargo no encontrado');
+
+      // "estado", "montoPagado" y "saldoPendiente" NO están aquí a propósito
+      // (ver UpdateCargoDto) — son derivadas del historial de pagos; solo
+      // registrarPago() las toca, en un único punto de escritura.
+      const FIELDS = ['descripcion', 'montoOriginal', 'descuento', 'fechaVencimiento'];
+      const fields = FIELDS.filter(f => dto[f] !== undefined);
+      if (!fields.length) return cargo;
+
+      const sets = fields.map((f, i) => `"${f}" = $${i + 3}`);
+      const params: any[] = [id, empresaId, ...fields.map(f => dto[f])];
+
+      // montoTotal/saldoPendiente son derivadas de montoOriginal/descuento —
+      // si cualquiera de las dos cambia, las dos se recalculan aquí mismo,
+      // nunca por separado (saldoPendiente no puede quedar negativa: un
+      // pago ya cobrado no se "revierte" por editar el monto del cargo).
+      if (fields.includes('montoOriginal') || fields.includes('descuento')) {
+        const montoOriginal = fields.includes('montoOriginal') ? Number(dto.montoOriginal) : Number(cargo.montoOriginal);
+        const descuento = fields.includes('descuento') ? Number(dto.descuento) : Number(cargo.descuento ?? 0);
+        const montoTotal = montoOriginal - descuento;
+        const saldoPendiente = Math.max(montoTotal - Number(cargo.montoPagado ?? 0), 0);
+        sets.push(`"montoTotal" = $${params.length + 1}`);      params.push(montoTotal);
+        sets.push(`"saldoPendiente" = $${params.length + 1}`);  params.push(saldoPendiente);
+      }
+
+      const [row] = await manager.query(
+        `WITH fila AS (
+           UPDATE ed_cargos SET ${sets.join(', ')} WHERE id = $1 AND "empresaId" = $2 RETURNING *
+         ) SELECT * FROM fila`,
+        params,
+      );
+      return row;
+    });
   }
 
   // ── Pagos ───────────────────────────────────────────────────────────────────
@@ -225,34 +271,63 @@ export class ColegiaturaService {
   }
 
   async registrarPago(empresaId: number, dto: any) {
-    const [cargo] = await this.ds.query<any[]>(
-      `SELECT c.*, e."empresaId" AS "estEmpresa"
-       FROM ed_cargos c
-       JOIN ed_estudiantes e ON e.id = c."estudianteId"
-       WHERE c.id = $1 AND c."empresaId" = $2`,
-      [dto.cargoId, empresaId],
-    );
-    if (!cargo) throw new NotFoundException('Cargo no encontrado');
-    if (cargo.estado === 'pagado') throw new BadRequestException('Este cargo ya fue pagado');
-    if (cargo.estado === 'anulado') throw new BadRequestException('No se puede pagar un cargo anulado');
+    // Bloqueo pesimista sobre el cargo — mismo mecanismo que
+    // lock: { mode: 'pessimistic_write' } de caja.service.ts:833, en SQL
+    // crudo (FOR UPDATE), consistente con el resto de este service. Sin
+    // esto, dos pagos concurrentes sobre el mismo cargo leen el mismo
+    // saldoPendiente, ambos lo dan por válido, y el segundo pago pisa al
+    // primero en vez de acumularse — el saldo queda mal.
+    return this.ds.transaction(async (manager) => {
+      const [cargo] = await manager.query<any[]>(
+        `SELECT * FROM ed_cargos WHERE id = $1 AND "empresaId" = $2 FOR UPDATE`,
+        [dto.cargoId, empresaId],
+      );
+      if (!cargo) throw new NotFoundException('Cargo no encontrado');
+      if (cargo.estado === 'pagado') throw new BadRequestException('Este cargo ya fue pagado');
+      if (cargo.estado === 'anulado') throw new BadRequestException('No se puede pagar un cargo anulado');
 
-    const [pago] = await this.ds.query<any[]>(
-      `INSERT INTO ed_pagos (
-         "empresaId","cargoId","estudianteId",monto,fecha,"metodoPago",referencia,observaciones
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-      [empresaId, cargo.id, cargo.estudianteId,
-       dto.monto ?? cargo.monto,
-       dto.fecha ?? fechaHoyRD(),
-       dto.metodoPago ?? 'efectivo',
-       dto.referencia ?? null, dto.observaciones ?? null],
-    );
+      const montoPago = Number(dto.monto ?? cargo.saldoPendiente);
+      if (!(montoPago > 0)) throw new BadRequestException('El monto del pago debe ser mayor que cero');
 
-    await this.ds.query(
-      `UPDATE ed_cargos SET estado = 'pagado' WHERE id = $1`,
-      [cargo.id],
-    );
+      // "montoPagado" en ed_pagos es NOT NULL desde la migración base — el
+      // mismo patrón exacto de columna gemela sin reconciliar que
+      // "montoOriginal" en ed_cargos (FixColegiaturaSchema agregó "monto"
+      // al lado sin llenar la original). Este INSERT nunca se había
+      // ejecutado hasta esta verificación — fuera del alcance de
+      // ed_cargos que pedía este bloque, así que solo el desbloqueo
+      // mínimo (igual valor en ambas), sin reconciliar el resto del
+      // diseño de ed_pagos.
+      const [pago] = await manager.query<any[]>(
+        `INSERT INTO ed_pagos (
+           "empresaId","cargoId","estudianteId","montoPagado",monto,fecha,"metodoPago",referencia,observaciones
+         ) VALUES ($1,$2,$3,$4,$4,$5,$6,$7,$8) RETURNING *`,
+        [empresaId, cargo.id, cargo.estudianteId,
+         montoPago,
+         dto.fecha ?? fechaHoyRD(),
+         dto.metodoPago ?? 'efectivo',
+         dto.referencia ?? null, dto.observaciones ?? null],
+      );
 
-    return pago;
+      // montoPagado y saldoPendiente son derivadas — se escriben SIEMPRE
+      // juntas, en este único punto (dentro del mismo lock que las leyó),
+      // nunca por separado. Puede haber más de un pago parcial sobre el
+      // mismo cargo, así que se recalcula sumando TODOS los pagos, no
+      // sumando el nuevo sobre un contador aparte que pudiera desincronizarse.
+      const [{ total }] = await manager.query<any[]>(
+        `SELECT COALESCE(SUM(monto), 0)::numeric AS total FROM ed_pagos WHERE "cargoId" = $1`,
+        [cargo.id],
+      );
+      const montoPagado = Number(total);
+      const saldoPendiente = Math.max(Number(cargo.montoTotal) - montoPagado, 0);
+      const nuevoEstado = saldoPendiente <= 0 ? 'pagado' : 'parcial';
+
+      await manager.query(
+        `UPDATE ed_cargos SET "montoPagado" = $1, "saldoPendiente" = $2, estado = $3 WHERE id = $4`,
+        [montoPagado, saldoPendiente, nuevoEstado, cargo.id],
+      );
+
+      return pago;
+    });
   }
 
   async resumenFinanciero(empresaId: number, anioEscolarId?: number) {
@@ -263,11 +338,11 @@ export class ColegiaturaService {
 
     const [res] = await this.ds.query<any[]>(
       `SELECT
-         COALESCE(SUM(c.monto) FILTER (WHERE c.estado = 'pendiente'),0)::numeric AS pendiente,
-         COALESCE(SUM(c.monto) FILTER (WHERE c.estado = 'pagado'),0)::numeric    AS cobrado,
-         COALESCE(SUM(c.monto) FILTER (WHERE c.estado = 'vencido' OR (c.estado = 'pendiente' AND c."fechaVencimiento" < CURRENT_DATE)),0)::numeric AS vencido,
-         COUNT(*) FILTER (WHERE c.estado = 'pendiente')::int AS cargosPendientes,
-         COUNT(DISTINCT c."estudianteId") FILTER (WHERE c.estado = 'pendiente' AND c."fechaVencimiento" < CURRENT_DATE)::int AS morosos
+         COALESCE(SUM(c."saldoPendiente") FILTER (WHERE c.estado IN ('pendiente','parcial')),0)::numeric AS pendiente,
+         COALESCE(SUM(c."montoPagado"),0)::numeric AS cobrado,
+         COALESCE(SUM(c."saldoPendiente") FILTER (WHERE c.estado IN ('vencido','parcial') OR (c.estado = 'pendiente' AND c."fechaVencimiento" < CURRENT_DATE)),0)::numeric AS vencido,
+         COUNT(*) FILTER (WHERE c.estado IN ('pendiente','parcial'))::int AS cargosPendientes,
+         COUNT(DISTINCT c."estudianteId") FILTER (WHERE c.estado IN ('pendiente','parcial') AND c."fechaVencimiento" < CURRENT_DATE)::int AS morosos
        FROM ed_cargos c
        ${joinCond}
        WHERE c."empresaId" = $1`,
