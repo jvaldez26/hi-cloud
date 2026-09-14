@@ -15,16 +15,13 @@ import { EdDocente }      from './entities/ed-docente.entity';
 import { EdMatricula }    from './entities/ed-matricula.entity';
 import { EdEvaluacion }   from './entities/ed-evaluacion.entity';
 import { EdCalificacion } from './entities/ed-calificacion.entity';
-import { EdNotaPeriodo }  from './entities/ed-nota-periodo.entity';
 import { EdAsistencia }   from './entities/ed-asistencia.entity';
 import { EdPlanPago }     from './entities/ed-plan-pago.entity';
 import { EdCargo }        from './entities/ed-cargo.entity';
 import { EdPago }         from './entities/ed-pago.entity';
-import { EdDisciplina }   from './entities/ed-disciplina.entity';
-import { EdLibro }        from './entities/ed-libro.entity';
-import { EdPrestamo }     from './entities/ed-prestamo.entity';
-import { EdRuta }         from './entities/ed-ruta.entity';
-import { EdComunicado }   from './entities/ed-comunicado.entity';
+// EdDisciplina, EdLibro, EdPrestamo, EdRuta, EdComunicado y EdNotaPeriodo
+// (más abajo) NO se importan aquí a propósito — ver la nota junto a
+// TypeOrmModule.forFeature.
 
 import { EdConfigService }       from './config/config.service';
 import { EdConfigController }    from './config/config.controller';
@@ -47,12 +44,18 @@ import { ColegiaturaController } from './colegiatura/colegiatura.controller';
 
 @Module({
   imports: [
+    // EdDisciplina, EdLibro, EdPrestamo, EdRuta, EdComunicado y EdNotaPeriodo
+    // existen como entidad (y su tabla ya está migrada) pero NINGÚN service
+    // las inyecta — son para disciplina, biblioteca, transporte y comunicados,
+    // los 4 submódulos que hoy solo tienen entidad sin API (ver
+    // src/educativo/README.md). Sacadas de este forFeature a propósito: no
+    // tiene sentido registrar un Repository que nadie usa. Cuando se
+    // construya la API de alguno, agregarlo aquí de nuevo — no antes.
     TypeOrmModule.forFeature([
       EdConfig, EdAnioEscolar, EdNivel, EdGrado, EdAsignatura, EdSeccion, EdPeriodo,
       EdEstudiante, EdTutor, EdDocente, EdMatricula,
-      EdEvaluacion, EdCalificacion, EdNotaPeriodo, EdAsistencia,
+      EdEvaluacion, EdCalificacion, EdAsistencia,
       EdPlanPago, EdCargo, EdPago,
-      EdDisciplina, EdLibro, EdPrestamo, EdRuta, EdComunicado,
     ]),
     TenantModule,
   ],
