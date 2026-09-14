@@ -305,12 +305,17 @@ export class SuperAdminService {
   // ── Usuarios ─────────────────────────────────────────────────────────────
 
   async listarUsuarios() {
+    // "username" — soporte necesita poder verlo cuando un usuario reporta
+    // que no puede entrar con su nombre de usuario (login por username,
+    // ver AddUsernameToUsers). Solo lectura: no hay endpoint para editarlo
+    // desde acá — cambiárselo a alguien sin avisarle lo deja afuera sin
+    // entender por qué.
     return this.ds.query<any[]>(`
-      SELECT u.id, u.nombre, u.email, u.role, u."isActive", u."createdAt"::date AS registro,
+      SELECT u.id, u.nombre, u.email, u.username, u.role, u."isActive", u."createdAt"::date AS registro,
              COUNT(DISTINCT ue."empresaId")::int AS empresas
       FROM users u
       LEFT JOIN usuario_empresa ue ON ue."userId" = u.id AND ue."isActive" = true
-      GROUP BY u.id, u.nombre, u.email, u.role, u."isActive", u."createdAt"
+      GROUP BY u.id, u.nombre, u.email, u.username, u.role, u."isActive", u."createdAt"
       ORDER BY u."createdAt" DESC
     `);
   }

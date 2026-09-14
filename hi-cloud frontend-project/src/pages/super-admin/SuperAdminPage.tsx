@@ -2093,6 +2093,18 @@ export default function SuperAdminPage() {
     { key: 'reg',      label: 'Registro' },
   ];
   const colVisUsuarios = useColumnVisibility('sa-usuarios', COLS_USUARIOS);
+  const [searchUsuarios, setSearchUsuarios] = useState('');
+  // Caso real: alguien llama a soporte diciendo "entro como caja01" — la
+  // búsqueda tiene que encontrarlo por username, no solo por nombre/correo.
+  const usuariosFiltrados = useMemo(() => {
+    const q = searchUsuarios.trim().toLowerCase();
+    if (!q) return usuarios as any[];
+    return (usuarios as any[]).filter(u =>
+      u.nombre?.toLowerCase().includes(q) ||
+      u.email?.toLowerCase().includes(q) ||
+      u.username?.toLowerCase().includes(q),
+    );
+  }, [usuarios, searchUsuarios]);
 
   const COLS_SUSCRIPCIONES = [
     { key: 'empresa', label: 'Empresa'     },
@@ -2282,6 +2294,14 @@ export default function SuperAdminPage() {
           <div>
             <div style={{ color: C.txt, fontWeight: 600, fontSize: 13 }}>{r.nombre}</div>
             <div style={{ color: C.txt2, fontSize: 11 }}>{r.email}</div>
+            {/* Login por username (AddUsernameToUsers) — opcional, no todos
+                lo tienen. Si no existe, no se muestra nada: la ausencia ya
+                es la información, no hace falta un placeholder. Monoespaciado
+                y más chico que el correo para que se lea como el "handle"
+                técnico, no como otro dato de contacto. */}
+            {r.username && (
+              <div style={{ color: C.txt2, fontSize: 10, fontFamily: 'monospace', opacity: 0.85 }}>@{r.username}</div>
+            )}
           </div>
         </div>
       ),
@@ -3096,13 +3116,21 @@ export default function SuperAdminPage() {
 
             {tab === 'usuarios' && (
               <>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, gap: 10, flexWrap: 'wrap' }}>
+                <Input
+                  placeholder="Buscar por nombre, correo o username..."
+                  value={searchUsuarios}
+                  onChange={e => setSearchUsuarios(e.target.value)}
+                  allowClear
+                  style={{ width: 280, background: C.card, borderColor: C.border, color: C.txt }}
+                  prefix={<Search size={13} style={{ color: C.txt2 }} />}
+                />
                 <ColumnToggle columns={COLS_USUARIOS}
                   visibleColumns={colVisUsuarios.visibleColumns}
                   onChange={colVisUsuarios.updateVisibility} />
               </div>
               <Table
-                dataSource={usuarios as any[]}
+                dataSource={usuariosFiltrados}
                 columns={colVisUsuarios.filterColumns(colsUsuarios as any)}
                 loading={loadUsu}
                 rowKey="id"
