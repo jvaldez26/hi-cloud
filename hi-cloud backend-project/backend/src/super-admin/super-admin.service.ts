@@ -7,6 +7,10 @@ import { randomBytes, createHash } from 'crypto';
 import { EmailService } from '../notificaciones/services/email.service';
 import { PlanTipo } from '../suscripciones/entities/suscripcion.entity';
 import { escapeHtml } from '../common/utils/escape-html.util';
+import { AuthService } from '../auth/auth.service';
+import { LoginAttemptsService } from '../auth/login-attempts.service';
+import { AuditoriaService } from '../auditoria/auditoria.service';
+import { AccionAuditoria, NivelAuditoria } from '../auditoria/entities/audit-log.entity';
 
 @Injectable()
 export class SuperAdminService {
@@ -14,6 +18,9 @@ export class SuperAdminService {
   constructor(
     private ds: DataSource,
     private emailService: EmailService,
+    private authService: AuthService,
+    private loginAttemptsSvc: LoginAttemptsService,
+    private auditoriaSvc: AuditoriaService,
   ) {}
 
   // ── S-64: Trazabilidad de acciones del Super Admin ────────────────────────
@@ -483,6 +490,180 @@ export class SuperAdminService {
     await this.ds.query('UPDATE users SET "isActive" = true, "updatedAt" = NOW() WHERE id = $1', [userId]);
     this.logger.log(`Usuario #${userId} (${u.email}) activado por super_admin #${superAdminId}`);
     return { ok: true, mensaje: `Usuario ${u.nombre} activado correctamente` };
+  }
+
+  // ── Soporte de acceso ────────────────────────────────────────────────────
+  // Cuando un cliente reporta que no puede entrar. Diagnóstico + acciones
+  // reversibles y auditadas — NUNCA fija ni ve la contraseña de nadie
+  // (ver auditoria.md / la tarea original). El cambio de username NO es
+  // una de estas acciones — no resuelve un problema de acceso, ver
+  // liberarUsername() más abajo.
+
+  /**
+   * Por qué un usuario no puede entrar, todo en una sola consulta:
+   * correo verificado, estado de la cuenta, si tiene contraseña
+   * configurada (los de Google pueden no tenerla), bloqueo por intentos
+   * fallidos (y cuánto le falta), empresa(s) activa/suspendida, y si tiene
+   * una sesión activa en otro dispositivo (modelo de sesión única —
+   * sessionToken no nulo).
+   */
+  async diagnosticoUsuario(userId: number) {
+    const [u] = await this.ds.query<any[]>(
+      `SELECT id, nombre, email, username, role, provider, "passwordConfigured",
+              "accountStatus", "emailVerifiedAt", "isActive",
+              "sessionToken" IS NOT NULL AS "sesionActiva", "sessionCreatedAt"
+       FROM users WHERE id = $1`,
+      [userId],
+    );
+    if (!u) throw new NotFoundException(`Usuario #${userId} no encontrado`);
+
+    const empresas = await this.ds.query<any[]>(
+      `SELECT e.id, e.nombre, e."isActive" AS activa
+       FROM usuario_empresa ue
+       JOIN empresa e ON e.id = ue."empresaId"
+       WHERE ue."userId" = $1 AND ue."isActive" = true
+       ORDER BY e.nombre`,
+      [userId],
+    );
+
+    const bloqueo = await this.loginAttemptsSvc.estado(u.email);
+
+    return {
+      usuario: {
+        id: u.id, nombre: u.nombre, email: u.email, username: u.username,
+        role: u.role, provider: u.provider, isActive: u.isActive,
+      },
+      correoVerificado:    !!u.emailVerifiedAt,
+      emailVerifiedAt:     u.emailVerifiedAt,
+      accountStatus:       u.accountStatus,
+      passwordConfigured:  u.passwordConfigured,
+      bloqueo: {
+        bloqueado:         bloqueo.blocked,
+        remainingSeconds:  bloqueo.remainingSeconds,
+        tiempoRestante:    bloqueo.remainingSeconds != null ? this.loginAttemptsSvc.formatTime(bloqueo.remainingSeconds) : undefined,
+        ip:                bloqueo.ip,
+      },
+      sesionActiva:        u.sesionActiva,
+      sessionCreatedAt:    u.sessionCreatedAt,
+      empresas,
+      algunaEmpresaActiva: u.role === 'super_admin' ? null : empresas.some((e: any) => e.activa),
+    };
+  }
+
+  private actorParaAuditoria(actor: { id: number; nombre: string; role: string }) {
+    return { userId: actor.id, userName: actor.nombre, userRole: actor.role };
+  }
+
+  /** Envía el correo de recuperación de contraseña — el cliente elige la suya; el super admin nunca la conoce ni la fija. */
+  async enviarRecuperacionPassword(userId: number, actor: { id: number; nombre: string; role: string }, ip?: string) {
+    const [u] = await this.ds.query<any[]>('SELECT id, nombre, email FROM users WHERE id = $1', [userId]);
+    if (!u) throw new NotFoundException(`Usuario #${userId} no encontrado`);
+
+    await this.authService.forgotPassword(u.email);
+
+    await this.auditoriaSvc.registrar({
+      ...this.actorParaAuditoria(actor),
+      accion: AccionAuditoria.UPDATE, nivel: NivelAuditoria.IMPORTANTE,
+      modulo: 'soporte-acceso', entidad: 'usuario', entidadId: String(userId),
+      descripcion: `${actor.nombre} envió el correo de recuperación de contraseña a ${u.nombre} (${u.email})`,
+      metodo: 'POST', ruta: `admin/usuarios/${userId}/recuperar-password`,
+      statusCode: 200, exitoso: true, ipAddress: ip,
+    });
+    return { ok: true, mensaje: `Correo de recuperación enviado a ${u.email}` };
+  }
+
+  /** Reenvía el correo de verificación de cuenta. */
+  async reenviarVerificacion(userId: number, actor: { id: number; nombre: string; role: string }, ip?: string) {
+    const [u] = await this.ds.query<any[]>('SELECT id, nombre, email, "emailVerifiedAt" FROM users WHERE id = $1', [userId]);
+    if (!u) throw new NotFoundException(`Usuario #${userId} no encontrado`);
+    if (u.emailVerifiedAt) throw new BadRequestException('Este correo ya está verificado');
+
+    await this.authService.resendVerificationEmail({ userId });
+
+    await this.auditoriaSvc.registrar({
+      ...this.actorParaAuditoria(actor),
+      accion: AccionAuditoria.UPDATE, nivel: NivelAuditoria.IMPORTANTE,
+      modulo: 'soporte-acceso', entidad: 'usuario', entidadId: String(userId),
+      descripcion: `${actor.nombre} reenvió el correo de verificación a ${u.nombre} (${u.email})`,
+      metodo: 'POST', ruta: `admin/usuarios/${userId}/reenviar-verificacion`,
+      statusCode: 200, exitoso: true, ipAddress: ip,
+    });
+    return { ok: true, mensaje: `Correo de verificación reenviado a ${u.email}` };
+  }
+
+  /**
+   * Marca el correo como verificado a mano — salta el control de seguridad
+   * que exige demostrar acceso a la casilla. Solo para cuando el correo
+   * de verificación no llega (spam, proveedor caído, etc.); requiere
+   * confirmación explícita del super admin.
+   */
+  async marcarCorreoVerificado(userId: number, confirmar: boolean, actor: { id: number; nombre: string; role: string }, ip?: string) {
+    if (!confirmar) throw new BadRequestException('Confirmación requerida — esta acción salta un control de seguridad');
+    const [u] = await this.ds.query<any[]>('SELECT id, nombre, email, "emailVerifiedAt" FROM users WHERE id = $1', [userId]);
+    if (!u) throw new NotFoundException(`Usuario #${userId} no encontrado`);
+    if (u.emailVerifiedAt) throw new BadRequestException('Este correo ya está verificado');
+
+    await this.ds.query('UPDATE users SET "emailVerifiedAt" = NOW() WHERE id = $1', [userId]);
+
+    await this.auditoriaSvc.registrar({
+      ...this.actorParaAuditoria(actor),
+      accion: AccionAuditoria.UPDATE, nivel: NivelAuditoria.IMPORTANTE,
+      modulo: 'soporte-acceso', entidad: 'usuario', entidadId: String(userId),
+      descripcion: `${actor.nombre} marcó el correo de ${u.nombre} (${u.email}) como verificado a mano — salta el control de verificación`,
+      valorAnterior: 'no verificado', valorNuevo: 'verificado (manual)',
+      metodo: 'POST', ruta: `admin/usuarios/${userId}/verificar-correo`,
+      statusCode: 200, exitoso: true, ipAddress: ip,
+    });
+    return { ok: true, mensaje: `Correo de ${u.nombre} marcado como verificado` };
+  }
+
+  /** Limpia el contador/bloqueo de intentos fallidos de login (LoginAttemptsService, por email+IP). */
+  async limpiarBloqueoLogin(userId: number, actor: { id: number; nombre: string; role: string }, ip?: string) {
+    const [u] = await this.ds.query<any[]>('SELECT id, nombre, email FROM users WHERE id = $1', [userId]);
+    if (!u) throw new NotFoundException(`Usuario #${userId} no encontrado`);
+
+    const { ip: ipBloqueada } = await this.loginAttemptsSvc.resetPorIdentificador(u.email);
+
+    await this.auditoriaSvc.registrar({
+      ...this.actorParaAuditoria(actor),
+      accion: AccionAuditoria.UPDATE, nivel: NivelAuditoria.IMPORTANTE,
+      modulo: 'soporte-acceso', entidad: 'usuario', entidadId: String(userId),
+      descripcion: `${actor.nombre} limpió el bloqueo de intentos fallidos de ${u.nombre} (${u.email})`
+        + (ipBloqueada ? ` — IP bloqueada: ${ipBloqueada}` : ' — no había ningún bloqueo activo'),
+      metodo: 'POST', ruta: `admin/usuarios/${userId}/limpiar-bloqueo`,
+      statusCode: 200, exitoso: true, ipAddress: ip,
+    });
+    return { ok: true, mensaje: ipBloqueada ? `Bloqueo limpiado (IP ${ipBloqueada})` : 'No había ningún bloqueo activo' };
+  }
+
+  /**
+   * Libera el username de una cuenta (lo deja en NULL) — el único caso real
+   * donde el username importa para soporte: quedó ocupado por una cuenta
+   * inactiva y otro cliente lo quiere. NO reasigna el username a nadie
+   * desde acá — el nuevo dueño lo elige desde su propio perfil, igual que
+   * todos. Cambiar el username de alguien NO es una acción de acceso: el
+   * cliente sigue tecleando el que conocía y solo consigue que deje de
+   * funcionar — por eso exige confirmación explícita.
+   */
+  async liberarUsername(userId: number, confirmar: boolean, actor: { id: number; nombre: string; role: string }, ip?: string) {
+    if (!confirmar) throw new BadRequestException('Confirmación requerida — el usuario dejará de poder entrar por username');
+    const [u] = await this.ds.query<any[]>('SELECT id, nombre, email, username FROM users WHERE id = $1', [userId]);
+    if (!u) throw new NotFoundException(`Usuario #${userId} no encontrado`);
+    if (!u.username) throw new BadRequestException('Este usuario no tiene username configurado');
+
+    const usernameAnterior = u.username;
+    await this.ds.query('UPDATE users SET username = NULL WHERE id = $1', [userId]);
+
+    await this.auditoriaSvc.registrar({
+      ...this.actorParaAuditoria(actor),
+      accion: AccionAuditoria.UPDATE, nivel: NivelAuditoria.IMPORTANTE,
+      modulo: 'soporte-acceso', entidad: 'usuario', entidadId: String(userId),
+      descripcion: `${actor.nombre} liberó el username "${usernameAnterior}" de ${u.nombre} (${u.email}) — queda disponible para otra cuenta; ${u.nombre} deberá entrar con su correo`,
+      valorAnterior: usernameAnterior, valorNuevo: '(liberado)',
+      metodo: 'DELETE', ruta: `admin/usuarios/${userId}/username`,
+      statusCode: 200, exitoso: true, ipAddress: ip,
+    });
+    return { ok: true, mensaje: `Username "${usernameAnterior}" liberado — ${u.nombre} ahora entra con su correo` };
   }
 
   async eliminarUsuarioPermanente(userId: number, superAdminId: number, confirmacion: string) {

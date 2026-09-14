@@ -28,6 +28,20 @@ export class LoginAttemptsService {
     return `login_blocked:${identificador.toLowerCase()}:${ip}`;
   }
 
+  /**
+   * IP del intento fallido más reciente para este identificador — el
+   * contador real es por (identificador, ip), y CACHE_MANAGER no garantiza
+   * poder enumerar claves (KEYS/SCAN no existen en el store in-memory de
+   * dev, y no vale la pena acoplarse al cliente Redis crudo del store de
+   * prod solo para esto). En vez de escanear, se guarda explícitamente aquí
+   * en cada increment() — el panel de soporte del super admin (estado() /
+   * resetPorIdentificador()) la usa para diagnosticar y limpiar el bloqueo
+   * sin necesitar que el agente le pregunte la IP a quien llama.
+   */
+  private lastIpKey(identificador: string): string {
+    return `login_last_ip:${identificador.toLowerCase()}`;
+  }
+
   async isBlocked(identificador: string, ip: string): Promise<{ blocked: boolean; remainingSeconds?: number }> {
     const data = await this.cache.get<{ blockedUntil: number }>(this.blockedKey(identificador, ip));
     if (data && data.blockedUntil > Date.now()) {
@@ -41,12 +55,39 @@ export class LoginAttemptsService {
     const current = (await this.cache.get<number>(key)) ?? 0;
     const newVal  = current + 1;
     await this.cache.set(key, newVal, 86_400_000); // 24h en ms
+    await this.cache.set(this.lastIpKey(identificador), ip, 86_400_000);
     return newVal;
   }
 
   async reset(identificador: string, ip: string): Promise<void> {
     await this.cache.del(this.attemptsKey(identificador, ip));
     await this.cache.del(this.blockedKey(identificador, ip));
+  }
+
+  /**
+   * Diagnóstico para el panel de soporte del super admin: ¿está bloqueada
+   * esta cuenta ahora mismo, y por cuánto más? Usa la IP del último intento
+   * fallido registrado (ver lastIpKey) — si nunca hubo un intento fallido,
+   * no hay nada que diagnosticar.
+   */
+  async estado(identificador: string): Promise<{ blocked: boolean; remainingSeconds?: number; ip?: string }> {
+    const ip = await this.cache.get<string>(this.lastIpKey(identificador));
+    if (!ip) return { blocked: false };
+    const status = await this.isBlocked(identificador, ip);
+    return { ...status, ip };
+  }
+
+  /**
+   * Limpia el bloqueo/contador de intentos fallidos para este identificador
+   * usando la IP del último intento registrado. Acción de soporte del super
+   * admin — el caller es responsable de auditarla (ver
+   * SuperAdminService.limpiarBloqueoLogin()).
+   */
+  async resetPorIdentificador(identificador: string): Promise<{ ip?: string }> {
+    const ip = await this.cache.get<string>(this.lastIpKey(identificador));
+    if (ip) await this.reset(identificador, ip);
+    await this.cache.del(this.lastIpKey(identificador));
+    return { ip };
   }
 
   /**

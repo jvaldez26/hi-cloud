@@ -55,6 +55,10 @@ import { AuditoriaModule } from '../auditoria/auditoria.module';
   ],
   controllers: [AuthController, TwoFactorController, EquipoSesionesController],
   providers: [AuthService, JwtStrategy, GoogleStrategy, TwoFactorService, TokenBlacklistService, RefreshTokenService, SessionLifetimeService, RolesGuard, LoginAttemptsService, EquipoSesionesService],
-  exports: [JwtModule, PassportModule, TokenBlacklistService, RefreshTokenService, SessionLifetimeService, RolesGuard],
+  // AuthService y LoginAttemptsService se exportan para el panel de soporte
+  // del super admin (SuperAdminModule) — reenviar recuperación/verificación
+  // y diagnosticar/limpiar bloqueos reutilizan esta MISMA lógica en vez de
+  // duplicarla.
+  exports: [JwtModule, PassportModule, TokenBlacklistService, RefreshTokenService, SessionLifetimeService, RolesGuard, AuthService, LoginAttemptsService],
 })
 export class AuthModule {}

@@ -1,11 +1,11 @@
 import {
   Controller, Get, Patch, Post, Delete, Body, Param, ParseIntPipe,
-  UseGuards, HttpCode, HttpStatus, Query, Res,
+  UseGuards, HttpCode, HttpStatus, Query, Res, Req,
 } from '@nestjs/common';
 
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { IsEnum, IsInt, IsPositive, IsString, IsNotEmpty, IsOptional, IsNumber, Min, Max, IsDateString } from 'class-validator';
+import { IsEnum, IsInt, IsPositive, IsString, IsNotEmpty, IsOptional, IsNumber, IsBoolean, Min, Max, IsDateString } from 'class-validator';
 import { Type } from 'class-transformer';
 import { SuperAdminService } from './super-admin.service';
 import { SuperAdminGuard }   from './super-admin.guard';
@@ -16,6 +16,7 @@ import { ContabilidadService } from '../contabilidad/services/contabilidad.servi
 import { ModulosAddonService } from '../modulos-addon/modulos-addon.service';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import type { User } from '../users/users.entity';
+import { obtenerIP } from '../auth/utils/obtener-ip.util';
 
 class CambiarPlanDto {
   @IsEnum(['trial','emprendedor','pyme','pro','plus','basico','profesional','empresarial','enterprise'])
@@ -105,6 +106,12 @@ class CambiarRolDto {
 class HardDeleteDto {
   @IsString() @IsNotEmpty()
   confirmacion!: string;
+}
+
+/** Confirmación explícita para acciones de soporte que saltan un control de seguridad o afectan el acceso del usuario. */
+class ConfirmarDto {
+  @IsBoolean()
+  confirmar!: boolean;
 }
 
 class RechazarRegistroDto {
@@ -334,6 +341,62 @@ export class SuperAdminController {
   @ApiOperation({ summary: 'Reactivar usuario suspendido' })
   activarUsuario(@Param('id', ParseIntPipe) id: number, @GetUser() admin: User) {
     return this.svc.activarUsuario(id, admin.id);
+  }
+
+  // ── Soporte de acceso ────────────────────────────────────────────────────
+  // "El cliente reporta que no puede entrar" — diagnóstico y acciones para
+  // ayudarlo sin que el super admin conozca ni fije su contraseña, ni entre
+  // con su identidad. Ver super-admin.service.ts para el detalle de cada una.
+
+  @Get('usuarios/:id/diagnostico-acceso')
+  @ApiOperation({ summary: 'Diagnóstico de por qué un usuario no puede entrar' })
+  diagnosticoAcceso(@Param('id', ParseIntPipe) id: number) {
+    return this.svc.diagnosticoUsuario(id);
+  }
+
+  @Post('usuarios/:id/recuperar-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Enviar correo de recuperación de contraseña — el cliente elige la suya' })
+  enviarRecuperacionPassword(@Param('id', ParseIntPipe) id: number, @GetUser() admin: User, @Req() req: Request) {
+    return this.svc.enviarRecuperacionPassword(id, { id: admin.id, nombre: admin.nombre, role: admin.role }, obtenerIP(req));
+  }
+
+  @Post('usuarios/:id/reenviar-verificacion')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reenviar correo de verificación de cuenta' })
+  reenviarVerificacion(@Param('id', ParseIntPipe) id: number, @GetUser() admin: User, @Req() req: Request) {
+    return this.svc.reenviarVerificacion(id, { id: admin.id, nombre: admin.nombre, role: admin.role }, obtenerIP(req));
+  }
+
+  @Post('usuarios/:id/verificar-correo')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Marcar el correo como verificado a mano — requiere confirmación, salta un control de seguridad' })
+  marcarCorreoVerificado(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ConfirmarDto,
+    @GetUser() admin: User,
+    @Req() req: Request,
+  ) {
+    return this.svc.marcarCorreoVerificado(id, dto.confirmar, { id: admin.id, nombre: admin.nombre, role: admin.role }, obtenerIP(req));
+  }
+
+  @Post('usuarios/:id/limpiar-bloqueo')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Limpiar el bloqueo por intentos fallidos de login' })
+  limpiarBloqueoLogin(@Param('id', ParseIntPipe) id: number, @GetUser() admin: User, @Req() req: Request) {
+    return this.svc.limpiarBloqueoLogin(id, { id: admin.id, nombre: admin.nombre, role: admin.role }, obtenerIP(req));
+  }
+
+  @Delete('usuarios/:id/username')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Liberar el username de una cuenta (no lo reasigna) — requiere confirmación' })
+  liberarUsername(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ConfirmarDto,
+    @GetUser() admin: User,
+    @Req() req: Request,
+  ) {
+    return this.svc.liberarUsername(id, dto.confirmar, { id: admin.id, nombre: admin.nombre, role: admin.role }, obtenerIP(req));
   }
 
   @Delete('usuarios/:id')

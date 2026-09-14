@@ -13,6 +13,8 @@ import { NotificacionesModule }  from '../notificaciones/notificaciones.module';
 import { ContabilidadModule }    from '../contabilidad/contabilidad.module';
 import { ModulosAddonModule }    from '../modulos-addon/modulos-addon.module';
 import { BackupInternalController } from './backup-internal.controller';
+import { AuthModule }            from '../auth/auth.module';
+import { AuditoriaModule }       from '../auditoria/auditoria.module';
 
 @Module({
   imports: [
@@ -21,6 +23,8 @@ import { BackupInternalController } from './backup-internal.controller';
     NotificacionesModule,
     ContabilidadModule,
     ModulosAddonModule,
+    AuthModule,
+    AuditoriaModule,
     TypeOrmModule.forFeature([BackupRegistro]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
