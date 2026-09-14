@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards, ParseIntPipe } from '@nestjs/common';
 import { TutoresService } from './tutores.service';
+import { CreateTutorDto, UpdateTutorDto } from './dto/tutores.dto';
 import { JwtAuthGuard }     from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard }       from '../../auth/guards/roles.guard';
 import { TenantGuard }      from '../../tenant/tenant.guard';
@@ -25,12 +26,12 @@ export class TutoresController {
   }
 
   @Post()
-  create(@Body() dto: any) {
+  create(@Body() dto: CreateTutorDto) {
     return this.svc.create(this.tenantSvc.getEmpresaId(), dto);
   }
 
   @Patch(':id')
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: any) {
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateTutorDto) {
     return this.svc.update(this.tenantSvc.getEmpresaId(), id, dto);
   }
 }

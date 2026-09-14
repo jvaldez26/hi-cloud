@@ -7,6 +7,10 @@ import { UserRole }         from '../../users/enums/user-role.enum';
 import { ModuloAddonGuard } from '../../modulos-addon/guards/modulo-addon.guard';
 import { TenantService }    from '../../tenant/tenant.service';
 import { EstructuraService } from './estructura.service';
+import {
+  CreateNivelDto, UpdateNivelDto, CreateGradoDto, UpdateGradoDto, SetPensumDto,
+  CreateSeccionDto, UpdateSeccionDto, CreateAsignaturaDto, UpdateAsignaturaDto,
+} from './dto/estructura.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard, TenantGuard, ModuloAddonGuard('educativo'))
 @Controller('educativo')
@@ -26,11 +30,11 @@ export class EstructuraController {
 
   @Post('niveles')
   @Roles(UserRole.ADMIN)
-  createNivel(@Body() body: any) { return this.svc.createNivel(this.empresaId, body); }
+  createNivel(@Body() body: CreateNivelDto) { return this.svc.createNivel(this.empresaId, body); }
 
   @Patch('niveles/:id')
   @Roles(UserRole.ADMIN)
-  updateNivel(@Param('id', ParseIntPipe) id: number, @Body() body: any) {
+  updateNivel(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateNivelDto) {
     return this.svc.updateNivel(this.empresaId, id, body);
   }
 
@@ -44,17 +48,17 @@ export class EstructuraController {
 
   @Post('grados')
   @Roles(UserRole.ADMIN)
-  createGrado(@Body() body: any) { return this.svc.createGrado(this.empresaId, body); }
+  createGrado(@Body() body: CreateGradoDto) { return this.svc.createGrado(this.empresaId, body); }
 
   @Patch('grados/:id')
   @Roles(UserRole.ADMIN)
-  updateGrado(@Param('id', ParseIntPipe) id: number, @Body() body: any) {
+  updateGrado(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateGradoDto) {
     return this.svc.updateGrado(this.empresaId, id, body);
   }
 
   @Post('grados/:id/pensum')
   @Roles(UserRole.ADMIN)
-  setPensum(@Param('id', ParseIntPipe) id: number, @Body() body: any) {
+  setPensum(@Param('id', ParseIntPipe) id: number, @Body() body: SetPensumDto) {
     return this.svc.setPensum(this.empresaId, id, body.asignaturas ?? []);
   }
 
@@ -74,11 +78,11 @@ export class EstructuraController {
 
   @Post('secciones')
   @Roles(UserRole.ADMIN)
-  createSeccion(@Body() body: any) { return this.svc.createSeccion(this.empresaId, body); }
+  createSeccion(@Body() body: CreateSeccionDto) { return this.svc.createSeccion(this.empresaId, body); }
 
   @Patch('secciones/:id')
   @Roles(UserRole.ADMIN)
-  updateSeccion(@Param('id', ParseIntPipe) id: number, @Body() body: any) {
+  updateSeccion(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateSeccionDto) {
     return this.svc.updateSeccion(this.empresaId, id, body);
   }
 
@@ -90,11 +94,11 @@ export class EstructuraController {
 
   @Post('asignaturas')
   @Roles(UserRole.ADMIN)
-  createAsignatura(@Body() body: any) { return this.svc.createAsignatura(this.empresaId, body); }
+  createAsignatura(@Body() body: CreateAsignaturaDto) { return this.svc.createAsignatura(this.empresaId, body); }
 
   @Patch('asignaturas/:id')
   @Roles(UserRole.ADMIN)
-  updateAsignatura(@Param('id', ParseIntPipe) id: number, @Body() body: any) {
+  updateAsignatura(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateAsignaturaDto) {
     return this.svc.updateAsignatura(this.empresaId, id, body);
   }
 }

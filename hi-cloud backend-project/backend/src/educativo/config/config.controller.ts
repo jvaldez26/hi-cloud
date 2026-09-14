@@ -7,6 +7,10 @@ import { UserRole }          from '../../users/enums/user-role.enum';
 import { ModuloAddonGuard }  from '../../modulos-addon/guards/modulo-addon.guard';
 import { TenantService }     from '../../tenant/tenant.service';
 import { EdConfigService }   from './config.service';
+import {
+  UpsertConfigDto, CreateAnioEscolarDto, UpdateAnioEscolarDto,
+  CreatePeriodoDto, UpdatePeriodoDto,
+} from './dto/config.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard, TenantGuard, ModuloAddonGuard('educativo'))
 @Controller('educativo')
@@ -26,7 +30,7 @@ export class EdConfigController {
 
   @Post('config')
   @Roles(UserRole.ADMIN)
-  upsertConfig(@Body() body: any) { return this.svc.upsertConfig(this.empresaId, body); }
+  upsertConfig(@Body() body: UpsertConfigDto) { return this.svc.upsertConfig(this.empresaId, body); }
 
   // ── Años escolares ──────────────────────────────────────────────────────
 
@@ -40,11 +44,11 @@ export class EdConfigController {
 
   @Post('anios-escolares')
   @Roles(UserRole.ADMIN)
-  createAnio(@Body() body: any) { return this.svc.createAnio(this.empresaId, body); }
+  createAnio(@Body() body: CreateAnioEscolarDto) { return this.svc.createAnio(this.empresaId, body); }
 
   @Patch('anios-escolares/:id')
   @Roles(UserRole.ADMIN)
-  updateAnio(@Param('id', ParseIntPipe) id: number, @Body() body: any) {
+  updateAnio(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateAnioEscolarDto) {
     return this.svc.updateAnio(this.empresaId, id, body);
   }
 
@@ -58,11 +62,11 @@ export class EdConfigController {
 
   @Post('periodos')
   @Roles(UserRole.ADMIN)
-  createPeriodo(@Body() body: any) { return this.svc.createPeriodo(this.empresaId, body); }
+  createPeriodo(@Body() body: CreatePeriodoDto) { return this.svc.createPeriodo(this.empresaId, body); }
 
   @Patch('periodos/:id')
   @Roles(UserRole.ADMIN)
-  updatePeriodo(@Param('id', ParseIntPipe) id: number, @Body() body: any) {
+  updatePeriodo(@Param('id', ParseIntPipe) id: number, @Body() body: UpdatePeriodoDto) {
     return this.svc.updatePeriodo(this.empresaId, id, body);
   }
 }

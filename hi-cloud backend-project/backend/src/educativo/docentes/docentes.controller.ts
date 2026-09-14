@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards, ParseIntPipe } from '@nestjs/common';
 import { DocentesService } from './docentes.service';
+import { CreateDocenteDto, UpdateDocenteDto } from './dto/docentes.dto';
 import { JwtAuthGuard }     from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard }       from '../../auth/guards/roles.guard';
 import { TenantGuard }      from '../../tenant/tenant.guard';
@@ -25,12 +26,12 @@ export class DocentesController {
   }
 
   @Post()
-  create(@Body() dto: any) {
+  create(@Body() dto: CreateDocenteDto) {
     return this.svc.create(this.tenantSvc.getEmpresaId(), dto);
   }
 
   @Patch(':id')
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: any) {
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateDocenteDto) {
     return this.svc.update(this.tenantSvc.getEmpresaId(), id, dto);
   }
 }

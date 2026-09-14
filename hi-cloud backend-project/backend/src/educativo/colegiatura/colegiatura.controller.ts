@@ -1,5 +1,9 @@
 import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards, ParseIntPipe } from '@nestjs/common';
 import { ColegiaturaService } from './colegiatura.service';
+import {
+  UpsertPlanDto, GenerarCargosDto, GenerarMatriculaDto,
+  AddCargoDto, UpdateCargoDto, RegistrarPagoDto,
+} from './dto/colegiatura.dto';
 import { JwtAuthGuard }     from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard }       from '../../auth/guards/roles.guard';
 import { TenantGuard }      from '../../tenant/tenant.guard';
@@ -27,20 +31,20 @@ export class ColegiaturaController {
   }
 
   @Post('planes')
-  upsertPlan(@Body() dto: any) {
+  upsertPlan(@Body() dto: UpsertPlanDto) {
     return this.svc.upsertPlan(this.tenantSvc.getEmpresaId(), dto);
   }
 
   @Post('planes/:id/generar-cargos')
   generarCargos(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { meses: number[]; anio: number },
+    @Body() body: GenerarCargosDto,
   ) {
     return this.svc.generarCargos(this.tenantSvc.getEmpresaId(), id, body.meses, body.anio);
   }
 
   @Post('planes/:id/generar-matricula')
-  generarMatricula(@Param('id', ParseIntPipe) id: number, @Body() body: { anio: number }) {
+  generarMatricula(@Param('id', ParseIntPipe) id: number, @Body() body: GenerarMatriculaDto) {
     return this.svc.generarMatricula(this.tenantSvc.getEmpresaId(), id, body.anio);
   }
 
@@ -68,12 +72,12 @@ export class ColegiaturaController {
   }
 
   @Post('cargos')
-  addCargo(@Body() dto: any) {
+  addCargo(@Body() dto: AddCargoDto) {
     return this.svc.addCargo(this.tenantSvc.getEmpresaId(), dto);
   }
 
   @Patch('cargos/:id')
-  updateCargo(@Param('id', ParseIntPipe) id: number, @Body() dto: any) {
+  updateCargo(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateCargoDto) {
     return this.svc.updateCargo(this.tenantSvc.getEmpresaId(), id, dto);
   }
 
@@ -93,7 +97,7 @@ export class ColegiaturaController {
   }
 
   @Post('pagos')
-  registrarPago(@Body() dto: any) {
+  registrarPago(@Body() dto: RegistrarPagoDto) {
     return this.svc.registrarPago(this.tenantSvc.getEmpresaId(), dto);
   }
 }

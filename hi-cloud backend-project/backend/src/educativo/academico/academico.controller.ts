@@ -1,5 +1,8 @@
 import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards, ParseIntPipe } from '@nestjs/common';
 import { AcademicoService } from './academico.service';
+import {
+  CreateEvaluacionDto, UpdateEvaluacionDto, BulkCalificacionesDto, BulkAsistenciaDto,
+} from './dto/academico.dto';
 import { JwtAuthGuard }     from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard }       from '../../auth/guards/roles.guard';
 import { TenantGuard }      from '../../tenant/tenant.guard';
@@ -30,12 +33,12 @@ export class AcademicoController {
   }
 
   @Post('evaluaciones')
-  createEvaluacion(@Body() dto: any) {
+  createEvaluacion(@Body() dto: CreateEvaluacionDto) {
     return this.svc.createEvaluacion(this.tenantSvc.getEmpresaId(), dto);
   }
 
   @Patch('evaluaciones/:id')
-  updateEvaluacion(@Param('id', ParseIntPipe) id: number, @Body() dto: any) {
+  updateEvaluacion(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateEvaluacionDto) {
     return this.svc.updateEvaluacion(this.tenantSvc.getEmpresaId(), id, dto);
   }
 
@@ -54,7 +57,7 @@ export class AcademicoController {
   }
 
   @Post('calificaciones/bulk')
-  bulkCalificaciones(@Body() body: { items: Array<{ evaluacionId: number; estudianteId: number; nota: number }> }) {
+  bulkCalificaciones(@Body() body: BulkCalificacionesDto) {
     return this.svc.bulkCalificaciones(this.tenantSvc.getEmpresaId(), body.items ?? []);
   }
 
@@ -69,10 +72,7 @@ export class AcademicoController {
   }
 
   @Post('asistencia/bulk')
-  bulkAsistencia(@Body() body: {
-    seccionId: number; fecha: string;
-    items: Array<{ estudianteId: number; estado: string; observaciones?: string }>;
-  }) {
+  bulkAsistencia(@Body() body: BulkAsistenciaDto) {
     return this.svc.bulkAsistencia(
       this.tenantSvc.getEmpresaId(), body.seccionId, body.fecha, body.items ?? [],
     );

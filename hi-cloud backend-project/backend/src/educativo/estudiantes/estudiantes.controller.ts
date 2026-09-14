@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, ParseIntPipe } from '@nestjs/common';
 import { EstudiantesService } from './estudiantes.service';
+import { CreateEstudianteDto, UpdateEstudianteDto, AddTutorDto } from './dto/estudiantes.dto';
 import { JwtAuthGuard }     from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard }       from '../../auth/guards/roles.guard';
 import { TenantGuard }      from '../../tenant/tenant.guard';
@@ -35,19 +36,19 @@ export class EstudiantesController {
   }
 
   @Post()
-  create(@Body() dto: any) {
+  create(@Body() dto: CreateEstudianteDto) {
     return this.svc.create(this.tenantSvc.getEmpresaId(), dto);
   }
 
   @Patch(':id')
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: any) {
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateEstudianteDto) {
     return this.svc.update(this.tenantSvc.getEmpresaId(), id, dto);
   }
 
   @Post(':id/tutores')
   addTutor(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { tutorId: number; esPrincipal?: boolean },
+    @Body() body: AddTutorDto,
   ) {
     return this.svc.addTutor(this.tenantSvc.getEmpresaId(), id, body.tutorId, body.esPrincipal ?? false);
   }
