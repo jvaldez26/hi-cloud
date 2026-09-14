@@ -24,6 +24,7 @@ import {
   Eye, Edit2, MessageSquare, PauseCircle, PlayCircle, Trash2,
   Crown, Settings, Moon, Sun,
   CheckCircle, Send, Shield, Bell, MoreHorizontal, Database, Home,
+  Mail, KeyRound, Unlock, UserX, LifeBuoy,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
@@ -1920,6 +1921,63 @@ export default function SuperAdminPage() {
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
   });
 
+  // ── Soporte de acceso ("no puedo entrar") ───────────────────────────────
+  // Diagnóstico + acciones reversibles para ayudar a un cliente que no
+  // puede entrar, sin que el super admin fije/conozca su contraseña ni
+  // entre con su identidad. Ver super-admin.service.ts.
+  const [soporteUsuario, setSoporteUsuario] = useState<any>(null);
+
+  const { data: diagnostico, isLoading: loadDiagnostico } = useQuery({
+    queryKey: ['sa-usuario-diagnostico', soporteUsuario?.id],
+    queryFn:  () => api.get(`/admin/usuarios/${soporteUsuario?.id}/diagnostico-acceso`).then(xd),
+    enabled:  !!soporteUsuario?.id,
+  });
+
+  const invalidarSoporte = () => {
+    qc.invalidateQueries({ queryKey: ['sa-usuario-diagnostico'] });
+    qc.invalidateQueries({ queryKey: ['sa-usuarios'] });
+  };
+
+  const recuperarPasswordMut = useMutation({
+    mutationFn: (id: number) => api.post(`/admin/usuarios/${id}/recuperar-password`).then(xd),
+    onSuccess: (res: any) => message.success(res?.mensaje ?? 'Correo de recuperación enviado'),
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al enviar el correo de recuperación'),
+  });
+
+  const reenviarVerificacionMut = useMutation({
+    mutationFn: (id: number) => api.post(`/admin/usuarios/${id}/reenviar-verificacion`).then(xd),
+    onSuccess: (res: any) => { message.success(res?.mensaje ?? 'Correo de verificación reenviado'); invalidarSoporte(); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al reenviar la verificación'),
+  });
+
+  const marcarVerificadoMut = useMutation({
+    mutationFn: (id: number) => api.post(`/admin/usuarios/${id}/verificar-correo`, { confirmar: true }).then(xd),
+    onSuccess: (res: any) => { message.success(res?.mensaje ?? 'Correo marcado como verificado'); invalidarSoporte(); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al marcar el correo como verificado'),
+  });
+
+  const limpiarBloqueoMut = useMutation({
+    mutationFn: (id: number) => api.post(`/admin/usuarios/${id}/limpiar-bloqueo`).then(xd),
+    onSuccess: (res: any) => { message.success(res?.mensaje ?? 'Bloqueo limpiado'); invalidarSoporte(); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al limpiar el bloqueo'),
+  });
+
+  const forzarLogoutSoporteMut = useMutation({
+    mutationFn: (id: number) => api.post(`/auth/usuarios/${id}/cerrar-sesion`).then(xd),
+    onSuccess: (res: any) => { message.success(res?.mensaje ?? 'Sesión cerrada'); invalidarSoporte(); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al forzar el cierre de sesión'),
+  });
+
+  const liberarUsernameMut = useMutation({
+    mutationFn: (id: number) => api.delete(`/admin/usuarios/${id}/username`, { data: { confirmar: true } }).then(xd),
+    onSuccess: (res: any) => {
+      message.success(res?.mensaje ?? 'Username liberado');
+      invalidarSoporte();
+      setSoporteUsuario(null); // acción distinta y final — cierra el panel para evitar mostrar el username ya liberado como si siguiera activo
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al liberar el username'),
+  });
+
   // ── Cambiar rol de usuario ────────────────────────────────────────────────
   const [rolModal,    setRolModal]    = useState<any>(null);
   const [nuevoRol,    setNuevoRol]    = useState('');
@@ -2364,6 +2422,14 @@ export default function SuperAdminPage() {
         const tipBlock = esSA ? 'No aplica a Super Admin' : 'No aplica a tu cuenta';
         return (
           <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+            {/* Soporte de acceso — diagnóstico + acciones para "no puedo entrar" */}
+            <Tooltip title="Soporte de acceso">
+              <button onClick={() => setSoporteUsuario(r)}
+                style={{ background: 'transparent', border: `1px solid ${C.blue}44`, borderRadius: 6,
+                  cursor: 'pointer', color: C.blue, padding: '3px 7px' }}>
+                <LifeBuoy size={12} strokeWidth={2} />
+              </button>
+            </Tooltip>
             {/* Suspender / Activar */}
             {r.isActive ? (
               <button title={bloque ? tipBlock : 'Suspender acceso'} disabled={bloque}
@@ -3626,6 +3692,183 @@ export default function SuperAdminPage() {
                     },
                   ]}
                 />
+              )}
+            </div>
+          </>
+        )}
+      </Modal>
+
+      {/* ── MODAL SOPORTE DE ACCESO ───────────────────────────────────────────────
+          "El cliente reporta que no puede entrar." Diagnóstico primero — la
+          mitad de las llamadas se resuelven solo con verlo — y después las
+          acciones. El super admin nunca ve ni fija la contraseña de nadie,
+          ni entra con la identidad del usuario. */}
+      <Modal
+        open={!!soporteUsuario}
+        onCancel={() => setSoporteUsuario(null)}
+        footer={null}
+        width={640}
+        title={null}
+        styles={{ content: { background: C.card, padding: 0, borderRadius: 14, overflow: 'hidden' }, mask: { background: 'rgba(0,0,0,.7)' } }}
+      >
+        {soporteUsuario && (
+          <>
+            <div style={{
+              background: `linear-gradient(135deg, #0A1628, #1E293B)`,
+              padding: '24px 28px', borderBottom: `1px solid ${C.border}`,
+              display: 'flex', alignItems: 'center', gap: 16,
+            }}>
+              <div style={{
+                width: 48, height: 48, borderRadius: '50%', flexShrink: 0,
+                background: `${C.blue}33`, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 20, fontWeight: 800, color: C.blue,
+              }}><LifeBuoy size={22} /></div>
+              <div>
+                <h2 style={{ color: '#F8FAFC', fontWeight: 800, fontSize: 17, margin: 0 }}>Soporte de acceso</h2>
+                <div style={{ color: '#94A3B8', fontSize: 12, marginTop: 3 }}>
+                  {soporteUsuario.nombre} — {soporteUsuario.email}
+                  {soporteUsuario.username && <span style={{ fontFamily: 'monospace', opacity: 0.85 }}> · @{soporteUsuario.username}</span>}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ padding: '20px 28px 28px', maxHeight: '70vh', overflowY: 'auto' }}>
+              {loadDiagnostico ? (
+                <div style={{ textAlign: 'center', padding: 32 }}><Spin /></div>
+              ) : diagnostico && (
+                <>
+                  {/* ── Diagnóstico ── */}
+                  <div style={{ color: C.txt2, fontSize: 11, fontWeight: 700, letterSpacing: 0.5, marginBottom: 10, textTransform: 'uppercase' }}>
+                    Por qué no puede entrar
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 20 }}>
+                    <div style={{ background: C.bg, borderRadius: 8, padding: '10px 14px', border: `1px solid ${C.border}` }}>
+                      <div style={{ color: C.txt2, fontSize: 11, marginBottom: 3 }}>Correo verificado</div>
+                      <div style={{ color: diagnostico.correoVerificado ? C.green : C.red, fontWeight: 700, fontSize: 13 }}>
+                        {diagnostico.correoVerificado ? '✓ Verificado' : '✗ Sin verificar'}
+                      </div>
+                    </div>
+                    <div style={{ background: C.bg, borderRadius: 8, padding: '10px 14px', border: `1px solid ${C.border}` }}>
+                      <div style={{ color: C.txt2, fontSize: 11, marginBottom: 3 }}>Estado de la cuenta</div>
+                      <div style={{ color: diagnostico.accountStatus === 'activo' ? C.green : C.gold, fontWeight: 700, fontSize: 13, textTransform: 'capitalize' }}>
+                        {diagnostico.accountStatus}
+                      </div>
+                    </div>
+                    <div style={{ background: C.bg, borderRadius: 8, padding: '10px 14px', border: `1px solid ${C.border}` }}>
+                      <div style={{ color: C.txt2, fontSize: 11, marginBottom: 3 }}>Contraseña configurada</div>
+                      <div style={{ color: diagnostico.passwordConfigured ? C.green : C.gold, fontWeight: 700, fontSize: 13 }}>
+                        {diagnostico.passwordConfigured ? '✓ Sí' : `✗ No (registrado con ${diagnostico.usuario?.provider ?? 'Google'})`}
+                      </div>
+                    </div>
+                    <div style={{ background: C.bg, borderRadius: 8, padding: '10px 14px', border: `1px solid ${C.border}` }}>
+                      <div style={{ color: C.txt2, fontSize: 11, marginBottom: 3 }}>Bloqueo por intentos fallidos</div>
+                      <div style={{ color: diagnostico.bloqueo?.bloqueado ? C.red : C.green, fontWeight: 700, fontSize: 13 }}>
+                        {diagnostico.bloqueo?.bloqueado
+                          ? `✗ Bloqueado — ${diagnostico.bloqueo.tiempoRestante}`
+                          : '✓ Sin bloqueo'}
+                      </div>
+                    </div>
+                    <div style={{ background: C.bg, borderRadius: 8, padding: '10px 14px', border: `1px solid ${C.border}` }}>
+                      <div style={{ color: C.txt2, fontSize: 11, marginBottom: 3 }}>Sesión activa en otro dispositivo</div>
+                      <div style={{ color: diagnostico.sesionActiva ? C.gold : C.txt, fontWeight: 700, fontSize: 13 }}>
+                        {diagnostico.sesionActiva ? '● Sí' : '— No'}
+                      </div>
+                    </div>
+                    <div style={{ background: C.bg, borderRadius: 8, padding: '10px 14px', border: `1px solid ${C.border}` }}>
+                      <div style={{ color: C.txt2, fontSize: 11, marginBottom: 3 }}>Empresa(s)</div>
+                      {diagnostico.algunaEmpresaActiva === null ? (
+                        <div style={{ color: C.txt2, fontSize: 13 }}>N/A (super admin)</div>
+                      ) : diagnostico.empresas?.length ? (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                          {diagnostico.empresas.map((e: any) => (
+                            <Tag key={e.id} color={e.activa ? 'green' : 'red'} style={{ fontSize: 10, margin: 0 }}>{e.nombre}</Tag>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ color: C.red, fontWeight: 700, fontSize: 13 }}>✗ Sin empresa vinculada</div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ── Acciones ── */}
+                  <div style={{ color: C.txt2, fontSize: 11, fontWeight: 700, letterSpacing: 0.5, marginBottom: 10, textTransform: 'uppercase' }}>
+                    Acciones
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 22 }}>
+                    <button
+                      onClick={() => recuperarPasswordMut.mutate(soporteUsuario.id)}
+                      disabled={recuperarPasswordMut.isPending}
+                      style={{ ...btnStyle(C.blue, false, true), padding: '9px 14px', display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-start' }}>
+                      <KeyRound size={14} /> Enviar correo de recuperación de contraseña
+                    </button>
+
+                    <button
+                      onClick={() => reenviarVerificacionMut.mutate(soporteUsuario.id)}
+                      disabled={reenviarVerificacionMut.isPending || diagnostico.correoVerificado}
+                      style={{ ...btnStyle(C.blue, false, true), padding: '9px 14px', display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-start', opacity: diagnostico.correoVerificado ? 0.4 : 1 }}>
+                      <Mail size={14} /> Reenviar correo de verificación
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        if (diagnostico.correoVerificado) return;
+                        Modal.confirm({
+                          title: '¿Marcar el correo como verificado a mano?',
+                          content: 'Esto salta el control de seguridad que exige demostrar acceso a la casilla. Úsalo solo cuando el correo de verificación no llega.',
+                          okText: 'Sí, marcar como verificado', cancelText: 'Cancelar',
+                          onOk: () => marcarVerificadoMut.mutate(soporteUsuario.id),
+                        });
+                      }}
+                      disabled={marcarVerificadoMut.isPending || diagnostico.correoVerificado}
+                      style={{ ...btnStyle(C.gold, false, true), padding: '9px 14px', display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-start', opacity: diagnostico.correoVerificado ? 0.4 : 1 }}>
+                      <CheckCircle size={14} /> Marcar correo como verificado a mano
+                    </button>
+
+                    <button
+                      onClick={() => limpiarBloqueoMut.mutate(soporteUsuario.id)}
+                      disabled={limpiarBloqueoMut.isPending || !diagnostico.bloqueo?.bloqueado}
+                      style={{ ...btnStyle(C.green, false, true), padding: '9px 14px', display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-start', opacity: !diagnostico.bloqueo?.bloqueado ? 0.4 : 1 }}>
+                      <Unlock size={14} /> Limpiar bloqueo por intentos fallidos
+                    </button>
+
+                    <Popconfirm
+                      title="¿Forzar el cierre de la sesión activa?"
+                      okText="Sí, cerrar sesión" cancelText="Cancelar"
+                      disabled={!diagnostico.sesionActiva}
+                      onConfirm={() => forzarLogoutSoporteMut.mutate(soporteUsuario.id)}>
+                      <button
+                        disabled={forzarLogoutSoporteMut.isPending || !diagnostico.sesionActiva}
+                        style={{ ...btnStyle(C.red, false, true), padding: '9px 14px', display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-start', width: '100%', opacity: !diagnostico.sesionActiva ? 0.4 : 1 }}>
+                        <LogOut size={14} /> Forzar cierre de sesión
+                      </button>
+                    </Popconfirm>
+                  </div>
+
+                  {/* ── Liberar username — caso distinto, no de acceso ── */}
+                  <div style={{ color: C.txt2, fontSize: 11, fontWeight: 700, letterSpacing: 0.5, marginBottom: 8, textTransform: 'uppercase' }}>
+                    Liberar username
+                  </div>
+                  <div style={{ background: C.bg, borderRadius: 8, padding: '12px 14px', border: `1px solid ${C.border}` }}>
+                    <div style={{ color: C.txt2, fontSize: 12, marginBottom: 10, lineHeight: 1.5 }}>
+                      Solo para cuando un username quedó ocupado por una cuenta inactiva y otro cliente lo quiere.
+                      No reasigna el username a nadie — el nuevo dueño lo elige desde su propio perfil.
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (!soporteUsuario.username) return;
+                        Modal.confirm({
+                          title: `¿Liberar el username "${soporteUsuario.username}"?`,
+                          content: `${soporteUsuario.nombre} dejará de poder entrar con "@${soporteUsuario.username}" y tendrá que usar su correo (${soporteUsuario.email}). El username quedará libre para que otra cuenta lo elija.`,
+                          okText: 'Sí, liberar', okButtonProps: { danger: true }, cancelText: 'Cancelar',
+                          onOk: () => liberarUsernameMut.mutate(soporteUsuario.id),
+                        });
+                      }}
+                      disabled={liberarUsernameMut.isPending || !soporteUsuario.username}
+                      style={{ ...btnStyle(C.red, false, true), padding: '9px 14px', display: 'flex', alignItems: 'center', gap: 8, opacity: !soporteUsuario.username ? 0.4 : 1 }}>
+                      <UserX size={14} /> {soporteUsuario.username ? `Liberar "@${soporteUsuario.username}"` : 'Este usuario no tiene username'}
+                    </button>
+                  </div>
+                </>
               )}
             </div>
           </>
