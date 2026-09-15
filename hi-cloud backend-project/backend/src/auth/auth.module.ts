@@ -26,6 +26,7 @@ import { Empresa } from '../configuracion/entities/empresa.entity';
 import { Sucursal } from '../configuracion/entities/sucursal.entity';
 import { ContabilidadModule } from '../contabilidad/contabilidad.module';
 import { AuditoriaModule } from '../auditoria/auditoria.module';
+import { ModulosAddonModule } from '../modulos-addon/modulos-addon.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { AuditoriaModule } from '../auditoria/auditoria.module';
     NotificacionesModule,
     ContabilidadModule,
     AuditoriaModule,
+    ModulosAddonModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],

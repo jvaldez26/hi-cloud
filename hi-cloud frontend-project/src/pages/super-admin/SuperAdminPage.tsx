@@ -2,7 +2,7 @@
 import {
   Table, Tag, Button, Modal, Select, InputNumber, message,
   Avatar, Tooltip, Input, Popconfirm, Form, Tabs, Badge, Dropdown,
-  Spin, Empty, Space, Alert, ConfigProvider, theme as antTheme, DatePicker,
+  Spin, Empty, Space, Alert, ConfigProvider, theme as antTheme, DatePicker, Switch,
 } from 'antd';
 import type { MenuProps } from 'antd';
 import { SidebarShell, useSidebarColapsado } from '../../components/layout/sidebar/SidebarShell';
@@ -37,6 +37,21 @@ import { ActivacionEcfAdminTab } from './ActivacionEcfAdminTab';
 import VideosTutorialesAdminPage from './VideosTutorialesAdminPage';
 import { MensajesAdminTab } from '../../components/super-admin/MensajesAdminTab';
 import { SECTORES_EMPRESARIALES } from '../../constants/sectores';
+
+/**
+ * Resuelve el sector de una empresa a una etiqueta legible. Cubre dos
+ * formatos: el nuevo (desde el selector del registro: 'comercio' | código
+ * real de modulos_addon | 'otro' + sectorOtroTexto) y el legado (~39
+ * valores de SECTORES_EMPRESARIALES, de antes de este rediseño — no se
+ * tocan empresas existentes, así que siguen resolviendo contra esa lista).
+ */
+function resolverSectorEmpresa(sector?: string | null, sectorOtroTexto?: string | null): string | null {
+  if (!sector) return null;
+  if (sector === 'comercio') return 'Comercio / Retail';
+  if (sector === 'otro') return sectorOtroTexto ? `Otro: ${sectorOtroTexto}` : 'Otro';
+  const legado = SECTORES_EMPRESARIALES.find(s => s.value === sector);
+  return legado?.label ?? sector;
+}
 import { fmtDop } from '../../utils/fmt';
 import { ahora, dRD, fecha, fechaHora, horaConSegundos, hoyRD } from '../../utils/fechaRD';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
@@ -1206,9 +1221,17 @@ function ModulosEmpresaPanel({ empresaId }: { empresaId: number }) {
                   <div style={{ color: C.txt, fontWeight: 700, fontSize: 14 }}>{modulo.nombre}</div>
                   <div style={{ color: C.txt2, fontSize: 12, marginTop: 2 }}>{modulo.descripcion}</div>
                   {activacion?.fechaActivacion && (
-                    <div style={{ color: C.txt2, fontSize: 11, marginTop: 4 }}>
-                      Activado: {fmtFecha(activacion.fechaActivacion)}
-                      {activacion.fechaVencimiento && ` · Vence: ${fmtFecha(activacion.fechaVencimiento)}`}
+                    <div style={{ color: C.txt2, fontSize: 11, marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <span>
+                        Activado: {fmtFecha(activacion.fechaActivacion)}
+                        {activacion.fechaVencimiento && ` · Vence: ${fmtFecha(activacion.fechaVencimiento)}`}
+                      </span>
+                      <Tag color={activacion.origen === 'registro' ? 'geekblue' : 'default'} style={{ fontSize: 10, margin: 0 }}>
+                        {activacion.origen === 'registro' ? '📝 auto-registro' : '🛠️ manual'}
+                      </Tag>
+                      {activacion.esCortesia && (
+                        <Tag color="gold" style={{ fontSize: 10, margin: 0 }}>cortesía</Tag>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1245,12 +1268,20 @@ function ModulosEmpresaPanel({ empresaId }: { empresaId: number }) {
 
 function ModulosAddonTab() {
   const C = useSaTheme();
+  const qc = useQueryClient();
   const [filtroModulo, setFiltroModulo] = useState<string | undefined>();
 
   const { data, isLoading } = useQuery({
     queryKey: ['sa-modulos-global'],
     queryFn:  () => api.get('/admin/modulos/activaciones').then(xd),
     staleTime: 30_000,
+  });
+
+  const autoActivacionMut = useMutation({
+    mutationFn: ({ codigo, activacionAutomatica }: { codigo: string; activacionAutomatica: boolean }) =>
+      api.post(`/admin/modulos/${codigo}/activacion-automatica`, { activacionAutomatica }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['sa-modulos-global'] }); message.success('Actualizado'); },
+    onError:   (e: any) => message.error(e?.response?.data?.message ?? 'Error al actualizar'),
   });
 
   const resumen      = (data as any)?.resumen      ?? [];
@@ -1263,6 +1294,7 @@ function ModulosAddonTab() {
   const COLS_DEF = [
     { key: 'empresa',           label: 'Empresa'       },
     { key: 'modulo',            label: 'Módulo'        },
+    { key: 'origen',            label: 'Origen'        },
     { key: 'fechaActivacion',   label: 'F. Activación' },
     { key: 'fechaVencimiento',  label: 'Vencimiento'   },
     { key: 'activadoPorNombre', label: 'Activado por'  },
@@ -1277,20 +1309,28 @@ function ModulosAddonTab() {
       <div style={{ display: 'flex', gap: 14, marginBottom: 20, flexWrap: 'wrap' }}>
         {(resumen as any[]).map((m: any) => (
           <div key={m.codigo}
-            onClick={() => setFiltroModulo(filtroModulo === m.codigo ? undefined : m.codigo)}
             style={{
               background: C.card, borderRadius: 10, padding: '16px 20px', minWidth: 180,
               border: `1px solid ${filtroModulo === m.codigo ? C.gold : C.border}`,
               borderTop: `3px solid ${m.empresasActivas > 0 ? C.green : C.border}`,
-              cursor: 'pointer', opacity: filtroModulo && filtroModulo !== m.codigo ? 0.5 : 1,
+              opacity: filtroModulo && filtroModulo !== m.codigo ? 0.5 : 1,
               transition: 'all .15s',
             }}>
-            <div style={{ fontSize: 26, marginBottom: 6 }}>{MODULO_ICONS[m.codigo] ?? '🧩'}</div>
-            <div style={{ color: C.txt, fontWeight: 700, fontSize: 14 }}>{m.nombre}</div>
-            <div style={{ color: m.empresasActivas > 0 ? C.green : C.txt2, fontSize: 26, fontWeight: 800, margin: '4px 0' }}>
-              {m.empresasActivas}
+            <div onClick={() => setFiltroModulo(filtroModulo === m.codigo ? undefined : m.codigo)} style={{ cursor: 'pointer' }}>
+              <div style={{ fontSize: 26, marginBottom: 6 }}>{MODULO_ICONS[m.codigo] ?? '🧩'}</div>
+              <div style={{ color: C.txt, fontWeight: 700, fontSize: 14 }}>{m.nombre}</div>
+              <div style={{ color: m.empresasActivas > 0 ? C.green : C.txt2, fontSize: 26, fontWeight: 800, margin: '4px 0' }}>
+                {m.empresasActivas}
+              </div>
+              <div style={{ color: C.txt2, fontSize: 12 }}>empresas activas</div>
             </div>
-            <div style={{ color: C.txt2, fontSize: 12 }}>empresas activas</div>
+            <div onClick={e => e.stopPropagation()}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
+              <Switch size="small" checked={m.activacionAutomatica}
+                loading={autoActivacionMut.isPending && autoActivacionMut.variables?.codigo === m.codigo}
+                onChange={(checked) => autoActivacionMut.mutate({ codigo: m.codigo, activacionAutomatica: checked })} />
+              <span style={{ color: C.txt2, fontSize: 11 }}>Auto-activar al registrarse</span>
+            </div>
           </div>
         ))}
         {(resumen as any[]).length === 0 && !isLoading && (
@@ -1343,6 +1383,17 @@ function ModulosAddonTab() {
             {
               title: 'F. Activación', dataIndex: 'fechaActivacion', key: 'fechaActivacion', width: 120,
               render: (v: string) => <span style={{ color: C.txt2, fontSize: 12 }}>{fmtFecha(v)}</span>,
+            },
+            {
+              title: 'Origen', key: 'origen', width: 130,
+              render: (_: any, r: any) => (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                  <Tag color={r.origen === 'registro' ? 'geekblue' : 'default'} style={{ fontSize: 10, margin: 0 }}>
+                    {r.origen === 'registro' ? '📝 auto-registro' : '🛠️ manual'}
+                  </Tag>
+                  {r.esCortesia && <Tag color="gold" style={{ fontSize: 10, margin: 0 }}>cortesía</Tag>}
+                </span>
+              ),
             },
             {
               title: 'Vencimiento', dataIndex: 'fechaVencimiento', key: 'fechaVencimiento', width: 130,
@@ -2242,12 +2293,13 @@ export default function SuperAdminPage() {
     // ── SECTOR ───────────────────────────────────────────────────────────────
     { title: 'Sector', key: 'sector', width: 160,
       render: (_: any, r: any) => {
+        const label = resolverSectorEmpresa(r.sector, r.sectorOtroTexto);
         const s = SECTORES_EMPRESARIALES.find(x => x.value === r.sector);
-        if (!s && !r.sector) return <span style={{ color: C.txt2, fontSize: 12 }}>—</span>;
+        if (!label) return <span style={{ color: C.txt2, fontSize: 12 }}>—</span>;
         return (
           <div>
-            <Tag color="blue" style={{ fontSize: 11, marginBottom: s?.addon ? 2 : 0 }}>
-              {s?.label ?? r.sector}
+            <Tag color={r.sector === 'otro' ? 'orange' : 'blue'} style={{ fontSize: 11, marginBottom: s?.addon ? 2 : 0 }}>
+              {label}
             </Tag>
             {s?.addon && (
               <Tag color="green" style={{ fontSize: 10 }}>💡 {s.addon}</Tag>
@@ -3126,7 +3178,10 @@ export default function SuperAdminPage() {
                             <div style={{ color: C.txt2, fontSize: 12 }}>RNC: {r.rnc}</div>
                           </div>
                         )},
-                        { title: 'Sector', dataIndex: 'sector', key: 'sector', render: (v: string) => v ? <Tag>{v}</Tag> : '—' },
+                        { title: 'Sector', key: 'sector', render: (_: any, r: any) => {
+                          const label = resolverSectorEmpresa(r.sector, r.sectorOtroTexto);
+                          return label ? <Tag color={r.sector === 'otro' ? 'orange' : 'blue'}>{label}</Tag> : '—';
+                        }},
                         { title: 'Solicitante', key: 'solicitante', render: (_: any, r: any) => (
                           <div>
                             <div style={{ color: C.txt }}>{r.solicitanteNombre ?? '—'}</div>
@@ -3639,12 +3694,13 @@ export default function SuperAdminPage() {
                             ))}
                           </div>
                           {detalleEmpresa.sector && (() => {
+                            const label = resolverSectorEmpresa(detalleEmpresa.sector, detalleEmpresa.sectorOtroTexto);
                             const s = SECTORES_EMPRESARIALES.find(x => x.value === detalleEmpresa.sector);
                             return (
                               <div style={{ background: C.bg, borderRadius: 8, padding: '10px 14px', border: `1px solid ${C.border}`, marginBottom: 14 }}>
                                 <div style={{ color: C.txt2, fontSize: 11, marginBottom: 6 }}>Sector empresarial</div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                                  <Tag color="blue">{s?.label ?? detalleEmpresa.sector}</Tag>
+                                  <Tag color={detalleEmpresa.sector === 'otro' ? 'orange' : 'blue'}>{label}</Tag>
                                   {s?.addon && (
                                     <Tag color="green">💡 Add-on sugerido: <strong>{s.addon}</strong></Tag>
                                   )}

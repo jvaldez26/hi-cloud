@@ -53,4 +53,10 @@ export class RegisterDto {
   @IsString()
   @MaxLength(100)
   sectorEmpresarial?: string;
+
+  /** Texto libre cuando sectorEmpresarial === 'otro' */
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  sectorOtroTexto?: string;
 }

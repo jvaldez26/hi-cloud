@@ -128,7 +128,7 @@ export class SuperAdminService {
 
   async listarEmpresas() {
     return this.ds.query<any[]>(`
-      SELECT e.id, e.nombre, e.rnc, e."isActive",
+      SELECT e.id, e.nombre, e.rnc, e."isActive", e.sector, e."sectorOtroTexto",
              e."createdAt"::date AS "fechaRegistro",
              s.plan, s.estado AS "estadoSuscripcion",
              s."fechaVencimiento"::date AS "venceSuscripcion",
@@ -141,7 +141,7 @@ export class SuperAdminService {
         AND EXTRACT(MONTH FROM f.fecha) = EXTRACT(MONTH FROM CURRENT_DATE)
         AND EXTRACT(YEAR  FROM f.fecha) = EXTRACT(YEAR  FROM CURRENT_DATE)
         AND f."isActive" = true AND f.estado != 'cancelada'
-      GROUP BY e.id, e.nombre, e.rnc, e."isActive", e."createdAt",
+      GROUP BY e.id, e.nombre, e.rnc, e."isActive", e.sector, e."sectorOtroTexto", e."createdAt",
                s.plan, s.estado, s."fechaVencimiento"
       ORDER BY e."createdAt" DESC
     `);
@@ -154,7 +154,7 @@ export class SuperAdminService {
     // hace falta en el detalle del panel y engordaba la respuesta.
     const [emp] = await this.ds.query<any[]>(`
       SELECT e.id, e.nombre, e."nombreComercial", e.rnc, e.email, e.telefono,
-             e.direccion, e.ciudad, e.provincia, e.sector, e."regimenFiscal",
+             e.direccion, e.ciudad, e.provincia, e.sector, e."sectorOtroTexto", e."regimenFiscal",
              e."representanteLegal", e.moneda, e."isActive", e."createdAt",
              e."estadoAprobacion", e."motivoRechazo", e."aprobadoPor", e."fechaAprobacion",
              s.id AS "suscripcionId", s.plan, s.estado AS "estadoSuscripcion",
@@ -204,7 +204,7 @@ export class SuperAdminService {
 
   async getEmpresasPendientesAprobacion() {
     return this.ds.query<any[]>(`
-      SELECT e.id, e.nombre, e.rnc, e.email, e.sector, e.telefono, e."createdAt",
+      SELECT e.id, e.nombre, e.rnc, e.email, e.sector, e."sectorOtroTexto", e.telefono, e."createdAt",
              u.nombre AS "solicitanteNombre", u.email AS "solicitanteEmail"
       FROM empresa e
       LEFT JOIN usuario_empresa ue ON ue."empresaId" = e.id AND ue."isPrincipal" = true

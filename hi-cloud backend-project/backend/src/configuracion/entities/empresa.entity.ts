@@ -76,6 +76,10 @@ export class Empresa extends BaseEntity {
   @Column({ length: 100, nullable: true })
   sector?: string;
 
+  /** Texto libre cuando `sector === 'otro'` — qué escribió el usuario en el registro */
+  @Column({ length: 100, nullable: true })
+  sectorOtroTexto?: string;
+
   @Column({ length: 100, nullable: true })
   regimenFiscal?: string;
 

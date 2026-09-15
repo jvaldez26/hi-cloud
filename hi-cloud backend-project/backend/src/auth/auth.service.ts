@@ -35,6 +35,7 @@ import { LoginAttemptsService } from './login-attempts.service';
 import { reportServiceError } from '../common/observability/sentry';
 import { AuditoriaService } from '../auditoria/auditoria.service';
 import { AccionAuditoria, NivelAuditoria } from '../auditoria/entities/audit-log.entity';
+import { ModulosAddonService } from '../modulos-addon/modulos-addon.service';
 import { USERNAME_RESERVADOS } from './auth.constants';
 
 /**
@@ -79,6 +80,7 @@ export class AuthService implements OnModuleInit {
     @InjectDataSource() private dataSource: DataSource,
     private loginAttempts: LoginAttemptsService,
     private auditoriaSvc: AuditoriaService,
+    private modulosAddonSvc: ModulosAddonService,
   ) {}
 
   async onModuleInit() {
@@ -266,6 +268,7 @@ export class AuthService implements OnModuleInit {
           isActive:    true,
           telefono:    dto.telefono,
           sector:      dto.sectorEmpresarial,
+          sectorOtroTexto: dto.sectorEmpresarial === 'otro' ? dto.sectorOtroTexto : undefined,
         });
         const empresaId = empresaResult.identifiers[0].id as number;
 
@@ -323,6 +326,15 @@ export class AuthService implements OnModuleInit {
         this.contabilidadService.seedPlanCuentas(empresaId).catch(err =>
           this.logger.warn(`seedPlanCuentas empresa ${empresaId}: ${err?.message}`),
         );
+
+        // Sector elegido en el registro → activar el add-on correspondiente,
+        // si el módulo lo tiene marcado en automático (Super Admin). 'comercio'
+        // (ERP base) y 'otro' nunca activan nada.
+        if (dto.sectorEmpresarial && dto.sectorEmpresarial !== 'comercio' && dto.sectorEmpresarial !== 'otro') {
+          this.activarAddonPorSectorRegistro(empresaId, user.id, dto.sectorEmpresarial).catch(err =>
+            this.logger.warn(`activarAddonPorSectorRegistro empresa ${empresaId} sector ${dto.sectorEmpresarial}: ${err?.message}`),
+          );
+        }
       } else {
         await qr.commitTransaction();
       }
@@ -356,6 +368,40 @@ export class AuthService implements OnModuleInit {
     } finally {
       await qr.release();
     }
+  }
+
+  /**
+   * Sector elegido en el registro → activar el add-on con ese código, si
+   * existe y tiene `activacionAutomatica` en true (flag por add-on,
+   * configurable desde Super Admin). Reusa ModulosAddonService.activarModulo
+   * — el mismo camino que usa Super Admin — para no tener dos formas de
+   * escribir en empresa_modulos. Queda marcada origen='registro',
+   * esCortesia=true (no es una contratación pagada) y auditada.
+   */
+  private async activarAddonPorSectorRegistro(empresaId: number, userId: number, codigo: string): Promise<void> {
+    const [modulo] = await this.dataSource.query<any[]>(
+      `SELECT "activacionAutomatica" FROM modulos_addon WHERE codigo = $1 AND "isActive" = true`,
+      [codigo],
+    );
+    if (!modulo) return; // el value elegido no corresponde a ningún add-on real (no debería pasar con el selector, pero no es motivo para fallar el registro)
+    if (!modulo.activacionAutomatica) {
+      this.logger.log(`Sector '${codigo}' elegido en registro de empresa #${empresaId}, pero su add-on tiene activación automática desactivada — no se activa`);
+      return;
+    }
+
+    await this.modulosAddonSvc.activarModulo(
+      empresaId, codigo, userId, null,
+      'Activación automática por sector elegido en el registro',
+      'registro', true,
+    );
+
+    await this.auditoriaSvc.registrar({
+      userId, accion: AccionAuditoria.CREATE, nivel: NivelAuditoria.NORMAL,
+      modulo: 'modulos-addon', entidad: 'empresa_modulos', entidadId: String(empresaId),
+      descripcion: `Módulo add-on "${codigo}" activado automáticamente al registrarse (origen: registro, cortesía)`,
+      valorNuevo: JSON.stringify({ codigo, activo: true, origen: 'registro', esCortesia: true }),
+      metodo: 'POST', ruta: '/auth/register', statusCode: 201, exitoso: true, empresaId,
+    });
   }
 
   // ─── Login ───────────────────────────────────────────────────────────────────

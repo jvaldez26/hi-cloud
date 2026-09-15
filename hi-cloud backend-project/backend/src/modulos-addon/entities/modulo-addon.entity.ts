@@ -17,6 +17,14 @@ export class ModuloAddon {
   @Column({ default: true })
   isActive!: boolean;
 
+  /**
+   * Si true, elegir este sector en el registro activa el add-on
+   * automáticamente. Configurable por add-on desde Super Admin — hoy todos
+   * en automático; se puede pasar uno a manual sin tocar código.
+   */
+  @Column({ default: true })
+  activacionAutomatica!: boolean;
+
   @CreateDateColumn()
   createdAt!: Date;
 

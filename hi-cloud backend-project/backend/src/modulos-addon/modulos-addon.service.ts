@@ -25,13 +25,15 @@ export class ModulosAddonService {
 
   async listarModulos() {
     return this.ds.query<any[]>(
-      `SELECT id, codigo, nombre, descripcion FROM modulos_addon WHERE "isActive" = true ORDER BY nombre`,
+      `SELECT id, codigo, nombre, descripcion, "activacionAutomatica"
+       FROM modulos_addon WHERE "isActive" = true ORDER BY nombre`,
     );
   }
 
   async getModulosEmpresa(empresaId: number) {
     return this.ds.query<any[]>(
       `SELECT em.id, em."moduloCodigo", em.activo, em."fechaActivacion", em."fechaVencimiento", em.notas,
+              em.origen, em."esCortesia",
               ma.nombre, ma.descripcion
        FROM empresa_modulos em
        JOIN modulos_addon ma ON ma.codigo = em."moduloCodigo"
@@ -47,6 +49,8 @@ export class ModulosAddonService {
     activadoPor: number,
     fechaVencimiento?: string | null,
     notas?: string,
+    origen: string = 'manual',
+    esCortesia = false,
   ) {
     const modulo = await this.ds.query<any[]>(
       `SELECT 1 FROM modulos_addon WHERE codigo = $1 AND "isActive" = true`,
@@ -55,14 +59,25 @@ export class ModulosAddonService {
     if (!modulo.length) throw new NotFoundException(`Módulo '${codigo}' no existe`);
 
     await this.ds.query(
-      `INSERT INTO empresa_modulos ("empresaId", "moduloCodigo", activo, "activadoPor", "fechaVencimiento", notas, "fechaActivacion")
-       VALUES ($1, $2, true, $3, $4, $5, NOW())
+      `INSERT INTO empresa_modulos ("empresaId", "moduloCodigo", activo, "activadoPor", "fechaVencimiento", notas, "fechaActivacion", origen, "esCortesia")
+       VALUES ($1, $2, true, $3, $4, $5, NOW(), $6, $7)
        ON CONFLICT ("empresaId", "moduloCodigo")
-       DO UPDATE SET activo = true, "activadoPor" = $3, "fechaVencimiento" = $4, notas = $5, "updatedAt" = NOW()`,
-      [empresaId, codigo, activadoPor, fechaVencimiento ?? null, notas ?? null],
+       DO UPDATE SET activo = true, "activadoPor" = $3, "fechaVencimiento" = $4, notas = $5, origen = $6, "esCortesia" = $7, "updatedAt" = NOW()`,
+      [empresaId, codigo, activadoPor, fechaVencimiento ?? null, notas ?? null, origen, esCortesia],
     );
-    this.logger.log(`Módulo '${codigo}' activado para empresa #${empresaId} por usuario #${activadoPor}`);
+    this.logger.log(`Módulo '${codigo}' activado para empresa #${empresaId} por usuario #${activadoPor} (origen=${origen}${esCortesia ? ', cortesía' : ''})`);
     return { ok: true, message: `Módulo '${codigo}' activado` };
+  }
+
+  /** Flag por add-on, configurable desde Super Admin — ver activacionAutomatica en ModuloAddon. */
+  async setActivacionAutomatica(codigo: string, activacionAutomatica: boolean) {
+    const res = await this.ds.query(
+      `UPDATE modulos_addon SET "activacionAutomatica" = $1, "updatedAt" = NOW() WHERE codigo = $2`,
+      [activacionAutomatica, codigo],
+    );
+    if (!res[1]) throw new NotFoundException(`Módulo '${codigo}' no existe`);
+    this.logger.log(`Activación automática de '${codigo}' → ${activacionAutomatica}`);
+    return { ok: true, codigo, activacionAutomatica };
   }
 
   async desactivarModulo(empresaId: number, codigo: string) {
@@ -97,7 +112,7 @@ export class ModulosAddonService {
         SELECT em."empresaId", e.nombre AS "empresaNombre",
                em."moduloCodigo", ma.nombre AS "moduloNombre",
                em.activo, em."fechaActivacion", em."fechaVencimiento",
-               em.notas, u.nombre AS "activadoPorNombre"
+               em.notas, em.origen, em."esCortesia", u.nombre AS "activadoPorNombre"
         FROM empresa_modulos em
         JOIN empresa e ON e.id = em."empresaId"
         JOIN modulos_addon ma ON ma.codigo = em."moduloCodigo"

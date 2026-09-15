@@ -29,6 +29,14 @@ export class EmpresaModulo {
   @Column({ type: 'text', nullable: true })
   notas!: string | null;
 
+  /** 'manual' (Super Admin) | 'registro' (el usuario lo eligió al crear su cuenta) */
+  @Column({ length: 20, default: 'manual' })
+  origen!: string;
+
+  /** true si fue una activación de cortesía (no una contratación pagada) */
+  @Column({ default: false })
+  esCortesia!: boolean;
+
   @CreateDateColumn()
   createdAt!: Date;
 

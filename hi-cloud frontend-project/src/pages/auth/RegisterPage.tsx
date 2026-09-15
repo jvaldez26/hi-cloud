@@ -2,10 +2,9 @@ import { useState, useRef, useCallback } from 'react';
 import { Form, Input, Button, Typography, Alert, Steps,
          Row, Col, Select, message, ConfigProvider, theme as antTheme, Spin } from 'antd';
 import { UserOutlined, LockOutlined, BuildOutlined, RocketOutlined, CheckOutlined, PhoneOutlined, ShopOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
-import { SECTORES_EMPRESARIALES } from '../../constants/sectores';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { authApi } from '../../api/auth.api';
 import api from '../../api/client';
 import { useThemeStore } from '../../store/theme.store';
@@ -13,6 +12,18 @@ import { useThemeStore } from '../../store/theme.store';
 const { Title, Text } = Typography;
 
 const PAISES = ['República Dominicana', 'México', 'Colombia', 'Panamá', 'Otro'];
+
+// La lista de sectores NO se hardcodea: solo el primero (ERP base, no es un
+// add-on) y el último (texto libre) son fijos — todo lo del medio sale de
+// GET /modulos/publico (catálogo real de modulos_addon), así que un add-on
+// nuevo aparece en el selector sin tocar este archivo.
+const SECTOR_COMERCIO = { value: 'comercio', label: 'Comercio / Retail' };
+const SECTOR_OTRO     = { value: 'otro',     label: '🔧 Otro / No aparece mi tipo de negocio' };
+
+async function fetchSectoresAddon(): Promise<{ codigo: string; nombre: string }[]> {
+  const r = await api.get('/modulos/publico');
+  return (r.data?.data ?? r.data ?? []) as { codigo: string; nombre: string }[];
+}
 
 const PLANES = [
   {
@@ -86,6 +97,17 @@ export default function RegisterPage() {
   const [form2] = Form.useForm();
   const sectorSeleccionado = Form.useWatch('sectorEmpresarial', form2);
 
+  const { data: sectoresAddon = [] } = useQuery({
+    queryKey: ['sectores-addon-registro'],
+    queryFn:  fetchSectoresAddon,
+    staleTime: 5 * 60_000,
+  });
+  const opcionesSector = [
+    SECTOR_COMERCIO,
+    ...sectoresAddon.map(a => ({ value: a.codigo, label: a.nombre })),
+    SECTOR_OTRO,
+  ];
+
   const [rncLoading,  setRncLoading]  = useState(false);
   const [rncDatos,    setRncDatos]    = useState<{ encontrado: boolean; nombre?: string; nombreComercial?: string; estado?: string } | null>(null);
   const rncDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -118,7 +140,8 @@ export default function RegisterPage() {
   const registerMut = useMutation({
     mutationFn: async (values: {
       nombre: string; email: string; password: string;
-      empresa: string; rnc: string; telefono?: string; sectorEmpresarial?: string;
+      empresa: string; rnc: string; telefono?: string;
+      sectorEmpresarial?: string; sectorOtroTexto?: string;
     }) => {
       await authApi.register(
         values.nombre, values.email, values.password,
@@ -126,6 +149,7 @@ export default function RegisterPage() {
         planElegido,
         values.telefono,
         values.sectorEmpresarial,
+        values.sectorOtroTexto,
       );
       return values.email;
     },
@@ -173,10 +197,10 @@ export default function RegisterPage() {
       const v1 = valoresPaso1 ?? (form1.getFieldsValue() as { nombre: string; email: string; password: string });
       const v2 = form2.getFieldsValue() as { empresa: string; rnc: string; pais: string; telefono?: string; sectorEmpresarial?: string; sectorPersonalizado?: string };
       if (!v1.nombre || !v1.email || !v1.password) { setStep(0); return; }
-      const sectorFinal = v2.sectorEmpresarial === 'otro'
-        ? `otro: ${v2.sectorPersonalizado}`
-        : v2.sectorEmpresarial;
-      registerMut.mutate({ ...v1, ...v2, sectorEmpresarial: sectorFinal });
+      registerMut.mutate({
+        ...v1, ...v2,
+        sectorOtroTexto: v2.sectorEmpresarial === 'otro' ? v2.sectorPersonalizado : undefined,
+      });
     } catch { /* antd handles */ }
   };
 
@@ -185,16 +209,16 @@ export default function RegisterPage() {
   const { isDark, toggle } = useThemeStore();
 
   return (
-    <div className="reg-container" style={{ display: 'flex', minHeight: '100vh', background: '#0d1117', position: 'relative' }}>
+    <div className="reg-container" style={{ display: 'flex', minHeight: '100vh', background: '#F8FAFC', position: 'relative' }}>
       {/* Toggle tema — esquina superior derecha */}
       <button
         onClick={toggle}
         aria-label={isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
         style={{
           position: 'absolute', top: 16, right: 16, zIndex: 10,
-          background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.15)',
+          background: '#F1F5F9', border: '1px solid #CBD5E1',
           borderRadius: 8, padding: '8px 10px', cursor: 'pointer',
-          color: 'rgba(255,255,255,.7)', display: 'flex', alignItems: 'center',
+          color: '#475569', display: 'flex', alignItems: 'center',
         }}>
         {isDark
           ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
@@ -205,17 +229,12 @@ export default function RegisterPage() {
       <div className="reg-left" style={{
         flex: 1, display: 'flex', flexDirection: 'column',
         justifyContent: 'center', padding: '64px 56px',
-        background: 'radial-gradient(ellipse 80% 60% at 30% 50%, rgba(26,86,219,.2), transparent)',
+        background: 'radial-gradient(ellipse 80% 60% at 30% 50%, rgba(37,99,235,.08), transparent)',
       }}>
         <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: .5 }}>
           <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 48, textDecoration: 'none' }}>
-            <div style={{
-              width: 40, height: 40, borderRadius: 10,
-              background: 'linear-gradient(135deg,#1a56db,#0ea5e9)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 18, fontWeight: 700, color: '#fff',
-            }}>H</div>
-            <Text strong style={{ color: '#fff', fontSize: 20 }}>HiCloud ERP</Text>
+            <img src="/logo-hicloud.png" alt="HiCloud ERP" style={{ height: 40, width: 'auto', borderRadius: 8 }} />
+            <Text strong style={{ color: '#0F172A', fontSize: 20 }}>HiCloud ERP</Text>
           </Link>
 
           <div style={{
@@ -226,11 +245,11 @@ export default function RegisterPage() {
           }}>
             Prueba gratis 15 días — sin tarjeta de crédito
           </div>
-          <Title level={2} style={{ color: '#fff', marginBottom: 12 }}>
+          <Title level={2} style={{ color: '#0F172A', marginBottom: 12 }}>
             Empieza a facturar<br />
-            <span style={{ color: '#60a5fa' }}>en minutos</span>
+            <span style={{ color: '#2563EB' }}>en minutos</span>
           </Title>
-          <Text style={{ color: 'rgba(255,255,255,.5)', fontSize: 16, lineHeight: 1.7, display: 'block', marginBottom: 24 }}>
+          <Text style={{ color: '#64748B', fontSize: 16, lineHeight: 1.7, display: 'block', marginBottom: 24 }}>
             Crea tu cuenta y elige el plan que mejor se adapte a tu negocio.
             Todos incluyen todos los módulos sin excepción.
           </Text>
@@ -245,7 +264,7 @@ export default function RegisterPage() {
                 '✅ Soporte 24/7 incluido sin costo adicional',
               ].map(f => (
                 <div key={f} style={{ marginBottom: 10 }}>
-                  <Text style={{ color: 'rgba(255,255,255,.65)', fontSize: 14 }}>{f}</Text>
+                  <Text style={{ color: '#475569', fontSize: 14 }}>{f}</Text>
                 </div>
               ))}
             </>
@@ -266,18 +285,18 @@ export default function RegisterPage() {
                 </div>
                 {planSeleccionado.popular && (
                   <div style={{
-                    background: 'rgba(255,255,255,.15)', color: '#fff',
+                    background: '#F1F5F9', color: '#475569',
                     fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
-                    border: '1px solid rgba(255,255,255,.2)',
+                    border: '1px solid #CBD5E1',
                   }}>⭐ MÁS POPULAR</div>
                 )}
               </div>
               {/* Precio y límite */}
               <div style={{ marginBottom: 24 }}>
-                <Text style={{ color: '#fff', fontWeight: 800, fontSize: 32, display: 'block' }}>
-                  RD${planSeleccionado.precio.toLocaleString('es-DO')}<span style={{ fontSize: 16, fontWeight: 400, color: 'rgba(255,255,255,.6)' }}>/mes</span>
+                <Text style={{ color: '#0F172A', fontWeight: 800, fontSize: 32, display: 'block' }}>
+                  RD${planSeleccionado.precio.toLocaleString('es-DO')}<span style={{ fontSize: 16, fontWeight: 400, color: '#64748B' }}>/mes</span>
                 </Text>
-                <Text style={{ color: 'rgba(255,255,255,.5)', fontSize: 13, display: 'block', marginTop: 4 }}>
+                <Text style={{ color: '#64748B', fontSize: 13, display: 'block', marginTop: 4 }}>
                   {planSeleccionado.limite} · {planSeleccionado.usuarios} usuarios
                 </Text>
               </div>
@@ -286,7 +305,7 @@ export default function RegisterPage() {
                 {(planSeleccionado as any).features?.map((f: string) => (
                   <div key={f} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
                     <span style={{ color: planSeleccionado.borderColor, fontSize: 16, flexShrink: 0, marginTop: 1 }}>✓</span>
-                    <Text style={{ color: 'rgba(255,255,255,.8)', fontSize: 14, lineHeight: 1.5 }}>{f}</Text>
+                    <Text style={{ color: '#334155', fontSize: 14, lineHeight: 1.5 }}>{f}</Text>
                   </div>
                 ))}
               </div>
@@ -540,10 +559,10 @@ export default function RegisterPage() {
                       placeholder="809-000-0000" size="large" maxLength={15}
                       style={{ background: '#F8FAFC', border: '1.5px solid #CBD5E1', color: '#0F172A', borderRadius: 8 }} />
                   </Form.Item>
-                  <Form.Item name="sectorEmpresarial"
+                  <Form.Item name="sectorEmpresarial" initialValue="comercio"
                     label={<Text style={{ color: '#1E3A8A', fontSize: 13, fontWeight: 600 }}>Sector empresarial</Text>}
                     rules={[{ required: true, message: 'Selecciona el sector de tu empresa' }]}
-                    extra={<Text style={{ fontSize: 11, color: '#94A3B8' }}>Esto nos ayuda a configurar el sistema para tu negocio</Text>}>
+                    extra={<Text style={{ fontSize: 11, color: '#94A3B8' }}>Si tu negocio es óptica, taller, clínica, etc., activamos ese módulo automáticamente</Text>}>
                     <Select
                       showSearch
                       size="large"
@@ -552,7 +571,7 @@ export default function RegisterPage() {
                       filterOption={(input, option) =>
                         (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
                       }
-                      options={SECTORES_EMPRESARIALES.map(s => ({ value: s.value, label: s.label }))}
+                      options={opcionesSector}
                       suffixIcon={<ShopOutlined style={{ color: '#64748B' }} />}
                     />
                   </Form.Item>

@@ -135,6 +135,11 @@ class GestionModuloDto {
   notas?: string;
 }
 
+class ActivacionAutomaticaModuloDto {
+  @IsBoolean()
+  activacionAutomatica!: boolean;
+}
+
 class SincronizarPlanCuentasDto {
   @IsOptional() @IsInt() @IsPositive()
   empresaId?: number;
@@ -648,6 +653,16 @@ export class SuperAdminController {
   @ApiOperation({ summary: 'Vista global de activaciones de módulos por empresa' })
   getActivacionesGlobal() {
     return this.modulosSvc.getActivacionesGlobal();
+  }
+
+  @Post('modulos/:codigo/activacion-automatica')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Activar/desactivar la activación automática de un add-on al elegirlo en el registro' })
+  setActivacionAutomatica(
+    @Param('codigo') codigo: string,
+    @Body() dto: ActivacionAutomaticaModuloDto,
+  ) {
+    return this.modulosSvc.setActivacionAutomatica(codigo, dto.activacionAutomatica);
   }
 
   @Get('empresas/:id/modulos')
