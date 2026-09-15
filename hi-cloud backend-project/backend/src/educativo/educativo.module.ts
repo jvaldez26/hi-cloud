@@ -25,9 +25,10 @@ import { EdNotaPeriodo }  from './entities/ed-nota-periodo.entity';
 import { EdDisciplina }   from './entities/ed-disciplina.entity';
 import { EdLibro }        from './entities/ed-libro.entity';
 import { EdPrestamo }     from './entities/ed-prestamo.entity';
-// EdRuta y EdComunicado (más abajo) NO se importan aquí a propósito — ver
-// la nota junto a TypeOrmModule.forFeature. EdNotaPeriodo, EdDisciplina,
-// EdLibro y EdPrestamo SÍ se importan: sus services ya las usan.
+import { EdRuta }         from './entities/ed-ruta.entity';
+// EdComunicado (más abajo) NO se importa aquí a propósito — ver la nota
+// junto a TypeOrmModule.forFeature. El resto de entidades de esta lista SÍ
+// se importan: sus services ya las usan.
 
 import { EdConfigService }       from './config/config.service';
 import { EdConfigController }    from './config/config.controller';
@@ -56,21 +57,22 @@ import { DisciplinaService }     from './disciplina/disciplina.service';
 import { DisciplinaController }  from './disciplina/disciplina.controller';
 import { BibliotecaService }     from './biblioteca/biblioteca.service';
 import { BibliotecaController }  from './biblioteca/biblioteca.controller';
+import { TransporteService as EdTransporteService }     from './transporte/transporte.service';
+import { TransporteController as EdTransporteController } from './transporte/transporte.controller';
 
 @Module({
   imports: [
-    // EdRuta y EdComunicado existen como entidad (y su tabla ya está
-    // migrada) pero NINGÚN service las inyecta — son para transporte y
-    // comunicados, los 2 submódulos que aún no tienen API (ver
-    // src/educativo/README.md). Sacadas de este forFeature a propósito: no
-    // tiene sentido registrar un Repository que nadie usa. Cuando se
-    // construya la API de alguno, agregarlo aquí de nuevo — no antes.
+    // EdComunicado existe como entidad (y su tabla ya está migrada) pero
+    // NINGÚN service la inyecta — es el único submódulo que aún no tiene
+    // API (ver src/educativo/README.md). Sacada de este forFeature a
+    // propósito: no tiene sentido registrar un Repository que nadie usa.
+    // Cuando se construya su API, agregarla aquí de nuevo — no antes.
     TypeOrmModule.forFeature([
       EdConfig, EdAnioEscolar, EdNivel, EdGrado, EdAsignatura, EdSeccion, EdPeriodo,
       EdEstudiante, EdTutor, EdDocente, EdMatricula,
       EdEvaluacion, EdCalificacion, EdAsistencia,
       EdPlanPago, EdCargo, EdPago, EdBeca, EdEstudianteBeca, EdNotaPeriodo,
-      EdDisciplina, EdLibro, EdPrestamo,
+      EdDisciplina, EdLibro, EdPrestamo, EdRuta,
     ]),
     TenantModule,
   ],
@@ -88,6 +90,7 @@ import { BibliotecaController }  from './biblioteca/biblioteca.controller';
     BoletinesController,
     DisciplinaController,
     BibliotecaController,
+    EdTransporteController,
   ],
   providers: [
     EdConfigService,
@@ -104,6 +107,7 @@ import { BibliotecaController }  from './biblioteca/biblioteca.controller';
     BoletinPdfService,
     DisciplinaService,
     BibliotecaService,
+    EdTransporteService,
   ],
   exports: [EdConfigService, EstructuraService],
 })
