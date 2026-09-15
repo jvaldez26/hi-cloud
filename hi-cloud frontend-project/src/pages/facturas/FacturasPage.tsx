@@ -253,9 +253,20 @@ export default function FacturasPage() {
     });
 
   const handleExportExcel = useCallback(async () => {
-    // Carga todas las facturas con los filtros actuales (hasta 1000)
-    const all = await facturasApi.list(1, 1000, filters);
-    const filas = (all?.data ?? []).map((f: Factura) => ({
+    // Carga todas las facturas con los filtros actuales. El backend corta cada
+    // consulta en 100 filas, así que se recorre página por página hasta el total.
+    const POR_PAGINA = 100;
+    const primera = await facturasApi.list(1, POR_PAGINA, filters);
+    const totalPaginas = primera?.meta?.totalPages ?? 1;
+    const facturas: Factura[] = [...(primera?.data ?? [])];
+    for (let p = 2; p <= totalPaginas; p++) {
+      const res = await facturasApi.list(p, POR_PAGINA, filters);
+      facturas.push(...(res?.data ?? []));
+    }
+    // Si se crea una factura durante la exportación las páginas se desplazan y
+    // una fila puede repetirse; se descartan duplicados por id.
+    const unicas = [...new Map(facturas.map(f => [f.id, f])).values()];
+    const filas = unicas.map((f: Factura) => ({
       'Folio':      f.folio,
       'Fecha':      f.fecha ? dayjs(f.fecha).format('DD/MM/YYYY') : '',
       'Cliente':    resolverNombreComprador(f),
