@@ -115,6 +115,60 @@ describe('SQL crudo de colegiatura.service.ts — creación de ed_cargos (modelo
   });
 });
 
+/**
+ * Contrato: listCargos() nunca debe devolver el "concepto" técnico crudo
+ * (plan:450;beca:3:900;topado) a una pantalla — lo resuelve a
+ * "desgloseDescuento" (con el nombre de la beca, vía JOIN a ed_becas) antes
+ * de responder. Ver ColegiaturaPage.tsx (columna "Descuento").
+ */
+describe('SQL crudo de colegiatura.service.ts — listCargos() no expone "concepto" crudo', () => {
+  const leer = (...ruta: string[]) => readFileSync(join(__dirname, ...ruta), 'utf8');
+  const src = () => leer('colegiatura.service.ts');
+  const bloque = (inicio: string, fin: string) => {
+    const s = src();
+    return s.slice(s.indexOf(inicio), s.indexOf(fin));
+  };
+
+  it('listCargos() pasa las filas por conDesgloseDescuento() antes de devolverlas', () => {
+    const b = bloque('async listCargos(', 'async addCargo(');
+    expect(b).toContain('this.conDesgloseDescuento(cargos)');
+  });
+
+  it('conDesgloseDescuento() quita "concepto" de la fila que devuelve', () => {
+    const b = bloque('private async conDesgloseDescuento', 'async listPlanes(');
+    expect(b).toMatch(/const \{ concepto, \.\.\.resto \} = c as any;/);
+    expect(b).not.toContain('...c,'); // no debe reintroducir concepto por spread completo
+  });
+});
+
+describe('parseConcepto() — lectura del formato técnico plan:<monto>;beca:<id>:<monto>;topado', () => {
+  // Se prueba indirectamente vía conDesgloseDescuento(), que sí es accesible
+  // (parseConcepto es privado) — un DataSource falso basta porque sin becaIds
+  // no dispara ninguna consulta.
+  const svc = new ColegiaturaService({} as any, {} as any);
+
+  it('concepto null/vacío → desgloseDescuento null', async () => {
+    const [r] = await (svc as any).conDesgloseDescuento([{ id: 1, concepto: null }]);
+    expect(r.desgloseDescuento).toBeNull();
+    expect(r).not.toHaveProperty('concepto');
+  });
+
+  it('solo plan → planMonto correcto, sin becas', async () => {
+    const [r] = await (svc as any).conDesgloseDescuento([{ id: 1, concepto: 'plan:50' }]);
+    expect(r.desgloseDescuento).toEqual({ planMonto: 50, topado: false, becas: [] });
+  });
+
+  it('plan + beca + topado → estructura completa (nombre resuelto vía DataSource)', async () => {
+    const dsFalso = { query: jest.fn(async () => [{ id: 3, nombre: 'Beca Excelencia' }]) };
+    const svc2 = new ColegiaturaService(dsFalso as any, {} as any);
+    const [r] = await (svc2 as any).conDesgloseDescuento([{ id: 1, concepto: 'plan:50;beca:3:900;topado' }]);
+    expect(r.desgloseDescuento).toEqual({
+      planMonto: 50, topado: true, becas: [{ becaId: 3, monto: 900, nombre: 'Beca Excelencia' }],
+    });
+    expect(dsFalso.query).toHaveBeenCalledWith(expect.stringContaining('FROM ed_becas'), [[3]]);
+  });
+});
+
 // ── Verificación real contra Postgres — requiere BD ───────────────────────────
 const TIENE_BD = !!process.env['DB_HOST'];
 

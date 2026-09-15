@@ -53,6 +53,29 @@ describe('SQL crudo de config.service.ts — upsertConfig()', () => {
   });
 });
 
+/**
+ * Contrato: listPeriodos() hace JOIN entre ed_periodos (p) y
+ * ed_anios_escolares (a) — ambas tablas tienen columna "empresaId". Sin
+ * calificar con el alias, Postgres la rechaza como ambigua (500 en vivo
+ * contra hicloud_test, 2026-09-14, al abrir Planilla de Calificaciones con
+ * un año escolar seleccionado).
+ */
+describe('SQL crudo de config.service.ts — listPeriodos() no deja "empresaId" ambiguo', () => {
+  const leer = (...ruta: string[]) => readFileSync(join(__dirname, ...ruta), 'utf8');
+  const cuerpo = () => {
+    const src = leer('config.service.ts');
+    const inicio = src.indexOf('async listPeriodos(');
+    const fin = src.indexOf('async createPeriodo(');
+    return src.slice(inicio, fin);
+  };
+
+  it('califica "empresaId" con el alias p. en el WHERE (la tabla joineada a. también la tiene)', () => {
+    const bloque = cuerpo();
+    expect(bloque).toMatch(/WHERE p\."empresaId" = \$1/);
+    expect(bloque).not.toMatch(/WHERE "empresaId" = \$1/);
+  });
+});
+
 // ── Verificación real contra Postgres — requiere BD ───────────────────────────
 const TIENE_BD = !!process.env['DB_HOST'];
 
@@ -100,6 +123,19 @@ const TIENE_BD = !!process.env['DB_HOST'];
          "tipoPeriodo"        = EXCLUDED."tipoPeriodo",
          "monedaColegiatura"  = EXCLUDED."monedaColegiatura"`,
       [-1, 'Centro de prueba', null, null, null, 0, 100, 70, false, JSON.stringify([]), 4, 'trimestre', 'DOP'],
+    )).resolves.toBeDefined();
+  });
+
+  it('EXPLAIN de listPeriodos() con anioEscolarId (rama con dos filtros) no falla por "empresaId" ambiguo', async () => {
+    // EXPLAIN sí resuelve nombres de columna al planear — una referencia
+    // ambigua revienta aquí igual que en producción, sin ejecutar nada.
+    await expect(dataSource.query(
+      `EXPLAIN SELECT p.*, a.nombre AS "anioNombre"
+       FROM ed_periodos p
+       LEFT JOIN ed_anios_escolares a ON a.id = p."anioEscolarId"
+       WHERE p."empresaId" = $1 AND p."anioEscolarId" = $2
+       ORDER BY p."anioEscolarId", p.numero`,
+      [-1, -1],
     )).resolves.toBeDefined();
   });
 });

@@ -51,6 +51,51 @@ export class ColegiaturaService {
     return { descuento, concepto, topado };
   }
 
+  /**
+   * Lee de vuelta el "concepto" técnico (plan:<monto>;beca:<becaId>:<monto>;
+   * ...;topado) y lo vuelve una estructura legible — el nombre de la beca se
+   * resuelve aparte (ver listCargos) porque el concepto solo guarda el id.
+   * Nunca se debe mostrar el string de "concepto" tal cual en una pantalla.
+   */
+  private parseConcepto(concepto: string | null | undefined): {
+    planMonto: number; becas: { becaId: number; monto: number }[]; topado: boolean;
+  } | null {
+    if (!concepto) return null;
+    const partes = concepto.split(';');
+    const topado = partes.includes('topado');
+    let planMonto = 0;
+    const becas: { becaId: number; monto: number }[] = [];
+    for (const parte of partes) {
+      if (parte === 'topado') continue;
+      const [fuente, a, b] = parte.split(':');
+      if (fuente === 'plan') planMonto = Number(a) || 0;
+      else if (fuente === 'beca') becas.push({ becaId: Number(a), monto: Number(b) || 0 });
+    }
+    if (!planMonto && !becas.length) return null;
+    return { planMonto, becas, topado };
+  }
+
+  /** Adjunta `desgloseDescuento` (legible, con nombre de beca) a cada cargo y quita el "concepto" técnico de la respuesta. */
+  private async conDesgloseDescuento<T extends { concepto?: string | null }>(cargos: T[]): Promise<T[]> {
+    const parsed = cargos.map(c => this.parseConcepto(c.concepto));
+    const becaIds = [...new Set(parsed.flatMap(p => p?.becas.map(b => b.becaId) ?? []))];
+    const nombres = new Map<number, string>();
+    if (becaIds.length) {
+      const rows = await this.ds.query<any[]>(`SELECT id, nombre FROM ed_becas WHERE id = ANY($1)`, [becaIds]);
+      for (const r of rows) nombres.set(r.id, r.nombre);
+    }
+    return cargos.map((c, i) => {
+      const p = parsed[i];
+      const { concepto, ...resto } = c as any;
+      return {
+        ...resto,
+        desgloseDescuento: p
+          ? { planMonto: p.planMonto, topado: p.topado, becas: p.becas.map(b => ({ ...b, nombre: nombres.get(b.becaId) ?? `Beca #${b.becaId}` })) }
+          : null,
+      };
+    }) as unknown as T[];
+  }
+
   // ── Planes de pago ──────────────────────────────────────────────────────────
 
   async listPlanes(empresaId: number, anioEscolarId?: number) {
@@ -218,7 +263,7 @@ export class ColegiaturaService {
       conds.push(`(e.nombres ILIKE $${idx} OR e.apellidos ILIKE $${idx} OR e.cedula ILIKE $${idx})`);
       params.push(`%${opts.q}%`); idx++;
     }
-    return this.ds.query<any[]>(
+    const cargos = await this.ds.query<any[]>(
       `SELECT c.*,
               e.nombres || ' ' || e.apellidos AS "estudianteNombre",
               e.cedula AS "estudianteCedula"
@@ -228,6 +273,7 @@ export class ColegiaturaService {
        ORDER BY c."fechaVencimiento", e.apellidos`,
       params,
     );
+    return this.conDesgloseDescuento(cargos);
   }
 
   async addCargo(empresaId: number, dto: any) {

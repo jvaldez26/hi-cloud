@@ -119,9 +119,12 @@ export class EdConfigService {
   // ── Periodos ────────────────────────────────────────────────────────────
 
   async listPeriodos(empresaId: number, anioEscolarId?: number) {
+    // "empresaId" existe en ed_periodos (p) Y en ed_anios_escolares (a) —
+    // sin calificar, Postgres la rechaza como ambigua (500 en vivo,
+    // 2026-09-14, verificado contra hicloud_test).
     const where = anioEscolarId
-      ? `WHERE "empresaId" = $1 AND "anioEscolarId" = $2`
-      : `WHERE "empresaId" = $1`;
+      ? `WHERE p."empresaId" = $1 AND p."anioEscolarId" = $2`
+      : `WHERE p."empresaId" = $1`;
     const params = anioEscolarId ? [empresaId, anioEscolarId] : [empresaId];
     return this.ds.query<any[]>(
       `SELECT p.*, a.nombre AS "anioNombre"

@@ -17,9 +17,14 @@ export class CreateEvaluacionDto {
   @IsInt({ message: 'La asignatura debe ser un identificador numérico' })
   asignaturaId: number;
 
-  @IsOptional()
+  // ed_evaluaciones.periodoId es NOT NULL (ed-evaluacion.entity.ts) — marcarlo
+  // opcional aquí dejaba pasar la validación y reventaba después con un 23502
+  // crudo de Postgres ("Campo requerido faltante: periodoId" en vivo,
+  // 2026-09-14). La UI exige seleccionar un período antes de habilitar
+  // "Nueva evaluación" (ver PlanillaNotasPage.tsx).
+  @IsDefined({ message: 'El período es requerido' })
   @IsInt({ message: 'El periodo debe ser un identificador numérico' })
-  periodoId?: number;
+  periodoId: number;
 
   @IsDefined({ message: 'El nombre de la evaluación es requerido' })
   @IsString({ message: 'El nombre debe ser texto' })
