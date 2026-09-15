@@ -1,10 +1,20 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { assertPeriodoAbierto } from '../common/periodo.util';
 
 @Injectable()
 export class AcademicoService {
   constructor(@InjectDataSource() private readonly ds: DataSource) {}
+
+  /** Ver periodo.util.ts — un período cerrado congela evaluaciones y calificaciones. */
+  private async periodoDe(empresaId: number, periodoId: number) {
+    const [p] = await this.ds.query<any[]>(
+      `SELECT * FROM ed_periodos WHERE id = $1 AND "empresaId" = $2`,
+      [periodoId, empresaId],
+    );
+    return p ?? null;
+  }
 
   // ── Evaluaciones ────────────────────────────────────────────────────────────
 
@@ -31,6 +41,7 @@ export class AcademicoService {
   }
 
   async createEvaluacion(empresaId: number, dto: any) {
+    assertPeriodoAbierto(await this.periodoDe(empresaId, dto.periodoId));
     const [row] = await this.ds.query<any[]>(
       `INSERT INTO ed_evaluaciones (
          "empresaId","seccionId","asignaturaId","periodoId",
@@ -47,10 +58,11 @@ export class AcademicoService {
 
   async updateEvaluacion(empresaId: number, id: number, dto: any) {
     const [exists] = await this.ds.query<any[]>(
-      `SELECT id FROM ed_evaluaciones WHERE id = $1 AND "empresaId" = $2`,
+      `SELECT id, "periodoId" FROM ed_evaluaciones WHERE id = $1 AND "empresaId" = $2`,
       [id, empresaId],
     );
     if (!exists) throw new NotFoundException('Evaluación no encontrada');
+    assertPeriodoAbierto(await this.periodoDe(empresaId, exists.periodoId));
     const FIELDS = ['nombre', 'tipo', 'fecha', 'puntajeMaximo', 'ponderacion', 'estado'];
     const fields = FIELDS.filter(f => dto[f] !== undefined);
     if (!fields.length) return exists;
@@ -106,6 +118,25 @@ export class AcademicoService {
     evaluacionId: number; estudianteId: number; nota: number;
   }>) {
     if (!items.length) return { saved: 0 };
+
+    // Ninguna calificación se guarda si alguna de sus evaluaciones cae en un
+    // período cerrado — se resuelven los períodos de TODAS las evaluaciones
+    // involucradas antes de escribir la primera fila (falla junta, no a
+    // medias).
+    const evaluacionIds = [...new Set(items.map(i => i.evaluacionId))];
+    const evaluaciones = await this.ds.query<any[]>(
+      `SELECT id, "periodoId" FROM ed_evaluaciones WHERE id = ANY($1) AND "empresaId" = $2`,
+      [evaluacionIds, empresaId],
+    );
+    const periodoIds = [...new Set(evaluaciones.map((e: any) => e.periodoId).filter(Boolean))];
+    if (periodoIds.length) {
+      const periodos = await this.ds.query<any[]>(
+        `SELECT * FROM ed_periodos WHERE id = ANY($1) AND "empresaId" = $2`,
+        [periodoIds, empresaId],
+      );
+      for (const p of periodos) assertPeriodoAbierto(p);
+    }
+
     let saved = 0;
     for (const item of items) {
       await this.ds.query(
