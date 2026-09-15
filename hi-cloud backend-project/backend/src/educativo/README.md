@@ -8,22 +8,23 @@ falta "retomar el desarrollo" para dejarlo seguro. Este documento existe para
 que la próxima persona que lo abra no tenga que rehacer el inventario forense
 de septiembre 2026.
 
-## Qué funciona (9 submódulos, controller + service + rutas + guard)
+## Qué funciona (10 submódulos, controller + service + rutas + guard)
 
 | Submódulo | Archivo | Notas |
 |---|---|---|
-| Configuración académica | `config/` | Escalas de nota, letras, periodos, moneda de colegiatura. **No** es branding institucional (nombre/logo/colores) — ver "Decisiones de diseño" abajo. |
-| Estructura académica | `estructura/` | Niveles, grados, secciones, asignaturas, pensum. |
+| Configuración académica | `config/` | Escalas de nota, letras, periodos, moneda de colegiatura. **No** es branding institucional (nombre/logo/colores) — ver "Decisiones de diseño" abajo. UI en Estructura Académica → Configuración. |
+| Estructura académica | `estructura/` | Niveles, grados, secciones, asignaturas, pensum (UI en la pestaña Pensum). |
 | Dashboard | `dashboard/` | Solo lectura. |
 | Estudiantes | `estudiantes/` | CRUD + tutores (relación N:N vía `ed_estudiante_tutores`). |
 | Tutores | `tutores/` | CRUD. |
 | Docentes | `docentes/` | CRUD + asignaciones (`ed_asignaciones_docente`). |
-| Matrículas | `matriculas/` | CRUD + stats. Beca es FK a `ed_becas` (`becaId`), no un enum de texto. |
-| Académico | `academico/` | Evaluaciones, calificaciones (bulk), asistencia (bulk + stats). |
+| Matrículas | `matriculas/` | CRUD + stats. Sin ningún campo de beca propio (`becaId`/`descuentoBeca` se eliminaron — eran informativos, sin consumidor real; ver Becas). |
+| Académico | `academico/` | Evaluaciones, calificaciones (bulk), asistencia (bulk + stats). Bloquea escritura si el período está cerrado (`common/periodo.util.ts`). |
 | Colegiatura | `colegiatura/` | Planes de pago **por estudiante** (no por grado — ver abajo), cargos, pagos, resumen financiero. |
-| Becas | `becas/` | Catálogo (`ed_becas`) + asignación a estudiantes (`ed_estudiante_becas`) — conectado a `generarCargos()`/`generarMatricula()`, ver "Becas" abajo. Sin UI de frontend todavía. |
+| Becas | `becas/` | Catálogo (`ed_becas`) + asignación a estudiantes (`ed_estudiante_becas`) — conectado a `generarCargos()`/`generarMatricula()`, ver "Becas" abajo. UI en `/educativo/becas`. |
+| Boletines | `boletines/` | Consolidación de notas por período + PDF individual/masivo. Ver "Boletines" abajo. |
 
-Todos los 9 controllers llevan `JwtAuthGuard, RolesGuard, TenantGuard,
+Todos los controllers llevan `JwtAuthGuard, RolesGuard, TenantGuard,
 ModuloAddonGuard('educativo')` — el guard estándar de add-on contratado
 (consulta `empresa_modulos`, no `modulos_addon`), igual que taller/clínica/
 farmacia/restaurante/etc. Todos los endpoints de escritura tienen DTO con
@@ -40,21 +41,34 @@ así no quedan silenciosamente declaradas como si algo las usara. Si se
 construye la API de alguna, hay que volver a agregarlas al `forFeature`.
 
 `EdNotaPeriodo` (`ed_notas_periodo`, notas finales consolidadas por periodo)
-tampoco la usa nadie — no es parte de los 4 anteriores ni de los 9
-implementados, simplemente nunca se conectó.
+**ya tiene service y controller** (`boletines/`, tarea de boletines) — sí está
+en el `forFeature` de `educativo.module.ts`. Ver "Boletines" más abajo.
 
-## Qué no existe en absoluto (3 rutas, solo placeholder de frontend)
+## Qué no existe en absoluto (2 rutas, solo placeholder de frontend)
 
-Comedor, enfermería y boletines: sin entidad, sin migración, sin nada — solo
-una ruta de frontend con `EducativoPlaceholder`. Junto con biblioteca,
-transporte, disciplina y comunicados (los 4 de arriba) suman las **8 rutas**
-que muestran el placeholder. Antes decía "— próximamente" en gris chico
-(se veía igual que una lista vacía); ahora dice explícito "Módulo no
-disponible" con `Result status="info"`.
+Comedor y enfermería: sin entidad, sin migración, sin nada — solo una ruta de
+frontend con `EducativoPlaceholder`. Junto con biblioteca, transporte,
+disciplina y comunicados (los 4 de arriba) suman las **6 rutas** que
+muestran el placeholder. Antes decía "— próximamente" en gris chico (se veía
+igual que una lista vacía); ahora dice explícito "Módulo no disponible" con
+`Result status="info"`.
 
-**Ninguno de estos 7 (comedor, enfermería, boletines, biblioteca, transporte,
-disciplina, comunicados) se construye en esta tarea** — eso espera a que haya
-un colegio interesado.
+**Ninguno de estos 6 (comedor, enfermería, biblioteca, transporte, disciplina,
+comunicados) se construye en esta tarea** — eso espera a que haya un colegio
+interesado.
+
+## Boletines
+
+Único de los 8 pendientes construido: no hay tabla nueva, se genera al vuelo
+desde `ed_notas_periodo` + `ed_calificaciones` + `ed_asistencia` +
+`ed_config`. Ver `boletines/boletines.service.ts` (consolidación de notas —
+promedio ponderado proyectado sobre la escala configurable de `ed_config`,
+nunca fija en código) y `boletines/boletin-pdf.service.ts` (PDFKit). Las
+asignaturas del boletín salen del pensum del grado (`ed_grado_asignaturas`,
+pantalla en Estructura Académica → Pensum) — sin pensum configurado, el
+boletín no tiene qué mostrar. Un período cerrado (`ed_periodos.estado`)
+congela evaluaciones, calificaciones y la consolidación —
+`common/periodo.util.ts`, compartido con `academico.service.ts`.
 
 ## Decisiones de diseño (tabla vs. código — tomadas en esta tarea)
 
