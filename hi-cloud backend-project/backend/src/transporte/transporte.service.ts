@@ -203,7 +203,7 @@ export class TransporteService {
 
   async findAllViajes(empresaId: number, opts: { estado?: string; vehiculoId?: number; page?: number; limit?: number }) {
     const page  = Math.max(1, opts.page  ?? 1);
-    const limit = Math.min(100, opts.limit ?? 50);
+    const limit = Math.min(100, opts.limit ?? 10);
     const offset = (page - 1) * limit;
 
     const whereParts = [`v."empresaId"=$1`];

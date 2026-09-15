@@ -220,7 +220,7 @@ export class TransporteController {
     @Query('estado') estado?: string,
     @Query('vehiculoId') vehiculoIdRaw?: string,
     @Query('page',  new DefaultValuePipe(1),  PIP) page  = 1,
-    @Query('limit', new DefaultValuePipe(50), PIP) limit = 50,
+    @Query('limit', new DefaultValuePipe(10), PIP) limit = 10,
   ) {
     const vehiculoId = vehiculoIdRaw ? parseInt(vehiculoIdRaw, 10) : undefined;
     return this.svc.findAllViajes(this.tenantSvc.getEmpresaId(), { estado, vehiculoId, page, limit });

@@ -60,7 +60,7 @@ async function fetchCombustiblesViajes(viajeIds: number[]): Promise<Record<numbe
 }
 
 async function fetchViajes(page: number, estado?: string) {
-  const params: Record<string, any> = { page, limit: 50 };
+  const params: Record<string, any> = { page, limit: 10 };
   if (estado) params.estado = estado;
   const r = await api.get('/transporte/viajes', { params });
   return r.data?.data as { data: Viaje[]; total: number; page: number; limit: number };
@@ -362,7 +362,7 @@ export default function ViajesPage() {
         onRow={r => ({ onClick: () => setViewId(r.id), style: { cursor: 'pointer' } })}
         pagination={{
           current:  page,
-          pageSize: result?.limit ?? 10,
+          pageSize: 10,
           total:    result?.total ?? 0,
           onChange: setPage,
           showTotal: (t) => `${t} viajes`,
