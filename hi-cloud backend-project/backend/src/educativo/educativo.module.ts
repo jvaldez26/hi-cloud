@@ -22,10 +22,11 @@ import { EdPago }         from './entities/ed-pago.entity';
 import { EdBeca }         from './entities/ed-beca.entity';
 import { EdEstudianteBeca } from './entities/ed-estudiante-beca.entity';
 import { EdNotaPeriodo }  from './entities/ed-nota-periodo.entity';
-// EdDisciplina, EdLibro, EdPrestamo, EdRuta y EdComunicado (más abajo) NO
-// se importan aquí a propósito — ver la nota junto a TypeOrmModule.
-// forFeature. EdNotaPeriodo SÍ se importa: BoletinesService ya la usa
-// (consolidación de notas por período).
+import { EdDisciplina }   from './entities/ed-disciplina.entity';
+// EdLibro, EdPrestamo, EdRuta y EdComunicado (más abajo) NO se importan
+// aquí a propósito — ver la nota junto a TypeOrmModule.forFeature.
+// EdNotaPeriodo y EdDisciplina SÍ se importan: BoletinesService y
+// DisciplinaService ya las usan.
 
 import { EdConfigService }       from './config/config.service';
 import { EdConfigController }    from './config/config.controller';
@@ -50,6 +51,8 @@ import { BecasController }       from './becas/becas.controller';
 import { BoletinesService }      from './boletines/boletines.service';
 import { BoletinPdfService }     from './boletines/boletin-pdf.service';
 import { BoletinesController }   from './boletines/boletines.controller';
+import { DisciplinaService }     from './disciplina/disciplina.service';
+import { DisciplinaController }  from './disciplina/disciplina.controller';
 
 @Module({
   imports: [
@@ -64,7 +67,7 @@ import { BoletinesController }   from './boletines/boletines.controller';
       EdConfig, EdAnioEscolar, EdNivel, EdGrado, EdAsignatura, EdSeccion, EdPeriodo,
       EdEstudiante, EdTutor, EdDocente, EdMatricula,
       EdEvaluacion, EdCalificacion, EdAsistencia,
-      EdPlanPago, EdCargo, EdPago, EdBeca, EdEstudianteBeca, EdNotaPeriodo,
+      EdPlanPago, EdCargo, EdPago, EdBeca, EdEstudianteBeca, EdNotaPeriodo, EdDisciplina,
     ]),
     TenantModule,
   ],
@@ -80,6 +83,7 @@ import { BoletinesController }   from './boletines/boletines.controller';
     ColegiaturaController,
     BecasController,
     BoletinesController,
+    DisciplinaController,
   ],
   providers: [
     EdConfigService,
@@ -94,6 +98,7 @@ import { BoletinesController }   from './boletines/boletines.controller';
     BecasService,
     BoletinesService,
     BoletinPdfService,
+    DisciplinaService,
   ],
   exports: [EdConfigService, EstructuraService],
 })

@@ -10,6 +10,14 @@ import {
 } from '@ant-design/icons';
 import api from '../../api/client';
 import dayjs from 'dayjs';
+import { TIPO_OPTS as DISCIPLINA_TIPO_OPTS, ESTADO_OPTS as DISCIPLINA_ESTADO_OPTS } from './DisciplinaPage';
+
+const DISCIPLINA_TIPO_COLOR: Record<string, string> = {
+  leve: 'blue', moderado: 'gold', grave: 'volcano', muy_grave: 'red',
+};
+const DISCIPLINA_ESTADO_COLOR: Record<string, string> = {
+  abierto: 'red', en_seguimiento: 'gold', cerrado: 'green',
+};
 
 const { Title, Text } = Typography;
 const QK = (...k: any[]) => ['educativo', 'estudiantes', ...k];
@@ -170,6 +178,46 @@ function AddTutorModal({ open, estudianteId, onClose }: { open: boolean; estudia
   );
 }
 
+// ── Historial disciplinario (dentro del expediente) ─────────────────────────
+// Mismo filtro de acceso que /educativo/disciplina: si el usuario autenticado
+// es docente, esta lista solo trae los incidentes de sus propias secciones —
+// no significa necesariamente el historial COMPLETO del estudiante.
+
+function DisciplinaTab({ estudianteId }: { estudianteId: number }) {
+  const { data = [], isLoading } = useQuery<any[]>({
+    queryKey: ['educativo', 'disciplina', 'estudiante', estudianteId],
+    queryFn: () => api.get(`/educativo/disciplina/estudiante/${estudianteId}`).then(r => r.data?.data ?? r.data ?? []),
+  });
+
+  if (!isLoading && data.length === 0) return <Empty description="Sin incidentes registrados" />;
+
+  return (
+    <Table
+      dataSource={data}
+      rowKey="id"
+      size="small"
+      loading={isLoading}
+      pagination={{ pageSize: 10 }}
+      columns={[
+        { title: 'Fecha', dataIndex: 'fecha', width: 100, render: (v: any) => v?.substring(0, 10) },
+        {
+          title: 'Tipo', dataIndex: 'tipo', width: 100,
+          render: (v: string) => <Tag color={DISCIPLINA_TIPO_COLOR[v]}>{DISCIPLINA_TIPO_OPTS.find(o => o.value === v)?.label ?? v}</Tag>,
+        },
+        { title: 'Categoría', dataIndex: 'categoria', render: (v: any) => v ?? '—' },
+        {
+          title: 'Estado', dataIndex: 'estado', width: 120,
+          render: (v: string) => <Tag color={DISCIPLINA_ESTADO_COLOR[v]}>{DISCIPLINA_ESTADO_OPTS.find(o => o.value === v)?.label ?? v}</Tag>,
+        },
+        {
+          title: 'Padres', dataIndex: 'padresNotificados', width: 80, align: 'center',
+          render: (v: boolean) => v ? <Tag color="green">Sí</Tag> : <Tag>No</Tag>,
+        },
+      ]}
+    />
+  );
+}
+
 // ── Perfil 360° drawer ───────────────────────────────────────────────────────
 
 function PerfilDrawer({ id, onEdit }: { id: number | null; onEdit: (est: any) => void }) {
@@ -263,6 +311,11 @@ function PerfilDrawer({ id, onEdit }: { id: number | null; onEdit: (est: any) =>
                     />
                   </div>
                 ),
+              },
+              {
+                key: 'disciplina',
+                label: 'Disciplina',
+                children: <DisciplinaTab estudianteId={id} />,
               },
               {
                 key: 'matriculas',

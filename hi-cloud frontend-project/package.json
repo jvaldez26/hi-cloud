@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
+    "test:e2e": "playwright test",
     "audit:currency": "node scripts/audit-currency.mjs",
     "verificar:fechas": "node scripts/verificar-fechas-rd.mjs",
     "verificar:termico": "node scripts/verificar-facturas-termico.mjs",
@@ -54,6 +55,7 @@
     "zustand": "^5.0.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@sentry/vite-plugin": "^5.4.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.3",

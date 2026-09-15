@@ -2,3 +2,9 @@ node_modules/
 dist/
 .env.local
 *.local
+
+# Playwright — artefactos de corridas locales (e2e/ sí se versiona)
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
