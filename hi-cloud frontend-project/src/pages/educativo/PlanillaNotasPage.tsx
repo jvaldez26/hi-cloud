@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Select, Button, Table, InputNumber, Space, Tag, message,
-  Typography, Modal, Form, Input, DatePicker,
+  Typography, Modal, Form, Input, DatePicker, Tooltip,
 } from 'antd';
 import { PlusOutlined, SaveOutlined } from '@ant-design/icons';
 import api from '../../api/client';
@@ -197,9 +197,11 @@ export default function PlanillaNotasPage() {
         <Title level={4} style={{ margin: 0 }}>Planilla de Calificaciones</Title>
         <Space>
           {canLoad && (
-            <Button type="dashed" icon={<PlusOutlined />} onClick={() => setEvalModal(true)}>
-              Nueva evaluación
-            </Button>
+            <Tooltip title={sel.periodoId ? undefined : 'Selecciona un período — toda evaluación pertenece a uno. Créalos en Estructura Académica → Períodos.'}>
+              <Button type="dashed" icon={<PlusOutlined />} disabled={!sel.periodoId} onClick={() => setEvalModal(true)}>
+                Nueva evaluación
+              </Button>
+            </Tooltip>
           )}
           <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={saveMut.isPending}
             disabled={!canLoad}>

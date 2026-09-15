@@ -10,11 +10,14 @@ import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 
+// Estos 4 valores son los únicos que CreateMatriculaDto/UpdateMatriculaDto
+// aceptan (@IsIn en matriculas.dto.ts) — cualquier otro valor lo rechaza el
+// backend con 400. No existe un estado "traslado" en el backend.
 const ESTADO_OPTS = [
   { value: 'activa',    label: 'Activa',    color: 'green' },
-  { value: 'retirado',  label: 'Retirado',  color: 'red' },
-  { value: 'graduado',  label: 'Graduado',  color: 'blue' },
-  { value: 'traslado',  label: 'Traslado',  color: 'orange' },
+  { value: 'inactiva',  label: 'Inactiva',  color: 'default' },
+  { value: 'retirada',  label: 'Retirada',  color: 'red' },
+  { value: 'graduada',  label: 'Graduada',  color: 'blue' },
 ];
 
 function estadoColor(e?: string) {

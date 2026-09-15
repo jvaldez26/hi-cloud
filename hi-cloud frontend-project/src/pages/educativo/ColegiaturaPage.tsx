@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Table, Button, Select, Space, Tag, Modal, Form, Input, InputNumber,
   message, Typography, Row, Col, Card, Statistic, Tabs, DatePicker,
-  Checkbox, Popconfirm,
+  Checkbox, Popconfirm, Tooltip,
 } from 'antd';
 import { PlusOutlined, DollarOutlined, EditOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import api from '../../api/client';
@@ -305,6 +305,27 @@ function TabCargos({ anioId }: { anioId?: number }) {
   const estadoColor = (e: string) =>
     e === 'pagado' ? 'green' : e === 'anulado' ? 'default' : e === 'pendiente' ? 'orange' : e === 'parcial' ? 'blue' : 'red';
 
+  // desgloseDescuento viene ya resuelto (nombre de beca incluido) desde el
+  // backend — nunca se muestra el "concepto" técnico crudo (plan:450;beca:
+  // 3:900;topado) en pantalla.
+  const renderDescuento = (r: any) => {
+    const d = r.desgloseDescuento;
+    if (!d && !(r.descuento > 0)) return <span style={{ color: '#999' }}>—</span>;
+    if (!d) return <Tag color="purple">{fmt.format(r.descuento)}</Tag>;
+    const lineas = [
+      ...(d.planMonto > 0 ? [`Plan: ${fmt.format(d.planMonto)}`] : []),
+      ...d.becas.map((b: any) => `${b.nombre}: ${fmt.format(b.monto)}`),
+      ...(d.topado ? ['⚠ Topado al monto del cargo'] : []),
+    ];
+    return (
+      <Tooltip title={<div>{lineas.map((l, i) => <div key={i}>{l}</div>)}</div>}>
+        <Tag color={d.topado ? 'orange' : 'purple'} style={{ cursor: 'default' }}>
+          {d.becas.length > 0 ? `🎓 ${fmt.format(r.descuento)}` : fmt.format(r.descuento)}
+        </Tag>
+      </Tooltip>
+    );
+  };
+
   return (
     <>
       <Space wrap style={{ marginBottom: 12 }}>
@@ -321,6 +342,7 @@ function TabCargos({ anioId }: { anioId?: number }) {
         columns={[
           { title: 'Estudiante', dataIndex: 'estudianteNombre', ellipsis: true },
           { title: 'Descripción', dataIndex: 'descripcion' },
+          { title: 'Descuento', render: (_: any, r: any) => renderDescuento(r) },
           { title: 'Monto', dataIndex: 'montoTotal', render: (v: any) => fmt.format(v), align: 'right' },
           { title: 'Saldo', dataIndex: 'saldoPendiente', render: (v: any) => v > 0 ? fmt.format(v) : '—', align: 'right' },
           { title: 'Vencimiento', dataIndex: 'fechaVencimiento', render: (v: any) => v?.substring(0, 10) ?? '—' },
