@@ -7,7 +7,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { authApi } from '../../api/auth.api';
 import api from '../../api/client';
-import { useThemeStore } from '../../store/theme.store';
 
 const { Title, Text } = Typography;
 
@@ -23,6 +22,13 @@ const SECTOR_OTRO     = { value: 'otro',     label: '🔧 Otro / No aparece mi t
 async function fetchSectoresAddon(): Promise<{ codigo: string; nombre: string }[]> {
   const r = await api.get('/modulos/publico');
   return (r.data?.data ?? r.data ?? []) as { codigo: string; nombre: string }[];
+}
+
+// modulos_addon.nombre trae "Módulo X" de cuando se sembró (ej. "Módulo Óptica",
+// "Módulo Agro / Finca") — en el selector del sector alcanza con el nombre del
+// negocio, no hace falta repetir "Módulo". Solo cosmético: no se toca la BD.
+function nombreSectorSinPrefijo(nombre: string): string {
+  return nombre.replace(/^m[oó]dulo\s+/i, '');
 }
 
 const PLANES = [
@@ -104,7 +110,7 @@ export default function RegisterPage() {
   });
   const opcionesSector = [
     SECTOR_COMERCIO,
-    ...sectoresAddon.map(a => ({ value: a.codigo, label: a.nombre })),
+    ...sectoresAddon.map(a => ({ value: a.codigo, label: nombreSectorSinPrefijo(a.nombre) })),
     SECTOR_OTRO,
   ];
 
@@ -206,25 +212,8 @@ export default function RegisterPage() {
 
   const planSeleccionado = PLANES.find(p => p.clave === planElegido) ?? PLANES[2];
 
-  const { isDark, toggle } = useThemeStore();
-
   return (
     <div className="reg-container" style={{ display: 'flex', minHeight: '100vh', background: '#F8FAFC', position: 'relative' }}>
-      {/* Toggle tema — esquina superior derecha */}
-      <button
-        onClick={toggle}
-        aria-label={isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
-        style={{
-          position: 'absolute', top: 16, right: 16, zIndex: 10,
-          background: '#F1F5F9', border: '1px solid #CBD5E1',
-          borderRadius: 8, padding: '8px 10px', cursor: 'pointer',
-          color: '#475569', display: 'flex', alignItems: 'center',
-        }}>
-        {isDark
-          ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-          : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-        }
-      </button>
       {/* Panel izquierdo */}
       <div className="reg-left" style={{
         flex: 1, display: 'flex', flexDirection: 'column',
