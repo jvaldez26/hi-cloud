@@ -1,7 +1,7 @@
 import {
   Controller, Get, Post, Patch, Param, Body, Query, ParseIntPipe,
   UseGuards, Request,
-  Res, StreamableFile,
+  Res,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -437,12 +437,19 @@ export class ClinicaController {
   @Post('recetas') crearReceta(@Body() dto: CreateRecetaDto) { return this.svc.crearReceta(dto); }
   @Get('recetas/:id') obtenerReceta(@Param('id', ParseIntPipe) id: number) { return this.svc.obtenerReceta(id); }
 
+  // @Res() SIN passthrough (nunca StreamableFile con passthrough activo):
+  // el ResponseInterceptor global envuelve todo lo que un handler retorna
+  // en {success,data,timestamp} — un StreamableFile envuelto deja de ser
+  // reconocido como tal y se sirve como JSON del buffer byte a byte en vez
+  // de PDF binario (el .pdf descargado no abre). Ver
+  // feedback_streamablefile_interceptor_trampa (memoria) y el mismo fix en
+  // educativo/boletines/boletines.controller.ts.
   @Get('recetas/:id/pdf')
-  async pdfReceta(@Param('id', ParseIntPipe) id: number, @Res({ passthrough: true }) res: Response) {
+  async pdfReceta(@Param('id', ParseIntPipe) id: number, @Res() res: Response) {
     const receta = await this.svc.obtenerReceta(id);
     const buffer = await this.pdfSvc.generarReceta(receta);
     res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="receta-${receta.numero}.pdf"` });
-    return new StreamableFile(buffer);
+    res.send(buffer);
   }
 
   // LABORATORIO
@@ -460,11 +467,11 @@ export class ClinicaController {
   @Post('laboratorio/:id/resultados') resultados(@Param('id', ParseIntPipe) id: number, @Body() dto: RegistrarResultadosDto) { return this.svc.registrarResultados(id, dto.examenes); }
 
   @Get('laboratorio/:id/pdf')
-  async pdfLab(@Param('id', ParseIntPipe) id: number, @Res({ passthrough: true }) res: Response) {
+  async pdfLab(@Param('id', ParseIntPipe) id: number, @Res() res: Response) {
     const orden = await this.svc.obtenerOrdenLab(id);
     const buffer = await this.pdfSvc.generarOrdenLab(orden);
     res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="lab-${orden.numero}.pdf"` });
-    return new StreamableFile(buffer);
+    res.send(buffer);
   }
 
   // PROCEDIMIENTOS
@@ -495,11 +502,11 @@ export class ClinicaController {
 
   // EXPEDIENTE PDF
   @Get('pacientes/:id/expediente/pdf')
-  async pdfExpediente(@Param('id', ParseIntPipe) id: number, @Res({ passthrough: true }) res: Response) {
+  async pdfExpediente(@Param('id', ParseIntPipe) id: number, @Res() res: Response) {
     const expediente = await this.svc.expedientePaciente(id);
     const buffer = await this.pdfSvc.generarExpediente(expediente);
     res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="expediente-${expediente.paciente.codigo}.pdf"` });
-    return new StreamableFile(buffer);
+    res.send(buffer);
   }
 
   // REPORTES
