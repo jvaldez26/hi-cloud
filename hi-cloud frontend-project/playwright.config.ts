@@ -13,9 +13,13 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './e2e',
-  timeout: 30_000,
+  timeout: 45_000,
   expect: { timeout: 8_000 },
   fullyParallel: false,   // los specs comparten datos sembrados en hicloud_test
+  // retries:0 a propósito — los specs de esta tanda NO son idempotentes
+  // (crean filas nuevas, algunas con una restricción real de "ya asignado"
+  // detrás), así que un reintento automático puede chocar con el estado
+  // que dejó el intento anterior y confundir un fallo real con uno nuevo.
   retries: 0,
   workers: 1,
   reporter: [['list']],

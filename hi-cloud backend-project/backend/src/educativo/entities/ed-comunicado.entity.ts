@@ -10,6 +10,7 @@ export class EdComunicado {
   @Column({ length: 30, nullable: true }) destinatarioTipo?: string;
   @Column({ nullable: true }) gradoId?: number;
   @Column({ nullable: true }) seccionId?: number;
+  @Column({ nullable: true }) estudianteId?: number;
   @Column({ type: 'timestamp', default: () => 'NOW()' }) fechaEnvio!: Date;
   @Column({ default: false }) enviarWhatsapp!: boolean;
   @Column({ default: false }) enviarEmail!: boolean;

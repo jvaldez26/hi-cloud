@@ -287,6 +287,7 @@ const BoletinesEdPage             = lazy(() => import('./pages/educativo/Boletin
 const DisciplinaEdPage            = lazy(() => import('./pages/educativo/DisciplinaPage'));
 const BibliotecaEdPage            = lazy(() => import('./pages/educativo/BibliotecaPage'));
 const TransporteEdPage            = lazy(() => import('./pages/educativo/TransporteEdPage'));
+const ComunicadosEdPage           = lazy(() => import('./pages/educativo/ComunicadosPage'));
 dayjs.locale('es');
 
 export const qc = new QueryClient({
@@ -1033,7 +1034,7 @@ export default function App() {
                     <Route path="/educativo/transporte"    element={<TransporteEdPage />} />
                     <Route path="/educativo/comedor"       element={<EducativoPlaceholder titulo="Comedor" />} />
                     <Route path="/educativo/enfermeria"    element={<EducativoPlaceholder titulo="Enfermería" />} />
-                    <Route path="/educativo/comunicados"   element={<EducativoPlaceholder titulo="Comunicados" />} />
+                    <Route path="/educativo/comunicados"   element={<ComunicadosEdPage />} />
                     <Route path="/educativo/reportes"      element={<EducativoPlaceholder titulo="Reportes" />} />
                   </Route>
 

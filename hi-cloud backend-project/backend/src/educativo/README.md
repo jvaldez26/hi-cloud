@@ -8,7 +8,7 @@ falta "retomar el desarrollo" para dejarlo seguro. Este documento existe para
 que la próxima persona que lo abra no tenga que rehacer el inventario forense
 de septiembre 2026.
 
-## Qué funciona (10 submódulos, controller + service + rutas + guard)
+## Qué funciona (14 submódulos, controller + service + rutas + guard)
 
 | Submódulo | Archivo | Notas |
 |---|---|---|
@@ -23,6 +23,10 @@ de septiembre 2026.
 | Colegiatura | `colegiatura/` | Planes de pago **por estudiante** (no por grado — ver abajo), cargos, pagos, resumen financiero. |
 | Becas | `becas/` | Catálogo (`ed_becas`) + asignación a estudiantes (`ed_estudiante_becas`) — conectado a `generarCargos()`/`generarMatricula()`, ver "Becas" abajo. UI en `/educativo/becas`. |
 | Boletines | `boletines/` | Consolidación de notas por período + PDF individual/masivo. Ver "Boletines" abajo. |
+| Disciplina | `disciplina/` | Incidentes con tipo/categoría/medida/seguimiento, notificación a padres con fecha. Un docente (vinculado por `ed_docentes.usuarioId`) solo ve/reporta incidentes de sus propias secciones (`ed_asignaciones_docente`) — admin y el resto ven todo. Nunca loguea el contenido del incidente. |
+| Biblioteca | `biblioteca/` | Libros + préstamos (a estudiante o a docente). `cantidadDisponible` con lock pesimista al prestar/devolver — nunca queda negativa. Estado `vencido` se deriva de `fechaVencimiento`, nunca se escribe. |
+| Transporte | `transporte/` | Rutas (chofer, vehículo, capacidad, paradas) + asignación de estudiantes con control de capacidad (lock pesimista). Al asignar, genera cargos de transporte por el mismo motor que colegiatura (`ed_cargos`, tipo='transporte') — ver "Transporte" abajo. Becas no aplican (`ed_becas.aplicaA` no contempla 'transporte'). |
+| Comunicados | `comunicados/` | CRUD, destinatario todos/grado/sección/individual (`ed_comunicados.estudianteId`, migración `1763600000000`). `enviarWhatsapp`/`enviarEmail` se guardan pero no disparan nada — el envío real queda para cuando exista una integración real (ver "Comunicados" abajo). |
 
 Todos los controllers llevan `JwtAuthGuard, RolesGuard, TenantGuard,
 ModuloAddonGuard('educativo')` — el guard estándar de add-on contratado
@@ -31,31 +35,53 @@ farmacia/restaurante/etc. Todos los endpoints de escritura tienen DTO con
 `class-validator` (antes eran `@Body() dto: any`, sin validación real pese al
 `ValidationPipe` global).
 
-## Qué tiene entidad pero ningún service (4 submódulos, 0% construido más allá de la tabla)
-
-`EdDisciplina`, `EdLibro` + `EdPrestamo` (biblioteca), `EdRuta` (transporte) y
-`EdComunicado` — sus tablas existen desde la migración original pero ningún
-controller/service las usa. Deliberadamente **no** están en el
-`TypeOrmModule.forFeature` de `educativo.module.ts` (ver el comentario ahí) —
-así no quedan silenciosamente declaradas como si algo las usara. Si se
-construye la API de alguna, hay que volver a agregarlas al `forFeature`.
-
-`EdNotaPeriodo` (`ed_notas_periodo`, notas finales consolidadas por periodo)
-**ya tiene service y controller** (`boletines/`, tarea de boletines) — sí está
-en el `forFeature` de `educativo.module.ts`. Ver "Boletines" más abajo.
-
 ## Qué no existe en absoluto (2 rutas, solo placeholder de frontend)
 
 Comedor y enfermería: sin entidad, sin migración, sin nada — solo una ruta de
-frontend con `EducativoPlaceholder`. Junto con biblioteca, transporte,
-disciplina y comunicados (los 4 de arriba) suman las **6 rutas** que
-muestran el placeholder. Antes decía "— próximamente" en gris chico (se veía
-igual que una lista vacía); ahora dice explícito "Módulo no disponible" con
-`Result status="info"`.
+frontend con `EducativoPlaceholder`. Antes decía "— próximamente" en gris
+chico (se veía igual que una lista vacía); ahora dice explícito "Módulo no
+disponible" con `Result status="info"`.
 
-**Ninguno de estos 6 (comedor, enfermería, biblioteca, transporte, disciplina,
-comunicados) se construye en esta tarea** — eso espera a que haya un colegio
-interesado.
+**Ninguno de estos 2 (comedor, enfermería) se construye en esta tarea** — eso
+espera a que haya un colegio interesado. Los otros 4 que compartían esta
+sección (disciplina, biblioteca, transporte, comunicados) se construyeron en
+la tanda 2 de septiembre 2026 — ver la tabla de arriba.
+
+## Tanda 2 (septiembre 2026): disciplina, biblioteca, transporte, comunicados
+
+- **Disciplina** — sin precedente de "rol docente" en el sistema (`UserRole`
+  no tiene ese valor). El control de acceso usa `ed_docentes.usuarioId`
+  (columna que existía, sin consumidor): si el usuario autenticado está
+  vinculado como docente, se restringe a `ed_asignaciones_docente`; si no
+  (admin, dirección, contabilidad), ve todo. Nunca se loguea
+  descripcion/medidaTomada/seguimiento — solo ids opacos.
+- **Biblioteca** — `prestar()`/`devolver()` corren en transacción con
+  `SELECT ... FOR UPDATE` sobre el libro (mismo mecanismo que
+  `caja.service.ts`, expresado en SQL crudo como el resto del módulo). El
+  estado `vencido` de un préstamo se deriva en cada lectura comparando
+  `fechaVencimiento` contra `fechaHoyRD()` — la columna `estado` solo
+  guarda `'prestado'`/`'devuelto'`.
+- **Transporte** — los cargos van por el mismo motor que colegiatura
+  (`ed_cargos`, `tipo='transporte'`), nunca un segundo camino de deuda. Sin
+  columna para enlazar cargo↔asignación, se usa `concepto` (mismo campo que
+  colegiatura ya usa para su propio desglose). Las becas no aplican
+  (`ed_becas.aplicaA` no contempla `'transporte'`). Baja a mitad de año: se
+  anulan los cargos futuros sin pagar, nunca uno ya vencido o con algo
+  abonado. **Bug real atrapado por la verificación con Playwright** (no por
+  curl ni tests unitarios con mocks): `DataSource.query()` devuelve las
+  columnas `date` como objetos `Date` de JS, no strings — el cálculo de
+  meses en JS con `.split('-')` reventaba en silencio. Se resolvió
+  calculando los meses en SQL con `generate_series`.
+- **Comunicados** — CRUD simple, destinatario todos/grado/sección/
+  individual. `ed_comunicados` no tenía columna para destinatario
+  individual: se agregó `estudianteId` en la migración
+  `1763600000000-AddEstudianteIdAEdComunicados.ts`. `enviarWhatsapp`/
+  `enviarEmail` se guardan pero **no disparan nada** — infraestructura real
+  ya existe (`EmailService`, `WhatsAppService` en `notificaciones/`, hoy en
+  modo simulado sin credenciales) para cuando se implemente el envío.
+
+Los 4 tienen su primera verificación e2e con Playwright del repo —
+`hi-cloud frontend-project/e2e/` no existía antes de esta tanda.
 
 ## Boletines
 

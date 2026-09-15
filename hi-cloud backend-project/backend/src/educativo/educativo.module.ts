@@ -26,9 +26,7 @@ import { EdDisciplina }   from './entities/ed-disciplina.entity';
 import { EdLibro }        from './entities/ed-libro.entity';
 import { EdPrestamo }     from './entities/ed-prestamo.entity';
 import { EdRuta }         from './entities/ed-ruta.entity';
-// EdComunicado (más abajo) NO se importa aquí a propósito — ver la nota
-// junto a TypeOrmModule.forFeature. El resto de entidades de esta lista SÍ
-// se importan: sus services ya las usan.
+import { EdComunicado }   from './entities/ed-comunicado.entity';
 
 import { EdConfigService }       from './config/config.service';
 import { EdConfigController }    from './config/config.controller';
@@ -59,20 +57,21 @@ import { BibliotecaService }     from './biblioteca/biblioteca.service';
 import { BibliotecaController }  from './biblioteca/biblioteca.controller';
 import { TransporteService as EdTransporteService }     from './transporte/transporte.service';
 import { TransporteController as EdTransporteController } from './transporte/transporte.controller';
+import { ComunicadosService }    from './comunicados/comunicados.service';
+import { ComunicadosController } from './comunicados/comunicados.controller';
 
 @Module({
   imports: [
-    // EdComunicado existe como entidad (y su tabla ya está migrada) pero
-    // NINGÚN service la inyecta — es el único submódulo que aún no tiene
-    // API (ver src/educativo/README.md). Sacada de este forFeature a
-    // propósito: no tiene sentido registrar un Repository que nadie usa.
-    // Cuando se construya su API, agregarla aquí de nuevo — no antes.
+    // Los 10 submódulos con API tienen su entidad registrada aquí —
+    // ninguno usa Repository (todo el módulo va por SQL crudo vía
+    // DataSource.query(), ver README.md), pero se mantienen en forFeature
+    // por consistencia con el resto del proyecto.
     TypeOrmModule.forFeature([
       EdConfig, EdAnioEscolar, EdNivel, EdGrado, EdAsignatura, EdSeccion, EdPeriodo,
       EdEstudiante, EdTutor, EdDocente, EdMatricula,
       EdEvaluacion, EdCalificacion, EdAsistencia,
       EdPlanPago, EdCargo, EdPago, EdBeca, EdEstudianteBeca, EdNotaPeriodo,
-      EdDisciplina, EdLibro, EdPrestamo, EdRuta,
+      EdDisciplina, EdLibro, EdPrestamo, EdRuta, EdComunicado,
     ]),
     TenantModule,
   ],
@@ -91,6 +90,7 @@ import { TransporteController as EdTransporteController } from './transporte/tra
     DisciplinaController,
     BibliotecaController,
     EdTransporteController,
+    ComunicadosController,
   ],
   providers: [
     EdConfigService,
@@ -108,6 +108,7 @@ import { TransporteController as EdTransporteController } from './transporte/tra
     DisciplinaService,
     BibliotecaService,
     EdTransporteService,
+    ComunicadosService,
   ],
   exports: [EdConfigService, EstructuraService],
 })
