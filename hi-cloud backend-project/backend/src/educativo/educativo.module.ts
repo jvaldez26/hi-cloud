@@ -23,10 +23,11 @@ import { EdBeca }         from './entities/ed-beca.entity';
 import { EdEstudianteBeca } from './entities/ed-estudiante-beca.entity';
 import { EdNotaPeriodo }  from './entities/ed-nota-periodo.entity';
 import { EdDisciplina }   from './entities/ed-disciplina.entity';
-// EdLibro, EdPrestamo, EdRuta y EdComunicado (más abajo) NO se importan
-// aquí a propósito — ver la nota junto a TypeOrmModule.forFeature.
-// EdNotaPeriodo y EdDisciplina SÍ se importan: BoletinesService y
-// DisciplinaService ya las usan.
+import { EdLibro }        from './entities/ed-libro.entity';
+import { EdPrestamo }     from './entities/ed-prestamo.entity';
+// EdRuta y EdComunicado (más abajo) NO se importan aquí a propósito — ver
+// la nota junto a TypeOrmModule.forFeature. EdNotaPeriodo, EdDisciplina,
+// EdLibro y EdPrestamo SÍ se importan: sus services ya las usan.
 
 import { EdConfigService }       from './config/config.service';
 import { EdConfigController }    from './config/config.controller';
@@ -53,13 +54,14 @@ import { BoletinPdfService }     from './boletines/boletin-pdf.service';
 import { BoletinesController }   from './boletines/boletines.controller';
 import { DisciplinaService }     from './disciplina/disciplina.service';
 import { DisciplinaController }  from './disciplina/disciplina.controller';
+import { BibliotecaService }     from './biblioteca/biblioteca.service';
+import { BibliotecaController }  from './biblioteca/biblioteca.controller';
 
 @Module({
   imports: [
-    // EdDisciplina, EdLibro, EdPrestamo, EdRuta y EdComunicado existen como
-    // entidad (y su tabla ya está migrada) pero NINGÚN service las inyecta
-    // — son para disciplina, biblioteca, transporte y comunicados, los 4
-    // submódulos que hoy solo tienen entidad sin API (ver
+    // EdRuta y EdComunicado existen como entidad (y su tabla ya está
+    // migrada) pero NINGÚN service las inyecta — son para transporte y
+    // comunicados, los 2 submódulos que aún no tienen API (ver
     // src/educativo/README.md). Sacadas de este forFeature a propósito: no
     // tiene sentido registrar un Repository que nadie usa. Cuando se
     // construya la API de alguno, agregarlo aquí de nuevo — no antes.
@@ -67,7 +69,8 @@ import { DisciplinaController }  from './disciplina/disciplina.controller';
       EdConfig, EdAnioEscolar, EdNivel, EdGrado, EdAsignatura, EdSeccion, EdPeriodo,
       EdEstudiante, EdTutor, EdDocente, EdMatricula,
       EdEvaluacion, EdCalificacion, EdAsistencia,
-      EdPlanPago, EdCargo, EdPago, EdBeca, EdEstudianteBeca, EdNotaPeriodo, EdDisciplina,
+      EdPlanPago, EdCargo, EdPago, EdBeca, EdEstudianteBeca, EdNotaPeriodo,
+      EdDisciplina, EdLibro, EdPrestamo,
     ]),
     TenantModule,
   ],
@@ -84,6 +87,7 @@ import { DisciplinaController }  from './disciplina/disciplina.controller';
     BecasController,
     BoletinesController,
     DisciplinaController,
+    BibliotecaController,
   ],
   providers: [
     EdConfigService,
@@ -99,6 +103,7 @@ import { DisciplinaController }  from './disciplina/disciplina.controller';
     BoletinesService,
     BoletinPdfService,
     DisciplinaService,
+    BibliotecaService,
   ],
   exports: [EdConfigService, EstructuraService],
 })
