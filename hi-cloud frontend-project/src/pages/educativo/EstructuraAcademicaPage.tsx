@@ -1,14 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Tabs, Table, Button, Modal, Form, Input, Select, InputNumber,
   Space, Tag, message, Popconfirm, Typography, Row, Col, DatePicker, Switch,
+  Checkbox, Divider, Alert,
 } from 'antd';
-import { PlusOutlined, EditOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, SaveOutlined, DeleteOutlined } from '@ant-design/icons';
 import api from '../../api/client';
 import dayjs from 'dayjs';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 const QK = (k: string) => ['educativo', k];
 
 function useList(path: string, params?: Record<string, any>) {
@@ -424,6 +425,211 @@ function PeriodosTab() {
   );
 }
 
+// ── Pensum ───────────────────────────────────────────────────────────────────
+// El boletín saca sus asignaturas del pensum del grado (ed_grado_asignaturas)
+// — sin esto configurado, todo grado imprime un boletín vacío.
+
+function PensumTab() {
+  const qc = useQueryClient();
+  const { data: grados = [] } = useList('grados');
+  const { data: todasAsignaturas = [] } = useList('asignaturas');
+  const [gradoId, setGradoId] = useState<number | undefined>();
+  const [seleccionadas, setSeleccionadas] = useState<number[]>([]);
+
+  const { data: pensum = [], isLoading } = useQuery<any[]>({
+    queryKey: ['educativo', 'pensum', gradoId],
+    queryFn: () => api.get(`/educativo/grados/${gradoId}/pensum`).then(r => r.data?.data ?? r.data ?? []),
+    enabled: !!gradoId,
+  });
+
+  useEffect(() => {
+    setSeleccionadas(pensum.map((p: any) => p.asignaturaId));
+  }, [pensum]);
+
+  const mut = useMutation({
+    mutationFn: () => api.post(`/educativo/grados/${gradoId}/pensum`, {
+      asignaturas: seleccionadas.map((asignaturaId, orden) => ({ asignaturaId, orden })),
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['educativo', 'pensum', gradoId] });
+      message.success('Pensum guardado');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
+  });
+
+  const toggle = (id: number) => setSeleccionadas(prev =>
+    prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
+  return (
+    <>
+      <Space style={{ marginBottom: 12, width: '100%', justifyContent: 'space-between' }}>
+        <Select
+          style={{ width: 260 }}
+          placeholder="Selecciona un grado"
+          options={grados.map((g: any) => ({ value: g.id, label: `${g.nivelNombre ? g.nivelNombre + ' › ' : ''}${g.nombre}` }))}
+          onChange={setGradoId}
+        />
+        <Button type="primary" icon={<SaveOutlined />} disabled={!gradoId} loading={mut.isPending} onClick={() => mut.mutate()}>
+          Guardar pensum
+        </Button>
+      </Space>
+      {!gradoId ? (
+        <div style={{ padding: 40, textAlign: 'center', color: '#999' }}>Selecciona un grado para ver/editar su pensum</div>
+      ) : isLoading ? (
+        <div style={{ padding: 40, textAlign: 'center', color: '#999' }}>Cargando…</div>
+      ) : !todasAsignaturas.length ? (
+        <Alert type="warning" showIcon message="No hay asignaturas creadas todavía — créalas en la pestaña Asignaturas." />
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
+          {todasAsignaturas.map((a: any) => (
+            <Checkbox key={a.id} checked={seleccionadas.includes(a.id)} onChange={() => toggle(a.id)}>
+              {a.nombre}{a.area ? <span style={{ color: '#999', fontSize: 11 }}> — {a.area}</span> : null}
+            </Checkbox>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── Configuración ────────────────────────────────────────────────────────────
+// Nada del cálculo de notas está fijo en código — todo sale de acá: la
+// escala (0-100, 1-10, la que sea), la nota mínima para aprobar y si se
+// usan letras (y con qué rangos). Colegios privados/bilingües usan escalas
+// propias sin que el backend distinga un caso del otro.
+
+function ConfiguracionTab() {
+  const qc = useQueryClient();
+  const [form] = Form.useForm();
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ['educativo', 'config'],
+    queryFn: () => api.get('/educativo/config').then(r => r.data?.data ?? r.data),
+  });
+  const usaLetras = Form.useWatch('usaLetras', form);
+
+  useEffect(() => {
+    if (data) form.setFieldsValue(data);
+  }, [data]);
+
+  const mut = useMutation({
+    mutationFn: (vals: any) => api.post('/educativo/config', vals),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['educativo', 'config'] }); message.success('Configuración guardada'); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error'),
+  });
+
+  if (isLoading) return <div style={{ padding: 40, textAlign: 'center', color: '#999' }}>Cargando…</div>;
+
+  return (
+    <Form
+      form={form}
+      layout="vertical"
+      style={{ maxWidth: 720 }}
+      initialValues={{
+        escalaMinima: 0, escalaMaxima: 100, notaMinimaAprobar: 70,
+        usaLetras: false, cantidadPeriodos: 4, tipoPeriodo: 'trimestre', monedaColegiatura: 'DOP',
+      }}
+      onFinish={vals => mut.mutate(vals)}
+    >
+      <Divider orientation="left" plain>Centro educativo</Divider>
+      <Row gutter={12}>
+        <Col span={16}><Form.Item name="nombreCentro" label="Nombre del centro"><Input /></Form.Item></Col>
+        <Col span={8}><Form.Item name="codigoMinerd" label="Código MINERD"><Input /></Form.Item></Col>
+      </Row>
+      <Row gutter={12}>
+        <Col span={12}><Form.Item name="regional" label="Regional"><Input /></Form.Item></Col>
+        <Col span={12}><Form.Item name="distritoEducativo" label="Distrito educativo"><Input /></Form.Item></Col>
+      </Row>
+
+      <Divider orientation="left" plain>Escala de calificación</Divider>
+      <Row gutter={12}>
+        <Col span={8}>
+          <Form.Item name="escalaMinima" label="Escala mínima" rules={[{ required: true }]}>
+            <InputNumber style={{ width: '100%' }} />
+          </Form.Item>
+        </Col>
+        <Col span={8}>
+          <Form.Item name="escalaMaxima" label="Escala máxima" rules={[{ required: true }]}>
+            <InputNumber style={{ width: '100%' }} />
+          </Form.Item>
+        </Col>
+        <Col span={8}>
+          <Form.Item name="notaMinimaAprobar" label="Nota mínima para aprobar" rules={[{ required: true }]}>
+            <InputNumber style={{ width: '100%' }} />
+          </Form.Item>
+        </Col>
+      </Row>
+      <Form.Item name="usaLetras" label="¿Usa letras además del número?" valuePropName="checked" getValueFromEvent={(v: boolean) => v}>
+        <Switch />
+      </Form.Item>
+      {usaLetras && (
+        <Form.List name="escalaLetras">
+          {(fields, { add, remove }) => (
+            <div style={{ marginBottom: 16 }}>
+              <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+                Rangos de nota → letra. Ej: 90–100 → A. Deben cubrir toda la escala sin solaparse.
+              </Text>
+              {fields.map(field => (
+                <Row gutter={8} key={field.key} style={{ marginBottom: 8 }}>
+                  <Col span={7}>
+                    <Form.Item {...field} name={[field.name, 'min']} noStyle rules={[{ required: true, message: 'Mín.' }]}>
+                      <InputNumber placeholder="Mín." style={{ width: '100%' }} />
+                    </Form.Item>
+                  </Col>
+                  <Col span={7}>
+                    <Form.Item {...field} name={[field.name, 'max']} noStyle rules={[{ required: true, message: 'Máx.' }]}>
+                      <InputNumber placeholder="Máx." style={{ width: '100%' }} />
+                    </Form.Item>
+                  </Col>
+                  <Col span={7}>
+                    <Form.Item {...field} name={[field.name, 'letra']} noStyle rules={[{ required: true, message: 'Letra' }]}>
+                      <Input placeholder="Letra (ej: A)" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={3}>
+                    <Button danger icon={<DeleteOutlined />} onClick={() => remove(field.name)} />
+                  </Col>
+                </Row>
+              ))}
+              <Button type="dashed" onClick={() => add({ min: undefined, max: undefined, letra: '' })} block>
+                + Agregar rango
+              </Button>
+            </div>
+          )}
+        </Form.List>
+      )}
+
+      <Divider orientation="left" plain>Períodos y colegiatura</Divider>
+      <Row gutter={12}>
+        <Col span={8}>
+          <Form.Item name="cantidadPeriodos" label="Cantidad de períodos por año">
+            <InputNumber min={1} max={12} style={{ width: '100%' }} />
+          </Form.Item>
+        </Col>
+        <Col span={8}>
+          <Form.Item name="tipoPeriodo" label="Tipo de período">
+            <Select options={[
+              { value: 'trimestre', label: 'Trimestre' },
+              { value: 'bimestre', label: 'Bimestre' },
+              { value: 'semestre', label: 'Semestre' },
+            ]} />
+          </Form.Item>
+        </Col>
+        <Col span={8}>
+          <Form.Item name="monedaColegiatura" label="Moneda de colegiatura">
+            <Select options={[{ value: 'DOP', label: 'DOP' }, { value: 'USD', label: 'USD' }]} />
+          </Form.Item>
+        </Col>
+      </Row>
+
+      <Form.Item>
+        <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={mut.isPending}>
+          Guardar configuración
+        </Button>
+      </Form.Item>
+    </Form>
+  );
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 export default function EstructuraAcademicaPage() {
@@ -437,6 +643,8 @@ export default function EstructuraAcademicaPage() {
         { key: 'grados',       label: 'Grados',       children: <GradosTab /> },
         { key: 'asignaturas',  label: 'Asignaturas',  children: <AsignaturasTab /> },
         { key: 'secciones',    label: 'Secciones',    children: <SeccionesTab /> },
+        { key: 'pensum',       label: 'Pensum',       children: <PensumTab /> },
+        { key: 'configuracion', label: 'Configuración', children: <ConfiguracionTab /> },
       ]} />
     </div>
   );
