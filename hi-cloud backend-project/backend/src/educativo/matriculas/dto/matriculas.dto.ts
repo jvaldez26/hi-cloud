@@ -1,4 +1,4 @@
-import { IsDefined, IsOptional, IsString, IsInt, IsIn, IsNumber, IsDateString, Min, Max } from 'class-validator';
+import { IsDefined, IsOptional, IsString, IsInt, IsIn, IsDateString } from 'class-validator';
 
 export class CreateMatriculaDto {
   @IsDefined({ message: 'El estudiante es requerido' })
@@ -25,15 +25,8 @@ export class CreateMatriculaDto {
   @IsIn(['activa', 'inactiva', 'retirada', 'graduada'], { message: 'Estado de matrícula inválido' })
   estado?: string;
 
-  @IsOptional()
-  @IsInt({ message: 'La beca debe ser un identificador numérico' })
-  becaId?: number;
-
-  @IsOptional()
-  @IsNumber({}, { message: 'El descuento de beca debe ser un número' })
-  @Min(0, { message: 'El descuento de beca no puede ser negativo' })
-  @Max(100, { message: 'El descuento de beca no puede superar 100' })
-  descuentoBeca?: number;
+  // becaId/descuentoBeca eliminados — ver ed-matricula.entity.ts. Las becas
+  // reales se asignan por separado en /educativo/becas/asignaciones.
 
   @IsOptional()
   @IsString({ message: 'Las notas deben ser texto' })
@@ -60,16 +53,6 @@ export class UpdateMatriculaDto {
   @IsOptional()
   @IsIn(['activa', 'inactiva', 'retirada', 'graduada'], { message: 'Estado de matrícula inválido' })
   estado?: string;
-
-  @IsOptional()
-  @IsInt({ message: 'La beca debe ser un identificador numérico' })
-  becaId?: number;
-
-  @IsOptional()
-  @IsNumber({}, { message: 'El descuento de beca debe ser un número' })
-  @Min(0, { message: 'El descuento de beca no puede ser negativo' })
-  @Max(100, { message: 'El descuento de beca no puede superar 100' })
-  descuentoBeca?: number;
 
   @IsOptional()
   @IsString({ message: 'Las notas deben ser texto' })

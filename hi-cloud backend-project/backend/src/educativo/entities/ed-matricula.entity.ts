@@ -12,8 +12,9 @@ export class EdMatricula {
   @Column({ type: 'date', nullable: true }) fechaMatricula?: string;
   @Column({ length: 30, default: 'nuevo_ingreso' }) tipo!: string;
   @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true }) montoInscripcion?: number;
-  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 }) descuentoBeca!: number;
-  @Column({ nullable: true }) becaId?: number;
+  // becaId/descuentoBeca eliminados (1763400000000-DropBecaFieldsDeEdMatriculas)
+  // — eran informativos, sin ningún consumidor real. ed_estudiante_becas es
+  // la fuente real de becas (ver src/educativo/becas/).
   @Column({ length: 20, default: 'activa' }) estado!: string;
   @Column({ nullable: true }) facturaId?: number;
   @Column({ type: 'text', nullable: true }) notas?: string;

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Table, Button, Select, Space, Tag, Modal, Form, DatePicker,
-  message, Typography, Row, Col, Input, InputNumber, Card, Statistic,
+  message, Typography, Row, Col, Input, Card, Statistic,
 } from 'antd';
 import { PlusOutlined, EditOutlined, SearchOutlined } from '@ant-design/icons';
 import api from '../../api/client';
@@ -83,7 +83,7 @@ function MatriculaModal({ open, editing, onClose }: { open: boolean; editing?: a
           setSelectedGradoId(editing?.gradoId);
           form.setFieldsValue(editing
             ? { ...editing, fechaMatricula: editing.fechaMatricula ? dayjs(editing.fechaMatricula) : dayjs() }
-            : { fechaMatricula: dayjs(), estado: 'activa', descuentoBeca: 0 });
+            : { fechaMatricula: dayjs(), estado: 'activa' });
         } else {
           form.resetFields();
         }
@@ -144,22 +144,14 @@ function MatriculaModal({ open, editing, onClose }: { open: boolean; editing?: a
           </Col>
         </Row>
 
-        <Row gutter={12}>
-          <Col span={12}>
-            <Form.Item name="estado" label="Estado" rules={[{ required: true }]}>
-              <Select options={ESTADO_OPTS} />
-            </Form.Item>
-          </Col>
-          <Col span={12}>
-            {/* No hay catálogo de becas expuesto todavía (ed_becas existe pero
-                sin endpoint) — descuentoBeca es un porcentaje libre sobre la
-                matrícula, sin ligarlo a una beca específica. Asignar una beca
-                real (becaId) queda para cuando exista esa pantalla. */}
-            <Form.Item name="descuentoBeca" label="Descuento (%)">
-              <InputNumber min={0} max={100} style={{ width: '100%' }} />
-            </Form.Item>
-          </Col>
-        </Row>
+        <Form.Item name="estado" label="Estado" rules={[{ required: true }]}>
+          <Select options={ESTADO_OPTS} />
+        </Form.Item>
+
+        {/* Las becas se asignan por separado en Becas → "Becas por
+            estudiante" (ed_estudiante_becas) — es la fuente real que
+            colegiatura.service.ts consulta al generar cargos. La matrícula
+            ya no tiene ningún campo de beca propio. */}
 
         <Form.Item name="notas" label="Notas">
           <Input.TextArea rows={2} />
@@ -280,13 +272,6 @@ export default function MatriculasPage() {
           { title: 'Año', dataIndex: 'anioNombre', render: (v: any) => v ?? '—' },
           { title: 'Grado', dataIndex: 'gradoNombre', render: (v: any) => v ?? '—' },
           { title: 'Sección', dataIndex: 'seccionNombre', render: (v: any) => v ?? '—' },
-          {
-            title: 'Descuento',
-            render: (_: any, r: any) =>
-              r.descuentoBeca > 0
-                ? <Tag color="blue">{r.descuentoBeca}%</Tag>
-                : <span style={{ color: '#999' }}>—</span>,
-          },
           { title: 'Fecha', dataIndex: 'fechaMatricula', render: (v: any) => v?.substring(0, 10) ?? '—' },
           {
             title: 'Estado',

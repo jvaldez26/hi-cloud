@@ -84,8 +84,8 @@ export class MatriculasService {
     const [row] = await this.ds.query<any[]>(
       `INSERT INTO ed_matriculas (
          "empresaId", "estudianteId", "anioEscolarId", "gradoId", "seccionId",
-         "fechaMatricula", estado, "becaId", "descuentoBeca", notas
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+         "fechaMatricula", estado, notas
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
       [
         empresaId,
         dto.estudianteId,
@@ -94,9 +94,6 @@ export class MatriculasService {
         dto.seccionId ?? null,
         dto.fechaMatricula ?? fechaHoyRD(),
         dto.estado ?? 'activa',
-        // becaId es FK a ed_becas (no un enum de texto): sin beca es NULL, no 'ninguna'.
-        dto.becaId ?? null,
-        dto.descuentoBeca ?? 0,
         dto.notas ?? null,
       ],
     );
@@ -111,7 +108,7 @@ export class MatriculasService {
     if (!exists) throw new NotFoundException('Matrícula no encontrada');
 
     const FIELDS = ['gradoId', 'seccionId', 'anioEscolarId', 'fechaMatricula',
-                    'estado', 'becaId', 'descuentoBeca', 'notas'];
+                    'estado', 'notas'];
     const fields = FIELDS.filter(f => dto[f] !== undefined);
     if (!fields.length) return this.findOne(empresaId, id);
     const sets = fields.map((f, i) => `"${f}" = $${i + 3}`).join(', ');
@@ -128,10 +125,17 @@ export class MatriculasService {
       : `m."empresaId" = $1 AND m.estado = 'activa'`;
     const params = anioEscolarId ? [empresaId, anioEscolarId] : [empresaId];
 
+    // "conBeca" se calcula contra ed_estudiante_becas (la fuente real de
+    // becas, ver becas.service.ts) — no contra ed_matriculas, que ya no
+    // tiene ningún campo de beca (eran informativos, sin consumidor real).
     const [resumen] = await this.ds.query<any[]>(
       `SELECT
          COUNT(*)::int AS total,
-         COUNT(*) FILTER (WHERE m."becaId" IS NOT NULL)::int AS "conBeca",
+         COUNT(*) FILTER (WHERE EXISTS (
+           SELECT 1 FROM ed_estudiante_becas eb
+           WHERE eb."estudianteId" = m."estudianteId" AND eb."isActive" = true
+             AND (eb."anioEscolarId" IS NULL OR eb."anioEscolarId" = m."anioEscolarId")
+         ))::int AS "conBeca",
          COUNT(*) FILTER (WHERE e.sexo = 'M')::int AS masculinos,
          COUNT(*) FILTER (WHERE e.sexo = 'F')::int AS femeninos
        FROM ed_matriculas m
