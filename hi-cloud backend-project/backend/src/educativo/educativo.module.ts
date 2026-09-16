@@ -27,6 +27,7 @@ import { EdLibro }        from './entities/ed-libro.entity';
 import { EdPrestamo }     from './entities/ed-prestamo.entity';
 import { EdRuta }         from './entities/ed-ruta.entity';
 import { EdComunicado }   from './entities/ed-comunicado.entity';
+import { EdComedorPlan }  from './entities/ed-comedor-plan.entity';
 
 import { EdConfigService }       from './config/config.service';
 import { EdConfigController }    from './config/config.controller';
@@ -59,6 +60,9 @@ import { TransporteService as EdTransporteService }     from './transporte/trans
 import { TransporteController as EdTransporteController } from './transporte/transporte.controller';
 import { ComunicadosService }    from './comunicados/comunicados.service';
 import { ComunicadosController } from './comunicados/comunicados.controller';
+import { CargosServicioService } from './common/cargos-servicio.service';
+import { ComedorService }        from './comedor/comedor.service';
+import { ComedorController }     from './comedor/comedor.controller';
 
 @Module({
   imports: [
@@ -71,7 +75,7 @@ import { ComunicadosController } from './comunicados/comunicados.controller';
       EdEstudiante, EdTutor, EdDocente, EdMatricula,
       EdEvaluacion, EdCalificacion, EdAsistencia,
       EdPlanPago, EdCargo, EdPago, EdBeca, EdEstudianteBeca, EdNotaPeriodo,
-      EdDisciplina, EdLibro, EdPrestamo, EdRuta, EdComunicado,
+      EdDisciplina, EdLibro, EdPrestamo, EdRuta, EdComunicado, EdComedorPlan,
     ]),
     TenantModule,
   ],
@@ -91,6 +95,7 @@ import { ComunicadosController } from './comunicados/comunicados.controller';
     BibliotecaController,
     EdTransporteController,
     ComunicadosController,
+    ComedorController,
   ],
   providers: [
     EdConfigService,
@@ -109,6 +114,8 @@ import { ComunicadosController } from './comunicados/comunicados.controller';
     BibliotecaService,
     EdTransporteService,
     ComunicadosService,
+    CargosServicioService,
+    ComedorService,
   ],
   exports: [EdConfigService, EstructuraService],
 })

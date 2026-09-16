@@ -1,15 +1,14 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { fechaHoyRD } from '../../common/utils/fecha-local.util';
-import { redondearMoneda } from '../../common/utils/moneda.util';
-
-const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
-               'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+import { CargosServicioService } from '../common/cargos-servicio.service';
 
 @Injectable()
 export class TransporteService {
-  constructor(@InjectDataSource() private readonly ds: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly ds: DataSource,
+    private readonly cargosSvc: CargosServicioService,
+  ) {}
 
   // ── Rutas ───────────────────────────────────────────────────────────────
 
@@ -98,38 +97,6 @@ export class TransporteService {
     return `transporte:ruta=${rutaId};asignacion=${asignacionId}`;
   }
 
-  /**
-   * Meses a cobrar: desde el mes en curso (o el mes de inicio del año
-   * escolar, lo que sea más tarde) hasta el fin del año escolar activo —
-   * "el resto del año", nunca retroactivo a meses ya pasados antes de la
-   * asignación.
-   *
-   * TODO en SQL a propósito: `DataSource.query()` devuelve las columnas
-   * `date` (fechaInicio/fechaFin) como objetos `Date` de JS, construidos
-   * en la zona horaria LOCAL del proceso (no un string 'YYYY-MM-DD') — un
-   * `.split('-')` sobre ese valor revienta en silencio y generarCargos
-   * queda en 0 sin que nadie se entere (encontrado con Playwright: la
-   * asignación se creaba, cero cargos). generate_series trabaja sobre el
-   * `date` nativo de Postgres, sin esa ambigüedad — es el mismo motivo por
-   * el que el resto del módulo (ver listCargos de colegiatura,
-   * "fechaVencimiento" < CURRENT_DATE) nunca hace aritmética de fechas en
-   * JS sobre una columna leída de la BD.
-   */
-  private async mesesRestantes(empresaId: number, anioEscolarId: number, hoy: string): Promise<{ mes: number; anio: number }[]> {
-    const rows = await this.ds.query<any[]>(
-      `SELECT EXTRACT(MONTH FROM d)::int AS mes, EXTRACT(YEAR FROM d)::int AS anio
-       FROM ed_anios_escolares a,
-            LATERAL generate_series(
-              GREATEST(date_trunc('month', a."fechaInicio"), date_trunc('month', $3::date)),
-              a."fechaFin",
-              '1 month'::interval
-            ) AS d
-       WHERE a.id = $1 AND a."empresaId" = $2`,
-      [anioEscolarId, empresaId, hoy],
-    );
-    return rows;
-  }
-
   async asignarEstudiante(empresaId: number, dto: any) {
     const est = await this.ds.query<any[]>(
       `SELECT id FROM ed_estudiantes WHERE id = $1 AND "empresaId" = $2`,
@@ -181,69 +148,19 @@ export class TransporteService {
       return { asignacion, ruta };
     });
 
-    const resultado = await this.generarCargosTransporte(empresaId, asignacion, ruta);
+    const resultado = await this.cargosSvc.generarCargos(empresaId, {
+      estudianteId: asignacion.estudianteId,
+      tipo: 'transporte',
+      concepto: this.conceptoTransporte(asignacion.rutaId, asignacion.id),
+      costoMensual: asignacion.costoMensual ?? ruta.costoMensual,
+      descripcionPrefijo: 'Transporte',
+    });
     return { asignacion, ...resultado };
   }
 
   /**
-   * Genera los cargos de transporte pendientes de la asignación, del mes
-   * en curso hasta el fin del año escolar activo — MISMO motor que
-   * colegiatura (ed_cargos, montoOriginal/descuento/montoTotal/
-   * montoPagado/saldoPendiente), sin un segundo camino de deuda.
-   *
-   * Las becas NO se consultan aquí: ed_becas.aplicaA solo acepta
-   * 'colegiatura'|'inscripcion'|'ambos' hoy — transporte no está
-   * contemplado, así que descuento siempre queda en 0 (confirmado en el
-   * código, no asumido).
-   */
-  private async generarCargosTransporte(empresaId: number, asignacion: any, ruta: any) {
-    const costoMensual = Number(asignacion.costoMensual ?? ruta.costoMensual ?? 0);
-    if (!(costoMensual > 0)) {
-      return { cargosGenerados: 0, motivo: 'La ruta no tiene costo mensual configurado — no se generaron cargos' };
-    }
-
-    const [anioEscolar] = await this.ds.query<any[]>(
-      `SELECT * FROM ed_anios_escolares WHERE "empresaId" = $1 AND "esActual" = true LIMIT 1`,
-      [empresaId],
-    );
-    if (!anioEscolar) {
-      return { cargosGenerados: 0, motivo: 'No hay un año escolar activo configurado — no se generaron cargos' };
-    }
-
-    const hoy = fechaHoyRD();
-    const meses = await this.mesesRestantes(empresaId, anioEscolar.id, hoy);
-    const concepto = this.conceptoTransporte(asignacion.rutaId, asignacion.id);
-    const monto = redondearMoneda(costoMensual);
-
-    let creados = 0;
-    for (const { mes, anio } of meses) {
-      const [existe] = await this.ds.query<any[]>(
-        `SELECT id FROM ed_cargos WHERE "empresaId" = $1 AND "estudianteId" = $2 AND tipo = 'transporte' AND mes = $3 AND anio = $4`,
-        [empresaId, asignacion.estudianteId, mes, anio],
-      );
-      if (existe) continue;
-
-      const vencimiento = `${anio}-${String(mes).padStart(2, '0')}-05`;
-      await this.ds.query(
-        `INSERT INTO ed_cargos (
-           "empresaId","estudianteId",tipo,descripcion,concepto,
-           "montoOriginal",descuento,"montoTotal","montoPagado","saldoPendiente",
-           "fechaVencimiento",estado,mes,anio
-         ) VALUES ($1,$2,'transporte',$3,$4,$5,0,$5,0,$5,$6,'pendiente',$7,$8)`,
-        [empresaId, asignacion.estudianteId, `Transporte ${MESES[mes - 1]} ${anio}`, concepto, monto, vencimiento, mes, anio],
-      );
-      creados++;
-    }
-    return { cargosGenerados: creados };
-  }
-
-  /**
-   * Baja de la asignación: se desactiva, y se anulan los cargos de
-   * transporte FUTUROS (fechaVencimiento >= hoy) que sigan sin ningún
-   * pago encima (montoPagado = 0) — un cargo ya vencido (el servicio ya
-   * se prestó) o con algo abonado NUNCA se anula, se queda como está.
-   * Sin precedente en el módulo (matriculas.update() a estado='retirada'
-   * no toca ed_cargos) — decisión explícita de esta implementación.
+   * Baja de la asignación: se desactiva y se anulan sus cargos futuros sin
+   * pagar (ver CargosServicioService.anularCargosFuturosSinPagar).
    */
   async desasignarEstudiante(empresaId: number, id: number) {
     const [asignacion] = await this.ds.query<any[]>(
@@ -260,19 +177,12 @@ export class TransporteService {
       [id, empresaId],
     );
 
-    const concepto = this.conceptoTransporte(asignacion.rutaId, asignacion.id);
-    const hoy = fechaHoyRD();
-    const cancelados = await this.ds.query<any[]>(
-      `WITH filas AS (
-         UPDATE ed_cargos
-           SET estado = 'anulado'
-           WHERE "empresaId" = $1 AND "estudianteId" = $2 AND tipo = 'transporte' AND concepto = $3
-             AND "montoPagado" = 0 AND "fechaVencimiento" >= $4 AND estado != 'anulado'
-           RETURNING id
-       ) SELECT COUNT(*)::int AS n FROM filas`,
-      [empresaId, asignacion.estudianteId, concepto, hoy],
-    );
+    const { cargosAnulados } = await this.cargosSvc.anularCargosFuturosSinPagar(empresaId, {
+      estudianteId: asignacion.estudianteId,
+      tipo: 'transporte',
+      concepto: this.conceptoTransporte(asignacion.rutaId, asignacion.id),
+    });
 
-    return { asignacion: row, cargosAnulados: cancelados[0]?.n ?? 0 };
+    return { asignacion: row, cargosAnulados };
   }
 }
