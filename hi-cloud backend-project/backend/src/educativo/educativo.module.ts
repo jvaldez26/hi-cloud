@@ -28,6 +28,7 @@ import { EdPrestamo }     from './entities/ed-prestamo.entity';
 import { EdRuta }         from './entities/ed-ruta.entity';
 import { EdComunicado }   from './entities/ed-comunicado.entity';
 import { EdComedorPlan }  from './entities/ed-comedor-plan.entity';
+import { EdEnfermeria }   from './entities/ed-enfermeria.entity';
 
 import { EdConfigService }       from './config/config.service';
 import { EdConfigController }    from './config/config.controller';
@@ -63,6 +64,8 @@ import { ComunicadosController } from './comunicados/comunicados.controller';
 import { CargosServicioService } from './common/cargos-servicio.service';
 import { ComedorService }        from './comedor/comedor.service';
 import { ComedorController }     from './comedor/comedor.controller';
+import { EnfermeriaService }     from './enfermeria/enfermeria.service';
+import { EnfermeriaController }  from './enfermeria/enfermeria.controller';
 
 @Module({
   imports: [
@@ -75,7 +78,7 @@ import { ComedorController }     from './comedor/comedor.controller';
       EdEstudiante, EdTutor, EdDocente, EdMatricula,
       EdEvaluacion, EdCalificacion, EdAsistencia,
       EdPlanPago, EdCargo, EdPago, EdBeca, EdEstudianteBeca, EdNotaPeriodo,
-      EdDisciplina, EdLibro, EdPrestamo, EdRuta, EdComunicado, EdComedorPlan,
+      EdDisciplina, EdLibro, EdPrestamo, EdRuta, EdComunicado, EdComedorPlan, EdEnfermeria,
     ]),
     TenantModule,
   ],
@@ -96,6 +99,7 @@ import { ComedorController }     from './comedor/comedor.controller';
     EdTransporteController,
     ComunicadosController,
     ComedorController,
+    EnfermeriaController,
   ],
   providers: [
     EdConfigService,
@@ -116,6 +120,7 @@ import { ComedorController }     from './comedor/comedor.controller';
     ComunicadosService,
     CargosServicioService,
     ComedorService,
+    EnfermeriaService,
   ],
   exports: [EdConfigService, EstructuraService],
 })

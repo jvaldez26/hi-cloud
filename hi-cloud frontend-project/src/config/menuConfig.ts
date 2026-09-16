@@ -243,7 +243,10 @@ export const PATH_ROLES: Record<string, string[]> = {
   '/educativo/biblioteca':           ALL_ROLES,
   '/educativo/transporte':           ADMIN_CONT,
   '/educativo/comedor':              ADMIN_CONT,
-  '/educativo/enfermeria':           ALL_ROLES,
+  // Datos médicos de menores — solo admin (dirección/enfermería comparten
+  // la cuenta admin, no hay un rol "enfermería" propio en el sistema hoy;
+  // ver feedback_educativo_enfermeria_acceso en memoria).
+  '/educativo/enfermeria':           ADMIN,
   '/educativo/comunicados':          ADMIN_CONT_VEND,
   '/educativo/reportes':             ADMIN_CONT,
 };

@@ -121,16 +121,21 @@ sí funcione:
    # contra hicloud_test (la tabla la crea sola el primer intento de runMigrations).
    ```
 
-5. **Apuntá el backend a `hicloud_test` en variables de entorno de ESA
-   sesión — nunca edites el `.env` real:**
+5. **Guardá esas credenciales en `.env.test.local`** (ya está en
+   `.gitignore` — nunca se commitea) y usalo para apuntar el backend a
+   `hicloud_test` SIN tocar el `.env` real:
    ```bash
-   DB_HOST=127.0.0.1 DB_PORT=<puerto local> DB_USERNAME=postgres \
-   DB_PASSWORD=<tu contraseña local> DB_NAME=hicloud_test DB_SSL=false \
-   npm run start:dev
+   cp .env .env.prod.bak        # respaldo del .env real
+   cp .env.test.local .env      # swap a hicloud_test
+   npm run start:dev            # (o npx jest / npx playwright test, etc.)
+   # ... al terminar, SIEMPRE restaurar: ...
+   cp .env.prod.bak .env
    ```
-   Verificá dos veces con `SELECT current_database()` antes de correr nada
-   destructivo — es fácil confundirse de sesión y terminar contra
-   producción.
+   `data-source.ts`/`main.ts` cargan siempre `.env` a secas (no hay
+   `NODE_ENV` switching de archivo), por eso el swap es literal y no una
+   variable de entorno de sesión. Verificá dos veces con
+   `SELECT current_database()` antes de correr nada destructivo — es fácil
+   confundirse de sesión y terminar contra producción.
 
 6. A partir de aquí, `npm run migration:run` (o `AppDataSource.runMigrations()`)
    contra `hicloud_test` solo corre migraciones *nuevas* que agregues — el

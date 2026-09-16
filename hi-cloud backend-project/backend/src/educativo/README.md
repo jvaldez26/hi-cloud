@@ -8,7 +8,7 @@ falta "retomar el desarrollo" para dejarlo seguro. Este documento existe para
 que la próxima persona que lo abra no tenga que rehacer el inventario forense
 de septiembre 2026.
 
-## Qué funciona (14 submódulos, controller + service + rutas + guard)
+## Qué funciona (16 submódulos, controller + service + rutas + guard)
 
 | Submódulo | Archivo | Notas |
 |---|---|---|
@@ -27,6 +27,8 @@ de septiembre 2026.
 | Biblioteca | `biblioteca/` | Libros + préstamos (a estudiante o a docente). `cantidadDisponible` con lock pesimista al prestar/devolver — nunca queda negativa. Estado `vencido` se deriva de `fechaVencimiento`, nunca se escribe. |
 | Transporte | `transporte/` | Rutas (chofer, vehículo, capacidad, paradas) + asignación de estudiantes con control de capacidad (lock pesimista). Al asignar, genera cargos de transporte por el mismo motor que colegiatura (`ed_cargos`, tipo='transporte') — ver "Transporte" abajo. Becas no aplican (`ed_becas.aplicaA` no contempla 'transporte'). |
 | Comunicados | `comunicados/` | CRUD, destinatario todos/grado/sección/individual (`ed_comunicados.estudianteId`, migración `1763600000000`). `enviarWhatsapp`/`enviarEmail` se guardan pero no disparan nada — el envío real queda para cuando exista una integración real (ver "Comunicados" abajo). |
+| Comedor | `comedor/` | Plan por estudiante (tipo diario/semanal/mensual, costo mensual, restricciones alimenticias). Genera cargos por el mismo motor que transporte/colegiatura (`ed_cargos`, tipo='comedor') — ver "Tanda 3" abajo. Becas no aplican. |
+| Enfermería | `enfermeria/` | Registro de visitas (motivo, síntomas, atención, medicamento, notificación a padres, envío a casa, quién atendió). **Acceso restringido a `UserRole.ADMIN`** — es el único submódulo con `@Roles()`. Sin exportación a Excel. Ver "Tanda 3" abajo — es el módulo más sensible del sistema. |
 
 Todos los controllers llevan `JwtAuthGuard, RolesGuard, TenantGuard,
 ModuloAddonGuard('educativo')` — el guard estándar de add-on contratado
@@ -34,18 +36,6 @@ ModuloAddonGuard('educativo')` — el guard estándar de add-on contratado
 farmacia/restaurante/etc. Todos los endpoints de escritura tienen DTO con
 `class-validator` (antes eran `@Body() dto: any`, sin validación real pese al
 `ValidationPipe` global).
-
-## Qué no existe en absoluto (2 rutas, solo placeholder de frontend)
-
-Comedor y enfermería: sin entidad, sin migración, sin nada — solo una ruta de
-frontend con `EducativoPlaceholder`. Antes decía "— próximamente" en gris
-chico (se veía igual que una lista vacía); ahora dice explícito "Módulo no
-disponible" con `Result status="info"`.
-
-**Ninguno de estos 2 (comedor, enfermería) se construye en esta tarea** — eso
-espera a que haya un colegio interesado. Los otros 4 que compartían esta
-sección (disciplina, biblioteca, transporte, comunicados) se construyeron en
-la tanda 2 de septiembre 2026 — ver la tabla de arriba.
 
 ## Tanda 2 (septiembre 2026): disciplina, biblioteca, transporte, comunicados
 
@@ -82,6 +72,52 @@ la tanda 2 de septiembre 2026 — ver la tabla de arriba.
 
 Los 4 tienen su primera verificación e2e con Playwright del repo —
 `hi-cloud frontend-project/e2e/` no existía antes de esta tanda.
+
+## Tanda 3 (septiembre 2026): comedor, enfermería
+
+Los últimos 2 submódulos que existían solo como tabla (sin entidad, sin API).
+
+- **`CargosServicioService` (`common/cargos-servicio.service.ts`)** — motor
+  de cargos EXTRAÍDO de transporte y reusado tal cual por comedor: mismo
+  `generarCargos()`/`anularCargosFuturosSinPagar()`, mismo `generate_series`
+  en SQL para evitar el bug de `DataSource.query()` devolviendo columnas
+  `date` como objetos `Date` de JS (atrapado en transporte en la tanda 2, ver
+  arriba — comedor lo evitó desde el diseño al reusar el service ya
+  corregido, en vez de copiar la lógica). Transporte se refactorizó para
+  inyectar este service en vez de mantener su propia copia — un solo camino
+  para generar deuda del estudiante, no tres. Cada consumidor solo aporta su
+  propio `concepto` de trazabilidad (`transporte:ruta=X;asignacion=Y`,
+  `comedor:plan=X`) y su `tipo` (`'transporte'`/`'comedor'`) en `ed_cargos`.
+- **Comedor** — plan por estudiante, un plan activo a la vez (bloquea un
+  segundo plan activo con 400). Baja a mitad de año: mismo criterio que
+  transporte (anula solo cargos futuros sin pagar). Becas no aplican
+  (`ed_becas.aplicaA` no contempla `'comedor'`).
+- **Enfermería — el módulo más sensible del sistema.** Datos médicos de
+  menores. Decisión de acceso reportada y confirmada ANTES de implementar
+  (no hay rol "enfermería"/"dirección" propio en `UserRole` — dirección y
+  enfermería comparten hoy la cuenta admin): **`@Roles(UserRole.ADMIN)`** en
+  el controller, además del guard estándar del módulo — el único submódulo
+  de todo `educativo` con `@Roles()`. `super_admin` siempre pasa (comportamiento
+  estándar de `RolesGuard`). Un docente (rol `vendedor`/`viewer`/etc., no
+  `admin`) recibe 403 de la API y la ruta `/educativo/enfermeria` lo redirige
+  a `/dashboard` (`menuConfig.ts` → `PATH_ROLES`). La pestaña "Salud" del
+  expediente del estudiante (`EstudiantesPage.tsx`) ni se monta en el DOM
+  para un rol no admin — no es un estilo oculto, el item del array de tabs
+  no existe. Ningún método de `enfermeria.service.ts` pasa
+  `motivo`/`sintomas`/`atencionBrindada`/`medicamentoDado` a un logger, a un
+  mensaje de excepción ni a Sentry — solo el id numérico del registro,
+  mismo principio que disciplina en la tanda 2. Alergias/condiciones médicas
+  ya existentes en `ed_estudiantes` se muestran como contexto al registrar
+  una visita (`GET .../contexto-medico`) — no se duplican. Sin exportación a
+  Excel: si alguien necesita el dato, lo ve en pantalla.
+- **Base de pruebas local:** el swap de `.env` a `hicloud_test` (ver sección
+  de este README más abajo) ahora tiene sus credenciales guardadas en
+  `.env.test.local` (gitignorado) para no perderlas entre sesiones.
+
+Verificado con Playwright contra `hicloud_test`, igual que la tanda 2
+(`e2e/comedor.spec.ts`, `e2e/enfermeria.spec.ts`) — incluyendo el bloqueo de
+acceso de un docente a enfermería, tanto por API directa (403) como por
+ruta (redirect) y por ausencia de la pestaña Salud en el DOM.
 
 ## Boletines
 

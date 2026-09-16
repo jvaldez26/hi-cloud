@@ -11,6 +11,7 @@ import {
 import api from '../../api/client';
 import dayjs from 'dayjs';
 import { TIPO_OPTS as DISCIPLINA_TIPO_OPTS, ESTADO_OPTS as DISCIPLINA_ESTADO_OPTS } from './DisciplinaPage';
+import { useAuthStore } from '../../store/auth.store';
 
 const DISCIPLINA_TIPO_COLOR: Record<string, string> = {
   leve: 'blue', moderado: 'gold', grave: 'volcano', muy_grave: 'red',
@@ -218,11 +219,44 @@ function DisciplinaTab({ estudianteId }: { estudianteId: number }) {
   );
 }
 
+// ── Historial de enfermería (dentro del expediente) ─────────────────────────
+// Solo se monta si el rol actual es admin — la pestaña ni siquiera aparece
+// para un docente (ver items condicionales en PerfilDrawer). El backend
+// vuelve a exigir @Roles(UserRole.ADMIN) como segunda línea de defensa.
+
+function SaludTab({ estudianteId }: { estudianteId: number }) {
+  const { data = [], isLoading } = useQuery<any[]>({
+    queryKey: ['educativo', 'enfermeria', 'estudiante', estudianteId],
+    queryFn: () => api.get(`/educativo/enfermeria/estudiante/${estudianteId}`).then(r => r.data?.data ?? r.data ?? []),
+  });
+
+  if (!isLoading && data.length === 0) return <Empty description="Sin visitas a enfermería registradas" />;
+
+  return (
+    <Table
+      dataSource={data}
+      rowKey="id"
+      size="small"
+      loading={isLoading}
+      pagination={{ pageSize: 10 }}
+      columns={[
+        { title: 'Fecha', dataIndex: 'fecha', width: 140, render: (v: any) => v ? new Date(v).toLocaleString('es-DO') : '—' },
+        { title: 'Motivo', dataIndex: 'motivo', ellipsis: true },
+        { title: 'Medicamento', dataIndex: 'medicamentoDado', render: (v: any) => v ?? '—' },
+        { title: 'Padres', dataIndex: 'padresNotificados', width: 80, align: 'center', render: (v: boolean) => v ? <Tag color="green">Sí</Tag> : <Tag>No</Tag> },
+        { title: 'Enviado a casa', dataIndex: 'enviadoCasa', width: 110, align: 'center', render: (v: boolean) => v ? <Tag color="orange">Sí</Tag> : <Tag>No</Tag> },
+      ]}
+    />
+  );
+}
+
 // ── Perfil 360° drawer ───────────────────────────────────────────────────────
 
 function PerfilDrawer({ id, onEdit }: { id: number | null; onEdit: (est: any) => void }) {
   const qc = useQueryClient();
   const [addTutorOpen, setAddTutorOpen] = useState(false);
+  const rol = useAuthStore(s => s.user?.role);
+  const esAdmin = rol === 'admin' || rol === 'super_admin';
 
   const { data, isLoading } = useQuery<any>({
     queryKey: QK(id),
@@ -317,6 +351,13 @@ function PerfilDrawer({ id, onEdit }: { id: number | null; onEdit: (est: any) =>
                 label: 'Disciplina',
                 children: <DisciplinaTab estudianteId={id} />,
               },
+              // La pestaña Salud ni siquiera se monta para un docente —
+              // no es solo un estilo oculto, el item no existe en el array.
+              esAdmin && {
+                key: 'salud',
+                label: 'Salud',
+                children: <SaludTab estudianteId={id} />,
+              },
               {
                 key: 'matriculas',
                 label: `Matrículas (${data.matriculas?.length ?? 0})`,
@@ -336,7 +377,7 @@ function PerfilDrawer({ id, onEdit }: { id: number | null; onEdit: (est: any) =>
                   />
                 ),
               },
-            ]}
+            ].filter(Boolean) as any}
           />
         )}
       </Drawer>
