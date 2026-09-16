@@ -14,6 +14,7 @@ import {
   resolverConfigTicket, generarQrTicket, QR_LADO_MM,
   type ConfigTicket,
 } from '../../utils/configTicket';
+import { normalizarNcf, esNcfCompleto } from '../../utils/ncf';
 import { buildReciboTermicoHTML } from '../../utils/ticketTermico';
 import { useRncLookup } from '../../hooks/useRncLookup';
 import QRCode from 'qrcode';
@@ -6702,6 +6703,8 @@ function POSGastosLista({ C }: { C: Palette }) {
   const [busq,             setBusq]             = useState('');
   const [imprimiendo,      setImprimiendo]      = useState<number|null>(null);
   const [tieneComprobante, setTieneComprobante] = useState(false);
+  // Si el usuario desmarca el 606 a mano, no se vuelve a marcar solo mientras el modal siga abierto.
+  const auto606Desactivado = useRef(false);
   const [f, setF] = useState({
     fecha: dayjs().format('YYYY-MM-DD'),
     categoria: '', descripcion: '', monto: '',
@@ -6817,7 +6820,7 @@ function POSGastosLista({ C }: { C: Palette }) {
       qc.invalidateQueries({ queryKey: ['gastos'] });
       refetch();
       setShowForm(false);
-      setTieneComprobante(false);
+      setTieneComprobante(false); auto606Desactivado.current = false;
       rncGasto.limpiar();
       setF({ fecha: dayjs().format('YYYY-MM-DD'), categoria:'', descripcion:'', monto:'', itbis:'', proveedor:'', rncProveedor:'', comprobante:'', tipoBienes:'', formaPago:'', cajaDiariaId:'' });
     },
@@ -6825,6 +6828,16 @@ function POSGastosLista({ C }: { C: Palette }) {
   });
 
   const inp = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF(p => ({ ...p, [k]: e.target.value }));
+  // Marca/desmarca el 606 y arrastra los campos fiscales que dependen de él.
+  const cambiarTieneComprobante = (checked: boolean) => {
+    setTieneComprobante(checked);
+    if (checked) {
+      const sugerido = f.categoria ? POS_TIPO_BIENES_SUGERIDO[f.categoria] : undefined;
+      if (sugerido) setF(p => ({ ...p, tipoBienes: sugerido }));
+    } else {
+      setF(p => ({ ...p, tipoBienes: '', formaPago: '' }));
+    }
+  };
   const inputS: React.CSSProperties = { width:'100%', height:36, padding:'0 10px', borderRadius:8, border:`1px solid ${C.border}`, background:C.card, color:C.text, fontSize:13, outline:'none', boxSizing:'border-box' };
   const labelS: React.CSSProperties = { fontSize:11, fontWeight:700, color:C.textSub, display:'block', marginBottom:3 };
   const canSubmit = f.categoria && f.descripcion.trim() && Number(f.monto) > 0
@@ -6834,7 +6847,7 @@ function POSGastosLista({ C }: { C: Palette }) {
     <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
       <div style={{ padding:'10px 14px', borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
         <span style={{ fontWeight:700, color:C.text, fontSize:14, flex:1 }}>Gastos del día</span>
-        <button onClick={() => setShowForm(v => !v)}
+        <button onClick={() => { auto606Desactivado.current = false; setShowForm(v => !v); }}
           style={{ background: showForm ? C.border : C.green, border:'none', borderRadius:8,
             color: showForm ? C.text : '#fff', cursor:'pointer', padding:'6px 14px', fontSize:12, fontWeight:700 }}>
           {showForm ? 'Ver lista' : '+ Registrar gasto'}
@@ -6935,7 +6948,15 @@ function POSGastosLista({ C }: { C: Palette }) {
 
             <div style={{ marginBottom:10 }}>
               <span style={labelS}>{generaE43 ? 'Referencia' : 'No. Comprobante (NCF recibido)'}</span>
-              <input value={f.comprobante} onChange={inp('comprobante')}
+              <input value={f.comprobante}
+                onChange={e => {
+                  const v = generaE43 ? e.target.value : normalizarNcf(e.target.value);
+                  setF(p => ({ ...p, comprobante: v }));
+                  // NCF completo (11 o 13 caracteres) ⇒ el gasto va al 606: se marca solo.
+                  if (!generaE43 && !tieneComprobante && !auto606Desactivado.current && esNcfCompleto(v)) {
+                    cambiarTieneComprobante(true);
+                  }
+                }}
                 placeholder={generaE43 ? 'Referencia o número' : 'E310000000001 o referencia'}
                 style={inputS} />
             </div>
@@ -6949,11 +6970,8 @@ function POSGastosLista({ C }: { C: Palette }) {
                     checked={tieneComprobante}
                     onChange={e => {
                       const v = e.target.checked;
-                      setTieneComprobante(v);
-                      if (!v) setF(p => ({ ...p, tipoBienes:'', formaPago:'' }));
-                      else if (f.categoria && POS_TIPO_BIENES_SUGERIDO[f.categoria]) {
-                        setF(p => ({ ...p, tipoBienes: POS_TIPO_BIENES_SUGERIDO[f.categoria] }));
-                      }
+                      if (!v) auto606Desactivado.current = true;
+                      cambiarTieneComprobante(v);
                     }}
                     style={{ width:16, height:16, accentColor:'#1677ff', cursor:'pointer' }}
                   />
