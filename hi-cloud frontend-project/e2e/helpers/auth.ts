@@ -22,4 +22,14 @@ export async function login(page: Page, identificador: string, password: string)
   }
 
   await expect(page).toHaveURL(/\/dashboard|\/$/, { timeout: 10_000 });
+
+  // Tour de bienvenida ("¡Bienvenido a HiCloud ERP!") — aparece para
+  // cualquier usuario con tourCompletado=false (ej. docente.test, que nunca
+  // lo completó) y bloquea toda la pantalla con su mask. Sin esto, un test
+  // que navegue justo después del login puede chocar con el modal en medio
+  // de su animación de entrada.
+  const saltarTour = page.getByText('Saltar tour');
+  if (await saltarTour.isVisible({ timeout: 2_000 }).catch(() => false)) {
+    await saltarTour.click();
+  }
 }

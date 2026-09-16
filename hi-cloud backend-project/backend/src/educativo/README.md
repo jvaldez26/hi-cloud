@@ -8,7 +8,7 @@ falta "retomar el desarrollo" para dejarlo seguro. Este documento existe para
 que la próxima persona que lo abra no tenga que rehacer el inventario forense
 de septiembre 2026.
 
-## Qué funciona (16 submódulos, controller + service + rutas + guard)
+## Qué funciona (17 submódulos, controller + service + rutas + guard)
 
 | Submódulo | Archivo | Notas |
 |---|---|---|
@@ -29,6 +29,7 @@ de septiembre 2026.
 | Comunicados | `comunicados/` | CRUD, destinatario todos/grado/sección/individual (`ed_comunicados.estudianteId`, migración `1763600000000`). `enviarWhatsapp`/`enviarEmail` se guardan pero no disparan nada — el envío real queda para cuando exista una integración real (ver "Comunicados" abajo). |
 | Comedor | `comedor/` | Plan por estudiante (tipo diario/semanal/mensual, costo mensual, restricciones alimenticias). Genera cargos por el mismo motor que transporte/colegiatura (`ed_cargos`, tipo='comedor') — ver "Tanda 3" abajo. Becas no aplican. |
 | Enfermería | `enfermeria/` | Registro de visitas (motivo, síntomas, atención, medicamento, notificación a padres, envío a casa, quién atendió). **Acceso restringido a `UserRole.ADMIN`** — es el único submódulo con `@Roles()`. Sin exportación a Excel. Ver "Tanda 3" abajo — es el módulo más sensible del sistema. |
+| Reportes | `reportes/` | Los 14 reportes del plan original — solo lectura, sin entidad propia. Ver "Tanda 4" abajo. |
 
 Todos los controllers llevan `JwtAuthGuard, RolesGuard, TenantGuard,
 ModuloAddonGuard('educativo')` — el guard estándar de add-on contratado
@@ -118,6 +119,100 @@ Verificado con Playwright contra `hicloud_test`, igual que la tanda 2
 (`e2e/comedor.spec.ts`, `e2e/enfermeria.spec.ts`) — incluyendo el bloqueo de
 acceso de un docente a enfermería, tanto por API directa (403) como por
 ruta (redirect) y por ausencia de la pestaña Salud en el DOM.
+
+## Tanda 4 (septiembre 2026): los 14 reportes del plan original
+
+Último bloque pendiente del módulo. Todos en `reportes/` (controller +
+service + un DTO de filtros compartido) — sin entidad ni migración propia,
+son vistas agregadas de solo lectura sobre tablas que ya existen. Mismo
+guard estándar del módulo en el controller; ninguno usa `Repository` ni
+QueryBuilder, todo `DataSource.query()` con `empresaId` siempre primero en
+el `WHERE` — la causa de los 26 bugs de este módulo en la auditoría del
+2026-09-06 fue exactamente identificadores de tabla escritos a mano sin
+verificar, así que cada tabla usada aquí se confirmó contra su entidad real
+antes de escribir la consulta (`security-check.sh` también lo barre en CI).
+
+- **Cartera de colegiatura y morosidad por grado (1-2)** — el más delicado
+  de cuadrar: `carteraColegiatura()` llama literalmente a
+  `ColegiaturaService.resumenFinanciero()`, el mismo método que
+  `GET educativo/colegiatura/resumen` (la pantalla de Colegiatura). Si este
+  reporte recalculara "vencido" con su propio criterio, el número no
+  cuadraría con lo que el colegio ya ve en pantalla — se reusa tal cual, sin
+  reimplementar. El desglose por estudiante y la morosidad por grado usan la
+  MISMA definición de vencido copiada de ese método
+  (`estado IN ('vencido','parcial') OR (estado='pendiente' AND
+  fechaVencimiento < CURRENT_DATE)`), nunca una propia.
+- **Rendimiento académico, estudiantes en riesgo, cuadro de honor (4-6)** —
+  los tres leen `ed_notas_periodo` (la tabla que `BoletinesService.
+  calcularNotasPeriodo()` ya consolida y que los boletines reales muestran),
+  nunca recalculan desde `ed_calificaciones` por su cuenta. El umbral de
+  "riesgo" es `ed_config.notaMinimaAprobar` (el que el colegio ya configuró
+  para aprobar/reprobar, no un número inventado aquí) — override opcional
+  por query param.
+- **Asistencia por grado y exceso de ausencias (7-8)** — sobre
+  `ed_asistencia`, mismos estados que `academico.service.ts` usa
+  (`presente/ausente/tardanza/justificado`). El umbral de "exceso" es un
+  parámetro (`umbral`, default 5), no una política fija en código.
+- **Matrícula y crecimiento, retención (9, 12)** — comparan
+  `ed_anios_escolares` consecutivos por `fechaInicio`. Retención devuelve
+  también el listado de estudiantes NO retenidos (no solo el %) porque es
+  el dato que el colegio realmente puede accionar.
+- **Incidentes disciplinarios por tipo (10)** — el único reporte con
+  restricción por rol: reusa el mismo mecanismo de `disciplina.service.ts`
+  (vínculo `ed_docentes.usuarioId` → `ed_asignaciones_docente`) — un docente
+  ve solo el conteo de sus propias secciones, nunca el total del colegio.
+  La página `/educativo/reportes` completa ya estaba restringida a
+  admin/contador desde antes (`menuConfig.ts` → `PATH_ROLES`, preexistente)
+  — un docente (rol `vendedor` en este sistema, no hay rol "docente" propio)
+  no llega a la pantalla en absoluto; el filtro por sección se verificó
+  contra el endpoint directamente, autenticado como ese usuario.
+- **Ingresos por concepto (11)** — `ed_pagos` con un `LEFT JOIN` a
+  `ed_cargos` para leer `tipo` (colegiatura/transporte/comedor/matrícula) —
+  el mismo join que `listPagos()` ya usa en colegiatura, no uno nuevo.
+- **Becas otorgadas (13)** — el listado sale de `ed_estudiante_becas`; el
+  monto total otorgado NO se recalcula (una beca puede ser % o monto fijo,
+  no hay un "total" único sin contexto) — se lee de
+  `ed_cargos.concepto` (`beca:<id>:<monto>`), el mismo formato que
+  `ColegiaturaService.calcularDescuento()` ya escribe en cada cargo real.
+  Es el monto que efectivamente se descontó, no una proyección aparte.
+- **Productividad docente (14)** — a propósito SOLO carga: secciones,
+  asignaturas y estudiantes por docente (`ed_asignaciones_docente` +
+  `ed_matriculas`). Ninguna métrica de desempeño (promedio de sus
+  estudiantes, % de aprobación, etc.) — no es una evaluación docente, la
+  tarea lo pidió explícito.
+- **Enfermería no tiene reporte** — ninguno de los 14 lo pide, a propósito
+  no se agregó uno.
+
+Exportación a Excel: mismo mecanismo 100% frontend que el resto del ERP
+(`utils/exportExcel.ts`, cliente arma el `.xlsx` del array ya cargado) — los
+endpoints solo devuelven JSON, no hay ruta de exportación en el backend.
+Un solo componente de página (`EducativoReportesPage`, calcado de
+`generador-reportes/GeneradorReportesPage.tsx`, el único patrón existente en
+el ERP que combina selector de reporte + filtros + tabla + export real a
+Excel) con un selector de `Tag`s para los 14 en vez de `Tabs` — a esa
+cantidad, pestañas horizontales dejan de ser manejables.
+
+**De paso, en esta misma tanda:** se corrigió `e2e/comunicados.spec.ts`
+(pedido explícito del usuario, en su propio commit) — un flake real de
+timing de esta máquina de verificación (el `click` de un Select de antd a
+veces no llegaba a abrir el dropdown a tiempo, confirmado registrando el
+elemento real bajo el punto de click en corridas repetidas), no un bug de
+la app. El helper `selectAntOption`, duplicado idéntico en 6 specs, se
+extrajo a `e2e/helpers/antd.ts` con reintento acotado (15s) en vez de un
+solo intento que colgaba el test entero. También se encontró y corrigió un
+bug real reportado en vivo por el usuario: un modal de edición con un campo
+disabled (`estudianteId` en Disciplina, `pacienteId`/`medicoId` en una
+consulta de Clínica) seguía viajando en el PATCH pese a estar deshabilitado
+— `disabled` no desregistra el campo del form — y el Update DTO
+correspondiente lo rechazaba con 400 `forbidNonWhitelisted`. Ver el commit
+`fix: campos disabled/faltantes se filtran de los PATCH de edición`.
+
+Verificado con Playwright contra `hicloud_test` (`e2e/reportes.spec.ts`,
+7 tests) con datos sembrados a propósito para que ningún reporte salga
+vacío: un año escolar anterior cerrado (crecimiento/retención), notas bajas
+y altas (riesgo/honor), ausencias reales (exceso), pagos de colegiatura +
+transporte + comedor (ingresos por concepto), y el filtro por sección del
+reporte de disciplina verificado contra el usuario docente de prueba.
 
 ## Boletines
 

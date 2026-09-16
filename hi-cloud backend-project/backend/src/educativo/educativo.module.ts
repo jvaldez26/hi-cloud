@@ -66,6 +66,8 @@ import { ComedorService }        from './comedor/comedor.service';
 import { ComedorController }     from './comedor/comedor.controller';
 import { EnfermeriaService }     from './enfermeria/enfermeria.service';
 import { EnfermeriaController }  from './enfermeria/enfermeria.controller';
+import { EdReportesService }     from './reportes/reportes.service';
+import { EdReportesController }  from './reportes/reportes.controller';
 
 @Module({
   imports: [
@@ -100,6 +102,7 @@ import { EnfermeriaController }  from './enfermeria/enfermeria.controller';
     ComunicadosController,
     ComedorController,
     EnfermeriaController,
+    EdReportesController,
   ],
   providers: [
     EdConfigService,
@@ -121,6 +124,7 @@ import { EnfermeriaController }  from './enfermeria/enfermeria.controller';
     CargosServicioService,
     ComedorService,
     EnfermeriaService,
+    EdReportesService,
   ],
   exports: [EdConfigService, EstructuraService],
 })
