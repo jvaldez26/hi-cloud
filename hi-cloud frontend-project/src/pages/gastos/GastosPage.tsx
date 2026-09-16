@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRncLookup } from '../../hooks/useRncLookup';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
@@ -10,6 +10,7 @@ import { Table, Button, Card, Row, Col, Typography, Statistic, Tag,
          Tabs, Popconfirm, Space, Alert, theme, Checkbox } from 'antd';
 import { PlusOutlined, DeleteOutlined, FileExcelOutlined, AuditOutlined, PrinterOutlined, LoadingOutlined, SearchOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { SolicitarAprobacionModal } from '../../components/ui/SolicitarAprobacionModal';
+import { normalizarNcf, esNcfCompleto } from '../../utils/ncf';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -97,6 +98,8 @@ export default function GastosPage() {
   const [catFilt,    setCatFilt]    = useState<string | undefined>();
   const [open,             setOpen]             = useState(false);
   const [tieneComprobante, setTieneComprobante] = useState(false);
+  // Si el usuario desmarca el 606 a mano, no se vuelve a marcar solo mientras el modal siga abierto.
+  const auto606Desactivado = useRef(false);
   const [ecfEncf,          setEcfEncf]          = useState<string | null>(null);
   const [detalleGasto,     setDetalleGasto]     = useState<any>(null);
   const [pdfPending,       setPdfPending]       = useState<number | null>(null);
@@ -113,12 +116,23 @@ export default function GastosPage() {
   const categoriaInfo   = (categorias as any[])?.find((c: any) => c.value === categoriaWatch);
   const generaE43       = categoriaInfo?.generaE43 === true;
 
+  // Marca/desmarca el 606 y arrastra los campos fiscales que dependen de él.
+  const cambiarTieneComprobante = (checked: boolean) => {
+    setTieneComprobante(checked);
+    if (checked) {
+      const sugerido = categoriaWatch ? CATEGORIA_TIPO_BIENES_SUGERIDO[categoriaWatch] : undefined;
+      if (sugerido) form.setFieldsValue({ tipoBienes: sugerido });
+    } else {
+      form.setFieldsValue({ tipoBienes: undefined, formaPago: undefined, cajaDiariaId: undefined });
+    }
+  };
+
   // Al cambiar a categoría E43, quitar el checkbox de comprobante
   // Al cambiar a otra categoría, sugerir tipoBienes según el mapeo
   const handleCategoriaChange = (value: string) => {
     const info = (categorias as any[])?.find((c: any) => c.value === value);
     if (info?.generaE43) {
-      setTieneComprobante(false);
+      setTieneComprobante(false); auto606Desactivado.current = false;
       form.setFieldsValue({ tipoBienes: undefined, formaPago: undefined });
     } else {
       const sugerido = CATEGORIA_TIPO_BIENES_SUGERIDO[value];
@@ -164,7 +178,7 @@ export default function GastosPage() {
       qc.invalidateQueries({ queryKey: ['gasto-res'] });
       setOpen(false);
       form.resetFields();
-      setTieneComprobante(false);
+      setTieneComprobante(false); auto606Desactivado.current = false;
       rncGasto.limpiar();
       const esE43 = (categorias as any[])?.find((c: any) => c.value === vars.categoria)?.generaE43;
       message.success(esE43
@@ -305,7 +319,7 @@ export default function GastosPage() {
             <Select value={mes} onChange={setMes} style={{ width: 130 }} options={MESES} />
             <Select value={anio} onChange={setAnio} style={{ width: 100 }}
               options={[2024, 2025, 2026].map(y => ({ value: y, label: y }))} />
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => { setOpen(true); form.resetFields(); setTieneComprobante(false); }}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => { setOpen(true); form.resetFields(); setTieneComprobante(false); auto606Desactivado.current = false; }}>
               Registrar gasto
             </Button>
           </Space>
@@ -441,7 +455,7 @@ export default function GastosPage() {
       <Modal
         title="Registrar Gasto"
         open={open}
-        onCancel={() => { setOpen(false); form.resetFields(); setTieneComprobante(false); rncGasto.limpiar(); }}
+        onCancel={() => { setOpen(false); form.resetFields(); setTieneComprobante(false); auto606Desactivado.current = false; rncGasto.limpiar(); }}
         footer={null}
         width={620}
       >
@@ -586,8 +600,17 @@ export default function GastosPage() {
               name="comprobante"
               label={tieneComprobante ? 'No. Comprobante (NCF) *' : 'No. Comprobante (NCF recibido)'}
               rules={tieneComprobante ? [{ required: true, message: 'NCF obligatorio cuando tiene comprobante' }] : []}
+              getValueFromEvent={e => normalizarNcf(e.target.value)}
             >
-              <Input placeholder="E310000000001" />
+              <Input
+                placeholder="E310000000001"
+                onChange={e => {
+                  // NCF completo (11 o 13 caracteres) ⇒ el gasto va al 606: se marca solo.
+                  if (!tieneComprobante && !auto606Desactivado.current && esNcfCompleto(e.target.value)) {
+                    cambiarTieneComprobante(true);
+                  }
+                }}
+              />
             </Form.Item>
           )}
 
@@ -599,14 +622,8 @@ export default function GastosPage() {
                   checked={tieneComprobante}
                   onChange={e => {
                     const checked = e.target.checked;
-                    setTieneComprobante(checked);
-                    if (checked && categoriaWatch) {
-                      const sugerido = CATEGORIA_TIPO_BIENES_SUGERIDO[categoriaWatch];
-                      if (sugerido) form.setFieldsValue({ tipoBienes: sugerido });
-                    }
-                    if (!checked) {
-                      form.setFieldsValue({ tipoBienes: undefined, formaPago: undefined, cajaDiariaId: undefined });
-                    }
+                    if (!checked) auto606Desactivado.current = true;
+                    cambiarTieneComprobante(checked);
                   }}
                 >
                   <span style={{ fontSize: 13, fontWeight: 500 }}>
@@ -670,7 +687,7 @@ export default function GastosPage() {
           )}
 
           <Row justify="end" gutter={8} style={{ marginTop: 4 }}>
-            <Col><Button onClick={() => { setOpen(false); form.resetFields(); setTieneComprobante(false); rncGasto.limpiar(); }}>Cancelar</Button></Col>
+            <Col><Button onClick={() => { setOpen(false); form.resetFields(); setTieneComprobante(false); auto606Desactivado.current = false; rncGasto.limpiar(); }}>Cancelar</Button></Col>
             <Col>
               <Button
                 type="primary"
