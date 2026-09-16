@@ -1,5 +1,6 @@
 import { test, expect, Page } from '@playwright/test';
 import { login } from './helpers/auth';
+import { modalOkButton, selectAntOption } from './helpers/antd';
 
 /**
  * Verificación contra hicloud_test (empresa #1). Año escolar activo
@@ -10,15 +11,6 @@ import { login } from './helpers/auth';
 
 const ADMIN = { email: 'admin@hicloud.com', password: 'Admin1234' };
 const RUTA = `Ruta Norte Playwright ${Date.now()}`;
-
-function modalOkButton(page: Page) {
-  return page.locator('.ant-modal-footer button.ant-btn-primary').last();
-}
-async function selectAntOption(page: Page, id: string, texto: string) {
-  await page.locator(`#${id}`).click({ force: true });
-  const dropdown = page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)').last();
-  await dropdown.getByText(texto, { exact: true }).click();
-}
 
 test.describe.serial('Transporte', () => {
   test('crea una ruta con capacidad 1, asigna un estudiante y genera sus cargos', async ({ page }) => {

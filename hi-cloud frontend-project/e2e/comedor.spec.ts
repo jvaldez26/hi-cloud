@@ -1,18 +1,10 @@
-import { test, expect, Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { login } from './helpers/auth';
+import { modalOkButton, selectAntOption } from './helpers/antd';
 
 /** Verificación contra hicloud_test (empresa #1). Año escolar activo id=1, esActual=true. */
 
 const ADMIN = { email: 'admin@hicloud.com', password: 'Admin1234' };
-
-function modalOkButton(page: Page) {
-  return page.locator('.ant-modal-footer button.ant-btn-primary').last();
-}
-async function selectAntOption(page: Page, id: string, texto: string) {
-  await page.locator(`#${id}`).click({ force: true });
-  const dropdown = page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)').last();
-  await dropdown.getByText(texto, { exact: true }).click();
-}
 
 test.describe.serial('Comedor', () => {
   test('crea un plan mensual, genera cargos, bloquea un segundo plan activo y da de baja', async ({ page }) => {

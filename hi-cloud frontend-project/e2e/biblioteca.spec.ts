@@ -1,5 +1,6 @@
 import { test, expect, Page } from '@playwright/test';
 import { login } from './helpers/auth';
+import { modalOkButton, modalCancelButton, selectAntOption } from './helpers/antd';
 
 /**
  * Verificación contra hicloud_test (empresa #1). Datos base sembrados a
@@ -14,19 +15,6 @@ import { login } from './helpers/auth';
 const ADMIN = { email: 'admin@hicloud.com', password: 'Admin1234' };
 const TITULO_NUEVO = 'El Quijote - Playwright tanda 2';
 
-function modalOkButton(page: Page) {
-  return page.locator('.ant-modal-footer button.ant-btn-primary').last();
-}
-function modalCancelButton(page: Page) {
-  return page.locator('.ant-modal-footer button.ant-btn-default').last();
-}
-async function selectAntOption(page: Page, id: string, texto: string) {
-  // force:true — en un Select ya con valor, el <span> del item seleccionado
-  // queda encima del input real y bloquea el click "normal" de Playwright.
-  await page.locator(`#${id}`).click({ force: true });
-  const dropdown = page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)').last();
-  await dropdown.getByText(texto, { exact: true }).click();
-}
 /** Lee el id de un libro por título consultando la API con la sesión ya autenticada de la página. */
 async function libroIdPorTitulo(page: Page, titulo: string): Promise<number> {
   const resp = await page.request.get(`/api/v1/educativo/biblioteca/libros?q=${encodeURIComponent(titulo)}`);

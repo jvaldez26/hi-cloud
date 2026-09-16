@@ -1,5 +1,6 @@
-import { test, expect, Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { login } from './helpers/auth';
+import { modalOkButton, selectAntOption } from './helpers/antd';
 
 /**
  * Verificación contra hicloud_test (empresa #1, "HiCloud Demo", módulo
@@ -18,18 +19,6 @@ const ADMIN = { email: 'admin@hicloud.com', password: 'Admin1234' };
 const DOCENTE = { email: 'docente.test@hicloud.com', password: 'Docente1234!' };
 
 const DESCRIPCION_NUEVA = 'Interrumpio la clase repetidamente - verificacion Playwright tanda 2';
-
-/** Antd Select: abre el trigger por id y elige la opción por texto exacto dentro del dropdown visible. */
-async function selectAntOption(page: Page, id: string, texto: string) {
-  await page.locator(`#${id}`).click();
-  const dropdown = page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)').last();
-  await dropdown.getByText(texto, { exact: true }).click();
-}
-
-/** Botón primario del footer del Modal actualmente abierto (evita depender del texto traducido "OK"/"Aceptar"). */
-function modalOkButton(page: Page) {
-  return page.locator('.ant-modal-footer button.ant-btn-primary').last();
-}
 
 test.describe('Disciplina — admin', () => {
   test('crea un incidente en sección A, lo marca notificado y aparece en el expediente del estudiante', async ({ page }) => {
