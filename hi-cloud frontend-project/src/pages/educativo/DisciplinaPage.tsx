@@ -61,6 +61,10 @@ function IncidenteModal({ open, editing, onClose }: { open: boolean; editing?: a
 
   const onOk = () => form.validateFields().then(vals => {
     if (vals.fecha) vals.fecha = vals.fecha.format('YYYY-MM-DD');
+    // El estudiante viaja en el form (el Select solo está disabled, no
+    // desregistrado) pero UpdateDisciplinaDto no lo acepta a propósito —
+    // un incidente no se reasigna de estudiante al editarlo.
+    if (editing) delete vals.estudianteId;
     mut.mutate(vals);
   });
 

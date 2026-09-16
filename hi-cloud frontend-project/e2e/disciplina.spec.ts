@@ -49,6 +49,19 @@ test.describe('Disciplina — admin', () => {
     await expect(fila).toBeVisible();
     await expect(fila.getByText('Grave')).toBeVisible();
 
+    // ── Editar el incidente recién creado ────────────────────────────────
+    // Regresión: el Select de estudiante queda disabled al editar pero
+    // sigue registrado en el form (disabled no lo desregistra) — su valor
+    // viajaba en el PATCH y UpdateDisciplinaDto lo rechazaba con 400
+    // "property estudianteId should not exist" (igual con "fecha", que
+    // faltaba del todo en el DTO). Nunca se probó editar hasta ahora.
+    await fila.locator('button').first().click();
+    await expect(page.locator('#descripcion')).toHaveValue(DESCRIPCION_NUEVA);
+    await page.locator('#medidaTomada').fill('Medida editada — verificacion Playwright tanda 4');
+    await modalOkButton(page).click();
+    await expect(page.getByText('Guardado').last()).toBeVisible();
+    await expect(fila).toBeVisible(); // sigue siendo la misma fila (estudiante/tipo no cambiaron)
+
     // ── Marcar padres notificados ────────────────────────────────────────
     await fila.locator('button').last().click(); // botón campana: último de la fila de acciones
     await page.locator('.ant-popconfirm-buttons button.ant-btn-primary').click();

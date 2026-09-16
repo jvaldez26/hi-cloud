@@ -159,7 +159,7 @@ export class DisciplinaService {
       if (!sec) throw new NotFoundException('Sección no encontrada');
     }
 
-    const FIELDS = ['seccionId', 'tipo', 'categoria', 'descripcion', 'medidaTomada', 'seguimiento', 'estado'];
+    const FIELDS = ['fecha', 'seccionId', 'tipo', 'categoria', 'descripcion', 'medidaTomada', 'seguimiento', 'estado'];
     const fields = FIELDS.filter(f => dto[f] !== undefined);
     if (!fields.length) return existing;
     const sets = fields.map((f, i) => `"${f}" = $${i + 3}`).join(', ');

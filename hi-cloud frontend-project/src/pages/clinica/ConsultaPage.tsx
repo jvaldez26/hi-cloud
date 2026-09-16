@@ -80,7 +80,20 @@ export default function ConsultaPage() {
 
   const onGuardar = () => {
     form.validateFields().then(vals => {
-      const data = { ...vals, imc: calcImc(vals.peso, vals.talla) };
+      // El backend calcula y guarda el imc solo a partir de peso/talla — no
+      // lo acepta como campo de entrada (ni CreateConsultaDto ni
+      // UpdateConsultaDto lo declaran); mandarlo revienta con
+      // "property imc should not exist" (forbidNonWhitelisted). El estado
+      // local `imc` es solo para el Alert en pantalla.
+      const data = { ...vals };
+      if (consultaId) {
+        // pacienteId/medicoId están disabled en edición pero siguen
+        // registrados en el form (disabled no los desregistra) — no se
+        // puede reasignar el paciente/médico de una consulta ya creada, y
+        // UpdateConsultaDto tampoco los acepta.
+        delete data.pacienteId;
+        delete data.medicoId;
+      }
       consultaId ? actualizar.mutate(data) : crear.mutate(data);
     });
   };

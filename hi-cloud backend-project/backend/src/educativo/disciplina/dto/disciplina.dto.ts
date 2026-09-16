@@ -53,6 +53,10 @@ export class CreateDisciplinaDto {
 
 export class UpdateDisciplinaDto {
   @IsOptional()
+  @IsDateString({}, { message: 'La fecha debe ser válida (YYYY-MM-DD)' })
+  fecha?: string;
+
+  @IsOptional()
   @IsInt({ message: 'La sección debe ser un identificador numérico' })
   seccionId?: number;
 
