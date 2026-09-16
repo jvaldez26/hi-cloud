@@ -3925,7 +3925,7 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
         ))}
       </div>
 
-      {subView === 'cxp' && <POSCxPSubView C={C} esAdminCxP={esAdminCxP} />}
+      {subView === 'cxp' && <POSCxPSubView C={C} esAdminCxP={esAdminCxP} onVerOC={setDetailOCId} />}
 
       {subView === 'ordenes' && (<>
       {/* Filtros */}
@@ -4380,7 +4380,11 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
 }
 
 // ── Sub-vista CxP (dentro de POSComprasPanel) ────────────────────────────────
-function POSCxPSubView({ C, esAdminCxP }: { C: Palette; esAdminCxP: boolean }) {
+function POSCxPSubView({ C, esAdminCxP, onVerOC }: {
+  C: Palette; esAdminCxP: boolean;
+  /** Abre la orden de compra en el mismo modal que el botón "Ver" de la pestaña Órdenes. */
+  onVerOC?: (id: number) => void;
+}) {
   const qc = useQueryClient();
 
   const [busq,           setBusq]           = useState('');
@@ -4416,8 +4420,11 @@ function POSCxPSubView({ C, esAdminCxP }: { C: Palette; esAdminCxP: boolean }) {
   const cxps: any[] = (Array.isArray(rawCxp) ? rawCxp : []).filter((cx: any) => {
     if (!busq) return true;
     const q = busq.toLowerCase();
+    // El proveedor viene en la CxP; compra.proveedor no siempre se carga.
+    const prov = cx.proveedor ?? cx.compra?.proveedor;
     return (
-      cx.compra?.proveedor?.nombre?.toLowerCase().includes(q) ||
+      prov?.nombre?.toLowerCase().includes(q) ||
+      prov?.rnc?.toLowerCase().includes(q) ||
       cx.compra?.folio?.toLowerCase().includes(q)
     );
   });
@@ -4480,7 +4487,7 @@ function POSCxPSubView({ C, esAdminCxP }: { C: Palette; esAdminCxP: boolean }) {
           <SearchOutlined style={{ position: 'absolute', left: 10, top: '50%',
             transform: 'translateY(-50%)', color: C.textSub, fontSize: 12 }} />
           <input value={busq} onChange={e => setBusq(e.target.value)}
-            placeholder="Buscar proveedor o N°..."
+            placeholder="Buscar proveedor, RNC o N°..."
             style={{ width: '100%', height: 34, paddingLeft: 28, background: C.card,
               border: `1px solid ${C.border}`, borderRadius: 8, color: C.text,
               fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
@@ -4524,12 +4531,23 @@ function POSCxPSubView({ C, esAdminCxP }: { C: Palette; esAdminCxP: boolean }) {
                   <tr key={cx.id} style={{ borderBottom: `1px solid ${C.border}`,
                     background: i % 2 === 0 ? 'transparent' : C.card }}>
                     <td style={{ padding: '7px 8px' }}>
-                      <div style={{ fontFamily: 'monospace', color: C.blue, fontSize: 11 }}>
-                        {cx.compra?.folio ?? `#${cx.id}`}
-                      </div>
+                      {cx.compra?.id && onVerOC ? (
+                        <button onClick={() => onVerOC(cx.compra.id)}
+                          title="Abrir la orden de compra"
+                          style={{ fontFamily: 'monospace', color: C.blue, fontSize: 11, padding: 0,
+                            background: 'none', border: 'none', cursor: 'pointer',
+                            textDecoration: 'underline', textUnderlineOffset: 2 }}>
+                          {cx.compra.folio ?? `#${cx.compra.id}`}
+                        </button>
+                      ) : (
+                        <div style={{ fontFamily: 'monospace', color: C.blue, fontSize: 11 }}>
+                          {cx.compra?.folio ?? `#${cx.id}`}
+                        </div>
+                      )}
                       <div style={{ color: C.text, fontWeight: 600, maxWidth: 110,
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11 }}>
-                        {cx.compra?.proveedor?.nombre ?? `Prov. #${cx.proveedorId}`}
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11 }}
+                        title={(cx.proveedor ?? cx.compra?.proveedor)?.nombre ?? undefined}>
+                        {(cx.proveedor ?? cx.compra?.proveedor)?.nombre ?? `Prov. #${cx.proveedorId}`}
                       </div>
                     </td>
                     <td style={{ padding: '7px 8px', fontFamily: 'monospace',
