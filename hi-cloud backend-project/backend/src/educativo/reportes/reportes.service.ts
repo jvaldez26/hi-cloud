@@ -363,7 +363,12 @@ export class EdReportesService {
   // ── 11. Ingresos por concepto (colegiatura, transporte, comedor) ─────────
 
   async ingresosPorConcepto(empresaId: number, opts: { desde?: string; hasta?: string } = {}) {
-    const conds = [`p."empresaId" = $1`];
+    // Un pago puede cubrir varios cargos (ed_pagos_detalle) — el total por
+    // concepto se suma sobre lo aplicado a cada cargo, no sobre el monto
+    // del pago completo (un pago que cubre colegiatura + transporte a la
+    // vez debe repartirse entre ambos conceptos). "activo" excluye pagos
+    // anulados, igual que dashboard.service.ts.
+    const conds = [`d."empresaId" = $1`, `p.estado = 'activo'`];
     const params: any[] = [empresaId];
     let idx = 2;
     if (opts.desde) { conds.push(`p.fecha >= $${idx}`); params.push(opts.desde); idx++; }
@@ -371,10 +376,11 @@ export class EdReportesService {
 
     return this.ds.query<any[]>(
       `SELECT COALESCE(c.tipo, 'otro') AS concepto,
-              COALESCE(SUM(p.monto), 0)::numeric AS total,
+              COALESCE(SUM(d.monto), 0)::numeric AS total,
               COUNT(*)::int AS cantidad
-       FROM ed_pagos p
-       LEFT JOIN ed_cargos c ON c.id = p."cargoId"
+       FROM ed_pagos_detalle d
+       JOIN ed_pagos p ON p.id = d."pagoId"
+       LEFT JOIN ed_cargos c ON c.id = d."cargoId"
        WHERE ${conds.join(' AND ')}
        GROUP BY COALESCE(c.tipo, 'otro')
        ORDER BY total DESC`,

@@ -2,7 +2,7 @@ import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards, ParseIntPi
 import { ColegiaturaService } from './colegiatura.service';
 import {
   UpsertPlanDto, GenerarCargosDto, GenerarMatriculaDto,
-  AddCargoDto, UpdateCargoDto, RegistrarPagoDto, CondonarMoraDto,
+  AddCargoDto, UpdateCargoDto, RegistrarPagoDto, CondonarMoraDto, AnularPagoDto,
 } from './dto/colegiatura.dto';
 import { JwtAuthGuard }     from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard }       from '../../auth/guards/roles.guard';
@@ -109,5 +109,14 @@ export class ColegiaturaController {
   @Post('pagos')
   registrarPago(@Body() dto: RegistrarPagoDto) {
     return this.svc.registrarPago(this.tenantSvc.getEmpresaId(), dto);
+  }
+
+  @Post('pagos/:id/anular')
+  anularPago(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AnularPagoDto,
+    @GetUser('id') usuarioId: number,
+  ) {
+    return this.svc.anularPago(this.tenantSvc.getEmpresaId(), id, dto, usuarioId);
   }
 }

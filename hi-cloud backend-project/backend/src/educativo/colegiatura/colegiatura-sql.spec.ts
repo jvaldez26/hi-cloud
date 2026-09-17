@@ -95,13 +95,34 @@ describe('SQL crudo de colegiatura.service.ts — creación de ed_cargos (modelo
     expect(b).not.toContain("'saldoPendiente'");
   });
 
-  it('registrarPago() usa FOR UPDATE y escribe montoPagado/saldoPendiente/estado en un único UPDATE', () => {
+  it('registrarPago() bloquea todos los cargos con FOR UPDATE en orden por id, antes de aplicar', () => {
     const b = bloque('async registrarPago(', 'async resumenFinanciero(');
     expect(b).toContain('FOR UPDATE');
+    expect(b).toMatch(/SELECT \* FROM ed_cargos WHERE id = ANY\(\$1\) AND "empresaId" = \$2 ORDER BY id FOR UPDATE/);
+  });
+
+  it('registrarPago() puede cubrir varios cargos (ed_pagos_detalle), no solo uno (cargoId/cargosAfectados eliminados)', () => {
+    const b = bloque('async registrarPago(', 'async resumenFinanciero(');
+    expect(b).toContain('INSERT INTO ed_pagos_detalle');
+    expect(b).not.toContain('"cargosAfectados"');
+    // El pago en sí ya no carga ninguna referencia directa a un cargo —
+    // la relación vive solo en ed_pagos_detalle (consultable con JOIN).
+    expect(b).not.toMatch(/INSERT INTO ed_pagos \([^)]*"cargoId"/);
+  });
+
+  it('recalcularCargoTrasPagos() resuma desde ed_pagos_detalle filtrando pagos activos, nunca resta a mano', () => {
+    const b = bloque('private async recalcularCargoTrasPagos(', 'async listPagos(');
+    expect(b).toContain("p.estado = 'activo'");
     expect(b).toMatch(/UPDATE ed_cargos SET "montoPagado" = \$1, "saldoPendiente" = \$2, estado = \$3/);
-    // ed_pagos."montoPagado" es NOT NULL desde la migración base — mismo
-    // patrón de columna gemela que montoOriginal en ed_cargos.
-    expect(b).toContain('"montoPagado",monto');
+  });
+
+  it('anularPago() nunca borra el pago — lo marca estado=\'anulado\' y devuelve el saldo a los cargos', () => {
+    const b = bloque('async anularPago(', 'async resumenFinanciero(');
+    expect(b).toContain("SET estado = 'anulado'");
+    expect(b).toContain('"motivoAnulacion"');
+    expect(b).not.toContain('DELETE FROM ed_pagos');
+    expect(b).toContain('FOR UPDATE');
+    expect(b).toContain('this.recalcularCargoTrasPagos(');
   });
 
   it('listPlanes()/resumenFinanciero() ya no usan c.monto (columna eliminada)', () => {
@@ -346,7 +367,74 @@ const TIENE_BD = !!process.env['DB_HOST'];
 
     const [c] = await dataSource.query(`SELECT * FROM ed_cargos WHERE id = $1`, [cargo.id]);
     expect(Number(c.montoPagado)).toBeCloseTo(550, 2);
-    const [{ n }] = await dataSource.query(`SELECT COUNT(*)::int AS n FROM ed_pagos WHERE "cargoId" = $1`, [cargo.id]);
+    const [{ n }] = await dataSource.query(`SELECT COUNT(*)::int AS n FROM ed_pagos_detalle WHERE "cargoId" = $1`, [cargo.id]);
     expect(n).toBe(2);
+  });
+
+  it('un pago que no alcanza ni para el cargo más antiguo lo deja "parcial" y no toca los demás', async () => {
+    const svc = new ColegiaturaService(dataSource, new BecasService(dataSource));
+    const plan = await svc.upsertPlan(EMPRESA, {
+      estudianteId, anioEscolarId: null, montoColegiatura: 1000, descuento: 0,
+    });
+    await svc.generarCargos(EMPRESA, plan.id, [1, 2], 2098);
+    const cargos = await dataSource.query(
+      `SELECT * FROM ed_cargos WHERE "planPagoId" = $1 AND mes IN (1,2) AND anio = 2098 ORDER BY mes`, [plan.id],
+    );
+    expect(cargos.length).toBe(2);
+
+    // Se manda el cargoIds en orden inverso (el más nuevo primero) a
+    // propósito — igual debe aplicarse al más antiguo (mes 1), nunca al
+    // orden en que el caller los listó.
+    await svc.registrarPago(EMPRESA, {
+      cargoIds: [cargos[1].id, cargos[0].id], monto: 300,
+    });
+
+    const [c1, c2] = await dataSource.query(
+      `SELECT * FROM ed_cargos WHERE id = ANY($1) ORDER BY mes`, [cargos.map((c: any) => c.id)],
+    );
+    expect(c1.estado).toBe('parcial');
+    expect(Number(c1.montoPagado)).toBeCloseTo(300, 2);
+    expect(Number(c1.saldoPendiente)).toBeCloseTo(700, 2);
+    // El más nuevo no recibió ni un centavo — nunca una fila de $0.
+    expect(c2.estado).toBe('pendiente');
+    expect(Number(c2.montoPagado)).toBe(0);
+    const [{ n }] = await dataSource.query(`SELECT COUNT(*)::int AS n FROM ed_pagos_detalle WHERE "cargoId" = $1`, [c2.id]);
+    expect(n).toBe(0);
+  });
+
+  it('un pago puede cubrir varios cargos atrasados a la vez, aplicando al más antiguo primero', async () => {
+    const svc = new ColegiaturaService(dataSource, new BecasService(dataSource));
+    const plan = await svc.upsertPlan(EMPRESA, {
+      estudianteId, anioEscolarId: null, montoColegiatura: 1000, descuento: 0,
+    });
+    await svc.generarCargos(EMPRESA, plan.id, [10, 11, 12], 2099);
+    const cargos = await dataSource.query(
+      `SELECT * FROM ed_cargos WHERE "planPagoId" = $1 AND mes IN (10,11,12) AND anio = 2099 ORDER BY mes`, [plan.id],
+    );
+    expect(cargos.length).toBe(3);
+
+    // Alcanza para los dos primeros completos y deja el tercero sin tocar.
+    const { pago, cargosActualizados } = await svc.registrarPago(EMPRESA, {
+      cargoIds: cargos.map((c: any) => c.id), monto: 2000,
+    });
+    expect(cargosActualizados.length).toBe(2);
+    const [c1, c2, c3] = await dataSource.query(
+      `SELECT * FROM ed_cargos WHERE id = ANY($1) ORDER BY mes`, [cargos.map((c: any) => c.id)],
+    );
+    expect(c1.estado).toBe('pagado');
+    expect(c2.estado).toBe('pagado');
+    expect(c3.estado).toBe('pendiente');
+    expect(Number(c3.montoPagado)).toBe(0);
+
+    // La anulación devuelve el saldo a ambos cargos cubiertos y no toca el tercero.
+    await svc.anularPago(EMPRESA, pago.id, { motivo: 'Prueba automatizada' });
+    const [d1, d2] = await dataSource.query(
+      `SELECT * FROM ed_cargos WHERE id = ANY($1) ORDER BY mes`, [[cargos[0].id, cargos[1].id]],
+    );
+    expect(d1.estado).toBe('pendiente');
+    expect(d2.estado).toBe('pendiente');
+    expect(Number(d1.saldoPendiente)).toBeCloseTo(1000, 2);
+    const [pagoAnulado] = await dataSource.query(`SELECT * FROM ed_pagos WHERE id = $1`, [pago.id]);
+    expect(pagoAnulado.estado).toBe('anulado');
   });
 });

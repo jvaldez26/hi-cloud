@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
-import { fechaHoyRD } from '../../common/utils/fecha-local.util';
+import { DataSource, EntityManager } from 'typeorm';
+import { fechaHoyRD, diferenciaDiasRD } from '../../common/utils/fecha-local.util';
 import { redondearMoneda } from '../../common/utils/moneda.util';
 import { BecasService, BecaAplicable } from '../becas/becas.service';
 
@@ -415,6 +415,47 @@ export class ColegiaturaService {
   }
 
   // ── Pagos ───────────────────────────────────────────────────────────────────
+  //
+  // Un pago puede cubrir VARIOS cargos (ed_pagos_detalle) — el tutor que
+  // llega a pagar tres cuotas atrasadas de una vez es el caso normal, no la
+  // excepción. Se aplica siempre empezando por el cargo con fechaVencimiento
+  // más antigua ("el más atrasado primero"), sin importar el orden en que
+  // el caller haya listado los cargoIds. Si el monto no alcanza para todos,
+  // los últimos simplemente no reciben fila de detalle — nunca una fila de
+  // $0 fingiendo que se aplicó algo.
+
+  /**
+   * Estado derivado de un cargo tras aplicar (o revertir) un pago — nunca
+   * se decide en dos sitios distintos. `fechaVencimiento` puede venir como
+   * Date de JS (medianoche UTC del día guardado, el driver de Postgres
+   * nunca lo entrega como string desde un SELECT *) o como string — se
+   * compara siempre con diferenciaDiasRD(), nunca con un operador `<`
+   * directo entre un Date y un string (ahí fue el bug real de transporte).
+   */
+  private estadoCargoTrasPago(saldoPendiente: number, montoPagado: number, fechaVencimiento: Date | string | null): string {
+    if (saldoPendiente <= 0) return 'pagado';
+    if (fechaVencimiento && diferenciaDiasRD(fechaVencimiento) > 0) return 'vencido';
+    return montoPagado > 0 ? 'parcial' : 'pendiente';
+  }
+
+  /** Recalcula montoPagado/saldoPendiente/estado de UN cargo ya bloqueado (FOR UPDATE) sumando su detalle de pagos activos — nunca por suma incremental, para no arrastrar drift. */
+  private async recalcularCargoTrasPagos(manager: EntityManager, empresaId: number, cargo: any) {
+    const [{ total }] = await manager.query<any[]>(
+      `SELECT COALESCE(SUM(d.monto), 0)::numeric AS total
+       FROM ed_pagos_detalle d
+       JOIN ed_pagos p ON p.id = d."pagoId" AND p.estado = 'activo'
+       WHERE d."cargoId" = $1`,
+      [cargo.id],
+    );
+    const montoPagado = Number(total);
+    const saldoPendiente = Math.max(redondearMoneda(Number(cargo.montoTotal) - montoPagado), 0);
+    const nuevoEstado = this.estadoCargoTrasPago(saldoPendiente, montoPagado, cargo.fechaVencimiento);
+    await manager.query(
+      `UPDATE ed_cargos SET "montoPagado" = $1, "saldoPendiente" = $2, estado = $3 WHERE id = $4 AND "empresaId" = $5`,
+      [montoPagado, saldoPendiente, nuevoEstado, cargo.id, empresaId],
+    );
+    return { montoPagado, saldoPendiente, estado: nuevoEstado };
+  }
 
   async listPagos(empresaId: number, opts: {
     estudianteId?: number; fechaInicio?: string; fechaFin?: string;
@@ -425,76 +466,150 @@ export class ColegiaturaService {
     if (opts.estudianteId) { conds.push(`p."estudianteId" = $${idx}`); params.push(opts.estudianteId); idx++; }
     if (opts.fechaInicio)  { conds.push(`p.fecha >= $${idx}`);         params.push(opts.fechaInicio);  idx++; }
     if (opts.fechaFin)     { conds.push(`p.fecha <= $${idx}`);         params.push(opts.fechaFin);     idx++; }
-    return this.ds.query<any[]>(
-      `SELECT p.*,
-              e.nombres || ' ' || e.apellidos AS "estudianteNombre",
-              c.descripcion AS "cargoDescripcion"
+    const pagos = await this.ds.query<any[]>(
+      `SELECT p.*, e.nombres || ' ' || e.apellidos AS "estudianteNombre"
        FROM ed_pagos p
        JOIN ed_estudiantes e ON e.id = p."estudianteId"
-       LEFT JOIN ed_cargos c ON c.id = p."cargoId"
        WHERE ${conds.join(' AND ')}
        ORDER BY p.fecha DESC, p."createdAt" DESC`,
       params,
     );
+    if (!pagos.length) return pagos;
+
+    const detalle = await this.ds.query<any[]>(
+      `SELECT d.*, c.descripcion AS "cargoDescripcion", c.tipo AS "cargoTipo"
+       FROM ed_pagos_detalle d
+       JOIN ed_cargos c ON c.id = d."cargoId"
+       WHERE d."pagoId" = ANY($1)
+       ORDER BY d.id`,
+      [pagos.map(p => p.id)],
+    );
+    const porPago = new Map<number, any[]>();
+    for (const d of detalle) {
+      if (!porPago.has(d.pagoId)) porPago.set(d.pagoId, []);
+      porPago.get(d.pagoId)!.push(d);
+    }
+    return pagos.map(p => ({ ...p, aplicaciones: porPago.get(p.id) ?? [] }));
   }
 
   async registrarPago(empresaId: number, dto: any) {
-    // Bloqueo pesimista sobre el cargo — mismo mecanismo que
-    // lock: { mode: 'pessimistic_write' } de caja.service.ts:833, en SQL
-    // crudo (FOR UPDATE), consistente con el resto de este service. Sin
-    // esto, dos pagos concurrentes sobre el mismo cargo leen el mismo
-    // saldoPendiente, ambos lo dan por válido, y el segundo pago pisa al
-    // primero en vez de acumularse — el saldo queda mal.
+    const cargoIdsRaw: any[] = dto.cargoIds ?? (dto.cargoId ? [dto.cargoId] : []);
+    const cargoIds: number[] = [...new Set(cargoIdsRaw.map((c: any) => Number(c)))];
+    if (!cargoIds.length) throw new BadRequestException('Debe indicar al menos un cargo');
+
+    const hoy = fechaHoyRD();
+
+    // Bloqueo pesimista sobre TODOS los cargos involucrados, en orden
+    // estable por id (nunca por fechaVencimiento) — así dos pagos
+    // concurrentes que comparten cargos siempre piden los locks en el
+    // mismo orden entre sí y no se pueden hacer deadlock cruzado.
     return this.ds.transaction(async (manager) => {
-      const [cargo] = await manager.query<any[]>(
-        `SELECT * FROM ed_cargos WHERE id = $1 AND "empresaId" = $2 FOR UPDATE`,
-        [dto.cargoId, empresaId],
+      const cargos = await manager.query<any[]>(
+        `SELECT * FROM ed_cargos WHERE id = ANY($1) AND "empresaId" = $2 ORDER BY id FOR UPDATE`,
+        [cargoIds, empresaId],
       );
-      if (!cargo) throw new NotFoundException('Cargo no encontrado');
-      if (cargo.estado === 'pagado') throw new BadRequestException('Este cargo ya fue pagado');
-      if (cargo.estado === 'anulado') throw new BadRequestException('No se puede pagar un cargo anulado');
+      if (cargos.length !== cargoIds.length) throw new NotFoundException('Uno o más cargos no existen');
 
-      const montoPago = Number(dto.monto ?? cargo.saldoPendiente);
+      const estudianteId = dto.estudianteId ?? cargos[0].estudianteId;
+      for (const c of cargos) {
+        if (c.estudianteId !== estudianteId) throw new BadRequestException('Todos los cargos de un mismo pago deben ser del mismo estudiante');
+        if (c.estado === 'pagado') throw new BadRequestException(`El cargo #${c.id} ya fue pagado`);
+        if (c.estado === 'anulado') throw new BadRequestException(`El cargo #${c.id} está anulado`);
+      }
+
+      // Se aplica al más atrasado primero, sin importar el orden de cargoIds.
+      const cargosOrdenados = [...cargos].sort((a, b) => {
+        const fa = a.fechaVencimiento ?? '9999-99-99';
+        const fb = b.fechaVencimiento ?? '9999-99-99';
+        return fa < fb ? -1 : fa > fb ? 1 : a.id - b.id;
+      });
+
+      const totalPendiente = redondearMoneda(cargosOrdenados.reduce((s, c) => s + Number(c.saldoPendiente), 0));
+      const montoPago = redondearMoneda(Number(dto.monto ?? totalPendiente));
       if (!(montoPago > 0)) throw new BadRequestException('El monto del pago debe ser mayor que cero');
+      if (montoPago > totalPendiente) {
+        throw new BadRequestException(
+          `El monto (${montoPago}) supera lo pendiente de los cargos seleccionados (${totalPendiente})`,
+        );
+      }
 
-      // "montoPagado" en ed_pagos es NOT NULL desde la migración base — el
-      // mismo patrón exacto de columna gemela sin reconciliar que
-      // "montoOriginal" en ed_cargos (FixColegiaturaSchema agregó "monto"
-      // al lado sin llenar la original). Este INSERT nunca se había
-      // ejecutado hasta esta verificación — fuera del alcance de
-      // ed_cargos que pedía este bloque, así que solo el desbloqueo
-      // mínimo (igual valor en ambas), sin reconciliar el resto del
-      // diseño de ed_pagos.
       const [pago] = await manager.query<any[]>(
         `INSERT INTO ed_pagos (
-           "empresaId","cargoId","estudianteId","montoPagado",monto,fecha,"metodoPago",referencia,observaciones
-         ) VALUES ($1,$2,$3,$4,$4,$5,$6,$7,$8) RETURNING *`,
-        [empresaId, cargo.id, cargo.estudianteId,
-         montoPago,
-         dto.fecha ?? fechaHoyRD(),
-         dto.metodoPago ?? 'efectivo',
-         dto.referencia ?? null, dto.observaciones ?? null],
+           "empresaId","estudianteId","montoPagado",fecha,"metodoPago",referencia,observaciones
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+        [empresaId, estudianteId, montoPago,
+         dto.fecha ?? hoy, dto.metodoPago ?? 'efectivo', dto.referencia ?? null, dto.observaciones ?? null],
       );
 
-      // montoPagado y saldoPendiente son derivadas — se escriben SIEMPRE
-      // juntas, en este único punto (dentro del mismo lock que las leyó),
-      // nunca por separado. Puede haber más de un pago parcial sobre el
-      // mismo cargo, así que se recalcula sumando TODOS los pagos, no
-      // sumando el nuevo sobre un contador aparte que pudiera desincronizarse.
-      const [{ total }] = await manager.query<any[]>(
-        `SELECT COALESCE(SUM(monto), 0)::numeric AS total FROM ed_pagos WHERE "cargoId" = $1`,
-        [cargo.id],
+      let restante = montoPago;
+      const cargosActualizados: any[] = [];
+      for (const cargo of cargosOrdenados) {
+        if (restante <= 0) break;
+        const aplicado = redondearMoneda(Math.min(restante, Number(cargo.saldoPendiente)));
+        if (aplicado <= 0) continue;
+
+        await manager.query(
+          `INSERT INTO ed_pagos_detalle ("empresaId","pagoId","cargoId",monto) VALUES ($1,$2,$3,$4)`,
+          [empresaId, pago.id, cargo.id, aplicado],
+        );
+        restante = redondearMoneda(restante - aplicado);
+        const resultado = await this.recalcularCargoTrasPagos(manager, empresaId, cargo);
+        cargosActualizados.push({ cargoId: cargo.id, aplicado, ...resultado });
+      }
+
+      return { pago, cargosActualizados };
+    });
+  }
+
+  /**
+   * Anula un pago sin borrarlo — devuelve el saldo a los cargos que había
+   * cubierto (recalculando desde ed_pagos_detalle, nunca restando a mano) y
+   * deja el registro con estado='anulado' + motivo + quién + cuándo. Nunca
+   * toca montoTotal/montoMora — respeta lo que el cron de mora ya haya
+   * calculado sobre esos cargos; solo recalcula montoPagado/saldoPendiente/
+   * estado, el mismo trío que registrarPago() y el cron ya tratan como una
+   * sola unidad de escritura.
+   */
+  async anularPago(empresaId: number, pagoId: number, dto: { motivo: string }, usuarioId?: number) {
+    return this.ds.transaction(async (manager) => {
+      const [pago] = await manager.query<any[]>(
+        `SELECT * FROM ed_pagos WHERE id = $1 AND "empresaId" = $2 FOR UPDATE`,
+        [pagoId, empresaId],
       );
-      const montoPagado = Number(total);
-      const saldoPendiente = Math.max(Number(cargo.montoTotal) - montoPagado, 0);
-      const nuevoEstado = saldoPendiente <= 0 ? 'pagado' : 'parcial';
+      if (!pago) throw new NotFoundException('Pago no encontrado');
+      if (pago.estado === 'anulado') throw new BadRequestException('Este pago ya está anulado');
+
+      const detalle = await manager.query<any[]>(
+        `SELECT * FROM ed_pagos_detalle WHERE "pagoId" = $1 ORDER BY "cargoId"`,
+        [pagoId],
+      );
+
+      // Mismo orden estable por id que registrarPago() — evita deadlock
+      // cruzado si un pago concurrente sobre alguno de estos cargos está
+      // en curso al mismo tiempo.
+      const cargoIds = [...new Set(detalle.map((d: any) => d.cargoId))].sort((a: any, b: any) => a - b);
+      const cargos = cargoIds.length
+        ? await manager.query<any[]>(
+            `SELECT * FROM ed_cargos WHERE id = ANY($1) AND "empresaId" = $2 ORDER BY id FOR UPDATE`,
+            [cargoIds, empresaId],
+          )
+        : [];
 
       await manager.query(
-        `UPDATE ed_cargos SET "montoPagado" = $1, "saldoPendiente" = $2, estado = $3 WHERE id = $4`,
-        [montoPagado, saldoPendiente, nuevoEstado, cargo.id],
+        `UPDATE ed_pagos
+           SET estado = 'anulado', "motivoAnulacion" = $1, "anuladoPor" = $2, "anuladoEn" = NOW()
+         WHERE id = $3 AND "empresaId" = $4`,
+        [dto.motivo, usuarioId ?? null, pagoId, empresaId],
       );
 
-      return pago;
+      const cargosActualizados: any[] = [];
+      for (const cargo of cargos) {
+        const resultado = await this.recalcularCargoTrasPagos(manager, empresaId, cargo);
+        cargosActualizados.push({ cargoId: cargo.id, ...resultado });
+      }
+
+      const [actualizado] = await manager.query<any[]>(`SELECT * FROM ed_pagos WHERE id = $1`, [pagoId]);
+      return { pago: actualizado, cargosActualizados };
     });
   }
 

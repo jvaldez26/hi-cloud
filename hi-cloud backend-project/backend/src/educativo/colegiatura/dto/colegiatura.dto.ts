@@ -137,9 +137,19 @@ export class UpdateCargoDto {
 }
 
 export class RegistrarPagoDto {
-  @IsDefined({ message: 'El cargo es requerido' })
+  // Un pago puede cubrir varios cargos (el tutor que llega a pagar tres
+  // cuotas atrasadas de una vez) — cargoIds es la forma soportada; cargoId
+  // sigue aceptándose por compatibilidad (un solo cargo es el caso más
+  // común) y el service lo normaliza a un arreglo de un elemento.
+  @IsOptional()
+  @IsArray({ message: 'Los cargos deben ser un arreglo' })
+  @ArrayMinSize(1, { message: 'Debe seleccionar al menos un cargo' })
+  @IsInt({ each: true, message: 'Cada cargo debe ser un identificador numérico' })
+  cargoIds?: number[];
+
+  @IsOptional()
   @IsInt({ message: 'El cargo debe ser un identificador numérico' })
-  cargoId: number;
+  cargoId?: number;
 
   @IsOptional()
   @IsNumber({}, { message: 'El monto debe ser un número' })
@@ -166,6 +176,15 @@ export class RegistrarPagoDto {
 }
 
 export class CondonarMoraDto {
+  @IsDefined({ message: 'El motivo es requerido' })
+  @IsString({ message: 'El motivo debe ser texto' })
+  @IsNotEmpty({ message: 'El motivo es requerido' })
+  @MaxLength(300, { message: 'El motivo no puede superar 300 caracteres' })
+  @Transform(trim)
+  motivo: string;
+}
+
+export class AnularPagoDto {
   @IsDefined({ message: 'El motivo es requerido' })
   @IsString({ message: 'El motivo debe ser texto' })
   @IsNotEmpty({ message: 'El motivo es requerido' })

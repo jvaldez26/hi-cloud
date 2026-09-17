@@ -16,7 +16,7 @@ export class EdDashboardService {
           (SELECT COUNT(*) FROM ed_matriculas WHERE "empresaId" = $1
            AND "anioEscolarId" = (SELECT id FROM ed_anios_escolares WHERE "empresaId" = $1 AND "esActual" = true LIMIT 1))::int AS "matriculasAnioActual",
           (SELECT COUNT(*) FROM ed_cargos WHERE "empresaId" = $1 AND estado IN ('vencido','parcial'))::int AS "estudiantesMorosos",
-          (SELECT COALESCE(SUM("montoPagado"), 0) FROM ed_pagos WHERE "empresaId" = $1
+          (SELECT COALESCE(SUM("montoPagado"), 0) FROM ed_pagos WHERE "empresaId" = $1 AND estado = 'activo'
            AND DATE_TRUNC('month', fecha) = DATE_TRUNC('month', NOW())) AS "cobradoMes",
           (SELECT COALESCE(SUM("saldoPendiente"), 0) FROM ed_cargos WHERE "empresaId" = $1 AND estado IN ('pendiente','parcial','vencido')) AS "carteraPendiente"
         `,

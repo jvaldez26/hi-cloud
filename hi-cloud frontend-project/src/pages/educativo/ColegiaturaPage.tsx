@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Table, Button, Select, Space, Tag, Modal, Form, Input, InputNumber,
   message, Typography, Row, Col, Card, Statistic, Tabs, DatePicker,
-  Checkbox, Popconfirm, Tooltip,
+  Checkbox, Tooltip,
 } from 'antd';
 import { PlusOutlined, DollarOutlined, EditOutlined, ThunderboltOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import api from '../../api/client';
@@ -172,14 +172,37 @@ function GenerarCargosModal({ open, plan, onClose }: { open: boolean; plan?: any
 }
 
 // ── Modal registrar pago ─────────────────────────────────────────────────────
+//
+// Un pago puede cubrir varios cargos del mismo estudiante — el tutor que
+// llega a pagar dos o tres cuotas atrasadas de una vez es el caso normal.
+// Se abre desde el botón "Pagar" de un cargo puntual (siempre marcado), y
+// se ofrecen los demás cargos pendientes/vencidos del mismo estudiante como
+// opciones adicionales. El backend decide el orden real de aplicación
+// (el más atrasado primero) sin importar cómo queden marcados aquí.
 
 function PagoModal({ open, cargo, onClose }: { open: boolean; cargo?: any; onClose: () => void }) {
   const qc = useQueryClient();
   const [form] = Form.useForm();
+  const [seleccionados, setSeleccionados] = useState<number[]>([]);
   const METODOS = ['efectivo', 'transferencia', 'tarjeta', 'cheque'].map(v => ({ value: v, label: v.charAt(0).toUpperCase() + v.slice(1) }));
 
+  const { data: otrosCargos = [] } = useQuery<any[]>({
+    queryKey: ['educativo', 'colegiatura', 'cargos', 'porEstudiante', cargo?.estudianteId],
+    queryFn: () =>
+      api.get('/educativo/colegiatura/cargos', { params: { estudianteId: cargo?.estudianteId } })
+        .then(r => (r.data?.data ?? r.data ?? [])
+          .filter((c: any) => c.id !== cargo?.id && ['pendiente', 'parcial', 'vencido'].includes(c.estado))),
+    enabled: open && !!cargo?.estudianteId,
+    staleTime: 15_000,
+  });
+
+  const todosLosCargos = cargo ? [cargo, ...otrosCargos] : [];
+  const totalSeleccionado = todosLosCargos
+    .filter(c => seleccionados.includes(c.id))
+    .reduce((s, c) => s + Number(c.saldoPendiente), 0);
+
   const mut = useMutation({
-    mutationFn: (vals: any) => api.post('/educativo/colegiatura/pagos', { cargoId: cargo?.id, ...vals }),
+    mutationFn: (vals: any) => api.post('/educativo/colegiatura/pagos', { cargoIds: seleccionados, ...vals }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['educativo', 'colegiatura'] });
       message.success('Pago registrado');
@@ -196,16 +219,44 @@ function PagoModal({ open, cargo, onClose }: { open: boolean; cargo?: any; onClo
       })}
       confirmLoading={mut.isPending} destroyOnClose
       afterOpenChange={v => {
-        if (v && cargo) form.setFieldsValue({ monto: cargo.saldoPendiente, fecha: dayjs(), metodoPago: 'efectivo' });
-        else if (!v) form.resetFields();
+        if (v && cargo) {
+          setSeleccionados([cargo.id]);
+          form.setFieldsValue({ monto: cargo.saldoPendiente, fecha: dayjs(), metodoPago: 'efectivo' });
+        } else if (!v) {
+          setSeleccionados([]);
+          form.resetFields();
+        }
       }}>
       {cargo && (
         <div style={{ marginBottom: 12 }}>
           <Text strong>{cargo.estudianteNombre}</Text>
-          <br />
-          <Text type="secondary">{cargo.descripcion}</Text>
         </div>
       )}
+      <div style={{ marginBottom: 12 }}>
+        <Text strong style={{ display: 'block', marginBottom: 6 }}>Cargos a cubrir con este pago:</Text>
+        <Checkbox.Group
+          value={seleccionados}
+          onChange={vals => {
+            const nuevos = vals as number[];
+            setSeleccionados(nuevos);
+            const suma = todosLosCargos.filter(c => nuevos.includes(c.id)).reduce((s, c) => s + Number(c.saldoPendiente), 0);
+            form.setFieldValue('monto', suma);
+          }}>
+          <Space direction="vertical" style={{ width: '100%' }}>
+            {todosLosCargos.map(c => (
+              <Checkbox key={c.id} value={c.id} disabled={c.id === cargo?.id}>
+                {c.descripcion} — <Text type="secondary">{fmt.format(c.saldoPendiente)} pendiente</Text>
+                {c.fechaVencimiento && <Text type="secondary" style={{ fontSize: 11 }}> (vence {c.fechaVencimiento.substring(0, 10)})</Text>}
+              </Checkbox>
+            ))}
+          </Space>
+        </Checkbox.Group>
+        {seleccionados.length > 1 && (
+          <Text type="secondary" style={{ display: 'block', marginTop: 6 }}>
+            Total pendiente de lo seleccionado: {fmt.format(totalSeleccionado)} — se aplica primero al más atrasado.
+          </Text>
+        )}
+      </div>
       <Form form={form} layout="vertical">
         <Row gutter={12}>
           <Col span={12}>
@@ -311,6 +362,55 @@ function CondonarMoraModal({ open, cargo, onClose }: { open: boolean; cargo?: an
       <Form form={form} layout="vertical">
         <Form.Item name="motivo" label="Motivo" rules={[{ required: true, message: 'El motivo es requerido' }]}>
           <Input.TextArea rows={3} placeholder="Por qué se perdona esta mora — queda auditado" />
+        </Form.Item>
+      </Form>
+    </Modal>
+  );
+}
+
+// ── Modal anular pago ────────────────────────────────────────────────────────
+//
+// Nunca borra el pago — el backend lo marca estado='anulado' y devuelve el
+// saldo a los cargos que había cubierto. Motivo obligatorio, igual que
+// condonar mora — queda auditado.
+
+function AnularPagoModal({ open, pago, onClose }: { open: boolean; pago?: any; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [form] = Form.useForm();
+
+  const mut = useMutation({
+    mutationFn: (vals: any) => api.post(`/educativo/colegiatura/pagos/${pago?.id}/anular`, vals),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['educativo', 'colegiatura'] });
+      message.success('Pago anulado — el saldo volvió a los cargos afectados');
+      onClose();
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al anular el pago'),
+  });
+
+  return (
+    <Modal open={open} title="Anular pago" onCancel={onClose}
+      onOk={() => form.validateFields().then(vals => mut.mutate(vals))}
+      confirmLoading={mut.isPending} destroyOnClose
+      afterOpenChange={v => { if (!v) form.resetFields(); }}>
+      {pago && (
+        <div style={{ marginBottom: 12 }}>
+          <Text strong>{pago.estudianteNombre}</Text>
+          <br />
+          <Text type="danger">Monto a anular: {fmt.format(pago.montoPagado)}</Text>
+          {pago.aplicaciones?.length > 0 && (
+            <div style={{ marginTop: 4 }}>
+              <Text type="secondary">Se devolverá el saldo a: </Text>
+              {pago.aplicaciones.map((a: any, i: number) => (
+                <Tag key={i}>{a.cargoDescripcion} ({fmt.format(a.monto)})</Tag>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      <Form form={form} layout="vertical">
+        <Form.Item name="motivo" label="Motivo" rules={[{ required: true, message: 'El motivo es requerido' }]}>
+          <Input.TextArea rows={3} placeholder="Por qué se anula este pago — queda auditado" />
         </Form.Item>
       </Form>
     </Modal>
@@ -435,6 +535,67 @@ function TabCargos({ anioId }: { anioId?: number }) {
   );
 }
 
+// ── Tab Pagos (historial) ────────────────────────────────────────────────────
+//
+// listPagos() ya devuelve "aplicaciones" (ed_pagos_detalle resuelto con
+// descripción/tipo del cargo) — un pago con varias aplicaciones se muestra
+// como varios Tags en una sola fila, no como filas separadas.
+
+function TabPagos() {
+  const [filters, setFilters] = useState<Record<string, any>>({});
+  const [anularModal, setAnularModal] = useState<{ open: boolean; pago?: any }>({ open: false });
+
+  const { data: pagos = [], isLoading } = useQuery<any[]>({
+    queryKey: ['educativo', 'colegiatura', 'pagos', filters],
+    queryFn: () =>
+      api.get('/educativo/colegiatura/pagos', { params: filters })
+        .then(r => r.data?.data ?? r.data ?? []),
+    staleTime: 15_000,
+  });
+
+  return (
+    <>
+      <Space wrap style={{ marginBottom: 12 }}>
+        <Input.Search placeholder="Buscar estudiante…" style={{ width: 220 }} allowClear
+          onSearch={v => setFilters((p: any) => ({ ...p, q: v || undefined }))} />
+      </Space>
+      <Table dataSource={pagos} rowKey="id" loading={isLoading} size="small" scroll={{ x: 'max-content' }}
+        columns={[
+          { title: 'Fecha', dataIndex: 'fecha', render: (v: any) => v?.substring(0, 10) ?? '—' },
+          { title: 'Estudiante', dataIndex: 'estudianteNombre', ellipsis: true },
+          { title: 'Monto', dataIndex: 'montoPagado', render: (v: any) => fmt.format(v), align: 'right' },
+          { title: 'Método', dataIndex: 'metodoPago' },
+          { title: 'Referencia', dataIndex: 'referencia', render: (v: any) => v || '—' },
+          {
+            title: 'Aplicado a', dataIndex: 'aplicaciones',
+            render: (aps: any[]) => (
+              <Space wrap size={4}>
+                {(aps ?? []).map((a: any, i: number) => (
+                  <Tag key={i}>{a.cargoDescripcion}: {fmt.format(a.monto)}</Tag>
+                ))}
+              </Space>
+            ),
+          },
+          {
+            title: 'Estado', dataIndex: 'estado',
+            render: (v: string) => <Tag color={v === 'anulado' ? 'default' : 'green'}>{v}</Tag>,
+          },
+          {
+            title: '',
+            render: (_: any, r: any) => r.estado === 'activo' && (
+              <Button size="small" danger icon={<MinusCircleOutlined />}
+                onClick={() => setAnularModal({ open: true, pago: r })}>
+                Anular
+              </Button>
+            ),
+          },
+        ]}
+      />
+      <AnularPagoModal open={anularModal.open} pago={anularModal.pago} onClose={() => setAnularModal({ open: false })} />
+    </>
+  );
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 export default function ColegiaturaPage() {
@@ -455,6 +616,7 @@ export default function ColegiaturaPage() {
       <Tabs items={[
         { key: 'planes', label: 'Planes de pago', children: <TabPlanes anioId={anioId} /> },
         { key: 'cargos', label: 'Cargos',          children: <TabCargos anioId={anioId} /> },
+        { key: 'pagos',  label: 'Pagos',           children: <TabPagos /> },
       ]} />
     </div>
   );

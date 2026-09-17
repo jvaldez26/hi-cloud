@@ -19,6 +19,7 @@ import { EdAsistencia }   from './entities/ed-asistencia.entity';
 import { EdPlanPago }     from './entities/ed-plan-pago.entity';
 import { EdCargo }        from './entities/ed-cargo.entity';
 import { EdPago }         from './entities/ed-pago.entity';
+import { EdPagoDetalle }  from './entities/ed-pago-detalle.entity';
 import { EdBeca }         from './entities/ed-beca.entity';
 import { EdEstudianteBeca } from './entities/ed-estudiante-beca.entity';
 import { EdNotaPeriodo }  from './entities/ed-nota-periodo.entity';
@@ -81,7 +82,7 @@ import { MoraCronService }       from './colegiatura/mora.cron';
       EdConfig, EdAnioEscolar, EdNivel, EdGrado, EdAsignatura, EdSeccion, EdPeriodo,
       EdEstudiante, EdTutor, EdDocente, EdMatricula,
       EdEvaluacion, EdCalificacion, EdAsistencia,
-      EdPlanPago, EdCargo, EdPago, EdBeca, EdEstudianteBeca, EdNotaPeriodo,
+      EdPlanPago, EdCargo, EdPago, EdPagoDetalle, EdBeca, EdEstudianteBeca, EdNotaPeriodo,
       EdDisciplina, EdLibro, EdPrestamo, EdRuta, EdComunicado, EdComedorPlan, EdEnfermeria,
       EdCargoCondonacion,
     ]),

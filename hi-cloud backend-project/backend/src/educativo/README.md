@@ -294,6 +294,96 @@ mismo cargo (lock real, sin pérdida de escritura) — todo disparando
 endpoint que lo dispare). El flujo de condonar sí es de cara al usuario:
 cubierto por Playwright en `e2e/mora.spec.ts`.
 
+## Tanda 6 (septiembre 2026): reconciliación de `ed_pagos`
+
+Durante la tanda de colegiatura apareció que `ed_pagos.montoPagado` era
+`NOT NULL` y nunca se llenaba — `registrarPago()` jamás se había ejecutado
+antes de esa prueba. Se aplicó entonces un desbloqueo mínimo, pero el
+diseño completo de la tabla quedó sin reconciliar. Diagnóstico completo:
+
+- **`monto` vs. `montoPagado`** — el mismo par de columnas gemelas que
+  `montoOriginal` en `ed_cargos` (tanda anterior). `dashboard.service.ts`
+  (KPI "cobrado este mes") leía `montoPagado`; `colegiatura.service.ts` y
+  `reportes.service.ts` (`ingresosPorConcepto`) leían `monto`. Solo
+  coincidían porque `monto` era la única que se escribía y `montoPagado`
+  nunca se tocaba — el hallazgo original de esta tanda.
+- **`cargoId` vs. `cargosAfectados` (JSONB)** — el esquema soporta las dos
+  formas de vincular un pago con sus cargos, pero el código de hoy solo
+  usaba `cargoId` (un pago = un cargo); `cargosAfectados` nunca se escribía
+  ni se leía en ningún camino. En un colegio real el tutor paga dos o tres
+  cuotas atrasadas de una vez — la respuesta correcta es "varios cargos",
+  pero un JSONB que nadie puede unir en una query no es consultable/
+  reportable, así que se reemplazó por una tabla de detalle real:
+  **`ed_pagos_detalle`** (`empresaId`, `pagoId` FK→`ed_pagos` `ON DELETE
+  CASCADE`, `cargoId` FK→`ed_cargos` `ON DELETE RESTRICT`, `monto`,
+  `createdAt`) — un pago puede tener N filas, una por cada cargo que cubrió,
+  consultable con un `JOIN` normal.
+- **`facturaId`/`reciboId`/`notas`** — huérfanas sin ningún consumidor:
+  educativo no tiene integración con facturación ni existe una tabla
+  "recibos"; `notas` era un duplicado sin uso de `observaciones`. Las tres
+  se eliminaron (migración `1763800000000-ReconciliarEdPagos.ts`, cero
+  filas en producción — sin backfill).
+- **`numero`/`tutorId`** quedan reservados sin uso, igual que
+  `ed_cargos.numero` — documentado, no bloquea nada.
+
+**Diseño final:**
+
+- `registrarPago()` acepta `cargoIds: number[]` (o `cargoId` suelto, por
+  compatibilidad — se normaliza a un arreglo de un elemento) del MISMO
+  estudiante. Bloquea TODOS los cargos involucrados con `FOR UPDATE` en
+  orden estable por `id` (nunca por `fechaVencimiento`) — así dos pagos
+  concurrentes que comparten cargos siempre piden los locks en el mismo
+  orden entre sí y no se pueden hacer deadlock cruzado.
+- El monto se aplica siempre **al cargo con `fechaVencimiento` más antigua
+  primero**, sin importar el orden en que el caller haya listado los
+  `cargoIds` — el orden de aplicación se decide con los cargos ya
+  bloqueados, no con el orden de entrada. Si el monto no alcanza para
+  todos, los cargos que no llega a tocar **no reciben fila en
+  `ed_pagos_detalle`** — nunca una fila de RD$0 fingiendo que se aplicó
+  algo. Rechaza de entrada (antes de escribir nada) si el monto pedido
+  supera la suma de lo pendiente de los cargos seleccionados.
+- `recalcularCargoTrasPagos()` es el único punto que toca
+  `montoPagado`/`saldoPendiente`/`estado` de un cargo tras un pago (o una
+  anulación) — y SIEMPRE **resuma desde `ed_pagos_detalle`** (filtrado a
+  pagos con `estado='activo'`), nunca por suma/resta incremental, para no
+  arrastrar drift. Nunca toca `montoTotal`/`montoMora` — respeta lo que
+  `mora.cron.ts` ya haya calculado sobre ese cargo (verificado en vivo:
+  cron y pago concurrentes sobre el mismo cargo, sin deadlock, cada uno
+  recompone su parte sobre la fila fresca que lee bajo su propio lock).
+- `montoPagado` del pago (la columna `NOT NULL` original) es la única
+  fuente de cuánto se cobró — siempre igual a la suma de sus filas en
+  `ed_pagos_detalle`, nunca un número aparte que alguien pueda desincronizar.
+
+**Anular un pago** (`POST educativo/colegiatura/pagos/:id/anular`, motivo
+obligatorio vía DTO — no existía ningún mecanismo de reversión antes de
+esta tanda): nunca borra el registro. Bloquea el pago (`FOR UPDATE`) y los
+cargos que había cubierto (mismo orden estable por `id` que
+`registrarPago()`), marca `ed_pagos.estado='anulado'` +
+`motivoAnulacion`/`anuladoPor`/`anuladoEn`, y recalcula
+`montoPagado`/`saldoPendiente`/`estado` de cada cargo afectado — como el
+recálculo resuma desde `ed_pagos_detalle` filtrando `estado='activo'`, el
+pago anulado deja de contar automáticamente y el saldo vuelve solo, sin
+resta manual. Mismo patrón de auditoría "nunca borrar, solo marcar" que
+`condonarMora()`. La ruta contiene `/anular`, que `audit.interceptor.ts` ya
+reconocía como CRITICO desde la tanda de mora — no hizo falta tocar el
+interceptor.
+
+Frontend: `ColegiaturaPage.tsx` → `PagoModal` (botón "Pagar" de un cargo)
+ahora ofrece marcar también otros cargos pendientes/vencidos del mismo
+estudiante para cubrirlos en el mismo pago; nueva tab "Pagos" con el
+historial (`listPagos()`, que devuelve `aplicaciones` resuelto por cargo) y
+botón "Anular" (modal con motivo obligatorio) por cada pago activo.
+
+Verificado en vivo contra `hicloud_test`: pago de un solo cargo, pago que
+cubre tres cargos atrasados a la vez (aplicando al más antiguo primero,
+sin importar el orden de `cargoIds`), pago parcial que no alcanza ni para
+el cargo más antiguo (queda `'parcial'`, los demás cargos no reciben
+ninguna fila de detalle), anulación de un pago multi-cargo (devuelve el
+saldo a ambos cargos cubiertos, deja el registro con `estado='anulado'`) y
+pago + cron de mora concurrentes sobre el mismo cargo (sin deadlock,
+`montoMora`/`montoPagado` quedan consistentes sin importar cuál de los dos
+terminó primero).
+
 ## Boletines
 
 Único de los 8 pendientes construido: no hay tabla nueva, se genera al vuelo
