@@ -20,7 +20,7 @@ de septiembre 2026.
 | Docentes | `docentes/` | CRUD + asignaciones (`ed_asignaciones_docente`). |
 | Matrículas | `matriculas/` | CRUD + stats. Sin ningún campo de beca propio (`becaId`/`descuentoBeca` se eliminaron — eran informativos, sin consumidor real; ver Becas). |
 | Académico | `academico/` | Evaluaciones, calificaciones (bulk), asistencia (bulk + stats). Bloquea escritura si el período está cerrado (`common/periodo.util.ts`). |
-| Colegiatura | `colegiatura/` | Planes de pago **por estudiante** (no por grado — ver abajo), cargos, pagos, resumen financiero. |
+| Colegiatura | `colegiatura/` | Planes de pago **por estudiante** (no por grado — ver abajo), cargos, pagos, resumen financiero, mora (cron diario) y condonación de mora. Ver "Tanda 5" abajo. |
 | Becas | `becas/` | Catálogo (`ed_becas`) + asignación a estudiantes (`ed_estudiante_becas`) — conectado a `generarCargos()`/`generarMatricula()`, ver "Becas" abajo. UI en `/educativo/becas`. |
 | Boletines | `boletines/` | Consolidación de notas por período + PDF individual/masivo. Ver "Boletines" abajo. |
 | Disciplina | `disciplina/` | Incidentes con tipo/categoría/medida/seguimiento, notificación a padres con fecha. Un docente (vinculado por `ed_docentes.usuarioId`) solo ve/reporta incidentes de sus propias secciones (`ed_asignaciones_docente`) — admin y el resto ven todo. Nunca loguea el contenido del incidente. |
@@ -213,6 +213,86 @@ vacío: un año escolar anterior cerrado (crecimiento/retención), notas bajas
 y altas (riesgo/honor), ausencias reales (exceso), pagos de colegiatura +
 transporte + comedor (ingresos por concepto), y el filtro por sección del
 reporte de disciplina verificado contra el usuario docente de prueba.
+
+## Tanda 5 (septiembre 2026): cron de mora + condonación
+
+`montoMora`/`diasMora` existían en `ed_cargos` desde la migración original
+sin que nadie los escribiera nunca. `mora.cron.ts` (dentro de `colegiatura/`,
+registrado como provider en `EducativoModule` — no hay un módulo central de
+crones, cada uno vive en el módulo de dominio al que pertenece, mismo patrón
+que `prestamista/cobranza/mora.cron.ts`) corre diario a las 5:00 UTC (1:00
+a.m. RD) y recalcula la mora de todo cargo vencido y no pagado.
+
+**Decisiones tomadas (no reabrir sin hablarlo):**
+
+- La mora se **recalcula completa cada día**, nunca se acumula sumando — un
+  cron que corra dos veces el mismo día no duplica nada (verificado en vivo).
+- La mora **nunca se cobra sobre la mora**: la base es siempre
+  `montoOriginal - descuento` (nunca `montoTotal`, que ya trae la mora de
+  ayer adentro). Un abono parcial reduce esa MISMA base sin mora — nunca el
+  original completo ni el total con mora — así que la mora de mañana baja
+  si hoy hubo un pago (verificado: RD$100 de mora bajó a RD$75 tras un abono
+  de RD$500 sobre un cargo de RD$2,000).
+- `diasGracia`/`cargoMoraPct` viven en `ed_planes_pago` (columnas que ya
+  existían, "sin uso" según el propio README — ver "Decisiones de diseño"
+  abajo) y son por PLAN, no por cargo. Un cargo sin plan (`planPagoId` null
+  — transporte/comedor) sí pasa a `estado='vencido'` si corresponde (es un
+  hecho, no depende de configuración) pero nunca genera `montoMora` — no
+  hay tasa que aplicarle.
+- El estado pasa a `'vencido'` en cuanto `fechaVencimiento < hoy`,
+  independiente del período de gracia — la gracia solo retrasa cuándo
+  empieza a cobrarse el interés, no si el cargo está o no vencido. Un cargo
+  `'parcial'` que se vence pasa a `'vencido'`, nunca se queda en `'parcial'`
+  (por eso `listCargos({vencidos:true})` se actualizó para usar la misma
+  definición de "vencido" que `resumenFinanciero()`, en vez de su fallback
+  anterior de antes de que este cron existiera).
+- `montoTotal`/`saldoPendiente` son derivados y se escriben SIEMPRE junto
+  con `montoMora`, en el mismo punto — mismo principio que
+  `registrarPago()`/`updateCargo()` ya seguían.
+- Lock pesimista (`FOR UPDATE` en transacción) sobre cada cargo, idéntico al
+  de `registrarPago()` — verificado en vivo: una transacción reteniendo el
+  lock bloquea genuinamente un pago concurrente sobre el mismo cargo hasta
+  soltarlo, no hay pérdida de escritura.
+- Solo procesa empresas con el add-on `'educativo'` activo — misma query
+  exacta que `ModuloAddonGuard` contra `empresa_modulos` (no hay
+  `TenantService`/CLS involucrado: el cron pasa `empresaId` explícito en
+  cada `WHERE`, igual que el resto del módulo — no hace falta
+  `runForEmpresa()` salvo que se llame a un método que internamente use
+  `tenantService.getEmpresaId()`, que ninguno de este cron hace).
+- Usa `diferenciaDiasRD()` (no `toISOString()`) para los días de mora —
+  la utilidad ya existente que compara contra `fechaHoyRD()` anclando a
+  mediodía UTC, así evita el mismo bug de `fechaVencimiento` volviendo como
+  `Date` de JS (zona del proceso) en vez de string, atrapado en transporte
+  en la tanda 2.
+
+**Condonar mora** (`POST educativo/colegiatura/cargos/:id/condonar-mora`,
+motivo obligatorio vía DTO): pone `montoMora=0`, recalcula `montoTotal`/
+`saldoPendiente` juntos, y marca `moraCondonada=true` — el cron excluye para
+siempre a un cargo condonado (condonar no serviría de nada si la mora
+reaparece al día siguiente). `diasMora` NO se toca: queda como registro
+histórico de cuánto tiempo estuvo en mora, independiente de que se haya
+perdonado el monto. Cada condonación queda en `ed_cargos_condonaciones`
+(migración `1763700000000`) — empresaId, cargoId, montoCondonado, motivo,
+usuarioId, fecha — separada del `audit_logs` genérico porque esta SÍ
+necesita ser consultable por cargo (`listCargos()` la adjunta como
+`condonacionesMora`, mismo espíritu que `desgloseDescuento` con las becas).
+De paso, `audit.interceptor.ts` ahora reconoce `/condonar` como CRITICO con
+descripción legible (motivo + monto), mismo patrón que ya existía para
+`/inventario/ajuste`.
+
+Frontend: `ColegiaturaPage.tsx` → tab Cargos, columna "Mora" (tag rojo con
+el monto y los días en el tooltip, o "Condonada" si ya se perdonó) y botón
+"Condonar mora" (solo visible si `montoMora > 0` y no está condonada ya).
+
+Verificado en vivo contra `hicloud_test`: cargo vencido sin gracia, con
+gracia (dentro y fuera del período), con abono parcial, ya pagado (no
+genera mora), condonado (no reaparece tras un segundo cron), cron corrido
+dos veces el mismo día (no duplica) y cron + pago concurrentes sobre el
+mismo cargo (lock real, sin pérdida de escritura) — todo disparando
+`MoraCronService.calcularMora()` directamente vía
+`NestFactory.createApplicationContext()` (el cron no es HTTP, no hay
+endpoint que lo dispare). El flujo de condonar sí es de cara al usuario:
+cubierto por Playwright en `e2e/mora.spec.ts`.
 
 ## Boletines
 

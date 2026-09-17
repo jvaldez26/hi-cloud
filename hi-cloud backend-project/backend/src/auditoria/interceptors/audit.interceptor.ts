@@ -45,6 +45,7 @@ function determinarNivel(metodo: string, ruta: string): NivelAuditoria {
 
   // CRITICO — acciones irreversibles o de alto impacto
   if (r.includes('/anular') || r.includes('/cancelar') || r.includes('/revertir')) return NivelAuditoria.CRITICO;
+  if (r.includes('/condonar')) return NivelAuditoria.CRITICO;
   if (r.includes('/notas-credito') && metodo === 'POST')  return NivelAuditoria.CRITICO;
   if (r.includes('/notas-debito')  && metodo === 'POST')  return NivelAuditoria.CRITICO;
   if (metodo === 'DELETE')                                 return NivelAuditoria.CRITICO;
@@ -129,6 +130,16 @@ function generarDescripcion(
     const prod   = body?.productoNombre ?? body?.producto?.nombre ?? '';
     const motivo = body?.motivo ?? '';
     return `${quien} ajustó stock${prod ? ` de "${prod}"` : ''}${motivo ? ` (${motivo})` : ''}`;
+  }
+
+  // Condonar mora (educativo)
+  if (r.includes('/condonar')) {
+    const cond   = body?.condonacion ?? {};
+    const monto  = cond?.montoCondonado ?? '';
+    const motivo = cond?.motivo ?? '';
+    const cargoId = cond?.cargoId ?? body?.cargo?.id ?? '';
+    const parteMonto = monto ? ` — RD$${Number(monto).toLocaleString('es-DO', { minimumFractionDigits: 2 })}` : '';
+    return `${quien} condonó mora${parteMonto}${cargoId ? ` del cargo #${cargoId}` : ''}${motivo ? ` (${motivo})` : ''}`;
   }
 
   // Caja

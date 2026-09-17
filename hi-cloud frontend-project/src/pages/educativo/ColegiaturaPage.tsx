@@ -5,7 +5,7 @@ import {
   message, Typography, Row, Col, Card, Statistic, Tabs, DatePicker,
   Checkbox, Popconfirm, Tooltip,
 } from 'antd';
-import { PlusOutlined, DollarOutlined, EditOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { PlusOutlined, DollarOutlined, EditOutlined, ThunderboltOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import api from '../../api/client';
 import dayjs from 'dayjs';
 import { anioRD } from '../../utils/fechaRD';
@@ -280,11 +280,49 @@ function TabPlanes({ anioId }: { anioId?: number }) {
   );
 }
 
+// ── Modal condonar mora ──────────────────────────────────────────────────────
+
+function CondonarMoraModal({ open, cargo, onClose }: { open: boolean; cargo?: any; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [form] = Form.useForm();
+
+  const mut = useMutation({
+    mutationFn: (vals: any) => api.post(`/educativo/colegiatura/cargos/${cargo?.id}/condonar-mora`, vals),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['educativo', 'colegiatura'] });
+      message.success('Mora condonada');
+      onClose();
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al condonar la mora'),
+  });
+
+  return (
+    <Modal open={open} title="Condonar mora" onCancel={onClose}
+      onOk={() => form.validateFields().then(vals => mut.mutate(vals))}
+      confirmLoading={mut.isPending} destroyOnClose
+      afterOpenChange={v => { if (!v) form.resetFields(); }}>
+      {cargo && (
+        <div style={{ marginBottom: 12 }}>
+          <Text strong>{cargo.estudianteNombre}</Text> <Text type="secondary">— {cargo.descripcion}</Text>
+          <br />
+          <Text type="danger">Mora a condonar: {fmt.format(cargo.montoMora)}</Text>
+        </div>
+      )}
+      <Form form={form} layout="vertical">
+        <Form.Item name="motivo" label="Motivo" rules={[{ required: true, message: 'El motivo es requerido' }]}>
+          <Input.TextArea rows={3} placeholder="Por qué se perdona esta mora — queda auditado" />
+        </Form.Item>
+      </Form>
+    </Modal>
+  );
+}
+
 // ── Tab Cargos ───────────────────────────────────────────────────────────────
 
 function TabCargos({ anioId }: { anioId?: number }) {
   const [filters, setFilters] = useState<Record<string, any>>({ estado: 'pendiente' });
   const [pagoModal, setPagoModal] = useState<{ open: boolean; cargo?: any }>({ open: false });
+  const [condonarModal, setCondonarModal] = useState<{ open: boolean; cargo?: any }>({ open: false });
 
   const { data: cargos = [], isLoading } = useQuery<any[]>({
     queryKey: ['educativo', 'colegiatura', 'cargos', filters],
@@ -298,12 +336,34 @@ function TabCargos({ anioId }: { anioId?: number }) {
     { value: undefined, label: 'Todos' },
     { value: 'pendiente', label: 'Pendiente' },
     { value: 'parcial',   label: 'Pago parcial' },
+    { value: 'vencido',   label: 'Vencido' },
     { value: 'pagado',    label: 'Pagado' },
     { value: 'anulado',   label: 'Anulado' },
   ];
 
   const estadoColor = (e: string) =>
-    e === 'pagado' ? 'green' : e === 'anulado' ? 'default' : e === 'pendiente' ? 'orange' : e === 'parcial' ? 'blue' : 'red';
+    e === 'pagado' ? 'green' : e === 'anulado' ? 'default' : e === 'pendiente' ? 'orange' : e === 'parcial' ? 'blue' : e === 'vencido' ? 'red' : 'red';
+
+  // La mora se recalcula completa cada día (ver mora.cron.ts) — nunca se
+  // muestra sola, siempre junto a diasMora para que se entienda que es un
+  // monto vivo, no un cargo fijo. condonacionesMora (si las hay) en el
+  // tooltip — mismo espíritu que renderDescuento con las becas.
+  const renderMora = (r: any) => {
+    if (r.moraCondonada) {
+      const ultima = r.condonacionesMora?.[0];
+      return (
+        <Tooltip title={ultima ? `Condonada — ${ultima.motivo}` : 'Mora condonada'}>
+          <Tag color="default" style={{ cursor: 'default' }}>Condonada</Tag>
+        </Tooltip>
+      );
+    }
+    if (!(Number(r.montoMora) > 0)) return <span style={{ color: '#999' }}>—</span>;
+    return (
+      <Tooltip title={`${r.diasMora} día(s) en mora`}>
+        <Tag color="volcano" style={{ cursor: 'default' }}>{fmt.format(r.montoMora)}</Tag>
+      </Tooltip>
+    );
+  };
 
   // desgloseDescuento viene ya resuelto (nombre de beca incluido) desde el
   // backend — nunca se muestra el "concepto" técnico crudo (plan:450;beca:
@@ -344,22 +404,33 @@ function TabCargos({ anioId }: { anioId?: number }) {
           { title: 'Descripción', dataIndex: 'descripcion' },
           { title: 'Descuento', render: (_: any, r: any) => renderDescuento(r) },
           { title: 'Monto', dataIndex: 'montoTotal', render: (v: any) => fmt.format(v), align: 'right' },
+          { title: 'Mora', render: (_: any, r: any) => renderMora(r) },
           { title: 'Saldo', dataIndex: 'saldoPendiente', render: (v: any) => v > 0 ? fmt.format(v) : '—', align: 'right' },
           { title: 'Vencimiento', dataIndex: 'fechaVencimiento', render: (v: any) => v?.substring(0, 10) ?? '—' },
           { title: 'Estado', dataIndex: 'estado', render: (v: string) => <Tag color={estadoColor(v)}>{v}</Tag> },
           {
             title: '',
-            render: (_: any, r: any) =>
-              (r.estado === 'pendiente' || r.estado === 'parcial') && (
-                <Button size="small" type="primary" icon={<DollarOutlined />}
-                  onClick={() => setPagoModal({ open: true, cargo: r })}>
-                  Pagar
-                </Button>
-              ),
+            render: (_: any, r: any) => (
+              <Space>
+                {(r.estado === 'pendiente' || r.estado === 'parcial' || r.estado === 'vencido') && (
+                  <Button size="small" type="primary" icon={<DollarOutlined />}
+                    onClick={() => setPagoModal({ open: true, cargo: r })}>
+                    Pagar
+                  </Button>
+                )}
+                {Number(r.montoMora) > 0 && !r.moraCondonada && (
+                  <Button size="small" danger icon={<MinusCircleOutlined />}
+                    onClick={() => setCondonarModal({ open: true, cargo: r })}>
+                    Condonar mora
+                  </Button>
+                )}
+              </Space>
+            ),
           },
         ]}
       />
       <PagoModal open={pagoModal.open} cargo={pagoModal.cargo} onClose={() => setPagoModal({ open: false })} />
+      <CondonarMoraModal open={condonarModal.open} cargo={condonarModal.cargo} onClose={() => setCondonarModal({ open: false })} />
     </>
   );
 }

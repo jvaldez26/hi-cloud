@@ -29,6 +29,7 @@ import { EdRuta }         from './entities/ed-ruta.entity';
 import { EdComunicado }   from './entities/ed-comunicado.entity';
 import { EdComedorPlan }  from './entities/ed-comedor-plan.entity';
 import { EdEnfermeria }   from './entities/ed-enfermeria.entity';
+import { EdCargoCondonacion } from './entities/ed-cargo-condonacion.entity';
 
 import { EdConfigService }       from './config/config.service';
 import { EdConfigController }    from './config/config.controller';
@@ -68,6 +69,7 @@ import { EnfermeriaService }     from './enfermeria/enfermeria.service';
 import { EnfermeriaController }  from './enfermeria/enfermeria.controller';
 import { EdReportesService }     from './reportes/reportes.service';
 import { EdReportesController }  from './reportes/reportes.controller';
+import { MoraCronService }       from './colegiatura/mora.cron';
 
 @Module({
   imports: [
@@ -81,6 +83,7 @@ import { EdReportesController }  from './reportes/reportes.controller';
       EdEvaluacion, EdCalificacion, EdAsistencia,
       EdPlanPago, EdCargo, EdPago, EdBeca, EdEstudianteBeca, EdNotaPeriodo,
       EdDisciplina, EdLibro, EdPrestamo, EdRuta, EdComunicado, EdComedorPlan, EdEnfermeria,
+      EdCargoCondonacion,
     ]),
     TenantModule,
   ],
@@ -125,6 +128,7 @@ import { EdReportesController }  from './reportes/reportes.controller';
     ComedorService,
     EnfermeriaService,
     EdReportesService,
+    MoraCronService,
   ],
   exports: [EdConfigService, EstructuraService],
 })

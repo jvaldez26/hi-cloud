@@ -1,6 +1,6 @@
 import {
   IsDefined, IsOptional, IsString, IsInt, IsIn, IsNumber, IsDateString,
-  IsArray, ArrayMinSize, MaxLength, Min, Max,
+  IsArray, ArrayMinSize, MaxLength, Min, Max, IsNotEmpty,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 
@@ -163,4 +163,13 @@ export class RegistrarPagoDto {
   @IsOptional()
   @IsString({ message: 'Las observaciones deben ser texto' })
   observaciones?: string;
+}
+
+export class CondonarMoraDto {
+  @IsDefined({ message: 'El motivo es requerido' })
+  @IsString({ message: 'El motivo debe ser texto' })
+  @IsNotEmpty({ message: 'El motivo es requerido' })
+  @MaxLength(300, { message: 'El motivo no puede superar 300 caracteres' })
+  @Transform(trim)
+  motivo: string;
 }

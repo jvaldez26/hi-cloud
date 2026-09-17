@@ -30,4 +30,7 @@ export class EdCargo {
   @Column({ length: 200, nullable: true }) descripcion?: string;
   @Column({ nullable: true }) mes?: number;
   @Column({ nullable: true }) anio?: number;
+  // Migración AddMoraCondonadaYCondonaciones — ver mora.cron.ts. Una vez
+  // condonada la mora de este cargo, el cron deja de recalcularla.
+  @Column({ default: false }) moraCondonada!: boolean;
 }

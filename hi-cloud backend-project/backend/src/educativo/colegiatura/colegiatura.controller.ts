@@ -2,13 +2,14 @@ import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards, ParseIntPi
 import { ColegiaturaService } from './colegiatura.service';
 import {
   UpsertPlanDto, GenerarCargosDto, GenerarMatriculaDto,
-  AddCargoDto, UpdateCargoDto, RegistrarPagoDto,
+  AddCargoDto, UpdateCargoDto, RegistrarPagoDto, CondonarMoraDto,
 } from './dto/colegiatura.dto';
 import { JwtAuthGuard }     from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard }       from '../../auth/guards/roles.guard';
 import { TenantGuard }      from '../../tenant/tenant.guard';
 import { ModuloAddonGuard } from '../../modulos-addon/guards/modulo-addon.guard';
 import { TenantService }    from '../../tenant/tenant.service';
+import { GetUser }          from '../../auth/decorators/get-user.decorator';
 
 @UseGuards(JwtAuthGuard, RolesGuard, TenantGuard, ModuloAddonGuard('educativo'))
 @Controller('educativo/colegiatura')
@@ -79,6 +80,15 @@ export class ColegiaturaController {
   @Patch('cargos/:id')
   updateCargo(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateCargoDto) {
     return this.svc.updateCargo(this.tenantSvc.getEmpresaId(), id, dto);
+  }
+
+  @Post('cargos/:id/condonar-mora')
+  condonarMora(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CondonarMoraDto,
+    @GetUser('id') usuarioId: number,
+  ) {
+    return this.svc.condonarMora(this.tenantSvc.getEmpresaId(), id, dto, usuarioId);
   }
 
   // ── Pagos ───────────────────────────────────────────────────────────────────

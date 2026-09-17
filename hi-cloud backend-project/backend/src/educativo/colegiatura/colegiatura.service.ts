@@ -258,7 +258,13 @@ export class ColegiaturaService {
     if (opts.estado)       { conds.push(`c.estado = $${idx}`);         params.push(opts.estado);       idx++; }
     if (opts.mes)          { conds.push(`c.mes = $${idx}`);            params.push(opts.mes);          idx++; }
     if (opts.anio)         { conds.push(`c.anio = $${idx}`);           params.push(opts.anio);         idx++; }
-    if (opts.vencidos)     { conds.push(`c."fechaVencimiento" < CURRENT_DATE AND c.estado = 'pendiente'`); }
+    if (opts.vencidos) {
+      // Misma definición de "vencido" que resumenFinanciero() — desde que
+      // el cron de mora mantiene el estado real, ya no hace falta el OR de
+      // respaldo sobre fechaVencimiento para cargos 'pendiente' que el cron
+      // aún no tocó hoy, pero se deja por si el cron no ha corrido todavía.
+      conds.push(`(c.estado IN ('vencido','parcial') OR (c.estado = 'pendiente' AND c."fechaVencimiento" < CURRENT_DATE))`);
+    }
     if (opts.q) {
       conds.push(`(e.nombres ILIKE $${idx} OR e.apellidos ILIKE $${idx} OR e.cedula ILIKE $${idx})`);
       params.push(`%${opts.q}%`); idx++;
@@ -273,7 +279,66 @@ export class ColegiaturaService {
        ORDER BY c."fechaVencimiento", e.apellidos`,
       params,
     );
-    return this.conDesgloseDescuento(cargos);
+    return this.conCondonaciones(await this.conDesgloseDescuento(cargos));
+  }
+
+  /** Adjunta `condonacionesMora` (lista) a cada cargo que tenga alguna — visible en el desglose. */
+  private async conCondonaciones<T extends { id: number; moraCondonada?: boolean }>(cargos: T[]): Promise<T[]> {
+    const idsConCondonacion = cargos.filter(c => c.moraCondonada).map(c => c.id);
+    if (!idsConCondonacion.length) return cargos.map(c => ({ ...c, condonacionesMora: [] }));
+
+    const rows = await this.ds.query<any[]>(
+      `SELECT * FROM ed_cargos_condonaciones WHERE "cargoId" = ANY($1) ORDER BY "createdAt" DESC`,
+      [idsConCondonacion],
+    );
+    const porCargo = new Map<number, any[]>();
+    for (const r of rows) {
+      if (!porCargo.has(r.cargoId)) porCargo.set(r.cargoId, []);
+      porCargo.get(r.cargoId)!.push(r);
+    }
+    return cargos.map(c => ({ ...c, condonacionesMora: porCargo.get(c.id) ?? [] }));
+  }
+
+  // ── Condonar mora ────────────────────────────────────────────────────────
+
+  /**
+   * Perdona la mora ACTUAL de un cargo (motivo obligatorio, auditado en
+   * ed_cargos_condonaciones). moraCondonada=true saca al cargo del cron para
+   * siempre — condonar no serviría de nada si la mora reaparece mañana.
+   * No toca diasMora: es el registro histórico de cuántos días estuvo en
+   * mora hasta este punto, independiente de que se haya perdonado el monto.
+   */
+  async condonarMora(empresaId: number, cargoId: number, dto: { motivo: string }, usuarioId?: number) {
+    return this.ds.transaction(async (manager) => {
+      const [cargo] = await manager.query<any[]>(
+        `SELECT * FROM ed_cargos WHERE id = $1 AND "empresaId" = $2 FOR UPDATE`,
+        [cargoId, empresaId],
+      );
+      if (!cargo) throw new NotFoundException('Cargo no encontrado');
+      const montoMoraActual = Number(cargo.montoMora ?? 0);
+      if (montoMoraActual <= 0) throw new BadRequestException('Este cargo no tiene mora que condonar');
+
+      const baseSinMora = Number(cargo.montoOriginal ?? 0) - Number(cargo.descuento ?? 0);
+      const montoTotal = redondearMoneda(baseSinMora);
+      const saldoPendiente = Math.max(redondearMoneda(montoTotal - Number(cargo.montoPagado ?? 0)), 0);
+      const nuevoEstado = saldoPendiente <= 0 ? 'pagado' : cargo.estado;
+
+      await manager.query(
+        `UPDATE ed_cargos
+           SET "montoMora" = 0, "montoTotal" = $1, "saldoPendiente" = $2, estado = $3, "moraCondonada" = true
+         WHERE id = $4 AND "empresaId" = $5`,
+        [montoTotal, saldoPendiente, nuevoEstado, cargoId, empresaId],
+      );
+
+      const [condonacion] = await manager.query<any[]>(
+        `INSERT INTO ed_cargos_condonaciones ("empresaId","cargoId","montoCondonado",motivo,"usuarioId")
+         VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+        [empresaId, cargoId, montoMoraActual, dto.motivo, usuarioId ?? null],
+      );
+
+      const [actualizado] = await manager.query<any[]>(`SELECT * FROM ed_cargos WHERE id = $1`, [cargoId]);
+      return { cargo: actualizado, condonacion };
+    });
   }
 
   async addCargo(empresaId: number, dto: any) {
