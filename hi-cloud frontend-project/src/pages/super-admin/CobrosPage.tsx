@@ -338,11 +338,12 @@ export default function CobrosPage() {
   const colVisPendientes = useColumnVisibility('sa-cobros-pendientes', COLS_PENDIENTES);
 
   const COLS_HIST = [
-    { key: 'creadoEn', label: 'Fecha'    },
-    { key: 'concepto', label: 'Concepto' },
-    { key: 'tipo',     label: 'Tipo'     },
-    { key: 'monto',    label: 'Monto'    },
-    { key: 'estado',   label: 'Estado'   },
+    { key: 'creadoEn',       label: 'Fecha'       },
+    { key: 'concepto',       label: 'Concepto'    },
+    { key: 'tipo',           label: 'Tipo'        },
+    { key: 'monto',          label: 'Monto'       },
+    { key: 'estado',         label: 'Estado'      },
+    { key: 'comprobanteUrl', label: 'Comprobante' },
   ];
   const colVisHist = useColumnVisibility('sa-cobros-historial', COLS_HIST);
 
@@ -600,6 +601,26 @@ export default function CobrosPage() {
         <Tag color={{ PENDIENTE: 'orange', CONFIRMADO: 'green', RECHAZADO: 'red' }[v] ?? 'default'}>
           {v}
         </Tag>
+      ),
+    },
+    {
+      // Una vez confirmado, el pago sale de "Comprobantes pendientes" (esa
+      // tabla filtra estado=PENDIENTE) y el Historial queda como el único
+      // lugar para volver a verlo — antes no tenía esta columna, así que
+      // el comprobante quedaba inaccesible en cuanto se aprobaba.
+      title: 'Comprobante', dataIndex: 'comprobanteUrl', key: 'comprobanteUrl', width: 140,
+      render: (url: string, r: PagoSuscripcion) => url ? (
+        <Button
+          size="small"
+          type="link"
+          icon={<EyeOutlined />}
+          style={{ color: '#3b82f6', padding: 0 }}
+          onClick={() => setOpenComprobante(r)}
+        >
+          Ver comprobante
+        </Button>
+      ) : (
+        <Text type="secondary" style={{ fontSize: 12 }}>Sin comprobante</Text>
       ),
     },
   ];
@@ -1000,37 +1021,56 @@ export default function CobrosPage() {
         open={!!openComprobante}
         onCancel={() => setOpenComprobante(null)}
         width={680}
-        footer={[
-          <Button
-            key="rechazar"
-            danger
-            icon={<CloseOutlined />}
-            onClick={() => {
-              const id = openComprobante!.id;
-              setOpenComprobante(null);
-              formRechazo.resetFields();
-              setOpenRechazo(id);
-            }}
-          >
-            Rechazar ❌
-          </Button>,
-          <Popconfirm
-            key="confirmar"
-            title="¿Confirmar este pago?"
-            description={avisoPreview(openComprobante?.preview, true)?.texto
-              ?? 'Esto activará o extenderá la suscripción de la empresa.'}
-            onConfirm={() => {
-              confirmarMut.mutate(openComprobante!.id);
-              setOpenComprobante(null);
-            }}
-            okText="Confirmar" cancelText="Cancelar"
-          >
-            <Button type="primary" icon={<CheckOutlined />} loading={confirmarMut.isPending}>
-              Confirmar pago ✅
-            </Button>
-          </Popconfirm>,
-        ]}
+        footer={
+          // Solo se puede confirmar/rechazar un pago PENDIENTE — este modal
+          // ahora también se abre desde el Historial para pagos ya
+          // decididos (CONFIRMADO/RECHAZADO), donde solo cabe verlo.
+          openComprobante?.estado === 'PENDIENTE' ? [
+            <Button
+              key="rechazar"
+              danger
+              icon={<CloseOutlined />}
+              onClick={() => {
+                const id = openComprobante!.id;
+                setOpenComprobante(null);
+                formRechazo.resetFields();
+                setOpenRechazo(id);
+              }}
+            >
+              Rechazar ❌
+            </Button>,
+            <Popconfirm
+              key="confirmar"
+              title="¿Confirmar este pago?"
+              description={avisoPreview(openComprobante?.preview, true)?.texto
+                ?? 'Esto activará o extenderá la suscripción de la empresa.'}
+              onConfirm={() => {
+                confirmarMut.mutate(openComprobante!.id);
+                setOpenComprobante(null);
+              }}
+              okText="Confirmar" cancelText="Cancelar"
+            >
+              <Button type="primary" icon={<CheckOutlined />} loading={confirmarMut.isPending}>
+                Confirmar pago ✅
+              </Button>
+            </Popconfirm>,
+          ] : [
+            <Button key="cerrar" onClick={() => setOpenComprobante(null)}>Cerrar</Button>,
+          ]
+        }
       >
+        {openComprobante && openComprobante.estado !== 'PENDIENTE' && (
+          <div style={{
+            marginBottom: 16, padding: '8px 12px', borderRadius: 6, fontSize: 12,
+            background: openComprobante.estado === 'CONFIRMADO' ? '#f6ffed' : '#fff1f0',
+            border: `1px solid ${openComprobante.estado === 'CONFIRMADO' ? '#b7eb8f' : '#ffa39e'}`,
+            color: openComprobante.estado === 'CONFIRMADO' ? '#389e0d' : '#cf1322',
+          }}>
+            {openComprobante.estado === 'CONFIRMADO'
+              ? `✅ Pago confirmado${openComprobante.confirmadoEn ? ` el ${fmtDate(openComprobante.confirmadoEn)}` : ''}.`
+              : `❌ Pago rechazado${openComprobante.motivoRechazo ? ` — ${openComprobante.motivoRechazo}` : '.'}`}
+          </div>
+        )}
         {openComprobante?.comprobanteUrl && (() => {
           const url = openComprobante.comprobanteUrl!;
           const isPdf = url.toLowerCase().endsWith('.pdf');
