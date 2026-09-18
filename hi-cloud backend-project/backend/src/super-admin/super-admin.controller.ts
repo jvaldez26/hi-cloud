@@ -502,8 +502,15 @@ export class SuperAdminController {
 
   @Get('backups')
   @ApiOperation({ summary: 'Listar backups con estadísticas' })
-  listarBackups(@Query('page') page = '1') {
-    return this.backupSvc.listar(Number(page));
+  listarBackups(
+    @Query('page') page = '1',
+    @Query('tipo') tipo?: string,
+    @Query('estado') estado?: string,
+    @Query('restauracion') restauracion?: string,
+    @Query('desde') desde?: string,
+    @Query('hasta') hasta?: string,
+  ) {
+    return this.backupSvc.listar(Number(page), 20, { tipo, estado, restauracion, desde, hasta });
   }
 
   @Get('backups/s3-status')

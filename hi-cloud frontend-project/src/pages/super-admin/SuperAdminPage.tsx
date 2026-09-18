@@ -2,7 +2,7 @@
 import {
   Table, Tag, Button, Modal, Select, InputNumber, message,
   Avatar, Tooltip, Input, Popconfirm, Form, Tabs, Badge, Dropdown,
-  Spin, Empty, Space, Alert, ConfigProvider, theme as antTheme, DatePicker, Switch,
+  Spin, Empty, Space, Alert, ConfigProvider, theme as antTheme, DatePicker, Switch, Col,
 } from 'antd';
 import type { MenuProps } from 'antd';
 import { SidebarShell, useSidebarColapsado } from '../../components/layout/sidebar/SidebarShell';
@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
 import { demoApi, ESTADO_DEMO_LABEL, ESTADO_DEMO_COLOR } from '../../api/demo.api';
 import CobrosPage from './CobrosPage';
@@ -55,6 +55,7 @@ function resolverSectorEmpresa(sector?: string | null, sectorOtroTexto?: string 
 import { fmtDop } from '../../utils/fmt';
 import { ahora, dRD, fecha, fechaHora, horaConSegundos, hoyRD } from '../../utils/fechaRD';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { AdvancedFilters } from '../../components/ui/AdvancedFilters';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 
 /** Wrapper con contexto de color del Super Admin — respeta modo oscuro */
@@ -125,6 +126,17 @@ const useSaTheme = () => useContext(SaThemeCtx);
 // Los sub-componentes que son funciones independientes usan useSaTheme()
 
 const STORAGE_KEY = 'superadmin-theme';
+
+// Claves válidas de ?tab= — mismas que gruposMenu/itemsRapidos más abajo.
+// Una ?tab= vieja/inventada en la URL (favorito guardado de un módulo ya
+// renombrado, por ejemplo) cae a 'inicio' en vez de dejar la pantalla en
+// blanco.
+const TABS_VALIDOS = new Set([
+  'inicio', 'empresas', 'usuarios', 'pendientes', 'demos', 'pruebas', 'auditoria',
+  'suscripciones', 'cobros', 'solicitudes', 'metricas',
+  'ecf', 'activacion-ecf',
+  'modulos', 'videos', 'mensajes', 'backups', 'herramientas', 'config',
+]);
 
 // Solo los 4 planes activos — los legados (trial, basico, etc.) no se ofrecen en la UI
 const PLANES = [
@@ -236,6 +248,25 @@ function SolicitudesTab({ C, solicitudes, isLoading, onRefresh }:
   const [notaInterna, setNotaInterna] = useState('');
   const [motivoRechazo, setMotivoRechazo] = useState('');
   const qc = useQueryClient();
+  const [search, setSearch] = useState('');
+  const [filtroEstadoSol, setFiltroEstadoSol] = useState<string | undefined>(undefined);
+  const [filtroPlanSol, setFiltroPlanSol] = useState<string | undefined>(undefined);
+  const [filtroFechaSol, setFiltroFechaSol] = useState<[any, any] | null>(null);
+  const solicitudesFiltradas = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return solicitudes.filter(s => {
+      const matchBusq = !q || s.empresa?.nombre?.toLowerCase().includes(q) || s.empresa?.rnc?.includes(q);
+      const matchEstado = !filtroEstadoSol || s.estado === filtroEstadoSol;
+      const matchPlan = !filtroPlanSol || s.planSolicitado === filtroPlanSol;
+      const matchFecha = !filtroFechaSol || !s.createdAt || (
+        new Date(s.createdAt) >= filtroFechaSol[0].startOf('day').toDate() &&
+        new Date(s.createdAt) <= filtroFechaSol[1].endOf('day').toDate()
+      );
+      return matchBusq && matchEstado && matchPlan && matchFecha;
+    });
+  }, [solicitudes, search, filtroEstadoSol, filtroPlanSol, filtroFechaSol]);
+  const solicitudesFiltrosAvanzadosActivos =
+    (filtroEstadoSol ? 1 : 0) + (filtroPlanSol ? 1 : 0) + (filtroFechaSol ? 1 : 0);
 
   const aprobarMut = useMutation({
     mutationFn: ({ id, nota }: { id: number; nota?: string }) =>
@@ -314,13 +345,54 @@ function SolicitudesTab({ C, solicitudes, isLoading, onRefresh }:
           )}
         </h3>
         <Space>
+          <Input
+            placeholder="Buscar por empresa o RNC..."
+            value={search} onChange={e => setSearch(e.target.value)}
+            allowClear style={{ width: 220, background: C.card, borderColor: C.border, color: C.txt }}
+            prefix={<Search size={13} style={{ color: C.txt2 }} />}
+          />
           <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
           <Button size="small" onClick={onRefresh}>Actualizar</Button>
         </Space>
       </div>
+
+      <AdvancedFilters
+        activeCount={solicitudesFiltrosAvanzadosActivos}
+        onClear={() => { setFiltroEstadoSol(undefined); setFiltroPlanSol(undefined); setFiltroFechaSol(null); }}
+      >
+        <Col xs={24} sm={8}>
+          <div style={{ fontSize: 12, color: C.txt2, marginBottom: 4 }}>Estado</div>
+          <Select
+            allowClear placeholder="Todos" style={{ width: '100%' }}
+            value={filtroEstadoSol} onChange={setFiltroEstadoSol}
+            options={[
+              { value: 'pendiente', label: 'Pendiente' },
+              { value: 'aprobada', label: 'Aprobada' },
+              { value: 'rechazada', label: 'Rechazada' },
+            ]}
+          />
+        </Col>
+        <Col xs={24} sm={8}>
+          <div style={{ fontSize: 12, color: C.txt2, marginBottom: 4 }}>Plan solicitado</div>
+          <Select
+            allowClear placeholder="Todos" style={{ width: '100%' }}
+            value={filtroPlanSol} onChange={setFiltroPlanSol}
+            options={PLANES_ACTIVOS.map(p => ({ value: p.value, label: p.label }))}
+          />
+        </Col>
+        <Col xs={24} sm={8}>
+          <div style={{ fontSize: 12, color: C.txt2, marginBottom: 4 }}>Fecha de solicitud</div>
+          <DatePicker.RangePicker
+            style={{ width: '100%' }} format="DD/MM/YYYY"
+            value={filtroFechaSol as any}
+            onChange={v => setFiltroFechaSol(v as any)}
+          />
+        </Col>
+      </AdvancedFilters>
+
       <Table
         loading={isLoading}
-        dataSource={solicitudes}
+        dataSource={solicitudesFiltradas}
         columns={filterColumns(columns as any)}
         rowKey="id"
         size="small"
@@ -412,6 +484,23 @@ function PruebasTab({ C, pruebas, isLoading, onRefresh }:
   const qc = useQueryClient();
   const [extModal, setExtModal] = useState<any>(null);
   const [diasExt, setDiasExt] = useState(7);
+  const [search, setSearch] = useState('');
+  // Búsqueda avanzada: plan y umbral de días restantes — para encontrar
+  // rápido, por ejemplo, "las que vencen esta semana" sin ordenar la tabla.
+  const [filtroPlanPrueba, setFiltroPlanPrueba] = useState<string | undefined>(undefined);
+  const [filtroDiasMax, setFiltroDiasMax] = useState<number | undefined>(undefined);
+
+  const pruebasFiltradas = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return pruebas.filter(r => {
+      const matchBusq = !q ||
+        r.empresa?.nombre?.toLowerCase().includes(q) || r.empresa?.rnc?.includes(q);
+      const matchPlan = !filtroPlanPrueba || r.plan === filtroPlanPrueba;
+      const matchDias = filtroDiasMax == null || r.diasRestantes <= filtroDiasMax;
+      return matchBusq && matchPlan && matchDias;
+    });
+  }, [pruebas, search, filtroPlanPrueba, filtroDiasMax]);
+  const pruebasFiltrosAvanzadosActivos = (filtroPlanPrueba ? 1 : 0) + (filtroDiasMax != null ? 1 : 0);
 
   const extenderMut = useMutation({
     mutationFn: ({ id, dias }: { id: number; dias: number }) =>
@@ -484,15 +573,43 @@ function PruebasTab({ C, pruebas, isLoading, onRefresh }:
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
-        <h3 style={{ color: C.txt, margin: 0, fontWeight: 700 }}>Empresas en período de prueba ({pruebas.length})</h3>
+        <h3 style={{ color: C.txt, margin: 0, fontWeight: 700 }}>Empresas en período de prueba ({pruebasFiltradas.length} de {pruebas.length})</h3>
         <Space>
+          <Input
+            placeholder="Buscar por nombre o RNC..."
+            value={search} onChange={e => setSearch(e.target.value)}
+            allowClear style={{ width: 220, background: C.card, borderColor: C.border, color: C.txt }}
+            prefix={<Search size={13} style={{ color: C.txt2 }} />}
+          />
           <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
           <Button size="small" onClick={onRefresh}>Actualizar</Button>
         </Space>
       </div>
+
+      <AdvancedFilters
+        activeCount={pruebasFiltrosAvanzadosActivos}
+        onClear={() => { setFiltroPlanPrueba(undefined); setFiltroDiasMax(undefined); }}
+      >
+        <Col xs={24} sm={12} md={8}>
+          <div style={{ fontSize: 12, color: C.txt2, marginBottom: 4 }}>Plan</div>
+          <Select
+            allowClear placeholder="Todos" style={{ width: '100%' }}
+            value={filtroPlanPrueba} onChange={setFiltroPlanPrueba}
+            options={PLANES_ACTIVOS.map(p => ({ value: p.value, label: p.label }))}
+          />
+        </Col>
+        <Col xs={24} sm={12} md={8}>
+          <div style={{ fontSize: 12, color: C.txt2, marginBottom: 4 }}>Vence en (días o menos)</div>
+          <InputNumber
+            min={0} max={90} style={{ width: '100%' }} placeholder="Ej: 3"
+            value={filtroDiasMax} onChange={v => setFiltroDiasMax(v ?? undefined)}
+          />
+        </Col>
+      </AdvancedFilters>
+
       <Table
         loading={isLoading}
-        dataSource={pruebas}
+        dataSource={pruebasFiltradas}
         columns={filterColumns(columns as any)}
         rowKey="empresaId"
         size="small"
@@ -1434,10 +1551,15 @@ function DemosTab({ C }: { C: SaTheme }) {
   const [detalle,     setDetalle]     = useState<any>(null);
   const [nuevaNota,   setNuevaNota]   = useState('');
   const [guardandoNota, setGuardandoNota] = useState(false);
+  // Búsqueda avanzada: rango de fecha de solicitud — demoApi.listar() ya
+  // aceptaba desde/hasta (server-side), solo faltaba la UI para usarlo.
+  const [rangoFecha, setRangoFecha] = useState<[any, any] | null>(null);
+  const desde = rangoFecha ? rangoFecha[0].format('YYYY-MM-DD') : undefined;
+  const hasta = rangoFecha ? rangoFecha[1].format('YYYY-MM-DD') : undefined;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['sa-demos', page, estado, search],
-    queryFn:  () => demoApi.listar(page, estado || undefined, search || undefined),
+    queryKey: ['sa-demos', page, estado, search, desde, hasta],
+    queryFn:  () => demoApi.listar(page, estado || undefined, search || undefined, desde, hasta),
     staleTime: 15_000,
   });
 
@@ -1536,6 +1658,20 @@ function DemosTab({ C }: { C: SaTheme }) {
         </span>
         <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
       </div>
+
+      <AdvancedFilters
+        activeCount={rangoFecha ? 1 : 0}
+        onClear={() => { setRangoFecha(null); setPage(1); }}
+      >
+        <Col xs={24} sm={12} md={8}>
+          <div style={{ fontSize: 12, color: C.txt2, marginBottom: 4 }}>Fecha de solicitud</div>
+          <DatePicker.RangePicker
+            style={{ width: '100%' }} format="DD/MM/YYYY"
+            value={rangoFecha as any}
+            onChange={v => { setRangoFecha(v as any); setPage(1); }}
+          />
+        </Col>
+      </AdvancedFilters>
 
       {/* Tabla */}
       <div style={{ background: C.card, borderRadius: 12, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
@@ -1725,7 +1861,21 @@ export default function SuperAdminPage() {
   // Arranca en Inicio: es la vista de resumen, y hasta ahora sus 8 tarjetas se
   // pintaban encima de TODAS las pestañas, empujando el contenido ~300px hacia
   // abajo. Metidas en su propia pestaña, la tabla de Empresas arranca arriba.
-  const [tab, setTab]               = useState('inicio');
+  //
+  // El módulo activo vive también en la URL (?tab=) — todo Super Admin es
+  // una sola ruta ("/super-admin"), a diferencia del ERP normal donde cada
+  // módulo tiene su propia URL (/facturas, /clientes...) y por eso F5 ya
+  // los deja donde estaban. Sin esto, recargar siempre reiniciaba el
+  // useState y mandaba de vuelta a Inicio sin importar en qué módulo
+  // estuviera el super admin — mismo patrón que ConducePage.tsx (?tab=)
+  // para su sub-navegación.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabInicial = searchParams.get('tab');
+  const [tab, setTabState] = useState(tabInicial && TABS_VALIDOS.has(tabInicial) ? tabInicial : 'inicio');
+  const setTab = useCallback((t: string) => {
+    setTabState(t);
+    setSearchParams(p => { p.set('tab', t); return p; }, { replace: true });
+  }, [setSearchParams]);
 
   // ── Menú lateral ──────────────────────────────────────────────────────────
   // Mismo armazón que el ERP. La clave de localStorage es distinta a propósito:
@@ -1778,6 +1928,13 @@ export default function SuperAdminPage() {
   const [busqueda, setBusqueda]     = useState('');
   const [filtroPlan, setFiltroPlan] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('');
+  // Búsqueda avanzada de Empresas — complementa el filtro básico (nombre/RNC
+  // + plan + activa/suspendida/vencida) sin duplicarlo: sector, el estado
+  // de FACTURACIÓN real (suscripciones.estado — distinto de isActive, ver
+  // el fix del modal de detalle) y rango de fecha de registro.
+  const [filtroSector, setFiltroSector] = useState<string | undefined>(undefined);
+  const [filtroEstadoSus, setFiltroEstadoSus] = useState<string | undefined>(undefined);
+  const [filtroFechaRegistro, setFiltroFechaRegistro] = useState<[any, any] | null>(null);
   const [detalleEmpresa, setDetalleEmpresa] = useState<any>(null);
   const [modalPlan, setModalPlan]   = useState<any>(null);
   const [modalMsg, setModalMsg]     = useState<any>(null);
@@ -1872,6 +2029,30 @@ export default function SuperAdminPage() {
     refetchInterval: 60_000,
   });
   const pendientesCount = (pendientes as any[]).length;
+  const [searchPendientes, setSearchPendientes] = useState('');
+  const [filtroPlanPendiente, setFiltroPlanPendiente] = useState<string | undefined>(undefined);
+  const [filtroProviderPendiente, setFiltroProviderPendiente] = useState<string | undefined>(undefined);
+  const [filtroFechaPendiente, setFiltroFechaPendiente] = useState<[any, any] | null>(null);
+  const pendientesFiltrados = useMemo(() => {
+    const q = searchPendientes.trim().toLowerCase();
+    return (pendientes as any[]).filter(p => {
+      const matchBusq = !q ||
+        p.nombre?.toLowerCase().includes(q) || p.email?.toLowerCase().includes(q) ||
+        p.empresa?.toLowerCase().includes(q) || p.rnc?.includes(q);
+      const matchPlan = !filtroPlanPendiente || p.plan === filtroPlanPendiente;
+      const matchProv = !filtroProviderPendiente || p.provider === filtroProviderPendiente;
+      const matchFecha = !filtroFechaPendiente || !p.createdAt || (
+        new Date(p.createdAt) >= filtroFechaPendiente[0].startOf('day').toDate() &&
+        new Date(p.createdAt) <= filtroFechaPendiente[1].endOf('day').toDate()
+      );
+      return matchBusq && matchPlan && matchProv && matchFecha;
+    });
+  }, [pendientes, searchPendientes, filtroPlanPendiente, filtroProviderPendiente, filtroFechaPendiente]);
+  const pendientesFiltrosAvanzadosActivos =
+    (filtroPlanPendiente ? 1 : 0) + (filtroProviderPendiente ? 1 : 0) + (filtroFechaPendiente ? 1 : 0);
+  const limpiarFiltrosAvanzadosPendientes = () => {
+    setFiltroPlanPendiente(undefined); setFiltroProviderPendiente(undefined); setFiltroFechaPendiente(null);
+  };
 
   const aprobarRegistroMut = useMutation({
     mutationFn: (id: number) => api.post(`/admin/registros-pendientes/${id}/aprobar`).then(xd),
@@ -2094,6 +2275,30 @@ export default function SuperAdminPage() {
     staleTime: 10_000,
   });
 
+  // Búsqueda de Suscripciones — no tenía ni buscador de texto ni filtros.
+  const [searchSus, setSearchSus] = useState('');
+  const [filtroPlanSus, setFiltroPlanSus] = useState<string | undefined>(undefined);
+  const [filtroEstadoSus2, setFiltroEstadoSus2] = useState<string | undefined>(undefined);
+  const [filtroVenceSus, setFiltroVenceSus] = useState<[any, any] | null>(null);
+  const suscripcionesFiltradas = useMemo(() => {
+    const q = searchSus.trim().toLowerCase();
+    return (suscripciones as any[]).filter(s => {
+      const matchBusq = !q || s.empresa?.toLowerCase().includes(q) || s.rnc?.includes(q);
+      const matchPlan = !filtroPlanSus || s.plan === filtroPlanSus;
+      const matchEst  = !filtroEstadoSus2 || s.estado === filtroEstadoSus2;
+      const matchVence = !filtroVenceSus || !s.fechaVencimiento || (
+        new Date(s.fechaVencimiento) >= filtroVenceSus[0].startOf('day').toDate() &&
+        new Date(s.fechaVencimiento) <= filtroVenceSus[1].endOf('day').toDate()
+      );
+      return matchBusq && matchPlan && matchEst && matchVence;
+    });
+  }, [suscripciones, searchSus, filtroPlanSus, filtroEstadoSus2, filtroVenceSus]);
+  const suscripcionesFiltrosAvanzadosActivos =
+    (filtroPlanSus ? 1 : 0) + (filtroEstadoSus2 ? 1 : 0) + (filtroVenceSus ? 1 : 0);
+  const limpiarFiltrosAvanzadosSuscripciones = () => {
+    setFiltroPlanSus(undefined); setFiltroEstadoSus2(undefined); setFiltroVenceSus(null);
+  };
+
   // ── Mutations ─────────────────────────────────────────────────────────────────
 
   const suspenderMut = useMutation({
@@ -2170,9 +2375,21 @@ export default function SuperAdminPage() {
         (filtroEstado === 'activa' && e.isActive) ||
         (filtroEstado === 'suspendida' && !e.isActive) ||
         (filtroEstado === 'vencida' && e.venceSuscripcion && new Date(e.venceSuscripcion) < ahora());
-      return matchBusq && matchPlan && matchEst;
+      const matchSector = !filtroSector || e.sector === filtroSector;
+      const matchEstSus = !filtroEstadoSus || e.estadoSuscripcion === filtroEstadoSus;
+      const matchFecha  = !filtroFechaRegistro || !e.fechaRegistro || (
+        new Date(e.fechaRegistro) >= filtroFechaRegistro[0].startOf('day').toDate() &&
+        new Date(e.fechaRegistro) <= filtroFechaRegistro[1].endOf('day').toDate()
+      );
+      return matchBusq && matchPlan && matchEst && matchSector && matchEstSus && matchFecha;
     });
-  }, [empresas, busqueda, filtroPlan, filtroEstado]);
+  }, [empresas, busqueda, filtroPlan, filtroEstado, filtroSector, filtroEstadoSus, filtroFechaRegistro]);
+
+  const empresasFiltrosAvanzadosActivos =
+    (filtroSector ? 1 : 0) + (filtroEstadoSus ? 1 : 0) + (filtroFechaRegistro ? 1 : 0);
+  const limpiarFiltrosAvanzadosEmpresas = () => {
+    setFiltroSector(undefined); setFiltroEstadoSus(undefined); setFiltroFechaRegistro(null);
+  };
 
   // ── Datos para gráficas ───────────────────────────────────────────────────────
 
@@ -2232,17 +2449,36 @@ export default function SuperAdminPage() {
   ];
   const colVisUsuarios = useColumnVisibility('sa-usuarios', COLS_USUARIOS);
   const [searchUsuarios, setSearchUsuarios] = useState('');
+  // Búsqueda avanzada de Usuarios — rol, estado de acceso y rango de
+  // fecha de registro, complementando el buscador de nombre/correo/username.
+  const [filtroRolUsuario, setFiltroRolUsuario] = useState<string | undefined>(undefined);
+  const [filtroEstadoUsuario, setFiltroEstadoUsuario] = useState<string | undefined>(undefined);
+  const [filtroFechaRegUsuario, setFiltroFechaRegUsuario] = useState<[any, any] | null>(null);
   // Caso real: alguien llama a soporte diciendo "entro como caja01" — la
   // búsqueda tiene que encontrarlo por username, no solo por nombre/correo.
   const usuariosFiltrados = useMemo(() => {
     const q = searchUsuarios.trim().toLowerCase();
-    if (!q) return usuarios as any[];
-    return (usuarios as any[]).filter(u =>
-      u.nombre?.toLowerCase().includes(q) ||
-      u.email?.toLowerCase().includes(q) ||
-      u.username?.toLowerCase().includes(q),
-    );
-  }, [usuarios, searchUsuarios]);
+    return (usuarios as any[]).filter(u => {
+      const matchBusq = !q ||
+        u.nombre?.toLowerCase().includes(q) ||
+        u.email?.toLowerCase().includes(q) ||
+        u.username?.toLowerCase().includes(q);
+      const matchRol   = !filtroRolUsuario || u.role === filtroRolUsuario;
+      const matchEstado = !filtroEstadoUsuario ||
+        (filtroEstadoUsuario === 'activo' ? u.isActive : !u.isActive);
+      const matchFecha = !filtroFechaRegUsuario || !u.registro || (
+        new Date(u.registro) >= filtroFechaRegUsuario[0].startOf('day').toDate() &&
+        new Date(u.registro) <= filtroFechaRegUsuario[1].endOf('day').toDate()
+      );
+      return matchBusq && matchRol && matchEstado && matchFecha;
+    });
+  }, [usuarios, searchUsuarios, filtroRolUsuario, filtroEstadoUsuario, filtroFechaRegUsuario]);
+
+  const usuariosFiltrosAvanzadosActivos =
+    (filtroRolUsuario ? 1 : 0) + (filtroEstadoUsuario ? 1 : 0) + (filtroFechaRegUsuario ? 1 : 0);
+  const limpiarFiltrosAvanzadosUsuarios = () => {
+    setFiltroRolUsuario(undefined); setFiltroEstadoUsuario(undefined); setFiltroFechaRegUsuario(null);
+  };
 
   const COLS_SUSCRIPCIONES = [
     { key: 'empresa', label: 'Empresa'     },
@@ -3042,6 +3278,40 @@ export default function SuperAdminPage() {
                     onChange={colVisEmpresas.updateVisibility} />
                 </div>
 
+                <AdvancedFilters activeCount={empresasFiltrosAvanzadosActivos} onClear={limpiarFiltrosAvanzadosEmpresas}>
+                  <Col xs={24} sm={8}>
+                    <div style={{ fontSize: 12, color: C.txt2, marginBottom: 4 }}>Sector empresarial</div>
+                    <Select
+                      allowClear placeholder="Todos los sectores" style={{ width: '100%' }}
+                      value={filtroSector} onChange={setFiltroSector}
+                      options={SECTORES_EMPRESARIALES.map(s => ({ value: s.value, label: s.label }))}
+                      showSearch filterOption={(inp, opt) => String(opt?.label ?? '').toLowerCase().includes(inp.toLowerCase())}
+                    />
+                  </Col>
+                  <Col xs={24} sm={8}>
+                    <div style={{ fontSize: 12, color: C.txt2, marginBottom: 4 }}>Suscripción (facturación)</div>
+                    <Select
+                      allowClear placeholder="Todos" style={{ width: '100%' }}
+                      value={filtroEstadoSus} onChange={setFiltroEstadoSus}
+                      options={[
+                        { value: 'activa', label: 'Activa' },
+                        { value: 'prueba', label: 'Prueba' },
+                        { value: 'suspendida', label: 'Suspendida' },
+                        { value: 'vencida', label: 'Vencida' },
+                        { value: 'cancelada', label: 'Cancelada' },
+                      ]}
+                    />
+                  </Col>
+                  <Col xs={24} sm={8}>
+                    <div style={{ fontSize: 12, color: C.txt2, marginBottom: 4 }}>Fecha de registro</div>
+                    <DatePicker.RangePicker
+                      style={{ width: '100%' }} format="DD/MM/YYYY"
+                      value={filtroFechaRegistro as any}
+                      onChange={v => setFiltroFechaRegistro(v as any)}
+                    />
+                  </Col>
+                </AdvancedFilters>
+
                 <Table
                   dataSource={empresasFiltradas}
                   columns={colVisEmpresas.filterColumns(colsEmpresas as any)}
@@ -3068,13 +3338,47 @@ export default function SuperAdminPage() {
                   </div>
                 ) : (
                   <>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, gap: 10, flexWrap: 'wrap' }}>
+                    <Input
+                      placeholder="Buscar por nombre, correo, empresa o RNC..."
+                      value={searchPendientes} onChange={e => setSearchPendientes(e.target.value)}
+                      allowClear style={{ width: 280, background: C.card, borderColor: C.border, color: C.txt }}
+                      prefix={<Search size={13} style={{ color: C.txt2 }} />}
+                    />
                     <ColumnToggle columns={COLS_PEND_USU}
                       visibleColumns={colVisPendUsu.visibleColumns}
                       onChange={colVisPendUsu.updateVisibility} />
                   </div>
+
+                  <AdvancedFilters activeCount={pendientesFiltrosAvanzadosActivos} onClear={limpiarFiltrosAvanzadosPendientes}>
+                    <Col xs={24} sm={8}>
+                      <div style={{ fontSize: 12, color: C.txt2, marginBottom: 4 }}>Plan</div>
+                      <Select
+                        allowClear placeholder="Todos" style={{ width: '100%' }}
+                        value={filtroPlanPendiente} onChange={setFiltroPlanPendiente}
+                        options={PLANES_ACTIVOS.map(p => ({ value: p.value, label: p.label }))}
+                      />
+                    </Col>
+                    <Col xs={24} sm={8}>
+                      <div style={{ fontSize: 12, color: C.txt2, marginBottom: 4 }}>Registro vía</div>
+                      <Select
+                        allowClear placeholder="Todos" style={{ width: '100%' }}
+                        value={filtroProviderPendiente} onChange={setFiltroProviderPendiente}
+                        options={[{ value: 'GOOGLE', label: '🔵 Google' }, { value: 'LOCAL', label: '✉ Email' }]}
+                      />
+                    </Col>
+                    <Col xs={24} sm={8}>
+                      <div style={{ fontSize: 12, color: C.txt2, marginBottom: 4 }}>Fecha de solicitud</div>
+                      <DatePicker.RangePicker
+                        style={{ width: '100%' }} format="DD/MM/YYYY"
+                        value={filtroFechaPendiente as any}
+                        onChange={v => setFiltroFechaPendiente(v as any)}
+                      />
+                    </Col>
+                  </AdvancedFilters>
+
                   <Table
-                    dataSource={pendientes as any[]}
+                    dataSource={pendientesFiltrados}
                     loading={loadPendientes}
                     rowKey="id"
                     size="small"
@@ -3279,6 +3583,40 @@ export default function SuperAdminPage() {
                   visibleColumns={colVisUsuarios.visibleColumns}
                   onChange={colVisUsuarios.updateVisibility} />
               </div>
+
+              <AdvancedFilters activeCount={usuariosFiltrosAvanzadosActivos} onClear={limpiarFiltrosAvanzadosUsuarios}>
+                <Col xs={24} sm={8}>
+                  <div style={{ fontSize: 12, color: C.txt2, marginBottom: 4 }}>Rol</div>
+                  <Select
+                    allowClear placeholder="Todos" style={{ width: '100%' }}
+                    value={filtroRolUsuario} onChange={setFiltroRolUsuario}
+                    options={[
+                      { value: 'viewer',      label: 'Viewer' },
+                      { value: 'vendedor',    label: 'Vendedor' },
+                      { value: 'contador',    label: 'Contador' },
+                      { value: 'admin',       label: 'Admin' },
+                      { value: 'super_admin', label: '★ Super Admin' },
+                    ]}
+                  />
+                </Col>
+                <Col xs={24} sm={8}>
+                  <div style={{ fontSize: 12, color: C.txt2, marginBottom: 4 }}>Estado de acceso</div>
+                  <Select
+                    allowClear placeholder="Todos" style={{ width: '100%' }}
+                    value={filtroEstadoUsuario} onChange={setFiltroEstadoUsuario}
+                    options={[{ value: 'activo', label: 'Activo' }, { value: 'suspendido', label: 'Suspendido' }]}
+                  />
+                </Col>
+                <Col xs={24} sm={8}>
+                  <div style={{ fontSize: 12, color: C.txt2, marginBottom: 4 }}>Fecha de registro</div>
+                  <DatePicker.RangePicker
+                    style={{ width: '100%' }} format="DD/MM/YYYY"
+                    value={filtroFechaRegUsuario as any}
+                    onChange={v => setFiltroFechaRegUsuario(v as any)}
+                  />
+                </Col>
+              </AdvancedFilters>
+
               <Table
                 dataSource={usuariosFiltrados}
                 columns={colVisUsuarios.filterColumns(colsUsuarios as any)}
@@ -3309,6 +3647,12 @@ export default function SuperAdminPage() {
                       </div>
                     ) : null;
                   })}
+                  <Input
+                    placeholder="Buscar por empresa o RNC..."
+                    value={searchSus} onChange={e => setSearchSus(e.target.value)}
+                    allowClear style={{ width: 240, background: C.bg, borderColor: C.border, color: C.txt }}
+                    prefix={<Search size={14} style={{ color: C.txt2 }} />}
+                  />
                   <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
                     <ColumnToggle columns={COLS_SUSCRIPCIONES}
                       visibleColumns={colVisSuscripciones.visibleColumns}
@@ -3316,14 +3660,47 @@ export default function SuperAdminPage() {
                   </div>
                 </div>
 
+                <AdvancedFilters activeCount={suscripcionesFiltrosAvanzadosActivos} onClear={limpiarFiltrosAvanzadosSuscripciones}>
+                  <Col xs={24} sm={8}>
+                    <div style={{ fontSize: 12, color: C.txt2, marginBottom: 4 }}>Plan</div>
+                    <Select
+                      allowClear placeholder="Todos" style={{ width: '100%' }}
+                      value={filtroPlanSus} onChange={setFiltroPlanSus}
+                      options={PLANES_ACTIVOS.map(p => ({ value: p.value, label: p.label }))}
+                    />
+                  </Col>
+                  <Col xs={24} sm={8}>
+                    <div style={{ fontSize: 12, color: C.txt2, marginBottom: 4 }}>Estado</div>
+                    <Select
+                      allowClear placeholder="Todos" style={{ width: '100%' }}
+                      value={filtroEstadoSus2} onChange={setFiltroEstadoSus2}
+                      options={[
+                        { value: 'activa', label: 'Activa' },
+                        { value: 'prueba', label: 'Prueba' },
+                        { value: 'suspendida', label: 'Suspendida' },
+                        { value: 'vencida', label: 'Vencida' },
+                        { value: 'cancelada', label: 'Cancelada' },
+                      ]}
+                    />
+                  </Col>
+                  <Col xs={24} sm={8}>
+                    <div style={{ fontSize: 12, color: C.txt2, marginBottom: 4 }}>Vencimiento</div>
+                    <DatePicker.RangePicker
+                      style={{ width: '100%' }} format="DD/MM/YYYY"
+                      value={filtroVenceSus as any}
+                      onChange={v => setFiltroVenceSus(v as any)}
+                    />
+                  </Col>
+                </AdvancedFilters>
+
                 <Table
-                  dataSource={suscripciones as any[]}
+                  dataSource={suscripcionesFiltradas}
                   columns={colVisSuscripciones.filterColumns(colsSuscripciones as any)}
                   loading={loadSus}
                   rowKey="id"
                   size="small"
                   pagination={{ pageSize: 10, showTotal: t => `${t} suscripciones` }}
-                
+
         scroll={{ x: 'max-content' }} />
               </>
             )}

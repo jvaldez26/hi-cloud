@@ -1,12 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Table, Button, Modal, Form, Input, Select, InputNumber,
-  Switch, Tag, Popconfirm, message, Space, Tooltip, Empty,
+  Switch, Tag, Popconfirm, message, Space, Tooltip, Empty, Col,
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined,
   PlayCircleOutlined, EyeOutlined, LinkOutlined,
-  DragOutlined,
+  DragOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
@@ -14,6 +14,7 @@ import { desenvolverArray } from '../../api/desenvolver';
 import { VIDEO_TUTORIAL_MODULOS, VIDEO_TUTORIAL_MODULOS_SET } from '../../constants/video-tutorial-modulos';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { AdvancedFilters } from '../../components/ui/AdvancedFilters';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -227,6 +228,34 @@ export default function VideosTutorialesAdminPage({ C }: Props) {
     .filter(m => editingId !== null || !modulosUsados.has(m))
     .map(m => ({ value: m, label: m }));
 
+  // ── Búsqueda — no tenía ni buscador de texto ────────────────────────────────
+  const [search, setSearch] = useState('');
+  const [filtroModulo, setFiltroModulo] = useState<string | undefined>(undefined);
+  const [filtroProveedor, setFiltroProveedor] = useState<'youtube' | 'vimeo' | undefined>(undefined);
+  const [filtroActivo, setFiltroActivo] = useState<'activo' | 'inactivo' | undefined>(undefined);
+
+  const opcionesModuloFiltro = useMemo(
+    () => [...new Set(videos.map(v => v.modulo))].sort().map(m => ({ value: m, label: m })),
+    [videos],
+  );
+
+  const videosFiltrados = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return videos.filter(v => {
+      const matchBusq = !q
+        || v.titulo?.toLowerCase().includes(q)
+        || v.descripcion?.toLowerCase().includes(q);
+      const matchModulo    = !filtroModulo || v.modulo === filtroModulo;
+      const matchProveedor = !filtroProveedor || v.proveedor === filtroProveedor;
+      const matchActivo    = !filtroActivo
+        || (filtroActivo === 'activo' ? v.activo : !v.activo);
+      return matchBusq && matchModulo && matchProveedor && matchActivo;
+    });
+  }, [videos, search, filtroModulo, filtroProveedor, filtroActivo]);
+
+  const filtrosAvanzadosActivos =
+    (filtroModulo ? 1 : 0) + (filtroProveedor ? 1 : 0) + (filtroActivo ? 1 : 0);
+
   // ── Tabla ─────────────────────────────────────────────────────────────────
 
   const COLS_DEF = [
@@ -338,6 +367,55 @@ export default function VideosTutorialesAdminPage({ C }: Props) {
         </div>
       </div>
 
+      {/* Buscador + búsqueda avanzada */}
+      <div style={{ marginBottom: 12 }}>
+        <Input
+          placeholder="Buscar por título o descripción..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          allowClear
+          style={{ width: 280 }}
+          prefix={<SearchOutlined style={{ color: '#8c8c8c' }} />}
+        />
+      </div>
+      <AdvancedFilters
+        activeCount={filtrosAvanzadosActivos}
+        onClear={() => { setFiltroModulo(undefined); setFiltroProveedor(undefined); setFiltroActivo(undefined); }}
+      >
+        <Col xs={24} sm={8}>
+          <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>Módulo</div>
+          <Select
+            allowClear placeholder="Todos" style={{ width: '100%' }}
+            value={filtroModulo} onChange={setFiltroModulo}
+            options={opcionesModuloFiltro}
+            showSearch
+            filterOption={(input, opt) => (opt?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+          />
+        </Col>
+        <Col xs={24} sm={8}>
+          <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>Plataforma</div>
+          <Select
+            allowClear placeholder="Todas" style={{ width: '100%' }}
+            value={filtroProveedor} onChange={setFiltroProveedor}
+            options={[
+              { value: 'youtube', label: '▶ YouTube' },
+              { value: 'vimeo', label: 'V Vimeo' },
+            ]}
+          />
+        </Col>
+        <Col xs={24} sm={8}>
+          <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>Estado</div>
+          <Select
+            allowClear placeholder="Todos" style={{ width: '100%' }}
+            value={filtroActivo} onChange={setFiltroActivo}
+            options={[
+              { value: 'activo', label: 'Activo' },
+              { value: 'inactivo', label: 'Inactivo' },
+            ]}
+          />
+        </Col>
+      </AdvancedFilters>
+
       {/* Tabla.
           Sin paginar A PROPÓSITO, y es la única del panel que se salta el
           estándar de 10 filas: es un catálogo cerrado —un video por módulo— y
@@ -345,7 +423,7 @@ export default function VideosTutorialesAdminPage({ C }: Props) {
           reordena así impide mover un elemento de la página 2 a la 1. Si algún
           día crece, se pagina y se busca otra forma de reordenar. */}
       <Table
-        dataSource={videos}
+        dataSource={videosFiltrados}
         columns={filterColumns(columns as any)}
         rowKey="id"
         loading={isLoading}

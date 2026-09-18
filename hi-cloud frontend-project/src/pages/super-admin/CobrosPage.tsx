@@ -1,13 +1,13 @@
-﻿import { useEffect, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import {
   Table, Card, Row, Col, Typography, Tag, Button, Space,
   Modal, Form, Input, InputNumber, Select, message, Popconfirm,
-  Tabs, Badge, Descriptions, Image, Statistic, Alert, Checkbox,
+  Tabs, Badge, Descriptions, Image, Statistic, Alert, Checkbox, DatePicker,
 } from 'antd';
 import {
   CheckOutlined, CloseOutlined, DollarOutlined,
   PlusOutlined, MinusOutlined, BellOutlined,
-  BankOutlined, SettingOutlined, EyeOutlined,
+  BankOutlined, SettingOutlined, EyeOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -18,6 +18,7 @@ import { fmtDop } from '../../utils/fmt';
 import { ahora, diasHasta, fecha } from '../../utils/fechaRD';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { AdvancedFilters } from '../../components/ui/AdvancedFilters';
 
 const { Title, Text } = Typography;
 
@@ -124,6 +125,28 @@ export default function CobrosPage() {
   });
   const resumen: ResumenCobros[] = Array.isArray(resumenRaw) ? resumenRaw : [];
 
+  // ── Búsqueda de "Cobros por empresa" — no tenía ni buscador de texto ────────
+  const [searchResumen, setSearchResumen] = useState('');
+  const [filtroPlanResumen, setFiltroPlanResumen] = useState<string | undefined>(undefined);
+  const [filtroEstadoSusResumen, setFiltroEstadoSusResumen] = useState<string | undefined>(undefined);
+  const [soloConSaldo, setSoloConSaldo] = useState(false);
+  const planesResumen = useMemo(
+    () => [...new Set(resumen.map(r => r.plan).filter(Boolean))].map(p => ({ value: p, label: p })),
+    [resumen],
+  );
+  const resumenFiltrado = useMemo(() => {
+    const q = searchResumen.trim().toLowerCase();
+    return resumen.filter(r => {
+      const matchBusq = !q || r.nombre?.toLowerCase().includes(q);
+      const matchPlan = !filtroPlanResumen || r.plan === filtroPlanResumen;
+      const matchEst  = !filtroEstadoSusResumen || r.estadoSuscripcion === filtroEstadoSusResumen;
+      const matchSaldo = !soloConSaldo || r.saldo > 0;
+      return matchBusq && matchPlan && matchEst && matchSaldo;
+    });
+  }, [resumen, searchResumen, filtroPlanResumen, filtroEstadoSusResumen, soloConSaldo]);
+  const resumenFiltrosAvanzadosActivos =
+    (filtroPlanResumen ? 1 : 0) + (filtroEstadoSusResumen ? 1 : 0) + (soloConSaldo ? 1 : 0);
+
   // ── Excedentes de e-CF ────────────────────────────────────────────────────
   const { data: excedentesRaw, isLoading: loadExc } = useQuery({
     queryKey: ['sa-excedentes-ecf'],
@@ -131,6 +154,23 @@ export default function CobrosPage() {
     staleTime: 30_000,
   });
   const excedentes: ExcedenteEcf[] = Array.isArray(excedentesRaw) ? excedentesRaw : [];
+
+  // ── Búsqueda de "Excedentes de e-CF" ────────────────────────────────────────
+  const [searchExc, setSearchExc] = useState('');
+  const [filtroPlanExc, setFiltroPlanExc] = useState<string | undefined>(undefined);
+  const planesExcedentes = useMemo(
+    () => [...new Set(excedentes.map(e => e.plan).filter(Boolean))].map(p => ({ value: p, label: p })),
+    [excedentes],
+  );
+  const excedentesFiltrados = useMemo(() => {
+    const q = searchExc.trim().toLowerCase();
+    return excedentes.filter(e => {
+      const matchBusq = !q || e.empresa?.toLowerCase().includes(q);
+      const matchPlan = !filtroPlanExc || e.plan === filtroPlanExc;
+      return matchBusq && matchPlan;
+    });
+  }, [excedentes, searchExc, filtroPlanExc]);
+  const excedentesFiltrosAvanzadosActivos = filtroPlanExc ? 1 : 0;
 
   const cargoExcMut = useMutation({
     mutationFn: ({ empresaId, cicloInicio }: { empresaId: number; cicloInicio: string }) =>
@@ -219,6 +259,27 @@ export default function CobrosPage() {
     queryFn:  pagosAdminApi.comprobantesPendientes,
   });
   const pendientes: PagoSuscripcion[] = Array.isArray(pendientesRaw) ? pendientesRaw : [];
+
+  // ── Búsqueda de "Comprobantes pendientes" ───────────────────────────────────
+  const [searchPend, setSearchPend] = useState('');
+  const [montoMinPend, setMontoMinPend] = useState<number | undefined>(undefined);
+  const [montoMaxPend, setMontoMaxPend] = useState<number | undefined>(undefined);
+  const [fechaPend, setFechaPend] = useState<[any, any] | null>(null);
+  const pendientesFiltrados = useMemo(() => {
+    const q = searchPend.trim().toLowerCase();
+    return pendientes.filter(p => {
+      const matchBusq = !q || p.empresaNombre?.toLowerCase().includes(q) || p.referencia?.toLowerCase().includes(q);
+      const matchMin = montoMinPend == null || p.monto >= montoMinPend;
+      const matchMax = montoMaxPend == null || p.monto <= montoMaxPend;
+      const matchFecha = !fechaPend || !p.creadoEn || (
+        new Date(p.creadoEn) >= fechaPend[0].startOf('day').toDate() &&
+        new Date(p.creadoEn) <= fechaPend[1].endOf('day').toDate()
+      );
+      return matchBusq && matchMin && matchMax && matchFecha;
+    });
+  }, [pendientes, searchPend, montoMinPend, montoMaxPend, fechaPend]);
+  const pendientesFiltrosAvanzadosActivos =
+    (montoMinPend != null ? 1 : 0) + (montoMaxPend != null ? 1 : 0) + (fechaPend ? 1 : 0);
 
   const { data: histEmpresaRaw } = useQuery({
     queryKey: ['hist-empresa', openHist],
@@ -699,9 +760,48 @@ export default function CobrosPage() {
                   visibleColumns={colVisResumen.visibleColumns}
                   onChange={colVisResumen.updateVisibility} />
               }>
+                <div style={{ marginBottom: 12 }}>
+                  <Input
+                    placeholder="Buscar empresa..."
+                    value={searchResumen} onChange={e => setSearchResumen(e.target.value)}
+                    allowClear style={{ width: 260 }} prefix={<SearchOutlined style={{ color: '#8c8c8c' }} />}
+                  />
+                </div>
+                <AdvancedFilters
+                  activeCount={resumenFiltrosAvanzadosActivos}
+                  onClear={() => { setFiltroPlanResumen(undefined); setFiltroEstadoSusResumen(undefined); setSoloConSaldo(false); }}
+                >
+                  <Col xs={24} sm={8}>
+                    <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>Plan</div>
+                    <Select
+                      allowClear placeholder="Todos" style={{ width: '100%' }}
+                      value={filtroPlanResumen} onChange={setFiltroPlanResumen}
+                      options={planesResumen}
+                    />
+                  </Col>
+                  <Col xs={24} sm={8}>
+                    <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>Suscripción</div>
+                    <Select
+                      allowClear placeholder="Todos" style={{ width: '100%' }}
+                      value={filtroEstadoSusResumen} onChange={setFiltroEstadoSusResumen}
+                      options={[
+                        { value: 'activa', label: 'Activa' },
+                        { value: 'prueba', label: 'Prueba' },
+                        { value: 'suspendida', label: 'Suspendida' },
+                        { value: 'vencida', label: 'Vencida' },
+                        { value: 'cancelada', label: 'Cancelada' },
+                      ]}
+                    />
+                  </Col>
+                  <Col xs={24} sm={8} style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 4 }}>
+                    <Checkbox checked={soloConSaldo} onChange={e => setSoloConSaldo(e.target.checked)}>
+                      Solo con saldo pendiente
+                    </Checkbox>
+                  </Col>
+                </AdvancedFilters>
                 <Table
                   columns={colVisResumen.filterColumns(colsResumen as any)}
-                  dataSource={resumen}
+                  dataSource={resumenFiltrado}
                   rowKey="empresaId"
                   loading={loadRes}
                   size="small"
@@ -742,9 +842,29 @@ export default function CobrosPage() {
                       message="Solo ciclos ya cerrados, y nada se cobra solo."
                       description="El cargo lo generas tú. Al pulsar, el servidor vuelve a contar los comprobantes y relee el precio: lo que se cobra es lo que salga en ese momento, no lo que muestra esta tabla."
                     />
+                    <div style={{ marginBottom: 12 }}>
+                      <Input
+                        placeholder="Buscar empresa..."
+                        value={searchExc} onChange={e => setSearchExc(e.target.value)}
+                        allowClear style={{ width: 260 }} prefix={<SearchOutlined style={{ color: '#8c8c8c' }} />}
+                      />
+                    </div>
+                    <AdvancedFilters
+                      activeCount={excedentesFiltrosAvanzadosActivos}
+                      onClear={() => setFiltroPlanExc(undefined)}
+                    >
+                      <Col xs={24} sm={8}>
+                        <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>Plan</div>
+                        <Select
+                          allowClear placeholder="Todos" style={{ width: '100%' }}
+                          value={filtroPlanExc} onChange={setFiltroPlanExc}
+                          options={planesExcedentes}
+                        />
+                      </Col>
+                    </AdvancedFilters>
                     <Table
                       columns={colsExcedentes as any}
-                      dataSource={excedentes}
+                      dataSource={excedentesFiltrados}
                       rowKey={r => `${r.empresaId}:${r.ciclo.inicio}`}
                       loading={loadExc}
                       size="small"
@@ -774,15 +894,44 @@ export default function CobrosPage() {
                     ✅ Sin comprobantes pendientes de revisión
                   </div>
                 ) : (
-                  <Table
-                    columns={colVisPendientes.filterColumns(colsPendientes as any)}
-                    dataSource={pendientes}
-                    rowKey="id"
-                    loading={loadPend}
-                    size="small"
-                    pagination={{ pageSize: 10 }}
-                    scroll={{ x: 'max-content' }}
-                  />
+                  <>
+                    <div style={{ marginBottom: 12 }}>
+                      <Input
+                        placeholder="Buscar empresa o referencia..."
+                        value={searchPend} onChange={e => setSearchPend(e.target.value)}
+                        allowClear style={{ width: 260 }} prefix={<SearchOutlined style={{ color: '#8c8c8c' }} />}
+                      />
+                    </div>
+                    <AdvancedFilters
+                      activeCount={pendientesFiltrosAvanzadosActivos}
+                      onClear={() => { setMontoMinPend(undefined); setMontoMaxPend(undefined); setFechaPend(null); }}
+                    >
+                      <Col xs={12} sm={6}>
+                        <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>Monto mínimo (RD$)</div>
+                        <InputNumber min={0} style={{ width: '100%' }} value={montoMinPend} onChange={v => setMontoMinPend(v ?? undefined)} />
+                      </Col>
+                      <Col xs={12} sm={6}>
+                        <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>Monto máximo (RD$)</div>
+                        <InputNumber min={0} style={{ width: '100%' }} value={montoMaxPend} onChange={v => setMontoMaxPend(v ?? undefined)} />
+                      </Col>
+                      <Col xs={24} sm={12}>
+                        <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>Fecha subida</div>
+                        <DatePicker.RangePicker
+                          style={{ width: '100%' }} format="DD/MM/YYYY"
+                          value={fechaPend as any} onChange={v => setFechaPend(v as any)}
+                        />
+                      </Col>
+                    </AdvancedFilters>
+                    <Table
+                      columns={colVisPendientes.filterColumns(colsPendientes as any)}
+                      dataSource={pendientesFiltrados}
+                      rowKey="id"
+                      loading={loadPend}
+                      size="small"
+                      pagination={{ pageSize: 10 }}
+                      scroll={{ x: 'max-content' }}
+                    />
+                  </>
                 )}
               </Card>
             ),

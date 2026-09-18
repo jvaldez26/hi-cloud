@@ -1,12 +1,13 @@
-import { useState } from 'react';
-import { Table, Tag, Button, Space, Typography, Modal, Input, message, Tooltip, Select } from 'antd';
-import { EyeOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
+import { useState, useMemo } from 'react';
+import { Table, Tag, Button, Space, Typography, Modal, Input, message, Tooltip, Select, Col, DatePicker, InputNumber } from 'antd';
+import { EyeOutlined, CheckOutlined, CloseOutlined, SearchOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
 import { fmt } from '../../utils/formatters';
 import { fecha, fechaHora } from '../../utils/fechaRD';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { AdvancedFilters } from '../../components/ui/AdvancedFilters';
 
 const { Text } = Typography;
 
@@ -34,12 +35,45 @@ export function ActivacionEcfAdminTab() {
   const qc = useQueryClient();
   const [filtro, setFiltro] = useState<string | undefined>();
 
+  // ── Búsqueda básica + avanzada (cliente, sobre lo ya filtrado por estado en el servidor) ──
+  const [busqueda, setBusqueda] = useState('');
+  const [fechaFiltro, setFechaFiltro] = useState<[any, any] | null>(null);
+  const [montoMin, setMontoMin] = useState<number | undefined>(undefined);
+  const [montoMax, setMontoMax] = useState<number | undefined>(undefined);
+  const [certFiltro, setCertFiltro] = useState<string | undefined>(undefined);
+
+  const filtrosAvanzadosActivos =
+    (fechaFiltro ? 1 : 0) + (montoMin != null ? 1 : 0) + (montoMax != null ? 1 : 0) + (certFiltro ? 1 : 0);
+  const limpiarFiltrosAvanzados = () => {
+    setFechaFiltro(null); setMontoMin(undefined); setMontoMax(undefined); setCertFiltro(undefined);
+  };
+
   const { data, isLoading } = useQuery<any[]>({
     queryKey: ['admin-activacion-ecf', filtro],
     queryFn:  () => api.get(`/admin/activacion-ecf${filtro ? `?estado=${filtro}` : ''}`)
       .then(r => r.data?.data ?? r.data),
     refetchInterval: 60_000,
   });
+
+  const dataFiltrada = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    return (data ?? []).filter((r: any) => {
+      const matchBusq = !q
+        || r.empresaNombre?.toLowerCase().includes(q)
+        || r.empresaRnc?.toLowerCase().includes(q);
+      const matchFecha = !fechaFiltro || !r.createdAt || (
+        new Date(r.createdAt) >= fechaFiltro[0].startOf('day').toDate() &&
+        new Date(r.createdAt) <= fechaFiltro[1].endOf('day').toDate()
+      );
+      const matchMin = montoMin == null || Number(r.montoAcordado) >= montoMin;
+      const matchMax = montoMax == null || Number(r.montoAcordado) <= montoMax;
+      const matchCert = !certFiltro
+        || (certFiltro === 'propio'    && r.tieneCertificado)
+        || (certFiltro === 'vencido'   && !r.tieneCertificado && r.certificadoVencido)
+        || (certFiltro === 'pendiente' && !r.tieneCertificado && !r.certificadoVencido);
+      return matchBusq && matchFecha && matchMin && matchMax && matchCert;
+    });
+  }, [data, busqueda, fechaFiltro, montoMin, montoMax, certFiltro]);
 
   const estadoMut = useMutation({
     mutationFn: ({ id, estado, motivo }: { id: number; estado: string; motivo?: string }) =>
@@ -187,12 +221,50 @@ export function ActivacionEcfAdminTab() {
         </div>
       </div>
 
+      <div style={{ marginBottom: 12 }}>
+        <Input
+          placeholder="Buscar empresa o RNC..."
+          value={busqueda} onChange={e => setBusqueda(e.target.value)}
+          allowClear style={{ width: 260 }} prefix={<SearchOutlined style={{ color: '#8c8c8c' }} />}
+        />
+      </div>
+
+      <AdvancedFilters activeCount={filtrosAvanzadosActivos} onClear={limpiarFiltrosAvanzados}>
+        <Col xs={24} sm={12}>
+          <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>Fecha de solicitud</div>
+          <DatePicker.RangePicker
+            style={{ width: '100%' }}
+            value={fechaFiltro as any} onChange={v => setFechaFiltro(v as any)}
+          />
+        </Col>
+        <Col xs={12} sm={6}>
+          <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>Monto mínimo (RD$)</div>
+          <InputNumber min={0} style={{ width: '100%' }} value={montoMin} onChange={v => setMontoMin(v ?? undefined)} />
+        </Col>
+        <Col xs={12} sm={6}>
+          <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>Monto máximo (RD$)</div>
+          <InputNumber min={0} style={{ width: '100%' }} value={montoMax} onChange={v => setMontoMax(v ?? undefined)} />
+        </Col>
+        <Col xs={24} sm={8}>
+          <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>Certificado</div>
+          <Select
+            allowClear placeholder="Todos" style={{ width: '100%' }}
+            value={certFiltro} onChange={setCertFiltro}
+            options={[
+              { value: 'propio',    label: 'Propio (válido)' },
+              { value: 'vencido',   label: 'Subió uno vencido' },
+              { value: 'pendiente', label: 'Hay que gestionarlo' },
+            ]}
+          />
+        </Col>
+      </AdvancedFilters>
+
       {/* 7 columnas. Sin scroll horizontal, en pantalla estrecha se corta la
           columna de acciones y se pierden justo los botones de gestión. */}
       <Table
         rowKey="id"
         loading={isLoading}
-        dataSource={data ?? []}
+        dataSource={dataFiltrada}
         columns={filterColumns(cols as any)}
         size="small"
         pagination={{ pageSize: 10 }}

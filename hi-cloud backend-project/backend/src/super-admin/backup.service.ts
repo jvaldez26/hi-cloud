@@ -12,7 +12,7 @@ import { fromIni } from '@aws-sdk/credential-providers';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { exec } from 'child_process';
 import { createHash } from 'crypto';
-import { BackupRegistro } from './entities/backup-registro.entity';
+import { BackupRegistro, BackupTipo, BackupEstado } from './entities/backup-registro.entity';
 import { clasificarErrorS3, type MotivoFalloS3 } from './s3-error.util';
 
 @Injectable()
@@ -401,12 +401,46 @@ export class BackupService {
 
   // ── Listar backups ────────────────────────────────────────────────────────
 
-  async listar(page = 1, limit = 20) {
-    const [items, total] = await this.repo.findAndCount({
-      order: { createdAt: 'DESC' },
-      take:  limit,
-      skip:  (page - 1) * limit,
-    });
+  /**
+   * `filtros` es lo que llega crudo de la búsqueda avanzada del panel — se
+   * valida aquí, no en el controller, porque solo este método sabe qué
+   * valores tienen sentido para cada columna (BackupTipo/BackupEstado son
+   * los mismos que ya usa la tabla).
+   */
+  async listar(page = 1, limit = 20, filtros?: {
+    tipo?: string;
+    estado?: string;
+    restauracion?: string;
+    desde?: string;
+    hasta?: string;
+  }) {
+    const qb = this.repo.createQueryBuilder('b').orderBy('b.createdAt', 'DESC');
+
+    const tiposValidos:  BackupTipo[]   = ['daily', 'weekly', 'monthly', 'manual'];
+    const estadosValidos: BackupEstado[] = ['EXITOSO', 'FALLIDO', 'EN_PROGRESO'];
+    if (filtros?.tipo && tiposValidos.includes(filtros.tipo as BackupTipo)) {
+      qb.andWhere('b.tipo = :tipo', { tipo: filtros.tipo });
+    }
+    if (filtros?.estado && estadosValidos.includes(filtros.estado as BackupEstado)) {
+      qb.andWhere('b.estado = :estado', { estado: filtros.estado });
+    }
+    if (filtros?.desde) qb.andWhere('b.createdAt >= :desde', { desde: new Date(`${filtros.desde}T00:00:00`) });
+    if (filtros?.hasta) qb.andWhere('b.createdAt <= :hasta', { hasta: new Date(`${filtros.hasta}T23:59:59.999`) });
+
+    // "Restauración" refleja EXACTAMENTE el mismo discriminante que pinta la
+    // columna homónima en el panel (restauracionProbadaEn, no verificadoEn —
+    // ver el comentario de esa columna en BackupsPage.tsx): sin eso, filtrar
+    // por "sin probar" y ver una fila con tick verde sería la misma mentira
+    // que ya se corrigió ahí.
+    if (filtros?.restauracion === 'sin-probar') {
+      qb.andWhere('b.restauracionProbadaEn IS NULL');
+    } else if (filtros?.restauracion === 'probada') {
+      qb.andWhere('b.restauracionProbadaEn IS NOT NULL AND b.integridadVerificada = true');
+    } else if (filtros?.restauracion === 'fallida') {
+      qb.andWhere('b.restauracionProbadaEn IS NOT NULL AND b.integridadVerificada = false');
+    }
+
+    const [items, total] = await qb.take(limit).skip((page - 1) * limit).getManyAndCount();
 
     // Stats rápidas
     const exitosos  = await this.repo.count({ where: { estado: 'EXITOSO' } });

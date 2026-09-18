@@ -1,7 +1,7 @@
 ﻿import { useMemo, useState } from 'react';
 import {
   Card, Row, Col, Table, Tag, Button, Space, Statistic, Alert,
-  Tooltip, Modal, Typography, Badge,
+  Tooltip, Modal, Typography, Badge, Select, DatePicker,
 } from 'antd';
 import {
   CloudUploadOutlined, DownloadOutlined, SyncOutlined,
@@ -17,6 +17,7 @@ import { dRD, fechaHora } from '../../utils/fechaRD';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { medianaBytes, evaluarTamanio } from '../../utils/tamanioBackup';
+import { AdvancedFilters } from '../../components/ui/AdvancedFilters';
 
 dayjs.extend(relativeTime);
 dayjs.locale('es');
@@ -48,8 +49,27 @@ const API_PATH = (() => {
   catch { return '/api/v1'; }
 })();
 
+interface BackupsFiltros {
+  tipo?: string;
+  estado?: string;
+  restauracion?: string;
+  desde?: string;
+  hasta?: string;
+}
+
 const adminApi = {
-  backups:   (page = 1) => api.get(`/admin/backups?page=${page}`).then(r => r.data?.data ?? r.data),
+  // El historial crece a diario y de por vida — nunca cabe entero en una
+  // sola respuesta (limit=20 en el backend), así que los filtros van como
+  // query params y los aplica el backend, igual que la página.
+  backups: (page = 1, filtros: BackupsFiltros = {}) => {
+    const params = new URLSearchParams({ page: String(page) });
+    if (filtros.tipo)         params.set('tipo', filtros.tipo);
+    if (filtros.estado)       params.set('estado', filtros.estado);
+    if (filtros.restauracion) params.set('restauracion', filtros.restauracion);
+    if (filtros.desde)        params.set('desde', filtros.desde);
+    if (filtros.hasta)        params.set('hasta', filtros.hasta);
+    return api.get(`/admin/backups?${params.toString()}`).then(r => r.data?.data ?? r.data);
+  },
   s3Status:  ()         => api.get('/admin/backups/s3-status').then(r => r.data?.data ?? r.data),
   trigger:   ()         => api.post('/admin/backups/trigger').then(r => r.data?.data ?? r.data),
 };
@@ -95,9 +115,26 @@ export default function BackupsPage() {
   const qc = useQueryClient();
   const [page, setPage] = useState(1);
 
+  // Búsqueda avanzada. Los tres campos son reales de backup_registros — nada
+  // de "empresa" ni "archivo": los backups son de TODA la base, no por
+  // tenant, y s3Key es una ruta técnica, no algo por lo que alguien busque.
+  const [filtroTipo,         setFiltroTipo]         = useState<string | undefined>(undefined);
+  const [filtroEstado,       setFiltroEstado]       = useState<string | undefined>(undefined);
+  const [filtroRestauracion, setFiltroRestauracion] = useState<string | undefined>(undefined);
+  const [rangoFecha,         setRangoFecha]         = useState<[any, any] | null>(null);
+  const desde = rangoFecha ? rangoFecha[0].format('YYYY-MM-DD') : undefined;
+  const hasta = rangoFecha ? rangoFecha[1].format('YYYY-MM-DD') : undefined;
+  const filtrosAvanzadosActivos =
+    (filtroTipo ? 1 : 0) + (filtroRestauracion ? 1 : 0) + (rangoFecha ? 1 : 0);
+  const limpiarFiltrosAvanzados = () => {
+    setFiltroTipo(undefined); setFiltroRestauracion(undefined); setRangoFecha(null); setPage(1);
+  };
+
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['admin-backups', page],
-    queryFn:  () => adminApi.backups(page),
+    queryKey: ['admin-backups', page, filtroTipo, filtroEstado, filtroRestauracion, desde, hasta],
+    queryFn:  () => adminApi.backups(page, {
+      tipo: filtroTipo, estado: filtroEstado, restauracion: filtroRestauracion, desde, hasta,
+    }),
     refetchInterval: 30_000,
   });
 
@@ -495,6 +532,59 @@ export default function BackupsPage() {
           </Space>
         }
       >
+        <div style={{ marginBottom: 12 }}>
+          <Select
+            placeholder="Estado"
+            allowClear
+            value={filtroEstado}
+            onChange={(v) => { setFiltroEstado(v); setPage(1); }}
+            style={{ width: 180 }}
+            options={[
+              { value: 'EXITOSO',      label: 'Exitoso' },
+              { value: 'FALLIDO',      label: 'Fallido' },
+              { value: 'EN_PROGRESO',  label: 'En progreso' },
+            ]}
+          />
+        </div>
+
+        <AdvancedFilters activeCount={filtrosAvanzadosActivos} onClear={limpiarFiltrosAvanzados}>
+          <Col xs={24} sm={8}>
+            <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>Tipo</div>
+            <Select
+              allowClear placeholder="Todos" style={{ width: '100%' }}
+              value={filtroTipo}
+              onChange={(v) => { setFiltroTipo(v); setPage(1); }}
+              options={[
+                { value: 'daily',   label: 'Daily' },
+                { value: 'weekly',  label: 'Weekly' },
+                { value: 'monthly', label: 'Monthly' },
+                { value: 'manual',  label: 'Manual' },
+              ]}
+            />
+          </Col>
+          <Col xs={24} sm={8}>
+            <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>Restauración</div>
+            <Select
+              allowClear placeholder="Todas" style={{ width: '100%' }}
+              value={filtroRestauracion}
+              onChange={(v) => { setFiltroRestauracion(v); setPage(1); }}
+              options={[
+                { value: 'probada',    label: 'Probada' },
+                { value: 'fallida',    label: 'Falló' },
+                { value: 'sin-probar', label: 'Sin probar' },
+              ]}
+            />
+          </Col>
+          <Col xs={24} sm={8}>
+            <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>Fecha del backup</div>
+            <DatePicker.RangePicker
+              style={{ width: '100%' }} format="DD/MM/YYYY"
+              value={rangoFecha as any}
+              onChange={(v) => { setRangoFecha(v as any); setPage(1); }}
+            />
+          </Col>
+        </AdvancedFilters>
+
         <Table
           columns={filterColumns(cols as any)}
           dataSource={items}

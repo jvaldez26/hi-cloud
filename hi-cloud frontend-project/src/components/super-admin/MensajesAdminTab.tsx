@@ -1,9 +1,9 @@
-﻿import { useState } from 'react';
+﻿import { useState, useMemo } from 'react';
 import {
   Table, Button, Modal, Form, Input, Select, DatePicker,
   Space, Tag, Typography, Popconfirm, Divider, Switch, Row, Col, Tooltip,
 } from 'antd';
-import { Plus, Eye, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Eye, Pencil, Trash2, Search } from 'lucide-react';
 import dayjs from 'dayjs';
 import {
   useMensajesAdmin,
@@ -15,6 +15,7 @@ import {
 import type { MensajeAdmin } from '../../api/mensajes.api';
 import { ColumnToggle } from '../ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { AdvancedFilters } from '../ui/AdvancedFilters';
 
 const { Text, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -230,8 +231,37 @@ export function MensajesAdminTab() {
   const [formMensaje, setFormMensaje] = useState<MensajeAdmin | null | false>(false);
   const [statsId, setStatsId]         = useState<{ id: string; titulo: string } | null>(null);
 
+  // ─── Búsqueda básica + avanzada (cliente — la lista ya viene completa) ──────
+  const [busqueda, setBusqueda]         = useState('');
+  const [tipoFiltro, setTipoFiltro]     = useState<string | undefined>(undefined);
+  const [estadoFiltro, setEstadoFiltro] = useState<string | undefined>(undefined);
+  const [fechaFiltro, setFechaFiltro]   = useState<[any, any] | null>(null);
+
+  const filtrosAvanzadosActivos =
+    (tipoFiltro ? 1 : 0) + (estadoFiltro ? 1 : 0) + (fechaFiltro ? 1 : 0);
+  const limpiarFiltrosAvanzados = () => {
+    setTipoFiltro(undefined); setEstadoFiltro(undefined); setFechaFiltro(null);
+  };
+
   const { data: mensajes = [], isLoading } = useMensajesAdmin();
   const desactivar = useDesactivarMensaje();
+
+  const mensajesFiltrados = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    return mensajes.filter(m => {
+      const matchBusq = !q
+        || m.titulo?.toLowerCase().includes(q)
+        || m.cuerpo?.toLowerCase().includes(q)
+        || m.autorNombre?.toLowerCase().includes(q);
+      const matchTipo   = !tipoFiltro   || m.tipo === tipoFiltro;
+      const matchEstado = !estadoFiltro || (estadoFiltro === 'activo' ? m.activo : !m.activo);
+      const matchFecha  = !fechaFiltro || !m.fechaPublicacion || (
+        new Date(m.fechaPublicacion) >= fechaFiltro[0].startOf('day').toDate() &&
+        new Date(m.fechaPublicacion) <= fechaFiltro[1].endOf('day').toDate()
+      );
+      return matchBusq && matchTipo && matchEstado && matchFecha;
+    });
+  }, [mensajes, busqueda, tipoFiltro, estadoFiltro, fechaFiltro]);
 
   const COLS_DEF = [
     { key: 'titulo',           label: 'Título'        },
@@ -339,8 +369,48 @@ export function MensajesAdminTab() {
         </div>
       </div>
 
+      <div style={{ marginBottom: 12 }}>
+        <Input
+          placeholder="Buscar por título, contenido o autor..."
+          value={busqueda} onChange={e => setBusqueda(e.target.value)}
+          allowClear style={{ width: 300 }} prefix={<Search size={14} color="#8c8c8c" />}
+        />
+      </div>
+
+      <AdvancedFilters activeCount={filtrosAvanzadosActivos} onClear={limpiarFiltrosAvanzados}>
+        <Col xs={24} sm={8}>
+          <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>Tipo</div>
+          <Select
+            allowClear placeholder="Todos" style={{ width: '100%' }}
+            value={tipoFiltro} onChange={setTipoFiltro}
+            options={[
+              { value: 'aviso',   label: 'Aviso' },
+              { value: 'novedad', label: 'Novedad' },
+            ]}
+          />
+        </Col>
+        <Col xs={24} sm={8}>
+          <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>Estado</div>
+          <Select
+            allowClear placeholder="Todos" style={{ width: '100%' }}
+            value={estadoFiltro} onChange={setEstadoFiltro}
+            options={[
+              { value: 'activo',   label: 'Activo' },
+              { value: 'inactivo', label: 'Inactivo' },
+            ]}
+          />
+        </Col>
+        <Col xs={24} sm={8}>
+          <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>Fecha de publicación</div>
+          <DatePicker.RangePicker
+            style={{ width: '100%' }}
+            value={fechaFiltro as any} onChange={v => setFechaFiltro(v as any)}
+          />
+        </Col>
+      </AdvancedFilters>
+
       <Table
-        dataSource={mensajes}
+        dataSource={mensajesFiltrados}
         columns={filterColumns(columns as any)}
         rowKey="id"
         loading={isLoading}
