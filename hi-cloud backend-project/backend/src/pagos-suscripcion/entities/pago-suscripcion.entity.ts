@@ -45,8 +45,19 @@ export class PagoSuscripcion {
   @Column({ type: 'varchar', length: 20, default: EstadoPago.PENDIENTE })
   estado: EstadoPago;
 
+  /**
+   * Solo se usa cuando el comprobante se guardó con el fallback de disco
+   * local (S3 deshabilitado) — ahí sí es una URL final y usable. Cuando
+   * S3 está habilitado, el comprobante vive en "comprobanteKey" (key de S3,
+   * nunca una URL pública — los buckets bloquean acceso público) y este
+   * campo queda null. Ver migración 1763900000000-ComprobanteKeyPagosSuscripcion.
+   */
   @Column({ type: 'text', nullable: true })
   comprobanteUrl: string | null;
+
+  /** Key de S3 del comprobante — la URL se firma on-demand con getSignedUrl(), nunca se persiste. */
+  @Column({ type: 'text', nullable: true })
+  comprobanteKey: string | null;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   referencia: string | null;

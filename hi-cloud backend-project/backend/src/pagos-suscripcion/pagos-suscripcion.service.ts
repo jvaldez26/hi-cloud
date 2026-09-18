@@ -184,8 +184,12 @@ export class PagosSuscripcionService {
     const empresaId = this.tenantSvc.getEmpresaId();
 
     let comprobanteUrl: string | null = null;
+    let comprobanteKey: string | null = null;
     if (this.s3.isEnabled) {
-      comprobanteUrl = await this.s3.upload(
+      // uploadKey(), no upload(): el bucket bloquea acceso público — se
+      // guarda solo la key y la URL se firma on-demand al leer (ver
+      // conComprobanteResuelto()), nunca se persiste una URL pública muerta.
+      comprobanteKey = await this.s3.uploadKey(
         file.buffer,
         file.originalname,
         file.mimetype,
@@ -215,6 +219,7 @@ export class PagosSuscripcionService {
       monto,
       estado:        EstadoPago.PENDIENTE,
       comprobanteUrl,
+      comprobanteKey,
       referencia:    referencia ?? null,
       notas:         notas ?? null,
     });
@@ -231,6 +236,26 @@ export class PagosSuscripcionService {
   // ──────────────────────────────────────────────────────────────────────────
   // SUPER ADMIN — Gestión de cobros
   // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Resuelve "comprobanteUrl" para mostrar: si la fila tiene comprobanteKey
+   * (subida vía S3, el camino real en producción) firma una URL de 15 min
+   * on-demand — nunca se persiste una URL de S3, el bucket bloquea acceso
+   * público (ver migración 1763900000000-ComprobanteKeyPagosSuscripcion).
+   * Sin key (fallback de disco local, o filas viejas sin backfill posible),
+   * se deja el comprobanteUrl que la fila ya traía, tal cual.
+   */
+  private async conComprobanteResuelto<T extends { comprobanteUrl: string | null; comprobanteKey?: string | null }>(
+    rows: T[],
+  ): Promise<Omit<T, 'comprobanteKey'>[]> {
+    return Promise.all(rows.map(async (r) => {
+      const { comprobanteKey, ...resto } = r as any;
+      if (comprobanteKey) {
+        return { ...resto, comprobanteUrl: await this.s3.getSignedUrl(comprobanteKey, 900) };
+      }
+      return resto;
+    }));
+  }
 
   async listarPagosAdmin(estado?: string) {
     const where = estado ? `WHERE p.estado = $1` : '';
@@ -249,7 +274,7 @@ export class PagosSuscripcionService {
       LIMIT 200
     `, params);
     // PostgreSQL devuelve numeric como string — normalizar a JS number
-    return rows.map(r => ({ ...r, monto: Number(r.monto ?? 0) }));
+    return this.conComprobanteResuelto(rows.map(r => ({ ...r, monto: Number(r.monto ?? 0) })));
   }
 
   async listarComprobantesPeridentes() {
@@ -270,7 +295,7 @@ export class PagosSuscripcionService {
       const { resultado } = await this.calcularImputacion(r.empresaId, monto, null);
       out.push({ ...r, monto, preview: resultado });
     }
-    return out;
+    return this.conComprobanteResuelto(out);
   }
 
   /** Resumen por empresa para el panel de cobros */
@@ -773,7 +798,9 @@ export class PagosSuscripcionService {
     const rows = await this.pagoRepo.find({ where: { empresaId }, order: { creadoEn: 'DESC' } });
     // montoPagado solo tiene sentido en filas tipo=CARGO — lo usa el selector
     // de "Crédito dirigido a un cargo" del panel (saldoPendiente = monto - montoPagado).
-    return rows.map(r => ({ ...r, monto: Number(r.monto ?? 0), montoPagado: Number(r.montoPagado ?? 0) }));
+    return this.conComprobanteResuelto(
+      rows.map(r => ({ ...r, monto: Number(r.monto ?? 0), montoPagado: Number(r.montoPagado ?? 0) })),
+    );
   }
 
   // ──────────────────────────────────────────────────────────────────────────
