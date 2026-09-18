@@ -384,6 +384,39 @@ pago + cron de mora concurrentes sobre el mismo cargo (sin deadlock,
 `montoMora`/`montoPagado` quedan consistentes sin importar cuál de los dos
 terminó primero).
 
+**Incidente post-deploy (2026-09-17, Sentry #7738770278, release `c3cc4ae`,
+empresa 57)**: el barrido de la reconciliación de arriba se saltó dos sitios
+que también hacían `SUM(p.monto)` contra `ed_pagos` —
+`resumenFinanciero()` (el `cobradoMes` que alimenta tanto
+`GET colegiatura/resumen`, o sea la pantalla de Colegiatura, como el reporte
+de cartera) y `reportes.service.ts::cobrosPeriodo()`. `monto` ya no existe
+desde la migración, así que ambos tiraban 500 — para TODA empresa, no solo
+la 57 (es un error de columna inexistente en el `SELECT`, no depende de qué
+filas haya). Corregidos a `montoPagado` + `estado='activo'`.
+
+Por qué Playwright no lo atrapó: `reportes.spec.ts` sí navega
+`/educativo/reportes` y verifica el KPI exacto que dependía de esta query,
+pero **Playwright no corre en CI** (`.github/workflows/ci.yml` no tiene
+ningún job de e2e, se corre a mano) y no se volvió a correr tras la
+migración — ni en CI (que nunca lo corre) ni manualmente (la verificación de
+esa tanda cubrió los 5 escenarios pedidos con specs nuevos, pero no
+re-ejecutó la suite Playwright ya existente). Cierre real: dos specs SQL
+estáticos nuevos que sí corren en cada push sin BD —
+`colegiatura-sql.spec.ts` (guarda sobre `resumenFinanciero()`) y el nuevo
+`reportes/reportes-sql.spec.ts` (guarda sobre todo el archivo de reportes,
+no solo `cobrosPeriodo()` — cualquier `p.monto` futuro contra `ed_pagos` en
+cualquiera de los 14 reportes falla el build) — más una prueba de
+integración contra `hicloud_test` que registra un pago real y llama
+`carteraColegiatura()`/`cobrosPeriodo()` de punta a punta.
+
+**Lección de proceso**: cuando se retira una columna, no basta con grepear
+los sitios que la escriben/leen directamente — hay que rastrear también
+métodos compartidos que la tocan indirectamente (`resumenFinanciero()` es
+llamado por dos consumidores distintos) y, sobre todo, no dar la
+verificación por completa solo porque los escenarios nuevos pasaron: la
+suite existente (Playwright incluido, aunque no corra en CI) hay que
+volver a correrla a mano tras cualquier migración de columnas.
+
 ## Boletines
 
 Único de los 8 pendientes construido: no hay tabla nueva, se genera al vuelo

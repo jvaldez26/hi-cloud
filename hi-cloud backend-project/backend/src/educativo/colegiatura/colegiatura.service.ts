@@ -632,10 +632,15 @@ export class ColegiaturaService {
       params,
     );
 
+    // ed_pagos.monto se eliminó en la reconciliación (migración
+    // 1763800000000-ReconciliarEdPagos) — montoPagado es la única fuente.
+    // estado='activo' excluye pagos anulados, mismo criterio que
+    // dashboard.service.ts y reportes.service.ts (ingresosPorConcepto).
     const cobradoMes = await this.ds.query<any[]>(
-      `SELECT COALESCE(SUM(p.monto),0)::numeric AS total
+      `SELECT COALESCE(SUM(p."montoPagado"),0)::numeric AS total
        FROM ed_pagos p
        WHERE p."empresaId" = $1
+         AND p.estado = 'activo'
          AND DATE_TRUNC('month', p.fecha) = DATE_TRUNC('month', CURRENT_DATE)`,
       [empresaId],
     );

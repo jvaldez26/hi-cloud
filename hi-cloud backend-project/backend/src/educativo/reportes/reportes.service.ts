@@ -142,11 +142,15 @@ export class EdReportesService {
        GROUP BY 1 ORDER BY 1`,
       [empresaId, desde, hasta],
     );
+    // ed_pagos.monto se eliminó en la reconciliación (migración
+    // 1763800000000-ReconciliarEdPagos) — montoPagado es la única fuente.
+    // estado='activo' excluye pagos anulados, mismo criterio que el resto
+    // del módulo (dashboard.service.ts, colegiatura.service.ts).
     const real = await this.ds.query<any[]>(
       `SELECT to_char(date_trunc('month', p.fecha), 'YYYY-MM') AS mes,
-              COALESCE(SUM(p.monto), 0)::numeric AS real
+              COALESCE(SUM(p."montoPagado"), 0)::numeric AS real
        FROM ed_pagos p
-       WHERE p."empresaId" = $1 AND p.fecha BETWEEN $2 AND $3
+       WHERE p."empresaId" = $1 AND p.fecha BETWEEN $2 AND $3 AND p.estado = 'activo'
        GROUP BY 1 ORDER BY 1`,
       [empresaId, desde, hasta],
     );

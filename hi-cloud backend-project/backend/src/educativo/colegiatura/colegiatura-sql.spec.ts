@@ -134,6 +134,27 @@ describe('SQL crudo de colegiatura.service.ts — creación de ed_cargos (modelo
     expect(resumen).toContain('c."saldoPendiente"');
     expect(resumen).toContain('c."montoPagado"');
   });
+
+  /**
+   * Incidente 2026-09-17 (Sentry #7738770278, release c3cc4ae, empresa 57):
+   * resumenFinanciero() quedó fuera del barrido de la reconciliación de
+   * ed_pagos — su "cobradoMes" seguía haciendo SUM(p.monto), columna
+   * eliminada por la migración 1763800000000-ReconciliarEdPagos. 500 en
+   * /educativo/reportes/cartera-colegiatura Y en /educativo/colegiatura/
+   * resumen (los dos únicos callers) para TODAS las empresas — el error es
+   * de columna inexistente en el SELECT, no depende de qué filas existan.
+   * Playwright (reportes.spec.ts) sí navega esta pantalla exacta, pero
+   * Playwright no corre en CI (ver .github/workflows/ci.yml — ningún job lo
+   * invoca, solo se corre a mano) y no se volvió a correr tras esa
+   * migración. Esta es la guarda que SÍ corre en cada push, sin BD.
+   */
+  it('resumenFinanciero() — cobradoMes usa montoPagado, nunca "p.monto" (columna eliminada), y excluye pagos anulados', () => {
+    const resumen = bloque('async resumenFinanciero(', '}\n}');
+    expect(resumen).not.toMatch(/p\.monto\b/);
+    expect(resumen).not.toMatch(/SUM\(p\.monto\)/);
+    expect(resumen).toContain('p."montoPagado"');
+    expect(resumen).toContain(`p.estado = 'activo'`);
+  });
 });
 
 /**
