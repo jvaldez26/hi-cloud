@@ -194,15 +194,23 @@ function PlanBadge({ plan }: { plan: string }) {
   );
 }
 
-function EstadoBadge({ activa }: { activa: boolean }) {
+/**
+ * Refleja SOLO empresa.isActive (acceso a la cuenta/login) — nunca el
+ * estado de la suscripción (suscripciones.estado), que es un interruptor
+ * aparte. `contexto` (ej. "Cuenta") se usa donde ambos estados se muestran
+ * juntos (el modal de detalle) para que no se lean como una contradicción;
+ * las tablas, con columna "Estado" propia, no lo necesitan.
+ */
+function EstadoBadge({ activa, contexto }: { activa: boolean; contexto?: string }) {
   const C = useSaTheme();
+  const texto = contexto ? `${contexto}: ${activa ? 'activa' : 'suspendida'}` : (activa ? 'Activa' : 'Suspendida');
   return (
     <span style={{
       background: activa ? `${C.green}22` : `${C.red}22`,
       color: activa ? C.green : C.red,
       border: `1px solid ${activa ? C.green : C.red}55`,
       borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 600,
-    }}>{activa ? '● Activa' : '● Suspendida'}</span>
+    }}>{`● ${texto}`}</span>
   );
 }
 
@@ -1776,6 +1784,11 @@ export default function SuperAdminPage() {
   const [modalVence, setModalVence] = useState<any>(null);
   const [venceFecha, setVenceFecha] = useState<any>(null);
   const [venceMotivo, setVenceMotivo] = useState('');
+  // { empresa, accion: 'suspender' | 'reactivar' } — acción sobre
+  // suscripciones.estado, independiente de empresa.isActive (esa la maneja
+  // suspenderMut/activarMut más abajo — son dos interruptores distintos).
+  const [modalSuscripcion, setModalSuscripcion] = useState<{ empresa: any; accion: 'suspender' | 'reactivar' } | null>(null);
+  const [suscripcionMotivo, setSuscripcionMotivo] = useState('');
   const [planSel, setPlanSel]       = useState('profesional');
   const [meses, setMeses]           = useState(1);
   // ECF: empresaId que debe abrirse en la tab de e-CF Config
@@ -2129,6 +2142,22 @@ export default function SuperAdminPage() {
       message.success('Vencimiento manual fijado');
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al fijar vencimiento'),
+  });
+
+  // Suspender/reactivar la SUSCRIPCIÓN (suscripciones.estado) — distinto de
+  // suspenderMut/activarMut, que actúan sobre empresa.isActive (acceso a la
+  // cuenta). Endpoints ya existían en el backend, sin usar desde el
+  // frontend — el único camino para "reactivar" era confirmar un pago real
+  // desde el Panel de Cobros.
+  const suscripcionMut = useMutation({
+    mutationFn: ({ id, accion, motivo }: { id: number; accion: 'suspender' | 'reactivar'; motivo: string }) =>
+      api.patch(`/admin/empresas/${id}/${accion}-suscripcion`, { motivo }),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ['sa-empresas'] }); qc.invalidateQueries({ queryKey: ['sa-contadores'] });
+      setModalSuscripcion(null); setSuscripcionMotivo('');
+      message.success(vars.accion === 'reactivar' ? 'Suscripción reactivada' : 'Suscripción suspendida');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al cambiar el estado de la suscripción'),
   });
 
   // ── Filtros ───────────────────────────────────────────────────────────────────
@@ -3642,7 +3671,7 @@ export default function SuperAdminPage() {
                 <h2 style={{ color: '#F8FAFC', fontWeight: 800, fontSize: 18, margin: 0 }}>{detalleEmpresa.nombre}</h2>
                 <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
                   <PlanBadge plan={detalleEmpresa.plan} />
-                  <EstadoBadge activa={detalleEmpresa.isActive} />
+                  <EstadoBadge activa={detalleEmpresa.isActive} contexto="Cuenta" />
                 </div>
               </div>
               <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
@@ -3681,7 +3710,17 @@ export default function SuperAdminPage() {
                               { label: 'Facturas este mes', value: detalleEmpresa.facturasMes ?? 0 },
                               { label: 'Suscripción/mes', value: PLAN_MRR_DOP[detalleEmpresa.plan] > 0 ? fmtDop(PLAN_MRR_DOP[detalleEmpresa.plan]) : 'Gratis (Trial)' },
                               { label: 'Fecha registro', value: fmtFecha(detalleEmpresa.fechaRegistro) },
-                              { label: 'Estado suscripción', value: detalleEmpresa.estadoSuscripcion?.toUpperCase() ?? '—' },
+                              {
+                                // Distinto de "Cuenta" (badge de arriba, empresa.isActive) — esto
+                                // es suscripciones.estado, un interruptor de FACTURACIÓN aparte.
+                                // Color propio para que no se lea junto al badge como el mismo dato.
+                                label: 'Suscripción (facturación)',
+                                value: detalleEmpresa.estadoSuscripcion?.toUpperCase() ?? '—',
+                                color: ({
+                                  activa: C.green, prueba: C.blue, suspendida: C.red,
+                                  vencida: C.red, cancelada: C.txt2,
+                                } as Record<string, string>)[detalleEmpresa.estadoSuscripcion] ?? C.txt,
+                              },
                               { label: 'Teléfono', value: detalleEmpresa.telefono ?? '—' },
                             ].map(f => (
                               <div key={f.label} style={{
@@ -3689,7 +3728,7 @@ export default function SuperAdminPage() {
                                 border: `1px solid ${C.border}`,
                               }}>
                                 <div style={{ color: C.txt2, fontSize: 11, marginBottom: 3 }}>{f.label}</div>
-                                <div style={{ color: C.txt, fontWeight: 600, fontSize: 14 }}>{f.value}</div>
+                                <div style={{ color: (f as any).color ?? C.txt, fontWeight: 600, fontSize: 14 }}>{f.value}</div>
                               </div>
                             ))}
                           </div>
@@ -3722,17 +3761,32 @@ export default function SuperAdminPage() {
                               <Send size={14} /> Enviar mensaje
                             </button>
                             {detalleEmpresa.isActive
-                              ? <Popconfirm title="¿Suspender esta empresa?" okText="Sí" cancelText="No"
+                              ? <Popconfirm title="¿Suspender el acceso de esta empresa?" description="Bloquea el login de todos sus usuarios — no tiene relación con la suscripción."
+                                  okText="Sí" cancelText="No"
                                   onConfirm={() => { suspenderMut.mutate(detalleEmpresa.id); setDetalleEmpresa(null); }}>
                                   <button style={{ ...btnStyle(C.red, false, true), padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6 }}>
-                                    <PauseCircle size={14} /> Suspender
+                                    <PauseCircle size={14} /> Suspender cuenta
                                   </button>
                                 </Popconfirm>
                               : <button onClick={() => { activarMut.mutate(detalleEmpresa.id); setDetalleEmpresa(null); }}
                                   style={{ ...btnStyle(C.green, false, true), padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  <PlayCircle size={14} /> Activar
+                                  <PlayCircle size={14} /> Activar cuenta
                                 </button>
                             }
+                            {detalleEmpresa.estadoSuscripcion === 'suspendida' && (
+                              <button
+                                onClick={() => { setSuscripcionMotivo(''); setModalSuscripcion({ empresa: detalleEmpresa, accion: 'reactivar' }); setDetalleEmpresa(null); }}
+                                style={{ ...btnStyle(C.green, false, true), padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <PlayCircle size={14} /> Reactivar suscripción
+                              </button>
+                            )}
+                            {detalleEmpresa.estadoSuscripcion === 'activa' && (
+                              <button
+                                onClick={() => { setSuscripcionMotivo(''); setModalSuscripcion({ empresa: detalleEmpresa, accion: 'suspender' }); setDetalleEmpresa(null); }}
+                                style={{ ...btnStyle(C.gold, false, true), padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <PauseCircle size={14} /> Suspender suscripción
+                              </button>
+                            )}
                           </div>
                         </div>
                       ),
@@ -4226,6 +4280,56 @@ export default function SuperAdminPage() {
             </div>
             <div style={{ background: `${C.gold}15`, border: `1px solid ${C.gold}44`, borderRadius: 6, padding: '8px 12px', fontSize: 12, color: C.gold }}>
               Esta fecha tendrá prioridad sobre los pagos y los crons de vencimiento hasta que sea restablecida manualmente.
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Modal Suspender/Reactivar SUSCRIPCIÓN (no la cuenta) ────────── */}
+      <Modal
+        title={modalSuscripcion?.accion === 'reactivar' ? 'Reactivar suscripción' : 'Suspender suscripción'}
+        open={!!modalSuscripcion}
+        onCancel={() => { setModalSuscripcion(null); setSuscripcionMotivo(''); }}
+        onOk={() => {
+          if (!modalSuscripcion || !suscripcionMotivo.trim()) {
+            message.warning('Escribe un motivo');
+            return;
+          }
+          suscripcionMut.mutate({
+            id: modalSuscripcion.empresa.id,
+            accion: modalSuscripcion.accion,
+            motivo: suscripcionMotivo.trim(),
+          });
+        }}
+        okText={modalSuscripcion?.accion === 'reactivar' ? 'Reactivar' : 'Suspender'}
+        okButtonProps={{
+          loading: suscripcionMut.isPending, disabled: !suscripcionMotivo.trim(),
+          danger: modalSuscripcion?.accion === 'suspender',
+        }}
+        cancelText="Cancelar"
+        width={440}
+        destroyOnClose
+      >
+        {modalSuscripcion && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '8px 0' }}>
+            <div style={{ fontSize: 13, color: C.txt }}>
+              Empresa: <strong>{modalSuscripcion.empresa.nombre}</strong>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, marginBottom: 6, color: C.txt2 }}>Motivo (obligatorio)</div>
+              <Input.TextArea
+                rows={3}
+                value={suscripcionMotivo}
+                onChange={e => setSuscripcionMotivo(e.target.value)}
+                placeholder={modalSuscripcion.accion === 'reactivar'
+                  ? 'Ej: Pago recibido por otro medio, gesto comercial, error del cron…'
+                  : 'Ej: Solicitud del cliente, cambio de plan pendiente…'}
+              />
+            </div>
+            <div style={{ background: `${C.blue}15`, border: `1px solid ${C.blue}44`, borderRadius: 6, padding: '8px 12px', fontSize: 12, color: C.blue }}>
+              Esto solo cambia el estado de FACTURACIÓN (suscripciones.estado) — no afecta el acceso de los
+              usuarios a la cuenta. Para bloquear el login usa "Suspender cuenta" en la pestaña Datos.
+              {modalSuscripcion.accion === 'reactivar' && ' Si el cliente ya subió su comprobante, confírmalo desde el Panel de Cobros en vez de esto — reactiva la suscripción automáticamente y deja el pago registrado.'}
             </div>
           </div>
         )}
