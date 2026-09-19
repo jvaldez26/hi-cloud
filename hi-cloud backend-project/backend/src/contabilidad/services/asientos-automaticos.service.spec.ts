@@ -649,4 +649,64 @@ describe('AsientosAutomaticosService — Configuración Contable por Módulo (20
     const lineas = svc.lineaRepository.create.mock.calls[0][0];
     expect(lineas.find((l: any) => l.cuentaContableId === 1)?.debe).toBe(590);
   });
+
+  // ── Compras/Gastos — Configuración Contable (2026-09-19) ────────────────
+
+  it('asientoCompraRecibida: ITBIS Crédito y Proveedores se resuelven contra la configuración, cuentaDestino sigue siendo el selector por documento', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta('1.2.1.01', 1), cuenta('9.1.4.01', 2), cuenta('9.2.1.01', 3)],
+    });
+    svc.configuracionService = {
+      obtenerMapa: jest.fn().mockResolvedValue({ INVENTARIO: COD.INVENTARIO, ITBIS_CREDITO: '9.1.4.01', PROVEEDORES: '9.2.1.01' }),
+    };
+
+    // cuentaDestino='1.2.1.01' viene del selector por documento (activo fijo, no inventario) — NO de la configuración
+    await svc.asientoCompraRecibida(50, 590, 500, 90, 'COM-001', '2026-09-19', 5, undefined, '1.2.1.01', true);
+
+    const lineas = svc.lineaRepository.create.mock.calls[0][0];
+    expect(lineas.find((l: any) => l.cuentaContableId === 1)?.debe).toBe(500);   // cuentaDestino, elegida
+    expect(lineas.find((l: any) => l.cuentaContableId === 2)?.debe).toBe(90);    // ITBIS crédito, configurado
+    expect(lineas.find((l: any) => l.cuentaContableId === 3)?.haber).toBe(590);  // Proveedores, configurado
+  });
+
+  it('previsualizarCompra: sin cuentaDestino explícita, usa el INVENTARIO configurado (no el literal COD.INVENTARIO)', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta('1.1.3.05', 1), cuenta(COD.ITBIS_CREDITO, 2), cuenta(COD.PROVEEDORES, 3)],
+    });
+    svc.configuracionService = { obtenerMapa: jest.fn().mockResolvedValue({ INVENTARIO: '1.1.3.05', ITBIS_CREDITO: COD.ITBIS_CREDITO, PROVEEDORES: COD.PROVEEDORES }) };
+
+    const r: any = await svc.previsualizarCompra(590, 500, 90, 'COM-001');
+
+    expect(r.lineas.find((l: any) => l.codigo === '1.1.3.05')?.debe).toBe(500);
+  });
+
+  it('asientoGasto: ITBIS Crédito y Bancos (pago) se resuelven contra la configuración', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta('6.1.2.07', 1), cuenta('9.1.4.02', 2), cuenta('9.1.1.05', 3)],
+    });
+    svc.configuracionService = { obtenerMapa: jest.fn().mockResolvedValue({ ITBIS_CREDITO: '9.1.4.02', BANCOS: '9.1.1.05', GASTO_DEFAULT: '6.1.2.04' }) };
+
+    await svc.asientoGasto(10, 118, 100, 18, 'Mantenimiento elegido a mano', '2026-09-19', 5, '6.1.2.07', true);
+
+    const lineas = svc.lineaRepository.create.mock.calls[0][0];
+    expect(lineas.find((l: any) => l.cuentaContableId === 2)?.debe).toBe(18);
+    expect(lineas.find((l: any) => l.cuentaContableId === 3)?.haber).toBe(118);
+  });
+
+  it('asientoMantenimiento: gasto y Proveedores se resuelven contra la configuración (antes literales sueltos)', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta('9.9.2.01', 1), cuenta('9.9.3.01', 2)],
+    });
+    svc.configuracionService = { obtenerMapa: jest.fn().mockResolvedValue({ MANTENIMIENTO_GASTO: '9.9.2.01', PROVEEDORES: '9.9.3.01' }) };
+
+    await svc.asientoMantenimiento(1, 500, 'ORD-1', '2026-09-19', 5);
+
+    const lineas = svc.lineaRepository.create.mock.calls[0][0];
+    expect(lineas.find((l: any) => l.cuentaContableId === 1)?.debe).toBe(500);
+    expect(lineas.find((l: any) => l.cuentaContableId === 2)?.haber).toBe(500);
+  });
 });
