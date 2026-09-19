@@ -1,13 +1,22 @@
 /**
- * PLAN_CUENTAS (Fase 2 del catálogo fiscal dominicano) — verifica que el
- * seed nace ya etiquetado, sin paso adicional: seedPlanCuentas()/
- * onModuleInit() hacen `this.cuentaRepository.create({ ...c, ... })` sobre
- * cada entrada de PLAN_CUENTAS, así que basta con que las etiquetas estén
- * en el objeto — no hace falta tocar esos dos métodos.
+ * PLAN_CUENTAS (Fase 2 del catálogo fiscal dominicano, actualizado en Fase 4
+ * Bloque A) — verifica que el seed nace ya etiquetado, sin paso adicional:
+ * seedPlanCuentas()/onModuleInit() hacen `this.cuentaRepository.create({
+ * ...c, ... })` sobre cada entrada de PLAN_CUENTAS y luego
+ * guardarAnexosSeed() inserta una fila de cuenta_anexo_ir2 por cada
+ * elemento de `c.anexos` — basta con que las etiquetas estén en el objeto.
+ *
+ * FASE 4 Bloque A: `anexoIR2` dejó de ser un campo único en cada entrada
+ * del seed — ahora es `anexos: { anexoIR2, casillaIR2? }[]`, porque una
+ * cuenta puede aportar a más de un anexo del IR-2 a la vez. El caso de
+ * referencia son las 4 cuentas de Inventario (A1 Balance + D Costo de
+ * Venta simultáneamente) — antes se quedaban SIN ninguna etiqueta porque
+ * la columna única no podía llevar las dos a la vez.
  *
  * No cubre la migración de datos que etiqueta lo YA existente en
- * producción (ver 1764300000000-EtiquetarCuentasFiscalesSeed.ts) ni la
- * pantalla de excepciones — solo el propio PLAN_CUENTAS.
+ * producción (ver 1764300000000-EtiquetarCuentasFiscalesSeed.ts y
+ * 1764800000000-CuentaAnexoIR2MultiValor.ts) ni la pantalla de
+ * excepciones — solo el propio PLAN_CUENTAS.
  */
 
 import { PLAN_CUENTAS } from './contabilidad.service';
@@ -19,11 +28,15 @@ function porCodigo(codigo: string) {
   return c;
 }
 
+function anexosDe(codigo: string): AnexoIR2[] {
+  return (porCodigo(codigo).anexos ?? []).map(a => a.anexoIR2).sort();
+}
+
 describe('PLAN_CUENTAS — etiquetas fiscales del seed', () => {
   it('las cuentas de agrupación (permiteMovimientos=false) no llevan ninguna etiqueta fiscal', () => {
     for (const c of PLAN_CUENTAS.filter(c => !c.permiteMovimientos)) {
       expect(c.tipoGasto606).toBeUndefined();
-      expect(c.anexoIR2).toBeUndefined();
+      expect(c.anexos).toBeUndefined();
       expect(c.requiereNCF).toBeUndefined();
     }
   });
@@ -43,51 +56,58 @@ describe('PLAN_CUENTAS — etiquetas fiscales del seed', () => {
     const c = porCodigo('6.1.2.06');
     expect(c.nombre).toBe('ITBIS no Recuperable');
     expect(c.tipoGasto606).toBeUndefined();
-    expect(c.anexoIR2).toBeUndefined();
+    expect(c.anexos).toBeUndefined();
     expect(c.requiereNCF).toBeUndefined();
   });
 
-  it('activo/pasivo/patrimonio de movimiento llevan anexoIR2=A1, EXCEPTO las 4 cuentas de Inventario', () => {
-    const inventario = ['1.1.3.01', '1.1.3.02', '1.1.3.03', '1.1.3.04'];
+  it('activo/pasivo/patrimonio de movimiento llevan A1, SIEMPRE — ya no se excluye a Inventario (Fase 4 Bloque A)', () => {
     for (const c of PLAN_CUENTAS.filter(
       c => c.permiteMovimientos && [TipoCuenta.ACTIVO, TipoCuenta.PASIVO, TipoCuenta.PATRIMONIO].includes(c.tipo),
     )) {
-      if (inventario.includes(c.codigo)) {
-        expect(c.anexoIR2).toBeUndefined();
-      } else {
-        expect(c.anexoIR2).toBe(AnexoIR2.A1);
-      }
+      expect(anexosDe(c.codigo)).toContain(AnexoIR2.A1);
     }
   });
 
-  it('las 4 cuentas de Inventario quedan SIN anexoIR2 — alimentan A1 (Balance) Y D (Anexo D) a la vez, y la columna solo permite uno', () => {
-    for (const codigo of ['1.1.3.01', '1.1.3.02', '1.1.3.03', '1.1.3.04']) {
-      expect(porCodigo(codigo).anexoIR2).toBeUndefined();
+  it('las 4 cuentas de Inventario llevan A1 Y D a la vez — caso de referencia del Bloque A, ya no quedan sin etiquetar', () => {
+    const porCasilla: Record<string, string> = {
+      '1.1.3.01': 'inv_mercancias',
+      '1.1.3.02': 'inv_produccion_proceso',
+      '1.1.3.03': 'inv_productos_terminados',
+      '1.1.3.04': 'inv_materia_prima',
+    };
+    for (const [codigo, casilla] of Object.entries(porCasilla)) {
+      const anexos = porCodigo(codigo).anexos ?? [];
+      expect(anexos.map(a => a.anexoIR2).sort()).toEqual([AnexoIR2.A1, AnexoIR2.D].sort());
+      const filaD = anexos.find(a => a.anexoIR2 === AnexoIR2.D);
+      expect(filaD?.casillaIR2).toBe(casilla);
+      const filaA1 = anexos.find(a => a.anexoIR2 === AnexoIR2.A1);
+      expect(filaA1?.casillaIR2).toBeUndefined(); // A1 es texto libre, no se inventa un número de casilla
     }
   });
 
-  it('ingreso de movimiento lleva anexoIR2=B1 siempre (no depende de ningún diccionario)', () => {
+  it('ingreso de movimiento lleva B1 siempre (no depende de ningún diccionario)', () => {
     for (const c of PLAN_CUENTAS.filter(c => c.permiteMovimientos && c.tipo === TipoCuenta.INGRESO)) {
-      expect(c.anexoIR2).toBe(AnexoIR2.B1);
+      expect(anexosDe(c.codigo)).toEqual([AnexoIR2.B1]);
     }
   });
 
-  it('costo de movimiento lleva anexoIR2=D (ambas cuentas de costo del seed tienen tipoGasto606 confiable)', () => {
+  it('costo de movimiento lleva D (ambas cuentas de costo del seed tienen tipoGasto606 confiable), nunca dos veces', () => {
     for (const c of PLAN_CUENTAS.filter(c => c.permiteMovimientos && c.tipo === TipoCuenta.COSTO)) {
-      expect(c.anexoIR2).toBe(AnexoIR2.D);
+      expect(anexosDe(c.codigo)).toEqual([AnexoIR2.D]);
     }
   });
 
-  it('gasto de movimiento lleva anexoIR2=B1 solo si tiene tipoGasto606 — ITBIS no Recuperable no tiene ninguno de los dos', () => {
+  it('gasto de movimiento lleva B1 solo si tiene tipoGasto606 — ITBIS no Recuperable no tiene ninguno de los dos', () => {
     for (const c of PLAN_CUENTAS.filter(c => c.permiteMovimientos && c.tipo === TipoCuenta.GASTO)) {
-      if (c.tipoGasto606) expect(c.anexoIR2).toBe(AnexoIR2.B1);
-      else expect(c.anexoIR2).toBeUndefined();
+      if (c.tipoGasto606) expect(anexosDe(c.codigo)).toEqual([AnexoIR2.B1]);
+      else expect(c.anexos).toBeUndefined();
     }
   });
 
-  it('ninguna cuenta del seed lleva casillaIR2 — no hay números de casilla DGII verificados todavía (gate de Fase 3)', () => {
+  it('ninguna cuenta del seed repite el mismo anexo dos veces', () => {
     for (const c of PLAN_CUENTAS) {
-      expect((c as any).casillaIR2).toBeUndefined();
+      const codigos = (c.anexos ?? []).map(a => a.anexoIR2);
+      expect(new Set(codigos).size).toBe(codigos.length);
     }
   });
 
@@ -102,7 +122,7 @@ describe('PLAN_CUENTAS — etiquetas fiscales del seed', () => {
     expect(porCodigo('6.1.5.01').requiereNCF).toBeUndefined(); // Pérdida en Diferencial Cambiario — ajuste contable, no una compra con NCF
   });
 
-  it('el seed tiene 90 cuentas — 79 originales + 11 que cierran los 8 códigos huérfanos del motor de asientos (3 nodos padre nuevos + 8 hojas)', () => {
+  it('el seed tiene 90 cuentas — sin cambios de cantidad en Fase 4 Bloque A, solo se reetiquetó anexoIR2', () => {
     expect(PLAN_CUENTAS).toHaveLength(90);
   });
 
@@ -113,22 +133,22 @@ describe('PLAN_CUENTAS — etiquetas fiscales del seed', () => {
       }
     });
 
-    it('las de activo/pasivo (retenciones E41, cartera de préstamos) llevan anexoIR2=A1', () => {
+    it('las de activo/pasivo (retenciones E41, cartera de préstamos) llevan A1', () => {
       for (const codigo of ['1.1.2.10', '1.1.4.02', '1.1.4.03', '2.1.2.04']) {
-        expect(porCodigo(codigo).anexoIR2).toBe(AnexoIR2.A1);
+        expect(anexosDe(codigo)).toEqual([AnexoIR2.A1]);
       }
     });
 
-    it('las de ingreso (intereses/mora de préstamos, ganancia cambiaria) llevan anexoIR2=B1', () => {
+    it('las de ingreso (intereses/mora de préstamos, ganancia cambiaria) llevan B1', () => {
       for (const codigo of ['4.1.2.01', '4.1.2.02', '4.1.3.01']) {
-        expect(porCodigo(codigo).anexoIR2).toBe(AnexoIR2.B1);
+        expect(anexosDe(codigo)).toEqual([AnexoIR2.B1]);
       }
     });
 
-    it('"Pérdida en Diferencial Cambiario" (6.1.5.01) recibe tipoGasto606=07 (Gastos financieros) y anexoIR2=B1 — mismo diccionario que "Intereses/Comisiones Bancarias"', () => {
+    it('"Pérdida en Diferencial Cambiario" (6.1.5.01) recibe tipoGasto606=07 (Gastos financieros) y B1 — mismo diccionario que "Intereses/Comisiones Bancarias"', () => {
       const c = porCodigo('6.1.5.01');
       expect(c.tipoGasto606).toBe('07');
-      expect(c.anexoIR2).toBe(AnexoIR2.B1);
+      expect(anexosDe('6.1.5.01')).toEqual([AnexoIR2.B1]);
     });
 
     it('los 3 nodos padre nuevos (4.1.2, 4.1.3, 6.1.5) son de agrupación, sin ninguna etiqueta', () => {
@@ -136,7 +156,7 @@ describe('PLAN_CUENTAS — etiquetas fiscales del seed', () => {
         const c = porCodigo(codigo);
         expect(c.permiteMovimientos).toBe(false);
         expect(c.esCuentaSistema).toBeUndefined();
-        expect(c.anexoIR2).toBeUndefined();
+        expect(c.anexos).toBeUndefined();
       }
     });
   });

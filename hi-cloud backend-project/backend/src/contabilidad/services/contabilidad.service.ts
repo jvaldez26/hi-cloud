@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import { generarNumeroSecuencial } from '../../common/utils/generar-numero.util';
 import {
   CuentaContable,
@@ -17,6 +17,7 @@ import {
   AnexoIR2,
   TIPOS_POR_ANEXO_IR2,
 } from '../entities/cuenta-contable.entity';
+import { CuentaAnexoIR2 } from '../entities/cuenta-anexo-ir2.entity';
 import { sugerirTipoGasto606, sugerirRequiereNCF } from '../../declaraciones/dgii.constants';
 import { COD } from './asientos-automaticos.service';
 import {
@@ -24,7 +25,7 @@ import {
   EstadoAsiento,
 } from '../entities/asiento-contable.entity';
 import { AsientoLinea } from '../entities/asiento-linea.entity';
-import { CreateCuentaContableDto } from '../dto/create-cuenta-contable.dto';
+import { CreateCuentaContableDto, EtiquetaAnexoIR2Dto } from '../dto/create-cuenta-contable.dto';
 import { UpdateCuentaContableDto } from '../dto/update-cuenta-contable.dto';
 import { CreateAsientoDto } from '../dto/create-asiento.dto';
 import { FiltroContabilidadDto } from '../dto/filtro-contabilidad.dto';
@@ -41,7 +42,12 @@ interface SeedCuenta {
   // Etiquetas fiscales (Fase 2 del catálogo fiscal dominicano) — se
   // calculan en etiquetarFiscalmente(), no se escriben a mano aquí abajo.
   tipoGasto606?: string;
-  anexoIR2?: AnexoIR2;
+  /**
+   * FASE 4 Bloque A — una cuenta puede aportar a varios anexos del IR-2 a
+   * la vez (dejó de ser un solo AnexoIR2). seedPlanCuentas/onModuleInit
+   * insertan una fila en cuenta_anexo_ir2 por cada elemento.
+   */
+  anexos?: { anexoIR2: AnexoIR2; casillaIR2?: string }[];
   requiereNCF?: boolean;
   // P3 Bloque 4 — se calcula en marcarCuentaSistema(), no se escribe a mano aquí abajo.
   esCuentaSistema?: boolean;
@@ -172,26 +178,36 @@ const PLAN_CUENTAS_BASE: SeedCuenta[] = [
 //     Recuperable" no calza en ninguno de los dos a propósito — es la
 //     única cuenta genuinamente ambigua del seed; Jean la confirma con su
 //     contador antes de la Fase 3.
-//   - anexoIR2: activo/pasivo/patrimonio → 'A1' (Balance); ingreso → 'B1'
+//   - anexos: activo/pasivo/patrimonio → 'A1' (Balance); ingreso → 'B1'
 //     (Resultados); costo/gasto → 'B1' o 'D' pero SOLO si la cuenta ya
 //     tiene un tipoGasto606 confiable (si no lo tiene, tampoco se afirma
 //     su anexo — mismo criterio de "sin dictamen, sin etiqueta").
-//   - EXCEPCIÓN deliberada — las 4 cuentas de Inventario (1.1.3.01 a
-//     1.1.3.04): el Anexo A1 (Balance) necesita su saldo de cierre y el
-//     Anexo D (Costo de Venta) necesita su Inventario Inicial/Final — la
-//     MISMA cuenta alimenta ambos anexos, pero anexoIR2 es una sola
-//     columna por cuenta. Forzar 'A1' perdería su lugar en D, y viceversa.
-//     Se dejan SIN anexoIR2 en vez de elegir una de las dos en silencio —
-//     ver el reporte de Fase 2 para la discusión completa.
-//   - casillaIR2: no se puebla en ningún caso — no hay números de casilla
-//     de DGII verificados todavía (ese es el propio gate ya acordado de la
-//     Fase 3, no una omisión de esta fase).
-const CUENTAS_INVENTARIO_DUAL_A1_D = new Set(['1.1.3.01', '1.1.3.02', '1.1.3.03', '1.1.3.04']);
+//   - CASO DE REFERENCIA, no una excepción — las 4 cuentas de Inventario
+//     (1.1.3.01 a 1.1.3.04): el Anexo A1 (Balance) necesita su saldo de
+//     cierre y el Anexo D (Costo de Venta) necesita su Inventario
+//     Inicial/Final — la MISMA cuenta alimenta ambos anexos a la vez.
+//     Hasta Fase 3 `anexoIR2` era una sola columna por cuenta y forzar
+//     'A1' perdía su lugar en D (y viceversa), así que se dejaban sin
+//     ninguna etiqueta. FASE 4 Bloque A convierte esto en una relación
+//     (`anexos: []`, ver cuenta-anexo-ir2.entity.ts) — estas 4 cuentas
+//     ahora llevan ambos anexos, con la casilla D que les corresponde.
+//   - casillaIR2 solo se puebla donde es una traducción directa del
+//     nombre de la cuenta (las 4 de Inventario, en D) — en todo lo demás
+//     sigue sin poblarse: no hay números de casilla de DGII verificados
+//     para el resto (Fase 3 solo confirmó casillas del Anexo B-1/D vía la
+//     tabla CORRESPONDENCIA_606_IR2, no una por cada cuenta del catálogo).
+const CASILLA_D_POR_CUENTA_INVENTARIO: Record<string, string> = {
+  '1.1.3.01': 'inv_mercancias',
+  '1.1.3.02': 'inv_produccion_proceso',
+  '1.1.3.03': 'inv_productos_terminados',
+  '1.1.3.04': 'inv_materia_prima',
+};
 
 function etiquetarFiscalmente(c: SeedCuenta): SeedCuenta {
   if (!c.permiteMovimientos) return c; // las de agrupación no se etiquetan
 
   const etiquetas: Partial<SeedCuenta> = {};
+  const anexos: { anexoIR2: AnexoIR2; casillaIR2?: string }[] = [];
 
   if (c.tipo === TipoCuenta.GASTO || c.tipo === TipoCuenta.COSTO) {
     const sugerido606 = sugerirTipoGasto606(c.nombre);
@@ -200,16 +216,19 @@ function etiquetarFiscalmente(c: SeedCuenta): SeedCuenta {
     if (sugeridoNCF !== null) etiquetas.requiereNCF = sugeridoNCF;
   }
 
+  const casillaDInventario = CASILLA_D_POR_CUENTA_INVENTARIO[c.codigo];
   if (c.tipo === TipoCuenta.ACTIVO || c.tipo === TipoCuenta.PASIVO || c.tipo === TipoCuenta.PATRIMONIO) {
-    if (!CUENTAS_INVENTARIO_DUAL_A1_D.has(c.codigo)) etiquetas.anexoIR2 = AnexoIR2.A1;
+    anexos.push({ anexoIR2: AnexoIR2.A1 });
+    if (casillaDInventario) anexos.push({ anexoIR2: AnexoIR2.D, casillaIR2: casillaDInventario });
   } else if (c.tipo === TipoCuenta.INGRESO) {
-    etiquetas.anexoIR2 = AnexoIR2.B1;
+    anexos.push({ anexoIR2: AnexoIR2.B1 });
   } else if (c.tipo === TipoCuenta.COSTO) {
-    if (etiquetas.tipoGasto606) etiquetas.anexoIR2 = AnexoIR2.D;
+    if (etiquetas.tipoGasto606) anexos.push({ anexoIR2: AnexoIR2.D });
   } else if (c.tipo === TipoCuenta.GASTO) {
-    if (etiquetas.tipoGasto606) etiquetas.anexoIR2 = AnexoIR2.B1;
+    if (etiquetas.tipoGasto606) anexos.push({ anexoIR2: AnexoIR2.B1 });
   }
 
+  if (anexos.length) etiquetas.anexos = anexos;
   return { ...c, ...etiquetas };
 }
 
@@ -246,6 +265,8 @@ export class ContabilidadService implements OnModuleInit {
   constructor(
     @InjectRepository(CuentaContable)
     private cuentaRepository:  Repository<CuentaContable>,
+    @InjectRepository(CuentaAnexoIR2)
+    private anexoRepository:   Repository<CuentaAnexoIR2>,
     @InjectRepository(AsientoContable)
     private asientoRepository: Repository<AsientoContable>,
     @InjectRepository(AsientoLinea)
@@ -262,6 +283,24 @@ export class ContabilidadService implements OnModuleInit {
   // balance-comprobacion.service.ts (commit 3b7de56a) — fallar cerrado.
   private get eid(): number {
     return this.tenantService.getEmpresaId();
+  }
+
+  /**
+   * FASE 4 Bloque A — inserta las filas de cuenta_anexo_ir2 de una cuenta
+   * recién sembrada. Solo se llama justo después de crear la cuenta (nunca
+   * sobre una que ya existía — seedPlanCuentas la salta con `omitidas++`
+   * antes de llegar aquí), así que no hace falta borrar nada primero.
+   */
+  private async guardarAnexosSeed(
+    cuentaContableId: number,
+    empresaId: number | undefined,
+    anexos: { anexoIR2: AnexoIR2; casillaIR2?: string }[] | undefined,
+  ): Promise<void> {
+    for (const a of anexos ?? []) {
+      await this.anexoRepository.save(
+        this.anexoRepository.create({ cuentaContableId, empresaId, anexoIR2: a.anexoIR2, casillaIR2: a.casillaIR2 }),
+      );
+    }
   }
 
   /**
@@ -300,9 +339,16 @@ export class ContabilidadService implements OnModuleInit {
           cuentaPadreId = padre?.id;
         }
 
-        await this.cuentaRepository.save(
-          this.cuentaRepository.create({ ...c, empresaId, cuentaPadreId }),
+        const { anexos, ...cuentaSeed } = c;
+        // NUNCA castear el argumento de create() a `any` — resuelve el
+        // overload equivocado (el que devuelve un arreglo) y `guardada`
+        // deja de tener `.id` en tiempo de compilación sin que tsc avise
+        // en el `await this.cuentaRepository.save(...)` de encima (trampa
+        // ya documentada esta misma sesión, ver memoria del proyecto).
+        const guardada: CuentaContable = await this.cuentaRepository.save(
+          this.cuentaRepository.create({ ...cuentaSeed, empresaId, cuentaPadreId }),
         );
+        await this.guardarAnexosSeed(guardada.id, empresaId, anexos);
         agregadas++;
         this.logger.log(
           `[seedPlanCuentas] empresa=${empresaId} cuenta=${c.codigo} agregada`,
@@ -399,9 +445,11 @@ export class ContabilidadService implements OnModuleInit {
           cuentaPadreId = padre?.id;
         }
 
-        await this.cuentaRepository.save(
-          this.cuentaRepository.create({ ...c, cuentaPadreId }),
+        const { anexos, ...cuentaSeed } = c;
+        const guardada: CuentaContable = await this.cuentaRepository.save(
+          this.cuentaRepository.create({ ...cuentaSeed, cuentaPadreId }),
         );
+        await this.guardarAnexosSeed(guardada.id, guardada.empresaId, anexos);
       }
     }
 
@@ -416,7 +464,32 @@ export class ContabilidadService implements OnModuleInit {
     const where: Record<string, unknown> = { isActive: true };
     if (soloMovimientos) where['permiteMovimientos'] = true;
     if (this.eid) where['empresaId'] = this.eid;
-    return this.cuentaRepository.find({ where, order: { codigo: 'ASC' } });
+    const cuentas = await this.cuentaRepository.find({ where, order: { codigo: 'ASC' } });
+    return this.attachAnexos(cuentas);
+  }
+
+  /**
+   * FASE 4 Bloque A — trae, en una sola consulta, las filas de
+   * cuenta_anexo_ir2 de un lote de cuentas y las adjunta como
+   * `anexosIR2: { anexoIR2, casillaIR2 }[]` en cada una. Sustituye a la
+   * columna única `anexoIR2` que existía hasta Fase 3 — una cuenta puede
+   * aparecer en más de un anexo del IR-2 a la vez (ver
+   * cuenta-anexo-ir2.entity.ts).
+   */
+  private async attachAnexos<T extends CuentaContable>(
+    cuentas: T[],
+  ): Promise<(T & { anexosIR2: { anexoIR2: AnexoIR2; casillaIR2?: string }[] })[]> {
+    if (cuentas.length === 0) return [];
+    const where: any = { cuentaContableId: In(cuentas.map((c) => c.id)), isActive: true };
+    if (this.eid) where.empresaId = this.eid;
+    const filas = await this.anexoRepository.find({ where });
+    const porCuenta = new Map<number, { anexoIR2: AnexoIR2; casillaIR2?: string }[]>();
+    for (const f of filas) {
+      const arr = porCuenta.get(f.cuentaContableId) ?? [];
+      arr.push({ anexoIR2: f.anexoIR2, casillaIR2: f.casillaIR2 });
+      porCuenta.set(f.cuentaContableId, arr);
+    }
+    return cuentas.map((c) => ({ ...c, anexosIR2: porCuenta.get(c.id) ?? [] }));
   }
 
   /**
@@ -424,20 +497,21 @@ export class ContabilidadService implements OnModuleInit {
    * que SÍ les aplica — la lista de trabajo del contador (Fase 2 del
    * catálogo fiscal dominicano). Mismo criterio "OR por campo aplicable"
    * que la columna "606 / IR-2" de PlanCuentasPage.tsx en el frontend:
-   *   - gasto/costo sin tipoGasto606 → aparece (aunque ya tenga anexoIR2).
-   *   - cualquier tipo sin anexoIR2 → aparece (aunque ya tenga tipoGasto606).
+   *   - gasto/costo sin tipoGasto606 → aparece (aunque ya tenga anexos).
+   *   - cualquier tipo sin NINGÚN anexo → aparece (aunque ya tenga tipoGasto606).
    * Una cuenta de activo/pasivo/patrimonio/ingreso nunca puede deberle
    * tipoGasto606 (no le aplica), así que para esas el único gate real es
-   * anexoIR2 — que es justo la columna que hoy dejan vacía, a propósito,
-   * el Anexo D de las 4 cuentas de Inventario y "ITBIS no Recuperable".
+   * tener al menos un anexo — que es justo lo que hasta Fase 3 dejaban
+   * vacío, a propósito, las 4 cuentas de Inventario y "ITBIS no Recuperable".
    */
   async getCuentasSinEtiquetar() {
     const where: any = { isActive: true, permiteMovimientos: true };
     if (this.eid) where.empresaId = this.eid;
     const cuentas = await this.cuentaRepository.find({ where, order: { codigo: 'ASC' } });
-    return cuentas.filter((c) => {
+    const conAnexos = await this.attachAnexos(cuentas);
+    return conAnexos.filter((c) => {
       const leFaltaGasto606 = (c.tipo === TipoCuenta.GASTO || c.tipo === TipoCuenta.COSTO) && !c.tipoGasto606;
-      const leFaltaAnexo = !c.anexoIR2;
+      const leFaltaAnexo = c.anexosIR2.length === 0;
       return leFaltaGasto606 || leFaltaAnexo;
     });
   }
@@ -447,7 +521,8 @@ export class ContabilidadService implements OnModuleInit {
     if (this.eid) where.empresaId = this.eid;
     const c = await this.cuentaRepository.findOne({ where });
     if (!c) throw new NotFoundException(`Cuenta #${id} no encontrada`);
-    return c;
+    const [conAnexos] = await this.attachAnexos([c]);
+    return conAnexos;
   }
 
   async createCuenta(dto: CreateCuentaContableDto) {
@@ -457,7 +532,12 @@ export class ContabilidadService implements OnModuleInit {
     if (existe) throw new ConflictException(`Código ${dto.codigo} ya existe`);
     await this.validarPadreYEtiquetas(dto);
     const eid = this.eid;
-    return this.cuentaRepository.save(this.cuentaRepository.create({ ...dto, ...(eid ? { empresaId: eid } : {}) }));
+    const { etiquetasAnexoIR2, ...restoDto } = dto;
+    const guardada = await this.cuentaRepository.save(
+      this.cuentaRepository.create({ ...restoDto, ...(eid ? { empresaId: eid } : {}) }),
+    );
+    await this.reemplazarAnexos(guardada.id, eid, etiquetasAnexoIR2);
+    return this.findCuentaById(guardada.id);
   }
 
   async updateCuenta(id: number, dto: UpdateCuentaContableDto) {
@@ -473,8 +553,34 @@ export class ContabilidadService implements OnModuleInit {
       );
     }
     await this.validarPadreYEtiquetas(dto, actual, id);
-    await this.cuentaRepository.update(id, dto);
+    const { etiquetasAnexoIR2, ...restoDto } = dto;
+    if (Object.keys(restoDto).length > 0) await this.cuentaRepository.update(id, restoDto);
+    // undefined = el PATCH no tocó los anexos, se dejan como estaban;
+    // [] (arreglo vacío) SÍ es una instrucción explícita de vaciarlos.
+    if (etiquetasAnexoIR2 !== undefined) {
+      await this.reemplazarAnexos(id, this.eid ?? actual.empresaId, etiquetasAnexoIR2);
+    }
     return this.findCuentaById(id);
+  }
+
+  /**
+   * FASE 4 Bloque A — reemplaza TODA la lista de anexos IR-2 de una cuenta
+   * (desactiva las filas activas existentes e inserta las nuevas). Nunca
+   * hace un borrado físico — mismo criterio "isActive=false" que el resto
+   * del catálogo — para no romper una FK si algún día se auditan estas
+   * filas históricamente.
+   */
+  private async reemplazarAnexos(
+    cuentaContableId: number,
+    empresaId: number | undefined,
+    anexos: EtiquetaAnexoIR2Dto[] | undefined,
+  ): Promise<void> {
+    await this.anexoRepository.update({ cuentaContableId }, { isActive: false });
+    for (const a of anexos ?? []) {
+      await this.anexoRepository.save(
+        this.anexoRepository.create({ cuentaContableId, empresaId, anexoIR2: a.anexoIR2, casillaIR2: a.casillaIR2 }),
+      );
+    }
   }
 
   /**
@@ -489,20 +595,22 @@ export class ContabilidadService implements OnModuleInit {
    *    restricción de TIPO difiere por etiqueta:
    *      - tipoGasto606/requiereNCF: solo gasto o costo (el 606 declara
    *        compras y gastos, no partidas de balance).
-   *      - anexoIR2/casillaIR2: cualquier tipo, pero coherente con
-   *        TIPOS_POR_ANEXO_IR2 — A1 (Balance) exige activo/pasivo/
-   *        patrimonio, B1 (Resultados) exige ingreso/costo/gasto, D (Costo
-   *        de Venta) exige activo o costo. No se valida que la cuenta
-   *        "activo" sea específicamente Inventario y no, por ejemplo, Caja
-   *        — adivinar semántica de cuenta queda fuera de esta fase, igual
-   *        que hoy no se valida qué código 606 exacto corresponde a cada
-   *        gasto.
+   *      - etiquetasAnexoIR2 (FASE 4 Bloque A): cualquier tipo, pero cada
+   *        elemento coherente con TIPOS_POR_ANEXO_IR2 — A1 (Balance) exige
+   *        activo/pasivo/patrimonio, B1 (Resultados) exige ingreso/costo/
+   *        gasto, D (Costo de Venta) exige activo o costo. Una cuenta no
+   *        puede repetir el mismo anexo dos veces. No se valida que la
+   *        cuenta "activo" sea específicamente Inventario y no, por
+   *        ejemplo, Caja — adivinar semántica de cuenta queda fuera de
+   *        esta fase, igual que hoy no se valida qué código 606 exacto
+   *        corresponde a cada gasto.
    *
    * Las etiquetas se validan sobre el estado EFECTIVO resultante (dto
    * fusionado sobre cuentaActual), no solo sobre los campos que el dto
-   * toca: en un updateCuenta que solo cambia "tipo", una etiqueta que ya
-   * estaba guardada y queda incoherente con el tipo nuevo también se
-   * rechaza, aunque ese dto ni mencione la etiqueta.
+   * toca: en un updateCuenta que solo cambia "tipo", los anexos que ya
+   * estaban guardados y quedan incoherentes con el tipo nuevo también se
+   * rechazan, aunque ese dto ni mencione etiquetasAnexoIR2 — para eso se
+   * consultan los anexos ya guardados cuando el dto no los toca.
    */
   private async validarPadreYEtiquetas(
     dto: Partial<CreateCuentaContableDto>,
@@ -543,22 +651,26 @@ export class ContabilidadService implements OnModuleInit {
     const permiteMovimientosEfectivo = dto.permiteMovimientos ?? cuentaActual?.permiteMovimientos;
     const tipoGasto606Efectivo = dto.tipoGasto606 !== undefined ? dto.tipoGasto606 : cuentaActual?.tipoGasto606;
     const requiereNCFEfectivo  = dto.requiereNCF  !== undefined ? dto.requiereNCF  : cuentaActual?.requiereNCF;
-    const anexoEfectivo        = dto.anexoIR2     !== undefined ? dto.anexoIR2     : cuentaActual?.anexoIR2;
-    const casillaEfectiva      = dto.casillaIR2   !== undefined ? dto.casillaIR2   : cuentaActual?.casillaIR2;
+
+    let anexosEfectivos: EtiquetaAnexoIR2Dto[];
+    if (dto.etiquetasAnexoIR2 !== undefined) {
+      anexosEfectivos = dto.etiquetasAnexoIR2;
+    } else if (idActual !== undefined) {
+      const where: any = { cuentaContableId: idActual, isActive: true };
+      if (this.eid) where.empresaId = this.eid;
+      anexosEfectivos = await this.anexoRepository.find({ where });
+    } else {
+      anexosEfectivos = [];
+    }
 
     const tieneGasto606OContribuyente =
       (tipoGasto606Efectivo !== undefined && tipoGasto606Efectivo !== null) ||
       (requiereNCFEfectivo  !== undefined && requiereNCFEfectivo  !== null);
-    const tieneAnexo =
-      (anexoEfectivo   !== undefined && anexoEfectivo   !== null) ||
-      (casillaEfectiva !== undefined && casillaEfectiva !== null);
 
-    if (tieneGasto606OContribuyente || tieneAnexo) {
-      if (!permiteMovimientosEfectivo) {
-        throw new BadRequestException(
-          'Las etiquetas fiscales solo se pueden asignar a cuentas de movimiento, no de agrupación',
-        );
-      }
+    if ((tieneGasto606OContribuyente || anexosEfectivos.length > 0) && !permiteMovimientosEfectivo) {
+      throw new BadRequestException(
+        'Las etiquetas fiscales solo se pueden asignar a cuentas de movimiento, no de agrupación',
+      );
     }
 
     if (tieneGasto606OContribuyente) {
@@ -569,15 +681,19 @@ export class ContabilidadService implements OnModuleInit {
       }
     }
 
-    if (tieneAnexo) {
-      if ((casillaEfectiva !== undefined && casillaEfectiva !== null) && !anexoEfectivo) {
-        throw new BadRequestException('casillaIR2 requiere anexoIR2');
+    const anexosVistos = new Set<AnexoIR2>();
+    for (const a of anexosEfectivos) {
+      if (anexosVistos.has(a.anexoIR2)) {
+        throw new BadRequestException(
+          `El anexo ${a.anexoIR2} está repetido — una cuenta no puede aparecer dos veces en el mismo anexo`,
+        );
       }
-      if (anexoEfectivo && tipoEfectivo) {
-        const tiposValidos = TIPOS_POR_ANEXO_IR2[anexoEfectivo];
+      anexosVistos.add(a.anexoIR2);
+      if (tipoEfectivo) {
+        const tiposValidos = TIPOS_POR_ANEXO_IR2[a.anexoIR2];
         if (!tiposValidos.includes(tipoEfectivo)) {
           throw new BadRequestException(
-            `El anexo ${anexoEfectivo} no aplica a cuentas de tipo ${tipoEfectivo} (válido: ${tiposValidos.join(', ')})`,
+            `El anexo ${a.anexoIR2} no aplica a cuentas de tipo ${tipoEfectivo} (válido: ${tiposValidos.join(', ')})`,
           );
         }
       }
@@ -597,6 +713,7 @@ export class ContabilidadService implements OnModuleInit {
     const tieneLineas = await this.lineaRepository.count({ where: { cuentaContableId: id } });
     if (tieneLineas > 0) throw new BadRequestException('No se puede eliminar una cuenta con movimientos');
     await this.cuentaRepository.update(id, { isActive: false });
+    await this.anexoRepository.update({ cuentaContableId: id }, { isActive: false });
     return { message: `Cuenta "${c.nombre}" eliminada` };
   }
 

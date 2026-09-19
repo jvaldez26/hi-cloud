@@ -231,6 +231,12 @@ export class ConciliacionFiscalService {
   }
 
   // ── Alerta: cuentas de movimiento con saldo en el ejercicio y sin ninguna etiqueta fiscal ──
+  //
+  // FASE 4 Bloque A: anexoIR2 dejó de ser una columna de cuentas_contables
+  // (una cuenta puede aportar a varios anexos a la vez — ver
+  // cuenta-anexo-ir2.entity.ts). "sin ninguna etiqueta" ahora es "sin
+  // tipoGasto606 Y sin ninguna fila activa en cuenta_anexo_ir2", vía
+  // NOT EXISTS en vez de `cc."anexoIR2" IS NULL`.
   private async cuentasSinEtiquetaConSaldo(eid: number, desde: string, hasta: string) {
     const rows = await this.dataSource.query<any[]>(
       `
@@ -242,7 +248,11 @@ export class ConciliacionFiscalService {
         AND ac.estado = 'contabilizado' AND ac."isActive" = true
         AND ac.fecha BETWEEN $2 AND $3 AND ac."empresaId" = $1
       WHERE cc."isActive" = true AND cc."empresaId" = $1 AND cc."permiteMovimientos" = true
-        AND cc."tipoGasto606" IS NULL AND cc."anexoIR2" IS NULL
+        AND cc."tipoGasto606" IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM cuenta_anexo_ir2 ca
+          WHERE ca."cuentaContableId" = cc.id AND ca."isActive" = true
+        )
       GROUP BY cc.id, cc.codigo, cc.nombre, cc.tipo
       HAVING COALESCE(SUM(CASE WHEN cc.naturaleza = 'deudora' THEN al.debe - al.haber ELSE al.haber - al.debe END), 0) != 0
       ORDER BY cc.codigo

@@ -44,6 +44,7 @@ describe('ContabilidadService — fecha cruda al QueryBuilder (P3 Bloque 5)', ()
     const lineaRepository = { createQueryBuilder: jest.fn().mockReturnValue(qb) };
     const svc: any = Object.create(ContabilidadService.prototype);
     svc.cuentaRepository = cuentaRepository;
+    svc.anexoRepository  = { find: jest.fn().mockResolvedValue([]) }; // getLibroMayor() pasa por findCuentaById()/attachAnexos() (Fase 4 Bloque A)
     svc.lineaRepository  = lineaRepository;
     svc.tenantService    = { getEmpresaId: () => 7 };
 

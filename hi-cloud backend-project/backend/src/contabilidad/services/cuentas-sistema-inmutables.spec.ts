@@ -53,11 +53,14 @@ function makeService(cuenta: any) {
     update:  jest.fn().mockResolvedValue({}),
   };
   const lineaRepository: any = { count: jest.fn().mockResolvedValue(0) };
+  // removeCuenta()/updateCuenta() pasan por findCuentaById()/attachAnexos() (Fase 4 Bloque A).
+  const anexoRepository: any = { find: jest.fn().mockResolvedValue([]), update: jest.fn().mockResolvedValue({}) };
   const svc: any = Object.create(ContabilidadService.prototype);
   svc.cuentaRepository = cuentaRepository;
+  svc.anexoRepository  = anexoRepository;
   svc.lineaRepository  = lineaRepository;
   svc.tenantService    = { getEmpresaId: () => 7 };
-  return { svc: svc as ContabilidadService, cuentaRepository, lineaRepository };
+  return { svc: svc as ContabilidadService, cuentaRepository, anexoRepository, lineaRepository };
 }
 
 const CUENTA_SISTEMA = {

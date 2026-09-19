@@ -1,5 +1,11 @@
 import api from './client';
 
+/** Un elemento de la lista de anexos IR-2 de una cuenta (Fase 4 Bloque A). */
+export interface EtiquetaAnexoIR2 {
+  anexoIR2: 'A1' | 'B1' | 'D';
+  casillaIR2?: string | null;
+}
+
 export interface CuentaPayload {
   codigo: string; nombre: string;
   tipo: string; naturaleza: string;
@@ -11,9 +17,20 @@ export interface CuentaPayload {
    * costo; ver ContabilidadService.validarPadreYEtiquetas().
    */
   tipoGasto606?: string | null;
-  anexoIR2?: 'A1' | 'B1' | 'D' | null;
-  casillaIR2?: string | null;
+  /**
+   * FASE 4 Bloque A — una cuenta puede aportar a varios anexos del IR-2 a
+   * la vez (ya no es un solo par anexoIR2/casillaIR2). Cada PATCH/POST
+   * reemplaza la lista entera: [] la vacía, omitir el campo la deja igual.
+   */
+  etiquetasAnexoIR2?: EtiquetaAnexoIR2[];
   requiereNCF?: boolean | null;
+}
+
+/** Cuenta tal como la devuelve el backend — trae los anexos ya resueltos (attachAnexos()). */
+export interface CuentaConAnexos extends CuentaPayload {
+  id: number;
+  esCuentaSistema?: boolean;
+  anexosIR2: EtiquetaAnexoIR2[];
 }
 
 export interface AsientoLineaPayload {

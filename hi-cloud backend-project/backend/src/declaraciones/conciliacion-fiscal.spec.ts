@@ -155,4 +155,17 @@ describe('ConciliacionFiscalService.getConciliacion606IR2()', () => {
     ]);
     expect(r.anexoJ).toEqual([{ tipoComprobante: 'B01', cantidad: 5, monto: 80000 }]);
   });
+
+  // FASE 4 Bloque A — anexoIR2 dejó de ser una columna de cuentas_contables
+  // (pasó a la relación cuenta_anexo_ir2, ver cuenta-anexo-ir2.entity.ts).
+  // Regresión pedida explícitamente: la conciliación de Fase 3 debe seguir
+  // funcionando igual, ahora consultando la tabla nueva.
+  it('regresión Bloque A: cuentasSinEtiquetaConSaldo consulta cuenta_anexo_ir2 (NOT EXISTS), no la columna vieja cc."anexoIR2"', async () => {
+    const { svc, query } = makeService(VACIO);
+    await svc.getConciliacion606IR2(2026);
+    const sqlDeLaAlerta = query.mock.calls.map((c: any[]) => c[0]).find((sql: string) => sql.includes('cc.naturaleza'));
+    expect(sqlDeLaAlerta).toBeDefined();
+    expect(sqlDeLaAlerta).toMatch(/NOT EXISTS[\s\S]*cuenta_anexo_ir2/);
+    expect(sqlDeLaAlerta).not.toMatch(/cc\."anexoIR2"/);
+  });
 });

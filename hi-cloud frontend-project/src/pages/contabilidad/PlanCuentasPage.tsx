@@ -3,18 +3,16 @@ import {
   Table, Tag, Card, Row, Col, Typography, Space, Button, Modal, Form,
   Input, InputNumber, Select, Switch, message, Tooltip, Tabs, Badge, Alert,
 } from 'antd';
-import { PlusOutlined, EditOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usePlanGuard } from '../../hooks/usePlan';
 import ModuloBloqueado from '../../components/ui/ModuloBloqueado';
-import { contabilidadApi, type CuentaPayload } from '../../api/contabilidad.api';
+import { contabilidadApi, type CuentaPayload, type CuentaConAnexos, type EtiquetaAnexoIR2 } from '../../api/contabilidad.api';
 import { TIPOS_BIENES_606 } from '../../constants/dgii-606';
 
 const { Title, Text } = Typography;
 
-interface Cuenta extends CuentaPayload {
-  id: number;
-}
+type Cuenta = CuentaConAnexos;
 
 const tipoColor: Record<string, string> = {
   activo: '#1677ff', pasivo: '#fa8c16', patrimonio: '#722ed1',
@@ -50,17 +48,18 @@ const ANEXOS_POR_TIPO: Record<string, { value: string; label: string }[]> = {
  * "activo"), así que en vez de adivinar, el selector de casilla ofrece
  * solo las líneas que corresponden al tipo elegido. No son códigos
  * oficiales de DGII confirmados — esa numeración se verifica en Fase 3.
+ *
+ * FASE 4 Bloque A: el lado "activo" dejó de tener una entrada Inicial y
+ * otra Final por categoría — la misma cuenta lleva UNA sola fila en D (ver
+ * cuenta_anexo_ir2) y el ERP deriva inicial/final del saldo de esa cuenta
+ * al abrir y cerrar el ejercicio (Bloque D), no de dos casillas distintas.
  */
 const CASILLAS_ANEXO_D: Record<'activo' | 'costo', { value: string; label: string }[]> = {
   activo: [
-    { value: 'inv_ini_merc', label: 'Inventario Inicial de Mercancías' },
-    { value: 'inv_fin_merc', label: 'Inventario Final de Mercancías' },
-    { value: 'inv_ini_mp',   label: 'Inventario Inicial de Materia Prima' },
-    { value: 'inv_fin_mp',   label: 'Inventario Final de Materia Prima' },
-    { value: 'inv_ini_pp',   label: 'Inventario Inicial de Producción en Proceso' },
-    { value: 'inv_fin_pp',   label: 'Inventario Final de Producción en Proceso' },
-    { value: 'inv_ini_pt',   label: 'Inventario Inicial de Productos Terminados' },
-    { value: 'inv_fin_pt',   label: 'Inventario Final de Productos Terminados' },
+    { value: 'inv_mercancias',          label: 'Inventario de Mercancías' },
+    { value: 'inv_materia_prima',       label: 'Inventario de Materia Prima' },
+    { value: 'inv_produccion_proceso',  label: 'Inventario de Producción en Proceso' },
+    { value: 'inv_productos_terminados',label: 'Inventario de Productos Terminados' },
   ],
   costo: [
     { value: 'compras_local', label: 'Compras Locales' },
@@ -74,20 +73,20 @@ const CASILLAS_ANEXO_D: Record<'activo' | 'costo', { value: string; label: strin
  * Columna "606 / IR-2" del catálogo — mismo criterio que
  * ContabilidadService.getCuentasSinEtiquetar() en el backend: "sin
  * etiquetar" es un OR por campo aplicable, no un AND. Una cuenta de costo
- * con tipoGasto606 pero sin anexoIR2 (el caso de las 4 de Inventario y las
- * 2 de Costo que la Fase 2 dejó a propósito sin anexo) debe seguir
- * marcándose como incompleta, no como "ya etiquetada" solo porque una de
- * las dos columnas tiene valor.
+ * con tipoGasto606 pero sin ningún anexo (el caso de las 4 de Inventario y
+ * las 2 de Costo que la Fase 2 dejó a propósito sin anexo hasta el Bloque
+ * A) debe seguir marcándose como incompleta, no como "ya etiquetada" solo
+ * porque una de las dos columnas tiene valor.
  */
 function renderEtiquetas(r: Cuenta) {
   if (!r.permiteMovimientos) return <Text type="secondary">—</Text>;
   const leFaltaGasto606 = ['gasto', 'costo'].includes(r.tipo ?? '') && !r.tipoGasto606;
-  const leFaltaAnexo = !r.anexoIR2;
+  const leFaltaAnexo = !r.anexosIR2?.length;
   if (leFaltaGasto606 || leFaltaAnexo) return <Tag color="orange">Sin etiquetar</Tag>;
   return (
     <Space size={4} wrap>
       {r.tipoGasto606 && <Tooltip title={TIPOS_BIENES_606.find(t => t.value === r.tipoGasto606)?.label}><Tag>{r.tipoGasto606}</Tag></Tooltip>}
-      {r.anexoIR2 && <Tag color="blue">{r.anexoIR2}</Tag>}
+      {r.anexosIR2.map((a, i) => <Tag key={i} color="blue">{a.anexoIR2}</Tag>)}
       {r.requiereNCF === false && <Tooltip title="Va sin NCF (nómina/TSS, pensiones, depreciación, destrucción autorizada)"><Tag color="purple">Sin NCF</Tag></Tooltip>}
     </Space>
   );
@@ -100,12 +99,14 @@ export default function PlanCuentasPage() {
   const [editing, setEditing] = useState<Cuenta | null>(null);
   const [form] = Form.useForm<CuentaPayload>();
 
-  // Se leen para reaccionar en vivo al elegir tipo/permiteMovimientos/anexoIR2.
+  // Se leen para reaccionar en vivo al elegir tipo/permiteMovimientos/anexos.
   // Las etiquetas de agrupación nunca se ofrecen (no reciben asientos). De
   // ahí en adelante la regla difiere por etiqueta — ver ANEXOS_POR_TIPO.
   const tipoActual               = Form.useWatch('tipo', form);
   const permiteMovimientosActual = Form.useWatch('permiteMovimientos', form);
-  const anexoActual              = Form.useWatch('anexoIR2', form);
+  // FASE 4 Bloque A — una cuenta puede llevar varios anexos a la vez
+  // (etiquetasAnexoIR2 es una lista, no un solo par anexoIR2/casillaIR2).
+  const etiquetasAnexoActual: EtiquetaAnexoIR2[] = Form.useWatch('etiquetasAnexoIR2', form) ?? [];
   const muestra606       = TIPOS_CON_606.includes(tipoActual) && !!permiteMovimientosActual;
   const muestraAnexoIR2  = !!permiteMovimientosActual;
   const anexosDisponibles = ANEXOS_POR_TIPO[tipoActual] ?? [];
@@ -140,16 +141,22 @@ export default function PlanCuentasPage() {
   });
 
   const openCreate = () => { setEditing(null); form.resetFields(); setOpen(true); };
-  const openEdit   = (c: Cuenta) => { setEditing(c); form.setFieldsValue(c); setOpen(true); };
+  const openEdit   = (c: Cuenta) => {
+    setEditing(c);
+    // La cuenta que devuelve el backend trae los anexos en `anexosIR2`
+    // (attachAnexos()) — el form los edita bajo `etiquetasAnexoIR2`.
+    form.setFieldsValue({ ...c, etiquetasAnexoIR2: c.anexosIR2 ?? [] });
+    setOpen(true);
+  };
   const closeModal = () => { setOpen(false); setEditing(null); form.resetFields(); };
 
   // Al dejar de calificar, las etiquetas que hubieran quedado huérfanas se
   // limpian solas (el backend las rechazaría igual, pero mejor que el
   // formulario no las envíe siquiera).
-  const handleValuesChange = (changed: Partial<CuentaPayload>) => {
+  const handleValuesChange = (changed: Record<string, unknown>) => {
     // Cuenta de agrupación: ninguna etiqueta aplica.
     if ('permiteMovimientos' in changed && !changed.permiteMovimientos) {
-      form.setFieldsValue({ tipoGasto606: undefined, anexoIR2: undefined, casillaIR2: undefined, requiereNCF: undefined });
+      form.setFieldsValue({ tipoGasto606: undefined, requiereNCF: undefined, etiquetasAnexoIR2: [] });
       return;
     }
     if ('tipo' in changed) {
@@ -157,19 +164,30 @@ export default function PlanCuentasPage() {
       if (!TIPOS_CON_606.includes(nuevoTipo)) {
         form.setFieldsValue({ tipoGasto606: undefined, requiereNCF: undefined });
       }
-      const anexoVigente   = form.getFieldValue('anexoIR2');
-      const anexosValidos  = (ANEXOS_POR_TIPO[nuevoTipo] ?? []).map(a => a.value);
-      if (anexoVigente && !anexosValidos.includes(anexoVigente)) {
-        // El anexo ya no aplica al tipo nuevo (ej. A1 en una cuenta que pasó a ser gasto).
-        form.setFieldsValue({ anexoIR2: undefined, casillaIR2: undefined });
-      } else if (anexoVigente === 'D') {
+      const anexosValidos: string[] = (ANEXOS_POR_TIPO[nuevoTipo] ?? []).map(a => a.value);
+      const vigentes: EtiquetaAnexoIR2[] = form.getFieldValue('etiquetasAnexoIR2') ?? [];
+      const filtrados = vigentes
+        .filter(e => e.anexoIR2 && anexosValidos.includes(e.anexoIR2))
         // La lista de casillas de D depende de si el tipo es activo o costo — cambia al cambiar el tipo.
-        form.setFieldsValue({ casillaIR2: undefined });
+        .map(e => (e.anexoIR2 === 'D' ? { ...e, casillaIR2: undefined } : e));
+      if (filtrados.length !== vigentes.length || filtrados.some((f, i) => f !== vigentes[i])) {
+        form.setFieldsValue({ etiquetasAnexoIR2: filtrados });
       }
     }
-    if ('anexoIR2' in changed) {
-      // La casilla depende del anexo elegido (lista acotada en D, texto libre en A1/B1) — el valor anterior no aplica.
-      form.setFieldsValue({ casillaIR2: undefined });
+    // Cuando cambia el anexoIR2 de una fila puntual de la lista, su casilla
+    // (dependiente del anexo elegido) deja de aplicar — antd reporta el
+    // cambio como un arreglo con solo esa posición presente.
+    if (Array.isArray(changed.etiquetasAnexoIR2)) {
+      const tocados = changed.etiquetasAnexoIR2 as (Partial<EtiquetaAnexoIR2> | undefined)[];
+      const idx = tocados.findIndex(e => e && 'anexoIR2' in e);
+      if (idx >= 0) {
+        const actuales: EtiquetaAnexoIR2[] = form.getFieldValue('etiquetasAnexoIR2') ?? [];
+        if (actuales[idx]) {
+          const nuevas = [...actuales];
+          nuevas[idx] = { ...nuevas[idx], casillaIR2: undefined };
+          form.setFieldsValue({ etiquetasAnexoIR2: nuevas });
+        }
+      }
     }
   };
 
@@ -208,7 +226,7 @@ export default function PlanCuentasPage() {
       render: (_: unknown, r: Cuenta) => (
         <Space size={4} wrap>
           {['gasto', 'costo'].includes(r.tipo) && !r.tipoGasto606 && <Tag color="orange">Tipo de gasto (606)</Tag>}
-          {!r.anexoIR2 && <Tag color="orange">Anexo IR-2</Tag>}
+          {!r.anexosIR2?.length && <Tag color="orange">Anexo IR-2</Tag>}
         </Space>
       ) },
     { title: '', key: 'actions', width: 90, align: 'right' as const,
@@ -347,27 +365,58 @@ export default function PlanCuentasPage() {
               <>
                 <Col span={24}>
                   <Text type="secondary" style={{ fontSize: 12 }}>
-                    Anexo del IR-2 — A1 (Balance) aplica a activo/pasivo/patrimonio, B1 (Resultados) a ingreso/costo/gasto,
-                    D (Costo de Venta) a activo o costo. Verificar con el contador.
+                    Anexos del IR-2 — A1 (Balance) aplica a activo/pasivo/patrimonio, B1 (Resultados) a ingreso/costo/gasto,
+                    D (Costo de Venta) a activo o costo. Una cuenta puede llevar más de un anexo a la vez — el caso de
+                    referencia es Inventario, que va a A1 Y a D. Verificar con el contador.
                   </Text>
                 </Col>
-                <Col xs={24} sm={12}>
-                  <Form.Item name="anexoIR2" label="Anexo IR-2">
-                    <Select
-                      allowClear disabled={!tipoActual}
-                      options={anexosDisponibles}
-                      placeholder={tipoActual ? 'Ninguno' : 'Elige el tipo primero'}
-                    />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} sm={12}>
-                  <Form.Item name="casillaIR2" label="Casilla del anexo">
-                    {anexoActual === 'D'
-                      // El código no distingue una cuenta "activo" que es Inventario de una que es Caja —
-                      // en vez de adivinar, se ofrece solo la lista de líneas que aplica al tipo elegido.
-                      ? <Select allowClear options={casillasDisponiblesD} placeholder="Elige la línea" />
-                      : <Input placeholder="ej. 6.1, 9.1" disabled={!anexoActual} />}
-                  </Form.Item>
+                <Col span={24}>
+                  <Form.List name="etiquetasAnexoIR2">
+                    {(fields, { add, remove }) => (
+                      <>
+                        {fields.map((field) => {
+                          const anexoDeEstaFila = etiquetasAnexoActual[field.name]?.anexoIR2;
+                          // Un anexo ya elegido en OTRA fila no se ofrece de nuevo — una cuenta no
+                          // puede repetir el mismo anexo dos veces (lo valida también el backend).
+                          const anexosYaUsados: string[] = etiquetasAnexoActual
+                            .filter((_, i) => i !== field.name)
+                            .map(e => e?.anexoIR2)
+                            .filter(Boolean) as string[];
+                          const opcionesAnexo = anexosDisponibles.filter(
+                            a => a.value === anexoDeEstaFila || !anexosYaUsados.includes(a.value),
+                          );
+                          return (
+                            <Row gutter={8} key={field.key} align="middle">
+                              <Col xs={20} sm={10}>
+                                <Form.Item name={[field.name, 'anexoIR2']} rules={[{ required: true, message: 'Elige un anexo' }]}>
+                                  <Select disabled={!tipoActual} options={opcionesAnexo}
+                                    placeholder={tipoActual ? 'Anexo IR-2' : 'Elige el tipo primero'} />
+                                </Form.Item>
+                              </Col>
+                              <Col xs={20} sm={11}>
+                                <Form.Item name={[field.name, 'casillaIR2']}>
+                                  {anexoDeEstaFila === 'D'
+                                    // El código no distingue una cuenta "activo" que es Inventario de una que es Caja —
+                                    // en vez de adivinar, se ofrece solo la lista de líneas que aplica al tipo elegido.
+                                    ? <Select allowClear options={casillasDisponiblesD} placeholder="Elige la línea" />
+                                    : <Input placeholder="Casilla, ej. 6.1, 9.1" disabled={!anexoDeEstaFila} />}
+                                </Form.Item>
+                              </Col>
+                              <Col xs={4} sm={3}>
+                                <Button danger type="text" icon={<DeleteOutlined />} onClick={() => remove(field.name)} />
+                              </Col>
+                            </Row>
+                          );
+                        })}
+                        <Button
+                          type="dashed" block disabled={!tipoActual || anexosDisponibles.length === fields.length}
+                          onClick={() => add({ anexoIR2: undefined, casillaIR2: undefined })}
+                        >
+                          + Agregar anexo
+                        </Button>
+                      </>
+                    )}
+                  </Form.List>
                 </Col>
               </>
             )}

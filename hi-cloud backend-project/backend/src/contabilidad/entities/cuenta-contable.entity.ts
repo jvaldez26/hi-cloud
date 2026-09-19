@@ -76,40 +76,18 @@ export class CuentaContable extends TenantBaseEntity {
 
   // ── Etiquetas fiscales (Fase 1 — catálogo fiscal dominicano) ─────────────
   // Todas solo tienen sentido en cuentas de movimiento (permiteMovimientos=
-  // true) — las de agrupación no reciben asientos y no se etiquetan. La
-  // restricción de TIPO difiere por etiqueta (validado en
-  // ContabilidadService, no aquí):
+  // true) — las de agrupación no reciben asientos y no se etiquetan.
   //   - tipoGasto606/requiereNCF: solo gasto o costo — el 606 declara
-  //     compras y gastos, no partidas de balance.
-  //   - anexoIR2/casillaIR2: cualquier tipo, pero coherente con
-  //     TIPOS_POR_ANEXO_IR2 (A1 es balance, B1 es resultados, D toca activo
-  //     y costo).
+  //     compras y gastos, no partidas de balance. Siguen siendo columnas
+  //     únicas: una cuenta de gasto/costo tiene un único código 606.
+  //   - anexoIR2/casillaIR2: FASE 4 Bloque A — dejaron de ser columnas
+  //     aquí. Una cuenta puede aportar a MÁS DE UN anexo del IR-2 a la vez
+  //     (las 4 cuentas de Inventario van a A1 Y a D) — eso pasó a la
+  //     relación CuentaAnexoIR2 (`cuenta_anexo_ir2`, ver esa entidad).
 
   /** Uno de los 11 códigos del Formato 606 (TIPOS_BIENES_606), '01' a '11'. Solo gasto/costo. */
   @Column({ type: 'varchar', length: 2, nullable: true })
   tipoGasto606?: string;
-
-  /**
-   * Anexo del IR-2 al que aporta esta cuenta ('A1'/'B1'/'D' — ver AnexoIR2 y
-   * TIPOS_POR_ANEXO_IR2). varchar y no un enum nativo de Postgres, a
-   * propósito: mismo criterio que tipoBienes/formaPago en compras (códigos
-   * DGII validados a nivel de app contra una constante, no por el motor de
-   * base de datos).
-   */
-  @Column({ type: 'varchar', length: 2, nullable: true })
-  anexoIR2?: AnexoIR2;
-
-  /**
-   * Línea/casilla del anexo, ej. '6.1', '7.5', '9.1', '11.1' para A1/B1; en
-   * D, un código corto legible (ver constants/dgii-606.ts en el frontend —
-   * el Anexo D no trae numeración oficial confirmada todavía, eso se
-   * verifica en Fase 3). Texto libre a nivel de columna — la app ofrece un
-   * selector acotado según tipo cuando anexoIR2='D', pero no lo valida
-   * aquí: adivinar semántica de cuenta (¿esta "activo" es Inventario o
-   * Caja?) queda fuera de esta fase.
-   */
-  @Column({ type: 'varchar', length: 20, nullable: true })
-  casillaIR2?: string;
 
   /**
    * true = el gasto necesita NCF para ser deducible; false = va sin NCF
