@@ -12,6 +12,8 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { tesoreriaApi, type CuentaBancariaPayload } from '../../api/tesoreria.api';
 import { fmt } from '../../utils/formatters';
 import dayjs from 'dayjs';
+import CuentaContableSelector from '../../components/contabilidad/CuentaContableSelector';
+import AsientoPreviewPanel from '../../components/contabilidad/AsientoPreviewPanel';
 
 const { Title } = Typography;
 
@@ -65,6 +67,22 @@ export default function TesoreriaPage() {
     mutationFn: (body: any) => tesoreriaApi.transferencia(body),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['movimientos-bancarios'] }); qc.invalidateQueries({ queryKey: ['cuentas-bancarias'] }); setOpenMovim(null); formMovim.resetFields(); message.success('Transferencia realizada'); },
     onError: (e: any) => message.error(e?.response?.data?.errors?.[0] ?? 'Error en transferencia'),
+  });
+
+  // Panel de vista previa del asiento de depósito/retiro — antes esto no
+  // generaba ningún asiento (quedaba solo en movimientos_bancarios). No
+  // aplica a transferencias entre cuentas propias (sin efecto en el mayor).
+  const montoMovimWatch     = Form.useWatch('monto', formMovim);
+  const descripcionMovimWatch = Form.useWatch('descripcion', formMovim);
+  const contrapartidaMovimWatch = Form.useWatch('cuentaContrapartida', formMovim);
+  const { data: previewMovim, isFetching: previewMovimCargando } = useQuery({
+    queryKey: ['movimiento-preview', openMovim, montoMovimWatch, descripcionMovimWatch, contrapartidaMovimWatch],
+    queryFn: () => tesoreriaApi.previsualizarAsientoMovimiento({
+      monto: Number(montoMovimWatch), descripcion: descripcionMovimWatch, esDeposito: openMovim === 'deposito',
+      cuentaContrapartida: contrapartidaMovimWatch || undefined,
+    }),
+    enabled: (openMovim === 'deposito' || openMovim === 'retiro') && Number(montoMovimWatch) > 0,
+    staleTime: 500,
   });
 
   const handleMovimSubmit = (values: any) => {
@@ -241,7 +259,15 @@ export default function TesoreriaPage() {
           <Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item>
           <Form.Item name="descripcion" label="Descripción" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="referencia" label="Referencia"><Input /></Form.Item>
-          <Row justify="end" gutter={8}>
+          {(openMovim === 'deposito' || openMovim === 'retiro') && (
+            <Form.Item name="cuentaContrapartida" label={openMovim === 'deposito' ? 'Cuenta contable (origen del depósito)' : 'Cuenta contable (destino del retiro)'}>
+              <CuentaContableSelector placeholder={openMovim === 'deposito' ? 'Por defecto: Otros Ingresos' : 'Por defecto: Otros Gastos'} allowClear />
+            </Form.Item>
+          )}
+          {(openMovim === 'deposito' || openMovim === 'retiro') && (
+            <AsientoPreviewPanel resultado={previewMovim} loading={previewMovimCargando} />
+          )}
+          <Row justify="end" gutter={8} style={{ marginTop: (openMovim === 'deposito' || openMovim === 'retiro') ? 8 : 0 }}>
             <Col><Button onClick={() => setOpenMovim(null)}>Cancelar</Button></Col>
             <Col><Button type={openMovim === 'retiro' ? 'default' : 'primary'} danger={openMovim === 'retiro'} htmlType="submit"
               loading={depositoMut.isPending || retiroMut.isPending || transferenciaFn.isPending}>

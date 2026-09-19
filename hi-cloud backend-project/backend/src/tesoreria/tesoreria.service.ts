@@ -28,6 +28,7 @@ import { CreateConciliacionDto } from './dto/create-conciliacion.dto';
 import { FiltroMovimientoDto, FiltroConciliacionDto } from './dto/filtro-tesoreria.dto';
 import { TenantService } from '../tenant/tenant.service';
 import { fechaHoyRD } from '../common/utils/fecha-local.util';
+import { AsientosAutomaticosService } from '../contabilidad/services/asientos-automaticos.service';
 
 @Injectable()
 export class TesoreriaService {
@@ -41,6 +42,7 @@ export class TesoreriaService {
     @InjectRepository(ConciliacionBancaria)
     private conciliacionRepository:  Repository<ConciliacionBancaria>,
     private tenantService:           TenantService,
+    private asientosService:         AsientosAutomaticosService,
   ) {}
 
   private get eid(): number {
@@ -179,7 +181,7 @@ export class TesoreriaService {
   // ──────────────────────────────────────────────────────────────────
 
   async registrarDeposito(dto: RegistrarDepositoDto, userId: number) {
-    return this.registrarMovimiento(
+    const mov = await this.registrarMovimiento(
       dto.cuentaBancariaId,
       TipoMovimientoBancario.DEPOSITO,
       dto.monto,
@@ -190,10 +192,15 @@ export class TesoreriaService {
       undefined,
       dto.referencia,
     );
+    const cuentaEsManual = !!dto.cuentaContrapartida;
+    await this.asientosService.asientoMovimientoBancario(
+      mov.id, dto.monto, dto.descripcion, true, dto.fecha, userId, dto.cuentaContrapartida, cuentaEsManual,
+    ).catch(err => this.logger.error(`Error asiento depósito #${mov.id}: ${err?.message ?? err}`));
+    return mov;
   }
 
   async registrarRetiro(dto: RegistrarRetiroDto, userId: number) {
-    return this.registrarMovimiento(
+    const mov = await this.registrarMovimiento(
       dto.cuentaBancariaId,
       TipoMovimientoBancario.RETIRO,
       dto.monto,
@@ -204,6 +211,16 @@ export class TesoreriaService {
       undefined,
       dto.referencia,
     );
+    const cuentaEsManual = !!dto.cuentaContrapartida;
+    await this.asientosService.asientoMovimientoBancario(
+      mov.id, dto.monto, dto.descripcion, false, dto.fecha, userId, dto.cuentaContrapartida, cuentaEsManual,
+    ).catch(err => this.logger.error(`Error asiento retiro #${mov.id}: ${err?.message ?? err}`));
+    return mov;
+  }
+
+  /** Panel de vista previa: calcula el asiento de depósito/retiro SIN registrar el movimiento. */
+  async previsualizarAsientoMovimiento(monto: number, descripcion: string, esDeposito: boolean, cuentaContrapartida?: string) {
+    return this.asientosService.previsualizarMovimientoBancario(monto, descripcion || '(sin descripción)', esDeposito, cuentaContrapartida);
   }
 
   async registrarTransferencia(dto: RegistrarTransferenciaDto, userId: number) {

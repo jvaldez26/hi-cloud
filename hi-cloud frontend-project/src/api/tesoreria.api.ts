@@ -20,11 +20,15 @@ export const tesoreriaApi = {
     api.get(`/tesoreria/movimientos?page=${p}&limit=${limit}${cuentaId ? `&cuentaBancariaId=${cuentaId}` : ''}`)
        .then(r => r.data.data),
 
-  deposito: (body: { cuentaBancariaId: number; monto: number; fecha: string; descripcion: string; referencia?: string }) =>
+  deposito: (body: { cuentaBancariaId: number; monto: number; fecha: string; descripcion: string; referencia?: string; cuentaContrapartida?: string }) =>
     api.post('/tesoreria/movimientos/deposito', body).then(r => r.data.data),
 
-  retiro: (body: { cuentaBancariaId: number; monto: number; fecha: string; descripcion: string; referencia?: string }) =>
+  retiro: (body: { cuentaBancariaId: number; monto: number; fecha: string; descripcion: string; referencia?: string; cuentaContrapartida?: string }) =>
     api.post('/tesoreria/movimientos/retiro', body).then(r => r.data.data),
+
+  /** Panel de vista previa: calcula el asiento de depósito/retiro SIN registrar el movimiento. */
+  previsualizarAsientoMovimiento: (body: { monto: number; descripcion?: string; esDeposito: boolean; cuentaContrapartida?: string }) =>
+    api.post('/tesoreria/movimientos/previsualizar-asiento', body).then(r => (r.data as any)?.data ?? r.data),
 
   transferencia: (body: { cuentaOrigenId: number; cuentaDestinoId: number; monto: number; fecha: string; descripcion: string }) =>
     api.post('/tesoreria/movimientos/transferencia', body).then(r => r.data.data),

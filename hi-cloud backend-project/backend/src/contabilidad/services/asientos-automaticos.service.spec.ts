@@ -830,4 +830,58 @@ describe('AsientosAutomaticosService — Configuración Contable por Módulo (20
     expect(r.cuadrado).toBe(true);
     expect(r.totalDebe).toBe(50000);
   });
+
+  // ── Movimiento bancario manual (Tesorería) — nuevo asiento (2026-09-19) ──
+  // Antes, un depósito/retiro manual en Tesorería no generaba ningún
+  // asiento — quedaba solo en movimientos_bancarios.
+
+  it('asientoMovimientoBancario (depósito): Debe Bancos, Haber la contrapartida (default Otros Ingresos)', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta(COD.BANCOS, 1), cuenta('4.2.1.02', 2)],
+    });
+
+    await svc.asientoMovimientoBancario(1, 500, 'Aporte de capital', true, '2026-09-19', 5);
+
+    const lineas = svc.lineaRepository.create.mock.calls[0][0];
+    expect(lineas.find((l: any) => l.cuentaContableId === 1)?.debe).toBe(500);   // Bancos
+    expect(lineas.find((l: any) => l.cuentaContableId === 2)?.haber).toBe(500);  // Otros Ingresos, default
+    expect(lineas.every((l: any) => !l.cuentaManual)).toBe(true);
+  });
+
+  it('asientoMovimientoBancario (retiro): Debe la contrapartida elegida (marcada manual), Haber Bancos', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta('6.1.2.08', 1), cuenta(COD.BANCOS, 2)],
+    });
+
+    await svc.asientoMovimientoBancario(2, 300, 'Comisión bancaria', false, '2026-09-19', 5, '6.1.2.08', true);
+
+    const lineas = svc.lineaRepository.create.mock.calls[0][0];
+    const contrapartida = lineas.find((l: any) => l.cuentaContableId === 1);
+    expect(contrapartida?.debe).toBe(300);
+    expect(contrapartida?.cuentaManual).toBe(true);
+    expect(lineas.find((l: any) => l.cuentaContableId === 2)?.haber).toBe(300);
+  });
+
+  it('asientoMovimientoBancario con monto cero: no genera nada', async () => {
+    const svc = makeService({ empresaId: 7, cuentas: [] });
+
+    await svc.asientoMovimientoBancario(3, 0, 'Sin monto', true, '2026-09-19', 5);
+
+    expect(svc.asientoRepository.save).not.toHaveBeenCalled();
+  });
+
+  it('previsualizarMovimientoBancario: ok=true y cuadrado con las cuentas presentes', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta(COD.BANCOS, 1), cuenta('6.1.2.09', 2)],
+    });
+
+    const r: any = await svc.previsualizarMovimientoBancario(300, 'Retiro de prueba', false);
+
+    expect(r.ok).toBe(true);
+    expect(r.cuadrado).toBe(true);
+    expect(r.totalDebe).toBe(300);
+  });
 });

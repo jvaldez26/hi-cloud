@@ -59,6 +59,20 @@ export const CONCEPTOS_CONTABLES: ConceptoContable[] = [
   { concepto: 'SUELDOS_X_PAGAR',         label: 'Sueldos por Pagar (neto)',                 grupo: 'Nómina', default: COD.SUELDOS_X_PAGAR },
   { concepto: 'TSS_X_PAGAR',             label: 'TSS por Pagar',                            grupo: 'Nómina', default: COD.TSS_X_PAGAR },
   { concepto: 'ISR_X_PAGAR',             label: 'ISR por Pagar (retenido de nómina)',       grupo: 'Nómina', default: COD.ISR_X_PAGAR },
+  // ── Bancos (Tesorería) ──
+  // Depósito/retiro MANUAL en Tesorería (sin CxC/CxP de por medio, p. ej. un
+  // aporte de capital o un gasto bancario) — antes no generaba NINGÚN
+  // asiento: el movimiento quedaba en movimientos_bancarios sin llegar
+  // nunca al mayor contable. La contrapartida es un selector por documento
+  // (no hay una cuenta "correcta" universal para "de dónde vino este
+  // depósito" o "a qué se fue este retiro"); estos 2 defaults son solo el
+  // valor pre-seleccionado, siempre editable.
+  { concepto: 'DEPOSITO_OTRO_INGRESO',   label: 'Depósito bancario (origen no especificado)', grupo: 'Bancos', default: '4.2.1.02' },
+  { concepto: 'RETIRO_OTRO_GASTO',       label: 'Retiro bancario (destino no especificado)',  grupo: 'Bancos', default: '6.1.2.09' },
+  // Una transferencia entre 2 cuentas bancarias PROPIAS no genera asiento —
+  // ambos lados son la misma cuenta contable "Bancos" (el detalle de cuál
+  // banco físico se movió lo sigue Tesorería en movimientos_bancarios, no
+  // el mayor contable). Sin efecto en el balance, sin efecto en este catálogo.
   // ── Activos Fijos ──
   // Alta de un activo: Debe = cuenta del activo (por categoría, CategoriaActivo.
   // cuentaActivoCodigo — este default solo aplica si la categoría no tiene una

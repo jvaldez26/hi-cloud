@@ -113,6 +113,15 @@ export class TesoreriaController {
     return this.tesoreriaService.registrarRetiro(dto, usuario.id);
   }
 
+  @Post('movimientos/previsualizar-asiento')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Panel de vista previa: calcula el asiento de depósito/retiro SIN registrar el movimiento' })
+  previsualizarAsientoMovimiento(
+    @Body() dto: { monto: number; descripcion?: string; esDeposito: boolean; cuentaContrapartida?: string },
+  ) {
+    return this.tesoreriaService.previsualizarAsientoMovimiento(dto.monto, dto.descripcion ?? '', dto.esDeposito, dto.cuentaContrapartida);
+  }
+
   @Post('movimientos/transferencia')
   @HttpCode(HttpStatus.CREATED)
   @Roles(UserRole.ADMIN)

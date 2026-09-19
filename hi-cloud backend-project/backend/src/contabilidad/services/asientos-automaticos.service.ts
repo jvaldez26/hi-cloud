@@ -976,6 +976,83 @@ export class AsientosAutomaticosService {
   }
 
   // ──────────────────────────────────────────────────────────────────
+  // Depósito/retiro bancario MANUAL (Tesorería, 2026-09-19) → Bancos (D o H,
+  // según sea depósito o retiro) / contrapartida (H o D) elegida por el
+  // selector del formulario. Antes de esta pieza, un movimiento manual en
+  // Tesorería (sin CxC/CxP de por medio — un aporte de capital, un cargo
+  // bancario, etc.) quedaba en movimientos_bancarios sin llegar NUNCA al
+  // mayor contable: dos sistemas de contabilidad en paralelo que podían
+  // divergir sin que nadie lo notara.
+  //
+  // Una transferencia entre 2 cuentas bancarias PROPIAS no genera asiento
+  // aquí — ver TesoreriaService.registrarTransferencia(): ambos lados serían
+  // la misma cuenta contable "Bancos", sin efecto neto en el mayor. El
+  // detalle de qué banco físico se movió lo sigue Tesorería, no este motor.
+  // ──────────────────────────────────────────────────────────────────
+
+  private construirLineasMovimientoBancario(
+    monto: number, descripcion: string, esDeposito: boolean,
+    cuentaContrapartida: string, cuentaContrapartidaManual: boolean, cuentaBancos: string,
+  ): LineaAsientoInput[] {
+    return esDeposito
+      ? [
+          { codigo: cuentaBancos,       descripcion, debe: monto, haber: 0 },
+          { codigo: cuentaContrapartida, descripcion, debe: 0,     haber: monto, manual: cuentaContrapartidaManual },
+        ]
+      : [
+          { codigo: cuentaContrapartida, descripcion, debe: monto, haber: 0, manual: cuentaContrapartidaManual },
+          { codigo: cuentaBancos,       descripcion, debe: 0,     haber: monto },
+        ];
+  }
+
+  /** Panel de vista previa: calcula el asiento de depósito/retiro bancario SIN registrar nada. */
+  async previsualizarMovimientoBancario(
+    monto: number, descripcion: string, esDeposito: boolean, cuentaContrapartida?: string,
+  ): Promise<PreviewAsientoResultado> {
+    const conceptoDefault = esDeposito ? 'DEPOSITO_OTRO_INGRESO' : 'RETIRO_OTRO_GASTO';
+    const defaultLiteral   = esDeposito ? '4.2.1.02' : '6.1.2.09';
+    const cuentas = await this.resolverCuentasConcepto([['BANCOS', COD.BANCOS], [conceptoDefault, defaultLiteral]]);
+    return this.previsualizarLineas(this.construirLineasMovimientoBancario(
+      monto, descripcion, esDeposito, cuentaContrapartida || cuentas[conceptoDefault], false, cuentas.BANCOS,
+    ));
+  }
+
+  async asientoMovimientoBancario(
+    movimientoId: number, monto: number, descripcion: string, esDeposito: boolean,
+    fecha: string, userId: number, cuentaContrapartida?: string, cuentaContrapartidaManual = false,
+  ): Promise<void> {
+    if (monto <= 0) return;
+    const conceptoDefault = esDeposito ? 'DEPOSITO_OTRO_INGRESO' : 'RETIRO_OTRO_GASTO';
+    const defaultLiteral   = esDeposito ? '4.2.1.02' : '6.1.2.09';
+    const cuentas = await this.resolverCuentasConcepto([['BANCOS', COD.BANCOS], [conceptoDefault, defaultLiteral]]);
+    const lineas = this.construirLineasMovimientoBancario(
+      monto, descripcion, esDeposito, cuentaContrapartida || cuentas[conceptoDefault], cuentaContrapartidaManual, cuentas.BANCOS,
+    );
+    const folio = `${esDeposito ? 'DEP' : 'RET'}-${movimientoId}`;
+    try {
+      const asiento = await this._crearAsientoContabilizado({
+        descripcion,
+        tipoOrigen:      TipoOrigenAsiento.AJUSTE,
+        referenciaId:    movimientoId,
+        referenciaFolio: folio,
+        fecha,
+        userId,
+        lineas,
+      });
+      if (asiento) {
+        this.logger.log(`Asiento ${esDeposito ? 'depósito' : 'retiro'} bancario ${folio} generado`);
+      } else {
+        this.logger.warn(`Asiento ${esDeposito ? 'depósito' : 'retiro'} bancario ${folio} NO generado (cuenta faltante) — ver Sentry`);
+      }
+    } catch (err) {
+      this.logger.error(`Error asiento movimiento bancario ${folio}: ${(err as Error).message}`);
+      this.reportarFalloAsiento(err, 'asiento_movimiento_bancario', {
+        tipoOrigen: TipoOrigenAsiento.AJUSTE, referenciaId: String(movimientoId), referenciaFolio: folio,
+      });
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
   // Alta de un Activo Fijo (2026-09-19) → Activo Fijo (D) / contrapartida (H)
   // Antes de esta pieza, dar de alta un activo NO generaba NINGÚN asiento —
   // CategoriaActivo.cuentaActivoCodigo existía en la entidad pero no tenía

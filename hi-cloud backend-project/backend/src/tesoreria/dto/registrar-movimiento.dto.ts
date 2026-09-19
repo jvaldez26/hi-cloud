@@ -18,6 +18,10 @@ export class RegistrarDepositoDto {
 
   @IsOptional() @IsString() @MaxLength(50)
   referencia?: string;
+
+  /** Selector de cuenta contable — contrapartida del movimiento. Sin default fijo: el motor usa Otros Ingresos/Otros Gastos configurados. */
+  @IsOptional() @IsString()
+  cuentaContrapartida?: string;
 }
 
 export class RegistrarRetiroDto extends RegistrarDepositoDto {}
