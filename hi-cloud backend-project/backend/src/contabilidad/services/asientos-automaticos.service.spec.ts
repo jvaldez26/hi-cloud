@@ -593,4 +593,60 @@ describe('AsientosAutomaticosService — Configuración Contable por Módulo (20
     const lineas = svc.lineaRepository.create.mock.calls[0][0];
     expect(lineas.find((l: any) => l.debe === 1000)?.cuentaContableId).toBe(1);
   });
+
+  // ── Ventas — Configuración Contable (2026-09-19) ────────────────────────
+  // A diferencia de Cobros/Préstamos (varias resoluciones independientes),
+  // Ventas resuelve TODO el grupo en una sola llamada a obtenerMapa()
+  // (resolverCuentasConcepto) — un asiento de factura no debe costar más de
+  // una consulta de configuración.
+
+  it('asientoFacturaEmitida usa las cuentas configuradas para Clientes/Ventas/ITBIS, con una sola resolución', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta('9.1.1.01', 1), cuenta('9.2.1.01', 2), cuenta('9.3.1.01', 3)],
+    });
+    const obtenerMapa = jest.fn().mockResolvedValue({
+      CLIENTES: '9.1.1.01', VENTAS: '9.2.1.01', ITBIS_POR_PAGAR: '9.3.1.01',
+      RETENCION_ITBIS_VENTA: '1.1.4.02', RETENCION_ISR_VENTA: '1.1.4.03',
+      COSTO_VENTAS: COD.COSTO_VENTAS, INVENTARIO: COD.INVENTARIO,
+    });
+    svc.configuracionService = { obtenerMapa };
+
+    await svc.asientoFacturaEmitida(123, 1180, 1000, 180, 'FAC-1', '2026-09-19', 5);
+
+    expect(obtenerMapa).toHaveBeenCalledTimes(1);
+    const lineas = svc.lineaRepository.create.mock.calls[0][0];
+    expect(lineas.find((l: any) => l.cuentaContableId === 1)?.debe).toBe(1180);  // Clientes
+    expect(lineas.find((l: any) => l.cuentaContableId === 2)?.haber).toBe(1000); // Ventas
+    expect(lineas.find((l: any) => l.cuentaContableId === 3)?.haber).toBe(180);  // ITBIS por pagar
+  });
+
+  it('asientoFacturaEmitida sin ConfiguracionContableService disponible: usa los defaults de siempre (COD.*)', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta(COD.CLIENTES, 1), cuenta(COD.VENTAS, 2), cuenta(COD.ITBIS_POR_PAGAR, 3)],
+    });
+    // svc.configuracionService deliberadamente NO seteado.
+
+    await svc.asientoFacturaEmitida(123, 1180, 1000, 180, 'FAC-1', '2026-09-19', 5);
+
+    const lineas = svc.lineaRepository.create.mock.calls[0][0];
+    expect(lineas.find((l: any) => l.cuentaContableId === 1)?.debe).toBe(1180);
+    expect(reportServiceError).not.toHaveBeenCalled();
+  });
+
+  it('asientoNotaDebito también resuelve Clientes/Ventas/ITBIS contra la configuración', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta('9.1.1.01', 1), cuenta('9.2.1.01', 2), cuenta('9.3.1.01', 3)],
+    });
+    svc.configuracionService = {
+      obtenerMapa: jest.fn().mockResolvedValue({ CLIENTES: '9.1.1.01', VENTAS: '9.2.1.01', ITBIS_POR_PAGAR: '9.3.1.01' }),
+    };
+
+    await svc.asientoNotaDebito(5, 590, 500, 90, 'ND-1', '2026-09-19', 5);
+
+    const lineas = svc.lineaRepository.create.mock.calls[0][0];
+    expect(lineas.find((l: any) => l.cuentaContableId === 1)?.debe).toBe(590);
+  });
 });

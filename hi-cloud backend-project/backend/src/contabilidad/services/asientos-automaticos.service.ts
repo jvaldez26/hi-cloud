@@ -126,6 +126,25 @@ export class AsientosAutomaticosService {
   }
 
   /**
+   * Igual que resolverCuentaConcepto(), pero para varios conceptos de un
+   * mismo asiento en UNA sola llamada a obtenerMapa() (que ya está cacheado
+   * por empresa) — evita N resoluciones independientes cuando un asiento usa
+   * varios conceptos configurables (p. ej. Clientes+Ventas+ITBIS+Costo de
+   * Venta+Inventario en una factura).
+   */
+  private async resolverCuentasConcepto(pares: Array<[concepto: string, fallback: string]>): Promise<Record<string, string>> {
+    const porDefecto = () => Object.fromEntries(pares.map(([c, f]) => [c, f]));
+    const eid = this.eid;
+    if (eid === undefined) return porDefecto();
+    try {
+      const mapa = await this.configuracionService.obtenerMapa(eid);
+      return Object.fromEntries(pares.map(([c, f]) => [c, mapa[c] ?? f]));
+    } catch {
+      return porDefecto();
+    }
+  }
+
+  /**
    * Reporta a Sentry un fallo de generacion de asiento SIN romper el flujo que lo
    * invoca (patron TIPO B): un asiento contable es fire-and-forget por convencion,
    * la venta/compra/cobro/etc. ya ocurrio y no puede caerse por un problema contable.
@@ -437,21 +456,35 @@ export class AsientosAutomaticosService {
     const retIsr     = retenciones?.retIsr     ?? 0;
     const neto       = retenciones?.netoCobrar ?? total;
 
+    // Configuración Contable por Módulo (2026-09-19) — Ventas es de solo
+    // lectura por documento (no hay selector: "la contabilización es única y
+    // correcta, no es materia de opinión"), pero SÍ es configurable una vez
+    // por empresa. Una sola resolución para todo el grupo.
+    const cuentas = await this.resolverCuentasConcepto([
+      ['CLIENTES',              COD.CLIENTES],
+      ['VENTAS',                COD.VENTAS],
+      ['ITBIS_POR_PAGAR',       COD.ITBIS_POR_PAGAR],
+      ['RETENCION_ITBIS_VENTA', '1.1.4.02'],
+      ['RETENCION_ISR_VENTA',   '1.1.4.03'],
+      ['COSTO_VENTAS',          COD.COSTO_VENTAS],
+      ['INVENTARIO',            COD.INVENTARIO],
+    ]);
+
     // DR: CxC por el neto (total bruto - retenciones)
     // DR: ITBIS Retenido a Recuperar (si aplica) — activo corriente
     // DR: ISR Retenido a Recuperar (si aplica)   — activo corriente
     // CR: Ventas (subtotal)
     // CR: ITBIS por Pagar (iva total)
     const lineas: { codigo: string; descripcion: string; debe: number; haber: number }[] = [
-      { codigo: COD.CLIENTES,        descripcion: `Cta. por cobrar ${folio}`, debe: neto,    haber: 0 },
-      { codigo: COD.VENTAS,          descripcion: `Ingreso por venta ${folio}`, debe: 0,     haber: subtotal },
-      { codigo: COD.ITBIS_POR_PAGAR, descripcion: `ITBIS débito fiscal ${folio}`, debe: 0,  haber: iva },
+      { codigo: cuentas.CLIENTES,        descripcion: `Cta. por cobrar ${folio}`, debe: neto,    haber: 0 },
+      { codigo: cuentas.VENTAS,          descripcion: `Ingreso por venta ${folio}`, debe: 0,     haber: subtotal },
+      { codigo: cuentas.ITBIS_POR_PAGAR, descripcion: `ITBIS débito fiscal ${folio}`, debe: 0,  haber: iva },
     ];
     if (retItbis > 0) {
-      lineas.push({ codigo: '1.1.4.02', descripcion: `ITBIS retenido a recuperar ${folio}`, debe: retItbis, haber: 0 });
+      lineas.push({ codigo: cuentas.RETENCION_ITBIS_VENTA, descripcion: `ITBIS retenido a recuperar ${folio}`, debe: retItbis, haber: 0 });
     }
     if (retIsr > 0) {
-      lineas.push({ codigo: '1.1.4.03', descripcion: `ISR retenido a recuperar ${folio}`, debe: retIsr, haber: 0 });
+      lineas.push({ codigo: cuentas.RETENCION_ISR_VENTA, descripcion: `ISR retenido a recuperar ${folio}`, debe: retIsr, haber: 0 });
     }
 
     try {
@@ -464,8 +497,8 @@ export class AsientosAutomaticosService {
       // vez de dejar pasar un DR/CR en $0.
       const costoVenta = await this.resolverCostoVenta(facturaId, folio);
       if (costoVenta) {
-        lineas.push({ codigo: COD.COSTO_VENTAS, descripcion: `Costo de venta ${folio}`, debe: costoVenta, haber: 0 });
-        lineas.push({ codigo: COD.INVENTARIO,   descripcion: `Salida de inventario ${folio}`, debe: 0, haber: costoVenta });
+        lineas.push({ codigo: cuentas.COSTO_VENTAS, descripcion: `Costo de venta ${folio}`, debe: costoVenta, haber: 0 });
+        lineas.push({ codigo: cuentas.INVENTARIO,   descripcion: `Salida de inventario ${folio}`, debe: 0, haber: costoVenta });
       }
 
       const asiento = await this._crearAsientoContabilizado({
@@ -990,6 +1023,11 @@ export class AsientosAutomaticosService {
     fecha: string, // dev.fecha
     userId: number,
   ): Promise<void> {
+    const cuentas = await this.resolverCuentasConcepto([
+      ['VENTAS',          COD.VENTAS],
+      ['ITBIS_POR_PAGAR', COD.ITBIS_POR_PAGAR],
+      ['CLIENTES',        COD.CLIENTES],
+    ]);
     try {
       const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Devolución de venta ${numero}`,
@@ -999,9 +1037,9 @@ export class AsientosAutomaticosService {
         fecha,
         userId,
         lineas: [
-          { codigo: COD.VENTAS,          descripcion: `Reversa venta ${numero}`,   debe: subtotal, haber: 0 },
-          { codigo: COD.ITBIS_POR_PAGAR, descripcion: `Reversa ITBIS ${numero}`,   debe: iva,      haber: 0 },
-          { codigo: COD.CLIENTES,        descripcion: `Nota crédito ${numero}`,     debe: 0,        haber: total },
+          { codigo: cuentas.VENTAS,          descripcion: `Reversa venta ${numero}`,   debe: subtotal, haber: 0 },
+          { codigo: cuentas.ITBIS_POR_PAGAR, descripcion: `Reversa ITBIS ${numero}`,   debe: iva,      haber: 0 },
+          { codigo: cuentas.CLIENTES,        descripcion: `Nota crédito ${numero}`,     debe: 0,        haber: total },
         ],
       });
       if (asiento) {
@@ -1467,6 +1505,11 @@ export class AsientosAutomaticosService {
     fecha:    string, // nc.fecha
     userId:   number,
   ): Promise<void> {
+    const cuentas = await this.resolverCuentasConcepto([
+      ['VENTAS',          COD.VENTAS],
+      ['ITBIS_POR_PAGAR', COD.ITBIS_POR_PAGAR],
+      ['CLIENTES',        COD.CLIENTES],
+    ]);
     try {
       const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Nota de crédito ${numero}`,
@@ -1476,9 +1519,9 @@ export class AsientosAutomaticosService {
         fecha,
         userId,
         lineas: [
-          { codigo: COD.VENTAS,          descripcion: `Reversa venta — NC ${numero}`, debe: subtotal, haber: 0 },
-          { codigo: COD.ITBIS_POR_PAGAR, descripcion: `Reversa ITBIS — NC ${numero}`, debe: iva,      haber: 0 },
-          { codigo: COD.CLIENTES,        descripcion: `Nota de crédito ${numero}`,    debe: 0,        haber: total },
+          { codigo: cuentas.VENTAS,          descripcion: `Reversa venta — NC ${numero}`, debe: subtotal, haber: 0 },
+          { codigo: cuentas.ITBIS_POR_PAGAR, descripcion: `Reversa ITBIS — NC ${numero}`, debe: iva,      haber: 0 },
+          { codigo: cuentas.CLIENTES,        descripcion: `Nota de crédito ${numero}`,    debe: 0,        haber: total },
         ],
       });
       if (asiento) {
@@ -1511,6 +1554,11 @@ export class AsientosAutomaticosService {
     fecha:    string, // nd.fecha
     userId:   number,
   ): Promise<void> {
+    const cuentas = await this.resolverCuentasConcepto([
+      ['CLIENTES',        COD.CLIENTES],
+      ['VENTAS',          COD.VENTAS],
+      ['ITBIS_POR_PAGAR', COD.ITBIS_POR_PAGAR],
+    ]);
     try {
       const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Nota de débito ${numero}`,
@@ -1520,9 +1568,9 @@ export class AsientosAutomaticosService {
         fecha,
         userId,
         lineas: [
-          { codigo: COD.CLIENTES,        descripcion: `Cta. por cobrar — ND ${numero}`,   debe: total,    haber: 0 },
-          { codigo: COD.VENTAS,          descripcion: `Cargo adicional — ND ${numero}`,    debe: 0,        haber: subtotal },
-          { codigo: COD.ITBIS_POR_PAGAR, descripcion: `ITBIS débito fiscal — ND ${numero}`, debe: 0,        haber: iva },
+          { codigo: cuentas.CLIENTES,        descripcion: `Cta. por cobrar — ND ${numero}`,   debe: total,    haber: 0 },
+          { codigo: cuentas.VENTAS,          descripcion: `Cargo adicional — ND ${numero}`,    debe: 0,        haber: subtotal },
+          { codigo: cuentas.ITBIS_POR_PAGAR, descripcion: `ITBIS débito fiscal — ND ${numero}`, debe: 0,        haber: iva },
         ],
       });
       if (asiento) {
