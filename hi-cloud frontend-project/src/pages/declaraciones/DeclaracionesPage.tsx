@@ -16,6 +16,7 @@ import {
 } from '@ant-design/icons';
 import { exportar606, exportar607 } from '../../utils/exportExcel';
 import ConciliacionFiscalPanel from './ConciliacionFiscalPanel';
+import AnexoA1Panel from './AnexoA1Panel';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
@@ -876,6 +877,13 @@ export default function DeclaracionesPage() {
           key: 'conciliacion',
           label: <><FileSearchOutlined /> Conciliación 606 vs IR-2</>,
           children: <ConciliacionFiscalPanel anio={anio} />,
+        },
+
+        // ── Anexo A1 del IR-2 — Balance General (Fase 4 Bloque B) ────────────
+        {
+          key: 'anexo-a1',
+          label: <><FileTextOutlined /> Anexo A1</>,
+          children: <AnexoA1Panel />,
         },
       ]} />
     </div>

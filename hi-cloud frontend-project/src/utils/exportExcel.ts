@@ -329,6 +329,50 @@ export async function exportarConciliacion606IR2(data: any, anio: number) {
   XLSX.writeFile(wb, `Conciliacion-606-IR2-${anio}.xlsx`);
 }
 
+// ── Exportar Anexo A1 del IR-2 — Balance General (Fase 4 Bloque B) ──────────
+// Herramienta de control interno: el propio anexo marca qué líneas trae
+// el ERP con datos reales y cuáles quedan en cero para llenado manual —
+// el Excel conserva esa misma distinción, nunca inventa un valor.
+export async function exportarAnexoA1(data: any, fechaCorte: string) {
+  const filas: Record<string, any>[] = [];
+  const seccion = (titulo: string, cuentas: any[]) => {
+    filas.push({ 'Casilla': titulo.toUpperCase(), 'Código': '', 'Cuenta': '', 'Saldo': '' });
+    cuentas.forEach((c: any) => filas.push({
+      'Casilla': c.casillaIR2 ?? '— sin casilla —', 'Código': c.codigo, 'Cuenta': c.nombre, 'Saldo': Number(c.saldo),
+    }));
+  };
+
+  seccion('Activo corriente', data?.activo?.corriente?.cuentas ?? []);
+  filas.push({ 'Casilla': '', 'Código': '', 'Cuenta': 'Total activo corriente', 'Saldo': Number(data?.activo?.corriente?.total ?? 0) });
+  seccion('Activo no corriente', data?.activo?.noCorriente?.cuentas ?? []);
+  filas.push({ 'Casilla': '', 'Código': '', 'Cuenta': 'Total activo no corriente', 'Saldo': Number(data?.activo?.noCorriente?.total ?? 0) });
+  filas.push({ 'Casilla': '', 'Código': '', 'Cuenta': 'TOTAL ACTIVO', 'Saldo': Number(data?.activo?.total ?? 0) });
+
+  seccion('Pasivo corriente', data?.pasivo?.corriente?.cuentas ?? []);
+  filas.push({ 'Casilla': '', 'Código': '', 'Cuenta': 'Total pasivo corriente', 'Saldo': Number(data?.pasivo?.corriente?.total ?? 0) });
+  seccion('Pasivo no corriente', data?.pasivo?.noCorriente?.cuentas ?? []);
+  filas.push({ 'Casilla': '', 'Código': '', 'Cuenta': 'Total pasivo no corriente', 'Saldo': Number(data?.pasivo?.noCorriente?.total ?? 0) });
+  filas.push({ 'Casilla': '', 'Código': '', 'Cuenta': 'TOTAL PASIVO', 'Saldo': Number(data?.pasivo?.total ?? 0) });
+
+  seccion('Patrimonio', data?.patrimonio?.cuentas ?? []);
+  filas.push({ 'Casilla': '', 'Código': '', 'Cuenta': 'TOTAL PATRIMONIO', 'Saldo': Number(data?.patrimonio?.total ?? 0) });
+
+  filas.push({ 'Casilla': '', 'Código': '', 'Cuenta': '', 'Saldo': '' });
+  filas.push({ 'Casilla': 'LÍNEAS DE LLENADO MANUAL — el ERP no las registra', 'Código': '', 'Cuenta': '', 'Saldo': '' });
+  (data?.lineasLlenadoManual ?? []).forEach((l: any) => filas.push({
+    'Casilla': '', 'Código': '', 'Cuenta': `${l.concepto} — ${l.motivo}`, 'Saldo': 0,
+  }));
+
+  filas.push({ 'Casilla': '', 'Código': '', 'Cuenta': '', 'Saldo': '' });
+  filas.push({
+    'Casilla': 'Ecuación contable', 'Código': '',
+    'Cuenta': data?.totales?.cuadrado ? 'Cuadra (Activo = Pasivo + Patrimonio)' : `No cuadra — diferencia ${data?.totales?.ecuacion}`,
+    'Saldo': Number(data?.totales?.ecuacion ?? 0),
+  });
+
+  await exportarExcel(filas, `Anexo-A1-IR2-${fechaCorte}`);
+}
+
 // ── Exportar catálogo completo de productos (columnas ricas) ─────────────────
 // Devuelve true si generó el archivo, false si la lista estaba vacía.
 export async function exportarCatalogo(productos: any[], sufijo: string): Promise<boolean> {

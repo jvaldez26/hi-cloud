@@ -5,6 +5,7 @@ import { DeclaracionesService } from './declaraciones.service';
 import { DeclaracionesPdfService } from './declaraciones-pdf.service';
 import { DgiiTxtGeneratorService } from './dgii-txt.generator';
 import { ConciliacionFiscalService } from './conciliacion-fiscal.service';
+import { AnexosIR2Service } from './anexos-ir2.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -32,6 +33,7 @@ export class DeclaracionesController {
     private pdf: DeclaracionesPdfService,
     private txt: DgiiTxtGeneratorService,
     private conciliacion: ConciliacionFiscalService,
+    private anexosIR2: AnexosIR2Service,
   ) {}
 
   @Get('it1')
@@ -168,6 +170,12 @@ export class DeclaracionesController {
   @ApiOperation({ summary: 'Conciliación 606 vs IR-2 del ejercicio fiscal — control interno, no valida DGII' })
   getConciliacion606IR2(@Query('anio') anio: string) {
     return this.conciliacion.getConciliacion606IR2(Number(anio));
+  }
+
+  @Get('anexo-a1')
+  @ApiOperation({ summary: 'Anexo A1 del IR-2 (Balance General) a una fecha de corte' })
+  getAnexoA1(@Query('fechaCorte') fechaCorte: string) {
+    return this.anexosIR2.getAnexoA1(fechaCorte);
   }
 
   // ── NUEVOS: Validación, TXT oficial, Historial ────────────────────────────
