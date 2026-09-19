@@ -238,21 +238,20 @@ export class ActivosFijosService implements OnModuleInit {
     return Number(Math.min(dep, maxDep).toFixed(2));
   }
 
-  async procesarDepreciacionMensual(periodo: string, userId: number) {
-    const empresaId = this.tenantService.getEmpresaId();
-
-    // Validar formato YYYY-MM
+  // Cálculo PURO (sin persistir nada) del desglose de depreciación de un
+  // período — usado tanto por procesarDepreciacionMensual() (persiste) como
+  // por previsualizarDepreciacion() (panel de vista previa, no toca la BD).
+  // Desglose por (cuentaGasto, cuentaDepreciacion) — CategoriaActivo.
+  // cuentaGastoCodigo/cuentaDepreciacionCodigo ya existían pero nunca se
+  // leían; el asiento siempre iba a las mismas 2 cuentas fijas sin importar
+  // la categoría del activo. Fallback a esas mismas 2 cuentas cuando una
+  // categoría no tiene el campo lleno (nullable en la entidad) — nunca se
+  // rompe un asiento por esto.
+  private async calcularDesgloseDepreciacion(periodo: string) {
     if (!/^\d{4}-\d{2}$/.test(periodo)) {
       throw new BadRequestException('Período debe tener formato YYYY-MM');
     }
-
-    // Verificar que no se haya procesado ya para esta empresa
-    const yaProcesado = await this.depreciacionRepository.count({
-      where: { periodo, isActive: true, empresaId } as any,
-    });
-    if (yaProcesado > 0) {
-      throw new ConflictException(`El período ${periodo} ya tiene depreciación registrada`);
-    }
+    const empresaId = this.tenantService.getEmpresaId();
 
     const [year, month] = periodo.split('-').map(Number);
     const fechaInicio = new Date(year, month - 1, 1);
@@ -266,18 +265,10 @@ export class ActivosFijosService implements OnModuleInit {
       relations: ['categoria'],
     });
 
-    if (activos.length === 0) {
-      throw new BadRequestException('No hay activos activos para depreciar');
-    }
-
-    const registros: Partial<DepreciacionActivo>[] = [];
-    let totalDepreciacion = 0;
-    // Desglose por (cuentaGasto, cuentaDepreciacion) — CategoriaActivo.
-    // cuentaGastoCodigo/cuentaDepreciacionCodigo ya existían pero nunca se
-    // leían; el asiento siempre iba a las mismas 2 cuentas fijas sin
-    // importar la categoría del activo. Fallback a esas mismas 2 cuentas
-    // cuando una categoría no tiene el campo lleno (nullable en la
-    // entidad) — nunca se rompe un asiento por esto.
+    const calculos: {
+      activo: ActivoFijo; dep: number; nuevoAcumulado: number; nuevoLibros: number; totallyDep: boolean;
+      cuentaGasto: string; cuentaDepreciacion: string;
+    }[] = [];
     const desglosePorCuentas = new Map<string, { cuentaGasto: string; cuentaDepreciacion: string; monto: number }>();
 
     for (const activo of activos) {
@@ -299,32 +290,54 @@ export class ActivosFijosService implements OnModuleInit {
       const nuevoLibros    = Number((Number(activo.valorLibros) - dep).toFixed(2));
       const totallyDep     = nuevoLibros <= Number(activo.valorResidual);
 
-      registros.push({
-        activoId:            activo.id,
-        empresaId,
-        periodo,
-        fechaInicio,
-        fechaFin,
-        tasaAplicada:        Number(activo.categoria.tasaAnual),
-        metodo:              activo.categoria.metodo,
-        valorLibrosInicio:   Number(activo.valorLibros),
-        montoDepreciacion:   dep,
-        valorLibrosFin:      nuevoLibros,
-        depreciacionAcumulada: nuevoAcumulado,
-        userId,
-      } as any);
-
-      await this.activoRepository.update(activo.id, {
-        valorLibros:           nuevoLibros,
-        depreciacionAcumulada: nuevoAcumulado,
-        estado: totallyDep ? EstadoActivo.TOTALMENTE_DEPRECIADO : EstadoActivo.ACTIVO,
-      });
-
-      totalDepreciacion += dep;
+      calculos.push({ activo, dep, nuevoAcumulado, nuevoLibros, totallyDep, cuentaGasto, cuentaDepreciacion });
     }
 
-    if (registros.length === 0) {
+    return { empresaId, fechaInicio, fechaFin, fechaFinStr, totalActivos: activos.length, calculos, desglosePorCuentas };
+  }
+
+  async procesarDepreciacionMensual(periodo: string, userId: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+
+    // Verificar que no se haya procesado ya para esta empresa
+    const yaProcesado = await this.depreciacionRepository.count({
+      where: { periodo, isActive: true, empresaId } as any,
+    });
+    if (yaProcesado > 0) {
+      throw new ConflictException(`El período ${periodo} ya tiene depreciación registrada`);
+    }
+
+    const { fechaInicio, fechaFin, fechaFinStr, totalActivos, calculos, desglosePorCuentas } =
+      await this.calcularDesgloseDepreciacion(periodo);
+
+    if (totalActivos === 0) {
+      throw new BadRequestException('No hay activos activos para depreciar');
+    }
+    if (calculos.length === 0) {
       return { mensaje: 'No se encontraron activos que depreciar en este período', registros: 0 };
+    }
+
+    const registros: Partial<DepreciacionActivo>[] = calculos.map((c) => ({
+      activoId:            c.activo.id,
+      empresaId,
+      periodo,
+      fechaInicio,
+      fechaFin,
+      tasaAplicada:        Number(c.activo.categoria.tasaAnual),
+      metodo:              c.activo.categoria.metodo,
+      valorLibrosInicio:   Number(c.activo.valorLibros),
+      montoDepreciacion:   c.dep,
+      valorLibrosFin:      c.nuevoLibros,
+      depreciacionAcumulada: c.nuevoAcumulado,
+      userId,
+    } as any));
+
+    for (const c of calculos) {
+      await this.activoRepository.update(c.activo.id, {
+        valorLibros:           c.nuevoLibros,
+        depreciacionAcumulada: c.nuevoAcumulado,
+        estado: c.totallyDep ? EstadoActivo.TOTALMENTE_DEPRECIADO : EstadoActivo.ACTIVO,
+      });
     }
 
     await this.depreciacionRepository.save(
@@ -340,6 +353,7 @@ export class ActivosFijosService implements OnModuleInit {
       userId,
     );
 
+    const totalDepreciacion = calculos.reduce((s, c) => s + c.dep, 0);
     this.logger.log(
       `Depreciación ${periodo} procesada: ${registros.length} activos, total: ${totalDepreciacion.toFixed(2)}`,
     );
@@ -349,6 +363,15 @@ export class ActivosFijosService implements OnModuleInit {
       activosDepreciados: registros.length,
       totalDepreciacion: Number(totalDepreciacion.toFixed(2)),
     };
+  }
+
+  /** Panel de vista previa: calcula el asiento de depreciación SIN registrar nada (ni activos ni la corrida del período). */
+  async previsualizarDepreciacion(periodo: string) {
+    const { calculos, desglosePorCuentas } = await this.calcularDesgloseDepreciacion(periodo);
+    if (calculos.length === 0) {
+      return { ok: false, lineas: [], totalDebe: 0, totalHaber: 0, cuadrado: false, error: 'No hay activos que depreciar en este período (sin activos vigentes, ya totalmente depreciados, o adquiridos después del período).' };
+    }
+    return this.asientosService.previsualizarDepreciacion(Array.from(desglosePorCuentas.values()), periodo);
   }
 
   async getDepreciaciones(filtro: FiltroDepreciacionDto) {

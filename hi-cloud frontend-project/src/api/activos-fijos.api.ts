@@ -37,6 +37,10 @@ export const activosFijosApi = {
   procesarDepreciacion: (periodo: string) =>
     api.post('/activos-fijos/depreciacion/procesar', { periodo }).then(r => r.data.data),
 
+  /** Panel de vista previa: calcula el asiento de depreciación del período SIN registrar nada. */
+  previsualizarDepreciacion: (periodo: string) =>
+    api.get(`/activos-fijos/depreciacion/previsualizar?periodo=${periodo}`).then(r => (r.data as any)?.data ?? r.data),
+
   reporteDGII: (anio: number) =>
     api.get(`/activos-fijos/reporte-dgii/${anio}`).then(r => r.data.data),
 };

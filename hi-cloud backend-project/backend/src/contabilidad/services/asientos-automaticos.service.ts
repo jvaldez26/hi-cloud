@@ -847,15 +847,15 @@ export class AsientosAutomaticosService {
   // para categorías custom.
   // ──────────────────────────────────────────────────────────────────
 
-  async asientoDepreciacion(
+  // Fusiona el desglose por (cuentaGasto, cuentaDepreciacion) — varias
+  // categorías pueden compartir el mismo par de cuentas (hoy, las 6
+  // categorías DGII del seed lo hacen) — y arma las líneas del asiento.
+  // PURO: sin BD, sin persistir — usado por asientoDepreciacion() (persiste)
+  // y previsualizarDepreciacion() (panel de vista previa).
+  private construirLineasDepreciacion(
     desglose: { cuentaGasto: string; cuentaDepreciacion: string; monto: number }[],
     periodo: string,
-    fecha: string, // último día de "periodo" ('YYYY-MM'), calculado por el caller sin new Date(string)/toISOString()
-    userId: number,
-  ): Promise<void> {
-    // Varias categorías pueden compartir el mismo par de cuentas (hoy, las
-    // 6 categorías DGII del seed lo hacen) — se fusionan en una sola línea
-    // de débito/crédito por par en vez de repetir la cuenta varias veces.
+  ): { lineas: LineaAsientoInput[]; montoTotal: number; cuentas: number } {
     const porPar = new Map<string, { cuentaGasto: string; cuentaDepreciacion: string; monto: number }>();
     for (const d of desglose) {
       if (d.monto <= 0) continue;
@@ -865,15 +865,35 @@ export class AsientosAutomaticosService {
       porPar.set(key, acc);
     }
     const conMonto = Array.from(porPar.values());
-    if (conMonto.length === 0) return;
     const montoTotal = +conMonto.reduce((s, d) => s + d.monto, 0).toFixed(2);
+    const lineas = conMonto.flatMap((d) => [
+      { codigo: d.cuentaGasto,        descripcion: `Gasto depreciación ${periodo}`, debe: d.monto, haber: 0 },
+      { codigo: d.cuentaDepreciacion, descripcion: `Depreciación acum. ${periodo}`, debe: 0, haber: d.monto },
+    ]);
+    return { lineas, montoTotal, cuentas: conMonto.length };
+  }
+
+  async previsualizarDepreciacion(
+    desglose: { cuentaGasto: string; cuentaDepreciacion: string; monto: number }[],
+    periodo: string,
+  ): Promise<PreviewAsientoResultado> {
+    const { lineas } = this.construirLineasDepreciacion(desglose, periodo);
+    if (lineas.length === 0) {
+      return { ok: false, lineas: [], totalDebe: 0, totalHaber: 0, cuadrado: false, error: 'No hay depreciación con monto mayor a cero en el desglose.' };
+    }
+    return this.previsualizarLineas(lineas);
+  }
+
+  async asientoDepreciacion(
+    desglose: { cuentaGasto: string; cuentaDepreciacion: string; monto: number }[],
+    periodo: string,
+    fecha: string, // último día de "periodo" ('YYYY-MM'), calculado por el caller sin new Date(string)/toISOString()
+    userId: number,
+  ): Promise<void> {
+    const { lineas, montoTotal, cuentas } = this.construirLineasDepreciacion(desglose, periodo);
+    if (lineas.length === 0) return;
 
     try {
-      const lineas = conMonto.flatMap((d) => [
-        { codigo: d.cuentaGasto,        descripcion: `Gasto depreciación ${periodo}`, debe: d.monto, haber: 0 },
-        { codigo: d.cuentaDepreciacion, descripcion: `Depreciación acum. ${periodo}`, debe: 0, haber: d.monto },
-      ]);
-
       const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Depreciación activos fijos ${periodo}`,
         tipoOrigen:      TipoOrigenAsiento.AJUSTE,
@@ -884,7 +904,7 @@ export class AsientosAutomaticosService {
         lineas,
       });
       if (asiento) {
-        this.logger.log(`Asiento depreciación ${periodo}: ${montoTotal.toFixed(2)} (${conMonto.length} cuenta(s) de gasto)`);
+        this.logger.log(`Asiento depreciación ${periodo}: ${montoTotal.toFixed(2)} (${cuentas} cuenta(s) de gasto)`);
       } else {
         this.logger.warn(`Asiento depreciación ${periodo} NO generado (cuenta faltante) — ver Sentry`);
       }

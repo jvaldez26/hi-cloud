@@ -333,6 +333,55 @@ describe('AsientosAutomaticosService — visibilidad de fallos', () => {
     expect(reportServiceError).not.toHaveBeenCalled();
   });
 
+  // ── Panel de vista previa — previsualizarDepreciacion() (2026-09-19) ────
+  // Misma fusión por (cuentaGasto, cuentaDepreciacion) que asientoDepreciacion,
+  // sin persistir ni reportar nada — la usa ActivosFijosService antes de
+  // correr la depreciación del período.
+
+  it('con las cuentas presentes: ok=true, cuadrado, sin persistir nada', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [
+        { ...cuenta('6.2.1.01', 1), nombre: 'Depreciación Activos Fijos' },
+        { ...cuenta('1.2.2.01', 2), nombre: 'Depreciación Acumulada' },
+      ],
+    });
+
+    const r: any = await svc.previsualizarDepreciacion(
+      [{ cuentaGasto: '6.2.1.01', cuentaDepreciacion: '1.2.2.01', monto: 500 }],
+      '2026-09',
+    );
+
+    expect(r.ok).toBe(true);
+    expect(r.cuadrado).toBe(true);
+    expect(r.totalDebe).toBe(500);
+    expect(r.totalHaber).toBe(500);
+    expect(r.lineas.find((l: any) => l.codigo === '6.2.1.01')?.nombre).toBe('Depreciación Activos Fijos');
+    expect(svc.asientoRepository.save).not.toHaveBeenCalled();
+    expect(reportServiceError).not.toHaveBeenCalled();
+  });
+
+  it('con una cuenta de categoría custom inexistente: ok=false con un motivo legible', async () => {
+    const svc = makeService({ empresaId: 7, cuentas: [] });
+
+    const r: any = await svc.previsualizarDepreciacion(
+      [{ cuentaGasto: '6.2.9.99', cuentaDepreciacion: '1.2.9.99', monto: 500 }],
+      '2026-09',
+    );
+
+    expect(r.ok).toBe(false);
+    expect(r.error).toContain('6.2.9.99');
+  });
+
+  it('desglose vacío (sin monto): ok=false sin llamar a resolverLineasAsiento', async () => {
+    const svc = makeService({ empresaId: 7, cuentas: [] });
+
+    const r: any = await svc.previsualizarDepreciacion([], '2026-09');
+
+    expect(r.ok).toBe(false);
+    expect(svc.cuentaRepository.find).not.toHaveBeenCalled();
+  });
+
   // ── Panel de vista previa — previsualizarGasto() (2026-09-19) ───────────
   // Debe usar EXACTAMENTE la misma resolución/validación que asientoGasto()
   // (no una réplica), sin persistir ni reportar nada a Sentry — una

@@ -12,6 +12,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { activosFijosApi, type ActivoPayload } from '../../api/activos-fijos.api';
 import { fmt } from '../../utils/formatters';
 import dayjs from 'dayjs';
+import AsientoPreviewPanel from '../../components/contabilidad/AsientoPreviewPanel';
 
 const { Title } = Typography;
 
@@ -41,6 +42,14 @@ export default function ActivosFijosPage() {
   const createMut  = useMutation({ mutationFn: activosFijosApi.createActivo, onSuccess: () => { qc.invalidateQueries({ queryKey: ['activos'] }); setOpen(false); form.resetFields(); message.success('Activo registrado'); }, onError: (e: any) => onErr(e, 'Error al registrar activo') });
   const bajaMut    = useMutation({ mutationFn: ({ id, body }: any) => activosFijosApi.darDeBaja(id, body), onSuccess: () => { qc.invalidateQueries({ queryKey: ['activos'] }); setOpenBaja(null); message.success('Activo dado de baja'); }, onError: (e: any) => onErr(e, 'Error al dar de baja') });
   const deprMut    = useMutation({ mutationFn: activosFijosApi.procesarDepreciacion, onSuccess: (d) => { qc.invalidateQueries({ queryKey: ['activos'] }); setOpenDepr(false); message.success(`${d.activosDepreciados} activos depreciados — Total: ${fmt.money(d.totalDepreciacion)}`); }, onError: (e: any) => message.error(e?.response?.data?.errors?.[0] ?? 'Error al procesar') });
+
+  const periodoDeprWatch = Form.useWatch('periodo', formDepr);
+  const { data: previewDepr, isFetching: previewDeprCargando } = useQuery({
+    queryKey: ['depreciacion-preview', periodoDeprWatch],
+    queryFn: () => activosFijosApi.previsualizarDepreciacion(periodoDeprWatch),
+    enabled: openDepr && /^\d{4}-\d{2}$/.test(periodoDeprWatch ?? ''),
+    staleTime: 500,
+  });
 
   const COLS_DEF = [
     { key: 'codigo',               label: 'Código',       defaultVisible: true  },
@@ -180,7 +189,8 @@ export default function ActivosFijosPage() {
             <Input placeholder={dayjs().format('YYYY-MM')} />
           </Form.Item>
           <p>Se calculará la depreciación para todos los activos activos usando las tasas DGII (Ley 11-92). El sistema generará el asiento contable automáticamente.</p>
-          <Row justify="end" gutter={8}>
+          <AsientoPreviewPanel resultado={previewDepr} loading={previewDeprCargando} />
+          <Row justify="end" gutter={8} style={{ marginTop: 8 }}>
             <Col><Button onClick={() => setOpenDepr(false)}>Cancelar</Button></Col>
             <Col><Button type="primary" htmlType="submit" loading={deprMut.isPending}>Procesar</Button></Col>
           </Row>

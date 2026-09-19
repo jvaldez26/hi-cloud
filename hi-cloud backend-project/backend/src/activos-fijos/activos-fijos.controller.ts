@@ -121,6 +121,13 @@ export class ActivosFijosController {
     return this.activosService.procesarDepreciacionMensual(periodo, usuario.id);
   }
 
+  @Get('depreciacion/previsualizar')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Panel de vista previa: calcula el asiento de depreciación del período SIN registrar nada' })
+  previsualizarDepreciacion(@Query('periodo') periodo: string) {
+    return this.activosService.previsualizarDepreciacion(periodo);
+  }
+
   @Get('depreciacion/registros')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Listar registros de depreciación con filtros' })

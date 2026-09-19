@@ -43,7 +43,10 @@ function makeService(activos: any[]) {
     create: jest.fn((data: any) => data),
     save:   jest.fn().mockResolvedValue({}),
   };
-  const asientosService: any = { asientoDepreciacion: jest.fn().mockResolvedValue(undefined) };
+  const asientosService: any = {
+    asientoDepreciacion: jest.fn().mockResolvedValue(undefined),
+    previsualizarDepreciacion: jest.fn().mockResolvedValue({ ok: true, lineas: [], totalDebe: 0, totalHaber: 0, cuadrado: true }),
+  };
   const tenantService: any = { getEmpresaId: () => 7 };
 
   const svc: any = Object.create(ActivosFijosService.prototype);
@@ -97,5 +100,33 @@ describe('ActivosFijosService.procesarDepreciacionMensual() — desglose por cat
     expect(desglose).toHaveLength(1);
     // (12000/48) + (8000/48) = 250 + 166.67
     expect(desglose[0].monto).toBeCloseTo(250 + 166.67, 1);
+  });
+});
+
+describe('ActivosFijosService.previsualizarDepreciacion() — panel de vista previa (2026-09-19)', () => {
+  it('delega en el motor con el mismo desglose por categoría, sin persistir nada', async () => {
+    const { svc, asientosService } = makeService([makeActivo()]);
+    const { activoRepository, depreciacionRepository } = (svc as any);
+
+    await svc.previsualizarDepreciacion('2026-09');
+
+    expect(asientosService.previsualizarDepreciacion).toHaveBeenCalledWith(
+      [{ cuentaGasto: '6.2.1.01', cuentaDepreciacion: '1.2.2.01', monto: expect.any(Number) }],
+      '2026-09',
+    );
+    // Vista previa: nunca actualiza el activo ni registra la corrida del período.
+    expect(activoRepository.update).not.toHaveBeenCalled();
+    expect(depreciacionRepository.save).not.toHaveBeenCalled();
+  });
+
+  it('sin activos que depreciar en el período: no llama al motor, avisa en el propio resultado', async () => {
+    const activoYaDepreciado = makeActivo({ valorLibros: 0, valorResidual: 0 });
+    const { svc, asientosService } = makeService([activoYaDepreciado]);
+
+    const resultado: any = await svc.previsualizarDepreciacion('2026-09');
+
+    expect(resultado.ok).toBe(false);
+    expect(resultado.error).toMatch(/no hay activos/i);
+    expect(asientosService.previsualizarDepreciacion).not.toHaveBeenCalled();
   });
 });
