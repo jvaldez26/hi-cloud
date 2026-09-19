@@ -20,6 +20,8 @@ import { cxpApi } from '../../api/cxp.api';
 import { exportarExcel } from '../../utils/exportExcel';
 import type { CuentaPorPagar, MetodoPago } from '../../types';
 import { fmt, estadoColor } from '../../utils/formatters';
+import CuentaContableSelector from '../../components/contabilidad/CuentaContableSelector';
+import AsientoPreviewPanel from '../../components/contabilidad/AsientoPreviewPanel';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -70,8 +72,8 @@ export default function CxPPage() {
   });
 
   const pagoMut = useMutation({
-    mutationFn: ({ id, monto, metodoPago, ref, fechaPago, tipoCambio }: { id: number; monto: number; metodoPago: MetodoPago; ref?: string; fechaPago?: string; tipoCambio?: number }) =>
-      cxpApi.registrarPago(id, monto, metodoPago, ref, fechaPago, tipoCambio),
+    mutationFn: ({ id, monto, metodoPago, ref, fechaPago, tipoCambio, cuentaContrapartida }: { id: number; monto: number; metodoPago: MetodoPago; ref?: string; fechaPago?: string; tipoCambio?: number; cuentaContrapartida?: string }) =>
+      cxpApi.registrarPago(id, monto, metodoPago, ref, fechaPago, tipoCambio, cuentaContrapartida),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['cxp'] });
       qc.invalidateQueries({ queryKey: ['cxp-resumen'] });
@@ -79,6 +81,19 @@ export default function CxPPage() {
       message.success('Pago registrado');
     },
     onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error al registrar pago'),
+  });
+
+  // Panel de vista previa del asiento de pago — solo aplica a DOP (ver
+  // AsientosAutomaticosService.previsualizarPago: la ganancia/pérdida
+  // cambiaria de un pago en moneda extranjera no la replica esta vista).
+  const monedaPagoRow = (pagoRow as any)?.moneda ?? 'DOP';
+  const montoPagoWatch = Form.useWatch('monto', form);
+  const cuentaContrapartidaWatch = Form.useWatch('cuentaContrapartida', form);
+  const { data: previewPago, isFetching: previewPagoCargando } = useQuery({
+    queryKey: ['cxp-pago-preview', pagoId, montoPagoWatch, cuentaContrapartidaWatch],
+    queryFn: () => cxpApi.previsualizarAsiento(pagoId!, Number(montoPagoWatch), cuentaContrapartidaWatch || undefined),
+    enabled: !!pagoId && monedaPagoRow === 'DOP' && Number(montoPagoWatch) > 0,
+    staleTime: 500,
   });
 
   const handleExcel = useCallback(async () => {
@@ -339,7 +354,7 @@ export default function CxPPage() {
         <Form
           form={form}
           layout="vertical"
-          onFinish={v => pagoId && pagoMut.mutate({ id: pagoId, monto: v.monto, metodoPago: v.metodoPago, ref: v.referencia, fechaPago: v.fechaPago?.format('YYYY-MM-DD'), tipoCambio: v.tipoCambio ? Number(v.tipoCambio) : undefined })}
+          onFinish={v => pagoId && pagoMut.mutate({ id: pagoId, monto: v.monto, metodoPago: v.metodoPago, ref: v.referencia, fechaPago: v.fechaPago?.format('YYYY-MM-DD'), tipoCambio: v.tipoCambio ? Number(v.tipoCambio) : undefined, cuentaContrapartida: v.cuentaContrapartida || undefined })}
         >
           {(pagoRow as any)?.moneda && (pagoRow as any).moneda !== 'DOP' && (
             <Alert type="info" showIcon style={{ marginBottom: 12 }}
@@ -408,7 +423,15 @@ export default function CxPPage() {
           <Form.Item name="referencia" label="Referencia (N° cheque, código de transferencia...)">
             <Input placeholder="Ej: CHQ-0012345 o referencia bancaria" />
           </Form.Item>
-          <Row justify="end" gutter={8}>
+          {monedaPagoRow === 'DOP' && (
+            <Form.Item name="cuentaContrapartida" label="Cuenta contable (contrapartida del pago)">
+              <CuentaContableSelector placeholder="Por defecto: Bancos" allowClear />
+            </Form.Item>
+          )}
+          {monedaPagoRow === 'DOP' && (
+            <AsientoPreviewPanel resultado={previewPago} loading={previewPagoCargando} />
+          )}
+          <Row justify="end" gutter={8} style={{ marginTop: monedaPagoRow === 'DOP' ? 8 : 0 }}>
             <Col>
               <Button onClick={() => { setPagoId(null); setPagoRow(null); form.resetFields(); }}>
                 Cancelar

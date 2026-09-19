@@ -47,7 +47,7 @@ describe('CxPService.registrarPago — asiento etiquetado por el pago, no por la
 
     await svc.registrarPago(30, { monto: 300, metodoPago: 'efectivo' }, 5);
 
-    expect(asientosService.asientoPago).toHaveBeenCalledWith(300, 700, 30, expect.any(String), 5);
+    expect(asientosService.asientoPago).toHaveBeenCalledWith(300, 700, 30, expect.any(String), 5, undefined, false);
   });
 
   it('asientoPagoME recibe el id del pago recién creado (moneda extranjera)', async () => {
@@ -60,5 +60,56 @@ describe('CxPService.registrarPago — asiento etiquetado por el pago, no por la
     await svc.registrarPago(31, { monto: 50, metodoPago: 'efectivo', tipoCambio: 59 }, 5);
 
     expect(asientosService.asientoPagoME).toHaveBeenCalledWith(50, 'USD', 59, 58, 701, 31, expect.any(String), 5);
+  });
+});
+
+describe('CxPService — selector de cuenta contable (cuentaContrapartida, 2026-09-19)', () => {
+  it('con cuentaContrapartida elegida: la pasa al motor y la marca manual', async () => {
+    const cuenta = {
+      id: 30, empresaId: 7, estado: EstadoCuenta.PENDIENTE,
+      montoPendiente: 300, montoPagado: 0, montoOriginal: 300, moneda: 'DOP', tipoCambio: 1, compraId: 20,
+    };
+    const { svc, asientosService } = makeService(cuenta, 700);
+
+    await svc.registrarPago(30, { monto: 300, metodoPago: 'efectivo', cuentaContrapartida: '6.1.2.09' }, 5);
+
+    expect(asientosService.asientoPago).toHaveBeenCalledWith(300, 700, 30, expect.any(String), 5, '6.1.2.09', true);
+  });
+
+  it('previsualizarAsiento() delega en el motor sin registrar el pago', async () => {
+    const cuenta = {
+      id: 30, empresaId: 7, estado: EstadoCuenta.PENDIENTE,
+      montoPendiente: 300, montoPagado: 0, montoOriginal: 300, moneda: 'DOP', tipoCambio: 1, compraId: 20,
+    };
+    const asientosService = {
+      previsualizarPago: jest.fn().mockResolvedValue({ ok: true, lineas: [], totalDebe: 300, totalHaber: 300, cuadrado: true }),
+    };
+    const svc: any = Object.create(CxPService.prototype);
+    svc.cxpRepository  = { findOne: jest.fn().mockResolvedValue(cuenta) };
+    svc.asientosService = asientosService;
+    svc.tenantService  = { getEmpresaId: () => 7 };
+
+    const r = await svc.previsualizarAsiento(30, 300, '6.1.2.09');
+
+    expect(r.ok).toBe(true);
+    expect(asientosService.previsualizarPago).toHaveBeenCalledWith(300, 0, 30, '6.1.2.09');
+  });
+
+  it('previsualizarAsiento() en moneda extranjera: avisa que no está disponible, no llama al motor', async () => {
+    const cuenta = {
+      id: 31, empresaId: 7, estado: EstadoCuenta.PENDIENTE,
+      montoPendiente: 50, montoPagado: 0, montoOriginal: 50, moneda: 'USD', tipoCambio: 58, compraId: 21,
+    };
+    const asientosService = { previsualizarPago: jest.fn() };
+    const svc: any = Object.create(CxPService.prototype);
+    svc.cxpRepository  = { findOne: jest.fn().mockResolvedValue(cuenta) };
+    svc.asientosService = asientosService;
+    svc.tenantService  = { getEmpresaId: () => 7 };
+
+    const r = await svc.previsualizarAsiento(31, 50);
+
+    expect(r.ok).toBe(false);
+    expect(r.error).toContain('USD');
+    expect(asientosService.previsualizarPago).not.toHaveBeenCalled();
   });
 });

@@ -23,6 +23,8 @@ import type { CuentaPorCobrar, MetodoPago } from '../../types';
 import { fmt, estadoColor } from '../../utils/formatters';
 import api from '../../api/client';
 import { useCanDo } from '../../hooks/useCanDo';
+import CuentaContableSelector from '../../components/contabilidad/CuentaContableSelector';
+import AsientoPreviewPanel from '../../components/contabilidad/AsientoPreviewPanel';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -78,8 +80,8 @@ export default function CxCPage() {
   });
 
   const pagoMut = useMutation({
-    mutationFn: ({ id, monto, metodoPago, ref, fechaPago, tipoCambio }: { id: number; monto: number; metodoPago: MetodoPago; ref?: string; fechaPago?: string; tipoCambio?: number }) =>
-      cxcApi.registrarPago(id, monto, metodoPago, ref, fechaPago, tipoCambio),
+    mutationFn: ({ id, monto, metodoPago, ref, fechaPago, tipoCambio, cuentaContrapartida }: { id: number; monto: number; metodoPago: MetodoPago; ref?: string; fechaPago?: string; tipoCambio?: number; cuentaContrapartida?: string }) =>
+      cxcApi.registrarPago(id, monto, metodoPago, ref, fechaPago, tipoCambio, cuentaContrapartida),
     onSuccess: (data: any) => {
       qc.invalidateQueries({ queryKey: ['cxc'] });
       qc.invalidateQueries({ queryKey: ['cxc-resumen'] });
@@ -107,6 +109,19 @@ export default function CxCPage() {
         message.error(msg, 5);
       }
     },
+  });
+
+  // Panel de vista previa del asiento de cobro — solo aplica a DOP (ver
+  // AsientosAutomaticosService.previsualizarCobro: la ganancia/pérdida
+  // cambiaria de un cobro en moneda extranjera no la replica esta vista).
+  const monedaPagoRow = (pagoRow as any)?.moneda ?? 'DOP';
+  const montoPagoWatch = Form.useWatch('monto', form);
+  const cuentaContrapartidaWatch = Form.useWatch('cuentaContrapartida', form);
+  const { data: previewCobro, isFetching: previewCobroCargando } = useQuery({
+    queryKey: ['cxc-pago-preview', pagoId, montoPagoWatch, cuentaContrapartidaWatch],
+    queryFn: () => cxcApi.previsualizarAsiento(pagoId!, Number(montoPagoWatch), cuentaContrapartidaWatch || undefined),
+    enabled: !!pagoId && monedaPagoRow === 'DOP' && Number(montoPagoWatch) > 0,
+    staleTime: 500,
   });
 
   const sincronizarMut = useMutation({
@@ -622,7 +637,7 @@ export default function CxCPage() {
         <Form
           form={form}
           layout="vertical"
-          onFinish={v => pagoId && pagoMut.mutate({ id: pagoId, monto: v.monto, metodoPago: v.metodoPago, ref: v.referencia, fechaPago: v.fechaPago?.format('YYYY-MM-DD'), tipoCambio: v.tipoCambio ? Number(v.tipoCambio) : undefined })}
+          onFinish={v => pagoId && pagoMut.mutate({ id: pagoId, monto: v.monto, metodoPago: v.metodoPago, ref: v.referencia, fechaPago: v.fechaPago?.format('YYYY-MM-DD'), tipoCambio: v.tipoCambio ? Number(v.tipoCambio) : undefined, cuentaContrapartida: v.cuentaContrapartida || undefined })}
         >
           {(pagoRow as any)?.moneda && (pagoRow as any).moneda !== 'DOP' && (
             <Alert type="info" showIcon style={{ marginBottom: 12 }}
@@ -691,7 +706,15 @@ export default function CxCPage() {
           <Form.Item name="referencia" label="Referencia (opcional)">
             <Input placeholder="N° cheque, código de transferencia, confirmación..." />
           </Form.Item>
-          <Row justify="end" gutter={8}>
+          {monedaPagoRow === 'DOP' && (
+            <Form.Item name="cuentaContrapartida" label="Cuenta contable (contrapartida del cobro)">
+              <CuentaContableSelector placeholder="Por defecto: Bancos" allowClear />
+            </Form.Item>
+          )}
+          {monedaPagoRow === 'DOP' && (
+            <AsientoPreviewPanel resultado={previewCobro} loading={previewCobroCargando} />
+          )}
+          <Row justify="end" gutter={8} style={{ marginTop: monedaPagoRow === 'DOP' ? 8 : 0 }}>
             <Col>
               <Button onClick={() => { setPagoId(null); setPagoRow(null); form.resetFields(); }}>
                 Cancelar

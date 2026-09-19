@@ -112,6 +112,16 @@ export class CxCController {
     return this.cxcService.registrarPago(id, dto, usuario.id);
   }
 
+  @Post(':id/pago/previsualizar-asiento')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Panel de vista previa: calcula el asiento de cobro SIN registrar el pago' })
+  previsualizarAsiento(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: { monto: number; cuentaContrapartida?: string },
+  ) {
+    return this.cxcService.previsualizarAsiento(id, dto.monto, dto.cuentaContrapartida);
+  }
+
   @Patch(':id/anular')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Anular cuenta por cobrar (solo ADMIN, no aplica a cuentas pagadas)' })

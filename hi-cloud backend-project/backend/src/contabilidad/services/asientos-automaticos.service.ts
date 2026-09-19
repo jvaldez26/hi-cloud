@@ -564,12 +564,35 @@ export class AsientosAutomaticosService {
   // abonos sobre la misma cuenta generan dos asientos distintos, y
   // revertirAsiento() necesita poder apuntar a uno solo sin ambigüedad.
   // cxcId es solo para la descripción/legibilidad del asiento.
+  // PURO: sin BD — la contrapartida por default es Bancos, pero un cobro
+  // puede liquidarse contra otra cuenta (p. ej. una compensación) — el
+  // selector del formulario de CxC lo permite elegir; el default queda
+  // siempre puesto.
+  private construirLineasCobro(
+    monto: number, pagoId: number, cxcId: number,
+    cuentaContrapartida: string = COD.BANCOS, cuentaContrapartidaManual = false,
+  ): LineaAsientoInput[] {
+    return [
+      { codigo: cuentaContrapartida, descripcion: `Cobro recibido CxC #${cxcId} — pago #${pagoId}`, debe: monto, haber: 0, manual: cuentaContrapartidaManual },
+      { codigo: COD.CLIENTES,        descripcion: `Cancelación CxC #${cxcId} — pago #${pagoId}`,    debe: 0,     haber: monto },
+    ];
+  }
+
+  /** Panel de vista previa: calcula el asiento de cobro SIN guardar el pago. */
+  async previsualizarCobro(
+    monto: number, pagoId: number, cxcId: number, cuentaContrapartida: string = COD.BANCOS,
+  ): Promise<PreviewAsientoResultado> {
+    return this.previsualizarLineas(this.construirLineasCobro(monto, pagoId, cxcId, cuentaContrapartida));
+  }
+
   async asientoCobro(
     monto: number,
     pagoId: number,
     cxcId: number,
     fecha: string, // fecha del pago (dto.fechaPago del caller, con fallback a fechaHoyRD() si no vino)
     userId: number,
+    cuentaContrapartida: string = COD.BANCOS,
+    cuentaContrapartidaManual = false,
   ): Promise<void> {
     const folio = `PAGO-${pagoId}`;
     try {
@@ -580,10 +603,7 @@ export class AsientosAutomaticosService {
         referenciaFolio: folio,
         fecha,
         userId,
-        lineas: [
-          { codigo: COD.BANCOS,    descripcion: `Cobro recibido CxC #${cxcId} — pago #${pagoId}`, debe: monto, haber: 0 },
-          { codigo: COD.CLIENTES,  descripcion: `Cancelación CxC #${cxcId} — pago #${pagoId}`,    debe: 0,     haber: monto },
-        ],
+        lineas: this.construirLineasCobro(monto, pagoId, cxcId, cuentaContrapartida, cuentaContrapartidaManual),
       });
       if (asiento) {
         this.logger.log(`Asiento cobro CxC #${cxcId} — pago #${pagoId} generado`);
@@ -756,12 +776,33 @@ export class AsientosAutomaticosService {
   // ──────────────────────────────────────────────────────────────────
 
   // Ver nota de asientoCobro: referenciaId es el id del pago, no el de la CxP.
+  // PURO: sin BD — misma idea que construirLineasCobro, para la contrapartida
+  // del pago (por default Bancos).
+  private construirLineasPago(
+    monto: number, pagoId: number, cxpId: number,
+    cuentaContrapartida: string = COD.BANCOS, cuentaContrapartidaManual = false,
+  ): LineaAsientoInput[] {
+    return [
+      { codigo: COD.PROVEEDORES,    descripcion: `Cancelación CxP #${cxpId} — pago #${pagoId}`,    debe: monto, haber: 0 },
+      { codigo: cuentaContrapartida, descripcion: `Pago realizado CxP #${cxpId} — pago #${pagoId}`, debe: 0,     haber: monto, manual: cuentaContrapartidaManual },
+    ];
+  }
+
+  /** Panel de vista previa: calcula el asiento de pago SIN guardar el pago. */
+  async previsualizarPago(
+    monto: number, pagoId: number, cxpId: number, cuentaContrapartida: string = COD.BANCOS,
+  ): Promise<PreviewAsientoResultado> {
+    return this.previsualizarLineas(this.construirLineasPago(monto, pagoId, cxpId, cuentaContrapartida));
+  }
+
   async asientoPago(
     monto: number,
     pagoId: number,
     cxpId: number,
     fecha: string, // fecha del pago
     userId: number,
+    cuentaContrapartida: string = COD.BANCOS,
+    cuentaContrapartidaManual = false,
   ): Promise<void> {
     const folio = `PAGOCXP-${pagoId}`;
     try {
@@ -772,10 +813,7 @@ export class AsientosAutomaticosService {
         referenciaFolio: folio,
         fecha,
         userId,
-        lineas: [
-          { codigo: COD.PROVEEDORES, descripcion: `Cancelación CxP #${cxpId} — pago #${pagoId}`,    debe: monto, haber: 0 },
-          { codigo: COD.BANCOS,      descripcion: `Pago realizado CxP #${cxpId} — pago #${pagoId}`, debe: 0,     haber: monto },
-        ],
+        lineas: this.construirLineasPago(monto, pagoId, cxpId, cuentaContrapartida, cuentaContrapartidaManual),
       });
       if (asiento) {
         this.logger.log(`Asiento pago CxP #${cxpId} — pago #${pagoId} generado`);

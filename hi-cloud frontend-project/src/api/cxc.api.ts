@@ -18,8 +18,12 @@ export const cxcApi = {
   resumen: () =>
     api.get('/cxc/resumen').then(r => r.data.data),
 
-  registrarPago: (id: number, monto: number, metodoPago: MetodoPago, referencia?: string, fechaPago?: string, tipoCambio?: number) =>
-    api.post(`/cxc/${id}/pago`, { monto, metodoPago, referencia, fechaPago, tipoCambio }).then(r => r.data),
+  registrarPago: (id: number, monto: number, metodoPago: MetodoPago, referencia?: string, fechaPago?: string, tipoCambio?: number, cuentaContrapartida?: string) =>
+    api.post(`/cxc/${id}/pago`, { monto, metodoPago, referencia, fechaPago, tipoCambio, cuentaContrapartida }).then(r => r.data),
+
+  /** Panel de vista previa: calcula el asiento de cobro SIN registrar el pago. */
+  previsualizarAsiento: (id: number, monto: number, cuentaContrapartida?: string) =>
+    api.post(`/cxc/${id}/pago/previsualizar-asiento`, { monto, cuentaContrapartida }).then(r => (r.data as any)?.data ?? r.data),
 
   aging: () =>
     api.get('/cxc/aging').then(r => r.data.data ?? r.data),

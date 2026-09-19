@@ -33,4 +33,9 @@ export class RegistrarPagoCobradoDto {
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 4 })
   tipoCambio?: number;
+
+  /** Selector de cuenta contable — la contrapartida del cobro. Sin default: el motor usa Bancos. Solo aplica a cobros en DOP (ver asientoCobroME). */
+  @IsOptional()
+  @IsString()
+  cuentaContrapartida?: string;
 }

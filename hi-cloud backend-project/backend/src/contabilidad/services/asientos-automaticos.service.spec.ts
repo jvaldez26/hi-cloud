@@ -17,7 +17,7 @@
  *    _crearAsientoContabilizado), sin importar cuantos callers lo invoquen.
  */
 
-import { AsientosAutomaticosService } from './asientos-automaticos.service';
+import { AsientosAutomaticosService, COD } from './asientos-automaticos.service';
 import { TipoOrigenAsiento } from '../entities/asiento-contable.entity';
 import { reportServiceError } from '../../common/observability/sentry';
 
@@ -430,5 +430,92 @@ describe('AsientosAutomaticosService — visibilidad de fallos', () => {
     const r = await svc.previsualizarGasto(100, 100, 0, 'Gasto sin ITBIS', '6.1.2.01');
 
     expect(r.lineas.map((l: any) => l.codigo)).toEqual(['6.1.2.01', '1.1.1.03']);
+  });
+
+  // ── Selector de cuenta contable — CxC/CxP con contrapartida atípica (2026-09-19) ──
+  // La contrapartida por default es Bancos; el selector del formulario
+  // permite elegir otra (p. ej. una compensación) sin saltarse la validación
+  // del motor (permiteMovimientos, partida doble).
+
+  it('asientoCobro con cuentaContrapartida elegida: marca SOLO esa línea como manual, no Clientes', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta('1.1.1.02', 1), cuenta('1.1.2.01', 2)],
+    });
+
+    await svc.asientoCobro(500, 900, 99, '2026-09-19', 5, '1.1.1.02', true);
+
+    const lineas = svc.lineaRepository.create.mock.calls[0][0];
+    expect(lineas.find((l: any) => l.cuentaContableId === 1)?.cuentaManual).toBe(true);  // contrapartida elegida
+    expect(lineas.find((l: any) => l.cuentaContableId === 2)?.cuentaManual).toBeUndefined(); // Clientes
+  });
+
+  it('asientoCobro sin cuentaContrapartida: usa Bancos por default, ninguna línea manual', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta(COD.BANCOS, 1), cuenta('1.1.2.01', 2)],
+    });
+
+    await svc.asientoCobro(500, 900, 99, '2026-09-19', 5);
+
+    const lineas = svc.lineaRepository.create.mock.calls[0][0];
+    expect(lineas.every((l: any) => !l.cuentaManual)).toBe(true);
+  });
+
+  it('asientoPago con cuentaContrapartida elegida: marca SOLO esa línea como manual, no Proveedores', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta('2.1.1.01', 1), cuenta('6.1.2.09', 2)],
+    });
+
+    await svc.asientoPago(300, 700, 30, '2026-09-19', 5, '6.1.2.09', true);
+
+    const lineas = svc.lineaRepository.create.mock.calls[0][0];
+    expect(lineas.find((l: any) => l.cuentaContableId === 2)?.cuentaManual).toBe(true);  // contrapartida elegida
+    expect(lineas.find((l: any) => l.cuentaContableId === 1)?.cuentaManual).toBeUndefined(); // Proveedores
+  });
+
+  it('previsualizarCobro: con las cuentas presentes, ok=true y cuadrado', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta(COD.BANCOS, 1), cuenta('1.1.2.01', 2)],
+    });
+
+    const r: any = await svc.previsualizarCobro(500, 900, 99);
+
+    expect(r.ok).toBe(true);
+    expect(r.cuadrado).toBe(true);
+    expect(r.totalDebe).toBe(500);
+  });
+
+  it('previsualizarCobro: con contrapartida elegida inexistente, ok=false con motivo legible', async () => {
+    const svc = makeService({ empresaId: 7, cuentas: [] });
+
+    const r: any = await svc.previsualizarCobro(500, 900, 99, '9.9.9.99');
+
+    expect(r.ok).toBe(false);
+    expect(r.error).toContain('9.9.9.99');
+  });
+
+  it('previsualizarPago: con las cuentas presentes, ok=true y cuadrado', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta('2.1.1.01', 1), cuenta(COD.BANCOS, 2)],
+    });
+
+    const r: any = await svc.previsualizarPago(300, 700, 30);
+
+    expect(r.ok).toBe(true);
+    expect(r.cuadrado).toBe(true);
+    expect(r.totalHaber).toBe(300);
+  });
+
+  it('previsualizarPago: con contrapartida elegida inexistente, ok=false con motivo legible', async () => {
+    const svc = makeService({ empresaId: 7, cuentas: [cuenta(COD.PROVEEDORES, 1)] });
+
+    const r: any = await svc.previsualizarPago(300, 700, 30, '9.9.9.99');
+
+    expect(r.ok).toBe(false);
+    expect(r.error).toContain('9.9.9.99');
   });
 });

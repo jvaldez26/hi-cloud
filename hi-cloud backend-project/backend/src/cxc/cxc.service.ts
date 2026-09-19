@@ -201,7 +201,11 @@ export class CxCService {
         this.logger.error(`Error asiento cobro ME CxC #${id} — pago #${ultimoPagoId}: ${err.message}`),
       );
     } else {
-      await this.asientosService.asientoCobro(dto.monto, ultimoPagoId, id, fechaPago, userId).catch(err =>
+      const cuentaContrapartida = dto.cuentaContrapartida || undefined;
+      await this.asientosService.asientoCobro(
+        dto.monto, ultimoPagoId, id, fechaPago, userId,
+        cuentaContrapartida, !!cuentaContrapartida,
+      ).catch(err =>
         this.logger.error(`Error asiento cobro CxC #${id} — pago #${ultimoPagoId}: ${err.message}`),
       );
     }
@@ -223,6 +227,23 @@ export class CxCService {
       this.realtimeService.notify(eid, 'factura',  'updated', cuentaFinal.facturaId);
     }
     return { ...cuentaFinal, ultimoPagoId };
+  }
+
+  /**
+   * Panel de vista previa: calcula el asiento de cobro SIN registrar el pago.
+   * Solo cubre cobros en DOP. Uno en moneda extranjera lleva además la línea
+   * de ganancia/pérdida cambiaria (asientoCobroME, depende de la tasa del
+   * día) — no la replica esta vista previa, así que en vez de mostrar un
+   * asiento incompleto que no coincide con el real, avisa por qué no hay
+   * vista previa disponible.
+   */
+  async previsualizarAsiento(id: number, monto: number, cuentaContrapartida?: string) {
+    const cuenta = await this.findById(id);
+    const moneda = (cuenta as any).moneda ?? 'DOP';
+    if (moneda !== 'DOP') {
+      return { ok: false, lineas: [], totalDebe: 0, totalHaber: 0, cuadrado: false, error: `Cuenta en ${moneda} — la vista previa no está disponible para cobros en moneda extranjera (la ganancia/pérdida cambiaria depende de la tasa del día).` };
+    }
+    return this.asientosService.previsualizarCobro(monto, 0, id, cuentaContrapartida || undefined);
   }
 
   // ──────────────────────────────────────────────────────────────────
