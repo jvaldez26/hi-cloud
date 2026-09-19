@@ -40,6 +40,7 @@ function Seccion({ titulo, cuentas, total }: { titulo: string; cuentas: any[]; t
     <div style={{ marginBottom: 12 }}>
       <Table
         rowKey="codigo" size="small" pagination={false}
+        scroll={{ x: 'max-content' }}
         columns={columnasSeccion()}
         dataSource={cuentas}
         locale={{ emptyText: <Empty description="Sin cuentas con saldo" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
@@ -137,6 +138,7 @@ export default function AnexoA1Panel() {
       <Card title={<Space><EditOutlined /> Líneas de llenado manual — el ERP no las registra</Space>} style={{ marginBottom: 16 }}>
         <Table
           rowKey="concepto" size="small" pagination={false}
+          scroll={{ x: 'max-content' }}
           dataSource={data?.lineasLlenadoManual ?? []}
           columns={[
             { title: 'Concepto', dataIndex: 'concepto', width: 260 },
@@ -152,7 +154,9 @@ export default function AnexoA1Panel() {
           message={`${alertasSinEtiqueta.length} cuenta(s) de balance con saldo y sin etiqueta A1 — no están incluidas en los totales de arriba`}
           description={
             <Table
-              rowKey="codigo" size="small" pagination={false} style={{ marginTop: 8 }}
+              rowKey="codigo" size="small" style={{ marginTop: 8 }}
+              scroll={{ x: 'max-content' }}
+              pagination={alertasSinEtiqueta.length > 10 ? { pageSize: 10, size: 'small' } : false}
               dataSource={alertasSinEtiqueta}
               columns={[
                 { title: 'Código', dataIndex: 'codigo', width: 110 },

@@ -200,6 +200,7 @@ export default function ConciliacionFiscalPanel({ anio }: { anio: number }) {
                 columns={columnasCorrespondencias as any}
                 dataSource={data?.correspondencias ?? []}
                 pagination={false}
+                scroll={{ x: 'max-content' }}
                 size="small"
               />
             ),
@@ -228,7 +229,9 @@ export default function ConciliacionFiscalPanel({ anio }: { anio: number }) {
               label: `Compras con clasificación 606 por defecto, sin revisar (${alertas.comprasSinRevisar?.length ?? 0})`,
               children: (alertas.comprasSinRevisar?.length ?? 0) > 0 ? (
                 <Table
-                  size="small" pagination={false} rowKey="id"
+                  size="small" rowKey="id"
+                  scroll={{ x: 'max-content' }}
+                  pagination={alertas.comprasSinRevisar.length > 10 ? { pageSize: 10, size: 'small' } : false}
                   dataSource={alertas.comprasSinRevisar}
                   columns={[
                     { title: 'Folio', dataIndex: 'folio' },
@@ -244,7 +247,9 @@ export default function ConciliacionFiscalPanel({ anio }: { anio: number }) {
               label: `Gastos contabilizados sin el comprobante que deberían tener (${alertas.gastosSinComprobante?.length ?? 0})`,
               children: (alertas.gastosSinComprobante?.length ?? 0) > 0 ? (
                 <Table
-                  size="small" pagination={false} rowKey="id"
+                  size="small" rowKey="id"
+                  scroll={{ x: 'max-content' }}
+                  pagination={alertas.gastosSinComprobante.length > 10 ? { pageSize: 10, size: 'small' } : false}
                   dataSource={alertas.gastosSinComprobante}
                   columns={[
                     { title: 'Descripción', dataIndex: 'descripcion' },
@@ -260,7 +265,9 @@ export default function ConciliacionFiscalPanel({ anio }: { anio: number }) {
               label: `Cuentas con saldo en el ejercicio y sin etiqueta fiscal (${alertas.cuentasSinEtiquetaConSaldo?.length ?? 0})`,
               children: (alertas.cuentasSinEtiquetaConSaldo?.length ?? 0) > 0 ? (
                 <Table
-                  size="small" pagination={false} rowKey="codigo"
+                  size="small" rowKey="codigo"
+                  scroll={{ x: 'max-content' }}
+                  pagination={alertas.cuentasSinEtiquetaConSaldo.length > 10 ? { pageSize: 10, size: 'small' } : false}
                   dataSource={alertas.cuentasSinEtiquetaConSaldo}
                   columns={[
                     { title: 'Código', dataIndex: 'codigo' },
@@ -282,6 +289,7 @@ export default function ConciliacionFiscalPanel({ anio }: { anio: number }) {
         </Paragraph>
         <Table
           size="small" pagination={false} rowKey="tipoComprobante"
+          scroll={{ x: 'max-content' }}
           dataSource={data?.anexoJ ?? []}
           loading={isLoading}
           columns={[

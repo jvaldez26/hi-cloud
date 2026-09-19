@@ -30,6 +30,7 @@ function TablaCuentas({ cuentas }: { cuentas: any[] }) {
   return (
     <Table
       rowKey="codigo" size="small" pagination={false} showHeader={false}
+      scroll={{ x: 'max-content' }}
       dataSource={cuentas}
       columns={[
         { title: 'Cuenta', dataIndex: 'nombre', render: (v: string, r: any) => `${r.codigo} — ${v}` },
@@ -135,6 +136,7 @@ export default function AnexoDPanel() {
       <Card title={<Space><EditOutlined /> Líneas de llenado manual — el ERP no las registra</Space>}>
         <Table
           rowKey="concepto" size="small" pagination={false}
+          scroll={{ x: 'max-content' }}
           dataSource={data?.lineasLlenadoManual ?? []}
           columns={[
             { title: 'Concepto', dataIndex: 'concepto', width: 220 },

@@ -41,6 +41,7 @@ function Seccion({ titulo, cuentas, total }: { titulo: string; cuentas: any[]; t
   return (
     <Table
       rowKey="codigo" size="small" pagination={false}
+      scroll={{ x: 'max-content' }}
       columns={columnasSeccion()}
       dataSource={cuentas}
       title={() => <Text strong>{titulo}</Text>}
@@ -139,7 +140,9 @@ export default function AnexoB1Panel() {
             <>
               <Paragraph style={{ margin: '0 0 8px', fontSize: 13 }}>{alertaVentas.nota}</Paragraph>
               <Table
-                rowKey="id" size="small" pagination={false}
+                rowKey="id" size="small"
+                scroll={{ x: 'max-content' }}
+                pagination={alertaVentas.facturas.length > 10 ? { pageSize: 10, size: 'small' } : false}
                 dataSource={alertaVentas.facturas}
                 columns={[
                   { title: 'Folio', dataIndex: 'folio', width: 120 },
@@ -159,7 +162,9 @@ export default function AnexoB1Panel() {
           message={`${sinEtiqueta.length} cuenta(s) de resultados con saldo y sin etiqueta B1 — no están incluidas en los totales de arriba`}
           description={
             <Table
-              rowKey="codigo" size="small" pagination={false} style={{ marginTop: 8 }}
+              rowKey="codigo" size="small" style={{ marginTop: 8 }}
+              scroll={{ x: 'max-content' }}
+              pagination={sinEtiqueta.length > 10 ? { pageSize: 10, size: 'small' } : false}
               dataSource={sinEtiqueta}
               columns={[
                 { title: 'Código', dataIndex: 'codigo', width: 110 },
