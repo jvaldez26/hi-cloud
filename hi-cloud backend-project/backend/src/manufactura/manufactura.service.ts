@@ -369,12 +369,16 @@ export class ManufacturaService {
   private async _asientoRevertirInicio(orden: any): Promise<void> {
     if (!orden.asientoInicioId) return;
 
-    // Buscar el monto del asiento original para reversarlo
+    // Buscar el monto del asiento original para reversarlo — filtrado por
+    // empresaId (P3 Bloque 5): sin esto, un asientoInicioId corrupto o de
+    // otra empresa leería el totalDebe de un asiento ajeno sin que nada lo
+    // impidiera; "id" en asientos_contables es un autoincremento global,
+    // no aislado por tenant.
     let montoOriginal = 0;
     try {
       const rows: Array<{ totalDebe: string }> = await this.dataSource.query(
-        `SELECT "totalDebe" FROM asientos_contables WHERE id = $1 LIMIT 1`,
-        [orden.asientoInicioId],
+        `SELECT "totalDebe" FROM asientos_contables WHERE id = $1 AND "empresaId" = $2 LIMIT 1`,
+        [orden.asientoInicioId, this.tenantService.getEmpresaId()],
       );
       montoOriginal = rows.length > 0 ? Number(rows[0].totalDebe) : 0;
     } catch (err: any) {

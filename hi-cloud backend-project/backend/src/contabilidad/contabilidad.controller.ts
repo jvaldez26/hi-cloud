@@ -154,37 +154,10 @@ export class ContabilidadController {
     return this.contabilidadService.getLibroMayor(cuentaId, fechaDesde, fechaHasta);
   }
 
-  // ── Estados Financieros ────────────────────────────────────────────────────
-
-  @Get('balance-comprobacion')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
-  @ApiOperation({ summary: 'Balance de Comprobación — saldos de todas las cuentas' })
-  @ApiQuery({ name: 'fechaDesde', required: false })
-  @ApiQuery({ name: 'fechaHasta', required: false })
-  getBalanceComprobacion(
-    @Query('fechaDesde') fechaDesde?: string,
-    @Query('fechaHasta') fechaHasta?: string,
-  ) {
-    return this.contabilidadService.getBalanceComprobacion(fechaDesde, fechaHasta);
-  }
-
-  @Get('balance-general')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
-  @ApiOperation({ summary: 'Balance General — Activos = Pasivos + Patrimonio' })
-  @ApiQuery({ name: 'fechaHasta', required: false })
-  getBalanceGeneral(@Query('fechaHasta') fechaHasta?: string) {
-    return this.contabilidadService.getBalanceGeneral(fechaHasta);
-  }
-
-  @Get('estado-resultados')
-  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
-  @ApiOperation({ summary: 'Estado de Resultados — Ingresos, Costos, Gastos, Utilidad Neta' })
-  @ApiQuery({ name: 'fechaDesde', required: false })
-  @ApiQuery({ name: 'fechaHasta', required: false })
-  getEstadoResultados(
-    @Query('fechaDesde') fechaDesde?: string,
-    @Query('fechaHasta') fechaHasta?: string,
-  ) {
-    return this.contabilidadService.getEstadoResultados(fechaDesde, fechaHasta);
-  }
+  // getBalanceComprobacion/getBalanceGeneral/getEstadoResultados —
+  // eliminados (P3 Bloque 5). Ver el comentario en contabilidad.service.ts:
+  // ningún frontend los llamaba, y reportes-financieros.controller.ts ya
+  // expone las rutas reales (/balance-comprobacion, /balance-general,
+  // /estado-resultados) que BalanceComprobacionPage.tsx/
+  // ReportesFinancierosPage.tsx sí consumen.
 }

@@ -29,7 +29,6 @@ import { UpdateCuentaContableDto } from '../dto/update-cuenta-contable.dto';
 import { CreateAsientoDto } from '../dto/create-asiento.dto';
 import { FiltroContabilidadDto } from '../dto/filtro-contabilidad.dto';
 import { TenantService } from '../../tenant/tenant.service';
-import { fechaHoyRD } from '../../common/utils/fecha-local.util';
 
 // ── Plan de Cuentas estándar dominicano ─────────────────────────────────────
 interface SeedCuenta {
@@ -230,8 +229,14 @@ export class ContabilidadService implements OnModuleInit {
     @InjectDataSource() private dataSource: DataSource,
   ) {}
 
-  private get eid(): number | undefined {
-    try { return this.tenantService.getEmpresaId(); } catch { return undefined; }
+  // P3 Bloque 5 — antes el try/catch absorbía la ForbiddenException de
+  // getEmpresaId() y devolvía undefined, que en cada `if (this.eid)
+  // where.empresaId = this.eid` de este archivo se traduce en "no filtres
+  // por empresa": sin contexto de tenant, cualquier consulta se volvía
+  // cross-tenant en vez de fallar. Mismo fix ya aplicado en
+  // balance-comprobacion.service.ts (commit 3b7de56a) — fallar cerrado.
+  private get eid(): number {
+    return this.tenantService.getEmpresaId();
   }
 
   /**
@@ -635,10 +640,14 @@ export class ContabilidadService implements OnModuleInit {
       .createQueryBuilder('a')
       .where('a.isActive = :active', { active: true });
 
-    const eid = this.eid;
-    if (eid) qb.andWhere('a.empresaId = :eid', { eid });
-    if (fechaDesde) qb.andWhere('a.fecha >= :desde', { desde: new Date(fechaDesde) });
-    if (fechaHasta) qb.andWhere('a.fecha <= :hasta', { hasta: new Date(fechaHasta) });
+    // P3 Bloque 5: string 'YYYY-MM-DD' crudo al QueryBuilder — new Date(string)
+    // lo parsea como medianoche UTC, que en RD (UTC-4) cae en el día anterior
+    // a partir de las 8pm; comparar contra la columna `a.fecha` (type: 'date')
+    // corría el filtro un día para cualquier fechaDesde/fechaHasta cercano al
+    // límite. Mismo fix que getLibroMayor() más abajo en este archivo.
+    qb.andWhere('a.empresaId = :eid', { eid: this.eid });
+    if (fechaDesde) qb.andWhere('a.fecha >= :desde', { desde: fechaDesde });
+    if (fechaHasta) qb.andWhere('a.fecha <= :hasta', { hasta: fechaHasta });
     if (tipoOrigen) qb.andWhere('a.tipoOrigen = :tipo', { tipo: tipoOrigen });
     if (estado)     qb.andWhere('a.estado = :estado', { estado });
 
@@ -683,112 +692,14 @@ export class ContabilidadService implements OnModuleInit {
   // Libros y Estados Financieros
   // ──────────────────────────────────────────────────────────────────
 
-  async getBalanceComprobacion(fechaDesde?: string, fechaHasta?: string) {
-    const empresaId = this.eid;
-    const cuentas = await this.cuentaRepository.find({
-      where: { isActive: true, permiteMovimientos: true, ...(empresaId && { empresaId }) } as any,
-      order: { codigo: 'ASC' },
-    });
-
-    const params: (string | number)[] = [];
-    const conditions: string[] = [
-      `a.estado = 'contabilizado'`,
-      `a."isActive" = true`,
-      `l."isActive" = true`,
-    ];
-    if (fechaDesde) { params.push(fechaDesde); conditions.push(`a.fecha >= $${params.length}`); }
-    if (fechaHasta) { params.push(fechaHasta); conditions.push(`a.fecha <= $${params.length}`); }
-    if (empresaId)  { params.push(empresaId);  conditions.push(`a."empresaId" = $${params.length}`); }
-
-    const saldos = await this.lineaRepository.query(
-      `SELECT l."cuentaContableId",
-              COALESCE(SUM(l.debe),  0) AS "totalDebe",
-              COALESCE(SUM(l.haber), 0) AS "totalHaber"
-       FROM asiento_lineas l
-       JOIN asientos_contables a ON a.id = l."asientoId"
-       WHERE ${conditions.join(' AND ')}
-       GROUP BY l."cuentaContableId"`,
-      params,
-    ) as { cuentaContableId: number; totalDebe: string; totalHaber: string }[];
-
-    const mapaS = new Map(saldos.map((s) => [s.cuentaContableId, s]));
-
-    const resultado = cuentas
-      .map((c) => {
-        const s = mapaS.get(c.id);
-        const debe  = Number(s?.totalDebe  ?? 0);
-        const haber = Number(s?.totalHaber ?? 0);
-        return {
-          codigo:   c.codigo,
-          nombre:   c.nombre,
-          tipo:     c.tipo,
-          totalDebe:  debe,
-          totalHaber: haber,
-          saldo:    c.naturaleza === NaturalezaCuenta.DEUDORA ? debe - haber : haber - debe,
-        };
-      })
-      .filter((r) => r.totalDebe > 0 || r.totalHaber > 0);
-
-    return {
-      periodo:      { fechaDesde: fechaDesde ?? 'inicio', fechaHasta: fechaHasta ?? 'hoy' },
-      cuentas:      resultado,
-      totales: {
-        debe:  resultado.reduce((a, r) => a + r.totalDebe,  0),
-        haber: resultado.reduce((a, r) => a + r.totalHaber, 0),
-      },
-    };
-  }
-
-  async getBalanceGeneral(fechaHasta?: string) {
-    const bc = await this.getBalanceComprobacion(undefined, fechaHasta);
-    const { cuentas } = bc;
-
-    const activos    = cuentas.filter((c) => c.tipo === TipoCuenta.ACTIVO);
-    const pasivos    = cuentas.filter((c) => c.tipo === TipoCuenta.PASIVO);
-    const patrimonio = cuentas.filter((c) => c.tipo === TipoCuenta.PATRIMONIO);
-
-    const totalActivos    = activos.reduce((a, c) => a + c.saldo, 0);
-    const totalPasivos    = pasivos.reduce((a, c) => a + c.saldo, 0);
-    const totalPatrimonio = patrimonio.reduce((a, c) => a + c.saldo, 0);
-
-    return {
-      fecha:   fechaHasta ?? fechaHoyRD(),
-      activos: { detalle: activos,    total: totalActivos },
-      pasivos: { detalle: pasivos,    total: totalPasivos },
-      patrimonio: { detalle: patrimonio, total: totalPatrimonio },
-      ecuacion: {
-        activos:                totalActivos,
-        pasivosYPatrimonio:     totalPasivos + totalPatrimonio,
-        cuadra:                 Math.abs(totalActivos - (totalPasivos + totalPatrimonio)) < 0.01,
-      },
-    };
-  }
-
-  async getEstadoResultados(fechaDesde?: string, fechaHasta?: string) {
-    const bc = await this.getBalanceComprobacion(fechaDesde, fechaHasta);
-    const { cuentas } = bc;
-
-    const ingresos = cuentas.filter((c) => c.tipo === TipoCuenta.INGRESO);
-    const costos   = cuentas.filter((c) => c.tipo === TipoCuenta.COSTO);
-    const gastos   = cuentas.filter((c) => c.tipo === TipoCuenta.GASTO);
-
-    const totalIngresos  = ingresos.reduce((a, c) => a + c.saldo, 0);
-    const totalCostos    = costos.reduce((a, c)   => a + c.saldo, 0);
-    const totalGastos    = gastos.reduce((a, c)   => a + c.saldo, 0);
-    const utilidadBruta  = totalIngresos - totalCostos;
-    const utilidadNeta   = utilidadBruta - totalGastos;
-
-    return {
-      periodo:     { fechaDesde: fechaDesde ?? 'inicio', fechaHasta: fechaHasta ?? 'hoy' },
-      ingresos:    { detalle: ingresos,  total: totalIngresos },
-      costos:      { detalle: costos,    total: totalCostos },
-      gastos:      { detalle: gastos,    total: totalGastos },
-      utilidadBruta:  Number(utilidadBruta.toFixed(2)),
-      totalGastos:    Number(totalGastos.toFixed(2)),
-      utilidadNeta:   Number(utilidadNeta.toFixed(2)),
-      situacion:   utilidadNeta >= 0 ? 'UTILIDAD' : 'PÉRDIDA',
-    };
-  }
+  // getBalanceComprobacion()/getBalanceGeneral()/getEstadoResultados() —
+  // eliminados (P3 Bloque 5). Ningún frontend los llamaba
+  // (contabilidadApi.balanceComprobacion/balanceGeneral/estadoResultados
+  // no tenían un solo caller en pages/ ni components/): un segundo motor
+  // de cálculo vivo, duplicando lo que reportes-financieros.service.ts ya
+  // hace y sí consumen BalanceComprobacionPage.tsx/ReportesFinancierosPage.tsx,
+  // es una fuente futura de divergencia — dos implementaciones del mismo
+  // balance que un día dejan de coincidir sin que nadie lo note.
 
   async getLibroDiario(filtro: FiltroContabilidadDto) {
     const asientos = await this.getAsientos({
@@ -811,8 +722,11 @@ export class ContabilidadService implements OnModuleInit {
       .addSelect('a.numero', 'asientoNumero')
       .where('l.cuentaContableId = :id AND l.isActive = true', { id: cuentaId });
 
-    if (fechaDesde) qb.andWhere('a.fecha >= :desde', { desde: new Date(fechaDesde) });
-    if (fechaHasta) qb.andWhere('a.fecha <= :hasta', { hasta: new Date(fechaHasta) });
+    // P3 Bloque 5: string 'YYYY-MM-DD' crudo — ver el comentario en
+    // getAsientos() más arriba sobre por qué new Date(string) corre el
+    // filtro un día para el servidor en UTC.
+    if (fechaDesde) qb.andWhere('a.fecha >= :desde', { desde: fechaDesde });
+    if (fechaHasta) qb.andWhere('a.fecha <= :hasta', { hasta: fechaHasta });
 
     const lineas = await qb.orderBy('a.fecha', 'ASC').getMany();
 
