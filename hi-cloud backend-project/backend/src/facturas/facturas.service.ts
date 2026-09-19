@@ -1250,6 +1250,17 @@ export class FacturasService {
               `${linkErr instanceof Error ? linkErr.message : String(linkErr)}`,
             );
           }
+
+          // El PATCH /facturas/:id/estado ya respondió 200 antes de que esto
+          // se supiera (fire-and-forget, ver comentario arriba de este bloque)
+          // — quien pulsó "emitir" no puede enterarse por la respuesta HTTP.
+          // Este notify es la única señal que le llega: el frontend ya
+          // escucha 'factura'/'updated' e invalida la lista (useRealtime.ts),
+          // y FacturasPage ya sabe pintar el badge de RECHAZADO/PENDIENTE_ENVIO
+          // con su botón de reenviar — antes esta rama de error no lo disparaba,
+          // así que la factura se quedaba viéndose "normal" hasta que alguien
+          // la abriera manualmente o el fallo apareciera en Sentry.
+          this.realtimeService.notify(factura.empresaId, 'factura', 'updated', id);
         });
 
       return this.findOne(id);

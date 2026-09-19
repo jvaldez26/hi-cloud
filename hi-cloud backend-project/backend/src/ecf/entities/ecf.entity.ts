@@ -2,7 +2,6 @@ import {
   Entity,
   Column,
   ManyToOne,
-  OneToOne,
   JoinColumn,
   Index,
 } from 'typeorm';
@@ -67,7 +66,17 @@ export class ECF extends BaseEntity {
   @Column()
   secuenciaId!: number;
 
-  @OneToOne(() => Factura, { nullable: true, eager: false })
+  // ManyToOne, no OneToOne (2026-09-19) — un OneToOne generaba un UNIQUE
+  // incondicional sobre facturaId, que rompía el reintento legítimo que el
+  // propio flujo de arriba documenta ("RECHAZADO/CONTINGENCIA → se permite
+  // reintento con nuevo eNCF"): la segunda fila para la misma factura
+  // reventaba contra esa constraint sin importar el estado. La unicidad real
+  // (a lo sumo un e-CF ACEPTADO por documento) ya la impone
+  // idx_ecf_origen_unico_aceptado (índice único parcial sobre
+  // documentoOrigenTipo/documentoOrigenId filtrado por estadoDGII='aceptado')
+  // — ver migración 1765300000000. Bug real: Sentry #7742858869, factura
+  // FAC-15227, empresa 44, tipo E32.
+  @ManyToOne(() => Factura, { nullable: true, eager: false })
   @JoinColumn({ name: 'facturaId' })
   factura?: Factura;
 

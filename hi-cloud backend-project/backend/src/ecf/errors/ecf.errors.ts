@@ -42,14 +42,19 @@ export class EcfSecuenciaVencidaError extends EcfError {
 
 /** El documento ya tiene un e-CF aceptado (idempotencia). */
 export class EcfDuplicadoError extends EcfError {
-  constructor(encf: string, documentoOrigenId: number | string) {
+  constructor(encf: string, estado: string, documentoOrigenId: number | string) {
     super(
-      `El documento origen #${documentoOrigenId} ya tiene un e-CF aceptado: ${encf}`,
+      `El documento origen #${documentoOrigenId} ya tiene un e-CF ${estado}: ${encf}. ` +
+      (estado === 'aceptado'
+        ? 'No se genera uno nuevo.'
+        : 'Está en curso o pendiente de veredicto — espere a que termine de procesarse antes de reintentar.'),
       'ECF_DUPLICADO',
     );
     this.encf = encf;
+    this.estado = estado;
   }
   encf: string;
+  estado: string;
 }
 
 /** MSeller rechazó el documento por error de validación (4xx — no reintentable). */

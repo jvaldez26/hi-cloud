@@ -187,12 +187,26 @@ export class EmitirECFUseCase {
         this.logger.log(`Idempotencia: ya existe e-CF aceptado ${existente.numero}`);
         return this.toResult(existente, true);
       }
-      // RECHAZADO → se permite reintento con nuevo eNCF (continúa flujo normal)
+      // RECHAZADO/CONTINGENCIA → se permite reintento con nuevo eNCF (continúa flujo normal)
       if ([EstadoDGII.RECHAZADO, EstadoDGII.CONTINGENCIA].includes(existente.estadoDGII)) {
         this.logger.log(
           `Documento ${documentoOrigenTipo}#${documentoOrigenId} tenía e-CF ` +
           `${existente.estadoDGII} (${existente.numero}). Reintentando con nuevo eNCF.`,
         );
+      } else {
+        // ENVIADO, PENDIENTE_ENVIO, OBSERVADO (o cualquier estado no contemplado
+        // arriba) — ya hay un e-CF en curso o pendiente de veredicto para este
+        // documento. Antes esta rama no existía: caía en silencio al flujo de
+        // generación normal e intentaba insertar una segunda fila para el mismo
+        // facturaId, reventando contra la constraint uno-a-uno (Sentry
+        // #7742858869 — factura FAC-15227, empresa 44, tipo E32). Se corta
+        // ANTES de tocar la secuencia, con un mensaje que dice cuál es el eNCF
+        // existente y en qué estado está — nunca revienta contra la constraint.
+        this.logger.warn(
+          `[ECF] ${documentoOrigenTipo}#${documentoOrigenId} ya tiene un e-CF ` +
+          `${existente.numero} en estado ${existente.estadoDGII} — no se genera uno nuevo.`,
+        );
+        throw new EcfDuplicadoError(existente.numero, existente.estadoDGII, documentoOrigenId);
       }
     }
 
