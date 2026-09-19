@@ -1100,6 +1100,7 @@ export class FacturasService {
         Number(factura.subtotal),
         Number(factura.iva),
         factura.folio,
+        factura.fecha as unknown as string,
         factura.usuarioId,
         aplicaRet ? { retItbis, retIsr, netoCobrar } : undefined,
       ).catch((err: unknown) => {

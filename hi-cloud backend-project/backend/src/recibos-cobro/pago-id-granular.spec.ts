@@ -75,6 +75,6 @@ describe('RecibosCobrosService.crear — asiento etiquetado por el pago, no por 
 
     expect(pagoRepoEm.save).toHaveBeenCalled();
     // El 2do argumento es el id del PAGO (777), el 3ro el de la CxC (47) — NO al revés.
-    expect(asientosService.asientoCobro).toHaveBeenCalledWith(400, 777, 47, 5);
+    expect(asientosService.asientoCobro).toHaveBeenCalledWith(400, 777, 47, expect.any(String), 5);
   });
 });

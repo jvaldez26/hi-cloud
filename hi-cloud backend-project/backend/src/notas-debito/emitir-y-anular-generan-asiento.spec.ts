@@ -33,14 +33,14 @@ describe('NotasDebitoService — emitir genera asiento, anular lo revierte', () 
   it('emitir llama asientoNotaDebito con los montos de la ND', async () => {
     const nd = {
       id: 9, empresaId: 7, numero: 'ND-9', estado: EstadoNotaDebito.BORRADOR,
-      total: 118, subtotal: 100, iva: 18, usuarioId: 5,
+      total: 118, subtotal: 100, iva: 18, fecha: '2026-09-19', usuarioId: 5,
     };
     const { svc, asientosService, ndRepo } = makeService(nd);
 
     await svc.emitir(9);
 
     expect(ndRepo.update).toHaveBeenCalledWith(9, { estado: EstadoNotaDebito.EMITIDA });
-    expect(asientosService.asientoNotaDebito).toHaveBeenCalledWith(9, 118, 100, 18, 'ND-9', 5);
+    expect(asientosService.asientoNotaDebito).toHaveBeenCalledWith(9, 118, 100, 18, 'ND-9', '2026-09-19', 5);
   });
 
   it('no se puede emitir una ND que no está en BORRADOR', async () => {

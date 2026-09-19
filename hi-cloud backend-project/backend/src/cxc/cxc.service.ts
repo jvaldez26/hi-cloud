@@ -195,12 +195,13 @@ export class CxCService {
     const tasaOrig = Number(cuenta.tipoCambio ?? 1);
     const montoDOP = moneda !== 'DOP' ? parseFloat((dto.monto * tasaHoy).toFixed(2)) : dto.monto;
 
+    const fechaPago = dto.fechaPago ?? fechaHoyRD();
     if (moneda !== 'DOP') {
-      await this.asientosService.asientoCobroME(dto.monto, moneda, tasaHoy, tasaOrig, ultimoPagoId, id, userId).catch(err =>
+      await this.asientosService.asientoCobroME(dto.monto, moneda, tasaHoy, tasaOrig, ultimoPagoId, id, fechaPago, userId).catch(err =>
         this.logger.error(`Error asiento cobro ME CxC #${id} — pago #${ultimoPagoId}: ${err.message}`),
       );
     } else {
-      await this.asientosService.asientoCobro(dto.monto, ultimoPagoId, id, userId).catch(err =>
+      await this.asientosService.asientoCobro(dto.monto, ultimoPagoId, id, fechaPago, userId).catch(err =>
         this.logger.error(`Error asiento cobro CxC #${id} — pago #${ultimoPagoId}: ${err.message}`),
       );
     }

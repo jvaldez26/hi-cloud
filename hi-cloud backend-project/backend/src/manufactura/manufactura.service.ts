@@ -10,6 +10,7 @@ import { TenantService } from '../tenant/tenant.service';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { AsientosAutomaticosService } from '../contabilidad/services/asientos-automaticos.service';
 import { TipoOrigenAsiento } from '../contabilidad/entities/asiento-contable.entity';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 @Injectable()
 export class ManufacturaService {
@@ -280,6 +281,7 @@ export class ManufacturaService {
         tipoOrigen:      TipoOrigenAsiento.MANUFACTURA,
         referenciaId:    orden.id,
         referenciaFolio: orden.numero,
+        fecha:           fechaHoyRD(), // el paso a EN_PROCESO ocurre "ahora" — orden.fechaInicio es la fecha PLANIFICADA, no esta
         userId,
         lineas: [
           { codigo: '1.1.3.02', descripcion: `WIP Orden ${orden.numero}`,           debe: costoEstimado, haber: 0             },
@@ -346,6 +348,7 @@ export class ManufacturaService {
         tipoOrigen:      TipoOrigenAsiento.MANUFACTURA,
         referenciaId:    orden.id,
         referenciaFolio: orden.numero,
+        fecha:           fechaHoyRD(), // orden.fechaFinReal en memoria no refleja el update() ya confirmado en otra tx
         userId,
         lineas,
       });
@@ -389,6 +392,7 @@ export class ManufacturaService {
         tipoOrigen:      TipoOrigenAsiento.MANUFACTURA,
         referenciaId:    orden.id,
         referenciaFolio: orden.numero,
+        fecha:           fechaHoyRD(), // evento de cancelación, no la fecha (stale) del asiento de inicio que se revierte
         userId,
         lineas: [
           { codigo: '1.1.3.01', descripcion: `Devolución MP Orden ${orden.numero}`, debe: montoOriginal, haber: 0             },

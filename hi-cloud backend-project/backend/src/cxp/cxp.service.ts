@@ -128,12 +128,13 @@ export class CxPService {
     }
 
     // Asiento contable: Proveedores / Bancos (con diferencia cambiaria si aplica)
+    const fechaPago = dto.fechaPago ?? fechaHoyRD();
     if (moneda !== 'DOP') {
-      await this.asientosService.asientoPagoME(dto.monto, moneda, tasaHoy, tasaOrig, pagoGuardado.id, id, userId).catch(err =>
+      await this.asientosService.asientoPagoME(dto.monto, moneda, tasaHoy, tasaOrig, pagoGuardado.id, id, fechaPago, userId).catch(err =>
         this.logger.error(`Error asiento pago ME CxP #${id} — pago #${pagoGuardado.id}: ${err?.message ?? err}`),
       );
     } else {
-      await this.asientosService.asientoPago(dto.monto, pagoGuardado.id, id, userId).catch(err =>
+      await this.asientosService.asientoPago(dto.monto, pagoGuardado.id, id, fechaPago, userId).catch(err =>
         this.logger.error(`Error asiento pago CxP #${id} — pago #${pagoGuardado.id}: ${err?.message ?? err}`),
       );
     }

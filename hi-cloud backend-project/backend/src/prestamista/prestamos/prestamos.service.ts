@@ -4,6 +4,7 @@ import { DataSource, QueryRunner } from 'typeorm';
 import { calcularAmortizacion } from '../utils/amortizacion.util';
 import { AsientosAutomaticosService } from '../../contabilidad/services/asientos-automaticos.service';
 import { TenantService } from '../../tenant/tenant.service';
+import { fechaHoyRD } from '../../common/utils/fecha-local.util';
 
 @Injectable()
 export class PrestamosService {
@@ -102,7 +103,8 @@ export class PrestamosService {
       // Fuera de la transacción: si el asiento falla, el desembolso ya es válido.
       this.asientos.asientoDesembolsoPrestamo(
         prestamoId.id, prestamoId.numero, Number(data.montoPrincipal),
-        data.formaPago ?? 'transferencia', this.tenantSvc.getUserId() ?? 0,
+        data.formaPago ?? 'transferencia', data.fechaDesembolso ?? fechaHoyRD(),
+        this.tenantSvc.getUserId() ?? 0,
       ).catch(err => this.logger.error(`Asiento desembolso ${prestamoId.numero}: ${err.message}`));
 
       return this.findOne(empresaId, prestamoId.id);

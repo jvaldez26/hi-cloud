@@ -149,7 +149,7 @@ export class AnticiposClienteService implements OnModuleInit {
 
     // Asiento: DÉBITO Caja/Banco, CRÉDITO Anticipos de Clientes
     const asientoId = await this.asientosService.asientoAnticipo(
-      monto, anticipo.id, tipoPago, usuarioId,
+      monto, anticipo.id, tipoPago, hoy, usuarioId,
     ).catch(err => { this.logger.error(`Asiento anticipo ${anticipo.numero}: ${err.message}`); return null; });
 
     if (asientoId) await this.repo.update(anticipo.id, { asientoId });
@@ -226,7 +226,7 @@ export class AnticiposClienteService implements OnModuleInit {
     });
 
     // Asiento: DÉBITO Anticipos de Clientes, CRÉDITO Clientes
-    await this.asientosService.asientoAplicarAnticipo(montoAplicar, anticipoId, dto.cxcId, usuarioId)
+    await this.asientosService.asientoAplicarAnticipo(montoAplicar, anticipoId, dto.cxcId, fechaHoyRD(), usuarioId)
       .catch(err => this.logger.error(`Asiento aplicar anticipo #${anticipoId}: ${err.message}`));
 
     return {

@@ -257,6 +257,9 @@ export class ActivosFijosService implements OnModuleInit {
     const [year, month] = periodo.split('-').map(Number);
     const fechaInicio = new Date(year, month - 1, 1);
     const fechaFin    = new Date(year, month, 0);
+    // 'YYYY-MM-DD' del último día del período — con getters locales, nunca
+    // toISOString() (correría el día si el offset del servidor no fuera 0).
+    const fechaFinStr = `${fechaFin.getFullYear()}-${String(fechaFin.getMonth() + 1).padStart(2, '0')}-${String(fechaFin.getDate()).padStart(2, '0')}`;
 
     const activos = await this.activoRepository.find({
       where: { estado: EstadoActivo.ACTIVO, isActive: true, empresaId },
@@ -318,6 +321,7 @@ export class ActivosFijosService implements OnModuleInit {
     await this.asientosService.asientoDepreciacion(
       Number(totalDepreciacion.toFixed(2)),
       periodo,
+      fechaFinStr,
       userId,
     );
 

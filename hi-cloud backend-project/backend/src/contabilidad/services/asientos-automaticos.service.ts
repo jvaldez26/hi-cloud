@@ -142,6 +142,17 @@ export class AsientosAutomaticosService {
       tipoOrigen:      TipoOrigenAsiento;
       referenciaId:    number;
       referenciaFolio: string;
+      // P3 BLOQUE 3 — fecha del documento origen, NUNCA new Date() ni
+      // .toISOString(). String 'YYYY-MM-DD' (o 'YYYY-MM-DDTHH:mm:ssZ', la
+      // columna es `type: 'date'` y trunca la hora igual). Requerido a
+      // propósito: antes de este bloque esta función siempre usaba
+      // new Date() del servidor (UTC), así que una venta de las 8pm en RD
+      // se asentaba con fecha del día siguiente — eso corre las ventas de
+      // fin de mes al mes siguiente en los reportes fiscales. Hacerlo
+      // requerido (no opcional con fallback a fechaHoyRD()) obliga a que
+      // cada uno de los ~20 callers piense de dónde sale su fecha, en vez
+      // de heredar en silencio la del servidor.
+      fecha:           string;
       userId:          number;
       lineas: Array<{ codigo: string; descripcion: string; debe: number; haber: number }>;
     },
@@ -253,7 +264,7 @@ export class AsientosAutomaticosService {
     const asientoData = {
       ...(this.eid ? { empresaId: this.eid } : {}),
       numero,
-      fecha:           new Date(),
+      fecha:           params.fecha as unknown as Date, // string 'YYYY-MM-DD' crudo del caller, nunca new Date(string)
       descripcion:     params.descripcion,
       tipoOrigen:      params.tipoOrigen,
       referenciaId:    params.referenciaId,
@@ -297,6 +308,7 @@ export class AsientosAutomaticosService {
     subtotal: number,
     iva: number,
     folio: string,
+    fecha: string, // factura.fecha — nunca new Date() del servidor, ver _crearAsientoContabilizado
     userId: number,
     retenciones?: { retItbis?: number; retIsr?: number; netoCobrar?: number },
   ): Promise<void> {
@@ -340,6 +352,7 @@ export class AsientosAutomaticosService {
         tipoOrigen:      TipoOrigenAsiento.FACTURA,
         referenciaId:    facturaId,
         referenciaFolio: folio,
+        fecha,
         userId,
         lineas,
       });
@@ -366,6 +379,7 @@ export class AsientosAutomaticosService {
     subtotal: number,
     itbis: number,
     folio: string,
+    fecha: string, // compra.fecha
     userId: number,
     retenciones?: { montoItbis?: number; montoIsr?: number; netoPagar?: number },
   ): Promise<void> {
@@ -393,6 +407,7 @@ export class AsientosAutomaticosService {
         tipoOrigen:      TipoOrigenAsiento.COMPRA,
         referenciaId:    compraId,
         referenciaFolio: folio,
+        fecha,
         userId,
         lineas,
       });
@@ -421,6 +436,7 @@ export class AsientosAutomaticosService {
     monto: number,
     pagoId: number,
     cxcId: number,
+    fecha: string, // fecha del pago (dto.fechaPago del caller, con fallback a fechaHoyRD() si no vino)
     userId: number,
   ): Promise<void> {
     const folio = `PAGO-${pagoId}`;
@@ -430,6 +446,7 @@ export class AsientosAutomaticosService {
         tipoOrigen:      TipoOrigenAsiento.COBRO,
         referenciaId:    pagoId,
         referenciaFolio: folio,
+        fecha,
         userId,
         lineas: [
           { codigo: COD.BANCOS,    descripcion: `Cobro recibido CxC #${cxcId} — pago #${pagoId}`, debe: monto, haber: 0 },
@@ -464,6 +481,7 @@ export class AsientosAutomaticosService {
     tasaOrig: number,
     pagoId:   number,
     cxcId:    number,
+    fecha:    string, // fecha del pago
     userId:   number,
   ): Promise<void> {
     const montoReal = parseFloat((montoME * tasaHoy).toFixed(2));
@@ -488,6 +506,7 @@ export class AsientosAutomaticosService {
         tipoOrigen:      TipoOrigenAsiento.COBRO,
         referenciaId:    pagoId,
         referenciaFolio: folio,
+        fecha,
         userId,
         lineas,
       });
@@ -519,6 +538,7 @@ export class AsientosAutomaticosService {
     tasaOrig: number,
     pagoId:   number,
     cxpId:    number,
+    fecha:    string, // fecha del pago
     userId:   number,
   ): Promise<void> {
     const montoReal = parseFloat((montoME * tasaHoy).toFixed(2));
@@ -543,6 +563,7 @@ export class AsientosAutomaticosService {
         tipoOrigen:      TipoOrigenAsiento.PAGO,
         referenciaId:    pagoId,
         referenciaFolio: folio,
+        fecha,
         userId,
         lineas,
       });
@@ -568,6 +589,7 @@ export class AsientosAutomaticosService {
     monto:     number,
     reciboId:  number,
     metodoPago: string,
+    fecha:     string, // recibo.fecha
     userId:    number,
   ): Promise<void> {
     const cuentaDebito = metodoPago === 'efectivo' ? COD.CAJA : COD.BANCOS;
@@ -577,6 +599,7 @@ export class AsientosAutomaticosService {
         tipoOrigen:      TipoOrigenAsiento.COBRO,
         referenciaId:    reciboId,
         referenciaFolio: `REC-${reciboId}`,
+        fecha,
         userId,
         lineas: [
           { codigo: cuentaDebito, descripcion: `Ingreso recibo #${reciboId}`, debe: monto, haber: 0    },
@@ -605,6 +628,7 @@ export class AsientosAutomaticosService {
     monto: number,
     pagoId: number,
     cxpId: number,
+    fecha: string, // fecha del pago
     userId: number,
   ): Promise<void> {
     const folio = `PAGOCXP-${pagoId}`;
@@ -614,6 +638,7 @@ export class AsientosAutomaticosService {
         tipoOrigen:      TipoOrigenAsiento.PAGO,
         referenciaId:    pagoId,
         referenciaFolio: folio,
+        fecha,
         userId,
         lineas: [
           { codigo: COD.PROVEEDORES, descripcion: `Cancelación CxP #${cxpId} — pago #${pagoId}`,    debe: monto, haber: 0 },
@@ -645,6 +670,7 @@ export class AsientosAutomaticosService {
     totalISR: number,
     totalTSSPatronal: number,
     periodo: string,
+    fechaPago: string, // periodo.fechaPago — "periodo" arriba es la etiqueta ('Septiembre 2026'), no una fecha
     userId: number,
   ): Promise<void> {
     try {
@@ -654,6 +680,7 @@ export class AsientosAutomaticosService {
         tipoOrigen:      TipoOrigenAsiento.AJUSTE,
         referenciaId:    periodoId,
         referenciaFolio: `NOM-${periodo}`,
+        fecha:           fechaPago,
         userId,
         lineas: [
           { codigo: COD.SUELDOS,         descripcion: `Sueldos nómina ${periodo}`,        debe: totalBruto,      haber: 0 },
@@ -683,6 +710,7 @@ export class AsientosAutomaticosService {
   async asientoDepreciacion(
     montoTotal: number,
     periodo: string,
+    fecha: string, // último día de "periodo" ('YYYY-MM'), calculado por el caller sin new Date(string)/toISOString()
     userId: number,
   ): Promise<void> {
     try {
@@ -691,6 +719,7 @@ export class AsientosAutomaticosService {
         tipoOrigen:      TipoOrigenAsiento.AJUSTE,
         referenciaId:    0,
         referenciaFolio: `DEP-${periodo}`,
+        fecha,
         userId,
         lineas: [
           { codigo: '6.2.1.01', descripcion: `Gasto depreciación ${periodo}`,  debe: montoTotal, haber: 0 },
@@ -720,6 +749,7 @@ export class AsientosAutomaticosService {
     subtotal: number,
     iva: number,
     numero: string,
+    fecha: string, // dev.fecha
     userId: number,
   ): Promise<void> {
     try {
@@ -728,6 +758,7 @@ export class AsientosAutomaticosService {
         tipoOrigen:      TipoOrigenAsiento.AJUSTE,
         referenciaId:    devolucionId,
         referenciaFolio: numero,
+        fecha,
         userId,
         lineas: [
           { codigo: COD.VENTAS,          descripcion: `Reversa venta ${numero}`,   debe: subtotal, haber: 0 },
@@ -758,6 +789,7 @@ export class AsientosAutomaticosService {
     monto:        number,
     itbis:        number,
     descripcion:  string,
+    fecha:        string, // dto.fecha del gasto
     userId:       number,
     cuentaGasto = '6.1.2.04', // Gastos Generales — puede personalizarse por categoría
   ): Promise<void> {
@@ -773,6 +805,7 @@ export class AsientosAutomaticosService {
         tipoOrigen:      TipoOrigenAsiento.AJUSTE,
         referenciaId:    gastoId,
         referenciaFolio: `GST-${gastoId}`,
+        fecha,
         userId,
         lineas,
       });
@@ -800,6 +833,7 @@ export class AsientosAutomaticosService {
     monto:      number,
     anticipoId: number,
     tipoPago:   string,
+    fecha:      string, // fechaHoyRD() del caller — el anticipo siempre se registra "hoy", nunca backdateado
     userId:     number,
   ): Promise<number | null> {
     const cuentaDebito = tipoPago === 'efectivo' ? COD.CAJA : COD.BANCOS;
@@ -809,6 +843,7 @@ export class AsientosAutomaticosService {
         tipoOrigen:      TipoOrigenAsiento.COBRO,
         referenciaId:    anticipoId,
         referenciaFolio: `ANT-${anticipoId}`,
+        fecha,
         userId,
         lineas: [
           { codigo: cuentaDebito,            descripcion: `Ingreso anticipo #${anticipoId}`,           debe: monto, haber: 0    },
@@ -840,6 +875,7 @@ export class AsientosAutomaticosService {
     monto:      number,
     anticipoId: number,
     cxcId:      number,
+    fecha:      string, // fechaHoyRD() del caller — la aplicación ocurre "ahora", AplicarAnticipoDto no trae fecha
     userId:     number,
   ): Promise<void> {
     try {
@@ -848,6 +884,7 @@ export class AsientosAutomaticosService {
         tipoOrigen:      TipoOrigenAsiento.COBRO,
         referenciaId:    anticipoId,
         referenciaFolio: `ANT-${anticipoId}`,
+        fecha,
         userId,
         lineas: [
           { codigo: COD.ANTICIPOS_CLIENTES, descripcion: `Aplicar anticipo #${anticipoId}`,   debe: monto, haber: 0    },
@@ -877,6 +914,7 @@ export class AsientosAutomaticosService {
     cxcId:     number,
     reciboId:  number,
     tipo:      string,
+    fecha:     string, // fecha del EVENTO de reversión (fechaHoyRD()), no la del recibo original — mismo criterio que revertirAsiento()
     userId:    number,
   ): Promise<void> {
     try {
@@ -885,6 +923,7 @@ export class AsientosAutomaticosService {
         tipoOrigen:      TipoOrigenAsiento.AJUSTE,
         referenciaId:    reciboId,
         referenciaFolio: `REV-${reciboId}`,
+        fecha,
         userId,
         lineas: [
           { codigo: COD.CLIENTES, descripcion: `Reversar cobro CxC #${cxcId}`, debe: monto, haber: 0    },
@@ -918,6 +957,7 @@ export class AsientosAutomaticosService {
     ordenId: number,
     costo:   number,
     numero:  string,
+    fecha:   string, // dto.fechaRealizada de la orden (o fechaHoyRD() del caller si no vino)
     userId:  number,
   ): Promise<void> {
     try {
@@ -926,6 +966,7 @@ export class AsientosAutomaticosService {
         tipoOrigen:      TipoOrigenAsiento.AJUSTE,
         referenciaId:    ordenId,
         referenciaFolio: numero,
+        fecha,
         userId,
         lineas: [
           { codigo: '6.1.2.04',       descripcion: `Gasto mantenimiento ${numero}`, debe: costo, haber: 0 },
@@ -955,6 +996,7 @@ export class AsientosAutomaticosService {
     tipoOrigen: TipoOrigenAsiento;
     referenciaId: number;
     referenciaFolio: string;
+    fecha: string; // 'YYYY-MM-DD' del documento origen — P3 Bloque 3, ver _crearAsientoContabilizado
     userId: number;
     lineas: Array<{ codigo: string; descripcion: string; debe: number; haber: number }>;
   }): Promise<import('../entities/asiento-contable.entity').AsientoContable | null> {
@@ -970,6 +1012,7 @@ export class AsientosAutomaticosService {
     numero:       string,
     monto:        number,
     formaPago:    string,
+    fecha:        string, // data.fechaDesembolso
     userId:       number,
   ): Promise<void> {
     const cuentaHaber = formaPago === 'efectivo' ? COD.CAJA : COD.BANCOS;
@@ -979,6 +1022,7 @@ export class AsientosAutomaticosService {
         tipoOrigen:      TipoOrigenAsiento.PRESTAMISTA,
         referenciaId:    prestamoId,
         referenciaFolio: numero,
+        fecha,
         userId,
         lineas: [
           { codigo: '1.1.2.10', descripcion: `Cartera crédito ${numero}`,  debe: monto, haber: 0     },
@@ -1010,6 +1054,7 @@ export class AsientosAutomaticosService {
     capitalAplicado:  number,
     interesAplicado:  number,
     moraAplicada:     number,
+    fecha:          string, // fechaHoyRD() del caller — RegistrarPagoDto no trae fecha, el pago siempre es "ahora"
     userId:         number,
   ): Promise<void> {
     const totalPago = capitalAplicado + interesAplicado + moraAplicada;
@@ -1030,6 +1075,7 @@ export class AsientosAutomaticosService {
         tipoOrigen:      TipoOrigenAsiento.PRESTAMISTA,
         referenciaId:    pagoId,
         referenciaFolio: numeroPago,
+        fecha,
         userId,
         lineas,
       });
@@ -1061,6 +1107,7 @@ export class AsientosAutomaticosService {
       concepto:    string;
       montoDOP:    number;
       compraFolio: string;
+      fecha:       string; // compra.fecha (propagada desde compras.service.ts) o fechaHoyRD() en el retroactivo
       usuarioId:   number;
     },
     manager?: EntityManager,
@@ -1092,6 +1139,7 @@ export class AsientosAutomaticosService {
           tipoOrigen:      TipoOrigenAsiento.IMPORTACION,
           referenciaId:    params.gastoId,
           referenciaFolio: `GIMP-${params.gastoId}`,
+          fecha:           params.fecha,
           userId:          params.usuarioId,
           lineas,
         },
@@ -1115,6 +1163,7 @@ export class AsientosAutomaticosService {
         tipoOrigen:      TipoOrigenAsiento.IMPORTACION,
         referenciaId:    params.gastoId,
         referenciaFolio: `GIMP-${params.gastoId}`,
+        fecha:           params.fecha,
         userId:          params.usuarioId,
         lineas,
       });
@@ -1148,6 +1197,7 @@ export class AsientosAutomaticosService {
     subtotal: number,
     iva:      number,
     numero:   string,
+    fecha:    string, // nc.fecha
     userId:   number,
   ): Promise<void> {
     try {
@@ -1156,6 +1206,7 @@ export class AsientosAutomaticosService {
         tipoOrigen:      TipoOrigenAsiento.NOTA_CREDITO,
         referenciaId:    ncId,
         referenciaFolio: numero,
+        fecha,
         userId,
         lineas: [
           { codigo: COD.VENTAS,          descripcion: `Reversa venta — NC ${numero}`, debe: subtotal, haber: 0 },
@@ -1190,6 +1241,7 @@ export class AsientosAutomaticosService {
     subtotal: number,
     iva:      number,
     numero:   string,
+    fecha:    string, // nd.fecha
     userId:   number,
   ): Promise<void> {
     try {
@@ -1198,6 +1250,7 @@ export class AsientosAutomaticosService {
         tipoOrigen:      TipoOrigenAsiento.NOTA_DEBITO,
         referenciaId:    ndId,
         referenciaFolio: numero,
+        fecha,
         userId,
         lineas: [
           { codigo: COD.CLIENTES,        descripcion: `Cta. por cobrar — ND ${numero}`,   debe: total,    haber: 0 },
@@ -1232,6 +1285,7 @@ export class AsientosAutomaticosService {
     subtotal: number,
     iva:      number,
     numero:   string,
+    fecha:    string, // ncc.fecha
     userId:   number,
   ): Promise<void> {
     try {
@@ -1240,6 +1294,7 @@ export class AsientosAutomaticosService {
         tipoOrigen:      TipoOrigenAsiento.NOTA_CREDITO_COMPRA,
         referenciaId:    nccId,
         referenciaFolio: numero,
+        fecha,
         userId,
         lineas: [
           { codigo: COD.PROVEEDORES,   descripcion: `Devolución a proveedor — NCC ${numero}`, debe: total, haber: 0 },

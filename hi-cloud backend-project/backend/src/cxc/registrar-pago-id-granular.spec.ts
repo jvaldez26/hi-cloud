@@ -60,7 +60,7 @@ describe('CxCService.registrarPago — asiento etiquetado por el pago, no por la
 
     await svc.registrarPago(47, { monto: 400, metodoPago: 'efectivo' }, 5);
 
-    expect(asientosService.asientoCobro).toHaveBeenCalledWith(400, 888, 47, 5);
+    expect(asientosService.asientoCobro).toHaveBeenCalledWith(400, 888, 47, expect.any(String), 5);
   });
 
   it('asientoCobroME recibe el id del pago recién creado (moneda extranjera)', async () => {
@@ -72,6 +72,6 @@ describe('CxCService.registrarPago — asiento etiquetado por el pago, no por la
 
     await svc.registrarPago(48, { monto: 100, metodoPago: 'efectivo', tipoCambio: 59 }, 5);
 
-    expect(asientosService.asientoCobroME).toHaveBeenCalledWith(100, 'USD', 59, 58, 889, 48, 5);
+    expect(asientosService.asientoCobroME).toHaveBeenCalledWith(100, 'USD', 59, 58, 889, 48, expect.any(String), 5);
   });
 });

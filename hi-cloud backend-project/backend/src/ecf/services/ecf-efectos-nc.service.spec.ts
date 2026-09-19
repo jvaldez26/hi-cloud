@@ -88,7 +88,7 @@ const ecfBase = {
 
 describe('EcfEfectosNcService — asiento de la NC', () => {
   it('codigoMod=1 (total), NC sin devolución: cancela la factura y genera el asiento con los montos de la NC', async () => {
-    const nc = { id: 1, facturaOriginalId: 10, total: 1180, subtotal: 1000, iva: 180, numero: 'NC-1', usuarioId: 5 };
+    const nc = { id: 1, facturaOriginalId: 10, total: 1180, subtotal: 1000, iva: 180, numero: 'NC-1', fecha: '2026-09-19', usuarioId: 5 };
     const { svc, facturaRepoEm, asientosService } = makeService({ nc, devRow: null });
 
     await svc.aplicarEfectosPorEstado({ ...ecfBase, codigoModificacion: 1 } as any, EstadoDGII.ACEPTADO);
@@ -97,17 +97,17 @@ describe('EcfEfectosNcService — asiento de la NC', () => {
       { id: 10, empresaId: 7 },
       expect.objectContaining({ estado: FacturaEstado.CANCELADA }),
     );
-    expect(asientosService.asientoNotaCredito).toHaveBeenCalledWith(1, 1180, 1000, 180, 'NC-1', 5);
+    expect(asientosService.asientoNotaCredito).toHaveBeenCalledWith(1, 1180, 1000, 180, 'NC-1', '2026-09-19', 5);
   });
 
   it('codigoMod=3 (parcial), NC sin devolución: ajusta la CxC y genera el asiento con los montos de la NC', async () => {
-    const nc = { id: 2, facturaOriginalId: 11, total: 354, subtotal: 300, iva: 54, numero: 'NC-2', usuarioId: 6 };
+    const nc = { id: 2, facturaOriginalId: 11, total: 354, subtotal: 300, iva: 54, numero: 'NC-2', fecha: '2026-09-19', usuarioId: 6 };
     const cxcRow = { id: 500, montoPendiente: '1180.00', montoOriginal: '1180.00', montoPagado: '0.00' };
     const { svc, asientosService } = makeService({ nc, devRow: null, cxcRow });
 
     await svc.aplicarEfectosPorEstado({ ...ecfBase, codigoModificacion: 3 } as any, EstadoDGII.ACEPTADO);
 
-    expect(asientosService.asientoNotaCredito).toHaveBeenCalledWith(2, 354, 300, 54, 'NC-2', 6);
+    expect(asientosService.asientoNotaCredito).toHaveBeenCalledWith(2, 354, 300, 54, 'NC-2', '2026-09-19', 6);
   });
 
   it('NC que viene de una devolución: aplica los efectos pero NO genera un segundo asiento', async () => {

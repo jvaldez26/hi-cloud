@@ -13,6 +13,7 @@ import { PaginationDto } from '../common/dto/pagination.dto';
 import { TenantService } from '../tenant/tenant.service';
 import { AsientosAutomaticosService } from '../contabilidad/services/asientos-automaticos.service';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 interface RepuestoUsado { descripcion: string; costo: number }
 
@@ -110,7 +111,7 @@ export class MantenimientoService {
 
     // Asiento contable fire-and-forget
     if (dto.costoReal && dto.costoReal > 0) {
-      this.asientosService.asientoMantenimiento(id, dto.costoReal, o.numero, userId)
+      this.asientosService.asientoMantenimiento(id, dto.costoReal, o.numero, dto.fechaRealizada ?? fechaHoyRD(), userId)
         .catch(err => this.logger.warn(`Asiento MNT ${o.numero}: ${(err as Error).message}`));
     }
 

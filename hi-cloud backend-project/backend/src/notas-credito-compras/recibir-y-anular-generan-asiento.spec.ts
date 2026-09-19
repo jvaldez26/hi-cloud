@@ -47,14 +47,14 @@ describe('NotasCreditoComprasService — recibir genera asiento, anular lo revie
   it('recibir llama asientoNotaCreditoCompra con los montos de la NCC', async () => {
     const ncc = {
       id: 9, empresaId: 7, numero: 'NCC-9', estado: EstadoNCCompra.BORRADOR,
-      total: 236, subtotal: 200, iva: 36, usuarioId: 5, detalles: [],
+      total: 236, subtotal: 200, iva: 36, fecha: '2026-09-19', usuarioId: 5, detalles: [],
     };
     const { svc, nccRepoEm, asientosService } = makeService(ncc);
 
     await svc.recibir(9);
 
     expect(nccRepoEm.update).toHaveBeenCalledWith(9, { estado: EstadoNCCompra.RECIBIDA });
-    expect(asientosService.asientoNotaCreditoCompra).toHaveBeenCalledWith(9, 236, 200, 36, 'NCC-9', 5);
+    expect(asientosService.asientoNotaCreditoCompra).toHaveBeenCalledWith(9, 236, 200, 36, 'NCC-9', '2026-09-19', 5);
   });
 
   it('no se puede recibir una NCC que no está en BORRADOR', async () => {

@@ -10,6 +10,7 @@ import { AjustarLineasDto } from './dto/ajustar-lineas.dto';
 import { CompraDetalle } from '../compras/entities/compra-detalle.entity';
 import { Compra, CompraEstado } from '../compras/entities/compra.entity';
 import { Movimiento, TipoMovimiento } from '../inventario/entities/movimiento.entity';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 import { Producto } from '../productos/entities/producto.entity';
 import { AsientosAutomaticosService } from '../contabilidad/services/asientos-automaticos.service';
 import { TenantService } from '../tenant/tenant.service';
@@ -334,6 +335,7 @@ export class GastosImportacionService {
     empresaId: number,
     usuarioId: number,
     compraFolio: string,
+    fecha: string, // compra.fecha — P3 Bloque 3, ver AsientosAutomaticosService
   ): Promise<void> {
     const gastos = await this.gastoRepo.find({
       where:   { compraId, empresaId, estado: EstadoGasto.PENDIENTE, ajusteRetroactivo: false },
@@ -373,6 +375,7 @@ export class GastosImportacionService {
         concepto:     gasto.concepto,
         montoDOP,
         compraFolio,
+        fecha,
         usuarioId,
       });
 
@@ -608,6 +611,7 @@ export class GastosImportacionService {
           concepto:    gasto.concepto,
           montoDOP:    Number(gasto.montoDOP),
           compraFolio: `retro-${gasto.compraId}`,
+          fecha:       fechaHoyRD(), // ajuste retroactivo: no hay fecha de documento que preservar, ocurre "ahora"
           usuarioId,
         },
         qr.manager,

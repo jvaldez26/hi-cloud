@@ -210,6 +210,7 @@ export class NotasDebitoService {
       Number(nd.subtotal),
       Number(nd.iva),
       nd.numero,
+      nd.fecha as unknown as string,
       nd.usuarioId,
     );
 

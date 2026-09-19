@@ -971,6 +971,7 @@ export class NominaService {
       Number(periodo.totalISR),
       Number(periodo.totalTSSPatronal),
       periodo.periodo,
+      periodo.fechaPago as unknown as string,
       userId,
     );
 

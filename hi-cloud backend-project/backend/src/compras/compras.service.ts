@@ -470,7 +470,7 @@ export class ComprasService {
 
       // Aplicar gastos de importación: persistir lineas, actualizar detalle, crear asientos
       await this.gastosImportacionService.aplicarGastosPendientes(
-        compra.id, compra.detalles, empresaId, compra.usuarioId, compra.folio,
+        compra.id, compra.detalles, empresaId, compra.usuarioId, compra.folio, compra.fecha as unknown as string,
       );
 
       // 2. Crear cuenta por pagar solo si tipoPago = 'credito'
@@ -485,6 +485,7 @@ export class ComprasService {
         Number(compra.subtotal),
         Number(compra.itbis),
         compra.folio,
+        compra.fecha as unknown as string,
         compra.usuarioId,
         compra.retieneItbis || compra.retieneIsr
           ? {
@@ -612,7 +613,7 @@ export class ComprasService {
     // Si la compra llega a RECIBIDA final, aplicar gastos de importación pendientes
     if (todosCompletos) {
       await this.gastosImportacionService.aplicarGastosPendientes(
-        compra.id, compra.detalles, empresaIdRecibir, usuario.id, compra.folio,
+        compra.id, compra.detalles, empresaIdRecibir, usuario.id, compra.folio, compra.fecha as unknown as string,
       );
     }
 
@@ -630,6 +631,7 @@ export class ComprasService {
         Number(compra.subtotal),
         Number(compra.itbis),
         compra.folio,
+        compra.fecha as unknown as string,
         usuario.id,
         compra.retieneItbis || compra.retieneIsr
           ? {

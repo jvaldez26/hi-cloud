@@ -110,6 +110,10 @@ export class RecibosCobrosService {
   async crear(dto: CreateReciboDto, usuarioId: number) {
     const empresaId = this.tenantSvc.getEmpresaId();
     const monto     = Number(dto.monto);
+    // No confiar en que el controller siempre puebla dto.fecha (hoy lo hace,
+    // pero crear() es un método de servicio — otro caller futuro podría no
+    // pasar por ahí). fechaHoyRD(), nunca new Date().
+    const fecha     = dto.fecha ?? fechaHoyRD();
 
     // ── 0. Resolver moneda: si hay facturaId, heredarla de la factura ─
     let moneda = dto.moneda ?? 'DOP';
@@ -192,6 +196,7 @@ export class RecibosCobrosService {
     const recibo = await this.repo.save(
       this.repo.create({
         ...dto,
+        fecha,
         empresaId,
         numero,
         moneda,
@@ -230,7 +235,7 @@ export class RecibosCobrosService {
         const pagoGuardado = await pagoRepo.save(pagoRepo.create({
           cuentaPorCobrarId: cxc!.id,
           monto:      montoParaCxc,
-          fecha:      dto.fecha ? new Date(dto.fecha) : new Date(),
+          fecha,
           metodoPago: METODO_MAP[dto.metodoPago] ?? MetodoPago.OTRO,
           referencia: dto.referencia,
           notas:      `Recibo ${recibo.numero}${dto.notas ? ' — ' + dto.notas : ''}`,
@@ -261,7 +266,7 @@ export class RecibosCobrosService {
       });
 
       // Asiento contable: DÉBITO Bancos, CRÉDITO Clientes (solo por el monto aplicado a CxC)
-      await this.asientosService.asientoCobro(montoParaCxc, pagoId, cxc.id, usuarioId).catch(err =>
+      await this.asientosService.asientoCobro(montoParaCxc, pagoId, cxc.id, fecha, usuarioId).catch(err =>
         this.logger.error(`Error asiento cobro ${recibo.numero} — pago #${pagoId}: ${err.message}`),
       );
 
@@ -308,7 +313,7 @@ export class RecibosCobrosService {
           );
 
           // Asiento excedente: DÉBITO Caja/Banco, CRÉDITO Anticipos de Clientes
-          await this.asientosService.asientoAnticipo(excedente, anticipo.id, dto.metodoPago, usuarioId)
+          await this.asientosService.asientoAnticipo(excedente, anticipo.id, dto.metodoPago, hoy, usuarioId)
             .then(async (asientoId) => { if (asientoId) await this.anticipoRepo.update(anticipo.id, { asientoId }); })
             .catch(err => this.logger.error(`Asiento anticipo excedente ${anticipo.numero}: ${err.message}`));
 
@@ -322,7 +327,7 @@ export class RecibosCobrosService {
       // Sin CxC — anticipo o cobro genérico
       // Asiento: DÉBITO Caja/Bancos, CRÉDITO Clientes
       await this.asientosService.asientoRecibo(
-        monto, recibo.id, dto.metodoPago, usuarioId,
+        monto, recibo.id, dto.metodoPago, fecha, usuarioId,
       ).catch(err =>
         this.logger.error(`Error asiento recibo ${recibo.numero}: ${err.message}`),
       );
@@ -515,7 +520,7 @@ export class RecibosCobrosService {
 
         // Asiento de reversión: CRÉDITO Bancos, DÉBITO Clientes (inverso del cobro)
         await this.asientosService.asientoReversion(
-          monto, recibo.cxcId, recibo.id, 'recibo', recibo.usuarioId,
+          monto, recibo.cxcId, recibo.id, 'recibo', fechaHoyRD(), recibo.usuarioId,
         ).catch(err => this.logger.error(`Error asiento reversión ${recibo.numero}: ${err.message}`));
       }
     }

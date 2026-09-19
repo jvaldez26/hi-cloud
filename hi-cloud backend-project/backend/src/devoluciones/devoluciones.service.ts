@@ -345,6 +345,7 @@ export class DevolucionesService {
       Number(dev.subtotal),
       Number(dev.iva),
       dev.numero,
+      dev.fecha as unknown as string,
       usuario.id,
     );
 

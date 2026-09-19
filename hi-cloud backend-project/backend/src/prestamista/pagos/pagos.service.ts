@@ -5,6 +5,7 @@ import { AsientosAutomaticosService } from '../../contabilidad/services/asientos
 import { EmitirECFUseCase } from '../../ecf/use-cases/emitir-ecf.use-case';
 import { DocumentoOrigenTipo } from '../../ecf/entities/ecf.entity';
 import { TenantService } from '../../tenant/tenant.service';
+import { fechaHoyRD } from '../../common/utils/fecha-local.util';
 
 @Injectable()
 export class PagosService {
@@ -202,7 +203,7 @@ export class PagosService {
       pago.id, numero, prestamo.numero,
       data.metodoPago ?? 'transferencia',
       aplicadoCapital, aplicadoInteres, aplicadoMora,
-      uid ?? 0,
+      fechaHoyRD(), uid ?? 0,
     ).catch(err => this.logger.error(`Asiento pago ${numero}: ${err.message}`));
 
     if (aplicadoInteres > 0) {

@@ -107,6 +107,7 @@ export class GastosService {
       await this.asientosService.asientoGasto(
         gasto.id, total, dto.monto, itbis,
         `${info.emoji} ${info.label}: ${dto.descripcion}`,
+        dto.fecha, // string crudo — no la variable local `fecha`, que ya es new Date(dto.fecha)
         dto.userId,
       );
     } catch (err) {

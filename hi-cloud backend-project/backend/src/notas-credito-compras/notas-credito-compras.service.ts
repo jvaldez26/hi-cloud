@@ -130,7 +130,8 @@ export class NotasCreditoComprasService {
     // Asiento propio: reversa proporcional de la compra — Debe Proveedores /
     // Haber Inventario + ITBIS Crédito Fiscal.
     await this.asientosService.asientoNotaCreditoCompra(
-      ncc.id, Number(ncc.total), Number(ncc.subtotal), Number(ncc.iva), ncc.numero, ncc.usuarioId,
+      ncc.id, Number(ncc.total), Number(ncc.subtotal), Number(ncc.iva), ncc.numero,
+      ncc.fecha as unknown as string, ncc.usuarioId,
     );
 
     return this.findOne(id);

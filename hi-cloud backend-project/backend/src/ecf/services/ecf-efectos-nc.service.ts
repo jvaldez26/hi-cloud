@@ -80,7 +80,7 @@ export class EcfEfectosNcService {
     // proyecto — nunca dentro de la transacción de negocio).
     let asientoNcAGenerar: {
       ncId: number; total: number; subtotal: number; iva: number;
-      numero: string; usuarioId: number;
+      numero: string; fecha: string; usuarioId: number;
     } | null = null;
 
     // Poblado dentro de la transacción cuando esta NC (código 1 o 3, la
@@ -185,6 +185,7 @@ export class EcfEfectosNcService {
               subtotal:  Number(nc.subtotal),
               iva:       Number(nc.iva),
               numero:    nc.numero,
+              fecha:     nc.fecha as unknown as string,
               usuarioId: nc.usuarioId,
             };
 
@@ -272,7 +273,7 @@ export class EcfEfectosNcService {
     // leer el valor real que sí quedó asignado en tiempo de ejecución.
     const pendiente = asientoNcAGenerar as {
       ncId: number; total: number; subtotal: number; iva: number;
-      numero: string; usuarioId: number;
+      numero: string; fecha: string; usuarioId: number;
     } | null;
     if (pendiente) {
       await this.asientosService.asientoNotaCredito(
@@ -281,6 +282,7 @@ export class EcfEfectosNcService {
         pendiente.subtotal,
         pendiente.iva,
         pendiente.numero,
+        pendiente.fecha,
         pendiente.usuarioId,
       );
     }
