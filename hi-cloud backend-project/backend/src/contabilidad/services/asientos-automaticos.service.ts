@@ -9,8 +9,12 @@ import { AsientoLinea } from '../entities/asiento-linea.entity';
 import { TenantService } from '../../tenant/tenant.service';
 import { reportServiceError } from '../../common/observability/sentry';
 
-// Códigos del plan de cuentas dominicano
-const COD = {
+// Códigos del plan de cuentas dominicano — exportado para que
+// contabilidad.service.ts pueda marcar estas cuentas como esCuentaSistema
+// (P3 Bloque 4): si un contador les cambia el código, este motor deja de
+// encontrarlas y el asiento correspondiente muere en silencio para toda
+// la empresa.
+export const COD = {
   CLIENTES:                '1.1.2.01',
   BANCOS:                  '1.1.1.03',
   CAJA:                    '1.1.1.02',

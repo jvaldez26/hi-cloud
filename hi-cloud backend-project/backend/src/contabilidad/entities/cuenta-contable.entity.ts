@@ -121,4 +121,18 @@ export class CuentaContable extends TenantBaseEntity {
    */
   @Column({ type: 'boolean', nullable: true })
   requiereNCF?: boolean;
+
+  /**
+   * P3 Bloque 4 — cuenta que el motor de asientos automáticos referencia
+   * por código (ver COD.* en asientos-automaticos.service.ts). Si un
+   * contador le cambia el código a una de estas, ese tipo de asiento deja
+   * de encontrar la cuenta y muere en silencio para toda la empresa —
+   * "cuenta no encontrada" ya se reporta a Sentry, pero el daño (ventas o
+   * compras sin asiento) ya está hecho. Nunca se expone en los DTO de
+   * crear/editar cuenta: solo el seed y la migración de datos la marcan;
+   * ContabilidadService bloquea editar el código y desactivar estas
+   * cuentas, pero el nombre y la descripción siguen siendo libres.
+   */
+  @Column({ default: false })
+  esCuentaSistema!: boolean;
 }

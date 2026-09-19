@@ -18,6 +18,7 @@ import {
   TIPOS_POR_ANEXO_IR2,
 } from '../entities/cuenta-contable.entity';
 import { sugerirTipoGasto606, sugerirRequiereNCF } from '../../declaraciones/dgii.constants';
+import { COD } from './asientos-automaticos.service';
 import {
   AsientoContable,
   EstadoAsiento,
@@ -43,6 +44,8 @@ interface SeedCuenta {
   tipoGasto606?: string;
   anexoIR2?: AnexoIR2;
   requiereNCF?: boolean;
+  // P3 Bloque 4 — se calcula en marcarCuentaSistema(), no se escribe a mano aquí abajo.
+  esCuentaSistema?: boolean;
 }
 
 const D = NaturalezaCuenta.DEUDORA;
@@ -193,9 +196,24 @@ function etiquetarFiscalmente(c: SeedCuenta): SeedCuenta {
   return { ...c, ...etiquetas };
 }
 
+// ── Cuentas del sistema (P3 Bloque 4) ───────────────────────────────────
+// Códigos que el motor de asientos automáticos referencia por CÓDIGO, no
+// por id (COD.* en asientos-automaticos.service.ts) — si un contador les
+// cambia el código, ese tipo de asiento deja de encontrar la cuenta y
+// muere en silencio para toda la empresa. 3 de los 20 valores de COD.*
+// (GANANCIA_CAMBIARIA, PERDIDA_CAMBIARIA, ISR_RET_POR_PAGAR) no existen
+// en este seed en absoluto — Set() los ignora sin más, no hay nada que
+// marcar para un código que no está en PLAN_CUENTAS_BASE.
+const CODIGOS_SISTEMA = new Set<string>(Object.values(COD));
+
+function marcarCuentaSistema(c: SeedCuenta): SeedCuenta {
+  return CODIGOS_SISTEMA.has(c.codigo) ? { ...c, esCuentaSistema: true } : c;
+}
+
 // Exportado solo para testearlo directamente (contabilidad-plan-cuentas-etiquetas.spec.ts)
 // — ningún otro módulo lo consume, el seed sigue siendo interno a este servicio.
-export const PLAN_CUENTAS: SeedCuenta[] = PLAN_CUENTAS_BASE.map(etiquetarFiscalmente);
+export const PLAN_CUENTAS: SeedCuenta[] =
+  PLAN_CUENTAS_BASE.map(etiquetarFiscalmente).map(marcarCuentaSistema);
 
 @Injectable()
 export class ContabilidadService implements OnModuleInit {
@@ -414,6 +432,16 @@ export class ContabilidadService implements OnModuleInit {
 
   async updateCuenta(id: number, dto: UpdateCuentaContableDto) {
     const actual = await this.findCuentaById(id);
+    // P3 Bloque 4: el código de una cuenta del sistema es lo que el motor
+    // de asientos automáticos usa para encontrarla (COD.* en
+    // asientos-automaticos.service.ts) — cambiarlo la vuelve invisible
+    // para ese motor sin que nadie lo note hasta que falte un asiento. El
+    // nombre y la descripción siguen editables sin restricción.
+    if (actual.esCuentaSistema && dto.codigo !== undefined && dto.codigo !== actual.codigo) {
+      throw new BadRequestException(
+        `"${actual.nombre}" es una cuenta del sistema — su código no se puede modificar (el motor de asientos automáticos la usa para contabilizar facturas, compras, cobros u otros documentos)`,
+      );
+    }
     await this.validarPadreYEtiquetas(dto, actual, id);
     await this.cuentaRepository.update(id, dto);
     return this.findCuentaById(id);
@@ -528,6 +556,14 @@ export class ContabilidadService implements OnModuleInit {
 
   async removeCuenta(id: number) {
     const c = await this.findCuentaById(id);
+    // P3 Bloque 4: desactivarla la vuelve invisible para findOne/find (que
+    // ya filtran isActive=true) — el motor de asientos automáticos
+    // dejaría de encontrarla igual que si le hubieran cambiado el código.
+    if (c.esCuentaSistema) {
+      throw new BadRequestException(
+        `"${c.nombre}" es una cuenta del sistema — no se puede desactivar (el motor de asientos automáticos depende de ella)`,
+      );
+    }
     const tieneLineas = await this.lineaRepository.count({ where: { cuentaContableId: id } });
     if (tieneLineas > 0) throw new BadRequestException('No se puede eliminar una cuenta con movimientos');
     await this.cuentaRepository.update(id, { isActive: false });
