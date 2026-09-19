@@ -29,4 +29,14 @@ export class AsientoLinea extends TenantBaseEntity {
 
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   haber!: number;
+
+  /**
+   * Selector de cuenta contable en formularios transaccionales (2026-09-19)
+   * — true cuando el usuario cambió esta línea a una cuenta distinta de la
+   * que el motor habría usado por defecto (categoría, config, etc.). El
+   * "quién" ya lo trae AsientoContable.userId; esto es el "fue a propósito".
+   * NULL/false en el resto de las líneas — el motor nunca lo marca solo.
+   */
+  @Column({ type: 'boolean', nullable: true })
+  cuentaManual?: boolean;
 }

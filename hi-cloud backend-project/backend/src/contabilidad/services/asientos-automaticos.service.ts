@@ -38,6 +38,51 @@ export const COD = {
   COSTO_VENTAS:            '5.1.1.01',  // Costo — Costo de Ventas de Bienes (AVCO, snapshot en factura_detalles.costoUnitario)
 } as const;
 
+/** Una línea de asiento antes de resolver su código contra el catálogo. */
+export interface LineaAsientoInput {
+  codigo: string;
+  descripcion: string;
+  debe: number;
+  haber: number;
+  /** true = el usuario eligió esta cuenta a propósito, distinta de la que el motor habría usado por defecto (auditoría). */
+  manual?: boolean;
+}
+
+/**
+ * Panel de vista previa del asiento (tarea 2026-09-19) — lo que devuelve
+ * `resolverLineasAsiento()`/`previsualizarLineas()`: la MISMA resolución de
+ * cuentas y las MISMAS validaciones (permiteMovimientos, partida doble) que
+ * usa `_crearAsientoContabilizado()` antes de persistir, para que la vista
+ * previa nunca pueda mostrar algo distinto de lo que el motor generaría de
+ * verdad — una sola fuente de verdad, sin réplica de lógica en el frontend.
+ */
+export interface PreviewAsientoLinea {
+  codigo: string;
+  nombre: string;
+  debe: number;
+  haber: number;
+}
+export interface PreviewAsientoResultado {
+  ok: boolean;
+  lineas: PreviewAsientoLinea[];
+  totalDebe: number;
+  totalHaber: number;
+  cuadrado: boolean;
+  /** Motivo legible cuando ok=false — "falta la cuenta X", "el asiento no cuadra", etc. Nunca falla en silencio. */
+  error?: string;
+}
+
+type ResolverLineasResultado =
+  | {
+      ok: true;
+      lineasResueltas: { cuenta: CuentaContable; descripcion: string; debe: number; haber: number; manual?: boolean }[];
+      totalDebe: number;
+      totalHaber: number;
+    }
+  | { ok: false; tipo: 'asiento_cuenta_no_encontrada'; codigoCuenta: string; mensaje: string }
+  | { ok: false; tipo: 'asiento_cuenta_agrupacion'; codigoCuenta: string; nombreCuenta: string; mensaje: string }
+  | { ok: false; tipo: 'asiento_descuadrado'; totalDebe: number; totalHaber: number; mensaje: string };
+
 @Injectable()
 export class AsientosAutomaticosService {
   private readonly logger = new Logger(AsientosAutomaticosService.name);
@@ -140,6 +185,112 @@ export class AsientosAutomaticosService {
     return total > 0 ? Number(total.toFixed(2)) : null;
   }
 
+  /**
+   * Resuelve las líneas de un asiento contra el catálogo (código → cuenta),
+   * SIN persistir nada — la misma resolución y las mismas validaciones
+   * (permiteMovimientos, partida doble) que antes vivían mezcladas con el
+   * guardado. Extraído para el panel de vista previa (2026-09-19): calcular
+   * un asiento sin guardarlo tiene que pasar por exactamente este código,
+   * no por una réplica en el frontend ni por una copia paralela aquí.
+   *
+   * No reporta nada a Sentry por su cuenta — un caller que solo está
+   * previsualizando (el usuario ni siquiera ha guardado el documento
+   * todavía) no es un fallo operacional; el reporte sigue siendo
+   * responsabilidad exclusiva de `_crearAsientoContabilizado()`, que sí
+   * representa un intento real de persistir.
+   */
+  private async resolverLineasAsiento(
+    lineas: LineaAsientoInput[],
+    manager?: EntityManager,
+  ): Promise<ResolverLineasResultado> {
+    // Una sola query para todas las cuentas del asiento en vez de N findOne
+    const codigos = [...new Set(lineas.map(l => l.codigo))];
+    const whereCondition: any = { codigo: In(codigos), isActive: true };
+    if (this.eid) whereCondition.empresaId = this.eid;
+
+    // Cuando el caller pasa un manager (transacción externa) lo usamos para que
+    // la lectura de cuentas participe de la misma transacción.
+    const cuentas = manager
+      ? await manager.find(CuentaContable, { where: whereCondition })
+      : await this.cuentaRepository.find({ where: whereCondition });
+
+    const cuentaMap = new Map(cuentas.map(c => [c.codigo, c]));
+
+    const lineasResueltas: { cuenta: CuentaContable; descripcion: string; debe: number; haber: number; manual?: boolean }[] = [];
+    for (const l of lineas) {
+      const cuenta = cuentaMap.get(l.codigo);
+      if (!cuenta) {
+        return {
+          ok: false, tipo: 'asiento_cuenta_no_encontrada', codigoCuenta: l.codigo,
+          mensaje: `Cuenta contable ${l.codigo} no encontrada — asiento omitido`,
+        };
+      }
+      // P3 BLOQUE 2 — permiteMovimientos. El motor automático nunca leía
+      // este flag y podía postear a una cuenta de agrupación (una que solo
+      // existe para sumar sus hijas, ej. "6.1 Gastos Operacionales"), lo que
+      // descuadra los subtotales del catálogo aunque el asiento en sí
+      // cuadre en partida doble. Mismo criterio que el camino manual
+      // (ContabilidadService.createAsiento()): si la cuenta no admite
+      // movimientos directos, se descarta el asiento completo — no solo la
+      // línea, porque un asiento con una línea faltante tampoco cuadraría.
+      if (!cuenta.permiteMovimientos) {
+        return {
+          ok: false, tipo: 'asiento_cuenta_agrupacion', codigoCuenta: l.codigo, nombreCuenta: cuenta.nombre,
+          mensaje: `Cuenta contable ${l.codigo} (${cuenta.nombre}) es de agrupación — asiento omitido`,
+        };
+      }
+      lineasResueltas.push({ cuenta, ...l });
+    }
+
+    const totalDebe  = lineasResueltas.reduce((s, l) => s + l.debe,  0);
+    const totalHaber = lineasResueltas.reduce((s, l) => s + l.haber, 0);
+
+    // P3 BLOQUE 1 — partida doble. El camino manual (contabilidad.service.ts
+    // createAsiento()) valida esto con el mismo umbral antes de persistir;
+    // este motor automático corre en el 100% de las operaciones (facturas,
+    // compras, cobros, pagos, nómina, reversas...) — un builder de líneas
+    // con un bug podía postear un asiento descuadrado sin que nadie se
+    // enterara hasta el cierre. Un asiento descuadrado en los libros es peor
+    // que ninguno.
+    if (Math.abs(totalDebe - totalHaber) > 0.01) {
+      return {
+        ok: false, tipo: 'asiento_descuadrado', totalDebe, totalHaber,
+        mensaje: `Asiento descuadrado: Debe ${totalDebe.toFixed(2)} vs Haber ${totalHaber.toFixed(2)} ` +
+          `(diferencia ${(totalDebe - totalHaber).toFixed(2)})`,
+      };
+    }
+
+    return { ok: true, lineasResueltas, totalDebe, totalHaber };
+  }
+
+  /**
+   * Vista previa de un asiento — misma resolución/validación que
+   * `_crearAsientoContabilizado()`, sin persistir nada. Usada por los
+   * métodos `previsualizarXxx()` de cada documento (gastos, compras, etc.)
+   * después de armar sus líneas con la MISMA lógica que su método
+   * `asientoXxx()` real — nunca una réplica en el frontend.
+   */
+  private async previsualizarLineas(lineas: LineaAsientoInput[]): Promise<PreviewAsientoResultado> {
+    const resultado = await this.resolverLineasAsiento(lineas);
+    if (!resultado.ok) {
+      return {
+        ok: false,
+        lineas: lineas.map(l => ({ codigo: l.codigo, nombre: '', debe: l.debe, haber: l.haber })),
+        totalDebe:  +lineas.reduce((s, l) => s + l.debe,  0).toFixed(2),
+        totalHaber: +lineas.reduce((s, l) => s + l.haber, 0).toFixed(2),
+        cuadrado:   false,
+        error:      resultado.mensaje,
+      };
+    }
+    return {
+      ok: true,
+      lineas: resultado.lineasResueltas.map(l => ({ codigo: l.cuenta.codigo, nombre: l.cuenta.nombre, debe: l.debe, haber: l.haber })),
+      totalDebe:  +resultado.totalDebe.toFixed(2),
+      totalHaber: +resultado.totalHaber.toFixed(2),
+      cuadrado:   true,
+    };
+  }
+
   private async _crearAsientoContabilizado(
     params: {
       descripcion:     string;
@@ -158,104 +309,46 @@ export class AsientosAutomaticosService {
       // de heredar en silencio la del servidor.
       fecha:           string;
       userId:          number;
-      lineas: Array<{ codigo: string; descripcion: string; debe: number; haber: number }>;
+      lineas: LineaAsientoInput[];
     },
     manager?: EntityManager,
   ): Promise<AsientoContable | null> {
-    // Una sola query para todas las cuentas del asiento en vez de N findOne
-    const codigos = [...new Set(params.lineas.map(l => l.codigo))];
-    const whereCondition: any = { codigo: In(codigos), isActive: true };
-    if (this.eid) whereCondition.empresaId = this.eid;
+    const resultado = await this.resolverLineasAsiento(params.lineas, manager);
 
-    // Cuando el caller pasa un manager (transacción externa) lo usamos para que
-    // la lectura de cuentas y los saves participen de la misma transacción.
-    const cuentas = manager
-      ? await manager.find(CuentaContable, { where: whereCondition })
-      : await this.cuentaRepository.find({ where: whereCondition });
-
-    const cuentaMap = new Map(cuentas.map(c => [c.codigo, c]));
-
-    const lineasResueltas: { cuenta: CuentaContable; descripcion: string; debe: number; haber: number }[] = [];
-    for (const l of params.lineas) {
-      const cuenta = cuentaMap.get(l.codigo);
-      if (!cuenta) {
-        this.logger.warn(`Cuenta ${l.codigo} no encontrada — asiento omitido`);
-        // Reportado aqui mismo (no en cada uno de los 18 callers) para que ninguno
-        // pueda omitirlo: falta una cuenta en el catalogo de la empresa y el
-        // documento origen (factura, compra, cobro...) se procesa igual sin asiento.
-        this.reportarFalloAsiento(
-          new Error(`Cuenta contable ${l.codigo} no encontrada — asiento omitido`),
-          'asiento_cuenta_no_encontrada',
-          {
-            tipoOrigen:      params.tipoOrigen,
-            referenciaId:    String(params.referenciaId),
-            referenciaFolio: params.referenciaFolio,
-            codigoCuenta:    l.codigo,
-          },
+    if (!resultado.ok) {
+      if (resultado.tipo === 'asiento_descuadrado') {
+        this.logger.error(
+          `Asiento ${params.tipoOrigen} ref=${params.referenciaId} (${params.referenciaFolio}) ` +
+          `DESCUADRADO — NO se persiste. Debe=${resultado.totalDebe.toFixed(2)} Haber=${resultado.totalHaber.toFixed(2)}`,
         );
-        return null;
-      }
-      // P3 BLOQUE 2 — permiteMovimientos. El motor automático nunca leía
-      // este flag y podía postear a una cuenta de agrupación (una que solo
-      // existe para sumar sus hijas, ej. "6.1 Gastos Operacionales"), lo que
-      // descuadra los subtotales del catálogo aunque el asiento en sí
-      // cuadre en partida doble. Mismo criterio que el camino manual
-      // (ContabilidadService.createAsiento()): si la cuenta no admite
-      // movimientos directos, se reporta a Sentry y se descarta el asiento
-      // completo — no solo la línea, porque un asiento con una línea
-      // faltante tampoco cuadraría.
-      if (!cuenta.permiteMovimientos) {
-        this.logger.warn(`Cuenta ${l.codigo} (${cuenta.nombre}) no permite movimientos directos — asiento omitido`);
-        this.reportarFalloAsiento(
-          new Error(`Cuenta contable ${l.codigo} (${cuenta.nombre}) es de agrupación — asiento omitido`),
-          'asiento_cuenta_agrupacion',
-          {
-            tipoOrigen:      params.tipoOrigen,
-            referenciaId:    String(params.referenciaId),
-            referenciaFolio: params.referenciaFolio,
-            codigoCuenta:    l.codigo,
-          },
-        );
-        return null;
-      }
-      lineasResueltas.push({ cuenta, ...l });
-    }
-
-    const totalDebe  = lineasResueltas.reduce((s, l) => s + l.debe,  0);
-    const totalHaber = lineasResueltas.reduce((s, l) => s + l.haber, 0);
-
-    // P3 BLOQUE 1 — partida doble. El camino manual (contabilidad.service.ts
-    // createAsiento()) valida esto con el mismo umbral antes de persistir;
-    // este motor automático corre en el 100% de las operaciones (facturas,
-    // compras, cobros, pagos, nómina, reversas...) y hasta ahora no validaba
-    // nada — un builder de líneas con un bug (la línea de costo de venta que
-    // se agregó recientemente, por ejemplo, si algún día costoVenta se
-    // calculara mal) podía posetear un asiento descuadrado sin que nadie se
-    // enterara hasta el cierre. Un asiento descuadrado en los libros es peor
-    // que ninguno: se reporta a Sentry con el detalle completo (incluidas las
-    // líneas) y se descarta (TIPO B — nunca rompe la operación que lo llamó,
-    // igual que "cuenta no encontrada" un poco más arriba).
-    if (Math.abs(totalDebe - totalHaber) > 0.01) {
-      this.logger.error(
-        `Asiento ${params.tipoOrigen} ref=${params.referenciaId} (${params.referenciaFolio}) ` +
-        `DESCUADRADO — NO se persiste. Debe=${totalDebe.toFixed(2)} Haber=${totalHaber.toFixed(2)}`,
-      );
-      this.reportarFalloAsiento(
-        new Error(
-          `Asiento descuadrado: Debe ${totalDebe.toFixed(2)} vs Haber ${totalHaber.toFixed(2)} ` +
-          `(diferencia ${(totalDebe - totalHaber).toFixed(2)})`,
-        ),
-        'asiento_descuadrado',
-        {
+        this.reportarFalloAsiento(new Error(resultado.mensaje), 'asiento_descuadrado', {
           tipoOrigen:      params.tipoOrigen,
           referenciaId:    String(params.referenciaId),
           referenciaFolio: params.referenciaFolio,
           descripcion:     params.descripcion,
           lineas:          JSON.stringify(params.lineas),
-        },
-      );
+        });
+        return null;
+      }
+
+      // asiento_cuenta_no_encontrada / asiento_cuenta_agrupacion
+      const detalleLog = resultado.tipo === 'asiento_cuenta_agrupacion'
+        ? `Cuenta ${resultado.codigoCuenta} (${resultado.nombreCuenta}) no permite movimientos directos — asiento omitido`
+        : `Cuenta ${resultado.codigoCuenta} no encontrada — asiento omitido`;
+      this.logger.warn(detalleLog);
+      // Reportado aqui mismo (no en cada uno de los ~20 callers) para que ninguno
+      // pueda omitirlo: falta una cuenta en el catalogo de la empresa y el
+      // documento origen (factura, compra, cobro...) se procesa igual sin asiento.
+      this.reportarFalloAsiento(new Error(resultado.mensaje), resultado.tipo, {
+        tipoOrigen:      params.tipoOrigen,
+        referenciaId:    String(params.referenciaId),
+        referenciaFolio: params.referenciaFolio,
+        codigoCuenta:    resultado.codigoCuenta,
+      });
       return null;
     }
+
+    const { lineasResueltas, totalDebe, totalHaber } = resultado;
 
     // NOTA: generarNumero() usa this.dataSource.query() — una conexión del pool
     // FUERA de la transacción externa (si la hay). La función siguiente_numero_secuencia
@@ -290,6 +383,7 @@ export class AsientosAutomaticosService {
       descripcion:      l.descripcion,
       debe:             l.debe,
       haber:            l.haber,
+      cuentaManual:     l.manual ?? undefined,
     }));
 
     const lineasInstances = this.lineaRepository.create(lineasData);
@@ -812,6 +906,34 @@ export class AsientosAutomaticosService {
   // Gasto operativo → Gasto (D) + ITBIS Crédito (D) / Bancos (H)
   // ──────────────────────────────────────────────────────────────────
 
+  /**
+   * Líneas del asiento de un gasto — extraído a su propia función (2026-09-19,
+   * panel de vista previa) para que `asientoGasto()` (persiste) y
+   * `previsualizarGasto()` (no persiste) arranquen EXACTAMENTE del mismo
+   * cálculo. Pura y síncrona: nada de DB aquí, solo la forma del asiento.
+   */
+  private construirLineasGasto(
+    total: number, monto: number, itbis: number, descripcion: string, cuentaGasto: string, cuentaManual = false,
+  ): LineaAsientoInput[] {
+    return [
+      { codigo: cuentaGasto,            descripcion, debe: monto, haber: 0, manual: cuentaManual },
+      ...(itbis > 0 ? [{ codigo: COD.ITBIS_CREDITO_COMPRAS, descripcion: `ITBIS crédito ${descripcion}`, debe: itbis, haber: 0 }] : []),
+      { codigo: COD.BANCOS, descripcion: `Pago ${descripcion}`, debe: 0, haber: total },
+    ];
+  }
+
+  /**
+   * Vista previa del asiento de un gasto, sin persistir nada — mismas
+   * líneas que `asientoGasto()` generaría, resueltas contra el catálogo
+   * real (nombre de cuenta, cuadre). El formulario de Gastos la llama antes
+   * de guardar para mostrar el panel de vista previa.
+   */
+  async previsualizarGasto(
+    total: number, monto: number, itbis: number, descripcion: string, cuentaGasto = '6.1.2.04',
+  ): Promise<PreviewAsientoResultado> {
+    return this.previsualizarLineas(this.construirLineasGasto(total, monto, itbis, descripcion, cuentaGasto));
+  }
+
   async asientoGasto(
     gastoId:      number,
     total:        number,
@@ -821,13 +943,10 @@ export class AsientosAutomaticosService {
     fecha:        string, // dto.fecha del gasto
     userId:       number,
     cuentaGasto = '6.1.2.04', // Gastos Generales — puede personalizarse por categoría
+    cuentaManual = false,     // true = el usuario eligió esta cuenta a propósito, distinta del default de su categoría
   ): Promise<void> {
     try {
-      const lineas = [
-        { codigo: cuentaGasto,            descripcion, debe: monto, haber: 0 },
-        ...(itbis > 0 ? [{ codigo: COD.ITBIS_CREDITO_COMPRAS, descripcion: `ITBIS crédito ${descripcion}`, debe: itbis, haber: 0 }] : []),
-        { codigo: COD.BANCOS, descripcion: `Pago ${descripcion}`, debe: 0, haber: total },
-      ];
+      const lineas = this.construirLineasGasto(total, monto, itbis, descripcion, cuentaGasto, cuentaManual);
 
       const asiento = await this._crearAsientoContabilizado({
         descripcion,

@@ -21,6 +21,8 @@ import {
 import api from '../../api/client';
 import { ecfApi } from '../../api/ecf.api';
 import EcfResultModal from '../../components/ui/EcfResultModal';
+import CuentaContableSelector from '../../components/contabilidad/CuentaContableSelector';
+import AsientoPreviewPanel from '../../components/contabilidad/AsientoPreviewPanel';
 import { fmt } from '../../utils/formatters';
 import dayjs from 'dayjs';
 
@@ -72,6 +74,8 @@ const CATEGORIA_TIPO_BIENES_SUGERIDO: Record<string, string> = {
 
 const gastosApi = {
   categorias: ()           => api.get('/gastos/categorias').then(r => r.data?.data ?? r.data),
+  previsualizarAsiento: (body: { categoria: string; monto: number; itbis?: number; descripcion?: string; cuentaGasto?: string }) =>
+    api.post('/gastos/previsualizar-asiento', body).then(r => r.data?.data ?? r.data),
   resumen:    (m: number, a: number) => api.get(`/gastos/resumen?mes=${m}&anio=${a}`).then(r => r.data?.data ?? r.data),
   anual:      (a: number)  => api.get(`/gastos/anual?anio=${a}`).then(r => r.data?.data ?? r.data),
   list:       (p = 1, m?: number, a?: number, cat?: string, search = '') =>
@@ -115,6 +119,26 @@ export default function GastosPage() {
   const formaPagoWatch  = Form.useWatch('formaPago', form);
   const categoriaInfo   = (categorias as any[])?.find((c: any) => c.value === categoriaWatch);
   const generaE43       = categoriaInfo?.generaE43 === true;
+
+  // Panel de vista previa del asiento — se recalcula en el backend (misma
+  // lógica del motor, nunca una réplica aquí) cada vez que cambia algo que
+  // afecta las cuentas o los montos del asiento.
+  const montoWatch       = Form.useWatch('monto', form);
+  const itbisWatch       = Form.useWatch('itbis', form);
+  const descripcionWatch = Form.useWatch('descripcion', form);
+  const cuentaGastoWatch = Form.useWatch('cuentaGasto', form);
+  const { data: previewAsiento, isFetching: previewCargando } = useQuery({
+    queryKey: ['gasto-preview', categoriaWatch, montoWatch, itbisWatch, descripcionWatch, cuentaGastoWatch, generaE43],
+    queryFn: () => gastosApi.previsualizarAsiento({
+      categoria:   categoriaWatch,
+      monto:       montoWatch,
+      itbis:       generaE43 ? 0 : (itbisWatch ?? 0),
+      descripcion: descripcionWatch,
+      cuentaGasto: cuentaGastoWatch || undefined,
+    }),
+    enabled: open && !!categoriaWatch && !!montoWatch,
+    staleTime: 500,
+  });
 
   // Marca/desmarca el 606 y arrastra los campos fiscales que dependen de él.
   const cambiarTieneComprobante = (checked: boolean) => {
@@ -466,6 +490,7 @@ export default function GastosPage() {
             ...v,
             fecha: v.fecha.format('YYYY-MM-DD'),
             itbis: generaE43 ? 0 : (v.itbis ?? 0),
+            cuentaGasto: v.cuentaGasto || undefined,
           })}
           initialValues={{ fecha: dayjs() }}
         >
@@ -685,6 +710,23 @@ export default function GastosPage() {
               )}
             </>
           )}
+
+          {/* ── Selector de cuenta contable — solo aplica cuando ya hay categoría ── */}
+          {categoriaWatch && (
+            <Form.Item
+              name="cuentaGasto"
+              label="Cuenta contable"
+              tooltip="Por defecto usa la cuenta de la categoría — cámbiala solo si este gasto en particular debe ir a otra cuenta (ej. es realmente un activo, no un gasto operativo)."
+            >
+              <CuentaContableSelector
+                tipo={['gasto', 'costo']}
+                placeholder={categoriaInfo ? `Por defecto: ${categoriaInfo.cuenta} (de la categoría)` : 'Elige la categoría primero'}
+                disabled={!categoriaInfo}
+              />
+            </Form.Item>
+          )}
+
+          <AsientoPreviewPanel resultado={previewAsiento} loading={previewCargando} />
 
           <Row justify="end" gutter={8} style={{ marginTop: 4 }}>
             <Col><Button onClick={() => { setOpen(false); form.resetFields(); setTieneComprobante(false); auto606Desactivado.current = false; rncGasto.limpiar(); }}>Cancelar</Button></Col>

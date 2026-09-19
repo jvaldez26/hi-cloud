@@ -136,6 +136,34 @@ describe('AsientosAutomaticosService — visibilidad de fallos', () => {
     );
   });
 
+  // ── cuentaManual — auditoría del selector de cuenta contable (2026-09-19) ──
+
+  it('asientoGasto con cuentaManual=true marca SOLO la línea de gasto como manual, no las demás', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta('6.1.2.07', 1), cuenta('1.1.4.01', 2), cuenta('1.1.1.03', 3)],
+    });
+
+    await svc.asientoGasto(10, 118, 100, 18, 'Mantenimiento elegido a mano', '2026-09-19', 5, '6.1.2.07', true);
+
+    const lineas = svc.lineaRepository.create.mock.calls[0][0];
+    expect(lineas.find((l: any) => l.cuentaContableId === 1)?.cuentaManual).toBe(true);  // la cuenta de gasto elegida
+    expect(lineas.find((l: any) => l.cuentaContableId === 2)?.cuentaManual).toBeUndefined(); // ITBIS crédito
+    expect(lineas.find((l: any) => l.cuentaContableId === 3)?.cuentaManual).toBeUndefined(); // Bancos
+  });
+
+  it('asientoGasto sin cuentaManual (default false): ninguna línea queda marcada', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta('6.1.2.04', 1), cuenta('1.1.1.03', 3)],
+    });
+
+    await svc.asientoGasto(10, 100, 100, 0, 'Gasto normal', '2026-09-19', 5);
+
+    const lineas = svc.lineaRepository.create.mock.calls[0][0];
+    expect(lineas.every((l: any) => !l.cuentaManual)).toBe(true);
+  });
+
   // ── 3. Camino feliz ──────────────────────────────────────────────────────
 
   it('con las cuentas presentes: genera el asiento, loguea "generado", no reporta nada', async () => {
@@ -249,5 +277,55 @@ describe('AsientosAutomaticosService — visibilidad de fallos', () => {
 
     expect(svc.asientoRepository.save).not.toHaveBeenCalled();
     expect(reportServiceError).not.toHaveBeenCalled();
+  });
+
+  // ── Panel de vista previa — previsualizarGasto() (2026-09-19) ───────────
+  // Debe usar EXACTAMENTE la misma resolución/validación que asientoGasto()
+  // (no una réplica), sin persistir ni reportar nada a Sentry — una
+  // previsualización con datos incompletos no es un fallo operacional.
+
+  it('con las cuentas presentes: ok=true, trae nombre y código de cada cuenta, y no persiste ni guarda nada', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta('6.1.2.01', 1), cuenta('1.1.4.01', 2), cuenta('1.1.1.03', 3)],
+    });
+    // Renombrar la cuenta 1 para verificar que el preview trae el nombre real, no uno inventado
+    svc.cuentaRepository.find.mockResolvedValue([
+      { ...cuenta('6.1.2.01', 1), nombre: 'Alquiler de Local' },
+      { ...cuenta('1.1.4.01', 2), nombre: 'ITBIS Crédito Fiscal (Compras)' },
+      { ...cuenta('1.1.1.03', 3), nombre: 'Bancos' },
+    ]);
+
+    const r = await svc.previsualizarGasto(118, 100, 18, 'Alquiler de septiembre', '6.1.2.01');
+
+    expect(r.ok).toBe(true);
+    expect(r.cuadrado).toBe(true);
+    expect(r.totalDebe).toBe(118);
+    expect(r.totalHaber).toBe(118);
+    expect(r.lineas.find((l: any) => l.codigo === '6.1.2.01')?.nombre).toBe('Alquiler de Local');
+    expect(svc.asientoRepository.save).not.toHaveBeenCalled();
+    expect(svc.lineaRepository.save).not.toHaveBeenCalled();
+    expect(reportServiceError).not.toHaveBeenCalled();
+  });
+
+  it('con la cuenta de gasto elegida inexistente: ok=false con un motivo legible, no lanza ni reporta a Sentry', async () => {
+    const svc = makeService({ empresaId: 7, cuentas: [] });
+
+    const r = await svc.previsualizarGasto(118, 100, 18, 'Gasto de prueba', '9.9.9.99');
+
+    expect(r.ok).toBe(false);
+    expect(r.error).toContain('9.9.9.99');
+    expect(reportServiceError).not.toHaveBeenCalled();
+  });
+
+  it('sin ITBIS, la línea de crédito fiscal no aparece en la vista previa (igual que en el asiento real)', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta('6.1.2.01', 1), cuenta('1.1.1.03', 3)],
+    });
+
+    const r = await svc.previsualizarGasto(100, 100, 0, 'Gasto sin ITBIS', '6.1.2.01');
+
+    expect(r.lineas.map((l: any) => l.codigo)).toEqual(['6.1.2.01', '1.1.1.03']);
   });
 });

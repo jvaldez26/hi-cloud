@@ -58,6 +58,17 @@ class CreateGastoDto {
   @IsOptional() @IsString()                        formaPago?: string;
   /** Caja diaria a la que se imputa el gasto (opcional — solo cuando formaPago='01'). */
   @IsOptional() @IsInt() @Type(() => Number)       cajaDiariaId?: number;
+  /** Selector de cuenta contable — override manual del default de la categoría. */
+  @IsOptional() @IsString()                        cuentaGasto?: string;
+}
+
+/** Panel de vista previa del asiento — mismos campos relevantes de CreateGastoDto, sin los administrativos (proveedor, comprobante...). */
+class PrevisualizarGastoDto {
+  @IsEnum(CategoriaGasto)                          categoria: CategoriaGasto;
+  @IsNumber({ maxDecimalPlaces: 2 }) @IsPositive()  monto: number;
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) itbis?: number;
+  @IsOptional() @IsString()                        descripcion?: string;
+  @IsOptional() @IsString()                        cuentaGasto?: string;
 }
 
 @ApiTags('Gastos Operativos')
@@ -110,6 +121,12 @@ export class GastosController {
   @ApiOperation({ summary: 'Registrar gasto (genera asiento contable automático)' })
   crear(@Body() dto: CreateGastoDto, @GetUser() usuario: User) {
     return this.svc.crear({ ...dto, userId: usuario.id });
+  }
+
+  @Post('previsualizar-asiento')
+  @ApiOperation({ summary: 'Panel de vista previa: calcula el asiento SIN guardar el gasto' })
+  previsualizarAsiento(@Body() dto: PrevisualizarGastoDto) {
+    return this.svc.previsualizarAsiento(dto.categoria, dto.monto, dto.itbis ?? 0, dto.descripcion ?? '', dto.cuentaGasto);
   }
 
   @Get()

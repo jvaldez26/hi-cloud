@@ -164,4 +164,65 @@ describe('GastosService.crear() — pasa la cuenta de la categoría al motor de 
       expect(cuentaPasada).toBe(CATEGORIA_LABELS[categoria].cuenta);
     }
   });
+
+  it('sin override: usa el default de la categoría y NO marca la línea como manual', async () => {
+    const { service, asientosService } = build();
+    await service.crear({
+      fecha: '2026-09-19', categoria: CategoriaGasto.ALQUILER, descripcion: 'Alquiler', monto: 100, userId: 5,
+    } as any);
+    expect(asientosService.asientoGasto.mock.calls[0][7]).toBe('6.1.2.01');
+    expect(asientosService.asientoGasto.mock.calls[0][8]).toBe(false);
+  });
+
+  it('con override IGUAL al default: no cuenta como manual — el usuario pudo no tocar el campo', async () => {
+    const { service, asientosService } = build();
+    await service.crear({
+      fecha: '2026-09-19', categoria: CategoriaGasto.ALQUILER, descripcion: 'Alquiler', monto: 100, userId: 5,
+      cuentaGasto: '6.1.2.01',
+    } as any);
+    expect(asientosService.asientoGasto.mock.calls[0][8]).toBe(false);
+  });
+
+  it('con override DISTINTO al default: usa la cuenta elegida y marca la línea como manual', async () => {
+    const { service, asientosService } = build();
+    await service.crear({
+      fecha: '2026-09-19', categoria: CategoriaGasto.ALQUILER, descripcion: 'Alquiler', monto: 100, userId: 5,
+      cuentaGasto: '1.2.1.01', // el contador decidió que es un activo, no un gasto operativo
+    } as any);
+    expect(asientosService.asientoGasto.mock.calls[0][7]).toBe('1.2.1.01');
+    expect(asientosService.asientoGasto.mock.calls[0][8]).toBe(true);
+  });
+});
+
+/**
+ * GastosService.previsualizarAsiento() — panel de vista previa (2026-09-19).
+ * Delega en AsientosAutomaticosService.previsualizarGasto() — no debe
+ * replicar el cálculo del asiento, solo armar los mismos insumos que crear().
+ */
+describe('GastosService.previsualizarAsiento()', () => {
+  function build() {
+    const asientosService: any = { previsualizarGasto: jest.fn().mockResolvedValue({ ok: true, lineas: [], totalDebe: 0, totalHaber: 0, cuadrado: true }) };
+    const service = new GastosService({} as any, asientosService, {} as any, {} as any, {} as any);
+    return { service, asientosService };
+  }
+
+  it('usa la cuenta de la categoría cuando no se pasa override', async () => {
+    const { service, asientosService } = build();
+    await service.previsualizarAsiento(CategoriaGasto.ALQUILER, 100, 18, 'Alquiler de septiembre');
+    expect(asientosService.previsualizarGasto).toHaveBeenCalledWith(
+      118, 100, 18, expect.stringContaining('Alquiler de septiembre'), '6.1.2.01',
+    );
+  });
+
+  it('usa la cuenta elegida cuando SÍ se pasa override', async () => {
+    const { service, asientosService } = build();
+    await service.previsualizarAsiento(CategoriaGasto.ALQUILER, 100, 18, 'Alquiler', '1.2.1.01');
+    expect(asientosService.previsualizarGasto).toHaveBeenCalledWith(118, 100, 18, expect.any(String), '1.2.1.01');
+  });
+
+  it('Gasto Menor (E43): el total nunca incluye ITBIS, igual que crear()', async () => {
+    const { service, asientosService } = build();
+    await service.previsualizarAsiento(CategoriaGasto.GASTO_MENOR, 100, 18, 'Compra menor');
+    expect(asientosService.previsualizarGasto).toHaveBeenCalledWith(100, 100, 0, expect.any(String), '6.1.2.10');
+  });
 });

@@ -28,6 +28,15 @@ interface CreateGastoDto {
   /** Caja diaria a la que se imputa el gasto. Obligatorio cuando formaPago='01' (efectivo).
    *  Permite descontar el monto del cuadre del cajero correcto en recalcularDesdeBD(). */
   cajaDiariaId?: number;
+  /**
+   * Selector de cuenta contable (2026-09-19) — override manual de la cuenta
+   * de gasto que CATEGORIA_LABELS[categoria].cuenta pondría por defecto. Si
+   * coincide con el default, no cuenta como manual (el usuario pudo no
+   * tocar el campo). Validado contra el catálogo real por el motor mismo
+   * (cuenta no encontrada / no permite movimientos) — aquí solo se decide
+   * si es "el default" o "una elección".
+   */
+  cuentaGasto?: string;
   userId:       number;
 }
 
@@ -104,12 +113,15 @@ export class GastosService {
     // adicional para un error síncrono inesperado antes/durante el await.
     // TIPO B: el gasto ya se guardó — reportar a Sentry SIN romper el flujo.
     try {
+      const cuentaGasto = dto.cuentaGasto || info.cuenta;
+      const cuentaEsManual = !!dto.cuentaGasto && dto.cuentaGasto !== info.cuenta;
       await this.asientosService.asientoGasto(
         gasto.id, total, dto.monto, itbis,
         `${info.emoji} ${info.label}: ${dto.descripcion}`,
         dto.fecha, // string crudo — no la variable local `fecha`, que ya es new Date(dto.fecha)
         dto.userId,
-        info.cuenta, // antes se calculaba y se descartaba — todo gasto caía en el default 6.1.2.04
+        cuentaGasto, // antes se calculaba y se descartaba — todo gasto caía en el default 6.1.2.04
+        cuentaEsManual,
       );
     } catch (err) {
       reportServiceError(err, 'gasto_asiento_contable', {
@@ -304,5 +316,24 @@ export class GastosService {
       cuenta:    val.cuenta,
       generaE43: val.generaE43 ?? false,
     }));
+  }
+
+  /**
+   * Panel de vista previa del asiento (2026-09-19) — calcula el asiento que
+   * generaría este gasto SIN guardar nada, reusando exactamente la lógica
+   * del motor (AsientosAutomaticosService.previsualizarGasto — no una
+   * réplica aquí). El formulario la llama en cada cambio de monto/itbis/
+   * categoría/cuenta para mostrar el panel antes de que el usuario guarde.
+   */
+  async previsualizarAsiento(
+    categoria: CategoriaGasto, monto: number, itbis: number, descripcion: string, cuentaGasto?: string,
+  ) {
+    const info  = CATEGORIA_LABELS[categoria];
+    const total = monto + (info?.generaE43 ? 0 : (itbis ?? 0));
+    return this.asientosService.previsualizarGasto(
+      total, monto, info?.generaE43 ? 0 : (itbis ?? 0),
+      `${info?.emoji ?? ''} ${info?.label ?? categoria}: ${descripcion || '(sin descripción)'}`,
+      cuentaGasto || info?.cuenta,
+    );
   }
 }
