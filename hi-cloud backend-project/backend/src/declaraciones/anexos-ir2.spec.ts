@@ -178,3 +178,72 @@ describe('AnexosIR2Service.getAnexoB1() — FASE 4 Bloque C', () => {
     expect(r.alertas.ventasSinHistorialCosto.nota).toMatch(/costo conocido/i);
   });
 });
+
+describe('AnexosIR2Service.getAnexoD() — FASE 4 Bloque D', () => {
+  it('calcula el costo de venta como Inventario Inicial + Compras Totales − Inventario Final', async () => {
+    const { svc } = makeService({
+      "ca.\"anexoIR2\" = 'D' AND al.debe": [],
+      "SUM(c.total)": [{ total: '50000' }], // misma marca para ambas queries de compras (total y con importación) — ver abajo
+    });
+    const r = await svc.getAnexoD(2026);
+    // sin cuentas de inventario mockeadas (0 y 0), compras totales = 50000 (matchea ambas por la marca compartida)
+    expect(r.inventarioInicial.total).toBe(0);
+    expect(r.inventarioFinal.total).toBe(0);
+    expect(r.compras.totalPeriodo).toBe(50000);
+    expect(r.costoVentaCalculado.valor).toBe(0 + 50000 - 0);
+    expect(r.costoVentaCalculado.formula).toMatch(/Inventario Inicial/);
+  });
+
+  it('inventario inicial usa el saldo al cierre del año anterior, no del propio ejercicio', async () => {
+    const query = jest.fn((sql: string, params: any[]) => {
+      if (sql.includes("ca.\"anexoIR2\" = 'D'")) {
+        // El segundo parámetro es la fecha de corte — distingue inicial (cierre año anterior) de final (cierre del ejercicio)
+        const fechaCorte = params[1];
+        if (fechaCorte === '2025-12-31') return Promise.resolve([{ codigo: '1.1.3.01', nombre: 'Mercancías', casillaIR2: 'inv_mercancias', saldo: '10000' }]);
+        if (fechaCorte === '2026-12-31') return Promise.resolve([{ codigo: '1.1.3.01', nombre: 'Mercancías', casillaIR2: 'inv_mercancias', saldo: '15000' }]);
+      }
+      return Promise.resolve([{ total: '0' }]);
+    });
+    const svc: any = Object.create(AnexosIR2Service.prototype);
+    svc.dataSource = { query };
+    svc.tenantSvc = { getEmpresaId: () => 7 };
+
+    const r = await svc.getAnexoD(2026);
+    expect(r.inventarioInicial.total).toBe(10000);
+    expect(r.inventarioFinal.total).toBe(15000);
+    expect(r.periodo).toEqual({ anio: 2026, desde: '2026-01-01', hasta: '2026-12-31' });
+  });
+
+  it('las 3 líneas de llenado manual (Compras Locales, Compras del Exterior, ITBIS Llevado al Costo) van en cero con su motivo', async () => {
+    const { svc } = makeService({});
+    const r = await svc.getAnexoD(2026);
+    expect(r.lineasLlenadoManual).toHaveLength(3);
+    expect(r.lineasLlenadoManual.map((l: any) => l.concepto)).toEqual(['Compras Locales', 'Compras del Exterior', 'ITBIS Llevado al Costo']);
+    for (const l of r.lineasLlenadoManual) {
+      expect(l.valor).toBe(0);
+      expect(l.motivo).toBeTruthy();
+    }
+  });
+
+  it('siempre advierte que el saldo de apertura de Inventario puede arrastrar el desvío previo al costeo', async () => {
+    const { svc } = makeService({});
+    const r = await svc.getAnexoD(2026);
+    expect(r.advertencias.saldoAperturaInventario).toMatch(/ajústalo contra el inventario físico/i);
+  });
+
+  it('"compras con gasto de importación asociado" es un número aparte de "compras totales" — no se presenta como Compras del Exterior', async () => {
+    const query = jest.fn((sql: string) => {
+      if (sql.includes('EXISTS (SELECT 1 FROM gastos_importacion')) return Promise.resolve([{ total: '12000' }]);
+      if (sql.includes('SUM(c.total)')) return Promise.resolve([{ total: '80000' }]);
+      return Promise.resolve([]);
+    });
+    const svc: any = Object.create(AnexosIR2Service.prototype);
+    svc.dataSource = { query };
+    svc.tenantSvc = { getEmpresaId: () => 7 };
+
+    const r = await svc.getAnexoD(2026);
+    expect(r.compras.totalPeriodo).toBe(80000);
+    expect(r.compras.conGastoImportacionAsociado).toBe(12000);
+    expect(r.compras.procedencia).toMatch(/proxy/i);
+  });
+});

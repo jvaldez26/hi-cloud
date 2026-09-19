@@ -21,12 +21,12 @@ const CONCEPTOS_MANUALES_A1 = [
 /**
  * FASE 4 del catálogo fiscal dominicano — genera los Anexos del IR-2 a
  * partir de las etiquetas fiscales de Fase 1/2 y la relación multi-valor
- * de Fase 4 Bloque A (`cuenta_anexo_ir2`). Un anexo por método
- * (getAnexoA1 en Bloque B; getAnexoB1/getAnexoD llegan en bloques
- * posteriores) — todos comparten el mismo criterio: solo se llenan las
- * líneas que el ERP puede respaldar con datos reales. Lo que el ERP no
- * registra en absoluto queda en cero y marcado `llenadoManual: true` —
- * nunca se inventa un valor para que la línea "no se vea vacía".
+ * de Fase 4 Bloque A (`cuenta_anexo_ir2`). Un anexo por método (getAnexoA1
+ * Bloque B, getAnexoB1 Bloque C, getAnexoD Bloque D) — todos comparten el
+ * mismo criterio: solo se llenan las líneas que el ERP puede respaldar con
+ * datos reales. Lo que el ERP no registra en absoluto queda en cero y
+ * marcado `llenadoManual: true` — nunca se inventa un valor para que la
+ * línea "no se vea vacía".
  */
 @Injectable()
 export class AnexosIR2Service {
@@ -279,6 +279,156 @@ export class AnexosIR2Service {
       id: r.id, folio: r.folio, fecha: String(r.fecha).substring(0, 10),
       lineasSinCosto: Number(r.lineas), monto: Number(r.monto),
     }));
+  }
+
+  // ── Anexo D — Costo de Venta ───────────────────────────────────────────
+
+  /**
+   * FASE 4 Bloque D. El Anexo D pide: Inventario Inicial + Compras Locales
+   * + Compras del Exterior + ITBIS Llevado al Costo − Inventario Final =
+   * Costo de Venta.
+   *
+   * Lo que el ERP SÍ puede calcular con datos reales:
+   *   - Inventario Inicial/Final: saldo de las cuentas etiquetadas D de
+   *     tipo activo (Inventario) al cierre del año anterior y del propio
+   *     ejercicio.
+   *   - Compras totales del ejercicio (mismo universo que el Formato 606).
+   *   - "Compras con gasto de importación asociado": un PROXY real (compras
+   *     con al menos un flete/seguro/arancel/agente aduanal/almacenaje
+   *     aplicado vía gastos_importacion) — no una clasificación oficial de
+   *     origen, porque Compra/CompraDetalle no tienen ningún campo que
+   *     distinga compra local de importación.
+   *
+   * Lo que el ERP NO puede calcular — van en cero, marcadas llenadoManual:
+   *   - Compras Locales / Compras del Exterior: no hay campo de origen; se
+   *     entregan los dos números de arriba como referencia para que el
+   *     contador reparta.
+   *   - ITBIS Llevado al Costo: ningún módulo calcula ITBIS no acreditable
+   *     capitalizado al costo del inventario (compras.service.ts,
+   *     gastos-importacion.service.ts) — no existe en absoluto.
+   *
+   * ADVERTENCIA explícita (pedida punto por punto): la cuenta de Inventario
+   * venía creciendo de forma monótona ANTES de que el costo de venta se
+   * contabilizara (P3/costo de venta llegó después) — el saldo de apertura
+   * de un ejercicio puede arrastrar ese desvío acumulado. Esto no es algo
+   * que el ERP pueda detectar ni corregir solo: se advierte siempre, el
+   * contador es quien lo contrasta contra el inventario físico.
+   */
+  async getAnexoD(anio: number) {
+    const eid = this.eid;
+    const desde = `${anio}-01-01`;
+    const hasta = `${anio}-12-31`;
+    const cierreAnioAnterior = `${anio - 1}-12-31`;
+
+    const [inventarioInicial, inventarioFinal, comprasTotales, comprasConImportacion] = await Promise.all([
+      this.saldoCuentasInventarioD(eid, cierreAnioAnterior),
+      this.saldoCuentasInventarioD(eid, hasta),
+      this.comprasTotalesPeriodo(eid, desde, hasta),
+      this.comprasConGastoImportacion(eid, desde, hasta),
+    ]);
+
+    const costoVentaCalculado = +(inventarioInicial.total + comprasTotales - inventarioFinal.total).toFixed(2);
+
+    return {
+      periodo: { anio, desde, hasta },
+      inventarioInicial: {
+        cuentas: inventarioInicial.cuentas,
+        total: inventarioInicial.total,
+        procedencia: `Saldo de las cuentas de Inventario etiquetadas con Anexo D al cierre de ${anio - 1} (${cierreAnioAnterior}).`,
+      },
+      inventarioFinal: {
+        cuentas: inventarioFinal.cuentas,
+        total: inventarioFinal.total,
+        procedencia: `Saldo de las cuentas de Inventario etiquetadas con Anexo D al cierre del ejercicio (${hasta}).`,
+      },
+      compras: {
+        totalPeriodo: comprasTotales,
+        conGastoImportacionAsociado: comprasConImportacion,
+        procedencia:
+          'Suma de compras recibidas/pagadas del ejercicio (mismo universo que el Formato 606). El ERP no ' +
+          'distingue compra local de importación a nivel de registro — "con gasto de importación asociado" es ' +
+          'un proxy real (compras con al menos un flete/seguro/arancel/agente aduanal/almacenaje aplicado), no ' +
+          'una clasificación oficial de origen.',
+      },
+      costoVentaCalculado: {
+        valor: costoVentaCalculado,
+        formula: 'Inventario Inicial + Compras Totales − Inventario Final',
+        nota: 'No incluye ITBIS Llevado al Costo (línea de llenado manual, abajo) ni el reparto Local/Exterior de las compras.',
+      },
+      lineasLlenadoManual: [
+        {
+          concepto: 'Compras Locales', valor: 0,
+          motivo: `El ERP no registra el origen de la compra. Usa "Compras totales" (${comprasTotales.toFixed(2)}) y ` +
+            `"con gasto de importación asociado" (${comprasConImportacion.toFixed(2)}) como referencia para repartir.`,
+        },
+        {
+          concepto: 'Compras del Exterior', valor: 0,
+          motivo: `El ERP no registra el origen de la compra. Usa "Compras totales" (${comprasTotales.toFixed(2)}) y ` +
+            `"con gasto de importación asociado" (${comprasConImportacion.toFixed(2)}) como referencia para repartir.`,
+        },
+        {
+          concepto: 'ITBIS Llevado al Costo', valor: 0,
+          motivo: 'El ERP no calcula ITBIS no acreditable capitalizado al costo del inventario — ningún módulo lo registra.',
+        },
+      ],
+      advertencias: {
+        saldoAperturaInventario:
+          'La cuenta de Inventario venía creciendo de forma monótona antes de que el costo de venta se ' +
+          'contabilizara — el saldo de apertura de este ejercicio puede arrastrar ese desvío acumulado. ' +
+          'Ajústalo contra el inventario físico antes de declarar; el ERP no puede detectar ni corregir esto solo.',
+      },
+      procedencia:
+        'Inventario inicial/final desde las cuentas etiquetadas con Anexo D (tipo activo) y sus asientos ' +
+        'contabilizados; compras desde la tabla de compras del ejercicio, mismo criterio que el Formato 606.',
+    };
+  }
+
+  private async saldoCuentasInventarioD(eid: number, fechaCorte: string) {
+    const rows = await this.dataSource.query<any[]>(
+      `
+      SELECT cc.codigo, cc.nombre, ca."casillaIR2" AS "casillaIR2",
+             COALESCE(SUM(al.debe - al.haber), 0)::numeric AS saldo
+      FROM cuentas_contables cc
+      JOIN cuenta_anexo_ir2 ca ON ca."cuentaContableId" = cc.id AND ca."isActive" = true AND ca."anexoIR2" = 'D'
+      LEFT JOIN asiento_lineas al ON al."cuentaContableId" = cc.id AND al."isActive" = true
+      LEFT JOIN asientos_contables ac ON ac.id = al."asientoId"
+        AND ac.estado = 'contabilizado' AND ac."isActive" = true
+        AND ac."empresaId" = $1 AND ac.fecha <= $2
+      WHERE cc."isActive" = true AND cc."empresaId" = $1 AND cc."permiteMovimientos" = true AND cc.tipo = 'activo'
+      GROUP BY cc.id, cc.codigo, cc.nombre, ca."casillaIR2"
+      ORDER BY cc.codigo
+      `,
+      [eid, fechaCorte],
+    );
+    const cuentas = rows.map((r) => ({ codigo: r.codigo, nombre: r.nombre, casillaIR2: r.casillaIR2, saldo: Number(r.saldo) }));
+    return { cuentas, total: +cuentas.reduce((s, c) => s + c.saldo, 0).toFixed(2) };
+  }
+
+  private async comprasTotalesPeriodo(eid: number, desde: string, hasta: string): Promise<number> {
+    const rows = await this.dataSource.query<{ total: string }[]>(
+      `
+      SELECT COALESCE(SUM(c.total), 0)::numeric AS total
+      FROM compras c
+      WHERE c."empresaId" = $1 AND c.fecha BETWEEN $2 AND $3
+        AND c."isActive" = true AND c.estado IN ('recibida', 'pagada')
+      `,
+      [eid, desde, hasta],
+    );
+    return Number(rows[0]?.total ?? 0);
+  }
+
+  private async comprasConGastoImportacion(eid: number, desde: string, hasta: string): Promise<number> {
+    const rows = await this.dataSource.query<{ total: string }[]>(
+      `
+      SELECT COALESCE(SUM(c.total), 0)::numeric AS total
+      FROM compras c
+      WHERE c."empresaId" = $1 AND c.fecha BETWEEN $2 AND $3
+        AND c."isActive" = true AND c.estado IN ('recibida', 'pagada')
+        AND EXISTS (SELECT 1 FROM gastos_importacion gi WHERE gi."compraId" = c.id AND gi."empresaId" = $1)
+      `,
+      [eid, desde, hasta],
+    );
+    return Number(rows[0]?.total ?? 0);
   }
 
   private async cuentasDeBalanceSinAnexoA1(eid: number, fechaCorte: string) {

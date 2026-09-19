@@ -184,6 +184,12 @@ export class DeclaracionesController {
     return this.anexosIR2.getAnexoB1(desde, hasta);
   }
 
+  @Get('anexo-d')
+  @ApiOperation({ summary: 'Anexo D del IR-2 (Costo de Venta) de un ejercicio fiscal' })
+  getAnexoD(@Query('anio') anio: string) {
+    return this.anexosIR2.getAnexoD(Number(anio));
+  }
+
   // ── NUEVOS: Validación, TXT oficial, Historial ────────────────────────────
 
   @Post('validar')

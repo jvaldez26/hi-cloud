@@ -18,6 +18,7 @@ import { exportar606, exportar607 } from '../../utils/exportExcel';
 import ConciliacionFiscalPanel from './ConciliacionFiscalPanel';
 import AnexoA1Panel from './AnexoA1Panel';
 import AnexoB1Panel from './AnexoB1Panel';
+import AnexoDPanel from './AnexoDPanel';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
@@ -892,6 +893,13 @@ export default function DeclaracionesPage() {
           key: 'anexo-b1',
           label: <><FileTextOutlined /> Anexo B1</>,
           children: <AnexoB1Panel />,
+        },
+
+        // ── Anexo D del IR-2 — Costo de Venta (Fase 4 Bloque D) ───────────────
+        {
+          key: 'anexo-d',
+          label: <><FileTextOutlined /> Anexo D</>,
+          children: <AnexoDPanel />,
         },
       ]} />
     </div>

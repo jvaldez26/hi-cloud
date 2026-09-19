@@ -411,6 +411,36 @@ export async function exportarAnexoB1(data: any, desde: string, hasta: string) {
   await exportarExcel(filas, `Anexo-B1-IR2-${desde}_a_${hasta}`);
 }
 
+// ── Exportar Anexo D del IR-2 — Costo de Venta (Fase 4 Bloque D) ────────────
+// Inventario inicial/final y compras totales son datos reales; el reparto
+// Local/Exterior e ITBIS Llevado al Costo el ERP no los calcula — el Excel
+// los deja en cero con su motivo, igual que la pantalla.
+export async function exportarAnexoD(data: any, anio: number) {
+  const filas: Record<string, any>[] = [];
+
+  filas.push({ 'Concepto': 'INVENTARIO INICIAL', 'Detalle': data?.inventarioInicial?.procedencia ?? '', 'Monto': Number(data?.inventarioInicial?.total ?? 0) });
+  (data?.inventarioInicial?.cuentas ?? []).forEach((c: any) => filas.push({ 'Concepto': `  ${c.codigo} — ${c.nombre}`, 'Detalle': c.casillaIR2 ?? '', 'Monto': Number(c.saldo) }));
+
+  filas.push({ 'Concepto': 'COMPRAS TOTALES DEL EJERCICIO', 'Detalle': data?.compras?.procedencia ?? '', 'Monto': Number(data?.compras?.totalPeriodo ?? 0) });
+  filas.push({ 'Concepto': '  Con gasto de importación asociado (proxy, no oficial)', 'Detalle': '', 'Monto': Number(data?.compras?.conGastoImportacionAsociado ?? 0) });
+
+  filas.push({ 'Concepto': 'INVENTARIO FINAL', 'Detalle': data?.inventarioFinal?.procedencia ?? '', 'Monto': Number(data?.inventarioFinal?.total ?? 0) });
+  (data?.inventarioFinal?.cuentas ?? []).forEach((c: any) => filas.push({ 'Concepto': `  ${c.codigo} — ${c.nombre}`, 'Detalle': c.casillaIR2 ?? '', 'Monto': Number(c.saldo) }));
+
+  filas.push({ 'Concepto': '', 'Detalle': '', 'Monto': '' });
+  filas.push({ 'Concepto': 'COSTO DE VENTA CALCULADO', 'Detalle': data?.costoVentaCalculado?.formula ?? '', 'Monto': Number(data?.costoVentaCalculado?.valor ?? 0) });
+  filas.push({ 'Concepto': '', 'Detalle': data?.costoVentaCalculado?.nota ?? '', 'Monto': '' });
+
+  filas.push({ 'Concepto': '', 'Detalle': '', 'Monto': '' });
+  filas.push({ 'Concepto': 'LÍNEAS DE LLENADO MANUAL — el ERP no las registra', 'Detalle': '', 'Monto': '' });
+  (data?.lineasLlenadoManual ?? []).forEach((l: any) => filas.push({ 'Concepto': l.concepto, 'Detalle': l.motivo, 'Monto': 0 }));
+
+  filas.push({ 'Concepto': '', 'Detalle': '', 'Monto': '' });
+  filas.push({ 'Concepto': 'ADVERTENCIA', 'Detalle': data?.advertencias?.saldoAperturaInventario ?? '', 'Monto': '' });
+
+  await exportarExcel(filas, `Anexo-D-IR2-${anio}`);
+}
+
 // ── Exportar catálogo completo de productos (columnas ricas) ─────────────────
 // Devuelve true si generó el archivo, false si la lista estaba vacía.
 export async function exportarCatalogo(productos: any[], sufijo: string): Promise<boolean> {
