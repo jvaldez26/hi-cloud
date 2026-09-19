@@ -180,6 +180,29 @@ export class AsientosAutomaticosService {
         );
         return null;
       }
+      // P3 BLOQUE 2 — permiteMovimientos. El motor automático nunca leía
+      // este flag y podía postear a una cuenta de agrupación (una que solo
+      // existe para sumar sus hijas, ej. "6.1 Gastos Operacionales"), lo que
+      // descuadra los subtotales del catálogo aunque el asiento en sí
+      // cuadre en partida doble. Mismo criterio que el camino manual
+      // (ContabilidadService.createAsiento()): si la cuenta no admite
+      // movimientos directos, se reporta a Sentry y se descarta el asiento
+      // completo — no solo la línea, porque un asiento con una línea
+      // faltante tampoco cuadraría.
+      if (!cuenta.permiteMovimientos) {
+        this.logger.warn(`Cuenta ${l.codigo} (${cuenta.nombre}) no permite movimientos directos — asiento omitido`);
+        this.reportarFalloAsiento(
+          new Error(`Cuenta contable ${l.codigo} (${cuenta.nombre}) es de agrupación — asiento omitido`),
+          'asiento_cuenta_agrupacion',
+          {
+            tipoOrigen:      params.tipoOrigen,
+            referenciaId:    String(params.referenciaId),
+            referenciaFolio: params.referenciaFolio,
+            codigoCuenta:    l.codigo,
+          },
+        );
+        return null;
+      }
       lineasResueltas.push({ cuenta, ...l });
     }
 
