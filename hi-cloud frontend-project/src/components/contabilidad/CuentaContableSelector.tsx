@@ -18,8 +18,8 @@ import { contabilidadApi } from '../../api/contabilidad.api';
 import { TIPOS_BIENES_606 } from '../../constants/dgii-606';
 
 interface CuentaContableSelectorProps {
-  value?: string; // código de la cuenta
-  onChange?: (codigo: string | undefined) => void;
+  value?: string | number; // código (default) o id de la cuenta, según valueField
+  onChange?: (v: any) => void;
   /** Restringe las opciones a uno o varios TipoCuenta ('gasto', 'costo', 'activo'...) cuando la posición del asiento lo permite inferir. */
   tipo?: string | string[];
   placeholder?: string;
@@ -27,6 +27,13 @@ interface CuentaContableSelectorProps {
   allowClear?: boolean;
   style?: React.CSSProperties;
   size?: 'small' | 'middle' | 'large';
+  /**
+   * Qué campo de la cuenta se usa como value/onChange. 'codigo' (default) es lo
+   * que consume el motor de asientos (AsientosAutomaticosService). Los asientos
+   * manuales (ContabilidadService.createAsiento) trabajan con el id numérico de
+   * la cuenta — usa 'id' ahí.
+   */
+  valueField?: 'codigo' | 'id';
 }
 
 function etiquetasDeCuenta(c: any) {
@@ -46,6 +53,7 @@ function etiquetasDeCuenta(c: any) {
 
 export default function CuentaContableSelector({
   value, onChange, tipo, placeholder = 'Buscar cuenta por código o nombre', disabled, allowClear = true, style, size,
+  valueField = 'codigo',
 }: CuentaContableSelectorProps) {
   const { data: cuentas, isLoading } = useQuery({
     queryKey: ['cuentas-selector'],
@@ -58,11 +66,11 @@ export default function CuentaContableSelector({
     const base = (cuentas ?? []) as any[];
     const filtradas = tipos ? base.filter(c => tipos.includes(c.tipo)) : base;
     return filtradas.map(c => ({
-      value: c.codigo,
+      value: valueField === 'id' ? c.id : c.codigo,
       label: `${c.codigo} — ${c.nombre}`, // texto plano para que el buscador filtre por código y nombre
       cuenta: c,
     }));
-  }, [cuentas, tipo]);
+  }, [cuentas, tipo, valueField]);
 
   return (
     <Select

@@ -13,6 +13,7 @@ import { contabilidadApi, type AsientoPayload, type AsientoLineaPayload } from '
 import { fmt } from '../../utils/formatters';
 import dayjs from 'dayjs';
 import { hoyRD } from '../../utils/fechaRD';
+import CuentaContableSelector from '../../components/contabilidad/CuentaContableSelector';
 
 const { Text } = Typography;
 
@@ -37,7 +38,6 @@ function Asientos() {
     queryKey: ['asientos', page, desde, hasta, estadoFilt, tipoFilt],
     queryFn: () => contabilidadApi.asientos(page, 10, estadoFilt, desde || undefined, hasta || undefined, tipoFilt),
   });
-  const { data: cuentas } = useQuery({ queryKey: ['cuentas-sel'], queryFn: () => contabilidadApi.cuentas(true) });
 
   const createMut = useMutation({
     mutationFn: contabilidadApi.createAsiento,
@@ -187,12 +187,14 @@ function Asientos() {
         scroll={{ x: 'max-content' }} pagination={false}
             dataSource={lineas.map((l, i) => ({ ...l, key: i }))}
             columns={[
-              { title: 'Cuenta', key: 'cuenta', width: 220,
-                render: (_: any, _r: any, idx: number) => (
-                  <Select style={{ width: '100%' }} showSearch
-                    filterOption={(i, o) => String(o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
-                    options={cuentas?.map((c: any) => ({ value: c.id, label: `${c.codigo} — ${c.nombre}` }))}
-                    onChange={(v) => { const u = [...lineas]; u[idx].cuentaContableId = v; setLineas(u); }} />
+              { title: 'Cuenta', key: 'cuenta', width: 260,
+                render: (_: any, r: any, idx: number) => (
+                  <CuentaContableSelector
+                    valueField="id"
+                    value={r.cuentaContableId || undefined}
+                    onChange={(v) => { const u = [...lineas]; u[idx].cuentaContableId = v ?? 0; setLineas(u); }}
+                    size="small"
+                  />
                 )},
               { title: 'Descripción', key: 'desc', width: 170,
                 render: (_: any, r: any, idx: number) => (
