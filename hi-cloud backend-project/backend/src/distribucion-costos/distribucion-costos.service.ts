@@ -6,6 +6,8 @@ import { Repository, DataSource } from 'typeorm';
 import { ReglaDistribucion, PeriodicitadRegla } from './entities/regla-distribucion.entity';
 import { ReglaDistribucionLinea } from './entities/regla-distribucion-linea.entity';
 import { TenantService } from '../tenant/tenant.service';
+import { AsientosAutomaticosService } from '../contabilidad/services/asientos-automaticos.service';
+import { TipoOrigenAsiento } from '../contabilidad/entities/asiento-contable.entity';
 
 @Injectable()
 export class DistribucionCostosService {
@@ -16,6 +18,7 @@ export class DistribucionCostosService {
     private lineaRepo: Repository<ReglaDistribucionLinea>,
     private dataSource: DataSource,
     private tenantService: TenantService,
+    private asientosService: AsientosAutomaticosService,
   ) {}
 
   // ── CRUD Reglas ────────────────────────────────────────────────────────────
@@ -104,53 +107,66 @@ export class DistribucionCostosService {
     // Crear asiento contable
     const lineaDescripcion = concepto ?? `Distribución: ${regla.nombre}`;
 
-    const asientoLineas = [
+    // Las líneas de la regla guardan cuentaOrigenId/cuentaDestinoId — el FK
+    // numérico a cuentas_contables que el usuario eligió al crear la regla —
+    // pero el motor central (AsientosAutomaticosService) resuelve cuentas
+    // por código, no por id. Se busca el código aquí antes de armar el
+    // asiento; esto es una lectura contra el catálogo, no una escritura al
+    // libro diario, así que no rompe la regla de "solo el motor escribe en
+    // asientos_contables/asiento_lineas".
+    //
+    // Migrado del SQL crudo directo a esas dos tablas (2026-09-19) — además
+    // de bypasear la validación de partida doble y el reporte a Sentry del
+    // motor, el INSERT nunca ponía "numero" (columna NOT NULL): cada
+    // ejecución de una regla fallaba con una violación de constraint.
+    const idsCuentas = [regla.cuentaOrigenId, ...lineasCalculadas.map(l => l.cuentaDestinoId)];
+    const filasCuentas = await this.dataSource.query<{ id: number; codigo: string }[]>(
+      `SELECT id, codigo FROM cuentas_contables WHERE id = ANY($1) AND "empresaId" = $2`,
+      [idsCuentas, empresaId],
+    );
+    const codigoPorId = new Map(filasCuentas.map(f => [f.id, f.codigo]));
+
+    const codigoOrigen = codigoPorId.get(regla.cuentaOrigenId);
+    if (!codigoOrigen) {
+      throw new BadRequestException(
+        `La cuenta origen de la regla (#${regla.cuentaOrigenId}) no existe o no pertenece a esta empresa`,
+      );
+    }
+
+    const lineas = [
       // Crédito en la cuenta origen (se saca el costo del origen)
-      {
-        cuentaContableId: regla.cuentaOrigenId,
-        descripcion:      lineaDescripcion,
-        debe:             0,
-        haber:            monto,
-      },
+      { codigo: codigoOrigen, descripcion: lineaDescripcion, debe: 0, haber: monto },
       // Débito en cada cuenta destino
-      ...lineasCalculadas.map(l => ({
-        cuentaContableId: l.cuentaDestinoId,
-        descripcion:      `${lineaDescripcion} — ${Number(l.porcentaje).toFixed(2)}% → ${l.cuentaDestinoNombre ?? l.cuentaDestinoId}`,
-        debe:             l.montoDistribuido,
-        haber:            0,
-      })),
+      ...lineasCalculadas.map(l => {
+        const codigo = codigoPorId.get(l.cuentaDestinoId);
+        if (!codigo) {
+          throw new BadRequestException(
+            `La cuenta destino #${l.cuentaDestinoId} de la regla no existe o no pertenece a esta empresa`,
+          );
+        }
+        return {
+          codigo,
+          descripcion: `${lineaDescripcion} — ${Number(l.porcentaje).toFixed(2)}% → ${l.cuentaDestinoNombre ?? l.cuentaDestinoId}`,
+          debe: l.montoDistribuido, haber: 0,
+        };
+      }),
     ];
 
-    // Insertar asiento en la BD directamente.
-    //
-    // Corregido junto con la falta de empresaId en asiento_lineas (abajo) —
-    // los tres bugs viven en el mismo bloque de 15 líneas y sin arreglarlos
-    // juntos el fix de empresaId nunca llega a ejecutarse:
-    //   1. dataSource.query() de TypeORM devuelve el array de filas
-    //      directamente (mismo patrón que el resto del proyecto,
-    //      `const [row] = await this.dataSource.query(...)`), no un objeto
-    //      { rows: [...] } al estilo driver pg crudo — desestructurar
-    //      `.rows` lanzaba "Cannot destructure property 'rows' of
-    //      undefined" en cada ejecución.
-    //   2. La columna es "tipoOrigen" (enum TipoOrigenAsiento), no "tipo" —
-    //      esa columna no existe en asientos_contables.
-    //   3. estado 'borrador' nunca aparece en ningún reporte (todos filtran
-    //      estado = 'contabilizado'): un asiento "ejecutado" por el usuario
-    //      debe nacer CONTABILIZADO, igual que el resto del motor de
-    //      asientos automáticos.
-    const [asiento] = await this.dataSource.query<{ id: number }[]>(`
-      INSERT INTO asientos_contables
-        ("empresaId", fecha, "tipoOrigen", descripcion, estado, "totalDebe", "totalHaber", "userId")
-      VALUES ($1, $2, 'manual', $3, 'contabilizado', $4, $4, $5)
-      RETURNING id
-    `, [empresaId, fecha, lineaDescripcion, monto, userId]);
-
-    for (const l of asientoLineas) {
-      await this.dataSource.query(`
-        INSERT INTO asiento_lineas
-          ("empresaId", "asientoId", "cuentaContableId", descripcion, debe, haber)
-        VALUES ($1, $2, $3, $4, $5, $6)
-      `, [empresaId, asiento.id, l.cuentaContableId, l.descripcion, l.debe, l.haber]);
+    const asiento = await this.asientosService.crearAsientoContabilizado({
+      descripcion:     lineaDescripcion,
+      tipoOrigen:      TipoOrigenAsiento.MANUAL,
+      referenciaId:    reglaId,
+      referenciaFolio: `DIST-${reglaId}-${fecha}`,
+      fecha,
+      userId,
+      lineas,
+    });
+    if (!asiento) {
+      // El motor ya reportó a Sentry el código exacto que faltó — acá solo
+      // se traduce a un error legible para quien ejecutó la regla.
+      throw new BadRequestException(
+        'No se pudo generar el asiento — alguna cuenta de la regla no permite movimientos o dejó de existir.',
+      );
     }
 
     // Actualizar estadísticas de la regla
