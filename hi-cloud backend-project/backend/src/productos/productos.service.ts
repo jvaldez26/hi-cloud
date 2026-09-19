@@ -16,6 +16,7 @@ import { CreateProductoDto } from './dto/create-producto.dto';
 import { UpdateProductoDto } from './dto/update-producto.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { PreviewAjustePreciosDto, AplicarAjustePreciosDto } from './dto/ajuste-precios.dto';
+import { AjustarCostoManualDto } from './dto/ajustar-costo-manual.dto';
 import { calcularFila } from './ajuste-precios.util';
 import { TenantService } from '../tenant/tenant.service';
 import { ProductoProveedorService } from './producto-proveedor.service';
@@ -560,6 +561,41 @@ export class ProductosService implements OnModuleInit {
     });
     if (!producto) throw new NotFoundException(`Producto #${id} no encontrado`);
     return producto;
+  }
+
+  /**
+   * Fija costoPromedio a mano — para productos que entraron sin pasar por
+   * una Compra (import masivo, alta en POS) y quedan en $0, así que cada
+   * venta suya omite su línea de costo en el asiento (ver
+   * AsientosAutomaticosService.resolverCostoVenta). Motivo obligatorio,
+   * auditado: se guardan quién/cuándo/por qué y el valor anterior — mismo
+   * patrón que CajaService.anularRetiro (columnas sobre la fila, no una
+   * tabla de historial aparte, más el AuditInterceptor global que ya cubre
+   * cada PATCH a /productos/* en nivel IMPORTANTE).
+   *
+   * Es solo un punto de partida: en cuanto llegue la primera Compra real,
+   * ValoracionStockService.actualizarCostoPromedio() lo reemplaza limpio
+   * (stockAntes=0 → no promedia, sustituye). No se toca ningún asiento ni
+   * dato histórico aquí — el efecto es hacia adelante, desde la próxima
+   * venta de este producto.
+   */
+  async ajustarCostoManual(id: number, dto: AjustarCostoManualDto, userId: number, userNombre: string) {
+    const producto = await this.findOne(id);
+    const costoAnterior = Number(producto.costoPromedio ?? 0);
+
+    await this.productoRepository.update(id, {
+      costoPromedio:         dto.costo,
+      costoManualMotivo:     dto.motivo.trim(),
+      costoManualPorId:      userId,
+      costoManualPorNombre:  userNombre,
+      costoManualEn:         new Date(),
+      costoManualAnterior:   costoAnterior,
+    } as any);
+
+    const empresaId = this.tenantService.getEmpresaId();
+    this.realtimeService.notify(empresaId, 'producto', 'updated', id);
+
+    return this.findOne(id);
   }
 
   async findByIds(ids: number[]): Promise<Map<number, Producto>> {

@@ -56,6 +56,15 @@ export const productosApi = {
   update: (id: number, body: Partial<ProductoPayload>) =>
     api.patch<ApiResponse<Producto>>(`/productos/${id}`, body).then(r => r.data.data),
 
+  /**
+   * Fija costoPromedio (AVCO) a mano — solo para productos sin historial de
+   * compras (entraron por import masivo o alta rápida en POS). Motivo
+   * obligatorio, auditado. En cuanto llegue la primera Compra real, AVCO
+   * reemplaza este valor limpio — no lo promedia.
+   */
+  ajustarCostoManual: (id: number, body: { costo: number; motivo: string }) =>
+    api.patch<ApiResponse<Producto>>(`/productos/${id}/costo-manual`, body).then(r => r.data.data),
+
   remove: (id: number) =>
     api.delete(`/productos/${id}`).then(r => r.data),
 

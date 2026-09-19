@@ -65,6 +65,30 @@ export class Producto extends TenantBaseEntity {
   @Column({ type: 'decimal', precision: 14, scale: 4, default: 0 })
   costoPromedio!: number;
 
+  // ── Costo manual (bootstrap) ─────────────────────────────────────────────
+  // Para productos que entraron sin pasar por una Compra (import masivo, alta
+  // en POS) y quedan con costoPromedio=0 — cada venta suya omite su línea de
+  // costo en el asiento (ver AsientosAutomaticosService.resolverCostoVenta).
+  // Es solo un punto de partida: en cuanto llega la primera Compra real,
+  // ValoracionStockService.actualizarCostoPromedio() lo REEMPLAZA limpio
+  // (nunca lo promedia — sin stock real detrás, este valor no son "unidades"
+  // que deban pesar en la fórmula AVCO).
+  @Column({ type: 'text', nullable: true })
+  costoManualMotivo?: string;
+
+  @Column({ type: 'int', nullable: true })
+  costoManualPorId?: number;
+
+  @Column({ length: 200, nullable: true })
+  costoManualPorNombre?: string;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  costoManualEn?: Date;
+
+  /** costoPromedio justo antes de este ajuste — para no perder el rastro una vez AVCO lo recalcule. */
+  @Column({ type: 'decimal', precision: 14, scale: 4, nullable: true })
+  costoManualAnterior?: number;
+
   // Campos de identificación avanzada
   @Column({ length: 100, nullable: true })
   marca?: string;

@@ -84,6 +84,13 @@ export interface Producto {
   precio2?:        number | null;
   precio3?:        number | null;
   costo?:          number | null;
+  /** Costo promedio ponderado (AVCO) — se actualiza al recibir mercancía; 0 = sin historial de compras. */
+  costoPromedio?:  number;
+  /** Fijado a mano (ver AjustarCostoManualDto) — presente solo si alguna vez se corrigió manualmente. */
+  costoManualMotivo?:    string | null;
+  costoManualPorNombre?: string | null;
+  costoManualEn?:        string | null;
+  costoManualAnterior?:  number | null;
   porcentajeIva:   number;
   stock:           number;
   stockMinimo:     number;

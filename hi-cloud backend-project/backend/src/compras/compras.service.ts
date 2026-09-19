@@ -441,7 +441,7 @@ export class ComprasService {
       for (const detalle of compra.detalles) {
         // cantidadTotal = facturada + bonificada — todas las unidades entran al stock
         const qtdInventario = Number((detalle as any).cantidadTotal ?? detalle.cantidad);
-        await this.inventarioService.registrarEntrada(
+        const movimiento = await this.inventarioService.registrarEntrada(
           detalle.productoId,
           qtdInventario,
           compra.usuarioId,
@@ -452,12 +452,16 @@ export class ComprasService {
         // 1b. Actualizar costo promedio (AVCO).
         // costoReal = precio proveedor + costos de importación prorrateados por unidad.
         // Se omite cuando costoReal = 0 (bonificaciones puras) para no corromper el promedio.
+        // stockAntes = cantidadAnterior que registrarEntrada() ya calculó —
+        // nunca releer producto.stock aquí: para este punto ya quedó
+        // actualizado con la entrada que se acaba de aplicar.
         const costoBase     = Number((detalle as any).costoUnitarioReal ?? detalle.precioUnitario);
         const costoImport   = costoImportMap.get(detalle.id) ?? 0;
         const costoReal     = costoBase + costoImport;
         if (costoReal > 0) {
           await this.valoracionService.actualizarCostoPromedio(
             detalle.productoId,
+            Number((movimiento as any)?.cantidadAnterior ?? 0),
             qtdInventario,
             costoReal,
           );
@@ -572,7 +576,7 @@ export class ComprasService {
       const cantAcumulada    = +(yaRecibida + cantNueva).toFixed(4);
 
       // Registrar entrada en inventario solo por la cantidad NUEVA de esta recepción
-      await this.inventarioService.registrarEntrada(
+      const movimientoRecibir = await this.inventarioService.registrarEntrada(
         detalle.productoId,
         cantNueva,
         usuario.id,
@@ -581,13 +585,15 @@ export class ComprasService {
         almacenIdCompra,
       );
 
-      // Actualizar AVCO: precio proveedor + costo de importación por unidad
+      // Actualizar AVCO: precio proveedor + costo de importación por unidad.
+      // stockAntes = cantidadAnterior de registrarEntrada() — ver nota en cambiarEstado().
       const costoBase   = Number((detalle as any).costoUnitarioReal ?? detalle.precioUnitario);
       const costoImport = costoImportMapRecibir.get(detalle.id) ?? 0;
       const costoReal   = costoBase + costoImport;
       if (costoReal > 0) {
         await this.valoracionService.actualizarCostoPromedio(
           detalle.productoId,
+          Number((movimientoRecibir as any)?.cantidadAnterior ?? 0),
           cantNueva,
           costoReal,
         );

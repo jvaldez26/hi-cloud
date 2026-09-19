@@ -79,7 +79,10 @@ function buildDeps(mockCompra: ReturnType<typeof makeCompra>): Deps {
       update: jest.fn().mockResolvedValue(undefined),
     },
     inventarioSvc: {
-      registrarEntrada:    jest.fn().mockResolvedValue(undefined),
+      // cantidadAnterior=20: stock ANTES de esta entrada — actualizarCostoPromedio()
+      // debe recibir este valor tal cual, nunca releerlo de producto.stock
+      // (que para ese punto ya quedaría contaminado con la entrada aplicada).
+      registrarEntrada:    jest.fn().mockResolvedValue({ cantidadAnterior: 20 }),
       registrarDevolucion: jest.fn().mockResolvedValue(undefined),
     },
     valoracionSvc: {
@@ -148,6 +151,7 @@ describe('ComprasService — AVCO (actualizarCostoPromedio)', () => {
     expect(d.valoracionSvc.actualizarCostoPromedio).toHaveBeenCalledTimes(1);
     expect(d.valoracionSvc.actualizarCostoPromedio).toHaveBeenCalledWith(
       PROD_ID,
+      20,      // stockAntes = cantidadAnterior que devolvió registrarEntrada()
       6,       // cantidadTotal (5 fact + 1 bonif)
       120.50,  // costoUnitarioReal
     );
@@ -170,6 +174,7 @@ describe('ComprasService — AVCO (actualizarCostoPromedio)', () => {
     expect(d.valoracionSvc.actualizarCostoPromedio).toHaveBeenCalledTimes(1);
     expect(d.valoracionSvc.actualizarCostoPromedio).toHaveBeenCalledWith(
       PROD_ID,
+      20,      // stockAntes
       3,
       120.50,
     );

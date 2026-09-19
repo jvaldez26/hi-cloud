@@ -513,6 +513,12 @@ function ProductosCatalogo() {
   const [precio2Input,     setPrecio2Input]      = useState<number | null>(null);
   const [precio3Input,     setPrecio3Input]      = useState<number | null>(null);
   const [costoInput,       setCostoInput]        = useState<number | null>(null);
+  // Fijar costo manual (AVCO) — modal propio, separado del "Guardar" general:
+  // requiere motivo obligatorio y queda auditado, no debe poder colarse en
+  // un guardado de rutina del resto de la ficha.
+  const [modalCostoManual,        setModalCostoManual]        = useState(false);
+  const [costoManualInput,        setCostoManualInput]        = useState<number | null>(null);
+  const [costoManualMotivoInput,  setCostoManualMotivoInput]  = useState('');
   // Nonce para cancelar checks async de duplicados que quedaron pendientes
   // al cerrar/abrir el modal (evita race condition que muestra error de producto anterior)
   const dupCheckNonce = useRef(0);
@@ -729,6 +735,19 @@ function ProductosCatalogo() {
     onSuccess:  () => { invalidarProductos(); message.success('Eliminado'); },
     onError:    (e: any) => message.error(e?.response?.data?.message ?? 'Error al eliminar producto'),
   });
+  const costoManualMut = useMutation({
+    mutationFn: ({ id, costo, motivo }: { id: number; costo: number; motivo: string }) =>
+      productosApi.ajustarCostoManual(id, { costo, motivo }),
+    onSuccess: (actualizado) => {
+      invalidarProductos();
+      setEditing(actualizado);
+      setModalCostoManual(false);
+      setCostoManualInput(null);
+      setCostoManualMotivoInput('');
+      message.success('Costo fijado — se mantiene hasta que llegue la primera compra real de este producto');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al fijar el costo'),
+  });
 
   /**
    * Vínculos del producto que se está editando, para precargar el Select.
@@ -926,6 +945,11 @@ function ProductosCatalogo() {
           {(r as any).esPesable && !(r as any).plu && (
             <Tooltip title="Producto pesable sin PLU asignado — edita el producto y asigna el número PLU en la sección Balanza etiquetadora">
               <Tag color="warning" style={{ fontSize: 10, padding: '0 4px', lineHeight: '16px' }}>⚖ Sin PLU</Tag>
+            </Tooltip>
+          )}
+          {r.tipo !== 'servicio' && !Number((r as any).costoPromedio) && (
+            <Tooltip title="Sin historial de compras — no tiene costo promedio (AVCO). Sus ventas no generan línea de costo en el asiento. Edita el producto para fijarlo a mano.">
+              <Tag color="red" style={{ fontSize: 10, padding: '0 4px', lineHeight: '16px' }}>Costo $0</Tag>
             </Tooltip>
           )}
         </Space>
@@ -1289,6 +1313,25 @@ function ProductosCatalogo() {
                 />
               </Form.Item>
             </Col>
+            {editing && !esServicio && (
+              <Col xs={24} sm={8}>
+                <Form.Item label={<span>Costo promedio <span style={{ fontWeight: 400, color: '#9CA3AF', fontSize: 11 }}>(AVCO — se actualiza al recibir compras)</span></span>}>
+                  <Space align="center">
+                    <Text strong={!Number(editing.costoPromedio)} style={{ color: Number(editing.costoPromedio) ? undefined : '#ff4d4f' }}>
+                      {fmt.money(Number(editing.costoPromedio ?? 0))}
+                    </Text>
+                    <Button
+                      size="small"
+                      type={Number(editing.costoPromedio) ? 'default' : 'primary'}
+                      danger={!Number(editing.costoPromedio)}
+                      onClick={() => { setCostoManualInput(null); setCostoManualMotivoInput(''); setModalCostoManual(true); }}
+                    >
+                      Fijar costo
+                    </Button>
+                  </Space>
+                </Form.Item>
+              </Col>
+            )}
             <Col xs={24} sm={8}>
               <Form.Item name="porcentajeIva" label="ITBIS %">
                 <InputNumber style={{ width: '100%' }} min={0} max={100} />
@@ -1575,6 +1618,57 @@ function ProductosCatalogo() {
               </Button>
             </Col>
           </Row>
+        </Form>
+      </Modal>
+
+      {/* Fijar costo manual (AVCO) — motivo obligatorio, auditado sobre la
+          propia fila (costoManualMotivo/Por/En/Anterior). Solo tiene sentido
+          para productos sin historial de compras: llega la primera Compra
+          real y ValoracionStockService.actualizarCostoPromedio() lo
+          reemplaza limpio, nunca lo promedia con este valor. */}
+      <Modal
+        title={`Fijar costo — ${editing?.nombre ?? ''}`}
+        open={modalCostoManual}
+        onCancel={() => setModalCostoManual(false)}
+        onOk={() => {
+          if (costoManualInput == null || costoManualInput <= 0) {
+            message.warning('Escribe un costo mayor que cero');
+            return;
+          }
+          if (!costoManualMotivoInput.trim()) {
+            message.warning('El motivo es obligatorio');
+            return;
+          }
+          costoManualMut.mutate({ id: editing!.id, costo: costoManualInput, motivo: costoManualMotivoInput.trim() });
+        }}
+        confirmLoading={costoManualMut.isPending}
+        okText="Fijar costo"
+        destroyOnClose
+      >
+        <Alert
+          type="warning" showIcon style={{ marginBottom: 16 }}
+          message="Es un punto de partida, no un dato permanente"
+          description="En cuanto este producto reciba su primera compra real, el costo promedio (AVCO) se reemplaza automáticamente con el costo de esa compra — este valor no queda mezclado."
+        />
+        <Form layout="vertical">
+          <Form.Item label="Costo" required>
+            <InputNumber
+              style={{ width: '100%' }}
+              value={costoManualInput ?? undefined}
+              onChange={v => setCostoManualInput(v != null ? Number(v) : null)}
+              min={0.0001} precision={4} prefix="RD$" autoFocus
+              placeholder="Costo unitario"
+            />
+          </Form.Item>
+          <Form.Item label="Motivo" required>
+            <Input.TextArea
+              rows={3}
+              value={costoManualMotivoInput}
+              onChange={e => setCostoManualMotivoInput(e.target.value)}
+              placeholder="Ej: Producto de import masivo, sin compra registrada en el sistema — costo tomado de la factura del proveedor"
+              maxLength={2000}
+            />
+          </Form.Item>
         </Form>
       </Modal>
 

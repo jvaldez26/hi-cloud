@@ -23,9 +23,12 @@ import { UpdateProductoDto } from './dto/update-producto.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { ListProductosQueryDto } from './dto/list-productos-query.dto';
 import { PreviewAjustePreciosDto, AplicarAjustePreciosDto } from './dto/ajuste-precios.dto';
+import { AjustarCostoManualDto } from './dto/ajustar-costo-manual.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { GetUser } from '../auth/decorators/get-user.decorator';
+import { User } from '../users/users.entity';
 import { UserRole } from '../users/enums/user-role.enum';
 import { Throttle } from '@nestjs/throttler';
 
@@ -201,6 +204,18 @@ export class ProductosController {
   @ApiOperation({ summary: 'Actualizar producto' })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateProductoDto) {
     return this.productosService.update(id, dto);
+  }
+
+  @Patch(':id/costo-manual')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Fijar costoPromedio a mano (productos sin historial de compras) — motivo obligatorio, auditado' })
+  ajustarCostoManual(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AjustarCostoManualDto,
+    @GetUser() usuario: User,
+  ) {
+    const nombre = (usuario as any).nombre ?? (usuario as any).name ?? `Usuario #${usuario.id}`;
+    return this.productosService.ajustarCostoManual(id, dto, usuario.id, nombre);
   }
 
   @Patch(':id/stock')

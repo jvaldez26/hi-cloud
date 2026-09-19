@@ -25,29 +25,43 @@ export class ValoracionStockService {
 
   // ─── Actualizar costo promedio (AVCO) al recibir mercancía ─────────────────
   // Fórmula AVCO:
-  //   nuevo_costo_prom = (stock_actual × costo_prom_actual + cant_nueva × costo_nuevo)
-  //                     / (stock_actual + cant_nueva)
-
+  //   nuevo_costo_prom = (stock_previo × costo_prom_actual + cant_nueva × costo_nuevo)
+  //                     / (stock_previo + cant_nueva)
+  //
+  // stockAntes SIEMPRE lo manda el caller (el "cantidadAnterior" que ya
+  // devuelve InventarioService.registrarEntrada) — este método NUNCA debe
+  // leer producto.stock para la fórmula. Antes lo hacía con un findOne()
+  // propio, pero cada caller ya había llamado a registrarEntrada() primero
+  // (que persiste el stock NUEVO), así que ese findOne() siempre llegaba
+  // tarde: leía stock_previo + cantidadNueva, no stock_previo. El promedio
+  // quedaba mal para TODA compra, no solo para productos con costo manual —
+  // en el caso límite de "producto sin stock previo, costo puesto a mano"
+  // (ver AjustarCostoManualDto), la rama de abajo nunca se disparaba y el
+  // costo manual quedaba mezclado 50/50 con el primer costo real en vez de
+  // reemplazarse limpio.
   async actualizarCostoPromedio(
     productoId: number,
+    stockAntes: number,
     cantidadNueva: number,
     costoUnitarioNuevo: number,
   ): Promise<void> {
     const prod = await this.prodRepo.findOne({ where: { id: productoId } });
     if (!prod) return;
 
-    const stockActual      = Number(prod.stock ?? 0);
-    const costoActual      = Number((prod as any).costoPromedio ?? 0);
+    const costoActual = Number((prod as any).costoPromedio ?? 0);
 
-    // Si no hay stock previo, el nuevo costo ES el costo promedio
-    if (stockActual <= 0) {
+    // Si no había stock previo, el nuevo costo ES el costo promedio —
+    // reemplaza limpio cualquier valor puesto a mano (AjustarCostoManualDto),
+    // no lo promedia: sin stock real detrás, ese valor era solo un punto de
+    // partida provisional, nunca "unidades" que deban pesar en la fórmula.
+    if (stockAntes <= 0) {
       await this.prodRepo.update(productoId, { costoPromedio: costoUnitarioNuevo } as any);
       return;
     }
 
     const nuevoCostoPromedio = (
-      (stockActual * costoActual) + (cantidadNueva * costoUnitarioNuevo)
-    ) / (stockActual + cantidadNueva);
+      (stockAntes * costoActual) + (cantidadNueva * costoUnitarioNuevo)
+    ) / (stockAntes + cantidadNueva);
 
     await this.prodRepo.update(productoId, {
       costoPromedio: +nuevoCostoPromedio.toFixed(4),
