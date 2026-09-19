@@ -69,6 +69,14 @@ export const CONCEPTOS_CONTABLES: ConceptoContable[] = [
   // valor pre-seleccionado, siempre editable.
   { concepto: 'DEPOSITO_OTRO_INGRESO',   label: 'Depósito bancario (origen no especificado)', grupo: 'Bancos', default: '4.2.1.02' },
   { concepto: 'RETIRO_OTRO_GASTO',       label: 'Retiro bancario (destino no especificado)',  grupo: 'Bancos', default: '6.1.2.09' },
+  // ── Manufactura ──
+  // El consumo de materia prima (Inventario) ya usa el mismo concepto
+  // INVENTARIO del grupo Ventas — es físicamente la misma cuenta. WIP,
+  // Producto Terminado y MOD son cuentas propias de manufactura; antes
+  // vivían como literales sueltos dentro de manufactura.service.ts.
+  { concepto: 'MANUFACTURA_WIP',         label: 'Productos en Proceso (WIP)',               grupo: 'Manufactura', default: '1.1.3.02' },
+  { concepto: 'MANUFACTURA_PT',          label: 'Productos Terminados',                     grupo: 'Manufactura', default: '1.1.3.03' },
+  { concepto: 'MANUFACTURA_MOD',         label: 'Mano de Obra Directa aplicada',            grupo: 'Manufactura', default: COD.SUELDOS },
   // Una transferencia entre 2 cuentas bancarias PROPIAS no genera asiento —
   // ambos lados son la misma cuenta contable "Bancos" (el detalle de cuál
   // banco físico se movió lo sigue Tesorería en movimientos_bancarios, no

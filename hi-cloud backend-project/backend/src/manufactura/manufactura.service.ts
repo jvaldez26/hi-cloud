@@ -9,6 +9,7 @@ import { PaginationDto } from '../common/dto/pagination.dto';
 import { TenantService } from '../tenant/tenant.service';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { AsientosAutomaticosService } from '../contabilidad/services/asientos-automaticos.service';
+import { ConfiguracionContableService } from '../contabilidad/services/configuracion-contable.service';
 import { TipoOrigenAsiento } from '../contabilidad/entities/asiento-contable.entity';
 import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
@@ -24,7 +25,29 @@ export class ManufacturaService {
     private dataSource: DataSource,
     private tenantService: TenantService,
     private asientosService: AsientosAutomaticosService,
+    private configuracionService: ConfiguracionContableService,
   ) {}
+
+  // Configuración Contable por Módulo — Inventario reusa el mismo concepto
+  // que Ventas/Compras (es físicamente la misma cuenta); WIP/PT/MOD son
+  // propios de manufactura. Un problema al resolver la configuración nunca
+  // debe tumbar el asiento de producción — cae a los mismos literales que
+  // el motor usaba hardcodeados antes de esta pieza.
+  private async resolverCuentasManufactura() {
+    const defaults = { inventario: '1.1.3.01', wip: '1.1.3.02', pt: '1.1.3.03', mod: '6.1.1.01' };
+    try {
+      const eid = this.tenantService.getEmpresaId();
+      const [inventario, wip, pt, mod] = await Promise.all([
+        this.configuracionService.resolverCuenta(eid, 'INVENTARIO'),
+        this.configuracionService.resolverCuenta(eid, 'MANUFACTURA_WIP'),
+        this.configuracionService.resolverCuenta(eid, 'MANUFACTURA_PT'),
+        this.configuracionService.resolverCuenta(eid, 'MANUFACTURA_MOD'),
+      ]);
+      return { inventario, wip, pt, mod };
+    } catch {
+      return defaults;
+    }
+  }
 
   private async generarNumeroOrden(): Promise<string> {
     const empresaId = this.tenantService.getEmpresaId();
@@ -274,6 +297,7 @@ export class ManufacturaService {
 
     const userId = this.tenantService.getUserId() ?? 0;
     const empresaId = this.tenantService.getEmpresaId();
+    const cuentas = await this.resolverCuentasManufactura();
 
     try {
       const asiento = await this.asientosService.crearAsientoContabilizado({
@@ -284,8 +308,8 @@ export class ManufacturaService {
         fecha:           fechaHoyRD(), // el paso a EN_PROCESO ocurre "ahora" — orden.fechaInicio es la fecha PLANIFICADA, no esta
         userId,
         lineas: [
-          { codigo: '1.1.3.02', descripcion: `WIP Orden ${orden.numero}`,           debe: costoEstimado, haber: 0             },
-          { codigo: '1.1.3.01', descripcion: `Consumo MP Orden ${orden.numero}`,    debe: 0,             haber: costoEstimado },
+          { codigo: cuentas.wip,        descripcion: `WIP Orden ${orden.numero}`,           debe: costoEstimado, haber: 0             },
+          { codigo: cuentas.inventario, descripcion: `Consumo MP Orden ${orden.numero}`,    debe: 0,             haber: costoEstimado },
         ],
       });
       if (asiento?.id) {
@@ -332,15 +356,16 @@ export class ManufacturaService {
 
     const costoTotal = costoMP + costoMOD;
     const userId     = this.tenantService.getUserId() ?? 0;
+    const cuentas    = await this.resolverCuentasManufactura();
 
     try {
       const lineas: Array<{ codigo: string; descripcion: string; debe: number; haber: number }> = [
-        { codigo: '1.1.3.03', descripcion: `PT Orden ${orden.numero} — ${cantidadProducida} und.`, debe: costoTotal, haber: 0       },
-        { codigo: '1.1.3.02', descripcion: `WIP liberado Orden ${orden.numero}`,                   debe: 0,          haber: costoMP  },
+        { codigo: cuentas.pt,  descripcion: `PT Orden ${orden.numero} — ${cantidadProducida} und.`, debe: costoTotal, haber: 0       },
+        { codigo: cuentas.wip, descripcion: `WIP liberado Orden ${orden.numero}`,                   debe: 0,          haber: costoMP  },
       ];
 
       if (costoMOD > 0) {
-        lineas.push({ codigo: '6.1.1.01', descripcion: `MOD aplicada Orden ${orden.numero}`, debe: 0, haber: costoMOD });
+        lineas.push({ codigo: cuentas.mod, descripcion: `MOD aplicada Orden ${orden.numero}`, debe: 0, haber: costoMOD });
       }
 
       const asiento = await this.asientosService.crearAsientoContabilizado({
@@ -389,6 +414,7 @@ export class ManufacturaService {
     if (montoOriginal <= 0) return;
 
     const userId = this.tenantService.getUserId() ?? 0;
+    const cuentas = await this.resolverCuentasManufactura();
 
     try {
       await this.asientosService.crearAsientoContabilizado({
@@ -399,8 +425,8 @@ export class ManufacturaService {
         fecha:           fechaHoyRD(), // evento de cancelación, no la fecha (stale) del asiento de inicio que se revierte
         userId,
         lineas: [
-          { codigo: '1.1.3.01', descripcion: `Devolución MP Orden ${orden.numero}`, debe: montoOriginal, haber: 0             },
-          { codigo: '1.1.3.02', descripcion: `WIP reversado Orden ${orden.numero}`, debe: 0,             haber: montoOriginal },
+          { codigo: cuentas.inventario, descripcion: `Devolución MP Orden ${orden.numero}`, debe: montoOriginal, haber: 0             },
+          { codigo: cuentas.wip,        descripcion: `WIP reversado Orden ${orden.numero}`, debe: 0,             haber: montoOriginal },
         ],
       });
       this.logger.log(`Asiento reversión Orden ${orden.numero} — monto=${montoOriginal.toFixed(2)}`);

@@ -13,12 +13,14 @@ function makeService(empresaId: number) {
   const tenantService = { getEmpresaId: () => empresaId, getUserId: () => 5 };
   const asientosService = { crearAsientoContabilizado: jest.fn().mockResolvedValue({ id: 1 }) };
   const ordenRepo = { update: jest.fn().mockResolvedValue({}) };
+  const configuracionService = { resolverCuenta: jest.fn().mockResolvedValue('1.1.3.01') };
 
   const svc: any = Object.create(ManufacturaService.prototype);
   svc.logger          = { log: jest.fn(), warn: jest.fn(), error: jest.fn() };
   svc.dataSource       = dataSource;
   svc.tenantService    = tenantService;
   svc.asientosService  = asientosService;
+  svc.configuracionService = configuracionService;
   svc.ordenRepo        = ordenRepo;
   return { svc: svc as ManufacturaService, dataSource };
 }
