@@ -31,6 +31,7 @@ const COD = {
   ITBIS_RET_POR_PAGAR:     '2.1.2.03',  // Pasivo — ITBIS retenido por enterar a DGII (E41)
   ISR_RET_POR_PAGAR:       '2.1.2.04',  // Pasivo — ISR retenido por enterar a DGII (E41)
   GASTOS_IMPORT_X_APLICAR: '2.1.6.01',  // Transitoria — gastos de importación hasta llegar la factura del agente
+  COSTO_VENTAS:            '5.1.1.01',  // Costo — Costo de Ventas de Bienes (AVCO, snapshot en factura_detalles.costoUnitario)
 } as const;
 
 @Injectable()
@@ -87,6 +88,52 @@ export class AsientosAutomaticosService {
       5,
       empresaId ?? 0,
     );
+  }
+
+  /**
+   * Suma costoUnitario × cantidad de las líneas de la factura RESPALDADAS
+   * POR UN PRODUCTO (factura_detalles."productoId" IS NOT NULL) — el
+   * snapshot de AVCO que factura.service.ts ya toma al vender (ver
+   * factura-detalle.entity.ts). Las líneas de servicio (sin productoId)
+   * nunca cargan costo de inventario y no son un error: no participan del
+   * cálculo, y una factura puramente de servicios devuelve null sin avisar
+   * a nadie — no le falta nada.
+   *
+   * Si una línea CON producto trae costoUnitario = 0, es el caso real que
+   * esto vigila: el producto nunca tuvo una compra recibida, así que AVCO
+   * jamás calculó su costo. Generar el asiento igual sería mentir — se
+   * vería contabilizado sin estarlo. Se reporta a Sentry (con los
+   * productoId afectados) y se devuelve null para que el caller NO
+   * contabilice ninguna línea de costo para esta factura completa, en vez
+   * de un total parcial que nadie podría distinguir de uno correcto.
+   */
+  private async resolverCostoVenta(facturaId: number, folio: string): Promise<number | null> {
+    const filas = await this.dataSource.query<{ productoId: number | null; cantidad: string; costoUnitario: string }[]>(
+      `SELECT "productoId", cantidad, "costoUnitario" FROM factura_detalles WHERE "facturaId" = $1`,
+      [facturaId],
+    );
+    const conProducto = filas.filter(f => f.productoId != null);
+    if (!conProducto.length) return null;
+
+    const sinHistorial = conProducto.filter(f => Number(f.costoUnitario) === 0);
+    if (sinHistorial.length > 0) {
+      this.reportarFalloAsiento(
+        new Error(
+          `Factura ${folio}: ${sinHistorial.length} línea(s) con producto sin costoUnitario ` +
+          `(nunca recibió una compra) — costo de venta omitido, no se contabiliza en $0`,
+        ),
+        'asiento_costo_venta_sin_historial',
+        {
+          referenciaId:    String(facturaId),
+          referenciaFolio: folio,
+          productoIds:     sinHistorial.map(f => f.productoId).join(','),
+        },
+      );
+      return null;
+    }
+
+    const total = conProducto.reduce((s, f) => s + Number(f.costoUnitario) * Number(f.cantidad), 0);
+    return total > 0 ? Number(total.toFixed(2)) : null;
   }
 
   private async _crearAsientoContabilizado(
@@ -219,6 +266,19 @@ export class AsientosAutomaticosService {
     }
 
     try {
+      // DR: Costo de Ventas / CR: Inventario, por costoUnitario × cantidad de
+      // las líneas con producto (AVCO). Dentro del try: si la query falla,
+      // debe reportarse igual que cualquier otro fallo de este asiento, no
+      // tumbar la emisión de la factura (fire-and-forget, ver spec de este
+      // archivo). Un producto sin costo se ve peor contabilizado que sin
+      // asiento — resolverCostoVenta() devuelve null y reporta a Sentry en
+      // vez de dejar pasar un DR/CR en $0.
+      const costoVenta = await this.resolverCostoVenta(facturaId, folio);
+      if (costoVenta) {
+        lineas.push({ codigo: COD.COSTO_VENTAS, descripcion: `Costo de venta ${folio}`, debe: costoVenta, haber: 0 });
+        lineas.push({ codigo: COD.INVENTARIO,   descripcion: `Salida de inventario ${folio}`, debe: 0, haber: costoVenta });
+      }
+
       const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Venta según factura ${folio}`,
         tipoOrigen:      TipoOrigenAsiento.FACTURA,
