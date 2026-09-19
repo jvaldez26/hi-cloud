@@ -21,14 +21,32 @@ export interface GastoExcluido {
   motivos:     string[];  // ej. ['Sin NCF del proveedor', 'Sin tipo de bienes']
 }
 
+/**
+ * Compra del período que SÍ entró al 606 (a diferencia de un gasto
+ * incompleto, una compra nunca se excluye — ver getFormato606) pero con
+ * tipoBienes/formaPago en NULL: nadie la revisó nunca, y el 606 la mandó
+ * con el default de exportación (COALESCE ...,'09'/'04') sin que eso
+ * refleje una decisión real. Ver Bloque 1 — reconciliación 606/IR-2.
+ */
+export interface CompraSinRevisar {
+  id:          number;
+  folio:       string;
+  proveedor:   string;
+  fecha:       string;
+  total:       number;
+  motivos:     string[];  // ej. ['Sin tipo de bienes', 'Sin forma de pago']
+}
+
 export interface ResumenValidacion {
-  valido:           boolean;         // false si hay al menos 1 error
-  errores:          ResultadoValidacion[];
-  advertencias:     ResultadoValidacion[];
-  totalLineas:      number;
-  lineasOk:         number;
+  valido:            boolean;         // false si hay al menos 1 error
+  errores:           ResultadoValidacion[];
+  advertencias:      ResultadoValidacion[];
+  totalLineas:       number;
+  lineasOk:          number;
   /** Solo presente en la validación del 606 — gastos excluidos por datos incompletos */
-  gastosExcluidos?: GastoExcluido[];
+  gastosExcluidos?:  GastoExcluido[];
+  /** Solo presente en la validación del 606 — compras nunca clasificadas (tipoBienes/formaPago en NULL) */
+  comprasSinRevisar?: CompraSinRevisar[];
 }
 
 @Injectable()

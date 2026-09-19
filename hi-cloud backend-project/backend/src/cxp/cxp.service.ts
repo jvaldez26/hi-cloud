@@ -18,6 +18,7 @@ import { RegistrarPagoRealizadoDto } from './dto/registrar-pago-realizado.dto';
 import { FiltroCuentasDto } from '../common/dto/filtro-cuentas.dto';
 import { EstadoCuenta } from '../common/enums/estado-cuenta.enum';
 import { RealtimeService } from '../realtime/realtime.service';
+import { resolverFormaPagoCompra } from '../declaraciones/dgii.constants';
 import { TenantService } from '../tenant/tenant.service';
 import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
@@ -149,10 +150,39 @@ export class CxPService {
       this.logger.error(`Error tesorería pago CxP #${id}: ${err?.message ?? err}`),
     );
 
+    // DGII 606 — ahora que hay un pago real, se prefiere ese dato sobre la
+    // sugerencia que se puso al crear la OC (que era una suposición: contado
+    // → efectivo por defecto). No bloquea el pago si falla.
+    await this.resolverYActualizarFormaPago(id, cuenta.compraId ?? null).catch(err =>
+      this.logger.warn(`No se pudo resolver formaPago 606 de la compra #${cuenta.compraId} tras el pago #${pagoGuardado.id}: ${err?.message ?? err}`),
+    );
+
     const cuentaFinal = await this.findById(id);
     const eid = (cuentaFinal as any).empresaId;
     if (eid) this.realtimeService.notify(eid, 'cxc', 'updated', id);
     return cuentaFinal;
+  }
+
+  /**
+   * Re-resuelve compras.formaPago (código DGII) desde los PagoRealizado
+   * ACTIVOS de esta CxP — se llama tras registrar o anular un pago, porque
+   * los dos cambian qué métodos participaron (anular uno puede dejar el
+   * resto uniforme donde antes era "mixto", o viceversa).
+   *
+   * Solo pisa la columna cuando resolverFormaPagoCompra() devuelve un
+   * código confiable — sin pagos activos, o si el único método fue 'otro'
+   * (sin traducción DGII segura), no toca lo que la compra ya tenía: nunca
+   * borra una clasificación existente por falta de dato nuevo.
+   */
+  private async resolverYActualizarFormaPago(cuentaPorPagarId: number, compraId: number | null): Promise<void> {
+    if (!compraId) return;
+    const pagos = await this.pagoRepository.find({
+      where: { cuentaPorPagarId, isActive: true },
+    });
+    const formaPago = resolverFormaPagoCompra(pagos.map(p => p.metodoPago));
+    if (formaPago) {
+      await this.compraRepository.update(compraId, { formaPago });
+    }
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -256,6 +286,12 @@ export class CxPService {
       fechaHoyRD(),
       `Anulación de pago #${pagoId}`,
       `PAGOCXP-${pagoId}`,
+    );
+
+    // DGII 606 — el conjunto de métodos activos cambió (ver
+    // resolverYActualizarFormaPago). No bloquea la anulación si falla.
+    await this.resolverYActualizarFormaPago(cuenta.id, cuenta.compraId ?? null).catch(err =>
+      this.logger.warn(`No se pudo re-resolver formaPago 606 de la compra #${cuenta.compraId} tras anular el pago #${pagoId}: ${err?.message ?? err}`),
     );
 
     this.logger.log(`Pago #${pagoId} anulado — CxP #${cuenta.id} revertida (nuevo estado: ${nuevoEstado})`);

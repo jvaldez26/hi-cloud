@@ -1,3 +1,5 @@
+import { MetodoPago } from '../common/enums/metodo-pago.enum';
+
 /** Tabla oficial DGII — Tipos de bienes y servicios para Formato 606 */
 export const TIPOS_BIENES_606: Record<string, string> = {
   '01': 'Gastos de personal',
@@ -34,16 +36,55 @@ export const TIPOS_INGRESO_607: Record<string, string> = {
   '06': 'Otros ingresos',
 };
 
-/** Mapeo método de pago HiCloud → código DGII */
-export function mapFormaPagoDgii(metodo: string | undefined | null): string {
-  const m = (metodo ?? '').toLowerCase().trim();
-  if (m.includes('tarjeta') || m.includes('card'))    return '03';
-  if (m.includes('transfer') || m.includes('cheque')) return '02';
-  if (m.includes('crédito') || m.includes('credito')) return '04';
-  if (m.includes('permuta'))                           return '05';
-  if (m.includes('nota'))                              return '06';
-  if (m.includes('mixto'))                             return '07';
-  return '01'; // efectivo por defecto
+/**
+ * Traduce MetodoPago (el enum real de PagoRealizado — common/enums/metodo-pago.enum.ts,
+ * el mismo que usa CxP al registrar un pago a proveedor) al código DGII de
+ * forma de pago. Match exacto, no adivinanza por substring — la versión
+ * anterior de esta función nunca se llamaba desde ningún lado (código
+ * muerto) y encima tenía un bug: 'otro' caía en el fallback y se reportaba
+ * como '01' Efectivo, silenciosamente incorrecto.
+ *
+ * 'otro' (y cualquier valor no reconocido) devuelve null a propósito: no
+ * hay código DGII confiable para "otro", y asumir uno en silencio es
+ * exactamente el tipo de error que esta tarea existe para eliminar. El
+ * caller decide qué hacer con null (típicamente: dejar la clasificación
+ * existente de la compra, no pisarla con una suposición).
+ */
+export function mapFormaPagoDgii(metodo: MetodoPago | string | undefined | null): string | null {
+  switch (metodo) {
+    case MetodoPago.EFECTIVO:      return '01';
+    case MetodoPago.TRANSFERENCIA: return '02';
+    case MetodoPago.CHEQUE:        return '02';
+    case MetodoPago.TARJETA:       return '03';
+    default:                       return null; // 'otro', vacío, o algo no reconocido
+  }
+}
+
+/**
+ * Resuelve la forma de pago DGII de una compra a partir de TODOS sus pagos
+ * reales (PagoRealizado.metodoPago — puede haber varios, uno por cada abono
+ * parcial contra la CxP). "Mixto" se decide sobre el CÓDIGO DGII ya
+ * traducido, no sobre el enum crudo de HiCloud: cheque y transferencia son
+ * métodos distintos para nosotros pero el MISMO código DGII ('02'), así que
+ * pagar parte por cheque y parte por transferencia no es "mixto" para
+ * DGII — sí lo es pagar parte en efectivo y parte por transferencia
+ * ('01' vs '02'), donde no hay forma correcta de elegir "el más reciente"
+ * o "el primero" sin falsear cómo se pagó realmente.
+ *
+ * Los métodos sin traducción confiable ('otro') se ignoran para esta
+ * resolución en vez de forzar un null total — si hay al menos un pago con
+ * código DGII conocido, se usa ese; solo cuando NINGÚN pago tiene una
+ * traducción confiable (o no hay pagos) se devuelve null y no se pisa lo
+ * que la compra ya tenía.
+ */
+export function resolverFormaPagoCompra(metodos: (MetodoPago | string)[]): string | null {
+  const codigos = metodos
+    .map(m => mapFormaPagoDgii(m))
+    .filter((c): c is string => c !== null);
+  if (codigos.length === 0) return null;
+  const unicos = [...new Set(codigos)];
+  if (unicos.length > 1) return '07'; // Mixto
+  return unicos[0];
 }
 
 /** Tipo de ingreso para 607 — ventas normales = '01' */

@@ -24,6 +24,9 @@ export interface CompraPayload {
   moneda?: string;
   tipoCambio?: number;
   almacenId?: number;
+  /** Clasificación DGII 606 — código de tipo de bien (01-11) y forma de pago (01-07). */
+  tipoBienes?: string;
+  formaPago?: string;
 }
 
 export const comprasApi = {

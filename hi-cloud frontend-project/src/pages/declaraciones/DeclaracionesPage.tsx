@@ -120,6 +120,15 @@ interface GastoExcluido {
   motivos: string[];
 }
 
+interface CompraSinRevisar {
+  id: number;
+  folio: string;
+  proveedor: string;
+  fecha: string;
+  total: number;
+  motivos: string[];
+}
+
 function ValidationPanel({
   tipo, mes, anio, onTxtClick, txtCargando,
 }: {
@@ -131,6 +140,7 @@ function ValidationPanel({
     valido: boolean; errores: Problema[]; advertencias: Problema[];
     totalLineas: number; lineasOk: number;
     gastosExcluidos?: GastoExcluido[];
+    comprasSinRevisar?: CompraSinRevisar[];
   } | null>(null);
 
   const validar = useCallback(async () => {
@@ -270,6 +280,51 @@ function ValidationPanel({
                         <Button type="link" size="small" style={{ padding: 0, fontSize: 11, whiteSpace: 'nowrap' }}
                           onClick={() => window.open('/gastos', '_blank')}>
                           Completar →
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              }
+            />
+          )}
+
+          {/* Compras del período que SÍ entraron al 606 pero nadie clasificó
+              nunca (tipoBienes/formaPago en NULL) — a diferencia de un gasto
+              incompleto, la compra no se excluye del 606: sale igual con el
+              default de exportación ('09'/'04'), que puede no ser correcto. */}
+          {tipo === '606' && resultado?.comprasSinRevisar && resultado.comprasSinRevisar.length > 0 && (
+            <Alert type="warning" style={{ marginTop: 6 }}
+              message={
+                <span style={{ fontWeight: 700 }}>
+                  ⚠️ {resultado.comprasSinRevisar.length} compra{resultado.comprasSinRevisar.length !== 1 ? 's' : ''} sin revisar — se está usando la clasificación por defecto
+                </span>
+              }
+              description={
+                <div>
+                  <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 6 }}>
+                    Estas compras entraron al 606 con la clasificación por defecto (09 — Compras y gastos del costo de venta / 04 — Compra a crédito) porque nadie las revisó. Confírmalas o corrígelas en Compras.
+                  </Text>
+                  <div style={{ maxHeight: 180, overflowY: 'auto' }}>
+                    {resultado.comprasSinRevisar.map(c => (
+                      <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '4px 0', borderBottom: '1px solid #fde68a' }}>
+                        <span>
+                          <Text code style={{ fontSize: 10 }}>{c.folio}</Text>
+                          {' '}
+                          <Text style={{ fontSize: 12 }}>{c.proveedor}</Text>
+                          {' '}
+                          <Text type="secondary" style={{ fontSize: 11 }}>({c.fecha})</Text>
+                          {' '}
+                          <Text strong style={{ fontSize: 12, color: '#ef4444' }}>{fmt.money(c.total)}</Text>
+                          <div>
+                            {c.motivos.map((m, i) => (
+                              <Tag key={i} color="orange" style={{ fontSize: 10, marginTop: 2 }}>{m}</Tag>
+                            ))}
+                          </div>
+                        </span>
+                        <Button type="link" size="small" style={{ padding: 0, fontSize: 11, whiteSpace: 'nowrap' }}
+                          onClick={() => window.open('/compras', '_blank')}>
+                          Revisar →
                         </Button>
                       </div>
                     ))}

@@ -10,11 +10,15 @@ import { proveedoresApi } from '../../api/proveedores.api';
 import { productosApi } from '../../api/productos.api';
 import api from '../../api/client';
 import { useAuthStore } from '../../store/auth.store';
+import { TIPOS_BIENES_606, FORMAS_PAGO_606 } from '../../constants/dgii-606';
 import dayjs from 'dayjs';
 
 interface Linea {
   key: string;
   productoId?: number;
+  /** 'producto' | 'servicio' — Producto.tipo, la única señal con vocabulario
+   *  controlado que existe hoy para sugerir tipoBienes 606 (ver dgii-606.ts). */
+  productoTipo?: string;
   descripcion?: string;
   cantidad: number;
   cantidadBonificada: number;
@@ -98,6 +102,15 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
   const [pctItbis, setPctItbis]         = useState(30);
   const [retieneIsr, setRetieneIsr]     = useState(false);
   const [pctIsr, setPctIsr]             = useState(10);
+
+  // DGII 606 — sugerencia editable, nunca fija (ver dgii-606.ts). "Tocado"
+  // se marca al primer cambio manual del usuario, o al cargar un borrador
+  // que YA traía un valor puesto por alguien — desde ahí la sugerencia deja
+  // de re-aplicarse, para no pisar una elección real.
+  const [tipoBienes, setTipoBienes]           = useState<string | undefined>(undefined);
+  const [tipoBienesTocado, setTipoBienesTocado] = useState(false);
+  const [formaPago, setFormaPago]             = useState<string | undefined>(undefined);
+  const [formaPagoTocado, setFormaPagoTocado]   = useState(false);
 
   const defaultAlmacenId = (() => { try { const v = localStorage.getItem('almacenId'); return v ? Number(v) : undefined; } catch { return undefined; } })();
   const [almacenId, setAlmacenId] = useState<number | undefined>(defaultAlmacenId);
@@ -227,12 +240,19 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
     setPctItbis(Number(c.porcentajeRetencionItbis ?? 30));
     setRetieneIsr(!!c.retieneIsr);
     setPctIsr(Number(c.porcentajeRetencionIsr ?? 10));
+    // Si el borrador ya trae clasificación 606, es una elección real — se
+    // marca "tocada" para que la sugerencia automática no la reemplace.
+    setTipoBienes(c.tipoBienes ?? undefined);
+    setTipoBienesTocado(c.tipoBienes != null);
+    setFormaPago(c.formaPago ?? undefined);
+    setFormaPagoTocado(c.formaPago != null);
 
     const dets = (c.detalles ?? []) as any[];
     if (dets.length) {
       setLineas(dets.map((d, i) => ({
         key:                String(i + 1),
         productoId:         d.productoId,
+        productoTipo:       d.producto?.tipo,
         descripcion:        d.descripcion,
         cantidad:           Number(d.cantidad),
         cantidadBonificada: Number(d.cantidadBonificada ?? 0),
@@ -259,6 +279,7 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
       updated[crearProdLineasIdx] = {
         ...updated[crearProdLineasIdx],
         productoId:         prod.id,
+        productoTipo:       prod.tipo,
         descripcion:        prod.nombre,
         precioUnitario:     precioLinea,
         porcentajeItbis:    18,
@@ -298,9 +319,37 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
     const label = prod.codigo ? `${prod.codigo} — ${prod.nombre}` : prod.nombre;
     setSelectedProds(prev => new Map(prev).set(productoId, label));
     const updated = [...lineas];
-    updated[idx] = { ...updated[idx], productoId, descripcion: prod.nombre, precioUnitario: Number(prod.precio), porcentajeItbis: 18, permiteDecimales: prod.permiteDecimales ?? false, cantidadBonificada: updated[idx].cantidadBonificada ?? 0 };
+    updated[idx] = { ...updated[idx], productoId, productoTipo: prod.tipo, descripcion: prod.nombre, precioUnitario: Number(prod.precio), porcentajeItbis: 18, permiteDecimales: prod.permiteDecimales ?? false, cantidadBonificada: updated[idx].cantidadBonificada ?? 0 };
     setLineas(updated);
   };
+
+  // Sugerencia de tipoBienes 606 — deriva de Producto.tipo de las líneas
+  // (única señal con vocabulario controlado; Producto.categoria es texto
+  // libre sin diccionario, a diferencia de Gasto.categoria en GastosPage).
+  // Todo servicio → '02' Trabajo/suministros/servicios; todo mercancía (o
+  // mezclado/sin producto aún) → '09' Compras y gastos del costo de venta,
+  // que es la clasificación correcta para la mayoría de compras reales de
+  // inventario. Nunca se aplica si el usuario ya tocó el campo.
+  useEffect(() => {
+    if (tipoBienesTocado) return;
+    const conProducto = lineas.filter(l => l.productoId && l.productoTipo);
+    if (!conProducto.length) return;
+    const tipos = [...new Set(conProducto.map(l => l.productoTipo))];
+    setTipoBienes(tipos.length === 1 && tipos[0] === 'servicio' ? '02' : '09');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lineas, tipoBienesTocado]);
+
+  // Sugerencia de formaPago 606 — deriva del tipo de pago que la OC ya
+  // captura. Crédito → '04' Compra a crédito, sin ambigüedad. Contado → '01'
+  // Efectivo por defecto (el caso más común); si el pago real termina
+  // siendo por cheque/transferencia/tarjeta, cxp.service.ts lo re-resuelve
+  // solo al registrar el pago (ver resolverYActualizarFormaPago) — esta
+  // sugerencia de la OC solo aplica mientras la compra no tiene pago aún.
+  useEffect(() => {
+    if (formaPagoTocado) return;
+    setFormaPago(tipoPago === 'credito' ? '04' : '01');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tipoPago, formaPagoTocado]);
 
   const fechaVencimientoCalc = (() => {
     const fechaVal = form.getFieldValue('fecha') as dayjs.Dayjs | undefined;
@@ -352,6 +401,8 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
       numeroFacturaProveedor: values.numeroFacturaProveedor,
       tipoPago,
       diasCredito: tipoPago === 'credito' ? diasCredito : undefined,
+      tipoBienes,
+      formaPago,
       moneda,
       tipoCambio: moneda !== 'DOP' ? tipoCambio : undefined,
       almacenId: almacenId ?? undefined,
@@ -655,6 +706,30 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
               </Form.Item>
             </Col>
           )}
+          {/* DGII 606 — sugerencia editable (ver useEffect de arriba). Sin
+              esto la compra entera quedaba SIEMPRE en NULL: la columna
+              existía en la base desde el inicio pero ningún formulario la
+              exponía, así que toda compra se declaraba mal en el 606. */}
+          <Col flex="1 1 200px">
+            <Form.Item label="Tipo de bienes (606)" style={ITEM_COMPACTO}>
+              <Select size="small" allowClear placeholder="Sin clasificar"
+                value={tipoBienes}
+                onChange={v => { setTipoBienes(v); setTipoBienesTocado(true); }}
+                options={TIPOS_BIENES_606} style={{ width: '100%' }}
+                showSearch filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
+              />
+            </Form.Item>
+          </Col>
+          <Col flex="1 1 220px">
+            <Form.Item label="Forma de pago (606)" style={ITEM_COMPACTO}>
+              <Select size="small" allowClear placeholder="Sin clasificar"
+                value={formaPago}
+                onChange={v => { setFormaPago(v); setFormaPagoTocado(true); }}
+                options={FORMAS_PAGO_606} style={{ width: '100%' }}
+                showSearch filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
+              />
+            </Form.Item>
+          </Col>
           {/* Notas, plegadas. Casi ninguna OC las lleva y se comían una fila
               entera de la cabecera —y con ella el alto de la tabla de ítems—
               para un campo vacío. Al editar una compra que sí las tiene se

@@ -197,6 +197,12 @@ export class ComprasService {
       tipoPago,
       diasCredito,
       fechaVencimiento,
+      // DGII 606 — nunca se inventa un valor aquí: lo que mande el DTO
+      // (la sugerencia editable del formulario, o lo que haya elegido el
+      // usuario) o NULL. La columna existía desde el inicio pero create()
+      // nunca la tocaba — toda compra quedaba en NULL para siempre.
+      tipoBienes:             dto.tipoBienes ?? null,
+      formaPago:              dto.formaPago  ?? null,
       moneda:                 dto.moneda ?? 'DOP',
       tipoCambio:             dto.tipoCambio ?? 1,
       retieneItbis,
@@ -380,6 +386,8 @@ export class ComprasService {
           fechaVencimiento:       fechaVencimiento ?? undefined,
           moneda:                 dto.moneda ?? 'DOP',
           tipoCambio:             dto.tipoCambio ?? 1,
+          tipoBienes:             dto.tipoBienes ?? null,
+          formaPago:              dto.formaPago  ?? null,
           retieneItbis,
           porcentajeRetencionItbis: pctItbis,
           montoRetencionItbis,

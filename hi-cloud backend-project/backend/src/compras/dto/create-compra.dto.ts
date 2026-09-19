@@ -96,6 +96,18 @@ export class CreateCompraDto {
   @IsString()
   tipoPago?: 'contado' | 'credito';
 
+  // Clasificación DGII 606 — código de tipo de bien/servicio (01-11) y forma
+  // de pago (01-07). Sin default: si el caller no los manda, la columna
+  // queda NULL (nunca se pisa con un valor inventado) — el 606 los muestra
+  // con COALESCE(...,'09')/COALESCE(...,'04') solo al exportar, y la
+  // pantalla de validación usa el NULL real para saber qué compra nadie
+  // revisó nunca. Ver declaraciones.service.ts / CompraFormInner.tsx.
+  @IsOptional() @IsString()
+  tipoBienes?: string;
+
+  @IsOptional() @IsString()
+  formaPago?: string;
+
   @IsOptional()
   @IsInt()
   @Min(0)

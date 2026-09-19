@@ -303,6 +303,45 @@ export class DeclaracionesService {
     }));
   }
 
+  // ── Compras del 606 sin clasificar (tipoBienes/formaPago en NULL) ─────────
+  //
+  // A diferencia de un gasto incompleto, una compra NUNCA se excluye del
+  // 606 (ver getFormato606 — siempre entra, con COALESCE(...,'09'/'04') al
+  // exportar). Esta lista es la advertencia: cuáles de esas compras nadie
+  // clasificó nunca, para que el contador las revise antes de declarar en
+  // vez de confiar en un default de exportación que no es una decisión real.
+
+  async getComprasSinRevisar606(mes: number, anio: number) {
+    const { desde, hasta } = this.rango(mes, anio);
+    const eid = this.eid;
+
+    const rows = await this.dataSource.query<any[]>(`
+      SELECT c.id, c.folio, c.fecha::text, c.total::numeric,
+             c."tipoBienes", c."formaPago",
+             COALESCE(p.nombre, 'Proveedor sin nombre') AS proveedor
+      FROM compras c
+      LEFT JOIN proveedores p ON p.id = c."proveedorId"
+      WHERE c."empresaId" = $1
+        AND c.fecha BETWEEN $2 AND $3
+        AND c."isActive" = true
+        AND c.estado IN ('recibida','pagada')
+        AND (c."tipoBienes" IS NULL OR c."formaPago" IS NULL)
+      ORDER BY c.fecha ASC, c.id ASC
+    `, [eid, desde, hasta]);
+
+    return rows.map(r => ({
+      id:        r.id,
+      folio:     r.folio,
+      proveedor: r.proveedor,
+      fecha:     String(r.fecha).substring(0, 10),
+      total:     Number(r.total),
+      motivos: [
+        ...(!r.tipoBienes ? ['Sin tipo de bienes'] : []),
+        ...(!r.formaPago  ? ['Sin forma de pago']  : []),
+      ],
+    }));
+  }
+
   // ── Formato 607: Ventas — fix critico: usa eNCF real via JOIN con tabla ecf ─
 
   async getFormato607(mes: number, anio: number) {
@@ -399,12 +438,13 @@ export class DeclaracionesService {
 
   async validarPeriodo(tipo: '606'|'607'|'608', mes: number, anio: number): Promise<ResumenValidacion> {
     if (tipo === '606') {
-      const [data, excluidos] = await Promise.all([
+      const [data, excluidos, sinRevisar] = await Promise.all([
         this.getFormato606(mes, anio),
         this.getGastosExcluidos606(mes, anio),
+        this.getComprasSinRevisar606(mes, anio),
       ]);
       const resultado = this.validator.validar606(data.filas as Fila606[]);
-      return { ...resultado, gastosExcluidos: excluidos };
+      return { ...resultado, gastosExcluidos: excluidos, comprasSinRevisar: sinRevisar };
     }
     if (tipo === '607') {
       const data = await this.getFormato607(mes, anio);
