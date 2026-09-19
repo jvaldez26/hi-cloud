@@ -114,3 +114,67 @@ describe('AnexosIR2Service.getAnexoA1()', () => {
     expect(r.activo.corriente.cuentas[0].casillaIR2).toBe('6.1');
   });
 });
+
+describe('AnexosIR2Service.getAnexoB1() — FASE 4 Bloque C', () => {
+  it('sin ninguna cuenta con B1, todo en cero y el ISR explícitamente excluido', async () => {
+    const { svc } = makeService({});
+    const r = await svc.getAnexoB1('2026-01-01', '2026-12-31');
+    expect(r.resultados).toEqual({ utilidadBruta: 0, totalGastos: 0, utilidadNeta: 0, margenBruto: 0, margenNeto: 0 });
+    expect(r.isr.incluido).toBe(false);
+    expect(r.isr.motivo).toMatch(/renta imponible fiscal/i);
+    expect((r.resultados as any).isrEstimado).toBeUndefined();
+  });
+
+  it('agrupa ingresos/costos/gastos y calcula utilidad bruta y neta solo con cuentas B1', async () => {
+    const { svc } = makeService({
+      "JOIN cuenta_anexo_ir2 ca ON": [
+        { codigo: '4.1.1.01', nombre: 'Ventas de Bienes', tipo: 'ingreso', naturaleza: 'acreedora', casillaIR2: null, saldo: '100000' },
+        { codigo: '5.1.1.01', nombre: 'Costo de Ventas', tipo: 'costo', naturaleza: 'deudora', casillaIR2: null, saldo: '40000' },
+        { codigo: '6.1.1.01', nombre: 'Sueldos', tipo: 'gasto', naturaleza: 'deudora', casillaIR2: null, saldo: '20000' },
+      ],
+    });
+    const r = await svc.getAnexoB1('2026-01-01', '2026-12-31');
+    expect(r.ingresos.total).toBe(100000);
+    expect(r.costos.total).toBe(40000);
+    expect(r.gastos.total).toBe(20000);
+    expect(r.resultados.utilidadBruta).toBe(60000);
+    expect(r.resultados.utilidadNeta).toBe(40000);
+  });
+
+  it('una cuenta de resultados con saldo pero sin etiqueta B1 queda fuera de los totales y aparece en alertas', async () => {
+    const { svc } = makeService({
+      "JOIN cuenta_anexo_ir2 ca ON": [
+        { codigo: '4.1.1.01', nombre: 'Ventas de Bienes', tipo: 'ingreso', naturaleza: 'acreedora', casillaIR2: null, saldo: '10000' },
+      ],
+      'NOT EXISTS': [
+        { codigo: '4.9.9.99', nombre: 'Ingreso custom sin etiquetar', tipo: 'ingreso', saldo: '777' },
+      ],
+    });
+    const r = await svc.getAnexoB1('2026-01-01', '2026-12-31');
+    expect(r.ingresos.total).toBe(10000);
+    expect(r.alertas.cuentasDeResultadosSinEtiquetaB1).toEqual([
+      { codigo: '4.9.9.99', nombre: 'Ingreso custom sin etiquetar', tipo: 'ingreso', saldo: 777 },
+    ]);
+  });
+
+  it('advierte con el monto afectado cuando hay ventas de productos sin historial de costo, sin quedar en silencio', async () => {
+    const { svc } = makeService({
+      "f.\"empresaId\" = $1": [
+        { id: 1, folio: 'FAC-001', fecha: '2026-03-05', lineas: '2', monto: '1500' },
+        { id: 2, folio: 'FAC-014', fecha: '2026-06-10', lineas: '1', monto: '300' },
+      ],
+    });
+    const r = await svc.getAnexoB1('2026-01-01', '2026-12-31');
+    expect(r.alertas.ventasSinHistorialCosto.cantidadFacturas).toBe(2);
+    expect(r.alertas.ventasSinHistorialCosto.montoAfectado).toBe(1800);
+    expect(r.alertas.ventasSinHistorialCosto.nota).toMatch(/subestimado/i);
+    expect(r.alertas.ventasSinHistorialCosto.facturas).toHaveLength(2);
+  });
+
+  it('sin ventas afectadas, la nota lo dice explícitamente en vez de quedar vacía', async () => {
+    const { svc } = makeService({});
+    const r = await svc.getAnexoB1('2026-01-01', '2026-12-31');
+    expect(r.alertas.ventasSinHistorialCosto.cantidadFacturas).toBe(0);
+    expect(r.alertas.ventasSinHistorialCosto.nota).toMatch(/costo conocido/i);
+  });
+});

@@ -17,6 +17,7 @@ import {
 import { exportar606, exportar607 } from '../../utils/exportExcel';
 import ConciliacionFiscalPanel from './ConciliacionFiscalPanel';
 import AnexoA1Panel from './AnexoA1Panel';
+import AnexoB1Panel from './AnexoB1Panel';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
@@ -884,6 +885,13 @@ export default function DeclaracionesPage() {
           key: 'anexo-a1',
           label: <><FileTextOutlined /> Anexo A1</>,
           children: <AnexoA1Panel />,
+        },
+
+        // ── Anexo B1 del IR-2 — Estado de Resultados (Fase 4 Bloque C) ───────
+        {
+          key: 'anexo-b1',
+          label: <><FileTextOutlined /> Anexo B1</>,
+          children: <AnexoB1Panel />,
         },
       ]} />
     </div>

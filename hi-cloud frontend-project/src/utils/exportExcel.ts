@@ -373,6 +373,44 @@ export async function exportarAnexoA1(data: any, fechaCorte: string) {
   await exportarExcel(filas, `Anexo-A1-IR2-${fechaCorte}`);
 }
 
+// ── Exportar Anexo B1 del IR-2 — Estado de Resultados (Fase 4 Bloque C) ──────
+// El ISR estimado NO se incluye a propósito (se calcula sobre renta
+// imponible fiscal, no utilidad contable) — el Excel deja la misma nota
+// explícita que la pantalla, no lo omite en silencio.
+export async function exportarAnexoB1(data: any, desde: string, hasta: string) {
+  const filas: Record<string, any>[] = [];
+  const seccion = (titulo: string, cuentas: any[], total: number) => {
+    filas.push({ 'Casilla': titulo.toUpperCase(), 'Código': '', 'Cuenta': '', 'Monto': '' });
+    cuentas.forEach((c: any) => filas.push({
+      'Casilla': c.casillaIR2 ?? '— sin casilla —', 'Código': c.codigo, 'Cuenta': c.nombre, 'Monto': Number(c.saldo),
+    }));
+    filas.push({ 'Casilla': '', 'Código': '', 'Cuenta': `Total ${titulo.toLowerCase()}`, 'Monto': Number(total) });
+  };
+
+  seccion('Ingresos', data?.ingresos?.cuentas ?? [], data?.ingresos?.total ?? 0);
+  seccion('Costos', data?.costos?.cuentas ?? [], data?.costos?.total ?? 0);
+  filas.push({ 'Casilla': '', 'Código': '', 'Cuenta': 'UTILIDAD BRUTA', 'Monto': Number(data?.resultados?.utilidadBruta ?? 0) });
+  seccion('Gastos', data?.gastos?.cuentas ?? [], data?.gastos?.total ?? 0);
+  filas.push({ 'Casilla': '', 'Código': '', 'Cuenta': 'UTILIDAD NETA', 'Monto': Number(data?.resultados?.utilidadNeta ?? 0) });
+
+  filas.push({ 'Casilla': '', 'Código': '', 'Cuenta': '', 'Monto': '' });
+  filas.push({
+    'Casilla': 'ISR', 'Código': '', 'Monto': '',
+    'Cuenta': 'NO incluido — ' + (data?.isr?.motivo ?? 'se calcula sobre renta imponible fiscal, no sobre utilidad contable'),
+  });
+
+  const alertaVentas = data?.alertas?.ventasSinHistorialCosto;
+  if (alertaVentas) {
+    filas.push({ 'Casilla': '', 'Código': '', 'Cuenta': '', 'Monto': '' });
+    filas.push({ 'Casilla': 'ALERTA — Ventas sin historial de costo', 'Código': '', 'Cuenta': alertaVentas.nota, 'Monto': Number(alertaVentas.montoAfectado ?? 0) });
+    (alertaVentas.facturas ?? []).forEach((f: any) => filas.push({
+      'Casilla': '', 'Código': f.folio, 'Cuenta': `${f.fecha} — ${f.lineasSinCosto} línea(s) sin costo`, 'Monto': Number(f.monto),
+    }));
+  }
+
+  await exportarExcel(filas, `Anexo-B1-IR2-${desde}_a_${hasta}`);
+}
+
 // ── Exportar catálogo completo de productos (columnas ricas) ─────────────────
 // Devuelve true si generó el archivo, false si la lista estaba vacía.
 export async function exportarCatalogo(productos: any[], sufijo: string): Promise<boolean> {

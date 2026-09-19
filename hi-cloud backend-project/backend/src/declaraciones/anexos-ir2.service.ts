@@ -125,6 +125,162 @@ export class AnexosIR2Service {
     }));
   }
 
+  // ── Anexo B1 — Estado de Resultados ────────────────────────────────────
+
+  /**
+   * FASE 4 Bloque C. Ahora que el costo de venta sí se contabiliza (asiento
+   * de factura, COD.COSTO_VENTAS), la línea de costos tiene dato real por
+   * primera vez — pero solo para productos con historial de compra (AVCO).
+   * Un producto vendido sin costoUnitario conocido NO genera línea de costo
+   * (ver resolverCostoVenta() en asientos-automaticos.service.ts) — la
+   * alerta `ventasSinHistorialCosto` avisa con el monto afectado para que
+   * el contador sepa que el costo de este período puede estar subestimado,
+   * en vez de dejarlo asumir que el número que ve ya es el correcto.
+   *
+   * El ISR estimado que sí calcula ReportesFinancierosService (27% sobre
+   * utilidad contable) NO se incluye en este anexo a propósito: el ISR real
+   * se calcula sobre la renta imponible FISCAL, no la utilidad contable, y
+   * eso exige una conciliación entre resultado contable y fiscal (gastos no
+   * deducibles, depreciación fiscal vs contable, etc.) que el ERP no hace.
+   * Meter aquí el 27% sería presentar una estimación contable como si fuera
+   * el dato fiscal del anexo — el campo `isr` lo deja explícito en vez de
+   * omitirlo en silencio.
+   */
+  async getAnexoB1(desde: string, hasta: string) {
+    const eid = this.eid;
+
+    const [conB1, sinB1, ventasSinCosto] = await Promise.all([
+      this.cuentasConAnexoB1(eid, desde, hasta),
+      this.cuentasDeResultadosSinAnexoB1(eid, desde, hasta),
+      this.ventasSinHistorialCosto(eid, desde, hasta),
+    ]);
+
+    const ingresos = conB1.filter((c) => c.tipo === 'ingreso');
+    const costos   = conB1.filter((c) => c.tipo === 'costo');
+    const gastos   = conB1.filter((c) => c.tipo === 'gasto');
+
+    const sumar = (cuentas: { saldo: number }[]) => +cuentas.reduce((s, c) => s + c.saldo, 0).toFixed(2);
+
+    const totalIngresos = sumar(ingresos);
+    const totalCostos   = sumar(costos);
+    const totalGastos   = sumar(gastos);
+    const utilidadBruta = +(totalIngresos - totalCostos).toFixed(2);
+    const utilidadNeta  = +(utilidadBruta - totalGastos).toFixed(2);
+    const margenBruto   = totalIngresos > 0 ? +((utilidadBruta / totalIngresos) * 100).toFixed(1) : 0;
+    const margenNeto    = totalIngresos > 0 ? +((utilidadNeta / totalIngresos) * 100).toFixed(1) : 0;
+
+    const cantidadVentasAfectadas = ventasSinCosto.length;
+    const montoVentasAfectado = +ventasSinCosto.reduce((s, f) => s + f.monto, 0).toFixed(2);
+
+    return {
+      periodo: { desde, hasta },
+      ingresos: { cuentas: ingresos, total: totalIngresos },
+      costos:   { cuentas: costos,   total: totalCostos },
+      gastos:   { cuentas: gastos,   total: totalGastos },
+      resultados: { utilidadBruta, totalGastos, utilidadNeta, margenBruto, margenNeto },
+      isr: {
+        incluido: false,
+        motivo:
+          'El ISR se calcula sobre la renta imponible fiscal, no sobre la utilidad contable — requiere una ' +
+          'conciliación entre resultado contable y fiscal (gastos no deducibles, depreciación fiscal, etc.) ' +
+          'que el ERP no hace. Este anexo no estima un ISR.',
+      },
+      alertas: {
+        // Mismo criterio que la alerta homóloga del Anexo A1: cuentas de
+        // ingreso/costo/gasto con saldo en el período pero sin etiqueta B1
+        // quedan FUERA de los totales de arriba — no se les fuerza una
+        // etiqueta ni se cuelan en silencio.
+        cuentasDeResultadosSinEtiquetaB1: sinB1,
+        ventasSinHistorialCosto: {
+          cantidadFacturas: cantidadVentasAfectadas,
+          montoAfectado: montoVentasAfectado,
+          facturas: ventasSinCosto,
+          nota: cantidadVentasAfectadas > 0
+            ? `${cantidadVentasAfectadas} factura(s) de este período vendieron un producto sin costo conocido ` +
+              `(nunca recibió una compra) — el costo de venta de este anexo NO incluye esas líneas, así que ` +
+              `puede estar subestimado en hasta ${montoVentasAfectado.toFixed(2)}.`
+            : 'Todas las ventas del período tienen costo conocido — ninguna línea de costo quedó fuera.',
+        },
+      },
+      procedencia:
+        'Armado a partir de las cuentas etiquetadas con Anexo B1 (Fase 4 Bloque A) y sus asientos ' +
+        'contabilizados en el período — mismo criterio que el Estado de Resultados de Reportes ' +
+        'Financieros, filtrado a las cuentas que aportan al IR-2 y sin el ISR estimado.',
+    };
+  }
+
+  private async cuentasConAnexoB1(eid: number, desde: string, hasta: string) {
+    const rows = await this.dataSource.query<any[]>(
+      `
+      SELECT cc.codigo, cc.nombre, cc.tipo, cc.naturaleza, ca."casillaIR2" AS "casillaIR2",
+             COALESCE(SUM(CASE WHEN cc.naturaleza = 'deudora' THEN al.debe - al.haber ELSE al.haber - al.debe END), 0)::numeric AS saldo
+      FROM cuentas_contables cc
+      JOIN cuenta_anexo_ir2 ca ON ca."cuentaContableId" = cc.id AND ca."isActive" = true AND ca."anexoIR2" = 'B1'
+      LEFT JOIN asiento_lineas al ON al."cuentaContableId" = cc.id AND al."isActive" = true
+      LEFT JOIN asientos_contables ac ON ac.id = al."asientoId"
+        AND ac.estado = 'contabilizado' AND ac."isActive" = true
+        AND ac."empresaId" = $1 AND ac.fecha BETWEEN $2 AND $3
+      WHERE cc."isActive" = true AND cc."empresaId" = $1 AND cc."permiteMovimientos" = true
+      GROUP BY cc.id, cc.codigo, cc.nombre, cc.tipo, cc.naturaleza, ca."casillaIR2"
+      HAVING COALESCE(SUM(CASE WHEN cc.naturaleza = 'deudora' THEN al.debe - al.haber ELSE al.haber - al.debe END), 0) != 0
+      ORDER BY cc.codigo
+      `,
+      [eid, desde, hasta],
+    );
+    return rows.map((r) => ({
+      codigo: r.codigo, nombre: r.nombre, tipo: r.tipo, naturaleza: r.naturaleza,
+      casillaIR2: r.casillaIR2, saldo: Number(r.saldo),
+    }));
+  }
+
+  private async cuentasDeResultadosSinAnexoB1(eid: number, desde: string, hasta: string) {
+    const rows = await this.dataSource.query<any[]>(
+      `
+      SELECT cc.codigo, cc.nombre, cc.tipo,
+             COALESCE(SUM(CASE WHEN cc.naturaleza = 'deudora' THEN al.debe - al.haber ELSE al.haber - al.debe END), 0)::numeric AS saldo
+      FROM cuentas_contables cc
+      LEFT JOIN asiento_lineas al ON al."cuentaContableId" = cc.id AND al."isActive" = true
+      LEFT JOIN asientos_contables ac ON ac.id = al."asientoId"
+        AND ac.estado = 'contabilizado' AND ac."isActive" = true
+        AND ac."empresaId" = $1 AND ac.fecha BETWEEN $2 AND $3
+      WHERE cc."isActive" = true AND cc."empresaId" = $1 AND cc."permiteMovimientos" = true
+        AND cc.tipo IN ('ingreso', 'costo', 'gasto')
+        AND NOT EXISTS (
+          SELECT 1 FROM cuenta_anexo_ir2 ca
+          WHERE ca."cuentaContableId" = cc.id AND ca."isActive" = true AND ca."anexoIR2" = 'B1'
+        )
+      GROUP BY cc.id, cc.codigo, cc.nombre, cc.tipo
+      HAVING COALESCE(SUM(CASE WHEN cc.naturaleza = 'deudora' THEN al.debe - al.haber ELSE al.haber - al.debe END), 0) != 0
+      ORDER BY cc.codigo
+      `,
+      [eid, desde, hasta],
+    );
+    return rows.map((r) => ({ codigo: r.codigo, nombre: r.nombre, tipo: r.tipo, saldo: Number(r.saldo) }));
+  }
+
+  /** Facturas del período con al menos una línea de producto sin costoUnitario conocido (ver resolverCostoVenta()). */
+  private async ventasSinHistorialCosto(eid: number, desde: string, hasta: string) {
+    const rows = await this.dataSource.query<any[]>(
+      `
+      SELECT f.id, f.folio, f.fecha::text,
+             COUNT(*) FILTER (WHERE fd."productoId" IS NOT NULL AND fd."costoUnitario" = 0) AS lineas,
+             COALESCE(SUM(fd.subtotal) FILTER (WHERE fd."productoId" IS NOT NULL AND fd."costoUnitario" = 0), 0)::numeric AS monto
+      FROM facturas f
+      JOIN factura_detalles fd ON fd."facturaId" = f.id
+      WHERE f."empresaId" = $1 AND f.fecha BETWEEN $2 AND $3
+        AND f."isActive" = true AND f.estado IN ('emitida', 'pagada')
+      GROUP BY f.id, f.folio, f.fecha
+      HAVING COUNT(*) FILTER (WHERE fd."productoId" IS NOT NULL AND fd."costoUnitario" = 0) > 0
+      ORDER BY f.fecha
+      `,
+      [eid, desde, hasta],
+    );
+    return rows.map((r) => ({
+      id: r.id, folio: r.folio, fecha: String(r.fecha).substring(0, 10),
+      lineasSinCosto: Number(r.lineas), monto: Number(r.monto),
+    }));
+  }
+
   private async cuentasDeBalanceSinAnexoA1(eid: number, fechaCorte: string) {
     const rows = await this.dataSource.query<any[]>(
       `

@@ -178,6 +178,12 @@ export class DeclaracionesController {
     return this.anexosIR2.getAnexoA1(fechaCorte);
   }
 
+  @Get('anexo-b1')
+  @ApiOperation({ summary: 'Anexo B1 del IR-2 (Estado de Resultados) de un período' })
+  getAnexoB1(@Query('desde') desde: string, @Query('hasta') hasta: string) {
+    return this.anexosIR2.getAnexoB1(desde, hasta);
+  }
+
   // ── NUEVOS: Validación, TXT oficial, Historial ────────────────────────────
 
   @Post('validar')
