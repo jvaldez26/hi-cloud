@@ -4,6 +4,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { DeclaracionesService } from './declaraciones.service';
 import { DeclaracionesPdfService } from './declaraciones-pdf.service';
 import { DgiiTxtGeneratorService } from './dgii-txt.generator';
+import { ConciliacionFiscalService } from './conciliacion-fiscal.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -30,6 +31,7 @@ export class DeclaracionesController {
     private svc: DeclaracionesService,
     private pdf: DeclaracionesPdfService,
     private txt: DgiiTxtGeneratorService,
+    private conciliacion: ConciliacionFiscalService,
   ) {}
 
   @Get('it1')
@@ -160,6 +162,12 @@ export class DeclaracionesController {
   @ApiOperation({ summary: 'Resumen anual de cumplimiento fiscal' })
   getResumenAnual(@Query('anio') anio: string) {
     return this.svc.getResumenAnual(Number(anio));
+  }
+
+  @Get('conciliacion-606-ir2')
+  @ApiOperation({ summary: 'Conciliación 606 vs IR-2 del ejercicio fiscal — control interno, no valida DGII' })
+  getConciliacion606IR2(@Query('anio') anio: string) {
+    return this.conciliacion.getConciliacion606IR2(Number(anio));
   }
 
   // ── NUEVOS: Validación, TXT oficial, Historial ────────────────────────────

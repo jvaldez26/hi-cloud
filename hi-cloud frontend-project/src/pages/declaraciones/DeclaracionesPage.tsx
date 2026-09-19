@@ -12,8 +12,10 @@ import {
   ExclamationCircleOutlined, BarChartOutlined, FileTextOutlined,
   SafetyCertificateOutlined, FileExcelOutlined, FilePdfOutlined,
   HistoryOutlined, WarningOutlined, SyncOutlined, ClockCircleOutlined, SearchOutlined,
+  FileSearchOutlined,
 } from '@ant-design/icons';
 import { exportar606, exportar607 } from '../../utils/exportExcel';
+import ConciliacionFiscalPanel from './ConciliacionFiscalPanel';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
@@ -867,6 +869,13 @@ export default function DeclaracionesPage() {
               )}
             </>
           ),
+        },
+
+        // ── Conciliación 606 vs IR-2 (Fase 3 del catálogo fiscal) ────────────
+        {
+          key: 'conciliacion',
+          label: <><FileSearchOutlined /> Conciliación 606 vs IR-2</>,
+          children: <ConciliacionFiscalPanel anio={anio} />,
         },
       ]} />
     </div>

@@ -178,6 +178,51 @@ export function sugerirRequiereNCF(nombreCuenta: string): boolean | null {
   return true;
 }
 
+// ── Fase 3 del catálogo fiscal dominicano — correspondencia 606 ↔ IR-2 ──────
+// Tabla de referencia, no de cálculo: documenta qué casilla del IR-2 (y de
+// qué Anexo) corresponde a cada uno de los 11 códigos del Formato 606, según
+// el instructivo oficial IR-2 (dgii.gov.do) y el material de capacitación
+// del Lic. Wilton Andrés Pérez. `confirmada=true` solo en las 6 casillas
+// donde el instructivo dice textualmente que esa partida "debe ser remitida
+// en el Formato 606" — las otras 5 son criterio del material de
+// capacitación, sin nota equivalente en el instructivo, y se marcan
+// `confirmada=false` a propósito: el contador decide si el cruce aplica,
+// esta tabla no lo declara firme.
+//
+// La investigación de Fase 3 (2026-09) no encontró evidencia — ni en el
+// instructivo ni en fuentes externas — de que DGII valide automáticamente
+// el IR-2 contra los 606 enviados. Esta tabla y la pantalla que la usa son
+// una ayuda de control interno para el contador, no una simulación de una
+// validación de DGII que no está confirmado que exista.
+export interface CorrespondenciaIR2 {
+  codigo606: string;
+  /** Número de casilla del anexo del IR-2, o null si el material de capacitación no propone ninguna. */
+  casillaIR2: string | null;
+  anexoIR2: 'A1' | 'B1' | 'D' | null;
+  /** true = el instructivo oficial IR-2 remite textualmente al Formato 606 para esta partida. */
+  confirmada: boolean;
+  /** Aclaración puntual sobre la fuente, cuando aplica (ej. colisión de nombre de casilla). */
+  nota?: string;
+}
+
+export const CORRESPONDENCIA_606_IR2: CorrespondenciaIR2[] = [
+  { codigo606: '01', casillaIR2: '6',  anexoIR2: 'B1', confirmada: false },
+  {
+    codigo606: '02', casillaIR2: '7', anexoIR2: 'B1', confirmada: true,
+    nota: 'Casilla 7 del Anexo B-1 (Estado de Resultados) — existe otra casilla 7 en el formulario ' +
+          'principal del IR-2 ("Renta Neta Imponible antes de pérdida") que NO tiene relación con el 606; no confundirlas.',
+  },
+  { codigo606: '03', casillaIR2: '8',  anexoIR2: 'B1', confirmada: false },
+  { codigo606: '04', casillaIR2: '9',  anexoIR2: 'B1', confirmada: false },
+  { codigo606: '05', casillaIR2: '10', anexoIR2: 'B1', confirmada: true },
+  { codigo606: '06', casillaIR2: '11', anexoIR2: 'B1', confirmada: true },
+  { codigo606: '07', casillaIR2: '12', anexoIR2: 'B1', confirmada: true },
+  { codigo606: '08', casillaIR2: '13', anexoIR2: 'B1', confirmada: true },
+  { codigo606: '09', casillaIR2: '35', anexoIR2: 'D',  confirmada: true },
+  { codigo606: '10', casillaIR2: null, anexoIR2: null, confirmada: false },
+  { codigo606: '11', casillaIR2: null, anexoIR2: null, confirmada: false },
+];
+
 /** Valida formato RNC (9 dígitos) */
 export function esRncValido(rnc: string | undefined | null): boolean {
   return /^\d{9}$/.test((rnc ?? '').trim());

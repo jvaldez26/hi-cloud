@@ -261,6 +261,74 @@ export async function exportarHojaConteo(conteo: any) {
   XLSX.writeFile(wb, `${conteo.codigo}-conteo.xlsx`);
 }
 
+// ── Exportar conciliación fiscal 606 vs IR-2 (Fase 3) ────────────────────────
+// Herramienta de control interno, no un veredicto de DGII: el archivo solo
+// documenta qué dos números no coinciden y de qué se compone la diferencia,
+// con la misma etiqueta CONFIRMADA/CONCEPTUAL y las mismas 4 alertas
+// preventivas que la pantalla. 4 hojas: Conciliación, Correspondencias,
+// Alertas, Anexo J.
+export async function exportarConciliacion606IR2(data: any, anio: number) {
+  const XLSX = await import('xlsx');
+  const wb = XLSX.utils.book_new();
+
+  // ── Hoja 1: Conciliación por tipo de gasto 606 ──
+  const filasConciliacion = (data?.filasPorTipo ?? []).map((f: any) => ({
+    'Código 606':               f.codigo606,
+    'Tipo de bien/servicio':    f.labelTipoBienes,
+    'Casilla IR-2':             f.correspondencia?.casillaIR2 ?? 'Sin casilla identificada',
+    'Anexo':                    f.correspondencia?.anexoIR2 ?? '—',
+    'Marca':                    f.correspondencia?.confirmada ? 'CONFIRMADA (instructivo IR-2)' : 'CONCEPTUAL (criterio, a confirmar)',
+    'Total 606 (clasificado)':  Number(f.total606?.valor ?? 0),
+    'Cant. líneas 606':         Number(f.total606?.cantidad ?? 0),
+    'Total IR-2 — con NCF':     Number(f.totalIR2ConNCF?.valor ?? 0),
+    'Total IR-2 — sin NCF':     Number(f.totalIR2SinNCF?.valor ?? 0),
+    'Diferencia (IR-2 con NCF − 606)': Number(f.diferencia ?? 0),
+  }));
+  filasConciliacion.push({
+    'Código 606': 'TOTALES', 'Tipo de bien/servicio': '', 'Casilla IR-2': '', 'Anexo': '', 'Marca': '',
+    'Total 606 (clasificado)':        Number(data?.totales?.total606 ?? 0),
+    'Cant. líneas 606':                '' as any,
+    'Total IR-2 — con NCF':            Number(data?.totales?.totalIR2ConNCF ?? 0),
+    'Total IR-2 — sin NCF':            Number(data?.totales?.totalIR2SinNCF ?? 0),
+    'Diferencia (IR-2 con NCF − 606)': Number(data?.totales?.diferencia ?? 0),
+  });
+  const wsConc = XLSX.utils.json_to_sheet(filasConciliacion);
+  wsConc['!cols'] = Object.keys(filasConciliacion[0] ?? {}).map(k => ({
+    wch: Math.max(k.length, ...filasConciliacion.map((r: any) => String(r[k] ?? '').length)) + 2,
+  }));
+  XLSX.utils.book_append_sheet(wb, wsConc, 'Conciliación');
+
+  // ── Hoja 2: Alertas preventivas ──
+  const alertas = data?.alertas ?? {};
+  const filasAlertas: Record<string, any>[] = [];
+  filasAlertas.push({ 'Alerta': 'Meses sin TXT 606 generado', 'Detalle': (alertas.mesesSinTxtGenerado ?? []).join(', ') || 'Ninguno', 'Monto': '' });
+  (alertas.comprasSinRevisar ?? []).forEach((c: any) => filasAlertas.push({
+    'Alerta': 'Compra con clasificación 606 por defecto, sin revisar', 'Detalle': `${c.folio ?? c.id} — ${c.proveedor} (${c.fecha})`, 'Monto': Number(c.total),
+  }));
+  (alertas.gastosSinComprobante ?? []).forEach((g: any) => filasAlertas.push({
+    'Alerta': 'Gasto contabilizado sin comprobante que debería tenerlo', 'Detalle': `${g.descripcion} (${g.fecha})`, 'Monto': Number(g.total),
+  }));
+  (alertas.cuentasSinEtiquetaConSaldo ?? []).forEach((c: any) => filasAlertas.push({
+    'Alerta': 'Cuenta con saldo en el ejercicio y sin etiqueta fiscal', 'Detalle': `${c.codigo} — ${c.nombre}`, 'Monto': Number(c.saldo),
+  }));
+  if (filasAlertas.length === 1) filasAlertas.push({ 'Alerta': 'Sin alertas adicionales', 'Detalle': '', 'Monto': '' });
+  const wsAlertas = XLSX.utils.json_to_sheet(filasAlertas);
+  wsAlertas['!cols'] = [{ wch: 45 }, { wch: 50 }, { wch: 14 }];
+  XLSX.utils.book_append_sheet(wb, wsAlertas, 'Alertas');
+
+  // ── Hoja 3: Anexo J — cantidad y monto por tipo de comprobante ──
+  const filasAnexoJ = (data?.anexoJ ?? []).map((r: any) => ({
+    'Tipo de comprobante': r.tipoComprobante,
+    'Cantidad':            Number(r.cantidad),
+    'Monto recibido':      Number(r.monto),
+  }));
+  const wsJ = XLSX.utils.json_to_sheet(filasAnexoJ.length ? filasAnexoJ : [{ 'Tipo de comprobante': 'Sin comprobantes clasificados', 'Cantidad': '', 'Monto recibido': '' }]);
+  wsJ['!cols'] = [{ wch: 20 }, { wch: 12 }, { wch: 16 }];
+  XLSX.utils.book_append_sheet(wb, wsJ, 'Anexo J');
+
+  XLSX.writeFile(wb, `Conciliacion-606-IR2-${anio}.xlsx`);
+}
+
 // ── Exportar catálogo completo de productos (columnas ricas) ─────────────────
 // Devuelve true si generó el archivo, false si la lista estaba vacía.
 export async function exportarCatalogo(productos: any[], sufijo: string): Promise<boolean> {

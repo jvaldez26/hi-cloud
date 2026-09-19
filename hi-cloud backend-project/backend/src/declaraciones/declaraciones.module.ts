@@ -5,6 +5,7 @@ import { DeclaracionesService } from './declaraciones.service';
 import { DeclaracionesPdfService } from './declaraciones-pdf.service';
 import { DgiiValidatorService } from './dgii-validator.service';
 import { DgiiTxtGeneratorService } from './dgii-txt.generator';
+import { ConciliacionFiscalService } from './conciliacion-fiscal.service';
 import { ReporteDgii } from './entities/reporte-dgii.entity';
 import { Factura } from '../facturas/entities/factura.entity';
 import { FacturaDetalle } from '../facturas/entities/factura-detalle.entity';
@@ -15,7 +16,7 @@ import { Gasto } from '../gastos/entities/gasto.entity';
 @Module({
   imports: [TypeOrmModule.forFeature([Factura, FacturaDetalle, Compra, CompraDetalle, ReporteDgii, Gasto])],
   controllers: [DeclaracionesController],
-  providers:   [DeclaracionesService, DeclaracionesPdfService, DgiiValidatorService, DgiiTxtGeneratorService],
-  exports:     [DeclaracionesService],
+  providers:   [DeclaracionesService, DeclaracionesPdfService, DgiiValidatorService, DgiiTxtGeneratorService, ConciliacionFiscalService],
+  exports:     [DeclaracionesService, ConciliacionFiscalService],
 })
 export class DeclaracionesModule {}
