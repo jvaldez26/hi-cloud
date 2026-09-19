@@ -203,6 +203,7 @@ export class ComprasService {
       // nunca la tocaba — toda compra quedaba en NULL para siempre.
       tipoBienes:             dto.tipoBienes ?? null,
       formaPago:              dto.formaPago  ?? null,
+      cuentaDestino:          dto.cuentaDestino ?? null,
       moneda:                 dto.moneda ?? 'DOP',
       tipoCambio:             dto.tipoCambio ?? 1,
       retieneItbis,
@@ -388,6 +389,7 @@ export class ComprasService {
           tipoCambio:             dto.tipoCambio ?? 1,
           tipoBienes:             dto.tipoBienes ?? null,
           formaPago:              dto.formaPago  ?? null,
+          cuentaDestino:          dto.cuentaDestino ?? null,
           retieneItbis,
           porcentajeRetencionItbis: pctItbis,
           montoRetencionItbis,
@@ -494,6 +496,11 @@ export class ComprasService {
               netoPagar:  Number(compra.netoPagar           ?? compra.total),
             }
           : undefined,
+        // Selector de cuenta contable — la misma compra puede ser gasto,
+        // activo fijo o inventario. Sin cuentaDestino, el motor usa su
+        // default (Inventario), igual que siempre.
+        (compra as any).cuentaDestino || undefined,
+        !!(compra as any).cuentaDestino,
       );
 
       // 4. Limpiar flag "Pendiente" de productos creados rápidamente desde esta OC
@@ -640,6 +647,8 @@ export class ComprasService {
               netoPagar:  Number(compra.netoPagar           ?? compra.total),
             }
           : undefined,
+        (compra as any).cuentaDestino || undefined,
+        !!(compra as any).cuentaDestino,
       );
     }
 
@@ -744,5 +753,34 @@ export class ComprasService {
     await this.compraRepository.update(id, { isActive: false });
     this.realtimeService.notify(this.tenantService.getEmpresaId(), 'compra', 'deleted', id);
     return { message: `Compra ${compra.folio} eliminada` };
+  }
+
+  /**
+   * Panel de vista previa del asiento (2026-09-19) — calcula subtotal/ITBIS
+   * con la MISMA lógica que create() (calcularDetalles(), no una réplica) y
+   * delega el asiento en AsientosAutomaticosService.previsualizarCompra().
+   * El formulario la llama en cada cambio de líneas/retenciones/cuenta.
+   */
+  async previsualizarAsiento(dto: CreateCompraDto) {
+    const { subtotalCompra, itbisCompra } = await this.calcularDetalles(dto);
+    const subtotal = Number(subtotalCompra.toFixed(2));
+    const itbis    = Number(itbisCompra.toFixed(2));
+    const total    = Number((subtotal + itbis).toFixed(2));
+
+    const retieneItbis = dto.retieneItbis ?? false;
+    const retieneIsr   = dto.retieneIsr   ?? false;
+    const pctItbis      = dto.porcentajeRetencionItbis ?? 30;
+    const pctIsr        = dto.porcentajeRetencionIsr   ?? 10;
+    const montoRetencionItbis = retieneItbis ? Number((itbis * pctItbis / 100).toFixed(2)) : 0;
+    const montoRetencionIsr   = retieneIsr   ? Number((subtotal * pctIsr / 100).toFixed(2)) : 0;
+    const netoPagar = Number((total - montoRetencionItbis - montoRetencionIsr).toFixed(2));
+
+    return this.asientosService.previsualizarCompra(
+      total, subtotal, itbis, 'OC-VISTA-PREVIA',
+      (retieneItbis || retieneIsr)
+        ? { montoItbis: montoRetencionItbis, montoIsr: montoRetencionIsr, netoPagar }
+        : undefined,
+      dto.cuentaDestino || undefined,
+    );
   }
 }

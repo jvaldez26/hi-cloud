@@ -78,6 +78,13 @@ export class ComprasController {
     return this.comprasService.create(dto, usuario);
   }
 
+  @Post('previsualizar-asiento')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Panel de vista previa: calcula el asiento SIN guardar la compra' })
+  previsualizarAsiento(@Body() dto: CreateCompraDto) {
+    return this.comprasService.previsualizarAsiento(dto);
+  }
+
   @Get()
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Listar compras con paginación y filtros' })

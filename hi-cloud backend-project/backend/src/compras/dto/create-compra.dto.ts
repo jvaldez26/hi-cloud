@@ -108,6 +108,14 @@ export class CreateCompraDto {
   @IsOptional() @IsString()
   formaPago?: string;
 
+  /**
+   * Selector de cuenta contable — la misma compra puede ser gasto, activo
+   * fijo o inventario. Sin default: si no se manda, el motor usa Inventario
+   * (el comportamiento de siempre). Ver CuentaContableSelector.tsx.
+   */
+  @IsOptional() @IsString()
+  cuentaDestino?: string;
+
   @IsOptional()
   @IsInt()
   @Min(0)

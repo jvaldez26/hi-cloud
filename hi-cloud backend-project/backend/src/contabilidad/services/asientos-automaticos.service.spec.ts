@@ -164,6 +164,60 @@ describe('AsientosAutomaticosService — visibilidad de fallos', () => {
     expect(lineas.every((l: any) => !l.cuentaManual)).toBe(true);
   });
 
+  it('asientoCompraRecibida con cuentaDestino elegida: marca SOLO esa línea como manual', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta('1.2.1.01', 1), cuenta('1.1.4.01', 2), cuenta('2.1.1.01', 3)],
+    });
+
+    await svc.asientoCompraRecibida(50, 590, 500, 90, 'COM-001', '2026-09-19', 5, undefined, '1.2.1.01', true);
+
+    const lineas = svc.lineaRepository.create.mock.calls[0][0];
+    expect(lineas.find((l: any) => l.cuentaContableId === 1)?.cuentaManual).toBe(true);  // cuentaDestino elegida
+    expect(lineas.find((l: any) => l.cuentaContableId === 2)?.cuentaManual).toBeUndefined(); // ITBIS crédito
+    expect(lineas.find((l: any) => l.cuentaContableId === 3)?.cuentaManual).toBeUndefined(); // Proveedores
+  });
+
+  // ── Panel de vista previa — previsualizarCompra() (2026-09-19) ──────────
+
+  it('previsualizarCompra: con las cuentas presentes, ok=true y cuadrado', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta('1.1.3.01', 1), cuenta('1.1.4.01', 2), cuenta('2.1.1.01', 3)],
+    });
+
+    const r = await svc.previsualizarCompra(590, 500, 90, 'COM-001');
+
+    expect(r.ok).toBe(true);
+    expect(r.cuadrado).toBe(true);
+    expect(r.totalDebe).toBe(590);
+    expect(r.totalHaber).toBe(590);
+  });
+
+  it('previsualizarCompra: con cuentaDestino elegida inexistente, ok=false con motivo legible', async () => {
+    const svc = makeService({ empresaId: 7, cuentas: [] });
+
+    const r = await svc.previsualizarCompra(590, 500, 90, 'COM-001', undefined, '9.9.9.99');
+
+    expect(r.ok).toBe(false);
+    expect(r.error).toContain('9.9.9.99');
+  });
+
+  it('previsualizarCompra: con retenciones, arma las líneas de retención igual que el asiento real', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [
+        cuenta('1.1.3.01', 1), cuenta('1.1.4.01', 2), cuenta('2.1.1.01', 3),
+        cuenta('2.1.2.03', 4), cuenta('2.1.2.04', 5),
+      ],
+    });
+
+    const r = await svc.previsualizarCompra(590, 500, 90, 'COM-001', { montoItbis: 27, montoIsr: 50, netoPagar: 513 });
+
+    expect(r.lineas).toHaveLength(5); // inventario, itbis crédito, proveedores, itbis retenido, isr retenido
+    expect(r.totalHaber).toBe(590); // proveedores (513) + itbis ret (27) + isr ret (50)
+  });
+
   // ── 3. Camino feliz ──────────────────────────────────────────────────────
 
   it('con las cuentas presentes: genera el asiento, loguea "generado", no reporta nada', async () => {

@@ -27,6 +27,12 @@ export interface CompraPayload {
   /** Clasificación DGII 606 — código de tipo de bien (01-11) y forma de pago (01-07). */
   tipoBienes?: string;
   formaPago?: string;
+  /** Selector de cuenta contable — la misma compra puede ser gasto, activo fijo o inventario. Sin default: el motor usa Inventario. */
+  cuentaDestino?: string;
+  retieneItbis?: boolean;
+  porcentajeRetencionItbis?: number;
+  retieneIsr?: boolean;
+  porcentajeRetencionIsr?: number;
 }
 
 export const comprasApi = {
@@ -44,6 +50,10 @@ export const comprasApi = {
 
   create: (body: CompraPayload) =>
     api.post<ApiResponse<Compra>>('/compras', body).then(r => r.data.data),
+
+  /** Panel de vista previa: calcula el asiento SIN guardar la compra. */
+  previsualizarAsiento: (body: Partial<CompraPayload>) =>
+    api.post('/compras/previsualizar-asiento', body).then(r => (r.data as any)?.data ?? r.data),
 
   /** Solo en borrador, y solo sin solicitud de aprobación pendiente. */
   update: (id: number, body: CompraPayload) =>

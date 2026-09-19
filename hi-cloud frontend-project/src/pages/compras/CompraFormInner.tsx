@@ -11,6 +11,8 @@ import { productosApi } from '../../api/productos.api';
 import api from '../../api/client';
 import { useAuthStore } from '../../store/auth.store';
 import { TIPOS_BIENES_606, FORMAS_PAGO_606 } from '../../constants/dgii-606';
+import CuentaContableSelector from '../../components/contabilidad/CuentaContableSelector';
+import AsientoPreviewPanel from '../../components/contabilidad/AsientoPreviewPanel';
 import dayjs from 'dayjs';
 
 interface Linea {
@@ -111,6 +113,11 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
   const [tipoBienesTocado, setTipoBienesTocado] = useState(false);
   const [formaPago, setFormaPago]             = useState<string | undefined>(undefined);
   const [formaPagoTocado, setFormaPagoTocado]   = useState(false);
+
+  // Selector de cuenta contable (2026-09-19) — la misma compra puede ser
+  // gasto, activo fijo o inventario; sin elegir nada, el motor sigue usando
+  // Inventario (el default de siempre).
+  const [cuentaDestino, setCuentaDestino] = useState<string | undefined>(undefined);
 
   const defaultAlmacenId = (() => { try { const v = localStorage.getItem('almacenId'); return v ? Number(v) : undefined; } catch { return undefined; } })();
   const [almacenId, setAlmacenId] = useState<number | undefined>(defaultAlmacenId);
@@ -246,6 +253,7 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
     setTipoBienesTocado(c.tipoBienes != null);
     setFormaPago(c.formaPago ?? undefined);
     setFormaPagoTocado(c.formaPago != null);
+    setCuentaDestino((c as any).cuentaDestino ?? undefined);
 
     const dets = (c.detalles ?? []) as any[];
     if (dets.length) {
@@ -306,6 +314,31 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
   const itbis    = lineas.reduce((s, l) => s + (l.precioUnitario * l.cantidad - (l.descuentoMonto || 0)) * (l.porcentajeItbis / 100), 0);
   const total    = subtotal + itbis;
   const subtotalBruto = subtotal + descuentoTotal;
+
+  // Panel de vista previa del asiento — recalculado SIEMPRE en el backend
+  // (mismo cálculo que create(), calcularDetalles() + el motor de
+  // asientos), nunca replicado aquí. Solo se activa con al menos una línea
+  // válida (producto + cantidad o bonificación) para no pedir un preview
+  // de un formulario vacío.
+  const lineasValidas = lineas.filter(l => l.productoId && (l.cantidad > 0 || (l.cantidadBonificada ?? 0) > 0));
+  const { data: previewAsiento, isFetching: previewCargando } = useQuery({
+    queryKey: ['compra-preview', JSON.stringify(lineasValidas.map(l => ({
+      p: l.productoId, c: l.cantidad, cb: l.cantidadBonificada, pu: l.precioUnitario, it: l.porcentajeItbis,
+    }))), cuentaDestino, retieneItbis, pctItbis, retieneIsr, pctIsr],
+    queryFn: () => comprasApi.previsualizarAsiento({
+      proveedorId: proveedorSelId!,
+      fecha: dayjs().format('YYYY-MM-DD'),
+      detalles: lineasValidas.map(l => ({
+        productoId: l.productoId!, cantidad: l.cantidad, cantidadBonificada: l.cantidadBonificada || undefined,
+        precioUnitario: l.precioUnitario, porcentajeItbis: l.porcentajeItbis,
+      })),
+      cuentaDestino,
+      ...(esInformal && retieneItbis ? { retieneItbis: true, porcentajeRetencionItbis: pctItbis } : {}),
+      ...(esInformal && retieneIsr   ? { retieneIsr:   true, porcentajeRetencionIsr:   pctIsr   } : {}),
+    }),
+    enabled: lineasValidas.length > 0 && !!proveedorSelId,
+    staleTime: 500,
+  });
 
   const montoRetItbis = (esInformal && retieneItbis) ? Number((itbis   * pctItbis / 100).toFixed(2)) : 0;
   const montoRetIsr   = (esInformal && retieneIsr)   ? Number((subtotal * pctIsr   / 100).toFixed(2)) : 0;
@@ -403,6 +436,7 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
       diasCredito: tipoPago === 'credito' ? diasCredito : undefined,
       tipoBienes,
       formaPago,
+      cuentaDestino,
       moneda,
       tipoCambio: moneda !== 'DOP' ? tipoCambio : undefined,
       almacenId: almacenId ?? undefined,
@@ -730,6 +764,22 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
               />
             </Form.Item>
           </Col>
+          {/* Selector de cuenta contable (2026-09-19) — la misma compra puede
+              ser gasto, activo fijo o inventario. Sin elegir nada, el motor
+              sigue usando Inventario (el default de siempre). */}
+          <Col flex="1 1 240px">
+            <Form.Item label="Cuenta contable" style={ITEM_COMPACTO}
+              tooltip="Por defecto va a Inventario. Cámbiala solo si esta compra en particular debe ir a otra cuenta (ej. es realmente un activo fijo o un gasto).">
+              <CuentaContableSelector
+                value={cuentaDestino}
+                onChange={setCuentaDestino}
+                tipo={['activo', 'gasto', 'costo']}
+                placeholder="Por defecto: Inventario"
+                size="small"
+                style={{ width: '100%' }}
+              />
+            </Form.Item>
+          </Col>
           {/* Notas, plegadas. Casi ninguna OC las lleva y se comían una fila
               entera de la cabecera —y con ella el alto de la tabla de ítems—
               para un campo vacío. Al editar una compra que sí las tiene se
@@ -822,6 +872,8 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
           </Row>
         </Card>
       )}
+
+      <AsientoPreviewPanel resultado={previewAsiento} loading={previewCargando} />
 
       <Card style={{ flexShrink: 0 }}>
         {/* Los totales en una franja horizontal, no en una columna pegada a la

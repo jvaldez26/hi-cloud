@@ -471,24 +471,27 @@ export class AsientosAutomaticosService {
   // Compra recibida → Inventario / ITBIS Crédito / Proveedores
   // ──────────────────────────────────────────────────────────────────
 
-  async asientoCompraRecibida(
-    compraId: number,
-    total: number,
-    subtotal: number,
-    itbis: number,
-    folio: string,
-    fecha: string, // compra.fecha
-    userId: number,
-    retenciones?: { montoItbis?: number; montoIsr?: number; netoPagar?: number },
-  ): Promise<void> {
+  /**
+   * Líneas del asiento de una compra recibida — extraído a su propia
+   * función (2026-09-19, panel de vista previa) para que
+   * `asientoCompraRecibida()` (persiste) y `previsualizarCompra()` (no
+   * persiste) arranquen del mismo cálculo. `cuentaDestino` reemplaza el
+   * default `COD.INVENTARIO` — la misma compra puede ser gasto, activo fijo
+   * o inventario según lo que realmente se compró.
+   */
+  private construirLineasCompra(
+    total: number, subtotal: number, itbis: number, folio: string,
+    retenciones: { montoItbis?: number; montoIsr?: number; netoPagar?: number } | undefined,
+    cuentaDestino: string, cuentaDestinoManual = false,
+  ): LineaAsientoInput[] {
     const retenItbis = retenciones?.montoItbis ?? 0;
     const retenIsr   = retenciones?.montoIsr   ?? 0;
     const neto       = retenciones?.netoPagar  ?? total;
     // ITBIS que queda como crédito fiscal = ITBIS facturado - ITBIS retenido
     const itbisCredito = Number((itbis - retenItbis).toFixed(2));
 
-    const lineas: { codigo: string; descripcion: string; debe: number; haber: number }[] = [
-      { codigo: COD.INVENTARIO,    descripcion: `Mercancía recibida ${folio}`, debe: subtotal, haber: 0 },
+    const lineas: LineaAsientoInput[] = [
+      { codigo: cuentaDestino,     descripcion: `Mercancía recibida ${folio}`, debe: subtotal, haber: 0, manual: cuentaDestinoManual },
       { codigo: COD.ITBIS_CREDITO, descripcion: `ITBIS crédito fiscal ${folio}`, debe: itbisCredito > 0 ? itbisCredito : itbis, haber: 0 },
       { codigo: COD.PROVEEDORES,   descripcion: `CxP proveedor ${folio}`,      debe: 0,       haber: neto },
     ];
@@ -498,6 +501,37 @@ export class AsientosAutomaticosService {
     if (retenIsr > 0) {
       lineas.push({ codigo: COD.ISR_RET_POR_PAGAR, descripcion: `ISR retenido E41 ${folio}`, debe: 0, haber: retenIsr });
     }
+    return lineas;
+  }
+
+  /**
+   * Vista previa del asiento de una compra recibida, sin persistir nada —
+   * mismas líneas que `asientoCompraRecibida()` generaría. El formulario de
+   * Compras la llama antes de guardar/recibir para mostrar el panel.
+   */
+  async previsualizarCompra(
+    total: number, subtotal: number, itbis: number, folio: string,
+    retenciones?: { montoItbis?: number; montoIsr?: number; netoPagar?: number },
+    cuentaDestino: string = COD.INVENTARIO,
+  ): Promise<PreviewAsientoResultado> {
+    return this.previsualizarLineas(
+      this.construirLineasCompra(total, subtotal, itbis, folio, retenciones, cuentaDestino),
+    );
+  }
+
+  async asientoCompraRecibida(
+    compraId: number,
+    total: number,
+    subtotal: number,
+    itbis: number,
+    folio: string,
+    fecha: string, // compra.fecha
+    userId: number,
+    retenciones?: { montoItbis?: number; montoIsr?: number; netoPagar?: number },
+    cuentaDestino: string = COD.INVENTARIO,
+    cuentaDestinoManual = false,
+  ): Promise<void> {
+    const lineas = this.construirLineasCompra(total, subtotal, itbis, folio, retenciones, cuentaDestino, cuentaDestinoManual);
 
     try {
       const asiento = await this._crearAsientoContabilizado({

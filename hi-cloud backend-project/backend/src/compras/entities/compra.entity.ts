@@ -85,6 +85,18 @@ export class Compra extends TenantBaseEntity {
   @Column({ length: 2, nullable: true, default: '04' })
   formaPago?: string;
 
+  /**
+   * Selector de cuenta contable (2026-09-19) — la misma factura puede ser
+   * gasto, activo fijo o inventario según lo que realmente se compró; el
+   * asiento automático siempre iba a Inventario (COD.INVENTARIO) sin
+   * importar esto. NULL = usa el default del motor (Inventario), igual que
+   * siempre — el contador solo la toca cuando el criterio real lo pide.
+   * Código de cuenta validado por el motor mismo al generar el asiento
+   * (cuenta no encontrada / no permite movimientos), no aquí.
+   */
+  @Column({ length: 20, nullable: true })
+  cuentaDestino?: string;
+
   /** Fecha efectiva de pago (puede diferir de fecha del comprobante) */
   @Column({ type: 'date', nullable: true })
   fechaPago?: Date;

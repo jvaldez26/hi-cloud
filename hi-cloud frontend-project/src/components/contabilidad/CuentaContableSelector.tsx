@@ -26,6 +26,7 @@ interface CuentaContableSelectorProps {
   disabled?: boolean;
   allowClear?: boolean;
   style?: React.CSSProperties;
+  size?: 'small' | 'middle' | 'large';
 }
 
 function etiquetasDeCuenta(c: any) {
@@ -44,7 +45,7 @@ function etiquetasDeCuenta(c: any) {
 }
 
 export default function CuentaContableSelector({
-  value, onChange, tipo, placeholder = 'Buscar cuenta por código o nombre', disabled, allowClear = true, style,
+  value, onChange, tipo, placeholder = 'Buscar cuenta por código o nombre', disabled, allowClear = true, style, size,
 }: CuentaContableSelectorProps) {
   const { data: cuentas, isLoading } = useQuery({
     queryKey: ['cuentas-selector'],
@@ -72,6 +73,7 @@ export default function CuentaContableSelector({
       loading={isLoading}
       placeholder={placeholder}
       disabled={disabled}
+      size={size}
       style={{ width: '100%', ...style }}
       optionFilterProp="label"
       filterOption={(input, option: any) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
