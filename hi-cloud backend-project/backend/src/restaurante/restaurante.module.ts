@@ -18,6 +18,7 @@ import { RsPropina } from './entities/rs-propina.entity';
 import { TenantModule } from '../tenant/tenant.module';
 import { ModulosAddonModule } from '../modulos-addon/modulos-addon.module';
 import { VendedorResolverModule } from '../facturas/vendedor/vendedor-resolver.module';
+import { ContabilidadModule } from '../contabilidad/contabilidad.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { VendedorResolverModule } from '../facturas/vendedor/vendedor-resolver.m
     TenantModule,
     ModulosAddonModule,
     VendedorResolverModule,
+    ContabilidadModule,
   ],
   controllers: [RestauranteController],
   providers: [RestauranteService, RestaurantePdfService],

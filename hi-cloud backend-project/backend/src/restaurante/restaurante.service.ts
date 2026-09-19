@@ -4,6 +4,7 @@ import { TenantService } from '../tenant/tenant.service';
 import { VendedorResolverService } from '../facturas/vendedor/vendedor-resolver.service';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { fechaHoyRD } from '../common/utils/fecha-local.util';
+import { AsientosAutomaticosService } from '../contabilidad/services/asientos-automaticos.service';
 
 @Injectable()
 export class RestauranteService {
@@ -13,6 +14,7 @@ export class RestauranteService {
     private readonly ds: DataSource,
     private readonly tenantSvc: TenantService,
     private readonly vendedorResolver: VendedorResolverService,
+    private readonly asientosService: AsientosAutomaticosService,
   ) {}
 
   // ── DASHBOARD ────────────────────────────────────────────────────────────
@@ -738,8 +740,9 @@ export class RestauranteService {
     this._actualizarTurnoActivo(empresaId, total, dto.metodoPago, propina, comanda.descuento ?? 0)
       .catch(err => this.logger.error('Error actualizando turno', err));
 
-    this._crearAsientoVentaRestaurante(empresaId, comandaId, comanda.numero, total, itbis, baseItbis, dto.metodoPago)
-      .catch(err => this.logger.error('Error asiento contable restaurante', err));
+    this.asientosService.asientoVentaRestaurante(
+      comandaId, comanda.numero, total, baseItbis, itbis, dto.metodoPago, fechaHoyRD(), userId,
+    ).catch(err => this.logger.error('Error asiento contable restaurante', err));
 
     this.logger.log(`Comanda #${comandaId} cobrada → Factura ${facturaFolio}`);
     return { ...await this.obtenerComanda(comandaId), facturaFolio, facturaId };
@@ -1126,55 +1129,5 @@ export class RestauranteService {
       );
     }
     if (items.length > 0) this.logger.log(`Inventario descontado: ${items.length} items comanda #${comandaId}`);
-  }
-
-  // ── ERP: Asiento contable al cobrar comanda ───────────────────────────────
-  private async _crearAsientoVentaRestaurante(
-    empresaId: number, comandaId: number, comandaNum: string,
-    total: number, itbis: number, neto: number, metodoPago: string,
-  ) {
-    // Obtener IDs de cuentas por código estándar DR
-    const codCaja    = metodoPago === 'efectivo' ? '1.1.1.02' : '1.1.1.03';
-    const codVentas  = '4.1.1.01';
-    const codItbis   = '2.1.2.01';
-
-    const cuentas = await this.ds.query<any[]>(
-      `SELECT id, codigo FROM cuentas_contables
-       WHERE "empresaId"=$1 AND codigo IN ($2,$3,$4) AND "isActive"=true`,
-      [empresaId, codCaja, codVentas, codItbis],
-    );
-    if (cuentas.length < 3) { this.logger.warn(`Asiento restaurante omitido — cuentas incompletas`); return; }
-
-    const byCode = (c: string) => cuentas.find((cc: any) => cc.codigo === c)?.id;
-    const cajaId   = byCode(codCaja);
-    const ventasId = byCode(codVentas);
-    const itbisId  = byCode(codItbis);
-    if (!cajaId || !ventasId || !itbisId) { this.logger.warn(`Asiento restaurante omitido — cuentas no encontradas`); return; }
-
-    const numero = await generarNumeroSecuencial(this.ds, 'asientos_contables', 'numero', '^ASI-[0-9]+$', 'ASI-', 5, empresaId);
-
-    const [asiento] = await this.ds.query<any[]>(
-      `INSERT INTO asientos_contables
-         ("empresaId", numero, fecha, descripcion, "tipoOrigen", "referenciaId", "referenciaFolio",
-          estado, "totalDebe", "totalHaber", "userId", "createdAt", "updatedAt")
-       VALUES ($1,$2,NOW(),$3,'manual',$4,$5,'contabilizado',$6,$6,1,NOW(),NOW()) RETURNING id`,
-      [empresaId, numero, `Venta restaurante ${comandaNum}`, comandaId, comandaNum, total],
-    );
-    if (!asiento) return;
-
-    await this.ds.query(
-      `INSERT INTO asiento_lineas ("empresaId","asientoId","cuentaContableId",descripcion,debe,haber,"createdAt","updatedAt")
-       VALUES
-         ($1,$2,$3,$4,$5,0,NOW(),NOW()),
-         ($1,$2,$6,$7,0,$8,NOW(),NOW()),
-         ($1,$2,$9,$10,0,$11,NOW(),NOW())`,
-      [
-        empresaId, asiento.id,
-        cajaId,   `Cobro comanda ${comandaNum}`, total,
-        ventasId, `Venta restaurante ${comandaNum}`, neto,
-        itbisId,  `ITBIS comanda ${comandaNum}`, itbis,
-      ],
-    );
-    this.logger.log(`Asiento contable ${numero} creado para comanda ${comandaNum}`);
   }
 }

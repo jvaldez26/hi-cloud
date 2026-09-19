@@ -25,6 +25,13 @@ export enum TipoOrigenAsiento {
   // Asiento propio de una Nota de Crédito de Compra (devolución a proveedor)
   // al recibirse.
   NOTA_CREDITO_COMPRA = 'nota_credito_compra',
+  // Venta de una comanda de Restaurante. La factura de esa venta nace
+  // EMITIDA por INSERT crudo (no pasa por facturas.cambiarEstado()), así que
+  // no dispara asientoFacturaEmitida — este es el único asiento de esa venta.
+  // Namespace propio (no FACTURA) porque referenciaId es el id de la
+  // comanda, no el de la factura — dos tablas con su propio auto-increment
+  // pueden compartir el mismo número.
+  VENTA_RESTAURANTE = 'venta_restaurante',
 }
 
 export enum EstadoAsiento {

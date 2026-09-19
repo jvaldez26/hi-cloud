@@ -1053,6 +1053,52 @@ export class AsientosAutomaticosService {
   }
 
   // ──────────────────────────────────────────────────────────────────
+  // Venta de Restaurante (2026-09-19) → Caja/Bancos (D) / Ventas + ITBIS (H)
+  // Antes de esta pieza, restaurante.service.ts armaba este asiento con SQL
+  // crudo directo a asientos_contables/asiento_lineas — sin pasar por este
+  // motor: sin validación de partida doble, sin reporte a Sentry si faltaba
+  // una cuenta, con las 3 cuentas hardcodeadas, y con userId fijo en 1 en vez
+  // del usuario real que cobró. La factura de esa venta nace EMITIDA por
+  // INSERT crudo (no pasa por facturas.cambiarEstado()), así que este es el
+  // ÚNICO asiento de esa venta — no hay riesgo de duplicarlo con
+  // asientoFacturaEmitida.
+  // ──────────────────────────────────────────────────────────────────
+
+  async asientoVentaRestaurante(
+    comandaId: number, comandaNumero: string, total: number, neto: number, itbis: number,
+    metodoPago: string, fecha: string, userId: number,
+  ): Promise<void> {
+    if (total <= 0) return;
+    const cuentaCaja = await this.resolverCuentaPorMetodoPago(metodoPago);
+    const cuentas = await this.resolverCuentasConcepto([['VENTAS', COD.VENTAS], ['ITBIS_POR_PAGAR', COD.ITBIS_POR_PAGAR]]);
+    try {
+      const asiento = await this._crearAsientoContabilizado({
+        descripcion:     `Venta restaurante ${comandaNumero}`,
+        tipoOrigen:      TipoOrigenAsiento.VENTA_RESTAURANTE,
+        referenciaId:    comandaId,
+        referenciaFolio: comandaNumero,
+        fecha,
+        userId,
+        lineas: [
+          { codigo: cuentaCaja,             descripcion: `Cobro comanda ${comandaNumero}`,     debe: total, haber: 0 },
+          { codigo: cuentas.VENTAS,         descripcion: `Venta restaurante ${comandaNumero}`,  debe: 0,     haber: neto },
+          { codigo: cuentas.ITBIS_POR_PAGAR, descripcion: `ITBIS comanda ${comandaNumero}`,      debe: 0,     haber: itbis },
+        ],
+      });
+      if (asiento) {
+        this.logger.log(`Asiento venta restaurante ${comandaNumero} generado`);
+      } else {
+        this.logger.warn(`Asiento venta restaurante ${comandaNumero} NO generado (cuenta faltante) — ver Sentry`);
+      }
+    } catch (err) {
+      this.logger.error(`Error asiento venta restaurante ${comandaNumero}: ${(err as Error).message}`);
+      this.reportarFalloAsiento(err, 'asiento_venta_restaurante', {
+        tipoOrigen: TipoOrigenAsiento.VENTA_RESTAURANTE, referenciaId: String(comandaId), referenciaFolio: comandaNumero,
+      });
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
   // Alta de un Activo Fijo (2026-09-19) → Activo Fijo (D) / contrapartida (H)
   // Antes de esta pieza, dar de alta un activo NO generaba NINGÚN asiento —
   // CategoriaActivo.cuentaActivoCodigo existía en la entidad pero no tenía

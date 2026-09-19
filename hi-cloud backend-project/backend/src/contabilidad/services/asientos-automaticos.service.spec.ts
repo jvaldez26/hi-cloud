@@ -884,4 +884,49 @@ describe('AsientosAutomaticosService — Configuración Contable por Módulo (20
     expect(r.cuadrado).toBe(true);
     expect(r.totalDebe).toBe(300);
   });
+
+  // ── Venta de Restaurante — migrado del SQL crudo al motor (2026-09-19) ──
+  // Antes: restaurante.service.ts armaba este asiento a mano, sin pasar por
+  // este motor (sin partida doble validada, sin reporte a Sentry si faltaba
+  // una cuenta, cuentas hardcodeadas, userId fijo en 1).
+
+  it('asientoVentaRestaurante (efectivo): Debe Caja, Haber Ventas + ITBIS', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta(COD.CAJA, 1), cuenta(COD.VENTAS, 2), cuenta(COD.ITBIS_POR_PAGAR, 3)],
+    });
+
+    await svc.asientoVentaRestaurante(50, 'COM-001', 118, 100, 18, 'efectivo', '2026-09-19', 9);
+
+    const lineas = svc.lineaRepository.create.mock.calls[0][0];
+    expect(lineas.find((l: any) => l.cuentaContableId === 1)?.debe).toBe(118);
+    expect(lineas.find((l: any) => l.cuentaContableId === 2)?.haber).toBe(100);
+    expect(lineas.find((l: any) => l.cuentaContableId === 3)?.haber).toBe(18);
+    // Partida doble ya cuadrada: 118 = 100 + 18.
+    expect(svc.asientoRepository.save).toHaveBeenCalled();
+  });
+
+  it('asientoVentaRestaurante (tarjeta): usa la cuenta configurada para COBRO_TARJETA, no Caja', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta('9.1.1', 1), cuenta(COD.VENTAS, 2), cuenta(COD.ITBIS_POR_PAGAR, 3)],
+    });
+    svc.configuracionService = {
+      resolverCuenta: jest.fn().mockResolvedValue('9.1.1'), // resolverCuentaPorMetodoPago usa .resolverCuenta, no .obtenerMapa
+      obtenerMapa: jest.fn().mockResolvedValue({ VENTAS: COD.VENTAS, ITBIS_POR_PAGAR: COD.ITBIS_POR_PAGAR }),
+    };
+
+    await svc.asientoVentaRestaurante(50, 'COM-002', 118, 100, 18, 'tarjeta', '2026-09-19', 9);
+
+    const lineas = svc.lineaRepository.create.mock.calls[0][0];
+    expect(lineas.find((l: any) => l.cuentaContableId === 1)?.debe).toBe(118);
+  });
+
+  it('asientoVentaRestaurante con total cero: no genera nada', async () => {
+    const svc = makeService({ empresaId: 7, cuentas: [] });
+
+    await svc.asientoVentaRestaurante(50, 'COM-003', 0, 0, 0, 'efectivo', '2026-09-19', 9);
+
+    expect(svc.asientoRepository.save).not.toHaveBeenCalled();
+  });
 });
