@@ -40,6 +40,7 @@ const CxPPage            = lazy(() => import('./pages/cxp/CxPPage'));
 const ReportesPage       = lazy(() => import('./pages/reportes/ReportesPage'));
 const NominaPage         = lazy(() => import('./pages/nomina/NominaPage'));
 const ContabilidadPage   = lazy(() => import('./pages/contabilidad/ContabilidadPage'));
+const ConfiguracionContablePage = lazy(() => import('./pages/contabilidad/ConfiguracionContablePage'));
 const TesoreriaPage      = lazy(() => import('./pages/tesoreria/TesoreriaPage'));
 const ActivosFijosPage   = lazy(() => import('./pages/activos-fijos/ActivosFijosPage'));
 const PresupuestosPage   = lazy(() => import('./pages/presupuestos/PresupuestosPage'));
@@ -790,6 +791,7 @@ export default function App() {
                     <Route path="/cxp"                element={<CxPPage />} />
                     <Route path="/tesoreria"          element={<TesoreriaPage />} />
                     <Route path="/contabilidad"       element={<ContabilidadPage />} />
+                    <Route path="/configuracion-contable" element={<ConfiguracionContablePage />} />
 
                     {/* ── RRHH ── */}
                     <Route path="/nomina"             element={<NominaPage />} />

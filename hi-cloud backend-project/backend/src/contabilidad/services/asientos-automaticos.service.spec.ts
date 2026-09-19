@@ -519,3 +519,78 @@ describe('AsientosAutomaticosService — visibilidad de fallos', () => {
     expect(r.error).toContain('9.9.9.99');
   });
 });
+
+describe('AsientosAutomaticosService — Configuración Contable por Módulo (2026-09-19)', () => {
+  // Antes: metodoPago === 'efectivo' ? CAJA : BANCOS — tarjeta, transferencia
+  // y cheque eran indistinguibles. Ahora cada uno es su propio concepto
+  // configurable, resuelto contra ConfiguracionContableService.
+
+  it('asientoRecibo con metodoPago=tarjeta: usa la cuenta configurada para COBRO_TARJETA, no el default Bancos', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta('9.9.1.01', 1), cuenta(COD.CLIENTES, 2)],
+    });
+    svc.configuracionService = { resolverCuenta: jest.fn().mockResolvedValue('9.9.1.01') };
+
+    await svc.asientoRecibo(500, 900, 'tarjeta', '2026-09-19', 5);
+
+    expect(svc.configuracionService.resolverCuenta).toHaveBeenCalledWith(7, 'COBRO_TARJETA');
+    const lineas = svc.lineaRepository.create.mock.calls[0][0];
+    expect(lineas.find((l: any) => l.debe === 500)?.cuentaContableId).toBe(1);
+  });
+
+  it('asientoRecibo con metodoPago=cheque: pide el concepto COBRO_CHEQUE, no COBRO_TARJETA ni COBRO_OTRO', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta(COD.BANCOS, 1), cuenta(COD.CLIENTES, 2)],
+    });
+    svc.configuracionService = { resolverCuenta: jest.fn().mockResolvedValue(COD.BANCOS) };
+
+    await svc.asientoRecibo(500, 900, 'cheque', '2026-09-19', 5);
+
+    expect(svc.configuracionService.resolverCuenta).toHaveBeenCalledWith(7, 'COBRO_CHEQUE');
+  });
+
+  it('un método de pago desconocido cae en el concepto COBRO_OTRO (nunca revienta)', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta(COD.BANCOS, 1), cuenta(COD.CLIENTES, 2)],
+    });
+    svc.configuracionService = { resolverCuenta: jest.fn().mockResolvedValue(COD.BANCOS) };
+
+    await svc.asientoRecibo(500, 900, 'criptomoneda', '2026-09-19', 5);
+
+    expect(svc.configuracionService.resolverCuenta).toHaveBeenCalledWith(7, 'COBRO_OTRO');
+  });
+
+  it('sin ConfiguracionContableService disponible (o si falla): usa el fallback exacto de antes, no revienta el asiento', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta(COD.BANCOS, 1), cuenta(COD.CLIENTES, 2)],
+    });
+    // svc.configuracionService deliberadamente NO seteado — simula el caso
+    // donde algo falla al resolver la configuración.
+
+    await svc.asientoRecibo(500, 900, 'transferencia', '2026-09-19', 5);
+
+    const lineas = svc.lineaRepository.create.mock.calls[0][0];
+    expect(lineas.find((l: any) => l.debe === 500)?.cuentaContableId).toBe(1); // COD.BANCOS, el fallback de siempre
+    expect(reportServiceError).not.toHaveBeenCalled();
+  });
+
+  it('asientoDesembolsoPrestamo: la cuenta de Cartera de Crédito también se resuelve por configuración', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta('1.1.2.99', 1), cuenta(COD.BANCOS, 2)],
+    });
+    svc.configuracionService = {
+      resolverCuenta: jest.fn((eid: number, concepto: string) =>
+        Promise.resolve(concepto === 'PRESTAMO_CARTERA' ? '1.1.2.99' : COD.BANCOS)),
+    };
+
+    await svc.asientoDesembolsoPrestamo(10, 'PREST-1', 1000, 'transferencia', '2026-09-19', 5);
+
+    const lineas = svc.lineaRepository.create.mock.calls[0][0];
+    expect(lineas.find((l: any) => l.debe === 1000)?.cuentaContableId).toBe(1);
+  });
+});

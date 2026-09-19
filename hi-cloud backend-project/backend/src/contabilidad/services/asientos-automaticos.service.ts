@@ -8,35 +8,18 @@ import { AsientoContable, TipoOrigenAsiento, EstadoAsiento } from '../entities/a
 import { AsientoLinea } from '../entities/asiento-linea.entity';
 import { TenantService } from '../../tenant/tenant.service';
 import { reportServiceError } from '../../common/observability/sentry';
+import { ConfiguracionContableService } from './configuracion-contable.service';
 
-// Códigos del plan de cuentas dominicano — exportado para que
-// contabilidad.service.ts pueda marcar estas cuentas como esCuentaSistema
-// (P3 Bloque 4): si un contador les cambia el código, este motor deja de
+// Códigos del plan de cuentas dominicano — movidos a un archivo de
+// constantes propio (2026-09-19) para que ConfiguracionContableService los
+// use como default de cada concepto configurable sin crear una dependencia
+// circular; re-exportados aquí porque contabilidad.service.ts y otros ya
+// los importan de este archivo (marcar cuentas como esCuentaSistema, P3
+// Bloque 4: si un contador les cambia el código, este motor deja de
 // encontrarlas y el asiento correspondiente muere en silencio para toda
-// la empresa.
-export const COD = {
-  CLIENTES:                '1.1.2.01',
-  BANCOS:                  '1.1.1.03',
-  CAJA:                    '1.1.1.02',
-  INVENTARIO:              '1.1.3.01',
-  ITBIS_CREDITO:           '1.1.4.01',
-  PROVEEDORES:             '2.1.1.01',
-  ITBIS_POR_PAGAR:         '2.1.2.01',
-  VENTAS:                  '4.1.1.01',
-  SUELDOS:                 '6.1.1.01',
-  TSS_PATRONAL:            '6.1.1.02',
-  SUELDOS_X_PAGAR:         '2.1.3.01',
-  TSS_X_PAGAR:             '2.1.3.02',
-  ISR_X_PAGAR:             '2.1.2.02',
-  ITBIS_CREDITO_COMPRAS:   '1.1.4.01',
-  ANTICIPOS_CLIENTES:      '2.1.5.01',  // Pasivo corriente — anticipos recibidos
-  GANANCIA_CAMBIARIA:      '4.1.3.01',  // Ingreso — ganancia en diferencia cambiaria
-  PERDIDA_CAMBIARIA:       '6.1.5.01',  // Gasto — pérdida en diferencia cambiaria
-  ITBIS_RET_POR_PAGAR:     '2.1.2.03',  // Pasivo — ITBIS retenido por enterar a DGII (E41)
-  ISR_RET_POR_PAGAR:       '2.1.2.04',  // Pasivo — ISR retenido por enterar a DGII (E41)
-  GASTOS_IMPORT_X_APLICAR: '2.1.6.01',  // Transitoria — gastos de importación hasta llegar la factura del agente
-  COSTO_VENTAS:            '5.1.1.01',  // Costo — Costo de Ventas de Bienes (AVCO, snapshot en factura_detalles.costoUnitario)
-} as const;
+// la empresa).
+export { COD } from '../constants/cod-cuentas.constants';
+import { COD } from '../constants/cod-cuentas.constants';
 
 /** Una línea de asiento antes de resolver su código contra el catálogo. */
 export interface LineaAsientoInput {
@@ -70,6 +53,8 @@ export interface PreviewAsientoResultado {
   cuadrado: boolean;
   /** Motivo legible cuando ok=false — "falta la cuenta X", "el asiento no cuadra", etc. Nunca falla en silencio. */
   error?: string;
+  /** Aviso NO bloqueante con ok=true — p. ej. costo de venta omitido por falta de historial de compra (Fase 4, Bloque C). Se advierte en pantalla, nunca en silencio. */
+  advertencia?: string;
 }
 
 type ResolverLineasResultado =
@@ -96,10 +81,48 @@ export class AsientosAutomaticosService {
     private lineaRepository:   Repository<AsientoLinea>,
     private tenantService:     TenantService,
     @InjectDataSource() private dataSource: DataSource,
+    private configuracionService: ConfiguracionContableService,
   ) {}
 
   private get eid(): number | undefined {
     try { return this.tenantService.getEmpresaId(); } catch { return undefined; }
+  }
+
+  /**
+   * Resuelve un concepto contable configurable (Configuración Contable por
+   * Módulo, 2026-09-19) contra la configuración de la empresa, cayendo a
+   * `fallback` (el código que el motor usaba hardcodeado antes de esta
+   * pantalla) sin contexto de empresa o si algo falla — un problema de
+   * configuración nunca debe tumbar la generación del asiento, la resolución
+   * de cuentas de resolverLineasAsiento() sigue siendo quien valida que la
+   * cuenta resultante exista de verdad.
+   */
+  private async resolverCuentaConcepto(concepto: string, fallback: string): Promise<string> {
+    const eid = this.eid;
+    if (eid === undefined) return fallback;
+    try {
+      return await this.configuracionService.resolverCuenta(eid, concepto);
+    } catch {
+      return fallback;
+    }
+  }
+
+  // Cobros/pagos por método — antes un ternario binario (efectivo → Caja,
+  // cualquier otra cosa → Bancos): tarjeta, transferencia y cheque eran
+  // indistinguibles. Ahora cada método es su propio concepto configurable;
+  // el fallback preserva EXACTAMENTE el comportamiento de antes para toda
+  // empresa que no configure nada.
+  private static readonly CONCEPTO_POR_METODO_PAGO: Record<string, string> = {
+    efectivo:      'CAJA',
+    tarjeta:       'COBRO_TARJETA',
+    transferencia: 'COBRO_TRANSFERENCIA',
+    cheque:        'COBRO_CHEQUE',
+  };
+
+  private async resolverCuentaPorMetodoPago(metodoPago: string): Promise<string> {
+    const concepto  = AsientosAutomaticosService.CONCEPTO_POR_METODO_PAGO[metodoPago] ?? 'COBRO_OTRO';
+    const fallback  = metodoPago === 'efectivo' ? COD.CAJA : COD.BANCOS;
+    return this.resolverCuentaConcepto(concepto, fallback);
   }
 
   /**
@@ -744,7 +767,7 @@ export class AsientosAutomaticosService {
     fecha:     string, // recibo.fecha
     userId:    number,
   ): Promise<void> {
-    const cuentaDebito = metodoPago === 'efectivo' ? COD.CAJA : COD.BANCOS;
+    const cuentaDebito = await this.resolverCuentaPorMetodoPago(metodoPago);
     try {
       const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Recibo de cobro #${reciboId}`,
@@ -1076,7 +1099,7 @@ export class AsientosAutomaticosService {
     fecha:      string, // fechaHoyRD() del caller — el anticipo siempre se registra "hoy", nunca backdateado
     userId:     number,
   ): Promise<number | null> {
-    const cuentaDebito = tipoPago === 'efectivo' ? COD.CAJA : COD.BANCOS;
+    const cuentaDebito = await this.resolverCuentaPorMetodoPago(tipoPago);
     try {
       const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Anticipo recibido #${anticipoId}`,
@@ -1255,7 +1278,8 @@ export class AsientosAutomaticosService {
     fecha:        string, // data.fechaDesembolso
     userId:       number,
   ): Promise<void> {
-    const cuentaHaber = formaPago === 'efectivo' ? COD.CAJA : COD.BANCOS;
+    const cuentaHaber  = await this.resolverCuentaPorMetodoPago(formaPago);
+    const cuentaCartera = await this.resolverCuentaConcepto('PRESTAMO_CARTERA', '1.1.2.10');
     try {
       const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Desembolso préstamo ${numero}`,
@@ -1265,7 +1289,7 @@ export class AsientosAutomaticosService {
         fecha,
         userId,
         lineas: [
-          { codigo: '1.1.2.10', descripcion: `Cartera crédito ${numero}`,  debe: monto, haber: 0     },
+          { codigo: cuentaCartera, descripcion: `Cartera crédito ${numero}`,  debe: monto, haber: 0     },
           { codigo: cuentaHaber, descripcion: `Desembolso préstamo ${numero}`, debe: 0, haber: monto },
         ],
       });
@@ -1299,16 +1323,19 @@ export class AsientosAutomaticosService {
   ): Promise<void> {
     const totalPago = capitalAplicado + interesAplicado + moraAplicada;
     if (totalPago <= 0) return;
-    const cuentaDebito = formaPago === 'efectivo' ? COD.CAJA : COD.BANCOS;
+    const cuentaDebito  = await this.resolverCuentaPorMetodoPago(formaPago);
+    const cuentaCartera = await this.resolverCuentaConcepto('PRESTAMO_CARTERA',   '1.1.2.10');
+    const cuentaInteres = await this.resolverCuentaConcepto('PRESTAMO_INTERESES', '4.1.2.01');
+    const cuentaMora    = await this.resolverCuentaConcepto('PRESTAMO_MORA',      '4.1.2.02');
     const lineas: Array<{ codigo: string; descripcion: string; debe: number; haber: number }> = [
       { codigo: cuentaDebito, descripcion: `Pago recibido ${numeroPago}`, debe: totalPago, haber: 0 },
     ];
     if (capitalAplicado > 0)
-      lineas.push({ codigo: '1.1.2.10', descripcion: `Capital préstamo ${numeroPrestamo}`, debe: 0, haber: capitalAplicado });
+      lineas.push({ codigo: cuentaCartera, descripcion: `Capital préstamo ${numeroPrestamo}`, debe: 0, haber: capitalAplicado });
     if (interesAplicado > 0)
-      lineas.push({ codigo: '4.1.2.01', descripcion: `Intereses préstamo ${numeroPrestamo}`, debe: 0, haber: interesAplicado });
+      lineas.push({ codigo: cuentaInteres, descripcion: `Intereses préstamo ${numeroPrestamo}`, debe: 0, haber: interesAplicado });
     if (moraAplicada > 0)
-      lineas.push({ codigo: '4.1.2.02', descripcion: `Mora préstamo ${numeroPrestamo}`, debe: 0, haber: moraAplicada });
+      lineas.push({ codigo: cuentaMora, descripcion: `Mora préstamo ${numeroPrestamo}`, debe: 0, haber: moraAplicada });
     try {
       const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Pago préstamo ${numeroPago} — ${numeroPrestamo}`,
