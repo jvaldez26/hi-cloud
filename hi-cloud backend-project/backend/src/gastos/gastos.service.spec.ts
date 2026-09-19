@@ -1,5 +1,5 @@
 import { GastosService } from './gastos.service';
-import { CategoriaGasto } from './entities/gasto.entity';
+import { CategoriaGasto, CATEGORIA_LABELS } from './entities/gasto.entity';
 
 /**
  * Exportación de gastos a Excel.
@@ -121,5 +121,47 @@ describe('GastosService — exportación sin paginación', () => {
     );
 
     expect(filtrosDe(a.qb)).toBe(filtrosDe(b.qb));
+  });
+});
+
+/**
+ * GastosService.crear() — selector de cuenta contable (2026-09-19).
+ * CATEGORIA_LABELS[categoria].cuenta se calculaba y se descartaba: todo
+ * gasto, sin importar su categoría, se contabilizaba contra el default
+ * 6.1.2.04 del motor. Ahora se pasa como 8º parámetro de asientoGasto().
+ */
+describe('GastosService.crear() — pasa la cuenta de la categoría al motor de asientos', () => {
+  function build() {
+    const repo: any = {
+      create: jest.fn((data: any) => data),
+      save:   jest.fn(async (data: any) => ({ id: 99, ...data })),
+    };
+    const asientosService: any = { asientoGasto: jest.fn().mockResolvedValue(undefined) };
+    const dataSource: any = { query: jest.fn().mockResolvedValue([{ n: 1 }]) };
+    const tenantService: any = { getEmpresaId: () => 7, getSucursalId: () => undefined };
+    const emitirECFUseCase: any = { execute: jest.fn().mockResolvedValue(undefined) };
+    const service = new GastosService(repo, asientosService, dataSource, tenantService, emitirECFUseCase);
+    return { service, asientosService };
+  }
+
+  it('gasto de Alquiler contabiliza contra 6.1.2.01, no contra el default del motor', async () => {
+    const { service, asientosService } = build();
+    await service.crear({
+      fecha: '2026-09-19', categoria: CategoriaGasto.ALQUILER, descripcion: 'Alquiler local',
+      monto: 30000, userId: 5,
+    } as any);
+    const cuentaPasada = asientosService.asientoGasto.mock.calls[0][7];
+    expect(cuentaPasada).toBe('6.1.2.01');
+  });
+
+  it('cada categoría pasa exactamente la cuenta de CATEGORIA_LABELS — ninguna cae en el default por accidente', async () => {
+    for (const categoria of Object.values(CategoriaGasto)) {
+      const { service, asientosService } = build();
+      await service.crear({
+        fecha: '2026-09-19', categoria, descripcion: 'Gasto de prueba', monto: 100, userId: 5,
+      } as any);
+      const cuentaPasada = asientosService.asientoGasto.mock.calls[0][7];
+      expect(cuentaPasada).toBe(CATEGORIA_LABELS[categoria].cuenta);
+    }
   });
 });

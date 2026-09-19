@@ -41,15 +41,22 @@ describe('PLAN_CUENTAS — etiquetas fiscales del seed', () => {
     }
   });
 
-  it('14 de las 15 cuentas de gasto/costo de movimiento tienen tipoGasto606 — solo ITBIS no Recuperable queda sin él', () => {
-    // 15 = las 14 originales + "Pérdida en Diferencial Cambiario" (6.1.5.01),
-    // agregada al cerrar el código huérfano del motor (2026-09-19).
+  it('18 de las 22 cuentas de gasto/costo de movimiento tienen tipoGasto606 — 4 quedan genuinamente ambiguas', () => {
+    // 22 = las 15 previas + las 7 nuevas del selector de cuenta contable
+    // (2026-09-19): Mantenimiento, Seguros, Otros Gastos, Gasto Menor,
+    // Transporte, Marketing y Publicidad, Impuestos y Tasas — cierran el
+    // mapeo CATEGORIA_LABELS de gastos.service.ts, antes muerto.
     const gastoYCosto = PLAN_CUENTAS.filter(
       c => c.permiteMovimientos && (c.tipo === TipoCuenta.GASTO || c.tipo === TipoCuenta.COSTO),
     );
-    expect(gastoYCosto).toHaveLength(15);
+    expect(gastoYCosto).toHaveLength(22);
     const sinTipoGasto606 = gastoYCosto.filter(c => !c.tipoGasto606);
-    expect(sinTipoGasto606.map(c => c.codigo)).toEqual(['6.1.2.06']); // ITBIS no Recuperable
+    // ITBIS no Recuperable (ya ambigua desde Fase 2) + Otros Gastos, Gasto
+    // Menor (régimen E43, ni siquiera es parte del 606) e Impuestos y Tasas
+    // (puede o no venir facturado) — ninguna se fuerza a un código.
+    expect(sinTipoGasto606.map(c => c.codigo).sort()).toEqual(
+      ['6.1.2.06', '6.1.2.09', '6.1.2.10', '6.1.4.01'].sort(),
+    );
   });
 
   it('"ITBIS no Recuperable" (6.1.2.06) no lleva ninguna etiqueta — es la única genuinamente ambigua, a confirmar con el contador', () => {
@@ -122,8 +129,42 @@ describe('PLAN_CUENTAS — etiquetas fiscales del seed', () => {
     expect(porCodigo('6.1.5.01').requiereNCF).toBeUndefined(); // Pérdida en Diferencial Cambiario — ajuste contable, no una compra con NCF
   });
 
-  it('el seed tiene 90 cuentas — sin cambios de cantidad en Fase 4 Bloque A, solo se reetiquetó anexoIR2', () => {
-    expect(PLAN_CUENTAS).toHaveLength(90);
+  it('el seed tiene 98 cuentas — 90 de Fase 4 + 8 del selector de cuenta contable (2026-09-19)', () => {
+    expect(PLAN_CUENTAS).toHaveLength(98);
+  });
+
+  describe('las 8 cuentas que cierran CATEGORIA_LABELS de Gastos (selector de cuenta contable, 2026-09-19)', () => {
+    it('ninguna es cuenta del sistema — el motor las recibe como parámetro, no las referencia por código fijo', () => {
+      for (const codigo of ['6.1.2.07', '6.1.2.08', '6.1.2.09', '6.1.2.10', '6.1.2.11', '6.1.2.12', '6.1.4', '6.1.4.01']) {
+        expect(porCodigo(codigo).esCuentaSistema).toBeUndefined();
+      }
+    });
+
+    it('Mantenimiento, Seguros, Transporte y Marketing reciben tipoGasto606 y B1 — Otros/Gasto Menor/Impuestos quedan sin dictamen', () => {
+      expect(porCodigo('6.1.2.07').tipoGasto606).toBe('02'); // Mantenimiento
+      expect(porCodigo('6.1.2.08').tipoGasto606).toBe('11'); // Seguros
+      expect(porCodigo('6.1.2.11').tipoGasto606).toBe('02'); // Transporte
+      expect(porCodigo('6.1.2.12').tipoGasto606).toBe('02'); // Marketing y Publicidad
+      for (const codigo of ['6.1.2.07', '6.1.2.08', '6.1.2.11', '6.1.2.12']) {
+        expect(anexosDe(codigo)).toEqual([AnexoIR2.B1]);
+      }
+      for (const codigo of ['6.1.2.09', '6.1.2.10', '6.1.4.01']) {
+        expect(porCodigo(codigo).tipoGasto606).toBeUndefined();
+        expect(porCodigo(codigo).anexos).toBeUndefined();
+      }
+    });
+
+    it('"Gasto Menor" va sin NCF (régimen E43); "Impuestos y Tasas" queda ambiguo, sin forzar ninguno de los dos', () => {
+      expect(porCodigo('6.1.2.10').requiereNCF).toBe(false);
+      expect(porCodigo('6.1.4.01').requiereNCF).toBeUndefined();
+    });
+
+    it('6.1.4 (nodo padre nuevo) es de agrupación, sin ninguna etiqueta', () => {
+      const c = porCodigo('6.1.4');
+      expect(c.permiteMovimientos).toBe(false);
+      expect(c.tipoGasto606).toBeUndefined();
+      expect(c.anexos).toBeUndefined();
+    });
   });
 
   describe('las 8 cuentas que cierran códigos huérfanos del motor (2026-09-19)', () => {

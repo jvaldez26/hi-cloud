@@ -137,7 +137,10 @@ const REGLAS_TIPO_GASTO_606: { codigo: string; kw: string[] }[] = [
   { codigo: '01', kw: ['sueldo', 'salario', 'nomina', 'comision', 'vacacion', 'bonificac', 'incentivo', 'gratificac', 'seguro medico', 'seguro de salud', 'seguro familiar', 'tss', 'infotep', 'riesgo laboral', 'pension', 'prestacion laboral'] },
   { codigo: '03', kw: ['alquiler', 'arrendamiento', 'renta de local'] },
   { codigo: '04', kw: ['depreciacion', 'amortizacion', 'mantenimiento de vehiculo', 'mantenimiento de equipo', 'reparacion de activo'] },
-  { codigo: '11', kw: ['seguro de propiedad', 'seguro de vehiculo', 'poliza de seguro', 'seguro contra incendio'] },
+  // 'seguro' genérico va AL FINAL de este bucket — las frases específicas de
+  // arriba siguen ganando cuando calzan, y '01' (seguro familiar/de salud,
+  // TSS) ya se revisó antes que este bucket, así que no hay colisión.
+  { codigo: '11', kw: ['seguro de propiedad', 'seguro de vehiculo', 'poliza de seguro', 'seguro contra incendio', 'seguro'] },
   { codigo: '05', kw: ['representacion', 'atencion a clientes', 'regalo corporativo'] },
   { codigo: '06', kw: ['donacion', 'membresia', 'cuota de asociacion'] },
   { codigo: '08', kw: ['extraordinario', 'siniestro', 'perdida por'] },
@@ -163,8 +166,16 @@ export function sugerirTipoGasto606(nombreCuenta: string): string | null {
 // NCF — pero el costo de venta/producción y los cargos bancarios (interés,
 // comisión) no están en ninguna de las dos listas del material: se
 // devuelve null en vez de forzar "con NCF" por defecto sobre algo dudoso.
-const SIN_NCF_KW = ['sueldo', 'salario', 'nomina', 'comision', 'vacacion', 'bonificac', 'incentivo', 'gratificac', 'tss', 'infotep', 'riesgo laboral', 'pension', 'seguro familiar', 'seguro de salud', 'depreciacion', 'destruccion de inventario'];
-const AMBIGUOS_NCF_KW = ['comision bancaria', 'comisiones bancarias', 'interes bancario', 'intereses bancarios', 'itbis no recuperable', 'costo de venta', 'costo de ventas', 'costo de produccion', 'diferencial cambiario', 'perdida cambiaria', 'perdida en cambio'];
+// 'gasto menor' se agrega a propósito: es el régimen E43 (comprobantes por
+// debajo del umbral que DGII exime de NCF del proveedor) — ni siquiera es
+// parte del 606, así que "requiere NCF" sería literalmente falso, no solo
+// impreciso.
+const SIN_NCF_KW = ['sueldo', 'salario', 'nomina', 'comision', 'vacacion', 'bonificac', 'incentivo', 'gratificac', 'tss', 'infotep', 'riesgo laboral', 'pension', 'seguro familiar', 'seguro de salud', 'depreciacion', 'destruccion de inventario', 'gasto menor'];
+// 'impuestos y tasas' se agrega a propósito: puede incluir tasas municipales
+// u otros cargos gubernamentales que nunca traen NCF de un proveedor — y
+// también impuestos que sí vienen facturados. Ambiguo de verdad, no se
+// asume ninguno de los dos.
+const AMBIGUOS_NCF_KW = ['comision bancaria', 'comisiones bancarias', 'interes bancario', 'intereses bancarios', 'itbis no recuperable', 'costo de venta', 'costo de ventas', 'costo de produccion', 'diferencial cambiario', 'perdida cambiaria', 'perdida en cambio', 'impuestos y tasas'];
 
 /**
  * Sugiere el valor de requiereNCF a partir del nombre de una cuenta de

@@ -272,6 +272,13 @@ export class ActivosFijosService implements OnModuleInit {
 
     const registros: Partial<DepreciacionActivo>[] = [];
     let totalDepreciacion = 0;
+    // Desglose por (cuentaGasto, cuentaDepreciacion) — CategoriaActivo.
+    // cuentaGastoCodigo/cuentaDepreciacionCodigo ya existían pero nunca se
+    // leían; el asiento siempre iba a las mismas 2 cuentas fijas sin
+    // importar la categoría del activo. Fallback a esas mismas 2 cuentas
+    // cuando una categoría no tiene el campo lleno (nullable en la
+    // entidad) — nunca se rompe un asiento por esto.
+    const desglosePorCuentas = new Map<string, { cuentaGasto: string; cuentaDepreciacion: string; monto: number }>();
 
     for (const activo of activos) {
       const fechaAdq = new Date(activo.fechaAdquisicion);
@@ -280,6 +287,13 @@ export class ActivosFijosService implements OnModuleInit {
 
       const dep = this.calcularDepreciacionMensual(activo);
       if (dep === 0) continue;
+
+      const cuentaGasto        = activo.categoria.cuentaGastoCodigo || '6.2.1.01';
+      const cuentaDepreciacion = activo.categoria.cuentaDepreciacionCodigo || '1.2.2.01';
+      const keyCuentas = `${cuentaGasto}|${cuentaDepreciacion}`;
+      const acc = desglosePorCuentas.get(keyCuentas) ?? { cuentaGasto, cuentaDepreciacion, monto: 0 };
+      acc.monto = +(acc.monto + dep).toFixed(2);
+      desglosePorCuentas.set(keyCuentas, acc);
 
       const nuevoAcumulado = Number((Number(activo.depreciacionAcumulada) + dep).toFixed(2));
       const nuevoLibros    = Number((Number(activo.valorLibros) - dep).toFixed(2));
@@ -317,9 +331,10 @@ export class ActivosFijosService implements OnModuleInit {
       this.depreciacionRepository.create(registros),
     );
 
-    // Asiento contable automático de depreciación
+    // Asiento contable automático de depreciación — una línea débito/haber
+    // por cada par de cuentas distinto que usaron las categorías afectadas.
     await this.asientosService.asientoDepreciacion(
-      Number(totalDepreciacion.toFixed(2)),
+      Array.from(desglosePorCuentas.values()),
       periodo,
       fechaFinStr,
       userId,

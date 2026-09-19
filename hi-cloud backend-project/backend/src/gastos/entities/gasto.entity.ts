@@ -18,14 +18,21 @@ export enum CategoriaGasto {
   OTROS           = 'otros',
 }
 
+// Cada categoría apunta a una cuenta real del catálogo (PLAN_CUENTAS,
+// contabilidad.service.ts) — verificado 2026-09-19 al conectar este mapeo
+// con el motor de asientos (antes se calculaba y se descartaba, ver
+// gastos.service.ts). TRANSPORTE y MARKETING se reasignaron a .11/.12
+// porque sus códigos originales (.05/.06) ya son de otra cuenta real
+// (Depreciación y Amortización / ITBIS no Recuperable); MANTENIMIENTO,
+// SEGUROS, OTROS, GASTO_MENOR e IMPUESTOS solo necesitaban sembrarse.
 export const CATEGORIA_LABELS: Record<CategoriaGasto, { label: string; cuenta: string; emoji: string; generaE43?: boolean }> = {
   [CategoriaGasto.ALQUILER]:        { label: 'Alquiler de local',            cuenta: '6.1.2.01', emoji: '🏠' },
   [CategoriaGasto.SERVICIOS_PUBLI]: { label: 'Servicios públicos',           cuenta: '6.1.2.02', emoji: '💡' },
   [CategoriaGasto.COMUNICACIONES]:  { label: 'Comunicaciones',               cuenta: '6.1.2.03', emoji: '📱' },
   [CategoriaGasto.NOMINA]:          { label: 'Sueldos y salarios',           cuenta: '6.1.1.01', emoji: '👥' },
   [CategoriaGasto.MATERIALES]:      { label: 'Materiales de oficina',        cuenta: '6.1.2.04', emoji: '📋' },
-  [CategoriaGasto.TRANSPORTE]:      { label: 'Transporte',                   cuenta: '6.1.2.05', emoji: '🚗' },
-  [CategoriaGasto.MARKETING]:       { label: 'Marketing y publicidad',       cuenta: '6.1.2.06', emoji: '📢' },
+  [CategoriaGasto.TRANSPORTE]:      { label: 'Transporte',                   cuenta: '6.1.2.11', emoji: '🚗' },
+  [CategoriaGasto.MARKETING]:       { label: 'Marketing y publicidad',       cuenta: '6.1.2.12', emoji: '📢' },
   [CategoriaGasto.IMPUESTOS]:       { label: 'Impuestos y tasas',            cuenta: '6.1.4.01', emoji: '🏛️' },
   [CategoriaGasto.MANTENIMIENTO]:   { label: 'Mantenimiento',                cuenta: '6.1.2.07', emoji: '🔧' },
   [CategoriaGasto.SEGUROS]:         { label: 'Seguros',                      cuenta: '6.1.2.08', emoji: '🛡️' },

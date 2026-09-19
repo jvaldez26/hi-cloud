@@ -166,6 +166,27 @@ const PLAN_CUENTAS_BASE: SeedCuenta[] = [
   { codigo: '4.1.3.01',   nombre: 'Ganancia en Diferencial Cambiario',       tipo: TipoCuenta.INGRESO,  naturaleza: A, nivel: 4, permiteMovimientos: true },
   { codigo: '6.1.5',      nombre: 'Diferencial Cambiario (Gasto)',           tipo: TipoCuenta.GASTO,    naturaleza: D, nivel: 3, permiteMovimientos: false },
   { codigo: '6.1.5.01',   nombre: 'Pérdida en Diferencial Cambiario',        tipo: TipoCuenta.GASTO,    naturaleza: D, nivel: 4, permiteMovimientos: true },
+
+  // ── Cuentas que cierran el mapeo CATEGORIA_LABELS de Gastos (selector de
+  // cuenta contable, tarea 2026-09-19) — gastos.service.ts calcula la cuenta
+  // de cada categoría desde CATEGORIA_LABELS (gasto.entity.ts) pero nunca la
+  // pasaba al motor: todo gasto, sin importar su categoría, caía en
+  // 6.1.2.04. De las 13 categorías, 5 apuntaban a un código que no existía
+  // en el catálogo (Mantenimiento, Seguros, Otros, Gasto Menor, Impuestos)
+  // y 2 apuntaban a un código que YA es de otra cuenta real (Transporte
+  // reusaba 6.1.2.05 "Depreciación y Amortización"; Marketing reusaba
+  // 6.1.2.06 "ITBIS no Recuperable") — esas 2 se reasignan a códigos nuevos
+  // (.11/.12) en vez de robarle el código a una cuenta que ya existe y está
+  // etiquetada. Los otros 5 solo necesitaban sembrarse — sus códigos
+  // (.07-.10, 6.1.4.01) estaban libres.
+  { codigo: '6.1.2.07',   nombre: 'Mantenimiento',                          tipo: TipoCuenta.GASTO,    naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.2.08',   nombre: 'Seguros',                                tipo: TipoCuenta.GASTO,    naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.2.09',   nombre: 'Otros Gastos',                           tipo: TipoCuenta.GASTO,    naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.2.10',   nombre: 'Gasto Menor',                            tipo: TipoCuenta.GASTO,    naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.2.11',   nombre: 'Transporte',                             tipo: TipoCuenta.GASTO,    naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.2.12',   nombre: 'Marketing y Publicidad',                 tipo: TipoCuenta.GASTO,    naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.4',      nombre: 'Impuestos y Tasas',                      tipo: TipoCuenta.GASTO,    naturaleza: D, nivel: 3, permiteMovimientos: false },
+  { codigo: '6.1.4.01',   nombre: 'Impuestos y Tasas',                      tipo: TipoCuenta.GASTO,    naturaleza: D, nivel: 4, permiteMovimientos: true },
 ];
 
 // ── Etiquetas fiscales del seed (Fase 2 — catálogo fiscal dominicano) ──────

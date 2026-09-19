@@ -172,4 +172,82 @@ describe('AsientosAutomaticosService — visibilidad de fallos', () => {
       expect.any(Error), 'asiento_cuenta_no_encontrada', expect.any(Object),
     );
   });
+
+  // ── asientoDepreciacion — por categoría (2026-09-19) ────────────────────
+  // Antes recibía un solo montoTotal contra 2 cuentas fijas; ahora recibe un
+  // desglose por (cuentaGasto, cuentaDepreciacion) — CategoriaActivo ya
+  // tenía sus propias cuentas por categoría, pero nadie las leía.
+
+  // lineaRepository.create() se llama UNA vez con el arreglo completo de
+  // líneas (ver _crearAsientoContabilizado), no una vez por línea — de ahí
+  // `.mock.calls[0][0]` en vez de `.mock.calls.map(...)`.
+
+  it('un solo par de cuentas: arma una línea débito/haber, igual que antes', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta('6.2.1.01', 1), cuenta('1.2.2.01', 2)],
+    });
+
+    await svc.asientoDepreciacion(
+      [{ cuentaGasto: '6.2.1.01', cuentaDepreciacion: '1.2.2.01', monto: 500 }],
+      '2026-09', '2026-09-30', 5,
+    );
+
+    expect(svc.asientoRepository.save).toHaveBeenCalled();
+    const lineas = svc.lineaRepository.create.mock.calls[0][0];
+    expect(lineas).toHaveLength(2);
+    expect(lineas.find((l: any) => l.debe === 500)?.cuentaContableId).toBe(1);
+    expect(lineas.find((l: any) => l.haber === 500)?.cuentaContableId).toBe(2);
+  });
+
+  it('dos categorías con cuentas DISTINTAS: arma dos líneas débito/haber, una por cada par', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [
+        cuenta('6.2.1.01', 1), cuenta('1.2.2.01', 2), // categoría A
+        cuenta('6.2.1.02', 3), cuenta('1.2.2.02', 4), // categoría B (custom)
+      ],
+    });
+
+    await svc.asientoDepreciacion(
+      [
+        { cuentaGasto: '6.2.1.01', cuentaDepreciacion: '1.2.2.01', monto: 500 },
+        { cuentaGasto: '6.2.1.02', cuentaDepreciacion: '1.2.2.02', monto: 300 },
+      ],
+      '2026-09', '2026-09-30', 5,
+    );
+
+    const lineas = svc.lineaRepository.create.mock.calls[0][0];
+    expect(lineas).toHaveLength(4);
+    expect(lineas.filter((l: any) => l.debe > 0)).toHaveLength(2);
+    expect(lineas.filter((l: any) => l.haber > 0)).toHaveLength(2);
+  });
+
+  it('dos categorías con el MISMO par de cuentas: se fusionan en una sola línea, no se repite la cuenta', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta('6.2.1.01', 1), cuenta('1.2.2.01', 2)],
+    });
+
+    await svc.asientoDepreciacion(
+      [
+        { cuentaGasto: '6.2.1.01', cuentaDepreciacion: '1.2.2.01', monto: 500 },
+        { cuentaGasto: '6.2.1.01', cuentaDepreciacion: '1.2.2.01', monto: 300 },
+      ],
+      '2026-09', '2026-09-30', 5,
+    );
+
+    const lineas = svc.lineaRepository.create.mock.calls[0][0];
+    expect(lineas).toHaveLength(2); // no 4 — se fusionaron
+    expect(lineas.find((l: any) => l.debe > 0)?.debe).toBe(800);
+    expect(lineas.find((l: any) => l.haber > 0)?.haber).toBe(800);
+  });
+
+  it('desglose vacío: no genera ningún asiento ni reporta nada', async () => {
+    const svc = makeService({ empresaId: 7, cuentas: [] });
+    await svc.asientoDepreciacion([], '2026-09', '2026-09-30', 5);
+
+    expect(svc.asientoRepository.save).not.toHaveBeenCalled();
+    expect(reportServiceError).not.toHaveBeenCalled();
+  });
 });
