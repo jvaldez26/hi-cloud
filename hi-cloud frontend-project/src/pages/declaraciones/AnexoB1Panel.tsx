@@ -84,7 +84,9 @@ export default function AnexoB1Panel() {
           <Paragraph style={{ margin: 0, fontSize: 13 }}>
             Se arma solo con las cuentas etiquetadas con el anexo B1 (Plan de Cuentas → columna "606 / IR-2").
             El ISR estimado no aparece aquí — se calcula sobre renta imponible fiscal, no sobre utilidad
-            contable, y eso exige una conciliación que este ERP no hace.
+            contable, y eso exige una conciliación que este ERP no hace. DGII no tiene mecanismo de carga de
+            archivo para el IR-2 (a diferencia del 606/607/608) — esta pantalla y su Excel son de trabajo, para
+            transcribir a mano en la Oficina Virtual, igual que la propia plantilla Excel oficial de DGII.
           </Paragraph>
         }
       />

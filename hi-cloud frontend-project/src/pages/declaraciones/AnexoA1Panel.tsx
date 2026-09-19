@@ -82,7 +82,9 @@ export default function AnexoA1Panel() {
           <Paragraph style={{ margin: 0, fontSize: 13 }}>
             Se arma solo con las cuentas etiquetadas con el anexo A1 (Plan de Cuentas → columna "606 / IR-2").
             Las líneas que el ERP no puede calcular quedan en cero, marcadas como llenado manual — el contador
-            decide ese valor, esta pantalla no lo adivina.
+            decide ese valor, esta pantalla no lo adivina. DGII no tiene mecanismo de carga de archivo para el
+            IR-2 (a diferencia del 606/607/608) — esta pantalla y su Excel son de trabajo, para transcribir a
+            mano en la Oficina Virtual, igual que la propia plantilla Excel oficial de DGII.
           </Paragraph>
         }
       />

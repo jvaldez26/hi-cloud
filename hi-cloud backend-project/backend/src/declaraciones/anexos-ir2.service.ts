@@ -27,6 +27,16 @@ const CONCEPTOS_MANUALES_A1 = [
  * datos reales. Lo que el ERP no registra en absoluto queda en cero y
  * marcado `llenadoManual: true` — nunca se inventa un valor para que la
  * línea "no se vea vacía".
+ *
+ * FASE 4 Bloque E (investigación previa a construir cualquier export):
+ * DGII no tiene mecanismo de carga de archivo para el IR-2 ni sus anexos
+ * (instructivo oficial vigente, marzo/junio 2026 — a diferencia del 606/
+ * 607/608, que sí se suben como TXT). Todo apunta a llenado manual en el
+ * formulario web de la Oficina Virtual; DGII distribuye su propia plantilla
+ * Excel con macros solo como herramienta de CÁLCULO previo, nunca como
+ * archivo que se sube. Por eso estos métodos alimentan pantallas + export a
+ * Excel de TRABAJO INTERNO (mismo rol que la plantilla oficial de DGII) —
+ * no un archivo de envío. No construir ningún "subir a DGII" sobre esto.
  */
 @Injectable()
 export class AnexosIR2Service {
