@@ -28,6 +28,10 @@ export interface AsientoPayload {
 }
 
 export const contabilidadApi = {
+  /** Cuentas de movimiento sin etiqueta fiscal completa — lista de trabajo del contador (Fase 2). */
+  cuentasSinEtiquetar: () =>
+    api.get('/contabilidad/cuentas/sin-etiquetar').then(r => r.data.data),
+
   cuentas: (soloMovimientos?: boolean) =>
     api.get(`/contabilidad/cuentas${soloMovimientos ? '?soloMovimientos=true' : ''}`)
        .then(r => r.data.data),

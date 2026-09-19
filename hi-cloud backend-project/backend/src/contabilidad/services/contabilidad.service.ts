@@ -14,8 +14,10 @@ import {
   CuentaContable,
   TipoCuenta,
   NaturalezaCuenta,
+  AnexoIR2,
   TIPOS_POR_ANEXO_IR2,
 } from '../entities/cuenta-contable.entity';
+import { sugerirTipoGasto606, sugerirRequiereNCF } from '../../declaraciones/dgii.constants';
 import {
   AsientoContable,
   EstadoAsiento,
@@ -36,12 +38,17 @@ interface SeedCuenta {
   naturaleza: NaturalezaCuenta;
   nivel: number;
   permiteMovimientos: boolean;
+  // Etiquetas fiscales (Fase 2 del catálogo fiscal dominicano) — se
+  // calculan en etiquetarFiscalmente(), no se escriben a mano aquí abajo.
+  tipoGasto606?: string;
+  anexoIR2?: AnexoIR2;
+  requiereNCF?: boolean;
 }
 
 const D = NaturalezaCuenta.DEUDORA;
 const A = NaturalezaCuenta.ACREEDORA;
 
-const PLAN_CUENTAS: SeedCuenta[] = [
+const PLAN_CUENTAS_BASE: SeedCuenta[] = [
   // ── CLASE 1 — ACTIVOS ──────────────────────────────────────────────────────
   { codigo: '1',          nombre: 'ACTIVOS',                           tipo: TipoCuenta.ACTIVO,     naturaleza: D, nivel: 1, permiteMovimientos: false },
   { codigo: '1.1',        nombre: 'Activo Corriente',                  tipo: TipoCuenta.ACTIVO,     naturaleza: D, nivel: 2, permiteMovimientos: false },
@@ -134,6 +141,61 @@ const PLAN_CUENTAS: SeedCuenta[] = [
   { codigo: '6.1.3.01',   nombre: 'Intereses Bancarios',               tipo: TipoCuenta.GASTO,      naturaleza: D, nivel: 4, permiteMovimientos: true },
   { codigo: '6.1.3.02',   nombre: 'Comisiones Bancarias',              tipo: TipoCuenta.GASTO,      naturaleza: D, nivel: 4, permiteMovimientos: true },
 ];
+
+// ── Etiquetas fiscales del seed (Fase 2 — catálogo fiscal dominicano) ──────
+//
+// Solo se pone lo que se puede responder con confianza (diagnóstico de
+// Fase 2, 2026-09-19 — 35 empresas, 100% del catálogo idéntico a este
+// seed):
+//   - tipoGasto606/requiereNCF: cuentas de movimiento de tipo gasto o
+//     costo, vía los diccionarios de dgii.constants.ts. "ITBIS no
+//     Recuperable" no calza en ninguno de los dos a propósito — es la
+//     única cuenta genuinamente ambigua del seed; Jean la confirma con su
+//     contador antes de la Fase 3.
+//   - anexoIR2: activo/pasivo/patrimonio → 'A1' (Balance); ingreso → 'B1'
+//     (Resultados); costo/gasto → 'B1' o 'D' pero SOLO si la cuenta ya
+//     tiene un tipoGasto606 confiable (si no lo tiene, tampoco se afirma
+//     su anexo — mismo criterio de "sin dictamen, sin etiqueta").
+//   - EXCEPCIÓN deliberada — las 4 cuentas de Inventario (1.1.3.01 a
+//     1.1.3.04): el Anexo A1 (Balance) necesita su saldo de cierre y el
+//     Anexo D (Costo de Venta) necesita su Inventario Inicial/Final — la
+//     MISMA cuenta alimenta ambos anexos, pero anexoIR2 es una sola
+//     columna por cuenta. Forzar 'A1' perdería su lugar en D, y viceversa.
+//     Se dejan SIN anexoIR2 en vez de elegir una de las dos en silencio —
+//     ver el reporte de Fase 2 para la discusión completa.
+//   - casillaIR2: no se puebla en ningún caso — no hay números de casilla
+//     de DGII verificados todavía (ese es el propio gate ya acordado de la
+//     Fase 3, no una omisión de esta fase).
+const CUENTAS_INVENTARIO_DUAL_A1_D = new Set(['1.1.3.01', '1.1.3.02', '1.1.3.03', '1.1.3.04']);
+
+function etiquetarFiscalmente(c: SeedCuenta): SeedCuenta {
+  if (!c.permiteMovimientos) return c; // las de agrupación no se etiquetan
+
+  const etiquetas: Partial<SeedCuenta> = {};
+
+  if (c.tipo === TipoCuenta.GASTO || c.tipo === TipoCuenta.COSTO) {
+    const sugerido606 = sugerirTipoGasto606(c.nombre);
+    if (sugerido606) etiquetas.tipoGasto606 = sugerido606;
+    const sugeridoNCF = sugerirRequiereNCF(c.nombre);
+    if (sugeridoNCF !== null) etiquetas.requiereNCF = sugeridoNCF;
+  }
+
+  if (c.tipo === TipoCuenta.ACTIVO || c.tipo === TipoCuenta.PASIVO || c.tipo === TipoCuenta.PATRIMONIO) {
+    if (!CUENTAS_INVENTARIO_DUAL_A1_D.has(c.codigo)) etiquetas.anexoIR2 = AnexoIR2.A1;
+  } else if (c.tipo === TipoCuenta.INGRESO) {
+    etiquetas.anexoIR2 = AnexoIR2.B1;
+  } else if (c.tipo === TipoCuenta.COSTO) {
+    if (etiquetas.tipoGasto606) etiquetas.anexoIR2 = AnexoIR2.D;
+  } else if (c.tipo === TipoCuenta.GASTO) {
+    if (etiquetas.tipoGasto606) etiquetas.anexoIR2 = AnexoIR2.B1;
+  }
+
+  return { ...c, ...etiquetas };
+}
+
+// Exportado solo para testearlo directamente (contabilidad-plan-cuentas-etiquetas.spec.ts)
+// — ningún otro módulo lo consume, el seed sigue siendo interno a este servicio.
+export const PLAN_CUENTAS: SeedCuenta[] = PLAN_CUENTAS_BASE.map(etiquetarFiscalmente);
 
 @Injectable()
 export class ContabilidadService implements OnModuleInit {
@@ -307,6 +369,29 @@ export class ContabilidadService implements OnModuleInit {
     if (soloMovimientos) where['permiteMovimientos'] = true;
     if (this.eid) where['empresaId'] = this.eid;
     return this.cuentaRepository.find({ where, order: { codigo: 'ASC' } });
+  }
+
+  /**
+   * Cuentas de movimiento a las que les falta al menos una etiqueta fiscal
+   * que SÍ les aplica — la lista de trabajo del contador (Fase 2 del
+   * catálogo fiscal dominicano). Mismo criterio "OR por campo aplicable"
+   * que la columna "606 / IR-2" de PlanCuentasPage.tsx en el frontend:
+   *   - gasto/costo sin tipoGasto606 → aparece (aunque ya tenga anexoIR2).
+   *   - cualquier tipo sin anexoIR2 → aparece (aunque ya tenga tipoGasto606).
+   * Una cuenta de activo/pasivo/patrimonio/ingreso nunca puede deberle
+   * tipoGasto606 (no le aplica), así que para esas el único gate real es
+   * anexoIR2 — que es justo la columna que hoy dejan vacía, a propósito,
+   * el Anexo D de las 4 cuentas de Inventario y "ITBIS no Recuperable".
+   */
+  async getCuentasSinEtiquetar() {
+    const where: any = { isActive: true, permiteMovimientos: true };
+    if (this.eid) where.empresaId = this.eid;
+    const cuentas = await this.cuentaRepository.find({ where, order: { codigo: 'ASC' } });
+    return cuentas.filter((c) => {
+      const leFaltaGasto606 = (c.tipo === TipoCuenta.GASTO || c.tipo === TipoCuenta.COSTO) && !c.tipoGasto606;
+      const leFaltaAnexo = !c.anexoIR2;
+      return leFaltaGasto606 || leFaltaAnexo;
+    });
   }
 
   async findCuentaById(id: number) {

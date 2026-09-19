@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Table, Tag, Card, Row, Col, Typography, Space, Button, Modal, Form,
-  Input, InputNumber, Select, Switch, message, Tooltip,
+  Input, InputNumber, Select, Switch, message, Tooltip, Tabs, Badge, Alert,
 } from 'antd';
 import { PlusOutlined, EditOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -70,6 +70,29 @@ const CASILLAS_ANEXO_D: Record<'activo' | 'costo', { value: string; label: strin
   ],
 };
 
+/**
+ * Columna "606 / IR-2" del catálogo — mismo criterio que
+ * ContabilidadService.getCuentasSinEtiquetar() en el backend: "sin
+ * etiquetar" es un OR por campo aplicable, no un AND. Una cuenta de costo
+ * con tipoGasto606 pero sin anexoIR2 (el caso de las 4 de Inventario y las
+ * 2 de Costo que la Fase 2 dejó a propósito sin anexo) debe seguir
+ * marcándose como incompleta, no como "ya etiquetada" solo porque una de
+ * las dos columnas tiene valor.
+ */
+function renderEtiquetas(r: Cuenta) {
+  if (!r.permiteMovimientos) return <Text type="secondary">—</Text>;
+  const leFaltaGasto606 = ['gasto', 'costo'].includes(r.tipo ?? '') && !r.tipoGasto606;
+  const leFaltaAnexo = !r.anexoIR2;
+  if (leFaltaGasto606 || leFaltaAnexo) return <Tag color="orange">Sin etiquetar</Tag>;
+  return (
+    <Space size={4} wrap>
+      {r.tipoGasto606 && <Tooltip title={TIPOS_BIENES_606.find(t => t.value === r.tipoGasto606)?.label}><Tag>{r.tipoGasto606}</Tag></Tooltip>}
+      {r.anexoIR2 && <Tag color="blue">{r.anexoIR2}</Tag>}
+      {r.requiereNCF === false && <Tooltip title="Va sin NCF (nómina/TSS, pensiones, depreciación, destrucción autorizada)"><Tag color="purple">Sin NCF</Tag></Tooltip>}
+    </Space>
+  );
+}
+
 export default function PlanCuentasPage() {
   const { bloqueado, config, plan } = usePlanGuard();
   const qc = useQueryClient();
@@ -93,14 +116,26 @@ export default function PlanCuentasPage() {
     queryFn: () => contabilidadApi.cuentas(),
   });
 
+  // Pantalla de excepciones (Fase 2) — lista de trabajo del contador: mismo
+  // criterio que la columna "606 / IR-2" de la tabla del catálogo, pero
+  // como su propia vista para no tener que ir cuenta por cuenta buscándolas.
+  const { data: cuentasSinEtiquetar, isLoading: cargandoExcepciones } = useQuery({
+    queryKey: ['cuentas-sin-etiquetar'],
+    queryFn: () => contabilidadApi.cuentasSinEtiquetar(),
+  });
+
+  const invalidarCuentas = () => {
+    qc.invalidateQueries({ queryKey: ['cuentas'] });
+    qc.invalidateQueries({ queryKey: ['cuentas-sin-etiquetar'] });
+  };
   const createMut = useMutation({
     mutationFn: contabilidadApi.createCuenta,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['cuentas'] }); closeModal(); message.success('Cuenta creada'); },
+    onSuccess: () => { invalidarCuentas(); closeModal(); message.success('Cuenta creada'); },
     onError:   (e: any) => message.error(e?.response?.data?.message ?? 'No se pudo crear la cuenta'),
   });
   const updateMut = useMutation({
     mutationFn: ({ id, body }: { id: number; body: Partial<CuentaPayload> }) => contabilidadApi.updateCuenta(id, body),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['cuentas'] }); closeModal(); message.success('Cuenta actualizada'); },
+    onSuccess: () => { invalidarCuentas(); closeModal(); message.success('Cuenta actualizada'); },
     onError:   (e: any) => message.error(e?.response?.data?.message ?? 'No se pudo actualizar la cuenta'),
   });
 
@@ -157,20 +192,28 @@ export default function PlanCuentasPage() {
     { title: 'Movim.',  dataIndex: 'permiteMovimientos', width: 70,
       render: (v: boolean) => <Tag color={v ? 'green' : 'default'}>{v ? 'Sí' : 'No'}</Tag> },
     { title: '606 / IR-2', key: 'etiquetas', width: 130,
-      render: (_: unknown, r: Cuenta) => {
-        if (!r.permiteMovimientos) return <Text type="secondary">—</Text>;
-        if (!r.tipoGasto606 && !r.anexoIR2) return <Tag color="orange">Sin etiquetar</Tag>;
-        return (
-          <Space size={4} wrap>
-            {r.tipoGasto606 && <Tooltip title={TIPOS_BIENES_606.find(t => t.value === r.tipoGasto606)?.label}><Tag>{r.tipoGasto606}</Tag></Tooltip>}
-            {r.anexoIR2 && <Tag color="blue">{r.anexoIR2}</Tag>}
-            {r.requiereNCF === false && <Tooltip title="Va sin NCF (nómina/TSS, pensiones, depreciación, destrucción autorizada)"><Tag color="purple">Sin NCF</Tag></Tooltip>}
-          </Space>
-        );
-      } },
+      render: (_: unknown, r: Cuenta) => renderEtiquetas(r) },
     { title: '', key: 'actions', width: 50, align: 'right' as const,
       render: (_: unknown, r: Cuenta) => (
         <Button size="small" type="text" icon={<EditOutlined />} onClick={() => openEdit(r)} />
+      ) },
+  ];
+
+  const colsExcepciones = [
+    { title: 'Código',  dataIndex: 'codigo',  width: 110 },
+    { title: 'Nombre',  dataIndex: 'nombre',  ellipsis: true },
+    { title: 'Tipo',    dataIndex: 'tipo',    width: 100,
+      render: (v: string) => <Tag color={tipoColor[v]} style={{ textTransform: 'capitalize' }}>{v}</Tag> },
+    { title: 'Le falta', key: 'falta', width: 220,
+      render: (_: unknown, r: Cuenta) => (
+        <Space size={4} wrap>
+          {['gasto', 'costo'].includes(r.tipo) && !r.tipoGasto606 && <Tag color="orange">Tipo de gasto (606)</Tag>}
+          {!r.anexoIR2 && <Tag color="orange">Anexo IR-2</Tag>}
+        </Space>
+      ) },
+    { title: '', key: 'actions', width: 90, align: 'right' as const,
+      render: (_: unknown, r: Cuenta) => (
+        <Button size="small" onClick={() => openEdit(r)}>Etiquetar</Button>
       ) },
   ];
 
@@ -183,11 +226,43 @@ export default function PlanCuentasPage() {
         </Col>
       </Row>
 
-      <Table columns={cols} dataSource={cuentas ?? []} rowKey="id" loading={isLoading}
-        size="small"
-        scroll={{ x: 'max-content' }}
-        pagination={{ pageSize: 10, showSizeChanger: false }}
-        rowClassName={(r: any) => r.nivel <= 2 ? 'ant-table-row-level-header' : ''} />
+      <Tabs
+        items={[
+          {
+            key: 'catalogo',
+            label: 'Catálogo',
+            children: (
+              <Table columns={cols} dataSource={cuentas ?? []} rowKey="id" loading={isLoading}
+                size="small"
+                scroll={{ x: 'max-content' }}
+                pagination={{ pageSize: 10, showSizeChanger: false }}
+                rowClassName={(r: any) => r.nivel <= 2 ? 'ant-table-row-level-header' : ''} />
+            ),
+          },
+          {
+            key: 'excepciones',
+            label: (
+              <span>
+                Sin etiquetar{' '}
+                <Badge count={cuentasSinEtiquetar?.length ?? 0} showZero color={(cuentasSinEtiquetar?.length ?? 0) > 0 ? 'orange' : 'default'} />
+              </span>
+            ),
+            children: (
+              <>
+                <Alert
+                  type="info" showIcon style={{ marginBottom: 12 }}
+                  message="Lista de trabajo del contador"
+                  description="Cuentas de movimiento a las que les falta al menos una etiqueta fiscal que sí les aplica. Etiquétalas desde aquí con el mismo modal de edición del catálogo."
+                />
+                <Table columns={colsExcepciones} dataSource={cuentasSinEtiquetar ?? []} rowKey="id" loading={cargandoExcepciones}
+                  size="small"
+                  scroll={{ x: 'max-content' }}
+                  pagination={{ pageSize: 10, showSizeChanger: false }} />
+              </>
+            ),
+          },
+        ]}
+      />
 
       <Modal
         title={editing ? `Editar cuenta — ${editing.codigo}` : 'Nueva cuenta contable'}

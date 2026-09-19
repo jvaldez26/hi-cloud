@@ -54,6 +54,20 @@ export class ContabilidadController {
     return this.contabilidadService.createCuenta(dto);
   }
 
+  @Get('cuentas/sin-etiquetar')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({
+    summary: 'Cuentas de movimiento sin etiqueta fiscal completa (606/IR-2) — lista de trabajo del contador',
+    description:
+      'Declarada ANTES de cuentas/:id a propósito — si no, Nest intentaría ' +
+      'parsear "sin-etiquetar" como un id numérico. Incluye tanto cuentas ' +
+      'custom que nunca se etiquetaron como las del seed que la Fase 2 dejó ' +
+      'sin dictamen a propósito (ver contabilidad.service.ts).',
+  })
+  getCuentasSinEtiquetar() {
+    return this.contabilidadService.getCuentasSinEtiquetar();
+  }
+
   @Get('cuentas/:id')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Obtener cuenta contable por ID' })

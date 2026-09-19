@@ -114,6 +114,70 @@ export function fechaDgii(d: Date | string | undefined | null): string {
   return `${y}${m}${dd}`;
 }
 
+// ── Fase 2 del catálogo fiscal dominicano — sugerencias por nombre de cuenta ──
+// Diccionario de palabras clave, no autoridad: sugerirTipoGasto606()/
+// sugerirRequiereNCF() devuelven null cuando ninguna calza, y el caller
+// decide (típicamente: dejar la cuenta sin esa etiqueta y reportarlo — ver
+// PLAN_CUENTAS en contabilidad.service.ts, que es quien las usa para el
+// seed). Construido a partir del diagnóstico de Fase 2 (2026-09-19, 35
+// empresas, 100% del catálogo idéntico al seed): con este diccionario, 13
+// de las 14 cuentas de gasto/costo del seed reciben tipoGasto606 — la única
+// sin sugerencia, "ITBIS no Recuperable", queda así a propósito (ningún
+// keyword la cubre): es genuinamente ambigua, pendiente de confirmar con el
+// contador antes de la Fase 3.
+
+function normalizarNombreCuenta(s: string): string {
+  return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+const REGLAS_TIPO_GASTO_606: { codigo: string; kw: string[] }[] = [
+  // Más específico primero — sin esto, "Comisiones Bancarias" caería en el
+  // '01' genérico de "comision" antes de llegar a '07'.
+  { codigo: '07', kw: ['interes bancario', 'intereses bancarios', 'comision bancaria', 'comisiones bancarias', 'gasto bancario', 'gastos bancarios', 'gasto financiero', 'gastos financieros'] },
+  { codigo: '01', kw: ['sueldo', 'salario', 'nomina', 'comision', 'vacacion', 'bonificac', 'incentivo', 'gratificac', 'seguro medico', 'seguro de salud', 'seguro familiar', 'tss', 'infotep', 'riesgo laboral', 'pension', 'prestacion laboral'] },
+  { codigo: '03', kw: ['alquiler', 'arrendamiento', 'renta de local'] },
+  { codigo: '04', kw: ['depreciacion', 'amortizacion', 'mantenimiento de vehiculo', 'mantenimiento de equipo', 'reparacion de activo'] },
+  { codigo: '11', kw: ['seguro de propiedad', 'seguro de vehiculo', 'poliza de seguro', 'seguro contra incendio'] },
+  { codigo: '05', kw: ['representacion', 'atencion a clientes', 'regalo corporativo'] },
+  { codigo: '06', kw: ['donacion', 'membresia', 'cuota de asociacion'] },
+  { codigo: '08', kw: ['extraordinario', 'siniestro', 'perdida por'] },
+  { codigo: '10', kw: ['adquisicion de activo', 'compra de equipo', 'compra de vehiculo', 'mobiliario'] },
+  { codigo: '09', kw: ['costo de venta', 'costo de ventas', 'costo de produccion', 'compra de mercancia', 'materia prima', 'inventario'] },
+  { codigo: '02', kw: ['servicio', 'suministro', 'mantenimiento', 'honorario', 'consultoria', 'limpieza', 'seguridad', 'publicidad', 'marketing', 'papeleria', 'transporte', 'combustible', 'electricidad', 'agua', 'telefono', 'internet', 'comunicacion', 'comunicaciones', 'material de oficina', 'materiales de oficina'] },
+];
+
+/** Sugiere un código del Formato 606 (TIPOS_BIENES_606) a partir del nombre de una cuenta de gasto o costo. null = ningún keyword calzó. */
+export function sugerirTipoGasto606(nombreCuenta: string): string | null {
+  const n = normalizarNombreCuenta(nombreCuenta);
+  for (const regla of REGLAS_TIPO_GASTO_606) {
+    if (regla.kw.some(k => n.includes(k))) return regla.codigo;
+  }
+  return null;
+}
+
+// Van SIN NCF, según el material de capacitación: nómina y sus derivados
+// TSS (comisiones, vacaciones, horas extras, salario de navidad,
+// bonificaciones, incentivos, gratificaciones), aportaciones a pensiones/
+// seguro familiar de salud/riesgo laboral/INFOTEP, depreciación de activos
+// fijos, destrucción de inventario autorizada por DGII. Todo lo demás CON
+// NCF — pero el costo de venta/producción y los cargos bancarios (interés,
+// comisión) no están en ninguna de las dos listas del material: se
+// devuelve null en vez de forzar "con NCF" por defecto sobre algo dudoso.
+const SIN_NCF_KW = ['sueldo', 'salario', 'nomina', 'comision', 'vacacion', 'bonificac', 'incentivo', 'gratificac', 'tss', 'infotep', 'riesgo laboral', 'pension', 'seguro familiar', 'seguro de salud', 'depreciacion', 'destruccion de inventario'];
+const AMBIGUOS_NCF_KW = ['comision bancaria', 'comisiones bancarias', 'interes bancario', 'intereses bancarios', 'itbis no recuperable', 'costo de venta', 'costo de ventas', 'costo de produccion'];
+
+/**
+ * Sugiere el valor de requiereNCF a partir del nombre de una cuenta de
+ * gasto o costo. true = necesita NCF, false = va sin NCF, null = no hay
+ * criterio confiable (el caller debe dejarla sin etiquetar, no asumir).
+ */
+export function sugerirRequiereNCF(nombreCuenta: string): boolean | null {
+  const n = normalizarNombreCuenta(nombreCuenta);
+  if (AMBIGUOS_NCF_KW.some(k => n.includes(k))) return null;
+  if (SIN_NCF_KW.some(k => n.includes(k))) return false;
+  return true;
+}
+
 /** Valida formato RNC (9 dígitos) */
 export function esRncValido(rnc: string | undefined | null): boolean {
   return /^\d{9}$/.test((rnc ?? '').trim());
