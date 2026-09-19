@@ -14,6 +14,7 @@ import {
   CuentaContable,
   TipoCuenta,
   NaturalezaCuenta,
+  TIPOS_POR_ANEXO_IR2,
 } from '../entities/cuenta-contable.entity';
 import {
   AsientoContable,
@@ -340,10 +341,25 @@ export class ContabilidadService implements OnModuleInit {
    * 1. Si viene cuentaPadreId: debe existir (en el tenant), no puede ser la
    *    propia cuenta, y el tipo/naturaleza de la cuenta deben coincidir con
    *    los del padre (una subcuenta de "Gastos" no puede ser tipo ingreso).
-   * 2. Las etiquetas fiscales (tipoGasto606/anexoIR2/casillaIR2/requiereNCF
-   *    — Fase 1 del catálogo fiscal dominicano) solo se ofrecen en cuentas
-   *    de movimiento (permiteMovimientos=true) de tipo gasto o costo: las
-   *    de agrupación no reciben asientos y no tiene sentido etiquetarlas.
+   * 2. Etiquetas fiscales (Fase 1 del catálogo fiscal dominicano) — todas
+   *    solo en cuentas de movimiento (permiteMovimientos=true); la
+   *    restricción de TIPO difiere por etiqueta:
+   *      - tipoGasto606/requiereNCF: solo gasto o costo (el 606 declara
+   *        compras y gastos, no partidas de balance).
+   *      - anexoIR2/casillaIR2: cualquier tipo, pero coherente con
+   *        TIPOS_POR_ANEXO_IR2 — A1 (Balance) exige activo/pasivo/
+   *        patrimonio, B1 (Resultados) exige ingreso/costo/gasto, D (Costo
+   *        de Venta) exige activo o costo. No se valida que la cuenta
+   *        "activo" sea específicamente Inventario y no, por ejemplo, Caja
+   *        — adivinar semántica de cuenta queda fuera de esta fase, igual
+   *        que hoy no se valida qué código 606 exacto corresponde a cada
+   *        gasto.
+   *
+   * Las etiquetas se validan sobre el estado EFECTIVO resultante (dto
+   * fusionado sobre cuentaActual), no solo sobre los campos que el dto
+   * toca: en un updateCuenta que solo cambia "tipo", una etiqueta que ya
+   * estaba guardada y queda incoherente con el tipo nuevo también se
+   * rechaza, aunque ese dto ni mencione la etiqueta.
    */
   private async validarPadreYEtiquetas(
     dto: Partial<CreateCuentaContableDto>,
@@ -376,21 +392,51 @@ export class ContabilidadService implements OnModuleInit {
       }
     }
 
-    const tieneEtiquetaFiscal =
-      dto.tipoGasto606 !== undefined || dto.anexoIR2 !== undefined ||
-      dto.casillaIR2  !== undefined || dto.requiereNCF !== undefined;
-    if (tieneEtiquetaFiscal) {
-      const tipoEfectivo = dto.tipo ?? cuentaActual?.tipo;
-      if (tipoEfectivo !== TipoCuenta.GASTO && tipoEfectivo !== TipoCuenta.COSTO) {
-        throw new BadRequestException(
-          'Las etiquetas fiscales (606/IR-2) solo se pueden asignar a cuentas de tipo gasto o costo',
-        );
-      }
-      const permiteMovimientosEfectivo = dto.permiteMovimientos ?? cuentaActual?.permiteMovimientos;
+    // Se valida el estado EFECTIVO resultante (dto fusionado sobre lo ya
+    // guardado), no solo los campos que el dto toca — así, cambiar el tipo
+    // de una cuenta que YA tenía una etiqueta fiscal también se valida,
+    // aunque el dto de ese update ni mencione la etiqueta.
+    const tipoEfectivo               = dto.tipo ?? cuentaActual?.tipo;
+    const permiteMovimientosEfectivo = dto.permiteMovimientos ?? cuentaActual?.permiteMovimientos;
+    const tipoGasto606Efectivo = dto.tipoGasto606 !== undefined ? dto.tipoGasto606 : cuentaActual?.tipoGasto606;
+    const requiereNCFEfectivo  = dto.requiereNCF  !== undefined ? dto.requiereNCF  : cuentaActual?.requiereNCF;
+    const anexoEfectivo        = dto.anexoIR2     !== undefined ? dto.anexoIR2     : cuentaActual?.anexoIR2;
+    const casillaEfectiva      = dto.casillaIR2   !== undefined ? dto.casillaIR2   : cuentaActual?.casillaIR2;
+
+    const tieneGasto606OContribuyente =
+      (tipoGasto606Efectivo !== undefined && tipoGasto606Efectivo !== null) ||
+      (requiereNCFEfectivo  !== undefined && requiereNCFEfectivo  !== null);
+    const tieneAnexo =
+      (anexoEfectivo   !== undefined && anexoEfectivo   !== null) ||
+      (casillaEfectiva !== undefined && casillaEfectiva !== null);
+
+    if (tieneGasto606OContribuyente || tieneAnexo) {
       if (!permiteMovimientosEfectivo) {
         throw new BadRequestException(
           'Las etiquetas fiscales solo se pueden asignar a cuentas de movimiento, no de agrupación',
         );
+      }
+    }
+
+    if (tieneGasto606OContribuyente) {
+      if (tipoEfectivo !== TipoCuenta.GASTO && tipoEfectivo !== TipoCuenta.COSTO) {
+        throw new BadRequestException(
+          'tipoGasto606 y requiereNCF solo se pueden asignar a cuentas de tipo gasto o costo — el 606 declara compras y gastos, no partidas de balance',
+        );
+      }
+    }
+
+    if (tieneAnexo) {
+      if ((casillaEfectiva !== undefined && casillaEfectiva !== null) && !anexoEfectivo) {
+        throw new BadRequestException('casillaIR2 requiere anexoIR2');
+      }
+      if (anexoEfectivo && tipoEfectivo) {
+        const tiposValidos = TIPOS_POR_ANEXO_IR2[anexoEfectivo];
+        if (!tiposValidos.includes(tipoEfectivo)) {
+          throw new BadRequestException(
+            `El anexo ${anexoEfectivo} no aplica a cuentas de tipo ${tipoEfectivo} (válido: ${tiposValidos.join(', ')})`,
+          );
+        }
       }
     }
   }

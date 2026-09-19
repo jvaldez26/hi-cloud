@@ -27,6 +27,22 @@ export enum AnexoIR2 {
   D  = 'D',  // Costo de Venta
 }
 
+/**
+ * Tipos de cuenta coherentes con cada anexo del IR-2 — corrección del
+ * 2026-09-19: A1/B1 son anexos de BALANCE/RESULTADOS respectivamente, así
+ * que restringirlos a "gasto o costo" (como sí aplica a tipoGasto606 y
+ * requiereNCF, que son del 606) dejaba a ninguna cuenta real poder llevar
+ * A1. anexoIR2/casillaIR2 se validan contra ESTA tabla, no contra
+ * "gasto/costo" — el Anexo D en particular toca cuentas de tipo activo
+ * (Inventario Inicial/Final) además de costo (Compras/Costo de Venta), ver
+ * el material de capacitación del Lic. Wilton Andrés Pérez.
+ */
+export const TIPOS_POR_ANEXO_IR2: Record<AnexoIR2, TipoCuenta[]> = {
+  [AnexoIR2.A1]: [TipoCuenta.ACTIVO, TipoCuenta.PASIVO, TipoCuenta.PATRIMONIO],
+  [AnexoIR2.B1]: [TipoCuenta.INGRESO, TipoCuenta.COSTO, TipoCuenta.GASTO],
+  [AnexoIR2.D]:  [TipoCuenta.ACTIVO, TipoCuenta.COSTO],
+};
+
 @TenantScoped()
 @Entity('cuentas_contables')
 export class CuentaContable extends TenantBaseEntity {
@@ -59,26 +75,38 @@ export class CuentaContable extends TenantBaseEntity {
   descripcion?: string;
 
   // ── Etiquetas fiscales (Fase 1 — catálogo fiscal dominicano) ─────────────
-  // Solo tienen sentido en cuentas de movimiento (permiteMovimientos=true)
-  // de tipo gasto o costo — las de agrupación no reciben asientos y no se
-  // etiquetan. Validado en ContabilidadService, no aquí.
+  // Todas solo tienen sentido en cuentas de movimiento (permiteMovimientos=
+  // true) — las de agrupación no reciben asientos y no se etiquetan. La
+  // restricción de TIPO difiere por etiqueta (validado en
+  // ContabilidadService, no aquí):
+  //   - tipoGasto606/requiereNCF: solo gasto o costo — el 606 declara
+  //     compras y gastos, no partidas de balance.
+  //   - anexoIR2/casillaIR2: cualquier tipo, pero coherente con
+  //     TIPOS_POR_ANEXO_IR2 (A1 es balance, B1 es resultados, D toca activo
+  //     y costo).
 
-  /** Uno de los 11 códigos del Formato 606 (TIPOS_BIENES_606), '01' a '11'. */
+  /** Uno de los 11 códigos del Formato 606 (TIPOS_BIENES_606), '01' a '11'. Solo gasto/costo. */
   @Column({ type: 'varchar', length: 2, nullable: true })
   tipoGasto606?: string;
 
   /**
-   * Anexo del IR-2 al que aporta esta cuenta ('A1'/'B1'/'D' — ver AnexoIR2).
-   * varchar y no un enum nativo de Postgres, a propósito: mismo criterio que
-   * tipoBienes/formaPago en compras (códigos DGII validados a nivel de app
-   * contra una constante, no por el motor de base de datos).
+   * Anexo del IR-2 al que aporta esta cuenta ('A1'/'B1'/'D' — ver AnexoIR2 y
+   * TIPOS_POR_ANEXO_IR2). varchar y no un enum nativo de Postgres, a
+   * propósito: mismo criterio que tipoBienes/formaPago en compras (códigos
+   * DGII validados a nivel de app contra una constante, no por el motor de
+   * base de datos).
    */
   @Column({ type: 'varchar', length: 2, nullable: true })
   anexoIR2?: AnexoIR2;
 
   /**
-   * Línea/casilla del anexo, ej. '6.1', '7.5', '9.1', '11.1'. Texto libre:
-   * DGII no numera de forma consistente entre anexos.
+   * Línea/casilla del anexo, ej. '6.1', '7.5', '9.1', '11.1' para A1/B1; en
+   * D, un código corto legible (ver constants/dgii-606.ts en el frontend —
+   * el Anexo D no trae numeración oficial confirmada todavía, eso se
+   * verifica en Fase 3). Texto libre a nivel de columna — la app ofrece un
+   * selector acotado según tipo cuando anexoIR2='D', pero no lo valida
+   * aquí: adivinar semántica de cuenta (¿esta "activo" es Inventario o
+   * Caja?) queda fuera de esta fase.
    */
   @Column({ type: 'varchar', length: 20, nullable: true })
   casillaIR2?: string;
@@ -89,6 +117,7 @@ export class CuentaContable extends TenantBaseEntity {
    * laboral/INFOTEP, depreciación, destrucción de inventario autorizada
    * por DGII). Un gasto sin NCF nunca aparece en el 606 pero sí en el
    * IR-2 — si esta bandera se etiqueta mal, el cruce fiscal no cuadra.
+   * Solo gasto/costo, igual que tipoGasto606.
    */
   @Column({ type: 'boolean', nullable: true })
   requiereNCF?: boolean;

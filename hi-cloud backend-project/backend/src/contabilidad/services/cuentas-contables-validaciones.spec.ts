@@ -5,9 +5,16 @@
  * 1. cuentaPadreId debe existir (en el tenant) y ser coherente en tipo y
  *    naturaleza con la cuenta que lo referencia — antes no se validaba
  *    nada y se podían crear cuentas huérfanas o incoherentes.
- * 2. Las etiquetas fiscales (tipoGasto606/anexoIR2/casillaIR2/requiereNCF)
- *    solo se ofrecen en cuentas de movimiento de tipo gasto o costo — las
- *    de agrupación no reciben asientos y no se etiquetan.
+ * 2. Etiquetas fiscales, todas solo en cuentas de movimiento
+ *    (permiteMovimientos=true); la restricción de TIPO difiere por
+ *    etiqueta (corrección del 2026-09-19 — la primera versión restringía
+ *    las 4 a "gasto o costo", lo que dejaba a ninguna cuenta real poder
+ *    llevar anexoIR2='A1', que es del Balance General):
+ *      - tipoGasto606/requiereNCF: solo gasto o costo (el 606 declara
+ *        compras y gastos, no partidas de balance).
+ *      - anexoIR2/casillaIR2: cualquier tipo, coherente con
+ *        TIPOS_POR_ANEXO_IR2 (A1→activo/pasivo/patrimonio,
+ *        B1→ingreso/costo/gasto, D→activo/costo).
  *
  * No cubre el seed (seedPlanCuentas no pasa por estas validaciones a
  * propósito — Fase 1 no toca el seed) ni el cruce 606↔IR-2 (Fase 3).
@@ -37,10 +44,6 @@ function makeService(cuentaPorId: Record<number, any> = {}) {
 
 const GASTO_MOVIMIENTO = {
   id: 10, nombre: 'Gastos de Personal', tipo: TipoCuenta.GASTO,
-  naturaleza: NaturalezaCuenta.DEUDORA, permiteMovimientos: false,
-};
-const ACTIVO = {
-  id: 20, nombre: 'Activos', tipo: TipoCuenta.ACTIVO,
   naturaleza: NaturalezaCuenta.DEUDORA, permiteMovimientos: false,
 };
 
@@ -107,8 +110,8 @@ describe('ContabilidadService — validación de cuentaPadreId', () => {
   });
 });
 
-describe('ContabilidadService — etiquetas fiscales solo en gasto/costo de movimiento', () => {
-  it('createCuenta: rechaza etiqueta fiscal en una cuenta que no es gasto ni costo', async () => {
+describe('ContabilidadService — tipoGasto606/requiereNCF: solo gasto o costo de movimiento', () => {
+  it('createCuenta: rechaza tipoGasto606 en una cuenta que no es gasto ni costo', async () => {
     const { svc } = makeService({});
     await expect(svc.createCuenta({
       codigo: '1.1.1.05', nombre: 'Banco mal etiquetado', tipo: TipoCuenta.ACTIVO,
@@ -117,7 +120,7 @@ describe('ContabilidadService — etiquetas fiscales solo en gasto/costo de movi
     })).rejects.toThrow(BadRequestException);
   });
 
-  it('createCuenta: rechaza etiqueta fiscal en una cuenta de agrupación (permiteMovimientos=false)', async () => {
+  it('createCuenta: rechaza requiereNCF en una cuenta de agrupación (permiteMovimientos=false)', async () => {
     const { svc } = makeService({});
     await expect(svc.createCuenta({
       codigo: '6.1', nombre: 'Gastos Operativos', tipo: TipoCuenta.GASTO,
@@ -126,40 +129,144 @@ describe('ContabilidadService — etiquetas fiscales solo en gasto/costo de movi
     })).rejects.toThrow(BadRequestException);
   });
 
-  it('createCuenta: acepta las 4 etiquetas en una cuenta de gasto de movimiento', async () => {
+  it('createCuenta: acepta tipoGasto606 y requiereNCF en una cuenta de gasto de movimiento', async () => {
     const { svc, cuentaRepository } = makeService({});
     await svc.createCuenta({
       codigo: '6.1.1.05', nombre: 'Sueldos', tipo: TipoCuenta.GASTO,
       naturaleza: NaturalezaCuenta.DEUDORA, nivel: 4, permiteMovimientos: true,
-      tipoGasto606: '01', anexoIR2: AnexoIR2.B1, casillaIR2: '6.1', requiereNCF: false,
+      tipoGasto606: '01', requiereNCF: false,
     });
     expect(cuentaRepository.save).toHaveBeenCalled();
   });
 
-  it('createCuenta: acepta las etiquetas en una cuenta de costo de movimiento', async () => {
+  it('createCuenta: acepta tipoGasto606 y requiereNCF en una cuenta de costo de movimiento', async () => {
     const { svc, cuentaRepository } = makeService({});
     await svc.createCuenta({
       codigo: '5.1.1.01', nombre: 'Costo de Ventas', tipo: TipoCuenta.COSTO,
       naturaleza: NaturalezaCuenta.DEUDORA, nivel: 4, permiteMovimientos: true,
-      tipoGasto606: '09', anexoIR2: AnexoIR2.D, casillaIR2: '9.1', requiereNCF: true,
+      tipoGasto606: '09', requiereNCF: true,
     });
     expect(cuentaRepository.save).toHaveBeenCalled();
   });
 
-  it('updateCuenta: rechaza agregar una etiqueta fiscal a una cuenta de ingreso ya existente', async () => {
+  it('updateCuenta: rechaza agregar requiereNCF a una cuenta de ingreso ya existente', async () => {
     const ingresoMovimiento = { id: 40, nombre: 'Ventas', tipo: TipoCuenta.INGRESO, naturaleza: NaturalezaCuenta.ACREEDORA, permiteMovimientos: true };
     const { svc } = makeService({ 40: ingresoMovimiento });
     await expect(svc.updateCuenta(40, { requiereNCF: true }))
       .rejects.toThrow(BadRequestException);
   });
 
-  it('updateCuenta: acepta etiqueta fiscal sobre una cuenta de gasto de movimiento ya existente, sin repetir tipo/permiteMovimientos en el DTO', async () => {
-    const { svc, cuentaRepository } = makeService({ 10: GASTO_MOVIMIENTO });
-    // GASTO_MOVIMIENTO tiene permiteMovimientos:false en este fixture — usamos otra cuenta que sí sea de movimiento.
+  it('updateCuenta: acepta tipoGasto606 sobre una cuenta de gasto de movimiento ya existente, sin repetir tipo/permiteMovimientos en el DTO', async () => {
     const gastoDeMovimiento = { id: 11, nombre: 'Comisiones Bancarias', tipo: TipoCuenta.GASTO, naturaleza: NaturalezaCuenta.DEUDORA, permiteMovimientos: true };
-    const { svc: svc2, cuentaRepository: repo2 } = makeService({ 11: gastoDeMovimiento });
-    await svc2.updateCuenta(11, { tipoGasto606: '07' });
-    expect(repo2.update).toHaveBeenCalledWith(11, { tipoGasto606: '07' });
+    const { svc, cuentaRepository } = makeService({ 11: gastoDeMovimiento });
+    await svc.updateCuenta(11, { tipoGasto606: '07' });
+    expect(cuentaRepository.update).toHaveBeenCalledWith(11, { tipoGasto606: '07' });
+  });
+});
+
+describe('ContabilidadService — anexoIR2/casillaIR2: cualquier tipo, coherente con TIPOS_POR_ANEXO_IR2', () => {
+  it('createCuenta: A1 (Balance) se acepta en una cuenta de tipo activo de movimiento', async () => {
+    const { svc, cuentaRepository } = makeService({});
+    await svc.createCuenta({
+      codigo: '1.1.3.01', nombre: 'Mercancías para la Venta', tipo: TipoCuenta.ACTIVO,
+      naturaleza: NaturalezaCuenta.DEUDORA, nivel: 4, permiteMovimientos: true,
+      anexoIR2: AnexoIR2.A1, casillaIR2: 'inv_ini_merc',
+    });
+    expect(cuentaRepository.save).toHaveBeenCalled();
+  });
+
+  it('createCuenta: A1 (Balance) se acepta en pasivo y en patrimonio', async () => {
+    const { svc, cuentaRepository } = makeService({});
+    await svc.createCuenta({
+      codigo: '2.1.1.01', nombre: 'Proveedores', tipo: TipoCuenta.PASIVO,
+      naturaleza: NaturalezaCuenta.ACREEDORA, nivel: 4, permiteMovimientos: true,
+      anexoIR2: AnexoIR2.A1,
+    });
+    await svc.createCuenta({
+      codigo: '3.1.01', nombre: 'Capital Social', tipo: TipoCuenta.PATRIMONIO,
+      naturaleza: NaturalezaCuenta.ACREEDORA, nivel: 4, permiteMovimientos: true,
+      anexoIR2: AnexoIR2.A1,
+    });
+    expect(cuentaRepository.save).toHaveBeenCalledTimes(2);
+  });
+
+  it('createCuenta: rechaza A1 en una cuenta de tipo gasto (A1 es del Balance, no de Resultados)', async () => {
+    const { svc } = makeService({});
+    await expect(svc.createCuenta({
+      codigo: '6.1.1.06', nombre: 'Mal puesta', tipo: TipoCuenta.GASTO,
+      naturaleza: NaturalezaCuenta.DEUDORA, nivel: 4, permiteMovimientos: true,
+      anexoIR2: AnexoIR2.A1,
+    })).rejects.toThrow(BadRequestException);
+  });
+
+  it('createCuenta: B1 (Resultados) se acepta en ingreso, costo y gasto', async () => {
+    const { svc, cuentaRepository } = makeService({});
+    for (const tipo of [TipoCuenta.INGRESO, TipoCuenta.COSTO, TipoCuenta.GASTO]) {
+      await svc.createCuenta({
+        codigo: `x.${tipo}`, nombre: `Cuenta ${tipo}`, tipo,
+        naturaleza: NaturalezaCuenta.DEUDORA, nivel: 4, permiteMovimientos: true,
+        anexoIR2: AnexoIR2.B1, casillaIR2: '6.1',
+      });
+    }
+    expect(cuentaRepository.save).toHaveBeenCalledTimes(3);
+  });
+
+  it('createCuenta: rechaza B1 en una cuenta de tipo activo (B1 es de Resultados, no de Balance)', async () => {
+    const { svc } = makeService({});
+    await expect(svc.createCuenta({
+      codigo: '1.1.1.06', nombre: 'Mal puesta', tipo: TipoCuenta.ACTIVO,
+      naturaleza: NaturalezaCuenta.DEUDORA, nivel: 4, permiteMovimientos: true,
+      anexoIR2: AnexoIR2.B1,
+    })).rejects.toThrow(BadRequestException);
+  });
+
+  it('createCuenta: D (Costo de Venta) se acepta en activo (Inventario Inicial/Final) y en costo (Compras/Costo de Venta)', async () => {
+    const { svc, cuentaRepository } = makeService({});
+    await svc.createCuenta({
+      codigo: '1.1.3.01', nombre: 'Mercancías para la Venta', tipo: TipoCuenta.ACTIVO,
+      naturaleza: NaturalezaCuenta.DEUDORA, nivel: 4, permiteMovimientos: true,
+      anexoIR2: AnexoIR2.D, casillaIR2: 'inv_ini_merc',
+    });
+    await svc.createCuenta({
+      codigo: '5.1.1.01', nombre: 'Costo de Ventas', tipo: TipoCuenta.COSTO,
+      naturaleza: NaturalezaCuenta.DEUDORA, nivel: 4, permiteMovimientos: true,
+      anexoIR2: AnexoIR2.D, casillaIR2: 'costo_venta',
+    });
+    expect(cuentaRepository.save).toHaveBeenCalledTimes(2);
+  });
+
+  it('createCuenta: rechaza D en una cuenta de tipo gasto (el Anexo D no toca gastos operativos)', async () => {
+    const { svc } = makeService({});
+    await expect(svc.createCuenta({
+      codigo: '6.1.1.07', nombre: 'Mal puesta', tipo: TipoCuenta.GASTO,
+      naturaleza: NaturalezaCuenta.DEUDORA, nivel: 4, permiteMovimientos: true,
+      anexoIR2: AnexoIR2.D,
+    })).rejects.toThrow(BadRequestException);
+  });
+
+  it('createCuenta: rechaza casillaIR2 sin anexoIR2 (no puede haber línea sin anexo)', async () => {
+    const { svc } = makeService({});
+    await expect(svc.createCuenta({
+      codigo: '1.1.1.07', nombre: 'Sin anexo', tipo: TipoCuenta.ACTIVO,
+      naturaleza: NaturalezaCuenta.DEUDORA, nivel: 4, permiteMovimientos: true,
+      casillaIR2: '6.1',
+    })).rejects.toThrow(BadRequestException);
+  });
+
+  it('createCuenta: rechaza anexoIR2 en una cuenta de agrupación (permiteMovimientos=false)', async () => {
+    const { svc } = makeService({});
+    await expect(svc.createCuenta({
+      codigo: '1.1', nombre: 'Activo Corriente', tipo: TipoCuenta.ACTIVO,
+      naturaleza: NaturalezaCuenta.DEUDORA, nivel: 2, permiteMovimientos: false,
+      anexoIR2: AnexoIR2.A1,
+    })).rejects.toThrow(BadRequestException);
+  });
+
+  it('updateCuenta: rechaza cambiar el tipo de una cuenta ya etiquetada con D a uno incompatible (gasto)', async () => {
+    const cuentaD = { id: 50, nombre: 'Costo de Ventas', tipo: TipoCuenta.COSTO, naturaleza: NaturalezaCuenta.DEUDORA, permiteMovimientos: true, anexoIR2: AnexoIR2.D };
+    const { svc } = makeService({ 50: cuentaD });
+    await expect(svc.updateCuenta(50, { tipo: TipoCuenta.GASTO }))
+      .rejects.toThrow(BadRequestException);
   });
 });
 
