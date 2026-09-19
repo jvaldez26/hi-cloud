@@ -133,7 +133,7 @@ function normalizarNombreCuenta(s: string): string {
 const REGLAS_TIPO_GASTO_606: { codigo: string; kw: string[] }[] = [
   // Más específico primero — sin esto, "Comisiones Bancarias" caería en el
   // '01' genérico de "comision" antes de llegar a '07'.
-  { codigo: '07', kw: ['interes bancario', 'intereses bancarios', 'comision bancaria', 'comisiones bancarias', 'gasto bancario', 'gastos bancarios', 'gasto financiero', 'gastos financieros'] },
+  { codigo: '07', kw: ['interes bancario', 'intereses bancarios', 'comision bancaria', 'comisiones bancarias', 'gasto bancario', 'gastos bancarios', 'gasto financiero', 'gastos financieros', 'diferencial cambiario', 'perdida cambiaria', 'perdida en cambio'] },
   { codigo: '01', kw: ['sueldo', 'salario', 'nomina', 'comision', 'vacacion', 'bonificac', 'incentivo', 'gratificac', 'seguro medico', 'seguro de salud', 'seguro familiar', 'tss', 'infotep', 'riesgo laboral', 'pension', 'prestacion laboral'] },
   { codigo: '03', kw: ['alquiler', 'arrendamiento', 'renta de local'] },
   { codigo: '04', kw: ['depreciacion', 'amortizacion', 'mantenimiento de vehiculo', 'mantenimiento de equipo', 'reparacion de activo'] },
@@ -164,7 +164,7 @@ export function sugerirTipoGasto606(nombreCuenta: string): string | null {
 // comisión) no están en ninguna de las dos listas del material: se
 // devuelve null en vez de forzar "con NCF" por defecto sobre algo dudoso.
 const SIN_NCF_KW = ['sueldo', 'salario', 'nomina', 'comision', 'vacacion', 'bonificac', 'incentivo', 'gratificac', 'tss', 'infotep', 'riesgo laboral', 'pension', 'seguro familiar', 'seguro de salud', 'depreciacion', 'destruccion de inventario'];
-const AMBIGUOS_NCF_KW = ['comision bancaria', 'comisiones bancarias', 'interes bancario', 'intereses bancarios', 'itbis no recuperable', 'costo de venta', 'costo de ventas', 'costo de produccion'];
+const AMBIGUOS_NCF_KW = ['comision bancaria', 'comisiones bancarias', 'interes bancario', 'intereses bancarios', 'itbis no recuperable', 'costo de venta', 'costo de ventas', 'costo de produccion', 'diferencial cambiario', 'perdida cambiaria', 'perdida en cambio'];
 
 /**
  * Sugiere el valor de requiereNCF a partir del nombre de una cuenta de

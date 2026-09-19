@@ -7,9 +7,12 @@
  * dejaba de encontrar la cuenta y moría en silencio para toda la empresa.
  *
  * Cubre dos cosas distintas:
- * 1. PLAN_CUENTAS marca esCuentaSistema=true exactamente en los códigos
- *    de COD.* que existen en el seed (17 de los 20 — 3 no existen en
- *    absoluto, ver contabilidad.service.ts).
+ * 1. PLAN_CUENTAS marca esCuentaSistema=true en los códigos de COD.* que
+ *    existen en el seed (17 de los 20 originales) MÁS los 8 códigos
+ *    huérfanos que se agregaron al catálogo el 2026-09-19 (3 de COD.* que
+ *    no existían — GANANCIA_CAMBIARIA, PERDIDA_CAMBIARIA,
+ *    ISR_RET_POR_PAGAR — y 5 literales sueltos que el motor referencia
+ *    directo, fuera de COD.*, con el mismo riesgo) — 25 en total.
  * 2. ContabilidadService bloquea cambiar el código y desactivar esas
  *    cuentas — el nombre y la descripción siguen editables libremente.
  */
@@ -19,15 +22,15 @@ import { TipoCuenta, NaturalezaCuenta } from '../entities/cuenta-contable.entity
 import { BadRequestException } from '@nestjs/common';
 
 const CODIGOS_SISTEMA_ESPERADOS = [
-  '1.1.1.02', '1.1.1.03', '1.1.2.01', '1.1.3.01', '1.1.4.01',
-  '2.1.1.01', '2.1.2.01', '2.1.2.02', '2.1.2.03', '2.1.3.01', '2.1.3.02', '2.1.5.01', '2.1.6.01',
-  '4.1.1.01',
+  '1.1.1.02', '1.1.1.03', '1.1.2.01', '1.1.2.10', '1.1.3.01', '1.1.4.01', '1.1.4.02', '1.1.4.03',
+  '2.1.1.01', '2.1.2.01', '2.1.2.02', '2.1.2.03', '2.1.2.04', '2.1.3.01', '2.1.3.02', '2.1.5.01', '2.1.6.01',
+  '4.1.1.01', '4.1.2.01', '4.1.2.02', '4.1.3.01',
   '5.1.1.01',
-  '6.1.1.01', '6.1.1.02',
+  '6.1.1.01', '6.1.1.02', '6.1.5.01',
 ];
 
 describe('PLAN_CUENTAS — esCuentaSistema', () => {
-  it('marca esCuentaSistema=true exactamente en los 17 códigos de COD.* que existen en el seed', () => {
+  it('marca esCuentaSistema=true exactamente en los 25 códigos que el motor referencia (COD.* + literales sueltos)', () => {
     const marcadas = PLAN_CUENTAS.filter((c) => c.esCuentaSistema).map((c) => c.codigo).sort();
     expect(marcadas).toEqual([...CODIGOS_SISTEMA_ESPERADOS].sort());
   });

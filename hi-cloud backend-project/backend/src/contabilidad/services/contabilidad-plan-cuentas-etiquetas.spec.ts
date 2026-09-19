@@ -28,11 +28,13 @@ describe('PLAN_CUENTAS — etiquetas fiscales del seed', () => {
     }
   });
 
-  it('13 de las 14 cuentas de gasto/costo de movimiento tienen tipoGasto606 — solo ITBIS no Recuperable queda sin él', () => {
+  it('14 de las 15 cuentas de gasto/costo de movimiento tienen tipoGasto606 — solo ITBIS no Recuperable queda sin él', () => {
+    // 15 = las 14 originales + "Pérdida en Diferencial Cambiario" (6.1.5.01),
+    // agregada al cerrar el código huérfano del motor (2026-09-19).
     const gastoYCosto = PLAN_CUENTAS.filter(
       c => c.permiteMovimientos && (c.tipo === TipoCuenta.GASTO || c.tipo === TipoCuenta.COSTO),
     );
-    expect(gastoYCosto).toHaveLength(14);
+    expect(gastoYCosto).toHaveLength(15);
     const sinTipoGasto606 = gastoYCosto.filter(c => !c.tipoGasto606);
     expect(sinTipoGasto606.map(c => c.codigo)).toEqual(['6.1.2.06']); // ITBIS no Recuperable
   });
@@ -97,9 +99,45 @@ describe('PLAN_CUENTAS — etiquetas fiscales del seed', () => {
     expect(porCodigo('6.1.3.02').requiereNCF).toBeUndefined(); // Comisiones Bancarias
     expect(porCodigo('5.1.1.01').requiereNCF).toBeUndefined(); // Costo de Ventas de Bienes
     expect(porCodigo('5.1.1.02').requiereNCF).toBeUndefined(); // Costo de Producción
+    expect(porCodigo('6.1.5.01').requiereNCF).toBeUndefined(); // Pérdida en Diferencial Cambiario — ajuste contable, no una compra con NCF
   });
 
-  it('el seed sigue teniendo 79 cuentas — esta fase no agrega, quita ni renumera nada del catálogo', () => {
-    expect(PLAN_CUENTAS).toHaveLength(79);
+  it('el seed tiene 90 cuentas — 79 originales + 11 que cierran los 8 códigos huérfanos del motor de asientos (3 nodos padre nuevos + 8 hojas)', () => {
+    expect(PLAN_CUENTAS).toHaveLength(90);
+  });
+
+  describe('las 8 cuentas que cierran códigos huérfanos del motor (2026-09-19)', () => {
+    it('todas quedan marcadas esCuentaSistema — el motor las referencia por código, mismo riesgo que COD.*', () => {
+      for (const codigo of ['1.1.2.10', '1.1.4.02', '1.1.4.03', '2.1.2.04', '4.1.2.01', '4.1.2.02', '4.1.3.01', '6.1.5.01']) {
+        expect(porCodigo(codigo).esCuentaSistema).toBe(true);
+      }
+    });
+
+    it('las de activo/pasivo (retenciones E41, cartera de préstamos) llevan anexoIR2=A1', () => {
+      for (const codigo of ['1.1.2.10', '1.1.4.02', '1.1.4.03', '2.1.2.04']) {
+        expect(porCodigo(codigo).anexoIR2).toBe(AnexoIR2.A1);
+      }
+    });
+
+    it('las de ingreso (intereses/mora de préstamos, ganancia cambiaria) llevan anexoIR2=B1', () => {
+      for (const codigo of ['4.1.2.01', '4.1.2.02', '4.1.3.01']) {
+        expect(porCodigo(codigo).anexoIR2).toBe(AnexoIR2.B1);
+      }
+    });
+
+    it('"Pérdida en Diferencial Cambiario" (6.1.5.01) recibe tipoGasto606=07 (Gastos financieros) y anexoIR2=B1 — mismo diccionario que "Intereses/Comisiones Bancarias"', () => {
+      const c = porCodigo('6.1.5.01');
+      expect(c.tipoGasto606).toBe('07');
+      expect(c.anexoIR2).toBe(AnexoIR2.B1);
+    });
+
+    it('los 3 nodos padre nuevos (4.1.2, 4.1.3, 6.1.5) son de agrupación, sin ninguna etiqueta', () => {
+      for (const codigo of ['4.1.2', '4.1.3', '6.1.5']) {
+        const c = porCodigo(codigo);
+        expect(c.permiteMovimientos).toBe(false);
+        expect(c.esCuentaSistema).toBeUndefined();
+        expect(c.anexoIR2).toBeUndefined();
+      }
+    });
   });
 });

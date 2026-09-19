@@ -142,6 +142,24 @@ const PLAN_CUENTAS_BASE: SeedCuenta[] = [
   { codigo: '6.1.3',      nombre: 'Gastos Financieros',                tipo: TipoCuenta.GASTO,      naturaleza: D, nivel: 3, permiteMovimientos: false },
   { codigo: '6.1.3.01',   nombre: 'Intereses Bancarios',               tipo: TipoCuenta.GASTO,      naturaleza: D, nivel: 4, permiteMovimientos: true },
   { codigo: '6.1.3.02',   nombre: 'Comisiones Bancarias',              tipo: TipoCuenta.GASTO,      naturaleza: D, nivel: 4, permiteMovimientos: true },
+
+  // ── Cuentas que cierran códigos huérfanos del motor de asientos
+  // automáticos (seguimiento post-P3, 2026-09-19) — el motor ya las
+  // referencia por código desde antes de este catálogo (COD.* y literales
+  // sueltos en asientos-automaticos.service.ts); nunca se habían sembrado,
+  // así que esos asientos se descartaban en silencio ("cuenta no
+  // encontrada", reportado a Sentry pero nunca corregido en el catálogo).
+  { codigo: '1.1.2.10',   nombre: 'Cartera de Crédito (Préstamos Otorgados)', tipo: TipoCuenta.ACTIVO,   naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '1.1.4.02',   nombre: 'ITBIS Retenido a Recuperar (E41)',         tipo: TipoCuenta.ACTIVO,   naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '1.1.4.03',   nombre: 'ISR Retenido a Recuperar (E41)',           tipo: TipoCuenta.ACTIVO,   naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '2.1.2.04',   nombre: 'ISR Retenido por Pagar (E41)',             tipo: TipoCuenta.PASIVO,   naturaleza: A, nivel: 4, permiteMovimientos: true },
+  { codigo: '4.1.2',      nombre: 'Ingresos por Préstamos',                  tipo: TipoCuenta.INGRESO,  naturaleza: A, nivel: 3, permiteMovimientos: false },
+  { codigo: '4.1.2.01',   nombre: 'Intereses de Préstamos Otorgados',        tipo: TipoCuenta.INGRESO,  naturaleza: A, nivel: 4, permiteMovimientos: true },
+  { codigo: '4.1.2.02',   nombre: 'Mora de Préstamos Otorgados',             tipo: TipoCuenta.INGRESO,  naturaleza: A, nivel: 4, permiteMovimientos: true },
+  { codigo: '4.1.3',      nombre: 'Diferencial Cambiario (Ingreso)',         tipo: TipoCuenta.INGRESO,  naturaleza: A, nivel: 3, permiteMovimientos: false },
+  { codigo: '4.1.3.01',   nombre: 'Ganancia en Diferencial Cambiario',       tipo: TipoCuenta.INGRESO,  naturaleza: A, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.5',      nombre: 'Diferencial Cambiario (Gasto)',           tipo: TipoCuenta.GASTO,    naturaleza: D, nivel: 3, permiteMovimientos: false },
+  { codigo: '6.1.5.01',   nombre: 'Pérdida en Diferencial Cambiario',        tipo: TipoCuenta.GASTO,    naturaleza: D, nivel: 4, permiteMovimientos: true },
 ];
 
 // ── Etiquetas fiscales del seed (Fase 2 — catálogo fiscal dominicano) ──────
@@ -195,15 +213,22 @@ function etiquetarFiscalmente(c: SeedCuenta): SeedCuenta {
   return { ...c, ...etiquetas };
 }
 
-// ── Cuentas del sistema (P3 Bloque 4) ───────────────────────────────────
+// ── Cuentas del sistema (P3 Bloque 4, ampliado 2026-09-19) ──────────────
 // Códigos que el motor de asientos automáticos referencia por CÓDIGO, no
-// por id (COD.* en asientos-automaticos.service.ts) — si un contador les
-// cambia el código, ese tipo de asiento deja de encontrar la cuenta y
-// muere en silencio para toda la empresa. 3 de los 20 valores de COD.*
-// (GANANCIA_CAMBIARIA, PERDIDA_CAMBIARIA, ISR_RET_POR_PAGAR) no existen
-// en este seed en absoluto — Set() los ignora sin más, no hay nada que
-// marcar para un código que no está en PLAN_CUENTAS_BASE.
-const CODIGOS_SISTEMA = new Set<string>(Object.values(COD));
+// por id — si un contador les cambia el código, ese tipo de asiento deja
+// de encontrar la cuenta y muere en silencio para toda la empresa.
+// Object.values(COD) cubre los 20 valores de COD.*, de los cuales 3
+// (GANANCIA_CAMBIARIA, PERDIDA_CAMBIARIA, ISR_RET_POR_PAGAR) recién se
+// sembraron arriba en esta misma actualización — antes no existían en
+// absoluto. Los otros 5 (Cartera de Crédito, ITBIS/ISR retenido a
+// recuperar, intereses/mora de préstamos) el motor los referencia por
+// LITERAL directo, no vía COD — mismo riesgo exacto, así que se agregan
+// a mano en vez de dejarlos fuera solo porque no tienen su propia
+// constante nombrada.
+const CODIGOS_SISTEMA = new Set<string>([
+  ...Object.values(COD),
+  '1.1.4.02', '1.1.4.03', '1.1.2.10', '4.1.2.01', '4.1.2.02',
+]);
 
 function marcarCuentaSistema(c: SeedCuenta): SeedCuenta {
   return CODIGOS_SISTEMA.has(c.codigo) ? { ...c, esCuentaSistema: true } : c;
