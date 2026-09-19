@@ -648,19 +648,20 @@ export class AsientosAutomaticosService {
   // siempre puesto.
   private construirLineasCobro(
     monto: number, pagoId: number, cxcId: number,
-    cuentaContrapartida: string = COD.BANCOS, cuentaContrapartidaManual = false,
+    cuentaContrapartida: string, cuentaContrapartidaManual: boolean, cuentaClientes: string,
   ): LineaAsientoInput[] {
     return [
       { codigo: cuentaContrapartida, descripcion: `Cobro recibido CxC #${cxcId} — pago #${pagoId}`, debe: monto, haber: 0, manual: cuentaContrapartidaManual },
-      { codigo: COD.CLIENTES,        descripcion: `Cancelación CxC #${cxcId} — pago #${pagoId}`,    debe: 0,     haber: monto },
+      { codigo: cuentaClientes,      descripcion: `Cancelación CxC #${cxcId} — pago #${pagoId}`,    debe: 0,     haber: monto },
     ];
   }
 
   /** Panel de vista previa: calcula el asiento de cobro SIN guardar el pago. */
   async previsualizarCobro(
-    monto: number, pagoId: number, cxcId: number, cuentaContrapartida: string = COD.BANCOS,
+    monto: number, pagoId: number, cxcId: number, cuentaContrapartida?: string,
   ): Promise<PreviewAsientoResultado> {
-    return this.previsualizarLineas(this.construirLineasCobro(monto, pagoId, cxcId, cuentaContrapartida));
+    const cuentas = await this.resolverCuentasConcepto([['BANCOS', COD.BANCOS], ['CLIENTES', COD.CLIENTES]]);
+    return this.previsualizarLineas(this.construirLineasCobro(monto, pagoId, cxcId, cuentaContrapartida || cuentas.BANCOS, false, cuentas.CLIENTES));
   }
 
   async asientoCobro(
@@ -669,10 +670,11 @@ export class AsientosAutomaticosService {
     cxcId: number,
     fecha: string, // fecha del pago (dto.fechaPago del caller, con fallback a fechaHoyRD() si no vino)
     userId: number,
-    cuentaContrapartida: string = COD.BANCOS,
+    cuentaContrapartida?: string,
     cuentaContrapartidaManual = false,
   ): Promise<void> {
     const folio = `PAGO-${pagoId}`;
+    const cuentas = await this.resolverCuentasConcepto([['BANCOS', COD.BANCOS], ['CLIENTES', COD.CLIENTES]]);
     try {
       const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Cobro CxC #${cxcId} — pago #${pagoId}`,
@@ -681,7 +683,7 @@ export class AsientosAutomaticosService {
         referenciaFolio: folio,
         fecha,
         userId,
-        lineas: this.construirLineasCobro(monto, pagoId, cxcId, cuentaContrapartida, cuentaContrapartidaManual),
+        lineas: this.construirLineasCobro(monto, pagoId, cxcId, cuentaContrapartida || cuentas.BANCOS, cuentaContrapartidaManual, cuentas.CLIENTES),
       });
       if (asiento) {
         this.logger.log(`Asiento cobro CxC #${cxcId} — pago #${pagoId} generado`);
@@ -719,15 +721,21 @@ export class AsientosAutomaticosService {
     const diff      = parseFloat((montoReal - montoLib).toFixed(2));
     const folio     = `PAGO-${pagoId}`;
 
+    const cuentas = await this.resolverCuentasConcepto([
+      ['BANCOS',              COD.BANCOS],
+      ['CLIENTES',            COD.CLIENTES],
+      ['GANANCIA_CAMBIARIA',  COD.GANANCIA_CAMBIARIA],
+      ['PERDIDA_CAMBIARIA',   COD.PERDIDA_CAMBIARIA],
+    ]);
     const lineas: { codigo: string; descripcion: string; debe: number; haber: number }[] = [
-      { codigo: COD.BANCOS,   descripcion: `Cobro ${moneda} CxC #${cxcId} — pago #${pagoId}`, debe: montoReal, haber: 0        },
-      { codigo: COD.CLIENTES, descripcion: `Cancelación CxC #${cxcId} — pago #${pagoId}`,       debe: 0,         haber: montoLib },
+      { codigo: cuentas.BANCOS,   descripcion: `Cobro ${moneda} CxC #${cxcId} — pago #${pagoId}`, debe: montoReal, haber: 0        },
+      { codigo: cuentas.CLIENTES, descripcion: `Cancelación CxC #${cxcId} — pago #${pagoId}`,       debe: 0,         haber: montoLib },
     ];
 
     if (diff > 0.005) {
-      lineas.push({ codigo: COD.GANANCIA_CAMBIARIA, descripcion: `Ganancia cambiaria CxC #${cxcId} (${moneda}) — pago #${pagoId}`, debe: 0,    haber: diff });
+      lineas.push({ codigo: cuentas.GANANCIA_CAMBIARIA, descripcion: `Ganancia cambiaria CxC #${cxcId} (${moneda}) — pago #${pagoId}`, debe: 0,    haber: diff });
     } else if (diff < -0.005) {
-      lineas.push({ codigo: COD.PERDIDA_CAMBIARIA,  descripcion: `Pérdida cambiaria CxC #${cxcId} (${moneda}) — pago #${pagoId}`,  debe: -diff, haber: 0   });
+      lineas.push({ codigo: cuentas.PERDIDA_CAMBIARIA,  descripcion: `Pérdida cambiaria CxC #${cxcId} (${moneda}) — pago #${pagoId}`,  debe: -diff, haber: 0   });
     }
 
     try {
@@ -776,15 +784,21 @@ export class AsientosAutomaticosService {
     const diff      = parseFloat((montoLib - montoReal).toFixed(2)); // positivo = ganancia (pagamos menos DOP)
     const folio     = `PAGOCXP-${pagoId}`;
 
+    const cuentas = await this.resolverCuentasConcepto([
+      ['PROVEEDORES',        COD.PROVEEDORES],
+      ['BANCOS',             COD.BANCOS],
+      ['GANANCIA_CAMBIARIA', COD.GANANCIA_CAMBIARIA],
+      ['PERDIDA_CAMBIARIA',  COD.PERDIDA_CAMBIARIA],
+    ]);
     const lineas: { codigo: string; descripcion: string; debe: number; haber: number }[] = [
-      { codigo: COD.PROVEEDORES, descripcion: `Cancelación CxP #${cxpId} — pago #${pagoId}`,    debe: montoLib,  haber: 0        },
-      { codigo: COD.BANCOS,      descripcion: `Pago ${moneda} CxP #${cxpId} — pago #${pagoId}`, debe: 0,         haber: montoReal },
+      { codigo: cuentas.PROVEEDORES, descripcion: `Cancelación CxP #${cxpId} — pago #${pagoId}`,    debe: montoLib,  haber: 0        },
+      { codigo: cuentas.BANCOS,      descripcion: `Pago ${moneda} CxP #${cxpId} — pago #${pagoId}`, debe: 0,         haber: montoReal },
     ];
 
     if (diff > 0.005) {
-      lineas.push({ codigo: COD.GANANCIA_CAMBIARIA, descripcion: `Ganancia cambiaria CxP #${cxpId} (${moneda}) — pago #${pagoId}`, debe: 0,    haber: diff });
+      lineas.push({ codigo: cuentas.GANANCIA_CAMBIARIA, descripcion: `Ganancia cambiaria CxP #${cxpId} (${moneda}) — pago #${pagoId}`, debe: 0,    haber: diff });
     } else if (diff < -0.005) {
-      lineas.push({ codigo: COD.PERDIDA_CAMBIARIA,  descripcion: `Pérdida cambiaria CxP #${cxpId} (${moneda}) — pago #${pagoId}`,  debe: -diff, haber: 0   });
+      lineas.push({ codigo: cuentas.PERDIDA_CAMBIARIA,  descripcion: `Pérdida cambiaria CxP #${cxpId} (${moneda}) — pago #${pagoId}`,  debe: -diff, haber: 0   });
     }
 
     try {
@@ -823,6 +837,7 @@ export class AsientosAutomaticosService {
     userId:    number,
   ): Promise<void> {
     const cuentaDebito = await this.resolverCuentaPorMetodoPago(metodoPago);
+    const cuentaClientes = await this.resolverCuentaConcepto('CLIENTES', COD.CLIENTES);
     try {
       const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Recibo de cobro #${reciboId}`,
@@ -832,8 +847,8 @@ export class AsientosAutomaticosService {
         fecha,
         userId,
         lineas: [
-          { codigo: cuentaDebito, descripcion: `Ingreso recibo #${reciboId}`, debe: monto, haber: 0    },
-          { codigo: COD.CLIENTES, descripcion: `Cobro recibido REC-${reciboId}`, debe: 0,  haber: monto },
+          { codigo: cuentaDebito,   descripcion: `Ingreso recibo #${reciboId}`, debe: monto, haber: 0    },
+          { codigo: cuentaClientes, descripcion: `Cobro recibido REC-${reciboId}`, debe: 0,  haber: monto },
         ],
       });
       if (asiento) {
@@ -858,19 +873,20 @@ export class AsientosAutomaticosService {
   // del pago (por default Bancos).
   private construirLineasPago(
     monto: number, pagoId: number, cxpId: number,
-    cuentaContrapartida: string = COD.BANCOS, cuentaContrapartidaManual = false,
+    cuentaContrapartida: string, cuentaContrapartidaManual: boolean, cuentaProveedores: string,
   ): LineaAsientoInput[] {
     return [
-      { codigo: COD.PROVEEDORES,    descripcion: `Cancelación CxP #${cxpId} — pago #${pagoId}`,    debe: monto, haber: 0 },
+      { codigo: cuentaProveedores,   descripcion: `Cancelación CxP #${cxpId} — pago #${pagoId}`,    debe: monto, haber: 0 },
       { codigo: cuentaContrapartida, descripcion: `Pago realizado CxP #${cxpId} — pago #${pagoId}`, debe: 0,     haber: monto, manual: cuentaContrapartidaManual },
     ];
   }
 
   /** Panel de vista previa: calcula el asiento de pago SIN guardar el pago. */
   async previsualizarPago(
-    monto: number, pagoId: number, cxpId: number, cuentaContrapartida: string = COD.BANCOS,
+    monto: number, pagoId: number, cxpId: number, cuentaContrapartida?: string,
   ): Promise<PreviewAsientoResultado> {
-    return this.previsualizarLineas(this.construirLineasPago(monto, pagoId, cxpId, cuentaContrapartida));
+    const cuentas = await this.resolverCuentasConcepto([['BANCOS', COD.BANCOS], ['PROVEEDORES', COD.PROVEEDORES]]);
+    return this.previsualizarLineas(this.construirLineasPago(monto, pagoId, cxpId, cuentaContrapartida || cuentas.BANCOS, false, cuentas.PROVEEDORES));
   }
 
   async asientoPago(
@@ -879,10 +895,11 @@ export class AsientosAutomaticosService {
     cxpId: number,
     fecha: string, // fecha del pago
     userId: number,
-    cuentaContrapartida: string = COD.BANCOS,
+    cuentaContrapartida?: string,
     cuentaContrapartidaManual = false,
   ): Promise<void> {
     const folio = `PAGOCXP-${pagoId}`;
+    const cuentas = await this.resolverCuentasConcepto([['BANCOS', COD.BANCOS], ['PROVEEDORES', COD.PROVEEDORES]]);
     try {
       const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Pago CxP #${cxpId} — pago #${pagoId}`,
@@ -891,7 +908,7 @@ export class AsientosAutomaticosService {
         referenciaFolio: folio,
         fecha,
         userId,
-        lineas: this.construirLineasPago(monto, pagoId, cxpId, cuentaContrapartida, cuentaContrapartidaManual),
+        lineas: this.construirLineasPago(monto, pagoId, cxpId, cuentaContrapartida || cuentas.BANCOS, cuentaContrapartidaManual, cuentas.PROVEEDORES),
       });
       if (asiento) {
         this.logger.log(`Asiento pago CxP #${cxpId} — pago #${pagoId} generado`);
@@ -921,6 +938,13 @@ export class AsientosAutomaticosService {
     fechaPago: string, // periodo.fechaPago — "periodo" arriba es la etiqueta ('Septiembre 2026'), no una fecha
     userId: number,
   ): Promise<void> {
+    const cuentas = await this.resolverCuentasConcepto([
+      ['SUELDOS',         COD.SUELDOS],
+      ['TSS_PATRONAL',    COD.TSS_PATRONAL],
+      ['SUELDOS_X_PAGAR', COD.SUELDOS_X_PAGAR],
+      ['TSS_X_PAGAR',     COD.TSS_X_PAGAR],
+      ['ISR_X_PAGAR',     COD.ISR_X_PAGAR],
+    ]);
     try {
       const costoTotal = totalBruto + totalTSSPatronal;
       const asiento = await this._crearAsientoContabilizado({
@@ -931,11 +955,11 @@ export class AsientosAutomaticosService {
         fecha:           fechaPago,
         userId,
         lineas: [
-          { codigo: COD.SUELDOS,         descripcion: `Sueldos nómina ${periodo}`,        debe: totalBruto,      haber: 0 },
-          { codigo: COD.TSS_PATRONAL,    descripcion: `TSS patronal nómina ${periodo}`,   debe: totalTSSPatronal, haber: 0 },
-          { codigo: COD.SUELDOS_X_PAGAR, descripcion: `Neto a pagar nómina ${periodo}`,   debe: 0,               haber: totalNeto },
-          { codigo: COD.TSS_X_PAGAR,     descripcion: `TSS empleados nómina ${periodo}`,  debe: 0,               haber: totalTSSEmpleados + totalTSSPatronal },
-          { codigo: COD.ISR_X_PAGAR,     descripcion: `ISR retenido nómina ${periodo}`,   debe: 0,               haber: totalISR },
+          { codigo: cuentas.SUELDOS,         descripcion: `Sueldos nómina ${periodo}`,        debe: totalBruto,      haber: 0 },
+          { codigo: cuentas.TSS_PATRONAL,    descripcion: `TSS patronal nómina ${periodo}`,   debe: totalTSSPatronal, haber: 0 },
+          { codigo: cuentas.SUELDOS_X_PAGAR, descripcion: `Neto a pagar nómina ${periodo}`,   debe: 0,               haber: totalNeto },
+          { codigo: cuentas.TSS_X_PAGAR,     descripcion: `TSS empleados nómina ${periodo}`,  debe: 0,               haber: totalTSSEmpleados + totalTSSPatronal },
+          { codigo: cuentas.ISR_X_PAGAR,     descripcion: `ISR retenido nómina ${periodo}`,   debe: 0,               haber: totalISR },
         ].filter((l) => l.debe > 0 || l.haber > 0),
       });
       if (asiento) {
@@ -1178,6 +1202,7 @@ export class AsientosAutomaticosService {
     userId:     number,
   ): Promise<number | null> {
     const cuentaDebito = await this.resolverCuentaPorMetodoPago(tipoPago);
+    const cuentaAnticipos = await this.resolverCuentaConcepto('ANTICIPOS_CLIENTES', COD.ANTICIPOS_CLIENTES);
     try {
       const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Anticipo recibido #${anticipoId}`,
@@ -1187,8 +1212,8 @@ export class AsientosAutomaticosService {
         fecha,
         userId,
         lineas: [
-          { codigo: cuentaDebito,            descripcion: `Ingreso anticipo #${anticipoId}`,           debe: monto, haber: 0    },
-          { codigo: COD.ANTICIPOS_CLIENTES,  descripcion: `Anticipo recibido de cliente #${anticipoId}`, debe: 0,   haber: monto },
+          { codigo: cuentaDebito,      descripcion: `Ingreso anticipo #${anticipoId}`,           debe: monto, haber: 0    },
+          { codigo: cuentaAnticipos,   descripcion: `Anticipo recibido de cliente #${anticipoId}`, debe: 0,   haber: monto },
         ],
       });
       if (asiento) {
@@ -1219,6 +1244,10 @@ export class AsientosAutomaticosService {
     fecha:      string, // fechaHoyRD() del caller — la aplicación ocurre "ahora", AplicarAnticipoDto no trae fecha
     userId:     number,
   ): Promise<void> {
+    const cuentas = await this.resolverCuentasConcepto([
+      ['ANTICIPOS_CLIENTES', COD.ANTICIPOS_CLIENTES],
+      ['CLIENTES',           COD.CLIENTES],
+    ]);
     try {
       const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Aplicación anticipo #${anticipoId} → CxC #${cxcId}`,
@@ -1228,8 +1257,8 @@ export class AsientosAutomaticosService {
         fecha,
         userId,
         lineas: [
-          { codigo: COD.ANTICIPOS_CLIENTES, descripcion: `Aplicar anticipo #${anticipoId}`,   debe: monto, haber: 0    },
-          { codigo: COD.CLIENTES,           descripcion: `Abono CxC #${cxcId} por anticipo`,  debe: 0,     haber: monto },
+          { codigo: cuentas.ANTICIPOS_CLIENTES, descripcion: `Aplicar anticipo #${anticipoId}`,   debe: monto, haber: 0    },
+          { codigo: cuentas.CLIENTES,           descripcion: `Abono CxC #${cxcId} por anticipo`,  debe: 0,     haber: monto },
         ],
       });
       if (asiento) {
@@ -1258,6 +1287,10 @@ export class AsientosAutomaticosService {
     fecha:     string, // fecha del EVENTO de reversión (fechaHoyRD()), no la del recibo original — mismo criterio que revertirAsiento()
     userId:    number,
   ): Promise<void> {
+    const cuentas = await this.resolverCuentasConcepto([
+      ['CLIENTES', COD.CLIENTES],
+      ['BANCOS',   COD.BANCOS],
+    ]);
     try {
       const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Reversión ${tipo} #${reciboId} — CxC #${cxcId}`,
@@ -1267,8 +1300,8 @@ export class AsientosAutomaticosService {
         fecha,
         userId,
         lineas: [
-          { codigo: COD.CLIENTES, descripcion: `Reversar cobro CxC #${cxcId}`, debe: monto, haber: 0    },
-          { codigo: COD.BANCOS,   descripcion: `Reversar ingreso ${tipo} #${reciboId}`, debe: 0, haber: monto },
+          { codigo: cuentas.CLIENTES, descripcion: `Reversar cobro CxC #${cxcId}`, debe: monto, haber: 0    },
+          { codigo: cuentas.BANCOS,   descripcion: `Reversar ingreso ${tipo} #${reciboId}`, debe: 0, haber: monto },
         ],
       });
       if (asiento) {

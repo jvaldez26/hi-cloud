@@ -709,4 +709,71 @@ describe('AsientosAutomaticosService — Configuración Contable por Módulo (20
     expect(lineas.find((l: any) => l.cuentaContableId === 1)?.debe).toBe(500);
     expect(lineas.find((l: any) => l.cuentaContableId === 2)?.haber).toBe(500);
   });
+
+  // ── Nómina — Configuración Contable (2026-09-19) ────────────────────────
+
+  it('asientoNomina resuelve las 5 cuentas contra la configuración, con una sola resolución', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta('9.1', 1), cuenta('9.2', 2), cuenta('9.3', 3), cuenta('9.4', 4), cuenta('9.5', 5)],
+    });
+    const obtenerMapa = jest.fn().mockResolvedValue({
+      SUELDOS: '9.1', TSS_PATRONAL: '9.2', SUELDOS_X_PAGAR: '9.3', TSS_X_PAGAR: '9.4', ISR_X_PAGAR: '9.5',
+    });
+    svc.configuracionService = { obtenerMapa };
+
+    // Debe (Bruto + TSS patronal) = Haber (Neto + TSS empleados+patronal + ISR): 100000+7300 = 88000+11300+8000
+    await svc.asientoNomina(1, 100000, 88000, 4000, 8000, 7300, 'Septiembre 2026', '2026-09-30', 5);
+
+    expect(obtenerMapa).toHaveBeenCalledTimes(1);
+    const lineas = svc.lineaRepository.create.mock.calls[0][0];
+    expect(lineas.find((l: any) => l.cuentaContableId === 1)?.debe).toBe(100000);  // Sueldos
+    expect(lineas.find((l: any) => l.cuentaContableId === 3)?.haber).toBe(88000);  // Sueldos x pagar (neto)
+  });
+
+  // ── Resto del grupo Cobros — Configuración Contable (2026-09-19) ────────
+
+  it('asientoCobroME resuelve Bancos/Clientes/cambiaria contra la configuración', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta('9.1', 1), cuenta('9.2', 2), cuenta('9.3', 3)],
+    });
+    svc.configuracionService = {
+      obtenerMapa: jest.fn().mockResolvedValue({ BANCOS: '9.1', CLIENTES: '9.2', GANANCIA_CAMBIARIA: '9.3', PERDIDA_CAMBIARIA: COD.PERDIDA_CAMBIARIA }),
+    };
+
+    await svc.asientoCobroME(100, 'USD', 60, 58, 900, 99, '2026-09-19', 5);
+
+    const lineas = svc.lineaRepository.create.mock.calls[0][0];
+    expect(lineas.find((l: any) => l.cuentaContableId === 1)?.debe).toBe(6000);   // Bancos (100*60)
+    expect(lineas.find((l: any) => l.cuentaContableId === 2)?.haber).toBe(5800);  // Clientes (100*58)
+    expect(lineas.find((l: any) => l.cuentaContableId === 3)?.haber).toBe(200);   // Ganancia cambiaria
+  });
+
+  it('asientoAnticipo resuelve Anticipos de Clientes contra la configuración', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta(COD.CAJA, 1), cuenta('9.9.5.01', 2)],
+    });
+    svc.configuracionService = {
+      resolverCuenta: jest.fn((eid: number, concepto: string) =>
+        Promise.resolve(concepto === 'ANTICIPOS_CLIENTES' ? '9.9.5.01' : COD.CAJA)),
+    };
+
+    await svc.asientoAnticipo(200, 50, 'efectivo', '2026-09-19', 5);
+
+    const lineas = svc.lineaRepository.create.mock.calls[0][0];
+    expect(lineas.find((l: any) => l.cuentaContableId === 2)?.haber).toBe(200);
+  });
+
+  it('asientoAplicarAnticipo y asientoReversion también resuelven contra la configuración', async () => {
+    const svc = makeService({ empresaId: 7, cuentas: [cuenta('9.9.5.01', 1), cuenta('9.9.6.01', 2)] });
+    svc.configuracionService = { obtenerMapa: jest.fn().mockResolvedValue({ ANTICIPOS_CLIENTES: '9.9.5.01', CLIENTES: '9.9.6.01' }) };
+
+    await svc.asientoAplicarAnticipo(150, 50, 99, '2026-09-19', 5);
+
+    const lineas = svc.lineaRepository.create.mock.calls[0][0];
+    expect(lineas.find((l: any) => l.cuentaContableId === 1)?.debe).toBe(150);
+    expect(lineas.find((l: any) => l.cuentaContableId === 2)?.haber).toBe(150);
+  });
 });
