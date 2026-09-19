@@ -186,6 +186,39 @@ export class AsientosAutomaticosService {
     const totalDebe  = lineasResueltas.reduce((s, l) => s + l.debe,  0);
     const totalHaber = lineasResueltas.reduce((s, l) => s + l.haber, 0);
 
+    // P3 BLOQUE 1 — partida doble. El camino manual (contabilidad.service.ts
+    // createAsiento()) valida esto con el mismo umbral antes de persistir;
+    // este motor automático corre en el 100% de las operaciones (facturas,
+    // compras, cobros, pagos, nómina, reversas...) y hasta ahora no validaba
+    // nada — un builder de líneas con un bug (la línea de costo de venta que
+    // se agregó recientemente, por ejemplo, si algún día costoVenta se
+    // calculara mal) podía posetear un asiento descuadrado sin que nadie se
+    // enterara hasta el cierre. Un asiento descuadrado en los libros es peor
+    // que ninguno: se reporta a Sentry con el detalle completo (incluidas las
+    // líneas) y se descarta (TIPO B — nunca rompe la operación que lo llamó,
+    // igual que "cuenta no encontrada" un poco más arriba).
+    if (Math.abs(totalDebe - totalHaber) > 0.01) {
+      this.logger.error(
+        `Asiento ${params.tipoOrigen} ref=${params.referenciaId} (${params.referenciaFolio}) ` +
+        `DESCUADRADO — NO se persiste. Debe=${totalDebe.toFixed(2)} Haber=${totalHaber.toFixed(2)}`,
+      );
+      this.reportarFalloAsiento(
+        new Error(
+          `Asiento descuadrado: Debe ${totalDebe.toFixed(2)} vs Haber ${totalHaber.toFixed(2)} ` +
+          `(diferencia ${(totalDebe - totalHaber).toFixed(2)})`,
+        ),
+        'asiento_descuadrado',
+        {
+          tipoOrigen:      params.tipoOrigen,
+          referenciaId:    String(params.referenciaId),
+          referenciaFolio: params.referenciaFolio,
+          descripcion:     params.descripcion,
+          lineas:          JSON.stringify(params.lineas),
+        },
+      );
+      return null;
+    }
+
     // NOTA: generarNumero() usa this.dataSource.query() — una conexión del pool
     // FUERA de la transacción externa (si la hay). La función siguiente_numero_secuencia
     // hace INSERT ... ON CONFLICT DO UPDATE que se confirma inmediatamente.
