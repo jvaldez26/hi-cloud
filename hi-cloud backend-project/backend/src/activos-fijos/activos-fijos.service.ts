@@ -19,6 +19,7 @@ import { CreateActivoFijoDto } from './dto/create-activo-fijo.dto';
 import { DarDeBajaDto } from './dto/dar-de-baja.dto';
 import { FiltroActivosDto, FiltroDepreciacionDto } from './dto/filtro-activos.dto';
 import { AsientosAutomaticosService } from '../contabilidad/services/asientos-automaticos.service';
+import { ConfiguracionContableService } from '../contabilidad/services/configuracion-contable.service';
 import { TenantService } from '../tenant/tenant.service';
 
 // ── Categorías DGII según Ley 11-92 (Código Tributario RD) ──────────────────
@@ -79,6 +80,7 @@ export class ActivosFijosService implements OnModuleInit {
     @InjectRepository(DepreciacionActivo)
     private depreciacionRepository: Repository<DepreciacionActivo>,
     private asientosService: AsientosAutomaticosService,
+    private configuracionService: ConfiguracionContableService,
     private tenantService: TenantService,
   ) {}
 
@@ -132,10 +134,12 @@ export class ActivosFijosService implements OnModuleInit {
     if (!categoria) throw new NotFoundException(`Categoría #${dto.categoriaId} no encontrada`);
 
     const vidaUtil = dto.vidaUtilAnios ?? categoria.vidaUtilAnios;
+    // cuentaContrapartida es solo para el asiento de alta — no es un campo del activo.
+    const { cuentaContrapartida, ...datosActivo } = dto;
 
     const activo = this.activoRepository.create({
       empresaId,
-      ...dto,
+      ...datosActivo,
       vidaUtilAnios:        vidaUtil,
       valorResidual:        dto.valorResidual ?? 0,
       valorLibros:          dto.costoAdquisicion,
@@ -143,7 +147,32 @@ export class ActivosFijosService implements OnModuleInit {
       userId,
     });
 
-    return this.activoRepository.save(activo);
+    const guardado = await this.activoRepository.save(activo);
+
+    // Asiento contable de alta — fire-and-forget (el activo ya quedó
+    // registrado; un problema contable no puede tumbar el alta). La cuenta
+    // del activo es de la categoría (configuración), la contrapartida es el
+    // selector por documento (de contado o a crédito).
+    const cuentaActivo = categoria.cuentaActivoCodigo
+      || await this.configuracionService.resolverCuenta(empresaId, 'ACTIVO_FIJO_DEFAULT');
+    await this.asientosService.asientoAltaActivo(
+      guardado.id, Number(dto.costoAdquisicion), dto.codigo, cuentaActivo,
+      dto.fechaAdquisicion, userId, cuentaContrapartida, !!cuentaContrapartida,
+    ).catch(err => this.logger.error(`Error asiento alta de activo ${dto.codigo}: ${err?.message ?? err}`));
+
+    return guardado;
+  }
+
+  /** Panel de vista previa: calcula el asiento de alta SIN registrar el activo. */
+  async previsualizarAltaActivo(dto: CreateActivoFijoDto) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const categoria = await this.categoriaRepository.findOne({ where: { id: dto.categoriaId, isActive: true } });
+    if (!categoria) throw new NotFoundException(`Categoría #${dto.categoriaId} no encontrada`);
+    const cuentaActivo = categoria.cuentaActivoCodigo
+      || await this.configuracionService.resolverCuenta(empresaId, 'ACTIVO_FIJO_DEFAULT');
+    return this.asientosService.previsualizarAltaActivo(
+      Number(dto.costoAdquisicion), dto.codigo, cuentaActivo, dto.cuentaContrapartida,
+    );
   }
 
   async getActivos(filtro: FiltroActivosDto) {

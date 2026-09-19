@@ -13,6 +13,7 @@ import { activosFijosApi, type ActivoPayload } from '../../api/activos-fijos.api
 import { fmt } from '../../utils/formatters';
 import dayjs from 'dayjs';
 import AsientoPreviewPanel from '../../components/contabilidad/AsientoPreviewPanel';
+import CuentaContableSelector from '../../components/contabilidad/CuentaContableSelector';
 
 const { Title } = Typography;
 
@@ -42,6 +43,23 @@ export default function ActivosFijosPage() {
   const createMut  = useMutation({ mutationFn: activosFijosApi.createActivo, onSuccess: () => { qc.invalidateQueries({ queryKey: ['activos'] }); setOpen(false); form.resetFields(); message.success('Activo registrado'); }, onError: (e: any) => onErr(e, 'Error al registrar activo') });
   const bajaMut    = useMutation({ mutationFn: ({ id, body }: any) => activosFijosApi.darDeBaja(id, body), onSuccess: () => { qc.invalidateQueries({ queryKey: ['activos'] }); setOpenBaja(null); message.success('Activo dado de baja'); }, onError: (e: any) => onErr(e, 'Error al dar de baja') });
   const deprMut    = useMutation({ mutationFn: activosFijosApi.procesarDepreciacion, onSuccess: (d) => { qc.invalidateQueries({ queryKey: ['activos'] }); setOpenDepr(false); message.success(`${d.activosDepreciados} activos depreciados — Total: ${fmt.money(d.totalDepreciacion)}`); }, onError: (e: any) => message.error(e?.response?.data?.errors?.[0] ?? 'Error al procesar') });
+
+  // Panel de vista previa del asiento de alta — antes esto no generaba
+  // ningún asiento; ahora Debe la cuenta del activo (por categoría) y Haber
+  // la contrapartida elegida aquí (de contado o a crédito).
+  const categoriaWatch   = Form.useWatch('categoriaId', form);
+  const costoWatch       = Form.useWatch('costoAdquisicion', form);
+  const codigoWatch      = Form.useWatch('codigo', form);
+  const contrapartidaWatch = Form.useWatch('cuentaContrapartida', form);
+  const { data: previewAlta, isFetching: previewAltaCargando } = useQuery({
+    queryKey: ['activo-alta-preview', categoriaWatch, costoWatch, codigoWatch, contrapartidaWatch],
+    queryFn: () => activosFijosApi.previsualizarAltaActivo({
+      categoriaId: categoriaWatch, costoAdquisicion: Number(costoWatch), codigo: codigoWatch || 'PREVIA',
+      cuentaContrapartida: contrapartidaWatch || undefined,
+    }),
+    enabled: open && !!categoriaWatch && Number(costoWatch) > 0,
+    staleTime: 500,
+  });
 
   const periodoDeprWatch = Form.useWatch('periodo', formDepr);
   const { data: previewDepr, isFetching: previewDeprCargando } = useQuery({
@@ -161,8 +179,14 @@ export default function ActivosFijosPage() {
             <Col xs={24} sm={8}><Form.Item name="vidaUtilAnios" label="Vida Útil (años)"><InputNumber style={{ width: '100%' }} min={1} /></Form.Item></Col>
             <Col xs={24} sm={12}><Form.Item name="ubicacion" label="Ubicación"><Input /></Form.Item></Col>
             <Col xs={24} sm={12}><Form.Item name="proveedor" label="Proveedor"><Input /></Form.Item></Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="cuentaContrapartida" label="Cuenta contable (contrapartida del alta)">
+                <CuentaContableSelector placeholder="Por defecto: Bancos" allowClear />
+              </Form.Item>
+            </Col>
           </Row>
-          <Row justify="end" gutter={8}>
+          <AsientoPreviewPanel resultado={previewAlta} loading={previewAltaCargando} />
+          <Row justify="end" gutter={8} style={{ marginTop: 8 }}>
             <Col><Button onClick={() => setOpen(false)}>Cancelar</Button></Col>
             <Col><Button type="primary" htmlType="submit" loading={createMut.isPending}>Registrar</Button></Col>
           </Row>

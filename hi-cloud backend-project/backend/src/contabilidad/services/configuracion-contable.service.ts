@@ -59,6 +59,12 @@ export const CONCEPTOS_CONTABLES: ConceptoContable[] = [
   { concepto: 'SUELDOS_X_PAGAR',         label: 'Sueldos por Pagar (neto)',                 grupo: 'Nómina', default: COD.SUELDOS_X_PAGAR },
   { concepto: 'TSS_X_PAGAR',             label: 'TSS por Pagar',                            grupo: 'Nómina', default: COD.TSS_X_PAGAR },
   { concepto: 'ISR_X_PAGAR',             label: 'ISR por Pagar (retenido de nómina)',       grupo: 'Nómina', default: COD.ISR_X_PAGAR },
+  // ── Activos Fijos ──
+  // Alta de un activo: Debe = cuenta del activo (por categoría, CategoriaActivo.
+  // cuentaActivoCodigo — este default solo aplica si la categoría no tiene una
+  // propia), Haber = contrapartida elegida por el selector del formulario
+  // (Bancos por default — la misma compra puede ser de contado o a crédito).
+  { concepto: 'ACTIVO_FIJO_DEFAULT',     label: 'Activo Fijo (categoría sin cuenta propia)', grupo: 'Activos Fijos', default: '1.2.1.01' },
   // ── Préstamos ──
   { concepto: 'PRESTAMO_CARTERA',        label: 'Cartera de Crédito',                       grupo: 'Préstamos', default: '1.1.2.10' },
   { concepto: 'PRESTAMO_INTERESES',      label: 'Ingreso por Intereses',                    grupo: 'Préstamos', default: '4.1.2.01' },

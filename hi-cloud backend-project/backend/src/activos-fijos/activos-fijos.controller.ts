@@ -66,6 +66,13 @@ export class ActivosFijosController {
     return this.activosService.createActivo(dto, usuario.id);
   }
 
+  @Post('previsualizar-asiento')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Panel de vista previa: calcula el asiento de alta SIN registrar el activo' })
+  previsualizarAltaActivo(@Body() dto: CreateActivoFijoDto) {
+    return this.activosService.previsualizarAltaActivo(dto);
+  }
+
   @Get()
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Listar activos con filtros (categoría, estado)' })

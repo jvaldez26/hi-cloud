@@ -38,4 +38,8 @@ export class CreateActivoFijoDto {
 
   @IsOptional() @IsString()
   notas?: string;
+
+  /** Selector de cuenta contable — contrapartida del asiento de alta (de contado o a crédito). Sin default: el motor usa Bancos. */
+  @IsOptional() @IsString()
+  cuentaContrapartida?: string;
 }

@@ -976,6 +976,71 @@ export class AsientosAutomaticosService {
   }
 
   // ──────────────────────────────────────────────────────────────────
+  // Alta de un Activo Fijo (2026-09-19) → Activo Fijo (D) / contrapartida (H)
+  // Antes de esta pieza, dar de alta un activo NO generaba NINGÚN asiento —
+  // CategoriaActivo.cuentaActivoCodigo existía en la entidad pero no tenía
+  // ningún consumidor. La cuenta del activo la decide la categoría
+  // (configuración, no selección por documento); la contrapartida sí es un
+  // selector por documento — la misma compra puede ser de contado (Bancos/
+  // Caja) o a crédito (Proveedores), y este método no crea una CxP formal:
+  // si fue a crédito, el contador elige "Proveedores" en el selector y
+  // maneja la cuenta por pagar aparte (fuera del alcance de esta pieza).
+  // ──────────────────────────────────────────────────────────────────
+
+  private construirLineasAltaActivo(
+    costo: number, codigoActivo: string, cuentaActivo: string,
+    cuentaContrapartida: string, cuentaContrapartidaManual: boolean,
+  ): LineaAsientoInput[] {
+    return [
+      { codigo: cuentaActivo,        descripcion: `Alta de activo ${codigoActivo}`, debe: costo, haber: 0 },
+      { codigo: cuentaContrapartida, descripcion: `Alta de activo ${codigoActivo}`, debe: 0,     haber: costo, manual: cuentaContrapartidaManual },
+    ];
+  }
+
+  /** Panel de vista previa: calcula el asiento de alta de activo SIN registrar nada. */
+  async previsualizarAltaActivo(
+    costo: number, codigoActivo: string, cuentaActivo: string, cuentaContrapartida?: string,
+  ): Promise<PreviewAsientoResultado> {
+    const cuentaBancos = await this.resolverCuentaConcepto('BANCOS', COD.BANCOS);
+    return this.previsualizarLineas(
+      this.construirLineasAltaActivo(costo, codigoActivo, cuentaActivo, cuentaContrapartida || cuentaBancos, false),
+    );
+  }
+
+  async asientoAltaActivo(
+    activoId: number, costo: number, codigoActivo: string, cuentaActivo: string,
+    fecha: string, userId: number,
+    cuentaContrapartida?: string, cuentaContrapartidaManual = false,
+  ): Promise<void> {
+    if (costo <= 0) return;
+    const cuentaBancos = await this.resolverCuentaConcepto('BANCOS', COD.BANCOS);
+    const lineas = this.construirLineasAltaActivo(
+      costo, codigoActivo, cuentaActivo, cuentaContrapartida || cuentaBancos, cuentaContrapartidaManual,
+    );
+    try {
+      const asiento = await this._crearAsientoContabilizado({
+        descripcion:     `Alta de activo ${codigoActivo}`,
+        tipoOrigen:      TipoOrigenAsiento.AJUSTE,
+        referenciaId:    activoId,
+        referenciaFolio: `ACT-${codigoActivo}`,
+        fecha,
+        userId,
+        lineas,
+      });
+      if (asiento) {
+        this.logger.log(`Asiento alta de activo ${codigoActivo} generado`);
+      } else {
+        this.logger.warn(`Asiento alta de activo ${codigoActivo} NO generado (cuenta faltante) — ver Sentry`);
+      }
+    } catch (err) {
+      this.logger.error(`Error asiento alta de activo ${codigoActivo}: ${(err as Error).message}`);
+      this.reportarFalloAsiento(err, 'asiento_alta_activo', {
+        tipoOrigen: TipoOrigenAsiento.AJUSTE, referenciaId: String(activoId), referenciaFolio: `ACT-${codigoActivo}`,
+      });
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
   // Depreciación mensual → Gasto Depreciación / Depreciación Acumulada,
   // por CATEGORÍA de activo — antes era un solo total contra dos cuentas
   // fijas; CategoriaActivo.cuentaGastoCodigo/cuentaDepreciacionCodigo ya

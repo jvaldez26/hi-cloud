@@ -6,6 +6,8 @@ export interface ActivoPayload {
   costoAdquisicion: number; valorResidual?: number;
   vidaUtilAnios?: number; ubicacion?: string;
   proveedor?: string; numeroSerie?: string; notas?: string;
+  /** Selector de cuenta contable — contrapartida del asiento de alta (de contado o a crédito). Sin default: el motor usa Bancos. */
+  cuentaContrapartida?: string;
 }
 
 export const activosFijosApi = {
@@ -21,6 +23,10 @@ export const activosFijosApi = {
 
   createActivo: (body: ActivoPayload) =>
     api.post('/activos-fijos', body).then(r => r.data.data),
+
+  /** Panel de vista previa: calcula el asiento de alta SIN registrar el activo. */
+  previsualizarAltaActivo: (body: Partial<ActivoPayload>) =>
+    api.post('/activos-fijos/previsualizar-asiento', body).then(r => (r.data as any)?.data ?? r.data),
 
   updateActivo: (id: number, body: Partial<ActivoPayload>) =>
     api.patch(`/activos-fijos/${id}`, body).then(r => r.data.data),

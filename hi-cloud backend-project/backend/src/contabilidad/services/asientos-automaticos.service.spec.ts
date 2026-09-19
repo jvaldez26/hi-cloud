@@ -776,4 +776,58 @@ describe('AsientosAutomaticosService — Configuración Contable por Módulo (20
     expect(lineas.find((l: any) => l.cuentaContableId === 1)?.debe).toBe(150);
     expect(lineas.find((l: any) => l.cuentaContableId === 2)?.haber).toBe(150);
   });
+
+  // ── Alta de Activo Fijo — nuevo asiento (2026-09-19) ─────────────────────
+  // Antes, dar de alta un activo no generaba ningún asiento. La cuenta del
+  // activo la resuelve el caller (categoría o default) y se le pasa ya
+  // resuelta; la contrapartida es el selector por documento (default Bancos).
+
+  it('asientoAltaActivo: Debe la cuenta del activo, Haber la contrapartida elegida, marcada manual', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta('1.2.1.02', 1), cuenta('2.1.1.01', 2)],
+    });
+
+    await svc.asientoAltaActivo(10, 50000, 'ACT-001', '1.2.1.02', '2026-09-19', 5, '2.1.1.01', true);
+
+    const lineas = svc.lineaRepository.create.mock.calls[0][0];
+    expect(lineas.find((l: any) => l.cuentaContableId === 1)?.debe).toBe(50000);
+    const contrapartida = lineas.find((l: any) => l.cuentaContableId === 2);
+    expect(contrapartida?.haber).toBe(50000);
+    expect(contrapartida?.cuentaManual).toBe(true);
+  });
+
+  it('asientoAltaActivo sin cuentaContrapartida: usa el Bancos configurado (o COD.BANCOS por default), sin marcar nada manual', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta('1.2.1.02', 1), cuenta(COD.BANCOS, 2)],
+    });
+
+    await svc.asientoAltaActivo(10, 50000, 'ACT-001', '1.2.1.02', '2026-09-19', 5);
+
+    const lineas = svc.lineaRepository.create.mock.calls[0][0];
+    expect(lineas.every((l: any) => !l.cuentaManual)).toBe(true);
+    expect(lineas.find((l: any) => l.cuentaContableId === 2)?.haber).toBe(50000);
+  });
+
+  it('asientoAltaActivo con costo cero o negativo: no genera nada', async () => {
+    const svc = makeService({ empresaId: 7, cuentas: [] });
+
+    await svc.asientoAltaActivo(10, 0, 'ACT-002', '1.2.1.02', '2026-09-19', 5);
+
+    expect(svc.asientoRepository.save).not.toHaveBeenCalled();
+  });
+
+  it('previsualizarAltaActivo: ok=true y cuadrado con las cuentas presentes', async () => {
+    const svc = makeService({
+      empresaId: 7,
+      cuentas: [cuenta('1.2.1.02', 1), cuenta(COD.BANCOS, 2)],
+    });
+
+    const r: any = await svc.previsualizarAltaActivo(50000, 'ACT-001', '1.2.1.02');
+
+    expect(r.ok).toBe(true);
+    expect(r.cuadrado).toBe(true);
+    expect(r.totalDebe).toBe(50000);
+  });
 });
