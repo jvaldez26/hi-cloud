@@ -93,6 +93,9 @@ export class DgiiTxtGeneratorService {
       const cheque   = montoEntero(f.chequeTransferencia);
       const tarjeta  = montoEntero(f.tarjeta);
       const credito  = montoEntero(f.credito);
+      const bonos    = montoEntero(f.bonos);
+      const permuta  = montoEntero(f.permuta);
+      const otras    = montoEntero(f.otras);
 
       // Formato oficial 607 — 23 campos
       lineas.push([
@@ -116,9 +119,9 @@ export class DgiiTxtGeneratorService {
         cheque,    // 18 Cheque / Transferencia
         tarjeta,   // 19 Tarjeta débito/crédito
         credito,   // 20 Crédito
-        0,         // 21 Bonos / Certificados
-        0,         // 22 Permuta
-        0,         // 23 Otras formas
+        bonos,     // 21 Bonos / Certificados
+        permuta,   // 22 Permuta
+        otras,     // 23 Otras formas
       ].join('|'));
     }
 

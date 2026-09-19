@@ -27,6 +27,7 @@ import {
   validarInvarianteConvencionB,
   type LineaDescuentoInput,
 } from '../common/calculo/descuento-documento';
+import { tipoFormaPagoDesdeEtiqueta } from '../declaraciones/dgii.constants';
 
 @Injectable()
 export class CotizacionesService {
@@ -312,18 +313,6 @@ export class CotizacionesService {
    * Catálogo DGII: 1=Efectivo 2=Cheque/Transferencia 3=Tarjeta 4=Crédito
    * 5=Permuta 6=Nota Crédito.
    */
-  private tipoDgiiDeMetodo(metodoPago: string): number | undefined {
-    switch (metodoPago.trim().toLowerCase()) {
-      case 'efectivo':      return 1;
-      case 'transferencia':
-      case 'cheque':        return 2;
-      case 'tarjeta':       return 3;
-      case 'crédito':
-      case 'credito':       return 4;
-      default:              return undefined;
-    }
-  }
-
   async cobrarDesdePos(id: number, usuarioId: number, dto: { metodoPago: string; diasCredito?: number }) {
     const empresaId = this.tenantService.getEmpresaId();
     const cot = await this.findById(id);
@@ -382,7 +371,7 @@ export class CotizacionesService {
         // sellar PAGADA — con razón, porque de verdad no hay nada detrás. El
         // crédito no lleva formasPago (no hay cobro todavía, solo CxC).
         formasPago: esCredito ? undefined : (() => {
-          const tipo = this.tipoDgiiDeMetodo(dto.metodoPago);
+          const tipo = tipoFormaPagoDesdeEtiqueta(dto.metodoPago);
           return tipo ? [{ tipo, monto: Number(cot.total) }] : undefined;
         })(),
         // Igual que en convertirAFactura(): el descuento acompaña al documento

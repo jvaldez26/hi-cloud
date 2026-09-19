@@ -17,6 +17,7 @@ import {
   validarInvarianteConvencionB,
   type LineaDescuentoInput,
 } from '../common/calculo/descuento-documento';
+import { tipoFormaPagoDesdeEtiqueta } from '../declaraciones/dgii.constants';
 
 interface DetalleDto {
   productoId?: number;
@@ -379,16 +380,6 @@ export class PreFacturaService {
    * Catálogo DGII: 1=Efectivo 2=Cheque/Transferencia 3=Tarjeta 4=Crédito
    * 5=Permuta 6=Nota Crédito. Esta pantalla no ofrece crédito.
    */
-  private tipoDgiiDeMetodo(metodoPago: string): number | undefined {
-    switch (metodoPago.trim().toLowerCase()) {
-      case 'efectivo':      return 1;
-      case 'transferencia':
-      case 'cheque':        return 2;
-      case 'tarjeta':       return 3;
-      default:              return undefined;
-    }
-  }
-
   async cobrarDesdePos(id: number, usuarioId: number, dto: { metodoPago: string }) {
     const empresaId = this.tenantSvc.getEmpresaId();
     const pf = await this.findOne(id);
@@ -437,7 +428,7 @@ export class PreFacturaService {
         // la bloquea al sellar PAGADA — con razón, porque de verdad no hay
         // nada detrás.
         formasPago: (() => {
-          const tipo = this.tipoDgiiDeMetodo(dto.metodoPago);
+          const tipo = tipoFormaPagoDesdeEtiqueta(dto.metodoPago);
           return tipo ? [{ tipo, monto: Number(pf.total) }] : undefined;
         })(),
         detalles:   (pf.detalles ?? []).map(det => ({

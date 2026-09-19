@@ -9,7 +9,7 @@ import { CompraDetalle } from '../compras/entities/compra-detalle.entity';
 import { ReporteDgii } from './entities/reporte-dgii.entity';
 import { Gasto } from '../gastos/entities/gasto.entity';
 import {
-  mapFormaPagoDgii, mapTipoIngreso607, tipoIdDgii,
+  mapFormaPagoDgii, columna607PorCodigoDgii, mapTipoIngreso607, tipoIdDgii,
   fechaDgii, montoEntero, TIPOS_BIENES_606, FORMAS_PAGO_DGII,
 } from './dgii.constants';
 import {
@@ -358,6 +358,7 @@ export class DeclaracionesService {
         f.total::numeric                                AS total,
         f."tipoNcf",
         f.notas,
+        f."formasPago",
         e.numero                                        AS "encf",
         e."estadoDGII"                                  AS "estadoDgii",
         -- Fuente prioritaria: rncComprador del e-CF (valor oficial declarado a DGII).
@@ -390,11 +391,34 @@ export class DeclaracionesService {
       // Total cobrado (cols 17-23) = subtotal + ITBIS
       const totalCobrado   = Number(r.total ?? 0);
       const itbis          = Number(r.iva ?? 0);
-      const metodo         = r.notas ?? '';
-      const efectivo       = metodo.includes('Efectivo')  ? totalCobrado : 0;
-      const tarjeta        = metodo.includes('Tarjeta')   ? totalCobrado : 0;
-      const transferencia  = metodo.includes('Transfer')  ? totalCobrado : 0;
-      const credito        = (!efectivo && !tarjeta && !transferencia) ? totalCobrado : 0;
+
+      // Desglose de forma de pago (columnas 17-23 del 607): usa formasPago
+      // (dato real, desde el trabajo del e-CF) cuando la factura lo tiene —
+      // reparte por tipo, no elige uno. Solo para facturas históricas SIN
+      // formasPago (anteriores a la migración que agregó la columna) se cae
+      // al match de texto sobre notas — mismo patrón que caja.service.ts.
+      let efectivo = 0, chequeTransferencia = 0, tarjeta = 0, credito = 0, bonos = 0, permuta = 0, otras = 0;
+      const formasPago: { tipo: number; monto: number }[] = Array.isArray(r.formasPago) ? r.formasPago : [];
+      if (formasPago.length > 0) {
+        for (const fp of formasPago) {
+          const columna = columna607PorCodigoDgii(mapFormaPagoDgii(Number(fp.tipo)));
+          const monto   = Number(fp.monto ?? 0);
+          if      (columna === 'efectivo')            efectivo            += monto;
+          else if (columna === 'chequeTransferencia')  chequeTransferencia += monto;
+          else if (columna === 'tarjeta')              tarjeta             += monto;
+          else if (columna === 'credito')              credito             += monto;
+          else if (columna === 'permuta')              permuta             += monto;
+          else if (columna === 'otras')                otras               += monto;
+          // columna null (tipo no reconocido): no se suma a ninguna — sin
+          // bucket confiable es mejor omitir que adivinar.
+        }
+      } else {
+        const metodo = r.notas ?? '';
+        efectivo            = metodo.includes('Efectivo')  ? totalCobrado : 0;
+        tarjeta             = metodo.includes('Tarjeta')   ? totalCobrado : 0;
+        chequeTransferencia = metodo.includes('Transfer')  ? totalCobrado : 0;
+        credito             = (!efectivo && !tarjeta && !chequeTransferencia) ? totalCobrado : 0;
+      }
 
       return {
         linea:               i + 1,
@@ -413,12 +437,12 @@ export class DeclaracionesService {
         itbisRetenido:       0,
         isrRetenido:         0,
         efectivo,
-        chequeTransferencia: transferencia,
+        chequeTransferencia,
         tarjeta,
         credito,
-        bonos:               0,
-        permuta:             0,
-        otras:               0,
+        bonos,
+        permuta,
+        otras,
       };
     });
 
@@ -427,6 +451,8 @@ export class DeclaracionesService {
       itbis:          filas.reduce((s, f) => s + f.itbis, 0),
       efectivo:       filas.reduce((s, f) => s + f.efectivo, 0),
       tarjeta:        filas.reduce((s, f) => s + f.tarjeta, 0),
+      permuta:        filas.reduce((s, f) => s + f.permuta, 0),
+      otras:          filas.reduce((s, f) => s + f.otras, 0),
       transferencia:  filas.reduce((s, f) => s + f.chequeTransferencia, 0),
       credito:        filas.reduce((s, f) => s + f.credito, 0),
     };

@@ -1,6 +1,5 @@
-import { CotizacionesService } from './cotizaciones.service';
-import { PreFacturaService } from '../pre-factura/pre-factura.service';
 import { FacturasService } from '../facturas/facturas.service';
+import { tipoFormaPagoDesdeEtiqueta } from '../declaraciones/dgii.constants';
 
 /**
  * Regresión del bug real: "No existe rastro de cobro para marcar esta
@@ -13,8 +12,11 @@ import { FacturasService } from '../facturas/facturas.service';
  * fija dos cosas para que no se repita:
  *
  *   1. El mapeo del botón que pulsó el cajero (texto) al tipo DGII (número)
- *      que espera `factura.formasPago` — se prueba igual que
- *      formas-pago.invariantes.spec.ts: método privado invocado con .call({}).
+ *      que espera `factura.formasPago`. Cotizaciones y pre-facturas tenían
+ *      cada una su propia copia privada de este mapeo, byte a byte
+ *      idénticas; el fix del Formato 607 (2026-09-19) las consolidó en
+ *      tipoFormaPagoDesdeEtiqueta() (declaraciones/dgii.constants.ts) — el
+ *      MISMO traductor que alimenta el desglose de forma de pago del 607.
  *   2. Que una factura CON ese formasPago pasa por el guard sin tocar la
  *      base de datos (rama rápida de verificarRastroCobro, línea "if
  *      (Array.isArray(formasPago) && formasPago.length > 0) return"). Si
@@ -25,31 +27,18 @@ import { FacturasService } from '../facturas/facturas.service';
  * bloqueando cualquier factura que de verdad no tenga rastro.
  */
 describe('cobrarDesdePos — formasPago del botón del cajero', () => {
-  const tipoCot = (m: string) =>
-    (CotizacionesService.prototype as any).tipoDgiiDeMetodo.call({}, m);
-  const tipoPF = (m: string) =>
-    (PreFacturaService.prototype as any).tipoDgiiDeMetodo.call({}, m);
-
-  describe('cotizaciones — mapa completo, incluye Crédito', () => {
+  describe('tipoFormaPagoDesdeEtiqueta — mapa completo, lo usan cotizaciones y pre-facturas por igual', () => {
     it.each([
       ['Efectivo', 1], ['Tarjeta', 3], ['Transferencia', 2], ['Cheque', 2],
       ['Crédito', 4], ['credito', 4],
       // Insensible a mayúsculas/espacios: son los mismos botones del modal
       ['  efectivo  ', 1], ['TARJETA', 3],
     ])('%s → tipo DGII %i', (metodo, tipo) => {
-      expect(tipoCot(metodo)).toBe(tipo);
+      expect(tipoFormaPagoDesdeEtiqueta(metodo)).toBe(tipo);
     });
 
     it('un texto que no reconoce no inventa un tipo', () => {
-      expect(tipoCot('bitcoin')).toBeUndefined();
-    });
-  });
-
-  describe('pre-facturas — mismo mapa, sin Crédito (esa pantalla no lo ofrece)', () => {
-    it.each([
-      ['Efectivo', 1], ['Tarjeta', 3], ['Transferencia', 2],
-    ])('%s → tipo DGII %i', (metodo, tipo) => {
-      expect(tipoPF(metodo)).toBe(tipo);
+      expect(tipoFormaPagoDesdeEtiqueta('bitcoin')).toBeUndefined();
     });
   });
 

@@ -145,9 +145,9 @@ export async function exportar607(data: any, mes: number, anio: number) {
     'Cheque/Transferencia/Depósito':  Number(t.transferencia ?? 0),
     'Tarjeta Débito/Crédito':         Number(t.tarjeta ?? 0),
     'Venta a Crédito':                Number(t.credito ?? 0),
-    'Bonos o Certificados de Regalo': 0,
-    'Permuta':                        0,
-    'Otras Formas de Ventas':         0,
+    'Bonos o Certificados de Regalo': Number(t.bonos ?? 0),
+    'Permuta':                        Number(t.permuta ?? 0),
+    'Otras Formas de Ventas':         Number(t.otras ?? 0),
   });
 
   await exportarExcel(filas, `Formato-607-${anio}-${String(mes).padStart(2, '0')}`);

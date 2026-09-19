@@ -37,26 +37,85 @@ export const TIPOS_INGRESO_607: Record<string, string> = {
 };
 
 /**
- * Traduce MetodoPago (el enum real de PagoRealizado — common/enums/metodo-pago.enum.ts,
- * el mismo que usa CxP al registrar un pago a proveedor) al código DGII de
- * forma de pago. Match exacto, no adivinanza por substring — la versión
- * anterior de esta función nunca se llamaba desde ningún lado (código
- * muerto) y encima tenía un bug: 'otro' caía en el fallback y se reportaba
- * como '01' Efectivo, silenciosamente incorrecto.
+ * Traduce una forma de pago al código DGII ('01'-'06'). Un solo traductor
+ * para 606 y 607, en vez de una copia por formato:
  *
- * 'otro' (y cualquier valor no reconocido) devuelve null a propósito: no
- * hay código DGII confiable para "otro", y asumir uno en silencio es
- * exactamente el tipo de error que esta tarea existe para eliminar. El
- * caller decide qué hacer con null (típicamente: dejar la clasificación
- * existente de la compra, no pisarla con una suposición).
+ *   - string/MetodoPago: el enum real de PagoRealizado
+ *     (common/enums/metodo-pago.enum.ts, el mismo que usa CxP al registrar
+ *     un pago a proveedor). Match exacto, no adivinanza por substring — la
+ *     versión anterior de esta función nunca se llamaba desde ningún lado
+ *     (código muerto) y encima tenía un bug: 'otro' caía en el fallback y
+ *     se reportaba como '01' Efectivo, silenciosamente incorrecto.
+ *   - number: el tipo DGII-nativo que ya guarda Factura.formasPago (desde
+ *     el trabajo del e-CF) — 1 Efectivo, 2 Cheque/Transferencia/Depósito,
+ *     3 Tarjeta, 4 Crédito, 5 Permuta, 6 Nota de Crédito. Es el dato real
+ *     que alimenta el desglose del Formato 607.
+ *
+ * 'otro' (y cualquier valor no reconocido, en cualquiera de los dos
+ * dominios) devuelve null a propósito: no hay código DGII confiable, y
+ * asumir uno en silencio es exactamente el tipo de error que esta función
+ * existe para eliminar. El caller decide qué hacer con null (típicamente:
+ * dejar la clasificación existente, no pisarla con una suposición).
  */
-export function mapFormaPagoDgii(metodo: MetodoPago | string | undefined | null): string | null {
+export function mapFormaPagoDgii(metodo: MetodoPago | string | number | undefined | null): string | null {
+  if (typeof metodo === 'number') {
+    switch (metodo) {
+      case 1: return '01'; // Efectivo
+      case 2: return '02'; // Cheque/Transferencia/Depósito
+      case 3: return '03'; // Tarjeta
+      case 4: return '04'; // Crédito
+      case 5: return '05'; // Permuta
+      case 6: return '06'; // Nota de Crédito
+      default: return null;
+    }
+  }
   switch (metodo) {
     case MetodoPago.EFECTIVO:      return '01';
     case MetodoPago.TRANSFERENCIA: return '02';
     case MetodoPago.CHEQUE:        return '02';
     case MetodoPago.TARJETA:       return '03';
     default:                       return null; // 'otro', vacío, o algo no reconocido
+  }
+}
+
+/**
+ * Columna del desglose de forma de pago del Formato 607 (campos 17-23) para
+ * un código DGII ya traducido por mapFormaPagoDgii(). 'Nota de Crédito'
+ * (06) no tiene columna propia en el 607 — cae en "otras" (23), el cajón
+ * oficial de DGII para lo que no encaja en las demás. 'Bonos o
+ * Certificados de Regalo' (columna 21) no tiene tipo de formasPago que le
+ * corresponda hoy — queda siempre en 0 hasta que exista uno.
+ */
+export function columna607PorCodigoDgii(
+  codigo: string | null,
+): 'efectivo' | 'chequeTransferencia' | 'tarjeta' | 'credito' | 'permuta' | 'otras' | null {
+  switch (codigo) {
+    case '01': return 'efectivo';
+    case '02': return 'chequeTransferencia';
+    case '03': return 'tarjeta';
+    case '04': return 'credito';
+    case '05': return 'permuta';
+    case '06': return 'otras';
+    default:   return null;
+  }
+}
+
+/**
+ * Traduce la etiqueta del botón que pulsó el cajero ('Efectivo', 'Tarjeta',
+ * ...) al tipo numérico DGII-nativo que espera Factura.formasPago (1-6).
+ * Antes vivía duplicado, byte a byte, como método privado en
+ * cotizaciones.service.ts y pre-factura.service.ts — un solo traductor
+ * para los dos.
+ */
+export function tipoFormaPagoDesdeEtiqueta(metodoPago: string): number | undefined {
+  switch (metodoPago.trim().toLowerCase()) {
+    case 'efectivo':      return 1;
+    case 'transferencia':
+    case 'cheque':        return 2;
+    case 'tarjeta':       return 3;
+    case 'crédito':
+    case 'credito':       return 4;
+    default:              return undefined;
   }
 }
 
