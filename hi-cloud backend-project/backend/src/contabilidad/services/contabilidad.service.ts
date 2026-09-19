@@ -321,14 +321,78 @@ export class ContabilidadService implements OnModuleInit {
     if (this.eid) where.empresaId = this.eid;
     const existe = await this.cuentaRepository.findOne({ where });
     if (existe) throw new ConflictException(`Código ${dto.codigo} ya existe`);
+    await this.validarPadreYEtiquetas(dto);
     const eid = this.eid;
     return this.cuentaRepository.save(this.cuentaRepository.create({ ...dto, ...(eid ? { empresaId: eid } : {}) }));
   }
 
   async updateCuenta(id: number, dto: UpdateCuentaContableDto) {
-    await this.findCuentaById(id);
+    const actual = await this.findCuentaById(id);
+    await this.validarPadreYEtiquetas(dto, actual, id);
     await this.cuentaRepository.update(id, dto);
     return this.findCuentaById(id);
+  }
+
+  /**
+   * Validaciones de integridad del catálogo — antes no existían y se podían
+   * crear cuentas huérfanas o incoherentes con su padre.
+   *
+   * 1. Si viene cuentaPadreId: debe existir (en el tenant), no puede ser la
+   *    propia cuenta, y el tipo/naturaleza de la cuenta deben coincidir con
+   *    los del padre (una subcuenta de "Gastos" no puede ser tipo ingreso).
+   * 2. Las etiquetas fiscales (tipoGasto606/anexoIR2/casillaIR2/requiereNCF
+   *    — Fase 1 del catálogo fiscal dominicano) solo se ofrecen en cuentas
+   *    de movimiento (permiteMovimientos=true) de tipo gasto o costo: las
+   *    de agrupación no reciben asientos y no tiene sentido etiquetarlas.
+   */
+  private async validarPadreYEtiquetas(
+    dto: Partial<CreateCuentaContableDto>,
+    cuentaActual?: CuentaContable,
+    idActual?: number,
+  ): Promise<void> {
+    if (dto.cuentaPadreId !== undefined && dto.cuentaPadreId !== null) {
+      if (idActual !== undefined && dto.cuentaPadreId === idActual) {
+        throw new BadRequestException('Una cuenta no puede ser su propio padre');
+      }
+      const where: any = { id: dto.cuentaPadreId, isActive: true };
+      if (this.eid) where.empresaId = this.eid;
+      const padre = await this.cuentaRepository.findOne({ where });
+      if (!padre) {
+        throw new NotFoundException(`Cuenta padre #${dto.cuentaPadreId} no existe`);
+      }
+
+      const tipoEfectivo = dto.tipo ?? cuentaActual?.tipo;
+      if (tipoEfectivo && padre.tipo !== tipoEfectivo) {
+        throw new BadRequestException(
+          `El tipo de la cuenta (${tipoEfectivo}) no coincide con el de la cuenta padre "${padre.nombre}" (${padre.tipo})`,
+        );
+      }
+
+      const naturalezaEfectiva = dto.naturaleza ?? cuentaActual?.naturaleza;
+      if (naturalezaEfectiva && padre.naturaleza !== naturalezaEfectiva) {
+        throw new BadRequestException(
+          `La naturaleza de la cuenta (${naturalezaEfectiva}) no coincide con la de la cuenta padre "${padre.nombre}" (${padre.naturaleza})`,
+        );
+      }
+    }
+
+    const tieneEtiquetaFiscal =
+      dto.tipoGasto606 !== undefined || dto.anexoIR2 !== undefined ||
+      dto.casillaIR2  !== undefined || dto.requiereNCF !== undefined;
+    if (tieneEtiquetaFiscal) {
+      const tipoEfectivo = dto.tipo ?? cuentaActual?.tipo;
+      if (tipoEfectivo !== TipoCuenta.GASTO && tipoEfectivo !== TipoCuenta.COSTO) {
+        throw new BadRequestException(
+          'Las etiquetas fiscales (606/IR-2) solo se pueden asignar a cuentas de tipo gasto o costo',
+        );
+      }
+      const permiteMovimientosEfectivo = dto.permiteMovimientos ?? cuentaActual?.permiteMovimientos;
+      if (!permiteMovimientosEfectivo) {
+        throw new BadRequestException(
+          'Las etiquetas fiscales solo se pueden asignar a cuentas de movimiento, no de agrupación',
+        );
+      }
+    }
   }
 
   async removeCuenta(id: number) {

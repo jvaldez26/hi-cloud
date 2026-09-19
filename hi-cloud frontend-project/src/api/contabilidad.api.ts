@@ -5,6 +5,15 @@ export interface CuentaPayload {
   tipo: string; naturaleza: string;
   nivel: number; permiteMovimientos: boolean;
   cuentaPadreId?: number; descripcion?: string;
+  /**
+   * Etiquetas fiscales (Fase 1 — catálogo fiscal dominicano 606/IR-2).
+   * El backend solo las acepta en cuentas de movimiento de tipo gasto o
+   * costo; ver ContabilidadService.validarPadreYEtiquetas().
+   */
+  tipoGasto606?: string | null;
+  anexoIR2?: 'A1' | 'B1' | 'D' | null;
+  casillaIR2?: string | null;
+  requiereNCF?: boolean | null;
 }
 
 export interface AsientoLineaPayload {
