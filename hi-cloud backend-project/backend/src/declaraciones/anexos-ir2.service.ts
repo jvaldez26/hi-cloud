@@ -112,19 +112,29 @@ export class AnexosIR2Service {
   }
 
   private async cuentasConAnexoA1(eid: number, fechaCorte: string) {
+    // FIX 3, COMMIT 3 (2026-09-20) — mismo bug del PASO 0: los filtros de
+    // asientos_contables vivían en el ON de un LEFT JOIN contra
+    // asiento_lineas, que no los aplica como filtro real (un asiento
+    // anulado/de otra empresa/inactivo/fuera de fecha seguía sumándose). Se
+    // pre-filtran en un INNER JOIN dentro de una subconsulta, que sí actúa
+    // como filtro, y esa subconsulta ya filtrada se LEFT JOINea contra cc.
     const rows = await this.dataSource.query<any[]>(
       `
       SELECT cc.codigo, cc.nombre, cc.tipo, cc.naturaleza, ca."casillaIR2" AS "casillaIR2",
-             COALESCE(SUM(CASE WHEN cc.naturaleza = 'deudora' THEN al.debe - al.haber ELSE al.haber - al.debe END), 0)::numeric AS saldo
+             COALESCE(SUM(CASE WHEN cc.naturaleza = 'deudora' THEN m.debe - m.haber ELSE m.haber - m.debe END), 0)::numeric AS saldo
       FROM cuentas_contables cc
       JOIN cuenta_anexo_ir2 ca ON ca."cuentaContableId" = cc.id AND ca."isActive" = true AND ca."anexoIR2" = 'A1'
-      LEFT JOIN asiento_lineas al ON al."cuentaContableId" = cc.id AND al."isActive" = true
-      LEFT JOIN asientos_contables ac ON ac.id = al."asientoId"
-        AND ac.estado = 'contabilizado' AND ac."isActive" = true
-        AND ac."empresaId" = $1 AND ac.fecha <= $2
+      LEFT JOIN (
+        SELECT al."cuentaContableId", al.debe, al.haber
+        FROM asiento_lineas al
+        JOIN asientos_contables ac ON ac.id = al."asientoId"
+          AND ac.estado = 'contabilizado' AND ac."isActive" = true
+          AND ac."empresaId" = $1 AND ac.fecha <= $2
+        WHERE al."isActive" = true
+      ) m ON m."cuentaContableId" = cc.id
       WHERE cc."isActive" = true AND cc."empresaId" = $1 AND cc."permiteMovimientos" = true
       GROUP BY cc.id, cc.codigo, cc.nombre, cc.tipo, cc.naturaleza, ca."casillaIR2"
-      HAVING COALESCE(SUM(CASE WHEN cc.naturaleza = 'deudora' THEN al.debe - al.haber ELSE al.haber - al.debe END), 0) != 0
+      HAVING COALESCE(SUM(CASE WHEN cc.naturaleza = 'deudora' THEN m.debe - m.haber ELSE m.haber - m.debe END), 0) != 0
       ORDER BY cc.codigo
       `,
       [eid, fechaCorte],
@@ -220,19 +230,24 @@ export class AnexosIR2Service {
   }
 
   private async cuentasConAnexoB1(eid: number, desde: string, hasta: string) {
+    // FIX 3, COMMIT 3 (2026-09-20) — ver el comentario de cuentasConAnexoA1().
     const rows = await this.dataSource.query<any[]>(
       `
       SELECT cc.codigo, cc.nombre, cc.tipo, cc.naturaleza, ca."casillaIR2" AS "casillaIR2",
-             COALESCE(SUM(CASE WHEN cc.naturaleza = 'deudora' THEN al.debe - al.haber ELSE al.haber - al.debe END), 0)::numeric AS saldo
+             COALESCE(SUM(CASE WHEN cc.naturaleza = 'deudora' THEN m.debe - m.haber ELSE m.haber - m.debe END), 0)::numeric AS saldo
       FROM cuentas_contables cc
       JOIN cuenta_anexo_ir2 ca ON ca."cuentaContableId" = cc.id AND ca."isActive" = true AND ca."anexoIR2" = 'B1'
-      LEFT JOIN asiento_lineas al ON al."cuentaContableId" = cc.id AND al."isActive" = true
-      LEFT JOIN asientos_contables ac ON ac.id = al."asientoId"
-        AND ac.estado = 'contabilizado' AND ac."isActive" = true
-        AND ac."empresaId" = $1 AND ac.fecha BETWEEN $2 AND $3
+      LEFT JOIN (
+        SELECT al."cuentaContableId", al.debe, al.haber
+        FROM asiento_lineas al
+        JOIN asientos_contables ac ON ac.id = al."asientoId"
+          AND ac.estado = 'contabilizado' AND ac."isActive" = true
+          AND ac."empresaId" = $1 AND ac.fecha BETWEEN $2 AND $3
+        WHERE al."isActive" = true
+      ) m ON m."cuentaContableId" = cc.id
       WHERE cc."isActive" = true AND cc."empresaId" = $1 AND cc."permiteMovimientos" = true
       GROUP BY cc.id, cc.codigo, cc.nombre, cc.tipo, cc.naturaleza, ca."casillaIR2"
-      HAVING COALESCE(SUM(CASE WHEN cc.naturaleza = 'deudora' THEN al.debe - al.haber ELSE al.haber - al.debe END), 0) != 0
+      HAVING COALESCE(SUM(CASE WHEN cc.naturaleza = 'deudora' THEN m.debe - m.haber ELSE m.haber - m.debe END), 0) != 0
       ORDER BY cc.codigo
       `,
       [eid, desde, hasta],
@@ -244,15 +259,20 @@ export class AnexosIR2Service {
   }
 
   private async cuentasDeResultadosSinAnexoB1(eid: number, desde: string, hasta: string) {
+    // FIX 3, COMMIT 3 (2026-09-20) — ver el comentario de cuentasConAnexoA1().
     const rows = await this.dataSource.query<any[]>(
       `
       SELECT cc.codigo, cc.nombre, cc.tipo,
-             COALESCE(SUM(CASE WHEN cc.naturaleza = 'deudora' THEN al.debe - al.haber ELSE al.haber - al.debe END), 0)::numeric AS saldo
+             COALESCE(SUM(CASE WHEN cc.naturaleza = 'deudora' THEN m.debe - m.haber ELSE m.haber - m.debe END), 0)::numeric AS saldo
       FROM cuentas_contables cc
-      LEFT JOIN asiento_lineas al ON al."cuentaContableId" = cc.id AND al."isActive" = true
-      LEFT JOIN asientos_contables ac ON ac.id = al."asientoId"
-        AND ac.estado = 'contabilizado' AND ac."isActive" = true
-        AND ac."empresaId" = $1 AND ac.fecha BETWEEN $2 AND $3
+      LEFT JOIN (
+        SELECT al."cuentaContableId", al.debe, al.haber
+        FROM asiento_lineas al
+        JOIN asientos_contables ac ON ac.id = al."asientoId"
+          AND ac.estado = 'contabilizado' AND ac."isActive" = true
+          AND ac."empresaId" = $1 AND ac.fecha BETWEEN $2 AND $3
+        WHERE al."isActive" = true
+      ) m ON m."cuentaContableId" = cc.id
       WHERE cc."isActive" = true AND cc."empresaId" = $1 AND cc."permiteMovimientos" = true
         AND cc.tipo IN ('ingreso', 'costo', 'gasto')
         AND NOT EXISTS (
@@ -260,7 +280,7 @@ export class AnexosIR2Service {
           WHERE ca."cuentaContableId" = cc.id AND ca."isActive" = true AND ca."anexoIR2" = 'B1'
         )
       GROUP BY cc.id, cc.codigo, cc.nombre, cc.tipo
-      HAVING COALESCE(SUM(CASE WHEN cc.naturaleza = 'deudora' THEN al.debe - al.haber ELSE al.haber - al.debe END), 0) != 0
+      HAVING COALESCE(SUM(CASE WHEN cc.naturaleza = 'deudora' THEN m.debe - m.haber ELSE m.haber - m.debe END), 0) != 0
       ORDER BY cc.codigo
       `,
       [eid, desde, hasta],
@@ -394,16 +414,23 @@ export class AnexosIR2Service {
   }
 
   private async saldoCuentasInventarioD(eid: number, fechaCorte: string) {
+    // FIX 3, COMMIT 3 (2026-09-20) — ver el comentario de cuentasConAnexoA1().
+    // Este es el de mayor impacto: alimenta costoVentaCalculado directamente,
+    // un número real del anexo, no solo una alerta.
     const rows = await this.dataSource.query<any[]>(
       `
       SELECT cc.codigo, cc.nombre, ca."casillaIR2" AS "casillaIR2",
-             COALESCE(SUM(al.debe - al.haber), 0)::numeric AS saldo
+             COALESCE(SUM(m.debe - m.haber), 0)::numeric AS saldo
       FROM cuentas_contables cc
       JOIN cuenta_anexo_ir2 ca ON ca."cuentaContableId" = cc.id AND ca."isActive" = true AND ca."anexoIR2" = 'D'
-      LEFT JOIN asiento_lineas al ON al."cuentaContableId" = cc.id AND al."isActive" = true
-      LEFT JOIN asientos_contables ac ON ac.id = al."asientoId"
-        AND ac.estado = 'contabilizado' AND ac."isActive" = true
-        AND ac."empresaId" = $1 AND ac.fecha <= $2
+      LEFT JOIN (
+        SELECT al."cuentaContableId", al.debe, al.haber
+        FROM asiento_lineas al
+        JOIN asientos_contables ac ON ac.id = al."asientoId"
+          AND ac.estado = 'contabilizado' AND ac."isActive" = true
+          AND ac."empresaId" = $1 AND ac.fecha <= $2
+        WHERE al."isActive" = true
+      ) m ON m."cuentaContableId" = cc.id
       WHERE cc."isActive" = true AND cc."empresaId" = $1 AND cc."permiteMovimientos" = true AND cc.tipo = 'activo'
       GROUP BY cc.id, cc.codigo, cc.nombre, ca."casillaIR2"
       ORDER BY cc.codigo
@@ -442,15 +469,20 @@ export class AnexosIR2Service {
   }
 
   private async cuentasDeBalanceSinAnexoA1(eid: number, fechaCorte: string) {
+    // FIX 3, COMMIT 3 (2026-09-20) — ver el comentario de cuentasConAnexoA1().
     const rows = await this.dataSource.query<any[]>(
       `
       SELECT cc.codigo, cc.nombre, cc.tipo,
-             COALESCE(SUM(CASE WHEN cc.naturaleza = 'deudora' THEN al.debe - al.haber ELSE al.haber - al.debe END), 0)::numeric AS saldo
+             COALESCE(SUM(CASE WHEN cc.naturaleza = 'deudora' THEN m.debe - m.haber ELSE m.haber - m.debe END), 0)::numeric AS saldo
       FROM cuentas_contables cc
-      LEFT JOIN asiento_lineas al ON al."cuentaContableId" = cc.id AND al."isActive" = true
-      LEFT JOIN asientos_contables ac ON ac.id = al."asientoId"
-        AND ac.estado = 'contabilizado' AND ac."isActive" = true
-        AND ac."empresaId" = $1 AND ac.fecha <= $2
+      LEFT JOIN (
+        SELECT al."cuentaContableId", al.debe, al.haber
+        FROM asiento_lineas al
+        JOIN asientos_contables ac ON ac.id = al."asientoId"
+          AND ac.estado = 'contabilizado' AND ac."isActive" = true
+          AND ac."empresaId" = $1 AND ac.fecha <= $2
+        WHERE al."isActive" = true
+      ) m ON m."cuentaContableId" = cc.id
       WHERE cc."isActive" = true AND cc."empresaId" = $1 AND cc."permiteMovimientos" = true
         AND cc.tipo IN ('activo', 'pasivo', 'patrimonio')
         AND NOT EXISTS (
@@ -458,7 +490,7 @@ export class AnexosIR2Service {
           WHERE ca."cuentaContableId" = cc.id AND ca."isActive" = true AND ca."anexoIR2" = 'A1'
         )
       GROUP BY cc.id, cc.codigo, cc.nombre, cc.tipo
-      HAVING COALESCE(SUM(CASE WHEN cc.naturaleza = 'deudora' THEN al.debe - al.haber ELSE al.haber - al.debe END), 0) != 0
+      HAVING COALESCE(SUM(CASE WHEN cc.naturaleza = 'deudora' THEN m.debe - m.haber ELSE m.haber - m.debe END), 0) != 0
       ORDER BY cc.codigo
       `,
       [eid, fechaCorte],
