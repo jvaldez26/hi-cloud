@@ -69,6 +69,13 @@ export class ReportesFinancierosController {
     return this.balSvc.estadoCuentaProveedor(id);
   }
 
+  @Get('asientos-descuadrados')
+  @ApiOperation({ summary: 'Listado de asientos donde totalDebe ≠ totalHaber — respalda la línea del Balance General' })
+  @ApiQuery({ name: 'hasta', required: false, description: 'Fecha de corte (default: sin límite)' })
+  asientosDescuadrados(@Query('hasta') hasta?: string) {
+    return this.svc.asientosDescuadrados(hasta);
+  }
+
   // ── PDF exports ────────────────────────────────────────────────────────────
 
   @Get('estado-resultados/pdf')

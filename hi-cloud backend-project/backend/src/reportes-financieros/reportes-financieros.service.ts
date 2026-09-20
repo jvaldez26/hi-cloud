@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 import { AsientoContable } from '../contabilidad/entities/asiento-contable.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { TenantContextMissingException } from '../tenant/exceptions/tenant-context-missing.exception';
+import { SaldosCuentasService } from './saldos-cuentas.service';
 
 export interface LineaCuenta {
   codigo:      string;
@@ -24,6 +25,7 @@ export class ReportesFinancierosService {
     @InjectRepository(AsientoContable)
     private readonly asientoRepo: Repository<AsientoContable>,
     private readonly tenantSvc: TenantService,
+    private readonly saldosCuentasService: SaldosCuentasService,
   ) {}
 
   /**
@@ -56,62 +58,25 @@ export class ReportesFinancierosService {
   }
 
   // ─── Movimientos por cuenta (base de los 2 informes) ─────────────────────────
+  //
+  // Balance/Diagnóstico (2026-09-20): delega en SaldosCuentasService, la
+  // MISMA función que usa Balance de Comprobación — antes cada motor tenía
+  // su propia consulta SQL de aquí y podían divergir para una cuenta cuyo
+  // movimiento va contra su naturaleza declarada. LineaCuenta se mantiene
+  // como alias del tipo compartido para no tocar el resto de este archivo.
 
   private async getMovimientosCuentas(desde?: string, hasta?: string): Promise<LineaCuenta[]> {
-    // $1 = empresaId; las fechas van parametrizadas ($2/$3), nunca interpoladas.
-    const params: unknown[] = [this.eid];
-    let condFecha = '';
-    if (desde && hasta) {
-      params.push(desde, hasta);
-      condFecha = `AND ac.fecha BETWEEN $${params.length - 1} AND $${params.length}`;
-    } else if (hasta) {
-      params.push(hasta);
-      condFecha = `AND ac.fecha <= $${params.length}`;
-    }
+    return this.saldosCuentasService.obtenerSaldos(this.eid, desde, hasta);
+  }
 
-    const rows = await this.dataSource.query<{
-      codigo: string; nombre: string; tipo: string; naturaleza: string;
-      nivel: string; total_debe: string; total_haber: string;
-    }[]>(`
-      SELECT
-        cc.codigo,
-        cc.nombre,
-        cc.tipo,
-        cc.naturaleza,
-        cc."nivel",
-        COALESCE(SUM(al.debe),  0)::text AS total_debe,
-        COALESCE(SUM(al.haber), 0)::text AS total_haber
-      FROM cuentas_contables cc
-      LEFT JOIN asiento_lineas al ON al."cuentaContableId" = cc.id
-        AND al."isActive" = true
-      LEFT JOIN asientos_contables ac ON ac.id = al."asientoId"
-        AND ac.estado = 'contabilizado'
-        AND ac."isActive" = true
-        AND ac."empresaId" = $1
-        ${condFecha}
-      WHERE cc."isActive" = true
-        AND cc."empresaId" = $1
-      GROUP BY cc.id, cc.codigo, cc.nombre, cc.tipo, cc.naturaleza, cc."nivel"
-      ORDER BY cc.codigo
-    `, params);
-
-    return rows.map(r => {
-      const debe  = +r.total_debe;
-      const haber = +r.total_haber;
-      // Deudora  (activo, costo, gasto)    → saldo = debe − haber
-      // Acreedora (pasivo, patrimonio, ingreso) → saldo = haber − debe
-      const saldo = r.naturaleza === 'deudora' ? debe - haber : haber - debe;
-      return {
-        codigo:     r.codigo,
-        nombre:     r.nombre,
-        tipo:       r.tipo,
-        naturaleza: r.naturaleza,
-        nivel:      Number(r.nivel),
-        totalDebe:  +debe.toFixed(2),
-        totalHaber: +haber.toFixed(2),
-        saldo:      +saldo.toFixed(2),
-      };
-    });
+  /** Neto ingresos − costos − gastos para un rango — la misma fórmula que estadoResultados(). */
+  private async resultadoNeto(desde: string | undefined, hasta: string): Promise<number> {
+    const cuentas = await this.getMovimientosCuentas(desde, hasta);
+    const neto = ['ingreso', 'costo', 'gasto'].reduce((acc, tipo) => {
+      const subtotal = this.subtotal(cuentas, tipo);
+      return tipo === 'ingreso' ? acc + subtotal : acc - subtotal;
+    }, 0);
+    return +neto.toFixed(2);
   }
 
   // ─── Balance General ──────────────────────────────────────────────────────────
@@ -123,10 +88,35 @@ export class ReportesFinancierosService {
     const pasivos    = this.agruparPorTipo(cuentas, 'pasivo');
     const patrimonio = this.agruparPorTipo(cuentas, 'patrimonio');
 
-    const totalActivos    = this.subtotal(activos, 'activo');
-    const totalPasivos    = this.subtotal(pasivos, 'pasivo');
-    const totalPatrimonio = this.subtotal(patrimonio, 'patrimonio');
-    const ecuacion        = +(totalActivos - (totalPasivos + totalPatrimonio)).toFixed(2);
+    const totalActivos       = this.subtotal(activos, 'activo');
+    const totalPasivos       = this.subtotal(pasivos, 'pasivo');
+    const totalPatrimonioCta = this.subtotal(patrimonio, 'patrimonio');
+
+    // Balance/Diagnóstico (2026-09-20) — "Resultado del ejercicio" y
+    // "Resultados acumulados": el motor no tiene asiento de cierre de
+    // ejercicio (ver contabilidad/), así que ingresos, costos y gastos se
+    // acumulan sin límite de fecha en sus propias cuentas y JAMÁS se
+    // reflejaban en Patrimonio — la ecuación del balance no podía cuadrar
+    // desde el primer año con actividad. Son líneas CALCULADAS en cada
+    // consulta (nunca un asiento, nunca se persisten). El ejercicio fiscal
+    // se asume año calendario (no hay configuración de ejercicio fiscal
+    // distinto por empresa en el sistema hoy).
+    const anio                 = Number(fechaCorte.slice(0, 4));
+    const inicioEjercicio      = `${anio}-01-01`;
+    const finEjercicioAnterior = `${anio - 1}-12-31`;
+
+    const [resultadoDelEjercicio, resultadosAcumulados, asientosDescuadrados] = await Promise.all([
+      this.resultadoNeto(inicioEjercicio, fechaCorte),
+      this.resultadoNeto(undefined, finEjercicioAnterior),
+      this.saldosCuentasService.obtenerAsientosDescuadrados(this.eid, fechaCorte),
+    ]);
+
+    const totalPatrimonio = +(totalPatrimonioCta + resultadoDelEjercicio + resultadosAcumulados).toFixed(2);
+    // La ecuación se evalúa sobre los libros tal como están — un descuadre
+    // de asientos históricos (si lo hay) se reporta aparte, nunca se
+    // absorbe en silencio dentro de "cuadrado".
+    const ecuacion = +(totalActivos - (totalPasivos + totalPatrimonio)).toFixed(2);
+    const diferenciaDescuadrados = +asientosDescuadrados.reduce((s, a) => s + a.diferencia, 0).toFixed(2);
 
     // Activo corriente vs no corriente
     const activoCorriente    = activos.filter(c => c.codigo.startsWith('1.1'));
@@ -147,8 +137,17 @@ export class ReportesFinancierosService {
         total:        +totalPasivos.toFixed(2),
       },
       patrimonio: {
-        cuentas:      patrimonio,
-        total:        +totalPatrimonio.toFixed(2),
+        cuentas: patrimonio,
+        // Líneas calculadas — no vienen de ninguna cuenta ni asiento.
+        calculadas: {
+          resultadoDelEjercicio: { desde: inicioEjercicio, hasta: fechaCorte, monto: resultadoDelEjercicio },
+          resultadosAcumulados:  { hasta: finEjercicioAnterior, monto: resultadosAcumulados },
+        },
+        total: totalPatrimonio,
+      },
+      diferenciaAsientosDescuadrados: {
+        total:    diferenciaDescuadrados,
+        cantidad: asientosDescuadrados.length,
       },
       totales: {
         activos:           +totalActivos.toFixed(2),
@@ -280,5 +279,13 @@ export class ReportesFinancierosService {
       patrimonio:  bg.patrimonio.total,
       cuadrado:    bg.totales.cuadrado,
     };
+  }
+
+  // ─── Listado de asientos descuadrados ────────────────────────────────────────
+  // Respalda la línea "Diferencia por asientos descuadrados" de Balance
+  // General — el link al listado que muestra esa línea llega aquí.
+
+  async asientosDescuadrados(hasta?: string) {
+    return this.saldosCuentasService.obtenerAsientosDescuadrados(this.eid, hasta);
   }
 }

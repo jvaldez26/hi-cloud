@@ -15,6 +15,7 @@
  */
 
 import { ReportesFinancierosService } from './reportes-financieros.service';
+import { SaldosCuentasService } from './saldos-cuentas.service';
 import { TenantContextMissingException } from '../tenant/exceptions/tenant-context-missing.exception';
 
 interface QueryCapturada { sql: string; params: unknown[] }
@@ -29,9 +30,15 @@ function makeDataSource(captured: QueryCapturada[]) {
   } as any;
 }
 
+// Balance/Diagnóstico (2026-09-20) — getMovimientosCuentas() delega en
+// SaldosCuentasService (la misma función que usa Balance de Comprobación);
+// se instancia aquí de verdad, contra el MISMO dataSource mockeado, para que
+// las aserciones de SQL de este archivo (que documentaban ese motor antes de
+// mudarse) sigan siendo válidas sin duplicar el mock.
 function makeService(empresaId: number | null, captured: QueryCapturada[]) {
+  const ds = makeDataSource(captured);
   const tenantSvc = { getEmpresaIdOrNull: () => empresaId } as any;
-  return new ReportesFinancierosService(makeDataSource(captured), {} as any, tenantSvc);
+  return new ReportesFinancierosService(ds, {} as any, tenantSvc, new SaldosCuentasService(ds));
 }
 
 /** Normaliza espacios para poder afirmar sobre fragmentos de SQL. */

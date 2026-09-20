@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { TenantService } from '../tenant/tenant.service';
 import { fechaHoyRD } from '../common/utils/fecha-local.util';
+import { SaldosCuentasService } from './saldos-cuentas.service';
 
 export interface LineaBalance {
   codigo:      string;
@@ -20,6 +21,7 @@ export class BalanceComprobacionService {
   constructor(
     private readonly ds: DataSource,
     private readonly tenantSvc: TenantService,
+    private readonly saldosCuentasService: SaldosCuentasService,
   ) {}
 
   private get eid() { return this.tenantSvc.getEmpresaId(); }
@@ -30,49 +32,27 @@ export class BalanceComprobacionService {
     fecha:   string;
   }> {
     const fechaCorte = hasta ?? fechaHoyRD();
+    const eid = this.eid; // resuelto UNA vez — falla cerrado antes de tocar la BD
 
-    const rows = await this.ds.query<{
-      codigo: string; nombre: string; tipo: string; naturaleza: string;
-      nivel: string; total_debe: string; total_haber: string;
-    }[]>(`
-      SELECT
-        cc.codigo,
-        cc.nombre,
-        cc.tipo,
-        cc.naturaleza,
-        cc."nivel",
-        COALESCE(SUM(al.debe),  0)::text AS total_debe,
-        COALESCE(SUM(al.haber), 0)::text AS total_haber
-      FROM cuentas_contables cc
-      LEFT JOIN asiento_lineas al ON al."cuentaContableId" = cc.id
-        AND al."isActive" = true
-      LEFT JOIN asientos_contables ac ON ac.id = al."asientoId"
-        AND ac.estado = 'contabilizado'
-        AND ac."isActive" = true
-        AND ac.fecha <= $1
-        AND ac."empresaId" = $2
-      WHERE cc."isActive" = true
-        AND cc."empresaId" = $2
-      GROUP BY cc.id, cc.codigo, cc.nombre, cc.tipo, cc.naturaleza, cc."nivel"
-      HAVING COALESCE(SUM(al.debe), 0) != 0 OR COALESCE(SUM(al.haber), 0) != 0
-      ORDER BY cc.codigo
-    `, [fechaCorte, this.eid]);
+    // Balance/Diagnóstico (2026-09-20): saldos leídos de SaldosCuentasService,
+    // la misma función que usa Balance General/Estado de Resultados — antes
+    // cada uno tenía su propia consulta SQL y podían divergir. Las columnas
+    // Deudor/Acreedor de un balance de comprobación siguen comparando
+    // totalDebe/totalHaber CRUDOS (no el saldo firmado por naturaleza): así
+    // es como se arma un balance de comprobación — eso no cambia.
+    const cuentas = await this.saldosCuentasService.obtenerSaldos(eid, undefined, fechaCorte);
 
-    const lineas: LineaBalance[] = rows.map(r => {
-      const debe   = +r.total_debe;
-      const haber  = +r.total_haber;
-      return {
-        codigo:        r.codigo,
-        nombre:        r.nombre,
-        tipo:          r.tipo,
-        naturaleza:    r.naturaleza,
-        nivel:         Number(r.nivel),
-        totalDebe:     +debe.toFixed(2),
-        totalHaber:    +haber.toFixed(2),
-        saldoDeudor:   debe > haber ? +(debe - haber).toFixed(2) : 0,
-        saldoAcreedor: haber > debe ? +(haber - debe).toFixed(2) : 0,
-      };
-    });
+    const lineas: LineaBalance[] = cuentas.map(c => ({
+      codigo:        c.codigo,
+      nombre:        c.nombre,
+      tipo:          c.tipo,
+      naturaleza:    c.naturaleza,
+      nivel:         c.nivel,
+      totalDebe:     c.totalDebe,
+      totalHaber:    c.totalHaber,
+      saldoDeudor:   c.totalDebe > c.totalHaber ? +(c.totalDebe - c.totalHaber).toFixed(2) : 0,
+      saldoAcreedor: c.totalHaber > c.totalDebe ? +(c.totalHaber - c.totalDebe).toFixed(2) : 0,
+    }));
 
     const totDebe     = lineas.reduce((s, l) => s + l.totalDebe,     0);
     const totHaber    = lineas.reduce((s, l) => s + l.totalHaber,    0);
