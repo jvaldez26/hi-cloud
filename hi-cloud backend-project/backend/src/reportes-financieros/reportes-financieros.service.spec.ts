@@ -64,15 +64,18 @@ describe('ReportesFinancierosService — aislamiento multi-tenant', () => {
 
   // ── 2 y 3. Query base scopeada ──────────────────────────────────────────────
 
+  // PASO 0 (2026-09-20): getMovimientosCuentas() delega en
+  // SaldosCuentasService — la forma exacta del SQL (JOIN vs LEFT JOIN,
+  // posición del WHERE exterior) está cubierta a fondo en
+  // saldos-cuentas.service.spec.ts. Estas pruebas solo confirman que
+  // ReportesFinancierosService le pasa el empresaId correcto.
   describe('getMovimientosCuentas (Estado de Resultados / Balance General)', () => {
-    it('filtra asientos por empresaId dentro del ON del LEFT JOIN', async () => {
+    it('filtra asientos por empresaId', async () => {
       const captured: QueryCapturada[] = [];
       await makeService(7, captured).estadoResultados('2026-01-01', '2026-12-31');
 
       const sql = norm(captured[0].sql);
-      // El filtro debe estar entre el LEFT JOIN de asientos y el WHERE.
-      const tramoJoin = sql.slice(sql.indexOf('LEFT JOIN asientos_contables'), sql.indexOf('WHERE'));
-      expect(tramoJoin).toContain('ac."empresaId" = $1');
+      expect(sql).toContain('ac."empresaId" = $1');
     });
 
     it('filtra el catalogo de cuentas por empresaId (elimina lineas duplicadas por empresa)', async () => {
@@ -80,7 +83,7 @@ describe('ReportesFinancierosService — aislamiento multi-tenant', () => {
       await makeService(7, captured).estadoResultados('2026-01-01', '2026-12-31');
 
       const sql = norm(captured[0].sql);
-      expect(sql.slice(sql.indexOf('WHERE'))).toContain('cc."empresaId" = $1');
+      expect(sql).toContain('cc."empresaId" = $1');
     });
 
     it('pasa el empresaId del contexto como $1', async () => {

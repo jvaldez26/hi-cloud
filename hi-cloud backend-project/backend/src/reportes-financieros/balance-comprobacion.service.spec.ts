@@ -77,21 +77,27 @@ describe('BalanceComprobacionService — aislamiento multi-tenant', () => {
   // duplicar, en saldos-cuentas.service.spec.ts; estas pruebas solo confirman
   // que BalanceComprobacionService le pasa el empresaId y la fecha correctos.
 
-  it('filtra el catalogo de cuentas (cc) por empresaId en el WHERE', async () => {
+  // PASO 0 (2026-09-20): la forma exacta de la query (posición del WHERE
+  // exterior, JOIN vs LEFT JOIN) ya está cubierta a fondo, y con la
+  // precisión que requiere, en saldos-cuentas.service.spec.ts. Estas dos
+  // pruebas solo confirman que BalanceComprobacionService le pasa a esa
+  // función el empresaId y la fecha correctos — sin duplicar cobertura ni
+  // acoplarse a la forma interna del SQL.
+
+  it('filtra el catalogo de cuentas (cc) por empresaId', async () => {
     const captured: QueryCapturada[] = [];
     await makeService(7, captured).getBalance('2026-12-31');
 
     const sql = norm(captured[0].sql);
-    expect(sql.slice(sql.indexOf('WHERE'))).toContain('cc."empresaId" = $1');
+    expect(sql).toContain('cc."empresaId" = $1');
   });
 
-  it('filtra los asientos (ac) por empresaId dentro del ON del LEFT JOIN (no en el WHERE)', async () => {
+  it('filtra los asientos (ac) por empresaId', async () => {
     const captured: QueryCapturada[] = [];
     await makeService(7, captured).getBalance('2026-12-31');
 
     const sql = norm(captured[0].sql);
-    const tramoJoin = sql.slice(sql.indexOf('LEFT JOIN asientos_contables'), sql.indexOf('WHERE'));
-    expect(tramoJoin).toContain('ac."empresaId" = $1');
+    expect(sql).toContain('ac."empresaId" = $1');
   });
 
   it('ya no deja pasar cuentas o asientos huerfanos (empresaId IS NULL) de otra empresa', async () => {

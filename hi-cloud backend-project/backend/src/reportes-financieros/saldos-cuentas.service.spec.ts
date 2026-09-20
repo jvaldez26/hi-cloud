@@ -24,9 +24,21 @@
  * COBERTURA — obtenerAsientosDescuadrados():
  * 6. Filtra por empresaId, sin "OR ... IS NULL".
  * 7. Empresas distintas reciben su propio empresaId.
+ *
+ * COBERTURA — PASO 0 (2026-09-20), contra Postgres real (requiere BD):
+ * 8. Un asiento ANULADO, de OTRA EMPRESA, INACTIVO, o FUERA de la fecha de
+ *    corte no contamina la suma de una cuenta que sí tiene movimientos
+ *    válidos — bug real encontrado en producción: la suma total de una
+ *    empresa (8,920,031.51 debe / 8,920,031.43 haber) no podía cuadrar si
+ *    cada asiento, verificado uno por uno, sí cuadraba. Causa: los filtros
+ *    de asientos_contables vivían en el ON de un LEFT JOIN, que no los
+ *    aplica como filtro real. Un mock de dataSource.query() (como el resto
+ *    de este archivo) no puede probar esto — solo demuestra la FORMA del
+ *    SQL, no su comportamiento real contra el motor de Postgres.
  */
 
 import { SaldosCuentasService } from './saldos-cuentas.service';
+import { DataSource } from 'typeorm';
 
 interface QueryCapturada { sql: string; params: unknown[] }
 
@@ -43,21 +55,33 @@ const norm = (s: string) => s.replace(/\s+/g, ' ').trim();
 
 describe('SaldosCuentasService — aislamiento multi-tenant', () => {
   describe('obtenerSaldos()', () => {
-    it('filtra el catálogo de cuentas (cc) por empresaId en el WHERE', async () => {
+    it('filtra el catálogo de cuentas (cc) por empresaId en el WHERE exterior', async () => {
       const captured: QueryCapturada[] = [];
       await new SaldosCuentasService(makeDataSource(captured)).obtenerSaldos(7, undefined, '2026-12-31');
 
+      // lastIndexOf('WHERE'): la subconsulta tiene su propio WHERE (líneas
+      // activas) que aparece ANTES en el texto — el WHERE exterior (sobre cc)
+      // es el último.
       const sql = norm(captured[0].sql);
-      expect(sql.slice(sql.indexOf('WHERE'))).toContain('cc."empresaId" = $1');
+      expect(sql.slice(sql.lastIndexOf('WHERE'))).toContain('cc."empresaId" = $1');
     });
 
-    it('filtra los asientos (ac) por empresaId dentro del ON del LEFT JOIN (no en el WHERE)', async () => {
+    it('filtra los asientos (ac) por empresaId dentro de un INNER JOIN real, no de un LEFT JOIN', async () => {
       const captured: QueryCapturada[] = [];
       await new SaldosCuentasService(makeDataSource(captured)).obtenerSaldos(7, undefined, '2026-12-31');
 
+      // PASO 0 (2026-09-20): antes, estos filtros vivían en el ON de un LEFT
+      // JOIN contra asientos_contables — eso NO los aplica como filtro real
+      // (un asiento que no cumple igual deja pasar su línea con las columnas
+      // de ac en NULL). Ahora es un JOIN (INNER) dentro de una subconsulta,
+      // que sí descarta las líneas cuyo asiento no cumple.
       const sql = norm(captured[0].sql);
-      const tramoJoin = sql.slice(sql.indexOf('LEFT JOIN asientos_contables'), sql.indexOf('WHERE'));
+      expect(sql).not.toContain('LEFT JOIN asientos_contables');
+      expect(sql).toContain('JOIN asientos_contables ac');
+      const tramoJoin = sql.slice(sql.indexOf('JOIN asientos_contables ac'), sql.indexOf('WHERE al."isActive"'));
       expect(tramoJoin).toContain('ac."empresaId" = $1');
+      expect(tramoJoin).toContain(`ac.estado = 'contabilizado'`);
+      expect(tramoJoin).toContain('ac."isActive" = true');
     });
 
     it('no deja pasar cuentas o asientos huérfanos (empresaId IS NULL) de otra empresa', async () => {
@@ -135,5 +159,94 @@ describe('SaldosCuentasService — aislamiento multi-tenant', () => {
 
       expect(captured[0].params).toEqual([7]);
     });
+  });
+});
+
+// ── PASO 0 — verificación real contra Postgres (requiere BD) ────────────────
+// El bug (asientos que no cumplen los filtros contaminando la suma) es de
+// SEMÁNTICA de ejecución del JOIN, no de forma del texto SQL — ningún mock de
+// dataSource.query() puede probarlo. Sigue el mismo patrón que
+// educativo/config/config-sql.spec.ts: se auto-skipea si DB_HOST no está
+// configurado (CI no lo configura para este job — ver ci.yml), y corre de
+// verdad en local contra hicloud_test dentro de una transacción que SIEMPRE
+// se revierte (ROLLBACK), sin dejar nada insertado.
+const TIENE_BD = !!process.env['DB_HOST'];
+
+(TIENE_BD ? describe : describe.skip)('obtenerSaldos() — PASO 0, ejecución real contra Postgres', () => {
+  let dataSource: DataSource;
+
+  beforeAll(async () => {
+    dataSource = new DataSource({
+      type:     'postgres',
+      host:     process.env['DB_HOST'],
+      port:     Number(process.env['DB_PORT'] ?? 5432),
+      username: process.env['DB_USERNAME'],
+      password: process.env['DB_PASSWORD'],
+      database: process.env['DB_NAME'],
+      ssl:      process.env['DB_SSL'] === 'true' ? { rejectUnauthorized: false } : false,
+    });
+    await dataSource.initialize();
+  });
+
+  afterAll(async () => {
+    await dataSource?.destroy();
+  });
+
+  it('un asiento anulado, de otra empresa, inactivo, o fuera de fecha NO contamina la suma de una cuenta con movimientos válidos', async () => {
+    const qr = dataSource.createQueryRunner();
+    await qr.connect();
+    await qr.startTransaction();
+    try {
+      const EMPRESA_A = 900001;
+      const EMPRESA_B = 900002; // "otra empresa" — nunca debe aparecer en el resultado de A
+
+      const [{ id: userId }] = await qr.query(
+        `INSERT INTO users (nombre, email, password) VALUES ('Test PASO 0', 'test-paso0@example.com', 'x') RETURNING id`,
+      );
+      const [{ id: cuentaId }] = await qr.query(
+        `INSERT INTO cuentas_contables (codigo, nombre, tipo, naturaleza, "nivel", "permiteMovimientos", "empresaId")
+         VALUES ('9.9.9.01', 'Cuenta de prueba PASO 0', 'activo', 'deudora', 4, true, $1) RETURNING id`,
+        [EMPRESA_A],
+      );
+
+      const crearAsiento = async (opts: {
+        empresaId: number; estado: string; isActive: boolean; fecha: string; debe: number;
+      }) => {
+        const [{ id: asientoId }] = await qr.query(
+          `INSERT INTO asientos_contables
+             (numero, fecha, descripcion, "tipoOrigen", estado, "totalDebe", "totalHaber", "userId", "empresaId", "isActive")
+           VALUES ($1, $2, 'Fixture PASO 0', 'manual', $3, $4, $4, $5, $6, $7) RETURNING id`,
+          [`TEST-${Math.random().toString(36).slice(2)}`, opts.fecha, opts.estado, opts.debe, userId, opts.empresaId, opts.isActive],
+        );
+        await qr.query(
+          `INSERT INTO asiento_lineas ("asientoId", "cuentaContableId", descripcion, debe, haber, "empresaId")
+           VALUES ($1, $2, 'Línea fixture', $3, 0, $4)`,
+          [asientoId, cuentaId, opts.debe, opts.empresaId],
+        );
+      };
+
+      // El único que DEBE contar: 100.
+      await crearAsiento({ empresaId: EMPRESA_A, estado: 'contabilizado', isActive: true,  fecha: '2026-06-15', debe: 100 });
+      // Anulado — NO debe contar.
+      await crearAsiento({ empresaId: EMPRESA_A, estado: 'anulado',       isActive: true,  fecha: '2026-06-16', debe: 50 });
+      // Otra empresa — NO debe contar (fuga cross-tenant si aparece).
+      await crearAsiento({ empresaId: EMPRESA_B, estado: 'contabilizado', isActive: true,  fecha: '2026-06-17', debe: 30 });
+      // Inactivo — NO debe contar.
+      await crearAsiento({ empresaId: EMPRESA_A, estado: 'contabilizado', isActive: false, fecha: '2026-06-18', debe: 20 });
+      // Fuera del rango de fecha (hasta='2026-06-30') — NO debe contar.
+      await crearAsiento({ empresaId: EMPRESA_A, estado: 'contabilizado', isActive: true,  fecha: '2026-07-05', debe: 10 });
+
+      const svc = new SaldosCuentasService({ query: (sql: string, params?: unknown[]) => qr.query(sql, params) } as any);
+      const saldos = await svc.obtenerSaldos(EMPRESA_A, undefined, '2026-06-30');
+
+      const cuenta = saldos.find(s => s.codigo === '9.9.9.01');
+      expect(cuenta).toBeDefined();
+      expect(cuenta!.totalDebe).toBe(100); // NO 100+50+30+20+10=210
+      expect(cuenta!.totalHaber).toBe(0);
+      expect(cuenta!.saldo).toBe(100);
+    } finally {
+      await qr.rollbackTransaction();
+      await qr.release();
+    }
   });
 });

@@ -56,6 +56,24 @@ export class SaldosCuentasService {
       condFecha = `AND ac.fecha <= $${params.length}`;
     }
 
+    // Balance/Diagnóstico — PASO 0 (2026-09-20): los filtros de asientos_contables
+    // (estado, isActive, empresaId, fecha) NO pueden ir en el ON de un LEFT JOIN
+    // contra asiento_lineas. Si al."asientoId" coincide con un asiento que existe
+    // pero NO cumple esos filtros (anulado, otra empresa, fuera de rango de
+    // fecha), Postgres NO descarta la fila — el LEFT JOIN solo pone las columnas
+    // de ese asiento en NULL, y la línea (con su debe/haber intactos) sigue
+    // sumándose igual. Este bug ya existía en las dos consultas originales
+    // (balance-comprobacion.service.ts y reportes-financieros.service.ts) antes
+    // de unificarse en este archivo — se detectó porque la suma total de una
+    // empresa (8,920,031.51 debe / 8,920,031.43 haber) no podía cuadrar si cada
+    // asiento individual, verificado uno por uno, sí cuadraba: la única forma de
+    // que una suma de partes balanceadas dé un total desbalanceado es que la
+    // suma esté incluyendo partes que no debían contarse.
+    //
+    // Fix: los filtros de ac se aplican en un INNER JOIN dentro de una
+    // subconsulta — eso SÍ actúa como filtro real, no como condición de match
+    // opcional — y esa subconsulta (ya filtrada) es la que se LEFT JOINea contra
+    // cc, para seguir mostrando cuentas sin ningún movimiento válido con saldo 0.
     const rows = await this.dataSource.query<{
       codigo: string; nombre: string; tipo: string; naturaleza: string;
       nivel: string; total_debe: string; total_haber: string;
@@ -66,20 +84,23 @@ export class SaldosCuentasService {
         cc.tipo,
         cc.naturaleza,
         cc."nivel",
-        COALESCE(SUM(al.debe),  0)::text AS total_debe,
-        COALESCE(SUM(al.haber), 0)::text AS total_haber
+        COALESCE(SUM(m.debe),  0)::text AS total_debe,
+        COALESCE(SUM(m.haber), 0)::text AS total_haber
       FROM cuentas_contables cc
-      LEFT JOIN asiento_lineas al ON al."cuentaContableId" = cc.id
-        AND al."isActive" = true
-      LEFT JOIN asientos_contables ac ON ac.id = al."asientoId"
-        AND ac.estado = 'contabilizado'
-        AND ac."isActive" = true
-        AND ac."empresaId" = $1
-        ${condFecha}
+      LEFT JOIN (
+        SELECT al."cuentaContableId", al.debe, al.haber
+        FROM asiento_lineas al
+        JOIN asientos_contables ac ON ac.id = al."asientoId"
+          AND ac.estado = 'contabilizado'
+          AND ac."isActive" = true
+          AND ac."empresaId" = $1
+          ${condFecha}
+        WHERE al."isActive" = true
+      ) m ON m."cuentaContableId" = cc.id
       WHERE cc."isActive" = true
         AND cc."empresaId" = $1
       GROUP BY cc.id, cc.codigo, cc.nombre, cc.tipo, cc.naturaleza, cc."nivel"
-      HAVING COALESCE(SUM(al.debe), 0) != 0 OR COALESCE(SUM(al.haber), 0) != 0
+      HAVING COALESCE(SUM(m.debe), 0) != 0 OR COALESCE(SUM(m.haber), 0) != 0
       ORDER BY cc.codigo
     `, params);
 
