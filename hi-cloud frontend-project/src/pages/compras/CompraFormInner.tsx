@@ -136,14 +136,6 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
   /** Las notas arrancan plegadas; se abren con un clic o si la compra ya trae. */
   const [mostrarNotas, setMostrarNotas] = useState(false);
 
-  /** Igual que Notas: Tipo de bienes/Forma de pago (606) y Cuenta contable
-   *  arrancan plegados detrás de un solo campo. Los tres tienen sugerencia
-   *  automática (ver useEffect más abajo) o un default razonable —
-   *  Inventario para la cuenta—, así que ocultarlos no pierde nada; lo que
-   *  sí perdía protagonismo era la tabla de ítems, empujada por tres campos
-   *  más en la cabecera cada vez que se agregaba uno nuevo. */
-  const [mostrarFiscal606, setMostrarFiscal606] = useState(false);
-
   const seqLinea = useRef(0);
 
   const agregarLinea = () => {
@@ -262,11 +254,6 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
     setFormaPago(c.formaPago ?? undefined);
     setFormaPagoTocado(c.formaPago != null);
     setCuentaDestino((c as any).cuentaDestino ?? undefined);
-    // Mismo criterio que las notas: si el borrador ya trae algo aquí, se
-    // muestra — no se esconde una elección real.
-    if (c.tipoBienes != null || c.formaPago != null || (c as any).cuentaDestino != null) {
-      setMostrarFiscal606(true);
-    }
 
     const dets = (c.detalles ?? []) as any[];
     if (dets.length) {
@@ -753,57 +740,46 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
               </Form.Item>
             </Col>
           )}
-          {/* DGII 606 (Tipo de bienes/Forma de pago) y Cuenta contable —
-              plegados detrás de un solo campo, igual que Notas. Los tres
-              tienen sugerencia automática o un default razonable
-              (Inventario), así que ocultarlos no pierde nada; visibles
-              siempre, eran tres campos más empujando la tabla de ítems cada
-              vez que se agregaba uno. Al editar una compra que ya trae algo
-              aquí se muestran solos (ver useEffect de carga). */}
-          {mostrarFiscal606 ? (
-            <>
-              <Col flex="1 1 200px">
-                <Form.Item label="Tipo de bienes (606)" style={ITEM_COMPACTO}>
-                  <Select size="small" allowClear placeholder="Sin clasificar"
-                    value={tipoBienes}
-                    onChange={v => { setTipoBienes(v); setTipoBienesTocado(true); }}
-                    options={TIPOS_BIENES_606} style={{ width: '100%' }}
-                    showSearch filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
-                  />
-                </Form.Item>
-              </Col>
-              <Col flex="1 1 220px">
-                <Form.Item label="Forma de pago (606)" style={ITEM_COMPACTO}>
-                  <Select size="small" allowClear placeholder="Sin clasificar"
-                    value={formaPago}
-                    onChange={v => { setFormaPago(v); setFormaPagoTocado(true); }}
-                    options={FORMAS_PAGO_606} style={{ width: '100%' }}
-                    showSearch filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
-                  />
-                </Form.Item>
-              </Col>
-              <Col flex="1 1 240px">
-                <Form.Item label="Cuenta contable" style={ITEM_COMPACTO}
-                  tooltip="Por defecto va a Inventario. Cámbiala solo si esta compra en particular debe ir a otra cuenta (ej. es realmente un activo fijo o un gasto).">
-                  <CuentaContableSelector
-                    value={cuentaDestino}
-                    onChange={setCuentaDestino}
-                    tipo={['activo', 'gasto', 'costo']}
-                    placeholder="Por defecto: Inventario"
-                    size="small"
-                    style={{ width: '100%' }}
-                  />
-                </Form.Item>
-              </Col>
-            </>
-          ) : (
-            <Col flex="none" style={{ alignSelf: 'flex-end', paddingBottom: 12 }}>
-              <Button type="link" size="small" icon={<PlusOutlined />}
-                onClick={() => setMostrarFiscal606(true)} style={{ paddingLeft: 0 }}>
-                Clasificación 606 / cuenta contable
-              </Button>
-            </Col>
-          )}
+          {/* DGII 606 — sugerencia editable (ver useEffect de arriba). Sin
+              esto la compra entera quedaba SIEMPRE en NULL: la columna
+              existía en la base desde el inicio pero ningún formulario la
+              exponía, así que toda compra se declaraba mal en el 606. */}
+          <Col flex="1 1 200px">
+            <Form.Item label="Tipo de bienes (606)" style={ITEM_COMPACTO}>
+              <Select size="small" allowClear placeholder="Sin clasificar"
+                value={tipoBienes}
+                onChange={v => { setTipoBienes(v); setTipoBienesTocado(true); }}
+                options={TIPOS_BIENES_606} style={{ width: '100%' }}
+                showSearch filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
+              />
+            </Form.Item>
+          </Col>
+          <Col flex="1 1 220px">
+            <Form.Item label="Forma de pago (606)" style={ITEM_COMPACTO}>
+              <Select size="small" allowClear placeholder="Sin clasificar"
+                value={formaPago}
+                onChange={v => { setFormaPago(v); setFormaPagoTocado(true); }}
+                options={FORMAS_PAGO_606} style={{ width: '100%' }}
+                showSearch filterOption={(i, o) => (o?.label ?? '').toLowerCase().includes(i.toLowerCase())}
+              />
+            </Form.Item>
+          </Col>
+          {/* Selector de cuenta contable (2026-09-19) — la misma compra puede
+              ser gasto, activo fijo o inventario. Sin elegir nada, el motor
+              sigue usando Inventario (el default de siempre). */}
+          <Col flex="1 1 240px">
+            <Form.Item label="Cuenta contable" style={ITEM_COMPACTO}
+              tooltip="Por defecto va a Inventario. Cámbiala solo si esta compra en particular debe ir a otra cuenta (ej. es realmente un activo fijo o un gasto).">
+              <CuentaContableSelector
+                value={cuentaDestino}
+                onChange={setCuentaDestino}
+                tipo={['activo', 'gasto', 'costo']}
+                placeholder="Por defecto: Inventario"
+                size="small"
+                style={{ width: '100%' }}
+              />
+            </Form.Item>
+          </Col>
           {/* Notas, plegadas. Casi ninguna OC las lleva y se comían una fila
               entera de la cabecera —y con ella el alto de la tabla de ítems—
               para un campo vacío. Al editar una compra que sí las tiene se
