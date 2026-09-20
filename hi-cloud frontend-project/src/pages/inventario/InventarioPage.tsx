@@ -25,6 +25,7 @@ import { exportarExcel } from '../../utils/exportExcel';
 import type { MovimientoInventario } from '../../types';
 import { fmt } from '../../utils/formatters';
 import { dRD } from '../../utils/fechaRD';
+import { costoParaPrellenar } from '../../utils/costoInicialEntrada';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -86,6 +87,17 @@ const { data: productosData } = useQuery({
     queryKey: ['productos-inv'],
     queryFn:  () => productosApi.list(1, 2000, '', true),
   });
+
+  // Pre-llenar "Costo unitario" con el costoPromedio del producto elegido —
+  // costoPromedio ya viaja en cada fila de productosApi.list(incluirSinStock),
+  // sin llamada extra. Editable: el usuario puede ajustarlo o borrarlo.
+  const productoIdSeleccionado = Form.useWatch('productoId', form);
+  const productoSeleccionado = (productosData?.data ?? []).find((p: any) => p.id === productoIdSeleccionado);
+  const costoPromedioSeleccionado = Number(productoSeleccionado?.costoPromedio ?? 0);
+  const handleProductoChange = (productoId: number) => {
+    const prod = (productosData?.data ?? []).find((p: any) => p.id === productoId);
+    form.setFieldValue('costoUnitario', costoParaPrellenar(prod));
+  };
 
   const entradaMut = useMutation({
     mutationFn: ({ productoId, cantidad, motivo, costoUnitario }: any) => inventarioApi.entrada(productoId, cantidad, motivo, costoUnitario),
@@ -249,6 +261,7 @@ const { data: productosData } = useQuery({
         <Form form={form} layout="vertical" onFinish={handleSubmit}>
           <Form.Item name="productoId" label="Producto" rules={[{ required: true }]}>
             <Select showSearch optionFilterProp="label" placeholder="Buscar por nombre o código..."
+              onChange={handleProductoChange}
               options={(productosData?.data ?? []).map((p: any) => ({ value: p.id, label: `${p.codigo} — ${p.nombre} (Stock: ${p.stock ?? 0})` }))} />
           </Form.Item>
           <Form.Item name="cantidad" label="Cantidad" rules={[{ required: true }]}>
@@ -257,9 +270,15 @@ const { data: productosData } = useQuery({
           {modal === 'entrada' && (
             <Form.Item
               name="costoUnitario"
-              label={<span>Costo unitario <span style={{ fontWeight: 400, color: '#9CA3AF', fontSize: 11 }}>(opcional — actualiza el costo promedio del producto)</span></span>}
+              label={<span>Costo unitario <span style={{ fontWeight: 400, color: '#9CA3AF', fontSize: 11 }}>
+                {costoPromedioSeleccionado > 0
+                  ? '(costo promedio actual del producto — ajústalo si esta entrada tiene otro costo)'
+                  : '(opcional — actualiza el costo promedio del producto)'}
+              </span></span>}
             >
-              <InputNumber style={{ width: '100%' }} min={0} precision={2} placeholder="Déjalo vacío si no sabes el costo" prefix="RD$" />
+              <InputNumber style={{ width: '100%' }} min={0} precision={2}
+                placeholder={costoPromedioSeleccionado > 0 ? undefined : 'Déjalo vacío si no sabes el costo'}
+                prefix="RD$" />
             </Form.Item>
           )}
           <Form.Item name="motivo" label="Motivo / Observación">

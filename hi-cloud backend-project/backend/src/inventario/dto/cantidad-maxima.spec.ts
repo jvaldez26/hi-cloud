@@ -60,4 +60,30 @@ describe('inventario — tope de cantidad en los DTO públicos', () => {
       expect(await validarAjuste(0)).toHaveLength(0);
     });
   });
+
+  describe('RegistrarEntradaDto.costoUnitario — opcional, y 0 explícito se acepta (no se rechaza)', () => {
+    // @Min(0), no @IsPositive(): la UI de InventarioPage puede pre-llenar
+    // este campo con el costoPromedio del producto, y el usuario puede
+    // borrarlo o escribir 0 a mano. Ninguno de los dos casos debe tumbar la
+    // petición con un 400 — la guarda real (costo <= 0 no toca el promedio)
+    // vive en actualizarCostoPromedio()/registrarEntrada(), no aquí.
+    const validarConCosto = (costoUnitario: unknown) =>
+      validate(plainToInstance(RegistrarEntradaDto, { productoId: 1, cantidad: 5, costoUnitario }));
+
+    it('sin costoUnitario: válido', async () => {
+      expect(await validate(plainToInstance(RegistrarEntradaDto, { productoId: 1, cantidad: 5 }))).toHaveLength(0);
+    });
+
+    it('costoUnitario=0 explícito: válido — se acepta, se ignora río abajo', async () => {
+      expect(await validarConCosto(0)).toHaveLength(0);
+    });
+
+    it('costoUnitario con un valor real: válido', async () => {
+      expect(await validarConCosto(95.58)).toHaveLength(0);
+    });
+
+    it('costoUnitario negativo: rechazado (defensivo)', async () => {
+      expect(await validarConCosto(-5)).not.toHaveLength(0);
+    });
+  });
 });

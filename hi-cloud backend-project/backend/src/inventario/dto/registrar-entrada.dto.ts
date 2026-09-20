@@ -5,6 +5,7 @@ import {
   IsString,
   IsNumber,
   Max,
+  Min,
   MaxLength,
 } from 'class-validator';
 
@@ -45,9 +46,13 @@ export class RegistrarEntradaDto {
    * Costo unitario de esta entrada — opcional. Si se manda (>0), actualiza
    * costoPromedio (AVCO) igual que una Compra recibida. Si se omite, el
    * movimiento se registra como siempre (solo mueve stock, sin tocar costo).
+   *
+   * @Min(0), no @IsPositive(): un 0 escrito a mano debe ACEPTARSE y quedar
+   * ignorado (misma guarda que actualizarCostoPromedio — costo <= 0 no toca
+   * el promedio), no rechazarse con un 400 que bloquee toda la entrada.
    */
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
-  @IsPositive()
+  @Min(0)
   costoUnitario?: number;
 }
