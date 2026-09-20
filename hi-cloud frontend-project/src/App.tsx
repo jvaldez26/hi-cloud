@@ -88,6 +88,7 @@ const ProyectosPage             = lazy(() => import('./pages/proyectos/Proyectos
 const EquipoPage                = lazy(() => import('./pages/equipo/EquipoPage'));
 const AcceptInvitePage          = lazy(() => import('./pages/invitacion/AcceptInvitePage'));
 const DeclaracionesPage         = lazy(() => import('./pages/declaraciones/DeclaracionesPage'));
+const HerramientasFiscalesPage  = lazy(() => import('./pages/herramientas-fiscales/HerramientasFiscalesPage'));
 const BancosPage                = lazy(() => import('./pages/bancos/BancosPage'));
 const TSSPage                   = lazy(() => import('./pages/tss/TSSPage'));
 const CentroCostosPage          = lazy(() => import('./pages/centro-costos/CentroCostosPage'));
@@ -817,6 +818,7 @@ export default function App() {
                         URL veía la estructura del equipo entera. */}
                     <Route path="/equipo"             element={<RolRoute roles={['admin']}><EquipoPage /></RolRoute>} />
                     <Route path="/declaraciones"      element={<DeclaracionesPage />} />
+                    <Route path="/herramientas-fiscales" element={<HerramientasFiscalesPage />} />
                     <Route path="/bancos"             element={<BancosPage />} />
                     <Route path="/tss"                element={<TSSPage />} />
                     <Route path="/centro-costos"      element={<CentroCostosPage />} />

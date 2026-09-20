@@ -74,6 +74,7 @@ export const PATH_ROLES: Record<string, string[]> = {
   '/ecf-recibidos':         ADMIN_CONT,
   '/retenciones':           ADMIN_CONT,
   '/declaraciones':         ADMIN_CONT,
+  '/herramientas-fiscales': ADMIN_CONT,
   '/reportes':              ADMIN_CONT_VEND,
   '/analytics':             ADMIN_CONT_VEND,
   '/kpi':                   ADMIN_CONT_VEND,
@@ -350,10 +351,11 @@ export const MENU_CATEGORIES_DATA: MenuCategoryData[] = [
   {
     id: 'fiscal', label: 'Fiscal (DGII)', sectionLabel: 'GESTIÓN',
     items: [
-      { path: '/ecf',           label: 'e-CF — Panel DGII' },
-      { path: '/ecf-recibidos', label: 'e-CF Recibidos' },
-      { path: '/declaraciones', label: 'Declaraciones 606/607' },
-      { path: '/retenciones',   label: 'Retenciones ISR' },
+      { path: '/ecf',                    label: 'e-CF — Panel DGII' },
+      { path: '/ecf-recibidos',          label: 'e-CF Recibidos' },
+      { path: '/declaraciones',          label: 'Declaraciones 606/607' },
+      { path: '/retenciones',            label: 'Retenciones ISR' },
+      { path: '/herramientas-fiscales',  label: 'Herramientas Fiscales' },
     ],
   },
 

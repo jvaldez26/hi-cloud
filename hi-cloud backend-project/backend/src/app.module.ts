@@ -59,6 +59,7 @@ import { CRMModule } from './crm/crm.module';
 import { ProyectosModule } from './proyectos/proyectos.module';
 import { InvitacionesModule } from './invitaciones/invitaciones.module';
 import { DeclaracionesModule } from './declaraciones/declaraciones.module';
+import { ParametrosFiscalesModule } from './parametros-fiscales/parametros-fiscales.module';
 import { BancosModule } from './bancos/bancos.module';
 import { TSSModule } from './tss/tss.module';
 import { CentroCostosModule } from './centro-costos/centro-costos.module';
@@ -327,6 +328,7 @@ import { ActividadInterceptor } from './auth/actividad.interceptor';
     ProyectosModule,
     InvitacionesModule,
     DeclaracionesModule,
+    ParametrosFiscalesModule,
     BancosModule,
     TSSModule,
     CentroCostosModule,
