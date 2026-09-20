@@ -10,11 +10,13 @@ import { Almacen } from '../almacenes/entities/almacen.entity';
 import { StockAlmacen } from '../almacenes/entities/stock-almacen.entity';
 import { Movimiento } from '../inventario/entities/movimiento.entity';
 import { SuscripcionesModule } from '../suscripciones/suscripciones.module';
+import { ValoracionStockModule } from '../valoracion-stock/valoracion-stock.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Producto, ProductoProveedor, Almacen, StockAlmacen, Movimiento]),
     SuscripcionesModule,
+    ValoracionStockModule,
   ],
   controllers: [ProductosController, ProductoProveedorController],
   providers: [ProductosService, ProductoProveedorService],

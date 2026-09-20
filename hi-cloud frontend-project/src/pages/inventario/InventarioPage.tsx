@@ -88,7 +88,7 @@ const { data: productosData } = useQuery({
   });
 
   const entradaMut = useMutation({
-    mutationFn: ({ productoId, cantidad, motivo }: any) => inventarioApi.entrada(productoId, cantidad, motivo),
+    mutationFn: ({ productoId, cantidad, motivo, costoUnitario }: any) => inventarioApi.entrada(productoId, cantidad, motivo, costoUnitario),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['inventario'] }); cerrarModal(); message.success('Entrada registrada'); },
     onError: (e: any) => message.error(e?.friendlyMessage ?? 'Error'),
   });
@@ -100,7 +100,7 @@ const { data: productosData } = useQuery({
 
   const cerrarModal = () => { setModal(null); form.resetFields(); };
   const handleSubmit = (v: any) => {
-    if (modal === 'entrada') entradaMut.mutate({ productoId: v.productoId, cantidad: v.cantidad, motivo: v.motivo });
+    if (modal === 'entrada') entradaMut.mutate({ productoId: v.productoId, cantidad: v.cantidad, motivo: v.motivo, costoUnitario: v.costoUnitario });
     else salidaMut.mutate({ productoId: v.productoId, cantidad: v.cantidad, motivo: v.motivo });
   };
 
@@ -254,6 +254,14 @@ const { data: productosData } = useQuery({
           <Form.Item name="cantidad" label="Cantidad" rules={[{ required: true }]}>
             <InputNumber style={{ width: '100%' }} min={0.0001} precision={2} placeholder="Ej: 10.5" />
           </Form.Item>
+          {modal === 'entrada' && (
+            <Form.Item
+              name="costoUnitario"
+              label={<span>Costo unitario <span style={{ fontWeight: 400, color: '#9CA3AF', fontSize: 11 }}>(opcional — actualiza el costo promedio del producto)</span></span>}
+            >
+              <InputNumber style={{ width: '100%' }} min={0} precision={2} placeholder="Déjalo vacío si no sabes el costo" prefix="RD$" />
+            </Form.Item>
+          )}
           <Form.Item name="motivo" label="Motivo / Observación">
             <Input.TextArea rows={2} placeholder="Ej: Compra al proveedor, merma..." />
           </Form.Item>

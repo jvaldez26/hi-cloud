@@ -6,6 +6,7 @@ import { Producto }  from '../productos/entities/producto.entity';
 import { Proveedor } from '../proveedores/entities/proveedor.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { ProductoProveedorService } from '../productos/producto-proveedor.service';
+import { ValoracionStockService } from '../valoracion-stock/valoracion-stock.service';
 
 export interface ImportResult {
   total:     number;
@@ -31,6 +32,7 @@ export class ImportacionService {
     @InjectDataSource()          private ds: DataSource,
     private tenantService: TenantService,
     private productoProveedorSvc: ProductoProveedorService,
+    private valoracionService: ValoracionStockService,
   ) {}
 
   // ──────────────────────────────────────────────────────────────────
@@ -92,9 +94,9 @@ export class ImportacionService {
   getPlantillaProductos(): string {
     return [
       'sep=,',
-      'codigo,nombre,precio,precio2,precio3,porcentajeItbis,unidadMedida,stock,stockMinimo,categoria,descripcion,tipo,almacen,proveedor',
-      'PROD001,Producto Ejemplo,1500.00,1400.00,1300.00,18,PZA,50,5,General,Descripcion del producto,producto,Principal,Ferreteria Central SRL',
-      'SERV001,Servicio Ejemplo,2500.00,,,18,HR,0,0,Servicios,Descripcion del servicio,servicio,,',
+      'codigo,nombre,precio,precio2,precio3,porcentajeItbis,unidadMedida,stock,costo,stockMinimo,categoria,descripcion,tipo,almacen,proveedor',
+      'PROD001,Producto Ejemplo,1500.00,1400.00,1300.00,18,PZA,50,1000.00,5,General,Descripcion del producto,producto,Principal,Ferreteria Central SRL',
+      'SERV001,Servicio Ejemplo,2500.00,,,18,HR,0,,0,Servicios,Descripcion del servicio,servicio,,',
     ].join('\r\n');
   }
 
@@ -271,6 +273,11 @@ export class ImportacionService {
 
         const stockInicial  = tipo === 'servicio' ? 0 : (idx('stock') >= 0 ? parseFloat(fila[idx('stock')]) || 0 : 0);
         const almacenNombre = idx('almacen') >= 0 ? fila[idx('almacen')]?.trim() || '' : '';
+        // Costo unitario — opcional. Si viene, alimenta AVCO igual que una
+        // Compra recibida (ver más abajo); si no, el producto queda como
+        // siempre: stock>0, costoPromedio=0 hasta su primera Compra real.
+        const costoRaw = idx('costo') >= 0 ? fila[idx('costo')] : '';
+        const costoInicial = costoRaw?.trim() ? parseFloat(costoRaw) : undefined;
 
         const producto = await this.productoRepository.save(
           this.productoRepository.create({
@@ -327,6 +334,13 @@ export class ImportacionService {
                 motivo, "almacenId", "userId", "isActive", "createdAt", "updatedAt"
               ) VALUES ($1, $2, 'entrada', $3, 0, $3, $4, $5, $6, true, NOW(), NOW())
             `, [empresaId, producto.id, stockInicial, 'Stock inicial por importación CSV', almacenId, userId]);
+
+            // costoInicial>0: primer movimiento del producto → stockAntes=0,
+            // actualizarCostoPromedio() reemplaza limpio (no promedia).
+            if (costoInicial != null && !isNaN(costoInicial) && costoInicial > 0) {
+              await this.valoracionService.actualizarCostoPromedio(producto.id, 0, stockInicial, costoInicial)
+                .catch((err: Error) => this.logger.warn(`costoPromedio inicial no aplicado en producto #${producto.id} (fila ${fNum}): ${err.message}`));
+            }
           }
         }
 

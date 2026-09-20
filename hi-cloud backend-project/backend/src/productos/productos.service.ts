@@ -23,6 +23,7 @@ import { ProductoProveedorService } from './producto-proveedor.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { LimitesService } from '../suscripciones/limites.service';
 import { S3Service } from '../common/s3/s3.service';
+import { ValoracionStockService } from '../valoracion-stock/valoracion-stock.service';
 
 // Carpeta dentro de AWS_S3_BUCKET donde se guardan las imágenes
 const IMAGENES_FOLDER = 'imagenes/productos';
@@ -48,6 +49,7 @@ export class ProductosService implements OnModuleInit {
     private limitesService:  LimitesService,
     private s3Service:       S3Service,
     private productoProveedorSvc: ProductoProveedorService,
+    private valoracionService: ValoracionStockService,
   ) {}
 
   /** Devuelve todas las categorías distintas del catálogo de la empresa (para Selects). */
@@ -335,6 +337,17 @@ export class ProductosService implements OnModuleInit {
             empresaId,
           } as any),
         ).catch((err: Error) => this.logger.warn(`movimiento inicial no registrado para producto #${saved.id}: ${err.message}`));
+
+        // Costo opcional (dto.costo, ya capturado en el formulario de "Nuevo
+        // Producto"): si viene, alimenta AVCO igual que una Compra recibida
+        // — stockAntes=0 porque este es el primerísimo movimiento del
+        // producto, así que actualizarCostoPromedio() reemplaza limpio. Sin
+        // costo, el producto queda como siempre: stock>0, costoPromedio=0
+        // hasta su primera Compra real.
+        if (dto.costo && dto.costo > 0) {
+          await this.valoracionService.actualizarCostoPromedio(saved.id, 0, dto.stock!, dto.costo)
+            .catch((err: Error) => this.logger.warn(`costoPromedio inicial no aplicado en producto #${saved.id}: ${err.message}`));
+        }
       }
     }
 

@@ -37,8 +37,8 @@ export const inventarioApi = {
   stockBajo: () =>
     api.get('/inventario/stock-bajo').then(r => r.data.data),
 
-  entrada: (productoId: number, cantidad: number, motivo?: string) =>
-    api.post('/inventario/entrada', { productoId, cantidad, motivo }).then(r => r.data),
+  entrada: (productoId: number, cantidad: number, motivo?: string, costoUnitario?: number) =>
+    api.post('/inventario/entrada', { productoId, cantidad, motivo, costoUnitario }).then(r => r.data),
 
   salida: (productoId: number, cantidad: number, motivo?: string) =>
     api.post('/inventario/salida', { productoId, cantidad, motivo }).then(r => r.data),

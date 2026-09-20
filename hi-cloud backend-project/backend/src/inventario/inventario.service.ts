@@ -21,6 +21,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { TenantService } from '../tenant/tenant.service';
 import { fechaHoyRD } from '../common/utils/fecha-local.util';
 import { EmailService } from '../notificaciones/services/email.service';
+import { ValoracionStockService } from '../valoracion-stock/valoracion-stock.service';
 
 @Injectable()
 export class InventarioService {
@@ -41,6 +42,7 @@ export class InventarioService {
     private realtimeService: RealtimeService,
     private tenantService: TenantService,
     private emailService: EmailService,
+    private valoracionService: ValoracionStockService,
   ) {}
 
   /**
@@ -129,7 +131,10 @@ export class InventarioService {
   // Operaciones básicas de inventario
   // ──────────────────────────────────────────────────────────
 
-  async registrarEntrada(productoId: number, cantidad: number, userId: number, motivo?: string, referencia?: string, almacenId?: number) {
+  async registrarEntrada(
+    productoId: number, cantidad: number, userId: number, motivo?: string, referencia?: string,
+    almacenId?: number, costoUnitario?: number,
+  ) {
     const producto = await this.obtenerProducto(productoId);
     const cantidadAnterior = Number(producto.stock);
     const cantidadNueva = Number((cantidadAnterior + cantidad).toFixed(4));
@@ -140,7 +145,16 @@ export class InventarioService {
       await this.syncStockAlmacen(producto.empresaId, productoId, cantidadNueva, Number(producto.stockMinimo), almacenId);
     }
 
-    return this.persistirMovimiento(TipoMovimiento.ENTRADA, productoId, cantidad, cantidadAnterior, cantidadNueva, userId, motivo, referencia, producto.empresaId, almacenId);
+    const movimiento = await this.persistirMovimiento(TipoMovimiento.ENTRADA, productoId, cantidad, cantidadAnterior, cantidadNueva, userId, motivo, referencia, producto.empresaId, almacenId);
+
+    // Costo opcional: si esta entrada trae un costo real, alimenta AVCO igual
+    // que una Compra recibida. Sin costo, el movimiento queda como siempre
+    // (solo mueve stock) — actualizarCostoPromedio() ni se llama.
+    if (costoUnitario && costoUnitario > 0) {
+      await this.valoracionService.actualizarCostoPromedio(productoId, cantidadAnterior, cantidad, costoUnitario);
+    }
+
+    return movimiento;
   }
 
   async registrarSalida(productoId: number, cantidad: number, userId: number, motivo?: string, referencia?: string, almacenId?: number) {
@@ -261,7 +275,7 @@ export class InventarioService {
 
   async registrarEntradaDesdeDto(dto: RegistrarEntradaDto, userId: number) {
     const almacenId = dto.almacenId ?? this.tenantService.getAlmacenId() ?? undefined;
-    return this.registrarEntrada(dto.productoId, dto.cantidad, userId, dto.motivo, dto.referencia, almacenId);
+    return this.registrarEntrada(dto.productoId, dto.cantidad, userId, dto.motivo, dto.referencia, almacenId, dto.costoUnitario);
   }
   async registrarSalidaDesdeDto(dto: RegistrarSalidaDto, userId: number) {
     const almacenId = dto.almacenId ?? this.tenantService.getAlmacenId() ?? undefined;

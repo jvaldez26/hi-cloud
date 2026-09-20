@@ -6,11 +6,12 @@ import { Cliente }    from '../clientes/entities/cliente.entity';
 import { Producto }   from '../productos/entities/producto.entity';
 import { Proveedor }  from '../proveedores/entities/proveedor.entity';
 import { ProductosModule } from '../productos/productos.module';
+import { ValoracionStockModule } from '../valoracion-stock/valoracion-stock.module';
 
 @Module({
   // ProductosModule por ProductoProveedorService: la importación crea el vínculo
   // producto↔proveedor cuando el CSV trae la columna `proveedor`.
-  imports: [TypeOrmModule.forFeature([Cliente, Producto, Proveedor]), ProductosModule],
+  imports: [TypeOrmModule.forFeature([Cliente, Producto, Proveedor]), ProductosModule, ValoracionStockModule],
   controllers: [ImportacionController],
   providers: [ImportacionService],
 })

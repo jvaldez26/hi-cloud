@@ -8,11 +8,13 @@ import { SerialProducto } from './entities/serial-producto.entity';
 import { Producto } from '../productos/entities/producto.entity';
 import { SolicitudAjuste } from './entities/solicitud-ajuste.entity';
 import { NotificacionesModule } from '../notificaciones/notificaciones.module';
+import { ValoracionStockModule } from '../valoracion-stock/valoracion-stock.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Movimiento, Producto, LoteProducto, SerialProducto, SolicitudAjuste]),
     NotificacionesModule,
+    ValoracionStockModule,
   ],
   controllers: [InventarioController],
   providers: [InventarioService],
