@@ -294,6 +294,27 @@ export class AsientosAutomaticosService {
    * contabilice ninguna línea de costo para esta factura completa, en vez
    * de un total parcial que nadie podría distinguir de uno correcto.
    */
+  /**
+   * FIX 3, COSTO DE VENTA COMMIT A (2026-09-20) — antes, UNA sola línea sin
+   * costoUnitario descartaba el costo de venta de la factura COMPLETA
+   * (aunque tuviera otras 10 líneas con costo real conocido). Con 5,332
+   * productos hoy en costoPromedio=0 (nunca pasaron por una Compra
+   * registrada — ver diagnóstico previo), eso significaba que la inmensa
+   * mayoría de las facturas mixtas jamás contabilizaban NADA de costo de
+   * venta, aunque la mayor parte de sus líneas sí tuvieran costo conocido.
+   *
+   * Ahora: se contabilizan las líneas CON costo; las líneas sin costo
+   * quedan fuera del asiento (nunca se inventa un costo para ellas) y se
+   * reportan a Sentry — el mismo aviso de antes, más el contador
+   * `ventasSinHistorialCosto` que ya existe en getAnexoB1() para que el
+   * contador vea el monto exacto que quedó afuera. El asiento sigue
+   * cuadrando: DR Costo de Ventas y CR Inventario usan el MISMO total (el
+   * de las líneas con costo), nunca el total de la factura completa.
+   *
+   * Si NINGUNA línea tiene costo, se mantiene el comportamiento de
+   * siempre: no se contabiliza costo de venta (return null) — no hay nada
+   * parcial que contabilizar.
+   */
   private async resolverCostoVenta(facturaId: number, folio: string): Promise<number | null> {
     const filas = await this.dataSource.query<{ productoId: number | null; cantidad: string; costoUnitario: string }[]>(
       `SELECT "productoId", cantidad, "costoUnitario" FROM factura_detalles WHERE "facturaId" = $1`,
@@ -307,7 +328,8 @@ export class AsientosAutomaticosService {
       this.reportarFalloAsiento(
         new Error(
           `Factura ${folio}: ${sinHistorial.length} línea(s) con producto sin costoUnitario ` +
-          `(nunca recibió una compra) — costo de venta omitido, no se contabiliza en $0`,
+          `(nunca recibió una compra) — el costo de venta de esas líneas se omite; el resto de ` +
+          `la factura SÍ contabiliza su costo real`,
         ),
         'asiento_costo_venta_sin_historial',
         {
@@ -316,10 +338,12 @@ export class AsientosAutomaticosService {
           productoIds:     sinHistorial.map(f => f.productoId).join(','),
         },
       );
-      return null;
     }
 
-    const total = conProducto.reduce((s, f) => s + Number(f.costoUnitario) * Number(f.cantidad), 0);
+    const conHistorial = conProducto.filter(f => Number(f.costoUnitario) > 0);
+    if (!conHistorial.length) return null; // ninguna línea con costo — nada que contabilizar, igual que siempre
+
+    const total = conHistorial.reduce((s, f) => s + Number(f.costoUnitario) * Number(f.cantidad), 0);
     return total > 0 ? Number(total.toFixed(2)) : null;
   }
 

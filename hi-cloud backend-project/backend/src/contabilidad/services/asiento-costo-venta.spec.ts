@@ -5,11 +5,14 @@
  * NULL). AVCO ya calculaba costoUnitario al recibir compras y lo fotografiaba
  * en factura_detalles al vender — lo que faltaba era solo este asiento.
  *
- * Un producto sin historial de compras (costoUnitario = 0) NUNCA genera la
- * línea — un asiento de costo cero se ve contabilizado sin estarlo, peor que
- * no tenerlo — y se reporta a Sentry en vez de contabilizar en silencio.
- * Una factura de puro servicio (sin ninguna línea con producto) tampoco
- * genera la línea, pero sin avisar a nadie: no le falta nada.
+ * COMMIT A (2026-09-20) — por línea, no todo o nada: las líneas CON costo se
+ * contabilizan; las líneas SIN costo (costoUnitario=0, producto que nunca
+ * recibió una compra) quedan afuera del asiento y se reportan a Sentry —
+ * nunca se inventa su costo, pero tampoco se descarta el resto de la
+ * factura solo porque una línea no tenga historial. Si NINGUNA línea tiene
+ * costo, se mantiene el comportamiento de siempre: no se contabiliza costo
+ * de venta. Una factura de puro servicio (sin ninguna línea con producto)
+ * tampoco genera la línea, pero sin avisar a nadie: no le falta nada.
  */
 
 import { AsientosAutomaticosService } from './asientos-automaticos.service';
@@ -106,19 +109,51 @@ describe('AsientosAutomaticosService.asientoFacturaEmitida() — costo de venta'
     );
   });
 
-  it('una sola línea sin historial entre varias con costo real: omite TODO el costo de venta, no un total parcial', async () => {
+  it('COMMIT A (2026-09-20): una línea sin historial entre varias con costo real — contabiliza SOLO las líneas con costo, no descarta todo', async () => {
     const { svc, lineaRepository } = makeService([
       { productoId: 10, cantidad: '2.0000', costoUnitario: '150.0000' },
+      { productoId: 11, cantidad: '1.0000', costoUnitario: '50.0000' },
       { productoId: 12, cantidad: '1.0000', costoUnitario: '0.0000' }, // sin historial
     ]);
     await svc.asientoFacturaEmitida(123, 1180, 1000, 180, 'FAC-3', 5);
 
     const lineas = lineaRepository.save.mock.calls[0][0] as any[];
-    expect(lineas.some(l => l.cuentaContableId === 4)).toBe(false);
+    const costo       = lineas.find(l => l.cuentaContableId === 4); // COSTO_VENTAS
+    const inventario  = lineas.find(l => l.cuentaContableId === 5); // INVENTARIO
+    expect(costo).toBeDefined();
+    expect(inventario).toBeDefined();
+    // Solo las 2 líneas CON costo (150×2 + 50×1 = 350) — la línea sin
+    // historial (producto 12) queda afuera, no se inventa su costo.
+    expect(costo.debe).toBeCloseTo(350, 2);
+    expect(inventario.haber).toBeCloseTo(350, 2);
+
+    const totalDebe  = lineas.reduce((s, l) => s + l.debe,  0);
+    const totalHaber = lineas.reduce((s, l) => s + l.haber, 0);
+    expect(totalDebe).toBeCloseTo(totalHaber, 2); // partida doble sigue cuadrando
+
     expect(reportServiceError).toHaveBeenCalledWith(
       expect.any(Error),
       'asiento_costo_venta_sin_historial',
       expect.objectContaining({ productoIds: '12' }),
+    );
+  });
+
+  it('COMMIT A (2026-09-20): NINGUNA línea con costo — se mantiene el comportamiento actual, no se contabiliza costo de venta', async () => {
+    const { svc, lineaRepository } = makeService([
+      { productoId: 10, cantidad: '2.0000', costoUnitario: '0.0000' },
+      { productoId: 11, cantidad: '1.0000', costoUnitario: '0.0000' },
+    ]);
+    await svc.asientoFacturaEmitida(123, 1180, 1000, 180, 'FAC-5', 5);
+
+    const lineas = lineaRepository.save.mock.calls[0][0] as any[];
+    expect(lineas.some(l => l.cuentaContableId === 4)).toBe(false);
+    expect(lineas.some(l => l.cuentaContableId === 5)).toBe(false);
+    expect(lineas.length).toBe(3); // Clientes/Ventas/ITBIS, sin costo de venta
+
+    expect(reportServiceError).toHaveBeenCalledWith(
+      expect.any(Error),
+      'asiento_costo_venta_sin_historial',
+      expect.objectContaining({ productoIds: '10,11' }),
     );
   });
 
