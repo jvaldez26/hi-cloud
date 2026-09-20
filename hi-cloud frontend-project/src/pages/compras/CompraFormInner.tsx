@@ -46,7 +46,7 @@ const fmtMon = (v: number, moneda = 'DOP') => {
  * tabla vea que hay un número que actualizar — y porque el día que entren las
  * columnas de descuento (Bruto, Desc, Neto) este número sube.
  */
-const ANCHO_MINIMO_ITEMS = 300 + 96 + 74 + 68 + 86 + 84 + 126 + 88 + 96 + 44;
+const ANCHO_MINIMO_ITEMS = 44 + 300 + 96 + 74 + 68 + 86 + 84 + 126 + 88 + 96 + 44;
 
 /**
  * Form.Item de la cabecera: el margen inferior por defecto de antd son 24px,
@@ -138,16 +138,34 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
 
   const seqLinea = useRef(0);
 
+  /**
+   * Línea vacía con clave única — la usan tanto "Agregar" (al final) como
+   * el "+" de cada fila (justo debajo de ella). `Date.now()` a secas repetía
+   * clave si se pulsaba dos veces en el mismo milisegundo — dos filas con la
+   * misma key son una fila para React y, ahora, también un foco que va a la
+   * equivocada. El contador lo hace único.
+   */
+  const crearLineaVacia = (): Linea => ({
+    key: `l${Date.now()}-${++seqLinea.current}`,
+    cantidad: 1, cantidadBonificada: 0, precioUnitario: 0,
+    porcentajeItbis: 18, descuentoPct: 0, descuentoMonto: 0,
+  });
+
   const agregarLinea = () => {
-    // `Date.now()` a secas repetía clave si se pulsaba dos veces en el mismo
-    // milisegundo — dos filas con la misma key son una fila para React y,
-    // ahora, también un foco que va a la equivocada. El contador lo hace único.
-    const key = `l${Date.now()}-${++seqLinea.current}`;
-    setLineas(prev => [...prev, {
-      key, cantidad: 1, cantidadBonificada: 0, precioUnitario: 0,
-      porcentajeItbis: 18, descuentoPct: 0, descuentoMonto: 0,
-    }]);
-    setFocoLinea(key);
+    const nueva = crearLineaVacia();
+    setLineas(prev => [...prev, nueva]);
+    setFocoLinea(nueva.key);
+  };
+
+  /** El "+" de cada fila: inserta justo debajo, no al final. */
+  const insertarLineaDebajo = (idx: number) => {
+    const nueva = crearLineaVacia();
+    setLineas(prev => {
+      const copia = [...prev];
+      copia.splice(idx + 1, 0, nueva);
+      return copia;
+    });
+    setFocoLinea(nueva.key);
   };
 
   useEffect(() => {
@@ -447,6 +465,12 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
   };
 
   const lineaCols = [
+    { title: '', key: 'ins', width: 44,
+      render: (_: unknown, _r: Linea, idx: number) => (
+        <Tooltip title="Insertar línea debajo">
+          <Button type="text" size="small" icon={<PlusOutlined />} onClick={() => insertarLineaDebajo(idx)} />
+        </Tooltip>
+      )},
     // `width` explícito, como el resto. La tabla va con `tableLayout="fixed"`:
     // las columnas con ancho fijo se reparten primero y esta, que era la única
     // sin declararlo, se quedaba con lo que sobrara. Al añadir la columna
