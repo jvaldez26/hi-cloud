@@ -97,11 +97,11 @@ export class CrearParametrosFiscales1765500000000 implements MigrationInterface 
 
       -- Escala ISR Personas Físicas / asalariados, 2026
       ('escala_isr_pf',
-       '{"exento":416220.00,"tramos":[' ||
+       ('{"exento":416220.00,"tramos":[' ||
          '{"limiteSuperior":624329.00,"tasa":15,"excesoSobre":416220.00,"acumuladoFijo":0},' ||
          '{"limiteSuperior":867123.00,"tasa":20,"excesoSobre":624329.00,"acumuladoFijo":31216.20},' ||
          '{"limiteSuperior":null,"tasa":25,"excesoSobre":867123.00,"acumuladoFijo":79776.60}' ||
-       ']}'::jsonb,
+       ']}')::jsonb,
        '2026-01-01', '2026-12-31',
        'Ley 11-92 Art. 296, tabla ISR asalariados/personas físicas 2026',
        'Transcripción manual del enunciado del usuario, que redondeó los acumulados fijos a 31,216 y 79,776 (pesos enteros). Se preservan aquí 31,216.20 y 79,776.60 — los decimales que ya estaban hardcodeados y en uso en isr.service.ts y nomina-calculos.service.ts (ver diagnóstico del Paso 0) — confirmar con Jean cuál es el valor oficial exacto antes de validar.'),
