@@ -68,8 +68,11 @@ describe('ValoracionStockService.actualizarCostoPromedio()', () => {
   });
 
   // ── FIX — entrada sin costo conocido no diluye AVCO (2026-09-20) ────────
+  //
+  // Dos guardas, cada una protege un lado distinto de "costo 0" — no confundirlas:
 
-  it('costoActual=0 con stockAntes>0 (stock sin costo conocido): la Compra REEMPLAZA, no promedia', async () => {
+  // (a) costoActual (lo YA guardado) es 0 → la entrada CON costo real gana, reemplaza limpio.
+  it('(a) costo EXISTENTE en 0 + entrada CON costo: gana el costo de la entrada, reemplaza limpio', async () => {
     // El caso real: 4 unidades entraron por "Stock inicial al crear
     // producto" o importación CSV (stock>0, costoPromedio nunca tocado,
     // sigue en 0). Antes de este fix, la primera Compra promediaba su costo
@@ -80,6 +83,31 @@ describe('ValoracionStockService.actualizarCostoPromedio()', () => {
     await svc.actualizarCostoPromedio(1, /* stockAntes */ 4, /* cantidadNueva */ 6, /* costoNuevo */ 95.58);
     const [, params] = llamada(manager, 1);
     expect(params).toEqual([95.58, 1]); // el costo real completo, no (4·0+6·95.58)/10=57.348
+  });
+
+  // (b) costoUnitarioNuevo (el de ESTA entrada) es 0 → no toca nada, ni promedia ni reemplaza.
+  it('(b) producto CON costo real + entrada SIN costo: el costo no cambia, no hay ni UPDATE', async () => {
+    // El lado contrario del fix: un producto que ya sabe cuánto cuesta
+    // (95.58) recibe una entrada sin precio (bonificación, ajuste, stock
+    // inicial sin capturar costo). Esa entrada NO debe entrar al promedio
+    // de ninguna forma — ni promediada (la diluiría) ni "reemplazando" (la
+    // borraría). El resultado correcto es que el producto sigue exactamente
+    // en 95.58, sin ni siquiera un UPDATE de por medio.
+    const { svc, manager } = makeService({ id: 1, costoPromedio: '95.58' });
+    await svc.actualizarCostoPromedio(1, /* stockAntes */ 10, /* cantidadNueva */ 6, /* costoNuevo */ 0);
+    expect(manager.query).toHaveBeenCalledTimes(1); // solo el SELECT ... FOR UPDATE, nunca un UPDATE
+  });
+
+  it('(b) también aplica con costoUnitarioNuevo negativo (defensivo — no debería pasar, pero por seguridad)', async () => {
+    const { svc, manager } = makeService({ id: 1, costoPromedio: '95.58' });
+    await svc.actualizarCostoPromedio(1, 10, 6, -5);
+    expect(manager.query).toHaveBeenCalledTimes(1);
+  });
+
+  it('(a)+(b) combinados: costoActual=0 Y costoUnitarioNuevo=0 → sigue sin tocar nada (gana "b", no hay información en ningún lado)', async () => {
+    const { svc, manager } = makeService({ id: 1, costoPromedio: '0' });
+    await svc.actualizarCostoPromedio(1, 10, 6, 0);
+    expect(manager.query).toHaveBeenCalledTimes(1);
   });
 
   it('costoActual genuinamente 0 (no "0 con stockAntes>0 y costo real más adelante" mezclado dos veces)', async () => {

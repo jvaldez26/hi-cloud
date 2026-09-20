@@ -76,15 +76,27 @@ export class ValoracionStockService {
    * de llamar aquí, así que costoUnitarioNuevo que recibe este método
    * siempre llega en DOP.
    *
-   * FIX — entrada sin costo conocido no diluye AVCO (2026-09-20): además de
-   * "sin stock previo, reemplaza", ahora TAMBIÉN reemplaza cuando el costo
-   * actual es 0, sin importar cuánto stock había. costoPromedio=0 nunca
-   * significa "cuesta cero" — significa "todavía no sabemos cuánto cuesta"
-   * (hay 3 caminos activos en el código que suman stock sin costo: crear un
-   * producto con stock inicial, importación masiva CSV, y POST
-   * /inventario/entrada — ninguno llama a este método). Promediar un costo
-   * real con un "no sabemos" tratado como cero siempre empuja el promedio
-   * hacia abajo del valor real, nunca lo acerca.
+   * FIX — entrada sin costo conocido no diluye AVCO (2026-09-20). Dos
+   * guardas nuevas, cada una protege un lado distinto de "costo 0":
+   *
+   *   a) costoActual === 0 (el costo YA GUARDADO en el producto) → reemplaza
+   *      limpio en vez de promediar, igual que "sin stock previo". Cubre:
+   *      stock cargado sin costo por alguno de los 3 caminos activos que
+   *      suman stock sin llamar a este método (crear producto con stock
+   *      inicial, importación CSV, POST /inventario/entrada) y luego llega
+   *      la primera Compra real — esa Compra debe ganar el 100% del costo,
+   *      no la mitad.
+   *   b) costoUnitarioNuevo <= 0 (el costo de ESTA entrada, el que manda el
+   *      caller) → no toca nada, ni promedia ni reemplaza. Cubre lo
+   *      contrario: un producto que YA tiene costo real y recibe una
+   *      entrada sin costo (bonificación, ajuste, stock inicial sin precio
+   *      capturado) — esa entrada no debe borrar ni diluir lo que ya se
+   *      sabía.
+   *
+   * costoPromedio=0 nunca significa "cuesta cero" — significa "todavía no
+   * sabemos cuánto cuesta", y tratar un "no sabemos" como cero en CUALQUIERA
+   * de los dos lados de la fórmula siempre empuja el promedio hacia abajo,
+   * nunca hacia el valor real.
    */
   async actualizarCostoPromedio(
     productoId: number,
@@ -102,6 +114,17 @@ export class ValoracionStockService {
       if (!prod) return;
 
       const costoActual = Number(prod.costoPromedio ?? 0);
+
+      // Entrada SIN costo conocido (costoUnitarioNuevo <= 0): no toca nada,
+      // bajo ninguna circunstancia — ni promedia, ni reemplaza. Un producto
+      // con costo real no debe perderlo porque llegó una entrada sin precio
+      // (bonificación, ajuste, stock inicial sin costo capturado); dejar
+      // "lo último que sabíamos" es siempre mejor que borrarlo con un cero
+      // que no es información. Este es el guard que le falta al caller
+      // externo (compras.service.ts ya se autoexcluye con costoReal > 0,
+      // pero esta función no debe depender de que TODO caller futuro repita
+      // esa disciplina).
+      if (costoUnitarioNuevo <= 0) return;
 
       // Si no había stock previo, O si el costo actual es 0, el nuevo costo
       // ES el costo promedio — reemplaza limpio, no lo promedia.
