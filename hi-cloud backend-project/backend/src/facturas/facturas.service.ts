@@ -83,6 +83,47 @@ export class FacturasService {
   }
 
   /**
+   * COSTO DE VENTA COMMIT 2 (2026-09-20) — una sola resolución por llamada
+   * a create()/update(), no una por línea de detalle. Default true si la
+   * empresa no existe o la columna llega null por algún camino raro —
+   * nunca bloquear una venta por un problema de config, ver el mismo
+   * criterio en resolverCuentaConcepto() de AsientosAutomaticosService.
+   */
+  private async permitirVentaBajoCosto(empresaId: number): Promise<boolean> {
+    const [row] = await this.dataSource.query<{ permitirVentaBajoCosto: boolean | null }[]>(
+      `SELECT "permitirVentaBajoCosto" FROM empresa WHERE id = $1`,
+      [empresaId],
+    );
+    return row?.permitirVentaBajoCosto ?? true;
+  }
+
+  /**
+   * C-4 unificado (2026-09-20) — antes duplicado idéntico en create() y
+   * update(). Revalida el precio contra el catálogo (previene manipulación
+   * desde localStorage) y, si la empresa no activó permitirVentaBajoCosto,
+   * bloquea vender por debajo del costo promedio conocido.
+   */
+  private validarPrecioVsCosto(
+    producto: { nombre: string; costoPromedio?: number } | null,
+    precioBase: number,
+    permitirBajoCosto: boolean,
+  ): void {
+    if (!producto) return;
+    if (precioBase <= 0) {
+      throw new BadRequestException(
+        `Precio inválido para "${producto.nombre}": debe ser mayor a cero`,
+      );
+    }
+    if (permitirBajoCosto) return; // la empresa decidió permitir vender bajo costo (promociones, liquidaciones)
+    const costo = Number(producto.costoPromedio ?? 0);
+    if (costo > 0 && precioBase < costo) {
+      throw new BadRequestException(
+        `Precio de "${producto.nombre}" (${precioBase}) no puede ser inferior al costo (${costo.toFixed(2)})`,
+      );
+    }
+  }
+
+  /**
    * Invariantes ARITMÉTICAS de las formas de pago. No son juicios de negocio:
    * son las que garantizan que el arqueo de caja cierre, sin importar qué mande
    * el cliente. Viven aquí y no solo en el POS a propósito.
@@ -170,25 +211,16 @@ export class FacturasService {
 
     const productoIds = dto.detalles.map(d => d.productoId).filter((id): id is number => id != null);
     const productosMap = await this.productosService.findByIds(productoIds);
+    const permitirBajoCosto = await this.permitirVentaBajoCosto(empresaId);
 
     for (const item of dto.detalles) {
       const producto = item.productoId ? (productosMap.get(item.productoId) ?? null) : null;
 
-      // C-4: revalidar precio contra catálogo (previene manipulación desde localStorage)
-      if (producto) {
-        const precioBase = Number(item.precioOriginal ?? item.precioUnitario);
-        if (precioBase <= 0) {
-          throw new BadRequestException(
-            `Precio inválido para "${producto.nombre}": debe ser mayor a cero`,
-          );
-        }
-        const costo = Number(producto.costoPromedio ?? 0);
-        if (costo > 0 && precioBase < costo) {
-          throw new BadRequestException(
-            `Precio de "${producto.nombre}" (${precioBase}) no puede ser inferior al costo (${costo.toFixed(2)})`,
-          );
-        }
-      }
+      this.validarPrecioVsCosto(
+        producto,
+        Number(item.precioOriginal ?? item.precioUnitario),
+        permitirBajoCosto,
+      );
 
       const porcentajeIva = item.porcentajeIva ?? (producto ? Number(producto.porcentajeIva) : 18);
 
@@ -389,25 +421,16 @@ export class FacturasService {
 
     const productoIds = dto.detalles.map(d => d.productoId).filter((id): id is number => id != null);
     const productosMap = await this.productosService.findByIds(productoIds);
+    const permitirBajoCosto = await this.permitirVentaBajoCosto(factura.empresaId);
 
     for (const item of dto.detalles) {
       const producto = item.productoId ? (productosMap.get(item.productoId) ?? null) : null;
 
-      // C-4: revalidar precio contra catálogo
-      if (producto) {
-        const precioBase = Number(item.precioOriginal ?? item.precioUnitario);
-        if (precioBase <= 0) {
-          throw new BadRequestException(
-            `Precio inválido para "${producto.nombre}": debe ser mayor a cero`,
-          );
-        }
-        const costo = Number(producto.costoPromedio ?? 0);
-        if (costo > 0 && precioBase < costo) {
-          throw new BadRequestException(
-            `Precio de "${producto.nombre}" (${precioBase}) no puede ser inferior al costo (${costo.toFixed(2)})`,
-          );
-        }
-      }
+      this.validarPrecioVsCosto(
+        producto,
+        Number(item.precioOriginal ?? item.precioUnitario),
+        permitirBajoCosto,
+      );
 
       const porcentajeIva = item.porcentajeIva ?? (producto ? Number(producto.porcentajeIva) : 18);
 

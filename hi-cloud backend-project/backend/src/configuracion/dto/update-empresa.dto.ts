@@ -109,6 +109,10 @@ export class UpdateEmpresaDto {
   @IsOptional() @IsBoolean()
   creditoHabilitado?: boolean;
 
+  /** COSTO DE VENTA COMMIT 2 — permite/bloquea vender por debajo del costo promedio (C-4) */
+  @IsOptional() @IsBoolean()
+  permitirVentaBajoCosto?: boolean;
+
   // ── JSONB de configuración flexible ─────────────────────────────────────────
 
   @IsOptional()

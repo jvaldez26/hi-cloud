@@ -133,6 +133,20 @@ export class Empresa extends BaseEntity {
   @Column({ default: false })
   controlCajaActivo!: boolean;
 
+  /**
+   * COSTO DE VENTA COMMIT 2 (2026-09-20) — controla si la validación C-4
+   * (facturas.service.ts: "el precio no puede ser inferior al costo")
+   * bloquea la venta o no. Default true (permite vender bajo costo, sin
+   * bloqueo) a propósito: el seed retroactivo de AVCO le da costo real de
+   * la noche a la mañana a miles de productos que hoy están en
+   * costoPromedio=0 — sin este flag en true por default, ese seed
+   * despertaría de golpe un bloqueo que hoy no existe y podría dejar a un
+   * cajero sin poder vender una promoción o liquidación legítima. Cada
+   * empresa decide desde Configuración si quiere activar el bloqueo.
+   */
+  @Column({ default: true })
+  permitirVentaBajoCosto!: boolean;
+
   // ── Aprobación por Super Admin ────────────────────────────────────────────
   @Column({ length: 20, default: 'aprobada' })
   estadoAprobacion!: string;   // 'pendiente' | 'aprobada' | 'rechazada'

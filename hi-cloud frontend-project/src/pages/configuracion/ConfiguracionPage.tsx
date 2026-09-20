@@ -722,6 +722,7 @@ function SeccionFacturacion({ empresa, onSaved }: { empresa: any; onSaved: () =>
       diasCreditoDefecto:    conf.diasCreditoDefecto ?? empresa?.diasCreditoDefault ?? 30,
       limiteCreditoDefault:  empresa?.limiteCreditoDefault ?? 0,
       creditoHabilitado:     empresa?.creditoHabilitado ?? true,
+      permitirVentaBajoCosto: empresa?.permitirVentaBajoCosto ?? true,
       pieFactura:            conf.pieFactura ?? '',
       terminosCondiciones:   conf.terminosCondiciones ?? '',
       factMostrarLogo:             conf.factMostrarLogo ?? true,
@@ -739,12 +740,13 @@ function SeccionFacturacion({ empresa, onSaved }: { empresa: any; onSaved: () =>
 
   const mut = useMutation({
     mutationFn: (v: any) => {
-      const { moneda, diasCreditoDefecto, limiteCreditoDefault, creditoHabilitado, ...rest } = v;
+      const { moneda, diasCreditoDefecto, limiteCreditoDefault, creditoHabilitado, permitirVentaBajoCosto, ...rest } = v;
       return configuracionApi.updateEmpresa({
         moneda,
         diasCreditoDefault:  diasCreditoDefecto,
         limiteCreditoDefault,
         creditoHabilitado,
+        permitirVentaBajoCosto,
         configuracion: { ...rest, diasCreditoDefecto },
       });
     },
@@ -796,6 +798,25 @@ function SeccionFacturacion({ empresa, onSaved }: { empresa: any; onSaved: () =>
                 <br />
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   Permite seleccionar "Crédito" como forma de pago en facturas. Genera cuenta por cobrar automáticamente.
+                </Text>
+              </div>
+            </div>
+          </Form.Item>
+        </Col>
+      </Row>
+
+      <Row gutter={16} style={{ marginBottom: 8 }}>
+        <Col xs={24}>
+          <Form.Item name="permitirVentaBajoCosto" valuePropName="checked" style={{ marginBottom: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <Switch />
+              <div>
+                <Text strong>Permitir vender por debajo del costo</Text>
+                <br />
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  Si lo desactivas, el sistema bloqueará facturar un producto a un precio menor
+                  que su costo promedio conocido (evita el error, pero también bloquea promociones
+                  y liquidaciones legítimas por debajo de costo).
                 </Text>
               </div>
             </div>

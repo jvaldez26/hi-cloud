@@ -179,6 +179,8 @@ export class ConfiguracionService implements OnModuleInit {
       'actividadEconomica', 'moneda', 'zonaHoraria',
       // campos de crédito (agregados en versiones posteriores)
       'diasCreditoDefault', 'limiteCreditoDefault', 'creditoHabilitado',
+      // COSTO DE VENTA COMMIT 2 — validación C-4 (precio vs costo)
+      'permitirVentaBajoCosto',
     ];
 
     const updateData: Partial<Empresa> = {};
