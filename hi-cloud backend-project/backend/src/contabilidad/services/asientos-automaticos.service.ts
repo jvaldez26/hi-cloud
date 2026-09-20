@@ -284,6 +284,30 @@ export class AsientosAutomaticosService {
       lineasResueltas.push({ cuenta, ...l });
     }
 
+    // Contabilidad — Balance/Diagnóstico (2026-09-20) — redondeo de centavos
+    // (ITBIS calculado por línea vs. sobre el total, típicamente) se corrige
+    // EN EL ORIGEN antes de persistir: nunca se deja un asiento con un
+    // centavo de descuadre "tolerado" en los libros. Se ajusta la línea de
+    // ITBIS si el asiento tiene una (el destino natural de un redondeo de
+    // impuesto); si no, la línea de mayor monto — la que menos distorsiona
+    // el saldo de esa cuenta en términos relativos. Solo se corrige a escala
+    // de centavos (≤0.01): una diferencia mayor no es redondeo, es un bug
+    // real en el builder de líneas, y forzar el cuadre lo escondería.
+    const CODIGOS_ITBIS = new Set<string>([COD.ITBIS_POR_PAGAR, COD.ITBIS_CREDITO, COD.ITBIS_RET_POR_PAGAR]);
+    const diferenciaRedondeo = Number(
+      (lineasResueltas.reduce((s, l) => s + l.debe, 0) - lineasResueltas.reduce((s, l) => s + l.haber, 0)).toFixed(2),
+    );
+    if (diferenciaRedondeo !== 0 && Math.abs(diferenciaRedondeo) <= 0.01) {
+      const candidata =
+        lineasResueltas.find(l => CODIGOS_ITBIS.has(l.cuenta.codigo)) ??
+        lineasResueltas.reduce((mayor, l) => (Math.max(l.debe, l.haber) > Math.max(mayor.debe, mayor.haber) ? l : mayor));
+      if (candidata.haber > 0) {
+        candidata.haber = Number((candidata.haber + diferenciaRedondeo).toFixed(2));
+      } else {
+        candidata.debe = Number((candidata.debe - diferenciaRedondeo).toFixed(2));
+      }
+    }
+
     const totalDebe  = lineasResueltas.reduce((s, l) => s + l.debe,  0);
     const totalHaber = lineasResueltas.reduce((s, l) => s + l.haber, 0);
 
@@ -293,7 +317,9 @@ export class AsientosAutomaticosService {
     // compras, cobros, pagos, nómina, reversas...) — un builder de líneas
     // con un bug podía postear un asiento descuadrado sin que nadie se
     // enterara hasta el cierre. Un asiento descuadrado en los libros es peor
-    // que ninguno.
+    // que ninguno. Llegar aquí con una diferencia > 0.01 significa que la
+    // corrección de redondeo de arriba no aplicó (o no alcanzó) — es un
+    // descuadre real, se rechaza.
     if (Math.abs(totalDebe - totalHaber) > 0.01) {
       return {
         ok: false, tipo: 'asiento_descuadrado', totalDebe, totalHaber,

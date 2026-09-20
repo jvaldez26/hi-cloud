@@ -103,6 +103,92 @@ describe('AsientosAutomaticosService — partida doble (P3 Bloque 1)', () => {
     expect(reportServiceError).not.toHaveBeenCalledWith(expect.any(Error), 'asiento_descuadrado', expect.anything());
   });
 
+  it('redondeo de centavos (≤0.01): se corrige EN LA LÍNEA DE ITBIS, el asiento queda EXACTO', async () => {
+    // Balance/Diagnóstico (2026-09-20) — antes de este fix, un diferencial de
+    // hasta 0.01 se toleraba TAL CUAL (guardado descuadrado por un centavo).
+    // Ahora se corrige en el origen: nunca se persiste un asiento con la
+    // diferencia todavía presente, si es del tamaño de un redondeo.
+    const { svc, asientoRepository, lineaRepository } = makeService([
+      cuenta('1.1.2.01', 1), cuenta('4.1.1.01', 2), cuenta('2.1.2.01', 3), // ITBIS_POR_PAGAR
+    ]);
+
+    const resultado = await svc.crearAsientoContabilizado({
+      descripcion:     'Factura con ITBIS sumado por línea',
+      tipoOrigen:      TipoOrigenAsiento.FACTURA,
+      referenciaId:    2,
+      referenciaFolio: 'FAC-2',
+      userId:          5,
+      lineas: [
+        { codigo: '1.1.2.01', descripcion: 'CxC',    debe: 1180.01, haber: 0 },
+        { codigo: '4.1.1.01', descripcion: 'Ventas', debe: 0,       haber: 1000 },
+        { codigo: '2.1.2.01', descripcion: 'ITBIS',  debe: 0,       haber: 180 }, // faltaba 0.01
+      ],
+    });
+
+    expect(resultado).not.toBeNull();
+    const lineasGuardadas = (lineaRepository.save as jest.Mock).mock.calls[0][0] as any[];
+    const totalDebe  = lineasGuardadas.reduce((s: number, l: any) => s + l.debe,  0);
+    const totalHaber = lineasGuardadas.reduce((s: number, l: any) => s + l.haber, 0);
+    expect(totalDebe).toBe(totalHaber); // EXACTO, no solo "dentro de 0.01"
+
+    const lineaItbis = lineasGuardadas.find((l: any) => l.cuentaContableId === 3);
+    expect(lineaItbis.haber).toBe(180.01); // el centavo se le sumó a ITBIS, no a Ventas ni a CxC
+    expect(asientoRepository.save).toHaveBeenCalled();
+  });
+
+  it('redondeo de centavos sin línea de ITBIS: se corrige en la línea de MAYOR MONTO', async () => {
+    const { svc, lineaRepository } = makeService([
+      cuenta('1.1.1.02', 1), cuenta('1.1.2.01', 2), // sin ninguna cuenta ITBIS
+    ]);
+
+    const resultado = await svc.crearAsientoContabilizado({
+      descripcion:     'Cobro con redondeo, sin ITBIS en el asiento',
+      tipoOrigen:      TipoOrigenAsiento.COBRO,
+      referenciaId:    3,
+      referenciaFolio: 'COB-3',
+      userId:          5,
+      lineas: [
+        { codigo: '1.1.1.02', descripcion: 'Caja',     debe: 5000,    haber: 0 },
+        { codigo: '1.1.2.01', descripcion: 'Clientes', debe: 0,       haber: 4999.99 },
+      ],
+    });
+
+    expect(resultado).not.toBeNull();
+    const lineasGuardadas = (lineaRepository.save as jest.Mock).mock.calls[0][0] as any[];
+    const totalDebe  = lineasGuardadas.reduce((s: number, l: any) => s + l.debe,  0);
+    const totalHaber = lineasGuardadas.reduce((s: number, l: any) => s + l.haber, 0);
+    expect(totalDebe).toBe(totalHaber);
+
+    // La línea de mayor monto es Caja (5000 > 4999.99) — se le resta el centavo, no se toca Clientes.
+    const lineaCaja = lineasGuardadas.find((l: any) => l.cuentaContableId === 1);
+    const lineaClientes = lineasGuardadas.find((l: any) => l.cuentaContableId === 2);
+    expect(lineaCaja.debe).toBe(4999.99);
+    expect(lineaClientes.haber).toBe(4999.99);
+  });
+
+  it('diferencia mayor a 0.01 NO se corrige — sigue siendo un bug real, se rechaza (no esconde el error)', async () => {
+    const { svc, asientoRepository, lineaRepository } = makeService([
+      cuenta('1.1.1.02', 1), cuenta('4.1.1.01', 2), cuenta('2.1.2.01', 3),
+    ]);
+
+    const resultado = await svc.crearAsientoContabilizado({
+      descripcion:     'Asiento con diferencia real, no de redondeo',
+      tipoOrigen:      TipoOrigenAsiento.AJUSTE,
+      referenciaId:    4,
+      referenciaFolio: 'TEST-4',
+      userId:          5,
+      lineas: [
+        { codigo: '1.1.1.02', descripcion: 'Debe',  debe: 100,   haber: 0 },
+        { codigo: '2.1.2.01', descripcion: 'ITBIS', debe: 0,     haber: 99.90 }, // 0.10 de diferencia
+      ],
+    });
+
+    expect(resultado).toBeNull();
+    expect(asientoRepository.save).not.toHaveBeenCalled();
+    expect(lineaRepository.save).not.toHaveBeenCalled();
+    expect(reportServiceError).toHaveBeenCalledWith(expect.any(Error), 'asiento_descuadrado', expect.anything());
+  });
+
   it('asiento balanceado sigue generándose normal (regresión)', async () => {
     const { svc, asientoRepository } = makeService([
       cuenta('1.1.1.03', 1), cuenta('1.1.2.01', 2), cuenta('4.1.1.01', 3), cuenta('2.1.2.01', 4),
