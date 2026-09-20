@@ -12,7 +12,7 @@ import { ProveedoresService } from '../proveedores/proveedores.service';
 import { ProductosService } from '../productos/productos.service';
 import { ProductoProveedorService } from '../productos/producto-proveedor.service';
 import { InventarioService } from '../inventario/inventario.service';
-import { ValoracionStockService } from '../valoracion-stock/valoracion-stock.service';
+import { ValoracionStockService, convertirADOP } from '../valoracion-stock/valoracion-stock.service';
 import { CxPService } from '../cxp/cxp.service';
 import { AsientosAutomaticosService } from '../contabilidad/services/asientos-automaticos.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
@@ -44,6 +44,24 @@ export class ComprasService {
     @InjectDataSource() private ds:  DataSource,
   ) {}
 
+  /**
+   * COMMIT — conversión de moneda en compras (2026-09-20). Sin esto, una
+   * compra en USD/EUR sin tasa (o con tasa 1, el default de la columna)
+   * pasaba en silencio: el backend trataba el monto extranjero como si
+   * fuera DOP. tipoCambio=1 se rechaza también cuando moneda≠DOP porque es
+   * exactamente ese default silencioso — una compra en USD a la par nunca
+   * es la intención real.
+   */
+  private validarMonedaTipoCambio(moneda: string | undefined, tipoCambio: number | undefined): void {
+    if (!moneda || moneda === 'DOP') return;
+    if (!tipoCambio || tipoCambio === 1) {
+      throw new BadRequestException(
+        `La compra está en ${moneda} pero no tiene una tasa de cambio válida. ` +
+        `Ingresa la tasa RD$/${moneda} del día de la compra antes de guardar.`,
+      );
+    }
+  }
+
   private async generarFolio(): Promise<string> {
     const empresaId = this.tenantService.getEmpresaId();
     const prefijo   = 'COM-';
@@ -65,11 +83,17 @@ export class ComprasService {
     subtotalCompra: number;
     itbisCompra: number;
     descuentoCompra: number;
+    subtotalCompraDOP: number;
+    itbisCompraDOP: number;
   }> {
+    this.validarMonedaTipoCambio(dto.moneda, dto.tipoCambio);
+
     const detallesData: Partial<CompraDetalle>[] = [];
-    let subtotalCompra   = 0;
-    let itbisCompra      = 0;
-    let descuentoCompra  = 0;
+    let subtotalCompra    = 0;
+    let itbisCompra       = 0;
+    let descuentoCompra   = 0;
+    let subtotalCompraDOP = 0;
+    let itbisCompraDOP    = 0;
 
     const productoIds = dto.detalles.map(d => d.productoId);
     const productosMap = await this.productosService.findByIds(productoIds);
@@ -128,9 +152,21 @@ export class ComprasService {
         ? Number((subtotal / cantidadTot).toFixed(4))
         : Number(item.precioUnitario);
 
-      subtotalCompra  += subtotal;
-      itbisCompra     += importeItbis;
-      descuentoCompra += descuentoMonto;
+      // Conversión a DOP (2026-09-20) — el frontend nunca convierte, envía
+      // precioUnitario en la moneda de la compra tal cual; el backend
+      // convierte aquí, en el mismo punto donde ya calculaba costoUnitarioReal
+      // y los totales, antes de que cualquiera de los dos llegue a AVCO o al
+      // asiento. subtotal/importeItbis/total arriba NO se tocan — siguen en
+      // la moneda original para conciliar con la factura del proveedor.
+      const subtotalDOP          = Number(convertirADOP(subtotal, dto.moneda, dto.tipoCambio).toFixed(2));
+      const importeItbisDOP      = Number(convertirADOP(importeItbis, dto.moneda, dto.tipoCambio).toFixed(2));
+      const costoUnitarioRealDOP = convertirADOP(costoUnitarioReal, dto.moneda, dto.tipoCambio);
+
+      subtotalCompra    += subtotal;
+      itbisCompra        += importeItbis;
+      descuentoCompra    += descuentoMonto;
+      subtotalCompraDOP  += subtotalDOP;
+      itbisCompraDOP      += importeItbisDOP;
 
       detallesData.push({
         productoId:        item.productoId,
@@ -146,16 +182,18 @@ export class ComprasService {
         importeItbis,
         total,
         costoUnitarioReal,
+        costoUnitarioRealDOP,
       });
     }
 
-    return { detallesData, subtotalCompra, itbisCompra, descuentoCompra };
+    return { detallesData, subtotalCompra, itbisCompra, descuentoCompra, subtotalCompraDOP, itbisCompraDOP };
   }
 
   async create(dto: CreateCompraDto, usuario: User) {
     await this.proveedoresService.findOne(dto.proveedorId);
 
-    const { detallesData, subtotalCompra, itbisCompra, descuentoCompra } = await this.calcularDetalles(dto);
+    const { detallesData, subtotalCompra, itbisCompra, descuentoCompra, subtotalCompraDOP, itbisCompraDOP } =
+      await this.calcularDetalles(dto);
 
     const folio      = await this.generarFolio();
     const empresaId  = this.tenantService.getEmpresaId();
@@ -180,6 +218,15 @@ export class ComprasService {
     const totalBruto            = Number((subtotalCompra + itbisCompra).toFixed(2));
     const netoPagar             = Number((totalBruto - montoRetencionItbis - montoRetencionIsr).toFixed(2));
 
+    // Mismo cálculo, en DOP — son los que alimentan AVCO y el asiento
+    // (ver cambiarEstado/recibir). subtotal/itbis/total/retenciones arriba
+    // siguen en la moneda original de la compra.
+    const montoItbisTotalDOP     = Number(itbisCompraDOP.toFixed(2));
+    const montoRetencionItbisDOP = retieneItbis ? Number((montoItbisTotalDOP * pctItbis / 100).toFixed(2)) : 0;
+    const montoRetencionIsrDOP   = retieneIsr   ? Number((subtotalCompraDOP * pctIsr / 100).toFixed(2)) : 0;
+    const totalBrutoDOP          = Number((subtotalCompraDOP + itbisCompraDOP).toFixed(2));
+    const netoPagarDOP           = Number((totalBrutoDOP - montoRetencionItbisDOP - montoRetencionIsrDOP).toFixed(2));
+
     const almacenIdCtx = this.tenantService.getAlmacenId() ?? undefined;
 
     const compra = this.compraRepository.create({
@@ -194,6 +241,12 @@ export class ComprasService {
       itbis:                  montoItbisTotal,
       descuentoTotal:         Number(descuentoCompra.toFixed(2)),
       total:                  totalBruto,
+      subtotalDOP:            Number(subtotalCompraDOP.toFixed(2)),
+      itbisDOP:               montoItbisTotalDOP,
+      totalDOP:               totalBrutoDOP,
+      montoRetencionItbisDOP,
+      montoRetencionIsrDOP,
+      netoPagarDOP,
       tipoPago,
       diasCredito,
       fechaVencimiento,
@@ -346,7 +399,8 @@ export class ComprasService {
 
     await this.proveedoresService.findOne(dto.proveedorId);
 
-    const { detallesData, subtotalCompra, itbisCompra, descuentoCompra } = await this.calcularDetalles(dto);
+    const { detallesData, subtotalCompra, itbisCompra, descuentoCompra, subtotalCompraDOP, itbisCompraDOP } =
+      await this.calcularDetalles(dto);
 
     const tipoPago    = dto.tipoPago ?? 'credito';
     const diasCredito = dto.diasCredito ?? 30;
@@ -366,6 +420,12 @@ export class ComprasService {
     const totalBruto          = Number((subtotalCompra + itbisCompra).toFixed(2));
     const netoPagar           = Number((totalBruto - montoRetencionItbis - montoRetencionIsr).toFixed(2));
 
+    const montoItbisTotalDOP     = Number(itbisCompraDOP.toFixed(2));
+    const montoRetencionItbisDOP = retieneItbis ? Number((montoItbisTotalDOP * pctItbis / 100).toFixed(2)) : 0;
+    const montoRetencionIsrDOP   = retieneIsr   ? Number((subtotalCompraDOP * pctIsr / 100).toFixed(2)) : 0;
+    const totalBrutoDOP          = Number((subtotalCompraDOP + itbisCompraDOP).toFixed(2));
+    const netoPagarDOP           = Number((totalBrutoDOP - montoRetencionItbisDOP - montoRetencionIsrDOP).toFixed(2));
+
     // El folio, el usuario que la creó y la empresa NO se tocan: identifican el
     // documento. Las líneas se reemplazan enteras, como en la edición de
     // facturas — casar línea a línea con lo que hay no aporta nada aquí y
@@ -382,6 +442,12 @@ export class ComprasService {
           itbis:                  montoItbisTotal,
           descuentoTotal:         Number(descuentoCompra.toFixed(2)),
           total:                  totalBruto,
+          subtotalDOP:            Number(subtotalCompraDOP.toFixed(2)),
+          itbisDOP:               montoItbisTotalDOP,
+          totalDOP:               totalBrutoDOP,
+          montoRetencionItbisDOP,
+          montoRetencionIsrDOP,
+          netoPagarDOP,
           tipoPago,
           diasCredito,
           fechaVencimiento:       fechaVencimiento ?? undefined,
@@ -457,8 +523,11 @@ export class ComprasService {
         // stockAntes = cantidadAnterior que registrarEntrada() ya calculó —
         // nunca releer producto.stock aquí: para este punto ya quedó
         // actualizado con la entrada que se acaba de aplicar.
-        const costoBase     = Number((detalle as any).costoUnitarioReal ?? detalle.precioUnitario);
-        const costoImport   = costoImportMap.get(detalle.id) ?? 0;
+        // costoUnitarioRealDOP (2026-09-20): AVCO siempre en DOP — cae a
+        // costoUnitarioReal/precioUnitario en detalles de compras históricas
+        // sin la columna (que ya estaban en DOP, así que el valor es el mismo).
+        const costoBase     = Number((detalle as any).costoUnitarioRealDOP ?? (detalle as any).costoUnitarioReal ?? detalle.precioUnitario);
+        const costoImport   = costoImportMap.get(detalle.id) ?? 0; // ya en DOP (GastoImportacion.montoDOP)
         const costoReal     = costoBase + costoImport;
         if (costoReal > 0) {
           await this.valoracionService.actualizarCostoPromedio(
@@ -481,19 +550,23 @@ export class ComprasService {
       }
 
       // 3. Asiento contable automático (con retenciones si aplica)
+      // *DOP (2026-09-20): el asiento (mayor general, moneda única DOP) se
+      // alimenta con los montos convertidos, no con los de la moneda
+      // original de la compra — cae a la columna original en compras
+      // históricas sin *DOP (que ya estaban en DOP).
       await this.asientosService.asientoCompraRecibida(
         compra.id,
-        Number(compra.total),
-        Number(compra.subtotal),
-        Number(compra.itbis),
+        Number((compra as any).totalDOP ?? compra.total),
+        Number((compra as any).subtotalDOP ?? compra.subtotal),
+        Number((compra as any).itbisDOP ?? compra.itbis),
         compra.folio,
         compra.fecha as unknown as string,
         compra.usuarioId,
         compra.retieneItbis || compra.retieneIsr
           ? {
-              montoItbis: Number(compra.montoRetencionItbis ?? 0),
-              montoIsr:   Number(compra.montoRetencionIsr   ?? 0),
-              netoPagar:  Number(compra.netoPagar           ?? compra.total),
+              montoItbis: Number((compra as any).montoRetencionItbisDOP ?? compra.montoRetencionItbis ?? 0),
+              montoIsr:   Number((compra as any).montoRetencionIsrDOP   ?? compra.montoRetencionIsr   ?? 0),
+              netoPagar:  Number((compra as any).netoPagarDOP ?? compra.netoPagar ?? (compra as any).totalDOP ?? compra.total),
             }
           : undefined,
         // Selector de cuenta contable — la misma compra puede ser gasto,
@@ -595,7 +668,8 @@ export class ComprasService {
 
       // Actualizar AVCO: precio proveedor + costo de importación por unidad.
       // stockAntes = cantidadAnterior de registrarEntrada() — ver nota en cambiarEstado().
-      const costoBase   = Number((detalle as any).costoUnitarioReal ?? detalle.precioUnitario);
+      // costoUnitarioRealDOP — ver nota en cambiarEstado().
+      const costoBase   = Number((detalle as any).costoUnitarioRealDOP ?? (detalle as any).costoUnitarioReal ?? detalle.precioUnitario);
       const costoImport = costoImportMapRecibir.get(detalle.id) ?? 0;
       const costoReal   = costoBase + costoImport;
       if (costoReal > 0) {
@@ -631,20 +705,21 @@ export class ComprasService {
     }
 
     // Asiento contable solo en la primera recepción
+    // *DOP — ver nota en cambiarEstado().
     if (esPrimeraRecepcion) {
       await this.asientosService.asientoCompraRecibida(
         compra.id,
-        Number(compra.total),
-        Number(compra.subtotal),
-        Number(compra.itbis),
+        Number((compra as any).totalDOP ?? compra.total),
+        Number((compra as any).subtotalDOP ?? compra.subtotal),
+        Number((compra as any).itbisDOP ?? compra.itbis),
         compra.folio,
         compra.fecha as unknown as string,
         usuario.id,
         compra.retieneItbis || compra.retieneIsr
           ? {
-              montoItbis: Number(compra.montoRetencionItbis ?? 0),
-              montoIsr:   Number(compra.montoRetencionIsr   ?? 0),
-              netoPagar:  Number(compra.netoPagar           ?? compra.total),
+              montoItbis: Number((compra as any).montoRetencionItbisDOP ?? compra.montoRetencionItbis ?? 0),
+              montoIsr:   Number((compra as any).montoRetencionIsrDOP   ?? compra.montoRetencionIsr   ?? 0),
+              netoPagar:  Number((compra as any).netoPagarDOP ?? compra.netoPagar ?? (compra as any).totalDOP ?? compra.total),
             }
           : undefined,
         (compra as any).cuentaDestino || undefined,
@@ -762,9 +837,11 @@ export class ComprasService {
    * El formulario la llama en cada cambio de líneas/retenciones/cuenta.
    */
   async previsualizarAsiento(dto: CreateCompraDto) {
-    const { subtotalCompra, itbisCompra } = await this.calcularDetalles(dto);
-    const subtotal = Number(subtotalCompra.toFixed(2));
-    const itbis    = Number(itbisCompra.toFixed(2));
+    // *DOP — el panel muestra el asiento tal como se va a contabilizar
+    // (siempre en DOP); idéntico al original cuando la compra es en DOP.
+    const { subtotalCompraDOP, itbisCompraDOP } = await this.calcularDetalles(dto);
+    const subtotal = Number(subtotalCompraDOP.toFixed(2));
+    const itbis    = Number(itbisCompraDOP.toFixed(2));
     const total    = Number((subtotal + itbis).toFixed(2));
 
     const retieneItbis = dto.retieneItbis ?? false;

@@ -144,4 +144,31 @@ export class Compra extends TenantBaseEntity {
   /** Total - retenciones (lo que realmente se paga al proveedor) */
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   netoPagar!: number;
+
+  // ── Conversión de moneda (2026-09-20) ───────────────────────────────────
+  // subtotal/itbis/total/montoRetencion*/netoPagar arriba SIGUEN en la
+  // moneda ORIGINAL de la compra — hacen falta para conciliar con la
+  // factura del proveedor, nunca se sobrescriben. Estas son su equivalente
+  // en DOP (= original × tipoCambio; idénticas al original cuando
+  // moneda='DOP') y son las que alimentan AVCO y el asiento contable desde
+  // este commit. NULL en compras históricas creadas antes de este commit —
+  // el código que las consume cae a la columna original cuando es NULL.
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  subtotalDOP?: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  itbisDOP?: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  totalDOP?: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  montoRetencionItbisDOP?: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
+  montoRetencionIsrDOP?: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  netoPagarDOP?: number;
 }

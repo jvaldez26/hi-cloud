@@ -340,6 +340,22 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
   const total    = subtotal + itbis;
   const subtotalBruto = subtotal + descuentoTotal;
 
+  // Equivalente RD$ (2026-09-20) — el backend convierte a DOP línea por
+  // línea, redondeando cada línea antes de sumar (calcularDetalles); se
+  // replica el mismo orden de operaciones aquí para que este número sea
+  // EXACTAMENTE el que el backend va a guardar como totalDOP/netoPagarDOP,
+  // no una aproximación de "total × tasa" en un solo paso.
+  const subtotalDOP = moneda !== 'DOP'
+    ? lineas.reduce((s, l) => s + Number(((l.precioUnitario * l.cantidad - (l.descuentoMonto || 0)) * tipoCambio).toFixed(2)), 0)
+    : subtotal;
+  const itbisDOP = moneda !== 'DOP'
+    ? lineas.reduce((s, l) => s + Number(((l.precioUnitario * l.cantidad - (l.descuentoMonto || 0)) * (l.porcentajeItbis / 100) * tipoCambio).toFixed(2)), 0)
+    : itbis;
+  const totalDOP = Number((subtotalDOP + itbisDOP).toFixed(2));
+  const montoRetItbisDOP = (esInformal && retieneItbis) ? Number((itbisDOP    * pctItbis / 100).toFixed(2)) : 0;
+  const montoRetIsrDOP   = (esInformal && retieneIsr)   ? Number((subtotalDOP * pctIsr   / 100).toFixed(2)) : 0;
+  const netoPagarDOP     = Number((totalDOP - montoRetItbisDOP - montoRetIsrDOP).toFixed(2));
+
   // Panel de vista previa del asiento — recalculado SIEMPRE en el backend
   // (mismo cálculo que create(), calcularDetalles() + el motor de
   // asientos), nunca replicado aquí. Solo se activa con al menos una línea
@@ -349,7 +365,7 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
   const { data: previewAsiento, isFetching: previewCargando } = useQuery({
     queryKey: ['compra-preview', JSON.stringify(lineasValidas.map(l => ({
       p: l.productoId, c: l.cantidad, cb: l.cantidadBonificada, pu: l.precioUnitario, it: l.porcentajeItbis,
-    }))), cuentaDestino, retieneItbis, pctItbis, retieneIsr, pctIsr],
+    }))), cuentaDestino, retieneItbis, pctItbis, retieneIsr, pctIsr, moneda, tipoCambio],
     queryFn: () => comprasApi.previsualizarAsiento({
       proveedorId: proveedorSelId!,
       fecha: dayjs().format('YYYY-MM-DD'),
@@ -358,10 +374,12 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
         precioUnitario: l.precioUnitario, porcentajeItbis: l.porcentajeItbis,
       })),
       cuentaDestino,
+      moneda,
+      tipoCambio: moneda !== 'DOP' ? tipoCambio : undefined,
       ...(esInformal && retieneItbis ? { retieneItbis: true, porcentajeRetencionItbis: pctItbis } : {}),
       ...(esInformal && retieneIsr   ? { retieneIsr:   true, porcentajeRetencionIsr:   pctIsr   } : {}),
     }),
-    enabled: lineasValidas.length > 0 && !!proveedorSelId,
+    enabled: lineasValidas.length > 0 && !!proveedorSelId && (moneda === 'DOP' || tipoCambio > 1),
     staleTime: 500,
   });
 
@@ -941,7 +959,7 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
               )}
               {moneda !== 'DOP' && tipoCambio > 1 && (
                 <Dato etiqueta="Equivalente RD$"
-                  valor={fmtMon((montoRetItbis > 0 || montoRetIsr > 0 ? netoPagar : total) * tipoCambio, 'DOP')}
+                  valor={fmtMon(montoRetItbisDOP > 0 || montoRetIsrDOP > 0 ? netoPagarDOP : totalDOP, 'DOP')}
                   color="#888" />
               )}
             </div>

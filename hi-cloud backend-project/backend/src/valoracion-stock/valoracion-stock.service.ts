@@ -6,15 +6,12 @@ import { TenantService } from '../tenant/tenant.service';
 
 /**
  * FIX 3, COSTO DE VENTA COMMIT 1 (2026-09-20) — punto ÚNICO de conversión a
- * DOP para AVCO. Todavía NO está conectado a actualizarCostoPromedio(): el
- * punto 2 de la investigación de esta misma tarea (¿el frontend de Compras
- * ya envía el precio en DOP, o en la moneda de la compra esperando que el
- * backend convierta?) sigue abierto. Conectarlo antes de esa respuesta
- * arriesga convertir dos veces (si el frontend YA convierte) o no convertir
- * nunca (si compras.service.ts nunca llega a llamarlo) — ambos corrompen
- * el costo promedio, uno multiplicando de más, el otro dejándolo intacto.
- * Se deja preparado y exportado para conectarlo en un commit aparte en
- * cuanto se resuelva esa pregunta.
+ * DOP. Conectado en el commit de conversión de moneda en compras
+ * (2026-09-20): la investigación confirmó que el frontend de Compras NUNCA
+ * convierte — envía precioUnitario en la moneda seleccionada + moneda +
+ * tipoCambio tal cual — así que compras.service.ts (calcularDetalles()) es
+ * quien llama a esta función antes de alimentar AVCO y el asiento contable.
+ * Regla: el backend convierte, el frontend nunca.
  */
 export function convertirADOP(monto: number, moneda: string | undefined, tipoCambio: number | undefined): number {
   if (!moneda || moneda === 'DOP') return monto;
@@ -74,9 +71,10 @@ export class ValoracionStockService {
    *      calcular el suyo — mismo patrón que caja.service.ts:829-833 y
    *      cosechas.service.ts:79-84.
    *
-   * La 3ra (conversión a DOP con tipoCambio) queda preparada en
-   * convertirADOP() de este mismo archivo pero SIN conectar — ver su
-   * comentario.
+   * La 3ra (conversión a DOP con tipoCambio) vive en convertirADOP() de
+   * este mismo archivo — el caller (compras.service.ts) ya convierte antes
+   * de llamar aquí, así que costoUnitarioNuevo que recibe este método
+   * siempre llega en DOP.
    */
   async actualizarCostoPromedio(
     productoId: number,

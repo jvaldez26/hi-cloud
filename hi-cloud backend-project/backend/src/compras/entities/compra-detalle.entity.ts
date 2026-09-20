@@ -50,6 +50,16 @@ export class CompraDetalle extends BaseEntity {
   costoUnitarioReal?: number;
 
   /**
+   * costoUnitarioReal convertido a DOP (= costoUnitarioReal × compra.tipoCambio;
+   * idéntico al original cuando la compra es en DOP). Es el valor que
+   * alimenta AVCO desde el commit de conversión de moneda (2026-09-20) —
+   * costoUnitarioReal arriba sigue en la moneda original, para conciliar
+   * con la factura del proveedor. NULL en líneas de compras históricas.
+   */
+  @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true })
+  costoUnitarioRealDOP?: number;
+
+  /**
    * Suma de montoUnitario de todos los GastoImportacionLinea aplicados a esta línea.
    * costoUnitarioReal + costoImportacionUnitario = costo landing real → AVCO.
    */
