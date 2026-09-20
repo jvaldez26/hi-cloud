@@ -67,6 +67,33 @@ describe('ValoracionStockService.actualizarCostoPromedio()', () => {
     expect(params).toEqual([42, 1]);
   });
 
+  // ── FIX — entrada sin costo conocido no diluye AVCO (2026-09-20) ────────
+
+  it('costoActual=0 con stockAntes>0 (stock sin costo conocido): la Compra REEMPLAZA, no promedia', async () => {
+    // El caso real: 4 unidades entraron por "Stock inicial al crear
+    // producto" o importación CSV (stock>0, costoPromedio nunca tocado,
+    // sigue en 0). Antes de este fix, la primera Compra promediaba su costo
+    // real con esas unidades "gratis" y el resultado quedaba diluido muy
+    // por debajo de lo que realmente costó — verificado contra un backup
+    // real: "KARMA GUARANA" cayó de 95.58 a 57.35 por 4 unidades así.
+    const { svc, manager } = makeService({ id: 1, costoPromedio: '0' });
+    await svc.actualizarCostoPromedio(1, /* stockAntes */ 4, /* cantidadNueva */ 6, /* costoNuevo */ 95.58);
+    const [, params] = llamada(manager, 1);
+    expect(params).toEqual([95.58, 1]); // el costo real completo, no (4·0+6·95.58)/10=57.348
+  });
+
+  it('costoActual genuinamente 0 (no "0 con stockAntes>0 y costo real más adelante" mezclado dos veces)', async () => {
+    // Dos Compras reales en secuencia, ambas sobre stock que llegó primero
+    // sin costo conocido: la primera reemplaza limpio (ya cubierto arriba);
+    // la SEGUNDA, con costoActual ya no-cero, promedia normalmente — el fix
+    // no rompe el caso clásico una vez que el producto ya tiene un costo real.
+    const { svc, manager } = makeService({ id: 1, costoPromedio: '95.58' });
+    await svc.actualizarCostoPromedio(1, /* stockAntes */ 10, /* cantidadNueva */ 10, /* costoNuevo */ 50);
+    const [, params] = llamada(manager, 1);
+    // (10·95.58 + 10·50)/20 = 72.79
+    expect(params).toEqual([72.79, 1]);
+  });
+
   it('stockAntes negativo (no debería pasar, pero por seguridad) también reemplaza en vez de dividir por algo raro', async () => {
     const { svc, manager } = makeService({ id: 1, costoPromedio: '5' });
     await svc.actualizarCostoPromedio(1, -1, 10, 20);

@@ -75,6 +75,16 @@ export class ValoracionStockService {
    * este mismo archivo — el caller (compras.service.ts) ya convierte antes
    * de llamar aquí, así que costoUnitarioNuevo que recibe este método
    * siempre llega en DOP.
+   *
+   * FIX — entrada sin costo conocido no diluye AVCO (2026-09-20): además de
+   * "sin stock previo, reemplaza", ahora TAMBIÉN reemplaza cuando el costo
+   * actual es 0, sin importar cuánto stock había. costoPromedio=0 nunca
+   * significa "cuesta cero" — significa "todavía no sabemos cuánto cuesta"
+   * (hay 3 caminos activos en el código que suman stock sin costo: crear un
+   * producto con stock inicial, importación masiva CSV, y POST
+   * /inventario/entrada — ninguno llama a este método). Promediar un costo
+   * real con un "no sabemos" tratado como cero siempre empuja el promedio
+   * hacia abajo del valor real, nunca lo acerca.
    */
   async actualizarCostoPromedio(
     productoId: number,
@@ -93,11 +103,23 @@ export class ValoracionStockService {
 
       const costoActual = Number(prod.costoPromedio ?? 0);
 
-      // Si no había stock previo, el nuevo costo ES el costo promedio —
-      // reemplaza limpio cualquier valor puesto a mano (AjustarCostoManualDto),
-      // no lo promedia: sin stock real detrás, ese valor era solo un punto de
-      // partida provisional, nunca "unidades" que deban pesar en la fórmula.
-      if (stockAntes <= 0) {
+      // Si no había stock previo, O si el costo actual es 0, el nuevo costo
+      // ES el costo promedio — reemplaza limpio, no lo promedia.
+      //
+      // costoActual=0 con stockAntes>0 pasa TODO el tiempo en producción: hay
+      // 3 caminos activos que suman stock sin costo — crear un producto con
+      // stock inicial, importación masiva por CSV, y POST /inventario/entrada
+      // (ajuste manual) — ninguno de los tres llama a este método, así que
+      // ese stock queda con costoPromedio=0 hasta la primera Compra real.
+      // Verificado contra un backup real (2026-09-20): sin esta guarda, esa
+      // primera Compra promediaba su costo real con esas unidades "gratis",
+      // diluyendo el promedio a la mitad o menos — "KARMA GUARANA" pasó de
+      // 95.58 (lo que realmente costó) a 57.35 solo por 4 unidades de stock
+      // inicial sin costo. costoPromedio=0 nunca significa "estas unidades
+      // cuestan cero" — significa "todavía no sabemos cuánto cuestan", y
+      // promediar con un "no sabemos" tratado como cero siempre empuja el
+      // promedio hacia abajo, nunca hacia el valor real.
+      if (stockAntes <= 0 || costoActual === 0) {
         await manager.query(`UPDATE productos SET "costoPromedio" = $1 WHERE id = $2`, [costoUnitarioNuevo, productoId]);
         return;
       }

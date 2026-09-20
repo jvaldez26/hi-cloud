@@ -111,7 +111,10 @@ function replayAVCO(detalles) {
 
     if (costoNuevo > 0) {
       tuvoLineaConCosto = true;
-      costoPromedio = stockAntes <= 0
+      // Igual que la guarda de ValoracionStockService.actualizarCostoPromedio():
+      // costoPromedio=0 no significa "gratis", significa "sin costo conocido
+      // todavía" — reemplaza limpio en vez de promediar con un cero que no es real.
+      costoPromedio = (stockAntes <= 0 || costoPromedio === 0)
         ? costoNuevo
         : (stockAntes * costoPromedio + qty * costoNuevo) / (stockAntes + qty);
     }
