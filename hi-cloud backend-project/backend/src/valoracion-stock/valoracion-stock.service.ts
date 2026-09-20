@@ -4,6 +4,23 @@ import { Repository, DataSource } from 'typeorm';
 import { Producto } from '../productos/entities/producto.entity';
 import { TenantService } from '../tenant/tenant.service';
 
+/**
+ * FIX 3, COSTO DE VENTA COMMIT 1 (2026-09-20) — punto ÚNICO de conversión a
+ * DOP para AVCO. Todavía NO está conectado a actualizarCostoPromedio(): el
+ * punto 2 de la investigación de esta misma tarea (¿el frontend de Compras
+ * ya envía el precio en DOP, o en la moneda de la compra esperando que el
+ * backend convierta?) sigue abierto. Conectarlo antes de esa respuesta
+ * arriesga convertir dos veces (si el frontend YA convierte) o no convertir
+ * nunca (si compras.service.ts nunca llega a llamarlo) — ambos corrompen
+ * el costo promedio, uno multiplicando de más, el otro dejándolo intacto.
+ * Se deja preparado y exportado para conectarlo en un commit aparte en
+ * cuanto se resuelva esa pregunta.
+ */
+export function convertirADOP(monto: number, moneda: string | undefined, tipoCambio: number | undefined): number {
+  if (!moneda || moneda === 'DOP') return monto;
+  return +(monto * (tipoCambio ?? 1)).toFixed(4);
+}
+
 export interface LineaValoracion {
   productoId:     number;
   codigo:         string;
@@ -39,33 +56,62 @@ export class ValoracionStockService {
   // (ver AjustarCostoManualDto), la rama de abajo nunca se disparaba y el
   // costo manual quedaba mezclado 50/50 con el primer costo real en vez de
   // reemplazarse limpio.
+  /**
+   * FIX 3, COSTO DE VENTA COMMIT 1 (2026-09-20) — 2 de las 3 protecciones
+   * que este método necesitaba antes de que un seed retroactivo (Fase 1 de
+   * AVCO) pudiera correr con confianza:
+   *
+   *   1. empresaId en el WHERE — antes buscaba por `id` solo (sin scoping
+   *      de tenant en absoluto); un productoId de otra empresa se leía y
+   *      actualizaba igual. Ahora, si el producto no es de esta empresa,
+   *      el SELECT no encuentra fila y la función no toca nada — mismo
+   *      criterio que `if (!prod) return` ya usaba para "no existe".
+   *   2. Transacción con SELECT ... FOR UPDATE sobre el producto — dos
+   *      compras concurrentes del mismo producto ya no pueden leer el
+   *      mismo costoPromedio "viejo" y pisarse el promedio entre sí (lost
+   *      update): la segunda transacción espera a que la primera confirme,
+   *      y relee el costoPromedio YA actualizado por la primera antes de
+   *      calcular el suyo — mismo patrón que caja.service.ts:829-833 y
+   *      cosechas.service.ts:79-84.
+   *
+   * La 3ra (conversión a DOP con tipoCambio) queda preparada en
+   * convertirADOP() de este mismo archivo pero SIN conectar — ver su
+   * comentario.
+   */
   async actualizarCostoPromedio(
     productoId: number,
     stockAntes: number,
     cantidadNueva: number,
     costoUnitarioNuevo: number,
   ): Promise<void> {
-    const prod = await this.prodRepo.findOne({ where: { id: productoId } });
-    if (!prod) return;
+    const empresaId = this.tenantSvc.getEmpresaId();
 
-    const costoActual = Number((prod as any).costoPromedio ?? 0);
+    await this.dataSource.transaction(async (manager) => {
+      const [prod] = await manager.query<{ id: number; costoPromedio: string }[]>(
+        `SELECT id, "costoPromedio" FROM productos WHERE id = $1 AND "empresaId" = $2 FOR UPDATE`,
+        [productoId, empresaId],
+      );
+      if (!prod) return;
 
-    // Si no había stock previo, el nuevo costo ES el costo promedio —
-    // reemplaza limpio cualquier valor puesto a mano (AjustarCostoManualDto),
-    // no lo promedia: sin stock real detrás, ese valor era solo un punto de
-    // partida provisional, nunca "unidades" que deban pesar en la fórmula.
-    if (stockAntes <= 0) {
-      await this.prodRepo.update(productoId, { costoPromedio: costoUnitarioNuevo } as any);
-      return;
-    }
+      const costoActual = Number(prod.costoPromedio ?? 0);
 
-    const nuevoCostoPromedio = (
-      (stockAntes * costoActual) + (cantidadNueva * costoUnitarioNuevo)
-    ) / (stockAntes + cantidadNueva);
+      // Si no había stock previo, el nuevo costo ES el costo promedio —
+      // reemplaza limpio cualquier valor puesto a mano (AjustarCostoManualDto),
+      // no lo promedia: sin stock real detrás, ese valor era solo un punto de
+      // partida provisional, nunca "unidades" que deban pesar en la fórmula.
+      if (stockAntes <= 0) {
+        await manager.query(`UPDATE productos SET "costoPromedio" = $1 WHERE id = $2`, [costoUnitarioNuevo, productoId]);
+        return;
+      }
 
-    await this.prodRepo.update(productoId, {
-      costoPromedio: +nuevoCostoPromedio.toFixed(4),
-    } as any);
+      const nuevoCostoPromedio = (
+        (stockAntes * costoActual) + (cantidadNueva * costoUnitarioNuevo)
+      ) / (stockAntes + cantidadNueva);
+
+      await manager.query(`UPDATE productos SET "costoPromedio" = $1 WHERE id = $2`, [
+        +nuevoCostoPromedio.toFixed(4), productoId,
+      ]);
+    });
   }
 
   // ─── Valoración completa del inventario ────────────────────────────────────
