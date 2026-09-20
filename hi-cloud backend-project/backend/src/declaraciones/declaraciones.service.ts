@@ -172,6 +172,10 @@ export class DeclaracionesService {
         c.notas,
         p.rnc                                        AS "rncProveedor",
         p.nombre                                     AS "nombreProveedor",
+        c."retieneItbis",
+        c."montoRetencionItbis",
+        c."retieneIsr",
+        c."montoRetencionIsr",
         'compra'                                     AS "_source"
       FROM compras c
       LEFT JOIN proveedores p ON p.id = c."proveedorId"
@@ -200,6 +204,12 @@ export class DeclaracionesService {
         g.descripcion                                AS notas,
         g."rncProveedor",
         g.proveedor                                  AS "nombreProveedor",
+        -- Gasto no tiene retenciones — solo Compra (flujo E41, proveedor
+        -- informal) las registra. Columnas fijas para que el UNION ALL calce.
+        false                                         AS "retieneItbis",
+        0::numeric                                    AS "montoRetencionItbis",
+        false                                         AS "retieneIsr",
+        0::numeric                                    AS "montoRetencionIsr",
         'gasto'                                      AS "_source"
       FROM gastos g
       WHERE g."empresaId" = $1
@@ -220,6 +230,14 @@ export class DeclaracionesService {
       const montoFacturado = Number(r.total ?? 0);
       const itbis          = Number(r.itbis ?? 0);
 
+      // Retención E41 (compra a proveedor informal, sin RNC) — el único
+      // mecanismo de retención en compras que el ERP registra hoy (ver
+      // Compra.retieneItbis/retieneIsr y el builder E41 del e-CF). Gasto no
+      // participa: siempre llega en false/0 desde el SQL.
+      const retieneIsr     = r.retieneIsr === true;
+      const retencionISR   = retieneIsr             ? Number(r.montoRetencionIsr   ?? 0) : 0;
+      const retencionITBIS = r.retieneItbis === true ? Number(r.montoRetencionItbis ?? 0) : 0;
+
       return {
         linea:            i + 1,
         id:               r.id,
@@ -235,8 +253,18 @@ export class DeclaracionesService {
         fechaPago:        String(r.fechaPago ?? '').substring(0, 10),
         montoFacturado,
         itbis,
-        retencionISR:     0,
-        retencionITBIS:   0,
+        retencionISR,
+        retencionITBIS,
+        // Campo 15 del 606 — catálogo DGII de 9 tipos (Alquileres, Honorarios,
+        // Otras Rentas, Rentas Presuntas, Intereses PJ/PF, Proveedores del
+        // Estado, Juegos telefónicos, Ganadería). Nuestra retención es
+        // específicamente por comprar a un proveedor informal (E41), sin
+        // confirmación oficial de a cuál de los 9 corresponde ese caso — se
+        // usa '03 Otras Rentas' (el cajón de DGII para lo no clasificado en
+        // otra categoría, según su propia guía de ayuda CA4035) como la
+        // mejor suposición razonable, no un hecho verificado. Confirmado con
+        // el usuario 2026-09-19.
+        tipoRetencionISR: retieneIsr ? '03' : '',
         itbisAdelantar:   itbis,
         formaPago:        r.formaPago,
         formaPagoLabel:   FORMAS_PAGO_DGII[r.formaPago] ?? '',

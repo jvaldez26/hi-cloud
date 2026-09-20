@@ -57,7 +57,7 @@ export function generar606XML(data: {
       <TIPO_BIENES_SERVICIOS>${escXml(f.tipoBienes ?? '06')}</TIPO_BIENES_SERVICIOS>
       <MONTO_FACTURADO>${fmtMonto(f.montoFacturado ?? 0)}</MONTO_FACTURADO>
       <ITBIS_FACTURADO>${fmtMonto(f.itbis ?? 0)}</ITBIS_FACTURADO>
-      <ITBIS_RETENIDO>${fmtMonto(f.itbisRetenido ?? 0)}</ITBIS_RETENIDO>
+      <ITBIS_RETENIDO>${fmtMonto(f.retencionITBIS ?? 0)}</ITBIS_RETENIDO>
       <ITBIS_SUJETO_RETENCION>${fmtMonto(f.itbisSujetoRetencion ?? 0)}</ITBIS_SUJETO_RETENCION>
       <ITBIS_PERCIBIDO_COMPRA>${fmtMonto(f.itbisPercibido ?? 0)}</ITBIS_PERCIBIDO_COMPRA>
       <TIPO_RETENCION_ISR>${escXml(f.tipoRetencionISR ?? '')}</TIPO_RETENCION_ISR>

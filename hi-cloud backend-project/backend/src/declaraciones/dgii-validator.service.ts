@@ -79,10 +79,18 @@ export class DgiiValidatorService {
         }
       }
 
-      // NCF del proveedor — si monto > 50 debe tener NCF
-      if (!f.ncfProveedor && Number(f.montoFacturado) > 5000) {
+      // NCF del proveedor — el mensaje decía "RD$50" y el código aplicaba
+      // 5000: ninguno de los dos coincidía con el otro. RD$50,000 es la
+      // mejor evidencia encontrada (Reglamento 293-11 y normas relacionadas
+      // sobre el monto a partir del cual una compra/gasto exige comprobante
+      // con valor de crédito fiscal para ser deducible) — no una cifra
+      // 100% confirmada contra el instructivo oficial (PDF escaneado, no
+      // legible por las herramientas disponibles), pero sí más defendible
+      // que el 5000 anterior, que no citaba ninguna norma. Confirmado con
+      // el usuario 2026-09-19.
+      if (!f.ncfProveedor && Number(f.montoFacturado) > 50000) {
         errores.push({ nivel: 'error', campo: 'NCF proveedor', referencia: ref,
-          mensaje: 'Compra mayor a RD$50 sin NCF del proveedor',
+          mensaje: 'Compra mayor a RD$50,000 sin NCF del proveedor',
           ruta: rutaBase });
       }
 

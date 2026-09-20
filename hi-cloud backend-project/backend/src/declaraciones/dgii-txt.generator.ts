@@ -29,6 +29,8 @@ export class DgiiTxtGeneratorService {
       const monto    = montoEntero(f.montoFacturado);
       const itbis    = montoEntero(f.itbis);
       const formPago = f.formaPago ?? '04';
+      const itbisRet = montoEntero(f.retencionITBIS);
+      const isrRet   = montoEntero(f.retencionISR);
 
       // Formato oficial 606 — 21 campos pipe-delimited
       lineas.push([
@@ -41,17 +43,32 @@ export class DgiiTxtGeneratorService {
         fechaPag,  // 7  Fecha pago
         monto,     // 8  Monto facturado (centavos)
         itbis,     // 9  ITBIS facturado
-        0,         // 10 ITBIS retenido
-        0,         // 11 ITBIS proporcionalidad
-        0,         // 12 ITBIS costo
+        itbisRet,  // 10 ITBIS retenido — Compra.montoRetencionItbis (retención E41, proveedor informal)
+        // 11 ITBIS sujeto a proporcionalidad (Art. 349 CT): prorrateo entre
+        // ventas gravadas/exentas — ningún módulo lo calcula. En 0 a
+        // propósito, no es un dato faltante por descuido.
+        0,
+        // 12 ITBIS llevado al costo: mismo hallazgo que el Anexo D del IR-2
+        // (ver anexos-ir2.service.ts) — "ningún módulo lo registra". En 0
+        // a propósito, documentado en dos lugares por la misma razón.
+        0,
         itbis,     // 13 ITBIS a adelantar (crédito fiscal)
-        0,         // 14 ITBIS percibido
-        '',        // 15 Tipo retención ISR
-        0,         // 16 Retención renta
-        0,         // 17 ISR percibido
-        0,         // 18 Impuesto selectivo consumo
-        0,         // 19 Otros impuestos
-        0,         // 20 Monto propina
+        // 14 ITBIS percibido en compras: régimen de "percepción" (agente
+        // percibidor designado por DGII), distinto de "retención" — no
+        // implementado en el ERP. En 0 a propósito.
+        0,
+        f.tipoRetencionISR ?? '', // 15 Tipo retención ISR — ver comentario en getFormato606()
+        isrRet,    // 16 Retención renta — Compra.montoRetencionIsr (retención E41)
+        // 17 ISR percibido en compras: mismo régimen de "percepción" del
+        // campo 14, para ISR — no implementado. En 0 a propósito.
+        0,
+        // 18 Impuesto Selectivo al Consumo: no existe ningún campo de ISC
+        // en Compra/Gasto — no aplica a las compras que registra el ERP.
+        0,
+        // 19 Otros impuestos/tasas: sin equivalente en Compra/Gasto.
+        0,
+        // 20 Monto propina legal: sin equivalente en Compra/Gasto.
+        0,
         formPago,  // 21 Forma de pago
       ].join('|'));
     }
