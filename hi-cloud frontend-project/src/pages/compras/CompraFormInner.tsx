@@ -109,7 +109,14 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
   // se marca al primer cambio manual del usuario, o al cargar un borrador
   // que YA traía un valor puesto por alguien — desde ahí la sugerencia deja
   // de re-aplicarse, para no pisar una elección real.
-  const [tipoBienes, setTipoBienes]           = useState<string | undefined>(undefined);
+  //
+  // Default '09' (Compras y gastos del costo de venta) en vez de vacío: es
+  // la clasificación correcta para la mayoría de OC, y el useEffect de abajo
+  // que la sugiere solo corre una vez hay al menos una línea con producto
+  // — antes de eso (una OC recién abierta) el campo se quedaba en "Sin
+  // clasificar" aunque el comentario de esa sugerencia ya decía que
+  // "sin producto aún" debía caer en '09'.
+  const [tipoBienes, setTipoBienes]           = useState<string | undefined>('09');
   const [tipoBienesTocado, setTipoBienesTocado] = useState(false);
   const [formaPago, setFormaPago]             = useState<string | undefined>(undefined);
   const [formaPagoTocado, setFormaPagoTocado]   = useState(false);
