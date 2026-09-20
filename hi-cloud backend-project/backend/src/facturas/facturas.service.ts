@@ -1103,6 +1103,10 @@ export class FacturasService {
         factura.fecha as unknown as string,
         factura.usuarioId,
         aplicaRet ? { retItbis, retIsr, netoCobrar } : undefined,
+        // FIX 3, FASE A commit 2 — de dónde sale el débito (Clientes vs
+        // Caja/Bancos por medio de pago) ya no se decide adentro del motor
+        // con un solo criterio: se lo dice esta factura.
+        { tipoPago: esCredito ? 'CREDITO' : 'CONTADO', formasPago: (factura as any).formasPago },
       ).catch((err: unknown) => {
         this.logger.warn(
           `[Factura] asientoFacturaEmitida para ${factura.folio} falló (no bloquea emisión): ` +

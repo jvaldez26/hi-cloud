@@ -125,6 +125,102 @@ export class AsientosAutomaticosService {
     return this.resolverCuentaConcepto(concepto, fallback);
   }
 
+  // FIX 3, FASE A (2026-09-20) — traduce el "tipo" NUMÉRICO de FormaPagoDto
+  // (create-factura.dto.ts) al string que espera resolverCuentaPorMetodoPago().
+  // tipo=2 ("Cheque/Transfer") es una sola opción del formulario que cubre
+  // ambos medios — se resuelve como 'transferencia' (mismo fallback COD.BANCOS
+  // que 'cheque' si la empresa no configuró cuentas separadas). tipo=4 es la
+  // marca de "va a crédito", nunca un medio de pago — se maneja aparte en
+  // lineasDeCobroFactura(), nunca llega a este mapa.
+  private static readonly METODO_POR_TIPO_FORMA_PAGO: Record<number, string> = {
+    1: 'efectivo', 2: 'transferencia', 3: 'tarjeta', 5: 'permuta', 6: 'nc',
+  };
+
+  /**
+   * FIX 3, FASE A commit 2 (2026-09-20) — antes, TODA factura (de contado o a
+   * crédito) debitaba Clientes por el neto completo: una venta de contado
+   * nunca generaba automáticamente el cobro que la compensara, así que
+   * Clientes se inflaba para siempre con cada venta de contado (RD$7.77M en
+   * una sola empresa, ver diagnóstico). Ahora:
+   *   - CONTADO con formasPago: una línea de débito por cada medio de pago
+   *     real (tipo≠4), a la cuenta que resuelva resolverCuentaPorMetodoPago().
+   *   - CONTADO sin formasPago (factura legacy o creada por un camino que no
+   *     las registra): todo a Caja — nunca a Clientes.
+   *   - CREDITO: Clientes por el SALDO — nunca por lo que traiga la entrada
+   *     tipo=4 en sí (puede venir con la propina mezclada, que esta función
+   *     no modela — ver validarFormasPago en facturas.service.ts). El saldo
+   *     se DERIVA como neto − abono, donde abono es la suma de las entradas
+   *     que SÍ son un medio de pago real. Así la partida doble cuadra exacto
+   *     sin importar qué traiga la marca de crédito.
+   *   - CREDITO sin formasPago (camino legacy que no las registra): Clientes
+   *     por el neto completo — comportamiento idéntico al de antes de este
+   *     commit, cero cambio para esos casos.
+   *
+   * Si la cuenta que resuelve un medio de pago no existe en el catálogo de
+   * la empresa, NO se descarta el asiento completo en silencio (como haría
+   * resolverLineasAsiento con cualquier otra cuenta faltante) — se reporta a
+   * Sentry y se cae a Caja para esa línea puntual, porque Caja es la única
+   * cuenta que FASE A commit 1 garantizó en el catálogo de toda empresa
+   * activa antes de desplegar este motor.
+   */
+  private async lineasDeCobroFactura(
+    neto: number, folio: string,
+    pago: { tipoPago: 'CONTADO' | 'CREDITO'; formasPago?: { tipo: number; monto: number }[] } | undefined,
+    cuentaClientes: string, cuentaCaja: string,
+  ): Promise<{ codigo: string; descripcion: string; debe: number; haber: number }[]> {
+    const tipoPago = pago?.tipoPago ?? 'CREDITO'; // sin dato: comportamiento legacy (siempre fue Clientes)
+    const formas = (pago?.formasPago ?? []).filter(f => Number(f.monto) > 0);
+
+    if (!formas.length) {
+      if (tipoPago === 'CREDITO') {
+        return [{ codigo: cuentaClientes, descripcion: `Cta. por cobrar ${folio}`, debe: neto, haber: 0 }];
+      }
+      return [{ codigo: cuentaCaja, descripcion: `Cobro en efectivo ${folio}`, debe: neto, haber: 0 }];
+    }
+
+    const entradasPago = formas.filter(f => f.tipo !== 4);
+    const lineasPago: { codigo: string; descripcion: string; debe: number; haber: number }[] = [];
+    for (const f of entradasPago) {
+      const metodo = AsientosAutomaticosService.METODO_POR_TIPO_FORMA_PAGO[f.tipo] ?? 'otro';
+      let codigo = await this.resolverCuentaPorMetodoPago(metodo);
+      if (!(await this.getCuenta(codigo, this.eid))) {
+        this.reportarFalloAsiento(
+          new Error(`Cuenta ${codigo} (medio de pago "${metodo}") no existe en el catálogo — se usa Caja como respaldo`),
+          'asiento_metodo_pago_cuenta_faltante',
+          { referenciaFolio: folio, metodoPago: metodo, codigoFaltante: codigo },
+        );
+        codigo = COD.CAJA;
+      }
+      lineasPago.push({ codigo, descripcion: `Cobro ${metodo} ${folio}`, debe: Number(Number(f.monto).toFixed(2)), haber: 0 });
+    }
+
+    if (tipoPago !== 'CREDITO') {
+      // CONTADO — cada medio de pago por su monto. Si la suma no cuadra
+      // exacto contra `neto` (p. ej. por la propina, que aquí no se modela),
+      // lo corrige o lo rechaza y reporta _crearAsientoContabilizado, igual
+      // que cualquier otro asiento — no se duplica esa lógica aquí.
+      return lineasPago;
+    }
+
+    const abono = Number(lineasPago.reduce((s, l) => s + l.debe, 0).toFixed(2));
+    const saldoClientes = Number((neto - abono).toFixed(2));
+    if (saldoClientes <= 0) {
+      // El abono ya cubre (o excede) el neto — no debería pasar si tipoPago
+      // vino bien derivado; si pasa, se reporta y se cae al comportamiento
+      // legacy (todo a Clientes) en vez de generar una línea en cero o
+      // negativa en silencio.
+      this.reportarFalloAsiento(
+        new Error(`Factura ${folio}: tipoPago CREDITO pero el abono (${abono}) cubre o excede el neto (${neto})`),
+        'asiento_credito_sin_saldo', { referenciaFolio: folio },
+      );
+      return [{ codigo: cuentaClientes, descripcion: `Cta. por cobrar ${folio}`, debe: neto, haber: 0 }];
+    }
+    return [
+      { codigo: cuentaClientes, descripcion: `Cta. por cobrar (saldo) ${folio}`, debe: saldoClientes, haber: 0 },
+      ...lineasPago,
+    ];
+  }
+
   /**
    * Igual que resolverCuentaConcepto(), pero para varios conceptos de un
    * mismo asiento en UNA sola llamada a obtenerMapa() (que ya está cacheado
@@ -477,6 +573,7 @@ export class AsientosAutomaticosService {
     fecha: string, // factura.fecha — nunca new Date() del servidor, ver _crearAsientoContabilizado
     userId: number,
     retenciones?: { retItbis?: number; retIsr?: number; netoCobrar?: number },
+    pago?: { tipoPago: 'CONTADO' | 'CREDITO'; formasPago?: { tipo: number; monto: number }[] },
   ): Promise<void> {
     const retItbis   = retenciones?.retItbis   ?? 0;
     const retIsr     = retenciones?.retIsr     ?? 0;
@@ -485,9 +582,12 @@ export class AsientosAutomaticosService {
     // Configuración Contable por Módulo (2026-09-19) — Ventas es de solo
     // lectura por documento (no hay selector: "la contabilización es única y
     // correcta, no es materia de opinión"), pero SÍ es configurable una vez
-    // por empresa. Una sola resolución para todo el grupo.
+    // por empresa. Una sola resolución para todo el grupo — CLIENTES y CAJA
+    // se resuelven aquí también (no dentro de lineasDeCobroFactura) para que
+    // solo haya UNA llamada a obtenerMapa() por asiento, igual que siempre.
     const cuentas = await this.resolverCuentasConcepto([
       ['CLIENTES',              COD.CLIENTES],
+      ['CAJA',                  COD.CAJA],
       ['VENTAS',                COD.VENTAS],
       ['ITBIS_POR_PAGAR',       COD.ITBIS_POR_PAGAR],
       ['RETENCION_ITBIS_VENTA', '1.1.4.02'],
@@ -496,13 +596,13 @@ export class AsientosAutomaticosService {
       ['INVENTARIO',            COD.INVENTARIO],
     ]);
 
-    // DR: CxC por el neto (total bruto - retenciones)
+    // DR: Clientes (crédito) y/o Caja/Bancos (contado) — ver lineasDeCobroFactura()
     // DR: ITBIS Retenido a Recuperar (si aplica) — activo corriente
     // DR: ISR Retenido a Recuperar (si aplica)   — activo corriente
     // CR: Ventas (subtotal)
     // CR: ITBIS por Pagar (iva total)
     const lineas: { codigo: string; descripcion: string; debe: number; haber: number }[] = [
-      { codigo: cuentas.CLIENTES,        descripcion: `Cta. por cobrar ${folio}`, debe: neto,    haber: 0 },
+      ...(await this.lineasDeCobroFactura(neto, folio, pago, cuentas.CLIENTES, cuentas.CAJA)),
       { codigo: cuentas.VENTAS,          descripcion: `Ingreso por venta ${folio}`, debe: 0,     haber: subtotal },
       { codigo: cuentas.ITBIS_POR_PAGAR, descripcion: `ITBIS débito fiscal ${folio}`, debe: 0,  haber: iva },
     ];

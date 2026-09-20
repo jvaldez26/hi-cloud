@@ -117,8 +117,9 @@ export class RecibosCobrosService {
 
     // ── 0. Resolver moneda: si hay facturaId, heredarla de la factura ─
     let moneda = dto.moneda ?? 'DOP';
+    let factura: Factura | null = null;
     if (dto.facturaId) {
-      const factura = await this.facturaRepo.findOne({ where: { id: dto.facturaId, empresaId } });
+      factura = await this.facturaRepo.findOne({ where: { id: dto.facturaId, empresaId } });
       if (factura?.moneda) moneda = factura.moneda;
       if (factura?.anulacionPendiente) {
         // Cargar la NC activa que causó el bloqueo para dar contexto al cajero
@@ -155,7 +156,18 @@ export class RecibosCobrosService {
       cxc = await this.cxcRepo.findOne({
         where: { facturaId: dto.facturaId, empresaId, isActive: true },
       });
-      // Si la factura no tiene CxC aún, no es un error — se trata como anticipo
+      // Si la factura no tiene CxC aún, no es un error — se trata como anticipo,
+      // SALVO que sea una factura de CONTADO: esas nunca generan CxC porque ya
+      // se cobraron al emitirse (asientoFacturaEmitida() debita Caja/Bancos por
+      // su medio de pago, FIX 3 FASE A commit 2) — un recibo aquí sería una
+      // doble compensación (acreditaría Clientes cuando nunca se le debitó
+      // nada a esa cuenta por esta factura).
+      if (!cxc && factura && factura.tipoPago !== 'CREDITO') {
+        throw new BadRequestException(
+          `Factura ${factura.folio ?? `#${dto.facturaId}`} es de contado — ya fue cobrada al emitirse. ` +
+          `No se puede registrar otro cobro contra ella.`,
+        );
+      }
     }
 
     // ── 2. Validar CxC ──────────────────────────────────────────────
