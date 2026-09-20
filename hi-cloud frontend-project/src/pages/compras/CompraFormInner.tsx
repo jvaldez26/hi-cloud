@@ -642,13 +642,19 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
 
   return (
     <Form form={form} layout="vertical" onFinish={handleSubmit} initialValues={{ fecha: dayjs() }}
-      // En modo alto completo el formulario es una columna flex: cabecera y pie
-      // no se encogen y la lista de ítems se queda con el resto. `minHeight: 0`
-      // no es opcional — sin él un hijo flex no baja de su alto de contenido y
-      // el scroll se lo come el modal entero en vez de la lista.
+      // En modo alto completo el formulario es una columna flex de DOS
+      // hijos: el envoltorio que scrollea (cabecera + ítems + retenciones +
+      // vista previa del asiento) y el pie de totales, fijo abajo y FUERA
+      // de ese scroll. Antes la tabla de ítems era la única con flex:1 —
+      // cualquier vecino que creciera (la vista previa del asiento, las
+      // retenciones E41) le quitaba ese espacio y la aplastaba a un puñado
+      // de píxeles. Un solo scroll, nada calculando cuánto le sobra a la
+      // tabla. `minHeight: 0` no es opcional — sin él un hijo flex no baja
+      // de su alto de contenido.
       style={altoCompleto
         ? { display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }
         : undefined}>
+      <div style={altoCompleto ? { flex: 1, minHeight: 0, overflowY: 'auto' } : undefined}>
       {/* Cabecera en UNA fila.
           Antes eran dos filas de Cols con span fijo más un Alert de bloque:
           unos 280px para siete campos y una línea de texto, con la tabla de
@@ -816,13 +822,12 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
         )}
       </Card>
 
-      {/* La ÚNICA sección que desplaza cuando hay muchos ítems: la cabecera y
-          el pie de totales se quedan a la vista mientras se captura. */}
-      <Card title="Ítems"
-        style={altoCompleto
-          ? { marginBottom: 16, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }
-          : { marginBottom: 16 }}
-        styles={altoCompleto ? { body: { flex: 1, minHeight: 0, overflowY: 'auto' } } : undefined}
+      {/* Sin flex:1 ni alto calculado: la tabla nunca se encoge por lo que
+          hagan crecer sus vecinos (vista previa del asiento, retenciones).
+          `scroll.y` fijo (no "lo que sobre") le da un alto predecible —
+          ~5 filas visibles— y su propio scroll cuando hay más; el resto del
+          formulario scrollea por el envoltorio de arriba. */}
+      <Card title="Ítems" style={{ marginBottom: 16 }}
         extra={<Button icon={<PlusOutlined />} onClick={agregarLinea}>Agregar</Button>}>
         {/* Ancho MÍNIMO (1062 = la suma de las columnas), no `max-content`.
             Esta es una tabla de CAPTURA, no de consulta: el usuario teclea
@@ -835,7 +840,7 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
             La convención de `x: 'max-content'` sigue en pie para las tablas de
             consulta — ahí el criterio es el contrario. */}
         <Table columns={lineaCols as any} dataSource={lineas} rowKey="key" pagination={false} size="small"
-          tableLayout="fixed" scroll={{ x: ANCHO_MINIMO_ITEMS }} />
+          tableLayout="fixed" scroll={{ x: ANCHO_MINIMO_ITEMS, y: 320 }} style={{ minHeight: 260 }} />
       </Card>
 
       {esInformal && (
@@ -874,7 +879,10 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
       )}
 
       <AsientoPreviewPanel resultado={previewAsiento} loading={previewCargando} />
+      </div>
 
+      {/* Pie de totales — fijo abajo, FUERA del envoltorio que scrollea, en
+          modo alto completo. Siempre visible, no importa cuántos ítems haya. */}
       <Card style={{ flexShrink: 0 }}>
         {/* Los totales en una franja horizontal, no en una columna pegada a la
             derecha con media tarjeta vacía. Cada importe es una celda que se
