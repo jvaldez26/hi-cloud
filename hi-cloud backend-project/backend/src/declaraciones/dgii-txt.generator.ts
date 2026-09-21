@@ -102,6 +102,7 @@ export class DgiiTxtGeneratorService {
       const rncComp  = (f.rncComprador ?? '').replace(/\D/g, '');
       const tipoId   = tipoIdDgii(rncComp) || '';
       const encf     = f.encf ?? '';            // eNCF REAL
+      const ncfMod   = f.ncfModificado ?? '';    // eNCF de la factura que modifica (solo NC/ND)
       const tipoIng  = f.tipoIngreso ?? '01';
       const fechaCf  = fechaDgii(f.fechaComprobante);
       const monto    = montoEntero(f.montoFacturado);
@@ -119,7 +120,7 @@ export class DgiiTxtGeneratorService {
         rncComp,   // 1  RNC/Cédula comprador
         tipoId,    // 2  Tipo ID
         encf,      // 3  NCF (eNCF real)
-        '',        // 4  NCF modificado
+        ncfMod,    // 4  NCF modificado — eNCF original que modifica la nota (E33/E34)
         tipoIng,   // 5  Tipo ingreso
         fechaCf,   // 6  Fecha comprobante AAAAMMDD
         '',        // 7  Fecha retención

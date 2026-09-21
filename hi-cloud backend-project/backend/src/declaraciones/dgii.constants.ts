@@ -153,6 +153,8 @@ export function mapTipoIngreso607(tipoNcf: string | undefined | null): string {
     case 'E45': return '01'; // gubernamental → operaciones
     case 'E46':
     case 'E47': return '01'; // exportaciones → operaciones
+    case 'E33':
+    case 'E34': return '01'; // nota de débito/crédito → mismo tipo de ingreso que la factura que modifica
     default:    return '01'; // E31, E32 → operaciones normales
   }
 }

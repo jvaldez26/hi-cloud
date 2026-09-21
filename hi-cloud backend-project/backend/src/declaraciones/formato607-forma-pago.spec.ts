@@ -92,7 +92,7 @@ describe('DeclaracionesService.getFormato607() — desglose de forma de pago', (
   it('tipo no reconocido dentro de formasPago no se suma a ninguna columna (no adivina)', async () => {
     const svc = makeService([{ ...BASE_ROW, formasPago: [{ tipo: 99, monto: 1180 }] }]);
     const r = await svc.getFormato607(9, 2026);
-    const { linea, id, folio, encf, estadoDgii, tipoNcf, rncComprador, nombreComprador, tipoId,
+    const { linea, id, tipoDocumento, folio, encf, ncfModificado, estadoDgii, tipoNcf, rncComprador, nombreComprador, tipoId,
             tipoIngreso, fechaComprobante, montoFacturado, itbis, itbisRetenido, isrRetenido, ...cols } = r.filas[0];
     expect(Object.values(cols).every(v => v === 0)).toBe(true);
   });

@@ -161,9 +161,24 @@ export class DgiiValidatorService {
 
       // eNCF obligatorio
       if (!f.encf) {
+        const esNota = f.tipoDocumento === 'NOTA_CREDITO' || f.tipoDocumento === 'NOTA_DEBITO';
         errores.push({ nivel: 'error', campo: 'eNCF', referencia: ref,
-          mensaje: 'Factura sin e-CF emitido — no se puede incluir en el 607',
-          ruta: `/facturas/${f.id}` });
+          mensaje: esNota
+            ? 'Nota sin e-CF emitido — no se puede incluir en el 607'
+            : 'Factura sin e-CF emitido — no se puede incluir en el 607',
+          ruta: esNota
+            ? (f.tipoDocumento === 'NOTA_CREDITO' ? '/notas-credito' : '/notas-debito')
+            : `/facturas/${f.id}` });
+      }
+
+      // NCF Modificado obligatorio en notas de crédito/débito (col. 5 del
+      // instructivo 607) — sin él, DGII rechaza el envío. No se deja en
+      // blanco en silencio: bloquea la descarga hasta corregirlo (ver
+      // ecf.ncfModificado, poblado al emitir el e-CF de la nota).
+      if ((f.tipoDocumento === 'NOTA_CREDITO' || f.tipoDocumento === 'NOTA_DEBITO') && !f.ncfModificado) {
+        errores.push({ nivel: 'error', campo: 'NCF Modificado', referencia: ref,
+          mensaje: 'Nota sin el e-NCF de la factura original — DGII exige la columna "NCF o Documento Modificado"',
+          ruta: f.tipoDocumento === 'NOTA_CREDITO' ? '/notas-credito' : '/notas-debito' });
       }
 
       // Monto negativo (deben ir al 608)
@@ -275,8 +290,12 @@ export interface Fila606 {
 export interface Fila607 {
   linea:           number;
   id:              number;
+  /** 'FACTURA' (default histórico) o la nota que la modifica */
+  tipoDocumento?:  'FACTURA' | 'NOTA_CREDITO' | 'NOTA_DEBITO';
   folio:           string;
   encf?:           string;
+  /** eNCF de la factura original — obligatorio en NOTA_CREDITO/NOTA_DEBITO */
+  ncfModificado?:  string;
   tipoNcf?:        string;
   estadoDgii?:     string;
   rncComprador?:   string;

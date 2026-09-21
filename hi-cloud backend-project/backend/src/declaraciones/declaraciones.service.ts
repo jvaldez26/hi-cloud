@@ -376,9 +376,15 @@ export class DeclaracionesService {
     const { desde, hasta } = this.rango(mes, anio);
     const eid = this.eid;
 
+    // UNION de tres fuentes — mismo patrón que getFormato606() (compras +
+    // gastos). Antes solo se leía `facturas`: las notas de crédito (E34) y
+    // débito (E33) del período no aparecían en el 607, aunque cada una es su
+    // propia línea obligatoria del formato (instructivo DGII, col. 5 "NCF o
+    // Documento Modificado" — confirmado contra ayuda.dgii.gov.do/CA2108 y
+    // el hilo "Notas de Credito en el 607").
     const rows = await this.dataSource.query<any[]>(`
       SELECT
-        f.id,
+        f.id, 'FACTURA'::text AS "tipoDocumento",
         f.folio,
         f.fecha::text                                   AS "fechaComprobante",
         f.subtotal::numeric                             AS subtotal,
@@ -389,6 +395,7 @@ export class DeclaracionesService {
         f."formasPago",
         e.numero                                        AS "encf",
         e."estadoDGII"                                  AS "estadoDgii",
+        NULL::text                                       AS "ncfModificado",
         -- Fuente prioritaria: rncComprador del e-CF (valor oficial declarado a DGII).
         -- Fallback: rncReceptor del cliente, luego rfc.
         COALESCE(
@@ -408,51 +415,135 @@ export class DeclaracionesService {
         AND f.fecha BETWEEN $2 AND $3
         AND f.estado IN ('emitida','pagada')
         AND f."isActive" = true
-      ORDER BY f.fecha ASC, f.id ASC
+
+      UNION ALL
+
+      -- Notas de crédito (E34). El eNCF de la factura modificada NO vive en
+      -- notas_credito.facturaOriginalId/Folio (eso es el ID/folio interno,
+      -- no el eNCF) — vive en ecf.ncfModificado, ya poblado al emitir el
+      -- e-CF de la nota (emitir-ecf.use-case.ts).
+      SELECT
+        nc.id, 'NOTA_CREDITO'::text AS "tipoDocumento",
+        nc.numero                                       AS folio,
+        nc.fecha::text                                  AS "fechaComprobante",
+        nc.subtotal::numeric                            AS subtotal,
+        nc.iva::numeric                                 AS iva,
+        nc.total::numeric                               AS total,
+        nc."tipoNcf",
+        nc.notas,
+        NULL::jsonb                                      AS "formasPago",
+        e.numero                                        AS "encf",
+        e."estadoDGII"                                  AS "estadoDgii",
+        e."ncfModificado"                                AS "ncfModificado",
+        COALESCE(
+          NULLIF(btrim(e."rncComprador"), ''),
+          NULLIF(btrim(c."rncReceptor"), ''),
+          c.rfc,
+          ''
+        )                                               AS "rncComprador",
+        COALESCE(NULLIF(btrim(c."razonSocial"), ''), c.nombre) AS "nombreComprador"
+      FROM notas_credito nc
+      LEFT JOIN ecf e ON e."documentoOrigenId" = nc.id AND e."documentoOrigenTipo" = 'NOTA_CREDITO' AND e."isActive" = true
+      LEFT JOIN clientes c ON c.id = nc."clienteId"
+      WHERE nc."empresaId" = $1
+        AND nc.fecha BETWEEN $2 AND $3
+        AND nc.estado = 'emitida'
+        AND nc."isActive" = true
+
+      UNION ALL
+
+      -- Notas de débito (E33) — mismo criterio que las de crédito.
+      SELECT
+        nd.id, 'NOTA_DEBITO'::text AS "tipoDocumento",
+        nd.numero                                       AS folio,
+        nd.fecha::text                                  AS "fechaComprobante",
+        nd.subtotal::numeric                            AS subtotal,
+        nd.iva::numeric                                 AS iva,
+        nd.total::numeric                               AS total,
+        nd."tipoNcf",
+        nd.notas,
+        NULL::jsonb                                      AS "formasPago",
+        e.numero                                        AS "encf",
+        e."estadoDGII"                                  AS "estadoDgii",
+        e."ncfModificado"                                AS "ncfModificado",
+        COALESCE(
+          NULLIF(btrim(e."rncComprador"), ''),
+          NULLIF(btrim(c."rncReceptor"), ''),
+          c.rfc,
+          ''
+        )                                               AS "rncComprador",
+        COALESCE(NULLIF(btrim(c."razonSocial"), ''), c.nombre) AS "nombreComprador"
+      FROM notas_debito nd
+      LEFT JOIN ecf e ON e."documentoOrigenId" = nd.id AND e."documentoOrigenTipo" = 'NOTA_DEBITO' AND e."isActive" = true
+      LEFT JOIN clientes c ON c.id = nd."clienteId"
+      WHERE nd."empresaId" = $1
+        AND nd.fecha BETWEEN $2 AND $3
+        AND nd.estado = 'emitida'
+        AND nd."isActive" = true
+
+      ORDER BY "fechaComprobante" ASC, id ASC
     `, [eid, desde, hasta]);
 
     const filas = rows.map((r, i) => {
       const rncComprador   = r.rncComprador ?? '';
       const tipoId         = tipoIdDgii(rncComprador);
-      // Monto Facturado (col 9 DGII 607) = subtotal SIN ITBIS
+      // Monto Facturado (col 9 DGII 607) = subtotal SIN ITBIS — mismo
+      // significado de columna para factura, NC y ND.
       const montoFacturado = Number(r.subtotal ?? 0);
       // Total cobrado (cols 17-23) = subtotal + ITBIS
       const totalCobrado   = Number(r.total ?? 0);
       const itbis          = Number(r.iva ?? 0);
 
-      // Desglose de forma de pago (columnas 17-23 del 607): usa formasPago
-      // (dato real, desde el trabajo del e-CF) cuando la factura lo tiene —
-      // reparte por tipo, no elige uno. Solo para facturas históricas SIN
-      // formasPago (anteriores a la migración que agregó la columna) se cae
-      // al match de texto sobre notas — mismo patrón que caja.service.ts.
+      // Desglose de forma de pago (columnas 17-23 del 607). Regla DGII
+      // (ayuda.dgii.gov.do/CA2108 y el hilo "¿Cuando se reportan notas de
+      // débito no es necesario completar...?"): se EXIME solo a las notas de
+      // CRÉDITO — para facturas y notas de DÉBITO son obligatorias.
       let efectivo = 0, chequeTransferencia = 0, tarjeta = 0, credito = 0, bonos = 0, permuta = 0, otras = 0;
-      const formasPago: { tipo: number; monto: number }[] = Array.isArray(r.formasPago) ? r.formasPago : [];
-      if (formasPago.length > 0) {
-        for (const fp of formasPago) {
-          const columna = columna607PorCodigoDgii(mapFormaPagoDgii(Number(fp.tipo)));
-          const monto   = Number(fp.monto ?? 0);
-          if      (columna === 'efectivo')            efectivo            += monto;
-          else if (columna === 'chequeTransferencia')  chequeTransferencia += monto;
-          else if (columna === 'tarjeta')              tarjeta             += monto;
-          else if (columna === 'credito')              credito             += monto;
-          else if (columna === 'permuta')              permuta             += monto;
-          else if (columna === 'otras')                otras               += monto;
-          // columna null (tipo no reconocido): no se suma a ninguna — sin
-          // bucket confiable es mejor omitir que adivinar.
-        }
+      if (r.tipoDocumento === 'NOTA_CREDITO') {
+        // Exenta por DGII — las 7 columnas quedan en 0 a propósito.
+      } else if (r.tipoDocumento === 'NOTA_DEBITO') {
+        // notas_debito no captura el método de pago real (a diferencia de
+        // facturas.formasPago) — se asume "Crédito" en su totalidad, el
+        // mismo fallback que ya usan las facturas sin formasPago (rama de
+        // abajo). Si hace falta el desglose real, primero hay que agregar
+        // captura de forma de pago a NotaDebito.
+        credito = totalCobrado;
       } else {
-        const metodo = r.notas ?? '';
-        efectivo            = metodo.includes('Efectivo')  ? totalCobrado : 0;
-        tarjeta             = metodo.includes('Tarjeta')   ? totalCobrado : 0;
-        chequeTransferencia = metodo.includes('Transfer')  ? totalCobrado : 0;
-        credito             = (!efectivo && !tarjeta && !chequeTransferencia) ? totalCobrado : 0;
+        // Usa formasPago (dato real, desde el trabajo del e-CF) cuando la
+        // factura lo tiene — reparte por tipo, no elige uno. Solo para
+        // facturas históricas SIN formasPago (anteriores a la migración que
+        // agregó la columna) se cae al match de texto sobre notas — mismo
+        // patrón que caja.service.ts.
+        const formasPago: { tipo: number; monto: number }[] = Array.isArray(r.formasPago) ? r.formasPago : [];
+        if (formasPago.length > 0) {
+          for (const fp of formasPago) {
+            const columna = columna607PorCodigoDgii(mapFormaPagoDgii(Number(fp.tipo)));
+            const monto   = Number(fp.monto ?? 0);
+            if      (columna === 'efectivo')            efectivo            += monto;
+            else if (columna === 'chequeTransferencia')  chequeTransferencia += monto;
+            else if (columna === 'tarjeta')              tarjeta             += monto;
+            else if (columna === 'credito')              credito             += monto;
+            else if (columna === 'permuta')              permuta             += monto;
+            else if (columna === 'otras')                otras               += monto;
+            // columna null (tipo no reconocido): no se suma a ninguna — sin
+            // bucket confiable es mejor omitir que adivinar.
+          }
+        } else {
+          const metodo = r.notas ?? '';
+          efectivo            = metodo.includes('Efectivo')  ? totalCobrado : 0;
+          tarjeta             = metodo.includes('Tarjeta')   ? totalCobrado : 0;
+          chequeTransferencia = metodo.includes('Transfer')  ? totalCobrado : 0;
+          credito             = (!efectivo && !tarjeta && !chequeTransferencia) ? totalCobrado : 0;
+        }
       }
 
       return {
         linea:               i + 1,
         id:                  r.id,
+        tipoDocumento:       r.tipoDocumento as 'FACTURA' | 'NOTA_CREDITO' | 'NOTA_DEBITO',
         folio:               r.folio,
         encf:                r.encf ?? '',
+        ncfModificado:       r.tipoDocumento === 'FACTURA' ? '' : (r.ncfModificado ?? ''),
         estadoDgii:          r.estadoDgii ?? '',
         tipoNcf:             r.tipoNcf ?? 'E32',
         rncComprador,
