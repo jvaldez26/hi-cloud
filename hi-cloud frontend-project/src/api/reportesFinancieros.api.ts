@@ -1,5 +1,6 @@
 import api from './client';
 import type { FiltrosBalanceGeneral } from '../utils/filtrosBalanceGeneral';
+import type { FiltrosEstadoResultados } from '../utils/filtrosEstadoResultados';
 
 export interface NodoBalanceGeneral {
   codigo: string;
@@ -43,6 +44,84 @@ export interface BalanceGeneralDetallado {
   totales: { activos: number; pasivosPatrimonio: number; ecuacion: number; cuadrado: boolean };
 }
 
+// ── Estado de Resultados v2 ──────────────────────────────────────────────────
+
+export interface LineaCuentaResultado {
+  codigo: string;
+  nombre: string;
+  monto: number;
+  porcentajeIngresos: number;
+}
+
+export interface BloqueResultado {
+  nombre: string;
+  cuentas: LineaCuentaResultado[];
+  total: number;
+  porcentajeIngresos: number;
+}
+
+export interface LineaCalculada {
+  nombre: string;
+  monto: number;
+  porcentajeIngresos: number;
+  porcentajeMargen: number | null;
+}
+
+export interface EstadoResultadosPeriodo {
+  ingresos: BloqueResultado;
+  costoDeVentas: BloqueResultado;
+  utilidadBruta: LineaCalculada;
+  gastos: BloqueResultado;
+  resultadoOperacional: LineaCalculada;
+  otrosIngresos: BloqueResultado;
+  otrosGastos: BloqueResultado;
+  gananciaPerdidaDelPeriodo: LineaCalculada;
+}
+
+export interface LineaDiferencia {
+  actual: number;
+  anterior: number;
+  diferencia: number;
+  diferenciaPct: number | null;
+}
+
+export interface DiferenciasEstadoResultados {
+  ingresos: LineaDiferencia;
+  costoDeVentas: LineaDiferencia;
+  utilidadBruta: LineaDiferencia;
+  gastos: LineaDiferencia;
+  resultadoOperacional: LineaDiferencia;
+  otrosIngresos: LineaDiferencia;
+  otrosGastos: LineaDiferencia;
+  gananciaPerdidaDelPeriodo: LineaDiferencia;
+}
+
+export interface MesEstadoResultados {
+  mes: number;
+  desde: string;
+  hasta: string;
+  periodo: EstadoResultadosPeriodo;
+}
+
+export interface EstadoResultadosDetallado {
+  desde: string;
+  hasta: string;
+  filtros: { comparacion: FiltrosEstadoResultados['comparacion']; ocultarCuentasEnCero: boolean };
+  periodo: EstadoResultadosPeriodo;
+  acumulado?: { desde: string; hasta: string; periodo: EstadoResultadosPeriodo };
+  anioAnterior?: { desde: string; hasta: string; periodo: EstadoResultadosPeriodo; diferencias: DiferenciasEstadoResultados };
+  porMes?: { anio: number; meses: MesEstadoResultados[]; total: EstadoResultadosPeriodo };
+}
+
+function queryDeFiltrosER(filtros: FiltrosEstadoResultados): string {
+  const p = new URLSearchParams();
+  p.set('desde', filtros.desde);
+  p.set('hasta', filtros.hasta);
+  if (filtros.comparacion !== 'ninguna') p.set('comparacion', filtros.comparacion);
+  p.set('ocultarCuentasEnCero', String(filtros.ocultarCuentasEnCero));
+  return p.toString();
+}
+
 function queryDeFiltros(filtros: FiltrosBalanceGeneral): string {
   const p = new URLSearchParams();
   p.set('fechaCorte', filtros.fechaCorte);
@@ -81,4 +160,17 @@ export const reportesFinancierosApi = {
 
   descargarBalanceGeneralPdf: (filtros: FiltrosBalanceGeneral) =>
     descargar(`/reportes-financieros/balance-general-detallado/pdf?${queryDeFiltros(filtros)}`, `Balance-General-${filtros.fechaCorte}.pdf`),
+
+  estadoResultadosDetallado: (filtros: FiltrosEstadoResultados): Promise<EstadoResultadosDetallado> =>
+    api.get(`/reportes-financieros/estado-resultados-detallado?${queryDeFiltrosER(filtros)}`)
+      .then((r: any) => r.data?.data ?? r.data),
+
+  descargarEstadoResultadosExcel: (filtros: FiltrosEstadoResultados) =>
+    descargar(`/reportes-financieros/estado-resultados-detallado/excel?${queryDeFiltrosER(filtros)}`, `Estado-Resultados-${filtros.desde}_${filtros.hasta}.xlsx`),
+
+  descargarEstadoResultadosCsv: (filtros: FiltrosEstadoResultados) =>
+    descargar(`/reportes-financieros/estado-resultados-detallado/csv?${queryDeFiltrosER(filtros)}`, `Estado-Resultados-${filtros.desde}_${filtros.hasta}.csv`),
+
+  descargarEstadoResultadosPdf: (filtros: FiltrosEstadoResultados) =>
+    descargar(`/reportes-financieros/estado-resultados-detallado/pdf?${queryDeFiltrosER(filtros)}`, `Estado-Resultados-${filtros.desde}_${filtros.hasta}.pdf`),
 };

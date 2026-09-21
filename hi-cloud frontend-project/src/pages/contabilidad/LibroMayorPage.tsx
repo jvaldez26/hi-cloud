@@ -29,13 +29,17 @@ export default function LibroMayorPage() {
   });
   const cuentas = cuentasResultado?.data;
 
-  // Llegada desde Balance General (clic en una cuenta): ?codigo=...&hasta=... —
+  // Llegada desde Balance General (?codigo=...&hasta=...) o Estado de
+  // Resultados (?codigo=...&desde=...&hasta=...) al hacer clic en una cuenta:
   // preselecciona la cuenta (por código, resuelto en id una vez cargan las
-  // cuentas) y limita el rango hasta la fecha de corte, sin límite inferior.
+  // cuentas) y fija el rango — Balance General no manda "desde" (quiere todo
+  // el histórico hasta su fecha de corte), Estado de Resultados sí (quiere
+  // solo su rango).
   useEffect(() => {
     const codigoParam = params.get('codigo');
+    const desdeParam  = params.get('desde');
     const hastaParam  = params.get('hasta');
-    if (hastaParam) setRango([dayjs('2000-01-01'), dayjs(hastaParam)]);
+    if (hastaParam) setRango([dayjs(desdeParam ?? '2000-01-01'), dayjs(hastaParam)]);
     if (codigoParam && cuentas?.length) {
       const encontrada = cuentas.find((c: any) => c.codigo === codigoParam);
       if (encontrada) setCuentaId(encontrada.id);
@@ -108,6 +112,7 @@ export default function LibroMayorPage() {
           <Col>
             <RangePicker
               format="DD/MM/YYYY"
+              value={rango}
               onChange={v => setRango(v as [dayjs.Dayjs, dayjs.Dayjs] | null)}
               placeholder={['Desde', 'Hasta']}
             />

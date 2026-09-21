@@ -10,6 +10,8 @@ import { BalanceComprobacionService } from './balance-comprobacion.service';
 import { ReportesPdfService }         from './reportes-pdf.service';
 import { BalanceGeneralDetalladoService, FiltrosBalanceGeneralDetallado } from './balance-general-detallado.service';
 import { BalanceGeneralExportService } from './balance-general-export.service';
+import { EstadoResultadosDetalladoService, FiltrosEstadoResultadosDetallado } from './estado-resultados-detallado.service';
+import { EstadoResultadosExportService } from './estado-resultados-export.service';
 import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 @ApiTags('Reportes Financieros')
@@ -25,6 +27,8 @@ export class ReportesFinancierosController {
     private readonly pdfSvc:   ReportesPdfService,
     private readonly bgSvc:    BalanceGeneralDetalladoService,
     private readonly bgExpSvc: BalanceGeneralExportService,
+    private readonly erSvc:    EstadoResultadosDetalladoService,
+    private readonly erExpSvc: EstadoResultadosExportService,
   ) {}
 
   /** Query params → FiltrosBalanceGeneralDetallado (validación real vive en el service). */
@@ -42,6 +46,18 @@ export class ReportesFinancierosController {
     return {
       mostrarCodigo:              q.mostrarCodigo === undefined ? undefined : q.mostrarCodigo !== 'false',
       mostrarPorcentajeVertical:  q.mostrarPorcentajeVertical === undefined ? undefined : q.mostrarPorcentajeVertical !== 'false',
+    };
+  }
+
+  /** Query params → FiltrosEstadoResultadosDetallado (validación real vive en el service). */
+  private parseFiltrosER(q: Record<string, string | undefined>): FiltrosEstadoResultadosDetallado {
+    const hoy = fechaHoyRD();
+    const inicioAnio = `${new Date().getFullYear()}-01-01`;
+    return {
+      desde:                 q.desde ?? inicioAnio,
+      hasta:                 q.hasta ?? hoy,
+      comparacion:           q.comparacion as any,
+      ocultarCuentasEnCero:  q.ocultarCuentasEnCero === undefined ? undefined : q.ocultarCuentasEnCero !== 'false',
     };
   }
 
@@ -104,6 +120,43 @@ export class ReportesFinancierosController {
   @ApiOperation({ summary: 'Descargar Balance General detallado en PDF, respetando los filtros activos' })
   async balanceGeneralDetalladoPdf(@Query() q: Record<string, string | undefined>, @Res() res: Response) {
     const { buffer, filename } = await this.bgExpSvc.generarPdf(this.parseFiltrosBG(q));
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${filename}"` });
+    res.send(buffer);
+  }
+
+  @Get('estado-resultados-detallado')
+  @ApiOperation({ summary: 'Estado de Resultados con filtros: bloques por clasificación operacional/no operacional, % Ingresos, % Margen y 4 modos de comparación' })
+  @ApiQuery({ name: 'desde', required: false })
+  @ApiQuery({ name: 'hasta', required: false })
+  @ApiQuery({ name: 'comparacion', required: false, enum: ['ninguna', 'mes-vs-acumulado', 'anio-anterior', 'por-mes'] })
+  @ApiQuery({ name: 'ocultarCuentasEnCero', required: false })
+  estadoResultadosDetallado(@Query() q: Record<string, string | undefined>) {
+    return this.erSvc.generar(this.parseFiltrosER(q));
+  }
+
+  @Get('estado-resultados-detallado/excel')
+  @ApiOperation({ summary: 'Descargar Estado de Resultados detallado en Excel, respetando los filtros y la vista de comparación activa' })
+  async estadoResultadosDetalladoExcel(@Query() q: Record<string, string | undefined>, @Res() res: Response) {
+    const { buffer, filename } = await this.erExpSvc.generarExcel(this.parseFiltrosER(q));
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    });
+    res.send(buffer);
+  }
+
+  @Get('estado-resultados-detallado/csv')
+  @ApiOperation({ summary: 'Descargar Estado de Resultados detallado en CSV, respetando los filtros y la vista de comparación activa' })
+  async estadoResultadosDetalladoCsv(@Query() q: Record<string, string | undefined>, @Res() res: Response) {
+    const { buffer, filename } = await this.erExpSvc.generarCsv(this.parseFiltrosER(q));
+    res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${filename}"` });
+    res.send(buffer);
+  }
+
+  @Get('estado-resultados-detallado/pdf')
+  @ApiOperation({ summary: 'Descargar Estado de Resultados detallado en PDF, respetando los filtros activos' })
+  async estadoResultadosDetalladoPdf(@Query() q: Record<string, string | undefined>, @Res() res: Response) {
+    const { buffer, filename } = await this.erExpSvc.generarPdf(this.parseFiltrosER(q));
     res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${filename}"` });
     res.send(buffer);
   }

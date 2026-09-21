@@ -275,6 +275,79 @@ const RUTAS = {
         cantidadRecibida: null, porcentajeItbis: 18, subtotal: 800, importeItbis: 144, total: 944 },
     ],
   }),
+  // Para probar el clic-a-Libro-Mayor desde Estado de Resultados/Balance
+  // General sin backend: los mismos códigos que usa el mock de arriba.
+  '/contabilidad/cuentas': () => ({
+    data: [
+      { id: 401, codigo: '4.1.1.01', nombre: 'Ventas de Bienes' },
+      { id: 501, codigo: '5.1.1.01', nombre: 'Costo de Ventas de Bienes' },
+      { id: 611, codigo: '6.1.1.01', nombre: 'Sueldos y Salarios' },
+      { id: 612, codigo: '6.1.2.01', nombre: 'Alquiler' },
+    ],
+    meta: { total: 4, page: 1, limit: 5000, totalPages: 1 },
+  }),
+  // ── Estado de Resultados v2 — para capturar las 4 vistas de comparación
+  //    sin backend. Bloques con 1-2 cuentas cada uno, cifras simples para
+  //    verificar de un vistazo que Utilidad Bruta/Resultado Operacional/
+  //    Ganancia del Período cuadran.
+  '/reportes-financieros/estado-resultados-detallado': (q) => {
+    const pct = (monto, base) => base !== 0 ? +((monto / base) * 100).toFixed(1) : 0;
+    const periodo = (factor = 1) => {
+      const totalIngresos = 500000 * factor;
+      const bloque = (nombre, cuentas) => {
+        const total = +cuentas.reduce((s, c) => s + c.monto, 0).toFixed(2);
+        return {
+          nombre, total, porcentajeIngresos: pct(total, totalIngresos),
+          cuentas: cuentas.map(c => ({ ...c, porcentajeIngresos: pct(c.monto, totalIngresos) })),
+        };
+      };
+      const ingresos      = bloque('Ingresos', [{ codigo: '4.1.1.01', nombre: 'Ventas de Bienes', monto: totalIngresos }]);
+      const costoDeVentas = bloque('Costo de Ventas', [{ codigo: '5.1.1.01', nombre: 'Costo de Ventas de Bienes', monto: 200000 * factor }]);
+      const utilidadBruta = ingresos.total - costoDeVentas.total;
+      const gastos = bloque('Gastos', [
+        { codigo: '6.1.1.01', nombre: 'Sueldos y Salarios', monto: 120000 * factor },
+        { codigo: '6.1.2.01', nombre: 'Alquiler', monto: 30000 * factor },
+      ]);
+      const resultadoOperacional = utilidadBruta - gastos.total;
+      const otrosIngresos = bloque('Otros Ingresos', [{ codigo: '4.2.1.03', nombre: 'Intereses Ganados', monto: 5000 * factor }]);
+      const otrosGastos   = bloque('Otros Gastos', [{ codigo: '6.1.3.01', nombre: 'Comisiones Bancarias', monto: 2000 * factor }]);
+      const gananciaPerdidaDelPeriodo = resultadoOperacional + otrosIngresos.total - otrosGastos.total;
+      const linea = (nombre, monto) => ({ nombre, monto: +monto.toFixed(2), porcentajeIngresos: pct(monto, totalIngresos), porcentajeMargen: pct(monto, totalIngresos) });
+      return {
+        ingresos, costoDeVentas,
+        utilidadBruta: linea('Utilidad Bruta', utilidadBruta),
+        gastos,
+        resultadoOperacional: linea('Resultado Operacional', resultadoOperacional),
+        otrosIngresos, otrosGastos,
+        gananciaPerdidaDelPeriodo: linea('Ganancia (Pérdida) del Período', gananciaPerdidaDelPeriodo),
+      };
+    };
+
+    const desde = q?.desde ?? '2026-01-01';
+    const hasta = q?.hasta ?? '2026-09-21';
+    const comparacion = q?.comparacion ?? 'ninguna';
+    const out = { desde, hasta, filtros: { comparacion, ocultarCuentasEnCero: true }, periodo: periodo(1) };
+
+    if (comparacion === 'mes-vs-acumulado') {
+      out.acumulado = { desde: `${hasta.slice(0, 4)}-01-01`, hasta, periodo: periodo(6) };
+    } else if (comparacion === 'anio-anterior') {
+      out.anioAnterior = {
+        desde: `${Number(desde.slice(0, 4)) - 1}${desde.slice(4)}`,
+        hasta: `${Number(hasta.slice(0, 4)) - 1}${hasta.slice(4)}`,
+        periodo: periodo(0.8),
+        diferencias: {},
+      };
+    } else if (comparacion === 'por-mes') {
+      const anio = Number(hasta.slice(0, 4));
+      const meses = Array.from({ length: 12 }, (_, i) => ({
+        mes: i + 1, desde: `${anio}-${String(i + 1).padStart(2, '0')}-01`, hasta: `${anio}-${String(i + 1).padStart(2, '0')}-28`,
+        periodo: periodo(i < 9 ? 0.5 + i * 0.05 : 0), // meses futuros del ejercicio en 0
+      }));
+      out.porMes = { anio, meses, total: periodo(6) };
+    }
+    return out;
+  },
+
   '/compras/102': () => ({
     id: 102, folio: 'COM-00102', fecha: '2026-09-05', estado: 'recibida_parcial',
     proveedor: { id: 2, nombre: 'DISTRIBUIDORA DEL ESTE SRL', rnc: '130987654' },

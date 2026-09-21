@@ -7,6 +7,8 @@ import { SaldosCuentasService }          from './saldos-cuentas.service';
 import { ReportesPdfService }            from './reportes-pdf.service';
 import { BalanceGeneralDetalladoService } from './balance-general-detallado.service';
 import { BalanceGeneralExportService }   from './balance-general-export.service';
+import { EstadoResultadosDetalladoService } from './estado-resultados-detallado.service';
+import { EstadoResultadosExportService }    from './estado-resultados-export.service';
 import { AsientoContable } from '../contabilidad/entities/asiento-contable.entity';
 import { CuentaContable }  from '../contabilidad/entities/cuenta-contable.entity';
 import { Empresa }         from '../configuracion/entities/empresa.entity';
@@ -17,10 +19,12 @@ import { Empresa }         from '../configuracion/entities/empresa.entity';
   providers: [
     ReportesFinancierosService, BalanceComprobacionService, SaldosCuentasService, ReportesPdfService,
     BalanceGeneralDetalladoService, BalanceGeneralExportService,
+    EstadoResultadosDetalladoService, EstadoResultadosExportService,
   ],
   exports: [
     ReportesFinancierosService, BalanceComprobacionService, SaldosCuentasService, ReportesPdfService,
     BalanceGeneralDetalladoService, BalanceGeneralExportService,
+    EstadoResultadosDetalladoService, EstadoResultadosExportService,
   ],
 })
 export class ReportesFinancierosModule {}
