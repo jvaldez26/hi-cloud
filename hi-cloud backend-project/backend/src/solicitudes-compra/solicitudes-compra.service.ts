@@ -2,7 +2,7 @@ import {
   Injectable, NotFoundException, BadRequestException, Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import {
   SolicitudCompra,
   EstadoSolicitudCompra,
@@ -106,22 +106,36 @@ export class SolicitudesCompraService {
     const empresaId = this.tenantService.getEmpresaId();
     const { page = 1, limit = 15, estado, prioridad, search } = filtro;
 
-    const qb = this.solicitudRepo
+    // Paginación en dos pasos — `lineas` es @OneToMany: paginar (skip/take)
+    // sobre un JOIN con lineas corrompe el total (una solicitud con varias
+    // líneas "consume" varias filas de la ventana LIMIT). Mismo bug y mismo
+    // fix que notas-credito/notas-debito/pro-forma.
+    const idsQb = this.solicitudRepo
       .createQueryBuilder('s')
-      .leftJoinAndSelect('s.solicitante', 'usr')
-      .leftJoinAndSelect('s.lineas', 'lineas')
+      .leftJoin('s.solicitante', 'usr')
       .where('s.empresaId = :eid', { eid: empresaId })
       .andWhere('s.isActive = true');
 
-    if (estado)    qb.andWhere('s.estado = :estado', { estado });
-    if (prioridad) qb.andWhere('s.prioridad = :prioridad', { prioridad });
-    if (search)    qb.andWhere('(s.numero ILIKE :s OR s.justificacion ILIKE :s OR s.departamento ILIKE :s)', { s: `%${search}%` });
+    if (estado)    idsQb.andWhere('s.estado = :estado', { estado });
+    if (prioridad) idsQb.andWhere('s.prioridad = :prioridad', { prioridad });
+    if (search)    idsQb.andWhere('(s.numero ILIKE :s OR s.justificacion ILIKE :s OR s.departamento ILIKE :s)', { s: `%${search}%` });
 
-    const [data, total] = await qb
+    const [idEntities, total] = await idsQb
       .orderBy('s.createdAt', 'DESC')
       .skip((page - 1) * limit)
       .take(limit)
       .getManyAndCount();
+    const idsPagina = idEntities.map(s => s.id);
+
+    let data: SolicitudCompra[] = [];
+    if (idsPagina.length > 0) {
+      const entidades = await this.solicitudRepo.find({
+        where: { id: In(idsPagina) },
+        relations: ['solicitante', 'lineas'],
+      });
+      const porId = new Map(entidades.map(s => [s.id, s]));
+      data = idsPagina.map(id => porId.get(id)).filter((s): s is SolicitudCompra => !!s);
+    }
 
     return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
   }
@@ -293,21 +307,33 @@ export class SolicitudesCompraService {
     const empresaId = this.tenantService.getEmpresaId();
     const { page = 1, limit = 15, solicitudId, estado } = filtro;
 
-    const qb = this.cotizacionRepo
+    // Paginación en dos pasos — `lineas` es @OneToMany: mismo bug y mismo
+    // fix que getSolicitudes() arriba.
+    const idsQb = this.cotizacionRepo
       .createQueryBuilder('c')
-      .leftJoinAndSelect('c.proveedor', 'prov')
-      .leftJoinAndSelect('c.lineas', 'lineas')
+      .leftJoin('c.proveedor', 'prov')
       .where('c.empresaId = :eid', { eid: empresaId })
       .andWhere('c.isActive = true');
 
-    if (solicitudId) qb.andWhere('c.solicitudId = :sid', { sid: solicitudId });
-    if (estado)      qb.andWhere('c.estado = :estado', { estado });
+    if (solicitudId) idsQb.andWhere('c.solicitudId = :sid', { sid: solicitudId });
+    if (estado)      idsQb.andWhere('c.estado = :estado', { estado });
 
-    const [data, total] = await qb
+    const [idEntities, total] = await idsQb
       .orderBy('c.createdAt', 'DESC')
       .skip((page - 1) * limit)
       .take(limit)
       .getManyAndCount();
+    const idsPagina = idEntities.map(c => c.id);
+
+    let data: CotizacionProveedor[] = [];
+    if (idsPagina.length > 0) {
+      const entidades = await this.cotizacionRepo.find({
+        where: { id: In(idsPagina) },
+        relations: ['proveedor', 'lineas'],
+      });
+      const porId = new Map(entidades.map(c => [c.id, c]));
+      data = idsPagina.map(id => porId.get(id)).filter((c): c is CotizacionProveedor => !!c);
+    }
 
     return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
   }

@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import { Conduce, EstadoConduce } from './entities/conduce.entity';
 import { ConduceDetalle } from './entities/conduce-detalle.entity';
 import { TenantService } from '../tenant/tenant.service';
@@ -116,26 +116,41 @@ export class ConduceService {
     const empresaId = this.tenantSvc.getEmpresaId();
     const { limit = 10, page = 1, search } = pagination;
 
-    const qb = this.conduceRepo
+    // Paginación en dos pasos — `detalles` es @OneToMany: paginar
+    // (skip/take) sobre un JOIN con detalles corrompe el total (un conduce
+    // con varias líneas "consume" varias filas de la ventana LIMIT). Mismo
+    // bug y mismo fix que notas-credito/notas-debito/pro-forma/solicitudes-
+    // compra.
+    const idsQb = this.conduceRepo
       .createQueryBuilder('c')
-      .leftJoinAndSelect('c.cliente',  'cl')
-      .leftJoinAndSelect('c.detalles', 'd')
+      .leftJoin('c.cliente', 'cl')
       // JOIN a facturas solo para poder filtrar por folio (no se selecciona, ya se enriquece después)
       .leftJoin('facturas', 'fac', 'fac.id = c."facturaId" AND fac."empresaId" = :facEid', { facEid: empresaId })
       .where('c.empresaId = :eid', { eid: empresaId })
       .andWhere('c.isActive = :a',  { a: true });
 
-    if (estado) qb.andWhere('c.estado = :e', { e: estado });
-    if (search) qb.andWhere(
+    if (estado) idsQb.andWhere('c.estado = :e', { e: estado });
+    if (search) idsQb.andWhere(
       `(c.numero ILIKE :s OR cl.nombre ILIKE :s OR fac.folio ILIKE :s OR fac.folio = 'FAC-' || :sPlain)`,
       { s: `%${search}%`, sPlain: search },
     );
 
-    const [data, total] = await qb
+    const [idEntities, total] = await idsQb
       .orderBy('c.fecha', 'DESC')
       .skip((page - 1) * limit)
       .take(Math.min(limit, 100))
       .getManyAndCount();
+    const idsPagina = idEntities.map(c => c.id);
+
+    let data: Conduce[] = [];
+    if (idsPagina.length > 0) {
+      const entidades = await this.conduceRepo.find({
+        where: { id: In(idsPagina) },
+        relations: ['cliente', 'detalles'],
+      });
+      const porId = new Map(entidades.map(c => [c.id, c]));
+      data = idsPagina.map(id => porId.get(id)).filter((c): c is Conduce => !!c);
+    }
 
     // Enriquecer con folio de factura cuando el conduce fue creado desde una factura
     const facturaIds = [...new Set(data.filter(c => c.facturaId).map(c => c.facturaId!))];

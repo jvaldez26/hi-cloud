@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import { ProForma, ProFormaEstado } from './entities/pro-forma.entity';
 import { ProFormaItem } from './entities/pro-forma-item.entity';
 import { TenantService } from '../tenant/tenant.service';
@@ -169,21 +169,33 @@ export class ProFormaService {
       [empresaId],
     );
 
-    const qb = this.pfRepo.createQueryBuilder('pf')
-      .leftJoinAndSelect('pf.items', 'items')
+    // Paginación en dos pasos — `items` es @OneToMany: paginar (skip/take)
+    // sobre un JOIN con items corrompe el total (una pro-forma con varias
+    // líneas "consume" varias filas de la ventana LIMIT). Mismo bug y mismo
+    // fix que notas-credito/notas-debito (ver el comentario largo ahí);
+    // pre-factura.service.ts ya evitaba este antipatrón desde antes.
+    const idsQb = this.pfRepo.createQueryBuilder('pf')
       .where('pf.empresaId = :eid', { eid: empresaId })
       .andWhere('pf.isActive = true');
 
     // Filtrar por sucursal del JWT (igual que facturas): las sin sucursal son visibles a todas
-    if (sucursalId) qb.andWhere('(pf.sucursalId = :sid OR pf.sucursalId IS NULL)', { sid: sucursalId });
+    if (sucursalId) idsQb.andWhere('(pf.sucursalId = :sid OR pf.sucursalId IS NULL)', { sid: sucursalId });
 
-    if (search) qb.andWhere('pf.numero ILIKE :s', { s: `%${search}%` });
+    if (search) idsQb.andWhere('pf.numero ILIKE :s', { s: `%${search}%` });
 
-    const [data, total] = await qb
+    const [idEntities, total] = await idsQb
       .orderBy('pf.createdAt', 'DESC')
       .skip((page - 1) * limit)
       .take(Math.min(limit, 100))
       .getManyAndCount();
+    const idsPagina = idEntities.map(p => p.id);
+
+    let data: ProForma[] = [];
+    if (idsPagina.length > 0) {
+      const entidades = await this.pfRepo.find({ where: { id: In(idsPagina) }, relations: ['items'] });
+      const porId = new Map(entidades.map(p => [p.id, p]));
+      data = idsPagina.map(id => porId.get(id)).filter((p): p is ProForma => !!p);
+    }
 
     // Enriquecer con nombre de cliente
     const clienteIds = [...new Set(data.map(p => p.clienteId).filter(Boolean))] as number[];
