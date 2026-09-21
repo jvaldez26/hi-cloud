@@ -4,7 +4,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { usePlanGuard } from '../../hooks/usePlan';
 import ModuloBloqueado from '../../components/ui/ModuloBloqueado';
-import { Table, Tag, Button, Row, Col, Typography, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, Descriptions, Drawer } from 'antd';
+import { Table, Tag, Button, Row, Col, Typography, Space, Modal, Form, Input, InputNumber, Select, DatePicker, message, Descriptions, Drawer, Spin } from 'antd';
 import { PlusOutlined, CheckOutlined, SearchOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { TableActions } from '../../components/ui/TableActions';
 import { exportarExcel } from '../../utils/exportExcel';
@@ -22,7 +22,7 @@ function Asientos() {
   const [page,       setPage]       = useState(1);
   const [search,     setSearch]     = useState('');
   const [open,       setOpen]       = useState(false);
-  const [detail,     setDetail]     = useState<any>(null);
+  const [detailId,   setDetailId]   = useState<number | null>(null);
   const [desde,      setDesde]      = useState('');
   const [hasta,      setHasta]      = useState('');
   const [estadoFilt, setEstadoFilt] = useState<string | undefined>();
@@ -39,6 +39,17 @@ function Asientos() {
     queryFn: () => contabilidadApi.asientos(page, 10, estadoFilt, desde || undefined, hasta || undefined, tipoFilt),
   });
 
+  // La lista NO trae líneas (getAsientos() no las junta — traerlas ahí
+  // infla cada página con todo el detalle de 10 asientos que nadie va a
+  // abrir). El detalle real se pide aparte, al abrir el cajón — antes esto
+  // usaba la fila de la lista tal cual, así que el cajón SIEMPRE mostraba
+  // la tabla de líneas vacía, para cualquier asiento, viejo o nuevo.
+  const { data: detail, isLoading: loadingDetail } = useQuery({
+    queryKey: ['asiento-detalle', detailId],
+    queryFn: () => contabilidadApi.findAsiento(detailId!),
+    enabled: detailId != null,
+  });
+
   const createMut = useMutation({
     mutationFn: contabilidadApi.createAsiento,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['asientos'] }); setOpen(false); form.resetFields(); message.success('Asiento creado'); },
@@ -53,7 +64,7 @@ function Asientos() {
 
   const anularMut = useMutation({
     mutationFn: contabilidadApi.anularAsiento,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['asientos'] }); setDetail(null); message.success('Asiento anulado'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['asientos'] }); setDetailId(null); message.success('Asiento anulado'); },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al anular'),
   });
 
@@ -86,7 +97,7 @@ function Asientos() {
     { title: '', key: 'actions', width: 72, align: 'right' as const,
       render: (_: any, r: any) => (
         <TableActions
-          onView={() => setDetail(r)}
+          onView={() => setDetailId(r.id)}
           viewLabel="Ver detalle"
           items={r.estado === 'borrador' ? [
             { key: 'contabilizar', label: 'Contabilizar', icon: <CheckOutlined />, onClick: () => contabilizarMut.mutate(r.id) },
@@ -231,9 +242,9 @@ function Asientos() {
 
       {/* Detalle asiento */}
       <Drawer
-        title={`Asiento ${detail?.numero}`}
-        open={!!detail}
-        onClose={() => setDetail(null)}
+        title={`Asiento ${detail?.numero ?? ''}`}
+        open={detailId != null}
+        onClose={() => setDetailId(null)}
         width={700}
         extra={
           detail && (
@@ -251,31 +262,33 @@ function Asientos() {
           )
         }
       >
-        {detail && (
-          <>
-            <Descriptions bordered size="small" column={2} style={{ marginBottom: 16 }}>
-              <Descriptions.Item label="Fecha">{fmt.date(detail.fecha)}</Descriptions.Item>
-              <Descriptions.Item label="Estado"><Tag color={estadoColor[detail.estado]}>{detail.estado?.toUpperCase()}</Tag></Descriptions.Item>
-              <Descriptions.Item label="Descripción" span={2}>{detail.descripcion}</Descriptions.Item>
-              <Descriptions.Item label="Total Debe">{fmt.money(detail.totalDebe)}</Descriptions.Item>
-              <Descriptions.Item label="Total Haber">{fmt.money(detail.totalHaber)}</Descriptions.Item>
-              {detail.referenciaFolio && (
-                <Descriptions.Item label="Documento origen" span={2}>
-                  <Text code>{detail.referenciaFolio}</Text>
-                </Descriptions.Item>
-              )}
-            </Descriptions>
-            <Table size="small"
-              scroll={{ x: 'max-content' }} pagination={false}
-              dataSource={detail.lineas ?? []} rowKey="id"
-              columns={[
-                { title: 'Cuenta', key: 'cta', ellipsis: true, render: (_: any, r: any) => `${r.cuentaContable?.codigo} — ${r.cuentaContable?.nombre}` },
-                { title: 'Descripción', dataIndex: 'descripcion', ellipsis: true },
-                { title: 'Debe',  dataIndex: 'debe',  width: 120, align: 'right' as const, render: (v: number) => v > 0 ? fmt.money(v) : '' },
-                { title: 'Haber', dataIndex: 'haber', width: 120, align: 'right' as const, render: (v: number) => v > 0 ? fmt.money(v) : '' },
-              ]} />
-          </>
-        )}
+        <Spin spinning={loadingDetail}>
+          {detail && (
+            <>
+              <Descriptions bordered size="small" column={2} style={{ marginBottom: 16 }}>
+                <Descriptions.Item label="Fecha">{fmt.date(detail.fecha)}</Descriptions.Item>
+                <Descriptions.Item label="Estado"><Tag color={estadoColor[detail.estado]}>{detail.estado?.toUpperCase()}</Tag></Descriptions.Item>
+                <Descriptions.Item label="Descripción" span={2}>{detail.descripcion}</Descriptions.Item>
+                <Descriptions.Item label="Total Debe">{fmt.money(detail.totalDebe)}</Descriptions.Item>
+                <Descriptions.Item label="Total Haber">{fmt.money(detail.totalHaber)}</Descriptions.Item>
+                {detail.referenciaFolio && (
+                  <Descriptions.Item label="Documento origen" span={2}>
+                    <Text code>{detail.referenciaFolio}</Text>
+                  </Descriptions.Item>
+                )}
+              </Descriptions>
+              <Table size="small"
+                scroll={{ x: 'max-content' }} pagination={false}
+                dataSource={detail.lineas ?? []} rowKey="id"
+                columns={[
+                  { title: 'Cuenta', key: 'cta', ellipsis: true, render: (_: any, r: any) => `${r.cuentaContable?.codigo} — ${r.cuentaContable?.nombre}` },
+                  { title: 'Descripción', dataIndex: 'descripcion', ellipsis: true },
+                  { title: 'Debe',  dataIndex: 'debe',  width: 120, align: 'right' as const, render: (v: number) => v > 0 ? fmt.money(v) : '' },
+                  { title: 'Haber', dataIndex: 'haber', width: 120, align: 'right' as const, render: (v: number) => v > 0 ? fmt.money(v) : '' },
+                ]} />
+            </>
+          )}
+        </Spin>
       </Drawer>
     </>
   );

@@ -286,6 +286,28 @@ const RUTAS = {
     ],
     meta: { total: 4, page: 1, limit: 5000, totalPages: 1 },
   }),
+  // ── Asientos Contables — para capturar el fix del cajón de detalle
+  //    (2026-09-21): la lista nunca trae líneas (por diseño, no se cargan
+  //    10 asientos completos por página), el detalle sí las trae. Antes el
+  //    cajón reusaba la fila de la lista → tabla de líneas siempre vacía.
+  '/contabilidad/asientos': () => ({
+    data: [
+      { id: 999, numero: 'ASI-15680', fecha: '2026-09-21', descripcion: 'Venta según factura FAC-15514',
+        tipoOrigen: 'factura', referenciaFolio: 'FAC-15514', totalDebe: 1749.75, totalHaber: 1749.75, estado: 'contabilizado' },
+      { id: 998, numero: 'ASI-15679', fecha: '2026-09-21', descripcion: 'Venta según factura FAC-15513',
+        tipoOrigen: 'factura', referenciaFolio: 'FAC-15513', totalDebe: 850, totalHaber: 850, estado: 'contabilizado' },
+    ],
+    meta: { total: 2, page: 1, limit: 10, totalPages: 1 },
+  }),
+  '/contabilidad/asientos/999': () => ({
+    id: 999, numero: 'ASI-15680', fecha: '2026-09-21', descripcion: 'Venta según factura FAC-15514',
+    tipoOrigen: 'factura', referenciaFolio: 'FAC-15514', totalDebe: 1749.75, totalHaber: 1749.75, estado: 'contabilizado',
+    lineas: [
+      { id: 1, descripcion: 'Cobro efectivo FAC-15514', debe: 1749.75, haber: 0, cuentaContable: { codigo: '1.1.1.02', nombre: 'Caja General' } },
+      { id: 2, descripcion: 'Ingreso por venta FAC-15514', debe: 0, haber: 1483.69, cuentaContable: { codigo: '4.1.1.01', nombre: 'Ventas de Bienes' } },
+      { id: 3, descripcion: 'ITBIS débito fiscal FAC-15514', debe: 0, haber: 266.06, cuentaContable: { codigo: '2.1.2.01', nombre: 'ITBIS por Pagar' } },
+    ],
+  }),
   // ── Estado de Resultados v2 — para capturar las 4 vistas de comparación
   //    sin backend. Bloques con 1-2 cuentas cada uno, cifras simples para
   //    verificar de un vistazo que Utilidad Bruta/Resultado Operacional/
