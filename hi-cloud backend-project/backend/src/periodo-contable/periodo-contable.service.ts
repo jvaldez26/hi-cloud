@@ -166,13 +166,23 @@ export class PeriodoContableService {
       throw new BadRequestException('El período ya está cerrado');
     }
 
-    // Calcular totales desde los asientos contabilizados del período
+    // Calcular totales desde los asientos contabilizados del período.
+    //
+    // P0 (2026-09-21): faltaba el filtro por empresaId. getRawOne() devuelve
+    // una fila agregada cruda, no una entidad hidratada — ni TenantAwareRepository
+    // ni TenantSubscriber (que solo actúa sobre entidades hidratadas por find/
+    // findOne/getMany) pueden atraparlo, así que esta suma se quedaba sumando
+    // totalDebe/totalHaber/cantidad de TODAS las empresas en ese rango de
+    // fechas y ESE total contaminado se guardaba como el cierre oficial del
+    // período. Cada otro método de este archivo ya filtra por empresaId; este
+    // era el único que no.
     const raw = await this.asientoRepo
       .createQueryBuilder('a')
       .select('COALESCE(SUM(a."totalDebe"), 0)',  'totalDebitos')
       .addSelect('COALESCE(SUM(a."totalHaber"), 0)', 'totalCreditos')
       .addSelect('COUNT(a.id)',                    'cantidad')
-      .where('a.fecha >= :inicio', { inicio: periodo.fechaInicio })
+      .where('a."empresaId" = :empresaId', { empresaId: periodo.empresaId })
+      .andWhere('a.fecha >= :inicio', { inicio: periodo.fechaInicio })
       .andWhere('a.fecha <= :fin',  { fin:   periodo.fechaFin })
       .andWhere("a.estado = 'contabilizado'")
       .getRawOne<{ totalDebitos: string; totalCreditos: string; cantidad: string }>();
