@@ -59,6 +59,31 @@ export interface AsientoPayload {
   referenciaFolio?: string;
 }
 
+// ── Importación de Plan de Cuentas por plantilla ────────────────────────────
+
+export interface ErrorFilaImport { fila: number; motivo: string; }
+export interface AdvertenciaFilaImport { fila: number; codigo: string; motivo: string; }
+export interface CambioCampoImport { campo: string; antes: unknown; despues: unknown; }
+export interface CuentaACrearImport {
+  fila: number; codigo: string; nombre: string; tipo: string; naturaleza: string;
+  codigoMadre?: string; esCuentaGrupo: boolean; anexoIR2?: string; activa: boolean;
+}
+export interface CuentaAActualizarImport { fila: number; codigo: string; nombre: string; cambios: CambioCampoImport[]; }
+
+export interface PreviewImportacionCuentas {
+  totalFilas: number;
+  crear: CuentaACrearImport[];
+  actualizar: CuentaAActualizarImport[];
+  errores: ErrorFilaImport[];
+  advertencias: AdvertenciaFilaImport[];
+  noTocadas: number;
+}
+
+export interface ResultadoImportacionCuentas extends PreviewImportacionCuentas {
+  creadas: number;
+  actualizadas: number;
+}
+
 export const contabilidadApi = {
   /** Cuentas de movimiento sin etiqueta fiscal completa — lista de trabajo del contador (Fase 2). */
   cuentasSinEtiquetar: () =>
@@ -115,4 +140,28 @@ export const contabilidadApi = {
   libroMayor: (cuentaId: number, desde?: string, hasta?: string) =>
     api.get(`/contabilidad/libro-mayor/${cuentaId}${desde ? `?fechaDesde=${desde}&fechaHasta=${hasta}` : ''}`)
        .then(r => r.data.data),
+
+  // ── Importación de Plan de Cuentas por plantilla ──────────────────────────
+
+  /** El JWT va en cookie httpOnly — una navegación directa la lleva sola, no hace falta armar un blob. */
+  descargarPlantillaCuentas: () => {
+    const link = document.createElement('a');
+    link.href = `${api.defaults.baseURL}/contabilidad/cuentas/plantilla-importacion`;
+    link.download = 'plantilla-plan-de-cuentas.xlsx';
+    link.click();
+  },
+
+  previsualizarImportacionCuentas: (file: File) => {
+    const fd = new FormData(); fd.append('file', file);
+    return api.post('/contabilidad/cuentas/importar/preview', fd, {
+      headers: { 'Content-Type': undefined },
+    }).then(r => r.data.data as PreviewImportacionCuentas);
+  },
+
+  ejecutarImportacionCuentas: (file: File) => {
+    const fd = new FormData(); fd.append('file', file);
+    return api.post('/contabilidad/cuentas/importar/ejecutar', fd, {
+      headers: { 'Content-Type': undefined },
+    }).then(r => r.data.data as ResultadoImportacionCuentas);
+  },
 };

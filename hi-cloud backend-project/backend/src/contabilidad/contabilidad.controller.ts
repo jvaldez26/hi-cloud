@@ -12,9 +12,16 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
+  Res,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery, ApiConsumes } from '@nestjs/swagger';
 import { ContabilidadService } from './services/contabilidad.service';
+import { ImportacionCuentasService } from './services/importacion-cuentas.service';
 import { CreateCuentaContableDto } from './dto/create-cuenta-contable.dto';
 import { UpdateCuentaContableDto } from './dto/update-cuenta-contable.dto';
 import { CreateAsientoDto } from './dto/create-asiento.dto';
@@ -34,7 +41,63 @@ import { RequiereModulo } from '../suscripciones/decorators/requiere-modulo.deco
 @RequiereModulo('contabilidad')
 @Controller('contabilidad')
 export class ContabilidadController {
-  constructor(private contabilidadService: ContabilidadService) {}
+  constructor(
+    private contabilidadService: ContabilidadService,
+    private importacionCuentasService: ImportacionCuentasService,
+  ) {}
+
+  // ── Importación de Plan de Cuentas por plantilla ─────────────────────────
+
+  private static readonly EXCEL_O_CSV_FILTER = (_: any, file: { mimetype: string; originalname: string }, cb: any) => {
+    const MIME_PERMITIDOS = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+      'application/vnd.ms-excel', 'text/csv', 'text/plain',
+      'text/comma-separated-values', 'application/csv', 'application/octet-stream',
+    ];
+    const nombre = file.originalname?.toLowerCase() ?? '';
+    const esValido = MIME_PERMITIDOS.includes(file.mimetype) || nombre.endsWith('.xlsx') || nombre.endsWith('.csv');
+    if (!esValido) return cb(new BadRequestException('Solo se permiten archivos .xlsx o .csv'), false);
+    cb(null, true);
+  };
+
+  @Get('cuentas/plantilla-importacion')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Descargar la plantilla .xlsx para importar el Plan de Cuentas (hojas Cuentas + Instrucciones)' })
+  descargarPlantillaCuentas(@Res() res: Response) {
+    const buffer = this.importacionCuentasService.getPlantilla();
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="plantilla-plan-de-cuentas.xlsx"');
+    res.send(buffer);
+  }
+
+  @Post('cuentas/importar/preview')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @UseInterceptors(FileInterceptor('file', {
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: ContabilidadController.EXCEL_O_CSV_FILTER,
+  }))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Vista previa de la importación del Plan de Cuentas — no escribe nada' })
+  previsualizarImportacionCuentas(@UploadedFile() file: { buffer: Buffer; originalname: string }) {
+    if (!file) throw new BadRequestException('No se recibió ningún archivo');
+    return this.importacionCuentasService.previsualizar(file.buffer);
+  }
+
+  @Post('cuentas/importar/ejecutar')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @UseInterceptors(FileInterceptor('file', {
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: ContabilidadController.EXCEL_O_CSV_FILTER,
+  }))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Ejecuta la importación del Plan de Cuentas (mismo archivo ya confirmado en la vista previa) — transacción única' })
+  ejecutarImportacionCuentas(@UploadedFile() file: { buffer: Buffer; originalname: string }, @GetUser() usuario: User) {
+    if (!file) throw new BadRequestException('No se recibió ningún archivo');
+    const nombre = (usuario as any).nombre ?? (usuario as any).name ?? `Usuario #${usuario.id}`;
+    return this.importacionCuentasService.ejecutar(file.buffer, { id: usuario.id, nombre });
+  }
 
   // ── Plan de Cuentas ────────────────────────────────────────────────────────
 
