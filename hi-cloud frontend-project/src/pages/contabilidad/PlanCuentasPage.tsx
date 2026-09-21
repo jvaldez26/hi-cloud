@@ -9,6 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usePlanGuard } from '../../hooks/usePlan';
 import ModuloBloqueado from '../../components/ui/ModuloBloqueado';
 import ImportarCuentasModal from '../../components/contabilidad/ImportarCuentasModal';
+import CompletarCatalogoEstandarModal from '../../components/contabilidad/CompletarCatalogoEstandarModal';
 import { contabilidadApi, type CuentaPayload, type CuentaConAnexos, type EtiquetaAnexoIR2 } from '../../api/contabilidad.api';
 import { TIPOS_BIENES_606 } from '../../constants/dgii-606';
 import {
@@ -115,6 +116,7 @@ export default function PlanCuentasPage() {
   const [open,    setOpen]    = useState(false);
   const [editing, setEditing] = useState<Cuenta | null>(null);
   const [importarOpen, setImportarOpen] = useState(false);
+  const [completarEstandarOpen, setCompletarEstandarOpen] = useState(false);
   const [form] = Form.useForm<CuentaPayload>();
 
   // Filtros del catálogo — en la URL para que sean compartibles y
@@ -310,6 +312,7 @@ export default function PlanCuentasPage() {
           <Space wrap>
             <Button onClick={() => contabilidadApi.descargarPlantillaCuentas()}>Descargar plantilla</Button>
             <Button icon={<ImportOutlined />} onClick={() => setImportarOpen(true)}>Importar</Button>
+            <Button onClick={() => setCompletarEstandarOpen(true)}>Completar con el catálogo estándar</Button>
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Nueva cuenta</Button>
           </Space>
         </Col>
@@ -561,6 +564,7 @@ export default function PlanCuentasPage() {
       </Modal>
 
       <ImportarCuentasModal open={importarOpen} onClose={() => setImportarOpen(false)} />
+      <CompletarCatalogoEstandarModal open={completarEstandarOpen} onClose={() => setCompletarEstandarOpen(false)} />
     </Card>
   );
 }

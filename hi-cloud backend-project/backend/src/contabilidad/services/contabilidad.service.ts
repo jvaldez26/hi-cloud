@@ -16,6 +16,7 @@ import {
   NaturalezaCuenta,
   AnexoIR2,
   TIPOS_POR_ANEXO_IR2,
+  ClasificacionResultado,
 } from '../entities/cuenta-contable.entity';
 import { CuentaAnexoIR2 } from '../entities/cuenta-anexo-ir2.entity';
 import { sugerirTipoGasto606, sugerirRequiereNCF } from '../../declaraciones/dgii.constants';
@@ -51,6 +52,13 @@ interface SeedCuenta {
   requiereNCF?: boolean;
   // P3 Bloque 4 — se calcula en marcarCuentaSistema(), no se escribe a mano aquí abajo.
   esCuentaSistema?: boolean;
+  /**
+   * Estado de Resultados — solo se escribe a mano en las cuentas madre que
+   * SÍ deben marcarse explícitamente (el resto hereda, ver
+   * clasificacion-resultado.util.ts en reportes-financieros). Enriquecimiento
+   * del catálogo (2026-09-21).
+   */
+  clasificacionResultado?: ClasificacionResultado;
 }
 
 const D = NaturalezaCuenta.DEUDORA;
@@ -104,8 +112,14 @@ const PLAN_CUENTAS_BASE: SeedCuenta[] = [
   // ── CLASE 3 — PATRIMONIO ───────────────────────────────────────────────────
   { codigo: '3',          nombre: 'PATRIMONIO',                        tipo: TipoCuenta.PATRIMONIO, naturaleza: A, nivel: 1, permiteMovimientos: false },
   { codigo: '3.1',        nombre: 'Capital Social',                    tipo: TipoCuenta.PATRIMONIO, naturaleza: A, nivel: 2, permiteMovimientos: false },
+  // '3.1.1' nunca se sembró como su propia fila — '3.1.1.01' quedaba huérfana
+  // (cuentaPadreId se resuelve por prefijo de código). Mismo defecto que
+  // '2.2.1' (ver más abajo) y '3.2.1'/'4.2.1' (aquí mismo) — se agrega el
+  // grupo, el código de la cuenta existente NO cambia.
+  { codigo: '3.1.1',      nombre: 'Aportes de Capital',                tipo: TipoCuenta.PATRIMONIO, naturaleza: A, nivel: 3, permiteMovimientos: false },
   { codigo: '3.1.1.01',   nombre: 'Capital Suscrito y Pagado',         tipo: TipoCuenta.PATRIMONIO, naturaleza: A, nivel: 4, permiteMovimientos: true },
   { codigo: '3.2',        nombre: 'Resultados',                        tipo: TipoCuenta.PATRIMONIO, naturaleza: A, nivel: 2, permiteMovimientos: false },
+  { codigo: '3.2.1',      nombre: 'Resultados Acumulados',             tipo: TipoCuenta.PATRIMONIO, naturaleza: A, nivel: 3, permiteMovimientos: false },
   { codigo: '3.2.1.01',   nombre: 'Utilidades Acumuladas',             tipo: TipoCuenta.PATRIMONIO, naturaleza: A, nivel: 4, permiteMovimientos: true },
   { codigo: '3.2.1.02',   nombre: 'Resultado del Ejercicio',           tipo: TipoCuenta.PATRIMONIO, naturaleza: A, nivel: 4, permiteMovimientos: true },
 
@@ -115,7 +129,8 @@ const PLAN_CUENTAS_BASE: SeedCuenta[] = [
   { codigo: '4.1.1',      nombre: 'Ventas',                            tipo: TipoCuenta.INGRESO,    naturaleza: A, nivel: 3, permiteMovimientos: false },
   { codigo: '4.1.1.01',   nombre: 'Ventas de Bienes',                  tipo: TipoCuenta.INGRESO,    naturaleza: A, nivel: 4, permiteMovimientos: true },
   { codigo: '4.1.1.02',   nombre: 'Ventas de Servicios',               tipo: TipoCuenta.INGRESO,    naturaleza: A, nivel: 4, permiteMovimientos: true },
-  { codigo: '4.2',        nombre: 'Ingresos No Operacionales',         tipo: TipoCuenta.INGRESO,    naturaleza: A, nivel: 2, permiteMovimientos: false },
+  { codigo: '4.2',        nombre: 'Ingresos No Operacionales',         tipo: TipoCuenta.INGRESO,    naturaleza: A, nivel: 2, permiteMovimientos: false, clasificacionResultado: ClasificacionResultado.NO_OPERACIONAL },
+  { codigo: '4.2.1',      nombre: 'Ingresos Financieros y Otros',      tipo: TipoCuenta.INGRESO,    naturaleza: A, nivel: 3, permiteMovimientos: false },
   { codigo: '4.2.1.01',   nombre: 'Ingresos Financieros',              tipo: TipoCuenta.INGRESO,    naturaleza: A, nivel: 4, permiteMovimientos: true },
   { codigo: '4.2.1.02',   nombre: 'Otros Ingresos',                    tipo: TipoCuenta.INGRESO,    naturaleza: A, nivel: 4, permiteMovimientos: true },
 
@@ -145,7 +160,7 @@ const PLAN_CUENTAS_BASE: SeedCuenta[] = [
   { codigo: '6.2.1.01',   nombre: 'Gasto de Depreciación Activos',     tipo: TipoCuenta.GASTO,      naturaleza: D, nivel: 4, permiteMovimientos: true },
   { codigo: '1.2.2',      nombre: 'Depreciación Acumulada',            tipo: TipoCuenta.ACTIVO,     naturaleza: A, nivel: 3, permiteMovimientos: false },
   { codigo: '1.2.2.01',   nombre: 'Deprec. Acumulada Activos Fijos',   tipo: TipoCuenta.ACTIVO,     naturaleza: A, nivel: 4, permiteMovimientos: true },
-  { codigo: '6.1.3',      nombre: 'Gastos Financieros',                tipo: TipoCuenta.GASTO,      naturaleza: D, nivel: 3, permiteMovimientos: false },
+  { codigo: '6.1.3',      nombre: 'Gastos Financieros',                tipo: TipoCuenta.GASTO,      naturaleza: D, nivel: 3, permiteMovimientos: false, clasificacionResultado: ClasificacionResultado.NO_OPERACIONAL },
   { codigo: '6.1.3.01',   nombre: 'Intereses Bancarios',               tipo: TipoCuenta.GASTO,      naturaleza: D, nivel: 4, permiteMovimientos: true },
   { codigo: '6.1.3.02',   nombre: 'Comisiones Bancarias',              tipo: TipoCuenta.GASTO,      naturaleza: D, nivel: 4, permiteMovimientos: true },
 
@@ -162,9 +177,9 @@ const PLAN_CUENTAS_BASE: SeedCuenta[] = [
   { codigo: '4.1.2',      nombre: 'Ingresos por Préstamos',                  tipo: TipoCuenta.INGRESO,  naturaleza: A, nivel: 3, permiteMovimientos: false },
   { codigo: '4.1.2.01',   nombre: 'Intereses de Préstamos Otorgados',        tipo: TipoCuenta.INGRESO,  naturaleza: A, nivel: 4, permiteMovimientos: true },
   { codigo: '4.1.2.02',   nombre: 'Mora de Préstamos Otorgados',             tipo: TipoCuenta.INGRESO,  naturaleza: A, nivel: 4, permiteMovimientos: true },
-  { codigo: '4.1.3',      nombre: 'Diferencial Cambiario (Ingreso)',         tipo: TipoCuenta.INGRESO,  naturaleza: A, nivel: 3, permiteMovimientos: false },
+  { codigo: '4.1.3',      nombre: 'Diferencial Cambiario (Ingreso)',         tipo: TipoCuenta.INGRESO,  naturaleza: A, nivel: 3, permiteMovimientos: false, clasificacionResultado: ClasificacionResultado.NO_OPERACIONAL },
   { codigo: '4.1.3.01',   nombre: 'Ganancia en Diferencial Cambiario',       tipo: TipoCuenta.INGRESO,  naturaleza: A, nivel: 4, permiteMovimientos: true },
-  { codigo: '6.1.5',      nombre: 'Diferencial Cambiario (Gasto)',           tipo: TipoCuenta.GASTO,    naturaleza: D, nivel: 3, permiteMovimientos: false },
+  { codigo: '6.1.5',      nombre: 'Diferencial Cambiario (Gasto)',           tipo: TipoCuenta.GASTO,    naturaleza: D, nivel: 3, permiteMovimientos: false, clasificacionResultado: ClasificacionResultado.NO_OPERACIONAL },
   { codigo: '6.1.5.01',   nombre: 'Pérdida en Diferencial Cambiario',        tipo: TipoCuenta.GASTO,    naturaleza: D, nivel: 4, permiteMovimientos: true },
 
   // ── Cuentas que cierran el mapeo CATEGORIA_LABELS de Gastos (selector de
@@ -187,6 +202,191 @@ const PLAN_CUENTAS_BASE: SeedCuenta[] = [
   { codigo: '6.1.2.12',   nombre: 'Marketing y Publicidad',                 tipo: TipoCuenta.GASTO,    naturaleza: D, nivel: 4, permiteMovimientos: true },
   { codigo: '6.1.4',      nombre: 'Impuestos y Tasas',                      tipo: TipoCuenta.GASTO,    naturaleza: D, nivel: 3, permiteMovimientos: false },
   { codigo: '6.1.4.01',   nombre: 'Impuestos y Tasas',                      tipo: TipoCuenta.GASTO,    naturaleza: D, nivel: 4, permiteMovimientos: true },
+
+  // ── Enriquecimiento del catálogo (2026-09-21) — conceptos de un catálogo
+  // de referencia de otro ERP, reubicados dentro de la jerarquía 1.x.x.xx ya
+  // existente de HiCloud. NINGÚN código existente se toca — solo se agregan
+  // cuentas nuevas (y, arriba, se les puso clasificacionResultado a 4
+  // cuentas madre YA existentes: 4.1.3, 4.2, 6.1.3, 6.1.5). Ver el reporte
+  // del commit para el detalle de qué ya existía y qué quedó "sin anexo
+  // claro" (gasto/costo sin keyword en sugerirTipoGasto606 — no se fuerza
+  // ningún 606 a ciegas, mismo criterio del resto del seed).
+
+  // ── 1.1.2 Cuentas por Cobrar — nuevas ──────────────────────────────────
+  { codigo: '1.1.2.03',   nombre: 'CxC Empleados',                     tipo: TipoCuenta.ACTIVO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '1.1.2.04',   nombre: 'CxC Accionistas',                   tipo: TipoCuenta.ACTIVO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '1.1.2.05',   nombre: 'CxC Otros',                         tipo: TipoCuenta.ACTIVO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  // Contra-cuenta de activo — naturaleza ACREEDORA a propósito (reduce Cuentas por Cobrar).
+  { codigo: '1.1.2.06',   nombre: 'Provisión para Cuentas Incobrables', tipo: TipoCuenta.ACTIVO, naturaleza: A, nivel: 4, permiteMovimientos: true },
+  { codigo: '1.1.2.07',   nombre: 'Adelantos a Proveedores',           tipo: TipoCuenta.ACTIVO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+
+  // ── 1.1.3 Inventarios — nuevas ──────────────────────────────────────────
+  { codigo: '1.1.3.05',   nombre: 'Compras en Tránsito',               tipo: TipoCuenta.ACTIVO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '1.1.3.06',   nombre: 'Inventario en Tránsito',            tipo: TipoCuenta.ACTIVO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+
+  // ── 1.1.4 Impuestos Anticipados — nueva ─────────────────────────────────
+  // Distinta de ITBIS/ISR Retenido a Recuperar (1.1.4.02/.03, ya existentes,
+  // que son retenciones que TERCEROS le hicieron a la empresa): esta es el
+  // ISR que la EMPRESA adelanta por cuenta propia (pagos a cuenta/anticipos).
+  { codigo: '1.1.4.04',   nombre: 'Anticipos de ISR',                  tipo: TipoCuenta.ACTIVO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+
+  // ── 1.1.5 Inversiones Temporales — grupo nuevo ──────────────────────────
+  { codigo: '1.1.5',      nombre: 'Inversiones Temporales',            tipo: TipoCuenta.ACTIVO, naturaleza: D, nivel: 3, permiteMovimientos: false },
+  { codigo: '1.1.5.01',   nombre: 'Inversiones a Corto Plazo',         tipo: TipoCuenta.ACTIVO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+
+  // ── 1.1.6 Gastos Pagados por Anticipado — grupo nuevo ───────────────────
+  { codigo: '1.1.6',      nombre: 'Gastos Pagados por Anticipado',     tipo: TipoCuenta.ACTIVO, naturaleza: D, nivel: 3, permiteMovimientos: false },
+  { codigo: '1.1.6.01',   nombre: 'Seguros Pagados por Anticipado',    tipo: TipoCuenta.ACTIVO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '1.1.6.02',   nombre: 'Publicidad Pagada por Anticipado',  tipo: TipoCuenta.ACTIVO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+
+  // ── 1.2.1 Propiedades, Planta y Equipo — nuevas ─────────────────────────
+  // "Vehículos" (1.2.1.03) y "Muebles y Enseres" (1.2.1.01) ya existían de
+  // forma genérica — se dejan tal cual, estas son específicas adicionales.
+  { codigo: '1.2.1.04',   nombre: 'Terrenos',                          tipo: TipoCuenta.ACTIVO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '1.2.1.05',   nombre: 'Edificios',                         tipo: TipoCuenta.ACTIVO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '1.2.1.06',   nombre: 'Equipos',                           tipo: TipoCuenta.ACTIVO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '1.2.1.07',   nombre: 'Vehículos Livianos',                tipo: TipoCuenta.ACTIVO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '1.2.1.08',   nombre: 'Vehículos Pesados',                 tipo: TipoCuenta.ACTIVO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '1.2.1.09',   nombre: 'Mejoras a Propiedad Arrendada',     tipo: TipoCuenta.ACTIVO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '1.2.1.10',   nombre: 'Otros Activos Fijos',               tipo: TipoCuenta.ACTIVO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+
+  // ── 1.2.2 Depreciación Acumulada — por clase, todas ACREEDORA (contra de activo) ──
+  // Terrenos no se deprecia — sin contra propia. Muebles y Enseres ya tiene
+  // su contra genérica en 1.2.2.01, no se duplica.
+  { codigo: '1.2.2.02',   nombre: 'Depreciación Acumulada - Edificios',                     tipo: TipoCuenta.ACTIVO, naturaleza: A, nivel: 4, permiteMovimientos: true },
+  { codigo: '1.2.2.03',   nombre: 'Depreciación Acumulada - Equipos',                       tipo: TipoCuenta.ACTIVO, naturaleza: A, nivel: 4, permiteMovimientos: true },
+  { codigo: '1.2.2.04',   nombre: 'Depreciación Acumulada - Vehículos Livianos',            tipo: TipoCuenta.ACTIVO, naturaleza: A, nivel: 4, permiteMovimientos: true },
+  { codigo: '1.2.2.05',   nombre: 'Depreciación Acumulada - Vehículos Pesados',             tipo: TipoCuenta.ACTIVO, naturaleza: A, nivel: 4, permiteMovimientos: true },
+  { codigo: '1.2.2.06',   nombre: 'Depreciación Acumulada - Mejoras a Propiedad Arrendada', tipo: TipoCuenta.ACTIVO, naturaleza: A, nivel: 4, permiteMovimientos: true },
+
+  // ── 1.2.3 Inversiones a Largo Plazo — grupo nuevo ───────────────────────
+  { codigo: '1.2.3',      nombre: 'Inversiones a Largo Plazo',         tipo: TipoCuenta.ACTIVO, naturaleza: D, nivel: 3, permiteMovimientos: false },
+  { codigo: '1.2.3.01',   nombre: 'Inversiones a Largo Plazo',         tipo: TipoCuenta.ACTIVO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+
+  // ── 2.1.1 Cuentas por Pagar Comerciales — nueva ─────────────────────────
+  { codigo: '2.1.1.02',   nombre: 'Tarjeta de Crédito',                tipo: TipoCuenta.PASIVO, naturaleza: A, nivel: 4, permiteMovimientos: true },
+
+  // ── 2.1.2 Impuestos por Pagar — retenciones ISR POR CONCEPTO ────────────
+  // Nunca con la tasa en el nombre — una tasa que cambia no debe obligar a
+  // renombrar la cuenta. "Retenciones por Pagar" (2.1.2.03, genérica) se
+  // deja tal cual; estas son las específicas por concepto.
+  { codigo: '2.1.2.05',   nombre: 'Retención ISR Honorarios por Pagar',        tipo: TipoCuenta.PASIVO, naturaleza: A, nivel: 4, permiteMovimientos: true },
+  { codigo: '2.1.2.06',   nombre: 'Retención ISR Alquileres por Pagar',        tipo: TipoCuenta.PASIVO, naturaleza: A, nivel: 4, permiteMovimientos: true },
+  { codigo: '2.1.2.07',   nombre: 'Retención ISR Servicios Técnicos por Pagar', tipo: TipoCuenta.PASIVO, naturaleza: A, nivel: 4, permiteMovimientos: true },
+  { codigo: '2.1.2.08',   nombre: 'Retención ISR Pagos al Exterior por Pagar', tipo: TipoCuenta.PASIVO, naturaleza: A, nivel: 4, permiteMovimientos: true },
+  { codigo: '2.1.2.09',   nombre: 'Retención ISR Otras por Pagar',             tipo: TipoCuenta.PASIVO, naturaleza: A, nivel: 4, permiteMovimientos: true },
+  { codigo: '2.1.2.10',   nombre: 'ISC por Pagar',                            tipo: TipoCuenta.PASIVO, naturaleza: A, nivel: 4, permiteMovimientos: true },
+
+  // ── 2.1.3 Obligaciones Laborales — nuevas ───────────────────────────────
+  // "Sueldos por Pagar" (2.1.3.01) y "TSS por Pagar" (2.1.3.02, genérica) se
+  // dejan tal cual — Nómina por Pagar del pedido es la misma .01 existente.
+  { codigo: '2.1.3.03',   nombre: 'Bonificaciones por Pagar',          tipo: TipoCuenta.PASIVO, naturaleza: A, nivel: 4, permiteMovimientos: true },
+  { codigo: '2.1.3.04',   nombre: 'Preaviso y Cesantía por Pagar',     tipo: TipoCuenta.PASIVO, naturaleza: A, nivel: 4, permiteMovimientos: true },
+  { codigo: '2.1.3.05',   nombre: 'TSS Retención Empleado por Pagar',  tipo: TipoCuenta.PASIVO, naturaleza: A, nivel: 4, permiteMovimientos: true },
+  { codigo: '2.1.3.06',   nombre: 'TSS Aporte Empleador por Pagar',    tipo: TipoCuenta.PASIVO, naturaleza: A, nivel: 4, permiteMovimientos: true },
+  { codigo: '2.1.3.07',   nombre: 'INFOTEP por Pagar',                 tipo: TipoCuenta.PASIVO, naturaleza: A, nivel: 4, permiteMovimientos: true },
+  { codigo: '2.1.3.08',   nombre: 'Propina Legal por Pagar',           tipo: TipoCuenta.PASIVO, naturaleza: A, nivel: 4, permiteMovimientos: true },
+
+  // ── 2.1.4 Otras Cuentas por Pagar CP — antes sin hijas ──────────────────
+  { codigo: '2.1.4.01',   nombre: 'Dividendos por Pagar',              tipo: TipoCuenta.PASIVO, naturaleza: A, nivel: 4, permiteMovimientos: true },
+  { codigo: '2.1.4.02',   nombre: 'Intereses por Pagar',               tipo: TipoCuenta.PASIVO, naturaleza: A, nivel: 4, permiteMovimientos: true },
+
+  // ── 2.2.1 Préstamos y Financiamientos LP — el grupo nunca se sembró ────
+  // '2.2.1.01 Préstamos Bancarios LP' ya existía pero quedaba sin madre real
+  // (cuentaPadreId se resuelve por prefijo de código — 2.2.1 nunca fue su
+  // propia fila). Se agrega el grupo; el código de la cuenta existente NO
+  // cambia, solo empieza a colgar de un padre real.
+  { codigo: '2.2.1',      nombre: 'Préstamos y Financiamientos LP',    tipo: TipoCuenta.PASIVO, naturaleza: A, nivel: 3, permiteMovimientos: false },
+  { codigo: '2.2.1.02',   nombre: 'Préstamos de Accionistas',          tipo: TipoCuenta.PASIVO, naturaleza: A, nivel: 4, permiteMovimientos: true },
+
+  // ── 3.2 Resultados — nuevas ──────────────────────────────────────────────
+  // "Utilidades Acumuladas" (3.2.1.01) ya cubre "Utilidades retenidas".
+  { codigo: '3.2.1.03',   nombre: 'Reserva Legal',                     tipo: TipoCuenta.PATRIMONIO, naturaleza: A, nivel: 4, permiteMovimientos: true },
+  { codigo: '3.2.1.04',   nombre: 'Saldos de Apertura',                tipo: TipoCuenta.PATRIMONIO, naturaleza: A, nivel: 4, permiteMovimientos: true },
+
+  // ── 4.1.1 Ventas — contraingresos y descuento recibido ─────────────────
+  // Descuentos/Devoluciones en Ventas son CONTRAINGRESO — naturaleza DEUDORA
+  // a propósito (reducen Ventas, que es acreedora). Tipo sigue siendo
+  // "ingreso": es lo que hace que aporten a B1 y entren en Ingresos del
+  // Estado de Resultados con signo contrario, no un tipo "costo" ni "gasto".
+  { codigo: '4.1.1.03',   nombre: 'Descuentos en Ventas',              tipo: TipoCuenta.INGRESO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '4.1.1.04',   nombre: 'Devoluciones en Ventas',            tipo: TipoCuenta.INGRESO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '4.1.1.05',   nombre: 'Descuentos por Pronto Pago Recibidos', tipo: TipoCuenta.INGRESO, naturaleza: A, nivel: 4, permiteMovimientos: true },
+
+  // ── 4.2.1 Ingresos No Operacionales — nuevas (heredan no_operacional de 4.2) ──
+  { codigo: '4.2.1.03',   nombre: 'Intereses Ganados',                 tipo: TipoCuenta.INGRESO, naturaleza: A, nivel: 4, permiteMovimientos: true },
+  { codigo: '4.2.1.04',   nombre: 'Ganancia en Venta de Activos',      tipo: TipoCuenta.INGRESO, naturaleza: A, nivel: 4, permiteMovimientos: true },
+
+  // ── 5.1.1 Costo de Ventas Directos — nuevas ─────────────────────────────
+  { codigo: '5.1.1.03',   nombre: 'Fletes en Compras',                 tipo: TipoCuenta.COSTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '5.1.1.04',   nombre: 'Mermas y Ajustes de Inventario',    tipo: TipoCuenta.COSTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+
+  // ── 6.1.1 Gastos de Personal — nuevas ───────────────────────────────────
+  // SFS/AFP llevan el nombre completo del aporte a propósito — además de
+  // ser más claro para el contador, es lo que hace que sugerirTipoGasto606
+  // los reconozca ("seguro familiar", "pension") en vez de quedar sin 606.
+  { codigo: '6.1.1.04',   nombre: 'Horas Extras',                                    tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.1.05',   nombre: 'Vacaciones',                                      tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.1.06',   nombre: 'Regalía Pascual',                                 tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.1.07',   nombre: 'SFS Patronal (Seguro Familiar de Salud)',         tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.1.08',   nombre: 'AFP Patronal (Fondo de Pensiones)',               tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.1.09',   nombre: 'INFOTEP',                                         tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.1.10',   nombre: 'Seguro Médico',                                   tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.1.11',   nombre: 'Preaviso y Cesantía',                             tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.1.12',   nombre: 'Uniformes',                                       tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.1.13',   nombre: 'Capacitación',                                    tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+
+  // ── 6.1.2 Gastos Generales y Administración — nuevas ────────────────────
+  // "Comisiones de Tarjetas" se nombra sin la palabra "comisión" a propósito
+  // — con ella, sugerirTipoGasto606 la etiquetaría con el código '01' de
+  // NÓMINA (matchea el keyword genérico "comision"), un 606 genuinamente
+  // incorrecto. Mejor sin anexo automático (se revisa a mano) que uno
+  // equivocado.
+  { codigo: '6.1.2.13',   nombre: 'Suministros',                       tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.2.14',   nombre: 'Limpieza',                          tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.2.15',   nombre: 'Honorarios Contables',              tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.2.16',   nombre: 'Honorarios Legales',                tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.2.17',   nombre: 'Honorarios Técnicos',                tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.2.18',   nombre: 'Cargos por Procesamiento de Tarjetas', tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.2.19',   nombre: 'ISC',                               tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.2.20',   nombre: 'Gasto de Cuentas Incobrables',      tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+
+  // ── 6.1.3 Gastos Financieros — nuevas (heredan no_operacional) ─────────
+  // "Gastos Bancarios" (no "Cargos Bancarios") a propósito — matchea el
+  // keyword real ("gasto bancario"/"gastos bancarios") de sugerirTipoGasto606.
+  { codigo: '6.1.3.03',   nombre: 'Gastos Bancarios',                  tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.3.04',   nombre: 'Impuesto a Cheques y Transferencias', tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.3.05',   nombre: 'Intereses de Préstamos',            tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.3.06',   nombre: 'Intereses de Tarjetas de Crédito',  tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+
+  // ── 6.1.6 Gastos de Mercadeo — grupo nuevo ──────────────────────────────
+  // "Marketing y Publicidad" (6.1.2.12, genérica) se deja tal cual.
+  { codigo: '6.1.6',      nombre: 'Gastos de Mercadeo',                tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 3, permiteMovimientos: false },
+  { codigo: '6.1.6.01',   nombre: 'Publicidad Digital',                tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.6.02',   nombre: 'Publicidad Tradicional',            tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.6.03',   nombre: 'Promociones',                       tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.6.04',   nombre: 'Redes Sociales',                    tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.6.05',   nombre: 'Representación',                    tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.6.06',   nombre: 'Viajes',                            tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+
+  // ── 6.1.7 Impuesto Sobre la Renta — grupo nuevo ─────────────────────────
+  // Se deja OPERACIONAL (no marcado) — el pedido lo listó dentro de "Gastos",
+  // no en la sección explícita de "No operacionales".
+  { codigo: '6.1.7',      nombre: 'Impuesto Sobre la Renta',           tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 3, permiteMovimientos: false },
+  { codigo: '6.1.7.01',   nombre: 'Impuesto Sobre la Renta',           tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+
+  // ── 6.1.8 Otros Gastos No Operacionales — grupo nuevo, marcado explícito ──
+  { codigo: '6.1.8',      nombre: 'Otros Gastos No Operacionales',     tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 3, permiteMovimientos: false, clasificacionResultado: ClasificacionResultado.NO_OPERACIONAL },
+  { codigo: '6.1.8.01',   nombre: 'Pérdida por Venta de Activos',      tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.1.8.02',   nombre: 'Redondeos',                         tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+
+  // ── 6.2.1 Gastos de Depreciación — por clase ────────────────────────────
+  // Muebles y Enseres se queda con la genérica existente (6.2.1.01), no se duplica.
+  { codigo: '6.2.1.02',   nombre: 'Depreciación - Edificios',                       tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.2.1.03',   nombre: 'Depreciación - Equipos',                         tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.2.1.04',   nombre: 'Depreciación - Vehículos Livianos',              tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.2.1.05',   nombre: 'Depreciación - Vehículos Pesados',               tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
+  { codigo: '6.2.1.06',   nombre: 'Depreciación - Mejoras a Propiedad Arrendada',   tipo: TipoCuenta.GASTO, naturaleza: D, nivel: 4, permiteMovimientos: true },
 ];
 
 // ── Etiquetas fiscales del seed (Fase 2 — catálogo fiscal dominicano) ──────

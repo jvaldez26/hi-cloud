@@ -41,22 +41,25 @@ describe('PLAN_CUENTAS — etiquetas fiscales del seed', () => {
     }
   });
 
-  it('18 de las 22 cuentas de gasto/costo de movimiento tienen tipoGasto606 — 4 quedan genuinamente ambiguas', () => {
-    // 22 = las 15 previas + las 7 nuevas del selector de cuenta contable
-    // (2026-09-19): Mantenimiento, Seguros, Otros Gastos, Gasto Menor,
-    // Transporte, Marketing y Publicidad, Impuestos y Tasas — cierran el
-    // mapeo CATEGORIA_LABELS de gastos.service.ts, antes muerto.
+  it('39 de las 60 cuentas de gasto/costo de movimiento tienen tipoGasto606 — 21 quedan genuinamente ambiguas', () => {
+    // 60 = las 22 previas + las 38 del enriquecimiento del catálogo
+    // (2026-09-21, catálogo de referencia de otro ERP reubicado en la
+    // jerarquía 1.x.x.xx de HiCloud) — ver el commit para el detalle.
     const gastoYCosto = PLAN_CUENTAS.filter(
       c => c.permiteMovimientos && (c.tipo === TipoCuenta.GASTO || c.tipo === TipoCuenta.COSTO),
     );
-    expect(gastoYCosto).toHaveLength(22);
+    expect(gastoYCosto).toHaveLength(60);
     const sinTipoGasto606 = gastoYCosto.filter(c => !c.tipoGasto606);
-    // ITBIS no Recuperable (ya ambigua desde Fase 2) + Otros Gastos, Gasto
-    // Menor (régimen E43, ni siquiera es parte del 606) e Impuestos y Tasas
-    // (puede o no venir facturado) — ninguna se fuerza a un código.
-    expect(sinTipoGasto606.map(c => c.codigo).sort()).toEqual(
-      ['6.1.2.06', '6.1.2.09', '6.1.2.10', '6.1.4.01'].sort(),
-    );
+    // Las 4 previas (ITBIS no Recuperable, Otros Gastos, Gasto Menor,
+    // Impuestos y Tasas) + 17 nuevas del enriquecimiento — ninguna se
+    // fuerza a un código sin que un keyword de sugerirTipoGasto606() calce
+    // de verdad (mismo criterio "sin dictamen, sin etiqueta" de siempre).
+    expect(sinTipoGasto606.map(c => c.codigo).sort()).toEqual([
+      '5.1.1.03', '6.1.1.04', '6.1.1.06', '6.1.1.11', '6.1.1.12', '6.1.1.13',
+      '6.1.2.06', '6.1.2.09', '6.1.2.10', '6.1.2.18', '6.1.2.19', '6.1.2.20',
+      '6.1.3.04', '6.1.3.05', '6.1.3.06', '6.1.4.01',
+      '6.1.6.03', '6.1.6.04', '6.1.6.06', '6.1.7.01', '6.1.8.02',
+    ].sort());
   });
 
   it('"ITBIS no Recuperable" (6.1.2.06) no lleva ninguna etiqueta — es la única genuinamente ambigua, a confirmar con el contador', () => {
@@ -98,10 +101,13 @@ describe('PLAN_CUENTAS — etiquetas fiscales del seed', () => {
     }
   });
 
-  it('costo de movimiento lleva D (ambas cuentas de costo del seed tienen tipoGasto606 confiable), nunca dos veces', () => {
+  it('costo de movimiento lleva D solo si tiene tipoGasto606 — "Fletes en Compras" (enriquecimiento) queda sin dictamen', () => {
     for (const c of PLAN_CUENTAS.filter(c => c.permiteMovimientos && c.tipo === TipoCuenta.COSTO)) {
-      expect(anexosDe(c.codigo)).toEqual([AnexoIR2.D]);
+      if (c.tipoGasto606) expect(anexosDe(c.codigo)).toEqual([AnexoIR2.D]);
+      else expect(c.anexos).toBeUndefined();
     }
+    expect(porCodigo('5.1.1.03').tipoGasto606).toBeUndefined(); // Fletes en Compras
+    expect(porCodigo('5.1.1.04').tipoGasto606).toBe('09');      // Mermas y Ajustes de Inventario — "inventario"
   });
 
   it('gasto de movimiento lleva B1 solo si tiene tipoGasto606 — ITBIS no Recuperable no tiene ninguno de los dos', () => {
@@ -129,8 +135,12 @@ describe('PLAN_CUENTAS — etiquetas fiscales del seed', () => {
     expect(porCodigo('6.1.5.01').requiereNCF).toBeUndefined(); // Pérdida en Diferencial Cambiario — ajuste contable, no una compra con NCF
   });
 
-  it('el seed tiene 98 cuentas — 90 de Fase 4 + 8 del selector de cuenta contable (2026-09-19)', () => {
-    expect(PLAN_CUENTAS).toHaveLength(98);
+  it('el seed tiene 193 cuentas — 98 previas + 95 del enriquecimiento del catálogo (2026-09-21)', () => {
+    // 95 = 92 nuevas del catálogo de referencia + 3 grupos nivel-3 que nunca
+    // se habían sembrado (3.1.1, 3.2.1, 4.2.1 — cuentaPadreId se resuelve
+    // por prefijo de código, así que sus hijas quedaban huérfanas; mismo
+    // defecto que 2.2.1, cerrado de paso).
+    expect(PLAN_CUENTAS).toHaveLength(193);
   });
 
   describe('las 8 cuentas que cierran CATEGORIA_LABELS de Gastos (selector de cuenta contable, 2026-09-19)', () => {

@@ -11,6 +11,7 @@ import { TenantService } from '../../tenant/tenant.service';
 import { SaldosCuentasService } from '../../reportes-financieros/saldos-cuentas.service';
 import { AuditoriaService, CreateAuditLogDto } from '../../auditoria/auditoria.service';
 import { AccionAuditoria } from '../../auditoria/entities/audit-log.entity';
+import { PLAN_CUENTAS } from './contabilidad.service';
 
 // ── Límite de filas ──────────────────────────────────────────────────────────
 // Una empresa real no tiene más de unos pocos cientos de cuentas — 2,000 ya
@@ -542,5 +543,75 @@ export class ImportacionCuentasService {
 
   async ejecutar(buffer: Buffer, usuario: { id: number; nombre: string }): Promise<ResultadoImportacionCuentas> {
     return this.procesar(buffer, true, usuario) as Promise<ResultadoImportacionCuentas>;
+  }
+
+  // ── "Completar con el catálogo estándar" (enriquecimiento del catálogo, 2026-09-21) ──
+  //
+  // Genera, EN MEMORIA, el mismo archivo que produciría un usuario llenando
+  // la plantilla a mano con el catálogo estándar completo (PLAN_CUENTAS,
+  // contabilidad.service.ts) — y lo pasa por el MISMO previsualizar()/
+  // ejecutar() de arriba. Cero código de importación nuevo: todo lo que
+  // valida/inserta/ordena topológicamente ya existe y ya está probado.
+  //
+  // El archivo generado SOLO trae códigos que la empresa NO tiene todavía
+  // — nunca una cuenta ya existente, aunque el nombre/tipo/etc. hayan sido
+  // editados a mano — así que estructuralmente esta importación NUNCA
+  // puede proponer una actualización, solo altas. Es una garantía de
+  // construcción, no una regla aparte que haya que mantener sincronizada
+  // con el motor.
+  //
+  // Limitación conocida y aceptada: la plantilla de importación solo admite
+  // UN Anexo IR-2 por fila. Las 4 cuentas de Inventario (1.1.3.01-.04) del
+  // catálogo estándar llevan DOS anexos (A1 y D) — este camino solo
+  // asignaría A1 si alguna de esas 4 le faltara a la empresa. Se documenta
+  // aquí en vez de tocar el motor de importación para este caso puntual.
+  private generarArchivoEstandar(codigosExistentes: Set<string>): Buffer {
+    const faltantes = PLAN_CUENTAS.filter(c => !codigosExistentes.has(c.codigo));
+
+    const filas = faltantes.map(c => {
+      const codigoMadre = c.codigo.includes('.') ? c.codigo.split('.').slice(0, -1).join('.') : '';
+      const clasif = c.clasificacionResultado === ClasificacionResultado.NO_OPERACIONAL
+        ? 'NO OPERACIONAL'
+        : c.clasificacionResultado === ClasificacionResultado.OPERACIONAL ? 'OPERACIONAL' : '';
+      return [
+        c.codigo, c.nombre, c.tipo, c.naturaleza, codigoMadre,
+        c.permiteMovimientos ? 'NO' : 'SI',
+        c.anexos?.[0]?.anexoIR2 ?? '',
+        'SI', '', clasif,
+      ];
+    });
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([COLUMNAS.map(col => col.header), ...filas]);
+    XLSX.utils.book_append_sheet(wb, ws, 'Cuentas');
+    return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+  }
+
+  private static readonly PREVIEW_VACIO: PreviewImportacionCuentas = {
+    totalFilas: 0, crear: [], actualizar: [], errores: [], advertencias: [], noTocadas: 0,
+  };
+
+  async previsualizarEstandar(): Promise<PreviewImportacionCuentas> {
+    const empresaId = this.eid;
+    const existentes = await this.cuentaRepository.find({ where: { empresaId } });
+    const codigosExistentes = new Set(existentes.map(c => c.codigo));
+    // Sin faltantes: un archivo de solo-encabezado haría fallar procesar()
+    // ("sin ninguna fila de datos") — se corta aquí, sin tocar el motor.
+    if (PLAN_CUENTAS.every(c => codigosExistentes.has(c.codigo))) {
+      return { ...ImportacionCuentasService.PREVIEW_VACIO, noTocadas: existentes.length };
+    }
+    const buffer = this.generarArchivoEstandar(codigosExistentes);
+    return this.previsualizar(buffer);
+  }
+
+  async completarEstandar(usuario: { id: number; nombre: string }): Promise<ResultadoImportacionCuentas> {
+    const empresaId = this.eid;
+    const existentes = await this.cuentaRepository.find({ where: { empresaId } });
+    const codigosExistentes = new Set(existentes.map(c => c.codigo));
+    if (PLAN_CUENTAS.every(c => codigosExistentes.has(c.codigo))) {
+      return { ...ImportacionCuentasService.PREVIEW_VACIO, noTocadas: existentes.length, creadas: 0, actualizadas: 0 };
+    }
+    const buffer = this.generarArchivoEstandar(codigosExistentes);
+    return this.ejecutar(buffer, usuario);
   }
 }

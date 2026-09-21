@@ -99,6 +99,24 @@ export class ContabilidadController {
     return this.importacionCuentasService.ejecutar(file.buffer, { id: usuario.id, nombre });
   }
 
+  // ── "Completar con el catálogo estándar" — mismo motor, sin subir archivo ──
+
+  @Get('cuentas/estandar/preview')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Vista previa de "Completar con el catálogo estándar" — solo cuentas a crear, nunca actualiza una existente' })
+  previsualizarEstandar() {
+    return this.importacionCuentasService.previsualizarEstandar();
+  }
+
+  @Post('cuentas/estandar/completar')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Ejecuta "Completar con el catálogo estándar" — agrega las cuentas del estándar que le falten a la empresa' })
+  completarEstandar(@GetUser() usuario: User) {
+    const nombre = (usuario as any).nombre ?? (usuario as any).name ?? `Usuario #${usuario.id}`;
+    return this.importacionCuentasService.completarEstandar({ id: usuario.id, nombre });
+  }
+
   // ── Plan de Cuentas ────────────────────────────────────────────────────────
 
   @Get('cuentas')

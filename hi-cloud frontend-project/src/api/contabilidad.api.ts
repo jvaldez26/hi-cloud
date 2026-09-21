@@ -166,4 +166,12 @@ export const contabilidadApi = {
       headers: { 'Content-Type': undefined },
     }).then(r => r.data.data as ResultadoImportacionCuentas);
   },
+
+  // ── "Completar con el catálogo estándar" ──────────────────────────────────
+
+  previsualizarEstandar: () =>
+    api.get('/contabilidad/cuentas/estandar/preview').then(r => r.data.data as PreviewImportacionCuentas),
+
+  completarEstandar: () =>
+    api.post('/contabilidad/cuentas/estandar/completar').then(r => r.data.data as ResultadoImportacionCuentas),
 };
