@@ -179,6 +179,30 @@ describe('AsientosAutomaticosService.revertirAsiento', () => {
     expect(r42!.totalHaber).toBe(200);
   });
 
+  it('P0 (2026-09-21) — sin contexto de empresa: revierte null, reporta, y NUNCA consulta (ni el original de otra empresa)', async () => {
+    // Antes, this.eid tragaba la excepción de getEmpresaId() y dejaba
+    // empresaId=undefined: whereOriginal quedaba SIN filtro y podía
+    // encontrar (y revertir) el asiento de OTRA empresa. Ahora
+    // getEmpresaId() se llama directo (sin try/catch propio) — el catch
+    // de revertirAsiento la atrapa igual que cualquier otro error.
+    const original = {
+      id: 1, empresaId: 7, numero: 'ASI-0001',
+      tipoOrigen: TipoOrigenAsiento.FACTURA, referenciaId: 55, referenciaFolio: 'FAC-1', lineas: [],
+    };
+    const { svc, asientoRepository } = makeServiceForReversa({
+      originales: { '7:factura:55': original }, // empresaId undefined → getEmpresaId() lanza
+    });
+
+    const r = await svc.revertirAsiento(TipoOrigenAsiento.FACTURA, 55, '2026-09-10', 'x');
+
+    expect(r).toBeNull();
+    expect(asientoRepository.findOne).not.toHaveBeenCalled(); // nunca llega a consultar, filtrada o no
+    expect(asientoRepository.save).not.toHaveBeenCalled();
+    expect(reportServiceError).toHaveBeenCalledWith(
+      expect.any(Error), 'asiento_reversion_generica', expect.any(Object),
+    );
+  });
+
   it('un error inesperado durante la reversa se reporta y no rompe el flujo (nunca lanza)', async () => {
     const { svc, asientoRepository } = makeServiceForReversa({ empresaId: 7 });
     asientoRepository.findOne.mockRejectedValueOnce(new Error('conexión perdida'));

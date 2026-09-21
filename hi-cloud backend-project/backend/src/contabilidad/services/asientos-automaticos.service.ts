@@ -183,7 +183,7 @@ export class AsientosAutomaticosService {
     for (const f of entradasPago) {
       const metodo = AsientosAutomaticosService.METODO_POR_TIPO_FORMA_PAGO[f.tipo] ?? 'otro';
       let codigo = await this.resolverCuentaPorMetodoPago(metodo);
-      if (!(await this.getCuenta(codigo, this.eid))) {
+      if (!(await this.getCuenta(codigo, this.eid ?? -1))) {
         this.reportarFalloAsiento(
           new Error(`Cuenta ${codigo} (medio de pago "${metodo}") no existe en el catálogo — se usa Caja como respaldo`),
           'asiento_metodo_pago_cuenta_faltante',
@@ -259,10 +259,14 @@ export class AsientosAutomaticosService {
   // Helpers privados
   // ──────────────────────────────────────────────────────────────────
 
-  private async getCuenta(codigo: string, empresaId?: number): Promise<CuentaContable | null> {
-    const where: any = { codigo, isActive: true };
-    if (empresaId) where.empresaId = empresaId;
-    return this.cuentaRepository.findOne({ where });
+  // empresaId es REQUERIDO — un caller sin contexto de empresa debe pasar un
+  // centinela imposible (this.eid ?? -1), nunca omitir el filtro. -1 nunca
+  // matchea una empresa real, así que el lookup simplemente no encuentra
+  // nada — cae en el camino de "cuenta no encontrada" que el único caller
+  // (lineasDeCobroFactura) ya maneja con reportarFalloAsiento + respaldo a
+  // Caja, en vez de silenciosamente devolver la cuenta de OTRA empresa.
+  private async getCuenta(codigo: string, empresaId: number): Promise<CuentaContable | null> {
+    return this.cuentaRepository.findOne({ where: { codigo, isActive: true, empresaId } });
   }
 
   private async generarNumero(empresaId?: number): Promise<string> {
@@ -365,10 +369,18 @@ export class AsientosAutomaticosService {
     lineas: LineaAsientoInput[],
     manager?: EntityManager,
   ): Promise<ResolverLineasResultado> {
-    // Una sola query para todas las cuentas del asiento en vez de N findOne
+    // Una sola query para todas las cuentas del asiento en vez de N findOne.
+    // empresaId SIEMPRE va en el filtro — this.eid ?? -1: sin contexto de
+    // empresa, -1 (ninguna empresa real) hace que `cuentas` salga vacío y
+    // cada línea caiga en el "Cuenta contable X no encontrada" de abajo, el
+    // mismo camino ya probado que usa _crearAsientoContabilizado() para
+    // reportar y abortar sin romper el flujo del documento que lo disparó —
+    // nunca se corre esta query sin filtro de empresa.
+    if (this.eid === undefined) {
+      this.logger.warn('resolverLineasAsiento: sin contexto de empresa — todas las cuentas se resuelven como no encontradas');
+    }
     const codigos = [...new Set(lineas.map(l => l.codigo))];
-    const whereCondition: any = { codigo: In(codigos), isActive: true };
-    if (this.eid) whereCondition.empresaId = this.eid;
+    const whereCondition: any = { codigo: In(codigos), isActive: true, empresaId: this.eid ?? -1 };
 
     // Cuando el caller pasa un manager (transacción externa) lo usamos para que
     // la lectura de cuentas participe de la misma transacción.
@@ -501,6 +513,27 @@ export class AsientosAutomaticosService {
     },
     manager?: EntityManager,
   ): Promise<AsientoContable | null> {
+    // Nunca persistir un asiento sin empresaId — antes, sin contexto de
+    // empresa, `...(this.eid ? {empresaId: this.eid} : {})` creaba la fila
+    // igual, con empresaId ausente: un asiento huérfano, invisible a
+    // cualquier consulta normal (todas filtran por empresaId), pero real en
+    // los libros. Se corta aquí, ANTES de resolver líneas ni tocar la BD,
+    // con el mismo patrón de reporte que cualquier otro fallo de este motor
+    // — nunca rompe el flujo del documento que lo disparó.
+    const eid = this.eid;
+    if (eid === undefined) {
+      this.logger.error(
+        `Asiento ${params.tipoOrigen} ref=${params.referenciaId} (${params.referenciaFolio}) ` +
+        `SIN CONTEXTO DE EMPRESA — no se persiste.`,
+      );
+      this.reportarFalloAsiento(
+        new Error('Sin contexto de empresa — asiento omitido'),
+        'asiento_sin_contexto_empresa',
+        { tipoOrigen: params.tipoOrigen, referenciaId: String(params.referenciaId), referenciaFolio: params.referenciaFolio },
+      );
+      return null;
+    }
+
     const resultado = await this.resolverLineasAsiento(params.lineas, manager);
 
     if (!resultado.ok) {
@@ -544,10 +577,10 @@ export class AsientosAutomaticosService {
     // Consecuencia aceptada: si la tx externa hace rollback, el número ASI-XXXX queda
     // consumido y habrá un hueco en la numeración. La unicidad es invariante; la densidad
     // no es requerimiento (un auditor puede ver el hueco pero no habrá duplicados).
-    const numero = await this.generarNumero(this.eid);
+    const numero = await this.generarNumero(eid);
 
     const asientoData = {
-      ...(this.eid ? { empresaId: this.eid } : {}),
+      empresaId:       eid,
       numero,
       fecha:           params.fecha as unknown as Date, // string 'YYYY-MM-DD' crudo del caller, nunca new Date(string)
       descripcion:     params.descripcion,
@@ -2084,15 +2117,20 @@ export class AsientosAutomaticosService {
     referenciaFolio?: string,
   ): Promise<AsientoContable | null> {
     try {
-      const empresaId = this.eid;
+      // Lanza si no hay contexto de empresa — lo atrapa el catch de abajo,
+      // que ya reporta y devuelve null sin romper al caller (misma garantía
+      // que el resto de este método). Antes `this.eid` tragaba la excepción
+      // y dejaba `empresaId` en undefined: whereOriginal quedaba sin filtro
+      // y podía encontrar (y revertir) el asiento de OTRA empresa.
+      const empresaId = this.tenantService.getEmpresaId();
 
       const whereOriginal: any = {
+        empresaId,
         tipoOrigen,
         referenciaId,
         estado: EstadoAsiento.CONTABILIZADO,
         asientoRevertidoId: IsNull(),
       };
-      if (empresaId) whereOriginal.empresaId = empresaId;
       if (referenciaFolio) whereOriginal.referenciaFolio = referenciaFolio;
 
       const original = await this.asientoRepository.findOne({
@@ -2119,9 +2157,9 @@ export class AsientosAutomaticosService {
       }
 
       // Idempotencia: ¿ya existe un contra-asiento para este original?
-      const whereExistente: any = { asientoRevertidoId: original.id };
-      if (empresaId) whereExistente.empresaId = empresaId;
-      const existente = await this.asientoRepository.findOne({ where: whereExistente });
+      const existente = await this.asientoRepository.findOne({
+        where: { asientoRevertidoId: original.id, empresaId },
+      });
       if (existente) {
         this.logger.warn(
           `revertirAsiento: ya existe contra-asiento #${existente.id} (${existente.numero}) ` +
@@ -2144,7 +2182,7 @@ export class AsientosAutomaticosService {
       const numero = await this.generarNumero(empresaId);
 
       const asientoInstance = this.asientoRepository.create({
-        ...(empresaId ? { empresaId } : {}),
+        empresaId,
         numero,
         fecha:           fechaReversion as unknown as Date, // string 'YYYY-MM-DD', nunca new Date(string)
         descripcion:     `Reversa de asiento #${original.numero} — ${motivo}`.slice(0, 300),
