@@ -3,7 +3,7 @@ import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource, EntityManager } from 'typeorm';
 import * as XLSX from 'xlsx';
 import {
-  CuentaContable, TipoCuenta, NaturalezaCuenta, AnexoIR2, TIPOS_POR_ANEXO_IR2,
+  CuentaContable, TipoCuenta, NaturalezaCuenta, AnexoIR2, TIPOS_POR_ANEXO_IR2, ClasificacionResultado,
 } from '../entities/cuenta-contable.entity';
 import { CuentaAnexoIR2 } from '../entities/cuenta-anexo-ir2.entity';
 import { AsientoLinea } from '../entities/asiento-linea.entity';
@@ -49,6 +49,8 @@ const COLUMNAS: ColumnaImport[] = [
     descripcion: 'SI o NO (vacío = SI).' },
   { header: 'Moneda', campo: 'moneda', requerido: false,
     descripcion: 'Vacío o DOP. El plan de cuentas todavía no soporta cuentas en moneda extranjera — cualquier otro valor se rechaza esa fila.' },
+  { header: 'Clasificación resultado', campo: 'clasificacionResultado', requerido: false,
+    descripcion: 'Solo para Tipo ingreso, costo o gasto (se rechaza esa fila si viene en cualquier otro tipo). OPERACIONAL, NO OPERACIONAL, o vacío = hereda de la cuenta madre (sin madre, o si ninguna en la cadena lo especifica: OPERACIONAL). Distingue "Ingresos"/"Gastos" de "Otros Ingresos"/"Otros Gastos" en el Estado de Resultados — basta marcar UNA cuenta madre para clasificar todas sus hijas.' },
 ];
 
 const SI_NO = { SI: true, NO: false } as const;
@@ -59,6 +61,7 @@ export interface CambioCampoImport { campo: string; antes: unknown; despues: unk
 export interface CuentaACrearImport {
   fila: number; codigo: string; nombre: string; tipo: string; naturaleza: string;
   codigoMadre?: string; esCuentaGrupo: boolean; anexoIR2?: string; activa: boolean;
+  clasificacionResultado?: ClasificacionResultado;
 }
 export interface CuentaAActualizarImport { fila: number; codigo: string; nombre: string; cambios: CambioCampoImport[]; }
 
@@ -88,6 +91,7 @@ interface FilaParseada {
   esCuentaGrupo: boolean;
   anexoIR2?: AnexoIR2;
   activa: boolean;
+  clasificacionResultado?: ClasificacionResultado;
 }
 
 @Injectable()
@@ -117,16 +121,16 @@ export class ImportacionCuentasService {
    */
   private filasEjemplo(): string[][] {
     return [
-      ['1.1',       'Activo Corriente',        'activo',  'deudora',   '',      'SI', 'A1', 'SI', ''],
-      ['1.1.1',     'Efectivo y Equivalentes',  'activo',  'deudora',   '1.1',   'SI', '',   'SI', ''],
-      ['1.1.1.01',  'Caja General',             'activo',  'deudora',   '1.1.1', 'NO', '',   'SI', ''],
-      ['1.1.1.02',  'Bancos',                   'activo',  'deudora',   '1.1.1', 'NO', '',   'SI', ''],
-      ['2.1',       'Pasivo Corriente',         'pasivo',  'acreedora', '',      'SI', 'A1', 'SI', ''],
-      ['2.1.1.01',  'Proveedores Locales',      'pasivo',  'acreedora', '2.1',   'NO', '',   'SI', ''],
-      ['4.1',       'Ingresos Operacionales',   'ingreso', 'acreedora', '',      'SI', 'B1', 'SI', ''],
-      ['4.1.1.01',  'Ventas de Contado',        'ingreso', 'acreedora', '4.1',   'NO', '',   'SI', ''],
-      ['6.1',       'Gastos Operativos',        'gasto',   'deudora',   '',      'SI', 'B1', 'SI', ''],
-      ['6.1.1.05',  'Sueldos y Salarios',       'gasto',   'deudora',   '6.1',   'NO', '',   'SI', ''],
+      ['1.1',       'Activo Corriente',        'activo',  'deudora',   '',      'SI', 'A1', 'SI', '', ''],
+      ['1.1.1',     'Efectivo y Equivalentes',  'activo',  'deudora',   '1.1',   'SI', '',   'SI', '', ''],
+      ['1.1.1.01',  'Caja General',             'activo',  'deudora',   '1.1.1', 'NO', '',   'SI', '', ''],
+      ['1.1.1.02',  'Bancos',                   'activo',  'deudora',   '1.1.1', 'NO', '',   'SI', '', ''],
+      ['2.1',       'Pasivo Corriente',         'pasivo',  'acreedora', '',      'SI', 'A1', 'SI', '', ''],
+      ['2.1.1.01',  'Proveedores Locales',      'pasivo',  'acreedora', '2.1',   'NO', '',   'SI', '', ''],
+      ['4.1',       'Ingresos Operacionales',   'ingreso', 'acreedora', '',      'SI', 'B1', 'SI', '', ''],
+      ['4.1.1.01',  'Ventas de Contado',        'ingreso', 'acreedora', '4.1',   'NO', '',   'SI', '', ''],
+      ['6.1',       'Gastos Operativos',        'gasto',   'deudora',   '',      'SI', 'B1', 'SI', '', ''],
+      ['6.1.1.05',  'Sueldos y Salarios',       'gasto',   'deudora',   '6.1',   'NO', '',   'SI', '', 'OPERACIONAL'],
     ];
   }
 
@@ -219,6 +223,7 @@ export class ImportacionCuentasService {
     const anexoRaw = get('anexoIR2').toUpperCase() || undefined;
     const activaRaw = get('activa').toUpperCase() || 'SI';
     const monedaRaw = get('moneda').toUpperCase();
+    const clasifRaw = get('clasificacionResultado').toUpperCase().replace(/\s+/g, '_');
 
     if (!codigo) return { error: 'Código vacío — es obligatorio' };
     if (!nombre) return { error: 'Nombre vacío — es obligatorio' };
@@ -249,12 +254,24 @@ export class ImportacionCuentasService {
       }
     }
 
+    let clasificacionResultado: ClasificacionResultado | undefined;
+    if (clasifRaw) {
+      const TIPOS_CON_CLASIFICACION: TipoCuenta[] = [TipoCuenta.INGRESO, TipoCuenta.COSTO, TipoCuenta.GASTO];
+      if (!TIPOS_CON_CLASIFICACION.includes(tipoRaw as TipoCuenta)) {
+        return { error: `"Clasificación resultado" solo aplica a cuentas de tipo ingreso, costo o gasto (vino en una cuenta de tipo "${tipoRaw}")` };
+      }
+      if (clasifRaw !== 'OPERACIONAL' && clasifRaw !== 'NO_OPERACIONAL') {
+        return { error: `"Clasificación resultado" "${get('clasificacionResultado')}" inválida — debe ser OPERACIONAL, NO OPERACIONAL, o vacío` };
+      }
+      clasificacionResultado = clasifRaw === 'OPERACIONAL' ? ClasificacionResultado.OPERACIONAL : ClasificacionResultado.NO_OPERACIONAL;
+    }
+
     return {
       fila: {
         fila: fNum, codigo, nombre,
         tipo: tipoRaw as TipoCuenta, naturaleza: naturalezaRaw as NaturalezaCuenta,
         codigoMadre, esCuentaGrupo: SI_NO[esCuentaGrupoRaw as 'SI' | 'NO'],
-        anexoIR2, activa: SI_NO[activaRaw as 'SI' | 'NO'],
+        anexoIR2, activa: SI_NO[activaRaw as 'SI' | 'NO'], clasificacionResultado,
       },
     };
   }
@@ -407,6 +424,7 @@ export class ImportacionCuentasService {
         crear.push({
           fila: f.fila, codigo: f.codigo, nombre: f.nombre, tipo: f.tipo, naturaleza: f.naturaleza,
           codigoMadre: f.codigoMadre, esCuentaGrupo: f.esCuentaGrupo, anexoIR2: f.anexoIR2, activa: f.activa,
+          clasificacionResultado: f.clasificacionResultado,
         });
         paraEjecutar.push(f);
         continue;
@@ -437,6 +455,7 @@ export class ImportacionCuentasService {
       comparar('permiteMovimientos', existente.permiteMovimientos, permiteMovimientosNuevo);
       comparar('cuentaPadreId', existente.cuentaPadreId ?? null, padreIdNuevo ?? null);
       comparar('isActive', existente.isActive, f.activa);
+      comparar('clasificacionResultado', existente.clasificacionResultado ?? null, f.clasificacionResultado ?? null);
 
       if (existente.isActive && !f.activa) {
         const saldo = saldoPorCodigo.get(f.codigo) ?? 0;
@@ -480,6 +499,7 @@ export class ImportacionCuentasService {
           const guardada = await cuentaRepo.save(cuentaRepo.create({
             empresaId, codigo: f.codigo, nombre: f.nombre, tipo: f.tipo, naturaleza: f.naturaleza,
             nivel, permiteMovimientos: !f.esCuentaGrupo, cuentaPadreId, isActive: f.activa,
+            clasificacionResultado: f.clasificacionResultado,
           }));
           idPorCodigo.set(f.codigo, guardada.id);
           creadas++;
@@ -490,6 +510,9 @@ export class ImportacionCuentasService {
           await cuentaRepo.update(existente.id, {
             nombre: f.nombre, tipo: f.tipo, naturaleza: f.naturaleza,
             permiteMovimientos: !f.esCuentaGrupo, cuentaPadreId, isActive: f.activa,
+            // TypeORM tipa la columna nullable como `T | undefined`, no admite
+            // `null` en el DeepPartial de .update() aunque la BD sí lo acepte.
+            clasificacionResultado: (f.clasificacionResultado ?? null) as ClasificacionResultado,
           });
           idPorCodigo.set(f.codigo, existente.id);
           actualizadas++;

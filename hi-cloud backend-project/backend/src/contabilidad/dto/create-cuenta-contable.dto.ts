@@ -3,7 +3,7 @@ import {
   IsOptional, IsIn, MaxLength, Min, Max, ValidateNested, IsArray,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { TipoCuenta, NaturalezaCuenta, AnexoIR2 } from '../entities/cuenta-contable.entity';
+import { TipoCuenta, NaturalezaCuenta, AnexoIR2, ClasificacionResultado } from '../entities/cuenta-contable.entity';
 import { TIPOS_BIENES_606 } from '../../declaraciones/dgii.constants';
 
 /**
@@ -44,6 +44,15 @@ export class CreateCuentaContableDto {
 
   @IsOptional() @IsString()
   descripcion?: string;
+
+  /**
+   * Estado de Resultados — operacional/no operacional, con herencia (null =
+   * hereda de la cuenta padre). Solo tiene sentido en ingreso/costo/gasto —
+   * en activo/pasivo/patrimonio se ignora, no se valida aquí (el DTO no
+   * conoce el tipo de OTRA cuenta para cruzarlo).
+   */
+  @IsOptional() @IsEnum(ClasificacionResultado)
+  clasificacionResultado?: ClasificacionResultado;
 
   // ── Etiquetas fiscales (Fase 1) — solo cuentas de movimiento gasto/costo,
   // validado con el resto del catálogo en ContabilidadService, no aquí. ──

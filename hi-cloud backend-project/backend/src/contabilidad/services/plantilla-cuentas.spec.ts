@@ -20,7 +20,7 @@ describe('ImportacionCuentasService.getPlantilla()', () => {
     const filas = XLSX.utils.sheet_to_json<string[]>(wb.Sheets['Cuentas'], { header: 1, raw: false });
     expect(filas[0]).toEqual([
       'Código', 'Nombre', 'Tipo', 'Naturaleza', 'Código cuenta madre',
-      'Es cuenta grupo', 'Anexo IR-2', 'Activa', 'Moneda',
+      'Es cuenta grupo', 'Anexo IR-2', 'Activa', 'Moneda', 'Clasificación resultado',
     ]);
     expect(filas.length - 1).toBeGreaterThanOrEqual(8);
   });
@@ -47,7 +47,7 @@ describe('ImportacionCuentasService.getPlantilla()', () => {
     }
   });
 
-  it('la hoja Instrucciones documenta las 9 columnas y las reglas de negocio', () => {
+  it('la hoja Instrucciones documenta las 10 columnas y las reglas de negocio', () => {
     const filas = XLSX.utils.sheet_to_json<string[]>(wb.Sheets['Instrucciones'], { header: 1, raw: false });
     const texto = filas.flat().join(' ').toLowerCase();
     expect(texto).toContain('código');

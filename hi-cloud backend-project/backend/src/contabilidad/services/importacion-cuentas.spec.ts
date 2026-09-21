@@ -29,7 +29,7 @@ const EMPRESA_B = 902102;
 
 const HEADERS = [
   'Código', 'Nombre', 'Tipo', 'Naturaleza', 'Código cuenta madre',
-  'Es cuenta grupo', 'Anexo IR-2', 'Activa', 'Moneda',
+  'Es cuenta grupo', 'Anexo IR-2', 'Activa', 'Moneda', 'Clasificación resultado',
 ];
 
 function construirXlsx(filas: (string | number)[][]): Buffer {
@@ -317,5 +317,69 @@ function construirXlsx(filas: (string | number)[][]): Buffer {
     const sigueSiendoDeB = await cuentaRepo.findOne({ where: { id: deB.id } });
     expect(sigueSiendoDeB!.nombre).toBe('Cuenta de la Empresa B');
     expect(sigueSiendoDeB!.empresaId).toBe(EMPRESA_B);
+  });
+
+  // ── Clasificación resultado (Estado de Resultados, 2026-09-21) ─────────────
+
+  it('Clasificación resultado: OPERACIONAL/NO OPERACIONAL en gasto se importan y persisten', async () => {
+    const { svc: s, usuario } = comoEmpresa(EMPRESA_A);
+    const buf = construirXlsx([
+      ['6.9', 'Gastos Financieros Import', 'gasto', 'deudora', '', 'NO', '', 'SI', '', 'NO OPERACIONAL'],
+      ['6.9.1', 'Otro Gasto Operacional Import', 'gasto', 'deudora', '', 'NO', '', 'SI', '', 'OPERACIONAL'],
+    ]);
+    const r = await s.ejecutar(buf, usuario);
+    expect(r.creadas).toBe(2);
+
+    const cuentaRepo = dataSource.getRepository(CuentaContable);
+    const noOp = await cuentaRepo.findOne({ where: { empresaId: EMPRESA_A, codigo: '6.9' } });
+    const op   = await cuentaRepo.findOne({ where: { empresaId: EMPRESA_A, codigo: '6.9.1' } });
+    expect(noOp!.clasificacionResultado).toBe('no_operacional');
+    expect(op!.clasificacionResultado).toBe('operacional');
+  });
+
+  it('Clasificación resultado vacía: la cuenta queda sin valor propio (hereda)', async () => {
+    const { svc: s, usuario } = comoEmpresa(EMPRESA_A);
+    const buf = construirXlsx([['6.9', 'Gasto sin clasificar', 'gasto', 'deudora', '', 'NO', '', 'SI', '', '']]);
+    await s.ejecutar(buf, usuario);
+
+    const cuenta = await dataSource.getRepository(CuentaContable).findOne({ where: { empresaId: EMPRESA_A, codigo: '6.9' } });
+    expect(cuenta!.clasificacionResultado ?? null).toBeNull();
+  });
+
+  it('Clasificación resultado en una cuenta de activo: rechaza esa fila (solo aplica a ingreso/costo/gasto)', async () => {
+    const { svc: s } = comoEmpresa(EMPRESA_A);
+    const buf = construirXlsx([['9.5', 'Cuenta activo con clasificación', 'activo', 'deudora', '', 'NO', '', 'SI', '', 'OPERACIONAL']]);
+    const preview = await s.previsualizar(buf);
+    expect(preview.crear).toHaveLength(0);
+    expect(preview.errores).toHaveLength(1);
+    expect(preview.errores[0].motivo).toContain('solo aplica a cuentas de tipo ingreso, costo o gasto');
+  });
+
+  it('Clasificación resultado con un valor inválido: rechaza esa fila con mensaje claro', async () => {
+    const { svc: s } = comoEmpresa(EMPRESA_A);
+    const buf = construirXlsx([['6.9', 'Gasto mal clasificado', 'gasto', 'deudora', '', 'NO', '', 'SI', '', 'TAL_VEZ']]);
+    const preview = await s.previsualizar(buf);
+    expect(preview.errores).toHaveLength(1);
+    expect(preview.errores[0].motivo).toContain('inválida');
+  });
+
+  it('actualizar la Clasificación resultado de una cuenta existente: se refleja como un cambio en la vista previa y se persiste', async () => {
+    const cuentaRepo = dataSource.getRepository(CuentaContable);
+    await cuentaRepo.save(cuentaRepo.create({
+      empresaId: EMPRESA_A, codigo: '6.9', nombre: 'Gastos Financieros', tipo: TipoCuenta.GASTO,
+      naturaleza: NaturalezaCuenta.DEUDORA, nivel: 1, permiteMovimientos: true, isActive: true,
+      clasificacionResultado: undefined,
+    }));
+
+    const { svc: s, usuario } = comoEmpresa(EMPRESA_A);
+    const buf = construirXlsx([['6.9', 'Gastos Financieros', 'gasto', 'deudora', '', 'NO', '', 'SI', '', 'NO OPERACIONAL']]);
+    const preview = await s.previsualizar(buf);
+    expect(preview.actualizar).toHaveLength(1);
+    expect(preview.actualizar[0].cambios).toContainEqual({ campo: 'clasificacionResultado', antes: null, despues: 'no_operacional' });
+
+    const r = await s.ejecutar(buf, usuario);
+    expect(r.actualizadas).toBe(1);
+    const actualizada = await cuentaRepo.findOne({ where: { empresaId: EMPRESA_A, codigo: '6.9' } });
+    expect(actualizada!.clasificacionResultado).toBe('no_operacional');
   });
 });

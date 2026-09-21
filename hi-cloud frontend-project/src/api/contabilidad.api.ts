@@ -11,6 +11,8 @@ export interface CuentaPayload {
   tipo: string; naturaleza: string;
   nivel: number; permiteMovimientos: boolean;
   cuentaPadreId?: number; descripcion?: string;
+  /** Estado de Resultados — operacional/no operacional, con herencia (undefined = hereda de la cuenta padre). Solo ingreso/costo/gasto. */
+  clasificacionResultado?: 'operacional' | 'no_operacional';
   /**
    * Etiquetas fiscales (Fase 1 — catálogo fiscal dominicano 606/IR-2).
    * El backend solo las acepta en cuentas de movimiento de tipo gasto o

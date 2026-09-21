@@ -15,6 +15,9 @@ import {
   filtrosDesdeURL, filtrosAURLParams, CLASIFICACIONES, ESTADOS,
   type ClasificacionCuenta, type EstadoCuenta,
 } from '../../utils/filtrosPlanCuentas';
+import { clasificacionHeredada } from '../../utils/clasificacionResultado';
+
+const TIPOS_CON_CLASIFICACION_RESULTADO = ['ingreso', 'costo', 'gasto'];
 
 const { Title, Text } = Typography;
 
@@ -139,6 +142,8 @@ export default function PlanCuentasPage() {
   // ahí en adelante la regla difiere por etiqueta — ver ANEXOS_POR_TIPO.
   const tipoActual               = Form.useWatch('tipo', form);
   const permiteMovimientosActual = Form.useWatch('permiteMovimientos', form);
+  const cuentaPadreIdActual      = Form.useWatch('cuentaPadreId', form);
+  const muestraClasificacionResultado = TIPOS_CON_CLASIFICACION_RESULTADO.includes(tipoActual);
   // FASE 4 Bloque A — una cuenta puede llevar varios anexos a la vez
   // (etiquetasAnexoIR2 es una lista, no un solo par anexoIR2/casillaIR2).
   const etiquetasAnexoActual: EtiquetaAnexoIR2[] = Form.useWatch('etiquetasAnexoIR2', form) ?? [];
@@ -212,6 +217,9 @@ export default function PlanCuentasPage() {
       const nuevoTipo = changed.tipo as string;
       if (!TIPOS_CON_606.includes(nuevoTipo)) {
         form.setFieldsValue({ tipoGasto606: undefined, requiereNCF: undefined });
+      }
+      if (!TIPOS_CON_CLASIFICACION_RESULTADO.includes(nuevoTipo)) {
+        form.setFieldsValue({ clasificacionResultado: undefined });
       }
       const anexosValidos: string[] = (ANEXOS_POR_TIPO[nuevoTipo] ?? []).map(a => a.value);
       const vigentes: EtiquetaAnexoIR2[] = form.getFieldValue('etiquetasAnexoIR2') ?? [];
@@ -438,6 +446,23 @@ export default function PlanCuentasPage() {
                 />
               </Form.Item>
             </Col>
+            {muestraClasificacionResultado && (
+              <Col span={24}>
+                <Form.Item
+                  name="clasificacionResultado" label="Clasificación en el Estado de Resultados"
+                  extra={`Heredaría: ${clasificacionHeredada(cuentaPadreIdActual, todasLasCuentas ?? []) === 'no_operacional' ? 'No operacional' : 'Operacional'} (de la cuenta padre, o "Operacional" si ninguna madre lo especifica)`}
+                >
+                  <Select
+                    allowClear placeholder="Heredar de la cuenta padre"
+                    options={[
+                      { value: 'operacional',    label: 'Operacional' },
+                      { value: 'no_operacional', label: 'No operacional (Otros Ingresos/Gastos)' },
+                    ]}
+                  />
+                </Form.Item>
+              </Col>
+            )}
+
             <Col span={24}>
               <Form.Item name="descripcion" label="Descripción">
                 <Input.TextArea rows={2} />

@@ -17,6 +17,26 @@ export enum NaturalezaCuenta {
 }
 
 /**
+ * Estado de Resultados (2026-09-21) — clasificación operacional/no
+ * operacional de una cuenta de ingreso/costo/gasto, para separar
+ * "Ingresos"/"Gastos" de "Otros Ingresos"/"Otros Gastos" SIN usar rangos de
+ * código (el código '4.1'/'4.2' existe en el catálogo pero no es una fuente
+ * de verdad limpia — ver 'Gastos Financieros', que vive bajo '6.1'
+ * "Operacionales" aunque contablemente es no operacional).
+ *
+ * NULLABLE — null significa "hereda de la cuenta madre" (ver
+ * resolverClasificacionResultado() en reportes-financieros): así basta
+ * marcar UNA cuenta madre para que todas sus hijas queden clasificadas, sin
+ * tener que etiquetar cuenta por cuenta. Sin valor en toda la cadena hasta
+ * la raíz → 'operacional' (default). Solo tiene sentido para ingreso/costo/
+ * gasto — en activo/pasivo/patrimonio se ignora.
+ */
+export enum ClasificacionResultado {
+  OPERACIONAL    = 'operacional',
+  NO_OPERACIONAL = 'no_operacional',
+}
+
+/**
  * Anexo del IR-2 (Declaración Jurada de ISR) al que esta cuenta aporta su
  * saldo — Fase 1 del catálogo fiscal dominicano (ver material de
  * capacitación del Lic. Wilton Andrés Pérez, "Gastos del 606 vs IR-2").
@@ -60,6 +80,9 @@ export class CuentaContable extends TenantBaseEntity {
 
   @Column({ type: 'int' })
   nivel!: number;
+
+  @Column({ type: 'enum', enum: ClasificacionResultado, nullable: true })
+  clasificacionResultado?: ClasificacionResultado;
 
   @Column({ default: false })
   permiteMovimientos!: boolean;
