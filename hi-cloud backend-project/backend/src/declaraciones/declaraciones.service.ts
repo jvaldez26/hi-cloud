@@ -11,6 +11,7 @@ import { Gasto } from '../gastos/entities/gasto.entity';
 import {
   mapFormaPagoDgii, columna607PorCodigoDgii, mapTipoIngreso607, tipoIdDgii,
   fechaDgii, montoEntero, TIPOS_BIENES_606, FORMAS_PAGO_DGII,
+  desgloseItbisFuenteVerdad,
 } from './dgii.constants';
 import {
   DgiiValidatorService, Fila606, Fila607, Fila608,
@@ -395,7 +396,18 @@ export class DeclaracionesService {
         f."formasPago",
         e.numero                                        AS "encf",
         e."estadoDGII"                                  AS "estadoDgii",
+        e."jsonEnviado"                                  AS "jsonEnviado",
         NULL::text                                       AS "ncfModificado",
+        -- Fallback SOLO si no hay e-CF (o su jsonEnviado no trae Totales):
+        -- desglose por tasa calculado directo de las líneas — nunca monto
+        -- total × 18%, que ignora exentos y la tasa reducida del 16%.
+        (SELECT json_build_object(
+           'gravado18', COALESCE(SUM(fd.subtotal)     FILTER (WHERE fd."porcentajeIva" = 18), 0),
+           'gravado16', COALESCE(SUM(fd.subtotal)     FILTER (WHERE fd."porcentajeIva" = 16), 0),
+           'exento',    COALESCE(SUM(fd.subtotal)     FILTER (WHERE fd."porcentajeIva" NOT IN (18,16)), 0),
+           'itbis18',   COALESCE(SUM(fd."importeIva") FILTER (WHERE fd."porcentajeIva" = 18), 0),
+           'itbis16',   COALESCE(SUM(fd."importeIva") FILTER (WHERE fd."porcentajeIva" = 16), 0)
+         ) FROM factura_detalles fd WHERE fd."facturaId" = f.id)  AS "desgloseLineas",
         -- Fuente prioritaria: rncComprador del e-CF (valor oficial declarado a DGII).
         -- Fallback: rncReceptor del cliente, luego rfc.
         COALESCE(
@@ -434,7 +446,15 @@ export class DeclaracionesService {
         NULL::jsonb                                      AS "formasPago",
         e.numero                                        AS "encf",
         e."estadoDGII"                                  AS "estadoDgii",
+        e."jsonEnviado"                                  AS "jsonEnviado",
         e."ncfModificado"                                AS "ncfModificado",
+        (SELECT json_build_object(
+           'gravado18', COALESCE(SUM(d.subtotal) FILTER (WHERE d."porcentajeIva" = 18), 0),
+           'gravado16', COALESCE(SUM(d.subtotal) FILTER (WHERE d."porcentajeIva" = 16), 0),
+           'exento',    COALESCE(SUM(d.subtotal) FILTER (WHERE d."porcentajeIva" NOT IN (18,16)), 0),
+           'itbis18',   COALESCE(SUM(d.iva)      FILTER (WHERE d."porcentajeIva" = 18), 0),
+           'itbis16',   COALESCE(SUM(d.iva)      FILTER (WHERE d."porcentajeIva" = 16), 0)
+         ) FROM nota_credito_detalles d WHERE d."notaCreditoId" = nc.id) AS "desgloseLineas",
         COALESCE(
           NULLIF(btrim(e."rncComprador"), ''),
           NULLIF(btrim(c."rncReceptor"), ''),
@@ -465,7 +485,15 @@ export class DeclaracionesService {
         NULL::jsonb                                      AS "formasPago",
         e.numero                                        AS "encf",
         e."estadoDGII"                                  AS "estadoDgii",
+        e."jsonEnviado"                                  AS "jsonEnviado",
         e."ncfModificado"                                AS "ncfModificado",
+        (SELECT json_build_object(
+           'gravado18', COALESCE(SUM(d.subtotal) FILTER (WHERE d."porcentajeIva" = 18), 0),
+           'gravado16', COALESCE(SUM(d.subtotal) FILTER (WHERE d."porcentajeIva" = 16), 0),
+           'exento',    COALESCE(SUM(d.subtotal) FILTER (WHERE d."porcentajeIva" NOT IN (18,16)), 0),
+           'itbis18',   COALESCE(SUM(d.iva)      FILTER (WHERE d."porcentajeIva" = 18), 0),
+           'itbis16',   COALESCE(SUM(d.iva)      FILTER (WHERE d."porcentajeIva" = 16), 0)
+         ) FROM nota_debito_detalles d WHERE d."notaDebitoId" = nd.id) AS "desgloseLineas",
         COALESCE(
           NULLIF(btrim(e."rncComprador"), ''),
           NULLIF(btrim(c."rncReceptor"), ''),
@@ -537,6 +565,13 @@ export class DeclaracionesService {
         }
       }
 
+      // ITBIS "fuente de verdad" — nunca montoFacturado × 18% (ver
+      // desgloseItbisFuenteVerdad en dgii.constants.ts). null solo cuando ni
+      // el e-CF ni las líneas dan nada que comparar (p.ej. sin e-CF y sin
+      // detalles) — ahí el validador no puede afirmar nada, así que no
+      // marca error por ITBIS.
+      const desglose = desgloseItbisFuenteVerdad(r.jsonEnviado, r.desgloseLineas);
+
       return {
         linea:               i + 1,
         id:                  r.id,
@@ -553,6 +588,8 @@ export class DeclaracionesService {
         fechaComprobante:    String(r.fechaComprobante ?? '').substring(0, 10),
         montoFacturado,
         itbis,
+        itbisFuente:         desglose?.itbisTotal ?? null,
+        desglose607:         desglose,
         itbisRetenido:       0,
         isrRetenido:         0,
         efectivo,

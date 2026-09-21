@@ -93,7 +93,7 @@ describe('DeclaracionesService.getFormato607() — desglose de forma de pago', (
     const svc = makeService([{ ...BASE_ROW, formasPago: [{ tipo: 99, monto: 1180 }] }]);
     const r = await svc.getFormato607(9, 2026);
     const { linea, id, tipoDocumento, folio, encf, ncfModificado, estadoDgii, tipoNcf, rncComprador, nombreComprador, tipoId,
-            tipoIngreso, fechaComprobante, montoFacturado, itbis, itbisRetenido, isrRetenido, ...cols } = r.filas[0];
+            tipoIngreso, fechaComprobante, montoFacturado, itbis, itbisFuente, desglose607, itbisRetenido, isrRetenido, ...cols } = r.filas[0];
     expect(Object.values(cols).every(v => v === 0)).toBe(true);
   });
 });

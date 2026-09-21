@@ -313,3 +313,49 @@ export function tipoIdDgii(valor: string | undefined | null): '1' | '2' | '3' | 
   if (v.length > 0)    return '3'; // Pasaporte u otro
   return '';
 }
+
+export interface DesgloseItbis607 {
+  gravado18: number; gravado16: number; exento: number;
+  itbis18: number; itbis16: number; itbisTotal: number;
+}
+
+/**
+ * ITBIS "fuente de verdad" para el validador del 607 — NUNCA monto total ×
+ * 18% (ese cálculo ignora las líneas exentas y la tasa reducida del 16%;
+ * una factura mixta con la mayoría exenta salía con "ITBIS difiere >5%"
+ * aunque el ITBIS real fuera correcto). Prioridad DGII:
+ *
+ *   1. Los totales del e-CF realmente enviado
+ *      (jsonEnviado.ECF.Encabezado.Totales, con desglose por tasa —
+ *      MontoGravadoI1/I2, MontoExento, TotalITBIS1/2 — construidos en
+ *      src/ecf/builders/*.builder.ts a partir de las líneas). Es lo que la
+ *      DGII ya tiene: el 607 debe cuadrar con eso.
+ *   2. Si no hay e-CF (o su JSON no trae Totales): suma por línea con la
+ *      tasa real de cada una — desgloseLineas, calculado en SQL en
+ *      getFormato607() desde factura_detalles/nota_credito_detalles/
+ *      nota_debito_detalles.
+ */
+export function desgloseItbisFuenteVerdad(
+  jsonEnviado: unknown,
+  desgloseLineas: { gravado18?: unknown; gravado16?: unknown; exento?: unknown; itbis18?: unknown; itbis16?: unknown } | null | undefined,
+): DesgloseItbis607 | null {
+  const totales = (jsonEnviado as any)?.ECF?.Encabezado?.Totales;
+  if (totales && (totales.TotalITBIS != null || totales.MontoExento != null || totales.MontoGravadoTotal != null)) {
+    const gravado18 = Number(totales.MontoGravadoI1 ?? 0);
+    const gravado16 = Number(totales.MontoGravadoI2 ?? 0);
+    const exento    = Number(totales.MontoExento ?? 0);
+    const itbis18   = Number(totales.TotalITBIS1 ?? 0);
+    const itbis16   = Number(totales.TotalITBIS2 ?? 0);
+    const itbisTotal = totales.TotalITBIS != null ? Number(totales.TotalITBIS) : Math.round((itbis18 + itbis16) * 100) / 100;
+    return { gravado18, gravado16, exento, itbis18, itbis16, itbisTotal };
+  }
+  if (desgloseLineas) {
+    const gravado18 = Number(desgloseLineas.gravado18 ?? 0);
+    const gravado16 = Number(desgloseLineas.gravado16 ?? 0);
+    const exento    = Number(desgloseLineas.exento ?? 0);
+    const itbis18   = Number(desgloseLineas.itbis18 ?? 0);
+    const itbis16   = Number(desgloseLineas.itbis16 ?? 0);
+    return { gravado18, gravado16, exento, itbis18, itbis16, itbisTotal: Math.round((itbis18 + itbis16) * 100) / 100 };
+  }
+  return null;
+}

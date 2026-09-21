@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { esRncValido, esCedulaValida, tipoIdDgii, fechaDgii } from './dgii.constants';
+import { esRncValido, esCedulaValida, tipoIdDgii, fechaDgii, type DesgloseItbis607 } from './dgii.constants';
 
 export type NivelValidacion = 'error' | 'advertencia';
 
@@ -187,11 +187,37 @@ export class DgiiValidatorService {
           mensaje: 'Monto negativo — las anulaciones van en el 608' });
       }
 
-      // ITBIS inconsistente
-      const itbisEsperado = Number(f.montoFacturado) * 0.18;
-      if (Number(f.itbis) > 0 && Math.abs(Number(f.itbis) - itbisEsperado) > itbisEsperado * 0.05) {
+      // ITBIS inconsistente — comparado contra la fuente de verdad
+      // (f.itbisFuente: totales reales del e-CF enviado, o si no hay e-CF,
+      // suma por línea con la tasa real de cada una — ver
+      // desgloseItbisFuenteVerdad en dgii.constants.ts). NUNCA
+      // montoFacturado × 18% a secas: eso ignora exentos y la tasa
+      // reducida del 16%, y disparaba error en facturas mixtas cuyo ITBIS
+      // real era correcto (caso real: E320000006818, ITBIS 195.51 —
+      // correcto para su base gravada — marcado como error contra un
+      // "esperado" de 811.71 = 18% del monto TOTAL, mayormente exento).
+      // Tolerancia de redondeo: ±RD$1 por factura, no un 5% relativo — un
+      // 5% en una factura grande esconde diferencias reales de varios
+      // pesos, y en una chica es más estricto que el redondeo normal.
+      if (f.itbisFuente != null) {
+        const diff = Math.abs(Number(f.itbis) - f.itbisFuente);
+        if (diff > 1) {
+          const d = f.desglose607;
+          const fmt = (v?: number) => (v ?? 0).toFixed(2);
+          errores.push({ nivel: 'error', campo: 'ITBIS', referencia: ref,
+            mensaje: `ITBIS del 607 (${fmt(Number(f.itbis))}) no cuadra con la fuente de verdad (${fmt(f.itbisFuente)}) — ` +
+              `gravado 18%: ${fmt(d?.gravado18)}, gravado 16%: ${fmt(d?.gravado16)}, exento: ${fmt(d?.exento)}` });
+        }
+      }
+
+      // ITBIS imposible: con las tasas vigentes (18% es la más alta) el
+      // ITBIS de un documento nunca puede superar el 18% de su monto —
+      // señal inequívoca de error de cálculo, sin depender de ninguna
+      // fuente externa.
+      const topeItbis = Number(f.montoFacturado) * 0.18;
+      if (Number(f.itbis) > topeItbis + 1) {
         errores.push({ nivel: 'error', campo: 'ITBIS', referencia: ref,
-          mensaje: `ITBIS (${f.itbis}) difiere más del 5% del esperado (${itbisEsperado.toFixed(2)})` });
+          mensaje: `ITBIS (${Number(f.itbis).toFixed(2)}) mayor al 18% del monto (${Number(f.montoFacturado).toFixed(2)}) — imposible con las tasas vigentes` });
       }
 
       // ── Advertencias ─────────────────────────────────────────────────────
@@ -302,6 +328,10 @@ export interface Fila607 {
   fechaComprobante?: Date | string;
   montoFacturado:  number;
   itbis:           number;
+  /** ITBIS "fuente de verdad" (e-CF enviado, o líneas si no hay e-CF) — null si no hay ninguna fuente que comparar */
+  itbisFuente?:    number | null;
+  /** Desglose por tasa de esa fuente de verdad, para el mensaje de error */
+  desglose607?:    DesgloseItbis607 | null;
 }
 
 export interface Fila608 {
