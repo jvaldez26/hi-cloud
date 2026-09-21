@@ -49,8 +49,23 @@
  *   siempre está bien: no hay nada que malinterpretar.
  *
  * QUÉ FALLA
- *   Un UPDATE/DELETE vía `query()` cuyo resultado se consume con `.length` o
- *   desestructurando `[algo]`.
+ *   Un UPDATE/DELETE vía `query()` cuyo resultado se consume con `.length`,
+ *   desestructurando `[algo]` (posicional), o desestructurando `{ rowCount }`
+ *   (por NOMBRE de propiedad — un array no tiene esa propiedad, así que
+ *   siempre da `undefined`; `if (rowCount > 0)` es siempre falso).
+ *
+ *   REINCIDENCIA (2026-09-21): las migraciones 1766100000000 y
+ *   1766200000000 hicieron exactamente `const { rowCount } = await
+ *   qr.query('UPDATE ... RETURNING id', ...)` — el UPDATE sí corrió (no es
+ *   el mismo riesgo que el incidente original, que rompía la guarda de
+ *   negocio), pero el conteo de "cuántas empresas se marcaron" reportó 0
+ *   en las 36 empresas reales de producción, un falso negativo puro. Este
+ *   verificador NO lo atrapó por dos huecos, ambos cerrados en este mismo
+ *   commit: (a) `migrations/` estaba excluido del escaneo por completo, y
+ *   (b) el patrón de desestructuración por nombre (`{ rowCount }`) nunca
+ *   se buscaba, solo el posicional (`[row]`). Ver
+ *   1766300000000-VerificarClasificacionResultadoDiferencialYNoOperacional.ts
+ *   para la corrección de datos.
  *
  * BASELINE
  *   Los sitios que ya existían quedan en `baseline-update-returning.json` para
@@ -90,7 +105,11 @@ function walk(dir, acc = []) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, e.name);
     if (e.isDirectory()) {
-      if (['node_modules', 'dist', 'migrations'].includes(e.name)) continue;
+      // 'migrations' ya NO se excluye (2026-09-21) — ver el incidente
+      // documentado arriba: una migración cometió exactamente el bug que
+      // este verificador existe para atrapar, y pasó desapercibido porque
+      // este directorio estaba fuera del escaneo.
+      if (['node_modules', 'dist'].includes(e.name)) continue;
       walk(p, acc);
     } else if (e.name.endsWith('.ts') && !e.name.endsWith('.spec.ts')) {
       acc.push(p);
@@ -118,8 +137,12 @@ function extraerArgs(txt, iAbre) {
   return '';
 }
 
+// 'qr' — el nombre de parámetro QueryRunner en TODAS las migraciones de
+// este repo (up(qr: QueryRunner)) — faltaba aquí (2026-09-21): ninguna
+// query de ninguna migración pasaba nunca por este verificador, ni
+// siquiera cuando se quitó la exclusión de la carpeta 'migrations/' arriba.
 const RE_QUERY =
-  /([^\n]*?)\b(?:this\.)?(?:ds|dataSource|manager|queryRunner|entityManager|conn|connection|repo|repository)\.query\s*(?:<[^>]*>)?\s*\(/g;
+  /([^\n]*?)\b(?:this\.)?(?:ds|dataSource|manager|queryRunner|qr|entityManager|conn|connection|repo|repository)\.query\s*(?:<[^>]*>)?\s*\(/g;
 
 /**
  * @returns {{ref:string, motivo:string, sql:string}[]}
@@ -163,6 +186,17 @@ function analizar(archivos, raiz) {
         continue;
       }
 
+      // Desestructurar POR NOMBRE: `const { rowCount } = await ...query('UPDATE ...')`
+      // — un array [filas, rowCount] no tiene una propiedad `rowCount`,
+      // `result.rowCount` da `undefined` siempre. Reincidencia 2026-09-21.
+      if (/(?:const|let|var)\s*\{/.test(antes)) {
+        hallazgos.push({
+          ref, sql: sqlCorta,
+          motivo: `desestructura { ... } por NOMBRE sobre un ${cmd}: el resultado es un array [filas, rowCount], no un objeto — la propiedad da undefined siempre`,
+        });
+        continue;
+      }
+
       // `.length` encadenado directamente.
       if (/^\s*\)*\s*\)?\s*\.\s*length/.test(despues)) {
         hallazgos.push({
@@ -188,6 +222,20 @@ function analizar(archivos, raiz) {
           hallazgos.push({
             ref, sql: sqlCorta,
             motivo: `desestructura ${nombre} de un ${cmd}: recibe el array entero`,
+          });
+          continue;
+        }
+        if (new RegExp(`(?:const|let|var)\\s*\\{[^}]*\\}\\s*=\\s*${nombre}\\b`).test(siguientes)) {
+          hallazgos.push({
+            ref, sql: sqlCorta,
+            motivo: `desestructura ${nombre} POR NOMBRE de un ${cmd}: es un array [filas, rowCount], no un objeto`,
+          });
+          continue;
+        }
+        if (new RegExp(`\\b${nombre}\\s*\\??\\.\\s*rowCount\\b`).test(siguientes)) {
+          hallazgos.push({
+            ref, sql: sqlCorta,
+            motivo: `${nombre}.rowCount sobre un ${cmd}: es un array [filas, rowCount], .rowCount da undefined siempre`,
           });
           continue;
         }
@@ -257,13 +305,32 @@ function autotest() {
       }
     }`;
 
+  // Reincidencia 2026-09-21 — ver cabecera del archivo.
+  const MAL_DESTRUCTURA_NOMBRE = `
+    export class G {
+      async marcar(qr) {
+        const { rowCount } = await qr.query(\`UPDATE t SET a = 1 WHERE id = $1 RETURNING id\`, [1]);
+        return rowCount > 0;
+      }
+    }`;
+
+  const MAL_ROWCOUNT_PROPIEDAD = `
+    export class H {
+      async marcar(qr) {
+        const result = await qr.query(\`UPDATE t SET a = 1 WHERE id = $1 RETURNING id\`, [1]);
+        return result.rowCount > 0;
+      }
+    }`;
+
   const casos = [
-    ['mal-length.ts',       MAL_LENGTH,       true,  '.length sobre un UPDATE'],
-    ['mal-destructura.ts',  MAL_DESTRUCTURA,  true,  'const [row] sobre un UPDATE'],
-    ['bien-cte.ts',         BIEN_CTE,         false, 'CTE + SELECT COUNT(*)'],
-    ['bien-rowcount.ts',    BIEN_ROWCOUNT,    false, 'result?.[1] como rowCount'],
-    ['bien-descartado.ts',  BIEN_DESCARTADO,  false, 'resultado descartado'],
-    ['bien-insert.ts',      BIEN_INSERT,      false, 'INSERT (devuelve filas planas)'],
+    ['mal-length.ts',              MAL_LENGTH,              true,  '.length sobre un UPDATE'],
+    ['mal-destructura.ts',         MAL_DESTRUCTURA,         true,  'const [row] sobre un UPDATE'],
+    ['mal-destructura-nombre.ts',  MAL_DESTRUCTURA_NOMBRE,  true,  'const { rowCount } sobre un UPDATE'],
+    ['mal-rowcount-propiedad.ts',  MAL_ROWCOUNT_PROPIEDAD,  true,  'result.rowCount sobre un UPDATE'],
+    ['bien-cte.ts',                BIEN_CTE,                false, 'CTE + SELECT COUNT(*)'],
+    ['bien-rowcount.ts',           BIEN_ROWCOUNT,           false, 'result?.[1] como rowCount'],
+    ['bien-descartado.ts',         BIEN_DESCARTADO,         false, 'resultado descartado'],
+    ['bien-insert.ts',             BIEN_INSERT,             false, 'INSERT (devuelve filas planas)'],
   ];
 
   let fallos = 0;

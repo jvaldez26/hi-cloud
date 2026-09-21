@@ -63,7 +63,16 @@ export class AgregarClasificacionResultadoCuentas1766100000000 implements Migrat
       let algunaMarcadaEnEstaEmpresa = false;
 
       for (const obj of this.OBJETIVOS) {
-        const { rowCount } = await qr.query(
+        // Limpieza del historial (2026-09-21): QueryRunner.query() sobre un
+        // UPDATE...RETURNING devuelve [filas, rowCount] — un array, no un
+        // objeto. Leer `rowCount` desestructurando por NOMBRE (como estaba
+        // aquí) daba `undefined` siempre — el UPDATE sí corrió (esta
+        // migración ya se aplicó en producción), pero el conteo/log de
+        // "cuántas empresas se marcaron" era un falso negativo. El fix real
+        // de datos está en 1766300000000; esto solo corrige la lectura
+        // para que el archivo no quede con el patrón roto documentado en
+        // scripts/validate-update-returning.js.
+        const resultado: [unknown[], number] = await qr.query(
           `UPDATE cuentas_contables
               SET "clasificacionResultado" = 'no_operacional'
             WHERE "empresaId" = $1 AND codigo = $2 AND nombre = $3
@@ -71,6 +80,7 @@ export class AgregarClasificacionResultadoCuentas1766100000000 implements Migrat
            RETURNING id`,
           [empresaId, obj.codigo, obj.nombre],
         );
+        const rowCount = resultado[1];
         if (rowCount > 0) {
           algunaMarcadaEnEstaEmpresa = true;
           marcadasPorObjetivo[obj.codigo] = (marcadasPorObjetivo[obj.codigo] ?? 0) + 1;

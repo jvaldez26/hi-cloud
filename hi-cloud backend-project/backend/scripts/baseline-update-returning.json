@@ -1,5 +1,7 @@
 {
   "_comentario": "Sitios que ya existían cuando se creó el verificador. Se van quitando según el barrido los corrija. Regenerar: node scripts/validate-update-returning.js --actualizar-baseline",
-  "generado": "2026-09-02",
-  "sitios": []
+  "generado": "2026-09-21",
+  "sitios": [
+    "restaurante/restaurante.service.ts:565"
+  ]
 }
