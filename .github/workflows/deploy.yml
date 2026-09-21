@@ -847,30 +847,42 @@ jobs:
             # debe terminar el job en verde solo porque el build anterior
             # también respondía bien.
             #
-            # 5 intentos con pausa, igual que el health check de arriba — sin
-            # esto, el primer intento de este mismo chequeo (2026-09-21,
-            # commit c73b4b79) disparó un rollback en falso: /health necesitó
-            # dos intentos para pasar de "error" a "healthy" justo tras el
-            # reload, y este chequeo —de un solo tiro— cayó en esa misma
-            # ventana de unos segundos y no encontró build_id. La ventana de
-            # inestabilidad normal del reload es de segundos; un proceso
-            # realmente viejo la sigue fallando en el intento 5 igual que en
-            # el 1, así que 5 intentos no le abren la puerta a la staleness
-            # real que este chequeo existe para atrapar.
+            # 5 intentos con pausa, igual que el health check de arriba: la
+            # ventana de inestabilidad normal del reload es de segundos, y un
+            # proceso realmente viejo sigue fallando en el intento 5 igual
+            # que en el 1 — los reintentos no le abren la puerta a la
+            # staleness real que este chequeo existe para atrapar.
+            #
+            # ResponseInterceptor global envuelve TODA respuesta en
+            # {success,data,timestamp} — igual que el health check de arriba
+            # lee ['data']['status'], no ['status']. La primera versión de
+            # este chequeo (commit e996c674) leía build_id solo en la raíz
+            # del JSON y dio "vacío" en 5/5 intentos —determinístico, no una
+            # carrera: /health y los smoke-test de /admin ya habían pasado en
+            # ese mismo proceso, así que el código SÍ era el nuevo; la única
+            # rota era la lectura. Ahora se busca en data.build_id primero
+            # (la forma real) y en la raíz como respaldo (por si el
+            # interceptor cambia algún día), y si ninguna de las dos
+            # aparece, se imprime la respuesta CRUDA — es un endpoint
+            # público sin secretos — para que un fallo futuro se diagnostique
+            # en un solo intento, no reconstruyendo el log línea por línea
+            # como esta vez.
             # ══════════════════════════════════════════════════════════════════
             if [ "$STATUS" = "healthy" ] || [ "$STATUS" = "degraded" ]; then
               echo "━━━ Verificación de build_id ━━━"
               DEPLOYED_BUILD_ID=""
+              VERSION_RAW=""
               for bi in 1 2 3 4 5; do
-                DEPLOYED_BUILD_ID=$(curl -sk --max-time 10 https://hicloudrd.com/api/v1/version | \
-                  python3 -c "import sys,json; print(json.load(sys.stdin).get('build_id') or '')" 2>/dev/null || echo "")
-                echo "  Intento $bi/5 — build_id en producción: ${DEPLOYED_BUILD_ID:-<vacío o /version no respondió>}"
+                VERSION_RAW=$(curl -sk --max-time 10 https://hicloudrd.com/api/v1/version)
+                DEPLOYED_BUILD_ID=$(echo "$VERSION_RAW" | python3 -c "import sys,json; j=json.load(sys.stdin); print((j.get('data') or {}).get('build_id') or j.get('build_id') or '')" 2>/dev/null || echo "")
+                echo "  Intento $bi/5 — build_id en producción: ${DEPLOYED_BUILD_ID:-<vacío>}"
                 [ "$DEPLOYED_BUILD_ID" = "$DEPLOY_SHA" ] && break
                 [ "$bi" -lt 5 ] && sleep 6
               done
               echo "  Esperado (este deploy): $DEPLOY_SHA"
               if [ "$DEPLOYED_BUILD_ID" != "$DEPLOY_SHA" ]; then
                 echo "  ❌ build_id NO coincide tras 5 intentos — el proceso que responde no es el que se acaba de desplegar"
+                echo "  Respuesta cruda de /api/v1/version (último intento): $VERSION_RAW"
                 STATUS="error"
               else
                 echo "  ✅ build_id coincide — el código nuevo está realmente sirviendo tráfico"
@@ -918,7 +930,39 @@ jobs:
               # Restaurar código fuente al commit anterior
               git reset --hard "$STABLE_COMMIT" 2>/dev/null || true
 
+              # .env NO está versionado (git reset no lo toca) — [2/6] ya lo
+              # dejó en SEED_PLAN_CUENTAS_RUN=true para ESTE intento de
+              # deploy, que falló. Sin este reset, ese "true" se queda
+              # escrito de verdad: cada reinicio de PM2 de aquí en adelante
+              # re-siembra el plan de cuentas de las 23 empresas, no solo el
+              # que hubiera hecho el deploy si hubiera tenido éxito.
+              sed -i 's|^SEED_PLAN_CUENTAS_RUN=.*|SEED_PLAN_CUENTAS_RUN=false|' "$ENV_FILE" 2>/dev/null || true
+              echo "  SEED_PLAN_CUENTAS_RUN desactivado (rollback)"
+
+              # Mismo problema que SEED_PLAN_CUENTAS_RUN arriba: [2/6] ya
+              # escribió SENTRY_RELEASE=DEPLOY_SHA (el commit que ACABA de
+              # fallar) en el .env, y git reset no lo toca. Sin este ajuste,
+              # /api/v1/version —y cada error que llegue a Sentry— sigue
+              # reportando el build que falló, aunque el proceso real que
+              # responde sea $STABLE_COMMIT. Se confirmó así en vivo el
+              # 2026-09-21: tras el auto-rollback de e996c674, /version
+              # devolvía build_id=e996c674 con 69c56085 corriendo de verdad.
+              sed -i "s|^SENTRY_RELEASE=.*|SENTRY_RELEASE=${STABLE_COMMIT}|" "$ENV_FILE" 2>/dev/null || true
+              echo "  SENTRY_RELEASE restaurado a \$STABLE_COMMIT ($STABLE_COMMIT)"
+
               # Restaurar dist anterior
+              #
+              # RIESGO CONOCIDO, sin corregir (2026-09-21): este rollback
+              # restaura código fuente (git reset) y dist compilado, pero
+              # NUNCA node_modules — sigue siendo el que "npm ci" instaló
+              # para el deploy que ACABA de fallar. Si ese deploy también
+              # cambió package.json/package-lock.json (dependencia nueva,
+              # versión distinta), el commit anterior queda corriendo contra
+              # node_modules de una versión que no es la suya. Nunca se ha
+              # visto en producción, pero el camino existe — anotado, no
+              # resuelto: un "npm ci" dentro del rollback alargaría cada
+              # auto-rollback varios minutos, justo cuando el ERP ya está
+              # caído y el tiempo importa más.
               cd "$BACKEND_DIR"
               if [ -d /home/ubuntu/hicloud/.backup-dist ]; then
                 rm -rf dist
