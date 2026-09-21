@@ -63,6 +63,14 @@ export const comprasApi = {
     api.patch(`/compras/${id}/estado`, { estado }).then(r => r.data),
 
   /**
+   * Solo NCF del proveedor + tipoBienes/formaPago (606) — a diferencia de
+   * `update`, funciona en recibida/recibida_parcial/pagada porque no toca
+   * líneas ni montos.
+   */
+  actualizarNcfProveedor: (id: number, body: { numeroFacturaProveedor?: string; tipoBienes?: string; formaPago?: string }) =>
+    api.patch<ApiResponse<Compra>>(`/compras/${id}/ncf-proveedor`, body).then(r => r.data.data),
+
+  /**
    * Recibir mercancía con cantidades reales por línea (soporta recepción
    * parcial: lo que falte queda pendiente y la orden queda en
    * 'recibida_parcial' hasta completarse). Actualiza inventario y AVCO por

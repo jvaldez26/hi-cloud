@@ -8,6 +8,7 @@ import { Repository, DataSource } from 'typeorm';
 import { Compra, CompraEstado } from './entities/compra.entity';
 import { CompraDetalle } from './entities/compra-detalle.entity';
 import { CreateCompraDto } from './dto/create-compra.dto';
+import { UpdateNcfProveedorDto } from './dto/update-ncf-proveedor.dto';
 import { ProveedoresService } from '../proveedores/proveedores.service';
 import { ProductosService } from '../productos/productos.service';
 import { ProductoProveedorService } from '../productos/producto-proveedor.service';
@@ -473,6 +474,39 @@ export class ComprasService {
         detalleRepo.create(detallesData.map(d => ({ ...d, compraId: id }))),
       );
     });
+
+    this.realtimeService.notify(empresaId, 'compra', 'updated', id);
+    return this.findOne(id);
+  }
+
+  /**
+   * Edición acotada post-borrador: solo NCF del proveedor + tipoBienes/formaPago
+   * (606). `update()` reemplaza cabecera y líneas enteras y por eso está
+   * cerrado a borrador — una recibida/pagada ya movió inventario, AVCO y el
+   * asiento contable, y no hay nada de eso que este método toque. Existe
+   * porque el NCF casi nunca llega junto con la recepción (la factura física
+   * del proveedor suele llegar después), y sin esto quedaba sin forma de
+   * registrarlo: la única edición posible era la de borrador, ya cerrada.
+   */
+  async actualizarNcfProveedor(id: number, dto: UpdateNcfProveedorDto) {
+    const compra = await this.findOne(id);
+
+    const ESTADOS_PERMITIDOS = [CompraEstado.RECIBIDA, CompraEstado.RECIBIDA_PARCIAL, CompraEstado.PAGADA];
+    if (!ESTADOS_PERMITIDOS.includes(compra.estado)) {
+      throw new BadRequestException(
+        `El comprobante del proveedor solo se registra en compras recibidas o pagadas. Esta está "${compra.estado}".`,
+      );
+    }
+
+    const empresaId = this.tenantService.getEmpresaId();
+    await this.compraRepository.update(
+      { id, empresaId },
+      {
+        ...(dto.numeroFacturaProveedor !== undefined && { numeroFacturaProveedor: dto.numeroFacturaProveedor }),
+        ...(dto.tipoBienes !== undefined && { tipoBienes: dto.tipoBienes }),
+        ...(dto.formaPago !== undefined && { formaPago: dto.formaPago }),
+      },
+    );
 
     this.realtimeService.notify(empresaId, 'compra', 'updated', id);
     return this.findOne(id);

@@ -20,6 +20,7 @@ import { Type } from 'class-transformer';
 import { ComprasService }    from './compras.service';
 import { ComprasPdfService } from './compras-pdf.service';
 import { CreateCompraDto }   from './dto/create-compra.dto';
+import { UpdateNcfProveedorDto } from './dto/update-ncf-proveedor.dto';
 import { CompraEstado }      from './entities/compra.entity';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -121,6 +122,23 @@ export class ComprasController {
     @Body() dto: CreateCompraDto,
   ) {
     return this.comprasService.update(id, dto);
+  }
+
+  // Distinta de `update()`: no toca líneas ni montos, así que se permite
+  // fuera de borrador — ver ComprasService.actualizarNcfProveedor.
+  @Patch(':id/ncf-proveedor')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({
+    summary: 'Registrar NCF del proveedor y clasificación 606',
+    description:
+      'Solo en recibida, recibida_parcial o pagada — la factura física del proveedor ' +
+      'suele llegar después de la recepción.',
+  })
+  actualizarNcfProveedor(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateNcfProveedorDto,
+  ) {
+    return this.comprasService.actualizarNcfProveedor(id, dto);
   }
 
   @Patch(':id/estado')

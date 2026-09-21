@@ -1,7 +1,9 @@
 import { Button, Card, Descriptions, Table, Tag, Row, Col, Typography,
-         Statistic, Space, Spin, Steps, message, Popconfirm, theme, Alert } from 'antd';
+         Statistic, Space, Spin, Steps, message, Popconfirm, theme, Alert,
+         Modal, Form, Input, Select } from 'antd';
 import { ArrowLeftOutlined, SendOutlined, CheckCircleOutlined,
-         CloseCircleOutlined, PrinterOutlined, LoadingOutlined, AuditOutlined } from '@ant-design/icons';
+         CloseCircleOutlined, PrinterOutlined, LoadingOutlined, AuditOutlined,
+         EditOutlined } from '@ant-design/icons';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -11,6 +13,11 @@ import { fmt, estadoColor } from '../../utils/formatters';
 import type { CompraEstado } from '../../types';
 import EcfSeccion from '../../components/ui/EcfSeccion';
 import RecibirMercanciaModal from '../../components/compras/RecibirMercanciaModal';
+import { TIPOS_BIENES_606, FORMAS_PAGO_606 } from '../../constants/dgii-606';
+
+/** Estados en los que ya no se puede tocar cabecera/líneas (ver
+ *  ComprasService.update) pero sí registrar el NCF que llegó después. */
+const ESTADOS_CON_NCF_EDITABLE: CompraEstado[] = ['recibida', 'recibida_parcial', 'pagada'];
 
 const { Title, Text } = Typography;
 
@@ -49,6 +56,8 @@ export default function CompraDetailPage() {
   const qc       = useQueryClient();
   const [pdfLoading, setPdfLoading] = useState(false);
   const [showRecibir, setShowRecibir] = useState(false);
+  const [showNcfModal, setShowNcfModal] = useState(false);
+  const [ncfForm] = Form.useForm();
 
   const imprimirPDF = async () => {
     setPdfLoading(true);
@@ -91,6 +100,17 @@ export default function CompraDetailPage() {
     }
     emitirE41Mut.mutate();
   };
+
+  const ncfMut = useMutation({
+    mutationFn: (body: { numeroFacturaProveedor?: string; tipoBienes?: string; formaPago?: string }) =>
+      comprasApi.actualizarNcfProveedor(Number(id), body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['compra', id] });
+      message.success('Comprobante del proveedor registrado');
+      setShowNcfModal(false);
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'No se pudo registrar el comprobante'),
+  });
 
   const estadoMut = useMutation({
     mutationFn: ({ estado }: { estado: CompraEstado }) =>
@@ -242,6 +262,7 @@ export default function CompraDetailPage() {
               );
             }
             // Proveedor formal → mostrar NCF que emitió el proveedor
+            const puedeEditarNcf = ESTADOS_CON_NCF_EDITABLE.includes(estado);
             return (
               <Card size="small" style={{ marginBottom: 16 }}>
                 <Alert
@@ -251,13 +272,51 @@ export default function CompraDetailPage() {
                   description={
                     (compra as any).numeroFacturaProveedor
                       ? <>NCF: <strong>{(compra as any).numeroFacturaProveedor}</strong> — emitido por {proveedor?.nombre}</>
-                      : 'Sin NCF registrado. Ingresa el número de comprobante del proveedor al editar la orden.'
+                      : puedeEditarNcf
+                        ? 'Sin NCF registrado. Ingresa el número de comprobante del proveedor.'
+                        : 'Sin NCF registrado. Podrás ingresarlo cuando la orden esté recibida.'
                   }
+                  action={puedeEditarNcf && (
+                    <Button size="small" icon={<EditOutlined />} onClick={() => {
+                      ncfForm.setFieldsValue({
+                        numeroFacturaProveedor: (compra as any).numeroFacturaProveedor,
+                        tipoBienes: (compra as any).tipoBienes,
+                        formaPago: (compra as any).formaPago,
+                      });
+                      setShowNcfModal(true);
+                    }}>
+                      {(compra as any).numeroFacturaProveedor ? 'Editar' : 'Registrar NCF'}
+                    </Button>
+                  )}
                   style={{ marginBottom: 0 }}
                 />
               </Card>
             );
           })()}
+
+          <Modal
+            title="Comprobante Fiscal del Proveedor"
+            open={showNcfModal}
+            onCancel={() => setShowNcfModal(false)}
+            onOk={() => ncfForm.validateFields().then(v => ncfMut.mutate(v))}
+            confirmLoading={ncfMut.isPending}
+            okText="Guardar"
+          >
+            <Form form={ncfForm} layout="vertical">
+              <Form.Item name="numeroFacturaProveedor" label="NCF del proveedor"
+                rules={[{ required: true, message: 'Ingresa el número de comprobante' }]}>
+                <Input placeholder="Ej. B0100000123" maxLength={50} />
+              </Form.Item>
+              <Form.Item name="tipoBienes" label="Tipo de bienes (606)">
+                <Select allowClear placeholder="Sin clasificar" options={TIPOS_BIENES_606}
+                  showSearch filterOption={(i, o) => (o?.label ?? '').toString().toLowerCase().includes(i.toLowerCase())} />
+              </Form.Item>
+              <Form.Item name="formaPago" label="Forma de pago (606)">
+                <Select allowClear placeholder="Sin clasificar" options={FORMAS_PAGO_606}
+                  showSearch filterOption={(i, o) => (o?.label ?? '').toString().toLowerCase().includes(i.toLowerCase())} />
+              </Form.Item>
+            </Form>
+          </Modal>
 
           <Card title="Detalle de productos">
             <Table
