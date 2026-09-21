@@ -481,12 +481,119 @@ export class ContabilidadService implements OnModuleInit {
   // Plan de Cuentas — CRUD
   // ──────────────────────────────────────────────────────────────────
 
-  async getCuentas(soloMovimientos = false) {
-    const where: Record<string, unknown> = { isActive: true };
-    if (soloMovimientos) where['permiteMovimientos'] = true;
-    if (this.eid) where['empresaId'] = this.eid;
-    const cuentas = await this.cuentaRepository.find({ where, order: { codigo: 'ASC' } });
-    return this.attachAnexos(cuentas);
+  /**
+   * UI — filtros por clasificación y estado (2026-09-21). "Clasificación"
+   * son los 6 valores de TipoCuenta que YA existe en el modelo — no se
+   * inventa ninguna categoría nueva, la URL solo usa nombres en español
+   * plural (más legibles al compartir un link) que se traducen aquí.
+   * "capital" en la URL es TipoCuenta.PATRIMONIO — el enum del modelo dice
+   * "patrimonio", nunca "capital"; se usa el nombre coloquial solo en la
+   * URL/UI, jamás como valor real.
+   */
+  private static readonly CLASIFICACION_A_TIPO: Record<string, TipoCuenta> = {
+    activos:  TipoCuenta.ACTIVO,
+    pasivos:  TipoCuenta.PASIVO,
+    capital:  TipoCuenta.PATRIMONIO,
+    ingresos: TipoCuenta.INGRESO,
+    costos:   TipoCuenta.COSTO,
+    gastos:   TipoCuenta.GASTO,
+  };
+
+  /**
+   * Query base del catálogo — un solo QueryBuilder que arma tanto la lista
+   * (paginada por el cliente, como siempre) como los conteos de los chips,
+   * para que ambos respondan exactamente a los mismos filtros. `estado`
+   * "grupo" no es un booleano propio del modelo (no existía "cuenta grupo"
+   * como campo) — se deriva, tal como pidió el punto 1 del encargo, de
+   * permiteMovimientos=false Y que tenga al menos una hija; una cuenta de
+   * agrupación recién creada sin hijas todavía no agrupa nada.
+   */
+  private construirQueryCuentas(filtros: {
+    search?: string; clasificacion?: string; estado?: string; soloMovimientos?: boolean;
+  }) {
+    // this.eid PRIMERO — fail-closed: si no hay contexto de tenant, lanza
+    // ForbiddenException antes de tocar el repositorio, no después.
+    const eid = this.eid;
+    const qb = this.cuentaRepository.createQueryBuilder('c')
+      .leftJoinAndSelect('c.cuentaPadre', 'padre');
+    if (eid) qb.andWhere('c.empresaId = :eid', { eid });
+    if (filtros.soloMovimientos) qb.andWhere('c.permiteMovimientos = true');
+    if (filtros.search?.trim()) {
+      qb.andWhere('(c.codigo ILIKE :search OR c.nombre ILIKE :search)', { search: `%${filtros.search.trim()}%` });
+    }
+
+    const tipo = filtros.clasificacion ? ContabilidadService.CLASIFICACION_A_TIPO[filtros.clasificacion] : undefined;
+    if (tipo) qb.andWhere('c.tipo = :tipo', { tipo });
+
+    // Sin estado (compatibilidad con callers que no lo mandan) o "activas":
+    // mismo comportamiento de siempre, isActive=true. "todas" es la única
+    // forma explícita de ver también las inactivas.
+    if (!filtros.estado || filtros.estado === 'activas') {
+      qb.andWhere('c.isActive = true');
+    } else if (filtros.estado === 'inactivas') {
+      qb.andWhere('c.isActive = false');
+    } else if (filtros.estado === 'grupo') {
+      qb.andWhere('c.permiteMovimientos = false')
+        .andWhere('EXISTS (SELECT 1 FROM cuentas_contables hijo WHERE hijo."cuentaPadreId" = c.id AND hijo."isActive" = true)');
+    }
+    // 'todas': sin filtro de isActive.
+
+    return qb;
+  }
+
+  /**
+   * Conteos de los chips — SIEMPRE respetan `search` (y soloMovimientos si
+   * se pidió), pero NUNCA la clasificación/estado ya elegidos: cada grupo de
+   * chips cuenta como si el otro grupo estuviera en "Todas", que es el
+   * criterio estándar de conteos "faceted" (como los contadores de Gmail) y
+   * evita que un chip desaparezca o quede en 0 por su propia selección.
+   */
+  private async contarCuentas(filtros: { search?: string; soloMovimientos?: boolean }) {
+    const eid = this.eid; // fail-closed, una sola lectura para las 11 queries de abajo
+    const base = () => {
+      const qb = this.cuentaRepository.createQueryBuilder('c');
+      if (eid) qb.andWhere('c.empresaId = :eid', { eid });
+      if (filtros.soloMovimientos) qb.andWhere('c.permiteMovimientos = true');
+      if (filtros.search?.trim()) {
+        qb.andWhere('(c.codigo ILIKE :search OR c.nombre ILIKE :search)', { search: `%${filtros.search.trim()}%` });
+      }
+      return qb;
+    };
+
+    const [
+      todasClasif, activo, pasivo, patrimonio, ingreso, costo, gasto,
+      todasEstado, activas, inactivas, grupo,
+    ] = await Promise.all([
+      base().getCount(),
+      base().andWhere('c.tipo = :t', { t: TipoCuenta.ACTIVO }).getCount(),
+      base().andWhere('c.tipo = :t', { t: TipoCuenta.PASIVO }).getCount(),
+      base().andWhere('c.tipo = :t', { t: TipoCuenta.PATRIMONIO }).getCount(),
+      base().andWhere('c.tipo = :t', { t: TipoCuenta.INGRESO }).getCount(),
+      base().andWhere('c.tipo = :t', { t: TipoCuenta.COSTO }).getCount(),
+      base().andWhere('c.tipo = :t', { t: TipoCuenta.GASTO }).getCount(),
+      base().getCount(),
+      base().andWhere('c.isActive = true').getCount(),
+      base().andWhere('c.isActive = false').getCount(),
+      base()
+        .andWhere('c.permiteMovimientos = false')
+        .andWhere('EXISTS (SELECT 1 FROM cuentas_contables hijo WHERE hijo."cuentaPadreId" = c.id AND hijo."isActive" = true)')
+        .getCount(),
+    ]);
+
+    return {
+      clasificacion: { todas: todasClasif, activos: activo, pasivos: pasivo, capital: patrimonio, ingresos: ingreso, costos: costo, gastos: gasto },
+      estado: { todas: todasEstado, activas, inactivas, grupo },
+    };
+  }
+
+  async getCuentas(opciones: {
+    soloMovimientos?: boolean; search?: string; clasificacion?: string; estado?: string;
+  } = {}) {
+    const [cuentas, conteos] = await Promise.all([
+      this.construirQueryCuentas(opciones).orderBy('c.codigo', 'ASC').getMany(),
+      this.contarCuentas({ search: opciones.search, soloMovimientos: opciones.soloMovimientos }),
+    ]);
+    return { data: await this.attachAnexos(cuentas), conteos };
   }
 
   /**

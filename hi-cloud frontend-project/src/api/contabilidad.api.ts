@@ -31,6 +31,21 @@ export interface CuentaConAnexos extends CuentaPayload {
   id: number;
   esCuentaSistema?: boolean;
   anexosIR2: EtiquetaAnexoIR2[];
+  /** Presente cuando el backend hizo el JOIN — usado para la columna "Cuenta madre" en modo filtrado. */
+  cuentaPadre?: { id: number; codigo: string; nombre: string } | null;
+}
+
+export type ClasificacionCuenta = 'todas' | 'activos' | 'pasivos' | 'capital' | 'ingresos' | 'costos' | 'gastos';
+export type EstadoCuenta = 'todas' | 'activas' | 'inactivas' | 'grupo';
+
+export interface ConteosCuentas {
+  clasificacion: Record<ClasificacionCuenta, number>;
+  estado: Record<EstadoCuenta, number>;
+}
+
+export interface CuentasFiltradas {
+  data: CuentaConAnexos[];
+  conteos: ConteosCuentas;
 }
 
 export interface AsientoLineaPayload {
@@ -49,9 +64,14 @@ export const contabilidadApi = {
   cuentasSinEtiquetar: () =>
     api.get('/contabilidad/cuentas/sin-etiquetar').then(r => r.data.data),
 
-  cuentas: (soloMovimientos?: boolean) =>
-    api.get(`/contabilidad/cuentas${soloMovimientos ? '?soloMovimientos=true' : ''}`)
-       .then(r => r.data.data),
+  cuentas: (opts: { soloMovimientos?: boolean; search?: string; clasificacion?: ClasificacionCuenta; estado?: EstadoCuenta } = {}) => {
+    const params: Record<string, string> = {};
+    if (opts.soloMovimientos) params.soloMovimientos = 'true';
+    if (opts.search?.trim()) params.search = opts.search.trim();
+    if (opts.clasificacion && opts.clasificacion !== 'todas') params.clasificacion = opts.clasificacion;
+    if (opts.estado && opts.estado !== 'activas') params.estado = opts.estado;
+    return api.get('/contabilidad/cuentas', { params }).then(r => r.data.data as CuentasFiltradas);
+  },
 
   createCuenta: (body: CuentaPayload) =>
     api.post('/contabilidad/cuentas', body).then(r => r.data.data),

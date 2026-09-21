@@ -55,22 +55,22 @@ export default function CuentaContableSelector({
   value, onChange, tipo, placeholder = 'Buscar cuenta por código o nombre', disabled, allowClear = true, style, size,
   valueField = 'codigo',
 }: CuentaContableSelectorProps) {
-  const { data: cuentas, isLoading } = useQuery({
+  const { data: resultado, isLoading } = useQuery({
     queryKey: ['cuentas-selector'],
-    queryFn: () => contabilidadApi.cuentas(true), // soloMovimientos=true — nunca cuentas de agrupación
+    queryFn: () => contabilidadApi.cuentas({ soloMovimientos: true }), // nunca cuentas de agrupación
   });
 
   const tipos = tipo ? (Array.isArray(tipo) ? tipo : [tipo]) : undefined;
 
   const opciones = useMemo(() => {
-    const base = (cuentas ?? []) as any[];
+    const base = (resultado?.data ?? []) as any[];
     const filtradas = tipos ? base.filter(c => tipos.includes(c.tipo)) : base;
     return filtradas.map(c => ({
       value: valueField === 'id' ? c.id : c.codigo,
       label: `${c.codigo} — ${c.nombre}`, // texto plano para que el buscador filtre por código y nombre
       cuenta: c,
     }));
-  }, [cuentas, tipo, valueField]);
+  }, [resultado, tipo, valueField]);
 
   return (
     <Select

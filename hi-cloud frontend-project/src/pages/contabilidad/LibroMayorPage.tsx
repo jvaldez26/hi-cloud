@@ -21,10 +21,11 @@ export default function LibroMayorPage() {
   const desde = rango?.[0].format('YYYY-MM-DD');
   const hasta = rango?.[1].format('YYYY-MM-DD');
 
-  const { data: cuentas } = useQuery({
+  const { data: cuentasResultado } = useQuery({
     queryKey: ['cuentas-sel'],
-    queryFn:  () => contabilidadApi.cuentas(true), // solo las que permiten movimientos
+    queryFn:  () => contabilidadApi.cuentas({ soloMovimientos: true }),
   });
+  const cuentas = cuentasResultado?.data;
 
   const { data: mayor, isLoading } = useQuery({
     queryKey: ['libro-mayor', cuentaId, desde, hasta],

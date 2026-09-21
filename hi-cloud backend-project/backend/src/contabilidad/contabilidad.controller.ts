@@ -40,10 +40,20 @@ export class ContabilidadController {
 
   @Get('cuentas')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
-  @ApiOperation({ summary: 'Plan de Cuentas dominicano completo' })
+  @ApiOperation({ summary: 'Plan de Cuentas — filtrable por clasificación/estado/búsqueda, con conteos por chip' })
   @ApiQuery({ name: 'soloMovimientos', required: false, type: Boolean })
-  getCuentas(@Query('soloMovimientos') soloMovimientos?: string) {
-    return this.contabilidadService.getCuentas(soloMovimientos === 'true');
+  @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiQuery({ name: 'clasificacion', required: false, enum: ['todas', 'activos', 'pasivos', 'capital', 'ingresos', 'costos', 'gastos'] })
+  @ApiQuery({ name: 'estado', required: false, enum: ['todas', 'activas', 'inactivas', 'grupo'] })
+  getCuentas(
+    @Query('soloMovimientos') soloMovimientos?: string,
+    @Query('search') search?: string,
+    @Query('clasificacion') clasificacion?: string,
+    @Query('estado') estado?: string,
+  ) {
+    return this.contabilidadService.getCuentas({
+      soloMovimientos: soloMovimientos === 'true', search, clasificacion, estado,
+    });
   }
 
   @Post('cuentas')

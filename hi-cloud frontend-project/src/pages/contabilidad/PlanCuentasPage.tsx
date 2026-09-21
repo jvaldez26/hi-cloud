@@ -1,16 +1,29 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Table, Tag, Card, Row, Col, Typography, Space, Button, Modal, Form,
   Input, InputNumber, Select, Switch, message, Tooltip, Tabs, Badge, Alert,
 } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usePlanGuard } from '../../hooks/usePlan';
 import ModuloBloqueado from '../../components/ui/ModuloBloqueado';
 import { contabilidadApi, type CuentaPayload, type CuentaConAnexos, type EtiquetaAnexoIR2 } from '../../api/contabilidad.api';
 import { TIPOS_BIENES_606 } from '../../constants/dgii-606';
+import {
+  filtrosDesdeURL, filtrosAURLParams, CLASIFICACIONES, ESTADOS,
+  type ClasificacionCuenta, type EstadoCuenta,
+} from '../../utils/filtrosPlanCuentas';
 
 const { Title, Text } = Typography;
+
+const LABEL_CLASIFICACION: Record<ClasificacionCuenta, string> = {
+  todas: 'Todas', activos: 'Activos', pasivos: 'Pasivos', capital: 'Capital',
+  ingresos: 'Ingresos', costos: 'Costos', gastos: 'Gastos',
+};
+const LABEL_ESTADO: Record<EstadoCuenta, string> = {
+  todas: 'Todas', activas: 'Activas', inactivas: 'Inactivas', grupo: 'Cuentas grupo',
+};
 
 type Cuenta = CuentaConAnexos;
 
@@ -99,6 +112,26 @@ export default function PlanCuentasPage() {
   const [editing, setEditing] = useState<Cuenta | null>(null);
   const [form] = Form.useForm<CuentaPayload>();
 
+  // Filtros del catálogo — en la URL para que sean compartibles y
+  // sobrevivan a un F5 (ver utils/filtrosPlanCuentas.ts).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filtros = filtrosDesdeURL(searchParams);
+  const [searchInput, setSearchInput] = useState(filtros.search);
+  const actualizarFiltros = (parcial: Partial<typeof filtros>) => {
+    setSearchParams(filtrosAURLParams({ ...filtros, ...parcial }), { replace: true });
+  };
+  const hayFiltroActivo = filtros.search.trim() !== '' || filtros.clasificacion !== 'todas' || filtros.estado !== 'activas';
+
+  // Debounce corto del buscador: escribir se siente instantáneo, pero la
+  // URL (y por tanto la consulta al backend) no se actualiza en cada tecla.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (searchInput !== filtros.search) actualizarFiltros({ search: searchInput });
+    }, 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput]);
+
   // Se leen para reaccionar en vivo al elegir tipo/permiteMovimientos/anexos.
   // Las etiquetas de agrupación nunca se ofrecen (no reciben asientos). De
   // ahí en adelante la regla difiere por etiqueta — ver ANEXOS_POR_TIPO.
@@ -112,10 +145,23 @@ export default function PlanCuentasPage() {
   const anexosDisponibles = ANEXOS_POR_TIPO[tipoActual] ?? [];
   const casillasDisponiblesD = (tipoActual === 'activo' || tipoActual === 'costo') ? CASILLAS_ANEXO_D[tipoActual] : [];
 
-  const { data: cuentas, isLoading } = useQuery({
-    queryKey: ['cuentas'],
-    queryFn: () => contabilidadApi.cuentas(),
+  const { data: resultado, isLoading } = useQuery({
+    queryKey: ['cuentas', filtros.search, filtros.clasificacion, filtros.estado],
+    queryFn: () => contabilidadApi.cuentas({ search: filtros.search, clasificacion: filtros.clasificacion, estado: filtros.estado }),
   });
+  const cuentas = resultado?.data;
+  const conteos = resultado?.conteos;
+
+  // El selector "Cuenta padre" del modal SIEMPRE necesita el catálogo
+  // COMPLETO — si dependiera de `cuentas` (la lista ya filtrada), crear una
+  // cuenta de un tipo distinto al filtro activo (ej. filtro "Gastos" pero el
+  // formulario abierto para un "Activo" nuevo) se quedaría sin opciones de
+  // padre válidas.
+  const { data: resultadoTodas } = useQuery({
+    queryKey: ['cuentas-todas-para-padre'],
+    queryFn: () => contabilidadApi.cuentas({ estado: 'todas' }),
+  });
+  const todasLasCuentas = resultadoTodas?.data;
 
   // Pantalla de excepciones (Fase 2) — lista de trabajo del contador: mismo
   // criterio que la columna "606 / IR-2" de la tabla del catálogo, pero
@@ -127,6 +173,7 @@ export default function PlanCuentasPage() {
 
   const invalidarCuentas = () => {
     qc.invalidateQueries({ queryKey: ['cuentas'] });
+    qc.invalidateQueries({ queryKey: ['cuentas-todas-para-padre'] });
     qc.invalidateQueries({ queryKey: ['cuentas-sin-etiquetar'] });
   };
   const createMut = useMutation({
@@ -196,7 +243,7 @@ export default function PlanCuentasPage() {
 
   if (bloqueado && config) return <ModuloBloqueado modulo="Contabilidad General" planMinimo={config.planMinimo} planActual={plan} />;
 
-  const opcionesPadre = (cuentas ?? []).filter((c: Cuenta) => c.id !== editing?.id);
+  const opcionesPadre = (todasLasCuentas ?? []).filter((c: Cuenta) => c.id !== editing?.id);
 
   const cols = [
     { title: 'Código',  dataIndex: 'codigo',    width: 110 },
@@ -209,6 +256,16 @@ export default function PlanCuentasPage() {
     { title: 'Nivel',   dataIndex: 'nivel',     width: 60 },
     { title: 'Movim.',  dataIndex: 'permiteMovimientos', width: 70,
       render: (v: boolean) => <Tag color={v ? 'green' : 'default'}>{v ? 'Sí' : 'No'}</Tag> },
+    // Solo con un filtro activo: al filtrar puede aparecer una cuenta cuya
+    // madre NO cumple el filtro (ej. "Gastos" trae una subcuenta sin traer
+    // el grupo "6.1 Gastos Operativos" que la agrupa) — sin esta columna se
+    // pierde el contexto de dónde cuelga esa cuenta.
+    ...(hayFiltroActivo ? [{
+      title: 'Cuenta madre', key: 'cuentaMadre', width: 180,
+      render: (_: unknown, r: Cuenta) => r.cuentaPadre
+        ? <Text type="secondary" style={{ fontSize: 12 }}>{r.cuentaPadre.codigo} — {r.cuentaPadre.nombre}</Text>
+        : <Text type="secondary" style={{ fontSize: 12 }}>— (raíz)</Text>,
+    }] : []),
     { title: '606 / IR-2', key: 'etiquetas', width: 130,
       render: (_: unknown, r: Cuenta) => renderEtiquetas(r) },
     { title: '', key: 'actions', width: 50, align: 'right' as const,
@@ -250,11 +307,51 @@ export default function PlanCuentasPage() {
             key: 'catalogo',
             label: 'Catálogo',
             children: (
-              <Table columns={cols} dataSource={cuentas ?? []} rowKey="id" loading={isLoading}
-                size="small"
-                scroll={{ x: 'max-content' }}
-                pagination={{ pageSize: 10, showSizeChanger: false }}
-                rowClassName={(r: any) => r.nivel <= 2 ? 'ant-table-row-level-header' : ''} />
+              <>
+                <Input.Search
+                  allowClear
+                  placeholder="Buscar por código o nombre..."
+                  prefix={<SearchOutlined />}
+                  value={searchInput}
+                  onChange={e => setSearchInput(e.target.value)}
+                  style={{ marginBottom: 12, maxWidth: 360 }}
+                />
+                {/* Chips de clasificación/estado — scroll horizontal en vez de
+                    apilarse en varias filas en móvil (overflowX + nowrap). */}
+                <div style={{ overflowX: 'auto', marginBottom: 8, paddingBottom: 4 }}>
+                  <Space size={6} style={{ flexWrap: 'nowrap' }}>
+                    {CLASIFICACIONES.map(c => (
+                      <Tag.CheckableTag
+                        key={c}
+                        checked={filtros.clasificacion === c}
+                        onChange={() => actualizarFiltros({ clasificacion: c })}
+                        style={{ whiteSpace: 'nowrap' }}
+                      >
+                        {LABEL_CLASIFICACION[c]} ({conteos?.clasificacion[c] ?? 0})
+                      </Tag.CheckableTag>
+                    ))}
+                  </Space>
+                </div>
+                <div style={{ overflowX: 'auto', marginBottom: 16, paddingBottom: 4 }}>
+                  <Space size={6} style={{ flexWrap: 'nowrap' }}>
+                    {ESTADOS.map(e => (
+                      <Tag.CheckableTag
+                        key={e}
+                        checked={filtros.estado === e}
+                        onChange={() => actualizarFiltros({ estado: e })}
+                        style={{ whiteSpace: 'nowrap' }}
+                      >
+                        {LABEL_ESTADO[e]} ({conteos?.estado[e] ?? 0})
+                      </Tag.CheckableTag>
+                    ))}
+                  </Space>
+                </div>
+                <Table columns={cols} dataSource={cuentas ?? []} rowKey="id" loading={isLoading}
+                  size="small"
+                  scroll={{ x: 'max-content' }}
+                  pagination={{ pageSize: 10, showSizeChanger: false }}
+                  rowClassName={(r: any) => r.nivel <= 2 ? 'ant-table-row-level-header' : ''} />
+              </>
             ),
           },
           {
