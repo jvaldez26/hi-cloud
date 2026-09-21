@@ -19,7 +19,12 @@ import { reportesFinancierosApi, NodoBalanceGeneral } from '../../api/reportesFi
 const { Title, Text } = Typography;
 const { useBreakpoint } = Grid;
 
-type NodoDisplay = NodoBalanceGeneral & { esCalculada?: boolean; hijos: NodoDisplay[] };
+type NodoDisplay = NodoBalanceGeneral & {
+  esCalculada?: boolean;
+  esSeccionHeader?: boolean;
+  colorSeccion?: string;
+  hijos: NodoDisplay[];
+};
 
 const fmtFecha = (d?: string) => d ? dayjs(d).format('DD/MM/YYYY') : '—';
 
@@ -94,11 +99,25 @@ export default function BalanceGeneralDetallado() {
     navigate(`/libro-mayor?codigo=${encodeURIComponent(codigo)}&hasta=${filtros.fechaCorte}`);
   };
 
+  // Una sola tabla para las 3 secciones — cada una entra como fila de
+  // encabezado (colSpan sobre todo el ancho) seguida de su árbol. Con esto
+  // la tabla usa el ancho completo de la página en vez de repartirse en dos
+  // columnas angostas que obligaban a hacer scroll horizontal por card para
+  // ver Comparado/Diferencia/%.
+  const NUM_COLUMNAS_TOTAL = 2 + (filtros.mostrarPorcentajeVertical ? 1 : 0) + (conComparativo ? 3 : 0);
+
   const columnas = useMemo(() => {
+    const spanCero = (r: NodoDisplay) => r.esSeccionHeader ? { colSpan: 0 } : {};
     const cols: any[] = [
       {
         title: 'Cuenta', dataIndex: 'nombre', key: 'nombre',
-        render: (_: any, r: NodoDisplay) => (
+        onCell: (r: NodoDisplay) => r.esSeccionHeader ? { colSpan: NUM_COLUMNAS_TOTAL } : {},
+        render: (_: any, r: NodoDisplay) => r.esSeccionHeader ? (
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: r.colorSeccion }}>
+            <Text strong style={{ color: r.colorSeccion, fontSize: 14 }}>{r.nombre}</Text>
+            <Text strong style={{ color: r.colorSeccion, fontFamily: 'monospace', fontSize: 14 }}>{fmtMoney(r.monto)}</Text>
+          </div>
+        ) : (
           <Space size={6}>
             {filtros.mostrarCodigo && r.codigo && <Text type="secondary" style={{ fontSize: 11 }}>{r.codigo}</Text>}
             <Text strong={r.esCuentaGrupo} italic={r.esCalculada}>{r.nombre}</Text>
@@ -108,80 +127,61 @@ export default function BalanceGeneralDetallado() {
       },
       {
         title: 'Monto', dataIndex: 'monto', key: 'monto', align: 'right' as const, width: 150,
+        onCell: spanCero,
         render: (v: number) => <Text strong style={{ fontFamily: 'monospace' }}>{fmtMoney(v)}</Text>,
       },
     ];
     if (filtros.mostrarPorcentajeVertical) {
       cols.push({
-        title: '% Vert.', dataIndex: 'porcentajeVertical', key: 'pct', align: 'right' as const, width: 80,
+        title: '% Vert.', dataIndex: 'porcentajeVertical', key: 'pct', align: 'right' as const, width: 90,
+        onCell: spanCero,
         render: (v: number) => <Text type="secondary">{v}%</Text>,
       });
     }
     if (conComparativo) {
       cols.push(
-        { title: 'Comparado', dataIndex: 'comparado', key: 'comparado', align: 'right' as const, width: 140,
-          render: (v?: number) => fmtMoney(v ?? 0) },
-        { title: 'Diferencia', dataIndex: 'diferencia', key: 'diferencia', align: 'right' as const, width: 140,
-          render: (v?: number) => (
+        { title: 'Comparado', dataIndex: 'comparado', key: 'comparado', align: 'right' as const, width: 150,
+          onCell: spanCero, render: (v?: number) => fmtMoney(v ?? 0) },
+        { title: 'Diferencia', dataIndex: 'diferencia', key: 'diferencia', align: 'right' as const, width: 150,
+          onCell: spanCero, render: (v?: number) => (
             <Text style={{ color: (v ?? 0) >= 0 ? '#059669' : '#dc2626' }}>{fmtMoney(v ?? 0)}</Text>
           ) },
-        { title: '%', dataIndex: 'diferenciaPct', key: 'diferenciaPct', align: 'right' as const, width: 80,
-          render: (v: number | null | undefined) => v === null || v === undefined ? '—' : `${v > 0 ? '+' : ''}${v}%` },
+        { title: '%', dataIndex: 'diferenciaPct', key: 'diferenciaPct', align: 'right' as const, width: 90,
+          onCell: spanCero, render: (v: number | null | undefined) => v === null || v === undefined ? '—' : `${v > 0 ? '+' : ''}${v}%` },
       );
     }
     return cols;
-  }, [filtros.mostrarCodigo, filtros.mostrarPorcentajeVertical, filtros.redondearSinDecimales, conComparativo]);
+  }, [filtros.mostrarCodigo, filtros.mostrarPorcentajeVertical, filtros.redondearSinDecimales, conComparativo, NUM_COLUMNAS_TOTAL]);
 
-  const renderSeccion = (titulo: string, color: string, seccion: any, extra?: NodoDisplay[]) => {
-    const nodos = filtrarArbol([...(seccion.nodos as NodoDisplay[]), ...(extra ?? [])], search);
-    return (
-      <Card
-        bordered={false}
-        style={{ borderRadius: 12, border: `2px solid ${color}`, marginBottom: 16 }}
-        title={
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <Text strong>{titulo}</Text>
-            <Text strong style={{ fontFamily: 'monospace' }}>{fmtMoney(seccion.total)}</Text>
-          </div>
-        }
-      >
-        <Table<NodoDisplay>
-          size="small"
-          rowKey="codigo"
-          childrenColumnName="hijos"
-          columns={columnas}
-          dataSource={nodos}
-          pagination={false}
-          scroll={{ x: 'max-content' }}
-          expandable={{
-            expandedRowKeys: expandedKeys,
-            onExpandedRowsChange: (keys) => setExpandedKeys(keys as string[]),
-          }}
-          onRow={(record) => ({
-            onClick: () => { if (!record.esCuentaGrupo && !record.esCalculada && record.codigo) irALibroMayor(record.codigo); },
-            style: (!record.esCuentaGrupo && !record.esCalculada) ? { cursor: 'pointer' } : undefined,
-          })}
-          locale={{ emptyText: 'Sin cuentas para mostrar con estos filtros' }}
-        />
-      </Card>
-    );
-  };
+  const encabezadoSeccion = (key: string, nombre: string, color: string, total: number): NodoDisplay => ({
+    codigo: key, nombre, nivel: 0, tipo: '', esCuentaGrupo: false, esSeccionHeader: true, colorSeccion: color,
+    monto: total, porcentajeVertical: 0, hijos: [],
+  });
 
   const calculadasPatrimonio: NodoDisplay[] = bg ? [
     {
-      codigo: '', nombre: 'Resultado del ejercicio', nivel: 0, tipo: 'patrimonio', esCuentaGrupo: false, esCalculada: true,
+      codigo: '__calculada-resultado-ejercicio', nombre: 'Resultado del ejercicio', nivel: 0, tipo: 'patrimonio', esCuentaGrupo: false, esCalculada: true,
       monto: bg.patrimonio.calculadas.resultadoDelEjercicio.monto,
       porcentajeVertical: bg.patrimonio.total !== 0 ? +((bg.patrimonio.calculadas.resultadoDelEjercicio.monto / bg.patrimonio.total) * 100).toFixed(1) : 0,
       comparado: bg.patrimonio.calculadas.resultadoDelEjercicio.comparado,
       hijos: [],
     },
     {
-      codigo: '', nombre: 'Resultados acumulados', nivel: 0, tipo: 'patrimonio', esCuentaGrupo: false, esCalculada: true,
+      codigo: '__calculada-resultados-acumulados', nombre: 'Resultados acumulados', nivel: 0, tipo: 'patrimonio', esCuentaGrupo: false, esCalculada: true,
       monto: bg.patrimonio.calculadas.resultadosAcumulados.monto,
       porcentajeVertical: bg.patrimonio.total !== 0 ? +((bg.patrimonio.calculadas.resultadosAcumulados.monto / bg.patrimonio.total) * 100).toFixed(1) : 0,
       comparado: bg.patrimonio.calculadas.resultadosAcumulados.comparado,
       hijos: [],
     },
+  ] : [];
+
+  const filas: NodoDisplay[] = bg ? [
+    encabezadoSeccion('__header-activo', 'ACTIVO', '#1e40af', bg.activo.total),
+    ...filtrarArbol(bg.activo.nodos as NodoDisplay[], search),
+    encabezadoSeccion('__header-pasivo', 'PASIVO', '#991b1b', bg.pasivo.total),
+    ...filtrarArbol(bg.pasivo.nodos as NodoDisplay[], search),
+    encabezadoSeccion('__header-patrimonio', 'PATRIMONIO', '#166534', bg.patrimonio.total),
+    ...filtrarArbol([...(bg.patrimonio.nodos as NodoDisplay[]), ...calculadasPatrimonio], search),
   ] : [];
 
   const filtrosContent = (
@@ -339,15 +339,29 @@ export default function BalanceGeneralDetallado() {
               </div>
             </div>
 
-            <Row gutter={[16, 16]}>
-              <Col xs={24} md={12}>
-                {renderSeccion('ACTIVO', '#bfdbfe', bg.activo)}
-              </Col>
-              <Col xs={24} md={12}>
-                {renderSeccion('PASIVO', '#fca5a5', bg.pasivo)}
-                {renderSeccion('PATRIMONIO', '#86efac', bg.patrimonio, calculadasPatrimonio)}
-              </Col>
-            </Row>
+            <Card bordered={false} style={{ borderRadius: 12 }}>
+              <Table<NodoDisplay>
+                size="small"
+                rowKey="codigo"
+                childrenColumnName="hijos"
+                columns={columnas}
+                dataSource={filas}
+                pagination={false}
+                scroll={{ x: 'max-content' }}
+                expandable={{
+                  expandedRowKeys: expandedKeys,
+                  onExpandedRowsChange: (keys) => setExpandedKeys(keys as string[]),
+                }}
+                onRow={(record) => ({
+                  onClick: () => { if (!record.esCuentaGrupo && !record.esCalculada && !record.esSeccionHeader && record.codigo) irALibroMayor(record.codigo); },
+                  style: {
+                    cursor: (!record.esCuentaGrupo && !record.esCalculada && !record.esSeccionHeader) ? 'pointer' : undefined,
+                    background: record.esSeccionHeader ? `${record.colorSeccion}14` : undefined,
+                  },
+                })}
+                locale={{ emptyText: 'Sin cuentas para mostrar con estos filtros' }}
+              />
+            </Card>
           </>
         )}
       </Spin>
