@@ -1,34 +1,67 @@
 /**
- * Notas de Débito — filtros de listar() (2026-09-21). Mismo bug y mismo fix
- * que notas-credito/listar-filtros.spec.ts: el front pedía limit=50&page=1
- * y nunca avanzaba de página, así que sin filtro de fecha en ningún lado
- * las notas más viejas que las últimas 50 quedaban invisibles.
+ * Notas de Débito — filtros y paginación de listar() (2026-09-21). Mismos
+ * dos bugs y mismo fix que notas-credito/listar-filtros.spec.ts:
+ *   1. limit=50 fijo sin avanzar de página escondía notas viejas.
+ *   2. Al bajar a limit=10, quedó expuesto un bug preexistente: paginar
+ *      (skip/take) sobre un JOIN con `nd.detalles` (uno-a-muchos) corrompe
+ *      el total — una nota con varias líneas "consume" varias filas de la
+ *      ventana LIMIT. Fix: IDs paginados sin el join, luego hidratar
+ *      (cliente + detalles) solo esos IDs.
  */
 
 import { NotasDebitoService } from './notas-debito.service';
 
-function makeQueryBuilder(data: any[] = [], total = data.length) {
+function makeIdsQueryBuilder(idEntities: any[] = [], total = idEntities.length) {
   const calls: { method: string; args: any[] }[] = [];
   const qb: any = {};
   const chain = (name: string) => (...args: any[]) => { calls.push({ method: name, args }); return qb; };
-  for (const m of ['leftJoinAndSelect', 'where', 'andWhere', 'orderBy', 'addOrderBy', 'skip', 'take']) qb[m] = chain(m);
-  qb.getManyAndCount = jest.fn().mockResolvedValue([data, total]);
+  for (const m of ['leftJoin', 'leftJoinAndSelect', 'where', 'andWhere', 'orderBy', 'addOrderBy', 'skip', 'take']) qb[m] = chain(m);
+  qb.getManyAndCount = jest.fn().mockResolvedValue([idEntities, total]);
   return { qb, calls };
 }
 
-function makeService(qb: any) {
-  const ndRepo = { createQueryBuilder: () => qb, manager: { query: jest.fn().mockResolvedValue([]) } };
+function makeService(qb: any, hidratadas: any[] = []) {
+  const ndRepo = {
+    createQueryBuilder: () => qb,
+    find:    jest.fn().mockResolvedValue(hidratadas),
+    manager: { query: jest.fn().mockResolvedValue([]) },
+  };
   const tenantSvc = { getEmpresaId: () => 7 };
   const svc: any = Object.create(NotasDebitoService.prototype);
   svc.ndRepo    = ndRepo;
   svc.tenantSvc = tenantSvc;
-  return svc as NotasDebitoService;
+  return { svc: svc as NotasDebitoService, ndRepo };
 }
+
+describe('NotasDebitoService.listar() — paginación en dos pasos (bug del JOIN a detalles)', () => {
+  it('la consulta de IDs paginados NUNCA hace JOIN con detalles', async () => {
+    const { qb, calls } = makeIdsQueryBuilder([{ id: 1 }], 1);
+    const { svc } = makeService(qb, [{ id: 1, numero: 'ND-1', detalles: [] }]);
+
+    await svc.listar({ page: 1, limit: 10 });
+
+    expect(calls.some(c => c.method === 'leftJoinAndSelect' && String(c.args[0]).includes('detalles'))).toBe(false);
+    expect(calls.some(c => c.method === 'leftJoin' && String(c.args[0]).includes('detalles'))).toBe(false);
+  });
+
+  it('hidrata (cliente + detalles) SOLO los IDs de la página, preservando su orden', async () => {
+    const { qb } = makeIdsQueryBuilder([{ id: 5 }, { id: 3 }], 2);
+    const { svc, ndRepo } = makeService(qb, [
+      { id: 3, numero: 'ND-3', detalles: [{ id: 1 }] },
+      { id: 5, numero: 'ND-5', detalles: [{ id: 2 }, { id: 3 }] },
+    ]);
+
+    const r: any = await svc.listar({ page: 1, limit: 10 });
+
+    expect(ndRepo.find).toHaveBeenCalledWith(expect.objectContaining({ relations: ['cliente', 'detalles'] }));
+    expect(r.data.map((n: any) => n.id)).toEqual([5, 3]);
+  });
+});
 
 describe('NotasDebitoService.listar() — filtros', () => {
   it('sin desde/hasta ("Todo"): no excluye notas de meses anteriores', async () => {
-    const { qb, calls } = makeQueryBuilder([{ id: 1, numero: 'ND-1', fecha: '2026-03-01' }], 1);
-    const svc = makeService(qb);
+    const { qb, calls } = makeIdsQueryBuilder([{ id: 1 }], 1);
+    const { svc } = makeService(qb, [{ id: 1, numero: 'ND-1', fecha: '2026-03-01' }]);
 
     const r: any = await svc.listar({ page: 1, limit: 10 });
 
@@ -37,8 +70,8 @@ describe('NotasDebitoService.listar() — filtros', () => {
   });
 
   it('con desde/hasta: agrega el rango exacto sobre nd.fecha', async () => {
-    const { qb, calls } = makeQueryBuilder([], 0);
-    const svc = makeService(qb);
+    const { qb, calls } = makeIdsQueryBuilder([], 0);
+    const { svc } = makeService(qb);
 
     await svc.listar({ page: 1, limit: 10, desde: '2026-08-01', hasta: '2026-08-31' });
 
@@ -47,8 +80,8 @@ describe('NotasDebitoService.listar() — filtros', () => {
   });
 
   it('filtro por e-CF afectado: EXISTS contra ecf.ncfModificado, no JOIN', async () => {
-    const { qb, calls } = makeQueryBuilder([], 0);
-    const svc = makeService(qb);
+    const { qb, calls } = makeIdsQueryBuilder([], 0);
+    const { svc } = makeService(qb);
 
     await svc.listar({ page: 1, limit: 10, ncfAfectado: 'E320000006902' });
 
@@ -59,8 +92,8 @@ describe('NotasDebitoService.listar() — filtros', () => {
   });
 
   it('paginación: page=2, limit=10 → skip=10, take=10', async () => {
-    const { qb, calls } = makeQueryBuilder([], 15);
-    const svc = makeService(qb);
+    const { qb, calls } = makeIdsQueryBuilder([], 15);
+    const { svc } = makeService(qb);
 
     const r: any = await svc.listar({ page: 2, limit: 10 });
 

@@ -2,7 +2,7 @@ import {
   Injectable, NotFoundException, BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import { NotaCredito, EstadoNotaCredito, MotivoNotaCredito } from './entities/nota-credito.entity';
 import { NotaCreditoDetalle } from './entities/nota-credito-detalle.entity';
 import { TenantService } from '../tenant/tenant.service';
@@ -204,20 +204,29 @@ export class NotasCreditoService {
       desde, hasta, clienteId, ncfAfectado, estado, estadoDgii, montoMin, montoMax,
     } = pagination;
 
-    const qb = this.ncRepo
+    // Paginación en DOS pasos. `detalles` es uno-a-muchos: paginar
+    // (skip/take) sobre un JOIN con detalles corrompe tanto el total como
+    // la página — una nota con varias líneas "consume" varias filas de la
+    // ventana LIMIT, así que una página de 10 puede terminar con solo 2 o 3
+    // notas distintas, y getCount() cuenta filas del JOIN, no notas. Este
+    // bug ya existía (limit=50 antes lo disimulaba); con paginación real lo
+    // hizo evidente: una empresa con 79 notas veía "total: 3".
+    //
+    // Paso 1 — IDs paginados, SIN el join a detalles (solo el join a
+    // cliente, que es many-to-one y no multiplica filas).
+    const idsQb = this.ncRepo
       .createQueryBuilder('nc')
-      .leftJoinAndSelect('nc.cliente',  'c')
-      .leftJoinAndSelect('nc.detalles', 'd')
+      .leftJoin('nc.cliente', 'c')
       .where('nc.empresaId = :eid', { eid: empresaId })
       .andWhere('nc.isActive = :a',  { a: true });
 
-    if (sucursalId) qb.andWhere('(nc.sucursalId = :sid OR nc.sucursalId IS NULL)', { sid: sucursalId });
+    if (sucursalId) idsQb.andWhere('(nc.sucursalId = :sid OR nc.sucursalId IS NULL)', { sid: sucursalId });
 
     // El buscador principal también encuentra por e-CF — el propio (E34) o el
     // que afecta (E31/E32...) — no solo por número interno de la nota o
     // cliente. Antes había que abrir "Filtros" → "e-CF afectado" para eso;
     // ahora también funciona escribiéndolo directo en la caja de búsqueda.
-    if (search) qb.andWhere(
+    if (search) idsQb.andWhere(
       `(nc.numero ILIKE :s OR c.nombre ILIKE :s OR EXISTS (
          SELECT 1 FROM ecf e WHERE e."documentoOrigenId" = nc.id AND e."documentoOrigenTipo" = 'NOTA_CREDITO'
            AND e."isActive" = true AND (e.numero ILIKE :s OR e."ncfModificado" ILIKE :s)
@@ -230,32 +239,45 @@ export class NotasCreditoService {
     // había manera de pedirle al servidor una página más allá de la primera
     // ni de acotar el rango. Sin `desde`/`hasta` no se filtra por fecha (el
     // caso "Todo" del front).
-    if (desde) qb.andWhere('nc.fecha >= :desde', { desde });
-    if (hasta) qb.andWhere('nc.fecha <= :hasta', { hasta });
+    if (desde) idsQb.andWhere('nc.fecha >= :desde', { desde });
+    if (hasta) idsQb.andWhere('nc.fecha <= :hasta', { hasta });
 
-    if (clienteId) qb.andWhere('nc.clienteId = :clienteId', { clienteId });
-    if (estado)    qb.andWhere('nc.estado = :estado', { estado });
-    if (montoMin != null) qb.andWhere('nc.total >= :montoMin', { montoMin });
-    if (montoMax != null) qb.andWhere('nc.total <= :montoMax', { montoMax });
+    if (clienteId) idsQb.andWhere('nc.clienteId = :clienteId', { clienteId });
+    if (estado)    idsQb.andWhere('nc.estado = :estado', { estado });
+    if (montoMin != null) idsQb.andWhere('nc.total >= :montoMin', { montoMin });
+    if (montoMax != null) idsQb.andWhere('nc.total <= :montoMax', { montoMax });
 
     // EXISTS en vez de LEFT JOIN: una nota puede tener más de un intento de
     // e-CF (rechazado/observado y luego reemitido) con "isActive" = true en
     // ambos — un JOIN normal duplicaría la fila de la nota en el resultado.
-    if (ncfAfectado) qb.andWhere(
+    if (ncfAfectado) idsQb.andWhere(
       `EXISTS (SELECT 1 FROM ecf e WHERE e."documentoOrigenId" = nc.id AND e."documentoOrigenTipo" = 'NOTA_CREDITO' AND e."isActive" = true AND e."ncfModificado" ILIKE :ncfAfectado)`,
       { ncfAfectado: `%${ncfAfectado}%` },
     );
-    if (estadoDgii) qb.andWhere(
+    if (estadoDgii) idsQb.andWhere(
       `EXISTS (SELECT 1 FROM ecf e WHERE e."documentoOrigenId" = nc.id AND e."documentoOrigenTipo" = 'NOTA_CREDITO' AND e."isActive" = true AND e."estadoDGII" = :estadoDgii)`,
       { estadoDgii },
     );
 
-    const [data, total] = await qb
+    const [idEntities, total] = await idsQb
       .orderBy('nc.createdAt', 'DESC')
-      .addOrderBy('d.id', 'ASC')
       .skip((page - 1) * limit)
       .take(Math.min(limit, 100))
       .getManyAndCount();
+    const idsPagina = idEntities.map(n => n.id);
+
+    // Paso 2 — hidratar las entidades completas (cliente + detalles) SOLO
+    // para esos IDs, sin límite: ahora sí es seguro juntarlas con el JOIN de
+    // detalles porque ya no hay skip/take sobre este resultado.
+    let data: NotaCredito[] = [];
+    if (idsPagina.length > 0) {
+      const entidades = await this.ncRepo.find({
+        where: { id: In(idsPagina) },
+        relations: ['cliente', 'detalles'],
+      });
+      const porId = new Map(entidades.map(n => [n.id, n]));
+      data = idsPagina.map(id => porId.get(id)).filter((n): n is NotaCredito => !!n);
+    }
 
     // Enriquecer con datos ECF (número y estado) para que el frontend
     // pueda ocultar el botón "e-CF E34" cuando ya fue emitido

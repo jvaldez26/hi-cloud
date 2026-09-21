@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { NotaDebito, EstadoNotaDebito } from './entities/nota-debito.entity';
 import { NotaDebitoDetalle } from './entities/nota-debito-detalle.entity';
@@ -150,43 +150,57 @@ export class NotasDebitoService {
       desde, hasta, clienteId, ncfAfectado, estado, estadoDgii, montoMin, montoMax,
     } = pagination;
 
-    const qb = this.ndRepo
+    // Paginación en DOS pasos — mismo bug y mismo fix que notas-credito:
+    // `detalles` es uno-a-muchos, así que paginar (skip/take) sobre un JOIN
+    // con detalles corrompe el total y la página (una nota con varias
+    // líneas "consume" varias filas de la ventana LIMIT). Ver el comentario
+    // largo en NotasCreditoService.listar().
+    const idsQb = this.ndRepo
       .createQueryBuilder('nd')
-      .leftJoinAndSelect('nd.cliente',  'c')
-      .leftJoinAndSelect('nd.detalles', 'd')
+      .leftJoin('nd.cliente', 'c')
       .where('nd.empresaId = :eid', { eid: empresaId })
       .andWhere('nd.isActive = :a',  { a: true });
 
-    if (search) qb.andWhere('(nd.numero ILIKE :s OR c.nombre ILIKE :s)', { s: `%${search}%` });
+    if (search) idsQb.andWhere('(nd.numero ILIKE :s OR c.nombre ILIKE :s)', { s: `%${search}%` });
 
     // Mismo problema que en notas-credito: sin rango de fecha (y con el
     // límite fijo que tenía el front) las notas más viejas quedaban
     // invisibles para siempre. Sin desde/hasta no se filtra ("Todo").
-    if (desde) qb.andWhere('nd.fecha >= :desde', { desde });
-    if (hasta) qb.andWhere('nd.fecha <= :hasta', { hasta });
+    if (desde) idsQb.andWhere('nd.fecha >= :desde', { desde });
+    if (hasta) idsQb.andWhere('nd.fecha <= :hasta', { hasta });
 
-    if (clienteId) qb.andWhere('nd.clienteId = :clienteId', { clienteId });
-    if (estado)    qb.andWhere('nd.estado = :estado', { estado });
-    if (montoMin != null) qb.andWhere('nd.total >= :montoMin', { montoMin });
-    if (montoMax != null) qb.andWhere('nd.total <= :montoMax', { montoMax });
+    if (clienteId) idsQb.andWhere('nd.clienteId = :clienteId', { clienteId });
+    if (estado)    idsQb.andWhere('nd.estado = :estado', { estado });
+    if (montoMin != null) idsQb.andWhere('nd.total >= :montoMin', { montoMin });
+    if (montoMax != null) idsQb.andWhere('nd.total <= :montoMax', { montoMax });
 
     // EXISTS, no JOIN — una nota puede tener más de un intento de e-CF
     // (rechazado/observado y reemitido) con isActive=true en ambos.
-    if (ncfAfectado) qb.andWhere(
+    if (ncfAfectado) idsQb.andWhere(
       `EXISTS (SELECT 1 FROM ecf e WHERE e."documentoOrigenId" = nd.id AND e."documentoOrigenTipo" = 'NOTA_DEBITO' AND e."isActive" = true AND e."ncfModificado" ILIKE :ncfAfectado)`,
       { ncfAfectado: `%${ncfAfectado}%` },
     );
-    if (estadoDgii) qb.andWhere(
+    if (estadoDgii) idsQb.andWhere(
       `EXISTS (SELECT 1 FROM ecf e WHERE e."documentoOrigenId" = nd.id AND e."documentoOrigenTipo" = 'NOTA_DEBITO' AND e."isActive" = true AND e."estadoDGII" = :estadoDgii)`,
       { estadoDgii },
     );
 
-    const [data, total] = await qb
+    const [idEntities, total] = await idsQb
       .orderBy('nd.createdAt', 'DESC')
-      .addOrderBy('d.id', 'ASC')
       .skip((page - 1) * limit)
       .take(Math.min(limit, 100))
       .getManyAndCount();
+    const idsPagina = idEntities.map(n => n.id);
+
+    let data: NotaDebito[] = [];
+    if (idsPagina.length > 0) {
+      const entidades = await this.ndRepo.find({
+        where: { id: In(idsPagina) },
+        relations: ['cliente', 'detalles'],
+      });
+      const porId = new Map(entidades.map(n => [n.id, n]));
+      data = idsPagina.map(id => porId.get(id)).filter((n): n is NotaDebito => !!n);
+    }
 
     // Enriquecer con datos ECF para ocultar botón "e-CF E33" cuando ya fue
     // emitido, y para mostrar el eNCF que afecta (mismo dato que ya usa

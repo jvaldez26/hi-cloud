@@ -1,60 +1,110 @@
 /**
- * Notas de Crédito — filtros de listar() (2026-09-21).
+ * Notas de Crédito — filtros y paginación de listar() (2026-09-21, dos
+ * hallazgos el mismo día).
  *
- * Antes, el front pedía `/notas-credito?limit=50&page=1` y nunca avanzaba
- * `page` (el paginador de la tabla era 100% cliente sobre esos mismos 50
- * registros) — sin filtro de fecha en ningún lado, si la empresa tenía más
- * de 50 notas en total, las de meses anteriores quedaban invisibles para
- * siempre: no había manera de pedirle al servidor una página más allá de la
- * primera ni de acotar el rango.
+ * 1. El front pedía `/notas-credito?limit=50&page=1` y nunca avanzaba
+ *    `page` (el paginador de la tabla era 100% cliente sobre esos mismos 50
+ *    registros) — sin filtro de fecha en ningún lado, si la empresa tenía
+ *    más de 50 notas en total, las de meses anteriores quedaban invisibles
+ *    para siempre.
  *
- * `listar()` ahora acepta desde/hasta/clienteId/ncfAfectado/estado/
- * estadoDgii/montoMin/montoMax, todos opcionales — sin ellos no se agrega
- * ninguna condición (el caso "Todo" del front), y la paginación real
- * (skip/take derivados de page/limit) ya no depende de un límite fijo.
+ * 2. Al arreglar (1) y bajar el límite a 10 (el estándar del proyecto),
+ *    apareció un bug MÁS GRAVE que ya existía pero el límite de 50 lo
+ *    disimulaba: `listar()` paginaba (skip/take) sobre un JOIN con
+ *    `nc.detalles`, que es uno-a-muchos. Una nota con varias líneas
+ *    "consume" varias filas de la ventana LIMIT, así que TypeORM contaba
+ *    filas del JOIN, no notas distintas — una empresa con 79 notas veía
+ *    "total: 3" y solo 3 notas en toda la lista, ninguna manera de ver el
+ *    resto. Verificado en vivo contra un backup restaurado (empresa 44:
+ *    79 notas reales, listar() devolvía total:3 / 3 filas antes del fix).
+ *
+ *    Fix: paginación en dos pasos — IDs paginados SIN el join a detalles
+ *    (getManyAndCount correcto), después hidratar (cliente + detalles) SOLO
+ *    esos IDs con `find({ where: { id: In(...) } })`, sin límite.
  */
 
 import { NotasCreditoService } from './notas-credito.service';
 
-function makeQueryBuilder(data: any[] = [], total = data.length) {
+function makeIdsQueryBuilder(idEntities: any[] = [], total = idEntities.length) {
   const calls: { method: string; args: any[] }[] = [];
   const qb: any = {};
   const chain = (name: string) => (...args: any[]) => { calls.push({ method: name, args }); return qb; };
-  for (const m of ['leftJoinAndSelect', 'where', 'andWhere', 'orderBy', 'addOrderBy', 'skip', 'take']) qb[m] = chain(m);
-  qb.getManyAndCount = jest.fn().mockResolvedValue([data, total]);
+  for (const m of ['leftJoin', 'leftJoinAndSelect', 'where', 'andWhere', 'orderBy', 'addOrderBy', 'skip', 'take']) qb[m] = chain(m);
+  qb.getManyAndCount = jest.fn().mockResolvedValue([idEntities, total]);
   return { qb, calls };
 }
 
-function makeService(qb: any) {
-  const ncRepo = { createQueryBuilder: () => qb, manager: { query: jest.fn().mockResolvedValue([]) } };
+function makeService(qb: any, hidratadas: any[] = []) {
+  const ncRepo = {
+    createQueryBuilder: () => qb,
+    find:    jest.fn().mockResolvedValue(hidratadas),
+    manager: { query: jest.fn().mockResolvedValue([]) },
+  };
   const tenantSvc = { getEmpresaId: () => 7, getSucursalId: () => null };
   const svc: any = Object.create(NotasCreditoService.prototype);
   svc.ncRepo    = ncRepo;
   svc.tenantSvc = tenantSvc;
-  return svc as NotasCreditoService;
+  return { svc: svc as NotasCreditoService, ncRepo };
 }
 
 const condFecha = (calls: any[]) =>
   calls.filter(c => c.method === 'andWhere' && typeof c.args[0] === 'string' && c.args[0].includes('nc.fecha'));
 
+describe('NotasCreditoService.listar() — paginación en dos pasos (bug del JOIN a detalles)', () => {
+  it('la consulta de IDs paginados NUNCA hace JOIN con detalles — así el total/página no se corrompe', async () => {
+    const { qb, calls } = makeIdsQueryBuilder([{ id: 1 }], 1);
+    const { svc } = makeService(qb, [{ id: 1, numero: 'NC-1', detalles: [] }]);
+
+    await svc.listar({ page: 1, limit: 10 });
+
+    expect(calls.some(c => c.method === 'leftJoinAndSelect' && String(c.args[0]).includes('detalles'))).toBe(false);
+    expect(calls.some(c => c.method === 'leftJoin' && String(c.args[0]).includes('detalles'))).toBe(false);
+  });
+
+  it('hidrata (cliente + detalles) SOLO los IDs de la página, vía find({ where: { id: In(...) } })', async () => {
+    const { qb } = makeIdsQueryBuilder([{ id: 5 }, { id: 3 }], 2);
+    const { svc, ncRepo } = makeService(qb, [
+      { id: 3, numero: 'NC-3', detalles: [{ id: 1 }] },
+      { id: 5, numero: 'NC-5', detalles: [{ id: 2 }, { id: 3 }] },
+    ]);
+
+    const r: any = await svc.listar({ page: 1, limit: 10 });
+
+    expect(ncRepo.find).toHaveBeenCalledWith(expect.objectContaining({
+      relations: ['cliente', 'detalles'],
+    }));
+    // Preserva el orden de la consulta paginada (5, luego 3), no el orden en que find() las devolvió.
+    expect(r.data.map((n: any) => n.id)).toEqual([5, 3]);
+  });
+
+  it('79 notas reales, límite 10: total y totalPages correctos — no "total: 3" como con el bug', async () => {
+    const idEntities = Array.from({ length: 10 }, (_, i) => ({ id: 79 - i }));
+    const hidratadas  = idEntities.map(e => ({ id: e.id, numero: `NC-${e.id}`, detalles: [{}, {}, {}] })); // varias líneas c/u
+    const { qb } = makeIdsQueryBuilder(idEntities, 79);
+    const { svc } = makeService(qb, hidratadas);
+
+    const r: any = await svc.listar({ page: 1, limit: 10 });
+
+    expect(r.meta).toEqual({ total: 79, page: 1, limit: 10, totalPages: 8 });
+    expect(r.data).toHaveLength(10);
+  });
+});
+
 describe('NotasCreditoService.listar() — filtros', () => {
   it('sin desde/hasta ("Todo"): no agrega condición de rango — las notas de meses anteriores no quedan excluidas', async () => {
-    const notaVieja = { id: 1, numero: 'NC-1', fecha: '2026-03-01' };
-    const { qb, calls } = makeQueryBuilder([notaVieja], 1);
-    const svc = makeService(qb);
+    const { qb, calls } = makeIdsQueryBuilder([{ id: 1 }], 1);
+    const { svc } = makeService(qb, [{ id: 1, numero: 'NC-1', fecha: '2026-03-01' }]);
 
     const r: any = await svc.listar({ page: 1, limit: 10 });
 
     expect(condFecha(calls)).toHaveLength(0);
-    // El mock devuelve la nota vieja tal cual (sin filtrar antes) — confirma
-    // que listar() no le añadió ninguna condición que la hubiera excluido.
     expect(r.data).toHaveLength(1);
     expect(r.data[0].id).toBe(1);
   });
 
   it('con desde/hasta: agrega el rango exacto sobre nc.fecha', async () => {
-    const { qb, calls } = makeQueryBuilder([], 0);
-    const svc = makeService(qb);
+    const { qb, calls } = makeIdsQueryBuilder([], 0);
+    const { svc } = makeService(qb);
 
     await svc.listar({ page: 1, limit: 10, desde: '2026-08-01', hasta: '2026-08-31' });
 
@@ -63,8 +113,8 @@ describe('NotasCreditoService.listar() — filtros', () => {
   });
 
   it('filtro por e-CF afectado: agrega un EXISTS contra ecf.ncfModificado, no un JOIN (evita duplicar la fila)', async () => {
-    const { qb, calls } = makeQueryBuilder([], 0);
-    const svc = makeService(qb);
+    const { qb, calls } = makeIdsQueryBuilder([], 0);
+    const { svc } = makeService(qb);
 
     await svc.listar({ page: 1, limit: 10, ncfAfectado: 'E320000006902' });
 
@@ -75,8 +125,8 @@ describe('NotasCreditoService.listar() — filtros', () => {
   });
 
   it('el buscador principal (search) también encuentra por e-CF propio o afectado, no solo número/cliente', async () => {
-    const { qb, calls } = makeQueryBuilder([], 0);
-    const svc = makeService(qb);
+    const { qb, calls } = makeIdsQueryBuilder([], 0);
+    const { svc } = makeService(qb);
 
     await svc.listar({ page: 1, limit: 10, search: 'E340000000032' });
 
@@ -89,8 +139,8 @@ describe('NotasCreditoService.listar() — filtros', () => {
   });
 
   it('estadoDgii: agrega un EXISTS contra ecf."estadoDGII"', async () => {
-    const { qb, calls } = makeQueryBuilder([], 0);
-    const svc = makeService(qb);
+    const { qb, calls } = makeIdsQueryBuilder([], 0);
+    const { svc } = makeService(qb);
 
     await svc.listar({ page: 1, limit: 10, estadoDgii: 'rechazado' });
 
@@ -100,8 +150,8 @@ describe('NotasCreditoService.listar() — filtros', () => {
   });
 
   it('paginación: page=3, limit=10 → skip=20, take=10', async () => {
-    const { qb, calls } = makeQueryBuilder([], 35);
-    const svc = makeService(qb);
+    const { qb, calls } = makeIdsQueryBuilder([], 35);
+    const { svc } = makeService(qb);
 
     const r: any = await svc.listar({ page: 3, limit: 10 });
 
@@ -111,8 +161,8 @@ describe('NotasCreditoService.listar() — filtros', () => {
   });
 
   it('clienteId, estado y rango de monto agregan sus propias condiciones', async () => {
-    const { qb, calls } = makeQueryBuilder([], 0);
-    const svc = makeService(qb);
+    const { qb, calls } = makeIdsQueryBuilder([], 0);
+    const { svc } = makeService(qb);
 
     await svc.listar({ page: 1, limit: 10, clienteId: 42, estado: 'emitida', montoMin: 100, montoMax: 500 });
 
