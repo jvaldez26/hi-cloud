@@ -846,15 +846,31 @@ jobs:
             # exit 1. Un rollback que dejó el build anterior de pie NUNCA
             # debe terminar el job en verde solo porque el build anterior
             # también respondía bien.
+            #
+            # 5 intentos con pausa, igual que el health check de arriba — sin
+            # esto, el primer intento de este mismo chequeo (2026-09-21,
+            # commit c73b4b79) disparó un rollback en falso: /health necesitó
+            # dos intentos para pasar de "error" a "healthy" justo tras el
+            # reload, y este chequeo —de un solo tiro— cayó en esa misma
+            # ventana de unos segundos y no encontró build_id. La ventana de
+            # inestabilidad normal del reload es de segundos; un proceso
+            # realmente viejo la sigue fallando en el intento 5 igual que en
+            # el 1, así que 5 intentos no le abren la puerta a la staleness
+            # real que este chequeo existe para atrapar.
             # ══════════════════════════════════════════════════════════════════
             if [ "$STATUS" = "healthy" ] || [ "$STATUS" = "degraded" ]; then
               echo "━━━ Verificación de build_id ━━━"
-              DEPLOYED_BUILD_ID=$(curl -sk --max-time 10 https://hicloudrd.com/api/v1/version | \
-                python3 -c "import sys,json; print(json.load(sys.stdin).get('build_id') or '')" 2>/dev/null || echo "")
+              DEPLOYED_BUILD_ID=""
+              for bi in 1 2 3 4 5; do
+                DEPLOYED_BUILD_ID=$(curl -sk --max-time 10 https://hicloudrd.com/api/v1/version | \
+                  python3 -c "import sys,json; print(json.load(sys.stdin).get('build_id') or '')" 2>/dev/null || echo "")
+                echo "  Intento $bi/5 — build_id en producción: ${DEPLOYED_BUILD_ID:-<vacío o /version no respondió>}"
+                [ "$DEPLOYED_BUILD_ID" = "$DEPLOY_SHA" ] && break
+                [ "$bi" -lt 5 ] && sleep 6
+              done
               echo "  Esperado (este deploy): $DEPLOY_SHA"
-              echo "  En producción:          ${DEPLOYED_BUILD_ID:-<vacío o /version no respondió>}"
               if [ "$DEPLOYED_BUILD_ID" != "$DEPLOY_SHA" ]; then
-                echo "  ❌ build_id NO coincide — el proceso que responde no es el que se acaba de desplegar"
+                echo "  ❌ build_id NO coincide tras 5 intentos — el proceso que responde no es el que se acaba de desplegar"
                 STATUS="error"
               else
                 echo "  ✅ build_id coincide — el código nuevo está realmente sirviendo tráfico"
