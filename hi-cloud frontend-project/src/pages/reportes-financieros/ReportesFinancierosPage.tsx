@@ -5,12 +5,12 @@ import {
 } from 'antd';
 import {
   BarChartOutlined, PrinterOutlined, DownloadOutlined,
-  CheckCircleOutlined, WarningOutlined, BankOutlined,
-  DollarOutlined, RiseOutlined, FallOutlined, FilePdfOutlined,
+  BankOutlined, DollarOutlined, RiseOutlined, FallOutlined, FilePdfOutlined,
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import api from '../../api/client';
+import BalanceGeneralDetallado from './BalanceGeneralDetallado';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -59,22 +59,14 @@ export default function ReportesFinancierosPage() {
 
   const [tabActiva, setTabActiva] = useState('estado-resultados');
   const [rango, setRango]         = useState<[dayjs.Dayjs, dayjs.Dayjs]>([inicioAno, hoy]);
-  const [fechaBalance, setFechaBalance] = useState<dayjs.Dayjs>(hoy);
 
   const desde = rango[0].format('YYYY-MM-DD');
   const hasta = rango[1].format('YYYY-MM-DD');
-  const corte = fechaBalance.format('YYYY-MM-DD');
 
   const { data: er, isLoading: loadingER } = useQuery<any>({
     queryKey: ['estado-resultados', desde, hasta],
     queryFn:  () => api.get(`/reportes-financieros/estado-resultados?desde=${desde}&hasta=${hasta}`).then((r: any) => r.data?.data ?? r.data),
     enabled:  tabActiva === 'estado-resultados',
-  });
-
-  const { data: bg, isLoading: loadingBG } = useQuery<any>({
-    queryKey: ['balance-general', corte],
-    queryFn:  () => api.get(`/reportes-financieros/balance-general?fechaCorte=${corte}`).then((r: any) => r.data?.data ?? r.data),
-    enabled:  tabActiva === 'balance-general',
   });
 
   const handlePrint = () => window.print();
@@ -109,24 +101,6 @@ export default function ReportesFinancierosPage() {
               Descargar PDF
             </Button>
           )}
-          {tabActiva === 'balance-general' && (
-            <Button icon={<FilePdfOutlined />} type="primary" danger
-              onClick={async () => {
-                const empresaId = localStorage.getItem('empresaId') ?? '';
-                const res = await fetch(
-                  `/api/v1/reportes-financieros/balance-general/pdf?fechaCorte=${corte}`,
-                  { headers: { 'X-Empresa-ID': empresaId } }
-                );
-                if (!res.ok) { alert('Error generando PDF'); return; }
-                const blob = await res.blob();
-                const a = document.createElement('a');
-                a.href = URL.createObjectURL(blob);
-                a.download = `Balance-General-${corte}.pdf`;
-                a.click(); URL.revokeObjectURL(a.href);
-              }}>
-              Descargar PDF
-            </Button>
-          )}
         </Space>
       </div>
 
@@ -141,13 +115,6 @@ export default function ReportesFinancierosPage() {
               format="DD/MM/YYYY"
               picker="month"
               style={{ width: 240 }}
-            />
-          ) : tabActiva === 'balance-general' ? (
-            <DatePicker
-              value={fechaBalance}
-              onChange={d => d && setFechaBalance(d)}
-              format="DD/MM/YYYY"
-              style={{ width: 160 }}
             />
           ) : null
         }
@@ -249,146 +216,7 @@ export default function ReportesFinancierosPage() {
           {
             key: 'balance-general',
             label: 'Balance General',
-            children: (
-              <Spin spinning={loadingBG}>
-                {bg && (
-                  <>
-                    {/* Ecuación contable */}
-                    <div style={{
-                      background: bg.totales.cuadrado ? '#f0fdf4' : '#fff7ed',
-                      border: `2px solid ${bg.totales.cuadrado ? '#86efac' : '#fcd34d'}`,
-                      borderRadius: 12, padding: '12px 20px', marginBottom: 24,
-                      display: 'flex', alignItems: 'center', gap: 16,
-                    }}>
-                      {bg.totales.cuadrado
-                        ? <CheckCircleOutlined style={{ color: '#059669', fontSize: 20 }} />
-                        : <WarningOutlined style={{ color: '#d97706', fontSize: 20 }} />
-                      }
-                      <div>
-                        <Text strong>Ecuación Contable — Fecha de Corte: {fechaBalance.format('DD/MM/YYYY')}</Text>
-                        <div style={{ fontSize: 13, color: '#6b7280' }}>
-                          Activos ({fmt(bg.totales.activos)}) = Pasivos + Patrimonio ({fmt(bg.totales.pasivosPatrimonio)})
-                          {bg.totales.cuadrado
-                            ? <Tag color="green" style={{ marginLeft: 8 }}>✓ Cuadrado</Tag>
-                            : <Tag color="orange" style={{ marginLeft: 8 }}>Diferencia: {fmt(Math.abs(bg.totales.ecuacion))}</Tag>
-                          }
-                        </div>
-                      </div>
-                    </div>
-
-                    <Row gutter={[16, 16]}>
-                      {/* ACTIVOS */}
-                      <Col xs={24} md={12}>
-                        <Card
-                          bordered={false}
-                          style={{ borderRadius: 12, border: '2px solid #bfdbfe' }}
-                          title={
-                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                              <Text strong style={{ color: '#1e40af' }}>ACTIVOS</Text>
-                              <Text strong style={{ color: '#1e40af' }}>{fmt(bg.activo.total)}</Text>
-                            </div>
-                          }
-                        >
-                          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                            <tbody>
-                              <tr style={{ background: '#dbeafe' }}>
-                                <td colSpan={2} style={{ padding: '6px 12px', fontWeight: 600, fontSize: 12, color: '#1e40af' }}>
-                                  Activo Corriente — {fmt(bg.activo.corriente.total)}
-                                </td>
-                              </tr>
-                              {bg.activo.corriente.cuentas.map((c: any) => (
-                                <tr key={c.codigo} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                                  <td style={{ padding: '5px 12px', paddingLeft: 24, fontSize: 12 }}>
-                                    <Text type="secondary" style={{ fontSize: 10, marginRight: 6 }}>{c.codigo}</Text>
-                                    {c.nombre}
-                                  </td>
-                                  <td style={{ padding: '5px 12px', textAlign: 'right', fontSize: 12, fontFamily: 'mono' }}>
-                                    {fmt(c.saldo)}
-                                  </td>
-                                </tr>
-                              ))}
-                              <tr style={{ background: '#eff6ff' }}>
-                                <td colSpan={2} style={{ padding: '6px 12px', fontWeight: 600, fontSize: 12, color: '#1e40af' }}>
-                                  Activo No Corriente — {fmt(bg.activo.noCorriente.total)}
-                                </td>
-                              </tr>
-                              {bg.activo.noCorriente.cuentas.map((c: any) => (
-                                <tr key={c.codigo} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                                  <td style={{ padding: '5px 12px', paddingLeft: 24, fontSize: 12 }}>
-                                    <Text type="secondary" style={{ fontSize: 10, marginRight: 6 }}>{c.codigo}</Text>
-                                    {c.nombre}
-                                  </td>
-                                  <td style={{ padding: '5px 12px', textAlign: 'right', fontSize: 12, fontFamily: 'mono' }}>
-                                    {fmt(c.saldo)}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </Card>
-                      </Col>
-
-                      {/* PASIVOS + PATRIMONIO */}
-                      <Col xs={24} md={12}>
-                        <Card
-                          bordered={false}
-                          style={{ borderRadius: 12, border: '2px solid #fca5a5', marginBottom: 16 }}
-                          title={
-                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                              <Text strong style={{ color: '#991b1b' }}>PASIVOS</Text>
-                              <Text strong style={{ color: '#991b1b' }}>{fmt(bg.pasivo.total)}</Text>
-                            </div>
-                          }
-                        >
-                          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                            <tbody>
-                              {[...bg.pasivo.corriente.cuentas, ...bg.pasivo.noCorriente.cuentas].map((c: any) => (
-                                <tr key={c.codigo} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                                  <td style={{ padding: '5px 12px', fontSize: 12 }}>
-                                    <Text type="secondary" style={{ fontSize: 10, marginRight: 6 }}>{c.codigo}</Text>
-                                    {c.nombre}
-                                  </td>
-                                  <td style={{ padding: '5px 12px', textAlign: 'right', fontSize: 12, fontFamily: 'mono' }}>
-                                    {fmt(c.saldo)}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </Card>
-
-                        <Card
-                          bordered={false}
-                          style={{ borderRadius: 12, border: '2px solid #86efac' }}
-                          title={
-                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                              <Text strong style={{ color: '#166534' }}>PATRIMONIO</Text>
-                              <Text strong style={{ color: '#166534' }}>{fmt(bg.patrimonio.total)}</Text>
-                            </div>
-                          }
-                        >
-                          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                            <tbody>
-                              {bg.patrimonio.cuentas.map((c: any) => (
-                                <tr key={c.codigo} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                                  <td style={{ padding: '5px 12px', fontSize: 12 }}>
-                                    <Text type="secondary" style={{ fontSize: 10, marginRight: 6 }}>{c.codigo}</Text>
-                                    {c.nombre}
-                                  </td>
-                                  <td style={{ padding: '5px 12px', textAlign: 'right', fontSize: 12, fontFamily: 'mono' }}>
-                                    {fmt(c.saldo)}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </Card>
-                      </Col>
-                    </Row>
-                  </>
-                )}
-              </Spin>
-            ),
+            children: <BalanceGeneralDetallado />,
           },
         ]}
       />

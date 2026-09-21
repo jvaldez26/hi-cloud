@@ -8,6 +8,8 @@ import { UserRole } from '../users/enums/user-role.enum';
 import { ReportesFinancierosService } from './reportes-financieros.service';
 import { BalanceComprobacionService } from './balance-comprobacion.service';
 import { ReportesPdfService }         from './reportes-pdf.service';
+import { BalanceGeneralDetalladoService, FiltrosBalanceGeneralDetallado } from './balance-general-detallado.service';
+import { BalanceGeneralExportService } from './balance-general-export.service';
 import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 @ApiTags('Reportes Financieros')
@@ -18,10 +20,30 @@ import { fechaHoyRD } from '../common/utils/fecha-local.util';
 @Controller('reportes-financieros')
 export class ReportesFinancierosController {
   constructor(
-    private readonly svc:    ReportesFinancierosService,
-    private readonly balSvc: BalanceComprobacionService,
-    private readonly pdfSvc: ReportesPdfService,
+    private readonly svc:      ReportesFinancierosService,
+    private readonly balSvc:   BalanceComprobacionService,
+    private readonly pdfSvc:   ReportesPdfService,
+    private readonly bgSvc:    BalanceGeneralDetalladoService,
+    private readonly bgExpSvc: BalanceGeneralExportService,
   ) {}
+
+  /** Query params → FiltrosBalanceGeneralDetallado (validación real vive en el service). */
+  private parseFiltrosBG(q: Record<string, string | undefined>): FiltrosBalanceGeneralDetallado {
+    return {
+      fechaCorte:            q.fechaCorte ?? fechaHoyRD(),
+      compararCon:           q.compararCon as any,
+      fechaComparacion:      q.fechaComparacion,
+      nivelDetalle:          (q.nivelDetalle === 'todos' ? 'todos' : q.nivelDetalle ? Number(q.nivelDetalle) : undefined) as any,
+      ocultarCuentasEnCero:  q.ocultarCuentasEnCero === undefined ? undefined : q.ocultarCuentasEnCero !== 'false',
+    };
+  }
+
+  private parseOpcionesExportBG(q: Record<string, string | undefined>) {
+    return {
+      mostrarCodigo:              q.mostrarCodigo === undefined ? undefined : q.mostrarCodigo !== 'false',
+      mostrarPorcentajeVertical:  q.mostrarPorcentajeVertical === undefined ? undefined : q.mostrarPorcentajeVertical !== 'false',
+    };
+  }
 
   @Get('resumen')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
@@ -46,6 +68,44 @@ export class ReportesFinancierosController {
   @ApiOperation({ summary: 'Balance General a una fecha de corte' })
   balanceGeneral(@Query('fechaCorte') fechaCorte?: string) {
     return this.svc.balanceGeneral(fechaCorte ?? fechaHoyRD());
+  }
+
+  @Get('balance-general-detallado')
+  @ApiOperation({ summary: 'Balance General con filtros: comparativo, nivel de detalle, árbol jerárquico y % vertical' })
+  @ApiQuery({ name: 'fechaCorte', required: false })
+  @ApiQuery({ name: 'compararCon', required: false, enum: ['ninguno', 'mismo-mes-anio-anterior', 'cierre-anio-anterior', 'fecha-manual'] })
+  @ApiQuery({ name: 'fechaComparacion', required: false })
+  @ApiQuery({ name: 'nivelDetalle', required: false, enum: ['1', '2', '3', 'todos'] })
+  @ApiQuery({ name: 'ocultarCuentasEnCero', required: false })
+  balanceGeneralDetallado(@Query() q: Record<string, string | undefined>) {
+    return this.bgSvc.generar(this.parseFiltrosBG(q));
+  }
+
+  @Get('balance-general-detallado/excel')
+  @ApiOperation({ summary: 'Descargar Balance General detallado en Excel, respetando los filtros activos' })
+  async balanceGeneralDetalladoExcel(@Query() q: Record<string, string | undefined>, @Res() res: Response) {
+    const { buffer, filename } = await this.bgExpSvc.generarExcel(this.parseFiltrosBG(q), this.parseOpcionesExportBG(q));
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    });
+    res.send(buffer);
+  }
+
+  @Get('balance-general-detallado/csv')
+  @ApiOperation({ summary: 'Descargar Balance General detallado en CSV, respetando los filtros activos' })
+  async balanceGeneralDetalladoCsv(@Query() q: Record<string, string | undefined>, @Res() res: Response) {
+    const { buffer, filename } = await this.bgExpSvc.generarCsv(this.parseFiltrosBG(q), this.parseOpcionesExportBG(q));
+    res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${filename}"` });
+    res.send(buffer);
+  }
+
+  @Get('balance-general-detallado/pdf')
+  @ApiOperation({ summary: 'Descargar Balance General detallado en PDF, respetando los filtros activos' })
+  async balanceGeneralDetalladoPdf(@Query() q: Record<string, string | undefined>, @Res() res: Response) {
+    const { buffer, filename } = await this.bgExpSvc.generarPdf(this.parseFiltrosBG(q));
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${filename}"` });
+    res.send(buffer);
   }
 
   @Get('flujo-efectivo')

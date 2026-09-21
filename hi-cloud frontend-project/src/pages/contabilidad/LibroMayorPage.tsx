@@ -1,4 +1,5 @@
-﻿import { useState } from 'react';
+﻿import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { Card, Select, Table, Typography, Row, Col, Statistic,
          Button, DatePicker, Space, Tag, Empty, theme } from 'antd';
@@ -15,6 +16,7 @@ const { RangePicker } = DatePicker;
 
 export default function LibroMayorPage() {
   const { token } = theme.useToken();
+  const [params] = useSearchParams();
   const [cuentaId, setCuentaId] = useState<number | undefined>();
   const [rango, setRango]       = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
 
@@ -26,6 +28,20 @@ export default function LibroMayorPage() {
     queryFn:  () => contabilidadApi.cuentas({ soloMovimientos: true }),
   });
   const cuentas = cuentasResultado?.data;
+
+  // Llegada desde Balance General (clic en una cuenta): ?codigo=...&hasta=... —
+  // preselecciona la cuenta (por código, resuelto en id una vez cargan las
+  // cuentas) y limita el rango hasta la fecha de corte, sin límite inferior.
+  useEffect(() => {
+    const codigoParam = params.get('codigo');
+    const hastaParam  = params.get('hasta');
+    if (hastaParam) setRango([dayjs('2000-01-01'), dayjs(hastaParam)]);
+    if (codigoParam && cuentas?.length) {
+      const encontrada = cuentas.find((c: any) => c.codigo === codigoParam);
+      if (encontrada) setCuentaId(encontrada.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cuentas]);
 
   const { data: mayor, isLoading } = useQuery({
     queryKey: ['libro-mayor', cuentaId, desde, hasta],
