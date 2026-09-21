@@ -353,6 +353,12 @@ jobs:
             echo "━━━ [1/6] Git sync ━━━"
             git fetch origin main
             git reset --hard origin/main
+            # Capturado UNA vez aquí — es el commit que este deploy realmente
+            # está poniendo en disco. Se usa para SENTRY_RELEASE (abajo) y para
+            # la verificación de build_id en [6/6]: las dos tienen que ser el
+            # mismo valor, así que se calculan del mismo sitio una sola vez.
+            DEPLOY_SHA=$(git rev-parse HEAD)
+            echo "  → Commit de este deploy: $DEPLOY_SHA"
 
             # ══════════════════════════════════════════════════════════════════
             # [2/6] VARIABLES DE ENTORNO
@@ -419,8 +425,11 @@ jobs:
             inject_env NOTIF_ADMIN_EMAIL "$NOTIF_ADMIN_EMAIL"
             inject_env SEED_PLAN_CUENTAS_RUN "true"
             # Release de Sentry = SHA del commit recién desplegado (HEAD tras el git reset).
-            # Permite atribuir cada error al deploy que lo introdujo.
-            inject_env SENTRY_RELEASE "$(git rev-parse HEAD)"
+            # Permite atribuir cada error al deploy que lo introdujo. Mismo
+            # DEPLOY_SHA que [6/6] compara contra /api/v1/version — una sola
+            # fuente, nunca dos "git rev-parse HEAD" que en teoría podrían
+            # divergir si algo tocara el repo entre uno y otro.
+            inject_env SENTRY_RELEASE "$DEPLOY_SHA"
             # Si el secreto no está cargado, [PRE] ya hizo unset y inject_env
             # sale por su guard de valor vacío: el .env queda intacto.
             inject_env SENTRY_DSN     "${SENTRY_DSN:-}"
@@ -811,11 +820,52 @@ jobs:
               done
             fi
 
+            # ══════════════════════════════════════════════════════════════════
+            # VERIFICACIÓN DE build_id (CAPA 3) — 2026-09-21
+            #
+            # El health check y el admin smoke-test solo prueban que ALGÚN
+            # proceso responde en :443 — nunca que sea el que ESTE deploy
+            # acaba de construir. `pm2 reload` puede reportar éxito con un
+            # worker viejo todavía sirviendo tráfico (cluster que no cicló, un
+            # segundo proceso huérfano, lo que sea) durante horas, y cada
+            # deploy siguiente seguiría en verde sin que el código nuevo
+            # llegara a correr nunca.
+            #
+            # Así se encontró: 42 facturas de contado debitaron Clientes en
+            # vez de Caja/Bancos entre las 15:28 y las 18:49 del 2026-09-20 —
+            # 3h21min y AL MENOS 6 deploys "exitosos" después de que el fix
+            # (commit d91de0b3) se diera por desplegado a las 15:32. El
+            # health check pasó las 6 veces; el código que de verdad atendía
+            # esas ventas no era el nuevo ninguna de esas 6 veces.
+            #
+            # /api/v1/version expone build_id = SENTRY_RELEASE, que este
+            # mismo script fija a DEPLOY_SHA en [2/6]. Si lo que responde en
+            # producción no trae ESE build_id, el proceso que atiende tráfico
+            # real NO es el que se acaba de desplegar — se trata exactamente
+            # igual que un health check fallido: mismo auto-rollback, mismo
+            # exit 1. Un rollback que dejó el build anterior de pie NUNCA
+            # debe terminar el job en verde solo porque el build anterior
+            # también respondía bien.
+            # ══════════════════════════════════════════════════════════════════
+            if [ "$STATUS" = "healthy" ] || [ "$STATUS" = "degraded" ]; then
+              echo "━━━ Verificación de build_id ━━━"
+              DEPLOYED_BUILD_ID=$(curl -sk --max-time 10 https://hicloudrd.com/api/v1/version | \
+                python3 -c "import sys,json; print(json.load(sys.stdin).get('build_id') or '')" 2>/dev/null || echo "")
+              echo "  Esperado (este deploy): $DEPLOY_SHA"
+              echo "  En producción:          ${DEPLOYED_BUILD_ID:-<vacío o /version no respondió>}"
+              if [ "$DEPLOYED_BUILD_ID" != "$DEPLOY_SHA" ]; then
+                echo "  ❌ build_id NO coincide — el proceso que responde no es el que se acaba de desplegar"
+                STATUS="error"
+              else
+                echo "  ✅ build_id coincide — el código nuevo está realmente sirviendo tráfico"
+              fi
+            fi
+
             if [ "$STATUS" = "healthy" ] || [ "$STATUS" = "degraded" ]; then
               # ── Deploy exitoso ────────────────────────────────────────────
               echo "✅ Deploy exitoso — servidor $STATUS"
               # Guardar este commit como último estable
-              git rev-parse HEAD > /home/ubuntu/hicloud/.last-stable-commit
+              echo "$DEPLOY_SHA" > /home/ubuntu/hicloud/.last-stable-commit
               # Desactivar re-sembrado para próximos reinicios
               sed -i 's|^SEED_PLAN_CUENTAS_RUN=.*|SEED_PLAN_CUENTAS_RUN=false|' "$ENV_FILE" 2>/dev/null || true
               echo "  SEED_PLAN_CUENTAS_RUN desactivado"
