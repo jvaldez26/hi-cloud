@@ -193,10 +193,16 @@ export class NotasCreditoService {
     return this.ncRepo.save(nc);
   }
 
-  async listar(pagination: PaginationDto) {
+  async listar(pagination: PaginationDto & {
+    desde?: string; hasta?: string; clienteId?: number; ncfAfectado?: string;
+    estado?: string; estadoDgii?: string; montoMin?: number; montoMax?: number;
+  }) {
     const empresaId  = this.tenantSvc.getEmpresaId();
     const sucursalId = this.tenantSvc.getSucursalId();
-    const { limit = 10, page = 1, search } = pagination;
+    const {
+      limit = 10, page = 1, search,
+      desde, hasta, clienteId, ncfAfectado, estado, estadoDgii, montoMin, montoMax,
+    } = pagination;
 
     const qb = this.ncRepo
       .createQueryBuilder('nc')
@@ -207,7 +213,42 @@ export class NotasCreditoService {
 
     if (sucursalId) qb.andWhere('(nc.sucursalId = :sid OR nc.sucursalId IS NULL)', { sid: sucursalId });
 
-    if (search) qb.andWhere('(nc.numero ILIKE :s OR c.nombre ILIKE :s)', { s: `%${search}%` });
+    // El buscador principal también encuentra por e-CF — el propio (E34) o el
+    // que afecta (E31/E32...) — no solo por número interno de la nota o
+    // cliente. Antes había que abrir "Filtros" → "e-CF afectado" para eso;
+    // ahora también funciona escribiéndolo directo en la caja de búsqueda.
+    if (search) qb.andWhere(
+      `(nc.numero ILIKE :s OR c.nombre ILIKE :s OR EXISTS (
+         SELECT 1 FROM ecf e WHERE e."documentoOrigenId" = nc.id AND e."documentoOrigenTipo" = 'NOTA_CREDITO'
+           AND e."isActive" = true AND (e.numero ILIKE :s OR e."ncfModificado" ILIKE :s)
+       ))`,
+      { s: `%${search}%` },
+    );
+
+    // Rango de fecha — sin esto (y con el límite fijo de siempre) las notas
+    // más viejas que las últimas ~50 quedaban invisibles para siempre: no
+    // había manera de pedirle al servidor una página más allá de la primera
+    // ni de acotar el rango. Sin `desde`/`hasta` no se filtra por fecha (el
+    // caso "Todo" del front).
+    if (desde) qb.andWhere('nc.fecha >= :desde', { desde });
+    if (hasta) qb.andWhere('nc.fecha <= :hasta', { hasta });
+
+    if (clienteId) qb.andWhere('nc.clienteId = :clienteId', { clienteId });
+    if (estado)    qb.andWhere('nc.estado = :estado', { estado });
+    if (montoMin != null) qb.andWhere('nc.total >= :montoMin', { montoMin });
+    if (montoMax != null) qb.andWhere('nc.total <= :montoMax', { montoMax });
+
+    // EXISTS en vez de LEFT JOIN: una nota puede tener más de un intento de
+    // e-CF (rechazado/observado y luego reemitido) con "isActive" = true en
+    // ambos — un JOIN normal duplicaría la fila de la nota en el resultado.
+    if (ncfAfectado) qb.andWhere(
+      `EXISTS (SELECT 1 FROM ecf e WHERE e."documentoOrigenId" = nc.id AND e."documentoOrigenTipo" = 'NOTA_CREDITO' AND e."isActive" = true AND e."ncfModificado" ILIKE :ncfAfectado)`,
+      { ncfAfectado: `%${ncfAfectado}%` },
+    );
+    if (estadoDgii) qb.andWhere(
+      `EXISTS (SELECT 1 FROM ecf e WHERE e."documentoOrigenId" = nc.id AND e."documentoOrigenTipo" = 'NOTA_CREDITO' AND e."isActive" = true AND e."estadoDGII" = :estadoDgii)`,
+      { estadoDgii },
+    );
 
     const [data, total] = await qb
       .orderBy('nc.createdAt', 'DESC')

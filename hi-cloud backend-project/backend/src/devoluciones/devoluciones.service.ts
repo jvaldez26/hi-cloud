@@ -257,9 +257,15 @@ export class DevolucionesService {
 
   // ─── Listar ───────────────────────────────────────────────────────────────────
 
-  async findAll(pagination: PaginationDto) {
+  async findAll(pagination: PaginationDto & {
+    desde?: string; hasta?: string; clienteId?: number;
+    estado?: string; montoMin?: number; montoMax?: number;
+  }) {
     const empresaId = this.tenantService.getEmpresaId();
-    const { limit = 10, page = 1, search } = pagination;
+    const {
+      limit = 10, page = 1, search,
+      desde, hasta, clienteId, estado, montoMin, montoMax,
+    } = pagination;
     const qb = this.devRepository
       .createQueryBuilder('d')
       .leftJoinAndSelect('d.cliente', 'cliente')
@@ -271,6 +277,13 @@ export class DevolucionesService {
       '(d.numero ILIKE :s OR cliente.nombre ILIKE :s OR factura.folio ILIKE :s)',
       { s: `%${search}%` },
     );
+
+    if (desde) qb.andWhere('d.fecha >= :desde', { desde });
+    if (hasta) qb.andWhere('d.fecha <= :hasta', { hasta });
+    if (clienteId) qb.andWhere('d.clienteId = :clienteId', { clienteId });
+    if (estado)    qb.andWhere('d.estado = :estado', { estado });
+    if (montoMin != null) qb.andWhere('d.total >= :montoMin', { montoMin });
+    if (montoMax != null) qb.andWhere('d.total <= :montoMax', { montoMax });
 
     const [data, total] = await qb
       .orderBy('d.createdAt', 'DESC')

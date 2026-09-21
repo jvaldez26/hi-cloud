@@ -3,6 +3,8 @@ import {
   ParseIntPipe, HttpCode, HttpStatus, UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { IsOptional, IsDateString, IsInt, IsString, IsNumber } from 'class-validator';
+import { Type } from 'class-transformer';
 import { DevolucionesService } from './devoluciones.service';
 import { CreateDevolucionDto } from './dto/create-devolucion.dto';
 import { ProcesarDevolucionDto } from './dto/procesar-devolucion.dto';
@@ -13,6 +15,15 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
 import { User } from '../users/users.entity';
+
+class ListarDevolucionesFilterDto extends PaginationDto {
+  @IsOptional() @IsDateString()                 desde?: string;
+  @IsOptional() @IsDateString()                 hasta?: string;
+  @IsOptional() @IsInt() @Type(() => Number)    clienteId?: number;
+  @IsOptional() @IsString()                     estado?: string;
+  @IsOptional() @IsNumber() @Type(() => Number) montoMin?: number;
+  @IsOptional() @IsNumber() @Type(() => Number) montoMax?: number;
+}
 
 @ApiTags('Devoluciones')
 @ApiBearerAuth('access-token')
@@ -37,9 +48,9 @@ export class DevolucionesController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Listar devoluciones con paginación' })
-  findAll(@Query() pagination: PaginationDto) {
-    return this.devService.findAll(pagination);
+  @ApiOperation({ summary: 'Listar devoluciones con paginación y filtros' })
+  findAll(@Query() filtro: ListarDevolucionesFilterDto) {
+    return this.devService.findAll(filtro);
   }
 
   @Get(':id')

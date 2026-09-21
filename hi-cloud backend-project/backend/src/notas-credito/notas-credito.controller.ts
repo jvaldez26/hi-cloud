@@ -31,6 +31,18 @@ class DetalleDto {
   @IsOptional() @IsNumber() @Min(0) @Type(() => Number)     porcentajeIva?: number;
 }
 
+class ListarNCFilterDto extends PaginationDto {
+  @IsOptional() @IsDateString()                 desde?: string;
+  @IsOptional() @IsDateString()                 hasta?: string;
+  @IsOptional() @IsInt() @Type(() => Number)    clienteId?: number;
+  /** Busca por el eNCF que la nota afecta (ecf.ncfModificado) */
+  @IsOptional() @IsString()                     ncfAfectado?: string;
+  @IsOptional() @IsString()                     estado?: string;
+  @IsOptional() @IsString()                     estadoDgii?: string;
+  @IsOptional() @IsNumber() @Type(() => Number) montoMin?: number;
+  @IsOptional() @IsNumber() @Type(() => Number) montoMax?: number;
+}
+
 class CreateNCDto {
   @IsInt() @IsPositive() @Type(() => Number)                clienteId!: number;
   @IsDateString()                                            fecha!: string;
@@ -68,8 +80,8 @@ export class NotasCreditoController {
 
   @Get()
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
-  @ApiOperation({ summary: 'Listar notas de crédito con paginación' })
-  listar(@Query() pagination: PaginationDto) { return this.svc.listar(pagination); }
+  @ApiOperation({ summary: 'Listar notas de crédito con paginación y filtros' })
+  listar(@Query() filtro: ListarNCFilterDto) { return this.svc.listar(filtro); }
 
   @Get('por-factura/:facturaId')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)

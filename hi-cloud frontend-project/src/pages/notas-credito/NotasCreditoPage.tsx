@@ -25,6 +25,7 @@ import { ecfApi } from '../../api/ecf.api';
 import EcfResultModal from '../../components/ui/EcfResultModal';
 import EcfBadge, { type EstadoEcf } from '../../components/ui/EcfBadge';
 import WhatsAppButton from '../../components/ui/WhatsAppButton';
+import { FiltrosFiscalesBar, calcularRangoAtajo, ETIQUETA_ATAJO, type AtajoRango, type FiltroChip } from '../../components/ui/FiltrosFiscalesBar';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -115,8 +116,39 @@ const fmtNC = (v: number) =>
 export default function NotasCreditoPage() {
   const qc = useQueryClient();
   const { token } = theme.useToken();
-  const [search,        setSearch]        = useState('');
-  const [page,          setPage]          = useState(1);
+  // Filtros en la URL — search/page/rango/clienteId/ncfAfectado/estado/
+  // estadoDgii/montoMin/montoMax viven en `params`, no en useState duplicado,
+  // para que compartir el link o recargar la página preserve el filtro.
+  const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
+
+  const search = params.get('q') ?? '';
+  const page   = Number(params.get('page') ?? '1');
+  const atajo  = (params.get('rango') as AtajoRango) || 'todo';
+  const clienteIdFiltro = params.get('clienteId') ? Number(params.get('clienteId')) : undefined;
+  const ncfAfectado     = params.get('ncfAfectado') ?? '';
+  const estadoFiltro    = params.get('estado') ?? undefined;
+  const estadoDgiiFiltro = params.get('estadoDgii') ?? undefined;
+  const montoMin = params.get('montoMin') ? Number(params.get('montoMin')) : undefined;
+  const montoMax = params.get('montoMax') ? Number(params.get('montoMax')) : undefined;
+  const { desde, hasta } = calcularRangoAtajo(atajo);
+
+  const actualizarFiltro = (cambios: Record<string, string | number | undefined>) => {
+    // Forma funcional — dos cambios seguidos en el mismo tick (p.ej. buscar +
+    // resetear página) deben encadenarse sobre el resultado del anterior, no
+    // los dos sobre el `params` de este render (el segundo pisaría al primero).
+    setParams(prev => {
+      const p = new URLSearchParams(prev);
+      for (const [k, v] of Object.entries(cambios)) {
+        if (v === undefined || v === '') p.delete(k); else p.set(k, String(v));
+      }
+      if (!('page' in cambios)) p.set('page', '1'); // cualquier cambio de filtro reinicia a la página 1
+      return p;
+    });
+  };
+  const setSearch  = (v: string) => actualizarFiltro({ q: v });
+  const setPage    = (v: number) => actualizarFiltro({ page: v });
+
   const [modalCrear,    setModalCrear]    = useState(false);
   const [modalDetalle,  setModalDetalle]  = useState<any>(null);
   const [emailNota,     setEmailNota]     = useState<any>(null);
@@ -191,8 +223,20 @@ export default function NotasCreditoPage() {
   });
 
   const { data: notas, isLoading } = useQuery<any>({
-    queryKey: ['notas-credito', search, page],
-    queryFn:  () => api.get(`/notas-credito?limit=50${search ? `&search=${encodeURIComponent(search)}` : ''}&page=${page}`).then((r: any) => r.data?.data ?? r.data),
+    queryKey: ['notas-credito', search, page, desde, hasta, clienteIdFiltro, ncfAfectado, estadoFiltro, estadoDgiiFiltro, montoMin, montoMax],
+    queryFn:  () => {
+      const qs = new URLSearchParams({ limit: '10', page: String(page) });
+      if (search)             qs.set('search', search);
+      if (desde)              qs.set('desde', desde);
+      if (hasta)               qs.set('hasta', hasta);
+      if (clienteIdFiltro)     qs.set('clienteId', String(clienteIdFiltro));
+      if (ncfAfectado)         qs.set('ncfAfectado', ncfAfectado);
+      if (estadoFiltro)        qs.set('estado', estadoFiltro);
+      if (estadoDgiiFiltro)    qs.set('estadoDgii', estadoDgiiFiltro);
+      if (montoMin != null)    qs.set('montoMin', String(montoMin));
+      if (montoMax != null)    qs.set('montoMax', String(montoMax));
+      return api.get(`/notas-credito?${qs}`).then((r: any) => r.data?.data ?? r.data);
+    },
   });
 
   const crear = useMutation({
@@ -324,8 +368,6 @@ export default function NotasCreditoPage() {
    * El parámetro se borra al abrir: si no, cerrar el modal y recargar lo volvía
    * a abrir, y no se puede salir de la pantalla.
    */
-  const [params, setParams] = useSearchParams();
-  const navigate = useNavigate();
   const precargada = useRef(false);
   useEffect(() => {
     const facturaId = params.get('facturaId');
@@ -339,8 +381,7 @@ export default function NotasCreditoPage() {
       })
       .catch(() => message.error('No se pudo cargar la factura de origen'))
       .finally(() => {
-        params.delete('facturaId');
-        setParams(params, { replace: true });
+        setParams(prev => { const p = new URLSearchParams(prev); p.delete('facturaId'); return p; }, { replace: true });
       });
   }, [params]);
 
@@ -352,10 +393,10 @@ export default function NotasCreditoPage() {
   useEffect(() => {
     const numero = params.get('numero');
     if (!numero) return;
-    setSearch(numero);
-    setPage(1);
-    params.delete('numero');
-    setParams(params, { replace: true });
+    // Un solo setParams funcional (busca + borra `numero` + resetea página) —
+    // tres llamadas separadas se pisarían entre sí (la última, con valor
+    // literal en vez de función, ganaría y descartaría las otras dos).
+    actualizarFiltro({ q: numero, numero: undefined });
   }, [params]);
 
 
@@ -401,16 +442,44 @@ export default function NotasCreditoPage() {
         </Space>
       </div>
 
-      <div style={{ marginBottom: 16 }}>
-        <Input
-          placeholder="Buscar por número o cliente..."
-          prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
-          value={search}
-          onChange={e => { setSearch(e.target.value); setPage(1); }}
-          allowClear
-          style={{ width: 280 }}
-        />
-      </div>
+      <FiltrosFiscalesBar
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Buscar por número o cliente..."
+        atajo={atajo}
+        onAtajoChange={a => actualizarFiltro({ rango: a === 'todo' ? undefined : a })}
+        extraCount={[clienteIdFiltro, ncfAfectado, estadoFiltro, estadoDgiiFiltro, montoMin, montoMax].filter(v => v !== undefined && v !== '').length}
+        chips={[
+          ...(atajo !== 'todo' ? [{ key: 'rango', label: `Fecha: ${ETIQUETA_ATAJO[atajo]}`, onClose: () => actualizarFiltro({ rango: undefined }) }] : []),
+          ...(clienteIdFiltro ? [{ key: 'cliente', label: `Cliente: ${clientes.find((c: any) => c.id === clienteIdFiltro)?.nombre ?? clienteIdFiltro}`, onClose: () => actualizarFiltro({ clienteId: undefined }) }] : []),
+          ...(ncfAfectado ? [{ key: 'ncf', label: `e-CF afectado: ${ncfAfectado}`, onClose: () => actualizarFiltro({ ncfAfectado: undefined }) }] : []),
+          ...(estadoFiltro ? [{ key: 'estado', label: `Estado: ${ESTADO_CONFIG[estadoFiltro]?.label ?? estadoFiltro}`, onClose: () => actualizarFiltro({ estado: undefined }) }] : []),
+          ...(estadoDgiiFiltro ? [{ key: 'estadoDgii', label: `Estado DGII: ${estadoDgiiFiltro}`, onClose: () => actualizarFiltro({ estadoDgii: undefined }) }] : []),
+          ...(montoMin != null || montoMax != null ? [{ key: 'monto', label: `Monto: ${montoMin ?? 0} – ${montoMax ?? '∞'}`, onClose: () => actualizarFiltro({ montoMin: undefined, montoMax: undefined }) }] : []),
+        ] as FiltroChip[]}
+        extra={
+          <Space direction="vertical" style={{ width: '100%' }} size={10}>
+            <Select allowClear placeholder="Cliente" style={{ width: '100%' }}
+              value={clienteIdFiltro} onChange={v => actualizarFiltro({ clienteId: v })}
+              showSearch optionFilterProp="label"
+              options={clientes.map((c: any) => ({ value: c.id, label: c.nombre }))} />
+            <Input placeholder="e-CF afectado (E31, E32...)" value={ncfAfectado}
+              onChange={e => actualizarFiltro({ ncfAfectado: e.target.value })} allowClear />
+            <Select allowClear placeholder="Estado" style={{ width: '100%' }}
+              value={estadoFiltro} onChange={v => actualizarFiltro({ estado: v })}
+              options={Object.entries(ESTADO_CONFIG).map(([v, c]) => ({ value: v, label: c.label }))} />
+            <Select allowClear placeholder="Estado DGII" style={{ width: '100%' }}
+              value={estadoDgiiFiltro} onChange={v => actualizarFiltro({ estadoDgii: v })}
+              options={['aceptado', 'rechazado', 'observado', 'pendiente', 'pendiente_envio', 'enviado', 'contingencia', 'condicionado'].map(v => ({ value: v, label: v }))} />
+            <Space.Compact style={{ width: '100%' }}>
+              <InputNumber placeholder="Monto mín." style={{ width: '50%' }}
+                value={montoMin} onChange={v => actualizarFiltro({ montoMin: v ?? undefined })} />
+              <InputNumber placeholder="Monto máx." style={{ width: '50%' }}
+                value={montoMax} onChange={v => actualizarFiltro({ montoMax: v ?? undefined })} />
+            </Space.Compact>
+          </Space>
+        }
+      />
 
       <Card bordered={false} style={{ borderRadius: 12 }}>
         <Table
@@ -418,7 +487,7 @@ export default function NotasCreditoPage() {
           rowKey="id"
           loading={isLoading}
           size="middle"
-          pagination={{ pageSize: 10 }}
+          pagination={{ total: notas?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }}
           scroll={{ x: 'max-content' }}
           columns={fcNC([
             { title: 'Número', key: 'n', width: 150,

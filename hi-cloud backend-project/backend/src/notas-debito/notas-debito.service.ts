@@ -140,9 +140,15 @@ export class NotasDebitoService {
     return this.ndRepo.save(nd);
   }
 
-  async listar(pagination: PaginationDto) {
+  async listar(pagination: PaginationDto & {
+    desde?: string; hasta?: string; clienteId?: number; ncfAfectado?: string;
+    estado?: string; estadoDgii?: string; montoMin?: number; montoMax?: number;
+  }) {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const { limit = 10, page = 1, search } = pagination;
+    const {
+      limit = 10, page = 1, search,
+      desde, hasta, clienteId, ncfAfectado, estado, estadoDgii, montoMin, montoMax,
+    } = pagination;
 
     const qb = this.ndRepo
       .createQueryBuilder('nd')
@@ -153,6 +159,28 @@ export class NotasDebitoService {
 
     if (search) qb.andWhere('(nd.numero ILIKE :s OR c.nombre ILIKE :s)', { s: `%${search}%` });
 
+    // Mismo problema que en notas-credito: sin rango de fecha (y con el
+    // límite fijo que tenía el front) las notas más viejas quedaban
+    // invisibles para siempre. Sin desde/hasta no se filtra ("Todo").
+    if (desde) qb.andWhere('nd.fecha >= :desde', { desde });
+    if (hasta) qb.andWhere('nd.fecha <= :hasta', { hasta });
+
+    if (clienteId) qb.andWhere('nd.clienteId = :clienteId', { clienteId });
+    if (estado)    qb.andWhere('nd.estado = :estado', { estado });
+    if (montoMin != null) qb.andWhere('nd.total >= :montoMin', { montoMin });
+    if (montoMax != null) qb.andWhere('nd.total <= :montoMax', { montoMax });
+
+    // EXISTS, no JOIN — una nota puede tener más de un intento de e-CF
+    // (rechazado/observado y reemitido) con isActive=true en ambos.
+    if (ncfAfectado) qb.andWhere(
+      `EXISTS (SELECT 1 FROM ecf e WHERE e."documentoOrigenId" = nd.id AND e."documentoOrigenTipo" = 'NOTA_DEBITO' AND e."isActive" = true AND e."ncfModificado" ILIKE :ncfAfectado)`,
+      { ncfAfectado: `%${ncfAfectado}%` },
+    );
+    if (estadoDgii) qb.andWhere(
+      `EXISTS (SELECT 1 FROM ecf e WHERE e."documentoOrigenId" = nd.id AND e."documentoOrigenTipo" = 'NOTA_DEBITO' AND e."isActive" = true AND e."estadoDGII" = :estadoDgii)`,
+      { estadoDgii },
+    );
+
     const [data, total] = await qb
       .orderBy('nd.createdAt', 'DESC')
       .addOrderBy('d.id', 'ASC')
@@ -160,26 +188,31 @@ export class NotasDebitoService {
       .take(Math.min(limit, 100))
       .getManyAndCount();
 
-    // Enriquecer con datos ECF para ocultar botón "e-CF E33" cuando ya fue emitido
+    // Enriquecer con datos ECF para ocultar botón "e-CF E33" cuando ya fue
+    // emitido, y para mostrar el eNCF que afecta (mismo dato que ya usa
+    // notas-credito — faltaba aquí).
     const ids = data.map(n => n.id);
-    let ecfByNotaId: Record<number, { numero: string; estadoDGII: string }> = {};
+    let ecfByNotaId: Record<number, { numero: string; estadoDGII: string; ncfModificado: string | null }> = {};
     if (ids.length > 0) {
       const ecfRows = await this.ndRepo.manager.query<any[]>(
         `SELECT DISTINCT ON ("documentoOrigenId")
-           "documentoOrigenId" AS "notaId", numero, "estadoDGII"
+           "documentoOrigenId" AS "notaId", numero, "estadoDGII", "ncfModificado"
          FROM ecf
          WHERE "documentoOrigenId" = ANY($1)
            AND "documentoOrigenTipo" = 'NOTA_DEBITO'
          ORDER BY "documentoOrigenId", "createdAt" DESC`,
         [ids],
       );
-      for (const e of ecfRows) { ecfByNotaId[e.notaId] = { numero: e.numero, estadoDGII: e.estadoDGII }; }
+      for (const e of ecfRows) {
+        ecfByNotaId[e.notaId] = { numero: e.numero, estadoDGII: e.estadoDGII, ncfModificado: e.ncfModificado ?? null };
+      }
     }
 
     const enriched = data.map(n => ({
       ...n,
-      ecfNumero: ecfByNotaId[n.id]?.numero ?? null,
-      ecf:       ecfByNotaId[n.id] ?? null,
+      ecfNumero:     ecfByNotaId[n.id]?.numero ?? null,
+      ncfModificado: ecfByNotaId[n.id]?.ncfModificado ?? null,
+      ecf:           ecfByNotaId[n.id] ?? null,
     }));
 
     return { data: enriched, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };

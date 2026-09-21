@@ -13,6 +13,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
 import { fmt } from '../../utils/formatters';
 import dayjs from 'dayjs';
+import { FiltrosFiscalesBar, calcularRangoAtajo, ETIQUETA_ATAJO, type AtajoRango, type FiltroChip } from '../../components/ui/FiltrosFiscalesBar';
 
 const { Title, Text } = Typography;
 
@@ -23,9 +24,12 @@ const estadoColor: Record<EstadoDev, string> = {
 };
 
 const devolucionesApi = {
-  list:    (p = 1, limit = 10, search?: string) =>
-    api.get(`/devoluciones?page=${p}&limit=${limit}${search ? `&search=${encodeURIComponent(search)}` : ''}`)
-      .then(r => r.data?.data ?? r.data),
+  list:    (p = 1, limit = 10, search?: string, extra?: Record<string, string | number | undefined>) => {
+    const qs = new URLSearchParams({ page: String(p), limit: String(limit) });
+    if (search) qs.set('search', search);
+    for (const [k, v] of Object.entries(extra ?? {})) if (v !== undefined && v !== '') qs.set(k, String(v));
+    return api.get(`/devoluciones?${qs}`).then(r => r.data?.data ?? r.data);
+  },
   getOne:  (id: number)        => api.get(`/devoluciones/${id}`).then(r => r.data?.data ?? r.data),
   resumen: ()                  => api.get('/devoluciones/resumen').then(r => r.data?.data ?? r.data),
   create:  (body: any)         => api.post('/devoluciones', body).then(r => r.data?.data ?? r.data),
@@ -47,7 +51,31 @@ const almacenesApi = {
 };
 
 export default function DevolucionesPage() {
-  const [page,   setPage]   = useState(1);
+  // Filtros en la URL — mismo patrón que NotasCreditoPage/NotasDebitoPage.
+  const [params, setParams] = useSearchParams();
+
+  const search = params.get('q') ?? '';
+  const page   = Number(params.get('page') ?? '1');
+  const atajo  = (params.get('rango') as AtajoRango) || 'todo';
+  const clienteIdFiltro = params.get('clienteId') ? Number(params.get('clienteId')) : undefined;
+  const estadoFiltro    = params.get('estado') ?? undefined;
+  const montoMin = params.get('montoMin') ? Number(params.get('montoMin')) : undefined;
+  const montoMax = params.get('montoMax') ? Number(params.get('montoMax')) : undefined;
+  const { desde, hasta } = calcularRangoAtajo(atajo);
+
+  const actualizarFiltro = (cambios: Record<string, string | number | undefined>) => {
+    setParams(prev => {
+      const p = new URLSearchParams(prev);
+      for (const [k, v] of Object.entries(cambios)) {
+        if (v === undefined || v === '') p.delete(k); else p.set(k, String(v));
+      }
+      if (!('page' in cambios)) p.set('page', '1');
+      return p;
+    });
+  };
+  const setSearch = (v: string) => actualizarFiltro({ q: v });
+  const setPage   = (v: number) => actualizarFiltro({ page: v });
+
   const [open,   setOpen]   = useState(false);
   const [detail, setDetail] = useState<any>(null);
   const [form]              = Form.useForm();
@@ -55,7 +83,6 @@ export default function DevolucionesPage() {
   const [lineas, setLineas] = useState<any[]>([]);
   const [facturaOptions, setFacturaOptions] = useState<{ value: number; label: string }[]>([]);
   const [buscandoFacturas, setBuscandoFacturas] = useState(false);
-  const [search, setSearch] = useState('');
   const qc = useQueryClient();
 
   // Confirmar recepción — reemplaza el antiguo Modal.confirm: aquí se elige
@@ -73,20 +100,25 @@ export default function DevolucionesPage() {
    * ?numero= allá: precarga el buscador con el número exacto y se borra al
    * usarse, para que recargar la pantalla no lo vuelva a aplicar.
    */
-  const [params, setParams] = useSearchParams();
   const precargado = useRef(false);
   useEffect(() => {
     const numero = params.get('numero');
     if (!numero || precargado.current) return;
     precargado.current = true;
-    setSearch(numero);
-    params.delete('numero');
-    setParams(params, { replace: true });
+    // Un solo setParams funcional (busca + borra `numero` + resetea página) —
+    // llamadas separadas se pisarían entre sí. Ver mismo comentario en
+    // NotasCreditoPage.
+    actualizarFiltro({ q: numero, numero: undefined });
   }, [params]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['devoluciones', page, search],
-    queryFn:  () => devolucionesApi.list(page, 10, search || undefined),
+    queryKey: ['devoluciones', page, search, desde, hasta, clienteIdFiltro, estadoFiltro, montoMin, montoMax],
+    queryFn:  () => devolucionesApi.list(page, 10, search || undefined, { desde, hasta, clienteId: clienteIdFiltro, estado: estadoFiltro, montoMin, montoMax }),
+  });
+
+  const { data: clientes = [] } = useQuery<any[]>({
+    queryKey: ['clientes-select'],
+    queryFn:  () => api.get('/clientes?limit=200').then((r: any) => { const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.data ?? []); }),
   });
 
   const { data: facturaDetalle } = useQuery({
@@ -266,14 +298,40 @@ export default function DevolucionesPage() {
     <div>
       <Title level={4} style={{ marginBottom: 16 }}>Devoluciones</Title>
 
+      <FiltrosFiscalesBar
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Número, cliente o factura..."
+        atajo={atajo}
+        onAtajoChange={a => actualizarFiltro({ rango: a === 'todo' ? undefined : a })}
+        extraCount={[clienteIdFiltro, estadoFiltro, montoMin, montoMax].filter(v => v !== undefined && v !== '').length}
+        chips={[
+          ...(atajo !== 'todo' ? [{ key: 'rango', label: `Fecha: ${ETIQUETA_ATAJO[atajo]}`, onClose: () => actualizarFiltro({ rango: undefined }) }] : []),
+          ...(clienteIdFiltro ? [{ key: 'cliente', label: `Cliente: ${clientes.find((c: any) => c.id === clienteIdFiltro)?.nombre ?? clienteIdFiltro}`, onClose: () => actualizarFiltro({ clienteId: undefined }) }] : []),
+          ...(estadoFiltro ? [{ key: 'estado', label: `Estado: ${estadoFiltro}`, onClose: () => actualizarFiltro({ estado: undefined }) }] : []),
+          ...(montoMin != null || montoMax != null ? [{ key: 'monto', label: `Monto: ${montoMin ?? 0} – ${montoMax ?? '∞'}`, onClose: () => actualizarFiltro({ montoMin: undefined, montoMax: undefined }) }] : []),
+        ] as FiltroChip[]}
+        extra={
+          <Space direction="vertical" style={{ width: '100%' }} size={10}>
+            <Select allowClear placeholder="Cliente" style={{ width: '100%' }}
+              value={clienteIdFiltro} onChange={v => actualizarFiltro({ clienteId: v })}
+              showSearch optionFilterProp="label"
+              options={clientes.map((c: any) => ({ value: c.id, label: c.nombre }))} />
+            <Select allowClear placeholder="Estado" style={{ width: '100%' }}
+              value={estadoFiltro} onChange={v => actualizarFiltro({ estado: v })}
+              options={(['pendiente', 'procesada', 'anulada'] as EstadoDev[]).map(v => ({ value: v, label: v }))} />
+            <Space.Compact style={{ width: '100%' }}>
+              <InputNumber placeholder="Monto mín." style={{ width: '50%' }}
+                value={montoMin} onChange={v => actualizarFiltro({ montoMin: v ?? undefined })} />
+              <InputNumber placeholder="Monto máx." style={{ width: '50%' }}
+                value={montoMax} onChange={v => actualizarFiltro({ montoMax: v ?? undefined })} />
+            </Space.Compact>
+          </Space>
+        }
+      />
+
       <Card extra={
         <Space>
-          <Input.Search
-            placeholder="Número, cliente o factura..."
-            allowClear
-            style={{ width: 220 }}
-            onSearch={v => { setSearch(v); setPage(1); }}
-          />
           <Button icon={<FileExcelOutlined />} onClick={() => {
             const filas = (data?.data ?? []).map((d: any) => ({
               'Número':    d.numero ?? '',
