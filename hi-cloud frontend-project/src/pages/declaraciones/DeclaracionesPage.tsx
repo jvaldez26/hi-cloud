@@ -19,6 +19,8 @@ import ConciliacionFiscalPanel from './ConciliacionFiscalPanel';
 import AnexoA1Panel from './AnexoA1Panel';
 import AnexoB1Panel from './AnexoB1Panel';
 import AnexoDPanel from './AnexoDPanel';
+import AnexoAItbisPanel from './AnexoAItbisPanel';
+import IT1DetalleCompleto from './IT1DetalleCompleto';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
@@ -608,6 +610,7 @@ export default function DeclaracionesPage() {
                 message={`IT-1 — Declaración mensual ITBIS · ${periodLabel}`}
               />
               <IT1Card data={it1} />
+              <IT1DetalleCompleto data={it1} />
               {it1 && (
                 <div style={{ marginTop: 16, textAlign: 'right' }}>
                   <Space>
@@ -627,6 +630,13 @@ export default function DeclaracionesPage() {
               )}
             </div>
           ),
+        },
+
+        // ── Anexo A del IT-1 (ITBIS) — Commit 5 del rebuild ──────────────────
+        {
+          key: 'anexo-a-itbis',
+          label: <><FileTextOutlined /> Anexo A (ITBIS)</>,
+          children: <AnexoAItbisPanel />,
         },
 
         // ── Formato 606 ───────────────────────────────────────────────────────

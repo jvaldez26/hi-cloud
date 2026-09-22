@@ -50,6 +50,16 @@ export class DeclaracionesController {
     return this.anexoA.getAnexoA(Number(mes), Number(anio));
   }
 
+  @Get('it1/anexo-a/pdf')
+  @ApiOperation({ summary: 'Anexo A del IT-1: PDF para impresión/archivo' })
+  async getAnexoAPDF(@Query('mes') mes: string, @Query('anio') anio: string, @Res() res: Response) {
+    const buf = await this.pdf.generarAnexoAItbis(Number(mes), Number(anio));
+    const filename = `AnexoA-ITBIS_${anio}${String(mes).padStart(2,'0')}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buf);
+  }
+
   @Get('formato606')
   @ApiOperation({ summary: 'Formato 606: Reporte de compras (JSON)' })
   getFormato606(@Query('mes') mes: string, @Query('anio') anio: string) {

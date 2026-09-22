@@ -441,6 +441,47 @@ export async function exportarAnexoD(data: any, anio: number) {
   await exportarExcel(filas, `Anexo-D-IR2-${anio}`);
 }
 
+// ── Exportar Anexo A del IT-1 (ITBIS) — Commit 5 del rebuild 2026-09-22 ──────
+// Mismas 4 secciones y mismos números de casilla que la pantalla y que el
+// formulario oficial DGII. Casillas no_aplica/requiere_revision se exportan
+// igual que se ven en pantalla — con su estado y motivo, nunca ocultas.
+export async function exportarAnexoAItbis(data: any, mes: number, anio: number) {
+  const { flattenCasillas } = await import('../pages/declaraciones/CasillaTable');
+  const { LABELS_ANEXO_A } = await import('../pages/declaraciones/casillasLabels');
+
+  const ESTADO_TEXTO: Record<string, string> = {
+    calculada: 'Calculada', no_aplica: 'No aplica', requiere_revision: 'Requiere revisión',
+  };
+
+  const filas: Record<string, any>[] = [];
+  const seccion = (titulo: string, obj: any, conCantidad = false) => {
+    filas.push({ Casilla: titulo.toUpperCase(), Concepto: '', Cantidad: '', Monto: '', Estado: '' });
+    for (const r of flattenCasillas(obj)) {
+      filas.push({
+        Casilla:  `Casilla ${r.casilla}`,
+        Concepto: LABELS_ANEXO_A[r.casilla] ?? `Casilla ${r.casilla}`,
+        Cantidad: conCantidad ? (r.cantidad ?? '') : '',
+        Monto:    Number(r.monto),
+        Estado:   ESTADO_TEXTO[r.estado ?? 'calculada'] ?? r.estado,
+      });
+    }
+  };
+
+  seccion('Sección II — por Tipo de NCF', data?.seccionII, true);
+  seccion('Sección III — por Forma de Pago', data?.seccionIII);
+  seccion('Sección IV — por Tipo de Ingreso', data?.seccionIV);
+  seccion('Sección IX — ITBIS Pagado', data?.seccionIX);
+
+  const avisos: string[] = data?.avisos ?? [];
+  if (avisos.length > 0) {
+    filas.push({ Casilla: '', Concepto: '', Cantidad: '', Monto: '', Estado: '' });
+    filas.push({ Casilla: 'NOTAS', Concepto: '', Cantidad: '', Monto: '', Estado: '' });
+    avisos.forEach(a => filas.push({ Casilla: '', Concepto: a, Cantidad: '', Monto: '', Estado: '' }));
+  }
+
+  await exportarExcel(filas, `Anexo-A-ITBIS-${anio}-${String(mes).padStart(2, '0')}`);
+}
+
 // ── Exportar catálogo completo de productos (columnas ricas) ─────────────────
 // Devuelve true si generó el archivo, false si la lista estaba vacía.
 export async function exportarCatalogo(productos: any[], sufijo: string): Promise<boolean> {

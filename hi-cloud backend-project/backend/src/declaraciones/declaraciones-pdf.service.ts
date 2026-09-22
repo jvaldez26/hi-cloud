@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { DeclaracionesService } from './declaraciones.service';
+import { AnexoAService } from './anexo-a.service';
 import { generarReportePDF } from '../common/pdf/tabular-pdf.helper';
 import type { TabularReportData } from '../common/pdf/tabular-pdf.helper';
+import { LABELS_ANEXO_A } from './anexo-a-labels';
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
                'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -14,7 +16,25 @@ function fmt(n: number) {
 
 @Injectable()
 export class DeclaracionesPdfService {
-  constructor(private readonly svc: DeclaracionesService) {}
+  constructor(
+    private readonly svc: DeclaracionesService,
+    private readonly anexoA: AnexoAService,
+  ) {}
+
+  /** Recorre un objeto de sección (posiblemente con subgrupos anidados) y saca cada {casilla,monto,estado,cantidad} — mismo criterio que el frontend (CasillaTable.tsx). */
+  private flattenCasillas(obj: any): { casilla: number; monto: number; estado?: string; cantidad?: number }[] {
+    const out: { casilla: number; monto: number; estado?: string; cantidad?: number }[] = [];
+    const walk = (node: any) => {
+      if (!node || typeof node !== 'object') return;
+      if (typeof node.casilla === 'number' && typeof node.monto === 'number') { out.push(node); return; }
+      for (const k of Object.keys(node)) {
+        if (k === 'avisos' || k.startsWith('_')) continue;
+        walk(node[k]);
+      }
+    };
+    walk(obj);
+    return out.sort((a, b) => a.casilla - b.casilla);
+  }
 
   // ── 606 ──────────────────────────────────────────────────────────────────────
 
@@ -166,6 +186,57 @@ export class DeclaracionesPdfService {
         concepto: `ITBIS NETO — ${estado}`,
         monto:    Math.abs(itbisNeto),
       },
+    };
+
+    return generarReportePDF(report);
+  }
+
+  // ── Anexo A del IT-1 (ITBIS) — Commit 5 del rebuild ───────────────────────────
+
+  async generarAnexoAItbis(mes: number, anio: number): Promise<Buffer> {
+    const data = await this.anexoA.getAnexoA(mes, anio);
+    const rnc  = await this.svc.getRnc();
+
+    const ESTADO_TEXTO: Record<string, string> = {
+      calculada: '', no_aplica: 'No aplica', requiere_revision: 'Requiere revisión',
+    };
+
+    const rows: Record<string, any>[] = [];
+    const seccion = (titulo: string, obj: any) => {
+      rows.push({ casilla: '', concepto: titulo.toUpperCase(), monto: null, estado: '' });
+      for (const r of this.flattenCasillas(obj)) {
+        rows.push({
+          casilla: `#${r.casilla}`,
+          concepto: LABELS_ANEXO_A[r.casilla] ?? `Casilla ${r.casilla}`,
+          monto: r.monto,
+          estado: ESTADO_TEXTO[r.estado ?? 'calculada'] ?? r.estado ?? '',
+        });
+      }
+    };
+
+    seccion('Sección II — por Tipo de NCF', data.seccionII);
+    seccion('Sección III — por Forma de Pago', data.seccionIII);
+    seccion('Sección IV — por Tipo de Ingreso', data.seccionIV);
+    seccion('Sección IX — ITBIS Pagado', data.seccionIX);
+
+    const casilla56 = this.flattenCasillas(data.seccionIX).find(r => r.casilla === 56);
+
+    const report: TabularReportData = {
+      titulo:    'Anexo A',
+      subtitulo: 'Anexo A del IT-1 — ITBIS',
+      periodo:   `${MESES[mes - 1]} ${anio}`,
+      rnc,
+      empresa:   'REPORTE FISCAL — DGII · República Dominicana',
+      summaryCards: [
+        { label: 'Total ITBIS Deducible (Casilla 56)', value: fmt(casilla56?.monto ?? 0) },
+      ],
+      columns: [
+        { header: 'Casilla',  key: 'casilla',  width: 12, align: 'center' },
+        { header: 'Concepto', key: 'concepto', width: 58 },
+        { header: 'Monto',    key: 'monto',    width: 18, money: true, align: 'right' },
+        { header: 'Estado',   key: 'estado',   width: 12 },
+      ],
+      rows,
     };
 
     return generarReportePDF(report);

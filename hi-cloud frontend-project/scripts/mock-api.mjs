@@ -204,6 +204,157 @@ const RUTAS = {
     ],
     meta: { total: 3, page: 1, limit: 10, totalPages: 1 },
   }),
+  // ── IT-1 + Anexo A (ITBIS) — caso dorado del Excel real (IT-1-2020.xls):
+  //    total operaciones 745,718.00, exenta 485,414.00, gravada 18%
+  //    260,304.00, ITBIS cobrado 46,854.72, compras 9,680.29, a pagar
+  //    37,174.43 — para capturar el detalle casilla por casilla y el Anexo A
+  //    con las mismas cifras que ya verificó el backend (Commits 1-4).
+  '/declaraciones/it1': () => ({
+    periodo: { mes: 9, anio: 2026 },
+    seccionII: {
+      casilla1_totalOperaciones: { casilla: 1, monto: 745718.00, estado: 'calculada' },
+      noGravadas: {
+        casilla2_exportacionBienes:     { casilla: 2, monto: 0, estado: 'calculada' },
+        casilla3_exportacionServicios:  { casilla: 3, monto: 0, estado: 'no_aplica' },
+        casilla4_exentasLocales:        { casilla: 4, monto: 485414.00, estado: 'calculada' },
+        casilla5_exentasPorDestino:     { casilla: 5, monto: 0, estado: 'no_aplica' },
+        casilla6_noSujetasConstruccion: { casilla: 6, monto: 0, estado: 'no_aplica' },
+        casilla7_noSujetasComisiones:   { casilla: 7, monto: 0, estado: 'no_aplica' },
+        casilla8_exentasParrafosIIIyIV: { casilla: 8, monto: 0, estado: 'no_aplica' },
+        casilla9_totalNoGravadas:       { casilla: 9, monto: 485414.00, estado: 'calculada' },
+      },
+      gravadas: {
+        casilla10_totalGravadas:       { casilla: 10, monto: 260304.00, estado: 'calculada' },
+        casilla11_gravadas18:          { casilla: 11, monto: 260304.00, estado: 'calculada' },
+        casilla12_gravadas16:          { casilla: 12, monto: 0, estado: 'calculada' },
+        casilla13_gravadas9Ley690:     { casilla: 13, monto: 0, estado: 'no_aplica' },
+        casilla14_gravadas8Ley690:     { casilla: 14, monto: 0, estado: 'no_aplica' },
+        casilla15_activosDepreciables: { casilla: 15, monto: 0, estado: 'no_aplica' },
+      },
+      avisos: [
+        'Casilla 5 (exentas por destino): no aplica — el sistema no captura tipo de comprador/zona franca.',
+        'Casillas 13/14 (Ley 690-16, turismo 9%/8%): no aplica — parametros_fiscales.itbis_tasas no tiene configurada ninguna tasa especial de turismo.',
+        'Casilla 15 (venta de activos depreciables Cat. 2/3): no aplica — el sistema no distingue este tipo de venta a nivel de factura.',
+      ],
+    },
+    seccionIII: {
+      itbisCobrado: {
+        casilla16_gravadas18:          { casilla: 16, monto: 46854.72, estado: 'calculada' },
+        casilla17_gravadas16:          { casilla: 17, monto: 0, estado: 'calculada' },
+        casilla18_gravadas9Ley690:     { casilla: 18, monto: 0, estado: 'no_aplica' },
+        casilla19_gravadas8Ley690:     { casilla: 19, monto: 0, estado: 'no_aplica' },
+        casilla20_activosDepreciables: { casilla: 20, monto: 0, estado: 'no_aplica' },
+        casilla21_totalItbisCobrado:   { casilla: 21, monto: 46854.72, estado: 'calculada' },
+      },
+      itbisPagado: {
+        casilla22_comprasLocales: { casilla: 22, monto: 9680.29, estado: 'calculada' },
+        casilla23_servicios:      { casilla: 23, monto: 0, estado: 'no_aplica' },
+        casilla24_importaciones:  { casilla: 24, monto: 0, estado: 'no_aplica' },
+        casilla25_totalDeducible: { casilla: 25, monto: 9680.29, estado: 'calculada' },
+      },
+      liquidacion: {
+        casilla26_impuestoAPagar:         { casilla: 26, monto: 37174.43, estado: 'calculada' },
+        casilla27_saldoAFavor:            { casilla: 27, monto: 0, estado: 'calculada' },
+        casilla28_saldosCompensables:     { casilla: 28, monto: 0, estado: 'no_aplica' },
+        casilla29_saldoAFavorAnterior:    { casilla: 29, monto: 0, estado: 'requiere_revision' },
+        casilla30_retencionesComputables: { casilla: 30, monto: 0, estado: 'requiere_revision' },
+        casilla31_otrosPagosACuenta:      { casilla: 31, monto: 0, estado: 'no_aplica' },
+        casilla32_compensaciones:         { casilla: 32, monto: 0, estado: 'no_aplica' },
+        casilla33_diferenciaAPagar:       { casilla: 33, monto: 37174.43, estado: 'calculada' },
+        casilla34_nuevoSaldoAFavor:       { casilla: 34, monto: 0, estado: 'calculada' },
+      },
+      avisos: [
+        'Casilla 29 (Saldo a Favor Anterior): sin período anterior registrado (08/2026) — verificar manualmente contra la última declaración presentada a DGII.',
+        'Casilla 30 (retenciones computables, proviene de la casilla 33 del Anexo A): requiere revisión — el Anexo A aún no está construido en el sistema.',
+      ],
+    },
+    seccionIV: {
+      penalidades: {
+        casilla35_recargos:  { casilla: 35, monto: 0, estado: 'no_aplica' },
+        casilla36_interes:   { casilla: 36, monto: 0, estado: 'no_aplica' },
+        casilla37_sanciones: { casilla: 37, monto: 0, estado: 'no_aplica' },
+      },
+      montoAPagar: {
+        casilla38_totalAPagar: { casilla: 38, monto: 37174.43, estado: 'calculada' },
+      },
+      avisos: ['Casillas 35/36 (recargos/interés): no aplica — el período no tiene diferencia a pagar (a favor o en cero).'],
+    },
+    ventas: { cantidad: 1, subtotal: 260304.00, itbis: 46854.72, total: 307158.72, porTipoNcf: [
+      { tipo: 'E32', cantidad: 1, subtotal: 260304.00, itbis: 46854.72, total: 307158.72 },
+    ] },
+    compras: { cantidad: 3, subtotal: 53779.39, itbisCredito: 9680.29 },
+    gastosConCf: { cantidad: 0, itbisCredito: 0 },
+    liquidacion: { itbisDebito: 46854.72, itbisCredito: 9680.29, itbisNeto: 37174.43, estado: 'A PAGAR' },
+  }),
+  '/declaraciones/it1/anexo-a': () => ({
+    periodo: { mes: 9, anio: 2026 },
+    seccionII: {
+      casilla1_creditoFiscal: { casilla: 1, cantidad: 0, monto: 0 },
+      casilla2_consumo:       { casilla: 2, cantidad: 12, monto: 260304.00 },
+      casilla3_notaDebito:    { casilla: 3, cantidad: 0, monto: 0 },
+      casilla4_notaCredito:   { casilla: 4, cantidad: 0, monto: 0 },
+      casilla5_registroUnicoIngresos: { casilla: 5, cantidad: 0, monto: 0, estado: 'no_aplica' },
+      casilla6_regimenesEspeciales:   { casilla: 6, cantidad: 0, monto: 0 },
+      casilla7_gubernamentales:       { casilla: 7, cantidad: 1, monto: 485414.00 },
+      casilla8_exportaciones:         { casilla: 8, cantidad: 0, monto: 0 },
+      casilla9_otrasPositivas:        { casilla: 9, cantidad: 0, monto: 0 },
+      casilla10_otrasNegativas:       { casilla: 10, cantidad: 0, monto: 0 },
+      casilla11_totalOperaciones:     { casilla: 11, monto: 745718.00 },
+    },
+    seccionIII: {
+      casilla12_efectivo:            { casilla: 12, monto: 190000.00 },
+      casilla13_chequeTransferencia: { casilla: 13, monto: 555158.72 },
+      casilla14_tarjeta:              { casilla: 14, monto: 0 },
+      casilla15_aCredito:             { casilla: 15, monto: 0 },
+      casilla16_bonos:                { casilla: 16, monto: 0, estado: 'no_aplica' },
+      casilla17_permutas:             { casilla: 17, monto: 0 },
+      casilla18_otras:                { casilla: 18, monto: 0 },
+      casilla19_total:                { casilla: 19, monto: 745158.72 },
+    },
+    seccionIV: {
+      casilla20_ingresosOperaciones:      { casilla: 20, monto: 745718.00 },
+      casilla21_ingresosFinancieros:      { casilla: 21, monto: 0, estado: 'no_aplica' },
+      casilla22_ingresosExtraordinarios:  { casilla: 22, monto: 0, estado: 'no_aplica' },
+      casilla23_ingresosArrendamientos:   { casilla: 23, monto: 0, estado: 'no_aplica' },
+      casilla24_ventaActivosDepreciables: { casilla: 24, monto: 0, estado: 'no_aplica' },
+      casilla25_otrosIngresos:            { casilla: 25, monto: 0, estado: 'no_aplica' },
+      casilla26_total:                    { casilla: 26, monto: 745718.00 },
+    },
+    seccionIX: {
+      noDeducible: {
+        casilla45_productoresExentos: { casilla: 45, monto: 0, estado: 'no_aplica' },
+        casilla46_activosCategoriaI:  { casilla: 46, monto: 0, estado: 'no_aplica' },
+        casilla47_otrosNoDeducibles:  { casilla: 47, monto: 0, estado: 'no_aplica' },
+        casilla48_totalNoDeducible:   { casilla: 48, monto: 0 },
+      },
+      deducibleNoSujetoAProporcionalidad: {
+        casilla49_bienesExportados:  { casilla: 49, monto: 0, estado: 'no_aplica' },
+        casilla50_bienesGravados:    { casilla: 50, monto: 0, estado: 'no_aplica' },
+        casilla51_serviciosGravados: { casilla: 51, monto: 0, estado: 'no_aplica' },
+        casilla52_total:             { casilla: 52, monto: 0 },
+      },
+      sujetoAProporcionalidad: {
+        casilla53_itbisSujeto:   { casilla: 53, monto: 9680.29 },
+        casilla54_coeficiente:   { casilla: 54, monto: 34.91 },
+        casilla55_itbisAdmitido: { casilla: 55, monto: 3379.71 },
+      },
+      casilla56_totalItbisDeducible: { casilla: 56, monto: 3379.71 },
+      avisos: [`Coeficiente de proporcionalidad: 34.91% — ver Herramientas Fiscales para el detalle del período.`],
+    },
+    avisos: [
+      'Casilla 16 (bonos): no aplica — el sistema no distingue esa forma de pago de "otras".',
+      'Casillas 21-25 (ingresos financieros/extraordinarios/arrendamientos/venta de activos/otros): no aplica — el sistema no distingue estos tipos de ingreso de las operaciones normales.',
+      'Casillas 45-47 y 49/51 (ITBIS no deducible / deducible sin proporcionalidad): no aplica — el sistema no distingue, por compra, a qué tipo de venta corresponde.',
+      'Coeficiente de proporcionalidad: 34.91% — ver Herramientas Fiscales para el detalle del período.',
+    ],
+  }),
+  '/declaraciones/resumen-anual': () => ({
+    totales: { ventas: 745718.00, compras: 53779.39, itbisNeto: 37174.43 },
+    resumen: Array.from({ length: 12 }, (_, i) => ({
+      mes: i + 1, itbisDebito: 0, itbisCredito: 0, itbisNeto: 0, estado: 'A FAVOR',
+    })),
+  }),
+  '/declaraciones/historial': () => [],
   '/productos': () => ({
     data: [
       { id: 1, codigo: 'ACE-10W40', nombre: 'Aceite REPSOL 10W40', precio: 950,  porcentajeIva: 18, unidadMedida: 'UN' },
