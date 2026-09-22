@@ -107,6 +107,16 @@ const PFX_CLIENTES       = ['1.1.2.01'];            // Clientes (no todo 1.1.2 �
 const PFX_MERCANCIAS     = ['1.1.3.01'];            // Mercancías para la Venta
 const PFX_PROVEEDORES    = ['2.1.1.01'];            // Proveedores
 const PFX_IMPUESTOS      = ['2.1.2.01', '2.1.2.02']; // ITBIS + ISR por Pagar
+// Contrapeso del lado ACTIVO de PFX_IMPUESTOS — grupo 1.1.4 "Impuestos
+// Anticipados" (ITBIS Crédito Fiscal de compras, ITBIS/ISR Retenido a
+// Recuperar E41, Anticipos de ISR). Encontrado el 2026-09-22 diagnosticando
+// un descuadre real: la especificación original solo pedía el lado pasivo
+// (Impuestos por Pagar) y esta cuenta se quedó sin línea — un aumento
+// (la empresa acumula más crédito fiscal) SÍ usa efectivo, igual que CxC/
+// Inventarios. Verificado contra un backup restaurado: era la ÚNICA cuenta
+// de balance sin línea propia, y su variación coincidía exacto con la
+// diferencia de cuadre.
+const PFX_IMPUESTOS_ANTICIPADOS = ['1.1.4'];
 const PFX_ACTIVOS_FIJOS  = ['1.2.1'];               // Propiedades, Planta y Equipo — a costo (no la depreciación acumulada, 1.2.2)
 const PFX_INVERSIONES    = ['1.1.5', '1.2.3'];      // Inversiones temporales (CP) + a largo plazo
 const PFX_PRESTAMOS      = ['2.2.1'];               // Préstamos y Financiamientos LP
@@ -151,6 +161,7 @@ export function construirFlujoEfectivo(
     lineaVariacion('Aumento en Inventarios',          saldosInicio, saldosFin, PFX_MERCANCIAS,  -1),
     lineaVariacion('Aumento en Cuentas por Pagar',    saldosInicio, saldosFin, PFX_PROVEEDORES,  1),
     lineaVariacion('Aumento en Impuestos por Pagar',  saldosInicio, saldosFin, PFX_IMPUESTOS,    1),
+    lineaVariacion('Aumento en Impuestos Anticipados', saldosInicio, saldosFin, PFX_IMPUESTOS_ANTICIPADOS, -1),
   ]);
 
   const inversiones = bloque('Efectivo Neto Generado por Inversiones', [

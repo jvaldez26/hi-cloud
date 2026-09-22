@@ -145,6 +145,21 @@ describe('construirFlujoEfectivo() — regla de oro: Inicio + Cambio Neto = Fina
     expect(r.cuadrado).toBe(true);
   });
 
+  it('aumento en ITBIS Crédito Fiscal (Impuestos Anticipados, 1.1.4): usa efectivo — bug real encontrado el 2026-09-22', () => {
+    const saldosFin: CuentaSaldoFlujo[] = [
+      cta('1.1.1.02', 'Caja General', 'activo', 80_000), // −20,000 en efectivo
+      cta('1.1.4.01', 'ITBIS Crédito Fiscal (Compras)', 'activo', 20_000), // +20,000 en crédito fiscal
+    ];
+    const r = construirFlujoEfectivo(BASE_INICIO, saldosFin, []);
+
+    const lineaImpAnticipados = r.operaciones.lineas.find(l => l.nombre === 'Aumento en Impuestos Anticipados')!;
+    expect(lineaImpAnticipados.monto).toBe(-20_000); // invertido: acumular más crédito fiscal USA efectivo
+    expect(r.cambioNetoEfectivo).toBe(-20_000);
+    expect(r.efectivoFin).toBe(80_000);
+    expect(r.efectivoInicio + r.cambioNetoEfectivo).toBe(r.efectivoFin);
+    expect(r.cuadrado).toBe(true);
+  });
+
   it('vista Detallado: cada línea de variación de balance trae sus cuentas individuales con el signo ya aplicado', () => {
     const saldosFin: CuentaSaldoFlujo[] = [
       cta('1.1.1.02', 'Caja General', 'activo', 80_000),
