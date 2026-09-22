@@ -181,6 +181,29 @@ const RUTAS = {
     ],
     meta: { total: 2, page: 1, limit: 10, totalPages: 1 },
   }),
+  // ── Recibos de Cobro — un par REC/RDP agrupado (con pagoNumero vinculado),
+  //    un REC revertido (isActive=false, marcado "Revertido") y un RDP puro
+  //    de Cuentas por Cobrar (origen 'pago'), para capturar los tres casos
+  //    del fix 2026-09-22 sin volver a duplicar el cobro en pantalla.
+  '/recibos-cobro/resumen': () => ({
+    hoy:   { total: 1750.70, cantidad: 1 },
+    mes:   { total: 9403.79 },
+    total: { total: 30903.79, cantidad: 3 },
+  }),
+  '/recibos-cobro': () => ({
+    data: [
+      { origen: 'recibo', id: 55, numero: 'REC-102', fecha: '2026-09-18', clienteId: 40, clienteNombre: 'Consumidor Final',
+        metodoPago: 'efectivo', monto: 1750.70, concepto: 'Pago de factura FAC-9595', facturaFolio: 'FAC-9595',
+        cajaDiariaId: null, nombreUsuario: 'Jean Contador', moneda: 'DOP', isActive: true, pagoNumero: 'RDP-00060' },
+      { origen: 'recibo', id: 14, numero: 'REC-101', fecha: '2026-08-04', clienteId: 41, clienteNombre: 'GRUPO SUS SRL',
+        metodoPago: 'efectivo', monto: 7500.00, concepto: 'Pago de factura FAC-7792', facturaFolio: 'FAC-7792',
+        cajaDiariaId: null, nombreUsuario: 'Jean Contador', moneda: 'DOP', isActive: false, pagoNumero: 'RDP-00027' },
+      { origen: 'pago', id: 99, numero: 'RDP-00099', fecha: '2026-08-01', clienteId: 42, clienteNombre: 'MERCADAL SAS',
+        metodoPago: 'transferencia', monto: 21653.09, concepto: 'Cobro sobre factura FAC-6559', facturaFolio: 'FAC-6559',
+        cajaDiariaId: null, nombreUsuario: 'Jean Contador', moneda: 'DOP', isActive: true, pagoNumero: null },
+    ],
+    meta: { total: 3, page: 1, limit: 10, totalPages: 1 },
+  }),
   '/productos': () => ({
     data: [
       { id: 1, codigo: 'ACE-10W40', nombre: 'Aceite REPSOL 10W40', precio: 950,  porcentajeIva: 18, unidadMedida: 'UN' },

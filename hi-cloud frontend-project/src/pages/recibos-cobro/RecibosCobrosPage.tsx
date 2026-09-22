@@ -332,6 +332,7 @@ export default function RecibosCobrosPage() {
               'Método':   r.metodoPago ?? '',
               'Referencia': r.referencia ?? '',
               'Monto':    Number(r.monto ?? 0),
+              'Estado':   r.isActive === false ? 'Revertido' : 'Activo',
             }));
             exportarExcel(filas, `Recibos-${dayjs().format('YYYY-MM-DD')}`);
             message.success(`${filas.length} recibos exportados`);
@@ -372,7 +373,15 @@ export default function RecibosCobrosPage() {
             { title: 'Número', dataIndex: 'numero', key: 'n', width: 165,
               render: (v: any, r: any) => (
                 <Space size={4}>
-                  <Text strong style={{ fontFamily: 'monospace', color: token.colorSuccess }}>{v}</Text>
+                  <Text
+                    strong
+                    style={{
+                      fontFamily: 'monospace',
+                      color: r.isActive === false ? token.colorTextQuaternary : token.colorSuccess,
+                    }}
+                  >
+                    {v}
+                  </Text>
                   {/* El prefijo ya distingue REC de RDP, pero solo si sabes qué
                       significan. La etiqueta dice de dónde salió y, sobre todo,
                       que ese cobro no pasó por una caja: cxc.registrarPago() no
@@ -380,6 +389,15 @@ export default function RecibosCobrosPage() {
                   {r.origen === 'pago' && (
                     <Tooltip title="Cobro registrado desde Cuentas por Cobrar. No está imputado a ninguna caja, así que no suma en el cierre.">
                       <Tag color="orange" style={{ marginInlineEnd: 0, fontSize: 10 }}>CxC</Tag>
+                    </Tooltip>
+                  )}
+                  {/* isActive=false: el asiento de este recibo ya se revirtió
+                      (anulación directa o reemisión por cambiarFormaPago). Se
+                      muestra marcado, no oculto, para no perder el rastro de
+                      que existió. */}
+                  {r.isActive === false && (
+                    <Tooltip title="El asiento de este recibo fue revertido — no representa dinero en caja hoy.">
+                      <Tag color="default" style={{ marginInlineEnd: 0, fontSize: 10 }}>Revertido</Tag>
                     </Tooltip>
                   )}
                 </Space>
@@ -398,7 +416,17 @@ export default function RecibosCobrosPage() {
             { title: 'Concepto', dataIndex: 'concepto', key: 'co', ellipsis: true },
             {
               title: 'Monto', dataIndex: 'monto', key: 'mo', align: 'right' as const, width: 150,
-              render: (v: any, r: any) => <Text strong style={{ color: token.colorSuccess, fontSize: 14 }}>{fmt(v, r.moneda)}</Text>,
+              render: (v: any, r: any) => (
+                <Text
+                  strong
+                  style={{
+                    color: r.isActive === false ? token.colorTextQuaternary : token.colorSuccess,
+                    fontSize: 14,
+                  }}
+                >
+                  {fmt(v, r.moneda)}
+                </Text>
+              ),
             },
             {
               title: '', key: 'acciones', width: 72, align: 'right' as const, fixed: 'right' as const,
@@ -529,9 +557,14 @@ export default function RecibosCobrosPage() {
             {detalleRecibo.facturaFolio && (
               <Descriptions.Item label="Factura">{detalleRecibo.facturaFolio}</Descriptions.Item>
             )}
+            {detalleRecibo.pagoNumero && (
+              <Descriptions.Item label="Pago vinculado">
+                <Text style={{ fontFamily: 'monospace' }}>{detalleRecibo.pagoNumero}</Text>
+              </Descriptions.Item>
+            )}
             <Descriptions.Item label="Estado">
               <Tag color={detalleRecibo.isActive !== false ? 'success' : 'error'}>
-                {detalleRecibo.isActive !== false ? 'Activo' : 'Anulado'}
+                {detalleRecibo.isActive !== false ? 'Activo' : 'Anulado / Revertido'}
               </Tag>
             </Descriptions.Item>
             {detalleRecibo.notas && (

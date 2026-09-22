@@ -2,7 +2,7 @@ import {
   Injectable, NotFoundException, BadRequestException, Logger,
 } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
-import { Repository, DataSource, Like } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { fechaHoyRD, mesHoyRD } from '../common/utils/fecha-local.util';
 import { ReciboCobro, MetodoPagoRecibo } from './entities/recibo-cobro.entity';
@@ -256,6 +256,7 @@ export class RecibosCobrosService {
           tipoCambio: 1,
           numero:     rdpNumero,   // RDP-XXXXX — NOT NULL en pagos_cobrados
           empresaId,               // necesario para el índice único (empresaId, numero)
+          reciboCobroId: recibo.id, // vínculo real — listar() lo usa para no mostrar este pago aparte
         }));
         pagoId = pagoGuardado.id;
 
@@ -380,6 +381,26 @@ export class RecibosCobrosService {
    * documentos distintos. Sin `origen`, pulsar «Imprimir» en una fila RDP
    * llamaría a /recibos-cobro/5/pdf y sacaría OTRO recibo, de otro cliente y
    * otro monto. Por eso viaja en cada fila y el frontend enruta con él.
+   *
+   * ── Un cobro con CxC no son DOS filas (2026-09-22) ───────────────────────
+   * Cuando "Nuevo Recibo" se emite contra una CxC, crear() escribe un REC- Y un
+   * RDP- para el MISMO cobro (pagos_cobrados.reciboCobroId queda apuntando al
+   * recibo). Antes de este fix el UNION mostraba las dos filas como si fueran
+   * dos cobros distintos — mismo cliente, misma fecha, mismo monto, duplicado
+   * — aunque el asiento contable nunca se duplicó (un solo INSERT en
+   * asientos_contables por cobro real; auditado contra el backup de
+   * producción antes de tocar esto). Se corrige EN LA CONSULTA, no en el
+   * render: un pago con reciboCobroId ya está representado por su recibo, así
+   * que la rama de pagos_cobrados lo excluye — Excel/CSV heredan la
+   * corrección sin tocarlos, porque leen esta misma data.
+   *
+   * ── Documentos revertidos, marcados en vez de ocultos ────────────────────
+   * eliminar() (anulación directa o reemisión vía cambiarFormaPago) deja
+   * isActive=false en el recibo Y revierte su asiento con un REV-. Antes ese
+   * filtro vivía en el WHERE y el recibo desaparecía sin dejar rastro. Ahora
+   * se incluye igual — isActive viaja en la fila para que la pantalla lo
+   * marque "Revertido" — porque un recibo que existió y se corrigió es
+   * información, no ruido.
    */
   async listar(pagination: PaginationDto, clienteId?: number) {
     const empresaId = this.tenantSvc.getEmpresaId();
@@ -435,9 +456,12 @@ export class RecibosCobrosService {
              r."facturaFolio",
              r."cajaDiariaId",
              r."nombreUsuario",
-             r.moneda
+             r.moneda,
+             r."isActive"                AS "isActive",
+             pc_link.numero              AS "pagoNumero"
         FROM recibos_cobro r
-       WHERE r."empresaId" = $1 AND r."isActive" = true ${filtroRecibo}
+        LEFT JOIN pagos_cobrados pc_link ON pc_link."reciboCobroId" = r.id
+       WHERE r."empresaId" = $1 ${filtroRecibo}
 
       UNION ALL
 
@@ -456,13 +480,19 @@ export class RecibosCobrosService {
              -- señalar en vez de dejarlo parecer un cobro que sí entró al arqueo.
              NULL::int         AS "cajaDiariaId",
              u.nombre          AS "nombreUsuario",
-             p.moneda
+             p.moneda,
+             true                        AS "isActive",
+             NULL::varchar               AS "pagoNumero"
         FROM pagos_cobrados p
         JOIN cuentas_por_cobrar cxc ON cxc.id = p."cuentaPorCobrarId"
         JOIN facturas f             ON f.id  = cxc."facturaId"
         JOIN clientes cl            ON cl.id = cxc."clienteId"
         LEFT JOIN users u           ON u.id  = p."userId"
-       WHERE f."empresaId" = $1 AND p."isActive" = true ${filtroPago}
+       WHERE f."empresaId" = $1 AND p."isActive" = true
+         -- Ya representado por su REC- en la rama de arriba — mostrarlo aquí
+         -- también duplicaría el cobro en pantalla y en Excel/CSV.
+         AND p."reciboCobroId" IS NULL
+         ${filtroPago}
     `;
 
     const [{ total }] = await this.dataSource.query<{ total: string }[]>(
@@ -524,8 +554,10 @@ export class RecibosCobrosService {
           }
           // Marcar el pago_cobrado asociado como inactivo para que no aparezca
           // en el estado de cuenta ni en el historial de cobros del cliente.
+          // Por reciboCobroId, no por notas: un LIKE con comodín sobre el
+          // número ('Recibo REC-101%') también matchea REC-1010, REC-1011...
           await em.getRepository(PagoCobrado).update(
-            { cuentaPorCobrarId: cxc.id, notas: Like(`Recibo ${recibo.numero}%`), isActive: true },
+            { reciboCobroId: recibo.id, isActive: true },
             { isActive: false },
           );
         });

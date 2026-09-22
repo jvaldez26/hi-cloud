@@ -9,6 +9,10 @@
  * Sigue bloqueado el caso que causaría doble reversa: un pago vinculado a un
  * recibo de cobro debe revertirse SOLO desde recibos-cobro.service.ts —
  * revertirlo también desde aquí infla Clientes en vez de corregirlo.
+ *
+ * 2026-09-22: el gate era una regex sobre `notas` ("Recibo REC-…"), texto
+ * libre que nada garantizaba. Ahora es reciboCobroId, la FK real agregada en
+ * 1766800000000-AgregarReciboCobroIdPagosCobrados.
  */
 
 import { CxCService } from './cxc.service';
@@ -43,7 +47,7 @@ describe('CxCService.anularPago', () => {
   });
 
   it('pago vinculado a un recibo de cobro: rechaza y apunta al recibo', async () => {
-    const pago = { id: 900, cuentaPorCobrarId: 47, monto: 400, isActive: true, notas: 'Recibo REC-00012' };
+    const pago = { id: 900, cuentaPorCobrarId: 47, monto: 400, isActive: true, notas: 'Recibo REC-00012', reciboCobroId: 12 };
     const cxc  = { id: 47, empresaId: 7, montoPagado: 400, montoOriginal: 1180, facturaId: 10 };
     const { svc, dataSource, asientosService } = makeService(pago, cxc);
 
@@ -54,7 +58,7 @@ describe('CxCService.anularPago', () => {
   });
 
   it('pago SIN recibo: se anula, revierte saldos y revierte su propio asiento', async () => {
-    const pago = { id: 901, cuentaPorCobrarId: 48, monto: 400, isActive: true, notas: null };
+    const pago = { id: 901, cuentaPorCobrarId: 48, monto: 400, isActive: true, notas: null, reciboCobroId: null };
     const cxc  = { id: 48, empresaId: 7, montoPagado: 400, montoOriginal: 1180, facturaId: 11 };
     const { svc, dataSource, asientosService } = makeService(pago, cxc);
 
@@ -71,8 +75,12 @@ describe('CxCService.anularPago', () => {
     );
   });
 
-  it('un pago con "referencia" pero notas que NO empiezan con "Recibo" no se confunde — se revierte', async () => {
-    const pago = { id: 902, cuentaPorCobrarId: 49, monto: 200, isActive: true, notas: 'Pago directo sin recibo' };
+  it('un pago con notas de texto libre pero SIN reciboCobroId no se confunde — se revierte', async () => {
+    // Antes del fix esto se decidía con una regex sobre `notas`; ahora la
+    // única fuente de verdad es reciboCobroId, así que un pago con texto
+    // libre parecido ("Recibo" en cualquier parte) ya no puede bloquearse
+    // por accidente.
+    const pago = { id: 902, cuentaPorCobrarId: 49, monto: 200, isActive: true, notas: 'Pago directo, sin recibo asociado', reciboCobroId: null };
     const cxc  = { id: 49, empresaId: 7, montoPagado: 200, montoOriginal: 500, facturaId: 12 };
     const { svc, asientosService } = makeService(pago, cxc);
 

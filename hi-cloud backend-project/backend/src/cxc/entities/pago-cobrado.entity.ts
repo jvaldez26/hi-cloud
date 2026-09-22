@@ -3,6 +3,7 @@ import { BaseEntity } from '../../common/entities/base.entity';
 import { MetodoPago } from '../../common/enums/metodo-pago.enum';
 import { CuentaPorCobrar } from './cuenta-por-cobrar.entity';
 import { User } from '../../users/users.entity';
+import { ReciboCobro } from '../../recibos-cobro/entities/recibo-cobro.entity';
 
 @Entity('pagos_cobrados')
 export class PagoCobrado extends BaseEntity {
@@ -50,4 +51,16 @@ export class PagoCobrado extends BaseEntity {
   /** Número secuencial por empresa — RDP-00001, RDP-00002, … */
   @Column({ length: 20 })
   numero!: string;
+
+  /**
+   * Recibo de cobro (REC-xxx) que originó este pago — solo cuando "Nuevo
+   * Recibo" se emitió contra una CxC (recibos-cobro.service.ts:crear()).
+   * NULL para los pagos registrados directo desde Cuentas por Cobrar.
+   */
+  @ManyToOne(() => ReciboCobro, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'reciboCobroId' })
+  reciboCobro?: ReciboCobro;
+
+  @Column({ nullable: true })
+  reciboCobroId?: number;
 }

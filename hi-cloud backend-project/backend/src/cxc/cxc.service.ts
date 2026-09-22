@@ -297,26 +297,16 @@ export class CxCService {
     await this.findById(cuentaId);
     const pagos = await this.pagoRepository.find({
       where: { cuentaPorCobrarId: cuentaId, isActive: true },
-      relations: ['user'],
+      relations: ['user', 'reciboCobro'],
       order: { fecha: 'DESC' },
     });
 
-    // Enriquecer con reciboId/reciboNumero para permitir anulación desde el historial
-    const recibosRows = await this.dataSource.query<{ id: number; numero: string }[]>(
-      `SELECT id, numero FROM recibos_cobro WHERE "cxcId" = $1 AND "isActive" = true`,
-      [cuentaId],
-    );
-    const reciboByNumero: Record<string, number> = {};
-    for (const r of recibosRows) reciboByNumero[r.numero] = r.id;
-
-    return pagos.map(p => {
-      const match = p.notas?.match(/^Recibo (REC-\d+)/);
-      const numero = match?.[1] ?? null;
-      return Object.assign(p as any, {
-        reciboId:     numero ? (reciboByNumero[numero] ?? null) : null,
-        reciboNumero: numero,
-      });
-    });
+    // reciboId/reciboNumero para permitir anulación desde el historial — por
+    // la FK reciboCobroId, no adivinando el número con una regex sobre notas.
+    return pagos.map(p => Object.assign(p as any, {
+      reciboId:     p.reciboCobroId ?? null,
+      reciboNumero: p.reciboCobro?.numero ?? null,
+    }));
   }
 
   async getCuentasVencidas() {
@@ -470,10 +460,10 @@ export class CxCService {
    * propio asiento de cobro.
    *
    * Usado desde el historial de cobros para pagos SIN recibo asociado — un
-   * pago vinculado a un recibo (notas empieza con "Recibo ...") se revierte
-   * SOLO desde recibos-cobro.service.ts:eliminar(), nunca desde aquí: ambos
-   * caminos apuntarían al mismo asiento y revertirlo dos veces infla
-   * Clientes en vez de corregirlo.
+   * pago vinculado a un recibo (reciboCobroId no nulo) se revierte SOLO desde
+   * recibos-cobro.service.ts:eliminar(), nunca desde aquí: ambos caminos
+   * apuntarían al mismo asiento y revertirlo dos veces infla Clientes en vez
+   * de corregirlo.
    *
    * asientoCobro/asientoCobroME etiquetan el asiento por el id de ESTE pago
    * (no por el de la CxC), así que revertirAsiento() lo encuentra sin
@@ -492,7 +482,7 @@ export class CxCService {
     });
     if (!cxc) throw new NotFoundException(`Cuenta por cobrar no encontrada`);
 
-    if (pago.notas?.match(/^Recibo (REC-\d+)/)) {
+    if (pago.reciboCobroId) {
       throw new BadRequestException(
         `No se puede anular el pago #${pagoId} directamente: está vinculado a un recibo de cobro. ` +
         `Revierta el recibo asociado en su lugar (recibos-cobro).`,

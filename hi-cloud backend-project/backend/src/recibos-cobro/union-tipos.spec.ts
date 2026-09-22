@@ -56,6 +56,10 @@ describe('listar() — el UNION une tipos compatibles', () => {
     // NULL sin tipo en un UNION se resuelve como text y choca con el int de la
     // otra rama. cajaDiariaId es el caso: en los pagos siempre es NULL.
     expect(union).toMatch(/NULL::int\s+AS "cajaDiariaId"/);
+    // pagoNumero es el mismo problema al revés: la rama de pagos_cobrados no
+    // tiene un recibo que enlazar, así que declara NULL::varchar en vez de un
+    // NULL sin tipo que chocaría con el varchar real de la otra rama.
+    expect(union).toMatch(/NULL::varchar\s+AS "pagoNumero"/);
   });
 
   it('no queda ninguna columna enum sin castear', () => {
@@ -68,5 +72,24 @@ describe('listar() — el UNION une tipos compatibles', () => {
       const sinCastear = new RegExp(`[rp]\."${col}"(?!::)`, 'g');
       expect(union).not.toMatch(sinCastear);
     }
+  });
+
+  /**
+   * 2026-09-22 — un cobro con CxC ya no aparece como dos filas.
+   *
+   * Antes la rama de recibos_cobro filtraba isActive=true (los revertidos
+   * desaparecían sin dejar rastro) y la rama de pagos_cobrados no sabía que
+   * un RDP ya estaba representado por su REC — el mismo cobro salía dos
+   * veces en la lista, en Excel y en CSV, aunque el asiento contable nunca se
+   * duplicó (auditado contra el backup real de producción antes de tocar
+   * esto: un único INSERT en asientos_contables por cobro).
+   */
+  it('la rama de recibos_cobro ya no filtra isActive — los revertidos se marcan, no se ocultan', () => {
+    expect(ramas[0]).not.toMatch(/r\."isActive"\s*=\s*true/);
+    expect(ramas[0]).toMatch(/r\."isActive"\s+AS\s+"isActive"/);
+  });
+
+  it('la rama de pagos_cobrados excluye los que ya tienen un recibo — no se duplica el cobro', () => {
+    expect(ramas[1]).toMatch(/p\."reciboCobroId"\s+IS\s+NULL/);
   });
 });
