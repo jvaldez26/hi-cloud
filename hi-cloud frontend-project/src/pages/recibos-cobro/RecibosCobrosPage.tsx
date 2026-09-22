@@ -316,7 +316,7 @@ export default function RecibosCobrosPage() {
     <div style={{ padding: 24 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <FileTextOutlined style={{ fontSize: 28, color: token.colorSuccess }} />
+          <FileTextOutlined style={{ fontSize: 28, color: token.colorPrimary }} />
           <div>
             <Title level={3} style={{ margin: 0 }}>Recibos de Cobro</Title>
             <Text type="secondary">Comprobante oficial de pago recibido · Impresión directa 80mm</Text>
@@ -341,7 +341,6 @@ export default function RecibosCobrosPage() {
           <RefreshByKeyButton queryKey={['recibos-cobro']} />
           <VideoTutorialButton />
           <Button type="primary" icon={<PlusOutlined />}
-            style={{ background: token.colorSuccess, borderColor: token.colorSuccess }}
             onClick={() => setModalCrear(true)}>
             Nuevo Recibo
           </Button>
