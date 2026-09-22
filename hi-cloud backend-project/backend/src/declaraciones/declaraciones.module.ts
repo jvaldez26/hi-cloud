@@ -15,14 +15,17 @@ import { Compra } from '../compras/entities/compra.entity';
 import { CompraDetalle } from '../compras/entities/compra-detalle.entity';
 import { Gasto } from '../gastos/entities/gasto.entity';
 import { RecargosInteresesModule } from '../herramientas-fiscales/recargos-intereses/recargos-intereses.module';
+import { ProporcionalidadItbisModule } from '../herramientas-fiscales/proporcionalidad-itbis/proporcionalidad-itbis.module';
+import { AnexoAService } from './anexo-a.service';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Factura, FacturaDetalle, Compra, CompraDetalle, ReporteDgii, DeclaracionItbis, Gasto]),
     RecargosInteresesModule,
+    ProporcionalidadItbisModule,
   ],
   controllers: [DeclaracionesController],
-  providers:   [DeclaracionesService, DeclaracionesPdfService, DgiiValidatorService, DgiiTxtGeneratorService, ConciliacionFiscalService, AnexosIR2Service],
-  exports:     [DeclaracionesService, ConciliacionFiscalService, AnexosIR2Service],
+  providers:   [DeclaracionesService, DeclaracionesPdfService, DgiiValidatorService, DgiiTxtGeneratorService, ConciliacionFiscalService, AnexosIR2Service, AnexoAService],
+  exports:     [DeclaracionesService, ConciliacionFiscalService, AnexosIR2Service, AnexoAService],
 })
 export class DeclaracionesModule {}

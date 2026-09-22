@@ -6,6 +6,7 @@ import { DeclaracionesPdfService } from './declaraciones-pdf.service';
 import { DgiiTxtGeneratorService } from './dgii-txt.generator';
 import { ConciliacionFiscalService } from './conciliacion-fiscal.service';
 import { AnexosIR2Service } from './anexos-ir2.service';
+import { AnexoAService } from './anexo-a.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -34,12 +35,19 @@ export class DeclaracionesController {
     private txt: DgiiTxtGeneratorService,
     private conciliacion: ConciliacionFiscalService,
     private anexosIR2: AnexosIR2Service,
+    private anexoA: AnexoAService,
   ) {}
 
   @Get('it1')
   @ApiOperation({ summary: 'IT-1: Declaración mensual de ITBIS' })
   getIT1(@Query('mes') mes: string, @Query('anio') anio: string) {
     return this.svc.getIT1(Number(mes), Number(anio));
+  }
+
+  @Get('it1/anexo-a')
+  @ApiOperation({ summary: 'Anexo A del IT-1 (Secciones II, III, IV y IX)' })
+  getAnexoA(@Query('mes') mes: string, @Query('anio') anio: string) {
+    return this.anexoA.getAnexoA(Number(mes), Number(anio));
   }
 
   @Get('formato606')

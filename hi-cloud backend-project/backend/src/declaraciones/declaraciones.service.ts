@@ -77,10 +77,11 @@ export class DeclaracionesService {
    * Excel adjunto (casilla 11 = 260,304.00 × 18% = 46,854.72 = casilla 16 de
    * Liquidación exactamente).
    */
-  private async operacionesVentaPeriodo(desde: Date, hasta: Date) {
+  /** Público — reusado por AnexoAService (Sección IX: la misma clasificación gravada/exenta/exportación). */
+  async operacionesVentaPeriodo(desde: Date, hasta: Date) {
     const rows = await this.dataSource.query<any[]>(`
-      SELECT f.id, 1::int AS signo, f."tipoNcf",
-             f.subtotal::numeric AS subtotal, f.total::numeric AS total,
+      SELECT f.id, 1::int AS signo, f."tipoNcf", 'FACTURA'::text AS "tipoDocumento",
+             f.subtotal::numeric AS subtotal, f.total::numeric AS total, f."formasPago",
              e."jsonEnviado" AS "jsonEnviado",
              (SELECT json_build_object(
                 'gravado18', COALESCE(SUM(fd.subtotal)     FILTER (WHERE fd."porcentajeIva" = 18), 0),
@@ -96,8 +97,8 @@ export class DeclaracionesService {
 
       UNION ALL
 
-      SELECT nc.id, -1::int AS signo, nc."tipoNcf",
-             nc.subtotal::numeric AS subtotal, nc.total::numeric AS total,
+      SELECT nc.id, -1::int AS signo, nc."tipoNcf", 'NOTA_CREDITO'::text AS "tipoDocumento",
+             nc.subtotal::numeric AS subtotal, nc.total::numeric AS total, NULL::jsonb AS "formasPago",
              e."jsonEnviado" AS "jsonEnviado",
              (SELECT json_build_object(
                 'gravado18', COALESCE(SUM(d.subtotal) FILTER (WHERE d."porcentajeIva" = 18), 0),
@@ -113,8 +114,8 @@ export class DeclaracionesService {
 
       UNION ALL
 
-      SELECT nd.id, 1::int AS signo, nd."tipoNcf",
-             nd.subtotal::numeric AS subtotal, nd.total::numeric AS total,
+      SELECT nd.id, 1::int AS signo, nd."tipoNcf", 'NOTA_DEBITO'::text AS "tipoDocumento",
+             nd.subtotal::numeric AS subtotal, nd.total::numeric AS total, NULL::jsonb AS "formasPago",
              e."jsonEnviado" AS "jsonEnviado",
              (SELECT json_build_object(
                 'gravado18', COALESCE(SUM(d.subtotal) FILTER (WHERE d."porcentajeIva" = 18), 0),
@@ -134,11 +135,17 @@ export class DeclaracionesService {
       const signo = Number(r.signo);
       return {
         tipoNcf:  (r.tipoNcf ?? 'E32') as string,
+        tipoDocumento: r.tipoDocumento as 'FACTURA' | 'NOTA_CREDITO' | 'NOTA_DEBITO',
         gravado18: signo * (d?.gravado18 ?? 0),
         gravado16: signo * (d?.gravado16 ?? 0),
         exento:    signo * (d?.exento ?? 0),
         itbis18:   signo * (d?.itbis18 ?? 0),
         itbis16:   signo * (d?.itbis16 ?? 0),
+        // Sin firmar — para Anexo A Sección III (por forma de pago, "monto
+        // bruto"): las notas de crédito no entran en ese desglose (regla
+        // DGII, mismo criterio que getFormato607()), así que no necesitan signo.
+        total:      Number(r.total ?? 0),
+        formasPago: Array.isArray(r.formasPago) ? r.formasPago as { tipo: number; monto: number }[] : [],
       };
     });
   }
@@ -152,7 +159,8 @@ export class DeclaracionesService {
    * activos depreciables, tasas Ley 690-16 turismo) se devuelven en 0 con
    * estado 'no_aplica' y una nota explicando por qué — nunca un 0 mudo.
    */
-  private calcularSeccionIIIT1(filas: Awaited<ReturnType<DeclaracionesService['operacionesVentaPeriodo']>>) {
+  /** Público — reusado por AnexoAService (Sección IX: casillas 2/4/10/1 alimentan el coeficiente de proporcionalidad). */
+  calcularSeccionIIIT1(filas: Awaited<ReturnType<DeclaracionesService['operacionesVentaPeriodo']>>) {
     const suma = (pred: (f: (typeof filas)[number]) => boolean, campo: 'gravado18' | 'gravado16' | 'exento' | 'itbis18' | 'itbis16') =>
       Math.round(filas.filter(pred).reduce((s, f) => s + f[campo], 0) * 100) / 100;
 
