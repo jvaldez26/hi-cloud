@@ -7,6 +7,7 @@ import { FacturaDetalle } from '../facturas/entities/factura-detalle.entity';
 import { Compra } from '../compras/entities/compra.entity';
 import { CompraDetalle } from '../compras/entities/compra-detalle.entity';
 import { ReporteDgii } from './entities/reporte-dgii.entity';
+import { DeclaracionItbis } from './entities/declaracion-itbis.entity';
 import { Gasto } from '../gastos/entities/gasto.entity';
 import {
   mapFormaPagoDgii, columna607PorCodigoDgii, mapTipoIngreso607, tipoIdDgii,
@@ -27,6 +28,7 @@ export class DeclaracionesService {
     @InjectRepository(Compra)         private compRepo:     Repository<Compra>,
     @InjectRepository(CompraDetalle)  private cdetRepo:     Repository<CompraDetalle>,
     @InjectRepository(ReporteDgii)    private reporteRepo:  Repository<ReporteDgii>,
+    @InjectRepository(DeclaracionItbis) private declItbisRepo: Repository<DeclaracionItbis>,
     @InjectRepository(Gasto)          private gastoRepo:    Repository<Gasto>,
     private dataSource:  DataSource,
     private tenantSvc:   TenantService,
@@ -146,10 +148,8 @@ export class DeclaracionesService {
    * activos depreciables, tasas Ley 690-16 turismo) se devuelven en 0 con
    * estado 'no_aplica' y una nota explicando por qué — nunca un 0 mudo.
    */
-  private async calcularSeccionIIIT1(desde: Date, hasta: Date) {
-    const filas = await this.operacionesVentaPeriodo(desde, hasta);
-
-    const suma = (pred: (f: (typeof filas)[number]) => boolean, campo: 'gravado18' | 'gravado16' | 'exento') =>
+  private calcularSeccionIIIT1(filas: Awaited<ReturnType<DeclaracionesService['operacionesVentaPeriodo']>>) {
+    const suma = (pred: (f: (typeof filas)[number]) => boolean, campo: 'gravado18' | 'gravado16' | 'exento' | 'itbis18' | 'itbis16') =>
       Math.round(filas.filter(pred).reduce((s, f) => s + f[campo], 0) * 100) / 100;
 
     const esExportacion = (f: (typeof filas)[number]) => f.tipoNcf === 'E46';
@@ -188,6 +188,10 @@ export class DeclaracionesService {
 
     const casilla11 = suma(f => !esExportacion(f), 'gravado18');
     const casilla12 = suma(f => !esExportacion(f), 'gravado16');
+    // ITBIS realmente cobrado por tasa — casillas 16/17 de la Sección III,
+    // calculado aquí (mismas filas, sin recorrer la unión otra vez).
+    const itbis18Cobrado = suma(f => !esExportacion(f), 'itbis18');
+    const itbis16Cobrado = suma(f => !esExportacion(f), 'itbis16');
     // Ley 690-16 (turismo, 9%/8%): sin tasa configurada en parametros_fiscales
     // (itbis_tasas hoy solo trae general:18/reducida:16) — no hay ninguna
     // empresa activa con esta tasa que el sistema pueda detectar. Se deja
@@ -228,14 +232,146 @@ export class DeclaracionesService {
         casilla14_gravadas8Ley690:         c(14, casilla14, 'no_aplica'),
         casilla15_activosDepreciables:     c(15, casilla15, 'no_aplica'),
       },
+      /** Para la Sección III — evita recorrer las filas otra vez. */
+      _itbisCobradoPorTasa: { itbis18: itbis18Cobrado, itbis16: itbis16Cobrado },
       avisos,
     };
+  }
+
+  /**
+   * Sección III del IT-1 — Liquidación, casillas 16-34.
+   *
+   * PRINCIPIO: igual que la Sección II, ninguna casilla se deja en 0 sin
+   * verificar si aplica.
+   *
+   * - Casillas 16/17 (ITBIS cobrado 18%/16%): de las mismas filas de
+   *   operacionesVentaPeriodo() que ya calculó la Sección II — un solo
+   *   recorrido de facturas/NC/ND para las dos secciones.
+   * - Casillas 22 (compras locales): compras + gastos con comprobante fiscal
+   *   completo (mismo filtro que el 606, ya existente). Casillas 23
+   *   (servicios) y 24 (importaciones): no_aplica — el sistema no distingue
+   *   bienes de servicios a nivel de compra, y no tiene un módulo de
+   *   importaciones/DUA separado de las compras locales.
+   * - Casilla 29 (Saldo a Favor Anterior): lee declaraciones_itbis del mes
+   *   calendario anterior de la MISMA empresa. Si no existe, 'requiere_revision'
+   *   con aviso explícito — nunca 0 en silencio (pedido explícito del usuario).
+   * - Casilla 30 (retenciones computables, proviene de la casilla 33 del
+   *   Anexo A): 'requiere_revision' — el Anexo A todavía no está construido
+   *   (Commit 4 del rebuild), así que hoy no hay de dónde leerlo.
+   */
+  private async calcularSeccionIIIIT1(
+    seccionII: Awaited<ReturnType<DeclaracionesService['calcularSeccionIIIT1']>>,
+    itbisCompras: number,
+    itbisGastosCf: number,
+    mes: number,
+    anio: number,
+  ) {
+    const avisos: string[] = [];
+    const c = (numero: number, monto: number, estado: 'calculada' | 'no_aplica' | 'requiere_revision' = 'calculada') =>
+      ({ casilla: numero, monto, estado });
+
+    const casilla16 = seccionII._itbisCobradoPorTasa.itbis18;
+    const casilla17 = seccionII._itbisCobradoPorTasa.itbis16;
+    const casilla18 = 0; // Ley 690-16 9% — ver aviso de la Sección II
+    const casilla19 = 0; // Ley 690-16 8% — ver aviso de la Sección II
+    const casilla20 = 0; // ITBIS por venta de activos depreciables — casilla 15 es 0 (no_aplica)
+    const casilla21 = Math.round((casilla16 + casilla17 + casilla18 + casilla19 + casilla20) * 100) / 100;
+
+    const casilla22 = Math.round((itbisCompras + itbisGastosCf) * 100) / 100;
+    const casilla23 = 0;
+    const casilla24 = 0;
+    avisos.push(
+      'Casilla 23 (ITBIS pagado por servicios deducibles): no aplica — el sistema no distingue bienes de servicios ' +
+      'a nivel de compra/gasto; todo el crédito fiscal se reporta en la casilla 22 (compras locales).',
+    );
+    avisos.push('Casilla 24 (ITBIS pagado en importaciones): no aplica — el sistema no tiene un módulo de importaciones/DUA.');
+    const casilla25 = Math.round((casilla22 + casilla23 + casilla24) * 100) / 100;
+
+    const casilla26 = Math.max(0, Math.round((casilla21 - casilla25) * 100) / 100);
+    const casilla27 = Math.max(0, Math.round((casilla25 - casilla21) * 100) / 100);
+
+    const casilla28 = 0; // saldos compensables autorizados (otros impuestos) / reembolsos — sin registro en el sistema
+    avisos.push('Casilla 28 (saldos compensables autorizados / reembolsos): no aplica — no hay registro de compensaciones autorizadas por DGII en el sistema.');
+
+    // Casilla 29 — Saldo a Favor Anterior: lee el mes calendario anterior.
+    const mesAnteriorFecha = new Date(anio, mes - 2, 1); // mes es 1-based; mes-2 = mes anterior (0-based)
+    const mesAnterior = mesAnteriorFecha.getMonth() + 1;
+    const anioAnterior = mesAnteriorFecha.getFullYear();
+    const declAnterior = await this.declItbisRepo.findOne({
+      where: { empresaId: this.eid, mes: mesAnterior, anio: anioAnterior, isActive: true },
+    });
+    let casilla29 = 0;
+    let estado29: 'calculada' | 'requiere_revision' = 'requiere_revision';
+    if (declAnterior) {
+      casilla29 = Number(declAnterior.nuevoSaldoAFavor);
+      estado29 = 'calculada';
+    } else {
+      avisos.push(
+        `Casilla 29 (Saldo a Favor Anterior): sin período anterior registrado (${String(mesAnterior).padStart(2, '0')}/${anioAnterior}) — ` +
+        `verificar manualmente contra la última declaración presentada a DGII. Se asume 0 solo para poder mostrar un total, no lo des por bueno sin revisar.`,
+      );
+    }
+
+    const casilla30 = 0;
+    avisos.push('Casilla 30 (retenciones computables, proviene de la casilla 33 del Anexo A): requiere revisión — el Anexo A aún no está construido en el sistema.');
+    const casilla31 = 0; // otros pagos computables a cuenta — sin registro
+    const casilla32 = 0; // compensaciones y/o reembolsos autorizados — sin registro
+
+    const netoAntesDeCreditos = casilla26 - casilla27; // recupera el signo de 21-25
+    const netoFinal = Math.round((netoAntesDeCreditos - casilla28 - casilla29 - casilla30 - casilla31 - casilla32) * 100) / 100;
+    const casilla33 = netoFinal > 0 ? netoFinal : 0;
+    const casilla34 = netoFinal < 0 ? Math.abs(netoFinal) : 0;
+
+    return {
+      itbisCobrado: {
+        casilla16_gravadas18:      c(16, casilla16),
+        casilla17_gravadas16:      c(17, casilla17),
+        casilla18_gravadas9Ley690: c(18, casilla18, 'no_aplica'),
+        casilla19_gravadas8Ley690: c(19, casilla19, 'no_aplica'),
+        casilla20_activosDepreciables: c(20, casilla20, 'no_aplica'),
+        casilla21_totalItbisCobrado: c(21, casilla21),
+      },
+      itbisPagado: {
+        casilla22_comprasLocales:  c(22, casilla22),
+        casilla23_servicios:       c(23, casilla23, 'no_aplica'),
+        casilla24_importaciones:   c(24, casilla24, 'no_aplica'),
+        casilla25_totalDeducible:  c(25, casilla25),
+      },
+      liquidacion: {
+        casilla26_impuestoAPagar:      c(26, casilla26),
+        casilla27_saldoAFavor:         c(27, casilla27),
+        casilla28_saldosCompensables:  c(28, casilla28, 'no_aplica'),
+        casilla29_saldoAFavorAnterior: c(29, casilla29, estado29),
+        casilla30_retencionesComputables: c(30, casilla30, 'requiere_revision'),
+        casilla31_otrosPagosACuenta:   c(31, casilla31, 'no_aplica'),
+        casilla32_compensaciones:      c(32, casilla32, 'no_aplica'),
+        casilla33_diferenciaAPagar:    c(33, casilla33),
+        casilla34_nuevoSaldoAFavor:    c(34, casilla34),
+      },
+      avisos,
+    };
+  }
+
+  /** Guarda (upsert) el snapshot del período — así el mes SIGUIENTE puede leer casilla 34 como su casilla 29. */
+  private async guardarSnapshotIT1(mes: number, anio: number, casilla33: number, casilla34: number) {
+    const empresaId = this.eid;
+    const existente = await this.declItbisRepo.findOne({ where: { empresaId, mes, anio } });
+    if (existente) {
+      await this.declItbisRepo.update(existente.id, {
+        diferenciaAPagar: casilla33, nuevoSaldoAFavor: casilla34, calculadoEn: new Date(), isActive: true,
+      } as any);
+    } else {
+      await this.declItbisRepo.save(this.declItbisRepo.create({
+        empresaId, mes, anio, diferenciaAPagar: casilla33, nuevoSaldoAFavor: casilla34, calculadoEn: new Date(),
+      }));
+    }
   }
 
   async getIT1(mes: number, anio: number) {
     const { desde, hasta } = this.rango(mes, anio);
 
-    const seccionII = await this.calcularSeccionIIIT1(desde, hasta);
+    const filasVenta = await this.operacionesVentaPeriodo(desde, hasta);
+    const seccionII  = this.calcularSeccionIIIT1(filasVenta);
 
     // Ventas del período (facturas emitidas / pagadas) — se mantiene para
     // ventas.porTipoNcf y el conteo de facturas que ya lee la pantalla;
@@ -286,8 +422,23 @@ export class DeclaracionesService {
 
     const itbisGastosCf  = Number(gastosConCfRow?.itbis    ?? 0);
     const cantGastosCf   = Number(gastosConCfRow?.cantidad  ?? 0);
-    const itbisCredito   = itbisCompras + itbisGastosCf;
-    const itbisNeto      = Math.max(0, itbisVentas - itbisCredito);
+
+    const seccionIII = await this.calcularSeccionIIIIT1(seccionII, itbisCompras, itbisGastosCf, mes, anio);
+    await this.guardarSnapshotIT1(
+      mes, anio,
+      seccionIII.liquidacion.casilla33_diferenciaAPagar.monto,
+      seccionIII.liquidacion.casilla34_nuevoSaldoAFavor.monto,
+    ).catch(() => {}); // el snapshot es un apoyo para el mes siguiente — nunca debe tumbar la consulta del período actual
+
+    // itbisNeto/estado quedan como alias de la Sección III (casillas 33/34)
+    // para que la pantalla actual (que lee liquidacion.itbisNeto/estado) siga
+    // funcionando igual, ahora con el cálculo completo (todas las tasas +
+    // saldo a favor anterior) en vez del flat de antes.
+    const itbisCredito = seccionIII.itbisPagado.casilla25_totalDeducible.monto;
+    const itbisNeto     = seccionIII.liquidacion.casilla33_diferenciaAPagar.monto > 0
+      ? seccionIII.liquidacion.casilla33_diferenciaAPagar.monto
+      : seccionIII.liquidacion.casilla34_nuevoSaldoAFavor.monto;
+    const estaAPagar = seccionIII.liquidacion.casilla33_diferenciaAPagar.monto > 0;
 
     // Resumen por tipo de NCF
     const ventasPorTipo = ventas.reduce((acc, f) => {
@@ -302,8 +453,10 @@ export class DeclaracionesService {
 
     return {
       periodo: { mes, anio },
-      /** Sección II del formulario IT-1 (casillas 1-15) — fuente de verdad de los montos. */
+      /** Sección II del formulario IT-1 (casillas 1-15) — Ingresos. */
       seccionII,
+      /** Sección III del formulario IT-1 (casillas 16-34) — Liquidación, fuente de verdad de `liquidacion` abajo. */
+      seccionIII,
       ventas: {
         cantidad:     ventas.length,
         subtotal:     totalVentas,
@@ -322,10 +475,14 @@ export class DeclaracionesService {
         itbisCredito: itbisGastosCf,
       },
       liquidacion: {
-        itbisDebito:  itbisVentas,
-        itbisCredito,          // compras + gastos con CF
+        // Alias de seccionIII (casillas 21/25/33-34) — se mantienen estos
+        // nombres porque la pantalla actual ya los lee; los valores ahora
+        // vienen del cálculo completo (todas las tasas + saldo a favor
+        // anterior), no del flat de antes.
+        itbisDebito:  seccionIII.itbisCobrado.casilla21_totalItbisCobrado.monto,
+        itbisCredito,
         itbisNeto,
-        estado:       itbisNeto > 0 ? 'A PAGAR' : 'A FAVOR',
+        estado:       estaAPagar ? 'A PAGAR' : 'A FAVOR',
       },
     };
   }
