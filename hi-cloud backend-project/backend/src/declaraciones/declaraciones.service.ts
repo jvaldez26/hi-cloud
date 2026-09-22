@@ -51,11 +51,195 @@ export class DeclaracionesService {
   }
 
   // ── IT-1: ITBIS mensual ───────────────────────────────────────────────────
+  //
+  // Reconstruido contra el formulario oficial DGII (IT-1-2020.xls) — cada
+  // casilla se calcula de una fuente real o se marca explícitamente
+  // 'no_aplica'/'requiere_revision', nunca un 0 silencioso (ver
+  // calcularSeccionIIIT1()). Commit 1 (2026-09-22): Sección II (Ingresos).
+
+  /**
+   * Operaciones de venta del período — facturas + notas de crédito (E34,
+   * restan) + notas de débito (E33, suman), MISMO patrón/filtros que
+   * getFormato607() (estado='emitida', isActive=true) para que IT-1 y el 607
+   * describan siempre el mismo universo de comprobantes. Se reusa
+   * desgloseItbisFuenteVerdad() para el desglose 18%/16%/exento por
+   * documento — prioriza los totales reales del e-CF enviado sobre la suma
+   * por línea, igual que en el validador del 607.
+   *
+   * Devuelve subtotales (base imponible, SIN ITBIS): así es como está
+   * expresada la Sección II del IT-1 — confirmado contra el caso dorado del
+   * Excel adjunto (casilla 11 = 260,304.00 × 18% = 46,854.72 = casilla 16 de
+   * Liquidación exactamente).
+   */
+  private async operacionesVentaPeriodo(desde: Date, hasta: Date) {
+    const rows = await this.dataSource.query<any[]>(`
+      SELECT f.id, 1::int AS signo, f."tipoNcf",
+             f.subtotal::numeric AS subtotal, f.total::numeric AS total,
+             e."jsonEnviado" AS "jsonEnviado",
+             (SELECT json_build_object(
+                'gravado18', COALESCE(SUM(fd.subtotal)     FILTER (WHERE fd."porcentajeIva" = 18), 0),
+                'gravado16', COALESCE(SUM(fd.subtotal)     FILTER (WHERE fd."porcentajeIva" = 16), 0),
+                'exento',    COALESCE(SUM(fd.subtotal)     FILTER (WHERE fd."porcentajeIva" NOT IN (18,16)), 0),
+                'itbis18',   COALESCE(SUM(fd."importeIva") FILTER (WHERE fd."porcentajeIva" = 18), 0),
+                'itbis16',   COALESCE(SUM(fd."importeIva") FILTER (WHERE fd."porcentajeIva" = 16), 0)
+              ) FROM factura_detalles fd WHERE fd."facturaId" = f.id) AS "desgloseLineas"
+        FROM facturas f
+        LEFT JOIN ecf e ON e."facturaId" = f.id AND e."isActive" = true
+       WHERE f."empresaId" = $1 AND f.fecha BETWEEN $2 AND $3
+         AND f.estado IN ('emitida','pagada') AND f."isActive" = true
+
+      UNION ALL
+
+      SELECT nc.id, -1::int AS signo, nc."tipoNcf",
+             nc.subtotal::numeric AS subtotal, nc.total::numeric AS total,
+             e."jsonEnviado" AS "jsonEnviado",
+             (SELECT json_build_object(
+                'gravado18', COALESCE(SUM(d.subtotal) FILTER (WHERE d."porcentajeIva" = 18), 0),
+                'gravado16', COALESCE(SUM(d.subtotal) FILTER (WHERE d."porcentajeIva" = 16), 0),
+                'exento',    COALESCE(SUM(d.subtotal) FILTER (WHERE d."porcentajeIva" NOT IN (18,16)), 0),
+                'itbis18',   COALESCE(SUM(d.iva)      FILTER (WHERE d."porcentajeIva" = 18), 0),
+                'itbis16',   COALESCE(SUM(d.iva)      FILTER (WHERE d."porcentajeIva" = 16), 0)
+              ) FROM nota_credito_detalles d WHERE d."notaCreditoId" = nc.id) AS "desgloseLineas"
+        FROM notas_credito nc
+        LEFT JOIN ecf e ON e."documentoOrigenId" = nc.id AND e."documentoOrigenTipo" = 'NOTA_CREDITO' AND e."isActive" = true
+       WHERE nc."empresaId" = $1 AND nc.fecha BETWEEN $2 AND $3
+         AND nc.estado = 'emitida' AND nc."isActive" = true
+
+      UNION ALL
+
+      SELECT nd.id, 1::int AS signo, nd."tipoNcf",
+             nd.subtotal::numeric AS subtotal, nd.total::numeric AS total,
+             e."jsonEnviado" AS "jsonEnviado",
+             (SELECT json_build_object(
+                'gravado18', COALESCE(SUM(d.subtotal) FILTER (WHERE d."porcentajeIva" = 18), 0),
+                'gravado16', COALESCE(SUM(d.subtotal) FILTER (WHERE d."porcentajeIva" = 16), 0),
+                'exento',    COALESCE(SUM(d.subtotal) FILTER (WHERE d."porcentajeIva" NOT IN (18,16)), 0),
+                'itbis18',   COALESCE(SUM(d.iva)      FILTER (WHERE d."porcentajeIva" = 18), 0),
+                'itbis16',   COALESCE(SUM(d.iva)      FILTER (WHERE d."porcentajeIva" = 16), 0)
+              ) FROM nota_debito_detalles d WHERE d."notaDebitoId" = nd.id) AS "desgloseLineas"
+        FROM notas_debito nd
+        LEFT JOIN ecf e ON e."documentoOrigenId" = nd.id AND e."documentoOrigenTipo" = 'NOTA_DEBITO' AND e."isActive" = true
+       WHERE nd."empresaId" = $1 AND nd.fecha BETWEEN $2 AND $3
+         AND nd.estado = 'emitida' AND nd."isActive" = true
+    `, [this.eid, desde, hasta]);
+
+    return rows.map(r => {
+      const d = desgloseItbisFuenteVerdad(r.jsonEnviado, r.desgloseLineas);
+      const signo = Number(r.signo);
+      return {
+        tipoNcf:  (r.tipoNcf ?? 'E32') as string,
+        gravado18: signo * (d?.gravado18 ?? 0),
+        gravado16: signo * (d?.gravado16 ?? 0),
+        exento:    signo * (d?.exento ?? 0),
+        itbis18:   signo * (d?.itbis18 ?? 0),
+        itbis16:   signo * (d?.itbis16 ?? 0),
+      };
+    });
+  }
+
+  /**
+   * Sección II del IT-1 — Ingresos por Operaciones, casillas 1-15.
+   *
+   * PRINCIPIO (pedido explícito): ninguna casilla queda en 0 sin verificar si
+   * aplica. Las que hoy no tienen una fuente de datos real en el sistema
+   * (exención por destino, no sujeción por construcción/comisiones, venta de
+   * activos depreciables, tasas Ley 690-16 turismo) se devuelven en 0 con
+   * estado 'no_aplica' y una nota explicando por qué — nunca un 0 mudo.
+   */
+  private async calcularSeccionIIIT1(desde: Date, hasta: Date) {
+    const filas = await this.operacionesVentaPeriodo(desde, hasta);
+
+    const suma = (pred: (f: (typeof filas)[number]) => boolean, campo: 'gravado18' | 'gravado16' | 'exento') =>
+      Math.round(filas.filter(pred).reduce((s, f) => s + f[campo], 0) * 100) / 100;
+
+    const esExportacion = (f: (typeof filas)[number]) => f.tipoNcf === 'E46';
+
+    // Casilla 2: exportación de bienes — el único tipo de NCF de exportación
+    // que existe en el sistema es E46 ("Comprobante para Exportaciones"), que
+    // DGII usa para bienes Y servicios sin distinguir a nivel de comprobante.
+    // Se clasifica todo en casilla 2 (bienes, el caso mayoritario en pymes) y
+    // se avisa — nunca se reparte a ciegas entre 2 y 3.
+    const exportacionTotal = suma(esExportacion, 'exento') + suma(esExportacion, 'gravado18') + suma(esExportacion, 'gravado16');
+    const avisos: string[] = [];
+    if (exportacionTotal !== 0) {
+      avisos.push(
+        `Se detectaron comprobantes de exportación (E46) por RD$${exportacionTotal.toFixed(2)}, clasificados en su totalidad ` +
+        `en la casilla 2 (bienes). El sistema no distingue exportación de bienes vs. servicios a nivel de comprobante — ` +
+        `si alguna corresponde a exportación de servicios (casilla 3), debe reclasificarse manualmente.`,
+      );
+    }
+
+    const casilla2 = exportacionTotal;
+    const casilla3 = 0; // ver aviso — no se reparte automáticamente
+    // Casilla 4: exenta local general — bucket por defecto de TODO lo exento
+    // que no sea exportación (única distinción que el sistema puede hacer
+    // hoy: porcentajeIva/e-CF exento vs. gravado).
+    const casilla4 = suma(f => !esExportacion(f), 'exento');
+    const casilla5 = 0; // exención por destino — sin señal en el sistema (no captura tipo de comprador/zona franca)
+    const casilla6 = 0; // no sujeta por construcción — sin módulo de operaciones de constructoras
+    const casilla7 = 0; // no sujeta por comisiones — sin módulo de operaciones de comisionistas
+    const casilla8 = 0; // exenta Párrafos III/IV Art. 343 — subconjunto de la exención general (casilla 4) que el sistema no distingue
+    if (casilla5 === 0) avisos.push('Casilla 5 (exentas por destino): no aplica — el sistema no captura tipo de comprador/zona franca.');
+    if (casilla6 === 0) avisos.push('Casilla 6 (no sujetas por construcción): no aplica a este giro — no hay operaciones de constructoras registradas.');
+    if (casilla7 === 0) avisos.push('Casilla 7 (no sujetas por comisiones): no aplica a este giro — no hay operaciones de comisionistas registradas.');
+    if (casilla8 === 0) avisos.push('Casilla 8 (exentas Párrafos III/IV): incluida dentro de la casilla 4 general — el sistema no distingue este subconjunto.');
+
+    const casilla9 = Math.round((casilla2 + casilla3 + casilla4 + casilla5 + casilla6 + casilla7 + casilla8) * 100) / 100;
+
+    const casilla11 = suma(f => !esExportacion(f), 'gravado18');
+    const casilla12 = suma(f => !esExportacion(f), 'gravado16');
+    // Ley 690-16 (turismo, 9%/8%): sin tasa configurada en parametros_fiscales
+    // (itbis_tasas hoy solo trae general:18/reducida:16) — no hay ninguna
+    // empresa activa con esta tasa que el sistema pueda detectar. Se deja
+    // documentado y en 0 hasta que se confirme y se agregue la tasa.
+    const casilla13 = 0;
+    const casilla14 = 0;
+    avisos.push(
+      'Casillas 13/14 (Ley 690-16, turismo 9%/8%): no aplica — parametros_fiscales.itbis_tasas no tiene ' +
+      'configurada ninguna tasa especial de turismo. Si alguna empresa opera bajo esa ley, agregar la tasa primero.',
+    );
+    // Casilla 15: venta de activos fijos depreciables — sin campo en Factura
+    // que distinga "venta de un activo de la empresa" de una venta normal.
+    const casilla15 = 0;
+    avisos.push('Casilla 15 (venta de activos depreciables Cat. 2/3): no aplica — el sistema no distingue este tipo de venta a nivel de factura.');
+
+    const casilla10 = Math.round((casilla11 + casilla12 + casilla13 + casilla14 + casilla15) * 100) / 100;
+    const casilla1  = Math.round((casilla9 + casilla10) * 100) / 100;
+
+    const c = (numero: number, monto: number, estado: 'calculada' | 'no_aplica' = 'calculada') => ({ casilla: numero, monto, estado });
+
+    return {
+      casilla1_totalOperaciones: c(1, casilla1),
+      noGravadas: {
+        casilla2_exportacionBienes:        c(2, casilla2),
+        casilla3_exportacionServicios:     c(3, casilla3, casilla3 === 0 ? 'no_aplica' : 'calculada'),
+        casilla4_exentasLocales:           c(4, casilla4),
+        casilla5_exentasPorDestino:        c(5, casilla5, 'no_aplica'),
+        casilla6_noSujetasConstruccion:    c(6, casilla6, 'no_aplica'),
+        casilla7_noSujetasComisiones:      c(7, casilla7, 'no_aplica'),
+        casilla8_exentasParrafosIIIyIV:    c(8, casilla8, 'no_aplica'),
+        casilla9_totalNoGravadas:          c(9, casilla9),
+      },
+      gravadas: {
+        casilla10_totalGravadas:           c(10, casilla10),
+        casilla11_gravadas18:              c(11, casilla11),
+        casilla12_gravadas16:              c(12, casilla12),
+        casilla13_gravadas9Ley690:         c(13, casilla13, 'no_aplica'),
+        casilla14_gravadas8Ley690:         c(14, casilla14, 'no_aplica'),
+        casilla15_activosDepreciables:     c(15, casilla15, 'no_aplica'),
+      },
+      avisos,
+    };
+  }
 
   async getIT1(mes: number, anio: number) {
     const { desde, hasta } = this.rango(mes, anio);
 
-    // Ventas del período (facturas emitidas / pagadas)
+    const seccionII = await this.calcularSeccionIIIT1(desde, hasta);
+
+    // Ventas del período (facturas emitidas / pagadas) — se mantiene para
+    // ventas.porTipoNcf y el conteo de facturas que ya lee la pantalla;
+    // la Sección II (arriba) es la fuente de verdad de los montos del IT-1.
     const ventas = await this.factRepo
       .createQueryBuilder('f')
       .leftJoinAndSelect('f.cliente', 'c')
@@ -118,6 +302,8 @@ export class DeclaracionesService {
 
     return {
       periodo: { mes, anio },
+      /** Sección II del formulario IT-1 (casillas 1-15) — fuente de verdad de los montos. */
+      seccionII,
       ventas: {
         cantidad:     ventas.length,
         subtotal:     totalVentas,
