@@ -370,6 +370,42 @@ const RUTAS = {
     return out;
   },
 
+  // ── Flujo de Efectivo v2 — un solo período que CUADRA (Inicio + Cambio Neto
+  //    = Final), con un movimiento en cada bloque para ver todas las líneas.
+  '/reportes-financieros/flujo-efectivo-detallado': (q) => {
+    const bloque = (nombre, lineas) => ({ nombre, lineas, total: +lineas.reduce((s, l) => s + l.monto, 0).toFixed(2) });
+    const linea = (nombre, monto, cuentas = []) => ({ nombre, monto, cuentas });
+
+    const operaciones = bloque('Flujo de Efectivo de las Operaciones', [
+      linea('Resultado Neto', 85000),
+      linea('Depreciaciones del período', 5000, [{ codigo: '6.2.1.03', nombre: 'Depreciación - Equipos', monto: 5000 }]),
+      linea('Aumento en Cuentas por Cobrar', -12000, [{ codigo: '1.1.2.01', nombre: 'Clientes', monto: -12000 }]),
+      linea('Aumento en Inventarios', -8000, [{ codigo: '1.1.3.01', nombre: 'Mercancías para la Venta', monto: -8000 }]),
+      linea('Aumento en Cuentas por Pagar', 6000, [{ codigo: '2.1.1.01', nombre: 'Proveedores', monto: 6000 }]),
+      linea('Aumento en Impuestos por Pagar', 3000, [{ codigo: '2.1.2.01', nombre: 'ITBIS por Pagar', monto: 3000 }]),
+    ]);
+    const inversiones = bloque('Efectivo Neto Generado por Inversiones', [
+      linea('Aumento en Propiedades y Equipos', -30000, [{ codigo: '1.2.1.02', nombre: 'Equipos de Cómputo', monto: -30000 }]),
+      linea('Aumento en Inversiones', 0),
+    ]);
+    const financiamientos = bloque('Flujo de Efectivo de los Financiamientos', [
+      linea('Aumento en Préstamos', 50000, [{ codigo: '2.2.1.01', nombre: 'Préstamos Bancarios LP', monto: 50000 }]),
+      linea('Aumento en Capital', 0),
+    ]);
+    const cambioNetoEfectivo = +(operaciones.total + inversiones.total + financiamientos.total).toFixed(2);
+    const efectivoInicio = 100000;
+    const efectivoFin = +(efectivoInicio + cambioNetoEfectivo).toFixed(2);
+
+    const periodo = {
+      resultadoNeto: 85000, operaciones, inversiones, financiamientos,
+      cambioNetoEfectivo, efectivoInicio, efectivoFin, diferenciaCuadre: 0, cuadrado: true,
+    };
+    return {
+      desde: q?.desde ?? '2026-01-01', hasta: q?.hasta ?? '2026-09-21',
+      filtros: { comparacion: q?.comparacion ?? 'ninguna' }, periodo,
+    };
+  },
+
   '/compras/102': () => ({
     id: 102, folio: 'COM-00102', fecha: '2026-09-05', estado: 'recibida_parcial',
     proveedor: { id: 2, nombre: 'DISTRIBUIDORA DEL ESTE SRL', rnc: '130987654' },

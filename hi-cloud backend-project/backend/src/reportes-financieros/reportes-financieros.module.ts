@@ -9,6 +9,8 @@ import { BalanceGeneralDetalladoService } from './balance-general-detallado.serv
 import { BalanceGeneralExportService }   from './balance-general-export.service';
 import { EstadoResultadosDetalladoService } from './estado-resultados-detallado.service';
 import { EstadoResultadosExportService }    from './estado-resultados-export.service';
+import { FlujoEfectivoDetalladoService } from './flujo-efectivo-detallado.service';
+import { FlujoEfectivoExportService }    from './flujo-efectivo-export.service';
 import { AsientoContable } from '../contabilidad/entities/asiento-contable.entity';
 import { CuentaContable }  from '../contabilidad/entities/cuenta-contable.entity';
 import { Empresa }         from '../configuracion/entities/empresa.entity';
@@ -20,11 +22,13 @@ import { Empresa }         from '../configuracion/entities/empresa.entity';
     ReportesFinancierosService, BalanceComprobacionService, SaldosCuentasService, ReportesPdfService,
     BalanceGeneralDetalladoService, BalanceGeneralExportService,
     EstadoResultadosDetalladoService, EstadoResultadosExportService,
+    FlujoEfectivoDetalladoService, FlujoEfectivoExportService,
   ],
   exports: [
     ReportesFinancierosService, BalanceComprobacionService, SaldosCuentasService, ReportesPdfService,
     BalanceGeneralDetalladoService, BalanceGeneralExportService,
     EstadoResultadosDetalladoService, EstadoResultadosExportService,
+    FlujoEfectivoDetalladoService, FlujoEfectivoExportService,
   ],
 })
 export class ReportesFinancierosModule {}

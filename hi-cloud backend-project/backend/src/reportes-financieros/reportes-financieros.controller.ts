@@ -12,6 +12,8 @@ import { BalanceGeneralDetalladoService, FiltrosBalanceGeneralDetallado } from '
 import { BalanceGeneralExportService } from './balance-general-export.service';
 import { EstadoResultadosDetalladoService, FiltrosEstadoResultadosDetallado } from './estado-resultados-detallado.service';
 import { EstadoResultadosExportService } from './estado-resultados-export.service';
+import { FlujoEfectivoDetalladoService, FiltrosFlujoEfectivoDetallado } from './flujo-efectivo-detallado.service';
+import { FlujoEfectivoExportService } from './flujo-efectivo-export.service';
 import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 @ApiTags('Reportes Financieros')
@@ -29,6 +31,8 @@ export class ReportesFinancierosController {
     private readonly bgExpSvc: BalanceGeneralExportService,
     private readonly erSvc:    EstadoResultadosDetalladoService,
     private readonly erExpSvc: EstadoResultadosExportService,
+    private readonly feSvc:    FlujoEfectivoDetalladoService,
+    private readonly feExpSvc: FlujoEfectivoExportService,
   ) {}
 
   /** Query params → FiltrosBalanceGeneralDetallado (validación real vive en el service). */
@@ -124,6 +128,17 @@ export class ReportesFinancierosController {
     res.send(buffer);
   }
 
+  /** Query params → FiltrosFlujoEfectivoDetallado — mismo eje "comparacion" que Estado de Resultados. */
+  private parseFiltrosFE(q: Record<string, string | undefined>): FiltrosFlujoEfectivoDetallado {
+    const hoy = fechaHoyRD();
+    const inicioAnio = `${new Date().getFullYear()}-01-01`;
+    return {
+      desde:       q.desde ?? inicioAnio,
+      hasta:       q.hasta ?? hoy,
+      comparacion: q.comparacion as any,
+    };
+  }
+
   @Get('estado-resultados-detallado')
   @ApiOperation({ summary: 'Estado de Resultados con filtros: bloques por clasificación operacional/no operacional, % Ingresos, % Margen y 4 modos de comparación' })
   @ApiQuery({ name: 'desde', required: false })
@@ -162,9 +177,45 @@ export class ReportesFinancierosController {
   }
 
   @Get('flujo-efectivo')
-  @ApiOperation({ summary: 'Flujo de Efectivo por período' })
+  @ApiOperation({ summary: '[Legacy — método directo, saldo inicial no implementado] Flujo de Efectivo por período. Usar flujo-efectivo-detallado.' })
   flujoEfectivo(@Query('desde') desde: string, @Query('hasta') hasta: string) {
     return this.svc.flujoEfectivo(desde, hasta);
+  }
+
+  @Get('flujo-efectivo-detallado')
+  @ApiOperation({ summary: 'Estado de Flujo de Efectivo, método indirecto — Operaciones/Inversiones/Financiamientos y 4 modos de comparación (mismo eje que Estado de Resultados)' })
+  @ApiQuery({ name: 'desde', required: false })
+  @ApiQuery({ name: 'hasta', required: false })
+  @ApiQuery({ name: 'comparacion', required: false, enum: ['ninguna', 'mes-vs-acumulado', 'anio-anterior', 'por-mes'] })
+  flujoEfectivoDetallado(@Query() q: Record<string, string | undefined>) {
+    return this.feSvc.generar(this.parseFiltrosFE(q));
+  }
+
+  @Get('flujo-efectivo-detallado/excel')
+  @ApiOperation({ summary: 'Descargar Flujo de Efectivo detallado en Excel, respetando los filtros y la vista de comparación activa' })
+  async flujoEfectivoDetalladoExcel(@Query() q: Record<string, string | undefined>, @Res() res: Response) {
+    const { buffer, filename } = await this.feExpSvc.generarExcel(this.parseFiltrosFE(q));
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    });
+    res.send(buffer);
+  }
+
+  @Get('flujo-efectivo-detallado/csv')
+  @ApiOperation({ summary: 'Descargar Flujo de Efectivo detallado en CSV, respetando los filtros y la vista de comparación activa' })
+  async flujoEfectivoDetalladoCsv(@Query() q: Record<string, string | undefined>, @Res() res: Response) {
+    const { buffer, filename } = await this.feExpSvc.generarCsv(this.parseFiltrosFE(q));
+    res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${filename}"` });
+    res.send(buffer);
+  }
+
+  @Get('flujo-efectivo-detallado/pdf')
+  @ApiOperation({ summary: 'Descargar Flujo de Efectivo detallado en PDF, respetando los filtros activos' })
+  async flujoEfectivoDetalladoPdf(@Query() q: Record<string, string | undefined>, @Res() res: Response) {
+    const { buffer, filename } = await this.feExpSvc.generarPdf(this.parseFiltrosFE(q));
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${filename}"` });
+    res.send(buffer);
   }
 
   // ─── Nuevos endpoints ──────────────────────────────────────────────────────

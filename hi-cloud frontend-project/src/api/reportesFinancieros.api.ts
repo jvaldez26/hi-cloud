@@ -1,6 +1,7 @@
 import api from './client';
 import type { FiltrosBalanceGeneral } from '../utils/filtrosBalanceGeneral';
 import type { FiltrosEstadoResultados } from '../utils/filtrosEstadoResultados';
+import type { FiltrosFlujoEfectivo } from '../utils/filtrosFlujoEfectivo';
 
 export interface NodoBalanceGeneral {
   codigo: string;
@@ -113,6 +114,63 @@ export interface EstadoResultadosDetallado {
   porMes?: { anio: number; meses: MesEstadoResultados[]; total: EstadoResultadosPeriodo };
 }
 
+// ── Estado de Flujo de Efectivo v2 ───────────────────────────────────────────
+
+export interface CuentaFlujoEfectivo {
+  codigo: string;
+  nombre: string;
+  monto: number;
+}
+
+export interface LineaFlujoEfectivo {
+  nombre: string;
+  monto: number;
+  cuentas: CuentaFlujoEfectivo[];
+}
+
+export interface BloqueFlujoEfectivo {
+  nombre: string;
+  lineas: LineaFlujoEfectivo[];
+  total: number;
+}
+
+export interface FlujoEfectivoPeriodo {
+  resultadoNeto: number;
+  operaciones: BloqueFlujoEfectivo;
+  inversiones: BloqueFlujoEfectivo;
+  financiamientos: BloqueFlujoEfectivo;
+  cambioNetoEfectivo: number;
+  efectivoInicio: number;
+  efectivoFin: number;
+  diferenciaCuadre: number;
+  cuadrado: boolean;
+}
+
+export interface MesFlujoEfectivo {
+  mes: number;
+  desde: string;
+  hasta: string;
+  periodo: FlujoEfectivoPeriodo;
+}
+
+export interface FlujoEfectivoDetallado {
+  desde: string;
+  hasta: string;
+  filtros: { comparacion: FiltrosFlujoEfectivo['comparacion'] };
+  periodo: FlujoEfectivoPeriodo;
+  acumulado?: { desde: string; hasta: string; periodo: FlujoEfectivoPeriodo };
+  anioAnterior?: { desde: string; hasta: string; periodo: FlujoEfectivoPeriodo };
+  porMes?: { anio: number; meses: MesFlujoEfectivo[]; total: FlujoEfectivoPeriodo };
+}
+
+function queryDeFiltrosFE(filtros: FiltrosFlujoEfectivo): string {
+  const p = new URLSearchParams();
+  p.set('desde', filtros.desde);
+  p.set('hasta', filtros.hasta);
+  if (filtros.comparacion !== 'ninguna') p.set('comparacion', filtros.comparacion);
+  return p.toString();
+}
+
 function queryDeFiltrosER(filtros: FiltrosEstadoResultados): string {
   const p = new URLSearchParams();
   p.set('desde', filtros.desde);
@@ -173,4 +231,17 @@ export const reportesFinancierosApi = {
 
   descargarEstadoResultadosPdf: (filtros: FiltrosEstadoResultados) =>
     descargar(`/reportes-financieros/estado-resultados-detallado/pdf?${queryDeFiltrosER(filtros)}`, `Estado-Resultados-${filtros.desde}_${filtros.hasta}.pdf`),
+
+  flujoEfectivoDetallado: (filtros: FiltrosFlujoEfectivo): Promise<FlujoEfectivoDetallado> =>
+    api.get(`/reportes-financieros/flujo-efectivo-detallado?${queryDeFiltrosFE(filtros)}`)
+      .then((r: any) => r.data?.data ?? r.data),
+
+  descargarFlujoEfectivoExcel: (filtros: FiltrosFlujoEfectivo) =>
+    descargar(`/reportes-financieros/flujo-efectivo-detallado/excel?${queryDeFiltrosFE(filtros)}`, `Flujo-Efectivo-${filtros.desde}_${filtros.hasta}.xlsx`),
+
+  descargarFlujoEfectivoCsv: (filtros: FiltrosFlujoEfectivo) =>
+    descargar(`/reportes-financieros/flujo-efectivo-detallado/csv?${queryDeFiltrosFE(filtros)}`, `Flujo-Efectivo-${filtros.desde}_${filtros.hasta}.csv`),
+
+  descargarFlujoEfectivoPdf: (filtros: FiltrosFlujoEfectivo) =>
+    descargar(`/reportes-financieros/flujo-efectivo-detallado/pdf?${queryDeFiltrosFE(filtros)}`, `Flujo-Efectivo-${filtros.desde}_${filtros.hasta}.pdf`),
 };

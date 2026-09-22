@@ -3,6 +3,7 @@ import { Button, Tabs, Space, Typography } from 'antd';
 import { BarChartOutlined, PrinterOutlined } from '@ant-design/icons';
 import BalanceGeneralDetallado from './BalanceGeneralDetallado';
 import EstadoResultadosDetallado from './EstadoResultadosDetallado';
+import FlujoEfectivoDetallado from './FlujoEfectivoDetallado';
 
 const { Title, Text } = Typography;
 
@@ -39,6 +40,11 @@ export default function ReportesFinancierosPage() {
             key: 'balance-general',
             label: 'Balance General',
             children: <BalanceGeneralDetallado />,
+          },
+          {
+            key: 'flujo-efectivo',
+            label: 'Flujo de Efectivo',
+            children: <FlujoEfectivoDetallado />,
           },
         ]}
       />
