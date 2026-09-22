@@ -21,8 +21,8 @@ import { TenantContextMissingException } from '../tenant/exceptions/tenant-conte
 import { BadRequestException } from '@nestjs/common';
 
 const TIENE_BD = !!process.env['DB_HOST'];
-const EMPRESA_A = 901601;
-const EMPRESA_B = 901602;
+const EMPRESA_A = 901701;
+const EMPRESA_B = 901702;
 
 (TIENE_BD ? describe : describe.skip)('FlujoEfectivoDetalladoService — contra Postgres real', () => {
   let dataSource: DataSource;
