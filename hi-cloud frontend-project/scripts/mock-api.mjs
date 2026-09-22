@@ -308,6 +308,40 @@ const RUTAS = {
       { id: 3, descripcion: 'ITBIS débito fiscal FAC-15514', debe: 0, haber: 266.06, cuentaContable: { codigo: '2.1.2.01', nombre: 'ITBIS por Pagar' } },
     ],
   }),
+  // ── Balance General v2 — una cuenta por sección, ACTIVO = PASIVO + PATRIMONIO
+  //    cuadrado, para capturar el árbol y el banner de la ecuación contable.
+  '/reportes-financieros/balance-general-detallado': (q) => {
+    const nodo = (codigo, nombre, tipo, monto) => ({
+      codigo, nombre, nivel: 1, tipo, esCuentaGrupo: false, monto, porcentajeVertical: 100, hijos: [],
+    });
+    return {
+      fechaCorte: q?.fechaCorte ?? '2026-09-21',
+      filtros: { compararCon: q?.compararCon ?? 'ninguno', nivelDetalle: q?.nivelDetalle ?? '2', ocultarCuentasEnCero: true },
+      activo: { nodos: [nodo('1.1.1.02', 'Caja General', 'activo', 300000)], total: 300000 },
+      pasivo: { nodos: [nodo('2.1.1.01', 'Proveedores', 'pasivo', 80000)], total: 80000 },
+      patrimonio: {
+        nodos: [nodo('3.1.1.01', 'Capital Social', 'patrimonio', 135000)],
+        total: 220000,
+        calculadas: {
+          resultadoDelEjercicio: { desde: '2026-01-01', hasta: '2026-09-21', monto: 85000 },
+          resultadosAcumulados:  { hasta: '2026-09-21', monto: 0 },
+        },
+      },
+      diferenciaAsientosDescuadrados: { total: 0, cantidad: 0 },
+      totales: { activos: 300000, pasivosPatrimonio: 300000, ecuacion: 0, cuadrado: true },
+    };
+  },
+
+  // ── Balance de Comprobación — un renglón por naturaleza, cuadrado.
+  '/reportes-financieros/balance-comprobacion': (q) => ({
+    lineas: [
+      { codigo: '1.1.1.02', nombre: 'Caja General', tipo: 'activo', naturaleza: 'deudora', nivel: 1, totalDebe: 300000, totalHaber: 0, saldoDeudor: 300000, saldoAcreedor: 0 },
+      { codigo: '2.1.1.01', nombre: 'Proveedores', tipo: 'pasivo', naturaleza: 'acreedora', nivel: 1, totalDebe: 0, totalHaber: 80000, saldoDeudor: 0, saldoAcreedor: 80000 },
+      { codigo: '3.1.1.01', nombre: 'Capital Social', tipo: 'patrimonio', naturaleza: 'acreedora', nivel: 1, totalDebe: 0, totalHaber: 220000, saldoDeudor: 0, saldoAcreedor: 220000 },
+    ],
+    totales: { debe: 300000, haber: 300000, deudor: 300000, acreedor: 300000, cuadra: true },
+  }),
+
   // ── Estado de Resultados v2 — para capturar las 4 vistas de comparación
   //    sin backend. Bloques con 1-2 cuentas cada uno, cifras simples para
   //    verificar de un vistazo que Utilidad Bruta/Resultado Operacional/

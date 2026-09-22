@@ -324,7 +324,7 @@ export default function BalanceGeneralDetallado() {
                 ? <CheckCircleOutlined style={{ color: '#059669', fontSize: 20 }} />
                 : <WarningOutlined style={{ color: '#d97706', fontSize: 20 }} />}
               <div>
-                <Text strong>Ecuación Contable — Fecha de Corte: {fmtFecha(bg.fechaCorte)}</Text>
+                <Text strong style={{ color: '#111827' }}>Ecuación Contable — Fecha de Corte: {fmtFecha(bg.fechaCorte)}</Text>
                 <div style={{ fontSize: 13, color: '#6b7280' }}>
                   Activos ({fmtMoney(bg.totales.activos)}) = Pasivos + Patrimonio ({fmtMoney(bg.totales.pasivosPatrimonio)})
                   {bg.totales.cuadrado

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Card, Row, Col, Button, DatePicker, Select, Input, Switch, Space, Typography,
-  Table, Drawer, Grid, Dropdown, Spin, Alert, Tooltip,
+  Table, Drawer, Grid, Dropdown, Spin, Alert, Tooltip, theme,
 } from 'antd';
 import {
   FilterOutlined, DownloadOutlined, ExpandAltOutlined, ShrinkOutlined,
@@ -24,6 +24,7 @@ const { useBreakpoint } = Grid;
 const fmtFecha = (d?: string) => d ? dayjs(d).format('DD/MM/YYYY') : '—';
 
 export default function FlujoEfectivoDetallado() {
+  const { token } = theme.useToken();
   const screens  = useBreakpoint();
   const esMovil  = screens.md === false;
   const navigate = useNavigate();
@@ -88,9 +89,9 @@ export default function FlujoEfectivoDetallado() {
   const filasTotalFiltradas = useMemo(() => filtrarFilasFE(filasTotal, search), [filasTotal, search]);
 
   const estiloFila = (f: FilaFE) => {
-    if (f.tipo === 'resumen') return { fontWeight: 800, background: f.monto < 0 ? '#fee2e2' : '#eef2fb', borderTop: '2px solid #1a3c8f' };
-    if (f.tipo === 'total') return { fontWeight: 700, background: '#f4f6fb', borderTop: '1px solid #d0d8f0' };
-    if (f.tipo === 'header') return { fontWeight: 600, cursor: 'pointer', background: '#fafafa' };
+    if (f.tipo === 'resumen') return { fontWeight: 800, background: f.monto < 0 ? token.colorErrorBg : token.colorInfoBg, borderTop: `2px solid ${token.colorPrimary}` };
+    if (f.tipo === 'total') return { fontWeight: 700, background: token.colorFillSecondary, borderTop: `1px solid ${token.colorBorderSecondary}` };
+    if (f.tipo === 'header') return { fontWeight: 600, cursor: 'pointer', background: token.colorFillAlter };
     if (f.tipo === 'linea') return { fontWeight: 500 };
     return {};
   };
@@ -304,13 +305,13 @@ export default function FlujoEfectivoDetallado() {
                 ? <RiseOutlined style={{ color: '#059669', fontSize: 20 }} />
                 : <FallOutlined style={{ color: '#dc2626', fontSize: 20 }} />}
               <div>
-                <Text strong>Del {fmtFecha(rangoBanner.desde)} al {fmtFecha(rangoBanner.hasta)}</Text>
+                <Text strong style={{ color: '#111827' }}>Del {fmtFecha(rangoBanner.desde)} al {fmtFecha(rangoBanner.hasta)}</Text>
                 <div style={{ fontSize: 13, color: '#6b7280' }}>
                   Cambio Neto en el Efectivo:{' '}
                   <Text strong style={{ color: periodo.cambioNetoEfectivo >= 0 ? '#059669' : '#dc2626' }}>
                     {fmtMoney(periodo.cambioNetoEfectivo)}
                   </Text>
-                  {' — '}Efectivo al Final: <Text strong>{fmtMoney(periodo.efectivoFin)}</Text>
+                  {' — '}Efectivo al Final: <Text strong style={{ color: '#111827' }}>{fmtMoney(periodo.efectivoFin)}</Text>
                 </div>
               </div>
             </div>
