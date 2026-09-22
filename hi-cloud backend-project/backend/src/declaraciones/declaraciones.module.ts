@@ -14,9 +14,13 @@ import { FacturaDetalle } from '../facturas/entities/factura-detalle.entity';
 import { Compra } from '../compras/entities/compra.entity';
 import { CompraDetalle } from '../compras/entities/compra-detalle.entity';
 import { Gasto } from '../gastos/entities/gasto.entity';
+import { RecargosInteresesModule } from '../herramientas-fiscales/recargos-intereses/recargos-intereses.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Factura, FacturaDetalle, Compra, CompraDetalle, ReporteDgii, DeclaracionItbis, Gasto])],
+  imports: [
+    TypeOrmModule.forFeature([Factura, FacturaDetalle, Compra, CompraDetalle, ReporteDgii, DeclaracionItbis, Gasto]),
+    RecargosInteresesModule,
+  ],
   controllers: [DeclaracionesController],
   providers:   [DeclaracionesService, DeclaracionesPdfService, DgiiValidatorService, DgiiTxtGeneratorService, ConciliacionFiscalService, AnexosIR2Service],
   exports:     [DeclaracionesService, ConciliacionFiscalService, AnexosIR2Service],

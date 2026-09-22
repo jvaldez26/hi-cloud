@@ -18,6 +18,9 @@ import {
   DgiiValidatorService, Fila606, Fila607, Fila608,
   ResumenValidacion,
 } from './dgii-validator.service';
+import { RecargosInteresesService } from '../herramientas-fiscales/recargos-intereses/recargos-intereses.service';
+import { ParametroFiscalError } from '../parametros-fiscales/errors/parametro-fiscal.errors';
+import { fechaHoyRD } from '../common/utils/fecha-local.util';
 import { createHash } from 'crypto';
 
 @Injectable()
@@ -33,6 +36,7 @@ export class DeclaracionesService {
     private dataSource:  DataSource,
     private tenantSvc:   TenantService,
     private validator:   DgiiValidatorService,
+    private recargosSvc: RecargosInteresesService,
   ) {}
 
   private get eid() { return this.tenantSvc.getEmpresaId(); }
@@ -367,6 +371,92 @@ export class DeclaracionesService {
     }
   }
 
+  /**
+   * Fecha límite de pago del IT-1: día 20 del mes siguiente al período
+   * declarado (Art. 348 Código Tributario). No ajusta por fin de
+   * semana/feriado — el sistema no tiene un calendario de días hábiles de
+   * RD; DGII sí ajusta esto en su propio portal al momento de presentar.
+   */
+  private fechaLimiteIT1(mes: number, anio: number): string {
+    const d = new Date(Date.UTC(anio, mes, 20, 12)); // mes es 1-based ⇒ Date con "mes" (0-based) = mes siguiente
+    return d.toISOString().slice(0, 10);
+  }
+
+  /**
+   * Sección IV del IT-1 — Penalidades, casillas 35-37, y Sección V — Monto a
+   * Pagar, casilla 38.
+   *
+   * Reusa el motor de Herramientas Fiscales (RecargosInteresesService) —
+   * UN SOLO motor, no una copia de la aritmética de recargos/interés aquí.
+   * Si la declaración no tiene nada que pagar (casilla 33 = 0, período a
+   * favor o en cero), no hay penalidad que calcular — se omite la llamada.
+   *
+   * Los parámetros de recargo/interés (recargo_mora,
+   * interes_indemnizatorio_mensual) están sembrados como
+   * PENDIENTE_VALIDACION hasta que un Super Admin los confirme — si la
+   * declaración SÍ tiene mora, el motor lanza ParametroFiscalPendienteError.
+   * Se captura y las casillas quedan 'requiere_revision', nunca 0 en
+   * silencio ni un 500 que tumbe todo el IT-1.
+   */
+  private async calcularSeccionIVyVIT1(mes: number, anio: number, casilla33: number) {
+    const avisos: string[] = [];
+    const c = (numero: number, monto: number, estado: 'calculada' | 'no_aplica' | 'requiere_revision' = 'calculada') =>
+      ({ casilla: numero, monto, estado });
+
+    let casilla35 = 0, casilla36 = 0;
+    let estado35And36: 'calculada' | 'no_aplica' | 'requiere_revision' = 'no_aplica';
+
+    if (casilla33 <= 0) {
+      avisos.push('Casillas 35/36 (recargos/interés): no aplica — el período no tiene diferencia a pagar (a favor o en cero).');
+    } else {
+      const fechaLimite = this.fechaLimiteIT1(mes, anio);
+      const fechaPago    = fechaHoyRD();
+      try {
+        const resultado = await this.recargosSvc.calcular({
+          montoAdeudado: casilla33, fechaLimite, fechaPago, situacion: 'normal', acogeAmnistia: false,
+        });
+        casilla35 = resultado.recargoNeto;
+        casilla36 = resultado.interes;
+        estado35And36 = 'calculada';
+        if (resultado.mesesMora === 0) {
+          avisos.push(`Dentro del plazo (límite ${fechaLimite}) — sin recargo ni interés si se paga hoy (${fechaPago}).`);
+        } else {
+          avisos.push(`${resultado.mesesMora} mes(es) de mora desde el ${fechaLimite} — recargo RD$${casilla35.toFixed(2)}, interés RD$${casilla36.toFixed(2)}, calculado con el motor de Herramientas Fiscales al pago hipotético de hoy (${fechaPago}). Recalcula el día real de pago.`);
+        }
+        avisos.push(...resultado.avisos);
+      } catch (err: any) {
+        estado35And36 = 'requiere_revision';
+        if (err instanceof ParametroFiscalError) {
+          avisos.push(
+            `Casillas 35/36 (recargos/interés): requiere revisión — ${err.message} ` +
+            `El período tiene mora (límite ${fechaLimite}) pero el parámetro fiscal necesario no está validado.`,
+          );
+        } else {
+          avisos.push(`Casillas 35/36 (recargos/interés): requiere revisión — error inesperado calculando la mora: ${err?.message ?? err}`);
+        }
+      }
+    }
+
+    // Sanciones administrativas: no es una fórmula, es una resolución DGII
+    // caso por caso — nunca hay un cálculo automático posible.
+    const casilla37 = 0;
+    avisos.push('Casilla 37 (sanciones): no aplica — las sanciones DGII son administrativas, caso por caso; no hay fórmula que calcular.');
+
+    const casilla38 = Math.round((casilla33 + casilla35 + casilla36 + casilla37) * 100) / 100;
+
+    return {
+      penalidades: {
+        casilla35_recargos:   c(35, casilla35, estado35And36),
+        casilla36_interes:    c(36, casilla36, estado35And36),
+        casilla37_sanciones:  c(37, casilla37, 'no_aplica'),
+      },
+      montoAPagar: {
+        casilla38_totalAPagar: c(38, casilla38),
+      },
+      avisos,
+    };
+  }
+
   async getIT1(mes: number, anio: number) {
     const { desde, hasta } = this.rango(mes, anio);
 
@@ -430,6 +520,8 @@ export class DeclaracionesService {
       seccionIII.liquidacion.casilla34_nuevoSaldoAFavor.monto,
     ).catch(() => {}); // el snapshot es un apoyo para el mes siguiente — nunca debe tumbar la consulta del período actual
 
+    const seccionIV = await this.calcularSeccionIVyVIT1(mes, anio, seccionIII.liquidacion.casilla33_diferenciaAPagar.monto);
+
     // itbisNeto/estado quedan como alias de la Sección III (casillas 33/34)
     // para que la pantalla actual (que lee liquidacion.itbisNeto/estado) siga
     // funcionando igual, ahora con el cálculo completo (todas las tasas +
@@ -457,6 +549,8 @@ export class DeclaracionesService {
       seccionII,
       /** Sección III del formulario IT-1 (casillas 16-34) — Liquidación, fuente de verdad de `liquidacion` abajo. */
       seccionIII,
+      /** Sección IV (Penalidades, 35-37) y Sección V (Monto a Pagar, 38) del IT-1. */
+      seccionIV,
       ventas: {
         cantidad:     ventas.length,
         subtotal:     totalVentas,
