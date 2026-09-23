@@ -636,7 +636,7 @@ export default function DeclaracionesPage() {
         {
           key: 'anexo-a-itbis',
           label: <><FileTextOutlined /> Anexo A (ITBIS)</>,
-          children: <AnexoAItbisPanel />,
+          children: <AnexoAItbisPanel mes={mes} anio={anio} />,
         },
 
         // ── Formato 606 ───────────────────────────────────────────────────────
