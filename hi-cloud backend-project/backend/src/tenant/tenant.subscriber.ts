@@ -1,6 +1,7 @@
 import {
   EventSubscriber, EntitySubscriberInterface, LoadEvent, DataSource,
 } from 'typeorm';
+import { isTenantScoped } from './decorators/tenant-scoped.decorator';
 import { ClsService } from 'nestjs-cls';
 import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
@@ -43,8 +44,11 @@ export class TenantSubscriber implements EntitySubscriberInterface {
    * Fires after cada entidad es materializada desde la BD.
    * Si la entidad tiene empresaId y NO coincide con el contexto → ForbiddenException.
    */
-  afterLoad(entity: any): void {
-    if (!entity?.empresaId) return;
+  afterLoad(entity: any, event?: LoadEvent<any>): void {
+    if (!entity?.empresaId) {
+      this.registrarPuntoCiego(event);
+      return;
+    }
 
     // Escape hatch activo → permitir y loguear
     if (this.cls.get<boolean>(SKIP_TENANT_KEY)) {
@@ -67,6 +71,46 @@ export class TenantSubscriber implements EntitySubscriberInterface {
       );
       throw new ForbiddenException(
         `Acceso denegado: entidad de empresa ${entity.empresaId} en contexto de empresa ${eid}.`,
+      );
+    }
+  }
+
+  // ── Punto ciego del subscriber ─────────────────────────────────────────────
+  //
+  // P0 Libro Mayor (2026-09-23): un .select([...]) parcial que omite empresaId
+  // hace que la entidad llegue aquí sin ese campo, y el guardia de arriba se
+  // salta sin validar nada. No se puede bloquear — hay selects parciales
+  // legítimos por todas partes — pero sí dejar de ser ciego: se cuenta por
+  // entidad y se avisa, para que el próximo caso se vea en los logs en vez de
+  // aparecer meses después en la pantalla de un cliente.
+
+  /** Entidad @TenantScoped → veces que se cargó sin empresaId en el select. */
+  private readonly puntosCiegos = new Map<string, number>();
+
+  /** Snapshot del contador, para logs agregados o un endpoint de diagnóstico. */
+  getPuntosCiegos(): Record<string, number> {
+    return Object.fromEntries(this.puntosCiegos);
+  }
+
+  private registrarPuntoCiego(event?: LoadEvent<any>): void {
+    const target = event?.metadata?.target;
+    // Solo interesa si la entidad ESTÁ scopeada por tenant y de verdad tiene
+    // la columna: un select parcial sobre algo sin empresaId no es un hueco.
+    if (!isTenantScoped(target as Function)) return;
+    if (!event?.metadata?.columns?.some(c => c.propertyName === 'empresaId')) return;
+    if (!this.cls.get<number>('empresaId')) return; // sin contexto: nada que validar
+
+    const nombre = event.metadata.name ?? 'desconocida';
+    const veces  = (this.puntosCiegos.get(nombre) ?? 0) + 1;
+    this.puntosCiegos.set(nombre, veces);
+
+    // Ruidoso la primera vez y luego cada 100: sirve para detectarlo sin
+    // inundar el log de una consulta que corre en cada request.
+    if (veces === 1 || veces % 100 === 0) {
+      this.logger.warn(
+        `[TenantScope] PUNTO CIEGO en ${nombre}: entidad @TenantScoped cargada sin ` +
+        `empresaId en el select — el guardia cross-tenant no puede validarla (${veces} veces). ` +
+        `Agrega empresaId al .select() y filtra empresaId en el query.`,
       );
     }
   }
