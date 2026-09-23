@@ -8,13 +8,17 @@ import {
   IsDateString,
   IsNumber,
   IsBoolean,
+  IsEnum,
   IsIn,
+  IsNotEmpty,
+  ValidateIf,
   Min,
   Max,
   ArrayMinSize,
   MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { DestinoItbis } from '../../common/enums/destino-itbis.enum';
 
 export class CreateCompraDetalleDto {
   @IsInt()
@@ -67,6 +71,21 @@ export class CreateCompraDetalleDto {
   @Min(0)
   @Type(() => Number)
   descuentoMonto?: number;
+
+  /**
+   * Destino del ITBIS de esta línea — alimenta las casillas 45-51 del Anexo
+   * A (anexo-a.service.ts). Sin default aquí a propósito: si no se manda,
+   * queda NULL y el motor lo trata como 'gravado' (comportamiento de hoy).
+   */
+  @IsOptional()
+  @IsEnum(DestinoItbis)
+  destinoItbis?: DestinoItbis;
+
+  @ValidateIf((o) => o.destinoItbis === DestinoItbis.OTRO)
+  @IsString()
+  @IsNotEmpty({ message: 'destinoItbisMotivo es obligatorio cuando destinoItbis = "otro".' })
+  @MaxLength(300)
+  destinoItbisMotivo?: string;
 }
 
 export class CreateCompraDto {

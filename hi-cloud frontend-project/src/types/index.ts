@@ -166,6 +166,9 @@ export interface CompraDetalleOut {
   subtotal:            number;
   importeItbis:        number;
   total:               number;
+  /** Destino del ITBIS de la línea — alimenta las casillas 45-51 del Anexo A. NULL = 'gravado' (comportamiento de hoy). */
+  destinoItbis?:       'gravado' | 'exportacion' | 'exento' | 'activo_categoria_i' | 'otro' | null;
+  destinoItbisMotivo?: string | null;
 }
 
 export interface Compra {

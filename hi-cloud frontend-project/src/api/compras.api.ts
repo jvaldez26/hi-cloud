@@ -8,6 +8,10 @@ export interface CompraDetallePayload {
   /** Descuento por línea — se manda solo uno, el backend deriva el otro. */
   descuentoPct?: number;
   descuentoMonto?: number;
+  /** Destino del ITBIS de la línea — alimenta las casillas 45-51 del Anexo A. Sin mandar = 'gravado' (comportamiento de hoy). */
+  destinoItbis?: 'gravado' | 'exportacion' | 'exento' | 'activo_categoria_i' | 'otro';
+  /** Obligatorio solo cuando destinoItbis = 'otro'. */
+  destinoItbisMotivo?: string;
 }
 export interface CompraPayload {
   proveedorId: number; fecha: string;

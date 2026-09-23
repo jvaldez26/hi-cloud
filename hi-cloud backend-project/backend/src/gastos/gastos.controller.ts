@@ -4,12 +4,13 @@ import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import {
   IsEnum, IsString, IsNotEmpty, IsNumber, IsPositive,
-  IsOptional, IsDateString, Min, IsInt,
+  IsOptional, IsDateString, Min, IsInt, ValidateIf, MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { GastosService } from './gastos.service';
 import { GastoPDFService } from './gasto-pdf.service';
 import { CategoriaGasto } from './entities/gasto.entity';
+import { DestinoItbis } from '../common/enums/destino-itbis.enum';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -43,7 +44,7 @@ class ListGastosDto extends FiltrosGastosDto {
  */
 class ExportarGastosDto extends FiltrosGastosDto {}
 
-class CreateGastoDto {
+export class CreateGastoDto {
   @IsDateString()                                  fecha: string;
   @IsEnum(CategoriaGasto)                          categoria: CategoriaGasto;
   @IsString() @IsNotEmpty()                        descripcion: string;
@@ -60,6 +61,11 @@ class CreateGastoDto {
   @IsOptional() @IsInt() @Type(() => Number)       cajaDiariaId?: number;
   /** Selector de cuenta contable — override manual del default de la categoría. */
   @IsOptional() @IsString()                        cuentaGasto?: string;
+  /** Destino del ITBIS — alimenta las casillas 45-51 del Anexo A. Sin default: NULL = 'gravado' (comportamiento de hoy). */
+  @IsOptional() @IsEnum(DestinoItbis)              destinoItbis?: DestinoItbis;
+  @ValidateIf(o => o.destinoItbis === DestinoItbis.OTRO)
+  @IsString() @IsNotEmpty({ message: 'destinoItbisMotivo es obligatorio cuando destinoItbis = "otro".' }) @MaxLength(300)
+  destinoItbisMotivo?: string;
 }
 
 /** Panel de vista previa del asiento — mismos campos relevantes de CreateGastoDto, sin los administrativos (proveedor, comprobante...). */

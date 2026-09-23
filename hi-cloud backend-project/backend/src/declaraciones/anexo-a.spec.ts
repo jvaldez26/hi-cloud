@@ -1,5 +1,7 @@
 /**
- * Anexo A del IT-1 — Commit 4 del rebuild 2026-09-22.
+ * Anexo A del IT-1 — Commit 4 del rebuild 2026-09-22 + clasificación de
+ * ITBIS deducible/no deducible por línea de compra/gasto (2026-09-23,
+ * destino-itbis.enum.ts).
  *
  * Reusa DeclaracionesService.operacionesVentaPeriodo()/calcularSeccionIIIT1()
  * — no repite la clasificación gravada/exenta/exportación, ya probada en
@@ -7,29 +9,28 @@
  * por tipo de NCF (Sección II), forma de pago (Sección III), tipo de
  * ingreso (Sección IV) e ITBIS pagado con proporcionalidad (Sección IX).
  *
- * Nota sobre el caso dorado y la Sección IX: el Excel real (IT-1-2020.xls)
- * tiene ventas mixtas (exenta 485,414 + gravada 260,304) pero el preparador
- * puso el ITBIS pagado ENTERO en la casilla 50 (100% deducible, casilla 53
- * de proporcionalidad en 0) — una atribución que solo un contador con
- * conocimiento directo de a qué venta corresponde cada compra puede hacer.
- * El sistema no tiene esa señal, así que por diseño trata TODO el ITBIS
- * pagado como "común" (sujeto a proporcionalidad) en cuanto hay exención
- * local — más conservador que ese filing real, nunca menos. Por eso los
- * tests de Sección IX usan escenarios propios, no el número final de
- * casilla 56 del Excel.
+ * Sección IX ya no recibe un único itbisPagadoTotal: recibe el desglose por
+ * destinoItbis (gravado/exportación/exento/activoCategoriaI/otro) que
+ * getAnexoA() arma agrupando compra_detalles/gastos — la agregación SQL en
+ * sí (getAnexoA) no se prueba aquí, solo la lógica de seccionIX() con el
+ * desglose ya armado (mismo criterio que el resto del archivo: seccionII/
+ * seccionIII/seccionIV tampoco prueban la query, prueban la función pura).
+ *
+ * Nota sobre el caso dorado: el Excel real (IT-1-2020.xls) tiene ventas
+ * mixtas (exenta 485,414 + gravada 260,304) pero el preparador puso el
+ * ITBIS pagado ENTERO en la casilla 50 (100% deducible) — una atribución
+ * manual que, con destinoItbis sin clasificar (NULL/'gravado', el estado de
+ * ese Excel real), el sistema NO puede replicar: en cuanto hay exención
+ * local, el ITBIS gravado sin clasificar se trata como "común" (sujeto a
+ * proporcionalidad) — más conservador que ese filing real, nunca menos. Por
+ * eso los tests de Sección IX usan escenarios propios, no el número final
+ * de casilla 56 del Excel.
  */
 
 import { AnexoAService } from './anexo-a.service';
 import { ParametroFiscalPendienteError } from '../parametros-fiscales/errors/parametro-fiscal.errors';
 
-function makeService(opts: {
-  compras?: number; gastos?: number; proporcionalidad?: any;
-} = {}) {
-  const dataSource = {
-    query: jest.fn()
-      .mockResolvedValueOnce([{ itbis: String(opts.compras ?? 0) }])
-      .mockResolvedValueOnce([{ itbis: String(opts.gastos ?? 0) }]),
-  };
+function makeService(opts: { proporcionalidad?: any } = {}) {
   const tenantSvc = { getEmpresaId: () => 44 };
   const proporcionalidadSvc = {
     calcular: opts.proporcionalidad instanceof Error
@@ -37,11 +38,19 @@ function makeService(opts: {
       : jest.fn().mockResolvedValue(opts.proporcionalidad),
   };
   const svc: any = Object.create(AnexoAService.prototype);
-  svc.dataSource = dataSource;
   svc.tenantSvc  = tenantSvc;
   svc.proporcionalidadSvc = proporcionalidadSvc;
-  return { svc: svc as AnexoAService, dataSource, proporcionalidadSvc };
+  return { svc: svc as AnexoAService, proporcionalidadSvc };
 }
+
+type Desglose = {
+  gravadoCompras: number; gravadoGastos: number; exportacion: number;
+  exento: number; activoCategoriaI: number; otro: number; otroMotivos: string[];
+};
+const desglose = (over: Partial<Desglose> = {}): Desglose => ({
+  gravadoCompras: 0, gravadoGastos: 0, exportacion: 0, exento: 0, activoCategoriaI: 0, otro: 0, otroMotivos: [],
+  ...over,
+});
 
 // Filas ya en el formato de operacionesVentaPeriodo() — mismo caso dorado
 // que it1-seccion2.spec.ts, más una nota de crédito/débito y un tipo
@@ -128,22 +137,61 @@ describe('AnexoAService — Sección IV (por tipo de ingreso)', () => {
 });
 
 describe('AnexoAService — Sección IX (ITBIS Pagado), sin exención local', () => {
-  it('sin venta exenta local: 100% deducible en casilla 50, sin llamar al motor de proporcionalidad', async () => {
-    const { svc, proporcionalidadSvc } = makeService({ compras: 9680.29, gastos: 0 });
-    const s9: any = await (svc as any)['seccionIX'](9680.29, 0, 0, 260304, 260304, new Date('2026-09-30'));
+  it('línea SIN CLASIFICAR (destinoItbis NULL/gravado por defecto): 100% deducible en casilla 50 (compras), igual que antes del campo', async () => {
+    const { svc, proporcionalidadSvc } = makeService();
+    const s9: any = await (svc as any)['seccionIX'](desglose({ gravadoCompras: 9680.29 }), 0, 0, 260304, 260304, new Date('2026-09-30'));
     expect(proporcionalidadSvc.calcular).not.toHaveBeenCalled();
     expect(s9.deducibleNoSujetoAProporcionalidad.casilla50_bienesGravados.monto).toBeCloseTo(9680.29, 2);
+    expect(s9.deducibleNoSujetoAProporcionalidad.casilla51_serviciosGravados.monto).toBe(0);
     expect(s9.casilla56_totalItbisDeducible.monto).toBeCloseTo(9680.29, 2);
+  });
+
+  it('gasto gravado (servicio) cae en casilla 51, no en la 50 (bienes = compras, servicios = gastos)', async () => {
+    const { svc } = makeService();
+    const s9: any = await (svc as any)['seccionIX'](desglose({ gravadoGastos: 1200 }), 0, 0, 260304, 260304, new Date('2026-09-30'));
+    expect(s9.deducibleNoSujetoAProporcionalidad.casilla51_serviciosGravados.monto).toBeCloseTo(1200, 2);
+    expect(s9.deducibleNoSujetoAProporcionalidad.casilla50_bienesGravados.monto).toBe(0);
+  });
+
+  it('línea marcada EXPORTACIÓN: casilla 49, deducible sin pasar por proporcionalidad', async () => {
+    const { svc, proporcionalidadSvc } = makeService();
+    const s9: any = await (svc as any)['seccionIX'](desglose({ exportacion: 1000, gravadoCompras: 500 }), 0, 0, 260304, 260304, new Date('2026-09-30'));
+    expect(proporcionalidadSvc.calcular).not.toHaveBeenCalled();
+    expect(s9.deducibleNoSujetoAProporcionalidad.casilla49_bienesExportados.monto).toBeCloseTo(1000, 2);
+    expect(s9.casilla56_totalItbisDeducible.monto).toBeCloseTo(1500, 2);
+  });
+
+  it('línea marcada EXENTA (producción de bienes/servicios exentos): casilla 45, nunca deducible', async () => {
+    const { svc } = makeService();
+    const s9: any = await (svc as any)['seccionIX'](desglose({ exento: 500, gravadoCompras: 9680.29 }), 0, 0, 260304, 260304, new Date('2026-09-30'));
+    expect(s9.noDeducible.casilla45_productoresExentos.monto).toBeCloseTo(500, 2);
+    expect(s9.noDeducible.casilla48_totalNoDeducible.monto).toBeCloseTo(500, 2);
+    expect(s9.casilla56_totalItbisDeducible.monto).toBeCloseTo(9680.29, 2); // el exento no entra al total deducible
+  });
+
+  it('línea marcada ACTIVO CATEGORÍA I: casilla 46, nunca deducible', async () => {
+    const { svc } = makeService();
+    const s9: any = await (svc as any)['seccionIX'](desglose({ activoCategoriaI: 300 }), 0, 0, 260304, 260304, new Date('2026-09-30'));
+    expect(s9.noDeducible.casilla46_activosCategoriaI.monto).toBeCloseTo(300, 2);
+    expect(s9.noDeducible.casilla48_totalNoDeducible.monto).toBeCloseTo(300, 2);
+    expect(s9.casilla56_totalItbisDeducible.monto).toBe(0);
+  });
+
+  it('línea marcada OTRO MOTIVO: casilla 47, nunca deducible, y el motivo queda en los avisos', async () => {
+    const { svc } = makeService();
+    const s9: any = await (svc as any)['seccionIX'](desglose({ otro: 150, otroMotivos: ['Consumo del dueño, no del negocio'] }), 0, 0, 260304, 260304, new Date('2026-09-30'));
+    expect(s9.noDeducible.casilla47_otrosNoDeducibles.monto).toBeCloseTo(150, 2);
+    expect(s9.casilla56_totalItbisDeducible.monto).toBe(0);
+    expect(s9.avisos.some((a: string) => a.includes('Consumo del dueño'))).toBe(true);
   });
 });
 
 describe('AnexoAService — Sección IX, con exención local (ventas mixtas)', () => {
-  it('con exención local: todo el ITBIS pagado se trata como común, se le aplica el coeficiente del motor', async () => {
+  it('con exención local: solo el ITBIS GRAVADO (50/51) se trata como común y recibe el coeficiente', async () => {
     const { svc, proporcionalidadSvc } = makeService({
-      compras: 9680.29, gastos: 0,
       proporcionalidad: { periodo: 'mensualConAjusteAnual', ventasTotales: 745718, factor: 0.3491, itbisComun: 9680.29, itbisDeducible: 3379.63, itbisNoDeducible: 6300.66 },
     });
-    const s9: any = await (svc as any)['seccionIX'](9680.29, 0, 485414, 260304, 745718, new Date('2026-09-30'));
+    const s9: any = await (svc as any)['seccionIX'](desglose({ gravadoCompras: 9680.29 }), 0, 485414, 260304, 745718, new Date('2026-09-30'));
     expect(proporcionalidadSvc.calcular).toHaveBeenCalledWith(expect.objectContaining({
       ventasGravadas: 260304, ventasExportaciones: 0, ventasExentas: 485414, itbisComun: 9680.29,
     }));
@@ -152,12 +200,21 @@ describe('AnexoAService — Sección IX, con exención local (ventas mixtas)', (
     expect(s9.casilla56_totalItbisDeducible.monto).toBeCloseTo(3379.63, 2);
   });
 
+  it('con exención local Y una línea marcada exportación: la exportación NO se reparte con el coeficiente, el gravado sí', async () => {
+    const { svc, proporcionalidadSvc } = makeService({
+      proporcionalidad: { periodo: 'mensualConAjusteAnual', ventasTotales: 745718, factor: 0.3491, itbisComun: 9680.29, itbisDeducible: 3379.63, itbisNoDeducible: 6300.66 },
+    });
+    const s9: any = await (svc as any)['seccionIX'](desglose({ gravadoCompras: 9680.29, exportacion: 1000 }), 0, 485414, 260304, 745718, new Date('2026-09-30'));
+    expect(proporcionalidadSvc.calcular).toHaveBeenCalledWith(expect.objectContaining({ itbisComun: 9680.29 })); // la exportación NO entra al cálculo del coeficiente
+    expect(s9.deducibleNoSujetoAProporcionalidad.casilla49_bienesExportados.monto).toBeCloseTo(1000, 2);
+    expect(s9.casilla56_totalItbisDeducible.monto).toBeCloseTo(1000 + 3379.63, 2); // exportación completa + admitido del gravado
+  });
+
   it('parámetro de proporcionalidad pendiente de validación: requiere_revision, nunca un 0 silencioso', async () => {
     const { svc } = makeService({
-      compras: 9680.29, gastos: 0,
       proporcionalidad: new ParametroFiscalPendienteError('proporcionalidad_itbis_periodo', '2026-09-30'),
     });
-    const s9: any = await (svc as any)['seccionIX'](9680.29, 0, 485414, 260304, 745718, new Date('2026-09-30'));
+    const s9: any = await (svc as any)['seccionIX'](desglose({ gravadoCompras: 9680.29 }), 0, 485414, 260304, 745718, new Date('2026-09-30'));
     expect(s9.sujetoAProporcionalidad.casilla54_coeficiente.estado).toBe('requiere_revision');
     expect(s9.casilla56_totalItbisDeducible.estado).toBe('requiere_revision');
     expect(s9.avisos.some((a: string) => a.includes('requiere revisión'))).toBe(true);

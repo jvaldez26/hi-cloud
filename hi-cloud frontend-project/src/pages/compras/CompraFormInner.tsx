@@ -31,7 +31,18 @@ interface Linea {
   descuentoMonto: number;
   permiteDecimales?: boolean;
   precioIncluyeItbis?: boolean;
+  /** Destino del ITBIS de la línea — alimenta las casillas 45-51 del Anexo A. undefined = 'gravado' (comportamiento de hoy). */
+  destinoItbis?: 'gravado' | 'exportacion' | 'exento' | 'activo_categoria_i' | 'otro';
+  destinoItbisMotivo?: string;
 }
+
+const DESTINO_ITBIS_OPTIONS = [
+  { value: 'gravado',             label: 'Bienes/servicios gravados' },
+  { value: 'exportacion',         label: 'Exportación' },
+  { value: 'exento',              label: 'No deducible — exentos' },
+  { value: 'activo_categoria_i',  label: 'No deducible — Activo Cat. I' },
+  { value: 'otro',                label: 'No deducible — otro motivo' },
+];
 
 const fmtMon = (v: number, moneda = 'DOP') => {
   const sym = moneda === 'USD' ? 'US$' : moneda === 'EUR' ? '€' : 'RD$';
@@ -46,7 +57,7 @@ const fmtMon = (v: number, moneda = 'DOP') => {
  * tabla vea que hay un número que actualizar — y porque el día que entren las
  * columnas de descuento (Bruto, Desc, Neto) este número sube.
  */
-const ANCHO_MINIMO_ITEMS = 44 + 300 + 96 + 74 + 68 + 86 + 84 + 126 + 88 + 96 + 44;
+const ANCHO_MINIMO_ITEMS = 44 + 300 + 96 + 74 + 68 + 86 + 84 + 126 + 88 + 150 + 96 + 44;
 
 /**
  * Form.Item de la cabecera: el margen inferior por defecto de antd son 24px,
@@ -293,6 +304,8 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
         porcentajeItbis:    Number(d.porcentajeItbis ?? 18),
         descuentoPct:       Number(d.descuentoPct ?? 0),
         descuentoMonto:     Number(d.descuentoMonto ?? 0),
+        destinoItbis:       d.destinoItbis ?? undefined,
+        destinoItbisMotivo: d.destinoItbisMotivo ?? undefined,
       })));
       // Sin esto el Select de cada línea sale vacío: los productos del borrador
       // no están en los resultados de la búsqueda, que arranca sin texto.
@@ -459,6 +472,10 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
       message.error('Hay líneas con precio 0 y sin cantidad. Ingresa las unidades recibidas o elimina la línea.');
       return;
     }
+    if (lineas.some(l => l.destinoItbis === 'otro' && !l.destinoItbisMotivo?.trim())) {
+      message.error('Hay líneas con Destino ITBIS "otro motivo" sin especificar el motivo.');
+      return;
+    }
 
     const detalles: CompraDetallePayload[] = lineas.map(l => ({
       productoId: l.productoId!, descripcion: l.descripcion,
@@ -468,6 +485,8 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
       // aunque sea 0 (a diferencia de cantidadBonificada) para que una línea
       // editada a "sin descuento" limpie lo que tenía antes.
       descuentoMonto: l.descuentoMonto || 0,
+      destinoItbis: l.destinoItbis,
+      destinoItbisMotivo: l.destinoItbis === 'otro' ? l.destinoItbisMotivo : undefined,
     }));
     createMut.mutate({
       proveedorId: values.proveedorId,
@@ -680,6 +699,34 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
           </Tooltip>
         </div>
       )},
+    { title: 'Destino ITBIS', key: 'destinoItbis', width: 150,
+      render: (_: unknown, r: Linea, idx: number) => {
+        const bruto = r.precioUnitario * r.cantidad - (r.descuentoMonto || 0);
+        const itbisLinea = bruto * (r.porcentajeItbis / 100);
+        if (!itbisLinea) return <span style={{ fontSize: 11, color: token.colorTextSecondary }}>—</span>;
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Select
+              size="small" style={{ width: '100%' }}
+              value={r.destinoItbis ?? 'gravado'}
+              options={DESTINO_ITBIS_OPTIONS}
+              onChange={v => {
+                const u = [...lineas];
+                u[idx] = { ...u[idx], destinoItbis: v === 'gravado' ? undefined : v, ...(v !== 'otro' ? { destinoItbisMotivo: undefined } : {}) };
+                setLineas(u);
+              }}
+            />
+            {r.destinoItbis === 'otro' && (
+              <Input
+                size="small" placeholder="Motivo (obligatorio)"
+                status={!r.destinoItbisMotivo?.trim() ? 'error' : undefined}
+                value={r.destinoItbisMotivo}
+                onChange={e => { const u = [...lineas]; u[idx] = { ...u[idx], destinoItbisMotivo: e.target.value }; setLineas(u); }}
+              />
+            )}
+          </div>
+        );
+      }},
     { title: 'Subtotal', key: 'sub', width: 96,
       // NETO de descuento — la base gravable de la línea, no el bruto.
       render: (_: unknown, r: Linea) => fmtMon(r.precioUnitario * r.cantidad - (r.descuentoMonto || 0), moneda) },

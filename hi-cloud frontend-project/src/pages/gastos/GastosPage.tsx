@@ -56,6 +56,15 @@ const FORMAS_PAGO_606 = [
   { value: '07', label: '07 — Mixto' },
 ];
 
+/** Destino del ITBIS — alimenta las casillas 45-51 del Anexo A del IT-1 (anexo-a.service.ts). */
+const DESTINO_ITBIS_OPTIONS = [
+  { value: 'gravado',             label: 'Bienes/servicios gravados' },
+  { value: 'exportacion',         label: 'Exportación' },
+  { value: 'exento',              label: 'No deducible — exentos' },
+  { value: 'activo_categoria_i',  label: 'No deducible — Activo Cat. I' },
+  { value: 'otro',                label: 'No deducible — otro motivo' },
+];
+
 /** Sugerencia de tipoBienes según la categoría del ERP.
  *  El usuario puede cambiarlo — es solo un pre-llenado orientativo. */
 const CATEGORIA_TIPO_BIENES_SUGERIDO: Record<string, string> = {
@@ -137,6 +146,7 @@ export default function GastosPage() {
   // afecta las cuentas o los montos del asiento.
   const montoWatch       = Form.useWatch('monto', form);
   const itbisWatch       = Form.useWatch('itbis', form);
+  const destinoItbisWatch = Form.useWatch('destinoItbis', form);
   const descripcionWatch = Form.useWatch('descripcion', form);
   const cuentaGastoWatch = Form.useWatch('cuentaGasto', form);
   const { data: previewAsiento, isFetching: previewCargando } = useQuery({
@@ -503,6 +513,8 @@ export default function GastosPage() {
             fecha: v.fecha.format('YYYY-MM-DD'),
             itbis: generaE43 ? 0 : (v.itbis ?? 0),
             cuentaGasto: v.cuentaGasto || undefined,
+            destinoItbis: generaE43 ? undefined : v.destinoItbis,
+            destinoItbisMotivo: (generaE43 || v.destinoItbis !== 'otro') ? undefined : v.destinoItbisMotivo,
           })}
           initialValues={{ fecha: dayjs() }}
         >
@@ -570,6 +582,27 @@ export default function GastosPage() {
               </Col>
             )}
           </Row>
+
+          {/* Destino del ITBIS — solo tiene sentido cuando hay ITBIS que clasificar.
+              Alimenta las casillas 45-51 del Anexo A del IT-1. */}
+          {!generaE43 && Number(itbisWatch) > 0 && (
+            <Row gutter={12}>
+              <Col xs={24} sm={destinoItbisWatch === 'otro' ? 12 : 24}>
+                <Form.Item name="destinoItbis" label="Destino del ITBIS" initialValue="gravado"
+                  tooltip="Para el Anexo A del IT-1 — sin clasificar cuenta como 'Bienes/servicios gravados'.">
+                  <Select options={DESTINO_ITBIS_OPTIONS} />
+                </Form.Item>
+              </Col>
+              {destinoItbisWatch === 'otro' && (
+                <Col xs={24} sm={12}>
+                  <Form.Item name="destinoItbisMotivo" label="Motivo"
+                    rules={[{ required: true, message: 'El motivo es obligatorio cuando el destino es "otro".' }]}>
+                    <Input placeholder="Ej: consumo del dueño, no del negocio" />
+                  </Form.Item>
+                </Col>
+              )}
+            </Row>
+          )}
 
           {/* Proveedor — RNC primero con lookup DGII, nombre se auto-llena */}
           {!generaE43 && (

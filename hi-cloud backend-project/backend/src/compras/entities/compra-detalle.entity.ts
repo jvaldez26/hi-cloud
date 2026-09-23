@@ -1,6 +1,7 @@
 import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 import { Producto } from '../../productos/entities/producto.entity';
+import { DestinoItbis } from '../../common/enums/destino-itbis.enum';
 import { Compra } from './compra.entity';
 
 @Entity('compra_detalles')
@@ -94,4 +95,16 @@ export class CompraDetalle extends BaseEntity {
 
   @Column({ type: 'decimal', precision: 12, scale: 2 })
   total!: number;
+
+  /**
+   * Clasificación del ITBIS de esta línea para el Anexo A del IT-1 (casillas
+   * 45-51) — NULL = "Bienes/servicios gravados" (comportamiento de hoy, sin
+   * re-captura de histórico). Ver anexo-a.service.ts.
+   */
+  @Column({ type: 'varchar', length: 30, nullable: true })
+  destinoItbis?: DestinoItbis;
+
+  /** Obligatorio solo cuando destinoItbis = 'otro' (validado en el DTO). */
+  @Column({ type: 'text', nullable: true })
+  destinoItbisMotivo?: string;
 }

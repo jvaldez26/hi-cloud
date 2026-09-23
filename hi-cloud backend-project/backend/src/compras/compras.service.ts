@@ -184,6 +184,8 @@ export class ComprasService {
         total,
         costoUnitarioReal,
         costoUnitarioRealDOP,
+        destinoItbis:       item.destinoItbis ?? undefined,
+        destinoItbisMotivo: item.destinoItbisMotivo ?? undefined,
       });
     }
 
@@ -842,6 +844,8 @@ export class ComprasService {
           subtotal:           d.subtotal,
           total:              d.total,
           costoUnitarioReal:  (d as any).costoUnitarioReal,
+          destinoItbis:       (d as any).destinoItbis ?? undefined,
+          destinoItbisMotivo: (d as any).destinoItbisMotivo ?? undefined,
         })) as any,
       );
     }

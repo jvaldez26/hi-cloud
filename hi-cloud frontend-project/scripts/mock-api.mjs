@@ -355,6 +355,20 @@ const RUTAS = {
     })),
   }),
   '/declaraciones/historial': () => [],
+  '/gastos/categorias': () => ([
+    { value: 'alquiler',            label: 'Alquiler de local',       cuenta: '6.1.2.01' },
+    { value: 'servicios_publicos',  label: 'Servicios públicos',      cuenta: '6.1.2.02' },
+    { value: 'mantenimiento',       label: 'Mantenimiento',           cuenta: '6.1.2.07' },
+    { value: 'otros',               label: 'Otros gastos',            cuenta: '6.1.2.09' },
+    { value: 'gasto_menor',         label: 'Gasto menor',             cuenta: '6.1.2.10', generaE43: true },
+  ]),
+  '/proveedores': () => ({
+    data: [
+      { id: 1, nombre: 'VALDEZ GONZÁLEZ OUTSOURCING SRL', rnc: '131234567' },
+      { id: 2, nombre: 'DISTRIBUIDORA DEL ESTE SRL', rnc: '130987654' },
+    ],
+    meta: { total: 2, page: 1, limit: 10, totalPages: 1 },
+  }),
   '/productos': () => ({
     data: [
       { id: 1, codigo: 'ACE-10W40', nombre: 'Aceite REPSOL 10W40', precio: 950,  porcentajeIva: 18, unidadMedida: 'UN' },

@@ -1,6 +1,7 @@
 import { Entity, Column, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
+import { DestinoItbis } from '../../common/enums/destino-itbis.enum';
 
 export enum CategoriaGasto {
   ALQUILER        = 'alquiler',
@@ -101,4 +102,16 @@ export class Gasto extends TenantBaseEntity {
   /** Número secuencial por empresa — GAS-000001, GAS-000002, … */
   @Column({ length: 20, nullable: true })
   numero?: string;
+
+  /**
+   * Clasificación del ITBIS de este gasto para el Anexo A del IT-1 (casillas
+   * 45-51) — NULL = "Bienes/servicios gravados" (comportamiento de hoy, sin
+   * re-captura de histórico). Ver anexo-a.service.ts.
+   */
+  @Column({ type: 'varchar', length: 30, nullable: true })
+  destinoItbis?: DestinoItbis;
+
+  /** Obligatorio solo cuando destinoItbis = 'otro' (validado en el DTO). */
+  @Column({ type: 'text', nullable: true })
+  destinoItbisMotivo?: string;
 }

@@ -4,6 +4,7 @@ import { Repository, DataSource } from 'typeorm';
 import {
   Gasto, CategoriaGasto, CATEGORIA_LABELS,
 } from './entities/gasto.entity';
+import { DestinoItbis } from '../common/enums/destino-itbis.enum';
 import { AsientosAutomaticosService } from '../contabilidad/services/asientos-automaticos.service';
 import { TipoOrigenAsiento } from '../contabilidad/entities/asiento-contable.entity';
 import { PaginationDto } from '../common/dto/pagination.dto';
@@ -37,6 +38,9 @@ interface CreateGastoDto {
    * si es "el default" o "una elección".
    */
   cuentaGasto?: string;
+  /** Destino del ITBIS — alimenta las casillas 45-51 del Anexo A del IT-1. NULL = 'gravado' (comportamiento de hoy). */
+  destinoItbis?: DestinoItbis;
+  destinoItbisMotivo?: string;
   userId:       number;
 }
 
@@ -57,6 +61,10 @@ export class GastosService {
     const info  = CATEGORIA_LABELS[dto.categoria];
     // Gasto menor (E43): ITBIS siempre 0 — todo el monto va como exento
     const itbis = info?.generaE43 ? 0 : (dto.itbis ?? 0);
+    // Sin ITBIS que clasificar, sin destino que guardar — evita un
+    // destinoItbis "huérfano" en un gasto que no tiene ITBIS real.
+    const destinoItbis = info?.generaE43 ? undefined : (dto.destinoItbis ?? undefined);
+    const destinoItbisMotivo = info?.generaE43 ? undefined : (dto.destinoItbisMotivo ?? undefined);
 
     // Validar que la caja indicada exista y esté abierta para la empresa.
     // Previene imputar gastos a cajas cerradas o de otros días, lo que corrompería el arqueo.
@@ -101,6 +109,8 @@ export class GastosService {
         empresaId,
         sucursalId,
         itbis,
+        destinoItbis,
+        destinoItbisMotivo,
         total,
         periodo,
         fecha,
