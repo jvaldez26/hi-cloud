@@ -355,6 +355,7 @@ const RUTAS = {
     })),
   }),
   '/declaraciones/historial': () => [],
+  '/preferencias/columnas/compra-items': () => ({ ocultas: [], mostradas: [], porDefecto: true }),
   '/gastos/categorias': () => ([
     { value: 'alquiler',            label: 'Alquiler de local',       cuenta: '6.1.2.01' },
     { value: 'servicios_publicos',  label: 'Servicios públicos',      cuenta: '6.1.2.02' },

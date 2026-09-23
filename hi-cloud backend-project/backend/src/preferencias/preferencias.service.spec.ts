@@ -239,6 +239,100 @@ describe('PreferenciasService — sidebar colapsado', () => {
   });
 });
 
+/**
+ * Columnas de una tabla (selector ColumnToggle) — mismo criterio que
+ * sidebar-colapsado: antes vivía SOLO en localStorage (useColumnVisibility),
+ * un dispositivo por preferencia; ahora sincroniza por (usuario, empresa).
+ * Se guarda el DIFF contra los defaults (ocultas/mostradas), no la lista de
+ * visibles — igual que el propio hook del frontend, y por la misma razón:
+ * una columna nueva no puede nacer oculta para quien ya guardó algo.
+ */
+describe('PreferenciasService — columnas de tabla', () => {
+  const USER    = 94;
+  const EMPRESA = 61;
+  const MODULO  = 'compra-items';
+
+  const crear = (fila: any = null) => {
+    const repo = {
+      findOne: jest.fn().mockResolvedValue(fila),
+      upsert:  jest.fn().mockResolvedValue({}),
+    };
+    const svc: any = Object.create(PreferenciasService.prototype);
+    svc.logger = { warn: jest.fn(), log: jest.fn(), error: jest.fn() };
+    svc.repo   = repo;
+    svc.tenantService = { getUserId: () => USER, getEmpresaId: () => EMPRESA };
+    return { svc, repo };
+  };
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it('quien nunca lo ha tocado recibe todo vacío y porDefecto:true', async () => {
+    const { svc } = crear(null);
+    await expect(svc.getColumnasOcultas(MODULO)).resolves.toEqual({ ocultas: [], mostradas: [], porDefecto: true });
+  });
+
+  it('devuelve lo guardado', async () => {
+    const { svc } = crear({ valor: { ocultas: ['bon', 'inv'], mostradas: ['destinoItbis'] } });
+    await expect(svc.getColumnasOcultas(MODULO)).resolves.toEqual({
+      ocultas: ['bon', 'inv'], mostradas: ['destinoItbis'], porDefecto: false,
+    });
+  });
+
+  it('busca por usuario Y empresa Y módulo (clave = columnas.<modulo>)', async () => {
+    const { svc, repo } = crear(null);
+    await svc.getColumnasOcultas(MODULO);
+
+    expect(repo.findOne).toHaveBeenCalledWith({
+      where: { userId: USER, empresaId: EMPRESA, clave: 'columnas.compra-items', isActive: true },
+    });
+  });
+
+  it('rechaza un módulo que el servidor no conoce — el cliente no decide qué tabla existe', async () => {
+    const { svc } = crear(null);
+    await expect(svc.getColumnasOcultas('tabla-inventada')).rejects.toThrow(/no existe/);
+  });
+
+  it('guarda el diff contra (usuario, empresa, clave) — upsert, no crea duplicados', async () => {
+    const { svc, repo } = crear(null);
+    await expect(svc.setColumnasOcultas(MODULO, ['bon'], ['destinoItbis'])).resolves.toEqual({
+      ocultas: ['bon'], mostradas: ['destinoItbis'],
+    });
+
+    expect(repo.upsert).toHaveBeenCalledWith(
+      {
+        userId: USER, empresaId: EMPRESA, clave: 'columnas.compra-items',
+        valor: { ocultas: ['bon'], mostradas: ['destinoItbis'] }, isActive: true,
+      },
+      expect.objectContaining({ conflictPaths: ['userId', 'empresaId', 'clave'] }),
+    );
+  });
+
+  it('acepta las dos listas vacías — es "todo por defecto", una decisión válida', async () => {
+    const { svc, repo } = crear(null);
+    await expect(svc.setColumnasOcultas(MODULO, [], [])).resolves.toEqual({ ocultas: [], mostradas: [] });
+    expect(repo.upsert).toHaveBeenCalled();
+  });
+
+  it('rechaza lo que no es un array', async () => {
+    const { svc } = crear(null);
+    await expect(svc.setColumnasOcultas(MODULO, 'bon' as any, [])).rejects.toThrow(/debe ser un array/);
+  });
+
+  it('colapsa los repetidos sin fallar', async () => {
+    const { svc } = crear(null);
+    const r = await svc.setColumnasOcultas(MODULO, ['bon', 'bon', 'inv'], []);
+    expect(r.ocultas).toEqual(['bon', 'inv']);
+  });
+
+  it('sin usuario en contexto no se toca ninguna fila', async () => {
+    const { svc, repo } = crear(null);
+    svc.tenantService.getUserId = () => null;
+
+    await expect(svc.setColumnasOcultas(MODULO, ['bon'], [])).rejects.toThrow(/usuario/i);
+    expect(repo.upsert).not.toHaveBeenCalled();
+  });
+});
+
 describe('catalogo de widgets', () => {
   it('los defaults existen en el catalogo', () => {
     const slugs = CATALOGO_WIDGETS.map(w => w.slug);

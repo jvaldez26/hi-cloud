@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Put, Body, Param, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -7,6 +7,7 @@ import { UserRole } from '../users/enums/user-role.enum';
 import { PreferenciasService } from './preferencias.service';
 import { SetWidgetsDto } from './dto/set-widgets.dto';
 import { SetSidebarColapsadoDto } from './dto/set-sidebar-colapsado.dto';
+import { SetColumnasDto } from './dto/set-columnas.dto';
 
 @ApiTags('Preferencias de usuario')
 @ApiBearerAuth('access-token')
@@ -55,5 +56,23 @@ export class PreferenciasController {
   @ApiOperation({ summary: 'Guardar la preferencia de sidebar colapsado/expandido' })
   setSidebarColapsado(@Body() dto: SetSidebarColapsadoDto) {
     return this.svc.setSidebarColapsado(dto.colapsado);
+  }
+
+  @Get('columnas/:modulo')
+  @ApiOperation({
+    summary: 'Columnas ocultas/mostradas de una tabla, para el usuario y la empresa actuales',
+    description:
+      'Sincroniza entre dispositivos el selector de columnas (ColumnToggle) de una tabla. ' +
+      '`porDefecto: true` si el usuario nunca lo ha tocado.',
+  })
+  getColumnas(@Param('modulo') modulo: string) {
+    return this.svc.getColumnasOcultas(modulo);
+  }
+
+  @Put('columnas/:modulo')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Guardar las columnas ocultas/mostradas de una tabla' })
+  setColumnas(@Param('modulo') modulo: string, @Body() dto: SetColumnasDto) {
+    return this.svc.setColumnasOcultas(modulo, dto.ocultas, dto.mostradas);
   }
 }

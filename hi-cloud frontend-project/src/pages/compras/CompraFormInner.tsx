@@ -5,6 +5,8 @@ import { PlusOutlined, DeleteOutlined, InfoCircleOutlined } from '@ant-design/ic
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSucursalesQuery } from '../../hooks/useCatalogQueries';
 import { useDebounce } from '../../hooks/useDebounce';
+import { useColumnVisibilitySync } from '../../hooks/useColumnVisibilitySync';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { comprasApi, type CompraDetallePayload } from '../../api/compras.api';
 import { proveedoresApi } from '../../api/proveedores.api';
 import { productosApi } from '../../api/productos.api';
@@ -44,6 +46,40 @@ const DESTINO_ITBIS_OPTIONS = [
   { value: 'otro',                label: 'No deducible — otro motivo' },
 ];
 
+/**
+ * Columnas OCULTABLES de la tabla de Ítems — Producto/Descripción/Cantidad/
+ * Precio/Subtotal (y las de insertar/borrar fila) se quedan siempre fuera de
+ * este selector porque son las que hacen falta en toda compra, tecleando
+ * contra la factura del proveedor. `defaultVisible` clona lo que ya se veía
+ * antes del selector, salvo Destino ITBIS: es la única columna nueva y la
+ * que menos se toca, así que nace oculta.
+ */
+export const COLS_DEF_ITEMS = [
+  { key: 'bon',          label: 'Bonificación',   defaultVisible: true },
+  { key: 'inv',          label: 'Inv. / Costo',   defaultVisible: true },
+  { key: 'descuento',    label: 'Descuento',      defaultVisible: true },
+  { key: 'itbis',        label: 'ITBIS %',        defaultVisible: true },
+  { key: 'destinoItbis', label: 'Destino ITBIS',  defaultVisible: false },
+];
+
+/**
+ * Qué contar como "valor no estándar" en cada columna ocultable, para el
+ * indicador de la fila (punto 4 del pedido): ocultar una columna no puede
+ * esconder también que una línea la usó para algo fuera de lo normal.
+ * 'inv' no tiene entrada — es una columna 100% derivada de cantidad/bonif./
+ * precio, nunca guarda un dato propio que perder de vista.
+ */
+export const CAMPOS_INDICADOR: { key: string; noEstandar: (l: Linea) => boolean; describir: (l: Linea) => string }[] = [
+  { key: 'bon',          noEstandar: l => (l.cantidadBonificada ?? 0) > 0,
+    describir: l => `Bonificación: ${l.cantidadBonificada}` },
+  { key: 'descuento',    noEstandar: l => (l.descuentoMonto ?? 0) > 0,
+    describir: l => `Descuento: ${l.descuentoMonto?.toFixed(2)}` },
+  { key: 'itbis',        noEstandar: l => l.porcentajeItbis !== 18,
+    describir: l => `ITBIS: ${l.porcentajeItbis}%` },
+  { key: 'destinoItbis', noEstandar: l => !!l.destinoItbis && l.destinoItbis !== 'gravado',
+    describir: l => `Destino ITBIS: ${DESTINO_ITBIS_OPTIONS.find(o => o.value === l.destinoItbis)?.label ?? l.destinoItbis}` },
+];
+
 const fmtMon = (v: number, moneda = 'DOP') => {
   const sym = moneda === 'USD' ? 'US$' : moneda === 'EUR' ? '€' : 'RD$';
   return `${sym} ${v.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -57,7 +93,10 @@ const fmtMon = (v: number, moneda = 'DOP') => {
  * tabla vea que hay un número que actualizar — y porque el día que entren las
  * columnas de descuento (Bruto, Desc, Neto) este número sube.
  */
-const ANCHO_MINIMO_ITEMS = 44 + 300 + 96 + 74 + 68 + 86 + 84 + 126 + 88 + 150 + 96 + 44;
+/** Ancho de cada columna SIEMPRE visible (no depende del selector). El resto
+ *  (columnas ocultables) se suma dinámicamente según lo que esté activo —
+ *  ver `anchoTabla` en el componente. */
+const ANCHO_COLUMNAS_FIJAS = 44 /* ins */ + 20 /* flag */ + 300 /* prod */ + 96 /* desc */ + 74 /* qty */ + 84 /* price */ + 96 /* sub */ + 44 /* del */;
 
 /**
  * Form.Item de la cabecera: el margen inferior por defecto de antd son 24px,
@@ -106,6 +145,8 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
   const qc = useQueryClient();
 
   const [lineas, setLineas] = useState<Linea[]>([{ key: '1', cantidad: 1, cantidadBonificada: 0, precioUnitario: 0, porcentajeItbis: 18, descuentoPct: 0, descuentoMonto: 0 }]);
+  const { visibleColumns: colsVisiblesItems, updateVisibility: setColsVisiblesItems } =
+    useColumnVisibilitySync('compra-items', COLS_DEF_ITEMS);
   const [tipoPago, setTipoPago]         = useState<'contado' | 'credito'>('contado');
   const [diasCredito, setDiasCredito]   = useState(30);
   const [moneda, setMoneda]             = useState<'DOP' | 'USD' | 'EUR'>('DOP');
@@ -515,6 +556,21 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
           <Button type="text" size="small" icon={<PlusOutlined />} onClick={() => insertarLineaDebajo(idx)} />
         </Tooltip>
       )},
+    // Siempre visible: una columna ocultable no puede esconder también que
+    // una línea la usó para algo fuera de lo normal. Solo mira las columnas
+    // OCULTAS ahora mismo — la que está visible ya se ve sola, sin indicador.
+    { title: '', key: 'flag', width: 20,
+      render: (_: unknown, r: Linea) => {
+        const ocultosConValor = CAMPOS_INDICADOR.filter(
+          c => !colsVisiblesItems.includes(c.key) && c.noEstandar(r),
+        );
+        if (!ocultosConValor.length) return null;
+        return (
+          <Tooltip title={<>Columna oculta con valor no estándar:<br />{ocultosConValor.map(c => c.describir(r)).join(' · ')}</>}>
+            <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: token.colorWarning }} />
+          </Tooltip>
+        );
+      }},
     // `width` explícito, como el resto. La tabla va con `tableLayout="fixed"`:
     // las columnas con ancho fijo se reparten primero y esta, que era la única
     // sin declararlo, se quedaba con lo que sobrara. Al añadir la columna
@@ -736,6 +792,14 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
       )},
   ];
 
+  // Las OCULTABLES (COLS_DEF_ITEMS) solo entran si están en colsVisiblesItems;
+  // todo lo demás (ins/flag/prod/desc/qty/price/sub/del) es estructural y
+  // nunca pasa por el selector.
+  const CLAVES_OCULTABLES = new Set(COLS_DEF_ITEMS.map(c => c.key));
+  const lineaColsVisibles = lineaCols.filter(c => !CLAVES_OCULTABLES.has(c.key) || colsVisiblesItems.includes(c.key));
+  const anchoTablaItems = ANCHO_COLUMNAS_FIJAS
+    + lineaColsVisibles.filter(c => CLAVES_OCULTABLES.has(c.key)).reduce((s, c) => s + (c.width ?? 0), 0);
+
   return (
     <Form form={form} layout="vertical" onFinish={handleSubmit} initialValues={{ fecha: dayjs() }}
       // En modo alto completo el formulario es una columna flex de DOS
@@ -924,19 +988,32 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
           ~5 filas visibles— y su propio scroll cuando hay más; el resto del
           formulario scrollea por el envoltorio de arriba. */}
       <Card title="Ítems" style={{ marginBottom: 16 }}
-        extra={<Button icon={<PlusOutlined />} onClick={agregarLinea}>Agregar</Button>}>
-        {/* Ancho MÍNIMO (1062 = la suma de las columnas), no `max-content`.
-            Esta es una tabla de CAPTURA, no de consulta: el usuario teclea
-            mirando la factura del proveedor y no puede tener columnas
-            escondidas. `max-content` estiraba la tabla a lo que ocupara su
-            contenido aunque cupiera, así que salía barra siempre; con un número
-            solo aparece cuando el ancho disponible baja de ahí, que es el
-            último recurso y no el comportamiento normal.
+        extra={
+          <Space>
+            <ColumnToggle columns={COLS_DEF_ITEMS} visibleColumns={colsVisiblesItems} onChange={setColsVisiblesItems} />
+            <Button icon={<PlusOutlined />} onClick={agregarLinea}>Agregar</Button>
+          </Space>
+        }>
+        {/* Ancho MÍNIMO (no `max-content`). Esta sigue siendo una tabla de
+            CAPTURA, no de consulta: el usuario teclea mirando la factura del
+            proveedor, así que Producto/Descripción/Cantidad/Precio/Subtotal
+            NUNCA se pueden ocultar (fuera del selector de columnas, ver
+            COLS_DEF_ITEMS) y una columna ocultable con un valor no estándar
+            se delata con el punto de la columna `flag`. `max-content`
+            estiraba la tabla a lo que ocupara su contenido aunque cupiera,
+            así que salía barra siempre; con un número solo aparece cuando el
+            ancho disponible baja de ahí, que es el último recurso y no el
+            comportamiento normal.
+
+            El ancho es la suma de las columnas fijas MÁS las ocultables que
+            estén activas — con menos columnas activas, tableLayout="fixed"
+            reparte el espacio sobrante entre las que quedan (respiran más)
+            en vez de dejarlo vacío.
 
             La convención de `x: 'max-content'` sigue en pie para las tablas de
             consulta — ahí el criterio es el contrario. */}
-        <Table columns={lineaCols as any} dataSource={lineas} rowKey="key" pagination={false} size="small"
-          tableLayout="fixed" scroll={{ x: ANCHO_MINIMO_ITEMS, y: 320 }} style={{ minHeight: 260 }} />
+        <Table columns={lineaColsVisibles as any} dataSource={lineas} rowKey="key" pagination={false} size="small"
+          tableLayout="fixed" scroll={{ x: anchoTablaItems, y: 320 }} style={{ minHeight: 260 }} />
       </Card>
 
       {esInformal && (

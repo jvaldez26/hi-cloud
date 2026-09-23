@@ -16,6 +16,15 @@ import {
 /** Sin migración, mismo criterio que CLAVE_DASHBOARD_WIDGETS: una fila más en preferencias_usuario. */
 const CLAVE_SIDEBAR_COLAPSADO = 'sidebar.colapsado';
 
+/**
+ * Columnas de una tabla — el caso que la entidad ya anticipaba (ver su
+ * comentario). Un módulo por tabla ('compra-items', …); el servidor decide
+ * cuáles existen (MODULOS_COLUMNAS), no el cliente, mismo criterio que
+ * existeWidget() para el dashboard.
+ */
+const CLAVE_COLUMNAS_PREFIJO = 'columnas.';
+const MODULOS_COLUMNAS = new Set(['compra-items']);
+
 @Injectable()
 export class PreferenciasService {
   private readonly logger = new Logger(PreferenciasService.name);
@@ -118,6 +127,85 @@ export class PreferenciasService {
     );
 
     return { colapsado };
+  }
+
+  // ── Columnas de tabla: qué ve este usuario, sincronizado entre dispositivos ─
+
+  /**
+   * Se guarda el DIFF contra los defaults (ocultas/mostradas), no la lista de
+   * visibles — mismo formato y misma razón que useColumnVisibility.ts en el
+   * frontend: si se guardara la lista de visibles, una columna nueva no
+   * estaría en la preferencia de nadie que ya hubiera tocado el selector, así
+   * que nacería oculta para siempre. `porDefecto: true` = nunca lo ha tocado
+   * (el frontend arranca de localStorage y reconcilia con esto al cargar).
+   */
+  async getColumnasOcultas(modulo: string): Promise<{ ocultas: string[]; mostradas: string[]; porDefecto: boolean }> {
+    this.validarModuloColumnas(modulo);
+    const userId    = this.exigirUserId();
+    const empresaId = this.tenantService.getEmpresaId();
+
+    const fila = await this.repo.findOne({
+      where: { userId, empresaId, clave: CLAVE_COLUMNAS_PREFIJO + modulo, isActive: true },
+    });
+    if (!fila) return { ocultas: [], mostradas: [], porDefecto: true };
+
+    const valor = fila.valor as any;
+    return {
+      ocultas:    this.filtrarClaves(valor?.ocultas),
+      mostradas:  this.filtrarClaves(valor?.mostradas),
+      porDefecto: false,
+    };
+  }
+
+  async setColumnasOcultas(modulo: string, ocultas: unknown, mostradas: unknown): Promise<{ ocultas: string[]; mostradas: string[] }> {
+    this.validarModuloColumnas(modulo);
+    const userId    = this.exigirUserId();
+    const empresaId = this.tenantService.getEmpresaId();
+
+    const limpiasOcultas   = this.validarListaClaves(ocultas, 'ocultas');
+    const limpiasMostradas = this.validarListaClaves(mostradas, 'mostradas');
+
+    await this.repo.upsert(
+      {
+        userId, empresaId, clave: CLAVE_COLUMNAS_PREFIJO + modulo,
+        valor: { ocultas: limpiasOcultas, mostradas: limpiasMostradas }, isActive: true,
+      },
+      { conflictPaths: ['userId', 'empresaId', 'clave'], skipUpdateIfNoValuesChanged: true },
+    );
+
+    return { ocultas: limpiasOcultas, mostradas: limpiasMostradas };
+  }
+
+  private validarModuloColumnas(modulo: string) {
+    if (!MODULOS_COLUMNAS.has(modulo)) {
+      throw new BadRequestException(`El módulo de columnas "${modulo}" no existe.`);
+    }
+  }
+
+  /** Al leer: lo corrupto se ignora en silencio (no hay input del usuario que corregir). */
+  private filtrarClaves(valor: unknown): string[] {
+    return Array.isArray(valor) ? valor.filter((s): s is string => typeof s === 'string') : [];
+  }
+
+  /** Al escribir: lo inválido SÍ se rechaza — es el usuario mandándolo, no un dato viejo. */
+  private validarListaClaves(valor: unknown, campo: string): string[] {
+    if (!Array.isArray(valor)) {
+      throw new BadRequestException(`\`${campo}\` debe ser un array de claves de columna.`);
+    }
+    if (valor.length > 50) {
+      throw new BadRequestException(`Demasiadas columnas en "${campo}": ${valor.length}.`);
+    }
+    const vistos = new Set<string>();
+    const out: string[] = [];
+    for (const s of valor) {
+      if (typeof s !== 'string' || s.length === 0 || s.length > 40) {
+        throw new BadRequestException(`Cada clave de columna en "${campo}" debe ser texto de 1 a 40 caracteres.`);
+      }
+      if (vistos.has(s)) continue;   // repetir no es un error, es ruido: se colapsa
+      vistos.add(s);
+      out.push(s);
+    }
+    return out;
   }
 
   // ── Validacion ────────────────────────────────────────────────────────────
