@@ -9,10 +9,9 @@
 // el motor en el backend.
 
 import { useState } from 'react';
-import { Card, Row, Col, Statistic, Button, Space, Typography, Alert, DatePicker, Tag } from 'antd';
+import { Card, Row, Col, Statistic, Button, Space, Typography, Alert, Tag } from 'antd';
 import { DownloadOutlined, FileTextOutlined, FilePdfOutlined, WarningOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
-import dayjs, { Dayjs } from 'dayjs';
 import api from '../../api/client';
 import { fmt } from '../../utils/formatters';
 import { exportarAnexoAItbis } from '../../utils/exportExcel';
@@ -20,7 +19,7 @@ import { CasillaTable, flattenCasillas, conLabels } from './CasillaTable';
 import { LABELS_ANEXO_A } from './casillasLabels';
 import { FUENTE_ANEXO_A } from './casillasFuente';
 
-const { Text, Paragraph } = Typography;
+const { Paragraph } = Typography;
 
 function authHeaders() {
   return { 'X-Empresa-ID': localStorage.getItem('empresaId') ?? '' };
@@ -31,12 +30,9 @@ const anexoAApi = {
     api.get(`/declaraciones/it1/anexo-a?mes=${mes}&anio=${anio}`).then(r => r.data?.data ?? r.data),
 };
 
-export default function AnexoAItbisPanel() {
-  const [periodo, setPeriodo] = useState<Dayjs>(dayjs());
+export default function AnexoAItbisPanel({ mes, anio }: { mes: number; anio: number }) {
   const [exportando, setExportando] = useState(false);
   const [pdfCargando, setPdfCargando] = useState(false);
-  const mes  = periodo.month() + 1;
-  const anio = periodo.year();
 
   const { data, isLoading } = useQuery({
     queryKey: ['anexo-a-itbis', mes, anio],
@@ -97,8 +93,6 @@ export default function AnexoAItbisPanel() {
       />
 
       <Space style={{ marginBottom: 16 }} wrap>
-        <Text type="secondary">Período:</Text>
-        <DatePicker picker="month" value={periodo} onChange={(d) => d && setPeriodo(d)} allowClear={false} format="MMMM YYYY" />
         <Button icon={<DownloadOutlined />} loading={exportando} disabled={!data} onClick={handleExportarExcel}>
           Excel
         </Button>
