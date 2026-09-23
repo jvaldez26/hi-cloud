@@ -93,11 +93,16 @@ function capturaVacia(): QbCapturado {
 }
 
 describe('getLibroMayor — aislamiento multi-tenant', () => {
-  it('filtra por empresaId en la linea del asiento', async () => {
+  // Regresion 2026-09-23 (la segunda del mismo dia): el primer intento de fix
+  // filtraba TAMBIEN por l.empresaId y dejo el Libro Mayor vacio en produccion.
+  // asiento_lineas.empresaId esta NULL en todas las filas que crea la app
+  // (nadie lo asigna al insertar), asi que el scope tiene que colgar del
+  // asiento. Este caso existe para que nadie lo "arregle" de vuelta.
+  it('NO filtra por l.empresaId — esa columna esta NULL y vaciaria la pantalla', async () => {
     const captura = capturaVacia();
     await makeService(7, CUENTA_ITBIS, captura).getLibroMayor(42);
 
-    expect(todasLasCondiciones(captura)).toContain('l.empresaId');
+    expect(todasLasCondiciones(captura)).not.toContain('l.empresaId');
   });
 
   it('filtra por empresaId tambien en el asiento, no solo en la linea', async () => {
@@ -114,7 +119,7 @@ describe('getLibroMayor — aislamiento multi-tenant', () => {
     expect(todosLosParams(captura)).toMatchObject({ eid: 7 });
   });
 
-  it('incluye empresaId en el select — sin el, el TenantSubscriber queda ciego', async () => {
+  it('incluye empresaId en el select — el dia que la columna se rellene, el subscriber lo vera', async () => {
     const captura = capturaVacia();
     await makeService(7, CUENTA_ITBIS, captura).getLibroMayor(42);
 

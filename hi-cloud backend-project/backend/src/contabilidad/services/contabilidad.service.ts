@@ -1189,14 +1189,18 @@ export class ContabilidadService implements OnModuleInit {
     const cuenta = await this.findCuentaById(cuentaId);
 
     // P0 fuga cross-tenant (2026-09-23) — este query no filtraba empresaId por
-    // ningún lado, ni en la línea ni en el asiento: cualquier fila de otra
-    // empresa que apuntara a esta cuentaContableId salía en el mayor. Mismo
-    // patrón que getAsientos() más arriba: empresaId explícito, no heredado.
+    // ningún lado: cualquier fila que apuntara a esta cuentaContableId salía
+    // en el mayor. El filtro va en el ASIENTO, no en la línea.
     //
-    // 'l.empresaId' va además en el select a propósito: el TenantSubscriber
-    // solo revisa entidades que lleguen CON empresaId (tenant.subscriber.ts,
-    // 'if (!entity?.empresaId) return'), así que un select parcial que lo
-    // omita deja ciega a la red de seguridad justo donde más falta hace.
+    // OJO, y es la razón de que esto se escriba aquí: asiento_lineas.empresaId
+    // está NULL en todas las filas que crea la aplicación. Ni
+    // _crearAsientoContabilizado() ni createAsiento() lo asignan, y no hay
+    // @BeforeInsert ni subscriber de inserción que lo rellene; solo dos
+    // migraciones de corrección lo escribieron alguna vez. Filtrar por
+    // 'l.empresaId = :eid' deja el Libro Mayor VACÍO para todo el mundo — pasó
+    // en producción el 2026-09-23 y por eso el filtro vive en 'a.empresaId',
+    // igual que en saldos-cuentas, anexos-ir2 y conciliación fiscal: todas
+    // scopean por el asiento. La línea hereda la empresa de su asiento.
     const eid = this.eid;
     const qb = this.lineaRepository
       .createQueryBuilder('l')
@@ -1207,8 +1211,7 @@ export class ContabilidadService implements OnModuleInit {
       .select(['l.id', 'l.empresaId', 'l.descripcion', 'l.debe', 'l.haber', 'a.fecha', 'a.numero', 'a.descripcion'])
       .addSelect('a.fecha', 'fecha')
       .addSelect('a.numero', 'asientoNumero')
-      .where('l.cuentaContableId = :id AND l.isActive = true', { id: cuentaId })
-      .andWhere('l.empresaId = :eid', { eid });
+      .where('l.cuentaContableId = :id AND l.isActive = true', { id: cuentaId });
 
     // P3 Bloque 5: string 'YYYY-MM-DD' crudo — ver el comentario en
     // getAsientos() más arriba sobre por qué new Date(string) corre el
