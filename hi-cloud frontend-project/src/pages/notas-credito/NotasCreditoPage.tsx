@@ -131,7 +131,15 @@ export default function NotasCreditoPage() {
   const estadoDgiiFiltro = params.get('estadoDgii') ?? undefined;
   const montoMin = params.get('montoMin') ? Number(params.get('montoMin')) : undefined;
   const montoMax = params.get('montoMax') ? Number(params.get('montoMax')) : undefined;
-  const { desde, hasta } = calcularRangoAtajo(atajo);
+  // Un rango explícito en la URL (ej. desde el visor de origen del IT-1, un
+  // período fiscal arbitrario que no cae en ninguno de los 4 atajos) manda
+  // sobre el atajo — 'todo' sigue siendo el valor por defecto de `atajo`
+  // cuando llega así, pero las fechas reales usadas son las de la URL.
+  const desdeParam = params.get('desde');
+  const hastaParam = params.get('hasta');
+  const { desde, hasta } = desdeParam && hastaParam
+    ? { desde: desdeParam, hasta: hastaParam }
+    : calcularRangoAtajo(atajo);
 
   const actualizarFiltro = (cambios: Record<string, string | number | undefined>) => {
     // Forma funcional — dos cambios seguidos en el mismo tick (p.ej. buscar +

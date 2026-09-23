@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useRncLookup } from '../../hooks/useRncLookup';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
@@ -100,6 +101,17 @@ export default function GastosPage() {
   const [mes,        setMes]        = useState(dayjs().month() + 1);
   const [anio,       setAnio]       = useState(dayjs().year());
   const [catFilt,    setCatFilt]    = useState<string | undefined>();
+
+  // Llegada desde un reporte (ej. el visor de origen del IT-1) con
+  // ?mes=&anio= — Gastos filtra por mes/año, no por rango de fechas.
+  const [urlParams] = useSearchParams();
+  useEffect(() => {
+    const mesParam  = urlParams.get('mes');
+    const anioParam = urlParams.get('anio');
+    if (mesParam)  setMes(Number(mesParam));
+    if (anioParam) setAnio(Number(anioParam));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [open,             setOpen]             = useState(false);
   const [tieneComprobante, setTieneComprobante] = useState(false);
   // Si el usuario desmarca el 606 a mano, no se vuelve a marcar solo mientras el modal siga abierto.

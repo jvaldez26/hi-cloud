@@ -63,18 +63,28 @@ export class AnexoAService {
     // efecto). Las notas de crédito, sin tipoNcf propio de "otras", quedan
     // aparte del catch-all: se separan en casilla 10 solo cuando el monto es
     // negativo Y no tiene una casilla nombrada (4 sí la tiene).
-    const porCasilla = new Map<number, { cantidad: number; montoFirmado: number }>();
+    const porCasilla = new Map<number, { cantidad: number; montoFirmado: number; facturas: number; notasCredito: number; notasDebito: number }>();
     for (const f of filas) {
       let casilla = CASILLA_POR_TIPO[f.tipoNcf] ?? 9; // "Otras Operaciones" — catch-all, nunca se pierde un tipo desconocido
       const montoFirmado = round(f.gravado18 + f.gravado16 + f.exento);
       if (casilla === 9 && montoFirmado < 0) casilla = 10; // "Otras Operaciones (negativas)"
-      const actual = porCasilla.get(casilla) ?? { cantidad: 0, montoFirmado: 0 };
+      const actual = porCasilla.get(casilla) ?? { cantidad: 0, montoFirmado: 0, facturas: 0, notasCredito: 0, notasDebito: 0 };
       actual.cantidad += 1;
       actual.montoFirmado = round(actual.montoFirmado + montoFirmado);
+      if (f.tipoDocumento === 'FACTURA') actual.facturas += 1;
+      else if (f.tipoDocumento === 'NOTA_CREDITO') actual.notasCredito += 1;
+      else if (f.tipoDocumento === 'NOTA_DEBITO') actual.notasDebito += 1;
       porCasilla.set(casilla, actual);
     }
     const signado = (n: number) => porCasilla.get(n)?.montoFirmado ?? 0;
     const q       = (n: number) => porCasilla.get(n)?.cantidad ?? 0;
+    // Visor de origen (drawer de la fila): conteo por tipo de documento, no
+    // solo el total ya mostrado en la columna "Cantidad" de la tabla.
+    const conteo = (n: number) => {
+      const p = porCasilla.get(n);
+      if (!p) return { facturas: 0, notasCredito: 0, notasDebito: 0 };
+      return { facturas: p.facturas, notasCredito: p.notasCredito, notasDebito: p.notasDebito };
+    };
     // Para MOSTRAR: casillas 4 (NC) y 10 (otras negativas) se reportan como
     // magnitud positiva, igual que el formulario oficial — el signo ya está
     // aplicado en el total, no hace falta que se vea negativo en la casilla.
@@ -86,17 +96,17 @@ export class AnexoAService {
     );
 
     return {
-      casilla1_creditoFiscal:   { casilla: 1, cantidad: q(1), monto: m(1) },
-      casilla2_consumo:         { casilla: 2, cantidad: q(2), monto: m(2) },
-      casilla3_notaDebito:      { casilla: 3, cantidad: q(3), monto: m(3) },
-      casilla4_notaCredito:     { casilla: 4, cantidad: q(4), monto: m(4) },
+      casilla1_creditoFiscal:   { casilla: 1, cantidad: q(1), monto: m(1), conteo: conteo(1) },
+      casilla2_consumo:         { casilla: 2, cantidad: q(2), monto: m(2), conteo: conteo(2) },
+      casilla3_notaDebito:      { casilla: 3, cantidad: q(3), monto: m(3), conteo: conteo(3) },
+      casilla4_notaCredito:     { casilla: 4, cantidad: q(4), monto: m(4), conteo: conteo(4) },
       casilla5_registroUnicoIngresos: { casilla: 5, cantidad: 0, monto: 0, estado: 'no_aplica' as const,
         nota: 'No existe un tipo de e-CF equivalente a "Registro Único de Ingresos" en el catálogo DGII vigente.' },
-      casilla6_regimenesEspeciales: { casilla: 6, cantidad: q(6), monto: m(6) },
-      casilla7_gubernamentales:  { casilla: 7, cantidad: q(7), monto: m(7) },
-      casilla8_exportaciones:    { casilla: 8, cantidad: q(8), monto: m(8) },
-      casilla9_otrasPositivas:   { casilla: 9, cantidad: q(9), monto: m(9) },
-      casilla10_otrasNegativas:  { casilla: 10, cantidad: q(10), monto: m(10) },
+      casilla6_regimenesEspeciales: { casilla: 6, cantidad: q(6), monto: m(6), conteo: conteo(6) },
+      casilla7_gubernamentales:  { casilla: 7, cantidad: q(7), monto: m(7), conteo: conteo(7) },
+      casilla8_exportaciones:    { casilla: 8, cantidad: q(8), monto: m(8), conteo: conteo(8) },
+      casilla9_otrasPositivas:   { casilla: 9, cantidad: q(9), monto: m(9), conteo: conteo(9) },
+      casilla10_otrasNegativas:  { casilla: 10, cantidad: q(10), monto: m(10), conteo: conteo(10) },
       casilla11_totalOperaciones: { casilla: 11, monto: total },
     };
   }

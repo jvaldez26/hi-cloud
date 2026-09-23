@@ -1,4 +1,4 @@
-﻿import { useState, useCallback } from 'react';
+﻿import { useState, useCallback, useEffect } from 'react';
 import { EmailConCopiaModal } from '../../components/ui/EmailConCopiaModal';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
@@ -15,7 +15,7 @@ import {
 } from '@ant-design/icons';
 import { SolicitarAprobacionModal } from '../../components/ui/SolicitarAprobacionModal';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useCanDo } from '../../hooks/useCanDo';
 import { TableActions } from '../../components/ui/TableActions';
 import dayjs from 'dayjs';
@@ -57,6 +57,17 @@ export default function ComprasPage() {
   // fuente de verdad, ver components/compras/RecibirMercanciaModal.tsx.
   const [recibirCompra,   setRecibirCompra]   = useState<Compra | null>(null);
   const [cargandoRecibir, setCargandoRecibir] = useState<number | null>(null);
+
+  // Llegada desde un reporte (ej. el visor de origen del IT-1) con
+  // ?desde=&hasta= — se siembra UNA vez al montar, mismo patrón que
+  // LibroMayorPage/FacturasPage.
+  const [params] = useSearchParams();
+  useEffect(() => {
+    const desdeParam = params.get('desde');
+    const hastaParam = params.get('hasta');
+    if (desdeParam && hastaParam) setRango([dayjs(desdeParam), dayjs(hastaParam)]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const filters = {
     search: search || undefined,

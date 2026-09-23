@@ -9,10 +9,11 @@ import { Collapse, Card, Alert, Typography } from 'antd';
 import { FileSearchOutlined, WarningOutlined } from '@ant-design/icons';
 import { CasillaTable, flattenCasillas, conLabels } from './CasillaTable';
 import { LABELS_IT1 } from './casillasLabels';
+import { FUENTE_IT1 } from './casillasFuente';
 
 const { Text } = Typography;
 
-export default function IT1DetalleCompleto({ data }: { data: any }) {
+export default function IT1DetalleCompleto({ data, mes, anio }: { data: any; mes: number; anio: number }) {
   if (!data?.seccionII) return null; // datos del IT-1 anterior al rebuild (no debería pasar en producción, pero evita romper si el backend cambia)
 
   const avisos: string[] = [
@@ -24,6 +25,11 @@ export default function IT1DetalleCompleto({ data }: { data: any }) {
   const filasII  = conLabels(flattenCasillas(data.seccionII),  LABELS_IT1);
   const filasIII = conLabels(flattenCasillas(data.seccionIII), LABELS_IT1);
   const filasIV  = conLabels(flattenCasillas(data.seccionIV),  LABELS_IT1);
+  // Todas las casillas del IT-1 juntas — para que el visor de origen pueda
+  // resolver referencias cruzadas entre secciones (ej. Casilla 33 en la
+  // fórmula de la 38, aunque vivan en tablas distintas).
+  const todasLasCasillas = [...filasII, ...filasIII, ...filasIV];
+  const periodo = { mes, anio };
 
   return (
     <Collapse
@@ -35,13 +41,13 @@ export default function IT1DetalleCompleto({ data }: { data: any }) {
           children: (
             <div>
               <Card title="Sección II — Ingresos por Operaciones" size="small" style={{ marginBottom: 12 }}>
-                <CasillaTable rows={filasII} avisos={avisos} />
+                <CasillaTable rows={filasII} avisos={avisos} fuenteMap={FUENTE_IT1} periodo={periodo} todasLasCasillas={todasLasCasillas} />
               </Card>
               <Card title="Sección III — Liquidación" size="small" style={{ marginBottom: 12 }}>
-                <CasillaTable rows={filasIII} avisos={avisos} />
+                <CasillaTable rows={filasIII} avisos={avisos} fuenteMap={FUENTE_IT1} periodo={periodo} todasLasCasillas={todasLasCasillas} />
               </Card>
               <Card title="Secciones IV y V — Penalidades y Monto a Pagar" size="small" style={{ marginBottom: 12 }}>
-                <CasillaTable rows={filasIV} avisos={avisos} />
+                <CasillaTable rows={filasIV} avisos={avisos} fuenteMap={FUENTE_IT1} periodo={periodo} todasLasCasillas={todasLasCasillas} />
               </Card>
               {avisos.length > 0 && (
                 <Alert

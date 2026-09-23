@@ -18,6 +18,7 @@ import { fmt } from '../../utils/formatters';
 import { exportarAnexoAItbis } from '../../utils/exportExcel';
 import { CasillaTable, flattenCasillas, conLabels } from './CasillaTable';
 import { LABELS_ANEXO_A } from './casillasLabels';
+import { FUENTE_ANEXO_A } from './casillasFuente';
 
 const { Text, Paragraph } = Typography;
 
@@ -71,6 +72,11 @@ export default function AnexoAItbisPanel() {
   const filasIII = data ? conLabels(flattenCasillas(data.seccionIII), LABELS_ANEXO_A) : [];
   const filasIV  = data ? conLabels(flattenCasillas(data.seccionIV),  LABELS_ANEXO_A) : [];
   const filasIX  = data ? conLabels(flattenCasillas(data.seccionIX),  LABELS_ANEXO_A) : [];
+  // Todas juntas — el visor de origen resuelve referencias cruzadas entre
+  // secciones (ej. Casilla 55 de la IX cita la 53 y la 54, ambas en la IX,
+  // pero la 26 de la IV cita casillas 20-25 también de la IV).
+  const todasLasCasillas = [...filasII, ...filasIII, ...filasIV, ...filasIX];
+  const periodoVisor = { mes, anio };
 
   const totalOperaciones = filasII.find(f => f.casilla === 11)?.monto ?? 0;
   const totalItbisDeducible = filasIX.find(f => f.casilla === 56)?.monto ?? 0;
@@ -125,19 +131,19 @@ export default function AnexoAItbisPanel() {
       </Row>
 
       <Card title="Sección II — Operaciones por Tipo de NCF" style={{ marginBottom: 16 }}>
-        <CasillaTable rows={filasII} conCantidad avisos={avisos} />
+        <CasillaTable rows={filasII} conCantidad avisos={avisos} fuenteMap={FUENTE_ANEXO_A} periodo={periodoVisor} todasLasCasillas={todasLasCasillas} />
       </Card>
 
       <Card title="Sección III — Operaciones por Forma de Pago (monto bruto)" style={{ marginBottom: 16 }}>
-        <CasillaTable rows={filasIII} avisos={avisos} />
+        <CasillaTable rows={filasIII} avisos={avisos} fuenteMap={FUENTE_ANEXO_A} periodo={periodoVisor} todasLasCasillas={todasLasCasillas} />
       </Card>
 
       <Card title="Sección IV — Operaciones por Tipo de Ingreso" style={{ marginBottom: 16 }}>
-        <CasillaTable rows={filasIV} avisos={avisos} />
+        <CasillaTable rows={filasIV} avisos={avisos} fuenteMap={FUENTE_ANEXO_A} periodo={periodoVisor} todasLasCasillas={todasLasCasillas} />
       </Card>
 
       <Card title="Sección IX — ITBIS Pagado (Compras Locales)" style={{ marginBottom: 16 }}>
-        <CasillaTable rows={filasIX} avisos={avisos} />
+        <CasillaTable rows={filasIX} avisos={avisos} fuenteMap={FUENTE_ANEXO_A} periodo={periodoVisor} todasLasCasillas={todasLasCasillas} />
       </Card>
 
       {avisos.length > 0 && (

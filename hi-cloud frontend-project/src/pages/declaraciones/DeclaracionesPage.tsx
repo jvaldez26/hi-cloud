@@ -610,7 +610,7 @@ export default function DeclaracionesPage() {
                 message={`IT-1 — Declaración mensual ITBIS · ${periodLabel}`}
               />
               <IT1Card data={it1} />
-              <IT1DetalleCompleto data={it1} />
+              <IT1DetalleCompleto data={it1} mes={mes} anio={anio} />
               {it1 && (
                 <div style={{ marginTop: 16, textAlign: 'right' }}>
                   <Space>

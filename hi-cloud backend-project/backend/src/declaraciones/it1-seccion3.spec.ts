@@ -24,27 +24,34 @@ function makeService(declaracionAnterior: any | null) {
   return { svc: svc as DeclaracionesService, declItbisRepo };
 }
 
-// seccionII mínimo — calcularSeccionIIIIT1 solo lee _itbisCobradoPorTasa.
-const SECCION_II_DORADA = { _itbisCobradoPorTasa: { itbis18: 46854.72, itbis16: 0 } };
+// seccionII mínimo — calcularSeccionIIIIT1 lee _itbisCobradoPorTasa y,
+// para el conteo del visor de origen, gravadas.casilla11/12.conteo.
+const SECCION_II_DORADA = {
+  _itbisCobradoPorTasa: { itbis18: 46854.72, itbis16: 0 },
+  gravadas: {
+    casilla11_gravadas18: { casilla: 11, monto: 260304.00, estado: 'calculada', conteo: { facturas: 1, notasCredito: 0, notasDebito: 0 } },
+    casilla12_gravadas16: { casilla: 12, monto: 0, estado: 'calculada', conteo: { facturas: 0, notasCredito: 0, notasDebito: 0 } },
+  },
+};
 
 describe('DeclaracionesService.calcularSeccionIIIIT1 — caso dorado, sin período anterior', () => {
   it('casilla 21 (total ITBIS cobrado) = 46,854.72 y casilla 25 (total deducible) = 9,680.29', async () => {
     const { svc } = makeService(null);
-    const s3: any = await (svc as any)['calcularSeccionIIIIT1'](SECCION_II_DORADA, 9680.29, 0, 9, 2026);
+    const s3: any = await (svc as any)['calcularSeccionIIIIT1'](SECCION_II_DORADA, 9680.29, 0, 9, 2026, 3, 0);
     expect(s3.itbisCobrado.casilla21_totalItbisCobrado.monto).toBeCloseTo(46854.72, 2);
     expect(s3.itbisPagado.casilla25_totalDeducible.monto).toBeCloseTo(9680.29, 2);
   });
 
   it('casilla 33 (diferencia a pagar) = 37,174.43, casilla 34 (nuevo saldo a favor) = 0', async () => {
     const { svc } = makeService(null);
-    const s3: any = await (svc as any)['calcularSeccionIIIIT1'](SECCION_II_DORADA, 9680.29, 0, 9, 2026);
+    const s3: any = await (svc as any)['calcularSeccionIIIIT1'](SECCION_II_DORADA, 9680.29, 0, 9, 2026, 3, 0);
     expect(s3.liquidacion.casilla33_diferenciaAPagar.monto).toBeCloseTo(37174.43, 2);
     expect(s3.liquidacion.casilla34_nuevoSaldoAFavor.monto).toBe(0);
   });
 
   it('casilla 29 (saldo a favor anterior) sin período registrado: 0 con estado requiere_revision, nunca calculada en silencio', async () => {
     const { svc, declItbisRepo } = makeService(null);
-    const s3: any = await (svc as any)['calcularSeccionIIIIT1'](SECCION_II_DORADA, 9680.29, 0, 9, 2026);
+    const s3: any = await (svc as any)['calcularSeccionIIIIT1'](SECCION_II_DORADA, 9680.29, 0, 9, 2026, 3, 0);
     expect(declItbisRepo.findOne).toHaveBeenCalledWith({ where: { empresaId: 44, mes: 8, anio: 2026, isActive: true } });
     expect(s3.liquidacion.casilla29_saldoAFavorAnterior.monto).toBe(0);
     expect(s3.liquidacion.casilla29_saldoAFavorAnterior.estado).toBe('requiere_revision');
@@ -53,15 +60,22 @@ describe('DeclaracionesService.calcularSeccionIIIIT1 — caso dorado, sin perío
 
   it('casilla 30 (retenciones, depende del Anexo A no construido) siempre requiere_revision', async () => {
     const { svc } = makeService(null);
-    const s3: any = await (svc as any)['calcularSeccionIIIIT1'](SECCION_II_DORADA, 9680.29, 0, 9, 2026);
+    const s3: any = await (svc as any)['calcularSeccionIIIIT1'](SECCION_II_DORADA, 9680.29, 0, 9, 2026, 3, 0);
     expect(s3.liquidacion.casilla30_retencionesComputables.estado).toBe('requiere_revision');
+  });
+
+  it('casilla 16 hereda el conteo de documentos de la casilla 11 (mismas filas, sin recorrerlas otra vez); casilla 22 trae el conteo de compras/gastos', async () => {
+    const { svc } = makeService(null);
+    const s3: any = await (svc as any)['calcularSeccionIIIIT1'](SECCION_II_DORADA, 9680.29, 0, 9, 2026, 3, 0);
+    expect(s3.itbisCobrado.casilla16_gravadas18.conteo).toEqual({ facturas: 1, notasCredito: 0, notasDebito: 0 });
+    expect(s3.itbisPagado.casilla22_comprasLocales.conteo).toEqual({ compras: 3, gastosOperativos: 0 });
   });
 });
 
 describe('DeclaracionesService.calcularSeccionIIIIT1 — con período anterior registrado', () => {
   it('casilla 29 lee el nuevoSaldoAFavor del mes calendario anterior y se aplica como crédito', async () => {
     const { svc, declItbisRepo } = makeService({ nuevoSaldoAFavor: 5000, diferenciaAPagar: 0 });
-    const s3: any = await (svc as any)['calcularSeccionIIIIT1'](SECCION_II_DORADA, 9680.29, 0, 9, 2026);
+    const s3: any = await (svc as any)['calcularSeccionIIIIT1'](SECCION_II_DORADA, 9680.29, 0, 9, 2026, 3, 0);
     expect(declItbisRepo.findOne).toHaveBeenCalledWith({ where: { empresaId: 44, mes: 8, anio: 2026, isActive: true } });
     expect(s3.liquidacion.casilla29_saldoAFavorAnterior.monto).toBe(5000);
     expect(s3.liquidacion.casilla29_saldoAFavorAnterior.estado).toBe('calculada');
@@ -71,13 +85,13 @@ describe('DeclaracionesService.calcularSeccionIIIIT1 — con período anterior r
 
   it('enero lee diciembre del año anterior (cruce de año)', async () => {
     const { svc, declItbisRepo } = makeService({ nuevoSaldoAFavor: 0, diferenciaAPagar: 0 });
-    await (svc as any)['calcularSeccionIIIIT1'](SECCION_II_DORADA, 9680.29, 0, 1, 2026);
+    await (svc as any)['calcularSeccionIIIIT1'](SECCION_II_DORADA, 9680.29, 0, 1, 2026, 3, 0);
     expect(declItbisRepo.findOne).toHaveBeenCalledWith({ where: { empresaId: 44, mes: 12, anio: 2025, isActive: true } });
   });
 
   it('un saldo a favor anterior mayor al ITBIS neto del período convierte la diferencia en nuevo saldo a favor', async () => {
     const { svc } = makeService({ nuevoSaldoAFavor: 100000, diferenciaAPagar: 0 });
-    const s3: any = await (svc as any)['calcularSeccionIIIIT1'](SECCION_II_DORADA, 9680.29, 0, 9, 2026);
+    const s3: any = await (svc as any)['calcularSeccionIIIIT1'](SECCION_II_DORADA, 9680.29, 0, 9, 2026, 3, 0);
     // 46,854.72 - 9,680.29 - 100,000 = -62,825.57 → casilla 34
     expect(s3.liquidacion.casilla33_diferenciaAPagar.monto).toBe(0);
     expect(s3.liquidacion.casilla34_nuevoSaldoAFavor.monto).toBeCloseTo(62825.57, 2);

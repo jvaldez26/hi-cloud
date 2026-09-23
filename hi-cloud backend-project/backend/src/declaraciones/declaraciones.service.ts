@@ -164,6 +164,20 @@ export class DeclaracionesService {
     const suma = (pred: (f: (typeof filas)[number]) => boolean, campo: 'gravado18' | 'gravado16' | 'exento' | 'itbis18' | 'itbis16') =>
       Math.round(filas.filter(pred).reduce((s, f) => s + f[campo], 0) * 100) / 100;
 
+    // Conteo de documentos reales detrás de una casilla — para el visor de
+    // origen ("4,020 facturas, 12 notas de crédito, 3 notas de débito").
+    // Solo cuenta un documento si tuvo un monto distinto de 0 en el campo
+    // relevante (una factura mixta puede aportar a gravada Y exenta a la
+    // vez — contarla en ambas casillas es correcto, no un doble conteo).
+    const conteoDocs = (pred: (f: (typeof filas)[number]) => boolean) => {
+      const m = filas.filter(pred);
+      return {
+        facturas:      m.filter(f => f.tipoDocumento === 'FACTURA').length,
+        notasCredito:  m.filter(f => f.tipoDocumento === 'NOTA_CREDITO').length,
+        notasDebito:   m.filter(f => f.tipoDocumento === 'NOTA_DEBITO').length,
+      };
+    };
+
     const esExportacion = (f: (typeof filas)[number]) => f.tipoNcf === 'E46';
 
     // Casilla 2: exportación de bienes — el único tipo de NCF de exportación
@@ -222,24 +236,25 @@ export class DeclaracionesService {
     const casilla10 = Math.round((casilla11 + casilla12 + casilla13 + casilla14 + casilla15) * 100) / 100;
     const casilla1  = Math.round((casilla9 + casilla10) * 100) / 100;
 
-    const c = (numero: number, monto: number, estado: 'calculada' | 'no_aplica' = 'calculada') => ({ casilla: numero, monto, estado });
+    const c = (numero: number, monto: number, estado: 'calculada' | 'no_aplica' = 'calculada', conteo?: ReturnType<typeof conteoDocs>) =>
+      ({ casilla: numero, monto, estado, ...(conteo ? { conteo } : {}) });
 
     return {
-      casilla1_totalOperaciones: c(1, casilla1),
+      casilla1_totalOperaciones: c(1, casilla1, 'calculada', conteoDocs(() => true)),
       noGravadas: {
-        casilla2_exportacionBienes:        c(2, casilla2),
+        casilla2_exportacionBienes:        c(2, casilla2, 'calculada', conteoDocs(esExportacion)),
         casilla3_exportacionServicios:     c(3, casilla3, casilla3 === 0 ? 'no_aplica' : 'calculada'),
-        casilla4_exentasLocales:           c(4, casilla4),
+        casilla4_exentasLocales:           c(4, casilla4, 'calculada', conteoDocs(f => !esExportacion(f) && f.exento !== 0)),
         casilla5_exentasPorDestino:        c(5, casilla5, 'no_aplica'),
         casilla6_noSujetasConstruccion:    c(6, casilla6, 'no_aplica'),
         casilla7_noSujetasComisiones:      c(7, casilla7, 'no_aplica'),
         casilla8_exentasParrafosIIIyIV:    c(8, casilla8, 'no_aplica'),
-        casilla9_totalNoGravadas:          c(9, casilla9),
+        casilla9_totalNoGravadas:          c(9, casilla9, 'calculada', conteoDocs(f => f.exento !== 0)),
       },
       gravadas: {
-        casilla10_totalGravadas:           c(10, casilla10),
-        casilla11_gravadas18:              c(11, casilla11),
-        casilla12_gravadas16:              c(12, casilla12),
+        casilla10_totalGravadas:           c(10, casilla10, 'calculada', conteoDocs(f => !esExportacion(f) && (f.gravado18 !== 0 || f.gravado16 !== 0))),
+        casilla11_gravadas18:              c(11, casilla11, 'calculada', conteoDocs(f => !esExportacion(f) && f.gravado18 !== 0)),
+        casilla12_gravadas16:              c(12, casilla12, 'calculada', conteoDocs(f => !esExportacion(f) && f.gravado16 !== 0)),
         casilla13_gravadas9Ley690:         c(13, casilla13, 'no_aplica'),
         casilla14_gravadas8Ley690:         c(14, casilla14, 'no_aplica'),
         casilla15_activosDepreciables:     c(15, casilla15, 'no_aplica'),
@@ -277,10 +292,12 @@ export class DeclaracionesService {
     itbisGastosCf: number,
     mes: number,
     anio: number,
+    cantidadCompras: number,
+    cantidadGastosCf: number,
   ) {
     const avisos: string[] = [];
-    const c = (numero: number, monto: number, estado: 'calculada' | 'no_aplica' | 'requiere_revision' = 'calculada') =>
-      ({ casilla: numero, monto, estado });
+    const c = (numero: number, monto: number, estado: 'calculada' | 'no_aplica' | 'requiere_revision' = 'calculada', conteo?: any) =>
+      ({ casilla: numero, monto, estado, ...(conteo ? { conteo } : {}) });
 
     const casilla16 = seccionII._itbisCobradoPorTasa.itbis18;
     const casilla17 = seccionII._itbisCobradoPorTasa.itbis16;
@@ -290,6 +307,9 @@ export class DeclaracionesService {
     const casilla21 = Math.round((casilla16 + casilla17 + casilla18 + casilla19 + casilla20) * 100) / 100;
 
     const casilla22 = Math.round((itbisCompras + itbisGastosCf) * 100) / 100;
+    // Conteo real de documentos detrás de la casilla 22 — mismo criterio que
+    // compras.cantidad/gastosConCf.cantidad ya expuestos en getIT1().
+    const conteo22 = { compras: cantidadCompras, gastosOperativos: cantidadGastosCf };
     const casilla23 = 0;
     const casilla24 = 0;
     avisos.push(
@@ -336,15 +356,15 @@ export class DeclaracionesService {
 
     return {
       itbisCobrado: {
-        casilla16_gravadas18:      c(16, casilla16),
-        casilla17_gravadas16:      c(17, casilla17),
+        casilla16_gravadas18:      c(16, casilla16, 'calculada', seccionII.gravadas?.casilla11_gravadas18?.conteo),
+        casilla17_gravadas16:      c(17, casilla17, 'calculada', seccionII.gravadas?.casilla12_gravadas16?.conteo),
         casilla18_gravadas9Ley690: c(18, casilla18, 'no_aplica'),
         casilla19_gravadas8Ley690: c(19, casilla19, 'no_aplica'),
         casilla20_activosDepreciables: c(20, casilla20, 'no_aplica'),
         casilla21_totalItbisCobrado: c(21, casilla21),
       },
       itbisPagado: {
-        casilla22_comprasLocales:  c(22, casilla22),
+        casilla22_comprasLocales:  c(22, casilla22, 'calculada', conteo22),
         casilla23_servicios:       c(23, casilla23, 'no_aplica'),
         casilla24_importaciones:   c(24, casilla24, 'no_aplica'),
         casilla25_totalDeducible:  c(25, casilla25),
@@ -521,7 +541,7 @@ export class DeclaracionesService {
     const itbisGastosCf  = Number(gastosConCfRow?.itbis    ?? 0);
     const cantGastosCf   = Number(gastosConCfRow?.cantidad  ?? 0);
 
-    const seccionIII = await this.calcularSeccionIIIIT1(seccionII, itbisCompras, itbisGastosCf, mes, anio);
+    const seccionIII = await this.calcularSeccionIIIIT1(seccionII, itbisCompras, itbisGastosCf, mes, anio, compras.length, cantGastosCf);
     await this.guardarSnapshotIT1(
       mes, anio,
       seccionIII.liquidacion.casilla33_diferenciaAPagar.monto,

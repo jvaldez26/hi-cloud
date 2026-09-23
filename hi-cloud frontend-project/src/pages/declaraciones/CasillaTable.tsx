@@ -6,11 +6,22 @@
 // nunca oculta la fila ni la deja en 0 mudo (pedido explícito del usuario,
 // mismo criterio que ya aplica el backend).
 
-import { Table, Tag, Tooltip, Typography } from 'antd';
-import { InfoCircleOutlined, WarningOutlined } from '@ant-design/icons';
+import { useState } from 'react';
+import { Table, Tag, Tooltip, Typography, Button } from 'antd';
+import { InfoCircleOutlined, WarningOutlined, FileSearchOutlined } from '@ant-design/icons';
 import { fmt } from '../../utils/formatters';
+import { CasillaSourceDrawer } from './CasillaSourceDrawer';
+import type { FuenteCasilla } from './casillasFuente';
 
 const { Text } = Typography;
+
+export interface ConteoDocumentos {
+  facturas?: number;
+  notasCredito?: number;
+  notasDebito?: number;
+  compras?: number;
+  gastosOperativos?: number;
+}
 
 export interface CasillaRaw {
   casilla: number;
@@ -18,6 +29,7 @@ export interface CasillaRaw {
   estado?: 'calculada' | 'no_aplica' | 'requiere_revision';
   cantidad?: number;
   nota?: string;
+  conteo?: ConteoDocumentos;
 }
 
 export interface CasillaFila extends CasillaRaw {
@@ -49,17 +61,26 @@ const ESTADO_TAG: Record<string, { color: string; texto: string; icono: JSX.Elem
   requiere_revision: { color: 'orange',  texto: 'Requiere revisión', icono: <WarningOutlined /> },
 };
 
-export function CasillaTable({ rows, conCantidad = false, avisos = [] }: {
+export function CasillaTable({ rows, conCantidad = false, avisos = [], fuenteMap, periodo, todasLasCasillas }: {
   rows: CasillaFila[];
   conCantidad?: boolean;
   avisos?: string[];
+  /** Metadata de fórmula/enlace por casilla — si no se pasa, no aparece el ícono de origen (misma tabla sirve sin el visor). */
+  fuenteMap?: Record<number, FuenteCasilla>;
+  periodo?: { mes: number; anio: number };
+  /** Todas las casillas del documento (no solo las de esta tabla) — para resolver la cadena de referencias con su monto real. */
+  todasLasCasillas?: CasillaFila[];
 }) {
+  const [casillaAbierta, setCasillaAbierta] = useState<CasillaFila | null>(null);
+
   const buscarAviso = (r: CasillaFila) => {
     if (r.nota) return r.nota;
     // Los avisos generales de la sección suelen citar "Casilla N" — se
     // engancha aquí para no duplicar el texto en cada fila.
     return avisos.find(a => a.includes(`Casilla ${r.casilla} `) || a.includes(`Casillas `) && a.includes(`${r.casilla}`));
   };
+
+  const conVisorOrigen = !!fuenteMap && !!periodo;
 
   const columns = [
     { title: 'Casilla', dataIndex: 'casilla', width: 90,
@@ -84,14 +105,36 @@ export function CasillaTable({ rows, conCantidad = false, avisos = [] }: {
         const tag = <Tag color={cfg.color} icon={cfg.icono}>{cfg.texto}</Tag>;
         return motivo ? <Tooltip title={motivo}>{tag}</Tooltip> : tag;
       } },
+    // Mismo gesto para toda la tabla, calculada o no — pedido explícito:
+    // las 'no_aplica'/'requiere_revision' abren el mismo drawer, ya con su
+    // nota (no hace falta fórmula ni enlace para esas).
+    ...(conVisorOrigen ? [{ title: '', key: 'origen', width: 48, align: 'center' as const,
+      render: (_: any, r: CasillaFila) => (
+        <Tooltip title="Ver origen del dato">
+          <Button type="text" size="small" icon={<FileSearchOutlined />} onClick={() => setCasillaAbierta(r)} />
+        </Tooltip>
+      ) }] : []),
   ];
 
   return (
-    <Table
-      rowKey="casilla" size="small" pagination={false}
-      scroll={{ x: 'max-content' }}
-      columns={columns}
-      dataSource={rows}
-    />
+    <>
+      <Table
+        rowKey="casilla" size="small" pagination={false}
+        scroll={{ x: 'max-content' }}
+        columns={columns}
+        dataSource={rows}
+      />
+      {conVisorOrigen && (
+        <CasillaSourceDrawer
+          open={!!casillaAbierta}
+          onClose={() => setCasillaAbierta(null)}
+          casilla={casillaAbierta}
+          fuente={casillaAbierta ? fuenteMap![casillaAbierta.casilla] : undefined}
+          todasLasCasillas={todasLasCasillas ?? rows}
+          periodo={periodo!}
+          avisoNota={casillaAbierta ? buscarAviso(casillaAbierta) : undefined}
+        />
+      )}
+    </>
   );
 }

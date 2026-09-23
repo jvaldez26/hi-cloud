@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { SkeletonTabla }      from '../../components/ui/SkeletonTabla';
 import { useSkeletonDelay }   from '../../hooks/useSkeletonDelay';
 import { EmailConCopiaModal } from '../../components/ui/EmailConCopiaModal';
@@ -115,6 +116,21 @@ export default function FacturasPage() {
   const [tipoNcf,    setTipoNcf]    = useState<string | undefined>();
   const [montoMin,   setMontoMin]   = useState<number | undefined>();
   const [montoMax,   setMontoMax]   = useState<number | undefined>();
+
+  // Llegada desde un reporte (ej. el visor de origen del IT-1, "ver listado
+  // real") con ?desde=&hasta=&tipoNcf= — se siembra UNA vez al montar, mismo
+  // patrón que LibroMayorPage con ?codigo=&desde=&hasta=. Después de la
+  // siembra inicial el usuario manda: no se vuelve a sobrescribir el filtro
+  // si edita el rango a mano.
+  const [params] = useSearchParams();
+  useEffect(() => {
+    const desdeParam   = params.get('desde');
+    const hastaParam   = params.get('hasta');
+    const tipoNcfParam = params.get('tipoNcf');
+    if (desdeParam && hastaParam) setRango([dayjs(desdeParam), dayjs(hastaParam)]);
+    if (tipoNcfParam) setTipoNcf(tipoNcfParam);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const filters = {
     search:    search || undefined,

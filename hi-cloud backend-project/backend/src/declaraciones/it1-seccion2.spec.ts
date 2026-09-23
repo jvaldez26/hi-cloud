@@ -23,8 +23,8 @@ function calcular(filas: any[]) {
 
 // Un documento "gubernamental" (E45) totalmente exento, como en el caso
 // dorado, y uno "consumo" (E32) gravado al 18%.
-const FILA_EXENTA_GUBERNAMENTAL = { tipoNcf: 'E45', gravado18: 0, gravado16: 0, exento: 485414.00, itbis18: 0, itbis16: 0 };
-const FILA_GRAVADA_18           = { tipoNcf: 'E32', gravado18: 260304.00, gravado16: 0, exento: 0, itbis18: 46854.72, itbis16: 0 };
+const FILA_EXENTA_GUBERNAMENTAL = { tipoNcf: 'E45', tipoDocumento: 'FACTURA', gravado18: 0, gravado16: 0, exento: 485414.00, itbis18: 0, itbis16: 0 };
+const FILA_GRAVADA_18           = { tipoNcf: 'E32', tipoDocumento: 'FACTURA', gravado18: 260304.00, gravado16: 0, exento: 0, itbis18: 46854.72, itbis16: 0 };
 
 describe('DeclaracionesService.calcularSeccionIIIT1 — caso dorado', () => {
   it('casilla 1 (total operaciones) = 745,718.00', () => {
@@ -74,10 +74,35 @@ describe('DeclaracionesService.calcularSeccionIIIT1 — caso dorado', () => {
   });
 
   it('un comprobante de exportación (E46) se clasifica en casilla 2, no en casilla 4, con aviso', () => {
-    const filaExport = { tipoNcf: 'E46', gravado18: 0, gravado16: 0, exento: 50000, itbis18: 0, itbis16: 0 };
+    const filaExport = { tipoNcf: 'E46', tipoDocumento: 'FACTURA', gravado18: 0, gravado16: 0, exento: 50000, itbis18: 0, itbis16: 0 };
     const s2 = calcular([FILA_EXENTA_GUBERNAMENTAL, filaExport]);
     expect(s2.noGravadas.casilla2_exportacionBienes.monto).toBeCloseTo(50000, 2);
     expect(s2.noGravadas.casilla4_exentasLocales.monto).toBeCloseTo(485414.00, 2); // sin la exportación
     expect(s2.avisos.some((a: string) => a.includes('exportación (E46)'))).toBe(true);
+  });
+});
+
+describe('DeclaracionesService.calcularSeccionIIIT1 — conteo de documentos (visor de origen)', () => {
+  it('casilla 1 cuenta el total de documentos del período, sin importar tipo', () => {
+    const s2 = calcular([FILA_EXENTA_GUBERNAMENTAL, FILA_GRAVADA_18]);
+    expect(s2.casilla1_totalOperaciones.conteo).toEqual({ facturas: 2, notasCredito: 0, notasDebito: 0 });
+  });
+
+  it('casilla 4 (exenta local) y casilla 11 (gravada 18%) cuentan solo los documentos que aportaron a cada una', () => {
+    const s2 = calcular([FILA_EXENTA_GUBERNAMENTAL, FILA_GRAVADA_18]);
+    expect(s2.noGravadas.casilla4_exentasLocales.conteo).toEqual({ facturas: 1, notasCredito: 0, notasDebito: 0 });
+    expect(s2.gravadas.casilla11_gravadas18.conteo).toEqual({ facturas: 1, notasCredito: 0, notasDebito: 0 });
+  });
+
+  it('una nota de crédito y una de débito se cuentan por su propio tipo, no como facturas', () => {
+    const filaNC = { tipoNcf: 'E34', tipoDocumento: 'NOTA_CREDITO', gravado18: -10000, gravado16: 0, exento: 0, itbis18: -1800, itbis16: 0 };
+    const filaND = { tipoNcf: 'E33', tipoDocumento: 'NOTA_DEBITO', gravado18: 2000, gravado16: 0, exento: 0, itbis18: 360, itbis16: 0 };
+    const s2 = calcular([FILA_GRAVADA_18, filaNC, filaND]);
+    expect(s2.gravadas.casilla11_gravadas18.conteo).toEqual({ facturas: 1, notasCredito: 1, notasDebito: 1 });
+  });
+
+  it('casillas no_aplica no traen conteo — no hay documentos reales que contar', () => {
+    const s2 = calcular([FILA_EXENTA_GUBERNAMENTAL, FILA_GRAVADA_18]);
+    expect(s2.noGravadas.casilla5_exentasPorDestino.conteo).toBeUndefined();
   });
 });

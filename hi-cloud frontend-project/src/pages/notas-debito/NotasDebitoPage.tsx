@@ -125,7 +125,13 @@ export default function NotasDebitoPage() {
   const estadoDgiiFiltro = params.get('estadoDgii') ?? undefined;
   const montoMin = params.get('montoMin') ? Number(params.get('montoMin')) : undefined;
   const montoMax = params.get('montoMax') ? Number(params.get('montoMax')) : undefined;
-  const { desde, hasta } = calcularRangoAtajo(atajo);
+  // Un rango explícito en la URL (ej. desde el visor de origen del IT-1) manda
+  // sobre el atajo — mismo criterio que NotasCreditoPage.
+  const desdeParam = params.get('desde');
+  const hastaParam = params.get('hasta');
+  const { desde, hasta } = desdeParam && hastaParam
+    ? { desde: desdeParam, hasta: hastaParam }
+    : calcularRangoAtajo(atajo);
 
   const actualizarFiltro = (cambios: Record<string, string | number | undefined>) => {
     setParams(prev => {
