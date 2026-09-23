@@ -1182,15 +1182,27 @@ export class ContabilidadService implements OnModuleInit {
   async getLibroMayor(cuentaId: number, fechaDesde?: string, fechaHasta?: string) {
     const cuenta = await this.findCuentaById(cuentaId);
 
+    // P0 fuga cross-tenant (2026-09-23) — este query no filtraba empresaId por
+    // ningún lado, ni en la línea ni en el asiento: cualquier fila de otra
+    // empresa que apuntara a esta cuentaContableId salía en el mayor. Mismo
+    // patrón que getAsientos() más arriba: empresaId explícito, no heredado.
+    //
+    // 'l.empresaId' va además en el select a propósito: el TenantSubscriber
+    // solo revisa entidades que lleguen CON empresaId (tenant.subscriber.ts,
+    // 'if (!entity?.empresaId) return'), así que un select parcial que lo
+    // omita deja ciega a la red de seguridad justo donde más falta hace.
+    const eid = this.eid;
     const qb = this.lineaRepository
       .createQueryBuilder('l')
-      .innerJoin('l.asiento', 'a', 'a.estado = :est AND a.isActive = true', {
+      .innerJoin('l.asiento', 'a', 'a.estado = :est AND a.isActive = true AND a.empresaId = :eid', {
         est: EstadoAsiento.CONTABILIZADO,
+        eid,
       })
-      .select(['l.id', 'l.descripcion', 'l.debe', 'l.haber', 'a.fecha', 'a.numero', 'a.descripcion'])
+      .select(['l.id', 'l.empresaId', 'l.descripcion', 'l.debe', 'l.haber', 'a.fecha', 'a.numero', 'a.descripcion'])
       .addSelect('a.fecha', 'fecha')
       .addSelect('a.numero', 'asientoNumero')
-      .where('l.cuentaContableId = :id AND l.isActive = true', { id: cuentaId });
+      .where('l.cuentaContableId = :id AND l.isActive = true', { id: cuentaId })
+      .andWhere('l.empresaId = :eid', { eid });
 
     // P3 Bloque 5: string 'YYYY-MM-DD' crudo — ver el comentario en
     // getAsientos() más arriba sobre por qué new Date(string) corre el
