@@ -176,17 +176,25 @@ export class CRMService {
   // ── Dashboard / KPIs ─────────────────────────────────────────────────────────
 
   async getDashboard() {
+    // P0 fuga cross-tenant (2026-09-23) — ninguna de estas consultas filtraba
+    // empresaId: los totales de leads, el pipeline y su valor se agregaban
+    // sobre TODAS las empresas. Son count()/getRawMany(), que no materializan
+    // entidades, así que el TenantSubscriber nunca podía verlo. Mismo patrón
+    // explícito que listarActividades() más arriba.
+    const eid = this.tenantService.getEmpresaId();
+
     const [totalLeads, leadsNuevos, leadsCali, leadsConvert] = await Promise.all([
-      this.leadRepo.count({ where: { isActive: true } }),
-      this.leadRepo.count({ where: { isActive: true, estado: EstadoLead.NUEVO } }),
-      this.leadRepo.count({ where: { isActive: true, estado: EstadoLead.CALIFICADO } }),
-      this.leadRepo.count({ where: { isActive: true, estado: EstadoLead.CONVERTIDO } }),
+      this.leadRepo.count({ where: { isActive: true, empresaId: eid } }),
+      this.leadRepo.count({ where: { isActive: true, empresaId: eid, estado: EstadoLead.NUEVO } }),
+      this.leadRepo.count({ where: { isActive: true, empresaId: eid, estado: EstadoLead.CALIFICADO } }),
+      this.leadRepo.count({ where: { isActive: true, empresaId: eid, estado: EstadoLead.CONVERTIDO } }),
     ]);
 
     const porFuente = await this.leadRepo
       .createQueryBuilder('l')
       .select(['l.fuente AS fuente', 'COUNT(*) AS cantidad'])
       .where('l.isActive = :a', { a: true })
+      .andWhere('l.empresaId = :eid', { eid })
       .groupBy('l.fuente')
       .getRawMany();
 
@@ -194,6 +202,7 @@ export class CRMService {
       .createQueryBuilder('o')
       .select(['o.etapa AS etapa', 'COUNT(*) AS cantidad', 'COALESCE(SUM(o.valor),0) AS total'])
       .where('o.isActive = :a', { a: true })
+      .andWhere('o.empresaId = :eid', { eid })
       .andWhere('o.etapa NOT IN (:...closed)', { closed: [EtapaOportunidad.GANADO, EtapaOportunidad.PERDIDO] })
       .groupBy('o.etapa')
       .getRawMany();
@@ -203,6 +212,7 @@ export class CRMService {
     const ganadasMes = await this.oportRepo
       .createQueryBuilder('o')
       .where('o.etapa = :e', { e: EtapaOportunidad.GANADO })
+      .andWhere('o.empresaId = :eid', { eid })
       .andWhere('o.updatedAt >= :d', { d: new Date(new Date().getFullYear(), new Date().getMonth(), 1) })
       .getCount();
 
