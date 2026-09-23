@@ -1072,8 +1072,12 @@ export class ContabilidadService implements OnModuleInit {
     }
 
     for (const linea of dto.lineas) {
+      // empresaId explícito: hoy el TenantSubscriber ya corta esto al
+      // materializar la cuenta ajena, pero la red depende de que la entidad
+      // llegue completa. Si alguien mete aquí un select parcial, el hueco se
+      // abre sin que nada avise — es lo que pasó en getLibroMayor.
       const cuenta = await this.cuentaRepository.findOne({
-        where: { id: linea.cuentaContableId, isActive: true },
+        where: { id: linea.cuentaContableId, isActive: true, empresaId: this.eid },
       });
       if (!cuenta) throw new NotFoundException(`Cuenta #${linea.cuentaContableId} no encontrada`);
       if (!cuenta.permiteMovimientos) {
@@ -1132,8 +1136,10 @@ export class ContabilidadService implements OnModuleInit {
   }
 
   async findAsientoById(id: number) {
+    // Mismo criterio que createAsiento: el filtro va en el query, no se
+    // delega en el subscriber. Por aquí entran anular() y contabilizar().
     const a = await this.asientoRepository.findOne({
-      where: { id, isActive: true },
+      where: { id, isActive: true, empresaId: this.eid },
       relations: ['lineas', 'lineas.cuentaContable', 'user'],
     });
     if (!a) throw new NotFoundException(`Asiento #${id} no encontrado`);
