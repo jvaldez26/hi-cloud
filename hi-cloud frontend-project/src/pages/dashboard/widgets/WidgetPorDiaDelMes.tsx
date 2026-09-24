@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { theme } from 'antd';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -18,12 +19,14 @@ import { TarjetaGrafica, ejeMonto, SEMANTICO, estiloTooltip, useAltoGrafica } fr
  * ventas en tres semanas parecen tres días seguidos.
  */
 function PorDiaDelMes({
-  titulo, endpoint, claveQuery, color, etiquetaPie,
+  titulo, endpoint, claveQuery, color, etiquetaPie, textoVacio, rutaVacio, rutaListado,
 }: {
   titulo: string; endpoint: string; claveQuery: string;
   color: string; etiquetaPie: string;
+  textoVacio: string; rutaVacio: string; rutaListado: string;
 }) {
   const { token } = theme.useToken();
+  const navigate  = useNavigate();
   const altoGrafica = useAltoGrafica();
 
   const ahora = dRD();
@@ -62,6 +65,8 @@ function PorDiaDelMes({
       error={isError}
       vacio={detalle.length === 0}
       mensajeVacio="Sin movimientos este mes"
+      accionVacio={{ texto: textoVacio, onClick: () => navigate(rutaVacio) }}
+      alClic={() => navigate(rutaListado)}
       pieEtiqueta={etiquetaPie}
       pieValor={fmt.money(total)}
       pieColor={color}
@@ -102,6 +107,9 @@ export const WidgetVentasPorDia = () => (
     claveQuery="w-ventas-por-dia"
     color={SEMANTICO.ingreso}
     etiquetaPie="VENDIDO ESTE MES"
+    textoVacio="Registrar una venta"
+    rutaVacio="/facturas/nueva"
+    rutaListado="/facturas"
   />
 );
 
@@ -112,5 +120,8 @@ export const WidgetComprasPorDia = () => (
     claveQuery="w-compras-por-dia"
     color={SEMANTICO.alerta}
     etiquetaPie="COMPRADO ESTE MES"
+    textoVacio="Registrar una compra"
+    rutaVacio="/compras/nueva"
+    rutaListado="/compras"
   />
 );

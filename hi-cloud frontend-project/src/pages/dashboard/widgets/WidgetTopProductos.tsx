@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { theme } from 'antd';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
@@ -19,6 +20,7 @@ import { recorta } from './WidgetTopClientes';
  */
 export function WidgetTopProductos() {
   const { token } = theme.useToken();
+  const navigate  = useNavigate();
   const altoGrafica = useAltoGrafica();
 
   const ahora = dRD();
@@ -50,6 +52,8 @@ export function WidgetTopProductos() {
       error={isError}
       vacio={datos.length === 0}
       mensajeVacio="Sin ventas registradas este año"
+      accionVacio={{ texto: 'Registrar una venta', onClick: () => navigate('/facturas/nueva') }}
+      alClic={() => navigate('/productos')}
       pieEtiqueta="SUMAN ENTRE LOS 8"
       pieValor={fmt.money(total)}
       pieColor={SEMANTICO.ingreso}

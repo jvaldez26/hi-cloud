@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { theme } from 'antd';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import api from '../../../api/client';
@@ -34,6 +35,7 @@ const colorDe = (estado: string) =>
 
 export function WidgetEcfEstado() {
   const { token } = theme.useToken();
+  const navigate  = useNavigate();
   const altoGrafica = useAltoGrafica();
 
   // El mes en curso en zona RD: con la del navegador, un equipo mal configurado
@@ -65,6 +67,8 @@ export function WidgetEcfEstado() {
       error={isError}
       vacio={datos.length === 0}
       mensajeVacio="Sin comprobantes emitidos este mes"
+      accionVacio={{ texto: 'Emitir una factura', onClick: () => navigate('/facturas/nueva') }}
+      alClic={() => navigate('/ecf')}
       pieEtiqueta={rechazados > 0 ? 'RECHAZADOS' : 'TOTAL DEL MES'}
       pieValor={rechazados > 0 ? String(rechazados) : String(total)}
       // El pie destaca lo rechazado cuando lo hay: es lo único que exige una

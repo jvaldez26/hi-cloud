@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { theme } from 'antd';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -28,6 +29,7 @@ function etiquetaMes(periodo: string, anioActual: number) {
  */
 export function WidgetVentasTendencia() {
   const { token } = theme.useToken();
+  const navigate  = useNavigate();
   const altoGrafica = useAltoGrafica();
 
   const { data, refetch, isPending, isError } = useQuery<any[]>({
@@ -56,6 +58,8 @@ export function WidgetVentasTendencia() {
       error={isError}
       vacio={datos.length === 0}
       mensajeVacio="Sin ventas en los últimos 12 meses"
+      accionVacio={{ texto: 'Registrar una venta', onClick: () => navigate('/facturas/nueva') }}
+      alClic={() => navigate('/facturas')}
       pieEtiqueta="TOTAL DEL PERÍODO"
       pieValor={fmt.money(total)}
       pieColor={SEMANTICO.neutro}

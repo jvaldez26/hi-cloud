@@ -13,11 +13,17 @@ import { useMobile } from '../../../hooks/useMediaQuery';
  */
 export function TarjetaGrafica({
   titulo, subtitulo, onRefresh, cargando, error, vacio, mensajeVacio, accionVacio, alto = 260,
-  pieEtiqueta, pieValor, pieColor, children,
+  pieEtiqueta, pieValor, pieColor, alClic, children,
 }: {
   titulo:        string;
   subtitulo?:    string;
   onRefresh:     () => void;
+  /**
+   * Tarjeta completa como clic → listado relacionado. Solo activo con
+   * estado 'ok' (con cargando/error/vacío no hay a dónde ir todavía — el
+   * botón de recargar sigue funcionando aparte, con stopPropagation).
+   */
+  alClic?:       () => void;
   /**
    * true mientras la consulta está en vuelo.
    *
@@ -46,13 +52,20 @@ export function TarjetaGrafica({
   const { token } = theme.useToken();
 
   const estado = estadoDe({ cargando, error, vacio });
+  const clickeable = estado === 'ok' && !!alClic;
 
   return (
-    <div style={{
-      background: token.colorBgContainer,
-      border: `1px solid ${token.colorBorderSecondary}`,
-      borderRadius: 12, overflow: 'hidden',
-    }}>
+    <div
+      style={{
+        background: token.colorBgContainer,
+        border: `1px solid ${token.colorBorderSecondary}`,
+        borderRadius: 12, overflow: 'hidden',
+        cursor: clickeable ? 'pointer' : 'default',
+      }}
+      onClick={clickeable ? alClic : undefined}
+      role={clickeable ? 'button' : undefined}
+      aria-label={clickeable ? `Ver listado de ${titulo}` : undefined}
+    >
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '14px 16px', borderBottom: `1px solid ${token.colorBorderSecondary}`,
@@ -68,7 +81,8 @@ export function TarjetaGrafica({
           )}
         </div>
         <Button
-          type="text" size="small" icon={<ReloadOutlined />} onClick={onRefresh}
+          type="text" size="small" icon={<ReloadOutlined />}
+          onClick={e => { e.stopPropagation(); onRefresh(); }}
           style={{ color: token.colorTextTertiary, flexShrink: 0 }}
           aria-label={`Actualizar ${titulo}`}
         />
@@ -95,6 +109,14 @@ export function TarjetaGrafica({
           </span>
           <span style={{ fontSize: 14, fontWeight: 700, color: pieColor ?? token.colorText }}>
             {pieValor}
+          </span>
+        </div>
+      )}
+
+      {clickeable && (
+        <div style={{ padding: '4px 16px 10px', textAlign: 'right' }}>
+          <span style={{ fontSize: 11, color: token.colorTextTertiary }}>
+            Ver listado completo →
           </span>
         </div>
       )}

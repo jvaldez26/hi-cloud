@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { theme } from 'antd';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
@@ -21,6 +22,7 @@ export const recorta = (v: string, n = 14) =>
  */
 export function WidgetTopClientes() {
   const { token } = theme.useToken();
+  const navigate  = useNavigate();
   const altoGrafica = useAltoGrafica();
 
   const ahora = dRD();
@@ -52,6 +54,8 @@ export function WidgetTopClientes() {
       error={isError}
       vacio={datos.length === 0}
       mensajeVacio="Sin ventas registradas este año"
+      accionVacio={{ texto: 'Registrar una venta', onClick: () => navigate('/facturas/nueva') }}
+      alClic={() => navigate('/clientes')}
       pieEtiqueta="SUMAN ENTRE LOS 8"
       pieValor={fmt.money(total)}
       pieColor={SEMANTICO.neutro}

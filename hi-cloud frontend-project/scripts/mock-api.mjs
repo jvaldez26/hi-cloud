@@ -387,6 +387,71 @@ const RUTAS = {
     })),
   }),
   '/reportes/dashboard/anios-con-datos': () => [2026, 2025],
+  '/preferencias/dashboard-widgets': () => ({
+    widgets: [
+      'ingresos-gastos-anual', 'antiguedad-cobrar', 'antiguedad-pagar', 'resumen-gastos',
+      'ecf-estado-mes', 'ventas-por-vendedor', 'ventas-tendencia-12m', 'top-clientes',
+      'top-productos', 'ventas-por-dia-mes', 'compras-por-dia-mes', 'compras-por-proveedor',
+      'inventario-valor-categoria', 'horas-pico',
+    ],
+    porDefecto: false,
+    catalogo: [],
+  }),
+  '/reportes/fiscal/ecf': () => ({
+    grafica: [
+      { label: 'Aceptado', value: 42 },
+      { label: 'Rechazado', value: 3 },
+      { label: 'En proceso', value: 2 },
+    ],
+  }),
+  '/analytics/ventas-por-vendedor': () => ([
+    { nombre: 'María Pérez', total: 84500 },
+    { nombre: 'Juan Ramírez', total: 61200 },
+    { nombre: 'Sin vendedor', total: 12300 },
+  ]),
+  '/analytics/ventas-tendencia': () => Array.from({ length: 12 }, (_, i) => ({
+    periodo: `2026-${String(i + 1).padStart(2, '0')}`, total: i <= 8 ? 60000 + i * 4000 : 0, cantidad: i <= 8 ? 20 + i : 0,
+  })),
+  '/analytics/top-clientes': () => ([
+    { nombre: 'Ferretería La Económica', total: 145000, facturas: 22 },
+    { nombre: 'Distribuidora Central', total: 98000, facturas: 15 },
+    { nombre: 'Colmado Los Hermanos', total: 54000, facturas: 30 },
+  ]),
+  '/analytics/top-productos': () => ([
+    { nombre: 'Ace Brillante 100G', ingresos: 32000, cantidadVendida: 800 },
+    { nombre: 'Detergente Amigo 1L', ingresos: 27500, cantidadVendida: 550 },
+    { nombre: 'Arroz Selecto 5lb', ingresos: 21000, cantidadVendida: 420 },
+  ]),
+  '/reportes/ventas/por-dia': () => ({
+    detalle: Array.from({ length: 15 }, (_, i) => ({ dia: i + 1, total: 8000 + i * 300, cantidad: 5 + i })),
+  }),
+  '/reportes/compras/por-dia': () => ({
+    detalle: Array.from({ length: 10 }, (_, i) => ({ dia: i + 2, total: 4000 + i * 200, cantidad: 2 + i })),
+  }),
+  '/reportes/compras/por-proveedor': () => ({
+    total: 187000,
+    proveedores: [
+      { nombre: 'Suplidora ABC', total: 92000, cantidadCompras: 12 },
+      { nombre: 'Importadora del Caribe', total: 65000, cantidadCompras: 7 },
+      { nombre: 'Distribuidora Nacional', total: 30000, cantidadCompras: 5 },
+    ],
+  }),
+  '/reportes/inventario/valor': () => ({
+    resumen: { valorTotal: 452000, totalUnidades: 18400 },
+    grafica: [
+      { label: 'Limpieza', value: 145000 },
+      { label: 'Alimentos', value: 120000 },
+      { label: 'Ferretería', value: 98000 },
+      { label: 'Bebidas', value: 54000 },
+      { label: 'Otros', value: 35000 },
+    ],
+  }),
+  '/analytics/horas-pico': () => ([
+    { dia: 'Vie', hora: '17:00', cantidad: 28 },
+    { dia: 'Sáb', hora: '10:00', cantidad: 24 },
+    { dia: 'Vie', hora: '18:00', cantidad: 19 },
+    { dia: 'Jue', hora: '17:00', cantidad: 15 },
+  ]),
   '/reportes/dashboard/checklist-configuracion': () => ({
     items: {
       vendedores:      { label: 'Vendedores', completo: true,  ruta: '/vendedores' },

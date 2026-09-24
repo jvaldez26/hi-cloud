@@ -1,5 +1,6 @@
 import { Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { Tooltip as AntTooltip, theme } from 'antd';
 import api from '../../../api/client';
 import { TarjetaGrafica, SEMANTICO, useAltoGrafica } from './TarjetaGrafica';
@@ -24,6 +25,7 @@ const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
  */
 export function WidgetHorasPico() {
   const { token } = theme.useToken();
+  const navigate  = useNavigate();
   const altoGrafica = useAltoGrafica();
 
   const { data, refetch, isPending, isError } = useQuery<any[]>({
@@ -62,6 +64,8 @@ export function WidgetHorasPico() {
       error={isError}
       vacio={filas.length === 0}
       mensajeVacio="Sin ventas en los últimos 3 meses"
+      accionVacio={{ texto: 'Registrar una venta', onClick: () => navigate('/facturas/nueva') }}
+      alClic={() => navigate('/facturas')}
       pieEtiqueta="MÁS MOVIDO"
       pieValor={mejor ? `${mejor.dia} ${mejor.hora} · ${mejor.cantidad}` : '—'}
       pieColor={SEMANTICO.neutro}

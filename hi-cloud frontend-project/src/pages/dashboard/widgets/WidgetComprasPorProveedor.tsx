@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { theme } from 'antd';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
@@ -19,6 +20,7 @@ import { recorta } from './WidgetTopClientes';
  */
 export function WidgetComprasPorProveedor() {
   const { token } = theme.useToken();
+  const navigate  = useNavigate();
   const altoGrafica = useAltoGrafica();
 
   const ahora = dRD();
@@ -51,6 +53,8 @@ export function WidgetComprasPorProveedor() {
       error={isError}
       vacio={datos.length === 0}
       mensajeVacio="Sin compras registradas este año"
+      accionVacio={{ texto: 'Registrar una compra', onClick: () => navigate('/compras/nueva') }}
+      alClic={() => navigate('/proveedores')}
       pieEtiqueta="COMPRADO EN EL AÑO"
       pieValor={fmt.money(total)}
       pieColor={SEMANTICO.alerta}

@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { theme } from 'antd';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import api from '../../../api/client';
@@ -18,6 +19,7 @@ import { TarjetaGrafica, COLORES, GRIS_RESTO, estiloTooltip, useAltoGrafica } fr
  */
 export function WidgetInventarioValor() {
   const { token } = theme.useToken();
+  const navigate  = useNavigate();
   const altoGrafica = useAltoGrafica();
 
   const { data, refetch, isPending, isError } = useQuery<any>({
@@ -55,6 +57,8 @@ export function WidgetInventarioValor() {
       error={isError}
       vacio={datos.length === 0 || totalValor === 0}
       mensajeVacio="Sin existencias valorizadas"
+      accionVacio={{ texto: 'Ir a Productos', onClick: () => navigate('/productos') }}
+      alClic={() => navigate('/inventario')}
       pieEtiqueta="VALOR TOTAL"
       pieValor={fmt.money(totalValor)}
       pieColor={COLORES[3]}
