@@ -42,8 +42,16 @@ export class DiagnosticoYCorreccionDuplicadoNC1767200000000 implements Migration
     } else {
       console.log(`[Diagnostico] NC #54: empresa #${nc54.empresaId}, numero=${nc54.numero}, factura=${nc54.facturaOriginalFolio}, total=${nc54.total}`);
 
+      // Cast defensivo: "notaCreditoId" viene de antes de que este proyecto
+      // exigiera migraciones para todo cambio de esquema (no hay CREATE TABLE
+      // devoluciones en src/migrations/ — se creó por synchronize temprano),
+      // así que su tipo real en producción no está garantizado a coincidir
+      // con `number` en la entidad. Un literal crudo sin cast reventó esto
+      // mismo en el primer intento de esta migración ("operator does not
+      // exist: text = integer") — el código real nunca lo sufre porque
+      // siempre usa parámetros ($1), que Postgres infiere por contexto.
       const [devRow] = await qr.query(`
-        SELECT id FROM devoluciones WHERE "notaCreditoId" = 54 AND "isActive" = true LIMIT 1
+        SELECT id FROM devoluciones WHERE "notaCreditoId"::text = '54' AND "isActive" = true LIMIT 1
       `);
 
       if (!devRow) {
@@ -51,7 +59,7 @@ export class DiagnosticoYCorreccionDuplicadoNC1767200000000 implements Migration
       } else {
         const [asientoAjuste] = await qr.query(`
           SELECT id FROM asientos_contables
-           WHERE "tipoOrigen" = 'ajuste' AND "referenciaId" = $1 AND "isActive" = true
+           WHERE "tipoOrigen" = 'ajuste' AND "referenciaId" = $1::integer AND "isActive" = true
            LIMIT 1
         `, [devRow.id]);
 
@@ -79,7 +87,7 @@ export class DiagnosticoYCorreccionDuplicadoNC1767200000000 implements Migration
               `1767100000000, que no replicó el guard de ecf-efectos-nc.service.ts para NC nacidas de una devolución.`,
               JSON.stringify({ isActive: true }),
               JSON.stringify({ isActive: false }),
-              nc54.empresaId,
+              Number(nc54.empresaId),
             ]);
             console.log('[Diagnostico] Asiento #21287 y sus líneas desactivados.');
           }
@@ -95,7 +103,7 @@ export class DiagnosticoYCorreccionDuplicadoNC1767200000000 implements Migration
                SELECT 1 FROM asientos_contables a
                 WHERE a."tipoOrigen" = 'nota_credito' AND a."referenciaId" = nc.id AND a."isActive" = true
              ) AS tiene_asiento_nc,
-             (SELECT d.id FROM devoluciones d WHERE d."notaCreditoId" = nc.id AND d."isActive" = true LIMIT 1) AS devolucion_id
+             (SELECT d.id FROM devoluciones d WHERE d."notaCreditoId"::text = nc.id::text AND d."isActive" = true LIMIT 1) AS devolucion_id
         FROM notas_credito nc
         JOIN empresa e ON e.id = nc."empresaId"
        WHERE nc.numero = 'NC-101' AND nc."facturaOriginalFolio" = 'FAC-102' AND nc."isActive" = true
