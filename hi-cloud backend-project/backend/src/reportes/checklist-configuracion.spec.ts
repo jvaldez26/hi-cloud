@@ -7,7 +7,7 @@ import { ReportesService } from './reportes.service';
  */
 
 function servicio(counts: {
-  cuentas?: number; secuencias?: number; clientes?: number;
+  vendedores?: number; secuencias?: number; clientes?: number;
   proveedores?: number; productos?: number; usuarios?: number;
 } = {}) {
   const consultas: string[] = [];
@@ -16,7 +16,7 @@ function servicio(counts: {
     {
       query: async (sql: string) => {
         consultas.push(sql);
-        if (/FROM cuentas_contables/.test(sql))  return cnt(counts.cuentas);
+        if (/FROM vendedores/.test(sql))         return cnt(counts.vendedores);
         if (/FROM secuencias_ecf/.test(sql))     return cnt(counts.secuencias);
         if (/FROM clientes/.test(sql))           return cnt(counts.clientes);
         if (/FROM proveedores/.test(sql))        return cnt(counts.proveedores);
@@ -32,11 +32,11 @@ function servicio(counts: {
 }
 
 describe('ReportesService.getChecklistConfiguracion', () => {
-  it('empresa recién creada (solo el sembrado, solo el dueño): todo pendiente', async () => {
-    const { svc } = servicio({ cuentas: 193, secuencias: 0, clientes: 0, proveedores: 0, productos: 0, usuarios: 1 });
+  it('empresa recién creada (sin vendedores, solo el dueño): todo pendiente', async () => {
+    const { svc } = servicio({ vendedores: 0, secuencias: 0, clientes: 0, proveedores: 0, productos: 0, usuarios: 1 });
     const r = await svc.getChecklistConfiguracion();
 
-    expect(r.items.catalogoCuentas.completo).toBe(false); // 193 = exactamente el sembrado, no personalizó
+    expect(r.items.vendedores.completo).toBe(false);
     expect(r.items.secuenciasEcf.completo).toBe(false);
     expect(r.items.clientes.completo).toBe(false);
     expect(r.items.proveedores.completo).toBe(false);
@@ -46,10 +46,10 @@ describe('ReportesService.getChecklistConfiguracion', () => {
   });
 
   it('empresa totalmente configurada: todo en verde, completo=true', async () => {
-    const { svc } = servicio({ cuentas: 210, secuencias: 2, clientes: 5, proveedores: 3, productos: 40, usuarios: 3 });
+    const { svc } = servicio({ vendedores: 2, secuencias: 2, clientes: 5, proveedores: 3, productos: 40, usuarios: 3 });
     const r = await svc.getChecklistConfiguracion();
 
-    expect(r.items.catalogoCuentas.completo).toBe(true);
+    expect(r.items.vendedores.completo).toBe(true);
     expect(r.items.secuenciasEcf.completo).toBe(true);
     expect(r.items.clientes.completo).toBe(true);
     expect(r.items.proveedores.completo).toBe(true);
@@ -59,7 +59,7 @@ describe('ReportesService.getChecklistConfiguracion', () => {
   });
 
   it('un solo ítem pendiente (Clientes) alcanza para completo=false', async () => {
-    const { svc } = servicio({ cuentas: 210, secuencias: 2, clientes: 0, proveedores: 3, productos: 40, usuarios: 3 });
+    const { svc } = servicio({ vendedores: 2, secuencias: 2, clientes: 0, proveedores: 3, productos: 40, usuarios: 3 });
     const r = await svc.getChecklistConfiguracion();
 
     expect(r.items.clientes.completo).toBe(false);
@@ -70,7 +70,7 @@ describe('ReportesService.getChecklistConfiguracion', () => {
     const { svc } = servicio();
     const r = await svc.getChecklistConfiguracion();
 
-    expect(r.items.catalogoCuentas.ruta).toBe('/plan-cuentas');
+    expect(r.items.vendedores.ruta).toBe('/vendedores');
     expect(r.items.secuenciasEcf.ruta).toBe('/ecf/activar');
     expect(r.items.clientes.ruta).toBe('/clientes');
     expect(r.items.proveedores.ruta).toBe('/proveedores');
@@ -79,7 +79,7 @@ describe('ReportesService.getChecklistConfiguracion', () => {
   });
 
   it('cachea 2 minutos — una segunda llamada inmediata no repite las queries', async () => {
-    const { svc, consultas } = servicio({ cuentas: 210, secuencias: 2, clientes: 5, proveedores: 3, productos: 40, usuarios: 3 });
+    const { svc, consultas } = servicio({ vendedores: 2, secuencias: 2, clientes: 5, proveedores: 3, productos: 40, usuarios: 3 });
     await svc.getChecklistConfiguracion();
     const consultasTrasPrimera = consultas.length;
     await svc.getChecklistConfiguracion();
@@ -96,5 +96,13 @@ describe('ReportesService.getChecklistConfiguracion', () => {
     expect(sqlSecuencias).toMatch(/"isActiva"\s*=\s*true/);
     expect(sqlSecuencias).toMatch(/"isAgotada"\s*=\s*false/);
     expect(sqlSecuencias).toMatch(/"fechaVencimiento"\s*>\s*NOW\(\)/);
+  });
+
+  it('vendedor cuenta solo si isActive Y activo (dos banderas distintas) — la consulta filtra ambas', async () => {
+    const { svc, consultas } = servicio({ vendedores: 0 });
+    await svc.getChecklistConfiguracion();
+    const sqlVendedores = consultas.find(s => /FROM vendedores/.test(s));
+    expect(sqlVendedores).toMatch(/"isActive"\s*=\s*true/);
+    expect(sqlVendedores).toMatch(/activo\s*=\s*true/);
   });
 });

@@ -26,7 +26,7 @@ export interface ChecklistItemConfiguracion {
 }
 export interface ChecklistConfiguracion {
   items: {
-    catalogoCuentas: ChecklistItemConfiguracion;
+    vendedores:      ChecklistItemConfiguracion;
     secuenciasEcf:   ChecklistItemConfiguracion;
     clientes:        ChecklistItemConfiguracion;
     proveedores:     ChecklistItemConfiguracion;
@@ -53,8 +53,6 @@ export class ReportesService {
   // CHECKLIST DE CONFIGURACIÓN INICIAL — página de Inicio
   // ══════════════════════════════════════════════════════════════════════════
 
-  /** Cuentas que trae el Plan de Cuentas sembrado por defecto (ContabilidadService.seedPlanCuentas) — por encima de esto, la empresa ya personalizó su catálogo. */
-  private readonly BASELINE_CUENTAS_SEMBRADAS = 193;
   private readonly CHECKLIST_TTL_MS = 2 * 60_000;
   private readonly checklistCache = new Map<number, { data: ChecklistConfiguracion; expira: number }>();
 
@@ -72,9 +70,9 @@ export class ReportesService {
     const cacheado = this.checklistCache.get(eid);
     if (cacheado && cacheado.expira > Date.now()) return cacheado.data;
 
-    const [cuentasRow, secuenciaRow, clientesRow, proveedoresRow, productosRow, usuariosRow] = await Promise.all([
+    const [vendedoresRow, secuenciaRow, clientesRow, proveedoresRow, productosRow, usuariosRow] = await Promise.all([
       this.dataSource.query<{ cnt: string }[]>(
-        `SELECT COUNT(*) AS cnt FROM cuentas_contables WHERE "empresaId" = $1 AND "isActive" = true`,
+        `SELECT COUNT(*) AS cnt FROM vendedores WHERE "empresaId" = $1 AND "isActive" = true AND activo = true`,
         [eid],
       ),
       this.dataSource.query<{ cnt: string }[]>(
@@ -104,7 +102,7 @@ export class ReportesService {
     ]);
 
     const items: ChecklistConfiguracion['items'] = {
-      catalogoCuentas: { label: 'Catálogo de Cuentas', completo: Number(cuentasRow[0]?.cnt ?? 0) > this.BASELINE_CUENTAS_SEMBRADAS, ruta: '/plan-cuentas' },
+      vendedores:      { label: 'Vendedores', completo: Number(vendedoresRow[0]?.cnt ?? 0) > 0, ruta: '/vendedores' },
       secuenciasEcf:   { label: 'Secuencias de Comprobantes Fiscales', completo: Number(secuenciaRow[0]?.cnt ?? 0) > 0, ruta: '/ecf/activar' },
       clientes:        { label: 'Clientes', completo: Number(clientesRow[0]?.cnt ?? 0) > 0, ruta: '/clientes' },
       proveedores:     { label: 'Proveedores', completo: Number(proveedoresRow[0]?.cnt ?? 0) > 0, ruta: '/proveedores' },

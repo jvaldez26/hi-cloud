@@ -358,7 +358,7 @@ const RUTAS = {
   '/preferencias/columnas/compra-items': () => ({ ocultas: [], mostradas: [], porDefecto: true }),
   '/reportes/dashboard/checklist-configuracion': () => ({
     items: {
-      catalogoCuentas: { label: 'Catálogo de Cuentas', completo: true,  ruta: '/plan-cuentas' },
+      vendedores:      { label: 'Vendedores', completo: true,  ruta: '/vendedores' },
       secuenciasEcf:   { label: 'Secuencias de Comprobantes Fiscales', completo: false, ruta: '/ecf/activar' },
       clientes:        { label: 'Clientes', completo: false, ruta: '/clientes' },
       proveedores:     { label: 'Proveedores', completo: true,  ruta: '/proveedores' },
