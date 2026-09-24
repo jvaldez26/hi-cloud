@@ -50,7 +50,7 @@ export function generar606XML(data: {
       <LINEA>${i + 1}</LINEA>
       <RNC_CEDULA_PROVEEDOR>${escXml(fmtRnc(f.rncProveedor))}</RNC_CEDULA_PROVEEDOR>
       <TIPO_ID_PROVEEDOR>${escXml(f.tipoId ?? '01')}</TIPO_ID_PROVEEDOR>
-      <NCF>${escXml(f.ncf ?? '')}</NCF>
+      <NCF>${escXml(f.ncfProveedor ?? '')}</NCF>
       <NCF_MODIFICADO>${escXml(f.ncfModificado ?? '')}</NCF_MODIFICADO>
       <FECHA_COMPROBANTE>${fmtFecha(f.fechaComprobante)}</FECHA_COMPROBANTE>
       <FECHA_PAGO>${fmtFecha(f.fechaPago ?? f.fechaComprobante)}</FECHA_PAGO>

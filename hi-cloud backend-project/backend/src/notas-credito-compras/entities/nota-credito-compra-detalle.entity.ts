@@ -16,6 +16,12 @@ export class NotaCreditoCompraDetalle {
   @Column({ nullable: true })
   productoId?: number;
 
+  /** Línea de compra_detalles que esta línea de NC corrige — permite validar
+   *  cantidad devuelta/no-recibida contra lo que esa línea específica
+   *  realmente recibió/tiene pendiente (no el total de la OC). */
+  @Column({ nullable: true })
+  compraDetalleId?: number;
+
   @Column({ length: 300 })
   descripcion!: string;
 

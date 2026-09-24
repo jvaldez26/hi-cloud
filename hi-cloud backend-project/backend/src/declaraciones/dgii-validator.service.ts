@@ -62,8 +62,12 @@ export class DgiiValidatorService {
 
       // ── Errores que bloquean exportación ─────────────────────────────────
 
-      // La ruta de corrección depende de si la fila viene de compras o gastos
-      const rutaBase = f.source === 'gasto' ? `/gastos` : `/compras/${f.id}`;
+      // La ruta de corrección depende de si la fila viene de compras, gastos
+      // o notas de crédito de compra — f.id es el id de SU propia tabla en
+      // cada caso, nunca intercambiable entre las tres.
+      const rutaBase = f.source === 'gasto' ? `/gastos`
+        : f.source === 'nota_credito_compra' ? `/notas-credito-compras`
+        : `/compras/${f.id}`;
 
       // RNC/cédula del proveedor obligatorio y válido
       if (!f.rncProveedor) {
@@ -302,10 +306,13 @@ export interface Fila606 {
   linea:           number;
   id:              number;
   folio:           string;
-  /** 'compra' (fuente principal) o 'gasto' (gasto operativo con comprobante fiscal) */
-  source?:         'compra' | 'gasto';
+  /** 'compra' (fuente principal), 'gasto' (gasto operativo con comprobante
+   *  fiscal) o 'nota_credito_compra' (NC del proveedor sobre una compra) */
+  source?:         'compra' | 'gasto' | 'nota_credito_compra';
   rncProveedor?:   string;
   ncfProveedor?:   string;
+  /** NCF de la compra que la NC corrige — solo en source='nota_credito_compra' */
+  ncfModificado?:  string;
   tipoBienes?:     string;
   fechaComprobante?: Date | string;
   fechaPago?:      Date | string;

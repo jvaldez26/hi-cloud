@@ -2039,11 +2039,24 @@ export class AsientosAutomaticosService {
   }
 
   // ──────────────────────────────────────────────────────────────────
-  // Nota de Crédito de Compra (devolución a proveedor) al recibirse → mismo
-  // criterio de cuentas que asientoCompraRecibida, pero invertido (reversa
-  // proporcional): Haber Inventario + Haber ITBIS Crédito Fiscal / Debe
-  // Proveedores. Namespace propio (NOTA_CREDITO_COMPRA) para no colisionar
-  // en revertirAsiento().
+  // Nota de Crédito de Compra al recibirse — la cuenta que se acredita
+  // depende del TIPO de efecto (ver TipoNCCompra en la entidad):
+  //
+  //   devolucion_inventario / no_recibida: mismo criterio que
+  //     asientoCompraRecibida, invertido — Haber [cuentaDestinoOriginal ??
+  //     Inventario] + Haber ITBIS Crédito Fiscal / Debe Proveedores. Las dos
+  //     comparten fórmula porque las dos corrigen el mismo compromiso que la
+  //     compra original registró contra esa cuenta — con o sin movimiento
+  //     físico (no_recibida nunca tuvo movimiento físico que revertir; la
+  //     cantidad física ya fue validada aparte, en el servicio que llama).
+  //
+  //   ajuste_sin_devolucion: NO se toca la cuenta de destino de la compra
+  //     (la mercancía, si entró, se queda en inventario) — se acredita Costo
+  //     de Ventas, porque lo que se corrige es el VALOR reconocido, no una
+  //     existencia. Mismo Haber ITBIS Crédito Fiscal / Debe Proveedores.
+  //
+  // Namespace propio (NOTA_CREDITO_COMPRA) para no colisionar en
+  // revertirAsiento().
   // ──────────────────────────────────────────────────────────────────
 
   async asientoNotaCreditoCompra(
@@ -2054,12 +2067,24 @@ export class AsientosAutomaticosService {
     numero:   string,
     fecha:    string, // ncc.fecha
     userId:   number,
+    opciones?: {
+      /** Compra.cuentaDestino de la OC original, si la tenía — reemplaza el
+       *  default Inventario para devolucion_inventario/no_recibida. */
+      cuentaDestinoOriginal?: string;
+      /** true = ajuste_sin_devolucion: acredita Costo de Ventas en vez de
+       *  la cuenta de destino de la compra. */
+      sinInventario?: boolean;
+    },
   ): Promise<void> {
     const cuentas = await this.resolverCuentasConcepto([
       ['PROVEEDORES',   COD.PROVEEDORES],
       ['INVENTARIO',    COD.INVENTARIO],
+      ['COSTO_VENTAS',  COD.COSTO_VENTAS],
       ['ITBIS_CREDITO', COD.ITBIS_CREDITO],
     ]);
+    const cuentaCredito = opciones?.sinInventario
+      ? cuentas.COSTO_VENTAS
+      : (opciones?.cuentaDestinoOriginal || cuentas.INVENTARIO);
     try {
       const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Nota de crédito de compra ${numero}`,
@@ -2070,7 +2095,8 @@ export class AsientosAutomaticosService {
         userId,
         lineas: [
           { codigo: cuentas.PROVEEDORES,   descripcion: `Devolución a proveedor — NCC ${numero}`, debe: total, haber: 0 },
-          { codigo: cuentas.INVENTARIO,    descripcion: `Reversa mercancía — NCC ${numero}`,       debe: 0,     haber: subtotal },
+          { codigo: cuentaCredito,         descripcion: `Reversa mercancía — NCC ${numero}`,       debe: 0,     haber: subtotal,
+            manual: !!opciones?.cuentaDestinoOriginal },
           { codigo: cuentas.ITBIS_CREDITO, descripcion: `Reversa ITBIS crédito — NCC ${numero}`,   debe: 0,     haber: iva },
         ],
       });

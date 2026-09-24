@@ -24,6 +24,7 @@ export class DgiiTxtGeneratorService {
       const tipoId   = tipoIdDgii(rncProv) || '1';
       const tipoBien = f.tipoBienes ?? '09';
       const ncf      = f.ncfProveedor ?? '';
+      const ncfMod   = f.ncfModificado ?? ''; // NC de compra: NCF de la compra que corrige
       const fechaCf  = fechaDgii(f.fechaComprobante);
       const fechaPag = fechaDgii(f.fechaPago) || fechaCf;
       const monto    = montoEntero(f.montoFacturado);
@@ -38,7 +39,7 @@ export class DgiiTxtGeneratorService {
         tipoId,    // 2  Tipo ID: 1=RNC, 2=Cédula
         tipoBien,  // 3  Tipo bienes/servicios
         ncf,       // 4  NCF
-        '',        // 5  NCF modificado (vacío si no aplica)
+        ncfMod,    // 5  NCF modificado (vacío si no aplica)
         fechaCf,   // 6  Fecha comprobante AAAAMMDD
         fechaPag,  // 7  Fecha pago
         monto,     // 8  Monto facturado (centavos)

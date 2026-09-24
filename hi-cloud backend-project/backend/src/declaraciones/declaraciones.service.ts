@@ -642,6 +642,7 @@ export class DeclaracionesService {
         c."montoRetencionItbis",
         c."retieneIsr",
         c."montoRetencionIsr",
+        NULL::text                                    AS "ncfModificado",
         'compra'                                     AS "_source"
       FROM compras c
       LEFT JOIN proveedores p ON p.id = c."proveedorId"
@@ -676,6 +677,7 @@ export class DeclaracionesService {
         0::numeric                                    AS "montoRetencionItbis",
         false                                         AS "retieneIsr",
         0::numeric                                    AS "montoRetencionIsr",
+        NULL::text                                    AS "ncfModificado",
         'gasto'                                      AS "_source"
       FROM gastos g
       WHERE g."empresaId" = $1
@@ -686,6 +688,44 @@ export class DeclaracionesService {
         AND g."rncProveedor" IS NOT NULL AND g."rncProveedor" != ''
         AND g."tipoBienes"   IS NOT NULL
         AND g."formaPago"    IS NOT NULL
+
+      UNION ALL
+
+      -- ── Fuente 3: notas de crédito de compra (devolución/ajuste del proveedor) ──
+      -- El proveedor emite su propia NC (E34/B04) — HiCloud no la emite, solo
+      -- la registra (ncc.ncfProveedor). "NCF Modificado" (col. 5) es el NCF de
+      -- LA COMPRA que esa NC corrige (compras.numeroFacturaProveedor vía
+      -- compraOriginalId) — mismo criterio de columna que la col. 5 del 607
+      -- (fix 9799f69e), en la dirección de compras. Sin compraOriginalId
+      -- (ajuste_sin_devolucion sin OC puntual) queda NULL — DGII no exige la
+      -- columna cuando no hay documento que modificar.
+      SELECT
+        ncc.id,
+        ncc.numero                                   AS folio,
+        ncc.fecha::text                              AS "fechaComprobante",
+        ncc.fecha::text                              AS "fechaPago",
+        ncc.subtotal::numeric                        AS subtotal,
+        ncc.iva::numeric                              AS itbis,
+        ncc.total::numeric                            AS total,
+        ncc."ncfProveedor"                            AS "ncfProveedor",
+        COALESCE(co."tipoBienes", '09')               AS "tipoBienes",
+        COALESCE(co."formaPago",  '04')               AS "formaPago",
+        ncc."descripcionMotivo"                       AS notas,
+        p.rnc                                         AS "rncProveedor",
+        p.nombre                                      AS "nombreProveedor",
+        false                                          AS "retieneItbis",
+        0::numeric                                    AS "montoRetencionItbis",
+        false                                          AS "retieneIsr",
+        0::numeric                                    AS "montoRetencionIsr",
+        co."numeroFacturaProveedor"                   AS "ncfModificado",
+        'nota_credito_compra'                        AS "_source"
+      FROM notas_credito_compras ncc
+      LEFT JOIN compras co     ON co.id = ncc."compraOriginalId"
+      LEFT JOIN proveedores p  ON p.id = ncc."proveedorId"
+      WHERE ncc."empresaId" = $1
+        AND ncc.fecha BETWEEN $2 AND $3
+        AND ncc."isActive" = true
+        AND ncc.estado = 'recibida'
 
       ORDER BY "fechaComprobante" ASC, id ASC
     `, [eid, desde, hasta]);
@@ -708,13 +748,16 @@ export class DeclaracionesService {
         linea:            i + 1,
         id:               r.id,
         folio:            r.folio,
-        source:           (r._source ?? 'compra') as 'compra' | 'gasto',
+        source:           (r._source ?? 'compra') as 'compra' | 'gasto' | 'nota_credito_compra',
         rncProveedor,
         nombreProveedor:  r.nombreProveedor,
         tipoId,
         tipoBienes:       r.tipoBienes,
         tipoBienesLabel:  TIPOS_BIENES_606[r.tipoBienes] ?? '',
         ncfProveedor:     r.ncfProveedor ?? '',
+        // NCF de la compra que esta NC corrige (col. 5 "NCF Modificado") —
+        // solo poblado en filas de nota_credito_compra con compraOriginalId.
+        ncfModificado:    r.ncfModificado ?? '',
         fechaComprobante: String(r.fechaComprobante ?? '').substring(0, 10),
         fechaPago:        String(r.fechaPago ?? '').substring(0, 10),
         montoFacturado,

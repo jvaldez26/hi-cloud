@@ -18,6 +18,19 @@ export enum MotivoNCCompra {
   OTRO         = 'otro',
 }
 
+/**
+ * Tipo de efecto de la NC — a diferencia de `motivo` (puramente descriptivo),
+ * `tipo` decide si toca inventario y qué cuenta se acredita en el asiento.
+ */
+export enum TipoNCCompra {
+  /** Mercancía SÍ entró y SÍ se devuelve físicamente — reversa de inventario. */
+  DEVOLUCION_INVENTARIO = 'devolucion_inventario',
+  /** Descuento / error de precio / daño sin devolver — no toca inventario. */
+  AJUSTE_SIN_DEVOLUCION = 'ajuste_sin_devolucion',
+  /** La OC/factura incluía algo que nunca llegó a entrar — no toca inventario. */
+  NO_RECIBIDA = 'no_recibida',
+}
+
 @TenantScoped()
 @Entity('notas_credito_compras')
 @Index(['empresaId', 'isActive'])
@@ -41,6 +54,15 @@ export class NotaCreditoCompra extends TenantBaseEntity {
 
   @Column({ length: 20, nullable: true })
   compraOriginalFolio?: string;
+
+  @Column({ type: 'varchar', length: 30, default: TipoNCCompra.DEVOLUCION_INVENTARIO })
+  tipo!: TipoNCCompra;
+
+  /** NCF/e-NCF de la nota de crédito DEL PROVEEDOR (su E34/B04) — HiCloud
+   *  no la emite, solo la registra. Nullable en BD por las NC anteriores a
+   *  este campo; el DTO la exige en toda creación nueva. */
+  @Column({ length: 50, nullable: true })
+  ncfProveedor?: string;
 
   @Column({ type: 'enum', enum: MotivoNCCompra, default: MotivoNCCompra.DEVOLUCION })
   motivo!: MotivoNCCompra;

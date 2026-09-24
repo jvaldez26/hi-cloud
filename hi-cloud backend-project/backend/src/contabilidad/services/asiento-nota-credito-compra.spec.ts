@@ -58,9 +58,10 @@ function sumarPorCuenta(lineas: any[]) {
   return acc;
 }
 
-const INVENTARIO = 1, ITBIS_CREDITO = 2, PROVEEDORES = 3;
+const INVENTARIO = 1, ITBIS_CREDITO = 2, PROVEEDORES = 3, COSTO_VENTAS = 4, GASTO_OFICINA = 5;
 const CUENTAS = [
   cuenta('1.1.3.01', INVENTARIO), cuenta('1.1.4.01', ITBIS_CREDITO), cuenta('2.1.1.01', PROVEEDORES),
+  cuenta('5.1.1.01', COSTO_VENTAS), cuenta('6.1.9.09', GASTO_OFICINA),
 ];
 
 describe('Simetría Compra + Nota de Crédito de Compra', () => {
@@ -89,5 +90,43 @@ describe('Simetría Compra + Nota de Crédito de Compra', () => {
     expect(saldos[ITBIS_CREDITO].debe - saldos[ITBIS_CREDITO].haber).toBeCloseTo(126, 2);
     // Proveedores: compra haber 1180, NCC debe 354 → queda haber neto 826.
     expect(saldos[PROVEEDORES].haber - saldos[PROVEEDORES].debe).toBeCloseTo(826, 2);
+  });
+});
+
+describe('asientoNotaCreditoCompra — según tipo de efecto', () => {
+  it('ajuste_sin_devolucion (sinInventario): acredita Costo de Ventas, NUNCA Inventario', async () => {
+    const { svc, lineasGuardadas } = makeService({ empresaId: 7, cuentas: CUENTAS });
+
+    await svc.asientoNotaCreditoCompra(1, 118, 100, 18, 'NCC-1', '2026-09-24', 5, { sinInventario: true });
+
+    const saldos = sumarPorCuenta(lineasGuardadas);
+    expect(saldos[COSTO_VENTAS].haber).toBe(100);
+    expect(saldos[INVENTARIO]).toBeUndefined();
+    expect(saldos[ITBIS_CREDITO].haber).toBe(18);
+    expect(saldos[PROVEEDORES].debe).toBe(118);
+  });
+
+  it('devolucion_inventario / no_recibida con cuentaDestinoOriginal: acredita ESA cuenta, no el default Inventario', async () => {
+    const { svc, lineasGuardadas } = makeService({ empresaId: 7, cuentas: CUENTAS });
+
+    // La compra original se booked contra "Gasto de Oficina" (cuentaDestino
+    // manual), no Inventario — la reversa tiene que corregir la MISMA cuenta.
+    await svc.asientoNotaCreditoCompra(1, 118, 100, 18, 'NCC-1', '2026-09-24', 5, {
+      cuentaDestinoOriginal: '6.1.9.09',
+    });
+
+    const saldos = sumarPorCuenta(lineasGuardadas);
+    expect(saldos[GASTO_OFICINA].haber).toBe(100);
+    expect(saldos[INVENTARIO]).toBeUndefined();
+    expect(saldos[COSTO_VENTAS]).toBeUndefined();
+  });
+
+  it('sin opciones (default): sigue acreditando Inventario — comportamiento previo intacto', async () => {
+    const { svc, lineasGuardadas } = makeService({ empresaId: 7, cuentas: CUENTAS });
+
+    await svc.asientoNotaCreditoCompra(1, 118, 100, 18, 'NCC-1', '2026-09-24', 5);
+
+    const saldos = sumarPorCuenta(lineasGuardadas);
+    expect(saldos[INVENTARIO].haber).toBe(100);
   });
 });

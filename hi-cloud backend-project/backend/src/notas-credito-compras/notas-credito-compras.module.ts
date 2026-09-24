@@ -5,10 +5,15 @@ import { NotasCreditoComprasService } from './notas-credito-compras.service';
 import { NotaCreditoCompra } from './entities/nota-credito-compra.entity';
 import { NotaCreditoCompraDetalle } from './entities/nota-credito-compra-detalle.entity';
 import { Producto } from '../productos/entities/producto.entity';
+import { Compra } from '../compras/entities/compra.entity';
+import { CompraDetalle } from '../compras/entities/compra-detalle.entity';
 import { ContabilidadModule } from '../contabilidad/contabilidad.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([NotaCreditoCompra, NotaCreditoCompraDetalle, Producto]), ContabilidadModule],
+  imports: [
+    TypeOrmModule.forFeature([NotaCreditoCompra, NotaCreditoCompraDetalle, Producto, Compra, CompraDetalle]),
+    ContabilidadModule,
+  ],
   controllers: [NotasCreditoComprasController],
   providers: [NotasCreditoComprasService],
   exports: [NotasCreditoComprasService],

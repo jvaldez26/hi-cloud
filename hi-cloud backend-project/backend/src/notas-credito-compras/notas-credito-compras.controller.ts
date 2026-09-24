@@ -5,7 +5,7 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import {
   IsString, IsOptional, IsInt, IsPositive, IsNumber, IsArray,
-  ValidateNested, Min, IsDateString, IsEnum, MaxLength,
+  ValidateNested, Min, IsDateString, IsEnum, MaxLength, IsNotEmpty, ValidateIf,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -16,7 +16,7 @@ import { UserRole } from '../users/enums/user-role.enum';
 import { User } from '../users/users.entity';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { NotasCreditoComprasService } from './notas-credito-compras.service';
-import { MotivoNCCompra } from './entities/nota-credito-compra.entity';
+import { MotivoNCCompra, TipoNCCompra } from './entities/nota-credito-compra.entity';
 
 // descripcion (300) y unidadMedida (20) deben coincidir con las columnas de
 // nota_credito_compra_detalles — sin el límite, un texto más largo que la
@@ -24,6 +24,7 @@ import { MotivoNCCompra } from './entities/nota-credito-compra.entity';
 // #7724484308 en create-factura.dto.ts).
 class DetalleDto {
   @IsOptional() @IsInt() @IsPositive() @Type(() => Number) productoId?: number;
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number) compraDetalleId?: number;
   @IsString() @MaxLength(300)                               descripcion!: string;
   @IsOptional() @IsString() @MaxLength(20)                  unidadMedida?: string;
   @IsNumber() @Min(0.0001) @Type(() => Number)              cantidad!: number;
@@ -34,10 +35,24 @@ class DetalleDto {
 class CreateNCCDto {
   @IsInt() @IsPositive() @Type(() => Number)                proveedorId!: number;
   @IsDateString()                                            fecha!: string;
-  @IsOptional() @IsInt() @Type(() => Number)                 compraOriginalId?: number;
+  @IsEnum(TipoNCCompra)                                      tipo!: TipoNCCompra;
+  // Obligatoria para devolución con inventario y mercancía no recibida —
+  // ambas necesitan la OC para validar cantidad contra lo recibido/pendiente.
+  // Un ajuste sin devolución (descuento, error de precio) puede no referir
+  // a ninguna compra puntual.
+  @ValidateIf(o => o.tipo !== TipoNCCompra.AJUSTE_SIN_DEVOLUCION)
+  @IsInt() @IsPositive() @Type(() => Number)                 compraOriginalId?: number;
   @IsOptional() @IsString()                                  compraOriginalFolio?: string;
+  // El NCF/e-NCF que el PROVEEDOR puso en SU nota de crédito — HiCloud no
+  // emite esto, solo lo registra. Va al 606 como "NCF Modificado" del lado
+  // de compras (ver declaraciones.service.ts).
+  @IsString() @IsNotEmpty() @MaxLength(50)                   ncfProveedor!: string;
   @IsEnum(MotivoNCCompra)                                    motivo!: MotivoNCCompra;
-  @IsOptional() @IsString()                                  descripcionMotivo?: string;
+  // Obligatoria en texto solo cuando el motivo es "otro" — el resto de
+  // motivos ya son la categoría real, no necesitan texto libre encima.
+  @ValidateIf(o => o.motivo === MotivoNCCompra.OTRO)
+  @IsNotEmpty({ message: 'Describe el motivo cuando eliges "Otro"' })
+  @IsString()                                                descripcionMotivo?: string;
   @IsOptional() @IsString()                                  notas?: string;
   @IsArray() @ValidateNested({ each: true }) @Type(() => DetalleDto)
   detalles!: DetalleDto[];
