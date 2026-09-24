@@ -356,6 +356,17 @@ const RUTAS = {
   }),
   '/declaraciones/historial': () => [],
   '/preferencias/columnas/compra-items': () => ({ ocultas: [], mostradas: [], porDefecto: true }),
+  '/reportes/dashboard/checklist-configuracion': () => ({
+    items: {
+      catalogoCuentas: { label: 'Catálogo de Cuentas', completo: true,  ruta: '/plan-cuentas' },
+      secuenciasEcf:   { label: 'Secuencias de Comprobantes Fiscales', completo: false, ruta: '/ecf/activar' },
+      clientes:        { label: 'Clientes', completo: false, ruta: '/clientes' },
+      proveedores:     { label: 'Proveedores', completo: true,  ruta: '/proveedores' },
+      productos:       { label: 'Artículos o Servicios', completo: false, ruta: '/productos' },
+      usuarios:        { label: 'Usuarios', completo: false, ruta: '/equipo' },
+    },
+    completo: false,
+  }),
   '/gastos/categorias': () => ([
     { value: 'alquiler',            label: 'Alquiler de local',       cuenta: '6.1.2.01' },
     { value: 'servicios_publicos',  label: 'Servicios públicos',      cuenta: '6.1.2.02' },

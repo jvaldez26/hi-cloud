@@ -43,6 +43,13 @@ export class ReportesController {
     return this.reportesService.getContextoDashboard(inicioHoy, ahoraLocal, inicioAyer, mismaHoraAyer, usuario.role);
   }
 
+  @Get('dashboard/checklist-configuracion')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Checklist de configuración inicial (Catálogo de Cuentas, Secuencias e-CF, Clientes, Proveedores, Productos, Usuarios) — cacheado 2 min por empresa' })
+  getChecklistConfiguracion() {
+    return this.reportesService.getChecklistConfiguracion();
+  }
+
   @Get('kpis')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'KPIs del mes seleccionado — filtrar con ?mes=7&anio=2026' })

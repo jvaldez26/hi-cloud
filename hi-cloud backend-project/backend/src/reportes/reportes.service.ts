@@ -18,6 +18,25 @@ const inicioMes = () => new Date(hoy().getFullYear(), hoy().getMonth(), 1);
 const inicioAnio = () => new Date(hoy().getFullYear(), 0, 1);
 const finHoy    = () => { const d = hoy(); d.setHours(23, 59, 59, 999); return d; };
 
+export interface ChecklistItemConfiguracion {
+  label: string;
+  completo: boolean;
+  /** Ruta del frontend para completar este paso. */
+  ruta: string;
+}
+export interface ChecklistConfiguracion {
+  items: {
+    catalogoCuentas: ChecklistItemConfiguracion;
+    secuenciasEcf:   ChecklistItemConfiguracion;
+    clientes:        ChecklistItemConfiguracion;
+    proveedores:     ChecklistItemConfiguracion;
+    productos:       ChecklistItemConfiguracion;
+    usuarios:        ChecklistItemConfiguracion;
+  };
+  /** true cuando TODOS los ítems están completos — el frontend colapsa el checklist. */
+  completo: boolean;
+}
+
 @Injectable()
 export class ReportesService {
   constructor(
@@ -29,6 +48,75 @@ export class ReportesService {
 
   /** Obtiene el empresaId del contexto CLS actual */
   private get eid(): number { return this.tenantService.getEmpresaId(); }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // CHECKLIST DE CONFIGURACIÓN INICIAL — página de Inicio
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /** Cuentas que trae el Plan de Cuentas sembrado por defecto (ContabilidadService.seedPlanCuentas) — por encima de esto, la empresa ya personalizó su catálogo. */
+  private readonly BASELINE_CUENTAS_SEMBRADAS = 193;
+  private readonly CHECKLIST_TTL_MS = 2 * 60_000;
+  private readonly checklistCache = new Map<number, { data: ChecklistConfiguracion; expira: number }>();
+
+  /**
+   * Un solo query en paralelo (Promise.all) para los ~6 booleanos del
+   * checklist — nunca 6 llamadas HTTP separadas desde el frontend. Cada
+   * ítem consulta el estado REAL de la empresa, nunca un flag manual:
+   * si alguien borra sus clientes, el ítem vuelve a "pendiente" solo.
+   *
+   * Cacheado 2 minutos por empresa — no cambia a cada segundo y esta
+   * pantalla se recarga seguido.
+   */
+  async getChecklistConfiguracion(): Promise<ChecklistConfiguracion> {
+    const eid = this.eid;
+    const cacheado = this.checklistCache.get(eid);
+    if (cacheado && cacheado.expira > Date.now()) return cacheado.data;
+
+    const [cuentasRow, secuenciaRow, clientesRow, proveedoresRow, productosRow, usuariosRow] = await Promise.all([
+      this.dataSource.query<{ cnt: string }[]>(
+        `SELECT COUNT(*) AS cnt FROM cuentas_contables WHERE "empresaId" = $1 AND "isActive" = true`,
+        [eid],
+      ),
+      this.dataSource.query<{ cnt: string }[]>(
+        `SELECT COUNT(*) AS cnt FROM secuencias_ecf
+          WHERE "empresaId" = $1 AND "isActiva" = true AND "isAgotada" = false AND "fechaVencimiento" > NOW()`,
+        [eid],
+      ),
+      this.dataSource.query<{ cnt: string }[]>(
+        `SELECT COUNT(*) AS cnt FROM clientes WHERE "empresaId" = $1 AND "isActive" = true`,
+        [eid],
+      ),
+      this.dataSource.query<{ cnt: string }[]>(
+        `SELECT COUNT(*) AS cnt FROM proveedores WHERE "empresaId" = $1 AND "isActive" = true`,
+        [eid],
+      ),
+      this.dataSource.query<{ cnt: string }[]>(
+        `SELECT COUNT(*) AS cnt FROM productos WHERE "empresaId" = $1 AND "isActive" = true`,
+        [eid],
+      ),
+      // Más de 1: el dueño (isPrincipal) siempre cuenta como fila propia —
+      // "solo el dueño" es exactamente count=1, nunca 0 (la empresa no
+      // existiría sin su usuario_empresa inicial).
+      this.dataSource.query<{ cnt: string }[]>(
+        `SELECT COUNT(*) AS cnt FROM usuario_empresa WHERE "empresaId" = $1 AND "isActive" = true`,
+        [eid],
+      ),
+    ]);
+
+    const items: ChecklistConfiguracion['items'] = {
+      catalogoCuentas: { label: 'Catálogo de Cuentas', completo: Number(cuentasRow[0]?.cnt ?? 0) > this.BASELINE_CUENTAS_SEMBRADAS, ruta: '/plan-cuentas' },
+      secuenciasEcf:   { label: 'Secuencias de Comprobantes Fiscales', completo: Number(secuenciaRow[0]?.cnt ?? 0) > 0, ruta: '/ecf/activar' },
+      clientes:        { label: 'Clientes', completo: Number(clientesRow[0]?.cnt ?? 0) > 0, ruta: '/clientes' },
+      proveedores:     { label: 'Proveedores', completo: Number(proveedoresRow[0]?.cnt ?? 0) > 0, ruta: '/proveedores' },
+      productos:       { label: 'Artículos o Servicios', completo: Number(productosRow[0]?.cnt ?? 0) > 0, ruta: '/productos' },
+      usuarios:        { label: 'Usuarios', completo: Number(usuariosRow[0]?.cnt ?? 0) > 1, ruta: '/equipo' },
+    };
+    const completo = Object.values(items).every(i => i.completo);
+
+    const data: ChecklistConfiguracion = { items, completo };
+    this.checklistCache.set(eid, { data, expira: Date.now() + this.CHECKLIST_TTL_MS });
+    return data;
+  }
 
   // ══════════════════════════════════════════════════════════════════════════
   // HELPERS PRIVADOS

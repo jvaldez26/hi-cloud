@@ -20,6 +20,7 @@ import { MarcoWidget } from './widgets/MarcoWidget';
 import { MontarAlVerse } from './widgets/MontarAlVerse';
 import { BotonAgregarGrafica } from './widgets/BotonAgregarGrafica';
 import { PanelSinGraficas, AvisoPreferenciaDegradada } from './widgets/PanelSinGraficas';
+import { ChecklistConfiguracionInicial } from './widgets/ChecklistConfiguracionInicial';
 
 const { Text } = Typography;
 
@@ -319,6 +320,8 @@ function DashboardAdmin() {
   return (
     <div>
       <ContextoHeader />
+
+      <ChecklistConfiguracionInicial />
 
       {degradado && <AvisoPreferenciaDegradada />}
 

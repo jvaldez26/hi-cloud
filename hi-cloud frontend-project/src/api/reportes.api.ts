@@ -45,4 +45,7 @@ export const reportesApi = {
 
   contexto: (p: { inicioHoy: string; ahoraLocal: string; inicioAyer: string; mismaHoraAyer: string }) =>
     api.get(`/reportes/dashboard/contexto?inicioHoy=${encodeURIComponent(p.inicioHoy)}&ahoraLocal=${encodeURIComponent(p.ahoraLocal)}&inicioAyer=${encodeURIComponent(p.inicioAyer)}&mismaHoraAyer=${encodeURIComponent(p.mismaHoraAyer)}`).then(r => r.data.data),
+
+  checklistConfiguracion: () =>
+    api.get('/reportes/dashboard/checklist-configuracion').then(r => r.data.data),
 };
