@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Select, Typography, theme, Tooltip as AntTooltip } from 'antd';
 import { LineChartOutlined, BarChartOutlined, DownloadOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -26,6 +27,7 @@ const MESES_CORTOS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct
  */
 export function WidgetIngresosGastos() {
   const { token } = theme.useToken();
+  const navigate  = useNavigate();
   const qc        = useQueryClient();
   const isMobile  = useMobile();
 
@@ -159,7 +161,7 @@ export function WidgetIngresosGastos() {
             </AntTooltip>
           </div>
           <Text style={{ fontSize: 11, color: token.colorPrimary }}>
-            {chartTipo === 'line' ? 'Switch to Bar Chart' : 'Switch to Line Chart'}
+            {chartTipo === 'line' ? 'Cambiar a gráfico de barras' : 'Cambiar a gráfico de línea'}
           </Text>
         </div>
       }
@@ -178,6 +180,7 @@ export function WidgetIngresosGastos() {
       {/* Gráfico */}
       <EstadoGrafica estado={estadoAnual} alto={200} titulo="Ingresos & Gastos"
         mensajeVacio="Sin movimientos en el año seleccionado"
+        accionVacio={{ texto: 'Registrar una venta', onClick: () => navigate('/facturas/nueva') }}
         onRefresh={() => { void refetchAnual(); }} />
       {estadoAnual === "ok" && (
       <div ref={chartContainerRef} style={{ padding: "0 8px 16px" }}>

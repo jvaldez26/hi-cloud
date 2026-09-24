@@ -356,6 +356,37 @@ const RUTAS = {
   }),
   '/declaraciones/historial': () => [],
   '/preferencias/columnas/compra-items': () => ({ ocultas: [], mostradas: [], porDefecto: true }),
+  '/reportes/dashboard/antiguedad-cobrar': () => ({
+    corriente: 45000, dias_0_30: 18500, dias_31_60: 9200, dias_61_90: 4100, dias_90_plus: 12800,
+    total: 89600,
+  }),
+  '/reportes/dashboard/antiguedad-pagar': () => ({
+    corriente: 22000, dias_0_30: 8600, dias_31_60: 3100, dias_61_90: 900, dias_90_plus: 2400,
+    total: 37000,
+  }),
+  '/reportes/dashboard/resumen-gastos': () => ({
+    gastos: [
+      { categoria: 'Alquiler de local',   monto: 32000 },
+      { categoria: 'Servicios públicos',  monto: 14500 },
+      { categoria: 'Nómina',              monto: 9800 },
+      { categoria: 'Mantenimiento',       monto: 4200 },
+      { categoria: 'Otros gastos',        monto: 2100 },
+    ],
+    total: 62600,
+    mes: 'septiembre de 2026',
+    mesNumero: 9, anioNumero: 2026,
+    totalMesAnterior: 54000,
+    cambioPorcentaje: 15.9,
+  }),
+  '/reportes/dashboard/ingresos-gastos-anual': () => ({
+    anio: 2026,
+    meses: Array.from({ length: 12 }, (_, i) => ({
+      mes: i + 1, anio: 2026,
+      ingresos: i <= 8 ? 80000 + i * 6000 : 0,
+      gastos:   i <= 8 ? 45000 + i * 3000 : 0,
+    })),
+  }),
+  '/reportes/dashboard/anios-con-datos': () => [2026, 2025],
   '/reportes/dashboard/checklist-configuracion': () => ({
     items: {
       vendedores:      { label: 'Vendedores', completo: true,  ruta: '/vendedores' },

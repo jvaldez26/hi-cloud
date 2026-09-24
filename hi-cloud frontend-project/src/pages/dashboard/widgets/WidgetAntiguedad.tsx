@@ -1,6 +1,7 @@
 import { Button, theme } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from 'recharts';
@@ -16,11 +17,15 @@ const ANTIGUEDAD_CONFIG = [
   { key: 'dias_90_plus',rango: '90+',       color: RAMPA_SEVERIDAD[4] },
 ];
 
-function WidgetAntiguedad({ titulo, endpoint, queryKey, labelTotal, colorTotal }: {
+function WidgetAntiguedad({
+  titulo, endpoint, queryKey, labelTotal, colorTotal, rutaListado, accionVacio,
+}: {
   titulo: string; endpoint: string; queryKey: string;
-  labelTotal: string; colorTotal: string;
+  labelTotal: string; colorTotal: string; rutaListado: string;
+  accionVacio: { texto: string; ruta: string };
 }) {
   const { token } = theme.useToken();
+  const navigate  = useNavigate();
 
   // La consulta vive DENTRO del widget: si no esta en el panel, no se pide.
   const { data, refetch, isPending, isError } = useQuery<any>({
@@ -41,29 +46,52 @@ function WidgetAntiguedad({ titulo, endpoint, queryKey, labelTotal, colorTotal }
     cargando: isPending, error: isError,
     vacio: chartData.every(d => d.monto === 0),
   });
+  const verListado = () => navigate(rutaListado);
 
   return (
-    <div style={{
-      background: token.colorBgContainer,
-      border: `1px solid ${token.colorBorderSecondary}`,
-      borderRadius: 12, overflow: 'hidden',
-    }}>
+    <div
+      style={{
+        background: token.colorBgContainer,
+        border: `1px solid ${token.colorBorderSecondary}`,
+        borderRadius: 12, overflow: 'hidden',
+        cursor: estado === 'ok' ? 'pointer' : 'default',
+      }}
+      onClick={estado === 'ok' ? verListado : undefined}
+      role={estado === 'ok' ? 'button' : undefined}
+      aria-label={estado === 'ok' ? `Ver listado de ${titulo}` : undefined}
+    >
       {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '14px 16px', borderBottom: `1px solid ${token.colorBorderSecondary}`,
       }}>
         <span style={{ fontWeight: 600, fontSize: 14 }}>{titulo}</span>
-        <Button type="text" size="small" icon={<ReloadOutlined />} onClick={onRefresh}
+        <Button type="text" size="small" icon={<ReloadOutlined />}
+          onClick={e => { e.stopPropagation(); onRefresh(); }}
           style={{ color: token.colorTextTertiary }} />
       </div>
 
+      {/* Total — grande y visible, lo primero que se lee de la tarjeta. */}
+      {estado === 'ok' && (
+        <div style={{ padding: '14px 16px 4px' }}>
+          <div style={{ fontSize: 26, fontWeight: 800, color: colorTotal, lineHeight: 1.2 }}>
+            {fmt.money(total)}
+          </div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: token.colorTextTertiary,
+            textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            {labelTotal}
+          </div>
+        </div>
+      )}
+
       {/* Gráfica */}
       <EstadoGrafica estado={estado} alto={220} titulo={titulo}
-        mensajeVacio="Sin saldos pendientes" onRefresh={onRefresh} />
+        mensajeVacio="Sin saldos pendientes"
+        accionVacio={{ texto: accionVacio.texto, onClick: () => navigate(accionVacio.ruta) }}
+        onRefresh={onRefresh} />
       {estado === "ok" && (
       <div style={{ padding: "8px 0 0" }}>
-        <ResponsiveContainer width="100%" height={220}>
+        <ResponsiveContainer width="100%" height={190}>
           <BarChart accessibilityLayer data={chartData} layout="vertical"
             margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" horizontal={false}
@@ -89,21 +117,14 @@ function WidgetAntiguedad({ titulo, endpoint, queryKey, labelTotal, colorTotal }
       </div>
       )}
 
-      {/* Footer total — oculto mientras no haya datos reales que totalizar. */}
-      {estado === "ok" && (
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        padding: '10px 16px', borderTop: `1px solid ${token.colorBorderSecondary}`,
-        background: token.colorFillAlter,
-      }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: token.colorTextTertiary,
-          textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          {labelTotal}
-        </span>
-        <span style={{ fontSize: 14, fontWeight: 700, color: colorTotal }}>
-          {fmt.money(total)}
-        </span>
-      </div>
+      {estado === 'ok' && (
+        <div style={{
+          padding: '8px 16px 12px', textAlign: 'right',
+        }}>
+          <span style={{ fontSize: 11, color: token.colorTextTertiary }}>
+            Ver listado completo →
+          </span>
+        </div>
       )}
     </div>
   );
@@ -118,6 +139,8 @@ export const WidgetAntiguedadCobrar = () => (
     queryKey="antiguedad-cobrar"
     labelTotal="POR COBRAR TOTAL"
     colorTotal={SEMANTICO.ingreso}
+    rutaListado="/cxc"
+    accionVacio={{ texto: 'Registrar una venta a crédito', ruta: '/facturas/nueva' }}
   />
 );
 
@@ -129,5 +152,7 @@ export const WidgetAntiguedadPagar = () => (
     queryKey="antiguedad-pagar"
     labelTotal="POR PAGAR TOTAL"
     colorTotal={SEMANTICO.gasto}
+    rutaListado="/cxp"
+    accionVacio={{ texto: 'Registrar una compra', ruta: '/compras/nueva' }}
   />
 );

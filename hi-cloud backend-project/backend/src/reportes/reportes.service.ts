@@ -7,6 +7,7 @@ import { FiltroMesAnioDto } from './dto/filtro-mes-anio.dto';
 import { UserRole } from '../users/enums/user-role.enum';
 import { TenantService } from '../tenant/tenant.service';
 import { fechaTextoRD, fechaHoyRD } from '../common/utils/fecha-local.util';
+import { SaldosCuentasService } from '../reportes-financieros/saldos-cuentas.service';
 
 // ── helpers de fecha ────────────────────────────────────────────────────────
 
@@ -44,6 +45,7 @@ export class ReportesService {
     @InjectRepository(ReporteGenerado)
     private readonly reporteRepository: Repository<ReporteGenerado>,
     private readonly tenantService: TenantService,
+    private readonly saldosCuentasService: SaldosCuentasService,
   ) {}
 
   /** Obtiene el empresaId del contexto CLS actual */
@@ -458,70 +460,25 @@ export class ReportesService {
   // ══════════════════════════════════════════════════════════════════════════
 
   /**
-   * Ingresos (facturas DOP emitidas/pagadas) y gastos agrupados mes a mes.
-   * Usado por el gráfico de barras/línea del dashboard.
-   * El frontend pide los 12 meses rodantes:
-   *   desde = inicio del mes de hace 11 meses
-   *   hasta = fin del mes actual
+   * Ingresos y gastos del mes (SaldosCuentasService — misma fuente que
+   * Estado de Resultados, nunca facturas/gastos crudos).
    *
-   * Devuelve solo los meses que tienen al menos ingresos o gastos;
-   * el frontend rellena los meses vacíos a 0.
+   * "Ingresos" = saldo de TODAS las cuentas tipo 'ingreso' del mes (no solo
+   * las operacionales — a diferencia del Estado de Resultados, este widget
+   * es un vistazo de caja "cuánto entró / cuánto salió", no un P&L formal,
+   * así que no separa Otros Ingresos). "Gastos" = tipo 'gasto' únicamente
+   * (Costo de Ventas queda fuera a propósito: es una cuenta distinta en el
+   * Estado de Resultados y hoy casi ninguna empresa la usa).
    */
-  async getIngresosGastosMensuales(
-    desde: string,
-    hasta: string,
-  ): Promise<{ mes: number; anio: number; ingresos: number; gastos: number }[]> {
-    const [factRows, gastoRows] = await Promise.all([
-      // Facturas — solo DOP (no mezclar moneda), estados que representan venta real
-      this.dataSource.query<{ anio: string; mes: string; total: string }[]>(
-        `SELECT EXTRACT(YEAR  FROM fecha)::int AS anio,
-                EXTRACT(MONTH FROM fecha)::int AS mes,
-                COALESCE(SUM(total), 0)        AS total
-         FROM facturas
-         WHERE "isActive" = true
-           AND "empresaId" = $1
-           AND estado IN ('emitida','pagada')
-           AND COALESCE(moneda,'DOP') = 'DOP'
-           AND fecha >= $2::date AND fecha <= $3::date
-         GROUP BY anio, mes
-         ORDER BY anio, mes`,
-        [this.eid, desde, hasta],
-      ),
-      // Gastos operativos
-      this.dataSource.query<{ anio: string; mes: string; total: string }[]>(
-        `SELECT EXTRACT(YEAR  FROM fecha)::int AS anio,
-                EXTRACT(MONTH FROM fecha)::int AS mes,
-                COALESCE(SUM(total), 0)        AS total
-         FROM gastos
-         WHERE "isActive" = true
-           AND "empresaId" = $1
-           AND fecha >= $2::date AND fecha <= $3::date
-         GROUP BY anio, mes
-         ORDER BY anio, mes`,
-        [this.eid, desde, hasta],
-      ),
-    ]);
+  private async getIngresosGastosDelMes(mes: number, anio: number): Promise<{ ingresos: number; gastos: number }> {
+    const desde = `${anio}-${String(mes).padStart(2, '0')}-01`;
+    const ultimoDia = new Date(anio, mes, 0).getDate();
+    const hasta = `${anio}-${String(mes).padStart(2, '0')}-${String(ultimoDia).padStart(2, '0')}`;
 
-    // Merge en un mapa indexado por 'YYYY-M'
-    const map = new Map<string, { mes: number; anio: number; ingresos: number; gastos: number }>();
-
-    for (const r of factRows) {
-      const key = `${r.anio}-${r.mes}`;
-      map.set(key, { anio: Number(r.anio), mes: Number(r.mes), ingresos: Number(r.total), gastos: 0 });
-    }
-    for (const r of gastoRows) {
-      const key = `${r.anio}-${r.mes}`;
-      const existing = map.get(key);
-      if (existing) {
-        existing.gastos = Number(r.total);
-      } else {
-        map.set(key, { anio: Number(r.anio), mes: Number(r.mes), ingresos: 0, gastos: Number(r.total) });
-      }
-    }
-
-    return [...map.values()].sort((a, b) =>
-      a.anio !== b.anio ? a.anio - b.anio : a.mes - b.mes,
-    );
+    const saldos = await this.saldosCuentasService.obtenerSaldos(this.eid, desde, hasta);
+    const ingresos = saldos.filter(c => c.tipo === 'ingreso').reduce((s, c) => s + c.saldo, 0);
+    const gastos   = saldos.filter(c => c.tipo === 'gasto').reduce((s, c) => s + c.saldo, 0);
+    return { ingresos: +ingresos.toFixed(2), gastos: +gastos.toFixed(2) };
   }
 
   /**
@@ -544,29 +501,34 @@ export class ReportesService {
    * a depender de la zona del navegador, que es parte del problema que esto
    * arregla.
    */
+  // 2 min — SaldosCuentasService hace 12 consultas (una por mes) donde antes
+  // bastaban 2; este cache absorbe el costo para quien recarga el panel
+  // seguido, igual que el checklist de configuración.
+  private readonly INGRESOS_GASTOS_TTL_MS = 2 * 60_000;
+  private readonly ingresosGastosCache = new Map<string, {
+    data: { anio: number; meses: { mes: number; anio: number; ingresos: number; gastos: number }[] };
+    expira: number;
+  }>();
+
   async getIngresosGastosAnual(anio?: number): Promise<{
     anio: number;
     meses: { mes: number; anio: number; ingresos: number; gastos: number }[];
   }> {
     const anioResuelto = anio ?? Number(fechaHoyRD().substring(0, 4));
+    const cacheKey = `${this.eid}-${anioResuelto}`;
+    const cacheado = this.ingresosGastosCache.get(cacheKey);
+    if (cacheado && cacheado.expira > Date.now()) return cacheado.data;
 
-    const filas = await this.getIngresosGastosMensuales(
-      `${anioResuelto}-01-01`,
-      `${anioResuelto}-12-31`,
+    const meses = await Promise.all(
+      Array.from({ length: 12 }, (_, i) => i + 1).map(async mes => {
+        const { ingresos, gastos } = await this.getIngresosGastosDelMes(mes, anioResuelto);
+        return { mes, anio: anioResuelto, ingresos, gastos };
+      }),
     );
 
-    const porMes = new Map(filas.map(f => [f.mes, f]));
-    const meses = Array.from({ length: 12 }, (_, i) => {
-      const mes = i + 1;
-      const f   = porMes.get(mes);
-      return {
-        mes, anio: anioResuelto,
-        ingresos: Number(f?.ingresos ?? 0),
-        gastos:   Number(f?.gastos   ?? 0),
-      };
-    });
-
-    return { anio: anioResuelto, meses };
+    const data = { anio: anioResuelto, meses };
+    this.ingresosGastosCache.set(cacheKey, { data, expira: Date.now() + this.INGRESOS_GASTOS_TTL_MS });
+    return data;
   }
 
   /**
@@ -1287,7 +1249,31 @@ export class ReportesService {
     const total = gastos.reduce((s, g) => s + g.monto, 0);
     const mes   = ahora.toLocaleDateString('es-DO', { month: 'long', year: 'numeric' });
 
-    return { gastos, total, mes };
+    // Comparación contra el mes anterior — mismo patrón (flecha + %) que ya
+    // usan otros reportes del panel.
+    const mesAnteriorNum  = mesActual === 1 ? 12 : mesActual - 1;
+    const anioAnteriorNum = mesActual === 1 ? anioActual - 1 : anioActual;
+    const [{ totalAnterior }] = await this.dataSource.query<{ totalAnterior: string }[]>(`
+      SELECT COALESCE(SUM(total), 0)::numeric AS "totalAnterior"
+      FROM gastos
+      WHERE "empresaId" = $1
+        AND EXTRACT(MONTH FROM fecha) = $2
+        AND EXTRACT(YEAR  FROM fecha) = $3
+        AND "isActive" = true
+    `, [eid, mesAnteriorNum, anioAnteriorNum]);
+
+    const totalMesAnterior = Number(totalAnterior);
+    // null = sin base de comparación (mes anterior en cero) — el frontend
+    // oculta el porcentaje en vez de mostrar un +Infinity%.
+    const cambioPorcentaje = totalMesAnterior > 0
+      ? +(((total - totalMesAnterior) / totalMesAnterior) * 100).toFixed(1)
+      : null;
+
+    return {
+      gastos, total, mes,
+      mesNumero: mesActual, anioNumero: anioActual,
+      totalMesAnterior, cambioPorcentaje,
+    };
   }
 
   // ══════════════════════════════════════════════════════════════════════════

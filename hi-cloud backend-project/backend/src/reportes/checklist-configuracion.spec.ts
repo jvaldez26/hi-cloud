@@ -27,6 +27,7 @@ function servicio(counts: {
     } as any,
     {} as any,
     { getEmpresaId: () => 42 } as any,
+    {} as any,
   );
   return { svc, consultas };
 }

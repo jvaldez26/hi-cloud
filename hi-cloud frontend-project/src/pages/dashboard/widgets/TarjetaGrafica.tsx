@@ -12,7 +12,7 @@ import { useMobile } from '../../../hooks/useMediaQuery';
  * reinvente el borde, el radio y el color del pie.
  */
 export function TarjetaGrafica({
-  titulo, subtitulo, onRefresh, cargando, error, vacio, mensajeVacio, alto = 260,
+  titulo, subtitulo, onRefresh, cargando, error, vacio, mensajeVacio, accionVacio, alto = 260,
   pieEtiqueta, pieValor, pieColor, children,
 }: {
   titulo:        string;
@@ -36,6 +36,7 @@ export function TarjetaGrafica({
   /** true cuando la consulta respondió y no hay nada que pintar. */
   vacio?:        boolean;
   mensajeVacio?: string;
+  accionVacio?:  { texto: string; onClick: () => void };
   alto?:         number;
   pieEtiqueta?:  string;
   pieValor?:     string;
@@ -75,7 +76,7 @@ export function TarjetaGrafica({
 
       <EstadoGrafica
         estado={estado} alto={alto} titulo={titulo}
-        mensajeVacio={mensajeVacio} onRefresh={onRefresh}
+        mensajeVacio={mensajeVacio} accionVacio={accionVacio} onRefresh={onRefresh}
       />
 
       {estado === 'ok' && children}
@@ -128,13 +129,20 @@ export function estadoDe(
  * escrita a mano en la mitad de los archivos.
  */
 export function EstadoGrafica({
-  estado, alto = 260, titulo, mensajeVacio, onRefresh,
+  estado, alto = 260, titulo, mensajeVacio, onRefresh, accionVacio,
 }: {
   estado:        EstadoWidget;
   alto?:         number;
   titulo:        string;
   mensajeVacio?: string;
   onRefresh:     () => void;
+  /**
+   * Estado vacío accionable: un link corto a la acción que resuelve el
+   * "sin datos" ("Registrar una venta a crédito", "Registrar un gasto"...).
+   * Sin esto la tarjeta vacía es un callejón sin salida — informa que no hay
+   * nada, pero no dice qué hacer al respecto.
+   */
+  accionVacio?:  { texto: string; onClick: () => void };
 }) {
   const { token } = theme.useToken();
   if (estado === 'ok') return null;
@@ -197,6 +205,15 @@ export function EstadoGrafica({
       <div style={{ fontSize: 13, color: token.colorTextTertiary, textAlign: 'center', padding: '0 16px' }}>
         {mensajeVacio ?? 'Sin datos para este período'}
       </div>
+      {accionVacio && (
+        <Button
+          type="link" size="small"
+          onClick={e => { e.stopPropagation(); accionVacio.onClick(); }}
+          style={{ padding: 0, height: 'auto', fontSize: 12 }}
+        >
+          {accionVacio.texto} →
+        </Button>
+      )}
     </div>
   );
 }

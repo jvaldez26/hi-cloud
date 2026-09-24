@@ -1,6 +1,7 @@
 import { Button, theme } from 'antd';
-import { ReloadOutlined } from '@ant-design/icons';
+import { ReloadOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
@@ -13,6 +14,7 @@ import { EstadoGrafica, estadoDe, SEMANTICO, COLORES, estiloTooltip, useAltoGraf
 
 export function WidgetResumenGastos() {
   const { token } = theme.useToken();
+  const navigate  = useNavigate();
   const altoGrafica = useAltoGrafica();
 
   // La consulta vive DENTRO del widget: si no esta en el panel, no se pide.
@@ -25,14 +27,29 @@ export function WidgetResumenGastos() {
   const gastos: any[] = data?.gastos ?? [];
   const total = Number(data?.total ?? 0);
   const mes   = data?.mes ?? '';
+  const cambioPorcentaje: number | null = data?.cambioPorcentaje ?? null;
   const estado = estadoDe({ cargando: isPending, error: isError, vacio: gastos.length === 0 });
+  const topCategorias = gastos.slice(0, 4);
+  const maxTop = Math.max(1, ...topCategorias.map(g => Number(g.monto ?? 0)));
+
+  const verListado = () => {
+    const mesNum  = data?.mesNumero;
+    const anioNum = data?.anioNumero;
+    navigate(mesNum && anioNum ? `/gastos?mes=${mesNum}&anio=${anioNum}` : '/gastos');
+  };
 
   return (
-    <div style={{
-      background: token.colorBgContainer,
-      border: `1px solid ${token.colorBorderSecondary}`,
-      borderRadius: 12, overflow: 'hidden',
-    }}>
+    <div
+      style={{
+        background: token.colorBgContainer,
+        border: `1px solid ${token.colorBorderSecondary}`,
+        borderRadius: 12, overflow: 'hidden',
+        cursor: estado === 'ok' ? 'pointer' : 'default',
+      }}
+      onClick={estado === 'ok' ? verListado : undefined}
+      role={estado === 'ok' ? 'button' : undefined}
+      aria-label={estado === 'ok' ? 'Ver listado de gastos del mes' : undefined}
+    >
       {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -42,15 +59,58 @@ export function WidgetResumenGastos() {
           <span style={{ fontWeight: 600, fontSize: 14 }}>Resumen de Gastos</span>
           {mes && <span style={{ fontSize: 11, color: token.colorTextTertiary, marginLeft: 8 }}>{mes}</span>}
         </div>
-        <Button type="text" size="small" icon={<ReloadOutlined />} onClick={onRefresh}
+        <Button type="text" size="small" icon={<ReloadOutlined />}
+          onClick={e => { e.stopPropagation(); onRefresh(); }}
           style={{ color: token.colorTextTertiary }} />
       </div>
+
+      {/* Total — grande y visible, con comparación contra el mes anterior. */}
+      {estado === 'ok' && (
+        <div style={{ padding: '14px 16px 4px', display: 'flex', alignItems: 'baseline', gap: 10 }}>
+          <div style={{ fontSize: 26, fontWeight: 800, color: SEMANTICO.gasto, lineHeight: 1.2 }}>
+            {fmt.money(total)}
+          </div>
+          {cambioPorcentaje !== null && (
+            <span style={{
+              fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 2,
+              color: cambioPorcentaje > 0 ? SEMANTICO.gasto : cambioPorcentaje < 0 ? SEMANTICO.ingreso : token.colorTextTertiary,
+            }}>
+              {cambioPorcentaje > 0 ? <ArrowUpOutlined /> : cambioPorcentaje < 0 ? <ArrowDownOutlined /> : null}
+              {Math.abs(cambioPorcentaje)}% vs mes anterior
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Top categorías — mini lista, antes de la gráfica. */}
+      {estado === 'ok' && topCategorias.length > 0 && (
+        <div style={{ padding: '8px 16px 4px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {topCategorias.map((g, i) => (
+            <div key={g.categoria} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11, color: token.colorTextSecondary, width: 90, flexShrink: 0,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {g.categoria}
+              </span>
+              <div style={{ flex: 1, background: token.colorFillSecondary, borderRadius: 3, height: 6, overflow: 'hidden' }}>
+                <div style={{
+                  width: `${(Number(g.monto ?? 0) / maxTop) * 100}%`, height: '100%',
+                  background: COLORES[i % COLORES.length], borderRadius: 3,
+                }} />
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 600, color: token.colorText, flexShrink: 0 }}>
+                {fmt.money(Number(g.monto ?? 0))}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Gráfica */}
       <EstadoGrafica
         estado={estado}
         titulo="Resumen de Gastos"
         mensajeVacio="Sin gastos registrados este mes"
+        accionVacio={{ texto: 'Registrar un gasto', onClick: () => navigate('/gastos') }}
         onRefresh={onRefresh}
       />
       {/* Los donuts no admiten accessibilityLayer de Recharts —solo lo tienen las
@@ -81,19 +141,10 @@ export function WidgetResumenGastos() {
         </div>
       )}
 
-      {/* Footer total */}
-      {total > 0 && (
-        <div style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          padding: '10px 16px', borderTop: `1px solid ${token.colorBorderSecondary}`,
-          background: token.colorFillAlter,
-        }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: token.colorTextTertiary,
-            textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            TOTAL GASTOS
-          </span>
-          <span style={{ fontSize: 14, fontWeight: 700, color: SEMANTICO.gasto }}>
-            {fmt.money(total)}
+      {estado === 'ok' && (
+        <div style={{ padding: '4px 16px 12px', textAlign: 'right' }}>
+          <span style={{ fontSize: 11, color: token.colorTextTertiary }}>
+            Ver listado del mes →
           </span>
         </div>
       )}
