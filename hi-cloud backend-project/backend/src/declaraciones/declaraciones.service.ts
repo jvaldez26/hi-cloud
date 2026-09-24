@@ -1239,11 +1239,12 @@ export class DeclaracionesService {
         f.iva::text
       FROM facturas f
       LEFT JOIN clientes c ON c.id = f."clienteId"
-      WHERE f.estado = 'cancelada'
+      WHERE f."empresaId" = $1
+        AND f.estado = 'cancelada'
         AND f."isActive" = true
-        AND TO_CHAR(f."updatedAt", 'YYYY-MM') = $1
+        AND TO_CHAR(f."updatedAt", 'YYYY-MM') = $2
       ORDER BY f."tipoNcf", f.folio
-    `, [periodo]);
+    `, [this.eid, periodo]);
 
     const totalCancelado = facturasCanceladas.reduce((s, r) => s + Number(r.total), 0);
     const porTipo: Record<string, { cantidad: number; monto: number }> = {};
