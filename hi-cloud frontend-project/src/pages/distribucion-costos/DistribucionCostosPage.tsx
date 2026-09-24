@@ -10,6 +10,7 @@ import {
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
+import { contabilidadApi } from '../../api/contabilidad.api';
 import { fmt } from '../../utils/formatters';
 import dayjs from 'dayjs';
 
@@ -25,8 +26,23 @@ const distApi = {
     api.post(`/distribucion-costos/${id}/simular?monto=${monto}`, {}).then(d),
   ejecutar: (id: number, b: any) =>
     api.post(`/distribucion-costos/${id}/ejecutar`, b).then(d),
-  // Cuentas para selector
-  cuentas:  () => api.get('/contabilidad/cuentas?soloMovimientos=true').then(d),
+};
+
+/**
+ * `/contabilidad/cuentas` devuelve `{ data: CuentaConAnexos[], conteos }`,
+ * no un array pelado — lo mismo que ya asumen PlanCuentasPage, LibroMayorPage
+ * y CuentaContableSelector vía contabilidadApi.cuentas(). Este componente
+ * tenía su propio `api.get` con un solo nivel de desenvuelto (el del
+ * interceptor global) y le faltaba el segundo (el de este endpoint en
+ * particular): `cuentas` llegaba siendo `{data, conteos}`, no el array, y
+ * `.filter` tumbaba el modal en cualquier empresa, no solo con catálogo
+ * vacío. Array.isArray() además de encadenar bien los dos `?.` es la única
+ * garantía real: una forma de respuesta inesperada no debe tumbar el
+ * render, debe verse como "sin cuentas para elegir".
+ */
+export const cuentasComoLista = (resultado: unknown): any[] => {
+  const lista = (resultado as any)?.data;
+  return Array.isArray(lista) ? lista : [];
 };
 
 // ── Crear regla modal ──────────────────────────────────────────────────────────
@@ -34,9 +50,12 @@ function CrearReglaModal({ open, onClose, onSuccess }: {
   open: boolean; onClose: () => void; onSuccess: () => void;
 }) {
   const [form] = Form.useForm();
-  const { data: cuentas } = useQuery({ queryKey: ['cuentas-sel'], queryFn: distApi.cuentas });
+  const { data: cuentas } = useQuery({
+    queryKey: ['cuentas-sel'],
+    queryFn:  () => contabilidadApi.cuentas({ soloMovimientos: true }),
+  });
 
-  const cuentaOpts = (cuentas ?? [])
+  const cuentaOpts = cuentasComoLista(cuentas)
     .filter((c: any) => c.permiteMovimientos)
     .map((c: any) => ({ value: c.id, label: `${c.codigo} — ${c.nombre}` }));
 
