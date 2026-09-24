@@ -68,6 +68,10 @@ function makeService(opts: {
 
   const asientosService = { asientoNotaCredito: jest.fn().mockResolvedValue(undefined) };
   const devolucionesService = { crearDesdeNotaCredito: jest.fn().mockResolvedValue(null) };
+  // Passthrough: en producción establece el contexto CLS que le falta al
+  // cron (ver comentario en aplicarEfectosPorEstado); en el test no hay CLS
+  // real que simular, solo importa que ejecute el callback.
+  const tenantService = { runForEmpresa: jest.fn((_empresaId: number, fn: () => Promise<any>) => fn()) };
 
   const svc = new EcfEfectosNcService(
     {} as any, // facturaRepo — no se usa directamente, todo pasa por em.getRepository
@@ -75,9 +79,10 @@ function makeService(opts: {
     dataSource as any,
     asientosService as any,
     devolucionesService as any,
+    tenantService as any,
   );
 
-  return { svc, nc, facturaRepoEm, ncRepoEm, asientosService, devolucionesService, dataSource };
+  return { svc, nc, facturaRepoEm, ncRepoEm, asientosService, devolucionesService, tenantService, dataSource };
 }
 
 const ecfBase = {
@@ -128,6 +133,39 @@ describe('EcfEfectosNcService — asiento de la NC', () => {
 
     expect(facturaRepoEm.update).not.toHaveBeenCalled();
     expect(asientosService.asientoNotaCredito).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Bug real de producción (Sentry #7745902796, NC-101): el cron de consulta
+   * de estado DGII (consultar-estado-ecf.job.ts) llama a este método SIN
+   * contexto CLS. AsientosAutomaticosService.asientoNotaCredito() lee la
+   * empresa de CLS (TenantService.getEmpresaId()) — sin runForEmpresa()
+   * alrededor, _crearAsientoContabilizado ve "eid === undefined", omite el
+   * asiento EN SILENCIO (nunca lanza, solo reporta a Sentry) y la NC quedaba
+   * con la factura ya cancelada pero sin reversar Ventas/ITBIS/Clientes.
+   * Este bloque prueba que el asiento (y la devolución) corren envueltos en
+   * runForEmpresa(ecf.empresaId, …) — pase lo que pase con el CLS del caller.
+   */
+  it('el asiento y la devolución de la NC corren dentro de runForEmpresa(ecf.empresaId) — el fix del bug del cron', async () => {
+    const nc = { id: 1, facturaOriginalId: 10, total: 1180, subtotal: 1000, iva: 180, numero: 'NC-1', fecha: '2026-09-19', usuarioId: 5 };
+    const { svc, tenantService, asientosService, devolucionesService } = makeService({ nc, devRow: null });
+
+    await svc.aplicarEfectosPorEstado({ ...ecfBase, codigoModificacion: 1, empresaId: 44 } as any, EstadoDGII.ACEPTADO);
+
+    expect(tenantService.runForEmpresa).toHaveBeenCalledWith(44, expect.any(Function));
+    // Ambas llamadas deben haber ocurrido — confirma que el callback pasado a
+    // runForEmpresa sí se ejecutó y llegó hasta el final, no solo se registró.
+    expect(asientosService.asientoNotaCredito).toHaveBeenCalled();
+    expect(devolucionesService.crearDesdeNotaCredito).toHaveBeenCalled();
+  });
+
+  it('si no hay asiento ni devolución pendientes (NC que viene de devolución), no llama a runForEmpresa — nada que envolver', async () => {
+    const nc = { id: 3, facturaOriginalId: 12, total: 500, subtotal: 423.73, iva: 76.27, numero: 'NC-3', usuarioId: 5 };
+    const { svc, tenantService } = makeService({ nc, devRow: { id: 77 } });
+
+    await svc.aplicarEfectosPorEstado({ ...ecfBase, codigoModificacion: 1 } as any, EstadoDGII.ACEPTADO);
+
+    expect(tenantService.runForEmpresa).not.toHaveBeenCalled();
   });
 
   it('RECHAZADO: nunca genera asiento — nada financiero fue aplicado', async () => {

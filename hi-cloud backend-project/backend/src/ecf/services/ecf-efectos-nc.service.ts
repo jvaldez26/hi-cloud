@@ -7,6 +7,7 @@ import { NotaCredito, EstadoNotaCredito } from '../../notas-credito/entities/not
 import { reportServiceError } from '../../common/observability/sentry';
 import { AsientosAutomaticosService } from '../../contabilidad/services/asientos-automaticos.service';
 import { DevolucionesService } from '../../devoluciones/devoluciones.service';
+import { TenantService } from '../../tenant/tenant.service';
 
 /**
  * Aplica los efectos financieros de una Nota de Crédito sobre su factura
@@ -49,6 +50,7 @@ export class EcfEfectosNcService {
     private readonly dataSource: DataSource,
     private readonly asientosService: AsientosAutomaticosService,
     private readonly devolucionesService: DevolucionesService,
+    private readonly tenantService: TenantService,
   ) {}
 
   /**
@@ -275,38 +277,54 @@ export class EcfEfectosNcService {
       ncId: number; total: number; subtotal: number; iva: number;
       numero: string; fecha: string; usuarioId: number;
     } | null;
-    if (pendiente) {
-      await this.asientosService.asientoNotaCredito(
-        pendiente.ncId,
-        pendiente.total,
-        pendiente.subtotal,
-        pendiente.iva,
-        pendiente.numero,
-        pendiente.fecha,
-        pendiente.usuarioId,
-      );
-    }
-
-    // Devolución generada desde la NC — TIPO B: nunca debe romper el
-    // procesamiento de efectos ya confirmado (misma razón que el bloque de
-    // arriba: fuera de la transacción de negocio, que ya confirmó).
     const devPendiente = devolucionAGenerar as {
       empresaId: number; ncId: number; ncNumero: string;
       facturaOriginalId: number; clienteId: number; usuarioId: number;
       codigoModificacion: 1 | 3;
     } | null;
-    if (devPendiente) {
-      await this.devolucionesService.crearDesdeNotaCredito(devPendiente).catch((err: unknown) => {
-        this.logger.warn(
-          `[EcfEfectosNc] crear devolución desde NC ${devPendiente.ncNumero} falló (no bloquea el procesamiento): ` +
-          `${err instanceof Error ? err.message : String(err)}`,
+    if (!pendiente && !devPendiente) return;
+
+    // AsientosAutomaticosService (asientoNotaCredito) lee empresaId de CLS
+    // (TenantService.getEmpresaId()), no de un parámetro — normal dentro de
+    // un request HTTP, pero este método también se dispara fire-and-forget
+    // desde el cron de consulta de estado DGII (consultar-estado-ecf.job.ts),
+    // donde no hay CLS activo. Sin este runForEmpresa, _crearAsientoContabilizado
+    // detecta "eid === undefined", omite el asiento en silencio (solo
+    // reporta a Sentry, nunca lanza) y dejaba a la NC marcada como aplicada
+    // con la factura ya cancelada pero SIN reversar Ventas/ITBIS/Clientes —
+    // exactamente el hueco que dejó a la Sección IX residual en producción
+    // (Sentry #7745902796, NC-101). devolucionesService.crearDesdeNotaCredito
+    // ya recibía empresaId explícito por el mismo motivo (ver su propio
+    // comentario) — este runForEmpresa lo hace consistente para ambos.
+    await this.tenantService.runForEmpresa(ecf.empresaId!, async () => {
+      if (pendiente) {
+        await this.asientosService.asientoNotaCredito(
+          pendiente.ncId,
+          pendiente.total,
+          pendiente.subtotal,
+          pendiente.iva,
+          pendiente.numero,
+          pendiente.fecha,
+          pendiente.usuarioId,
         );
-        reportServiceError(err, 'ecf_efectos_nc_crear_devolucion', {
-          ncId:      String(devPendiente.ncId),
-          empresaId: String(devPendiente.empresaId),
-          numero:    devPendiente.ncNumero,
+      }
+
+      // Devolución generada desde la NC — TIPO B: nunca debe romper el
+      // procesamiento de efectos ya confirmado (misma razón que el bloque de
+      // arriba: fuera de la transacción de negocio, que ya confirmó).
+      if (devPendiente) {
+        await this.devolucionesService.crearDesdeNotaCredito(devPendiente).catch((err: unknown) => {
+          this.logger.warn(
+            `[EcfEfectosNc] crear devolución desde NC ${devPendiente.ncNumero} falló (no bloquea el procesamiento): ` +
+            `${err instanceof Error ? err.message : String(err)}`,
+          );
+          reportServiceError(err, 'ecf_efectos_nc_crear_devolucion', {
+            ncId:      String(devPendiente.ncId),
+            empresaId: String(devPendiente.empresaId),
+            numero:    devPendiente.ncNumero,
+          });
         });
-      });
-    }
+      }
+    });
   }
 }
