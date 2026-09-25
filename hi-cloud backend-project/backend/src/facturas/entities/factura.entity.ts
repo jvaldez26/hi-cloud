@@ -164,6 +164,16 @@ export class Factura extends TenantBaseEntity {
   @Column({ default: false })
   anulacionPendiente!: boolean;
 
+  /**
+   * Id de la fila de activación en pos_supervisor_log cuyo modo supervisor
+   * estaba activo al crear esta factura — ver FacturasService.create()
+   * (resolverSupervisorSessionId) y el reporte en AuthService.listarSupervisorLog().
+   * Metadata de auditoría, no de autorización: puede ser null aunque la
+   * venta haya sido legítima.
+   */
+  @Column({ nullable: true })
+  supervisorSessionId?: number;
+
   // ── Descuento general ─────────────────────────────────────────────────────
   /** 'monto' = RD$ fijo sobre subtotal | 'porcentaje' = % sobre subtotal */
   @Column({ length: 10, nullable: true, default: null })

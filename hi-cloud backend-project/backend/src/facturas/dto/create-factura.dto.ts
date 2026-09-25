@@ -136,6 +136,19 @@ export class CreateFacturaDto {
   @IsPositive()
   clienteId?: number;
 
+  /**
+   * Id de la fila de activación en pos_supervisor_log cuyo modo supervisor
+   * estaba activo al momento de la venta (ver useSupervisor.ts en el
+   * frontend) — puramente informativo para el reporte de auditoría; el
+   * backend lo valida contra pos_supervisor_log antes de guardarlo (ver
+   * FacturasService.create), así que un valor falso o vencido simplemente
+   * se ignora, nunca bloquea la venta.
+   */
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  supervisorSessionId?: number;
+
   @IsDateString()
   fecha: string;
 

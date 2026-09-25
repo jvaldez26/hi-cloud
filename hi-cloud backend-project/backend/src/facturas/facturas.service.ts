@@ -98,6 +98,28 @@ export class FacturasService {
   }
 
   /**
+   * `supervisorSessionId` es metadata de auditoría, no una autorización — la
+   * autorización real ya ocurrió en /auth/verificar-supervisor. Por eso una
+   * sesión inválida/de otra empresa/vencida se ignora en silencio (la
+   * factura igual se crea sin el vínculo) en vez de rechazar la venta: el
+   * cajero no debe perder una venta por un dato de auditoría corrupto o
+   * manipulado. La ventana de 8h coincide con SESSION_MS de useSupervisor.ts.
+   */
+  private async resolverSupervisorSessionId(
+    supervisorSessionId: number | undefined,
+    empresaId: number,
+  ): Promise<number | undefined> {
+    if (!supervisorSessionId) return undefined;
+    const [row] = await this.dataSource.query<{ id: number }[]>(`
+      SELECT id FROM pos_supervisor_log
+      WHERE id = $1 AND "empresaId" = $2 AND "sessionId" IS NULL
+        AND "createdAt" >= NOW() - INTERVAL '8 hours'
+      LIMIT 1
+    `, [supervisorSessionId, empresaId]);
+    return row?.id;
+  }
+
+  /**
    * C-4 unificado (2026-09-20) — antes duplicado idéntico en create() y
    * update(). Revalida el precio contra el catálogo (previene manipulación
    * desde localStorage) y, si la empresa no activó permitirVentaBajoCosto,
@@ -338,12 +360,15 @@ export class FacturasService {
       dto, usuario.id, empresaId,
     );
 
+    const supervisorSessionId = await this.resolverSupervisorSessionId(dto.supervisorSessionId, empresaId);
+
     const factura = this.facturaRepository.create({
       folio,
       fecha: new Date(dto.fecha),
       empresaId,
       clienteId: dto.clienteId,
       usuarioId: usuario.id,
+      supervisorSessionId,
       notas:          dto.notas,
       tipoNcf:        dto.tipoNcf ?? 'E32',
       // La entity declara estos campos opcionales, no nullables.

@@ -9444,13 +9444,7 @@ export default function POSPage() {
   const [bloqueadoHasta,      setBloqueadoHasta]      = useState<number>(0);
   // ── Modo supervisor (configurable por tenant) ─────────────────────────────
   const supervisor = useSupervisor();
-  // ── Modal supervisor (legacy — se mantiene para el botón manual del TopBar) ─
-  const [modalSupervisor,     setModalSupervisor]     = useState(false);
-  const [pwSupervisor,        setPwSupervisor]        = useState('');
-  const [errSupervisor,       setErrSupervisor]       = useState('');
-  const [verificandoSup,      setVerificandoSup]      = useState(false);
-  const [supervisorOk,        setSupervisorOk]        = useState(false);
-  // Supervisor selector (nuevo modal)
+  // Supervisor selector (modal de activación/autorización)
   const [supId,               setSupId]               = useState<number | null>(null);
   const [supPassword,         setSupPassword]         = useState('');
   const [supError,            setSupError]            = useState('');
@@ -10883,6 +10877,12 @@ export default function POSPage() {
                   : {}),
               }],
         } : {}),
+        // Auditoría: si el modo supervisor está activo, vincula esta venta a
+        // esa sesión (ver AlertaSupervisor/useSupervisor.ts) — incluso si
+        // esta venta puntual no requirió autorización explícita.
+        ...(supervisor.supervisorActive && supervisor.supervisorSession?.sessionId
+          ? { supervisorSessionId: supervisor.supervisorSession.sessionId }
+          : {}),
       };
 
       // Si offline → encolar localmente
@@ -11388,20 +11388,6 @@ export default function POSPage() {
       setErrCambio(e?.response?.data?.errors?.[0] ?? 'Usuario o contraseña incorrectos');
       setPwCambio('');
     } finally { setCambiandoUser(false); }
-  };
-
-  // ── Verificar supervisor (admin password) ──────────────────────────────────
-  const verificarSupervisor = async () => {
-    if (!pwSupervisor.trim()) { setErrSupervisor('Ingresa tu contraseña'); return; }
-    setVerificandoSup(true); setErrSupervisor('');
-    try {
-      await api.post('/auth/verificar-password', { password: pwSupervisor });
-      setSupervisorOk(true); setModalSupervisor(false); setPwSupervisor('');
-      message.success('Modo supervisor activo');
-    } catch {
-      setErrSupervisor('Contraseña incorrecta');
-      setPwSupervisor('');
-    } finally { setVerificandoSup(false); }
   };
 
   // ── Confirmar salida ────────────────────────────────────────────────────────
@@ -12794,25 +12780,7 @@ export default function POSPage() {
       </div>
     )}
 
-    {/* ── Modal supervisor (botón manual TopBar — verifica usuario actual) ──── */}
-    <Modal maskClosable={false}
-      title={<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><UserSwitchOutlined style={{ color: '#F59E0B' }} /> Acceso de Supervisor</span>}
-      open={modalSupervisor} onCancel={() => { setModalSupervisor(false); setPwSupervisor(''); setErrSupervisor(''); }}
-      footer={null} width={360} destroyOnClose>
-      <p style={{ color: '#6B7280', fontSize: 13, marginBottom: 12 }}>Ingresa tu contraseña para acceder a funciones privilegiadas.</p>
-      <Input.Password placeholder="Contraseña de supervisor" value={pwSupervisor}
-        onChange={e => { setPwSupervisor(e.target.value); setErrSupervisor(''); }}
-        onPressEnter={verificarSupervisor} autoFocus
-        autoComplete="new-password" autoCorrect="off" autoCapitalize="off" spellCheck={false}
-        data-form-type="other" data-lpignore="true" data-1p-ignore />
-      {errSupervisor && <div style={{ color: '#EF4444', fontSize: 12, marginTop: 4 }}>{errSupervisor}</div>}
-      <button onClick={verificarSupervisor} disabled={verificandoSup}
-        style={{ width: '100%', marginTop: 12, padding: '10px 0', background: '#F59E0B', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 14 }}>
-        {verificandoSup ? 'Verificando...' : 'Verificar'}
-      </button>
-    </Modal>
-
-    {/* ── Modal supervisor nuevo (modo supervisor configurable) ────────────── */}
+    {/* ── Modal supervisor (modo supervisor configurable) ───────────────────── */}
     <Modal maskClosable={false}
       title={
         <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -12903,7 +12871,7 @@ export default function POSPage() {
                       detail: supervisor.pendingAction?.detail,
                     });
                     const d = res.data?.data ?? res.data;
-                    supervisor.resolveModal(true, d.nombre, d.role);
+                    supervisor.resolveModal(true, d.nombre, d.role, d.sessionId);
                     message.success(`✓ Autorizado por ${d.nombre}`);
                     setSupId(null); setSupPassword('');
                   } catch (e: any) {
@@ -12925,7 +12893,7 @@ export default function POSPage() {
                     detail: supervisor.pendingAction?.detail,
                   });
                   const d = res.data?.data ?? res.data;
-                  supervisor.resolveModal(true, d.nombre, d.role);
+                  supervisor.resolveModal(true, d.nombre, d.role, d.sessionId);
                   message.success(`✓ Autorizado por ${d.nombre}`);
                   setSupId(null); setSupPassword('');
                 } catch (e: any) {

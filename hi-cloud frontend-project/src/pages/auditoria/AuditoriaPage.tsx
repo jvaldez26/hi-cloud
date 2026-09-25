@@ -6,11 +6,11 @@ import { usePlanGuard } from '../../hooks/usePlan';
 import ModuloBloqueado from '../../components/ui/ModuloBloqueado';
 import {
   Table, Card, Row, Col, Typography, Tag, Select, Space, Badge,
-  Tabs, Input, theme, Modal, Tooltip, Button, message as antMessage,
+  Tabs, Input, theme, Modal, Tooltip, Button, DatePicker, message as antMessage,
 } from 'antd';
 import {
   SearchOutlined, WarningOutlined, CheckCircleOutlined,
-  EyeOutlined, CopyOutlined,
+  EyeOutlined, CopyOutlined, UserSwitchOutlined,
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -20,6 +20,8 @@ import {
 import { auditoriaApi } from '../../api/auditoria.api';
 import { fmt } from '../../utils/formatters';
 import { useAuthStore } from '../../store/auth.store';
+import api from '../../api/client';
+import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 
@@ -484,6 +486,154 @@ function LogsTab({
   );
 }
 
+// ─── Sesiones de modo supervisor ──────────────────────────────────────────────
+
+/**
+ * Una fila por SESIÓN (activación del modo supervisor), con su cierre —si ya
+ * ocurrió, manual o por expiración de 8h— y las facturas creadas mientras esa
+ * sesión estaba activa (ver AuthService.listarSupervisorLog). No se listan
+ * las autorizaciones puntuales sueltas: la sesión ES la unidad de auditoría.
+ */
+function SupervisorLogTab() {
+  const { token } = theme.useToken();
+  const [page,         setPage]         = useState(1);
+  const [supervisorId, setSupervisorId] = useState<number | undefined>();
+  const [cajeroId,     setCajeroId]     = useState<number | undefined>();
+  const [rango,        setRango]        = useState<[string, string] | null>(null);
+
+  const { data: supervisores } = useQuery<{ id: number; nombre: string; role: string }[]>({
+    queryKey: ['auth-supervisores'],
+    queryFn:  () => api.get('/auth/supervisores').then(r => r.data?.data ?? r.data),
+  });
+  const { data: equipo } = useQuery<{ id: number; nombre: string; role: string }[]>({
+    queryKey: ['auth-equipo-usuarios'],
+    queryFn:  () => api.get('/auth/equipo-usuarios').then(r => r.data?.data ?? r.data),
+  });
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['supervisor-log', page, supervisorId, cajeroId, rango],
+    queryFn:  () => api.get('/auth/supervisor-log', {
+      params: {
+        page, limit: 10,
+        ...(supervisorId ? { supervisorId } : {}),
+        ...(cajeroId     ? { cajeroId }     : {}),
+        ...(rango ? { desde: rango[0], hasta: rango[1] } : {}),
+      },
+    }).then(r => r.data?.data ?? r.data),
+  });
+
+  const sesiones: any[] = data?.data ?? [];
+
+  return (
+    <>
+      <Row gutter={[12, 12]} align="middle" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
+        <Col>
+          <Select
+            placeholder="Supervisor" allowClear style={{ width: 200 }}
+            value={supervisorId}
+            onChange={v => { setSupervisorId(v); setPage(1); }}
+            options={(supervisores ?? []).map(s => ({ value: s.id, label: s.nombre }))}
+            showSearch optionFilterProp="label"
+          />
+        </Col>
+        <Col>
+          <Select
+            placeholder="Cajero" allowClear style={{ width: 200 }}
+            value={cajeroId}
+            onChange={v => { setCajeroId(v); setPage(1); }}
+            options={(equipo ?? []).map(u => ({ value: u.id, label: u.nombre }))}
+            showSearch optionFilterProp="label"
+          />
+        </Col>
+        <Col>
+          <DatePicker.RangePicker
+            format="DD/MM/YYYY"
+            onChange={vals => {
+              setPage(1);
+              if (!vals || !vals[0] || !vals[1]) { setRango(null); return; }
+              setRango([vals[0].startOf('day').toISOString(), vals[1].endOf('day').toISOString()]);
+            }}
+          />
+        </Col>
+      </Row>
+
+      <Table
+        dataSource={sesiones}
+        rowKey="id"
+        loading={isLoading}
+        size="small"
+        columns={[
+          {
+            title: 'Activación', dataIndex: 'createdAt', key: 'createdAt', width: 130,
+            render: (v: string) => <Text style={{ fontSize: 12 }}>{fmt.dateTime(v)}</Text>,
+          },
+          {
+            title: 'Cajero', dataIndex: 'cajeroNombre', key: 'cajeroNombre', width: 140,
+            render: (v: string) => v ?? <em style={{ color: token.colorTextTertiary }}>—</em>,
+          },
+          {
+            title: 'Supervisor', dataIndex: 'supervisorNombre', key: 'supervisorNombre', width: 140,
+          },
+          {
+            title: 'Caja/Sucursal', dataIndex: 'sucursalNombre', key: 'sucursalNombre', width: 130,
+            render: (v: string) => v ?? <em style={{ color: token.colorTextTertiary }}>—</em>,
+          },
+          {
+            title: 'Motivo de activación', dataIndex: 'action', key: 'action',
+            render: (v: string, r: any) => (
+              <Tooltip title={r.detail}><span style={{ fontSize: 12 }}>{v}</span></Tooltip>
+            ),
+          },
+          {
+            title: 'Cierre', key: 'cierre', width: 180,
+            render: (_: any, r: any) => r.cierre
+              ? (
+                <div>
+                  <Tag color={r.cierre.detail?.includes('Expiración') ? 'orange' : 'default'} style={{ fontSize: 11 }}>
+                    {r.cierre.detail?.includes('Expiración') ? 'Expiró (8h)' : 'Cierre manual'}
+                  </Tag>
+                  <div style={{ fontSize: 11, color: token.colorTextTertiary }}>{fmt.dateTime(r.cierre.createdAt)}</div>
+                </div>
+              )
+              : <Tag color="green" style={{ fontSize: 11 }}>Activa / sin cierre registrado</Tag>,
+          },
+          {
+            title: 'Transacciones', key: 'transacciones', width: 110,
+            render: (_: any, r: any) => (
+              <Badge count={r.transacciones?.length ?? 0} showZero color={r.transacciones?.length ? '#1677ff' : '#d9d9d9'} />
+            ),
+          },
+        ]}
+        expandable={{
+          rowExpandable: r => (r.transacciones?.length ?? 0) > 0,
+          expandedRowRender: r => (
+            <Table
+              size="small"
+              pagination={false}
+              dataSource={r.transacciones}
+              rowKey="id"
+              columns={[
+                { title: 'Folio', dataIndex: 'folio', key: 'folio', width: 140 },
+                { title: 'Estado', dataIndex: 'estado', key: 'estado', width: 100,
+                  render: (v: string) => <Tag>{v}</Tag> },
+                { title: 'Total', dataIndex: 'total', key: 'total', width: 120,
+                  render: (v: number) => fmt.money(Number(v)) },
+                { title: 'Hora', dataIndex: 'createdAt', key: 'createdAt',
+                  render: (v: string) => fmt.dateTime(v) },
+              ]}
+            />
+          ),
+        }}
+        pagination={{
+          total: data?.meta?.total, pageSize: 10, current: page,
+          onChange: setPage, showSizeChanger: false,
+          showTotal: t => `${t} sesiones`,
+        }}
+      />
+    </>
+  );
+}
+
 export default function AuditoriaPage() {
   const { data: resumen } = useQuery({ queryKey: ['audit-resumen'], queryFn: auditoriaApi.resumen });
   const { data: errores } = useQuery({ queryKey: ['audit-errores'], queryFn: () => auditoriaApi.errores(8) });
@@ -557,6 +707,11 @@ export default function AuditoriaPage() {
               key: 'errores',
               label: <><WarningOutlined /> Solo errores</>,
               children: <LogsTab filtroExitoso={false} />,
+            },
+            {
+              key: 'supervisor',
+              label: <><UserSwitchOutlined /> Modo Supervisor</>,
+              children: <SupervisorLogTab />,
             },
           ]}
         />

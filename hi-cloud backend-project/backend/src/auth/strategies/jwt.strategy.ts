@@ -117,9 +117,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // sin depender de que cada controller se acuerde de excluirlo.
     delete (user as any).sessionToken;
 
-    (user as any).empresaId = payload.empresaId ?? null;
-    (user as any).jti       = payload.jti;
-    (user as any).exp       = payload.exp;
+    (user as any).empresaId  = payload.empresaId ?? null;
+    (user as any).sucursalId = payload.sucursalId ?? null;
+    (user as any).jti        = payload.jti;
+    (user as any).exp        = payload.exp;
     return user;
   }
 }

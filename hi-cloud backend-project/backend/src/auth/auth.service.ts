@@ -1287,6 +1287,20 @@ export class AuthService implements OnModuleInit {
     `, [empresaId]);
   }
 
+  /** Para el filtro por cajero del reporte de modo supervisor — sin restricción
+   *  de rol (a diferencia de listarSupervisores): cualquiera pudo operar el POS. */
+  async listarUsuariosEquipo(empresaId: number): Promise<{ id: number; nombre: string; role: string }[]> {
+    return this.dataSource.query<any[]>(`
+      SELECT u.id, u.nombre, u.role
+      FROM users u
+      JOIN usuario_empresa ue ON ue."userId" = u.id
+      WHERE ue."empresaId" = $1
+        AND ue."isActive" = true
+        AND u."isActive" = true
+      ORDER BY u.nombre ASC
+    `, [empresaId]);
+  }
+
   async verificarSupervisor(
     supervisorRef: string | number,  // email (string) o id (number)
     supervisorPassword: string,
@@ -1294,7 +1308,8 @@ export class AuthService implements OnModuleInit {
     empresaId: number,
     action?: string,
     detail?: string,
-  ): Promise<{ ok: true; nombre: string; role: string }> {
+    sucursalId?: number | null,
+  ): Promise<{ ok: true; nombre: string; role: string; sessionId: number | null }> {
     const byId = typeof supervisorRef === 'number';
     // Buscar supervisor en el mismo tenant con rol autorizado
     const rows = await this.dataSource.query<any[]>(`
@@ -1317,16 +1332,137 @@ export class AuthService implements OnModuleInit {
     const valida = await bcrypt.compare(supervisorPassword, sup.password);
     if (!valida) throw new UnauthorizedException('Contraseña incorrecta');
 
-    // Registrar en audit log
+    // Registrar en audit log — esta fila ES la sesión (su "id" es el
+    // sessionId que se propaga a las transacciones hechas durante la
+    // ventana de 8h, ver facturas.service.ts). Si el INSERT falla (p.ej.
+    // empresaId llega null desde un JWT sin empresa activa), la
+    // autorización se concede igual — pero ANTES esto se tragaba en un
+    // logger.warn que nadie ve; ahora también va a Sentry porque es una
+    // pérdida silenciosa de auditoría de seguridad, no un log informativo.
+    const [row] = await this.dataSource.query<{ id: number }[]>(`
+      INSERT INTO pos_supervisor_log
+        ("empresaId", "cajeroId", "supervisorId", "supervisorNombre", "sucursalId", action, detail, "createdAt")
+      VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+      ON CONFLICT DO NOTHING
+      RETURNING id
+    `, [empresaId, cajeroId, sup.id, sup.nombre, sucursalId ?? null, action ?? 'SUPERVISOR_LOGIN', detail ?? ''])
+      .catch(err => {
+        this.logger.error(
+          `[AUDITORIA-PERDIDA] pos_supervisor_log INSERT falló — autorización concedida SIN registro. ` +
+          `empresaId=${empresaId} cajeroId=${cajeroId} supervisorId=${sup.id}: ${(err as Error).message}`,
+        );
+        reportServiceError(err, 'auth.verificarSupervisor.insertLog');
+        return [];
+      });
+
+    return { ok: true, nombre: sup.nombre, role: sup.role, sessionId: row?.id ?? null };
+  }
+
+  /**
+   * Cierra (audita) una sesión de modo supervisor — manual (ESC/×) o por
+   * expiración de las 8h. `supervisorId`/`cajeroId` NUNCA se toman del
+   * cliente: se copian de la fila de activación ya resuelta server-side,
+   * para que un cajero no pueda falsificar de quién fue la sesión que cierra.
+   * Idempotente: si ya hay un cierre para ese sessionId, no duplica la fila.
+   */
+  async cerrarSesionSupervisor(
+    sessionId: number,
+    empresaId: number,
+    motivo: 'manual' | 'expiracion',
+    sucursalId?: number | null,
+  ): Promise<{ ok: boolean }> {
+    const [activacion] = await this.dataSource.query<any[]>(`
+      SELECT id, "cajeroId", "supervisorId", "supervisorNombre"
+      FROM pos_supervisor_log
+      WHERE id = $1 AND "empresaId" = $2 AND "sessionId" IS NULL
+      LIMIT 1
+    `, [sessionId, empresaId]);
+    if (!activacion) return { ok: false };
+
+    const [yaCerrada] = await this.dataSource.query<any[]>(
+      `SELECT id FROM pos_supervisor_log WHERE "sessionId" = $1 LIMIT 1`, [sessionId],
+    );
+    if (yaCerrada) return { ok: true };
+
     await this.dataSource.query(`
       INSERT INTO pos_supervisor_log
-        ("empresaId", "cajeroId", "supervisorId", "supervisorNombre", action, detail, "createdAt")
-      VALUES ($1, $2, $3, $4, $5, $6, NOW())
-      ON CONFLICT DO NOTHING
-    `, [empresaId, cajeroId, sup.id, sup.nombre, action ?? 'SUPERVISOR_LOGIN', detail ?? ''])
-      .catch(err => this.logger.warn(`pos_supervisor_log: ${(err as Error).message}`));
+        ("empresaId", "cajeroId", "supervisorId", "supervisorNombre", "sucursalId", action, detail, "sessionId", "createdAt")
+      VALUES ($1, $2, $3, $4, $5, 'Cerrar modo supervisor', $6, $7, NOW())
+    `, [
+      empresaId, activacion.cajeroId, activacion.supervisorId, activacion.supervisorNombre,
+      sucursalId ?? null,
+      motivo === 'expiracion' ? 'Expiración automática (8h)' : 'Cierre manual (ESC / ×)',
+      sessionId,
+    ]).catch(err => {
+      this.logger.error(`[AUDITORIA-PERDIDA] cierre de pos_supervisor_log falló — sessionId=${sessionId}: ${(err as Error).message}`);
+      reportServiceError(err, 'auth.cerrarSesionSupervisor.insert');
+    });
 
-    return { ok: true, nombre: sup.nombre, role: sup.role };
+    return { ok: true };
+  }
+
+  /**
+   * Reporte de sesiones de supervisor: una fila por ACTIVACIÓN
+   * ("sessionId" IS NULL, ver comentario de la migración
+   * PosSupervisorSesiones1767600000000), con su cierre (si ya ocurrió) y las
+   * facturas creadas durante esa sesión.
+   */
+  async listarSupervisorLog(
+    empresaId: number,
+    filtros: { supervisorId?: number; cajeroId?: number; desde?: string; hasta?: string; page?: number; limit?: number },
+  ): Promise<{ data: any[]; meta: { total: number; page: number; limit: number } }> {
+    const page   = Math.max(1, filtros.page ?? 1);
+    const limit  = Math.min(50, Math.max(1, filtros.limit ?? 10));
+    const offset = (page - 1) * limit;
+
+    const cond: string[]  = [`l."empresaId" = $1`, `l."sessionId" IS NULL`];
+    const params: unknown[] = [empresaId];
+    if (filtros.supervisorId) { params.push(filtros.supervisorId); cond.push(`l."supervisorId" = $${params.length}`); }
+    if (filtros.cajeroId)     { params.push(filtros.cajeroId);     cond.push(`l."cajeroId" = $${params.length}`); }
+    if (filtros.desde)        { params.push(filtros.desde);        cond.push(`l."createdAt" >= $${params.length}`); }
+    if (filtros.hasta)        { params.push(filtros.hasta);        cond.push(`l."createdAt" <= $${params.length}`); }
+    const where = cond.join(' AND ');
+
+    const [{ total }] = await this.dataSource.query<{ total: number }[]>(
+      `SELECT COUNT(*)::int AS total FROM pos_supervisor_log l WHERE ${where}`, params,
+    );
+
+    const sesiones = await this.dataSource.query<any[]>(`
+      SELECT l.id, l."cajeroId", u.nombre AS "cajeroNombre", l."supervisorId", l."supervisorNombre",
+             l."sucursalId", s.nombre AS "sucursalNombre", l.action, l.detail, l."createdAt"
+      FROM pos_supervisor_log l
+      LEFT JOIN users u ON u.id = l."cajeroId"
+      LEFT JOIN sucursales s ON s.id = l."sucursalId"
+      WHERE ${where}
+      ORDER BY l."createdAt" DESC
+      LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+    `, [...params, limit, offset]);
+
+    const ids = sesiones.map((s: any) => s.id);
+    let cierres: any[]   = [];
+    let facturas: any[]  = [];
+    if (ids.length) {
+      cierres = await this.dataSource.query<any[]>(
+        `SELECT "sessionId", detail, "createdAt" FROM pos_supervisor_log WHERE "sessionId" = ANY($1)`,
+        [ids],
+      );
+      facturas = await this.dataSource.query<any[]>(`
+        SELECT "supervisorSessionId" AS "sessionId", id, folio, total, estado, "createdAt"
+        FROM facturas
+        WHERE "supervisorSessionId" = ANY($1)
+        ORDER BY "createdAt" ASC
+      `, [ids]);
+    }
+
+    const data = sesiones.map((s: any) => ({
+      ...s,
+      cierre: cierres.find((c: any) => c.sessionId === s.id) ?? null,
+      transacciones: facturas
+        .filter((f: any) => f.sessionId === s.id)
+        .map(({ sessionId: _sid, ...f }: any) => f),
+    }));
+
+    return { data, meta: { total, page, limit } };
   }
 
   /**

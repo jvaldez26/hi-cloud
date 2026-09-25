@@ -5,17 +5,29 @@
  * Si supervisorModeEnabled = true → solicita credenciales de admin para
  * acciones que superen el umbral configurado (ej: descuento > maxDiscountPercent).
  *
- * La sesión persiste en sessionStorage (sobrevive F5, no cierre de pestaña).
- * El supervisor puede cerrarla explícitamente (ESC o badge ×). Expira a las 8 horas.
+ * La sesión persiste en localStorage (sobrevive F5 Y cierre de pestaña/navegador
+ * — antes usaba sessionStorage por error, lo que la mataba al cerrar la pestaña
+ * aunque no hubieran pasado las 8h). Se cierra: manualmente (ESC o badge ×),
+ * automáticamente al expirar (8h), o al hacer LOGOUT — esto último ya lo hacía
+ * auth.store.ts (`localStorage.removeItem('pos_supervisor')` en logout()), pero
+ * nunca surtía efecto porque la sesión vivía en sessionStorage, no en la clave
+ * que logout() limpiaba.
+ *
+ * Los dos cierres audit-relevantes (manual y por expiración) se reportan al
+ * backend vía POST /auth/supervisor-log/cerrar — ver AuthService.cerrarSesionSupervisor.
+ * El cierre por logout NO se audita aparte: es el mismo evento que ya audita
+ * el propio logout del usuario, y no hay ninguna llamada de red segura que
+ * hacer en ese instante (la sesión/JWT ya se está invalidando).
  */
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
 
 export interface SupervisorSession {
-  nombre: string;
-  role:   string;
-  until:  number; // timestamp ms
+  nombre:     string;
+  role:       string;
+  until:      number; // timestamp ms
+  sessionId:  number | null; // id de la fila de activación en pos_supervisor_log
 }
 
 interface UseSupervisorReturn {
@@ -37,30 +49,36 @@ interface UseSupervisorReturn {
   requireSupervisorForced: (action: string, detail?: string) => Promise<boolean>;
   /** Abre el modal programáticamente */
   openSupervisorModal: (action: string, detail?: string) => void;
-  /** Limpiar sesión de supervisor (ESC / badge ×) */
+  /** Limpiar sesión de supervisor (ESC / badge ×) — audita el cierre */
   clearSupervisor: () => void;
   /** Resolver pendiente (llamado desde el modal) */
-  resolveModal: (result: boolean, nombre?: string, role?: string) => void;
+  resolveModal: (result: boolean, nombre?: string, role?: string, sessionId?: number | null) => void;
   /** Estado del modal: null = cerrado */
   pendingAction: { action: string; detail?: string } | null;
 }
 
-const STORAGE_KEY   = 'pos_supervisor';
-const SESSION_MS    = 8 * 60 * 60_000; // 8 horas
+const STORAGE_KEY        = 'pos_supervisor';
+const SESSION_MS         = 8 * 60 * 60_000; // 8 horas
+const CHEQUEO_EXPIRACION_MS = 5 * 60_000;   // revisar expiración cada 5 min, no solo al montar
+
+function auditarCierre(sessionId: number | null, motivo: 'manual' | 'expiracion') {
+  if (!sessionId) return; // sesiones viejas (antes de este cambio) no tienen sessionId — nada que auditar
+  api.post('/auth/supervisor-log/cerrar', { sessionId, motivo }).catch(() => { /* best-effort, no bloquea la UI */ });
+}
 
 function loadSessionFromStorage(): SupervisorSession | null {
-  // sessionStorage sobrevive F5 pero no cierre de pestaña ni se comparte entre tabs.
-  // Al montar limpiamos cualquier entrada vieja de localStorage.
-  try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const s: SupervisorSession = JSON.parse(raw);
     if (s.until > Date.now()) return s;
-    sessionStorage.removeItem(STORAGE_KEY);
+    // Expiró mientras la pestaña estaba cerrada — se audita igual que una
+    // expiración detectada en caliente, no se descarta en silencio.
+    auditarCierre(s.sessionId ?? null, 'expiracion');
+    localStorage.removeItem(STORAGE_KEY);
     return null;
   } catch {
-    sessionStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(STORAGE_KEY);
     return null;
   }
 }
@@ -75,7 +93,7 @@ export function useSupervisor(): UseSupervisorReturn {
   const supervisorModeEnabled: boolean = posConfig?.supervisorModeEnabled ?? false;
   const maxDiscountPercent:    number  = posConfig?.maxDiscountPercent    ?? 10;
 
-  // Inicializar desde localStorage para sobrevivir F5
+  // Inicializar desde localStorage para sobrevivir F5 y cierre de pestaña
   const [supervisorSession, setSupervisorSession] = useState<SupervisorSession | null>(loadSessionFromStorage);
   const [pendingAction, setPendingAction] = useState<{ action: string; detail?: string } | null>(null);
   const resolveRef = useRef<((result: boolean) => void) | null>(null);
@@ -83,27 +101,46 @@ export function useSupervisor(): UseSupervisorReturn {
   const supervisorActive = supervisorSession !== null && supervisorSession.until > Date.now();
   const supervisorName   = supervisorActive ? supervisorSession!.nombre : '';
 
+  // Revisión periódica de expiración: sin esto, una sesión que cumple 8h con
+  // la pestaña abierta y sin interacción no se detecta (ni se audita) hasta
+  // el próximo requireSupervisor/render — que podría tardar horas de más.
+  useEffect(() => {
+    const id = setInterval(() => {
+      setSupervisorSession(current => {
+        if (!current || current.until > Date.now()) return current;
+        auditarCierre(current.sessionId, 'expiracion');
+        localStorage.removeItem(STORAGE_KEY);
+        return null;
+      });
+    }, CHEQUEO_EXPIRACION_MS);
+    return () => clearInterval(id);
+  }, []);
+
   // Limpiar sesión — también borra localStorage (llamado por ESC / badge ×)
   const clearSupervisor = useCallback(() => {
-    setSupervisorSession(null);
-    sessionStorage.removeItem(STORAGE_KEY);
+    setSupervisorSession(current => {
+      auditarCierre(current?.sessionId ?? null, 'manual');
+      return null;
+    });
+    localStorage.removeItem(STORAGE_KEY);
   }, []);
 
   const openSupervisorModal = useCallback((action: string, detail?: string) => {
     setPendingAction({ action, detail });
   }, []);
 
-  const resolveModal = useCallback((result: boolean, nombre?: string, role?: string) => {
+  const resolveModal = useCallback((result: boolean, nombre?: string, role?: string, sessionId?: number | null) => {
     setPendingAction(null);
     if (result && nombre) {
-      // Sesión activa 8 horas; persiste en localStorage para sobrevivir F5
+      // Sesión activa 8 horas; persiste en localStorage para sobrevivir F5 y cierre de pestaña
       const session: SupervisorSession = {
         nombre,
         role:  role ?? 'admin',
         until: Date.now() + SESSION_MS,
+        sessionId: sessionId ?? null,
       };
       setSupervisorSession(session);
-      try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session)); } catch { /* ignore */ }
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(session)); } catch { /* ignore */ }
     }
     resolveRef.current?.(result);
     resolveRef.current = null;

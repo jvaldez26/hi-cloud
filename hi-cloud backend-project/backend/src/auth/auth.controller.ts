@@ -265,7 +265,61 @@ export class AuthController {
       identifier, body.password,
       cajero.id, (cajero as any).empresaId,
       body.action, body.detail,
+      (cajero as any).sucursalId,
     );
+  }
+
+  @Post('supervisor-log/cerrar')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 30, ttl: 300_000 } })
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Audita el cierre de una sesión de modo supervisor (manual o por expiración de 8h)',
+    description: 'supervisorId/cajeroId se resuelven server-side desde la fila de activación — nunca se confía en lo que mande el cliente.',
+  })
+  async cerrarSesionSupervisor(
+    @Body() body: { sessionId: number; motivo?: 'manual' | 'expiracion' },
+    @GetUser() cajero: User,
+  ) {
+    if (!body.sessionId) throw new BadRequestException('Se requiere sessionId');
+    return this.authService.cerrarSesionSupervisor(
+      body.sessionId, (cajero as any).empresaId,
+      body.motivo === 'expiracion' ? 'expiracion' : 'manual',
+      (cajero as any).sucursalId,
+    );
+  }
+
+  @Get('equipo-usuarios')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.SUPER_ADMIN)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Usuarios de la empresa (cualquier rol) — filtro por cajero del reporte de modo supervisor' })
+  async listarUsuariosEquipo(@GetUser() usuario: User) {
+    return this.authService.listarUsuariosEquipo((usuario as any).empresaId);
+  }
+
+  @Get('supervisor-log')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.SUPER_ADMIN)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Reporte de sesiones de modo supervisor, filtrable por supervisor/cajero/rango de fecha' })
+  async listarSupervisorLog(
+    @GetUser() usuario: User,
+    @Query('supervisorId') supervisorId?: string,
+    @Query('cajeroId') cajeroId?: string,
+    @Query('desde') desde?: string,
+    @Query('hasta') hasta?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.authService.listarSupervisorLog((usuario as any).empresaId, {
+      supervisorId: supervisorId ? Number(supervisorId) : undefined,
+      cajeroId:     cajeroId     ? Number(cajeroId)     : undefined,
+      desde, hasta,
+      page:  page  ? Number(page)  : undefined,
+      limit: limit ? Number(limit) : undefined,
+    });
   }
 
   @Post('logout')
