@@ -89,7 +89,7 @@ function WidgetAntiguedad({
       {/* Total — grande y visible, lo primero que se lee de la tarjeta. */}
       {estado === 'ok' && (
         <div style={{ padding: '14px 16px 4px' }}>
-          <div style={{ fontSize: 26, fontWeight: 800, color: colorTotal, lineHeight: 1.2 }}>
+          <div style={{ fontSize: 20, fontWeight: 700, color: colorTotal, lineHeight: 1.2 }}>
             {fmt.money(total)}
           </div>
           <div style={{ fontSize: 11, fontWeight: 700, color: token.colorTextTertiary,

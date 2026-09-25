@@ -148,10 +148,11 @@ export function TarjetaGrafica({
  * está arriba de la tarjeta", que es lo que pedía la esquina.
  */
 export function BadgeEjemplo() {
+  const { token } = theme.useToken();
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center',
-      background: '#F59E0B', color: '#fff', fontSize: 10, fontWeight: 700,
+      background: token.colorPrimary, color: '#fff', fontSize: 10, fontWeight: 700,
       padding: '2px 8px', borderRadius: 999, letterSpacing: '0.03em',
       textTransform: 'uppercase', flexShrink: 0, lineHeight: 1.6,
     }}>

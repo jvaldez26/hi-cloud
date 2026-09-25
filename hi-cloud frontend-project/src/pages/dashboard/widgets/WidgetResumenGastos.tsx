@@ -86,7 +86,7 @@ export function WidgetResumenGastos() {
       {/* Total — grande y visible, con comparación contra el mes anterior. */}
       {estado === 'ok' && (
         <div style={{ padding: '14px 16px 4px', display: 'flex', alignItems: 'baseline', gap: 10 }}>
-          <div style={{ fontSize: 26, fontWeight: 800, color: SEMANTICO.gasto, lineHeight: 1.2 }}>
+          <div style={{ fontSize: 20, fontWeight: 700, color: SEMANTICO.gasto, lineHeight: 1.2 }}>
             {fmt.money(total)}
           </div>
           {cambioPorcentaje !== null && (
