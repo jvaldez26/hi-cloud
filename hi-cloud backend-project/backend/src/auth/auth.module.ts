@@ -11,8 +11,11 @@ import { LoginAttemptsService } from './login-attempts.service';
 import { TokenBlacklistService } from './token-blacklist.service';
 import { RefreshTokenService } from './refresh-token.service';
 import { SessionLifetimeService } from './session-lifetime.service';
+import { AlertaDispositivoService } from './alerta-dispositivo.service';
 import { JWT_EXPIRES_IN_DEFAULT } from './auth.constants';
 import { RefreshToken } from './entities/refresh-token.entity';
+import { DispositivoConocido } from './entities/dispositivo-conocido.entity';
+import { AlertaDispositivoToken } from './entities/alerta-dispositivo-token.entity';
 import { RolesGuard } from './guards/roles.guard';
 import { TwoFactorService } from './two-factor.service';
 import { TwoFactorController } from './two-factor.controller';
@@ -30,7 +33,7 @@ import { ModulosAddonModule } from '../modulos-addon/modulos-addon.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, UsuarioEmpresa, Empresa, Sucursal, RefreshToken]),
+    TypeOrmModule.forFeature([User, UsuarioEmpresa, Empresa, Sucursal, RefreshToken, DispositivoConocido, AlertaDispositivoToken]),
     UsersModule,
     NotificacionesModule,
     ContabilidadModule,
@@ -56,7 +59,7 @@ import { ModulosAddonModule } from '../modulos-addon/modulos-addon.module';
     }),
   ],
   controllers: [AuthController, TwoFactorController, EquipoSesionesController],
-  providers: [AuthService, JwtStrategy, GoogleStrategy, TwoFactorService, TokenBlacklistService, RefreshTokenService, SessionLifetimeService, RolesGuard, LoginAttemptsService, EquipoSesionesService],
+  providers: [AuthService, JwtStrategy, GoogleStrategy, TwoFactorService, TokenBlacklistService, RefreshTokenService, SessionLifetimeService, AlertaDispositivoService, RolesGuard, LoginAttemptsService, EquipoSesionesService],
   // AuthService y LoginAttemptsService se exportan para el panel de soporte
   // del super admin (SuperAdminModule) — reenviar recuperación/verificación
   // y diagnosticar/limpiar bloqueos reutilizan esta MISMA lógica en vez de

@@ -91,10 +91,13 @@ export class RefreshTokenService {
   }
 
   /** Revoca todos los refresh tokens de un usuario (logout). */
-  async revocarTodos(userId: number): Promise<void> {
+  async revocarTodos(
+    userId: number,
+    motivo: 'rotacion' | 'logout' | 'seguridad' = 'logout',
+  ): Promise<void> {
     await this.repo.update(
       { userId, revokedAt: IsNull() },
-      { revokedAt: new Date(), motivoRevocacion: 'logout' },
+      { revokedAt: new Date(), motivoRevocacion: motivo },
     );
   }
 

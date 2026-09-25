@@ -71,6 +71,7 @@ const PendingApprovalPage       = lazy(() => import('./pages/auth/PendingApprova
 const OnboardingEmpresaPage     = lazy(() => import('./pages/auth/OnboardingEmpresaPage'));
 const PendingEmpresaPage        = lazy(() => import('./pages/auth/PendingEmpresaPage'));
 const SetupPasswordPage         = lazy(() => import('./pages/auth/SetupPasswordPage'));
+const NoFuiYoPage                = lazy(() => import('./pages/auth/NoFuiYoPage'));
 const FacturasRecurrentesPage   = lazy(() => import('./pages/facturas/FacturasRecurrentesPage'));
 const RetencionesPage           = lazy(() => import('./pages/retenciones/RetencionesPage'));
 const ClientPortalPage          = lazy(() => import('./pages/portal/ClientPortalPage'));
@@ -505,7 +506,8 @@ export default function App() {
                          '/restablecer', '/verificar-correo', '/portal/',
                          '/invitacion/', '/precios', '/auth/callback',
                          '/pending-approval', '/setup-password',
-                         '/onboarding/empresa', '/pending-empresa'];
+                         '/onboarding/empresa', '/pending-empresa',
+                         '/seguridad/no-fui-yo'];
     const onPublicPage = window.location.pathname === '/' ||
                          publicPaths.some(p => window.location.pathname.startsWith(p));
     if (!savedUser && onPublicPage) {
@@ -732,6 +734,7 @@ export default function App() {
                   <Route path="/onboarding/empresa"      element={<OnboardingEmpresaPage />} />
                   <Route path="/pending-empresa"         element={<PendingEmpresaPage />} />
                   <Route path="/setup-password"          element={<SetupPasswordPage />} />
+                  <Route path="/seguridad/no-fui-yo"      element={<NoFuiYoPage />} />
                   {/* Portal del cliente — PÚBLICO */}
                   <Route path="/portal/:token"           element={<ClientPortalPage />} />
                   {/* Aceptar invitación — PÚBLICO */}

@@ -8,6 +8,7 @@ import { PreferenciasService } from './preferencias.service';
 import { SetWidgetsDto } from './dto/set-widgets.dto';
 import { SetSidebarColapsadoDto } from './dto/set-sidebar-colapsado.dto';
 import { SetColumnasDto } from './dto/set-columnas.dto';
+import { SetAlertaDispositivoDto } from './dto/set-alerta-dispositivo.dto';
 
 @ApiTags('Preferencias de usuario')
 @ApiBearerAuth('access-token')
@@ -74,5 +75,21 @@ export class PreferenciasController {
   @ApiOperation({ summary: 'Guardar las columnas ocultas/mostradas de una tabla' })
   setColumnas(@Param('modulo') modulo: string, @Body() dto: SetColumnasDto) {
     return this.svc.setColumnasOcultas(modulo, dto.ocultas, dto.mostradas);
+  }
+
+  @Get('alerta-dispositivo')
+  @ApiOperation({
+    summary: 'Preferencia de alerta de nuevo dispositivo/ubicación al iniciar sesión',
+    description: '`porDefecto: true` si el usuario nunca la ha tocado — está activa de fábrica.',
+  })
+  getAlertaDispositivo() {
+    return this.svc.getAlertaDispositivo();
+  }
+
+  @Put('alerta-dispositivo')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Activar/desactivar la alerta de nuevo dispositivo/ubicación al iniciar sesión' })
+  setAlertaDispositivo(@Body() dto: SetAlertaDispositivoDto) {
+    return this.svc.setAlertaDispositivo(dto.activo);
   }
 }

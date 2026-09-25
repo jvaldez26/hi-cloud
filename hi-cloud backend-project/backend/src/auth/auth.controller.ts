@@ -19,6 +19,7 @@ import { GetUser } from './decorators/get-user.decorator';
 import { User } from '../users/users.entity';
 import { TokenBlacklistService } from './token-blacklist.service';
 import { RefreshTokenService } from './refresh-token.service';
+import { AlertaDispositivoService } from './alerta-dispositivo.service';
 import { obtenerIP } from './utils/obtener-ip.util';
 import {
   JWT_EXPIRES_IN_DEFAULT,
@@ -103,13 +104,19 @@ class SetupPasswordDto {
   confirmPassword: string;
 }
 
+class NoFuiYoDto {
+  @IsString()
+  token: string;
+}
+
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
   constructor(
-    private authService:       AuthService,
-    private blacklistSvc:      TokenBlacklistService,
-    private refreshTokenSvc:   RefreshTokenService,
+    private authService:          AuthService,
+    private blacklistSvc:         TokenBlacklistService,
+    private refreshTokenSvc:      RefreshTokenService,
+    private alertaDispositivoSvc: AlertaDispositivoService,
   ) {}
 
   @Post('register')
@@ -132,7 +139,7 @@ export class AuthController {
       ?? req.ip
       ?? 'unknown'
     );
-    const data = await this.authService.login(dto, ip);
+    const data = await this.authService.login(dto, ip, req.headers['user-agent']);
 
     // Si 2FA está activo → guardar token temporal y pedir código TOTP
     if ('requiresTwoFactor' in data && data.requiresTwoFactor) {
@@ -605,6 +612,22 @@ export class AuthController {
     this.setRefreshCookie(res, refreshValue);
     const { accessToken: _tok, ...safe } = data;
     return safe;
+  }
+
+  // ── Alerta de nuevo dispositivo ────────────────────────────────────────────
+
+  @Post('no-fui-yo')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 3_600_000 } }) // 10 intentos por hora por IP
+  @ApiOperation({
+    summary: 'Confirmar "No fui yo" desde el correo de alerta de dispositivo nuevo',
+    description:
+      'Cierra TODAS las sesiones activas del usuario y devuelve un token de configuración ' +
+      'de contraseña (mismo flujo que /auth/setup-password) — el frontend redirige ahí para ' +
+      'que la persona entre con una contraseña nueva.',
+  })
+  async noFuiYo(@Body() dto: NoFuiYoDto) {
+    return this.alertaDispositivoSvc.confirmarNoFuiYo(dto.token);
   }
 
   // ── Helpers privados ──────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { PreferenciaUsuario } from './entities/preferencia-usuario.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { UserRole } from '../users/enums/user-role.enum';
+import { CLAVE_ALERTA_DISPOSITIVO } from './preferencias.constants';
 import {
   CLAVE_DASHBOARD_WIDGETS,
   MAX_WIDGETS,
@@ -127,6 +128,36 @@ export class PreferenciasService {
     );
 
     return { colapsado };
+  }
+
+  // ── Seguridad: alerta de nuevo dispositivo/ubicación al iniciar sesión ─────
+
+  /**
+   * Activa por defecto (`porDefecto: true` cuando nunca la ha tocado) — el
+   * caso "quiero desactivarla" es la excepción (varios empleados compartiendo
+   * una sola cuenta), no la regla.
+   */
+  async getAlertaDispositivo(): Promise<{ activo: boolean; porDefecto: boolean }> {
+    const userId    = this.exigirUserId();
+    const empresaId = this.tenantService.getEmpresaId();
+
+    const fila = await this.repo.findOne({
+      where: { userId, empresaId, clave: CLAVE_ALERTA_DISPOSITIVO, isActive: true },
+    });
+    if (!fila) return { activo: true, porDefecto: true };
+    return { activo: fila.valor !== false, porDefecto: false };
+  }
+
+  async setAlertaDispositivo(activo: boolean): Promise<{ activo: boolean }> {
+    const userId    = this.exigirUserId();
+    const empresaId = this.tenantService.getEmpresaId();
+
+    await this.repo.upsert(
+      { userId, empresaId, clave: CLAVE_ALERTA_DISPOSITIVO, valor: activo, isActive: true },
+      { conflictPaths: ['userId', 'empresaId', 'clave'], skipUpdateIfNoValuesChanged: true },
+    );
+
+    return { activo };
   }
 
   // ── Columnas de tabla: qué ve este usuario, sincronizado entre dispositivos ─

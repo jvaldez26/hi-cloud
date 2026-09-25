@@ -21,7 +21,8 @@ export default function SetupPasswordPage() {
   const navigate  = useNavigate();
   const { login } = useAuthStore();
 
-  const token = params.get('token') ?? '';
+  const token  = params.get('token') ?? '';
+  const motivo = params.get('motivo'); // 'seguridad' = viene de "No fui yo", no de una aprobación
 
   const [form]        = Form.useForm<SetupForm>();
   const [loading,     setLoading]     = useState(false);
@@ -117,11 +118,13 @@ export default function SetupPasswordPage() {
 
           <h1 style={{ color: '#0F172A', fontSize: 24, fontWeight: 800,
                        margin: '0 0 8px', textAlign: 'center' }}>
-            Configura tu contraseña
+            {motivo === 'seguridad' ? 'Configura tu nueva contraseña' : 'Configura tu contraseña'}
           </h1>
           <p style={{ color: '#6B7280', fontSize: 14, textAlign: 'center',
                       marginBottom: 32, lineHeight: 1.6 }}>
-            ¡Tu cuenta fue aprobada! Crea una contraseña para acceder con email o con Google en el futuro.
+            {motivo === 'seguridad'
+              ? 'Cerramos todas las sesiones activas de tu cuenta. Crea una contraseña nueva para volver a entrar.'
+              : '¡Tu cuenta fue aprobada! Crea una contraseña para acceder con email o con Google en el futuro.'}
           </p>
 
           {error && (

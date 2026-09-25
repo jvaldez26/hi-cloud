@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Card, Form, Input, Button, Row, Col, Typography, Tag, Avatar,
-         Space, Divider, message, Alert, Modal, Tooltip, Table, Popconfirm } from 'antd';
+         Space, Divider, message, Alert, Modal, Tooltip, Table, Popconfirm, Switch } from 'antd';
 import { UserOutlined, LockOutlined, SaveOutlined, SafetyOutlined,
          EditOutlined, CloseOutlined, GoogleOutlined, LinkOutlined,
-         DesktopOutlined, LogoutOutlined, TeamOutlined } from '@ant-design/icons';
+         DesktopOutlined, LogoutOutlined, TeamOutlined, BellOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
 import api from '../../api/client';
@@ -276,6 +276,47 @@ function UsernameSection() {
         {estado === 'idle' && actual && (
           <Text type="secondary">Actual: <strong>{actual}</strong></Text>
         )}
+      </div>
+    </Card>
+  );
+}
+
+/**
+ * Preferencia por usuario: avisar por correo cuando se detecte un login
+ * desde un dispositivo o país nuevo (ver AlertaDispositivoService en el
+ * backend). Activa por defecto — el caso de desactivarla es la excepción
+ * (varios empleados compartiendo una sola cuenta de acceso).
+ */
+function AlertaDispositivoSection() {
+  const qc = useQueryClient();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['alerta-dispositivo'],
+    queryFn: () => api.get('/preferencias/alerta-dispositivo').then(r => (r.data?.data ?? r.data) as { activo: boolean }),
+  });
+
+  const guardarMut = useMutation({
+    mutationFn: (activo: boolean) =>
+      api.put('/preferencias/alerta-dispositivo', { activo }).then(r => r.data?.data ?? r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['alerta-dispositivo'] });
+      message.success('Preferencia actualizada');
+    },
+    onError: () => message.error('No se pudo guardar la preferencia'),
+  });
+
+  return (
+    <Card title={<><BellOutlined /> Alerta de nuevo dispositivo</>} style={{ marginTop: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
+        <Text type="secondary" style={{ fontSize: 13, maxWidth: 440 }}>
+          Te avisamos por correo cuando alguien inicie sesión en tu cuenta desde un
+          dispositivo o país que no reconocemos.
+        </Text>
+        <Switch
+          checked={data?.activo ?? true}
+          loading={isLoading || guardarMut.isPending}
+          onChange={v => guardarMut.mutate(v)}
+        />
       </div>
     </Card>
   );
@@ -811,6 +852,8 @@ export default function ProfilePage() {
           <UsernameSection />
 
           <TwoFactorSection />
+
+          <AlertaDispositivoSection />
 
           {['admin', 'contador'].includes(user?.role ?? '') && <SesionesActivasSection />}
 

@@ -20,6 +20,7 @@ import { UsersService } from '../users/users.service';
 import { TokenBlacklistService } from './token-blacklist.service';
 import { RefreshTokenService } from './refresh-token.service';
 import { SessionLifetimeService } from './session-lifetime.service';
+import { AlertaDispositivoService } from './alerta-dispositivo.service';
 import { TwoFactorService } from './two-factor.service';
 import { EmailService } from '../notificaciones/services/email.service';
 import { User } from '../users/users.entity';
@@ -81,6 +82,7 @@ export class AuthService implements OnModuleInit {
     private loginAttempts: LoginAttemptsService,
     private auditoriaSvc: AuditoriaService,
     private modulosAddonSvc: ModulosAddonService,
+    private alertaDispositivoSvc: AlertaDispositivoService,
   ) {}
 
   async onModuleInit() {
@@ -406,7 +408,7 @@ export class AuthService implements OnModuleInit {
 
   // ─── Login ───────────────────────────────────────────────────────────────────
 
-  async login(dto: LoginDto, ip: string) {
+  async login(dto: LoginDto, ip: string, userAgent?: string) {
     const inputTrim = dto.identificador.trim();
     const esEmail    = inputTrim.includes('@');
 
@@ -595,6 +597,15 @@ export class AuthService implements OnModuleInit {
     });
 
     const sessionLifetimeMs = await this.getEffectiveSessionMs(empresaId);
+
+    // Fire-and-forget: nunca debe retrasar ni romper el login (el propio
+    // servicio atrapa sus errores). Va con toda la info del usuario YA
+    // cargado en este método — evaluarla desde el controller habría exigido
+    // exponer createdAt en la respuesta pública de /auth/login solo para esto.
+    void this.alertaDispositivoSvc?.evaluarLogin({
+      userId: user.id, nombre: user.nombre, email: user.email,
+      userCreatedAt: user.createdAt, ip, userAgent, empresaId,
+    });
 
     return {
       message: 'Login exitoso',
