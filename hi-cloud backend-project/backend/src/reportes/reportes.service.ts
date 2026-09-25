@@ -119,6 +119,62 @@ export class ReportesService {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
+  // MODO EJEMPLO — dashboard de una empresa recién creada, sin operar aún
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /** Empresa creada hace menos de esto Y sin ningún movimiento real todavía
+   *  → sus widgets del dashboard muestran datos de ejemplo en vez del
+   *  estado vacío accionable. Es un período de onboarding, no un SLA —
+   *  ajustable si hace falta, documentado aquí porque el pedido original no
+   *  fijó un número. */
+  private readonly MODO_EJEMPLO_DIAS = 30;
+
+  private readonly MODO_EJEMPLO_TTL_MS = 5 * 60_000;
+  private readonly modoEjemploCache = new Map<number, { data: { activo: boolean }; expira: number }>();
+
+  /**
+   * "Cero movimientos reales" es SIEMPRE ever-histórico, nunca acotado al
+   * rango que consulte un widget en particular — si fuera por rango, una
+   * empresa que factura poco un mes cualquiera (no solo una recién creada)
+   * volvería a ver "datos de ejemplo" mezclados con la idea de que son
+   * reales, que es exactamente el caso que el pedido pidió evitar. Por eso
+   * es UN SOLO chequeo aquí (no uno por widget): en cuanto exista una fila
+   * en cualquiera de estas tablas, la empresa deja de calificar para
+   * siempre, sin importar que después tenga un mes flojo.
+   */
+  async getModoEjemplo(): Promise<{ activo: boolean }> {
+    const eid = this.eid;
+    const cacheado = this.modoEjemploCache.get(eid);
+    if (cacheado && cacheado.expira > Date.now()) return cacheado.data;
+
+    const [empresaRow] = await this.dataSource.query<{ createdAt: string }[]>(
+      `SELECT "createdAt" FROM empresa WHERE id = $1`,
+      [eid],
+    );
+    const creada = empresaRow?.createdAt ? new Date(empresaRow.createdAt) : null;
+    const diasAntiguedad = creada ? (Date.now() - creada.getTime()) / 86_400_000 : Infinity;
+
+    let activo = false;
+    if (diasAntiguedad <= this.MODO_EJEMPLO_DIAS) {
+      const [row] = await this.dataSource.query<{ tieneMovimientos: boolean }[]>(
+        `SELECT (
+           EXISTS(SELECT 1 FROM facturas             WHERE "empresaId" = $1 AND "isActive" = true) OR
+           EXISTS(SELECT 1 FROM compras               WHERE "empresaId" = $1 AND "isActive" = true) OR
+           EXISTS(SELECT 1 FROM gastos                 WHERE "empresaId" = $1 AND "isActive" = true) OR
+           EXISTS(SELECT 1 FROM cuentas_por_cobrar     WHERE "empresaId" = $1 AND "isActive" = true) OR
+           EXISTS(SELECT 1 FROM cuentas_por_pagar      WHERE "empresaId" = $1 AND "isActive" = true)
+         ) AS "tieneMovimientos"`,
+        [eid],
+      );
+      activo = row?.tieneMovimientos !== true;
+    }
+
+    const data = { activo };
+    this.modoEjemploCache.set(eid, { data, expira: Date.now() + this.MODO_EJEMPLO_TTL_MS });
+    return data;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
   // HELPERS PRIVADOS
   // ══════════════════════════════════════════════════════════════════════════
 

@@ -7,6 +7,8 @@ import {
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
 import { dRD } from '../../../utils/fechaRD';
+import { useModoEjemplo } from '../../../hooks/useModoEjemplo';
+import { EJEMPLO_TOP_PRODUCTOS } from './datosEjemplo';
 import { TarjetaGrafica, COLORES, ejeMonto, SEMANTICO, estiloTooltip, useAltoGrafica } from './TarjetaGrafica';
 import { recorta } from './WidgetTopClientes';
 
@@ -34,7 +36,11 @@ export function WidgetTopProductos() {
     staleTime: 5 * 60_000,
   });
 
-  const filas = Array.isArray(data) ? data : [];
+  const filasReales = Array.isArray(data) ? data : [];
+  const vacioReal   = filasReales.length === 0;
+  const modoEjemplo = useModoEjemplo();
+  const usarEjemplo = modoEjemplo && vacioReal && !isPending && !isError;
+  const filas = usarEjemplo ? EJEMPLO_TOP_PRODUCTOS : filasReales;
   const datos = filas.map(r => ({
     nombre:   String(r.nombre ?? '—'),
     ingresos: Number(r.ingresos ?? 0),
@@ -50,10 +56,11 @@ export function WidgetTopProductos() {
       alto={altoGrafica}
       cargando={isPending}
       error={isError}
-      vacio={datos.length === 0}
+      vacio={vacioReal && !usarEjemplo}
       mensajeVacio="Sin ventas registradas este año"
       accionVacio={{ texto: 'Registrar una venta', onClick: () => navigate('/facturas/nueva') }}
-      alClic={() => navigate('/productos')}
+      alClic={usarEjemplo ? undefined : () => navigate('/productos')}
+      ejemplo={usarEjemplo}
       pieEtiqueta="SUMAN ENTRE LOS 8"
       pieValor={fmt.money(total)}
       pieColor={SEMANTICO.ingreso}

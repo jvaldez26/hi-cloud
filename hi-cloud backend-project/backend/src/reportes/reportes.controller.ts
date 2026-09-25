@@ -50,6 +50,13 @@ export class ReportesController {
     return this.reportesService.getChecklistConfiguracion();
   }
 
+  @Get('dashboard/modo-ejemplo')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'true = empresa recién creada sin movimientos reales todavía — los widgets del dashboard muestran datos de ejemplo en vez del estado vacío. Cacheado 5 min por empresa' })
+  getModoEjemplo() {
+    return this.reportesService.getModoEjemplo();
+  }
+
   @Get('kpis')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'KPIs del mes seleccionado — filtrar con ?mes=7&anio=2026' })

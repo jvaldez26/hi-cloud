@@ -7,6 +7,8 @@ import {
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
 import { dRD } from '../../../utils/fechaRD';
+import { useModoEjemplo } from '../../../hooks/useModoEjemplo';
+import { EJEMPLO_VENTAS_POR_VENDEDOR } from './datosEjemplo';
 import { TarjetaGrafica, COLORES, ejeMonto, SEMANTICO, estiloTooltip, useAltoGrafica } from './TarjetaGrafica';
 
 /**
@@ -33,7 +35,11 @@ export function WidgetVentasPorVendedor() {
     staleTime: 120_000,
   });
 
-  const filas  = Array.isArray(data) ? data : [];
+  const filasReales = Array.isArray(data) ? data : [];
+  const vacioReal   = filasReales.length === 0;
+  const modoEjemplo = useModoEjemplo();
+  const usarEjemplo = modoEjemplo && vacioReal && !isPending && !isError;
+  const filas  = usarEjemplo ? EJEMPLO_VENTAS_POR_VENDEDOR : filasReales;
   const datos  = filas.slice(0, 8).map(r => ({
     nombre: String(r.nombre ?? '—'),
     total:  Number(r.total ?? 0),
@@ -49,10 +55,11 @@ export function WidgetVentasPorVendedor() {
       alto={altoGrafica}
       cargando={isPending}
       error={isError}
-      vacio={datos.length === 0}
+      vacio={vacioReal && !usarEjemplo}
       mensajeVacio="Sin ventas este mes"
       accionVacio={{ texto: 'Registrar una venta', onClick: () => navigate('/facturas/nueva') }}
-      alClic={() => navigate('/facturas')}
+      alClic={usarEjemplo ? undefined : () => navigate('/facturas')}
+      ejemplo={usarEjemplo}
       pieEtiqueta="TOTAL DEL MES"
       pieValor={fmt.money(total)}
       pieColor={SEMANTICO.ingreso}

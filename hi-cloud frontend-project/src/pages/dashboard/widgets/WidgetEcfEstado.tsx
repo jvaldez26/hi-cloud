@@ -4,6 +4,8 @@ import { theme } from 'antd';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import api from '../../../api/client';
 import { dRD } from '../../../utils/fechaRD';
+import { useModoEjemplo } from '../../../hooks/useModoEjemplo';
+import { EJEMPLO_ECF_ESTADO } from './datosEjemplo';
 import { TarjetaGrafica, SEMANTICO, GRIS_RESTO, estiloTooltip, useAltoGrafica } from './TarjetaGrafica';
 
 /**
@@ -51,7 +53,11 @@ export function WidgetEcfEstado() {
     staleTime: 120_000,
   });
 
-  const datos: { label: string; value: number }[] = Array.isArray(data?.grafica) ? data.grafica : [];
+  const datosReales: { label: string; value: number }[] = Array.isArray(data?.grafica) ? data.grafica : [];
+  const vacioReal = datosReales.length === 0;
+  const modoEjemplo = useModoEjemplo();
+  const usarEjemplo = modoEjemplo && vacioReal && !isPending && !isError;
+  const datos = usarEjemplo ? EJEMPLO_ECF_ESTADO.grafica : datosReales;
   const total = datos.reduce((s, d) => s + Number(d.value ?? 0), 0);
   const rechazados = datos
     .filter(d => String(d.label).toLowerCase().includes('rechaz'))
@@ -65,10 +71,11 @@ export function WidgetEcfEstado() {
       alto={altoGrafica}
       cargando={isPending}
       error={isError}
-      vacio={datos.length === 0}
+      vacio={vacioReal && !usarEjemplo}
       mensajeVacio="Sin comprobantes emitidos este mes"
       accionVacio={{ texto: 'Emitir una factura', onClick: () => navigate('/facturas/nueva') }}
-      alClic={() => navigate('/ecf')}
+      alClic={usarEjemplo ? undefined : () => navigate('/ecf')}
+      ejemplo={usarEjemplo}
       pieEtiqueta={rechazados > 0 ? 'RECHAZADOS' : 'TOTAL DEL MES'}
       pieValor={rechazados > 0 ? String(rechazados) : String(total)}
       // El pie destaca lo rechazado cuando lo hay: es lo único que exige una

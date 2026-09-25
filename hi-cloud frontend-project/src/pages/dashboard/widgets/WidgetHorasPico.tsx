@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Tooltip as AntTooltip, theme } from 'antd';
 import api from '../../../api/client';
+import { useModoEjemplo } from '../../../hooks/useModoEjemplo';
+import { EJEMPLO_HORAS_PICO } from './datosEjemplo';
 import { TarjetaGrafica, SEMANTICO, useAltoGrafica } from './TarjetaGrafica';
 
 const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
@@ -35,7 +37,11 @@ export function WidgetHorasPico() {
     staleTime: 10 * 60_000,
   });
 
-  const filas = Array.isArray(data) ? data : [];
+  const filasReales = Array.isArray(data) ? data : [];
+  const vacioReal   = filasReales.length === 0;
+  const modoEjemplo = useModoEjemplo();
+  const usarEjemplo = modoEjemplo && vacioReal && !isPending && !isError;
+  const filas = usarEjemplo ? EJEMPLO_HORAS_PICO : filasReales;
 
   // 'HH:00' → HH
   const horaNum = (h: string) => Number(String(h).slice(0, 2));
@@ -62,10 +68,11 @@ export function WidgetHorasPico() {
       alto={altoGrafica}
       cargando={isPending}
       error={isError}
-      vacio={filas.length === 0}
+      vacio={vacioReal && !usarEjemplo}
       mensajeVacio="Sin ventas en los últimos 3 meses"
       accionVacio={{ texto: 'Registrar una venta', onClick: () => navigate('/facturas/nueva') }}
-      alClic={() => navigate('/facturas')}
+      alClic={usarEjemplo ? undefined : () => navigate('/facturas')}
+      ejemplo={usarEjemplo}
       pieEtiqueta="MÁS MOVIDO"
       pieValor={mejor ? `${mejor.dia} ${mejor.hora} · ${mejor.cantidad}` : '—'}
       pieColor={SEMANTICO.neutro}

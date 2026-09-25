@@ -9,7 +9,11 @@ import {
 } from 'recharts';
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
-import { EstadoGrafica, estadoDe, ejeMonto, SEMANTICO, estiloTooltip } from './TarjetaGrafica';
+import { useModoEjemplo } from '../../../hooks/useModoEjemplo';
+import { EJEMPLO_INGRESOS_GASTOS_ANUAL } from './datosEjemplo';
+import {
+  EstadoGrafica, estadoDe, ejeMonto, SEMANTICO, estiloTooltip, BadgeEjemplo, MarcaAguaEjemplo,
+} from './TarjetaGrafica';
 import { anioRD } from '../../../utils/fechaRD';
 import { useMobile } from '../../../hooks/useMediaQuery';
 import { CardWidget } from './CardWidget';
@@ -88,7 +92,12 @@ export function WidgetIngresosGastos() {
   // El backend ya devuelve los 12 meses con ceros donde no hay datos: los meses
   // futuros salen VACIOS, no ocultos — ver el ano completo con la parte que
   // falta es informacion.
-  const mesesAnual: any[] = Array.isArray(chartAnualRaw?.meses) ? chartAnualRaw.meses : [];
+  const mesesAnualReales: any[] = Array.isArray(chartAnualRaw?.meses) ? chartAnualRaw.meses : [];
+  const vacioReal    = mesesAnualReales.every((r: any) => Number(r.ingresos ?? 0) === 0 && Number(r.gastos ?? 0) === 0)
+    || mesesAnualReales.length === 0;
+  const modoEjemplo  = useModoEjemplo();
+  const usarEjemplo  = modoEjemplo && vacioReal && !cargandoAnual && !errorAnual;
+  const mesesAnual   = usarEjemplo ? EJEMPLO_INGRESOS_GASTOS_ANUAL.meses : mesesAnualReales;
   const chartData = Array.from({ length: 12 }, (_, i) => {
     const row = mesesAnual.find((r: any) => Number(r.mes) === i + 1);
     return {
@@ -104,7 +113,7 @@ export function WidgetIngresosGastos() {
   const estadoAnual = estadoDe({
     cargando: cargandoAnual,
     error:    errorAnual,
-    vacio:    chartData.every(d => d.ingreso === 0 && d.gasto === 0),
+    vacio:    vacioReal && !usarEjemplo,
   });
 
   return (
@@ -113,14 +122,17 @@ export function WidgetIngresosGastos() {
       extra={
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {usarEjemplo && <BadgeEjemplo />}
             {/* Selector de año. Sin él, en enero el gráfico sale casi
                 vacío y no habría forma de mirar el ejercicio recién
                 cerrado. El año en curso siempre está en la lista, aunque
-                todavía no tenga movimientos. */}
+                todavía no tenga movimientos. Deshabilitado en modo ejemplo
+                — no tiene sentido filtrar por año un negocio ficticio. */}
             <Select
               size="small"
               value={anioChart}
               onChange={setAnioChart}
+              disabled={usarEjemplo}
               style={{ width: 88 }}
               options={(aniosDisponibles?.length ? aniosDisponibles : [anioRD()])
                 .map(a => ({ value: a, label: String(a) }))}
@@ -139,21 +151,27 @@ export function WidgetIngresosGastos() {
                 {chartTipo === 'line' ? <BarChartOutlined /> : <LineChartOutlined />}
               </button>
             </AntTooltip>
-            <AntTooltip title="Actualizar datos">
+            <AntTooltip title={usarEjemplo ? 'Datos de ejemplo — se activa solo cuando haya movimientos reales' : 'Actualizar datos'}>
               <button
+                disabled={usarEjemplo}
                 onClick={() => qc.invalidateQueries({ queryKey: ['ingresos-gastos-anual'] })}
-                style={{ background: 'none', border: 'none', cursor: 'pointer',
-                  color: token.colorPrimary, padding: '2px 4px', borderRadius: 4,
+                style={{ background: 'none', border: 'none',
+                  cursor: usarEjemplo ? 'not-allowed' : 'pointer',
+                  color: usarEjemplo ? token.colorTextQuaternary : token.colorPrimary,
+                  padding: '2px 4px', borderRadius: 4,
                   display: 'flex', alignItems: 'center', fontSize: 14 }}
               >
                 <ReloadOutlined />
               </button>
             </AntTooltip>
-            <AntTooltip title="Guardar como imagen">
+            <AntTooltip title={usarEjemplo ? 'No se puede descargar un ejemplo' : 'Guardar como imagen'}>
               <button
+                disabled={usarEjemplo}
                 onClick={descargarGrafico}
-                style={{ background: 'none', border: 'none', cursor: 'pointer',
-                  color: token.colorPrimary, padding: '2px 4px', borderRadius: 4,
+                style={{ background: 'none', border: 'none',
+                  cursor: usarEjemplo ? 'not-allowed' : 'pointer',
+                  color: usarEjemplo ? token.colorTextQuaternary : token.colorPrimary,
+                  padding: '2px 4px', borderRadius: 4,
                   display: 'flex', alignItems: 'center', fontSize: 14 }}
               >
                 <DownloadOutlined />
@@ -183,7 +201,8 @@ export function WidgetIngresosGastos() {
         accionVacio={{ texto: 'Registrar una venta', onClick: () => navigate('/facturas/nueva') }}
         onRefresh={() => { void refetchAnual(); }} />
       {estadoAnual === "ok" && (
-      <div ref={chartContainerRef} style={{ padding: "0 8px 16px" }}>
+      <div ref={chartContainerRef} style={{ padding: "0 8px 16px", position: 'relative' }}>
+        {usarEjemplo && <MarcaAguaEjemplo />}
         <ResponsiveContainer width="100%" height={isMobile ? 200 : 240}>
           {chartTipo === 'line' ? (
             <LineChart accessibilityLayer data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>

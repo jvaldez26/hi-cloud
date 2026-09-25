@@ -7,6 +7,8 @@ import {
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
 import { dRD } from '../../../utils/fechaRD';
+import { useModoEjemplo } from '../../../hooks/useModoEjemplo';
+import { ejemploDetallePorDia, EJEMPLO_VENTA_MES_ACTUAL, EJEMPLO_COMPRA_MES_ACTUAL } from './datosEjemplo';
 import { TarjetaGrafica, ejeMonto, SEMANTICO, estiloTooltip, useAltoGrafica } from './TarjetaGrafica';
 
 /**
@@ -19,11 +21,13 @@ import { TarjetaGrafica, ejeMonto, SEMANTICO, estiloTooltip, useAltoGrafica } fr
  * ventas en tres semanas parecen tres días seguidos.
  */
 function PorDiaDelMes({
-  titulo, endpoint, claveQuery, color, etiquetaPie, textoVacio, rutaVacio, rutaListado,
+  titulo, endpoint, claveQuery, color, etiquetaPie, textoVacio, rutaVacio, rutaListado, totalMesEjemplo,
 }: {
   titulo: string; endpoint: string; claveQuery: string;
   color: string; etiquetaPie: string;
   textoVacio: string; rutaVacio: string; rutaListado: string;
+  /** Total del mes a repartir entre los días del ejemplo (ver ejemploDetallePorDia). */
+  totalMesEjemplo: number;
 }) {
   const { token } = theme.useToken();
   const navigate  = useNavigate();
@@ -41,7 +45,11 @@ function PorDiaDelMes({
     staleTime: 120_000,
   });
 
-  const detalle: any[] = Array.isArray(data?.detalle) ? data.detalle : [];
+  const detalleReal = Array.isArray(data?.detalle) ? data.detalle : [];
+  const vacioReal    = detalleReal.length === 0;
+  const modoEjemplo  = useModoEjemplo();
+  const usarEjemplo  = modoEjemplo && vacioReal && !isPending && !isError;
+  const detalle: any[] = usarEjemplo ? ejemploDetallePorDia(totalMesEjemplo, diasDelMes) : detalleReal;
   const porDia = new Map(detalle.map(r => [Number(r.dia), r]));
 
   const datos = Array.from({ length: diasDelMes }, (_, i) => {
@@ -63,10 +71,11 @@ function PorDiaDelMes({
       alto={altoGrafica}
       cargando={isPending}
       error={isError}
-      vacio={detalle.length === 0}
+      vacio={vacioReal && !usarEjemplo}
       mensajeVacio="Sin movimientos este mes"
       accionVacio={{ texto: textoVacio, onClick: () => navigate(rutaVacio) }}
-      alClic={() => navigate(rutaListado)}
+      alClic={usarEjemplo ? undefined : () => navigate(rutaListado)}
+      ejemplo={usarEjemplo}
       pieEtiqueta={etiquetaPie}
       pieValor={fmt.money(total)}
       pieColor={color}
@@ -110,6 +119,7 @@ export const WidgetVentasPorDia = () => (
     textoVacio="Registrar una venta"
     rutaVacio="/facturas/nueva"
     rutaListado="/facturas"
+    totalMesEjemplo={EJEMPLO_VENTA_MES_ACTUAL}
   />
 );
 
@@ -123,5 +133,6 @@ export const WidgetComprasPorDia = () => (
     textoVacio="Registrar una compra"
     rutaVacio="/compras/nueva"
     rutaListado="/compras"
+    totalMesEjemplo={EJEMPLO_COMPRA_MES_ACTUAL}
   />
 );

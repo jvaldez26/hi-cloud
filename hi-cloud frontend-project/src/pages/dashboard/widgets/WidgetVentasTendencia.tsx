@@ -6,6 +6,8 @@ import {
 } from 'recharts';
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
+import { useModoEjemplo } from '../../../hooks/useModoEjemplo';
+import { EJEMPLO_VENTAS_TENDENCIA } from './datosEjemplo';
 import { TarjetaGrafica, ejeMonto, SEMANTICO, estiloTooltip, useAltoGrafica } from './TarjetaGrafica';
 
 const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
@@ -39,7 +41,11 @@ export function WidgetVentasTendencia() {
     staleTime: 5 * 60_000,
   });
 
-  const filas = Array.isArray(data) ? data : [];
+  const filasReales = Array.isArray(data) ? data : [];
+  const vacioReal   = filasReales.length === 0;
+  const modoEjemplo = useModoEjemplo();
+  const usarEjemplo = modoEjemplo && vacioReal && !isPending && !isError;
+  const filas = usarEjemplo ? EJEMPLO_VENTAS_TENDENCIA : filasReales;
   const anioActual = new Date().getFullYear();
   const datos = filas.map(r => ({
     label: etiquetaMes(r.periodo, anioActual),
@@ -56,10 +62,11 @@ export function WidgetVentasTendencia() {
       alto={altoGrafica}
       cargando={isPending}
       error={isError}
-      vacio={datos.length === 0}
+      vacio={vacioReal && !usarEjemplo}
       mensajeVacio="Sin ventas en los últimos 12 meses"
       accionVacio={{ texto: 'Registrar una venta', onClick: () => navigate('/facturas/nueva') }}
-      alClic={() => navigate('/facturas')}
+      alClic={usarEjemplo ? undefined : () => navigate('/facturas')}
+      ejemplo={usarEjemplo}
       pieEtiqueta="TOTAL DEL PERÍODO"
       pieValor={fmt.money(total)}
       pieColor={SEMANTICO.neutro}

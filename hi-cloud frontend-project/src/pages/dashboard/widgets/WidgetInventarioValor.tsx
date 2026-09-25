@@ -4,6 +4,8 @@ import { theme } from 'antd';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
+import { useModoEjemplo } from '../../../hooks/useModoEjemplo';
+import { EJEMPLO_INVENTARIO_VALOR } from './datosEjemplo';
 import { TarjetaGrafica, COLORES, GRIS_RESTO, estiloTooltip, useAltoGrafica } from './TarjetaGrafica';
 
 /**
@@ -29,8 +31,13 @@ export function WidgetInventarioValor() {
     staleTime: 5 * 60_000,
   });
 
-  const todas: { label: string; value: number }[] =
+  const todasReales: { label: string; value: number }[] =
     Array.isArray(data?.grafica) ? data.grafica : [];
+  const totalValorReal = Number(data?.resumen?.valorTotal ?? 0);
+  const vacioReal   = todasReales.length === 0 || totalValorReal === 0;
+  const modoEjemplo = useModoEjemplo();
+  const usarEjemplo = modoEjemplo && vacioReal && !isPending && !isError;
+  const todas = usarEjemplo ? EJEMPLO_INVENTARIO_VALOR.grafica : todasReales;
 
   const MAX = 7;
   const principales = todas.slice(0, MAX);
@@ -42,8 +49,8 @@ export function WidgetInventarioValor() {
       }]
     : principales;
 
-  const totalValor = Number(data?.resumen?.valorTotal ?? 0);
-  const unidades   = Number(data?.resumen?.totalUnidades ?? 0);
+  const totalValor = usarEjemplo ? EJEMPLO_INVENTARIO_VALOR.resumen.valorTotal : totalValorReal;
+  const unidades   = usarEjemplo ? EJEMPLO_INVENTARIO_VALOR.resumen.totalUnidades : Number(data?.resumen?.totalUnidades ?? 0);
 
   return (
     <TarjetaGrafica
@@ -55,10 +62,11 @@ export function WidgetInventarioValor() {
       alto={altoGrafica}
       cargando={isPending}
       error={isError}
-      vacio={datos.length === 0 || totalValor === 0}
+      vacio={vacioReal && !usarEjemplo}
       mensajeVacio="Sin existencias valorizadas"
       accionVacio={{ texto: 'Ir a Productos', onClick: () => navigate('/productos') }}
-      alClic={() => navigate('/inventario')}
+      alClic={usarEjemplo ? undefined : () => navigate('/inventario')}
+      ejemplo={usarEjemplo}
       pieEtiqueta="VALOR TOTAL"
       pieValor={fmt.money(totalValor)}
       pieColor={COLORES[3]}

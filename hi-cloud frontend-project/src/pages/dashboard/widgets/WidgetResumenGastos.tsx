@@ -5,7 +5,15 @@ import { useNavigate } from 'react-router-dom';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
-import { EstadoGrafica, estadoDe, SEMANTICO, COLORES, estiloTooltip, useAltoGrafica } from './TarjetaGrafica';
+import { useModoEjemplo } from '../../../hooks/useModoEjemplo';
+import {
+  EJEMPLO_RESUMEN_GASTOS_CATEGORIAS, EJEMPLO_RESUMEN_GASTOS_TOTAL,
+  EJEMPLO_RESUMEN_GASTOS_TOTAL_MES_ANTERIOR, EJEMPLO_RESUMEN_GASTOS_CAMBIO_PORCENTAJE,
+} from './datosEjemplo';
+import {
+  EstadoGrafica, estadoDe, SEMANTICO, COLORES, estiloTooltip, useAltoGrafica,
+  BadgeEjemplo, MarcaAguaEjemplo,
+} from './TarjetaGrafica';
 
 // ── Widget Resumen de Gastos (donut) ─────────────────────────────────────────
 // Las categorías de gasto no significan nada por su color: solo hay que poder
@@ -24,11 +32,20 @@ export function WidgetResumenGastos() {
     staleTime: 120_000,
   });
   const onRefresh = () => { void refetch(); };
-  const gastos: any[] = data?.gastos ?? [];
-  const total = Number(data?.total ?? 0);
-  const mes   = data?.mes ?? '';
-  const cambioPorcentaje: number | null = data?.cambioPorcentaje ?? null;
-  const estado = estadoDe({ cargando: isPending, error: isError, vacio: gastos.length === 0 });
+  const gastosReales: any[] = data?.gastos ?? [];
+  const vacioReal   = gastosReales.length === 0;
+  const modoEjemplo = useModoEjemplo();
+  const usarEjemplo = modoEjemplo && vacioReal && !isPending && !isError;
+  const gastos = usarEjemplo ? EJEMPLO_RESUMEN_GASTOS_CATEGORIAS : gastosReales;
+  const total = usarEjemplo ? EJEMPLO_RESUMEN_GASTOS_TOTAL : Number(data?.total ?? 0);
+  const mes   = usarEjemplo
+    ? new Date().toLocaleDateString('es-DO', { month: 'long', year: 'numeric' })
+    : (data?.mes ?? '');
+  const cambioPorcentaje: number | null = usarEjemplo
+    ? EJEMPLO_RESUMEN_GASTOS_CAMBIO_PORCENTAJE
+    : (data?.cambioPorcentaje ?? null);
+  const estado = estadoDe({ cargando: isPending, error: isError, vacio: vacioReal && !usarEjemplo });
+  const clickeable = estado === 'ok' && !usarEjemplo;
   const topCategorias = gastos.slice(0, 4);
   const maxTop = Math.max(1, ...topCategorias.map(g => Number(g.monto ?? 0)));
 
@@ -44,22 +61,24 @@ export function WidgetResumenGastos() {
         background: token.colorBgContainer,
         border: `1px solid ${token.colorBorderSecondary}`,
         borderRadius: 12, overflow: 'hidden',
-        cursor: estado === 'ok' ? 'pointer' : 'default',
+        cursor: clickeable ? 'pointer' : 'default',
       }}
-      onClick={estado === 'ok' ? verListado : undefined}
-      role={estado === 'ok' ? 'button' : undefined}
-      aria-label={estado === 'ok' ? 'Ver listado de gastos del mes' : undefined}
+      onClick={clickeable ? verListado : undefined}
+      role={clickeable ? 'button' : undefined}
+      aria-label={clickeable ? 'Ver listado de gastos del mes' : undefined}
     >
       {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '14px 16px', borderBottom: `1px solid ${token.colorBorderSecondary}`,
       }}>
-        <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ fontWeight: 600, fontSize: 14 }}>Resumen de Gastos</span>
-          {mes && <span style={{ fontSize: 11, color: token.colorTextTertiary, marginLeft: 8 }}>{mes}</span>}
+          {mes && <span style={{ fontSize: 11, color: token.colorTextTertiary }}>{mes}</span>}
+          {usarEjemplo && <BadgeEjemplo />}
         </div>
         <Button type="text" size="small" icon={<ReloadOutlined />}
+          disabled={usarEjemplo}
           onClick={e => { e.stopPropagation(); onRefresh(); }}
           style={{ color: token.colorTextTertiary }} />
       </div>
@@ -121,7 +140,7 @@ export function WidgetResumenGastos() {
           `Gastos por categoría. Total ${fmt.money(total)} repartido en ` +
           `${gastos.length} categorías: ` +
           gastos.map((g: any) => `${g.categoria}, ${fmt.money(Number(g.monto ?? 0))}`).join('; ')
-        }>
+        } style={{ position: 'relative' }}>
         <ResponsiveContainer width="100%" height={altoGrafica}>
           <PieChart>
             <Pie data={gastos} cx="50%" cy="45%" innerRadius={60} outerRadius={95}
@@ -138,10 +157,11 @@ export function WidgetResumenGastos() {
               wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />
           </PieChart>
         </ResponsiveContainer>
+        {usarEjemplo && <MarcaAguaEjemplo />}
         </div>
       )}
 
-      {estado === 'ok' && (
+      {clickeable && (
         <div style={{ padding: '4px 16px 12px', textAlign: 'right' }}>
           <span style={{ fontSize: 11, color: token.colorTextTertiary }}>
             Ver listado del mes →

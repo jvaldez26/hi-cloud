@@ -7,7 +7,12 @@ import {
 } from 'recharts';
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
-import { EstadoGrafica, estadoDe, ejeMonto, RAMPA_SEVERIDAD, SEMANTICO, estiloTooltip } from './TarjetaGrafica';
+import { useModoEjemplo } from '../../../hooks/useModoEjemplo';
+import { EJEMPLO_ANTIGUEDAD_COBRAR, EJEMPLO_ANTIGUEDAD_PAGAR } from './datosEjemplo';
+import {
+  EstadoGrafica, estadoDe, ejeMonto, RAMPA_SEVERIDAD, SEMANTICO, estiloTooltip,
+  BadgeEjemplo, MarcaAguaEjemplo,
+} from './TarjetaGrafica';
 
 const ANTIGUEDAD_CONFIG = [
   { key: 'corriente',   rango: 'Corriente', color: RAMPA_SEVERIDAD[0] },
@@ -18,22 +23,27 @@ const ANTIGUEDAD_CONFIG = [
 ];
 
 function WidgetAntiguedad({
-  titulo, endpoint, queryKey, labelTotal, colorTotal, rutaListado, accionVacio,
+  titulo, endpoint, queryKey, labelTotal, colorTotal, rutaListado, accionVacio, datosEjemplo,
 }: {
   titulo: string; endpoint: string; queryKey: string;
   labelTotal: string; colorTotal: string; rutaListado: string;
   accionVacio: { texto: string; ruta: string };
+  datosEjemplo: { corriente: number; dias_0_30: number; dias_31_60: number; dias_61_90: number; dias_90_plus: number; total: number };
 }) {
   const { token } = theme.useToken();
   const navigate  = useNavigate();
 
   // La consulta vive DENTRO del widget: si no esta en el panel, no se pide.
-  const { data, refetch, isPending, isError } = useQuery<any>({
+  const { data: dataReal, refetch, isPending, isError } = useQuery<any>({
     queryKey: [queryKey],
     queryFn:  () => api.get(endpoint).then((r: any) => r.data?.data ?? r.data),
     staleTime: 120_000,
   });
   const onRefresh = () => { void refetch(); };
+  const vacioReal = ANTIGUEDAD_CONFIG.every(c => Number(dataReal?.[c.key] ?? 0) === 0);
+  const modoEjemplo = useModoEjemplo();
+  const usarEjemplo = modoEjemplo && vacioReal && !isPending && !isError;
+  const data = usarEjemplo ? datosEjemplo : dataReal;
   const chartData = ANTIGUEDAD_CONFIG.map(c => ({
     rango:  c.rango,
     monto:  Number(data?.[c.key] ?? 0),
@@ -44,8 +54,9 @@ function WidgetAntiguedad({
   // datos», dice «todo vale cero», que es peor porque parece un dato.
   const estado = estadoDe({
     cargando: isPending, error: isError,
-    vacio: chartData.every(d => d.monto === 0),
+    vacio: vacioReal && !usarEjemplo,
   });
+  const clickeable = estado === 'ok' && !usarEjemplo;
   const verListado = () => navigate(rutaListado);
 
   return (
@@ -54,19 +65,23 @@ function WidgetAntiguedad({
         background: token.colorBgContainer,
         border: `1px solid ${token.colorBorderSecondary}`,
         borderRadius: 12, overflow: 'hidden',
-        cursor: estado === 'ok' ? 'pointer' : 'default',
+        cursor: clickeable ? 'pointer' : 'default',
       }}
-      onClick={estado === 'ok' ? verListado : undefined}
-      role={estado === 'ok' ? 'button' : undefined}
-      aria-label={estado === 'ok' ? `Ver listado de ${titulo}` : undefined}
+      onClick={clickeable ? verListado : undefined}
+      role={clickeable ? 'button' : undefined}
+      aria-label={clickeable ? `Ver listado de ${titulo}` : undefined}
     >
       {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '14px 16px', borderBottom: `1px solid ${token.colorBorderSecondary}`,
       }}>
-        <span style={{ fontWeight: 600, fontSize: 14 }}>{titulo}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 600, fontSize: 14 }}>{titulo}</span>
+          {usarEjemplo && <BadgeEjemplo />}
+        </div>
         <Button type="text" size="small" icon={<ReloadOutlined />}
+          disabled={usarEjemplo}
           onClick={e => { e.stopPropagation(); onRefresh(); }}
           style={{ color: token.colorTextTertiary }} />
       </div>
@@ -90,7 +105,7 @@ function WidgetAntiguedad({
         accionVacio={{ texto: accionVacio.texto, onClick: () => navigate(accionVacio.ruta) }}
         onRefresh={onRefresh} />
       {estado === "ok" && (
-      <div style={{ padding: "8px 0 0" }}>
+      <div style={{ padding: "8px 0 0", position: 'relative' }}>
         <ResponsiveContainer width="100%" height={190}>
           <BarChart accessibilityLayer data={chartData} layout="vertical"
             margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
@@ -114,10 +129,11 @@ function WidgetAntiguedad({
             </Bar>
           </BarChart>
         </ResponsiveContainer>
+        {usarEjemplo && <MarcaAguaEjemplo />}
       </div>
       )}
 
-      {estado === 'ok' && (
+      {clickeable && (
         <div style={{
           padding: '8px 16px 12px', textAlign: 'right',
         }}>
@@ -141,6 +157,7 @@ export const WidgetAntiguedadCobrar = () => (
     colorTotal={SEMANTICO.ingreso}
     rutaListado="/cxc"
     accionVacio={{ texto: 'Registrar una venta a crédito', ruta: '/facturas/nueva' }}
+    datosEjemplo={EJEMPLO_ANTIGUEDAD_COBRAR}
   />
 );
 
@@ -154,5 +171,6 @@ export const WidgetAntiguedadPagar = () => (
     colorTotal={SEMANTICO.gasto}
     rutaListado="/cxp"
     accionVacio={{ texto: 'Registrar una compra', ruta: '/compras/nueva' }}
+    datosEjemplo={EJEMPLO_ANTIGUEDAD_PAGAR}
   />
 );

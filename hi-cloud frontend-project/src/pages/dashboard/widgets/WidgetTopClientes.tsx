@@ -7,6 +7,8 @@ import {
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
 import { dRD } from '../../../utils/fechaRD';
+import { useModoEjemplo } from '../../../hooks/useModoEjemplo';
+import { EJEMPLO_TOP_CLIENTES } from './datosEjemplo';
 import { TarjetaGrafica, COLORES, ejeMonto, SEMANTICO, estiloTooltip, useAltoGrafica } from './TarjetaGrafica';
 
 /** Corta un nombre largo sin dejarlo en mitad de una palabra a lo bruto. */
@@ -36,7 +38,11 @@ export function WidgetTopClientes() {
     staleTime: 5 * 60_000,
   });
 
-  const filas = Array.isArray(data) ? data : [];
+  const filasReales = Array.isArray(data) ? data : [];
+  const vacioReal   = filasReales.length === 0;
+  const modoEjemplo = useModoEjemplo();
+  const usarEjemplo = modoEjemplo && vacioReal && !isPending && !isError;
+  const filas = usarEjemplo ? EJEMPLO_TOP_CLIENTES : filasReales;
   const datos = filas.map(r => ({
     nombre:   String(r.nombre ?? '—'),
     total:    Number(r.total ?? 0),
@@ -52,10 +58,11 @@ export function WidgetTopClientes() {
       alto={altoGrafica}
       cargando={isPending}
       error={isError}
-      vacio={datos.length === 0}
+      vacio={vacioReal && !usarEjemplo}
       mensajeVacio="Sin ventas registradas este año"
       accionVacio={{ texto: 'Registrar una venta', onClick: () => navigate('/facturas/nueva') }}
-      alClic={() => navigate('/clientes')}
+      alClic={usarEjemplo ? undefined : () => navigate('/clientes')}
+      ejemplo={usarEjemplo}
       pieEtiqueta="SUMAN ENTRE LOS 8"
       pieValor={fmt.money(total)}
       pieColor={SEMANTICO.neutro}

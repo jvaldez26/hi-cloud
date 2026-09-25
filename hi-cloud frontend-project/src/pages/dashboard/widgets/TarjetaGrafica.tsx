@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { Button, theme } from 'antd';
+import { Button, Tooltip, theme } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import { useMobile } from '../../../hooks/useMediaQuery';
 
@@ -13,7 +13,7 @@ import { useMobile } from '../../../hooks/useMediaQuery';
  */
 export function TarjetaGrafica({
   titulo, subtitulo, onRefresh, cargando, error, vacio, mensajeVacio, accionVacio, alto = 260,
-  pieEtiqueta, pieValor, pieColor, alClic, children,
+  pieEtiqueta, pieValor, pieColor, alClic, ejemplo, children,
 }: {
   titulo:        string;
   subtitulo?:    string;
@@ -22,8 +22,18 @@ export function TarjetaGrafica({
    * Tarjeta completa como clic → listado relacionado. Solo activo con
    * estado 'ok' (con cargando/error/vacío no hay a dónde ir todavía — el
    * botón de recargar sigue funcionando aparte, con stopPropagation).
+   * Se ignora en modo ejemplo — no hay listado real a donde ir.
    */
   alClic?:       () => void;
+  /**
+   * Modo ejemplo (empresa nueva sin movimientos, ver useModoEjemplo): el
+   * caller pasa datos ficticios como si fueran reales (estado sigue siendo
+   * 'ok', nunca 'vacio') y esta tarjeta se encarga de que no se puedan
+   * confundir con datos reales — marca de agua sobre la gráfica, badge en
+   * la cabecera, recargar deshabilitado y sin clic-a-listado (no tiene
+   * sentido "actualizar" o "filtrar" algo que no existe).
+   */
+  ejemplo?:      boolean;
   /**
    * true mientras la consulta está en vuelo.
    *
@@ -52,7 +62,7 @@ export function TarjetaGrafica({
   const { token } = theme.useToken();
 
   const estado = estadoDe({ cargando, error, vacio });
-  const clickeable = estado === 'ok' && !!alClic;
+  const clickeable = estado === 'ok' && !!alClic && !ejemplo;
 
   return (
     <div
@@ -72,20 +82,27 @@ export function TarjetaGrafica({
         // Deja sitio a la papelera del MarcoWidget, que se posiciona encima.
         paddingRight: 56,
       }}>
-        <div style={{ minWidth: 0 }}>
+        <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ fontWeight: 600, fontSize: 14 }}>{titulo}</span>
           {subtitulo && (
-            <span style={{ fontSize: 11, color: token.colorTextTertiary, marginLeft: 8 }}>
+            <span style={{ fontSize: 11, color: token.colorTextTertiary }}>
               {subtitulo}
             </span>
           )}
+          {/* Solo con estado 'ok': si el caller pasara ejemplo=true junto a
+              vacio=true por error, más vale un vacío normal (sin badge) que
+              un badge de "datos de ejemplo" flotando sobre un vacío real. */}
+          {ejemplo && estado === 'ok' && <BadgeEjemplo />}
         </div>
-        <Button
-          type="text" size="small" icon={<ReloadOutlined />}
-          onClick={e => { e.stopPropagation(); onRefresh(); }}
-          style={{ color: token.colorTextTertiary, flexShrink: 0 }}
-          aria-label={`Actualizar ${titulo}`}
-        />
+        <Tooltip title={ejemplo ? 'Datos de ejemplo — se activa solo cuando haya movimientos reales' : undefined}>
+          <Button
+            type="text" size="small" icon={<ReloadOutlined />}
+            disabled={ejemplo}
+            onClick={e => { e.stopPropagation(); onRefresh(); }}
+            style={{ color: token.colorTextTertiary, flexShrink: 0 }}
+            aria-label={`Actualizar ${titulo}`}
+          />
+        </Tooltip>
       </div>
 
       <EstadoGrafica
@@ -93,7 +110,12 @@ export function TarjetaGrafica({
         mensajeVacio={mensajeVacio} accionVacio={accionVacio} onRefresh={onRefresh}
       />
 
-      {estado === 'ok' && children}
+      {estado === 'ok' && (
+        <div style={{ position: 'relative' }}>
+          {children}
+          {ejemplo && <MarcaAguaEjemplo />}
+        </div>
+      )}
 
       {estado === 'ok' && pieEtiqueta && (
         <div style={{
@@ -120,6 +142,62 @@ export function TarjetaGrafica({
           </span>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Badge inline (no absoluto): la esquina superior derecha ya la ocupan el
+ * botón de recargar y, encima de ambos, la papelera de MarcoWidget — un
+ * badge posicionado ahí competiría con los dos. Va junto al título, en el
+ * flujo normal, donde no colisiona con nada y sigue leyéndose como "esto
+ * está arriba de la tarjeta", que es lo que pedía la esquina.
+ */
+export function BadgeEjemplo() {
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center',
+      background: '#F59E0B', color: '#fff', fontSize: 10, fontWeight: 700,
+      padding: '2px 8px', borderRadius: 999, letterSpacing: '0.03em',
+      textTransform: 'uppercase', flexShrink: 0, lineHeight: 1.6,
+    }}>
+      Datos de ejemplo
+    </span>
+  );
+}
+
+/**
+ * Marca de agua diagonal repetida sobre el cuerpo de la gráfica — a
+ * propósito mucho más marcada que un watermark decorativo: el pedido fue
+ * explícito en que tiene que ser imposible confundir con datos reales
+ * incluso en una mirada rápida. pointerEvents:none para no bloquear el
+ * tooltip/interacción de la gráfica que tiene debajo.
+ */
+export function MarcaAguaEjemplo() {
+  const filas = 4;
+  const cols  = 3;
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 5,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}
+    >
+      <div style={{
+        display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, rowGap: 28, columnGap: 36,
+        transform: 'rotate(-26deg) scale(1.5)', width: '170%',
+      }}>
+        {Array.from({ length: filas * cols }).map((_, i) => (
+          <span key={i} style={{
+            fontSize: 22, fontWeight: 800, color: 'rgba(100,100,100,0.30)',
+            whiteSpace: 'nowrap', textAlign: 'center', letterSpacing: '0.08em',
+            textTransform: 'uppercase', userSelect: 'none',
+          }}>
+            Ejemplo
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

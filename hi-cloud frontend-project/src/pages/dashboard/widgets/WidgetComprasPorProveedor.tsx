@@ -7,6 +7,8 @@ import {
 import api from '../../../api/client';
 import { fmt } from '../../../utils/formatters';
 import { dRD } from '../../../utils/fechaRD';
+import { useModoEjemplo } from '../../../hooks/useModoEjemplo';
+import { EJEMPLO_COMPRAS_POR_PROVEEDOR } from './datosEjemplo';
 import { TarjetaGrafica, COLORES, ejeMonto, SEMANTICO, estiloTooltip, useAltoGrafica } from './TarjetaGrafica';
 import { recorta } from './WidgetTopClientes';
 
@@ -35,13 +37,17 @@ export function WidgetComprasPorProveedor() {
     staleTime: 5 * 60_000,
   });
 
-  const filas: any[] = Array.isArray(data?.proveedores) ? data.proveedores : [];
+  const filasReales = Array.isArray(data?.proveedores) ? data.proveedores : [];
+  const vacioReal   = filasReales.length === 0;
+  const modoEjemplo = useModoEjemplo();
+  const usarEjemplo = modoEjemplo && vacioReal && !isPending && !isError;
+  const filas: any[] = usarEjemplo ? EJEMPLO_COMPRAS_POR_PROVEEDOR.proveedores : filasReales;
   const datos = filas.slice(0, 8).map(r => ({
     nombre:  String(r.nombre ?? '—'),
     total:   Number(r.total ?? 0),
     compras: Number(r.cantidadCompras ?? 0),
   }));
-  const total = Number(data?.total ?? 0);
+  const total = usarEjemplo ? EJEMPLO_COMPRAS_POR_PROVEEDOR.total : Number(data?.total ?? 0);
 
   return (
     <TarjetaGrafica
@@ -51,10 +57,11 @@ export function WidgetComprasPorProveedor() {
       alto={altoGrafica}
       cargando={isPending}
       error={isError}
-      vacio={datos.length === 0}
+      vacio={vacioReal && !usarEjemplo}
       mensajeVacio="Sin compras registradas este año"
       accionVacio={{ texto: 'Registrar una compra', onClick: () => navigate('/compras/nueva') }}
-      alClic={() => navigate('/proveedores')}
+      alClic={usarEjemplo ? undefined : () => navigate('/proveedores')}
+      ejemplo={usarEjemplo}
       pieEtiqueta="COMPRADO EN EL AÑO"
       pieValor={fmt.money(total)}
       pieColor={SEMANTICO.alerta}
