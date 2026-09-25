@@ -12,7 +12,7 @@ import {
 } from './datosEjemplo';
 import {
   EstadoGrafica, estadoDe, SEMANTICO, COLORES, estiloTooltip, useAltoGrafica,
-  BadgeEjemplo, MarcaAguaEjemplo,
+  BadgeEjemplo,
 } from './TarjetaGrafica';
 
 // ── Widget Resumen de Gastos (donut) ─────────────────────────────────────────
@@ -157,7 +157,6 @@ export function WidgetResumenGastos() {
               wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />
           </PieChart>
         </ResponsiveContainer>
-        {usarEjemplo && <MarcaAguaEjemplo />}
         </div>
       )}
 

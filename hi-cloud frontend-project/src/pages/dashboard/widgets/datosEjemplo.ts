@@ -152,3 +152,30 @@ export const EJEMPLO_HORAS_PICO = [
   { dia: 'Vie', hora: '17:00', cantidad: 14 }, { dia: 'Sáb', hora: '10:00', cantidad: 16 },
   { dia: 'Sáb', hora: '11:00', cantidad: 12 }, { dia: 'Dom', hora: '10:00', cantidad: 4 },
 ];
+
+const haceDias = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString();
+
+// ── Cuentas de banco + actividad reciente (dashboard, columna izquierda) ───
+export const EJEMPLO_BANCOS = [
+  { id: 'ej-b1', nombre: 'Cuenta Corriente BHD León',      tipo: 'corriente', moneda: 'DOP', saldo: 142000 },
+  { id: 'ej-b2', nombre: 'Cuenta de Ahorros Banreservas',  tipo: 'ahorros',   moneda: 'DOP', saldo: 38500 },
+  { id: 'ej-b3', nombre: 'Caja Chica',                     tipo: 'efectivo',  moneda: 'DOP', saldo: 5200 },
+];
+export const EJEMPLO_BALANCE_BANCOS = EJEMPLO_BANCOS.reduce((s, b) => s + b.saldo, 0);
+
+export const EJEMPLO_ACTIVIDAD_HOY = [
+  { descripcion: 'Cobro — Ferretería San José',            monto: 8200, tipo: 'ingreso', hora: '10:15' },
+  { descripcion: 'Compra — Distribuidora El Progreso SRL', monto: 3100, tipo: 'gasto',   hora: '13:40' },
+];
+export const EJEMPLO_ACTIVIDAD_SEMANA = [
+  { descripcion: 'Cobro — Constructora Vega SRL',   monto: 15400, tipo: 'ingreso', fecha: haceDias(2) },
+  { descripcion: 'Pago — Importadora Central SRL',  monto: 6200,  tipo: 'gasto',   fecha: haceDias(4) },
+  { descripcion: 'Cobro — Colmado Hermanos Pérez',  monto: 4100,  tipo: 'ingreso', fecha: haceDias(6) },
+];
+
+// ── Facturas pendientes de cobro (dashboard, columna derecha) ──────────────
+export const EJEMPLO_FACTURAS_PENDIENTES = [
+  { id: 'ej-f1', cliente: { nombre: 'Ferretería San José' },    folio: 'B0100000123', fecha: haceDias(3), total: 18500 },
+  { id: 'ej-f2', cliente: { nombre: 'Constructora Vega SRL' },  folio: 'B0100000124', fecha: haceDias(6), total: 32000 },
+  { id: 'ej-f3', cliente: { nombre: 'Colmado Hermanos Pérez' }, folio: 'B0100000125', fecha: haceDias(9), total: 9800 },
+];

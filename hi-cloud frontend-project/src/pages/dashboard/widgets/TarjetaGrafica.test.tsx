@@ -6,10 +6,10 @@ import { TarjetaGrafica } from './TarjetaGrafica';
 /**
  * Modo ejemplo (empresa nueva sin movimientos, ver useModoEjemplo) — el
  * mecanismo que comparten las 9 gráficas del catálogo que pasan por
- * TarjetaGrafica. Lo que se afirma aquí es literal al pedido: el badge y la
- * marca de agua aparecen, recargar queda deshabilitado, y la tarjeta deja
- * de ser "clic → listado" — no tiene sentido filtrar o navegar a partir de
- * datos que no son reales.
+ * TarjetaGrafica. Lo que se afirma aquí es literal al pedido: el badge
+ * "Datos de ejemplo" aparece, recargar queda deshabilitado, y la tarjeta
+ * deja de ser "clic → listado" — no tiene sentido filtrar o navegar a
+ * partir de datos que no son reales.
  */
 
 function montar(props: Partial<Parameters<typeof TarjetaGrafica>[0]> = {}) {
@@ -30,17 +30,14 @@ function montar(props: Partial<Parameters<typeof TarjetaGrafica>[0]> = {}) {
 }
 
 describe('TarjetaGrafica — modo ejemplo', () => {
-  it('sin ejemplo: no muestra el badge ni la marca de agua', () => {
+  it('sin ejemplo: no muestra el badge', () => {
     montar({ ejemplo: false });
     expect(screen.queryByText('Datos de ejemplo')).not.toBeInTheDocument();
-    expect(screen.queryAllByText('Ejemplo')).toHaveLength(0);
   });
 
-  it('con ejemplo: muestra el badge "Datos de ejemplo" y la marca de agua repetida', () => {
+  it('con ejemplo: muestra el badge "Datos de ejemplo"', () => {
     montar({ ejemplo: true });
     expect(screen.getByText('Datos de ejemplo')).toBeInTheDocument();
-    // La marca de agua repite la palabra varias veces (rejilla 4x3) — no una sola vez.
-    expect(screen.getAllByText('Ejemplo').length).toBeGreaterThan(5);
   });
 
   it('con ejemplo: el botón de recargar queda deshabilitado', () => {
@@ -78,8 +75,8 @@ describe('TarjetaGrafica — modo ejemplo', () => {
     // Guard de uso correcto: el caller SIEMPRE debe forzar vacio=false cuando
     // usa datos de ejemplo (los widgets reales lo hacen: vacio={vacioReal &&
     // !usarEjemplo}) — si alguien pasara ejemplo=true con vacio=true por
-    // error, esta tarjeta cae al estado vacío normal (sin badge, sin marca de
-    // agua) en vez de una mezcla confusa de ambos.
+    // error, esta tarjeta cae al estado vacío normal (sin badge) en vez de
+    // una mezcla confusa de ambos.
     montar({ ejemplo: true, vacio: true, mensajeVacio: 'Sin ventas' });
     expect(screen.getByText('Sin ventas')).toBeInTheDocument();
     expect(screen.queryByText('Datos de ejemplo')).not.toBeInTheDocument();

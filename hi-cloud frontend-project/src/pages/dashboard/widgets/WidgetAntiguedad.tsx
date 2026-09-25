@@ -11,7 +11,7 @@ import { useModoEjemplo } from '../../../hooks/useModoEjemplo';
 import { EJEMPLO_ANTIGUEDAD_COBRAR, EJEMPLO_ANTIGUEDAD_PAGAR } from './datosEjemplo';
 import {
   EstadoGrafica, estadoDe, ejeMonto, RAMPA_SEVERIDAD, SEMANTICO, estiloTooltip,
-  BadgeEjemplo, MarcaAguaEjemplo,
+  BadgeEjemplo,
 } from './TarjetaGrafica';
 
 const ANTIGUEDAD_CONFIG = [
@@ -105,7 +105,7 @@ function WidgetAntiguedad({
         accionVacio={{ texto: accionVacio.texto, onClick: () => navigate(accionVacio.ruta) }}
         onRefresh={onRefresh} />
       {estado === "ok" && (
-      <div style={{ padding: "8px 0 0", position: 'relative' }}>
+      <div style={{ padding: "8px 0 0" }}>
         <ResponsiveContainer width="100%" height={190}>
           <BarChart accessibilityLayer data={chartData} layout="vertical"
             margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
@@ -129,7 +129,6 @@ function WidgetAntiguedad({
             </Bar>
           </BarChart>
         </ResponsiveContainer>
-        {usarEjemplo && <MarcaAguaEjemplo />}
       </div>
       )}
 

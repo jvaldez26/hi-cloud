@@ -1,4 +1,4 @@
-import { Row, Col, Card, Table, Typography, Tag, Button, theme, DatePicker, Skeleton, message } from 'antd';
+import { Row, Col, Card, Table, Typography, Tag, Button, theme, DatePicker, Skeleton, message, Tooltip } from 'antd';
 import { SkeletonTabla } from '../../components/ui/SkeletonTabla';
 import { useSkeletonDelay } from '../../hooks/useSkeletonDelay';
 import { DollarOutlined, FileTextOutlined } from '@ant-design/icons';
@@ -14,6 +14,12 @@ import { useAuthStore } from '../../store/auth.store';
 import { VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { dRD, horaDelDiaRD } from '../../utils/fechaRD';
 import { useDashboardWidgets } from '../../hooks/useDashboardWidgets';
+import { useModoEjemplo } from '../../hooks/useModoEjemplo';
+import {
+  EJEMPLO_BANCOS, EJEMPLO_BALANCE_BANCOS, EJEMPLO_ACTIVIDAD_HOY, EJEMPLO_ACTIVIDAD_SEMANA,
+  EJEMPLO_FACTURAS_PENDIENTES,
+} from './widgets/datosEjemplo';
+import { BadgeEjemplo } from './widgets/TarjetaGrafica';
 import { widgetPorSlug } from './widgets/registro';
 import { CardWidget } from './widgets/CardWidget';
 import { MarcoWidget } from './widgets/MarcoWidget';
@@ -288,14 +294,14 @@ function DashboardAdmin() {
   }, [refreshAll]);
 
   // Widget tesorería: cuentas + balance + actividad financiera
-  const { data: tesoreriaRaw } = useQuery<any>({
+  const { data: tesoreriaRaw, isPending: cargandoTesoreria, isError: errorTesoreria } = useQuery<any>({
     queryKey: ['bancos-dashboard'],
     queryFn:  () => api.get('/tesoreria/dashboard').then((r: any) => r.data?.data ?? r.data),
     staleTime: 120_000,
   });
 
   // Facturas pendientes
-  const { data: factPendRaw } = useQuery<any>({
+  const { data: factPendRaw, isPending: cargandoFacturas, isError: errorFacturas } = useQuery<any>({
     queryKey: ['fact-pend-cf'],
     queryFn:  () => api.get('/facturas?limit=8&estado=emitida').then((r: any) => {
       const d = r.data?.data ?? r.data;
@@ -304,13 +310,27 @@ function DashboardAdmin() {
     staleTime: 60_000,
   });
 
-  // Normalizar datos
-  const bancos      = tesoreriaRaw?.cuentas ?? [];
-  const balanceBancos = tesoreriaRaw?.balanceTotal ?? 0;
-  const actHoy    = tesoreriaRaw?.actividad?.hoy    ?? [];
-  const actSemana = tesoreriaRaw?.actividad?.semana ?? [];
+  // Empresa nueva sin movimientos reales todavía (ver useModoEjemplo): estos
+  // dos widgets no pasan por TarjetaGrafica, así que resuelven su propio
+  // "usar ejemplo" — cada uno atado a la emptiness de SU consulta, no a la
+  // otra, para no reemplazar cuentas de banco reales por unas ficticias solo
+  // porque todavía no hay facturas (o viceversa).
+  const modoEjemplo = useModoEjemplo();
 
-  const facturas    = Array.isArray(factPendRaw) ? factPendRaw : [];
+  const bancosReal        = tesoreriaRaw?.cuentas ?? [];
+  const balanceBancosReal = tesoreriaRaw?.balanceTotal ?? 0;
+  const actHoyReal        = tesoreriaRaw?.actividad?.hoy    ?? [];
+  const actSemanaReal     = tesoreriaRaw?.actividad?.semana ?? [];
+  const usarEjemploTesoreria = modoEjemplo && bancosReal.length === 0 && !cargandoTesoreria && !errorTesoreria;
+
+  const bancos         = usarEjemploTesoreria ? EJEMPLO_BANCOS          : bancosReal;
+  const balanceBancos  = usarEjemploTesoreria ? EJEMPLO_BALANCE_BANCOS  : balanceBancosReal;
+  const actHoy         = usarEjemploTesoreria ? EJEMPLO_ACTIVIDAD_HOY   : actHoyReal;
+  const actSemana      = usarEjemploTesoreria ? EJEMPLO_ACTIVIDAD_SEMANA: actSemanaReal;
+
+  const facturasReal = Array.isArray(factPendRaw) ? factPendRaw : [];
+  const usarEjemploFacturas = modoEjemplo && facturasReal.length === 0 && !cargandoFacturas && !errorFacturas;
+  const facturas = usarEjemploFacturas ? EJEMPLO_FACTURAS_PENDIENTES : facturasReal;
 
   const ahora = dayjs();
 
@@ -342,8 +362,14 @@ function DashboardAdmin() {
           <CardWidget
             title="Cuentas de Bancos"
             extra={
-              <Button type="text" size="small" style={{ color: token.colorTextTertiary, fontSize: 18, lineHeight: 1, padding: '0 4px' }}
-                onClick={() => navigate('/bancos')}>⋯</Button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {usarEjemploTesoreria && <BadgeEjemplo />}
+                <Tooltip title={usarEjemploTesoreria ? 'Datos de ejemplo — se activa solo cuando haya movimientos reales' : undefined}>
+                  <Button type="text" size="small" disabled={usarEjemploTesoreria}
+                    style={{ color: token.colorTextTertiary, fontSize: 18, lineHeight: 1, padding: '0 4px' }}
+                    onClick={() => navigate('/bancos')}>⋯</Button>
+                </Tooltip>
+              </div>
             }
           >
             {/* Grupo expandible */}
@@ -416,7 +442,7 @@ function DashboardAdmin() {
           </CardWidget>
 
           {/* Widget: Actividad */}
-          <CardWidget title="Actividad">
+          <CardWidget title="Actividad" extra={usarEjemploTesoreria ? <BadgeEjemplo /> : undefined}>
             {actHoy.length === 0 && actSemana.length === 0 ? (
               <>
                 <div style={{ padding: '10px 16px 12px' }}>
@@ -513,8 +539,11 @@ function DashboardAdmin() {
           <CardWidget
             title="Facturas & Cobros"
             extra={
-              <Button type="link" size="small" onClick={() => navigate('/cxc')}
-                style={{ fontSize: 12 }}>Ver todo →</Button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {usarEjemploFacturas && <BadgeEjemplo />}
+                <Button type="link" size="small" disabled={usarEjemploFacturas} onClick={() => navigate('/cxc')}
+                  style={{ fontSize: 12 }}>Ver todo →</Button>
+              </div>
             }
           >
             {facturas.length === 0 ? (
@@ -529,16 +558,16 @@ function DashboardAdmin() {
                 {facturas.slice(0, 8).map((f: any, i: number) => (
                   <div
                     key={f.id ?? i}
-                    onClick={() => navigate(`/facturas/${f.id}`)}
+                    onClick={usarEjemploFacturas ? undefined : () => navigate(`/facturas/${f.id}`)}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 12,
                       padding: '10px 16px',
                       borderBottom: i < Math.min(facturas.length, 8) - 1
                         ? `1px solid ${token.colorBorderSecondary}` : 'none',
-                      cursor: 'pointer', transition: 'background 0.12s',
+                      cursor: usarEjemploFacturas ? 'default' : 'pointer', transition: 'background 0.12s',
                     }}
-                    onMouseEnter={e => ((e.currentTarget as HTMLElement).style.background = token.colorFillAlter)}
-                    onMouseLeave={e => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
+                    onMouseEnter={usarEjemploFacturas ? undefined : e => ((e.currentTarget as HTMLElement).style.background = token.colorFillAlter)}
+                    onMouseLeave={usarEjemploFacturas ? undefined : e => ((e.currentTarget as HTMLElement).style.background = 'transparent')}
                   >
                     <div style={{
                       width: 36, height: 36, borderRadius: 8, flexShrink: 0,

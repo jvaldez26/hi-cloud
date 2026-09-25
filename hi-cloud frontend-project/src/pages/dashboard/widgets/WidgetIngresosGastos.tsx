@@ -12,7 +12,7 @@ import { fmt } from '../../../utils/formatters';
 import { useModoEjemplo } from '../../../hooks/useModoEjemplo';
 import { EJEMPLO_INGRESOS_GASTOS_ANUAL } from './datosEjemplo';
 import {
-  EstadoGrafica, estadoDe, ejeMonto, SEMANTICO, estiloTooltip, BadgeEjemplo, MarcaAguaEjemplo,
+  EstadoGrafica, estadoDe, ejeMonto, SEMANTICO, estiloTooltip, BadgeEjemplo,
 } from './TarjetaGrafica';
 import { anioRD } from '../../../utils/fechaRD';
 import { useMobile } from '../../../hooks/useMediaQuery';
@@ -201,8 +201,7 @@ export function WidgetIngresosGastos() {
         accionVacio={{ texto: 'Registrar una venta', onClick: () => navigate('/facturas/nueva') }}
         onRefresh={() => { void refetchAnual(); }} />
       {estadoAnual === "ok" && (
-      <div ref={chartContainerRef} style={{ padding: "0 8px 16px", position: 'relative' }}>
-        {usarEjemplo && <MarcaAguaEjemplo />}
+      <div ref={chartContainerRef} style={{ padding: "0 8px 16px" }}>
         <ResponsiveContainer width="100%" height={isMobile ? 200 : 240}>
           {chartTipo === 'line' ? (
             <LineChart accessibilityLayer data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>
