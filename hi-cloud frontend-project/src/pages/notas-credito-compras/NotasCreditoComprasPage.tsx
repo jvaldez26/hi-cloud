@@ -6,7 +6,7 @@ import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/Tab
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select,
   DatePicker, InputNumber, Space, Typography, Statistic, Popconfirm,
-  message, Divider, theme, Alert,
+  message, Divider, theme, Alert, Tooltip,
 } from 'antd';
 import {
   RollbackOutlined, PlusOutlined, CheckCircleOutlined,
@@ -292,8 +292,22 @@ export default function NotasCreditoComprasPage() {
           pagination={{ pageSize: 10 }}
           scroll={{ x: 'max-content' }}
           columns={filterColumns([
-            { title: 'Número',    dataIndex: 'numero', key: 'n', width: 110,
-              render: (v: any) => <Text strong style={{ fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{v}</Text> },
+            { title: 'Número',    key: 'n', width: 140,
+              render: (_: any, r: any) => {
+                const ncfAfectado = r.compraOriginal?.numeroFacturaProveedor;
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.35 }}>
+                    <Text strong style={{ fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{r.numero}</Text>
+                    {ncfAfectado && (
+                      <Tooltip title={`Compra afectada: ${r.compraOriginalFolio ?? ''}`}>
+                        <Text type="secondary" style={{ fontSize: 10, whiteSpace: 'nowrap', fontFamily: 'monospace', cursor: 'help' }}>
+                          ↩ afecta {ncfAfectado}
+                        </Text>
+                      </Tooltip>
+                    )}
+                  </div>
+                );
+              } },
             { title: 'Fecha',     dataIndex: 'fecha',  key: 'f', width: 90,
               render: (v: any) => <span style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{String(v).split('T')[0]}</span> },
             { title: 'Proveedor', key: 'p', ellipsis: true, minWidth: 130,
@@ -404,9 +418,23 @@ export default function NotasCreditoComprasPage() {
             </Col>
           </Row>
           {compraIdWatch && requiereOC && (
-            <Button size="small" icon={<ImportOutlined />} onClick={cargarItemsDeLaOC} style={{ marginBottom: 12 }}>
-              Cargar ítems de la OC ({tipoWatch === 'no_recibida' ? 'lo pendiente' : 'lo recibido'})
-            </Button>
+            <div style={{ marginBottom: 12 }}>
+              <Button size="small" icon={<ImportOutlined />} onClick={cargarItemsDeLaOC}>
+                Cargar ítems de la OC ({tipoWatch === 'no_recibida' ? 'lo pendiente' : 'lo recibido'})
+              </Button>
+              {/* El "documento/comprobante afectado" que va al 606 como "NCF
+                  Modificado" no es el folio interno de la OC (COM-...) — es
+                  el NCF que el proveedor puso en SU factura original. Se
+                  muestra aquí para que quede claro qué se está afectando
+                  antes de crear la NC, no solo al exportar el 606. */}
+              {compraSeleccionada && (
+                <Text type="secondary" style={{ fontSize: 12, marginLeft: 10 }}>
+                  {compraSeleccionada.numeroFacturaProveedor
+                    ? <>Afecta el comprobante <Text code>{compraSeleccionada.numeroFacturaProveedor}</Text> de esa compra</>
+                    : 'Esa compra no tiene NCF del proveedor capturado — el 606 saldrá sin "NCF Modificado"'}
+                </Text>
+              )}
+            </div>
           )}
           <Row gutter={12}>
             <Col xs={24} sm={12}>
@@ -495,6 +523,19 @@ export default function NotasCreditoComprasPage() {
             <Row gutter={16} style={{ marginBottom: 12 }}>
               <Col xs={24}><Tag color="geekblue">{TIPOS_NC.find(t => t.value === modalDetalle.tipo)?.label ?? 'Devolución con reversa de inventario'}</Tag></Col>
             </Row>
+            {modalDetalle.compraOriginal?.numeroFacturaProveedor && (
+              <Row gutter={16} style={{ marginBottom: 12 }}>
+                <Col xs={24}>
+                  <Text type="secondary" style={{ fontSize: 11 }}>Afecta el comprobante</Text>
+                  <div>
+                    <Text strong style={{ fontFamily: 'monospace' }}>{modalDetalle.compraOriginal.numeroFacturaProveedor}</Text>
+                    {modalDetalle.compraOriginalFolio && (
+                      <Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>({modalDetalle.compraOriginalFolio})</Text>
+                    )}
+                  </div>
+                </Col>
+              </Row>
+            )}
             <Table size="small"
         scroll={{ x: 'max-content' }} dataSource={modalDetalle.detalles} rowKey="id" pagination={false}
               columns={[

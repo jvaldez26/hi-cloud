@@ -146,6 +146,7 @@ export class NotasCreditoComprasService {
     const qb = this.nccRepo
       .createQueryBuilder('n')
       .leftJoinAndSelect('n.proveedor', 'p')
+      .leftJoinAndSelect('n.compraOriginal', 'co')
       .where('n.empresaId = :eid', { eid: empresaId })
       .andWhere('n.isActive = :a', { a: true });
     if (search) qb.andWhere('(n.numero ILIKE :s OR p.nombre ILIKE :s)', { s: `%${search}%` });
@@ -158,7 +159,10 @@ export class NotasCreditoComprasService {
 
   async findOne(id: number) {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const n = await this.nccRepo.findOne({ where: { id, empresaId, isActive: true } });
+    const n = await this.nccRepo.findOne({
+      where: { id, empresaId, isActive: true },
+      relations: ['compraOriginal'],
+    });
     if (!n) throw new NotFoundException(`Nota de Crédito Compra #${id} no encontrada`);
     return n;
   }

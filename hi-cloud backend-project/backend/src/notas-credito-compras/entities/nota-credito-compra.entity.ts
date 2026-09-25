@@ -1,6 +1,7 @@
 import { Entity, Column, OneToMany, JoinColumn, ManyToOne, Index } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { Proveedor } from '../../proveedores/entities/proveedor.entity';
+import { Compra } from '../../compras/entities/compra.entity';
 import { NotaCreditoCompraDetalle } from './nota-credito-compra-detalle.entity';
 import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
 
@@ -54,6 +55,14 @@ export class NotaCreditoCompra extends TenantBaseEntity {
 
   @Column({ length: 20, nullable: true })
   compraOriginalFolio?: string;
+
+  /** No eager — solo se trae cuando listar()/findOne() la piden con
+   *  relations, para mostrar el NCF/documento que esta NC afecta
+   *  (Compra.numeroFacturaProveedor — es el mismo dato que
+   *  getFormato606() usa como "NCF Modificado"). */
+  @ManyToOne(() => Compra, { nullable: true })
+  @JoinColumn({ name: 'compraOriginalId' })
+  compraOriginal?: Compra;
 
   @Column({ type: 'varchar', length: 30, default: TipoNCCompra.DEVOLUCION_INVENTARIO })
   tipo!: TipoNCCompra;

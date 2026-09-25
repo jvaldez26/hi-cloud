@@ -554,10 +554,12 @@ const RUTAS = {
     data: [
       { id: 101, folio: 'COM-00101', fecha: '2026-09-08', estado: 'enviada',
         proveedor: { id: 1, nombre: 'VALDEZ GONZÁLEZ OUTSOURCING SRL', rnc: '131234567' },
-        proveedorId: 1, subtotal: 800, itbis: 144, total: 944, moneda: 'DOP', tipoPago: 'credito' },
+        proveedorId: 1, subtotal: 800, itbis: 144, total: 944, moneda: 'DOP', tipoPago: 'credito',
+        numeroFacturaProveedor: 'B0100000045' },
       { id: 102, folio: 'COM-00102', fecha: '2026-09-05', estado: 'recibida_parcial',
         proveedor: { id: 2, nombre: 'DISTRIBUIDORA DEL ESTE SRL', rnc: '130987654' },
-        proveedorId: 2, subtotal: 1000, itbis: 180, total: 1180, moneda: 'DOP', tipoPago: 'credito' },
+        proveedorId: 2, subtotal: 1000, itbis: 180, total: 1180, moneda: 'DOP', tipoPago: 'credito',
+        numeroFacturaProveedor: 'B0100000078' },
     ],
     meta: { total: 2, page: 1, limit: 10, totalPages: 1 },
   }),
@@ -565,12 +567,25 @@ const RUTAS = {
     id: 101, folio: 'COM-00101', fecha: '2026-09-08', estado: 'enviada',
     proveedor: { id: 1, nombre: 'VALDEZ GONZÁLEZ OUTSOURCING SRL', rnc: '131234567' },
     proveedorId: 1, subtotal: 800, itbis: 144, total: 944, moneda: 'DOP', tipoPago: 'credito',
+    numeroFacturaProveedor: 'B0100000045',
     detalles: [
       { id: 1001, productoId: 2, producto: { id: 2, nombre: 'PRODUCTO DE PRUEBA 2' },
         descripcion: 'PRODUCTO DE PRUEBA 2', precioUnitario: 400, cantidad: 2, cantidadTotal: 2,
         cantidadRecibida: null, porcentajeItbis: 18, subtotal: 800, importeItbis: 144, total: 944 },
     ],
   }),
+  '/notas-credito-compras': () => ({
+    data: [
+      { id: 1, numero: 'NCC-1', fecha: '2026-09-20', estado: 'recibida', tipo: 'devolucion_inventario',
+        motivo: 'devolucion', proveedor: { nombre: 'VALDEZ GONZÁLEZ OUTSOURCING SRL' },
+        ncfProveedor: 'E340000001234', compraOriginalFolio: 'COM-00101',
+        compraOriginal: { numeroFacturaProveedor: 'B0100000045' }, total: 236 },
+    ],
+    meta: { total: 1, page: 1, limit: 10, totalPages: 1 },
+  }),
+  '/notas-credito-compras/resumen': () => ([
+    { estado: 'recibida', cantidad: 1, total: 236 },
+  ]),
   // Para probar el clic-a-Libro-Mayor desde Estado de Resultados/Balance
   // General sin backend: los mismos códigos que usa el mock de arriba.
   '/contabilidad/cuentas': () => ({
