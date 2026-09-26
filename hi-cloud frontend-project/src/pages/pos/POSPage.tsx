@@ -9448,6 +9448,7 @@ export default function POSPage() {
   // Supervisor selector (modal de activación/autorización)
   const [supId,               setSupId]               = useState<number | null>(null);
   const [supPassword,         setSupPassword]         = useState('');
+  const [supPasswordVisible,  setSupPasswordVisible]  = useState(false);
   const [supError,            setSupError]            = useState('');
   const [verificandoSupNuevo, setVerificandoSupNuevo] = useState(false);
   const { data: supervisores, isLoading: supLoading } = useQuery<{ id: number; nombre: string; role: string }[]>({
@@ -12798,7 +12799,7 @@ export default function POSPage() {
         </span>
       }
       open={!!supervisor.pendingAction}
-      onCancel={() => { supervisor.resolveModal(false); setSupId(null); setSupPassword(''); setSupError(''); }}
+      onCancel={() => { supervisor.resolveModal(false); setSupId(null); setSupPassword(''); setSupPasswordVisible(false); setSupError(''); }}
       footer={null} width={420} destroyOnClose
     >
       {supervisor.pendingAction && (
@@ -12866,10 +12867,28 @@ export default function POSPage() {
             {/* Contraseña */}
             <div>
               <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Contraseña</div>
-              <Input.Password placeholder="Contraseña del supervisor" value={supPassword}
+              {/*
+                type="text" a propósito, NUNCA "password": el dropdown de contraseñas
+                guardadas de Chrome/Edge se activa por el atributo type, sin importar
+                autoComplete/name — así que la única forma confiable de que nunca
+                aparezca es no usar type="password" en absoluto. El punteado visual lo
+                da -webkit-text-security (soportado en Chrome/Edge/Safari); en Firefox,
+                que no lo soporta, el texto se ve en claro mientras el ojo está apagado.
+              */}
+              <Input placeholder="Contraseña del supervisor" value={supPassword}
+                type="text"
                 name="supervisor-auth-code" id="supervisor-auth-code"
                 autoComplete="new-password" autoCorrect="off" autoCapitalize="off" spellCheck={false}
                 data-form-type="other" data-lpignore="true" data-1p-ignore
+                style={supPasswordVisible ? undefined : ({ WebkitTextSecurity: 'disc' } as any)}
+                suffix={
+                  <span
+                    onClick={() => setSupPasswordVisible(v => !v)}
+                    style={{ cursor: 'pointer', color: 'rgba(0,0,0,.45)' }}
+                  >
+                    {supPasswordVisible ? <EyeOutlined /> : <EyeInvisibleOutlined />}
+                  </span>
+                }
                 onChange={e => { setSupPassword(e.target.value); setSupError(''); }}
                 onPressEnter={async () => {
                   if (!supId || !supPassword) { setSupError('Selecciona un supervisor e ingresa su contraseña'); return; }
@@ -12883,7 +12902,7 @@ export default function POSPage() {
                     const d = res.data?.data ?? res.data;
                     supervisor.resolveModal(true, d.nombre, d.role, d.sessionId);
                     message.success(`✓ Autorizado por ${d.nombre}`);
-                    setSupId(null); setSupPassword('');
+                    setSupId(null); setSupPassword(''); setSupPasswordVisible(false);
                   } catch (e: any) {
                     setSupError(e?.response?.data?.message ?? 'Credenciales inválidas');
                   } finally { setVerificandoSupNuevo(false); }
@@ -12905,7 +12924,7 @@ export default function POSPage() {
                   const d = res.data?.data ?? res.data;
                   supervisor.resolveModal(true, d.nombre, d.role, d.sessionId);
                   message.success(`✓ Autorizado por ${d.nombre}`);
-                  setSupId(null); setSupPassword('');
+                  setSupId(null); setSupPassword(''); setSupPasswordVisible(false);
                 } catch (e: any) {
                   setSupError(e?.response?.data?.message ?? 'Credenciales inválidas');
                 } finally { setVerificandoSupNuevo(false); }
