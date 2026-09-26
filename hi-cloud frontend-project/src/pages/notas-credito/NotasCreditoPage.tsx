@@ -4,6 +4,7 @@ import { TableActions } from '../../components/ui/TableActions';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { useDebounce } from '../../hooks/useDebounce';
 import {
   Card, Row, Col, Button, Table, Tag, Modal, Form, Input, Select, Tooltip,
   DatePicker, InputNumber, Space, Typography, Statistic, Popconfirm,
@@ -131,6 +132,15 @@ export default function NotasCreditoPage() {
   const estadoDgiiFiltro = params.get('estadoDgii') ?? undefined;
   const montoMin = params.get('montoMin') ? Number(params.get('montoMin')) : undefined;
   const montoMax = params.get('montoMax') ? Number(params.get('montoMax')) : undefined;
+  // La URL se actualiza en cada tecla (por diseño, para que el link sea
+  // compartible) — sin debounce, cada tecla era también un queryKey nuevo y
+  // por tanto un GET real. Los inputs siguen controlados por el valor
+  // inmediato (arriba); estas versiones DEBOUNCED son las que entran a la
+  // query.
+  const searchD       = useDebounce(search, 400);
+  const ncfAfectadoD  = useDebounce(ncfAfectado, 400);
+  const montoMinD     = useDebounce(montoMin, 400);
+  const montoMaxD     = useDebounce(montoMax, 400);
   // Un rango explícito en la URL (ej. desde el visor de origen del IT-1, un
   // período fiscal arbitrario que no cae en ninguno de los 4 atajos) manda
   // sobre el atajo — 'todo' sigue siendo el valor por defecto de `atajo`
@@ -230,22 +240,26 @@ export default function NotasCreditoPage() {
     queryFn:  () => api.get('/notas-credito/resumen').then((r: any) => r.data?.data ?? r.data),
   });
 
-  const { data: notas, isLoading } = useQuery<any>({
-    queryKey: ['notas-credito', search, page, desde, hasta, clienteIdFiltro, ncfAfectado, estadoFiltro, estadoDgiiFiltro, montoMin, montoMax],
+  const { data: notas, isLoading, isError, error } = useQuery<any>({
+    queryKey: ['notas-credito', searchD, page, desde, hasta, clienteIdFiltro, ncfAfectadoD, estadoFiltro, estadoDgiiFiltro, montoMinD, montoMaxD],
     queryFn:  () => {
       const qs = new URLSearchParams({ limit: '10', page: String(page) });
-      if (search)             qs.set('search', search);
-      if (desde)              qs.set('desde', desde);
+      if (searchD)             qs.set('search', searchD);
+      if (desde)               qs.set('desde', desde);
       if (hasta)               qs.set('hasta', hasta);
       if (clienteIdFiltro)     qs.set('clienteId', String(clienteIdFiltro));
-      if (ncfAfectado)         qs.set('ncfAfectado', ncfAfectado);
+      if (ncfAfectadoD)        qs.set('ncfAfectado', ncfAfectadoD);
       if (estadoFiltro)        qs.set('estado', estadoFiltro);
       if (estadoDgiiFiltro)    qs.set('estadoDgii', estadoDgiiFiltro);
-      if (montoMin != null)    qs.set('montoMin', String(montoMin));
-      if (montoMax != null)    qs.set('montoMax', String(montoMax));
+      if (montoMinD != null)   qs.set('montoMin', String(montoMinD));
+      if (montoMaxD != null)   qs.set('montoMax', String(montoMaxD));
       return api.get(`/notas-credito?${qs}`).then((r: any) => r.data?.data ?? r.data);
     },
   });
+
+  useEffect(() => {
+    if (isError) message.error((error as any)?.friendlyMessage ?? 'No se pudo cargar la lista de notas de crédito');
+  }, [isError, error]);
 
   const crear = useMutation({
     mutationFn: (dto: any) => api.post('/notas-credito', dto),

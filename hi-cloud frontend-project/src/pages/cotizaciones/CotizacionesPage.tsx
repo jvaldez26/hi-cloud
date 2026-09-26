@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useDebounce } from '../../hooks/useDebounce';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { Table, Button, Tag, Card, Row, Col, Typography, Statistic,
@@ -106,11 +107,19 @@ export default function CotizacionesPage() {
     onError: (e: any) => message.error(e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Error al enviar email'),
   });
 
-  const { data, isLoading } = useQuery({
-    queryKey:       ['cotizaciones', page, search],
-    queryFn:        () => cotizacionesApi.list(page, 10, search),
+  // Sin debounce, cada tecla del buscador era un queryKey distinto y por
+  // tanto un GET real — mismo bug que ya existía en FacturasPage.
+  const searchD = useDebounce(search, 400);
+
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey:       ['cotizaciones', page, searchD],
+    queryFn:        () => cotizacionesApi.list(page, 10, searchD),
     refetchOnMount: 'always',  // override global false — garantiza datos frescos al volver del form
   });
+
+  useEffect(() => {
+    if (isError) message.error((error as any)?.friendlyMessage ?? 'No se pudo cargar la lista de cotizaciones');
+  }, [isError, error]);
 
   const { data: resumen } = useQuery({
     queryKey: ['cotizaciones-resumen'],

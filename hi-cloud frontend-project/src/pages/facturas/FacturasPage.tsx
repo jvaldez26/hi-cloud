@@ -7,6 +7,7 @@ import { useMobile } from '../../hooks/useMediaQuery';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { useDebounce } from '../../hooks/useDebounce';
 import {
   Table, Button, Tag, Space, Typography, Card, Row, Col,
   message, Dropdown, Tooltip, Modal, Input, Select, DatePicker,
@@ -132,16 +133,25 @@ export default function FacturasPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Sin debounce, cada tecla en el buscador (o cada dígito de un monto) era
+  // un queryKey distinto y por tanto un GET real — "FAC-001234" tecleado en
+  // el buscador eran 10 peticiones. El input queda controlado por el estado
+  // inmediato (responde a cada tecla); el valor DEBOUNCED es el que entra
+  // al filtro y por tanto al queryKey.
+  const searchD   = useDebounce(search, 400);
+  const montoMinD = useDebounce(montoMin, 400);
+  const montoMaxD = useDebounce(montoMax, 400);
+
   const filters = {
-    search:    search || undefined,
+    search:    searchD || undefined,
     estado,
     desde:     rango?.[0].format('YYYY-MM-DD'),
     hasta:     rango?.[1].format('YYYY-MM-DD'),
     clienteId,
     tipoPago,
     tipoNcf,
-    montoMin,
-    montoMax,
+    montoMin:  montoMinD,
+    montoMax:  montoMaxD,
   };
 
   const filtrosAvanzadosActivos = [clienteId, tipoPago, tipoNcf, montoMin, montoMax].filter(Boolean).length;
@@ -154,7 +164,7 @@ export default function FacturasPage() {
   });
   const clientesOpts = (clientesData?.data ?? []).map((c: any) => ({ value: c.id, label: c.nombre }));
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey:        ['facturas', page, filters],
     refetchOnMount:  'always',
     queryFn:         () => facturasApi.list(page, 10, filters),
@@ -167,6 +177,13 @@ export default function FacturasPage() {
       return hayPendiente ? 5_000 : false;
     },
   });
+
+  // Sin esto, un fetch fallido (429, 500, red caída) dejaba la tabla en
+  // blanco o congelada en la página anterior sin ningún aviso — el usuario
+  // no tenía forma de saber que la lista no cargó.
+  useEffect(() => {
+    if (isError) message.error((error as any)?.friendlyMessage ?? 'No se pudo cargar la lista de facturas');
+  }, [isError, error]);
 
   // Resumen rápido desde la misma data cargada
   const resumen = data?.data ?? [];

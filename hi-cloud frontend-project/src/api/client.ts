@@ -425,6 +425,9 @@ apiClient.interceptors.response.use(
       case 404: enrichedErr.friendlyMessage = message || 'Registro no encontrado'; break;
       case 409: enrichedErr.friendlyMessage = message || 'Ya existe un registro con esos datos'; break;
       case 422: enrichedErr.friendlyMessage = message; break;
+      // El backend manda "ThrottlerException: Too Many Requests" crudo —
+      // sin esta rama, ese texto interno le llegaba tal cual al usuario.
+      case 429: enrichedErr.friendlyMessage = 'Demasiadas solicitudes — espera un momento e inténtalo de nuevo.'; break;
       case 500: enrichedErr.friendlyMessage = message !== 'Error interno del servidor'
         ? message : 'Error interno del servidor. Contacte soporte si persiste.'; break;
       default:  enrichedErr.friendlyMessage = message;

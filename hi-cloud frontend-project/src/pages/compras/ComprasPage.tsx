@@ -3,6 +3,7 @@ import { EmailConCopiaModal } from '../../components/ui/EmailConCopiaModal';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
+import { useDebounce } from '../../hooks/useDebounce';
 import {
   Table, Button, Tag, Space, Typography, Card, Row, Col,
   Popconfirm, message, Dropdown, Input, Select, DatePicker, Statistic, theme,
@@ -69,18 +70,26 @@ export default function ComprasPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Sin debounce, cada tecla del buscador era un queryKey distinto y por
+  // tanto un GET real — mismo bug que ya existía en FacturasPage.
+  const searchD = useDebounce(search, 400);
+
   const filters = {
-    search: search || undefined,
+    search: searchD || undefined,
     estado,
     desde: rango?.[0].format('YYYY-MM-DD'),
     hasta: rango?.[1].format('YYYY-MM-DD'),
   };
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['compras', page, filters],
     refetchOnMount: 'always',
     queryFn:  () => comprasApi.list(page, 10, filters),
   });
+
+  useEffect(() => {
+    if (isError) message.error((error as any)?.friendlyMessage ?? 'No se pudo cargar la lista de compras');
+  }, [isError, error]);
 
   const rows = data?.data ?? [];
   const [pdfPending, setPdfPending] = useState<number | null>(null);
