@@ -61,6 +61,11 @@ const DUMMY_PASSWORD_HASH = '$2b$12$DqBQW43QbABBN1qSfAgFzuEs8EyYhh7wSY/E.JGy.STQ
 export class AuthService implements OnModuleInit {
   private readonly logger = new Logger(AuthService.name);
 
+  /** Debe coincidir con SESSION_MS de useSupervisor.ts (frontend) y con la
+   *  ventana de FacturasService.resolverSupervisorSessionId — las tres
+   *  definen la misma "sesión de 8h" de modo supervisor. */
+  private readonly SUPERVISOR_SESSION_MS = 8 * 60 * 60_000;
+
   constructor(
     private usersService:       UsersService,
     private jwtService:         JwtService,
@@ -1329,6 +1334,14 @@ export class AuthService implements OnModuleInit {
       byId ? 'Usuario no autorizado como supervisor' : 'No se encontró supervisor con ese correo en esta empresa',
     );
 
+    // Auto-autorización: un ADMIN sí puede aprobar sus propias acciones (es
+    // la máxima autoridad del tenant, esto es un flujo normal, no una
+    // excepción a marcar). CONTADOR/SUPER_ADMIN actuando de cajero NO pueden
+    // autorizarse a sí mismos — decisión explícita del negocio, no un olvido.
+    if (sup.id === cajeroId && sup.role !== 'admin') {
+      throw new UnauthorizedException('No puedes autorizarte a ti mismo como supervisor');
+    }
+
     const valida = await bcrypt.compare(supervisorPassword, sup.password);
     if (!valida) throw new UnauthorizedException('Contraseña incorrecta');
 
@@ -1454,13 +1467,26 @@ export class AuthService implements OnModuleInit {
       `, [ids]);
     }
 
-    const data = sesiones.map((s: any) => ({
-      ...s,
-      cierre: cierres.find((c: any) => c.sessionId === s.id) ?? null,
-      transacciones: facturas
-        .filter((f: any) => f.sessionId === s.id)
-        .map(({ sessionId: _sid, ...f }: any) => f),
-    }));
+    // El cierre depende de que el CLIENTE reporte manual o expiración (ver
+    // useSupervisor.ts) — si esa pestaña nunca vuelve a abrirse, la fila de
+    // activación se queda sin cierre para siempre. El reporte no puede
+    // confiar solo en "¿hay fila de cierre?": calcula la expiración él mismo
+    // (mismas 8h que SESSION_MS del frontend y que la ventana de
+    // FacturasService.resolverSupervisorSessionId) para no mostrar "Activa"
+    // una sesión de hace varios días que nadie cerró.
+    const ahora = Date.now();
+    const data = sesiones.map((s: any) => {
+      const cierre = cierres.find((c: any) => c.sessionId === s.id) ?? null;
+      const expirada = !cierre && (ahora - new Date(s.createdAt).getTime() >= this.SUPERVISOR_SESSION_MS);
+      return {
+        ...s,
+        cierre,
+        expirada,
+        transacciones: facturas
+          .filter((f: any) => f.sessionId === s.id)
+          .map(({ sessionId: _sid, ...f }: any) => f),
+      };
+    });
 
     return { data, meta: { total, page, limit } };
   }

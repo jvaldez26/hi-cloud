@@ -586,16 +586,25 @@ function SupervisorLogTab() {
           },
           {
             title: 'Cierre', key: 'cierre', width: 180,
-            render: (_: any, r: any) => r.cierre
-              ? (
-                <div>
-                  <Tag color={r.cierre.detail?.includes('Expiración') ? 'orange' : 'default'} style={{ fontSize: 11 }}>
-                    {r.cierre.detail?.includes('Expiración') ? 'Expiró (8h)' : 'Cierre manual'}
-                  </Tag>
-                  <div style={{ fontSize: 11, color: token.colorTextTertiary }}>{fmt.dateTime(r.cierre.createdAt)}</div>
-                </div>
-              )
-              : <Tag color="green" style={{ fontSize: 11 }}>Activa / sin cierre registrado</Tag>,
+            render: (_: any, r: any) => {
+              if (r.cierre) {
+                return (
+                  <div>
+                    <Tag color={r.cierre.detail?.includes('Expiración') ? 'orange' : 'default'} style={{ fontSize: 11 }}>
+                      {r.cierre.detail?.includes('Expiración') ? 'Expiró (8h)' : 'Cierre manual'}
+                    </Tag>
+                    <div style={{ fontSize: 11, color: token.colorTextTertiary }}>{fmt.dateTime(r.cierre.createdAt)}</div>
+                  </div>
+                );
+              }
+              // Sin fila de cierre: el cierre lo reporta el navegador de esa
+              // caja (manual o al detectar expiración) — si esa pestaña nunca
+              // vuelve a abrirse, nunca llega. Pasadas las 8h sin cierre, es
+              // una sesión vencida sin auditar su cierre, no una activa de verdad.
+              return r.expirada
+                ? <Tag color="orange" style={{ fontSize: 11 }}>Expiró (sin cierre registrado)</Tag>
+                : <Tag color="green" style={{ fontSize: 11 }}>Activa</Tag>;
+            },
           },
           {
             title: 'Transacciones', key: 'transacciones', width: 110,

@@ -36,6 +36,7 @@ function makeAuthService() {
     { id: 1, nombre: 'Carlos Cajero',  email: 'carlos@empresa.com',  password: HASH_SUP, role: 'vendedor' },
     { id: 2, nombre: 'Ana Supervisor', email: 'ana@empresa.com',     password: HASH_SUP, role: 'admin' },
     { id: 3, nombre: 'Otro Admin',     email: 'otro@empresa.com',    password: HASH_SUP, role: 'admin' },
+    { id: 4, nombre: 'Rosa Contadora', email: 'rosa@empresa.com',    password: HASH_SUP, role: 'contador' },
   ];
   const sucursales = [{ id: 5, nombre: 'Sucursal Centro' }];
   let nextId = 1;
@@ -179,6 +180,32 @@ describe('AuthService.verificarSupervisor — sessionId y sucursalId', () => {
   });
 });
 
+describe('AuthService.verificarSupervisor — auto-autorización', () => {
+  it('un ADMIN SÍ puede autorizarse a sí mismo (flujo normal, no una excepción)', async () => {
+    const { svc, posLog } = makeAuthService();
+    // Ana (id 2, admin) es a la vez la cajera y la supervisora que se elige.
+    const r = await svc.verificarSupervisor(2, PASSWORD_SUP, /* cajeroId */ 2, EMPRESA, 'Modificar precio');
+    expect(r.ok).toBe(true);
+    expect(posLog).toHaveLength(1);
+  });
+
+  it('un CONTADOR NO puede autorizarse a sí mismo', async () => {
+    const { svc, posLog } = makeAuthService();
+    // Rosa (id 4, contador) es a la vez la cajera y la supervisora que se elige.
+    await expect(
+      svc.verificarSupervisor(4, PASSWORD_SUP, /* cajeroId */ 4, EMPRESA, 'Modificar precio'),
+    ).rejects.toThrow(UnauthorizedException);
+    expect(posLog).toHaveLength(0);
+  });
+
+  it('un CONTADOR SÍ puede autorizar a OTRO cajero (la restricción es solo sobre uno mismo)', async () => {
+    const { svc, posLog } = makeAuthService();
+    const r = await svc.verificarSupervisor(4, PASSWORD_SUP, /* cajeroId distinto */ 1, EMPRESA, 'Modificar precio');
+    expect(r.ok).toBe(true);
+    expect(posLog).toHaveLength(1);
+  });
+});
+
 describe('AuthService.cerrarSesionSupervisor', () => {
   it('cierre manual: resuelve supervisorId/cajeroId de la fila de activación, no del caller', async () => {
     const { svc, posLog } = makeAuthService();
@@ -275,5 +302,40 @@ describe('AuthService.listarSupervisorLog', () => {
 
     expect(data).toHaveLength(0);
     expect(meta.total).toBe(0);
+  });
+
+  it('sesión de hace 10 horas SIN cierre registrado: aparece "expirada" (no "activa")', async () => {
+    const { svc, posLog } = makeAuthService();
+    const { sessionId } = await svc.verificarSupervisor(2, PASSWORD_SUP, 1, EMPRESA, 'Activar modo supervisor');
+    // El cierre depende de que el navegador de esa caja siga vivo y lo reporte
+    // (ver useSupervisor.ts) — simula que esa pestaña nunca volvió a abrirse.
+    posLog.find(p => p.id === sessionId)!.createdAt = new Date(Date.now() - 10 * 60 * 60_000);
+
+    const { data } = await svc.listarSupervisorLog(EMPRESA, {});
+
+    expect(data[0].cierre).toBeNull();
+    expect(data[0].expirada).toBe(true);
+  });
+
+  it('sesión de hace 2 horas sin cierre: sigue "activa" (dentro de la ventana de 8h)', async () => {
+    const { svc } = makeAuthService();
+    await svc.verificarSupervisor(2, PASSWORD_SUP, 1, EMPRESA, 'Activar modo supervisor');
+
+    const { data } = await svc.listarSupervisorLog(EMPRESA, {});
+
+    expect(data[0].cierre).toBeNull();
+    expect(data[0].expirada).toBe(false);
+  });
+
+  it('sesión de hace 10 horas con cierre YA registrado: no se marca "expirada" (el cierre manda)', async () => {
+    const { svc, posLog } = makeAuthService();
+    const { sessionId } = await svc.verificarSupervisor(2, PASSWORD_SUP, 1, EMPRESA, 'Activar modo supervisor');
+    posLog.find(p => p.id === sessionId)!.createdAt = new Date(Date.now() - 10 * 60 * 60_000);
+    await svc.cerrarSesionSupervisor(sessionId!, EMPRESA, 'expiracion');
+
+    const { data } = await svc.listarSupervisorLog(EMPRESA, {});
+
+    expect(data[0].cierre).toBeTruthy();
+    expect(data[0].expirada).toBe(false);
   });
 });

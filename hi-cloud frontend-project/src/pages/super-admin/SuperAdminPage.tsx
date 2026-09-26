@@ -5229,16 +5229,21 @@ function SupervisorLogAdminTab({ C }: { C: any }) {
               { title: 'Motivo de activación', dataIndex: 'action', key: 'action',
                 render: (v: string, r: any) => <Tooltip title={r.detail}><span style={{ fontSize: 12 }}>{v}</span></Tooltip> },
               { title: 'Cierre', key: 'cierre', width: 180,
-                render: (_: any, r: any) => r.cierre
-                  ? (
-                    <div>
-                      <Tag color={r.cierre.detail?.includes('Expiración') ? 'orange' : 'default'} style={{ fontSize: 11 }}>
-                        {r.cierre.detail?.includes('Expiración') ? 'Expiró (8h)' : 'Cierre manual'}
-                      </Tag>
-                      <div style={{ fontSize: 11, color: C.txt2 }}>{new Date(r.cierre.createdAt).toLocaleString('es-DO')}</div>
-                    </div>
-                  )
-                  : <Tag color="green" style={{ fontSize: 11 }}>Activa / sin cierre registrado</Tag> },
+                render: (_: any, r: any) => {
+                  if (r.cierre) {
+                    return (
+                      <div>
+                        <Tag color={r.cierre.detail?.includes('Expiración') ? 'orange' : 'default'} style={{ fontSize: 11 }}>
+                          {r.cierre.detail?.includes('Expiración') ? 'Expiró (8h)' : 'Cierre manual'}
+                        </Tag>
+                        <div style={{ fontSize: 11, color: C.txt2 }}>{new Date(r.cierre.createdAt).toLocaleString('es-DO')}</div>
+                      </div>
+                    );
+                  }
+                  return r.expirada
+                    ? <Tag color="orange" style={{ fontSize: 11 }}>Expiró (sin cierre registrado)</Tag>
+                    : <Tag color="green" style={{ fontSize: 11 }}>Activa</Tag>;
+                } },
               { title: 'Transacciones', key: 'transacciones', width: 110,
                 render: (_: any, r: any) => (
                   <Badge count={r.transacciones?.length ?? 0} showZero color={r.transacciones?.length ? '#1677ff' : '#d9d9d9'} />
