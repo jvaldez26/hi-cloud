@@ -31,6 +31,17 @@ function servicio(opts: { diasAntiguedad: number; tieneMovimientos: boolean }) {
 }
 
 describe('ReportesService.getModoEjemplo()', () => {
+  // `servicio()` calcula "hace N días" con Date.now() en el setup, y el
+  // propio servicio vuelve a llamar Date.now() más tarde (tras el await de
+  // la query) para comparar contra ese mismo límite — sin el reloj
+  // congelado, cualquier milisegundo de por medio empuja "justo 30 días" a
+  // 30.00000x días reales, y la comparación `<= 30` falla de forma
+  // intermitente (reproducido en CI: pasa en máquinas rápidas, falla bajo
+  // carga). Fake timers congelan Date.now() para todo el test, así ambas
+  // llamadas ven exactamente el mismo instante.
+  beforeEach(() => { jest.useFakeTimers(); });
+  afterEach(() => { jest.useRealTimers(); });
+
   it('empresa nueva (5 días) sin ningún movimiento real: modo ejemplo activo', async () => {
     const { svc } = servicio({ diasAntiguedad: 5, tieneMovimientos: false });
     const r = await svc.getModoEjemplo();
