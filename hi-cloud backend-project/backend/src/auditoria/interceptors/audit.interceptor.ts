@@ -12,7 +12,15 @@ import { AccionAuditoria, NivelAuditoria } from '../entities/audit-log.entity';
 import { User } from '../../users/users.entity';
 
 // Rutas de infraestructura — nunca auditadas
-const RUTAS_EXCLUIDAS = ['/api-json', '/api-yaml', '/favicon.ico', '/api/swagger', '/api/docs'];
+const RUTAS_EXCLUIDAS = [
+  '/api-json', '/api-yaml', '/favicon.ico', '/api/swagger', '/api/docs',
+  // Ruido técnico de sesión, no acciones del usuario: /auth/actividad es un
+  // heartbeat (hasta 60/min, sin crear nada — solo actualiza lastActivityAt)
+  // y /auth/refresh rota el access token automáticamente varias veces por
+  // sesión. Ambos generaban "X creó en auth" sin aportar nada al rastro que
+  // un admin necesita ver.
+  '/api/v1/auth/actividad', '/api/v1/auth/refresh',
+];
 
 // Solo escrituras — los GET son ruido sin valor auditivo
 const METODOS_AUDITABLES = ['POST', 'PUT', 'PATCH', 'DELETE'];
@@ -69,7 +77,8 @@ function determinarNivel(metodo: string, ruta: string): NivelAuditoria {
   return NivelAuditoria.NORMAL;
 }
 
-function generarDescripcion(
+/** Exportada solo para test unitario directo — ver audit.interceptor.spec.ts. */
+export function generarDescripcion(
   metodo: string,
   ruta: string,
   userName?: string,
@@ -83,6 +92,28 @@ function generarDescripcion(
   // Auth
   if (r.includes('/auth/login'))  return `${quien} inició sesión`;
   if (r.includes('/auth/logout')) return `${quien} cerró sesión`;
+  if (r.includes('/auth/2fa/complete-login'))    return `${quien} inició sesión (verificación en 2 pasos)`;
+  if (r.includes('/auth/register'))              return `Nueva cuenta registrada${body?.email ? ` (${body.email})` : ''}`;
+  if (r.includes('/auth/cambiar-empresa'))        return `${quien} cambió de empresa activa`;
+  if (r.includes('/auth/cambiar-sucursal'))       return `${quien} cambió de sucursal activa`;
+  if (r.includes('/auth/change-password'))        return `${quien} cambió su contraseña`;
+  if (r.includes('/auth/setup-password'))         return `${quien} configuró su contraseña inicial`;
+  if (r.includes('/auth/reset-password'))         return `${quien} restableció su contraseña`;
+  if (r.includes('/auth/forgot-password'))        return `${quien} solicitó restablecer su contraseña`;
+  if (r.includes('/auth/verify-email'))           return `${quien} verificó su correo`;
+  if (r.includes('/auth/resend-verification'))    return `${quien} solicitó reenvío de verificación de correo`;
+  if (r.includes('/auth/no-fui-yo'))              return `Se reportó un inicio de sesión no reconocido — sesiones cerradas`;
+  if (r.includes('/auth/verificar-supervisor'))   return `${quien} autorizó modo supervisor`;
+  if (r.includes('/auth/supervisor-log/cerrar'))  return `${quien} cerró su sesión de modo supervisor`;
+  if (r.includes('/auth/usuarios/') && r.includes('/cerrar-sesion')) {
+    // extraerEntidadId solo mira el ÚLTIMO segmento (aquí sería "cerrar-sesion",
+    // no numérico) — el id del usuario objetivo va justo antes.
+    const partes = ruta.split('/').filter(Boolean);
+    const idx = partes.indexOf('cerrar-sesion');
+    const targetId = idx > 0 ? partes[idx - 1] : undefined;
+    return `${quien} forzó el cierre de sesión de otro usuario${targetId ? ` #${targetId}` : ''}`;
+  }
+  if (r.includes('/auth/contacto-soporte'))       return `${quien} envió un mensaje de soporte`;
 
   // Anulaciones / cancelaciones
   if (r.includes('/anular'))   {
@@ -170,6 +201,27 @@ function generarDescripcion(
       const total = body?.total ?? body?.totalFinal ?? '';
       return `${quien} registró venta${total ? ` — RD$${Number(total).toLocaleString('es-DO', { minimumFractionDigits: 2 })}` : ''}`;
     }
+  }
+
+  // e-CF (emisión de comprobantes fiscales) — orden importa: los sufijos más
+  // específicos van antes que su prefijo compartido ('/emitir' es substring
+  // de '/emitir-pago-exterior'; '/consultar-estado' lo es de
+  // '/consultar-estados'), si no la rama genérica se comería a la específica.
+  if (r.includes('/ecf/')) {
+    const encf = body?.encf ? ` ${body.encf}` : '';
+    if (r.includes('/nota-debito')  && r.includes('/emitir')) return `${quien} emitió e-CF de Nota de Débito${encf}`;
+    if (r.includes('/nota-credito') && r.includes('/emitir')) return `${quien} emitió e-CF de Nota de Crédito${encf}`;
+    if (r.includes('/compra/')  && r.includes('/emitir-pago-exterior')) return `${quien} emitió e-CF de Pago al Exterior${encf}`;
+    if (r.includes('/factura/') && r.includes('/emitir-exportacion'))   return `${quien} emitió e-CF de Exportación${encf}`;
+    if (r.includes('/compra/')  && r.includes('/emitir'))  return `${quien} emitió e-CF de Compras (E41)${encf}`;
+    if (r.includes('/gasto/')   && r.includes('/emitir'))  return `${quien} emitió e-CF de Gasto Menor${encf}`;
+    if (r.includes('/secuencias'))        return `${quien} configuró una secuencia de e-CF`;
+    if (r.includes('/archivar-masivo'))   return `${quien} archivó e-CF en lote`;
+    if (r.includes('/consultar-estados')) return `${quien} consultó estados de e-CF en lote`;
+    if (r.includes('/consultar-estado'))  return `${quien} consultó el estado de un e-CF ante DGII`;
+    if (r.includes('/reenviar'))          return `${quien} reenvió un e-CF a DGII`;
+    if (r.includes('/ejecutar-reintentos')) return `${quien} ejecutó reintentos de envío de e-CF`;
+    if (r.includes('/config/proveedor'))    return `${quien} configuró el proveedor de e-CF`;
   }
 
   // Fallback genérico legible
