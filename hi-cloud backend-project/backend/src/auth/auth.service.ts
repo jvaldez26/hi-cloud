@@ -1334,11 +1334,11 @@ export class AuthService implements OnModuleInit {
       byId ? 'Usuario no autorizado como supervisor' : 'No se encontró supervisor con ese correo en esta empresa',
     );
 
-    // Auto-autorización: un ADMIN sí puede aprobar sus propias acciones (es
-    // la máxima autoridad del tenant, esto es un flujo normal, no una
-    // excepción a marcar). CONTADOR/SUPER_ADMIN actuando de cajero NO pueden
-    // autorizarse a sí mismos — decisión explícita del negocio, no un olvido.
-    if (sup.id === cajeroId && sup.role !== 'admin') {
+    // Auto-autorización: ADMIN y CONTADOR sí pueden aprobar sus propias
+    // acciones (flujo normal, no una excepción a marcar). SUPER_ADMIN
+    // actuando de cajero NO puede autorizarse a sí mismo — decisión
+    // explícita del negocio, no un olvido.
+    if (sup.id === cajeroId && !['admin', 'contador'].includes(sup.role)) {
       throw new UnauthorizedException('No puedes autorizarte a ti mismo como supervisor');
     }
 

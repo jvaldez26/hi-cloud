@@ -37,6 +37,7 @@ function makeAuthService() {
     { id: 2, nombre: 'Ana Supervisor', email: 'ana@empresa.com',     password: HASH_SUP, role: 'admin' },
     { id: 3, nombre: 'Otro Admin',     email: 'otro@empresa.com',    password: HASH_SUP, role: 'admin' },
     { id: 4, nombre: 'Rosa Contadora', email: 'rosa@empresa.com',    password: HASH_SUP, role: 'contador' },
+    { id: 5, nombre: 'Sara Super',     email: 'sara@empresa.com',    password: HASH_SUP, role: 'super_admin' },
   ];
   const sucursales = [{ id: 5, nombre: 'Sucursal Centro' }];
   let nextId = 1;
@@ -189,18 +190,33 @@ describe('AuthService.verificarSupervisor — auto-autorización', () => {
     expect(posLog).toHaveLength(1);
   });
 
-  it('un CONTADOR NO puede autorizarse a sí mismo', async () => {
+  it('un CONTADOR SÍ puede autorizarse a sí mismo (flujo normal, no una excepción)', async () => {
     const { svc, posLog } = makeAuthService();
     // Rosa (id 4, contador) es a la vez la cajera y la supervisora que se elige.
+    const r = await svc.verificarSupervisor(4, PASSWORD_SUP, /* cajeroId */ 4, EMPRESA, 'Modificar precio');
+    expect(r.ok).toBe(true);
+    expect(posLog).toHaveLength(1);
+  });
+
+  it('un CONTADOR SÍ puede autorizar a OTRO cajero también', async () => {
+    const { svc, posLog } = makeAuthService();
+    const r = await svc.verificarSupervisor(4, PASSWORD_SUP, /* cajeroId distinto */ 1, EMPRESA, 'Modificar precio');
+    expect(r.ok).toBe(true);
+    expect(posLog).toHaveLength(1);
+  });
+
+  it('un SUPER_ADMIN NO puede autorizarse a sí mismo', async () => {
+    const { svc, posLog } = makeAuthService();
+    // Sara (id 5, super_admin) es a la vez la cajera y la supervisora que se elige.
     await expect(
-      svc.verificarSupervisor(4, PASSWORD_SUP, /* cajeroId */ 4, EMPRESA, 'Modificar precio'),
+      svc.verificarSupervisor(5, PASSWORD_SUP, /* cajeroId */ 5, EMPRESA, 'Modificar precio'),
     ).rejects.toThrow(UnauthorizedException);
     expect(posLog).toHaveLength(0);
   });
 
-  it('un CONTADOR SÍ puede autorizar a OTRO cajero (la restricción es solo sobre uno mismo)', async () => {
+  it('un SUPER_ADMIN SÍ puede autorizar a otro cajero (la restricción es solo sobre uno mismo)', async () => {
     const { svc, posLog } = makeAuthService();
-    const r = await svc.verificarSupervisor(4, PASSWORD_SUP, /* cajeroId distinto */ 1, EMPRESA, 'Modificar precio');
+    const r = await svc.verificarSupervisor(5, PASSWORD_SUP, /* cajeroId distinto */ 1, EMPRESA, 'Modificar precio');
     expect(r.ok).toBe(true);
     expect(posLog).toHaveLength(1);
   });
