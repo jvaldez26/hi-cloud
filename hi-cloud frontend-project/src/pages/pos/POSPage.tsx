@@ -12874,11 +12874,16 @@ export default function POSPage() {
                 aparezca es no usar type="password" en absoluto. El punteado visual lo
                 da -webkit-text-security (soportado en Chrome/Edge/Safari); en Firefox,
                 que no lo soporta, el texto se ve en claro mientras el ojo está apagado.
+                autoComplete="off" (NO "new-password" — ese token es para "crear una
+                cuenta nueva" y en un type="text" hizo que Chrome guardara y sugiriera
+                cada valor tecleado en texto plano, historial de autocompletar normal,
+                no el gestor de contraseñas). name/id ofuscados para que ningún
+                heurístico lo asocie con nada.
               */}
               <Input placeholder="Contraseña del supervisor" value={supPassword}
                 type="text"
-                name="supervisor-auth-code" id="supervisor-auth-code"
-                autoComplete="new-password" autoCorrect="off" autoCapitalize="off" spellCheck={false}
+                name="hc-sup-x9k2q" id="hc-sup-x9k2q"
+                autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
                 data-form-type="other" data-lpignore="true" data-1p-ignore
                 style={supPasswordVisible ? undefined : ({ WebkitTextSecurity: 'disc' } as any)}
                 suffix={
