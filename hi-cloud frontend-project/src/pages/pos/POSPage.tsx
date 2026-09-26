@@ -12867,6 +12867,7 @@ export default function POSPage() {
             <div>
               <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Contraseña</div>
               <Input.Password placeholder="Contraseña del supervisor" value={supPassword}
+                name="supervisor-auth-code" id="supervisor-auth-code"
                 autoComplete="new-password" autoCorrect="off" autoCapitalize="off" spellCheck={false}
                 data-form-type="other" data-lpignore="true" data-1p-ignore
                 onChange={e => { setSupPassword(e.target.value); setSupError(''); }}
