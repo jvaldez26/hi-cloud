@@ -9449,9 +9449,19 @@ export default function POSPage() {
   const [supId,               setSupId]               = useState<number | null>(null);
   const [supPassword,         setSupPassword]         = useState('');
   const [supPasswordVisible,  setSupPasswordVisible]  = useState(false);
+  // Aviso no invasivo (nunca bloqueante) para que un supervisor sin PIN
+  // configurado se entere de que existe la opción, sin depender de que
+  // alguien se lo diga de palabra. Se recuerda por supervisor y por
+  // navegador — sin fecha límite, su contraseña normal sigue funcionando
+  // aquí mientras no configure uno (ver AuthService.verificarSupervisor).
+  const [pinHintDismissedIds, setPinHintDismissedIds] = useState<Set<number>>(() => new Set());
+  const dismissPinHint = (id: number) => {
+    try { localStorage.setItem(`hc_pin_hint_dismissed_${id}`, '1'); } catch { /* Safari privado, etc. */ }
+    setPinHintDismissedIds(prev => new Set(prev).add(id));
+  };
   const [supError,            setSupError]            = useState('');
   const [verificandoSupNuevo, setVerificandoSupNuevo] = useState(false);
-  const { data: supervisores, isLoading: supLoading } = useQuery<{ id: number; nombre: string; role: string }[]>({
+  const { data: supervisores, isLoading: supLoading } = useQuery<{ id: number; nombre: string; role: string; tienePin: boolean }[]>({
     queryKey: ['supervisores-pos'],
     queryFn:  () => api.get('/auth/supervisores').then(r => {
       const d = r.data?.data ?? r.data;
@@ -9460,6 +9470,11 @@ export default function POSPage() {
     enabled:   !!supervisor.pendingAction,
     staleTime: 2 * 60_000,
   });
+  const supSeleccionado = supervisores?.find(s => s.id === supId);
+  const supTienePin     = !!supSeleccionado?.tienePin;
+  const mostrarPinHint  = !!supSeleccionado && !supTienePin
+    && !pinHintDismissedIds.has(supSeleccionado.id)
+    && (() => { try { return localStorage.getItem(`hc_pin_hint_dismissed_${supSeleccionado.id}`) !== '1'; } catch { return true; } })();
   // ── Modal confirmar salida del POS ────────────────────────────────────────
   const [modalSalirPOS,       setModalSalirPOS]       = useState(false);
 
@@ -12864,9 +12879,9 @@ export default function POSPage() {
                 />
               )}
             </div>
-            {/* Contraseña */}
+            {/* Contraseña / PIN */}
             <div>
-              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Contraseña</div>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>{supTienePin ? 'PIN' : 'Contraseña'}</div>
               {/*
                 type="text" a propósito, NUNCA "password": el dropdown de contraseñas
                 guardadas de Chrome/Edge se activa por el atributo type, sin importar
@@ -12879,9 +12894,15 @@ export default function POSPage() {
                 cada valor tecleado en texto plano, historial de autocompletar normal,
                 no el gestor de contraseñas). name/id ofuscados para que ningún
                 heurístico lo asocie con nada.
+
+                Si el supervisor seleccionado ya configuró un PIN, el campo pasa a
+                aceptar solo dígitos (ver AuthService.verificarSupervisor: una vez
+                configurado, el PIN es el único credential válido aquí).
               */}
-              <Input placeholder="Contraseña del supervisor" value={supPassword}
+              <Input placeholder={supTienePin ? 'PIN del supervisor' : 'Contraseña del supervisor'} value={supPassword}
                 type="text"
+                inputMode={supTienePin ? 'numeric' : undefined}
+                maxLength={supTienePin ? 6 : undefined}
                 name="hc-sup-x9k2q" id="hc-sup-x9k2q"
                 autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
                 data-form-type="other" data-lpignore="true" data-1p-ignore
@@ -12894,7 +12915,10 @@ export default function POSPage() {
                     {supPasswordVisible ? <EyeOutlined /> : <EyeInvisibleOutlined />}
                   </span>
                 }
-                onChange={e => { setSupPassword(e.target.value); setSupError(''); }}
+                onChange={e => {
+                  const v = supTienePin ? e.target.value.replace(/\D/g, '') : e.target.value;
+                  setSupPassword(v); setSupError('');
+                }}
                 onPressEnter={async () => {
                   if (!supId || !supPassword) { setSupError('Selecciona un supervisor e ingresa su contraseña'); return; }
                   setVerificandoSupNuevo(true); setSupError('');
@@ -12912,6 +12936,28 @@ export default function POSPage() {
                     setSupError(e?.response?.data?.message ?? 'Credenciales inválidas');
                   } finally { setVerificandoSupNuevo(false); }
                 }} />
+              {/* No bloqueante — no debe interrumpir una venta en curso. Abre
+                  el perfil en pestaña nueva para no perder el POS actual. */}
+              {mostrarPinHint && (
+                <div style={{
+                  marginTop: 8, display: 'flex', alignItems: 'center', gap: 8,
+                  fontSize: 11, color: '#92400E', background: '#FFFBEB',
+                  border: '1px solid #FCD34D', borderRadius: 6, padding: '6px 10px',
+                }}>
+                  <span style={{ flex: 1 }}>
+                    💡 Configura un PIN de autorización en tu perfil para autorizar más rápido y sin exponer tu contraseña.{' '}
+                    <a href="/profile" target="_blank" rel="noopener noreferrer" style={{ fontWeight: 700 }}>
+                      Configurar
+                    </a>
+                  </span>
+                  <span
+                    onClick={() => dismissPinHint(supSeleccionado!.id)}
+                    style={{ cursor: 'pointer', color: '#92400E', fontWeight: 700, flexShrink: 0 }}
+                  >
+                    ✕
+                  </span>
+                </div>
+              )}
             </div>
             {supError && <div style={{ color: '#EF4444', fontSize: 12 }}>{supError}</div>}
             <button

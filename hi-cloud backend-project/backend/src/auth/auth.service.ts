@@ -924,6 +924,39 @@ export class AuthService implements OnModuleInit {
     return { message: 'Contraseña actualizada exitosamente' };
   }
 
+  /** ¿Ya configuró su PIN de autorización de supervisor? Para el aviso no
+   *  invasivo del modal de Autorización y la sección de Perfil. */
+  async estadoPinSupervisor(userId: number): Promise<{ tienePin: boolean }> {
+    const [row] = await this.dataSource.query<any[]>(
+      `SELECT ("pinSupervisor" IS NOT NULL) AS "tienePin" FROM users WHERE id = $1`,
+      [userId],
+    );
+    return { tienePin: !!row?.tienePin };
+  }
+
+  /**
+   * PIN corto (4-6 dígitos) alternativo a la contraseña completa, SOLO para
+   * el modal de Autorización de Supervisor del POS — evita teclear la
+   * contraseña real de la cuenta en el mostrador. Requiere la contraseña
+   * actual como confirmación de identidad, igual que changePassword().
+   */
+  async setPinSupervisor(userId: number, currentPassword: string, pin: string) {
+    const [user] = await this.dataSource.query<any[]>(
+      `SELECT id, password, "isActive" FROM users WHERE id = $1`,
+      [userId],
+    );
+    if (!user || !user.isActive) throw new NotFoundException('Usuario no encontrado');
+
+    const isValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isValid) throw new BadRequestException('La contraseña actual es incorrecta');
+
+    const hashed = await bcrypt.hash(pin, 12);
+    await this.dataSource.query(`UPDATE users SET "pinSupervisor" = $1 WHERE id = $2`, [hashed, userId]);
+
+    this.logger.log(`PIN de autorización de supervisor configurado por usuario #${userId}`);
+    return { message: 'PIN de autorización configurado exitosamente' };
+  }
+
   // ─── Email verification ───────────────────────────────────────────────────────
 
   async sendVerificationEmail(userId: number, email: string, nombre: string): Promise<void> {
@@ -1279,9 +1312,9 @@ export class AuthService implements OnModuleInit {
    * Verifica credenciales de un supervisor (admin/contador/super_admin del mismo tenant).
    * Registra la autorización en pos_supervisor_log para auditoría.
    */
-  async listarSupervisores(empresaId: number): Promise<{ id: number; nombre: string; role: string }[]> {
+  async listarSupervisores(empresaId: number): Promise<{ id: number; nombre: string; role: string; tienePin: boolean }[]> {
     return this.dataSource.query<any[]>(`
-      SELECT u.id, u.nombre, u.role
+      SELECT u.id, u.nombre, u.role, (u."pinSupervisor" IS NOT NULL) AS "tienePin"
       FROM users u
       JOIN usuario_empresa ue ON ue."userId" = u.id
       WHERE ue."empresaId" = $1
@@ -1318,7 +1351,7 @@ export class AuthService implements OnModuleInit {
     const byId = typeof supervisorRef === 'number';
     // Buscar supervisor en el mismo tenant con rol autorizado
     const rows = await this.dataSource.query<any[]>(`
-      SELECT u.id, u.nombre, u.email, u.password, u.role
+      SELECT u.id, u.nombre, u.email, u.password, u.role, u."pinSupervisor"
       FROM users u
       JOIN usuario_empresa ue ON ue."userId" = u.id
       WHERE ${byId ? 'u.id = $1' : 'LOWER(u.email) = LOWER($1)'}
@@ -1342,8 +1375,15 @@ export class AuthService implements OnModuleInit {
       throw new UnauthorizedException('No puedes autorizarte a ti mismo como supervisor');
     }
 
-    const valida = await bcrypt.compare(supervisorPassword, sup.password);
-    if (!valida) throw new UnauthorizedException('Contraseña incorrecta');
+    // Si el supervisor ya configuró un PIN de autorización, ese es el único
+    // credential válido aquí (evita teclear la contraseña real de la cuenta
+    // en el mostrador). Mientras no lo configure, sigue aceptando su
+    // contraseña normal — sin fecha límite de migración.
+    const tienePin = !!sup.pinSupervisor;
+    const valida = tienePin
+      ? await bcrypt.compare(supervisorPassword, sup.pinSupervisor)
+      : await bcrypt.compare(supervisorPassword, sup.password);
+    if (!valida) throw new UnauthorizedException(tienePin ? 'PIN incorrecto' : 'Contraseña incorrecta');
 
     // Registrar en audit log — esta fila ES la sesión (su "id" es el
     // sessionId que se propaga a las transacciones hechas durante la

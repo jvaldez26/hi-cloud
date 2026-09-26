@@ -111,4 +111,13 @@ export class User extends BaseEntity {
   // Códigos de respaldo 2FA (hashed con SHA-256, uso único)
   @Column({ type: 'jsonb', nullable: true, select: false })
   twoFactorBackupCodes?: string[];
+
+  // ── PIN de autorización de supervisor ─────────────────────────────────────
+  // PIN corto (4-6 dígitos) hasheado, alternativo a la contraseña completa
+  // SOLO para el modal de "Autorización de Supervisor" del POS — evita
+  // teclear la contraseña real de la cuenta en el mostrador. Mientras no lo
+  // configure, ese campo sigue aceptando su contraseña normal (fallback en
+  // AuthService.verificarSupervisor).
+  @Column({ length: 100, nullable: true, select: false })
+  pinSupervisor?: string;
 }

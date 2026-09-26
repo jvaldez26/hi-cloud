@@ -65,6 +65,15 @@ class ChangePasswordDto {
   newPassword: string;
 }
 
+class SetPinSupervisorDto {
+  @IsString({ message: 'La contraseña actual debe ser texto' })
+  currentPassword: string;
+
+  @IsString({ message: 'El PIN debe ser texto' })
+  @Matches(/^\d{4,6}$/, { message: 'El PIN debe tener entre 4 y 6 dígitos' })
+  pin: string;
+}
+
 class UpdateProfileDto {
   @IsString({ message: 'El nombre debe ser texto' })
   @MinLength(3, { message: 'El nombre debe tener al menos 3 caracteres' })
@@ -502,6 +511,27 @@ export class AuthController {
     @Body() dto: ChangePasswordDto,
   ) {
     return this.authService.changePassword(user.id, dto.currentPassword, dto.newPassword);
+  }
+
+  @Get('pin-supervisor')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Indica si el usuario ya configuró su PIN de autorización de supervisor' })
+  async estadoPinSupervisor(@GetUser() user: User) {
+    return this.authService.estadoPinSupervisor(user.id);
+  }
+
+  @Post('pin-supervisor')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 10, ttl: 3600000 } }) // 10 cambios por hora
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Configurar o cambiar el PIN de autorización de supervisor (requiere contraseña actual)' })
+  async configurarPinSupervisor(
+    @GetUser() user: User,
+    @Body() dto: SetPinSupervisorDto,
+  ) {
+    return this.authService.setPinSupervisor(user.id, dto.currentPassword, dto.pin);
   }
 
   // ── Email verification ────────────────────────────────────────────────────

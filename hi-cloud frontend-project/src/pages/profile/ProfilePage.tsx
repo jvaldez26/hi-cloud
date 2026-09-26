@@ -3,7 +3,8 @@ import { Card, Form, Input, Button, Row, Col, Typography, Tag, Avatar,
          Space, Divider, message, Alert, Modal, Tooltip, Table, Popconfirm, Switch } from 'antd';
 import { UserOutlined, LockOutlined, SaveOutlined, SafetyOutlined,
          EditOutlined, CloseOutlined, GoogleOutlined, LinkOutlined,
-         DesktopOutlined, LogoutOutlined, TeamOutlined, BellOutlined } from '@ant-design/icons';
+         DesktopOutlined, LogoutOutlined, TeamOutlined, BellOutlined,
+         NumberOutlined, EyeOutlined, EyeInvisibleOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
 import api from '../../api/client';
@@ -318,6 +319,109 @@ function AlertaDispositivoSection() {
           onChange={v => guardarMut.mutate(v)}
         />
       </div>
+    </Card>
+  );
+}
+
+/**
+ * PIN corto (4-6 dígitos), alternativo a la contraseña completa, SOLO para
+ * el modal de "Autorización de Supervisor" del POS — ver useSupervisor/
+ * POSPage. Cada quien configura el suyo aquí; mientras no lo haga, ese
+ * campo del POS sigue aceptando su contraseña normal, sin fecha límite.
+ */
+function PinSupervisorSection() {
+  const qc = useQueryClient();
+  const [form] = Form.useForm();
+  const [editing, setEditing] = useState(false);
+  const [pinVisible, setPinVisible] = useState(false);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['pin-supervisor-estado'],
+    queryFn: () => api.get('/auth/pin-supervisor').then(r => (r.data?.data ?? r.data) as { tienePin: boolean }),
+  });
+  const tienePin = data?.tienePin ?? false;
+
+  const guardarMut = useMutation({
+    mutationFn: (values: { currentPassword: string; pin: string }) =>
+      api.post('/auth/pin-supervisor', values).then(r => r.data?.data ?? r.data),
+    onSuccess: () => {
+      form.resetFields();
+      setEditing(false);
+      setPinVisible(false);
+      qc.invalidateQueries({ queryKey: ['pin-supervisor-estado'] });
+      message.success('PIN de autorización configurado');
+    },
+    onError: (e: any) => {
+      message.error(e?.response?.data?.errors?.[0] ?? e?.response?.data?.message ?? 'No se pudo configurar el PIN');
+    },
+  });
+
+  return (
+    <Card
+      title={<><NumberOutlined /> PIN de autorización de supervisor</>}
+      style={{ marginTop: 16 }}
+      extra={!isLoading && (
+        tienePin ? <Tag color="green">Configurado</Tag> : <Tag color="default">Sin configurar</Tag>
+      )}
+    >
+      <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 12 }}>
+        Un PIN corto para autorizar acciones de supervisor en el POS (Venta a Crédito, Cierre de
+        Caja, etc.) sin teclear tu contraseña completa en el mostrador. Mientras no lo configures,
+        tu contraseña normal sigue funcionando ahí igual que siempre.
+      </Text>
+
+      {!editing ? (
+        <Button icon={<NumberOutlined />} onClick={() => setEditing(true)}>
+          {tienePin ? 'Cambiar PIN' : 'Configurar PIN'}
+        </Button>
+      ) : (
+        <Form form={form} layout="vertical" style={{ maxWidth: 360 }}
+          onFinish={v => guardarMut.mutate(v)}>
+          <Form.Item name="currentPassword" label="Tu contraseña actual"
+            rules={[{ required: true, message: 'Ingresa tu contraseña actual' }]}>
+            <Input.Password
+              prefix={<LockOutlined />}
+              placeholder="Contraseña actual"
+              autoComplete="current-password"
+            />
+          </Form.Item>
+          <Form.Item name="pin" label="Nuevo PIN (4-6 dígitos)"
+            getValueFromEvent={e => e.target.value.replace(/\D/g, '').slice(0, 6)}
+            rules={[
+              { required: true, message: 'Ingresa el PIN' },
+              { pattern: /^\d{4,6}$/, message: 'Debe tener entre 4 y 6 dígitos' },
+            ]}>
+            {/*
+              type="text" + máscara CSS, NUNCA type="password" — el mismo PIN
+              se teclea a veces desde una caja compartida, y un input
+              type="password" puede terminar guardado y sugerido por el
+              gestor de contraseñas del navegador a cualquiera que use esa
+              máquina (ver el fix del campo de Autorización de Supervisor
+              en POSPage.tsx). name/id ofuscados por la misma razón.
+            */}
+            <Input
+              type="text" inputMode="numeric" maxLength={6}
+              name="hc-newpin-q2x7" id="hc-newpin-q2x7"
+              placeholder="1234" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
+              data-form-type="other" data-lpignore="true" data-1p-ignore
+              style={pinVisible ? undefined : ({ WebkitTextSecurity: 'disc' } as any)}
+              suffix={
+                <span onClick={() => setPinVisible(v => !v)} style={{ cursor: 'pointer', color: 'rgba(0,0,0,.45)' }}>
+                  {pinVisible ? <EyeOutlined /> : <EyeInvisibleOutlined />}
+                </span>
+              }
+            />
+          </Form.Item>
+          <Space>
+            <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={guardarMut.isPending}>
+              Guardar
+            </Button>
+            <Button onClick={() => { setEditing(false); setPinVisible(false); form.resetFields(); }}>
+              Cancelar
+            </Button>
+          </Space>
+        </Form>
+      )}
     </Card>
   );
 }
@@ -854,6 +958,8 @@ export default function ProfilePage() {
           <TwoFactorSection />
 
           <AlertaDispositivoSection />
+
+          {['admin', 'contador'].includes(user?.role ?? '') && <PinSupervisorSection />}
 
           {['admin', 'contador'].includes(user?.role ?? '') && <SesionesActivasSection />}
 
