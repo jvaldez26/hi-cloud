@@ -110,6 +110,7 @@ export default function FacturasPage() {
   const [estado, setEstado]         = useState<string | undefined>();
   const [rango, setRango]           = useState<[Dayjs, Dayjs] | null>(null);
   const [pdfPending, setPdfPending] = useState<number | null>(null);
+  const [exportandoExcel, setExportandoExcel] = useState(false);
   const [emailFactura, setEmailFactura] = useState<Factura | null>(null);
   // Filtros avanzados
   const [clienteId,  setClienteId]  = useState<number | undefined>();
@@ -286,34 +287,55 @@ export default function FacturasPage() {
     });
 
   const handleExportExcel = useCallback(async () => {
-    // Carga todas las facturas con los filtros actuales. El backend corta cada
-    // consulta en 100 filas, así que se recorre página por página hasta el total.
-    const POR_PAGINA = 100;
-    const primera = await facturasApi.list(1, POR_PAGINA, filters);
-    const totalPaginas = primera?.meta?.totalPages ?? 1;
-    const facturas: Factura[] = [...(primera?.data ?? [])];
-    for (let p = 2; p <= totalPaginas; p++) {
-      const res = await facturasApi.list(p, POR_PAGINA, filters);
-      facturas.push(...(res?.data ?? []));
+    if (exportandoExcel) return; // evita que un doble clic duplique la ráfaga de requests
+    setExportandoExcel(true);
+    try {
+      // Carga todas las facturas con los filtros actuales. 1000 por página (igual
+      // que Compras) deja la inmensa mayoría de exportaciones en un solo request;
+      // si aun así hace falta más de una página, un reintento con backoff ante un
+      // 429 evita perder las páginas ya descargadas por un límite pasajero.
+      const POR_PAGINA = 1000;
+      const pedirPagina = async (p: number, intento = 0): Promise<Awaited<ReturnType<typeof facturasApi.list>>> => {
+        try {
+          return await facturasApi.list(p, POR_PAGINA, filters);
+        } catch (e: any) {
+          if (e?.response?.status === 429 && intento < 3) {
+            await new Promise(r => setTimeout(r, 1000 * 2 ** intento));
+            return pedirPagina(p, intento + 1);
+          }
+          throw e;
+        }
+      };
+      const primera = await pedirPagina(1);
+      const totalPaginas = primera?.meta?.totalPages ?? 1;
+      const facturas: Factura[] = [...(primera?.data ?? [])];
+      for (let p = 2; p <= totalPaginas; p++) {
+        const res = await pedirPagina(p);
+        facturas.push(...(res?.data ?? []));
+      }
+      // Si se crea una factura durante la exportación las páginas se desplazan y
+      // una fila puede repetirse; se descartan duplicados por id.
+      const unicas = [...new Map(facturas.map(f => [f.id, f])).values()];
+      const filas = unicas.map((f: Factura) => ({
+        'Folio':      f.folio,
+        'Fecha':      f.fecha ? dayjs(f.fecha).format('DD/MM/YYYY') : '',
+        'Cliente':    resolverNombreComprador(f),
+        'RNC':        resolverRncComprador(f) ?? '',
+        'Subtotal':   Number(f.subtotal ?? 0),
+        'ITBIS':      Number(f.iva ?? 0),
+        'Total':      Number(f.total ?? 0),
+        'Estado':     f.estado,
+        'NCF':        (f as any).ecf?.numero ?? '',
+        'Vendedor':   (f as any).nombreVendedor ?? '',
+      }));
+      exportarExcel(filas, `Facturas-${dayjs().format('YYYY-MM-DD')}`);
+      message.success(`${filas.length} facturas exportadas`);
+    } catch (e: any) {
+      message.error(e?.friendlyMessage ?? 'No se pudo exportar a Excel');
+    } finally {
+      setExportandoExcel(false);
     }
-    // Si se crea una factura durante la exportación las páginas se desplazan y
-    // una fila puede repetirse; se descartan duplicados por id.
-    const unicas = [...new Map(facturas.map(f => [f.id, f])).values()];
-    const filas = unicas.map((f: Factura) => ({
-      'Folio':      f.folio,
-      'Fecha':      f.fecha ? dayjs(f.fecha).format('DD/MM/YYYY') : '',
-      'Cliente':    resolverNombreComprador(f),
-      'RNC':        resolverRncComprador(f) ?? '',
-      'Subtotal':   Number(f.subtotal ?? 0),
-      'ITBIS':      Number(f.iva ?? 0),
-      'Total':      Number(f.total ?? 0),
-      'Estado':     f.estado,
-      'NCF':        (f as any).ecf?.numero ?? '',
-      'Vendedor':   (f as any).nombreVendedor ?? '',
-    }));
-    exportarExcel(filas, `Facturas-${dayjs().format('YYYY-MM-DD')}`);
-    message.success(`${filas.length} facturas exportadas`);
-  }, [filters]);
+  }, [filters, exportandoExcel]);
 
   const limpiarFiltros = () => {
     setSearch(''); setEstado(undefined); setRango(null);
@@ -595,7 +617,7 @@ export default function FacturasPage() {
         </Col>
         <Col xs={24} sm="auto">
           <Space wrap>
-            <Button icon={<FileExcelOutlined />} onClick={handleExportExcel}>Excel</Button>
+            <Button icon={<FileExcelOutlined />} loading={exportandoExcel} onClick={handleExportExcel}>Excel</Button>
             <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <RefreshByKeyButton queryKey={['facturas']} />
             <VideoTutorialButton />
