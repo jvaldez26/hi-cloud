@@ -9,6 +9,7 @@ import {
 import { Type } from 'class-transformer';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { SupervisorGateGuard } from '../auth/guards/supervisor-gate.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
@@ -119,6 +120,7 @@ export class NotasCreditoController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @UseGuards(SupervisorGateGuard())
   @ApiOperation({ summary: 'Crear nota de crédito (e-CF E34 DGII)' })
   crear(@Body() dto: CreateNCDto, @GetUser() user: User) {
     return this.svc.crear(dto, user.id);

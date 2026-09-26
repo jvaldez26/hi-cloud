@@ -20,10 +20,14 @@ export interface MenuCategoryData {
 
 // ── Grupos de roles ───────────────────────────────────────────────────────────
 
-const ADMIN           = ['admin'];
-const ADMIN_CONT      = ['admin', 'contador'];
-const ADMIN_CONT_VEND = ['admin', 'contador', 'vendedor'];
-const ALL_ROLES       = ['admin', 'contador', 'vendedor', 'viewer'];
+const ADMIN            = ['admin'];
+const ADMIN_CONT       = ['admin', 'contador'];
+const ADMIN_CONT_VEND  = ['admin', 'contador', 'vendedor'];
+const ALL_ROLES        = ['admin', 'contador', 'vendedor', 'viewer'];
+/** Como ALL_ROLES pero sin vendedor — ver PosGuard/SupervisorGateGuard en el
+ *  backend: crear/editar producto ya requiere sesión de supervisor activa
+ *  para ese rol, así que el link deja de tener sentido fuera del POS. */
+const ADMIN_CONT_VIEWER = ['admin', 'contador', 'viewer'];
 
 // ── IDs de módulos add-on ─────────────────────────────────────────────────────
 
@@ -49,7 +53,9 @@ export const PATH_ROLES: Record<string, string[]> = {
   '/proveedores':           ADMIN_CONT,
   '/reposicion-proveedor':  ADMIN_CONT_VEND,
   '/cxp':                   ADMIN_CONT,
-  '/gastos':                ADMIN_CONT_VEND,
+  // Registrar un gasto ya requiere sesión de supervisor activa para
+  // vendedor (ver requireSupervisor('Gastos / Retiros') en el POS).
+  '/gastos':                ADMIN_CONT,
   '/caja-chica':            ADMIN_CONT,
   '/notas-credito-compras': ADMIN_CONT,
   '/bancos':                ADMIN_CONT,
@@ -75,10 +81,15 @@ export const PATH_ROLES: Record<string, string[]> = {
   '/retenciones':           ADMIN_CONT,
   '/declaraciones':         ADMIN_CONT,
   '/herramientas-fiscales': ADMIN_CONT,
-  '/reportes':              ADMIN_CONT_VEND,
-  '/analytics':             ADMIN_CONT_VEND,
-  '/kpi':                   ADMIN_CONT_VEND,
-  '/generador-reportes':    ADMIN_CONT_VEND,
+  // Modo supervisor del POS ya exige aprobación para "Ver Ganancias" (única
+  // acción marcada Forced, máxima sensibilidad) — fuera del POS, vendedor no
+  // tiene ningún camino equivalente para ver estos reportes.
+  '/reportes':              ADMIN_CONT,
+  '/analytics':             ADMIN_CONT,
+  '/kpi':                   ADMIN_CONT,
+  // Ya bloqueado en backend hoy para vendedor (ADMIN/CONTADOR/VIEWER) — el
+  // link era puramente cosmético, nunca funcionaba para ese rol.
+  '/generador-reportes':    ADMIN_CONT_VIEWER,
   '/calendario':            ADMIN_CONT,
   '/asistente':             ADMIN_CONT,
   '/nomina':                ADMIN_CONT,
@@ -106,28 +117,43 @@ export const PATH_ROLES: Record<string, string[]> = {
   // ── Todos los roles autenticados ─────────────────────────────────────────
   '/facturas':              ALL_ROLES,
   '/clientes':              ALL_ROLES,
-  '/productos':             ALL_ROLES,
+  // Crear/editar producto ya requiere sesión de supervisor activa para
+  // vendedor (ver requireSupervisor('Inventario') en el POS) — el link deja
+  // de tener sentido fuera del POS para ese rol. viewer conserva acceso de
+  // solo lectura.
+  '/productos':             ADMIN_CONT_VIEWER,
 
   // ── Admin + Contador + Vendedor ───────────────────────────────────────────
   '/cotizaciones':          ADMIN_CONT_VEND,
   '/pre-facturas':          ADMIN_CONT_VEND,
   '/pro-formas':            ADMIN_CONT_VEND,
-  '/notas-credito':         ADMIN_CONT_VEND,
+  // Emitir NC ya requiere sesión de supervisor activa para vendedor (ver
+  // requireSupervisor('Devolución en efectivo'/'Nueva Nota de Crédito')).
+  '/notas-credito':         ADMIN_CONT,
   '/notas-debito':          ADMIN_CONT,
   '/devoluciones':          ADMIN_CONT,
   '/facturas-recurrentes':  ADMIN_CONT,
   '/cxc':                   ADMIN_CONT_VEND,
-  '/recibos-cobro':         ADMIN_CONT_VEND,
+  // Emitir un recibo de cobro ya requiere sesión de supervisor activa para
+  // vendedor (ver requireSupervisor('Recibos de Cobro') en el POS).
+  '/recibos-cobro':         ADMIN_CONT,
   '/conduces':              ADMIN_CONT_VEND,
   '/fidelidad':             ADMIN_CONT,
   '/soporte/tickets':       ADMIN_CONT,
   '/cuotas':                ADMIN_CONT,
   '/credito-cliente':       ADMIN_CONT,
   '/anticipos-cliente':     ADMIN_CONT_VEND,
-  '/inventario':            ADMIN_CONT_VEND,
-  '/conteo-inventario':     ADMIN_CONT_VEND,
+  // Entrada/salida de stock ya requiere sesión de supervisor activa para
+  // vendedor (mismo gate 'Inventario' del POS que Productos, arriba).
+  '/inventario':            ADMIN_CONT,
+  // Ya bloqueado en backend hoy para vendedor (ni siquiera lectura) — el
+  // link era puramente cosmético.
+  '/conteo-inventario':     ADMIN_CONT,
   '/etiquetas':             ADMIN_CONT_VEND,
-  '/uom':                   ADMIN_CONT_VEND,
+  // Mutar (crear/eliminar) ya bloqueado en backend para vendedor; ocultar
+  // también la lectura — es un catálogo de soporte a Productos, no algo que
+  // el vendedor necesite consultar aparte.
+  '/uom':                   ADMIN_CONT,
   '/valoracion-stock':      ADMIN_CONT_VEND,
   '/caja':                  ADMIN_CONT,
   '/servicios':             ADMIN_CONT,

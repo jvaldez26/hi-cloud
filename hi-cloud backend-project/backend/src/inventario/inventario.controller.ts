@@ -16,6 +16,7 @@ import { EstadoLote } from './entities/lote-producto.entity';
 import { EstadoSerial } from './entities/serial-producto.entity';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { SupervisorGateGuard } from '../auth/guards/supervisor-gate.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
@@ -75,6 +76,7 @@ export class InventarioController {
   @Post('entrada')
   @HttpCode(HttpStatus.CREATED)
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @UseGuards(SupervisorGateGuard())
   @ApiOperation({ summary: 'Registrar entrada de mercancía al inventario' })
   registrarEntrada(@Body() dto: RegistrarEntradaDto, @GetUser() usuario: User) {
     return this.inventarioService.registrarEntradaDesdeDto(dto, usuario.id);
@@ -83,6 +85,7 @@ export class InventarioController {
   @Post('salida')
   @HttpCode(HttpStatus.CREATED)
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @UseGuards(SupervisorGateGuard())
   @ApiOperation({ summary: 'Registrar salida de mercancía del inventario' })
   registrarSalida(@Body() dto: RegistrarSalidaDto, @GetUser() usuario: User) {
     return this.inventarioService.registrarSalidaDesdeDto(dto, usuario.id);

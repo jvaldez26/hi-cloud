@@ -27,6 +27,7 @@ import { CreateFacturaDto } from './dto/create-factura.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { SupervisorGateGuard } from '../auth/guards/supervisor-gate.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
@@ -186,6 +187,10 @@ export class FacturasController {
 
   @Patch(':id/estado')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  // Este mismo endpoint también EMITE (BORRADOR→EMITIDA) — soloSi acota el
+  // gate a la transición hacia CANCELADA (anular), que es la que el POS ya
+  // protege con supervisor; emitir sigue libre para vendedor.
+  @UseGuards(SupervisorGateGuard({ soloSi: body => body?.estado === FacturaEstado.CANCELADA }))
   @ApiOperation({ summary: 'Cambiar estado de la factura' })
   cambiarEstado(
     @Param('id', ParseIntPipe) id: number,

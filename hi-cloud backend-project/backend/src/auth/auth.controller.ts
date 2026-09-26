@@ -13,6 +13,7 @@ import { LoginDto } from './dto/login.dto';
 import { SetUsernameDto } from './dto/set-username.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
+import { SupervisorGateGuard } from './guards/supervisor-gate.guard';
 import { Roles } from './decorators/roles.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
 import { GetUser } from './decorators/get-user.decorator';
@@ -439,7 +440,7 @@ export class AuthController {
   }
 
   @Post('cambiar-sucursal')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, SupervisorGateGuard())
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Cambiar sucursal activa — genera nuevo token con sucursalId y almacenId actualizados' })
   async cambiarSucursal(
