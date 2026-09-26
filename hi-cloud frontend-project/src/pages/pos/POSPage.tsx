@@ -51,6 +51,7 @@ import { conectarImpresora, desconectarImpresora, estaConectada, getNombreImpres
 import { useThemeStore } from '../../store/theme.store';
 import { useOfflineQueue } from '../../hooks/useOfflineQueue';
 import { useSupervisor } from '../../hooks/useSupervisor';
+import { requiereSupervisorVentaCredito } from './ventaCreditoGate';
 import { UomSelect } from '../../components/ui/UomSelect';
 import { AvisoRncNoVigente } from '../../components/ui/RncNoVigente';
 import type { Producto, Cliente } from '../../types';
@@ -12707,8 +12708,16 @@ export default function POSPage() {
               title={necesitaRnc && !rncValido ? 'Ingresa el RNC del comprador para continuar' : ''}
             >
               <motion.button whileTap={{ scale: canCheckout ? 0.97 : 1 }}
-                onClick={() => {
+                onClick={async () => {
                   if (!canCheckout) return;
+                  if (requiereSupervisorVentaCredito({
+                    tipoPago: tipoPagoPos,
+                    supervisorModeEnabled: supervisor.supervisorModeEnabled,
+                    posSupervisorVentaCredito: posConf.posSupervisorVentaCredito,
+                  })) {
+                    const ok = await supervisor.requireSupervisor('Venta a Crédito', `Monto: ${fmt.money(totalEfectivo)}`);
+                    if (!ok) return;
+                  }
                   if (empresa?.configuracion?.posImpresionAuto === true) {
                     autoYaPrintedRef.current = false;
                     // En móvil no abrir popup — imprimirReciboTermico usará overlay+window.print()

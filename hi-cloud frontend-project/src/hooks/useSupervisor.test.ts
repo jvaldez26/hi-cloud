@@ -96,3 +96,52 @@ describe('useSupervisor — auditoría de cierre', () => {
     expect(apiMock.post).not.toHaveBeenCalled();
   });
 });
+
+describe('useSupervisor — requireSupervisor (gate de una acción, ej. Venta a Crédito)', () => {
+  it('modo activo y sin sesión activa: bloquea (la promesa no resuelve) hasta que el modal autoriza', async () => {
+    const { result } = renderHook(() => useSupervisor(), { wrapper });
+    await waitFor(() => expect(result.current.supervisorModeEnabled).toBe(true));
+
+    let resuelto: boolean | undefined;
+    act(() => {
+      result.current.requireSupervisor('Venta a Crédito', 'Monto: RD$7,500.00').then(r => { resuelto = r; });
+    });
+
+    // Sigue pendiente — el modal está abierto (pendingAction), no autorizado todavía.
+    expect(resuelto).toBeUndefined();
+    expect(result.current.pendingAction).toEqual({ action: 'Venta a Crédito', detail: 'Monto: RD$7,500.00' });
+
+    // El modal autoriza (mismo flujo que cualquier otra acción protegida).
+    await act(async () => { result.current.resolveModal(true, 'Ana Supervisor', 'admin', 55); });
+
+    expect(resuelto).toBe(true);
+    expect(result.current.supervisorActive).toBe(true);
+  });
+
+  it('ya hay sesión activa: pasa directo, sin abrir el modal', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      nombre: 'Ana Supervisor', role: 'admin', until: Date.now() + 60_000, sessionId: 7,
+    }));
+    const { result } = renderHook(() => useSupervisor(), { wrapper });
+    await waitFor(() => expect(result.current.supervisorModeEnabled).toBe(true));
+
+    let resuelto: boolean | undefined;
+    await act(async () => {
+      resuelto = await result.current.requireSupervisor('Venta a Crédito');
+    });
+
+    expect(resuelto).toBe(true);
+    expect(result.current.pendingAction).toBeNull();
+  });
+
+  it('modo supervisor desactivado en la empresa: pasa directo (el gate de Venta a Crédito ni se invoca, ver ventaCreditoGate.test.ts)', async () => {
+    apiMock.get.mockResolvedValue({ data: { supervisorModeEnabled: false, maxDiscountPercent: 10 } });
+    const { result } = renderHook(() => useSupervisor(), { wrapper });
+    await waitFor(() => expect(result.current.supervisorModeEnabled).toBe(false));
+
+    const resuelto = await result.current.requireSupervisor('Venta a Crédito');
+
+    expect(resuelto).toBe(true);
+    expect(result.current.pendingAction).toBeNull();
+  });
+});

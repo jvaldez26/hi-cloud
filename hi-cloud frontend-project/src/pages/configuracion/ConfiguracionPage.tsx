@@ -1139,6 +1139,7 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
       maxDiscountPercent:          conf.maxDiscountPercent ?? 10,
       posSupervisorCierreCaja:     conf.posSupervisorCierreCaja !== false,
       posSupervisorGastos:         conf.posSupervisorGastos !== false,
+      posSupervisorVentaCredito:   conf.posSupervisorVentaCredito !== false,
       posPermitirAnularFacturas:   conf.posPermitirAnularFacturas ?? true,
       posTiempoLimiteAnular:       conf.posTiempoLimiteAnular ?? 0,
       posInactividadMinutos:       conf.posInactividadMinutos ?? 15,
@@ -1472,6 +1473,14 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
                   <Switch size="small" />
                 </Form.Item>
                 <Text style={{ fontSize: 13 }}>Requerir supervisor para Gastos</Text>
+              </div>
+            </Col>
+            <Col xs={24} sm={12}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <Form.Item name="posSupervisorVentaCredito" valuePropName="checked" style={{ marginBottom: 0 }}>
+                  <Switch size="small" />
+                </Form.Item>
+                <Text style={{ fontSize: 13 }}>Requerir supervisor para Venta a Crédito</Text>
               </div>
             </Col>
           </>
