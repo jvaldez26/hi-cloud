@@ -14,6 +14,7 @@ import { CuotaEcfService } from '../suscripciones/cuota-ecf.service';
 import { BackupService } from './backup.service';
 import { ContabilidadService } from '../contabilidad/services/contabilidad.service';
 import { ModulosAddonService } from '../modulos-addon/modulos-addon.service';
+import { AuthService } from '../auth/auth.service';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import type { User } from '../users/users.entity';
 import { obtenerIP } from '../auth/utils/obtener-ip.util';
@@ -170,6 +171,7 @@ export class SuperAdminController {
     private contabilidadSvc:  ContabilidadService,
     private modulosSvc:       ModulosAddonService,
     private cuotaEcf:         CuotaEcfService,
+    private authSvc:          AuthService,
   ) {}
 
   @Get('metricas')
@@ -193,6 +195,40 @@ export class SuperAdminController {
   @Get('empresas/:id')
   @ApiOperation({ summary: 'Detalle de una empresa' })
   getEmpresa(@Param('id', ParseIntPipe) id: number) { return this.svc.getEmpresa(id); }
+
+  // ── Modo supervisor del POS (auditoría, vista por empresa) ────────────────
+
+  @Get('empresas/:id/supervisor-log')
+  @ApiOperation({ summary: 'Reporte de sesiones de modo supervisor de una empresa, filtrable por supervisor/cajero/rango de fecha' })
+  listarSupervisorLogEmpresa(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('supervisorId') supervisorId?: string,
+    @Query('cajeroId') cajeroId?: string,
+    @Query('desde') desde?: string,
+    @Query('hasta') hasta?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.authSvc.listarSupervisorLog(id, {
+      supervisorId: supervisorId ? Number(supervisorId) : undefined,
+      cajeroId:     cajeroId     ? Number(cajeroId)     : undefined,
+      desde, hasta,
+      page:  page  ? Number(page)  : undefined,
+      limit: limit ? Number(limit) : undefined,
+    });
+  }
+
+  @Get('empresas/:id/supervisores')
+  @ApiOperation({ summary: 'Supervisores (admin/contador/super_admin) de una empresa — filtro del reporte de modo supervisor' })
+  listarSupervisoresEmpresa(@Param('id', ParseIntPipe) id: number) {
+    return this.authSvc.listarSupervisores(id);
+  }
+
+  @Get('empresas/:id/equipo-usuarios')
+  @ApiOperation({ summary: 'Usuarios de una empresa (cualquier rol) — filtro por cajero del reporte de modo supervisor' })
+  listarEquipoUsuariosEmpresa(@Param('id', ParseIntPipe) id: number) {
+    return this.authSvc.listarUsuariosEquipo(id);
+  }
 
   @Patch('empresas/:id/suspender')
   @HttpCode(HttpStatus.OK)

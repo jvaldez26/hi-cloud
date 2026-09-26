@@ -4755,6 +4755,7 @@ const RANGOS = [
 
 function AuditoriaTab({ C }: { C: any }) {
   const qc = useQueryClient();
+  const [vista,      setVista]      = useState<'general' | 'supervisor'>('general');
   const [busq,       setBusq]       = useState('');
   const [modulo,     setModulo]     = useState<string | undefined>();
   const [accion,     setAccion]     = useState<string | undefined>();
@@ -4827,6 +4828,17 @@ function AuditoriaTab({ C }: { C: any }) {
 
   return (
     <div>
+      <Tabs
+        activeKey={vista}
+        onChange={v => setVista(v as 'general' | 'supervisor')}
+        style={{ marginBottom: 12 }}
+        items={[
+          { key: 'general',    label: 'Log general' },
+          { key: 'supervisor', label: <><Shield size={13} style={{ marginRight: 4, verticalAlign: -2 }} /> Modo Supervisor</> },
+        ]}
+      />
+      {vista === 'supervisor' && <SupervisorLogAdminTab C={C} />}
+      {vista === 'general' && <>
       {/* Filtros */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         <Input
@@ -5106,6 +5118,157 @@ function AuditoriaTab({ C }: { C: any }) {
           </Modal>
         );
       })()}
+      </>}
+    </div>
+  );
+}
+
+/**
+ * Modo Supervisor — vista por empresa seleccionada (no cross-tenant): el
+ * super admin no tiene empresaId propio en su JWT (no pertenece a
+ * usuario_empresa, ver AuthService.getEmpresaPrincipal), así que el reporte
+ * de AuthService.listarSupervisorLog no le sirve directo — estos tres
+ * endpoints (/admin/empresas/:id/supervisor-log|supervisores|equipo-usuarios)
+ * lo llaman con el `id` de la empresa elegida aquí, no con el del token.
+ */
+function SupervisorLogAdminTab({ C }: { C: any }) {
+  const [empresaId,    setEmpresaId]    = useState<number | undefined>();
+  const [page,         setPage]         = useState(1);
+  const [supervisorId, setSupervisorId] = useState<number | undefined>();
+  const [cajeroId,     setCajeroId]     = useState<number | undefined>();
+  const [rango,        setRango]        = useState<[string, string] | null>(null);
+
+  const { data: empresas = [] } = useQuery({
+    queryKey: ['sa-empresas'],
+    queryFn:  () => api.get('/admin/empresas').then(xd),
+  });
+
+  const { data: supervisores } = useQuery<{ id: number; nombre: string }[]>({
+    queryKey: ['sa-sup-log-supervisores', empresaId],
+    queryFn:  () => api.get(`/admin/empresas/${empresaId}/supervisores`).then(xd),
+    enabled: !!empresaId,
+  });
+  const { data: equipo } = useQuery<{ id: number; nombre: string }[]>({
+    queryKey: ['sa-sup-log-equipo', empresaId],
+    queryFn:  () => api.get(`/admin/empresas/${empresaId}/equipo-usuarios`).then(xd),
+    enabled: !!empresaId,
+  });
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['sa-sup-log', empresaId, page, supervisorId, cajeroId, rango],
+    queryFn:  () => api.get(`/admin/empresas/${empresaId}/supervisor-log`, {
+      params: {
+        page, limit: 10,
+        ...(supervisorId ? { supervisorId } : {}),
+        ...(cajeroId     ? { cajeroId }     : {}),
+        ...(rango ? { desde: rango[0], hasta: rango[1] } : {}),
+      },
+    }).then(xd),
+    enabled: !!empresaId,
+  });
+
+  const sesiones: any[] = data?.data ?? [];
+
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Select
+          placeholder="Elegir empresa..." showSearch optionFilterProp="label"
+          style={{ width: 280 }}
+          value={empresaId}
+          onChange={v => { setEmpresaId(v); setPage(1); setSupervisorId(undefined); setCajeroId(undefined); }}
+          options={(empresas as any[]).map((e: any) => ({ value: e.id, label: `#${e.id} — ${e.nombre}` }))}
+        />
+        {empresaId && (
+          <>
+            <Select
+              placeholder="Supervisor" allowClear style={{ width: 180 }}
+              value={supervisorId}
+              onChange={v => { setSupervisorId(v); setPage(1); }}
+              options={(supervisores ?? []).map(s => ({ value: s.id, label: s.nombre }))}
+              showSearch optionFilterProp="label"
+            />
+            <Select
+              placeholder="Cajero" allowClear style={{ width: 180 }}
+              value={cajeroId}
+              onChange={v => { setCajeroId(v); setPage(1); }}
+              options={(equipo ?? []).map(u => ({ value: u.id, label: u.nombre }))}
+              showSearch optionFilterProp="label"
+            />
+            <DatePicker.RangePicker
+              format="DD/MM/YYYY"
+              onChange={vals => {
+                setPage(1);
+                if (!vals || !vals[0] || !vals[1]) { setRango(null); return; }
+                setRango([vals[0].startOf('day').toISOString(), vals[1].endOf('day').toISOString()]);
+              }}
+            />
+          </>
+        )}
+      </div>
+
+      {!empresaId ? (
+        <div style={{ padding: 40, textAlign: 'center', color: C.txt2, fontSize: 13 }}>
+          Elige una empresa para ver sus sesiones de modo supervisor.
+        </div>
+      ) : (
+        <div style={{ background: C.card, borderRadius: 12, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
+          <Table
+            dataSource={sesiones}
+            rowKey="id"
+            loading={isLoading}
+            size="small"
+            columns={[
+              { title: 'Activación', dataIndex: 'createdAt', key: 'createdAt', width: 130,
+                render: (v: string) => <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.txt2 }}>{new Date(v).toLocaleString('es-DO')}</span> },
+              { title: 'Cajero', dataIndex: 'cajeroNombre', key: 'cajeroNombre', width: 140,
+                render: (v: string) => v ?? <em style={{ color: C.txt2 }}>—</em> },
+              { title: 'Supervisor', dataIndex: 'supervisorNombre', key: 'supervisorNombre', width: 140 },
+              { title: 'Caja/Sucursal', dataIndex: 'sucursalNombre', key: 'sucursalNombre', width: 130,
+                render: (v: string) => v ?? <em style={{ color: C.txt2 }}>—</em> },
+              { title: 'Motivo de activación', dataIndex: 'action', key: 'action',
+                render: (v: string, r: any) => <Tooltip title={r.detail}><span style={{ fontSize: 12 }}>{v}</span></Tooltip> },
+              { title: 'Cierre', key: 'cierre', width: 180,
+                render: (_: any, r: any) => r.cierre
+                  ? (
+                    <div>
+                      <Tag color={r.cierre.detail?.includes('Expiración') ? 'orange' : 'default'} style={{ fontSize: 11 }}>
+                        {r.cierre.detail?.includes('Expiración') ? 'Expiró (8h)' : 'Cierre manual'}
+                      </Tag>
+                      <div style={{ fontSize: 11, color: C.txt2 }}>{new Date(r.cierre.createdAt).toLocaleString('es-DO')}</div>
+                    </div>
+                  )
+                  : <Tag color="green" style={{ fontSize: 11 }}>Activa / sin cierre registrado</Tag> },
+              { title: 'Transacciones', key: 'transacciones', width: 110,
+                render: (_: any, r: any) => (
+                  <Badge count={r.transacciones?.length ?? 0} showZero color={r.transacciones?.length ? '#1677ff' : '#d9d9d9'} />
+                ) },
+            ]}
+            expandable={{
+              rowExpandable: r => (r.transacciones?.length ?? 0) > 0,
+              expandedRowRender: r => (
+                <Table
+                  size="small" pagination={false} dataSource={r.transacciones} rowKey="id"
+                  columns={[
+                    { title: 'Folio', dataIndex: 'folio', key: 'folio', width: 140 },
+                    { title: 'Estado', dataIndex: 'estado', key: 'estado', width: 100, render: (v: string) => <Tag>{v}</Tag> },
+                    { title: 'Total', dataIndex: 'total', key: 'total', width: 120,
+                      render: (v: number) => Number(v).toLocaleString('es-DO', { style: 'currency', currency: 'DOP' }) },
+                    { title: 'Hora', dataIndex: 'createdAt', key: 'createdAt',
+                      render: (v: string) => new Date(v).toLocaleString('es-DO') },
+                  ]}
+                />
+              ),
+            }}
+            pagination={{
+              total: data?.meta?.total, pageSize: 10, current: page,
+              onChange: setPage, showSizeChanger: false,
+              showTotal: t => `${t} sesiones`,
+            }}
+            locale={{ emptyText: isLoading ? 'Cargando...' : 'Sin sesiones de modo supervisor para estos filtros' }}
+          />
+        </div>
+      )}
     </div>
   );
 }
