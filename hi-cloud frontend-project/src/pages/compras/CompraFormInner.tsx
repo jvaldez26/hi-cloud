@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Form, Input, Button, Card, Row, Col, Select, DatePicker, Table,
-         InputNumber, Space, Divider, message, Tag, Alert, Checkbox, theme, Tooltip, Modal } from 'antd';
+         InputNumber, Space, Divider, message, Tag, Alert, Checkbox, theme, Tooltip, Modal, Segmented } from 'antd';
 import { PlusOutlined, DeleteOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSucursalesQuery } from '../../hooks/useCatalogQueries';
@@ -15,6 +15,7 @@ import { useAuthStore } from '../../store/auth.store';
 import { TIPOS_BIENES_606, FORMAS_PAGO_606 } from '../../constants/dgii-606';
 import CuentaContableSelector from '../../components/contabilidad/CuentaContableSelector';
 import AsientoPreviewPanel from '../../components/contabilidad/AsientoPreviewPanel';
+import { calcularTotalesConDescuentoGeneral } from '../../utils/calculo/descuentoGeneralCompra';
 import dayjs from 'dayjs';
 
 interface Linea {
@@ -156,6 +157,12 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
   const [pctItbis, setPctItbis]         = useState(30);
   const [retieneIsr, setRetieneIsr]     = useState(false);
   const [pctIsr, setPctIsr]             = useState(10);
+
+  // Descuento GENERAL (a nivel de documento completo) — acumulable con el de
+  // línea; el backend lo reparte proporcionalmente sobre el subtotal ya neto
+  // de línea (ver calcularTotalesConDescuentoGeneral / compras.service.ts).
+  const [descuentoGeneralTipo, setDescuentoGeneralTipo] = useState<'monto' | 'porcentaje'>('monto');
+  const [descuentoGeneralValor, setDescuentoGeneralValor] = useState<number>(0);
 
   // DGII 606 — sugerencia editable, nunca fija (ver dgii-606.ts). "Tocado"
   // se marca al primer cambio manual del usuario, o al cargar un borrador
@@ -324,6 +331,8 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
     setPctItbis(Number(c.porcentajeRetencionItbis ?? 30));
     setRetieneIsr(!!c.retieneIsr);
     setPctIsr(Number(c.porcentajeRetencionIsr ?? 10));
+    setDescuentoGeneralTipo((c.descuentoGeneralTipo as 'monto' | 'porcentaje') ?? 'monto');
+    setDescuentoGeneralValor(Number(c.descuentoGeneralValor ?? 0));
     // Si el borrador ya trae clasificación 606, es una elección real — se
     // marca "tocada" para que la sugerencia automática no la reemplace.
     setTipoBienes(c.tipoBienes ?? undefined);
@@ -385,25 +394,33 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
   });
 
   // Preview en el frontend — el backend recalcula esto mismo, línea por
-  // línea con su propia tasa, al guardar (calcularDetalles en
-  // compras.service.ts). subtotal ya es NETO de descuento (base gravable);
-  // subtotalBruto se reconstruye para el pie: Subtotal → Descuento → ITBIS.
-  const descuentoTotal = lineas.reduce((s, l) => s + (l.descuentoMonto || 0), 0);
-  const subtotal = lineas.reduce((s, l) => s + (l.precioUnitario * l.cantidad - (l.descuentoMonto || 0)), 0);
-  const itbis    = lineas.reduce((s, l) => s + (l.precioUnitario * l.cantidad - (l.descuentoMonto || 0)) * (l.porcentajeItbis / 100), 0);
+  // línea con su propia tasa y el mismo reparto proporcional del descuento
+  // general, al guardar (calcularDetalles en compras.service.ts).
+  // subtotalBase = neto de línea, ANTES del general; subtotal/itbis = neto
+  // de AMBOS descuentos (línea + general).
+  const descuentoLineasTotal = lineas.reduce((s, l) => s + (l.descuentoMonto || 0), 0);
+  const totalesGenerales = calcularTotalesConDescuentoGeneral(
+    lineas.map(l => ({ cantidad: l.cantidad, precioUnitario: l.precioUnitario, descuentoMonto: l.descuentoMonto, porcentajeItbis: l.porcentajeItbis })),
+    { tipo: descuentoGeneralTipo, valor: descuentoGeneralValor },
+  );
+  const subtotalBaseGeneral   = totalesGenerales.subtotalBase; // antes del general, después del de línea
+  const descuentoGeneralMonto = totalesGenerales.descuentoGeneral;
+  const subtotal = totalesGenerales.subtotal;
+  const itbis    = totalesGenerales.itbis;
   const total    = subtotal + itbis;
-  const subtotalBruto = subtotal + descuentoTotal;
+  const subtotalBruto = subtotalBaseGeneral + descuentoLineasTotal;
 
   // Equivalente RD$ (2026-09-20) — el backend convierte a DOP línea por
   // línea, redondeando cada línea antes de sumar (calcularDetalles); se
-  // replica el mismo orden de operaciones aquí para que este número sea
-  // EXACTAMENTE el que el backend va a guardar como totalDOP/netoPagarDOP,
-  // no una aproximación de "total × tasa" en un solo paso.
+  // replica el mismo orden de operaciones aquí (incluido el reparto del
+  // descuento general) para que este número sea EXACTAMENTE el que el
+  // backend va a guardar como totalDOP/netoPagarDOP, no una aproximación de
+  // "total × tasa" en un solo paso.
   const subtotalDOP = moneda !== 'DOP'
-    ? lineas.reduce((s, l) => s + Number(((l.precioUnitario * l.cantidad - (l.descuentoMonto || 0)) * tipoCambio).toFixed(2)), 0)
+    ? totalesGenerales.lineas.reduce((s, l) => s + Number((l.subtotal * tipoCambio).toFixed(2)), 0)
     : subtotal;
   const itbisDOP = moneda !== 'DOP'
-    ? lineas.reduce((s, l) => s + Number(((l.precioUnitario * l.cantidad - (l.descuentoMonto || 0)) * (l.porcentajeItbis / 100) * tipoCambio).toFixed(2)), 0)
+    ? totalesGenerales.lineas.reduce((s, l) => s + Number((l.itbis * tipoCambio).toFixed(2)), 0)
     : itbis;
   const totalDOP = Number((subtotalDOP + itbisDOP).toFixed(2));
   const montoRetItbisDOP = (esInformal && retieneItbis) ? Number((itbisDOP    * pctItbis / 100).toFixed(2)) : 0;
@@ -417,21 +434,26 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
   // de un formulario vacío.
   const lineasValidas = lineas.filter(l => l.productoId && (l.cantidad > 0 || (l.cantidadBonificada ?? 0) > 0));
   const { data: previewAsiento, isFetching: previewCargando } = useQuery({
+    // El descuento de línea (dm) y el general (dgt/dgv) SÍ entran aquí — sin
+    // ellos el preview del asiento ignoraba cualquier descuento (línea o
+    // general) y mostraba un monto mayor al que create() iba a contabilizar.
     queryKey: ['compra-preview', JSON.stringify(lineasValidas.map(l => ({
-      p: l.productoId, c: l.cantidad, cb: l.cantidadBonificada, pu: l.precioUnitario, it: l.porcentajeItbis,
-    }))), cuentaDestino, retieneItbis, pctItbis, retieneIsr, pctIsr, moneda, tipoCambio],
+      p: l.productoId, c: l.cantidad, cb: l.cantidadBonificada, pu: l.precioUnitario, it: l.porcentajeItbis, dm: l.descuentoMonto,
+    }))), cuentaDestino, retieneItbis, pctItbis, retieneIsr, pctIsr, moneda, tipoCambio, descuentoGeneralTipo, descuentoGeneralValor],
     queryFn: () => comprasApi.previsualizarAsiento({
       proveedorId: proveedorSelId!,
       fecha: dayjs().format('YYYY-MM-DD'),
       detalles: lineasValidas.map(l => ({
         productoId: l.productoId!, cantidad: l.cantidad, cantidadBonificada: l.cantidadBonificada || undefined,
         precioUnitario: l.precioUnitario, porcentajeItbis: l.porcentajeItbis,
+        descuentoMonto: l.descuentoMonto || 0,
       })),
       cuentaDestino,
       moneda,
       tipoCambio: moneda !== 'DOP' ? tipoCambio : undefined,
       ...(esInformal && retieneItbis ? { retieneItbis: true, porcentajeRetencionItbis: pctItbis } : {}),
       ...(esInformal && retieneIsr   ? { retieneIsr:   true, porcentajeRetencionIsr:   pctIsr   } : {}),
+      ...(descuentoGeneralValor > 0 ? { descuentoGeneralTipo, descuentoGeneralValor } : {}),
     }),
     enabled: lineasValidas.length > 0 && !!proveedorSelId && (moneda === 'DOP' || tipoCambio > 1),
     staleTime: 500,
@@ -544,6 +566,10 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
       tipoCambio: moneda !== 'DOP' ? tipoCambio : undefined,
       almacenId: almacenId ?? undefined,
       sucursalId: (values as any).sucursalId ?? sucursalActual,
+      // Igual que descuentoMonto por línea: se manda aunque sea 0 para que
+      // editar una OC a "sin descuento general" limpie lo que tenía antes.
+      descuentoGeneralTipo: descuentoGeneralValor > 0 ? descuentoGeneralTipo : undefined,
+      descuentoGeneralValor: descuentoGeneralValor || 0,
       ...(esInformal && retieneItbis ? { retieneItbis: true, porcentajeRetencionItbis: pctItbis } : {}),
       ...(esInformal && retieneIsr   ? { retieneIsr:   true, porcentajeRetencionIsr:   pctIsr   } : {}),
     } as any);
@@ -1057,6 +1083,28 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
       {/* Pie de totales — fijo abajo, FUERA del envoltorio que scrollea, en
           modo alto completo. Siempre visible, no importa cuántos ítems haya. */}
       <Card style={{ flexShrink: 0 }}>
+        {/* Descuento GENERAL — a nivel de documento completo, acumulable con
+            el de línea. El toggle decide el modo (% o monto fijo); solo uno
+            aplica a la vez, igual que en factura/cotización/pro-forma. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: token.colorTextSecondary }}>Descuento general</span>
+          <Segmented
+            size="small"
+            value={descuentoGeneralTipo}
+            onChange={v => setDescuentoGeneralTipo(v as 'monto' | 'porcentaje')}
+            options={[{ label: '%', value: 'porcentaje' }, { label: moneda === 'USD' ? 'US$' : moneda === 'EUR' ? '€' : 'RD$', value: 'monto' }]}
+          />
+          <InputNumber
+            controls={false}
+            min={0}
+            max={descuentoGeneralTipo === 'porcentaje' ? 100 : subtotalBaseGeneral}
+            precision={2}
+            value={descuentoGeneralValor}
+            style={{ width: 120 }}
+            placeholder="0"
+            onChange={v => setDescuentoGeneralValor(v ?? 0)}
+          />
+        </div>
         {/* Los totales en una franja horizontal, no en una columna pegada a la
             derecha con media tarjeta vacía. Cada importe es una celda que se
             envuelve sola, así que las que vienen —Total descuento, exento,
@@ -1065,11 +1113,18 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
         <Row justify="space-between" align="bottom" gutter={[16, 12]} style={{ marginBottom: 12 }}>
           <Col flex="auto">
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px 28px', alignItems: 'flex-end' }}>
-              {/* Subtotal BRUTO (antes de descuento) — se lee Subtotal →
-                  Descuento → ITBIS → Total, igual que la factura del proveedor. */}
+              {/* Subtotal BRUTO (antes de cualquier descuento) — se lee
+                  Subtotal → Descuento → Descuento general → Subtotal neto →
+                  ITBIS → Total, igual que la factura del proveedor. */}
               <Dato etiqueta="Subtotal" valor={fmtMon(subtotalBruto, moneda)} />
-              {descuentoTotal > 0 && (
-                <Dato etiqueta="Descuento" valor={`-${fmtMon(descuentoTotal, moneda)}`} color="#d97706" />
+              {descuentoLineasTotal > 0 && (
+                <Dato etiqueta="Descuento" valor={`-${fmtMon(descuentoLineasTotal, moneda)}`} color="#d97706" />
+              )}
+              {descuentoGeneralMonto > 0 && (
+                <>
+                  <Dato etiqueta="Descuento general" valor={`-${fmtMon(descuentoGeneralMonto, moneda)}`} color="#d97706" />
+                  <Dato etiqueta="Subtotal neto" valor={fmtMon(subtotal, moneda)} />
+                </>
               )}
               <Dato etiqueta="ITBIS (18%)" valor={fmtMon(itbis, moneda)} />
               {(montoRetItbis > 0 || montoRetIsr > 0) && (

@@ -56,9 +56,32 @@ export class Compra extends TenantBaseEntity {
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   itbis!: number;
 
-  /** Σ compra_detalles.descuentoMonto — denormalizado para el pie de la orden. */
+  /**
+   * Σ compra_detalles.descuentoMonto + descuentoGeneralMonto — denormalizado
+   * para el pie de la orden y el PDF (compras-pdf.service.ts reconstruye el
+   * bruto como subtotal + descuentoTotal): el descuento general se suma aquí
+   * para que ambos consumidores existentes reflejen el descuento combinado
+   * sin cambiar de código.
+   */
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   descuentoTotal!: number;
+
+  /**
+   * Descuento GENERAL (a nivel de documento completo, no por línea) — se
+   * repite después del reparto proporcional por línea (mismo motor que
+   * factura/cotización/pro-forma/pre-factura, ver
+   * common/calculo/descuento-documento.ts). tipo/valor son la entrada cruda
+   * del formulario (para poder reeditarla); monto es lo que efectivamente se
+   * aplicó, ya en base imponible.
+   */
+  @Column({ length: 20, nullable: true })
+  descuentoGeneralTipo?: string;
+
+  @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true })
+  descuentoGeneralValor?: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  descuentoGeneralMonto!: number;
 
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   total!: number;

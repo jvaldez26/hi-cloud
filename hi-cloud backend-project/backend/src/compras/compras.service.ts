@@ -22,6 +22,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { User } from '../users/users.entity';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { GastosImportacionService } from '../gastos-importacion/gastos-importacion.service';
+import { calcularTotalesConDescuento } from '../common/calculo/descuento-documento';
 
 const ITBIS_DEFAULT = 18;
 
@@ -84,22 +85,19 @@ export class ComprasService {
     subtotalCompra: number;
     itbisCompra: number;
     descuentoCompra: number;
+    descuentoGeneralMonto: number;
     subtotalCompraDOP: number;
     itbisCompraDOP: number;
   }> {
     this.validarMonedaTipoCambio(dto.moneda, dto.tipoCambio);
 
-    const detallesData: Partial<CompraDetalle>[] = [];
-    let subtotalCompra    = 0;
-    let itbisCompra       = 0;
-    let descuentoCompra   = 0;
-    let subtotalCompraDOP = 0;
-    let itbisCompraDOP    = 0;
-
     const productoIds = dto.detalles.map(d => d.productoId);
     const productosMap = await this.productosService.findByIds(productoIds);
 
-    for (const item of dto.detalles) {
+    // Pase 1: validar cada línea y dejarla lista para el motor de descuento
+    // general (misma validación de siempre — negativo / mayor al bruto —,
+    // ANTES de que el reparto del general entre en juego).
+    const preLineas = dto.detalles.map(item => {
       const producto = productosMap.get(item.productoId);
       if (!producto) throw new NotFoundException(`Producto #${item.productoId} no encontrado`);
       const porcentajeItbis  = item.porcentajeItbis ?? ITBIS_DEFAULT;
@@ -118,10 +116,10 @@ export class ComprasService {
       // Importe BRUTO sobre lo FACTURADO (las bonificadas son gratis, nunca entran aquí)
       const importeBruto = Number((cantidadFact * Number(item.precioUnitario)).toFixed(2));
 
-      // Descuento: lo persistido es SIEMPRE el monto. Si no viene monto pero sí
-      // % (el frontend enlaza ambos inputs, pero por si llega solo uno), se
-      // deriva aquí — nunca al revés, el % es solo ayuda de captura.
-      let descuentoMonto = item.descuentoMonto != null
+      // Descuento de línea: lo persistido es SIEMPRE el monto. Si no viene
+      // monto pero sí % (el frontend enlaza ambos inputs, pero por si llega
+      // solo uno), se deriva aquí — nunca al revés, el % es solo ayuda de captura.
+      const descuentoMonto = item.descuentoMonto != null
         ? Number(item.descuentoMonto)
         : item.descuentoPct
           ? Number((importeBruto * (Number(item.descuentoPct) / 100)).toFixed(4))
@@ -140,15 +138,36 @@ export class ComprasService {
         ? Number(((descuentoMonto / importeBruto) * 100).toFixed(2))
         : 0;
 
-      // Base gravable YA NETA de descuento — el ITBIS de la línea se calcula
-      // sobre esto, con la tasa PROPIA de la línea. Nunca una tasa promedio:
-      // ese fue el bug del 17.31% en las NC de código 1.
-      const subtotal          = Number((importeBruto - descuentoMonto).toFixed(2));
-      const importeItbis      = Number((subtotal * (porcentajeItbis / 100)).toFixed(2));
-      const total             = Number((subtotal + importeItbis).toFixed(2));
-      // Costo real = pago NETO de descuento ÷ unidades que entran al inventario
-      // (pagadas + bonificadas) — para AVCO. El descuento SÍ baja el costo
-      // unitario; la bonificación sigue decidiendo cuántas unidades lo reciben.
+      return { item, producto, porcentajeItbis, cantidadFact, cantidadBon, cantidadTot, descuentoMonto, descuentoPct };
+    });
+
+    // Pase 2: descuento general — mismo motor que factura/cotización/
+    // pro-forma/pre-factura (common/calculo/descuento-documento.ts). Reparte
+    // proporcionalmente sobre el subtotal YA neto de línea y recalcula el
+    // ITBIS de cada línea con SU PROPIA tasa (nunca una tasa promedio).
+    const totalesDoc = calcularTotalesConDescuento(
+      preLineas.map(p => ({
+        cantidad:       p.cantidadFact,
+        precioUnitario: Number(p.item.precioUnitario),
+        descuentoMonto: p.descuentoMonto,
+        porcentajeIva:  p.porcentajeItbis,
+      })),
+      { tipo: dto.descuentoGeneralTipo, valor: dto.descuentoGeneralValor },
+    );
+
+    // Pase 3: cerrar cada línea con su subtotal/ITBIS FINAL (línea + general),
+    // el costo real para AVCO sobre ese neto, y su equivalente en DOP.
+    const detallesData: Partial<CompraDetalle>[] = preLineas.map((p, i) => {
+      const { item, producto, porcentajeItbis, cantidadFact, cantidadBon, cantidadTot, descuentoMonto, descuentoPct } = p;
+      const linea = totalesDoc.lineas[i];
+      const subtotal     = linea.subtotal;
+      const importeItbis = linea.importeIva;
+      const total        = linea.total;
+
+      // Costo real = pago NETO de AMBOS descuentos ÷ unidades que entran al
+      // inventario (pagadas + bonificadas) — para AVCO. El descuento general
+      // también baja el costo unitario, igual que el de línea; la
+      // bonificación sigue decidiendo cuántas unidades lo reciben.
       const costoUnitarioReal = cantidadTot > 0
         ? Number((subtotal / cantidadTot).toFixed(4))
         : Number(item.precioUnitario);
@@ -159,17 +178,9 @@ export class ComprasService {
       // y los totales, antes de que cualquiera de los dos llegue a AVCO o al
       // asiento. subtotal/importeItbis/total arriba NO se tocan — siguen en
       // la moneda original para conciliar con la factura del proveedor.
-      const subtotalDOP          = Number(convertirADOP(subtotal, dto.moneda, dto.tipoCambio).toFixed(2));
-      const importeItbisDOP      = Number(convertirADOP(importeItbis, dto.moneda, dto.tipoCambio).toFixed(2));
       const costoUnitarioRealDOP = convertirADOP(costoUnitarioReal, dto.moneda, dto.tipoCambio);
 
-      subtotalCompra    += subtotal;
-      itbisCompra        += importeItbis;
-      descuentoCompra    += descuentoMonto;
-      subtotalCompraDOP  += subtotalDOP;
-      itbisCompraDOP      += importeItbisDOP;
-
-      detallesData.push({
+      return {
         productoId:        item.productoId,
         descripcion:       item.descripcion ?? producto.nombre,
         precioUnitario:    item.precioUnitario,
@@ -186,16 +197,31 @@ export class ComprasService {
         costoUnitarioRealDOP,
         destinoItbis:       item.destinoItbis ?? undefined,
         destinoItbisMotivo: item.destinoItbisMotivo ?? undefined,
-      });
-    }
+      };
+    });
 
-    return { detallesData, subtotalCompra, itbisCompra, descuentoCompra, subtotalCompraDOP, itbisCompraDOP };
+    const subtotalCompra       = totalesDoc.subtotal;
+    const itbisCompra          = totalesDoc.iva;
+    const descuentoGeneralMonto = totalesDoc.descuentoGeneral;
+    const descuentoCompra      = Number((preLineas.reduce((s, p) => s + p.descuentoMonto, 0) + descuentoGeneralMonto).toFixed(2));
+
+    // DOP: se suma línea por línea (cada una ya redondeada) para llegar
+    // EXACTAMENTE al mismo total que guardará create()/update() — no una
+    // conversión de "total × tasa" en un solo paso.
+    const subtotalCompraDOP = detallesData.reduce(
+      (s, d) => s + Number(convertirADOP(d.subtotal!, dto.moneda, dto.tipoCambio).toFixed(2)), 0,
+    );
+    const itbisCompraDOP = detallesData.reduce(
+      (s, d) => s + Number(convertirADOP(d.importeItbis!, dto.moneda, dto.tipoCambio).toFixed(2)), 0,
+    );
+
+    return { detallesData, subtotalCompra, itbisCompra, descuentoCompra, descuentoGeneralMonto, subtotalCompraDOP, itbisCompraDOP };
   }
 
   async create(dto: CreateCompraDto, usuario: User) {
     await this.proveedoresService.findOne(dto.proveedorId);
 
-    const { detallesData, subtotalCompra, itbisCompra, descuentoCompra, subtotalCompraDOP, itbisCompraDOP } =
+    const { detallesData, subtotalCompra, itbisCompra, descuentoCompra, descuentoGeneralMonto, subtotalCompraDOP, itbisCompraDOP } =
       await this.calcularDetalles(dto);
 
     const folio      = await this.generarFolio();
@@ -243,6 +269,9 @@ export class ComprasService {
       subtotal:               Number(subtotalCompra.toFixed(2)),
       itbis:                  montoItbisTotal,
       descuentoTotal:         Number(descuentoCompra.toFixed(2)),
+      descuentoGeneralTipo:   dto.descuentoGeneralTipo ?? null,
+      descuentoGeneralValor:  dto.descuentoGeneralValor ?? null,
+      descuentoGeneralMonto:  Number(descuentoGeneralMonto.toFixed(2)),
       total:                  totalBruto,
       subtotalDOP:            Number(subtotalCompraDOP.toFixed(2)),
       itbisDOP:               montoItbisTotalDOP,
@@ -402,7 +431,7 @@ export class ComprasService {
 
     await this.proveedoresService.findOne(dto.proveedorId);
 
-    const { detallesData, subtotalCompra, itbisCompra, descuentoCompra, subtotalCompraDOP, itbisCompraDOP } =
+    const { detallesData, subtotalCompra, itbisCompra, descuentoCompra, descuentoGeneralMonto, subtotalCompraDOP, itbisCompraDOP } =
       await this.calcularDetalles(dto);
 
     const tipoPago    = dto.tipoPago ?? 'credito';
@@ -444,6 +473,9 @@ export class ComprasService {
           subtotal:               Number(subtotalCompra.toFixed(2)),
           itbis:                  montoItbisTotal,
           descuentoTotal:         Number(descuentoCompra.toFixed(2)),
+          descuentoGeneralTipo:   dto.descuentoGeneralTipo ?? null,
+          descuentoGeneralValor:  dto.descuentoGeneralValor ?? null,
+          descuentoGeneralMonto:  Number(descuentoGeneralMonto.toFixed(2)),
           total:                  totalBruto,
           subtotalDOP:            Number(subtotalCompraDOP.toFixed(2)),
           itbisDOP:               montoItbisTotalDOP,

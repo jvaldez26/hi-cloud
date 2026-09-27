@@ -37,6 +37,14 @@ export interface CompraPayload {
   porcentajeRetencionItbis?: number;
   retieneIsr?: boolean;
   porcentajeRetencionIsr?: number;
+  /**
+   * Descuento GENERAL (a nivel de documento completo, no por línea) — se
+   * reparte proporcionalmente entre líneas antes del ITBIS, sobre el
+   * subtotal ya neto del descuento de línea. Mismo contrato que
+   * factura/cotización/pro-forma/pre-factura.
+   */
+  descuentoGeneralTipo?: 'monto' | 'porcentaje';
+  descuentoGeneralValor?: number;
 }
 
 export const comprasApi = {

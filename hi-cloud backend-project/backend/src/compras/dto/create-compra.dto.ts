@@ -170,4 +170,17 @@ export class CreateCompraDto {
 
   @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(100) @Type(() => Number)
   porcentajeRetencionIsr?: number;
+
+  /**
+   * Descuento GENERAL (a nivel de documento completo) — se reparte
+   * proporcionalmente entre líneas antes del ITBIS, sobre el subtotal YA neto
+   * del descuento de línea. Mismo contrato que facturas/cotizaciones (ver
+   * common/calculo/descuento-documento.ts): 'tipo' decide qué rama corre, no
+   * hay reconciliación entre ambos.
+   */
+  @IsOptional() @IsString() @IsIn(['monto', 'porcentaje'])
+  descuentoGeneralTipo?: string;
+
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Type(() => Number)
+  descuentoGeneralValor?: number;
 }
