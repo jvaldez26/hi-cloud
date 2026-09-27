@@ -16,6 +16,7 @@ import { TIPOS_BIENES_606, FORMAS_PAGO_606 } from '../../constants/dgii-606';
 import CuentaContableSelector from '../../components/contabilidad/CuentaContableSelector';
 import AsientoPreviewPanel from '../../components/contabilidad/AsientoPreviewPanel';
 import { calcularTotalesConDescuentoGeneral } from '../../utils/calculo/descuentoGeneralCompra';
+import { normalizarNcf, reglaFormatoNcf } from '../../utils/ncf';
 import dayjs from 'dayjs';
 
 interface Linea {
@@ -884,8 +885,10 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
             </Form.Item>
           </Col>
           <Col flex="1 1 120px">
-            <Form.Item name="numeroFacturaProveedor" label="NCF Proveedor" style={ITEM_COMPACTO}>
-              <Input size="small" placeholder="B01-00000001" />
+            <Form.Item name="numeroFacturaProveedor" label="NCF Proveedor" style={ITEM_COMPACTO}
+              getValueFromEvent={e => normalizarNcf(e.target.value)}
+              rules={[reglaFormatoNcf]}>
+              <Input size="small" placeholder="B0100000001 o E320000006814" />
             </Form.Item>
           </Col>
           <Col flex="1 1 140px">

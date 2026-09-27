@@ -14,7 +14,7 @@ import {
   resolverConfigTicket, generarQrTicket, QR_LADO_MM,
   type ConfigTicket,
 } from '../../utils/configTicket';
-import { normalizarNcf, esNcfCompleto } from '../../utils/ncf';
+import { normalizarNcf, esNcfCompleto, errorNcf } from '../../utils/ncf';
 import { buildReciboTermicoHTML } from '../../utils/ticketTermico';
 import { useRncLookup } from '../../hooks/useRncLookup';
 import QRCode from 'qrcode';
@@ -6859,8 +6859,12 @@ function POSGastosLista({ C }: { C: Palette }) {
   };
   const inputS: React.CSSProperties = { width:'100%', height:36, padding:'0 10px', borderRadius:8, border:`1px solid ${C.border}`, background:C.card, color:C.text, fontSize:13, outline:'none', boxSizing:'border-box' };
   const labelS: React.CSSProperties = { fontSize:11, fontWeight:700, color:C.textSub, display:'block', marginBottom:3 };
+  // Formato, no obligatoriedad — un NCF de proveedor a medio teclear no
+  // bloquea nada; uno con letra/largo equivocado sí, igual que en Gastos.
+  const comprobanteInvalido = !generaE43 && !!f.comprobante && !esNcfCompleto(f.comprobante);
   const canSubmit = f.categoria && f.descripcion.trim() && Number(f.monto) > 0
-    && (!tieneComprobante || (f.tipoBienes && f.formaPago));
+    && (!tieneComprobante || (f.tipoBienes && f.formaPago))
+    && !comprobanteInvalido;
 
   return (
     <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
@@ -6976,8 +6980,11 @@ function POSGastosLista({ C }: { C: Palette }) {
                     cambiarTieneComprobante(true);
                   }
                 }}
-                placeholder={generaE43 ? 'Referencia o número' : 'E310000000001 o referencia'}
+                placeholder={generaE43 ? 'Referencia o número' : 'E310000000001'}
                 style={inputS} />
+              {comprobanteInvalido && (
+                <div style={{ fontSize: 11, color: '#DC2626', marginTop: 3 }}>{errorNcf(f.comprobante)}</div>
+              )}
             </div>
 
             {/* Comprobante fiscal 606 — igual que el módulo de Gastos */}

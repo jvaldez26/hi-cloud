@@ -10,6 +10,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { comprasApi } from '../../api/compras.api';
 import { ecfApi } from '../../api/ecf.api';
 import { fmt, estadoColor } from '../../utils/formatters';
+import { normalizarNcf, reglaFormatoNcf } from '../../utils/ncf';
 import type { CompraEstado } from '../../types';
 import EcfSeccion from '../../components/ui/EcfSeccion';
 import RecibirMercanciaModal from '../../components/compras/RecibirMercanciaModal';
@@ -304,7 +305,8 @@ export default function CompraDetailPage() {
           >
             <Form form={ncfForm} layout="vertical">
               <Form.Item name="numeroFacturaProveedor" label="NCF del proveedor"
-                rules={[{ required: true, message: 'Ingresa el número de comprobante' }]}>
+                getValueFromEvent={e => normalizarNcf(e.target.value)}
+                rules={[{ required: true, message: 'Ingresa el número de comprobante' }, reglaFormatoNcf]}>
                 <Input placeholder="Ej. B0100000123" maxLength={50} />
               </Form.Item>
               <Form.Item name="tipoBienes" label="Tipo de bienes (606)">

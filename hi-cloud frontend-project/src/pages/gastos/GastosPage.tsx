@@ -11,7 +11,7 @@ import { Table, Button, Card, Row, Col, Typography, Statistic, Tag,
          Tabs, Popconfirm, Space, Alert, theme, Checkbox } from 'antd';
 import { PlusOutlined, DeleteOutlined, FileExcelOutlined, AuditOutlined, PrinterOutlined, LoadingOutlined, SearchOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { SolicitarAprobacionModal } from '../../components/ui/SolicitarAprobacionModal';
-import { normalizarNcf, esNcfCompleto } from '../../utils/ncf';
+import { normalizarNcf, esNcfCompleto, reglaFormatoNcf } from '../../utils/ncf';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -669,7 +669,10 @@ export default function GastosPage() {
             <Form.Item
               name="comprobante"
               label={tieneComprobante ? 'No. Comprobante (NCF) *' : 'No. Comprobante (NCF recibido)'}
-              rules={tieneComprobante ? [{ required: true, message: 'NCF obligatorio cuando tiene comprobante' }] : []}
+              rules={[
+                ...(tieneComprobante ? [{ required: true, message: 'NCF obligatorio cuando tiene comprobante' }] : []),
+                reglaFormatoNcf,
+              ]}
               getValueFromEvent={e => normalizarNcf(e.target.value)}
             >
               <Input

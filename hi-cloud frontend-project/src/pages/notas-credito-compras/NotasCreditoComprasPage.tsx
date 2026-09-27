@@ -13,6 +13,7 @@ import {
   CloseCircleOutlined, DeleteOutlined, EyeOutlined, FileExcelOutlined, SearchOutlined, ImportOutlined,
 } from '@ant-design/icons';
 import { exportarExcel } from '../../utils/exportExcel';
+import { normalizarNcf, reglaFormatoNcf } from '../../utils/ncf';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import api from '../../api/client';
@@ -376,7 +377,9 @@ export default function NotasCreditoComprasPage() {
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
-              <Form.Item name="ncfProveedor" label="NCF del proveedor (su E34/B04)" rules={[{ required: true, message: 'Requerido para el 606' }]}>
+              <Form.Item name="ncfProveedor" label="NCF del proveedor (su E34/B04)"
+                getValueFromEvent={e => normalizarNcf(e.target.value)}
+                rules={[{ required: true, message: 'Requerido para el 606' }, reglaFormatoNcf]}>
                 <Input placeholder="E340000001234 o B0400000123" />
               </Form.Item>
             </Col>

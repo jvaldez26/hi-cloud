@@ -9,7 +9,8 @@ import {
 import { Type } from 'class-transformer';
 import { GastosService } from './gastos.service';
 import { GastoPDFService } from './gasto-pdf.service';
-import { CategoriaGasto } from './entities/gasto.entity';
+import { CategoriaGasto, CATEGORIA_LABELS } from './entities/gasto.entity';
+import { IsValidNCF } from '../common/validators/ncf.validator';
 import { DestinoItbis } from '../common/enums/destino-itbis.enum';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -52,7 +53,16 @@ export class CreateGastoDto {
   @IsNumber({ maxDecimalPlaces: 2 }) @IsPositive() monto: number;
   @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) itbis?: number;
   @IsOptional() @IsString()                        proveedor?: string;
-  @IsOptional() @IsString()                        comprobante?: string;
+  /**
+   * NCF del proveedor — SOLO cuando la categoría no genera su propio E43. En
+   * categorías "gasto menor" (info.generaE43) este mismo campo se reutiliza
+   * como referencia libre en el frontend (GastosPage/POSPage), así que no es
+   * un NCF y no se valida como tal — el ValidateIf replica exactamente la
+   * misma condición que ya usa el frontend para decidir qué mostrar.
+   */
+  @ValidateIf(o => !CATEGORIA_LABELS[o.categoria as CategoriaGasto]?.generaE43)
+  @IsOptional() @IsString() @IsValidNCF()
+  comprobante?: string;
   @IsOptional() @IsString()                        rncProveedor?: string;
   /** Código DGII 606 — 01 Personal · 02 Suministros · 03 Arrendamientos · 11 Seguros … */
   @IsOptional() @IsString()                        tipoBienes?: string;

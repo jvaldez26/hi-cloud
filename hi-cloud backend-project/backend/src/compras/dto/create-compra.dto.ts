@@ -19,6 +19,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { DestinoItbis } from '../../common/enums/destino-itbis.enum';
+import { IsValidNCF } from '../../common/validators/ncf.validator';
 
 export class CreateCompraDetalleDto {
   @IsInt()
@@ -99,6 +100,7 @@ export class CreateCompraDto {
   @IsOptional()
   @IsString()
   @MaxLength(50)
+  @IsValidNCF()
   numeroFacturaProveedor?: string;
 
   @IsArray()

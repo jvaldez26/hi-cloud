@@ -17,6 +17,7 @@ import { User } from '../users/users.entity';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { NotasCreditoComprasService } from './notas-credito-compras.service';
 import { MotivoNCCompra, TipoNCCompra } from './entities/nota-credito-compra.entity';
+import { IsValidNCF } from '../common/validators/ncf.validator';
 
 // descripcion (300) y unidadMedida (20) deben coincidir con las columnas de
 // nota_credito_compra_detalles — sin el límite, un texto más largo que la
@@ -32,7 +33,7 @@ class DetalleDto {
   @IsOptional() @IsNumber() @Min(0) @Type(() => Number)     porcentajeIva?: number;
 }
 
-class CreateNCCDto {
+export class CreateNCCDto {
   @IsInt() @IsPositive() @Type(() => Number)                proveedorId!: number;
   @IsDateString()                                            fecha!: string;
   @IsEnum(TipoNCCompra)                                      tipo!: TipoNCCompra;
@@ -46,7 +47,7 @@ class CreateNCCDto {
   // El NCF/e-NCF que el PROVEEDOR puso en SU nota de crédito — HiCloud no
   // emite esto, solo lo registra. Va al 606 como "NCF Modificado" del lado
   // de compras (ver declaraciones.service.ts).
-  @IsString() @IsNotEmpty() @MaxLength(50)                   ncfProveedor!: string;
+  @IsString() @IsNotEmpty() @MaxLength(50) @IsValidNCF()     ncfProveedor!: string;
   @IsEnum(MotivoNCCompra)                                    motivo!: MotivoNCCompra;
   // Obligatoria en texto solo cuando el motivo es "otro" — el resto de
   // motivos ya son la categoría real, no necesitan texto libre encima.

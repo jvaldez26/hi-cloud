@@ -1,4 +1,5 @@
 import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsValidNCF } from '../../common/validators/ncf.validator';
 
 /**
  * Edición acotada post-borrador: solo el NCF del proveedor y los dos campos
@@ -11,6 +12,7 @@ export class UpdateNcfProveedorDto {
   @IsOptional()
   @IsString()
   @MaxLength(50)
+  @IsValidNCF()
   numeroFacturaProveedor?: string;
 
   @IsOptional()
