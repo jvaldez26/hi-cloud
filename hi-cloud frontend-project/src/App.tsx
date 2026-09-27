@@ -49,6 +49,7 @@ const ECFPage            = lazy(() => import('./pages/ecf/ECFPage'));
 const EcfRecibidosPage   = lazy(() => import('./pages/ecf-recibidos/EcfRecibidosPage'));
 const AuditoriaPage      = lazy(() => import('./pages/auditoria/AuditoriaPage'));
 const ProfilePage        = lazy(() => import('./pages/profile/ProfilePage'));
+const SoportePage        = lazy(() => import('./pages/soporte/SoportePage'));
 const CotizacionesPage   = lazy(() => import('./pages/cotizaciones/CotizacionesPage'));
 const CotizacionFormPage  = lazy(() => import('./pages/cotizaciones/CotizacionFormPage'));
 const DevolucionesPage    = lazy(() => import('./pages/devoluciones/DevolucionesPage'));
@@ -883,6 +884,7 @@ export default function App() {
                     <Route path="/configuracion"      element={<ConfiguracionPage />} />
                     <Route path="/mi-suscripcion"     element={<MiSuscripcionPage />} />
                     <Route path="/profile"            element={<ProfilePage />} />
+                    <Route path="/soporte"             element={<SoportePage />} />
                     <Route path="/asistente"          element={<AsistentePage />} />
                     {/* S-62: /demo-requests eliminada — mostraba los leads comerciales de
                         HiCloud dentro del ERP del cliente. El pipeline de demos vive en el

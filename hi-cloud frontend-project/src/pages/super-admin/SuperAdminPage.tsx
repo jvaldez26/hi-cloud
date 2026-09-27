@@ -36,6 +36,7 @@ import BackupsPage from './BackupsPage';
 import { ActivacionEcfAdminTab } from './ActivacionEcfAdminTab';
 import VideosTutorialesAdminPage from './VideosTutorialesAdminPage';
 import { MensajesAdminTab } from '../../components/super-admin/MensajesAdminTab';
+import { SoporteTicketsAdminTab } from '../../components/super-admin/SoporteTicketsAdminTab';
 import { SECTORES_EMPRESARIALES } from '../../constants/sectores';
 
 /**
@@ -132,7 +133,7 @@ const STORAGE_KEY = 'superadmin-theme';
 // renombrado, por ejemplo) cae a 'inicio' en vez de dejar la pantalla en
 // blanco.
 const TABS_VALIDOS = new Set([
-  'inicio', 'empresas', 'usuarios', 'pendientes', 'demos', 'pruebas', 'auditoria',
+  'inicio', 'empresas', 'usuarios', 'pendientes', 'demos', 'pruebas', 'auditoria', 'soporte',
   'suscripciones', 'cobros', 'solicitudes', 'metricas',
   'ecf', 'activacion-ecf',
   'modulos', 'videos', 'mensajes', 'backups', 'herramientas', 'config',
@@ -2865,6 +2866,7 @@ export default function SuperAdminPage() {
         { path: 'pruebas',       label: 'En Prueba',     icono: <ClockIcon size={15} />,
           badgeCount: cnt.pruebas ?? 0 },
         { path: 'auditoria',     label: 'Auditoría',     icono: <Shield size={15} /> },
+        { path: 'soporte',       label: 'Tickets de Soporte', icono: <LifeBuoy size={15} /> },
       ],
     },
     {
@@ -3854,6 +3856,9 @@ export default function SuperAdminPage() {
             {tab === 'auditoria' && (
               <AuditoriaTab C={C} />
             )}
+
+            {/* ── TAB TICKETS DE SOPORTE ──────────────────────────────────── */}
+            {tab === 'soporte' && <SoporteTicketsAdminTab />}
 
             {/* ── TAB VIDEOS TUTORIALES ───────────────────────────────────── */}
             {tab === 'videos' && (

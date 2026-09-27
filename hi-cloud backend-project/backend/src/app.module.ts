@@ -114,6 +114,7 @@ import { RecibosCobrosModule } from './recibos-cobro/recibos-cobro.module';
 import { AnticiposClienteModule } from './anticipos-cliente/anticipos-cliente.module';
 import { NotasCreditoComprasModule } from './notas-credito-compras/notas-credito-compras.module';
 import { LibroVentasModule } from './libro-ventas/libro-ventas.module';
+import { SoporteModule } from './soporte/soporte.module';
 import { PortalEmpleadoModule } from './portal-empleado/portal-empleado.module';
 import { AsistenteModule }         from './asistente/asistente.module';
 import { SuperAdminModule }        from './super-admin/super-admin.module';
@@ -384,6 +385,7 @@ import { ActividadInterceptor } from './auth/actividad.interceptor';
     AnticiposClienteModule,
     NotasCreditoComprasModule,
     LibroVentasModule,
+    SoporteModule,
     PortalEmpleadoModule,
     AsistenteModule,
     SuperAdminModule,

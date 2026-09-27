@@ -818,7 +818,8 @@ export default function AppLayout() {
 
   const userMenu = {
     items: [
-      { key: 'profile', icon: <UserOutlined />, label: 'Mi perfil',     onClick: () => navigate('/profile') },
+      { key: 'profile', icon: <UserOutlined />,   label: 'Mi perfil', onClick: () => navigate('/profile') },
+      { key: 'soporte', icon: <HelpCircle size={14} />, label: 'Soporte',   onClick: () => navigate('/soporte') },
       { type: 'divider' as const },
       { key: 'logout',  icon: <LogoutOutlined />, label: 'Cerrar sesión', danger: true,
         onClick: () => handleLogout() },
