@@ -48,8 +48,12 @@ function getMigrationColumns() {
     const createTbl = /CREATE\s+TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+["'`]?\w+["'`]?\s*\(([\s\S]*?)\)\s*;/gi;
     while ((m = createTbl.exec(text)) !== null) {
       const body = m[1];
-      // Each column def starts with a quoted or unquoted identifier followed by a type keyword
-      const colDef = /^\s*["'`]?(\w+)["'`]?\s+(?:VARCHAR|TEXT|INT|INTEGER|BIGINT|SERIAL|BIGSERIAL|BOOLEAN|BOOL|DATE|TIMESTAMP|UUID|NUMERIC|DECIMAL|FLOAT|DOUBLE|REAL|JSON|JSONB|CHAR|SMALLINT)/gmi;
+      // Each column def starts with a quoted or unquoted identifier followed by a type
+      // keyword — o por un tipo enum nativo de Postgres entre comillas, que este repo
+      // siempre nombra "<tabla>_<columna>_enum" (ver CreateAprobaciones,
+      // CreateSoporteTickets): sin esta rama, toda columna enum de un CREATE TABLE
+      // nuevo se reportaba como "sin migración" aunque la migración sí la creara.
+      const colDef = /^\s*["'`]?(\w+)["'`]?\s+(?:VARCHAR|TEXT|INT|INTEGER|BIGINT|SERIAL|BIGSERIAL|BOOLEAN|BOOL|DATE|TIMESTAMP|UUID|NUMERIC|DECIMAL|FLOAT|DOUBLE|REAL|JSON|JSONB|CHAR|SMALLINT|["'`]\w+_enum["'`])/gmi;
       let cm;
       while ((cm = colDef.exec(body)) !== null) {
         cols.add(cm[1]);
