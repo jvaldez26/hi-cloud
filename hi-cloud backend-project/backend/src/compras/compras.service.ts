@@ -152,7 +152,10 @@ export class ComprasService {
         descuentoMonto: p.descuentoMonto,
         porcentajeIva:  p.porcentajeItbis,
       })),
-      { tipo: dto.descuentoGeneralTipo, valor: dto.descuentoGeneralValor },
+      {
+        tipo: dto.descuentoGeneralTipo, valor: dto.descuentoGeneralValor,
+        aplicarSobre: dto.descuentoGeneralAplicarSobre as 'subtotal' | 'total' | undefined,
+      },
     );
 
     // Pase 3: cerrar cada línea con su subtotal/ITBIS FINAL (línea + general),
@@ -272,6 +275,7 @@ export class ComprasService {
       descuentoGeneralTipo:   dto.descuentoGeneralTipo ?? null,
       descuentoGeneralValor:  dto.descuentoGeneralValor ?? null,
       descuentoGeneralMonto:  Number(descuentoGeneralMonto.toFixed(2)),
+      descuentoGeneralAplicarSobre: dto.descuentoGeneralAplicarSobre ?? null,
       total:                  totalBruto,
       subtotalDOP:            Number(subtotalCompraDOP.toFixed(2)),
       itbisDOP:               montoItbisTotalDOP,
@@ -476,6 +480,7 @@ export class ComprasService {
           descuentoGeneralTipo:   dto.descuentoGeneralTipo ?? null,
           descuentoGeneralValor:  dto.descuentoGeneralValor ?? null,
           descuentoGeneralMonto:  Number(descuentoGeneralMonto.toFixed(2)),
+          descuentoGeneralAplicarSobre: dto.descuentoGeneralAplicarSobre ?? null,
           total:                  totalBruto,
           subtotalDOP:            Number(subtotalCompraDOP.toFixed(2)),
           itbisDOP:               montoItbisTotalDOP,

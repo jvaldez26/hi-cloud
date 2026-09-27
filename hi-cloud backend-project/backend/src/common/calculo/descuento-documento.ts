@@ -53,10 +53,17 @@ export interface TotalesDocumento {
 }
 
 export interface DescuentoGeneralInput {
-  /** 'monto' = RD$ fijo sobre el subtotal | 'porcentaje' = % sobre el subtotal */
+  /** 'monto' = RD$ fijo | 'porcentaje' = % */
   tipo?: string | null;
-  /** Importe en BASE imponible, o el porcentaje */
+  /** Importe (en el espacio que indique `aplicarSobre`), o el porcentaje */
   valor?: number | null;
+  /**
+   * Sobre qué espacio se interpreta `valor` — 'subtotal' (default, sin
+   * cambios respecto al comportamiento histórico) o 'total' (el usuario dice
+   * cuánto quiere que baje el TOTAL final, con ITBIS incluido). Ver el bloque
+   * "aplicarSobre === 'total'" más abajo para el porqué del reparto distinto.
+   */
+  aplicarSobre?: 'subtotal' | 'total';
 }
 
 /**
@@ -154,6 +161,81 @@ export function calcularTotalesConDescuento(
   }
 
   subtotalBase = r2(subtotalBase);
+
+  // ── aplicarSobre === 'total' ──────────────────────────────────────────────
+  // El usuario dice cuánto quiere que baje el TOTAL final (con ITBIS), no el
+  // subtotal. Con una sola tasa t, descuento_subtotal = D / (1+t) baja el
+  // total exactamente D — pero con tasas MIXTAS no hay un único t: hay que
+  // repartir D por el PESO de cada línea en el total (no en el subtotal, que
+  // pesaría distinto porque cada línea trae su propio impuesto) y, dentro de
+  // cada línea, convertir su porción a espacio-subtotal con SU PROPIA tasa.
+  //
+  // Para que la suma cuadre exacto (sin residuo de redondeo) la ÚLTIMA línea
+  // no se calcula por la fórmula: se calcula por DIFERENCIA (total objetivo
+  // menos lo ya asignado a las demás) y su ITBIS se deriva de vuelta — así el
+  // total del documento coincide al centavo con "total antes − D", nunca con
+  // una aproximación que arrastre un resto de un par de centavos.
+  if (descuentoGeneral.aplicarSobre === 'total') {
+    const dgt = descuentoGeneral.tipo;
+    const dgv = Number(descuentoGeneral.valor ?? 0);
+    const totalesPre = calculadas.map(d => ({
+      ...d,
+      totalPre: d.subtotal * (1 + d.porcentajeIva / 100), // sin redondear — solo para el peso
+    }));
+    const totalDocPre = totalesPre.reduce((s, d) => s + d.totalPre, 0);
+
+    let dTotalDeseado = 0;
+    if (dgt === 'monto' && dgv > 0) {
+      dTotalDeseado = Math.min(dgv, totalDocPre);
+    } else if (dgt === 'porcentaje' && dgv > 0) {
+      dTotalDeseado = totalDocPre * (dgv / 100);
+    }
+
+    const totalDocObjetivo = r2(r2(totalDocPre) - r2(dTotalDeseado));
+
+    const salida: LineaDescuentoOutput[] = [];
+    let sumaTotalesAsignados = 0;
+
+    totalesPre.forEach((d, i) => {
+      const esUltima = i === totalesPre.length - 1;
+      if (!esUltima) {
+        const peso = totalDocPre > 0 ? d.totalPre / totalDocPre : 0;
+        const reduccionTotalLinea = dTotalDeseado * peso;
+        const descProp = reduccionTotalLinea / (1 + d.porcentajeIva / 100);
+        const subtotalFinal = r2(d.subtotal - descProp);
+        const ivaFinal = r2(subtotalFinal * (d.porcentajeIva / 100));
+        const totalFinal = r2(subtotalFinal + ivaFinal);
+        sumaTotalesAsignados += totalFinal;
+        salida.push({
+          subtotal: subtotalFinal, importeIva: ivaFinal, total: totalFinal,
+          descuentoLinea: d.descuentoLinea,
+          descuentoGeneralProrrateado: r2(d.subtotal - subtotalFinal),
+        });
+      } else {
+        // Última línea: absorbe el resto para que la suma cuadre exacto.
+        const totalFinal = r2(totalDocObjetivo - sumaTotalesAsignados);
+        const subtotalFinal = r2(totalFinal / (1 + d.porcentajeIva / 100));
+        const ivaFinal = r2(totalFinal - subtotalFinal);
+        salida.push({
+          subtotal: subtotalFinal, importeIva: ivaFinal, total: totalFinal,
+          descuentoLinea: d.descuentoLinea,
+          descuentoGeneralProrrateado: r2(d.subtotal - subtotalFinal),
+        });
+      }
+    });
+
+    const subtotalDoc = r2(salida.reduce((s, l) => s + l.subtotal, 0));
+    const ivaDoc = r2(salida.reduce((s, l) => s + l.importeIva, 0));
+
+    return {
+      lineas: salida,
+      subtotalBase,
+      descuentoGeneral: r2(subtotalBase - subtotalDoc),
+      subtotal: subtotalDoc,
+      iva: ivaDoc,
+      total: r2(subtotalDoc + ivaDoc),
+    };
+  }
 
   // Descuento general sobre el subtotal acumulado
   let descGeneral = 0;

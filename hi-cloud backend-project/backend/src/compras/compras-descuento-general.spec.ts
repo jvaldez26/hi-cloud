@@ -40,7 +40,7 @@ function buildService(productos: Map<number, any>): any {
   );
 }
 
-async function calcular(service: any, detalles: any[], descuentoGeneral: { descuentoGeneralTipo?: string; descuentoGeneralValor?: number } = {}) {
+async function calcular(service: any, detalles: any[], descuentoGeneral: { descuentoGeneralTipo?: string; descuentoGeneralValor?: number; descuentoGeneralAplicarSobre?: string } = {}) {
   return service.calcularDetalles({ detalles, ...descuentoGeneral } as any);
 }
 
@@ -114,6 +114,44 @@ describe('ComprasService.calcularDetalles — descuento GENERAL', () => {
     const d = detallesData[0];
     expect(d.subtotal).toBe(900);
     expect(d.costoUnitarioReal).toBeCloseTo(75); // 900 ÷ 12
+  });
+
+  it('descuentoGeneralAplicarSobre="total": el TOTAL baja exactamente el monto ingresado (una sola tasa)', async () => {
+    const service = buildService(productosMap([[PROD_A, 'A'], [PROD_B, 'B']]));
+    const { detallesData } = await calcular(service, [
+      { productoId: PROD_A, cantidad: 2, precioUnitario: 300, porcentajeItbis: 18 },
+      { productoId: PROD_B, cantidad: 1, precioUnitario: 400, porcentajeItbis: 18 },
+    ], { descuentoGeneralTipo: 'monto', descuentoGeneralValor: 118, descuentoGeneralAplicarSobre: 'total' });
+
+    // totalPre = 1000 × 1.18 = 1180 → objetivo = 1062
+    const totalDoc = detallesData.reduce((s, d) => s + d.total!, 0);
+    expect(Math.round(totalDoc * 100) / 100).toBe(1062);
+  });
+
+  it('descuentoGeneralAplicarSobre="total" con tasas MIXTAS: la suma de líneas cuadra exacto, sin residuo', async () => {
+    const service = buildService(productosMap([[PROD_A, 'A'], [PROD_B, 'B'], [PROD_C, 'C']]));
+    const { detallesData } = await calcular(service, [
+      { productoId: PROD_A, cantidad: 1, precioUnitario: 100, porcentajeItbis: 18 },
+      { productoId: PROD_B, cantidad: 1, precioUnitario: 100, porcentajeItbis: 16 },
+      { productoId: PROD_C, cantidad: 1, precioUnitario: 100, porcentajeItbis: 0 },
+    ], { descuentoGeneralTipo: 'monto', descuentoGeneralValor: 50, descuentoGeneralAplicarSobre: 'total' });
+
+    // totalPre = 118+116+100 = 334 → objetivo 284
+    const totalDoc = Math.round(detallesData.reduce((s, d) => s + d.total!, 0) * 100) / 100;
+    expect(totalDoc).toBe(284);
+  });
+
+  it('sin descuentoGeneralAplicarSobre (undefined): comportamiento IDÉNTICO al modo "subtotal" (regresión)', async () => {
+    const service = buildService(productosMap([[PROD_A, 'A']]));
+    const conAplicarSobreExplicito = await calcular(service, [
+      { productoId: PROD_A, cantidad: 1, precioUnitario: 100, porcentajeItbis: 18 },
+    ], { descuentoGeneralTipo: 'porcentaje', descuentoGeneralValor: 10, descuentoGeneralAplicarSobre: 'subtotal' });
+    const sinAplicarSobre = await calcular(service, [
+      { productoId: PROD_A, cantidad: 1, precioUnitario: 100, porcentajeItbis: 18 },
+    ], { descuentoGeneralTipo: 'porcentaje', descuentoGeneralValor: 10 });
+
+    expect(conAplicarSobreExplicito.detallesData[0].subtotal).toBe(sinAplicarSobre.detallesData[0].subtotal);
+    expect(conAplicarSobreExplicito.descuentoGeneralMonto).toBe(sinAplicarSobre.descuentoGeneralMonto);
   });
 
   it('sin descuento general (tipo/valor ausentes): comportamiento IDÉNTICO al de antes (regresión)', async () => {

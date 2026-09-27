@@ -56,4 +56,55 @@ describe('calcularTotalesConDescuentoGeneral', () => {
     expect(r.subtotal).toBe(435);
     expect(r.itbis).toBeCloseTo(78.3);
   });
+
+  describe('aplicarSobre = "total"', () => {
+    it('UNA sola tasa: el total baja EXACTAMENTE el monto ingresado', () => {
+      const r = calcularTotalesConDescuentoGeneral(
+        [
+          { cantidad: 2, precioUnitario: 300, porcentajeItbis: 18 },
+          { cantidad: 1, precioUnitario: 400, porcentajeItbis: 18 },
+        ],
+        { tipo: 'monto', valor: 118, aplicarSobre: 'total' },
+      );
+      // totalPre = 1000 × 1.18 = 1180 → objetivo = 1062
+      expect(r.total).toBe(1062);
+    });
+
+    it('tasas MIXTAS: la suma de líneas cuadra exacto con el total, sin residuo', () => {
+      const r = calcularTotalesConDescuentoGeneral(
+        [
+          { cantidad: 1, precioUnitario: 100, porcentajeItbis: 18 },
+          { cantidad: 1, precioUnitario: 100, porcentajeItbis: 16 },
+          { cantidad: 1, precioUnitario: 100, porcentajeItbis: 0 },
+        ],
+        { tipo: 'monto', valor: 50, aplicarSobre: 'total' },
+      );
+      // totalPre = 118+116+100 = 334 → objetivo 284
+      expect(r.total).toBe(284);
+      const sumaLineas = Math.round(r.lineas.reduce((s, l) => s + l.subtotal + l.itbis, 0) * 100) / 100;
+      expect(sumaLineas).toBe(284);
+    });
+
+    it('modo "subtotal" explícito da lo mismo que sin aplicarSobre (regresión)', () => {
+      const lineas = [
+        { cantidad: 2, precioUnitario: 150, porcentajeItbis: 18, descuentoMonto: 20 },
+        { cantidad: 1, precioUnitario: 200, porcentajeItbis: 16 },
+      ];
+      const sinAplicarSobre = calcularTotalesConDescuentoGeneral(lineas, { tipo: 'porcentaje', valor: 10 });
+      const conSubtotal = calcularTotalesConDescuentoGeneral(lineas, { tipo: 'porcentaje', valor: 10, aplicarSobre: 'subtotal' });
+      expect(conSubtotal).toEqual(sinAplicarSobre);
+    });
+
+    it('cambiar de modo entre llamadas no arrastra cálculo anterior', () => {
+      const lineas = [
+        { cantidad: 1, precioUnitario: 100, porcentajeItbis: 18 },
+        { cantidad: 1, precioUnitario: 100, porcentajeItbis: 0 },
+      ];
+      const porSubtotal = calcularTotalesConDescuentoGeneral(lineas, { tipo: 'monto', valor: 50, aplicarSobre: 'subtotal' });
+      const porTotal     = calcularTotalesConDescuentoGeneral(lineas, { tipo: 'monto', valor: 50, aplicarSobre: 'total' });
+      expect(porTotal.total).not.toBe(porSubtotal.total);
+      const porSubtotalOtraVez = calcularTotalesConDescuentoGeneral(lineas, { tipo: 'monto', valor: 50, aplicarSobre: 'subtotal' });
+      expect(porSubtotalOtraVez).toEqual(porSubtotal);
+    });
+  });
 });

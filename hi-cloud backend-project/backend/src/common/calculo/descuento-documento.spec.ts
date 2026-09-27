@@ -464,3 +464,126 @@ describe('calcularTotalesConDescuento — invariantes', () => {
     expect(res.descuentoGeneral).toBe(0);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. Descuento general aplicado sobre el TOTAL (con ITBIS), no sobre el subtotal
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('calcularTotalesConDescuento — descuentoGeneral.aplicarSobre = "total"', () => {
+  it('UNA sola tasa: el total baja EXACTAMENTE el monto ingresado (monto fijo)', () => {
+    const res = calcularTotalesConDescuento(
+      [
+        { cantidad: 2, precioUnitario: 300, porcentajeIva: 18 },
+        { cantidad: 1, precioUnitario: 400, porcentajeIva: 18 },
+      ],
+      { tipo: 'monto', valor: 118, aplicarSobre: 'total' },
+    );
+    // totalPre = 1000 × 1.18 = 1180 → objetivo = 1180 - 118 = 1062
+    expect(res.total).toBe(1062);
+  });
+
+  it('UNA sola tasa: el total baja EXACTAMENTE el % ingresado', () => {
+    const res = calcularTotalesConDescuento(
+      [{ cantidad: 1, precioUnitario: 1000, porcentajeIva: 18 }],
+      { tipo: 'porcentaje', valor: 10, aplicarSobre: 'total' },
+    );
+    // totalPre = 1180; 10% de 1180 = 118 → objetivo = 1062
+    expect(res.total).toBe(1062);
+  });
+
+  it('tasas MIXTAS (18%/16%/exento): la suma de las líneas cuadra EXACTO con el total esperado, sin residuo', () => {
+    const res = calcularTotalesConDescuento(
+      [
+        { cantidad: 1, precioUnitario: 100, porcentajeIva: 18 },
+        { cantidad: 1, precioUnitario: 100, porcentajeIva: 16 },
+        { cantidad: 1, precioUnitario: 100, porcentajeIva: 0 },
+      ],
+      { tipo: 'monto', valor: 50, aplicarSobre: 'total' },
+    );
+    // totalPre = 118 + 116 + 100 = 334 → objetivo = 284
+    expect(res.total).toBe(284);
+    const sumaLineas = Math.round(res.lineas.reduce((s, l) => s + l.total, 0) * 100) / 100;
+    expect(sumaLineas).toBe(284); // sin residuo — la última línea absorbió el resto
+    expect(res.subtotal).toBe(Math.round(res.lineas.reduce((s, l) => s + l.subtotal, 0) * 100) / 100);
+    expect(res.iva).toBe(Math.round(res.lineas.reduce((s, l) => s + l.importeIva, 0) * 100) / 100);
+  });
+
+  it('tasas mixtas por PORCENTAJE del total: mismo criterio, sin residuo', () => {
+    const res = calcularTotalesConDescuento(
+      [
+        { cantidad: 3, precioUnitario: 233.33, porcentajeIva: 18 },
+        { cantidad: 1, precioUnitario: 187.5, porcentajeIva: 16 },
+        { cantidad: 2, precioUnitario: 99.99, porcentajeIva: 0 },
+      ],
+      { tipo: 'porcentaje', valor: 15, aplicarSobre: 'total' },
+    );
+    const sumaLineas = Math.round(res.lineas.reduce((s, l) => s + l.total, 0) * 100) / 100;
+    expect(sumaLineas).toBe(res.total);
+  });
+
+  it('200 documentos aleatorios con tasas mixtas: la suma de líneas SIEMPRE cuadra exacto con el total (sin residuo de redondeo)', () => {
+    const rnd = prng(20260927);
+    const tasas = [0, 16, 18];
+    for (let n = 0; n < 200; n++) {
+      const nLineas = 1 + Math.floor(rnd() * 6);
+      const lineas: LineaDescuentoInput[] = [];
+      for (let i = 0; i < nLineas; i++) {
+        lineas.push({
+          cantidad: 1 + Math.floor(rnd() * 10),
+          precioUnitario: parseFloat((rnd() * 1000 + 1).toFixed(2)),
+          porcentajeIva: tasas[Math.floor(rnd() * tasas.length)],
+        });
+      }
+      const tipo = rnd() < 0.5 ? 'monto' : 'porcentaje';
+      const valor = tipo === 'monto' ? parseFloat((rnd() * 500).toFixed(2)) : parseFloat((rnd() * 50).toFixed(2));
+
+      const res = calcularTotalesConDescuento(lineas, { tipo, valor, aplicarSobre: 'total' });
+
+      const sumaTotales   = Math.round(res.lineas.reduce((s, l) => s + l.total, 0) * 100) / 100;
+      const sumaSubtotal  = Math.round(res.lineas.reduce((s, l) => s + l.subtotal, 0) * 100) / 100;
+      const sumaIva       = Math.round(res.lineas.reduce((s, l) => s + l.importeIva, 0) * 100) / 100;
+      expect(sumaTotales).toBe(res.total);
+      expect(sumaSubtotal).toBe(res.subtotal);
+      expect(sumaIva).toBe(res.iva);
+      // Cada línea, individualmente, también cuadra subtotal+iva=total
+      res.lineas.forEach(l => {
+        expect(Math.round((l.subtotal + l.importeIva) * 100) / 100).toBe(l.total);
+      });
+    }
+  });
+
+  it('sin descuento general (valor 0): idéntico a no aplicar nada, aunque aplicarSobre sea "total"', () => {
+    const res = calcularTotalesConDescuento(
+      [{ cantidad: 1, precioUnitario: 100, porcentajeIva: 18 }],
+      { aplicarSobre: 'total' },
+    );
+    expect(res.subtotal).toBe(100);
+    expect(res.iva).toBe(18);
+    expect(res.total).toBe(118);
+  });
+
+  it('modo "subtotal" (default, sin aplicarSobre) da EXACTAMENTE lo mismo que antes de que existiera "total" (regresión)', () => {
+    const lineas: LineaDescuentoInput[] = [
+      { cantidad: 2, precioUnitario: 150, porcentajeIva: 18, descuentoMonto: 20 },
+      { cantidad: 1, precioUnitario: 200, porcentajeIva: 16 },
+    ];
+    const sinAplicarSobre = calcularTotalesConDescuento(lineas, { tipo: 'porcentaje', valor: 10 });
+    const conSubtotalExplicito = calcularTotalesConDescuento(lineas, { tipo: 'porcentaje', valor: 10, aplicarSobre: 'subtotal' });
+    expect(conSubtotalExplicito).toEqual(sinAplicarSobre);
+  });
+
+  it('cambiar de modo entre llamadas no arrastra estado del cálculo anterior — cada llamada es independiente', () => {
+    const lineas: LineaDescuentoInput[] = [
+      { cantidad: 1, precioUnitario: 100, porcentajeIva: 18 },
+      { cantidad: 1, precioUnitario: 100, porcentajeIva: 0 },
+    ];
+    const porSubtotal = calcularTotalesConDescuento(lineas, { tipo: 'monto', valor: 50, aplicarSobre: 'subtotal' });
+    const porTotal     = calcularTotalesConDescuento(lineas, { tipo: 'monto', valor: 50, aplicarSobre: 'total' });
+    // Deben diferir entre sí (son criterios distintos)...
+    expect(porTotal.total).not.toBe(porSubtotal.total);
+    // ...y una tercera llamada repitiendo el primer modo debe dar EXACTAMENTE
+    // lo mismo que la primera vez — nada quedó "pegado" de la llamada de en medio.
+    const porSubtotalOtraVez = calcularTotalesConDescuento(lineas, { tipo: 'monto', valor: 50, aplicarSobre: 'subtotal' });
+    expect(porSubtotalOtraVez).toEqual(porSubtotal);
+  });
+});

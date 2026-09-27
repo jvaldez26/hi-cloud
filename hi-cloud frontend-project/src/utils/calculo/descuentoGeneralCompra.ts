@@ -22,6 +22,13 @@ export interface LineaDescuentoGeneralInput {
 export interface DescuentoGeneralInput {
   tipo?: 'monto' | 'porcentaje';
   valor?: number | null;
+  /**
+   * 'subtotal' (default) = valor se resta del subtotal, ITBIS se recalcula
+   * sobre el neto. 'total' = valor es cuánto debe bajar el TOTAL final (con
+   * ITBIS incluido) — con tasas mixtas se reparte por el peso de cada línea
+   * en el total, no en el subtotal.
+   */
+  aplicarSobre?: 'subtotal' | 'total';
 }
 
 export interface TotalesConDescuentoGeneral {
@@ -50,6 +57,55 @@ export function calcularTotalesConDescuentoGeneral(
   });
 
   let subtotalBase = r2(calculadas.reduce((s, l) => s + l.subtotal, 0));
+
+  // aplicarSobre === 'total': ver descuento-documento.ts (backend) para la
+  // explicación completa del reparto por peso-en-el-total y por qué la
+  // última línea se calcula por diferencia (para que la suma cuadre exacto).
+  if (descuentoGeneral.aplicarSobre === 'total') {
+    const dgt = descuentoGeneral.tipo;
+    const dgv = Number(descuentoGeneral.valor ?? 0);
+    const totalesPre = calculadas.map(l => ({ ...l, totalPre: l.subtotal * (1 + l.porcentajeItbis / 100) }));
+    const totalDocPre = totalesPre.reduce((s, l) => s + l.totalPre, 0);
+
+    let dTotalDeseado = 0;
+    if (dgt === 'monto' && dgv > 0) {
+      dTotalDeseado = Math.min(dgv, totalDocPre);
+    } else if (dgt === 'porcentaje' && dgv > 0) {
+      dTotalDeseado = totalDocPre * (dgv / 100);
+    }
+
+    const totalDocObjetivo = r2(r2(totalDocPre) - r2(dTotalDeseado));
+    const lineasSalida: { subtotal: number; itbis: number }[] = [];
+    let sumaAsignada = 0;
+
+    totalesPre.forEach((l, i) => {
+      const esUltima = i === totalesPre.length - 1;
+      if (!esUltima) {
+        const peso = totalDocPre > 0 ? l.totalPre / totalDocPre : 0;
+        const descProp = (dTotalDeseado * peso) / (1 + l.porcentajeItbis / 100);
+        const subtotalFinal = r2(l.subtotal - descProp);
+        const itbisFinal = r2(subtotalFinal * (l.porcentajeItbis / 100));
+        sumaAsignada += r2(subtotalFinal + itbisFinal);
+        lineasSalida.push({ subtotal: subtotalFinal, itbis: itbisFinal });
+      } else {
+        const totalFinal = r2(totalDocObjetivo - sumaAsignada);
+        const subtotalFinal = r2(totalFinal / (1 + l.porcentajeItbis / 100));
+        const itbisFinal = r2(totalFinal - subtotalFinal);
+        lineasSalida.push({ subtotal: subtotalFinal, itbis: itbisFinal });
+      }
+    });
+
+    const subtotalDoc = r2(lineasSalida.reduce((s, l) => s + l.subtotal, 0));
+    const itbisDoc = r2(lineasSalida.reduce((s, l) => s + l.itbis, 0));
+    return {
+      subtotalBase,
+      descuentoGeneral: r2(subtotalBase - subtotalDoc),
+      subtotal: subtotalDoc,
+      itbis: itbisDoc,
+      total: r2(subtotalDoc + itbisDoc),
+      lineas: lineasSalida,
+    };
+  }
 
   let descGeneral = 0;
   const dgt = descuentoGeneral.tipo;

@@ -83,6 +83,15 @@ export class Compra extends TenantBaseEntity {
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   descuentoGeneralMonto!: number;
 
+  /**
+   * 'subtotal' (default, NULL = comportamiento histórico) o 'total' — sobre
+   * qué espacio se interpreta descuentoGeneralValor. Ver
+   * common/calculo/descuento-documento.ts para el porqué del reparto
+   * distinto cuando es 'total' (tasas de ITBIS mixtas por línea).
+   */
+  @Column({ length: 20, nullable: true })
+  descuentoGeneralAplicarSobre?: string;
+
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   total!: number;
 

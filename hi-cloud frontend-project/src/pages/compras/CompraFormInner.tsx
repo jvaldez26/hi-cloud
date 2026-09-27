@@ -163,6 +163,14 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
   // de línea (ver calcularTotalesConDescuentoGeneral / compras.service.ts).
   const [descuentoGeneralTipo, setDescuentoGeneralTipo] = useState<'monto' | 'porcentaje'>('monto');
   const [descuentoGeneralValor, setDescuentoGeneralValor] = useState<number>(0);
+  /**
+   * 'subtotal' (default) = el valor de arriba se resta del subtotal, ITBIS
+   * se recalcula sobre el neto. 'total' = el valor de arriba es cuánto debe
+   * bajar el TOTAL final (con ITBIS incluido) — con tasas mixtas se reparte
+   * por el peso de cada línea en el total, no en el subtotal (ver
+   * calcularTotalesConDescuentoGeneral).
+   */
+  const [descuentoGeneralAplicarSobre, setDescuentoGeneralAplicarSobre] = useState<'subtotal' | 'total'>('subtotal');
 
   // DGII 606 — sugerencia editable, nunca fija (ver dgii-606.ts). "Tocado"
   // se marca al primer cambio manual del usuario, o al cargar un borrador
@@ -333,6 +341,7 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
     setPctIsr(Number(c.porcentajeRetencionIsr ?? 10));
     setDescuentoGeneralTipo((c.descuentoGeneralTipo as 'monto' | 'porcentaje') ?? 'monto');
     setDescuentoGeneralValor(Number(c.descuentoGeneralValor ?? 0));
+    setDescuentoGeneralAplicarSobre((c.descuentoGeneralAplicarSobre as 'subtotal' | 'total') ?? 'subtotal');
     // Si el borrador ya trae clasificación 606, es una elección real — se
     // marca "tocada" para que la sugerencia automática no la reemplace.
     setTipoBienes(c.tipoBienes ?? undefined);
@@ -401,10 +410,17 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
   const descuentoLineasTotal = lineas.reduce((s, l) => s + (l.descuentoMonto || 0), 0);
   const totalesGenerales = calcularTotalesConDescuentoGeneral(
     lineas.map(l => ({ cantidad: l.cantidad, precioUnitario: l.precioUnitario, descuentoMonto: l.descuentoMonto, porcentajeItbis: l.porcentajeItbis })),
-    { tipo: descuentoGeneralTipo, valor: descuentoGeneralValor },
+    { tipo: descuentoGeneralTipo, valor: descuentoGeneralValor, aplicarSobre: descuentoGeneralAplicarSobre },
   );
   const subtotalBaseGeneral   = totalesGenerales.subtotalBase; // antes del general, después del de línea
   const descuentoGeneralMonto = totalesGenerales.descuentoGeneral;
+  // Total ANTES del general (con ITBIS, después del de línea) — solo para
+  // topar el input cuando "Aplicar sobre" = Total; el tope real y
+  // autoritativo lo aplica el motor (Math.min contra este mismo valor).
+  const totalPreGeneral = lineas.reduce((s, l) => {
+    const neto = Math.max(0, l.precioUnitario * l.cantidad - (l.descuentoMonto || 0));
+    return s + neto * (1 + l.porcentajeItbis / 100);
+  }, 0);
   const subtotal = totalesGenerales.subtotal;
   const itbis    = totalesGenerales.itbis;
   const total    = subtotal + itbis;
@@ -439,7 +455,7 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
     // general) y mostraba un monto mayor al que create() iba a contabilizar.
     queryKey: ['compra-preview', JSON.stringify(lineasValidas.map(l => ({
       p: l.productoId, c: l.cantidad, cb: l.cantidadBonificada, pu: l.precioUnitario, it: l.porcentajeItbis, dm: l.descuentoMonto,
-    }))), cuentaDestino, retieneItbis, pctItbis, retieneIsr, pctIsr, moneda, tipoCambio, descuentoGeneralTipo, descuentoGeneralValor],
+    }))), cuentaDestino, retieneItbis, pctItbis, retieneIsr, pctIsr, moneda, tipoCambio, descuentoGeneralTipo, descuentoGeneralValor, descuentoGeneralAplicarSobre],
     queryFn: () => comprasApi.previsualizarAsiento({
       proveedorId: proveedorSelId!,
       fecha: dayjs().format('YYYY-MM-DD'),
@@ -453,7 +469,7 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
       tipoCambio: moneda !== 'DOP' ? tipoCambio : undefined,
       ...(esInformal && retieneItbis ? { retieneItbis: true, porcentajeRetencionItbis: pctItbis } : {}),
       ...(esInformal && retieneIsr   ? { retieneIsr:   true, porcentajeRetencionIsr:   pctIsr   } : {}),
-      ...(descuentoGeneralValor > 0 ? { descuentoGeneralTipo, descuentoGeneralValor } : {}),
+      ...(descuentoGeneralValor > 0 ? { descuentoGeneralTipo, descuentoGeneralValor, descuentoGeneralAplicarSobre } : {}),
     }),
     enabled: lineasValidas.length > 0 && !!proveedorSelId && (moneda === 'DOP' || tipoCambio > 1),
     staleTime: 500,
@@ -570,6 +586,7 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
       // editar una OC a "sin descuento general" limpie lo que tenía antes.
       descuentoGeneralTipo: descuentoGeneralValor > 0 ? descuentoGeneralTipo : undefined,
       descuentoGeneralValor: descuentoGeneralValor || 0,
+      descuentoGeneralAplicarSobre: descuentoGeneralValor > 0 ? descuentoGeneralAplicarSobre : undefined,
       ...(esInformal && retieneItbis ? { retieneItbis: true, porcentajeRetencionItbis: pctItbis } : {}),
       ...(esInformal && retieneIsr   ? { retieneIsr:   true, porcentajeRetencionIsr:   pctIsr   } : {}),
     } as any);
@@ -1084,8 +1101,10 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
           modo alto completo. Siempre visible, no importa cuántos ítems haya. */}
       <Card style={{ flexShrink: 0 }}>
         {/* Descuento GENERAL — a nivel de documento completo, acumulable con
-            el de línea. El toggle decide el modo (% o monto fijo); solo uno
-            aplica a la vez, igual que en factura/cotización/pro-forma. */}
+            el de línea. Un toggle decide el modo (% o monto fijo) y otro
+            decide sobre qué espacio se interpreta ese valor — igual que en
+            factura/cotización/pro-forma para el primero; el segundo es
+            exclusivo de Compras por ahora. */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: token.colorTextSecondary }}>Descuento general</span>
           <Segmented
@@ -1097,12 +1116,22 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
           <InputNumber
             controls={false}
             min={0}
-            max={descuentoGeneralTipo === 'porcentaje' ? 100 : subtotalBaseGeneral}
+            max={descuentoGeneralTipo === 'porcentaje' ? 100 : (descuentoGeneralAplicarSobre === 'total' ? totalPreGeneral : subtotalBaseGeneral)}
             precision={2}
             value={descuentoGeneralValor}
             style={{ width: 120 }}
             placeholder="0"
             onChange={v => setDescuentoGeneralValor(v ?? 0)}
+          />
+          <span style={{ fontSize: 12, color: token.colorTextSecondary }}>Aplicar sobre</span>
+          <Segmented
+            size="small"
+            value={descuentoGeneralAplicarSobre}
+            onChange={v => setDescuentoGeneralAplicarSobre(v as 'subtotal' | 'total')}
+            options={[
+              { label: 'Antes de ITBIS', value: 'subtotal' },
+              { label: 'Después de ITBIS', value: 'total' },
+            ]}
           />
         </div>
         {/* Los totales en una franja horizontal, no en una columna pegada a la
@@ -1120,12 +1149,12 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
               {descuentoLineasTotal > 0 && (
                 <Dato etiqueta="Descuento" valor={`-${fmtMon(descuentoLineasTotal, moneda)}`} color="#d97706" />
               )}
-              {descuentoGeneralMonto > 0 && (
-                <>
-                  <Dato etiqueta="Descuento general" valor={`-${fmtMon(descuentoGeneralMonto, moneda)}`} color="#d97706" />
-                  <Dato etiqueta="Subtotal neto" valor={fmtMon(subtotal, moneda)} />
-                </>
-              )}
+              {/* Siempre visibles (aunque sean 0) — con el modo "Después de
+                  ITBIS" el reparto por tasas mixtas puede no ser obvio a
+                  simple vista; el desglose completo deja claro qué pasó,
+                  sin depender de que el descuento sea > 0 para aparecer. */}
+              <Dato etiqueta="Descuento general" valor={`-${fmtMon(descuentoGeneralMonto, moneda)}`} color={descuentoGeneralMonto > 0 ? '#d97706' : undefined} />
+              <Dato etiqueta="Subtotal neto" valor={fmtMon(subtotal, moneda)} />
               <Dato etiqueta="ITBIS (18%)" valor={fmtMon(itbis, moneda)} />
               {(montoRetItbis > 0 || montoRetIsr > 0) && (
                 <Dato etiqueta="Total bruto" valor={fmtMon(total, moneda)} />

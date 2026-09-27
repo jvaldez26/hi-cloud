@@ -183,4 +183,14 @@ export class CreateCompraDto {
 
   @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Type(() => Number)
   descuentoGeneralValor?: number;
+
+  /**
+   * 'subtotal' (default si se omite) = el valor de arriba se resta del
+   * subtotal, ITBIS se recalcula sobre el neto. 'total' = el valor de arriba
+   * es cuánto debe bajar el TOTAL final (con ITBIS incluido) — con tasas
+   * mixtas se reparte por el peso de cada línea en el total, no en el
+   * subtotal (ver descuento-documento.ts).
+   */
+  @IsOptional() @IsString() @IsIn(['subtotal', 'total'])
+  descuentoGeneralAplicarSobre?: string;
 }

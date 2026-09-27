@@ -45,6 +45,8 @@ export interface CompraPayload {
    */
   descuentoGeneralTipo?: 'monto' | 'porcentaje';
   descuentoGeneralValor?: number;
+  /** 'subtotal' (default) o 'total' — sobre qué espacio se interpreta descuentoGeneralValor. */
+  descuentoGeneralAplicarSobre?: 'subtotal' | 'total';
 }
 
 export const comprasApi = {
