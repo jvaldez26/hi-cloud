@@ -120,6 +120,27 @@ export class FacturasService {
   }
 
   /**
+   * ¿Este cajero tiene AHORA una sesión de modo supervisor activa (sin
+   * cerrar, dentro de las 8h)? Mismo criterio y misma consulta que
+   * SupervisorGateGuard — a propósito no necesita que el cliente mande un
+   * supervisorSessionId: si el vendedor la activó en el POS, cuenta sin
+   * importar desde qué pantalla se consulte. Se usa en findAll() para
+   * decidir si un vendedor puede ver el listado completo de facturas (ver
+   * el filtro "solo mis facturas" más abajo).
+   */
+  private async tieneSupervisorActivo(cajeroId: number, empresaId: number): Promise<boolean> {
+    const [row] = await this.dataSource.query<{ id: number }[]>(`
+      SELECT act.id
+      FROM pos_supervisor_log act
+      WHERE act."cajeroId" = $1 AND act."empresaId" = $2 AND act."sessionId" IS NULL
+        AND act."createdAt" >= NOW() - INTERVAL '8 hours'
+        AND NOT EXISTS (SELECT 1 FROM pos_supervisor_log c WHERE c."sessionId" = act.id)
+      LIMIT 1
+    `, [cajeroId, empresaId]);
+    return !!row;
+  }
+
+  /**
    * C-4 unificado (2026-09-20) — antes duplicado idéntico en create() y
    * update(). Revalida el precio contra el catálogo (previene manipulación
    * desde localStorage) y, si la empresa no activó permitirVentaBajoCosto,
@@ -586,11 +607,38 @@ export class FacturasService {
 
   async findAll(pagination: PaginationDto & {
     estado?: string; desde?: string; hasta?: string; clienteId?: number; vendedorId?: number;
-  }) {
+  }, usuario?: User) {
     const empresaId  = this.tenantService.getEmpresaId();
     const sucursalId = this.tenantService.getSucursalId();
     const { limit = 10, page = 1, search, estado, desde, hasta, clienteId,
             tipoPago, tipoNcf, montoMin, montoMax, vendedorId } = pagination as any;
+
+    // Un VENDEDOR solo ve sus propias facturas — el frontend ya no debería
+    // mandar otro vendedorId, pero la protección real vive aquí: si llega
+    // uno distinto (o ninguno) se ignora y se fuerza el propio. Con sesión
+    // de supervisor activa ve todo, como admin/contador (mismo criterio que
+    // ya usan las demás acciones gateadas por SupervisorGateGuard).
+    //
+    // "Propio" requiere que vendedores."usuarioId" esté ligado a este
+    // usuario — la mayoría de empresas todavía no lo ligan (ver el
+    // comentario largo en VendedorResolverService.resolverVendedor). Sin ese
+    // enlace no hay forma confiable de derivarlo en el servidor, así que se
+    // cae a confiar en el vendedorId que mande el cliente — mismo nivel de
+    // confianza que ya se usa HOY al crear la factura en esas empresas, no
+    // uno nuevo. Mitigación PARCIAL, documentada: en esas empresas un
+    // vendedor que edite el request a mano podría seguir viendo facturas
+    // ajenas. Cerrarlo al 100% requiere ligar vendedores.usuarioId — pendiente
+    // aparte, fuera de este fix.
+    let vendedorIdEfectivo = vendedorId;
+    if (usuario && (usuario as any).role === 'vendedor') {
+      const activo = await this.tieneSupervisorActivo(usuario.id, empresaId);
+      if (activo) {
+        vendedorIdEfectivo = undefined;
+      } else {
+        const enlazado = await this.vendedorResolver.vendedorEnlazado(usuario.id, empresaId);
+        vendedorIdEfectivo = enlazado?.id ?? vendedorId;
+      }
+    }
 
     // La entidad Factura solo tiene `ecfId` como columna plana — sin @ManyToOne.
     // Cargamos las facturas primero, luego enriquecemos con datos ECF en una
@@ -625,7 +673,7 @@ export class FacturasService {
     if (tipoNcf)   qb.andWhere('f."tipoNcf" = :tipoNcf', { tipoNcf });
     if (montoMin != null)  qb.andWhere('f.total >= :montoMin', { montoMin });
     if (montoMax != null)  qb.andWhere('f.total <= :montoMax', { montoMax });
-    if (vendedorId != null) qb.andWhere('f."vendedorId" = :vendedorId', { vendedorId });
+    if (vendedorIdEfectivo != null) qb.andWhere('f."vendedorId" = :vendedorId', { vendedorId: vendedorIdEfectivo });
 
     const [data, total] = await qb
       .orderBy('f.fecha', 'DESC')

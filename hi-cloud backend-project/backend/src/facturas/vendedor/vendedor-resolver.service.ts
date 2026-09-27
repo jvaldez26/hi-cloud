@@ -49,11 +49,16 @@ export class VendedorResolverService implements OnModuleDestroy {
    *   3. Si no hay forma de resolverlo, la factura se emite igual —nunca se
    *      bloquea una venta por esto— pero deja de ser silencioso.
    */
-  async resolverVendedor(
-    dto:       { vendedorId?: number; nombreVendedor?: string },
-    usuarioId: number,
-    empresaId: number,
-  ): Promise<{ vendedorId: number | null; nombreVendedor: string | null }> {
+  /**
+   * Solo el lookup "¿este usuario tiene un vendedor asociado?" — sin efectos
+   * secundarios (a diferencia de resolverVendedor, que además acumula la
+   * alerta de "factura sin vendedor" cuando no encuentra nada). Lo usa
+   * también FacturasService.findAll para decidir si puede forzar el filtro
+   * "solo mis facturas" con una fuente confiable, o si tiene que caer al
+   * vendedorId que mande el cliente (empresas que no ligan vendedores a
+   * usuarios — ver el comentario largo de resolverVendedor).
+   */
+  async vendedorEnlazado(usuarioId: number, empresaId: number): Promise<{ id: number; nombre: string } | null> {
     const [derivado] = await this.dataSource.query<{ id: number; nombre: string }[]>(
       `SELECT id, nombre
          FROM vendedores
@@ -62,6 +67,15 @@ export class VendedorResolverService implements OnModuleDestroy {
         LIMIT 1`,
       [usuarioId, empresaId],
     );
+    return derivado ?? null;
+  }
+
+  async resolverVendedor(
+    dto:       { vendedorId?: number; nombreVendedor?: string },
+    usuarioId: number,
+    empresaId: number,
+  ): Promise<{ vendedorId: number | null; nombreVendedor: string | null }> {
+    const derivado = await this.vendedorEnlazado(usuarioId, empresaId);
 
     if (derivado) {
       if (dto.vendedorId != null && Number(dto.vendedorId) !== derivado.id) {

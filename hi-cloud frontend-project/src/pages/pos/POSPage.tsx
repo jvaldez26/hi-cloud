@@ -52,6 +52,7 @@ import { useThemeStore } from '../../store/theme.store';
 import { useOfflineQueue } from '../../hooks/useOfflineQueue';
 import { useSupervisor } from '../../hooks/useSupervisor';
 import { requiereSupervisorVentaCredito } from './ventaCreditoGate';
+import { construirFiltroVendedorPOS } from './vendedorFiltroPanel';
 import { UomSelect } from '../../components/ui/UomSelect';
 import { AvisoRncNoVigente } from '../../components/ui/RncNoVigente';
 import type { Producto, Cliente } from '../../types';
@@ -7964,7 +7965,7 @@ const PANEL_TITLES: Record<PanelId, { label: string; icon: string }> = {
   'compras':        { label: 'Órdenes de Compra',  icon: '🛍️' },
 };
 
-function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnularFacturas, tiempoLimiteAnular, requireSupervisor, supervisorActive, requireSupervisorForced }: {
+function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnularFacturas, tiempoLimiteAnular, requireSupervisor, supervisorActive, requireSupervisorForced, supervisorSessionActive }: {
   panel:              PanelId;
   palette:            Palette;
   onVolver:           () => void;
@@ -7974,6 +7975,15 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
   requireSupervisor?:      (action: string, detail?: string) => Promise<boolean>;
   supervisorActive?:       boolean;
   requireSupervisorForced?: (action: string, detail?: string) => Promise<boolean>;
+  /**
+   * Distinto de `supervisorActive` de arriba: ese es "¿la acción pasa sin pedir
+   * nada?" (true también cuando el modo supervisor está DESACTIVADO para la
+   * empresa) — usarlo para levantar el filtro de Facturas dejaría a cualquier
+   * empresa SIN modo supervisor activado viendo todas las facturas de nuevo,
+   * el mismo hueco que se está cerrando aquí. Este es el crudo del hook
+   * (`supervisor.supervisorActive`): solo true con una sesión real y vigente.
+   */
+  supervisorSessionActive?: boolean;
 }) {
   const C  = palette;
   const qc = useQueryClient();
@@ -8596,13 +8606,22 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
   // ILIKE '%...%' (sin índice trigram, seq scan) MÁS un COUNT(*) que repite el
   // mismo filtro. Escribir "FAC-001234" eran 10 requests = 20 recorridos de tabla.
   const busqD = useDebounce(busq, 300);
+  // Facturas: un vendedor solo ve las suyas — mismo patrón que POSVentasHoyPanel
+  // (línea ~6215). El backend YA fuerza esto igual sin importar lo que mande el
+  // query param (facturas.service.ts), así que esto es solo para que la UI no
+  // muestre de entrada un listado que el backend va a recortar de todas formas.
+  // Con supervisor activo se manda igual que admin/contador: sin filtro.
+  const user       = useAuthStore(s => s.user);
+  const esAdminPOS = user?.role === 'admin' || user?.role === 'contador';
+  const vendedorIdPOS = localStorage.getItem('pos_vendedor_id');
   const { data: rows, isLoading } = useQuery<any>({
-    queryKey: ['pos-panel', panel, busqD],
+    queryKey: ['pos-panel', panel, busqD, esAdminPOS ? null : (supervisorSessionActive ? 'supervisor' : vendedorIdPOS)],
     queryFn: async () => {
       const s = busqD ? `&search=${encodeURIComponent(busqD)}` : '';
+      const vf = construirFiltroVendedorPOS({ esAdmin: esAdminPOS, supervisorSessionActive, vendedorId: vendedorIdPOS });
       const endpoints: Record<string, string> = {
         inventario:       `/inventario/movimientos?limit=40${s}`,
-        facturas:         `/facturas?limit=30${s}`,
+        facturas:         `/facturas?limit=30${s}${vf}`,
         'pre-facturas':   `/pre-facturas?limit=30${s}`,
         cotizaciones:     `/cotizaciones?limit=30${s}`,
         conduce:          `/conduces?limit=30${s}`,
@@ -11627,6 +11646,7 @@ export default function POSPage() {
             requireSupervisor={supervisor.supervisorModeEnabled ? supervisor.requireSupervisor : undefined}
             supervisorActive={supervisor.supervisorActive || !supervisor.supervisorModeEnabled}
             requireSupervisorForced={supervisor.requireSupervisorForced}
+            supervisorSessionActive={supervisor.supervisorActive}
           />
         )}
         {panelActivo === 'items' && (<>

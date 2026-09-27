@@ -145,8 +145,8 @@ export class FacturasController {
   @Get()
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Listar facturas con paginación y filtros' })
-  findAll(@Query() pagination: FacturasFilterDto) {
-    return this.facturasService.findAll(pagination);
+  findAll(@Query() pagination: FacturasFilterDto, @GetUser() usuario: User) {
+    return this.facturasService.findAll(pagination, usuario);
   }
 
   @Get('resumen')
