@@ -11,68 +11,44 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # ── 1. CI: TypeScript checks (ambos proyectos) ───────────────────────────────
-  ci:
-    name: CI Check
+  # ── 0. Config del propio deploy — separado de `ci` para no perder el
+  # "falla en segundos" que tenía antes de gastar minutos de CI. No es código
+  # de aplicación: valida que las variables listadas en VARS_INYECTADAS más
+  # abajo (el paso SSH) tengan su secreto — es deploy.yml verificándose a sí
+  # mismo, así que no pertenece a ci.yml (que no sabe nada de este pipeline).
+  validate-deploy-config:
+    name: Config del deploy sincronizada
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env:
-      # El postinstall de puppeteer descarga Chrome (~150 MB) desde
-      # storage.googleapis.com en cada `npm ci`. Aquí solo se hace typecheck:
-      # nadie lanza un navegador, así que esa descarga es puro desperdicio —
-      # y una dependencia de red externa capaz de tumbar el deploy entero.
-      # Ya lo hizo: el deploy de 5fb6906f murió con
-      #   "Failed to set up chrome v147.0.7727.57 ... server returned code 403"
-      # sin que hubiera un solo cambio de código que lo justificara.
-      # En producción puppeteer NO usa este Chrome: usa el chromium de apt vía
-      # PUPPETEER_EXECUTABLE_PATH (ver el paso "Chromium para Puppeteer").
-      PUPPETEER_SKIP_DOWNLOAD: 'true'
+    timeout-minutes: 3
     steps:
       - uses: actions/checkout@v4
-
-      # Primero de todo: check de texto, sin dependencias ni entorno. Tarda
-      # segundos y evita gastar 10 minutos de CI para descubrir al final que el
-      # deploy iba a dejar una variable sin inyectar.
       - name: Deploy — variables inyectadas sincronizadas
         run: node .github/scripts/validate-deploy-envs.mjs
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: 'hi-cloud backend-project/backend/package-lock.json'
-
-      - name: Backend — TypeScript
-        working-directory: 'hi-cloud backend-project/backend'
-        run: npm ci && npx tsc --noEmit
-
-      - name: Backend — Audit vulnerabilidades (S-39)
-        working-directory: 'hi-cloud backend-project/backend'
-        run: npm audit --audit-level=high || true
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: 'hi-cloud frontend-project/package-lock.json'
-
-      - name: Frontend — TypeScript
-        working-directory: 'hi-cloud frontend-project'
-        run: npm ci && npx tsc --noEmit
-
-      - name: Frontend — Audit vulnerabilidades (S-39)
-        working-directory: 'hi-cloud frontend-project'
-        run: npm audit --audit-level=high || true
+  # ── 1. CI: la MISMA definición que corre en cada push/PR (ci.yml) — Jest,
+  # CAPA 3/4/5/6, tsc, npm audit, backend y frontend. Antes este job era una
+  # versión recortada (solo tsc + audit) que corría en paralelo con el
+  # workflow "CI" real: un commit podía desplegarse con ese otro CI en rojo
+  # (pasó con 749dadfd, CAPA 3 falló y el deploy salió igual). Con esto hay
+  # una sola definición de "CI verde", nunca duplicada entre los dos
+  # archivos — y build-backend/build-frontend corren en paralelo con este
+  # job, no en serie: solo `deploy` espera a los tres.
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
 
   # ── 2. Build backend en el runner (sin límite de timeout en EC2) ─────────────
   build-backend:
     name: Build Backend
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: ci
+    # Corre en PARALELO con `ci` (que ahora es el workflow completo, minutos
+    # más lento) — solo espera al chequeo rápido de config. `deploy` es quien
+    # junta los tres al final; nada se gana serializando el build detrás de CI.
+    needs: validate-deploy-config
     env:
-      # Igual que en el job `ci`: aquí solo corre `nest build` (compilación TS).
-      # No se lanza ningún navegador, así que el Chrome del postinstall sobra.
+      # Aquí solo corre `nest build` (compilación TS). No se lanza ningún
+      # navegador, así que el Chrome del postinstall de puppeteer sobra.
       PUPPETEER_SKIP_DOWNLOAD: 'true'
     steps:
       - uses: actions/checkout@v4
@@ -110,7 +86,8 @@ jobs:
     name: Build Frontend
     runs-on: ubuntu-latest
     timeout-minutes: 15   # +3 min para el paso de subida de source maps (con timeout propio)
-    needs: ci
+    # Ver el comentario de build-backend — en paralelo con `ci`, no detrás.
+    needs: validate-deploy-config
     steps:
       - uses: actions/checkout@v4
 
@@ -167,7 +144,10 @@ jobs:
   deploy:
     name: Deploy to EC2
     runs-on: ubuntu-latest
-    needs: [build-backend, build-frontend]
+    # `ci` va aquí explícito porque build-backend/build-frontend NO dependen
+    # de él (corren en paralelo, ver sus comentarios) — sin este `needs`
+    # directo, `deploy` nunca esperaría a que CI terminara en absoluto.
+    needs: [ci, build-backend, build-frontend]
     environment: production
 
     steps:
@@ -352,7 +332,17 @@ jobs:
             # ══════════════════════════════════════════════════════════════════
             echo "━━━ [1/6] Git sync ━━━"
             git fetch origin main
-            git reset --hard origin/main
+            # Pinneado al commit EXACTO de este run (${{ github.sha }}, resuelto
+            # por GitHub Actions al renderizar el workflow, no una variable del
+            # shell remoto) — nunca a "origin/main" en el momento en que este
+            # script se ejecuta. Si otro push llega mientras CI/build de ESTE
+            # run seguían en curso, "main" ya apunta más adelante para cuando
+            # el SSH corre: `git reset --hard origin/main` habría puesto el
+            # código fuente de ESE commit más nuevo con el dist ya subido por
+            # SCP del commit viejo — fuente y dist desincronizados en el mismo
+            # deploy. El pin a un SHA fijo hace que fuente, dist y build_id
+            # sean siempre del mismo commit, pase lo que pase con otros pushes.
+            git reset --hard "${{ github.sha }}"
             # Capturado UNA vez aquí — es el commit que este deploy realmente
             # está poniendo en disco. Se usa para SENTRY_RELEASE (abajo) y para
             # la verificación de build_id en [6/6]: las dos tienen que ser el

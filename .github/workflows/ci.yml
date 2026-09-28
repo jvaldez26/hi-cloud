@@ -5,6 +5,11 @@ on:
     branches: ['**']
   pull_request:
     branches: [main]
+  # deploy.yml llama este workflow como su gate de CI (job `ci: uses:
+  # ./.github/workflows/ci.yml`) — una sola definición de "CI verde", nunca
+  # duplicada entre los dos archivos. No usa secrets, así que el caller no
+  # necesita `secrets: inherit`.
+  workflow_call:
 
 jobs:
   # ── Backend: TypeScript + Build + Schema checks ───────────────────────────────
