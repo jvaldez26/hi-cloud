@@ -20,6 +20,14 @@ export interface ContextoAutomaticoTicket {
   buildId?: string | null;
 }
 
+export interface SoporteTicketAdjunto {
+  id: number;
+  tipoMime: string;
+  tamanioBytes: number;
+  /** URL firmada, TTL ~15 min — si expira mientras se ve el panel, recargar el ticket la renueva. */
+  url: string | null;
+}
+
 export interface SoporteTicket {
   id: number;
   empresaId: number | null;
@@ -33,7 +41,12 @@ export interface SoporteTicket {
   respondidoPor: number | null;
   respondidoEn: string | null;
   createdAt: string;
+  adjuntos?: SoporteTicketAdjunto[];
 }
+
+export const MAX_ADJUNTOS_POR_TICKET = 5;
+export const MAX_BYTES_POR_ADJUNTO   = 5 * 1024 * 1024;
+export const TIPOS_ADJUNTO_PERMITIDOS = ['image/png', 'image/jpeg', 'image/webp'] as const;
 
 export const ASUNTO_SOPORTE_OPTIONS: { value: AsuntoSoporte; label: string }[] = [
   { value: 'error_tecnico',      label: 'Error técnico' },
@@ -45,11 +58,37 @@ export const ASUNTO_SOPORTE_OPTIONS: { value: AsuntoSoporte; label: string }[] =
 ];
 
 export const soporteApi = {
-  crear: (body: { asunto: AsuntoSoporte; mensaje: string; contexto?: Record<string, unknown> }) =>
-    api.post<ApiResponse<SoporteTicket>>('/soporte/tickets', body).then(r => r.data.data),
+  /**
+   * multipart/form-data siempre (haya o no adjuntos) — más simple que dos
+   * caminos distintos, y api/client.ts ya sabe dejar que el navegador ponga
+   * el boundary del Content-Type cuando el body es FormData (ver el
+   * interceptor de request ahí, con el incidente que documenta).
+   */
+  crear: (body: {
+    asunto: AsuntoSoporte; mensaje: string;
+    url?: string; modulo?: string; navegador?: string; buildId?: string;
+    adjuntos?: File[];
+  }) => {
+    const fd = new FormData();
+    fd.append('asunto', body.asunto);
+    fd.append('mensaje', body.mensaje);
+    if (body.url)       fd.append('url', body.url);
+    if (body.modulo)    fd.append('modulo', body.modulo);
+    if (body.navegador) fd.append('navegador', body.navegador);
+    if (body.buildId)   fd.append('buildId', body.buildId);
+    for (const archivo of body.adjuntos ?? []) fd.append('adjuntos', archivo);
+
+    return api.post<ApiResponse<SoporteTicket>>('/soporte/tickets', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(r => r.data.data);
+  },
 
   misTickets: (p = 1, limit = 10) =>
     api.get<ApiResponse<PaginatedData<SoporteTicket>>>(`/soporte/tickets/mis-tickets?page=${p}&limit=${limit}`)
+      .then(r => r.data.data),
+
+  urlAdjunto: (ticketId: number, adjuntoId: number) =>
+    api.get<ApiResponse<{ url: string | null }>>(`/soporte/tickets/${ticketId}/adjuntos/${adjuntoId}/url`)
       .then(r => r.data.data),
 
   // ── Panel de Super Admin ──────────────────────────────────────────────────

@@ -10,8 +10,24 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { MulterError } from 'multer';
 import { EcfError } from '../../ecf/errors/ecf.errors';
 import { reportServerError } from '../observability/sentry';
+
+// multer no trae declaraciones de tipos propias ni hay @types/multer
+// instalado — MulterError se importa como `any`, y TS no estrecha el tipo
+// de `exception` dentro de un `instanceof any` (es un caso conocido: solo
+// estrecha si el lado derecho tiene un tipo real). Se tipa a mano lo poco
+// que se usa de la instancia real (que en runtime SÍ es un MulterError).
+interface MulterErrorShim extends Error {
+  code: string;
+}
+
+const MULTER_MENSAJES: Record<string, string> = {
+  LIMIT_FILE_SIZE:      'El archivo pesa más de lo permitido',
+  LIMIT_FILE_COUNT:     'Se subieron demasiados archivos',
+  LIMIT_UNEXPECTED_FILE: 'Se subieron más archivos de los permitidos',
+};
 
 interface PostgresError extends Error {
   code?: string;
@@ -154,6 +170,20 @@ export class HttpExceptionFilter implements ExceptionFilter {
       this.logger.warn(
         `EcfError[${exception.code}] [${request.method} ${request.url}]: ${exception.message}`,
       );
+      return this.send(response, request, status, message);
+    }
+
+    // ── multer: límites de subida (tamaño/cantidad de archivos) ───────────────
+    // MulterError es un Error plano, no una HttpException — sin esta rama caía
+    // al "error genérico" de abajo y el cliente veía un 500 "contacte soporte"
+    // por algo tan normal como subir un archivo de más de 5 MB o más archivos
+    // de los permitidos. El límite del FilesInterceptor (fileSize/maxCount) SÍ
+    // se aplicaba — solo el mensaje que veía el usuario era el incorrecto.
+    if (exception instanceof MulterError) {
+      const merr = exception as MulterErrorShim;
+      status  = HttpStatus.BAD_REQUEST;
+      message = MULTER_MENSAJES[merr.code] ?? 'No se pudo procesar el archivo subido';
+      this.logger.warn(`MulterError[${merr.code}] [${request.method} ${request.url}]: ${merr.message}`);
       return this.send(response, request, status, message);
     }
 

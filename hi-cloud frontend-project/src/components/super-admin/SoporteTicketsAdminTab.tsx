@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Table, Tag, Button, Modal, Select, Input, Space, Typography,
-  Col, Row, DatePicker, Descriptions, Form, message,
+  Col, Row, DatePicker, Descriptions, Form, message, Image,
 } from 'antd';
 import { Eye, Send, Search } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -33,9 +33,20 @@ const asuntoLabel = (a: string) => ASUNTO_SOPORTE_OPTIONS.find(o => o.value === 
 
 // ─── Detalle + respuesta ───────────────────────────────────────────────────
 
-function DetalleTicketModal({ ticket, onClose }: { ticket: SoporteTicket; onClose: () => void }) {
+function DetalleTicketModal({ ticket: ticketInicial, onClose }: { ticket: SoporteTicket; onClose: () => void }) {
   const qc = useQueryClient();
   const [form] = Form.useForm();
+
+  // La fila del listado no trae adjuntos (evita firmar N URLs de S3 en cada
+  // página de la tabla) — el detalle sí, así que se pide fresco al abrir.
+  // initialData = la fila ya conocida: el modal no aparece vacío mientras
+  // llega la respuesta, y el resto de campos ya son correctos de entrada.
+  const { data: ticket = ticketInicial } = useQuery({
+    queryKey: ['soporte-ticket-detalle', ticketInicial.id],
+    queryFn:  () => soporteApi.detalleAdmin(ticketInicial.id),
+    initialData: ticketInicial,
+  });
+
   const ctx = ticket.contextoAutomatico ?? {};
 
   const responderMut = useMutation({
@@ -107,6 +118,22 @@ function DetalleTicketModal({ ticket, onClose }: { ticket: SoporteTicket; onClos
       <Paragraph style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 6, padding: 12, whiteSpace: 'pre-wrap' }}>
         {ticket.mensaje}
       </Paragraph>
+
+      {(ticket.adjuntos?.length ?? 0) > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>
+            {ticket.adjuntos!.length} imagen{ticket.adjuntos!.length > 1 ? 'es' : ''} adjunta{ticket.adjuntos!.length > 1 ? 's' : ''}
+          </Text>
+          <Space size={8} wrap>
+            <Image.PreviewGroup>
+              {ticket.adjuntos!.map(a => (
+                <Image key={a.id} src={a.url ?? undefined} width={72} height={72}
+                  style={{ objectFit: 'cover', borderRadius: 6, border: '1px solid #E2E8F0' }} />
+              ))}
+            </Image.PreviewGroup>
+          </Space>
+        </div>
+      )}
 
       {ticket.respuestaAdmin && (
         <>

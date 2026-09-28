@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SoporteTicket, EstadoTicketSoporte, PrioridadTicketSoporte } from './entities/soporte-ticket.entity';
@@ -9,6 +9,7 @@ import { TenantService } from '../tenant/tenant.service';
 import { EmailService } from '../notificaciones/services/email.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { User } from '../users/users.entity';
+import { SoporteAdjuntosService, type ArchivoSubido, type AdjuntoConUrl } from './soporte-adjuntos.service';
 
 const ASUNTO_LABELS: Record<string, string> = {
   error_tecnico:       'Error técnico',
@@ -25,8 +26,9 @@ export class SoporteService {
 
   constructor(
     @InjectRepository(SoporteTicket) private repo: Repository<SoporteTicket>,
-    private tenantService: TenantService,
-    private emailService:  EmailService,
+    private tenantService:   TenantService,
+    private emailService:    EmailService,
+    private adjuntosService: SoporteAdjuntosService,
   ) {}
 
   /**
@@ -37,7 +39,7 @@ export class SoporteService {
    * sobre lo que mande el cliente, que solo aporta lo que él sabe (URL,
    * navegador, build_id) y el servidor no puede derivar.
    */
-  async crear(dto: CreateSoporteTicketDto, usuario: User): Promise<SoporteTicket> {
+  async crear(dto: CreateSoporteTicketDto, usuario: User, archivos: ArchivoSubido[] = []): Promise<SoporteTicket> {
     const empresaId = this.tenantService.getEmpresaIdOrNull();
 
     const contextoAutomatico = {
@@ -46,10 +48,10 @@ export class SoporteService {
       rol:           (usuario as any).role ?? null,
       usuarioNombre: usuario.nombre,
       usuarioEmail:  usuario.email,
-      url:       dto.contexto?.url ?? null,
-      modulo:    dto.contexto?.modulo ?? null,
-      navegador: dto.contexto?.navegador ?? null,
-      buildId:   dto.contexto?.buildId ?? null,
+      url:       dto.url ?? null,
+      modulo:    dto.modulo ?? null,
+      navegador: dto.navegador ?? null,
+      buildId:   dto.buildId ?? null,
     };
 
     const ticket = this.repo.create({
@@ -61,18 +63,33 @@ export class SoporteService {
     });
     const guardado = await this.repo.save(ticket);
 
+    // Adjuntos ANTES del correo (no fire-and-forget: una imagen inválida
+    // debe rechazar el envío completo con un error claro, y el correo de
+    // aviso necesita saber la cantidad final para mencionarla).
+    const adjuntos = await this.adjuntosService.procesarYGuardar(guardado.id, empresaId, archivos);
+
     // Fire-and-forget — un correo caído nunca debe impedir que el ticket
     // quede registrado (mismo criterio que enviarMensajeSoporte).
-    this.notificarNuevoTicket(guardado, usuario).catch(err =>
+    this.notificarNuevoTicket(guardado, usuario, adjuntos.length).catch(err =>
       this.logger.warn(`No se pudo avisar por correo del ticket #${guardado.id}: ${(err as Error).message}`),
     );
 
-    return guardado;
+    return { ...guardado, adjuntos } as SoporteTicket & { adjuntos: typeof adjuntos };
   }
 
-  private async notificarNuevoTicket(ticket: SoporteTicket, usuario: User): Promise<void> {
+  private async notificarNuevoTicket(ticket: SoporteTicket, usuario: User, cantidadAdjuntos: number): Promise<void> {
     const dest  = process.env['NOTIF_ADMIN_EMAIL'] ?? 'soporte@hicloudrd.com';
     const label = ASUNTO_LABELS[ticket.asunto] ?? ticket.asunto;
+    // Sin adjuntar los archivos al correo — solo se menciona la cantidad,
+    // con enlace al panel donde sí se pueden ver (las imágenes viven en un
+    // bucket privado; un correo no es un canal adecuado para reenviarlas).
+    const etiquetaAdjuntos = `${cantidadAdjuntos} ${cantidadAdjuntos > 1 ? 'imágenes adjuntas' : 'imagen adjunta'}`;
+    const lineaAdjuntos = cantidadAdjuntos > 0
+      ? `<p style="margin:0 0 16px"><strong>📎 ${etiquetaAdjuntos}</strong> — ver en el panel: <a href="https://hicloudrd.com/super-admin?tab=soporte" style="color:#2563EB">hicloudrd.com/super-admin</a></p>`
+      : '';
+    const lineaAdjuntosTexto = cantidadAdjuntos > 0
+      ? `\n${etiquetaAdjuntos} — ver en https://hicloudrd.com/super-admin\n`
+      : '';
     await this.emailService.enviar({
       to:      dest,
       replyTo: usuario.email,
@@ -89,13 +106,14 @@ export class SoporteService {
             <div style="background:#fff;border-left:4px solid #2563EB;border-radius:0 6px 6px 0;padding:12px 16px;color:#1E293B;line-height:1.6">
               ${ticket.mensaje.replace(/\n/g, '<br>')}
             </div>
+            ${lineaAdjuntos}
             <p style="color:#94A3B8;font-size:11px;margin:20px 0 0">
               Puedes responder directamente a este correo — llegará a ${usuario.email}
             </p>
           </div>
         </div>
       `,
-      text: `Ticket #${ticket.id} — ${label}\n\nDe: ${usuario.nombre} (${usuario.email})\nEmpresa: #${ticket.empresaId ?? '—'}\n\n${ticket.mensaje}`,
+      text: `Ticket #${ticket.id} — ${label}\n\nDe: ${usuario.nombre} (${usuario.email})\nEmpresa: #${ticket.empresaId ?? '—'}\n\n${ticket.mensaje}\n${lineaAdjuntosTexto}`,
     });
   }
 
@@ -117,7 +135,18 @@ export class SoporteService {
       .take(Math.min(limit, 100))
       .getManyAndCount();
 
-    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+    // Los adjuntos de CADA fila ya salieron de una consulta scoped por
+    // usuarioId+empresaId (arriba) — no hace falta re-verificar dueño aquí,
+    // el aislamiento ya ocurrió al construir `data`.
+    const dataConAdjuntos = await Promise.all(data.map(t => this.conAdjuntos(t)));
+
+    return { data: dataConAdjuntos, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+  }
+
+  /** Adjuntos con URL firmada (900s) — ver SoporteAdjuntosService. */
+  private async conAdjuntos(ticket: SoporteTicket): Promise<SoporteTicket & { adjuntos: AdjuntoConUrl[] }> {
+    const adjuntos = await this.adjuntosService.conUrlFirmada(await this.adjuntosService.porTicket(ticket.id));
+    return { ...ticket, adjuntos };
   }
 
   /** Solo Super Admin (guardado en el controller) — sin scope de empresa por diseño. */
@@ -140,14 +169,40 @@ export class SoporteService {
     return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
   }
 
-  async detalle(id: number): Promise<SoporteTicket> {
+  /** Fetch simple, SIN adjuntos — para mutar y volver a guardar (responder/cambiarEstado/cambiarPrioridad). */
+  private async obtenerTicket(id: number): Promise<SoporteTicket> {
     const ticket = await this.repo.findOne({ where: { id, isActive: true } });
     if (!ticket) throw new NotFoundException('Ticket no encontrado');
     return ticket;
   }
 
+  /** Detalle para Super Admin — incluye adjuntos con URL firmada para las miniaturas. */
+  async detalle(id: number): Promise<SoporteTicket & { adjuntos: AdjuntoConUrl[] }> {
+    return this.conAdjuntos(await this.obtenerTicket(id));
+  }
+
+  /**
+   * URL firmada de UN adjunto, para el usuario dueño del ticket — nunca
+   * para otro usuario ni otra empresa, aunque conozca el id del ticket y
+   * del adjunto. Mismo criterio de "dueño" que misTickets(): mismo
+   * usuarioId Y misma empresa activa de esta sesión.
+   */
+  async urlAdjuntoPropio(ticketId: number, adjuntoId: number, usuario: User): Promise<{ url: string | null }> {
+    const ticket = await this.obtenerTicket(ticketId);
+
+    const empresaId = (usuario as any).empresaId ?? null;
+    const mismaEmpresa = ticket.empresaId === empresaId || (ticket.empresaId == null && empresaId == null);
+    if (ticket.usuarioId !== usuario.id || !mismaEmpresa) {
+      throw new ForbiddenException('No tienes acceso a este ticket');
+    }
+
+    const adjunto = await this.adjuntosService.unoDeTicket(ticketId, adjuntoId);
+    const [conUrl] = await this.adjuntosService.conUrlFirmada([adjunto]);
+    return { url: conUrl.url };
+  }
+
   async responder(id: number, dto: ResponderTicketDto, admin: User): Promise<SoporteTicket> {
-    const ticket = await this.detalle(id);
+    const ticket = await this.obtenerTicket(id);
     ticket.respuestaAdmin = dto.respuestaAdmin;
     ticket.respondidoPor  = admin.id;
     ticket.respondidoEn   = new Date();
@@ -189,13 +244,13 @@ export class SoporteService {
   }
 
   async cambiarEstado(id: number, estado: EstadoTicketSoporte): Promise<SoporteTicket> {
-    const ticket = await this.detalle(id);
+    const ticket = await this.obtenerTicket(id);
     ticket.estado = estado;
     return this.repo.save(ticket);
   }
 
   async cambiarPrioridad(id: number, prioridad: PrioridadTicketSoporte): Promise<SoporteTicket> {
-    const ticket = await this.detalle(id);
+    const ticket = await this.obtenerTicket(id);
     ticket.prioridad = prioridad;
     return this.repo.save(ticket);
   }

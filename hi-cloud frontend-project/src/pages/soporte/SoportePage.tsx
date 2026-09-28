@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Card, Form, Select, Input, Button, Typography, Tag, Row, Col, Space, Empty, Pagination, message } from 'antd';
+import { Card, Form, Select, Input, Button, Typography, Tag, Row, Col, Space, Empty, Pagination, message, Image } from 'antd';
 import { MessageOutlined, WhatsAppOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
@@ -7,6 +7,8 @@ import { useAuthStore } from '../../store/auth.store';
 import { soporteApi, ASUNTO_SOPORTE_OPTIONS, type EstadoTicketSoporte } from '../../api/soporte.api';
 import { dRD } from '../../utils/fechaRD';
 import { VERSION_QUERY_KEY, type VersionPing } from '../../hooks/useVersionPing';
+import { useAdjuntosSoporte } from './useAdjuntosSoporte';
+import { AdjuntosSoportePicker } from './AdjuntosSoportePicker';
 
 const { TextArea } = Input;
 const { Title, Text, Paragraph } = Typography;
@@ -46,6 +48,8 @@ export default function SoportePage() {
     queryFn:  () => soporteApi.misTickets(pagina, 10),
   });
 
+  const adjuntos = useAdjuntosSoporte();
+
   const crearMut = useMutation({
     mutationFn: (values: { asunto: any; mensaje: string }) => {
       // buildId: lo que ya haya en caché del sondeo de /version (POSPage,
@@ -56,21 +60,32 @@ export default function SoportePage() {
         mensaje: values.mensaje,
         // Solo lo que el navegador conoce — empresaId/sucursalId/rol los
         // completa el backend a partir de la sesión, nunca de esto.
-        contexto: {
-          url:       window.location.pathname,
-          navegador: navigator.userAgent,
-          buildId:   version?.buildId ?? undefined,
-        },
+        url:       window.location.pathname,
+        navegador: navigator.userAgent,
+        buildId:   version?.buildId ?? undefined,
+        adjuntos:  adjuntos.archivos,
       });
     },
     onSuccess: () => {
       message.success('Ticket enviado — te responderemos por correo.');
       form.resetFields();
+      adjuntos.limpiar();
       setPagina(1);
       qc.invalidateQueries({ queryKey: ['mis-tickets-soporte'] });
     },
     onError: (e: any) => message.error(e?.friendlyMessage ?? 'No se pudo enviar el ticket. Intenta por WhatsApp.'),
   });
+
+  // Ctrl+V en cualquier parte del formulario (no solo con foco en la zona
+  // de arrastrar) — el caso más común es pegar una captura de pantalla
+  // recién tomada mientras se está escribiendo el mensaje.
+  const pegarDesdeClipboard = (e: React.ClipboardEvent) => {
+    const archivos = Array.from(e.clipboardData?.items ?? [])
+      .filter(item => item.kind === 'file' && item.type.startsWith('image/'))
+      .map(item => item.getAsFile())
+      .filter((f): f is File => f !== null);
+    if (archivos.length > 0) adjuntos.agregarArchivos(archivos);
+  };
 
   const tickets = data?.data ?? [];
 
@@ -96,7 +111,7 @@ export default function SoportePage() {
               </Col>
             </Row>
 
-            <Form form={form} layout="vertical" onFinish={v => crearMut.mutate(v)}>
+            <Form form={form} layout="vertical" onFinish={v => crearMut.mutate(v)} onPaste={pegarDesdeClipboard}>
               <Form.Item name="asunto" label="Asunto" rules={[{ required: true, message: 'Selecciona un asunto' }]}>
                 <Select placeholder="Selecciona un asunto" options={ASUNTO_SOPORTE_OPTIONS} />
               </Form.Item>
@@ -104,7 +119,15 @@ export default function SoportePage() {
                 rules={[{ required: true, min: 10, message: 'Cuéntanos un poco más (mínimo 10 caracteres)' }]}>
                 <TextArea rows={6} placeholder="Describe tu problema o pregunta con el mayor detalle posible" maxLength={2000} showCount />
               </Form.Item>
-              <Button type="primary" htmlType="submit" loading={crearMut.isPending} block>
+              <Form.Item label="Imágenes (opcional)">
+                <AdjuntosSoportePicker
+                  previews={adjuntos.previews}
+                  onAgregar={adjuntos.agregarArchivos}
+                  onQuitar={adjuntos.quitarArchivo}
+                  procesando={adjuntos.procesando}
+                />
+              </Form.Item>
+              <Button type="primary" htmlType="submit" loading={crearMut.isPending || adjuntos.procesando} block>
                 Enviar solicitud
               </Button>
             </Form>
@@ -123,7 +146,7 @@ export default function SoportePage() {
               </Button>
             </a>
             <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 12 }}>
-              También puede guardar nuestro número: <Text strong>809.306.1713</Text>
+              También puede guardar nuestro número: <Text strong>809.308.1713</Text>
             </Text>
           </Card>
         </Col>
@@ -144,6 +167,16 @@ export default function SoportePage() {
                   <Tag color={ESTADO_TAG[t.estado].color}>{ESTADO_TAG[t.estado].label}</Tag>
                 </div>
                 <Paragraph style={{ margin: '10px 0 0', fontSize: 13, whiteSpace: 'pre-wrap' }}>{t.mensaje}</Paragraph>
+                {(t.adjuntos?.length ?? 0) > 0 && (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                    <Image.PreviewGroup>
+                      {t.adjuntos!.map(a => (
+                        <Image key={a.id} src={a.url ?? undefined} width={56} height={56}
+                          style={{ objectFit: 'cover', borderRadius: 6, border: '1px solid #E5E7EB' }} />
+                      ))}
+                    </Image.PreviewGroup>
+                  </div>
+                )}
                 {t.respuestaAdmin && (
                   <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 6, padding: 10, marginTop: 10 }}>
                     <Text type="secondary" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>Respuesta</Text>

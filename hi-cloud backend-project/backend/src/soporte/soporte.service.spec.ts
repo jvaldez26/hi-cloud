@@ -1,6 +1,6 @@
 import { SoporteService } from './soporte.service';
 import { AsuntoSoporte, EstadoTicketSoporte } from './entities/soporte-ticket.entity';
-import { NotFoundException } from '@nestjs/common';
+import { NotFoundException, ForbiddenException } from '@nestjs/common';
 
 /**
  * SoporteService — tickets de un usuario autenticado hacia Super Admin.
@@ -49,14 +49,42 @@ function fakeRepo(rows: any[] = []) {
   return { repo, created, getUltimaQuery: () => ultimaQuery };
 }
 
-function makeService(rows: any[] = [], empresaIdActual: number | null = 7) {
+/**
+ * Fake mínimo de SoporteAdjuntosService — sin S3 ni sharp real. Cada test
+ * que necesite adjuntos concretos pasa su propio `adjuntosPorTicket`.
+ */
+function fakeAdjuntosService(adjuntosPorTicket: Record<number, any[]> = {}) {
+  const procesarYGuardarCalls: any[] = [];
+  return {
+    procesarYGuardar: jest.fn(async (ticketId: number, _empresaId: number | null, archivos: any[]) => {
+      procesarYGuardarCalls.push({ ticketId, archivos });
+      const fila = (archivos ?? []).map((_a: any, i: number) => ({
+        id: i + 1, ticketId, tipoMime: 'image/png', tamanioBytes: 1000,
+      }));
+      adjuntosPorTicket[ticketId] = fila;
+      return fila;
+    }),
+    porTicket: jest.fn(async (ticketId: number) => adjuntosPorTicket[ticketId] ?? []),
+    unoDeTicket: jest.fn(async (ticketId: number, adjuntoId: number) => {
+      const fila = (adjuntosPorTicket[ticketId] ?? []).find((a: any) => a.id === adjuntoId);
+      if (!fila) throw new NotFoundException('Adjunto no encontrado');
+      return fila;
+    }),
+    conUrlFirmada: jest.fn(async (adjuntos: any[]) =>
+      adjuntos.map(a => ({ id: a.id, tipoMime: a.tipoMime, tamanioBytes: a.tamanioBytes, url: `https://s3.fake/${a.id}` })),
+    ),
+    procesarYGuardarCalls,
+  };
+}
+
+function makeService(rows: any[] = [], empresaIdActual: number | null = 7, adjuntosSvc = fakeAdjuntosService()) {
   const { repo, created, getUltimaQuery } = fakeRepo(rows);
   const enviados: any[] = [];
   const emailService = { enviar: jest.fn(async (payload: any) => { enviados.push(payload); return { exitoso: true }; }) };
   const tenantService = { getEmpresaIdOrNull: () => empresaIdActual };
 
-  const svc = new SoporteService(repo as any, tenantService as any, emailService as any);
-  return { svc, repo, created, enviados, getUltimaQuery };
+  const svc = new SoporteService(repo as any, tenantService as any, emailService as any, adjuntosSvc as any);
+  return { svc, repo, created, enviados, getUltimaQuery, adjuntosSvc };
 }
 
 const USUARIO = { id: 5, nombre: 'Ana Vendedora', email: 'ana@empresa.com', role: 'vendedor', empresaId: 7, sucursalId: 2 } as any;
@@ -68,7 +96,7 @@ describe('SoporteService.crear', () => {
     const ticket = await svc.crear({
       asunto: AsuntoSoporte.ERROR_TECNICO,
       mensaje: 'La factura no se imprime',
-      contexto: { url: '/pos', modulo: 'POS', navegador: 'Chrome 130', buildId: 'abc123' },
+      url: '/pos', modulo: 'POS', navegador: 'Chrome 130', buildId: 'abc123',
     }, USUARIO);
 
     expect(ticket.contextoAutomatico).toEqual({
@@ -118,10 +146,46 @@ describe('SoporteService.crear', () => {
     const { repo } = fakeRepo();
     const tenantService = { getEmpresaIdOrNull: () => 7 };
     const emailService = { enviar: jest.fn().mockRejectedValue(new Error('SMTP caído')) };
-    const svc = new SoporteService(repo as any, tenantService as any, emailService as any);
+    const svc = new SoporteService(repo as any, tenantService as any, emailService as any, fakeAdjuntosService() as any);
 
     await expect(svc.crear({ asunto: AsuntoSoporte.OTRO, mensaje: 'Mensaje de prueba largo' }, USUARIO))
       .resolves.toMatchObject({ usuarioId: 5 });
+  });
+
+  it('con archivos: delega el procesamiento a SoporteAdjuntosService y devuelve los adjuntos guardados', async () => {
+    const { svc, adjuntosSvc } = makeService();
+    const archivos = [{ buffer: Buffer.from('fake'), originalname: 'captura.png', mimetype: 'image/png', size: 100 }] as any;
+
+    const ticket: any = await svc.crear({ asunto: AsuntoSoporte.ERROR_TECNICO, mensaje: 'Con una captura adjunta' }, USUARIO, archivos);
+
+    expect(adjuntosSvc.procesarYGuardar).toHaveBeenCalledWith(ticket.id, 7, archivos);
+    expect(ticket.adjuntos).toHaveLength(1);
+  });
+
+  it('el correo de aviso menciona cuántas imágenes trae el ticket', async () => {
+    delete process.env['NOTIF_ADMIN_EMAIL'];
+    const { svc, enviados } = makeService();
+    const archivos = [
+      { buffer: Buffer.from('a'), originalname: 'a.png', mimetype: 'image/png', size: 10 },
+      { buffer: Buffer.from('b'), originalname: 'b.png', mimetype: 'image/png', size: 10 },
+    ] as any;
+
+    await svc.crear({ asunto: AsuntoSoporte.OTRO, mensaje: 'Mensaje con dos capturas' }, USUARIO, archivos);
+    await new Promise(r => setImmediate(r));
+
+    expect(enviados).toHaveLength(1);
+    expect(enviados[0].html).toContain('2 imágenes adjuntas');
+    expect(enviados[0].text).toContain('2 imágenes adjuntas');
+  });
+
+  it('sin archivos: el correo NO menciona adjuntos', async () => {
+    delete process.env['NOTIF_ADMIN_EMAIL'];
+    const { svc, enviados } = makeService();
+    await svc.crear({ asunto: AsuntoSoporte.OTRO, mensaje: 'Mensaje de prueba sin adjuntos' }, USUARIO);
+    await new Promise(r => setImmediate(r));
+
+    expect(enviados[0].html).not.toContain('adjunta');
+    expect(enviados[0].text).not.toContain('adjunta');
   });
 });
 
@@ -149,6 +213,39 @@ describe('SoporteService.misTickets', () => {
     await svc.misTickets({ ...USUARIO, empresaId: null }, { limit: 10, page: 1 } as any);
     const where = getUltimaQuery();
     expect(where.some((w: any) => w[0].includes('IS NULL'))).toBe(true);
+  });
+});
+
+describe('SoporteService.urlAdjuntoPropio — aislamiento de adjuntos', () => {
+  const TICKET_EMPRESA_7 = { id: 1, usuarioId: 5, empresaId: 7, isActive: true };
+
+  it('el dueño del ticket (mismo usuario, misma empresa) SÍ obtiene la URL', async () => {
+    const adjuntosSvc = fakeAdjuntosService({ 1: [{ id: 10, ticketId: 1, tipoMime: 'image/png', tamanioBytes: 1000 }] });
+    const { svc } = makeService([TICKET_EMPRESA_7], 7, adjuntosSvc);
+
+    const { url } = await svc.urlAdjuntoPropio(1, 10, USUARIO);
+    expect(url).toBe('https://s3.fake/10');
+  });
+
+  it('un usuario de OTRA empresa recibe 403, aunque conozca el id del ticket y del adjunto', async () => {
+    const adjuntosSvc = fakeAdjuntosService({ 1: [{ id: 10, ticketId: 1, tipoMime: 'image/png', tamanioBytes: 1000 }] });
+    const { svc } = makeService([TICKET_EMPRESA_7], 7, adjuntosSvc);
+    const usuarioOtraEmpresa = { ...USUARIO, id: 99, empresaId: 42 };
+
+    await expect(svc.urlAdjuntoPropio(1, 10, usuarioOtraEmpresa)).rejects.toThrow(ForbiddenException);
+  });
+
+  it('otro usuario de la MISMA empresa (no el dueño del ticket) también recibe 403', async () => {
+    const adjuntosSvc = fakeAdjuntosService({ 1: [{ id: 10, ticketId: 1, tipoMime: 'image/png', tamanioBytes: 1000 }] });
+    const { svc } = makeService([TICKET_EMPRESA_7], 7, adjuntosSvc);
+    const otroUsuarioMismaEmpresa = { ...USUARIO, id: 999 };
+
+    await expect(svc.urlAdjuntoPropio(1, 10, otroUsuarioMismaEmpresa)).rejects.toThrow(ForbiddenException);
+  });
+
+  it('ticket inexistente: 404, no 403 (no revela si el ticket existe en otra empresa)', async () => {
+    const { svc } = makeService([]);
+    await expect(svc.urlAdjuntoPropio(999, 10, USUARIO)).rejects.toThrow(NotFoundException);
   });
 });
 
