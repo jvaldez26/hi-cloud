@@ -57,6 +57,7 @@ import { useOfflineQueue } from '../../hooks/useOfflineQueue';
 import { useSupervisor } from '../../hooks/useSupervisor';
 import { requiereSupervisorVentaCredito } from './ventaCreditoGate';
 import { requiereSupervisorPorPrecioModificado } from './carritoRecuperadoGate';
+import { credencialesFueronRechazadas } from './reautenticacionGate';
 import { construirFiltroVendedorPOS } from './vendedorFiltroPanel';
 import { UomSelect } from '../../components/ui/UomSelect';
 import { AvisoRncNoVigente } from '../../components/ui/RncNoVigente';
@@ -11403,17 +11404,30 @@ export default function POSPage() {
     try {
       if (reautenticandoTrasFallo) {
         if (!user?.email) throw new Error('Sin correo de sesión');
-        const resp: any = await api.post('/auth/login', { email: user.email, password: pwDesbloqueo });
+        // LoginDto usa "identificador", no "email" (ver login.dto.ts — se
+        // renombró hace tiempo). Mandar "email" pasa el ValidationPipe
+        // (forbidNonWhitelisted) como "property email should not exist" —
+        // el bug reportado en producción.
+        const resp: any = await api.post('/auth/login', { identificador: user.email, password: pwDesbloqueo });
         const data = resp?.data?.data ?? resp?.data;
-        // 2FA pendiente: este modal no lo maneja (sería mucho más para un
-        // caso raro) — se cierra y se deja caer al flujo normal de /login,
-        // que igual conserva el carrito (reason 'expired', ver App.tsx).
-        if (data?.requiere2FA || data?.pendingToken) {
-          throw Object.assign(new Error('2FA requerido'), { es2FA: true });
+
+        // 2FA pendiente (requiresTwoFactor) o sesión activa detectada en
+        // otro lado (requiresSessionConfirmation) — ninguno de los dos se
+        // resuelve en este modal (sería mucho para un caso raro). Se cierra
+        // y se deja caer al flujo normal de /login, que igual conserva el
+        // carrito (reason 'expired', ver App.tsx del commit anterior).
+        if (data?.requiresTwoFactor || data?.requiresSessionConfirmation) {
+          setReautenticandoTrasFallo(false);
+          setPantallaBloqueada(false);
+          setPwDesbloqueo(''); setErrDesbloqueo('');
+          resolverReautenticacionRef.current?.(false);
+          resolverReautenticacionRef.current = null;
+          return;
         }
         // El reingreso NO es un "cambiar usuario": si por lo que sea el
         // login devuelve otra cuenta, se rechaza aunque la contraseña
-        // fuera válida para ella.
+        // fuera válida para ella. No es un rechazo de credenciales (la
+        // contraseña SÍ era correcta) — no debe contar como intento.
         if (data?.user?.id != null && data.user.id !== user?.id) {
           throw Object.assign(new Error('Usuario distinto al de la sesión'), { usuarioDistinto: true });
         }
@@ -11432,28 +11446,33 @@ export default function POSPage() {
         resolverReautenticacionRef.current = null;
       }
     } catch (e: any) {
-      if (e?.es2FA) {
-        setReautenticandoTrasFallo(false);
-        setPantallaBloqueada(false);
-        setPwDesbloqueo(''); setErrDesbloqueo('');
-        resolverReautenticacionRef.current?.(false);
-        resolverReautenticacionRef.current = null;
-        return;
+      setPwDesbloqueo('');
+      const status = e?.response?.status;
+      const credencialesRechazadas = credencialesFueronRechazadas({
+        status, reautenticandoTrasFallo, usuarioDistinto: !!e?.usuarioDistinto,
+      });
+
+      if (!credencialesRechazadas) {
+        Sentry.captureException(e, {
+          tags:  { modulo: 'auth', fase: 'reautenticacion-pos' },
+          extra: { status: status ?? null, reautenticandoTrasFallo, usuarioDistinto: !!e?.usuarioDistinto },
+        });
+        setErrDesbloqueo(
+          e?.usuarioDistinto
+            ? 'No coincide con el usuario de esta sesión'
+            : 'No se pudo verificar, intenta de nuevo',
+        );
+        return; // error técnico — NO cuenta como intento
       }
-      // 400 = contraseña incorrecta (NO cierra sesión)
-      // 401 = sesión realmente expirada (el interceptor lo maneja)
+
       const nuevoConteo = intentosFallidos + 1;
       setIntentosFallidos(nuevoConteo);
-      setPwDesbloqueo('');
       if (nuevoConteo >= 3) {
         setBloqueadoHasta(Date.now() + 30_000);
         setErrDesbloqueo('Demasiados intentos fallidos. Espera 30 segundos o llama a tu supervisor.');
         setIntentosFallidos(0);
       } else {
-        const msg = e?.usuarioDistinto
-          ? 'No coincide con el usuario de esta sesión'
-          : (e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Contraseña incorrecta');
-        setErrDesbloqueo(`${msg} (intento ${nuevoConteo}/3)`);
+        setErrDesbloqueo(`Contraseña incorrecta (intento ${nuevoConteo}/3)`);
       }
     } finally { setDesbloqueando(false); }
   };
@@ -11485,7 +11504,12 @@ export default function POSPage() {
     const usuario = usuariosEmpresa.find((u: any) => u.id === cambiarUserId);
     if (!usuario?.email) { setErrCambio('Usuario inválido'); setCambiandoUser(false); return; }
     try {
-      await api.post('/auth/login', { email: usuario.email, password: pwCambio });
+      // LoginDto usa "identificador", no "email" (ver login.dto.ts) — este
+      // call site tenía el mismo bug que se reportó en el modal de
+      // reingreso: el ValidationPipe (forbidNonWhitelisted) rechazaba
+      // "email" con 400 "property email should not exist", así que
+      // "Cambiar usuario" en el POS estaba roto en producción también.
+      await api.post('/auth/login', { identificador: usuario.email, password: pwCambio });
       // Login exitoso → limpiar datos del cajero anterior y recargar.
       //
       // `pos_turno` va con ellos. El turno vive en sessionStorage y el cajero en
