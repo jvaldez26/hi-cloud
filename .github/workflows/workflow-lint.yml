@@ -1,0 +1,27 @@
+name: Workflow Lint
+
+# Archivo aparte de ci.yml y deploy.yml a propósito: si uno de esos dos queda
+# con un YAML inválido (como pasó con deploy.yml — "Exceeded max expression
+# length 21000"), este lint corre igual y avisa, porque no depende de que
+# los otros dos parseen.
+on:
+  push:
+    paths:
+      - '.github/**'
+
+jobs:
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Instalación oficial (script del propio repo de actionlint), sin
+      # depender de una action de terceros para algo que solo se ejecuta.
+      - name: Instalar actionlint
+        run: |
+          bash <(curl -sSf https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+
+      - name: actionlint
+        run: ./actionlint -color

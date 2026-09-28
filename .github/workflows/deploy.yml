@@ -236,6 +236,15 @@ jobs:
           # unset de las que llegan vacías, así que no pueden pisar el .env.
           SENTRY_DSN:       ${{ secrets.SENTRY_DSN }}
 
+          # SHA de este run, resuelto por GitHub Actions al renderizar el
+          # workflow (no una variable del shell remoto). Viaja como variable
+          # de entorno normal, no como texto dentro del script SSH: escribir
+          # la sintaxis de expresión ahí adentro (aunque bien formada) dejó
+          # el pipeline entero sin poder arrancar — "Exceeded max expression
+          # length 21000" — dentro de un script con decenas de expansiones
+          # de bash de una sola llave ($VAR, ${VAR}), como este.
+          DEPLOY_SHA_ESPERADO: ${{ github.sha }}
+
           # ── FUENTE ÚNICA de la lista de variables inyectadas ────────────────
           # Se define AQUÍ y en ningún sitio más. `envs:` la referencia y el
           # script la recibe como una variable más, así que el bloque [PRE]
@@ -249,7 +258,10 @@ jobs:
           # Al añadir una variable nueva basta con ponerla aquí y en el `env:`
           # de arriba. Si se olvida aquí, no se inyecta — que es el lado seguro:
           # gana el .env del servidor, que es el estado que ya funcionaba.
-          VARS_INYECTADAS: DB_CA_CERT,SMTP_HOST,SMTP_PORT,SMTP_SECURE,SMTP_USER,SMTP_PASS,SMTP_FROM,NOTIF_ADMIN_EMAIL,SENTRY_DSN
+          #
+          # DEPLOY_SHA_ESPERADO va en esta misma lista (y no como un segundo
+          # nombre suelto en `envs:`) por la misma razón: una sola definición.
+          VARS_INYECTADAS: DB_CA_CERT,SMTP_HOST,SMTP_PORT,SMTP_SECURE,SMTP_USER,SMTP_PASS,SMTP_FROM,NOTIF_ADMIN_EMAIL,SENTRY_DSN,DEPLOY_SHA_ESPERADO
         with:
           host:            3.137.152.75
           username:        ubuntu
@@ -332,14 +344,14 @@ jobs:
             # ══════════════════════════════════════════════════════════════════
             echo "━━━ [1/6] Git sync ━━━"
             git fetch origin main
-            # Pinneado al commit exacto de este run, resuelto por GitHub Actions
-            # al renderizar el workflow (no una variable del shell remoto) —
-            # nunca a la rama en el momento en que corre este script. Si otro
-            # push llegaba mientras CI/build de este run seguían en curso, el
-            # reset por rama podía dejar el código fuente de ese commit más
-            # nuevo con el dist ya subido por SCP del commit viejo. El pin fijo
-            # hace que fuente, dist y build_id sean siempre el mismo commit.
-            git reset --hard "${{ github.sha }}"
+            # Pinneado al commit de este run vía DEPLOY_SHA_ESPERADO (env de
+            # este step, ver arriba) — nunca a "main" en el momento en que
+            # corre este script. Si otro push llegaba mientras CI/build de
+            # este run seguían en curso, el reset por rama podía dejar el
+            # código fuente de ese commit más nuevo con el dist ya subido por
+            # SCP del commit viejo. El pin fijo hace que fuente, dist y
+            # build_id sean siempre el mismo commit.
+            git reset --hard "$DEPLOY_SHA_ESPERADO"
             # Capturado UNA vez aquí — es el commit que este deploy realmente
             # está poniendo en disco. Se usa para SENTRY_RELEASE (abajo) y para
             # la verificación de build_id en [6/6]: las dos tienen que ser el
