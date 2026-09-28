@@ -26,6 +26,10 @@ import ModalDevolucion from '../../components/ModalDevolucion';
 import { VideoPlayerModal } from '../../components/ui/VideoPlayerModal';
 import { useVideosTutoriales } from '../../hooks/useVideosTutoriales';
 import { useAuthStore } from '../../store/auth.store';
+import {
+  leerCarritoGuardado, leerVentasEsperaGuardadas, guardarCarrito, guardarVentasEspera,
+} from './carritoStorage';
+import { registerReauthHandler } from '../../utils/sessionEvents';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import * as Sentry from '@sentry/react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -52,6 +56,7 @@ import { useThemeStore } from '../../store/theme.store';
 import { useOfflineQueue } from '../../hooks/useOfflineQueue';
 import { useSupervisor } from '../../hooks/useSupervisor';
 import { requiereSupervisorVentaCredito } from './ventaCreditoGate';
+import { requiereSupervisorPorPrecioModificado } from './carritoRecuperadoGate';
 import { construirFiltroVendedorPOS } from './vendedorFiltroPanel';
 import { UomSelect } from '../../components/ui/UomSelect';
 import { AvisoRncNoVigente } from '../../components/ui/RncNoVigente';
@@ -9469,6 +9474,13 @@ export default function POSPage() {
   const [desbloqueando,       setDesbloqueando]       = useState(false);
   const [intentosFallidos,    setIntentosFallidos]    = useState(0);
   const [bloqueadoHasta,      setBloqueadoHasta]      = useState<number>(0);
+  // Reautenticación in-place cuando el refresh automático no pudo renovar
+  // la sesión (client.ts → solicitarReautenticacion): reusa ESTE mismo
+  // overlay, pero desbloquearPantalla llama /auth/login (con el correo del
+  // usuario actual, fijo) en vez de /auth/verificar-password — ese último
+  // exige un access token todavía válido, que es justo lo que no hay aquí.
+  const [reautenticandoTrasFallo, setReautenticandoTrasFallo] = useState(false);
+  const resolverReautenticacionRef = useRef<((ok: boolean) => void) | null>(null);
   // ── Modo supervisor (configurable por tenant) ─────────────────────────────
   const supervisor = useSupervisor();
   // Supervisor selector (modal de activación/autorización)
@@ -9519,24 +9531,16 @@ export default function POSPage() {
   const [descGlobalTipo, setDescGlobalTipo] = useState<'pct' | 'fijo'>('pct');
   // Lista de precios global — se aplica al carrito completo y a nuevos items
   const [listaGlobal, setListaGlobal] = useState<PrecioLista>('precio1');
+  // Se pone en true en el inicializador de `cart` (corre una sola vez) si
+  // había algo que recuperar — el efecto de más abajo lo lee para mostrar
+  // "Se recuperó tu carrito" y luego lo apaga, para no repetir el aviso.
+  const carritoRecuperadoRef = useRef(false);
   const [cart,          setCart]          = useState<CartItem[]>(() => {
-    try {
-      const guardado = localStorage.getItem('pos-carrito-activo');
-      if (!guardado) return [];
-      const data = JSON.parse(guardado);
-      // Formato legado (array sin empresaId) → limpiar por seguridad multi-tenant
-      if (Array.isArray(data)) {
-        localStorage.removeItem('pos-carrito-activo');
-        return [];
-      }
-      // Validar que el carrito pertenece a la empresa activa actual
-      const empresaIdActual = localStorage.getItem('empresaId');
-      if (!empresaIdActual || String(data.empresaId) !== String(empresaIdActual)) {
-        localStorage.removeItem('pos-carrito-activo');
-        return [];
-      }
-      return Array.isArray(data.items) ? data.items : [];
-    } catch { return []; }
+    if (!user?.id || !empresaActual) return [];
+    const sucursalIdInicial = Number(localStorage.getItem('sucursalId') ?? localStorage.getItem('pos_sucursal_id')) || null;
+    const { items, recuperado } = leerCarritoGuardado<CartItem>(empresaActual, user.id, sucursalIdInicial);
+    if (recuperado) carritoRecuperadoRef.current = true;
+    return items;
   });
   const [menuNavAbierto, setMenuNavAbierto] = useState(false);
   const [panelActivo, _setPanelActivo] = useState<PanelId>(() => {
@@ -9599,14 +9603,9 @@ export default function POSPage() {
   const [contextoActualId,   setContextoActualId]   = useState<number | null>(null);
   const [tipoNcf,            setTipoNcf]            = useState('E32');
   const [ventasEnEspera,     setVentasEnEspera]     = useState<ParkedSale[]>(() => {
-    try {
-      const empresaIdActual = localStorage.getItem('empresaId');
-      const guardado = localStorage.getItem('pos-ventas-espera');
-      if (!guardado) return [];
-      const data = JSON.parse(guardado);
-      if (!empresaIdActual || String(data.empresaId) !== String(empresaIdActual)) return [];
-      return Array.isArray(data.items) ? data.items : [];
-    } catch { return []; }
+    if (!user?.id || !empresaActual) return [];
+    const sucursalIdInicial = Number(localStorage.getItem('sucursalId') ?? localStorage.getItem('pos_sucursal_id')) || null;
+    return leerVentasEsperaGuardadas<ParkedSale>(empresaActual, user.id, sucursalIdInicial).items;
   });
   const [isOffline,          setIsOffline]          = useState(!navigator.onLine);
   const [precioInputModo,    setPrecioInputModo]    = useState<'c' | 's'>(() => {
@@ -10259,23 +10258,35 @@ export default function POSPage() {
     return () => window.removeEventListener('keydown', handler);
   }, [cart, total, totalEfectivo]);
 
-  // Persistir carrito en localStorage — incluye empresaId para validación multi-tenant
+  // Persistir carrito — clave por empresa+usuario+sucursal (ver carritoStorage.ts):
+  // el cajero B nunca escribe encima de la clave del cajero A.
   useEffect(() => {
-    try {
-      const empresaId = localStorage.getItem('empresaId');
-      localStorage.setItem('pos-carrito-activo', JSON.stringify({ empresaId, items: cart }));
-    }
+    if (!user?.id || !empresaActual) return;
+    try { guardarCarrito(empresaActual, user.id, sucursalId ?? null, cart); }
     catch { /* quota exceeded — ignorar */ }
-  }, [cart]);
+  }, [cart, user?.id, empresaActual, sucursalId]);
 
   // Persistir ventas en pausa — mismo patrón que el carrito
   useEffect(() => {
-    try {
-      const empresaId = localStorage.getItem('empresaId');
-      localStorage.setItem('pos-ventas-espera', JSON.stringify({ empresaId, items: ventasEnEspera }));
-    }
+    if (!user?.id || !empresaActual) return;
+    try { guardarVentasEspera(empresaActual, user.id, sucursalId ?? null, ventasEnEspera); }
     catch { /* quota exceeded — ignorar */ }
-  }, [ventasEnEspera]);
+  }, [ventasEnEspera, user?.id, empresaActual, sucursalId]);
+
+  // Aviso "se recuperó tu carrito" — una sola vez, si el inicializador de
+  // `cart` encontró algo (clave propia ya existente, o migrado desde la
+  // clave vieja compartida). No se dispara en un carrito vacío recién
+  // empezado ni cada vez que cart cambia — solo al montar, si aplicaba.
+  useEffect(() => {
+    if (carritoRecuperadoRef.current) {
+      carritoRecuperadoRef.current = false;
+      message.success({
+        content: 'Se recuperó tu carrito — sigue donde lo dejaste.',
+        duration: 5,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // NCF auto-select + reset campos comprador al cambiar cliente
   const onClienteChange = (id: number | undefined) => {
@@ -11373,6 +11384,13 @@ export default function POSPage() {
     || 'Cajero';
 
   // ── Desbloquear pantalla (verifica contra backend) ─────────────────────────
+  // Dos modos, mismo overlay/contadores/bloqueo-por-intentos:
+  //   normal              → /auth/verificar-password (exige access token
+  //                          válido — es un bloqueo manual, la sesión sigue viva)
+  //   reautenticandoTrasFallo → /auth/login con el correo FIJO de esta sesión
+  //                          (verificar-password no serviría: el token ya
+  //                          venció de verdad, que es justo por lo que se
+  //                          llegó aquí — ver solicitarReautenticacion).
   const desbloquearPantalla = async () => {
     if (!pwDesbloqueo.trim()) { setErrDesbloqueo('Ingresa tu contraseña'); return; }
     // Bloqueo temporal tras 3 intentos fallidos
@@ -11383,12 +11401,45 @@ export default function POSPage() {
     }
     setDesbloqueando(true); setErrDesbloqueo('');
     try {
-      await api.post('/auth/verificar-password', { password: pwDesbloqueo });
+      if (reautenticandoTrasFallo) {
+        if (!user?.email) throw new Error('Sin correo de sesión');
+        const resp: any = await api.post('/auth/login', { email: user.email, password: pwDesbloqueo });
+        const data = resp?.data?.data ?? resp?.data;
+        // 2FA pendiente: este modal no lo maneja (sería mucho más para un
+        // caso raro) — se cierra y se deja caer al flujo normal de /login,
+        // que igual conserva el carrito (reason 'expired', ver App.tsx).
+        if (data?.requiere2FA || data?.pendingToken) {
+          throw Object.assign(new Error('2FA requerido'), { es2FA: true });
+        }
+        // El reingreso NO es un "cambiar usuario": si por lo que sea el
+        // login devuelve otra cuenta, se rechaza aunque la contraseña
+        // fuera válida para ella.
+        if (data?.user?.id != null && data.user.id !== user?.id) {
+          throw Object.assign(new Error('Usuario distinto al de la sesión'), { usuarioDistinto: true });
+        }
+      } else {
+        await api.post('/auth/verificar-password', { password: pwDesbloqueo });
+      }
+
       // Éxito → limpiar contadores y desbloquear
       sessionStorage.removeItem('pos_bloqueado');
       setPantallaBloqueada(false); setPwDesbloqueo('');
       setIntentosFallidos(0); setBloqueadoHasta(0);
+
+      if (reautenticandoTrasFallo) {
+        setReautenticandoTrasFallo(false);
+        resolverReautenticacionRef.current?.(true);
+        resolverReautenticacionRef.current = null;
+      }
     } catch (e: any) {
+      if (e?.es2FA) {
+        setReautenticandoTrasFallo(false);
+        setPantallaBloqueada(false);
+        setPwDesbloqueo(''); setErrDesbloqueo('');
+        resolverReautenticacionRef.current?.(false);
+        resolverReautenticacionRef.current = null;
+        return;
+      }
       // 400 = contraseña incorrecta (NO cierra sesión)
       // 401 = sesión realmente expirada (el interceptor lo maneja)
       const nuevoConteo = intentosFallidos + 1;
@@ -11399,11 +11450,32 @@ export default function POSPage() {
         setErrDesbloqueo('Demasiados intentos fallidos. Espera 30 segundos o llama a tu supervisor.');
         setIntentosFallidos(0);
       } else {
-        const msg = e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Contraseña incorrecta';
+        const msg = e?.usuarioDistinto
+          ? 'No coincide con el usuario de esta sesión'
+          : (e?.response?.data?.message ?? e?.response?.data?.errors?.[0] ?? 'Contraseña incorrecta');
         setErrDesbloqueo(`${msg} (intento ${nuevoConteo}/3)`);
       }
     } finally { setDesbloqueando(false); }
   };
+
+  // Le da al interceptor de Axios (client.ts) una oportunidad de reautenticar
+  // sin navegar fuera del POS cuando el refresh automático no pudo renovar
+  // la sesión. Devuelve una promesa que se resuelve desde desbloquearPantalla
+  // (éxito) o desde "Salir"/2FA (false) — ver el overlay de pantallaBloqueada.
+  const iniciarReautenticacion = useCallback((): Promise<boolean> => {
+    return new Promise<boolean>((resolve) => {
+      resolverReautenticacionRef.current = resolve;
+      setReautenticandoTrasFallo(true);
+      setPantallaBloqueada(true);
+      setPwDesbloqueo(''); setErrDesbloqueo('');
+      setIntentosFallidos(0); setBloqueadoHasta(0);
+    });
+  }, []);
+
+  useEffect(() => {
+    registerReauthHandler(iniciarReautenticacion);
+    return () => registerReauthHandler(null);
+  }, [iniciarReautenticacion]);
 
   // ── Cambiar usuario: login con credenciales del nuevo usuario ─────────────
   const ejecutarCambioUsuario = async () => {
@@ -11439,6 +11511,19 @@ export default function POSPage() {
 
   // Cerrar sesión completa → login (solo desde pantalla bloqueada)
   const cerrarSesion = async () => {
+    // En modo reautenticación, ya no hay una sesión que cerrar formalmente
+    // (por eso se llegó aquí) — resolver la promesa en false y dejar que el
+    // interceptor de client.ts complete el logout normal (mensaje, navigate,
+    // carrito conservado). Llamar /auth/logout + navigate aquí también
+    // duplicaría ambos caminos sin ganar nada.
+    if (reautenticandoTrasFallo) {
+      setReautenticandoTrasFallo(false);
+      setPantallaBloqueada(false);
+      setPwDesbloqueo(''); setErrDesbloqueo('');
+      resolverReautenticacionRef.current?.(false);
+      resolverReautenticacionRef.current = null;
+      return;
+    }
     sessionStorage.removeItem('pos_bloqueado');
     await api.post('/auth/logout').catch(() => {});
     navigate('/login');
@@ -12761,6 +12846,16 @@ export default function POSPage() {
                     const ok = await supervisor.requireSupervisor('Venta a Crédito', `Monto: ${fmt.money(totalEfectivo)}`);
                     if (!ok) return;
                   }
+                  // Carrito recuperado (o simplemente dejado abierto) con un
+                  // precio modificado cuya sesión de supervisor ya venció —
+                  // re-autorizar antes de cobrar. Ver carritoRecuperadoGate.ts.
+                  if (requiereSupervisorPorPrecioModificado(cart, supervisor.supervisorActive)) {
+                    const ok = await supervisor.requireSupervisor(
+                      'Precio modificado en el carrito',
+                      'La autorización que lo permitió ya no está vigente',
+                    );
+                    if (!ok) return;
+                  }
                   if (empresa?.configuracion?.posImpresionAuto === true) {
                     autoYaPrintedRef.current = false;
                     // En móvil no abrir popup — imprimirReciboTermico usará overlay+window.print()
@@ -12800,7 +12895,12 @@ export default function POSPage() {
         <div style={{ width: 100, height: 100, borderRadius: '50%', background: 'rgba(255,255,255,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, fontSize: 40, color: 'rgba(255,255,255,.7)' }}>
           {cajeroNombre.charAt(0).toUpperCase()}
         </div>
-        <h2 style={{ color: '#fff', fontSize: 22, fontWeight: 600, margin: '0 0 24px' }}>{cajeroNombre}</h2>
+        <h2 style={{ color: '#fff', fontSize: 22, fontWeight: 600, margin: reautenticandoTrasFallo ? '0 0 8px' : '0 0 24px' }}>{cajeroNombre}</h2>
+        {reautenticandoTrasFallo && (
+          <div style={{ color: 'rgba(255,255,255,.85)', fontSize: 13, marginBottom: 16, textAlign: 'center', maxWidth: 280 }}>
+            Tu sesión necesita renovarse. Ingresa tu contraseña para seguir — tu venta sigue aquí, no se pierde.
+          </div>
+        )}
 
         {/* Password */}
         <div style={{ width: 300, marginBottom: 8 }}>

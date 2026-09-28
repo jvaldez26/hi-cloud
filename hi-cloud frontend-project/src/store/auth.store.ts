@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { AuthUser } from '../types';
 import { syncSentryScope } from '../observability/sentryScope';
+import { borrarCarritoYEspera } from '../pages/pos/carritoStorage';
 
 // Callback registrado por App.tsx para limpiar React Query al cerrar sesión.
 let _onLogout: (() => void) | null = null;
@@ -100,18 +101,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     localStorage.removeItem('pos_cajero_nombre');
     localStorage.removeItem('pos_vendedor_id');
     localStorage.removeItem('hc_empresa_nombre');
-    // SEGURIDAD MULTI-TENANT: limpiar carrito activo para que no sobreviva entre empresas.
-    //
-    // Excepción: cierre por sesión desplazada (preservarCarritoPOS). El cajero no
-    // pidió salir — lo sacó un login en otro dispositivo — y borrarle una venta a
-    // medio teclear lo castiga por algo que no hizo. El aislamiento entre empresas
-    // no depende de este removeItem: el carrito se guarda como { empresaId, items }
-    // y POSPage lo descarta al restaurar si el empresaId no coincide con el activo
-    // (ver el inicializador de `cart`). AppLayout.cambiarEmpresa lo borra aparte.
-    // (Las ventas en pausa, 'pos-ventas-espera', nunca se han borrado aquí y se
-    // dejan como están: tienen el mismo guard de empresaId al restaurarse.)
+    // Borra el carrito y las ventas en espera SOLO en logout voluntario —
+    // los tres cierres involuntarios (expired/displaced/caducada) pasan
+    // preservarCarritoPOS:true y no tocan nada aquí. La clave ya va por
+    // usuario+empresa+sucursal (ver carritoStorage.ts), así que esto ya no
+    // es lo único que evita que el próximo cajero vea el carrito de este:
+    // aunque se omitiera, el cajero SIGUIENTE tendría su propia clave.
     if (!opts?.preservarCarritoPOS) {
-      localStorage.removeItem('pos-carrito-activo');
+      const s = get();
+      borrarCarritoYEspera(s.empresaActual, s.user?.id, s.sucursalActual);
     }
     sessionStorage.removeItem('pos_turno');
     sessionStorage.removeItem('pos_bloqueado');

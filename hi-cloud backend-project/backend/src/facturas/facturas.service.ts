@@ -98,12 +98,23 @@ export class FacturasService {
   }
 
   /**
-   * `supervisorSessionId` es metadata de auditoría, no una autorización — la
-   * autorización real ya ocurrió en /auth/verificar-supervisor. Por eso una
-   * sesión inválida/de otra empresa/vencida se ignora en silencio (la
-   * factura igual se crea sin el vínculo) en vez de rechazar la venta: el
-   * cajero no debe perder una venta por un dato de auditoría corrupto o
-   * manipulado. La ventana de 8h coincide con SESSION_MS de useSupervisor.ts.
+   * `supervisorSessionId` es metadata de auditoría — pero desde el carrito
+   * persistido del POS (localStorage) puede sobrevivir horas después de que
+   * la sesión de supervisor que autorizó un precio/descuento ya expiró. Si
+   * el CLIENTE manda un `supervisorSessionId`, es porque él mismo determinó
+   * que esta venta necesitaba autorización — y esa afirmación si se valida:
+   * una sesión inexistente, de otra empresa o vencida ahora RECHAZA la
+   * venta (antes se ignoraba en silencio y la factura se creaba igual, lo
+   * que dejaba pasar un precio/descuento modificado de un carrito recuperado
+   * sin que nadie lo hubiera autorizado de verdad). La ventana de 8h
+   * coincide con SESSION_MS de useSupervisor.ts.
+   *
+   * Sin `supervisorSessionId` en el DTO no se rechaza nada aquí — decidir
+   * CUÁNDO hace falta autorización (qué tan grande es un descuento antes de
+   * exigirla) sigue siendo criterio del frontend (ver requireSupervisor() /
+   * maxDiscountPercent en POSPage.tsx); este método solo garantiza que,
+   * cuando el frontend SÍ declaró que hacía falta, la sesión que se manda
+   * es real y sigue vigente.
    */
   private async resolverSupervisorSessionId(
     supervisorSessionId: number | undefined,
@@ -116,7 +127,12 @@ export class FacturasService {
         AND "createdAt" >= NOW() - INTERVAL '8 hours'
       LIMIT 1
     `, [supervisorSessionId, empresaId]);
-    return row?.id;
+    if (!row) {
+      throw new BadRequestException(
+        'La autorización de supervisor para esta venta ya no es válida — pide una nueva autorización antes de cobrar.',
+      );
+    }
+    return row.id;
   }
 
   /**

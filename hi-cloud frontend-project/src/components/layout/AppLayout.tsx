@@ -9,6 +9,7 @@ import { useMisModulosAddon, useSucursalesQuery } from '../../hooks/useCatalogQu
 import { useNoLeidosCount } from '../../hooks/useMensajes';
 import api from '../../api/client';
 import { useLogout } from '../../hooks/useLogout';
+import { borrarCarritoYEspera } from '../../pages/pos/carritoStorage';
 import {
   LogoutOutlined, BellOutlined,
   MoonOutlined, SunOutlined, SearchOutlined,
@@ -501,8 +502,12 @@ export default function AppLayout() {
     // no herede el cajero/vendedor ni el carrito de la empresa anterior
     localStorage.removeItem('pos_cajero_nombre');
     localStorage.removeItem('pos_vendedor_id');
-    // SEGURIDAD MULTI-TENANT: el carrito pertenece a la empresa anterior
-    localStorage.removeItem('pos-carrito-activo');
+    // SEGURIDAD MULTI-TENANT: el carrito pertenece a la empresa anterior.
+    // empresaActiva/sucursalActualId siguen siendo los de ANTES del cambio
+    // en este punto (setEmpresaActiva de arriba no muta el closure), y esta
+    // función solo se usa una vez por carga de página (recarga completa al
+    // final) — no hay riesgo de closure obsoleto pese al deps [] de abajo.
+    borrarCarritoYEspera(empresaActiva, user?.id, sucursalActualId);
     sessionStorage.removeItem('pos_turno');
     sessionStorage.removeItem('pos_bloqueado');
     // Renovar JWT con el nuevo empresaId — el TenantMiddleware lee empresaId
