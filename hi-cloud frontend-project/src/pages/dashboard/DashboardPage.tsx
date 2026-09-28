@@ -1,7 +1,8 @@
-import { Row, Col, Card, Table, Typography, Tag, Button, theme, DatePicker, Skeleton, message, Tooltip } from 'antd';
+import { Row, Col, Card, Table, Typography, Tag, Button, theme, DatePicker, Skeleton, message, Tooltip, Avatar, Dropdown } from 'antd';
 import { SkeletonTabla } from '../../components/ui/SkeletonTabla';
 import { useSkeletonDelay } from '../../hooks/useSkeletonDelay';
 import { DollarOutlined, FileTextOutlined } from '@ant-design/icons';
+import { LifeBuoy, User, Settings, CreditCard, Receipt, LogOut } from 'lucide-react';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useMobile } from '../../hooks/useMediaQuery';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -11,6 +12,8 @@ import { fmt } from '../../utils/formatters';
 import dayjs from 'dayjs';
 import api from '../../api/client';
 import { useAuthStore } from '../../store/auth.store';
+import { usePlan } from '../../hooks/usePlan';
+import { useLogout } from '../../hooks/useLogout';
 import { VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { dRD, horaDelDiaRD } from '../../utils/fechaRD';
 import { useDashboardWidgets } from '../../hooks/useDashboardWidgets';
@@ -29,6 +32,117 @@ import { PanelSinGraficas, AvisoPreferenciaDegradada } from './widgets/PanelSinG
 import { ChecklistConfiguracionInicial } from './widgets/ChecklistConfiguracionInicial';
 
 const { Text } = Typography;
+
+// ── Botón Soporte + menú de cuenta (avatar) ──────────────────────────────────
+// Ítem duplicado a propósito respecto al pie del sidebar: el pedido explícito
+// era tenerlo también arriba a la derecha de Inicio, como en el mockup que
+// dio Jean. Mismo destino (/soporte), mismo handleLogout compartido.
+function CuentaAvatarMenu() {
+  const { user }   = useAuthStore();
+  const empresas       = useAuthStore(s => s.empresas);
+  const empresaActual  = useAuthStore(s => s.empresaActual);
+  const navigate   = useNavigate();
+  const { token }  = theme.useToken();
+  const { planNombre } = usePlan();
+  const handleLogout   = useLogout();
+  const [open, setOpen] = useState(false);
+
+  const empresaActiva = empresas.find(e => e.empresaId === empresaActual);
+  const inicial = (user?.nombre ?? '?').charAt(0).toUpperCase();
+
+  const irA = (ruta: string, state?: Record<string, unknown>) => {
+    setOpen(false);
+    navigate(ruta, state ? { state } : undefined);
+  };
+
+  const ITEMS = [
+    { key: 'cuenta',        icon: <User size={15} />,       label: 'Mi cuenta',                onClick: () => irA('/profile') },
+    { key: 'config',        icon: <Settings size={15} />,   label: 'Configuración',             onClick: () => irA('/configuracion') },
+    { key: 'plan',          icon: <CreditCard size={15} />, label: `Plan: ${planNombre}`,        onClick: () => irA('/mi-suscripcion') },
+    { key: 'solicitar-ncf', icon: <Receipt size={15} />,    label: 'Solicitar NCF',             onClick: () => irA('/soporte', {
+        asuntoPrefill:  'facturacion',
+        mensajePrefill: 'Solicito un aumento de la cuota mensual de e-CF/NCF para mi empresa.',
+      }) },
+  ];
+
+  return (
+    <Dropdown
+      trigger={['click']}
+      open={open}
+      onOpenChange={setOpen}
+      placement="bottomRight"
+      dropdownRender={() => (
+        <div style={{
+          width: 280,
+          background: token.colorBgElevated,
+          border: `1px solid ${token.colorBorderSecondary}`,
+          borderRadius: 12,
+          boxShadow: '0 8px 24px rgba(0,0,0,.18)',
+          overflow: 'hidden',
+        }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 12, padding: 16,
+            borderBottom: `1px solid ${token.colorBorderSecondary}`,
+          }}>
+            <Avatar size={40} style={{ background: token.colorPrimary, flexShrink: 0 }}>{inicial}</Avatar>
+            <div style={{ minWidth: 0 }}>
+              <div style={{
+                fontSize: 13, fontWeight: 700, textTransform: 'uppercase',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {user?.nombre}
+              </div>
+              <div style={{
+                fontSize: 12, color: token.colorTextSecondary,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {user?.email}
+              </div>
+              {empresaActiva?.rnc && (
+                <div style={{ fontSize: 11, color: token.colorTextTertiary }}>RNC: {empresaActiva.rnc}</div>
+              )}
+            </div>
+          </div>
+
+          <div style={{ padding: 6 }}>
+            {ITEMS.map(item => (
+              <button
+                key={item.key}
+                onClick={item.onClick}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '9px 10px', background: 'transparent', border: 'none',
+                  cursor: 'pointer', borderRadius: 8, fontSize: 13,
+                  color: token.colorText, textAlign: 'left', transition: 'background 0.15s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = token.colorFillAlter)}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                {item.icon}
+                {item.label}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ padding: '4px 10px 10px' }}>
+            <Button danger type="primary" block icon={<LogOut size={14} />} onClick={handleLogout}>
+              Cerrar sesión
+            </Button>
+          </div>
+        </div>
+      )}
+    >
+      <div style={{ position: 'relative', cursor: 'pointer', lineHeight: 0 }}>
+        <Avatar size={32} style={{ background: token.colorPrimary }}>{inicial}</Avatar>
+        <span style={{
+          position: 'absolute', bottom: -1, right: -1, width: 9, height: 9,
+          borderRadius: '50%', background: '#22c55e',
+          border: `2px solid ${token.colorBgContainer}`,
+        }} />
+      </div>
+    </Dropdown>
+  );
+}
 
 // ── Saludo contextual + línea de contexto ────────────────────────────────────
 function ContextoHeader() {
@@ -157,7 +271,18 @@ function ContextoHeader() {
         </div>
       )}
       </div>
-      <VideoTutorialButton />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+        <VideoTutorialButton />
+        <Button
+          shape="round"
+          icon={<LifeBuoy size={14} />}
+          onClick={() => navigate('/soporte')}
+          style={{ borderColor: '#86efac', color: '#16a34a' }}
+        >
+          Soporte
+        </Button>
+        <CuentaAvatarMenu />
+      </div>
     </div>
   );
 }

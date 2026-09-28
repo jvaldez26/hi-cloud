@@ -8,7 +8,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMisModulosAddon, useSucursalesQuery } from '../../hooks/useCatalogQueries';
 import { useNoLeidosCount } from '../../hooks/useMensajes';
 import api from '../../api/client';
-import { authApi } from '../../api/auth.api';
+import { useLogout } from '../../hooks/useLogout';
 import {
   LogoutOutlined, BellOutlined,
   MoonOutlined, SunOutlined, SearchOutlined,
@@ -43,7 +43,6 @@ import { useRealtime, useRealtimeStatus } from '../../hooks/useRealtime';
 import { useAlertas }    from '../../hooks/useAlertas';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { MENU_CATEGORIES_DATA, ADDON_IDS, PATH_ROLES, rolPuedeVerRuta } from '../../config/menuConfig';
-import { markNavigatingAway } from '../../utils/sessionEvents';
 import { ahora, hora, horaDelDiaRD } from '../../utils/fechaRD';
 
 import {
@@ -320,7 +319,7 @@ export default function AppLayout() {
 
   const { total: totalAlertas, criticas: alertasCriticas, alertas } = useAlertas();
   const { status: pushStatus, subscribe: pushSubscribe, unsubscribe: pushUnsub } = usePushNotifications();
-  const { user, logout }                = useAuthStore();
+  const { user }                        = useAuthStore();
 
   // ── Bandeja de entrada ────────────────────────────────────────────────────
   // Una sola petición al entrar; se invalida manualmente al abrir bandeja o marcar leído.
@@ -337,18 +336,7 @@ export default function AppLayout() {
   const { token }                       = theme.useToken();
   const navigate                        = useNavigate();
 
-  /**
-   * Cierre de sesión unificado: notifica al servidor (keepalive:true — sobrevive
-   * al cierre de pestaña) y luego limpia el estado local antes de navegar.
-   * Siempre marca la bandera antes de navegar para que Sentry, ErrorBoundary
-   * y el interceptor de Axios no fallen en teardown.
-   */
-  const handleLogout = useCallback(async () => {
-    markNavigatingAway();
-    try { await authApi.logout(); } catch { /* ignorar — token ya inválido o red caída */ }
-    logout();
-    navigate('/login');
-  }, [logout, navigate]);
+  const handleLogout = useLogout();
 
   // Solo el super_admin ve la entrada /super-admin en el sidebar
   const esSuperAdmin = user?.role === 'super_admin';

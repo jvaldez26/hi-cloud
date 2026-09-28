@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, Form, Select, Input, Button, Typography, Tag, Row, Col, Space, Empty, Pagination, message } from 'antd';
 import { MessageOutlined, WhatsAppOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth.store';
 import { soporteApi, ASUNTO_SOPORTE_OPTIONS, type EstadoTicketSoporte } from '../../api/soporte.api';
 import { dRD } from '../../utils/fechaRD';
@@ -27,6 +28,18 @@ export default function SoportePage() {
   const qc = useQueryClient();
   const [form] = Form.useForm();
   const [pagina, setPagina] = useState(1);
+  const location = useLocation();
+
+  // Entradas como "Solicitar NCF" (widget de cuenta del Dashboard) llegan
+  // aquí con el asunto/mensaje ya decididos, vía location.state — el
+  // usuario solo confirma y envía, sin tener que redactar desde cero.
+  useEffect(() => {
+    const prefill = location.state as { asuntoPrefill?: string; mensajePrefill?: string } | null;
+    if (prefill?.asuntoPrefill || prefill?.mensajePrefill) {
+      form.setFieldsValue({ asunto: prefill.asuntoPrefill, mensaje: prefill.mensajePrefill });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['mis-tickets-soporte', pagina],
