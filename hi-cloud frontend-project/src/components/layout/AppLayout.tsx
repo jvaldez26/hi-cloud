@@ -10,7 +10,7 @@ import { useNoLeidosCount } from '../../hooks/useMensajes';
 import api from '../../api/client';
 import { authApi } from '../../api/auth.api';
 import {
-  LogoutOutlined, UserOutlined, BellOutlined,
+  LogoutOutlined, BellOutlined,
   MoonOutlined, SunOutlined, SearchOutlined,
   MenuFoldOutlined, MenuUnfoldOutlined, PlusCircleOutlined,
   AppstoreOutlined,
@@ -816,16 +816,6 @@ export default function AppLayout() {
   // No lo reintroduzcas aquí: dos detectores de inactividad compitiendo darían
   // dos relojes distintos sobre la misma sesión.
 
-  const userMenu = {
-    items: [
-      { key: 'profile', icon: <UserOutlined />,   label: 'Mi perfil', onClick: () => navigate('/profile') },
-      { key: 'soporte', icon: <HelpCircle size={14} />, label: 'Soporte',   onClick: () => navigate('/soporte') },
-      { type: 'divider' as const },
-      { key: 'logout',  icon: <LogoutOutlined />, label: 'Cerrar sesión', danger: true,
-        onClick: () => handleLogout() },
-    ],
-  };
-
   // ── Sidebar interno ─────────────────────────────────────────────────────────
 
   // Nombre de la empresa activa.
@@ -1013,6 +1003,18 @@ export default function AppLayout() {
                 </Avatar>
               </button>
             </Tooltip>
+            <Tooltip title="Soporte" placement="right">
+              <button
+                onClick={() => navigate('/soporte')}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer',
+                  color: C.footerText, display: 'flex', padding: 2, borderRadius: 6,
+                  transition: 'color 0.15s' }}
+                onMouseEnter={e => (e.currentTarget.style.color = C.text)}
+                onMouseLeave={e => (e.currentTarget.style.color = C.footerText)}
+              >
+                <HelpCircle size={14} />
+              </button>
+            </Tooltip>
             <Tooltip title="Cerrar sesión" placement="right">
               <button
                 onClick={() => handleLogout()}
@@ -1112,6 +1114,18 @@ export default function AppLayout() {
                 ? <SunOutlined style={{ fontSize: 13, color: '#facc15' }} />
                 : <MoonOutlined style={{ fontSize: 13 }} />
               }
+            </button>
+
+            {/* Soporte */}
+            <button
+              onClick={() => navigate('/soporte')}
+              title="Soporte"
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer',
+                color: C.footerText, display: 'flex', padding: 4, borderRadius: 6,
+                transition: 'color 0.15s' }}
+              onMouseEnter={e => (e.currentTarget.style.color = C.text)}
+              onMouseLeave={e => (e.currentTarget.style.color = C.footerText)}>
+              <HelpCircle size={13} />
             </button>
 
             {/* Cerrar sesión */}
