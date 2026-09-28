@@ -52,8 +52,20 @@ const servidor = createServer((req, res) => {
 await new Promise(r => servidor.listen(8793, r));
 
 // ── Transpilar el cliente real ──────────────────────────────────────────────
-// Se sustituye el import de Sentry y del store por stubs: lo que se prueba es
-// el interceptor, no el resto del módulo.
+// sessionEvents.ts NO se stubea — es el módulo real. Es un bus de eventos
+// sin ninguna dependencia (ni siquiera de React), así que bundlearlo entero
+// no arrastra nada pesado, y el script deja de necesitar una lista de sus
+// exports escrita a mano: cualquier función que se agregue ahí en el futuro
+// (o se le cambie el nombre) sigue compilando sin tocar este archivo. Si
+// sessionEvents.ts alguna vez gana una dependencia real, esbuild fallará el
+// build y esta nota es la pista de por qué.
+//
+// sentryScope/@sentry y antd SÍ se stubean — esos dos arrastran librerías
+// enteras (Sentry SDK, antd+React) que no tiene sentido empaquetar para un
+// script que corre en Node aislado. Ahí sí hay una lista a mano, pero
+// acotada a lo que client.ts importa de cada uno (captureException/
+// moduloActual de Sentry; message de antd) — creciendo rara vez.
+//
 // Se escribe DENTRO de node_modules para que los imports bare (axios) se
 // resuelvan al ejecutarlo. En un temp fuera del proyecto no resolverian.
 const dest = join(process.cwd(), 'node_modules', '.verificar-subidas.mjs');
@@ -68,14 +80,12 @@ const { outputFiles } = await build({
   plugins: [{
     name: 'stubs',
     setup(b) {
-      b.onResolve({ filter: /sentryScope|sessionEvents|@sentry/ }, a => ({ path: a.path, namespace: 'stub' }));
+      b.onResolve({ filter: /sentryScope|@sentry|^antd$/ }, a => ({ path: a.path, namespace: 'stub' }));
       b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({
         contents: `
           export const moduloActual = () => 'test';
-          export const emitSessionEnd = () => {};
-          export const markNavigatingAway = () => {};
-          export const isNavigatingAway = false;
           export const captureException = () => {};
+          export const message = { loading: () => {}, destroy: () => {} };
           export default {};
         `,
         loader: 'js',
