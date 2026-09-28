@@ -332,16 +332,13 @@ jobs:
             # ══════════════════════════════════════════════════════════════════
             echo "━━━ [1/6] Git sync ━━━"
             git fetch origin main
-            # Pinneado al commit EXACTO de este run (${{ github.sha }}, resuelto
-            # por GitHub Actions al renderizar el workflow, no una variable del
-            # shell remoto) — nunca a "origin/main" en el momento en que este
-            # script se ejecuta. Si otro push llega mientras CI/build de ESTE
-            # run seguían en curso, "main" ya apunta más adelante para cuando
-            # el SSH corre: `git reset --hard origin/main` habría puesto el
-            # código fuente de ESE commit más nuevo con el dist ya subido por
-            # SCP del commit viejo — fuente y dist desincronizados en el mismo
-            # deploy. El pin a un SHA fijo hace que fuente, dist y build_id
-            # sean siempre del mismo commit, pase lo que pase con otros pushes.
+            # Pinneado al commit exacto de este run, resuelto por GitHub Actions
+            # al renderizar el workflow (no una variable del shell remoto) —
+            # nunca a la rama en el momento en que corre este script. Si otro
+            # push llegaba mientras CI/build de este run seguían en curso, el
+            # reset por rama podía dejar el código fuente de ese commit más
+            # nuevo con el dist ya subido por SCP del commit viejo. El pin fijo
+            # hace que fuente, dist y build_id sean siempre el mismo commit.
             git reset --hard "${{ github.sha }}"
             # Capturado UNA vez aquí — es el commit que este deploy realmente
             # está poniendo en disco. Se usa para SENTRY_RELEASE (abajo) y para
