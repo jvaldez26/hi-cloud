@@ -16,16 +16,18 @@
  */
 
 /**
- * Por qué terminó la sesión. Determina si se conserva el carrito del POS.
+ * Por qué terminó la sesión. NINGUNA de las tres la pidió el cajero — las
+ * tres conservan el carrito del POS (ver App.tsx, SessionExpiredHandler):
+ * solo el logout voluntario y el cambio de usuario lo borran (y ninguno de
+ * los dos pasa por aquí — llaman logout() directamente).
  *
- *   'expired'   — el refresh falló y no sabemos por qué. Limpieza completa.
+ *   'expired'   — el refresh no pudo renovar la sesión: un 401 real del
+ *                 refresh token, o reintentos agotados sin poder confirmar
+ *                 ni descartar (429/5xx/red), y tampoco se pudo reautenticar
+ *                 in-place (ver solicitarReautenticacion más abajo).
  *   'displaced' — el usuario entró desde otro dispositivo (SESION_DESPLAZADA)
  *                 o traía un token sin sessionToken (TOKEN_OBSOLETO).
  *   'caducada'  — la sesión llegó a su tope absoluto o al límite de inactividad.
- *                 El cajero tampoco pidió salir: se le conserva el carrito, igual
- *                 que en 'displaced'. Sin este caso, encender el tope absoluto
- *                 borraría las ventas a medio teclear de todo el que estuviera
- *                 facturando en ese momento.
  */
 export type SessionEndReason = 'expired' | 'displaced' | 'caducada';
 
@@ -40,6 +42,34 @@ export function onSessionEnd(fn: SessionEndListener | null): void {
 /** Llamado por el interceptor de Axios cuando la sesión termina definitivamente. */
 export function emitSessionEnd(reason: SessionEndReason): void {
   _listener?.(reason);
+}
+
+/**
+ * Reautenticación in-place: cuando el refresh automático no pudo renovar la
+ * sesión (401 real, o reintentos agotados), el interceptor le da a la
+ * pantalla activa la oportunidad de pedir la contraseña SIN navegar a
+ * /login — hoy solo el POS registra un handler (reusa pantallaBloqueada),
+ * para no perder una venta a medio teclear. Cualquier otra pantalla, al no
+ * tener handler registrado, cae directo al logout normal (ver client.ts).
+ *
+ * Devuelve `true` si el usuario volvió a autenticarse con éxito (la
+ * petición original se reintenta) o `false` si canceló / agotó intentos —
+ * ese `false` es lo que dispara el logout real, con el carrito conservado.
+ */
+type ReauthHandler = () => Promise<boolean>;
+let _reauthHandler: ReauthHandler | null = null;
+
+export function registerReauthHandler(fn: ReauthHandler | null): void {
+  _reauthHandler = fn;
+}
+
+export async function solicitarReautenticacion(): Promise<boolean> {
+  if (!_reauthHandler) return false;
+  try {
+    return await _reauthHandler();
+  } catch {
+    return false;
+  }
 }
 
 /**

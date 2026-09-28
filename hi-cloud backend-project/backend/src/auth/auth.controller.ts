@@ -21,6 +21,7 @@ import { User } from '../users/users.entity';
 import { TokenBlacklistService } from './token-blacklist.service';
 import { RefreshTokenService } from './refresh-token.service';
 import { AlertaDispositivoService } from './alerta-dispositivo.service';
+import { RefreshSessionThrottlerGuard } from '../common/guards/refresh-session-throttler.guard';
 import { obtenerIP } from './utils/obtener-ip.util';
 import {
   JWT_EXPIRES_IN_DEFAULT,
@@ -216,7 +217,14 @@ export class AuthController {
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 30, ttl: 60_000 } }) // 30 refresh por minuto por IP
+  // Techo por IP alto — protección general contra abuso, no el límite real.
+  // Varias cajas de un mismo local comparten IP (NAT): con 30/min, varios
+  // access tokens venciendo casi juntos (15 min de vida) bastaban para
+  // pegar el límite con tráfico legítimo → 429 → el interceptor cerraba
+  // sesión → carrito del POS perdido. El límite que de verdad importa por
+  // uso normal es RefreshSessionThrottlerGuard, por SESIÓN (abajo).
+  @Throttle({ default: { limit: 150, ttl: 60_000 } })
+  @UseGuards(RefreshSessionThrottlerGuard)
   @ApiOperation({ summary: 'S-28: Renovar access token usando refresh token (cookie httpOnly)' })
   async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const refreshValue = (req.cookies as Record<string, string>)?.refresh_token;

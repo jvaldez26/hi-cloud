@@ -452,13 +452,14 @@ function SessionExpiredHandler() {
     onSessionEnd((reason) => {
       markNavigatingAway();   // redundante si client.ts ya lo llamó, pero defensivo
 
-      // 'displaced' = a este usuario lo sacó un login en otro dispositivo.
-      // 'caducada'  = la sesión llegó a su tope absoluto o al límite de inactividad.
-      //
-      // En ninguno de los dos pidió salir, así que conservamos su carrito del POS
-      // para que al volver a entrar siga ahí en vez de perder una venta a medio
-      // teclear. En 'expired' (y en el logout manual) se limpia como siempre.
-      logout({ preservarCarritoPOS: reason === 'displaced' || reason === 'caducada' });
+      // Las tres razones que llegan aquí son cierres INVOLUNTARIOS — el cajero
+      // no pidió salir en ninguna: 'displaced' (lo sacó un login en otro
+      // dispositivo), 'caducada' (tope absoluto o límite de inactividad),
+      // 'expired' (el refresh no pudo renovar la sesión, incluso tras
+      // reintentos y sin poder reautenticar in-place — ver client.ts). Las
+      // tres conservan el carrito del POS. Solo el logout voluntario y el
+      // cambio de usuario lo borran, y ninguno de los dos pasa por aquí.
+      logout({ preservarCarritoPOS: true });
 
       navigate('/login', { replace: true });
 

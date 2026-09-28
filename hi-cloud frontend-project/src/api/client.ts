@@ -1,7 +1,8 @@
 import axios, { AxiosError } from 'axios';
+import { message } from 'antd';
 import * as Sentry from '@sentry/react';
 import { moduloActual } from '../observability/sentryScope';
-import { emitSessionEnd, markNavigatingAway, isNavigatingAway } from '../utils/sessionEvents';
+import { emitSessionEnd, markNavigatingAway, isNavigatingAway, solicitarReautenticacion } from '../utils/sessionEvents';
 import { registrarHoraServidor } from '../utils/fechaRD';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '/api/v1';
@@ -132,6 +133,83 @@ function _waitForOtherTabRefresh(): Promise<'done' | 'failed' | 'timeout'> {
   });
 }
 
+// ── Reintentos de /auth/refresh con espera creciente ───────────────────────
+const REFRESH_MAX_INTENTOS      = 3;
+const REFRESH_BACKOFF_BASE_MS   = 1500;
+const REFRESH_BACKOFF_MAX_MS    = 8000;
+const AVISO_REINTENTO_KEY       = 'hc-auth-reintentando';
+
+function mostrarAvisoReintentando(): void {
+  try {
+    message.loading({
+      content: 'Problema de conexión — reintentando...',
+      key:     AVISO_REINTENTO_KEY,
+      duration: 0,
+    });
+  } catch { /* antd aún no montado (muy al inicio de la carga) — no es crítico */ }
+}
+
+function ocultarAvisoReintentando(): void {
+  try { message.destroy(AVISO_REINTENTO_KEY); } catch { /* no-op */ }
+}
+
+/**
+ * Reintenta /auth/refresh con espera creciente cuando el fallo NO es un 401
+ * — un 429 (el propio límite de refresh), un 500, un timeout o la red
+ * caída no significan que el refresh token murió, solo que este intento no
+ * se pudo completar. Antes CUALQUIER fallo de refresh —incluido un 429—
+ * se trataba exactamente igual que un 401 real: logout inmediato con el
+ * carrito del POS perdido (era el bug reportado).
+ *
+ * Devuelve 'ok' si algún intento tuvo éxito, o 'fallo' si el refresh token
+ * está genuinamente muerto (401) o se agotaron los reintentos sin poder
+ * confirmarlo ni descartarlo — en ambos casos el llamador (más abajo)
+ * intenta reautenticar in-place (solicitarReautenticacion) antes de recién
+ * ahí cerrar la sesión.
+ */
+export async function intentarRefrescarConReintentos(): Promise<'ok' | 'fallo'> {
+  for (let intento = 1; intento <= REFRESH_MAX_INTENTOS; intento++) {
+    try {
+      await apiClient.post('/auth/refresh');
+      ocultarAvisoReintentando();
+      return 'ok';
+    } catch (refreshErr) {
+      const ax     = refreshErr as AxiosError;
+      const estado = ax.response?.status;
+
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[auth] refresh fallido (intento ${intento}/${REFRESH_MAX_INTENTOS}, ${estado ?? 'sin respuesta'}):`,
+        ax.message ?? refreshErr,
+      );
+
+      // Un 401 es lo esperado cuando el refresh token ya no vale — reintentar
+      // no cambiaría el resultado. Cualquier otra cosa es un incidente (a
+      // Sentry) y sí vale la pena reintentar antes de rendirse.
+      if (estado === 401) { ocultarAvisoReintentando(); return 'fallo'; }
+
+      Sentry.captureException(refreshErr, {
+        tags:  { modulo: 'auth', fase: 'refresh-token', intento: String(intento) },
+        extra: { estado: estado ?? null },
+      });
+
+      if (intento === REFRESH_MAX_INTENTOS) { ocultarAvisoReintentando(); return 'fallo'; }
+
+      // Retry-After del 429 manda si viene; si no, backoff exponencial con tope.
+      const retryAfterHeader = ax.response?.headers?.['retry-after'];
+      const retryAfterMs     = retryAfterHeader ? Number(retryAfterHeader) * 1000 : null;
+      const esperaMs = (retryAfterMs && retryAfterMs > 0)
+        ? retryAfterMs
+        : Math.min(REFRESH_BACKOFF_BASE_MS * 2 ** (intento - 1), REFRESH_BACKOFF_MAX_MS);
+
+      mostrarAvisoReintentando();
+      await new Promise(r => setTimeout(r, esperaMs));
+    }
+  }
+  ocultarAvisoReintentando();
+  return 'fallo';
+}
+
 // ─── RESPONSE interceptor ────────────────────────────────────────────
 let _recuperandoEmpresa = false;
 
@@ -243,7 +321,14 @@ apiClient.interceptors.response.use(
                              original?.url?.includes('/auth/login')  ||
                              original?.url?.includes('/auth/logout');  // fire-and-forget; no reintentar
 
-      if (!isAuthEndpoint && !original?._retry && !onPublicPage) {
+      // Una petición al propio /auth/refresh (o login/logout) que falla con
+      // 401 NO dispara logout aquí — quien orquesta el refresh (más abajo)
+      // decide, porque puede intentar reautenticar in-place antes de
+      // rendirse. Antes esto cerraba sesión de inmediato sin darle esa
+      // oportunidad al modal de reingreso del POS.
+      if (isAuthEndpoint) return Promise.reject(err);
+
+      if (!original?._retry && !onPublicPage) {
         // ── Capa 1: intra-pestaña — encolar si esta pestaña ya está refrescando ─
         if (_isRefreshing) {
           return new Promise<void>((resolve, reject) => {
@@ -268,48 +353,41 @@ apiClient.interceptors.response.use(
           // timeout → la otra pestaña murió, intentamos nosotros mismos
         }
 
-        // ── Esta pestaña hace el refresh ──────────────────────────────────────
+        // ── Esta pestaña hace el refresh, con reintentos ────────────────────
         _isRefreshing = true;
         _setTabRefreshState('running');
 
-        try {
-          await apiClient.post('/auth/refresh');
+        const resultado = await intentarRefrescarConReintentos();
+
+        if (resultado === 'ok') {
+          _setTabRefreshState('done');
+          _bc?.postMessage({ type: 'hc_refresh_done' });
+          processRefreshQueue(null);
+          _isRefreshing = false;
+          setTimeout(_clearTabRefreshState, 3_000);
+          return apiClient(original);
+        }
+
+        // resultado === 'fallo' — 401 real del refresh token, o reintentos
+        // agotados sin poder confirmarlo ni descartarlo. Antes de cerrar
+        // sesión, darle a la pantalla activa (el POS, si está montada) la
+        // oportunidad de reautenticar sin perder lo que había en curso.
+        const reautenticado = await solicitarReautenticacion();
+
+        _isRefreshing = false;
+        setTimeout(_clearTabRefreshState, 3_000);
+
+        if (reautenticado) {
           _setTabRefreshState('done');
           _bc?.postMessage({ type: 'hc_refresh_done' });
           processRefreshQueue(null);
           return apiClient(original);
-        } catch (refreshErr) {
-          _setTabRefreshState('failed');
-          _bc?.postMessage({ type: 'hc_refresh_failed' });
-          processRefreshQueue(refreshErr);
-
-          // Por qué se registra: a partir de aquí el usuario acaba en /login
-          // con "Tu sesión ha expirado", y ese mensaje es el MISMO tanto si el
-          // refresh token caducó de verdad —correcto— como si el backend
-          // devolvió un 500 o se cayó la red. Sin esto no hay forma de
-          // distinguir una sesión cerrada a propósito de un bug, y con la
-          // Fase B cerrando sesiones de verdad esa diferencia es justo la que
-          // hace falta para saber si hay algo roto.
-          const motivo = (refreshErr as AxiosError | undefined);
-          const estado = motivo?.response?.status;
-          // eslint-disable-next-line no-console
-          console.warn(
-            `[auth] refresh fallido (${estado ?? 'sin respuesta'}) → cerrando sesión:`,
-            motivo?.message ?? refreshErr,
-          );
-          // Un 401 aquí es lo esperado: el refresh token ya no vale. Cualquier
-          // otra cosa —500, timeout, red— es un incidente y va a Sentry.
-          if (estado !== 401) {
-            Sentry.captureException(refreshErr, {
-              tags:  { modulo: 'auth', fase: 'refresh-token' },
-              extra: { estado: estado ?? null, ruta: original?.url },
-            });
-          }
-          // Refresh falló definitivamente → fallthrough al logout
-        } finally {
-          _isRefreshing = false;
-          setTimeout(_clearTabRefreshState, 3_000);
         }
+
+        _setTabRefreshState('failed');
+        _bc?.postMessage({ type: 'hc_refresh_failed' });
+        processRefreshQueue(new Error('SESION_INVALIDA'));
+        // Sin reautenticación posible → fallthrough al logout
       }
       localStorage.removeItem('auth_user');
       localStorage.removeItem('empresaId');
