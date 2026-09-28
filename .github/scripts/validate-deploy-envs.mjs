@@ -46,8 +46,11 @@ if (iniSSH === -1) {
 const finSSH   = yml.indexOf('\n        with:', iniSSH);
 const bloqueEnv = yml.slice(iniSSH, finSSH);
 
-// Claves `NOMBRE: ${{ secrets.X }}` — las que reciben un secreto.
-const declaradas = [...bloqueEnv.matchAll(/^\s{10}([A-Z0-9_]+):\s*\$\{\{\s*secrets\./gm)]
+// Claves `NOMBRE: ${{ secrets.X }}` (secretos) o `NOMBRE: ${{ github.X }}`
+// (valores del propio run, como DEPLOY_SHA_ESPERADO: ${{ github.sha }} —
+// no es un secreto, pero se inyecta al servidor por el mismo mecanismo y
+// tiene que poder declararse en esta misma lista, ver deploy.yml).
+const declaradas = [...bloqueEnv.matchAll(/^\s{10}([A-Z0-9_]+):\s*\$\{\{\s*(?:secrets|github)\./gm)]
   .map(m => m[1])
   .filter(v => !NO_SE_INYECTAN.has(v));
 
