@@ -8,6 +8,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMisModulosAddon, useSucursalesQuery } from '../../hooks/useCatalogQueries';
 import { useNoLeidosCount } from '../../hooks/useMensajes';
 import api from '../../api/client';
+import { configuracionApi } from '../../api/configuracion.api';
+import { puedeVerAuditoria } from '../../config/auditoriaMenuGate';
 import { useLogout } from '../../hooks/useLogout';
 import { borrarCarritoYEspera } from '../../pages/pos/carritoStorage';
 import {
@@ -344,6 +346,30 @@ export default function AppLayout() {
 
   const userRole = user?.role ?? 'viewer';
 
+  // ¿Este contador puede ver Auditoría? Ajuste por empresa (solo lo cambia
+  // el Admin, ver ConfiguracionPage) — el backend (AuditoriaAccessGuard) es
+  // la barrera real; esto solo evita mostrar un ítem de menú que igual
+  // daría 403 al entrar. Default true mientras carga: nunca oculta de más
+  // por un instante — si el backend termina rechazando, el guard lo dirá.
+  // Solo se consulta para contador — admin/super_admin no lo necesitan.
+  const { data: empresaParaMenu } = useQuery<any>({
+    queryKey: ['empresa'],
+    queryFn:  () => configuracionApi.getEmpresa(),
+    enabled:  userRole === 'contador',
+    staleTime: 5 * 60_000,
+  });
+  const contadorVeAuditoria = empresaParaMenu?.contadorPuedeVerAuditoria !== false;
+
+  // Envuelve rolPuedeVerRuta con el único caso que depende de un ajuste de
+  // EMPRESA además del rol: '/auditoria' para contador. Todo lo demás sigue
+  // exactamente igual que antes. Ocultar el menú es solo UX — "ocultar el
+  // menú no alcanza" es justo por lo que el backend (AuditoriaAccessGuard)
+  // es quien de verdad decide, no esto.
+  const puedeVerRuta = (path: string, role: string): boolean => {
+    if (path === '/auditoria' && !puedeVerAuditoria(role, contadorVeAuditoria)) return false;
+    return rolPuedeVerRuta(path, role);
+  };
+
   // Veredicto UNICO sobre el modulo de activacion: lo da el backend y lo
   // comparten el menu y la pantalla. Solo se consulta para los roles que
   // pueden verlo — para el resto el endpoint devolveria 403.
@@ -423,7 +449,7 @@ export default function AppLayout() {
         ...cat,
         items: cat.items.filter(item =>
           (item.path !== '/super-admin' || esSuperAdmin) &&
-          rolPuedeVerRuta(item.path, userRole)
+          puedeVerRuta(item.path, userRole)
         ),
       }))
       .filter(cat => cat.items.length > 0);
@@ -845,7 +871,7 @@ export default function AppLayout() {
   // Los items rapidos llegan al menu ya filtrados por rol y con su badge puesto:
   // quien puede ver que no es asunto del armazon compartido.
   const itemsRapidosMenu = QUICK_ITEMS
-    .filter(item => rolPuedeVerRuta(item.path, userRole))
+    .filter(item => puedeVerRuta(item.path, userRole))
     // La entrada de activación desaparece cuando la empresa ya factura
     // electrónicamente. Mientras la consulta no responda NO se pinta:
     // es preferible que aparezca un instante después a que parpadee y
@@ -1171,7 +1197,7 @@ export default function AppLayout() {
       />
     );
   }
-  if (user && !rolPuedeVerRuta(activePath, currentUserRole)) {
+  if (user && !puedeVerRuta(activePath, currentUserRole)) {
     return <Navigate to="/dashboard" replace />;
   }
 

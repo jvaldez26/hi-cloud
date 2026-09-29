@@ -134,6 +134,19 @@ export class Empresa extends BaseEntity {
   controlCajaActivo!: boolean;
 
   /**
+   * ¿El rol CONTADOR puede ver el módulo de Auditoría (todas sus pestañas,
+   * incluida Modo Supervisor)? Solo el ADMIN puede cambiarlo.
+   *
+   * Default true — el contador ya tenía acceso completo a Auditoría antes
+   * de que existiera este ajuste; no cambia nada hasta que un Admin decida
+   * restringirlo. El enforcement real vive en el backend (AuditoriaAccessGuard
+   * y el guard de /auth/supervisor-log) — ocultar el ítem del menú es solo
+   * UX, nunca la barrera de seguridad.
+   */
+  @Column({ default: true })
+  contadorPuedeVerAuditoria!: boolean;
+
+  /**
    * COSTO DE VENTA COMMIT 2 (2026-09-20) — controla si la validación C-4
    * (facturas.service.ts: "el precio no puede ser inferior al costo")
    * bloquea la venta o no. Default true (permite vender bajo costo, sin

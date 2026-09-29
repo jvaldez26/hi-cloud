@@ -17,10 +17,11 @@ import { UserRole } from '../users/enums/user-role.enum';
 import { TenantService } from '../tenant/tenant.service';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import type { User } from '../users/users.entity';
+import { AuditoriaAccessGuard } from './guards/auditoria-access.guard';
 
 @ApiTags('Auditoría y Logs')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, AuditoriaAccessGuard)
 @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.CONTADOR)
 @Controller('auditoria')
 export class AuditoriaController {

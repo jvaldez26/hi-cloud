@@ -72,6 +72,10 @@ export const configuracionApi = {
     api.patch('/configuracion/empresa/control-caja', { controlCajaActivo: activo })
       .then(r => r.data.data),
 
+  updateContadorVeAuditoria: (activo: boolean) =>
+    api.patch('/configuracion/empresa/contador-ve-auditoria', { contadorPuedeVerAuditoria: activo })
+      .then(r => r.data.data),
+
   // ── e-CF (solo lectura) ─────────────────────────────────────────────────────
   getECFConfig: (empresaId: number) =>
     api.get(`/ecf/config/empresas/${empresaId}`).then(r => r.data?.data?.data ?? r.data?.data ?? r.data).catch(() => null),

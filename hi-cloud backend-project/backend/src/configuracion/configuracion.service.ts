@@ -320,6 +320,28 @@ export class ConfiguracionService implements OnModuleInit {
   }
 
   /**
+   * Permite/quita que el rol CONTADOR vea el módulo de Auditoría (todas sus
+   * pestañas, incluida Modo Supervisor). El enforcement real vive en
+   * AuditoriaAccessGuard — este método solo cambia el dato que ese guard lee.
+   *
+   * Quién lo cambió y cuándo queda en la auditoría general sin código extra
+   * aquí: el AuditInterceptor global registra cualquier PATCH a
+   * /configuracion/* con el usuario de la sesión (igual que control-caja).
+   */
+  async updateContadorVeAuditoria(activo: boolean): Promise<{ contadorPuedeVerAuditoria: boolean }> {
+    const empresa = await this.getEmpresa();
+    await this.empresaRepository.update(empresa.id, { contadorPuedeVerAuditoria: activo } as any);
+    await this.cache.del(CacheKeys.empresaConfig(empresa.id));
+
+    this.logger.warn(
+      `[contador-ve-auditoria] empresaId=${empresa.id} "${empresa.nombre}" | ` +
+      `${empresa.contadorPuedeVerAuditoria} → ${activo}`,
+    );
+
+    return { contadorPuedeVerAuditoria: activo };
+  }
+
+  /**
    * Verifica si un RNC ya existe en otra empresa.
    * Usado por el frontend antes de mostrar el modal de confirmación.
    */

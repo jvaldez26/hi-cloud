@@ -118,6 +118,20 @@ export class ConfiguracionController {
     );
   }
 
+  @Patch('empresa/contador-ve-auditoria')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Permitir/quitar que el rol Contador vea el módulo de Auditoría (solo ADMIN)' })
+  updateContadorVeAuditoria(
+    @Body() body: { contadorPuedeVerAuditoria: boolean },
+  ) {
+    if (typeof body.contadorPuedeVerAuditoria !== 'boolean') {
+      throw new BadRequestException('contadorPuedeVerAuditoria debe ser boolean');
+    }
+    return this.configuracionService.updateContadorVeAuditoria(body.contadorPuedeVerAuditoria);
+  }
+
   @Post('empresa/upload-logo')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard, RolesGuard)

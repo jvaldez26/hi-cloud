@@ -5,11 +5,12 @@ import { AuditoriaService } from './auditoria.service';
 import { AuditoriaController } from './auditoria.controller';
 import { AuditLog } from './entities/audit-log.entity';
 import { TenantModule } from '../tenant/tenant.module';
+import { AuditoriaAccessGuard } from './guards/auditoria-access.guard';
 
 @Module({
   imports: [SuscripcionesModule, TenantModule, TypeOrmModule.forFeature([AuditLog])],
   controllers: [AuditoriaController],
-  providers: [AuditoriaService],
+  providers: [AuditoriaService, AuditoriaAccessGuard],
   exports: [AuditoriaService],
 })
 export class AuditoriaModule {}

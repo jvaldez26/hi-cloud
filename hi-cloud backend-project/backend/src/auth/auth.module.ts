@@ -17,6 +17,7 @@ import { RefreshToken } from './entities/refresh-token.entity';
 import { DispositivoConocido } from './entities/dispositivo-conocido.entity';
 import { AlertaDispositivoToken } from './entities/alerta-dispositivo-token.entity';
 import { RolesGuard } from './guards/roles.guard';
+import { AuditoriaAccessGuard } from '../auditoria/guards/auditoria-access.guard';
 import { TwoFactorService } from './two-factor.service';
 import { TwoFactorController } from './two-factor.controller';
 import { UsersModule } from '../users/users.module';
@@ -59,7 +60,7 @@ import { ModulosAddonModule } from '../modulos-addon/modulos-addon.module';
     }),
   ],
   controllers: [AuthController, TwoFactorController, EquipoSesionesController],
-  providers: [AuthService, JwtStrategy, GoogleStrategy, TwoFactorService, TokenBlacklistService, RefreshTokenService, SessionLifetimeService, AlertaDispositivoService, RolesGuard, LoginAttemptsService, EquipoSesionesService],
+  providers: [AuthService, JwtStrategy, GoogleStrategy, TwoFactorService, TokenBlacklistService, RefreshTokenService, SessionLifetimeService, AlertaDispositivoService, RolesGuard, AuditoriaAccessGuard, LoginAttemptsService, EquipoSesionesService],
   // AuthService y LoginAttemptsService se exportan para el panel de soporte
   // del super admin (SuperAdminModule) — reenviar recuperación/verificación
   // y diagnosticar/limpiar bloqueos reutilizan esta MISMA lógica en vez de

@@ -22,6 +22,7 @@ import { TokenBlacklistService } from './token-blacklist.service';
 import { RefreshTokenService } from './refresh-token.service';
 import { AlertaDispositivoService } from './alerta-dispositivo.service';
 import { RefreshSessionThrottlerGuard } from '../common/guards/refresh-session-throttler.guard';
+import { AuditoriaAccessGuard } from '../auditoria/guards/auditoria-access.guard';
 import { obtenerIP } from './utils/obtener-ip.util';
 import {
   JWT_EXPIRES_IN_DEFAULT,
@@ -318,7 +319,10 @@ export class AuthController {
   }
 
   @Get('supervisor-log')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  // AuditoriaAccessGuard: la pestaña "Modo Supervisor" del módulo de
+  // Auditoría se alimenta de este endpoint — mismo ajuste por empresa
+  // (contadorPuedeVerAuditoria) que el resto de Auditoría, ver ese guard.
+  @UseGuards(JwtAuthGuard, RolesGuard, AuditoriaAccessGuard)
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.SUPER_ADMIN)
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Reporte de sesiones de modo supervisor, filtrable por supervisor/cajero/rango de fecha' })

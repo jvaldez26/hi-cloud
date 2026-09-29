@@ -1178,6 +1178,29 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
     setCajaControlActivo(empresa?.controlCajaActivo === true);
   }, [empresa?.controlCajaActivo]);
 
+  // Contador puede ver Auditoría — switch independiente, endpoint propio (solo ADMIN)
+  const [contadorVeAuditoria, setContadorVeAuditoria] = useState<boolean>(
+    empresa?.contadorPuedeVerAuditoria !== false,
+  );
+  useEffect(() => {
+    setContadorVeAuditoria(empresa?.contadorPuedeVerAuditoria !== false);
+  }, [empresa?.contadorPuedeVerAuditoria]);
+
+  const contadorAuditoriaMut = useMutation({
+    mutationFn: (activo: boolean) => configuracionApi.updateContadorVeAuditoria(activo),
+    onSuccess: (_res, activo) => {
+      qc.invalidateQueries({ queryKey: ['empresa'] });
+      setContadorVeAuditoria(activo);
+      message.success(
+        activo
+          ? 'El rol Contador ya puede ver Auditoría.'
+          : 'El rol Contador ya no puede ver Auditoría — recibirá "sin permiso" si intenta entrar.',
+      );
+      onSaved();
+    },
+    onError: (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error'),
+  });
+
   const cajaControlMut = useMutation({
     mutationFn: (activo: boolean) => configuracionApi.updateControlCaja(activo),
     onSuccess: (res: any, activo) => {
@@ -1633,6 +1656,35 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        </Col>
+      </Row>
+
+      {/* ── Acceso de Contador a Auditoría — switch fuera del Form, endpoint propio (solo ADMIN) ── */}
+      <Divider orientation="left" orientationMargin={0}>Acceso de Contador</Divider>
+      <Row gutter={[16, 8]}>
+        <Col xs={24}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+            <Switch
+              checked={contadorVeAuditoria}
+              loading={contadorAuditoriaMut.isPending}
+              onChange={activo => contadorAuditoriaMut.mutate(activo)}
+            />
+            <div>
+              <Text style={{ fontSize: 13, fontWeight: 500 }}>El Contador puede ver Auditoría</Text>
+              <div style={{ marginTop: 2 }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  Incluye todas las pestañas del módulo, también Modo Supervisor. Con esto apagado,
+                  el Contador no puede entrar aunque escriba la dirección directamente. Solo consulta
+                  y exporta — nunca puede modificar nada desde ahí.
+                </Text>
+              </div>
+              {!contadorVeAuditoria && (
+                <div style={{ marginTop: 6 }}>
+                  <Tag color="orange" style={{ fontSize: 11 }}>Apagado — el Contador no ve Auditoría</Tag>
+                </div>
+              )}
             </div>
           </div>
         </Col>
