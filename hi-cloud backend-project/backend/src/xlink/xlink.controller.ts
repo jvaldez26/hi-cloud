@@ -62,6 +62,44 @@ export class XlinkController {
     });
   }
 
+  @Get('enviados')
+  @ApiOperation({ summary: 'Documentos que mi empresa publicó (pestaña "Documentos Enviados")' })
+  listarEnviados(
+    @Query('page') page?: string,
+    @Query('desde') desde?: string,
+    @Query('hasta') hasta?: string,
+    @Query('tipoDocumento') tipoDocumento?: any,
+    @Query('numeroOrigen') numeroOrigen?: string,
+    @Query('ncfOrigen') ncfOrigen?: string,
+    @Query('estadoReceptor') estadoReceptor?: any,
+  ) {
+    return this.xlinkService.listarEnviados({
+      page: page ? Number(page) : undefined, desde, hasta, tipoDocumento, numeroOrigen, ncfOrigen, estadoReceptor,
+    });
+  }
+
+  @Get('recibidos')
+  @ApiOperation({ summary: 'Documentos que otra empresa publicó hacia la mía (pestañas Por Procesar/Procesados/Descartados)' })
+  listarRecibidos(
+    @Query('page') page?: string,
+    @Query('desde') desde?: string,
+    @Query('hasta') hasta?: string,
+    @Query('tipoDocumento') tipoDocumento?: any,
+    @Query('numeroOrigen') numeroOrigen?: string,
+    @Query('ncfOrigen') ncfOrigen?: string,
+    @Query('estadoReceptor') estadoReceptor?: any,
+  ) {
+    return this.xlinkService.listarRecibidos({
+      page: page ? Number(page) : undefined, desde, hasta, tipoDocumento, numeroOrigen, ncfOrigen, estadoReceptor,
+    });
+  }
+
+  @Get('pendientes/conteo')
+  @ApiOperation({ summary: 'Conteo de documentos recibidos pendientes — badge del sidebar' })
+  contarPendientes() {
+    return this.xlinkService.contarPendientes();
+  }
+
   @Post('vincular')
   @ApiOperation({ summary: 'Vincula (o crea) un cliente/proveedor propio con la empresa contraparte' })
   vincular(@Body() dto: VincularXlinkDto) {

@@ -10,6 +10,7 @@ import { AccionAuditoria } from '../auditoria/entities/audit-log.entity';
 import { ProveedoresService } from '../proveedores/proveedores.service';
 import { ClientesService } from '../clientes/clientes.service';
 import { VincularXlinkDto } from './dto/vincular-xlink.dto';
+import { XlinkDocumentosRepository, XlinkListaFiltros } from './xlink-documentos.repository';
 
 export interface XlinkDirectorioFiltros {
   q?: string;
@@ -35,7 +36,24 @@ export class XlinkService {
     private auditoria: AuditoriaService,
     private proveedoresService: ProveedoresService,
     private clientesService: ClientesService,
+    private xlinkRepo: XlinkDocumentosRepository,
   ) {}
+
+  /** GET /xlink/enviados — Fase 5 (listado "Documentos Enviados"). */
+  async listarEnviados(filtros: XlinkListaFiltros) {
+    return this.xlinkRepo.listarComoOrigen(filtros);
+  }
+
+  /** GET /xlink/recibidos — Fase 5 (tabs "Por Procesar"/"Procesados"/"Descartados", filtradas por estadoReceptor). */
+  async listarRecibidos(filtros: XlinkListaFiltros) {
+    return this.xlinkRepo.listarComoDestino(filtros);
+  }
+
+  /** GET /xlink/pendientes/conteo — badge del sidebar. */
+  async contarPendientes(): Promise<{ total: number }> {
+    const total = await this.xlinkRepo.contarPendientesComoDestino();
+    return { total };
+  }
 
   /**
    * Gate reutilizable para Fase 3 (publicar) y Fase 4 (recibir): una empresa

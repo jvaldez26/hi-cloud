@@ -17,6 +17,11 @@ function buildDeps() {
     auditoriaSvc: { registrar: jest.fn().mockResolvedValue(undefined) },
     proveedoresSvc: { create: jest.fn().mockResolvedValue({ id: 900 }), findOne: jest.fn().mockResolvedValue({ id: 1 }) },
     clientesSvc: { create: jest.fn().mockResolvedValue({ id: 901 }), findOne: jest.fn().mockResolvedValue({ id: 2 }) },
+    xlinkRepo: {
+      listarComoOrigen: jest.fn().mockResolvedValue({ data: [], meta: {} }),
+      listarComoDestino: jest.fn().mockResolvedValue({ data: [], meta: {} }),
+      contarPendientesComoDestino: jest.fn().mockResolvedValue(0),
+    },
   };
 }
 
@@ -29,6 +34,7 @@ function buildService(d: ReturnType<typeof buildDeps>): XlinkService {
     d.auditoriaSvc as any,
     d.proveedoresSvc as any,
     d.clientesSvc as any,
+    d.xlinkRepo as any,
   );
 }
 
@@ -271,5 +277,35 @@ describe('XlinkService.vincular', () => {
     expect(d.clientesSvc.create).toHaveBeenCalledWith(expect.objectContaining({
       nombre: 'Proveedor Test SRL', rncReceptor: '130000001', xlinkEmpresaXlinkId: OTRA_EMPRESA_XLINK_ID,
     }));
+  });
+});
+
+describe('XlinkService — listados y conteo (Fase 5)', () => {
+  it('listarEnviados() delega en xlinkRepo.listarComoOrigen', async () => {
+    const d = buildDeps();
+    const service = buildService(d);
+    const filtros = { page: 2 };
+
+    await service.listarEnviados(filtros);
+
+    expect(d.xlinkRepo.listarComoOrigen).toHaveBeenCalledWith(filtros);
+  });
+
+  it('listarRecibidos() delega en xlinkRepo.listarComoDestino', async () => {
+    const d = buildDeps();
+    const service = buildService(d);
+    const filtros = { estadoReceptor: 'pendiente' as any };
+
+    await service.listarRecibidos(filtros);
+
+    expect(d.xlinkRepo.listarComoDestino).toHaveBeenCalledWith(filtros);
+  });
+
+  it('contarPendientes() envuelve el número en { total }', async () => {
+    const d = buildDeps();
+    d.xlinkRepo.contarPendientesComoDestino.mockResolvedValue(4);
+    const service = buildService(d);
+
+    await expect(service.contarPendientes()).resolves.toEqual({ total: 4 });
   });
 });
