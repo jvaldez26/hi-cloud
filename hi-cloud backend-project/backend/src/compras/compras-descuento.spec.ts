@@ -36,7 +36,7 @@ function buildService(productos: Map<number, any>): any {
     {} as any, {} as any, {} as any,
     productosService as any,
     {} as any, {} as any, {} as any, {} as any, {} as any,
-    {} as any, {} as any, {} as any, {} as any,
+    {} as any, {} as any, {} as any, {} as any, {} as any,
   );
 }
 

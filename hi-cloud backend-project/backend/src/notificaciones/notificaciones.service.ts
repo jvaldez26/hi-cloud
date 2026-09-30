@@ -71,6 +71,46 @@ export class NotificacionesService {
     return rows.map(r => r.email);
   }
 
+  /** Ids de usuarios admin/contador activos de una empresa (hasta 5) — para notificaciones canal SISTEMA. */
+  private async getAdminUserIds(empresaId: number): Promise<number[]> {
+    const rows = await this.dataSource.query<{ id: number }[]>(
+      `SELECT u.id
+       FROM usuario_empresa ue
+       JOIN users u ON u.id = ue."userId"
+       WHERE ue."empresaId" = $1 AND ue."isActive" = true
+         AND u."isActive" = true AND u.role IN ('admin','contador')
+       LIMIT 5`,
+      [empresaId],
+    );
+    return rows.map(r => r.id);
+  }
+
+  /**
+   * Notificación canal SISTEMA (campanita) para ADMIN/CONTADOR de una
+   * empresa — no envía ningún correo/WhatsApp, solo deja el registro
+   * (`destinatario` = userId) que la campanita puede leer más adelante.
+   * Usado hoy por HiCloud Xlink (Fase 3: "llegó un documento nuevo").
+   */
+  async notificarSistemaEmpresa(
+    empresaId:   number,
+    tipo:        TipoNotificacion,
+    asunto:      string,
+    mensaje:     string,
+    referencia?: string,
+  ): Promise<void> {
+    const userIds = await this.getAdminUserIds(empresaId);
+    for (const userId of userIds) {
+      await this.logRepository.save(
+        this.logRepository.create({
+          tipo, canal: CanalNotificacion.SISTEMA,
+          destinatario: String(userId), userId,
+          asunto, mensaje: mensaje.substring(0, 2000),
+          exitoso: true, referencia,
+        }),
+      ).catch((e: Error) => this.logger.error(`Error guardando notificación de sistema: ${e.message}`));
+    }
+  }
+
   /** Todas las empresas activas con su configuración. */
   private async getEmpresasActivas(): Promise<{ id: number; nombre: string; configuracion: Record<string, unknown> }[]> {
     return this.dataSource.query(

@@ -16,6 +16,7 @@ import { SuscripcionesModule } from '../suscripciones/suscripciones.module';
 import { CajaModule } from '../caja/caja.module';
 import { RncModule } from '../rnc/rnc.module';
 import { VendedorResolverModule } from './vendedor/vendedor-resolver.module';
+import { XlinkModule } from '../xlink/xlink.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { VendedorResolverModule } from './vendedor/vendedor-resolver.module';
     VendedorResolverModule,
     PdfModule,           // PDFService + NumeroLetrasService encapsulados aquí
     FacturaEmailModule,  // envio/reenvio de la factura por correo
+    XlinkModule,         // gancho TIPO B: avisar si una factura publicada se anula
   ],
   controllers: [FacturasController],
   providers: [FacturasService],

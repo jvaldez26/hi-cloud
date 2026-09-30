@@ -133,6 +133,7 @@ function buildService(d: Deps): ComprasService {
     d.realtimeSvc as any,
     d.gastosImportacionSvc as any, // posición 12 — GastosImportacionService
     d.ds as any,                   // posición 13 — DataSource
+    { notificarAnulacionEnOrigen: jest.fn().mockResolvedValue(undefined) } as any, // posición 14 — XlinkPublicarService
   );
 }
 

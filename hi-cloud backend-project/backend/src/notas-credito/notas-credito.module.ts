@@ -6,9 +6,10 @@ import { NotaCreditoPDFService } from './nc-pdf.service';
 import { NotaCredito } from './entities/nota-credito.entity';
 import { NotaCreditoDetalle } from './entities/nota-credito-detalle.entity';
 import { ContabilidadModule } from '../contabilidad/contabilidad.module';
+import { XlinkModule } from '../xlink/xlink.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([NotaCredito, NotaCreditoDetalle]), ContabilidadModule],
+  imports: [TypeOrmModule.forFeature([NotaCredito, NotaCreditoDetalle]), ContabilidadModule, XlinkModule],
   controllers: [NotasCreditoController],
   providers: [NotasCreditoService, NotaCreditoPDFService],
   exports: [NotasCreditoService],

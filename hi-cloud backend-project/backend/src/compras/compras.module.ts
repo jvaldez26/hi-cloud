@@ -14,6 +14,7 @@ import { ContabilidadModule }    from '../contabilidad/contabilidad.module';
 import { TenantModule }          from '../tenant/tenant.module';
 import { ValoracionStockModule }      from '../valoracion-stock/valoracion-stock.module';
 import { GastosImportacionModule }    from '../gastos-importacion/gastos-importacion.module';
+import { XlinkModule } from '../xlink/xlink.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { GastosImportacionModule }    from '../gastos-importacion/gastos-importa
     ProveedoresModule, ProductosModule, InventarioModule,
     CxPModule, ContabilidadModule, TenantModule,
     ValoracionStockModule, GastosImportacionModule,
+    XlinkModule,
   ],
   controllers: [ComprasController],
   providers:   [ComprasService, ComprasPdfService],

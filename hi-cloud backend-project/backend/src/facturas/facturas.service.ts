@@ -38,6 +38,8 @@ import {
   type LineaDescuentoInput,
 } from '../common/calculo/descuento-documento';
 import { VendedorResolverService } from './vendedor/vendedor-resolver.service';
+import { XlinkPublicarService } from '../xlink/xlink-publicar.service';
+import { XlinkTipoDocumento } from '../xlink/entities/xlink-documento.entity';
 
 @Injectable()
 export class FacturasService {
@@ -67,6 +69,7 @@ export class FacturasService {
     private facturaEmail:      FacturaEmailService,
     @InjectDataSource() private dataSource: DataSource,
     private vendedorResolver: VendedorResolverService,
+    private xlinkPublicar: XlinkPublicarService,
   ) {}
 
 
@@ -1467,6 +1470,14 @@ export class FacturasService {
           `Cancelación de factura ${factura.folio}`,
         );
       }
+    }
+
+    // TIPO B: si esta factura se publicó por HiCloud Xlink, avisar sin
+    // romper la cancelación — ver XlinkPublicarService.notificarAnulacionEnOrigen.
+    if (estado === FacturaEstado.CANCELADA) {
+      await this.xlinkPublicar.notificarAnulacionEnOrigen(XlinkTipoDocumento.FACTURA_CREDITO, id).catch(err => {
+        reportServiceError(err, 'xlink_notificar_anulacion_factura', { facturaId: String(id) });
+      });
     }
 
     await this.facturaRepository.update(id, { estado });

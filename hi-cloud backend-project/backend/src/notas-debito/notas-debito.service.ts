@@ -9,6 +9,9 @@ import { PaginationDto } from '../common/dto/pagination.dto';
 import { AsientosAutomaticosService } from '../contabilidad/services/asientos-automaticos.service';
 import { TipoOrigenAsiento } from '../contabilidad/entities/asiento-contable.entity';
 import { fechaHoyRD } from '../common/utils/fecha-local.util';
+import { reportServiceError } from '../common/observability/sentry';
+import { XlinkPublicarService } from '../xlink/xlink-publicar.service';
+import { XlinkTipoDocumento } from '../xlink/entities/xlink-documento.entity';
 
 interface DetalleDto {
   productoId?:    number;
@@ -42,6 +45,7 @@ export class NotasDebitoService {
     private tenantSvc: TenantService,
     @InjectDataSource() private ds: DataSource,
     private asientosService: AsientosAutomaticosService,
+    private xlinkPublicar: XlinkPublicarService,
   ) {}
 
   // ─── Folio ────────────────────────────────────────────────────────────────────
@@ -280,6 +284,11 @@ export class NotasDebitoService {
       fechaHoyRD(),
       `Anulación de nota de débito ${nd.numero}`,
     );
+
+    // TIPO B: si esta ND se publicó por HiCloud Xlink, avisar sin romper la anulación.
+    await this.xlinkPublicar.notificarAnulacionEnOrigen(XlinkTipoDocumento.NOTA_DEBITO, id).catch(err => {
+      reportServiceError(err, 'xlink_notificar_anulacion_nd', { notaDebitoId: String(id) });
+    });
 
     return this.findOne(id);
   }

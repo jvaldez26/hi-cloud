@@ -21,11 +21,14 @@ function makeService(nc: any) {
   const tenantSvc      = { getEmpresaId: () => nc.empresaId };
   const asientosService = { revertirAsiento: jest.fn().mockResolvedValue({ id: 1 }) };
 
+  const xlinkPublicar = { notificarAnulacionEnOrigen: jest.fn().mockResolvedValue(undefined) };
+
   const svc: any = Object.create(NotasCreditoService.prototype);
   svc.ncRepo          = ncRepo;
   svc.tenantSvc       = tenantSvc;
   svc.asientosService = asientosService;
-  return { svc, ncRepo, asientosService };
+  svc.xlinkPublicar   = xlinkPublicar;
+  return { svc, ncRepo, asientosService, xlinkPublicar };
 }
 
 describe('NotasCreditoService.anular revierte el asiento propio', () => {

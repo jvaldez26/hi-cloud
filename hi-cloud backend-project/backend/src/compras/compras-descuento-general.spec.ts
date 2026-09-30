@@ -36,7 +36,7 @@ function buildService(productos: Map<number, any>): any {
     {} as any, {} as any, {} as any,
     productosService as any,
     {} as any, {} as any, {} as any, {} as any, {} as any,
-    {} as any, {} as any, {} as any, {} as any,
+    {} as any, {} as any, {} as any, {} as any, {} as any,
   );
 }
 
@@ -179,7 +179,7 @@ describe('ComprasService.previsualizarAsiento — refleja el descuento general',
       productosService as any,
       {} as any, {} as any, {} as any, {} as any,
       asientosSvc as any,
-      {} as any, {} as any, {} as any, {} as any,
+      {} as any, {} as any, {} as any, {} as any, {} as any,
     );
 
     await service.previsualizarAsiento({

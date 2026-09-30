@@ -71,6 +71,7 @@ function buildService(d: ReturnType<typeof buildDeps>): ComprasService {
     d.realtimeSvc as any,
     d.gastosImportacionSvc as any,
     d.ds as any,
+    { notificarAnulacionEnOrigen: jest.fn().mockResolvedValue(undefined) } as any,
   );
 }
 

@@ -175,6 +175,7 @@ function buildServiceME(d: ReturnType<typeof buildDepsME>): ComprasService {
     { registrarDesdeCompra: jest.fn() } as any,
     d.inventarioSvc as any, d.valoracionSvc as any, d.cxpSvc as any, d.asientosSvc as any,
     d.tenantSvc as any, d.realtimeSvc as any, d.gastosImportacionSvc as any, d.ds as any,
+    { notificarAnulacionEnOrigen: jest.fn().mockResolvedValue(undefined) } as any,
   );
 }
 

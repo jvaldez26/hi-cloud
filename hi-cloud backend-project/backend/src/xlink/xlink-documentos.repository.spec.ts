@@ -71,6 +71,28 @@ describe('XlinkDocumentosRepository — aislamiento por eid (sin empresaId propi
     expect(repoMock.findOne).toHaveBeenCalledWith({ where: { id: 42, origenEmpresaId: 7 } });
   });
 
+  it('buscarPorOrigenParaAnular(): filtra por origenEmpresaId + tipoDocumento + documentoOrigenId', async () => {
+    const repoMock = makeRepoMock();
+    const repo = new XlinkDocumentosRepository(repoMock as any, makeTenantSvc(7) as any);
+
+    await repo.buscarPorOrigenParaAnular(XlinkTipoDocumento.FACTURA_CREDITO, 100);
+
+    expect(repoMock.findOne).toHaveBeenCalledWith({
+      where: { origenEmpresaId: 7, tipoDocumento: XlinkTipoDocumento.FACTURA_CREDITO, documentoOrigenId: 100 },
+    });
+  });
+
+  it('buscarPorDocumentoGeneradoComoDestino(): filtra por destinoEmpresaId + tipo/id generado', async () => {
+    const repoMock = makeRepoMock();
+    const repo = new XlinkDocumentosRepository(repoMock as any, makeTenantSvc(7) as any);
+
+    await repo.buscarPorDocumentoGeneradoComoDestino('cotizacion', 55);
+
+    expect(repoMock.findOne).toHaveBeenCalledWith({
+      where: { destinoEmpresaId: 7, documentoGeneradoTipo: 'cotizacion', documentoGeneradoId: 55 },
+    });
+  });
+
   it('existePorOrigen(): cuenta solo dentro del origenEmpresaId del CLS', async () => {
     const repoMock = makeRepoMock();
     repoMock.count.mockResolvedValue(1);

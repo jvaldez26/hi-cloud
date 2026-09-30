@@ -47,6 +47,7 @@ function buildService(mockCompra: ReturnType<typeof makeCompra>) {
     realtimeSvc as any,
     {} as any,                    // gastosImportacionSvc
     {} as any,                    // ds
+    { notificarAnulacionEnOrigen: jest.fn().mockResolvedValue(undefined) } as any, // xlinkPublicar
   );
 
   return { service, compraRepo, realtimeSvc };

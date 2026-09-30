@@ -3,14 +3,19 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Body,
   Query,
+  Param,
+  ParseIntPipe,
   UseGuards,
   BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { XlinkService } from './xlink.service';
+import { XlinkPublicarService } from './xlink-publicar.service';
 import { VincularXlinkDto } from './dto/vincular-xlink.dto';
+import { PublicarXlinkDto } from './dto/publicar-xlink.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -24,7 +29,10 @@ import { XlinkDirectorioThrottlerGuard } from './guards/xlink-directorio-throttl
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth('access-token')
 export class XlinkController {
-  constructor(private xlinkService: XlinkService) {}
+  constructor(
+    private xlinkService: XlinkService,
+    private xlinkPublicarService: XlinkPublicarService,
+  ) {}
 
   @Patch('visibilidad')
   @UseGuards(RolesGuard)
@@ -58,5 +66,21 @@ export class XlinkController {
   @ApiOperation({ summary: 'Vincula (o crea) un cliente/proveedor propio con la empresa contraparte' })
   vincular(@Body() dto: VincularXlinkDto) {
     return this.xlinkService.vincular(dto);
+  }
+
+  @Post('publicar')
+  @ApiOperation({ summary: 'Publica/envía documentos por HiCloud Xlink — cada uno se procesa de forma independiente' })
+  publicar(@Body() dto: PublicarXlinkDto, @GetUser() usuario: User) {
+    return this.xlinkPublicarService.publicar(dto, {
+      id: usuario.id,
+      nombre: usuario.nombre,
+      email: usuario.email,
+    });
+  }
+
+  @Delete('enviados/:id')
+  @ApiOperation({ summary: 'Retira un documento enviado — solo si el receptor aún no lo procesó' })
+  eliminarEnviado(@Param('id', ParseIntPipe) id: number) {
+    return this.xlinkPublicarService.eliminarEnviado(id);
   }
 }

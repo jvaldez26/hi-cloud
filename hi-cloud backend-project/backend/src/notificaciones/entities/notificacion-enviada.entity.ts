@@ -19,6 +19,8 @@ export enum TipoNotificacion {
   ECF_CUOTA_EXCEDIDA   = 'ecf_cuota_excedida',
   NOMINA_PENDIENTE     = 'nomina_pendiente',
   MANUAL               = 'manual',
+  /** HiCloud Xlink — llegó un documento nuevo (canal SISTEMA, campanita). */
+  XLINK_DOCUMENTO_RECIBIDO = 'xlink_documento_recibido',
 }
 
 export enum CanalNotificacion {

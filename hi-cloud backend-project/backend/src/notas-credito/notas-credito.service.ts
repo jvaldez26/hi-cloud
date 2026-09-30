@@ -11,6 +11,9 @@ import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { AsientosAutomaticosService } from '../contabilidad/services/asientos-automaticos.service';
 import { TipoOrigenAsiento } from '../contabilidad/entities/asiento-contable.entity';
 import { fechaHoyRD } from '../common/utils/fecha-local.util';
+import { reportServiceError } from '../common/observability/sentry';
+import { XlinkPublicarService } from '../xlink/xlink-publicar.service';
+import { XlinkTipoDocumento } from '../xlink/entities/xlink-documento.entity';
 
 interface DetalleDto {
   productoId?:    number;
@@ -46,6 +49,7 @@ export class NotasCreditoService {
     private tenantSvc: TenantService,
     @InjectDataSource() private ds: DataSource,
     private asientosService: AsientosAutomaticosService,
+    private xlinkPublicar: XlinkPublicarService,
   ) {}
 
   // ─── Folio (atómico con SELECT FOR UPDATE) ────────────────────────────────────
@@ -411,6 +415,11 @@ export class NotasCreditoService {
       fechaHoyRD(),
       `Anulación de nota de crédito ${nc.numero}`,
     );
+
+    // TIPO B: si esta NC se publicó por HiCloud Xlink, avisar sin romper la anulación.
+    await this.xlinkPublicar.notificarAnulacionEnOrigen(XlinkTipoDocumento.NOTA_CREDITO, id).catch(err => {
+      reportServiceError(err, 'xlink_notificar_anulacion_nc', { notaCreditoId: String(id) });
+    });
 
     return this.findOne(id);
   }

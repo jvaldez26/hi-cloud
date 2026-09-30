@@ -23,6 +23,9 @@ import { User } from '../users/users.entity';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { GastosImportacionService } from '../gastos-importacion/gastos-importacion.service';
 import { calcularTotalesConDescuento } from '../common/calculo/descuento-documento';
+import { reportServiceError } from '../common/observability/sentry';
+import { XlinkPublicarService } from '../xlink/xlink-publicar.service';
+import { XlinkTipoDocumento } from '../xlink/entities/xlink-documento.entity';
 
 const ITBIS_DEFAULT = 18;
 
@@ -44,6 +47,7 @@ export class ComprasService {
     private realtimeService:         RealtimeService,
     private gastosImportacionService: GastosImportacionService,
     @InjectDataSource() private ds:  DataSource,
+    private xlinkPublicar: XlinkPublicarService,
   ) {}
 
   /**
@@ -685,6 +689,14 @@ export class ComprasService {
           almacenIdCompra,
         );
       }
+    }
+
+    // TIPO B: si esta Compra (OC) se publicó por HiCloud Xlink, avisar sin
+    // romper la cancelación.
+    if (estado === CompraEstado.CANCELADA) {
+      await this.xlinkPublicar.notificarAnulacionEnOrigen(XlinkTipoDocumento.ORDEN_COMPRA, id).catch(err => {
+        reportServiceError(err, 'xlink_notificar_anulacion_compra', { compraId: String(id) });
+      });
     }
 
     const updatePayload: Partial<Compra> = { estado };

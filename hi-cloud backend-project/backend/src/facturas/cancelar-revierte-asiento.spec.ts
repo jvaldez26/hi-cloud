@@ -23,6 +23,7 @@ function makeService(factura: any) {
   const cxcService        = { anularPorFacturaId: jest.fn().mockResolvedValue('anulada') };
   const asientosService   = { revertirAsiento: jest.fn().mockResolvedValue({ id: 1 }) };
   const realtimeService   = { notify: jest.fn() };
+  const xlinkPublicar     = { notificarAnulacionEnOrigen: jest.fn().mockResolvedValue(undefined) };
 
   const svc: any = Object.create(FacturasService.prototype);
   svc.logger            = { log: jest.fn(), warn: jest.fn(), error: jest.fn() };
@@ -32,7 +33,8 @@ function makeService(factura: any) {
   svc.cxcService        = cxcService;
   svc.asientosService   = asientosService;
   svc.realtimeService   = realtimeService;
-  return { svc, facturaRepository, inventarioService, cxcService, asientosService, realtimeService };
+  svc.xlinkPublicar      = xlinkPublicar;
+  return { svc, facturaRepository, inventarioService, cxcService, asientosService, realtimeService, xlinkPublicar };
 }
 
 describe('FacturasService.cambiarEstado → CANCELADA revierte el asiento de venta', () => {

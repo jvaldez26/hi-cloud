@@ -95,6 +95,21 @@ export class XlinkDocumentosRepository {
     return this.repo.findOne({ where: { id, origenEmpresaId } });
   }
 
+  /**
+   * ¿Este documento (por su id ORIGINAL, no el id de xlink_documentos) ya
+   * fue publicado por mi empresa? Usado por el gancho de anulación — si el
+   * emisor anula un documento después de publicarlo, hay que encontrarlo
+   * por su documentoOrigenId, no por el id de la fila de Xlink (que el
+   * caller de facturas/NC/ND/compras no conoce).
+   */
+  async buscarPorOrigenParaAnular(
+    tipoDocumento: XlinkTipoDocumento,
+    documentoOrigenId: number,
+  ): Promise<XlinkDocumento | null> {
+    const origenEmpresaId = this.tenantService.getEmpresaId();
+    return this.repo.findOne({ where: { origenEmpresaId, tipoDocumento, documentoOrigenId } });
+  }
+
   async listarComoDestino(filtros: XlinkListaFiltros) {
     return this.listar('destinoEmpresaId', filtros);
   }
@@ -122,6 +137,20 @@ export class XlinkDocumentosRepository {
       .getManyAndCount();
 
     return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+  }
+
+  /**
+   * ¿El documento generado (ej. una Cotización) que YO recibí vino a su vez
+   * de un xlink_documentos anterior? Usado para encadenar `xlinkPadreId` al
+   * publicar una Factura que se emitió a partir de ese documento generado —
+   * ver XlinkPublicarService.
+   */
+  async buscarPorDocumentoGeneradoComoDestino(
+    documentoGeneradoTipo: string,
+    documentoGeneradoId: number,
+  ): Promise<XlinkDocumento | null> {
+    const destinoEmpresaId = this.tenantService.getEmpresaId();
+    return this.repo.findOne({ where: { destinoEmpresaId, documentoGeneradoTipo, documentoGeneradoId } });
   }
 
   /** Conteo para el badge de "Por Procesar" del sidebar. */
