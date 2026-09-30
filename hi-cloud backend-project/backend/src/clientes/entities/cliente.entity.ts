@@ -78,4 +78,13 @@ export class Cliente extends TenantBaseEntity {
 
   @Column({ type: 'timestamp', nullable: true })
   portalTokenExpiry?: Date;
+
+  // ── HiCloud Xlink ─────────────────────────────────────────────────────────
+  /** xlinkId (no el id interno) de la empresa contraparte vinculada a este cliente. */
+  @Column({ type: 'uuid', nullable: true })
+  xlinkEmpresaXlinkId?: string;
+
+  /** Solo afecta el intento de match automático por SKU en Fase 4 — nunca la obligatoriedad del mapeo. */
+  @Column({ default: false })
+  sincronizarArticulosXlink!: boolean;
 }

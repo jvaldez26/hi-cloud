@@ -182,4 +182,21 @@ export class Empresa extends BaseEntity {
 
   @Column({ default: true })
   creditoHabilitado!: boolean;
+
+  // ── HiCloud Xlink ─────────────────────────────────────────────────────────
+  //
+  // Identidad pública en el directorio — NUNCA exponer/enlazar por `id`
+  // (secuencial, permitiría enumerar empresas). Ver
+  // 1768400000000-AddXlinkToEmpresa.ts.
+
+  /** Identificador estable que otras empresas usan para vincularse — nunca el id interno. */
+  @Column({ type: 'uuid' })
+  xlinkId!: string;
+
+  /** Publicarse en el directorio es un acto explícito del Admin (default false). */
+  @Column({ default: false })
+  xlinkVisible!: boolean;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  xlinkVisibleDesde?: Date;
 }

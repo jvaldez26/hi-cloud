@@ -42,4 +42,13 @@ export class Proveedor extends TenantBaseEntity {
   /** Proveedor sin RNC (persona física o negocio informal) — genera E41 en compras */
   @Column({ type: 'boolean', nullable: true, default: false })
   esInformal?: boolean;
+
+  // ── HiCloud Xlink ─────────────────────────────────────────────────────────
+  /** xlinkId (no el id interno) de la empresa contraparte vinculada a este proveedor. */
+  @Column({ type: 'uuid', nullable: true })
+  xlinkEmpresaXlinkId?: string;
+
+  /** Solo afecta el intento de match automático por SKU en Fase 4 — nunca la obligatoriedad del mapeo. */
+  @Column({ default: false })
+  sincronizarArticulosXlink!: boolean;
 }
