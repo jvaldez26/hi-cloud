@@ -276,6 +276,9 @@ export class AuthService implements OnModuleInit {
           telefono:    dto.telefono,
           sector:      dto.sectorEmpresarial,
           sectorOtroTexto: dto.sectorEmpresarial === 'otro' ? dto.sectorOtroTexto : undefined,
+          // manager.insert() no dispara @BeforeInsert (solo save() lo hace) —
+          // sin esto quedaba NULL y violaba el NOT NULL de la migración de Xlink.
+          xlinkId: randomUUID(),
         });
         const empresaId = empresaResult.identifiers[0].id as number;
 

@@ -9,6 +9,7 @@ import { NotasCreditoComprasModule } from '../notas-credito-compras/notas-credit
 import { NotasCreditoModule } from '../notas-credito/notas-credito.module';
 import { FacturasModule } from '../facturas/facturas.module';
 import { ProductosModule } from '../productos/productos.module';
+import { AuditoriaModule } from '../auditoria/auditoria.module';
 
 /**
  * Módulo SEPARADO de XlinkModule a propósito: ComprasModule/FacturasModule/
@@ -28,6 +29,7 @@ import { ProductosModule } from '../productos/productos.module';
     NotasCreditoModule,
     FacturasModule,
     ProductosModule,
+    AuditoriaModule,
   ],
   controllers: [XlinkRecibirController],
   providers: [XlinkRecibirService, XlinkMapeosService],
