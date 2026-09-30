@@ -50,7 +50,6 @@ interface DocumentoParaPublicar {
 const ENTIDAD_POR_TIPO: Record<XlinkTipoDocumento, string> = {
   [XlinkTipoDocumento.FACTURA_CREDITO]: 'Factura',
   [XlinkTipoDocumento.NOTA_CREDITO]:    'NotaCredito',
-  [XlinkTipoDocumento.NOTA_DEBITO]:     'NotaDebito',
   [XlinkTipoDocumento.ORDEN_COMPRA]:    'Compra',
 };
 
@@ -245,7 +244,6 @@ export class XlinkPublicarService {
     switch (tipoDocumento) {
       case XlinkTipoDocumento.FACTURA_CREDITO: return this.resolverFactura(id, empresaId);
       case XlinkTipoDocumento.NOTA_CREDITO:    return this.resolverNotaCredito(id, empresaId);
-      case XlinkTipoDocumento.NOTA_DEBITO:     return this.resolverNotaDebito(id, empresaId);
       case XlinkTipoDocumento.ORDEN_COMPRA:    return this.resolverOrdenCompra(id, empresaId);
     }
   }
@@ -346,48 +344,6 @@ export class XlinkPublicarService {
       destinoXlinkId: nc.xlinkEmpresaXlinkId,
       destinoNombreError: nc.clienteNombre ? `El cliente "${nc.clienteNombre}"` : 'El cliente de esta NC',
       entidadAuditoria: ENTIDAD_POR_TIPO[XlinkTipoDocumento.NOTA_CREDITO],
-    });
-  }
-
-  private async resolverNotaDebito(id: number, empresaId: number): Promise<DocumentoParaPublicar> {
-    const [nd] = await this.ds.query(
-      `
-      SELECT nd.id, nd.numero AS folio, nd.fecha::text AS fecha, nd.total, nd.estado,
-             nd.moneda, nd."tipoCambio", nd."clienteId", cl.nombre AS "clienteNombre", cl."xlinkEmpresaXlinkId",
-             e.numero AS "ncfOrigen", e."estadoDGII"
-      FROM notas_debito nd
-      LEFT JOIN clientes cl ON cl.id = nd."clienteId"
-      LEFT JOIN ecf e ON e."documentoOrigenId" = nd.id AND e."documentoOrigenTipo" = 'NOTA_DEBITO'
-      WHERE nd.id = $1 AND nd."empresaId" = $2 AND nd."isActive" = true
-      `,
-      [id, empresaId],
-    );
-    if (!nd) throw new BadRequestException(`Nota de Débito #${id} no existe`);
-    if (nd.estado === 'anulada') throw new BadRequestException(`La ND ${nd.folio} está anulada`);
-    if (!ESTADOS_ECF_ACEPTABLES.includes(nd.estadoDGII)) {
-      throw new BadRequestException(
-        `La ND ${nd.folio} no tiene un e-CF aceptado por DGII (estado actual: ${nd.estadoDGII ?? 'sin e-CF'}) — no se puede publicar`,
-      );
-    }
-
-    const lineas = await this.ds.query(
-      `
-      SELECT ndd."productoId", ndd.descripcion, ndd.cantidad::numeric, ndd."precioUnitario"::numeric,
-             0::numeric AS descuento, ndd."porcentajeIva"::numeric,
-             ndd.subtotal::numeric AS "montoItem", ndd.iva::numeric AS itbis,
-             p.codigo AS sku, ndd."unidadMedida" AS unidad
-      FROM nota_debito_detalles ndd
-      LEFT JOIN productos p ON p.id = ndd."productoId"
-      WHERE ndd."notaDebitoId" = $1
-      ORDER BY ndd.id
-      `,
-      [id],
-    );
-
-    return this.armarDocumento(nd, lineas, {
-      destinoXlinkId: nd.xlinkEmpresaXlinkId,
-      destinoNombreError: nd.clienteNombre ? `El cliente "${nd.clienteNombre}"` : 'El cliente de esta ND',
-      entidadAuditoria: ENTIDAD_POR_TIPO[XlinkTipoDocumento.NOTA_DEBITO],
     });
   }
 

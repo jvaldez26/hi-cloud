@@ -1,10 +1,16 @@
 import { Entity, Column, Index } from 'typeorm';
 import { BaseEntity } from '../../common/entities/base.entity';
 
+/**
+ * Nota de Débito de proveedor queda FUERA del MVP a propósito — no existe
+ * la entidad "ND de proveedor" (lado compras) en el sistema (ver
+ * notas-debito, que es exclusivamente NC/ND de VENTAS a cliente). No se
+ * puede publicar ni recibir una ND por Xlink: ni el botón aparece, ni este
+ * enum la incluye. Deuda anotada, no bloqueante.
+ */
 export enum XlinkTipoDocumento {
   FACTURA_CREDITO = 'factura_credito',
   NOTA_CREDITO    = 'nota_credito',
-  NOTA_DEBITO     = 'nota_debito',
   ORDEN_COMPRA    = 'orden_compra',
 }
 

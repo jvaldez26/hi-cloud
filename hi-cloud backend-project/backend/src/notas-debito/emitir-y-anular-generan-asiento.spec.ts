@@ -22,14 +22,11 @@ function makeService(nd: any) {
     revertirAsiento:   jest.fn().mockResolvedValue({ id: 1 }),
   };
 
-  const xlinkPublicar = { notificarAnulacionEnOrigen: jest.fn().mockResolvedValue(undefined) };
-
   const svc: any = Object.create(NotasDebitoService.prototype);
   svc.ndRepo          = ndRepo;
   svc.tenantSvc       = tenantSvc;
   svc.asientosService = asientosService;
-  svc.xlinkPublicar   = xlinkPublicar;
-  return { svc, ndRepo, asientosService, xlinkPublicar };
+  return { svc, ndRepo, asientosService };
 }
 
 describe('NotasDebitoService — emitir genera asiento, anular lo revierte', () => {
