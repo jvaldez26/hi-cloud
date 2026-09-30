@@ -523,6 +523,76 @@ export class ComprasService {
   }
 
   /**
+   * HiCloud Xlink: aplica los datos de una factura de proveedor RECIBIDA
+   * sobre una Compra propia que sigue en ENVIADA (la OC que le mandamos a
+   * ese mismo proveedor) — reemplaza cabecera y líneas enteras con lo que
+   * la factura dice (es la verdad fiscal), en vez de crear una compra
+   * nueva y dejar la OC abierta para siempre. Mismo patrón que update(),
+   * pero habilitado en ENVIADA en vez de BORRADOR. De aquí en adelante el
+   * camino es el normal: XlinkRecibirService llama cambiarEstado(RECIBIDA).
+   */
+  async aplicarFacturaProveedorSobreEnviada(id: number, dto: CreateCompraDto): Promise<Compra> {
+    const compra = await this.findOne(id);
+    if (compra.estado !== CompraEstado.ENVIADA) {
+      throw new BadRequestException(
+        `Solo se puede aplicar una factura sobre una Compra en estado "enviada". Esta está "${compra.estado}".`,
+      );
+    }
+    const empresaId = this.tenantService.getEmpresaId();
+    await this.proveedoresService.findOne(dto.proveedorId);
+
+    const { detallesData, subtotalCompra, itbisCompra, subtotalCompraDOP, itbisCompraDOP } =
+      await this.calcularDetalles(dto);
+
+    const tipoPago    = dto.tipoPago ?? 'credito';
+    const diasCredito = dto.diasCredito ?? 30;
+    let fechaVencimiento: Date | null = null;
+    if (tipoPago === 'credito') {
+      fechaVencimiento = new Date(dto.fecha);
+      fechaVencimiento.setDate(fechaVencimiento.getDate() + diasCredito);
+    }
+    const montoItbisTotal    = Number(itbisCompra.toFixed(2));
+    const totalBruto         = Number((subtotalCompra + itbisCompra).toFixed(2));
+    const montoItbisTotalDOP = Number(itbisCompraDOP.toFixed(2));
+    const totalBrutoDOP      = Number((subtotalCompraDOP + itbisCompraDOP).toFixed(2));
+
+    await this.ds.transaction(async (em) => {
+      await em.getRepository(Compra).update(
+        { id, empresaId },
+        {
+          fecha:                  new Date(dto.fecha),
+          proveedorId:            dto.proveedorId,
+          numeroFacturaProveedor: dto.numeroFacturaProveedor,
+          tipoBienes:             dto.tipoBienes ?? null,
+          formaPago:              dto.formaPago  ?? null,
+          subtotal:               Number(subtotalCompra.toFixed(2)),
+          itbis:                  montoItbisTotal,
+          total:                  totalBruto,
+          subtotalDOP:            Number(subtotalCompraDOP.toFixed(2)),
+          itbisDOP:               montoItbisTotalDOP,
+          totalDOP:               totalBrutoDOP,
+          netoPagar:              totalBruto,
+          netoPagarDOP:           totalBrutoDOP,
+          moneda:                 dto.moneda ?? 'DOP',
+          tipoCambio:             dto.tipoCambio ?? 1,
+          tipoPago,
+          diasCredito,
+          fechaVencimiento:       fechaVencimiento ?? undefined,
+        } as any,
+      );
+
+      const detalleRepo = em.getRepository(CompraDetalle);
+      await detalleRepo.delete({ compraId: id });
+      await detalleRepo.save(
+        detalleRepo.create(detallesData.map(d => ({ ...d, compraId: id }))),
+      );
+    });
+
+    this.realtimeService.notify(empresaId, 'compra', 'updated', id);
+    return this.findOne(id);
+  }
+
+  /**
    * Edición acotada post-borrador: solo NCF del proveedor + tipoBienes/formaPago
    * (606). `update()` reemplaza cabecera y líneas enteras y por eso está
    * cerrado a borrador — una recibida/pagada ya movió inventario, AVCO y el

@@ -11,6 +11,16 @@ export class RecibirXlinkItemDto {
 
   @IsOptional() @IsIn(['si', 'no'])
   tipoRetencionIsr?: 'si' | 'no';
+
+  /**
+   * Aplicar esta factura sobre una Compra propia que sigue ENVIADA (la OC
+   * que le mandamos a este mismo proveedor), en vez de crear una compra
+   * nueva. El frontend lo ofrece cuando detecta OCs abiertas del mismo
+   * proveedor sin cadena automática (ver xlinkPadreId, que si existe se
+   * aplica solo, sin necesitar esto).
+   */
+  @IsOptional() @IsInt() @IsPositive()
+  aplicarSobreCompraId?: number;
 }
 
 export class RecibirXlinkDto {

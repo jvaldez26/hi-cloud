@@ -62,7 +62,7 @@ export class XlinkRecibirService {
   }
 
   private async recibirUno(
-    item: { xlinkDocumentoId: number; tipoGasto606?: string; tipoRetencionIsr?: 'si' | 'no' },
+    item: { xlinkDocumentoId: number; tipoGasto606?: string; tipoRetencionIsr?: 'si' | 'no'; aplicarSobreCompraId?: number },
     usuario: User,
   ): Promise<RecibirXlinkResultadoItem> {
     try {
@@ -97,7 +97,7 @@ export class XlinkRecibirService {
   private async recibirFactura(
     manager: EntityManager,
     doc: XlinkDocumento,
-    item: { tipoGasto606?: string; tipoRetencionIsr?: 'si' | 'no' },
+    item: { tipoGasto606?: string; tipoRetencionIsr?: 'si' | 'no'; aplicarSobreCompraId?: number },
     usuario: User,
   ): Promise<RecibirXlinkResultadoItem> {
     if (!item.tipoGasto606) {
@@ -141,8 +141,7 @@ export class XlinkRecibirService {
     this.validarTasasItbis(snapshot.lineas, doc.numeroOrigen);
 
     const formaPago = String(snapshot.encabezado.tipoPago).toUpperCase() === 'CREDITO' ? '04' : '01';
-
-    const compra = await this.comprasService.create({
+    const compraDto = {
       proveedorId: proveedor.id,
       fecha: snapshot.encabezado.fechaOrigen,
       numeroFacturaProveedor: doc.ncfOrigen ?? undefined,
@@ -161,9 +160,36 @@ export class XlinkRecibirService {
         porcentajeItbis: l.porcentajeIva,
         descuentoMonto: l.descuento > 0 ? l.descuento : undefined,
       })),
-    } as any, usuario);
+    } as any;
+
+    // ── Completar una OC abierta en vez de duplicar ────────────────────────
+    // Encadenada (xlinkPadreId): la OC salió por Xlink, el emisor la
+    // convirtió en Cotización y facturó desde ahí — se propone esa Compra
+    // por defecto. Sin cadena, solo si el caller la pidió explícito
+    // (aplicarSobreCompraId) — el frontend es quien ofrece esa elección.
+    // Solo aplica si la Compra SIGUE en ENVIADA; si no, compra nueva.
+    const ocAbiertaId = await this.resolverOcAbiertaParaAplicar(manager, doc, item.aplicarSobreCompraId, proveedor.id);
+
+    let compra: any;
+    let yaExistiaComoOc = false;
+    if (ocAbiertaId) {
+      compra = await this.comprasService.aplicarFacturaProveedorSobreEnviada(ocAbiertaId, compraDto);
+      yaExistiaComoOc = true;
+    } else {
+      compra = await this.comprasService.create(compraDto, usuario);
+    }
 
     if (!this.montosCoinciden(compra.total, doc.totalOrigen)) {
+      if (yaExistiaComoOc) {
+        // No se cancela la Compra: sigue siendo la OC original, solo se
+        // revierte el intento de aplicar la factura sobre ella dejándola
+        // como estaba — cancelarla destruiría un documento que el usuario
+        // sí quiere conservar.
+        throw new BadRequestException(
+          `El total de la factura (${Number(doc.totalOrigen).toFixed(2)}) no coincide con lo recalculado ` +
+          `(${Number(compra.total).toFixed(2)}) al aplicarla sobre ${compra.folio} — no se aplicó ningún cambio en firme.`,
+        );
+      }
       await this.comprasService.cambiarEstado(compra.id, CompraEstado.CANCELADA).catch(() => {});
       throw new BadRequestException(
         `El total de la compra creada (${Number(compra.total).toFixed(2)}) no coincide con el de origen ` +
@@ -174,7 +200,52 @@ export class XlinkRecibirService {
     await this.comprasService.cambiarEstado(compra.id, CompraEstado.RECIBIDA);
     await this.marcarEcfRecibidoProcesado(manager, empresaId, doc.ncfOrigen);
 
+    if (yaExistiaComoOc) {
+      await this.auditoria.registrar({
+        userId: usuario.id, userName: usuario.nombre ?? usuario.email,
+        accion: AccionAuditoria.UPDATE, modulo: 'xlink', entidad: 'Compra', entidadId: String(compra.id),
+        descripcion: `HiCloud Xlink: factura ${doc.numeroOrigen} aplicada sobre la OC ${compra.folio} — sus datos se reemplazaron por los de la factura (verdad fiscal). Revisar diferencias de cantidad/precio contra lo pedido originalmente.`,
+        metodo: 'POST', ruta: '/xlink/recibir', exitoso: true,
+      }).catch(() => { /* la auditoría no debe romper la recepción */ });
+    }
+
     return this.marcarProcesadoYAuditar(manager, doc, usuario, 'compra', compra.id, compra.folio, false);
+  }
+
+  /**
+   * Resuelve, si aplica, la Compra ENVIADA sobre la que hay que aplicar
+   * esta factura en vez de crear una nueva. Nunca inventa el vínculo: si
+   * la cadena no resuelve a una orden_compra en ENVIADA, o el caller no
+   * pidió explícito un id, devuelve null (compra nueva, camino normal).
+   */
+  private async resolverOcAbiertaParaAplicar(
+    manager: EntityManager,
+    doc: XlinkDocumento,
+    aplicarSobreCompraIdExplicito: number | undefined,
+    proveedorId: number,
+  ): Promise<number | null> {
+    const empresaId = this.tenantService.getEmpresaId();
+
+    if (doc.xlinkPadreId) {
+      const padre = await this.xlinkRepo.buscarPorId(doc.xlinkPadreId);
+      if (padre?.tipoDocumento === XlinkTipoDocumento.ORDEN_COMPRA && padre.origenEmpresaId === empresaId) {
+        const [compra] = await manager.query(
+          `SELECT id FROM compras WHERE id = $1 AND "empresaId" = $2 AND "proveedorId" = $3 AND estado = 'enviada' AND "isActive" = true`,
+          [padre.documentoOrigenId, empresaId, proveedorId],
+        );
+        if (compra) return compra.id;
+      }
+    }
+
+    if (aplicarSobreCompraIdExplicito) {
+      const [compra] = await manager.query(
+        `SELECT id FROM compras WHERE id = $1 AND "empresaId" = $2 AND "proveedorId" = $3 AND estado = 'enviada' AND "isActive" = true`,
+        [aplicarSobreCompraIdExplicito, empresaId, proveedorId],
+      );
+      if (compra) return compra.id;
+    }
+
+    return null;
   }
 
   // ── Nota de Crédito → NotaCreditoCompra ─────────────────────────────────
