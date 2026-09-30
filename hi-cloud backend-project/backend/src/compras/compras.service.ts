@@ -2,9 +2,10 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, EntityManager } from 'typeorm';
 import { Compra, CompraEstado } from './entities/compra.entity';
 import { CompraDetalle } from './entities/compra-detalle.entity';
 import { CreateCompraDto } from './dto/create-compra.dto';
@@ -225,6 +226,59 @@ export class ComprasService {
     return { detallesData, subtotalCompra, itbisCompra, descuentoCompra, descuentoGeneralMonto, subtotalCompraDOP, itbisCompraDOP };
   }
 
+  /**
+   * Anti-duplicado de comprobante de proveedor: el mismo RNC (no el
+   * proveedorId — dos proveedores distintos pueden compartir RNC, ver
+   * project_rnc_compartido_clientes) con el mismo numeroFacturaProveedor no
+   * puede tener dos compras activas a la vez en la misma empresa.
+   *
+   * Sin índice único todavía (decisión explícita: primero medir cuántos
+   * duplicados existen hoy en producción). El pg_advisory_xact_lock serializa
+   * el check+insert dentro de la MISMA transacción — sin él, dos requests
+   * concurrentes pueden pasar ambas el SELECT antes de que ninguna termine el
+   * INSERT. Debe llamarse con el EntityManager de una transacción activa: el
+   * lock se libera solo al terminar esa transacción (commit o rollback).
+   */
+  private async assertNcfNoDuplicado(
+    manager: EntityManager,
+    empresaId: number,
+    proveedorId: number,
+    numeroFacturaProveedor: string | null | undefined,
+    excluirCompraId?: number,
+  ): Promise<void> {
+    if (!numeroFacturaProveedor) return;
+
+    const [proveedor] = await manager.query(
+      `SELECT rnc FROM proveedores WHERE id = $1 AND "empresaId" = $2`,
+      [proveedorId, empresaId],
+    );
+    if (!proveedor?.rnc) return; // sin RNC no hay con qué cruzar entre proveedores
+
+    await manager.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [
+      `ncf:${empresaId}:${proveedor.rnc}:${numeroFacturaProveedor}`,
+    ]);
+
+    const params: unknown[] = [empresaId, proveedor.rnc, numeroFacturaProveedor];
+    let excluirSql = '';
+    if (excluirCompraId) {
+      params.push(excluirCompraId);
+      excluirSql = `AND c.id <> $${params.length}`;
+    }
+    const [duplicado] = await manager.query(
+      `SELECT c.id, c.folio FROM compras c
+       JOIN proveedores p ON p.id = c."proveedorId"
+       WHERE c."empresaId" = $1 AND p.rnc = $2 AND c."numeroFacturaProveedor" = $3
+         AND c."isActive" = true AND c.estado <> 'cancelada' ${excluirSql}
+       LIMIT 1`,
+      params,
+    );
+    if (duplicado) {
+      throw new ConflictException(
+        `Este comprobante ya está registrado en ${duplicado.folio}`,
+      );
+    }
+  }
+
   async create(dto: CreateCompraDto, usuario: User) {
     await this.proveedoresService.findOne(dto.proveedorId);
 
@@ -265,60 +319,66 @@ export class ComprasService {
 
     const almacenIdCtx = this.tenantService.getAlmacenId() ?? undefined;
 
-    const compra = this.compraRepository.create({
-      empresaId,
-      folio,
-      fecha:                  new Date(dto.fecha),
-      proveedorId:            dto.proveedorId,
-      usuarioId:              usuario.id,
-      notas:                  dto.notas,
-      numeroFacturaProveedor: dto.numeroFacturaProveedor,
-      subtotal:               Number(subtotalCompra.toFixed(2)),
-      itbis:                  montoItbisTotal,
-      descuentoTotal:         Number(descuentoCompra.toFixed(2)),
-      descuentoGeneralTipo:   dto.descuentoGeneralTipo ?? null,
-      descuentoGeneralValor:  dto.descuentoGeneralValor ?? null,
-      descuentoGeneralMonto:  Number(descuentoGeneralMonto.toFixed(2)),
-      descuentoGeneralAplicarSobre: dto.descuentoGeneralAplicarSobre ?? null,
-      total:                  totalBruto,
-      subtotalDOP:            Number(subtotalCompraDOP.toFixed(2)),
-      itbisDOP:               montoItbisTotalDOP,
-      totalDOP:               totalBrutoDOP,
-      montoRetencionItbisDOP,
-      montoRetencionIsrDOP,
-      netoPagarDOP,
-      tipoPago,
-      diasCredito,
-      fechaVencimiento,
-      // DGII 606 — nunca se inventa un valor aquí: lo que mande el DTO
-      // (la sugerencia editable del formulario, o lo que haya elegido el
-      // usuario) o NULL. La columna existía desde el inicio pero create()
-      // nunca la tocaba — toda compra quedaba en NULL para siempre.
-      tipoBienes:             dto.tipoBienes ?? null,
-      formaPago:              dto.formaPago  ?? null,
-      cuentaDestino:          dto.cuentaDestino ?? null,
-      moneda:                 dto.moneda ?? 'DOP',
-      tipoCambio:             dto.tipoCambio ?? 1,
-      retieneItbis,
-      porcentajeRetencionItbis: pctItbis,
-      montoRetencionItbis,
-      retieneIsr,
-      porcentajeRetencionIsr: pctIsr,
-      montoRetencionIsr,
-      netoPagar,
-      almacenId:              dto.almacenId ?? almacenIdCtx,
-      sucursalId,
-    } as any);
+    const savedCompraId = await this.ds.transaction(async (manager) => {
+      await this.assertNcfNoDuplicado(manager, empresaId, dto.proveedorId, dto.numeroFacturaProveedor);
 
-    const savedCompra = (await this.compraRepository.save(compra as any)) as unknown as Compra;
+      const compra = manager.getRepository(Compra).create({
+        empresaId,
+        folio,
+        fecha:                  new Date(dto.fecha),
+        proveedorId:            dto.proveedorId,
+        usuarioId:              usuario.id,
+        notas:                  dto.notas,
+        numeroFacturaProveedor: dto.numeroFacturaProveedor,
+        subtotal:               Number(subtotalCompra.toFixed(2)),
+        itbis:                  montoItbisTotal,
+        descuentoTotal:         Number(descuentoCompra.toFixed(2)),
+        descuentoGeneralTipo:   dto.descuentoGeneralTipo ?? null,
+        descuentoGeneralValor:  dto.descuentoGeneralValor ?? null,
+        descuentoGeneralMonto:  Number(descuentoGeneralMonto.toFixed(2)),
+        descuentoGeneralAplicarSobre: dto.descuentoGeneralAplicarSobre ?? null,
+        total:                  totalBruto,
+        subtotalDOP:            Number(subtotalCompraDOP.toFixed(2)),
+        itbisDOP:               montoItbisTotalDOP,
+        totalDOP:               totalBrutoDOP,
+        montoRetencionItbisDOP,
+        montoRetencionIsrDOP,
+        netoPagarDOP,
+        tipoPago,
+        diasCredito,
+        fechaVencimiento,
+        // DGII 606 — nunca se inventa un valor aquí: lo que mande el DTO
+        // (la sugerencia editable del formulario, o lo que haya elegido el
+        // usuario) o NULL. La columna existía desde el inicio pero create()
+        // nunca la tocaba — toda compra quedaba en NULL para siempre.
+        tipoBienes:             dto.tipoBienes ?? null,
+        formaPago:              dto.formaPago  ?? null,
+        cuentaDestino:          dto.cuentaDestino ?? null,
+        moneda:                 dto.moneda ?? 'DOP',
+        tipoCambio:             dto.tipoCambio ?? 1,
+        retieneItbis,
+        porcentajeRetencionItbis: pctItbis,
+        montoRetencionItbis,
+        retieneIsr,
+        porcentajeRetencionIsr: pctIsr,
+        montoRetencionIsr,
+        netoPagar,
+        almacenId:              dto.almacenId ?? almacenIdCtx,
+        sucursalId,
+      } as any);
 
-    const detalles = this.detalleRepository.create(
-      detallesData.map((d) => ({ ...d, compraId: savedCompra.id })),
-    );
-    await this.detalleRepository.save(detalles);
+      const savedCompra = (await manager.getRepository(Compra).save(compra as any)) as unknown as Compra;
 
-    this.realtimeService.notify(empresaId, 'compra', 'created', savedCompra.id);
-    return this.findOne(savedCompra.id);
+      const detalles = manager.getRepository(CompraDetalle).create(
+        detallesData.map((d) => ({ ...d, compraId: savedCompra.id })),
+      );
+      await manager.getRepository(CompraDetalle).save(detalles);
+
+      return savedCompra.id;
+    });
+
+    this.realtimeService.notify(empresaId, 'compra', 'created', savedCompraId);
+    return this.findOne(savedCompraId);
   }
 
   async findAll(pagination: PaginationDto & {
@@ -471,6 +531,8 @@ export class ComprasService {
     // facturas — casar línea a línea con lo que hay no aporta nada aquí y
     // dejaría huérfanos los detalles que el formulario borró.
     await this.ds.transaction(async (em) => {
+      await this.assertNcfNoDuplicado(em, empresaId, dto.proveedorId, dto.numeroFacturaProveedor, id);
+
       await em.getRepository(Compra).update(
         { id, empresaId },
         {
@@ -557,6 +619,8 @@ export class ComprasService {
     const totalBrutoDOP      = Number((subtotalCompraDOP + itbisCompraDOP).toFixed(2));
 
     await this.ds.transaction(async (em) => {
+      await this.assertNcfNoDuplicado(em, empresaId, dto.proveedorId, dto.numeroFacturaProveedor, id);
+
       await em.getRepository(Compra).update(
         { id, empresaId },
         {
@@ -612,14 +676,19 @@ export class ComprasService {
     }
 
     const empresaId = this.tenantService.getEmpresaId();
-    await this.compraRepository.update(
-      { id, empresaId },
-      {
-        ...(dto.numeroFacturaProveedor !== undefined && { numeroFacturaProveedor: dto.numeroFacturaProveedor }),
-        ...(dto.tipoBienes !== undefined && { tipoBienes: dto.tipoBienes }),
-        ...(dto.formaPago !== undefined && { formaPago: dto.formaPago }),
-      },
-    );
+    await this.ds.transaction(async (em) => {
+      if (dto.numeroFacturaProveedor !== undefined) {
+        await this.assertNcfNoDuplicado(em, empresaId, compra.proveedorId, dto.numeroFacturaProveedor, id);
+      }
+      await em.getRepository(Compra).update(
+        { id, empresaId },
+        {
+          ...(dto.numeroFacturaProveedor !== undefined && { numeroFacturaProveedor: dto.numeroFacturaProveedor }),
+          ...(dto.tipoBienes !== undefined && { tipoBienes: dto.tipoBienes }),
+          ...(dto.formaPago !== undefined && { formaPago: dto.formaPago }),
+        },
+      );
+    });
 
     this.realtimeService.notify(empresaId, 'compra', 'updated', id);
     return this.findOne(id);

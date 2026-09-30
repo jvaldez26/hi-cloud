@@ -1,3 +1,4 @@
+import { ConflictException } from '@nestjs/common';
 import { XlinkRecibirService } from './xlink-recibir.service';
 import { XlinkEstadoReceptor, XlinkTipoDocumento } from './entities/xlink-documento.entity';
 
@@ -109,15 +110,22 @@ describe('XlinkRecibirService.recibir — Factura a Crédito → Compra', () => 
     expect(d.comprasSvc.create).not.toHaveBeenCalled();
   });
 
-  it('ANTI-DUPLICADO: mismo RNC (proveedor) + mismo NCF ya registrado — NO crea otra compra', async () => {
+  it('ANTI-DUPLICADO: ComprasService.create rechaza (mismo RNC+NCF ya registrado) — se marca yaExistia, no se revierte nada', async () => {
     const d = buildDeps();
     d.xlinkRepo.bloquearPorIdComoDestino.mockResolvedValue({ ...DOC_FACTURA_BASE });
+    // La detección vive SOLO en ComprasService (assertNcfNoDuplicado) — este
+    // service ya no la duplica. mockQueriesFacturaOk con `existente` simula
+    // la consulta que hace este service para recuperar id/folio DESPUÉS de
+    // capturar el 409, no una detección propia previa.
     mockQueriesFacturaOk(d, { existente: { id: 777, folio: 'COM-777' } });
+    d.xlinkMapeos.resolverProducto.mockResolvedValue(10);
+    d.comprasSvc.create.mockRejectedValue(new ConflictException('Este comprobante ya está registrado en COM-777'));
 
     const resultados = await buildService(d).recibir({ items: [{ xlinkDocumentoId: 501, tipoGasto606: '02' }] }, USUARIO);
 
     expect(resultados[0]).toEqual({ xlinkDocumentoId: 501, ok: true, yaExistia: true, documentoGeneradoId: 777, numeroGenerado: 'COM-777' });
-    expect(d.comprasSvc.create).not.toHaveBeenCalled();
+    expect(d.comprasSvc.create).toHaveBeenCalledTimes(1);
+    expect(d.comprasSvc.cambiarEstado).not.toHaveBeenCalled();
     expect(d.xlinkRepo.guardar).toHaveBeenCalledWith(
       expect.objectContaining({ documentoGeneradoId: 777, estadoReceptor: XlinkEstadoReceptor.PROCESADO }),
       d.manager,

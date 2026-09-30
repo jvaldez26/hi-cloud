@@ -19,7 +19,7 @@ const EMPRESA   = 1;
 const COMPRA_ID = 99;
 
 const makeCompra = (estado: CompraEstado, extra: Record<string, unknown> = {}) => ({
-  id: COMPRA_ID, folio: 'OC-001', estado, empresaId: EMPRESA,
+  id: COMPRA_ID, folio: 'OC-001', estado, empresaId: EMPRESA, proveedorId: 5,
   numeroFacturaProveedor: null, tipoBienes: '09', formaPago: '04',
   detalles: [], proveedor: {}, usuario: {},
   ...extra,
@@ -32,6 +32,14 @@ function buildService(mockCompra: ReturnType<typeof makeCompra>) {
   };
   const tenantSvc   = { getEmpresaId: () => EMPRESA };
   const realtimeSvc = { notify: jest.fn() };
+  // manager.query siempre vacío -> assertNcfNoDuplicado no encuentra rnc del
+  // proveedor y retorna temprano: estos tests no ejercitan el anti-duplicado
+  // (eso vive en compras-anti-duplicado-ncf.spec.ts), solo actualizarNcfProveedor.
+  const manager = {
+    getRepository: jest.fn(() => compraRepo),
+    query: jest.fn().mockResolvedValue([]),
+  };
+  const ds = { transaction: jest.fn(async (cb: any) => cb(manager)) };
 
   const service = new ComprasService(
     compraRepo as any,
@@ -46,7 +54,7 @@ function buildService(mockCompra: ReturnType<typeof makeCompra>) {
     tenantSvc as any,
     realtimeSvc as any,
     {} as any,                    // gastosImportacionSvc
-    {} as any,                    // ds
+    ds as any,                    // ds
     { notificarAnulacionEnOrigen: jest.fn().mockResolvedValue(undefined) } as any, // xlinkPublicar
   );
 

@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
 import { TenantService } from '../tenant/tenant.service';
@@ -118,20 +118,6 @@ export class XlinkRecibirService {
       );
     }
 
-    // ── Anti-duplicado: mismo proveedor + mismo NCF ya registrado ──────────
-    if (doc.ncfOrigen) {
-      const [existente] = await manager.query(
-        `SELECT id, folio FROM compras
-         WHERE "empresaId" = $1 AND "proveedorId" = $2 AND "numeroFacturaProveedor" = $3
-           AND "isActive" = true AND estado <> 'cancelada' LIMIT 1`,
-        [empresaId, proveedor.id, doc.ncfOrigen],
-      );
-      if (existente) {
-        await this.marcarEcfRecibidoProcesado(manager, empresaId, doc.ncfOrigen);
-        return this.marcarProcesadoYAuditar(manager, doc, usuario, 'compra', existente.id, existente.folio, true);
-      }
-    }
-
     const snapshot = doc.snapshot as any;
     const { lineasResueltas, faltantes } = await this.resolverLineasProducto(
       manager, origenXlinkId, proveedor.id, !!proveedor.sincronizarArticulosXlink, snapshot.lineas,
@@ -172,11 +158,33 @@ export class XlinkRecibirService {
 
     let compra: any;
     let yaExistiaComoOc = false;
-    if (ocAbiertaId) {
-      compra = await this.comprasService.aplicarFacturaProveedorSobreEnviada(ocAbiertaId, compraDto);
-      yaExistiaComoOc = true;
-    } else {
-      compra = await this.comprasService.create(compraDto, usuario);
+    try {
+      if (ocAbiertaId) {
+        compra = await this.comprasService.aplicarFacturaProveedorSobreEnviada(ocAbiertaId, compraDto);
+        yaExistiaComoOc = true;
+      } else {
+        compra = await this.comprasService.create(compraDto, usuario);
+      }
+    } catch (err) {
+      // ComprasService.assertNcfNoDuplicado es la ÚNICA fuente de verdad del
+      // anti-duplicado (por RNC, no por proveedorId — dos proveedores pueden
+      // compartir RNC). Un 409 aquí significa que esta factura YA se había
+      // recibido antes (mismo comportamiento idempotente de siempre, ahora
+      // apoyado en la validación compartida en vez de un chequeo propio).
+      if (err instanceof ConflictException && doc.ncfOrigen) {
+        const [existente] = await manager.query(
+          `SELECT c.id, c.folio FROM compras c
+           JOIN proveedores p ON p.id = c."proveedorId"
+           WHERE c."empresaId" = $1 AND p.rnc = $2 AND c."numeroFacturaProveedor" = $3
+             AND c."isActive" = true AND c.estado <> 'cancelada' LIMIT 1`,
+          [empresaId, proveedor.rnc, doc.ncfOrigen],
+        );
+        if (existente) {
+          await this.marcarEcfRecibidoProcesado(manager, empresaId, doc.ncfOrigen);
+          return this.marcarProcesadoYAuditar(manager, doc, usuario, 'compra', existente.id, existente.folio, true);
+        }
+      }
+      throw err;
     }
 
     if (!this.montosCoinciden(compra.total, doc.totalOrigen)) {
