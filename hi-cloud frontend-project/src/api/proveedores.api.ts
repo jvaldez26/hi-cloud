@@ -7,6 +7,7 @@ export interface ProveedorPayload {
   direccion?: string; contacto?: string;
   categoria?: string; diasPago?: number;
   banco?: string; cuentaBancaria?: string; notas?: string;
+  sincronizarArticulosXlink?: boolean;
 }
 
 export const proveedoresApi = {

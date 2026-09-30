@@ -47,6 +47,7 @@ const PresupuestosPage   = lazy(() => import('./pages/presupuestos/PresupuestosP
 const ConfiguracionPage  = lazy(() => import('./pages/configuracion/ConfiguracionPage'));
 const ECFPage            = lazy(() => import('./pages/ecf/ECFPage'));
 const EcfRecibidosPage   = lazy(() => import('./pages/ecf-recibidos/EcfRecibidosPage'));
+const XlinkPage          = lazy(() => import('./pages/xlink/XlinkPage'));
 const AuditoriaPage      = lazy(() => import('./pages/auditoria/AuditoriaPage'));
 const ProfilePage        = lazy(() => import('./pages/profile/ProfilePage'));
 const SoportePage        = lazy(() => import('./pages/soporte/SoportePage'));
@@ -791,6 +792,7 @@ export default function App() {
                     <Route path="/ecf"                element={<ECFPage />} />
                     <Route path="/ecf/activar"        element={<RolRoute roles={['admin','contador']}><ActivacionEcfPage /></RolRoute>} />
                     <Route path="/ecf-recibidos"      element={<EcfRecibidosPage />} />
+                    <Route path="/xlink"              element={<XlinkPage />} />
 
                     {/* ── Finanzas ── */}
                     <Route path="/cxc"                element={<CxCPage />} />

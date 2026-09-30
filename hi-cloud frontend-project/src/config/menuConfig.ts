@@ -28,6 +28,10 @@ const ALL_ROLES        = ['admin', 'contador', 'vendedor', 'viewer'];
  *  backend: crear/editar producto ya requiere sesión de supervisor activa
  *  para ese rol, así que el link deja de tener sentido fuera del POS. */
 const ADMIN_CONT_VIEWER = ['admin', 'contador', 'viewer'];
+/** Único caso hoy donde super_admin entra en esta lista — HiCloud Xlink
+ *  opera por empresa, pero un super_admin que entra a una empresa (vía
+ *  impersonación) también debe poder verlo. */
+const ADMIN_CONT_SUPER = ['admin', 'contador', 'super_admin'];
 
 // ── IDs de módulos add-on ─────────────────────────────────────────────────────
 
@@ -78,6 +82,7 @@ export const PATH_ROLES: Record<string, string[]> = {
   '/ecf':                   ADMIN_CONT,
   '/ecf/activar':           ADMIN_CONT,
   '/ecf-recibidos':         ADMIN_CONT,
+  '/xlink':                 ADMIN_CONT_SUPER,
   '/retenciones':           ADMIN_CONT,
   '/declaraciones':         ADMIN_CONT,
   '/herramientas-fiscales': ADMIN_CONT,

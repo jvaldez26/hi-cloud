@@ -308,4 +308,33 @@ describe('XlinkService — listados y conteo (Fase 5)', () => {
 
     await expect(service.contarPendientes()).resolves.toEqual({ total: 4 });
   });
+
+  it('listarRecibidos() agrega contraparteXlinkId/contraparteNombre desde la empresa ORIGEN de cada fila', async () => {
+    const d = buildDeps();
+    d.xlinkRepo.listarComoDestino.mockResolvedValue({
+      data: [{ id: 1, origenEmpresaId: 3 }, { id: 2, origenEmpresaId: 3 }],
+      meta: { total: 2 },
+    });
+    d.ds.query.mockResolvedValue([{ id: 3, xlinkId: 'xlink-3', nombre: 'Proveedor X' }]);
+    const service = buildService(d);
+
+    const result = await service.listarRecibidos({});
+
+    expect(d.ds.query).toHaveBeenCalledTimes(1); // un solo query, no uno por fila
+    expect(result.data).toEqual([
+      { id: 1, origenEmpresaId: 3, contraparteXlinkId: 'xlink-3', contraparteNombre: 'Proveedor X' },
+      { id: 2, origenEmpresaId: 3, contraparteXlinkId: 'xlink-3', contraparteNombre: 'Proveedor X' },
+    ]);
+  });
+
+  it('listarEnviados() agrega contraparteXlinkId/contraparteNombre desde la empresa DESTINO de cada fila', async () => {
+    const d = buildDeps();
+    d.xlinkRepo.listarComoOrigen.mockResolvedValue({ data: [{ id: 1, destinoEmpresaId: 9 }], meta: { total: 1 } });
+    d.ds.query.mockResolvedValue([{ id: 9, xlinkId: 'xlink-9', nombre: 'Cliente Y' }]);
+    const service = buildService(d);
+
+    const result = await service.listarEnviados({});
+
+    expect(result.data).toEqual([{ id: 1, destinoEmpresaId: 9, contraparteXlinkId: 'xlink-9', contraparteNombre: 'Cliente Y' }]);
+  });
 });

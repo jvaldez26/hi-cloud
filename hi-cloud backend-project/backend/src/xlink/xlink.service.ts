@@ -41,12 +41,40 @@ export class XlinkService {
 
   /** GET /xlink/enviados — Fase 5 (listado "Documentos Enviados"). */
   async listarEnviados(filtros: XlinkListaFiltros) {
-    return this.xlinkRepo.listarComoOrigen(filtros);
+    const resultado = await this.xlinkRepo.listarComoOrigen(filtros);
+    return { ...resultado, data: await this.conContraparte(resultado.data, 'destinoEmpresaId') };
   }
 
   /** GET /xlink/recibidos — Fase 5 (tabs "Por Procesar"/"Procesados"/"Descartados", filtradas por estadoReceptor). */
   async listarRecibidos(filtros: XlinkListaFiltros) {
-    return this.xlinkRepo.listarComoDestino(filtros);
+    const resultado = await this.xlinkRepo.listarComoDestino(filtros);
+    return { ...resultado, data: await this.conContraparte(resultado.data, 'origenEmpresaId') };
+  }
+
+  /**
+   * Enriquece cada fila con el nombre y el xlinkId de la CONTRAPARTE (nunca
+   * su empresaId) — la columna "empresa relacionada" del listado, y el
+   * contraparteXlinkId que el modal de homologación necesita para guardar
+   * mapeos. Un solo query por página (IN sobre los empresaId distintos),
+   * no uno por fila.
+   */
+  private async conContraparte<T extends Record<string, any>>(
+    filas: T[],
+    campoEmpresaId: 'origenEmpresaId' | 'destinoEmpresaId',
+  ): Promise<(T & { contraparteXlinkId: string; contraparteNombre: string })[]> {
+    const ids = [...new Set(filas.map(f => f[campoEmpresaId]))];
+    if (ids.length === 0) return filas as any;
+
+    const rows = await this.ds.query(
+      `SELECT id, "xlinkId", COALESCE("nombreComercial", nombre) AS nombre FROM empresa WHERE id = ANY($1)`,
+      [ids],
+    );
+    const porId = new Map(rows.map((r: any) => [r.id, r]));
+
+    return filas.map(f => {
+      const emp = porId.get(f[campoEmpresaId]) as any;
+      return { ...f, contraparteXlinkId: emp?.xlinkId ?? null, contraparteNombre: emp?.nombre ?? '—' };
+    });
   }
 
   /** GET /xlink/pendientes/conteo — badge del sidebar. */

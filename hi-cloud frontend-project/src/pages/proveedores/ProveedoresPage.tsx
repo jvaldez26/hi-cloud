@@ -223,6 +223,11 @@ export default function ProveedoresPage() {
                 <Checkbox>Proveedor informal (sin RNC) — genera E41 en órdenes de compra</Checkbox>
               </Form.Item>
             </Col>
+            <Col xs={24}>
+              <Form.Item name="sincronizarArticulosXlink" valuePropName="checked" style={{ marginBottom: 4 }}>
+                <Checkbox>Sincronizar artículos con HiCloud Xlink — intenta emparejar productos por su código automáticamente al recibir</Checkbox>
+              </Form.Item>
+            </Col>
             <Col xs={24} sm={12}>
               <Form.Item name="telefono" label="Teléfono">
                 <Input placeholder="(809) 000-0000" />

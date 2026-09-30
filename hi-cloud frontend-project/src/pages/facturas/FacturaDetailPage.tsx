@@ -6,6 +6,7 @@ import { SkeletonTabla } from '../../components/ui/SkeletonTabla';
 import { ArrowLeftOutlined, SendOutlined, MailOutlined, FilePdfOutlined, EyeOutlined,
          PaperClipOutlined, UploadOutlined, LinkOutlined, AuditOutlined } from '@ant-design/icons';
 import WhatsAppButton from '../../components/ui/WhatsAppButton';
+import EnviarPorXlinkButton from '../xlink/EnviarPorXlinkButton';
 import EcfSeccion from '../../components/ui/EcfSeccion';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -229,6 +230,14 @@ export default function FacturaDetailPage() {
               folio={factura.folio}
               sendPdf
             />
+            {estado !== 'cancelada' && (
+              <EnviarPorXlinkButton
+                tipoDocumento="factura_credito"
+                documentoId={factura.id}
+                elegible={(factura as any).tipoPago?.toUpperCase() === 'CREDITO'}
+                motivoNoElegible="HiCloud Xlink solo envía facturas a crédito"
+              />
+            )}
             {siguientes.map(sig => (
               <Popconfirm key={sig}
                 title={`¿Cambiar estado a "${sig.toUpperCase()}"?`}

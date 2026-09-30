@@ -20,6 +20,11 @@ export class CreateProveedorDto {
   @IsBoolean()
   esInformal?: boolean;
 
+  /** HiCloud Xlink: intentar emparejar productos por producto_proveedor.codigoProveedor al recibir facturas/NC de este proveedor. */
+  @IsOptional()
+  @IsBoolean()
+  sincronizarArticulosXlink?: boolean;
+
   @IsOptional()
   @IsString({ message: 'El teléfono debe ser texto' })
   @MaxLength(20, { message: 'El teléfono no puede superar 20 caracteres' })

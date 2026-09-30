@@ -26,6 +26,7 @@ import {
   UserCheck, Calculator, Shield, Bell, Globe, Wrench, Stethoscope, Pill,
   Factory, Target, Banknote, ClipboardList, Tags,
   FileCheck, X, Lock, ChevronLeft, ChevronRight, MoreHorizontal, UtensilsCrossed, Landmark, Sprout, GraduationCap,
+  ArrowLeftRight,
   type LucideIcon,
 } from 'lucide-react';
 import { usePlan, type PlanTipo } from '../../hooks/usePlan';
@@ -46,6 +47,7 @@ import { useRealtime, useRealtimeStatus } from '../../hooks/useRealtime';
 import { useAlertas }    from '../../hooks/useAlertas';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { MENU_CATEGORIES_DATA, ADDON_IDS, PATH_ROLES, rolPuedeVerRuta } from '../../config/menuConfig';
+import { xlinkApi } from '../../api/xlink.api';
 import { ahora, hora, horaDelDiaRD } from '../../utils/fechaRD';
 
 import {
@@ -64,6 +66,7 @@ const { Text } = Typography;
 const QUICK_ITEMS: QuickItem[] = [
   { path: '/dashboard', label: 'Inicio',             Icon: Home },
   { path: '/bandeja',   label: 'Bandeja de entrada', Icon: Inbox },
+  { path: '/xlink',     label: 'HiCloud Xlink',      Icon: ArrowLeftRight },
   // La visibilidad NO se decide aquí: la da GET /activacion-ecf/estado, el mismo
   // veredicto que usa la pantalla. Si el menú calculara por su cuenta podrían
   // discrepar y llevaría a algo que no toca.
@@ -303,7 +306,7 @@ export default function AppLayout() {
   // Modal de upgrade cuando se hace click en módulo bloqueado
   const [upgradeModal, setUpgradeModal] = useState<{ label: string; planMinimo: PlanTipo } | null>(null);
 
-  const { plan: planActual, suspendida, suscripcion } = usePlan();
+  const { plan: planActual, suspendida, suscripcion, tieneModulo } = usePlan();
 
   const handleLocked = (item: SubItem, planMinimo: PlanTipo) => {
     setUpgradeModal({ label: item.label, planMinimo });
@@ -332,6 +335,21 @@ export default function AppLayout() {
   // representa "Bandeja de entrada" en conjunto, no una pestaña específica.
   const { data: noLeidos }                = useNoLeidosCount(!!user);
   const noLeidosCount                     = noLeidos?.total ?? 0;
+
+  // ── HiCloud Xlink — badge de "Por Procesar" ──────────────────────────────
+  // Mismo mecanismo que la bandeja: una sola petición, se invalida a mano
+  // (los mutations de XlinkPage invalidan esta misma queryKey) — nunca un
+  // polling nuevo.
+  const { data: xlinkPendientes } = useQuery({
+    queryKey: ['xlink-pendientes-conteo'],
+    queryFn: xlinkApi.contarPendientes,
+    enabled: !!user,
+    staleTime: Infinity,
+    gcTime: Infinity,
+    refetchOnWindowFocus: false,
+  });
+  const xlinkPendientesCount = xlinkPendientes?.total ?? 0;
+
   const queryClient                     = useQueryClient();
 
   const currentUserRole = user?.role ?? 'viewer';
@@ -715,6 +733,7 @@ export default function AppLayout() {
       // ── Fiscal ───────────────────────────────────────────────────
       '/ecf':                    () => import('../../pages/ecf/ECFPage'),
       '/ecf-recibidos':          () => import('../../pages/ecf-recibidos/EcfRecibidosPage'),
+      '/xlink':                  () => import('../../pages/xlink/XlinkPage'),
       '/declaraciones':          () => import('../../pages/declaraciones/DeclaracionesPage'),
       '/retenciones':            () => import('../../pages/retenciones/RetencionesPage'),
       // ── Comercial & Servicios ─────────────────────────────────────
@@ -877,7 +896,15 @@ export default function AppLayout() {
     // es preferible que aparezca un instante después a que parpadee y
     // se vaya.
     .filter(item => item.path !== '/ecf/activar' || activacionVisible === true)
-    .map(item => (item.path === '/bandeja' ? { ...item, badgeCount: noLeidosCount } : item));
+    // Gating del flag de plan "xlink" — activo por defecto en todos los
+    // planes (tieneModulo() siempre true hoy); si algún día un plan lo
+    // desactiva, desaparece solo, sin tocar este archivo.
+    .filter(item => item.path !== '/xlink' || tieneModulo('xlink'))
+    .map(item => {
+      if (item.path === '/bandeja') return { ...item, badgeCount: noLeidosCount };
+      if (item.path === '/xlink')   return { ...item, badgeCount: xlinkPendientesCount };
+      return item;
+    });
 
   const SidebarContent = (
     <SidebarShell
