@@ -57,6 +57,7 @@ import { useOfflineQueue } from '../../hooks/useOfflineQueue';
 import { useSupervisor } from '../../hooks/useSupervisor';
 import { requiereSupervisorVentaCredito } from './ventaCreditoGate';
 import { requiereSupervisorPorPrecioModificado } from './carritoRecuperadoGate';
+import { resolverIntentoCobro } from './intentoCobroGate';
 import { credencialesFueronRechazadas } from './reautenticacionGate';
 import { construirFiltroVendedorPOS } from './vendedorFiltroPanel';
 import { UomSelect } from '../../components/ui/UomSelect';
@@ -9638,6 +9639,11 @@ export default function POSPage() {
   const [ecfEncf,            setEcfEncf]            = useState<string>('');
   const printWinRef      = useRef<Window | null>(null); // ventana pre-abierta para auto-imprimir en tablets
   const autoYaPrintedRef = useRef(false);
+  // Borrador pendiente de una emisión que falló: si el próximo intento de
+  // cobro manda el MISMO payload (nada cambió en el carrito), se reintenta
+  // sobre esta misma factura en vez de crear una segunda. Se limpia al
+  // emitir con éxito o al vaciar el carrito manualmente.
+  const intentoCobroRef = useRef<{ factura: any; claveIdempotencia: string; payloadStr: string } | null>(null);
   const [modalBT,      setModalBT]      = useState(false);
   const [btConectando, setBtConectando] = useState(false);
   const [btNombrePrt,  setBtNombrePrt]  = useState(() => getNombreImpresora());
@@ -10089,6 +10095,7 @@ export default function POSPage() {
 
   const cambiarModoContexto = useCallback((modo: string) => {
     setCart([]);
+    intentoCobroRef.current = null;
     setClienteId(consumidorFinalId);
     setDescGlobal('');
     setDescGlobalTipo('pct');
@@ -10252,7 +10259,7 @@ export default function POSPage() {
           modoAltMut.mutate();
         }
       }
-      if (e.key === 'F4') { e.preventDefault(); setCart([]); }
+      if (e.key === 'F4') { e.preventDefault(); setCart([]); intentoCobroRef.current = null; }
       if (e.key === 'Escape') setSearch('');
     };
     window.addEventListener('keydown', handler);
@@ -10801,6 +10808,7 @@ export default function POSPage() {
     if (!cart.length) return;
     setVentasEnEspera(prev => [...prev, { id: Date.now().toString(), items: [...cart], clienteId, label: `Venta ${prev.length + 1} — ${fmt.money(total)}` }]);
     setCart([]); resetCliente();
+    intentoCobroRef.current = null;
     message.info('Venta guardada en espera');
   };
   const restoreSale = (id: string) => {
@@ -10950,7 +10958,27 @@ export default function POSPage() {
         } as any;
       }
 
-      const factura = await facturasApi.create(payload);
+      // Idempotencia + retomar el borrador si la emisión falló la vez pasada
+      // — ver intentoCobroGate.ts. La causa real de los borradores huérfanos
+      // (FAC-15784/FAC-15785, 2026-09-23): la emisión fallaba, el carrito se
+      // vaciaba, y el cajero volvía a teclear la misma venta desde cero sin
+      // saber que ya había un borrador esperando.
+      const payloadStr = JSON.stringify(payload);
+      const intento = resolverIntentoCobro(intentoCobroRef.current, payloadStr);
+      let factura: any;
+      let claveIdempotencia: string;
+      if (intento.reusar) {
+        factura = intento.factura;
+        claveIdempotencia = intento.claveIdempotencia;
+      } else {
+        claveIdempotencia = crypto.randomUUID();
+        // El backend guarda esta clave — si por lo que sea esta petición
+        // llegara dos veces (doble clic antes de que isPending deshabilite
+        // el botón, reintento de red), devuelve la MISMA factura en vez de
+        // crear una duplicada.
+        factura = await facturasApi.create({ ...payload, claveIdempotencia });
+        intentoCobroRef.current = { factura, claveIdempotencia, payloadStr };
+      }
 
       // Emitir desde POS (síncrono 8s — la venta no se bloquea si tu proveedor e-CF falla)
       setEcfStatus('loading');
@@ -11000,6 +11028,7 @@ export default function POSPage() {
         const estado = emitResult?.estado ?? emitResult?.estadoDGII ?? '';
         setEcfEncf(encf);
         setEcfStatus(['pendiente_envio', 'pendiente', 'contingencia'].includes(estado) ? 'pendiente' : 'ok');
+        intentoCobroRef.current = null;
         return { factura, ecfResult: emitResult };
       } catch (emitErr: any) {
         const emitMsg = emitErr?.response?.data?.message ?? emitErr?.message ?? String(emitErr);
@@ -11042,13 +11071,13 @@ export default function POSPage() {
         const errMsg = (result as any)?._emisionError ?? 'Error al contactar el servicio de comprobantes fiscales';
         Modal.warning({
           title: 'Comprobante fiscal pendiente de emisión',
-          content: `La venta se registró (${folio}) pero NO se pudo emitir el comprobante fiscal. ${errMsg}. Puedes reintentar desde el panel Facturas con el botón "Emitir".`,
+          content: `La venta se registró (${folio}) pero NO se pudo emitir el comprobante fiscal. ${errMsg}. Puedes presionar "Confirmar cobro" de nuevo para reintentar sobre esta MISMA venta (no se creará una factura duplicada), o reintentar desde el panel Facturas con el botón "Emitir".`,
           okText: 'Entendido',
         });
-        setShowPago(false);
-        resetDatosComprador();
-        setCart([]); resetCliente(); setMontoRecibido(0);
-        setTipoPagoPos('CONTADO'); setDiasCreditoPos(30); setPropinaValor(''); resetDescGlobal();
+        // No se vacía el carrito ni los datos de cobro/comprador: si el cajero
+        // vuelve a presionar "Confirmar cobro" sin tocar nada, el payload sale
+        // idéntico y el intento se retoma sobre ESTE borrador (intentoCobroRef)
+        // en vez de crear una factura nueva — evita los huérfanos FAC-15784/85.
         qc.invalidateQueries({ queryKey: ['pos-panel', 'facturas'] });
         qc.refetchQueries({ queryKey: ['pos-panel', 'facturas'] });
         return;
@@ -12106,7 +12135,7 @@ export default function POSPage() {
                 )}
                 {cart.length > 0 && (
                   <Tooltip title="Vaciar (F4)">
-                    <button onClick={() => setCart([])} style={{ height: 26, width: 26, borderRadius: 6, border: `1px solid ${C.red}33`, background: C.red+'11', color: C.red, cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', outline: 'none' }}>✕</button>
+                    <button onClick={() => { setCart([]); intentoCobroRef.current = null; }} style={{ height: 26, width: 26, borderRadius: 6, border: `1px solid ${C.red}33`, background: C.red+'11', color: C.red, cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', outline: 'none' }}>✕</button>
                   </Tooltip>
                 )}
               </div>

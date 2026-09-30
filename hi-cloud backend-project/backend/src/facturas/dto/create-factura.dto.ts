@@ -266,4 +266,16 @@ export class CreateFacturaDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   propina?: number;
+
+  /**
+   * Idempotencia del checkout (POS y demás). El FRONTEND genera un UUID por
+   * intento de cobro; si la misma clave llega dos veces (doble clic,
+   * reintento de red, o el POS retomando un borrador cuya emisión falló la
+   * vez pasada), create() devuelve la factura YA CREADA con esa clave en vez
+   * de crear una duplicada. Ver Factura.claveIdempotencia y
+   * FacturasService.create().
+   */
+  @IsOptional()
+  @IsString() @MaxLength(36)
+  claveIdempotencia?: string;
 }

@@ -17,6 +17,7 @@ export enum FacturaEstado {
 @Index(['empresaId', 'isActive'])
 @Index(['empresaId', 'estado'])
 @Index(['empresaId', 'createdAt'])
+@Index(['empresaId', 'claveIdempotencia'], { unique: true, where: '"claveIdempotencia" IS NOT NULL' })
 export class Factura extends TenantBaseEntity {
   @Column({ length: 20 })
   folio!: string;
@@ -236,4 +237,16 @@ export class Factura extends TenantBaseEntity {
   // Tipos DGII: 1=Efectivo 2=Cheque/Transfer 3=Tarjeta 4=Crédito 5=Permuta 6=Nota Crédito
   @Column({ type: 'jsonb', nullable: true, default: null })
   formasPago?: { tipo: number; monto: number; referencia?: string }[];
+
+  // ── Idempotencia (checkout POS) ───────────────────────────────────────────
+  //
+  // Clave que el FRONTEND genera una sola vez por intento de cobro (UUID). Si
+  // la misma clave llega dos veces — doble clic, reintento de red, o el POS
+  // retomando un borrador cuya emisión falló la vez pasada — create() debe
+  // devolver ESTA factura en vez de crear una segunda. Ver
+  // FacturasService.create() y el índice único (empresaId, claveIdempotencia)
+  // arriba, que es quien realmente cierra la carrera si dos peticiones caen
+  // en el mismo instante.
+  @Column({ length: 36, nullable: true, default: null })
+  claveIdempotencia?: string;
 }

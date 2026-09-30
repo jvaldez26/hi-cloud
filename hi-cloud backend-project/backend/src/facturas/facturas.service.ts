@@ -136,6 +136,19 @@ export class FacturasService {
   }
 
   /**
+   * Idempotencia del checkout — ver Factura.claveIdempotencia. Sin clave, no
+   * busca nada (la mayoría de los caminos que llaman a create() todavía no
+   * la mandan: Facturas manual, cotización→factura, etc.).
+   */
+  private async buscarPorClaveIdempotencia(
+    claveIdempotencia: string | undefined,
+    empresaId: number,
+  ): Promise<Factura | null> {
+    if (!claveIdempotencia) return null;
+    return this.facturaRepository.findOne({ where: { empresaId, claveIdempotencia } });
+  }
+
+  /**
    * ¿Este cajero tiene AHORA una sesión de modo supervisor activa (sin
    * cerrar, dentro de las 8h)? Mismo criterio y misma consulta que
    * SupervisorGateGuard — a propósito no necesita que el cliente mande un
@@ -259,6 +272,15 @@ export class FacturasService {
 
   async create(dto: CreateFacturaDto, usuario: User) {
     const empresaId = this.tenantService.getEmpresaId();
+
+    // Idempotencia del checkout: si esta clave ya generó una factura (doble
+    // clic, reintento de red, o el POS retomando un borrador cuya emisión
+    // falló la vez pasada), devolver ESA factura en vez de crear otra. Se
+    // resuelve ANTES de tocar inventario/folio/lo que sea — ver
+    // Factura.claveIdempotencia.
+    const existente = await this.buscarPorClaveIdempotencia(dto.claveIdempotencia, empresaId);
+    if (existente) return this.findOne(existente.id);
+
     // La verificación de ingresos se hace en confirmar() cuando el total ya está calculado
     if (dto.clienteId) await this.clientesService.findOne(dto.clienteId);
 
@@ -441,12 +463,24 @@ export class FacturasService {
       ordenCompraNumero: dto.ordenCompraNumero ?? undefined,
       formasPago: dto.formasPago?.length ? dto.formasPago : undefined,
       rncComprador: dto.rncComprador ?? undefined,
+      claveIdempotencia: dto.claveIdempotencia ?? undefined,
     });
 
     let savedFactura: Factura;
     try {
       savedFactura = await this.facturaRepository.save(factura as any) as Factura;
     } catch (err: unknown) {
+      // Carrera de idempotencia: dos peticiones con la misma clave llegaron
+      // casi al mismo tiempo, ambas pasaron el SELECT de arriba (ninguna vio
+      // la fila de la otra todavía) y la segunda choca con el índice único
+      // (empresaId, claveIdempotencia) — devolver la que sí se guardó, no
+      // reventar con un 500 al cajero.
+      if (dto.claveIdempotencia && (err as any)?.code === '23505') {
+        const ganadora = await this.facturaRepository.findOne({
+          where: { empresaId, claveIdempotencia: dto.claveIdempotencia },
+        });
+        if (ganadora) return this.findOne(ganadora.id);
+      }
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.error(`[Factura.create] save() falló — folio=${folio} empresaId=${empresaId}: ${msg}`);
       throw err; // re-throw para que el filtro HTTP lo procese

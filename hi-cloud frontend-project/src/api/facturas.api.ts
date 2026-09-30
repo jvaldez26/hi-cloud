@@ -53,6 +53,12 @@ export interface FacturaPayload {
   formasPago?:            FormaPagoPayload[];
   /** propina cobrada aparte del total — solo para la validación de formasPago */
   propina?:               number;
+  /**
+   * Idempotencia del checkout: UUID generado una sola vez por intento de
+   * cobro. Si esta clave ya creó una factura, el backend devuelve esa misma
+   * en vez de crear otra — ver intentoCobroRef en POSPage.tsx.
+   */
+  claveIdempotencia?:     string;
 }
 
 export const facturasApi = {
