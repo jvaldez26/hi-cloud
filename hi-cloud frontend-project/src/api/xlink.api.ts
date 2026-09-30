@@ -44,6 +44,8 @@ export interface FaltanteMapeo {
   tipo: 'producto';
   valorExterno: string;
   descripcion: string;
+  /** Precio unitario tal como lo facturó la contraparte — sugerido al crear el producto. */
+  precioReferencia: number;
 }
 
 export interface RecibirXlinkResultadoItem {
@@ -111,7 +113,7 @@ export const xlinkApi = {
   guardarMapeos: (contraparteXlinkId: string, mapeos: {
     tipo: 'producto'; valorExterno: string;
     valorInternoId?: number;
-    crearProducto?: { nombre: string; unidadMedida?: string; porcentajeIva?: number };
+    crearProducto?: { nombre: string; unidadMedida?: string; porcentajeIva?: number; precio?: number };
   }[]) =>
     api.post<ApiResponse<unknown>>('/xlink/mapeos', { contraparteXlinkId, mapeos }).then(r => r.data.data),
 

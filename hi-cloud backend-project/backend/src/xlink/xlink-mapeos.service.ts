@@ -95,6 +95,11 @@ export class XlinkMapeosService {
           nombre: m.crearProducto.nombre,
           unidadMedida: m.crearProducto.unidadMedida,
           porcentajeIva: m.crearProducto.porcentajeIva,
+          // El catálogo de Productos exige precio positivo (no puede ser undefined
+          // ni 0) — normalmente viaja como precioReferencia del FaltanteMapeo
+          // (el precio con que la contraparte facturó esa línea); 0.01 es solo
+          // el piso defensivo si algún caller no lo manda.
+          precio: m.crearProducto.precio || 0.01,
         } as any);
         valorInternoId = (producto as any).id;
       }

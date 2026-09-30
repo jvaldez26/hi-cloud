@@ -384,7 +384,12 @@ export class XlinkRecibirService {
         lineasResueltas.push({ ...l, productoId });
       } else if (proveedorId !== null) {
         // Solo Factura/NC (proveedorId presente) EXIGEN el mapeo — OC no.
-        faltantes.push({ tipo: 'producto', valorExterno: this.xlinkMapeos.claveExterna(l.sku, l.nombre), descripcion: l.nombre });
+        faltantes.push({
+          tipo: 'producto',
+          valorExterno: this.xlinkMapeos.claveExterna(l.sku, l.nombre),
+          descripcion: l.nombre,
+          precioReferencia: Number(l.precioUnitario),
+        });
       } else {
         lineasResueltas.push({ ...l, productoId: null });
       }

@@ -159,8 +159,8 @@ describe('XlinkRecibirService.recibir — Factura a Crédito → Compra', () => 
 
     expect(resultados[0].ok).toBe(false);
     expect(resultados[0].faltantes).toEqual([
-      { tipo: 'producto', valorExterno: 'A1', descripcion: 'Producto A' },
-      { tipo: 'producto', valorExterno: 'B2', descripcion: 'Producto B' },
+      { tipo: 'producto', valorExterno: 'A1', descripcion: 'Producto A', precioReferencia: 100 },
+      { tipo: 'producto', valorExterno: 'B2', descripcion: 'Producto B', precioReferencia: 50 },
     ]);
     expect(d.comprasSvc.create).not.toHaveBeenCalled();
   });

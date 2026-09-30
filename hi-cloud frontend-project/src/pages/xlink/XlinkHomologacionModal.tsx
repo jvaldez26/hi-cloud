@@ -22,6 +22,7 @@ interface FilaResolucion {
   nombre: string;
   unidadMedida: string;
   porcentajeIva: number;
+  precio: number;
 }
 
 /**
@@ -43,10 +44,12 @@ export default function XlinkHomologacionModal({ open, contraparteXlinkId, falta
     value: p.id, label: p.codigo ? `${p.codigo} — ${p.nombre}` : p.nombre,
   }));
 
-  const actualizar = (valorExterno: string, cambio: Partial<FilaResolucion>) => {
+  const actualizar = (f: FaltanteMapeo, cambio: Partial<FilaResolucion>) => {
     setResoluciones(prev => {
-      const base: FilaResolucion = prev[valorExterno] ?? { modo: 'existente', nombre: '', unidadMedida: 'UND', porcentajeIva: 18 };
-      return { ...prev, [valorExterno]: { ...base, ...cambio } };
+      const base: FilaResolucion = prev[f.valorExterno] ?? {
+        modo: 'existente', nombre: f.descripcion, unidadMedida: 'UND', porcentajeIva: 18, precio: f.precioReferencia,
+      };
+      return { ...prev, [f.valorExterno]: { ...base, ...cambio } };
     });
   };
 
@@ -60,9 +63,10 @@ export default function XlinkHomologacionModal({ open, contraparteXlinkId, falta
           return { tipo: 'producto' as const, valorExterno: f.valorExterno, valorInternoId: r.productoId };
         }
         if (!r.nombre?.trim()) throw new Error(`Escribe un nombre para el producto nuevo de "${f.descripcion}"`);
+        if (!r.precio || r.precio <= 0) throw new Error(`Escribe un precio para "${f.descripcion}"`);
         return {
           tipo: 'producto' as const, valorExterno: f.valorExterno,
-          crearProducto: { nombre: r.nombre.trim(), unidadMedida: r.unidadMedida, porcentajeIva: r.porcentajeIva },
+          crearProducto: { nombre: r.nombre.trim(), unidadMedida: r.unidadMedida, porcentajeIva: r.porcentajeIva, precio: r.precio },
         };
       });
       return xlinkApi.guardarMapeos(contraparteXlinkId, mapeos);
@@ -102,13 +106,15 @@ export default function XlinkHomologacionModal({ open, contraparteXlinkId, falta
           {
             title: 'Resolución',
             render: (_: unknown, f: FaltanteMapeo) => {
-              const r = resoluciones[f.valorExterno] ?? { modo: 'existente' as const, nombre: '', unidadMedida: 'UND', porcentajeIva: 18 };
+              const r = resoluciones[f.valorExterno] ?? {
+                modo: 'existente' as const, nombre: f.descripcion, unidadMedida: 'UND', porcentajeIva: 18, precio: f.precioReferencia,
+              };
               return (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <Radio.Group
                     size="small"
                     value={r.modo}
-                    onChange={e => actualizar(f.valorExterno, { modo: e.target.value })}
+                    onChange={e => actualizar(f, { modo: e.target.value })}
                   >
                     <Radio.Button value="existente">Usar existente</Radio.Button>
                     <Radio.Button value="crear">Crear nuevo</Radio.Button>
@@ -121,7 +127,7 @@ export default function XlinkHomologacionModal({ open, contraparteXlinkId, falta
                       optionFilterProp="label"
                       options={opcionesProducto}
                       value={r.productoId}
-                      onChange={v => actualizar(f.valorExterno, { productoId: v })}
+                      onChange={v => actualizar(f, { productoId: v })}
                     />
                   ) : (
                     <div style={{ display: 'flex', gap: 6 }}>
@@ -129,20 +135,27 @@ export default function XlinkHomologacionModal({ open, contraparteXlinkId, falta
                         placeholder="Nombre del producto"
                         style={{ width: 160 }}
                         defaultValue={f.descripcion}
-                        onChange={e => actualizar(f.valorExterno, { nombre: e.target.value })}
+                        onChange={e => actualizar(f, { nombre: e.target.value })}
                       />
                       <Input
                         placeholder="Unidad"
                         style={{ width: 70 }}
                         defaultValue="UND"
-                        onChange={e => actualizar(f.valorExterno, { unidadMedida: e.target.value })}
+                        onChange={e => actualizar(f, { unidadMedida: e.target.value })}
                       />
                       <InputNumber
                         placeholder="% ITBIS"
                         style={{ width: 80 }}
                         defaultValue={18}
                         min={0} max={100}
-                        onChange={v => actualizar(f.valorExterno, { porcentajeIva: v ?? 18 })}
+                        onChange={v => actualizar(f, { porcentajeIva: v ?? 18 })}
+                      />
+                      <InputNumber
+                        placeholder="Precio"
+                        style={{ width: 100 }}
+                        defaultValue={f.precioReferencia}
+                        min={0.01}
+                        onChange={v => actualizar(f, { precio: v ?? f.precioReferencia })}
                       />
                     </div>
                   )}

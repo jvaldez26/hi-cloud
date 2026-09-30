@@ -10,6 +10,10 @@ export class NuevoProductoXlinkDto {
 
   @IsOptional() @IsNumber() @Min(0)
   porcentajeIva?: number;
+
+  /** El catálogo de Productos exige precio — sin esto, crearProducto fallaba 400. */
+  @IsOptional() @IsNumber() @Min(0)
+  precio?: number;
 }
 
 export class MapeoXlinkDto {

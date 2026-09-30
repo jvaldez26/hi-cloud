@@ -35,6 +35,8 @@ export interface FaltanteMapeo {
   tipo: 'producto';
   valorExterno: string;
   descripcion: string;
+  /** Precio unitario tal como lo facturó la contraparte — sugerido al crear el producto, nunca impuesto. */
+  precioReferencia: number;
 }
 
 export interface RecibirXlinkResultadoItem {
