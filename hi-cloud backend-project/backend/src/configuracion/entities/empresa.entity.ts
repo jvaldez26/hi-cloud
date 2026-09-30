@@ -1,4 +1,5 @@
-import { Entity, Column } from 'typeorm';
+import { Entity, Column, BeforeInsert } from 'typeorm';
+import { randomUUID } from 'crypto';
 import { BaseEntity } from '../../common/entities/base.entity';
 
 export enum TipoSociedad {
@@ -190,7 +191,7 @@ export class Empresa extends BaseEntity {
   // 1768400000000-AddXlinkToEmpresa.ts.
 
   /** Identificador estable que otras empresas usan para vincularse — nunca el id interno. */
-  @Column({ type: 'uuid' })
+  @Column({ type: 'uuid', default: () => 'gen_random_uuid()' })
   xlinkId!: string;
 
   /** Publicarse en el directorio es un acto explícito del Admin (default false). */
@@ -199,4 +200,13 @@ export class Empresa extends BaseEntity {
 
   @Column({ type: 'timestamptz', nullable: true })
   xlinkVisibleDesde?: Date;
+
+  // TypeORM no resuelve `default: () => 'gen_random_uuid()'` al insertar vía
+  // repository.save() — solo lo usa para el DDL de synchronize(). Sin este
+  // hook, cada empresa nueva mandaba xlinkId NULL explícito y violaba el
+  // NOT NULL de la migración 1768400000000-AddXlinkToEmpresa.
+  @BeforeInsert()
+  asignarXlinkIdSiFalta(): void {
+    if (!this.xlinkId) this.xlinkId = randomUUID();
+  }
 }
