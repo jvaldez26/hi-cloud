@@ -580,6 +580,12 @@ export class ComprasService {
       );
 
       for (const detalle of compra.detalles) {
+        // Los servicios no tienen inventario físico ni costo promedio — mismo
+        // criterio que InventarioService.registrarSalida(), que ya se corta
+        // ahí para no descuadrar stock/AVCO de algo que nunca fue a un
+        // almacén (ver inventario.service.ts).
+        if ((detalle as any).producto?.tipo === 'servicio') continue;
+
         // cantidadTotal = facturada + bonificada — todas las unidades entran al stock
         const qtdInventario = Number((detalle as any).cantidadTotal ?? detalle.cantidad);
         const movimiento = await this.inventarioService.registrarEntrada(
@@ -729,29 +735,36 @@ export class ComprasService {
 
       const cantAcumulada    = +(yaRecibida + cantNueva).toFixed(4);
 
-      // Registrar entrada en inventario solo por la cantidad NUEVA de esta recepción
-      const movimientoRecibir = await this.inventarioService.registrarEntrada(
-        detalle.productoId,
-        cantNueva,
-        usuario.id,
-        `Compra recibida: ${compra.folio}`,
-        compra.folio,
-        almacenIdCompra,
-      );
+      // Los servicios no tienen inventario físico ni costo promedio — mismo
+      // criterio que en cambiarEstado() (ver nota ahí). La cantidad recibida
+      // SÍ se sigue acumulando abajo — solo se salta inventario/AVCO.
+      const esServicio = (detalle as any).producto?.tipo === 'servicio';
 
-      // Actualizar AVCO: precio proveedor + costo de importación por unidad.
-      // stockAntes = cantidadAnterior de registrarEntrada() — ver nota en cambiarEstado().
-      // costoUnitarioRealDOP — ver nota en cambiarEstado().
-      const costoBase   = Number((detalle as any).costoUnitarioRealDOP ?? (detalle as any).costoUnitarioReal ?? detalle.precioUnitario);
-      const costoImport = costoImportMapRecibir.get(detalle.id) ?? 0;
-      const costoReal   = costoBase + costoImport;
-      if (costoReal > 0) {
-        await this.valoracionService.actualizarCostoPromedio(
+      if (!esServicio) {
+        // Registrar entrada en inventario solo por la cantidad NUEVA de esta recepción
+        const movimientoRecibir = await this.inventarioService.registrarEntrada(
           detalle.productoId,
-          Number((movimientoRecibir as any)?.cantidadAnterior ?? 0),
           cantNueva,
-          costoReal,
+          usuario.id,
+          `Compra recibida: ${compra.folio}`,
+          compra.folio,
+          almacenIdCompra,
         );
+
+        // Actualizar AVCO: precio proveedor + costo de importación por unidad.
+        // stockAntes = cantidadAnterior de registrarEntrada() — ver nota en cambiarEstado().
+        // costoUnitarioRealDOP — ver nota en cambiarEstado().
+        const costoBase   = Number((detalle as any).costoUnitarioRealDOP ?? (detalle as any).costoUnitarioReal ?? detalle.precioUnitario);
+        const costoImport = costoImportMapRecibir.get(detalle.id) ?? 0;
+        const costoReal   = costoBase + costoImport;
+        if (costoReal > 0) {
+          await this.valoracionService.actualizarCostoPromedio(
+            detalle.productoId,
+            Number((movimientoRecibir as any)?.cantidadAnterior ?? 0),
+            cantNueva,
+            costoReal,
+          );
+        }
       }
 
       // Guardar la cantidad ACUMULADA total recibida

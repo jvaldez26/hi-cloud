@@ -98,7 +98,20 @@ export class InventarioService {
   // Helpers internos
   // ──────────────────────────────────────────────────────────
 
+  /**
+   * Único punto de entrada por el que TODOS los métodos públicos de este
+   * servicio (registrarEntrada, registrarSalida, registrarDevolucion,
+   * registrarAjuste, getMovimientosPorProducto, crearLote, etc.) resuelven
+   * un `productoId` — por eso la validación va AQUÍ y no repetida en cada
+   * uno. `undefined`/`null`/no-entero nunca deben llegar al `where` de
+   * TypeORM: con `undefined`, `findOne` OMITE esa clave del WHERE en vez de
+   * fallar, y devolvería el primer producto que matchee de la empresa —
+   * corrompiendo el stock de un producto arbitrario en silencio, no un 404.
+   */
   private async obtenerProducto(productoId: number): Promise<Producto> {
+    if (!Number.isInteger(productoId) || productoId <= 0) {
+      throw new BadRequestException(`productoId inválido: ${String(productoId)}`);
+    }
     const producto = await this.productoRepository.findOne({
       where: { id: productoId, empresaId: this.tenantService.getEmpresaId(), isActive: true },
     });
