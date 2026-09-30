@@ -1,5 +1,6 @@
 ﻿import { useState, useCallback } from 'react';
 import { TableActions } from '../../components/ui/TableActions';
+import SelectProductoBusqueda, { type ProductoBuscado } from '../../components/productos/SelectProductoBusqueda';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -83,19 +84,19 @@ function MovimientosTab() {
     queryKey: ['inventario', page, filters],
     queryFn:  () => inventarioApi.movimientos(page, 10, filters),
   });
-const { data: productosData } = useQuery({
-    queryKey: ['productos-inv'],
-    queryFn:  () => productosApi.list(1, 2000, '', true),
-  });
-
+// Sin lista precargada: el selector busca en el servidor (nombre, código,
+  // código de barras). Antes se traían 2000 productos y se filtraban en el
+  // cliente por la etiqueta "codigo — nombre", donde el código de BARRAS no
+  // aparece: escanearlo aquí decía "No hay datos" mientras el mismo producto
+  // sí salía en el POS, que siempre consultó al servidor.
+  //
   // Pre-llenar "Costo unitario" con el costoPromedio del producto elegido —
-  // costoPromedio ya viaja en cada fila de productosApi.list(incluirSinStock),
-  // sin llamada extra. Editable: el usuario puede ajustarlo o borrarlo.
-  const productoIdSeleccionado = Form.useWatch('productoId', form);
-  const productoSeleccionado = (productosData?.data ?? []).find((p: any) => p.id === productoIdSeleccionado);
+  // costoPromedio ya viaja en cada fila que devuelve la búsqueda, sin llamada
+  // extra. Editable: el usuario puede ajustarlo o borrarlo.
+  const [productoSeleccionado, setProductoSeleccionado] = useState<ProductoBuscado | null>(null);
   const costoPromedioSeleccionado = Number(productoSeleccionado?.costoPromedio ?? 0);
-  const handleProductoChange = (productoId: number) => {
-    const prod = (productosData?.data ?? []).find((p: any) => p.id === productoId);
+  const handleProductoSeleccionado = (prod: ProductoBuscado | null) => {
+    setProductoSeleccionado(prod);
     form.setFieldValue('costoUnitario', costoParaPrellenar(prod));
   };
 
@@ -110,7 +111,7 @@ const { data: productosData } = useQuery({
     onError: (e: any) => message.error(e?.friendlyMessage ?? 'Stock insuficiente o error'),
   });
 
-  const cerrarModal = () => { setModal(null); form.resetFields(); };
+  const cerrarModal = () => { setModal(null); form.resetFields(); setProductoSeleccionado(null); };
   const handleSubmit = (v: any) => {
     if (modal === 'entrada') entradaMut.mutate({ productoId: v.productoId, cantidad: v.cantidad, motivo: v.motivo, costoUnitario: v.costoUnitario });
     else salidaMut.mutate({ productoId: v.productoId, cantidad: v.cantidad, motivo: v.motivo });
@@ -260,9 +261,11 @@ const { data: productosData } = useQuery({
         open={!!modal} onCancel={cerrarModal} footer={null} destroyOnClose>
         <Form form={form} layout="vertical" onFinish={handleSubmit}>
           <Form.Item name="productoId" label="Producto" rules={[{ required: true }]}>
-            <Select showSearch optionFilterProp="label" placeholder="Buscar por nombre o código..."
-              onChange={handleProductoChange}
-              options={(productosData?.data ?? []).map((p: any) => ({ value: p.id, label: `${p.codigo} — ${p.nombre} (Stock: ${p.stock ?? 0})` }))} />
+            <SelectProductoBusqueda
+              conStock
+              placeholder="Buscar o escanear por nombre, código o código de barras..."
+              onProductoSeleccionado={handleProductoSeleccionado}
+            />
           </Form.Item>
           <Form.Item name="cantidad" label="Cantidad" rules={[{ required: true }]}>
             <InputNumber style={{ width: '100%' }} min={0.0001} precision={2} placeholder="Ej: 10.5" />
