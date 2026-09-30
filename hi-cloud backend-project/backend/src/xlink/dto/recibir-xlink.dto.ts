@@ -1,0 +1,38 @@
+import { ArrayMinSize, IsArray, IsIn, IsInt, IsOptional, IsPositive, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+
+export class RecibirXlinkItemDto {
+  @IsInt() @IsPositive()
+  xlinkDocumentoId!: number;
+
+  /** Catálogo 606 (01-11) — obligatorio para Factura/NC recibidas de proveedor. */
+  @IsOptional() @IsIn(['01','02','03','04','05','06','07','08','09','10','11'])
+  tipoGasto606?: string;
+
+  @IsOptional() @IsIn(['si', 'no'])
+  tipoRetencionIsr?: 'si' | 'no';
+}
+
+export class RecibirXlinkDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => RecibirXlinkItemDto)
+  items!: RecibirXlinkItemDto[];
+}
+
+export interface FaltanteMapeo {
+  tipo: 'producto';
+  valorExterno: string;
+  descripcion: string;
+}
+
+export interface RecibirXlinkResultadoItem {
+  xlinkDocumentoId: number;
+  ok: boolean;
+  error?: string;
+  faltantes?: FaltanteMapeo[];
+  yaExistia?: boolean;
+  documentoGeneradoId?: number;
+  numeroGenerado?: string;
+}

@@ -12,6 +12,6 @@ import { XlinkModule } from '../xlink/xlink.module';
   imports: [TypeOrmModule.forFeature([NotaCredito, NotaCreditoDetalle]), ContabilidadModule, XlinkModule],
   controllers: [NotasCreditoController],
   providers: [NotasCreditoService, NotaCreditoPDFService],
-  exports: [NotasCreditoService],
+  exports: [NotasCreditoService, NotaCreditoPDFService],
 })
 export class NotasCreditoModule {}

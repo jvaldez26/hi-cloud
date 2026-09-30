@@ -116,6 +116,7 @@ import { NotasCreditoComprasModule } from './notas-credito-compras/notas-credito
 import { LibroVentasModule } from './libro-ventas/libro-ventas.module';
 import { SoporteModule } from './soporte/soporte.module';
 import { XlinkModule } from './xlink/xlink.module';
+import { XlinkRecibirModule } from './xlink/xlink-recibir.module';
 import { PortalEmpleadoModule } from './portal-empleado/portal-empleado.module';
 import { AsistenteModule }         from './asistente/asistente.module';
 import { SuperAdminModule }        from './super-admin/super-admin.module';
@@ -388,6 +389,7 @@ import { ActividadInterceptor } from './auth/actividad.interceptor';
     LibroVentasModule,
     SoporteModule,
     XlinkModule,
+    XlinkRecibirModule,
     PortalEmpleadoModule,
     AsistenteModule,
     SuperAdminModule,

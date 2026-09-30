@@ -140,6 +140,21 @@ export class XlinkDocumentosRepository {
   }
 
   /**
+   * Encuentra, del lado DESTINO (mi empresa), el xlink_documento que
+   * corresponde a un (origenEmpresaId, tipoDocumento, documentoOrigenId)
+   * puntual — usado para encontrar la Compra que generé al recibir la
+   * Factura que una Nota de Crédito recibida ahora modifica.
+   */
+  async buscarPorOrigenComoDestino(
+    origenEmpresaId: number,
+    tipoDocumento: XlinkTipoDocumento,
+    documentoOrigenId: number,
+  ): Promise<XlinkDocumento | null> {
+    const destinoEmpresaId = this.tenantService.getEmpresaId();
+    return this.repo.findOne({ where: { destinoEmpresaId, origenEmpresaId, tipoDocumento, documentoOrigenId } });
+  }
+
+  /**
    * ¿El documento generado (ej. una Cotización) que YO recibí vino a su vez
    * de un xlink_documentos anterior? Usado para encadenar `xlinkPadreId` al
    * publicar una Factura que se emitió a partir de ese documento generado —

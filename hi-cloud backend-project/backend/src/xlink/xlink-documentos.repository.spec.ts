@@ -82,6 +82,17 @@ describe('XlinkDocumentosRepository — aislamiento por eid (sin empresaId propi
     });
   });
 
+  it('buscarPorOrigenComoDestino(): filtra por destinoEmpresaId + origenEmpresaId + tipo/id origen', async () => {
+    const repoMock = makeRepoMock();
+    const repo = new XlinkDocumentosRepository(repoMock as any, makeTenantSvc(7) as any);
+
+    await repo.buscarPorOrigenComoDestino(3, XlinkTipoDocumento.FACTURA_CREDITO, 55);
+
+    expect(repoMock.findOne).toHaveBeenCalledWith({
+      where: { destinoEmpresaId: 7, origenEmpresaId: 3, tipoDocumento: XlinkTipoDocumento.FACTURA_CREDITO, documentoOrigenId: 55 },
+    });
+  });
+
   it('buscarPorDocumentoGeneradoComoDestino(): filtra por destinoEmpresaId + tipo/id generado', async () => {
     const repoMock = makeRepoMock();
     const repo = new XlinkDocumentosRepository(repoMock as any, makeTenantSvc(7) as any);

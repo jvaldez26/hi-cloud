@@ -44,6 +44,8 @@ interface DocumentoParaPublicar {
   lineas: LineaSnapshot[];
   totalesConItbis: { porcentajeIva: number; base: number; itbis: number }[];
   entidadAuditoria: string;
+  /** Factura ORIGEN (id propio del emisor) que esta NC modifica — Fase 4 la usa para encontrar la Compra correspondiente al recibir. */
+  facturaOriginalId?: number;
   cotizacionGeneradaId?: number; // solo cuando aplica encadenar xlinkPadreId (factura)
 }
 
@@ -132,6 +134,7 @@ export class XlinkPublicarService {
         fechaLimitePago: doc.fechaLimitePago ?? null,
         emisorRnc: emisor?.rnc ?? null,
         emisorNombre: emisor?.nombreComercial ?? emisor?.nombre ?? null,
+        facturaOriginalId: doc.facturaOriginalId ?? null,
       },
       lineas: doc.lineas,
       totalesPorTasa: doc.totalesConItbis,
@@ -310,6 +313,7 @@ export class XlinkPublicarService {
       `
       SELECT nc.id, nc.numero AS folio, nc.fecha::text AS fecha, nc.total, nc.estado,
              nc.moneda, nc."tipoCambio", nc."clienteId", cl.nombre AS "clienteNombre", cl."xlinkEmpresaXlinkId",
+             nc."facturaOriginalId",
              e.numero AS "ncfOrigen", e."estadoDGII"
       FROM notas_credito nc
       LEFT JOIN clientes cl ON cl.id = nc."clienteId"
@@ -344,6 +348,7 @@ export class XlinkPublicarService {
       destinoXlinkId: nc.xlinkEmpresaXlinkId,
       destinoNombreError: nc.clienteNombre ? `El cliente "${nc.clienteNombre}"` : 'El cliente de esta NC',
       entidadAuditoria: ENTIDAD_POR_TIPO[XlinkTipoDocumento.NOTA_CREDITO],
+      facturaOriginalId: nc.facturaOriginalId ?? undefined,
     });
   }
 
@@ -400,6 +405,7 @@ export class XlinkPublicarService {
       fechaLimitePago?: string | null;
       entidadAuditoria: string;
       cotizacionGeneradaId?: number;
+      facturaOriginalId?: number;
     },
   ): DocumentoParaPublicar {
     const lineas: LineaSnapshot[] = lineasRaw.map(l => ({
@@ -441,6 +447,7 @@ export class XlinkPublicarService {
       totalesConItbis,
       entidadAuditoria: extra.entidadAuditoria,
       cotizacionGeneradaId: extra.cotizacionGeneradaId,
+      facturaOriginalId: extra.facturaOriginalId,
     };
   }
 }
