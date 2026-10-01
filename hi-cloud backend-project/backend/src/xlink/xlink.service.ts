@@ -1,6 +1,8 @@
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Inject } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 import { Empresa } from '../configuracion/entities/empresa.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { LimitesService } from '../suscripciones/limites.service';
@@ -11,6 +13,7 @@ import { ProveedoresService } from '../proveedores/proveedores.service';
 import { ClientesService } from '../clientes/clientes.service';
 import { VincularXlinkDto } from './dto/vincular-xlink.dto';
 import { XlinkDocumentosRepository, XlinkListaFiltros } from './xlink-documentos.repository';
+import { CacheKeys } from '../common/cache/cache-keys';
 
 export interface XlinkDirectorioFiltros {
   q?: string;
@@ -37,6 +40,7 @@ export class XlinkService {
     private proveedoresService: ProveedoresService,
     private clientesService: ClientesService,
     private xlinkRepo: XlinkDocumentosRepository,
+    @Inject(CACHE_MANAGER) private cache: Cache,
   ) {}
 
   /** GET /xlink/enviados — Fase 5 (listado "Documentos Enviados"). */
@@ -116,6 +120,13 @@ export class XlinkService {
       xlinkVisible: visible,
       ...(visible && !empresa.xlinkVisibleDesde ? { xlinkVisibleDesde: new Date() } : {}),
     });
+    // ConfiguracionService.getEmpresa() cachea la fila de empresa y solo se
+    // invalida en updateEmpresa() — este update() va directo al repo, por
+    // otro camino, y dejaba el GET /configuracion/empresa sirviendo
+    // xlinkVisible viejo hasta que el TTL expirara: el switch del frontend
+    // lee exactamente ese valor, así que parecía "no activarse" aunque el
+    // PATCH sí había guardado en BD (encontrado probando en producción).
+    await this.cache.del(CacheKeys.empresaConfig(empresaId));
 
     const auditLog: CreateAuditLogDto = {
       userId: usuario.id,

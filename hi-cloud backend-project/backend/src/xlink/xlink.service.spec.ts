@@ -22,6 +22,7 @@ function buildDeps() {
       listarComoDestino: jest.fn().mockResolvedValue({ data: [], meta: {} }),
       contarPendientesComoDestino: jest.fn().mockResolvedValue(0),
     },
+    cache: { get: jest.fn(), set: jest.fn(), del: jest.fn().mockResolvedValue(undefined) },
   };
 }
 
@@ -35,6 +36,7 @@ function buildService(d: ReturnType<typeof buildDeps>): XlinkService {
     d.proveedoresSvc as any,
     d.clientesSvc as any,
     d.xlinkRepo as any,
+    d.cache as any,
   );
 }
 
@@ -95,6 +97,15 @@ describe('XlinkService.actualizarVisibilidad', () => {
 
     const args = d.empresaRepo.update.mock.calls[0][1];
     expect(args.xlinkVisibleDesde).toBeUndefined();
+  });
+
+  it('invalida el caché de configuración de empresa tras actualizar (GET /configuracion/empresa no debe quedar servido viejo)', async () => {
+    const d = buildDeps();
+    const service = buildService(d);
+
+    await service.actualizarVisibilidad(true, { id: 1, nombre: 'Ana' });
+
+    expect(d.cache.del).toHaveBeenCalledWith(expect.stringContaining(String(EMPRESA)));
   });
 });
 
