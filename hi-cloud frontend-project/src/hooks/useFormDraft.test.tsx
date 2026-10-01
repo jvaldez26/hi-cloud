@@ -75,6 +75,39 @@ describe('useFormDraft', () => {
     expect(r2.current.borradorInfo?.idempotencyKey).toBe('clave-abc');
   });
 
+  it('un cambio en extra DESPUÉS de onValuesChange pero ANTES de que dispare el guardado queda en el snapshot (bug real: el guardado leía un extra.get() cerrado en el momento de onValuesChange, no el vigente al disparar)', async () => {
+    const formKey = `compra-extra-tardio-${Date.now()}`;
+    const form1 = makeForm({ a: 1 });
+
+    const { result, rerender } = renderHook(
+      ({ valorExtra }: { valorExtra: string }) => useFormDraft({
+        formKey, form: form1, usuarioId: 1, empresaId: 7,
+        extra: { get: () => ({ v: valorExtra }), set: () => {} },
+        idempotencyKey: 'k',
+      }),
+      { initialProps: { valorExtra: 'viejo' } },
+    );
+
+    // onValuesChange programa el guardado — en ESE momento extra.get() todavía
+    // devolvería 'viejo'. Un campo del Form disparó esto (ej. la fecha);
+    // tipoPago/diasCredito (extra, sin name= en el Form) cambian justo después,
+    // dentro de la misma ventana de 1s, sin volver a llamar onValuesChange.
+    act(() => { result.current.onValuesChange(); });
+    rerender({ valorExtra: 'nuevo' });
+
+    await new Promise(res => setTimeout(res, DEBOUNCE_ESPERA_MS));
+
+    const form2 = makeForm();
+    const { result: r2 } = renderHook(() => useFormDraft({
+      formKey, form: form2, usuarioId: 1, empresaId: 7, idempotencyKey: 'otra',
+    }));
+    await waitFor(() => expect(r2.current.hayBorrador).toBe(true));
+
+    let snap: any;
+    act(() => { snap = r2.current.restaurar(); });
+    expect(snap.extra.v).toBe('nuevo'); // no 'viejo' — el bug real guardaba esto
+  });
+
   it('restaurar() rellena form.setFieldsValue + extra.set con lo guardado, y NUNCA hace red', async () => {
     const formKey = `factura-${Date.now()}-b`;
     const form1 = makeForm({ clienteId: 99 });

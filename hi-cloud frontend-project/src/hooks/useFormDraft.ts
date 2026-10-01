@@ -286,6 +286,22 @@ export function useFormDraft<TExtra = unknown>(opts: UseFormDraftOpts<TExtra>) {
   const debounceRef          = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const sinGuardarRef        = useRef(false); // para beforeunload — hubo al menos un autoguardado real
 
+  // Refs actualizadas en CADA render — el guardado debounced las lee al
+  // DISPARARSE (1s después de haberse programado), no al programarse. Sin
+  // esto, un cambio en `extra` (ej. tipoPago, diasCredito — estado fuera del
+  // Form) que ocurre DESPUÉS de que un cambio del Form ya programó el
+  // guardado, pero ANTES de que ese guardado se ejecute, se perdía: el
+  // setTimeout ya había cerrado sobre el `extra` viejo. form/extra son
+  // objetos nuevos en cada render (el caller los arma inline), así que un
+  // useCallback normal con ellos en las deps no alcanza — la función que
+  // CREÓ el timeout ya quedó atrás, el timeout en sí no se reprograma solo.
+  const formRef  = useRef(form);
+  formRef.current = form;
+  const extraRef = useRef(extra);
+  extraRef.current = extra;
+  const idempotencyKeyRef = useRef(idempotencyKey);
+  idempotencyKeyRef.current = idempotencyKey;
+
   // ── Detectar borrador existente al montar ─────────────────────────────────
   useEffect(() => {
     if (!habilitado) return;
@@ -351,9 +367,12 @@ export function useFormDraft<TExtra = unknown>(opts: UseFormDraftOpts<TExtra>) {
         const snapshot: FormDraftSnapshot<TExtra> = {
           key:            clave,
           formKey,
-          values:         serializar(form.getFieldsValue(true)) as Record<string, any>,
-          extra:          serializar(extra?.get()) as TExtra,
-          idempotencyKey,
+          // Siempre las refs, nunca `form`/`extra` cerrados en este useCallback
+          // — ver el comentario de arriba. Al disparar (1s después), puede
+          // haber cambiado más de una vez.
+          values:         serializar(formRef.current.getFieldsValue(true)) as Record<string, any>,
+          extra:          serializar(extraRef.current?.get()) as TExtra,
+          idempotencyKey: idempotencyKeyRef.current,
           savedAt:        Date.now(),
           version:        SNAPSHOT_VERSION,
         };
@@ -364,7 +383,7 @@ export function useFormDraft<TExtra = unknown>(opts: UseFormDraftOpts<TExtra>) {
         Sentry.captureException(err, { tags: { modulo: 'form-draft', fase: 'guardar', formKey } });
       }
     }, DEBOUNCE_MS);
-  }, [clave, habilitado, form, extra, idempotencyKey, formKey]);
+  }, [clave, habilitado, formKey]);
 
   // Autoguardar cuando cambian las deps (líneas, etc.) — además de onValuesChange,
   // que el caller conecta al <Form onValuesChange={onValuesChange}>.
