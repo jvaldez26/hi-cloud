@@ -10,6 +10,7 @@ import api from '../../api/client';
 import DemoModal from './DemoModal';
 import { PanelAcceso } from './panel';
 import { fechaHora } from '../../utils/fechaRD';
+import { consumirReturnTo } from '../../utils/returnTo';
 
 const WS_NUMBER   = '8093081713';
 const WS_URL      = `https://wa.me/1${WS_NUMBER}`;
@@ -187,7 +188,9 @@ export default function LoginPage() {
       login((data as any).user, (data as any).empresaActual, (data as any).empresas ?? [], (data as any).almacenActual ?? null, (data as any).sucursalActual ?? null, (data as any).sucursalNombre ?? null);
       // login() ya resolvió el rol por la empresa activa (resolverRolPorEmpresa)
       // — leer el del store, no el crudo de `data`, que aún es el global.
-      navigate(useAuthStore.getState().user?.role === 'super_admin' ? '/super-admin' : '/dashboard');
+      // Si un cierre de sesión involuntario lo trajo aquí a medio formulario,
+      // vuelve a esa misma ruta en vez de al destino por rol (ver returnTo.ts).
+      navigate(consumirReturnTo() ?? (useAuthStore.getState().user?.role === 'super_admin' ? '/super-admin' : '/dashboard'));
     } catch (e: unknown) {
       const responseData   = (e as any)?.response?.data;
       const msg            = responseData?.errors?.[0] ?? 'Credenciales inválidas';
@@ -222,7 +225,9 @@ export default function LoginPage() {
       login((data as any).user, (data as any).empresaActual, (data as any).empresas ?? [], (data as any).almacenActual ?? null, (data as any).sucursalActual ?? null, (data as any).sucursalNombre ?? null);
       // login() ya resolvió el rol por la empresa activa (resolverRolPorEmpresa)
       // — leer el del store, no el crudo de `data`, que aún es el global.
-      navigate(useAuthStore.getState().user?.role === 'super_admin' ? '/super-admin' : '/dashboard');
+      // Si un cierre de sesión involuntario lo trajo aquí a medio formulario,
+      // vuelve a esa misma ruta en vez de al destino por rol (ver returnTo.ts).
+      navigate(consumirReturnTo() ?? (useAuthStore.getState().user?.role === 'super_admin' ? '/super-admin' : '/dashboard'));
     } catch (e: unknown) {
       const msg = (e as any)?.response?.data?.errors?.[0] ?? 'Error al iniciar sesión';
       setError(msg);
@@ -238,7 +243,9 @@ export default function LoginPage() {
       login((data as any).user, (data as any).empresaActual, (data as any).empresas ?? [], (data as any).almacenActual ?? null, (data as any).sucursalActual ?? null, (data as any).sucursalNombre ?? null);
       // login() ya resolvió el rol por la empresa activa (resolverRolPorEmpresa)
       // — leer el del store, no el crudo de `data`, que aún es el global.
-      navigate(useAuthStore.getState().user?.role === 'super_admin' ? '/super-admin' : '/dashboard');
+      // Si un cierre de sesión involuntario lo trajo aquí a medio formulario,
+      // vuelve a esa misma ruta en vez de al destino por rol (ver returnTo.ts).
+      navigate(consumirReturnTo() ?? (useAuthStore.getState().user?.role === 'super_admin' ? '/super-admin' : '/dashboard'));
     } catch (e: unknown) {
       const msg = (e as any)?.response?.data?.errors?.[0] ?? 'Código incorrecto';
       setError(msg); setCodigoTOTP('');

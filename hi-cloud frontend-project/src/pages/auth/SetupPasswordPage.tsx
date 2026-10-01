@@ -4,6 +4,7 @@ import { Button, Input, Form, Alert, ConfigProvider, theme as antTheme } from 'a
 import { Lock, CheckCircle, Eye, EyeOff } from 'lucide-react';
 import api from '../../api/client';
 import { useAuthStore } from '../../store/auth.store';
+import { consumirReturnTo } from '../../utils/returnTo';
 
 interface SetupForm {
   password:        string;
@@ -51,10 +52,10 @@ export default function SetupPasswordPage() {
       // login() ya resolvió el rol por la empresa activa (resolverRolPorEmpresa)
       // — leer el del store, no el crudo de `data`, que aún es el global.
       const role: string = useAuthStore.getState().user?.role ?? '';
-      const destino =
+      const destino = consumirReturnTo() ?? (
         role === 'super_admin' ? '/super-admin'     :
         role === 'empleado'    ? '/portal-empleado' :
-        '/dashboard';
+        '/dashboard');
       setTimeout(() => navigate(destino, { replace: true }), 1500);
     } catch (err: any) {
       setError(

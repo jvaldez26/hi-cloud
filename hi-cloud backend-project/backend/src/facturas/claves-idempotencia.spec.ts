@@ -59,6 +59,28 @@ describe('FacturasService — porClaveIdempotencia', () => {
     await expect(call('no-existe')).resolves.toEqual({ existe: false });
   });
 
+  it('una clave que SÍ generó una factura, pero en OTRA empresa, responde igual que si no existiera (nunca filtra)', async () => {
+    // Repositorio "real": solo encuentra la fila si el where.empresaId coincide
+    // con el dueño verdadero — simula la fila guardada bajo empresaId 99,
+    // mientras quien consulta (tenantService) es la empresa 7.
+    const filaRealDeOtraEmpresa = { id: 42, folio: 'FAC-100', empresaId: 99, claveIdempotencia: 'clave-ajena', ecfId: undefined };
+    const findOneFactura = jest.fn(({ where }: any) =>
+      Promise.resolve(where.empresaId === filaRealDeOtraEmpresa.empresaId && where.claveIdempotencia === filaRealDeOtraEmpresa.claveIdempotencia
+        ? filaRealDeOtraEmpresa
+        : null),
+    );
+    const ctx = {
+      tenantService:     { getEmpresaId: () => 7 }, // quien consulta es la empresa 7, no la 99
+      facturaRepository: { findOne: findOneFactura },
+      ecfRepo:            { findOne: jest.fn() },
+      buscarPorClaveIdempotencia: (FacturasService.prototype as any).buscarPorClaveIdempotencia,
+    };
+    const call = (clave: string) => (FacturasService.prototype as any).porClaveIdempotencia.call(ctx, clave);
+
+    await expect(call('clave-ajena')).resolves.toEqual({ existe: false });
+    expect(findOneFactura).toHaveBeenCalledWith({ where: { empresaId: 7, claveIdempotencia: 'clave-ajena' } });
+  });
+
   it('con factura pero sin e-CF emitido todavía, devuelve eNcf:null (nunca consulta ecfRepo)', async () => {
     const factura = { id: 42, folio: 'FAC-100', ecfId: undefined };
     const { call, findOneEcf } = makeService(factura);

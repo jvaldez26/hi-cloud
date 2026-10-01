@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Spin } from 'antd';
 import { useAuthStore } from '../../store/auth.store';
 import api from '../../api/client';
+import { consumirReturnTo } from '../../utils/returnTo';
 
 export default function GoogleCallbackPage() {
   const [params]              = useSearchParams();
@@ -48,7 +49,10 @@ export default function GoogleCallbackPage() {
 
         // login() ya resolvió el rol (sin empresa activa aquí, no cambia nada
         // en este flujo — pero es la misma fuente que el resto del login).
-        if (useAuthStore.getState().user?.role === 'super_admin') {
+        const returnTo = consumirReturnTo();
+        if (returnTo) {
+          navigate(returnTo, { replace: true });
+        } else if (useAuthStore.getState().user?.role === 'super_admin') {
           navigate('/super-admin', { replace: true });
         } else {
           navigate('/dashboard', { replace: true });

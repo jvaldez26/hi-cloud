@@ -12,6 +12,7 @@ import { useAuthStore, registerLogoutCallback }  from './store/auth.store';
 import { onSessionEnd, markNavigatingAway }      from './utils/sessionEvents';
 import { useThemeStore } from './store/theme.store';
 import { purgarBorradoresVencidos } from './hooks/useFormDraft';
+import { guardarReturnTo } from './utils/returnTo';
 import AppLayout                from './components/layout/AppLayout';
 import ActividadGuard           from './components/auth/ActividadGuard';
 import ReautenticacionGlobalModal from './components/auth/ReautenticacionGlobalModal';
@@ -463,6 +464,10 @@ function SessionExpiredHandler() {
       // tres conservan el carrito del POS. Solo el logout voluntario y el
       // cambio de usuario lo borran, y ninguno de los dos pasa por aquí.
       logout({ preservarCarritoPOS: true });
+
+      // Al volver a entrar (por cualquiera de las puertas — LoginPage, Google,
+      // SetupPasswordPage), se regresa aquí en vez de al dashboard por defecto.
+      guardarReturnTo(window.location.pathname + window.location.search);
 
       navigate('/login', { replace: true });
 
