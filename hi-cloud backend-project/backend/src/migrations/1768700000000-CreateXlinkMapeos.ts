@@ -21,14 +21,18 @@ export class CreateXlinkMapeos1768700000000 implements MigrationInterface {
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS "xlink_mapeos" (
         "id"                  SERIAL PRIMARY KEY,
-        "empresaId"           INTEGER NOT NULL,
+        -- Nullable a propósito: TenantBaseEntity.empresaId es @Column({nullable:
+        -- true}) para TODA entidad tenant-scoped del sistema (ver clientes,
+        -- compras, facturas, productos en producción) — NOT NULL aquí sería la
+        -- única tabla distinta, sin ganar nada (siempre se asigna igual).
+        "empresaId"           INTEGER,
         "contraparteXlinkId"  UUID NOT NULL,
         "tipo"                VARCHAR(20) NOT NULL,
         "valorExterno"        TEXT NOT NULL,
         "valorInternoId"      INTEGER NOT NULL,
         "isActive"            BOOLEAN NOT NULL DEFAULT true,
-        "createdAt"           TIMESTAMPTZ NOT NULL DEFAULT now(),
-        "updatedAt"           TIMESTAMPTZ NOT NULL DEFAULT now(),
+        "createdAt"           TIMESTAMP NOT NULL DEFAULT now(),
+        "updatedAt"           TIMESTAMP NOT NULL DEFAULT now(),
         CONSTRAINT "ck_xlink_mapeo_tipo"
           CHECK ("tipo" IN ('producto', 'unidad', 'impuesto', 'termino_pago', 'retencion')),
         CONSTRAINT "uq_xlink_mapeo"

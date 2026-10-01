@@ -54,3 +54,8 @@ pids
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Dumps de esquema de producción (pg_dump --schema-only) — nunca al repo,
+# aunque no lleven datos ni credenciales: revelan la estructura interna completa.
+hicloud_schema_only.sql
+hicloud_migrations_produccion.csv

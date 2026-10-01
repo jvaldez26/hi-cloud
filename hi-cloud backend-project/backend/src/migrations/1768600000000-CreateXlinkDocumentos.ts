@@ -53,8 +53,11 @@ export class CreateXlinkDocumentos1768600000000 implements MigrationInterface {
         "procesadoEn"             TIMESTAMPTZ NULL,
         "motivoDescarte"          TEXT NULL,
         "isActive"                BOOLEAN NOT NULL DEFAULT true,
-        "createdAt"               TIMESTAMPTZ NOT NULL DEFAULT now(),
-        "updatedAt"               TIMESTAMPTZ NOT NULL DEFAULT now(),
+        -- Sin TZ a propósito: BaseEntity.createdAt/updatedAt (@CreateDateColumn
+        -- sin type explícito) genera TIMESTAMP simple, igual que el resto del
+        -- sistema — TIMESTAMPTZ aquí sería la única tabla distinta.
+        "createdAt"               TIMESTAMP NOT NULL DEFAULT now(),
+        "updatedAt"               TIMESTAMP NOT NULL DEFAULT now(),
         CONSTRAINT "ck_xlink_doc_tipo"
           CHECK ("tipoDocumento" IN ('factura_credito', 'nota_credito', 'nota_debito', 'orden_compra')),
         CONSTRAINT "ck_xlink_doc_estado"
