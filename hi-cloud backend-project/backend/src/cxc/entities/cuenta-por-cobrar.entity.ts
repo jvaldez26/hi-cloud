@@ -60,4 +60,8 @@ export class CuentaPorCobrar extends TenantBaseEntity {
 
   @Column()
   userId!: number;
+
+  /** Constancia de por qué se cerró fuera del flujo normal de cobro (ej. anulación por NC). */
+  @Column({ type: 'text', nullable: true, default: null })
+  notas?: string;
 }

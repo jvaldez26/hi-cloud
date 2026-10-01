@@ -1646,6 +1646,63 @@ export class AsientosAutomaticosService {
   }
 
   // ──────────────────────────────────────────────────────────────────
+  // Reclasificación a anticipo de un abono atrapado por NC código 1 →
+  // Clientes / Anticipos de Clientes.
+  //
+  // asientoNotaCredito() acredita Clientes por el TOTAL de la factura,
+  // incluido lo que ya se había cobrado — ese abono queda como un saldo
+  // "negativo" (a favor del cliente) dentro de la cuenta Clientes. Esto NO
+  // es dinero nuevo (a diferencia de asientoAnticipo, que sí lo es): el
+  // efectivo ya entró con el abono original y su propio asiento (Debe
+  // Caja/Haber Clientes) — por eso esta reclasificación NUNCA toca Caja.
+  //
+  // DÉBITO: Clientes (saca el saldo atrapado, lo deja en 0 junto con la
+  //         reversa de la NC)
+  // CRÉDITO: Anticipos de Clientes (pasivo — saldo a favor real)
+  //
+  // Ver AnticiposClienteService.crearPorReclasificacionNc().
+  // ──────────────────────────────────────────────────────────────────
+
+  async asientoReclasificacionAnticipoNc(
+    monto:      number,
+    anticipoId: number,
+    ncNumero:   string,
+    fecha:      string,
+    userId:     number,
+  ): Promise<number | null> {
+    const cuentas = await this.resolverCuentasConcepto([
+      ['CLIENTES',           COD.CLIENTES],
+      ['ANTICIPOS_CLIENTES', COD.ANTICIPOS_CLIENTES],
+    ]);
+    try {
+      const asiento = await this._crearAsientoContabilizado({
+        descripcion:     `Reclasificación a anticipo — NC ${ncNumero}`,
+        tipoOrigen:      TipoOrigenAsiento.COBRO,
+        referenciaId:    anticipoId,
+        referenciaFolio: `ANT-${anticipoId}`,
+        fecha,
+        userId,
+        lineas: [
+          { codigo: cuentas.CLIENTES,           descripcion: `Reclasifica abono atrapado — NC ${ncNumero}`, debe: monto, haber: 0    },
+          { codigo: cuentas.ANTICIPOS_CLIENTES, descripcion: `Saldo a favor por NC ${ncNumero}`,             debe: 0,     haber: monto },
+        ],
+      });
+      if (asiento) {
+        this.logger.log(`Asiento reclasificación anticipo #${anticipoId} (NC ${ncNumero}) generado`);
+      } else {
+        this.logger.warn(`Asiento reclasificación anticipo #${anticipoId} NO generado (cuenta faltante) — ver Sentry`);
+      }
+      return asiento?.id ?? null;
+    } catch (err) {
+      this.logger.error(`Error asiento reclasificación anticipo #${anticipoId}: ${(err as Error).message}`);
+      this.reportarFalloAsiento(err, 'asiento_reclasificacion_anticipo_nc', {
+        tipoOrigen: TipoOrigenAsiento.COBRO, referenciaId: String(anticipoId), referenciaFolio: `ANT-${anticipoId}`,
+      });
+      return null;
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
   // Reversión de cobro (anulación de recibo) → Clientes / Bancos
   // Inverso del asientoCobro: DÉBITO Clientes, CRÉDITO Bancos
   // ──────────────────────────────────────────────────────────────────

@@ -49,6 +49,8 @@ import { TokenBlacklistService } from '../auth/token-blacklist.service';
 import { RncModule }             from '../rnc/rnc.module';
 import { ContabilidadModule }    from '../contabilidad/contabilidad.module';
 import { DevolucionesModule }    from '../devoluciones/devoluciones.module';
+import { AuditoriaModule }         from '../auditoria/auditoria.module';
+import { AnticiposClienteModule }  from '../anticipos-cliente/anticipos-cliente.module';
 
 @Module({
   imports: [
@@ -68,6 +70,10 @@ import { DevolucionesModule }    from '../devoluciones/devoluciones.module';
     // Efectos de una NC aceptada por DGII pueden generar una devolución
     // pendiente — ver EcfEfectosNcService.
     DevolucionesModule,
+    // Mismo EcfEfectosNcService: auditoría de la cancelación automática de
+    // factura, y saldo a favor (anticipo) si la CxC cerrada tenía abono.
+    AuditoriaModule,
+    AnticiposClienteModule,
     JwtModule.registerAsync({
       imports:    [ConfigModule],
       useFactory: (cfg: ConfigService) => {

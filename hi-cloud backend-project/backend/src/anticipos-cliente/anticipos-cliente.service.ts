@@ -2,7 +2,7 @@ import {
   Injectable, NotFoundException, BadRequestException, Logger, OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, EntityManager } from 'typeorm';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { fechaHoyRD, mesHoyRD } from '../common/utils/fecha-local.util';
 import { AnticipoCliente, EstadoAnticipo } from './entities/anticipo-cliente.entity';
@@ -33,6 +33,14 @@ export interface CreateAnticipoDto {
 export interface AplicarAnticipoDto {
   cxcId:   number;
   monto?:  number;
+}
+
+export interface CrearAnticipoPorReclasificacionNcDto {
+  clienteId:             number;
+  monto:                 number;
+  ncNumero:              string;
+  facturaOriginalId:     number;
+  facturaOriginalFolio?: string;
 }
 
 @Injectable()
@@ -160,6 +168,58 @@ export class AnticiposClienteService implements OnModuleInit {
     return sinCaja
       ? { ...saved, _avisoCaja: 'Este anticipo se registró sin caja abierta hoy y no aparecerá en el arqueo del cajero.' }
       : saved;
+  }
+
+  // ── Crear anticipo por reclasificación de NC (dinero YA cobrado, no nuevo) ──
+  //
+  // Cuando una NC código 1 (anulación total) revierte una factura a crédito
+  // que ya tenía un abono aplicado, el asiento de la NC acredita Clientes
+  // por el TOTAL — el abono queda "atrapado" como saldo a favor dentro de
+  // Clientes. A diferencia de crear() (dinero NUEVO: Debe Caja/Haber
+  // Anticipos), aquí NO entra efectivo nuevo — el efectivo ya entró con el
+  // abono original — así que este camino NUNCA toca Caja, nunca pide método
+  // de pago, nunca busca caja diaria.
+  //
+  // empresaId es un parámetro EXPLÍCITO, no CLS: así puede llamarse desde
+  // cualquier contexto (incluido el cron de consulta de estado DGII, sin
+  // request HTTP). Si se pasa `em` (el EntityManager de una transacción en
+  // curso — ver EcfEfectosNcService), el registro del anticipo participa de
+  // esa transacción; el ASIENTO contable es responsabilidad del caller,
+  // generarlo requiere CLS (igual que el resto de los asientos del
+  // proyecto) y por eso siempre corre aparte — ver
+  // AsientosAutomaticosService.asientoReclasificacionAnticipoNc.
+  async crearPorReclasificacionNc(
+    dto:       CrearAnticipoPorReclasificacionNcDto,
+    usuarioId: number,
+    empresaId: number,
+    em?:       EntityManager,
+  ): Promise<AnticipoCliente> {
+    if (dto.monto <= 0) throw new BadRequestException('El monto debe ser mayor a 0');
+
+    const repo   = em ? em.getRepository(AnticipoCliente) : this.repo;
+    const runner = em ?? this.ds;
+
+    const [{ numero: n }] = await runner.query<{ numero: number }[]>(
+      `SELECT siguiente_numero_secuencia($1, 'ANT') AS numero`, [empresaId],
+    );
+    const numero = `ANT-${n}`;
+    const hoy = fechaHoyRD();
+
+    return repo.save(repo.create({
+      numero,
+      clienteId:      dto.clienteId,
+      monto:          dto.monto,
+      montoPendiente: dto.monto,
+      tipoPago:       'reclasificacion_nc', // no es un método de pago real — nunca pasa por caja
+      referencia:     `NC-${dto.ncNumero}`,
+      descripcion:    `Saldo a favor por anulación de NC ${dto.ncNumero} ` +
+                       `(factura ${dto.facturaOriginalFolio ?? '#' + dto.facturaOriginalId} con abono ya aplicado)`,
+      estado:         EstadoAnticipo.ACTIVO,
+      fechaRegistro:  hoy,
+      // sin cajaDiariaId a propósito — nunca debe aparecer en el arqueo de caja
+      usuarioId,
+      empresaId,
+    }));
   }
 
   // ── Aplicar anticipo a una CxC ─────────────────────────────────────────────

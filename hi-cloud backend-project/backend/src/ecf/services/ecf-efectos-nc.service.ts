@@ -8,6 +8,12 @@ import { reportServiceError } from '../../common/observability/sentry';
 import { AsientosAutomaticosService } from '../../contabilidad/services/asientos-automaticos.service';
 import { DevolucionesService } from '../../devoluciones/devoluciones.service';
 import { TenantService } from '../../tenant/tenant.service';
+import { AuditoriaService, CreateAuditLogDto } from '../../auditoria/auditoria.service';
+import { AccionAuditoria } from '../../auditoria/entities/audit-log.entity';
+import { AnticiposClienteService } from '../../anticipos-cliente/anticipos-cliente.service';
+import { NotificacionesService } from '../../notificaciones/notificaciones.service';
+import { TipoNotificacion } from '../../notificaciones/entities/notificacion-enviada.entity';
+import { fechaHoyRD } from '../../common/utils/fecha-local.util';
 
 /**
  * Aplica los efectos financieros de una Nota de Crédito sobre su factura
@@ -51,6 +57,9 @@ export class EcfEfectosNcService {
     private readonly asientosService: AsientosAutomaticosService,
     private readonly devolucionesService: DevolucionesService,
     private readonly tenantService: TenantService,
+    private readonly auditoriaService: AuditoriaService,
+    private readonly anticiposClienteService: AnticiposClienteService,
+    private readonly notificacionesService: NotificacionesService,
   ) {}
 
   /**
@@ -96,6 +105,18 @@ export class EcfEfectosNcService {
       codigoModificacion: 1 | 3;
     } | null = null;
 
+    // Poblado dentro de la transacción, código 1 únicamente: la CxC de la
+    // factura anulada tenía abonos aplicados antes de la NC — ese dinero NO
+    // es nuevo (ya entró con el abono original) y queda atrapado como saldo
+    // a favor dentro de Clientes (asientoNotaCredito acredita Clientes por
+    // el TOTAL, no solo el pendiente) — crearPorReclasificacionNc() ya
+    // corrió DENTRO de esta transacción (no depende de CLS, empresaId es
+    // explícito); lo único que falta y SÍ depende de CLS es su asiento
+    // contable — eso se dispara después de confirmar.
+    let reclasificacionAsientoAGenerar: {
+      empresaId: number; anticipoId: number; monto: number; ncNumero: string; usuarioId: number;
+    } | null = null;
+
     try {
       await this.dataSource.transaction(async (em) => {
         // Lock pesimista: webhook y cron pueden llegar simultáneamente.
@@ -137,6 +158,87 @@ export class EcfEfectosNcService {
             this.logger.log(
               `[EcfEfectosNc] ${ecf.numero} ${nuevoEstado} → Factura #${nc.facturaOriginalId} CANCELADA definitivamente`,
             );
+
+            // Bug real de producción (NC-101, NC-102, NC-103, NC-106 — ver
+            // diagnóstico 2026-10-01): cancelar la factura aquí NUNCA tocaba
+            // su CxC. FacturasService.cambiarEstado() sí anula la CxC al
+            // cancelar directo (cxcService.anularPorFacturaId), pero este
+            // camino (cancelación vía efectos de NC, disparado por el cron/
+            // webhook de DGII) es independiente y no pasaba por ahí — la CxC
+            // quedaba viva para siempre, con saldo, aunque la factura ya
+            // estuviera cancelada y el asiento de venta revertido por el
+            // asiento propio de la NC (asientoNotaCredito, más abajo).
+            const [cxcRow] = await em.query<any[]>(
+              `SELECT id, "montoPagado"
+               FROM cuentas_por_cobrar
+               WHERE "facturaId" = $1 AND "empresaId" = $2
+                 AND "isActive" = true AND estado NOT IN ('anulada', 'pagada')
+               LIMIT 1`,
+              [nc.facturaOriginalId, ecf.empresaId],
+            );
+            if (cxcRow) {
+              const notaCxc = `Anulada por NC ${nc.numero} (e-NCF ${ecf.numero})`;
+              await em.query(
+                `UPDATE cuentas_por_cobrar
+                 SET estado = 'anulada', "montoPendiente" = 0, notas = $1
+                 WHERE id = $2`,
+                [notaCxc, cxcRow.id],
+              );
+              this.logger.log(
+                `[EcfEfectosNc] ${ecf.numero} ${nuevoEstado} → CxC #${cxcRow.id} (Factura #${nc.facturaOriginalId}) anulada`,
+              );
+
+              const montoPagadoCxc = Number(cxcRow.montoPagado);
+              if (montoPagadoCxc > 0) {
+                // Registro del anticipo DENTRO de la transacción — no depende
+                // de CLS (empresaId explícito), así que no hay motivo para
+                // dejarlo fire-and-forget: si falla, toda la cancelación se
+                // revierte y el cron reintenta, en vez de dejar la factura
+                // cancelada con el abono sin rastro.
+                const anticipo = await this.anticiposClienteService.crearPorReclasificacionNc(
+                  {
+                    clienteId:             nc.clienteId,
+                    monto:                 montoPagadoCxc,
+                    ncNumero:              nc.numero,
+                    facturaOriginalId:     nc.facturaOriginalId,
+                    facturaOriginalFolio:  nc.facturaOriginalFolio,
+                  },
+                  nc.usuarioId,
+                  ecf.empresaId!,
+                  em,
+                );
+                this.logger.log(
+                  `[EcfEfectosNc] Anticipo ${anticipo.numero} registrado (reclasificación, NO caja) por ` +
+                  `cierre de CxC #${cxcRow.id} — NC ${nc.numero}, RD$${montoPagadoCxc}`,
+                );
+                reclasificacionAsientoAGenerar = {
+                  empresaId: ecf.empresaId!,
+                  anticipoId: anticipo.id,
+                  monto:      montoPagadoCxc,
+                  ncNumero:   nc.numero,
+                  usuarioId:  nc.usuarioId,
+                };
+              }
+            }
+
+            // Auditoría — esta cancelación no pasa por
+            // FacturasService.cambiarEstado() (la dispara el cron/webhook de
+            // DGII, no un PATCH del usuario), así que sin esto no queda
+            // ningún rastro de quién/por qué se canceló la factura.
+            const auditDto: CreateAuditLogDto = {
+              accion:      AccionAuditoria.UPDATE,
+              modulo:      'facturas',
+              entidad:     'facturas',
+              entidadId:   String(nc.facturaOriginalId),
+              descripcion: `Factura cancelada automáticamente por NC ${nc.numero} (e-NCF ${ecf.numero})`,
+              metodo:      'SYSTEM',
+              ruta:        'ecf/efectos-nc',
+              exitoso:     true,
+              empresaId:   ecf.empresaId ?? undefined,
+              userId:      nc.usuarioId,
+              nivel:       'IMPORTANTE',
+            };
+            await this.auditoriaService.registrar(auditDto); // nunca lanza — ver AuditoriaService.registrar()
           }
 
           if (ecf.codigoModificacion === 3 && nc.facturaOriginalId) {
@@ -282,7 +384,10 @@ export class EcfEfectosNcService {
       facturaOriginalId: number; clienteId: number; usuarioId: number;
       codigoModificacion: 1 | 3;
     } | null;
-    if (!pendiente && !devPendiente) return;
+    const asientoReclasifPendiente = reclasificacionAsientoAGenerar as {
+      empresaId: number; anticipoId: number; monto: number; ncNumero: string; usuarioId: number;
+    } | null;
+    if (!pendiente && !devPendiente && !asientoReclasifPendiente) return;
 
     // AsientosAutomaticosService (asientoNotaCredito) lee empresaId de CLS
     // (TenantService.getEmpresaId()), no de un parámetro — normal dentro de
@@ -324,6 +429,48 @@ export class EcfEfectosNcService {
             numero:    devPendiente.ncNumero,
           });
         });
+      }
+
+      // Asiento de la reclasificación a anticipo — el REGISTRO del anticipo
+      // ya se hizo dentro de la transacción (arriba); esto es solo su
+      // asiento contable, que sí depende de CLS. TIPO B: si falla, el saldo
+      // a favor ya existe y es usable (solo falta su asiento) — se avisa a
+      // ADMIN/CONTADOR y se reporta a Sentry, nunca bloquea el
+      // procesamiento de efectos ya confirmado.
+      if (asientoReclasifPendiente) {
+        try {
+          const asientoId = await this.asientosService.asientoReclasificacionAnticipoNc(
+            asientoReclasifPendiente.monto,
+            asientoReclasifPendiente.anticipoId,
+            asientoReclasifPendiente.ncNumero,
+            fechaHoyRD(),
+            asientoReclasifPendiente.usuarioId,
+          );
+          if (!asientoId) {
+            throw new Error('asientoReclasificacionAnticipoNc devolvió null (cuenta faltante — ver Sentry)');
+          }
+        } catch (err) {
+          this.logger.error(
+            `[EcfEfectosNc] No se pudo generar el asiento de reclasificación del anticipo ` +
+            `#${asientoReclasifPendiente.anticipoId} (NC ${asientoReclasifPendiente.ncNumero}): ` +
+            `${err instanceof Error ? err.message : String(err)}`,
+          );
+          reportServiceError(err, 'ecf_efectos_nc_asiento_reclasificacion_anticipo', {
+            anticipoId: String(asientoReclasifPendiente.anticipoId),
+            empresaId:  String(asientoReclasifPendiente.empresaId),
+            monto:      String(asientoReclasifPendiente.monto),
+            numero:     asientoReclasifPendiente.ncNumero,
+          });
+          await this.notificacionesService.notificarSistemaEmpresa(
+            asientoReclasifPendiente.empresaId,
+            TipoNotificacion.MANUAL,
+            'Revisar: anticipo sin asiento contable',
+            `El anticipo #${asientoReclasifPendiente.anticipoId} (saldo a favor por NC ` +
+            `${asientoReclasifPendiente.ncNumero}, RD$${asientoReclasifPendiente.monto.toFixed(2)}) se registró, ` +
+            `pero su asiento contable (Debe Clientes / Haber Anticipos) falló. Revisar y generar a mano.`,
+            `NC-${asientoReclasifPendiente.ncNumero}`,
+          ).catch(() => {});
+        }
       }
     });
   }
