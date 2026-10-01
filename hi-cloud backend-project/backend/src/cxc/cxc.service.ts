@@ -585,6 +585,13 @@ export class CxCService {
   // Antigüedad de saldos (aging)
   // ──────────────────────────────────────────────────────────────────
 
+  /**
+   * JOIN con facturas y f.estado != 'cancelada': anularPorFacturaId() deja la
+   * CxC viva (bloqueada) cuando la factura cancelada tenía abonos aplicados o
+   * un e-CF confirmado — ahí no se revierte el asiento a propósito. Sin este
+   * filtro, esa CxC sigue sumando en la antigüedad aunque el estado de cuenta
+   * del cliente (clientes.service.ts) ya no muestre la factura.
+   */
   async getAging() {
     const empresaId = this.tenantService.getEmpresaId();
     const rows: any[] = await this.dataSource.query(
@@ -599,9 +606,11 @@ export class CxCService {
          SUM(cxc."montoPendiente") AS total
        FROM cuentas_por_cobrar cxc
        JOIN clientes c ON c.id = cxc."clienteId"
+       JOIN facturas f ON f.id = cxc."facturaId"
        WHERE cxc."empresaId" = $1
          AND cxc."montoPendiente" > 0
          AND cxc.estado NOT IN ('pagada', 'anulada')
+         AND f.estado != 'cancelada'
        GROUP BY c.id, c.nombre, c."rncReceptor"
        ORDER BY total DESC`,
       [empresaId],

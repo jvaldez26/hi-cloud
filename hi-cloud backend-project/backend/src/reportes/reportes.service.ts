@@ -1205,28 +1205,37 @@ export class ReportesService {
 
   // ── Antigüedad por Cobrar (CxC) ───────────────────────────────────────────
 
+  /**
+   * JOIN con facturas y f.estado != 'cancelada': una factura cancelada que
+   * tenía abonos aplicados o un e-CF confirmado deja su CxC viva a propósito
+   * (cxc.service.ts:anularPorFacturaId no revierte el asiento en ese caso) —
+   * sin este filtro, ese saldo sigue sumando aquí aunque ya no aparezca en el
+   * estado de cuenta del cliente.
+   */
   async getAntiguedadCobrar() {
     const eid = this.eid;
     const [row] = await this.dataSource.query<any[]>(`
       SELECT
-        COALESCE(SUM(CASE WHEN "fechaVencimiento" >= NOW()
-                         THEN "montoPendiente" ELSE 0 END), 0)::numeric AS corriente,
-        COALESCE(SUM(CASE WHEN "fechaVencimiento" < NOW()
-                          AND "fechaVencimiento" >= NOW() - INTERVAL '30 days'
-                         THEN "montoPendiente" ELSE 0 END), 0)::numeric AS dias_0_30,
-        COALESCE(SUM(CASE WHEN "fechaVencimiento" < NOW() - INTERVAL '30 days'
-                          AND "fechaVencimiento" >= NOW() - INTERVAL '60 days'
-                         THEN "montoPendiente" ELSE 0 END), 0)::numeric AS dias_31_60,
-        COALESCE(SUM(CASE WHEN "fechaVencimiento" < NOW() - INTERVAL '60 days'
-                          AND "fechaVencimiento" >= NOW() - INTERVAL '90 days'
-                         THEN "montoPendiente" ELSE 0 END), 0)::numeric AS dias_61_90,
-        COALESCE(SUM(CASE WHEN "fechaVencimiento" < NOW() - INTERVAL '90 days'
-                         THEN "montoPendiente" ELSE 0 END), 0)::numeric AS dias_90_plus,
-        COALESCE(SUM("montoPendiente"), 0)::numeric AS total
-      FROM cuentas_por_cobrar
-      WHERE "empresaId" = $1
-        AND estado NOT IN ('pagada', 'anulada')
-        AND "isActive" = true
+        COALESCE(SUM(CASE WHEN cxc."fechaVencimiento" >= NOW()
+                         THEN cxc."montoPendiente" ELSE 0 END), 0)::numeric AS corriente,
+        COALESCE(SUM(CASE WHEN cxc."fechaVencimiento" < NOW()
+                          AND cxc."fechaVencimiento" >= NOW() - INTERVAL '30 days'
+                         THEN cxc."montoPendiente" ELSE 0 END), 0)::numeric AS dias_0_30,
+        COALESCE(SUM(CASE WHEN cxc."fechaVencimiento" < NOW() - INTERVAL '30 days'
+                          AND cxc."fechaVencimiento" >= NOW() - INTERVAL '60 days'
+                         THEN cxc."montoPendiente" ELSE 0 END), 0)::numeric AS dias_31_60,
+        COALESCE(SUM(CASE WHEN cxc."fechaVencimiento" < NOW() - INTERVAL '60 days'
+                          AND cxc."fechaVencimiento" >= NOW() - INTERVAL '90 days'
+                         THEN cxc."montoPendiente" ELSE 0 END), 0)::numeric AS dias_61_90,
+        COALESCE(SUM(CASE WHEN cxc."fechaVencimiento" < NOW() - INTERVAL '90 days'
+                         THEN cxc."montoPendiente" ELSE 0 END), 0)::numeric AS dias_90_plus,
+        COALESCE(SUM(cxc."montoPendiente"), 0)::numeric AS total
+      FROM cuentas_por_cobrar cxc
+      JOIN facturas f ON f.id = cxc."facturaId"
+      WHERE cxc."empresaId" = $1
+        AND cxc.estado NOT IN ('pagada', 'anulada')
+        AND cxc."isActive" = true
+        AND f.estado != 'cancelada'
     `, [eid]);
 
     return {
