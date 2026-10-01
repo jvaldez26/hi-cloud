@@ -185,7 +185,9 @@ export default function LoginPage() {
         return;
       }
       login((data as any).user, (data as any).empresaActual, (data as any).empresas ?? [], (data as any).almacenActual ?? null, (data as any).sucursalActual ?? null, (data as any).sucursalNombre ?? null);
-      navigate((data as any).user?.role === 'super_admin' ? '/super-admin' : '/dashboard');
+      // login() ya resolvió el rol por la empresa activa (resolverRolPorEmpresa)
+      // — leer el del store, no el crudo de `data`, que aún es el global.
+      navigate(useAuthStore.getState().user?.role === 'super_admin' ? '/super-admin' : '/dashboard');
     } catch (e: unknown) {
       const responseData   = (e as any)?.response?.data;
       const msg            = responseData?.errors?.[0] ?? 'Credenciales inválidas';
@@ -218,7 +220,9 @@ export default function LoginPage() {
       const data = await authApi.login(identificador, password, true); // forceLogin: true
       if (!data) throw new Error('Sin respuesta');
       login((data as any).user, (data as any).empresaActual, (data as any).empresas ?? [], (data as any).almacenActual ?? null, (data as any).sucursalActual ?? null, (data as any).sucursalNombre ?? null);
-      navigate((data as any).user?.role === 'super_admin' ? '/super-admin' : '/dashboard');
+      // login() ya resolvió el rol por la empresa activa (resolverRolPorEmpresa)
+      // — leer el del store, no el crudo de `data`, que aún es el global.
+      navigate(useAuthStore.getState().user?.role === 'super_admin' ? '/super-admin' : '/dashboard');
     } catch (e: unknown) {
       const msg = (e as any)?.response?.data?.errors?.[0] ?? 'Error al iniciar sesión';
       setError(msg);
@@ -232,7 +236,9 @@ export default function LoginPage() {
       const data = await authApi.complete2FALogin(codigoTOTP);
       if (!data) throw new Error('Sin respuesta');
       login((data as any).user, (data as any).empresaActual, (data as any).empresas ?? [], (data as any).almacenActual ?? null, (data as any).sucursalActual ?? null, (data as any).sucursalNombre ?? null);
-      navigate((data as any).user?.role === 'super_admin' ? '/super-admin' : '/dashboard');
+      // login() ya resolvió el rol por la empresa activa (resolverRolPorEmpresa)
+      // — leer el del store, no el crudo de `data`, que aún es el global.
+      navigate(useAuthStore.getState().user?.role === 'super_admin' ? '/super-admin' : '/dashboard');
     } catch (e: unknown) {
       const msg = (e as any)?.response?.data?.errors?.[0] ?? 'Código incorrecto';
       setError(msg); setCodigoTOTP('');

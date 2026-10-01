@@ -46,7 +46,9 @@ export default function GoogleCallbackPage() {
 
         login(user, null, []);
 
-        if (user.role === 'super_admin') {
+        // login() ya resolvió el rol (sin empresa activa aquí, no cambia nada
+        // en este flujo — pero es la misma fuente que el resto del login).
+        if (useAuthStore.getState().user?.role === 'super_admin') {
           navigate('/super-admin', { replace: true });
         } else {
           navigate('/dashboard', { replace: true });

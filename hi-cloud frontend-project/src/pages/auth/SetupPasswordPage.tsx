@@ -48,7 +48,9 @@ export default function SetupPasswordPage() {
       const data = res.data;
       login(data.user, data.empresaActual, data.empresas ?? []);
       setSuccess(true);
-      const role: string = data.user?.role ?? '';
+      // login() ya resolvió el rol por la empresa activa (resolverRolPorEmpresa)
+      // — leer el del store, no el crudo de `data`, que aún es el global.
+      const role: string = useAuthStore.getState().user?.role ?? '';
       const destino =
         role === 'super_admin' ? '/super-admin'     :
         role === 'empleado'    ? '/portal-empleado' :

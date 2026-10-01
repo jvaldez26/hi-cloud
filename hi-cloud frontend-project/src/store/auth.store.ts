@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { AuthUser } from '../types';
 import { syncSentryScope } from '../observability/sentryScope';
 import { borrarCarritoYEspera } from '../pages/pos/carritoStorage';
+import { resolverRolPorEmpresa } from '../utils/resolverRolPorEmpresa';
 
 // Callback registrado por App.tsx para limpiar React Query al cerrar sesión.
 let _onLogout: (() => void) | null = null;
@@ -63,8 +64,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   hydrated:       false,
 
   login: (user, empresaActual, empresas = [], almacenActual?, sucursalActual?, sucursalNombre?) => {
+    // Única fuente de corrección rol-por-empresa (ver resolverRolPorEmpresa):
+    // CUALQUIER caller de login() queda bien sin tener que acordarse de
+    // aplicarla — antes cada pantalla de login tenía que hacerlo por su cuenta
+    // (y la mayoría no lo hacía, ver commit del fix de HiCloud Xlink).
+    const rolResuelto = resolverRolPorEmpresa(user.role, empresaActual ?? null, empresas);
+    const userResuelto = rolResuelto === user.role ? user : { ...user, role: rolResuelto };
+
     // Token NO se guarda — está en cookie httpOnly, JS no puede verlo
-    localStorage.setItem('auth_user', JSON.stringify(user));
+    localStorage.setItem('auth_user', JSON.stringify(userResuelto));
 
     if (empresaActual) {
       localStorage.setItem('empresaId',    String(empresaActual));
@@ -81,7 +89,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (sucursalNombre)  localStorage.setItem('sucursalNombre', sucursalNombre);
     else                 localStorage.removeItem('sucursalNombre');
 
-    set({ user, empresaActual: empresaActual ?? null, empresas, almacenActual: almacenActual ?? null, sucursalActual: sucursalActual ?? null, sucursalNombre: sucursalNombre ?? null, hydrated: true });
+    set({ user: userResuelto, empresaActual: empresaActual ?? null, empresas, almacenActual: almacenActual ?? null, sucursalActual: sucursalActual ?? null, sucursalNombre: sucursalNombre ?? null, hydrated: true });
   },
 
   logout: (opts) => {
@@ -122,10 +130,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   cambiarEmpresa: (empresaId) => {
     localStorage.setItem('empresaId', String(empresaId));
     set(state => {
-      const empresaInfo = state.empresas.find(e => e.empresaId === empresaId);
-      const newUser = state.user && empresaInfo
-        ? { ...state.user, role: empresaInfo.rol as AuthUser['role'] }
-        : state.user;
+      if (!state.user) return { empresaActual: empresaId };
+      const rolResuelto = resolverRolPorEmpresa(state.user.role, empresaId, state.empresas);
+      const newUser = rolResuelto === state.user.role ? state.user : { ...state.user, role: rolResuelto };
       if (newUser !== state.user) localStorage.setItem('auth_user', JSON.stringify(newUser));
       return { empresaActual: empresaId, user: newUser };
     });

@@ -532,10 +532,9 @@ export default function App() {
           const empresas       = empresasRaw ? JSON.parse(empresasRaw) : [];
           const sucursalId     = localStorage.getItem('sucursalId');
           const sucursalNombre = localStorage.getItem('sucursalNombre');
-          // Usar el rol específico de la empresa activa (no el rol global de user.role)
-          const empresaActiva  = empresas.find((e: any) => e.empresaId === Number(empresaId));
-          const userHydrated   = empresaActiva ? { ...user, role: empresaActiva.rol } : user;
-          login(userHydrated, empresaId ? Number(empresaId) : null, empresas,
+          // login() resuelve el rol por la empresa activa internamente
+          // (resolverRolPorEmpresa) — no hay que corregirlo aquí también.
+          login(user, empresaId ? Number(empresaId) : null, empresas,
                 null, sucursalId ? Number(sucursalId) : null, sucursalNombre);
           // Sincronizar tema del sidebar: el servidor es fuente de verdad (cross-device)
           if (user?.temaSidebar) setTemaSidebar(user.temaSidebar as any);
