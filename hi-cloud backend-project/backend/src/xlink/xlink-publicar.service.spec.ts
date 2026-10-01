@@ -37,7 +37,7 @@ const FACTURA_ACEPTADA = {
   ncfOrigen: 'E310000000001', estadoDGII: 'aceptado',
 };
 const LINEAS_FACTURA_CUADRADA = [
-  { productoId: 1, descripcion: 'Producto A', cantidad: '1', precioUnitario: '100.00', descuento: '0', porcentajeIva: '18', montoItem: '100.00', itbis: '18.00', sku: 'A1', unidad: 'UND' },
+  { productoId: 1, descripcion: 'Producto A', cantidad: '1', precioUnitario: '100.00', descuento: '0', porcentajeIva: '18', montoItem: '100.00', itbis: '18.00', sku: 'A1', unidad: 'UND', productoEmpresaId: 1 },
 ];
 const CONTRAPARTE_VISIBLE = { id: 99, isActive: true, xlinkVisible: true };
 
@@ -97,6 +97,30 @@ describe('XlinkPublicarService — resolverFactura vía publicar()', () => {
     );
 
     expect(resultados[0].ok).toBe(false);
+    expect(d.xlinkRepo.crear).not.toHaveBeenCalled();
+  });
+
+  it('NO publica si una línea referencia un producto que no pertenece a la empresa (cross-tenant)', async () => {
+    const d = buildDeps();
+    const lineaProductoAjeno = [
+      { ...LINEAS_FACTURA_CUADRADA[0], productoId: 999, productoEmpresaId: null },
+    ];
+    d.ds.query.mockImplementation((sql: string) => {
+      if (sql.includes('FROM facturas')) return Promise.resolve([FACTURA_ACEPTADA]);
+      if (sql.includes('FROM factura_detalles')) return Promise.resolve(lineaProductoAjeno);
+      if (sql.includes('FROM cotizaciones')) return Promise.resolve([]);
+      if (sql.includes('FROM empresa WHERE "xlinkId"')) return Promise.resolve([CONTRAPARTE_VISIBLE]);
+      return Promise.resolve([]);
+    });
+    const service = buildService(d);
+
+    const resultados = await service.publicar(
+      { tipoDocumento: XlinkTipoDocumento.FACTURA_CREDITO, documentoIds: [10] },
+      { id: 1 },
+    );
+
+    expect(resultados[0].ok).toBe(false);
+    expect(resultados[0].error).toMatch(/no pertenece a la empresa/);
     expect(d.xlinkRepo.crear).not.toHaveBeenCalled();
   });
 

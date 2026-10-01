@@ -11,6 +11,7 @@ import { XlinkService } from './xlink.service';
 import { XlinkDocumentosRepository } from './xlink-documentos.repository';
 import { XlinkEstadoReceptor, XlinkTipoDocumento } from './entities/xlink-documento.entity';
 import { PublicarXlinkDto, PublicarXlinkResultadoItem } from './dto/publicar-xlink.dto';
+import { reportServiceError } from '../common/observability/sentry';
 
 /** e-CF aceptado por DGII, con o sin observaciones — mismo criterio que
  *  notas-credito.service.ts (getSaldoDisponible) y emitir-ecf.use-case. */
@@ -251,6 +252,34 @@ export class XlinkPublicarService {
     }
   }
 
+  /**
+   * CAPA 6 del CI (check-tenant-empresaid-filter.js) exige que el JOIN contra
+   * `productos` filtre empresaId en la misma consulta — aquí va en el ON, no
+   * en el WHERE, para no convertir el LEFT JOIN en INNER y perder líneas sin
+   * producto (servicios, líneas libres). Eso significa que una línea con
+   * productoId de OTRA empresa también deja p.* en NULL, indistinguible de
+   * "sin producto" — por eso se selecciona `p.id AS "productoEmpresaId"` y se
+   * verifica aquí: si vino productoId pero NO hubo match, es corrupción de
+   * datos (nunca debería pasar en operación normal) y se aborta sin publicar.
+   */
+  private assertProductosPropios(lineasRaw: any[], numeroOrigen: string, empresaId: number): void {
+    for (let i = 0; i < lineasRaw.length; i++) {
+      const l = lineasRaw[i];
+      if (l.productoId != null && l.productoEmpresaId == null) {
+        const error = new Error(
+          `HiCloud Xlink: ${numeroOrigen} línea ${i + 1} referencia productoId=${l.productoId}, ` +
+          `que no pertenece a la empresa #${empresaId} — no se publica nada.`,
+        );
+        reportServiceError(error, 'xlink.publicar.producto_cross_tenant', {
+          empresaId, numeroOrigen, productoId: l.productoId, linea: i + 1,
+        });
+        throw new BadRequestException(
+          `La línea ${i + 1} de ${numeroOrigen} referencia un producto que no pertenece a la empresa`,
+        );
+      }
+    }
+  }
+
   private async resolverFactura(id: number, empresaId: number): Promise<DocumentoParaPublicar> {
     const [f] = await this.ds.query(
       `
@@ -281,14 +310,15 @@ export class XlinkPublicarService {
       SELECT fd."productoId", fd.descripcion, fd.cantidad::numeric, fd."precioUnitario"::numeric,
              fd."descuentoMonto"::numeric AS descuento, fd."porcentajeIva"::numeric,
              fd.subtotal::numeric AS "montoItem", fd."importeIva"::numeric AS itbis,
-             p.codigo AS sku, p."unidadMedida" AS unidad
+             p.codigo AS sku, p."unidadMedida" AS unidad, p.id AS "productoEmpresaId"
       FROM factura_detalles fd
-      LEFT JOIN productos p ON p.id = fd."productoId"
+      LEFT JOIN productos p ON p.id = fd."productoId" AND p."empresaId" = $2
       WHERE fd."facturaId" = $1
       ORDER BY fd.id
       `,
-      [id],
+      [id, empresaId],
     );
+    this.assertProductosPropios(lineas, f.folio, empresaId);
 
     // Encadenar xlinkPadreId: ¿esta factura nació de una Cotización que a su
     // vez vino de una Orden de Compra recibida por Xlink?
@@ -335,14 +365,15 @@ export class XlinkPublicarService {
       SELECT ncd."productoId", ncd.descripcion, ncd.cantidad::numeric, ncd."precioUnitario"::numeric,
              0::numeric AS descuento, ncd."porcentajeIva"::numeric,
              ncd.subtotal::numeric AS "montoItem", ncd.iva::numeric AS itbis,
-             p.codigo AS sku, ncd."unidadMedida" AS unidad
+             p.codigo AS sku, ncd."unidadMedida" AS unidad, p.id AS "productoEmpresaId"
       FROM nota_credito_detalles ncd
-      LEFT JOIN productos p ON p.id = ncd."productoId"
+      LEFT JOIN productos p ON p.id = ncd."productoId" AND p."empresaId" = $2
       WHERE ncd."notaCreditoId" = $1
       ORDER BY ncd.id
       `,
-      [id],
+      [id, empresaId],
     );
+    this.assertProductosPropios(lineas, nc.folio, empresaId);
 
     return this.armarDocumento(nc, lineas, {
       destinoXlinkId: nc.xlinkEmpresaXlinkId,
@@ -375,14 +406,15 @@ export class XlinkPublicarService {
       SELECT cd."productoId", cd.descripcion, cd.cantidad::numeric, cd."precioUnitario"::numeric,
              cd."descuentoMonto"::numeric AS descuento, cd."porcentajeItbis"::numeric AS "porcentajeIva",
              cd.subtotal::numeric AS "montoItem", cd."importeItbis"::numeric AS itbis,
-             p.codigo AS sku, p."unidadMedida" AS unidad
+             p.codigo AS sku, p."unidadMedida" AS unidad, p.id AS "productoEmpresaId"
       FROM compra_detalles cd
-      LEFT JOIN productos p ON p.id = cd."productoId"
+      LEFT JOIN productos p ON p.id = cd."productoId" AND p."empresaId" = $2
       WHERE cd."compraId" = $1
       ORDER BY cd.id
       `,
-      [id],
+      [id, empresaId],
     );
+    this.assertProductosPropios(lineas, c.folio, empresaId);
 
     return this.armarDocumento(c, lineas, {
       destinoXlinkId: c.xlinkEmpresaXlinkId,
