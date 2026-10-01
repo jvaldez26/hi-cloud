@@ -18,6 +18,9 @@ import { TIPOS_NCF } from '../../components/ui/NCFSelector';
 import { useRncLookup } from '../../hooks/useRncLookup';
 import RncBadge from '../../components/ui/RncBadge';
 import SelectClienteConAlta from '../../components/clientes/SelectClienteConAlta';
+import { useFormDraft } from '../../hooks/useFormDraft';
+import BannerBorrador from '../../components/ui/BannerBorrador';
+import * as Sentry from '@sentry/react';
 import type { Cliente } from '../../types';
 import dayjs from 'dayjs';
 
@@ -37,6 +40,28 @@ interface LineaForm {
 }
 
 const NCF_VENTAS = ['E31', 'E32', 'E41', 'E44', 'E45', 'E46', 'E47'];
+
+/** Todo lo que vive FUERA del Form (useState) y debe ir en el borrador —
+ *  ver useFormDraft. El e-NCF/folio/totales calculados por el backend NUNCA
+ *  entran aquí: se recalculan siempre al guardar de verdad. */
+interface ExtraFacturaBorrador {
+  lineas: LineaForm[];
+  tipoNcf: string;
+  tipoNcfManual: boolean;
+  tipoPago: 'CONTADO' | 'CREDITO';
+  diasCredito: number;
+  clienteSeleccionado: Cliente | null;
+  rncInput: string;
+  descGeneralTipo: 'monto' | 'porcentaje';
+  descGeneralValor: number;
+  ordenCompraNumero: string;
+  formasPago: FormaPagoPayload[];
+  aplicaRetenciones: boolean;
+  retieneItbis: boolean;
+  pctRetItbis: number;
+  retieneIsr: boolean;
+  pctRetIsr: number;
+}
 
 const lineaVacia = (): LineaForm => ({
   key: Date.now().toString(),
@@ -101,11 +126,102 @@ export default function FacturaFormPage() {
   const sucursalActual = useAuthStore(s => s.sucursalActual);
   const empresaActual  = useAuthStore(s => s.empresaActual);
   const almacenActual  = useAuthStore(s => s.almacenActual);
+  const usuarioActual  = useAuthStore(s => s.user);
 
   const [stockPorProducto, setStockPorProducto] = useState<Record<number, any[]>>({});
 
   const { data: vendedores = [] } = useVendedoresQuery();
   const { data: sucursales = [] } = useSucursalesQuery(empresaActual);
+
+  // ── Recuperación de borrador (useFormDraft) ─────────────────────────────────
+  // Solo creación — los formularios de EDICIÓN quedan fuera hasta definir el
+  // manejo de conflictos con lo que ya hay guardado en el servidor.
+  const [idempotencyKey, setIdempotencyKey] = useState<string>(() => crypto.randomUUID());
+
+  const extraFactura = useCallback((): ExtraFacturaBorrador => ({
+    lineas, tipoNcf, tipoNcfManual, tipoPago, diasCredito, clienteSeleccionado,
+    rncInput, descGeneralTipo, descGeneralValor, ordenCompraNumero, formasPago,
+    aplicaRetenciones, retieneItbis, pctRetItbis, retieneIsr, pctRetIsr,
+  }), [lineas, tipoNcf, tipoNcfManual, tipoPago, diasCredito, clienteSeleccionado,
+       rncInput, descGeneralTipo, descGeneralValor, ordenCompraNumero, formasPago,
+       aplicaRetenciones, retieneItbis, pctRetItbis, retieneIsr, pctRetIsr]);
+
+  /** Tras restaurar: los precios/ITBIS del catálogo pudieron cambiar desde que
+   *  se guardó el borrador — nunca se confía en los que trae el snapshot. */
+  const restaurarExtraFactura = useCallback((saved: ExtraFacturaBorrador) => {
+    const lineasRecalculadas = saved.lineas.map(l => {
+      if (!l.productoId) return l;
+      const prod = productos?.data.find(p => p.id === l.productoId);
+      if (!prod) return l; // el producto ya no existe en el catálogo — el backend lo rechazará al guardar
+      return { ...l, precioUnitario: Number(prod.precio), porcentajeIva: Number(prod.porcentajeIva) };
+    });
+    const huboCambioDePrecio = lineasRecalculadas.some((l, i) =>
+      l.precioUnitario !== saved.lineas[i].precioUnitario || l.porcentajeIva !== saved.lineas[i].porcentajeIva);
+
+    setLineas(lineasRecalculadas);
+    setTipoNcf(saved.tipoNcf); setTipoNcfManual(saved.tipoNcfManual);
+    setTipoPago(saved.tipoPago); setDiasCredito(saved.diasCredito);
+    setClienteSeleccionado(saved.clienteSeleccionado);
+    setRncInput(saved.rncInput);
+    setDescGeneralTipo(saved.descGeneralTipo); setDescGeneralValor(saved.descGeneralValor);
+    setOrdenCompraNumero(saved.ordenCompraNumero);
+    setFormasPago(saved.formasPago);
+    setAplicaRetenciones(saved.aplicaRetenciones);
+    setRetieneItbis(saved.retieneItbis); setPctRetItbis(saved.pctRetItbis);
+    setRetieneIsr(saved.retieneIsr); setPctRetIsr(saved.pctRetIsr);
+
+    // Refrescar stock de los productos restaurados (igual que onProductoChange)
+    lineasRecalculadas.forEach(l => {
+      if (l.productoId) {
+        api.get(`/almacenes/producto/${l.productoId}/stock`)
+          .then((r: any) => setStockPorProducto(prev => ({ ...prev, [l.productoId!]: r.data?.data ?? r.data ?? [] })))
+          .catch(() => {});
+      }
+    });
+
+    if (huboCambioDePrecio) {
+      message.warning('Algunos precios o porcentajes de ITBIS cambiaron desde que guardaste el borrador — se actualizaron a los valores vigentes.');
+    }
+  }, [productos]);
+
+  const draft = useFormDraft<ExtraFacturaBorrador>({
+    formKey:   'factura',
+    form,
+    usuarioId: usuarioActual?.id,
+    empresaId: empresaActual,
+    extra:     { get: extraFactura, set: restaurarExtraFactura },
+    deps:      [lineas],
+    idempotencyKey,
+    habilitado: !editMode,
+  });
+
+  // Antes de ofrecer "Restaurar", ¿esta clave ya generó una factura? Nunca se
+  // reintenta el POST para averiguarlo — solo esta consulta de lectura.
+  const { data: yaGuardadaComo, isLoading: verificandoClave } = useQuery({
+    queryKey: ['factura-por-clave', draft.borradorInfo?.idempotencyKey],
+    queryFn:  () => facturasApi.porClave(draft.borradorInfo!.idempotencyKey),
+    enabled:  !!draft.borradorInfo?.idempotencyKey,
+    staleTime: 0,
+  });
+
+  const descartarMut = useMutation({ mutationFn: () => draft.descartar() });
+
+  const onRestaurarBorrador = () => {
+    const snap = draft.restaurar();
+    if (snap) setIdempotencyKey(snap.idempotencyKey);
+  };
+
+  // Telemetría mínima (#7 del diseño) — contar, por formKey, cuántas veces el
+  // borrador local ya correspondía a algo que SÍ se guardó (la clave de
+  // idempotencia resolvió en una factura existente). Mide el impacto real de
+  // la funcionalidad sin agregar un endpoint nuevo.
+  const yaExisteNotificado = React.useRef(false);
+  useEffect(() => {
+    if (yaGuardadaComo?.existe && !yaExisteNotificado.current) {
+      yaExisteNotificado.current = true;
+      Sentry.captureMessage('form-draft: ya existía', { level: 'info', tags: { modulo: 'form-draft', formKey: 'factura' } });
+    }
+  }, [yaGuardadaComo?.existe]);
 
   // ── Carga de factura existente (modo edición) ──────────────────────────────
   const { data: facturaEdit, isLoading: loadingEdit } = useQuery({
@@ -186,6 +302,8 @@ export default function FacturaFormPage() {
     onSuccess: (res: any) => {
       qc.invalidateQueries({ queryKey: ['facturas'] });
       message.success('Factura creada exitosamente');
+      draft.limpiar();
+      setIdempotencyKey(crypto.randomUUID()); // el modal de anticipo puede dejar la página montada
       const facturaId = res?.data?.data?.id ?? res?.data?.id ?? res?.id;
       const clienteId = form.getFieldValue('clienteId');
       if (facturaId && clienteId && (anticiposCliente?.length ?? 0) > 0) {
@@ -459,6 +577,9 @@ export default function FacturaFormPage() {
       tipoCambio:      values.tipoCambio ?? 1,
       tipoPago,
       diasCredito:     tipoPago === 'CREDITO' ? diasCredito : 0,
+      // Idempotencia — solo creación (ver useFormDraft). El backend, si ya
+      // existe una factura con esta clave, la devuelve en vez de duplicar.
+      ...(!editMode ? { claveIdempotencia: idempotencyKey } : {}),
       // RNC comprador validado
       ...(/^\d{9}$|^\d{11}$/.test(rncInput) ? { rncComprador: rncInput } : {}),
       // Orden de Compra
@@ -594,10 +715,31 @@ export default function FacturaFormPage() {
     );
   }
 
+  const volver = () => {
+    // Aviso de "cambios sin guardar" en navegación INTERNA — solo cubre este
+    // botón (el único punto de salida propio de la página). El resto de la
+    // navegación interna (sidebar, atrás del navegador) no se puede
+    // interceptar sin pasar a un data router (createBrowserRouter) — la app
+    // usa BrowserRouter. beforeunload (useFormDraft) sí cubre cierre de
+    // pestaña/recarga/URL nueva.
+    if (!editMode && form.isFieldsTouched()) {
+      const tituloAviso = 'Tienes cambios sin guardar'; // variable, no literal — ver tabla-fixed-columnas-con-ancho.test.ts
+      Modal.confirm({
+        title: tituloAviso,
+        content: 'Tu borrador queda guardado — podrás restaurarlo la próxima vez que abras Nueva Factura.',
+        okText: 'Salir igual',
+        cancelText: 'Seguir aquí',
+        onOk: () => navigate('/facturas'),
+      });
+      return;
+    }
+    navigate('/facturas');
+  };
+
   return (
     <div>
       <Row align="middle" style={{ marginBottom: 12 }}>
-        <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/facturas')}>
+        <Button type="text" icon={<ArrowLeftOutlined />} onClick={volver}>
           Volver
         </Button>
         <Title level={4} style={{ margin: '0 0 0 8px' }}>
@@ -606,7 +748,21 @@ export default function FacturaFormPage() {
         {editMode && <Tag color="orange" style={{ marginLeft: 12, fontSize: 12 }}>BORRADOR</Tag>}
       </Row>
 
+      {!editMode && draft.hayBorrador && !verificandoClave && (
+        <BannerBorrador
+          savedAt={draft.borradorInfo!.savedAt}
+          yaExiste={yaGuardadaComo?.existe ? {
+            numero: yaGuardadaComo.folio ?? `#${yaGuardadaComo.id}`,
+            href:   `/facturas/${yaGuardadaComo.id}`,
+          } : null}
+          onRestaurar={onRestaurarBorrador}
+          onDescartar={() => descartarMut.mutate()}
+          descartando={descartarMut.isPending}
+        />
+      )}
+
       <Form form={form} layout="vertical" onFinish={handleSubmit}
+        onValuesChange={draft.onValuesChange}
         initialValues={{ fecha: dayjs(), moneda: 'DOP' }}>
 
         {/* ════════════════════════════════════════════════════════════════

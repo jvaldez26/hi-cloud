@@ -48,19 +48,38 @@ export function emitSessionEnd(reason: SessionEndReason): void {
  * Reautenticación in-place: cuando el refresh automático no pudo renovar la
  * sesión (401 real, o reintentos agotados), el interceptor le da a la
  * pantalla activa la oportunidad de pedir la contraseña SIN navegar a
- * /login — hoy solo el POS registra un handler (reusa pantallaBloqueada),
- * para no perder una venta a medio teclear. Cualquier otra pantalla, al no
- * tener handler registrado, cae directo al logout normal (ver client.ts).
+ * /login, para no perder lo que el usuario tenía a medio teclear.
  *
  * Devuelve `true` si el usuario volvió a autenticarse con éxito (la
  * petición original se reintenta) o `false` si canceló / agotó intentos —
  * ese `false` es lo que dispara el logout real, con el carrito conservado.
+ *
+ * Dos niveles:
+ *   - POR DEFECTO: <ReautenticacionGlobalModal>, montado una sola vez en el
+ *     layout raíz (ver App.tsx) — cubre CUALQUIER pantalla.
+ *   - ESPECÍFICO: el POS registra el suyo propio (reusa pantallaBloqueada,
+ *     para no perder una venta a medio teclear) mientras está montado.
+ *
+ * El específico pisa al por defecto mientras vive; al desregistrarse (pasar
+ * `null`) NO se queda sin ninguno — vuelve al por defecto. Sin esto, salir
+ * del POS después de haberlo usado una vez dejaba la sesión entera sin
+ * reautenticación in-place por el resto de la sesión del navegador.
  */
 type ReauthHandler = () => Promise<boolean>;
-let _reauthHandler: ReauthHandler | null = null;
+let _reauthHandler:        ReauthHandler | null = null;
+let _reauthHandlerPorDefecto: ReauthHandler | null = null;
 
-export function registerReauthHandler(fn: ReauthHandler | null): void {
-  _reauthHandler = fn;
+/** @param esPorDefecto Solo lo pasa <ReautenticacionGlobalModal> — ver comentario arriba. */
+export function registerReauthHandler(fn: ReauthHandler | null, esPorDefecto = false): void {
+  if (esPorDefecto) {
+    // Solo tocar el activo si el por defecto YA era el activo — si hay un
+    // específico (POS) activo, un cambio al por defecto no debe pisarlo.
+    const porDefectoEraElActivo = _reauthHandler === _reauthHandlerPorDefecto;
+    _reauthHandlerPorDefecto = fn;
+    if (porDefectoEraElActivo) _reauthHandler = fn;
+    return;
+  }
+  _reauthHandler = fn ?? _reauthHandlerPorDefecto;
 }
 
 export async function solicitarReautenticacion(): Promise<boolean> {

@@ -34,3 +34,43 @@ describe('FacturasService — buscarPorClaveIdempotencia', () => {
     expect(findOne.mock.calls[0][0]).toEqual({ where: { empresaId: 7, claveIdempotencia: 'abc' } });
   });
 });
+
+/**
+ * FacturasService.porClaveIdempotencia — endpoint de SOLO LECTURA que usa el
+ * banner de borrador recuperado (frontend) para decidir si ofrece "Restaurar"
+ * o "Ya se guardó como FAC-XXXX", SIN reintentar nunca el POST para saberlo.
+ */
+describe('FacturasService — porClaveIdempotencia', () => {
+  const makeService = (factura: unknown, ecf: unknown = null) => {
+    const findOneFactura = jest.fn().mockResolvedValue(factura);
+    const findOneEcf     = jest.fn().mockResolvedValue(ecf);
+    const ctx = {
+      tenantService:     { getEmpresaId: () => 7 },
+      facturaRepository: { findOne: findOneFactura },
+      ecfRepo:            { findOne: findOneEcf },
+      buscarPorClaveIdempotencia: (FacturasService.prototype as any).buscarPorClaveIdempotencia,
+    };
+    const call = (clave: string) => (FacturasService.prototype as any).porClaveIdempotencia.call(ctx, clave);
+    return { call, findOneFactura, findOneEcf };
+  };
+
+  it('sin factura para esa clave, devuelve existe:false', async () => {
+    const { call } = makeService(null);
+    await expect(call('no-existe')).resolves.toEqual({ existe: false });
+  });
+
+  it('con factura pero sin e-CF emitido todavía, devuelve eNcf:null (nunca consulta ecfRepo)', async () => {
+    const factura = { id: 42, folio: 'FAC-100', ecfId: undefined };
+    const { call, findOneEcf } = makeService(factura);
+    await expect(call('abc')).resolves.toEqual({ existe: true, id: 42, folio: 'FAC-100', eNcf: null });
+    expect(findOneEcf).not.toHaveBeenCalled();
+  });
+
+  it('con factura y e-CF ya vinculado, devuelve el número de comprobante', async () => {
+    const factura = { id: 42, folio: 'FAC-100', ecfId: 900 };
+    const ecf = { id: 900, numero: 'E320000000045' };
+    const { call, findOneEcf } = makeService(factura, ecf);
+    await expect(call('abc')).resolves.toEqual({ existe: true, id: 42, folio: 'FAC-100', eNcf: 'E320000000045' });
+    expect(findOneEcf).toHaveBeenCalledWith({ where: { id: 900 } });
+  });
+});

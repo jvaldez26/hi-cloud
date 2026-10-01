@@ -114,6 +114,15 @@ export const facturasApi = {
   resumen: () =>
     api.get('/facturas/resumen').then(r => r.data.data ?? r.data),
 
+  /**
+   * Solo lectura — para el banner de borrador recuperado: ¿esta clave de
+   * idempotencia ya generó una factura? Nunca se usa para reintentar el POST.
+   */
+  porClave: (clave: string) =>
+    api.get<ApiResponse<{ existe: boolean; id?: number; folio?: string; eNcf?: string | null }>>(
+      `/facturas/por-clave/${encodeURIComponent(clave)}`,
+    ).then(r => r.data.data),
+
   /** Obtiene el e-CF asociado a una factura */
   getEcf: (facturaId: number) =>
     api.get(`/ecf?facturaId=${facturaId}&limit=1`).then(r => {

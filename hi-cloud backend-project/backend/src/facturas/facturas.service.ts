@@ -152,6 +152,24 @@ export class FacturasService {
   }
 
   /**
+   * Para el banner de borrador recuperado (frontend): antes de ofrecer
+   * "Restaurar", se consulta si la clave de idempotencia del borrador ya
+   * generó una factura — nunca se reintenta el POST solo para averiguarlo.
+   * Solo lectura, nunca crea nada.
+   */
+  async porClaveIdempotencia(claveIdempotencia: string) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const factura = await this.buscarPorClaveIdempotencia(claveIdempotencia, empresaId);
+    if (!factura) return { existe: false as const };
+
+    const ecf = factura.ecfId
+      ? await this.ecfRepo.findOne({ where: { id: factura.ecfId } })
+      : null;
+
+    return { existe: true as const, id: factura.id, folio: factura.folio, eNcf: ecf?.numero ?? null };
+  }
+
+  /**
    * ¿Este cajero tiene AHORA una sesión de modo supervisor activa (sin
    * cerrar, dentro de las 8h)? Mismo criterio y misma consulta que
    * SupervisorGateGuard — a propósito no necesita que el cliente mande un

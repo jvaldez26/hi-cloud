@@ -178,6 +178,13 @@ export class FacturasController {
     return this.facturasService.getPendientesCobro(cid);
   }
 
+  @Get('por-clave/:clave')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
+  @ApiOperation({ summary: 'Solo lectura: ¿esta clave de idempotencia ya generó una factura? (recuperación de borradores)' })
+  porClave(@Param('clave') clave: string) {
+    return this.facturasService.porClaveIdempotencia(clave);
+  }
+
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Obtener factura por ID con detalles' })

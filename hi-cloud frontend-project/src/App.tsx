@@ -11,8 +11,10 @@ import 'dayjs/locale/es';
 import { useAuthStore, registerLogoutCallback }  from './store/auth.store';
 import { onSessionEnd, markNavigatingAway }      from './utils/sessionEvents';
 import { useThemeStore } from './store/theme.store';
+import { purgarBorradoresVencidos } from './hooks/useFormDraft';
 import AppLayout                from './components/layout/AppLayout';
 import ActividadGuard           from './components/auth/ActividadGuard';
+import ReautenticacionGlobalModal from './components/auth/ReautenticacionGlobalModal';
 import MensajeNotificador       from './components/ui/MensajeNotificador';
 import PortalEmpleadoLayout     from './components/layout/PortalEmpleadoLayout';
 import ErrorBoundary     from './components/ui/ErrorBoundary';
@@ -496,6 +498,9 @@ export default function App() {
     registerLogoutCallback(() => qc.clear());
   }, []);
 
+  // Purga borradores de formularios vencidos (TTL 7 días) — una vez por carga de la app.
+  useEffect(() => { purgarBorradoresVencidos(); }, []);
+
   // S-23: Hidratar sesión al cargar — verificar cookie httpOnly via GET /auth/me
   // Si hay cookie válida → restaurar estado. Si no → limpiar.
   useEffect(() => {
@@ -706,6 +711,11 @@ export default function App() {
           <BrowserRouter>
             <ScrollToTop />
             <SessionExpiredHandler />
+            {/* Reautenticación in-place por defecto para CUALQUIER pantalla
+                (ver sessionEvents.ts) — el POS registra la suya propia
+                mientras está montado y esta vuelve a tomar el control al
+                salir, no antes. */}
+            <ReautenticacionGlobalModal />
             {/* Reporta actividad real al backend y cierra por inactividad.
                 En la raíz a propósito: antes vivía dentro de AppLayout y dejaba
                 sin cubrir /super-admin/* y el portal de empleados. */}
