@@ -10,16 +10,18 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import {
-  xlinkApi, XlinkDocumentoFila, XlinkTipoDocumento, XlinkEstadoReceptor,
+  xlinkApi, XlinkDocumentoFila, XlinkDirectorioFila, XlinkTipoDocumento, XlinkEstadoReceptor,
   RecibirXlinkResultadoItem, FaltanteMapeo, tipoDocumentoLabel,
 } from '../../api/xlink.api';
 import { configuracionApi } from '../../api/configuracion.api';
 import { ahoraRD, fecha as fmtFecha } from '../../utils/fechaRD';
 import { fmt } from '../../utils/formatters';
 import { useAuthStore } from '../../store/auth.store';
+import { ColumnToggle } from '../../components/ui/ColumnToggle';
+import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import XlinkHomologacionModal from './XlinkHomologacionModal';
 import { filtrarPorRelacionado } from './filtrarPorRelacionado';
-import { calcularEsAdmin } from './calcularEsAdmin';
+import { puedeActivarXlink } from './puedeActivarXlink';
 
 const { Title, Text, Paragraph } = Typography;
 const { RangePicker } = DatePicker;
@@ -80,7 +82,7 @@ function FiltrosBar({ f, mostrarTipo = true }: { f: ReturnType<typeof useFiltros
 export default function XlinkPage() {
   const qc = useQueryClient();
   const { user, getEmpresaActual } = useAuthStore();
-  const esAdmin = calcularEsAdmin(getEmpresaActual()?.rol, user?.role);
+  const puedeActivar = puedeActivarXlink(getEmpresaActual()?.rol, user?.role);
 
   const { data: empresa, isLoading: cargandoEmpresa } = useQuery({ queryKey: ['empresa'], queryFn: configuracionApi.getEmpresa });
   const xlinkVisible = (empresa as any)?.xlinkVisible === true;
@@ -109,7 +111,7 @@ export default function XlinkPage() {
           style={{ marginBottom: 16 }}
           message="Tu empresa no está activada en HiCloud Xlink"
           description="Actívala para poder enviar y recibir documentos con otras empresas."
-          action={<ActivarBoton esAdmin={esAdmin} onDone={() => qc.invalidateQueries({ queryKey: ['empresa'] })} />}
+          action={<ActivarBoton puedeActivar={puedeActivar} onDone={() => qc.invalidateQueries({ queryKey: ['empresa'] })} />}
         />
       )}
 
@@ -122,7 +124,7 @@ export default function XlinkPage() {
           { key: 'descartados', label: 'Descartados', children: <RecibidosTab estado="descartado" /> },
           { key: 'enviados', label: 'Documentos Enviados', children: <EnviadosTab /> },
           { key: 'directorio', label: 'Directorio de Empresas', children: <DirectorioTab /> },
-          { key: 'activar', label: 'Activar', children: <ActivarTab xlinkVisible={xlinkVisible} esAdmin={esAdmin} empresa={empresa} /> },
+          { key: 'activar', label: 'Activar', children: <ActivarTab xlinkVisible={xlinkVisible} puedeActivar={puedeActivar} empresa={empresa} /> },
           { key: 'comoFunciona', label: 'Cómo funciona', children: <ComoFuncionaTab /> },
         ]}
       />
@@ -133,24 +135,24 @@ export default function XlinkPage() {
 
 // ── Activar ──────────────────────────────────────────────────────────────────
 
-const MENSAJE_NO_ADMIN = 'Solo un administrador de la empresa puede activar HiCloud Xlink';
+const MENSAJE_NO_PUEDE_ACTIVAR = 'Solo un administrador o contador de la empresa puede activar HiCloud Xlink';
 
-function ActivarBoton({ esAdmin, onDone }: { esAdmin: boolean; onDone: () => void }) {
+function ActivarBoton({ puedeActivar, onDone }: { puedeActivar: boolean; onDone: () => void }) {
   const mut = useMutation({
     mutationFn: () => xlinkApi.actualizarVisibilidad(true),
     onSuccess: () => { message.success('Tu empresa ya aparece en el Directorio de HiCloud Xlink'); onDone(); },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'No se pudo activar'),
   });
   const boton = (
-    <Button type="primary" size="small" disabled={!esAdmin} loading={mut.isPending} onClick={() => mut.mutate()}>
+    <Button type="primary" size="small" disabled={!puedeActivar} loading={mut.isPending} onClick={() => mut.mutate()}>
       Mostrar en el Directorio
     </Button>
   );
   // Tooltip no dispara sobre un botón disabled sin el span envolvente (antd).
-  return esAdmin ? boton : <Tooltip title={MENSAJE_NO_ADMIN}><span>{boton}</span></Tooltip>;
+  return puedeActivar ? boton : <Tooltip title={MENSAJE_NO_PUEDE_ACTIVAR}><span>{boton}</span></Tooltip>;
 }
 
-function ActivarTab({ xlinkVisible, esAdmin, empresa }: { xlinkVisible: boolean; esAdmin: boolean; empresa: any }) {
+function ActivarTab({ xlinkVisible, puedeActivar, empresa }: { xlinkVisible: boolean; puedeActivar: boolean; empresa: any }) {
   const qc = useQueryClient();
   const mut = useMutation({
     mutationFn: (visible: boolean) => xlinkApi.actualizarVisibilidad(visible),
@@ -164,10 +166,10 @@ function ActivarTab({ xlinkVisible, esAdmin, empresa }: { xlinkVisible: boolean;
   return (
     <Card style={{ maxWidth: 560 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        {esAdmin ? (
+        {puedeActivar ? (
           <Switch checked={xlinkVisible} loading={mut.isPending} onChange={(v) => mut.mutate(v)} />
         ) : (
-          <Tooltip title={MENSAJE_NO_ADMIN}>
+          <Tooltip title={MENSAJE_NO_PUEDE_ACTIVAR}>
             <span><Switch checked={xlinkVisible} disabled /></span>
           </Tooltip>
         )}
@@ -175,7 +177,7 @@ function ActivarTab({ xlinkVisible, esAdmin, empresa }: { xlinkVisible: boolean;
           <Text strong>Visible en el Directorio de HiCloud Xlink</Text><br />
           <Text type="secondary" style={{ fontSize: 12 }}>
             Otras empresas HiCloud podrán encontrarte, vincularte y enviarte/recibir documentos.
-            {!esAdmin && ` ${MENSAJE_NO_ADMIN}.`}
+            {!puedeActivar && ` ${MENSAJE_NO_PUEDE_ACTIVAR}.`}
           </Text>
         </div>
       </div>
@@ -258,24 +260,36 @@ function DirectorioTab() {
     return <Button size="small" icon={<PlusOutlined />} loading={vincularMut.isPending} onClick={() => vincularMut.mutate({ xlinkId, rol })}>Crear</Button>;
   };
 
+  const COLS_DEF = [
+    { key: 'nombreComercial',      label: 'Empresa',             defaultVisible: true },
+    { key: 'rnc',                  label: 'RNC',                 defaultVisible: true },
+    { key: 'industria',            label: 'Industria',           defaultVisible: true },
+    { key: 'proveedorRelacionado', label: 'Proveedor relacionado', defaultVisible: true },
+    { key: 'clienteRelacionado',   label: 'Cliente relacionado',   defaultVisible: true },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('xlink-directorio', COLS_DEF);
+
   return (
     <div>
       <Space wrap style={{ marginBottom: 12 }}>
         <Input.Search placeholder="Buscar por nombre o RNC" value={q} onChange={e => setQ(e.target.value)} style={{ width: 260 }} allowClear />
         <Checkbox checked={soloRegistradas} onChange={e => setSoloRegistradas(e.target.checked)}>Solo empresas que ya tengo registradas</Checkbox>
+        <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
       </Space>
       <Table
         rowKey="xlinkId"
         loading={isFetching}
         dataSource={data?.data ?? []}
         pagination={{ current: page, pageSize: 20, total: data?.meta?.total ?? 0, onChange: setPage }}
-        columns={[
-          { title: 'Empresa', dataIndex: 'nombreComercial' },
-          { title: 'RNC', dataIndex: 'rnc' },
-          { title: 'Industria', dataIndex: 'industria', render: (v) => v ?? '—' },
-          { title: 'Proveedor relacionado', render: (_, r) => renderRelacion(r.proveedorRelacionado, 'proveedor', r.xlinkId) },
-          { title: 'Cliente relacionado', render: (_, r) => renderRelacion(r.clienteRelacionado, 'cliente', r.xlinkId) },
-        ]}
+        scroll={{ x: 'max-content' }}
+        tableLayout="fixed"
+        columns={filterColumns<XlinkDirectorioFila>([
+          { title: 'Empresa', key: 'nombreComercial', dataIndex: 'nombreComercial', width: 260, className: 'cell-wrap' },
+          { title: 'RNC', key: 'rnc', dataIndex: 'rnc', width: 110 },
+          { title: 'Industria', key: 'industria', dataIndex: 'industria', width: 140, render: (v) => v ?? '—' },
+          { title: 'Proveedor relacionado', key: 'proveedorRelacionado', width: 220, render: (_, r) => renderRelacion(r.proveedorRelacionado, 'proveedor', r.xlinkId) },
+          { title: 'Cliente relacionado', key: 'clienteRelacionado', width: 220, render: (_, r) => renderRelacion(r.clienteRelacionado, 'cliente', r.xlinkId) },
+        ])}
       />
     </div>
   );
@@ -359,9 +373,24 @@ function RecibidosTab({ estado }: { estado: XlinkEstadoReceptor }) {
 
   const esFactura = (r: XlinkDocumentoFila) => r.tipoDocumento === 'factura_credito';
 
+  const COLS_DEF = [
+    { key: 'contraparteNombre', label: 'Empresa',  defaultVisible: true },
+    { key: 'tipoDocumento',     label: 'Tipo',      defaultVisible: true },
+    { key: 'numeroOrigen',      label: 'Número',    defaultVisible: true },
+    { key: 'ncfOrigen',         label: 'NCF',        defaultVisible: true },
+    { key: 'fechaOrigen',       label: 'Fecha',      defaultVisible: true },
+    { key: 'totalOrigen',       label: 'Total',      defaultVisible: true },
+    { key: 'config',            label: 'Config.',    defaultVisible: true },
+    { key: 'numeroGenerado',    label: 'Generó',     defaultVisible: true },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('xlink-recibidos', COLS_DEF);
+
   return (
     <div>
-      <FiltrosBar f={f} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
+        <FiltrosBar f={f} />
+        <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+      </div>
 
       {estado === 'pendiente' && (
         <Space wrap style={{ marginBottom: 12 }}>
@@ -382,15 +411,19 @@ function RecibidosTab({ estado }: { estado: XlinkEstadoReceptor }) {
         dataSource={filas}
         pagination={{ current: page, pageSize: 10, total: data?.meta?.total ?? 0, onChange: setPage }}
         rowSelection={estado === 'pendiente' ? { selectedRowKeys: seleccionados, onChange: (k) => setSeleccionados(k as number[]) } : undefined}
-        columns={[
-          { title: 'Empresa', dataIndex: 'contraparteNombre' },
-          { title: 'Tipo', dataIndex: 'tipoDocumento', render: (v: XlinkTipoDocumento) => tipoDocumentoLabel(v) },
-          { title: 'Número', dataIndex: 'numeroOrigen' },
-          { title: 'NCF', dataIndex: 'ncfOrigen', render: (v) => v ?? '—' },
-          { title: 'Fecha', dataIndex: 'fechaOrigen', render: (v) => fmtFecha(v) },
-          { title: 'Total', dataIndex: 'totalOrigen', render: (v) => fmt.money(v) },
+        scroll={{ x: 'max-content' }}
+        tableLayout="fixed"
+        columns={filterColumns<XlinkDocumentoFila>([
+          { title: 'Empresa', key: 'contraparteNombre', dataIndex: 'contraparteNombre', width: 240, className: 'cell-wrap' },
+          { title: 'Tipo', key: 'tipoDocumento', dataIndex: 'tipoDocumento', width: 140, render: (v: XlinkTipoDocumento) => tipoDocumentoLabel(v) },
+          { title: 'Número', key: 'numeroOrigen', dataIndex: 'numeroOrigen', width: 120 },
+          { title: 'NCF', key: 'ncfOrigen', dataIndex: 'ncfOrigen', width: 150, render: (v) => v ?? '—' },
+          { title: 'Fecha', key: 'fechaOrigen', dataIndex: 'fechaOrigen', width: 100, render: (v) => fmtFecha(v) },
+          { title: 'Total', key: 'totalOrigen', dataIndex: 'totalOrigen', width: 110, render: (v) => fmt.money(v) },
           ...(estado === 'pendiente' ? [{
             title: 'Config.',
+            key: 'config',
+            width: 180,
             render: (_: unknown, r: XlinkDocumentoFila) => esFactura(r) ? (
               <Space direction="vertical" size={2}>
                 <Select
@@ -407,9 +440,11 @@ function RecibidosTab({ estado }: { estado: XlinkEstadoReceptor }) {
               </Space>
             ) : <Text type="secondary">—</Text>,
           }] : []),
-          { title: 'Generó', dataIndex: 'numeroGenerado', render: (v) => v ?? '—' },
+          { title: 'Generó', key: 'numeroGenerado', dataIndex: 'numeroGenerado', width: 110, render: (v) => v ?? '—' },
           {
             title: '',
+            key: 'acciones',
+            width: estado === 'pendiente' ? 230 : 100,
             render: (_: unknown, r: XlinkDocumentoFila) => {
               const err = errorDe(r.id);
               return (
@@ -445,7 +480,7 @@ function RecibidosTab({ estado }: { estado: XlinkEstadoReceptor }) {
               );
             },
           },
-        ]}
+        ])}
         locale={{ emptyText: <Empty description="Sin documentos" /> }}
       />
 
@@ -500,33 +535,50 @@ function EnviadosTab() {
     anulado_en_origen: { color: 'default', label: 'Anulado en origen' },
   };
 
+  const COLS_DEF = [
+    { key: 'contraparteNombre', label: 'Empresa', defaultVisible: true },
+    { key: 'tipoDocumento',     label: 'Tipo',     defaultVisible: true },
+    { key: 'numeroOrigen',      label: 'Número',   defaultVisible: true },
+    { key: 'ncfOrigen',         label: 'NCF',      defaultVisible: true },
+    { key: 'totalOrigen',       label: 'Total',    defaultVisible: true },
+    { key: 'estadoReceptor',    label: 'Estado',   defaultVisible: true },
+  ];
+  const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('xlink-enviados', COLS_DEF);
+
   return (
     <div>
-      <Space wrap style={{ marginBottom: 12 }}>
-        <FiltrosBar f={f} />
-        <Select placeholder="Estado" allowClear style={{ width: 160 }} value={estadoReceptor} onChange={setEstadoReceptor} options={Object.entries(ESTADO_TAG).map(([value, v]) => ({ value, label: v.label }))} />
-      </Space>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
+        <Space wrap style={{ marginBottom: 12 }}>
+          <FiltrosBar f={f} />
+          <Select placeholder="Estado" allowClear style={{ width: 160 }} value={estadoReceptor} onChange={setEstadoReceptor} options={Object.entries(ESTADO_TAG).map(([value, v]) => ({ value, label: v.label }))} />
+        </Space>
+        <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
+      </div>
       <Table
         rowKey="id"
         loading={isFetching}
         dataSource={filas}
         pagination={{ current: page, pageSize: 10, total: data?.meta?.total ?? 0, onChange: setPage }}
-        columns={[
-          { title: 'Empresa', dataIndex: 'contraparteNombre' },
-          { title: 'Tipo', dataIndex: 'tipoDocumento', render: (v: XlinkTipoDocumento) => tipoDocumentoLabel(v) },
-          { title: 'Número', dataIndex: 'numeroOrigen' },
-          { title: 'NCF', dataIndex: 'ncfOrigen', render: (v) => v ?? '—' },
-          { title: 'Total', dataIndex: 'totalOrigen', render: (v) => fmt.money(v) },
-          { title: 'Estado', dataIndex: 'estadoReceptor', render: (v: XlinkEstadoReceptor) => <Tag color={ESTADO_TAG[v]?.color}>{ESTADO_TAG[v]?.label ?? v}</Tag> },
+        scroll={{ x: 'max-content' }}
+        tableLayout="fixed"
+        columns={filterColumns<XlinkDocumentoFila>([
+          { title: 'Empresa', key: 'contraparteNombre', dataIndex: 'contraparteNombre', width: 240, className: 'cell-wrap' },
+          { title: 'Tipo', key: 'tipoDocumento', dataIndex: 'tipoDocumento', width: 140, render: (v: XlinkTipoDocumento) => tipoDocumentoLabel(v) },
+          { title: 'Número', key: 'numeroOrigen', dataIndex: 'numeroOrigen', width: 120 },
+          { title: 'NCF', key: 'ncfOrigen', dataIndex: 'ncfOrigen', width: 150, render: (v) => v ?? '—' },
+          { title: 'Total', key: 'totalOrigen', dataIndex: 'totalOrigen', width: 110, render: (v) => fmt.money(v) },
+          { title: 'Estado', key: 'estadoReceptor', dataIndex: 'estadoReceptor', width: 160, render: (v: XlinkEstadoReceptor) => <Tag color={ESTADO_TAG[v]?.color}>{ESTADO_TAG[v]?.label ?? v}</Tag> },
           {
             title: '',
+            key: 'acciones',
+            width: 110,
             render: (_: unknown, r: XlinkDocumentoFila) => r.estadoReceptor === 'pendiente' ? (
               <Popconfirm title="¿Retirar este envío?" onConfirm={() => eliminarMut.mutate(r.id)}>
                 <Button size="small" danger>Retirar</Button>
               </Popconfirm>
             ) : null,
           },
-        ]}
+        ])}
       />
     </div>
   );

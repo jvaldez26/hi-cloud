@@ -761,6 +761,43 @@ const RUTAS = {
         cantidadRecibida: 3, porcentajeItbis: 18, subtotal: 1000, importeItbis: 180, total: 1180 },
     ],
   }),
+
+  // ── HiCloud Xlink — un nombre de empresa largo a propósito, para capturar
+  //    el wrap de la columna "Empresa" sin que la tabla se desborde ──────────
+  '/configuracion/empresa': () => ({
+    id: 1, nombre: 'MULTISERVICIOS HI GLOBAL SRL', nombreComercial: 'MULTISERVICIOS HI GLOBAL',
+    rnc: '132269551', logo: null, xlinkVisible: true, xlinkVisibleDesde: '2026-08-01',
+  }),
+  '/xlink/pendientes/conteo': () => ({ total: 2 }),
+  '/xlink/directorio': () => ({
+    data: [
+      { xlinkId: 'a1', nombreComercial: 'DISTRIBUIDORA Y REPRESENTACIONES INDUSTRIALES DEL CARIBE SRL', rnc: '132269551', industria: 'servicios_prof',
+        proveedorRelacionado: { estado: 'vinculado', id: 5, nombre: 'VALDEZ GONZÁLEZ OUTSOURCING SRL' },
+        clienteRelacionado: { estado: 'coincide_sin_vincular', id: 8, nombre: 'VALDEZ GONZALEZ 2' } },
+      { xlinkId: 'a2', nombreComercial: 'FERRETERÍA LA ECONÓMICA', rnc: '130000002', industria: 'comercio',
+        proveedorRelacionado: { estado: 'no_existe' },
+        clienteRelacionado: { estado: 'no_existe' } },
+    ],
+    meta: { total: 2, page: 1, limit: 20, totalPages: 1 },
+  }),
+  '/xlink/recibidos': () => ({
+    data: [
+      { id: 1, contraparteNombre: 'DISTRIBUIDORA Y REPRESENTACIONES INDUSTRIALES DEL CARIBE SRL', contraparteXlinkId: 'a1',
+        tipoDocumento: 'factura_credito', numeroOrigen: 'FAC-00123', ncfOrigen: 'E310000000045', fechaOrigen: '2026-09-20', totalOrigen: 15000, numeroGenerado: null },
+      { id: 2, contraparteNombre: 'FERRETERÍA LA ECONÓMICA', contraparteXlinkId: 'a2',
+        tipoDocumento: 'orden_compra', numeroOrigen: 'OC-00045', ncfOrigen: null, fechaOrigen: '2026-09-18', totalOrigen: 3200, numeroGenerado: null },
+    ],
+    meta: { total: 2, page: 1, limit: 10, totalPages: 1 },
+  }),
+  '/xlink/enviados': () => ({
+    data: [
+      { id: 10, contraparteNombre: 'DISTRIBUIDORA Y REPRESENTACIONES INDUSTRIALES DEL CARIBE SRL',
+        tipoDocumento: 'factura_credito', numeroOrigen: 'FAC-00500', ncfOrigen: 'E310000000099', totalOrigen: 8200, estadoReceptor: 'pendiente' },
+      { id: 11, contraparteNombre: 'FERRETERÍA LA ECONÓMICA',
+        tipoDocumento: 'nota_credito', numeroOrigen: 'NC-00012', ncfOrigen: 'E340000000011', totalOrigen: 500, estadoReceptor: 'procesado' },
+    ],
+    meta: { total: 2, page: 1, limit: 10, totalPages: 1 },
+  }),
 };
 
 const PREFIJO = /^\/api(\/v1)?/;

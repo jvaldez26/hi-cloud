@@ -36,8 +36,8 @@ export class XlinkController {
 
   @Patch('visibilidad')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Activar/desactivar la visibilidad de la empresa en el directorio de HiCloud Xlink (solo ADMIN)' })
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Activar/desactivar la visibilidad de la empresa en el directorio de HiCloud Xlink (ADMIN o CONTADOR)' })
   actualizarVisibilidad(@Body() body: { visible: boolean }, @GetUser() usuario: User) {
     if (typeof body.visible !== 'boolean') throw new BadRequestException('visible debe ser boolean');
     return this.xlinkService.actualizarVisibilidad(body.visible, {
