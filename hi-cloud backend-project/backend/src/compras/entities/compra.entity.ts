@@ -203,4 +203,16 @@ export class Compra extends TenantBaseEntity {
 
   @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
   netoPagarDOP?: number;
+
+  // ── Idempotencia (recuperación de borradores — Fase 2) ────────────────────
+  //
+  // Clave que el FRONTEND genera una sola vez por formulario abierto (UUID).
+  // Si la misma clave llega dos veces — reintento tras restaurar un borrador
+  // cuyo guardado falló la vez pasada — create() debe devolver ESTA compra en
+  // vez de crear una segunda. Ver ComprasService.create() y el índice único
+  // (empresaId, claveIdempotencia), que es quien realmente cierra la carrera
+  // si dos peticiones caen en el mismo instante. Mismo patrón que
+  // Factura.claveIdempotencia.
+  @Column({ length: 36, nullable: true, default: null })
+  claveIdempotencia?: string;
 }

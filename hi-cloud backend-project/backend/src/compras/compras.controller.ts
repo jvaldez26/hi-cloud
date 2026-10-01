@@ -100,6 +100,13 @@ export class ComprasController {
     return this.comprasService.resumenPorEstado();
   }
 
+  @Get('por-clave/:clave')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Solo lectura: ¿esta clave de idempotencia ya generó una compra? (recuperación de borradores)' })
+  porClave(@Param('clave') clave: string) {
+    return this.comprasService.porClaveIdempotencia(clave);
+  }
+
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Obtener compra por ID con detalles' })

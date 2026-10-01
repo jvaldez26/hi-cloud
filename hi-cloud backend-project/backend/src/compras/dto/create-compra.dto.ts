@@ -195,4 +195,15 @@ export class CreateCompraDto {
    */
   @IsOptional() @IsString() @IsIn(['subtotal', 'total'])
   descuentoGeneralAplicarSobre?: string;
+
+  /**
+   * Idempotencia (recuperación de borradores). El FRONTEND genera un UUID al
+   * abrir el formulario; si la misma clave llega dos veces (reintento tras
+   * restaurar un borrador cuyo guardado falló la vez pasada), create()
+   * devuelve la compra YA CREADA con esa clave en vez de crear una
+   * duplicada. Ver Compra.claveIdempotencia y ComprasService.create().
+   */
+  @IsOptional()
+  @IsString() @MaxLength(36)
+  claveIdempotencia?: string;
 }

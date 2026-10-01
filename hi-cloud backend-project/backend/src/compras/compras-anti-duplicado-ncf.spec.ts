@@ -3,6 +3,7 @@ import { DataSource } from 'typeorm';
 import { ComprasService } from './compras.service';
 import { Compra } from './entities/compra.entity';
 import { CompraDetalle } from './entities/compra-detalle.entity';
+import { Producto } from '../productos/entities/producto.entity';
 
 /**
  * Integración REAL contra Postgres (no mocks): el anti-duplicado depende de
@@ -89,7 +90,12 @@ beforeAll(async () => {
   ds = new DataSource({
     type: 'postgres',
     host: DB_HOST, port: DB_PORT, username: DB_USERNAME, password: DB_PASSWORD, database: DB_NAME,
-    entities: [Compra, CompraDetalle],
+    // Producto: CompraDetalle.producto es un @ManyToOne hacia Producto — sin
+    // incluirla aquí, TypeORM a veces falla al construir la metadata
+    // ("Entity metadata for CompraDetalle#producto was not found"),
+    // intermitente según el orden de carga de módulos de Jest. No es un
+    // mock: sigue siendo la BD real, solo se completa el grafo de entities.
+    entities: [Compra, CompraDetalle, Producto],
     synchronize: false,
     connectTimeoutMS: 3000,
   });

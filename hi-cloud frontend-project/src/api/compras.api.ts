@@ -47,6 +47,13 @@ export interface CompraPayload {
   descuentoGeneralValor?: number;
   /** 'subtotal' (default) o 'total' — sobre qué espacio se interpreta descuentoGeneralValor. */
   descuentoGeneralAplicarSobre?: 'subtotal' | 'total';
+  /**
+   * Idempotencia (recuperación de borradores). El FRONTEND genera un UUID al
+   * abrir el formulario; si la misma clave llega dos veces, create() devuelve
+   * la compra YA CREADA con esa clave en vez de crear una duplicada. Ver
+   * Compra.claveIdempotencia y ComprasService.create().
+   */
+  claveIdempotencia?: string;
 }
 
 export const comprasApi = {
@@ -64,6 +71,15 @@ export const comprasApi = {
 
   create: (body: CompraPayload) =>
     api.post<ApiResponse<Compra>>('/compras', body).then(r => r.data.data),
+
+  /**
+   * Solo lectura — para el banner de borrador recuperado: ¿esta clave de
+   * idempotencia ya generó una compra? Nunca se usa para reintentar el POST.
+   */
+  porClave: (clave: string) =>
+    api.get<ApiResponse<{ existe: boolean; id?: number; folio?: string }>>(
+      `/compras/por-clave/${encodeURIComponent(clave)}`,
+    ).then(r => r.data.data),
 
   /** Panel de vista previa: calcula el asiento SIN guardar la compra. */
   previsualizarAsiento: (body: Partial<CompraPayload>) =>

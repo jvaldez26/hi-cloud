@@ -279,14 +279,49 @@ export class ComprasService {
     }
   }
 
+  /**
+   * Idempotencia (recuperación de borradores) — ver Compra.claveIdempotencia.
+   * Método privado probado vía `.call({...})`, mismo patrón que
+   * FacturasService.buscarPorClaveIdempotencia.
+   */
+  private async buscarPorClaveIdempotencia(
+    claveIdempotencia: string | undefined,
+    empresaId: number,
+  ): Promise<Compra | null> {
+    if (!claveIdempotencia) return null;
+    return this.compraRepository.findOne({ where: { empresaId, claveIdempotencia } });
+  }
+
+  /**
+   * Para el banner de borrador recuperado (frontend): antes de ofrecer
+   * "Restaurar", se consulta si la clave de idempotencia del borrador ya
+   * generó una compra — nunca se reintenta el POST para averiguarlo. Solo
+   * lectura, nunca crea nada. Mismo contrato que FacturasService.porClaveIdempotencia.
+   */
+  async porClaveIdempotencia(claveIdempotencia: string) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const compra = await this.buscarPorClaveIdempotencia(claveIdempotencia, empresaId);
+    if (!compra) return { existe: false as const };
+    return { existe: true as const, id: compra.id, folio: compra.folio };
+  }
+
   async create(dto: CreateCompraDto, usuario: User) {
+    const empresaId = this.tenantService.getEmpresaId();
+
+    // Idempotencia (recuperación de borradores): si esta clave ya generó una
+    // compra, devolver ESA en vez de crear otra. Se resuelve ANTES de
+    // assertNcfNoDuplicado (más abajo, dentro de la transacción): un
+    // reintento con la misma clave debe devolver la compra existente, nunca
+    // un 409 de NCF duplicado contra sí misma.
+    const existente = await this.buscarPorClaveIdempotencia(dto.claveIdempotencia, empresaId);
+    if (existente) return this.findOne(existente.id);
+
     await this.proveedoresService.findOne(dto.proveedorId);
 
     const { detallesData, subtotalCompra, itbisCompra, descuentoCompra, descuentoGeneralMonto, subtotalCompraDOP, itbisCompraDOP } =
       await this.calcularDetalles(dto);
 
     const folio      = await this.generarFolio();
-    const empresaId  = this.tenantService.getEmpresaId();
     const sucursalId = await this.tenantService.resolveSucursalId((dto as any).sucursalId);
 
     const tipoPago    = dto.tipoPago ?? 'credito';
@@ -365,6 +400,7 @@ export class ComprasService {
         netoPagar,
         almacenId:              dto.almacenId ?? almacenIdCtx,
         sucursalId,
+        claveIdempotencia:      dto.claveIdempotencia ?? undefined,
       } as any);
 
       const savedCompra = (await manager.getRepository(Compra).save(compra as any)) as unknown as Compra;
@@ -375,6 +411,22 @@ export class ComprasService {
       await manager.getRepository(CompraDetalle).save(detalles);
 
       return savedCompra.id;
+    }).catch(async (err: unknown) => {
+      // Carrera de idempotencia: dos peticiones con la misma clave llegaron
+      // casi al mismo tiempo, ambas pasaron el buscarPorClaveIdempotencia()
+      // de arriba (ninguna vio la fila de la otra todavía) y la segunda
+      // choca con el índice único (empresaId, claveIdempotencia) — devolver
+      // la que sí se guardó, no reventar con un 500. this.ds.transaction ya
+      // hizo rollback solo ante la excepción, así que esta consulta corre
+      // limpia, fuera de la transacción abortada (Postgres no deja seguir
+      // usando el mismo manager tras un error sin eso).
+      if (dto.claveIdempotencia && (err as any)?.code === '23505') {
+        const ganadora = await this.compraRepository.findOne({
+          where: { empresaId, claveIdempotencia: dto.claveIdempotencia },
+        });
+        if (ganadora) return ganadora.id;
+      }
+      throw err;
     });
 
     this.realtimeService.notify(empresaId, 'compra', 'created', savedCompraId);

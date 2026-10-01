@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Form, Input, Button, Card, Row, Col, Select, DatePicker, Table,
          InputNumber, Space, Divider, message, Tag, Alert, Checkbox, theme, Tooltip, Modal, Segmented } from 'antd';
 import { PlusOutlined, DeleteOutlined, InfoCircleOutlined } from '@ant-design/icons';
@@ -17,6 +17,8 @@ import CuentaContableSelector from '../../components/contabilidad/CuentaContable
 import AsientoPreviewPanel from '../../components/contabilidad/AsientoPreviewPanel';
 import { calcularTotalesConDescuentoGeneral } from '../../utils/calculo/descuentoGeneralCompra';
 import { normalizarNcf, reglaFormatoNcf } from '../../utils/ncf';
+import { useFormDraft } from '../../hooks/useFormDraft';
+import BannerBorrador from '../../components/ui/BannerBorrador';
 import dayjs from 'dayjs';
 
 interface Linea {
@@ -38,6 +40,33 @@ interface Linea {
   /** Destino del ITBIS de la línea — alimenta las casillas 45-51 del Anexo A. undefined = 'gravado' (comportamiento de hoy). */
   destinoItbis?: 'gravado' | 'exportacion' | 'exento' | 'activo_categoria_i' | 'otro';
   destinoItbisMotivo?: string;
+}
+
+/** Todo lo que vive FUERA del Form (useState) y debe ir en el borrador — ver
+ *  useFormDraft. almacenId NO entra: es contexto (de dónde opera el usuario
+ *  ahora), no un dato que haya tecleado para ESTA compra — al restaurar se
+ *  usa el actual. selectedProds (Map productoId→etiqueta) tampoco: es una
+ *  caché de UI que se reconstruye sola a partir de `lineas` al restaurar. */
+interface ExtraCompraBorrador {
+  lineas: Linea[];
+  proveedorSelId: number | null;
+  tipoPago: 'contado' | 'credito';
+  diasCredito: number;
+  moneda: 'DOP' | 'USD' | 'EUR';
+  tipoCambio: number;
+  retieneItbis: boolean;
+  pctItbis: number;
+  retieneIsr: boolean;
+  pctIsr: number;
+  descuentoGeneralTipo: 'monto' | 'porcentaje';
+  descuentoGeneralValor: number;
+  descuentoGeneralAplicarSobre: 'subtotal' | 'total';
+  tipoBienes: string | undefined;
+  tipoBienesTocado: boolean;
+  formaPago: string | undefined;
+  formaPagoTocado: boolean;
+  cuentaDestino: string | undefined;
+  mostrarNotas: boolean;
 }
 
 const DESTINO_ITBIS_OPTIONS = [
@@ -144,6 +173,7 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
   const { token } = theme.useToken();
   const sucursalActual = useAuthStore(s => s.sucursalActual);
   const empresaActual  = useAuthStore(s => s.empresaActual);
+  const usuarioActual  = useAuthStore(s => s.user);
   const qc = useQueryClient();
 
   const [lineas, setLineas] = useState<Linea[]>([{ key: '1', cantidad: 1, cantidadBonificada: 0, precioUnitario: 0, porcentajeItbis: 18, descuentoPct: 0, descuentoMonto: 0 }]);
@@ -288,6 +318,101 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
     else if (sucursalActual) form.setFieldValue('sucursalId', sucursalActual);
   }, [sucursales, sucursalActual]);
 
+  // ── Recuperación de borrador (useFormDraft) ─────────────────────────────────
+  // Solo creación — igual que Factura, los formularios de EDICIÓN quedan
+  // fuera hasta definir el manejo de conflictos con el servidor.
+  const [idempotencyKey, setIdempotencyKey] = useState<string>(() => crypto.randomUUID());
+
+  const extraCompra = useCallback((): ExtraCompraBorrador => ({
+    lineas, proveedorSelId, tipoPago, diasCredito, moneda, tipoCambio,
+    retieneItbis, pctItbis, retieneIsr, pctIsr,
+    descuentoGeneralTipo, descuentoGeneralValor, descuentoGeneralAplicarSobre,
+    tipoBienes, tipoBienesTocado, formaPago, formaPagoTocado, cuentaDestino, mostrarNotas,
+  }), [lineas, proveedorSelId, tipoPago, diasCredito, moneda, tipoCambio,
+       retieneItbis, pctItbis, retieneIsr, pctIsr,
+       descuentoGeneralTipo, descuentoGeneralValor, descuentoGeneralAplicarSobre,
+       tipoBienes, tipoBienesTocado, formaPago, formaPagoTocado, cuentaDestino, mostrarNotas]);
+
+  /** Tras restaurar: precio/ITBIS/tipo del catálogo pudieron cambiar desde que
+   *  se guardó el borrador — nunca se confía en los que trae el snapshot
+   *  (mismo criterio que FacturaFormPage). selectedProds (la caché de
+   *  etiquetas del Select) se reconstruye aparte, no viaja en el borrador. */
+  const restaurarExtraCompra = useCallback((saved: ExtraCompraBorrador) => {
+    Promise.all(saved.lineas.map(async (l) => {
+      if (!l.productoId) return l;
+      try {
+        const prod: any = await productosApi.getOne(l.productoId);
+        setSelectedProds(prev => new Map(prev).set(l.productoId!, prod.codigo ? `${prod.codigo} — ${prod.nombre}` : prod.nombre));
+        return { ...l, productoTipo: prod.tipo, precioUnitario: Number(prod.precio), porcentajeItbis: 18, permiteDecimales: prod.permiteDecimales ?? false };
+      } catch {
+        // El producto pudo borrarse desde que se guardó el borrador — se deja
+        // la línea tal cual; el backend la rechazará al guardar si ya no existe.
+        return l;
+      }
+    })).then((lineasRecalculadas) => {
+      const huboCambioDePrecio = lineasRecalculadas.some((l, i) =>
+        l.productoId && (l.precioUnitario !== saved.lineas[i].precioUnitario || l.porcentajeItbis !== saved.lineas[i].porcentajeItbis));
+      setLineas(lineasRecalculadas);
+      if (huboCambioDePrecio) {
+        message.warning('Algunos precios o porcentajes de ITBIS cambiaron desde que guardaste el borrador — se actualizaron a los valores vigentes.');
+      }
+    });
+
+    setProveedorSelId(saved.proveedorSelId);
+    setTipoPago(saved.tipoPago);
+    setDiasCredito(saved.diasCredito);
+    setMoneda(saved.moneda);
+    setTipoCambio(saved.tipoCambio);
+    setRetieneItbis(saved.retieneItbis);
+    setPctItbis(saved.pctItbis);
+    setRetieneIsr(saved.retieneIsr);
+    setPctIsr(saved.pctIsr);
+    setDescuentoGeneralTipo(saved.descuentoGeneralTipo);
+    setDescuentoGeneralValor(saved.descuentoGeneralValor);
+    setDescuentoGeneralAplicarSobre(saved.descuentoGeneralAplicarSobre);
+    setTipoBienes(saved.tipoBienes);
+    setTipoBienesTocado(saved.tipoBienesTocado);
+    setFormaPago(saved.formaPago);
+    setFormaPagoTocado(saved.formaPagoTocado);
+    setCuentaDestino(saved.cuentaDestino);
+    setMostrarNotas(saved.mostrarNotas);
+  }, []);
+
+  const draft = useFormDraft<ExtraCompraBorrador>({
+    formKey:   'compra-nueva',
+    form,
+    usuarioId: usuarioActual?.id,
+    empresaId: empresaActual,
+    extra:     { get: extraCompra, set: restaurarExtraCompra },
+    // TODOS los extra fuera del Form, no solo lineas: tipoPago, diasCredito,
+    // moneda, retenciones y descuentos son useState planos (sin name= en el
+    // Form) — cambiarlos SOLOS, sin tocar ningún campo del Form después, no
+    // dispara onValuesChange y el guardado debounced nunca se reprograma, así
+    // que el borrador se queda con el valor viejo de para siempre.
+    deps:      [lineas, proveedorSelId, tipoPago, diasCredito, moneda, tipoCambio,
+                retieneItbis, pctItbis, retieneIsr, pctIsr,
+                descuentoGeneralTipo, descuentoGeneralValor, descuentoGeneralAplicarSobre,
+                tipoBienes, formaPago, cuentaDestino, mostrarNotas],
+    idempotencyKey,
+    habilitado: !esEdicion,
+  });
+
+  // Antes de ofrecer "Restaurar", ¿esta clave ya generó una compra? Nunca se
+  // reintenta el POST para averiguarlo — solo esta consulta de lectura.
+  const { data: compraYaGuardadaComo, isLoading: verificandoClaveCompra } = useQuery({
+    queryKey: ['compra-por-clave', draft.borradorInfo?.idempotencyKey],
+    queryFn:  () => comprasApi.porClave(draft.borradorInfo!.idempotencyKey),
+    enabled:  !!draft.borradorInfo?.idempotencyKey,
+    staleTime: 0,
+  });
+
+  const descartarBorradorCompraMut = useMutation({ mutationFn: () => draft.descartar() });
+
+  const onRestaurarBorradorCompra = () => {
+    const snap = draft.restaurar();
+    if (snap) setIdempotencyKey(snap.idempotencyKey);
+  };
+
   const createMut = useMutation({
     mutationFn: (body: any) => esEdicion
       ? comprasApi.update(compraId!, body)
@@ -295,6 +420,10 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
     onSuccess: (data: any) => {
       qc.invalidateQueries({ queryKey: ['compras'] });
       if (esEdicion) qc.invalidateQueries({ queryKey: ['compra', compraId] });
+      if (!esEdicion) {
+        draft.limpiar();
+        setIdempotencyKey(crypto.randomUUID()); // por si el caller reutiliza el mismo componente para la próxima
+      }
       onSuccess?.(data?.data ?? data);
     },
     onError: (e: any) => message.error(
@@ -590,6 +719,9 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
       descuentoGeneralAplicarSobre: descuentoGeneralValor > 0 ? descuentoGeneralAplicarSobre : undefined,
       ...(esInformal && retieneItbis ? { retieneItbis: true, porcentajeRetencionItbis: pctItbis } : {}),
       ...(esInformal && retieneIsr   ? { retieneIsr:   true, porcentajeRetencionIsr:   pctIsr   } : {}),
+      // Idempotencia — solo creación (ver useFormDraft). El backend, si ya
+      // existe una compra con esta clave, la devuelve en vez de duplicar.
+      ...(!esEdicion ? { claveIdempotencia: idempotencyKey } : {}),
     } as any);
   };
 
@@ -846,6 +978,7 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
 
   return (
     <Form form={form} layout="vertical" onFinish={handleSubmit} initialValues={{ fecha: dayjs() }}
+      onValuesChange={draft.onValuesChange}
       // En modo alto completo el formulario es una columna flex de DOS
       // hijos: el envoltorio que scrollea (cabecera + ítems + retenciones +
       // vista previa del asiento) y el pie de totales, fijo abajo y FUERA
@@ -858,6 +991,20 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
       style={altoCompleto
         ? { display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }
         : undefined}>
+      {!esEdicion && draft.hayBorrador && !verificandoClaveCompra && (
+        <div style={{ flexShrink: 0 }}>
+          <BannerBorrador
+            savedAt={draft.borradorInfo!.savedAt}
+            yaExiste={compraYaGuardadaComo?.existe ? {
+              numero: compraYaGuardadaComo.folio ?? `#${compraYaGuardadaComo.id}`,
+              href:   `/compras/${compraYaGuardadaComo.id}`,
+            } : null}
+            onRestaurar={onRestaurarBorradorCompra}
+            onDescartar={() => descartarBorradorCompraMut.mutate()}
+            descartando={descartarBorradorCompraMut.isPending}
+          />
+        </div>
+      )}
       <div style={altoCompleto ? { flex: 1, minHeight: 0, overflowY: 'auto' } : undefined}>
       {/* Cabecera en UNA fila.
           Antes eran dos filas de Cols con span fijo más un Alert de bloque:
