@@ -1,5 +1,9 @@
+import { useState } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { renderHook, render, act, waitFor } from '@testing-library/react';
+import { Form, DatePicker } from 'antd';
+import dayjs from 'dayjs';
+import { ZONA_RD } from '../utils/fechaRD'; // también deja cargados los plugins utc/timezone de dayjs
 
 // Los exports de @sentry/react no se pueden espiar con vi.spyOn (bindings ESM
 // de solo lectura en este build) — se reemplaza el módulo entero.
@@ -210,5 +214,143 @@ describe('contarBorradoresDeUsuario / descartarBorradoresDeUsuario', () => {
 
     await descartarBorradoresDeUsuario(9, 7);
     await expect(contarBorradoresDeUsuario(9, 7)).resolves.toBe(0);
+  });
+});
+
+// ── Regresión: "date4.isValid is not a function" al restaurar (2026-10-01) ──
+// IndexedDB usa structured clone: un dayjs guardado tal cual pierde el
+// prototipo y, al pasar por setFieldsValue(), el DatePicker revienta al
+// RENDERIZAR con ese valor — no es un throw síncrono, así que estos tests
+// montan un <Form>+<DatePicker> de antd DE VERDAD (no el makeForm() de
+// arriba), igual que lo haría FacturaFormPage.
+
+interface ApiFormularioPrueba {
+  form: ReturnType<typeof Form.useForm>[0];
+  draft: ReturnType<typeof useFormDraft<{ lineas: { id: number; fecha?: any }[] }>>;
+  setLineas: (v: { id: number; fecha?: any }[]) => void;
+}
+
+function montarFormularioConDatePicker(formKey: string, idempotencyKey = 'k') {
+  let api!: ApiFormularioPrueba;
+  function Comp() {
+    const [form] = Form.useForm();
+    const [lineas, setLineas] = useState<{ id: number; fecha?: any }[]>([{ id: 1 }]);
+    const draft = useFormDraft<{ lineas: typeof lineas }>({
+      formKey, form, usuarioId: 1, empresaId: 7,
+      extra: { get: () => ({ lineas }), set: (v) => setLineas(v.lineas) },
+      deps: [lineas],
+      idempotencyKey,
+    });
+    api = { form, draft, setLineas };
+    return (
+      <Form form={form} onValuesChange={draft.onValuesChange}>
+        <Form.Item name="fecha" label="Fecha">
+          <DatePicker />
+        </Form.Item>
+      </Form>
+    );
+  }
+  const utils = render(<Comp />);
+  return { ...utils, getApi: () => api };
+}
+
+describe('useFormDraft — fechas (dayjs) sobreviven el guardado/restauración sin corromperse', () => {
+  it('guarda y restaura una fecha del Form (calendario pura) y una línea con fecha-instante, sin correr el día ni lanzar al renderizar el DatePicker', async () => {
+    const formKey = `factura-fecha-${Date.now()}`;
+    const { getApi, unmount } = montarFormularioConDatePicker(formKey, 'clave-original');
+
+    act(() => {
+      // Medianoche local — "fecha de calendario pura" (como la que teclea el usuario).
+      getApi().form.setFieldsValue({ fecha: dayjs('2026-09-30') });
+      // Instante con hora, en el offset de RD — como podría venir una línea con fecha/hora.
+      getApi().setLineas([{ id: 1, fecha: dayjs('2026-09-30T23:45:00-04:00') }]);
+    });
+    act(() => { getApi().draft.onValuesChange(); });
+    await new Promise(res => setTimeout(res, DEBOUNCE_ESPERA_MS));
+    unmount();
+
+    const { getApi: getApi2 } = montarFormularioConDatePicker(formKey, 'clave-nueva');
+    await waitFor(() => expect(getApi2().draft.hayBorrador).toBe(true));
+
+    let snap: any;
+    await act(async () => {
+      snap = getApi2().draft.restaurar();
+      await Promise.resolve(); // deja asentar el efecto interno del DatePicker con el nuevo valor
+    });
+
+    expect(snap.idempotencyKey).toBe('clave-original');
+
+    // El DatePicker se re-renderiza con el valor restaurado — si fuera un
+    // objeto sin prototipo dayjs, antd revienta aquí (no antes). Llegar a
+    // esta línea sin que `act()` haya lanzado ya prueba la regresión.
+    const fechaRestaurada = getApi2().form.getFieldValue('fecha');
+    expect(dayjs.isDayjs(fechaRestaurada)).toBe(true);
+    expect(fechaRestaurada.isValid()).toBe(true);
+    expect(fechaRestaurada.format('YYYY-MM-DD')).toBe('2026-09-30'); // el día NO se corrió
+
+    const lineaRestaurada = snap.extra.lineas[0];
+    expect(dayjs.isDayjs(lineaRestaurada.fecha)).toBe(true);
+    expect(lineaRestaurada.fecha.isValid()).toBe(true);
+    expect(lineaRestaurada.fecha.tz(ZONA_RD).format('YYYY-MM-DD HH:mm')).toBe('2026-09-30 23:45');
+  });
+
+  it('un snapshot v2 con un marcador de fecha corrupto se descarta en silencio — nunca se ofrece restaurar, el formulario sigue vivo', async () => {
+    const warnSpy = vi.mocked(Sentry.captureMessage);
+    warnSpy.mockClear();
+    const formKey = `factura-fecha-corrupta-${Date.now()}`;
+    const clave = `1:7:${formKey}`;
+
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open('hicloud-drafts', 1);
+      req.onupgradeneeded = () => { try { req.result.createObjectStore('form-drafts', { keyPath: 'key' }); } catch { /* ya existe */ } };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('form-drafts', 'readwrite');
+      tx.objectStore('form-drafts').put({
+        key: clave, formKey, version: 2, savedAt: Date.now(), idempotencyKey: 'x',
+        values: { fecha: { __tipo: 'dayjs-fecha', v: 'no-es-una-fecha-valida' } },
+        extra: { lineas: [] },
+      });
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+
+    const { getApi } = montarFormularioConDatePicker(formKey);
+    await new Promise(res => setTimeout(res, 80));
+
+    expect(getApi().draft.hayBorrador).toBe(false); // nunca llegó a ofrecerse
+    expect(warnSpy).toHaveBeenCalled();
+    // El propio render de montarFormularioConDatePicker() no lanzó — la página sigue viva.
+    expect(getApi().form.getFieldValue('fecha')).toBeUndefined();
+  });
+
+  it('un borrador v1 (versión vieja, guardaba dayjs sin convertir) se descarta solo al detectarlo — nunca se ofrece restaurar', async () => {
+    const formKey = `factura-v1-vieja-${Date.now()}`;
+    const clave = `1:7:${formKey}`;
+
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open('hicloud-drafts', 1);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('form-drafts', 'readwrite');
+      // Representa lo que un snapshot v1 real dejaba tras pasar por structured
+      // clone: el dayjs llega como objeto plano, sin isValid/format.
+      tx.objectStore('form-drafts').put({
+        key: clave, formKey, version: 1, savedAt: Date.now(), idempotencyKey: 'x',
+        values: { fecha: { $d: '2026-09-30T00:00:00.000Z', $y: 2026 } }, // sin prototipo Dayjs
+        extra: { lineas: [] },
+      });
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+
+    const { getApi } = montarFormularioConDatePicker(formKey);
+    await new Promise(res => setTimeout(res, 80));
+
+    expect(getApi().draft.hayBorrador).toBe(false);
   });
 });

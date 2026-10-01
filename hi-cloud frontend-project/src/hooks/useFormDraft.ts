@@ -13,14 +13,31 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormInstance } from 'antd';
+import { message } from 'antd';
 import * as Sentry from '@sentry/react';
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
+import { ZONA_RD } from '../utils/fechaRD';
+
+// Globales (dayjs.extend muta el objeto compartido) — se repite aquí a
+// propósito en vez de confiar en que fechaRD.ts ya se haya importado antes:
+// el orden de imports de un bundler no es algo de lo que depender. Llamar
+// extend() dos veces es inofensivo.
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 const DB_NAME       = 'hicloud-drafts';
 const DB_VERSION    = 1;
 const STORE_NAME    = 'form-drafts';
 const TTL_MS         = 7 * 24 * 60 * 60 * 1000; // 7 días
 const DEBOUNCE_MS    = 1000;
-const SNAPSHOT_VERSION = 1;
+// v2 (2026-10-01): serializa dayjs/Date explícitamente — ver serializar()/
+// deserializar() más abajo. Los borradores v1 (guardaban el objeto dayjs tal
+// cual) perdían el prototipo al pasar por IndexedDB y el DatePicker reventaba
+// al restaurar ("date4.isValid is not a function"). Subir el número basta
+// para que esSnapshotValido() los descarte solos, sin lógica de migración.
+const SNAPSHOT_VERSION = 2;
 
 export interface FormDraftSnapshot<TExtra = unknown> {
   key:            string; // usuarioId:empresaId:formKey
@@ -34,6 +51,104 @@ export interface FormDraftSnapshot<TExtra = unknown> {
 
 export function claveBorrador(usuarioId: number | string | undefined | null, empresaId: number | string | undefined | null, formKey: string): string {
   return `${usuarioId ?? '_'}:${empresaId ?? '_'}:${formKey}`;
+}
+
+// ── Serialización — nunca confiar en que un objeto con prototipo sobreviva ──
+// IndexedDB usa structured clone: a un dayjs (o un Date, o cualquier instancia
+// de clase) le sobrevive la FORMA pero no el prototipo, así que
+// `value instanceof Dayjs` da false y `value.isValid` ya no es una función al
+// leerlo de vuelta. Cada dayjs se convierte aquí explícitamente a un marcador
+// plano y se reconstruye al restaurar — nunca se guarda "a ciegas".
+
+interface MarcadorFecha {
+  __tipo: 'dayjs-fecha' | 'dayjs-instante';
+  v:      string;
+}
+
+function esMarcadorFecha(v: unknown): v is MarcadorFecha {
+  return !!v && typeof v === 'object'
+    && ((v as any).__tipo === 'dayjs-fecha' || (v as any).__tipo === 'dayjs-instante')
+    && typeof (v as any).v === 'string';
+}
+
+/** Objeto plano de verdad (`{...}` o salido de JSON) — no una instancia de clase, File, Map, Set, etc. */
+function esObjetoPlano(v: object): boolean {
+  const proto = Object.getPrototypeOf(v);
+  return proto === Object.prototype || proto === null;
+}
+
+/**
+ * values/extra → forma guardable en IndexedDB.
+ *
+ * - dayjs con hora en 00:00:00.000 → fecha de calendario pura (`YYYY-MM-DD`,
+ *   sin zona — un vencimiento o una fecha de documento no debe correrse de
+ *   día al reconstruirla, ver dRD() en fechaRD.ts).
+ * - dayjs con cualquier otra hora → instante real, se guarda su ISO en UTC
+ *   (`toISOString()`), que es inequívoco y se reconvierte a RD al leer.
+ * - Date nativo → igual que un dayjs con hora (instante).
+ * - Cualquier otro objeto con prototipo propio (File, Map, Set, una clase) →
+ *   se omite: ningún formulario de este ERP necesita guardar uno de estos en
+ *   un borrador hoy, y guardarlo "tal cual" es exactamente el bug que esto
+ *   corrige para dayjs. Si algún día hace falta, se le añade su propio
+ *   marcador explícito aquí — nunca se cuela sin convertir.
+ */
+function serializar(v: unknown): unknown {
+  if (v == null) return v;
+  if (dayjs.isDayjs(v)) {
+    if (!v.isValid()) return undefined;
+    const esFechaPura = v.hour() === 0 && v.minute() === 0 && v.second() === 0 && v.millisecond() === 0;
+    return esFechaPura
+      ? ({ __tipo: 'dayjs-fecha', v: v.format('YYYY-MM-DD') } satisfies MarcadorFecha)
+      : ({ __tipo: 'dayjs-instante', v: v.toISOString() } satisfies MarcadorFecha);
+  }
+  if (v instanceof Date) {
+    return isNaN(v.getTime()) ? undefined : ({ __tipo: 'dayjs-instante', v: v.toISOString() } satisfies MarcadorFecha);
+  }
+  if (Array.isArray(v)) return v.map(serializar);
+  if (typeof v === 'object') {
+    if (!esObjetoPlano(v)) return undefined;
+    const out: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+      const s = serializar(val);
+      if (s !== undefined) out[k] = s;
+    }
+    return out;
+  }
+  if (typeof v === 'function') return undefined;
+  return v; // string | number | boolean
+}
+
+/**
+ * Inverso de serializar(). La fecha de calendario se ancla a las 12:00 RD —
+ * mismo truco que dRD() en fechaRD.ts — para que ningún formateo posterior la
+ * empuje al día anterior o siguiente por un redondeo de zona.
+ */
+function deserializar(v: unknown): unknown {
+  if (v == null) return v;
+  if (esMarcadorFecha(v)) {
+    const d = v.__tipo === 'dayjs-fecha'
+      ? dayjs.tz(`${v.v} 12:00:00`, ZONA_RD)
+      : dayjs(v.v).tz(ZONA_RD);
+    return d; // puede venir inválido si v.v está corrupto — se valida aparte, ver contieneFechaInvalida()
+  }
+  if (Array.isArray(v)) return v.map(deserializar);
+  if (typeof v === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+      out[k] = deserializar(val);
+    }
+    return out;
+  }
+  return v;
+}
+
+/** Recorre un valor YA deserializado buscando algún dayjs inválido (marcador corrupto). */
+function contieneFechaInvalida(v: unknown): boolean {
+  if (v == null) return false;
+  if (dayjs.isDayjs(v)) return !v.isValid();
+  if (Array.isArray(v)) return v.some(contieneFechaInvalida);
+  if (typeof v === 'object') return Object.values(v as Record<string, unknown>).some(contieneFechaInvalida);
+  return false;
 }
 
 // ── Helpers IndexedDB nativos (mismo estilo que useOfflineQueue.ts) ─────────
@@ -180,18 +295,43 @@ export function useFormDraft<TExtra = unknown>(opts: UseFormDraftOpts<TExtra>) {
         const snap = await dbGet(clave);
         if (cancelado) return;
         if (snap === undefined) return;
-        if (!esSnapshotValido(snap) || Date.now() - snap.savedAt > TTL_MS) {
-          // Corrupto, de otra versión, o vencido — se descarta en silencio.
-          if (snap) {
-            Sentry.captureMessage('form-draft: snapshot inválido o vencido, descartado', {
-              level: 'warning',
-              tags:  { modulo: 'form-draft', formKey },
-            });
-          }
+
+        const descartarSilencioso = async (motivo: string) => {
+          Sentry.captureMessage(`form-draft: ${motivo}, descartado`, {
+            level: 'warning',
+            tags:  { modulo: 'form-draft', formKey },
+          });
           await dbDelete(clave).catch(() => {});
+        };
+
+        if (!esSnapshotValido(snap) || Date.now() - snap.savedAt > TTL_MS) {
+          await descartarSilencioso('snapshot inválido o vencido');
           return;
         }
-        snapshotPendienteRef.current = snap as FormDraftSnapshot<TExtra>;
+
+        // Deserializar AQUÍ (no en restaurar()) para poder validar las fechas
+        // reconstruidas antes de ofrecer el banner — si algo quedó corrupto,
+        // nunca se llega a mostrar "Restaurar" ni se toca el Form.
+        let valoresDeserializados: Record<string, any>;
+        let extraDeserializado: unknown;
+        try {
+          valoresDeserializados = deserializar(snap.values) as Record<string, any>;
+          extraDeserializado    = snap.extra !== undefined ? deserializar(snap.extra) : undefined;
+        } catch (err) {
+          Sentry.captureException(err, { tags: { modulo: 'form-draft', fase: 'deserializar', formKey } });
+          await descartarSilencioso('no se pudo deserializar');
+          return;
+        }
+        if (contieneFechaInvalida(valoresDeserializados) || contieneFechaInvalida(extraDeserializado)) {
+          await descartarSilencioso('marcador de fecha corrupto');
+          return;
+        }
+
+        snapshotPendienteRef.current = {
+          ...snap,
+          values: valoresDeserializados,
+          extra:  extraDeserializado as TExtra,
+        };
         setHayBorrador(true);
         setBorradorInfo({ savedAt: snap.savedAt, idempotencyKey: snap.idempotencyKey });
       } catch (err) {
@@ -211,8 +351,8 @@ export function useFormDraft<TExtra = unknown>(opts: UseFormDraftOpts<TExtra>) {
         const snapshot: FormDraftSnapshot<TExtra> = {
           key:            clave,
           formKey,
-          values:         form.getFieldsValue(true),
-          extra:          extra?.get(),
+          values:         serializar(form.getFieldsValue(true)) as Record<string, any>,
+          extra:          serializar(extra?.get()) as TExtra,
           idempotencyKey,
           savedAt:        Date.now(),
           version:        SNAPSHOT_VERSION,
@@ -248,16 +388,36 @@ export function useFormDraft<TExtra = unknown>(opts: UseFormDraftOpts<TExtra>) {
     return () => window.removeEventListener('beforeunload', handler);
   }, [habilitado]);
 
+  /**
+   * El snapshot pendiente YA llega deserializado y validado (ver el efecto de
+   * arriba) — las fechas corruptas nunca llegan aquí. El try/catch de abajo
+   * es una segunda red para lo que SÍ puede fallar de forma síncrona dentro
+   * de setFieldsValue/extra.set (ej. una forma de valores que no calza con
+   * los Form.Item declarados); un valor que antd solo rechaza al RENDERIZAR
+   * el campo (como el bug real que motivó esto) ya no puede pasar porque
+   * nunca llega siendo otra cosa que un dayjs válido.
+   */
   const restaurar = useCallback((): FormDraftSnapshot<TExtra> | null => {
     const snap = snapshotPendienteRef.current;
     if (!snap) return null;
-    form.setFieldsValue(snap.values);
-    extra?.set(snap.extra as TExtra);
+    try {
+      form.setFieldsValue(snap.values);
+      extra?.set(snap.extra as TExtra);
+    } catch (err) {
+      Sentry.captureException(err, { tags: { modulo: 'form-draft', fase: 'restaurar', formKey } });
+      try { form.resetFields(); } catch { /* ya está en el peor caso posible */ }
+      snapshotPendienteRef.current = null;
+      setHayBorrador(false);
+      setBorradorInfo(null);
+      dbDelete(clave).catch(() => {});
+      message.warning('No se pudo restaurar el borrador');
+      return null;
+    }
     setHayBorrador(false);
     Sentry.captureMessage('form-draft: restaurado', { level: 'info', tags: { modulo: 'form-draft', formKey } });
     return snap;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, extra, formKey]);
+  }, [form, extra, formKey, clave]);
 
   const descartar = useCallback(async () => {
     await dbDelete(clave).catch(() => {});
