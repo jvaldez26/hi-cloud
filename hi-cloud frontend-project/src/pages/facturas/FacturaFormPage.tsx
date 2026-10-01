@@ -190,7 +190,14 @@ export default function FacturaFormPage() {
     usuarioId: usuarioActual?.id,
     empresaId: empresaActual,
     extra:     { get: extraFactura, set: restaurarExtraFactura },
-    deps:      [lineas],
+    // TODOS los extra fuera del Form, no solo lineas: tipoNcf, tipoPago,
+    // diasCredito, descuentos, retenciones, etc. son useState planos (sin
+    // name= en el Form) — cambiarlos SOLOS, sin tocar ningún campo del Form
+    // después, no dispara onValuesChange y el guardado debounced nunca se
+    // reprograma, así que el borrador se queda con el valor viejo para siempre.
+    deps:      [lineas, tipoNcf, tipoNcfManual, tipoPago, diasCredito, clienteSeleccionado,
+                rncInput, descGeneralTipo, descGeneralValor, ordenCompraNumero, formasPago,
+                aplicaRetenciones, retieneItbis, pctRetItbis, retieneIsr, pctRetIsr],
     idempotencyKey,
     habilitado: !editMode,
   });
