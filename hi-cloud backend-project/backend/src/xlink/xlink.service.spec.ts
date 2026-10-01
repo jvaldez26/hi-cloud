@@ -275,7 +275,7 @@ describe('XlinkService.vincular', () => {
     expect(d.proveedoresSvc.create).toHaveBeenCalledTimes(1);
   });
 
-  it('cliente: SIN coincidencia — crea uno nuevo usando rncReceptor', async () => {
+  it('cliente: SIN coincidencia — crea uno nuevo usando rfc (NO rncReceptor, que la tabla exige NOT NULL y es para otro propósito)', async () => {
     const d = buildDeps();
     d.ds.query
       .mockResolvedValueOnce([contraparteRow]) // SELECT empresa
@@ -286,8 +286,27 @@ describe('XlinkService.vincular', () => {
     await service.vincular({ xlinkId: OTRA_EMPRESA_XLINK_ID, rol: 'cliente' });
 
     expect(d.clientesSvc.create).toHaveBeenCalledWith(expect.objectContaining({
-      nombre: 'Proveedor Test SRL', rncReceptor: '130000001', xlinkEmpresaXlinkId: OTRA_EMPRESA_XLINK_ID,
+      nombre: 'Proveedor Test SRL', rfc: '130000001', xlinkEmpresaXlinkId: OTRA_EMPRESA_XLINK_ID,
     }));
+  });
+
+  it('cliente: coincidencia ÚNICA por RNC (buscado por rfc) — vincula el existente en vez de crear', async () => {
+    const d = buildDeps();
+    d.ds.query
+      .mockResolvedValueOnce([contraparteRow])   // SELECT empresa
+      .mockResolvedValueOnce([])                 // yaVinculado (ninguno)
+      .mockResolvedValueOnce([{ id: 21 }])        // coincideRnc — exactamente 1
+      .mockResolvedValueOnce(undefined);          // UPDATE
+    const service = buildService(d);
+
+    await service.vincular({ xlinkId: OTRA_EMPRESA_XLINK_ID, rol: 'cliente' });
+
+    expect(d.ds.query).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE clientes'),
+      [OTRA_EMPRESA_XLINK_ID, 21],
+    );
+    expect(d.clientesSvc.findOne).toHaveBeenCalledWith(21);
+    expect(d.clientesSvc.create).not.toHaveBeenCalled();
   });
 });
 

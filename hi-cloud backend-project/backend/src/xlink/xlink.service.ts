@@ -189,7 +189,8 @@ export class XlinkService {
       LEFT JOIN clientes cv
         ON cv."empresaId" = $1 AND cv."isActive" = true AND cv."xlinkEmpresaXlinkId" = e."xlinkId"
       LEFT JOIN clientes clr
-        ON clr."empresaId" = $1 AND clr."isActive" = true AND clr."xlinkEmpresaXlinkId" IS NULL AND clr."rncReceptor" = e.rnc
+        ON clr."empresaId" = $1 AND clr."isActive" = true AND clr."xlinkEmpresaXlinkId" IS NULL
+        AND (clr.rfc = e.rnc OR clr."rncReceptor" = e.rnc)
       WHERE ${whereBase}
       ${havingRegistradas}
       ORDER BY COALESCE(e."nombreComercial", e.nombre) ASC
@@ -299,7 +300,8 @@ export class XlinkService {
     const coincideRnc = contraparte.rnc
       ? await this.ds.query(
           `SELECT id FROM clientes
-           WHERE "empresaId" = $1 AND "isActive" = true AND "xlinkEmpresaXlinkId" IS NULL AND "rncReceptor" = $2`,
+           WHERE "empresaId" = $1 AND "isActive" = true AND "xlinkEmpresaXlinkId" IS NULL
+           AND (rfc = $2 OR "rncReceptor" = $2)`,
           [miEmpresaId, contraparte.rnc],
         )
       : [];
@@ -312,9 +314,14 @@ export class XlinkService {
       return this.clientesService.findOne(coincideRnc[0].id);
     }
 
+    // rfc (no rncReceptor) es el RNC/Cédula real del cliente — rncReceptor es
+    // solo para cuando el receptor del e-CF difiere del cliente (ver
+    // ClientesService.validarRncReceptor). Usar rncReceptor aquí dejaba rfc
+    // NULL y la tabla lo exige NOT NULL: "Campo requerido faltante: rfc" al
+    // crear desde el Directorio de HiCloud Xlink (encontrado en producción).
     return this.clientesService.create({
       nombre: nombreContraparte,
-      rncReceptor: contraparte.rnc ?? undefined,
+      rfc: contraparte.rnc ?? undefined,
       xlinkEmpresaXlinkId: dto.xlinkId,
     } as any);
   }
