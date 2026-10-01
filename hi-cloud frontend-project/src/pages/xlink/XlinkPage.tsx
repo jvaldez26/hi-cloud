@@ -19,6 +19,7 @@ import { fmt } from '../../utils/formatters';
 import { useAuthStore } from '../../store/auth.store';
 import XlinkHomologacionModal from './XlinkHomologacionModal';
 import { filtrarPorRelacionado } from './filtrarPorRelacionado';
+import { calcularEsAdmin } from './calcularEsAdmin';
 
 const { Title, Text, Paragraph } = Typography;
 const { RangePicker } = DatePicker;
@@ -78,8 +79,8 @@ function FiltrosBar({ f, mostrarTipo = true }: { f: ReturnType<typeof useFiltros
 
 export default function XlinkPage() {
   const qc = useQueryClient();
-  const { user } = useAuthStore();
-  const esAdmin = user?.role === 'admin';
+  const { user, getEmpresaActual } = useAuthStore();
+  const esAdmin = calcularEsAdmin(getEmpresaActual()?.rol, user?.role);
 
   const { data: empresa, isLoading: cargandoEmpresa } = useQuery({ queryKey: ['empresa'], queryFn: configuracionApi.getEmpresa });
   const xlinkVisible = (empresa as any)?.xlinkVisible === true;
@@ -108,7 +109,7 @@ export default function XlinkPage() {
           style={{ marginBottom: 16 }}
           message="Tu empresa no está activada en HiCloud Xlink"
           description="Actívala para poder enviar y recibir documentos con otras empresas."
-          action={esAdmin ? <ActivarBoton onDone={() => qc.invalidateQueries({ queryKey: ['empresa'] })} /> : undefined}
+          action={<ActivarBoton esAdmin={esAdmin} onDone={() => qc.invalidateQueries({ queryKey: ['empresa'] })} />}
         />
       )}
 
@@ -132,13 +133,21 @@ export default function XlinkPage() {
 
 // ── Activar ──────────────────────────────────────────────────────────────────
 
-function ActivarBoton({ onDone }: { onDone: () => void }) {
+const MENSAJE_NO_ADMIN = 'Solo un administrador de la empresa puede activar HiCloud Xlink';
+
+function ActivarBoton({ esAdmin, onDone }: { esAdmin: boolean; onDone: () => void }) {
   const mut = useMutation({
     mutationFn: () => xlinkApi.actualizarVisibilidad(true),
     onSuccess: () => { message.success('Tu empresa ya aparece en el Directorio de HiCloud Xlink'); onDone(); },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'No se pudo activar'),
   });
-  return <Button type="primary" size="small" loading={mut.isPending} onClick={() => mut.mutate()}>Mostrar en el Directorio</Button>;
+  const boton = (
+    <Button type="primary" size="small" disabled={!esAdmin} loading={mut.isPending} onClick={() => mut.mutate()}>
+      Mostrar en el Directorio
+    </Button>
+  );
+  // Tooltip no dispara sobre un botón disabled sin el span envolvente (antd).
+  return esAdmin ? boton : <Tooltip title={MENSAJE_NO_ADMIN}><span>{boton}</span></Tooltip>;
 }
 
 function ActivarTab({ xlinkVisible, esAdmin, empresa }: { xlinkVisible: boolean; esAdmin: boolean; empresa: any }) {
@@ -155,12 +164,18 @@ function ActivarTab({ xlinkVisible, esAdmin, empresa }: { xlinkVisible: boolean;
   return (
     <Card style={{ maxWidth: 560 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <Switch checked={xlinkVisible} disabled={!esAdmin} loading={mut.isPending} onChange={(v) => mut.mutate(v)} />
+        {esAdmin ? (
+          <Switch checked={xlinkVisible} loading={mut.isPending} onChange={(v) => mut.mutate(v)} />
+        ) : (
+          <Tooltip title={MENSAJE_NO_ADMIN}>
+            <span><Switch checked={xlinkVisible} disabled /></span>
+          </Tooltip>
+        )}
         <div>
           <Text strong>Visible en el Directorio de HiCloud Xlink</Text><br />
           <Text type="secondary" style={{ fontSize: 12 }}>
             Otras empresas HiCloud podrán encontrarte, vincularte y enviarte/recibir documentos.
-            {!esAdmin && ' Solo un ADMIN puede cambiar esto.'}
+            {!esAdmin && ` ${MENSAJE_NO_ADMIN}.`}
           </Text>
         </div>
       </div>
