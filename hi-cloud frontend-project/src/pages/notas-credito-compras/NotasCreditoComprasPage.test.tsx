@@ -119,7 +119,12 @@ describe('NotasCreditoComprasPage — Tipo de NC', () => {
     await elegirEnSelect(user, 'Tipo de NC', 'Mercancía no recibida');
 
     expect(await screen.findByText('Buscar OC...')).toBeInTheDocument();
-  });
+    // Timeout ampliado a 60s (default 30s): este test tarda ~24-29s en los
+    // últimos runs de CI en main (2026-10-01), al borde real del límite —
+    // no es solo contención de una máquina local. Deuda pendiente: revisar
+    // waitFor/elegirEnSelect y los timers de este archivo para bajarlo a
+    // <3s; ver memoria "test de NC-compras tarda ~20s aislado".
+  }, 60_000);
 
   it('Motivo "Otro" exige descripción; los demás motivos no', async () => {
     const user = nuevoUsuario();
