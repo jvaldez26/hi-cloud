@@ -530,8 +530,19 @@ export class ComprasService {
     // documento. Las líneas se reemplazan enteras, como en la edición de
     // facturas — casar línea a línea con lo que hay no aporta nada aquí y
     // dejaría huérfanos los detalles que el formulario borró.
+    // El anti-duplicado solo tiene sentido re-correrlo si el comprobante
+    // podría CAMBIAR a uno ya existente — proveedorId (de donde sale el RNC
+    // efectivo) o numeroFacturaProveedor. Editar una compra que ya es
+    // duplicada sin tocar ninguno de los dos (ej. solo las notas) debe seguir
+    // funcionando: no es ESTA edición la que la duplicó.
+    const cambiaNcfOProveedor =
+      dto.proveedorId !== compra.proveedorId ||
+      (dto.numeroFacturaProveedor ?? null) !== (compra.numeroFacturaProveedor ?? null);
+
     await this.ds.transaction(async (em) => {
-      await this.assertNcfNoDuplicado(em, empresaId, dto.proveedorId, dto.numeroFacturaProveedor, id);
+      if (cambiaNcfOProveedor) {
+        await this.assertNcfNoDuplicado(em, empresaId, dto.proveedorId, dto.numeroFacturaProveedor, id);
+      }
 
       await em.getRepository(Compra).update(
         { id, empresaId },
@@ -676,8 +687,14 @@ export class ComprasService {
     }
 
     const empresaId = this.tenantService.getEmpresaId();
+    // Mismo criterio que update(): sin proveedorId en este DTO, el único
+    // cambio posible es el NCF — solo re-validar si de verdad cambia.
+    const cambiaNcf =
+      dto.numeroFacturaProveedor !== undefined &&
+      (dto.numeroFacturaProveedor ?? null) !== (compra.numeroFacturaProveedor ?? null);
+
     await this.ds.transaction(async (em) => {
-      if (dto.numeroFacturaProveedor !== undefined) {
+      if (cambiaNcf) {
         await this.assertNcfNoDuplicado(em, empresaId, compra.proveedorId, dto.numeroFacturaProveedor, id);
       }
       await em.getRepository(Compra).update(

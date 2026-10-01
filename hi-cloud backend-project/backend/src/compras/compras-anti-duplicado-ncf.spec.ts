@@ -189,4 +189,82 @@ describe('ComprasService — anti-duplicado NCF (integración real contra Postgr
     );
     expect(count).toBe(1);
   });
+
+  describe('editar una compra que YA es duplicada (simula las 8 de producción, creadas antes de este fix)', () => {
+    // INSERT directo, a propósito: saltarse ComprasService.create() es la
+    // única forma de reproducir el estado que hoy existe en producción —
+    // compras duplicadas que ya pasaron, antes de este anti-duplicado.
+    async function crearCompraDuplicadaPorSql(numeroFacturaProveedor: string, notas: string) {
+      const [{ id }] = await ds.query(
+        `INSERT INTO compras
+           ("empresaId","proveedorId","usuarioId",folio,fecha,subtotal,itbis,total,estado,"numeroFacturaProveedor",notas,"isActive")
+         VALUES ($1,$2,$3,'COM-TESTDUP',CURRENT_DATE,100,18,118,'borrador',$4,$5,true)
+         RETURNING id`,
+        [EMPRESA_A, PROVEEDOR_B_EN_A, USUARIO_A.id, numeroFacturaProveedor, notas],
+      );
+      await ds.query(
+        `INSERT INTO compra_detalles ("compraId","productoId",descripcion,cantidad,"precioUnitario","porcentajeItbis",subtotal,"importeItbis",total)
+         VALUES ($1,$2,'línea de prueba',1,100,18,100,18,118)`,
+        [id, PRODUCTO_EN_A],
+      );
+      return id;
+    }
+
+    it('update(): editar solo las notas de una compra ya duplicada (sin tocar NCF/proveedor) → OK', async () => {
+      if (!dbDisponible) return;
+      const ncf = ncfUnico();
+      await crearCompraDuplicadaPorSql(ncf, 'original 1');
+      const id2 = await crearCompraDuplicadaPorSql(ncf, 'original 2');
+
+      const service = buildService(ds, EMPRESA_A);
+      const dto = { ...dtoBase(PROVEEDOR_B_EN_A, PRODUCTO_EN_A, ncf), notas: 'nota editada, NCF intacto' };
+
+      await expect(service.update(id2, dto)).resolves.toBeDefined();
+    });
+
+    it('update(): cambiar el NCF al de la OTRA duplicada → 409', async () => {
+      if (!dbDisponible) return;
+      const ncfA = ncfUnico();
+      const ncfB = ncfUnico();
+      await crearCompraDuplicadaPorSql(ncfA, 'compra 1');
+      const id2 = await crearCompraDuplicadaPorSql(ncfB, 'compra 2');
+
+      const service = buildService(ds, EMPRESA_A);
+      const dto = dtoBase(PROVEEDOR_B_EN_A, PRODUCTO_EN_A, ncfA); // intenta tomar el NCF de la otra
+
+      await expect(service.update(id2, dto)).rejects.toThrow(ConflictException);
+    });
+
+    it('actualizarNcfProveedor(): cambiar solo tipoBienes (sin tocar el NCF) en una compra ya duplicada → OK', async () => {
+      if (!dbDisponible) return;
+      const ncf = ncfUnico();
+      await ds.query(
+        `UPDATE compras SET estado='recibida' WHERE id = ANY($1::int[])`,
+        [[await crearCompraDuplicadaPorSql(ncf, 'r1'), await crearCompraDuplicadaPorSql(ncf, 'r2')]],
+      );
+      const [{ id: idRecibida }] = await ds.query(
+        `SELECT id FROM compras WHERE "numeroFacturaProveedor" = $1 AND estado = 'recibida' ORDER BY id DESC LIMIT 1`,
+        [ncf],
+      );
+
+      const service = buildService(ds, EMPRESA_A);
+      await expect(
+        service.actualizarNcfProveedor(idRecibida, { tipoBienes: '02' } as any),
+      ).resolves.toBeDefined();
+    });
+
+    it('actualizarNcfProveedor(): cambiar el NCF al de la OTRA duplicada → 409', async () => {
+      if (!dbDisponible) return;
+      const ncfA = ncfUnico();
+      const ncfB = ncfUnico();
+      const idA = await crearCompraDuplicadaPorSql(ncfA, 'r1');
+      const idB = await crearCompraDuplicadaPorSql(ncfB, 'r2');
+      await ds.query(`UPDATE compras SET estado='recibida' WHERE id = ANY($1::int[])`, [[idA, idB]]);
+
+      const service = buildService(ds, EMPRESA_A);
+      await expect(
+        service.actualizarNcfProveedor(idB, { numeroFacturaProveedor: ncfA } as any),
+      ).rejects.toThrow(ConflictException);
+    });
+  });
 });
