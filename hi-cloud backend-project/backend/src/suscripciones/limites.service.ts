@@ -70,6 +70,10 @@ export class LimitesService {
         estado: SuscripcionEstado.PRUEBA,
         fechaInicio: hoy, fechaVencimiento: fin,
         mesPeriodo: this.mesActual(),
+        // diaCorte es NOT NULL sin default (migración 1754200000000-AddDiaCorte) —
+        // sin esto el INSERT revienta. Misma regla que auth.service.ts al
+        // registrar: el día de fechaFinPrueba ancla el ciclo de facturación.
+        diaCorte: fin.getDate(),
       });
       (entity as any).fechaFinPrueba = fin;
       s = await this.repo.save(entity);
