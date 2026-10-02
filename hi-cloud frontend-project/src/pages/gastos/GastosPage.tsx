@@ -12,6 +12,7 @@ import { Table, Button, Card, Row, Col, Typography, Statistic, Tag,
 import { PlusOutlined, DeleteOutlined, FileExcelOutlined, AuditOutlined, PrinterOutlined, LoadingOutlined, SearchOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { SolicitarAprobacionModal } from '../../components/ui/SolicitarAprobacionModal';
 import { normalizarNcf, esNcfCompleto, reglaFormatoNcf } from '../../utils/ncf';
+import { tipoIdentificacion, esRncOCedulaValido, MENSAJE_RNC_CEDULA } from '../../utils/identificacionDgii';
 import { exportarExcel } from '../../utils/exportExcel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -608,15 +609,28 @@ export default function GastosPage() {
           {!generaE43 && (
             <Row gutter={12}>
               <Col xs={24} sm={12}>
+                {/* Cédula además de RNC: un gasto a persona física (un técnico, un
+                    alquiler a un particular) se declara en el 606 con cédula. El
+                    backend ya lo soportaba — tipoIdDgii() mapea 9→'1' y 11→'2', y
+                    /rnc/consultar acepta ambos; el maxLength de 9 era lo único que
+                    no dejaba siquiera escribirla. */}
                 <Form.Item
                   name="rncProveedor"
-                  label={tieneComprobante ? 'RNC Proveedor *' : 'RNC Proveedor'}
-                  rules={tieneComprobante ? [{ required: true, message: 'RNC obligatorio cuando tiene comprobante' }] : []}
+                  label={tieneComprobante ? 'RNC / Cédula Proveedor *' : 'RNC / Cédula Proveedor'}
+                  rules={[
+                    ...(tieneComprobante
+                      ? [{ required: true, message: 'RNC o cédula obligatorio cuando tiene comprobante' }]
+                      : []),
+                    {
+                      validator: (_: unknown, v: string) =>
+                        !v || esRncOCedulaValido(v) ? Promise.resolve() : Promise.reject(MENSAJE_RNC_CEDULA),
+                    },
+                  ]}
                   style={{ marginBottom: rncGasto.datos ? 4 : undefined }}
                 >
                   <Input
-                    placeholder="9 dígitos — busca en DGII"
-                    maxLength={9}
+                    placeholder="9 dígitos (RNC) u 11 (Cédula)"
+                    maxLength={11}
                     suffix={rncGasto.loading ? <LoadingOutlined style={{ color: '#1677ff' }} /> : undefined}
                     onChange={e => {
                       const v = e.target.value.replace(/\D/g, '');
@@ -636,7 +650,9 @@ export default function GastosPage() {
                 )}
                 {rncGasto.datos && !rncGasto.datos.encontrado && !rncGasto.loading && (
                   <div style={{ fontSize: 12, color: '#d97706', marginBottom: 8, marginTop: -4 }}>
-                    ⚠️ RNC no encontrado en DGII
+                    ⚠️ {tipoIdentificacion(form.getFieldValue('rncProveedor')) === 'Cédula'
+                      ? 'Cédula no encontrada en DGII — escribe el nombre a mano'
+                      : 'RNC no encontrado en DGII'}
                   </div>
                 )}
               </Col>

@@ -15,6 +15,7 @@ import {
   type ConfigTicket,
 } from '../../utils/configTicket';
 import { normalizarNcf, esNcfCompleto, errorNcf } from '../../utils/ncf';
+import { tipoIdentificacion } from '../../utils/identificacionDgii';
 import { buildReciboTermicoHTML } from '../../utils/ticketTermico';
 import { useRncLookup } from '../../hooks/useRncLookup';
 import QRCode from 'qrcode';
@@ -6941,17 +6942,17 @@ function POSGastosLista({ C }: { C: Palette }) {
             {!generaE43 && (
               <>
                 <div style={{ marginBottom:6 }}>
-                  <span style={labelS}>RNC Proveedor</span>
+                  <span style={labelS}>RNC / Cédula Proveedor</span>
                   <div style={{ position:'relative' }}>
                     <input
                       value={f.rncProveedor}
                       onChange={e => {
-                        const v = e.target.value.replace(/\D/g, '').slice(0, 9);
+                        const v = e.target.value.replace(/\D/g, '').slice(0, 11);
                         setF(p => ({ ...p, rncProveedor: v }));
                         rncGasto.consultarDebounced(v);
                       }}
-                      placeholder="9 dígitos — busca en DGII"
-                      maxLength={9}
+                      placeholder="9 dígitos (RNC) u 11 (Cédula)"
+                      maxLength={11}
                       style={{ ...inputS, paddingRight: rncGasto.loading ? 30 : undefined }}
                     />
                     {rncGasto.loading && (
@@ -6967,7 +6968,11 @@ function POSGastosLista({ C }: { C: Palette }) {
                     </div>
                   )}
                   {rncGasto.datos && !rncGasto.datos.encontrado && !rncGasto.loading && (
-                    <div style={{ fontSize:11, color:'#d97706', marginTop:3 }}>⚠️ RNC no encontrado en DGII</div>
+                    <div style={{ fontSize:11, color:'#d97706', marginTop:3 }}>
+                      ⚠️ {tipoIdentificacion(f.rncProveedor) === 'Cédula'
+                        ? 'Cédula no encontrada en DGII — escribe el nombre a mano'
+                        : 'RNC no encontrado en DGII'}
+                    </div>
                   )}
                 </div>
                 <div style={{ marginBottom:10 }}>
