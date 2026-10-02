@@ -114,3 +114,22 @@ export function diferenciaDiasRD(fecha: Date | string): number {
 
   return Math.round((hoy.getTime() - objetivo.getTime()) / 86_400_000);
 }
+
+/**
+ * El instante UTC de medianoche RD para una fecha de calendario 'YYYY-MM-DD'.
+ * RD es UTC-4 fijo (sin horario de verano) — medianoche RD de un día son las
+ * 04:00 de ESE MISMO día en UTC.
+ *
+ * Para comparar contra columnas TIMESTAMP (sin zona) que guardan UTC —como
+ * ecf."createdAt", poblada por NOW() con la sesión de Postgres en UTC— SIN
+ * envolver la columna en `AT TIME ZONE`: aplicado a un valor sin zona, eso
+ * INTERPRETA el valor como si ya estuviera en la zona dada y lo convierte a
+ * UTC — la dirección contraria a la que hace falta aquí, y además pierde
+ * cualquier índice sobre la columna. Se calculan las fronteras en TypeScript
+ * y se comparan como timestamps planos.
+ *
+ * @example inicioDiaRDenUTC('2026-10-05') // '2026-10-05 04:00:00'
+ */
+export function inicioDiaRDenUTC(fechaYMD: string): string {
+  return `${fechaYMD.slice(0, 10)} 04:00:00`;
+}

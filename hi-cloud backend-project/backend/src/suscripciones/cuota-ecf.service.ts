@@ -5,6 +5,7 @@ import { DataSource, EntityManager } from 'typeorm';
 import { PLANES, PlanTipo } from './entities/suscripcion.entity';
 import { Ciclo, cicloVigente, ciclosRecientes, estaCerrado } from './ciclo-facturacion.util';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
+import { inicioDiaRDenUTC } from '../common/utils/fecha-local.util';
 
 /** Una fila del panel de excedentes. */
 export interface ExcedentePendiente {
@@ -109,6 +110,15 @@ export class CuotaEcfService {
    * `modoEmision` es NOT NULL con DEFAULT 'PRODUCCION', así que la igualdad
    * basta: una marca ausente ya no puede eximir de la cuota, y el predicado
    * simple deja que `idx_ecf_empresa_modo_fecha` resuelva por Index Only Scan.
+   *
+   * `createdAt` es un TIMESTAMP SIN zona que guarda UTC (la sesión de Postgres
+   * corre en UTC); `ciclo.inicio`/`ciclo.fin` son fechas de calendario en hora
+   * RD. Las fronteras se convierten a instantes UTC EN TYPESCRIPT
+   * (inicioDiaRDenUTC) y se comparan como timestamps planos — nunca envolver
+   * la columna en `AT TIME ZONE`: aplicado a un valor que ya es UTC, invierte
+   * la conversión (lo interpreta como si fuera hora RD) y de paso pierde el
+   * índice. Un e-CF emitido a las 23:30 RD cae en UTC ya el día siguiente —
+   * sin este ajuste, se contaba en el ciclo equivocado.
    */
   async contarEmitidos(empresaId: number, ciclo: Ciclo): Promise<number> {
     const [r] = await this.ds.query<{ n: string }[]>(
@@ -116,9 +126,9 @@ export class CuotaEcfService {
          FROM ecf
         WHERE "empresaId" = $1
           AND "modoEmision" = 'PRODUCCION'
-          AND "createdAt" >= $2::date
-          AND "createdAt" <  $3::date`,
-      [empresaId, ciclo.inicio, ciclo.fin],
+          AND "createdAt" >= $2::timestamp
+          AND "createdAt" <  $3::timestamp`,
+      [empresaId, inicioDiaRDenUTC(ciclo.inicio), inicioDiaRDenUTC(ciclo.fin)],
     );
     return Number(r?.n ?? 0);
   }

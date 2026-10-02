@@ -91,7 +91,12 @@ describe('qué se cuenta', () => {
     const q = conteo(consultas);
     expect(q.sql).toContain('>= $2');
     expect(q.sql).toContain('<  $3');
-    expect(q.params).toEqual([44, '2026-08-05', '2026-09-05']);
+    // Las fronteras del ciclo (fechas de calendario RD) se convierten al
+    // instante UTC de su medianoche RD (inicioDiaRDenUTC, las 04:00 de ese
+    // mismo día) ANTES de comparar — "createdAt" es un TIMESTAMP sin zona
+    // que guarda UTC, y envolverlo en AT TIME ZONE invierte la conversión
+    // (ver cuota-ecf-zona-horaria.spec.ts, integración real contra Postgres).
+    expect(q.params).toEqual([44, '2026-08-05 04:00:00', '2026-09-05 04:00:00']);
   });
 
   it('no crea la suscripción ni dispara resets: solo lee', async () => {
