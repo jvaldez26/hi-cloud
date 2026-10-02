@@ -11,6 +11,7 @@ import { AuthService } from '../auth/auth.service';
 import { LoginAttemptsService } from '../auth/login-attempts.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
 import { AccionAuditoria, NivelAuditoria } from '../auditoria/entities/audit-log.entity';
+import { fechaHoyRD, inicioDiaRDenUTC, diaSiguienteRD } from '../common/utils/fecha-local.util';
 
 @Injectable()
 export class SuperAdminService {
@@ -369,13 +370,20 @@ export class SuperAdminService {
         SELECT COUNT(*)::int AS cnt FROM suscripciones
         WHERE "fechaVencimiento" < CURRENT_DATE AND estado = 'activa'
       `),
-      // Fix e-CF: usar timezone RD (UTC-4) para que "hoy" coincida con el día local
-      this.ds.query<any[]>(`
-        SELECT COUNT(*)::int AS cnt FROM ecf
-        WHERE ("createdAt" AT TIME ZONE 'America/Santo_Domingo')::date
-            = (NOW()        AT TIME ZONE 'America/Santo_Domingo')::date
-          AND "isActive" = true
-      `),
+      // Fix e-CF: "hoy" en RD, no en UTC. "createdAt" es TIMESTAMP sin zona
+      // que guarda UTC (la sesión de Postgres corre en UTC) — envolverlo en
+      // `AT TIME ZONE 'America/Santo_Domingo'` (como hacía antes esta misma
+      // query) INTERPRETA el valor como si ya fuera hora RD y lo empuja más
+      // hacia adelante: la dirección contraria a la que hace falta, y de
+      // paso pierde el índice. Mismo defecto y mismo fix que
+      // CuotaEcfService.contarEmitidos — fronteras calculadas en TypeScript
+      // con inicioDiaRDenUTC, columna sin envolver.
+      this.ds.query<any[]>(
+        `SELECT COUNT(*)::int AS cnt FROM ecf
+          WHERE "createdAt" >= $1::timestamp AND "createdAt" < $2::timestamp
+            AND "isActive" = true`,
+        [inicioDiaRDenUTC(fechaHoyRD()), inicioDiaRDenUTC(diaSiguienteRD(fechaHoyRD()))],
+      ),
       this.ds.query<any[]>(`
         SELECT COALESCE(SUM(total),0)::numeric AS "montoMes" FROM facturas
         WHERE EXTRACT(MONTH FROM fecha) = EXTRACT(MONTH FROM CURRENT_DATE)

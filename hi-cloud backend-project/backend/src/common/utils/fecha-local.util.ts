@@ -133,3 +133,16 @@ export function diferenciaDiasRD(fecha: Date | string): number {
 export function inicioDiaRDenUTC(fechaYMD: string): string {
   return `${fechaYMD.slice(0, 10)} 04:00:00`;
 }
+
+/**
+ * El día de calendario siguiente a `fechaYMD` ('YYYY-MM-DD'). Ancla al
+ * mediodía UTC antes de sumar — mismo truco que `diferenciaDiasRD` para que
+ * la aritmética de `Date` no cruce el borde por el desfase UTC-4 de RD.
+ *
+ * @example diaSiguienteRD('2026-10-05') // '2026-10-06'
+ */
+export function diaSiguienteRD(fechaYMD: string): string {
+  const [yyyy, mm, dd] = fechaYMD.slice(0, 10).split('-').map(Number);
+  const siguiente = new Date(Date.UTC(yyyy, mm - 1, dd, 12) + 86_400_000);
+  return siguiente.toISOString().slice(0, 10);
+}
