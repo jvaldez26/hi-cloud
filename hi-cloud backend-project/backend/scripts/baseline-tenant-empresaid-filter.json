@@ -1,8 +1,8 @@
 [
   "src/conduce/conduce.service.ts:480",
   "src/conduce/conduce.service.ts:680",
-  "src/super-admin/super-admin.service.ts:1665",
-  "src/super-admin/super-admin.service.ts:1696",
+  "src/super-admin/super-admin.service.ts:1673",
+  "src/super-admin/super-admin.service.ts:1704",
   "src/valoracion-stock/valoracion-stock.service.ts:146",
   "src/valoracion-stock/valoracion-stock.service.ts:154",
   "src/wms/wms.service.ts:152"
