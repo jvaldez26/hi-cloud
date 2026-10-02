@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Tabs, Card, Table, Button, Tag, Select, Input, DatePicker, Space, Typography,
   Alert, Switch, message, Popconfirm, Tooltip, Badge, Checkbox, Empty,
@@ -7,6 +8,7 @@ import {
   WarningOutlined, CheckOutlined, EyeOutlined, FormOutlined, InboxOutlined,
   UndoOutlined, LinkOutlined, PlusOutlined,
 } from '@ant-design/icons';
+import { BookOpen } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import {
@@ -81,6 +83,7 @@ function FiltrosBar({ f, mostrarTipo = true }: { f: ReturnType<typeof useFiltros
 
 export default function XlinkPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const { user, getEmpresaActual } = useAuthStore();
   const puedeActivar = puedeActivarXlink(getEmpresaActual()?.rol, user?.role);
 
@@ -101,8 +104,13 @@ export default function XlinkPage() {
 
   return (
     <div style={{ padding: 24 }}>
-      <Title level={3} style={{ marginBottom: 4 }}>HiCloud Xlink</Title>
-      <Paragraph type="secondary">Intercambia facturas, notas de crédito y órdenes de compra directamente con otras empresas HiCloud.</Paragraph>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+        <div>
+          <Title level={3} style={{ marginBottom: 4 }}>HiCloud Xlink</Title>
+          <Paragraph type="secondary">Intercambia facturas, notas de crédito y órdenes de compra directamente con otras empresas HiCloud.</Paragraph>
+        </div>
+        <Button icon={<BookOpen size={16} />} onClick={() => navigate('/xlink/documentacion')}>Ver documentación</Button>
+      </div>
 
       {!xlinkVisible && (
         <Alert
@@ -193,6 +201,7 @@ function ActivarTab({ xlinkVisible, puedeActivar, empresa }: { xlinkVisible: boo
 // ── Cómo funciona ────────────────────────────────────────────────────────────
 
 function ComoFuncionaTab() {
+  const navigate = useNavigate();
   return (
     <Card style={{ maxWidth: 760 }}>
       <Title level={5}>¿Qué es HiCloud Xlink?</Title>
@@ -201,7 +210,7 @@ function ComoFuncionaTab() {
         sin redigitar nada. La empresa A publica un documento y la empresa B lo recibe con un clic,
         ya lleno, del lado que le corresponde.
       </Paragraph>
-      <Title level={5}>Los 4 documentos y su equivalente</Title>
+      <Title level={5}>Los 3 documentos y su equivalente</Title>
       <ul>
         <li><Text strong>Factura a Crédito</Text> → se recibe como Compra / Factura de Proveedor</li>
         <li><Text strong>Nota de Crédito</Text> a cliente → se recibe como Nota de Crédito de Proveedor</li>
@@ -220,6 +229,10 @@ function ComoFuncionaTab() {
         <li><Text strong>Faltan homologar productos</Text>: elige un producto existente o crea uno nuevo — queda guardado para la próxima vez.</li>
         <li>Solo se pueden enviar facturas <Text strong>a crédito</Text>, con su comprobante fiscal <Text strong>aceptado</Text> por la DGII.</li>
       </ul>
+      <Paragraph style={{ marginTop: 16, marginBottom: 0 }}>
+        ¿Quieres el detalle completo?{' '}
+        <a onClick={() => navigate('/xlink/documentacion')}>Ver documentación</a>
+      </Paragraph>
     </Card>
   );
 }

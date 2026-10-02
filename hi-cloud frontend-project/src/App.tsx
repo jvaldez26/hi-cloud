@@ -51,6 +51,7 @@ const ConfiguracionPage  = lazy(() => import('./pages/configuracion/Configuracio
 const ECFPage            = lazy(() => import('./pages/ecf/ECFPage'));
 const EcfRecibidosPage   = lazy(() => import('./pages/ecf-recibidos/EcfRecibidosPage'));
 const XlinkPage          = lazy(() => import('./pages/xlink/XlinkPage'));
+const XlinkDocumentacionPage = lazy(() => import('./pages/xlink/documentacion/XlinkDocumentacionPage'));
 const AuditoriaPage      = lazy(() => import('./pages/auditoria/AuditoriaPage'));
 const ProfilePage        = lazy(() => import('./pages/profile/ProfilePage'));
 const SoportePage        = lazy(() => import('./pages/soporte/SoportePage'));
@@ -381,7 +382,9 @@ function PublicHome() {
 }
 
 // Rutas del ERP normal — BLOQUEADAS para super_admin y empleado
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
+// export: solo para poder testear el guard de acceso de páginas concretas
+// (ver XlinkDocumentacionPage.test.tsx) sin montar App.tsx completo.
+export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { hydrated } = useAuthStore();
   const isAuth = useAuthStore((s) => s.isAuth());
   const user   = useAuthStore((s) => s.user);
@@ -807,6 +810,7 @@ export default function App() {
                     <Route path="/ecf/activar"        element={<RolRoute roles={['admin','contador']}><ActivacionEcfPage /></RolRoute>} />
                     <Route path="/ecf-recibidos"      element={<EcfRecibidosPage />} />
                     <Route path="/xlink"              element={<XlinkPage />} />
+                    <Route path="/xlink/documentacion" element={<XlinkDocumentacionPage />} />
 
                     {/* ── Finanzas ── */}
                     <Route path="/cxc"                element={<CxCPage />} />
