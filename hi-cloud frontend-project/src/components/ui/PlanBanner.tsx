@@ -5,6 +5,15 @@ import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { suscripcionesApi } from '../../api/suscripciones.api';
 
+/**
+ * 'YYYY-MM-DD' → 'DD/MM', partiendo el texto — nunca `new Date('YYYY-MM-DD')`,
+ * que es medianoche UTC y en RD puede mostrar el día anterior.
+ */
+function ddmm(iso: string): string {
+  const [, m, d] = iso.slice(0, 10).split('-');
+  return `${d}/${m}`;
+}
+
 export default function PlanBanner() {
   const navigate  = useNavigate();
   const [cerrado, setCerrado] = useState<boolean>(() => {
@@ -205,13 +214,14 @@ export default function PlanBanner() {
               <>
                 Llevas <strong>{ecf.emitidos.toLocaleString('es-DO')}</strong> comprobantes
                 electrónicos de los <strong>{ecf.cupo.toLocaleString('es-DO')}</strong> que
-                incluye tu plan. <strong>Puedes seguir facturando</strong>: el excedente se
-                factura aparte.
+                incluye tu plan en este período ({ddmm(ecf.ciclo.inicio)} – {ddmm(ecf.cicloFinInclusivo)}).{' '}
+                <strong>Puedes seguir facturando</strong>: el excedente se factura aparte.
               </>
             ) : (
               <>
                 Vas por el <strong>{ecf.porcentaje}%</strong> de los comprobantes electrónicos
-                de tu plan ({ecf.emitidos.toLocaleString('es-DO')} de {ecf.cupo.toLocaleString('es-DO')}).
+                de tu plan en este período ({ddmm(ecf.ciclo.inicio)} – {ddmm(ecf.cicloFinInclusivo)}):{' '}
+                {ecf.emitidos.toLocaleString('es-DO')} de {ecf.cupo.toLocaleString('es-DO')}.
                 No se bloquea nada.
               </>
             )}

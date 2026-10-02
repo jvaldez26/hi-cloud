@@ -3,7 +3,7 @@ import {
 } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import { PLANES, PlanTipo } from './entities/suscripcion.entity';
-import { Ciclo, cicloVigente, ciclosRecientes, estaCerrado } from './ciclo-facturacion.util';
+import { Ciclo, cicloVigente, ciclosRecientes, estaCerrado, finInclusivo } from './ciclo-facturacion.util';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { inicioDiaRDenUTC } from '../common/utils/fecha-local.util';
 
@@ -47,6 +47,8 @@ export interface UsoCuotaEcf {
   /** ≥100%: cada e-CF a partir de aquí se factura aparte. */
   excedida:   boolean;
   ciclo:      Ciclo;
+  /** Último día que SÍ pertenece al ciclo (ciclo.fin es exclusivo) — para mostrarle el rango a una persona. */
+  cicloFinInclusivo: string;
   cicloCerrado: boolean;
   plan:       PlanTipo | null;
   planNombre: string;
@@ -153,6 +155,7 @@ export class CuotaEcfService {
       alerta:       !ilimitado && emitidos >= cupo * 0.8,
       excedida:     !ilimitado && emitidos > cupo,
       ciclo:        elCiclo,
+      cicloFinInclusivo: finInclusivo(elCiclo.fin),
       cicloCerrado: estaCerrado(elCiclo),
       plan:         plan,
       planNombre:   cfg?.nombre ?? '—',
