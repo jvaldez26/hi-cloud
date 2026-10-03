@@ -249,4 +249,14 @@ export class Factura extends TenantBaseEntity {
   // en el mismo instante.
   @Column({ length: 36, nullable: true, default: null })
   claveIdempotencia?: string;
+
+  // ── Origen polimórfico (módulo externo que generó esta factura) ──────────
+  // Ver OrigenFacturaValidadoresRegistry y el índice único parcial
+  // uq_facturas_origen_activo (empresaId, origenTipo, origenId) WHERE
+  // origenTipo IS NOT NULL AND estado <> 'cancelada'.
+  @Column({ length: 30, nullable: true, default: null })
+  origenTipo?: string;
+
+  @Column({ type: 'int', nullable: true, default: null })
+  origenId?: number;
 }

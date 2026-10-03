@@ -278,4 +278,18 @@ export class CreateFacturaDto {
   @IsOptional()
   @IsString() @MaxLength(36)
   claveIdempotencia?: string;
+
+  /**
+   * Origen polimórfico (p. ej. 'car_wash_turno' + el id del turno) — para que
+   * un módulo externo cobre vía el POS/Facturas sin reinventar su propia
+   * facturación. Ver OrigenFacturaValidadoresRegistry y
+   * Factura.origenTipo/origenId.
+   */
+  @IsOptional()
+  @IsString() @MaxLength(30)
+  origenTipo?: string;
+
+  @IsOptional()
+  @IsInt()
+  origenId?: number;
 }

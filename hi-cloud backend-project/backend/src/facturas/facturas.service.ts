@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   ServiceUnavailableException,
+  ConflictException,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
@@ -28,6 +29,7 @@ import { DocumentoOrigenTipo, ECF } from '../ecf/entities/ecf.entity';
 import { ReintentoECFJob } from '../ecf/jobs/reintento-ecf.job';
 import { TipoClienteECF } from '../clientes/entities/cliente.entity';
 import { S3Service } from '../common/s3/s3.service';
+import { OrigenFacturaValidadoresRegistry } from '../common/origen-factura/origen-factura-validadores.registry';
 import { CajaService } from '../caja/caja.service';
 import { RncService } from '../rnc/rnc.service';
 import { reportServiceError } from '../common/observability/sentry';
@@ -70,6 +72,7 @@ export class FacturasService {
     @InjectDataSource() private dataSource: DataSource,
     private vendedorResolver: VendedorResolverService,
     private xlinkPublicar: XlinkPublicarService,
+    private origenValidadores: OrigenFacturaValidadoresRegistry,
   ) {}
 
 
@@ -302,6 +305,11 @@ export class FacturasService {
     const existente = await this.buscarPorClaveIdempotencia(dto.claveIdempotencia, empresaId);
     if (existente) return this.findOne(existente.id);
 
+    // Si viene de un módulo externo (p. ej. Car Wash cobrando un turno),
+    // valida ese origen ANTES de tocar inventario/folio — ver
+    // OrigenFacturaValidadoresRegistry.
+    await this.origenValidadores.validar(dto.origenTipo, dto.origenId, empresaId);
+
     // La verificación de ingresos se hace en confirmar() cuando el total ya está calculado
     if (dto.clienteId) await this.clientesService.findOne(dto.clienteId);
 
@@ -485,6 +493,8 @@ export class FacturasService {
       formasPago: dto.formasPago?.length ? dto.formasPago : undefined,
       rncComprador: dto.rncComprador ?? undefined,
       claveIdempotencia: dto.claveIdempotencia ?? undefined,
+      origenTipo: dto.origenTipo ?? undefined,
+      origenId: dto.origenId ?? undefined,
     });
 
     let savedFactura: Factura;
@@ -501,6 +511,19 @@ export class FacturasService {
           where: { empresaId, claveIdempotencia: dto.claveIdempotencia },
         });
         if (ganadora) return this.findOne(ganadora.id);
+      }
+      // Carrera del origen (p. ej. dos clics en "Cobrar" del mismo turno de
+      // Car Wash): el índice único parcial uq_facturas_origen_activo choca.
+      if (dto.origenTipo && dto.origenId != null && (err as any)?.code === '23505'
+          && (err as any)?.constraint === 'uq_facturas_origen_activo') {
+        const existenteOrigen = await this.facturaRepository.findOne({
+          where: { empresaId, origenTipo: dto.origenTipo, origenId: dto.origenId },
+        });
+        throw new ConflictException(
+          existenteOrigen
+            ? `Este ${dto.origenTipo} ya fue cobrado en ${existenteOrigen.folio}`
+            : 'Este origen ya fue cobrado.',
+        );
       }
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.error(`[Factura.create] save() falló — folio=${folio} empresaId=${empresaId}: ${msg}`);
