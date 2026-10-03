@@ -4,6 +4,8 @@ import { ComprasService } from './compras.service';
 import { Compra } from './entities/compra.entity';
 import { CompraDetalle } from './entities/compra-detalle.entity';
 import { Producto } from '../productos/entities/producto.entity';
+import { Proveedor } from '../proveedores/entities/proveedor.entity';
+import { User } from '../users/users.entity';
 
 /**
  * Integración REAL contra Postgres (no mocks): el anti-duplicado depende de
@@ -95,7 +97,7 @@ beforeAll(async () => {
     // ("Entity metadata for CompraDetalle#producto was not found"),
     // intermitente según el orden de carga de módulos de Jest. No es un
     // mock: sigue siendo la BD real, solo se completa el grafo de entities.
-    entities: [Compra, CompraDetalle, Producto],
+    entities: [Compra, CompraDetalle, Producto, Proveedor, User],
     synchronize: false,
     connectTimeoutMS: 3000,
   });

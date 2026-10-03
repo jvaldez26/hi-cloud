@@ -4,6 +4,8 @@ import { ComprasService } from './compras.service';
 import { Compra } from './entities/compra.entity';
 import { CompraDetalle } from './entities/compra-detalle.entity';
 import { Producto } from '../productos/entities/producto.entity';
+import { Proveedor } from '../proveedores/entities/proveedor.entity';
+import { User } from '../users/users.entity';
 
 /**
  * Integración REAL contra Postgres (no mocks) — idempotencia de la
@@ -94,7 +96,7 @@ beforeAll(async () => {
     // incluirla aquí, TypeORM a veces falla al construir la metadata de
     // forma intermitente. Ver mismo comentario en
     // compras-anti-duplicado-ncf.spec.ts.
-    entities: [Compra, CompraDetalle, Producto],
+    entities: [Compra, CompraDetalle, Producto, Proveedor, User],
     synchronize: false,
     connectTimeoutMS: 3000,
   });
