@@ -1,4 +1,13 @@
+require('dotenv').config();
 const { Client } = require('pg');
+
+// ── Configuración BD — solo desde variables de entorno, nunca hardcoded ──────
+for (const v of ['DB_HOST', 'DB_PORT', 'DB_USERNAME', 'DB_PASSWORD', 'DB_NAME']) {
+  if (!process.env[v]) {
+    console.error(`❌ Falta ${v} en el entorno (.env o variables de entorno). No hay valores por defecto a propósito.`);
+    process.exit(1);
+  }
+}
 
 const tables = [
   'activos_fijos','almacenes','asiento_lineas','asientos_contables','asignaciones_costo',
@@ -31,9 +40,9 @@ const tables = [
 
 async function run() {
   const c = new Client({
-    host: 'hicloud-db.cjc0a822i31y.us-east-2.rds.amazonaws.com',
-    port: 5432, user: 'postgres', password: 'Higlobal-4691',
-    database: 'hicloud', ssl: { rejectUnauthorized: false }
+    host: process.env.DB_HOST,
+    port: Number(process.env.DB_PORT), user: process.env.DB_USERNAME, password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME, ssl: { rejectUnauthorized: false },
   });
   await c.connect();
 

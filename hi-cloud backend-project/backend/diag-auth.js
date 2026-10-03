@@ -1,17 +1,25 @@
+require('dotenv').config();
 const { Client } = require('pg');
 const bcrypt     = require('bcrypt');
 
+// ── Configuración BD y contraseña a probar — solo desde el entorno ──────────
+for (const v of ['DB_HOST', 'DB_PORT', 'DB_USERNAME', 'DB_PASSWORD', 'DB_NAME', 'DIAG_TEST_PASSWORD']) {
+  if (!process.env[v]) {
+    console.error(`❌ Falta ${v} en el entorno. No hay valores por defecto a propósito.`);
+    process.exit(1);
+  }
+}
 const DB = {
-  host: 'hicloud-db.cjc0a822i31y.us-east-2.rds.amazonaws.com',
-  port: 5432, user: 'postgres', password: 'Higlobal-4691',
-  database: 'hicloud', ssl: { rejectUnauthorized: false },
+  host: process.env.DB_HOST,
+  port: Number(process.env.DB_PORT), user: process.env.DB_USERNAME, password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME, ssl: { rejectUnauthorized: false },
 };
 
 async function main() {
   const c = new Client(DB);
   await c.connect();
 
-  const PASS = 'HiVGBNxRbFCdg767';
+  const PASS = process.env.DIAG_TEST_PASSWORD;
 
   // 1. Ver el hash actual de cada usuario
   const r = await c.query('SELECT id, email, password FROM users ORDER BY id');

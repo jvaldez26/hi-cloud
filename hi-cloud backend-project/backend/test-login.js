@@ -1,11 +1,17 @@
+require('dotenv').config();
 const axios = require('axios');
 
-const API = 'http://localhost:3000/api/v1';
+const API = process.env.TEST_LOGIN_API_URL ?? 'http://localhost:3000/api/v1';
+
+if (!process.env.TEST_LOGIN_PASSWORD) {
+  console.error('❌ Falta TEST_LOGIN_PASSWORD en el entorno. No hay valor por defecto a propósito.');
+  process.exit(1);
+}
 
 const CUENTAS = [
-  { email: 'admin@hicloud.com',        password: 'HiVGBNxRbFCdg767' },
-  { email: 'admin@hicloudrd.com',      password: 'HiVGBNxRbFCdg767' },
-  { email: 'valdezsamuel03@gmail.com', password: 'HiVGBNxRbFCdg767' },
+  { email: 'admin@hicloud.com',        password: process.env.TEST_LOGIN_PASSWORD },
+  { email: 'admin@hicloudrd.com',      password: process.env.TEST_LOGIN_PASSWORD },
+  { email: 'valdezsamuel03@gmail.com', password: process.env.TEST_LOGIN_PASSWORD },
 ];
 
 async function main() {

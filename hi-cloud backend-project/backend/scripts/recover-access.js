@@ -14,13 +14,19 @@ const { Client } = require('pg');
 const crypto     = require('crypto');
 const bcrypt     = require('bcrypt');
 
-// ── Configuración BD ─────────────────────────────────────────────────────────
+// ── Configuración BD — solo desde variables de entorno, nunca hardcoded ──────
+for (const v of ['DB_HOST', 'DB_PORT', 'DB_USERNAME', 'DB_PASSWORD', 'DB_NAME']) {
+  if (!process.env[v]) {
+    console.error(`❌ Falta ${v} en el entorno (.env o variables de entorno). No hay valores por defecto a propósito.`);
+    process.exit(1);
+  }
+}
 const DB = {
-  host:     process.env.DB_HOST     ?? 'hicloud-db.cjc0a822i31y.us-east-2.rds.amazonaws.com',
-  port:     Number(process.env.DB_PORT     ?? 5432),
-  user:     process.env.DB_USERNAME ?? 'postgres',
-  password: process.env.DB_PASSWORD ?? 'Higlobal-4691',
-  database: process.env.DB_NAME     ?? 'hicloud',
+  host:     process.env.DB_HOST,
+  port:     Number(process.env.DB_PORT),
+  user:     process.env.DB_USERNAME,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
   ssl:      { rejectUnauthorized: false },
 };
 
