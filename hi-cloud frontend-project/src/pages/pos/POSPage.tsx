@@ -9537,6 +9537,54 @@ export default function POSPage() {
   };
   const [supError,            setSupError]            = useState('');
   const [verificandoSupNuevo, setVerificandoSupNuevo] = useState(false);
+  // Cuenta regresiva del bloqueo por intentos fallidos (SupervisorAttemptsService,
+  // backend) — mismo patrón que blockCountdown en LoginPage.tsx.
+  const [supBlockCountdown, setSupBlockCountdown] = useState(0);
+  const supBlockIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    return () => { if (supBlockIntervalRef.current) clearInterval(supBlockIntervalRef.current); };
+  }, []);
+  const startSupBlockCountdown = (seconds: number) => {
+    if (supBlockIntervalRef.current) clearInterval(supBlockIntervalRef.current);
+    setSupBlockCountdown(seconds);
+    supBlockIntervalRef.current = setInterval(() => {
+      setSupBlockCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(supBlockIntervalRef.current!);
+          supBlockIntervalRef.current = null;
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+  // Único camino para verificar+autorizar — lo usan el Enter del campo de PIN
+  // y el botón "Autorizar". Antes eran dos copias casi idénticas de este código.
+  const verificarYAutorizarSupervisor = async () => {
+    if (supBlockCountdown > 0) return; // bloqueado — la cuenta regresiva ya lo deja claro, no reintentar
+    if (!supId || !supPassword) { setSupError('Selecciona un supervisor e ingresa su contraseña'); return; }
+    setVerificandoSupNuevo(true); setSupError('');
+    try {
+      const res: any = await api.post('/auth/verificar-supervisor', {
+        supervisorId: supId, password: supPassword,
+        action: supervisor.pendingAction?.action,
+        detail: supervisor.pendingAction?.detail,
+      });
+      const d = res.data?.data ?? res.data;
+      supervisor.resolveModal(true, d.nombre, d.role, d.sessionId);
+      message.success(`✓ Autorizado por ${d.nombre}`);
+      setSupId(null); setSupPassword(''); setSupPasswordVisible(false);
+    } catch (e: any) {
+      // .message viene SOBREESCRITO por el interceptor global de axios para
+      // CUALQUIER 429 genérico (ver api/client.ts, caso 429) — .errors[0] es
+      // el mensaje real que mandó el backend ("Demasiados intentos. Espere
+      // un minuto."), igual que ya lee LoginPage.tsx para el mismo caso.
+      const data = e?.response?.data;
+      setSupError(data?.errors?.[0] ?? data?.message ?? 'Credenciales inválidas');
+      const remainingSecs = data?.remainingSeconds as number | undefined;
+      if (remainingSecs && remainingSecs > 0) startSupBlockCountdown(remainingSecs);
+    } finally { setVerificandoSupNuevo(false); }
+  };
   const { data: supervisores, isLoading: supLoading } = useQuery<{ id: number; nombre: string; role: string; tienePin: boolean }[]>({
     queryKey: ['supervisores-pos'],
     queryFn:  () => api.get('/auth/supervisores').then(r => {
@@ -13114,7 +13162,13 @@ export default function POSPage() {
                   showSearch
                   optionFilterProp="label"
                   value={supId}
-                  onChange={(v: number) => { setSupId(v); setSupError(''); }}
+                  onChange={(v: number) => {
+                    setSupId(v); setSupError('');
+                    // El bloqueo es por (empresa, cajero, supervisor) — cambiar de
+                    // supervisor es una cubeta distinta, no debe seguir bloqueado.
+                    if (supBlockIntervalRef.current) { clearInterval(supBlockIntervalRef.current); supBlockIntervalRef.current = null; }
+                    setSupBlockCountdown(0);
+                  }}
                   options={(supervisores ?? []).map(u => ({
                     value: u.id,
                     label: u.nombre,
@@ -13163,6 +13217,7 @@ export default function POSPage() {
                 configurado, el PIN es el único credential válido aquí).
               */}
               <Input placeholder={supTienePin ? 'PIN del supervisor' : 'Contraseña del supervisor'} value={supPassword}
+                disabled={supBlockCountdown > 0}
                 type="text"
                 inputMode={supTienePin ? 'numeric' : undefined}
                 maxLength={supTienePin ? 6 : undefined}
@@ -13182,27 +13237,13 @@ export default function POSPage() {
                   const v = supTienePin ? e.target.value.replace(/\D/g, '') : e.target.value;
                   setSupPassword(v); setSupError('');
                 }}
-                onPressEnter={async e => {
+                onPressEnter={e => {
                   // Sin esto, el mismo Enter que envía el PIN también burbujea
                   // hasta el listener global de checkout (POSPage, más arriba)
                   // y confirma la venta en paralelo — sin esperar, sin importar
                   // si esta verificación falla. Ver confirmarCobro().
                   e.stopPropagation();
-                  if (!supId || !supPassword) { setSupError('Selecciona un supervisor e ingresa su contraseña'); return; }
-                  setVerificandoSupNuevo(true); setSupError('');
-                  try {
-                    const res: any = await api.post('/auth/verificar-supervisor', {
-                      supervisorId: supId, password: supPassword,
-                      action: supervisor.pendingAction?.action,
-                      detail: supervisor.pendingAction?.detail,
-                    });
-                    const d = res.data?.data ?? res.data;
-                    supervisor.resolveModal(true, d.nombre, d.role, d.sessionId);
-                    message.success(`✓ Autorizado por ${d.nombre}`);
-                    setSupId(null); setSupPassword(''); setSupPasswordVisible(false);
-                  } catch (e: any) {
-                    setSupError(e?.response?.data?.message ?? 'Credenciales inválidas');
-                  } finally { setVerificandoSupNuevo(false); }
+                  verificarYAutorizarSupervisor();
                 }} />
               {/* No bloqueante — no debe interrumpir una venta en curso. Abre
                   el perfil en pestaña nueva para no perder el POS actual. */}
@@ -13227,31 +13268,31 @@ export default function POSPage() {
                 </div>
               )}
             </div>
-            {supError && <div style={{ color: '#EF4444', fontSize: 12 }}>{supError}</div>}
+            {supError && (
+              <div style={{ color: '#EF4444', fontSize: 12 }}>
+                {supError}
+                {supBlockCountdown > 0 && (
+                  <>
+                    {' — '}
+                    <strong>
+                      {supBlockCountdown >= 60
+                        ? `${Math.floor(supBlockCountdown / 60)}:${String(supBlockCountdown % 60).padStart(2, '0')} min`
+                        : `${supBlockCountdown}s`}
+                    </strong>
+                  </>
+                )}
+              </div>
+            )}
             <button
               type="button"
-              disabled={verificandoSupNuevo || !supId || !supPassword}
-              onClick={async () => {
-                if (!supId || !supPassword) { setSupError('Selecciona un supervisor e ingresa su contraseña'); return; }
-                setVerificandoSupNuevo(true); setSupError('');
-                try {
-                  const res: any = await api.post('/auth/verificar-supervisor', {
-                    supervisorId: supId, password: supPassword,
-                    action: supervisor.pendingAction?.action,
-                    detail: supervisor.pendingAction?.detail,
-                  });
-                  const d = res.data?.data ?? res.data;
-                  supervisor.resolveModal(true, d.nombre, d.role, d.sessionId);
-                  message.success(`✓ Autorizado por ${d.nombre}`);
-                  setSupId(null); setSupPassword(''); setSupPasswordVisible(false);
-                } catch (e: any) {
-                  setSupError(e?.response?.data?.message ?? 'Credenciales inválidas');
-                } finally { setVerificandoSupNuevo(false); }
-              }}
-              style={{ padding: '10px 0', background: (!supId || !supPassword) ? '#ccc' : '#F59E0B',
+              disabled={verificandoSupNuevo || !supId || !supPassword || supBlockCountdown > 0}
+              onClick={verificarYAutorizarSupervisor}
+              style={{ padding: '10px 0', background: (!supId || !supPassword || supBlockCountdown > 0) ? '#ccc' : '#F59E0B',
                 border: 'none', borderRadius: 8, color: '#fff', fontWeight: 700,
-                cursor: (!supId || !supPassword) ? 'not-allowed' : 'pointer', fontSize: 14 }}>
-              {verificandoSupNuevo ? 'Verificando...' : 'Autorizar'}
+                cursor: (!supId || !supPassword || supBlockCountdown > 0) ? 'not-allowed' : 'pointer', fontSize: 14 }}>
+              {supBlockCountdown > 0
+                ? `Bloqueado — espera ${supBlockCountdown >= 60 ? `${Math.floor(supBlockCountdown / 60)}:${String(supBlockCountdown % 60).padStart(2, '0')} min` : `${supBlockCountdown}s`}`
+                : (verificandoSupNuevo ? 'Verificando...' : 'Autorizar')}
             </button>
           </div>
         </form>
