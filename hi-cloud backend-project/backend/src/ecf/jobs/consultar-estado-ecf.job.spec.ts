@@ -67,7 +67,7 @@ describe('ConsultarEstadoECFJob — resiliencia del lote (Familia 2 / Opción A)
     );
 
     // El cron NO debe lanzar aunque un efecto falle.
-    await expect((job as any).consultarBatch(ecfs, 1)).resolves.toBeUndefined();
+    await expect((job as any).consultarBatch(ecfs, 1)).resolves.toBeDefined();
 
     // El efecto se intentó para los 3 → el lote no se detuvo en el fallo.
     expect(efectosNc.aplicarEfectosPorEstado).toHaveBeenCalledTimes(3);
@@ -238,5 +238,169 @@ describe('ConsultarEstadoECFJob — EN_VALIDACION_DGII vs RECHAZADO (hotfix E320
     await (job as any).consultarBatch([ecf], 1);
 
     expect(ecfRepo.update.mock.calls[0][1]).toMatchObject({ estadoDGII: EstadoDGII.ACEPTADO });
+  });
+});
+
+/**
+ * PASO 2b del hotfix E320000001774 — backoff automático de EN_VALIDACION_DGII:
+ * reconsulta con intervalo creciente (15min/1h/3h), freno global por pasada,
+ * y escalamiento a revisión manual a las 72h sin veredicto (con aviso a la
+ * empresa, nunca al super admin ni como rechazo).
+ */
+describe('ConsultarEstadoECFJob — consultarEnValidacion (backoff automático)', () => {
+  let job: ConsultarEstadoECFJob;
+  let ecfRepo:   { update: jest.Mock; createQueryBuilder: jest.Mock; manager: { query: jest.Mock } };
+  let eventoRepo:{ create: jest.Mock; save: jest.Mock };
+  let mseller:   { consultarBatch: jest.Mock; consultarEstado: jest.Mock };
+  let efectosNc: { aplicarEfectosPorEstado: jest.Mock };
+  let emailSvc:  { enviar: jest.Mock };
+  let configSvc: { get: jest.Mock };
+
+  /** TypeORM QueryBuilder fake — cada llamada a createQueryBuilder() devuelve
+   *  una cadena nueva cuyo getMany() resuelve con el SIGUIENTE array de la
+   *  secuencia (una entrada por cada createQueryBuilder() que haga el método
+   *  bajo prueba, en el orden en que los hace). */
+  function makeQueryBuilderFactory(resultados: ECF[][]) {
+    let llamada = 0;
+    return jest.fn(() => {
+      const builder: any = {
+        where:    () => builder,
+        andWhere: () => builder,
+        orderBy:  () => builder,
+        take:     () => builder,
+        getMany:  () => Promise.resolve(resultados[llamada++] ?? []),
+      };
+      return builder;
+    });
+  }
+
+  function ecfEnValidacion(opts: {
+    id: number; numero: string; empresaId?: number;
+    createdAt: Date; ultimaConsultaAt?: Date | null; consultasRealizadas?: number;
+  }): ECF {
+    return {
+      id: opts.id, numero: opts.numero, empresaId: opts.empresaId ?? 1,
+      trackId: `track-${opts.id}`, estadoDGII: EstadoDGII.EN_VALIDACION_DGII,
+      createdAt: opts.createdAt, ultimaConsultaAt: opts.ultimaConsultaAt ?? null,
+      consultasRealizadas: opts.consultasRealizadas ?? 0,
+      respuestaDgii: null, documentoOrigenTipo: null, codigoModificacion: null,
+      montoTotal: 100, razonSocialComprador: null, rncComprador: null,
+    } as unknown as ECF;
+  }
+
+  beforeEach(() => {
+    ecfRepo = {
+      update:             jest.fn().mockResolvedValue(undefined),
+      createQueryBuilder: jest.fn(),
+      manager:            { query: jest.fn().mockResolvedValue([{ email: 'admin@empresa.com' }]) },
+    };
+    eventoRepo = {
+      create: jest.fn().mockImplementation((x) => x),
+      save:   jest.fn().mockResolvedValue(undefined),
+    };
+    mseller    = { consultarBatch: jest.fn(), consultarEstado: jest.fn() };
+    efectosNc  = { aplicarEfectosPorEstado: jest.fn().mockResolvedValue(undefined) };
+    emailSvc   = { enviar: jest.fn().mockResolvedValue({ exitoso: true }) };
+    configSvc  = { get: jest.fn((_key: string, def: unknown) => def) };
+
+    job = new ConsultarEstadoECFJob(
+      ecfRepo    as any,
+      eventoRepo as any,
+      mseller    as any,
+      efectosNc  as any,
+      emailSvc   as any,
+      configSvc  as any,
+    );
+    for (const m of ['log', 'warn', 'error', 'debug'] as const) {
+      jest.spyOn((job as any).logger, m).mockImplementation(() => undefined);
+    }
+  });
+
+  it('un e-CF recién entrado (sin ultimaConsultaAt) se reconsulta — usa la MISMA consultarBatch que el botón manual', async () => {
+    const ecf = ecfEnValidacion({ id: 1, numero: 'E320000000001', createdAt: new Date() });
+    ecfRepo.createQueryBuilder = makeQueryBuilderFactory([/* vencidos */ [], /* candidatos */ [ecf]]);
+    mseller.consultarBatch.mockResolvedValue({
+      total: 1,
+      results: [{ ecf: ecf.numero, status: 'Aceptado', found: true, data: {} }],
+    });
+
+    await (job as any).consultarEnValidacion();
+
+    expect(mseller.consultarBatch).toHaveBeenCalledWith([ecf.numero], ecf.empresaId);
+    expect(ecfRepo.update).toHaveBeenCalledWith(ecf.id, expect.objectContaining({ estadoDGII: EstadoDGII.ACEPTADO }));
+  });
+
+  it('respeta el backoff: consultado hace 5 min (dentro de las primeras 2h → 15min) → NO se reconsulta todavía', async () => {
+    const haceCincoMin = new Date(Date.now() - 5 * 60_000);
+    const ecf = ecfEnValidacion({
+      id: 2, numero: 'E320000000002', createdAt: new Date(Date.now() - 30 * 60_000), // 30 min desde envío
+      ultimaConsultaAt: haceCincoMin,
+    });
+    ecfRepo.createQueryBuilder = makeQueryBuilderFactory([[], [ecf]]);
+
+    await (job as any).consultarEnValidacion();
+
+    expect(mseller.consultarBatch).not.toHaveBeenCalled();
+  });
+
+  it('respeta el backoff: consultado hace 20 min (dentro de las primeras 2h → vencido el intervalo de 15min) → SÍ se reconsulta', async () => {
+    const hace20Min = new Date(Date.now() - 20 * 60_000);
+    const ecf = ecfEnValidacion({
+      id: 3, numero: 'E320000000003', createdAt: new Date(Date.now() - 30 * 60_000),
+      ultimaConsultaAt: hace20Min,
+    });
+    ecfRepo.createQueryBuilder = makeQueryBuilderFactory([[], [ecf]]);
+    mseller.consultarBatch.mockResolvedValue({ total: 1, results: [{ ecf: ecf.numero, status: 'Error', found: true, data: {} }] });
+    mseller.consultarEstado.mockRejectedValue(new Error('timeout'));
+
+    await (job as any).consultarEnValidacion();
+
+    expect(mseller.consultarBatch).toHaveBeenCalledWith([ecf.numero], ecf.empresaId);
+  });
+
+  it('respeta el backoff: enviado hace 10h (ventana 2h-24h → 1h), consultado hace 20 min → NO se reconsulta todavía (hace falta 1h)', async () => {
+    const ecf = ecfEnValidacion({
+      id: 4, numero: 'E320000000004',
+      createdAt: new Date(Date.now() - 10 * 60 * 60_000), // 10h desde el envío
+      ultimaConsultaAt: new Date(Date.now() - 20 * 60_000), // hace 20 min — no llega a 1h
+    });
+    ecfRepo.createQueryBuilder = makeQueryBuilderFactory([[], [ecf]]);
+
+    await (job as any).consultarEnValidacion();
+
+    expect(mseller.consultarBatch).not.toHaveBeenCalled();
+  });
+
+  it('freno global: con más candidatos vencidos que el máximo configurado, solo se consultan los primeros N (ya ordenados por antigüedad)', async () => {
+    configSvc.get = jest.fn((key: string, def: unknown) => key === 'ECF_MAX_CONSULTAS_POR_PASADA' ? 2 : def);
+    const ecfs = [1, 2, 3, 4].map(n => ecfEnValidacion({
+      id: n, numero: `E32000000000${n}`, createdAt: new Date(Date.now() - n * 60_000),
+    }));
+    ecfRepo.createQueryBuilder = makeQueryBuilderFactory([[], ecfs]);
+    mseller.consultarBatch.mockResolvedValue({ total: 0, results: [] });
+
+    await (job as any).consultarEnValidacion();
+
+    // Se agrupan por empresa (todas la 1) → una sola llamada a consultarBatch, con solo 2 numeros.
+    expect(mseller.consultarBatch).toHaveBeenCalledTimes(1);
+    expect(mseller.consultarBatch.mock.calls[0][0]).toHaveLength(2);
+  });
+
+  it('a las 72h sin veredicto → revisionManual=true, NO gasta otra consulta a MSeller, y notifica a ADMIN/CONTADOR de la empresa (no al super admin)', async () => {
+    const ecf = ecfEnValidacion({
+      id: 5, numero: 'E320000000005',
+      createdAt: new Date(Date.now() - 73 * 60 * 60_000), // 73h — pasó el umbral de 72h
+    });
+    ecfRepo.createQueryBuilder = makeQueryBuilderFactory([/* vencidos */ [ecf], /* candidatos */ []]);
+
+    await (job as any).consultarEnValidacion();
+
+    expect(ecfRepo.update).toHaveBeenCalledWith(ecf.id, { revisionManual: true });
+    expect(mseller.consultarBatch).not.toHaveBeenCalled();
+    // Notificación a la empresa: busca admins vía JOIN users/usuario_empresa (manager.query), y envía el correo.
+    expect(ecfRepo.manager.query).toHaveBeenCalled();
+    expect(emailSvc.enviar).toHaveBeenCalledWith(expect.objectContaining({
+      to: expect.arrayContaining(['admin@empresa.com']),
+    }));
   });
 });

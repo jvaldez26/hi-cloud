@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import * as Sentry from '@sentry/nestjs';
 import { ECF, EstadoDGII } from '../entities/ecf.entity';
 import { EcfEvento, TipoEcfEvento } from '../entities/ecf-evento.entity';
 import { MSellerClientService } from '../services/mseller-client.service';
@@ -11,6 +12,25 @@ import { EmailService } from '../../notificaciones/services/email.service';
 import { reportServiceError } from '../../common/observability/sentry';
 
 const MINUTOS_SIN_RESPUESTA = 2;   // esperar 2 min antes de primer intento
+
+/**
+ * Backoff de EN_VALIDACION_DGII (reconsulta automática, PASO 2b del hotfix
+ * E320000001774): cada vez más espaciado mientras más tiempo pasa desde el
+ * envío original, hasta que a las 72h se deja de insistir y pasa a revisión
+ * manual — mismo plazo que DIAS_MAX_POLLING para ENVIADO→CONTINGENCIA.
+ */
+const BACKOFF_MINUTOS_PRIMERAS_2H  = 15;
+const BACKOFF_MINUTOS_HASTA_24H    = 60;
+const BACKOFF_MINUTOS_HASTA_72H    = 180;
+const UMBRAL_REVISION_MANUAL_HORAS = 72;
+/** Mínimo absoluto entre dos consultas — también el piso del filtro SQL de "candidatos". */
+const BACKOFF_MINUTOS_MINIMO       = BACKOFF_MINUTOS_PRIMERAS_2H;
+
+function intervaloBackoffMinutos(horasDesdeEnvio: number): number {
+  if (horasDesdeEnvio < 2)  return BACKOFF_MINUTOS_PRIMERAS_2H;
+  if (horasDesdeEnvio < 24) return BACKOFF_MINUTOS_HASTA_24H;
+  return BACKOFF_MINUTOS_HASTA_72H;
+}
 
 /**
  * Días máximos antes de marcar un ENVIADO como contingencia.
@@ -69,6 +89,8 @@ function tieneVeredictoDgiiReal(datos: unknown, mensaje?: string): boolean {
 export class ConsultarEstadoECFJob {
   private readonly logger = new Logger(ConsultarEstadoECFJob.name);
   private running = false;
+  /** Último aviso a Sentry de posible caída/mantenimiento de DGII — máx 1/hora, no por e-CF. */
+  private ultimaAlertaDgiiCaidaAt = 0;
 
   constructor(
     @InjectRepository(ECF)
@@ -150,21 +172,25 @@ export class ConsultarEstadoECFJob {
     }
 
     const enviados = await qb.take(50).getMany();
-    if (enviados.length === 0) return;
+    if (enviados.length > 0) {
+      this.logger.log(`ConsultarEstadoECF: ${enviados.length} comprobante(s) a consultar (batch)`);
 
-    this.logger.log(`ConsultarEstadoECF: ${enviados.length} comprobante(s) a consultar (batch)`);
+      // Agrupar por empresa y consultar en batches de 50
+      const porEmpresa = new Map<number, ECF[]>();
+      for (const ecf of enviados) {
+        if (!ecf.empresaId) continue;
+        if (!porEmpresa.has(ecf.empresaId)) porEmpresa.set(ecf.empresaId, []);
+        porEmpresa.get(ecf.empresaId)!.push(ecf);
+      }
 
-    // Agrupar por empresa y consultar en batches de 50
-    const porEmpresa = new Map<number, ECF[]>();
-    for (const ecf of enviados) {
-      if (!ecf.empresaId) continue;
-      if (!porEmpresa.has(ecf.empresaId)) porEmpresa.set(ecf.empresaId, []);
-      porEmpresa.get(ecf.empresaId)!.push(ecf);
+      for (const [empresaId, ecfs] of porEmpresa) {
+        await this.consultarBatch(ecfs, empresaId);
+      }
     }
 
-    for (const [empresaId, ecfs] of porEmpresa) {
-      await this.consultarBatch(ecfs, empresaId);
-    }
+    // Paso 3: EN_VALIDACION_DGII con backoff — independiente de si hubo
+    // ENVIADOs que consultar arriba.
+    await this.consultarEnValidacion();
   }
 
   /** Consulta y actualiza el estado de un único e-CF por número (para uso desde el controller). */
@@ -173,15 +199,180 @@ export class ConsultarEstadoECFJob {
     await this.consultarBatch([ecf], ecf.empresaId);
   }
 
-  private async consultarBatch(ecfs: ECF[], empresaId: number): Promise<void> {
+  /**
+   * PASO 2b del hotfix E320000001774: reconsulta automática de
+   * EN_VALIDACION_DGII con backoff (15min las primeras 2h, 1h hasta 24h, 3h
+   * hasta 72h). Pasadas 72h sin veredicto → revisionManual + aviso a la
+   * empresa, sin seguir insistiendo. Usa la MISMA consultarBatch() que el
+   * botón "Consultar estado en DGII" y el Paso 2 de ENVIADO — nunca una
+   * segunda implementación. Freno global: como mucho
+   * ECF_MAX_CONSULTAS_POR_PASADA (default 50) por pasada, las más antiguas
+   * primero.
+   */
+  private async consultarEnValidacion(): Promise<void> {
+    const ahora           = new Date();
+    const umbralRevision  = new Date(ahora.getTime() - UMBRAL_REVISION_MANUAL_HORAS * 60 * 60_000);
+    const maxPorPasada    = this.configSvc.get<number>('ECF_MAX_CONSULTAS_POR_PASADA', 50);
+
+    // 3a. Los que ya llevan 72h+ sin veredicto → revisión manual, sin gastar
+    // otra consulta. El resumen horario y el aviso a la empresa los recogen.
+    const vencidos = await this.ecfRepo
+      .createQueryBuilder('ecf')
+      .where('ecf.estadoDGII = :estado', { estado: EstadoDGII.EN_VALIDACION_DGII })
+      .andWhere('ecf.isActive = true')
+      .andWhere('ecf.revisionManual = false')
+      .andWhere('ecf.createdAt < :umbralRevision', { umbralRevision })
+      .getMany();
+
+    for (const ecf of vencidos) {
+      await this.ecfRepo.update(ecf.id, { revisionManual: true });
+      await this.logEvento(ecf.id, TipoEcfEvento.ESTADO_CAMBIADO, {
+        via: 'backoff-vencido', estado: EstadoDGII.EN_VALIDACION_DGII,
+      }, `Sin veredicto de DGII tras ${UMBRAL_REVISION_MANUAL_HORAS}h — queda para revisión manual`);
+      this.logger.warn(`e-CF ${ecf.numero} → revisionManual=true (${UMBRAL_REVISION_MANUAL_HORAS}h sin veredicto de DGII)`);
+      await this.notificarRevisionManualEmpresa(ecf).catch((err: Error) => {
+        this.logger.error(`[RevisionManual] Error notificando a la empresa para ${ecf.numero}: ${err.message}`);
+      });
+    }
+    if (vencidos.length > 0) {
+      this.logger.warn(`${vencidos.length} e-CF(s) → revisionManual por ${UMBRAL_REVISION_MANUAL_HORAS}h sin veredicto`);
+    }
+
+    // 3b. Candidatos dentro de las 72h — el filtro SQL usa el backoff MÍNIMO
+    // (15 min) para no traer de más; el backoff exacto según edad se aplica
+    // en memoria abajo, porque depende de cuánto hace que se envió cada uno.
+    const corteMinimo = new Date(ahora.getTime() - BACKOFF_MINUTOS_MINIMO * 60_000);
+    const candidatos = await this.ecfRepo
+      .createQueryBuilder('ecf')
+      .where('ecf.estadoDGII = :estado', { estado: EstadoDGII.EN_VALIDACION_DGII })
+      .andWhere('ecf.isActive = true')
+      .andWhere('ecf.revisionManual = false')
+      .andWhere('ecf.createdAt >= :umbralRevision', { umbralRevision })
+      .andWhere('ecf.trackId IS NOT NULL')
+      .andWhere('(ecf.ultimaConsultaAt IS NULL OR ecf.ultimaConsultaAt < :corteMinimo)', { corteMinimo })
+      .orderBy('ecf.createdAt', 'ASC') // las más antiguas primero
+      .take(maxPorPasada * 3) // margen: no todas estarán vencidas para SU backoff exacto
+      .getMany();
+
+    const aConsultar: ECF[] = [];
+    for (const ecf of candidatos) {
+      const horasDesdeEnvio = (ahora.getTime() - new Date(ecf.createdAt).getTime()) / 3_600_000;
+      const intervaloMin    = intervaloBackoffMinutos(horasDesdeEnvio);
+      const vencidaConsulta = !ecf.ultimaConsultaAt
+        || (ahora.getTime() - new Date(ecf.ultimaConsultaAt).getTime()) >= intervaloMin * 60_000;
+      if (vencidaConsulta) aConsultar.push(ecf);
+      if (aConsultar.length >= maxPorPasada) break; // freno global — ya vienen ordenados por antigüedad
+    }
+
+    if (aConsultar.length === 0) return;
+
+    this.logger.log(`ConsultarEstadoECF: ${aConsultar.length} e-CF(s) EN_VALIDACION_DGII a reconsultar (backoff)`);
+
+    const porEmpresa = new Map<number, ECF[]>();
+    for (const ecf of aConsultar) {
+      if (!ecf.empresaId) continue;
+      if (!porEmpresa.has(ecf.empresaId)) porEmpresa.set(ecf.empresaId, []);
+      porEmpresa.get(ecf.empresaId)!.push(ecf);
+    }
+
+    let totalProcesados = 0;
+    let totalAmbiguos   = 0;
+    for (const [empresaId, ecfs] of porEmpresa) {
+      const stats = await this.consultarBatch(ecfs, empresaId);
+      totalProcesados += stats.total;
+      totalAmbiguos    += stats.ambiguos;
+    }
+
+    // Si la mayoría de las respuestas de ESTA pasada siguen sin veredicto,
+    // es más probable que DGII esté caída/en mantenimiento que un problema
+    // de HiCloud — un aviso, no uno por cada e-CF.
+    if (totalProcesados > 0 && totalAmbiguos / totalProcesados > 0.5) {
+      this.avisarPosibleCaidaDgii(totalAmbiguos, totalProcesados);
+    }
+  }
+
+  /** Aviso a Sentry (nivel warning, máx 1/hora) de que DGII podría estar caída/en mantenimiento. */
+  private avisarPosibleCaidaDgii(ambiguos: number, total: number): void {
+    const ahora = Date.now();
+    if (ahora - this.ultimaAlertaDgiiCaidaAt < 60 * 60_000) return;
+    this.ultimaAlertaDgiiCaidaAt = ahora;
+
+    this.logger.warn(`[DGII] Posible caída/mantenimiento: ${ambiguos}/${total} consultas sin veredicto en esta pasada`);
+    if (!Sentry.getClient()) return;
+    try {
+      Sentry.captureMessage(
+        `Posible caída/mantenimiento de DGII: ${ambiguos}/${total} consultas EN_VALIDACION_DGII sin veredicto en esta pasada del cron`,
+        { level: 'warning', tags: { origin: 'ecf_consultar_estado', ambiguos: String(ambiguos), total: String(total) } },
+      );
+    } catch { /* nunca romper el cron por un fallo de observabilidad */ }
+  }
+
+  /**
+   * Avisa a ADMIN/CONTADOR de la empresa (no al super admin) que un e-CF
+   * pasó a revisión manual — mismo patrón que
+   * FacturasRecurrentesService.enviarAvisoPrevio: JOIN users↔usuario_empresa,
+   * roles en minúscula (valor persistido, no el enum TS), + NOTIF_ADMIN_EMAIL
+   * como copia si no está ya en la lista.
+   */
+  private async notificarRevisionManualEmpresa(ecf: ECF): Promise<void> {
+    if (!ecf.empresaId) return;
+
+    const admins = await this.ecfRepo.manager.query(
+      `SELECT u.email FROM users u
+       JOIN usuario_empresa ue ON ue."userId" = u.id
+       WHERE ue."empresaId" = $1 AND ue."isActive" = true
+         AND u."isActive" = true AND u.role IN ('admin','contador')
+       LIMIT 5`,
+      [ecf.empresaId],
+    ) as { email: string }[];
+
+    const destinatarios = admins.map(a => a.email);
+    const adminGlobal = this.configSvc.get<string>('NOTIF_ADMIN_EMAIL', '').trim();
+    if (adminGlobal && !destinatarios.includes(adminGlobal)) destinatarios.push(adminGlobal);
+    if (!destinatarios.length) return;
+
+    const tipoLabel  = ecf.numero.substring(0, 3).toUpperCase();
+    const montoLabel = ecf.montoTotal != null
+      ? `RD$${Number(ecf.montoTotal).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`
+      : 'N/D';
+
+    const result = await this.emailSvc.enviar({
+      to:      destinatarios,
+      subject: `⏳ e-CF ${ecf.numero} sin respuesta de DGII tras ${UMBRAL_REVISION_MANUAL_HORAS}h — revisión manual`,
+      html: `
+<p>El comprobante fiscal electrónico <strong>${ecf.numero}</strong> (${tipoLabel}, ${montoLabel}) sigue
+<strong>en validación con DGII</strong> desde hace más de ${UMBRAL_REVISION_MANUAL_HORAS} horas, sin que DGII
+haya confirmado ni rechazado el comprobante.</p>
+<p>HiCloud dejó de reintentar automáticamente — <strong>no es un rechazo</strong>, pero conviene verificar
+el estado directamente en el portal de DGII u ofimática de la empresa.</p>
+<p style="color:#888;font-size:12px;margin-top:20px">HiCloud ERP — Aviso automático de comprobante fiscal en validación</p>`,
+    });
+
+    if (!result.exitoso) {
+      reportServiceError(
+        new Error(result.error ?? 'Fallo al enviar aviso de revisión manual e-CF'),
+        'ecf_revision_manual_notif_email',
+        { ecfId: String(ecf.id), numero: ecf.numero, empresaId: String(ecf.empresaId) },
+      );
+    }
+  }
+
+  /**
+   * @returns estadísticas de la pasada — `total` consultados, `ambiguos`
+   * los que terminaron (o siguen) en EN_VALIDACION_DGII. Las usa
+   * consultarEnValidacion() para decidir si avisar a Sentry de una posible
+   * caída/mantenimiento de DGII (muchos ambiguos de golpe).
+   */
+  private async consultarBatch(ecfs: ECF[], empresaId: number): Promise<{ total: number; ambiguos: number }> {
     const numeros = ecfs.map(e => e.numero);
+    const stats = { total: 0, ambiguos: 0 };
     let response: Awaited<ReturnType<MSellerClientService['consultarBatch']>>;
 
     try {
       response = await this.mseller.consultarBatch(numeros, empresaId);
     } catch (err: any) {
       this.logger.warn(`consultarBatch empresaId=${empresaId}: ${(err as Error).message}`);
-      return;
+      return stats;
     }
 
     const ecfMap = new Map(ecfs.map(e => [e.numero, e]));
@@ -191,14 +382,28 @@ export class ConsultarEstadoECFJob {
         `[batch] ecf=${resultado.ecf} status="${resultado.status}" found=${resultado.found}`,
       );
 
-      if (!resultado.found) {
-        this.logger.warn(`e-CF no encontrado en MSeller: ${resultado.ecf}`);
-        continue;
-      }
-
       const ecf = ecfMap.get(resultado.ecf);
       if (!ecf) {
         this.logger.warn(`e-CF ${resultado.ecf} no encontrado en BD local`);
+        continue;
+      }
+      stats.total++;
+
+      // Marcar el intento de consulta YA, antes de cualquier `continue` de
+      // abajo — si no, un e-CF que siga ambiguo (sin encontrarse, sin mapeo,
+      // o "Procesando") nunca actualizaría ultimaConsultaAt y el backoff de
+      // consultarEnValidacion() lo re-consultaría cada 2 min en vez de
+      // respetar el intervalo (15min/1h/3h).
+      if (ecf.estadoDGII === EstadoDGII.EN_VALIDACION_DGII) {
+        await this.ecfRepo.update(ecf.id, {
+          ultimaConsultaAt:    new Date(),
+          consultasRealizadas: ecf.consultasRealizadas + 1,
+        });
+      }
+
+      if (!resultado.found) {
+        this.logger.warn(`e-CF no encontrado en MSeller: ${resultado.ecf}`);
+        stats.ambiguos++;
         continue;
       }
 
@@ -246,11 +451,13 @@ export class ConsultarEstadoECFJob {
       // como antes.
       if (nuevoEstado === undefined) {
         this.logger.warn(`e-CF ${resultado.ecf} estado desconocido: "${resultado.status}" — sin acción`);
+        stats.ambiguos++;
         continue;
       }
 
       if (nuevoEstado === EstadoDGII.ENVIADO) {
         this.logger.debug(`e-CF ${resultado.ecf} aún procesando (${resultado.status})`);
+        stats.ambiguos++;
         continue;
       }
 
@@ -262,6 +469,8 @@ export class ConsultarEstadoECFJob {
         nuevoEstado = EstadoDGII.EN_VALIDACION_DGII;
         this.logger.warn(`e-CF ${resultado.ecf} status="Rechazado" pero SIN código/mensaje de DGII → EN_VALIDACION_DGII`);
       }
+
+      if (nuevoEstado === EstadoDGII.EN_VALIDACION_DGII) stats.ambiguos++;
 
       const batchData = resultado.data as any;
       const rawRespuestaDgii: any = batchData ?? { status: resultado.status };
@@ -324,11 +533,13 @@ export class ConsultarEstadoECFJob {
         via:           'batch',
       });
       await this.logEvento(ecf.id, TipoEcfEvento.ESTADO_CAMBIADO, {
-        de: EstadoDGII.ENVIADO, a: nuevoEstado,
+        de: ecf.estadoDGII, a: nuevoEstado,
       });
 
-      this.logger.log(`e-CF ${resultado.ecf}: ENVIADO → ${nuevoEstado} (batch)`);
+      this.logger.log(`e-CF ${resultado.ecf}: ${ecf.estadoDGII} → ${nuevoEstado} (batch)`);
     }
+
+    return stats;
   }
 
   private async logEvento(

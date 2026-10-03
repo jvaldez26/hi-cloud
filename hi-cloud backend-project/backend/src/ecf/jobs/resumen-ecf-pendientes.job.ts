@@ -8,9 +8,12 @@ import { EmailService } from '../../notificaciones/services/email.service';
 import { reportServiceError } from '../../common/observability/sentry';
 
 /**
- * Cada hora: si hay e-CF en OBSERVADO o CONTINGENCIA sin notificar,
- * envía UN email agrupado por empresa al super admin global.
+ * Cada hora: si hay e-CF en OBSERVADO, CONTINGENCIA o EN_VALIDACION_DGII sin
+ * notificar, envía UN email agrupado por empresa al super admin global.
  * Si no hay ninguno, no envía nada.
+ *
+ * EN_VALIDACION_DGII va aquí, NUNCA en la alerta inmediata de rechazo —
+ * no es un rechazo, es DGII sin responder (ver consultar-estado-ecf.job.ts).
  *
  * Idempotencia: campo notificadoResumen (distinto de superAdminNotificado,
  * que cubre exclusivamente los RECHAZADOS del alert inmediato).
@@ -42,7 +45,7 @@ export class ResumenEcfPendientesJob {
     const pendientes = await this.ecfRepo
       .createQueryBuilder('ecf')
       .where('ecf.estadoDGII IN (:...estados)', {
-        estados: [EstadoDGII.OBSERVADO, EstadoDGII.CONTINGENCIA],
+        estados: [EstadoDGII.OBSERVADO, EstadoDGII.CONTINGENCIA, EstadoDGII.EN_VALIDACION_DGII],
       })
       .andWhere('ecf.notificadoResumen = false')
       .andWhere('ecf.isActive = true')
@@ -77,15 +80,17 @@ export class ResumenEcfPendientesJob {
 
     const totalObs  = pendientes.filter(e => e.estadoDGII === EstadoDGII.OBSERVADO).length;
     const totalCont = pendientes.filter(e => e.estadoDGII === EstadoDGII.CONTINGENCIA).length;
+    const totalVal  = pendientes.filter(e => e.estadoDGII === EstadoDGII.EN_VALIDACION_DGII).length;
 
     const partes: string[] = [];
     if (totalObs  > 0) partes.push(`${totalObs} observado${totalObs > 1 ? 's' : ''}`);
     if (totalCont > 0) partes.push(`${totalCont} en contingencia`);
+    if (totalVal  > 0) partes.push(`${totalVal} en validación DGII`);
 
     const result = await this.emailSvc.enviar({
       to:      adminEmail,
       subject: `⚠️ Resumen e-CF — ${partes.join(' · ')} sin notificar`,
-      html:    this.buildHtml(porEmpresa, empresaMap, totalObs, totalCont),
+      html:    this.buildHtml(porEmpresa, empresaMap, totalObs, totalCont, totalVal),
     });
 
     if (result.exitoso) {
@@ -114,10 +119,12 @@ export class ResumenEcfPendientesJob {
     empresaMap: Map<number, { id: number; nombreComercial: string; rnc: string }>,
     totalObs:  number,
     totalCont: number,
+    totalVal:  number,
   ): string {
     const partes: string[] = [];
     if (totalObs  > 0) partes.push(`<strong>${totalObs}</strong> observado${totalObs > 1 ? 's' : ''} (aceptado condicional)`);
     if (totalCont > 0) partes.push(`<strong>${totalCont}</strong> en contingencia (pendiente de transmitir)`);
+    if (totalVal  > 0) partes.push(`<strong>${totalVal}</strong> en validación DGII (sin respuesta aún, no es rechazo)`);
 
     let html = `
 <p>Los siguientes comprobantes fiscales electrónicos requieren atención:</p>
@@ -132,6 +139,7 @@ export class ResumenEcfPendientesJob {
 
       const observados    = ecfs.filter(e => e.estadoDGII === EstadoDGII.OBSERVADO);
       const contingencias = ecfs.filter(e => e.estadoDGII === EstadoDGII.CONTINGENCIA);
+      const enValidacion  = ecfs.filter(e => e.estadoDGII === EstadoDGII.EN_VALIDACION_DGII);
 
       html += `
 <div style="margin-bottom:28px">
@@ -207,6 +215,41 @@ export class ResumenEcfPendientesJob {
         <td style="padding:6px 8px">${ecf.razonSocialComprador ?? 'Consumidor Final'}${ecf.rncComprador ? ` (${ecf.rncComprador})` : ''}</td>
         <td style="padding:6px 8px;white-space:nowrap">${this.fmtFecha(ecf.createdAt)}</td>
         <td style="padding:6px 8px;color:#1e40af">${detalle}</td>
+      </tr>`;
+        }
+
+        html += `
+    </tbody>
+  </table>`;
+      }
+
+      if (enValidacion.length > 0) {
+        html += `
+  <h4 style="margin:12px 0 6px;font-size:12px;color:#92400e;text-transform:uppercase;letter-spacing:.06em">
+    En validación DGII — sin respuesta aún, NO es rechazo (${enValidacion.length})
+  </h4>
+  <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead>
+      <tr style="background:#fffbeb">
+        <th style="padding:6px 8px;text-align:left;color:#92400e;font-weight:600">e-NCF</th>
+        <th style="padding:6px 8px;text-align:left;color:#92400e;font-weight:600">Tipo</th>
+        <th style="padding:6px 8px;text-align:right;color:#92400e;font-weight:600">Monto</th>
+        <th style="padding:6px 8px;text-align:left;color:#92400e;font-weight:600">Comprador</th>
+        <th style="padding:6px 8px;text-align:left;color:#92400e;font-weight:600">Fecha</th>
+        <th style="padding:6px 8px;text-align:left;color:#92400e;font-weight:600">Consultas</th>
+      </tr>
+    </thead>
+    <tbody>`;
+
+        for (const ecf of enValidacion) {
+          html += `
+      <tr style="border-bottom:1px solid #fde68a">
+        <td style="padding:6px 8px;font-family:monospace;white-space:nowrap">${ecf.numero}</td>
+        <td style="padding:6px 8px">${ecf.numero.substring(0, 3).toUpperCase()}</td>
+        <td style="padding:6px 8px;text-align:right;font-variant-numeric:tabular-nums">${this.fmtMonto(ecf.montoTotal)}</td>
+        <td style="padding:6px 8px">${ecf.razonSocialComprador ?? 'Consumidor Final'}${ecf.rncComprador ? ` (${ecf.rncComprador})` : ''}</td>
+        <td style="padding:6px 8px;white-space:nowrap">${this.fmtFecha(ecf.createdAt)}</td>
+        <td style="padding:6px 8px;color:#92400e">${ecf.consultasRealizadas}${ecf.revisionManual ? ' · revisión manual' : ''}</td>
       </tr>`;
         }
 

@@ -287,4 +287,18 @@ export class ECF extends BaseEntity {
   /** true = ya se incluyó en un digest de OBSERVADO/CONTINGENCIA al super admin. */
   @Column({ default: false })
   notificadoResumen!: boolean;
+
+  // ── Backoff de EN_VALIDACION_DGII ────────────────────────────────────────
+
+  /** Última vez que el cron consultó este e-CF (éxito o no) mientras está EN_VALIDACION_DGII. */
+  @Column({ type: 'timestamp', nullable: true })
+  ultimaConsultaAt?: Date;
+
+  /** Cuántas veces se ha consultado desde que entró en EN_VALIDACION_DGII. */
+  @Column({ type: 'int', default: 0 })
+  consultasRealizadas!: number;
+
+  /** true = pasaron 72h desde el envío sin que DGII confirmara nada — el cron deja de insistir solo. */
+  @Column({ default: false })
+  revisionManual!: boolean;
 }
