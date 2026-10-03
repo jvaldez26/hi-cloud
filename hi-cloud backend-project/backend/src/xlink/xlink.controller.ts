@@ -14,8 +14,10 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { XlinkService } from './xlink.service';
 import { XlinkPublicarService } from './xlink-publicar.service';
+import { XlinkElegibilidadService } from './xlink-elegibilidad.service';
 import { VincularXlinkDto } from './dto/vincular-xlink.dto';
 import { PublicarXlinkDto } from './dto/publicar-xlink.dto';
+import { EstadoXlinkDto } from './dto/estado-xlink.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -32,6 +34,7 @@ export class XlinkController {
   constructor(
     private xlinkService: XlinkService,
     private xlinkPublicarService: XlinkPublicarService,
+    private xlinkElegibilidadService: XlinkElegibilidadService,
   ) {}
 
   @Patch('visibilidad')
@@ -104,6 +107,12 @@ export class XlinkController {
   @ApiOperation({ summary: 'Vincula (o crea) un cliente/proveedor propio con la empresa contraparte' })
   vincular(@Body() dto: VincularXlinkDto) {
     return this.xlinkService.vincular(dto);
+  }
+
+  @Post('estado')
+  @ApiOperation({ summary: 'Estado Xlink (ya enviado / elegible / motivo) de una lista de documentos, en una sola consulta — columna Xlink y "Solo pendientes de enviar" de los listados' })
+  estadoDeDocumentos(@Body() dto: EstadoXlinkDto) {
+    return this.xlinkElegibilidadService.estadoDeDocumentos(dto);
   }
 
   @Post('publicar')

@@ -18,6 +18,7 @@ import { XlinkEstadoReceptor, XlinkTipoDocumento } from './entities/xlink-docume
 function makeRepoMock() {
   return {
     findOne: jest.fn(),
+    find:    jest.fn(),
     count:   jest.fn(),
     create:  jest.fn((d: any) => d),
     save:    jest.fn((e: any) => Promise.resolve(e)),
@@ -239,6 +240,39 @@ describe('XlinkDocumentosRepository — aislamiento por eid (sin empresaId propi
       'x."estadoReceptor" = :estadoReceptor',
       { estadoReceptor: XlinkEstadoReceptor.DESCARTADO },
     );
+  });
+
+  // Fase 2a (auditoría HiCloud Xlink, 2026-10-03): estado de envío en LOTE,
+  // una sola consulta — para la columna Xlink y "Solo pendientes de enviar".
+  describe('buscarEstadosPorOrigenes', () => {
+    it('devuelve un Map por documentoOrigenId, filtrado por origenEmpresaId + tipo + solo activos', async () => {
+      const repoMock = makeRepoMock();
+      repoMock.find.mockResolvedValue([
+        { documentoOrigenId: 10, estadoReceptor: XlinkEstadoReceptor.PENDIENTE, numeroGenerado: undefined },
+        { documentoOrigenId: 20, estadoReceptor: XlinkEstadoReceptor.PROCESADO, numeroGenerado: 'COM-900' },
+      ]);
+      const repo = new XlinkDocumentosRepository(repoMock as any, makeTenantSvc(7) as any);
+
+      const mapa = await repo.buscarEstadosPorOrigenes(XlinkTipoDocumento.FACTURA_CREDITO, [10, 20, 30]);
+
+      expect(repoMock.find).toHaveBeenCalledWith({
+        where: { origenEmpresaId: 7, tipoDocumento: XlinkTipoDocumento.FACTURA_CREDITO, documentoOrigenId: expect.anything(), isActive: true },
+        select: ['documentoOrigenId', 'estadoReceptor', 'numeroGenerado'],
+      });
+      expect(mapa.get(10)).toEqual({ estadoReceptor: XlinkEstadoReceptor.PENDIENTE, numeroGenerado: undefined });
+      expect(mapa.get(20)).toEqual({ estadoReceptor: XlinkEstadoReceptor.PROCESADO, numeroGenerado: 'COM-900' });
+      expect(mapa.has(30)).toBe(false); // nunca se publicó — correctamente ausente, no un valor falsy
+    });
+
+    it('lista vacía: no consulta la BD, devuelve un Map vacío', async () => {
+      const repoMock = makeRepoMock();
+      const repo = new XlinkDocumentosRepository(repoMock as any, makeTenantSvc(7) as any);
+
+      const mapa = await repo.buscarEstadosPorOrigenes(XlinkTipoDocumento.ORDEN_COMPRA, []);
+
+      expect(repoMock.find).not.toHaveBeenCalled();
+      expect(mapa.size).toBe(0);
+    });
   });
 });
 

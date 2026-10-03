@@ -33,6 +33,7 @@ export interface XlinkDocumentoFila {
   documentoGeneradoId?: number | null;
   numeroGenerado?: string | null;
   publicadoEn: string;
+  publicadoPorUsuarioNombre?: string;
   procesadoEn?: string | null;
   motivoDescarte?: string | null;
   /** Nombre y xlinkId de la CONTRAPARTE (nunca su empresaId) — quien envió (en Recibidos) o quien recibió (en Enviados). */
@@ -68,6 +69,15 @@ export interface PublicarXlinkResultadoItem {
   error?: string;
 }
 
+export interface EstadoXlinkItem {
+  id: number;
+  yaEnviado: boolean;
+  estadoReceptor?: XlinkEstadoReceptor;
+  numeroGenerado?: string;
+  elegible: boolean;
+  motivo?: string;
+}
+
 const TIPO_DOCUMENTO_LABEL: Record<XlinkTipoDocumento, string> = {
   factura_credito: 'Factura a Crédito',
   nota_credito:    'Nota de Crédito',
@@ -97,6 +107,10 @@ export const xlinkApi = {
   // ── Fase 3 — publicar / enviar ────────────────────────────────────────────
   publicar: (tipoDocumento: XlinkTipoDocumento, documentoIds: number[]) =>
     api.post<ApiResponse<PublicarXlinkResultadoItem[]>>('/xlink/publicar', { tipoDocumento, documentoIds }).then(r => r.data.data),
+
+  /** Estado (ya enviado / elegible / motivo) de varios documentos, en una sola consulta. */
+  estado: (tipoDocumento: XlinkTipoDocumento, documentoIds: number[]) =>
+    api.post<ApiResponse<EstadoXlinkItem[]>>('/xlink/estado', { tipoDocumento, documentoIds }).then(r => r.data.data),
 
   eliminarEnviado: (id: number) =>
     api.delete<ApiResponse<unknown>>(`/xlink/enviados/${id}`).then(r => r.data.data),

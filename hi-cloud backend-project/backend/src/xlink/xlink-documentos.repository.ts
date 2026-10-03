@@ -1,6 +1,6 @@
 import { Injectable, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository } from 'typeorm';
+import { EntityManager, In, Repository } from 'typeorm';
 import { TenantService } from '../tenant/tenant.service';
 import {
   XlinkDocumento,
@@ -67,6 +67,31 @@ export class XlinkDocumentosRepository {
     const origenEmpresaId = this.tenantService.getEmpresaId();
     const count = await this.repo.count({ where: { origenEmpresaId, tipoDocumento, documentoOrigenId, isActive: true } });
     return count > 0;
+  }
+
+  /**
+   * Estado de envío de VARIOS documentos origen en UNA sola consulta — para
+   * la columna Xlink de los listados y el envío en lote ("Solo pendientes de
+   * enviar"), que antes no tenían forma de saber esto sin pedir uno por uno
+   * (Fase 2a, auditoría HiCloud Xlink 2026-10-03). Devuelve un Map por
+   * documentoOrigenId — los que no aparecen ahí nunca se publicaron.
+   */
+  async buscarEstadosPorOrigenes(
+    tipoDocumento: XlinkTipoDocumento,
+    documentoOrigenIds: number[],
+  ): Promise<Map<number, { estadoReceptor: XlinkEstadoReceptor; numeroGenerado?: string }>> {
+    const mapa = new Map<number, { estadoReceptor: XlinkEstadoReceptor; numeroGenerado?: string }>();
+    if (documentoOrigenIds.length === 0) return mapa;
+
+    const origenEmpresaId = this.tenantService.getEmpresaId();
+    const filas = await this.repo.find({
+      where: { origenEmpresaId, tipoDocumento, documentoOrigenId: In(documentoOrigenIds), isActive: true },
+      select: ['documentoOrigenId', 'estadoReceptor', 'numeroGenerado'],
+    });
+    for (const f of filas) {
+      mapa.set(f.documentoOrigenId, { estadoReceptor: f.estadoReceptor, numeroGenerado: f.numeroGenerado });
+    }
+    return mapa;
   }
 
   /** Cualquiera de los dos lados (origen o destino) puede leerlo — ej. ver el PDF original. */
