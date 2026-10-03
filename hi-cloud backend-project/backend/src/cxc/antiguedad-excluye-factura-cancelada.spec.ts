@@ -50,7 +50,11 @@ beforeAll(async () => {
   });
   try {
     await ds.initialize();
-  } catch {
+  } catch (err) {
+    // DB_HOST configurado pero initialize() falló: es un bug real (credenciales,
+    // metadata de entidades, etc.), no "no disponible" — nunca debe pasar en
+    // verde. Solo se salta de verdad cuando NO hay DB_HOST (CI sin Postgres).
+    if (process.env['DB_HOST']) throw err;
     dbDisponible = false;
     return;
   }
