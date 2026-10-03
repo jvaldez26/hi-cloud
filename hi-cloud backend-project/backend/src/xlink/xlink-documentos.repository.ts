@@ -160,8 +160,12 @@ export class XlinkDocumentosRepository {
     const { page = 1, limit = 10, desde, hasta, tipoDocumento, numeroOrigen, ncfOrigen, estadoReceptor } = filtros;
 
     const qb = this.repo.createQueryBuilder('x').where(`x."${lado}" = :eid AND x."isActive" = true`, { eid });
-    if (desde)          qb.andWhere('x."fechaOrigen" >= :desde', { desde });
-    if (hasta)          qb.andWhere('x."fechaOrigen" <= :hasta', { hasta });
+    // Por publicadoEn (cuándo pasó por Xlink), no por fechaOrigen (la fecha
+    // propia del documento, que puede ser de cualquier día — una OC fechada
+    // en septiembre y enviada hoy no aparecía en el filtro "este mes" de
+    // ninguna de las dos pantallas, aunque el envío hubiera funcionado).
+    if (desde)          qb.andWhere('x."publicadoEn"::date >= :desde', { desde });
+    if (hasta)          qb.andWhere('x."publicadoEn"::date <= :hasta', { hasta });
     if (tipoDocumento)  qb.andWhere('x."tipoDocumento" = :tipoDocumento', { tipoDocumento });
     if (numeroOrigen)   qb.andWhere('x."numeroOrigen" ILIKE :numeroOrigen', { numeroOrigen: `%${numeroOrigen}%` });
     if (ncfOrigen)      qb.andWhere('x."ncfOrigen" ILIKE :ncfOrigen', { ncfOrigen: `%${ncfOrigen}%` });

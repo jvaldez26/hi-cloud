@@ -221,6 +221,30 @@ describe('XlinkDocumentosRepository — aislamiento por eid (sin empresaId propi
     );
   });
 
+  // Caso real (2026-10-03): una OC fechada 20/09/2026 se publicó hoy y no
+  // aparecía ni en "Documentos Enviados" ni en "Por Procesar" con el filtro
+  // de "este mes" — porque desde/hasta filtraban por fechaOrigen (la fecha
+  // de la OC) en vez de por cuándo pasó por Xlink.
+  it('listar() con desde/hasta: filtra por publicadoEn (cuándo se envió), no por fechaOrigen', async () => {
+    const repoMock = makeRepoMock();
+    const qb: any = {
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+    };
+    repoMock.createQueryBuilder.mockReturnValue(qb);
+    const repo = new XlinkDocumentosRepository(repoMock as any, makeTenantSvc(7) as any);
+
+    await repo.listarComoOrigen({ desde: '2026-10-01', hasta: '2026-10-31' });
+
+    expect(qb.andWhere).toHaveBeenCalledWith('x."publicadoEn"::date >= :desde', { desde: '2026-10-01' });
+    expect(qb.andWhere).toHaveBeenCalledWith('x."publicadoEn"::date <= :hasta', { hasta: '2026-10-31' });
+    expect(qb.andWhere).not.toHaveBeenCalledWith(expect.stringContaining('fechaOrigen'), expect.anything());
+  });
+
   it('listar() con estadoReceptor como valor único: sigue usando igualdad exacta (no rompe lo existente)', async () => {
     const repoMock = makeRepoMock();
     const qb: any = {
