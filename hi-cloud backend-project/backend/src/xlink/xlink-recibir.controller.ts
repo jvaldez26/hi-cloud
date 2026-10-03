@@ -7,7 +7,6 @@ import {
   Param,
   ParseIntPipe,
   Res,
-  BadRequestException,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
@@ -16,6 +15,7 @@ import { XlinkRecibirService } from './xlink-recibir.service';
 import { XlinkMapeosService } from './xlink-mapeos.service';
 import { RecibirXlinkDto } from './dto/recibir-xlink.dto';
 import { GuardarMapeosXlinkDto } from './dto/guardar-mapeos-xlink.dto';
+import { DescartarXlinkDto } from './dto/descartar-xlink.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import { User } from '../users/users.entity';
@@ -52,11 +52,10 @@ export class XlinkRecibirController {
   @ApiOperation({ summary: 'Descarta un documento pendiente' })
   descartar(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { motivo: string },
+    @Body() dto: DescartarXlinkDto,
     @GetUser() usuario: User,
   ) {
-    if (!body?.motivo?.trim()) throw new BadRequestException('El motivo es obligatorio');
-    return this.xlinkRecibirService.descartar(id, body.motivo, usuario);
+    return this.xlinkRecibirService.descartar(id, dto.motivo.trim(), usuario);
   }
 
   @Patch(':id/regresar-pendiente')

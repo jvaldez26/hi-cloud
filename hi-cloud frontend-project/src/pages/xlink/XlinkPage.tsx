@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Tabs, Card, Table, Button, Tag, Select, Input, DatePicker, Space, Typography,
-  Alert, Switch, message, Popconfirm, Tooltip, Badge, Checkbox, Empty,
+  Alert, Switch, message, Popconfirm, Tooltip, Badge, Checkbox, Empty, Modal,
 } from 'antd';
 import {
   WarningOutlined, CheckOutlined, EyeOutlined, FormOutlined, InboxOutlined,
@@ -321,6 +321,7 @@ function RecibidosTab({ estado }: { estado: XlinkEstadoReceptor | XlinkEstadoRec
   const [tipoRetencionIsrMasivo, setTipoRetencionIsrMasivo] = useState<'si' | 'no' | undefined>();
   const [config, setConfig] = useState<Record<number, { tipoGasto606?: string; tipoRetencionIsr?: 'si' | 'no' }>>({});
   const [homologacion, setHomologacion] = useState<{ contraparteXlinkId: string; faltantes: FaltanteMapeo[] } | null>(null);
+  const [descartando, setDescartando] = useState<{ id: number; motivo: string } | null>(null);
 
   const esPendiente = estado === 'pendiente';
 
@@ -369,7 +370,7 @@ function RecibidosTab({ estado }: { estado: XlinkEstadoReceptor | XlinkEstadoRec
   });
   const descartarMut = useMutation({
     mutationFn: ({ id, motivo }: { id: number; motivo: string }) => xlinkApi.descartar(id, motivo),
-    onSuccess: () => { message.success('Descartado'); invalidar(); },
+    onSuccess: () => { message.success('Descartado'); invalidar(); setDescartando(null); },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'No se pudo descartar'),
   });
   const regresarMut = useMutation({
@@ -488,9 +489,7 @@ function RecibidosTab({ estado }: { estado: XlinkEstadoReceptor | XlinkEstadoRec
                         <Button size="small" icon={<FormOutlined />} onClick={() => window.open(`/xlink/${r.id}/formulario-preview`, '_blank')} />
                       </Tooltip>
                       <Tooltip title="Descartar">
-                        <Popconfirm title="Motivo del descarte" onConfirm={() => descartarMut.mutate({ id: r.id, motivo: 'Descartado desde HiCloud Xlink' })}>
-                          <Button size="small" danger icon={<InboxOutlined />} />
-                        </Popconfirm>
+                        <Button size="small" danger icon={<InboxOutlined />} onClick={() => setDescartando({ id: r.id, motivo: '' })} />
                       </Tooltip>
                       <Tooltip title="Marcar procesado (sin generar nada)">
                         <Button size="small" onClick={() => marcarProcesadoMut.mutate(r.id)}>✓ Manual</Button>
@@ -542,6 +541,25 @@ function RecibidosTab({ estado }: { estado: XlinkEstadoReceptor | XlinkEstadoRec
           }}
         />
       )}
+
+      {/* Motivo real del descarte (obligatorio, máx 300) — antes se mandaba
+          siempre el mismo texto fijo "Descartado desde HiCloud Xlink". */}
+      <Modal
+        title="Motivo del descarte"
+        open={!!descartando}
+        onCancel={() => setDescartando(null)}
+        onOk={() => descartando && descartarMut.mutate({ id: descartando.id, motivo: descartando.motivo.trim() })}
+        okText="Descartar"
+        okButtonProps={{ danger: true, disabled: !descartando?.motivo.trim(), loading: descartarMut.isPending }}
+      >
+        <Input.TextArea
+          rows={3} maxLength={300} showCount
+          placeholder="¿Por qué se descarta este documento?"
+          value={descartando?.motivo ?? ''}
+          onChange={e => setDescartando(prev => prev && { ...prev, motivo: e.target.value })}
+          autoFocus
+        />
+      </Modal>
     </div>
   );
 }
@@ -587,6 +605,9 @@ function EnviadosTab() {
     { key: 'ncfOrigen',         label: 'NCF',      defaultVisible: true },
     { key: 'totalOrigen',       label: 'Total',    defaultVisible: true },
     { key: 'estadoReceptor',    label: 'Estado',   defaultVisible: true },
+    { key: 'numeroGenerado',    label: 'Generó',   defaultVisible: true },
+    { key: 'publicadoEn',       label: 'Enviado el', defaultVisible: false },
+    { key: 'publicadoPor',      label: 'Enviado por', defaultVisible: false },
   ];
   const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('xlink-enviados', COLS_DEF);
 
@@ -612,7 +633,16 @@ function EnviadosTab() {
           { title: 'Número', key: 'numeroOrigen', dataIndex: 'numeroOrigen', width: 120 },
           { title: 'NCF', key: 'ncfOrigen', dataIndex: 'ncfOrigen', width: 150, render: (v) => v ?? '—' },
           { title: 'Total', key: 'totalOrigen', dataIndex: 'totalOrigen', width: 110, render: (v) => fmt.money(v) },
-          { title: 'Estado', key: 'estadoReceptor', dataIndex: 'estadoReceptor', width: 160, render: (v: XlinkEstadoReceptor) => <Tag color={ESTADO_TAG[v]?.color}>{ESTADO_TAG[v]?.label ?? v}</Tag> },
+          {
+            title: 'Estado', key: 'estadoReceptor', dataIndex: 'estadoReceptor', width: 160,
+            render: (v: XlinkEstadoReceptor, r: XlinkDocumentoFila) => {
+              const tag = <Tag color={ESTADO_TAG[v]?.color}>{ESTADO_TAG[v]?.label ?? v}</Tag>;
+              return v === 'descartado' && r.motivoDescarte ? <Tooltip title={r.motivoDescarte}>{tag}</Tooltip> : tag;
+            },
+          },
+          { title: 'Generó', key: 'numeroGenerado', dataIndex: 'numeroGenerado', width: 110, render: (v) => v ?? '—' },
+          { title: 'Enviado el', key: 'publicadoEn', dataIndex: 'publicadoEn', width: 130, render: (v) => v ? dayjs(v).format('DD/MM/YYYY HH:mm') : '—' },
+          { title: 'Enviado por', key: 'publicadoPor', dataIndex: 'publicadoPorUsuarioNombre', width: 140, render: (v) => v ?? '—' },
           {
             title: '',
             key: 'acciones',
