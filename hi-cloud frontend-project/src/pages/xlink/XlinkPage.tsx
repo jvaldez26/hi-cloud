@@ -112,7 +112,7 @@ export default function XlinkPage() {
         <Button icon={<BookOpen size={16} />} onClick={() => navigate('/xlink/documentacion')}>Ver documentación</Button>
       </div>
 
-      {!xlinkVisible && (
+      {!cargandoEmpresa && !xlinkVisible && (
         <Alert
           type="warning"
           showIcon
