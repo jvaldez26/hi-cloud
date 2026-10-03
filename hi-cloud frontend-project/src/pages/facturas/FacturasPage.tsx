@@ -11,7 +11,7 @@ import { useDebounce } from '../../hooks/useDebounce';
 import {
   Table, Button, Tag, Space, Typography, Card, Row, Col,
   message, Dropdown, Tooltip, Modal, Input, Select, DatePicker,
-  Statistic, theme, InputNumber, Collapse, Badge,
+  Statistic, theme, InputNumber, Collapse, Badge, Popconfirm, Checkbox,
 } from 'antd';
 import {
   PlusOutlined, EyeOutlined, DownOutlined, SendOutlined,
@@ -39,6 +39,10 @@ import EcfBadge, { type EstadoEcf } from '../../components/ui/EcfBadge';
 import {
   ModalRncNoVigente, detectarRncNoVigente, type ErrorRncNoVigente,
 } from '../../components/ui/RncNoVigente';
+import { useXlinkEstados } from '../xlink/useXlinkEstados';
+import XlinkColumnaEstado from '../xlink/XlinkColumnaEstado';
+import { useXlinkEnvioMasivo } from '../xlink/useXlinkEnvioMasivo';
+import { xlinkMenuItem } from '../xlink/xlinkMenuItem';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -190,6 +194,19 @@ export default function FacturasPage() {
   const resumen = data?.data ?? [];
   const showSkeleton = useSkeletonDelay(isLoading, 200);
   const totalPagina = resumen.reduce((s, f) => s + Number(f.total ?? 0), 0);
+
+  // HiCloud Xlink: estado/elegibilidad de la página visible en UNA consulta
+  // (misma fuente que EnviarPorXlinkButton del detalle — nunca una condición
+  // propia; solo facturas a crédito son elegibles, el resto sale con motivo).
+  const idsXlinkFC = resumen.map(f => f.id);
+  const { estados: xlinkEstadosFC, cargando: xlinkCargandoFC } = useXlinkEstados('factura_credito', idsXlinkFC);
+  const xlinkMasivoFC = useXlinkEnvioMasivo('factura_credito', [['facturas']]);
+  const [soloPendientesXlinkFC, setSoloPendientesXlinkFC] = useState(false);
+  // Filtro sobre la página ya cargada (10 filas) — no es un filtro de
+  // servidor: con varias páginas, solo oculta dentro de la que se ve.
+  const resumenXlink = soloPendientesXlinkFC
+    ? resumen.filter(f => xlinkMasivoFC.puedeSeleccionar(f.id, xlinkEstadosFC))
+    : resumen;
 
   const estadoMut = useMutation({
     mutationFn: ({ id, estado }: { id: number; estado: FacturaEstado }) =>
@@ -356,6 +373,7 @@ export default function FacturasPage() {
     { key: 'sucursal', label: 'Sucursal', defaultVisible: false },
     { key: 'ecf',      label: 'e-CF',     defaultVisible: true  },
     { key: 'email',    label: 'Correo',   defaultVisible: true  },
+    { key: 'xlink',    label: 'Xlink',    defaultVisible: true  },
   ];
   const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('facturas', COLS_DEF);
 
@@ -539,6 +557,10 @@ export default function FacturasPage() {
         );
       },
     },
+    {
+      title: 'Xlink', key: 'xlink', width: 130,
+      render: (_: unknown, r: Factura) => <XlinkColumnaEstado estado={xlinkEstadosFC.get(r.id)} cargando={xlinkCargandoFC} />,
+    },
     // ── Acciones — ojo fijo + menú 3 puntos con todo lo demás ─────────────────
     {
       title: '', key: 'acciones', width: 72, align: 'right' as const, fixed: 'right' as const,
@@ -589,6 +611,10 @@ export default function FacturasPage() {
               onClick: () => confirmarEliminar(r),
             },
           ] : []),
+          { type: 'divider' as const },
+          xlinkMenuItem('factura_credito', r.id, xlinkEstadosFC.get(r.id), (p) => {
+            p.finally(() => qc.invalidateQueries({ queryKey: ['xlink-estados', 'factura_credito'] }));
+          }),
         ];
 
         return (
@@ -621,6 +647,19 @@ export default function FacturasPage() {
             <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <RefreshByKeyButton queryKey={['facturas']} />
             <VideoTutorialButton />
+            {xlinkMasivoFC.seleccionados.length > 0 && (
+              <Popconfirm
+                title={`¿Enviar ${xlinkMasivoFC.seleccionados.length} factura(s) por HiCloud Xlink?`}
+                onConfirm={() => xlinkMasivoFC.enviarSeleccionados()}
+              >
+                <Button icon={<SendOutlined />} loading={xlinkMasivoFC.enviando}>
+                  Enviar {xlinkMasivoFC.seleccionados.length} por Xlink
+                </Button>
+              </Popconfirm>
+            )}
+            <Checkbox checked={soloPendientesXlinkFC} onChange={e => setSoloPendientesXlinkFC(e.target.checked)}>
+              Solo pendientes de enviar (Xlink)
+            </Checkbox>
             {puedeCrear && (
               <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/facturas/nueva')}>
                 Nueva factura
@@ -863,10 +902,16 @@ export default function FacturasPage() {
         /* ── Tabla — scroll interno para que la página no desborde ── */
         <Table
           columns={filterColumns(columns)}
-          dataSource={resumen}
+          dataSource={resumenXlink}
           rowKey="id"
           loading={isLoading}
           size="small"
+          rowSelection={{
+            selectedRowKeys: xlinkMasivoFC.seleccionados,
+            onChange: (keys) => xlinkMasivoFC.setSeleccionados(keys as number[]),
+            getCheckboxProps: (r: Factura) => ({ disabled: !xlinkMasivoFC.puedeSeleccionar(r.id, xlinkEstadosFC) }),
+            preserveSelectedRowKeys: true,
+          }}
           scroll={{ x: 'max-content' }}
           onRow={r => ({
             style: { cursor: 'pointer' },
