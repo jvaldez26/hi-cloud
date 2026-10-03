@@ -42,25 +42,43 @@ export class ResumenEcfPendientesJob {
   }
 
   private async enviarResumenSiHayPendientes(): Promise<void> {
-    const pendientes = await this.ecfRepo
-      .createQueryBuilder('ecf')
-      .where('ecf.estadoDGII IN (:...estados)', {
-        estados: [EstadoDGII.OBSERVADO, EstadoDGII.CONTINGENCIA, EstadoDGII.EN_VALIDACION_DGII],
-      })
-      .andWhere('ecf.notificadoResumen = false')
-      .andWhere('ecf.isActive = true')
-      .andWhere('ecf.empresaId IS NOT NULL')
-      .getMany();
+    const [pendientes, revisionManual] = await Promise.all([
+      this.ecfRepo
+        .createQueryBuilder('ecf')
+        .where('ecf.estadoDGII IN (:...estados)', {
+          estados: [EstadoDGII.OBSERVADO, EstadoDGII.CONTINGENCIA, EstadoDGII.EN_VALIDACION_DGII],
+        })
+        .andWhere('ecf.notificadoResumen = false')
+        .andWhere('ecf.isActive = true')
+        .andWhere('ecf.empresaId IS NOT NULL')
+        .getMany(),
+      // Sección propia, con su propio flag (notificadoRevisionManual) —
+      // independiente de notificadoResumen: un e-CF ya pudo haber aparecido
+      // en un resumen anterior al entrar a EN_VALIDACION_DGII, mucho antes
+      // de cruzar las 72h. Sin flag propio nunca reaparecería.
+      this.ecfRepo
+        .createQueryBuilder('ecf')
+        .where('ecf.estadoDGII = :estado', { estado: EstadoDGII.EN_VALIDACION_DGII })
+        .andWhere('ecf.revisionManual = true')
+        .andWhere('ecf.notificadoRevisionManual = false')
+        .andWhere('ecf.isActive = true')
+        .andWhere('ecf.empresaId IS NOT NULL')
+        .getMany(),
+    ]);
 
-    if (pendientes.length === 0) {
+    if (pendientes.length === 0 && revisionManual.length === 0) {
       this.logger.debug('ResumenECF: sin pendientes — no se envía email');
       return;
     }
 
-    this.logger.log(`ResumenECF: ${pendientes.length} e-CF(s) pendientes de notificación`);
+    this.logger.log(
+      `ResumenECF: ${pendientes.length} e-CF(s) pendientes de notificación, `
+      + `${revisionManual.length} en revisión manual (72h) sin notificar`,
+    );
 
     // Lookup batch de empresas (una query, no N queries)
-    const empresaIds = [...new Set(pendientes.map(e => e.empresaId!))];
+    const todos = [...pendientes, ...revisionManual];
+    const empresaIds = [...new Set(todos.map(e => e.empresaId!))];
     const empresaRows = await this.ecfRepo.manager.query(
       `SELECT id, "nombreComercial", rnc FROM empresa WHERE id = ANY($1)`,
       [empresaIds],
@@ -86,20 +104,33 @@ export class ResumenEcfPendientesJob {
     if (totalObs  > 0) partes.push(`${totalObs} observado${totalObs > 1 ? 's' : ''}`);
     if (totalCont > 0) partes.push(`${totalCont} en contingencia`);
     if (totalVal  > 0) partes.push(`${totalVal} en validación DGII`);
+    if (revisionManual.length > 0) partes.push(`${revisionManual.length} en revisión manual (72h)`);
 
     const result = await this.emailSvc.enviar({
       to:      adminEmail,
       subject: `⚠️ Resumen e-CF — ${partes.join(' · ')} sin notificar`,
-      html:    this.buildHtml(porEmpresa, empresaMap, totalObs, totalCont, totalVal),
+      html:    this.buildHtml(porEmpresa, empresaMap, totalObs, totalCont, totalVal, revisionManual),
     });
 
     if (result.exitoso) {
-      const ids = pendientes.map(e => e.id);
-      await this.ecfRepo.manager.query(
-        `UPDATE ecf SET "notificadoResumen" = true WHERE id = ANY($1)`,
-        [ids],
+      if (pendientes.length > 0) {
+        const ids = pendientes.map(e => e.id);
+        await this.ecfRepo.manager.query(
+          `UPDATE ecf SET "notificadoResumen" = true WHERE id = ANY($1)`,
+          [ids],
+        );
+      }
+      if (revisionManual.length > 0) {
+        const idsRevision = revisionManual.map(e => e.id);
+        await this.ecfRepo.manager.query(
+          `UPDATE ecf SET "notificadoRevisionManual" = true WHERE id = ANY($1)`,
+          [idsRevision],
+        );
+      }
+      this.logger.log(
+        `ResumenECF: ${pendientes.length} e-CF(s) → notificadoResumen=true, `
+        + `${revisionManual.length} e-CF(s) → notificadoRevisionManual=true`,
       );
-      this.logger.log(`ResumenECF: ${pendientes.length} e-CF(s) → notificadoResumen=true`);
     } else {
       reportServiceError(
         new Error(result.error ?? 'Fallo al enviar resumen de e-CF pendientes'),
@@ -108,6 +139,7 @@ export class ResumenEcfPendientesJob {
           total:       String(pendientes.length),
           observados:  String(totalObs),
           contingencias: String(totalCont),
+          revisionManual: String(revisionManual.length),
         },
       );
       this.logger.warn('ResumenECF: email fallido — se reintentará en la próxima pasada');
@@ -120,17 +152,63 @@ export class ResumenEcfPendientesJob {
     totalObs:  number,
     totalCont: number,
     totalVal:  number,
+    revisionManual: ECF[] = [],
   ): string {
     const partes: string[] = [];
     if (totalObs  > 0) partes.push(`<strong>${totalObs}</strong> observado${totalObs > 1 ? 's' : ''} (aceptado condicional)`);
     if (totalCont > 0) partes.push(`<strong>${totalCont}</strong> en contingencia (pendiente de transmitir)`);
     if (totalVal  > 0) partes.push(`<strong>${totalVal}</strong> en validación DGII (sin respuesta aún, no es rechazo)`);
+    if (revisionManual.length > 0) partes.push(`<strong>${revisionManual.length}</strong> en revisión manual (72h sin respuesta de DGII)`);
 
     let html = `
 <p>Los siguientes comprobantes fiscales electrónicos requieren atención:</p>
 <p style="margin:4px 0">${partes.join(' y ')}, agrupados por empresa.</p>
 <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0">
 `;
+
+    if (revisionManual.length > 0) {
+      html += `
+<div style="margin-bottom:28px">
+  <h3 style="margin:0 0 4px;font-size:15px;color:#991b1b">
+    ⚠ Revisión manual requerida — 72h sin respuesta de DGII (${revisionManual.length})
+  </h3>
+  <p style="margin:2px 0 10px;font-size:12px;color:#6b7280">
+    El cron ya dejó de reconsultar estos automáticamente. Requieren seguimiento manual con DGII o soporte de MSeller.
+  </p>
+  <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead>
+      <tr style="background:#fee2e2">
+        <th style="padding:6px 8px;text-align:left;color:#991b1b;font-weight:600">Empresa</th>
+        <th style="padding:6px 8px;text-align:left;color:#991b1b;font-weight:600">e-NCF</th>
+        <th style="padding:6px 8px;text-align:left;color:#991b1b;font-weight:600">Documento</th>
+        <th style="padding:6px 8px;text-align:right;color:#991b1b;font-weight:600">Horas sin respuesta</th>
+      </tr>
+    </thead>
+    <tbody>`;
+
+      for (const ecf of revisionManual) {
+        const emp = empresaMap.get(ecf.empresaId!);
+        const empLabel = emp?.nombreComercial ?? `Empresa #${ecf.empresaId}`;
+        const documento = ecf.documentoOrigenTipo
+          ? `${ecf.documentoOrigenTipo} #${ecf.documentoOrigenId ?? '?'}`
+          : ecf.numero;
+        const horas = Math.floor((Date.now() - new Date(ecf.createdAt).getTime()) / 3_600_000);
+        html += `
+      <tr style="border-bottom:1px solid #fecaca">
+        <td style="padding:6px 8px">${empLabel}</td>
+        <td style="padding:6px 8px;font-family:monospace;white-space:nowrap">${ecf.numero}</td>
+        <td style="padding:6px 8px">${documento}</td>
+        <td style="padding:6px 8px;text-align:right;font-variant-numeric:tabular-nums">${horas}h</td>
+      </tr>`;
+      }
+
+      html += `
+    </tbody>
+  </table>
+</div>
+<hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0">
+`;
+    }
 
     for (const [empresaId, ecfs] of porEmpresa) {
       const emp      = empresaMap.get(empresaId);

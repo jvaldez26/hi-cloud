@@ -301,4 +301,14 @@ export class ECF extends BaseEntity {
   /** true = pasaron 72h desde el envío sin que DGII confirmara nada — el cron deja de insistir solo. */
   @Column({ default: false })
   revisionManual!: boolean;
+
+  /**
+   * true = ya se incluyó en el resumen horario del super admin la sección
+   * "Revisión manual (72h)". Independiente de notificadoResumen: un e-CF
+   * suele entrar primero a EN_VALIDACION_DGII (notificadoResumen=true en ese
+   * resumen) y solo mucho después cruzar las 72h — sin este flag propio,
+   * nunca volvería a aparecer en ningún resumen posterior.
+   */
+  @Column({ default: false })
+  notificadoRevisionManual!: boolean;
 }
