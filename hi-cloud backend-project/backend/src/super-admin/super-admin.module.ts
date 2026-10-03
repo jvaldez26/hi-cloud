@@ -15,6 +15,7 @@ import { ModulosAddonModule }    from '../modulos-addon/modulos-addon.module';
 import { BackupInternalController } from './backup-internal.controller';
 import { AuthModule }            from '../auth/auth.module';
 import { AuditoriaModule }       from '../auditoria/auditoria.module';
+import { ECFModule }             from '../ecf/ecf.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { AuditoriaModule }       from '../auditoria/auditoria.module';
     ModulosAddonModule,
     AuthModule,
     AuditoriaModule,
+    ECFModule,
     TypeOrmModule.forFeature([BackupRegistro]),
     JwtModule.registerAsync({
       imports: [ConfigModule],

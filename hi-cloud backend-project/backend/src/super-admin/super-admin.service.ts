@@ -12,6 +12,9 @@ import { LoginAttemptsService } from '../auth/login-attempts.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
 import { AccionAuditoria, NivelAuditoria } from '../auditoria/entities/audit-log.entity';
 import { fechaHoyRD, inicioDiaRDenUTC, diaSiguienteRD } from '../common/utils/fecha-local.util';
+import { ECF } from '../ecf/entities/ecf.entity';
+import { ConsultarEstadoECFJob, tieneVeredictoDgiiReal } from '../ecf/jobs/consultar-estado-ecf.job';
+import { EcfConfigService } from '../ecf/services/ecf-config.service';
 
 @Injectable()
 export class SuperAdminService {
@@ -22,6 +25,8 @@ export class SuperAdminService {
     private authService: AuthService,
     private loginAttemptsSvc: LoginAttemptsService,
     private auditoriaSvc: AuditoriaService,
+    private consultarEstadoJob: ConsultarEstadoECFJob,
+    private ecfConfigSvc: EcfConfigService,
   ) {}
 
   // ── S-64: Trazabilidad de acciones del Super Admin ────────────────────────
@@ -1746,6 +1751,137 @@ export class SuperAdminService {
       mensaje: corregidas > 0
         ? `${corregidas} factura(s) reparadas correctamente.`
         : 'No se encontraron facturas con montos cero vinculadas a productos.',
+    };
+  }
+
+  // ── e-CF — Revisar RECHAZADOS sin respuesta real de DGII ───────────────────
+  //
+  // Hotfix E320000001774: antes del fix en consultar-estado-ecf.job.ts, un
+  // "Error" de MSeller (DGII en mantenimiento) sin confirmación posterior se
+  // forzaba a RECHAZADO sin ningún código/mensaje real — ver
+  // tieneVeredictoDgiiReal(). Esto reclasifica los RECHAZADOS existentes de
+  // ANTES del fix: nunca a ciegas, solo con una consulta real a MSeller.
+
+  /**
+   * Vista previa (dry-run) — NUNCA modifica nada. Agrupa por empresa los
+   * RECHAZADO cuyo respuestaDgii no trae ningún código ni mensaje real.
+   * Los que YA fueron reenviados (hay un evento REINTENTO posterior) se
+   * listan aparte y el "Aplicar" los deja intactos — un reenvío ya hecho
+   * puede significar que DGII ya tiene DOS envíos del mismo documento.
+   */
+  async diagnosticoRechazadosSinRespuestaDgii() {
+    const candidatos = await this.ds.query<any[]>(`
+      SELECT e.id, e.numero, e."empresaId", emp.nombre AS empresa, e."createdAt",
+             e."montoTotal", e."respuestaDgii",
+             EXISTS (
+               SELECT 1 FROM ecf_eventos ev
+                WHERE ev."comprobanteId" = e.id AND ev.evento = 'REINTENTO'
+             ) AS "yaReenviado"
+        FROM ecf e
+        JOIN empresa emp ON emp.id = e."empresaId"
+       WHERE e."estadoDGII" = 'rechazado' AND e."isActive" = true
+       ORDER BY e."empresaId", e."createdAt" ASC
+    `);
+
+    const sinVeredicto: any[] = [];
+    const yaReenviados: any[] = [];
+    for (const c of candidatos) {
+      // Rechazo con código/mensaje real — no es el bug, se deja tal cual.
+      if (tieneVeredictoDgiiReal(c.respuestaDgii)) continue;
+      (c.yaReenviado ? yaReenviados : sinVeredicto).push(c);
+    }
+
+    const porEmpresaMap = new Map<number, { empresaId: number; empresa: string; count: number }>();
+    for (const c of sinVeredicto) {
+      const cur = porEmpresaMap.get(c.empresaId) ?? { empresaId: c.empresaId, empresa: c.empresa, count: 0 };
+      cur.count++;
+      porEmpresaMap.set(c.empresaId, cur);
+    }
+
+    return {
+      totalSinVeredicto: sinVeredicto.length,
+      totalYaReenviados: yaReenviados.length,
+      porEmpresa: [...porEmpresaMap.values()],
+      candidatos: sinVeredicto.map(c => ({
+        id: c.id, numero: c.numero, empresaId: c.empresaId, empresa: c.empresa,
+        createdAt: c.createdAt, montoTotal: c.montoTotal,
+      })),
+      yaReenviados: yaReenviados.map(c => ({
+        id: c.id, numero: c.numero, empresaId: c.empresaId, empresa: c.empresa,
+        aviso: 'Ya fue reenviado — puede haber un envío duplicado ante DGII. NO se toca.',
+      })),
+    };
+  }
+
+  /**
+   * Aplica la revisión: para cada candidato (nunca los "yaReenviados"),
+   * consulta de verdad en MSeller — reutiliza
+   * ConsultarEstadoECFJob.consultarUno(), la MISMA función que el botón
+   * "Consultar estado en DGII" y el cron, nunca una segunda implementación.
+   * Respeta el circuit breaker por empresa (EcfConfigService) y un tope por
+   * pasada (mismo criterio que ECF_MAX_CONSULTAS_POR_PASADA del cron) —
+   * idempotente: si quedan candidatos, "restantes" lo dice y se puede volver
+   * a ejecutar.
+   */
+  async aplicarRevisionRechazadosSinRespuestaDgii() {
+    const MAX_POR_PASADA = 50;
+    const diagnostico = await this.diagnosticoRechazadosSinRespuestaDgii();
+    const candidatos = diagnostico.candidatos as any[];
+
+    if (candidatos.length === 0) {
+      return {
+        procesados: 0, cambios: [], saltadosPorBloqueo: [], restantes: 0,
+        mensaje: 'No hay e-CF rechazados sin respuesta real de DGII por revisar.',
+      };
+    }
+
+    const ecfRepo = this.ds.getRepository(ECF);
+    const cambios: { numero: string; empresaId: number; antes: string; despues: string }[] = [];
+    const saltadosPorBloqueo: { numero: string; empresaId: number }[] = [];
+    const bloqueadaCache = new Map<number, boolean>();
+
+    for (const c of candidatos) {
+      if (cambios.length >= MAX_POR_PASADA) break;
+
+      if (!bloqueadaCache.has(c.empresaId)) {
+        bloqueadaCache.set(c.empresaId, await this.ecfConfigSvc.isEmpresaBloqueada(c.empresaId));
+      }
+      if (bloqueadaCache.get(c.empresaId)) {
+        saltadosPorBloqueo.push({ numero: c.numero, empresaId: c.empresaId });
+        continue;
+      }
+
+      const ecf = await ecfRepo.findOneBy({ id: c.id });
+      if (!ecf) continue;
+      const antes = ecf.estadoDGII;
+
+      try {
+        await this.consultarEstadoJob.consultarUno(ecf);
+      } catch (err) {
+        this.logger.error(`[RevisarRechazados] consultarUno falló para ${ecf.numero}: ${(err as Error).message}`);
+        continue;
+      }
+
+      const actualizado = await ecfRepo.findOneBy({ id: ecf.id });
+      cambios.push({
+        numero: ecf.numero, empresaId: ecf.empresaId!,
+        antes, despues: actualizado?.estadoDGII ?? antes,
+      });
+    }
+
+    const restantes = diagnostico.totalSinVeredicto - cambios.length - saltadosPorBloqueo.length;
+    this.logger.log(
+      `[RevisarRechazados] ${cambios.length} revisados, ${saltadosPorBloqueo.length} saltados por circuit breaker, ${restantes} restantes`,
+    );
+
+    return {
+      procesados: cambios.length,
+      cambios,
+      saltadosPorBloqueo,
+      restantes,
+      mensaje: restantes > 0
+        ? `${cambios.length} revisados. Quedan ${restantes} — vuelve a ejecutar "Aplicar" para continuar.`
+        : `${cambios.length} revisados. No quedan más por revisar.`,
     };
   }
 

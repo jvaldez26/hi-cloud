@@ -70,7 +70,7 @@ const MSELLER_ESTADO_MAP: Record<string, EstadoDGII> = {
  * mantenimiento marcado como rechazo): RECHAZADO solo se sella cuando hay
  * algo verificable detrás.
  */
-function tieneVeredictoDgiiReal(datos: unknown, mensaje?: string): boolean {
+export function tieneVeredictoDgiiReal(datos: unknown, mensaje?: string): boolean {
   const items: any[] = (datos as any)?.dgiiResponse ?? [];
   const tieneCodigoOMensajeEnItems = items.some((d: any) => {
     const msgs = d?.mensajes ?? [];

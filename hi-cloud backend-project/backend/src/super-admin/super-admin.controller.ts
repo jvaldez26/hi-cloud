@@ -756,6 +756,21 @@ export class SuperAdminController {
     return this.svc.repararMontosRecurrentes();
   }
 
+  // ── e-CF — Revisar RECHAZADOS sin respuesta real de DGII (hotfix E320000001774) ──
+
+  @Get('ecf/rechazados-sin-respuesta/diagnostico')
+  @ApiOperation({ summary: 'Vista previa (solo lectura): RECHAZADO sin código/mensaje real de DGII, por empresa' })
+  async diagnosticoRechazadosSinRespuestaDgii() {
+    return this.svc.diagnosticoRechazadosSinRespuestaDgii();
+  }
+
+  @Post('ecf/rechazados-sin-respuesta/aplicar')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reclasifica los RECHAZADO sin respuesta real con una consulta de verdad a MSeller (idempotente)' })
+  async aplicarRevisionRechazadosSinRespuestaDgii() {
+    return this.svc.aplicarRevisionRechazadosSinRespuestaDgii();
+  }
+
   // ── Configuración Global de Seguridad ──────────────────────────────────────
 
   @Get('configuracion-global')

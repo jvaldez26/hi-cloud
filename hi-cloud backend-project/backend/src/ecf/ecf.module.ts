@@ -118,6 +118,10 @@ import { AnticiposClienteModule }  from '../anticipos-cliente/anticipos-cliente.
     MSellerClientService,
     EmitirECFUseCase,
     ReintentoECFJob,
+    // SuperAdminModule la usa para la acción "Revisar e-CF rechazados sin
+    // respuesta de DGII" — reutiliza consultarUno() en vez de duplicar la
+    // lógica de decisión de estado.
+    ConsultarEstadoECFJob,
     TypeOrmModule,
   ],
 })
