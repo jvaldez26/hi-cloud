@@ -55,7 +55,8 @@ function determinarAccion(metodo: string, ruta: string): AccionAuditoria {
   }
 }
 
-function determinarNivel(metodo: string, ruta: string): NivelAuditoria {
+/** Nivel de un evento EXITOSO (status 2xx) — ver determinarNivelError() para fallos. */
+export function determinarNivel(metodo: string, ruta: string): NivelAuditoria {
   const r = ruta.toLowerCase();
 
   // CRITICO — acciones irreversibles o de alto impacto
@@ -64,7 +65,11 @@ function determinarNivel(metodo: string, ruta: string): NivelAuditoria {
   if (r.includes('/notas-credito') && metodo === 'POST')  return NivelAuditoria.CRITICO;
   if (r.includes('/notas-debito')  && metodo === 'POST')  return NivelAuditoria.CRITICO;
   if (metodo === 'DELETE')                                 return NivelAuditoria.CRITICO;
-  if (r.includes('/auth/login') || r.includes('/auth/logout')) return NivelAuditoria.CRITICO;
+  // Un LOGIN exitoso es acceso normal a una cuenta propia (no un incidente),
+  // y un LOGOUT voluntario tampoco — ver determinarNivelError() para la
+  // ventana donde SÍ importan: fallos repetidos de autenticación.
+  if (r.includes('/auth/login'))  return NivelAuditoria.NORMAL;
+  if (r.includes('/auth/logout')) return NivelAuditoria.NORMAL;
   if (r.includes('/usuarios') && metodo === 'POST')        return NivelAuditoria.CRITICO;
   if (r.includes('/usuarios') && r.includes('/rol'))       return NivelAuditoria.CRITICO;
   if (r.includes('/empresa') && r.includes('/eliminar'))   return NivelAuditoria.CRITICO;
@@ -82,6 +87,33 @@ function determinarNivel(metodo: string, ruta: string): NivelAuditoria {
   if (r.includes('/roles'))                     return NivelAuditoria.IMPORTANTE;
 
   return NivelAuditoria.NORMAL;
+}
+
+/**
+ * Nivel de un evento FALLIDO — toma el status HTTP, no solo la URL (un 2xx
+ * de login no es lo mismo que un 401). Para todo lo que no sea login, el
+ * nivel sigue siendo IMPORTANTE (comportamiento de siempre).
+ *
+ * Login fallido:
+ *   - IMPORTANTE de entrada (un intento equivocado solo).
+ *   - CRÍTICO si ya van 5+ intentos fallidos SEGUIDOS del mismo identificador
+ *     + IP (LoginAttemptsService.increment() ya corrió en auth.service.ts
+ *     ANTES de lanzar la excepción — este número viaja en el cuerpo del
+ *     error como `attempts`, no se vuelve a calcular aquí).
+ *   - CRÍTICO también si el status es 429 (Too Many Requests): la cuenta ya
+ *     está bloqueada, lo que implica que el umbral configurado (3-10, ver
+ *     getEffectiveMaxIntentos) ya se cruzó — pase lo que pase con `attempts`.
+ */
+export function determinarNivelError(metodo: string, ruta: string, status: number, attempts?: number): NivelAuditoria {
+  const r = ruta.toLowerCase();
+
+  if (r.includes('/auth/login')) {
+    if (status === 429) return NivelAuditoria.CRITICO;
+    if (typeof attempts === 'number' && attempts >= 5) return NivelAuditoria.CRITICO;
+    return NivelAuditoria.IMPORTANTE;
+  }
+
+  return NivelAuditoria.IMPORTANTE;
 }
 
 /** Exportada solo para test unitario directo — ver audit.interceptor.spec.ts. */
@@ -329,6 +361,20 @@ export class AuditInterceptor implements NestInterceptor {
           return e?.message ?? 'Error desconocido';
         })();
 
+        // `attempts`: solo lo manda auth.service.ts en los 401 de credenciales
+        // inválidas (ver LoginAttemptsService.increment()) — para todo lo
+        // demás queda undefined y determinarNivelError() no lo necesita.
+        const attempts = (() => {
+          const e = err as any;
+          if (typeof e?.getResponse === 'function') {
+            const res = e.getResponse();
+            if (typeof res === 'object' && res !== null && typeof (res as any).attempts === 'number') {
+              return (res as any).attempts as number;
+            }
+          }
+          return undefined;
+        })();
+
         this.auditoriaService
           .registrar({
             userId:      user?.id,
@@ -336,7 +382,7 @@ export class AuditInterceptor implements NestInterceptor {
             userRole:    user?.role,
             empresaId:   (user as any)?.empresaId,
             accion:      AccionAuditoria.ERROR,
-            nivel:       NivelAuditoria.IMPORTANTE,
+            nivel:       determinarNivelError(method, url, status, attempts),
             modulo,
             descripcion: `ERROR en ${method} ${url}: ${mensaje}`,
             metodo:      method,

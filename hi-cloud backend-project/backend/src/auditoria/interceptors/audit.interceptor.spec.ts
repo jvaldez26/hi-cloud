@@ -12,7 +12,8 @@
  * validarPrecioVsCosto en facturas: lógica pura, sin Nest de por medio).
  */
 import { of, throwError } from 'rxjs';
-import { generarDescripcion, AuditInterceptor } from './audit.interceptor';
+import { generarDescripcion, determinarNivel, determinarNivelError, AuditInterceptor } from './audit.interceptor';
+import { NivelAuditoria } from '../entities/audit-log.entity';
 
 describe('generarDescripcion — auth (rutas que antes caían al fallback)', () => {
   it.each([
@@ -157,6 +158,94 @@ describe('AuditInterceptor — exclusión de ruido técnico de sesión', () => {
     interceptor.intercept(makeContext('POST', '/api/v1/compras/previsualizar-asiento'), erroredHandle).subscribe({
       error: () => {
         expect(auditoriaService.registrar).not.toHaveBeenCalled();
+        done();
+      },
+    });
+  });
+});
+
+describe('determinarNivel — eventos EXITOSOS de auth (bug real: 2026-10-03)', () => {
+  it('LOGIN exitoso: NORMAL (acceso normal a una cuenta propia, no un incidente)', () => {
+    expect(determinarNivel('POST', '/api/v1/auth/login')).toBe(NivelAuditoria.NORMAL);
+  });
+
+  it('LOGOUT: NORMAL (cierre de sesión voluntario)', () => {
+    expect(determinarNivel('POST', '/api/v1/auth/logout')).toBe(NivelAuditoria.NORMAL);
+  });
+
+  it('lo que sí sigue siendo CRÍTICO en éxito: anular, cancelar, DELETE, notas de crédito/débito, condonar', () => {
+    expect(determinarNivel('POST',   '/api/v1/facturas/5/anular')).toBe(NivelAuditoria.CRITICO);
+    expect(determinarNivel('POST',   '/api/v1/facturas/5/cancelar')).toBe(NivelAuditoria.CRITICO);
+    expect(determinarNivel('DELETE', '/api/v1/productos/5')).toBe(NivelAuditoria.CRITICO);
+    expect(determinarNivel('POST',   '/api/v1/notas-credito')).toBe(NivelAuditoria.CRITICO);
+    expect(determinarNivel('POST',   '/api/v1/educativo/cargos/5/condonar')).toBe(NivelAuditoria.CRITICO);
+  });
+});
+
+describe('determinarNivelError — login fallido: escala con el status y los intentos', () => {
+  it('401 normal (credenciales incorrectas, pocos intentos): IMPORTANTE', () => {
+    expect(determinarNivelError('POST', '/api/v1/auth/login', 401, 1)).toBe(NivelAuditoria.IMPORTANTE);
+    expect(determinarNivelError('POST', '/api/v1/auth/login', 401, 4)).toBe(NivelAuditoria.IMPORTANTE);
+  });
+
+  it('401 sin attempts (otro tipo de 401, p.ej. CORREO_NO_VERIFICADO): IMPORTANTE, nunca lanza por attempts ausente', () => {
+    expect(determinarNivelError('POST', '/api/v1/auth/login', 401, undefined)).toBe(NivelAuditoria.IMPORTANTE);
+  });
+
+  it('5 o más intentos seguidos del mismo identificador+IP: CRÍTICO', () => {
+    expect(determinarNivelError('POST', '/api/v1/auth/login', 401, 5)).toBe(NivelAuditoria.CRITICO);
+    expect(determinarNivelError('POST', '/api/v1/auth/login', 401, 9)).toBe(NivelAuditoria.CRITICO);
+  });
+
+  it('429 (cuenta ya bloqueada): CRÍTICO sin importar el número de attempts reportado', () => {
+    expect(determinarNivelError('POST', '/api/v1/auth/login', 429, undefined)).toBe(NivelAuditoria.CRITICO);
+    expect(determinarNivelError('POST', '/api/v1/auth/login', 429, 1)).toBe(NivelAuditoria.CRITICO);
+  });
+
+  it('otras rutas no cambian: siguen IMPORTANTE pase lo que pase con attempts/status', () => {
+    expect(determinarNivelError('POST', '/api/v1/facturas', 400, 99)).toBe(NivelAuditoria.IMPORTANTE);
+  });
+});
+
+describe('AuditInterceptor — catchError usa determinarNivelError() y lee `attempts` del body', () => {
+  function makeInterceptor() {
+    const auditoriaService = { registrar: jest.fn().mockResolvedValue(undefined) };
+    const interceptor = new AuditInterceptor(auditoriaService as any);
+    return { interceptor, auditoriaService };
+  }
+
+  function makeContext(method: string, url: string) {
+    const req: any = { method, url, headers: {}, user: undefined };
+    const res: any = { statusCode: 200 };
+    return { switchToHttp: () => ({ getRequest: () => req, getResponse: () => res }) } as any;
+  }
+
+  function makeUnauthorized(body: Record<string, unknown>) {
+    const err: any = new Error('Unauthorized');
+    err.status = 401;
+    err.getResponse = () => body;
+    return err;
+  }
+
+  it('login fallido con attempts=5 en el body del error: la fila queda CRÍTICO', done => {
+    const { interceptor, auditoriaService } = makeInterceptor();
+    const err = makeUnauthorized({ message: 'Correo/usuario o contraseña incorrectos.', attempts: 5 });
+    const erroredHandle = { handle: () => throwError(() => err) } as any;
+    interceptor.intercept(makeContext('POST', '/api/v1/auth/login'), erroredHandle).subscribe({
+      error: () => {
+        expect(auditoriaService.registrar.mock.calls[0][0].nivel).toBe(NivelAuditoria.CRITICO);
+        done();
+      },
+    });
+  });
+
+  it('login fallido con attempts=2: la fila queda IMPORTANTE, no CRÍTICO', done => {
+    const { interceptor, auditoriaService } = makeInterceptor();
+    const err = makeUnauthorized({ message: 'Correo/usuario o contraseña incorrectos. 3 intento(s) antes del bloqueo temporal.', attempts: 2 });
+    const erroredHandle = { handle: () => throwError(() => err) } as any;
+    interceptor.intercept(makeContext('POST', '/api/v1/auth/login'), erroredHandle).subscribe({
+      error: () => {
+        expect(auditoriaService.registrar.mock.calls[0][0].nivel).toBe(NivelAuditoria.IMPORTANTE);
         done();
       },
     });

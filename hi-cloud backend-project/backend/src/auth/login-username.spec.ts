@@ -172,6 +172,21 @@ describe('AuthService.login — email vs username', () => {
     ).rejects.toThrow('Correo/usuario o contraseña incorrectos.');
   });
 
+  // El cuerpo del error trae `attempts` (no solo el mensaje) para que
+  // AuditInterceptor.determinarNivelError() pueda clasificar 5+ fallos
+  // seguidos como CRÍTICO sin recalcular el contador por su cuenta — ver
+  // audit.interceptor.ts.
+  it('el error de credenciales inválidas trae `attempts` en el cuerpo, no solo en el mensaje', async () => {
+    const { svc } = withLoginAttempts(makeAuthService([]));
+
+    const err: any = await svc
+      .login({ identificador: 'alguien-mas@existe.com', password: 'mala' } as any, '10.0.0.2')
+      .catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(UnauthorizedException);
+    expect(err.getResponse()).toMatchObject({ attempts: 1 });
+  });
+
   it('tiempo de respuesta constante: bcrypt.compare corre exista o no la cuenta', async () => {
     // bcrypt es un binding nativo — jest.spyOn(bcrypt, 'compare') falla con
     // "Cannot redefine property" (propiedad no configurable), así que se

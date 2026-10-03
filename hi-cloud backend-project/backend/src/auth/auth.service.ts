@@ -482,13 +482,18 @@ export class AuthService implements OnModuleInit {
       }
 
       this.logger.warn(`[LOGIN] Intento fallido #${attempts} — id:${claveIntentos} ip:${ip}`);
+      // `attempts` viaja en el cuerpo del error (no solo en el log) para que
+      // AuditInterceptor.determinarNivelError() pueda clasificar 5+ fallos
+      // seguidos como CRÍTICO sin tener que recalcular el contador por su
+      // cuenta — una sola fuente de verdad (ver audit.interceptor.ts).
       const restantes = Math.max(0, maxIntentos - attempts);
       if (restantes > 0) {
-        throw new UnauthorizedException(
-          `Correo/usuario o contraseña incorrectos. ${restantes} intento(s) antes del bloqueo temporal.`,
-        );
+        throw new UnauthorizedException({
+          message:  `Correo/usuario o contraseña incorrectos. ${restantes} intento(s) antes del bloqueo temporal.`,
+          attempts,
+        });
       }
-      throw new UnauthorizedException('Correo/usuario o contraseña incorrectos.');
+      throw new UnauthorizedException({ message: 'Correo/usuario o contraseña incorrectos.', attempts });
     }
 
     // 4. Cuenta pendiente de aprobación del Super Admin
