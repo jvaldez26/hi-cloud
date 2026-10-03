@@ -47,7 +47,7 @@ export default function XlinkHomologacionModal({ open, contraparteXlinkId, falta
   const actualizar = (f: FaltanteMapeo, cambio: Partial<FilaResolucion>) => {
     setResoluciones(prev => {
       const base: FilaResolucion = prev[f.valorExterno] ?? {
-        modo: 'existente', nombre: f.descripcion, unidadMedida: 'UND', porcentajeIva: 18, precio: f.precioReferencia,
+        modo: 'existente', nombre: f.descripcion, unidadMedida: f.unidad, porcentajeIva: f.porcentajeIva, precio: f.precioReferencia,
       };
       return { ...prev, [f.valorExterno]: { ...base, ...cambio } };
     });
@@ -107,7 +107,7 @@ export default function XlinkHomologacionModal({ open, contraparteXlinkId, falta
             title: 'Resolución',
             render: (_: unknown, f: FaltanteMapeo) => {
               const r = resoluciones[f.valorExterno] ?? {
-                modo: 'existente' as const, nombre: f.descripcion, unidadMedida: 'UND', porcentajeIva: 18, precio: f.precioReferencia,
+                modo: 'existente' as const, nombre: f.descripcion, unidadMedida: f.unidad, porcentajeIva: f.porcentajeIva, precio: f.precioReferencia,
               };
               return (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -140,15 +140,15 @@ export default function XlinkHomologacionModal({ open, contraparteXlinkId, falta
                       <Input
                         placeholder="Unidad"
                         style={{ width: 70 }}
-                        defaultValue="UND"
+                        defaultValue={f.unidad}
                         onChange={e => actualizar(f, { unidadMedida: e.target.value })}
                       />
                       <InputNumber
                         placeholder="% ITBIS"
                         style={{ width: 80 }}
-                        defaultValue={18}
+                        defaultValue={f.porcentajeIva}
                         min={0} max={100}
-                        onChange={v => actualizar(f, { porcentajeIva: v ?? 18 })}
+                        onChange={v => actualizar(f, { porcentajeIva: v ?? f.porcentajeIva })}
                       />
                       <InputNumber
                         placeholder="Precio"

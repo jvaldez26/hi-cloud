@@ -37,6 +37,10 @@ export interface FaltanteMapeo {
   descripcion: string;
   /** Precio unitario tal como lo facturó la contraparte — sugerido al crear el producto, nunca impuesto. */
   precioReferencia: number;
+  /** Unidad de medida tal como viene en la línea real del snapshot — nunca "UND" fijo. */
+  unidad: string;
+  /** Tasa de ITBIS tal como viene en la línea real del snapshot — nunca 18 fijo (puede ser 0/16/18). */
+  porcentajeIva: number;
 }
 
 export interface RecibirXlinkResultadoItem {

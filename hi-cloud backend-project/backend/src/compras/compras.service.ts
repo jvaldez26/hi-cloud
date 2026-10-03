@@ -657,7 +657,7 @@ export class ComprasService {
    * pero habilitado en ENVIADA en vez de BORRADOR. De aquí en adelante el
    * camino es el normal: XlinkRecibirService llama cambiarEstado(RECIBIDA).
    */
-  async aplicarFacturaProveedorSobreEnviada(id: number, dto: CreateCompraDto): Promise<Compra> {
+  async aplicarFacturaProveedorSobreEnviada(id: number, dto: CreateCompraDto, totalEsperado?: number): Promise<Compra> {
     const compra = await this.findOne(id);
     if (compra.estado !== CompraEstado.ENVIADA) {
       throw new BadRequestException(
@@ -681,6 +681,20 @@ export class ComprasService {
     const totalBruto         = Number((subtotalCompra + itbisCompra).toFixed(2));
     const montoItbisTotalDOP = Number(itbisCompraDOP.toFixed(2));
     const totalBrutoDOP      = Number((subtotalCompraDOP + itbisCompraDOP).toFixed(2));
+
+    // Verificar ANTES de escribir nada — no dentro de la transacción ni
+    // después de ella. Antes este chequeo vivía en el CALLER (HiCloud Xlink,
+    // xlink-recibir.service.ts), después de que esta misma función ya había
+    // actualizado y COMMITEADO cabecera+detalles: el error decía "no se
+    // aplicó ningún cambio en firme" mientras la OC ya había quedado
+    // modificada. Ahora, si no cuadra, se aborta sin tocar la BD — la OC
+    // queda exactamente como estaba.
+    if (totalEsperado != null && Number(totalBruto).toFixed(2) !== Number(totalEsperado).toFixed(2)) {
+      throw new BadRequestException(
+        `El total de la factura (${Number(totalEsperado).toFixed(2)}) no coincide con lo recalculado ` +
+        `(${totalBruto.toFixed(2)}) al aplicarla sobre ${compra.folio} — no se aplicó ningún cambio, la orden sigue como estaba.`,
+      );
+    }
 
     await this.ds.transaction(async (em) => {
       await this.assertNcfNoDuplicado(em, empresaId, dto.proveedorId, dto.numeroFacturaProveedor, id);

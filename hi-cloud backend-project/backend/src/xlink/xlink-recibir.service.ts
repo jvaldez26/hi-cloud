@@ -6,6 +6,7 @@ import { AuditoriaService } from '../auditoria/auditoria.service';
 import { AccionAuditoria } from '../auditoria/entities/audit-log.entity';
 import { User } from '../users/users.entity';
 import { XlinkDocumentosRepository } from './xlink-documentos.repository';
+import { XlinkService } from './xlink.service';
 import { XlinkMapeosService } from './xlink-mapeos.service';
 import { XlinkDocumento, XlinkEstadoReceptor, XlinkTipoDocumento } from './entities/xlink-documento.entity';
 import { RecibirXlinkDto, RecibirXlinkResultadoItem, FaltanteMapeo } from './dto/recibir-xlink.dto';
@@ -44,6 +45,7 @@ export class XlinkRecibirService {
     private tenantService: TenantService,
     private auditoria: AuditoriaService,
     private xlinkRepo: XlinkDocumentosRepository,
+    private xlinkService: XlinkService,
     private xlinkMapeos: XlinkMapeosService,
     private comprasService: ComprasService,
     private comprasPdfService: ComprasPdfService,
@@ -54,6 +56,12 @@ export class XlinkRecibirService {
   ) {}
 
   async recibir(dto: RecibirXlinkDto, usuario: User): Promise<RecibirXlinkResultadoItem[]> {
+    // Mismo guardia que el envío (XlinkPublicarService.publicar) — una
+    // empresa oculta de HiCloud Xlink podía seguir procesando lo que ya
+    // tenía en el buzón (recibir/descartar/marcar procesado), aunque ya no
+    // pudiera enviar ni se le pudiera enviar nada nuevo.
+    await this.xlinkService.assertPuedeUsarXlink(this.tenantService.getEmpresaId());
+
     const resultados: RecibirXlinkResultadoItem[] = [];
     for (const item of dto.items) {
       resultados.push(await this.recibirUno(item, usuario));
@@ -160,7 +168,10 @@ export class XlinkRecibirService {
     let yaExistiaComoOc = false;
     try {
       if (ocAbiertaId) {
-        compra = await this.comprasService.aplicarFacturaProveedorSobreEnviada(ocAbiertaId, compraDto);
+        // totalOrigen como 3er argumento: el chequeo de cuadre ahora corre
+        // DENTRO de aplicarFacturaProveedorSobreEnviada, ANTES de escribir
+        // nada — si no cuadra, lanza sin tocar la OC (ver compras.service.ts).
+        compra = await this.comprasService.aplicarFacturaProveedorSobreEnviada(ocAbiertaId, compraDto, doc.totalOrigen);
         yaExistiaComoOc = true;
       } else {
         compra = await this.comprasService.create(compraDto, usuario);
@@ -187,17 +198,12 @@ export class XlinkRecibirService {
       throw err;
     }
 
-    if (!this.montosCoinciden(compra.total, doc.totalOrigen)) {
-      if (yaExistiaComoOc) {
-        // No se cancela la Compra: sigue siendo la OC original, solo se
-        // revierte el intento de aplicar la factura sobre ella dejándola
-        // como estaba — cancelarla destruiría un documento que el usuario
-        // sí quiere conservar.
-        throw new BadRequestException(
-          `El total de la factura (${Number(doc.totalOrigen).toFixed(2)}) no coincide con lo recalculado ` +
-          `(${Number(compra.total).toFixed(2)}) al aplicarla sobre ${compra.folio} — no se aplicó ningún cambio en firme.`,
-        );
-      }
+    // yaExistiaComoOc: el cuadre ya se verificó DENTRO de
+    // aplicarFacturaProveedorSobreEnviada, antes de escribir nada — si no
+    // cuadraba, ya lanzó desde ahí y nunca se llega aquí. Esta rama solo
+    // cubre el camino de creación nueva (create()), que sí puede quedar
+    // escrita con un total que no cuadra y hay que revertir después.
+    if (!yaExistiaComoOc && !this.montosCoinciden(compra.total, doc.totalOrigen)) {
       await this.comprasService.cambiarEstado(compra.id, CompraEstado.CANCELADA).catch(() => {});
       throw new BadRequestException(
         `El total de la compra creada (${Number(compra.total).toFixed(2)}) no coincide con el de origen ` +
@@ -397,6 +403,8 @@ export class XlinkRecibirService {
           valorExterno: this.xlinkMapeos.claveExterna(l.sku, l.nombre),
           descripcion: l.nombre,
           precioReferencia: Number(l.precioUnitario),
+          unidad: l.unidad || 'UND',
+          porcentajeIva: Number(l.porcentajeIva ?? 18),
         });
       } else {
         lineasResueltas.push({ ...l, productoId: null });
@@ -466,6 +474,7 @@ export class XlinkRecibirService {
   // ── Otros endpoints de Fase 4 ────────────────────────────────────────────
 
   async marcarProcesadoManual(id: number, usuario: User): Promise<XlinkDocumento> {
+    await this.xlinkService.assertPuedeUsarXlink(this.tenantService.getEmpresaId());
     const doc = await this.xlinkRepo.buscarPorIdComoDestino(id);
     if (!doc) throw new NotFoundException('Documento no encontrado');
     if (doc.estadoReceptor !== XlinkEstadoReceptor.PENDIENTE) {
@@ -478,6 +487,7 @@ export class XlinkRecibirService {
   }
 
   async descartar(id: number, motivo: string, usuario: User): Promise<XlinkDocumento> {
+    await this.xlinkService.assertPuedeUsarXlink(this.tenantService.getEmpresaId());
     const doc = await this.xlinkRepo.buscarPorIdComoDestino(id);
     if (!doc) throw new NotFoundException('Documento no encontrado');
     if (doc.estadoReceptor !== XlinkEstadoReceptor.PENDIENTE) {

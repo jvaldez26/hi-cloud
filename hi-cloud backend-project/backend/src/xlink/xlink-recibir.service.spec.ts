@@ -22,6 +22,7 @@ function buildDeps() {
       buscarPorOrigenComoDestino: jest.fn().mockResolvedValue(null),
       guardar: jest.fn((doc: any) => Promise.resolve(doc)),
     },
+    xlinkSvc: { assertPuedeUsarXlink: jest.fn().mockResolvedValue(undefined) },
     xlinkMapeos: {
       resolverProducto: jest.fn(),
       claveExterna: (sku: string | null, nombre: string) => sku ?? `__sin_sku__:${nombre}`,
@@ -40,7 +41,7 @@ function buildDeps() {
 
 function buildService(d: ReturnType<typeof buildDeps>): XlinkRecibirService {
   return new XlinkRecibirService(
-    d.ds as any, d.tenantSvc as any, d.auditoriaSvc as any, d.xlinkRepo as any, d.xlinkMapeos as any,
+    d.ds as any, d.tenantSvc as any, d.auditoriaSvc as any, d.xlinkRepo as any, d.xlinkSvc as any, d.xlinkMapeos as any,
     d.comprasSvc as any, d.comprasPdfSvc as any, d.cotizacionesSvc as any, d.nccSvc as any,
     d.pdfSvc as any, d.ncPdfSvc as any,
   );
@@ -167,10 +168,35 @@ describe('XlinkRecibirService.recibir — Factura a Crédito → Compra', () => 
 
     expect(resultados[0].ok).toBe(false);
     expect(resultados[0].faltantes).toEqual([
-      { tipo: 'producto', valorExterno: 'A1', descripcion: 'Producto A', precioReferencia: 100 },
-      { tipo: 'producto', valorExterno: 'B2', descripcion: 'Producto B', precioReferencia: 50 },
+      { tipo: 'producto', valorExterno: 'A1', descripcion: 'Producto A', precioReferencia: 100, unidad: 'UND', porcentajeIva: 18 },
+      { tipo: 'producto', valorExterno: 'B2', descripcion: 'Producto B', precioReferencia: 50, unidad: 'UND', porcentajeIva: 18 },
     ]);
     expect(d.comprasSvc.create).not.toHaveBeenCalled();
+  });
+
+  // Bug real (auditoría HiCloud Xlink, 2026-10-03, Fase 1b): el producto
+  // creado al vuelo en la homologación forzaba unidad="UND" e ITBIS=18% sin
+  // importar la línea real — una exenta o al 16% creaba igual un producto al
+  // 18%. Ahora el faltante lleva la unidad/tasa REAL de la línea del
+  // snapshot, para que el frontend las use como valor por defecto al crear.
+  it.each([0, 16, 18])('faltante lleva la tasa de ITBIS REAL de la línea (%s%%), nunca fija en 18', async (tasa) => {
+    const d = buildDeps();
+    const doc = {
+      ...DOC_FACTURA_BASE,
+      snapshot: {
+        ...DOC_FACTURA_BASE.snapshot,
+        lineas: [{ sku: 'A1', nombre: 'Producto A', cantidad: 1, unidad: 'CAJA', precioUnitario: 100, descuento: 0, porcentajeIva: tasa, montoItem: 100 }],
+      },
+    };
+    d.xlinkRepo.bloquearPorIdComoDestino.mockResolvedValue(doc);
+    mockQueriesFacturaOk(d);
+    d.xlinkMapeos.resolverProducto.mockResolvedValue(null);
+
+    const resultados = await buildService(d).recibir({ items: [{ xlinkDocumentoId: 501, tipoGasto606: '02' }] }, USUARIO);
+
+    expect(resultados[0].faltantes).toEqual([
+      expect.objectContaining({ unidad: 'CAJA', porcentajeIva: tasa }),
+    ]);
   });
 
   it('TASA DE ITBIS: 16% se envía como 16%, nunca se redondea/reasigna a 18%', async () => {
@@ -325,5 +351,64 @@ describe('XlinkRecibirService.recibir — Nota de Crédito → NotaCreditoCompra
       USUARIO.id,
     );
     expect(d.nccSvc.recibir).toHaveBeenCalledWith(400);
+  });
+});
+
+// Bug real (auditoría HiCloud Xlink, 2026-10-03, Fase 1d): una empresa que
+// se ocultó de HiCloud Xlink (xlinkVisible=false) podía seguir procesando
+// lo que ya tenía en el buzón — recibir/descartar/marcar procesado nunca
+// llamaban a XlinkService.assertPuedeUsarXlink, a diferencia del envío
+// (XlinkPublicarService.publicar). Mismo 403 en los tres ahora.
+describe('XlinkRecibirService — exige empresa visible en HiCloud Xlink (recibir/descartar/marcar procesado)', () => {
+  it('recibir(): propaga el 403 de assertPuedeUsarXlink ANTES de tocar ningún documento', async () => {
+    const d = buildDeps();
+    d.xlinkSvc.assertPuedeUsarXlink.mockRejectedValue(new Error('Tu empresa aún no está activada en HiCloud Xlink.'));
+
+    await expect(
+      buildService(d).recibir({ items: [{ xlinkDocumentoId: 501 }] }, USUARIO),
+    ).rejects.toThrow('Tu empresa aún no está activada en HiCloud Xlink.');
+
+    expect(d.xlinkSvc.assertPuedeUsarXlink).toHaveBeenCalledWith(EMPRESA);
+    expect(d.xlinkRepo.bloquearPorIdComoDestino).not.toHaveBeenCalled();
+  });
+
+  it('descartar(): propaga el 403 ANTES de buscar el documento', async () => {
+    const d = buildDeps();
+    d.xlinkSvc.assertPuedeUsarXlink.mockRejectedValue(new Error('Tu empresa aún no está activada en HiCloud Xlink.'));
+
+    await expect(
+      buildService(d).descartar(501, 'No corresponde', USUARIO),
+    ).rejects.toThrow('Tu empresa aún no está activada en HiCloud Xlink.');
+
+    expect(d.xlinkRepo.buscarPorIdComoDestino).not.toHaveBeenCalled();
+  });
+
+  it('marcarProcesadoManual(): propaga el 403 ANTES de buscar el documento', async () => {
+    const d = buildDeps();
+    d.xlinkSvc.assertPuedeUsarXlink.mockRejectedValue(new Error('Tu empresa aún no está activada en HiCloud Xlink.'));
+
+    await expect(
+      buildService(d).marcarProcesadoManual(501, USUARIO),
+    ).rejects.toThrow('Tu empresa aún no está activada en HiCloud Xlink.');
+
+    expect(d.xlinkRepo.buscarPorIdComoDestino).not.toHaveBeenCalled();
+  });
+
+  it('empresa visible: los tres caminos SÍ llaman assertPuedeUsarXlink y continúan con normalidad', async () => {
+    const d = buildDeps();
+    d.xlinkRepo.buscarPorIdComoDestino.mockResolvedValue({
+      id: 501, estadoReceptor: XlinkEstadoReceptor.PENDIENTE, numeroOrigen: 'FAC-10',
+    });
+
+    await buildService(d).descartar(501, 'No corresponde', USUARIO);
+    expect(d.xlinkSvc.assertPuedeUsarXlink).toHaveBeenCalledWith(EMPRESA);
+    expect(d.xlinkRepo.guardar).toHaveBeenCalled();
+
+    d.xlinkSvc.assertPuedeUsarXlink.mockClear();
+    d.xlinkRepo.buscarPorIdComoDestino.mockResolvedValue({
+      id: 502, estadoReceptor: XlinkEstadoReceptor.PENDIENTE, numeroOrigen: 'FAC-11',
+    });
+    await buildService(d).marcarProcesadoManual(502, USUARIO);
+    expect(d.xlinkSvc.assertPuedeUsarXlink).toHaveBeenCalledWith(EMPRESA);
   });
 });

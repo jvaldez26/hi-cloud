@@ -46,6 +46,10 @@ export interface FaltanteMapeo {
   descripcion: string;
   /** Precio unitario tal como lo facturó la contraparte — sugerido al crear el producto. */
   precioReferencia: number;
+  /** Unidad de medida real de la línea — nunca "UND" fijo. */
+  unidad: string;
+  /** Tasa de ITBIS real de la línea (0/16/18) — nunca 18 fijo. */
+  porcentajeIva: number;
 }
 
 export interface RecibirXlinkResultadoItem {
@@ -101,7 +105,7 @@ export const xlinkApi = {
     listarLado('origen', filtros),
 
   // ── Fase 4 — recibir / homologar ──────────────────────────────────────────
-  listarRecibidos: (estadoReceptor: XlinkEstadoReceptor, filtros: { desde?: string; hasta?: string; tipoDocumento?: XlinkTipoDocumento; numeroOrigen?: string; ncfOrigen?: string; page?: number } = {}) =>
+  listarRecibidos: (estadoReceptor: XlinkEstadoReceptor | XlinkEstadoReceptor[], filtros: { desde?: string; hasta?: string; tipoDocumento?: XlinkTipoDocumento; numeroOrigen?: string; ncfOrigen?: string; page?: number } = {}) =>
     listarLado('destino', { ...filtros, estadoReceptor }),
 
   contarPendientes: () =>
@@ -134,7 +138,7 @@ export const xlinkApi = {
 
 function listarLado(
   _lado: 'origen' | 'destino',
-  filtros: { desde?: string; hasta?: string; tipoDocumento?: XlinkTipoDocumento; numeroOrigen?: string; ncfOrigen?: string; estadoReceptor?: XlinkEstadoReceptor; page?: number },
+  filtros: { desde?: string; hasta?: string; tipoDocumento?: XlinkTipoDocumento; numeroOrigen?: string; ncfOrigen?: string; estadoReceptor?: XlinkEstadoReceptor | XlinkEstadoReceptor[]; page?: number },
 ) {
   const params = new URLSearchParams({ limit: '10' });
   if (filtros.page)           params.set('page', String(filtros.page));
@@ -143,7 +147,14 @@ function listarLado(
   if (filtros.tipoDocumento)  params.set('tipoDocumento', filtros.tipoDocumento);
   if (filtros.numeroOrigen)   params.set('numeroOrigen', filtros.numeroOrigen);
   if (filtros.ncfOrigen)      params.set('ncfOrigen', filtros.ncfOrigen);
-  if (filtros.estadoReceptor) params.set('estadoReceptor', filtros.estadoReceptor);
+  // Repetir la clave (?estadoReceptor=a&estadoReceptor=b) — así es como el
+  // parser de query del backend (qs) arma el array; "Procesados" la usa para
+  // pedir 'procesado' Y 'procesado_manual' juntos en una sola llamada.
+  if (Array.isArray(filtros.estadoReceptor)) {
+    for (const e of filtros.estadoReceptor) params.append('estadoReceptor', e);
+  } else if (filtros.estadoReceptor) {
+    params.set('estadoReceptor', filtros.estadoReceptor);
+  }
   const ruta = _lado === 'origen' ? '/xlink/enviados' : '/xlink/recibidos';
   return api.get<ApiResponse<PaginatedData<XlinkDocumentoFila>>>(`${ruta}?${params}`).then(r => r.data.data);
 }
