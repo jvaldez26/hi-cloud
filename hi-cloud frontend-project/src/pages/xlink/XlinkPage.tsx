@@ -646,12 +646,19 @@ function EnviadosTab() {
           {
             title: '',
             key: 'acciones',
-            width: 110,
-            render: (_: unknown, r: XlinkDocumentoFila) => r.estadoReceptor === 'pendiente' ? (
-              <Popconfirm title="¿Retirar este envío?" onConfirm={() => eliminarMut.mutate(r.id)}>
-                <Button size="small" danger>Retirar</Button>
-              </Popconfirm>
-            ) : null,
+            width: 150,
+            render: (_: unknown, r: XlinkDocumentoFila) => (
+              <Space>
+                <Tooltip title="Ver documento">
+                  <Button size="small" icon={<EyeOutlined />} onClick={() => window.open(xlinkApi.urlPdfOriginal(r.id), '_blank')} />
+                </Tooltip>
+                {r.estadoReceptor === 'pendiente' && (
+                  <Popconfirm title="¿Retirar este envío?" onConfirm={() => eliminarMut.mutate(r.id)}>
+                    <Button size="small" danger>Retirar</Button>
+                  </Popconfirm>
+                )}
+              </Space>
+            ),
           },
         ])}
       />
