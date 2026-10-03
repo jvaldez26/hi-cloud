@@ -157,7 +157,6 @@ export default function ContenidoDocumentacion() {
         <ul>
           <li><Text strong>Ver el PDF original</Text> tal como lo imprime la empresa que lo envió, con su formato, logo y diseño. Es como tener la factura física en la mano.</li>
           <li><Boton>Recibir</Boton>: se convierte automáticamente en el documento equivalente del sistema propio.</li>
-          <li><Text strong>Abrir el formulario prellenado:</Text> muestra el documento que se generaría, ya lleno, para revisarlo o agregar detalles (centro de costo, observaciones) antes de grabarlo.</li>
           <li><Boton>Descartar</Boton>, indicando el motivo, si no corresponde.</li>
           <li><Text strong>Marcar como procesado</Text> sin generar nada, si ya se registró por otra vía y solo se quiere archivar.</li>
         </ul>
@@ -213,8 +212,7 @@ export default function ContenidoDocumentacion() {
           <li>Crearlo al instante, con el nombre, la unidad y la tasa de ITBIS de la factura, y con el precio sugerido.</li>
         </ul>
         <Paragraph>
-          Lo mismo aplica a unidades de medida, términos de pago, impuestos y retenciones. Cada
-          respuesta queda guardada para siempre para esa empresa. La siguiente factura del mismo
+          Cada respuesta queda guardada para siempre para esa empresa. La siguiente factura del mismo
           proveedor con los mismos productos se recibe sin preguntar nada. Con el uso, la recepción
           se vuelve automática.
         </Paragraph>
