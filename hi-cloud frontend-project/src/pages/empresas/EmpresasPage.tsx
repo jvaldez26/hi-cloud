@@ -127,7 +127,7 @@ export default function EmpresasPage() {
     try {
       // S-23: backend setea nueva cookie httpOnly con empresaId actualizado
       await api.post('/auth/cambiar-empresa', { empresaId });
-      cambiarEmpresa(empresaId);   // solo actualiza UI store
+      cambiarEmpresa(empresaId, empresasData);   // también persiste mis_empresas fresco antes del reload
       window.location.reload();
     } catch {
       message.error('No tienes acceso a esa empresa');

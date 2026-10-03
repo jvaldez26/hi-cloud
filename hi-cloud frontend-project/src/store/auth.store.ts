@@ -37,7 +37,18 @@ interface AuthState {
    */
   logout:            (opts?: { preservarCarritoPOS?: boolean }) => void;
   isAuth:            () => boolean;
-  cambiarEmpresa:    (empresaId: number) => void;
+  /**
+   * @param empresasFrescas  Lista de empresas más reciente que la que tiene el
+   *   store (ej. AppLayout ya la pidió a /auth/mis-empresas para el selector
+   *   de empresa) — se usa para resolver el rol y, si trae datos, también
+   *   reemplaza `empresas` en el store (se auto-corrige la copia vieja en vez
+   *   de arrastrarla). Sin este parámetro, cambiarEmpresa() solo tenía la
+   *   copia de `empresas` capturada en el último login() — que en sesiones
+   *   largas, tras un login con Google (empresas: []), o tras cambios de
+   *   acceso del usuario, puede no incluir la empresa que se está activando y
+   *   degradaba el rol sin necesidad.
+   */
+  cambiarEmpresa:    (empresaId: number, empresasFrescas?: EmpresaItem[]) => void;
   setSucursalActual: (sucursalId: number) => void;
   setSucursalNombre: (nombre: string | null) => void;
   setAlmacenActual:  (almacenId: number | null) => void;
@@ -67,15 +78,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // Única fuente de corrección rol-por-empresa (ver resolverRolPorEmpresa):
     // CUALQUIER caller de login() queda bien sin tener que acordarse de
     // aplicarla — antes cada pantalla de login tenía que hacerlo por su cuenta
-    // (y la mayoría no lo hacía, ver commit del fix de HiCloud Xlink).
-    const rolResuelto = resolverRolPorEmpresa(user.role, empresaActual ?? null, empresas);
+    // (y la mayoría no lo hacía, ver commit del fix de HiCloud Xlink). Puede
+    // corregir empresaActual también (ver resolverRolPorEmpresa) — nunca solo
+    // el rol — para que ambos queden consistentes con la misma empresa real.
+    const { rol: rolResuelto, empresaActivaId: empresaResuelta } = resolverRolPorEmpresa(user.role, empresaActual ?? null, empresas);
     const userResuelto = rolResuelto === user.role ? user : { ...user, role: rolResuelto };
 
     // Token NO se guarda — está en cookie httpOnly, JS no puede verlo
     localStorage.setItem('auth_user', JSON.stringify(userResuelto));
 
-    if (empresaActual) {
-      localStorage.setItem('empresaId',    String(empresaActual));
+    if (empresaResuelta) {
+      localStorage.setItem('empresaId',    String(empresaResuelta));
       localStorage.setItem('mis_empresas', JSON.stringify(empresas));
     } else {
       localStorage.removeItem('empresaId');
@@ -89,7 +102,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (sucursalNombre)  localStorage.setItem('sucursalNombre', sucursalNombre);
     else                 localStorage.removeItem('sucursalNombre');
 
-    set({ user: userResuelto, empresaActual: empresaActual ?? null, empresas, almacenActual: almacenActual ?? null, sucursalActual: sucursalActual ?? null, sucursalNombre: sucursalNombre ?? null, hydrated: true });
+    set({ user: userResuelto, empresaActual: empresaResuelta, empresas, almacenActual: almacenActual ?? null, sucursalActual: sucursalActual ?? null, sucursalNombre: sucursalNombre ?? null, hydrated: true });
   },
 
   logout: (opts) => {
@@ -127,14 +140,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   isAuth: () => !!get().user,
 
-  cambiarEmpresa: (empresaId) => {
+  cambiarEmpresa: (empresaId, empresasFrescas) => {
     localStorage.setItem('empresaId', String(empresaId));
     set(state => {
       if (!state.user) return { empresaActual: empresaId };
-      const rolResuelto = resolverRolPorEmpresa(state.user.role, empresaId, state.empresas);
+      // Si el caller trae una lista más fresca que la del store (ej. AppLayout
+      // ya la pidió a /auth/mis-empresas), se usa para resolver el rol — y
+      // también se adopta como la nueva `empresas` del store, autocorrigiendo
+      // la copia vieja en vez de arrastrarla a la próxima vez.
+      const listaParaResolver = empresasFrescas && empresasFrescas.length > 0 ? empresasFrescas : state.empresas;
+      const { rol: rolResuelto } = resolverRolPorEmpresa(state.user.role, empresaId, listaParaResolver);
       const newUser = rolResuelto === state.user.role ? state.user : { ...state.user, role: rolResuelto };
       if (newUser !== state.user) localStorage.setItem('auth_user', JSON.stringify(newUser));
-      return { empresaActual: empresaId, user: newUser };
+      if (empresasFrescas && empresasFrescas.length > 0) localStorage.setItem('mis_empresas', JSON.stringify(empresasFrescas));
+      return { empresaActual: empresaId, user: newUser, empresas: listaParaResolver };
     });
   },
 

@@ -550,11 +550,20 @@ export default function App() {
       api.get('/auth/me', { signal: abortCtrl.signal })
         .then((r) => {
           const user = r.data?.data?.user ?? r.data?.user ?? r.data;
-          const empresaId      = localStorage.getItem('empresaId');
-          const empresasRaw    = localStorage.getItem('mis_empresas');
+          // Seguridad (equipo compartido): empresaId/mis_empresas en localStorage
+          // son de QUIEN sea que haya iniciado sesión antes en este navegador —
+          // si la cookie httpOnly ahora resuelve a un usuario distinto al que
+          // dejó esos datos, no son suyos: se descartan en vez de arrastrarlos
+          // a una empresa (y un rol) que no le pertenecen.
+          let cachedUserId: number | undefined;
+          try { cachedUserId = savedUser ? JSON.parse(savedUser)?.id : undefined; } catch { /* ignorar */ }
+          const esMismoUsuario = cachedUserId === user?.id;
+
+          const empresaId      = esMismoUsuario ? localStorage.getItem('empresaId') : null;
+          const empresasRaw    = esMismoUsuario ? localStorage.getItem('mis_empresas') : null;
           const empresas       = empresasRaw ? JSON.parse(empresasRaw) : [];
-          const sucursalId     = localStorage.getItem('sucursalId');
-          const sucursalNombre = localStorage.getItem('sucursalNombre');
+          const sucursalId     = esMismoUsuario ? localStorage.getItem('sucursalId') : null;
+          const sucursalNombre = esMismoUsuario ? localStorage.getItem('sucursalNombre') : null;
           // login() resuelve el rol por la empresa activa internamente
           // (resolverRolPorEmpresa) — no hay que corregirlo aquí también.
           login(user, empresaId ? Number(empresaId) : null, empresas,

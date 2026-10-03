@@ -543,6 +543,13 @@ export default function AppLayout() {
   const cambiarEmpresa = useCallback(async (id: number) => {
     setEmpresaActiva(id);
     localStorage.setItem('empresaId', String(id));
+    // Bug real (2026-10-03): esto NUNCA actualizaba mis_empresas — el
+    // reload de más abajo rehidrataba con la copia vieja (o vacía, recién
+    // llegado de un login con Google) de localStorage, y si esta empresa no
+    // estaba en ella, resolverRolPorEmpresa degradaba el rol sin necesidad.
+    // misEmpresas ya viene de /auth/mis-empresas (fuente real) — se persiste
+    // aquí para que la rehidratación de después del reload resuelva bien.
+    if (misEmpresas.length > 0) localStorage.setItem('mis_empresas', JSON.stringify(misEmpresas));
     // Al cambiar de empresa, limpiar cache del POS para que el nuevo contexto
     // no herede el cajero/vendedor ni el carrito de la empresa anterior
     localStorage.removeItem('pos_cajero_nombre');
@@ -551,7 +558,7 @@ export default function AppLayout() {
     // empresaActiva/sucursalActualId siguen siendo los de ANTES del cambio
     // en este punto (setEmpresaActiva de arriba no muta el closure), y esta
     // función solo se usa una vez por carga de página (recarga completa al
-    // final) — no hay riesgo de closure obsoleto pese al deps [] de abajo.
+    // final) — no hay riesgo de closure obsoleto.
     borrarCarritoYEspera(empresaActiva, user?.id, sucursalActualId);
     sessionStorage.removeItem('pos_turno');
     sessionStorage.removeItem('pos_bloqueado');
@@ -574,7 +581,11 @@ export default function AppLayout() {
       return; // NO recargar — dejar que los useEffects redirigean
     }
     window.location.reload();
-  }, []);
+    // misEmpresas en deps a propósito: viene de un useQuery asíncrono y en el
+    // primer render todavía es [] — sin esta dependencia, useCallback([])
+    // congela ESE [] para siempre (nunca ve la lista real), que es justo lo
+    // que dejaba a mis_empresas sin persistir arriba.
+  }, [misEmpresas]);
 
   // ── Sincronizar empresaActiva cuando está null y cargan las empresas ────────
   useEffect(() => {
