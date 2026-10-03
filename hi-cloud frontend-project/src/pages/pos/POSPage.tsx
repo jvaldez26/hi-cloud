@@ -12473,7 +12473,12 @@ export default function POSPage() {
       </Modal>
 
       {/* ── Payment modal ─────────────────────────────────────────────────────── */}
+      {/* className="hc-modal-cobro": identificador explícito para que el atajo de
+          Enter (debeIgnorarEnterGlobal) distinga ESTE modal — donde Enter SÍ debe
+          cobrar — de cualquier otro apilado encima (supervisor, cliente, etc.),
+          donde Enter NO debe cobrar. Ver confirmarCobroEnterGate.ts. */}
       <Modal maskClosable={false} open={showPago} onCancel={() => { setShowPago(false); resetDatosComprador(); }} footer={null} width={420} centered closable={false} destroyOnClose
+        className="hc-modal-cobro"
         styles={{ body: { padding: 0 }, content: { borderRadius: 20, overflow: 'hidden', padding: 0, background: C.card } }}>
         <div style={{ display: 'flex', flexDirection: 'column', height: 'min(90vh,590px)', overflow: 'hidden', fontFamily: "'Inter',sans-serif" }}>
 

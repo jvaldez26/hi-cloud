@@ -1,15 +1,22 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import { CLASE_MODAL_COBRO } from './confirmarCobroEnterGate';
 
 /**
- * Regresión del bug de seguridad real (reporte de Bellamar González — VENTAS
- * DIVERSAS ELIDO): el listener global de Enter para "Confirmar cobro" tenía
- * su PROPIA copia de ventaMut.mutate() — un segundo camino de código que
- * nunca pasaba por requiereSupervisorVentaCredito / supervisor.requireSupervisor.
- * Presionar Enter mientras el modal de Autorización de Supervisor estaba
- * abierto creaba la factura en paralelo, sin esperar — con clave correcta o
- * incorrecta, daba igual.
+ * Regresión #1 — bug de seguridad real (reporte de Bellamar González —
+ * VENTAS DIVERSAS ELIDO): el listener global de Enter para "Confirmar
+ * cobro" tenía su PROPIA copia de ventaMut.mutate() — un segundo camino de
+ * código que nunca pasaba por requiereSupervisorVentaCredito /
+ * supervisor.requireSupervisor. Presionar Enter mientras el modal de
+ * Autorización de Supervisor estaba abierto creaba la factura en paralelo,
+ * sin esperar — con clave correcta o incorrecta, daba igual.
+ *
+ * Regresión #2 — el fix de la #1 (ignorar Enter dentro de CUALQUIER
+ * `.ant-modal`) rompió el cobro para TODAS las cajas la misma noche: la
+ * propia pantalla de cobro ES un `.ant-modal`. El fix real distingue el
+ * modal de cobro (CLASE_MODAL_COBRO) de cualquier OTRO modal apilado
+ * encima — ver confirmarCobroEnterGate.ts para el comportamiento exacto.
  *
  * Una prueba de comportamiento (render completo de POSPage + simular teclas)
  * exigiría mockear la decena larga de llamadas a la API que dispara al
@@ -17,13 +24,12 @@ import path from 'node:path';
  * pre-facturas...) — desproporcionado para lo que hay que probar, y frágil
  * (un mock incompleto hace que ni siquiera monte, sin decir nada del bug
  * real). En cambio, esto prueba el INVARIANTE ESTRUCTURAL que habría
- * atajado el bug real: tiene que existir UN SOLO lugar en todo el archivo
- * que llame a ventaMut.mutate(), y tiene que ser dentro de confirmarCobro()
- * — el único camino con todas las validaciones. Si alguien agrega mañana un
- * atajo nuevo (otra F-key, otro listener) que llame a ventaMut.mutate() por
- * su cuenta, este test lo atrapa antes de que llegue a producción — sin
- * importar qué tecla sea ni si el modal estaba abierto o cerrado cuando se
- * escribió el atajo nuevo.
+ * atajado ambos bugs reales: tiene que existir UN SOLO lugar en todo el
+ * archivo que llame a ventaMut.mutate(), tiene que ser dentro de
+ * confirmarCobro(), el atajo de Enter tiene que delegar en
+ * debeIgnorarEnterGlobal() (probado aparte, por comportamiento, en
+ * confirmarCobroEnterGate.test.ts), y el modal de cobro tiene que llevar la
+ * MISMA clase que ese gate reconoce como "sí cobra aquí".
  */
 describe('POSPage — confirmarCobro() es el ÚNICO camino que confirma el cobro', () => {
   const ruta = path.resolve(__dirname, './POSPage.tsx');
@@ -62,7 +68,7 @@ describe('POSPage — confirmarCobro() es el ÚNICO camino que confirma el cobro
     }
   });
 
-  it('el atajo de Enter del carrito delega en confirmarCobro() y se ignora si el evento viene de dentro de un modal (el bug real)', () => {
+  it('el atajo de Enter del carrito existe y delega SIEMPRE en confirmarCobro() — nunca llama a ventaMut.mutate() por su cuenta', () => {
     const inicio = fuente.indexOf('// Enter / NumpadEnter confirma el cobro cuando el modal de pago está abierto');
     expect(inicio).toBeGreaterThan(-1);
 
@@ -73,6 +79,18 @@ describe('POSPage — confirmarCobro() es el ÚNICO camino que confirma el cobro
     expect(bloque).toContain('confirmarCobro();');
     expect(bloque).toContain('debeIgnorarEnterGlobal(');
     expect(bloque).not.toContain('ventaMut.mutate(');
+  });
+
+  it('confirmarCobroEnterGate.ts (el gate probado por comportamiento) está importado — el listener no reimplementa su propia lógica de "¿qué modal es este?"', () => {
+    expect(fuente).toMatch(/import \{ debeIgnorarEnterGlobal \} from '\.\/confirmarCobroEnterGate';/);
+  });
+
+  it('el modal de cobro lleva CLASE_MODAL_COBRO — la regresión #2 real: sin esto, Enter queda ignorado también DENTRO de la pantalla de cobro', () => {
+    const inicioModal = fuente.indexOf('{/* ── Payment modal');
+    expect(inicioModal).toBeGreaterThan(-1);
+    // La etiqueta <Modal ...> de la pantalla de cobro, no cualquier otro <Modal> del archivo.
+    const bloqueModal = fuente.slice(inicioModal, inicioModal + 600);
+    expect(bloqueModal).toContain(`className="${CLASE_MODAL_COBRO}"`);
   });
 
   it('el botón "Confirmar cobro" también delega en confirmarCobro() — un solo camino para los dos disparadores', () => {

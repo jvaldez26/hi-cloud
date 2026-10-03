@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { debeIgnorarEnterGlobal } from './confirmarCobroEnterGate';
+import { debeIgnorarEnterGlobal, CLASE_MODAL_COBRO } from './confirmarCobroEnterGate';
+
+function crearModal(clase: string): HTMLDivElement {
+  const modal = document.createElement('div');
+  modal.className = clase;
+  document.body.appendChild(modal);
+  return modal;
+}
 
 describe('debeIgnorarEnterGlobal', () => {
   it('null → no ignora (comportamiento previo, nunca debería pasar en producción)', () => {
@@ -18,27 +25,35 @@ describe('debeIgnorarEnterGlobal', () => {
     input.remove();
   });
 
-  it('el campo de PIN del modal de Autorización de Supervisor → se ignora (el bug real)', () => {
-    const modal = document.createElement('div');
-    modal.className = 'ant-modal';
+  it('dentro de la pantalla de cobro (.ant-modal.hc-modal-cobro) → NO se ignora — regresión real: Enter dejó de cobrar en producción', () => {
+    const modal = crearModal(`ant-modal ${CLASE_MODAL_COBRO}`);
+    const botonConfirmar = document.createElement('button');
+    modal.appendChild(botonConfirmar);
+
+    expect(debeIgnorarEnterGlobal(botonConfirmar)).toBe(false);
+
+    modal.remove();
+  });
+
+  it('el campo de PIN del modal de Autorización de Supervisor (SIN la clase del modal de cobro) → se ignora (el bug original)', () => {
+    const modal = crearModal('ant-modal');
     const input = document.createElement('input');
     modal.appendChild(input);
-    document.body.appendChild(modal);
 
     expect(debeIgnorarEnterGlobal(input)).toBe(true);
 
     modal.remove();
   });
 
-  it('cualquier campo dentro de CUALQUIER .ant-modal (no solo el de supervisor) → se ignora', () => {
-    const modal = document.createElement('div');
-    modal.className = 'ant-modal otra-clase-cualquiera';
+  it('cualquier otro modal apilado ENCIMA del de cobro (cliente, nota de crédito...) → se ignora', () => {
+    const modalCobro = crearModal(`ant-modal ${CLASE_MODAL_COBRO}`);
+    const modalCliente = crearModal('ant-modal'); // portal aparte, hermano del de cobro — mismo z-index que produce antd
     const select = document.createElement('div'); // antd Select no es un <input>
-    modal.appendChild(select);
-    document.body.appendChild(modal);
+    modalCliente.appendChild(select);
 
     expect(debeIgnorarEnterGlobal(select)).toBe(true);
 
-    modal.remove();
+    modalCobro.remove();
+    modalCliente.remove();
   });
 });
