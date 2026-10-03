@@ -230,14 +230,12 @@ export default function FacturaDetailPage() {
               folio={factura.folio}
               sendPdf
             />
-            {estado !== 'cancelada' && (
-              <EnviarPorXlinkButton
-                tipoDocumento="factura_credito"
-                documentoId={factura.id}
-                elegible={(factura as any).tipoPago?.toUpperCase() === 'CREDITO'}
-                motivoNoElegible="HiCloud Xlink solo envía facturas a crédito"
-              />
-            )}
+            {/* Siempre se muestra — nunca oculto sin explicación. Si no es
+                elegible (cancelada, no es a crédito, e-CF no aceptado, etc.),
+                el propio botón se ve deshabilitado con el motivo concreto
+                (viene de XlinkElegibilidadService, no de una condición local). */}
+            <EnviarPorXlinkButton tipoDocumento="factura_credito" documentoId={factura.id} />
+
             {siguientes.map(sig => (
               <Popconfirm key={sig}
                 title={`¿Cambiar estado a "${sig.toUpperCase()}"?`}
