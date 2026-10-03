@@ -21,6 +21,34 @@ jobs:
       run:
         working-directory: hi-cloud backend-project/backend
 
+    # ── EXPERIMENTO (rama experimento/ci-postgres-real, NUNCA en main) ──────
+    # Postgres 18 real como services: para medir cuánto tarda y cuántos de
+    # los specs gateados por TIENE_BD (`!!process.env['DB_HOST']`) corren de
+    # verdad en CI en vez de auto-skipearse. Ver scripts/ci/schema-baseline.sql
+    # para el origen del fixture y sus límites.
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: hicloud_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: hicloud_ci
+      DB_SSL: 'false'
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,6 +67,27 @@ jobs:
       - name: TypeScript check
         run: npx tsc --noEmit
 
+      - name: Build
+        run: npm run build
+        env:
+          NODE_OPTIONS: '--max-old-space-size=3072'
+
+      # ── EXPERIMENTO — Cargar fixture de esquema ─────────────────────────
+      # schema-baseline.sql: dump --schema-only de hicloud_test (BD de
+      # pruebas LOCAL, Postgres 17 — NO es un dump de producción, no existe
+      # uno guardado). migrations-tracking.sql: solo las filas de
+      # typeorm_migrations (metadata de TypeORM — nombre/timestamp de
+      # archivos de migración ya públicos en git, CERO dato de negocio) para
+      # que migration:run sepa cuáles YA están "incluidas" en el fixture y
+      # solo aplique de verdad las posteriores al dump.
+      - name: "EXPERIMENTO — Cargar esquema baseline (fixture, ver scripts/ci/schema-baseline.sql)"
+        run: |
+          PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USERNAME -d $DB_NAME -v ON_ERROR_STOP=1 -f scripts/ci/schema-baseline.sql
+          PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USERNAME -d $DB_NAME -v ON_ERROR_STOP=1 -f scripts/ci/migrations-tracking.sql
+
+      - name: "EXPERIMENTO — Migrar (aplicar de verdad las migraciones posteriores al fixture)"
+        run: npx typeorm-ts-node-commonjs -d src/data-source.ts migration:run
+
       # ── Suite de tests ────────────────────────────────────────────────────
       # Sin este paso los tests no protegian nada: se escribian, se verificaban
       # en rojo en local, y CI no los ejecutaba nunca.
@@ -52,8 +101,8 @@ jobs:
       # Va en este job y no en uno aparte: la suite tarda ~15s en local y el
       # job entero esta en ~1min, muy por debajo del timeout-minutes de 10.
       #
-      # Los specs que necesitan BD o credenciales (DB_HOST, MSeller) se
-      # auto-skipean cuando no estan, asi que no hace falta darle secretos.
+      # EXPERIMENTO: con DB_HOST puesto arriba, los specs gateados por
+      # TIENE_BD corren de verdad contra el Postgres 18 del service.
       - name: Tests
         run: npm test -- --ci
 
@@ -63,11 +112,6 @@ jobs:
 
       - name: Security patterns check
         run: bash scripts/security-check.sh
-
-      - name: Build
-        run: npm run build
-        env:
-          NODE_OPTIONS: '--max-old-space-size=3072'
 
       # ── CAPA 4: Detectar migraciones SQL en seeds/ ────────────────────────
       # Las migraciones DEBEN ser clases TypeScript en src/migrations/
