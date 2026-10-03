@@ -4,6 +4,7 @@ import { DataSource, EntityManager } from 'typeorm';
 import { ENCFGeneratorService } from './encf-generator.service';
 import { SecuenciaECF } from '../entities/secuencia-ecf.entity';
 import { TipoECF } from '../entities/tipo-ecf.entity';
+import { User } from '../../users/users.entity';
 import {
   EcfSecuenciaSinConfigError,
   EcfSecuenciaAgotadaError,
@@ -38,7 +39,7 @@ function makeSecuencia(opts: {
   } as SecuenciaECF;
 }
 
-function makeManagerMock(secuencia: SecuenciaECF | null) {
+function makeManagerMock(secuencia: SecuenciaECF | null, tipo: TipoECF | null = makeTipo('E32', 'E32')) {
   const updates: { id: number; data: any }[] = [];
   return {
     createQueryBuilder: jest.fn().mockReturnValue({
@@ -52,7 +53,10 @@ function makeManagerMock(secuencia: SecuenciaECF | null) {
       updates.push({ id, data });
       return Promise.resolve();
     }),
-    findOne: jest.fn().mockResolvedValue(makeTipo('E32', 'E32')),
+    // generateNextEnTransaccion busca el tipo con manager.findOne (no
+    // this.tipoRepo) — ver encf-generator.service.ts: debe correr en la
+    // MISMA conexión/transacción, nunca pedir una segunda del pool.
+    findOne: jest.fn().mockResolvedValue(tipo),
     _updates: updates,
   };
 }
@@ -63,7 +67,7 @@ async function buildService(
   tipoResult: TipoECF | null,
   secResult: SecuenciaECF | null,
 ) {
-  const manager = makeManagerMock(secResult);
+  const manager = makeManagerMock(secResult, tipoResult);
 
   const module: TestingModule = await Test.createTestingModule({
     providers: [
@@ -246,8 +250,16 @@ const TIENE_BD = !!process.env['DB_HOST'];
   let dataSource: DataSource;
 
   beforeAll(async () => {
-    const { DataSource: DS } = await import('typeorm');
-    dataSource = new DS({
+    // DataSource ya está importado estáticamente arriba (línea 3) — el
+    // `await import('typeorm')` dinámico que había aquí era redundante y,
+    // corriendo junto a otros specs de src/ecf en el mismo worker de Jest
+    // (--runInBand), disparaba intermitentemente "A dynamic import callback
+    // was invoked without --experimental-vm-modules" (Node/ts-jest no
+    // esperan un import() dinámico real en un contexto CJS). Nunca falló en
+    // CI (sin DB_HOST, este describe entero se salta) ni corriendo este
+    // archivo solo — solo al mezclar workers con DB_HOST configurado. No es
+    // un bug del generador de e-NCF: es este fixture.
+    dataSource = new DataSource({
       type:     'postgres',
       host:     process.env['DB_HOST'],
       port:     Number(process.env['DB_PORT'] ?? 5432),
@@ -255,7 +267,11 @@ const TIENE_BD = !!process.env['DB_HOST'];
       password: process.env['DB_PASSWORD'],
       database: process.env['DB_NAME'],
       ssl:      process.env['DB_SSL'] === 'true' ? { rejectUnauthorized: false } : false,
-      entities: [SecuenciaECF, TipoECF],
+      // SecuenciaECF tiene @ManyToOne(() => User) — TypeORM necesita el
+      // lado inverso registrado para construir los metadatos, aunque este
+      // test nunca lo use. Sin User aquí: "Entity metadata for
+      // SecuenciaECF#user was not found" al initialize().
+      entities: [SecuenciaECF, TipoECF, User],
     });
     await dataSource.initialize();
 

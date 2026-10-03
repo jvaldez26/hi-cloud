@@ -67,8 +67,16 @@ export class ENCFGeneratorService {
     empresaId: number,
     tipoEcf: number,
   ): Promise<string> {
-    // Buscar el tipo para obtener su ID y prefijo
-    const tipo = await this.tipoRepo.findOne({
+    // Buscar el tipo para obtener su ID y prefijo — con `manager`, NO con
+    // this.tipoRepo: este método corre dentro de dataSource.transaction()
+    // (ver generateNext), que ya reservó una conexión del pool. Usar el
+    // repositorio inyectado aquí pediría una SEGUNDA conexión desde DENTRO
+    // de la transacción — con concurrencia alta (100 llamadas en paralelo,
+    // pool max:15 en producción, ver app.module.ts) cada transacción queda
+    // esperando una conexión que nunca llega porque el pool entero ya está
+    // tomado por transacciones en el mismo punto — deadlock por agotamiento
+    // del pool. Detectado por el test de concurrencia de este archivo.
+    const tipo = await manager.findOne(TipoECF, {
       where: { codigo: `E${String(tipoEcf).padStart(2, '0')}` },
     });
     const tipoECFId = tipo?.id;
