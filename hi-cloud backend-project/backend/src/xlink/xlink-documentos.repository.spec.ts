@@ -42,69 +42,73 @@ describe('XlinkDocumentosRepository — aislamiento por eid (sin empresaId propi
     );
   });
 
-  it('buscarPorId(): filtra por (origenEmpresaId = eid OR destinoEmpresaId = eid)', async () => {
+  it('buscarPorId(): filtra por (origenEmpresaId = eid OR destinoEmpresaId = eid), solo activos', async () => {
     const repoMock = makeRepoMock();
     const repo = new XlinkDocumentosRepository(repoMock as any, makeTenantSvc(7) as any);
 
     await repo.buscarPorId(42);
 
     expect(repoMock.findOne).toHaveBeenCalledWith({
-      where: [{ id: 42, origenEmpresaId: 7 }, { id: 42, destinoEmpresaId: 7 }],
+      where: [{ id: 42, origenEmpresaId: 7, isActive: true }, { id: 42, destinoEmpresaId: 7, isActive: true }],
     });
   });
 
-  it('buscarPorIdComoDestino(): filtra SOLO por destinoEmpresaId', async () => {
+  it('buscarPorIdComoDestino(): filtra SOLO por destinoEmpresaId, solo activos', async () => {
     const repoMock = makeRepoMock();
     const repo = new XlinkDocumentosRepository(repoMock as any, makeTenantSvc(7) as any);
 
     await repo.buscarPorIdComoDestino(42);
 
-    expect(repoMock.findOne).toHaveBeenCalledWith({ where: { id: 42, destinoEmpresaId: 7 } });
+    expect(repoMock.findOne).toHaveBeenCalledWith({ where: { id: 42, destinoEmpresaId: 7, isActive: true } });
   });
 
-  it('buscarPorIdComoOrigen(): filtra SOLO por origenEmpresaId', async () => {
+  it('buscarPorIdComoOrigen(): filtra SOLO por origenEmpresaId, solo activos', async () => {
     const repoMock = makeRepoMock();
     const repo = new XlinkDocumentosRepository(repoMock as any, makeTenantSvc(7) as any);
 
     await repo.buscarPorIdComoOrigen(42);
 
-    expect(repoMock.findOne).toHaveBeenCalledWith({ where: { id: 42, origenEmpresaId: 7 } });
+    expect(repoMock.findOne).toHaveBeenCalledWith({ where: { id: 42, origenEmpresaId: 7, isActive: true } });
   });
 
-  it('buscarPorOrigenParaAnular(): filtra por origenEmpresaId + tipoDocumento + documentoOrigenId', async () => {
+  it('buscarPorOrigenParaAnular(): filtra por origenEmpresaId + tipoDocumento + documentoOrigenId, solo activos', async () => {
     const repoMock = makeRepoMock();
     const repo = new XlinkDocumentosRepository(repoMock as any, makeTenantSvc(7) as any);
 
     await repo.buscarPorOrigenParaAnular(XlinkTipoDocumento.FACTURA_CREDITO, 100);
 
     expect(repoMock.findOne).toHaveBeenCalledWith({
-      where: { origenEmpresaId: 7, tipoDocumento: XlinkTipoDocumento.FACTURA_CREDITO, documentoOrigenId: 100 },
+      where: { origenEmpresaId: 7, tipoDocumento: XlinkTipoDocumento.FACTURA_CREDITO, documentoOrigenId: 100, isActive: true },
     });
   });
 
-  it('buscarPorOrigenComoDestino(): filtra por destinoEmpresaId + origenEmpresaId + tipo/id origen', async () => {
+  it('buscarPorOrigenComoDestino(): filtra por destinoEmpresaId + origenEmpresaId + tipo/id origen, solo activos', async () => {
     const repoMock = makeRepoMock();
     const repo = new XlinkDocumentosRepository(repoMock as any, makeTenantSvc(7) as any);
 
     await repo.buscarPorOrigenComoDestino(3, XlinkTipoDocumento.FACTURA_CREDITO, 55);
 
     expect(repoMock.findOne).toHaveBeenCalledWith({
-      where: { destinoEmpresaId: 7, origenEmpresaId: 3, tipoDocumento: XlinkTipoDocumento.FACTURA_CREDITO, documentoOrigenId: 55 },
+      where: { destinoEmpresaId: 7, origenEmpresaId: 3, tipoDocumento: XlinkTipoDocumento.FACTURA_CREDITO, documentoOrigenId: 55, isActive: true },
     });
   });
 
-  it('buscarPorDocumentoGeneradoComoDestino(): filtra por destinoEmpresaId + tipo/id generado', async () => {
+  it('buscarPorDocumentoGeneradoComoDestino(): filtra por destinoEmpresaId + tipo/id generado, solo activos', async () => {
     const repoMock = makeRepoMock();
     const repo = new XlinkDocumentosRepository(repoMock as any, makeTenantSvc(7) as any);
 
     await repo.buscarPorDocumentoGeneradoComoDestino('cotizacion', 55);
 
     expect(repoMock.findOne).toHaveBeenCalledWith({
-      where: { destinoEmpresaId: 7, documentoGeneradoTipo: 'cotizacion', documentoGeneradoId: 55 },
+      where: { destinoEmpresaId: 7, documentoGeneradoTipo: 'cotizacion', documentoGeneradoId: 55, isActive: true },
     });
   });
 
-  it('existePorOrigen(): cuenta solo dentro del origenEmpresaId del CLS', async () => {
+  // Bug real (auditoría HiCloud Xlink, 2026-10-03, Fase 1c): "retirar un envío"
+  // solo ponía isActive=false, pero NINGUNA consulta de este repositorio
+  // filtraba por isActive — el receptor lo seguía viendo, contando, y podía
+  // recibirlo igual. Ahora todas las consultas lo excluyen.
+  it('existePorOrigen(): cuenta solo activos — un envío retirado no bloquea un reenvío', async () => {
     const repoMock = makeRepoMock();
     repoMock.count.mockResolvedValue(1);
     const repo = new XlinkDocumentosRepository(repoMock as any, makeTenantSvc(7) as any);
@@ -113,11 +117,11 @@ describe('XlinkDocumentosRepository — aislamiento por eid (sin empresaId propi
 
     expect(existe).toBe(true);
     expect(repoMock.count).toHaveBeenCalledWith({
-      where: { origenEmpresaId: 7, tipoDocumento: XlinkTipoDocumento.FACTURA_CREDITO, documentoOrigenId: 100 },
+      where: { origenEmpresaId: 7, tipoDocumento: XlinkTipoDocumento.FACTURA_CREDITO, documentoOrigenId: 100, isActive: true },
     });
   });
 
-  it('contarPendientesComoDestino(): cuenta solo pendientes del destinoEmpresaId del CLS', async () => {
+  it('contarPendientesComoDestino(): cuenta solo pendientes activos del destinoEmpresaId del CLS', async () => {
     const repoMock = makeRepoMock();
     repoMock.count.mockResolvedValue(3);
     const repo = new XlinkDocumentosRepository(repoMock as any, makeTenantSvc(7) as any);
@@ -126,8 +130,47 @@ describe('XlinkDocumentosRepository — aislamiento por eid (sin empresaId propi
 
     expect(n).toBe(3);
     expect(repoMock.count).toHaveBeenCalledWith({
-      where: { destinoEmpresaId: 7, estadoReceptor: XlinkEstadoReceptor.PENDIENTE },
+      where: { destinoEmpresaId: 7, estadoReceptor: XlinkEstadoReceptor.PENDIENTE, isActive: true },
     });
+  });
+
+  it('bloquearPorIdComoDestino(): el QueryBuilder filtra también por isActive = true', async () => {
+    const repoMock = makeRepoMock();
+    const qb: any = {
+      where: jest.fn().mockReturnThis(),
+      setLock: jest.fn().mockReturnThis(),
+      getOne: jest.fn().mockResolvedValue(null),
+    };
+    const manager: any = { getRepository: jest.fn(() => ({ createQueryBuilder: jest.fn(() => qb) })) };
+    const repo = new XlinkDocumentosRepository(repoMock as any, makeTenantSvc(7) as any);
+
+    await repo.bloquearPorIdComoDestino(42, manager);
+
+    expect(qb.where).toHaveBeenCalledWith(
+      expect.stringContaining('x."isActive" = true'),
+      { id: 42, destinoEmpresaId: 7 },
+    );
+  });
+
+  it('listar() (vía listarComoDestino/listarComoOrigen): el QueryBuilder filtra también por isActive = true', async () => {
+    const repoMock = makeRepoMock();
+    const qb: any = {
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+    };
+    repoMock.createQueryBuilder.mockReturnValue(qb);
+    const repo = new XlinkDocumentosRepository(repoMock as any, makeTenantSvc(7) as any);
+
+    await repo.listarComoDestino({});
+
+    expect(qb.where).toHaveBeenCalledWith(
+      expect.stringContaining('x."isActive" = true'),
+      { eid: 7 },
+    );
   });
 
   it('assertPerteneceAEmpresaActual(): rechaza un documento que no es ni origen ni destino de la empresa activa', () => {
@@ -152,6 +195,50 @@ describe('XlinkDocumentosRepository — aislamiento por eid (sin empresaId propi
     const doc = { origenEmpresaId: 1, destinoEmpresaId: 2 } as any;
 
     expect(() => repo.assertPerteneceAEmpresaActual(doc)).not.toThrow();
+  });
+
+  // Fase 1e: la pestaña "Procesados" necesita 'procesado' Y 'procesado_manual'
+  // juntos — antes procesado_manual nunca aparecía en ninguna vista.
+  it('listar() con estadoReceptor como ARRAY: usa IN (...), no igualdad exacta', async () => {
+    const repoMock = makeRepoMock();
+    const qb: any = {
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+    };
+    repoMock.createQueryBuilder.mockReturnValue(qb);
+    const repo = new XlinkDocumentosRepository(repoMock as any, makeTenantSvc(7) as any);
+
+    await repo.listarComoDestino({ estadoReceptor: [XlinkEstadoReceptor.PROCESADO, XlinkEstadoReceptor.PROCESADO_MANUAL] });
+
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      'x."estadoReceptor" IN (:...estadoReceptor)',
+      { estadoReceptor: [XlinkEstadoReceptor.PROCESADO, XlinkEstadoReceptor.PROCESADO_MANUAL] },
+    );
+  });
+
+  it('listar() con estadoReceptor como valor único: sigue usando igualdad exacta (no rompe lo existente)', async () => {
+    const repoMock = makeRepoMock();
+    const qb: any = {
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+    };
+    repoMock.createQueryBuilder.mockReturnValue(qb);
+    const repo = new XlinkDocumentosRepository(repoMock as any, makeTenantSvc(7) as any);
+
+    await repo.listarComoDestino({ estadoReceptor: XlinkEstadoReceptor.DESCARTADO });
+
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      'x."estadoReceptor" = :estadoReceptor',
+      { estadoReceptor: XlinkEstadoReceptor.DESCARTADO },
+    );
   });
 });
 

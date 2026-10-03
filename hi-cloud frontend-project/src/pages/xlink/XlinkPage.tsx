@@ -128,7 +128,9 @@ export default function XlinkPage() {
         defaultActiveKey={xlinkVisible ? 'porProcesar' : 'activar'}
         items={[
           { key: 'porProcesar', label: <Badge count={pendientes?.total ?? 0} size="small" offset={[8, -2]}>Por Procesar</Badge>, children: <RecibidosTab estado="pendiente" /> },
-          { key: 'procesados', label: 'Procesados', children: <RecibidosTab estado="procesado" /> },
+          // procesado_manual se muestra JUNTO con procesado — antes desaparecía
+          // de toda vista del receptor al marcarlo manual (bug real, Fase 1e).
+          { key: 'procesados', label: 'Procesados', children: <RecibidosTab estado={['procesado', 'procesado_manual']} /> },
           { key: 'descartados', label: 'Descartados', children: <RecibidosTab estado="descartado" /> },
           { key: 'enviados', label: 'Documentos Enviados', children: <EnviadosTab /> },
           { key: 'directorio', label: 'Directorio de Empresas', children: <DirectorioTab /> },
@@ -310,7 +312,7 @@ function DirectorioTab() {
 
 // ── Recibidos (Por Procesar / Procesados / Descartados) ─────────────────────
 
-function RecibidosTab({ estado }: { estado: XlinkEstadoReceptor }) {
+function RecibidosTab({ estado }: { estado: XlinkEstadoReceptor | XlinkEstadoReceptor[] }) {
   const qc = useQueryClient();
   const f = useFiltrosComunes();
   const [page, setPage] = useState(1);
@@ -319,6 +321,8 @@ function RecibidosTab({ estado }: { estado: XlinkEstadoReceptor }) {
   const [tipoRetencionIsrMasivo, setTipoRetencionIsrMasivo] = useState<'si' | 'no' | undefined>();
   const [config, setConfig] = useState<Record<number, { tipoGasto606?: string; tipoRetencionIsr?: 'si' | 'no' }>>({});
   const [homologacion, setHomologacion] = useState<{ contraparteXlinkId: string; faltantes: FaltanteMapeo[] } | null>(null);
+
+  const esPendiente = estado === 'pendiente';
 
   const { data, isFetching } = useQuery({
     queryKey: ['xlink-recibidos', estado, page, f.rango[0].format('YYYY-MM-DD'), f.rango[1].format('YYYY-MM-DD'), f.numeroOrigen, f.ncfOrigen, f.tipoDocumento],
@@ -361,14 +365,17 @@ function RecibidosTab({ estado }: { estado: XlinkEstadoReceptor }) {
   const marcarProcesadoMut = useMutation({
     mutationFn: (id: number) => xlinkApi.marcarProcesado(id),
     onSuccess: () => { message.success('Marcado como procesado'); invalidar(); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'No se pudo marcar como procesado'),
   });
   const descartarMut = useMutation({
     mutationFn: ({ id, motivo }: { id: number; motivo: string }) => xlinkApi.descartar(id, motivo),
     onSuccess: () => { message.success('Descartado'); invalidar(); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'No se pudo descartar'),
   });
   const regresarMut = useMutation({
     mutationFn: (id: number) => xlinkApi.regresarPendiente(id),
     onSuccess: () => { message.success('De regreso en Por Procesar'); invalidar(); },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'No se pudo regresar a pendiente'),
   });
 
   const aplicarASeleccionados = () => {
@@ -405,7 +412,7 @@ function RecibidosTab({ estado }: { estado: XlinkEstadoReceptor }) {
         <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
       </div>
 
-      {estado === 'pendiente' && (
+      {esPendiente && (
         <Space wrap style={{ marginBottom: 12 }}>
           <Select placeholder="Tipo de gasto (606)" style={{ width: 260 }} options={TIPO_GASTO_606} value={tipoGasto606Masivo} onChange={setTipoGasto606Masivo} allowClear />
           <Select placeholder="Retención ISR" style={{ width: 140 }} options={[{ value: 'si', label: 'Sí' }, { value: 'no', label: 'No' }]} value={tipoRetencionIsrMasivo} onChange={setTipoRetencionIsrMasivo} allowClear />
@@ -423,7 +430,7 @@ function RecibidosTab({ estado }: { estado: XlinkEstadoReceptor }) {
         loading={isFetching}
         dataSource={filas}
         pagination={{ current: page, pageSize: 10, total: data?.meta?.total ?? 0, onChange: setPage }}
-        rowSelection={estado === 'pendiente' ? { selectedRowKeys: seleccionados, onChange: (k) => setSeleccionados(k as number[]) } : undefined}
+        rowSelection={esPendiente ? { selectedRowKeys: seleccionados, onChange: (k) => setSeleccionados(k as number[]) } : undefined}
         scroll={{ x: 'max-content' }}
         tableLayout="fixed"
         columns={filterColumns<XlinkDocumentoFila>([
@@ -433,7 +440,7 @@ function RecibidosTab({ estado }: { estado: XlinkEstadoReceptor }) {
           { title: 'NCF', key: 'ncfOrigen', dataIndex: 'ncfOrigen', width: 150, render: (v) => v ?? '—' },
           { title: 'Fecha', key: 'fechaOrigen', dataIndex: 'fechaOrigen', width: 100, render: (v) => fmtFecha(v) },
           { title: 'Total', key: 'totalOrigen', dataIndex: 'totalOrigen', width: 110, render: (v) => fmt.money(v) },
-          ...(estado === 'pendiente' ? [{
+          ...(esPendiente ? [{
             title: 'Config.',
             key: 'config',
             width: 180,
@@ -453,17 +460,26 @@ function RecibidosTab({ estado }: { estado: XlinkEstadoReceptor }) {
               </Space>
             ) : <Text type="secondary">—</Text>,
           }] : []),
+          // Solo en Procesados (estado es un array ['procesado','procesado_manual'])
+          // — distingue lo que de verdad generó un documento de lo que se
+          // archivó a mano sin generar nada.
+          ...(Array.isArray(estado) ? [{
+            title: 'Estado', key: 'estadoReceptor', width: 150,
+            render: (_: unknown, r: XlinkDocumentoFila) => r.estadoReceptor === 'procesado_manual'
+              ? <Tag color="blue">Marcado manualmente</Tag>
+              : <Tag color="green">Procesado</Tag>,
+          }] : []),
           { title: 'Generó', key: 'numeroGenerado', dataIndex: 'numeroGenerado', width: 110, render: (v) => v ?? '—' },
           {
             title: '',
             key: 'acciones',
-            width: estado === 'pendiente' ? 230 : 100,
+            width: esPendiente ? 230 : 100,
             render: (_: unknown, r: XlinkDocumentoFila) => {
               const err = errorDe(r.id);
               return (
                 <Space>
                   {err && <Tooltip title={err}><WarningOutlined style={{ color: '#faad14' }} /></Tooltip>}
-                  {estado === 'pendiente' && (
+                  {esPendiente && (
                     <>
                       <Tooltip title="Recibir">
                         <Button size="small" icon={<CheckOutlined />} onClick={() => recibirMut.mutate([{ xlinkDocumentoId: r.id, ...config[r.id] }])} />
@@ -484,11 +500,27 @@ function RecibidosTab({ estado }: { estado: XlinkEstadoReceptor }) {
                   <Tooltip title="Ver PDF original">
                     <Button size="small" icon={<EyeOutlined />} onClick={() => window.open(xlinkApi.urlPdfOriginal(r.id), '_blank')} />
                   </Tooltip>
-                  {estado !== 'pendiente' && (
-                    <Tooltip title="Regresar a pendiente">
-                      <Button size="small" icon={<UndoOutlined />} onClick={() => regresarMut.mutate(r.id)} />
-                    </Tooltip>
-                  )}
+                  {!esPendiente && (() => {
+                    // El backend rechaza regresar un 'procesado' (ya generó un
+                    // documento del otro lado — regresarlo sin deshacer ese
+                    // documento dejaría el estado mintiendo). 'procesado_manual'
+                    // y 'descartado' sí pueden volver — nunca oculto, siempre
+                    // visible con el motivo si está deshabilitado.
+                    const yaGeneroDocumento = r.estadoReceptor === 'procesado';
+                    const boton = (
+                      <Button
+                        size="small" icon={<UndoOutlined />} disabled={yaGeneroDocumento}
+                        onClick={() => regresarMut.mutate(r.id)}
+                      />
+                    );
+                    return (
+                      <Tooltip title={yaGeneroDocumento
+                        ? `Ya generó ${r.numeroGenerado ?? 'un documento'} — no se puede regresar sin deshacerlo primero`
+                        : 'Regresar a pendiente'}>
+                        <span>{boton}</span>
+                      </Tooltip>
+                    );
+                  })()}
                 </Space>
               );
             },

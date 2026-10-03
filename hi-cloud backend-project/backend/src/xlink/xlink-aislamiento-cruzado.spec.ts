@@ -20,7 +20,7 @@ const EMPRESA_C = 3; // ajena — no es ni origen ni destino
 const DOCUMENTO_A_B = {
   id: 501, origenEmpresaId: EMPRESA_A, destinoEmpresaId: EMPRESA_B,
   tipoDocumento: XlinkTipoDocumento.FACTURA_CREDITO, documentoOrigenId: 10,
-  estadoReceptor: 'pendiente',
+  estadoReceptor: 'pendiente', isActive: true,
 };
 
 /** Repo TypeORM real, pero con datos en memoria — para probar el WHERE de verdad, no un mock que finge filtrar. */

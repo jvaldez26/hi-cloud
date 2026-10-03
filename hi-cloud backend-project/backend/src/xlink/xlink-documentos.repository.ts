@@ -16,7 +16,12 @@ export interface XlinkListaFiltros {
   tipoDocumento?: XlinkTipoDocumento;
   numeroOrigen?: string;
   ncfOrigen?: string;
-  estadoReceptor?: XlinkEstadoReceptor;
+  /**
+   * Un valor filtra exacto; un array filtra con IN — usado por la pestaña
+   * "Procesados" para mostrar 'procesado' Y 'procesado_manual' juntos (antes
+   * procesado_manual desaparecía de toda vista del receptor una vez marcado).
+   */
+  estadoReceptor?: XlinkEstadoReceptor | XlinkEstadoReceptor[];
 }
 
 /**
@@ -53,23 +58,30 @@ export class XlinkDocumentosRepository {
     return this.manager(manager).save(entity);
   }
 
-  /** Ya existe un xlink_documento publicado para este documento origen. */
+  /**
+   * Ya existe un xlink_documento publicado para este documento origen. Solo
+   * cuenta los ACTIVOS: un envío retirado (isActive=false) no debe bloquear
+   * un reenvío — "retirar" es un verdadero deshacer, no solo ocultarlo.
+   */
   async existePorOrigen(tipoDocumento: XlinkTipoDocumento, documentoOrigenId: number): Promise<boolean> {
     const origenEmpresaId = this.tenantService.getEmpresaId();
-    const count = await this.repo.count({ where: { origenEmpresaId, tipoDocumento, documentoOrigenId } });
+    const count = await this.repo.count({ where: { origenEmpresaId, tipoDocumento, documentoOrigenId, isActive: true } });
     return count > 0;
   }
 
   /** Cualquiera de los dos lados (origen o destino) puede leerlo — ej. ver el PDF original. */
   async buscarPorId(id: number): Promise<XlinkDocumento | null> {
     const eid = this.tenantService.getEmpresaId();
-    return this.repo.findOne({ where: [{ id, origenEmpresaId: eid }, { id, destinoEmpresaId: eid }] });
+    return this.repo.findOne({ where: [
+      { id, origenEmpresaId: eid, isActive: true },
+      { id, destinoEmpresaId: eid, isActive: true },
+    ] });
   }
 
   /** Solo el lado DESTINO puede resolverlo (recibir/marcar procesado/descartar). */
   async buscarPorIdComoDestino(id: number, manager?: EntityManager): Promise<XlinkDocumento | null> {
     const destinoEmpresaId = this.tenantService.getEmpresaId();
-    return this.manager(manager).findOne({ where: { id, destinoEmpresaId } });
+    return this.manager(manager).findOne({ where: { id, destinoEmpresaId, isActive: true } });
   }
 
   /**
@@ -84,7 +96,7 @@ export class XlinkDocumentosRepository {
     return manager
       .getRepository(XlinkDocumento)
       .createQueryBuilder('x')
-      .where('x.id = :id AND x."destinoEmpresaId" = :destinoEmpresaId', { id, destinoEmpresaId })
+      .where('x.id = :id AND x."destinoEmpresaId" = :destinoEmpresaId AND x."isActive" = true', { id, destinoEmpresaId })
       .setLock('pessimistic_write')
       .getOne();
   }
@@ -92,7 +104,7 @@ export class XlinkDocumentosRepository {
   /** Solo el lado ORIGEN puede resolverlo (ej. DELETE /xlink/enviados/:id, anular). */
   async buscarPorIdComoOrigen(id: number): Promise<XlinkDocumento | null> {
     const origenEmpresaId = this.tenantService.getEmpresaId();
-    return this.repo.findOne({ where: { id, origenEmpresaId } });
+    return this.repo.findOne({ where: { id, origenEmpresaId, isActive: true } });
   }
 
   /**
@@ -107,7 +119,7 @@ export class XlinkDocumentosRepository {
     documentoOrigenId: number,
   ): Promise<XlinkDocumento | null> {
     const origenEmpresaId = this.tenantService.getEmpresaId();
-    return this.repo.findOne({ where: { origenEmpresaId, tipoDocumento, documentoOrigenId } });
+    return this.repo.findOne({ where: { origenEmpresaId, tipoDocumento, documentoOrigenId, isActive: true } });
   }
 
   async listarComoDestino(filtros: XlinkListaFiltros) {
@@ -122,13 +134,17 @@ export class XlinkDocumentosRepository {
     const eid = this.tenantService.getEmpresaId();
     const { page = 1, limit = 10, desde, hasta, tipoDocumento, numeroOrigen, ncfOrigen, estadoReceptor } = filtros;
 
-    const qb = this.repo.createQueryBuilder('x').where(`x."${lado}" = :eid`, { eid });
+    const qb = this.repo.createQueryBuilder('x').where(`x."${lado}" = :eid AND x."isActive" = true`, { eid });
     if (desde)          qb.andWhere('x."fechaOrigen" >= :desde', { desde });
     if (hasta)          qb.andWhere('x."fechaOrigen" <= :hasta', { hasta });
     if (tipoDocumento)  qb.andWhere('x."tipoDocumento" = :tipoDocumento', { tipoDocumento });
     if (numeroOrigen)   qb.andWhere('x."numeroOrigen" ILIKE :numeroOrigen', { numeroOrigen: `%${numeroOrigen}%` });
     if (ncfOrigen)      qb.andWhere('x."ncfOrigen" ILIKE :ncfOrigen', { ncfOrigen: `%${ncfOrigen}%` });
-    if (estadoReceptor) qb.andWhere('x."estadoReceptor" = :estadoReceptor', { estadoReceptor });
+    if (Array.isArray(estadoReceptor)) {
+      if (estadoReceptor.length > 0) qb.andWhere('x."estadoReceptor" IN (:...estadoReceptor)', { estadoReceptor });
+    } else if (estadoReceptor) {
+      qb.andWhere('x."estadoReceptor" = :estadoReceptor', { estadoReceptor });
+    }
 
     const [data, total] = await qb
       .orderBy('x."publicadoEn"', 'DESC')
@@ -151,7 +167,7 @@ export class XlinkDocumentosRepository {
     documentoOrigenId: number,
   ): Promise<XlinkDocumento | null> {
     const destinoEmpresaId = this.tenantService.getEmpresaId();
-    return this.repo.findOne({ where: { destinoEmpresaId, origenEmpresaId, tipoDocumento, documentoOrigenId } });
+    return this.repo.findOne({ where: { destinoEmpresaId, origenEmpresaId, tipoDocumento, documentoOrigenId, isActive: true } });
   }
 
   /**
@@ -165,13 +181,13 @@ export class XlinkDocumentosRepository {
     documentoGeneradoId: number,
   ): Promise<XlinkDocumento | null> {
     const destinoEmpresaId = this.tenantService.getEmpresaId();
-    return this.repo.findOne({ where: { destinoEmpresaId, documentoGeneradoTipo, documentoGeneradoId } });
+    return this.repo.findOne({ where: { destinoEmpresaId, documentoGeneradoTipo, documentoGeneradoId, isActive: true } });
   }
 
   /** Conteo para el badge de "Por Procesar" del sidebar. */
   async contarPendientesComoDestino(): Promise<number> {
     const destinoEmpresaId = this.tenantService.getEmpresaId();
-    return this.repo.count({ where: { destinoEmpresaId, estadoReceptor: XlinkEstadoReceptor.PENDIENTE } });
+    return this.repo.count({ where: { destinoEmpresaId, estadoReceptor: XlinkEstadoReceptor.PENDIENTE, isActive: true } });
   }
 
   /**
