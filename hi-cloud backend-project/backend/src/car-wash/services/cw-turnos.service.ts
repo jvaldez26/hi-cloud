@@ -103,39 +103,52 @@ export class CwTurnosService implements OnModuleInit {
     return { ...turno, urlPublica: urlPublicaDe(turno.tokenPublico) };
   }
 
-  /** Para autollenar la recepción cuando la placa ya vino antes — cliente,
-   *  visitas y los datos del último turno (marca/color/tipo). */
+  /**
+   * Para autollenar la recepción cuando la placa ya vino antes — cliente,
+   * visitas y los datos del último turno (marca/color/tipo).
+   *
+   * Contrato de respuesta:
+   * - Placa nunca vista (sin turnos) → null.
+   * - Placa con al menos un turno → objeto completo, con `ultimoTurno`
+   *   SIEMPRE presente (nunca undefined) y `servicios` siempre un array
+   *   (vacío si el turno no llegó a tener servicios). `clienteNombre`/
+   *   `telefono` pueden ser null.
+   * - "Último turno" = el más reciente por createdAt SIN importar su estado
+   *   (incluye cancelados): marca/color/tipoVehiculo siguen siendo datos
+   *   reales del vehículo aunque ese turno en particular se cancelara, y son
+   *   justo lo que esta función existe para autocompletar.
+   *
+   * Una sola consulta (en vez de COUNT + SELECT separados) evita la
+   * condición de carrera que dejaba `ultimoTurno` undefined si el turno se
+   * borraba entre ambas queries — causa real del bug de Sentry 7769544465.
+   */
   async historialPorPlaca(empresaId: number, placa: string) {
     const placaNorm = placa.toUpperCase().trim();
     if (!placaNorm) return null;
 
-    const [{ visitas }] = await this.ds.query(
-      `SELECT COUNT(*)::int AS visitas FROM cw_turnos WHERE "empresaId" = $1 AND placa = $2`,
-      [empresaId, placaNorm],
-    );
-    if (visitas === 0) return null;
-
-    const [ultimo] = await this.ds.query(
+    const turnos = await this.ds.query(
       `SELECT t.*, c.nombre AS "clienteNombre"
          FROM cw_turnos t
          LEFT JOIN clientes c ON c.id = t."clienteId"
         WHERE t."empresaId" = $1 AND t.placa = $2
-        ORDER BY t."createdAt" DESC
-        LIMIT 1`,
+        ORDER BY t."createdAt" DESC`,
       [empresaId, placaNorm],
     );
+    if (turnos.length === 0) return null;
+
+    const ultimo = turnos[0];
     const servicios = await this.turnoServicioRepo.find({ where: { turnoId: ultimo.id } });
 
     return {
-      visitas,
+      visitas: turnos.length,
       clienteId: ultimo.clienteId ?? null,
       clienteNombre: ultimo.clienteNombre ?? null,
       telefono: ultimo.telefono ?? null,
       ultimoTurno: {
         fechaRD: ultimo.fechaRD,
-        marca: ultimo.marca,
-        color: ultimo.color,
-        tipoVehiculo: ultimo.tipoVehiculo,
+        marca: ultimo.marca ?? null,
+        color: ultimo.color ?? null,
+        tipoVehiculo: ultimo.tipoVehiculo ?? null,
         servicios: servicios.map(s => s.nombre),
       },
     };

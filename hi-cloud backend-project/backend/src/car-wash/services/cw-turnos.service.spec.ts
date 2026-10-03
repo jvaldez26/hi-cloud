@@ -335,4 +335,63 @@ describe('CwTurnosService (integración real contra Postgres)', () => {
     }
     expect(resumenDiaSiguiente.vehiculosHoy).toBe(0);
   });
+
+  describe('historialPorPlaca (hotfix Sentry 7769544465 — ultimoTurno nunca debe faltar)', () => {
+    it('placa que nunca vino → null', async () => {
+      if (!dbDisponible) return;
+      expect(await svc.historialPorPlaca(EMPRESA_A, 'NUNCA999')).toBeNull();
+    });
+
+    it('placa con un solo turno CANCELADO → sigue devolviendo ultimoTurno con los datos del vehículo', async () => {
+      if (!dbDisponible) return;
+      const lavado = await crearServicioDuracion(EMPRESA_A, 'Lavado hist cancel', 15);
+      const turno = await svc.crear(EMPRESA_A, SUCURSAL, USUARIO_ID, {
+        placa: 'HISTCAN1', tipoVehiculo: 'carro', servicioIds: [lavado.id], marca: 'Toyota', color: 'Rojo',
+      });
+      await svc.cambiarEstado(EMPRESA_A, turno.id, { estado: 'cancelado', motivo: 'prueba' }, USUARIO_ID, false);
+
+      const historial = await svc.historialPorPlaca(EMPRESA_A, 'HISTCAN1');
+      expect(historial).not.toBeNull();
+      expect(historial.visitas).toBe(1);
+      expect(historial.ultimoTurno).toBeTruthy();
+      expect(historial.ultimoTurno.marca).toBe('Toyota');
+      expect(historial.ultimoTurno.color).toBe('Rojo');
+      expect(Array.isArray(historial.ultimoTurno.servicios)).toBe(true);
+    });
+
+    it('placa con turno sin servicios (sin filas en cw_turno_servicios) → servicios es [], no undefined', async () => {
+      if (!dbDisponible) return;
+      const turno = await svc.crear(EMPRESA_A, SUCURSAL, USUARIO_ID, {
+        placa: 'HISTVACIO', tipoVehiculo: 'moto', servicioIds: [],
+      });
+      await ds.query(`DELETE FROM cw_turno_servicios WHERE "turnoId" = $1`, [turno.id]);
+
+      const historial = await svc.historialPorPlaca(EMPRESA_A, 'HISTVACIO');
+      expect(historial.ultimoTurno.servicios).toEqual([]);
+    });
+
+    it('placa con cliente asociado null → clienteId/clienteNombre null, nunca lanza', async () => {
+      if (!dbDisponible) return;
+      const turno = await svc.crear(EMPRESA_A, SUCURSAL, USUARIO_ID, {
+        placa: 'HISTSINCLI', tipoVehiculo: 'carro', servicioIds: [],
+      });
+      expect(turno.clienteId ?? null).toBeNull();
+
+      const historial = await svc.historialPorPlaca(EMPRESA_A, 'HISTSINCLI');
+      expect(historial.clienteId).toBeNull();
+      expect(historial.clienteNombre).toBeNull();
+      expect(historial.ultimoTurno).toBeTruthy();
+    });
+
+    it('visitas cuenta TODOS los turnos de la placa (incluidos cancelados) y ultimoTurno es el más reciente', async () => {
+      if (!dbDisponible) return;
+      await svc.crear(EMPRESA_A, SUCURSAL, USUARIO_ID, { placa: 'HISTMULTI', tipoVehiculo: 'carro', servicioIds: [], marca: 'Honda' });
+      await new Promise(r => setTimeout(r, 10));
+      await svc.crear(EMPRESA_A, SUCURSAL, USUARIO_ID, { placa: 'HISTMULTI', tipoVehiculo: 'carro', servicioIds: [], marca: 'Kia' });
+
+      const historial = await svc.historialPorPlaca(EMPRESA_A, 'HISTMULTI');
+      expect(historial.visitas).toBe(2);
+      expect(historial.ultimoTurno.marca).toBe('Kia');
+    });
+  });
 });

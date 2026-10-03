@@ -14,7 +14,16 @@ export const carWashApi = {
   // Turnos
   getTablero: () => api.get('/car-wash/turnos/tablero').then(r => r.data?.data ?? r.data),
   getHistorial: (filtros: Record<string, any>) => api.get('/car-wash/turnos', { params: filtros }).then(r => r.data?.data ?? r.data),
-  getHistorialPorPlaca: (placa: string) => api.get(`/car-wash/placas/${encodeURIComponent(placa)}/historial`).then(r => r.data?.data ?? r.data),
+  // OJO: a diferencia del resto de endpoints, el payload real aquí puede ser
+  // legítimamente `null` (placa nunca vista) — el patrón `r.data?.data ?? r.data`
+  // usado en el resto de este archivo falla en ese caso: `null ?? r.data`
+  // evalúa el lado derecho y termina devolviendo el sobre { success, data,
+  // timestamp } completo en vez de `null`. Causó el crash de Sentry 7769544465
+  // ("Cannot read properties of undefined (reading 'servicios')"), porque el
+  // objeto-sobre es truthy pero no tiene `ultimoTurno`. El ResponseInterceptor
+  // global (main.ts) envuelve TODAS las respuestas, así que `r.data.data` es
+  // siempre correcto aquí, sin necesidad de fallback.
+  getHistorialPorPlaca: (placa: string) => api.get(`/car-wash/placas/${encodeURIComponent(placa)}/historial`).then(r => r.data.data),
   getTurno: (id: number) => api.get(`/car-wash/turnos/${id}`).then(r => r.data?.data ?? r.data),
   crearTurno: (body: any) => api.post('/car-wash/turnos', body).then(r => r.data?.data ?? r.data),
   editarTurno: (id: number, body: any) => api.patch(`/car-wash/turnos/${id}`, body).then(r => r.data?.data ?? r.data),

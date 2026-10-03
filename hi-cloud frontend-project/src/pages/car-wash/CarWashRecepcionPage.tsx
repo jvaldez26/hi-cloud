@@ -9,6 +9,7 @@ import SelectClienteConAlta from '../../components/clientes/SelectClienteConAlta
 import { TIPOS_VEHICULO_CW, LABEL_TIPO_VEHICULO_CW, type TipoVehiculoCw } from './tipos';
 import { imprimirTicketCarWash } from './imprimirTicketCarWash';
 import { useDebounce } from '../../hooks/useDebounce';
+import ErrorBoundary from '../../components/ui/ErrorBoundary';
 
 const { Title, Paragraph } = Typography;
 
@@ -33,10 +34,10 @@ export default function CarWashRecepcionPage() {
     placaAutocompletada.current = placaDebounced;
     const actuales = form.getFieldsValue(['marca', 'color']);
     const cambios: Record<string, any> = {};
-    if (!actuales.marca && historialPlaca.ultimoTurno.marca) cambios.marca = historialPlaca.ultimoTurno.marca;
-    if (!actuales.color && historialPlaca.ultimoTurno.color) cambios.color = historialPlaca.ultimoTurno.color;
+    if (!actuales.marca && historialPlaca.ultimoTurno?.marca) cambios.marca = historialPlaca.ultimoTurno.marca;
+    if (!actuales.color && historialPlaca.ultimoTurno?.color) cambios.color = historialPlaca.ultimoTurno.color;
     if (Object.keys(cambios).length) form.setFieldsValue(cambios);
-    if (historialPlaca.ultimoTurno.tipoVehiculo) setTipoVehiculo(historialPlaca.ultimoTurno.tipoVehiculo);
+    if (historialPlaca.ultimoTurno?.tipoVehiculo) setTipoVehiculo(historialPlaca.ultimoTurno.tipoVehiculo);
     if (historialPlaca.clienteId) form.setFieldsValue({ clienteId: historialPlaca.clienteId });
     if (historialPlaca.telefono && !form.getFieldValue('telefono')) form.setFieldsValue({ telefono: historialPlaca.telefono });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -116,18 +117,23 @@ export default function CarWashRecepcionPage() {
           </Row>
 
           {historialPlaca && (
-            <Alert
-              type="info" showIcon style={{ marginBottom: 16 }}
-              message={`Esta placa ya vino antes (${historialPlaca.visitas} visita${historialPlaca.visitas === 1 ? '' : 's'})`}
-              description={
-                <>
-                  {historialPlaca.clienteNombre && <div>Cliente: {historialPlaca.clienteNombre}</div>}
-                  {historialPlaca.ultimoTurno.servicios?.length > 0 && (
-                    <div>Último servicio: {historialPlaca.ultimoTurno.servicios.join(', ')}</div>
-                  )}
-                </>
-              }
-            />
+            // Panel informativo: nunca debe tumbar la recepción. Si algo aquí
+            // falla igual (dato inesperado del backend), se oculta y reporta
+            // a Sentry, pero el formulario sigue funcionando.
+            <ErrorBoundary fallback={null}>
+              <Alert
+                type="info" showIcon style={{ marginBottom: 16 }}
+                message={`Esta placa ya vino antes (${historialPlaca.visitas} visita${historialPlaca.visitas === 1 ? '' : 's'})`}
+                description={
+                  <>
+                    {historialPlaca.clienteNombre && <div>Cliente: {historialPlaca.clienteNombre}</div>}
+                    {(historialPlaca.ultimoTurno?.servicios ?? []).length > 0 && (
+                      <div>Último servicio: {historialPlaca.ultimoTurno.servicios.join(', ')}</div>
+                    )}
+                  </>
+                }
+              />
+            </ErrorBoundary>
           )}
 
           <Row gutter={16}>
