@@ -244,6 +244,42 @@ export async function contarBorradoresDeUsuario(usuarioId: number | string | und
   }
 }
 
+/** Nombre legible por formKey — el aviso de logout lo usa para decir EN QUÉ formularios, no solo cuántos. */
+const NOMBRE_FORM_KEY: Record<string, string> = {
+  'factura':      'Factura',
+  'compra-nueva': 'Compra',
+};
+
+/** Nombre legible de un formKey — formKeys nuevos sin entrada en el mapa salen con su propio texto en vez de desaparecer del aviso. */
+export function nombreFormKey(formKey: string): string {
+  return NOMBRE_FORM_KEY[formKey] ?? formKey;
+}
+
+/**
+ * Qué formularios (no solo cuántos) tiene este usuario con un borrador
+ * vigente en esta empresa — el aviso de logout decía "Tienes 2 borradores
+ * sin guardar" sin decir de qué, dejando al usuario sin pista de dónde
+ * recuperarlos. Un mismo formKey puede repetirse si el usuario abrió el
+ * mismo formulario más de una vez (ej. dos facturas a medio llenar en
+ * pestañas distintas) — se listan todas, no se deduplica por formKey.
+ */
+export async function listarBorradoresDeUsuario(
+  usuarioId: number | string | undefined | null,
+  empresaId: number | string | undefined | null,
+): Promise<{ formKey: string; savedAt: number }[]> {
+  try {
+    const todos = await dbGetAll();
+    const ahora = Date.now();
+    const prefijo = `${usuarioId ?? '_'}:${empresaId ?? '_'}:`;
+    return todos
+      .filter(s => esSnapshotValido(s) && s.key.startsWith(prefijo) && ahora - s.savedAt <= TTL_MS)
+      .map(s => ({ formKey: s.formKey, savedAt: s.savedAt }))
+      .sort((a, b) => b.savedAt - a.savedAt);
+  } catch {
+    return []; // sin IndexedDB (modo privado, etc.) — no bloquear el logout por esto
+  }
+}
+
 /** Descarta TODOS los borradores vigentes de este usuario en esta empresa — "Descartar y salir" del modal de logout. */
 export async function descartarBorradoresDeUsuario(usuarioId: number | string | undefined | null, empresaId: number | string | undefined | null): Promise<void> {
   try {

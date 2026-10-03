@@ -14,6 +14,7 @@ vi.mock('@sentry/react', () => ({
 import * as Sentry from '@sentry/react';
 import {
   useFormDraft, claveBorrador, contarBorradoresDeUsuario, descartarBorradoresDeUsuario,
+  listarBorradoresDeUsuario, nombreFormKey,
 } from './useFormDraft';
 
 const DEBOUNCE_ESPERA_MS = 1200; // > 1s del debounce real del hook
@@ -247,6 +248,37 @@ describe('contarBorradoresDeUsuario / descartarBorradoresDeUsuario', () => {
 
     await descartarBorradoresDeUsuario(9, 7);
     await expect(contarBorradoresDeUsuario(9, 7)).resolves.toBe(0);
+  });
+});
+
+// Caso real (2026-10-03): "Tienes 2 borradores sin guardar" sin decir de
+// QUÉ — el usuario no tenía ninguna pista de dónde ir a buscarlos.
+describe('listarBorradoresDeUsuario / nombreFormKey', () => {
+  it('lista el formKey de cada borrador vigente del usuario+empresa, ordenados del más reciente al más viejo', async () => {
+    const formA = makeForm({ a: 1 });
+    const formB = makeForm({ b: 1 });
+
+    const { result: ra } = renderHook(() => useFormDraft({ formKey: 'factura', form: formA, usuarioId: 11, empresaId: 7, idempotencyKey: 'x' }));
+    act(() => { ra.current.onValuesChange(); });
+    await new Promise(res => setTimeout(res, DEBOUNCE_ESPERA_MS));
+
+    const { result: rb } = renderHook(() => useFormDraft({ formKey: 'compra-nueva', form: formB, usuarioId: 11, empresaId: 7, idempotencyKey: 'y' }));
+    act(() => { rb.current.onValuesChange(); });
+    await new Promise(res => setTimeout(res, DEBOUNCE_ESPERA_MS));
+
+    const lista = await listarBorradoresDeUsuario(11, 7);
+
+    expect(lista.map(b => b.formKey)).toEqual(['compra-nueva', 'factura']); // el más reciente primero
+    expect(await listarBorradoresDeUsuario(999, 7)).toEqual([]); // otro usuario, no los ve
+  });
+
+  it('nombreFormKey: traduce los formKeys reales conocidos a un nombre legible', () => {
+    expect(nombreFormKey('factura')).toBe('Factura');
+    expect(nombreFormKey('compra-nueva')).toBe('Compra');
+  });
+
+  it('nombreFormKey: un formKey todavía sin mapear sale con su propio texto en vez de desaparecer del aviso', () => {
+    expect(nombreFormKey('cotizacion')).toBe('cotizacion');
   });
 });
 

@@ -4,7 +4,7 @@ import { Modal } from 'antd';
 import { authApi } from '../api/auth.api';
 import { useAuthStore } from '../store/auth.store';
 import { markNavigatingAway } from '../utils/sessionEvents';
-import { contarBorradoresDeUsuario, descartarBorradoresDeUsuario } from './useFormDraft';
+import { listarBorradoresDeUsuario, descartarBorradoresDeUsuario, nombreFormKey } from './useFormDraft';
 
 /**
  * Cierre de sesión unificado: notifica al servidor (keepalive:true — sobrevive
@@ -25,13 +25,23 @@ export function useLogout() {
 
   return useCallback(async () => {
     const { user, empresaActual } = useAuthStore.getState();
-    const nBorradores = await contarBorradoresDeUsuario(user?.id, empresaActual);
+    const borradores = await listarBorradoresDeUsuario(user?.id, empresaActual);
+    const nBorradores = borradores.length;
 
     if (nBorradores > 0) {
+      // Decir EN QUÉ formularios, no solo cuántos — "2 borradores sin
+      // guardar" a secas no le daba al usuario ninguna pista de dónde ir a
+      // buscarlos. "Factura (x2)" si el mismo formulario se repite.
+      const conteoPorForm = new Map<string, number>();
+      for (const b of borradores) conteoPorForm.set(b.formKey, (conteoPorForm.get(b.formKey) ?? 0) + 1);
+      const listaFormularios = [...conteoPorForm.entries()]
+        .map(([formKey, n]) => n > 1 ? `${nombreFormKey(formKey)} (x${n})` : nombreFormKey(formKey))
+        .join(', ');
+
       const descartarYSalir = await new Promise<boolean>((resolve) => {
         Modal.confirm({
           title: `Tienes ${nBorradores} borrador${nBorradores === 1 ? '' : 'es'} sin guardar`,
-          content: 'Si sales ahora los pierdes. Puedes conservarlos (quedan guardados 7 días) y salir luego, o descartarlos y salir ya.',
+          content: `En: ${listaFormularios}. Si sales ahora los pierdes. Puedes conservarlos (quedan guardados 7 días) y salir luego, o descartarlos y salir ya.`,
           okText: 'Descartar y salir',
           okButtonProps: { danger: true },
           cancelText: 'Conservar',
