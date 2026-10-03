@@ -40,6 +40,26 @@ const MSELLER_ESTADO_MAP: Record<string, EstadoDGII> = {
 };
 
 /**
+ * ¿Esta respuesta trae un veredicto REAL de DGII (al menos un código o
+ * mensaje), o es solo un status sin contenido verificable?
+ *
+ * Existe porque MSeller puede marcar "Rechazado" sin traer nada adjunto en
+ * ciertos escenarios de error interno — un "Rechazado" sin ningún código ni
+ * mensaje no es distinguible de un error de MSeller/DGII disfrazado de
+ * rechazo. Por diseño (hotfix E320000001774, Ferretería Pavel — DGII en
+ * mantenimiento marcado como rechazo): RECHAZADO solo se sella cuando hay
+ * algo verificable detrás.
+ */
+function tieneVeredictoDgiiReal(datos: unknown, mensaje?: string): boolean {
+  const items: any[] = (datos as any)?.dgiiResponse ?? [];
+  const tieneCodigoOMensajeEnItems = items.some((d: any) => {
+    const msgs = d?.mensajes ?? [];
+    return (Array.isArray(msgs) && msgs.length > 0) || d?.codigo != null || d?.codigoMensaje != null;
+  });
+  return tieneCodigoOMensajeEnItems || !!(mensaje && mensaje.trim().length > 0);
+}
+
+/**
  * Consulta el estado de comprobantes en ENVIADO sin respuesta definitiva
  * de DGII después de 10 minutos.
  *
@@ -184,17 +204,24 @@ export class ConsultarEstadoECFJob {
 
       const estadoKey = resultado.status?.toUpperCase() ?? '';
       let nuevoEstado: EstadoDGII | undefined = MSELLER_ESTADO_MAP[estadoKey];
+      let datosVeredicto: unknown = resultado.data;
+      let mensajeVeredicto: string | undefined;
 
-      // Batch devuelve "Error" → intentar consulta individual por trackId antes de decidir
-      if (estadoKey === 'ERROR') {
+      // Batch devuelve "Error" o vacío (típico cuando DGII no responde — p.
+      // ej. mantenimiento) → intentar consulta individual por trackId antes
+      // de decidir. NUNCA se asume rechazo por esto — ver el fallback de
+      // abajo, que va a EN_VALIDACION_DGII, no a RECHAZADO.
+      if (estadoKey === 'ERROR' || estadoKey === '') {
         this.logger.warn(
-          `e-CF ${resultado.ecf} status="Error" batch — data: ${JSON.stringify(resultado.data)}`,
+          `e-CF ${resultado.ecf} status="${resultado.status}" ambiguo (batch) — data: ${JSON.stringify(resultado.data)}`,
         );
         if (ecf.trackId) {
           try {
             const ind    = await this.mseller.consultarEstado(ecf.trackId, empresaId);
             const indKey = ind.status?.toUpperCase() ?? '';
-            nuevoEstado  = MSELLER_ESTADO_MAP[indKey];
+            nuevoEstado      = MSELLER_ESTADO_MAP[indKey];
+            datosVeredicto   = (ind as any).details ?? datosVeredicto;
+            mensajeVeredicto = ind.message;
             this.logger.log(
               `e-CF ${resultado.ecf} consulta individual: "${ind.status}" → ${nuevoEstado ?? 'sin mapeo'}`,
             );
@@ -204,14 +231,19 @@ export class ConsultarEstadoECFJob {
             );
           }
         }
-        // Si aún sin estado definitivo → RECHAZADO (conservador, evita bucle infinito)
+        // Sigue sin estado definitivo → EN_VALIDACION_DGII, NUNCA RECHAZADO
+        // sin veredicto real de DGII. El backoff automático (ver
+        // consultarPendientes) y revisionManual a las 72h evitan el bucle
+        // infinito — ya no hace falta "resolver" esto aquí a la fuerza.
         if (nuevoEstado === undefined || nuevoEstado === EstadoDGII.ENVIADO) {
-          nuevoEstado = EstadoDGII.RECHAZADO;
-          this.logger.warn(`e-CF ${resultado.ecf} → RECHAZADO (sin confirmación de DGII tras batch Error)`);
+          nuevoEstado = EstadoDGII.EN_VALIDACION_DGII;
+          this.logger.warn(`e-CF ${resultado.ecf} → EN_VALIDACION_DGII (sin confirmación real de DGII)`);
         }
       }
 
-      // Estado no mapeado (nuevo estado de MSeller no conocido)
+      // Estado no mapeado (nuevo estado de MSeller no conocido, distinto de
+      // "Error"/vacío — un status genuinamente desconocido) — sin acción,
+      // como antes.
       if (nuevoEstado === undefined) {
         this.logger.warn(`e-CF ${resultado.ecf} estado desconocido: "${resultado.status}" — sin acción`);
         continue;
@@ -220,6 +252,15 @@ export class ConsultarEstadoECFJob {
       if (nuevoEstado === EstadoDGII.ENVIADO) {
         this.logger.debug(`e-CF ${resultado.ecf} aún procesando (${resultado.status})`);
         continue;
+      }
+
+      // Salvaguarda final: aunque MSeller/DGII diga "Rechazado" explícito,
+      // sin NINGÚN código ni mensaje real adjunto no es un veredicto
+      // verificable — mejor EN_VALIDACION_DGII que un rechazo fantasma (con
+      // su alerta inmediata al super admin, ver más abajo).
+      if (nuevoEstado === EstadoDGII.RECHAZADO && !tieneVeredictoDgiiReal(datosVeredicto, mensajeVeredicto)) {
+        nuevoEstado = EstadoDGII.EN_VALIDACION_DGII;
+        this.logger.warn(`e-CF ${resultado.ecf} status="Rechazado" pero SIN código/mensaje de DGII → EN_VALIDACION_DGII`);
       }
 
       const batchData = resultado.data as any;

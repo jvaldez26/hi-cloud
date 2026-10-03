@@ -29,6 +29,17 @@ export enum EstadoDGII {
   OBSERVADO       = 'observado',
   /** MSeller/DGII no disponible; modo contingencia offline */
   CONTINGENCIA    = 'contingencia',
+  /**
+   * Enviado a MSeller (hay trackId), pero la consulta de estado no obtuvo un
+   * veredicto real de DGII — respuesta vacía, "Error" de MSeller, servicio
+   * no disponible, timeout, o un "Rechazado" sin ningún código/mensaje
+   * adjunto (ver tieneVeredictoDgiiReal en consultar-estado-ecf.job.ts).
+   * NO es RECHAZADO: nunca hubo un rechazo explícito de DGII. Se reintenta
+   * la consulta automáticamente con backoff; pasadas 72h sin respuesta se
+   * marca revisionManual. Nunca se reenvía mientras está en este estado —
+   * ver el guard 409 en ecf.controller.ts.
+   */
+  EN_VALIDACION_DGII = 'en_validacion_dgii',
 }
 
 /** Tipo de documento origen que generó este e-CF. */

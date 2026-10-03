@@ -419,6 +419,17 @@ export class ECFController {
     if (ecf.estadoDGII === 'aceptado') {
       throw new BadRequestException('El e-CF ya fue aceptado por la DGII');
     }
+    // EN_VALIDACION_DGII no es un rechazo — DGII simplemente no ha respondido
+    // (posible mantenimiento). Reenviar aquí crearía un doble envío ante DGII
+    // si la respuesta original llega tarde. HiCloud ya lo reintenta solo con
+    // backoff (ver consultar-estado-ecf.job.ts) — nada que hacer manualmente.
+    if (ecf.estadoDGII === EstadoDGII.EN_VALIDACION_DGII) {
+      throw new ConflictException(
+        'Este comprobante está en validación con DGII — no fue rechazado, DGII simplemente no ha ' +
+        'respondido todavía (posible mantenimiento). HiCloud lo consulta automáticamente cada cierto ' +
+        'tiempo; no es necesario ni seguro reenviarlo.',
+      );
+    }
     if (ecf.estadoDGII === 'rechazado') {
       // Reenvío condicional: solo cuando DGII reportó "Secuencia utilizada: No"
       // MSeller puede devolver dgiiResponse como array de objetos o de strings JSON.
