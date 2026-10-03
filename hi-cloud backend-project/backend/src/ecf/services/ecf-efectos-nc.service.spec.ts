@@ -108,7 +108,7 @@ function makeService(opts: {
 
   return {
     svc, nc, facturaRepoEm, ncRepoEm, asientosService, devolucionesService, tenantService, dataSource,
-    query, auditoriaService, anticiposClienteService, notificacionesService,
+    query, auditoriaService, anticiposClienteService, notificacionesService, em,
   };
 }
 
@@ -284,7 +284,7 @@ describe('EcfEfectosNcService — código 1 también cierra la CxC vinculada (bu
   it('cierra la CxC (anulada, montoPendiente 0, con nota) y registra auditoría de la cancelación', async () => {
     const nc = { id: 1, facturaOriginalId: 10, total: 1180, subtotal: 1000, iva: 180, numero: 'NC-1', fecha: '2026-09-19', usuarioId: 5 };
     const cxcRow = { id: 500, montoPagado: '0.00' };
-    const { svc, query, auditoriaService } = makeService({ nc, devRow: null, cxcRow });
+    const { svc, query, auditoriaService, em } = makeService({ nc, devRow: null, cxcRow });
 
     await svc.aplicarEfectosPorEstado({ ...ecfBase, codigoModificacion: 1 } as any, EstadoDGII.ACEPTADO);
 
@@ -292,11 +292,14 @@ describe('EcfEfectosNcService — código 1 también cierra la CxC vinculada (bu
     expect(updateCall).toBeDefined();
     expect(updateCall![1]).toEqual(['Anulada por NC NC-1 (e-NCF E34-1)', 500]);
 
+    // Segundo argumento = em: la auditoría debe quedar DENTRO de la misma
+    // transacción (ver AuditoriaService.registrar) — no una segunda conexión.
     expect(auditoriaService.registrar).toHaveBeenCalledWith(
       expect.objectContaining({
         modulo: 'facturas', entidadId: '10', empresaId: 7, userId: 5,
         descripcion: expect.stringContaining('NC-1'),
       }),
+      em,
     );
   });
 

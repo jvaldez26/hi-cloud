@@ -552,12 +552,19 @@ export class CajaService {
 
   // ── Helpers: configuración ciego ─────────────────────────────────────────
 
-  private async getEmpresaCfg(empresaId: number): Promise<{
+  private async getEmpresaCfg(empresaId: number, manager?: EntityManager): Promise<{
     cierreCajaCiego: boolean;
     umbralDescuadreCaja: number;
     montoMaxRetiroSinAutorizacion: number;
   }> {
-    const rows = await this.dataSource.query<{ configuracion: Record<string, unknown> }[]>(
+    // Acepta un EntityManager para poder correr DENTRO de la transacción de
+    // registrarRetiro (que ya reservó una conexión y sostiene un lock
+    // pessimistic_write sobre la caja): sin esto, con concurrencia ≥
+    // pool.max cada transacción pide una SEGUNDA conexión del pool desde
+    // adentro — deadlock por agotamiento, mismo patrón que
+    // encf-generator.service.ts.
+    const db = manager ?? this.dataSource.manager;
+    const rows = await db.query<{ configuracion: Record<string, unknown> }[]>(
       'SELECT configuracion FROM empresa WHERE id = $1 LIMIT 1',
       [empresaId],
     );
@@ -850,7 +857,7 @@ export class CajaService {
 
       // Comprobar si el monto supera el umbral configurado por la empresa.
       // 0 o ausente = sin restricción (no requiere autorización).
-      const cfg = await this.getEmpresaCfg(empresaId);
+      const cfg = await this.getEmpresaCfg(empresaId, manager);
       const requiereAuth = cfg.montoMaxRetiroSinAutorizacion > 0 && monto > cfg.montoMaxRetiroSinAutorizacion;
       const estado = requiereAuth ? EstadoRetiro.PENDIENTE : EstadoRetiro.ACTIVO;
 

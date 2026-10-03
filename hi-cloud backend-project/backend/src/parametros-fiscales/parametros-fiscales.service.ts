@@ -95,7 +95,7 @@ export class ParametrosFiscalesService {
           valorAnterior: JSON.stringify({ vigenciaHasta: abierta.vigenciaHasta }),
           valorNuevo:    JSON.stringify({ vigenciaHasta: vigenciaHastaCierre }),
           metodo: 'POST', ruta: '/admin/parametros-fiscales', exitoso: true,
-        });
+        }, manager);
       }
 
       const nueva = await repo.save(repo.create({
@@ -117,7 +117,7 @@ export class ParametrosFiscalesService {
         descripcion: `Crea versión de "${dto.clave}" vigente desde ${dto.vigenciaDesde}`,
         valorNuevo:  JSON.stringify(nueva.valor),
         metodo: 'POST', ruta: '/admin/parametros-fiscales', exitoso: true,
-      });
+      }, manager);
 
       return nueva;
     });

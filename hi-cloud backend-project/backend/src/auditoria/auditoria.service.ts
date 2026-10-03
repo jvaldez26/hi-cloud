@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, EntityManager } from 'typeorm';
 import { AuditLog, AccionAuditoria } from './entities/audit-log.entity';
 import { FiltroAuditoriaDto } from './dto/filtro-auditoria.dto';
 
@@ -39,9 +39,18 @@ export class AuditoriaService {
   // Registro de eventos
   // ──────────────────────────────────────────────────────────────────
 
-  async registrar(dto: CreateAuditLogDto): Promise<void> {
+  /**
+   * `manager` opcional para poder correr DENTRO de una transacción ajena ya
+   * abierta (p.ej. al aplicar efectos de una NC, recibir un documento Xlink,
+   * o versionar un parámetro fiscal) — sin él, este método pedía una
+   * SEGUNDA conexión del pool con `this.logRepository` (ligado al pool, no
+   * a esa transacción) desde DENTRO de ella. Con concurrencia ≥ pool.max
+   * eso es el mismo deadlock por agotamiento que encf-generator.service.ts.
+   */
+  async registrar(dto: CreateAuditLogDto, manager?: EntityManager): Promise<void> {
     try {
-      await this.logRepository.save(this.logRepository.create(dto));
+      const repo = manager ? manager.getRepository(AuditLog) : this.logRepository;
+      await repo.save(repo.create(dto));
     } catch (err) {
       this.logger.error(`Error guardando audit log: ${(err as Error).message}`);
     }

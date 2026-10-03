@@ -214,7 +214,7 @@ export class XlinkRecibirService {
         accion: AccionAuditoria.UPDATE, modulo: 'xlink', entidad: 'Compra', entidadId: String(compra.id),
         descripcion: `HiCloud Xlink: factura ${doc.numeroOrigen} aplicada sobre la OC ${compra.folio} — sus datos se reemplazaron por los de la factura (verdad fiscal). Revisar diferencias de cantidad/precio contra lo pedido originalmente.`,
         metodo: 'POST', ruta: '/xlink/recibir', exitoso: true,
-      }).catch(() => { /* la auditoría no debe romper la recepción */ });
+      }, manager).catch(() => { /* la auditoría no debe romper la recepción */ });
     }
 
     return this.marcarProcesadoYAuditar(manager, doc, usuario, 'compra', compra.id, compra.folio, false);
@@ -457,7 +457,7 @@ export class XlinkRecibirService {
         entidadId: String(doc.documentoOrigenId),
         descripcion: `Recibido por ${miNombre} por HiCloud Xlink — generó ${numeroGenerado}`,
         metodo: 'POST', ruta: '/xlink/recibir', exitoso: true,
-      });
+      }, manager);
     }).catch(() => { /* la auditoría no debe romper la recepción — ver reportServiceError en el caller si aplica */ });
 
     return { xlinkDocumentoId: doc.id, ok: true, yaExistia, documentoGeneradoId, numeroGenerado };

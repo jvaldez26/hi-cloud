@@ -238,7 +238,7 @@ export class EcfEfectosNcService {
               userId:      nc.usuarioId,
               nivel:       'IMPORTANTE',
             };
-            await this.auditoriaService.registrar(auditDto); // nunca lanza — ver AuditoriaService.registrar()
+            await this.auditoriaService.registrar(auditDto, em); // nunca lanza — ver AuditoriaService.registrar()
           }
 
           if (ecf.codigoModificacion === 3 && nc.facturaOriginalId) {
