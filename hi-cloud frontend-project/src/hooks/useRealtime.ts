@@ -15,6 +15,7 @@ const ENTITY_KEYS: Record<string, string[][]> = {
   compra:     [['compras'], ['inventario'], ['pos-products-scan']],
   conduce:    [['conduces']],
   vendedor:   [['vendedores'], ['vendedores-sel']],
+  car_wash_turno: [['cw-turnos']],
 };
 
 export type RealtimeStatus = 'connecting' | 'connected' | 'disconnected';

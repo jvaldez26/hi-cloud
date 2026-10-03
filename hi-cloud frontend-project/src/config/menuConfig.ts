@@ -37,7 +37,7 @@ const ADMIN_CONT_SUPER = ['admin', 'contador', 'super_admin'];
 
 export const ADDON_IDS: string[] = [
   'clinica', 'taller', 'optica', 'farmacia', 'restaurante',
-  'gimnasio', 'servicios_pro', 'prestamista', 'agro', 'transporte', 'educativo',
+  'gimnasio', 'servicios_pro', 'prestamista', 'agro', 'transporte', 'educativo', 'car_wash',
 ];
 
 // ── Restricciones de ruta por rol ─────────────────────────────────────────────
@@ -223,6 +223,14 @@ export const PATH_ROLES: Record<string, string[]> = {
   '/gimnasio/nutricion':        ADMIN_CONT,
   '/gimnasio/tienda':           ADMIN_CONT,
   '/gimnasio/reportes':         ADMIN_CONT,
+  '/car-wash/dashboard':        ADMIN_CONT_VEND,
+  '/car-wash':                  ADMIN_CONT_VEND,
+  '/car-wash/turnos':           ADMIN_CONT_VEND,
+  '/car-wash/recepcion':        ADMIN_CONT_VEND,
+  '/car-wash/servicios':        ADMIN,
+  '/car-wash/lavadores':        ADMIN,
+  '/car-wash/pagos-lavadores':  ADMIN,
+  '/car-wash/config':           ADMIN,
   '/servicios-pro':                  ADMIN_CONT,
   '/servicios-pro/expedientes':      ADMIN_CONT,
   '/servicios-pro/time-tracker':     ADMIN_CONT,
@@ -537,6 +545,18 @@ export const MENU_CATEGORIES_DATA: MenuCategoryData[] = [
       { path: '/gimnasio/nutricion',    label: 'Nutrición' },
       { path: '/gimnasio/tienda',       label: 'Tienda' },
       { path: '/gimnasio/reportes',     label: 'Reportes' },
+    ],
+  },
+  {
+    id: 'car_wash', label: 'Car Wash',
+    items: [
+      { path: '/car-wash/dashboard',       label: 'Dashboard' },
+      { path: '/car-wash',                 label: 'Tablero' },
+      { path: '/car-wash/recepcion',       label: 'Recepción' },
+      { path: '/car-wash/servicios',       label: 'Servicios' },
+      { path: '/car-wash/lavadores',       label: 'Lavadores' },
+      { path: '/car-wash/pagos-lavadores', label: 'Pagos a lavadores' },
+      { path: '/car-wash/config',          label: 'Configuración' },
     ],
   },
   {

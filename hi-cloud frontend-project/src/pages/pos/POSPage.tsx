@@ -29,6 +29,7 @@ import { useAuthStore } from '../../store/auth.store';
 import {
   leerCarritoGuardado, leerVentasEsperaGuardadas, guardarCarrito, guardarVentasEspera,
 } from './carritoStorage';
+import { leerOrigenPendiente, limpiarOrigenPendiente } from '../car-wash/carWashOrigen';
 import { registerReauthHandler } from '../../utils/sessionEvents';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import * as Sentry from '@sentry/react';
@@ -9544,6 +9545,31 @@ export default function POSPage() {
     if (recuperado) carritoRecuperadoRef.current = true;
     return items;
   });
+  // Origen de Car Wash (botón "Cobrar" del tablero) — ver carWashOrigen.ts.
+  // Se consume UNA vez al montar y pisa el carrito recuperado a propósito:
+  // el cajero llegó aquí con la intención explícita de cobrar ESE turno.
+  const [origenActivo, setOrigenActivo] = useState<{ origenTipo: string; origenId: number } | null>(null);
+  useEffect(() => {
+    if (!user?.id || !empresaActual) return;
+    const origen = leerOrigenPendiente(empresaActual);
+    if (!origen) return;
+    limpiarOrigenPendiente();
+    setOrigenActivo({ origenTipo: origen.origenTipo, origenId: origen.origenId });
+    if (origen.clienteId) setClienteId(origen.clienteId);
+    setCart(origen.items.map(it => ({
+      produto: {
+        id: 0, codigo: 'CARWASH', nombre: it.nombre, unidadMedida: 'SERV',
+        precio: it.precioUnitario, porcentajeIva: it.porcentajeIva ?? 18,
+        stock: 0, stockMinimo: 0, isActive: true,
+      } as Prod,
+      cantidad: it.cantidad,
+      precio: it.precioUnitario,
+      descuentoMonto: 0,
+    })));
+    message.success(`Carrito de Car Wash cargado (turno #${origen.origenId})`);
+    // Solo al montar — origen pendiente se consume una sola vez.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [menuNavAbierto, setMenuNavAbierto] = useState(false);
   const [panelActivo, _setPanelActivo] = useState<PanelId>(() => {
     const saved = localStorage.getItem('pos_panel_activo') as PanelId | null;
@@ -10946,6 +10972,9 @@ export default function POSPage() {
         ...(supervisor.supervisorActive && supervisor.supervisorSession?.sessionId
           ? { supervisorSessionId: supervisor.supervisorSession.sessionId }
           : {}),
+        // Cobro de un turno de Car Wash — ver carWashOrigen.ts. El backend
+        // valida el origen y bloquea cobrarlo dos veces (409).
+        ...(origenActivo ? { origenTipo: origenActivo.origenTipo, origenId: origenActivo.origenId } : {}),
       };
 
       // Si offline → encolar localmente
@@ -10978,6 +11007,7 @@ export default function POSPage() {
         // crear una duplicada.
         factura = await facturasApi.create({ ...payload, claveIdempotencia });
         intentoCobroRef.current = { factura, claveIdempotencia, payloadStr };
+        if (origenActivo) setOrigenActivo(null); // ya cobrado — no repetirlo en la próxima venta
       }
 
       // Emitir desde POS (síncrono 8s — la venta no se bloquea si tu proveedor e-CF falla)

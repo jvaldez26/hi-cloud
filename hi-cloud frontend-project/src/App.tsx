@@ -231,6 +231,16 @@ const LockersPage                 = lazy(() => import('./pages/gimnasio/LockersP
 const NutricionPage               = lazy(() => import('./pages/gimnasio/NutricionPage'));
 const TiendaGimnasioPage          = lazy(() => import('./pages/gimnasio/TiendaPage'));
 const GimnasioReportesPage        = lazy(() => import('./pages/gimnasio/GimnasioReportesPage'));
+// Car Wash
+const CarWashDashboardPage        = lazy(() => import('./pages/car-wash/CarWashDashboardPage'));
+const CarWashTableroPage          = lazy(() => import('./pages/car-wash/CarWashTableroPage'));
+const CarWashTurnosPage           = lazy(() => import('./pages/car-wash/CarWashTurnosPage'));
+const CarWashRecepcionPage        = lazy(() => import('./pages/car-wash/CarWashRecepcionPage'));
+const CarWashServiciosPage        = lazy(() => import('./pages/car-wash/CarWashServiciosPage'));
+const CarWashLavadoresPage        = lazy(() => import('./pages/car-wash/CarWashLavadoresPage'));
+const CarWashPagosLavadoresPage   = lazy(() => import('./pages/car-wash/CarWashPagosLavadoresPage'));
+const CarWashConfigPage           = lazy(() => import('./pages/car-wash/CarWashConfigPage'));
+const CarWashSeguimientoPublicoPage = lazy(() => import('./pages/car-wash/CarWashSeguimientoPublicoPage'));
 // Servicios Profesionales
 const ServiciosProLayout          = lazy(() => import('./pages/servicios-pro/ServiciosProLayout'));
 const ServiciosProDashboard       = lazy(() => import('./pages/servicios-pro/ServiciosProDashboard'));
@@ -757,6 +767,8 @@ export default function App() {
                   <Route path="/seguridad/no-fui-yo"      element={<NoFuiYoPage />} />
                   {/* Portal del cliente — PÚBLICO */}
                   <Route path="/portal/:token"           element={<ClientPortalPage />} />
+                  {/* Seguimiento público de un turno de Car Wash — PÚBLICO, sin login */}
+                  <Route path="/t/:token"                element={<CarWashSeguimientoPublicoPage />} />
                   {/* Aceptar invitación — PÚBLICO */}
                   <Route path="/invitacion/:token"       element={<AcceptInvitePage />} />
 
@@ -995,6 +1007,15 @@ export default function App() {
                       <Route path="tienda"            element={<TiendaGimnasioPage />} />
                       <Route path="reportes"          element={<GimnasioReportesPage />} />
                     </Route>
+
+                    <Route path="/car-wash/dashboard"      element={<CarWashDashboardPage />} />
+                    <Route path="/car-wash"                element={<CarWashTableroPage />} />
+                    <Route path="/car-wash/turnos"         element={<CarWashTurnosPage />} />
+                    <Route path="/car-wash/recepcion"      element={<CarWashRecepcionPage />} />
+                    <Route path="/car-wash/servicios"      element={<CarWashServiciosPage />} />
+                    <Route path="/car-wash/lavadores"      element={<CarWashLavadoresPage />} />
+                    <Route path="/car-wash/pagos-lavadores" element={<CarWashPagosLavadoresPage />} />
+                    <Route path="/car-wash/config"         element={<CarWashConfigPage />} />
 
                     <Route path="/servicios-pro" element={<ServiciosProLayout />}>
                       <Route index                          element={<ServiciosProDashboard />} />

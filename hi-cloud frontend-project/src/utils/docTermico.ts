@@ -108,6 +108,13 @@ export interface GenericDocData {
   firmaRecepcion?: boolean;
   /** Bloque de devolución. Solo se pasa cuando el documento está devuelto. */
   devolucion?: { motivo: string; quien: string; cuando: string };
+  /**
+   * QR opcional, no fiscal — p. ej. el enlace de seguimiento público de un
+   * turno de Car Wash. Nada que ver con el QR de verificación DGII de
+   * ticketTermico.ts (ese es exclusivo de e-CF); si `qr` no se pasa, el
+   * ticket sale exactamente igual que antes de este campo existir.
+   */
+  qr?: { dataUrl: string; caption?: string };
 }
 
 /**
@@ -197,6 +204,15 @@ function _barcodeDataURI(valor: string): string {
     console.warn('[BARCODE] No se pudo generar el código de barras:', err);
     return '';
   }
+}
+
+/** QR no fiscal — mismo `data-barcode`-less `<img>` simple, no pasa por Bluetooth/ESC-POS (eso es exclusivo del barcode). */
+function _qrHTML(qr: { dataUrl: string; caption?: string }): string {
+  return [
+    '<div class="line"></div>',
+    `<div class="center"><img src="${qr.dataUrl}" width="130" height="130" alt="QR"></div>`,
+    qr.caption ? `<div class="center small">${esc(qr.caption)}</div>` : '',
+  ].join('');
 }
 
 /** Recibo térmico genérico (conduce, cobro, anticipo, notas crédito/débito). */
@@ -299,6 +315,7 @@ ${[
 ${gd.devolucion ? _devolucionHTML(gd.devolucion) : ''}
 ${gd.firmaRecepcion ? _firmaHTML() : ''}
 ${gd.barcode ? _barcodeHTML(gd.barcode) : ''}
+${gd.qr ? _qrHTML(gd.qr) : ''}
 ${footerHtml}
 
 </body></html>`;
