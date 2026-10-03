@@ -59,6 +59,7 @@ import { useOfflineQueue } from '../../hooks/useOfflineQueue';
 import { useSupervisor } from '../../hooks/useSupervisor';
 import { requiereSupervisorVentaCredito } from './ventaCreditoGate';
 import { requiereSupervisorPorPrecioModificado } from './carritoRecuperadoGate';
+import { debeIgnorarEnterGlobal } from './confirmarCobroEnterGate';
 import { resolverIntentoCobro } from './intentoCobroGate';
 import { credencialesFueronRechazadas } from './reautenticacionGate';
 import { construirFiltroVendedorPOS } from './vendedorFiltroPanel';
@@ -11674,19 +11675,63 @@ export default function POSPage() {
   const canCheckout  = canPay && (!tipoExigeRnc || rncValido) && clienteParaCredito
     && (!compradorNoVigente || rncNoVigenteConfirmado);
 
-  // Enter / NumpadEnter confirma el cobro cuando el modal de pago está abierto
+  /**
+   * ÚNICO camino para confirmar el cobro — lo usan el botón "Confirmar cobro"
+   * y el atajo de teclado Enter de abajo. Antes el atajo llamaba
+   * ventaMut.mutate() directo, saltándose requiereSupervisorVentaCredito/
+   * supervisor.requireSupervisor y requiereSupervisorPorPrecioModificado: una
+   * venta a crédito se creaba sin autorización con solo presionar Enter
+   * (hotfix de seguridad, reporte de Bellamar González — VENTAS DIVERSAS ELIDO).
+   */
+  const confirmarCobro = useCallback(async () => {
+    if (!canCheckout || ventaMut.isPending) return;
+    if (requiereSupervisorVentaCredito({
+      tipoPago: tipoPagoPos,
+      supervisorModeEnabled: supervisor.supervisorModeEnabled,
+      posSupervisorVentaCredito: posConf.posSupervisorVentaCredito,
+    })) {
+      const ok = await supervisor.requireSupervisor('Venta a Crédito', `Monto: ${fmt.money(totalEfectivo)}`);
+      if (!ok) return;
+    }
+    // Carrito recuperado (o simplemente dejado abierto) con un precio
+    // modificado cuya sesión de supervisor ya venció — re-autorizar antes de
+    // cobrar. Ver carritoRecuperadoGate.ts.
+    if (requiereSupervisorPorPrecioModificado(cart, supervisor.supervisorActive)) {
+      const ok = await supervisor.requireSupervisor(
+        'Precio modificado en el carrito',
+        'La autorización que lo permitió ya no está vigente',
+      );
+      if (!ok) return;
+    }
+    if (empresa?.configuracion?.posImpresionAuto === true) {
+      autoYaPrintedRef.current = false;
+      // En móvil no abrir popup — imprimirReciboTermico usará overlay+window.print()
+      const _esMovilPago = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
+      if (!_esMovilPago) {
+        const pw = window.open('', '_blank', 'width=360,height=640,toolbar=0,menubar=0,location=0,scrollbars=yes');
+        if (pw) { pw.document.write('<html><head><title>Procesando venta...</title></head><body style="font-family:monospace;padding:20px;text-align:center">Procesando venta...</body></html>'); printWinRef.current = pw; }
+      }
+    }
+    ventaMut.mutate();
+  }, [canCheckout, ventaMut, tipoPagoPos, supervisor, posConf, totalEfectivo, cart, empresa]);
+
+  // Enter / NumpadEnter confirma el cobro cuando el modal de pago está abierto.
+  // Se ignora si el evento viene de dentro de CUALQUIER modal (supervisor,
+  // selector de cliente, etc.) — mismo criterio ya probado que usa el listener
+  // del scanner de código de barras más arriba (handleGlobalKeyDown,
+  // target.closest('.ant-modal')): cubre todo modal presente y futuro sin
+  // tener que enumerar un flag de estado por cada uno.
   useEffect(() => {
     if (!showPago) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Enter' && e.code !== 'NumpadEnter') return;
-      if ((e.target as HTMLElement).tagName === 'TEXTAREA') return;
+      if (debeIgnorarEnterGlobal(e.target as HTMLElement)) return;
       e.preventDefault();
-      if (!canCheckout || ventaMut.isPending) return;
-      ventaMut.mutate();
+      confirmarCobro();
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [showPago, canCheckout, ventaMut.isPending]);
+  }, [showPago, confirmarCobro]);
 
   return (
     <ThemeCtx.Provider value={palette}>
@@ -12100,10 +12145,6 @@ export default function POSPage() {
             }
             if (p === 'inventario' && supervisor.supervisorModeEnabled) {
               const ok = await supervisor.requireSupervisor('Inventario');
-              if (!ok) return;
-            }
-            if (p === 'recibos-cobro' && supervisor.supervisorModeEnabled) {
-              const ok = await supervisor.requireSupervisor('Recibos de Cobro');
               if (!ok) return;
             }
             if (p === 'gastos' && supervisor.supervisorModeEnabled && posConf.posSupervisorGastos !== false) {
@@ -12924,37 +12965,7 @@ export default function POSPage() {
               title={necesitaRnc && !rncValido ? 'Ingresa el RNC del comprador para continuar' : ''}
             >
               <motion.button whileTap={{ scale: canCheckout ? 0.97 : 1 }}
-                onClick={async () => {
-                  if (!canCheckout) return;
-                  if (requiereSupervisorVentaCredito({
-                    tipoPago: tipoPagoPos,
-                    supervisorModeEnabled: supervisor.supervisorModeEnabled,
-                    posSupervisorVentaCredito: posConf.posSupervisorVentaCredito,
-                  })) {
-                    const ok = await supervisor.requireSupervisor('Venta a Crédito', `Monto: ${fmt.money(totalEfectivo)}`);
-                    if (!ok) return;
-                  }
-                  // Carrito recuperado (o simplemente dejado abierto) con un
-                  // precio modificado cuya sesión de supervisor ya venció —
-                  // re-autorizar antes de cobrar. Ver carritoRecuperadoGate.ts.
-                  if (requiereSupervisorPorPrecioModificado(cart, supervisor.supervisorActive)) {
-                    const ok = await supervisor.requireSupervisor(
-                      'Precio modificado en el carrito',
-                      'La autorización que lo permitió ya no está vigente',
-                    );
-                    if (!ok) return;
-                  }
-                  if (empresa?.configuracion?.posImpresionAuto === true) {
-                    autoYaPrintedRef.current = false;
-                    // En móvil no abrir popup — imprimirReciboTermico usará overlay+window.print()
-                    const _esMovilPago = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
-                    if (!_esMovilPago) {
-                      const pw = window.open('', '_blank', 'width=360,height=640,toolbar=0,menubar=0,location=0,scrollbars=yes');
-                      if (pw) { pw.document.write('<html><head><title>Procesando venta...</title></head><body style="font-family:monospace;padding:20px;text-align:center">Procesando venta...</body></html>'); printWinRef.current = pw; }
-                    }
-                  }
-                  ventaMut.mutate();
-                }}
+                onClick={confirmarCobro}
                 disabled={ventaMut.isPending || !canCheckout}
                 style={{ width: '100%', height: 46, borderRadius: 11, border: 'none', background: !canCheckout ? '#D1D5DB' : 'linear-gradient(135deg,#059669,#10B981)', color: !canCheckout ? '#9CA3AF' : '#fff', fontSize: 14, fontWeight: 700, cursor: !canCheckout ? 'not-allowed' : 'pointer', boxShadow: !canCheckout ? 'none' : '0 4px 14px rgba(16,185,129,.35)', outline: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, letterSpacing: '0.2px' }}>
                 {ventaMut.isPending
@@ -13134,7 +13145,12 @@ export default function POSPage() {
                   const v = supTienePin ? e.target.value.replace(/\D/g, '') : e.target.value;
                   setSupPassword(v); setSupError('');
                 }}
-                onPressEnter={async () => {
+                onPressEnter={async e => {
+                  // Sin esto, el mismo Enter que envía el PIN también burbujea
+                  // hasta el listener global de checkout (POSPage, más arriba)
+                  // y confirma la venta en paralelo — sin esperar, sin importar
+                  // si esta verificación falla. Ver confirmarCobro().
+                  e.stopPropagation();
                   if (!supId || !supPassword) { setSupError('Selecciona un supervisor e ingresa su contraseña'); return; }
                   setVerificandoSupNuevo(true); setSupError('');
                   try {
