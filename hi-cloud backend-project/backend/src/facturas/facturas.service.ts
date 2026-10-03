@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
   ServiceUnavailableException,
   ConflictException,
   Logger,
@@ -139,6 +140,57 @@ export class FacturasService {
       );
     }
     return row.id;
+  }
+
+  /**
+   * ÚNICA puerta que de verdad exige autorización de supervisor para una
+   * venta a crédito — llamada desde cambiarEstado() en la transición
+   * BORRADOR → EMITIDA, que es la ÚNICA puerta que hace borrador → emitida
+   * (ver el comentario de la resolución de vendedorId unas líneas más abajo:
+   * los siete caminos que crean facturas — POS directo, cotización, pre-
+   * factura, contrato, orden de servicio, duplicar, factura recurrente —
+   * pasan todos por aquí antes de ser una venta real). Antes, exigir
+   * supervisorSessionId era enteramente criterio del frontend
+   * (resolverSupervisorSessionId de arriba solo valida SI se manda uno, pero
+   * create() nunca rechazaba nada si el DTO simplemente no lo traía) — una
+   * venta a crédito podía crearse sin autorización si el frontend fallaba o
+   * se saltaba el chequeo (hotfix de seguridad, reporte de Bellamar González
+   * — VENTAS DIVERSAS ELIDO).
+   *
+   * Exige que la sesión sea del MISMO cajero que generó la venta
+   * (factura.usuarioId) — antes ninguna validación de supervisorSessionId en
+   * todo el archivo comprobaba esto; cualquier sesión vigente de OTRO cajero
+   * de la empresa pasaba igual.
+   */
+  private async validarAutorizacionVentaCredito(
+    empresaId: number,
+    cajeroId: number,
+    supervisorSessionId: number | null | undefined,
+  ): Promise<void> {
+    const [empresa] = await this.dataSource.query<{ configuracion: any }[]>(
+      `SELECT configuracion FROM empresa WHERE id = $1`, [empresaId],
+    );
+    const conf = (empresa?.configuracion ?? {}) as any;
+    const pos  = conf.pos ?? {};
+    const supervisorModeEnabled = conf.supervisorModeEnabled ?? pos.supervisorModeEnabled ?? false;
+    const exigeEnCredito        = conf.posSupervisorVentaCredito ?? pos.posSupervisorVentaCredito;
+    // Protegida por defecto en cuanto el modo supervisor está encendido para
+    // la empresa — mismo criterio que requiereSupervisorVentaCredito() en
+    // ventaCreditoGate.ts (frontend).
+    if (!supervisorModeEnabled || exigeEnCredito === false) return;
+
+    if (!supervisorSessionId) {
+      throw new ForbiddenException('Esta venta a crédito requiere autorización de un supervisor.');
+    }
+    const [row] = await this.dataSource.query<{ id: number }[]>(`
+      SELECT id FROM pos_supervisor_log
+      WHERE id = $1 AND "empresaId" = $2 AND "cajeroId" = $3 AND "sessionId" IS NULL
+        AND "createdAt" >= NOW() - INTERVAL '8 hours'
+      LIMIT 1
+    `, [supervisorSessionId, empresaId, cajeroId]);
+    if (!row) {
+      throw new ForbiddenException('Esta venta a crédito requiere autorización de un supervisor.');
+    }
   }
 
   /**
@@ -1062,6 +1114,20 @@ export class FacturasService {
     }
 
     if (estado === FacturaEstado.EMITIDA) {
+      // ── Guard: venta a crédito sin autorización de supervisor ──────────────
+      //
+      // Única puerta BORRADOR → EMITIDA (ver validarAutorizacionVentaCredito).
+      // Solo aplica a emisión interactiva — un cron (factura recurrente) no
+      // tiene a nadie delante a quien pedirle autorización, mismo criterio
+      // que la resolución de vendedorId un poco más abajo: "si no se puede
+      // resolver, la factura se emite igual, nunca se bloquea por esto".
+      const cajeroEmisorId = this.tenantService.getUserId();
+      if (cajeroEmisorId && factura.tipoPago === 'CREDITO') {
+        await this.validarAutorizacionVentaCredito(
+          factura.empresaId, factura.usuarioId, (factura as any).supervisorSessionId,
+        );
+      }
+
       // ── Guard: la fecha de la factura no puede estar a más de 30 días de hoy ──
       //
       // Nace del caso real de FAC-124 (empresa 59): "2027" en vez de "2026" por

@@ -25,6 +25,10 @@ class CambiarEstadoDto {
 class CobrarPosDto {
   @IsString() metodoPago!: string;
   @IsOptional() @IsInt() @Min(1) @Type(() => Number) diasCredito?: number;
+  // Igual que CreateFacturaDto.supervisorSessionId — ver FacturasService.
+  // validarAutorizacionVentaCredito(): si la empresa exige supervisor para
+  // crédito, esta venta se rechaza sin una sesión válida aquí.
+  @IsOptional() @IsInt() @Type(() => Number) supervisorSessionId?: number;
 }
 
 @ApiTags('Cotizaciones')

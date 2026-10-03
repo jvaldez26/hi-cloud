@@ -9,7 +9,6 @@ import {
 import { Type } from 'class-transformer';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import { SupervisorGateGuard } from '../auth/guards/supervisor-gate.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
@@ -97,7 +96,6 @@ export class RecibosCobrosController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  @UseGuards(SupervisorGateGuard())
   @ApiOperation({ summary: 'Emitir recibo de cobro' })
   crear(@Body() dto: CreateReciboDto, @GetUser() user: User) {
     const hoy = fechaHoyRD();

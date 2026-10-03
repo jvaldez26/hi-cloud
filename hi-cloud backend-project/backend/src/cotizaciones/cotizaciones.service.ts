@@ -313,7 +313,7 @@ export class CotizacionesService {
    * Catálogo DGII: 1=Efectivo 2=Cheque/Transferencia 3=Tarjeta 4=Crédito
    * 5=Permuta 6=Nota Crédito.
    */
-  async cobrarDesdePos(id: number, usuarioId: number, dto: { metodoPago: string; diasCredito?: number }) {
+  async cobrarDesdePos(id: number, usuarioId: number, dto: { metodoPago: string; diasCredito?: number; supervisorSessionId?: number }) {
     const empresaId = this.tenantService.getEmpresaId();
     const cot = await this.findById(id);
 
@@ -363,6 +363,10 @@ export class CotizacionesService {
         total:            Number(cot.total),
         tipoNcf:          'E32',
         tipoPago:         esCredito ? 'CREDITO' : 'CONTADO',
+        // Único dato que FacturasService.validarAutorizacionVentaCredito()
+        // necesita al emitir (cambiarEstado más abajo) para saber quién
+        // autorizó, si la empresa lo exige para crédito.
+        supervisorSessionId: dto.supervisorSessionId,
         notas:            notasFactura,
         diasCredito:      diasCred || undefined,
         fechaVencimiento: vencimiento,

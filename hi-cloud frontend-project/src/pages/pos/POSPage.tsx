@@ -7979,7 +7979,7 @@ const PANEL_TITLES: Record<PanelId, { label: string; icon: string }> = {
   'compras':        { label: 'Órdenes de Compra',  icon: '🛍️' },
 };
 
-function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnularFacturas, tiempoLimiteAnular, requireSupervisor, supervisorActive, requireSupervisorForced, supervisorSessionActive }: {
+function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnularFacturas, tiempoLimiteAnular, requireSupervisor, supervisorActive, requireSupervisorForced, supervisorSessionActive, supervisorModeEnabled, posSupervisorVentaCredito, supervisorSessionId }: {
   panel:              PanelId;
   palette:            Palette;
   onVolver:           () => void;
@@ -7998,6 +7998,11 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
    * (`supervisor.supervisorActive`): solo true con una sesión real y vigente.
    */
   supervisorSessionActive?: boolean;
+  // Para gatear "Cobrar Cotización" a Crédito igual que confirmarCobro() en
+  // el carrito normal — ver requiereSupervisorVentaCredito().
+  supervisorModeEnabled?:     boolean;
+  posSupervisorVentaCredito?: unknown;
+  supervisorSessionId?:       number;
 }) {
   const C  = palette;
   const qc = useQueryClient();
@@ -8184,8 +8189,10 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
 
   // ── Cobrar Cotización desde POS ───────────────────────────────────────────────
   const cobrarCotMut = useMutation({
-    mutationFn: async ({ id, metodoPago, diasCredito }: { id: number; metodoPago: string; diasCredito?: number }) =>
-      api.post(`/cotizaciones/${id}/cobrar-pos`, { metodoPago, ...(diasCredito ? { diasCredito } : {}) }).then(r => r.data?.data ?? r.data),
+    mutationFn: async ({ id, metodoPago, diasCredito, supervisorSessionId }: { id: number; metodoPago: string; diasCredito?: number; supervisorSessionId?: number }) =>
+      api.post(`/cotizaciones/${id}/cobrar-pos`, {
+        metodoPago, ...(diasCredito ? { diasCredito } : {}), ...(supervisorSessionId ? { supervisorSessionId } : {}),
+      }).then(r => r.data?.data ?? r.data),
     onSuccess: async (data: { facturaId: number; folio: string; ecfEmitido?: boolean; ecfError?: string }) => {
       if (data.ecfEmitido === false) {
         Modal.warning({
@@ -9202,7 +9209,29 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
                 Cancelar
               </button>
               <button disabled={cobrarCotMut.isPending}
-                onClick={() => cobrarCotMut.mutate({ id: cobrarCot.id, metodoPago: cobrarCotMetodo, diasCredito: cobrarCotMetodo === 'Crédito' ? Math.max(1, cobrarCotDias || 30) : undefined })}
+                onClick={async () => {
+                  // Cobrar una cotización a Crédito es una venta a crédito como
+                  // cualquier otra — mismo gate que confirmarCobro() para el
+                  // carrito normal. El backend la exige igual (defensa real,
+                  // ver FacturasService.validarAutorizacionVentaCredito); esto
+                  // es solo para no golpear la API y fallar con un 403.
+                  let sessionIdParaEnviar = supervisorSessionId;
+                  if (requiereSupervisorVentaCredito({
+                    tipoPago: cobrarCotMetodo === 'Crédito' ? 'CREDITO' : 'CONTADO',
+                    supervisorModeEnabled: !!supervisorModeEnabled,
+                    posSupervisorVentaCredito,
+                  })) {
+                    if (!requireSupervisor) return;
+                    const ok = await requireSupervisor('Venta a Crédito', 'Cobrar cotización');
+                    if (!ok) return;
+                    sessionIdParaEnviar = supervisorSessionId;
+                  }
+                  cobrarCotMut.mutate({
+                    id: cobrarCot.id, metodoPago: cobrarCotMetodo,
+                    diasCredito: cobrarCotMetodo === 'Crédito' ? Math.max(1, cobrarCotDias || 30) : undefined,
+                    supervisorSessionId: sessionIdParaEnviar,
+                  });
+                }}
                 style={{ flex: 2, padding: '11px 0', borderRadius: 9, border: 'none', background: cobrarCotMut.isPending ? '#9ca3af' : '#16a34a', color: '#fff', cursor: cobrarCotMut.isPending ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 700 }}>
                 {cobrarCotMut.isPending ? 'Procesando...' : 'Confirmar Cobro'}
               </button>
@@ -11865,6 +11894,9 @@ export default function POSPage() {
             supervisorActive={supervisor.supervisorActive || !supervisor.supervisorModeEnabled}
             requireSupervisorForced={supervisor.requireSupervisorForced}
             supervisorSessionActive={supervisor.supervisorActive}
+            supervisorModeEnabled={supervisor.supervisorModeEnabled}
+            posSupervisorVentaCredito={posConf.posSupervisorVentaCredito}
+            supervisorSessionId={supervisor.supervisorSession?.sessionId ?? undefined}
           />
         )}
         {panelActivo === 'items' && (<>
