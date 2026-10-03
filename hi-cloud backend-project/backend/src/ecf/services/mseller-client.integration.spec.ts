@@ -326,6 +326,7 @@ describe('MSellerClientService — unitarios', () => {
   beforeEach(async () => {
     const mockEcfConfigSvc = {
       getCredencialesDescifradas: jest.fn().mockResolvedValue(mockConfig),
+      isEmpresaBloqueada:         jest.fn().mockResolvedValue(false),
     };
 
     // El servicio pasó a cachear el idToken en CACHE_MANAGER (Redis en prod).

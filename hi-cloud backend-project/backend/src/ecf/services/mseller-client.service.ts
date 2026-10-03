@@ -96,6 +96,17 @@ export class MSellerClientService {
     baseUrl:     string;
     envPath:     string;
   }> {
+    // Circuit breaker (Cognito bloqueado por intentos fallidos, ver el catch
+    // de abajo) — se revisa ANTES de autenticar o llamar a MSeller, no
+    // después: cada intento mientras está bloqueado puede alargar el
+    // bloqueo. Único punto de entrada para enviarDocumento/consultarBatch/
+    // consultarEstado — cubre los tres sin tocar cada uno por separado.
+    if (await this.ecfConfigSvc.isEmpresaBloqueada(empresaId)) {
+      throw new EcfComunicacionError(
+        `Empresa #${empresaId}: circuit breaker activo (credenciales MSeller bloqueadas temporalmente) — no se llama a MSeller.`,
+      );
+    }
+
     const creds = await this.ecfConfigSvc.getCredencialesDescifradas(empresaId);
 
     // Verificar caché Redis — los tokens de MSeller duran ~1 hora
