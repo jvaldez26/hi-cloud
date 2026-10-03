@@ -46,7 +46,25 @@ export class XlinkService {
   /** GET /xlink/enviados — Fase 5 (listado "Documentos Enviados"). */
   async listarEnviados(filtros: XlinkListaFiltros) {
     const resultado = await this.xlinkRepo.listarComoOrigen(filtros);
-    return { ...resultado, data: await this.conContraparte(resultado.data, 'destinoEmpresaId') };
+    const conContraparte = await this.conContraparte(resultado.data, 'destinoEmpresaId');
+    return { ...resultado, data: await this.conUsuarioQuePublico(conContraparte) };
+  }
+
+  /**
+   * Enriquece cada fila con el nombre de quién la publicó
+   * (publicadoPorUsuarioId) — "Documentos Enviados" lo pedía y solo tenía el
+   * id crudo. Un solo query por página (IN sobre los usuarioId distintos).
+   */
+  private async conUsuarioQuePublico<T extends { publicadoPorUsuarioId: number }>(
+    filas: T[],
+  ): Promise<(T & { publicadoPorUsuarioNombre: string })[]> {
+    const ids = [...new Set(filas.map(f => f.publicadoPorUsuarioId))];
+    if (ids.length === 0) return filas as any;
+
+    const rows = await this.ds.query(`SELECT id, nombre FROM users WHERE id = ANY($1)`, [ids]);
+    const porId = new Map<number, string>(rows.map((r: any) => [r.id, r.nombre]));
+
+    return filas.map(f => ({ ...f, publicadoPorUsuarioNombre: porId.get(f.publicadoPorUsuarioId) ?? '—' }));
   }
 
   /** GET /xlink/recibidos — Fase 5 (tabs "Por Procesar"/"Procesados"/"Descartados", filtradas por estadoReceptor). */
@@ -166,7 +184,15 @@ export class XlinkService {
       AND e.id <> $1
       AND ($2::text IS NULL OR e."nombreComercial" ILIKE $2 OR e.nombre ILIKE $2 OR e.rnc ILIKE $2)
     `;
-    const havingRegistradas = soloRegistradas ? 'AND (pv.id IS NOT NULL OR cv.id IS NOT NULL)' : '';
+    // "Solo registradas" también debe traer las que coinciden por RNC pero
+    // AÚN no están vinculadas (prr/clr) — son justo las que el texto de
+    // ayuda promete descubrir ("la forma más rápida de ver con quién se
+    // puede empezar"); antes solo contaban las YA vinculadas (pv/cv), así
+    // que esas quedaban invisibles con el filtro activado (Fase 2e,
+    // auditoría HiCloud Xlink 2026-10-03).
+    const havingRegistradas = soloRegistradas
+      ? 'AND (pv.id IS NOT NULL OR cv.id IS NOT NULL OR prr.id IS NOT NULL OR clr.id IS NOT NULL)'
+      : '';
 
     const rows = await this.ds.query(
       `
@@ -206,8 +232,13 @@ export class XlinkService {
       JOIN suscripciones s ON s."empresaId" = e.id
       LEFT JOIN proveedores pv
         ON pv."empresaId" = $1 AND pv."isActive" = true AND pv."xlinkEmpresaXlinkId" = e."xlinkId"
+      LEFT JOIN proveedores prr
+        ON prr."empresaId" = $1 AND prr."isActive" = true AND prr."xlinkEmpresaXlinkId" IS NULL AND prr.rnc = e.rnc
       LEFT JOIN clientes cv
         ON cv."empresaId" = $1 AND cv."isActive" = true AND cv."xlinkEmpresaXlinkId" = e."xlinkId"
+      LEFT JOIN clientes clr
+        ON clr."empresaId" = $1 AND clr."isActive" = true AND clr."xlinkEmpresaXlinkId" IS NULL
+        AND (clr.rfc = e.rnc OR clr."rncReceptor" = e.rnc)
       WHERE ${whereBase}
       ${havingRegistradas}
       `,

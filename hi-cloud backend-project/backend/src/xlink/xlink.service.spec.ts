@@ -177,6 +177,52 @@ describe('XlinkService.getDirectorio', () => {
     expect(d.ds.query.mock.calls[1][0]).toContain('pv.id IS NOT NULL OR cv.id IS NOT NULL');
   });
 
+  // Fase 2e (auditoría 2026-10-03): "solo registradas" antes solo contaba
+  // vinculado (pv/cv) — las que coinciden por RNC pero AÚN no están
+  // vinculadas (prr/clr, estado "coincide_sin_vincular") quedaban fuera,
+  // justo las que el filtro promete descubrir ("Vincular" en un clic).
+  it('con soloRegistradas: true, el HAVING también incluye prr/clr (coincide por RNC sin vincular)', async () => {
+    const d = buildDeps();
+    d.ds.query.mockResolvedValueOnce([]).mockResolvedValueOnce([{ total: '0' }]);
+    const service = buildService(d);
+
+    await service.getDirectorio({ soloRegistradas: true });
+
+    const condicionCompleta = 'pv.id IS NOT NULL OR cv.id IS NOT NULL OR prr.id IS NOT NULL OR clr.id IS NOT NULL';
+    expect(d.ds.query.mock.calls[0][0]).toContain(condicionCompleta);
+    expect(d.ds.query.mock.calls[1][0]).toContain(condicionCompleta);
+  });
+
+  it('la query de COUNT también hace JOIN con prr/clr (antes solo tenía pv/cv — fallaría con el HAVING nuevo)', async () => {
+    const d = buildDeps();
+    d.ds.query.mockResolvedValueOnce([]).mockResolvedValueOnce([{ total: '0' }]);
+    const service = buildService(d);
+
+    await service.getDirectorio({ soloRegistradas: true });
+
+    const queryCount = d.ds.query.mock.calls[1][0] as string;
+    expect(queryCount).toContain('LEFT JOIN proveedores prr');
+    expect(queryCount).toContain('LEFT JOIN clientes clr');
+  });
+
+  it('una empresa que SOLO coincide por RNC sin vincular (prr) pasa el filtro soloRegistradas', async () => {
+    const d = buildDeps();
+    d.ds.query
+      .mockResolvedValueOnce([{
+        xlinkId: 'c', nombreComercial: 'Empresa C', nombre: 'C', rnc: '103', industria: null,
+        proveedorVinculadoId: null, proveedorVinculadoNombre: null,
+        proveedorRncId: 15, proveedorRncNombre: 'Coincide Proveedor C',
+        clienteVinculadoId: null, clienteVinculadoNombre: null,
+        clienteRncId: null, clienteRncNombre: null,
+      }])
+      .mockResolvedValueOnce([{ total: '1' }]);
+    const service = buildService(d);
+
+    const result = await service.getDirectorio({ soloRegistradas: true });
+
+    expect(result.data[0].proveedorRelacionado).toEqual({ estado: 'coincide_sin_vincular', id: 15, nombre: 'Coincide Proveedor C' });
+  });
+
   it('pasa el término de búsqueda como %q% y nunca el empresaId propio en el resultado', async () => {
     const d = buildDeps();
     d.ds.query.mockResolvedValueOnce([]).mockResolvedValueOnce([{ total: '0' }]);
@@ -359,12 +405,56 @@ describe('XlinkService — listados y conteo (Fase 5)', () => {
 
   it('listarEnviados() agrega contraparteXlinkId/contraparteNombre desde la empresa DESTINO de cada fila', async () => {
     const d = buildDeps();
-    d.xlinkRepo.listarComoOrigen.mockResolvedValue({ data: [{ id: 1, destinoEmpresaId: 9 }], meta: { total: 1 } });
-    d.ds.query.mockResolvedValue([{ id: 9, xlinkId: 'xlink-9', nombre: 'Cliente Y' }]);
+    d.xlinkRepo.listarComoOrigen.mockResolvedValue({
+      data: [{ id: 1, destinoEmpresaId: 9, publicadoPorUsuarioId: 5 }],
+      meta: { total: 1 },
+    });
+    d.ds.query
+      .mockResolvedValueOnce([{ id: 9, xlinkId: 'xlink-9', nombre: 'Cliente Y' }])
+      .mockResolvedValueOnce([{ id: 5, nombre: 'Ana Pérez' }]);
     const service = buildService(d);
 
     const result = await service.listarEnviados({});
 
-    expect(result.data).toEqual([{ id: 1, destinoEmpresaId: 9, contraparteXlinkId: 'xlink-9', contraparteNombre: 'Cliente Y' }]);
+    expect(result.data).toEqual([{
+      id: 1, destinoEmpresaId: 9, publicadoPorUsuarioId: 5,
+      contraparteXlinkId: 'xlink-9', contraparteNombre: 'Cliente Y',
+      publicadoPorUsuarioNombre: 'Ana Pérez',
+    }]);
+  });
+
+  it('listarEnviados() agrega "—" cuando el usuario que publicó ya no existe o no se encuentra', async () => {
+    const d = buildDeps();
+    d.xlinkRepo.listarComoOrigen.mockResolvedValue({
+      data: [{ id: 2, destinoEmpresaId: 9, publicadoPorUsuarioId: 999 }],
+      meta: { total: 1 },
+    });
+    d.ds.query
+      .mockResolvedValueOnce([{ id: 9, xlinkId: 'xlink-9', nombre: 'Cliente Y' }])
+      .mockResolvedValueOnce([]);
+    const service = buildService(d);
+
+    const result = await service.listarEnviados({});
+
+    expect(result.data[0].publicadoPorUsuarioNombre).toBe('—');
+  });
+
+  it('listarEnviados() consulta usuarios UNA sola vez por página, no uno por fila', async () => {
+    const d = buildDeps();
+    d.xlinkRepo.listarComoOrigen.mockResolvedValue({
+      data: [
+        { id: 1, destinoEmpresaId: 9, publicadoPorUsuarioId: 5 },
+        { id: 2, destinoEmpresaId: 9, publicadoPorUsuarioId: 5 },
+      ],
+      meta: { total: 2 },
+    });
+    d.ds.query
+      .mockResolvedValueOnce([{ id: 9, xlinkId: 'xlink-9', nombre: 'Cliente Y' }])
+      .mockResolvedValueOnce([{ id: 5, nombre: 'Ana Pérez' }]);
+    const service = buildService(d);
+
+    await service.listarEnviados({});
+
+    expect(d.ds.query).toHaveBeenCalledTimes(2); // 1 contraparte + 1 usuarios, no 1 por fila
   });
 });
