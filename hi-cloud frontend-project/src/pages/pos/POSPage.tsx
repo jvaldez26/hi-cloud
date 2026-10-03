@@ -8727,14 +8727,18 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           PENDIENTE:  { color: '#fff', bg: '#6b7280', label: '… PENDIENTE' },
           PENDIENTE_ENVIO: { color: '#fff', bg: '#6b7280', label: '… PENDIENTE' },
           CONTINGENCIA: { color: '#fff', bg: '#7c3aed', label: '⚡ CONTINGENCIA' },
+          EN_VALIDACION_DGII: { color: '#fff', bg: '#d97706', label: '⏳ EN VALIDACIÓN' },
         };
         const c = cfg[est] ?? { color: C.text, bg: 'transparent', label: est };
-        return (
+        const tag = (
           <span style={{ fontSize: 9, fontWeight: 700, color: c.color, background: c.bg,
             borderRadius: 4, padding: '2px 6px', whiteSpace: 'nowrap' }}>
             {c.label}
           </span>
         );
+        return est === 'EN_VALIDACION_DGII'
+          ? <Tooltip title="DGII no ha respondido (posible mantenimiento). HiCloud lo consulta automáticamente cada cierto tiempo. No es necesario reenviar.">{tag}</Tooltip>
+          : tag;
       }},
     ],
     'pre-facturas': [
@@ -8802,14 +8806,18 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           PENDIENTE:       { color: '#fff', bg: '#6b7280', label: '… PENDIENTE' },
           PENDIENTE_ENVIO: { color: '#fff', bg: '#6b7280', label: '… PENDIENTE' },
           CONTINGENCIA:    { color: '#fff', bg: '#7c3aed', label: '⚡ CONTINGENCIA' },
+          EN_VALIDACION_DGII: { color: '#fff', bg: '#d97706', label: '⏳ EN VALIDACIÓN' },
         };
         const c = cfg[est] ?? { color: C.text, bg: 'transparent', label: est };
-        return (
+        const tag = (
           <span style={{ fontSize: 9, fontWeight: 700, color: c.color, background: c.bg,
             borderRadius: 4, padding: '2px 6px', whiteSpace: 'nowrap' }}>
             {c.label}
           </span>
         );
+        return est === 'EN_VALIDACION_DGII'
+          ? <Tooltip title="DGII no ha respondido (posible mantenimiento). HiCloud lo consulta automáticamente cada cierto tiempo. No es necesario reenviar.">{tag}</Tooltip>
+          : tag;
       }},
     ],
     gastos: [
@@ -11140,7 +11148,7 @@ export default function POSPage() {
         // estado aquí es EstadoDGII (aceptado/pendiente_envio/contingencia…), no FacturaEstado
         const estado = emitResult?.estado ?? emitResult?.estadoDGII ?? '';
         setEcfEncf(encf);
-        setEcfStatus(['pendiente_envio', 'pendiente', 'contingencia'].includes(estado) ? 'pendiente' : 'ok');
+        setEcfStatus(['pendiente_envio', 'pendiente', 'contingencia', 'en_validacion_dgii'].includes(estado) ? 'pendiente' : 'ok');
         intentoCobroRef.current = null;
         return { factura, ecfResult: emitResult };
       } catch (emitErr: any) {

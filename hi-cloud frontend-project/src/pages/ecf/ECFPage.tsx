@@ -24,23 +24,28 @@ import { fmt } from '../../utils/formatters';
 const { Title, Text } = Typography;
 
 const estadoDGIIColor: Record<string, string> = {
-  pendiente:       'orange',
-  pendiente_envio: 'orange',
-  enviado:         'blue',
-  aceptado:        'green',
-  rechazado:       'red',
-  condicionado:    'gold',
-  observado:       'gold',
-  contingencia:    'purple',
+  pendiente:          'orange',
+  pendiente_envio:    'orange',
+  enviado:            'blue',
+  aceptado:           'green',
+  rechazado:          'red',
+  condicionado:       'gold',
+  observado:          'gold',
+  contingencia:       'purple',
+  en_validacion_dgii: 'gold',
 };
 
 const estadoDGIIIcon: Record<string, React.ReactNode> = {
-  pendiente_envio: <ClockCircleOutlined />,
-  enviado:         <ClockCircleOutlined />,
-  aceptado:        <CheckCircleOutlined />,
-  rechazado:       <CloseCircleOutlined />,
-  condicionado:    <WarningOutlined />,
+  pendiente_envio:    <ClockCircleOutlined />,
+  enviado:            <ClockCircleOutlined />,
+  aceptado:           <CheckCircleOutlined />,
+  rechazado:          <CloseCircleOutlined />,
+  condicionado:       <WarningOutlined />,
+  en_validacion_dgii: <SyncOutlined />,
 };
+
+/** Tooltip específico para EN_VALIDACION_DGII — DGII no respondió, no es un rechazo. */
+const EN_VALIDACION_TOOLTIP = 'DGII no ha respondido (posible mantenimiento). HiCloud lo consulta automáticamente cada cierto tiempo. No es necesario reenviar.';
 
 /** Extrae secuenciaUtilizada del JSONB respuestaDgii, manejando tanto el formato
  *  directo como el batch (dgiiResponse[]).  Retorna undefined si no hay dato.
@@ -268,11 +273,14 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
     { title: 'Tipo',        key: 'tipo',               width: 70,
       render: (_: any, r: any) => <Tag>{r.tipoECF?.codigo}</Tag> },
     { title: 'Estado DGII', dataIndex: 'estadoDGII',   width: 150,
-      render: (v: string) => (
-        <Tag color={estadoDGIIColor[v] ?? 'default'} icon={estadoDGIIIcon[v]}>
-          {v?.replace(/_/g, ' ').toUpperCase()}
-        </Tag>
-      )},
+      render: (v: string) => {
+        const tag = (
+          <Tag color={estadoDGIIColor[v] ?? 'default'} icon={estadoDGIIIcon[v]}>
+            {v?.replace(/_/g, ' ').toUpperCase()}
+          </Tag>
+        );
+        return v === 'en_validacion_dgii' ? <Tooltip title={EN_VALIDACION_TOOLTIP}>{tag}</Tooltip> : tag;
+      }},
     { title: 'Documento',   key: 'doc',                width: 140,
       render: (_: any, r: any) => {
         const code = r.tipoECF?.codigo;
@@ -292,7 +300,7 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
           items={[
             { key: 'xml', label: 'Ver XML / diagnóstico', icon: <DownloadOutlined />,
               onClick: () => handleVerXML(r.numero) },
-            ...(['rechazado', 'observado', 'condicionado', 'aceptado'].includes(r.estadoDGII) && r.respuestaDgii
+            ...(['rechazado', 'observado', 'condicionado', 'aceptado', 'en_validacion_dgii'].includes(r.estadoDGII) && r.respuestaDgii
               ? [{ key: 'dgii', label: 'Ver respuesta DGII', icon: <CheckCircleOutlined />,
                    onClick: () => setDetail(r) }]
               : []),
@@ -308,7 +316,7 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
               ? [{ key: 'reenviar-contingencia', label: 'Reenviar desde contingencia', icon: <SendOutlined />,
                    onClick: () => handleReenviar(r) }]
               : []),
-            ...(['enviado', 'rechazado'].includes(r.estadoDGII)
+            ...(['enviado', 'rechazado', 'en_validacion_dgii'].includes(r.estadoDGII)
               ? [{ key: 'consultar', label: 'Consultar estado en DGII', icon: <SyncOutlined spin={consultandoId === r.numero} />,
                    onClick: () => consultarUnoMut.mutate(r.numero) }]
               : []),
@@ -334,13 +342,14 @@ function ECFListTab({ onRefresh }: { onRefresh: () => void }) {
             <Select placeholder="Estado DGII" allowClear style={{ width: 190 }}
               onChange={(v) => { setEstado(v); setPage(1); }}
               options={[
-                { value: 'pendiente_envio', label: 'Pendiente envío' },
-                { value: 'enviado',         label: 'Enviado (procesando)' },
-                { value: 'aceptado',        label: 'Aceptado' },
-                { value: 'rechazado',       label: 'Rechazado' },
-                { value: 'contingencia',    label: 'Contingencia' },
-                { value: 'observado',       label: 'Observado' },
-                { value: 'pendiente',       label: 'Pendiente (antiguo)' },
+                { value: 'pendiente_envio',    label: 'Pendiente envío' },
+                { value: 'enviado',            label: 'Enviado (procesando)' },
+                { value: 'aceptado',           label: 'Aceptado' },
+                { value: 'rechazado',          label: 'Rechazado' },
+                { value: 'en_validacion_dgii', label: 'En validación DGII' },
+                { value: 'contingencia',       label: 'Contingencia' },
+                { value: 'observado',          label: 'Observado' },
+                { value: 'pendiente',          label: 'Pendiente (antiguo)' },
               ].map(({ value, label }) => ({
                 value,
                 label: <Tag color={estadoDGIIColor[value] ?? 'default'}>{label.toUpperCase()}</Tag>,
