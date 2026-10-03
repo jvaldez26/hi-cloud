@@ -28,9 +28,10 @@ class DetalleDto {
   @IsOptional() @IsInt() @IsPositive() @Type(() => Number) compraDetalleId?: number;
   @IsString() @MaxLength(300)                               descripcion!: string;
   @IsOptional() @IsString() @MaxLength(20)                  unidadMedida?: string;
-  @IsNumber() @Min(0.0001) @Type(() => Number)              cantidad!: number;
-  @IsNumber() @Min(0) @Type(() => Number)                   precioUnitario!: number;
-  @IsOptional() @IsNumber() @Min(0) @Type(() => Number)     porcentajeIva?: number;
+  @IsNumber({ maxDecimalPlaces: 4 }) @Min(0.0001) @Type(() => Number)              cantidad!: number;
+  // 4 decimales — mismo tope que precioUnitario en compras/facturas (create-compra.dto.ts).
+  @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Type(() => Number)                   precioUnitario!: number;
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Type(() => Number)     porcentajeIva?: number;
 }
 
 export class CreateNCCDto {

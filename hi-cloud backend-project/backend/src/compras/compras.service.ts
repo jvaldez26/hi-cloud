@@ -9,6 +9,7 @@ import { Repository, DataSource, EntityManager } from 'typeorm';
 import { Compra, CompraEstado } from './entities/compra.entity';
 import { CompraDetalle } from './entities/compra-detalle.entity';
 import { CreateCompraDto } from './dto/create-compra.dto';
+import { PrevisualizarCompraDto } from './dto/previsualizar-compra.dto';
 import { UpdateNcfProveedorDto } from './dto/update-ncf-proveedor.dto';
 import { ProveedoresService } from '../proveedores/proveedores.service';
 import { ProductosService } from '../productos/productos.service';
@@ -1142,9 +1143,27 @@ export class ComprasService {
    * Panel de vista previa del asiento (2026-09-19) — calcula subtotal/ITBIS
    * con la MISMA lógica que create() (calcularDetalles(), no una réplica) y
    * delega el asiento en AsientosAutomaticosService.previsualizarCompra().
-   * El formulario la llama en cada cambio de líneas/retenciones/cuenta.
+   * El formulario la llama en cada cambio de líneas/retenciones/cuenta, con
+   * debounce (~500ms) — pero una línea puede llegar incompleta (sin
+   * precioUnitario todavía) mientras el usuario sigue escribiendo. Antes
+   * eso disparaba un 400 (y esos 400 inundaban la auditoría como "ERROR
+   * Importante") — ahora las líneas incompletas se ignoran en vez de
+   * rechazar toda la vista previa. Ver PrevisualizarCompraDto.
    */
-  async previsualizarAsiento(dto: CreateCompraDto) {
+  async previsualizarAsiento(dtoLaxo: PrevisualizarCompraDto) {
+    const detallesCompletos = (dtoLaxo.detalles ?? []).filter((d): d is CreateCompraDto['detalles'][number] =>
+      d.productoId != null
+      && typeof d.cantidad === 'number' && !Number.isNaN(d.cantidad)
+      && (d.cantidad > 0 || (typeof d.cantidadBonificada === 'number' && d.cantidadBonificada > 0))
+      && typeof d.precioUnitario === 'number' && !Number.isNaN(d.precioUnitario) && d.precioUnitario >= 0,
+    );
+
+    if (detallesCompletos.length === 0) {
+      return this.asientosService.previsualizarCompra(0, 0, 0, 'OC-VISTA-PREVIA', undefined, dtoLaxo.cuentaDestino || undefined);
+    }
+
+    const dto: CreateCompraDto = { ...dtoLaxo, detalles: detallesCompletos } as CreateCompraDto;
+
     // *DOP — el panel muestra el asiento tal como se va a contabilizar
     // (siempre en DOP); idéntico al original cuando la compra es en DOP.
     const { subtotalCompraDOP, itbisCompraDOP } = await this.calcularDetalles(dto);

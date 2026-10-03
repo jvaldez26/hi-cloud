@@ -20,6 +20,13 @@ const RUTAS_EXCLUIDAS = [
   // sesión. Ambos generaban "X creó en auth" sin aportar nada al rastro que
   // un admin necesita ver.
   '/api/v1/auth/actividad', '/api/v1/auth/refresh',
+  // Vista previa de compras: el formulario la llama con debounce (~500ms) en
+  // cada cambio de línea — no crea nada (POST sin efecto), así que ni sus
+  // éxitos aportan rastro de auditoría útil ni sus 400 (líneas incompletas
+  // mientras se escribe) son errores reales que un admin necesite ver.
+  // Caso real: ráfaga de "ERROR Importante" de ELIDO SEPULVEDA el 2026-10-03
+  // (ver ComprasService.previsualizarAsiento).
+  '/api/v1/compras/previsualizar-asiento',
 ];
 
 // Solo escrituras — los GET son ruido sin valor auditivo

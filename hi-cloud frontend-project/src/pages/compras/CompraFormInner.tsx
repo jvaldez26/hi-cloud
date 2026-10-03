@@ -578,7 +578,16 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
   // asientos), nunca replicado aquí. Solo se activa con al menos una línea
   // válida (producto + cantidad o bonificación) para no pedir un preview
   // de un formulario vacío.
-  const lineasValidas = lineas.filter(l => l.productoId && (l.cantidad > 0 || (l.cantidadBonificada ?? 0) > 0));
+  // precioUnitario también tiene que ser un número válido: sin este chequeo,
+  // una línea con producto+cantidad pero el precio todavía sin escribir
+  // (undefined/NaN) se mandaba igual al preview — el backend la rechazaba
+  // con 400 en cada pausa del debounce (ráfaga real de ELIDO SEPULVEDA,
+  // 2026-10-03). precioUnitario = 0 sigue siendo válido (bonificación pura).
+  const lineasValidas = lineas.filter(l =>
+    l.productoId
+    && (l.cantidad > 0 || (l.cantidadBonificada ?? 0) > 0)
+    && typeof l.precioUnitario === 'number' && !Number.isNaN(l.precioUnitario),
+  );
   const { data: previewAsiento, isFetching: previewCargando } = useQuery({
     // El descuento de línea (dm) y el general (dgt/dgv) SÍ entran aquí — sin
     // ellos el preview del asiento ignoraba cualquier descuento (línea o
@@ -874,8 +883,16 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
             style={{ width: '100%' }}
             onChange={v => {
               const u = [...lineas];
+              // toFixed(4), no 6: precioUnitario acepta hasta 4 decimales en el
+              // backend (create-compra.dto.ts) — con 6, el precio neto que sale
+              // de "quitarle el ITBIS" casi nunca divide exacto y el 400 por
+              // "must be a number conforming to the specified constraints" era
+              // GARANTIZADO, no ocasional, cada vez que se tecleaba un precio
+              // con el toggle "c/ITBIS" activo (caso real: ELIDO SEPULVEDA,
+              // 2026-10-03 — create()/update() usan el mismo valor, así que
+              // tampoco podía GUARDAR la compra, no solo el preview).
               u[idx].precioUnitario = r.precioIncluyeItbis
-                ? parseFloat(((v ?? 0) / (1 + pct / 100)).toFixed(6))
+                ? parseFloat(((v ?? 0) / (1 + pct / 100)).toFixed(4))
                 : (v ?? 0);
               setLineas(u);
             }}

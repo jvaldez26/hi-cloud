@@ -20,6 +20,7 @@ import { Type } from 'class-transformer';
 import { ComprasService }    from './compras.service';
 import { ComprasPdfService } from './compras-pdf.service';
 import { CreateCompraDto }   from './dto/create-compra.dto';
+import { PrevisualizarCompraDto } from './dto/previsualizar-compra.dto';
 import { UpdateNcfProveedorDto } from './dto/update-ncf-proveedor.dto';
 import { CompraEstado }      from './entities/compra.entity';
 import { PaginationDto } from '../common/dto/pagination.dto';
@@ -82,7 +83,7 @@ export class ComprasController {
   @Post('previsualizar-asiento')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Panel de vista previa: calcula el asiento SIN guardar la compra' })
-  previsualizarAsiento(@Body() dto: CreateCompraDto) {
+  previsualizarAsiento(@Body() dto: PrevisualizarCompraDto) {
     return this.comprasService.previsualizarAsiento(dto);
   }
 

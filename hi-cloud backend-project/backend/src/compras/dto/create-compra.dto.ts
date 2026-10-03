@@ -43,8 +43,15 @@ export class CreateCompraDetalleDto {
   @Type(() => Number)
   cantidadBonificada?: number;
 
-  @IsNumber({ maxDecimalPlaces: 2 })
+  // 4 decimales, igual que precioUnitario en facturas (create-factura.dto.ts)
+  // — el total de la línea se redondea a 2 al calcularla, pero el precio en
+  // sí puede venir con más precisión (p.ej. importaciones con costo en USD
+  // convertido). @Type(() => Number) agregado para que un precio mandado
+  // como string se convierta en vez de rechazarse — mismo patrón que
+  // `cantidad` arriba, que sí lo tenía.
+  @IsNumber({ maxDecimalPlaces: 4 })
   @Min(0)
+  @Type(() => Number)
   precioUnitario: number;
 
   @IsOptional()

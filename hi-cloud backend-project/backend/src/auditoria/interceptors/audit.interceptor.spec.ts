@@ -11,7 +11,7 @@
  * levantar el interceptor completo (mismo criterio que las pruebas de
  * validarPrecioVsCosto en facturas: lógica pura, sin Nest de por medio).
  */
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { generarDescripcion, AuditInterceptor } from './audit.interceptor';
 
 describe('generarDescripcion — auth (rutas que antes caían al fallback)', () => {
@@ -137,6 +137,28 @@ describe('AuditInterceptor — exclusión de ruido técnico de sesión', () => {
       expect(auditoriaService.registrar).toHaveBeenCalledTimes(1);
       expect(auditoriaService.registrar.mock.calls[0][0].descripcion).toBe('Ana cambió de empresa activa');
       done();
+    });
+  });
+
+  // Bug real (2026-10-03): ráfaga de 400 de /compras/previsualizar-asiento
+  // inundando la auditoría como "ERROR Importante" — el formulario la llama
+  // con debounce en cada cambio de línea, no crea nada.
+  it('/compras/previsualizar-asiento: un ÉXITO nunca genera fila de auditoría', done => {
+    const { interceptor, auditoriaService } = makeInterceptor();
+    interceptor.intercept(makeContext('POST', '/api/v1/compras/previsualizar-asiento'), nextHandle()).subscribe(() => {
+      expect(auditoriaService.registrar).not.toHaveBeenCalled();
+      done();
+    });
+  });
+
+  it('/compras/previsualizar-asiento: un 400 tampoco genera fila de auditoría', done => {
+    const { interceptor, auditoriaService } = makeInterceptor();
+    const erroredHandle = { handle: () => throwError(() => Object.assign(new Error('Bad Request'), { status: 400 })) } as any;
+    interceptor.intercept(makeContext('POST', '/api/v1/compras/previsualizar-asiento'), erroredHandle).subscribe({
+      error: () => {
+        expect(auditoriaService.registrar).not.toHaveBeenCalled();
+        done();
+      },
     });
   });
 });
