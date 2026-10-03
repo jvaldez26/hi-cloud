@@ -10969,15 +10969,24 @@ export default function POSPage() {
         }
       }
 
+      // Nunca un id fijo ni "el primer cliente de la lista" — ambos pueden no
+      // existir o pertenecer a otra empresa (bug real: Franchesca Sosa, POST
+      // /facturas → "Cliente #1 no encontrado", 2026-10-03). Solo
+      // consumidorFinalId, que SÍ busca por nombre/RFC en los clientes de ESTA
+      // empresa (mismo criterio en los dos sitios — ver el memo más arriba).
+      // Si esta empresa no tiene "Consumidor Final" registrado, se detiene
+      // ANTES de mandar nada en vez de adivinar un cliente.
+      const clienteIdFinal = clienteId ?? consumidorFinalId;
+      if (!clienteIdFinal) {
+        throw new Error(
+          'Esta empresa no tiene un cliente "Consumidor Final" registrado. Selecciona un cliente o pide a un administrador que lo cree.',
+        );
+      }
+
       const vendedor = vendedores.find((v: any) => v.id === vendedorId);
       const tipoEcfNum = Number(tipoNcf.replace('E', ''));
       const payload = {
-        clienteId: clienteId ?? (
-          clientes?.data?.find((c: Cliente) =>
-            c.nombre?.toLowerCase().includes('consumidor') ||
-            c.rfc === '00000000000' || c.rfc === '000000000'
-          )?.id ?? clientes?.data?.[0]?.id ?? 1
-        ),
+        clienteId: clienteIdFinal,
         fecha:          dayjs().format('YYYY-MM-DD'),
         tipoNcf,
         tipoPago:       tipoPagoPos,
@@ -11390,7 +11399,11 @@ export default function POSPage() {
       } else if (serverMsg.toLowerCase().includes('duplicate') || serverMsg.toLowerCase().includes('already exists') || serverMsg.toLowerCase().includes('23505')) {
         message.error('Error al generar el número de factura. Intente nuevamente.', 5);
       } else {
-        message.error(serverMsg || 'Error al procesar la venta');
+        // localMsg: mensajes locales lanzados ANTES de llegar al servidor
+        // (p.ej. "sin Consumidor Final registrado") — sin este fallback,
+        // caían siempre en el genérico de abajo y el usuario nunca veía por
+        // qué falló de verdad.
+        message.error(serverMsg || localMsg || 'Error al procesar la venta');
       }
     },
   });
