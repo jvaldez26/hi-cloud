@@ -16,9 +16,12 @@ import { reportServiceError } from '../common/observability/sentry';
 
 /** e-CF aceptado por DGII, con o sin observaciones — mismo criterio que
  *  notas-credito.service.ts (getSaldoDisponible) y emitir-ecf.use-case. */
-const ESTADOS_ECF_ACEPTABLES = ['aceptado', 'observado'];
-/** Tolerancia de cuadratura del snapshot vs. el total guardado (redondeo por línea). */
-const TOLERANCIA_CUADRE = 0.02;
+export const ESTADOS_ECF_ACEPTABLES = ['aceptado', 'observado'];
+
+/** Centavos exactos (entero) — compara montos sin el error de redondeo binario de JS (0.1+0.2 !== 0.3). */
+function aCentavos(n: number): number {
+  return Math.round(n * 100);
+}
 
 interface LineaSnapshot {
   sku: string | null;
@@ -235,16 +238,37 @@ export class XlinkPublicarService {
     await this.xlinkRepo.guardar(doc);
   }
 
+  /**
+   * Cuadre EXACTO al centavo, sin tolerancia (Fase 2f, auditoría HiCloud
+   * Xlink 2026-10-03) — antes toleraba hasta 2 centavos de diferencia "por
+   * redondeo", lo que podía dejar pasar un documento genuinamente mal
+   * armado. Los montos se toman del snapshot (doc.lineas/totalesConItbis)
+   * TAL CUAL — nunca se recalculan aquí (cantidad×precio−descuento podría
+   * no coincidir con cómo el documento original redondeó internamente,
+   * dando un falso "no cuadra" sobre un documento que sí está bien).
+   *
+   * Si el total no cuadra, el error no se queda en "no cuadra" genérico:
+   * lista cada línea (nombre + monto) y cada grupo por tasa de ITBIS, para
+   * que se pueda ver a simple vista cuál es la que no encaja, y dice la
+   * diferencia exacta en centavos.
+   */
   private verificarCuadre(doc: DocumentoParaPublicar): void {
     const sumaBase  = doc.totalesConItbis.reduce((acc, t) => acc + t.base, 0);
     const sumaItbis = doc.totalesConItbis.reduce((acc, t) => acc + t.itbis, 0);
-    const sumaTotal = +(sumaBase + sumaItbis).toFixed(2);
-    const diferencia = Math.abs(sumaTotal - Number(doc.totalOrigen));
+    const sumaTotal = aCentavos(sumaBase + sumaItbis);
+    const totalOrigen = aCentavos(Number(doc.totalOrigen));
 
-    if (diferencia > TOLERANCIA_CUADRE) {
+    if (sumaTotal !== totalOrigen) {
+      const porLinea = doc.lineas
+        .map(l => `${l.nombre}${l.sku ? ` (${l.sku})` : ''}: ${l.montoItem.toFixed(2)}`)
+        .join('; ');
+      const porTasa = doc.totalesConItbis
+        .map(t => `${t.porcentajeIva}%: base ${t.base.toFixed(2)} + ITBIS ${t.itbis.toFixed(2)}`)
+        .join('; ');
       throw new BadRequestException(
-        `El documento no cuadra: la suma de líneas (${sumaTotal.toFixed(2)}) no coincide con el total guardado ` +
-        `(${Number(doc.totalOrigen).toFixed(2)}). No se publicó.`,
+        `El documento no cuadra: la suma de líneas (${(sumaTotal / 100).toFixed(2)}) no coincide con el total ` +
+        `guardado (${(totalOrigen / 100).toFixed(2)}) — diferencia de ${(Math.abs(sumaTotal - totalOrigen) / 100).toFixed(2)}. ` +
+        `Líneas: ${porLinea}. Por tasa: ${porTasa}. No se publicó.`,
       );
     }
   }
@@ -408,6 +432,15 @@ export class XlinkPublicarService {
     if (c.estado === 'cancelada') throw new BadRequestException(`La Compra ${c.folio} está anulada`);
     if (c.estado !== 'enviada') {
       throw new BadRequestException(`La Compra ${c.folio} debe estar en estado "enviada" para publicarse (hoy: "${c.estado}")`);
+    }
+    // La documentación de Xlink siempre dijo que la OC necesita "término de
+    // pago" para publicarse — tipoPago es NULLABLE en compras (create-compra.dto.ts),
+    // así que esto nunca se validó de verdad. Sin tipoPago, el receptor no
+    // sabe si la cotización que generará es a crédito o contado.
+    if (!c.tipoPago) {
+      throw new BadRequestException(
+        `La Compra ${c.folio} no tiene término de pago (contado/crédito) — no se puede publicar sin eso.`,
+      );
     }
 
     const lineas = await this.ds.query(

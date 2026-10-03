@@ -192,6 +192,54 @@ describe('XlinkPublicarService — resolverFactura vía publicar()', () => {
     expect(d.xlinkRepo.crear).not.toHaveBeenCalled();
   });
 
+  // Fase 2f (auditoría 2026-10-03): cuadre EXACTO al centavo — antes
+  // toleraba hasta 2 centavos "por redondeo".
+  it('1 centavo de diferencia: ya NO se tolera (antes sí, hasta 2)', async () => {
+    const d = setupFacturaOk();
+    d.ds.query.mockImplementation((sql: string) => {
+      if (sql.includes('FROM facturas')) return Promise.resolve([FACTURA_ACEPTADA]); // total guardado: 118.00
+      if (sql.includes('FROM factura_detalles')) {
+        return Promise.resolve([{ ...LINEAS_FACTURA_CUADRADA[0], montoItem: '100.00', itbis: '17.99' }]); // suma 117.99
+      }
+      if (sql.includes('FROM cotizaciones')) return Promise.resolve([]);
+      if (sql.includes('FROM empresa WHERE "xlinkId"')) return Promise.resolve([CONTRAPARTE_VISIBLE]);
+      return Promise.resolve([]);
+    });
+    const service = buildService(d);
+
+    const resultados = await service.publicar(
+      { tipoDocumento: XlinkTipoDocumento.FACTURA_CREDITO, documentoIds: [10] },
+      { id: 1 },
+    );
+
+    expect(resultados[0].ok).toBe(false);
+    expect(resultados[0].error).toMatch(/no cuadra/);
+    expect(resultados[0].error).toMatch(/diferencia de 0\.01/);
+    expect(d.xlinkRepo.crear).not.toHaveBeenCalled();
+  });
+
+  it('el error de descuadre nombra la línea y la tasa — no solo "no cuadra"', async () => {
+    const d = setupFacturaOk();
+    d.ds.query.mockImplementation((sql: string) => {
+      if (sql.includes('FROM facturas')) return Promise.resolve([FACTURA_ACEPTADA]);
+      if (sql.includes('FROM factura_detalles')) {
+        return Promise.resolve([{ ...LINEAS_FACTURA_CUADRADA[0], montoItem: '90.00', itbis: '16.20' }]);
+      }
+      if (sql.includes('FROM cotizaciones')) return Promise.resolve([]);
+      if (sql.includes('FROM empresa WHERE "xlinkId"')) return Promise.resolve([CONTRAPARTE_VISIBLE]);
+      return Promise.resolve([]);
+    });
+    const service = buildService(d);
+
+    const resultados = await service.publicar(
+      { tipoDocumento: XlinkTipoDocumento.FACTURA_CREDITO, documentoIds: [10] },
+      { id: 1 },
+    );
+
+    expect(resultados[0].error).toMatch(/Producto A/);
+    expect(resultados[0].error).toMatch(/18%/);
+  });
+
   it('NO publica si el cliente no está vinculado a ninguna empresa Xlink', async () => {
     const d = setupFacturaOk({ xlinkEmpresaXlinkId: null } as any);
     const service = buildService(d);
