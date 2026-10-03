@@ -162,11 +162,11 @@ export class FacturasService {
    * todo el archivo comprobaba esto; cualquier sesión vigente de OTRO cajero
    * de la empresa pasaba igual.
    */
-  private async validarAutorizacionVentaCredito(
-    empresaId: number,
-    cajeroId: number,
-    supervisorSessionId: number | null | undefined,
-  ): Promise<void> {
+  /** ¿Esta empresa exige autorización de supervisor para vender a crédito?
+   *  Mismo criterio que requiereSupervisorVentaCredito() en ventaCreditoGate.ts
+   *  (frontend): protegida por defecto en cuanto el modo supervisor está
+   *  encendido, salvo que se haya desactivado el toggle específico. */
+  private async empresaExigeSupervisorParaCredito(empresaId: number): Promise<boolean> {
     const [empresa] = await this.dataSource.query<{ configuracion: any }[]>(
       `SELECT configuracion FROM empresa WHERE id = $1`, [empresaId],
     );
@@ -174,10 +174,15 @@ export class FacturasService {
     const pos  = conf.pos ?? {};
     const supervisorModeEnabled = conf.supervisorModeEnabled ?? pos.supervisorModeEnabled ?? false;
     const exigeEnCredito        = conf.posSupervisorVentaCredito ?? pos.posSupervisorVentaCredito;
-    // Protegida por defecto en cuanto el modo supervisor está encendido para
-    // la empresa — mismo criterio que requiereSupervisorVentaCredito() en
-    // ventaCreditoGate.ts (frontend).
-    if (!supervisorModeEnabled || exigeEnCredito === false) return;
+    return supervisorModeEnabled === true && exigeEnCredito !== false;
+  }
+
+  private async validarAutorizacionVentaCredito(
+    empresaId: number,
+    cajeroId: number,
+    supervisorSessionId: number | null | undefined,
+  ): Promise<void> {
+    if (!(await this.empresaExigeSupervisorParaCredito(empresaId))) return;
 
     if (!supervisorSessionId) {
       throw new ForbiddenException('Esta venta a crédito requiere autorización de un supervisor.');
@@ -191,6 +196,37 @@ export class FacturasService {
     if (!row) {
       throw new ForbiddenException('Esta venta a crédito requiere autorización de un supervisor.');
     }
+  }
+
+  /**
+   * Alarma de invariante — NO es el guard real (ese es
+   * validarAutorizacionVentaCredito, arriba, que siempre corre primero y ya
+   * lanza 403 en este mismo caso). Esto es una segunda comprobación
+   * independiente, justo antes de que la factura pueda pasar a EMITIDA: si
+   * de verdad se llega aquí con una venta a crédito que la empresa exige
+   * autorizar y SIN supervisor registrado, algo falló ANTES — un bug, un
+   * refactor que se saltó el guard, una carrera con
+   * /auth/supervisor-log/cerrar. Nunca debería dispararse en operación
+   * normal; si se dispara, es una alerta de seguridad real, no un 403
+   * esperado del día a día — por eso va a Sentry con nivel error, y bloquea
+   * la emisión igual.
+   */
+  private async alarmarSiInvarianteSupervisorCreditoViolada(
+    factura: { id: number; empresaId: number; tipoPago: string; supervisorSessionId?: number | null },
+  ): Promise<void> {
+    if (factura.tipoPago !== 'CREDITO') return;
+    if (factura.supervisorSessionId) return;
+    if (!(await this.empresaExigeSupervisorParaCredito(factura.empresaId))) return;
+
+    const err = new Error(
+      `Invariante violada: factura #${factura.id} (empresa ${factura.empresaId}) a punto de pasar a ` +
+      `EMITIDA siendo CRÉDITO, con la empresa exigiendo supervisor, y sin supervisorSessionId registrado.`,
+    );
+    this.logger.error(err.message);
+    reportServiceError(err, 'facturas.invariante-supervisor-credito', {
+      facturaId: factura.id, empresaId: factura.empresaId,
+    });
+    throw new ForbiddenException('No se puede emitir: falta autorización de supervisor para esta venta a crédito.');
   }
 
   /**
@@ -1126,6 +1162,13 @@ export class FacturasService {
         await this.validarAutorizacionVentaCredito(
           factura.empresaId, factura.usuarioId, (factura as any).supervisorSessionId,
         );
+        // Red de seguridad, no el guard real (ese es la línea de arriba): si
+        // por lo que sea se llega hasta aquí con la invariante violada — un
+        // bug en validarAutorizacionVentaCredito, un refactor futuro que la
+        // saltee, una carrera con /auth/supervisor-log/cerrar — nunca debería
+        // pasar en operación normal. Si pasa, es una alerta de seguridad real
+        // (no un 403 esperado del día a día) y bloquea la emisión igual.
+        await this.alarmarSiInvarianteSupervisorCreditoViolada(factura as any);
       }
 
       // ── Guard: la fecha de la factura no puede estar a más de 30 días de hoy ──

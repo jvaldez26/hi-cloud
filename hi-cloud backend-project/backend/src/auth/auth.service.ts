@@ -33,6 +33,7 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { UserRole } from '../users/enums/user-role.enum';
 import { LoginAttemptsService } from './login-attempts.service';
+import { SupervisorAttemptsService } from './supervisor-attempts.service';
 import { reportServiceError } from '../common/observability/sentry';
 import { AuditoriaService } from '../auditoria/auditoria.service';
 import { AccionAuditoria, NivelAuditoria } from '../auditoria/entities/audit-log.entity';
@@ -85,6 +86,7 @@ export class AuthService implements OnModuleInit {
     private contabilidadService: ContabilidadService,
     @InjectDataSource() private dataSource: DataSource,
     private loginAttempts: LoginAttemptsService,
+    private supervisorAttempts: SupervisorAttemptsService,
     private auditoriaSvc: AuditoriaService,
     private modulosAddonSvc: ModulosAddonService,
     private alertaDispositivoSvc: AlertaDispositivoService,
@@ -1351,6 +1353,20 @@ export class AuthService implements OnModuleInit {
     detail?: string,
     sucursalId?: number | null,
   ): Promise<{ ok: true; nombre: string; role: string; sessionId: number | null }> {
+    // Bloqueo por intentos fallidos, por (empresa, cajero, supervisor) — NO
+    // por IP (ver SupervisorAttemptsService: varias cajas de una tienda
+    // comparten IP). Se revisa ANTES de tocar la BD, con el ref tal cual
+    // llegó — así cuenta igual probar contra un supervisorId que no existe.
+    const bloqueo = await this.supervisorAttempts.isBlocked(empresaId, cajeroId, supervisorRef);
+    if (bloqueo.blocked) {
+      throw new HttpException(
+        { message: 'Demasiados intentos. Espere un minuto.', remainingSeconds: bloqueo.remainingSeconds, error: 'Too Many Requests' },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    const registrarFallo = () => this.supervisorAttempts.registrarFallo(empresaId, cajeroId, supervisorRef);
+
     const byId = typeof supervisorRef === 'number';
     // Buscar supervisor en el mismo tenant con rol autorizado
     const rows = await this.dataSource.query<any[]>(`
@@ -1366,15 +1382,19 @@ export class AuthService implements OnModuleInit {
     `, [supervisorRef, empresaId]);
 
     const sup = rows[0];
-    if (!sup) throw new UnauthorizedException(
-      byId ? 'Usuario no autorizado como supervisor' : 'No se encontró supervisor con ese correo en esta empresa',
-    );
+    if (!sup) {
+      await registrarFallo();
+      throw new UnauthorizedException(
+        byId ? 'Usuario no autorizado como supervisor' : 'No se encontró supervisor con ese correo en esta empresa',
+      );
+    }
 
     // Auto-autorización: ADMIN y CONTADOR sí pueden aprobar sus propias
     // acciones (flujo normal, no una excepción a marcar). SUPER_ADMIN
     // actuando de cajero NO puede autorizarse a sí mismo — decisión
     // explícita del negocio, no un olvido.
     if (sup.id === cajeroId && !['admin', 'contador'].includes(sup.role)) {
+      await registrarFallo();
       throw new UnauthorizedException('No puedes autorizarte a ti mismo como supervisor');
     }
 
@@ -1386,7 +1406,14 @@ export class AuthService implements OnModuleInit {
     const valida = tienePin
       ? await bcrypt.compare(supervisorPassword, sup.pinSupervisor)
       : await bcrypt.compare(supervisorPassword, sup.password);
-    if (!valida) throw new UnauthorizedException(tienePin ? 'PIN incorrecto' : 'Contraseña incorrecta');
+    if (!valida) {
+      await registrarFallo();
+      throw new UnauthorizedException(tienePin ? 'PIN incorrecto' : 'Contraseña incorrecta');
+    }
+
+    // Autorización concedida — limpiar el contador de fallos de este par,
+    // igual que LoginAttemptsService.reset() tras un login correcto.
+    await this.supervisorAttempts.reset(empresaId, cajeroId, supervisorRef);
 
     // Registrar en audit log — esta fila ES la sesión (su "id" es el
     // sessionId que se propaga a las transacciones hechas durante la

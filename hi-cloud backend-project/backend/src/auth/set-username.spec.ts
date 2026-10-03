@@ -47,7 +47,7 @@ function makeAuthService() {
   const noop = {} as any;
   const svc = new AuthService(
     noop, noop, noop, noop, noop, noop, noop,
-    userRepository, noop, noop, noop, noop, noop, noop, auditoriaSvc,
+    userRepository, noop, noop, noop, noop, noop, noop, noop, auditoriaSvc,
   );
   return { svc, userRepository, auditoriaSvc, filas };
 }

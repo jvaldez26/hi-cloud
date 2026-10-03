@@ -87,11 +87,16 @@ function makeAuthService() {
   });
 
   const noop = {} as any;
+  const supervisorAttempts = {
+    isBlocked:      jest.fn().mockResolvedValue({ blocked: false }),
+    registrarFallo: jest.fn().mockResolvedValue({ intentos: 1, bloqueado: false }),
+    reset:          jest.fn().mockResolvedValue(undefined),
+  } as any;
   const svc = new AuthService(
     noop, noop, noop, noop, noop, noop, noop,
     noop, noop, noop, noop, noop,
     { query } as any,
-    noop, noop, noop, noop,
+    noop, supervisorAttempts, noop, noop, noop,
   );
 
   return { svc, usuarios, posLog, query };

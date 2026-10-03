@@ -30,7 +30,11 @@ describe('FacturasService — validarAutorizacionVentaCredito', () => {
     const query = jest.fn()
       .mockResolvedValueOnce(respuestas.empresa)
       .mockResolvedValueOnce(respuestas.sesion ?? []);
-    const ctx = { dataSource: { query } };
+    // Object.create(FacturasService.prototype) — no un objeto literal — para
+    // que empresaExigeSupervisorParaCredito() siga disponible por la cadena
+    // de prototipos, igual que siete-caminos.spec.ts.
+    const ctx: any = Object.create(FacturasService.prototype);
+    ctx.dataSource = { query };
     const call = (supervisorSessionId: number | null | undefined) =>
       (FacturasService.prototype as any).validarAutorizacionVentaCredito
         .call(ctx, EMPRESA, CAJERO, supervisorSessionId);

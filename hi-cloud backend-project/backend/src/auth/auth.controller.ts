@@ -270,7 +270,11 @@ export class AuthController {
   @Post('verificar-supervisor')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
-  @Throttle({ default: { limit: 5, ttl: 300_000 } }) // 5 intentos por 5 min por IP — brute-force guard
+  // Capa extra, por IP — la defensa real ahora es SupervisorAttemptsService
+  // (por empresa+cajero+supervisor, en AuthService.verificarSupervisor).
+  // Subido de 5 a 60/5min: varias cajas de una misma tienda comparten IP, y
+  // con el límite viejo los intentos de UN cajero bloqueaban a todos.
+  @Throttle({ default: { limit: 60, ttl: 300_000 } })
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Verificar credenciales de supervisor (admin/contador del mismo tenant)' })
   async verificarSupervisor(

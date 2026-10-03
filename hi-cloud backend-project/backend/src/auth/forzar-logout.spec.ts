@@ -49,6 +49,7 @@ function makeAuthService() {
     noop,            // contabilidadService
     dataSource,      // dataSource
     noop,            // loginAttempts
+    noop,            // supervisorAttempts
     auditoriaSvc,    // auditoriaSvc
   );
 
