@@ -7,18 +7,23 @@ import { useDebounce } from '../../hooks/useDebounce';
 import {
   Table, Button, Tag, Space, Typography, Card, Row, Col,
   Popconfirm, message, Dropdown, Input, Select, DatePicker, Statistic, theme,
-  Modal, Tooltip,
+  Modal, Tooltip, Checkbox,
 } from 'antd';
 import {
   PlusOutlined, EyeOutlined, DownOutlined, SearchOutlined,
   FileExcelOutlined, FilterOutlined, MailOutlined, PrinterOutlined,
   LoadingOutlined, AuditOutlined, CopyOutlined, CheckCircleOutlined, EditOutlined,
+  SendOutlined,
 } from '@ant-design/icons';
 import { SolicitarAprobacionModal } from '../../components/ui/SolicitarAprobacionModal';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useCanDo } from '../../hooks/useCanDo';
 import { TableActions } from '../../components/ui/TableActions';
+import { useXlinkEstados } from '../xlink/useXlinkEstados';
+import XlinkColumnaEstado from '../xlink/XlinkColumnaEstado';
+import { useXlinkEnvioMasivo } from '../xlink/useXlinkEnvioMasivo';
+import { xlinkMenuItem } from '../xlink/xlinkMenuItem';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import { comprasApi } from '../../api/compras.api';
@@ -93,6 +98,18 @@ export default function ComprasPage() {
 
   const rows = data?.data ?? [];
   const [pdfPending, setPdfPending] = useState<number | null>(null);
+
+  // HiCloud Xlink: estado/elegibilidad de la página visible en UNA consulta
+  // (misma fuente que el botón del detalle — nunca una condición propia).
+  const idsXlink = rows.map(r => r.id);
+  const { estados: xlinkEstados, cargando: xlinkCargando } = useXlinkEstados('orden_compra', idsXlink);
+  const xlinkMasivo = useXlinkEnvioMasivo('orden_compra', [['compras']]);
+  const [soloPendientesXlink, setSoloPendientesXlink] = useState(false);
+  // Filtro sobre la página ya cargada (10 filas) — no es un filtro de
+  // servidor: con varias páginas, solo oculta dentro de la que se ve.
+  const rowsXlink = soloPendientesXlink
+    ? rows.filter(r => xlinkMasivo.puedeSeleccionar(r.id, xlinkEstados))
+    : rows;
 
   const imprimirPDF = async (compra: Compra) => {
     setPdfPending(compra.id);
@@ -212,6 +229,7 @@ export default function ComprasPage() {
     { key: 'total',     label: 'Total',        defaultVisible: true  },
     { key: 'estado',    label: 'Estado',       defaultVisible: true  },
     { key: 'ecf',       label: 'e-CF',         defaultVisible: true  },
+    { key: 'xlink',     label: 'Xlink',        defaultVisible: true  },
   ];
   const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('compras', COLS_DEF);
 
@@ -294,6 +312,10 @@ export default function ComprasPage() {
       },
     },
     {
+      title: 'Xlink', key: 'xlink', width: 130,
+      render: (_: unknown, r: Compra) => <XlinkColumnaEstado estado={xlinkEstados.get(r.id)} cargando={xlinkCargando} />,
+    },
+    {
       title: '', key: 'actions', width: 110, align: 'right' as const,
       render: (_: unknown, r: Compra) => {
         // Mismas acciones que el POS ofrece por estado — un solo flujo de
@@ -348,6 +370,10 @@ export default function ComprasPage() {
             { type: 'divider' as const },
             { key: 'e41', label: 'Emitir Comprobante E41', icon: <AuditOutlined />, onClick: () => handleEmitirE41(r.id) },
           ] : []),
+          { type: 'divider' as const },
+          xlinkMenuItem('orden_compra', r.id, xlinkEstados.get(r.id), (p) => {
+            p.finally(() => qc.invalidateQueries({ queryKey: ['xlink-estados', 'orden_compra'] }));
+          }),
           ...(r.estado === 'borrador' && puedeEliminar ? [
             { type: 'divider' as const },
             { key: 'eliminar', label: 'Eliminar', danger: true, onClick: () => deleteMut.mutate(r.id) },
@@ -381,6 +407,16 @@ export default function ComprasPage() {
             <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
             <RefreshByKeyButton queryKey={['compras']} />
             <VideoTutorialButton />
+            {xlinkMasivo.seleccionados.length > 0 && (
+              <Popconfirm
+                title={`¿Enviar ${xlinkMasivo.seleccionados.length} orden(es) por HiCloud Xlink?`}
+                onConfirm={() => xlinkMasivo.enviarSeleccionados()}
+              >
+                <Button icon={<SendOutlined />} loading={xlinkMasivo.enviando}>
+                  Enviar {xlinkMasivo.seleccionados.length} por Xlink
+                </Button>
+              </Popconfirm>
+            )}
             {puedeCrear && (
               <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/compras/nueva')}>
                 Nueva compra
@@ -420,13 +456,24 @@ export default function ComprasPage() {
             <Button type="text" size="small" icon={<FilterOutlined />} onClick={limpiar}>Limpiar</Button>
           </Col>
         )}
+        <Col>
+          <Checkbox checked={soloPendientesXlink} onChange={e => setSoloPendientesXlink(e.target.checked)}>
+            Solo pendientes de enviar (Xlink)
+          </Checkbox>
+        </Col>
       </Row>
 
 
       <Table
-        columns={filterColumns(columns as any) as any} dataSource={rows} rowKey="id"
+        columns={filterColumns(columns as any) as any} dataSource={rowsXlink} rowKey="id"
         loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
+        rowSelection={{
+          selectedRowKeys: xlinkMasivo.seleccionados,
+          onChange: (keys) => xlinkMasivo.setSeleccionados(keys as number[]),
+          getCheckboxProps: (r: Compra) => ({ disabled: !xlinkMasivo.puedeSeleccionar(r.id, xlinkEstados) }),
+          preserveSelectedRowKeys: true,
+        }}
         onRow={r => ({ style: { cursor: 'pointer' }, onDoubleClick: () => navigate(`/compras/${r.id}`) })}
         pagination={{
           total: data?.meta.total, pageSize: 10, current: page,

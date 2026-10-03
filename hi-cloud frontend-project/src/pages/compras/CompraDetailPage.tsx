@@ -14,6 +14,7 @@ import { normalizarNcf, reglaFormatoNcf } from '../../utils/ncf';
 import type { CompraEstado } from '../../types';
 import EcfSeccion from '../../components/ui/EcfSeccion';
 import RecibirMercanciaModal from '../../components/compras/RecibirMercanciaModal';
+import EnviarPorXlinkButton from '../xlink/EnviarPorXlinkButton';
 import { TIPOS_BIENES_606, FORMAS_PAGO_606 } from '../../constants/dgii-606';
 
 /** Estados en los que ya no se puede tocar cabecera/líneas (ver
@@ -167,6 +168,11 @@ export default function CompraDetailPage() {
               onClick={imprimirPDF} disabled={pdfLoading}>
               Imprimir
             </Button>
+            {/* Siempre se muestra — nunca oculto sin explicación. El motivo
+                (si no es elegible: estado, sin término de pago, proveedor no
+                vinculado, etc.) viene de XlinkElegibilidadService, nunca de
+                una condición local. */}
+            <EnviarPorXlinkButton tipoDocumento="orden_compra" documentoId={compra.id} />
             {siguientes.map(sig => abreModal(sig) ? (
               <Button key={sig} type="primary" icon={<SendOutlined />}
                 style={{ background: '#10b981', borderColor: '#10b981' }}
