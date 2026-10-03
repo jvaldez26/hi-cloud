@@ -71,15 +71,26 @@ export class NotificacionesService {
     return rows.map(r => r.email);
   }
 
-  /** Ids de usuarios admin/contador activos de una empresa (hasta 5) — para notificaciones canal SISTEMA. */
+  /**
+   * Ids de usuarios admin/contador activos de una empresa — para
+   * notificaciones canal SISTEMA.
+   *
+   * Filtra por `usuario_empresa.rol` (el rol EN ESTA empresa), no por
+   * `users.role` (el global) — mismo criterio que RolesGuard.checkMembresia:
+   * `users.role` solo se mantiene sincronizado con la empresa PRINCIPAL del
+   * usuario, así que un admin de una empresa secundaria y viewer en la
+   * principal (o viceversa) se perdía o se colaba con el rol global. Sin
+   * LIMIT: con más de 5 admin/contador en una empresa, el resto nunca se
+   * enteraba de nada por este canal (bug real, auditoría HiCloud Xlink
+   * 2026-10-03, Fase 1f).
+   */
   private async getAdminUserIds(empresaId: number): Promise<number[]> {
     const rows = await this.dataSource.query<{ id: number }[]>(
-      `SELECT u.id
+      `SELECT ue."userId" AS id
        FROM usuario_empresa ue
        JOIN users u ON u.id = ue."userId"
        WHERE ue."empresaId" = $1 AND ue."isActive" = true
-         AND u."isActive" = true AND u.role IN ('admin','contador')
-       LIMIT 5`,
+         AND u."isActive" = true AND ue.rol IN ('admin','contador')`,
       [empresaId],
     );
     return rows.map(r => r.id);
