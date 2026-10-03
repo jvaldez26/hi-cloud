@@ -27,6 +27,11 @@ import EcfResultModal from '../../components/ui/EcfResultModal';
 import EcfBadge, { type EstadoEcf } from '../../components/ui/EcfBadge';
 import WhatsAppButton from '../../components/ui/WhatsAppButton';
 import { FiltrosFiscalesBar, calcularRangoAtajo, ETIQUETA_ATAJO, type AtajoRango, type FiltroChip } from '../../components/ui/FiltrosFiscalesBar';
+import { useXlinkEstados } from '../xlink/useXlinkEstados';
+import XlinkColumnaEstado from '../xlink/XlinkColumnaEstado';
+import { useXlinkEnvioMasivo } from '../xlink/useXlinkEnvioMasivo';
+import { xlinkMenuItem } from '../xlink/xlinkMenuItem';
+import { SendOutlined } from '@ant-design/icons';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -430,8 +435,22 @@ export default function NotasCreditoPage() {
     { key: 'mon', label: 'Moneda',       defaultVisible: true  },
     { key: 'e',   label: 'Estado',       defaultVisible: true  },
     { key: 'ecf', label: 'Estado DGII',  defaultVisible: true  },
+    { key: 'xlink', label: 'Xlink',      defaultVisible: true  },
   ];
   const { visibleColumns, updateVisibility, filterColumns: fcNC } = useColumnVisibility('notas-credito', COLS_DEF);
+
+  // HiCloud Xlink: estado/elegibilidad de la página visible en UNA consulta
+  // (misma fuente que el botón del detalle de facturas — nunca una condición propia).
+  const filasNC: any[] = notas?.data ?? [];
+  const idsXlinkNC = filasNC.map((n: any) => n.id);
+  const { estados: xlinkEstadosNC, cargando: xlinkCargandoNC } = useXlinkEstados('nota_credito', idsXlinkNC);
+  const xlinkMasivoNC = useXlinkEnvioMasivo('nota_credito', [['notas-credito']]);
+  const [soloPendientesXlinkNC, setSoloPendientesXlinkNC] = useState(false);
+  // Filtro sobre la página ya cargada (10 filas) — no es un filtro de
+  // servidor: con varias páginas, solo oculta dentro de la que se ve.
+  const filasNCMostradas = soloPendientesXlinkNC
+    ? filasNC.filter((n: any) => xlinkMasivoNC.puedeSeleccionar(n.id, xlinkEstadosNC))
+    : filasNC;
 
   return (
     <div style={{ padding: '24px' }}>
@@ -458,6 +477,19 @@ export default function NotasCreditoPage() {
           <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
           <RefreshByKeyButton queryKey={['notas-credito']} />
           <VideoTutorialButton />
+          {xlinkMasivoNC.seleccionados.length > 0 && (
+            <Popconfirm
+              title={`¿Enviar ${xlinkMasivoNC.seleccionados.length} nota(s) por HiCloud Xlink?`}
+              onConfirm={() => xlinkMasivoNC.enviarSeleccionados()}
+            >
+              <Button icon={<SendOutlined />} loading={xlinkMasivoNC.enviando}>
+                Enviar {xlinkMasivoNC.seleccionados.length} por Xlink
+              </Button>
+            </Popconfirm>
+          )}
+          <Checkbox checked={soloPendientesXlinkNC} onChange={e => setSoloPendientesXlinkNC(e.target.checked)}>
+            Solo pendientes de enviar (Xlink)
+          </Checkbox>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => abrirDesdeFactura()}>
             Nueva Nota de Crédito
           </Button>
@@ -505,10 +537,16 @@ export default function NotasCreditoPage() {
 
       <Card bordered={false} style={{ borderRadius: 12 }}>
         <Table
-          dataSource={notas?.data ?? []}
+          dataSource={filasNCMostradas}
           rowKey="id"
           loading={isLoading}
           size="middle"
+          rowSelection={{
+            selectedRowKeys: xlinkMasivoNC.seleccionados,
+            onChange: (keys) => xlinkMasivoNC.setSeleccionados(keys as number[]),
+            getCheckboxProps: (r: any) => ({ disabled: !xlinkMasivoNC.puedeSeleccionar(r.id, xlinkEstadosNC) }),
+            preserveSelectedRowKeys: true,
+          }}
           pagination={{ total: notas?.meta?.total, pageSize: 10, current: page, onChange: setPage, showSizeChanger: false }}
           scroll={{ x: 'max-content' }}
           columns={fcNC([
@@ -566,6 +604,10 @@ export default function NotasCreditoPage() {
                 }
                 return <Text type="secondary" style={{ fontSize: 11 }}>—</Text>;
               },
+            },
+            {
+              title: 'Xlink', key: 'xlink', width: 130,
+              render: (_: any, r: any) => <XlinkColumnaEstado estado={xlinkEstadosNC.get(r.id)} cargando={xlinkCargandoNC} />,
             },
             {
               title: '', key: 'acc', width: 72, align: 'right' as const,
@@ -640,6 +682,10 @@ export default function NotasCreditoPage() {
                       danger: true,
                       onClick: () => eliminar.mutate(r.id),
                     } : null,
+                    { type: 'divider' as const },
+                    xlinkMenuItem('nota_credito', r.id, xlinkEstadosNC.get(r.id), (p) => {
+                      p.finally(() => qc.invalidateQueries({ queryKey: ['xlink-estados', 'nota_credito'] }));
+                    }),
                   ].filter(Boolean)}
                 />
               ),
