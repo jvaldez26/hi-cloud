@@ -5,6 +5,8 @@ export enum CategoriaRetiro {
   DEPOSITO_BANCO = 'deposito_banco',
   GASTO          = 'gasto',
   PRESTAMO_DUENO = 'prestamo_dueno',
+  ADELANTO_LAVADOR = 'adelanto_lavador',
+  PAGO_LAVADOR     = 'pago_lavador',
   OTRO           = 'otro',
 }
 
@@ -21,6 +23,8 @@ export const CATEGORIA_LABELS: Record<CategoriaRetiro, string> = {
   deposito_banco: 'Depósito a banco',
   gasto:          'Gasto operacional',
   prestamo_dueno: 'Préstamo al dueño',
+  adelanto_lavador: 'Adelanto a lavador (Car Wash)',
+  pago_lavador:     'Pago a lavador (Car Wash)',
   otro:           'Otro',
 };
 

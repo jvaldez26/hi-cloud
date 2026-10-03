@@ -4,7 +4,7 @@ import { RealtimeGateway } from './realtime.gateway';
 export type Entidad =
   | 'factura' | 'producto' | 'cliente' | 'proveedor'
   | 'caja'    | 'inventario' | 'cxc'   | 'cotizacion'
-  | 'compra'  | 'conduce'    | 'vendedor';
+  | 'compra'  | 'conduce'    | 'vendedor' | 'car_wash_turno';
 
 @Injectable()
 export class RealtimeService {

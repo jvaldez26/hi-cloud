@@ -32,6 +32,7 @@ const RUTAS_SIN_TENANT = [
   '/api-json',
   '/api-yaml',
   '/portal/',
+  '/publico/carwash/',
   '/invitacion/',
   '/invitaciones/aceptar',
   '/encuestas/responder',

@@ -152,6 +152,8 @@ import { GastosImportacionModule }  from './gastos-importacion/gastos-importacio
 import { ActivacionEcfModule } from './activacion-ecf/activacion-ecf.module';
 import { JWT_EXPIRES_IN_DEFAULT } from './auth/auth.constants';
 import { ActividadInterceptor } from './auth/actividad.interceptor';
+import { OrigenFacturaModule } from './common/origen-factura/origen-factura.module';
+import { CarWashModule } from './car-wash/car-wash.module';
 
 @Module({
   imports: [
@@ -421,6 +423,8 @@ import { ActividadInterceptor } from './auth/actividad.interceptor';
     VideosTutorialesModule,
     MensajesModule,
     GastosImportacionModule,
+    OrigenFacturaModule,
+    CarWashModule,
   ],
   controllers: [AppController],
   providers: [
