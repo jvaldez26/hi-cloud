@@ -16,6 +16,11 @@ const ENTITY_KEYS: Record<string, string[][]> = {
   conduce:    [['conduces']],
   vendedor:   [['vendedores'], ['vendedores-sel']],
   car_wash_turno: [['cw-turnos']],
+  // Badge "Por Procesar" del sidebar y las pestañas de XlinkPage — antes solo
+  // se refrescaban invalidando a mano desde dentro de esa página; un
+  // documento nuevo no aparecía en el badge hasta recargar (bug real,
+  // auditoría HiCloud Xlink 2026-10-03, Fase 1g).
+  xlink:      [['xlink-pendientes-conteo'], ['xlink-recibidos'], ['xlink-enviados']],
 };
 
 export type RealtimeStatus = 'connecting' | 'connected' | 'disconnected';

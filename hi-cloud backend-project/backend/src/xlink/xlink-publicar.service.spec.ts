@@ -20,6 +20,7 @@ function buildDeps() {
       buscarPorOrigenParaAnular: jest.fn(),
       guardar: jest.fn().mockResolvedValue(undefined),
     },
+    realtimeSvc: { notify: jest.fn() },
   };
 }
 
@@ -27,6 +28,7 @@ function buildService(d: ReturnType<typeof buildDeps>): XlinkPublicarService {
   return new XlinkPublicarService(
     d.ds as any, d.empresaRepo as any, d.tenantSvc as any,
     d.auditoriaSvc as any, d.notificacionesSvc as any, d.xlinkSvc as any, d.xlinkRepo as any,
+    d.realtimeSvc as any,
   );
 }
 
@@ -71,6 +73,9 @@ describe('XlinkPublicarService — resolverFactura vía publicar()', () => {
     expect(d.notificacionesSvc.notificarSistemaEmpresa).toHaveBeenCalledWith(
       99, expect.any(String), expect.any(String), expect.any(String), '501',
     );
+    // Badge "Por Procesar" en vivo del receptor (Fase 1g) — mismo WebSocket
+    // que el resto de la app, ver useRealtime.ts.
+    expect(d.realtimeSvc.notify).toHaveBeenCalledWith(99, 'xlink', 'created', 501);
   });
 
   it('NO publica una factura con e-CF RECHAZADO', async () => {

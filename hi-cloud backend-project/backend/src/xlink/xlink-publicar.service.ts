@@ -6,6 +6,7 @@ import { TenantService } from '../tenant/tenant.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
 import { AccionAuditoria } from '../auditoria/entities/audit-log.entity';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { TipoNotificacion } from '../notificaciones/entities/notificacion-enviada.entity';
 import { XlinkService } from './xlink.service';
 import { XlinkDocumentosRepository } from './xlink-documentos.repository';
@@ -70,6 +71,7 @@ export class XlinkPublicarService {
     private notificaciones: NotificacionesService,
     private xlinkService: XlinkService,
     private xlinkRepo: XlinkDocumentosRepository,
+    private realtimeService: RealtimeService,
   ) {}
 
   async publicar(dto: PublicarXlinkDto, usuario: { id: number; nombre?: string; email?: string }): Promise<PublicarXlinkResultadoItem[]> {
@@ -181,6 +183,13 @@ export class XlinkPublicarService {
       `${emisor?.nombreComercial ?? emisor?.nombre ?? 'Una empresa'} te envió ${doc.numeroOrigen} por HiCloud Xlink.`,
       String(creado.id),
     );
+
+    // Badge de "Por Procesar" en vivo para el RECEPTOR — mismo WebSocket que
+    // ya usa el resto de la app (useRealtime.ts, ENTITY_KEYS['xlink']).
+    // Antes el badge solo se refrescaba al invalidar la query a mano desde
+    // dentro de XlinkPage, así que un documento nuevo no aparecía hasta
+    // recargar o tocar algo en Xlink (bug real, auditoría 2026-10-03, Fase 1g).
+    this.realtimeService.notify(contraparte.id, 'xlink', 'created', creado.id);
   }
 
   /**
