@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource, In, IsNull, EntityManager } from 'typeorm';
@@ -269,7 +269,17 @@ export class AsientosAutomaticosService {
     return this.cuentaRepository.findOne({ where: { codigo, isActive: true, empresaId } });
   }
 
-  private async generarNumero(empresaId?: number): Promise<string> {
+  // Requerido, nunca `?? 0` — ese fallback dejó 13 asientos huérfanos en
+  // producción (empresaId NULL, invisibles en libros/balance/estado de
+  // resultados de cualquier empresa) antes de que los call sites de este
+  // archivo quedaran blindados (ver el guard `if (eid === undefined)` en
+  // _crearAsientoContabilizado y el try/catch de revertirAsiento). Exigirlo
+  // aquí también es la última línea de defensa si algún caller futuro deja
+  // de blindarse.
+  private async generarNumero(empresaId: number): Promise<string> {
+    if (!empresaId) {
+      throw new BadRequestException('No se puede generar el número de asiento sin contexto de empresa');
+    }
     return generarNumeroSecuencial(
       this.dataSource,
       'asientos_contables',
@@ -277,7 +287,7 @@ export class AsientosAutomaticosService {
       '^ASI-[0-9]+$',
       'ASI-',
       5,
-      empresaId ?? 0,
+      empresaId,
     );
   }
 

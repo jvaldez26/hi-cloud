@@ -1049,7 +1049,15 @@ export class ContabilidadService implements OnModuleInit {
   // Asientos — CRUD
   // ──────────────────────────────────────────────────────────────────
 
-  private async generarNumero(empresaId?: number): Promise<string> {
+  // Requerido, nunca `?? 0` — ese fallback (cuando this.eid todavía podía
+  // devolver undefined) dejó 13 asientos huérfanos en producción (empresaId
+  // NULL, invisibles en libros/balance/estado de resultados de cualquier
+  // empresa). this.eid ya falla cerrado (ver el getter arriba), pero exigir
+  // el parámetro aquí también es la última línea de defensa.
+  private async generarNumero(empresaId: number): Promise<string> {
+    if (!empresaId) {
+      throw new BadRequestException('No se puede generar el número de asiento sin contexto de empresa');
+    }
     return generarNumeroSecuencial(
       this.dataSource,
       'asientos_contables',
@@ -1057,7 +1065,7 @@ export class ContabilidadService implements OnModuleInit {
       '^ASI-[0-9]+$',
       'ASI-',
       5,
-      empresaId ?? 0,
+      empresaId,
     );
   }
 
