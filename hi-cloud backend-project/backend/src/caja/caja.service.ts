@@ -123,6 +123,19 @@ export class CajaService {
   ) {
     const empresaId = this.tenantService.getEmpresaId();
 
+    // Causa real (caja #714, empresa 44, 2026-10-03): un JWT emitido por
+    // POST /auth/refresh nunca llevaba sucursalId (ver AuthService.
+    // buildAccessTokenForUser, ahora corregido) — el CLS quedaba sin
+    // sucursal para toda petición hecha con ese token, y abrirCaja() lo
+    // escribía en silencio como NULL. Cortamos aquí: sin sucursal válida
+    // en el token, no se abre caja — el usuario debe re-loguearse.
+    const sucursalId = this.tenantService.getSucursalId();
+    if (!sucursalId) {
+      throw new BadRequestException(
+        'No se pudo determinar tu sucursal activa. Cierra sesión y vuelve a entrar para continuar.',
+      );
+    }
+
     // Resolver nombre del cajero.
     // vendedorId es siempre un vendedor.id (tabla vendedores) — el POS
     // usa GET /vendedores y envía ese ID. Buscamos el nombre ahí primero.
@@ -208,7 +221,7 @@ export class CajaService {
           empresaId,
           vendedorId:     vendedorId    ?? undefined,
           vendedorNombre: vendedorNombre ?? undefined,
-          sucursalId:     this.tenantService.getSucursalId() ?? undefined,
+          sucursalId,
         }),
       );
       this.realtimeService.notify(empresaId, 'caja', 'created', nueva.id);
@@ -834,7 +847,12 @@ export class CajaService {
     // ABIERTA van primero (sea cual sea su fecha): son las que necesitan
     // acción, no hay que bajar la lista para notarlas.
     const qb = this.repo.createQueryBuilder('c').where('c.empresaId = :empresaId', { empresaId });
-    if (sucursalId) qb.andWhere('c.sucursalId = :sucursalId', { sucursalId });
+    // Caso real (caja #714, empresa 44, 2026-10-03): este filtro excluía en
+    // silencio cualquier caja con sucursalId NULL cuando el que mira el
+    // historial tenía una sucursal activa en su sesión — la caja de Maximo
+    // nunca apareció. Las sucursalId NULL son un dato roto que hay que VER
+    // (el frontend las marca "Sin sucursal"), nunca filtrarlas sin aviso.
+    if (sucursalId) qb.andWhere('(c.sucursalId = :sucursalId OR c.sucursalId IS NULL)', { sucursalId });
     if (vendedorId !== undefined) {
       if (vendedorId === 0) qb.andWhere('c.vendedorId IS NULL');
       else                  qb.andWhere('c.vendedorId = :vendedorId', { vendedorId });

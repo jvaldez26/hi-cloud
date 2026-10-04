@@ -162,6 +162,22 @@ describe('CajaService.cerrarCaja — pertenencia', () => {
   });
 });
 
+// Caso real (caja #714, empresa 44, 2026-10-03): un access token renovado por
+// /auth/refresh no traía sucursalId → abrirCaja() la escribía en silencio
+// como NULL. Ahora corta con 400 en vez de crear la caja sin sucursal.
+describe('CajaService.abrirCaja — sucursalId obligatorio', () => {
+  it('sin sucursalId en el CLS: 400, no toca la BD', async () => {
+    const d = buildDeps();
+    d.tenantSvc.getSucursalId = () => undefined;
+    const service = buildService(d);
+
+    await expect(service.abrirCaja(1, 500)).rejects.toThrow(BadRequestException);
+
+    expect(d.repo.findOne).not.toHaveBeenCalled();
+    expect(d.repo.save).not.toHaveBeenCalled();
+  });
+});
+
 // Caso real (2026-10-04): una caja abierta un día y nunca cerrada quedaba
 // invisible — "No hay cajas abiertas hoy" solo mira fecha = hoy.
 describe('CajaService.getCajasAbiertas', () => {
@@ -216,6 +232,29 @@ describe('CajaService.getHistorial — ABIERTA siempre primero', () => {
 
     expect(qb.orderBy).toHaveBeenCalledWith(`CASE WHEN c.estado = 'abierta' THEN 0 ELSE 1 END`, 'ASC');
     expect(qb.addOrderBy).toHaveBeenCalledWith('c.fecha', 'DESC');
+  });
+
+  // Caso real (caja #714, empresa 44, 2026-10-03): con sucursalId activa en
+  // la sesión, el filtro `c.sucursalId = :sucursalId` excluía en silencio
+  // las cajas con sucursalId NULL — la de Maximo nunca apareció en el
+  // historial. Deben verse siempre (el frontend las marca "Sin sucursal").
+  it('con sucursal activa en la sesión: incluye también las cajas con sucursalId NULL, no solo las de esa sucursal', async () => {
+    const d = buildDeps();
+    d.tenantSvc.getSucursalId = () => 45;
+    const qb: any = {
+      where: jest.fn().mockReturnThis(), andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(), addOrderBy: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(), take: jest.fn().mockReturnThis(),
+      getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+    };
+    d.repo.createQueryBuilder.mockReturnValue(qb);
+    const service = buildService(d);
+
+    await service.getHistorial(1, 20);
+
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      '(c.sucursalId = :sucursalId OR c.sucursalId IS NULL)', { sucursalId: 45 },
+    );
   });
 
   it('una fila ABIERTA en el historial trae efectivoEsperado calculado (no undefined) — para que "Cerrar caja" desde ahí arranque con el número real', async () => {
