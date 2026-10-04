@@ -153,8 +153,11 @@ describe('DevolucionesService.crearDesdeNotaCredito', () => {
     // TenantService.getEmpresaId() directo — corre fuera de contexto HTTP).
     expect(tenantService.getEmpresaId).not.toHaveBeenCalled();
     expect(tenantService.runForEmpresa).toHaveBeenCalledWith(7, expect.any(Function));
+    // Los dos últimos (almacenId, sucursalId) van undefined aquí: el fixture
+    // de `ds` no tiene una factura #55 real que devuelva sucursalId — ver
+    // el spec de resolverAlmacenId para la resolución del almacén en sí.
     expect(inventarioService.registrarDevolucion).toHaveBeenCalledWith(
-      55, 2, 9, expect.any(String), dev!.numero,
+      55, 2, 9, expect.any(String), dev!.numero, undefined, undefined,
     );
   });
 

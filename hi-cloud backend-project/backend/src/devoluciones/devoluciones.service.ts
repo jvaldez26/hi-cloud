@@ -229,17 +229,23 @@ export class DevolucionesService {
       this.detalleRepository.create(detallesData.map(d => ({ ...d, devolucionId: dev.id }))),
     );
 
-    // Mueve el inventario de una vez, al almacén por defecto de la empresa
-    // (sin almacenId explícito — cae al fallback de syncStockAlmacen, el
-    // mismo que anular() usará simétricamente si algún día hay que
-    // revertir esto). runForEmpresa() crea el contexto CLS que este método
-    // deliberadamente no tiene (ver comentario de la función).
+    // Mueve el inventario de una vez. runForEmpresa() crea el contexto CLS
+    // que este método deliberadamente no tiene (ver comentario de la
+    // función) — pero NO fija sucursalId/almacenId, así que se le pasa a
+    // mano la sucursal de la FACTURA ORIGINAL: registrarDevolucion()
+    // resuelve el almacén real (resolverAlmacenId) en vez de caer al
+    // "almacén de menor id" en silencio como antes.
+    const [facturaOriginal] = await this.ds.query<{ sucursalId: number | null }[]>(
+      `SELECT "sucursalId" FROM facturas WHERE id = $1`, [facturaOriginalId],
+    );
     await this.tenantService.runForEmpresa(empresaId, async () => {
       for (const d of detallesData) {
         await this.inventarioService.registrarDevolucion(
           d.productoId, d.cantidad, usuarioId,
           `Devolución ${numero} — generada automáticamente al aceptar DGII la NC ${ncNumero}`,
           numero,
+          undefined,
+          facturaOriginal?.sucursalId ?? undefined,
         );
       }
     });

@@ -27,7 +27,9 @@ function buildDeps(stockActual = 10) {
     loteRepo: {}, serialRepo: {}, solicitudAjusteRepo: {},
     ds: { query: jest.fn().mockResolvedValue([]) },
     realtimeSvc: { notify: jest.fn() },
-    tenantSvc:   { getEmpresaId: () => EMPRESA },
+    // getAlmacenId() resuelve directo (tier 2 de resolverAlmacenId) — este
+    // spec prueba el costo opcional de AVCO, no la resolución de almacén.
+    tenantSvc:   { getEmpresaId: () => EMPRESA, getAlmacenId: () => 99, getSucursalId: () => null },
     emailSvc:    {},
     valoracionSvc: { actualizarCostoPromedio: jest.fn().mockResolvedValue(undefined) },
   };

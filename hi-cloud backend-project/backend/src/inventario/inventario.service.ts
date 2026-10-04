@@ -22,6 +22,7 @@ import { TenantService } from '../tenant/tenant.service';
 import { fechaHoyRD } from '../common/utils/fecha-local.util';
 import { EmailService } from '../notificaciones/services/email.service';
 import { ValoracionStockService } from '../valoracion-stock/valoracion-stock.service';
+import { reportServiceError } from '../common/observability/sentry';
 
 @Injectable()
 export class InventarioService {
@@ -46,52 +47,86 @@ export class InventarioService {
   ) {}
 
   /**
-   * Sincroniza stock_almacen con el nuevo stock del producto.
-   * Si targetAlmacenId se provee, actualiza ese almacén específico.
-   * Si no, asigna al almacén principal de la empresa (el de menor id).
-   * No lanza error si no hay almacenes — el stock global sigue funcionando.
+   * Resuelve el almacén a usar para un movimiento de inventario — UNA sola
+   * fuente de verdad, usada tanto al registrar movimientos (persistirMovimiento)
+   * como al sincronizar stock por almacén (syncStockAlmacen). Antes cada una
+   * improvisaba su propio fallback (y syncStockAlmacen caía al "almacén de
+   * menor id" a ciegas si no había targetAlmacenId) — eso es justo lo que
+   * dejó 1,549 movimientos de la empresa 44 sin almacenId: el fallback
+   * mantenía el STOCK bien (por eso nunca hubo descuadre), pero nunca dejaba
+   * rastro de a qué almacén fue cada movimiento.
+   *
+   * Orden:
+   *   1. almacenId explícito (el que ya traía el documento: compra.almacenId,
+   *      dto.almacenId, etc.)
+   *   2. el almacén activo de la sesión (CLS — TenantService.getAlmacenId()).
+   *   3. el almacenPrincipalId de la sucursal — la del documento si se pasó,
+   *      si no la de la sesión (CLS — TenantService.getSucursalId()).
+   *   4. si la empresa tiene EXACTAMENTE un almacén activo, ese (el mismo
+   *      criterio que la migración de datos de sucursalId/almacenId).
+   *   5. si nada de eso resuelve: error claro + Sentry. Nunca "el de menor
+   *      id" en silencio — eso es precisamente el bug que encubría esto.
    */
+  async resolverAlmacenId(
+    empresaId: number,
+    opciones: { almacenIdExplicito?: number | null; sucursalId?: number | null } = {},
+  ): Promise<number> {
+    if (opciones.almacenIdExplicito) return opciones.almacenIdExplicito;
+
+    const almacenCls = this.tenantService.getAlmacenId();
+    if (almacenCls) return almacenCls;
+
+    const sucursalId = opciones.sucursalId ?? this.tenantService.getSucursalId();
+    if (sucursalId) {
+      const [sucursal] = await this.ds.query<{ almacenPrincipalId: number | null }[]>(
+        `SELECT "almacenPrincipalId" FROM sucursales WHERE id = $1 AND "empresaId" = $2`,
+        [sucursalId, empresaId],
+      );
+      if (sucursal?.almacenPrincipalId) return sucursal.almacenPrincipalId;
+    }
+
+    const almacenesActivos = await this.ds.query<{ id: number }[]>(
+      `SELECT id FROM almacenes WHERE "empresaId" = $1 AND "isActive" = true AND activo = true`,
+      [empresaId],
+    );
+    if (almacenesActivos.length === 1) return almacenesActivos[0].id;
+
+    const error = new Error(
+      `No se pudo determinar el almacén — empresaId=${empresaId}, ` +
+      `${almacenesActivos.length} almacén(es) activo(s), sin sucursal/CLS con almacén asignado.`,
+    );
+    reportServiceError(error, 'inventario.resolverAlmacenId', {
+      empresaId, almacenesActivos: almacenesActivos.length,
+    });
+    throw new BadRequestException('No se pudo determinar el almacén para este movimiento. Selecciona uno manualmente.');
+  }
+
+  /** Sincroniza stock_almacen con el nuevo stock del producto, en el
+   *  almacén ya resuelto por resolverAlmacenId(). */
   private async syncStockAlmacen(
     empresaId: number,
     productoId: number,
     nuevoStock: number,
     stockMinimo: number,
-    targetAlmacenId?: number,
+    almacenId: number,
   ) {
     const stockSafe = Math.max(0, nuevoStock);
     const minSafe   = stockMinimo ?? 0;
 
-    if (targetAlmacenId) {
-      await this.ds.query(`
-        INSERT INTO stock_almacen (
-          "empresaId", "almacenId", "productoId", stock, "stockMinimo", "isActive", "createdAt", "updatedAt"
-        )
-        VALUES ($1, $2, $3, $4, $5, true, NOW(), NOW())
-        ON CONFLICT ("almacenId", "productoId") DO UPDATE SET
-          stock        = EXCLUDED.stock,
-          "stockMinimo"= EXCLUDED."stockMinimo",
-          "updatedAt"  = NOW()
-      `, [empresaId, targetAlmacenId, productoId, stockSafe, minSafe]).catch(() => {});
-    } else {
-      await this.ds.query(`
-        INSERT INTO stock_almacen (
-          "empresaId", "almacenId", "productoId", stock, "stockMinimo", "isActive", "createdAt", "updatedAt"
-        )
-        SELECT $1, a.id, $2, $3, $4, true, NOW(), NOW()
-        FROM almacenes a
-        WHERE a."empresaId" = $1
-          AND a."isActive"  = true
-          AND a.activo      = true
-        ORDER BY a.id ASC
-        LIMIT 1
-        ON CONFLICT ("almacenId", "productoId") DO UPDATE SET
-          stock        = EXCLUDED.stock,
-          "stockMinimo"= EXCLUDED."stockMinimo",
-          "updatedAt"  = NOW()
-      `, [empresaId, productoId, stockSafe, minSafe]).catch(() => {
-        // No bloquear el movimiento si la tabla stock_almacen no existe aún
-      });
-    }
+    await this.ds.query(`
+      INSERT INTO stock_almacen (
+        "empresaId", "almacenId", "productoId", stock, "stockMinimo", "isActive", "createdAt", "updatedAt"
+      )
+      VALUES ($1, $2, $3, $4, $5, true, NOW(), NOW())
+      ON CONFLICT ("almacenId", "productoId") DO UPDATE SET
+        stock        = EXCLUDED.stock,
+        "stockMinimo"= EXCLUDED."stockMinimo",
+        "updatedAt"  = NOW()
+    `, [empresaId, almacenId, productoId, stockSafe, minSafe]).catch((err: unknown) => {
+      // No bloquear el movimiento si la tabla stock_almacen tiene un problema
+      // puntual — pero sí dejar rastro, a diferencia del catch-vacío de antes.
+      reportServiceError(err, 'inventario.syncStockAlmacen', { empresaId, productoId, almacenId });
+    });
   }
 
   // ──────────────────────────────────────────────────────────
@@ -119,6 +154,14 @@ export class InventarioService {
     return producto;
   }
 
+  /**
+   * empresaId es OBLIGATORIO — nunca se guarda un movimiento sin saber de
+   * qué empresa es. Antes, `registrarAjuste()` lo omitía al llamar aquí (y
+   * el `...(empresaId ? {...} : {})` de abajo lo dejaba en NULL en
+   * silencio): las únicas 2 filas de todo el sistema con empresaId NULL
+   * salieron de ahí. almacenId ya llega resuelto por resolverAlmacenId()
+   * — este método no vuelve a intentar adivinarlo.
+   */
   private async persistirMovimiento(
     tipo: TipoMovimiento,
     productoId: number,
@@ -126,16 +169,21 @@ export class InventarioService {
     cantidadAnterior: number,
     cantidadNueva: number,
     userId: number,
+    empresaId: number,
+    almacenId: number,
     motivo?: string,
     referencia?: string,
-    empresaId?: number,
-    almacenId?: number,
   ): Promise<Movimiento> {
+    if (!empresaId) {
+      const error = new Error(
+        `persistirMovimiento: empresaId faltante — tipo=${tipo} productoId=${productoId} userId=${userId}`,
+      );
+      reportServiceError(error, 'inventario.persistirMovimiento', { tipo, productoId, userId });
+      throw error;
+    }
     const movimiento = this.movimientoRepository.create({
       tipo, productoId, cantidad, cantidadAnterior, cantidadNueva,
-      motivo, referencia, userId,
-      ...(empresaId ? { empresaId } : {}),
-      ...(almacenId ? { almacenId } : {}),
+      motivo, referencia, userId, empresaId, almacenId,
     });
     return this.movimientoRepository.save(movimiento);
   }
@@ -146,19 +194,21 @@ export class InventarioService {
 
   async registrarEntrada(
     productoId: number, cantidad: number, userId: number, motivo?: string, referencia?: string,
-    almacenId?: number, costoUnitario?: number,
+    almacenId?: number, costoUnitario?: number, sucursalId?: number,
   ) {
     const producto = await this.obtenerProducto(productoId);
     const cantidadAnterior = Number(producto.stock);
     const cantidadNueva = Number((cantidadAnterior + cantidad).toFixed(4));
+    const almacenResuelto = await this.resolverAlmacenId(producto.empresaId, { almacenIdExplicito: almacenId, sucursalId });
 
     await this.productoRepository.update(productoId, { stock: cantidadNueva });
-    if (producto.empresaId) {
-      this.realtimeService.notify(producto.empresaId, 'producto', 'updated', productoId);
-      await this.syncStockAlmacen(producto.empresaId, productoId, cantidadNueva, Number(producto.stockMinimo), almacenId);
-    }
+    this.realtimeService.notify(producto.empresaId, 'producto', 'updated', productoId);
+    await this.syncStockAlmacen(producto.empresaId, productoId, cantidadNueva, Number(producto.stockMinimo), almacenResuelto);
 
-    const movimiento = await this.persistirMovimiento(TipoMovimiento.ENTRADA, productoId, cantidad, cantidadAnterior, cantidadNueva, userId, motivo, referencia, producto.empresaId, almacenId);
+    const movimiento = await this.persistirMovimiento(
+      TipoMovimiento.ENTRADA, productoId, cantidad, cantidadAnterior, cantidadNueva,
+      userId, producto.empresaId, almacenResuelto, motivo, referencia,
+    );
 
     // Costo opcional: si esta entrada trae un costo real, alimenta AVCO igual
     // que una Compra recibida. Sin costo, el movimiento queda como siempre
@@ -170,7 +220,10 @@ export class InventarioService {
     return movimiento;
   }
 
-  async registrarSalida(productoId: number, cantidad: number, userId: number, motivo?: string, referencia?: string, almacenId?: number) {
+  async registrarSalida(
+    productoId: number, cantidad: number, userId: number, motivo?: string, referencia?: string,
+    almacenId?: number, sucursalId?: number,
+  ) {
     const producto = await this.obtenerProducto(productoId);
 
     // Los servicios no tienen inventario físico — omitir movimiento de stock
@@ -185,39 +238,50 @@ export class InventarioService {
     }
 
     const cantidadNueva = Number((cantidadAnterior - cantidad).toFixed(4));
-    await this.productoRepository.update(productoId, { stock: cantidadNueva });
-    if (producto.empresaId) {
-      this.realtimeService.notify(producto.empresaId, 'producto', 'updated', productoId);
-      await this.syncStockAlmacen(producto.empresaId, productoId, cantidadNueva, Number(producto.stockMinimo), almacenId);
-    }
+    const almacenResuelto = await this.resolverAlmacenId(producto.empresaId, { almacenIdExplicito: almacenId, sucursalId });
 
-    return this.persistirMovimiento(TipoMovimiento.SALIDA, productoId, cantidad, cantidadAnterior, cantidadNueva, userId, motivo, referencia, producto.empresaId, almacenId);
+    await this.productoRepository.update(productoId, { stock: cantidadNueva });
+    this.realtimeService.notify(producto.empresaId, 'producto', 'updated', productoId);
+    await this.syncStockAlmacen(producto.empresaId, productoId, cantidadNueva, Number(producto.stockMinimo), almacenResuelto);
+
+    return this.persistirMovimiento(
+      TipoMovimiento.SALIDA, productoId, cantidad, cantidadAnterior, cantidadNueva,
+      userId, producto.empresaId, almacenResuelto, motivo, referencia,
+    );
   }
 
-  async registrarDevolucion(productoId: number, cantidad: number, userId: number, motivo?: string, referencia?: string, almacenId?: number) {
+  async registrarDevolucion(
+    productoId: number, cantidad: number, userId: number, motivo?: string, referencia?: string,
+    almacenId?: number, sucursalId?: number,
+  ) {
     const producto = await this.obtenerProducto(productoId);
     const cantidadAnterior = Number(producto.stock);
     const cantidadNueva = Number((cantidadAnterior + cantidad).toFixed(4));
+    const almacenResuelto = await this.resolverAlmacenId(producto.empresaId, { almacenIdExplicito: almacenId, sucursalId });
 
     await this.productoRepository.update(productoId, { stock: cantidadNueva });
-    if (producto.empresaId) {
-      this.realtimeService.notify(producto.empresaId, 'producto', 'updated', productoId);
-      await this.syncStockAlmacen(producto.empresaId, productoId, cantidadNueva, Number(producto.stockMinimo), almacenId);
-    }
+    this.realtimeService.notify(producto.empresaId, 'producto', 'updated', productoId);
+    await this.syncStockAlmacen(producto.empresaId, productoId, cantidadNueva, Number(producto.stockMinimo), almacenResuelto);
 
-    return this.persistirMovimiento(TipoMovimiento.DEVOLUCION, productoId, cantidad, cantidadAnterior, cantidadNueva, userId, motivo, referencia, producto.empresaId, almacenId);
+    return this.persistirMovimiento(
+      TipoMovimiento.DEVOLUCION, productoId, cantidad, cantidadAnterior, cantidadNueva,
+      userId, producto.empresaId, almacenResuelto, motivo, referencia,
+    );
   }
 
-  async registrarAjuste(productoId: number, cantidadNueva: number, userId: number, motivo: string) {
+  async registrarAjuste(productoId: number, cantidadNueva: number, userId: number, motivo: string, almacenId?: number, sucursalId?: number) {
     const producto = await this.obtenerProducto(productoId);
     const cantidadAnterior = Number(producto.stock);
     const diferencia = Math.abs(cantidadNueva - cantidadAnterior);
+    const almacenResuelto = await this.resolverAlmacenId(producto.empresaId, { almacenIdExplicito: almacenId, sucursalId });
 
     await this.productoRepository.update(productoId, { stock: cantidadNueva });
-    if (producto.empresaId) {
-      await this.syncStockAlmacen(producto.empresaId, productoId, cantidadNueva, Number(producto.stockMinimo));
-    }
-    return this.persistirMovimiento(TipoMovimiento.AJUSTE, productoId, diferencia, cantidadAnterior, cantidadNueva, userId, motivo);
+    await this.syncStockAlmacen(producto.empresaId, productoId, cantidadNueva, Number(producto.stockMinimo), almacenResuelto);
+
+    return this.persistirMovimiento(
+      TipoMovimiento.AJUSTE, productoId, diferencia, cantidadAnterior, cantidadNueva,
+      userId, producto.empresaId, almacenResuelto, motivo,
+    );
   }
 
   // ──────────────────────────────────────────────────────────
@@ -287,12 +351,12 @@ export class InventarioService {
   // ──────────────────────────────────────────────────────────
 
   async registrarEntradaDesdeDto(dto: RegistrarEntradaDto, userId: number) {
-    const almacenId = dto.almacenId ?? this.tenantService.getAlmacenId() ?? undefined;
-    return this.registrarEntrada(dto.productoId, dto.cantidad, userId, dto.motivo, dto.referencia, almacenId, dto.costoUnitario);
+    // registrarEntrada() ya resuelve el almacén completo (explícito → CLS →
+    // sucursal → único almacén de la empresa) vía resolverAlmacenId().
+    return this.registrarEntrada(dto.productoId, dto.cantidad, userId, dto.motivo, dto.referencia, dto.almacenId, dto.costoUnitario);
   }
   async registrarSalidaDesdeDto(dto: RegistrarSalidaDto, userId: number) {
-    const almacenId = dto.almacenId ?? this.tenantService.getAlmacenId() ?? undefined;
-    return this.registrarSalida(dto.productoId, dto.cantidad, userId, dto.motivo, dto.referencia, almacenId);
+    return this.registrarSalida(dto.productoId, dto.cantidad, userId, dto.motivo, dto.referencia, dto.almacenId);
   }
   async registrarAjusteDesdeDto(dto: RegistrarAjusteDto, userId: number) {
     return this.registrarAjuste(dto.productoId, dto.cantidadNueva, userId, dto.motivo);
