@@ -1003,12 +1003,22 @@ ${line()}
                     { title: 'Fecha',  dataIndex: 'fecha',  width: 100, render: (v: string) => fmt.date(v) },
                     {
                       title: 'Cajero', dataIndex: 'vendedorNombre', width: 150,
-                      render: (v: string) => {
+                      render: (v: string, r: any) => {
                         const n = v ?? 'Administrador';
                         return (
                           <Space size={4}>
                             <Avatar size={20} style={{ background: avatarColor(n), fontSize: 10 }}>{n.charAt(0)}</Avatar>
                             <Text style={{ fontSize: 12 }}>{n}</Text>
+                            {/* Caso real (caja #714, empresa 44, 2026-10-03): una caja
+                                con sucursalId NULL quedaba invisible para quien tenía
+                                sucursal activa — ya no se filtra en silencio (ver
+                                getHistorial), pero el dato roto debe VERSE, no solo
+                                dejarse pasar. */}
+                            {r.sucursalId == null && (
+                              <Tooltip title="Esta caja quedó sin sucursal asignada — probablemente por un token de sesión vencido en ese momento. Revisar.">
+                                <Tag color="warning" style={{ margin: 0, fontSize: 10 }}>Sin sucursal</Tag>
+                              </Tooltip>
+                            )}
                           </Space>
                         );
                       },
