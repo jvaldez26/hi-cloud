@@ -229,7 +229,12 @@ export class AuthService implements OnModuleInit {
 
       const almacenId: number | undefined = (sucursal as any).almacenPrincipalId ?? undefined;
       return { sucursalId: sucursal.id, almacenId, sucursalNombre: sucursal.nombre };
-    } catch {
+    } catch (e) {
+      // Antes este catch moría en silencio: un token sin sucursalId por un
+      // error transitorio de BD no dejaba ningún rastro para investigar.
+      this.logger.error(
+        `resolverContextoSucursal falló para userId=${userId} empresaId=${empresaId}: ${(e as Error).message}`,
+      );
       return {};
     }
   }
@@ -1301,7 +1306,19 @@ export class AuthService implements OnModuleInit {
     // sesión que haya pasado por /auth/refresh — es decir, casi todas.
     const user = await this.usersService.findByIdForAuth(userId);
     const ep = await this.getEmpresaPrincipal(userId);
-    return this.buildToken(user, ep?.empresaId, undefined, undefined, ep?.rol);
+
+    // Causa real (caja #714, empresa 44, 2026-10-03): esta función pasaba
+    // sucursalId/almacenId como undefined SIEMPRE — nunca llamaba a
+    // resolverContextoSucursal() como sí hace login(). El access token de
+    // CUALQUIER usuario quedaba sin sucursal en cuanto el access token
+    // original vencía y el frontend pedía uno nuevo por /auth/refresh (algo
+    // que pasa varias veces al día), aunque usuario_empresa.sucursalId
+    // estuviera correctamente asignado. Resolvemos igual que en login.
+    const { sucursalId, almacenId } = ep?.empresaId
+      ? await this.resolverContextoSucursal(userId, ep.empresaId)
+      : { sucursalId: undefined, almacenId: undefined };
+
+    return this.buildToken(user, ep?.empresaId, sucursalId, almacenId, ep?.rol);
   }
 
   /** POS Screen Lock: verifica que la contraseña coincide con la del usuario autenticado. */
