@@ -6,6 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import api from '../../api/client';
 import { useAuthStore } from '../../store/auth.store';
+import { mensajeDeError } from '../../utils/mensajeDeError';
 const { Title, Text } = Typography;
 
 const ROL_INFO: Record<string, { label: string; color: string; icon: string }> = {
@@ -82,7 +83,10 @@ export default function AcceptInvitePage() {
       <Result
         status="warning"
         title="Invitación no disponible"
-        subTitle={(error as any)?.response?.data?.message ?? 'Este enlace es inválido o ha expirado.'}
+        subTitle={mensajeDeError(error, {
+          errorServidor: 'No pudimos cargar la invitación, intenta de nuevo en unos segundos.',
+          fallback:      'Este enlace es inválido o ha expirado.',
+        })}
         extra={
           <Button type="primary" onClick={() => navigate('/login')}>
             Ir al inicio de sesión

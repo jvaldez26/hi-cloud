@@ -11,6 +11,7 @@ import DemoModal from './DemoModal';
 import { PanelAcceso } from './panel';
 import { fechaHora } from '../../utils/fechaRD';
 import { consumirReturnTo } from '../../utils/returnTo';
+import { mensajeDeError } from '../../utils/mensajeDeError';
 
 const WS_NUMBER   = '8093081713';
 const WS_URL      = `https://wa.me/1${WS_NUMBER}`;
@@ -193,7 +194,14 @@ export default function LoginPage() {
       navigate(consumirReturnTo() ?? (useAuthStore.getState().user?.role === 'super_admin' ? '/super-admin' : '/dashboard'));
     } catch (e: unknown) {
       const responseData   = (e as any)?.response?.data;
-      const msg            = responseData?.errors?.[0] ?? 'Credenciales inválidas';
+      // Caso real (yaribelnunez23@gmail.com, 2026-10-04): un error de red al
+      // recién encender la PC (sin response) caía en "Credenciales inválidas"
+      // aunque la contraseña siempre fue correcta — mensajeDeError() distingue
+      // sin-conexión / 5xx / 401 real.
+      const msg = mensajeDeError(e, {
+        errorServidor: 'No pudimos iniciar sesión, intenta de nuevo en unos segundos.',
+        fallback:      'Credenciales inválidas',
+      });
       const remainingSecs  = responseData?.remainingSeconds as number | undefined;
 
       if (msg === 'CORREO_NO_VERIFICADO') {
@@ -229,7 +237,10 @@ export default function LoginPage() {
       // vuelve a esa misma ruta en vez de al destino por rol (ver returnTo.ts).
       navigate(consumirReturnTo() ?? (useAuthStore.getState().user?.role === 'super_admin' ? '/super-admin' : '/dashboard'));
     } catch (e: unknown) {
-      const msg = (e as any)?.response?.data?.errors?.[0] ?? 'Error al iniciar sesión';
+      const msg = mensajeDeError(e, {
+        errorServidor: 'No pudimos iniciar sesión, intenta de nuevo en unos segundos.',
+        fallback:      'Error al iniciar sesión',
+      });
       setError(msg);
     } finally { setLoading(false); }
   };
@@ -247,7 +258,10 @@ export default function LoginPage() {
       // vuelve a esa misma ruta en vez de al destino por rol (ver returnTo.ts).
       navigate(consumirReturnTo() ?? (useAuthStore.getState().user?.role === 'super_admin' ? '/super-admin' : '/dashboard'));
     } catch (e: unknown) {
-      const msg = (e as any)?.response?.data?.errors?.[0] ?? 'Código incorrecto';
+      const msg = mensajeDeError(e, {
+        errorServidor: 'No pudimos verificar el código, intenta de nuevo en unos segundos.',
+        fallback:      'Código incorrecto',
+      });
       setError(msg); setCodigoTOTP('');
     } finally { setLoading(false); }
   };

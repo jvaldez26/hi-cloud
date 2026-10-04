@@ -229,6 +229,13 @@ apiClient.interceptors.response.use(
     const status  = err.response?.status;
     const message = extractBackendMessage(err);
 
+    // Marca explícita de "nunca hubo respuesta HTTP" — red caída, timeout,
+    // DNS, servidor inalcanzable. mensajeDeError() (utils/mensajeDeError.ts)
+    // la usa para no inventar una causa de negocio ("credenciales
+    // inválidas", "token inválido"...) cuando el problema real es la
+    // conexión. Se fija temprano, antes de cualquier return anticipado.
+    (err as any).isNetworkError = !err.response;
+
     // Un error también trae la cabecera: sirve igual para sincronizar.
     registrarHoraServidor(err.response?.headers?.date as string | undefined);
 

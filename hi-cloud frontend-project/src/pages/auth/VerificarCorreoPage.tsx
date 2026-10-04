@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Button, Spin, Result } from 'antd';
 import { CheckCircleOutlined, CloseCircleOutlined, MailOutlined } from '@ant-design/icons';
 import api from '../../api/client';
+import { mensajeDeError } from '../../utils/mensajeDeError';
 
 type Estado = 'cargando' | 'exito' | 'ya_verificado' | 'error' | 'expirado';
 
@@ -34,7 +35,13 @@ export default function VerificarCorreoPage() {
         setMensaje(msg);
       })
       .catch(err => {
-        const msg: string = err?.response?.data?.message ?? err?.response?.data?.errors?.[0] ?? 'Token inválido';
+        // Caso real (yaribelnunez23@gmail.com, 2026-10-04): sin esto, un
+        // error de red (sin response) caía en "Token inválido" aunque el
+        // enlace nunca llegó a verificarse por un problema de conexión.
+        const msg = mensajeDeError(err, {
+          errorServidor: 'No pudimos verificar tu correo, intenta de nuevo en unos segundos.',
+          fallback:      'Token inválido',
+        });
         if (msg.includes('expirado')) {
           setEstado('expirado');
         } else {

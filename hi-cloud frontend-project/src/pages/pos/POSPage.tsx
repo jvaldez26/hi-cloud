@@ -32,6 +32,7 @@ import {
 } from './carritoStorage';
 import { leerOrigenPendiente, limpiarOrigenPendiente } from '../car-wash/carWashOrigen';
 import { registerReauthHandler } from '../../utils/sessionEvents';
+import { mensajeDeError } from '../../utils/mensajeDeError';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import * as Sentry from '@sentry/react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -9588,7 +9589,13 @@ export default function POSPage() {
       // el mensaje real que mandó el backend ("Demasiados intentos. Espere
       // un minuto."), igual que ya lee LoginPage.tsx para el mismo caso.
       const data = e?.response?.data;
-      setSupError(data?.errors?.[0] ?? data?.message ?? 'Credenciales inválidas');
+      // Caso real (yaribelnunez23@gmail.com, 2026-10-04): sin esto, un error
+      // de red (sin response) caía en "Credenciales inválidas" aunque el
+      // supervisor nunca llegó a escribir su contraseña.
+      setSupError(mensajeDeError(e, {
+        errorServidor: 'No pudimos verificar al supervisor, intenta de nuevo en unos segundos.',
+        fallback:      'Credenciales inválidas',
+      }));
       const remainingSecs = data?.remainingSeconds as number | undefined;
       if (remainingSecs && remainingSecs > 0) startSupBlockCountdown(remainingSecs);
     } finally { setVerificandoSupNuevo(false); }
@@ -11687,7 +11694,10 @@ export default function POSPage() {
       setModalCambiarUser(false);
       window.location.reload();
     } catch (e: any) {
-      setErrCambio(e?.response?.data?.errors?.[0] ?? 'Usuario o contraseña incorrectos');
+      setErrCambio(mensajeDeError(e, {
+        errorServidor: 'No pudimos cambiar de usuario, intenta de nuevo en unos segundos.',
+        fallback:      'Usuario o contraseña incorrectos',
+      }));
       setPwCambio('');
     } finally { setCambiandoUser(false); }
   };
