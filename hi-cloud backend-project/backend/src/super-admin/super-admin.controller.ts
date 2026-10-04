@@ -463,7 +463,7 @@ export class SuperAdminController {
 
   @Delete('empresas/:id/permanente')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Eliminar empresa PERMANENTEMENTE — requiere confirmación textual' })
+  @ApiOperation({ summary: 'Desactivar empresa (soft delete) — una empresa nunca se borra físicamente; requiere confirmación textual' })
   eliminarEmpresaPermanente(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: HardDeleteDto,

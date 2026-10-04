@@ -840,6 +840,19 @@ export class SuperAdminService {
     return { ok: true, mensaje: `Usuario ${u.nombre} (${u.email}) eliminado permanentemente` };
   }
 
+  /**
+   * Una empresa NUNCA se borra físicamente — ver huérfanos 37/1/28/29/39/33
+   * y "empresa 2" (migraciones LimpiezaHuerfanosVarios/Empresa2): borrar
+   * físicamente deja atrás filas colgando en decenas de tablas sin FK a
+   * `empresa` (convención deliberada del proyecto), invisibles hasta la
+   * próxima auditoría manual. Este endpoint existía como DELETE físico
+   * (recorría information_schema para encontrar y borrar TODO lo que
+   * tuviera empresaId, y al final la fila de `empresa`); ahora delega al
+   * mismo soft-delete que el DELETE normal (isActive=false, suscripción
+   * cancelada, vínculos usuario↔empresa desactivados) — los datos quedan
+   * intactos y recuperables. Se conserva la confirmación textual porque el
+   * frontend ya la pide y es una acción grande aunque ya no sea destructiva.
+   */
   async eliminarEmpresaPermanente(id: number, superAdminId: number, confirmacion: string) {
     if (confirmacion !== 'ELIMINAR_PERMANENTE') {
       throw new BadRequestException('Confirmación inválida. Escribe exactamente: ELIMINAR_PERMANENTE');
@@ -847,191 +860,10 @@ export class SuperAdminService {
     const [e] = await this.ds.query<any[]>('SELECT id, nombre, rnc FROM empresa WHERE id = $1', [id]);
     if (!e) throw new NotFoundException(`Empresa #${id} no encontrada`);
 
-    this.logger.warn(`[HARD DELETE] Empresa #${id} (${e.nombre}) iniciado por super_admin #${superAdminId}`);
+    this.logger.warn(`[SOFT DELETE, antes HARD DELETE] Empresa #${id} (${e.nombre}) desactivada por super_admin #${superAdminId}`);
+    await this.eliminarEmpresa(id, superAdminId);
 
-    await this.ds.transaction(async em => {
-      // Helper: envuelve cada DELETE en un SAVEPOINT para que un fallo por FK
-      // no aborte la transacción PostgreSQL completa (.catch() JS NO restaura
-      // el estado de la transacción en PG — sólo ROLLBACK TO SAVEPOINT lo hace).
-      let _spSeq = 0;
-      const safeDelete = async (sql: string, params: any[], label: string) => {
-        const sp = `sp_del_${++_spSeq}`;
-        await em.query(`SAVEPOINT "${sp}"`);
-        try {
-          await em.query(sql, params);
-          await em.query(`RELEASE SAVEPOINT "${sp}"`);
-        } catch (err: any) {
-          await em.query(`ROLLBACK TO SAVEPOINT "${sp}"`);
-          await em.query(`RELEASE SAVEPOINT "${sp}"`);
-          this.logger.warn(`[HARD DELETE] ${label}: ${(err.message ?? '').split('\n')[0]}`);
-        }
-      };
-
-      // ── 1. Tablas con FK directo a empresa (bloquean el DELETE final) ─────
-      //    Las encontramos dinámicamente para sobrevivir a nuevas tablas.
-      const fkDirectos = await em.query<{ table_name: string; column_name: string }[]>(`
-        SELECT DISTINCT
-          tc.table_name,
-          kcu.column_name
-        FROM information_schema.table_constraints   tc
-        JOIN information_schema.key_column_usage     kcu
-          ON  tc.constraint_name = kcu.constraint_name
-          AND tc.table_schema    = kcu.table_schema
-        JOIN information_schema.referential_constraints rc
-          ON  tc.constraint_name = rc.constraint_name
-        JOIN information_schema.table_constraints    ccu
-          ON  ccu.constraint_name = rc.unique_constraint_name
-          AND ccu.table_schema    = tc.table_schema
-        WHERE tc.constraint_type = 'FOREIGN KEY'
-          AND ccu.table_name     = 'empresa'
-          AND tc.table_schema    = 'public'
-        ORDER BY tc.table_name
-      `);
-
-      this.logger.debug(
-        `[HARD DELETE] FK directos a empresa: ${fkDirectos.map(r => `${r.table_name}.${r.column_name}`).join(', ')}`,
-      );
-
-      // ── 2. Para cada tabla con FK a empresa, borrar primero sus hijos ─────
-      //    (suscripcion_auditoria → suscripciones, etc.)
-      for (const { table_name, column_name } of fkDirectos) {
-        // Encontrar tablas con FK que apunten a esta tabla
-        const hijos = await em.query<{ child_table: string; child_col: string }[]>(`
-          SELECT DISTINCT
-            tc.table_name  AS child_table,
-            kcu.column_name AS child_col
-          FROM information_schema.table_constraints   tc
-          JOIN information_schema.key_column_usage     kcu
-            ON  tc.constraint_name = kcu.constraint_name
-            AND tc.table_schema    = kcu.table_schema
-          JOIN information_schema.referential_constraints rc
-            ON  tc.constraint_name = rc.constraint_name
-          JOIN information_schema.table_constraints    ccu
-            ON  ccu.constraint_name = rc.unique_constraint_name
-            AND ccu.table_schema    = tc.table_schema
-          WHERE tc.constraint_type = 'FOREIGN KEY'
-            AND ccu.table_name     = $1
-            AND tc.table_schema    = 'public'
-        `, [table_name]);
-
-        for (const { child_table, child_col } of hijos) {
-          // Borrar hijos cuyo parent pertenece a la empresa
-          await safeDelete(
-            `DELETE FROM "${child_table}"
-              WHERE "${child_col}" IN (
-                SELECT id FROM "${table_name}" WHERE "${column_name}" = $1
-              )`,
-            [id],
-            `hijo ${child_table}`,
-          );
-        }
-
-        // Ahora borrar la tabla que FK apunta directamente a empresa
-        await safeDelete(
-          `DELETE FROM "${table_name}" WHERE "${column_name}" = $1`,
-          [id],
-          `fk-directo ${table_name}`,
-        );
-      }
-
-      // ── 3. Tablas SIN empresaId con FK a tablas que SÍ tienen empresaId ─────
-      //    Ejemplo: nomina_lineas → nomina_periodos (sin CASCADE, sin empresaId).
-      //    Las encontramos dinámicamente y borramos vía subquery.
-      const tablasSinEmpresaId = await em.query<{
-        child_table: string; child_col: string; parent_table: string;
-      }[]>(`
-        SELECT DISTINCT
-          tc.table_name   AS child_table,
-          kcu.column_name AS child_col,
-          ccu.table_name  AS parent_table
-        FROM information_schema.table_constraints   tc
-        JOIN information_schema.key_column_usage     kcu
-          ON  tc.constraint_name = kcu.constraint_name
-          AND tc.table_schema    = kcu.table_schema
-        JOIN information_schema.referential_constraints rc
-          ON  tc.constraint_name = rc.constraint_name
-        JOIN information_schema.table_constraints    ccu
-          ON  ccu.constraint_name = rc.unique_constraint_name
-          AND ccu.table_schema    = tc.table_schema
-        WHERE tc.constraint_type = 'FOREIGN KEY'
-          AND tc.table_schema    = 'public'
-          -- La tabla padre tiene columna empresaId (es tabla tenant)
-          AND EXISTS (
-            SELECT 1 FROM information_schema.columns pc
-            WHERE pc.table_schema = 'public'
-              AND pc.table_name   = ccu.table_name
-              AND pc.column_name  = 'empresaId'
-          )
-          -- La tabla hija NO tiene empresaId (no la cubre el paso siguiente)
-          AND NOT EXISTS (
-            SELECT 1 FROM information_schema.columns cc
-            WHERE cc.table_schema = 'public'
-              AND cc.table_name   = tc.table_name
-              AND cc.column_name  = 'empresaId'
-          )
-        ORDER BY tc.table_name
-      `);
-
-      if (tablasSinEmpresaId.length) {
-        this.logger.debug(
-          `[HARD DELETE] Tablas sin empresaId con FK tenant: ${
-            tablasSinEmpresaId.map(r => `${r.child_table}.${r.child_col} → ${r.parent_table}`).join(', ')
-          }`,
-        );
-      }
-
-      for (const { child_table, child_col, parent_table } of tablasSinEmpresaId) {
-        await safeDelete(
-          `DELETE FROM "${child_table}"
-            WHERE "${child_col}" IN (
-              SELECT id FROM "${parent_table}" WHERE "empresaId" = $1
-            )`,
-          [id],
-          `sin-empresaId ${child_table}`,
-        );
-      }
-
-      // ── 4. Borrar TODO lo que tenga columna empresaId (datos del tenant) ──
-      //    Esto limpia facturas, clientes, productos, aprobaciones, etc.
-      //    Cada DELETE usa safeDelete (SAVEPOINT) para que un fallo por FK entre
-      //    tablas del tenant no aborte la transacción PostgreSQL completa.
-      const tablasTenant = await em.query<{ table_name: string }[]>(`
-        SELECT c.table_name
-        FROM information_schema.columns c
-        WHERE c.table_schema = 'public'
-          AND c.column_name  = 'empresaId'
-          AND c.table_name  != 'empresa'
-        ORDER BY c.table_name
-      `);
-
-      // Una sola pasada con SAVEPOINT para que los fallos FK no aborten la PG tx
-      for (const { table_name } of tablasTenant) {
-        await safeDelete(
-          `DELETE FROM "${table_name}" WHERE "empresaId" = $1`,
-          [id],
-          `tenant ${table_name}`,
-        );
-      }
-
-      // ── 4. Eliminar la empresa ────────────────────────────────────────────
-      try {
-        await em.query('DELETE FROM empresa WHERE id = $1', [id]);
-      } catch (err: any) {
-        if (err?.code === '23503') {
-          const detail = err?.detail ?? err?.message ?? '';
-          const tabla  = detail.match(/table "([^"]+)"/)?.[1] ?? 'tabla desconocida';
-          this.logger.error(`[HARD DELETE] FK residual en "${tabla}": ${detail}`);
-          throw new BadRequestException(
-            `No se puede eliminar la empresa: quedan registros en "${tabla}". ` +
-            `Reporta esto al equipo técnico para que se agregue al proceso.`,
-          );
-        }
-        throw err;
-      }
-    });
-
-    this.logger.warn(`[HARD DELETE] Empresa #${id} (${e.nombre}) eliminada por super_admin #${superAdminId}`);
-    return { ok: true, mensaje: `Empresa "${e.nombre}" (RNC: ${e.rnc}) eliminada permanentemente` };
+    return { ok: true, mensaje: `Empresa "${e.nombre}" (RNC: ${e.rnc}) desactivada — sus datos NO se eliminan` };
   }
 
   async cambiarRolUsuario(userId: number, nuevoRol: string, solicitanteId: number) {
