@@ -16,6 +16,7 @@ import { BackupInternalController } from './backup-internal.controller';
 import { AuthModule }            from '../auth/auth.module';
 import { AuditoriaModule }       from '../auditoria/auditoria.module';
 import { ECFModule }             from '../ecf/ecf.module';
+import { HuerfanosAuditoriaCron } from './huerfanos-auditoria.cron';
 
 @Module({
   imports: [
@@ -39,7 +40,7 @@ import { ECFModule }             from '../ecf/ecf.module';
     }),
   ],
   controllers: [SuperAdminController, BackupInternalController],
-  providers:   [SuperAdminService, SuperAdminGuard, BackupService, TokenBlacklistService],
+  providers:   [SuperAdminService, SuperAdminGuard, BackupService, TokenBlacklistService, HuerfanosAuditoriaCron],
   // S-64: SuperAdminService se exporta para que PagosSuscripcionAdminController
   // pueda auditar el cambio de configuración bancaria con el mismo helper.
   exports:     [SuperAdminGuard, SuperAdminService, JwtModule, TokenBlacklistService],
