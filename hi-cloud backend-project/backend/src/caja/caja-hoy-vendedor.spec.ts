@@ -36,7 +36,21 @@ describe('getCajaHoyByUserId — caja propia sin depender de quién la abrió', 
     return fuente.slice(ini, ini + 2600);
   })();
 
+  // 2026-10-04: la consulta "FROM vendedores WHERE usuarioId..." se extrajo a
+  // resolverMiVendedorId() (ahora también la usa cerrarCaja() para el guard
+  // de pertenencia) — se prueba su cuerpo aparte, y aquí solo que
+  // getCajaHoyByUserId() LA LLAMA, en vez de resolver un vendedorId por su
+  // cuenta.
+  const cuerpoHelper = (() => {
+    const ini = fuente.indexOf('resolverMiVendedorId(userId');
+    expect(ini).toBeGreaterThan(-1);
+    return fuente.slice(ini, ini + 400);
+  })();
+
   const sinComentarios = cuerpo
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '');
+  const helperSinComentarios = cuerpoHelper
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/\/\/.*$/gm, '');
 
@@ -47,11 +61,20 @@ describe('getCajaHoyByUserId — caja propia sin depender de quién la abrió', 
     expect(sinComentarios).toMatch(/userId[^)]*OR[^)]*vendedorId|vendedorId[^)]*OR[^)]*userId/i);
   });
 
-  it('el vendedorId sale de vendedores.usuarioId, NO de un parámetro', () => {
-    // Es la propiedad del guard A-1. Derivarlo del JWT lo mantiene; aceptarlo
-    // del cliente convertiría el arreglo en un agujero de aislamiento.
-    expect(sinComentarios).toMatch(/FROM vendedores/);
-    expect(sinComentarios).toMatch(/"usuarioId"\s*=\s*\$1/);
+  it('resuelve el vendedorId con el helper compartido (resolverMiVendedorId), no con un query propio', () => {
+    // Es la propiedad del guard A-1. Si aquí apareciera un SELECT propio en
+    // vez de delegar en el helper, sería la puerta para que alguien
+    // "simplifique" y acepte un vendedorId por parámetro en una de las dos
+    // copias sin tocar la otra.
+    expect(sinComentarios).toMatch(/resolverMiVendedorId\(userId,\s*empresaId\)/);
+  });
+
+  it('resolverMiVendedorId(): el vendedorId sale de vendedores.usuarioId, NO de un parámetro', () => {
+    // Derivarlo del JWT (usuarioId = $1, con userId del propio método) lo
+    // mantiene; aceptarlo del cliente convertiría el arreglo en un agujero
+    // de aislamiento.
+    expect(helperSinComentarios).toMatch(/FROM vendedores/);
+    expect(helperSinComentarios).toMatch(/"usuarioId"\s*=\s*\$1/);
   });
 
   it('la firma sigue recibiendo solo el userId del JWT', () => {

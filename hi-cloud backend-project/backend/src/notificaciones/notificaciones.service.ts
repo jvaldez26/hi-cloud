@@ -14,7 +14,7 @@ import { WhatsAppService } from './services/whatsapp.service';
 import { Templates } from './templates/email.templates';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { generarDocumentoPDFFactura, DocumentoPDFData, DocumentoPDFItem } from '../common/pdf/documento-pdf.helper';
-import { fechaTextoRD } from '../common/utils/fecha-local.util';
+import { fechaTextoRD, fechaHoyRD } from '../common/utils/fecha-local.util';
 
 @Injectable()
 export class NotificacionesService {
@@ -249,6 +249,45 @@ export class NotificacionesService {
     return rows.length;
   }
 
+  /**
+   * Caso real (2026-10-04): una caja abierta un día y nunca cerrada quedaba
+   * invisible — el aviso "cajas abiertas hoy" solo mira fecha = hoy, y nadie
+   * se enteraba hasta que alguien lo notaba a mano. Aviso diario (campanita,
+   * canal SISTEMA — mismo criterio que HiCloud Xlink) a ADMIN/CONTADOR de la
+   * empresa si hay alguna caja todavía abierta de un día anterior.
+   */
+  async notificarCajasHuerfanas(empresaId: number): Promise<number> {
+    const rows = await this.dataSource.query<{ id: number; vendedorNombre: string | null; fecha: string }[]>(
+      `SELECT id, "vendedorNombre", fecha::text AS fecha
+       FROM cierres_caja
+       WHERE "empresaId" = $1 AND estado = 'abierta' AND fecha < $2::date
+       ORDER BY fecha ASC`,
+      [empresaId, fechaHoyRD()],
+    );
+    if (rows.length === 0) return 0;
+
+    // fecha::text da 'YYYY-MM-DD' tal cual quedó guardado — NUNCA pasarlo por
+    // un Date + timezone (new Date('YYYY-MM-DD') lo toma como UTC medianoche;
+    // formatearlo en horario RD lo corre un día atrás, ver el mismo cuidado
+    // en CajaService.cerrarCaja()). Se formatea directo del string.
+    const lista = rows
+      .map(r => {
+        const [anio, mes, dia] = r.fecha.split('-');
+        return `${r.vendedorNombre ?? 'sin cajero asignado'} (desde el ${dia}/${mes}/${anio})`;
+      })
+      .join('; ');
+
+    await this.notificarSistemaEmpresa(
+      empresaId,
+      TipoNotificacion.CAJA_HUERFANA,
+      `${rows.length} caja${rows.length === 1 ? '' : 's'} abierta${rows.length === 1 ? '' : 's'} de días anteriores sin cerrar`,
+      `Sigue${rows.length === 1 ? '' : 'n'} abierta${rows.length === 1 ? '' : 's'} de un día anterior: ${lista}. Ciérrala${rows.length === 1 ? '' : 's'} o revísala${rows.length === 1 ? '' : 's'} desde Caja Diaria.`,
+      `${rows.length} caja(s)`,
+    );
+    this.logger.log(`Cajas huérfanas empresa ${empresaId}: ${rows.length}`);
+    return rows.length;
+  }
+
   async notificarECFSecuenciasVencimiento(empresaId: number): Promise<number> {
     const rows = await this.dataSource.query<{
       tipo: string; secuenciaActual: number; secuenciaFinal: number; fechaVencimiento: string;
@@ -393,6 +432,20 @@ export class NotificacionesService {
       if (emp.configuracion.notifVencCxP === false) continue;
       await this.notificarCxPPorVencer(emp.id).catch((e: Error) =>
         this.logger.error(`CxP empresa ${emp.id}: ${e.message}`),
+      );
+    }
+  }
+
+  // 12:00 UTC = 8:00 a.m. hora RD (mismo horario que suscripciones.service.ts) —
+  // ya entrada la mañana, para que lo vea el admin al llegar.
+  @Cron('0 12 * * *')
+  async cronCajasHuerfanas() {
+    if (!this.notifActiva) return;
+    this.logger.log('⏰ Cron: cajas abiertas de días anteriores sin cerrar');
+    const empresas = await this.getEmpresasActivas();
+    for (const emp of empresas) {
+      await this.notificarCajasHuerfanas(emp.id).catch((e: Error) =>
+        this.logger.error(`Cajas huérfanas empresa ${emp.id}: ${e.message}`),
       );
     }
   }

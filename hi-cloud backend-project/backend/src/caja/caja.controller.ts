@@ -40,6 +40,14 @@ class CerrarCajaDto {
 
   @IsOptional()
   desglosePago?: Record<string, string>;
+
+  /**
+   * Obligatorio SOLO cuando un ADMIN/CONTADOR cierra la caja de OTRO cajero
+   * (lo exige el servicio, no aquí — acá no se sabe todavía de quién es la
+   * caja). Si la caja es suya, se ignora aunque venga.
+   */
+  @IsOptional() @IsString() @MaxLength(300)
+  motivo?: string;
 }
 
 class AnularCierreDto {
@@ -119,6 +127,13 @@ export class CajaController {
     return this.cajaService.getCajaHoy(vid);
   }
 
+  @Get('abiertas')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'TODAS las cajas abiertas de la empresa, sin importar la fecha — incluye las huérfanas de días anteriores' })
+  getCajasAbiertas() {
+    return this.cajaService.getCajasAbiertas();
+  }
+
   @Get('usuarios')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @ApiOperation({ summary: 'Usuarios operativos de la empresa (para vincular a perfil vendedor)' })
@@ -149,14 +164,17 @@ export class CajaController {
 
   @Patch(':id/cerrar')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  @ApiOperation({ summary: 'Cerrar caja por ID — calcula diferencia vs efectivo físico' })
+  @ApiOperation({ summary: 'Cerrar caja por ID — calcula diferencia vs efectivo físico; un VENDEDOR solo puede cerrar la suya; ADMIN/CONTADOR necesitan motivo para cerrar la de otro' })
   cerrarCaja(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CerrarCajaDto,
+    @GetUser() usuario: User,
   ) {
     return this.cajaService.cerrarCaja(
       id, dto.saldoFisico, dto.notas,
       dto.desgloseBilletes, dto.desglosePago,
+      { id: usuario.id, role: (usuario as any).role, nombre: usuario.nombre },
+      dto.motivo,
     );
   }
 

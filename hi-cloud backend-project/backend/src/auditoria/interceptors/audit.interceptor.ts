@@ -37,10 +37,15 @@ function extraerModulo(ruta: string): string {
   return match ? match[1] : 'sistema';
 }
 
+/**
+ * El id de la ruta casi nunca es el último segmento en las rutas de acción
+ * (/caja/:id/cerrar, /caja/:id/anular, /facturas/:id/anular...) — termina en
+ * el nombre de la acción, no en el id. Se toma el PRIMER segmento puramente
+ * numérico de la ruta en vez de solo el último.
+ */
 function extraerEntidadId(ruta: string): string | undefined {
   const partes = ruta.split('/').filter(Boolean);
-  const last = partes[partes.length - 1];
-  return /^\d+$/.test(last) ? last : undefined;
+  return partes.find(p => /^\d+$/.test(p));
 }
 
 function determinarAccion(metodo: string, ruta: string): AccionAuditoria {
@@ -212,14 +217,24 @@ export function generarDescripcion(
     return `${quien} condonó mora${parteMonto}${cargoId ? ` del cargo #${cargoId}` : ''}${motivo ? ` (${motivo})` : ''}`;
   }
 
-  // Caja
+  // Caja — el id real nunca está en el último segmento de la ruta
+  // (/caja/:id/cerrar termina en "cerrar", no en el id: extraerEntidadId()
+  // no lo encuentra), así que se toma del propio cuerpo de la respuesta —
+  // cerrarCaja()/abrirCaja() siempre devuelven la fila completa (id,
+  // vendedorNombre). Sin esto, "Fulano cerró caja" no decía CUÁL ni de
+  // QUIÉN — imposible saber, solo con la auditoría, si alguien cerró la
+  // caja de otro cajero.
   if (r.includes('/caja')) {
-    if (r.includes('/apertura') || r.includes('/abrir')) return `${quien} abrió caja`;
-    if (r.includes('/cierre')   || r.includes('/cerrar')) {
-      const total = body?.totalEfectivo ?? body?.totalVentas ?? '';
-      return `${quien} cerró caja${total ? ` — RD$${Number(total).toLocaleString('es-DO', { minimumFractionDigits: 2 })}` : ''}`;
+    const cajaId  = body?.id;
+    const deQuien = body?.vendedorNombre ? ` de ${body.vendedorNombre}` : '';
+    if (r.includes('/apertura') || r.includes('/abrir')) {
+      return `${quien} abrió caja${deQuien}${cajaId ? ` #${cajaId}` : ''}`;
     }
-    return `${quien} realizó operación de caja`;
+    if (r.includes('/cierre') || r.includes('/cerrar')) {
+      const total = body?.totalEfectivo ?? body?.totalVentas ?? '';
+      return `${quien} cerró caja${deQuien}${cajaId ? ` #${cajaId}` : ''}${total ? ` — RD$${Number(total).toLocaleString('es-DO', { minimumFractionDigits: 2 })}` : ''}`;
+    }
+    return `${quien} realizó operación de caja${cajaId ? ` #${cajaId}` : ''}`;
   }
 
   // Usuarios

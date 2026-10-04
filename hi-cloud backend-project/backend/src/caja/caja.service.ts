@@ -2,7 +2,7 @@ import {
   Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, IsNull, Not, Between, EntityManager } from 'typeorm';
+import { Repository, DataSource, IsNull, Not, EntityManager } from 'typeorm';
 import { CierreCaja, EstadoCierre } from './entities/cierre-caja.entity';
 import { RetiroCaja, CategoriaRetiro, EstadoRetiro } from './entities/retiro-caja.entity';
 import { UserRole } from '../users/enums/user-role.enum';
@@ -245,12 +245,39 @@ export class CajaService {
     notas?: string,
     desgloseBilletes?: Record<string, number>,
     desglosePago?: Record<string, string>,
+    usuario?: { id: number; role: string; nombre?: string },
+    motivo?: string,
   ) {
     const empresaId = this.tenantService.getEmpresaId();
     const caja = await this.repo.findOne({ where: { id, empresaId } });
     if (!caja) throw new NotFoundException(`Caja #${id} no encontrada`);
     if (caja.estado !== EstadoCierre.ABIERTA) {
       throw new BadRequestException('La caja ya está cerrada');
+    }
+
+    // Pertenencia: un VENDEDOR solo puede cerrar SU PROPIA caja (quien la
+    // abrió, o la de su propio perfil de vendedor) — nunca la de otro cajero.
+    // ADMIN/CONTADOR SÍ pueden cerrar cualquiera de la empresa (ya lo exige
+    // @Roles en el controller), pero si NO es la suya exigen un motivo
+    // explícito — antes ni se verificaba pertenencia (cualquier vendedor
+    // cerraba la de otro con solo mandar su id) ni quedaba constancia de por
+    // qué un admin cerró la caja de alguien más.
+    let notasFinal = notas ?? caja.notas;
+    if (usuario) {
+      const esSuya = await this.esCajaDelUsuario(caja, usuario, empresaId);
+      if (!esSuya) {
+        if (usuario.role === UserRole.VENDEDOR) {
+          throw new ForbiddenException('No puedes cerrar la caja de otro cajero');
+        }
+        if (!motivo?.trim()) {
+          throw new BadRequestException('Debes indicar un motivo para cerrar la caja de otro cajero');
+        }
+        // El motivo no tiene columna propia — se deja en notas, que ya es lo
+        // que se ve en el detalle del cierre, en el PDF, y en la auditoría
+        // (valorNuevo guarda la fila completa de la respuesta).
+        const marca = `[Cerrada por ${usuario.nombre ?? `usuario #${usuario.id}`} a nombre de ${caja.vendedorNombre ?? 'el cajero'} — motivo: ${motivo.trim()}]`;
+        notasFinal = notasFinal ? `${marca} ${notasFinal}` : marca;
+      }
     }
 
     // La columna fecha es tipo DATE almacenada como UTC midnight (new Date('YYYY-MM-DD')).
@@ -286,7 +313,7 @@ export class CajaService {
       // de un cierre viejo pasa a 2 aquí, y su versión 1 queda preservada en
       // formulaVersionOriginal.
       formulaVersion:   FORMULA_EFECTIVO_VERSION,
-      notas:            notas ?? caja.notas,
+      notas:            notasFinal,
       ...(desgloseBilletes ? { desgloseBilletes } : {}),
       ...(desglosePago     ? { desglosePago }     : {}),
     });
@@ -677,6 +704,43 @@ export class CajaService {
   }
 
   /**
+   * TODAS las cajas ABIERTA de la empresa, sin importar la fecha — a
+   * diferencia de getCajaHoy(), que solo mira fecha = hoy y por eso una caja
+   * abierta de un día anterior (nunca cerrada) queda invisible ahí. Cada fila
+   * trae `diasAbierta` (0 = de hoy, >0 = huérfana) para que el frontend
+   * decida cómo destacarla sin recalcular fechas por su cuenta.
+   */
+  async getCajasAbiertas() {
+    const empresaId = this.tenantService.getEmpresaId();
+    const hoy = fechaHoyRD();
+
+    const cajas = await this.repo.find({
+      where: { empresaId, estado: EstadoCierre.ABIERTA } as any,
+      order: { fecha: 'ASC', vendedorNombre: 'ASC' },
+    });
+
+    const fechaDe = (c: CierreCaja) =>
+      (c.fecha instanceof Date ? c.fecha : new Date(c.fecha as any)).toISOString().substring(0, 10);
+
+    // Mismo recálculo que getCajaHoy() — sin esto, efectivoEsperado saldría
+    // desactualizado y el modal de cierre que se abre desde este aviso
+    // arrancaría con números viejos.
+    await Promise.all(cajas.map(c => this.recalcularDesdeBD(c.id, fechaDe(c), c.vendedorId, empresaId)));
+    const frescas = await this.repo.find({
+      where: { empresaId, estado: EstadoCierre.ABIERTA } as any,
+      order: { fecha: 'ASC', vendedorNombre: 'ASC' },
+    });
+
+    return frescas.map(c => {
+      const fechaStr = fechaDe(c);
+      const diasAbierta = Math.round(
+        (new Date(hoy).getTime() - new Date(fechaStr).getTime()) / 86_400_000,
+      );
+      return { ...this.conEfectivoEsperado(c), fecha: fechaStr, diasAbierta };
+    });
+  }
+
+  /**
    * La caja de HOY del usuario autenticado.
    *
    * A-1: scoped para VENDEDOR — todo se deriva del JWT, nunca de un parámetro
@@ -705,19 +769,29 @@ export class CajaService {
    * resto esto se comporta igual que antes — ahí el arreglo de fondo sigue
    * siendo poblar esa columna, la misma que arrastra el bug del vendedorId.
    */
-  async getCajaHoyByUserId(userId: number) {
-    const empresaId = this.tenantService.getEmpresaId();
-    const hoy = fechaHoyRD();
-
-    // El perfil de vendedor del usuario autenticado. Derivado del JWT, no del
-    // cliente: no abre ninguna puerta a mirar cajas ajenas.
+  /** El perfil de vendedor (si existe) del usuario autenticado. Derivado del JWT, no del cliente. */
+  private async resolverMiVendedorId(userId: number, empresaId: number): Promise<number | undefined> {
     const perfilRows = await this.dataSource.query<{ id: number }[]>(
       `SELECT id FROM vendedores
         WHERE "usuarioId" = $1 AND "empresaId" = $2 AND "isActive" = true
         LIMIT 1`,
       [userId, empresaId],
     ).catch(() => []);
-    const miVendedorId = perfilRows[0]?.id;
+    return perfilRows[0]?.id;
+  }
+
+  /** ¿Esta caja es de este usuario — la abrió él (userId), o es su propio perfil de vendedor (vendedorId)? */
+  private async esCajaDelUsuario(caja: CierreCaja, usuario: { id: number }, empresaId: number): Promise<boolean> {
+    if (caja.userId === usuario.id) return true;
+    const miVendedorId = await this.resolverMiVendedorId(usuario.id, empresaId);
+    return miVendedorId != null && caja.vendedorId === miVendedorId;
+  }
+
+  async getCajaHoyByUserId(userId: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const hoy = fechaHoyRD();
+
+    const miVendedorId = await this.resolverMiVendedorId(userId, empresaId);
 
     const qb = this.repo.createQueryBuilder('c')
       .where('c.fecha = :hoy', { hoy })
@@ -754,27 +828,39 @@ export class CajaService {
   async getHistorial(page = 1, limit = 20, vendedorId?: number, mes?: number, anio?: number) {
     const empresaId  = this.tenantService.getEmpresaId();
     const sucursalId = this.tenantService.getSucursalId();
+
     // Incluimos todas las cajas (incluso las ABIERTA de días anteriores)
-    // para que los admin puedan verlas y cerrarlas desde la UI.
-    const where: any = { empresaId };
-    if (sucursalId) where.sucursalId = sucursalId;
+    // para que los admin puedan verlas y cerrarlas desde la UI — y las
+    // ABIERTA van primero (sea cual sea su fecha): son las que necesitan
+    // acción, no hay que bajar la lista para notarlas.
+    const qb = this.repo.createQueryBuilder('c').where('c.empresaId = :empresaId', { empresaId });
+    if (sucursalId) qb.andWhere('c.sucursalId = :sucursalId', { sucursalId });
     if (vendedorId !== undefined) {
-      where.vendedorId = vendedorId === 0 ? IsNull() : vendedorId;
+      if (vendedorId === 0) qb.andWhere('c.vendedorId IS NULL');
+      else                  qb.andWhere('c.vendedorId = :vendedorId', { vendedorId });
     }
     if (mes && anio) {
-      const inicio    = new Date(anio, mes - 1, 1);
-      const fin       = new Date(anio, mes, 0);
-      where.fecha     = Between(inicio, fin);
+      const inicio = new Date(anio, mes - 1, 1);
+      const fin    = new Date(anio, mes, 0);
+      qb.andWhere('c.fecha BETWEEN :inicio AND :fin', { inicio, fin });
     }
 
-    const [data, total] = await this.repo.findAndCount({
-      where,
-      order: { fecha: 'DESC', vendedorNombre: 'ASC' },
-      skip:  (page - 1) * limit,
-      take:  limit,
-    });
+    const [data, total] = await qb
+      .orderBy(`CASE WHEN c.estado = 'abierta' THEN 0 ELSE 1 END`, 'ASC')
+      .addOrderBy('c.fecha', 'DESC')
+      .addOrderBy('c.vendedorNombre', 'ASC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
 
-    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+    // conEfectivoEsperado() es gratis para las CERRADA (usa el saldoCierre ya
+    // guardado, sin query) — solo importa para las ABIERTA que aparezcan
+    // mezcladas aquí, que si no saldrían con efectivoEsperado undefined y el
+    // modal de "Cerrar caja" desde este listado arrancaría mostrando 0.
+    return {
+      data: data.map(c => this.conEfectivoEsperado(c)),
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 
   // ── Resumen mensual (filtrado por empresa) ────────────────────────────────

@@ -72,6 +72,7 @@ const { Title, Text } = Typography;
 
 const cajaApi = {
   hoy:             ()                          => api.get('/caja/hoy').then(r => r.data?.data ?? r.data),
+  abiertas:        ()                          => api.get('/caja/abiertas').then(r => r.data?.data ?? r.data),
   cajeros:         ()                          => api.get('/caja/cajeros').then(r => r.data?.data ?? r.data),
   abrir:           (body: any)                 => api.post('/caja/abrir', body).then(r => r.data?.data),
   cerrar:          (id: number, body: any)     => api.patch(`/caja/${id}/cerrar`, body).then(r => r.data?.data),
@@ -111,6 +112,7 @@ export default function CajaPage() {
   };
   const [cerrarTarget, setCerrarTarget] = useState<{
     id: number; nombre: string;
+    userId?: number; vendedorId?: number;
     saldoEsperado: number; saldoApertura: number;
     ventasEfectivo: number; ventasTarjeta: number; ventasTransferencia: number;
     cobrosRecibidos: number; totalAnticipos: number; gastosEfectivo: number; retiros: number;
@@ -141,6 +143,19 @@ export default function CajaPage() {
     { key: 'cantidadTransacciones',   label: 'Trans.' },
   ];
   const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('caja-historial', COLS_DEF);
+
+  // Caso real (2026-10-04): una caja abierta un día y nunca cerrada quedaba
+  // invisible en "No hay cajas abiertas hoy" (que solo mira fecha = hoy) y en
+  // el Historial del mes que corresponda. Esta trae TODAS las abiertas de la
+  // empresa, sin importar la fecha — solo ADMIN/CONTADOR (igual que el backend).
+  const { data: cajasAbiertas = [] } = useQuery<any[]>({
+    queryKey: ['caja-abiertas'],
+    queryFn:  cajaApi.abiertas,
+    enabled:  esAdmin,
+    refetchInterval:      5_000,
+    refetchOnWindowFocus: true,
+  });
+  const cajasHuerfanas = cajasAbiertas.filter((c: any) => (c.diasAbierta ?? 0) > 0);
 
   const { data: cajaData, isLoading } = useQuery({
     queryKey: ['caja-hoy'],
@@ -339,6 +354,11 @@ export default function CajaPage() {
 
     setCerrarTarget({
       id: caja.id, nombre, saldoEsperado,
+      // userId/vendedorId: para decidir si esta caja es "mía" y pedir motivo
+      // si no lo es (ver esDeOtroCajero más abajo) — misma idea aproximada
+      // que ya usa "Abrir caja" (vendedorId: user?.id para no-admin).
+      userId:                caja.userId,
+      vendedorId:            caja.vendedorId,
       saldoApertura:         Number(caja.saldoApertura ?? 0),
       ventasEfectivo:        Number(caja.ventasEfectivo ?? 0),
       ventasTarjeta:         Number(caja.ventasTarjeta ?? 0),
@@ -352,6 +372,13 @@ export default function CajaPage() {
     });
     form.resetFields(); setSaldoFisicoInput(0);
   };
+
+  // Caso real (2026-10-04): un ADMIN/CONTADOR cerrando la caja de OTRO
+  // cajero ahora exige un motivo explícito (el backend lo exige igual — esto
+  // es solo para pedirlo ANTES, con el nombre del dueño, en vez de que el
+  // cajero se entere por un 400 después de llenar todo el formulario).
+  const esDeOtroCajero = !!cerrarTarget && esAdmin &&
+    cerrarTarget.userId !== user?.id && cerrarTarget.vendedorId !== user?.id;
 
   // ── Diálogo de impresión unificado ────────────────────────────────────────
   const [printTarget, setPrintTarget]       = useState<any>(null);
@@ -369,19 +396,6 @@ export default function CajaPage() {
       String(r.fecha ?? '').includes(q)
     );
   }, [historial, searchHistorial]);
-
-  // Cajas huérfanas: abiertas en días ANTERIORES (no hoy) — el cajero quedó bloqueado hasta cerrarlas
-  const cajasHuerfanas = useMemo(() => {
-    // Hoy en RD, del reloj del servidor: no depende de la zona ni de la hora
-    // del equipo. Decide si una caja abierta cuenta como huérfana.
-    const hoyStr = hoyRD();
-    return (historial?.data ?? []).filter((r: any) => {
-      if (r.estado !== 'abierta') return false;
-      // Comparamos strings YYYY-MM-DD directamente para evitar conversión de zona horaria
-      const fechaCaja = String(r.fecha ?? '').substring(0, 10);
-      return fechaCaja < hoyStr;
-    });
-  }, [historial]);
 
   // Calcular diferencia en tiempo real para el modal de cierre
   const diferenciaCierre = saldoFisicoInput - (cerrarTarget?.saldoEsperado ?? 0);
@@ -819,6 +833,29 @@ ${line()}
         </Col>
       </Row>
 
+      {/* Cajas abiertas de un día anterior — nunca se mezclan con "hoy": el
+          aviso de abajo solo mira fecha = hoy, así que una huérfana no
+          aparecía en ningún lado hasta que alguien la notaba a mano. */}
+      {cajasHuerfanas.length > 0 && (
+        <Alert
+          type="error" showIcon
+          style={{ marginBottom: 16 }}
+          message={cajasHuerfanas.length === 1
+            ? `Caja de ${cajasHuerfanas[0].vendedorNombre ?? 'Administrador'} abierta desde el ${fecha(cajasHuerfanas[0].fecha)} sin cerrar`
+            : `${cajasHuerfanas.length} cajas abiertas de días anteriores sin cerrar`}
+          description={
+            <Space direction="vertical" size={4} style={{ width: '100%' }}>
+              {cajasHuerfanas.map((c: any) => (
+                <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                  <span>{c.vendedorNombre ?? 'Administrador'} — abierta desde el {fecha(c.fecha)} ({c.diasAbierta} día{c.diasAbierta === 1 ? '' : 's'})</span>
+                  <Button size="small" danger onClick={() => iniciarCierre(c)}>Cerrar ahora</Button>
+                </div>
+              ))}
+            </Space>
+          }
+        />
+      )}
+
       {/* Estado del día */}
       {isLoading ? <Spin /> : sinApertura ? (
         <Alert type="warning" showIcon
@@ -941,26 +978,11 @@ ${line()}
                     style={{ width: 180 }}
                   />
                 </div>
-                {cajasHuerfanas.length > 0 && (
-                  <Alert
-                    type="error"
-                    showIcon
-                    style={{ marginBottom: 10 }}
-                    message={`${cajasHuerfanas.length === 1 ? '1 caja sin cerrar' : `${cajasHuerfanas.length} cajas sin cerrar`} de días anteriores`}
-                    description={
-                      <span>
-                        {cajasHuerfanas.map((c: any) => {
-                          // Parsear como string para evitar conversión UTC→local que cambia el día
-                          const raw = String(c.fecha ?? '').substring(0, 10); // YYYY-MM-DD
-                          const [anio, mes, dia] = raw.split('-');
-                          const f = raw ? `${dia}/${mes}/${anio}` : '?';
-                          return ` ${c.vendedorNombre ?? 'Admin'} (${f})`;
-                        }).join(' · ')}
-                        {' — Haz clic en la fila y ciérrala para desbloquear al cajero.'}
-                      </span>
-                    }
-                  />
-                )}
+                {/* El aviso de cajas sin cerrar ya vive arriba, al tope de la
+                    página (con botón directo "Cerrar ahora" por cada una) —
+                    uno aquí también era ruido repetido. La tabla de abajo ya
+                    las lista primero (estado ABIERTA ordena antes que
+                    cerradas, ver getHistorial en el backend). */}
                 {historialCerrados.length === 0 && cajasHuerfanas.length === 0 && !isLoading && (
                   <Text type="secondary" style={{ fontSize: 13 }}>
                     Sin cierres registrados aún. Los cierres completados aparecerán aquí.
@@ -1019,11 +1041,16 @@ ${line()}
                           onView={() => setDetalleCierre(r)}
                           viewLabel="Ver detalle del cierre"
                           items={[
-                            { key: 'imprimir', label: 'Imprimir cierre', icon: <PrinterOutlined />, onClick: () => setPrintTarget(r) },
+                            ...(r.estado === 'abierta' ? [
+                              { key: 'cerrar', label: 'Cerrar caja', icon: <LockOutlined />, danger: true,
+                                onClick: () => iniciarCierre(r) },
+                              { type: 'divider' as const },
+                            ] : []),
+                            { key: 'imprimir', label: 'Imprimir cierre', icon: <PrinterOutlined />, disabled: r.estado === 'abierta', onClick: () => setPrintTarget(r) },
                             ...(puedeAnular ? [
                               { type: 'divider' as const },
                               { key: 'anular', label: 'Anular cierre', icon: <RollbackOutlined />, danger: true,
-                                disabled: r.estado === 'anulada',
+                                disabled: r.estado === 'anulada' || r.estado === 'abierta',
                                 onClick: () => { setAnularTarget({ id: r.id, nombre: r.vendedorNombre ?? 'Administrador', fecha: r.fecha }); formAnular.resetFields(); } },
                             ] : []),
                           ]}
@@ -1429,6 +1456,13 @@ ${line()}
         footer={null}
         width="min(460px, 95vw)"
       >
+        {esDeOtroCajero && (
+          <Alert
+            type="warning" showIcon style={{ marginBottom: 16 }}
+            message={`Vas a cerrar la caja de ${cerrarTarget?.nombre}, abierta el ${cerrarTarget?.fecha ? fecha(cerrarTarget.fecha) : ''}`}
+            description="No es tu caja — indica abajo por qué la estás cerrando tú."
+          />
+        )}
         {/* ── Resumen del turno ── */}
         <div style={{
           background: token.colorFillAlter,
@@ -1513,6 +1547,16 @@ ${line()}
           <Form.Item name="notas" label="Observaciones (opcional)">
             <Input.TextArea rows={2} placeholder="Ej: Billete roto de RD$500, cliente pagó con dólares..." />
           </Form.Item>
+
+          {esDeOtroCajero && (
+            <Form.Item
+              name="motivo"
+              label={<span style={{ fontWeight: 500 }}>Motivo para cerrar la caja de {cerrarTarget?.nombre} (obligatorio)</span>}
+              rules={[{ required: true, whitespace: true, message: 'Indica por qué estás cerrando la caja de otro cajero' }]}
+            >
+              <Input.TextArea rows={2} maxLength={300} showCount placeholder="Ej: El cajero se fue sin cerrar su turno" />
+            </Form.Item>
+          )}
 
           <Row justify="end" gutter={8}>
             <Col><Button onClick={() => { setCerrarTarget(null); setSaldoFisicoInput(0); }}>Cancelar</Button></Col>

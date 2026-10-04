@@ -93,6 +93,48 @@ describe('generarDescripcion — ecf (antes: TODO caía a "creó en ecf")', () =
   });
 });
 
+// Caso real (2026-10-04): "Fulano cerró caja" no decía CUÁL caja ni de QUIÉN
+// — imposible saber, solo con la auditoría, si alguien cerró la de otro
+// cajero. cerrarCaja()/abrirCaja() devuelven la fila completa (id,
+// vendedorNombre) como responseBody — generarDescripcion() ahora la usa.
+describe('generarDescripcion — caja (el id y el dueño salían solo con suerte)', () => {
+  it('abrir caja: incluye el id y de quién es', () => {
+    const desc = generarDescripcion('POST', '/api/v1/caja/abrir', 'Ana', { id: 77, vendedorNombre: 'Maximo Almonte' });
+    expect(desc).toBe('Ana abrió caja de Maximo Almonte #77');
+  });
+
+  it('cerrar caja: incluye el id, de quién es, y el total si viene', () => {
+    const desc = generarDescripcion('PATCH', '/api/v1/caja/77/cerrar', 'Maximo Almonte', { id: 77, vendedorNombre: 'Maximo Almonte', totalEfectivo: 1500 });
+    expect(desc).toBe('Maximo Almonte cerró caja de Maximo Almonte #77 — RD$1,500.00');
+  });
+
+  it('sin vendedorNombre en la respuesta: no inventa un "de" vacío, pero sí el id', () => {
+    const desc = generarDescripcion('PATCH', '/api/v1/caja/77/cerrar', 'Ana', { id: 77 });
+    expect(desc).toBe('Ana cerró caja #77');
+  });
+
+  // /anular pasa por la rama genérica de anulaciones (más arriba en el if-chain
+  // que la de caja), no por el bloque de caja — pero AMBAS dependen de
+  // extraerEntidadId(), así que el id sale bien ahí también.
+  it('anular cierre de caja: también lleva el id (vía la rama genérica de /anular)', () => {
+    const desc = generarDescripcion('PATCH', '/api/v1/caja/77/anular', 'Ana', { id: 77, vendedorNombre: 'Maximo Almonte' });
+    expect(desc).toBe('Ana anuló caja #77');
+  });
+});
+
+// Nota: las rutas de /caja NO pasan por extraerEntidadId para el id que
+// aparece en el texto (usan body.id — ver el describe de arriba) — esto
+// prueba el fallback GENÉRICO, que sí depende de extraerEntidadId().
+describe('extraerEntidadId (vía el fallback genérico) — toma el PRIMER segmento numérico, no el último', () => {
+  it.each([
+    ['/api/v1/facturas/42/anular', '42'],
+    ['/api/v1/flota/99/revisar', '99'],
+  ])('%s → #%s', (ruta, esperado) => {
+    const desc = generarDescripcion('PATCH', ruta, 'Ana', {});
+    expect(desc).toContain(`#${esperado}`);
+  });
+});
+
 describe('generarDescripcion — no regresiona el fallback para rutas genuinamente desconocidas', () => {
   it('un módulo sin rama propia sigue usando el fallback legible', () => {
     expect(generarDescripcion('POST', '/api/v1/flota/vehiculos', 'Ana')).toBe('Ana creó en flota');

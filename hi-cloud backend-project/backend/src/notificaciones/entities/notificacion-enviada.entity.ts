@@ -21,6 +21,8 @@ export enum TipoNotificacion {
   MANUAL               = 'manual',
   /** HiCloud Xlink — llegó un documento nuevo (canal SISTEMA, campanita). */
   XLINK_DOCUMENTO_RECIBIDO = 'xlink_documento_recibido',
+  /** Hay una caja abierta de un día anterior sin cerrar (canal SISTEMA, campanita). */
+  CAJA_HUERFANA = 'caja_huerfana',
 }
 
 export enum CanalNotificacion {
