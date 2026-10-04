@@ -300,8 +300,13 @@ export class InventarioService {
       .where('m.empresaId = :eid', { eid: empresaId })
       .andWhere('m.isActive = :active', { active: true });
 
-    // H1: filtrar por almacén del JWT cuando el usuario tiene almacén asignado
-    if (almacenId) qb.andWhere('(m.almacenId = :aid OR m.almacenId IS NULL)', { aid: almacenId });
+    // H1: filtrar por almacén del JWT cuando el usuario tiene almacén asignado.
+    // El "OR m.almacenId IS NULL" que vivía aquí era para no esconder los
+    // movimientos viejos sin almacén (nunca hubo ninguno sin resolver tras
+    // la migración de datos + resolverAlmacenId() — ver inventario.service.ts) —
+    // ya no hace falta, y dejarlo mezclaría movimientos de otros almacenes
+    // si algún día vuelve a aparecer una fila NULL por error.
+    if (almacenId) qb.andWhere('m.almacenId = :aid', { aid: almacenId });
 
     if (search) qb.andWhere('(producto.nombre ILIKE :s OR producto.codigo ILIKE :s OR m.referencia ILIKE :s OR m.motivo ILIKE :s)', { s: `%${search}%` });
     if (tipo)  qb.andWhere('m.tipo = :tipo', { tipo });
