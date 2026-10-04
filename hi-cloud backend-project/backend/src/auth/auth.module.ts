@@ -13,6 +13,7 @@ import { TokenBlacklistService } from './token-blacklist.service';
 import { RefreshTokenService } from './refresh-token.service';
 import { SessionLifetimeService } from './session-lifetime.service';
 import { AlertaDispositivoService } from './alerta-dispositivo.service';
+import { BloqueoAlertaService } from './bloqueo-alerta.service';
 import { JWT_EXPIRES_IN_DEFAULT } from './auth.constants';
 import { RefreshToken } from './entities/refresh-token.entity';
 import { DispositivoConocido } from './entities/dispositivo-conocido.entity';
@@ -61,7 +62,7 @@ import { ModulosAddonModule } from '../modulos-addon/modulos-addon.module';
     }),
   ],
   controllers: [AuthController, TwoFactorController, EquipoSesionesController],
-  providers: [AuthService, JwtStrategy, GoogleStrategy, TwoFactorService, TokenBlacklistService, RefreshTokenService, SessionLifetimeService, AlertaDispositivoService, RolesGuard, AuditoriaAccessGuard, LoginAttemptsService, SupervisorAttemptsService, EquipoSesionesService],
+  providers: [AuthService, JwtStrategy, GoogleStrategy, TwoFactorService, TokenBlacklistService, RefreshTokenService, SessionLifetimeService, AlertaDispositivoService, BloqueoAlertaService, RolesGuard, AuditoriaAccessGuard, LoginAttemptsService, SupervisorAttemptsService, EquipoSesionesService],
   // AuthService y LoginAttemptsService se exportan para el panel de soporte
   // del super admin (SuperAdminModule) — reenviar recuperación/verificación
   // y diagnosticar/limpiar bloqueos reutilizan esta MISMA lógica en vez de

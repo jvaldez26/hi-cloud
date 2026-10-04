@@ -23,6 +23,12 @@ export enum TipoNotificacion {
   XLINK_DOCUMENTO_RECIBIDO = 'xlink_documento_recibido',
   /** Hay una caja abierta de un día anterior sin cerrar (canal SISTEMA, campanita). */
   CAJA_HUERFANA = 'caja_huerfana',
+  /** Cuenta bloqueada por intentos fallidos de login — al dueño de la cuenta. */
+  LOGIN_BLOQUEADO = 'login_bloqueado',
+  /** Supervisor bloqueado por intentos fallidos en el POS — al supervisor. */
+  SUPERVISOR_BLOQUEADO = 'supervisor_bloqueado',
+  /** 3+ bloqueos de la misma cuenta en 24h — a los admins de sus empresas. */
+  POSIBLE_ACCESO_NO_AUTORIZADO = 'posible_acceso_no_autorizado',
 }
 
 export enum CanalNotificacion {

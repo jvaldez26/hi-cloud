@@ -68,40 +68,53 @@ function makeAuthService() {
     if (sql.includes('INSERT INTO pos_supervisor_log')) {
       return [{ id: 999 }];
     }
+    // Lookups de AuthService.verificarSupervisor() al bloquear (para el
+    // aviso de bloqueo) — nombres sin uso en las aserciones de este spec,
+    // solo tienen que no reventar el fake.
+    if (sql.includes('SELECT nombre FROM users WHERE id'))      return [{ nombre: 'Cajero Fake' }];
+    if (sql.includes('SELECT nombre FROM empresa WHERE id'))    return [{ nombre: 'Empresa Fake' }];
+    if (sql.includes('SELECT nombre FROM sucursales WHERE id')) return [{ nombre: 'Sucursal Fake' }];
     throw new Error(`Query no reconocida por el fake: ${sql}`);
   });
 
   const noop = {} as any;
+  const bloqueoAlertaSvc = { avisarBloqueoSupervisor: jest.fn().mockResolvedValue(undefined) };
   const supervisorAttempts = new SupervisorAttemptsService(fakeCacheManager());
   const svc = new AuthService(
     noop, noop, noop, noop, noop, noop, noop,
     noop, noop, noop, noop, noop,
     { query } as any,
     noop, supervisorAttempts, noop, noop, noop,
+    bloqueoAlertaSvc as any,
   );
-  return { svc, supervisorAttempts };
+  return { svc, supervisorAttempts, bloqueoAlertaSvc };
 }
 
 describe('Límite de intentos de verificar-supervisor — por (empresa, cajero, supervisor)', () => {
-  it('5 fallos bloquean a ese cajero con ese supervisor: el 6.º intento da 429, AUNQUE la clave sea correcta', async () => {
+  it('5 fallos bloquean a ese cajero con ese supervisor: el 5.º intento YA da 429 (mismo criterio que login — se bloquea en el momento, no en el próximo request)', async () => {
     const { svc } = makeAuthService();
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 4; i++) {
       await expect(svc.verificarSupervisor(SUPERVISOR_ID, 'clave-incorrecta', CAJERO_A, EMPRESA))
         .rejects.toThrow(UnauthorizedException);
     }
 
-    const intento6 = svc.verificarSupervisor(SUPERVISOR_ID, PASSWORD_SUP, CAJERO_A, EMPRESA);
-    await expect(intento6).rejects.toThrow(HttpException);
+    await expect(svc.verificarSupervisor(SUPERVISOR_ID, 'clave-incorrecta', CAJERO_A, EMPRESA))
+      .rejects.toMatchObject({ status: 429, response: expect.objectContaining({ message: 'Demasiados intentos. Espera 1 minuto.' }) });
+
+    // Sigue bloqueado — ni con la clave correcta entra mientras dure el bloqueo.
     await expect(svc.verificarSupervisor(SUPERVISOR_ID, PASSWORD_SUP, CAJERO_A, EMPRESA))
-      .rejects.toMatchObject({ status: 429, response: expect.objectContaining({ message: 'Demasiados intentos. Espere un minuto.' }) });
+      .rejects.toThrow(HttpException);
   });
 
   it('otro cajero de la misma empresa (y misma IP, en el controller real) NO se bloquea por los fallos del primero', async () => {
     const { svc } = makeAuthService();
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 4; i++) {
       await expect(svc.verificarSupervisor(SUPERVISOR_ID, 'clave-incorrecta', CAJERO_A, EMPRESA))
         .rejects.toThrow(UnauthorizedException);
     }
+    await expect(svc.verificarSupervisor(SUPERVISOR_ID, 'clave-incorrecta', CAJERO_A, EMPRESA))
+      .rejects.toThrow(HttpException); // 5to fallo de CAJERO_A: bloqueado
+
     // CAJERO_B nunca falló nada — su propia cubeta (empresa, CAJERO_B, supervisor) sigue limpia.
     await expect(svc.verificarSupervisor(SUPERVISOR_ID, PASSWORD_SUP, CAJERO_B, EMPRESA))
       .resolves.toMatchObject({ ok: true, nombre: 'Ana Supervisor' });
@@ -109,10 +122,13 @@ describe('Límite de intentos de verificar-supervisor — por (empresa, cajero, 
 
   it('el mismo cajero contra OTRO supervisor no se ve afectado por los fallos contra el primero', async () => {
     const { svc } = makeAuthService();
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 4; i++) {
       await expect(svc.verificarSupervisor(SUPERVISOR_ID, 'clave-incorrecta', CAJERO_A, EMPRESA))
         .rejects.toThrow(UnauthorizedException);
     }
+    await expect(svc.verificarSupervisor(SUPERVISOR_ID, 'clave-incorrecta', CAJERO_A, EMPRESA))
+      .rejects.toThrow(HttpException); // 5to fallo: bloqueado
+
     // Mismo cajero, pero el OTRO supervisor (CAJERO_B como id de supervisor no aplica aquí;
     // se simula con un supervisorId distinto que sí existe y es válido).
     await expect(svc.verificarSupervisor(CAJERO_B, PASSWORD_SUP, CAJERO_A, EMPRESA))
@@ -124,12 +140,12 @@ describe('Límite de intentos de verificar-supervisor — por (empresa, cajero, 
     const ahora = Date.now();
     const spy = jest.spyOn(Date, 'now').mockReturnValue(ahora);
     try {
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 4; i++) {
         await expect(svc.verificarSupervisor(SUPERVISOR_ID, 'clave-incorrecta', CAJERO_A, EMPRESA))
           .rejects.toThrow(UnauthorizedException);
       }
-      await expect(svc.verificarSupervisor(SUPERVISOR_ID, PASSWORD_SUP, CAJERO_A, EMPRESA))
-        .rejects.toThrow(HttpException);
+      await expect(svc.verificarSupervisor(SUPERVISOR_ID, 'clave-incorrecta', CAJERO_A, EMPRESA))
+        .rejects.toThrow(HttpException); // 5to fallo: bloqueado
 
       spy.mockReturnValue(ahora + 61_000); // 1 min + 1s después
 

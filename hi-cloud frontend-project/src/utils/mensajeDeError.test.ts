@@ -80,4 +80,26 @@ describe('mensajeDeError', () => {
     expect(mensajeDeError(null)).toBe('No hay conexión con el servidor. Revisa tu internet e intenta de nuevo.');
     expect(mensajeDeError(undefined)).toBe('No hay conexión con el servidor. Revisa tu internet e intenta de nuevo.');
   });
+
+  // Caso real: api/client.ts sobreescribe .friendlyMessage con un texto
+  // genérico ("Demasiadas solicitudes...") para CUALQUIER 429 — pero el
+  // bloqueo progresivo (login, supervisor) manda en errors[0] el tiempo
+  // exacto de espera, que se perdería si se leyera friendlyMessage.
+  it('429 de bloqueo progresivo → el mensaje real con el tiempo de espera, NUNCA el genérico de friendlyMessage', () => {
+    const msg = mensajeDeError({
+      isNetworkError: false,
+      response: { status: 429, data: { errors: ['Demasiados intentos. Espera 5 minutos.'] } },
+      friendlyMessage: 'Demasiadas solicitudes — espera un momento e inténtalo de nuevo.',
+    });
+    expect(msg).toBe('Demasiados intentos. Espera 5 minutos.');
+  });
+
+  it('429 sin errors[] (p.ej. el throttle genérico de IP) → cae a friendlyMessage/fallback, no revienta', () => {
+    const msg = mensajeDeError({
+      isNetworkError: false,
+      response: { status: 429, data: {} },
+      friendlyMessage: 'Demasiadas solicitudes — espera un momento e inténtalo de nuevo.',
+    });
+    expect(msg).toBe('Demasiadas solicitudes — espera un momento e inténtalo de nuevo.');
+  });
 });

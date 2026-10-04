@@ -96,25 +96,41 @@ export function determinarNivel(metodo: string, ruta: string): NivelAuditoria {
 
 /**
  * Nivel de un evento FALLIDO — toma el status HTTP, no solo la URL (un 2xx
- * de login no es lo mismo que un 401). Para todo lo que no sea login, el
- * nivel sigue siendo IMPORTANTE (comportamiento de siempre).
+ * de login no es lo mismo que un 401). Para todo lo que no sea login/
+ * verificar-supervisor, el nivel sigue siendo IMPORTANTE (comportamiento
+ * de siempre).
  *
- * Login fallido:
- *   - IMPORTANTE de entrada (un intento equivocado solo).
- *   - CRÍTICO si ya van 5+ intentos fallidos SEGUIDOS del mismo identificador
- *     + IP (LoginAttemptsService.increment() ya corrió en auth.service.ts
- *     ANTES de lanzar la excepción — este número viaja en el cuerpo del
- *     error como `attempts`, no se vuelve a calcular aquí).
- *   - CRÍTICO también si el status es 429 (Too Many Requests): la cuenta ya
- *     está bloqueada, lo que implica que el umbral configurado (3-10, ver
- *     getEffectiveMaxIntentos) ya se cruzó — pase lo que pase con `attempts`.
+ * Login y modo supervisor, al bloquearse (429 — LoginAttemptsService y
+ * SupervisorAttemptsService ya corrieron en auth.service.ts ANTES de
+ * lanzar la excepción):
+ *   - `tipoBloqueo === 'cuenta_global'` (login, nivel 2: 20 fallos en 60
+ *     min desde cualquier IP): SIEMPRE CRÍTICO — es la señal de ataque
+ *     distribuido, no hace falta que se repita.
+ *   - IMPORTANTE el 1er y 2do bloqueo en 24h de la misma cuenta+IP (o la
+ *     misma cubeta de supervisor). CRÍTICO desde el 3ro — `bloqueosEn24h`
+ *     viaja en el cuerpo del error, no se vuelve a calcular aquí (una sola
+ *     fuente de verdad). Si por lo que sea no viene (compatibilidad),
+ *     cualquier 429 de login se trata como CRÍTICO, igual que antes.
+ *   - Login, sin llegar a bloquear: CRÍTICO también si ya van 5+ intentos
+ *     fallidos SEGUIDOS (`attempts`).
  */
-export function determinarNivelError(metodo: string, ruta: string, status: number, attempts?: number): NivelAuditoria {
+export function determinarNivelError(
+  metodo: string, ruta: string, status: number, attempts?: number, bloqueosEn24h?: number, tipoBloqueo?: string,
+): NivelAuditoria {
   const r = ruta.toLowerCase();
 
   if (r.includes('/auth/login')) {
-    if (status === 429) return NivelAuditoria.CRITICO;
+    if (status === 429) {
+      if (tipoBloqueo === 'cuenta_global') return NivelAuditoria.CRITICO;
+      if (typeof bloqueosEn24h === 'number') return bloqueosEn24h >= 3 ? NivelAuditoria.CRITICO : NivelAuditoria.IMPORTANTE;
+      return NivelAuditoria.CRITICO;
+    }
     if (typeof attempts === 'number' && attempts >= 5) return NivelAuditoria.CRITICO;
+    return NivelAuditoria.IMPORTANTE;
+  }
+
+  if (r.includes('/auth/verificar-supervisor') && status === 429) {
+    if (typeof bloqueosEn24h === 'number') return bloqueosEn24h >= 3 ? NivelAuditoria.CRITICO : NivelAuditoria.IMPORTANTE;
     return NivelAuditoria.IMPORTANTE;
   }
 
@@ -376,19 +392,23 @@ export class AuditInterceptor implements NestInterceptor {
           return e?.message ?? 'Error desconocido';
         })();
 
-        // `attempts`: solo lo manda auth.service.ts en los 401 de credenciales
-        // inválidas (ver LoginAttemptsService.increment()) — para todo lo
-        // demás queda undefined y determinarNivelError() no lo necesita.
-        const attempts = (() => {
+        // `attempts`/`bloqueosEn24h`/`tipoBloqueo`: solo los manda
+        // auth.service.ts (ver LoginAttemptsService/SupervisorAttemptsService)
+        // — para todo lo demás quedan undefined y determinarNivelError() no
+        // los necesita.
+        const campoDe = <T>(campo: string): T | undefined => {
           const e = err as any;
           if (typeof e?.getResponse === 'function') {
             const res = e.getResponse();
-            if (typeof res === 'object' && res !== null && typeof (res as any).attempts === 'number') {
-              return (res as any).attempts as number;
+            if (typeof res === 'object' && res !== null && (res as any)[campo] !== undefined) {
+              return (res as any)[campo] as T;
             }
           }
           return undefined;
-        })();
+        };
+        const attempts      = campoDe<number>('attempts');
+        const bloqueosEn24h = campoDe<number>('bloqueosEn24h');
+        const tipoBloqueo   = campoDe<string>('tipoBloqueo');
 
         this.auditoriaService
           .registrar({
@@ -397,7 +417,7 @@ export class AuditInterceptor implements NestInterceptor {
             userRole:    user?.role,
             empresaId:   (user as any)?.empresaId,
             accion:      AccionAuditoria.ERROR,
-            nivel:       determinarNivelError(method, url, status, attempts),
+            nivel:       determinarNivelError(method, url, status, attempts, bloqueosEn24h, tipoBloqueo),
             modulo,
             descripcion: `ERROR en ${method} ${url}: ${mensaje}`,
             metodo:      method,

@@ -21,6 +21,7 @@ import { TokenBlacklistService } from './token-blacklist.service';
 import { RefreshTokenService } from './refresh-token.service';
 import { SessionLifetimeService } from './session-lifetime.service';
 import { AlertaDispositivoService } from './alerta-dispositivo.service';
+import { BloqueoAlertaService } from './bloqueo-alerta.service';
 import { TwoFactorService } from './two-factor.service';
 import { EmailService } from '../notificaciones/services/email.service';
 import { User } from '../users/users.entity';
@@ -39,6 +40,7 @@ import { AuditoriaService } from '../auditoria/auditoria.service';
 import { AccionAuditoria, NivelAuditoria } from '../auditoria/entities/audit-log.entity';
 import { ModulosAddonService } from '../modulos-addon/modulos-addon.service';
 import { USERNAME_RESERVADOS } from './auth.constants';
+import { mensajeBloqueo, formatMinutos } from './utils/progressive-lockout.util';
 
 /**
  * Hash bcrypt (costo 12, igual que los hashes reales — ver bcrypt.hash(..., 12)
@@ -90,6 +92,7 @@ export class AuthService implements OnModuleInit {
     private auditoriaSvc: AuditoriaService,
     private modulosAddonSvc: ModulosAddonService,
     private alertaDispositivoSvc: AlertaDispositivoService,
+    private bloqueoAlertaSvc: BloqueoAlertaService,
   ) {}
 
   async onModuleInit() {
@@ -423,6 +426,62 @@ export class AuthService implements OnModuleInit {
 
   // ─── Login ───────────────────────────────────────────────────────────────────
 
+  /**
+   * Registra un fallo de login y, si cruza CUALQUIERA de los dos umbrales
+   * (ver LoginAttemptsService), avisa al dueño de la cuenta — con contenido
+   * distinto si fue el nivel 1 (cuenta+IP) o el nivel 2 (cuenta global,
+   * "posible ataque distribuido") — y lanza el 429 unificado. Si no se
+   * bloqueó nada, solo devuelve `attemptsLocal` para que el llamador
+   * calcule "N intentos antes del bloqueo" y siga con su excepción
+   * específica (credenciales inválidas, empresa suspendida, etc.).
+   */
+  private async procesarFalloLogin(
+    claveIntentos: string, ip: string, userAgent: string | undefined,
+    maxIntentos: number, user: User | null | undefined, motivo: string,
+  ): Promise<number> {
+    const { attemptsLocal, attemptsGlobal } = await this.loginAttempts.increment(claveIntentos, ip);
+    const { blockSeconds, bloqueosEn24h, tipo } = await this.loginAttempts.block(
+      claveIntentos, ip, attemptsLocal, attemptsGlobal, maxIntentos,
+    );
+
+    if (blockSeconds > 0) {
+      this.logger.warn(
+        `[LOGIN] ${motivo} — bloqueado (${tipo}) ${formatMinutos(blockSeconds)} — id:${claveIntentos} ip:${ip} ` +
+        `local:${attemptsLocal} global:${attemptsGlobal} bloqueosEn24h:${bloqueosEn24h}`,
+      );
+      // Nunca se avisa de una cuenta que no existe (no revela qué cuentas
+      // hay) — fire-and-forget: un SMTP caído no debe retrasar el 429.
+      if (user?.isActive) {
+        if (tipo === 'cuenta_global') {
+          void this.bloqueoAlertaSvc.avisarBloqueoGlobalLogin({
+            userId: user.id, email: user.email, nombre: user.nombre,
+            intentos: attemptsGlobal, duracionSegundos: blockSeconds,
+            ip, userAgent,
+          });
+        } else {
+          void this.bloqueoAlertaSvc.avisarBloqueoLogin({
+            userId: user.id, email: user.email, nombre: user.nombre,
+            intentos: attemptsLocal, duracionSegundos: blockSeconds, bloqueosEn24h,
+            ip, userAgent,
+          });
+        }
+      }
+      throw new HttpException(
+        {
+          message:          mensajeBloqueo(blockSeconds),
+          remainingSeconds: blockSeconds,
+          bloqueosEn24h,
+          tipoBloqueo:      tipo,
+          error:            'Too Many Requests',
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    this.logger.warn(`[LOGIN] ${motivo} — intento #${attemptsLocal} — id:${claveIntentos} ip:${ip}`);
+    return attemptsLocal;
+  }
+
   async login(dto: LoginDto, ip: string, userAgent?: string) {
     const inputTrim = dto.identificador.trim();
     const esEmail    = inputTrim.includes('@');
@@ -443,11 +502,12 @@ export class AuthService implements OnModuleInit {
     // 1. Verificar bloqueo activo antes de comparar contraseña
     const blockStatus = await this.loginAttempts.isBlocked(claveIntentos, ip);
     if (blockStatus.blocked) {
-      const tiempo = this.loginAttempts.formatTime(blockStatus.remainingSeconds!);
       throw new HttpException(
         {
-          message:          `Cuenta temporalmente bloqueada. Intenta de nuevo en ${tiempo}.`,
+          message:          mensajeBloqueo(blockStatus.remainingSeconds!),
           remainingSeconds: blockStatus.remainingSeconds,
+          bloqueosEn24h:    blockStatus.bloqueosEn24h,
+          tipoBloqueo:      blockStatus.tipo,
           error:            'Too Many Requests',
         },
         HttpStatus.TOO_MANY_REQUESTS,
@@ -470,23 +530,8 @@ export class AuthService implements OnModuleInit {
 
     // 3. Credenciales inválidas (usuario inexistente, inactivo o contraseña incorrecta)
     if (!user || !user.isActive || !isValid) {
-      const attempts    = await this.loginAttempts.increment(claveIntentos, ip);
-      const blockSecs   = await this.loginAttempts.block(claveIntentos, ip, attempts, maxIntentos);
+      const attempts = await this.procesarFalloLogin(claveIntentos, ip, userAgent, maxIntentos, user, 'Credenciales inválidas');
 
-      if (blockSecs > 0) {
-        const tiempo = this.loginAttempts.formatTime(blockSecs);
-        this.logger.warn(`[LOGIN] Cuenta bloqueada ${tiempo} — id:${claveIntentos} ip:${ip} intentos:${attempts}`);
-        throw new HttpException(
-          {
-            message:          `Demasiados intentos fallidos. Cuenta bloqueada por ${tiempo}.`,
-            remainingSeconds: blockSecs,
-            error:            'Too Many Requests',
-          },
-          HttpStatus.TOO_MANY_REQUESTS,
-        );
-      }
-
-      this.logger.warn(`[LOGIN] Intento fallido #${attempts} — id:${claveIntentos} ip:${ip}`);
       // `attempts` viaja en el cuerpo del error (no solo en el log) para que
       // AuditInterceptor.determinarNivelError() pueda clasificar 5+ fallos
       // seguidos como CRÍTICO sin tener que recalcular el contador por su
@@ -552,23 +597,7 @@ export class AuthService implements OnModuleInit {
       const tieneEmpresaActiva = ues.some(e => e.empresa?.isActive === true);
 
       if (!tieneEmpresaActiva) {
-        const attempts  = await this.loginAttempts.increment(claveIntentos, ip);
-        const blockSecs = await this.loginAttempts.block(claveIntentos, ip, attempts, maxIntentos);
-
-        if (blockSecs > 0) {
-          const tiempo = this.loginAttempts.formatTime(blockSecs);
-          this.logger.warn(`[LOGIN] Empresa suspendida — bloqueado ${tiempo} — id:${claveIntentos} ip:${ip} intentos:${attempts}`);
-          throw new HttpException(
-            {
-              message:          `Demasiados intentos. Cuenta bloqueada por ${tiempo}.`,
-              remainingSeconds: blockSecs,
-              error:            'Too Many Requests',
-            },
-            HttpStatus.TOO_MANY_REQUESTS,
-          );
-        }
-
-        this.logger.warn(`[LOGIN] Empresa suspendida — intento #${attempts} — id:${claveIntentos} ip:${ip}`);
+        await this.procesarFalloLogin(claveIntentos, ip, userAgent, maxIntentos, user, 'Empresa suspendida');
         throw new ForbiddenException('Tu empresa ha sido suspendida. Contacta al administrador de HiCloud.');
       }
     }
@@ -1374,6 +1403,8 @@ export class AuthService implements OnModuleInit {
     action?: string,
     detail?: string,
     sucursalId?: number | null,
+    ip?: string,
+    userAgent?: string,
   ): Promise<{ ok: true; nombre: string; role: string; sessionId: number | null }> {
     // Bloqueo por intentos fallidos, por (empresa, cajero, supervisor) — NO
     // por IP (ver SupervisorAttemptsService: varias cajas de una tienda
@@ -1382,12 +1413,54 @@ export class AuthService implements OnModuleInit {
     const bloqueo = await this.supervisorAttempts.isBlocked(empresaId, cajeroId, supervisorRef);
     if (bloqueo.blocked) {
       throw new HttpException(
-        { message: 'Demasiados intentos. Espere un minuto.', remainingSeconds: bloqueo.remainingSeconds, error: 'Too Many Requests' },
+        {
+          message: mensajeBloqueo(bloqueo.remainingSeconds!),
+          remainingSeconds: bloqueo.remainingSeconds,
+          bloqueosEn24h: bloqueo.bloqueosEn24h,
+          error: 'Too Many Requests',
+        },
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
 
-    const registrarFallo = () => this.supervisorAttempts.registrarFallo(empresaId, cajeroId, supervisorRef);
+    // Registra el fallo y, si ESTE fallo cruza el umbral, avisa al
+    // supervisor (solo si se pudo resolver quién es — `supInfo` viene
+    // undefined cuando el ref ni siquiera coincidió con nadie) y lanza el
+    // 429 unificado. Si no se bloqueó, no hace nada más — el llamador sigue
+    // con su excepción específica (contraseña incorrecta, etc.).
+    const manejarFallo = async (supInfo?: { id: number; nombre: string; email: string }) => {
+      const r = await this.supervisorAttempts.registrarFallo(empresaId, cajeroId, supervisorRef);
+      if (!r.bloqueado) return;
+
+      if (supInfo?.email) {
+        const [[cajero], [empresa], sucursalRows] = await Promise.all([
+          this.dataSource.query<{ nombre: string }[]>(`SELECT nombre FROM users WHERE id = $1`, [cajeroId]),
+          this.dataSource.query<{ nombre: string }[]>(`SELECT nombre FROM empresa WHERE id = $1`, [empresaId]),
+          sucursalId
+            ? this.dataSource.query<{ nombre: string }[]>(`SELECT nombre FROM sucursales WHERE id = $1`, [sucursalId])
+            : Promise.resolve([] as { nombre: string }[]),
+        ]);
+        void this.bloqueoAlertaSvc.avisarBloqueoSupervisor({
+          supervisorUserId: supInfo.id, supervisorEmail: supInfo.email, supervisorNombre: supInfo.nombre,
+          cajeroNombre:  cajero?.nombre ?? `#${cajeroId}`,
+          empresaNombre: empresa?.nombre ?? `#${empresaId}`,
+          sucursalNombre: sucursalRows[0]?.nombre ?? null,
+          action, detail,
+          intentos: r.intentos, duracionSegundos: r.duracionSegundos,
+          ip, userAgent,
+        });
+      }
+
+      throw new HttpException(
+        {
+          message: mensajeBloqueo(r.duracionSegundos),
+          remainingSeconds: r.duracionSegundos,
+          bloqueosEn24h: r.bloqueosEn24h,
+          error: 'Too Many Requests',
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    };
 
     const byId = typeof supervisorRef === 'number';
     // Buscar supervisor en el mismo tenant con rol autorizado
@@ -1405,7 +1478,7 @@ export class AuthService implements OnModuleInit {
 
     const sup = rows[0];
     if (!sup) {
-      await registrarFallo();
+      await manejarFallo();
       throw new UnauthorizedException(
         byId ? 'Usuario no autorizado como supervisor' : 'No se encontró supervisor con ese correo en esta empresa',
       );
@@ -1416,7 +1489,7 @@ export class AuthService implements OnModuleInit {
     // actuando de cajero NO puede autorizarse a sí mismo — decisión
     // explícita del negocio, no un olvido.
     if (sup.id === cajeroId && !['admin', 'contador'].includes(sup.role)) {
-      await registrarFallo();
+      await manejarFallo({ id: sup.id, nombre: sup.nombre, email: sup.email });
       throw new UnauthorizedException('No puedes autorizarte a ti mismo como supervisor');
     }
 
@@ -1429,7 +1502,7 @@ export class AuthService implements OnModuleInit {
       ? await bcrypt.compare(supervisorPassword, sup.pinSupervisor)
       : await bcrypt.compare(supervisorPassword, sup.password);
     if (!valida) {
-      await registrarFallo();
+      await manejarFallo({ id: sup.id, nombre: sup.nombre, email: sup.email });
       throw new UnauthorizedException(tienePin ? 'PIN incorrecto' : 'Contraseña incorrecta');
     }
 

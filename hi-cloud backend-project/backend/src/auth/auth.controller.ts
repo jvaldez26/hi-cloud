@@ -289,6 +289,7 @@ export class AuthController {
       cajero.id, (cajero as any).empresaId,
       body.action, body.detail,
       (cajero as any).sucursalId,
+      obtenerIP(req), req.headers['user-agent'],
     );
   }
 

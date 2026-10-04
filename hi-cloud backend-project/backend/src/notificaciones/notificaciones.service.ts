@@ -57,7 +57,7 @@ export class NotificacionesService {
   }
 
   /** Emails de usuarios admin/contador activos de una empresa (hasta 5). */
-  private async getAdminEmails(empresaId: number): Promise<string[]> {
+  async getAdminEmails(empresaId: number): Promise<string[]> {
     const rows = await this.dataSource.query<{ email: string }[]>(
       `SELECT u.email
        FROM usuario_empresa ue
@@ -120,6 +120,30 @@ export class NotificacionesService {
         }),
       ).catch((e: Error) => this.logger.error(`Error guardando notificación de sistema: ${e.message}`));
     }
+  }
+
+  /**
+   * Notificación canal SISTEMA (campanita) para UN usuario específico — a
+   * diferencia de notificarSistemaEmpresa() (todos los admin/contador de
+   * una empresa), esta es para avisos dirigidos a una sola persona que no
+   * necesariamente es admin (p.ej. "tu cuenta se bloqueó por intentos
+   * fallidos", dueño de la cuenta sea cual sea su rol).
+   */
+  async notificarSistemaUsuario(
+    userId:      number,
+    tipo:        TipoNotificacion,
+    asunto:      string,
+    mensaje:     string,
+    referencia?: string,
+  ): Promise<void> {
+    await this.logRepository.save(
+      this.logRepository.create({
+        tipo, canal: CanalNotificacion.SISTEMA,
+        destinatario: String(userId), userId,
+        asunto, mensaje: mensaje.substring(0, 2000),
+        exitoso: true, referencia,
+      }),
+    ).catch((e: Error) => this.logger.error(`Error guardando notificación de sistema (usuario): ${e.message}`));
   }
 
   /** Todas las empresas activas con su configuración. */

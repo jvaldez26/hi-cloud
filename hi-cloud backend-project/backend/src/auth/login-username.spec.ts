@@ -51,9 +51,10 @@ function makeAuthService(usuarios: any[]) {
   const loginAttempts = {
     isBlocked:  jest.fn(async (id: string, ip: string) => ({ blocked: (bloqueos.get(`${id}:${ip}`) ?? 0) > Date.now() })),
     increment:  jest.fn(async (id: string, ip: string) => {
-      const k = `${id}:${ip}`; const n = (intentos.get(k) ?? 0) + 1; intentos.set(k, n); return n;
+      const k = `${id}:${ip}`; const n = (intentos.get(k) ?? 0) + 1; intentos.set(k, n);
+      return { attemptsLocal: n, attemptsGlobal: n };
     }),
-    block:      jest.fn(async () => 0),
+    block:      jest.fn(async () => ({ blockSeconds: 0, bloqueosEn24h: 0, tipo: null })),
     reset:      jest.fn(async () => {}),
     formatTime: jest.fn((s: number) => `${s}s`),
   };

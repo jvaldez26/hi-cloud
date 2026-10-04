@@ -239,9 +239,21 @@ describe('determinarNivelError — login fallido: escala con el status y los int
     expect(determinarNivelError('POST', '/api/v1/auth/login', 401, 9)).toBe(NivelAuditoria.CRITICO);
   });
 
-  it('429 (cuenta ya bloqueada): CRÍTICO sin importar el número de attempts reportado', () => {
+  it('429 (cuenta ya bloqueada) sin bloqueosEn24h (compatibilidad): CRÍTICO sin importar attempts', () => {
     expect(determinarNivelError('POST', '/api/v1/auth/login', 429, undefined)).toBe(NivelAuditoria.CRITICO);
     expect(determinarNivelError('POST', '/api/v1/auth/login', 429, 1)).toBe(NivelAuditoria.CRITICO);
+  });
+
+  it('429 con bloqueosEn24h: IMPORTANTE el 1er y 2do bloqueo, CRÍTICO desde el 3ro', () => {
+    expect(determinarNivelError('POST', '/api/v1/auth/login', 429, undefined, 1)).toBe(NivelAuditoria.IMPORTANTE);
+    expect(determinarNivelError('POST', '/api/v1/auth/login', 429, undefined, 2)).toBe(NivelAuditoria.IMPORTANTE);
+    expect(determinarNivelError('POST', '/api/v1/auth/login', 429, undefined, 3)).toBe(NivelAuditoria.CRITICO);
+    expect(determinarNivelError('POST', '/api/v1/auth/login', 429, undefined, 4)).toBe(NivelAuditoria.CRITICO);
+  });
+
+  it('verificar-supervisor bloqueado: misma escalada por bloqueosEn24h (IMPORTANTE 1-2, CRÍTICO 3+)', () => {
+    expect(determinarNivelError('POST', '/api/v1/auth/verificar-supervisor', 429, undefined, 1)).toBe(NivelAuditoria.IMPORTANTE);
+    expect(determinarNivelError('POST', '/api/v1/auth/verificar-supervisor', 429, undefined, 3)).toBe(NivelAuditoria.CRITICO);
   });
 
   it('otras rutas no cambian: siguen IMPORTANTE pase lo que pase con attempts/status', () => {
