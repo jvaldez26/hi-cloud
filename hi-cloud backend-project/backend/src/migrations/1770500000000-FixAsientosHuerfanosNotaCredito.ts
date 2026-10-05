@@ -132,9 +132,9 @@ export class FixAsientosHuerfanosNotaCredito1770500000000 implements MigrationIn
         SET "empresaId" = $1,
             numero = $2,
             "referenciaFolio" = $3,
-            descripcion = descripcion || ' [reasignado desde ' || $3 || ', empresaId era NULL]'
+            descripcion = descripcion || ' [reasignado desde ' || $5 || ', empresaId era NULL]'
         WHERE id = $4
-      `, [empresaCorrecta, numeroFormateado, asiento.numero, asientoId]);
+      `, [empresaCorrecta, numeroFormateado, asiento.numero, asientoId, asiento.numero]);
       asientosCorregidos++;
 
       for (const { lineaId, cuentaNueva } of lineas) {
