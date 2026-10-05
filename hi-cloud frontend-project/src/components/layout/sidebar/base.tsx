@@ -539,11 +539,15 @@ export interface QuickItem {
   badge?:      string;
   /** Conteo de no leídos — muestra un punto rojo con número cuando > 0 */
   badgeCount?: number;
+  /** Código de transacción (VT02, GN01, ...) — se muestra en el tooltip. */
+  codigo?:     string;
 }
 
 export interface SubItem {
-  path:  string;
-  label: string;
+  path:    string;
+  label:   string;
+  /** Código de transacción (VT02, GN01, ...) — se muestra en el tooltip. */
+  codigo?: string;
   /**
    * Los cuatro siguientes son opcionales y hoy solo los usa el panel de Super
    * Admin, que necesita contadores y avisos por entrada. En el ERP van vacíos y
@@ -688,7 +692,7 @@ export function QuickItemComp({
   );
 
   return collapsed
-    ? <Tooltip title={item.label} placement="right">{btn}</Tooltip>
+    ? <Tooltip title={item.codigo ? `${item.label} (${item.codigo})` : item.label} placement="right">{btn}</Tooltip>
     : btn;
 }
 
@@ -825,7 +829,7 @@ export function AccordionSubItem({
   const [hover, setHover] = useState(false);
   return (
     <Tooltip
-      title={locked ? `Disponible en plan ${PLAN_NOMBRE[planMinimo!] ?? ''}` : undefined}
+      title={locked ? `Disponible en plan ${PLAN_NOMBRE[planMinimo!] ?? ''}` : item.codigo}
       placement="right"
     >
       <button
@@ -1064,7 +1068,7 @@ export function FlyoutItem({
 
   return (
     <Tooltip
-      title={locked ? `Disponible en plan ${PLAN_NOMBRE[planMinimo!] ?? ''}` : undefined}
+      title={locked ? `Disponible en plan ${PLAN_NOMBRE[planMinimo!] ?? ''}` : item.codigo}
       placement="right"
     >
       <button

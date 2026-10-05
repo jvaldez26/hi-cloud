@@ -75,7 +75,7 @@ const QUICK_ACCESS_ICONS: Record<string, LucideIcon> = {
 
 const QUICK_ITEMS: QuickItem[] = [
   ...QUICK_ACCESS_ITEMS.map(qa => ({
-    path: qa.path, label: qa.label, Icon: QUICK_ACCESS_ICONS[qa.path] ?? Home,
+    path: qa.path, label: qa.label, Icon: QUICK_ACCESS_ICONS[qa.path] ?? Home, codigo: qa.codigo,
     ...(qa.path === '/pos' ? { badge: 'POS' } : {}),
   })),
   // La visibilidad NO se decide aquí: la da GET /activacion-ecf/estado, el mismo
