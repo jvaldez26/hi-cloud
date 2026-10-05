@@ -43,7 +43,6 @@ export const QUICK_ACCESS_ITEMS: QuickAccessItemData[] = [
   { path: '/dashboard',         label: 'Inicio',               codigo: 'GN01' },
   { path: '/bandeja',           label: 'Bandeja de entrada',    codigo: 'GN02' },
   { path: '/xlink',             label: 'HiCloud Xlink',         codigo: 'XL01' },
-  { path: '/xlink/documentacion', label: 'Documentación Xlink', codigo: 'XL02' },
   { path: '/pos',               label: 'Punto de Venta',        codigo: 'CJ01' },
   { path: '/caja',              label: 'Caja Diaria',           codigo: 'CJ02' },
 ];
