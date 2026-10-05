@@ -1,5 +1,5 @@
 ﻿import { useState, useRef, useEffect, useMemo, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { DetailDrawer, DetailSections } from '../../components/ui/DetailDrawer';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
@@ -803,6 +803,20 @@ function ProductosCatalogo() {
     }
     setOpen(true);
   };
+
+  // IN01 (buscador global, "Nuevo Producto") — abre el formulario de creación
+  // directamente vía ?nuevo=1. Se siembra UNA vez al montar, mismo patrón que
+  // FacturasPage con ?desde=&hasta=; se limpia el parámetro para que un F5
+  // no vuelva a abrir el modal.
+  const [searchParamsProd, setSearchParamsProd] = useSearchParams();
+  useEffect(() => {
+    if (searchParamsProd.get('nuevo') === '1' && puedeCrear) {
+      openCreate();
+      setSearchParamsProd(prev => { prev.delete('nuevo'); return prev; }, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const openEdit = (p: Producto) => {
     dupCheckNonce.current++;  // invalida cualquier check async pendiente
     setEditing(p);
