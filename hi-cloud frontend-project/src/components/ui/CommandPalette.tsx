@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { Tag, Typography, Spin, Divider, theme } from 'antd';
+import { Tag, Typography, Spin, Divider, theme, message } from 'antd';
 import { SearchOutlined, ArrowRightOutlined } from '@ant-design/icons';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
@@ -11,6 +11,7 @@ import { usePlan } from '../../hooks/usePlan';
 import {
   MENU_CATEGORIES_DATA, ADDON_IDS, rolPuedeVerRuta,
   QUICK_ACCESS_ITEMS, QUICK_ACCESS_KEYWORDS, CATEGORY_KEYWORDS, PATH_KEYWORDS,
+  CODIGOS_PARAMETRIZADOS, type CodigoParametrizado,
 } from '../../config/menuConfig';
 
 const { Text } = Typography;
@@ -24,6 +25,7 @@ export interface NavItem {
   categoryId: string;
   emoji:      string;
   keywords:   string[];
+  codigo?:    string;
 }
 
 // ── Emoji por categoría ───────────────────────────────────────────────────────
@@ -96,11 +98,12 @@ export function construirNavItems(
 
   for (const qa of QUICK_ACCESS_ITEMS) {
     if (!rolPuedeVerRuta(qa.path, userRole)) continue;
-    if (qa.path === '/xlink' && !xlinkHabilitado) continue;
+    if (qa.path.startsWith('/xlink') && !xlinkHabilitado) continue;
     items.push({
       key: qa.path, label: qa.label, group: 'Principal', categoryId: 'Principal',
       emoji: GROUP_EMOJI['Principal'] ?? '📄',
       keywords: QUICK_ACCESS_KEYWORDS[qa.path] ?? [],
+      codigo: qa.codigo,
     });
   }
 
@@ -114,6 +117,7 @@ export function construirNavItems(
         key: item.path, label: item.label, group: cat.label, categoryId: cat.id,
         emoji: GROUP_EMOJI[cat.id] ?? '📄',
         keywords: [...(PATH_KEYWORDS[item.path] ?? []), ...catKeywords],
+        codigo: item.codigo,
       });
 
       if (item.accionRapida) {
@@ -121,12 +125,198 @@ export function construirNavItems(
           key: item.accionRapida.path, label: item.accionRapida.label,
           group: 'Acciones', categoryId: 'Acciones', emoji: GROUP_EMOJI['Acciones'] ?? '➕',
           keywords: [`nueva ${item.label.toLowerCase()}`, `crear ${item.label.toLowerCase()}`],
+          codigo: item.accionRapida.codigo,
         });
       }
     }
   }
 
   return items;
+}
+
+/** Códigos con parámetro visibles para este rol/add-ons — mismo gate que un ítem normal. */
+export function construirCodigosParametrizados(
+  userRole: string,
+  modulosActivos: string[],
+): CodigoParametrizado[] {
+  // Los códigos parametrizados hoy solo viven en pantallas del núcleo
+  // (facturas, compras, productos, declaraciones) — ninguna es add-on, pero
+  // se deja el filtro por si algún día se agrega uno sobre una pantalla add-on.
+  const catPorPath = new Map<string, string>();
+  for (const cat of MENU_CATEGORIES_DATA) for (const item of cat.items) catPorPath.set(item.path, cat.id);
+
+  return CODIGOS_PARAMETRIZADOS.filter(c => {
+    if (!rolPuedeVerRuta(c.path, userRole)) return false;
+    const catId = catPorPath.get(c.path);
+    if (catId && ADDON_IDS.includes(catId) && !modulosActivos.includes(catId)) return false;
+    return true;
+  });
+}
+
+// ── Códigos de transacción (tipo SAP) ─────────────────────────────────────────
+
+export interface CodigoEntry {
+  codigo:         string;
+  label:          string;
+  group:          string;
+  categoryId:     string;
+  emoji:          string;
+  path:           string;
+  parametrizado?: CodigoParametrizado;
+}
+
+export function construirIndiceCodigos(
+  navItems: NavItem[],
+  parametrizados: CodigoParametrizado[],
+): CodigoEntry[] {
+  const entries: CodigoEntry[] = [];
+  for (const item of navItems) {
+    if (!item.codigo) continue;
+    entries.push({
+      codigo: item.codigo, label: item.label, group: item.group,
+      categoryId: item.categoryId, emoji: item.emoji, path: item.key,
+    });
+  }
+  for (const p of parametrizados) {
+    entries.push({
+      codigo: p.codigo, label: p.label, group: 'Declaraciones DGII', categoryId: 'fiscal',
+      emoji: GROUP_EMOJI['fiscal'] ?? '📄', path: p.path, parametrizado: p,
+    });
+  }
+  return entries;
+}
+
+/**
+ * Catálogo COMPLETO de códigos, sin filtrar por rol/add-on — solo para
+ * distinguir "código inexistente" (se trata como texto normal) de "código
+ * real pero sin acceso" (mensaje explícito). Se calcula una sola vez al
+ * cargar el módulo: ADDON_IDS cubre todos los add-on y 'admin' pasa todas
+ * las restricciones de PATH_ROLES salvo las super_admin-only (que hoy no
+ * tienen códigos propios).
+ */
+const INDICE_CODIGOS_COMPLETO: CodigoEntry[] = construirIndiceCodigos(
+  construirNavItems('admin', ADDON_IDS, true),
+  CODIGOS_PARAMETRIZADOS,
+);
+
+/** ¿El texto escrito tiene forma de código (2 letras + al menos 1 dígito)? */
+export function pareceCodigoTransaccion(query: string): boolean {
+  return /^[a-z]{2}\d/i.test(query.trim());
+}
+
+/** Separa "VT03 FAC-1001" en { codigo: 'VT03', parametro: 'FAC-1001' }. */
+export function parsearEntradaCodigo(query: string): { codigo: string; parametro?: string } | null {
+  const m = query.trim().match(/^([a-z]{2}\d{2})(?:\s+(.+))?$/i);
+  if (!m) return null;
+  return { codigo: m[1].toUpperCase(), parametro: m[2]?.trim() || undefined };
+}
+
+export function buscarPorCodigo(prefijo: string, indice: CodigoEntry[]): CodigoEntry[] {
+  const pref = prefijo.trim().toUpperCase();
+  if (!pref) return [];
+  return indice
+    .filter(e => e.codigo.startsWith(pref))
+    .sort((a, b) => a.codigo.localeCompare(b.codigo))
+    .slice(0, 15);
+}
+
+/** Mes/año por defecto: el mes anterior al actual (ver requisito de FS06-08/FS11-12). */
+export function mesAnteriorPorDefecto(hoy = new Date()): { mes: number; anio: number } {
+  const mesIdx0 = hoy.getMonth(); // 0-11
+  return mesIdx0 === 0
+    ? { mes: 12, anio: hoy.getFullYear() - 1 }
+    : { mes: mesIdx0, anio: hoy.getFullYear() };
+}
+
+/** Parsea "MM/AAAA", "MM-AAAA" o "MM AAAA"; sin valor (o inválido) cae al mes anterior. */
+export function parsearPeriodo(valor: string | undefined, hoy = new Date()): { mes: number; anio: number } {
+  if (valor) {
+    const m = valor.match(/^(\d{1,2})[/\-\s](\d{4})$/);
+    if (m) {
+      const mes = Number(m[1]);
+      if (mes >= 1 && mes <= 12) return { mes, anio: Number(m[2]) };
+    }
+  }
+  return mesAnteriorPorDefecto(hoy);
+}
+
+const HISTORIAL_CODIGOS_KEY = 'hicloud_codigos_transaccion_recientes';
+const HISTORIAL_MAX = 8;
+
+export function leerHistorialCodigos(): string[] {
+  try {
+    const raw = localStorage.getItem(HISTORIAL_CODIGOS_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr.filter(c => typeof c === 'string') : [];
+  } catch { return []; }
+}
+
+export function registrarCodigoUsado(codigo: string): string[] {
+  const actual = leerHistorialCodigos().filter(c => c !== codigo);
+  actual.unshift(codigo);
+  const recortado = actual.slice(0, HISTORIAL_MAX);
+  try { localStorage.setItem(HISTORIAL_CODIGOS_KEY, JSON.stringify(recortado)); } catch {}
+  return recortado;
+}
+
+// ── Resolución de un código de transacción — pura, sin hooks ni navigate ────
+// Separada del componente a propósito: testeable sin montar React, inyectando
+// `buscarEnApi` en vez de pegarle a /busqueda de verdad.
+
+export type ResultadoCodigo =
+  | { tipo: 'ruta';          ruta: string; codigo: string }
+  | { tipo: 'sin-acceso';    codigo: string }
+  | { tipo: 'no-reconocido' }
+  | { tipo: 'sin-resultado'; mensaje: string };
+
+export async function resolverCodigoTransaccion(
+  entrada:          string,
+  indiceAccesible:  CodigoEntry[],
+  indiceCompleto:   CodigoEntry[],
+  buscarEnApi:      (valor: string) => Promise<Record<string, any[]>>,
+): Promise<ResultadoCodigo> {
+  const parsed = parsearEntradaCodigo(entrada);
+  if (!parsed) return { tipo: 'no-reconocido' };
+  const { codigo, parametro } = parsed;
+
+  const accesible = indiceAccesible.find(e => e.codigo === codigo);
+  if (!accesible) {
+    const existeEnElSistema = indiceCompleto.some(e => e.codigo === codigo);
+    return existeEnElSistema ? { tipo: 'sin-acceso', codigo } : { tipo: 'no-reconocido' };
+  }
+
+  if (!accesible.parametrizado) {
+    return { tipo: 'ruta', ruta: accesible.path, codigo };
+  }
+
+  const p = accesible.parametrizado;
+  if (p.modo === 'ninguno') {
+    return { tipo: 'ruta', ruta: `${p.path}?tab=${p.tab}`, codigo };
+  }
+  if (p.modo === 'periodo') {
+    const { mes, anio } = parsearPeriodo(parametro);
+    return { tipo: 'ruta', ruta: `${p.path}?tab=${p.tab}&mes=${mes}&anio=${anio}`, codigo };
+  }
+
+  // modo === 'busqueda' (VT03/CP03/IN03) — sin valor, abre la pantalla general.
+  if (!parametro) {
+    return { tipo: 'ruta', ruta: accesible.path, codigo };
+  }
+  const resultadosApi = await buscarEnApi(parametro);
+  const candidatos = Object.values(resultadosApi ?? {}).flat() as any[];
+  const delTipo = candidatos.filter(r => r.tipo === p.tipoBusqueda);
+  if (!delTipo.length) {
+    return {
+      tipo: 'sin-resultado',
+      mensaje: `No se encontró ningún resultado para "${parametro}" en ${p.label.toLowerCase()} de esta empresa`,
+    };
+  }
+  const exacto = delTipo.find(r => normalizar(String(r.titulo ?? '')) === normalizar(parametro));
+  const ruta = (exacto ?? delTipo[0]).ruta;
+  return ruta ? { tipo: 'ruta', ruta, codigo } : {
+    tipo: 'sin-resultado',
+    mensaje: `No se encontró ningún resultado para "${parametro}" en ${p.label.toLowerCase()} de esta empresa`,
+  };
 }
 
 // ── Búsqueda con score ────────────────────────────────────────────────────────
@@ -208,9 +398,32 @@ export default function CommandPalette({ open, onClose }: Props) {
     () => construirNavItems(userRole, modulosActivos, xlinkHabilitado),
     [userRole, modulosActivos, xlinkHabilitado],
   );
+  const codigosParametrizados = useMemo(
+    () => construirCodigosParametrizados(userRole, modulosActivos),
+    [userRole, modulosActivos],
+  );
+  const indiceCodigos = useMemo(
+    () => construirIndiceCodigos(allNavItems, codigosParametrizados),
+    [allNavItems, codigosParametrizados],
+  );
+
+  // ── Historial de códigos usados — localStorage, últimos 8 ─────────────────
+  const [historial, setHistorial] = useState<string[]>(() => leerHistorialCodigos());
+  const historialResuelto = useMemo(
+    () => historial.map(c => indiceCodigos.find(e => e.codigo === c)).filter((e): e is CodigoEntry => !!e),
+    [historial, indiceCodigos],
+  );
+
+  const esModoCodigo = pareceCodigoTransaccion(query);
+  const codigoResultados = useMemo(
+    () => esModoCodigo ? buscarPorCodigo(query, indiceCodigos) : [],
+    [esModoCodigo, query, indiceCodigos],
+  );
 
   const debouncedQuery = useDebounce(query.trim());
-  const isSearching    = debouncedQuery.length >= 2;
+  // En modo código no se consulta /busqueda — el usuario está navegando por
+  // código, no buscando un documento por texto libre.
+  const isSearching    = debouncedQuery.length >= 2 && !esModoCodigo;
 
   // Resultados del backend (registros de BD)
   const { data: backendResults, isFetching } = useQuery<Record<string, any[]>>({
@@ -220,13 +433,46 @@ export default function CommandPalette({ open, onClose }: Props) {
     staleTime: 5_000,
   });
 
-  const navResults = useMemo(() => buscarNav(query.trim(), allNavItems), [query, allNavItems]);
+  const navResultsTexto = useMemo(() => buscarNav(query.trim(), allNavItems), [query, allNavItems]);
+  const codigoEntryANavItem = (e: CodigoEntry): NavItem => ({
+    key: e.path, label: e.label, group: e.group, categoryId: e.categoryId, emoji: e.emoji,
+    keywords: [], codigo: e.codigo,
+  });
+  // Sin query: antepone el historial a los accesos rápidos de siempre (sin repetir
+  // un ítem que ya esté en ambas listas).
+  const navResults: NavItem[] = esModoCodigo
+    ? codigoResultados.map(codigoEntryANavItem)
+    : (!query.trim() && historialResuelto.length)
+      ? (() => {
+          const historialItems = historialResuelto.map(codigoEntryANavItem);
+          const yaIncluidos = new Set(historialItems.map(i => i.key));
+          return [...historialItems, ...navResultsTexto.filter(i => !yaIncluidos.has(i.key))];
+        })()
+      : navResultsTexto;
 
   const backendFlat = isSearching && backendResults
     ? Object.values(backendResults).flat().map(r => ({ ...r, isBackend: true }))
     : [];
   const navFlat = navResults.map(r => ({ ...r, isBackend: false }));
   const allFlat = [...navFlat, ...backendFlat];
+
+  /** Resuelve "VT03 FAC-1001" / "GN01" / etc. — true si manejó el Enter. */
+  const manejarEnterCodigo = useCallback(async (crudo: string): Promise<boolean> => {
+    const resultado = await resolverCodigoTransaccion(
+      crudo, indiceCodigos, INDICE_CODIGOS_COMPLETO,
+      (valor) => api.get(`/busqueda?q=${encodeURIComponent(valor)}`).then((r: any) => r.data?.data ?? r.data),
+    );
+
+    if (resultado.tipo === 'no-reconocido') return false; // se trata como texto normal
+    if (resultado.tipo === 'sin-acceso')    { message.error(`No tienes acceso a ${resultado.codigo}`); return true; }
+    if (resultado.tipo === 'sin-resultado') { message.error(resultado.mensaje); return true; }
+
+    setHistorial(registrarCodigoUsado(resultado.codigo));
+    navigate(resultado.ruta);
+    onClose();
+    setQuery('');
+    return true;
+  }, [indiceCodigos, navigate, onClose]);
 
   const go = useCallback((item: any) => {
     navigate(item.isBackend ? item.ruta : item.key);
@@ -243,12 +489,19 @@ export default function CommandPalette({ open, onClose }: Props) {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'ArrowDown') { e.preventDefault(); setSelected(s => Math.min(s + 1, allFlat.length - 1)); }
       if (e.key === 'ArrowUp')   { e.preventDefault(); setSelected(s => Math.max(s - 1, 0)); }
-      if (e.key === 'Enter' && allFlat[selected]) go(allFlat[selected]);
+      if (e.key === 'Enter') {
+        // Código exacto (con o sin parámetro) tiene prioridad sobre la
+        // selección resaltada — "VT03 FAC-1001" + Enter abre esa factura
+        // aunque el primer resultado visible sea otro.
+        manejarEnterCodigo(query).then(manejado => {
+          if (!manejado && allFlat[selected]) go(allFlat[selected]);
+        });
+      }
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [open, allFlat, selected, go, onClose]);
+  }, [open, allFlat, selected, go, onClose, manejarEnterCodigo, query]);
 
   if (!open) return null;
 
@@ -266,6 +519,11 @@ export default function CommandPalette({ open, onClose }: Props) {
     >
       <span style={{ fontSize: 16, minWidth: 24, textAlign: 'center' }}>{item.emoji}</span>
       <Text style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{item.label}</Text>
+      {item.codigo && (
+        <Tag color="geekblue" style={{ fontSize: 10, margin: 0, fontFamily: 'monospace' }}>
+          {item.codigo}
+        </Tag>
+      )}
       <Tag
         color={GROUP_COLORS[item.categoryId] ?? 'default'}
         style={{ fontSize: 10, margin: 0, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
@@ -346,7 +604,7 @@ export default function CommandPalette({ open, onClose }: Props) {
             ref={inputRef}
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="Buscar módulos, clientes, facturas, productos..."
+            placeholder="Buscar módulos, código de transacción (VT02), clientes, facturas..."
             style={{
               flex: 1, border: 'none', outline: 'none',
               fontSize: 15, background: 'transparent',
@@ -373,7 +631,11 @@ export default function CommandPalette({ open, onClose }: Props) {
           {navResults.length > 0 && (
             <>
               <div style={{ padding: '4px 16px 3px', fontSize: 10, fontWeight: 700, color: token.colorTextTertiary, textTransform: 'uppercase', letterSpacing: '0.09em' }}>
-                {query.trim() ? 'Módulos' : 'Accesos rápidos'}
+                {esModoCodigo
+                  ? 'Códigos de transacción'
+                  : query.trim()
+                    ? 'Módulos'
+                    : historialResuelto.length ? 'Recientes + Accesos rápidos' : 'Accesos rápidos'}
               </div>
               {navResults.map((item, idx) => renderNavItem(item, idx))}
             </>
