@@ -581,9 +581,14 @@ function ProductosCatalogo() {
     }
   }, [almacenes]);
 
+  // '/productos?filtro=stock-bajo' (enlace del aviso de la campanita) — mismo
+  // criterio exacto que la alerta (stockMinimo>0, stock<=stockMinimo, ventas
+  // en los últimos 90 días), aplicado por el backend, no recalculado aquí.
+  const filtroAlerta = estadoStock === 'bajo-ventas' ? 'stock-bajo' : undefined;
+
   const { data, isLoading } = useQuery({
-    queryKey: ['productos', page, search, categoria],
-    queryFn:  () => productosApi.list(page, PAGE_SIZE, search, true),
+    queryKey: ['productos', page, search, categoria, filtroAlerta],
+    queryFn:  () => productosApi.list(page, PAGE_SIZE, search, true, filtroAlerta),
   });
   const showSkeleton = useSkeletonDelay(isLoading, 200);
 
@@ -671,7 +676,7 @@ function ProductosCatalogo() {
   const handleExportarFiltrados = async () => {
     setExportando(true);
     try {
-      const result = await productosApi.list(1, 5000, search, true);
+      const result = await productosApi.list(1, 5000, search, true, filtroAlerta);
       let filtrados: any[] = result?.data ?? [];
       // Aplicar filtros client-side adicionales que no pasan por el backend
       if (categoria) filtrados = filtrados.filter((p: any) => p.categoria === categoria);
@@ -814,8 +819,33 @@ function ProductosCatalogo() {
       openCreate();
       setSearchParamsProd(prev => { prev.delete('nuevo'); return prev; }, { replace: true });
     }
+    // Enlace del aviso "Productos con stock bajo" de la campanita —
+    // ?filtro=stock-bajo. Se deja en la URL (a diferencia de ?nuevo=1) para
+    // que recargar la página o compartir el enlace mantenga el filtro.
+    if (searchParamsProd.get('filtro') === 'stock-bajo') {
+      setEstadoStock('bajo-ventas');
+      setPage(1);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const quitarFiltroAlerta = () => {
+    setEstadoStock('todos');
+    setSearchParamsProd(prev => { prev.delete('filtro'); return prev; }, { replace: true });
+  };
+
+  // Acción masiva "Quitar stock mínimo" — para empresas que lo trajeron de
+  // una importación CSV y no lo quieren usar como umbral del aviso.
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const quitarStockMinimoMut = useMutation({
+    mutationFn: (ids: number[]) => productosApi.quitarStockMinimo(ids),
+    onSuccess: (res) => {
+      message.success(`Stock mínimo quitado de ${res?.afectados ?? selectedIds.length} producto(s)`);
+      setSelectedIds([]);
+      qc.invalidateQueries({ queryKey: ['productos'] });
+    },
+    onError: () => message.error('No se pudo quitar el stock mínimo'),
+  });
 
   const openEdit = (p: Producto) => {
     dupCheckNonce.current++;  // invalida cualquier check async pendiente
@@ -1046,12 +1076,23 @@ function ProductosCatalogo() {
                 {sucursales.map((s: any) => <Select.Option key={s.id} value={s.id}>{s.nombre}</Select.Option>)}
               </Select>
             )}
-            <Select value={estadoStock} onChange={v => setEstadoStock(v)} style={{ width: 130 }}>
+            <Select value={estadoStock} onChange={v => { setEstadoStock(v); setPage(1); }} style={{ width: 170 }}>
               <Select.Option value="todos">Todos</Select.Option>
               <Select.Option value="ok">Stock OK</Select.Option>
               <Select.Option value="bajo">Stock Bajo</Select.Option>
               <Select.Option value="sin">Sin Stock</Select.Option>
+              <Select.Option value="bajo-ventas">Stock bajo + ventas 90d</Select.Option>
             </Select>
+            {selectedIds.length > 0 && (
+              <Popconfirm
+                title={`¿Quitar el stock mínimo de ${selectedIds.length} producto(s)?`}
+                onConfirm={() => quitarStockMinimoMut.mutate(selectedIds)}
+              >
+                <Button danger loading={quitarStockMinimoMut.isPending}>
+                  Quitar stock mínimo ({selectedIds.length})
+                </Button>
+              </Popconfirm>
+            )}
             <Dropdown
               trigger={['click']}
               disabled={exportando}
@@ -1085,11 +1126,23 @@ function ProductosCatalogo() {
         </Col>
       </Row>
 
+      {filtroAlerta === 'stock-bajo' && (
+        <Alert
+          type="warning" showIcon style={{ marginBottom: 12 }}
+          message="Mostrando solo productos con stock bajo y ventas en los últimos 90 días"
+          action={<Button size="small" onClick={quitarFiltroAlerta}>Quitar filtro</Button>}
+        />
+      )}
+
       {showSkeleton && <SkeletonTabla rows={7} cols={8} />}
       <Table columns={filterColumns(columns) as any} dataSource={rows} rowKey="id"
         loading={isLoading} size="small"
         scroll={{ x: 'max-content' }}
         style={{ display: showSkeleton ? 'none' : undefined }}
+        rowSelection={{
+          selectedRowKeys: selectedIds,
+          onChange: (keys) => setSelectedIds(keys as number[]),
+        }}
         rowClassName={(r: Producto) => {
           if (r.tipo === 'servicio') return '';
           const spa = (r as any).stockPorAlmacen as { cantidad: number }[] | undefined;

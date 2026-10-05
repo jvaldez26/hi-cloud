@@ -19,6 +19,8 @@ export enum TipoNotificacion {
   ECF_CUOTA_EXCEDIDA   = 'ecf_cuota_excedida',
   NOMINA_PENDIENTE     = 'nomina_pendiente',
   MANUAL               = 'manual',
+  /** e-CF sin respuesta de DGII tras el umbral de horas — requiere revisión manual. */
+  ECF_REVISION_MANUAL  = 'ecf_revision_manual',
   /** HiCloud Xlink — llegó un documento nuevo (canal SISTEMA, campanita). */
   XLINK_DOCUMENTO_RECIBIDO = 'xlink_documento_recibido',
   /** Hay una caja abierta de un día anterior sin cerrar (canal SISTEMA, campanita). */
@@ -69,6 +71,20 @@ export class NotificacionEnviada {
 
   @Column({ nullable: true })
   userId?: number;
+
+  /** NULL para avisos de cuenta (LOGIN_BLOQUEADO) que no son de una empresa
+   *  en particular — el centro de notificaciones los muestra sin importar
+   *  cuál empresa esté activa. Para el resto, scoping obligatorio: un
+   *  usuario con varias empresas nunca debe ver/marcar el aviso de otra. */
+  @Index()
+  @Column({ nullable: true })
+  empresaId?: number;
+
+  @Column({ default: false })
+  leido!: boolean;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  leidoEn?: Date;
 
   @Index()
   @CreateDateColumn()

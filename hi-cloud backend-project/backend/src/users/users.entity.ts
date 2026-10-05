@@ -120,4 +120,11 @@ export class User extends BaseEntity {
   // AuthService.verificarSupervisor).
   @Column({ length: 100, nullable: true, select: false })
   pinSupervisor?: string;
+
+  // ── Preferencias del centro de notificaciones ─────────────────────────────
+  // Claves = tipo de evento/alerta (TipoNotificacion o el id de AlertasSistemaService),
+  // valor false = usuario lo desactivó. Ausente = activado — así un tipo nuevo
+  // no requiere backfill, nace visible para todos.
+  @Column({ type: 'jsonb', default: {} })
+  preferenciasNotificaciones!: Record<string, boolean>;
 }

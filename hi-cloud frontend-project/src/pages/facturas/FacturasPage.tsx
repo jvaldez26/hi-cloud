@@ -133,8 +133,17 @@ export default function FacturasPage() {
     const desdeParam   = params.get('desde');
     const hastaParam   = params.get('hasta');
     const tipoNcfParam = params.get('tipoNcf');
+    const estadoParam  = params.get('estado');
+    const diasMinParam = params.get('diasMin');
     if (desdeParam && hastaParam) setRango([dayjs(desdeParam), dayjs(hastaParam)]);
     if (tipoNcfParam) setTipoNcf(tipoNcfParam);
+    if (estadoParam)  setEstado(estadoParam);
+    // Enlace del aviso "Facturas en borrador antiguas" de la campanita —
+    // ?estado=borrador&diasMin=3: muestra solo las creadas hasta esa fecha
+    // de corte (hoy - diasMin), sin límite inferior.
+    if (diasMinParam && !desdeParam) {
+      setRango([dayjs('2000-01-01'), dayjs().subtract(Number(diasMinParam), 'day')]);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

@@ -44,7 +44,7 @@ import BottomNav         from './BottomNav';
 import PwaInstallBanner  from '../ui/PwaInstallBanner';
 import MobileWarningModal from '../ui/MobileWarningModal';
 import { useRealtime, useRealtimeStatus } from '../../hooks/useRealtime';
-import { useAlertas }    from '../../hooks/useAlertas';
+import { useNotificacionesCentro } from '../../hooks/useNotificacionesCentro';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { MENU_CATEGORIES_DATA, ADDON_IDS, PATH_ROLES, rolPuedeVerRuta, QUICK_ACCESS_ITEMS } from '../../config/menuConfig';
 import { xlinkApi } from '../../api/xlink.api';
@@ -335,7 +335,11 @@ export default function AppLayout() {
   // Ref del sidebar: el flyout la usa para saber que un clic dentro no es afuera
   const sidebarRef = useRef<HTMLDivElement>(null);
 
-  const { total: totalAlertas, criticas: alertasCriticas, alertas } = useAlertas();
+  const {
+    total: totalAlertas, items: itemsNotificaciones,
+    marcarEventoLeido, marcarTodoLeido,
+  } = useNotificacionesCentro();
+  const alertasCriticas = itemsNotificaciones.filter(i => i.prioridad === 0 && !i.atendido).length;
   const { status: pushStatus, subscribe: pushSubscribe, unsubscribe: pushUnsub } = usePushNotifications();
   const { user }                        = useAuthStore();
 
@@ -1130,31 +1134,48 @@ export default function AppLayout() {
                     width: 320, padding: 8,
                   }}>
                     <div style={{ padding: '6px 8px 10px',
-                      borderBottom: `1px solid ${token.colorBorderSecondary}`, marginBottom: 6 }}>
-                      <Text strong style={{ fontSize: 13 }}>Alertas</Text>
-                      {totalAlertas > 0 && <Tag color="orange" style={{ marginLeft: 6, fontSize: 10 }}>{totalAlertas}</Tag>}
-                    </div>
-                    {alertas.length === 0 ? (
-                      <div style={{ padding: '12px 8px', textAlign: 'center' }}>
-                        <Text type="secondary" style={{ fontSize: 12 }}>✅ Sin alertas</Text>
+                      borderBottom: `1px solid ${token.colorBorderSecondary}`, marginBottom: 6,
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div>
+                        <Text strong style={{ fontSize: 13 }}>Notificaciones</Text>
+                        {totalAlertas > 0 && <Tag color="orange" style={{ marginLeft: 6, fontSize: 10 }}>{totalAlertas}</Tag>}
                       </div>
-                    ) : alertas.slice(0, 5).map((a: any) => (
-                      <div key={a.id} onClick={() => navigate(a.ruta)}
+                      {itemsNotificaciones.some(i => i.origen === 'evento' && !i.atendido) && (
+                        <Button type="link" size="small" style={{ fontSize: 11, padding: 0 }}
+                          onClick={() => marcarTodoLeido()}>
+                          Marcar todo leído
+                        </Button>
+                      )}
+                    </div>
+                    {itemsNotificaciones.length === 0 ? (
+                      <div style={{ padding: '12px 8px', textAlign: 'center' }}>
+                        <Text type="secondary" style={{ fontSize: 12 }}>✅ Sin notificaciones</Text>
+                      </div>
+                    ) : itemsNotificaciones.slice(0, 6).map(i => (
+                      <div key={i.id}
+                        onClick={() => {
+                          if (i.origen === 'evento' && !i.atendido) {
+                            marcarEventoLeido(Number(i.id.replace('evento-', '')));
+                          }
+                          navigate(i.ruta);
+                        }}
                         style={{ display: 'flex', gap: 8, padding: '8px',
                           borderRadius: 6, cursor: 'pointer', marginBottom: 3,
-                          background: a.severidad === 'alta' ? token.colorErrorBg
-                            : a.severidad === 'media' ? token.colorWarningBg : token.colorFillAlter }}>
-                        <span style={{ fontSize: 16 }}>{a.emoji}</span>
-                        <div style={{ flex: 1 }}>
-                          <Text strong style={{ fontSize: 11, display: 'block' }}>{a.titulo}</Text>
-                          <Text type="secondary" style={{ fontSize: 10 }}>{a.descripcion}</Text>
+                          opacity: i.atendido ? 0.6 : 1,
+                          background: i.atendido ? 'transparent'
+                            : i.prioridad === 0 ? token.colorErrorBg
+                            : i.prioridad === 1 ? token.colorWarningBg : token.colorFillAlter }}>
+                        <span style={{ fontSize: 16 }}>{i.emoji}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <Text strong={!i.atendido} style={{ fontSize: 11, display: 'block' }}>{i.titulo}</Text>
+                          <Text type="secondary" style={{ fontSize: 10 }}>{i.descripcion}</Text>
                         </div>
                       </div>
                     ))}
-                    {alertas.length > 0 && (
+                    {itemsNotificaciones.length > 0 && (
                       <div style={{ textAlign: 'center', paddingTop: 6,
                         borderTop: `1px solid ${token.colorBorderSecondary}`, marginTop: 4 }}>
-                        <Button type="link" size="small" onClick={() => navigate('/reportes')}>
+                        <Button type="link" size="small" onClick={() => navigate('/notificaciones')}>
                           Ver todas →
                         </Button>
                       </div>

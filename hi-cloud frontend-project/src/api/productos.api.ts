@@ -31,10 +31,15 @@ export interface ProductoPayload {
 }
 
 export const productosApi = {
-  list: (p = 1, limit = 10, search = '', incluirSinStock = false) =>
+  list: (p = 1, limit = 10, search = '', incluirSinStock = false, filtro?: string) =>
     api.get<ApiResponse<PaginatedData<Producto>>>(
-      `/productos?page=${p}&limit=${limit}&search=${search}${incluirSinStock ? '&incluirSinStock=true' : ''}`,
+      `/productos?page=${p}&limit=${limit}&search=${search}${incluirSinStock ? '&incluirSinStock=true' : ''}${filtro ? `&filtro=${filtro}` : ''}`,
     ).then(r => r.data.data),
+
+  /** Pone en 0 el stockMinimo de los productos indicados (para empresas que
+   *  lo trajeron de una importación CSV y no lo quieren usar como umbral). */
+  quitarStockMinimo: (ids: number[]) =>
+    api.patch<ApiResponse<{ afectados: number }>>('/productos/bulk/quitar-stock-minimo', { ids }).then(r => r.data.data),
 
   /**
    * Catálogo completo para el POS — solo los campos que el POS lee.

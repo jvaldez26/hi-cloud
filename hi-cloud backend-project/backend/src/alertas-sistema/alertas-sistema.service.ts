@@ -87,19 +87,35 @@ export class AlertasSistemaService {
     });
   }
 
+  /**
+   * "Stock bajo" se filtra por ventas en los últimos 90 días — no hay forma
+   * de distinguir un stockMinimo puesto a propósito de uno que llegó en un
+   * CSV masivo (ver diagnóstico 2026-10-04: 8660 productos con stockMinimo
+   * entre 1 y 5, casi todos de importaciones, no de alguien calculando un
+   * mínimo real). Un producto sin ventas recientes no es urgente aunque esté
+   * por debajo de su "mínimo" — filtrar por ventas es lo que separa el ruido
+   * del aviso que de verdad importa.
+   */
   private async alertasStockBajo(out: Alerta[], eid: number) {
     const res = await this.ds.query<{ cantidad: string }[]>(`
-      SELECT COUNT(id)::text AS cantidad
-      FROM productos
-      WHERE "empresaId" = $1 AND "isActive" = true AND tipo <> 'servicio' AND "stockMinimo" > 0 AND stock <= "stockMinimo"
+      SELECT COUNT(DISTINCT p.id)::text AS cantidad
+      FROM productos p
+      WHERE p."empresaId" = $1 AND p."isActive" = true AND p.tipo <> 'servicio'
+        AND p."stockMinimo" > 0 AND p.stock <= p."stockMinimo"
+        AND EXISTS (
+          SELECT 1 FROM factura_detalles fd
+          JOIN facturas f ON f.id = fd."facturaId"
+          WHERE fd."productoId" = p.id AND f."empresaId" = p."empresaId"
+            AND f."isActive" = true AND f."createdAt" >= NOW() - INTERVAL '90 days'
+        )
     `, [eid]);
     const n = Number(res[0]?.cantidad ?? 0);
     if (n > 0) out.push({
       id: 'stock-bajo', tipo: 'inventario',
       severidad: n > 5 ? 'alta' : 'media',
       titulo: 'Productos con stock bajo',
-      descripcion: `${n} producto(s) están en o por debajo del stock mínimo`,
-      cantidad: n, ruta: '/inventario', emoji: '📦',
+      descripcion: `${n} producto(s) con ventas recientes están en o por debajo del stock mínimo`,
+      cantidad: n, ruta: '/productos?filtro=stock-bajo', emoji: '📦',
     });
   }
 
@@ -182,7 +198,7 @@ export class AlertasSistemaService {
       id: 'facturas-borrador', tipo: 'facturas', severidad: 'baja',
       titulo: 'Facturas en borrador antiguas',
       descripcion: `${n} factura(s) llevan más de 3 días sin emitir`,
-      cantidad: n, ruta: '/facturas', emoji: '🧾',
+      cantidad: n, ruta: '/facturas?estado=borrador&diasMin=3', emoji: '🧾',
     });
   }
 
@@ -383,7 +399,7 @@ export class AlertasSistemaService {
         titulo: 'Descuadre de caja detectado',
         descripcion: `${n} cierre(s) con diferencia sobre el umbral en los últimos 7 días`,
         cantidad: n, monto: Number(res[0]?.monto ?? 0),
-        ruta: '/caja', emoji: '🏦',
+        ruta: '/caja?tab=historial&descuadre=1', emoji: '🏦',
       });
     } catch { /* no bloquear si tabla no existe */ }
   }

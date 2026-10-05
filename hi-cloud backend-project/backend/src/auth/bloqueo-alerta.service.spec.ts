@@ -157,7 +157,7 @@ describe('BloqueoAlertaService.avisarBloqueoGlobalLogin (ataque distribuido — 
 
 const BASE_SUPERVISOR = {
   supervisorUserId: 2, supervisorEmail: 'super@empresa.com', supervisorNombre: 'Ana Supervisor',
-  cajeroNombre: 'Carlos Cajero', empresaNombre: 'Ventas Populares', sucursalNombre: 'Sucursal Centro',
+  cajeroNombre: 'Carlos Cajero', empresaId: 7, empresaNombre: 'Ventas Populares', sucursalNombre: 'Sucursal Centro',
   action: 'Aplicar descuento', detail: '15% en factura #100',
   intentos: 5, duracionSegundos: 60,
   ip: '10.0.0.1', userAgent: 'Mozilla/5.0 (iPhone)',
@@ -170,6 +170,7 @@ describe('BloqueoAlertaService.avisarBloqueoSupervisor', () => {
 
     expect(notificacionesService.notificarSistemaUsuario).toHaveBeenCalledWith(
       2, 'supervisor_bloqueado', expect.any(String), expect.any(String),
+      undefined, 7, // empresaId — así el centro de notificaciones lo scoping a esa empresa
     );
     expect(emailService.enviar).toHaveBeenCalledWith(expect.objectContaining({ to: 'super@empresa.com' }));
   });

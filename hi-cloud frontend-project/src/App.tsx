@@ -120,6 +120,7 @@ const PeriodoContablePage         = lazy(() => import('./pages/periodo-contable/
 const ReportesFinancierosPage     = lazy(() => import('./pages/reportes-financieros/ReportesFinancierosPage'));
 const DocumentosPage              = lazy(() => import('./pages/documentos/DocumentosPage'));
 const CodigosTransaccionPage      = lazy(() => import('./pages/codigos-transaccion/CodigosTransaccionPage'));
+const NotificacionesPage          = lazy(() => import('./pages/notificaciones/NotificacionesPage'));
 const SucursalesPage              = lazy(() => import('./pages/sucursales/SucursalesPage'));
 const PreFacturaPage              = lazy(() => import('./pages/pre-factura/PreFacturaPage'));
 const ProFormasPage               = lazy(() => import('./pages/pro-formas/ProFormasPage'));
@@ -890,6 +891,7 @@ export default function App() {
                     <Route path="/reportes-financieros"    element={<ReportesFinancierosPage />} />
                     <Route path="/documentos"              element={<DocumentosPage />} />
                     <Route path="/codigos-transaccion"     element={<CodigosTransaccionPage />} />
+                    <Route path="/notificaciones"          element={<NotificacionesPage />} />
                     <Route path="/sucursales"              element={<RolRoute roles={['admin']}><SucursalesPage /></RolRoute>} />
                     <Route path="/pre-facturas"            element={<PreFacturaPage />} />
                     <Route path="/pro-formas"              element={<ProFormasPage />} />

@@ -298,4 +298,11 @@ export class CajaController {
   getFacturasDetalle(@Param('id', ParseIntPipe) id: number, @GetUser() usuario: User) {
     return this.cajaService.getFacturasDetalle(id, usuario);
   }
+
+  @Get(':id')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'Una caja por id — enlace directo del aviso de caja abierta de un día anterior' })
+  obtenerUna(@Param('id', ParseIntPipe) id: number) {
+    return this.cajaService.obtenerUnaPorId(id);
+  }
 }

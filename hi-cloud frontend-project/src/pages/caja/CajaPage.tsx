@@ -1,4 +1,5 @@
-﻿import { useState, useMemo } from 'react';
+﻿import { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useMobile } from '../../hooks/useMediaQuery';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { TableActions } from '../../components/ui/TableActions';
@@ -81,6 +82,7 @@ const cajaApi = {
     api.get(`/caja/historial?page=${p}${mes ? `&mes=${mes}&anio=${anio}` : ''}`).then(r => r.data?.data),
   resumen:         (mes: number, anio: number) => api.get(`/caja/resumen?mes=${mes}&anio=${anio}`).then(r => r.data?.data),
   facturasDetalle: (id: number)                => api.get(`/caja/${id}/facturas-detalle`).then(r => r.data?.data ?? r.data),
+  obtenerUna:      (id: number)                => api.get(`/caja/${id}`).then(r => r.data?.data ?? r.data),
 };
 
 const estadoColor: Record<string, string> = {
@@ -225,6 +227,25 @@ export default function CajaPage() {
 
   const [searchHistorial, setSearchHistorial] = useState('');
   const [activeTab, setActiveTab]             = useState<'historial' | 'retiros'>('historial');
+  // Enlace del aviso "Descuadre de caja detectado" de la campanita —
+  // ?tab=historial&descuadre=1 — y el de "caja abierta de un día anterior",
+  // ?cajaId=... (puede ser de cualquier mes, por eso se pide suelto por id en
+  // vez de depender de la página/mes que esté filtrado en el historial).
+  const [soloDescuadre, setSoloDescuadre] = useState(false);
+  const [searchParamsCaja] = useSearchParams();
+  useEffect(() => {
+    const tabParam       = searchParamsCaja.get('tab');
+    const descuadreParam = searchParamsCaja.get('descuadre');
+    const cajaIdParam    = searchParamsCaja.get('cajaId');
+    if (tabParam === 'historial' || tabParam === 'retiros') setActiveTab(tabParam);
+    if (descuadreParam === '1') setSoloDescuadre(true);
+    if (cajaIdParam) {
+      cajaApi.obtenerUna(Number(cajaIdParam))
+        .then(setDetalleCierre)
+        .catch(() => message.error(`No se encontró la caja #${cajaIdParam}`));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Módulo de Retiros ─────────────────────────────────────────────────────
   const [retirosDesde,   setRetirosDesde]   = useState(() => dayjs().startOf('month'));
@@ -388,14 +409,23 @@ export default function CajaPage() {
 
   // Filtro local de texto; el historial ahora incluye también cajas abierta (huérfanas de días anteriores)
   const historialCerrados = useMemo(() => {
-    const base: any[] = historial?.data ?? [];
-    if (!searchHistorial.trim()) return base;
-    const q = searchHistorial.toLowerCase();
-    return base.filter((r: any) =>
-      String(r.vendedorNombre ?? '').toLowerCase().includes(q) ||
-      String(r.fecha ?? '').includes(q)
-    );
-  }, [historial, searchHistorial]);
+    let base: any[] = historial?.data ?? [];
+    if (searchHistorial.trim()) {
+      const q = searchHistorial.toLowerCase();
+      base = base.filter((r: any) =>
+        String(r.vendedorNombre ?? '').toLowerCase().includes(q) ||
+        String(r.fecha ?? '').includes(q)
+      );
+    }
+    // ?descuadre=1 (aviso de la campanita) — mismo umbral por defecto que
+    // AlertasSistemaService.alertasCierreDiferencia (100, salvo que la
+    // empresa tenga su propio umbralDescuadreCaja configurado, que esta
+    // vista no conoce; es un filtro de pantalla, no la fuente del aviso).
+    if (soloDescuadre) {
+      base = base.filter((r: any) => r.estado === 'cerrada' && Math.abs(Number(r.diferencia)) > 100);
+    }
+    return base;
+  }, [historial, searchHistorial, soloDescuadre]);
 
   // Calcular diferencia en tiempo real para el modal de cierre
   const diferenciaCierre = saldoFisicoInput - (cerrarTarget?.saldoEsperado ?? 0);
@@ -978,6 +1008,13 @@ ${line()}
                     style={{ width: 180 }}
                   />
                 </div>
+                {soloDescuadre && (
+                  <Alert
+                    type="warning" showIcon style={{ marginBottom: 12 }}
+                    message="Mostrando solo cierres con descuadre sobre el umbral (últimos registros)"
+                    action={<Button size="small" onClick={() => setSoloDescuadre(false)}>Quitar filtro</Button>}
+                  />
+                )}
                 {/* El aviso de cajas sin cerrar ya vive arriba, al tope de la
                     página (con botón directo "Cerrar ahora" por cada una) —
                     uno aquí también era ruido repetido. La tabla de abajo ya

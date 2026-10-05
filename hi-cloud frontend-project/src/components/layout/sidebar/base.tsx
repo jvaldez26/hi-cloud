@@ -48,7 +48,6 @@ import BottomNav         from '../BottomNav';
 import PwaInstallBanner  from '../../ui/PwaInstallBanner';
 import MobileWarningModal from '../../ui/MobileWarningModal';
 import { useRealtime, useRealtimeStatus } from '../../../hooks/useRealtime';
-import { useAlertas }    from '../../../hooks/useAlertas';
 import { usePushNotifications } from '../../../hooks/usePushNotifications';
 import { MENU_CATEGORIES_DATA, ADDON_IDS, PATH_ROLES, rolPuedeVerRuta } from '../../../config/menuConfig';
 import { markNavigatingAway } from '../../../utils/sessionEvents';

@@ -53,6 +53,7 @@ export interface AvisarBloqueoSupervisorParams {
   supervisorEmail:  string;
   supervisorNombre: string;
   cajeroNombre:     string;
+  empresaId:        number;
   empresaNombre:    string;
   sucursalNombre:   string | null | undefined;
   action:           string | undefined;
@@ -205,6 +206,7 @@ export class BloqueoAlertaService {
 
       await this.notificacionesService.notificarSistemaUsuario(
         p.supervisorUserId, TipoNotificacion.SUPERVISOR_BLOQUEADO, asunto, mensaje,
+        undefined, p.empresaId,
       );
 
       if (!(await this.yaSeEnvioRecientemente('supervisor', p.supervisorEmail))) {

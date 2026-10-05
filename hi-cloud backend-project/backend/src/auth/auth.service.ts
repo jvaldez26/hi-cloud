@@ -1443,6 +1443,7 @@ export class AuthService implements OnModuleInit {
         void this.bloqueoAlertaSvc.avisarBloqueoSupervisor({
           supervisorUserId: supInfo.id, supervisorEmail: supInfo.email, supervisorNombre: supInfo.nombre,
           cajeroNombre:  cajero?.nombre ?? `#${cajeroId}`,
+          empresaId,
           empresaNombre: empresa?.nombre ?? `#${empresaId}`,
           sucursalNombre: sucursalRows[0]?.nombre ?? null,
           action, detail,

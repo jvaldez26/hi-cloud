@@ -881,6 +881,16 @@ export class CajaService {
     };
   }
 
+  /** Una caja por id, sin importar el mes del historial que esté filtrado en
+   *  pantalla — para el enlace directo del aviso "caja abierta de un día
+   *  anterior" (?cajaId=...), que puede apuntar a cualquier fecha. */
+  async obtenerUnaPorId(id: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const caja = await this.repo.findOne({ where: { id, empresaId } });
+    if (!caja) throw new NotFoundException(`Caja #${id} no encontrada`);
+    return this.conEfectivoEsperado(caja);
+  }
+
   // ── Resumen mensual (filtrado por empresa) ────────────────────────────────
 
   async getResumenMes(mes: number, anio: number) {

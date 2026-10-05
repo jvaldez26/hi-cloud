@@ -21,6 +21,10 @@ const ENTITY_KEYS: Record<string, string[][]> = {
   // documento nuevo no aparecía en el badge hasta recargar (bug real,
   // auditoría HiCloud Xlink 2026-10-03, Fase 1g).
   xlink:      [['xlink-pendientes-conteo'], ['xlink-recibidos'], ['xlink-enviados']],
+  // Centro de notificaciones unificado (campanita + /notificaciones) — un
+  // evento nuevo (bloqueo, Xlink, e-CF en revisión manual...) empuja por
+  // WebSocket en vez de esperar el polling de respaldo.
+  notificaciones: [['notificaciones-centro']],
 };
 
 export type RealtimeStatus = 'connecting' | 'connected' | 'disconnected';

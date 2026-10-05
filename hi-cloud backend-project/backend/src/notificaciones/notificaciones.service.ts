@@ -4,6 +4,7 @@ import { Repository, DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import { TenantService } from '../tenant/tenant.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import {
   NotificacionEnviada,
   TipoNotificacion,
@@ -28,6 +29,7 @@ export class NotificacionesService {
     private configService: ConfigService,
     private dataSource: DataSource,
     private tenantService: TenantService,
+    private realtimeService: RealtimeService,
   ) {}
 
   // ──────────────────────────────────────────────────────────────────
@@ -114,12 +116,17 @@ export class NotificacionesService {
       await this.logRepository.save(
         this.logRepository.create({
           tipo, canal: CanalNotificacion.SISTEMA,
-          destinatario: String(userId), userId,
+          destinatario: String(userId), userId, empresaId,
           asunto, mensaje: mensaje.substring(0, 2000),
           exitoso: true, referencia,
         }),
       ).catch((e: Error) => this.logger.error(`Error guardando notificación de sistema: ${e.message}`));
     }
+    // Centro de notificaciones — WS a quien esté viendo esa empresa ahora
+    // mismo; quien no esté conectado igual la ve al abrir la campanita (el
+    // registro ya quedó guardado arriba), esto es solo para no depender del
+    // polling de respaldo si la tiene abierta.
+    this.realtimeService.notify(empresaId, 'notificaciones');
   }
 
   /**
@@ -135,15 +142,20 @@ export class NotificacionesService {
     asunto:      string,
     mensaje:     string,
     referencia?: string,
+    /** Opcional — algunos avisos (bloqueo de LOGIN) son de la cuenta, no de
+     *  una empresa en particular; se guardan con empresaId NULL y el centro
+     *  de notificaciones los muestra sin importar cuál empresa esté activa. */
+    empresaId?:  number,
   ): Promise<void> {
     await this.logRepository.save(
       this.logRepository.create({
         tipo, canal: CanalNotificacion.SISTEMA,
-        destinatario: String(userId), userId,
+        destinatario: String(userId), userId, empresaId,
         asunto, mensaje: mensaje.substring(0, 2000),
         exitoso: true, referencia,
       }),
     ).catch((e: Error) => this.logger.error(`Error guardando notificación de sistema (usuario): ${e.message}`));
+    if (empresaId) this.realtimeService.notify(empresaId, 'notificaciones');
   }
 
   /** Todas las empresas activas con su configuración. */

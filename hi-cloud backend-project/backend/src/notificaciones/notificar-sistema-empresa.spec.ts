@@ -18,6 +18,7 @@ function buildService(filas: { id: number }[]) {
     create: jest.fn((d: any) => d),
     save:   jest.fn().mockResolvedValue(undefined),
   };
+  const realtimeService = { notify: jest.fn() };
   const service = new NotificacionesService(
     logRepository as any,
     {} as any, // emailService
@@ -25,8 +26,9 @@ function buildService(filas: { id: number }[]) {
     { get: jest.fn().mockReturnValue('true') } as any, // configService
     { query } as any, // dataSource
     {} as any, // tenantService
+    realtimeService as any,
   );
-  return { service, query, logRepository };
+  return { service, query, logRepository, realtimeService };
 }
 
 describe('NotificacionesService.notificarSistemaEmpresa — destinatarios admin/contador EN LA EMPRESA', () => {

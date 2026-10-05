@@ -79,8 +79,8 @@ beforeAll(async () => {
   svc = new CwLiquidacionesService(ds, cajaService);
 
   const [caja] = await ds.query(
-    `INSERT INTO cierres_caja ("empresaId", fecha, estado, "saldoApertura", "vendedorId", "userId")
-     VALUES ($1, CURRENT_DATE, 'abierta', 100000, $2, $2) RETURNING id`,
+    `INSERT INTO cierres_caja ("empresaId", "sucursalId", fecha, estado, "saldoApertura", "vendedorId", "userId")
+     VALUES ($1, 1, CURRENT_DATE, 'abierta', 100000, $2, $2) RETURNING id`,
     [EMPRESA, USUARIO_ID],
   );
   cajaId = caja.id;

@@ -363,7 +363,7 @@ export class ProductosService implements OnModuleInit {
     return saved;
   }
 
-  async findAll(pagination: PaginationDto, incluirSinStock = false, tipo?: string) {
+  async findAll(pagination: PaginationDto, incluirSinStock = false, tipo?: string, filtro?: string) {
     const empresaId = this.tenantService.getEmpresaId();
     const almacenId = this.tenantService.getAlmacenId() ?? undefined;
     const { limit = 10, page = 1, search } = pagination;
@@ -375,6 +375,21 @@ export class ProductosService implements OnModuleInit {
 
     if (tipo) {
       qb.andWhere('producto.tipo = :tipo', { tipo });
+    }
+
+    // Mismo criterio que AlertasSistemaService.alertasStockBajo — el enlace
+    // del aviso de la campanita ('/productos?filtro=stock-bajo') tiene que
+    // traer exactamente los mismos productos que contó la alerta.
+    if (filtro === 'stock-bajo') {
+      qb.andWhere("producto.tipo <> 'servicio'")
+        .andWhere('producto.stockMinimo > 0')
+        .andWhere('producto.stock <= producto.stockMinimo')
+        .andWhere(`EXISTS (
+           SELECT 1 FROM factura_detalles fd
+           JOIN facturas f ON f.id = fd."facturaId"
+           WHERE fd."productoId" = producto.id AND f."empresaId" = producto."empresaId"
+             AND f."isActive" = true AND f."createdAt" >= NOW() - INTERVAL '90 days'
+         )`);
     }
 
     // Si hay almacén activo en el JWT y no se pide ver todos → filtrar por stock en ese almacén.
@@ -769,6 +784,20 @@ export class ProductosService implements OnModuleInit {
     await this.productoRepository.update(id, { stock: nuevoStock });
     this.realtimeService.notify(empresaId, 'producto', 'updated', id);
     return this.findOne(id);
+  }
+
+  /** Limpia stockMinimo (lo pone en 0) de los productos indicados —
+   *  para empresas que lo trajeron de una importación CSV y no lo quieren
+   *  usar como umbral del aviso de stock bajo. Scoped a la empresa activa. */
+  async quitarStockMinimo(ids: number[]): Promise<{ afectados: number }> {
+    const empresaId = this.tenantService.getEmpresaId();
+    if (!ids?.length) return { afectados: 0 };
+    const r = await this.productoRepository.update(
+      { id: In(ids), empresaId },
+      { stockMinimo: 0 },
+    );
+    this.realtimeService.notify(empresaId, 'producto');
+    return { afectados: r.affected ?? 0 };
   }
 
   async remove(id: number) {

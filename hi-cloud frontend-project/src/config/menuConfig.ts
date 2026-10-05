@@ -486,6 +486,7 @@ export const MENU_CATEGORIES_DATA: MenuCategoryData[] = [
       { path: '/documentos',     label: 'Documentos', codigo: 'AD08' },
       { path: '/contactos',      label: 'Directorio', codigo: 'AD09' },
       { path: '/codigos-transaccion', label: 'Códigos de Transacción', codigo: 'AD90' },
+      { path: '/notificaciones', label: 'Centro de Notificaciones', codigo: 'AD91' },
     ],
   },
 

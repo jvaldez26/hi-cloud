@@ -324,6 +324,75 @@ function AlertaDispositivoSection() {
 }
 
 /**
+ * Preferencias del centro de notificaciones — qué tipos de evento/alerta ve
+ * este usuario. Solo lista los tipos que su rol puede ver (mismo filtro que
+ * el backend aplica en /notificaciones-centro); apagar uno aquí es una
+ * desactivación explícita por usuario, no afecta a nadie más de la empresa.
+ */
+function PreferenciasNotificacionesSection() {
+  const qc = useQueryClient();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['notificaciones-preferencias'],
+    queryFn: () => api.get('/notificaciones-centro/preferencias')
+      .then(r => (r.data?.data ?? r.data) as { tipo: string; origen: 'evento' | 'alerta'; label: string; activo: boolean }[]),
+  });
+
+  const guardarMut = useMutation({
+    mutationFn: ({ tipo, activo }: { tipo: string; activo: boolean }) =>
+      api.patch('/notificaciones-centro/preferencias', { tipo, activo }),
+    onMutate: ({ tipo, activo }) => {
+      qc.setQueryData(['notificaciones-preferencias'], (prev: any[] | undefined) =>
+        (prev ?? []).map(p => p.tipo === tipo ? { ...p, activo } : p));
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notificaciones-centro'] }),
+    onError: () => {
+      message.error('No se pudo guardar la preferencia');
+      qc.invalidateQueries({ queryKey: ['notificaciones-preferencias'] });
+    },
+  });
+
+  const eventos = (data ?? []).filter(p => p.origen === 'evento');
+  const alertas = (data ?? []).filter(p => p.origen === 'alerta');
+
+  return (
+    <Card title={<><BellOutlined /> Notificaciones</>} style={{ marginTop: 16 }} loading={isLoading}>
+      <Text type="secondary" style={{ fontSize: 13 }}>
+        Elige qué avisos quieres recibir en la campanita y en el Centro de Notificaciones.
+      </Text>
+      {eventos.length > 0 && (
+        <>
+          <Divider style={{ margin: '12px 0' }} orientation="left" plain>Eventos</Divider>
+          <Space direction="vertical" style={{ width: '100%' }}>
+            {eventos.map(p => (
+              <div key={p.tipo} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={{ fontSize: 13 }}>{p.label}</Text>
+                <Switch size="small" checked={p.activo}
+                  onChange={v => guardarMut.mutate({ tipo: p.tipo, activo: v })} />
+              </div>
+            ))}
+          </Space>
+        </>
+      )}
+      {alertas.length > 0 && (
+        <>
+          <Divider style={{ margin: '12px 0' }} orientation="left" plain>Alertas de estado</Divider>
+          <Space direction="vertical" style={{ width: '100%' }}>
+            {alertas.map(p => (
+              <div key={p.tipo} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={{ fontSize: 13 }}>{p.label}</Text>
+                <Switch size="small" checked={p.activo}
+                  onChange={v => guardarMut.mutate({ tipo: p.tipo, activo: v })} />
+              </div>
+            ))}
+          </Space>
+        </>
+      )}
+    </Card>
+  );
+}
+
+/**
  * PIN corto (4-6 dígitos), alternativo a la contraseña completa, SOLO para
  * el modal de "Autorización de Supervisor" del POS — ver useSupervisor/
  * POSPage. Cada quien configura el suyo aquí; mientras no lo haga, ese
@@ -958,6 +1027,8 @@ export default function ProfilePage() {
           <TwoFactorSection />
 
           <AlertaDispositivoSection />
+
+          <PreferenciasNotificacionesSection />
 
           {['admin', 'contador'].includes(user?.role ?? '') && <PinSupervisorSection />}
 

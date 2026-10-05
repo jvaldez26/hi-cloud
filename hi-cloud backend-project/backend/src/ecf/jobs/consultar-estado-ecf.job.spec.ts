@@ -129,6 +129,7 @@ describe('ConsultarEstadoECFJob — EN_VALIDACION_DGII vs RECHAZADO (hotfix E320
   let mseller:   { consultarBatch: jest.Mock; consultarEstado: jest.Mock };
   let efectosNc: { aplicarEfectosPorEstado: jest.Mock };
   let emailSvc:  { enviar: jest.Mock };
+  let notificacionesSvc: { notificarSistemaEmpresa: jest.Mock };
   let configSvc: { get: jest.Mock };
 
   beforeEach(() => {
@@ -140,6 +141,7 @@ describe('ConsultarEstadoECFJob — EN_VALIDACION_DGII vs RECHAZADO (hotfix E320
     mseller    = { consultarBatch: jest.fn(), consultarEstado: jest.fn() };
     efectosNc  = { aplicarEfectosPorEstado: jest.fn().mockResolvedValue(undefined) };
     emailSvc   = { enviar: jest.fn().mockResolvedValue({ exitoso: true }) };
+    notificacionesSvc = { notificarSistemaEmpresa: jest.fn().mockResolvedValue(undefined) };
     configSvc  = { get: jest.fn().mockReturnValue('') };
 
     job = new ConsultarEstadoECFJob(
@@ -148,6 +150,7 @@ describe('ConsultarEstadoECFJob — EN_VALIDACION_DGII vs RECHAZADO (hotfix E320
       mseller    as any,
       efectosNc  as any,
       emailSvc   as any,
+      notificacionesSvc as any,
       configSvc  as any,
     );
     for (const m of ['log', 'warn', 'error', 'debug'] as const) {
@@ -254,6 +257,7 @@ describe('ConsultarEstadoECFJob — consultarEnValidacion (backoff automático)'
   let mseller:   { consultarBatch: jest.Mock; consultarEstado: jest.Mock };
   let efectosNc: { aplicarEfectosPorEstado: jest.Mock };
   let emailSvc:  { enviar: jest.Mock };
+  let notificacionesSvc: { notificarSistemaEmpresa: jest.Mock };
   let configSvc: { get: jest.Mock };
 
   /** TypeORM QueryBuilder fake — cada llamada a createQueryBuilder() devuelve
@@ -301,6 +305,7 @@ describe('ConsultarEstadoECFJob — consultarEnValidacion (backoff automático)'
     mseller    = { consultarBatch: jest.fn(), consultarEstado: jest.fn() };
     efectosNc  = { aplicarEfectosPorEstado: jest.fn().mockResolvedValue(undefined) };
     emailSvc   = { enviar: jest.fn().mockResolvedValue({ exitoso: true }) };
+    notificacionesSvc = { notificarSistemaEmpresa: jest.fn().mockResolvedValue(undefined) };
     configSvc  = { get: jest.fn((_key: string, def: unknown) => def) };
 
     job = new ConsultarEstadoECFJob(
@@ -309,6 +314,7 @@ describe('ConsultarEstadoECFJob — consultarEnValidacion (backoff automático)'
       mseller    as any,
       efectosNc  as any,
       emailSvc   as any,
+      notificacionesSvc as any,
       configSvc  as any,
     );
     for (const m of ['log', 'warn', 'error', 'debug'] as const) {
@@ -402,5 +408,11 @@ describe('ConsultarEstadoECFJob — consultarEnValidacion (backoff automático)'
     expect(emailSvc.enviar).toHaveBeenCalledWith(expect.objectContaining({
       to: expect.arrayContaining(['admin@empresa.com']),
     }));
+    // También queda en la campanita (canal SISTEMA) — antes este aviso
+    // solo salía por correo, invisible en el centro de notificaciones.
+    expect(notificacionesSvc.notificarSistemaEmpresa).toHaveBeenCalledWith(
+      ecf.empresaId, 'ecf_revision_manual',
+      expect.stringContaining(ecf.numero), expect.any(String), ecf.numero,
+    );
   });
 });

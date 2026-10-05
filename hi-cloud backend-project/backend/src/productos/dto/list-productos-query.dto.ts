@@ -22,4 +22,10 @@ export class ListProductosQueryDto extends PaginationDto {
   @IsOptional()
   @IsString()
   tipo?: string;  // 'producto' | 'servicio'
+
+  /** Mismo criterio que AlertasSistemaService.alertasStockBajo — el enlace
+   *  directo del aviso de stock bajo ('/productos?filtro=stock-bajo'). */
+  @IsOptional()
+  @IsString()
+  filtro?: string;
 }

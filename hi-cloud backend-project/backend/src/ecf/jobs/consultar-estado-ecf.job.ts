@@ -9,6 +9,8 @@ import { EcfEvento, TipoEcfEvento } from '../entities/ecf-evento.entity';
 import { MSellerClientService } from '../services/mseller-client.service';
 import { EcfEfectosNcService } from '../services/ecf-efectos-nc.service';
 import { EmailService } from '../../notificaciones/services/email.service';
+import { NotificacionesService } from '../../notificaciones/notificaciones.service';
+import { TipoNotificacion } from '../../notificaciones/entities/notificacion-enviada.entity';
 import { reportServiceError } from '../../common/observability/sentry';
 
 const MINUTOS_SIN_RESPUESTA = 2;   // esperar 2 min antes de primer intento
@@ -102,6 +104,7 @@ export class ConsultarEstadoECFJob {
     private readonly mseller: MSellerClientService,
     private readonly efectosNc: EcfEfectosNcService,
     private readonly emailSvc: EmailService,
+    private readonly notificacionesSvc: NotificacionesService,
     private readonly configSvc: ConfigService,
   ) {}
 
@@ -335,6 +338,17 @@ export class ConsultarEstadoECFJob {
     const montoLabel = ecf.montoTotal != null
       ? `RD$${Number(ecf.montoTotal).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`
       : 'N/D';
+
+    // Campanita (canal SISTEMA) — antes este aviso SOLO salía por correo y
+    // no tenía ninguna superficie en el centro de notificaciones unificado.
+    await this.notificacionesSvc.notificarSistemaEmpresa(
+      ecf.empresaId,
+      TipoNotificacion.ECF_REVISION_MANUAL,
+      `e-CF ${ecf.numero} sin respuesta de DGII — revisión manual`,
+      `El comprobante ${ecf.numero} (${tipoLabel}, ${montoLabel}) lleva más de ${UMBRAL_REVISION_MANUAL_HORAS}h ` +
+      `en validación con DGII sin confirmación ni rechazo. Verifica el estado en el portal de DGII.`,
+      ecf.numero,
+    ).catch((e: Error) => this.logger.warn(`notificarSistemaEmpresa (revisión manual) falló: ${e.message}`));
 
     const result = await this.emailSvc.enviar({
       to:      destinatarios,

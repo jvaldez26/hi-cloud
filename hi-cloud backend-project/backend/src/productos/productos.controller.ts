@@ -24,6 +24,7 @@ import { PaginationDto } from '../common/dto/pagination.dto';
 import { ListProductosQueryDto } from './dto/list-productos-query.dto';
 import { PreviewAjustePreciosDto, AplicarAjustePreciosDto } from './dto/ajuste-precios.dto';
 import { AjustarCostoManualDto } from './dto/ajustar-costo-manual.dto';
+import { QuitarStockMinimoDto } from './dto/quitar-stock-minimo.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { SupervisorGateGuard } from '../auth/guards/supervisor-gate.guard';
@@ -79,8 +80,8 @@ export class ProductosController {
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Listar productos con paginación. Cuando hay almacenId en JWT, retorna solo productos con stock en ese almacén.' })
   findAll(@Query() query: ListProductosQueryDto) {
-    const { incluirSinStock, tipo, ...pagination } = query;
-    return this.productosService.findAll(pagination as PaginationDto, incluirSinStock === true, tipo);
+    const { incluirSinStock, tipo, filtro, ...pagination } = query;
+    return this.productosService.findAll(pagination as PaginationDto, incluirSinStock === true, tipo, filtro);
   }
 
   @Get('catalogo-pos')
@@ -199,6 +200,16 @@ export class ProductosController {
   })
   getImagenUrl(@Param('id', ParseIntPipe) id: number) {
     return this.productosService.getImagenUrl(id);
+  }
+
+  @Patch('bulk/quitar-stock-minimo')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({
+    summary: 'Quita (pone en 0) el stockMinimo de los productos indicados',
+    description: 'Para empresas que importaron mínimos por CSV y no los quieren usar como umbral del aviso de stock bajo.',
+  })
+  quitarStockMinimo(@Body() dto: QuitarStockMinimoDto) {
+    return this.productosService.quitarStockMinimo(dto.ids);
   }
 
   @Patch(':id')

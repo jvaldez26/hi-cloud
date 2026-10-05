@@ -26,6 +26,7 @@ function buildService(cierresCajaRows: { id: number; vendedorNombre: string | nu
     { get: jest.fn().mockReturnValue('true') } as any, // configService
     { query } as any, // dataSource
     {} as any, // tenantService
+    { notify: jest.fn() } as any, // realtimeService
   );
   return { service, query, logRepository };
 }
