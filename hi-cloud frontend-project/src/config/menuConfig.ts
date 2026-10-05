@@ -9,6 +9,10 @@
 export interface MenuItemData {
   path:  string;
   label: string;
+  /** Atajo de creación rápida asociado ("Nueva Factura" para /facturas, etc.) —
+   *  el buscador global lo expone bajo "Acciones" con las mismas reglas de
+   *  visibilidad que el ítem padre. */
+  accionRapida?: { path: string; label: string };
 }
 
 export interface MenuCategoryData {
@@ -17,6 +21,27 @@ export interface MenuCategoryData {
   sectionLabel?: string;   // separador visual "OPERACIONES", "GESTIÓN", etc.
   items:         MenuItemData[];
 }
+
+export interface QuickAccessItemData {
+  path:  string;
+  label: string;
+}
+
+/**
+ * Accesos rápidos fuera de las categorías del menú (Inicio, POS, Caja,
+ * Bandeja, Xlink) — ÚNICA fuente para el sidebar (AppLayout.tsx le agrega su
+ * ícono de lucide) y el buscador global (CommandPalette le agrega su emoji).
+ * No incluye "Activar factura electrónica": su visibilidad depende de un
+ * veredicto del backend (GET /activacion-ecf/estado), no de rol/add-on —
+ * calcularla aquí duplicaría esa lógica y podría discrepar del sidebar.
+ */
+export const QUICK_ACCESS_ITEMS: QuickAccessItemData[] = [
+  { path: '/dashboard', label: 'Inicio' },
+  { path: '/bandeja',   label: 'Bandeja de entrada' },
+  { path: '/xlink',     label: 'HiCloud Xlink' },
+  { path: '/pos',       label: 'Punto de Venta' },
+  { path: '/caja',      label: 'Caja Diaria' },
+];
 
 // ── Grupos de roles ───────────────────────────────────────────────────────────
 
@@ -308,8 +333,8 @@ export const MENU_CATEGORIES_DATA: MenuCategoryData[] = [
   {
     id: 'ventas', label: 'Ventas & Clientes', sectionLabel: 'OPERACIONES',
     items: [
-      { path: '/facturas',             label: 'Facturas' },
-      { path: '/cotizaciones',         label: 'Cotizaciones' },
+      { path: '/facturas',             label: 'Facturas', accionRapida: { path: '/facturas/nueva', label: 'Nueva Factura' } },
+      { path: '/cotizaciones',         label: 'Cotizaciones', accionRapida: { path: '/cotizaciones/nueva', label: 'Nueva Cotización' } },
       { path: '/pre-facturas',         label: 'Pre-Facturas' },
       { path: '/pro-formas',           label: 'Pro Formas' },
       { path: '/facturas-recurrentes', label: 'Facturación Recurrente' },
@@ -333,7 +358,7 @@ export const MENU_CATEGORIES_DATA: MenuCategoryData[] = [
     id: 'compras', label: 'Compras & Gastos',
     items: [
       { path: '/solicitudes-compra',    label: 'Solicitudes de Compra' },
-      { path: '/compras',               label: 'Órdenes de Compra' },
+      { path: '/compras',               label: 'Órdenes de Compra', accionRapida: { path: '/compras/nueva', label: 'Nueva Compra' } },
       { path: '/proveedores',           label: 'Proveedores' },
       { path: '/reposicion-proveedor',  label: 'Reposición por Proveedor' },
       { path: '/cxp',                   label: 'Cuentas por Pagar' },
@@ -640,3 +665,135 @@ export const MENU_CATEGORIES_DATA: MenuCategoryData[] = [
     ],
   },
 ];
+
+// ── Sinónimos de búsqueda ──────────────────────────────────────────────────────
+// Usados solo por el buscador global (CommandPalette) — el sidebar no los necesita.
+
+/** Sinónimos para accesos rápidos (fuera de las categorías del menú). */
+export const QUICK_ACCESS_KEYWORDS: Record<string, string[]> = {
+  '/dashboard': ['dashboard', 'inicio', 'home', 'panel', 'resumen', 'kpi'],
+  '/bandeja':   ['bandeja', 'mensajes', 'notificaciones', 'inbox', 'avisos'],
+  '/xlink':     ['xlink', 'integracion', 'sincronizacion', 'conector', 'hicloud xlink'],
+  '/pos':       ['pos', 'punto de venta', 'caja', 'venta', 'cobro', 'terminal', 'tienda', 'cashier'],
+  '/caja':      ['caja', 'caja diaria', 'efectivo', 'arqueo', 'apertura', 'cierre', 'cash'],
+};
+
+/**
+ * Sinónimos BÁSICOS por categoría de módulo add-on — se suman a los de cada
+ * ítem individual (PATH_KEYWORDS) para que buscar "lavadero" encuentre
+ * cualquier pantalla de Car Wash, sin tener que repetir el sinónimo en cada
+ * una de sus ~7 pantallas.
+ */
+export const CATEGORY_KEYWORDS: Record<string, string[]> = {
+  clinica:       ['clinica', 'consultorio', 'medico', 'doctor', 'salud', 'consulta medica'],
+  taller:        ['taller', 'taller mecanico', 'mecanico', 'auto', 'reparacion vehiculo'],
+  optica:        ['optica', 'lentes', 'gafas', 'vision', 'oftalmologia'],
+  farmacia:      ['farmacia', 'medicamentos', 'botica', 'drogueria', 'pastillas'],
+  restaurante:   ['restaurante', 'comida', 'menu', 'mesas', 'delivery', 'cocina'],
+  gimnasio:      ['gimnasio', 'gym', 'fitness', 'membresia', 'entrenamiento', 'pesas'],
+  car_wash:      ['car wash', 'lavadero', 'lavado de autos', 'autolavado', 'auto spa', 'lavar carro'],
+  servicios_pro: ['servicios profesionales', 'consultoria', 'despacho', 'bufete', 'firma'],
+  prestamista:   ['prestamista', 'prestamos', 'financiera', 'creditos', 'financiamiento'],
+  agro:          ['agro', 'finca', 'agricultura', 'campo', 'cultivo', 'granja'],
+  transporte:    ['transporte', 'flota', 'viajes', 'camiones', 'fleet'],
+  educativo:     ['colegio', 'escuela', 'centro educativo', 'estudiantes', 'liceo'],
+};
+
+/** Sinónimos por ruta individual — módulos del núcleo (no add-on). */
+export const PATH_KEYWORDS: Record<string, string[]> = {
+  '/facturas':             ['facturas','factura','facturacion','invoice','comprobante','ecf','e-cf','fiscal','e31','e32'],
+  '/cotizaciones':         ['cotizaciones','cotizacion','presupuesto','proforma','oferta','quote','propuesta'],
+  '/pre-facturas':         ['pre-facturas','pre facturas','pre-factura','pedidos','orden venta'],
+  '/pro-formas':           ['pro formas','proforma','oferta formal','quotation'],
+  '/facturas-recurrentes': ['facturas recurrentes','facturacion recurrente','suscripcion','recurring','periodica'],
+  '/notas-credito':        ['notas de credito','nota credito','e34','credito ventas','nc ventas','devolucion ventas'],
+  '/notas-debito':         ['notas de debito','nota debito','e33','debito','ajuste cobrar'],
+  '/devoluciones':         ['devoluciones','devolucion','retornos','returns','nc e34','reversal'],
+  '/clientes':             ['clientes','cliente','customers','compradores','contacto de venta'],
+  '/credito-cliente':      ['credito cliente','linea de credito','limite credito','credit line'],
+  '/cxc':                  ['cuentas por cobrar','cobros','cxc','cartera','receivables','facturas pendientes cobro'],
+  '/cuotas':               ['cuotas','plan de pago','pagos a plazos','financiamiento','installments'],
+  '/recibos-cobro':        ['recibos de cobro','recibo de cobro','cobros','pagos clientes','registrar pago','abono','receipt'],
+  '/anticipos-cliente':    ['anticipos','adelanto cliente','prepago','anticipo'],
+  '/fidelidad':            ['fidelidad','puntos','programa puntos','lealtad','loyalty','rewards'],
+  '/conduces':             ['conduces','conduce','entregas','despacho','delivery','guia de entrega','remision'],
+  '/soporte/tickets':      ['soporte','tickets','ayuda','helpdesk','ticket soporte','incidencias'],
+
+  '/solicitudes-compra':    ['solicitudes de compra','solicitud compra','requisicion','requerimiento','rfq'],
+  '/compras':               ['compras','compra','ordenes de compra','orden de compra','purchase','pedidos proveedor'],
+  '/proveedores':           ['proveedores','proveedor','supplier','abastecedores','partners'],
+  '/cxp':                   ['cuentas por pagar','pagos','cxp','deudas','payables','facturas pendientes pago'],
+  '/notas-credito-compras': ['notas credito compras','nc compras','devolucion proveedor','credito proveedor'],
+  '/gastos':                ['gastos','gasto','gastos operativos','e43','expenses','egresos','desembolso'],
+  '/caja-chica':            ['caja chica','caja menor','petty cash','gastos menores','fondo fijo'],
+
+  '/productos':            ['productos','producto','articulos','items','catalogo','servicios','sku'],
+  '/almacenes':            ['almacenes','almacen','bodegas','bodega','warehouse','transferencias almacen'],
+  '/inventario':           ['inventario','stock','existencias','movimientos stock','entradas','salidas','warehouse'],
+  '/conteo-inventario':    ['conteo inventario','conteo fisico','inventario fisico','toma de inventario','stocktaking'],
+  '/uom':                  ['unidades de medida','uom','medidas','litros','kilos','cajas','unidades'],
+  '/valoracion-stock':     ['valoracion stock','avco','costo promedio','costo inventario','stock valuation'],
+  '/etiquetas':            ['etiquetas','etiqueta','qr','codigo barras','labels','impresion etiquetas'],
+  '/wms':                  ['wms','warehouse management','picking','pack','ship','ordenes picking','gestion almacen'],
+  '/manufactura':          ['manufactura','produccion','fabricacion','listas de materiales','bom','ordenes produccion'],
+  '/planeacion-demanda':   ['planeacion demanda','proyeccion ventas','abastecimiento','forecast','demanda','reposicion stock'],
+  '/flota':                ['flota','vehiculos','autos','camiones','transporte','fleet','gestion vehiculos'],
+
+  '/bancos':               ['bancos','banco','tesoreria','conciliacion bancaria','cuentas bancarias','banking'],
+  '/depositos':            ['depositos','deposito','deposito bancario','abono cuenta','bank deposit'],
+  '/cheques':              ['cheques','cheque','pago con cheque','impresion cheques','checks'],
+  '/datafono':             ['datafono','tarjetas','pos bancario','visa','mastercard','pagos electronicos'],
+  '/divisas':              ['divisas','tasa de cambio','usd','dolar','euro','moneda extranjera','forex'],
+  '/contabilidad':         ['asientos contables','contabilidad','libro diario','asiento','journal entry'],
+  '/libro-mayor':          ['libro mayor','ledger','cuentas contables','mayor general','plan cuentas'],
+  '/balance-comprobacion': ['balance comprobacion','trial balance','balanza comprobacion','saldos cuentas'],
+  '/reportes-financieros': ['estados financieros','balance general','estado resultados','p&l','ganancias perdidas'],
+  '/libro-ventas':         ['libro ventas','libro compras','606','607','608','dgii reportes','it-1','it-2'],
+  '/periodo-contable':     ['periodo contable','periodos','cierre contable','apertura periodo','ejercicio fiscal'],
+  '/presupuestos':         ['presupuestos','presupuesto','budget','planificacion financiera','forecast'],
+  '/activos-fijos':        ['activos fijos','activo fijo','depreciacion','amortizacion','fixed assets'],
+  '/centro-costos':        ['centro costos','centro de costos','cost center','distribucion costos'],
+  '/flujo-caja':           ['flujo caja','cash flow','proyeccion efectivo','liquidez'],
+  '/distribucion-costos':  ['distribucion costos','costos distribucion','imputacion costos'],
+
+  '/ecf':                  ['ecf','e-cf','comprobantes fiscales','dgii','e31','e32','e33','e34','ncf','encf'],
+  '/ecf-recibidos':        ['ecf recibidos','comprobantes recibidos','facturas proveedor ecf'],
+  '/declaraciones':        ['declaraciones','dgii','it-1','ir-17','606','607','608','ir2','declaracion impuestos'],
+  '/retenciones':          ['retenciones','retencion isr','retencion impuesto','withholding'],
+
+  '/crm':          ['crm','leads','oportunidades','pipeline','prospectos','embudo ventas','funnel','seguimiento'],
+  '/vendedores':   ['vendedores','vendedor','fuerza de ventas','sales rep','representante','agente'],
+  '/comisiones':   ['comisiones','comision','comisiones vendedores','incentivos','bonus ventas'],
+  '/licitaciones': ['licitaciones','licitacion','concurso','propuesta publica','bid','rfp'],
+  '/encuestas':    ['encuestas','encuesta','nps','csat','satisfaccion cliente','feedback'],
+  '/proyectos':    ['proyectos','proyecto','project','gestion proyectos','tareas','hitos','gantt'],
+  '/contratos':    ['contratos','contrato','contract','acuerdo','convenio'],
+  '/servicios':    ['servicios','servicio','ordenes servicio','orden servicio','mantenimiento cliente'],
+  '/mantenimiento':['mantenimiento','equipos','maquinaria','preventivo','correctivo','orden mantenimiento'],
+  '/objetivos':    ['objetivos','okr','metas','kpi objetivos','key results','goals'],
+
+  '/nomina':          ['nomina','nominas','payroll','salarios','pago empleados','liquidacion nomina','recibo sueldo'],
+  '/portal-empleado': ['portal empleado','self service empleado','mi portal','empleados portal'],
+  '/vacaciones':      ['vacaciones','permisos','dias libres','ausencias','leave management'],
+  '/tss':             ['tss','seguridad social','ley 87-01','sfs','afp','srl','infotep','aportes sociales'],
+  '/isr':             ['isr','impuesto renta','ley 11-92','retencion isr','ir17','declaracion empleados'],
+  '/evaluaciones':    ['evaluaciones','desempeno','performance','calificacion empleados','appraisal'],
+  '/capacitacion':    ['capacitacion','entrenamiento','formacion','cursos','training','aprendizaje'],
+
+  '/reportes':           ['reportes','reporte','informes','estadisticas','ventas reporte','606','607'],
+  '/analytics':          ['analytics','business intelligence','bi','analisis','graficas','reportes avanzados'],
+  '/kpi':                ['kpi','indicadores','metricas','performance','cuadro mando','ejecutivo dashboard'],
+  '/generador-reportes': ['generador reportes','reportes personalizados','custom reports','crear reporte'],
+  '/asistente':          ['asistente','ia','inteligencia artificial','chatgpt','claude','ai','assistant'],
+  '/calendario':         ['calendario','obligaciones','fechas limite','vencimientos','dgii fechas'],
+
+  '/configuracion':  ['configuracion','config','settings','ajustes','parametros','empresa configuracion','setup'],
+  '/mi-suscripcion': ['suscripcion','pagos plan','facturacion hicloud','plan','upgrade','billing'],
+  '/mis-empresas':   ['empresas','empresa','multi empresa','negocios','organizaciones','companies'],
+  '/sucursales':     ['sucursales','sucursal','tiendas','puntos venta','branch','locations'],
+  '/equipo':         ['usuarios','usuario','roles','permisos','accesos','equipo','users','staff'],
+  '/aprobaciones':   ['aprobaciones','workflow','flujo aprobacion','autorizar','approve','solicitudes'],
+  '/importacion':    ['importacion','importar','csv','excel','bulk upload','carga masiva','migracion datos'],
+  '/documentos':     ['documentos','archivos','files','documentacion','adjuntos','storage'],
+  '/contactos':      ['contactos','directorio','agenda','address book','personas','emails'],
+};

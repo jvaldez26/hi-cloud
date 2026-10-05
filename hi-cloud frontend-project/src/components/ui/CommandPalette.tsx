@@ -7,13 +7,17 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../../api/client';
 import { useMisModulosAddon } from '../../hooks/useCatalogQueries';
 import { useAuthStore } from '../../store/auth.store';
-import { MENU_CATEGORIES_DATA, ADDON_IDS, rolPuedeVerRuta } from '../../config/menuConfig';
+import { usePlan } from '../../hooks/usePlan';
+import {
+  MENU_CATEGORIES_DATA, ADDON_IDS, rolPuedeVerRuta,
+  QUICK_ACCESS_ITEMS, QUICK_ACCESS_KEYWORDS, CATEGORY_KEYWORDS, PATH_KEYWORDS,
+} from '../../config/menuConfig';
 
 const { Text } = Typography;
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
-interface NavItem {
+export interface NavItem {
   key:        string;
   label:      string;
   group:      string;
@@ -74,150 +78,72 @@ const GROUP_COLORS: Record<string, string> = {
   Acciones:      'volcano',
 };
 
-// ── Keywords de búsqueda por ruta ─────────────────────────────────────────────
-
-const PATH_KEYWORDS: Record<string, string[]> = {
-  '/facturas':             ['facturas','factura','facturacion','invoice','comprobante','ecf','e-cf','fiscal','e31','e32'],
-  '/cotizaciones':         ['cotizaciones','cotizacion','presupuesto','proforma','oferta','quote','propuesta'],
-  '/pre-facturas':         ['pre-facturas','pre facturas','pre-factura','pedidos','orden venta'],
-  '/pro-formas':           ['pro formas','proforma','oferta formal','quotation'],
-  '/facturas-recurrentes': ['facturas recurrentes','facturacion recurrente','suscripcion','recurring','periodica'],
-  '/notas-credito':        ['notas de credito','nota credito','e34','credito ventas','nc ventas','devolucion ventas'],
-  '/notas-debito':         ['notas de debito','nota debito','e33','debito','ajuste cobrar'],
-  '/devoluciones':         ['devoluciones','devolucion','retornos','returns','nc e34','reversal'],
-  '/clientes':             ['clientes','cliente','customers','compradores','contacto de venta'],
-  '/credito-cliente':      ['credito cliente','linea de credito','limite credito','credit line'],
-  '/cxc':                  ['cuentas por cobrar','cobros','cxc','cartera','receivables','facturas pendientes cobro'],
-  '/cuotas':               ['cuotas','plan de pago','pagos a plazos','financiamiento','installments'],
-  '/recibos-cobro':        ['recibos de cobro','recibo de cobro','cobros','pagos clientes','registrar pago','abono','receipt'],
-  '/anticipos-cliente':    ['anticipos','adelanto cliente','prepago','anticipo'],
-  '/fidelidad':            ['fidelidad','puntos','programa puntos','lealtad','loyalty','rewards'],
-  '/conduces':             ['conduces','conduce','entregas','despacho','delivery','guia de entrega','remision'],
-  '/soporte/tickets':      ['soporte','tickets','ayuda','helpdesk','ticket soporte','incidencias'],
-
-  '/solicitudes-compra':    ['solicitudes de compra','solicitud compra','requisicion','requerimiento','rfq'],
-  '/compras':               ['compras','compra','ordenes de compra','orden de compra','purchase','pedidos proveedor'],
-  '/proveedores':           ['proveedores','proveedor','supplier','abastecedores','partners'],
-  '/cxp':                   ['cuentas por pagar','pagos','cxp','deudas','payables','facturas pendientes pago'],
-  '/notas-credito-compras': ['notas credito compras','nc compras','devolucion proveedor','credito proveedor'],
-  '/gastos':                ['gastos','gasto','gastos operativos','e43','expenses','egresos','desembolso'],
-  '/caja-chica':            ['caja chica','caja menor','petty cash','gastos menores','fondo fijo'],
-
-  '/productos':            ['productos','producto','articulos','items','catalogo','servicios','sku'],
-  '/almacenes':            ['almacenes','almacen','bodegas','bodega','warehouse','transferencias almacen'],
-  '/inventario':           ['inventario','stock','existencias','movimientos stock','entradas','salidas','warehouse'],
-  '/conteo-inventario':    ['conteo inventario','conteo fisico','inventario fisico','toma de inventario','stocktaking'],
-  '/uom':                  ['unidades de medida','uom','medidas','litros','kilos','cajas','unidades'],
-  '/valoracion-stock':     ['valoracion stock','avco','costo promedio','costo inventario','stock valuation'],
-  '/etiquetas':            ['etiquetas','etiqueta','qr','codigo barras','labels','impresion etiquetas'],
-  '/wms':                  ['wms','warehouse management','picking','pack','ship','ordenes picking','gestion almacen'],
-  '/manufactura':          ['manufactura','produccion','fabricacion','listas de materiales','bom','ordenes produccion'],
-  '/planeacion-demanda':   ['planeacion demanda','proyeccion ventas','abastecimiento','forecast','demanda','reposicion stock'],
-  '/flota':                ['flota','vehiculos','autos','camiones','transporte','fleet','gestion vehiculos'],
-
-  '/bancos':               ['bancos','banco','tesoreria','conciliacion bancaria','cuentas bancarias','banking'],
-  '/depositos':            ['depositos','deposito','deposito bancario','abono cuenta','bank deposit'],
-  '/cheques':              ['cheques','cheque','pago con cheque','impresion cheques','checks'],
-  '/datafono':             ['datafono','tarjetas','pos bancario','visa','mastercard','pagos electronicos'],
-  '/divisas':              ['divisas','tasa de cambio','usd','dolar','euro','moneda extranjera','forex'],
-  '/contabilidad':         ['asientos contables','contabilidad','libro diario','asiento','journal entry'],
-  '/libro-mayor':          ['libro mayor','ledger','cuentas contables','mayor general','plan cuentas'],
-  '/balance-comprobacion': ['balance comprobacion','trial balance','balanza comprobacion','saldos cuentas'],
-  '/reportes-financieros': ['estados financieros','balance general','estado resultados','p&l','ganancias perdidas'],
-  '/libro-ventas':         ['libro ventas','libro compras','606','607','608','dgii reportes','it-1','it-2'],
-  '/periodo-contable':     ['periodo contable','periodos','cierre contable','apertura periodo','ejercicio fiscal'],
-  '/presupuestos':         ['presupuestos','presupuesto','budget','planificacion financiera','forecast'],
-  '/activos-fijos':        ['activos fijos','activo fijo','depreciacion','amortizacion','fixed assets'],
-  '/centro-costos':        ['centro costos','centro de costos','cost center','distribucion costos'],
-  '/flujo-caja':           ['flujo caja','cash flow','proyeccion efectivo','liquidez'],
-  '/distribucion-costos':  ['distribucion costos','costos distribucion','imputacion costos'],
-
-  '/ecf':                  ['ecf','e-cf','comprobantes fiscales','dgii','e31','e32','e33','e34','ncf','encf'],
-  '/ecf-recibidos':        ['ecf recibidos','comprobantes recibidos','facturas proveedor ecf'],
-  '/declaraciones':        ['declaraciones','dgii','it-1','ir-17','606','607','608','ir2','declaracion impuestos'],
-  '/retenciones':          ['retenciones','retencion isr','retencion impuesto','withholding'],
-
-  '/crm':          ['crm','leads','oportunidades','pipeline','prospectos','embudo ventas','funnel','seguimiento'],
-  '/vendedores':   ['vendedores','vendedor','fuerza de ventas','sales rep','representante','agente'],
-  '/comisiones':   ['comisiones','comision','comisiones vendedores','incentivos','bonus ventas'],
-  '/licitaciones': ['licitaciones','licitacion','concurso','propuesta publica','bid','rfp'],
-  '/encuestas':    ['encuestas','encuesta','nps','csat','satisfaccion cliente','feedback'],
-  '/proyectos':    ['proyectos','proyecto','project','gestion proyectos','tareas','hitos','gantt'],
-  '/contratos':    ['contratos','contrato','contract','acuerdo','convenio'],
-  '/servicios':    ['servicios','servicio','ordenes servicio','orden servicio','mantenimiento cliente'],
-  '/mantenimiento':['mantenimiento','equipos','maquinaria','preventivo','correctivo','orden mantenimiento'],
-  '/objetivos':    ['objetivos','okr','metas','kpi objetivos','key results','goals'],
-
-  '/nomina':          ['nomina','nominas','payroll','salarios','pago empleados','liquidacion nomina','recibo sueldo'],
-  '/portal-empleado': ['portal empleado','self service empleado','mi portal','empleados portal'],
-  '/vacaciones':      ['vacaciones','permisos','dias libres','ausencias','leave management'],
-  '/tss':             ['tss','seguridad social','ley 87-01','sfs','afp','srl','infotep','aportes sociales'],
-  '/isr':             ['isr','impuesto renta','ley 11-92','retencion isr','ir17','declaracion empleados'],
-  '/evaluaciones':    ['evaluaciones','desempeno','performance','calificacion empleados','appraisal'],
-  '/capacitacion':    ['capacitacion','entrenamiento','formacion','cursos','training','aprendizaje'],
-
-  '/reportes':           ['reportes','reporte','informes','estadisticas','ventas reporte','606','607'],
-  '/analytics':          ['analytics','business intelligence','bi','analisis','graficas','reportes avanzados'],
-  '/kpi':                ['kpi','indicadores','metricas','performance','cuadro mando','ejecutivo dashboard'],
-  '/generador-reportes': ['generador reportes','reportes personalizados','custom reports','crear reporte'],
-  '/asistente':          ['asistente','ia','inteligencia artificial','chatgpt','claude','ai','assistant'],
-  '/calendario':         ['calendario','obligaciones','fechas limite','vencimientos','dgii fechas'],
-
-  '/configuracion':  ['configuracion','config','settings','ajustes','parametros','empresa configuracion','setup'],
-  '/mi-suscripcion': ['suscripcion','pagos plan','facturacion hicloud','plan','upgrade','billing'],
-  '/mis-empresas':   ['empresas','empresa','multi empresa','negocios','organizaciones','companies'],
-  '/sucursales':     ['sucursales','sucursal','tiendas','puntos venta','branch','locations'],
-  '/equipo':         ['usuarios','usuario','roles','permisos','accesos','equipo','users','staff'],
-  '/aprobaciones':   ['aprobaciones','workflow','flujo aprobacion','autorizar','approve','solicitudes'],
-  '/importacion':    ['importacion','importar','csv','excel','bulk upload','carga masiva','migracion datos'],
-  '/documentos':     ['documentos','archivos','files','documentacion','adjuntos','storage'],
-  '/contactos':      ['contactos','directorio','agenda','address book','personas','emails'],
-};
-
-// ── Items fijos (accesos rápidos fuera del menú lateral) ─────────────────────
-
-const FIXED_ITEMS: NavItem[] = [
-  {
-    key: '/dashboard', label: 'Dashboard', group: 'Principal', categoryId: 'Principal', emoji: '📊',
-    keywords: ['dashboard','inicio','home','panel','resumen','kpi'],
-  },
-  {
-    key: '/pos', label: 'Punto de Venta', group: 'Principal', categoryId: 'Principal', emoji: '⚡',
-    keywords: ['pos','punto de venta','caja','venta','cobro','terminal','tienda','cashier'],
-  },
-  {
-    key: '/caja', label: 'Caja Diaria', group: 'Principal', categoryId: 'Principal', emoji: '💵',
-    keywords: ['caja','caja diaria','efectivo','arqueo','apertura','cierre','cash'],
-  },
-  {
-    key: '/facturas/nueva', label: 'Nueva Factura', group: 'Acciones', categoryId: 'Acciones', emoji: '➕',
-    keywords: ['nueva factura','crear factura','emitir factura','agregar factura'],
-  },
-  {
-    key: '/compras/nueva', label: 'Nueva Compra', group: 'Acciones', categoryId: 'Acciones', emoji: '➕',
-    keywords: ['nueva compra','crear compra','orden de compra'],
-  },
-  {
-    key: '/cotizaciones/nueva', label: 'Nueva Cotización', group: 'Acciones', categoryId: 'Acciones', emoji: '➕',
-    keywords: ['nueva cotizacion','crear cotizacion','nueva proforma'],
-  },
-];
-
 const TIPO_EMOJI: Record<string, string> = {
   factura: '🧾', cliente: '👥', producto: '📦',
   proveedor: '🏭', compra: '🛒', cotizacion: '📋',
 };
 
+// ── Índice de navegación — misma fuente que el sidebar (menuConfig) ──────────
+// Exportado puro (sin hooks) para poder testear la paridad rol/add-on contra
+// el sidebar sin montar el componente completo.
+
+export function construirNavItems(
+  userRole: string,
+  modulosActivos: string[],
+  xlinkHabilitado: boolean,
+): NavItem[] {
+  const items: NavItem[] = [];
+
+  for (const qa of QUICK_ACCESS_ITEMS) {
+    if (!rolPuedeVerRuta(qa.path, userRole)) continue;
+    if (qa.path === '/xlink' && !xlinkHabilitado) continue;
+    items.push({
+      key: qa.path, label: qa.label, group: 'Principal', categoryId: 'Principal',
+      emoji: GROUP_EMOJI['Principal'] ?? '📄',
+      keywords: QUICK_ACCESS_KEYWORDS[qa.path] ?? [],
+    });
+  }
+
+  for (const cat of MENU_CATEGORIES_DATA) {
+    if (ADDON_IDS.includes(cat.id) && !modulosActivos.includes(cat.id)) continue;
+    const catKeywords = CATEGORY_KEYWORDS[cat.id] ?? [];
+
+    for (const item of cat.items) {
+      if (!rolPuedeVerRuta(item.path, userRole)) continue;
+      items.push({
+        key: item.path, label: item.label, group: cat.label, categoryId: cat.id,
+        emoji: GROUP_EMOJI[cat.id] ?? '📄',
+        keywords: [...(PATH_KEYWORDS[item.path] ?? []), ...catKeywords],
+      });
+
+      if (item.accionRapida) {
+        items.push({
+          key: item.accionRapida.path, label: item.accionRapida.label,
+          group: 'Acciones', categoryId: 'Acciones', emoji: GROUP_EMOJI['Acciones'] ?? '➕',
+          keywords: [`nueva ${item.label.toLowerCase()}`, `crear ${item.label.toLowerCase()}`],
+        });
+      }
+    }
+  }
+
+  return items;
+}
+
 // ── Búsqueda con score ────────────────────────────────────────────────────────
 
-function buscarNav(query: string, items: NavItem[]): NavItem[] {
-  const q = query.toLowerCase().trim();
+/** Normaliza para comparar sin distinguir acentos ni mayúsculas ("dashboard" == "Dáshboard"). */
+function normalizar(s: string): string {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+}
+
+export function buscarNav(query: string, items: NavItem[]): NavItem[] {
+  const q = normalizar(query);
   if (!q) return items.slice(0, 10);
 
   const scored = items.map(item => {
-    const label = item.label.toLowerCase();
-    const group = item.group.toLowerCase();
-    const keys  = item.keywords;
+    const label = normalizar(item.label);
+    const group = normalizar(item.group);
+    const keys  = item.keywords.map(normalizar);
     let score   = 0;
 
     if (label === q)               score += 100;
@@ -271,25 +197,17 @@ export default function CommandPalette({ open, onClose }: Props) {
   const { data: _misModulosRes } = useMisModulosAddon(!!user);
   const modulosActivos: string[] = _misModulosRes?.modulos ?? [];
 
-  // ── Índice dinámico — filtrado por rol + add-ons activos ──────────────────
-  const allNavItems = useMemo<NavItem[]>(() => {
-    const items: NavItem[] = FIXED_ITEMS.filter(i => rolPuedeVerRuta(i.key, userRole));
-    for (const cat of MENU_CATEGORIES_DATA) {
-      if (ADDON_IDS.includes(cat.id) && !modulosActivos.includes(cat.id)) continue;
-      for (const item of cat.items) {
-        if (!rolPuedeVerRuta(item.path, userRole)) continue;
-        items.push({
-          key:        item.path,
-          label:      item.label,
-          group:      cat.label,
-          categoryId: cat.id,
-          emoji:      GROUP_EMOJI[cat.id] ?? '📄',
-          keywords:   PATH_KEYWORDS[item.path] ?? [],
-        });
-      }
-    }
-    return items;
-  }, [userRole, modulosActivos]);
+  // Mismo gate de plan que usa el sidebar para HiCloud Xlink (AppLayout.tsx) —
+  // tieneModulo() es siempre true hoy, pero si algún plan llega a desactivarlo
+  // el buscador debe reaccionar igual que el sidebar, sin tocar este archivo.
+  const { tieneModulo } = usePlan();
+  const xlinkHabilitado = tieneModulo('xlink');
+
+  // ── Índice dinámico — misma fuente y mismas reglas que el sidebar ─────────
+  const allNavItems = useMemo<NavItem[]>(
+    () => construirNavItems(userRole, modulosActivos, xlinkHabilitado),
+    [userRole, modulosActivos, xlinkHabilitado],
+  );
 
   const debouncedQuery = useDebounce(query.trim());
   const isSearching    = debouncedQuery.length >= 2;

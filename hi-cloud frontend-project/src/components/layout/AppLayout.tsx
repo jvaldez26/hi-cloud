@@ -46,7 +46,7 @@ import MobileWarningModal from '../ui/MobileWarningModal';
 import { useRealtime, useRealtimeStatus } from '../../hooks/useRealtime';
 import { useAlertas }    from '../../hooks/useAlertas';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
-import { MENU_CATEGORIES_DATA, ADDON_IDS, PATH_ROLES, rolPuedeVerRuta } from '../../config/menuConfig';
+import { MENU_CATEGORIES_DATA, ADDON_IDS, PATH_ROLES, rolPuedeVerRuta, QUICK_ACCESS_ITEMS } from '../../config/menuConfig';
 import { xlinkApi } from '../../api/xlink.api';
 import { ahora, hora, horaDelDiaRD } from '../../utils/fechaRD';
 
@@ -63,16 +63,27 @@ const { Text } = Typography;
 
 // ── Paletas de colores del sidebar ───────────────────────────────────────────
 
+// Íconos por path — desacoplados de los datos para que QUICK_ACCESS_ITEMS (en
+// menuConfig.ts, también usado por CommandPalette) no arrastre lucide-react.
+const QUICK_ACCESS_ICONS: Record<string, LucideIcon> = {
+  '/dashboard': Home,
+  '/bandeja':   Inbox,
+  '/xlink':     ArrowLeftRight,
+  '/pos':       ShoppingCart,
+  '/caja':      Wallet,
+};
+
 const QUICK_ITEMS: QuickItem[] = [
-  { path: '/dashboard', label: 'Inicio',             Icon: Home },
-  { path: '/bandeja',   label: 'Bandeja de entrada', Icon: Inbox },
-  { path: '/xlink',     label: 'HiCloud Xlink',      Icon: ArrowLeftRight },
+  ...QUICK_ACCESS_ITEMS.map(qa => ({
+    path: qa.path, label: qa.label, Icon: QUICK_ACCESS_ICONS[qa.path] ?? Home,
+    ...(qa.path === '/pos' ? { badge: 'POS' } : {}),
+  })),
   // La visibilidad NO se decide aquí: la da GET /activacion-ecf/estado, el mismo
   // veredicto que usa la pantalla. Si el menú calculara por su cuenta podrían
-  // discrepar y llevaría a algo que no toca.
+  // discrepar y llevaría a algo que no toca. Por eso NO vive en
+  // QUICK_ACCESS_ITEMS (compartido con el buscador): el buscador no tiene
+  // forma de replicar ese veredicto sin duplicar la consulta.
   { path: '/ecf/activar', label: 'Activar factura electrónica', Icon: FileCheck },
-  { path: '/pos',       label: 'Punto de Venta',     Icon: ShoppingCart, badge: 'POS' },
-  { path: '/caja',      label: 'Caja Diaria',        Icon: Wallet },
 ];
 
 // Mapa de íconos por categoría — desacoplado de los datos para poder importar los datos
