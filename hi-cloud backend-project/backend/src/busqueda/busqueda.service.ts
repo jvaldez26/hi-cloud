@@ -48,14 +48,16 @@ export class BusquedaService {
         ORDER BY nombre ASC LIMIT 5
       `, [empresaId, term]),
 
-      // Productos
+      // Productos — IN03 (consultar por código/barras/SKU) también busca por
+      // codigoBarras, no solo por codigo: un escáner o un folio de compra
+      // suele traer el EAN/UPC, no el código interno del producto.
       this.ds.query<any[]>(`
         SELECT id, nombre AS titulo,
                CONCAT(codigo, ' · ', COALESCE(categoria, '')) AS subtitulo,
                stock::text AS extra
         FROM productos
         WHERE "empresaId" = $1 AND "isActive" = true
-          AND (nombre ILIKE $2 OR codigo ILIKE $2)
+          AND (nombre ILIKE $2 OR codigo ILIKE $2 OR "codigoBarras" ILIKE $2)
         ORDER BY nombre ASC LIMIT 5
       `, [empresaId, term]),
 
