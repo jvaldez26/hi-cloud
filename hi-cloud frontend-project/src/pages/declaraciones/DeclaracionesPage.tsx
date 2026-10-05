@@ -1,4 +1,5 @@
 ﻿import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
@@ -481,6 +482,21 @@ export default function DeclaracionesPage() {
   const [txt607, setTxt607] = useState(false);
   const [txt608, setTxt608] = useState(false);
 
+  // Llegada desde el buscador global por código (FS06/07/08/11/12/21/22/23/
+  // 30/31/32) con ?tab=&mes=&anio= — se siembra UNA vez al montar, mismo
+  // patrón que FacturasPage con ?desde=&hasta=. El período por defecto (mes
+  // anterior cuando el código no trae uno) ya lo resuelve CommandPalette
+  // antes de navegar — aquí solo se lee lo que llegó en la URL.
+  const [urlParams] = useSearchParams();
+  const [activeKey, setActiveKey] = useState<string>(() => urlParams.get('tab') || 'it1');
+  useEffect(() => {
+    const mesParam  = urlParams.get('mes');
+    const anioParam = urlParams.get('anio');
+    if (mesParam)  setMes(Number(mesParam));
+    if (anioParam) setAnio(Number(anioParam));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const { data: it1,    isLoading: l1 } = useQuery({ queryKey: ['decl-it1', mes, anio],   queryFn: () => declApi.it1(mes, anio) });
   const { data: f606,   isLoading: l6 } = useQuery({ queryKey: ['decl-606', mes, anio],   queryFn: () => declApi.formato606(mes, anio) });
   const { data: f607,   isLoading: l7 } = useQuery({ queryKey: ['decl-607', mes, anio],   queryFn: () => declApi.formato607(mes, anio) });
@@ -599,7 +615,7 @@ export default function DeclaracionesPage() {
         </Col>
       </Row>
 
-      <Tabs items={[
+      <Tabs activeKey={activeKey} onChange={setActiveKey} items={[
         // ── IT-1 ─────────────────────────────────────────────────────────────
         {
           key: 'it1',
