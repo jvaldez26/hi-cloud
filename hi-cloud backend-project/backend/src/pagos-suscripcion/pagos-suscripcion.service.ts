@@ -14,6 +14,7 @@ import { EmailService }        from '../notificaciones/services/email.service';
 import { TenantService }       from '../tenant/tenant.service';
 import { PagoSuscripcion, TipoPago, EstadoPago } from './entities/pago-suscripcion.entity';
 import { ConfiguracionBancaria }                  from './entities/configuracion-bancaria.entity';
+import { PagoAplicacion }                         from './entities/pago-aplicacion.entity';
 import {
   RegistrarPagoDto, ConfirmarPagoDto, RechazarPagoDto,
   AgregarCargoDto, AplicarCreditoDto, UpdateConfiguracionBancariaDto,
@@ -26,7 +27,7 @@ import { redondearMoneda } from '../common/utils/moneda.util';
 import {
   imputarPago, OverrideImputacion, ResultadoImputacion,
 } from './imputacion-pago.util';
-import { calcularDeudaSuscripcion } from './deuda-suscripcion.util';
+import { construirEstadoCuenta, diasHasta, EntradaEstadoCuenta } from './estado-cuenta-empresa.util';
 
 
 @Injectable()
@@ -38,6 +39,8 @@ export class PagosSuscripcionService {
     private pagoRepo: Repository<PagoSuscripcion>,
     @InjectRepository(ConfiguracionBancaria)
     private bancoRepo: Repository<ConfiguracionBancaria>,
+    @InjectRepository(PagoAplicacion)
+    private aplicacionRepo: Repository<PagoAplicacion>,
     private ds:         DataSource,
     private s3:         S3Service,
     private emailSvc:   EmailService,
@@ -46,72 +49,66 @@ export class PagosSuscripcionService {
   ) {}
 
   // ──────────────────────────────────────────────────────────────────────────
-  // CLIENTE — Mi suscripción y pagos
+  // Estado de cuenta — fuente única (ver estado-cuenta-empresa.util.ts)
   // ──────────────────────────────────────────────────────────────────────────
 
-  async getMiResumen() {
-    const empresaId = this.tenantSvc.getEmpresaId();
+  /** Cargos con saldo pendiente (monto > montoPagado) — misma query que ya usaba calcularImputacion(). */
+  private async obtenerCargosPendientes(empresaId: number, runner: DataSource | EntityManager = this.ds) {
+    return runner.query(`
+      SELECT id, concepto, monto, "montoPagado", "creadoEn"
+      FROM pagos_suscripcion
+      WHERE "empresaId" = $1 AND tipo = 'CARGO' AND estado != 'RECHAZADO'
+        AND monto > "montoPagado"
+      ORDER BY "creadoEn" ASC
+    `, [empresaId]);
+  }
+
+  /**
+   * Estado de cuenta completo de una empresa — la UNA fórmula que reemplaza
+   * getSaldoPendiente() (ledger completo, ciego a cargos ya pagados) y la
+   * duplicación de diasRestantes/diasGraciaRestantes que había en
+   * SuscripcionesService.getSuscripcion(). La usan getMiResumen() (cliente) y
+   * resumenCobros() (panel de cobros) — mismo número en las dos pantallas.
+   */
+  async estadoCuentaEmpresa(empresaId: number) {
     const [sus] = await this.ds.query<any[]>(`
-      SELECT s.*, e.nombre AS "empresaNombre", e.email AS "empresaEmail"
+      SELECT s.*, pc.precio::float AS "precioMensual"
       FROM suscripciones s
-      JOIN empresa e ON e.id = s."empresaId"
+      LEFT JOIN plan_configuracion pc ON pc.clave = s.plan::text AND pc.activo = true
       WHERE s."empresaId" = $1
     `, [empresaId]);
+    if (!sus) return null;
 
-    if (!sus) throw new NotFoundException('Suscripción no encontrada');
+    const cargosPendientes = await this.obtenerCargosPendientes(empresaId);
+    const estadoCuenta = construirEstadoCuenta({
+      estado:            sus.estado,
+      fechaInicio:       sus.fechaInicio,
+      fechaVencimiento:  sus.fechaVencimiento,
+      fechaFinPrueba:    sus.fechaFinPrueba,
+      diaCorte:          Number(sus.diaCorte),
+      modalidad:         sus.modalidad ?? 'mensual',
+      precioMensual:     Number(sus.precioMensual ?? 0),
+      enPeriodoGracia:   sus.enPeriodoGracia === true,
+      fechaFinGracia:    sus.fechaFinGracia,
+      motivoSuspension:  sus.motivoSuspension,
+      abonoDisponible:   Number(sus.abonoDisponible ?? 0),
+      cargosPendientes:  cargosPendientes.map((c: any) => ({
+        id: c.id, concepto: c.concepto, monto: Number(c.monto), montoPagado: Number(c.montoPagado), creadoEn: c.creadoEn,
+      })),
+    } satisfies EntradaEstadoCuenta);
 
-    const hoy = new Date();
-    const fechaEfectiva = sus.estado === 'prueba'
-      ? (sus.fechaFinPrueba ?? sus.fechaVencimiento)
-      : sus.fechaVencimiento;
-    const fechaVence = new Date(fechaEfectiva);
-    const diasRestantes = Math.ceil((fechaVence.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
-    const diasTotales = Math.ceil(
-      (fechaVence.getTime() - new Date(sus.fechaInicio).getTime()) / (1000 * 60 * 60 * 24)
-    );
-
-    const pcRows = await this.ds.query<any[]>(
-      `SELECT precio FROM plan_configuracion WHERE clave = $1 AND activo = true LIMIT 1`,
-      [sus.plan],
-    );
-    const precioMensual = Number(pcRows[0]?.precio ?? 0);
-    const saldoPendiente = await this.getSaldoPendiente(empresaId);
-
-    // Deuda por períodos vencidos — parte de fechaVencimiento (NUNCA de
-    // fechaFinPrueba, que queda pegado indefinidamente tras salir de prueba).
-    // Ver deuda-suscripcion.util.ts.
-    const deudaSuscripcion = calcularDeudaSuscripcion({
-      estado:           sus.estado,
-      fechaVencimiento: sus.fechaVencimiento,
-      diaCorte:         Number(sus.diaCorte),
-      modalidad:        sus.modalidad ?? 'mensual',
-      precioMensual,
+    this.reportarTopeDeudaSiAplica(empresaId, {
+      periodosVencidos: estadoCuenta.periodosVencidos,
+      monto:            estadoCuenta.saldoSuscripcion,
+      tope:             estadoCuenta.topeDeudaAlcanzado,
     });
-    this.reportarTopeDeudaSiAplica(empresaId, deudaSuscripcion);
-
-    const enGracia = sus.enPeriodoGracia === true;
-    const fechaFinGracia = sus.fechaFinGracia ? new Date(sus.fechaFinGracia) : null;
-    const diasGraciaRestantes = enGracia && fechaFinGracia
-      ? Math.max(0, Math.ceil((fechaFinGracia.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)))
-      : 0;
 
     return {
-      plan:           sus.plan,
-      estado:         sus.estado,
-      modalidad:      sus.modalidad ?? 'mensual',
-      precioMensual,
-      fechaInicio:    sus.fechaInicio,
-      fechaVencimiento: fechaEfectiva,
-      diasRestantes,
-      diasTotales:    Math.max(diasTotales, diasRestantes),
-      porcentajeUsado: diasTotales > 0
-        ? Math.max(0, Math.min(100, Math.round(((diasTotales - diasRestantes) / diasTotales) * 100)))
-        : 0,
-      saldo:              saldoPendiente,
-      saldoSuscripcion:   deudaSuscripcion.monto,
-      enPeriodoGracia:    enGracia,
-      fechaFinGracia:     sus.fechaFinGracia ?? null,
-      diasGraciaRestantes,
+      empresaId,
+      plan:          sus.plan,
+      modalidad:     sus.modalidad ?? 'mensual',
+      precioMensual: Number(sus.precioMensual ?? 0),
+      ...estadoCuenta,
     };
   }
 
@@ -136,6 +133,45 @@ export class PagosSuscripcionService {
     });
   }
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // CLIENTE — Mi suscripción y pagos
+  // ──────────────────────────────────────────────────────────────────────────
+
+  async getMiResumen() {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    const ec = await this.estadoCuentaEmpresa(empresaId);
+    if (!ec) throw new NotFoundException('Suscripción no encontrada');
+
+    // Progreso del período actual — puramente visual de esta pantalla (la
+    // barra "X% restante"), no forma parte del estado de cuenta compartido.
+    const diasTotales = ec.fechaInicio && ec.fechaVencimiento
+      ? diasHasta(ec.fechaVencimiento, ec.fechaInicio)
+      : 0;
+
+    return {
+      plan:             ec.plan,
+      estado:           ec.estado,
+      modalidad:        ec.modalidad,
+      precioMensual:    ec.precioMensual,
+      fechaInicio:      ec.fechaInicio,
+      fechaVencimiento: ec.fechaVencimiento,
+      diasRestantes:    ec.diasRestantes,
+      diasTotales:      Math.max(diasTotales, ec.diasRestantes),
+      porcentajeUsado:  diasTotales > 0
+        ? Math.max(0, Math.min(100, Math.round(((diasTotales - ec.diasRestantes) / diasTotales) * 100)))
+        : 0,
+      saldoCargos:        ec.saldoCargos,
+      saldoSuscripcion:   ec.saldoSuscripcion,
+      totalAdeudado:      ec.totalAdeudado,
+      abonoDisponible:    ec.abonoDisponible,
+      saldoNeto:          ec.saldoNeto,
+      cargosPendientes:   ec.cargosPendientes,
+      enPeriodoGracia:    ec.enPeriodoGracia,
+      fechaFinGracia:     ec.fechaFinGracia,
+      diasGraciaRestantes: ec.diasGraciaRestantes,
+    };
+  }
+
   async getHistorialCliente() {
     const empresaId = this.tenantSvc.getEmpresaId();
     const rows = await this.pagoRepo.find({
@@ -143,26 +179,34 @@ export class PagosSuscripcionService {
       order:  { creadoEn: 'DESC' },
     });
     // TypeORM con pg devuelve numeric como string — normalizar
-    return rows.map(r => ({ ...r, monto: Number(r.monto ?? 0), montoPagado: Number(r.montoPagado ?? 0) }));
+    const normalizadas = rows.map(r => ({ ...r, monto: Number(r.monto ?? 0), montoPagado: Number(r.montoPagado ?? 0) }));
+    return this.conAplicacionesResueltas(normalizadas);
   }
 
-  async getSaldoPendiente(empresaId: number): Promise<number> {
-    const rows = await this.ds.query<{ saldo: string }[]>(`
-      SELECT COALESCE(SUM(
-        CASE
-          WHEN tipo = 'CARGO'
-            THEN  monto
-          WHEN tipo IN ('TRANSFERENCIA','TARJETA','MANUAL','CREDITO')
-               AND estado = 'CONFIRMADO'
-            THEN -monto
-          ELSE 0
-        END
-      ), 0)::float AS saldo
-      FROM pagos_suscripcion
-      WHERE "empresaId" = $1
-        AND estado != 'RECHAZADO'
-    `, [empresaId]);
-    return Number(rows[0]?.saldo ?? 0);
+  /**
+   * A qué cargo(s) se aplicó cada pago/crédito — "aplicadoA" (pedido
+   * explícito: "Muestra en el Historial a qué se aplicó cada pago"). Una
+   * sola query para toda la página, no una por fila.
+   */
+  private async conAplicacionesResueltas<T extends { id: number; tipo: string }>(rows: T[]): Promise<(T & { aplicadoA: Array<{ cargoId: number; concepto: string; monto: number }> })[]> {
+    const pagoIds = rows.filter(r => r.tipo !== 'CARGO').map(r => r.id);
+    if (pagoIds.length === 0) return rows.map(r => ({ ...r, aplicadoA: [] }));
+
+    const aplicaciones = await this.ds.query<any[]>(`
+      SELECT a."pagoId", a."cargoId", a."montoAplicado"::float AS "montoAplicado", c.concepto
+      FROM pagos_aplicaciones a
+      JOIN pagos_suscripcion c ON c.id = a."cargoId"
+      WHERE a."pagoId" = ANY($1::int[])
+    `, [pagoIds]);
+
+    const porPago = new Map<number, Array<{ cargoId: number; concepto: string; monto: number }>>();
+    for (const a of aplicaciones) {
+      const lista = porPago.get(a.pagoId) ?? [];
+      lista.push({ cargoId: a.cargoId, concepto: a.concepto, monto: a.montoAplicado });
+      porPago.set(a.pagoId, lista);
+    }
+
+    return rows.map(r => ({ ...r, aplicadoA: porPago.get(r.id) ?? [] }));
   }
 
   async getConfiguracionBancaria() {
@@ -274,7 +318,8 @@ export class PagosSuscripcionService {
       LIMIT 200
     `, params);
     // PostgreSQL devuelve numeric como string — normalizar a JS number
-    return this.conComprobanteResuelto(rows.map(r => ({ ...r, monto: Number(r.monto ?? 0) })));
+    const normalizadas = rows.map(r => ({ ...r, monto: Number(r.monto ?? 0) }));
+    return this.conComprobanteResuelto(await this.conAplicacionesResueltas(normalizadas));
   }
 
   async listarComprobantesPeridentes() {
@@ -298,7 +343,13 @@ export class PagosSuscripcionService {
     return this.conComprobanteResuelto(out);
   }
 
-  /** Resumen por empresa para el panel de cobros */
+  /**
+   * Resumen por empresa para el panel de cobros — mismo estado de cuenta que
+   * getMiResumen() (ver estado-cuenta-empresa.util.ts), construido en bloque
+   * para TODAS las empresas en una sola ida a la base: la lista de cargos
+   * pendientes de cada una viaja como JSON agregado (`cp.cargos`) para que
+   * esto no se vuelva un estadoCuentaEmpresa(id) por fila (N+1).
+   */
   async resumenCobros() {
     const rows = await this.ds.query<any[]>(`
       SELECT
@@ -309,18 +360,15 @@ export class PagosSuscripcionService {
         s.estado AS "estadoSuscripcion",
         s.modalidad,
         s."diaCorte",
+        s."fechaInicio"::text AS "fechaInicio",
         to_char(s."fechaVencimiento", 'YYYY-MM-DD') AS "venceSuscripcion",
+        to_char(s."fechaFinPrueba", 'YYYY-MM-DD')   AS "finPrueba",
+        s."enPeriodoGracia",
+        to_char(s."fechaFinGracia", 'YYYY-MM-DD')   AS "finGracia",
+        s."motivoSuspension",
         s."abonoDisponible"::float AS "abonoDisponible",
         pc.precio::float AS "precioMensual",
-        COALESCE(SUM(
-          CASE
-            WHEN p.tipo = 'CARGO'                                                        THEN  p.monto
-            WHEN p.tipo IN ('TRANSFERENCIA','TARJETA','MANUAL') AND p.estado = 'CONFIRMADO' THEN -p.monto
-            WHEN p.tipo = 'CREDITO'                             AND p.estado = 'CONFIRMADO' THEN -p.monto
-            ELSE 0
-          END
-        ), 0)::float AS saldo,
-        COALESCE(cp."saldoCargos", 0)::float AS "saldoCargos",
+        COALESCE(cp.cargos, '[]'::json) AS cargos,
         MAX(CASE WHEN p.estado = 'CONFIRMADO' THEN p."confirmadoEn" END) AS "ultimoPago",
         COUNT(CASE WHEN p.tipo = 'TRANSFERENCIA' AND p.estado = 'PENDIENTE' THEN 1 END)::int AS "pendientesConfirmacion"
       FROM empresa e
@@ -328,42 +376,58 @@ export class PagosSuscripcionService {
       LEFT JOIN plan_configuracion pc ON pc.clave = s.plan::text AND pc.activo = true
       LEFT JOIN pagos_suscripcion p ON p."empresaId" = e.id AND p.estado != 'RECHAZADO'
       LEFT JOIN (
-        SELECT "empresaId", SUM(monto - "montoPagado") AS "saldoCargos"
+        SELECT "empresaId", json_agg(json_build_object(
+          'id', id, 'concepto', concepto, 'monto', monto, 'montoPagado', "montoPagado", 'creadoEn', "creadoEn"
+        )) AS cargos
         FROM pagos_suscripcion
         WHERE tipo = 'CARGO' AND estado != 'RECHAZADO' AND monto > "montoPagado"
         GROUP BY "empresaId"
       ) cp ON cp."empresaId" = e.id
       WHERE e."isActive" = true
       GROUP BY e.id, e.nombre, e.email, s.plan, s.estado, s.modalidad, s."diaCorte",
-               s."fechaVencimiento", s."abonoDisponible", pc.precio, cp."saldoCargos"
-      ORDER BY saldo DESC, e.nombre
+               s."fechaInicio", s."fechaVencimiento", s."fechaFinPrueba", s."enPeriodoGracia",
+               s."fechaFinGracia", s."motivoSuspension", s."abonoDisponible", pc.precio, cp.cargos
     `);
-    // Garantizar tipos JS correctos (PostgreSQL devuelve numeric/int como string vía ds.query)
-    return rows.map(r => {
-      const precioMensual = Number(r.precioMensual ?? 0);
-      // LEFT JOIN suscripciones: una empresa sin fila de suscripción no tiene
-      // nada que devengar todavía.
-      const deudaSuscripcion = (r.venceSuscripcion == null || r.estadoSuscripcion == null)
-        ? { periodosVencidos: 0, monto: 0, tope: false }
-        : calcularDeudaSuscripcion({
-            estado:           r.estadoSuscripcion,
-            fechaVencimiento: r.venceSuscripcion,
-            diaCorte:         Number(r.diaCorte ?? 1),
-            modalidad:        r.modalidad ?? 'mensual',
-            precioMensual,
-          });
-      this.reportarTopeDeudaSiAplica(r.empresaId, deudaSuscripcion);
+
+    const resultado = rows.map(r => {
+      const estadoCuenta = construirEstadoCuenta({
+        estado:            r.estadoSuscripcion ?? 'sin_suscripcion',
+        fechaInicio:       r.fechaInicio,
+        fechaVencimiento:  r.venceSuscripcion,
+        fechaFinPrueba:    r.finPrueba,
+        diaCorte:          Number(r.diaCorte ?? 1),
+        modalidad:         r.modalidad ?? 'mensual',
+        precioMensual:     Number(r.precioMensual ?? 0),
+        enPeriodoGracia:   r.enPeriodoGracia === true,
+        fechaFinGracia:    r.finGracia,
+        motivoSuspension:  r.motivoSuspension,
+        abonoDisponible:   Number(r.abonoDisponible ?? 0),
+        cargosPendientes:  (r.cargos ?? []).map((c: any) => ({
+          id: c.id, concepto: c.concepto, monto: Number(c.monto), montoPagado: Number(c.montoPagado), creadoEn: c.creadoEn,
+        })),
+      } satisfies EntradaEstadoCuenta);
+
+      this.reportarTopeDeudaSiAplica(r.empresaId, {
+        periodosVencidos: estadoCuenta.periodosVencidos,
+        monto:            estadoCuenta.saldoSuscripcion,
+        tope:             estadoCuenta.topeDeudaAlcanzado,
+      });
 
       return {
-        ...r,
-        saldo:                  Number(r.saldo                  ?? 0),
-        saldoCargos:            Number(r.saldoCargos            ?? 0),
-        saldoSuscripcion:       deudaSuscripcion.monto,
-        abonoDisponible:        Number(r.abonoDisponible         ?? 0),
-        pendientesConfirmacion: Number(r.pendientesConfirmacion  ?? 0),
-        precioMensual,
+        empresaId:              r.empresaId,
+        nombre:                 r.nombre,
+        email:                  r.email,
+        plan:                   r.plan,
+        precioMensual:          Number(r.precioMensual ?? 0),
+        ultimoPago:             r.ultimoPago,
+        pendientesConfirmacion: Number(r.pendientesConfirmacion ?? 0),
+        ...estadoCuenta,
       };
     });
+
+    // El orden lo decide saldoNeto (lo que de verdad debe, neto de abono) —
+    // antes ordenaba por el "saldo" ciego a cargos ya pagados.
+    return resultado.sort((a, b) => b.saldoNeto - a.saldoNeto || a.nombre.localeCompare(b.nombre));
   }
 
   /**
@@ -444,15 +508,20 @@ export class PagosSuscripcionService {
 
   /**
    * Persiste el resultado de calcularImputacion: liquida los cargos tocados,
-   * y actualiza el abono y (si avanzó algún período) la fecha/estado de la
-   * suscripción. Común a registrarPago y confirmarTransferencia — los dos
-   * caminos que confirman dinero real contra la cuenta de una empresa.
+   * deja en pagos_aplicaciones a qué cargo se aplicó CADA uno (pedido
+   * explícito: "muestra en el Historial a qué se aplicó cada pago" — antes
+   * se actualizaba montoPagado sin dejar ningún rastro de QUIÉN lo pagó), y
+   * actualiza el abono y (si avanzó algún período) la fecha/estado de la
+   * suscripción. Común a registrarPago, confirmarTransferencia y
+   * aplicarCredito — los tres caminos que confirman dinero real contra la
+   * cuenta de una empresa.
    */
   private async aplicarResultadoImputacion(
     manager: EntityManager,
     empresaId: number,
     sus: any | null,
     resultado: ResultadoImputacion,
+    pagoId: number,
   ): Promise<void> {
     for (const c of resultado.cargosLiquidados) {
       await manager.query(`
@@ -460,6 +529,10 @@ export class PagosSuscripcionService {
         SET "montoPagado" = "montoPagado" + $1
         WHERE id = $2
       `, [c.montoAplicado, c.cargoId]);
+
+      await manager.getRepository(PagoAplicacion).insert({
+        empresaId, pagoId, cargoId: c.cargoId, montoAplicado: c.montoAplicado,
+      });
     }
 
     if (!sus) return;
@@ -542,7 +615,7 @@ export class PagosSuscripcionService {
       const saved = await pagoRepo.save(pago);
 
       // ── 4. Liquidar cargos + avanzar vencimiento/abono ──────────────────────
-      await this.aplicarResultadoImputacion(manager, empresaId, sus, resultado);
+      await this.aplicarResultadoImputacion(manager, empresaId, sus, resultado, saved.id);
 
       this.logger.log(
         `[PAGO] Empresa #${empresaId} | Admin #${adminId} | RD$${dto.monto} (${dto.tipo}) | ` +
@@ -602,7 +675,7 @@ export class PagosSuscripcionService {
       });
 
       // ── Liquidar cargos + avanzar vencimiento/abono ──────────────────────────
-      await this.aplicarResultadoImputacion(manager, pago.empresaId, sus, resultado);
+      await this.aplicarResultadoImputacion(manager, pago.empresaId, sus, resultado, pagoId);
 
       this.logger.log(
         `[TRANSFERENCIA] Empresa #${pago.empresaId} | Admin #${adminId} | RD$${pago.monto} | ` +
@@ -712,12 +785,19 @@ export class PagosSuscripcionService {
   }
 
   /**
-   * Aplica un crédito contra un CARGO específico (`dto.cargoId`) o, si no
-   * viene, directo al abono general (`suscripciones.abonoDisponible`).
+   * Aplica un crédito. Imputación obligatoria (ningún pago/crédito queda
+   * suelto sin aplicar — pedido explícito):
    *
-   * Si el crédito es mayor que el saldo del cargo, el excedente va al abono
-   * general — nunca se pierde, igual que el remanente de un pago (ver
-   * imputacion-pago.util.ts).
+   *   - Con `dto.cargoId`: el admin ELIGIÓ a qué cargo va, a diferencia del
+   *     orden automático — se aplica solo a ese cargo (hasta su saldo), y el
+   *     excedente va al abono general. No avanza períodos: es una elección
+   *     puntual, no "lo más antiguo que se deba".
+   *   - Sin `cargoId`: mismo motor que un pago real (calcularImputacion /
+   *     aplicarResultadoImputacion — cargos pendientes FIFO → períodos
+   *     vencidos → abono). Antes esto iba siempre directo al abono general
+   *     aunque hubiera cargos o suscripción vencida esperando, que es
+   *     exactamente el patrón que dejó un crédito "parqueado" sin tocar la
+   *     deuda nueva (auditoría 2026-10-06, empresa MOTO REPUESTO MANOLIN SRL).
    */
   async aplicarCredito(empresaId: number, dto: AplicarCreditoDto, adminId: number) {
     return this.ds.transaction(async (manager) => {
@@ -735,8 +815,6 @@ export class PagosSuscripcionService {
       });
       const saved = await pagoRepo.save(pago);
 
-      let montoRestante = redondearMoneda(Number(dto.monto));
-
       if (dto.cargoId) {
         const [cargo] = await manager.query(`
           SELECT id, monto, "montoPagado" FROM pagos_suscripcion
@@ -744,23 +822,31 @@ export class PagosSuscripcionService {
         `, [dto.cargoId, empresaId]);
         if (!cargo) throw new NotFoundException(`Cargo #${dto.cargoId} no encontrado`);
 
-        const saldo   = Math.max(0, redondearMoneda(Number(cargo.monto) - Number(cargo.montoPagado)));
-        const aplicar  = redondearMoneda(Math.min(montoRestante, saldo));
+        let montoRestante = redondearMoneda(Number(dto.monto));
+        const saldo  = Math.max(0, redondearMoneda(Number(cargo.monto) - Number(cargo.montoPagado)));
+        const aplicar = redondearMoneda(Math.min(montoRestante, saldo));
         if (aplicar > 0) {
           await manager.query(`
             UPDATE pagos_suscripcion SET "montoPagado" = "montoPagado" + $1 WHERE id = $2
           `, [aplicar, dto.cargoId]);
+          await manager.getRepository(PagoAplicacion).insert({
+            empresaId, pagoId: saved.id, cargoId: dto.cargoId, montoAplicado: aplicar,
+          });
           montoRestante = redondearMoneda(montoRestante - aplicar);
         }
+
+        if (montoRestante > 0) {
+          await manager.query(`
+            UPDATE suscripciones SET "abonoDisponible" = "abonoDisponible" + $1 WHERE "empresaId" = $2
+          `, [montoRestante, empresaId]);
+        }
+
+        return saved;
       }
 
-      if (montoRestante > 0) {
-        await manager.query(`
-          UPDATE suscripciones
-          SET "abonoDisponible" = "abonoDisponible" + $1
-          WHERE "empresaId" = $2
-        `, [montoRestante, empresaId]);
-      }
+      // Sin cargo elegido: mismo orden automático que un pago real.
+      const { sus, resultado } = await this.calcularImputacion(empresaId, Number(dto.monto), null, manager);
+      await this.aplicarResultadoImputacion(manager, empresaId, sus, resultado, saved.id);
 
       return saved;
     });
@@ -774,12 +860,13 @@ export class PagosSuscripcionService {
     `, [empresaId]);
     if (!sus) throw new NotFoundException('Empresa no encontrada');
 
-    const fechaEfectivaRec = sus.estado === 'prueba'
-      ? (sus.fechaFinPrueba ?? sus.fechaVencimiento)
-      : sus.fechaVencimiento;
+    // diasRestantes en hora RD, misma fórmula que Mi Suscripción y el panel
+    // de Cobros — antes esto tenía su propia resta con new Date().getTime(),
+    // sensible a la hora exacta del cron en vez del día de calendario en RD.
+    const ec = await this.estadoCuentaEmpresa(empresaId);
     await this.enviarEmailRecordatorio(
       sus.email, sus.nombre, sus.plan,
-      Math.ceil((new Date(fechaEfectivaRec).getTime() - Date.now()) / 86400000),
+      ec?.diasRestantes ?? 0,
     );
     return { ok: true, mensaje: `Recordatorio enviado a ${sus.email}` };
   }
@@ -798,9 +885,8 @@ export class PagosSuscripcionService {
     const rows = await this.pagoRepo.find({ where: { empresaId }, order: { creadoEn: 'DESC' } });
     // montoPagado solo tiene sentido en filas tipo=CARGO — lo usa el selector
     // de "Crédito dirigido a un cargo" del panel (saldoPendiente = monto - montoPagado).
-    return this.conComprobanteResuelto(
-      rows.map(r => ({ ...r, monto: Number(r.monto ?? 0), montoPagado: Number(r.montoPagado ?? 0) })),
-    );
+    const normalizadas = rows.map(r => ({ ...r, monto: Number(r.monto ?? 0), montoPagado: Number(r.montoPagado ?? 0) }));
+    return this.conComprobanteResuelto(await this.conAplicacionesResueltas(normalizadas));
   }
 
   // ──────────────────────────────────────────────────────────────────────────

@@ -43,7 +43,7 @@ function montar(opts: { selloFalla?: boolean; datosFallan?: string } = {}) {
   };
 
   const svc = new PagosSuscripcionService(
-    repoFalso as any, {} as any, ds, {} as any, {} as any, {} as any, cuotaEcf,
+    repoFalso as any, {} as any, {} as any, ds, {} as any, {} as any, {} as any, cuotaEcf,
   );
   return { svc, guardados, sellados, revertida: () => transaccionRevertida };
 }

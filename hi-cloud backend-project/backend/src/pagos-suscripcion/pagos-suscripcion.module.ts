@@ -2,6 +2,7 @@ import { Module }               from '@nestjs/common';
 import { TypeOrmModule }        from '@nestjs/typeorm';
 import { PagoSuscripcion }      from './entities/pago-suscripcion.entity';
 import { ConfiguracionBancaria } from './entities/configuracion-bancaria.entity';
+import { PagoAplicacion }       from './entities/pago-aplicacion.entity';
 import { PagosSuscripcionService } from './pagos-suscripcion.service';
 import {
   PagosSuscripcionController,
@@ -15,7 +16,7 @@ import { SuscripcionesModule }  from '../suscripciones/suscripciones.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([PagoSuscripcion, ConfiguracionBancaria]),
+    TypeOrmModule.forFeature([PagoSuscripcion, ConfiguracionBancaria, PagoAplicacion]),
     NotificacionesModule,
     TenantModule,
     S3Module,

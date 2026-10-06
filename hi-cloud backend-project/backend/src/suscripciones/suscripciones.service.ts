@@ -12,6 +12,7 @@ import { SolicitudCambioPlan, EstadoSolicitud } from './entities/solicitud-cambi
 import { SuscripcionAuditoria, AccionAuditoria } from './entities/suscripcion-auditoria.entity';
 import { fechaHoyRD, fechaISOaDO } from '../common/utils/fecha-local.util';
 import { ciclosPorCobrar } from './ciclos-por-cobrar.util';
+import { construirEstadoFechas } from '../pagos-suscripcion/estado-cuenta-empresa.util';
 
 /** Jerarquía de planes activos — mayor número = plan superior */
 const PLAN_TIER: Record<string, number> = {
@@ -77,6 +78,7 @@ export class SuscripcionesService implements OnModuleInit {
     info: typeof PLAN_LIMITES[PlanTipo];
     diasRestantes: number;
     diasGraciaRestantes: number;
+    saldoSuscripcion: number;
   }> {
     let s = await this.repo.findOne({ where: { empresaId } });
     if (!s) {
@@ -92,37 +94,40 @@ export class SuscripcionesService implements OnModuleInit {
         diaCorte:        fin.getDate(),
       }));
     }
-    const hoy = new Date();
-    const fechaRef = s.estado === SuscripcionEstado.PRUEBA
-      ? new Date(s.fechaFinPrueba ?? s.fechaVencimiento)
-      : new Date(s.fechaVencimiento);
-    const diasRestantes = Math.ceil((fechaRef.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
 
-    const diasGraciaRestantes = s.enPeriodoGracia && s.fechaFinGracia
-      ? Math.max(0, Math.ceil((new Date(s.fechaFinGracia).getTime() - hoy.getTime()) / 86_400_000))
-      : 0;
+    const planConfig = await this.planConfigRepo.findOne({ where: { clave: s.plan, activo: true } });
 
-    // Si la gracia venció pero el cron aún no corrió, derivamos el estado como suspendida en tiempo real
-    const estadoEfectivo: SuscripcionEstado =
-      s.estado === SuscripcionEstado.ACTIVA &&
-      s.enPeriodoGracia &&
-      s.fechaFinGracia &&
-      new Date(s.fechaFinGracia) < hoy
-        ? SuscripcionEstado.SUSPENDIDA
-        : s.estado;
-
-    const motivoEfectivo: string | undefined =
-      estadoEfectivo === SuscripcionEstado.SUSPENDIDA && s.estado !== SuscripcionEstado.SUSPENDIDA
-        ? 'GRACIA_VENCIDA'
-        : (s.motivoSuspension ?? undefined);
+    // Fechas/días/gracia/estado efectivo: misma fórmula que Mi Suscripción y
+    // el panel de Cobros — ver estado-cuenta-empresa.util.ts. Antes esto
+    // tenía su propia copia de diasRestantes/diasGraciaRestantes, y
+    // devolvía fechaVencimiento/fechaFinPrueba como Date crudo (bug de
+    // fecha: se serializa con 'Z' y el frontend lo muestra un día antes en
+    // RD — ver PlanBanner/SuspensionScreen, que leen de aquí).
+    const fechas = construirEstadoFechas({
+      estado:            s.estado,
+      fechaInicio:       s.fechaInicio,
+      fechaVencimiento:  s.fechaVencimiento,
+      fechaFinPrueba:    s.fechaFinPrueba,
+      diaCorte:          s.diaCorte,
+      modalidad:         s.modalidad ?? 'mensual',
+      precioMensual:     Number(planConfig?.precio ?? 0),
+      enPeriodoGracia:   s.enPeriodoGracia === true,
+      fechaFinGracia:    s.fechaFinGracia,
+      motivoSuspension:  s.motivoSuspension,
+    });
 
     return {
       ...s,
-      estado:           estadoEfectivo,
-      motivoSuspension: motivoEfectivo,
-      info: PLAN_LIMITES[s.plan] ?? PLAN_LIMITES[PlanTipo.EMPRENDEDOR],
-      diasRestantes,
-      diasGraciaRestantes,
+      estado:            fechas.estado as SuscripcionEstado,
+      motivoSuspension:  fechas.motivoSuspension,
+      fechaInicio:       fechas.fechaInicio as any,
+      fechaVencimiento:  fechas.fechaVencimiento as any,
+      fechaFinPrueba:    fechas.fechaFinPrueba as any,
+      fechaFinGracia:    fechas.fechaFinGracia as any,
+      info:              PLAN_LIMITES[s.plan] ?? PLAN_LIMITES[PlanTipo.EMPRENDEDOR],
+      diasRestantes:     fechas.diasRestantes,
+      diasGraciaRestantes: fechas.diasGraciaRestantes,
+      saldoSuscripcion:  fechas.saldoSuscripcion,
     };
   }
 

@@ -13,7 +13,7 @@ import { PagosSuscripcionService } from './pagos-suscripcion.service';
  */
 describe('PagosSuscripcionService — conComprobanteResuelto()', () => {
   const svc = (s3: any) =>
-    new PagosSuscripcionService({} as any, {} as any, {} as any, s3, {} as any, {} as any, {} as any);
+    new PagosSuscripcionService({} as any, {} as any, {} as any, {} as any, s3, {} as any, {} as any, {} as any);
 
   it('con comprobanteKey (S3): firma una URL de 15 min y nunca expone la key cruda', async () => {
     const getSignedUrl = jest.fn(async (key: string, expiresIn: number) =>
@@ -39,7 +39,14 @@ describe('PagosSuscripcionService — conComprobanteResuelto()', () => {
   it('nunca guarda una URL pública de S3 — subirComprobante() usa uploadKey(), no upload()', () => {
     const fs = require('fs') as typeof import('fs');
     const src = fs.readFileSync(require.resolve('./pagos-suscripcion.service.ts'), 'utf8');
-    const bloque = src.slice(src.indexOf('async subirComprobante('), src.indexOf('private async'));
+    const inicio = src.indexOf('async subirComprobante(');
+    expect(inicio).toBeGreaterThan(-1);
+    // El siguiente método DESPUÉS de subirComprobante(), no el primer
+    // "private async" de todo el archivo — con otros métodos privados
+    // declarados antes (ver estado-cuenta-empresa / obtenerCargosPendientes),
+    // ese índice podía caer ANTES de `inicio` y dejar el slice vacío.
+    const fin = src.indexOf('private async', inicio);
+    const bloque = src.slice(inicio, fin);
     expect(bloque).toContain('this.s3.uploadKey(');
     expect(bloque).not.toMatch(/comprobanteUrl\s*=\s*await this\.s3\.upload\(/);
   });
