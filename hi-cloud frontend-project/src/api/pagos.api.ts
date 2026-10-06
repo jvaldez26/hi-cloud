@@ -2,6 +2,16 @@ import { apiClient } from './client';
 
 // ── Tipos ──────────────────────────────────────────────────────────────────────
 
+/** Un cargo con saldo pendiente — parte del estado de cuenta (ver estado-cuenta-empresa.util.ts, backend). */
+export interface CargoPendienteEstadoCuenta {
+  id:             number;
+  concepto:       string;
+  monto:          number;
+  montoPagado:    number;
+  saldoPendiente: number;
+  creadoEn:       string | null;
+}
+
 export interface ResumenSuscripcion {
   plan:             string;
   estado:           string;
@@ -12,10 +22,28 @@ export interface ResumenSuscripcion {
   diasRestantes:    number;
   diasTotales:      number;
   porcentajeUsado:  number;
-  saldo:            number;
+  /**
+   * Saldo neto real: totalAdeudado − abonoDisponible. Positivo = debe esa
+   * cantidad; negativo = crédito a favor REAL (los pagos superaron lo
+   * adeudado); cero = al día. Reemplaza al viejo `saldo` (un acumulado
+   * histórico del ledger completo que ignoraba deuda nueva — el bug real:
+   * mostraba "Crédito disponible" con deuda sin pagar, ver auditoría
+   * 2026-10-06, empresa MOTO REPUESTO MANOLIN SRL).
+   */
+  saldoNeto:        number;
+  /** Cargos por servicios pendientes (activación e-CF, excedente, etc.) — solo el saldo NO pagado de cada uno. */
+  saldoCargos:      number;
   /** Deuda por períodos vencidos — ver deuda-suscripcion.util.ts. RD$0.00 si
    *  está al día. No incluye cargos por servicios, eso viaja aparte. */
   saldoSuscripcion: number;
+  /** saldoCargos + saldoSuscripcion — lo que se debe antes de restar el abono. */
+  totalAdeudado:    number;
+  /** Abono/crédito ya reservado (suscripciones.abonoDisponible) — lo único que cuenta como crédito real. */
+  abonoDisponible:  number;
+  cargosPendientes: CargoPendienteEstadoCuenta[];
+  enPeriodoGracia:     boolean;
+  fechaFinGracia:      string | null;
+  diasGraciaRestantes: number;
 }
 
 /** Un cargo (u otro pendiente) que un pago liquidó, total o parcialmente. */
@@ -93,6 +121,13 @@ export interface PagoSuscripcion {
   preview?:           PreviewPago | null;
   /** Solo en la respuesta de registrarPago: el desglose real aplicado. */
   imputacion?:        PreviewPago;
+  /**
+   * A qué cargo(s) se aplicó este pago/crédito (tipo != 'CARGO') —
+   * "Historial" (pedido: "muestra a qué se aplicó cada pago"). Vacío en
+   * filas tipo=CARGO, o si el pago quedó íntegro como abono/avance de
+   * períodos sin tocar ningún cargo.
+   */
+  aplicadoA?: Array<{ cargoId: number; concepto: string; monto: number }>;
 }
 
 export interface ConfiguracionBancaria {
@@ -123,24 +158,37 @@ export interface ExcedenteEcf {
   monto:      number;
 }
 
+/**
+ * Resumen por empresa del panel de Cobros — el mismo estado de cuenta que
+ * getMiResumen() (ver estado-cuenta-empresa.util.ts, backend): misma forma,
+ * mismos nombres de campo, para que no haya dos vocabularios del mismo
+ * número en dos pantallas.
+ */
 export interface ResumenCobros {
-  empresaId:              number;
-  nombre:                 string;
-  email:                  string;
-  plan:                   string;
-  estadoSuscripcion:      string;
-  modalidad:              string;
-  diaCorte:               number;
-  venceSuscripcion:       string;
-  /** Saldo global anterior — cargos y pagos/créditos confirmados, mezclados.
-   *  Ver saldoCargos / saldoSuscripcion para el desglose real. */
-  saldo:                  number;
-  /** Cargos por servicios pendientes (activación e-CF, excedente, etc.). */
-  saldoCargos:            number;
+  empresaId:  number;
+  nombre:     string;
+  email:      string;
+  plan:       string;
+  estado:     string;
+  motivoSuspension?: string;
+  fechaInicio:      string | null;
+  fechaVencimiento: string | null;
+  fechaFinPrueba:   string | null;
+  diasRestantes:    number;
+  enPeriodoGracia:     boolean;
+  fechaFinGracia:      string | null;
+  diasGraciaRestantes: number;
+  cargosPendientes: CargoPendienteEstadoCuenta[];
+  /** Cargos por servicios pendientes (activación e-CF, excedente, etc.) — solo el saldo NO pagado de cada uno. */
+  saldoCargos:      number;
   /** Deuda por períodos de plan vencidos — ver deuda-suscripcion.util.ts. */
-  saldoSuscripcion:       number;
-  /** Abono/crédito acumulado que no se ha consumido todavía. */
-  abonoDisponible:        number;
+  saldoSuscripcion: number;
+  /** saldoCargos + saldoSuscripcion — lo que se debe antes de restar el abono. */
+  totalAdeudado:    number;
+  /** Abono/crédito ya reservado — lo único que cuenta como crédito real. */
+  abonoDisponible:  number;
+  /** totalAdeudado − abonoDisponible. Positivo = debe; negativo = crédito a favor real; cero = al día. */
+  saldoNeto:        number;
   precioMensual:          number;
   ultimoPago:             string | null;
   pendientesConfirmacion: number;

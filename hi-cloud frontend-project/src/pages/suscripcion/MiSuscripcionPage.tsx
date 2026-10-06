@@ -129,6 +129,23 @@ export default function MiSuscripcionPage() {
       ),
     },
     {
+      title: 'Aplicado a',
+      dataIndex: 'aplicadoA',
+      width: 160,
+      render: (aplicadoA: PagoSuscripcion['aplicadoA']) => {
+        if (!aplicadoA || aplicadoA.length === 0) return <Text type="secondary" style={{ fontSize: 12 }}>—</Text>;
+        return (
+          <Space direction="vertical" size={0}>
+            {aplicadoA.map(a => (
+              <Tooltip key={a.cargoId} title={a.concepto}>
+                <Text style={{ fontSize: 12 }}>{a.concepto} ({fmtDop(a.monto)})</Text>
+              </Tooltip>
+            ))}
+          </Space>
+        );
+      },
+    },
+    {
       title: '',
       key: 'ref',
       width: 80,
@@ -144,7 +161,7 @@ export default function MiSuscripcionPage() {
     },
   ];
 
-  const saldo = resumen?.saldo ?? 0;
+  const saldo = resumen?.saldoNeto ?? 0;
 
   /**
    * Lo que el modal de comprobante propone como monto transferido.
@@ -267,10 +284,11 @@ export default function MiSuscripcionPage() {
                               showIcon
                               style={{ marginTop: 16 }}
                               message={(() => {
-                                const fechaStr = resumen.fechaVencimiento?.slice(0, 10);
-                                const diasVencida = fechaStr
-                                  ? Math.max(1, Math.ceil((Date.now() - new Date(fechaStr + 'T12:00:00').getTime()) / 86400000))
-                                  : 1;
+                                // diasRestantes ya viene calculado en hora RD desde el
+                                // backend (estado-cuenta-empresa.util.ts) — nunca se
+                                // recalcula en el navegador, que no sabe en qué zona
+                                // horaria está el dispositivo de quien lo ve.
+                                const diasVencida = Math.max(1, -resumen.diasRestantes);
                                 return `Vencida hace ${diasVencida} ${diasVencida === 1 ? 'día' : 'días'}. Tu último pago cubrió hasta ${fmtDate(resumen.fechaVencimiento)}.`;
                               })()}
                             />
@@ -280,7 +298,10 @@ export default function MiSuscripcionPage() {
                     </Card>
                   </Col>
 
-                  {/* Saldo */}
+                  {/* Saldo — saldoNeto = (cargos + suscripción vencida) − abono real.
+                      Positivo = debe; negativo = los pagos superaron lo
+                      adeudado (crédito REAL, no un acumulado histórico que
+                      ignora deuda nueva — ver estado-cuenta-empresa.util.ts). */}
                   <Col xs={24} md={10}>
                     <Card title="Balance">
                       <div style={{ textAlign: 'center', padding: '16px 0' }}>
@@ -299,6 +320,34 @@ export default function MiSuscripcionPage() {
                           <Tag color="green" style={{ marginTop: 8 }}>💳 Crédito disponible: {fmtDop(Math.abs(saldo))}</Tag>
                         ) : (
                           <Tag color="green" style={{ marginTop: 8 }}>✅ Al día</Tag>
+                        )}
+
+                        {/* Desglose — solo tiene sentido mostrarlo cuando hay deuda real */}
+                        {saldo > 0 && resumen && (resumen.saldoCargos > 0 || resumen.saldoSuscripcion > 0 || resumen.abonoDisponible > 0) && (
+                          <div style={{
+                            marginTop: 12, textAlign: 'left', fontSize: 12,
+                            background: '#fafafa', border: '1px solid #f0f0f0',
+                            borderRadius: 8, padding: '8px 12px',
+                          }}>
+                            {resumen.saldoSuscripcion > 0 && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
+                                <Text type="secondary">Suscripción vencida</Text>
+                                <Text>{fmtDop(resumen.saldoSuscripcion)}</Text>
+                              </div>
+                            )}
+                            {resumen.saldoCargos > 0 && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
+                                <Text type="secondary">Cargos por servicios</Text>
+                                <Text>{fmtDop(resumen.saldoCargos)}</Text>
+                              </div>
+                            )}
+                            {resumen.abonoDisponible > 0 && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
+                                <Text type="secondary">Abono a favor</Text>
+                                <Text style={{ color: '#10b981' }}>−{fmtDop(resumen.abonoDisponible)}</Text>
+                              </div>
+                            )}
+                          </div>
                         )}
                       </div>
 
@@ -393,14 +442,13 @@ export default function MiSuscripcionPage() {
                     size="small"
                     pagination={{ pageSize: 10, showSizeChanger: false }}
                     scroll={{ x: 'max-content' }}
-                    summary={data => {
-                      const pendiente = data.reduce((acc, mov) => {
-                        const monto = Number(mov.monto ?? 0);
-                        if (mov.tipo === 'CARGO') return acc + monto;
-                        if (['TRANSFERENCIA','MANUAL','TARJETA','CREDITO'].includes(mov.tipo) && mov.estado === 'CONFIRMADO')
-                          return acc - monto;
-                        return acc;
-                      }, 0);
+                    summary={() => {
+                      // El saldo real sale de resumen.saldoNeto (estado de cuenta
+                      // compartido) — nunca se recalcula sumando filas aquí: antes
+                      // esto sumaba solo la PÁGINA visible de la tabla (10 filas),
+                      // no el historial completo, y con una fórmula distinta a la
+                      // que usa la tarjeta Balance de arriba.
+                      const pendiente = saldo;
                       return (
                         <Table.Summary.Row>
                           <Table.Summary.Cell index={0} colSpan={3}>

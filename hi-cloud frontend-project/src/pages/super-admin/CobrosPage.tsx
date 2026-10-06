@@ -2,7 +2,7 @@
 import {
   Table, Card, Row, Col, Typography, Tag, Button, Space,
   Modal, Form, Input, InputNumber, Select, message, Popconfirm,
-  Tabs, Badge, Descriptions, Image, Statistic, Alert, Checkbox, DatePicker,
+  Tabs, Badge, Descriptions, Image, Statistic, Alert, Checkbox, DatePicker, Tooltip,
 } from 'antd';
 import {
   CheckOutlined, CloseOutlined, DollarOutlined,
@@ -139,8 +139,8 @@ export default function CobrosPage() {
     return resumen.filter(r => {
       const matchBusq = !q || r.nombre?.toLowerCase().includes(q);
       const matchPlan = !filtroPlanResumen || r.plan === filtroPlanResumen;
-      const matchEst  = !filtroEstadoSusResumen || r.estadoSuscripcion === filtroEstadoSusResumen;
-      const matchSaldo = !soloConSaldo || r.saldo > 0;
+      const matchEst  = !filtroEstadoSusResumen || r.estado === filtroEstadoSusResumen;
+      const matchSaldo = !soloConSaldo || r.saldoNeto > 0;
       return matchBusq && matchPlan && matchEst && matchSaldo;
     });
   }, [resumen, searchResumen, filtroPlanResumen, filtroEstadoSusResumen, soloConSaldo]);
@@ -380,9 +380,9 @@ export default function CobrosPage() {
   const COLS_RESUMEN = [
     { key: 'nombre',                 label: 'Empresa'     },
     { key: 'plan',                   label: 'Plan'        },
-    { key: 'estadoSuscripcion',      label: 'Suscripción' },
-    { key: 'venceSuscripcion',       label: 'Vencimiento' },
-    { key: 'saldo',                  label: 'Saldo'       },
+    { key: 'estado',                 label: 'Suscripción' },
+    { key: 'fechaVencimiento',       label: 'Vencimiento' },
+    { key: 'saldoNeto',              label: 'Saldo'       },
     { key: 'ultimoPago',             label: 'Último pago' },
     { key: 'pendientesConfirmacion', label: 'Pendientes'  },
   ];
@@ -454,15 +454,15 @@ export default function CobrosPage() {
     },
     {
       title: 'Suscripción',
-      dataIndex: 'estadoSuscripcion',
-      key: 'estadoSuscripcion',
+      dataIndex: 'estado',
+      key: 'estado',
       width: 110,
       render: (v: string) => <Tag color={ESTADO_COLOR[v] ?? 'default'}>{(v ?? '').toUpperCase()}</Tag>,
     },
     {
       title: 'Vencimiento',
-      dataIndex: 'venceSuscripcion',
-      key: 'venceSuscripcion',
+      dataIndex: 'fechaVencimiento',
+      key: 'fechaVencimiento',
       width: 130,
       render: (v: string) => {
         // Un vencimiento es una fecha de calendario. Restarle Date.now() a
@@ -486,8 +486,8 @@ export default function CobrosPage() {
     },
     {
       title: 'Saldo',
-      dataIndex: 'saldo',
-      key: 'saldo',
+      dataIndex: 'saldoNeto',
+      key: 'saldoNeto',
       width: 150,
       align: 'right' as const,
       // Desglosado: cargos por servicios y deuda de suscripción son cosas
@@ -665,6 +665,21 @@ export default function CobrosPage() {
       ),
     },
     {
+      title: 'Aplicado a', dataIndex: 'aplicadoA', key: 'aplicadoA', width: 180,
+      render: (aplicadoA: PagoSuscripcion['aplicadoA']) => {
+        if (!aplicadoA || aplicadoA.length === 0) return <Text type="secondary" style={{ fontSize: 12 }}>—</Text>;
+        return (
+          <Space direction="vertical" size={0}>
+            {aplicadoA.map(a => (
+              <Tooltip key={a.cargoId} title={`${a.concepto} (cargo #${a.cargoId})`}>
+                <Text style={{ fontSize: 12 }}>{a.concepto} ({fmtDop(a.monto)})</Text>
+              </Tooltip>
+            ))}
+          </Space>
+        );
+      },
+    },
+    {
       // Una vez confirmado, el pago sale de "Comprobantes pendientes" (esa
       // tabla filtra estado=PENDIENTE) y el Historial queda como el único
       // lugar para volver a verlo — antes no tenía esta columna, así que
@@ -729,7 +744,7 @@ export default function CobrosPage() {
           <Card size="small">
             <Statistic
               title="Empresas activas"
-              value={resumen.filter(r => r.estadoSuscripcion === 'activa').length}
+              value={resumen.filter(r => r.estado === 'activa').length}
               valueStyle={{ color: '#10b981' }}
             />
           </Card>
@@ -740,7 +755,7 @@ export default function CobrosPage() {
               title="MRR estimado"
               prefix="RD$"
               value={resumen
-                .filter(r => r.estadoSuscripcion === 'activa')
+                .filter(r => r.estado === 'activa')
                 .reduce((s, r) => s + (r.precioMensual ?? 0), 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               valueStyle={{ color: '#7c3aed' }}
             />
@@ -972,7 +987,7 @@ export default function CobrosPage() {
                 </Col>
                 <Col span={12}>
                   <Text type="secondary" style={{ fontSize: 11 }}>VENCIMIENTO</Text>
-                  <div style={{ fontSize: 13 }}>{fmtDate(row.venceSuscripcion)}</div>
+                  <div style={{ fontSize: 13 }}>{fmtDate(row.fechaVencimiento)}</div>
                 </Col>
                 <Col span={24} style={{ marginTop: 6 }}>
                   <Text type="secondary" style={{ fontSize: 11 }}>SALDO PENDIENTE</Text>
@@ -1112,7 +1127,7 @@ export default function CobrosPage() {
           <Form.Item name="cargoId" label="Aplicar contra un cargo específico (opcional)">
             <Select
               allowClear
-              placeholder="Sin seleccionar: va directo al abono general"
+              placeholder="Sin seleccionar: se aplica a lo más antiguo que se deba (cargos, luego suscripción)"
               options={cargosPendientesCredito.map(c => ({
                 value: c.id,
                 label: `${c.concepto} — ${fmtDop(c.saldoPendiente)} pendiente`,

@@ -119,7 +119,7 @@ export default function SuspensionScreen({
     queryFn:  pagosApi.resumen,
     retry: false,
   });
-  const saldo = resumenPago?.saldo ?? 0;
+  const saldo = resumenPago?.saldoNeto ?? 0;
 
   const solicitarMut = useMutation({
     mutationFn: (vals: { planSolicitado: string; modalidad: string; comentario?: string }) =>
