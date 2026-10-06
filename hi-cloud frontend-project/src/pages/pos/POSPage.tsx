@@ -11146,6 +11146,19 @@ export default function POSPage() {
       } catch (emitErr: any) {
         const emitMsg = emitErr?.response?.data?.message ?? emitErr?.message ?? String(emitErr);
         console.error('[POS] emitirPos falló:', emitMsg, emitErr);
+
+        // Venta a crédito sin autorización de supervisor (el interceptor
+        // genérico de api/client.ts ya intentó abrir el modal y reintentar
+        // ANTES de llegar aquí — solo se ve este error si el cajero canceló
+        // esa autorización, o si el reintento también falló). Esto NO es "la
+        // venta se registró pero falló el comprobante fiscal" — la factura
+        // sigue en BORRADOR, nunca llegó a EMITIDA. Tratarlo como lo mismo
+        // (caso real FAC-1623, 2026-10-06) dejaba a la cajera creyendo que la
+        // venta estaba hecha cuando en realidad no se completó nada.
+        if (emitErr?.response?.data?.supervisorClaveRequerida) {
+          return { factura, ecfResult: null, _requiereSupervisor: true, _emisionError: emitMsg };
+        }
+
         setEcfStatus('pendiente');
         // Observabilidad: la VENTA sí se cobró (la factura ya se creó) — solo falló la
         // emisión del e-CF. Por eso NO se relanza: un rethrow saltaría el onSuccess
@@ -11172,6 +11185,24 @@ export default function POSPage() {
     onSuccess: (result) => {
       const factura = (result as any)?.factura ?? result;
       const ecfResult = (result as any)?.ecfResult;
+
+      // ── Sin autorización de supervisor: la venta NO se completó, sigue en BORRADOR ──
+      if ((result as any)?._requiereSupervisor) {
+        if (printWinRef.current && !printWinRef.current.closed) {
+          try { printWinRef.current.close(); } catch { /* noop */ }
+          printWinRef.current = null;
+          autoYaPrintedRef.current = false;
+        }
+        const folio = factura?.folio ?? 'sin folio';
+        Modal.warning({
+          title: 'Venta NO completada — falta autorización de supervisor',
+          content: `La venta a crédito (${folio}) quedó en BORRADOR: no se autorizó el modo supervisor. Presiona "Confirmar cobro" de nuevo y autoriza cuando se te pida, o emítela después desde el panel de Facturas.`,
+          okText: 'Entendido',
+        });
+        qc.invalidateQueries({ queryKey: ['pos-panel', 'facturas'] });
+        qc.refetchQueries({ queryKey: ['pos-panel', 'facturas'] });
+        return;
+      }
 
       // ── Emisión e-CF falló: aviso obligatorio, sin recibo fiscal ─────────────
       if ((result as any)?._emisionFallo) {

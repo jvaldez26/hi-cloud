@@ -176,40 +176,105 @@ export class FacturasService {
     return fila ?? { requerido: false, modo: 'cada_vez' };
   }
 
+  /**
+   * ¿Hay una sesión de modo supervisor activa AHORA MISMO para este cajero?
+   * Igual que tieneSupervisorActivo(), pero devuelve el id de la fila (para
+   * poder dejarla como evidencia en la factura) en vez de solo un booleano.
+   */
+  private async sesionSupervisorActivaId(cajeroId: number, empresaId: number): Promise<number | null> {
+    const [row] = await this.dataSource.query<{ id: number }[]>(`
+      SELECT act.id
+      FROM pos_supervisor_log act
+      WHERE act."cajeroId" = $1 AND act."empresaId" = $2 AND act."sessionId" IS NULL
+        AND act."createdAt" >= NOW() - INTERVAL '8 hours'
+        AND NOT EXISTS (SELECT 1 FROM pos_supervisor_log c WHERE c."sessionId" = act.id)
+      LIMIT 1
+    `, [cajeroId, empresaId]);
+    return row?.id ?? null;
+  }
+
   private async validarAutorizacionVentaCredito(
+    factura: { id: number; supervisorSessionId?: number | null; supervisorToken?: string | null },
     empresaId: number,
-    cajeroId: number,
+    cajeroCreadorId: number,
+    cajeroEmisorId: number,
     supervisorSessionId: number | null | undefined,
     supervisorToken?: string | null,
+    /** Token fresco de ESTA petición de emitir (header x-supervisor-token) —
+     *  lo manda el cliente HTTP tras autorizar en el modal, mismo mecanismo
+     *  genérico que RequiereSupervisor (ver api/client.ts). */
+    supervisorTokenFresco?: string | null,
   ): Promise<void> {
     const { requerido, modo } = await this.empresaExigeSupervisorParaCredito(empresaId);
     if (!requerido) return;
-    const noAutorizada = () => new ForbiddenException('Esta venta a crédito requiere autorización de un supervisor.');
+    // supervisorClaveRequerida/supervisorModo: SIN esto el interceptor
+    // genérico del frontend (api/client.ts) no reconoce este 403 como "pide
+    // autorización de supervisor" y lo deja caer al mensaje genérico "No
+    // tienes permisos para esta acción" — la cajera nunca ve el modal (caso
+    // real: FAC-1623, 2026-10-06).
+    const noAutorizada = () => new ForbiddenException({
+      message: modo === 'cada_vez'
+        ? 'Esta venta a crédito requiere una autorización de supervisor nueva.'
+        : 'Esta venta a crédito requiere modo supervisor activo.',
+      supervisorClaveRequerida: 'venta_credito',
+      supervisorModo: modo,
+    });
 
     if (modo === 'sesion') {
-      if (!supervisorSessionId) throw noAutorizada();
-      const [row] = await this.dataSource.query<{ id: number }[]>(`
-        SELECT id FROM pos_supervisor_log
-        WHERE id = $1 AND "empresaId" = $2 AND "cajeroId" = $3 AND "sessionId" IS NULL
-          AND "createdAt" >= NOW() - INTERVAL '8 hours'
-        LIMIT 1
-      `, [supervisorSessionId, empresaId, cajeroId]);
-      if (!row) throw noAutorizada();
-      return;
+      // 1) La sesión capturada AL CREAR el borrador (mismo cajero que la creó) sigue vigente.
+      if (supervisorSessionId) {
+        const [row] = await this.dataSource.query<{ id: number }[]>(`
+          SELECT id FROM pos_supervisor_log
+          WHERE id = $1 AND "empresaId" = $2 AND "cajeroId" = $3 AND "sessionId" IS NULL
+            AND "createdAt" >= NOW() - INTERVAL '8 hours'
+          LIMIT 1
+        `, [supervisorSessionId, empresaId, cajeroCreadorId]);
+        if (row) return;
+      }
+      // 2) Si no (nunca se capturó, o esa sesión ya venció/se cerró desde
+      //    entonces): ¿hay una sesión activa AHORA MISMO para quien está
+      //    emitiendo? Cubre el borrador creado hace rato cuya sesión original
+      //    ya expiró — el cajero reactiva el modo supervisor y reintenta.
+      const idEnVivo = await this.sesionSupervisorActivaId(cajeroEmisorId, empresaId);
+      if (idEnVivo) {
+        // Deja evidencia en la factura (BD y en memoria) — si no, la alarma de
+        // invariante (justo después de este método, sobre el mismo objeto
+        // `factura`) vería "sin supervisor registrado" y bloquearía la
+        // emisión que este mismo método acaba de aprobar.
+        await this.dataSource.query(
+          `UPDATE facturas SET "supervisorSessionId" = $1 WHERE id = $2`,
+          [idEnVivo, factura.id],
+        );
+        factura.supervisorSessionId = idEnVivo;
+        return;
+      }
+      throw noAutorizada();
     }
 
-    // modo === 'cada_vez' — token de un solo uso emitido al crear la factura
-    // (ver create(), más abajo) y consumido aquí, al emitirla de verdad.
-    if (!supervisorToken) throw noAutorizada();
-    const consumidos = await this.dataSource.query<{ id: number }[]>(`
-      WITH fila AS (
-        UPDATE supervisor_autorizaciones SET usado = true
-        WHERE token = $1 AND "empresaId" = $2 AND "cajeroId" = $3 AND clave = 'venta_credito'
-          AND usado = false AND "expiraEn" > NOW()
-        RETURNING id
-      ) SELECT * FROM fila
-    `, [supervisorToken, empresaId, cajeroId]);
-    if (!consumidos.length) throw noAutorizada();
+    // modo === 'cada_vez' — token de un solo uso: el capturado al crear el
+    // borrador, o uno fresco de ESTA petición de emitir.
+    for (const token of [supervisorToken, supervisorTokenFresco]) {
+      if (!token) continue;
+      const consumidos = await this.dataSource.query<{ id: number }[]>(`
+        WITH fila AS (
+          UPDATE supervisor_autorizaciones SET usado = true
+          WHERE token = $1 AND "empresaId" = $2 AND "cajeroId" = $3 AND clave = 'venta_credito'
+            AND usado = false AND "expiraEn" > NOW()
+          RETURNING id
+        ) SELECT * FROM fila
+      `, [token, empresaId, cajeroEmisorId]);
+      if (consumidos.length) {
+        if (token === supervisorTokenFresco) {
+          await this.dataSource.query(
+            `UPDATE facturas SET "supervisorToken" = $1 WHERE id = $2`,
+            [token, factura.id],
+          );
+          factura.supervisorToken = token;
+        }
+        return;
+      }
+    }
+    throw noAutorizada();
   }
 
   /**
@@ -1135,6 +1200,8 @@ export class FacturasService {
     datosComprador?: DatosCompradorECF,
     modoContingencia?: boolean,
     avisarCliente = false,
+    /** Header x-supervisor-token de ESTA petición — ver validarAutorizacionVentaCredito. */
+    supervisorTokenFresco?: string,
   ) {
     const factura = await this.findOne(id);
 
@@ -1183,8 +1250,9 @@ export class FacturasService {
       const cajeroEmisorId = this.tenantService.getUserId();
       if (cajeroEmisorId && factura.tipoPago === 'CREDITO') {
         await this.validarAutorizacionVentaCredito(
-          factura.empresaId, factura.usuarioId,
+          factura as any, factura.empresaId, factura.usuarioId, cajeroEmisorId,
           (factura as any).supervisorSessionId, (factura as any).supervisorToken,
+          supervisorTokenFresco,
         );
         // Red de seguridad, no el guard real (ese es la línea de arriba): si
         // por lo que sea se llega hasta aquí con la invariante violada — un

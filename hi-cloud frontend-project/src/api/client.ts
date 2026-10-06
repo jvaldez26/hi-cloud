@@ -522,7 +522,17 @@ apiClient.interceptors.response.use(
       case 400: enrichedErr.friendlyMessage = message; break;
       case 403: {
         const m403 = message.toLowerCase();
+        // Un 403 con supervisorClaveRequerida SIEMPRE llega aquí con un
+        // mensaje específico y accionable ("Esta venta a crédito requiere
+        // ...", "...autorización nueva.") — ya sea porque no había handler
+        // de supervisor registrado (fuera del POS) o porque el cajero
+        // canceló el modal (ver sessionEvents.ts). Forzar el genérico "No
+        // tienes permisos" ahí ocultaba la razón real (caso FAC-1623,
+        // 2026-10-06: el cajero nunca entendió que hacía falta un
+        // supervisor porque el toast no lo decía).
+        const esSupervisorRequerido = !!(err.response?.data as any)?.supervisorClaveRequerida;
         enrichedErr.friendlyMessage = (
+          esSupervisorRequerido ||
           m403.includes('empresa') ||
           m403.includes('límite') ||
           m403.includes('limite') ||

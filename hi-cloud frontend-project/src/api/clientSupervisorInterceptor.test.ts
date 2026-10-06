@@ -64,13 +64,20 @@ describe('client.ts — interceptor genérico de 403 "falta autorización de sup
     expect(reintentado.headers['x-supervisor-token']).toBeUndefined();
   });
 
-  it('el cajero cancela la autorización: NO reintenta, el error original se propaga', async () => {
+  it('el cajero cancela la autorización: NO reintenta, el error original se propaga con el mensaje REAL (no el genérico "No tienes permisos")', async () => {
     const handlerFn = vi.fn().mockResolvedValue({ ok: false });
     registerSupervisorAuthHandler(handlerFn);
 
-    const err = fakeError({ status: 403, data: { supervisorClaveRequerida: 'venta_credito' } });
+    // Caso real FAC-1623 (2026-10-06): sin esto, el toast decía "No tienes
+    // permisos para esta acción" y la cajera nunca entendió que hacía falta
+    // un supervisor — el mensaje real del backend se perdía.
+    const err = fakeError({
+      status: 403,
+      data: { message: 'Esta venta a crédito requiere una autorización de supervisor nueva.', supervisorClaveRequerida: 'venta_credito', supervisorModo: 'cada_vez' },
+    });
     await expect(rejectedHandler()(err)).rejects.toBe(err);
     expect(apiClient.request).not.toHaveBeenCalled();
+    expect((err as any).friendlyMessage).toBe('Esta venta a crédito requiere una autorización de supervisor nueva.');
   });
 
   it('un token ya usado (el reintento vuelve a dar el mismo 403): NO se reintenta una segunda vez', async () => {

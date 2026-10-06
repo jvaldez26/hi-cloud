@@ -47,7 +47,10 @@ export default function FacturaDetailPage() {
       qc.invalidateQueries({ queryKey: ['factura-ecf', Number(id)] });
       message.success('Estado actualizado');
     },
-    onError: (e: any) => message.error(e?.response?.data?.errors?.[0] ?? 'Error'),
+    // Ver FacturasPage.tsx estadoMut: .errors[0] no existe en el 403 de
+    // autorización de supervisor (el backend manda message/supervisorClaveRequerida),
+    // así que sin el fallback a .friendlyMessage el detalle mostraba "Error" a secas.
+    onError: (e: any) => message.error(e?.response?.data?.errors?.[0] ?? e?.friendlyMessage ?? 'Error'),
   });
 
   const [emailOpen,    setEmailOpen]    = useState(false);

@@ -15,9 +15,10 @@ import {
   UploadedFile,
   BadRequestException,
   Res,
+  Req,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import type { Response } from 'express';
+import type { Response, Request } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { FacturasService } from './facturas.service';
 import { PDFService } from './services/pdf.service';
@@ -202,13 +203,21 @@ export class FacturasController {
   cambiarEstado(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CambiarEstadoDto,
+    @Req() req: Request,
   ) {
     // Ésta es la puerta por la que se emiten las facturas "normales": las que
     // se preparan a mano y las que nacen en borrador desde un contrato o una
     // orden de servicio. Aquí sí se avisa al cliente si la empresa lo tiene
     // encendido; el POS tiene su propio endpoint y no avisa.
+    //
+    // x-supervisor-token: si la venta a crédito necesita autorización y la
+    // factura no trae una capturada al crearla (o ya venció), el servicio
+    // responde 403 con supervisorClaveRequerida — el interceptor genérico del
+    // frontend (api/client.ts) pide la autorización y reintenta ESTA misma
+    // petición con el header puesto (caso real: FAC-1623, 2026-10-06).
     return this.facturasService.cambiarEstado(
       id, dto.estado, false, undefined, undefined, undefined, true,
+      req.headers['x-supervisor-token'] as string | undefined,
     );
   }
 
@@ -225,6 +234,7 @@ export class FacturasController {
   emitirDesdePos(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: EmitirDesdePos,
+    @Req() req: Request,
   ) {
     return this.facturasService.cambiarEstado(
       id,
@@ -233,6 +243,8 @@ export class FacturasController {
       dto.tipoEcf,
       dto.datosComprador,
       dto.modoContingencia,
+      false,
+      req.headers['x-supervisor-token'] as string | undefined,
     );
   }
 

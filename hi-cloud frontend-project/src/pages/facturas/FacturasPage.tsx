@@ -221,7 +221,13 @@ export default function FacturasPage() {
     mutationFn: ({ id, estado }: { id: number; estado: FacturaEstado }) =>
       facturasApi.cambiarEstado(id, estado),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['facturas'] }); message.success('Estado actualizado'); },
-    onError:   (e: any) => message.error(e?.response?.data?.errors?.[0] ?? 'Error al cambiar estado'),
+    // .friendlyMessage (api/client.ts) ya trae el mensaje REAL del backend
+    // para un 403 de autorización de supervisor — .errors[0] no existe en
+    // esa respuesta (el backend manda { message, supervisorClaveRequerida,
+    // supervisorModo }), así que leer solo .errors[0] mostraba el genérico
+    // "Error al cambiar estado" sin decir que hacía falta un supervisor
+    // (caso real FAC-1623, 2026-10-06).
+    onError:   (e: any) => message.error(e?.response?.data?.errors?.[0] ?? e?.friendlyMessage ?? 'Error al cambiar estado'),
   });
 
   const reenviarEcfMut = useMutation({
