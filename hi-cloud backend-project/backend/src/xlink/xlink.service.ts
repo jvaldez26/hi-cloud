@@ -273,6 +273,14 @@ export class XlinkService {
    * Vincula (o crea) un cliente/proveedor propio con la empresa de xlinkId.
    * Idempotente: si ya hay un registro vinculado a esa contraparte, lo
    * devuelve tal cual en vez de crear uno nuevo.
+   *
+   * `dto.datos` SOLO llega desde el formulario "Crear" del Directorio (ver
+   * punto 1 del pedido): su presencia activa el modo "con confirmación" —
+   * una coincidencia por RNC que antes se vinculaba en silencio ahora se
+   * reporta como `requiere_confirmacion` en vez de vincularse a ciegas, y la
+   * creación usa los campos que tecleó el usuario (no solo nombre/RNC). El
+   * botón "Vincular" de un clic (coincide_sin_vincular) sigue llamando sin
+   * `datos` — ese camino queda exactamente como estaba.
    */
   async vincular(dto: VincularXlinkDto) {
     const miEmpresaId = this.tenantService.getEmpresaId();
@@ -289,23 +297,33 @@ export class XlinkService {
     }
 
     const nombreContraparte = contraparte.nombreComercial ?? contraparte.nombre;
+    const datos = dto.datos;
 
     if (dto.rol === 'proveedor') {
       const yaVinculado = await this.ds.query(
         `SELECT id FROM proveedores WHERE "empresaId" = $1 AND "isActive" = true AND "xlinkEmpresaXlinkId" = $2 LIMIT 1`,
         [miEmpresaId, dto.xlinkId],
       );
-      if (yaVinculado[0]) return this.proveedoresService.findOne(yaVinculado[0].id);
+      if (yaVinculado[0]) {
+        const registro = await this.proveedoresService.findOne(yaVinculado[0].id);
+        return datos ? { accion: 'ya_vinculado' as const, registro } : registro;
+      }
 
       const coincideRnc = contraparte.rnc
         ? await this.ds.query(
-            `SELECT id FROM proveedores
+            `SELECT id, nombre FROM proveedores
              WHERE "empresaId" = $1 AND "isActive" = true AND "xlinkEmpresaXlinkId" IS NULL AND rnc = $2`,
             [miEmpresaId, contraparte.rnc],
           )
         : [];
 
       if (coincideRnc.length === 1) {
+        if (datos) {
+          return {
+            accion: 'requiere_confirmacion' as const,
+            existente: { id: coincideRnc[0].id, nombre: coincideRnc[0].nombre },
+          };
+        }
         await this.ds.query(
           `UPDATE proveedores SET "xlinkEmpresaXlinkId" = $1 WHERE id = $2`,
           [dto.xlinkId, coincideRnc[0].id],
@@ -314,11 +332,22 @@ export class XlinkService {
       }
 
       // Sin match único (0 o más de 1) — crear nuevo, nunca adivinar cuál vincular.
-      return this.proveedoresService.create({
-        nombre: nombreContraparte,
+      const registro = await this.proveedoresService.create({
+        nombre: datos?.nombre ?? nombreContraparte,
         rnc: contraparte.rnc ?? undefined,
         xlinkEmpresaXlinkId: dto.xlinkId,
+        telefono: datos?.telefono,
+        email: datos?.email,
+        direccion: datos?.direccion,
+        contacto: datos?.contacto,
+        categoria: datos?.categoria,
+        diasPago: datos?.diasPago,
+        banco: datos?.banco,
+        cuentaBancaria: datos?.cuentaBancaria,
+        notas: datos?.notas,
+        sincronizarArticulosXlink: datos?.sincronizarArticulosXlink,
       } as any);
+      return datos ? { accion: 'creado' as const, registro } : registro;
     }
 
     // rol === 'cliente'
@@ -326,11 +355,14 @@ export class XlinkService {
       `SELECT id FROM clientes WHERE "empresaId" = $1 AND "isActive" = true AND "xlinkEmpresaXlinkId" = $2 LIMIT 1`,
       [miEmpresaId, dto.xlinkId],
     );
-    if (yaVinculado[0]) return this.clientesService.findOne(yaVinculado[0].id);
+    if (yaVinculado[0]) {
+      const registro = await this.clientesService.findOne(yaVinculado[0].id);
+      return datos ? { accion: 'ya_vinculado' as const, registro } : registro;
+    }
 
     const coincideRnc = contraparte.rnc
       ? await this.ds.query(
-          `SELECT id FROM clientes
+          `SELECT id, nombre FROM clientes
            WHERE "empresaId" = $1 AND "isActive" = true AND "xlinkEmpresaXlinkId" IS NULL
            AND (rfc = $2 OR "rncReceptor" = $2)`,
           [miEmpresaId, contraparte.rnc],
@@ -338,6 +370,12 @@ export class XlinkService {
       : [];
 
     if (coincideRnc.length === 1) {
+      if (datos) {
+        return {
+          accion: 'requiere_confirmacion' as const,
+          existente: { id: coincideRnc[0].id, nombre: coincideRnc[0].nombre },
+        };
+      }
       await this.ds.query(
         `UPDATE clientes SET "xlinkEmpresaXlinkId" = $1 WHERE id = $2`,
         [dto.xlinkId, coincideRnc[0].id],
@@ -350,10 +388,25 @@ export class XlinkService {
     // ClientesService.validarRncReceptor). Usar rncReceptor aquí dejaba rfc
     // NULL y la tabla lo exige NOT NULL: "Campo requerido faltante: rfc" al
     // crear desde el Directorio de HiCloud Xlink (encontrado en producción).
-    return this.clientesService.create({
-      nombre: nombreContraparte,
+    const registro = await this.clientesService.create({
+      nombre: datos?.nombre ?? nombreContraparte,
       rfc: contraparte.rnc ?? undefined,
       xlinkEmpresaXlinkId: dto.xlinkId,
+      razonSocial: datos?.razonSocial,
+      rncReceptor: datos?.rncReceptor,
+      identificadorExtranjero: datos?.identificadorExtranjero,
+      regimenFiscal: datos?.regimenFiscal,
+      email: datos?.email,
+      telefono: datos?.telefono,
+      direccion: datos?.direccion,
+      ciudad: datos?.ciudad,
+      estado: datos?.estado,
+      codigoPostal: datos?.codigoPostal,
+      sector: datos?.sector,
+      diasCredito: datos?.diasCredito,
+      limiteCredito: datos?.limiteCredito,
+      notas: datos?.notas,
     } as any);
+    return datos ? { accion: 'creado' as const, registro } : registro;
   }
 }

@@ -19,6 +19,26 @@ export interface XlinkDirectorioFila {
   clienteRelacionado: XlinkRelacion;
 }
 
+/** Datos del formulario "Crear" del Directorio — ver VincularXlinkDatosDto (backend). */
+export interface VincularXlinkDatos {
+  nombre: string;
+  telefono?: string; email?: string; direccion?: string; contacto?: string;
+  categoria?: string; diasPago?: number; banco?: string; cuentaBancaria?: string;
+  sincronizarArticulosXlink?: boolean;
+  razonSocial?: string; rncReceptor?: string; identificadorExtranjero?: string;
+  regimenFiscal?: string; ciudad?: string; estado?: string; codigoPostal?: string;
+  sector?: string; diasCredito?: number; limiteCredito?: number; notas?: string;
+}
+
+/**
+ * Resultado de vincular() CON `datos` (formulario "Crear"). Sin `datos` (el
+ * botón "Vincular" de un clic) la respuesta sigue siendo el registro desnudo,
+ * sin envolver — ver xlinkApi.vincular más abajo.
+ */
+export type VincularXlinkResultado =
+  | { accion: 'creado' | 'ya_vinculado'; registro: any }
+  | { accion: 'requiere_confirmacion'; existente: { id: number; nombre: string } };
+
 export interface XlinkDocumentoFila {
   id: number;
   origenEmpresaId?: number;
@@ -88,6 +108,21 @@ export function tipoDocumentoLabel(tipo: XlinkTipoDocumento): string {
   return TIPO_DOCUMENTO_LABEL[tipo] ?? tipo;
 }
 
+/**
+ * Sin `datos` (botón "Vincular" de un clic sobre coincide_sin_vincular):
+ * devuelve el proveedor/cliente desnudo, igual que siempre. Con `datos`
+ * (formulario "Crear" prellenado): devuelve VincularXlinkResultado — puede
+ * pedir confirmación en vez de vincular a ciegas (ver backend). Dos firmas
+ * (en vez de `datos?`) para que el tipo de retorno en cada call site se
+ * resuelva según si se mandó `datos`, no como una unión con `unknown`.
+ */
+function vincular(xlinkId: string, rol: 'proveedor' | 'cliente'): Promise<any>;
+function vincular(xlinkId: string, rol: 'proveedor' | 'cliente', datos: VincularXlinkDatos): Promise<VincularXlinkResultado>;
+function vincular(xlinkId: string, rol: 'proveedor' | 'cliente', datos?: VincularXlinkDatos) {
+  return api.post<ApiResponse<unknown>>('/xlink/vincular', { xlinkId, rol, datos })
+     .then(r => (datos ? (r.data.data as VincularXlinkResultado) : r.data.data));
+}
+
 export const xlinkApi = {
   // ── Fase 2 — activar / directorio / vincular ──────────────────────────────
   actualizarVisibilidad: (visible: boolean) =>
@@ -101,8 +136,7 @@ export const xlinkApi = {
     return api.get<ApiResponse<PaginatedData<XlinkDirectorioFila>>>(`/xlink/directorio?${params}`).then(r => r.data.data);
   },
 
-  vincular: (xlinkId: string, rol: 'proveedor' | 'cliente') =>
-    api.post<ApiResponse<unknown>>('/xlink/vincular', { xlinkId, rol }).then(r => r.data.data),
+  vincular,
 
   // ── Fase 3 — publicar / enviar ────────────────────────────────────────────
   publicar: (tipoDocumento: XlinkTipoDocumento, documentoIds: number[]) =>

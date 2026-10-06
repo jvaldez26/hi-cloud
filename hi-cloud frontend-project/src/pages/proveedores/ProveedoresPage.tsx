@@ -1,14 +1,11 @@
-import { useState, useCallback, useEffect } from 'react';
-import { useRncLookup } from '../../hooks/useRncLookup';
-import RncBadge from '../../components/ui/RncBadge';
+import { useState, useCallback } from 'react';
 import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { DetailDrawer } from '../../components/ui/DetailDrawer';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import {
-  Table, Button, Input, Space, Modal, Form, Row, Col,
-  Typography, Popconfirm, message, Card, Select, InputNumber,
-  Avatar, Tag, Tooltip, theme, Checkbox,
+  Table, Button, Input, Space, Row, Col,
+  Typography, Popconfirm, message, Card, Tag, Tooltip, theme, Avatar,
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
@@ -17,14 +14,12 @@ import {
 import { TableActions } from '../../components/ui/TableActions';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { proveedoresApi, type ProveedorPayload } from '../../api/proveedores.api';
+import { proveedoresApi } from '../../api/proveedores.api';
 import { exportarExcel } from '../../utils/exportExcel';
 import type { Proveedor } from '../../types';
+import ProveedorFormModal from '../../components/proveedores/ProveedorFormModal';
 
 const { Title, Text } = Typography;
-const { Option } = Select;
-
-const CATEGORIAS = ['Materia prima', 'Servicios', 'Tecnología', 'Logística', 'Limpieza', 'Papelería', 'Alimentos', 'Otro'];
 
 export default function ProveedoresPage() {
   const { token } = theme.useToken();
@@ -33,17 +28,6 @@ export default function ProveedoresPage() {
   const [open,           setOpen]           = useState(false);
   const [editing,        setEditing]        = useState<Proveedor | null>(null);
   const [detalleProveedor, setDetalleProveedor] = useState<Proveedor | null>(null);
-  const [form] = Form.useForm<ProveedorPayload>();
-  const rnc = useRncLookup();
-
-  // Autocompletar nombre desde DGII cuando se encuentra el RNC
-  useEffect(() => {
-    if (rnc.datos?.encontrado && rnc.datos?.nombre) {
-      if (!form.getFieldValue('nombre')) {
-        form.setFieldsValue({ nombre: rnc.datos.nombre });
-      }
-    }
-  }, [rnc.datos, form]);
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -51,27 +35,15 @@ export default function ProveedoresPage() {
     queryFn:  () => proveedoresApi.list(page, 15, search),
   });
 
-  const createMut = useMutation({
-    mutationFn: proveedoresApi.create,
-    onSuccess:  () => { qc.invalidateQueries({ queryKey: ['proveedores'] }); closeModal(); message.success('Proveedor creado'); },
-    onError:    (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error al crear'),
-  });
-  const updateMut = useMutation({
-    mutationFn: ({ id, body }: { id: number; body: Partial<ProveedorPayload> }) => proveedoresApi.update(id, body),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['proveedores'] }); closeModal(); message.success('Proveedor actualizado'); },
-    onError:   (e: any) => message.error((e as any)?.friendlyMessage ?? 'Error'),
-  });
   const deleteMut = useMutation({
     mutationFn: proveedoresApi.remove,
     onSuccess:  () => { qc.invalidateQueries({ queryKey: ['proveedores'] }); message.success('Eliminado'); },
     onError:    (e: any) => message.error((e as any)?.friendlyMessage ?? 'No se puede eliminar'),
   });
 
-  const openCreate = () => { setEditing(null); form.resetFields(); setOpen(true); };
-  const openEdit   = (p: Proveedor) => { setEditing(p); form.setFieldsValue(p); setOpen(true); };
-  const closeModal = () => { setOpen(false); setEditing(null); form.resetFields(); rnc.limpiar(); };
-  const handleSubmit = (v: ProveedorPayload) =>
-    editing ? updateMut.mutate({ id: editing.id, body: v }) : createMut.mutate(v);
+  const openCreate = () => { setEditing(null); setOpen(true); };
+  const openEdit   = (p: Proveedor) => { setEditing(p); setOpen(true); };
+  const closeModal = () => { setOpen(false); setEditing(null); };
 
   const handleExcel = useCallback(async () => {
     const all = await proveedoresApi.list(1, 5000, search);
@@ -188,107 +160,11 @@ export default function ProveedoresPage() {
         }}
       />
 
-      <Modal
-        title={editing ? 'Editar proveedor' : 'Nuevo proveedor'}
-        open={open} onCancel={closeModal} footer={null} width={640} destroyOnClose
-      >
-        <Form form={form} layout="vertical" onFinish={handleSubmit}>
-          <Row gutter={16}>
-            <Col xs={24} sm={16}>
-              <Form.Item name="nombre" label="Nombre / Razón Social" rules={[{ required: true }]}>
-                <Input />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={8}>
-              <Form.Item noStyle shouldUpdate={(prev, cur) => prev.esInformal !== cur.esInformal}>
-                {({ getFieldValue }) => {
-                  const informal = getFieldValue('esInformal');
-                  return (
-                    <>
-                      <Form.Item name="rnc" label="RNC"
-                        rules={informal ? [] : [{ required: true }, { pattern: /^\d{9}$|^\d{11}$/, message: '9 u 11 dígitos' }]}>
-                        <Input
-                          placeholder="130000001" maxLength={11} disabled={informal}
-                          onChange={e => rnc.consultarDebounced(e.target.value.replace(/\D/g, ''))}
-                        />
-                      </Form.Item>
-                      {!informal && <RncBadge datos={rnc.datos} loading={rnc.loading} />}
-                    </>
-                  );
-                }}
-              </Form.Item>
-            </Col>
-            <Col xs={24}>
-              <Form.Item name="esInformal" valuePropName="checked" style={{ marginBottom: 4 }}>
-                <Checkbox>Proveedor informal (sin RNC) — genera E41 en órdenes de compra</Checkbox>
-              </Form.Item>
-            </Col>
-            <Col xs={24}>
-              <Form.Item name="sincronizarArticulosXlink" valuePropName="checked" style={{ marginBottom: 4 }}>
-                <Checkbox>Sincronizar artículos con HiCloud Xlink — intenta emparejar productos por su código automáticamente al recibir</Checkbox>
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={12}>
-              <Form.Item name="telefono" label="Teléfono">
-                <Input placeholder="(809) 000-0000" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={12}>
-              <Form.Item name="email" label="Email" rules={[{ type: 'email' }]}>
-                <Input />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={14}>
-              <Form.Item name="direccion" label="Dirección">
-                <Input />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={10}>
-              <Form.Item name="contacto" label="Persona de Contacto">
-                <Input />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={12}>
-              <Form.Item name="categoria" label="Categoría">
-                <Select allowClear>
-                  {CATEGORIAS.map(c => <Option key={c} value={c}>{c}</Option>)}
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={12}>
-              <Form.Item name="diasPago" label="Días de pago">
-                <InputNumber style={{ width: '100%' }} min={0} max={365} addonAfter="días" placeholder="30" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={12}>
-              <Form.Item name="banco" label="Banco">
-                <Select allowClear>
-                  {['Banreservas','BHD León','Popular','ScotiaBank','APAP','BancoSanta Cruz','Asociación Cibao','Otro']
-                    .map(b => <Option key={b} value={b}>{b}</Option>)}
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={12}>
-              <Form.Item name="cuentaBancaria" label="Número de cuenta">
-                <Input placeholder="000-0000000-0" />
-              </Form.Item>
-            </Col>
-            <Col span={24}>
-              <Form.Item name="notas" label="Notas">
-                <Input.TextArea rows={2} />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Row justify="end" gutter={8}>
-            <Col><Button onClick={closeModal}>Cancelar</Button></Col>
-            <Col>
-              <Button type="primary" htmlType="submit" loading={createMut.isPending || updateMut.isPending}>
-                {editing ? 'Actualizar' : 'Crear proveedor'}
-              </Button>
-            </Col>
-          </Row>
-        </Form>
-      </Modal>
+      <ProveedorFormModal
+        open={open}
+        editing={editing}
+        onClose={closeModal}
+      />
 
       <DetailDrawer
         open={!!detalleProveedor}

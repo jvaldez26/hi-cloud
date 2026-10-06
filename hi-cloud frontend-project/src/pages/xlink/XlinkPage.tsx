@@ -24,6 +24,9 @@ import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import XlinkHomologacionModal from './XlinkHomologacionModal';
 import { filtrarPorRelacionado } from './filtrarPorRelacionado';
 import { puedeActivarXlink } from './puedeActivarXlink';
+import { labelIndustria } from './labelIndustria';
+import ProveedorFormModal from '../../components/proveedores/ProveedorFormModal';
+import ClienteFormModal from '../../components/clientes/ClienteFormModal';
 
 const { Title, Text, Paragraph } = Typography;
 const { RangePicker } = DatePicker;
@@ -246,6 +249,8 @@ function DirectorioTab() {
   const [q, setQ] = useState('');
   const [soloRegistradas, setSoloRegistradas] = useState(false);
   const [page, setPage] = useState(1);
+  // Fila para la que se abrió "Crear" — null = modal cerrado.
+  const [crearFila, setCrearFila] = useState<{ fila: XlinkDirectorioFila; rol: 'proveedor' | 'cliente' } | null>(null);
 
   const { data, isFetching } = useQuery({
     queryKey: ['xlink-directorio', q, soloRegistradas, page],
@@ -253,6 +258,7 @@ function DirectorioTab() {
     placeholderData: (prev) => prev,
   });
 
+  // Vincular de un clic (coincide_sin_vincular) — sin formulario, sin `datos`.
   const vincularMut = useMutation({
     mutationFn: ({ xlinkId, rol }: { xlinkId: string; rol: 'proveedor' | 'cliente' }) => xlinkApi.vincular(xlinkId, rol),
     onSuccess: () => {
@@ -262,17 +268,17 @@ function DirectorioTab() {
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'No se pudo vincular'),
   });
 
-  const renderRelacion = (rel: { estado: string; id?: number; nombre?: string }, rol: 'proveedor' | 'cliente', xlinkId: string) => {
+  const renderRelacion = (rel: { estado: string; id?: number; nombre?: string }, rol: 'proveedor' | 'cliente', fila: XlinkDirectorioFila) => {
     if (rel.estado === 'vinculado') return <Tag color="green">{rel.nombre}</Tag>;
     if (rel.estado === 'coincide_sin_vincular') {
       return (
         <Space>
           <Tag color="orange">{rel.nombre}</Tag>
-          <Button size="small" icon={<LinkOutlined />} loading={vincularMut.isPending} onClick={() => vincularMut.mutate({ xlinkId, rol })}>Vincular</Button>
+          <Button size="small" icon={<LinkOutlined />} loading={vincularMut.isPending} onClick={() => vincularMut.mutate({ xlinkId: fila.xlinkId, rol })}>Vincular</Button>
         </Space>
       );
     }
-    return <Button size="small" icon={<PlusOutlined />} loading={vincularMut.isPending} onClick={() => vincularMut.mutate({ xlinkId, rol })}>Crear</Button>;
+    return <Button size="small" icon={<PlusOutlined />} onClick={() => setCrearFila({ fila, rol })}>Crear</Button>;
   };
 
   const COLS_DEF = [
@@ -301,11 +307,34 @@ function DirectorioTab() {
         columns={filterColumns<XlinkDirectorioFila>([
           { title: 'Empresa', key: 'nombreComercial', dataIndex: 'nombreComercial', width: 260, className: 'cell-wrap' },
           { title: 'RNC', key: 'rnc', dataIndex: 'rnc', width: 110 },
-          { title: 'Industria', key: 'industria', dataIndex: 'industria', width: 140, render: (v) => v ?? '—' },
-          { title: 'Proveedor relacionado', key: 'proveedorRelacionado', width: 220, render: (_, r) => renderRelacion(r.proveedorRelacionado, 'proveedor', r.xlinkId) },
-          { title: 'Cliente relacionado', key: 'clienteRelacionado', width: 220, render: (_, r) => renderRelacion(r.clienteRelacionado, 'cliente', r.xlinkId) },
+          { title: 'Industria', key: 'industria', dataIndex: 'industria', width: 140, render: (v) => labelIndustria(v) },
+          { title: 'Proveedor relacionado', key: 'proveedorRelacionado', width: 220, render: (_, r) => renderRelacion(r.proveedorRelacionado, 'proveedor', r) },
+          { title: 'Cliente relacionado', key: 'clienteRelacionado', width: 220, render: (_, r) => renderRelacion(r.clienteRelacionado, 'cliente', r) },
         ])}
       />
+
+      {/* "Crear" abre el MISMO formulario de Proveedores/Clientes, prellenado
+          con nombre/RNC de la contraparte y con el RNC bloqueado — al
+          guardar, crea y vincula en una sola operación (ver
+          ProveedorFormModal/ClienteFormModal con xlinkId). */}
+      {crearFila?.rol === 'proveedor' && (
+        <ProveedorFormModal
+          open
+          onClose={() => setCrearFila(null)}
+          initialValues={{ nombre: crearFila.fila.nombreComercial, rnc: crearFila.fila.rnc ?? '' }}
+          rncLocked
+          xlinkId={crearFila.fila.xlinkId}
+        />
+      )}
+      {crearFila?.rol === 'cliente' && (
+        <ClienteFormModal
+          open
+          onClose={() => setCrearFila(null)}
+          initialValues={{ nombre: crearFila.fila.nombreComercial, rfc: crearFila.fila.rnc ?? '' }}
+          rncLocked
+          xlinkId={crearFila.fila.xlinkId}
+        />
+      )}
     </div>
   );
 }

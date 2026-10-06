@@ -354,6 +354,108 @@ describe('XlinkService.vincular', () => {
     expect(d.clientesSvc.findOne).toHaveBeenCalledWith(21);
     expect(d.clientesSvc.create).not.toHaveBeenCalled();
   });
+
+  /**
+   * Formulario "Crear" del Directorio (pedido 2026-10-06): a diferencia del
+   * botón "Vincular" de un clic (sin `datos`, probado arriba — comportamiento
+   * intacto), cuando la llamada SÍ trae `datos` una coincidencia por RNC ya
+   * NO se vincula en silencio: se devuelve `requiere_confirmacion` para que
+   * el frontend ofrezca "¿Vincularlo?" antes de tocar nada.
+   */
+  describe('con datos del formulario (flujo "Crear" del Directorio)', () => {
+    const datosProveedor = { nombre: 'Mi Proveedor SRL', telefono: '809-555-0000', diasPago: 30 };
+    const datosCliente = { nombre: 'Mi Cliente SRL', ciudad: 'Santo Domingo', diasCredito: 15 };
+
+    it('proveedor: coincidencia ÚNICA por RNC — NO vincula en silencio, pide confirmación', async () => {
+      const d = buildDeps();
+      d.ds.query
+        .mockResolvedValueOnce([contraparteRow])              // SELECT empresa
+        .mockResolvedValueOnce([])                            // yaVinculado
+        .mockResolvedValueOnce([{ id: 11, nombre: 'Proveedor Existente' }]); // coincideRnc
+      const service = buildService(d);
+
+      const result = await service.vincular({ xlinkId: OTRA_EMPRESA_XLINK_ID, rol: 'proveedor', datos: datosProveedor as any });
+
+      expect(result).toEqual({ accion: 'requiere_confirmacion', existente: { id: 11, nombre: 'Proveedor Existente' } });
+      expect(d.proveedoresSvc.create).not.toHaveBeenCalled();
+      expect(d.ds.query).not.toHaveBeenCalledWith(expect.stringContaining('UPDATE proveedores'), expect.anything());
+    });
+
+    it('proveedor: sin coincidencia — crea usando los campos del formulario, no solo nombre/rnc', async () => {
+      const d = buildDeps();
+      d.ds.query
+        .mockResolvedValueOnce([contraparteRow]) // SELECT empresa
+        .mockResolvedValueOnce([])                // yaVinculado
+        .mockResolvedValueOnce([]);               // coincideRnc
+      const service = buildService(d);
+
+      const result = await service.vincular({ xlinkId: OTRA_EMPRESA_XLINK_ID, rol: 'proveedor', datos: datosProveedor as any });
+
+      expect(d.proveedoresSvc.create).toHaveBeenCalledWith(expect.objectContaining({
+        nombre: 'Mi Proveedor SRL', rnc: '130000001', xlinkEmpresaXlinkId: OTRA_EMPRESA_XLINK_ID,
+        telefono: '809-555-0000', diasPago: 30,
+      }));
+      expect(result).toEqual({ accion: 'creado', registro: { id: 900 } });
+    });
+
+    it('proveedor: ya vinculado — devuelve { accion: "ya_vinculado" } en vez del registro desnudo', async () => {
+      const d = buildDeps();
+      d.ds.query
+        .mockResolvedValueOnce([contraparteRow])
+        .mockResolvedValueOnce([{ id: 5 }]);
+      const service = buildService(d);
+
+      const result = await service.vincular({ xlinkId: OTRA_EMPRESA_XLINK_ID, rol: 'proveedor', datos: datosProveedor as any });
+
+      expect(result).toEqual({ accion: 'ya_vinculado', registro: { id: 1 } });
+    });
+
+    it('cliente: coincidencia ÚNICA por RNC — pide confirmación en vez de vincular en silencio', async () => {
+      const d = buildDeps();
+      d.ds.query
+        .mockResolvedValueOnce([contraparteRow])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ id: 21, nombre: 'Cliente Existente' }]);
+      const service = buildService(d);
+
+      const result = await service.vincular({ xlinkId: OTRA_EMPRESA_XLINK_ID, rol: 'cliente', datos: datosCliente as any });
+
+      expect(result).toEqual({ accion: 'requiere_confirmacion', existente: { id: 21, nombre: 'Cliente Existente' } });
+      expect(d.clientesSvc.create).not.toHaveBeenCalled();
+    });
+
+    it('cliente: sin coincidencia — crea usando los campos del formulario', async () => {
+      const d = buildDeps();
+      d.ds.query
+        .mockResolvedValueOnce([contraparteRow])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+      const service = buildService(d);
+
+      const result = await service.vincular({ xlinkId: OTRA_EMPRESA_XLINK_ID, rol: 'cliente', datos: datosCliente as any });
+
+      expect(d.clientesSvc.create).toHaveBeenCalledWith(expect.objectContaining({
+        nombre: 'Mi Cliente SRL', rfc: '130000001', xlinkEmpresaXlinkId: OTRA_EMPRESA_XLINK_ID,
+        ciudad: 'Santo Domingo', diasCredito: 15,
+      }));
+      expect(result).toEqual({ accion: 'creado', registro: { id: 901 } });
+    });
+
+    it('sin `datos` (botón "Vincular" de un clic): una coincidencia única se sigue vinculando en silencio, sin confirmación', async () => {
+      const d = buildDeps();
+      d.ds.query
+        .mockResolvedValueOnce([contraparteRow])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ id: 11, nombre: 'Proveedor Existente' }])
+        .mockResolvedValueOnce(undefined);
+      const service = buildService(d);
+
+      const result = await service.vincular({ xlinkId: OTRA_EMPRESA_XLINK_ID, rol: 'proveedor' });
+
+      expect(result).toEqual({ id: 1 });
+      expect(d.proveedoresSvc.findOne).toHaveBeenCalledWith(11);
+    });
+  });
 });
 
 describe('XlinkService — listados y conteo (Fase 5)', () => {
