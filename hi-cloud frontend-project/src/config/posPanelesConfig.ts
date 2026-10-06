@@ -50,6 +50,17 @@ export const POS_PANELES: PosPanelConfig[] = [
 export const PANEL_TITLES: Record<PanelId, { label: string; icon: string }> =
   Object.fromEntries(POS_PANELES.map(p => [p.id, { label: p.label, icon: p.icon }])) as Record<PanelId, { label: string; icon: string }>;
 
+/**
+ * Clave de Modo Supervisor por pestaña, para que el handler de cambio de
+ * panel en POSPage.tsx pueda gatear CUALQUIER pestaña de forma genérica —
+ * una vez hubo una versión recableada a mano ahí que solo cubría 5 de las
+ * 15 pestañas (las demás, incluidas Cotizaciones y Conduce, quedaban
+ * accesibles sin supervisor aunque la política las marcara). Esta es la
+ * única fuente: cada entrada de POS_PANELES aparece aquí automáticamente.
+ */
+export const CLAVE_SUPERVISOR_POR_PANEL: Record<PanelId, string> =
+  Object.fromEntries(POS_PANELES.map(p => [p.id, p.claveSupervisor])) as Record<PanelId, string>;
+
 /** Barra inferior — paneles de grupo 'barra' + el botón "Menú" al final. */
 export const NAV_ITEMS: Array<{ id: PanelId | 'menu'; label: string; icon: string }> = [
   ...POS_PANELES.filter(p => p.grupo === 'barra').map(p => ({ id: p.id, label: p.labelCorto ?? p.label, icon: p.icon })),

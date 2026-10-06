@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { POS_PANELES, NAV_ITEMS, MENU_EXTRAS, PANEL_TITLES } from './posPanelesConfig';
+import { POS_PANELES, NAV_ITEMS, MENU_EXTRAS, PANEL_TITLES, CLAVE_SUPERVISOR_POR_PANEL } from './posPanelesConfig';
 
 /**
  * Las claves 'pos.panel.*' deben coincidir 1:1 con el catálogo del backend
@@ -58,5 +58,19 @@ describe('POS_PANELES — fuente única de pestañas del POS', () => {
     for (const p of POS_PANELES) {
       expect(PANEL_TITLES[p.id]).toEqual({ label: p.label, icon: p.icon });
     }
+  });
+
+  /**
+   * Regresión: hubo una versión de POSPage.tsx que recableaba esta lista a
+   * mano en el handler de cambio de panel y solo cubría 5 de las 15
+   * pestañas — Cotizaciones y Conduce quedaban navegables sin supervisor
+   * aunque la política de la empresa las marcara como requeridas. Este test
+   * exige que CADA pestaña, sin excepción, tenga su clave de gateo.
+   */
+  it('CLAVE_SUPERVISOR_POR_PANEL cubre TODAS las pestañas, sin excepción', () => {
+    for (const p of POS_PANELES) {
+      expect(CLAVE_SUPERVISOR_POR_PANEL[p.id]).toBe(p.claveSupervisor);
+    }
+    expect(Object.keys(CLAVE_SUPERVISOR_POR_PANEL).length).toBe(POS_PANELES.length);
   });
 });

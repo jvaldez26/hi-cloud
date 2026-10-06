@@ -100,3 +100,33 @@ describe('POSPage — confirmarCobro() es el ÚNICO camino que confirma el cobro
     expect(fuente).toMatch(/onClick=\{confirmarCobro\}/);
   });
 });
+
+/**
+ * Regresión real (reporte del usuario, 2026-10-05): el handler de cambio de
+ * panel de la barra inferior tenía su propio mapa clave-por-panel escrito a
+ * mano (CLAVE_POR_PANEL) que solo cubría 5 de las 15 pestañas — Cotizaciones
+ * y Conduce (entre otras) quedaban navegables sin pedir autorización de
+ * supervisor aunque el admin las marcara como requeridas en Configuración.
+ * El fix: el handler usa CLAVE_SUPERVISOR_POR_PANEL, importado desde
+ * posPanelesConfig.ts (fuente única, cubre las 15 — ver
+ * posPanelesConfig.test.ts para la prueba de cobertura completa). Este test
+ * solo exige que el handler no vuelva a traer su propia copia parcial.
+ */
+describe('POSPage — onPanelChange gatea TODAS las pestañas, no una lista parcial recableada a mano', () => {
+  const ruta = path.resolve(__dirname, './POSPage.tsx');
+  const fuente = fs.readFileSync(ruta, 'utf-8');
+
+  it('importa CLAVE_SUPERVISOR_POR_PANEL desde posPanelesConfig (no define su propio mapa local)', () => {
+    expect(fuente).toMatch(/import \{[^}]*CLAVE_SUPERVISOR_POR_PANEL[^}]*\} from '\.\.\/\.\.\/config\/posPanelesConfig';/);
+    expect(fuente).not.toMatch(/const CLAVE_POR_PANEL/);
+  });
+
+  it('onPanelChange consulta CLAVE_SUPERVISOR_POR_PANEL para resolver la clave del panel', () => {
+    const inicio = fuente.indexOf('onPanelChange={async (p) => {');
+    expect(inicio).toBeGreaterThan(-1);
+    const cierre = fuente.indexOf('onNavigate={(ruta) => {', inicio);
+    expect(cierre).toBeGreaterThan(inicio);
+    const cuerpo = fuente.slice(inicio, cierre);
+    expect(cuerpo).toContain('CLAVE_SUPERVISOR_POR_PANEL[p]');
+  });
+});

@@ -18,7 +18,7 @@ import { normalizarNcf, esNcfCompleto, errorNcf } from '../../utils/ncf';
 import { tipoIdentificacion } from '../../utils/identificacionDgii';
 import { buildReciboTermicoHTML } from '../../utils/ticketTermico';
 import { useRncLookup } from '../../hooks/useRncLookup';
-import { POS_PANELES, NAV_ITEMS, MENU_EXTRAS, PANEL_TITLES, type PanelId } from '../../config/posPanelesConfig';
+import { POS_PANELES, NAV_ITEMS, MENU_EXTRAS, PANEL_TITLES, CLAVE_SUPERVISOR_POR_PANEL, type PanelId } from '../../config/posPanelesConfig';
 import QRCode from 'qrcode';
 import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover, Input, Button, Segmented, Tabs, InputNumber, Radio, Checkbox } from 'antd';
 import { SearchOutlined, ShoppingCartOutlined, CheckCircleOutlined, DisconnectOutlined, LogoutOutlined, PrinterOutlined, LockOutlined, UserSwitchOutlined, SwapOutlined, EyeOutlined, EyeInvisibleOutlined, ShopOutlined, MailOutlined, FileExcelOutlined, FilePdfOutlined, PlayCircleOutlined } from '@ant-design/icons';
@@ -12222,16 +12222,10 @@ export default function POSPage() {
             if (p === 'nueva-nc') { setShowNotaCredito(true); setMenuNavAbierto(false); return; }
 
             // Navegar a un panel — cada uno con su propia clave del catálogo
-            // de Modo Supervisor (ver supervisor-catalogo.ts). requireSupervisor
-            // ya resuelve internamente si la política lo exige o no.
-            const CLAVE_POR_PANEL: Partial<Record<PanelId, string>> = {
-              'cierre-caja':  'pos.panel.cierre_caja',
-              'inventario':   'pos.panel.inventario',
-              'gastos':       'pos.panel.gastos',
-              'ventas-hoy':   'pos.panel.ventas_hoy',
-              'compras':      'pos.panel.compras',
-            };
-            const clave = CLAVE_POR_PANEL[p];
+            // de Modo Supervisor (ver supervisor-catalogo.ts), derivada de
+            // POS_PANELES. requireSupervisor ya resuelve internamente si la
+            // política lo exige o no.
+            const clave = CLAVE_SUPERVISOR_POR_PANEL[p];
             if (clave) {
               const detail = p === 'cierre-caja' ? fechaHora(ahora()) : undefined;
               const r = await supervisor.requireSupervisor(clave, PANEL_TITLES[p]?.label ?? p, detail);
