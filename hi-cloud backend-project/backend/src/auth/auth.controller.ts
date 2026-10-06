@@ -13,7 +13,7 @@ import { LoginDto } from './dto/login.dto';
 import { SetUsernameDto } from './dto/set-username.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
-import { SupervisorGateGuard } from './guards/supervisor-gate.guard';
+import { RequiereSupervisor } from '../supervisor-politicas/guards/requiere-supervisor.guard';
 import { Roles } from './decorators/roles.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
 import { GetUser } from './decorators/get-user.decorator';
@@ -278,7 +278,7 @@ export class AuthController {
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Verificar credenciales de supervisor (admin/contador del mismo tenant)' })
   async verificarSupervisor(
-    @Body() body: { supervisorId?: number; email?: string; password: string; action?: string; detail?: string },
+    @Body() body: { supervisorId?: number; email?: string; password: string; action?: string; detail?: string; clave?: string },
     @GetUser() cajero: User,
     @Req() req: Request,
   ) {
@@ -290,6 +290,7 @@ export class AuthController {
       body.action, body.detail,
       (cajero as any).sucursalId,
       obtenerIP(req), req.headers['user-agent'],
+      body.clave,
     );
   }
 
@@ -466,7 +467,7 @@ export class AuthController {
   }
 
   @Post('cambiar-sucursal')
-  @UseGuards(JwtAuthGuard, SupervisorGateGuard())
+  @UseGuards(JwtAuthGuard, RequiereSupervisor('cambiar_sucursal'))
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Cambiar sucursal activa — genera nuevo token con sucursalId y almacenId actualizados' })
   async cambiarSucursal(

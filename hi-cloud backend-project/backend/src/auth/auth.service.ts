@@ -1405,7 +1405,13 @@ export class AuthService implements OnModuleInit {
     sucursalId?: number | null,
     ip?: string,
     userAgent?: string,
-  ): Promise<{ ok: true; nombre: string; role: string; sessionId: number | null }> {
+    /** Clave del catálogo de Modo Supervisor (ver supervisor-catalogo.ts) de
+     *  la acción que disparó el modal. Si su política está en modo
+     *  'cada_vez', además de la sesión de 8h de siempre se emite un token de
+     *  un solo uso para ESA acción puntual (ver RequiereSupervisor y
+     *  FacturasService.validarAutorizacionVentaCredito). */
+    clave?: string,
+  ): Promise<{ ok: true; nombre: string; role: string; sessionId: number | null; supervisorToken?: string }> {
     // Bloqueo por intentos fallidos, por (empresa, cajero, supervisor) — NO
     // por IP (ver SupervisorAttemptsService: varias cajas de una tienda
     // comparten IP). Se revisa ANTES de tocar la BD, con el ref tal cual
@@ -1534,7 +1540,30 @@ export class AuthService implements OnModuleInit {
         return [];
       });
 
-    return { ok: true, nombre: sup.nombre, role: sup.role, sessionId: row?.id ?? null };
+    // Modo 'cada_vez' de la clave (si viene una): además de la sesión de
+    // arriba, un token de un solo uso y vida corta para ESA acción puntual —
+    // ver RequiereSupervisor y FacturasService.validarAutorizacionVentaCredito.
+    let supervisorToken: string | undefined;
+    if (clave) {
+      const [politica] = await this.dataSource.query<{ modo: string }[]>(
+        `SELECT modo FROM supervisor_politicas WHERE "empresaId" = $1 AND clave = $2`,
+        [empresaId, clave],
+      ).catch(() => [] as { modo: string }[]);
+      if (politica?.modo === 'cada_vez') {
+        supervisorToken = randomBytes(24).toString('hex');
+        await this.dataSource.query(`
+          INSERT INTO supervisor_autorizaciones
+            ("empresaId", "cajeroId", "supervisorId", clave, token, usado, "expiraEn", "createdAt")
+          VALUES ($1, $2, $3, $4, $5, false, NOW() + INTERVAL '3 minutes', NOW())
+        `, [empresaId, cajeroId, sup.id, clave, supervisorToken]).catch(err => {
+          this.logger.error(`[AUDITORIA-PERDIDA] supervisor_autorizaciones INSERT falló: ${(err as Error).message}`);
+          reportServiceError(err, 'auth.verificarSupervisor.insertToken');
+          supervisorToken = undefined;
+        });
+      }
+    }
+
+    return { ok: true, nombre: sup.nombre, role: sup.role, sessionId: row?.id ?? null, supervisorToken };
   }
 
   /**

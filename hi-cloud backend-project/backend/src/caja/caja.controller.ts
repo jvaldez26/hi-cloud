@@ -7,6 +7,7 @@ import { IsOptional, IsNumber, IsString, IsNotEmpty, IsInt, IsPositive,
          Min, MaxLength, Max, IsEnum, IsDateString } from 'class-validator';
 import { CajaService } from './caja.service';
 import { CategoriaRetiro } from './entities/retiro-caja.entity';
+import { RequiereSupervisor } from '../supervisor-politicas/guards/requiere-supervisor.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -164,6 +165,7 @@ export class CajaController {
 
   @Patch(':id/cerrar')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @UseGuards(RequiereSupervisor('cerrar_caja'))
   @ApiOperation({ summary: 'Cerrar caja por ID — calcula diferencia vs efectivo físico; un VENDEDOR solo puede cerrar la suya; ADMIN/CONTADOR necesitan motivo para cerrar la de otro' })
   cerrarCaja(
     @Param('id', ParseIntPipe) id: number,
@@ -222,6 +224,7 @@ export class CajaController {
   @Post('retiros')
   @HttpCode(HttpStatus.CREATED)
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @UseGuards(RequiereSupervisor('registrar_retiro'))
   @ApiOperation({ summary: 'Registrar retiro de caja — cajaId obligatorio para imputar al cajero correcto' })
   registrarRetiro(@Body() dto: RegistrarRetiroDto, @GetUser() usuario: User) {
     return this.cajaService.registrarRetiro(

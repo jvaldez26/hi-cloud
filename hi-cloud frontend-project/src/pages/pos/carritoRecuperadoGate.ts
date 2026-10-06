@@ -1,7 +1,7 @@
 /**
  * ¿El carrito tiene algún ítem con precio modificado que necesita una
- * sesión de supervisor VIGENTE para cobrar? Mismo patrón que
- * ventaCreditoGate.ts.
+ * sesión de supervisor VIGENTE para cobrar? Mismo patrón que la política
+ * 'venta_credito' (ver useSupervisor.ts).
  *
  * El caso que esto cierra: un carrito con un precio/descuento autorizado
  * por supervisor se guarda (persistencia, ver carritoStorage.ts), la

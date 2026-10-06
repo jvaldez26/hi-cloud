@@ -10,7 +10,7 @@ import { FiltroFechaDto } from './dto/filtro-fecha.dto';
 import { FiltroMesAnioDto } from './dto/filtro-mes-anio.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import { SupervisorGateGuard } from '../auth/guards/supervisor-gate.guard';
+import { RequiereSupervisor } from '../supervisor-politicas/guards/requiere-supervisor.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
@@ -128,7 +128,7 @@ export class ReportesController {
 
   @Get('ventas')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  @UseGuards(SupervisorGateGuard())
+  @UseGuards(RequiereSupervisor('ver_reportes'))
   @ApiOperation({ summary: 'Ventas del período con totales y desglose por estado' })
   @ApiQuery({ name: 'fechaDesde', required: true, example: '2026-01-01' })
   @ApiQuery({ name: 'fechaHasta', required: true, example: '2026-12-31' })
@@ -138,7 +138,7 @@ export class ReportesController {
 
   @Get('ventas/por-cliente')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  @UseGuards(SupervisorGateGuard())
+  @UseGuards(RequiereSupervisor('ver_reportes'))
   @ApiOperation({ summary: 'Ranking de clientes por ventas en el período' })
   getVentasPorCliente(@Query() dto: FiltroFechaDto) {
     return this.reportesService.getVentasPorCliente(dto);
@@ -146,7 +146,7 @@ export class ReportesController {
 
   @Get('ventas/por-producto')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  @UseGuards(SupervisorGateGuard())
+  @UseGuards(RequiereSupervisor('ver_reportes'))
   @ApiOperation({ summary: 'Ranking de productos más vendidos en el período' })
   getVentasPorProducto(@Query() dto: FiltroFechaDto) {
     return this.reportesService.getVentasPorProducto(dto);
@@ -154,7 +154,7 @@ export class ReportesController {
 
   @Get('ventas/por-dia')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  @UseGuards(SupervisorGateGuard())
+  @UseGuards(RequiereSupervisor('ver_reportes'))
   @ApiOperation({ summary: 'Ventas diarias del mes (datos para gráfica de barras)' })
   @ApiQuery({ name: 'mes',  required: true, example: 5 })
   @ApiQuery({ name: 'anio', required: true, example: 2026 })
@@ -164,7 +164,7 @@ export class ReportesController {
 
   @Get('facturas-pendientes')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  @UseGuards(SupervisorGateGuard())
+  @UseGuards(RequiereSupervisor('ver_reportes'))
   @ApiOperation({ summary: 'Facturas emitidas pendientes de cobro con días transcurridos' })
   getFacturasPendientes() {
     return this.reportesService.getFacturasPendientes();
@@ -174,7 +174,7 @@ export class ReportesController {
 
   @Get('compras')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  @UseGuards(SupervisorGateGuard())
+  @UseGuards(RequiereSupervisor('ver_reportes'))
   @ApiOperation({ summary: 'Compras del período con totales e ITBIS pagado' })
   getComprasPorPeriodo(@Query() dto: FiltroFechaDto) {
     return this.reportesService.getComprasPorPeriodo(dto);
@@ -182,7 +182,7 @@ export class ReportesController {
 
   @Get('compras/por-proveedor')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  @UseGuards(SupervisorGateGuard())
+  @UseGuards(RequiereSupervisor('ver_reportes'))
   @ApiOperation({ summary: 'Ranking de proveedores por compras en el período' })
   getComprasPorProveedor(@Query() dto: FiltroFechaDto) {
     return this.reportesService.getComprasPorProveedor(dto);
@@ -190,7 +190,7 @@ export class ReportesController {
 
   @Get('compras/por-dia')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  @UseGuards(SupervisorGateGuard())
+  @UseGuards(RequiereSupervisor('ver_reportes'))
   @ApiOperation({ summary: 'Compras diarias del mes (datos para gráfica)' })
   getComprasPorDia(@Query() dto: FiltroMesAnioDto) {
     return this.reportesService.getComprasPorDia(dto);
@@ -200,7 +200,7 @@ export class ReportesController {
 
   @Get('fiscal/606')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  @UseGuards(SupervisorGateGuard())
+  @UseGuards(RequiereSupervisor('ver_reportes'))
   @ApiOperation({ summary: 'Formato 606 DGII — Reporte de compras para declaración fiscal' })
   getReporte606(@Query() dto: FiltroMesAnioDto) {
     return this.reportesService.getReporte606(dto);
@@ -208,7 +208,7 @@ export class ReportesController {
 
   @Get('fiscal/607')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  @UseGuards(SupervisorGateGuard())
+  @UseGuards(RequiereSupervisor('ver_reportes'))
   @ApiOperation({ summary: 'Formato 607 DGII — Comprobantes anulados del período' })
   getReporte607(@Query() dto: FiltroMesAnioDto) {
     return this.reportesService.getReporte607(dto);
@@ -216,7 +216,7 @@ export class ReportesController {
 
   @Get('fiscal/itbis')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  @UseGuards(SupervisorGateGuard())
+  @UseGuards(RequiereSupervisor('ver_reportes'))
   @ApiOperation({ summary: 'Balance ITBIS: cobrado en ventas vs pagado en compras' })
   getReporteITBIS(@Query() dto: FiltroMesAnioDto) {
     return this.reportesService.getReporteITBIS(dto);
@@ -224,7 +224,7 @@ export class ReportesController {
 
   @Get('fiscal/ecf')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  @UseGuards(SupervisorGateGuard())
+  @UseGuards(RequiereSupervisor('ver_reportes'))
   @ApiOperation({ summary: 'e-CFs del mes por estado DGII (pendiente/aceptado/rechazado)' })
   getECFsPorEstado(@Query() dto: FiltroMesAnioDto) {
     return this.reportesService.getECFsPorEstado(dto);
@@ -233,14 +233,14 @@ export class ReportesController {
   // ── Inventario ─────────────────────────────────────────────────────────────
 
   @Get('inventario/stock')
-  @UseGuards(SupervisorGateGuard())
+  @UseGuards(RequiereSupervisor('ver_reportes'))
   @ApiOperation({ summary: 'Stock actual de todos los productos con alertas' })
   getStockActual() {
     return this.reportesService.getStockActual();
   }
 
   @Get('inventario/stock-bajo')
-  @UseGuards(SupervisorGateGuard())
+  @UseGuards(RequiereSupervisor('ver_reportes'))
   @ApiOperation({ summary: 'Productos con stock igual o menor al mínimo' })
   getStockBajo() {
     return this.reportesService.getStockBajo();
@@ -248,7 +248,7 @@ export class ReportesController {
 
   @Get('inventario/movimientos')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  @UseGuards(SupervisorGateGuard())
+  @UseGuards(RequiereSupervisor('ver_reportes'))
   @ApiOperation({ summary: 'Movimientos de inventario del período: entradas vs salidas' })
   getMovimientosPorPeriodo(@Query() dto: FiltroFechaDto) {
     return this.reportesService.getMovimientosPorPeriodo(dto);
@@ -256,7 +256,7 @@ export class ReportesController {
 
   @Get('inventario/valor')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  @UseGuards(SupervisorGateGuard())
+  @UseGuards(RequiereSupervisor('ver_reportes'))
   @ApiOperation({ summary: 'Valor total del inventario al costo por categoría' })
   getValorInventario() {
     return this.reportesService.getValorInventario();

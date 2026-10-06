@@ -149,6 +149,17 @@ export class CreateFacturaDto {
   @IsPositive()
   supervisorSessionId?: number;
 
+  /**
+   * Token de un solo uso emitido por POST /auth/verificar-supervisor cuando
+   * la política 'venta_credito' está en modo 'cada_vez' (el default) —
+   * alternativa a supervisorSessionId para empresas que exigen una
+   * autorización nueva por cada venta a crédito en vez de reusar la sesión
+   * de 8h. Se valida y consume en FacturasService.validarAutorizacionVentaCredito.
+   */
+  @IsOptional()
+  @IsString()
+  supervisorToken?: string;
+
   @IsDateString()
   fecha: string;
 

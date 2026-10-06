@@ -30,6 +30,7 @@ const ALTO = Symbol('alto-tras-autorizacion');
 function buildService(opts: {
   tipoPago: string;
   supervisorSessionId?: number | null;
+  supervisorToken?: string | null;
   queryResponses: unknown[][];
 }) {
   const facturaRepository = { update: jest.fn().mockResolvedValue({ affected: 1 }) };
@@ -50,21 +51,23 @@ function buildService(opts: {
     fecha: new Date(), folio: 'FAC-777', total: 1000,
     tipoPago: opts.tipoPago, usuarioId: CAJERO,
     supervisorSessionId: opts.supervisorSessionId ?? null,
+    supervisorToken: opts.supervisorToken ?? null,
     vendedorId: 1, nombreVendedor: 'V',
   });
 
   return { svc, query };
 }
 
-const CONF_EXIGE = [{ configuracion: { supervisorModeEnabled: true } }];
-const CONF_NO_EXIGE = [{ configuracion: { supervisorModeEnabled: false } }];
+const POLITICA_SESION_EXIGE    = [{ requerido: true,  modo: 'sesion' }];
+const POLITICA_CADA_VEZ_EXIGE  = [{ requerido: true,  modo: 'cada_vez' }];
+const POLITICA_NO_EXIGE        = [{ requerido: false, modo: 'cada_vez' }];
 
 describe('cambiarEstado() — guard de autorización de supervisor para crédito', () => {
-  it('factura a CRÉDITO sin supervisorSessionId → 403, no llega a crearse', async () => {
+  it('factura a CRÉDITO sin supervisorSessionId (política en modo sesión) → 403, no llega a crearse', async () => {
     const { svc } = buildService({
       tipoPago: 'CREDITO',
       supervisorSessionId: null,
-      queryResponses: [CONF_EXIGE],
+      queryResponses: [POLITICA_SESION_EXIGE],
     });
     await expect(svc.cambiarEstado(777, FacturaEstado.EMITIDA)).rejects.toThrow(ForbiddenException);
   });
@@ -75,7 +78,7 @@ describe('cambiarEstado() — guard de autorización de supervisor para crédito
     const { svc, query } = buildService({
       tipoPago: 'CREDITO',
       supervisorSessionId: SESSION_ID,
-      queryResponses: [CONF_EXIGE, []], // la sesión no aparece: es de otro cajero
+      queryResponses: [POLITICA_SESION_EXIGE, []], // la sesión no aparece: es de otro cajero
     });
     await expect(svc.cambiarEstado(777, FacturaEstado.EMITIDA)).rejects.toThrow(ForbiddenException);
     expect(query.mock.calls[1][1]).toEqual([SESSION_ID, EMPRESA, CAJERO]);
@@ -85,7 +88,7 @@ describe('cambiarEstado() — guard de autorización de supervisor para crédito
     const { svc } = buildService({
       tipoPago: 'CREDITO',
       supervisorSessionId: SESSION_ID,
-      queryResponses: [CONF_EXIGE, []], // vencida: tampoco aparece en el resultado
+      queryResponses: [POLITICA_SESION_EXIGE, []], // vencida: tampoco aparece en el resultado
     });
     await expect(svc.cambiarEstado(777, FacturaEstado.EMITIDA)).rejects.toThrow(ForbiddenException);
   });
@@ -94,14 +97,32 @@ describe('cambiarEstado() — guard de autorización de supervisor para crédito
     const { svc } = buildService({
       tipoPago: 'CREDITO',
       supervisorSessionId: SESSION_ID,
-      queryResponses: [CONF_EXIGE, [{ id: SESSION_ID }]],
+      queryResponses: [POLITICA_SESION_EXIGE, [{ id: SESSION_ID }]],
     });
     // Pasó el guard de supervisor: ahora sí llega al límite de ingresos (ALTO) — si
     // el 403 fuera a disparar, el test fallaría con ForbiddenException, no con ALTO.
     await expect(svc.cambiarEstado(777, FacturaEstado.EMITIDA)).rejects.toBe(ALTO);
   });
 
-  it('venta de CONTADO → no exige nada, ni siquiera consulta la configuración de la empresa', async () => {
+  it('política en modo cada_vez, sin token → 403', async () => {
+    const { svc } = buildService({
+      tipoPago: 'CREDITO',
+      supervisorToken: null,
+      queryResponses: [POLITICA_CADA_VEZ_EXIGE],
+    });
+    await expect(svc.cambiarEstado(777, FacturaEstado.EMITIDA)).rejects.toThrow(ForbiddenException);
+  });
+
+  it('política en modo cada_vez, con token válido (consumido) → pasa la autorización', async () => {
+    const { svc } = buildService({
+      tipoPago: 'CREDITO',
+      supervisorToken: 'abc123',
+      queryResponses: [POLITICA_CADA_VEZ_EXIGE, [{ id: 1 }]],
+    });
+    await expect(svc.cambiarEstado(777, FacturaEstado.EMITIDA)).rejects.toBe(ALTO);
+  });
+
+  it('venta de CONTADO → no exige nada, ni siquiera consulta la política', async () => {
     const { svc, query } = buildService({
       tipoPago: 'CONTADO',
       supervisorSessionId: null,
@@ -111,11 +132,11 @@ describe('cambiarEstado() — guard de autorización de supervisor para crédito
     expect(query).not.toHaveBeenCalled();
   });
 
-  it('empresa sin el modo supervisor activado → la venta a crédito pasa igual (comportamiento previo intacto)', async () => {
+  it('empresa con la política desmarcada → la venta a crédito pasa igual (comportamiento previo intacto)', async () => {
     const { svc } = buildService({
       tipoPago: 'CREDITO',
       supervisorSessionId: null,
-      queryResponses: [CONF_NO_EXIGE],
+      queryResponses: [POLITICA_NO_EXIGE],
     });
     await expect(svc.cambiarEstado(777, FacturaEstado.EMITIDA)).rejects.toBe(ALTO);
   });

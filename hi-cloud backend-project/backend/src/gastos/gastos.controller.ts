@@ -15,7 +15,7 @@ import { DestinoItbis } from '../common/enums/destino-itbis.enum';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import { SupervisorGateGuard } from '../auth/guards/supervisor-gate.guard';
+import { RequiereSupervisor } from '../supervisor-politicas/guards/requiere-supervisor.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
@@ -135,7 +135,7 @@ export class GastosController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @UseGuards(SupervisorGateGuard())
+  @UseGuards(RequiereSupervisor('registrar_gasto'))
   @ApiOperation({ summary: 'Registrar gasto (genera asiento contable automático)' })
   crear(@Body() dto: CreateGastoDto, @GetUser() usuario: User) {
     return this.svc.crear({ ...dto, userId: usuario.id });

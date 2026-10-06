@@ -2,19 +2,18 @@ import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import { SupervisorGateGuard } from '../auth/guards/supervisor-gate.guard';
+import { RequiereSupervisor } from '../supervisor-politicas/guards/requiere-supervisor.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
 import { AnalyticsService } from './analytics.service';
 
-// Mismo criterio que "Ver Ganancias" en el POS (Forced, máxima sensibilidad):
-// vendedor necesita sesión de supervisor activa para ver BI/Analytics fuera
-// del POS. admin/contador/viewer no se ven afectados — SupervisorGateGuard
-// solo agrega condición a role==='vendedor'.
+// Clave 'ver_reportes' del catálogo de Modo Supervisor (admin la configura
+// en Configuración → Modo Supervisor). admin/contador/viewer nunca se ven
+// afectados — RequiereSupervisor solo agrega condición a role==='vendedor'.
 @ApiTags('Analytics & BI')
 @ApiBearerAuth('access-token')
 @ApiHeader({ name: 'X-Empresa-ID', required: true })
-@UseGuards(JwtAuthGuard, RolesGuard, SupervisorGateGuard())
+@UseGuards(JwtAuthGuard, RolesGuard, RequiereSupervisor('ver_reportes'))
 @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
 @Controller('analytics')
 export class AnalyticsController {

@@ -5,7 +5,7 @@ export const CLASE_MODAL_COBRO = 'hc-modal-cobro';
 
 /**
  * ¿El atajo de teclado Enter que confirma el cobro (POSPage) debe IGNORAR
- * este evento? Mismo patrón que ventaCreditoGate.ts / carritoRecuperadoGate.ts.
+ * este evento? Mismo patrón que carritoRecuperadoGate.ts.
  *
  * Hotfix de seguridad #1 (reporte de Bellamar González — VENTAS DIVERSAS
  * ELIDO): el listener global de Enter para "Confirmar cobro" no distinguía

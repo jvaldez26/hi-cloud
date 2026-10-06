@@ -92,6 +92,44 @@ export async function solicitarReautenticacion(): Promise<boolean> {
 }
 
 /**
+ * Autorización de supervisor bajo demanda: cuando el backend rechaza una
+ * petición con 403 y `supervisorClaveRequerida` (ver RequiereSupervisor en
+ * el backend), el interceptor de Axios pide, SIN que la pantalla que hizo la
+ * llamada sepa de antemano que hacía falta, que se autorice esa clave — y si
+ * se autoriza, reintenta la MISMA petición con el token en el header.
+ *
+ * Mismo patrón que la reautenticación de arriba (handler registrado por un
+ * componente React, el interceptor hace `await` sobre una función puente que
+ * no sabe nada de React) — con una diferencia: aquí la promesa resuelve con
+ * `{ ok, token? }`, no solo `boolean`, porque el interceptor necesita el
+ * token para adjuntarlo a la petición reintentada.
+ *
+ * Un solo handler (no hay versión "por defecto" + "específica del POS" como
+ * la reautenticación): Modo Supervisor solo existe dentro del POS, que es
+ * donde useSupervisor.ts se monta y se registra.
+ */
+export interface AutorizacionSupervisorResultado { ok: boolean; token?: string }
+type SupervisorAuthHandler = (clave: string, action: string, detail?: string) => Promise<AutorizacionSupervisorResultado>;
+let _supervisorAuthHandler: SupervisorAuthHandler | null = null;
+
+/** Lo registra useSupervisor.ts al montar (POSPage) y lo desregistra al desmontar. */
+export function registerSupervisorAuthHandler(fn: SupervisorAuthHandler | null): void {
+  _supervisorAuthHandler = fn;
+}
+
+/** Llamado por el interceptor de Axios ante un 403 con supervisorClaveRequerida. */
+export async function solicitarAutorizacionSupervisor(
+  clave: string, action: string, detail?: string,
+): Promise<AutorizacionSupervisorResultado> {
+  if (!_supervisorAuthHandler) return { ok: false };
+  try {
+    return await _supervisorAuthHandler(clave, action, detail);
+  } catch {
+    return { ok: false };
+  }
+}
+
+/**
  * true en cuanto se inicia el logout suave — se queda así hasta el siguiente
  * page load (no necesita reset porque el soft-navigate no recarga la página;
  * en /login el componente ya carga fresco con isNavigatingAway = false del

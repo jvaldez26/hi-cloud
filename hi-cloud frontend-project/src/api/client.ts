@@ -2,7 +2,7 @@ import axios, { AxiosError } from 'axios';
 import { message } from 'antd';
 import * as Sentry from '@sentry/react';
 import { moduloActual } from '../observability/sentryScope';
-import { emitSessionEnd, markNavigatingAway, isNavigatingAway, solicitarReautenticacion } from '../utils/sessionEvents';
+import { emitSessionEnd, markNavigatingAway, isNavigatingAway, solicitarReautenticacion, solicitarAutorizacionSupervisor } from '../utils/sessionEvents';
 import { registrarHoraServidor } from '../utils/fechaRD';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '/api/v1';
@@ -487,6 +487,31 @@ apiClient.interceptors.response.use(
           (recErr as Error)?.message ?? recErr);
       }
       _recuperandoEmpresa = false;
+    }
+
+    // ── 403 por falta de autorización de Modo Supervisor (genérico) ──────────
+    // RequiereSupervisor (backend) manda supervisorClaveRequerida/supervisorModo
+    // en el body del 403 — ninguna pantalla necesita saber de antemano que una
+    // clave hacía falta: el interceptor pide la autorización aquí (vía
+    // useSupervisor.ts, registrado como handler en sessionEvents.ts, mismo
+    // patrón que solicitarReautenticacion) y reintenta la MISMA petición con
+    // el token. `_retrySupervisor` es la marca anti-bucle — si el reintento
+    // vuelve a dar el mismo 403 (token inválido, cajero canceló, etc.), no se
+    // vuelve a intentar: se deja pasar el error tal cual.
+    if (status === 403) {
+      const data = err.response?.data as any;
+      const clave = data?.supervisorClaveRequerida as string | undefined;
+      const original = err.config as any;
+      if (clave && original && !original._retrySupervisor) {
+        original._retrySupervisor = true;
+        const resultado = await solicitarAutorizacionSupervisor(clave, clave);
+        if (resultado.ok) {
+          original.headers = original.headers ?? {};
+          if (resultado.token) original.headers['x-supervisor-token'] = resultado.token;
+          return apiClient.request(original);
+        }
+        // Cancelado o sin handler registrado (fuera del POS) → cae al error normal.
+      }
     }
 
     // ── Enriquecer el error con mensaje claro ────────────────────

@@ -18,6 +18,7 @@ import { normalizarNcf, esNcfCompleto, errorNcf } from '../../utils/ncf';
 import { tipoIdentificacion } from '../../utils/identificacionDgii';
 import { buildReciboTermicoHTML } from '../../utils/ticketTermico';
 import { useRncLookup } from '../../hooks/useRncLookup';
+import { POS_PANELES, NAV_ITEMS, MENU_EXTRAS, PANEL_TITLES, type PanelId } from '../../config/posPanelesConfig';
 import QRCode from 'qrcode';
 import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover, Input, Button, Segmented, Tabs, InputNumber, Radio, Checkbox } from 'antd';
 import { SearchOutlined, ShoppingCartOutlined, CheckCircleOutlined, DisconnectOutlined, LogoutOutlined, PrinterOutlined, LockOutlined, UserSwitchOutlined, SwapOutlined, EyeOutlined, EyeInvisibleOutlined, ShopOutlined, MailOutlined, FileExcelOutlined, FilePdfOutlined, PlayCircleOutlined } from '@ant-design/icons';
@@ -58,7 +59,6 @@ import { conectarImpresora, desconectarImpresora, estaConectada, getNombreImpres
 import { useThemeStore } from '../../store/theme.store';
 import { useOfflineQueue } from '../../hooks/useOfflineQueue';
 import { useSupervisor } from '../../hooks/useSupervisor';
-import { requiereSupervisorVentaCredito } from './ventaCreditoGate';
 import { requiereSupervisorPorPrecioModificado } from './carritoRecuperadoGate';
 import { debeIgnorarEnterGlobal } from './confirmarCobroEnterGate';
 import { resolverIntentoCobro } from './intentoCobroGate';
@@ -479,7 +479,7 @@ const CartRow = memo(function CartRow({ item, onQty, onQtyDirecto, onRemove, onD
   onPrecio?: (p: number) => void; onLista?: (lista: PrecioLista) => void;
   permitirModificarPrecio?: boolean; permitirDescuentos?: boolean;
   precioInputModo?: 'c' | 's'; onPrecioInputModoChange?: (modo: 'c' | 's') => void;
-  requireSupervisor?: (action: string, detail?: string) => Promise<boolean>;
+  requireSupervisor?: (clave: string, action: string, detail?: string) => Promise<{ ok: boolean; token?: string }>;
   /** config posPrecioIncluyeItbis — si true, item.precio YA es final y el descuento no se convierte */
   precioIncluyeItbis?: boolean;
 }) {
@@ -645,8 +645,8 @@ const CartRow = memo(function CartRow({ item, onQty, onQtyDirecto, onRemove, onD
                 ) : (
                   <span onClick={async () => {
                       if (requireSupervisor) {
-                        const ok = await requireSupervisor('Modificar precio', `Producto: ${item.produto.nombre} — Precio actual: ${fmt.money(item.precio)}`);
-                        if (!ok) return;
+                        const r = await requireSupervisor('modificar_precio', 'Modificar precio', `Producto: ${item.produto.nombre} — Precio actual: ${fmt.money(item.precio)}`);
+                        if (!r.ok) return;
                       }
                       const _pct = Number((item.produto as any).porcentajeIva ?? 18) / 100;
                       setPrecioDraft(precioInputModo === 'c' && _pct > 0
@@ -1019,7 +1019,7 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
   ecfOnline: boolean | null;
   supervisorActiveBadge?: string;
   onDesactivarSupervisor?: () => void;
-  requireSupervisor?: (action: string) => Promise<boolean>;
+  requireSupervisor?: (clave: string, action: string) => Promise<{ ok: boolean; token?: string }>;
   modosPOS: { codigo: string; label: string; icono: string }[];
   modoContexto: string;
   onModoContextoChange: (m: string) => void;
@@ -1412,8 +1412,8 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
                     onClick={async () => {
                       setShowOpcionesMenu(false);
                       if (requireSupervisor) {
-                        const ok = await requireSupervisor('Cambiar sucursal');
-                        if (!ok) return;
+                        const r = await requireSupervisor('cambiar_sucursal', 'Cambiar sucursal');
+                        if (!r.ok) return;
                       }
                       setModalCambiarSucursal(true);
                     }}
@@ -2362,7 +2362,7 @@ const CODIGOS_MOD_POS = [
 
 function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
   open: boolean; onClose: () => void; palette: Palette;
-  requireSupervisor?: (action: string, detail?: string) => Promise<boolean>;
+  requireSupervisor?: (clave: string, action: string, detail?: string) => Promise<{ ok: boolean; token?: string }>;
 }) {
   const C  = palette;
   const qc = useQueryClient();
@@ -2453,7 +2453,7 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
     : null;
 
   const guardarMut = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (supervisorToken?: string) => {
       if (!clienteId) throw new Error('Selecciona un cliente');
       if (!facturaData?.id) throw new Error('Busca la factura de origen primero');
       if (!codigoMod)  throw new Error('Selecciona el Código de Modificación DGII');
@@ -2508,7 +2508,7 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
         tipoCambio: facturaData.tipoCambio ? Number(facturaData.tipoCambio) : 1,
         codigoModificacion: codigoMod,
         detalles,
-      });
+      }, supervisorToken ? { headers: { 'x-supervisor-token': supervisorToken } } : undefined);
       const nc = ncRes.data?.data ?? ncRes.data;
       if (!nc?.id) throw new Error('No se pudo crear la Nota de Crédito');
 
@@ -2862,11 +2862,15 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
               Cancelar
             </button>
             <button onClick={async () => {
+                const rCredito = requireSupervisor
+                  ? await requireSupervisor('crear_nota_credito', 'Crear Nota de Crédito', `Factura ${facturaData?.folio ?? ''}`)
+                  : { ok: true as const, token: undefined };
+                if (!rCredito.ok) return;
                 if (esEfectivo && requireSupervisor) {
-                  const ok = await requireSupervisor('Devolución en efectivo', `NC sobre ${facturaData?.folio ?? ''}`);
-                  if (!ok) return;
+                  const rEfectivo = await requireSupervisor('devolucion_efectivo', 'Devolución en efectivo', `NC sobre ${facturaData?.folio ?? ''}`);
+                  if (!rEfectivo.ok) return;
                 }
-                guardarMut.mutate();
+                guardarMut.mutate(rCredito.token);
               }} disabled={guardarMut.isPending || !!lineaSinTasaActiva}
               style={{ flex:2, height:42, borderRadius:10, border:'none',
                 background: (guardarMut.isPending || !!lineaSinTasaActiva) ? '#94A3B8' : '#2563EB',
@@ -2879,10 +2883,6 @@ function POSNotaCreditoModal({ open, onClose, palette, requireSupervisor }: {
     </div>
   );
 }
-
-type PanelId = 'items' | 'inventario' | 'facturas' | 'pre-facturas' | 'cotizaciones' | 'conduce'
-             | 'clientes' | 'recibos-cobro' | 'anticipos'
-             | 'notas-credito' | 'gastos' | 'cierre-caja' | 'ventas-hoy' | 'pro-formas' | 'compras';
 
 /**
  * Paneles que POSPanel NO renderiza: los delega a un componente especializado
@@ -2955,10 +2955,9 @@ function PanelSelect({ label, children, C: _C, ...props }: { label?: string; C?:
 }
 
 // ── Panel Inventario — catálogo de productos con CRUD supervisado ─────────────
-function POSInventarioPanel({ C, onVolver, requireSupervisor }: {
+function POSInventarioPanel({ C, onVolver }: {
   C: Palette;
   onVolver: () => void;
-  requireSupervisor?: (action: string, detail?: string) => Promise<boolean>;
 }) {
   const qc = useQueryClient();
   const userRole = useAuthStore(s => s.user?.role);
@@ -3708,11 +3707,13 @@ function POSCompraDetailModal({ id, onClose, onRecibir, onRefresh }: {
 }
 
 // ── Panel Compras (Órdenes de Compra) ────────────────────────────────────────
-function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForced }: {
+function POSComprasPanel({ C, onVolver, supervisorActive, requiereSupervisorPanel, requireSupervisor }: {
   C: Palette;
   onVolver: () => void;
   supervisorActive: boolean;
-  requireSupervisorForced: (action: string, detail?: string) => Promise<boolean>;
+  /** Política 'pos.panel.compras'.requerido — si el admin la desmarcó, no hay nada que bloquear. */
+  requiereSupervisorPanel: boolean;
+  requireSupervisor: (clave: string, action: string, detail?: string) => Promise<{ ok: boolean; token?: string }>;
 }) {
   const qc       = useQueryClient();
   const [busq,         setBusq]         = useState('');
@@ -3894,7 +3895,7 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
   };
 
   // Locked screen when supervisor is not active
-  if (!supervisorActive) {
+  if (!supervisorActive && requiereSupervisorPanel) {
     return (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <PanelHeader title="Compras" icon="🛒" C={C} onVolver={onVolver} />
@@ -3905,7 +3906,7 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requireSupervisorForce
           <div style={{ fontSize: 13, color: C.textSub }}>
             Órdenes de Compra requiere autorización de supervisor
           </div>
-          <button onClick={async () => { await requireSupervisorForced('Órdenes de Compra'); refetch(); }}
+          <button onClick={async () => { await requireSupervisor('pos.panel.compras', 'Órdenes de Compra'); refetch(); }}
             style={{ padding: '10px 28px', borderRadius: 8, border: 'none',
               background: C.blue, color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700 }}>
             Activar Supervisor
@@ -7962,53 +7963,39 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
 
 // ── Paneles inline del POS ────────────────────────────────────────────────────
 
-const PANEL_TITLES: Record<PanelId, { label: string; icon: string }> = {
-  'items':          { label: 'Ítems',            icon: '🛒' },
-  'inventario':     { label: 'Inventario',        icon: '📦' },
-  'facturas':       { label: 'Facturas',          icon: '📄' },
-  'pre-facturas':   { label: 'Pre-Facturas',      icon: '📋' },
-  'cotizaciones':   { label: 'Cotizaciones',      icon: '💬' },
-  'conduce':        { label: 'Conduces',          icon: '🚚' },
-  'clientes':       { label: 'Clientes',          icon: '👤' },
-  'recibos-cobro':  { label: 'Recibos de Cobro',  icon: '🧾' },
-  'anticipos':      { label: 'Anticipos',          icon: '💰' },
-  'notas-credito':  { label: 'Notas de Crédito',  icon: '📝' },
-  'gastos':         { label: 'Gastos/Retiros',     icon: '💸' },
-  'cierre-caja':    { label: 'Cierre de Caja',    icon: '🏧' },
-  'ventas-hoy':     { label: 'Ganancias',           icon: '📈' },
-  'pro-formas':     { label: 'Pro Formas',         icon: '📋' },
-  'compras':        { label: 'Órdenes de Compra',  icon: '🛍️' },
-};
-
-function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnularFacturas, tiempoLimiteAnular, requireSupervisor, supervisorActive, requireSupervisorForced, supervisorSessionActive, supervisorModeEnabled, posSupervisorVentaCredito, supervisorSessionId }: {
+function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnularFacturas, tiempoLimiteAnular, requireSupervisor, supervisorActive, supervisorPoliticas, supervisorSessionActive, supervisorSessionId }: {
   panel:              PanelId;
   palette:            Palette;
   onVolver:           () => void;
   confirmarAnulacion?:     boolean;
   permitirAnularFacturas?: boolean;
   tiempoLimiteAnular?:     number;
-  requireSupervisor?:      (action: string, detail?: string) => Promise<boolean>;
+  /** Clave del catálogo de Modo Supervisor (ver supervisor-catalogo.ts) — cada
+   *  llamada interna especifica la suya ('anular_documento', 'venta_credito'...). */
+  requireSupervisor?:      (clave: string, action: string, detail?: string) => Promise<{ ok: boolean; token?: string }>;
   supervisorActive?:       boolean;
-  requireSupervisorForced?: (action: string, detail?: string) => Promise<boolean>;
+  /** Catálogo completo con el valor actual — solo lo usa el panel de Compras
+   *  para decidir si su pantalla de bloqueo aplica (política 'pos.panel.compras'). */
+  supervisorPoliticas?:    { clave: string; requerido: boolean }[];
   /**
    * Distinto de `supervisorActive` de arriba: ese es "¿la acción pasa sin pedir
-   * nada?" (true también cuando el modo supervisor está DESACTIVADO para la
-   * empresa) — usarlo para levantar el filtro de Facturas dejaría a cualquier
-   * empresa SIN modo supervisor activado viendo todas las facturas de nuevo,
-   * el mismo hueco que se está cerrando aquí. Este es el crudo del hook
+   * nada?" (true también cuando la política de 'ver_reportes'/filtrado no exige
+   * nada) — usarlo para levantar el filtro de Facturas dejaría a cualquier
+   * empresa sin la política activada viendo todas las facturas de nuevo, el
+   * mismo hueco que se está cerrando aquí. Este es el crudo del hook
    * (`supervisor.supervisorActive`): solo true con una sesión real y vigente.
    */
   supervisorSessionActive?: boolean;
-  // Para gatear "Cobrar Cotización" a Crédito igual que confirmarCobro() en
-  // el carrito normal — ver requiereSupervisorVentaCredito().
-  supervisorModeEnabled?:     boolean;
-  posSupervisorVentaCredito?: unknown;
   supervisorSessionId?:       number;
 }) {
   const C  = palette;
   const qc = useQueryClient();
   const [busq,          setBusq]          = useState('');
   const [anulando,      setAnulando]      = useState<number | null>(null);
+  // Token de 'anular_documento' (modo cada_vez) — capturado al pulsar 🚫, se
+  // consume al confirmar (o directo, si confirmarAnulacion=false). Un solo
+  // registro a la vez puede estar en estado "anulando", así que un ref basta.
+  const anularTokenRef = useRef<string | undefined>(undefined);
   const [imprimiendo,   setImprimiendo]   = useState<number | null>(null);
   const [cobrarPF,      setCobrarPF]      = useState<{ id: number; folio: string; total: number; cliente: string } | null>(null);
   const [cobrarPFMetodo, setCobrarPFMetodo] = useState<string>('Efectivo');
@@ -8034,9 +8021,12 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
 
   // ── Endpoints de anulación por módulo ──────────────────────────────
   const anularMutation = useMutation({
-    mutationFn: async ({ id, mod, motivo }: { id: number; mod: string; motivo?: string }) => {
-      // FIX 2: usar 'cancelada' (valor correcto del enum FacturaEstado)
-      if (mod === 'facturas')        return api.patch(`/facturas/${id}/estado`, { estado: 'cancelada' });
+    mutationFn: async ({ id, mod, motivo, supervisorToken }: { id: number; mod: string; motivo?: string; supervisorToken?: string }) => {
+      // FIX 2: usar 'cancelada' (valor correcto del enum FacturaEstado) — único
+      // módulo con guard real en backend (RequiereSupervisor('anular_documento')),
+      // por eso es el único que manda el token.
+      if (mod === 'facturas')        return api.patch(`/facturas/${id}/estado`, { estado: 'cancelada' },
+        supervisorToken ? { headers: { 'x-supervisor-token': supervisorToken } } : undefined);
       if (mod === 'cotizaciones')    return api.patch(`/cotizaciones/${id}/estado`, { estado: 'rechazada' });
       if (mod === 'pre-facturas')    return api.patch(`/pre-facturas/${id}/rechazar`, { motivo });
       if (mod === 'conduce') return api.delete(`/conduces/${id}`);
@@ -8190,9 +8180,10 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
 
   // ── Cobrar Cotización desde POS ───────────────────────────────────────────────
   const cobrarCotMut = useMutation({
-    mutationFn: async ({ id, metodoPago, diasCredito, supervisorSessionId }: { id: number; metodoPago: string; diasCredito?: number; supervisorSessionId?: number }) =>
+    mutationFn: async ({ id, metodoPago, diasCredito, supervisorSessionId, supervisorToken }: { id: number; metodoPago: string; diasCredito?: number; supervisorSessionId?: number; supervisorToken?: string }) =>
       api.post(`/cotizaciones/${id}/cobrar-pos`, {
         metodoPago, ...(diasCredito ? { diasCredito } : {}), ...(supervisorSessionId ? { supervisorSessionId } : {}),
+        ...(supervisorToken ? { supervisorToken } : {}),
       }).then(r => r.data?.data ?? r.data),
     onSuccess: async (data: { facturaId: number; folio: string; ecfEmitido?: boolean; ecfError?: string }) => {
       if (data.ecfEmitido === false) {
@@ -8855,7 +8846,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
   // Inventario. Por eso los paneles delegados se excluyen vía PANELES_DELEGADOS
   // en el `enabled` de esa query — mismo efecto, sin tocar el orden de hooks.
   if (panel === 'ventas-hoy')   return <POSVentasHoyPanel  C={C} onVolver={onVolver} />;
-  if (panel === 'inventario')   return <POSInventarioPanel C={C} onVolver={onVolver} requireSupervisor={requireSupervisor} />;
+  if (panel === 'inventario')   return <POSInventarioPanel C={C} onVolver={onVolver} />;
   if (panel === 'clientes')     return <POSClientesPanel   C={C} onVolver={onVolver} />;
   if (panel === 'cierre-caja')  return <POSCierreCajaPanel C={C} onVolver={onVolver} />;
   if (panel === 'conduce')      return <POSConducePanel    C={C} onVolver={onVolver} />;
@@ -8865,7 +8856,8 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
   if (panel === 'compras')
     return <POSComprasPanel C={C} onVolver={onVolver}
       supervisorActive={supervisorActive ?? false}
-      requireSupervisorForced={requireSupervisorForced ?? (async () => true)} />;
+      requiereSupervisorPanel={supervisorPoliticas?.find(p => p.clave === 'pos.panel.compras')?.requerido ?? true}
+      requireSupervisor={requireSupervisor ?? (async () => ({ ok: true }))} />;
 
   const cols  = (colsConfig as any)[panel] ?? [];
   const title = PANEL_TITLES[panel];
@@ -9017,7 +9009,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
                                   setMotivoPFId(row.id);
                                   setAnulando(null);
                                 } else {
-                                  anularMutation.mutate({ id: row.id, mod: panel });
+                                  anularMutation.mutate({ id: row.id, mod: panel, supervisorToken: anularTokenRef.current });
                                 }
                               }}
                                 style={{ background: C.red, border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', padding: '4px 8px', fontSize: 11, marginRight: 4, fontWeight: 700 }}>
@@ -9040,11 +9032,13 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
                                   }
                                 }
                                 if (requireSupervisor) {
-                                  const ok = await requireSupervisor(
+                                  const r = await requireSupervisor(
+                                    'anular_documento',
                                     `Anular documento`,
                                     `ID: ${row.id} — Monto: ${(row as any).total ?? (row as any).monto ?? ''}`,
                                   );
-                                  if (!ok) return;
+                                  if (!r.ok) return;
+                                  anularTokenRef.current = r.token;
                                 }
                                 // Si confirmarAnulacion = false → anular directo sin modal de confirmación
                                 // (pero pre-facturas SIEMPRE pide motivo antes de rechazar)
@@ -9052,7 +9046,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
                                   if (panel === 'pre-facturas') {
                                     setMotivoPFId(row.id);
                                   } else {
-                                    anularMutation.mutate({ id: row.id, mod: panel });
+                                    anularMutation.mutate({ id: row.id, mod: panel, supervisorToken: anularTokenRef.current });
                                   }
                                 } else {
                                   setAnulando(row.id);
@@ -9225,20 +9219,19 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
                   // ver FacturasService.validarAutorizacionVentaCredito); esto
                   // es solo para no golpear la API y fallar con un 403.
                   let sessionIdParaEnviar = supervisorSessionId;
-                  if (requiereSupervisorVentaCredito({
-                    tipoPago: cobrarCotMetodo === 'Crédito' ? 'CREDITO' : 'CONTADO',
-                    supervisorModeEnabled: !!supervisorModeEnabled,
-                    posSupervisorVentaCredito,
-                  })) {
+                  let tokenParaEnviar: string | undefined;
+                  if (cobrarCotMetodo === 'Crédito') {
                     if (!requireSupervisor) return;
-                    const ok = await requireSupervisor('Venta a Crédito', 'Cobrar cotización');
-                    if (!ok) return;
+                    const r = await requireSupervisor('venta_credito', 'Venta a Crédito', 'Cobrar cotización');
+                    if (!r.ok) return;
                     sessionIdParaEnviar = supervisorSessionId;
+                    tokenParaEnviar = r.token;
                   }
                   cobrarCotMut.mutate({
                     id: cobrarCot.id, metodoPago: cobrarCotMetodo,
                     diasCredito: cobrarCotMetodo === 'Crédito' ? Math.max(1, cobrarCotDias || 30) : undefined,
                     supervisorSessionId: sessionIdParaEnviar,
+                    supervisorToken: tokenParaEnviar,
                   });
                 }}
                 style={{ flex: 2, padding: '11px 0', borderRadius: 9, border: 'none', background: cobrarCotMut.isPending ? '#9ca3af' : '#16a34a', color: '#fff', cursor: cobrarCotMut.isPending ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 700 }}>
@@ -9281,30 +9274,6 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
   );
 }
 
-const NAV_ITEMS: Array<{ id: PanelId | 'menu'; label: string; icon: string }> = [
-  { id: 'items',        label: 'Ítems',      icon: '🛒' },
-  { id: 'inventario',   label: 'Inventario', icon: '📦' },
-  { id: 'facturas',     label: 'Facturas',   icon: '📄' },
-  { id: 'pre-facturas', label: 'Pre-Fact.',  icon: '📋' },
-  { id: 'cotizaciones', label: 'Cotizac.',   icon: '💬' },
-  { id: 'compras',      label: 'Compras',    icon: '🛍️' },
-  { id: 'menu',         label: 'Menú',       icon: '⋮'  },
-];
-
-const MENU_EXTRAS: Array<{ label: string; icon: string; panel: PanelId }> = [
-  { label: 'Ganancias',         icon: '📈', panel: 'ventas-hoy' },
-  { label: 'Conduce',          icon: '🚚', panel: 'conduce' },
-  { label: 'Clientes',         icon: '👤', panel: 'clientes' },
-  { label: 'Recibos de Cobro', icon: '🧾', panel: 'recibos-cobro' },
-  { label: 'Anticipos',        icon: '💰', panel: 'anticipos' },
-  { label: 'Pro Formas',        icon: '📋', panel: 'pro-formas' },
-  { label: 'Notas de Crédito', icon: '📝', panel: 'notas-credito' },
-  { label: 'Nueva NC',         icon: '➕', panel: 'nueva-nc' as any },
-  { label: 'Gastos/Retiros',   icon: '💸', panel: 'gastos' },
-  { label: 'Cierre de Caja',   icon: '🏧', panel: 'cierre-caja' },
-  { label: 'Impresora BT',    icon: '🖨️', panel: 'impresora-bt' as any },
-];
-
 function POSBottomNav({
   palette, menuAbierto, panelActivo, onMenuToggle, onPanelChange, onNavigate, controlCajaActivo,
 }: {
@@ -9312,7 +9281,7 @@ function POSBottomNav({
   menuAbierto:        boolean;
   panelActivo:        PanelId;
   onMenuToggle:       () => void;
-  onPanelChange:      (panel: PanelId) => void;
+  onPanelChange:      (panel: PanelId | 'nueva-nc' | 'impresora-bt') => void;
   onNavigate:         (ruta: string) => void;
   /** Cuando es false, Gastos/Retiros y Cierre de Caja se ocultan del menú POS. */
   controlCajaActivo?: boolean;
@@ -9530,6 +9499,11 @@ export default function POSPage() {
   const resolverReautenticacionRef = useRef<((ok: boolean) => void) | null>(null);
   // ── Modo supervisor (configurable por tenant) ─────────────────────────────
   const supervisor = useSupervisor();
+  // Token de un solo uso (política 'venta_credito' en modo 'cada_vez') —
+  // capturado en confirmarCobro() justo antes de emitir, consumido una vez
+  // al construir el payload de ventaMut (ver más abajo). Ref, no state: no
+  // debe disparar un re-render ni sobrevivir más de esta venta.
+  const supervisorTokenVentaCreditoRef = useRef<string | undefined>(undefined);
   // Supervisor selector (modal de activación/autorización)
   const [supId,               setSupId]               = useState<number | null>(null);
   const [supPassword,         setSupPassword]         = useState('');
@@ -9578,9 +9552,10 @@ export default function POSPage() {
         supervisorId: supId, password: supPassword,
         action: supervisor.pendingAction?.action,
         detail: supervisor.pendingAction?.detail,
+        clave:  supervisor.pendingAction?.clave,
       });
       const d = res.data?.data ?? res.data;
-      supervisor.resolveModal(true, d.nombre, d.role, d.sessionId);
+      supervisor.resolveModal(true, d.nombre, d.role, d.sessionId, d.supervisorToken);
       message.success(`✓ Autorizado por ${d.nombre}`);
       setSupId(null); setSupPassword(''); setSupPasswordVisible(false);
     } catch (e: any) {
@@ -10611,14 +10586,15 @@ export default function POSPage() {
       message.error(`Descuento máximo: RD$${maxMonto.toFixed(2)} para este producto`);
       return;
     }
-    // Si el modo supervisor está activo y el descuento supera el máximo → pedir autorización
-    if (supervisor.supervisorModeEnabled && pct > supervisor.maxDiscountPercent) {
+    // Descuento sobre el máximo → la política 'descuento_excedido' decide si pide autorización
+    if (pct > supervisor.maxDiscountPercent) {
       const maxMonto = toFinal(precio * supervisor.maxDiscountPercent / 100);
-      const ok = await supervisor.requireSupervisor(
+      const r = await supervisor.requireSupervisor(
+        'descuento_excedido',
         `Descuento de RD$${toFinal(monto).toFixed(2)} en ${nombreItem}`,
         `Máximo permitido sin supervisor: RD$${maxMonto.toFixed(2)}`,
       );
-      if (!ok) return; // cancelado
+      if (!r.ok) return; // cancelado
     }
     setCart(p => p.map((it, i) => i === idx ? { ...it, descuentoMonto: monto } : it));
   };
@@ -11793,23 +11769,23 @@ export default function POSPage() {
    */
   const confirmarCobro = useCallback(async () => {
     if (!canCheckout || ventaMut.isPending) return;
-    if (requiereSupervisorVentaCredito({
-      tipoPago: tipoPagoPos,
-      supervisorModeEnabled: supervisor.supervisorModeEnabled,
-      posSupervisorVentaCredito: posConf.posSupervisorVentaCredito,
-    })) {
-      const ok = await supervisor.requireSupervisor('Venta a Crédito', `Monto: ${fmt.money(totalEfectivo)}`);
-      if (!ok) return;
+    if (tipoPagoPos === 'CREDITO') {
+      // La política 'venta_credito' decide si hace falta algo (requerido/modo) —
+      // ya no hay un interruptor aparte que consultar aquí.
+      const r = await supervisor.requireSupervisor('venta_credito', 'Venta a Crédito', `Monto: ${fmt.money(totalEfectivo)}`);
+      if (!r.ok) return;
+      supervisorTokenVentaCreditoRef.current = r.token;
     }
     // Carrito recuperado (o simplemente dejado abierto) con un precio
     // modificado cuya sesión de supervisor ya venció — re-autorizar antes de
     // cobrar. Ver carritoRecuperadoGate.ts.
     if (requiereSupervisorPorPrecioModificado(cart, supervisor.supervisorActive)) {
-      const ok = await supervisor.requireSupervisor(
+      const r = await supervisor.requireSupervisor(
+        'modificar_precio',
         'Precio modificado en el carrito',
         'La autorización que lo permitió ya no está vigente',
       );
-      if (!ok) return;
+      if (!r.ok) return;
     }
     if (empresa?.configuracion?.posImpresionAuto === true) {
       autoYaPrintedRef.current = false;
@@ -11898,7 +11874,7 @@ export default function POSPage() {
         autoImprimir={empresa?.configuracion?.posImpresionAuto === true && !autoYaPrintedRef.current}
         cfgTicket={cfgTicketPos} />
       <POSNotaCreditoModal open={showNotaCredito} onClose={() => setShowNotaCredito(false)} palette={palette}
-        requireSupervisor={supervisor.supervisorModeEnabled ? supervisor.requireSupervisor : undefined} />
+        requireSupervisor={supervisor.requireSupervisor} />
 
       {/* Indicador de ventas offline pendientes */}
       {pendingCount > 0 && (
@@ -11925,7 +11901,7 @@ export default function POSPage() {
         onBloquear={() => { sessionStorage.setItem('pos_bloqueado', 'true'); setPantallaBloqueada(true); setPwDesbloqueo(''); setErrDesbloqueo(''); }}
         onSupervisor={() => supervisor.openSupervisorModal('Activar modo supervisor')}
         onCambiarUsuario={() => { setModalCambiarUser(true); setCambiarUserId(undefined); setPwCambio(''); setErrCambio(''); }}
-        requireSupervisor={supervisor.supervisorModeEnabled ? supervisor.requireSupervisor : undefined}
+        requireSupervisor={supervisor.requireSupervisor}
         onExit={salirDelPOS}
         modosPOS={MODOS_POS}
         modoContexto={modoContexto}
@@ -11969,12 +11945,10 @@ export default function POSPage() {
             confirmarAnulacion={posConf.posConfirmarAnulacion !== false}
             permitirAnularFacturas={posConf.posPermitirAnularFacturas !== false}
             tiempoLimiteAnular={typeof posConf.posTiempoLimiteAnular === 'number' ? posConf.posTiempoLimiteAnular : 0}
-            requireSupervisor={supervisor.supervisorModeEnabled ? supervisor.requireSupervisor : undefined}
-            supervisorActive={supervisor.supervisorActive || !supervisor.supervisorModeEnabled}
-            requireSupervisorForced={supervisor.requireSupervisorForced}
+            requireSupervisor={supervisor.requireSupervisor}
+            supervisorActive={supervisor.supervisorActive}
+            supervisorPoliticas={supervisor.politicas}
             supervisorSessionActive={supervisor.supervisorActive}
-            supervisorModeEnabled={supervisor.supervisorModeEnabled}
-            posSupervisorVentaCredito={posConf.posSupervisorVentaCredito}
             supervisorSessionId={supervisor.supervisorSession?.sessionId ?? undefined}
           />
         )}
@@ -12241,30 +12215,27 @@ export default function POSPage() {
           controlCajaActivo={controlCajaActivo}
           onMenuToggle={() => setMenuNavAbierto(v => !v)}
           onPanelChange={async (p) => {
-            if ((p as string) === 'impresora-bt') { setModalBT(true); setMenuNavAbierto(false); return; }
-            if ((p as string) === 'nueva-nc') {
-              if (supervisor.supervisorModeEnabled) {
-                const ok = await supervisor.requireSupervisor('Nueva Nota de Crédito');
-                if (!ok) return;
-              }
-              setShowNotaCredito(true); setMenuNavAbierto(false); return;
-            }
-            if (p === 'cierre-caja' && posConf.posSupervisorCierreCaja !== false && posConf.supervisorModeEnabled) {
-              const fecha = fechaHora(ahora());
-              const ok = await supervisor.requireSupervisorForced('Cierre de Caja', fecha);
-              if (!ok) return;
-            }
-            if (p === 'inventario' && supervisor.supervisorModeEnabled) {
-              const ok = await supervisor.requireSupervisor('Inventario');
-              if (!ok) return;
-            }
-            if (p === 'gastos' && supervisor.supervisorModeEnabled && posConf.posSupervisorGastos !== false) {
-              const ok = await supervisor.requireSupervisor('Gastos / Retiros');
-              if (!ok) return;
-            }
-            if (p === 'ventas-hoy' && supervisor.supervisorModeEnabled) {
-              const ok = await supervisor.requireSupervisorForced('Ver Ganancias');
-              if (!ok) return;
+            if (p === 'impresora-bt') { setModalBT(true); setMenuNavAbierto(false); return; }
+            // 'crear_nota_credito'/'devolucion_efectivo' ya se gatean al confirmar
+            // dentro del modal (ver POSNotaCreditoModal) — pedirlo también aquí
+            // duplicaría el prompt en modo 'cada_vez'.
+            if (p === 'nueva-nc') { setShowNotaCredito(true); setMenuNavAbierto(false); return; }
+
+            // Navegar a un panel — cada uno con su propia clave del catálogo
+            // de Modo Supervisor (ver supervisor-catalogo.ts). requireSupervisor
+            // ya resuelve internamente si la política lo exige o no.
+            const CLAVE_POR_PANEL: Partial<Record<PanelId, string>> = {
+              'cierre-caja':  'pos.panel.cierre_caja',
+              'inventario':   'pos.panel.inventario',
+              'gastos':       'pos.panel.gastos',
+              'ventas-hoy':   'pos.panel.ventas_hoy',
+              'compras':      'pos.panel.compras',
+            };
+            const clave = CLAVE_POR_PANEL[p];
+            if (clave) {
+              const detail = p === 'cierre-caja' ? fechaHora(ahora()) : undefined;
+              const r = await supervisor.requireSupervisor(clave, PANEL_TITLES[p]?.label ?? p, detail);
+              if (!r.ok) return;
             }
             setPanelActivo(p); setMenuNavAbierto(false);
           }}
@@ -12355,7 +12326,7 @@ export default function POSPage() {
                       setPrecioInputModo(modo);
                       try { localStorage.setItem('pos_precio_input_modo', modo); } catch {}
                     }}
-                    requireSupervisor={supervisor.supervisorModeEnabled && posConf.posModificarPrecio === true ? supervisor.requireSupervisor : undefined} />
+                    requireSupervisor={posConf.posModificarPrecio === true ? supervisor.requireSupervisor : undefined} />
                 ))}
               </AnimatePresence>
             )}

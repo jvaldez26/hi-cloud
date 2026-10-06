@@ -109,6 +109,7 @@ import { ContactosModule } from './contactos/contactos.module';
 import { AprobacionesModule } from './aprobaciones/aprobaciones.module';
 import { AlertasSistemaModule } from './alertas-sistema/alertas-sistema.module';
 import { NotificacionesCentroModule } from './notificaciones-centro/notificaciones-centro.module';
+import { SupervisorPoliticasModule } from './supervisor-politicas/supervisor-politicas.module';
 import { FidelidadModule } from './fidelidad/fidelidad.module';
 import { CuotasModule } from './cuotas/cuotas.module';
 import { RecibosCobrosModule } from './recibos-cobro/recibos-cobro.module';
@@ -385,6 +386,7 @@ import { CarWashModule } from './car-wash/car-wash.module';
     AprobacionesModule,
     AlertasSistemaModule,
     NotificacionesCentroModule,
+    SupervisorPoliticasModule,
     FidelidadModule,
     CuotasModule,
     RecibosCobrosModule,

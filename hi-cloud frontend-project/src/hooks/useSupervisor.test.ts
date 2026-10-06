@@ -2,21 +2,36 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createElement } from 'react';
-import { useSupervisor } from './useSupervisor';
+import { useSupervisor, type PoliticaSupervisor } from './useSupervisor';
 
 /**
- * Modo supervisor del POS — lo que se afirma aquí es literal al bug real que
- * este cambio corrige: la sesión vivía en sessionStorage (moría al cerrar la
- * pestaña) mientras auth.store.ts ya limpiaba 'pos_supervisor' de
- * localStorage en logout() desde antes — dos mitades de un mecanismo que
- * nunca se tocaban. Y los dos cierres audit-relevantes del pedido: manual
- * (ESC/×) y por expiración de las 8h, ambos deben avisarle al backend.
+ * Modo supervisor del POS — rediseño por políticas (una por pestaña/acción,
+ * ver Configuración → Modo Supervisor), en vez del interruptor genérico
+ * supervisorModeEnabled de antes. Lo que se afirma aquí sigue siendo literal
+ * al bug real que el mecanismo de sesión corrige: la sesión vivía en
+ * sessionStorage (moría al cerrar la pestaña) mientras auth.store.ts ya
+ * limpiaba 'pos_supervisor' de localStorage en logout() desde antes — dos
+ * mitades de un mecanismo que nunca se tocaban. Y los dos cierres
+ * audit-relevantes: manual (ESC/×) y por expiración de las 8h.
  */
 
 const apiMock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 vi.mock('../api/client', () => ({ default: apiMock }));
 
 const STORAGE_KEY = 'pos_supervisor';
+
+const POLITICA_CERRAR_CAJA_SESION: PoliticaSupervisor = { clave: 'cerrar_caja', label: 'Cerrar caja', descripcion: '', grupo: 'Caja', requerido: true, modo: 'sesion' };
+const POLITICA_CERRAR_CAJA_APAGADA: PoliticaSupervisor = { ...POLITICA_CERRAR_CAJA_SESION, requerido: false };
+const POLITICA_VENTA_CREDITO_CADA_VEZ: PoliticaSupervisor = { clave: 'venta_credito', label: 'Venta a crédito', descripcion: '', grupo: 'Acciones de venta', requerido: true, modo: 'cada_vez' };
+
+/** Por defecto: el umbral de descuento y el catálogo con la política de prueba que cada test necesite. */
+function mockEndpoints(politicas: PoliticaSupervisor[]) {
+  apiMock.get.mockImplementation((url: string) => {
+    if (url.includes('pos-config'))          return Promise.resolve({ data: { maxDiscountPercent: 10 } });
+    if (url.includes('supervisor-politicas')) return Promise.resolve({ data: politicas });
+    return Promise.resolve({ data: {} });
+  });
+}
 
 function wrapper({ children }: { children: React.ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -26,7 +41,7 @@ function wrapper({ children }: { children: React.ReactNode }) {
 beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
-  apiMock.get.mockResolvedValue({ data: { supervisorModeEnabled: true, maxDiscountPercent: 10 } });
+  mockEndpoints([POLITICA_CERRAR_CAJA_SESION]);
   apiMock.post.mockResolvedValue({ data: { ok: true } });
 });
 afterEach(() => { vi.clearAllMocks(); });
@@ -34,7 +49,7 @@ afterEach(() => { vi.clearAllMocks(); });
 describe('useSupervisor — persistencia', () => {
   it('activar una sesión la guarda en localStorage (NO sessionStorage) con el sessionId', async () => {
     const { result } = renderHook(() => useSupervisor(), { wrapper });
-    await waitFor(() => expect(result.current.supervisorModeEnabled).toBe(true));
+    await waitFor(() => expect(result.current.politicas.length).toBeGreaterThan(0));
 
     act(() => { result.current.resolveModal(true, 'Ana Supervisor', 'admin', 42); });
 
@@ -53,7 +68,7 @@ describe('useSupervisor — persistencia', () => {
     }));
 
     const { result } = renderHook(() => useSupervisor(), { wrapper });
-    await waitFor(() => expect(result.current.supervisorModeEnabled).toBe(true));
+    await waitFor(() => expect(result.current.politicas.length).toBeGreaterThan(0));
 
     expect(result.current.supervisorActive).toBe(true);
     expect(result.current.supervisorSession?.sessionId).toBe(7);
@@ -63,7 +78,7 @@ describe('useSupervisor — persistencia', () => {
 describe('useSupervisor — auditoría de cierre', () => {
   it('cierre manual (clearSupervisor) audita motivo=manual con el sessionId real', async () => {
     const { result } = renderHook(() => useSupervisor(), { wrapper });
-    await waitFor(() => expect(result.current.supervisorModeEnabled).toBe(true));
+    await waitFor(() => expect(result.current.politicas.length).toBeGreaterThan(0));
     act(() => { result.current.resolveModal(true, 'Ana Supervisor', 'admin', 42); });
 
     act(() => { result.current.clearSupervisor(); });
@@ -79,7 +94,7 @@ describe('useSupervisor — auditoría de cierre', () => {
     }));
 
     const { result } = renderHook(() => useSupervisor(), { wrapper });
-    await waitFor(() => expect(result.current.supervisorModeEnabled).toBe(true));
+    await waitFor(() => expect(result.current.politicas.length).toBeGreaterThan(0));
 
     expect(result.current.supervisorActive).toBe(false);
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
@@ -88,7 +103,7 @@ describe('useSupervisor — auditoría de cierre', () => {
 
   it('sesión sin sessionId (dato viejo, previo a este cambio): cierra local sin llamar al backend', async () => {
     const { result } = renderHook(() => useSupervisor(), { wrapper });
-    await waitFor(() => expect(result.current.supervisorModeEnabled).toBe(true));
+    await waitFor(() => expect(result.current.politicas.length).toBeGreaterThan(0));
     act(() => { result.current.resolveModal(true, 'Ana Supervisor', 'admin', null); });
 
     act(() => { result.current.clearSupervisor(); });
@@ -97,24 +112,25 @@ describe('useSupervisor — auditoría de cierre', () => {
   });
 });
 
-describe('useSupervisor — requireSupervisor (gate de una acción, ej. Venta a Crédito)', () => {
-  it('modo activo y sin sesión activa: bloquea (la promesa no resuelve) hasta que el modal autoriza', async () => {
+describe('useSupervisor — requireSupervisor (gate por clave, modo "sesion")', () => {
+  it('política requerida y sin sesión activa: bloquea (la promesa no resuelve) hasta que el modal autoriza', async () => {
+    mockEndpoints([POLITICA_CERRAR_CAJA_SESION]);
     const { result } = renderHook(() => useSupervisor(), { wrapper });
-    await waitFor(() => expect(result.current.supervisorModeEnabled).toBe(true));
+    await waitFor(() => expect(result.current.politicas.length).toBeGreaterThan(0));
 
-    let resuelto: boolean | undefined;
+    let resuelto: { ok: boolean; token?: string } | undefined;
     act(() => {
-      result.current.requireSupervisor('Venta a Crédito', 'Monto: RD$7,500.00').then(r => { resuelto = r; });
+      result.current.requireSupervisor('cerrar_caja', 'Cierre de Caja', 'Monto: RD$7,500.00').then(r => { resuelto = r; });
     });
 
     // Sigue pendiente — el modal está abierto (pendingAction), no autorizado todavía.
     expect(resuelto).toBeUndefined();
-    expect(result.current.pendingAction).toEqual({ action: 'Venta a Crédito', detail: 'Monto: RD$7,500.00' });
+    expect(result.current.pendingAction).toEqual({ action: 'Cierre de Caja', detail: 'Monto: RD$7,500.00', clave: 'cerrar_caja' });
 
     // El modal autoriza (mismo flujo que cualquier otra acción protegida).
     await act(async () => { result.current.resolveModal(true, 'Ana Supervisor', 'admin', 55); });
 
-    expect(resuelto).toBe(true);
+    expect(resuelto).toEqual({ ok: true, token: undefined });
     expect(result.current.supervisorActive).toBe(true);
   });
 
@@ -122,26 +138,73 @@ describe('useSupervisor — requireSupervisor (gate de una acción, ej. Venta a 
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       nombre: 'Ana Supervisor', role: 'admin', until: Date.now() + 60_000, sessionId: 7,
     }));
+    mockEndpoints([POLITICA_CERRAR_CAJA_SESION]);
     const { result } = renderHook(() => useSupervisor(), { wrapper });
-    await waitFor(() => expect(result.current.supervisorModeEnabled).toBe(true));
+    await waitFor(() => expect(result.current.politicas.length).toBeGreaterThan(0));
 
-    let resuelto: boolean | undefined;
+    let resuelto: { ok: boolean } | undefined;
     await act(async () => {
-      resuelto = await result.current.requireSupervisor('Venta a Crédito');
+      resuelto = await result.current.requireSupervisor('cerrar_caja', 'Cierre de Caja');
     });
 
-    expect(resuelto).toBe(true);
+    expect(resuelto).toEqual({ ok: true, token: undefined });
     expect(result.current.pendingAction).toBeNull();
   });
 
-  it('modo supervisor desactivado en la empresa: pasa directo (el gate de Venta a Crédito ni se invoca, ver ventaCreditoGate.test.ts)', async () => {
-    apiMock.get.mockResolvedValue({ data: { supervisorModeEnabled: false, maxDiscountPercent: 10 } });
+  it('política desmarcada (requerido=false): pasa directo, sin abrir el modal', async () => {
+    mockEndpoints([POLITICA_CERRAR_CAJA_APAGADA]);
     const { result } = renderHook(() => useSupervisor(), { wrapper });
-    await waitFor(() => expect(result.current.supervisorModeEnabled).toBe(false));
+    await waitFor(() => expect(result.current.politicas.length).toBeGreaterThan(0));
 
-    const resuelto = await result.current.requireSupervisor('Venta a Crédito');
+    const resuelto = await result.current.requireSupervisor('cerrar_caja', 'Cierre de Caja');
 
-    expect(resuelto).toBe(true);
+    expect(resuelto).toEqual({ ok: true });
     expect(result.current.pendingAction).toBeNull();
+  });
+
+  it('clave que no está en el catálogo devuelto por el backend: pasa directo (defensivo, igual que el backend)', async () => {
+    mockEndpoints([]);
+    const { result } = renderHook(() => useSupervisor(), { wrapper });
+    await waitFor(() => expect(result.current.politicas).toEqual([]));
+
+    const resuelto = await result.current.requireSupervisor('clave-inexistente', 'Acción');
+
+    expect(resuelto).toEqual({ ok: true });
+  });
+});
+
+describe('useSupervisor — requireSupervisor (gate por clave, modo "cada_vez")', () => {
+  it('con sesión activa, IGUAL pide autorización — modo cada_vez ignora la sesión existente', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      nombre: 'Ana Supervisor', role: 'admin', until: Date.now() + 60_000, sessionId: 7,
+    }));
+    mockEndpoints([POLITICA_VENTA_CREDITO_CADA_VEZ]);
+    const { result } = renderHook(() => useSupervisor(), { wrapper });
+    await waitFor(() => expect(result.current.politicas.length).toBeGreaterThan(0));
+
+    let resuelto: { ok: boolean; token?: string } | undefined;
+    act(() => {
+      result.current.requireSupervisor('venta_credito', 'Venta a Crédito').then(r => { resuelto = r; });
+    });
+    expect(result.current.pendingAction).not.toBeNull(); // pidió autorización pese a la sesión activa
+
+    await act(async () => { result.current.resolveModal(true, 'Ana Supervisor', 'admin', 55, 'tok-abc123'); });
+
+    expect(resuelto).toEqual({ ok: true, token: 'tok-abc123' });
+  });
+
+  it('el cajero cancela el modal: resuelve { ok: false }', async () => {
+    mockEndpoints([POLITICA_VENTA_CREDITO_CADA_VEZ]);
+    const { result } = renderHook(() => useSupervisor(), { wrapper });
+    await waitFor(() => expect(result.current.politicas.length).toBeGreaterThan(0));
+
+    let resuelto: { ok: boolean; token?: string } | undefined;
+    act(() => {
+      result.current.requireSupervisor('venta_credito', 'Venta a Crédito').then(r => { resuelto = r; });
+    });
+
+    await act(async () => { result.current.resolveModal(false); });
+
+    expect(resuelto).toEqual({ ok: false });
   });
 });

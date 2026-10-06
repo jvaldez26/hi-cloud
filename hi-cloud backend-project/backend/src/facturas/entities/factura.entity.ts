@@ -175,6 +175,16 @@ export class Factura extends TenantBaseEntity {
   @Column({ nullable: true })
   supervisorSessionId?: number;
 
+  /**
+   * Token de un solo uso (política 'venta_credito' en modo 'cada_vez') —
+   * guardado al crear (BORRADOR) para poder validarlo y consumirlo más
+   * tarde en cambiarEstado() (BORRADOR→EMITIDA), que es donde de verdad se
+   * exige la autorización. Igual que supervisorSessionId: metadata
+   * transitoria, nunca se vuelve a leer tras emitirse.
+   */
+  @Column({ nullable: true })
+  supervisorToken?: string;
+
   // ── Descuento general ─────────────────────────────────────────────────────
   /** 'monto' = RD$ fijo sobre subtotal | 'porcentaje' = % sobre subtotal */
   @Column({ length: 10, nullable: true, default: null })

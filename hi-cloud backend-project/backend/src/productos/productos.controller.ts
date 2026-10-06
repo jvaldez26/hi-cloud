@@ -27,7 +27,7 @@ import { AjustarCostoManualDto } from './dto/ajustar-costo-manual.dto';
 import { QuitarStockMinimoDto } from './dto/quitar-stock-minimo.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import { SupervisorGateGuard } from '../auth/guards/supervisor-gate.guard';
+import { RequiereSupervisor } from '../supervisor-politicas/guards/requiere-supervisor.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import { User } from '../users/users.entity';
@@ -44,7 +44,7 @@ export class ProductosController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  @UseGuards(SupervisorGateGuard())
+  @UseGuards(RequiereSupervisor('crear_producto'))
   @ApiOperation({ summary: 'Crear producto' })
   create(@Body() dto: CreateProductoDto) {
     return this.productosService.create(dto);
@@ -214,7 +214,7 @@ export class ProductosController {
 
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  @UseGuards(SupervisorGateGuard())
+  @UseGuards(RequiereSupervisor('editar_producto'))
   @ApiOperation({ summary: 'Actualizar producto' })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateProductoDto) {
     return this.productosService.update(id, dto);

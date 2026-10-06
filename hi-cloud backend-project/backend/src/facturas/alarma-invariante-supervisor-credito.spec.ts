@@ -15,12 +15,16 @@ jest.mock('../common/observability/sentry', () => ({
  * debería dispararse si, por un bug o un refactor futuro, el guard de
  * verdad se salta — por eso el test la invoca DIRECTO, simulando justo ese
  * escenario ("el guard de arriba no atajó esto").
+ *
+ * La fuente de "la empresa exige" es supervisor_politicas (clave
+ * 'venta_credito'), no empresa.configuracion — ver el rediseño de Modo
+ * Supervisor, 1770700000000-SupervisorPoliticas.
  */
 describe('FacturasService — alarmarSiInvarianteSupervisorCreditoViolada', () => {
   const EMPRESA = 7;
 
-  function makeService(empresaRows: unknown[]) {
-    const query = jest.fn().mockResolvedValue(empresaRows);
+  function makeService(politicaRows: unknown[]) {
+    const query = jest.fn().mockResolvedValue(politicaRows);
     const logger = { error: jest.fn(), warn: jest.fn(), log: jest.fn() };
     // Object.create(FacturasService.prototype) — no un objeto literal — para
     // que empresaExigeSupervisorParaCredito() siga disponible por la cadena
@@ -28,15 +32,15 @@ describe('FacturasService — alarmarSiInvarianteSupervisorCreditoViolada', () =
     const ctx: any = Object.create(FacturasService.prototype);
     ctx.dataSource = { query };
     ctx.logger = logger;
-    const call = (factura: { id: number; empresaId: number; tipoPago: string; supervisorSessionId?: number | null }) =>
+    const call = (factura: { id: number; empresaId: number; tipoPago: string; supervisorSessionId?: number | null; supervisorToken?: string | null }) =>
       (ctx as any).alarmarSiInvarianteSupervisorCreditoViolada(factura);
     return { call, query, logger };
   }
 
   beforeEach(() => reportServiceError.mockClear());
 
-  it('invariante violada de verdad (crédito + empresa exige + sin sesión) → reporta a Sentry CON nivel error y tag, y bloquea con 403', async () => {
-    const { call } = makeService([{ configuracion: { supervisorModeEnabled: true } }]);
+  it('invariante violada de verdad (crédito + empresa exige + sin sesión ni token) → reporta a Sentry CON nivel error y tag, y bloquea con 403', async () => {
+    const { call } = makeService([{ requerido: true, modo: 'sesion' }]);
     const factura = { id: 777, empresaId: EMPRESA, tipoPago: 'CREDITO', supervisorSessionId: null };
 
     await expect(call(factura)).rejects.toThrow(ForbiddenException);
@@ -49,9 +53,18 @@ describe('FacturasService — alarmarSiInvarianteSupervisorCreditoViolada', () =
     expect(extraTags).toMatchObject({ facturaId: 777, empresaId: EMPRESA });
   });
 
-  it('con supervisorSessionId presente (el caso normal, el guard ya hizo su trabajo) → NO dispara, ni siquiera consulta la empresa', async () => {
+  it('con supervisorSessionId presente (el caso normal, el guard ya hizo su trabajo) → NO dispara, ni siquiera consulta la política', async () => {
     const { call, query } = makeService([]);
     const factura = { id: 777, empresaId: EMPRESA, tipoPago: 'CREDITO', supervisorSessionId: 42 };
+
+    await expect(call(factura)).resolves.toBeUndefined();
+    expect(query).not.toHaveBeenCalled();
+    expect(reportServiceError).not.toHaveBeenCalled();
+  });
+
+  it('con supervisorToken presente (modo cada_vez, el guard ya lo consumió) → NO dispara, ni siquiera consulta la política', async () => {
+    const { call, query } = makeService([]);
+    const factura = { id: 777, empresaId: EMPRESA, tipoPago: 'CREDITO', supervisorSessionId: null, supervisorToken: 'abc123' };
 
     await expect(call(factura)).resolves.toBeUndefined();
     expect(query).not.toHaveBeenCalled();
@@ -67,8 +80,8 @@ describe('FacturasService — alarmarSiInvarianteSupervisorCreditoViolada', () =
     expect(reportServiceError).not.toHaveBeenCalled();
   });
 
-  it('empresa que NO exige supervisor para crédito → no dispara (no es una invariante violada, es la configuración de la empresa)', async () => {
-    const { call } = makeService([{ configuracion: { supervisorModeEnabled: false } }]);
+  it('empresa que NO exige supervisor para crédito → no dispara (no es una invariante violada, es la política de la empresa)', async () => {
+    const { call } = makeService([{ requerido: false, modo: 'cada_vez' }]);
     const factura = { id: 777, empresaId: EMPRESA, tipoPago: 'CREDITO', supervisorSessionId: null };
 
     await expect(call(factura)).resolves.toBeUndefined();

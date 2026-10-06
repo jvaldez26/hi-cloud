@@ -1,27 +1,36 @@
 /**
- * Hook para el modo supervisor del POS.
+ * Hook para el Modo Supervisor del POS — rediseño por políticas (una por
+ * pestaña/acción, ver Configuración → Modo Supervisor), en vez de los dos
+ * interruptores genéricos de antes (supervisorModeEnabled + toggles
+ * sueltos). La política de cada clave sale de GET
+ * /configuracion/supervisor-politicas y decide dos cosas:
  *
- * Si supervisorModeEnabled = false → todas las acciones pasan sin modal.
- * Si supervisorModeEnabled = true → solicita credenciales de admin para
- * acciones que superen el umbral configurado (ej: descuento > maxDiscountPercent).
+ *   - requerido: si NO, la acción pasa libre, sin tocar nada más.
+ *   - modo: 'sesion' reusa la sesión de 8h de siempre (si ya hay una
+ *     activa, no vuelve a pedir nada); 'cada_vez' SIEMPRE pide una
+ *     autorización nueva para esa acción puntual, aunque haya sesión — y el
+ *     backend devuelve un token de un solo uso que hay que mandar en la
+ *     llamada real (header X-Supervisor-Token) para que el guard del
+ *     servidor la acepte.
  *
- * La sesión persiste en localStorage (sobrevive F5 Y cierre de pestaña/navegador
- * — antes usaba sessionStorage por error, lo que la mataba al cerrar la pestaña
- * aunque no hubieran pasado las 8h). Se cierra: manualmente (ESC o badge ×),
- * automáticamente al expirar (8h), o al hacer LOGOUT — esto último ya lo hacía
- * auth.store.ts (`localStorage.removeItem('pos_supervisor')` en logout()), pero
- * nunca surtía efecto porque la sesión vivía en sessionStorage, no en la clave
- * que logout() limpiaba.
+ * La sesión en sí (localStorage, 8h, auditoría de cierre) no cambió — ver
+ * el comentario largo más abajo, igual que antes de este rediseño.
  *
- * Los dos cierres audit-relevantes (manual y por expiración) se reportan al
- * backend vía POST /auth/supervisor-log/cerrar — ver AuthService.cerrarSesionSupervisor.
- * El cierre por logout NO se audita aparte: es el mismo evento que ya audita
- * el propio logout del usuario, y no hay ninguna llamada de red segura que
- * hacer en ese instante (la sesión/JWT ya se está invalidando).
+ * Genérico por diseño: una pantalla NUNCA tiene que saber de antemano si una
+ * clave requiere supervisor ni cablear requireSupervisor() a mano antes de
+ * cada llamada. Este hook se registra como el "handler" de
+ * sessionEvents.ts (mismo patrón que la reautenticación de sesión) — cuando
+ * CUALQUIER petición choca con un 403 { supervisorClaveRequerida }, el
+ * interceptor de api/client.ts pide la autorización aquí y reintenta la
+ * MISMA petición con el token, sin que el call site original se entere. Los
+ * call sites que SÍ llaman requireSupervisor() a mano (para abrir el modal
+ * antes de arrancar un flujo largo, como el carrito del POS) siguen
+ * funcionando igual — ambos caminos comparten el mismo estado/modal.
  */
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
+import { registerSupervisorAuthHandler } from '../utils/sessionEvents';
 
 export interface SupervisorSession {
   nombre:     string;
@@ -30,31 +39,46 @@ export interface SupervisorSession {
   sessionId:  number | null; // id de la fila de activación en pos_supervisor_log
 }
 
+export interface PoliticaSupervisor {
+  clave:       string;
+  label:       string;
+  descripcion: string;
+  grupo:       string;
+  requerido:   boolean;
+  modo:        'sesion' | 'cada_vez';
+}
+
+export interface AutorizacionResultado {
+  ok:     boolean;
+  /** Presente solo cuando la política de la clave es 'cada_vez' y ok=true. */
+  token?: string;
+}
+
 interface UseSupervisorReturn {
-  supervisorModeEnabled: boolean;
+  /** Catálogo completo con el valor actual de la empresa — para la pantalla de Configuración. */
+  politicas:             PoliticaSupervisor[];
+  /** Umbral "Descuento máximo sin supervisor" — sin relación con el catálogo, se mantiene como estaba. */
   maxDiscountPercent:    number;
   supervisorSession:     SupervisorSession | null;
   /** true si hay sesión activa de supervisor */
   supervisorActive:      boolean;
   supervisorName:        string;
   /**
-   * Verifica si una acción requiere supervisor y la aprueba.
-   * @returns true si se puede proceder, false si se cancela.
+   * Consulta la política de `clave` y, si aplica, pide autorización.
+   * Devuelve { ok:false } si el cajero canceló el modal, { ok:true } si no
+   * hacía falta nada o si la sesión ya cubre la clave, y { ok:true, token }
+   * si la política es 'cada_vez' — ese token hay que mandarlo en la llamada
+   * real que sigue (header X-Supervisor-Token).
    */
-  requireSupervisor: (action: string, detail?: string) => Promise<boolean>;
-  /**
-   * Como requireSupervisor pero sin verificar supervisorModeEnabled.
-   * Usar para acciones críticas que SIEMPRE requieren autorización.
-   */
-  requireSupervisorForced: (action: string, detail?: string) => Promise<boolean>;
-  /** Abre el modal programáticamente */
+  requireSupervisor: (clave: string, action?: string, detail?: string) => Promise<AutorizacionResultado>;
+  /** Abre el modal programáticamente (botón "Activar modo supervisor" / badge) */
   openSupervisorModal: (action: string, detail?: string) => void;
   /** Limpiar sesión de supervisor (ESC / badge ×) — audita el cierre */
   clearSupervisor: () => void;
   /** Resolver pendiente (llamado desde el modal) */
-  resolveModal: (result: boolean, nombre?: string, role?: string, sessionId?: number | null) => void;
+  resolveModal: (result: boolean, nombre?: string, role?: string, sessionId?: number | null, supervisorToken?: string) => void;
   /** Estado del modal: null = cerrado */
-  pendingAction: { action: string; detail?: string } | null;
+  pendingAction: { action: string; detail?: string; clave?: string } | null;
 }
 
 const STORAGE_KEY        = 'pos_supervisor';
@@ -89,14 +113,21 @@ export function useSupervisor(): UseSupervisorReturn {
     queryFn:  () => api.get('/configuracion/empresa/pos-config').then(r => r.data?.data ?? r.data),
     staleTime: 5 * 60_000,
   });
+  const { data: politicasData } = useQuery<PoliticaSupervisor[]>({
+    queryKey: ['supervisor-politicas'],
+    queryFn:  () => api.get('/configuracion/supervisor-politicas').then(r => r.data?.data ?? r.data),
+    staleTime: 5 * 60_000,
+  });
+  const politicas = politicasData ?? [];
+  const politicaPorClave = useRef<Map<string, PoliticaSupervisor>>(new Map());
+  politicaPorClave.current = new Map(politicas.map(p => [p.clave, p]));
 
-  const supervisorModeEnabled: boolean = posConfig?.supervisorModeEnabled ?? false;
-  const maxDiscountPercent:    number  = posConfig?.maxDiscountPercent    ?? 10;
+  const maxDiscountPercent: number = posConfig?.maxDiscountPercent ?? 10;
 
   // Inicializar desde localStorage para sobrevivir F5 y cierre de pestaña
   const [supervisorSession, setSupervisorSession] = useState<SupervisorSession | null>(loadSessionFromStorage);
-  const [pendingAction, setPendingAction] = useState<{ action: string; detail?: string } | null>(null);
-  const resolveRef = useRef<((result: boolean) => void) | null>(null);
+  const [pendingAction, setPendingAction] = useState<{ action: string; detail?: string; clave?: string } | null>(null);
+  const resolveRef = useRef<((result: AutorizacionResultado) => void) | null>(null);
 
   const supervisorActive = supervisorSession !== null && supervisorSession.until > Date.now();
   const supervisorName   = supervisorActive ? supervisorSession!.nombre : '';
@@ -129,7 +160,7 @@ export function useSupervisor(): UseSupervisorReturn {
     setPendingAction({ action, detail });
   }, []);
 
-  const resolveModal = useCallback((result: boolean, nombre?: string, role?: string, sessionId?: number | null) => {
+  const resolveModal = useCallback((result: boolean, nombre?: string, role?: string, sessionId?: number | null, supervisorToken?: string) => {
     setPendingAction(null);
     if (result && nombre) {
       // Sesión activa 8 horas; persiste en localStorage para sobrevivir F5 y cierre de pestaña
@@ -142,41 +173,43 @@ export function useSupervisor(): UseSupervisorReturn {
       setSupervisorSession(session);
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(session)); } catch { /* ignore */ }
     }
-    resolveRef.current?.(result);
+    resolveRef.current?.(result ? { ok: true, token: supervisorToken } : { ok: false });
     resolveRef.current = null;
   }, []);
 
-  const requireSupervisor = useCallback(async (action: string, detail?: string): Promise<boolean> => {
-    // Si el modo está desactivado → libre
-    if (!supervisorModeEnabled) return true;
-    // Si hay sesión activa de supervisor → usar sin pedir de nuevo
-    if (supervisorActive) return true;
+  const requireSupervisor = useCallback(async (clave: string, action?: string, detail?: string): Promise<AutorizacionResultado> => {
+    const politica = politicaPorClave.current.get(clave);
+    // Clave sin política conocida (no debería pasar si el catálogo está al
+    // día) → no bloquea, mismo criterio defensivo que el backend.
+    if (!politica || !politica.requerido) return { ok: true };
 
-    return new Promise<boolean>(resolve => {
+    if (politica.modo === 'sesion' && supervisorActive) return { ok: true };
+
+    // Sin `action` explícito (caso del interceptor, que solo conoce la
+    // clave): usa el label del catálogo — así el modal siempre muestra algo
+    // legible aunque el call site no haya sabido de antemano qué clave haría falta.
+    return new Promise<AutorizacionResultado>(resolve => {
       resolveRef.current = resolve;
-      setPendingAction({ action, detail });
-    });
-  }, [supervisorModeEnabled, supervisorActive]);
-
-  // Siempre solicita autorización independientemente de supervisorModeEnabled.
-  // Para acciones críticas como Cierre de Caja.
-  const requireSupervisorForced = useCallback(async (action: string, detail?: string): Promise<boolean> => {
-    if (supervisorActive) return true;
-
-    return new Promise<boolean>(resolve => {
-      resolveRef.current = resolve;
-      setPendingAction({ action, detail });
+      setPendingAction({ action: action ?? politica.label, detail, clave });
     });
   }, [supervisorActive]);
 
+  // Se registra como el puente genérico 403 → autorización → reintento (ver
+  // sessionEvents.ts). Solo existe un registrador (este hook vive una sola
+  // vez, montado en el POS) — a diferencia de la reautenticación de sesión
+  // no hace falta un nivel "por defecto" separado.
+  useEffect(() => {
+    registerSupervisorAuthHandler(requireSupervisor);
+    return () => registerSupervisorAuthHandler(null);
+  }, [requireSupervisor]);
+
   return {
-    supervisorModeEnabled,
+    politicas,
     maxDiscountPercent,
     supervisorSession,
     supervisorActive,
     supervisorName,
     requireSupervisor,
-    requireSupervisorForced,
     openSupervisorModal,
     clearSupervisor,
     resolveModal,

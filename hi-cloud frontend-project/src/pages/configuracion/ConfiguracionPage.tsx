@@ -1103,6 +1103,126 @@ function VistaPreviaTicket({ formatoElegido, logoAlturaMm, tipoImpresora, logoEm
   );
 }
 
+// ── Modo Supervisor — catálogo de políticas (una por pestaña/acción del POS) ──
+
+interface PoliticaSupervisorRow {
+  clave:       string;
+  label:       string;
+  descripcion: string;
+  grupo:       string;
+  requerido:   boolean;
+  modo:        'sesion' | 'cada_vez';
+}
+
+/**
+ * Reemplaza los interruptores genéricos de antes (un solo "modo supervisor
+ * activado" + un puñado de toggles sueltos) por el catálogo completo: cada
+ * pestaña del POS y cada acción sensible tiene su propio requerido/modo.
+ * Guarda de inmediato al tocar un control (como las preferencias de
+ * notificaciones) — no vive dentro del <Form> grande de SeccionPOS porque
+ * su guardado es independiente y solo ADMIN puede tocarlo.
+ */
+function ModoSupervisorSection() {
+  const qc   = useQueryClient();
+  const user = useAuthStore(s => s.user);
+  const esAdmin = user?.role === 'admin';
+
+  const { data, isLoading } = useQuery<PoliticaSupervisorRow[]>({
+    queryKey: ['supervisor-politicas'],
+    queryFn:  () => api.get('/configuracion/supervisor-politicas').then(r => r.data?.data ?? r.data),
+    enabled:  esAdmin,
+  });
+
+  const guardarMut = useMutation({
+    mutationFn: (items: { clave: string; requerido: boolean; modo: 'sesion' | 'cada_vez' }[]) =>
+      api.patch('/configuracion/supervisor-politicas', { items }),
+    onMutate: (items) => {
+      qc.setQueryData<PoliticaSupervisorRow[]>(['supervisor-politicas'], prev => {
+        if (!prev) return prev;
+        const porClave = new Map(items.map(i => [i.clave, i]));
+        return prev.map(p => porClave.has(p.clave) ? { ...p, ...porClave.get(p.clave)! } : p);
+      });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['supervisor-politicas'] }),
+    onError:   () => {
+      message.error('No se pudo guardar — se revirtió el cambio');
+      qc.invalidateQueries({ queryKey: ['supervisor-politicas'] });
+    },
+  });
+
+  if (!esAdmin) {
+    return (
+      <Alert type="info" showIcon style={{ marginBottom: 8 }}
+        message="Solo un ADMIN puede ver y cambiar qué pestañas y acciones del POS requieren supervisor." />
+    );
+  }
+
+  const items  = data ?? [];
+  const grupos: { nombre: string; items: PoliticaSupervisorRow[] }[] = [];
+  for (const it of items) {
+    let g = grupos.find(g => g.nombre === it.grupo);
+    if (!g) { g = { nombre: it.grupo, items: [] }; grupos.push(g); }
+    g.items.push(it);
+  }
+
+  const guardarUno = (clave: string, cambios: Partial<Pick<PoliticaSupervisorRow, 'requerido' | 'modo'>>) => {
+    const actual = items.find(p => p.clave === clave);
+    if (!actual) return;
+    guardarMut.mutate([{ clave, requerido: actual.requerido, modo: actual.modo, ...cambios }]);
+  };
+
+  const marcarGrupo = (nombreGrupo: string, requerido: boolean) => {
+    const delGrupo = items.filter(p => p.grupo === nombreGrupo);
+    guardarMut.mutate(delGrupo.map(p => ({ clave: p.clave, requerido, modo: p.modo })));
+  };
+
+  return (
+    <div>
+      <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 12 }}>
+        Elige qué pestañas y acciones del POS exigen autorización de un supervisor, y si vale con la sesión
+        activa de 8h ("Sesión") o si cada vez necesita una autorización nueva ("Cada vez").
+      </Text>
+      {isLoading && <Skeleton active paragraph={{ rows: 4 }} />}
+      {!isLoading && grupos.map(g => (
+        <Card key={g.nombre} size="small" title={g.nombre} style={{ marginBottom: 12 }}
+          extra={
+            <Space size={4}>
+              <Button size="small" onClick={() => marcarGrupo(g.nombre, true)}>Marcar todo</Button>
+              <Button size="small" onClick={() => marcarGrupo(g.nombre, false)}>Desmarcar todo</Button>
+            </Space>
+          }>
+          <Row gutter={[12, 10]}>
+            {g.items.map(p => (
+              <Col xs={24} sm={12} key={p.clave}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Switch size="small" checked={p.requerido}
+                    onChange={v => guardarUno(p.clave, { requerido: v })} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ fontSize: 13 }}>{p.label}</Text>
+                    <br />
+                    <Text type="secondary" style={{ fontSize: 11 }}>{p.descripcion}</Text>
+                  </div>
+                  <Select
+                    size="small"
+                    value={p.modo}
+                    disabled={!p.requerido}
+                    style={{ width: 110, flexShrink: 0 }}
+                    onChange={m => guardarUno(p.clave, { modo: m })}
+                    options={[
+                      { value: 'sesion',   label: 'Sesión' },
+                      { value: 'cada_vez', label: 'Cada vez' },
+                    ]}
+                  />
+                </div>
+              </Col>
+            ))}
+          </Row>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 // ── Sección: Punto de Venta ───────────────────────────────────────────────────
 
 function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void }) {
@@ -1135,11 +1255,7 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
       posMostrarStock:             conf.posMostrarStock ?? true,
       posPermitirUsd:              conf.posPermitirUsd ?? false,
       posMontoMaximoSinSupervisor: conf.posMontoMaximoSinSupervisor ?? 0,
-      supervisorModeEnabled:       conf.supervisorModeEnabled ?? false,
       maxDiscountPercent:          conf.maxDiscountPercent ?? 10,
-      posSupervisorCierreCaja:     conf.posSupervisorCierreCaja !== false,
-      posSupervisorGastos:         conf.posSupervisorGastos !== false,
-      posSupervisorVentaCredito:   conf.posSupervisorVentaCredito !== false,
       posPermitirAnularFacturas:   conf.posPermitirAnularFacturas ?? true,
       posTiempoLimiteAnular:       conf.posTiempoLimiteAnular ?? 0,
       posInactividadMinutos:       conf.posInactividadMinutos ?? 15,
@@ -1237,7 +1353,6 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
   const modoContingencia      = Form.useWatch('posModoContingencia',      form);
   const bloquearFueraHorario  = Form.useWatch('posBloquearFueraHorario',  form);
   const permitirDescuentos    = Form.useWatch('posPermitirDescuentos',    form);
-  const supervisorActivo      = Form.useWatch('supervisorModeEnabled',    form);
   const inactividadMinutos    = Form.useWatch('posInactividadMinutos',    form);
   const cierreCiego           = Form.useWatch('cierreCajaCiego',          form);
   // La vista previa se redibuja con lo que hay en el formulario, no con lo
@@ -1475,46 +1590,13 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
         <Col xs={24}>
           <Divider orientation="left" orientationMargin={0}>Modo Supervisor</Divider>
         </Col>
-        <Col xs={24} sm={12}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <Form.Item name="supervisorModeEnabled" valuePropName="checked" style={{ marginBottom: 0 }}>
-              <Switch size="small" />
-            </Form.Item>
-            <Text style={{ fontSize: 13 }}>Requerir autorización de supervisor para acciones privilegiadas</Text>
-          </div>
+        <Col xs={24} sm={10}>
+          <Form.Item name="maxDiscountPercent" label="Descuento máximo sin supervisor">
+            <InputNumber style={{ width: '100%' }} min={0} max={100} addonAfter="%" />
+          </Form.Item>
         </Col>
-        {supervisorActivo && (
-          <>
-            <Col xs={24} sm={10}>
-              <Form.Item name="maxDiscountPercent" label="Descuento máximo sin supervisor">
-                <InputNumber style={{ width: '100%' }} min={0} max={100} addonAfter="%" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={12}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <Form.Item name="posSupervisorGastos" valuePropName="checked" style={{ marginBottom: 0 }}>
-                  <Switch size="small" />
-                </Form.Item>
-                <Text style={{ fontSize: 13 }}>Requerir supervisor para Gastos</Text>
-              </div>
-            </Col>
-            <Col xs={24} sm={12}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <Form.Item name="posSupervisorVentaCredito" valuePropName="checked" style={{ marginBottom: 0 }}>
-                  <Switch size="small" />
-                </Form.Item>
-                <Text style={{ fontSize: 13 }}>Requerir supervisor para Venta a Crédito</Text>
-              </div>
-            </Col>
-          </>
-        )}
-        <Col xs={24} sm={12}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <Form.Item name="posSupervisorCierreCaja" valuePropName="checked" style={{ marginBottom: 0 }}>
-              <Switch size="small" />
-            </Form.Item>
-            <Text style={{ fontSize: 13 }}>Requerir supervisor para Cierre de Caja</Text>
-          </div>
+        <Col xs={24}>
+          <ModoSupervisorSection />
         </Col>
         <Col xs={24} sm={10}>
           <Form.Item name="posMontoMaximoSinSupervisor" label="Monto máximo por venta sin supervisor (0 = sin límite)">

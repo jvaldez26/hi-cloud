@@ -313,7 +313,7 @@ export class CotizacionesService {
    * Catálogo DGII: 1=Efectivo 2=Cheque/Transferencia 3=Tarjeta 4=Crédito
    * 5=Permuta 6=Nota Crédito.
    */
-  async cobrarDesdePos(id: number, usuarioId: number, dto: { metodoPago: string; diasCredito?: number; supervisorSessionId?: number }) {
+  async cobrarDesdePos(id: number, usuarioId: number, dto: { metodoPago: string; diasCredito?: number; supervisorSessionId?: number; supervisorToken?: string }) {
     const empresaId = this.tenantService.getEmpresaId();
     const cot = await this.findById(id);
 
@@ -363,10 +363,11 @@ export class CotizacionesService {
         total:            Number(cot.total),
         tipoNcf:          'E32',
         tipoPago:         esCredito ? 'CREDITO' : 'CONTADO',
-        // Único dato que FacturasService.validarAutorizacionVentaCredito()
-        // necesita al emitir (cambiarEstado más abajo) para saber quién
-        // autorizó, si la empresa lo exige para crédito.
+        // Lo que FacturasService.validarAutorizacionVentaCredito() necesita
+        // al emitir (cambiarEstado más abajo), si la política 'venta_credito'
+        // lo exige — sessionId (modo 'sesion') o token (modo 'cada_vez').
         supervisorSessionId: dto.supervisorSessionId,
+        supervisorToken:     dto.supervisorToken,
         notas:            notasFactura,
         diasCredito:      diasCred || undefined,
         fechaVencimiento: vencimiento,

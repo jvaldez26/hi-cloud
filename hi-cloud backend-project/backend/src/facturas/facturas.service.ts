@@ -163,39 +163,53 @@ export class FacturasService {
    * de la empresa pasaba igual.
    */
   /** ¿Esta empresa exige autorización de supervisor para vender a crédito?
-   *  Mismo criterio que requiereSupervisorVentaCredito() en ventaCreditoGate.ts
-   *  (frontend): protegida por defecto en cuanto el modo supervisor está
-   *  encendido, salvo que se haya desactivado el toggle específico. */
-  private async empresaExigeSupervisorParaCredito(empresaId: number): Promise<boolean> {
-    const [empresa] = await this.dataSource.query<{ configuracion: any }[]>(
-      `SELECT configuracion FROM empresa WHERE id = $1`, [empresaId],
+   *  Clave 'venta_credito' del catálogo de Modo Supervisor — ver
+   *  supervisor-catalogo.ts. Antes leía los interruptores sueltos de
+   *  empresa.configuracion directamente; ahora es la política la que manda,
+   *  pero el criterio migrado es el mismo (ver 1770700000000-SupervisorPoliticas). */
+  private async empresaExigeSupervisorParaCredito(empresaId: number): Promise<{ requerido: boolean; modo: string }> {
+    const [fila] = await this.dataSource.query<{ requerido: boolean; modo: string }[]>(
+      `SELECT requerido, modo FROM supervisor_politicas WHERE "empresaId" = $1 AND clave = 'venta_credito'`,
+      [empresaId],
     );
-    const conf = (empresa?.configuracion ?? {}) as any;
-    const pos  = conf.pos ?? {};
-    const supervisorModeEnabled = conf.supervisorModeEnabled ?? pos.supervisorModeEnabled ?? false;
-    const exigeEnCredito        = conf.posSupervisorVentaCredito ?? pos.posSupervisorVentaCredito;
-    return supervisorModeEnabled === true && exigeEnCredito !== false;
+    // Sin fila = empresa nunca migrada/tocó esta política → default del catálogo (ver supervisor-catalogo.ts).
+    return fila ?? { requerido: false, modo: 'cada_vez' };
   }
 
   private async validarAutorizacionVentaCredito(
     empresaId: number,
     cajeroId: number,
     supervisorSessionId: number | null | undefined,
+    supervisorToken?: string | null,
   ): Promise<void> {
-    if (!(await this.empresaExigeSupervisorParaCredito(empresaId))) return;
+    const { requerido, modo } = await this.empresaExigeSupervisorParaCredito(empresaId);
+    if (!requerido) return;
+    const noAutorizada = () => new ForbiddenException('Esta venta a crédito requiere autorización de un supervisor.');
 
-    if (!supervisorSessionId) {
-      throw new ForbiddenException('Esta venta a crédito requiere autorización de un supervisor.');
+    if (modo === 'sesion') {
+      if (!supervisorSessionId) throw noAutorizada();
+      const [row] = await this.dataSource.query<{ id: number }[]>(`
+        SELECT id FROM pos_supervisor_log
+        WHERE id = $1 AND "empresaId" = $2 AND "cajeroId" = $3 AND "sessionId" IS NULL
+          AND "createdAt" >= NOW() - INTERVAL '8 hours'
+        LIMIT 1
+      `, [supervisorSessionId, empresaId, cajeroId]);
+      if (!row) throw noAutorizada();
+      return;
     }
-    const [row] = await this.dataSource.query<{ id: number }[]>(`
-      SELECT id FROM pos_supervisor_log
-      WHERE id = $1 AND "empresaId" = $2 AND "cajeroId" = $3 AND "sessionId" IS NULL
-        AND "createdAt" >= NOW() - INTERVAL '8 hours'
-      LIMIT 1
-    `, [supervisorSessionId, empresaId, cajeroId]);
-    if (!row) {
-      throw new ForbiddenException('Esta venta a crédito requiere autorización de un supervisor.');
-    }
+
+    // modo === 'cada_vez' — token de un solo uso emitido al crear la factura
+    // (ver create(), más abajo) y consumido aquí, al emitirla de verdad.
+    if (!supervisorToken) throw noAutorizada();
+    const consumidos = await this.dataSource.query<{ id: number }[]>(`
+      WITH fila AS (
+        UPDATE supervisor_autorizaciones SET usado = true
+        WHERE token = $1 AND "empresaId" = $2 AND "cajeroId" = $3 AND clave = 'venta_credito'
+          AND usado = false AND "expiraEn" > NOW()
+        RETURNING id
+      ) SELECT * FROM fila
+    `, [supervisorToken, empresaId, cajeroId]);
+    if (!consumidos.length) throw noAutorizada();
   }
 
   /**
@@ -212,11 +226,16 @@ export class FacturasService {
    * la emisión igual.
    */
   private async alarmarSiInvarianteSupervisorCreditoViolada(
-    factura: { id: number; empresaId: number; tipoPago: string; supervisorSessionId?: number | null },
+    factura: { id: number; empresaId: number; tipoPago: string; supervisorSessionId?: number | null; supervisorToken?: string | null },
   ): Promise<void> {
     if (factura.tipoPago !== 'CREDITO') return;
     if (factura.supervisorSessionId) return;
-    if (!(await this.empresaExigeSupervisorParaCredito(factura.empresaId))) return;
+    // Modo 'cada_vez': el guard real ya consumió el token justo antes de esta
+    // llamada — su mera presencia en la fila (sin volver a validarlo) basta
+    // como evidencia de que el guard corrió y aprobó.
+    if (factura.supervisorToken) return;
+    const { requerido } = await this.empresaExigeSupervisorParaCredito(factura.empresaId);
+    if (!requerido) return;
 
     const err = new Error(
       `Invariante violada: factura #${factura.id} (empresa ${factura.empresaId}) a punto de pasar a ` +
@@ -262,8 +281,8 @@ export class FacturasService {
 
   /**
    * ¿Este cajero tiene AHORA una sesión de modo supervisor activa (sin
-   * cerrar, dentro de las 8h)? Mismo criterio y misma consulta que
-   * SupervisorGateGuard — a propósito no necesita que el cliente mande un
+   * cerrar, dentro de las 8h)? Mismo criterio y misma consulta que el modo
+   * 'sesion' de RequiereSupervisor — a propósito no necesita que el cliente mande un
    * supervisorSessionId: si el vendedor la activó en el POS, cuenta sin
    * importar desde qué pantalla se consulte. Se usa en findAll() para
    * decidir si un vendedor puede ver el listado completo de facturas (ver
@@ -545,6 +564,10 @@ export class FacturasService {
       clienteId: dto.clienteId,
       usuarioId: usuario.id,
       supervisorSessionId,
+      // Token de un solo uso (política 'venta_credito' en modo 'cada_vez') —
+      // se guarda tal cual, sin pre-validar: se valida y consume de verdad en
+      // cambiarEstado()/validarAutorizacionVentaCredito, el único guard real.
+      supervisorToken: dto.supervisorToken,
       notas:          dto.notas,
       tipoNcf:        dto.tipoNcf ?? 'E32',
       // La entity declara estos campos opcionales, no nullables.
@@ -799,7 +822,7 @@ export class FacturasService {
     // mandar otro vendedorId, pero la protección real vive aquí: si llega
     // uno distinto (o ninguno) se ignora y se fuerza el propio. Con sesión
     // de supervisor activa ve todo, como admin/contador (mismo criterio que
-    // ya usan las demás acciones gateadas por SupervisorGateGuard).
+    // ya usan las demás acciones gateadas por RequiereSupervisor).
     //
     // "Propio" requiere que vendedores."usuarioId" esté ligado a este
     // usuario — la mayoría de empresas todavía no lo ligan (ver el
@@ -1160,7 +1183,8 @@ export class FacturasService {
       const cajeroEmisorId = this.tenantService.getUserId();
       if (cajeroEmisorId && factura.tipoPago === 'CREDITO') {
         await this.validarAutorizacionVentaCredito(
-          factura.empresaId, factura.usuarioId, (factura as any).supervisorSessionId,
+          factura.empresaId, factura.usuarioId,
+          (factura as any).supervisorSessionId, (factura as any).supervisorToken,
         );
         // Red de seguridad, no el guard real (ese es la línea de arriba): si
         // por lo que sea se llega hasta aquí con la invariante violada — un

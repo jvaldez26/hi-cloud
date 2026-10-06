@@ -7,7 +7,7 @@ import { CLASE_MODAL_COBRO } from './confirmarCobroEnterGate';
  * Regresión #1 — bug de seguridad real (reporte de Bellamar González —
  * VENTAS DIVERSAS ELIDO): el listener global de Enter para "Confirmar
  * cobro" tenía su PROPIA copia de ventaMut.mutate() — un segundo camino de
- * código que nunca pasaba por requiereSupervisorVentaCredito /
+ * código que nunca pasaba por el gate de 'venta_credito' /
  * supervisor.requireSupervisor. Presionar Enter mientras el modal de
  * Autorización de Supervisor estaba abierto creaba la factura en paralelo,
  * sin esperar — con clave correcta o incorrecta, daba igual.
@@ -50,8 +50,11 @@ describe('POSPage — confirmarCobro() es el ÚNICO camino que confirma el cobro
 
     const cuerpo = fuente.slice(inicio, cierre);
     expect(cuerpo).toContain('ventaMut.mutate();');
-    expect(cuerpo).toContain('requiereSupervisorVentaCredito(');
-    expect(cuerpo).toContain('supervisor.requireSupervisor(');
+    // El gate de venta a crédito ya no pasa por un helper aparte
+    // (requiereSupervisorVentaCredito) — la política 'venta_credito' del
+    // catálogo de Modo Supervisor decide internamente si hace falta algo.
+    expect(cuerpo).toContain("tipoPagoPos === 'CREDITO'");
+    expect(cuerpo).toContain("supervisor.requireSupervisor('venta_credito'");
     expect(cuerpo).toContain('requiereSupervisorPorPrecioModificado(');
   });
 
