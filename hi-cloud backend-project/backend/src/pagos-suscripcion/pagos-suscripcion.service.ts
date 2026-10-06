@@ -368,7 +368,7 @@ export class PagosSuscripcionService {
         s."motivoSuspension",
         s."abonoDisponible"::float AS "abonoDisponible",
         pc.precio::float AS "precioMensual",
-        COALESCE(cp.cargos, '[]'::json) AS cargos,
+        COALESCE(cp.cargos, '[]'::jsonb) AS cargos,
         MAX(CASE WHEN p.estado = 'CONFIRMADO' THEN p."confirmadoEn" END) AS "ultimoPago",
         COUNT(CASE WHEN p.tipo = 'TRANSFERENCIA' AND p.estado = 'PENDIENTE' THEN 1 END)::int AS "pendientesConfirmacion"
       FROM empresa e
@@ -376,7 +376,7 @@ export class PagosSuscripcionService {
       LEFT JOIN plan_configuracion pc ON pc.clave = s.plan::text AND pc.activo = true
       LEFT JOIN pagos_suscripcion p ON p."empresaId" = e.id AND p.estado != 'RECHAZADO'
       LEFT JOIN (
-        SELECT "empresaId", json_agg(json_build_object(
+        SELECT "empresaId", jsonb_agg(jsonb_build_object(
           'id', id, 'concepto', concepto, 'monto', monto, 'montoPagado', "montoPagado", 'creadoEn', "creadoEn"
         )) AS cargos
         FROM pagos_suscripcion
