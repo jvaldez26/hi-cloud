@@ -1,3 +1,4 @@
+import { describe, it, expect } from 'vitest';
 import { POS_PANELES, NAV_ITEMS, MENU_EXTRAS, PANEL_TITLES } from './posPanelesConfig';
 
 /**
