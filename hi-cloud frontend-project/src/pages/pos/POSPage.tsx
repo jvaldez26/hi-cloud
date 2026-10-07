@@ -9674,6 +9674,12 @@ export default function POSPage() {
   // Descuento global del carrito
   const [descGlobal,     setDescGlobal]     = useState('');
   const [descGlobalTipo, setDescGlobalTipo] = useState<'pct' | 'fijo'>('pct');
+  // Último valor de descuento global ya autorizado (o que nunca necesitó
+  // autorización) — a donde se revierte si el cajero cancela el modal de
+  // supervisor. onChange deja escribir libremente (vista previa en vivo,
+  // como ya hacía); el gate corre al CONFIRMAR (blur/Enter), igual que el
+  // descuento por línea (confirmarDescuento → setDescuentoMonto).
+  const descGlobalAutorizadoRef = useRef('');
   // Lista de precios global — se aplica al carrito completo y a nuevos items
   const [listaGlobal, setListaGlobal] = useState<PrecioLista>('precio1');
   // Se pone en true en el inicializador de `cart` (corre una sola vez) si
@@ -10666,6 +10672,38 @@ export default function POSPage() {
       if (!r.ok) return; // cancelado
     }
     setCart(p => p.map((it, i) => i === idx ? { ...it, descuentoMonto: monto } : it));
+  };
+
+  // Gate de supervisor para el descuento GLOBAL del carrito — antes solo
+  // corría para el descuento por línea (setDescuentoMonto); el campo global
+  // dejaba aplicar cualquier % (hasta 100%) sin pedir nada. Mismo criterio:
+  // se calcula el monto REAL (calcularTotalesCarritoPOS ya sabe convertir
+  // % / RD$ fijo, final→base) y se compara contra supervisor.maxDiscountPercent.
+  // Corre al CONFIRMAR (blur/Enter), no en cada tecla — igual que el de línea.
+  const confirmarDescGlobal = async (valor: string, tipoOverride?: 'pct' | 'fijo', tipoAlRevertir?: 'pct' | 'fijo') => {
+    if (!valor || Number(valor) <= 0) { descGlobalAutorizadoRef.current = valor; return; }
+    const tipoEfectivo = tipoOverride ?? descGlobalTipo;
+    const { descGlobalMonto: montoCandidato } = calcularTotalesCarritoPOS(cart as any, {
+      descGlobal: valor, descGlobalTipo: tipoEfectivo, precioIncluyeItbis, tipoNcf,
+    });
+    const pct = subtotal > 0 ? (montoCandidato / subtotal) * 100 : 0;
+    if (pct > supervisor.maxDiscountPercent) {
+      const maxFinal = descuentoBaseAFinal(subtotal * supervisor.maxDiscountPercent / 100, pctIvaEfectivo(subtotal, iva), precioIncluyeItbis);
+      const r = await supervisor.requireSupervisor(
+        'descuento_excedido',
+        `Descuento global de ${tipoEfectivo === 'pct' ? `${valor}%` : fmt.money(Number(valor))}`,
+        `Máximo permitido sin supervisor: RD$${maxFinal.toFixed(2)}`,
+      );
+      if (!r.ok) {
+        // Cancelado — revertir el valor Y el tipo (si el toggle fue lo que
+        // disparó el gate), para no dejar el campo en un estado a medio
+        // cambiar que nunca se autorizó.
+        setDescGlobal(descGlobalAutorizadoRef.current);
+        if (tipoAlRevertir) setDescGlobalTipo(tipoAlRevertir);
+        return;
+      }
+    }
+    descGlobalAutorizadoRef.current = valor;
   };
 
   // Búsqueda por código de barras → agrega al carrito directamente
@@ -12443,7 +12481,15 @@ export default function POSPage() {
                 <span style={{ fontSize: 11, color: C.textSub, flexShrink: 0 }}>Descuento</span>
                 {/* Toggle % / RD$ */}
                 <button
-                  onClick={() => setDescGlobalTipo(t => t === 'pct' ? 'fijo' : 'pct')}
+                  onClick={async () => {
+                    // El mismo número cambia de significado al cambiar de tipo
+                    // (9% vs RD$9) — sin re-confirmar, alternar el toggle DESPUÉS
+                    // de un descuento ya autorizado podía saltarse el gate.
+                    const tipoAnterior = descGlobalTipo;
+                    const tipoNuevo = tipoAnterior === 'pct' ? 'fijo' : 'pct';
+                    setDescGlobalTipo(tipoNuevo);
+                    if (descGlobal) await confirmarDescGlobal(descGlobal, tipoNuevo, tipoAnterior);
+                  }}
                   style={{ height: 24, padding: '0 7px', borderRadius: 6,
                     border: `1px solid ${C.border2}`, background: C.card,
                     color: descGlobal ? C.orange : C.textSub, fontSize: 11, fontWeight: 700,
@@ -12455,6 +12501,8 @@ export default function POSPage() {
                   max={descGlobalTipo === 'pct' ? 100 : undefined}
                   value={descGlobal}
                   onChange={e => setDescGlobal(e.target.value)}
+                  onBlur={e => confirmarDescGlobal(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') confirmarDescGlobal((e.target as HTMLInputElement).value); }}
                   placeholder={descGlobalTipo === 'pct' ? '0' : '0.00'}
                   style={{ flex: 1, height: 28, borderRadius: 7, border: `1px solid ${descGlobal ? C.orange : C.border}`,
                     background: C.card, color: C.text, fontSize: 12, padding: '0 8px', outline: 'none' }} />
