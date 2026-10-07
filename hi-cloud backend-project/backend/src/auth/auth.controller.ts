@@ -278,12 +278,30 @@ export class AuthController {
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Verificar credenciales de supervisor (admin/contador del mismo tenant)' })
   async verificarSupervisor(
-    @Body() body: { supervisorId?: number; email?: string; password: string; action?: string; detail?: string; clave?: string },
+    @Body() body: {
+      supervisorId?: number; email?: string; password?: string;
+      tarjeta?: string; // escaneo de tarjeta de supervisor — alternativa a supervisorId/email+password
+      action?: string; detail?: string; clave?: string;
+    },
     @GetUser() cajero: User,
     @Req() req: Request,
   ) {
+    // Una tarjeta identifica a la persona por sí misma: no hace falta
+    // supervisorId/email (ni password, salvo el paso 2 de "Tarjeta + PIN",
+    // que el frontend envía como una llamada normal supervisorId+password).
+    if (body.tarjeta) {
+      return this.authService.verificarSupervisor(
+        '', '', cajero.id, (cajero as any).empresaId,
+        body.action, body.detail,
+        (cajero as any).sucursalId,
+        obtenerIP(req), req.headers['user-agent'],
+        body.clave, body.tarjeta,
+      );
+    }
+
     const identifier = body.supervisorId ?? body.email;
-    if (!identifier) throw new BadRequestException('Se requiere supervisorId o email');
+    if (!identifier) throw new BadRequestException('Se requiere supervisorId, email o tarjeta');
+    if (body.password === undefined) throw new BadRequestException('Se requiere password');
     return this.authService.verificarSupervisor(
       identifier, body.password,
       cajero.id, (cajero as any).empresaId,

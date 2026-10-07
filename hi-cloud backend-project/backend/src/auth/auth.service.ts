@@ -41,6 +41,8 @@ import { AccionAuditoria, NivelAuditoria } from '../auditoria/entities/audit-log
 import { ModulosAddonService } from '../modulos-addon/modulos-addon.service';
 import { USERNAME_RESERVADOS } from './auth.constants';
 import { mensajeBloqueo, formatMinutos } from './utils/progressive-lockout.util';
+import { SupervisorTarjetasService } from '../supervisor-tarjetas/supervisor-tarjetas.service';
+import { esFormatoTarjeta, hashCodigoTarjeta } from '../supervisor-tarjetas/tarjeta-codigo.util';
 
 /**
  * Hash bcrypt (costo 12, igual que los hashes reales — ver bcrypt.hash(..., 12)
@@ -93,6 +95,7 @@ export class AuthService implements OnModuleInit {
     private modulosAddonSvc: ModulosAddonService,
     private alertaDispositivoSvc: AlertaDispositivoService,
     private bloqueoAlertaSvc: BloqueoAlertaService,
+    private supervisorTarjetas: SupervisorTarjetasService,
   ) {}
 
   async onModuleInit() {
@@ -1396,7 +1399,7 @@ export class AuthService implements OnModuleInit {
   }
 
   async verificarSupervisor(
-    supervisorRef: string | number,  // email (string) o id (number)
+    supervisorRef: string | number,  // email (string) o id (number) — ignorado si viene `tarjeta`
     supervisorPassword: string,
     cajeroId: number,
     empresaId: number,
@@ -1411,7 +1414,18 @@ export class AuthService implements OnModuleInit {
      *  un solo uso para ESA acción puntual (ver RequiereSupervisor y
      *  FacturasService.validarAutorizacionVentaCredito). */
     clave?: string,
-  ): Promise<{ ok: true; nombre: string; role: string; sessionId: number | null; supervisorToken?: string }> {
+    /** Código escaneado de una tarjeta de supervisor. Si viene, identifica a
+     *  la persona por sí solo — supervisorRef/supervisorPassword se ignoran
+     *  (ver SupervisorTarjetasModule y el punto 3 del pedido original). */
+    tarjeta?: string,
+  ): Promise<
+    | { ok: true; nombre: string; role: string; sessionId: number | null; supervisorToken?: string; metodo: 'password' | 'pin' | 'tarjeta' }
+    | { ok: false; requierePin: true; supervisorId: number; nombre: string; role: string }
+  > {
+    if (tarjeta) {
+      return this.verificarSupervisorPorTarjeta(tarjeta, cajeroId, empresaId, action, detail, sucursalId, ip, userAgent, clave);
+    }
+
     // Bloqueo por intentos fallidos, por (empresa, cajero, supervisor) — NO
     // por IP (ver SupervisorAttemptsService: varias cajas de una tienda
     // comparten IP). Se revisa ANTES de tocar la BD, con el ref tal cual
@@ -1517,20 +1531,43 @@ export class AuthService implements OnModuleInit {
     // igual que LoginAttemptsService.reset() tras un login correcto.
     await this.supervisorAttempts.reset(empresaId, cajeroId, supervisorRef);
 
-    // Registrar en audit log — esta fila ES la sesión (su "id" es el
-    // sessionId que se propaga a las transacciones hechas durante la
-    // ventana de 8h, ver facturas.service.ts). Si el INSERT falla (p.ej.
-    // empresaId llega null desde un JWT sin empresa activa), la
-    // autorización se concede igual — pero ANTES esto se tragaba en un
-    // logger.warn que nadie ve; ahora también va a Sentry porque es una
-    // pérdida silenciosa de auditoría de seguridad, no un log informativo.
+    return this.finalizarAutorizacionSupervisor({
+      empresaId, cajeroId, sup, sucursalId, action, detail, clave,
+      metodo: tienePin ? 'pin' : 'password',
+    });
+  }
+
+  /**
+   * Último tramo, común a los tres métodos de autorización (password, PIN,
+   * tarjeta): audita la sesión (esta fila ES la sesión — su "id" es el
+   * sessionId que se propaga a las transacciones de la ventana de 8h, ver
+   * facturas.service.ts) y, si la clave está en modo 'cada_vez', emite
+   * además el token de un solo uso para esa acción puntual.
+   */
+  private async finalizarAutorizacionSupervisor<M extends 'password' | 'pin' | 'tarjeta'>(params: {
+    empresaId: number;
+    cajeroId: number;
+    sup: { id: number; nombre: string; role: string };
+    sucursalId?: number | null;
+    action?: string;
+    detail?: string;
+    clave?: string;
+    metodo: M;
+  }): Promise<{ ok: true; nombre: string; role: string; sessionId: number | null; supervisorToken?: string; metodo: M }> {
+    const { empresaId, cajeroId, sup, sucursalId, action, detail, clave, metodo } = params;
+
+    // Si el INSERT falla (p.ej. empresaId llega null desde un JWT sin
+    // empresa activa), la autorización se concede igual — pero ANTES esto
+    // se tragaba en un logger.warn que nadie ve; ahora también va a Sentry
+    // porque es una pérdida silenciosa de auditoría de seguridad, no un log
+    // informativo.
     const [row] = await this.dataSource.query<{ id: number }[]>(`
       INSERT INTO pos_supervisor_log
-        ("empresaId", "cajeroId", "supervisorId", "supervisorNombre", "sucursalId", action, detail, "createdAt")
-      VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        ("empresaId", "cajeroId", "supervisorId", "supervisorNombre", "sucursalId", action, detail, metodo, "createdAt")
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
       ON CONFLICT DO NOTHING
       RETURNING id
-    `, [empresaId, cajeroId, sup.id, sup.nombre, sucursalId ?? null, action ?? 'SUPERVISOR_LOGIN', detail ?? ''])
+    `, [empresaId, cajeroId, sup.id, sup.nombre, sucursalId ?? null, action ?? 'SUPERVISOR_LOGIN', detail ?? '', metodo])
       .catch(err => {
         this.logger.error(
           `[AUDITORIA-PERDIDA] pos_supervisor_log INSERT falló — autorización concedida SIN registro. ` +
@@ -1563,7 +1600,119 @@ export class AuthService implements OnModuleInit {
       }
     }
 
-    return { ok: true, nombre: sup.nombre, role: sup.role, sessionId: row?.id ?? null, supervisorToken };
+    return { ok: true, nombre: sup.nombre, role: sup.role, sessionId: row?.id ?? null, supervisorToken, metodo };
+  }
+
+  /**
+   * Autorización por tarjeta escaneada (ver SupervisorTarjetasModule). La
+   * tarjeta identifica a la persona por sí misma — no hay supervisorRef que
+   * venga del cliente, así que la clave de bloqueo progresivo se resuelve
+   * DESDE el resultado de la verificación:
+   *   - código reconocible (aunque ya inválido aquí) → clave = el dueño real
+   *     (userId), para que la notificación de abuso le llegue a la persona
+   *     correcta, igual que con un PIN equivocado.
+   *   - código que no coincide con ninguna tarjeta → clave sintética
+   *     derivada del hash (no hay a quién notificar), para no contaminar el
+   *     contador de ningún usuario real con escaneos basura.
+   */
+  private async verificarSupervisorPorTarjeta(
+    tarjeta: string,
+    cajeroId: number,
+    empresaId: number,
+    action?: string,
+    detail?: string,
+    sucursalId?: number | null,
+    ip?: string,
+    userAgent?: string,
+    clave?: string,
+  ): Promise<
+    | { ok: true; nombre: string; role: string; sessionId: number | null; supervisorToken?: string; metodo: 'tarjeta' }
+    | { ok: false; requierePin: true; supervisorId: number; nombre: string; role: string }
+  > {
+    if (!esFormatoTarjeta(tarjeta)) {
+      // Ni tiene la forma de una tarjeta — no es un intento real, no cuenta
+      // para el bloqueo progresivo de nadie.
+      throw new BadRequestException('Código de tarjeta inválido');
+    }
+
+    const resultado = await this.supervisorTarjetas.verificarCodigo(tarjeta, empresaId);
+
+    const refBloqueo: string | number = resultado.ok
+      ? resultado.userId
+      : resultado.motivo === 'no_existe'
+        ? `tarjeta:${hashCodigoTarjeta(tarjeta).slice(0, 16)}`
+        : resultado.ownerId;
+
+    const bloqueo = await this.supervisorAttempts.isBlocked(empresaId, cajeroId, refBloqueo);
+    if (bloqueo.blocked) {
+      throw new HttpException(
+        {
+          message: mensajeBloqueo(bloqueo.remainingSeconds!),
+          remainingSeconds: bloqueo.remainingSeconds,
+          bloqueosEn24h: bloqueo.bloqueosEn24h,
+          error: 'Too Many Requests',
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    if (!resultado.ok) {
+      const r = await this.supervisorAttempts.registrarFallo(empresaId, cajeroId, refBloqueo);
+      if (r.bloqueado) {
+        if (resultado.motivo !== 'no_existe' && resultado.ownerEmail) {
+          const [[cajero], [empresa], sucursalRows] = await Promise.all([
+            this.dataSource.query<{ nombre: string }[]>(`SELECT nombre FROM users WHERE id = $1`, [cajeroId]),
+            this.dataSource.query<{ nombre: string }[]>(`SELECT nombre FROM empresa WHERE id = $1`, [empresaId]),
+            sucursalId
+              ? this.dataSource.query<{ nombre: string }[]>(`SELECT nombre FROM sucursales WHERE id = $1`, [sucursalId])
+              : Promise.resolve([] as { nombre: string }[]),
+          ]);
+          void this.bloqueoAlertaSvc.avisarBloqueoSupervisor({
+            supervisorUserId: resultado.ownerId, supervisorEmail: resultado.ownerEmail, supervisorNombre: resultado.ownerNombre,
+            cajeroNombre: cajero?.nombre ?? `#${cajeroId}`,
+            empresaId,
+            empresaNombre: empresa?.nombre ?? `#${empresaId}`,
+            sucursalNombre: sucursalRows[0]?.nombre ?? null,
+            action, detail,
+            intentos: r.intentos, duracionSegundos: r.duracionSegundos,
+            ip, userAgent,
+          });
+        }
+        throw new HttpException(
+          {
+            message: mensajeBloqueo(r.duracionSegundos),
+            remainingSeconds: r.duracionSegundos,
+            bloqueosEn24h: r.bloqueosEn24h,
+            error: 'Too Many Requests',
+          },
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+      const mensajes: Record<'no_existe' | 'revocada' | 'otra_empresa' | 'sin_permiso', string> = {
+        no_existe: 'Tarjeta no reconocida',
+        revocada: 'Esta tarjeta fue revocada',
+        otra_empresa: 'Esta tarjeta no pertenece a esta empresa',
+        sin_permiso: 'Esta persona ya no tiene permiso de supervisor en esta empresa',
+      };
+      throw new UnauthorizedException(mensajes[resultado.motivo]);
+    }
+
+    // Tarjeta válida — limpiar el contador de fallos de este dueño.
+    await this.supervisorAttempts.reset(empresaId, cajeroId, refBloqueo);
+
+    const nivel = await this.supervisorTarjetas.obtenerNivel(empresaId);
+    if (nivel === 'tarjeta_pin') {
+      // Paso 2 pendiente: el frontend cae al flujo YA EXISTENTE de
+      // supervisorId+PIN (esta misma función, sin `tarjeta`) — cero lógica
+      // nueva de validación de PIN, ver POSPage.tsx.
+      return { ok: false, requierePin: true, supervisorId: resultado.userId, nombre: resultado.nombre, role: resultado.role };
+    }
+
+    return this.finalizarAutorizacionSupervisor({
+      empresaId, cajeroId,
+      sup: { id: resultado.userId, nombre: resultado.nombre, role: resultado.role },
+      sucursalId, action, detail, clave, metodo: 'tarjeta',
+    });
   }
 
   /**

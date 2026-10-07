@@ -33,6 +33,7 @@ import { Sucursal } from '../configuracion/entities/sucursal.entity';
 import { ContabilidadModule } from '../contabilidad/contabilidad.module';
 import { AuditoriaModule } from '../auditoria/auditoria.module';
 import { ModulosAddonModule } from '../modulos-addon/modulos-addon.module';
+import { SupervisorTarjetasModule } from '../supervisor-tarjetas/supervisor-tarjetas.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { ModulosAddonModule } from '../modulos-addon/modulos-addon.module';
     ContabilidadModule,
     AuditoriaModule,
     ModulosAddonModule,
+    SupervisorTarjetasModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
