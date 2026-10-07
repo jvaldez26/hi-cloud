@@ -60,6 +60,7 @@ import { useThemeStore } from '../../store/theme.store';
 import { useOfflineQueue } from '../../hooks/useOfflineQueue';
 import { useSupervisor } from '../../hooks/useSupervisor';
 import { esFormatoTarjetaSupervisor } from '../../utils/tarjetaSupervisor';
+import { AutoEnvioTarjeta, enmascararCodigoTarjeta } from './tarjetaScanAutoSubmit';
 import { EscanerCamaraModal } from '../../components/EscanerCamaraModal';
 import { requiereSupervisorPorPrecioModificado } from './carritoRecuperadoGate';
 import { debeIgnorarEnterGlobal } from './confirmarCobroEnterGate';
@@ -9520,6 +9521,16 @@ export default function POSPage() {
   const [supTarjetaPin,       setSupTarjetaPin]       = useState<{ supervisorId: number; nombre: string; role: string } | null>(null);
   const [camaraSupervisorOpen, setCamaraSupervisorOpen] = useState(false);
   const supScanInputRef = useRef<any>(null);
+  // Envío automático del escaneo (debounce + anti-doble-envío) — lógica sin
+  // React, probada aparte en tarjetaScanAutoSubmit.test.ts. Se crea una sola
+  // vez; el closure siempre llama a la versión más reciente de
+  // autorizarConTarjeta vía la ref porque las funciones del modal se
+  // redefinen en cada render.
+  const autorizarConTarjetaRef = useRef<(codigo: string) => void>(() => {});
+  const autoEnvioTarjetaRef = useRef<AutoEnvioTarjeta | null>(null);
+  if (!autoEnvioTarjetaRef.current) {
+    autoEnvioTarjetaRef.current = new AutoEnvioTarjeta(valor => autorizarConTarjetaRef.current(valor));
+  }
   // Autofoco al campo de escaneo cuando se abre el modal — un escáner HID
   // "escribe" en lo que esté enfocado, así que sin esto el cajero tendría
   // que hacer clic antes de poder escanear.
@@ -9566,6 +9577,7 @@ export default function POSPage() {
   const limpiarModalSupervisor = () => {
     setSupId(null); setSupPassword(''); setSupPasswordVisible(false);
     setSupCodigoTarjeta(''); setSupTarjetaPin(null); setSupError('');
+    autoEnvioTarjetaRef.current?.reset();
   };
 
   // Único camino para verificar+autorizar por contraseña/PIN — lo usan el
@@ -9614,7 +9626,7 @@ export default function POSPage() {
   // campo de PIN de siempre (supTarjetaPin, ver verificarYAutorizarSupervisor).
   const autorizarConTarjeta = async (codigoCrudo: string) => {
     const codigo = codigoCrudo.trim().toUpperCase();
-    if (!codigo || supBlockCountdown > 0) return;
+    if (!codigo || supBlockCountdown > 0) { autoEnvioTarjetaRef.current?.reset(); return; }
     setVerificandoSupNuevo(true); setSupError('');
     try {
       const res: any = await api.post('/auth/verificar-supervisor', {
@@ -9637,13 +9649,17 @@ export default function POSPage() {
       const data = e?.response?.data;
       setSupError(mensajeDeError(e, {
         errorServidor: 'No pudimos verificar la tarjeta, intenta de nuevo en unos segundos.',
-        fallback:      'Tarjeta no reconocida',
+        fallback:      'Tarjeta no válida o revocada',
       }));
       const remainingSecs = data?.remainingSeconds as number | undefined;
       if (remainingSecs && remainingSecs > 0) startSupBlockCountdown(remainingSecs);
       setSupCodigoTarjeta('');
-    } finally { setVerificandoSupNuevo(false); }
+      // Foco de vuelta al campo para volver a escanear sin que el cajero
+      // tenga que hacer clic.
+      setTimeout(() => supScanInputRef.current?.focus?.(), 50);
+    } finally { setVerificandoSupNuevo(false); autoEnvioTarjetaRef.current?.reset(); }
   };
+  autorizarConTarjetaRef.current = (codigo: string) => { void autorizarConTarjeta(codigo); };
   const { data: supervisores, isLoading: supLoading } = useQuery<{ id: number; nombre: string; role: string; tienePin: boolean }[]>({
     queryKey: ['supervisores-pos'],
     queryFn:  () => api.get('/auth/supervisores').then(r => {
@@ -13330,18 +13346,44 @@ export default function POSPage() {
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Escanear tarjeta de supervisor</div>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <Input
-                      ref={supScanInputRef}
-                      placeholder="Escanea o pega el código de la tarjeta..."
-                      value={supCodigoTarjeta}
-                      disabled={supBlockCountdown > 0 || verificandoSupNuevo}
-                      autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
-                      onChange={e => { setSupCodigoTarjeta(e.target.value); setSupError(''); }}
-                      onPressEnter={e => {
-                        e.stopPropagation();
-                        if (supCodigoTarjeta.trim()) void autorizarConTarjeta(supCodigoTarjeta);
-                      }}
-                    />
+                    <div style={{ position: 'relative', flex: 1 }}>
+                      <Input
+                        ref={supScanInputRef}
+                        placeholder="Escanea o pega el código de la tarjeta..."
+                        value={supCodigoTarjeta}
+                        disabled={supBlockCountdown > 0 || verificandoSupNuevo}
+                        name="hc-scan-x9f3" id="hc-scan-x9f3"
+                        autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
+                        data-form-type="other" data-lpignore="true" data-1p-ignore=""
+                        // El código nunca debe verse en pantalla: el texto real
+                        // queda transparente (el valor sigue siendo el real,
+                        // así el escáner/teclado escribe normal) y un overlay
+                        // de solo lectura encima muestra la versión enmascarada
+                        // ("•••• 0640", igual que en el resto del sistema).
+                        style={{ color: 'transparent', caretColor: '#111827' }}
+                        onChange={e => {
+                          const v = e.target.value;
+                          setSupCodigoTarjeta(v);
+                          setSupError('');
+                          autoEnvioTarjetaRef.current?.alCambiar(v);
+                        }}
+                        onPressEnter={e => {
+                          e.stopPropagation();
+                          autoEnvioTarjetaRef.current?.alEnter(supCodigoTarjeta);
+                        }}
+                      />
+                      <div
+                        aria-hidden="true"
+                        style={{
+                          position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+                          padding: '0 11px', pointerEvents: 'none', fontSize: 14,
+                          color: (supBlockCountdown > 0 || verificandoSupNuevo) ? 'rgba(0,0,0,0.25)' : '#111827',
+                          fontFamily: 'inherit', letterSpacing: '0.5px', overflow: 'hidden', whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {enmascararCodigoTarjeta(supCodigoTarjeta)}
+                      </div>
+                    </div>
                     <Button
                       icon={<CameraOutlined />}
                       disabled={supBlockCountdown > 0 || verificandoSupNuevo}
