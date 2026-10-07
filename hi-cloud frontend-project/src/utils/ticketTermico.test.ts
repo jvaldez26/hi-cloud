@@ -41,4 +41,36 @@ describe('ventaEjemploTicket', () => {
     expect(venta.total).toBe(3600);
     expect(venta.items).toHaveLength(1);
   });
+
+  // El placeholder del logo (cuando la empresa no tiene uno subido) decía
+  // "FERRETERIA" fijo, igual que el resto de los datos — caso real:
+  // "Ventas Diversas Elido" veía "FERRETERIA" en su propia vista previa.
+  describe('logo de muestra (sin logo real subido)', () => {
+    function textoSvg(dataUri: string): string {
+      const svg = decodeURIComponent(dataUri.replace('data:image/svg+xml;utf8,', ''));
+      return svg.match(/<text[^>]*>([^<]*)<\/text>/)?.[1] ?? '';
+    }
+
+    it('usa el nombre REAL de la empresa, no "FERRETERIA"', () => {
+      const venta = ventaEjemploTicket(null, { nombre: 'Ventas Diversas Elido' });
+      expect(textoSvg(venta.empresaLogo!)).toBe('VENTAS DIVERSAS ELIDO');
+      expect(textoSvg(venta.empresaLogo!)).not.toContain('FERRETERIA');
+    });
+
+    it('sin nombre de empresa, cae a un placeholder genérico ("LOGO"), no a un rubro inventado', () => {
+      const venta = ventaEjemploTicket(null);
+      expect(textoSvg(venta.empresaLogo!)).toBe('LOGO');
+    });
+
+    it('con un logo REAL subido, no genera ningún placeholder', () => {
+      const venta = ventaEjemploTicket('https://cdn.example.com/logo-real.png', { nombre: 'Cualquier Empresa' });
+      expect(venta.empresaLogo).toBe('https://cdn.example.com/logo-real.png');
+    });
+
+    it('escapa caracteres especiales del nombre para no romper el SVG', () => {
+      const venta = ventaEjemploTicket(null, { nombre: 'AT&T <Store>' });
+      expect(venta.empresaLogo).not.toContain('<Store>'); // sin escapar rompería el XML
+      expect(textoSvg(venta.empresaLogo!)).toContain('&amp;T');
+    });
+  });
 });

@@ -704,14 +704,26 @@ ${B.filter(Boolean).join('\n')}
 
 // ── Datos de ejemplo para la vista previa de Configuración ───────────────────
 
-/** Logo de muestra — un rectángulo con el nombre, para que se vea el efecto de
- *  la altura del logo sin depender de que la empresa tenga uno subido. */
-const LOGO_EJEMPLO =
-  'data:image/svg+xml;utf8,' + encodeURIComponent(
+/**
+ * Logo de muestra — un rectángulo con el nombre de la empresa, para que se
+ * vea el efecto de la altura del logo sin depender de que la empresa tenga
+ * uno subido. Antes decía "FERRETERIA" fijo sin importar qué empresa
+ * estuviera viendo la vista previa (reporte real, 2026-10-07 — la empresa
+ * se llamaba "Ventas Diversas Elido" y el placeholder igual decía
+ * "FERRETERIA"). El nombre se trunca y el tamaño de letra se reduce para
+ * los más largos, porque el ancho del rectángulo es fijo.
+ */
+function logoEjemplo(nombre?: string | null): string {
+  const crudo = (nombre || 'LOGO').trim().toUpperCase().slice(0, 22);
+  // Escapar para texto SVG — un nombre con &, <, > o comillas rompería el XML.
+  const texto = crudo.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const fontSize = texto.length > 14 ? 16 : texto.length > 9 ? 20 : 26;
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 60">' +
     '<rect width="240" height="60" fill="#fff" stroke="#000" stroke-width="3"/>' +
-    '<text x="120" y="39" font-family="monospace" font-size="26" font-weight="bold" ' +
-    'text-anchor="middle" fill="#000">FERRETERIA</text></svg>');
+    `<text x="120" y="39" font-family="monospace" font-size="${fontSize}" font-weight="bold" ` +
+    `text-anchor="middle" fill="#000">${texto}</text></svg>`);
+}
 
 /**
  * Venta de ejemplo para la vista previa.
@@ -758,6 +770,6 @@ export function ventaEjemploTicket(
     empresaRnc:             empresaInfo?.rnc          || '132716507',
     empresaDireccion:       empresaInfo?.direccion    || 'C/ Francisco Caamaño 14, Progreso',
     empresaTelefono:        empresaInfo?.telefono     || '829-562-4199',
-    empresaLogo:            logoEmpresa || LOGO_EJEMPLO,
+    empresaLogo:            logoEmpresa || logoEjemplo(empresaInfo?.nombre),
   };
 }
