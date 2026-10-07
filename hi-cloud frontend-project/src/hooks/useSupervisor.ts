@@ -28,7 +28,7 @@
  * funcionando igual — ambos caminos comparten el mismo estado/modal.
  */
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
 import { registerSupervisorAuthHandler } from '../utils/sessionEvents';
 
@@ -107,20 +107,22 @@ function loadSessionFromStorage(): SupervisorSession | null {
   }
 }
 
+const POLITICAS_QUERY_KEY = ['supervisor-politicas'];
+const politicasQueryFn = () => api.get('/configuracion/supervisor-politicas').then(r => r.data?.data ?? r.data);
+
 export function useSupervisor(): UseSupervisorReturn {
+  const queryClient = useQueryClient();
   const { data: posConfig } = useQuery<any>({
     queryKey: ['pos-config-supervisor'],
     queryFn:  () => api.get('/configuracion/empresa/pos-config').then(r => r.data?.data ?? r.data),
     staleTime: 5 * 60_000,
   });
   const { data: politicasData } = useQuery<PoliticaSupervisor[]>({
-    queryKey: ['supervisor-politicas'],
-    queryFn:  () => api.get('/configuracion/supervisor-politicas').then(r => r.data?.data ?? r.data),
+    queryKey:  POLITICAS_QUERY_KEY,
+    queryFn:   politicasQueryFn,
     staleTime: 5 * 60_000,
   });
   const politicas = politicasData ?? [];
-  const politicaPorClave = useRef<Map<string, PoliticaSupervisor>>(new Map());
-  politicaPorClave.current = new Map(politicas.map(p => [p.clave, p]));
 
   const maxDiscountPercent: number = posConfig?.maxDiscountPercent ?? 10;
 
@@ -178,9 +180,25 @@ export function useSupervisor(): UseSupervisorReturn {
   }, []);
 
   const requireSupervisor = useCallback(async (clave: string, action?: string, detail?: string): Promise<AutorizacionResultado> => {
-    const politica = politicaPorClave.current.get(clave);
+    // fetchQuery: devuelve el caché al toque si ya está fresco, o ESPERA la
+    // petición si todavía no resolvió — nunca decide con el catálogo vacío.
+    // Antes se leía el estado reactivo de useQuery directamente: justo
+    // después de cargar la página (o loguear), antes de que esa consulta
+    // resolviera, politicaPorClave estaba vacío y CUALQUIER clave pasaba
+    // libre — "no hay política todavía" se trataba igual que "no requerido".
+    // Caso real (2026-10-07): empresa con el panel de Inventario del POS en
+    // requerido=true, el cajero entraba directo sin que pidiera nada porque
+    // tocó el panel antes de que /configuracion/supervisor-politicas
+    // terminara de cargar.
+    const politicasActuales = await queryClient.fetchQuery<PoliticaSupervisor[]>({
+      queryKey:  POLITICAS_QUERY_KEY,
+      queryFn:   politicasQueryFn,
+      staleTime: 5 * 60_000,
+    });
+    const politica = politicasActuales.find(p => p.clave === clave);
     // Clave sin política conocida (no debería pasar si el catálogo está al
-    // día) → no bloquea, mismo criterio defensivo que el backend.
+    // día, y no es "todavía no cargó" — eso ya se esperó arriba) → no
+    // bloquea, mismo criterio defensivo que el backend.
     if (!politica || !politica.requerido) return { ok: true };
 
     if (politica.modo === 'sesion' && supervisorActive) return { ok: true };
@@ -192,7 +210,7 @@ export function useSupervisor(): UseSupervisorReturn {
       resolveRef.current = resolve;
       setPendingAction({ action: action ?? politica.label, detail, clave });
     });
-  }, [supervisorActive]);
+  }, [supervisorActive, queryClient]);
 
   // Se registra como el puente genérico 403 → autorización → reintento (ver
   // sessionEvents.ts). Solo existe un registrador (este hook vive una sola

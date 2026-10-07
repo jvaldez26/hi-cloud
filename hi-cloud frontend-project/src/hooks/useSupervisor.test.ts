@@ -119,7 +119,11 @@ describe('useSupervisor — requireSupervisor (gate por clave, modo "sesion")', 
     await waitFor(() => expect(result.current.politicas.length).toBeGreaterThan(0));
 
     let resuelto: { ok: boolean; token?: string } | undefined;
-    act(() => {
+    // requireSupervisor() SIEMPRE pasa por queryClient.fetchQuery antes de
+    // decidir (ver el comentario del hook) — aunque el catálogo ya esté en
+    // caché, sigue habiendo un microtask de por medio, así que hay que
+    // esperarlo (await act(async)) antes de mirar pendingAction.
+    await act(async () => {
       result.current.requireSupervisor('cerrar_caja', 'Cierre de Caja', 'Monto: RD$7,500.00').then(r => { resuelto = r; });
     });
 
@@ -183,7 +187,7 @@ describe('useSupervisor — requireSupervisor (gate por clave, modo "cada_vez")'
     await waitFor(() => expect(result.current.politicas.length).toBeGreaterThan(0));
 
     let resuelto: { ok: boolean; token?: string } | undefined;
-    act(() => {
+    await act(async () => {
       result.current.requireSupervisor('venta_credito', 'Venta a Crédito').then(r => { resuelto = r; });
     });
     expect(result.current.pendingAction).not.toBeNull(); // pidió autorización pese a la sesión activa
@@ -199,7 +203,7 @@ describe('useSupervisor — requireSupervisor (gate por clave, modo "cada_vez")'
     await waitFor(() => expect(result.current.politicas.length).toBeGreaterThan(0));
 
     let resuelto: { ok: boolean; token?: string } | undefined;
-    act(() => {
+    await act(async () => {
       result.current.requireSupervisor('venta_credito', 'Venta a Crédito').then(r => { resuelto = r; });
     });
 
