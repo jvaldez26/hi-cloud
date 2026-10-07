@@ -1,35 +1,45 @@
 import { randomInt, createHash } from 'crypto';
 
 /**
- * Prefijo fijo del código de tarjeta — distingue un escaneo de tarjeta de
- * supervisor de un escaneo de producto en el POS (ver procesarScan en
- * POSPage.tsx, frontend) y de cualquier otro código de barras del sistema.
+ * Prefijo fijo NUMÉRICO (2 dígitos) del código de tarjeta — distingue un
+ * escaneo de tarjeta de supervisor de un escaneo de producto en el POS (ver
+ * procesarScan en POSPage.tsx, frontend) y de cualquier otro código de
+ * barras del sistema.
+ *
+ * Antes el código era alfanumérico (HSUP + 26 [A-Z0-9], Code128 Set B) — se
+ * cambió a SOLO DÍGITOS (reporte real, 2026-10-07): con 30 caracteres
+ * alfanuméricos el Code128 impreso en papel carta normal no se leía con un
+ * escáner de caja (barras de ~0.2mm, se empastan en impresoras de oficina).
+ * Solo dígitos permite Code Set C (2 dígitos por símbolo, la mitad de
+ * módulos que Set B) — con eso el código completo cabe con un módulo de
+ * 0.33mm+ y zona de silencio de sobra en el ancho de la tarjeta.
+ *
+ * "90" no choca con ningún código de producto real: un código de barras de
+ * producto (EAN-13, UPC-A, EAN-8) mide 8-13 dígitos y un codigo/codigoBarras
+ * interno de este sistema nunca llega a 24 — la LONGITUD por sí sola ya
+ * descarta cualquier confusión, el prefijo es solo una capa extra.
  */
-export const PREFIJO_TARJETA = 'HSUP';
+export const PREFIJO_TARJETA = '90';
 
 /**
- * Alfabeto SOLO letras mayúsculas y números, sin guiones ni símbolos: un
- * guion se convertía en apóstrofe con un escáner en layout US y el SO en
- * es-DO (bug real, ya vivido con otro código de barras de este proyecto).
+ * 22 dígitos aleatorios → log2(10^22) ≈ 73 bits de entropía. Junto con el
+ * hash (nunca se guarda el código en claro) y el bloqueo progresivo por
+ * intentos fallidos (SupervisorAttemptsService), es más que suficiente:
+ * adivinar un código a fuerza bruta contra el bloqueo es inviable mucho
+ * antes de agotar el espacio de búsqueda. Más el prefijo (2 dígitos), el
+ * código completo mide 24 dígitos.
  */
-const ALFABETO = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+const LONGITUD_ALEATORIA = 22;
 
-/**
- * 26 caracteres aleatorios de un alfabeto de 36 → log2(36)×26 ≈ 134 bits de
- * entropía, por encima del mínimo de 128 bits pedido. Más el prefijo fijo
- * (4 chars), el código completo mide 30 caracteres.
- */
-const LONGITUD_ALEATORIA = 26;
-
-function caracterAleatorio(): string {
+function digitoAleatorio(): string {
   // randomInt es criptográficamente seguro (crypto.randomInt, no Math.random).
-  return ALFABETO[randomInt(ALFABETO.length)];
+  return String(randomInt(10));
 }
 
 /** Genera un código de tarjeta nuevo — SOLO existe en memoria hasta que se usa (PDF) y se descarta. */
 export function generarCodigoTarjeta(): string {
   let aleatorio = '';
-  for (let i = 0; i < LONGITUD_ALEATORIA; i++) aleatorio += caracterAleatorio();
+  for (let i = 0; i < LONGITUD_ALEATORIA; i++) aleatorio += digitoAleatorio();
   return PREFIJO_TARJETA + aleatorio;
 }
 
@@ -41,7 +51,7 @@ export function hashCodigoTarjeta(codigo: string): string {
   return createHash('sha256').update(codigo).digest('hex');
 }
 
-/** Los últimos 4 caracteres — lo único que se vuelve a mostrar después de generarla ("Tarjeta ••••XXXX"). */
+/** Los últimos 4 dígitos — lo único que se vuelve a mostrar después de generarla ("Tarjeta ••••XXXX"). */
 export function ultimosCuatro(codigo: string): string {
   return codigo.slice(-4);
 }
@@ -56,5 +66,5 @@ export function ultimosCuatro(codigo: string): string {
  * tarjeta).
  */
 export function esFormatoTarjeta(valor: string): boolean {
-  return new RegExp(`^${PREFIJO_TARJETA}[A-Z0-9]{${LONGITUD_ALEATORIA}}$`).test(valor.trim());
+  return new RegExp(`^${PREFIJO_TARJETA}\\d{${LONGITUD_ALEATORIA}}$`).test(valor.trim());
 }

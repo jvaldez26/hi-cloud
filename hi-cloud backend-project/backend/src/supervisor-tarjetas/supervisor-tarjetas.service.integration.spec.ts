@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'crypto';
 import { SupervisorTarjetasService } from './supervisor-tarjetas.service';
 import { TarjetaSupervisor } from './entities/tarjeta-supervisor.entity';
 import { SupervisorTarjetaConfig } from './entities/supervisor-tarjeta-config.entity';
-import { esFormatoTarjeta } from './tarjeta-codigo.util';
+import { esFormatoTarjeta, PREFIJO_TARJETA } from './tarjeta-codigo.util';
 
 /**
  * Integración REAL contra Postgres — igual criterio que
@@ -134,7 +134,7 @@ describe('SupervisorTarjetasService — SQL real contra Postgres', () => {
 
   it('un código que no coincide con ninguna tarjeta devuelve no_existe (sin dueño)', async () => {
     if (!dbDisponible) return;
-    const resultado = await svc.verificarCodigo('HSUP' + 'Z'.repeat(26), empresaId);
+    const resultado = await svc.verificarCodigo(PREFIJO_TARJETA + '9'.repeat(22), empresaId); // formato real: 90 + 22 dígitos
     expect(resultado).toEqual({ ok: false, motivo: 'no_existe' });
   });
 

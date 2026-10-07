@@ -16,6 +16,47 @@ const AZUL_CLARO     = '#B5D4F4';
 const GRIS_TEXTO     = '#6B7280';
 const GRIS_OSCURO    = '#1F2937';
 
+// ── Code128 como VECTOR (nunca imagen rasterizada) ───────────────────────────
+//
+// Reporte real (2026-10-07): el código de barras, generado antes como PNG
+// con bwip-js.toBuffer() e insertado con doc.image(), no se leía con un
+// escáner de caja real en una tarjeta impresa en papel carta normal —
+// causa raíz, en dos capas:
+//   1. 30 caracteres alfanuméricos en Code Set B necesitan ~365 módulos;
+//      en los ~77.6mm de ancho disponible eso da un módulo de ~0.21mm,
+//      por debajo de lo que una impresora de oficina (no una impresora de
+//      tarjetas PVC dedicada) puede reproducir sin que el toner/tinta
+//      empaste las barras más finas.
+//   2. Al rasterizar a PNG y reescalarlo con doc.image({width,height}),
+//      cualquier imprecisión de interpolación entre el PNG nativo y el
+//      tamaño final impreso se suma al problema — un vector dibujado
+//      directamente a la escala final no tiene ese paso intermedio.
+//
+// El código se cambió a SOLO DÍGITOS (ver tarjeta-codigo.util.ts) para
+// poder usar Code Set C (2 dígitos por símbolo — la mitad de módulos que
+// Set B), y el código de barras ahora se dibuja como rectángulos de PDFKit
+// (doc.rect().fill()), nunca como imagen.
+//
+// La codificación en sí (qué barra va dónde, el checksum mod 103, el
+// cambio a Set C) la sigue resolviendo bwip-js — reescribir esa tabla a
+// mano es la forma más fácil de producir un código de barras inválido sin
+// que nadie lo note hasta que un escáner real falle. Lo que cambia es CÓMO
+// se dibuja: en vez de pedirle a bwip-js un PNG (bwipjs.toBuffer), se usa
+// su motor de renderizado con un "drawing backend" propio (bwipjs.render +
+// un objeto que solo sabe hacer una cosa: anotar cada barra que bwip-js le
+// manda dibujar) y esas barras se trasladan 1:1 a PDFKit, a la escala
+// física exacta que se decide aquí.
+const MODULO_MM       = 0.40; // mínimo pedido: 0.33mm — con margen real de sobra en el ancho de la tarjeta
+const ZONA_MUDA_MODULOS = 10; // mínimo del estándar Code128 (>= 10x el ancho de módulo)
+const ALTURA_BARRAS_MM  = 10; // mínimo pedido: 10mm
+
+interface BarraCode128 { xModulos: number; anchoModulos: number; }
+
+interface Code128Vector {
+  barras: BarraCode128[];
+  totalModulos: number;
+}
+
 export interface DatosTarjetaPdf {
   nombre:          string;
   role:            string;
@@ -38,26 +79,85 @@ function fmtFechaRD(d: Date): string {
 export class TarjetaPdfService {
   private readonly logger = new Logger(TarjetaPdfService.name);
 
-  private async generarCode128(codigo: string): Promise<Buffer | null> {
+  /**
+   * Captura la codificación Code128 de bwip-js como vector (lista de barras
+   * en unidades de MÓDULO, no píxeles) en vez de pedirle un PNG. `scale:1`
+   * en bwip-js hace que 1 unidad de su sistema de dibujo = 1 módulo exacto
+   * (verificado: para un código de 24 dígitos — Code Set C, 12 pares × 11 +
+   * start 11 + checksum 11 + stop 13 — init() reporta un ancho total de 167
+   * módulos, exactamente la cuenta de la especificación). Cada línea que
+   * bwip-js dibuja ES una barra negra; los espacios blancos quedan
+   * implícitos (nunca se dibujan, el fondo de la tarjeta ya es blanco).
+   */
+  private codificarCode128Vector(codigo: string): Code128Vector | null {
     try {
-      return await bwipjs.toBuffer({
-        bcid: 'code128', text: codigo, scale: 3, height: 8,
-        includetext: false,
-        // paddingwidth: 6 daba una zona muda real de solo 1.24mm a los
-        // ~77.6mm de ancho final de la tarjeta — el estándar Code128 exige
-        // >= 10x el ancho de módulo (~2.2mm aquí) para que un escáner
-        // ENCUENTRE el código; con menos, no es que lo lea mal, es que ni
-        // siquiera lo reconoce como código de barras (reporte real,
-        // 2026-10-07: el QR sí funcionaba porque no depende tanto de esto).
-        // 14 da ~2.76mm — verificado con un decoder real (@zxing/library) a
-        // 203dpi y 300dpi; 16+ ya perdía 203dpi por module width insuficiente.
-        paddingwidth: 14, paddingheight: 1,
-        backgroundcolor: 'FFFFFF', // bwip-js genera fondo transparente por defecto — un escáner no lo decodifica
-      });
+      const barras: BarraCode128[] = [];
+      let totalModulos = 0;
+      const drawing: any = {
+        scale: (sx: number, sy: number) => [sx, sy],
+        measure: () => ({ width: 0, ascent: 0, descent: 0 }),
+        init: (w: number) => { totalModulos = w; },
+        // bwip-js dibuja cada barra como una línea CENTRADA en x0 con grosor
+        // lw (semántica estándar de "line": x0 es el centro del trazo, no el
+        // borde izquierdo) — verificado barra por barra contra el PNG nativo
+        // de bwip-js (bwipjs.toBuffer) para el mismo código. Para grosores
+        // pares el borde izquierdo es exactamente x0-lw/2; para impares,
+        // x0-Math.ceil(lw/2) (redondeo hacia la izquierda, no x0-lw/2 que
+        // deja medio módulo de más a cada lado y descuadra TODAS las barras
+        // siguientes — así fallaba el primer intento de este fix, con las
+        // posiciones del lado derecho de la tarjeta cada vez más corridas).
+        line: (x0: number, _y0: number, _x1: number, _y1: number, lw: number) => {
+          barras.push({ xModulos: x0 - Math.ceil(lw / 2), anchoModulos: lw });
+        },
+        polygon: () => {},
+        hexagon: () => {},
+        ellipse: () => {},
+        fill: () => {},
+        text: () => {},
+        end: () => {},
+      };
+      bwipjs.render({ bcid: 'code128', text: codigo, includetext: false, paddingwidth: 0, paddingheight: 0, scale: 1 }, drawing);
+      if (!barras.length || !totalModulos) return null;
+      return { barras, totalModulos };
     } catch (e: any) {
-      this.logger.error(`[tarjeta-supervisor] Code128 falló: ${e?.message}`);
+      this.logger.error(`[tarjeta-supervisor] Code128 (vector) falló: ${e?.message}`);
       return null;
     }
+  }
+
+  /**
+   * Dibuja el código de barras VECTOR centrado dentro de un ancho disponible
+   * (en puntos PDF), con zona muda real a cada lado — nunca una imagen.
+   * Devuelve las medidas finales para poder registrarlas/loguearlas.
+   */
+  private dibujarCode128(
+    doc: PDFKit.PDFDocument, codigo: string, xDisponible: number, yTop: number, anchoDisponible: number,
+  ): { moduloMm: number; anchoBarrasMm: number; anchoTotalMm: number; alturaMm: number } | null {
+    const vector = this.codificarCode128Vector(codigo);
+    if (!vector) return null;
+
+    const moduloPt = MODULO_MM * MM;
+    const anchoBarrasPt = vector.totalModulos * moduloPt;
+    const zonaMudaPt = ZONA_MUDA_MODULOS * moduloPt;
+    const anchoTotalPt = anchoBarrasPt + zonaMudaPt * 2;
+    const alturaPt = ALTURA_BARRAS_MM * MM;
+
+    // Centrado dentro del ancho disponible de la tarjeta.
+    const offsetX = xDisponible + (anchoDisponible - anchoTotalPt) / 2 + zonaMudaPt;
+
+    doc.save();
+    doc.fillColor('#000000');
+    for (const b of vector.barras) {
+      doc.rect(offsetX + b.xModulos * moduloPt, yTop, b.anchoModulos * moduloPt, alturaPt).fill();
+    }
+    doc.restore();
+
+    return {
+      moduloMm: MODULO_MM,
+      anchoBarrasMm: anchoBarrasPt / MM,
+      anchoTotalMm: anchoTotalPt / MM,
+      alturaMm: ALTURA_BARRAS_MM,
+    };
   }
 
   private async generarQR(codigo: string): Promise<Buffer | null> {
@@ -78,9 +178,10 @@ export class TarjetaPdfService {
   /**
    * Dibuja el FRENTE dentro del rectángulo (x0,y0,w,h) dado — reutilizable
    * tanto para la página de tarjeta sola (w=CARD_W) como para la hoja carta
-   * con frente+reverso lado a lado (mismo dibujo, otro origen).
+   * con frente+reverso lado a lado (mismo dibujo, otro origen y a tamaño
+   * físico real — ver generarPdfHoja).
    */
-  private dibujarFrente(doc: PDFKit.PDFDocument, x0: number, y0: number, w: number, h: number, d: DatosTarjetaPdf, codeBuf: Buffer | null, qrBuf: Buffer | null) {
+  private dibujarFrente(doc: PDFKit.PDFDocument, x0: number, y0: number, w: number, h: number, d: DatosTarjetaPdf, qrBuf: Buffer | null) {
     const margen = 4 * MM;
     const franjaH = 8 * MM;
 
@@ -116,17 +217,23 @@ export class TarjetaPdfService {
       doc.image(qrBuf, x0 + w - margen - qrLado, cuerpoY, { width: qrLado, height: qrLado });
     }
 
-    // Código de barras — todo el ancho disponible, con zona muda (ya incluida
-    // por bwip-js vía paddingwidth) y margen a los lados del cuerpo.
-    const codeY = y0 + h - margen - 11 * MM;
+    // Código de barras — vector, centrado, con zona muda real a cada lado.
+    // Banda reservada desde el borde inferior: barras (10mm) + aire (2mm) +
+    // línea de "Tarjeta ••••" (2mm) = 14mm.
+    const bandaInferior = 14 * MM;
+    const codeY = y0 + h - margen - bandaInferior;
     const codeW = w - margen * 2;
-    if (codeBuf) {
-      doc.image(codeBuf, x0 + margen, codeY, { width: codeW, height: 7 * MM });
+    const medidas = this.dibujarCode128(doc, d.codigo, x0 + margen, codeY, codeW);
+    if (medidas) {
+      this.logger.debug(
+        `[tarjeta-supervisor] Code128: módulo ${medidas.moduloMm}mm, barras ${medidas.anchoBarrasMm.toFixed(2)}mm, ` +
+        `total con zona muda ${medidas.anchoTotalMm.toFixed(2)}mm, altura ${medidas.alturaMm}mm`,
+      );
     }
 
     // "Tarjeta ••••XXXX" — el código completo NUNCA se imprime en texto legible.
     doc.fillColor(GRIS_TEXTO).font('Helvetica').fontSize(6.5)
-      .text(`Tarjeta ••••${d.ultimosCuatro}`, x0 + margen, y0 + h - margen - 3, { width: codeW, align: 'right' });
+      .text(`Tarjeta ••••${d.ultimosCuatro}`, x0 + margen, codeY + ALTURA_BARRAS_MM * MM + 2 * MM, { width: codeW, align: 'right' });
   }
 
   private dibujarReverso(doc: PDFKit.PDFDocument, x0: number, y0: number, w: number, h: number, d: DatosTarjetaPdf) {
@@ -168,7 +275,7 @@ export class TarjetaPdfService {
 
   /** Opción 1: PDF de UNA tarjeta, 2 páginas (frente/reverso) a tamaño físico CR80 — para impresora de tarjetas PVC. */
   async generarPdfTarjeta(d: DatosTarjetaPdf): Promise<Buffer> {
-    const [codeBuf, qrBuf] = await Promise.all([this.generarCode128(d.codigo), this.generarQR(d.codigo)]);
+    const qrBuf = await this.generarQR(d.codigo);
 
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({ size: [CARD_W, CARD_H], margins: { top: 0, bottom: 0, left: 0, right: 0 } });
@@ -177,7 +284,7 @@ export class TarjetaPdfService {
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      this.dibujarFrente(doc, 0, 0, CARD_W, CARD_H, d, codeBuf, qrBuf);
+      this.dibujarFrente(doc, 0, 0, CARD_W, CARD_H, d, qrBuf);
       doc.addPage({ size: [CARD_W, CARD_H], margins: { top: 0, bottom: 0, left: 0, right: 0 } });
       this.dibujarReverso(doc, 0, 0, CARD_W, CARD_H, d);
 
@@ -185,9 +292,18 @@ export class TarjetaPdfService {
     });
   }
 
-  /** Opción 2: PDF en hoja carta, frente y reverso lado a lado con marcas de corte — para imprimir en papel y plastificar. */
+  /**
+   * Opción 2: PDF en hoja carta, frente y reverso lado a lado con marcas de
+   * corte — para imprimir en papel y plastificar. Las tarjetas se dibujan a
+   * su tamaño FÍSICO REAL (85.6 × 54mm, la misma función dibujarFrente/
+   * dibujarReverso que la Opción 1, solo con otro origen) — nada en este
+   * archivo aplica doc.scale() ni ningún otro factor de escala. El único
+   * riesgo de que salgan más chicas es el diálogo de impresión del
+   * visor/sistema operativo (p. ej. "Ajustar al papel" activado), que está
+   * fuera del control del PDF — por eso el aviso impreso en la hoja.
+   */
   async generarPdfHoja(d: DatosTarjetaPdf): Promise<Buffer> {
-    const [codeBuf, qrBuf] = await Promise.all([this.generarCode128(d.codigo), this.generarQR(d.codigo)]);
+    const qrBuf = await this.generarQR(d.codigo);
 
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({ size: 'LETTER', margin: 36 });
@@ -201,7 +317,7 @@ export class TarjetaPdfService {
       const gap = 6 * MM;
       const totalW = CARD_W * 2 + gap;
       const x0 = (pageW - totalW) / 2;
-      const y0 = (pageH - CARD_H) / 2;
+      const y0 = (pageH - CARD_H) / 2 - 10 * MM; // deja aire abajo para el aviso de impresión
 
       const dibujarMarcasCorte = (x: number, y: number) => {
         const largo = 3 * MM, off = 1.5 * MM;
@@ -216,7 +332,7 @@ export class TarjetaPdfService {
         }
       };
 
-      this.dibujarFrente(doc, x0, y0, CARD_W, CARD_H, d, codeBuf, qrBuf);
+      this.dibujarFrente(doc, x0, y0, CARD_W, CARD_H, d, qrBuf);
       dibujarMarcasCorte(x0, y0);
       doc.rect(x0, y0, CARD_W, CARD_H).lineWidth(0.4).strokeColor('#CCCCCC').stroke();
 
@@ -224,6 +340,16 @@ export class TarjetaPdfService {
       this.dibujarReverso(doc, x1, y0, CARD_W, CARD_H, d);
       dibujarMarcasCorte(x1, y0);
       doc.rect(x1, y0, CARD_W, CARD_H).lineWidth(0.4).strokeColor('#CCCCCC').stroke();
+
+      // Aviso de impresión — el tamaño real de la tarjeta depende de que el
+      // diálogo de impresión NO reescale la página (ver el comentario del
+      // método sobre por qué esto no se puede forzar desde el PDF).
+      doc.fillColor('#DC2626').font('Helvetica-Bold').fontSize(9)
+        .text('Imprima en tamaño real (100%), sin "Ajustar a la página" — de lo contrario el código de barras no escaneará.',
+          36, y0 + CARD_H + 14 * MM, { width: pageW - 72, align: 'center' });
+      doc.fillColor(GRIS_TEXTO).font('Helvetica').fontSize(8)
+        .text(`Tamaño real de cada tarjeta: 85.6 × 54mm (CR80).`,
+          36, y0 + CARD_H + 14 * MM + 14, { width: pageW - 72, align: 'center' });
 
       doc.end();
     });

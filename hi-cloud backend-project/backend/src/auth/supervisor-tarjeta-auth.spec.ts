@@ -20,7 +20,7 @@ import { PREFIJO_TARJETA } from '../supervisor-tarjetas/tarjeta-codigo.util';
 const EMPRESA = 7;
 const CAJERO_ID = 1;
 const SUPERVISOR_ID = 2;
-const CODIGO_VALIDO = PREFIJO_TARJETA + 'A'.repeat(26);
+const CODIGO_VALIDO = PREFIJO_TARJETA + '1'.repeat(22); // formato real: 90 + 22 dígitos
 const PIN = '4321';
 let HASH_PIN: string;
 
