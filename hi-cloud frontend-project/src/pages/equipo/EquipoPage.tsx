@@ -12,7 +12,7 @@ import {
   UserAddOutlined, MailOutlined, DeleteOutlined, CrownOutlined,
   TeamOutlined, ClockCircleOutlined, CheckCircleOutlined,
   CloseCircleOutlined, ReloadOutlined, CopyOutlined, SearchOutlined,
-  BankOutlined,
+  BankOutlined, IdcardOutlined, DownloadOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -192,6 +192,44 @@ export default function EquipoPage() {
     onSuccess: () => { inv(); message.success('Usuario removido'); },
   });
 
+  // ── Tarjeta de supervisor (de otro miembro) ───────────────────────────────
+  const [tarjetaModal, setTarjetaModal] = useState<{ userId: number; nombre: string } | null>(null);
+  const [tarjetaFormato, setTarjetaFormato] = useState<'tarjeta' | 'hoja'>('tarjeta');
+  const [generandoTarjeta, setGenerandoTarjeta] = useState(false);
+
+  const { data: equipoTarjetas } = useQuery<any[]>({
+    queryKey: ['equipo-tarjetas-supervisor', empresaId],
+    queryFn:  () => api.get('/supervisor-tarjetas/equipo').then(r => r.data?.data ?? r.data),
+    enabled:  !!tarjetaModal,
+  });
+  const tarjetaActual = (equipoTarjetas ?? []).find((t: any) => t.userId === tarjetaModal?.userId);
+
+  const generarTarjetaEquipo = async () => {
+    if (!tarjetaModal) return;
+    setGenerandoTarjeta(true);
+    try {
+      const res = await api.post(
+        `/supervisor-tarjetas/equipo/${tarjetaModal.userId}/generar?formato=${tarjetaFormato}`,
+        {}, { responseType: 'blob' },
+      );
+      const url = URL.createObjectURL(res.data as Blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `tarjeta-supervisor-${tarjetaModal.nombre.replace(/\s+/g, '-')}.pdf`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1_000);
+      qc.invalidateQueries({ queryKey: ['equipo-tarjetas-supervisor'] });
+      message.success('Tarjeta generada — el PDF se descargó. El código solo se muestra esta vez.');
+    } catch (e: any) {
+      message.error(e?.response?.data?.message ?? 'No se pudo generar la tarjeta');
+    } finally { setGenerandoTarjeta(false); }
+  };
+
+  const revocarTarjetaMut = useMutation({
+    mutationFn: (userId: number) => api.post(`/supervisor-tarjetas/equipo/${userId}/revocar`, { motivo: 'Revocada por un administrador' }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['equipo-tarjetas-supervisor'] }); message.success('Tarjeta revocada'); },
+    onError:   (e: any) => message.error(e?.response?.data?.message ?? 'No se pudo revocar la tarjeta'),
+  });
+
   const miembrosData = miembros ?? [];
   const invsData     = (invitaciones ?? []).filter((i: any) => i.estado === 'pendiente');
 
@@ -265,6 +303,9 @@ export default function EquipoPage() {
           items={[
             { key: 'rol', label: 'Cambiar rol', icon: <CrownOutlined />, onClick: () => { setRolModal({ userId: r.userId, rolActual: r.rol }); setRol(r.rol); } },
             { key: 'sucursal', label: 'Asignar sucursal', icon: <BankOutlined />, onClick: () => { setSucModal({ userId: r.userId, nombre: r.user?.nombre ?? '?', sucursalActual: r.sucursalId ?? null }); setSucursalSel(r.sucursalId ?? null); } },
+            ...(['admin', 'contador'].includes(r.rol) ? [
+              { key: 'tarjeta', label: 'Tarjeta de supervisor', icon: <IdcardOutlined />, onClick: () => setTarjetaModal({ userId: r.userId, nombre: r.user?.nombre ?? '?' }) },
+            ] : []),
             { type: 'divider' as const },
             { key: 'remover', label: 'Remover del equipo', danger: true, icon: <DeleteOutlined />, onClick: () => removerMut.mutate(r.userId) },
           ]}
@@ -516,6 +557,58 @@ export default function EquipoPage() {
             );
           })()}
         </Form>
+      </Modal>
+
+      {/* ── Modal tarjeta de supervisor (de otro miembro) ── */}
+      <Modal
+        title={<Space><IdcardOutlined />Tarjeta de supervisor — {tarjetaModal?.nombre}</Space>}
+        open={!!tarjetaModal}
+        onCancel={() => setTarjetaModal(null)}
+        footer={null}
+        width={440}
+        destroyOnClose
+      >
+        <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 12 }}>
+          Genera o revoca la tarjeta física de autorización de supervisor de esta persona. Generar
+          una nueva invalida de inmediato la anterior — el código solo se muestra una vez, en el PDF.
+        </Text>
+        {tarjetaActual && (
+          <div style={{ marginBottom: 12 }}>
+            {tarjetaActual.ultimosCuatro
+              ? <Tag color="green">Tarjeta activa — ••••{tarjetaActual.ultimosCuatro}</Tag>
+              : <Tag color="default">Sin tarjeta</Tag>}
+          </div>
+        )}
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Space>
+            <Text style={{ fontSize: 12 }}>Formato del PDF:</Text>
+            <Button.Group>
+              <Button size="small" type={tarjetaFormato === 'tarjeta' ? 'primary' : 'default'} onClick={() => setTarjetaFormato('tarjeta')}>Tarjeta (CR80)</Button>
+              <Button size="small" type={tarjetaFormato === 'hoja' ? 'primary' : 'default'} onClick={() => setTarjetaFormato('hoja')}>Hoja carta</Button>
+            </Button.Group>
+          </Space>
+          <Space wrap>
+            <Popconfirm
+              title={tarjetaActual?.ultimosCuatro ? '¿Generar una tarjeta nueva?' : '¿Generar tarjeta de supervisor?'}
+              description={tarjetaActual?.ultimosCuatro ? `La tarjeta actual (••••${tarjetaActual.ultimosCuatro}) dejará de servir de inmediato.` : 'Se descargará un PDF con el código.'}
+              okText="Generar" cancelText="Cancelar"
+              onConfirm={generarTarjetaEquipo}
+            >
+              <Button type="primary" icon={<DownloadOutlined />} loading={generandoTarjeta}>
+                {tarjetaActual?.ultimosCuatro ? 'Regenerar tarjeta' : 'Generar tarjeta'}
+              </Button>
+            </Popconfirm>
+            {tarjetaActual?.ultimosCuatro && (
+              <Popconfirm
+                title="¿Revocar esta tarjeta de supervisor?"
+                okText="Revocar" okType="danger" cancelText="Cancelar"
+                onConfirm={() => tarjetaModal && revocarTarjetaMut.mutate(tarjetaModal.userId)}
+              >
+                <Button danger loading={revocarTarjetaMut.isPending}>Revocar</Button>
+              </Popconfirm>
+            )}
+          </Space>
+        </Space>
       </Modal>
     </div>
   );

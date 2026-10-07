@@ -1133,6 +1133,18 @@ function ModoSupervisorSection() {
     enabled:  esAdmin,
   });
 
+  const { data: nivelData } = useQuery({
+    queryKey: ['supervisor-tarjetas-nivel'],
+    queryFn:  () => api.get('/supervisor-tarjetas/nivel').then(r => (r.data?.data ?? r.data) as { nivel: 'solo_tarjeta' | 'tarjeta_pin' }),
+    enabled:  esAdmin,
+  });
+
+  const nivelMut = useMutation({
+    mutationFn: (nivel: 'solo_tarjeta' | 'tarjeta_pin') => api.patch('/supervisor-tarjetas/nivel', { nivel }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['supervisor-tarjetas-nivel'] }),
+    onError:   () => message.error('No se pudo cambiar el nivel de seguridad de la tarjeta'),
+  });
+
   const guardarMut = useMutation({
     mutationFn: (items: { clave: string; requerido: boolean; modo: 'sesion' | 'cada_vez' }[]) =>
       api.patch('/configuracion/supervisor-politicas', { items }),
@@ -1182,6 +1194,28 @@ function ModoSupervisorSection() {
         Elige qué pestañas y acciones del POS exigen autorización de un supervisor, y si vale con la sesión
         activa de 8h ("Sesión") o si cada vez necesita una autorización nueva ("Cada vez").
       </Text>
+
+      <Card size="small" title="Tarjeta de supervisor" style={{ marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <Text style={{ fontSize: 13 }}>Al escanear una tarjeta de supervisor:</Text>
+          <Select
+            size="small"
+            value={nivelData?.nivel ?? 'solo_tarjeta'}
+            style={{ width: 220 }}
+            loading={nivelMut.isPending}
+            onChange={v => nivelMut.mutate(v)}
+            options={[
+              { value: 'solo_tarjeta', label: 'Solo tarjeta (más rápido)' },
+              { value: 'tarjeta_pin',  label: 'Tarjeta + PIN (más seguro)' },
+            ]}
+          />
+        </div>
+        <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 6 }}>
+          "Tarjeta + PIN" pide, después de escanear, el PIN de la misma persona dueña de la tarjeta —
+          útil si temes que una tarjeta se pierda o la usen sin permiso.
+        </Text>
+      </Card>
+
       {isLoading && <Skeleton active paragraph={{ rows: 4 }} />}
       {!isLoading && grupos.map(g => (
         <Card key={g.nombre} size="small" title={g.nombre} style={{ marginBottom: 12 }}

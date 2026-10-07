@@ -4,7 +4,8 @@ import { Card, Form, Input, Button, Row, Col, Typography, Tag, Avatar,
 import { UserOutlined, LockOutlined, SaveOutlined, SafetyOutlined,
          EditOutlined, CloseOutlined, GoogleOutlined, LinkOutlined,
          DesktopOutlined, LogoutOutlined, TeamOutlined, BellOutlined,
-         NumberOutlined, EyeOutlined, EyeInvisibleOutlined } from '@ant-design/icons';
+         NumberOutlined, EyeOutlined, EyeInvisibleOutlined, IdcardOutlined,
+         DownloadOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
 import api from '../../api/client';
@@ -491,6 +492,100 @@ function PinSupervisorSection() {
           </Space>
         </Form>
       )}
+    </Card>
+  );
+}
+
+function descargarPdf(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1_000);
+}
+
+function TarjetaSupervisorSection() {
+  const qc = useQueryClient();
+  const [generando, setGenerando] = useState(false);
+  const [formato, setFormato] = useState<'tarjeta' | 'hoja'>('tarjeta');
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['tarjeta-supervisor-mi-estado'],
+    queryFn: () => api.get('/supervisor-tarjetas/mi-tarjeta').then(r => (r.data?.data ?? r.data) as { activa: boolean; ultimosCuatro?: string; creadaEn?: string }),
+  });
+
+  const generar = async () => {
+    setGenerando(true);
+    try {
+      const res = await api.post(`/supervisor-tarjetas/generar?formato=${formato}`, {}, { responseType: 'blob' });
+      descargarPdf(res.data as Blob, `tarjeta-supervisor-${formato === 'hoja' ? 'hoja' : 'cr80'}.pdf`);
+      qc.invalidateQueries({ queryKey: ['tarjeta-supervisor-mi-estado'] });
+      message.success('Tarjeta generada — el PDF se descargó. El código solo se muestra esta vez.');
+    } catch (e: any) {
+      message.error(e?.response?.data?.message ?? 'No se pudo generar la tarjeta');
+    } finally { setGenerando(false); }
+  };
+
+  const revocar = async () => {
+    try {
+      await api.post('/supervisor-tarjetas/revocar', { motivo: 'Revocada por el propio titular' });
+      qc.invalidateQueries({ queryKey: ['tarjeta-supervisor-mi-estado'] });
+      message.success('Tarjeta revocada');
+    } catch (e: any) {
+      message.error(e?.response?.data?.message ?? 'No se pudo revocar la tarjeta');
+    }
+  };
+
+  return (
+    <Card
+      title={<><IdcardOutlined /> Tarjeta de supervisor</>}
+      style={{ marginTop: 16 }}
+      extra={!isLoading && (
+        data?.activa ? <Tag color="green">Activa — ••••{data.ultimosCuatro}</Tag> : <Tag color="default">Sin tarjeta</Tag>
+      )}
+    >
+      <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 12 }}>
+        Autoriza acciones de supervisor en el POS escaneando una tarjeta física (código de barras
+        o QR) en vez de teclear tu contraseña o PIN. Generar una tarjeta nueva invalida
+        automáticamente la anterior — el código solo se ve una vez, al generarla.
+      </Text>
+
+      <Space direction="vertical" style={{ width: '100%' }}>
+        <Space>
+          <span style={{ fontSize: 12, color: 'rgba(0,0,0,.65)' }}>Formato del PDF:</span>
+          <Button.Group>
+            <Button type={formato === 'tarjeta' ? 'primary' : 'default'} onClick={() => setFormato('tarjeta')}>
+              Tarjeta (CR80)
+            </Button>
+            <Button type={formato === 'hoja' ? 'primary' : 'default'} onClick={() => setFormato('hoja')}>
+              Hoja carta
+            </Button>
+          </Button.Group>
+        </Space>
+
+        <Space wrap>
+          <Popconfirm
+            title={data?.activa ? '¿Generar una tarjeta nueva?' : '¿Generar tarjeta de supervisor?'}
+            description={data?.activa ? 'La tarjeta actual (••••' + data?.ultimosCuatro + ') dejará de servir de inmediato.' : 'Se descargará un PDF con el código — guárdalo, no se puede volver a ver.'}
+            okText="Generar" cancelText="Cancelar"
+            onConfirm={generar}
+          >
+            <Button type="primary" icon={<DownloadOutlined />} loading={generando}>
+              {data?.activa ? 'Regenerar tarjeta' : 'Generar tarjeta'}
+            </Button>
+          </Popconfirm>
+          {data?.activa && (
+            <Popconfirm
+              title="¿Revocar tu tarjeta de supervisor?"
+              description="Dejará de servir de inmediato. Si la pierdes, esto es lo que debes hacer."
+              okText="Revocar" okType="danger" cancelText="Cancelar"
+              onConfirm={revocar}
+            >
+              <Button danger>Revocar</Button>
+            </Popconfirm>
+          )}
+        </Space>
+      </Space>
     </Card>
   );
 }
@@ -1031,6 +1126,8 @@ export default function ProfilePage() {
           <PreferenciasNotificacionesSection />
 
           {['admin', 'contador'].includes(user?.role ?? '') && <PinSupervisorSection />}
+
+          {['admin', 'contador'].includes(user?.role ?? '') && <TarjetaSupervisorSection />}
 
           {['admin', 'contador'].includes(user?.role ?? '') && <SesionesActivasSection />}
 
