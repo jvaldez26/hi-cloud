@@ -21,7 +21,7 @@ import { useRncLookup } from '../../hooks/useRncLookup';
 import { POS_PANELES, NAV_ITEMS, MENU_EXTRAS, PANEL_TITLES, CLAVE_SUPERVISOR_POR_PANEL, type PanelId } from '../../config/posPanelesConfig';
 import QRCode from 'qrcode';
 import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover, Input, Button, Segmented, Tabs, InputNumber, Radio, Checkbox } from 'antd';
-import { SearchOutlined, ShoppingCartOutlined, CheckCircleOutlined, DisconnectOutlined, LogoutOutlined, PrinterOutlined, LockOutlined, UserSwitchOutlined, SwapOutlined, EyeOutlined, EyeInvisibleOutlined, ShopOutlined, MailOutlined, FileExcelOutlined, FilePdfOutlined, PlayCircleOutlined } from '@ant-design/icons';
+import { SearchOutlined, ShoppingCartOutlined, CheckCircleOutlined, DisconnectOutlined, LogoutOutlined, PrinterOutlined, LockOutlined, UserSwitchOutlined, SwapOutlined, EyeOutlined, EyeInvisibleOutlined, ShopOutlined, MailOutlined, FileExcelOutlined, FilePdfOutlined, PlayCircleOutlined, CameraOutlined, IdcardOutlined } from '@ant-design/icons';
 import ChoferInput from '../../components/ChoferInput';
 import { imprimirConduceTermico } from '../../utils/imprimirConduce';
 import ModalDevolucion from '../../components/ModalDevolucion';
@@ -59,6 +59,8 @@ import { conectarImpresora, desconectarImpresora, estaConectada, getNombreImpres
 import { useThemeStore } from '../../store/theme.store';
 import { useOfflineQueue } from '../../hooks/useOfflineQueue';
 import { useSupervisor } from '../../hooks/useSupervisor';
+import { esFormatoTarjetaSupervisor } from '../../utils/tarjetaSupervisor';
+import { EscanerCamaraModal } from '../../components/EscanerCamaraModal';
 import { requiereSupervisorPorPrecioModificado } from './carritoRecuperadoGate';
 import { debeIgnorarEnterGlobal } from './confirmarCobroEnterGate';
 import { resolverIntentoCobro } from './intentoCobroGate';
@@ -9508,6 +9510,25 @@ export default function POSPage() {
   const [supId,               setSupId]               = useState<number | null>(null);
   const [supPassword,         setSupPassword]         = useState('');
   const [supPasswordVisible,  setSupPasswordVisible]  = useState(false);
+  // Escaneo de tarjeta de supervisor (alternativa al selector+contraseña).
+  // supCodigoTarjeta: lo que lleva tecleado/escaneado el campo de escaneo.
+  // supTarjetaPin: solo se llena cuando la empresa está en nivel "Tarjeta +
+  // PIN" — la tarjeta YA identificó a la persona (paso 1), y el modal cae al
+  // flujo de contraseña/PIN YA EXISTENTE (paso 2) pero con el supervisor fijo
+  // (no editable), sin pasar por el selector.
+  const [supCodigoTarjeta,    setSupCodigoTarjeta]    = useState('');
+  const [supTarjetaPin,       setSupTarjetaPin]       = useState<{ supervisorId: number; nombre: string; role: string } | null>(null);
+  const [camaraSupervisorOpen, setCamaraSupervisorOpen] = useState(false);
+  const supScanInputRef = useRef<any>(null);
+  // Autofoco al campo de escaneo cuando se abre el modal — un escáner HID
+  // "escribe" en lo que esté enfocado, así que sin esto el cajero tendría
+  // que hacer clic antes de poder escanear.
+  useEffect(() => {
+    if (supervisor.pendingAction) {
+      const t = setTimeout(() => supScanInputRef.current?.focus?.(), 60);
+      return () => clearTimeout(t);
+    }
+  }, [supervisor.pendingAction]);
   // Aviso no invasivo (nunca bloqueante) para que un supervisor sin PIN
   // configurado se entere de que existe la opción, sin depender de que
   // alguien se lo diga de palabra. Se recuerda por supervisor y por
@@ -9541,15 +9562,25 @@ export default function POSPage() {
       });
     }, 1000);
   };
-  // Único camino para verificar+autorizar — lo usan el Enter del campo de PIN
-  // y el botón "Autorizar". Antes eran dos copias casi idénticas de este código.
+  // Limpia TODO el estado del modal de supervisor — tras autorizar o al cancelar.
+  const limpiarModalSupervisor = () => {
+    setSupId(null); setSupPassword(''); setSupPasswordVisible(false);
+    setSupCodigoTarjeta(''); setSupTarjetaPin(null); setSupError('');
+  };
+
+  // Único camino para verificar+autorizar por contraseña/PIN — lo usan el
+  // Enter del campo de PIN y el botón "Autorizar". También es el PASO 2 de
+  // "Tarjeta + PIN": si supTarjetaPin ya resolvió quién escaneó, se usa ESE
+  // supervisorId en vez del seleccionado a mano — cero lógica nueva de
+  // validación, es la MISMA llamada que el flujo de siempre.
   const verificarYAutorizarSupervisor = async () => {
     if (supBlockCountdown > 0) return; // bloqueado — la cuenta regresiva ya lo deja claro, no reintentar
-    if (!supId || !supPassword) { setSupError('Selecciona un supervisor e ingresa su contraseña'); return; }
+    const supervisorIdEfectivo = supTarjetaPin?.supervisorId ?? supId;
+    if (!supervisorIdEfectivo || !supPassword) { setSupError('Selecciona un supervisor e ingresa su contraseña'); return; }
     setVerificandoSupNuevo(true); setSupError('');
     try {
       const res: any = await api.post('/auth/verificar-supervisor', {
-        supervisorId: supId, password: supPassword,
+        supervisorId: supervisorIdEfectivo, password: supPassword,
         action: supervisor.pendingAction?.action,
         detail: supervisor.pendingAction?.detail,
         clave:  supervisor.pendingAction?.clave,
@@ -9557,7 +9588,7 @@ export default function POSPage() {
       const d = res.data?.data ?? res.data;
       supervisor.resolveModal(true, d.nombre, d.role, d.sessionId, d.supervisorToken);
       message.success(`✓ Autorizado por ${d.nombre}`);
-      setSupId(null); setSupPassword(''); setSupPasswordVisible(false);
+      limpiarModalSupervisor();
     } catch (e: any) {
       // .message viene SOBREESCRITO por el interceptor global de axios para
       // CUALQUIER 429 genérico (ver api/client.ts, caso 429) — .errors[0] es
@@ -9573,6 +9604,44 @@ export default function POSPage() {
       }));
       const remainingSecs = data?.remainingSeconds as number | undefined;
       if (remainingSecs && remainingSecs > 0) startSupBlockCountdown(remainingSecs);
+    } finally { setVerificandoSupNuevo(false); }
+  };
+
+  // Autorización por tarjeta escaneada — funciona igual para 'sesion' y
+  // 'cada_vez' (mismo token que ya devuelve verificar-supervisor). Si la
+  // empresa está en nivel "Tarjeta + PIN", el backend NO autoriza todavía:
+  // devuelve requierePin + la identidad ya resuelta, y el modal cae al
+  // campo de PIN de siempre (supTarjetaPin, ver verificarYAutorizarSupervisor).
+  const autorizarConTarjeta = async (codigoCrudo: string) => {
+    const codigo = codigoCrudo.trim().toUpperCase();
+    if (!codigo || supBlockCountdown > 0) return;
+    setVerificandoSupNuevo(true); setSupError('');
+    try {
+      const res: any = await api.post('/auth/verificar-supervisor', {
+        tarjeta: codigo,
+        action: supervisor.pendingAction?.action,
+        detail: supervisor.pendingAction?.detail,
+        clave:  supervisor.pendingAction?.clave,
+      });
+      const d = res.data?.data ?? res.data;
+      setSupCodigoTarjeta('');
+      if (d.requierePin) {
+        setSupTarjetaPin({ supervisorId: d.supervisorId, nombre: d.nombre, role: d.role });
+        message.info(`Tarjeta de ${d.nombre} reconocida — ingresa tu PIN para confirmar`, 3);
+        return;
+      }
+      supervisor.resolveModal(true, d.nombre, d.role, d.sessionId, d.supervisorToken);
+      message.success(`✓ Autorizado por ${d.nombre}`);
+      limpiarModalSupervisor();
+    } catch (e: any) {
+      const data = e?.response?.data;
+      setSupError(mensajeDeError(e, {
+        errorServidor: 'No pudimos verificar la tarjeta, intenta de nuevo en unos segundos.',
+        fallback:      'Tarjeta no reconocida',
+      }));
+      const remainingSecs = data?.remainingSeconds as number | undefined;
+      if (remainingSecs && remainingSecs > 0) startSupBlockCountdown(remainingSecs);
+      setSupCodigoTarjeta('');
     } finally { setVerificandoSupNuevo(false); }
   };
   const { data: supervisores, isLoading: supLoading } = useQuery<{ id: number; nombre: string; role: string; tienePin: boolean }[]>({
@@ -10666,6 +10735,16 @@ export default function POSPage() {
   const procesarScan = useCallback((codigo: string) => {
     const trimmed = codigo.replace(/[\r\n]/g, '').trim();
     if (!trimmed) return;
+
+    // Una tarjeta de supervisor escaneada por error en el buscador de
+    // productos (el modal de autorización no estaba abierto todavía) NUNCA
+    // debe tratarse como código de barras — ni intentar el lookup local, ni
+    // la balanza, ni el fallback a la API. Se corta aquí, antes de todo eso.
+    if (esFormatoTarjetaSupervisor(trimmed)) {
+      message.info('Esto es una tarjeta de supervisor — escanéala en el modal de "Autorización de Supervisor".', 3);
+      setBarcodeInput('');
+      return;
+    }
 
     // Guard anti-rebote: mismo código exacto en <200ms → doble-disparo del scanner
     const ahora = Date.now();
@@ -13152,10 +13231,17 @@ export default function POSPage() {
         </span>
       }
       open={!!supervisor.pendingAction}
-      onCancel={() => { supervisor.resolveModal(false); setSupId(null); setSupPassword(''); setSupPasswordVisible(false); setSupError(''); }}
+      onCancel={() => { supervisor.resolveModal(false); limpiarModalSupervisor(); }}
       footer={null} width={420} destroyOnClose
     >
-      {supervisor.pendingAction && (
+      {supervisor.pendingAction && (() => {
+        // Una vez la tarjeta resolvió quién es (nivel "Tarjeta + PIN"), el
+        // campo de contraseña se trata SIEMPRE como PIN — es el mismo
+        // criterio que supTienePin, pero la identidad ya no viene del
+        // selector sino de la tarjeta.
+        const esPin = supTienePin || !!supTarjetaPin;
+        const supervisorIdEfectivo = supTarjetaPin?.supervisorId ?? supId;
+        return (
         <form autoComplete="off" onSubmit={e => e.preventDefault()}>
           {/* Banner de acción — rojo para Cierre de Caja, amarillo para el resto */}
           {(() => {
@@ -13173,59 +13259,108 @@ export default function POSPage() {
             );
           })()}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {/* Selector de supervisor */}
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Seleccionar supervisor</div>
-              {supLoading ? (
-                <div style={{ textAlign: 'center', padding: '10px 0' }}><Spin size="small" /></div>
-              ) : !supervisores?.length ? (
-                <div style={{ fontSize: 12, color: '#EF4444', padding: '6px 0' }}>
-                  No hay administradores o contadores activos en esta empresa.
+            {supTarjetaPin ? (
+              /* Paso 1 de "Tarjeta + PIN" ya resuelto: la tarjeta identificó
+                 a la persona — solo queda su PIN (más abajo). */
+              <div style={{
+                background: '#ECFDF5', border: '1px solid #6EE7B7', borderRadius: 8,
+                padding: '8px 12px', fontSize: 12, color: '#065F46',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+              }}>
+                <span><IdcardOutlined /> Tarjeta de <strong>{supTarjetaPin.nombre}</strong> reconocida</span>
+                <span
+                  onClick={() => { setSupTarjetaPin(null); setSupPassword(''); setSupError(''); }}
+                  style={{ cursor: 'pointer', fontWeight: 700, flexShrink: 0 }}
+                >
+                  Cambiar
+                </span>
+              </div>
+            ) : (
+              <>
+                {/* Escaneo de tarjeta — campo con autofoco, para que un
+                    escáner USB/HID "escriba" aquí sin que el cajero haga clic. */}
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Escanear tarjeta de supervisor</div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <Input
+                      ref={supScanInputRef}
+                      placeholder="Escanea o pega el código de la tarjeta..."
+                      value={supCodigoTarjeta}
+                      disabled={supBlockCountdown > 0 || verificandoSupNuevo}
+                      autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
+                      onChange={e => { setSupCodigoTarjeta(e.target.value); setSupError(''); }}
+                      onPressEnter={e => {
+                        e.stopPropagation();
+                        if (supCodigoTarjeta.trim()) void autorizarConTarjeta(supCodigoTarjeta);
+                      }}
+                    />
+                    <Button
+                      icon={<CameraOutlined />}
+                      disabled={supBlockCountdown > 0 || verificandoSupNuevo}
+                      onClick={() => setCamaraSupervisorOpen(true)}
+                      title="Escanear con la cámara"
+                    />
+                  </div>
                 </div>
-              ) : (
-                <Select
-                  style={{ width: '100%' }}
-                  placeholder="Seleccionar supervisor..."
-                  showSearch
-                  optionFilterProp="label"
-                  value={supId}
-                  onChange={(v: number) => {
-                    setSupId(v); setSupError('');
-                    // El bloqueo es por (empresa, cajero, supervisor) — cambiar de
-                    // supervisor es una cubeta distinta, no debe seguir bloqueado.
-                    if (supBlockIntervalRef.current) { clearInterval(supBlockIntervalRef.current); supBlockIntervalRef.current = null; }
-                    setSupBlockCountdown(0);
-                  }}
-                  options={(supervisores ?? []).map(u => ({
-                    value: u.id,
-                    label: u.nombre,
-                    role:  u.role,
-                  }))}
-                  optionRender={(option) => (
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <Avatar size={22} style={{
-                        background: option.data.role === 'admin' ? '#1E3A8A' : '#065F46',
-                        fontSize: 11, flexShrink: 0,
-                      }}>
-                        {(option.data.label as string)?.charAt(0).toUpperCase()}
-                      </Avatar>
-                      <span style={{ flex: 1 }}>{option.data.label}</span>
-                      <span style={{
-                        fontSize: 10, fontWeight: 700,
-                        color:      option.data.role === 'admin' ? '#1E40AF' : '#065F46',
-                        background: option.data.role === 'admin' ? '#DBEAFE' : '#D1FAE5',
-                        borderRadius: 4, padding: '1px 6px',
-                      }}>
-                        {(option.data.role as string)?.toUpperCase()}
-                      </span>
-                    </span>
+                <div style={{ textAlign: 'center', fontSize: 11, color: '#9CA3AF' }}>— o selecciona un supervisor manualmente —</div>
+                {/* Selector de supervisor */}
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Seleccionar supervisor</div>
+                  {supLoading ? (
+                    <div style={{ textAlign: 'center', padding: '10px 0' }}><Spin size="small" /></div>
+                  ) : !supervisores?.length ? (
+                    <div style={{ fontSize: 12, color: '#EF4444', padding: '6px 0' }}>
+                      No hay administradores o contadores activos en esta empresa.
+                    </div>
+                  ) : (
+                    <Select
+                      style={{ width: '100%' }}
+                      placeholder="Seleccionar supervisor..."
+                      showSearch
+                      optionFilterProp="label"
+                      value={supId}
+                      onChange={(v: number) => {
+                        setSupId(v); setSupError('');
+                        // El bloqueo es por (empresa, cajero, supervisor) — cambiar de
+                        // supervisor es una cubeta distinta, no debe seguir bloqueado.
+                        if (supBlockIntervalRef.current) { clearInterval(supBlockIntervalRef.current); supBlockIntervalRef.current = null; }
+                        setSupBlockCountdown(0);
+                      }}
+                      options={(supervisores ?? []).map(u => ({
+                        value: u.id,
+                        label: u.nombre,
+                        role:  u.role,
+                      }))}
+                      optionRender={(option) => (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <Avatar size={22} style={{
+                            background: option.data.role === 'admin' ? '#1E3A8A' : '#065F46',
+                            fontSize: 11, flexShrink: 0,
+                          }}>
+                            {(option.data.label as string)?.charAt(0).toUpperCase()}
+                          </Avatar>
+                          <span style={{ flex: 1 }}>{option.data.label}</span>
+                          <span style={{
+                            fontSize: 10, fontWeight: 700,
+                            color:      option.data.role === 'admin' ? '#1E40AF' : '#065F46',
+                            background: option.data.role === 'admin' ? '#DBEAFE' : '#D1FAE5',
+                            borderRadius: 4, padding: '1px 6px',
+                          }}>
+                            {(option.data.role as string)?.toUpperCase()}
+                          </span>
+                        </span>
+                      )}
+                    />
                   )}
-                />
-              )}
-            </div>
-            {/* Contraseña / PIN */}
+                </div>
+              </>
+            )}
+            {/* Contraseña / PIN — oculto mientras solo hay un código de tarjeta
+                tecleado pero sin resolver todavía (nivel "Solo tarjeta": el
+                Enter de arriba ya autoriza directo, sin llegar aquí). */}
+            {(supervisorIdEfectivo || !supCodigoTarjeta) && (
             <div>
-              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>{supTienePin ? 'PIN' : 'Contraseña'}</div>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>{esPin ? 'PIN' : 'Contraseña'}</div>
               {/*
                 type="text" a propósito, NUNCA "password": el dropdown de contraseñas
                 guardadas de Chrome/Edge se activa por el atributo type, sin importar
@@ -13239,15 +13374,17 @@ export default function POSPage() {
                 no el gestor de contraseñas). name/id ofuscados para que ningún
                 heurístico lo asocie con nada.
 
-                Si el supervisor seleccionado ya configuró un PIN, el campo pasa a
-                aceptar solo dígitos (ver AuthService.verificarSupervisor: una vez
-                configurado, el PIN es el único credential válido aquí).
+                Si el supervisor seleccionado ya configuró un PIN (o si la
+                identidad vino de una tarjeta en nivel "Tarjeta + PIN"), el
+                campo pasa a aceptar solo dígitos (ver
+                AuthService.verificarSupervisor: una vez configurado, el PIN
+                es el único credential válido aquí).
               */}
-              <Input placeholder={supTienePin ? 'PIN del supervisor' : 'Contraseña del supervisor'} value={supPassword}
+              <Input placeholder={esPin ? 'PIN del supervisor' : 'Contraseña del supervisor'} value={supPassword}
                 disabled={supBlockCountdown > 0}
                 type="text"
-                inputMode={supTienePin ? 'numeric' : undefined}
-                maxLength={supTienePin ? 6 : undefined}
+                inputMode={esPin ? 'numeric' : undefined}
+                maxLength={esPin ? 6 : undefined}
                 name="hc-sup-x9k2q" id="hc-sup-x9k2q"
                 autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
                 data-form-type="other" data-lpignore="true" data-1p-ignore
@@ -13261,7 +13398,7 @@ export default function POSPage() {
                   </span>
                 }
                 onChange={e => {
-                  const v = supTienePin ? e.target.value.replace(/\D/g, '') : e.target.value;
+                  const v = esPin ? e.target.value.replace(/\D/g, '') : e.target.value;
                   setSupPassword(v); setSupError('');
                 }}
                 onPressEnter={e => {
@@ -13274,7 +13411,7 @@ export default function POSPage() {
                 }} />
               {/* No bloqueante — no debe interrumpir una venta en curso. Abre
                   el perfil en pestaña nueva para no perder el POS actual. */}
-              {mostrarPinHint && (
+              {mostrarPinHint && !supTarjetaPin && (
                 <div style={{
                   marginTop: 8, display: 'flex', alignItems: 'center', gap: 8,
                   fontSize: 11, color: '#92400E', background: '#FFFBEB',
@@ -13295,6 +13432,7 @@ export default function POSPage() {
                 </div>
               )}
             </div>
+            )}
             {supError && (
               <div style={{ color: '#EF4444', fontSize: 12 }}>
                 {supError}
@@ -13310,21 +13448,38 @@ export default function POSPage() {
                 )}
               </div>
             )}
+            {(supervisorIdEfectivo || !supCodigoTarjeta) && (
             <button
               type="button"
-              disabled={verificandoSupNuevo || !supId || !supPassword || supBlockCountdown > 0}
+              disabled={verificandoSupNuevo || !supervisorIdEfectivo || !supPassword || supBlockCountdown > 0}
               onClick={verificarYAutorizarSupervisor}
-              style={{ padding: '10px 0', background: (!supId || !supPassword || supBlockCountdown > 0) ? '#ccc' : '#F59E0B',
+              style={{ padding: '10px 0', background: (!supervisorIdEfectivo || !supPassword || supBlockCountdown > 0) ? '#ccc' : '#F59E0B',
                 border: 'none', borderRadius: 8, color: '#fff', fontWeight: 700,
-                cursor: (!supId || !supPassword || supBlockCountdown > 0) ? 'not-allowed' : 'pointer', fontSize: 14 }}>
+                cursor: (!supervisorIdEfectivo || !supPassword || supBlockCountdown > 0) ? 'not-allowed' : 'pointer', fontSize: 14 }}>
               {supBlockCountdown > 0
                 ? `Bloqueado — espera ${supBlockCountdown >= 60 ? `${Math.floor(supBlockCountdown / 60)}:${String(supBlockCountdown % 60).padStart(2, '0')} min` : `${supBlockCountdown}s`}`
                 : (verificandoSupNuevo ? 'Verificando...' : 'Autorizar')}
             </button>
+            )}
           </div>
         </form>
-      )}
+        );
+      })()}
     </Modal>
+
+    <EscanerCamaraModal
+      open={camaraSupervisorOpen}
+      titulo="Escanear tarjeta de supervisor"
+      onClose={() => setCamaraSupervisorOpen(false)}
+      onDetectado={(texto) => {
+        setCamaraSupervisorOpen(false);
+        if (!esFormatoTarjetaSupervisor(texto)) {
+          setSupError('Eso que escaneaste no es una tarjeta de supervisor.');
+          return;
+        }
+        void autorizarConTarjeta(texto);
+      }}
+    />
 
     {/* ── Modal cambiar usuario ────────────────────────────────────────────── */}
     <Modal maskClosable={false}
