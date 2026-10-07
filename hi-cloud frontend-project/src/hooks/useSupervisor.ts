@@ -190,11 +190,27 @@ export function useSupervisor(): UseSupervisorReturn {
     // requerido=true, el cajero entraba directo sin que pidiera nada porque
     // tocó el panel antes de que /configuracion/supervisor-politicas
     // terminara de cargar.
-    const politicasActuales = await queryClient.fetchQuery<PoliticaSupervisor[]>({
-      queryKey:  POLITICAS_QUERY_KEY,
-      queryFn:   politicasQueryFn,
-      staleTime: 5 * 60_000,
-    });
+    let politicasActuales: PoliticaSupervisor[];
+    try {
+      politicasActuales = await queryClient.fetchQuery<PoliticaSupervisor[]>({
+        queryKey:  POLITICAS_QUERY_KEY,
+        queryFn:   politicasQueryFn,
+        staleTime: 5 * 60_000,
+      });
+    } catch (err) {
+      // No se pudo confirmar la política (red caída, un rol sin acceso al
+      // endpoint, etc.) — fallar CERRADO: pedir autorización igual, en vez
+      // de dejar pasar en silencio (como antes) o colgar el clic para
+      // siempre esperando una promesa que nunca resuelve (lo que pasó el
+      // 2026-10-07: el GET era ADMIN-only, un vendedor recibía 403 y el
+      // panel del POS se quedaba "congelado" sin abrir el modal ni avisar).
+      // eslint-disable-next-line no-console
+      console.error('[useSupervisor] No se pudo cargar el catálogo de políticas — se pide autorización por seguridad.', err);
+      return new Promise<AutorizacionResultado>(resolve => {
+        resolveRef.current = resolve;
+        setPendingAction({ action: action ?? clave, detail, clave });
+      });
+    }
     const politica = politicasActuales.find(p => p.clave === clave);
     // Clave sin política conocida (no debería pasar si el catálogo está al
     // día, y no es "todavía no cargó" — eso ya se esperó arriba) → no

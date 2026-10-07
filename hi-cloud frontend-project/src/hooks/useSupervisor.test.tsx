@@ -96,4 +96,32 @@ describe('useSupervisor — requireSupervisor() espera el catálogo antes de dec
     expect(resultado).toEqual({ ok: true });
     expect(result.current.pendingAction).toBeNull();
   });
+
+  // Caso real (2026-10-07): GET /configuracion/supervisor-politicas era
+  // ADMIN-only — un cajero (vendedor) recibía 403 ahí. requireSupervisor()
+  // esperaba ese fetchQuery sin capturar el rechazo: el clic del panel se
+  // quedaba "congelado" (la promesa nunca resolvía, setPanelActivo nunca se
+  // llamaba). Fallar CERRADO (pedir el modal igual) es lo correcto —
+  // silencioso tampoco sirve, eso fue el bug ANTERIOR a este mismo fix.
+  it('si el catálogo de políticas falla (403, red caída) falla CERRADO — pide autorización, no se cuelga ni pasa libre', async () => {
+    apiMock.get.mockImplementation((url: string) => {
+      if (url === '/configuracion/empresa/pos-config') return Promise.resolve({ data: { data: {} } });
+      if (url === '/configuracion/supervisor-politicas') {
+        return Promise.reject({ response: { status: 403 } });
+      }
+      return Promise.reject(new Error(`sin mock para ${url}`));
+    });
+
+    const { result } = renderHook(() => useSupervisor(), { wrapper });
+
+    let resuelto: any;
+    await act(async () => {
+      result.current.requireSupervisor('pos.panel.inventario', 'Inventario').then(r => { resuelto = r; });
+    });
+
+    // No se cuelga: el modal se abre de todos modos.
+    expect(result.current.pendingAction).not.toBeNull();
+    expect(result.current.pendingAction?.clave).toBe('pos.panel.inventario');
+    expect(resuelto).toBeUndefined(); // pendiente del modal, no auto-resuelto como { ok: true }
+  });
 });

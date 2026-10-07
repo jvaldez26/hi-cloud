@@ -41,8 +41,18 @@ export class SupervisorPoliticasController {
     private readonly tenantService: TenantService,
   ) {}
 
+  // Lectura abierta a CUALQUIER rol autenticado del tenant (no solo ADMIN):
+  // el propio cajero (vendedor) necesita saber qué claves están en
+  // requerido=true para que el modal de supervisor del POS las pida — el
+  // enforcement real sigue siendo 100% del backend (RequiereSupervisor guard
+  // y los chequeos manuales de cada servicio), así que listar las políticas
+  // no es información sensible. Con esto ADMIN-only, un vendedor recibía 403
+  // aquí y el catálogo del frontend quedaba vacío: antes (código viejo) eso
+  // hacía que NINGUNA clave pidiera supervisor para un cajero (silencioso);
+  // después del fix de la condición de carrera (requireSupervisor esperando
+  // el catálogo) el mismo 403 colgaba el clic del panel sin capturar el
+  // error — "el POS se congela" (reporte real, 2026-10-07).
   @Get()
-  @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Catálogo completo de pestañas/acciones protegibles, con el valor actual de la empresa' })
   listar() {
     return this.svc.listarPoliticas(this.tenantService.getEmpresaId());
