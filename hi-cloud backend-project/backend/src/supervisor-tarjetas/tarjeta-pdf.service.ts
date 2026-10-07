@@ -42,7 +42,16 @@ export class TarjetaPdfService {
     try {
       return await bwipjs.toBuffer({
         bcid: 'code128', text: codigo, scale: 3, height: 8,
-        includetext: false, paddingwidth: 6, paddingheight: 1,
+        includetext: false,
+        // paddingwidth: 6 daba una zona muda real de solo 1.24mm a los
+        // ~77.6mm de ancho final de la tarjeta — el estándar Code128 exige
+        // >= 10x el ancho de módulo (~2.2mm aquí) para que un escáner
+        // ENCUENTRE el código; con menos, no es que lo lea mal, es que ni
+        // siquiera lo reconoce como código de barras (reporte real,
+        // 2026-10-07: el QR sí funcionaba porque no depende tanto de esto).
+        // 14 da ~2.76mm — verificado con un decoder real (@zxing/library) a
+        // 203dpi y 300dpi; 16+ ya perdía 203dpi por module width insuficiente.
+        paddingwidth: 14, paddingheight: 1,
         backgroundcolor: 'FFFFFF', // bwip-js genera fondo transparente por defecto — un escáner no lo decodifica
       });
     } catch (e: any) {
