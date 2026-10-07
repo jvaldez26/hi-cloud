@@ -11346,9 +11346,16 @@ export default function POSPage() {
         }
         const folio  = factura?.folio ?? 'sin folio';
         const errMsg = (result as any)?._emisionError ?? 'Error al contactar el servicio de comprobantes fiscales';
+        // HOTFIX urgente (2026-10-07): ya NO se invita a presionar "Confirmar
+        // cobro" de nuevo — ese reintento, cuando la primera emisión en
+        // realidad seguía procesándose (MSeller lento), caía en "no se puede
+        // cambiar de emitida a emitida" (FAC-1705 y otras). El backend ya
+        // responde idempotente ante un reintento, pero el camino seguro para
+        // el cajero es el botón "Emitir" del panel de Facturas (mismo texto
+        // que ya usan las otras dos variantes de este aviso en este archivo).
         Modal.warning({
           title: 'Comprobante fiscal pendiente de emisión',
-          content: `La venta se registró (${folio}) pero NO se pudo emitir el comprobante fiscal. ${errMsg}. Puedes presionar "Confirmar cobro" de nuevo para reintentar sobre esta MISMA venta (no se creará una factura duplicada), o reintentar desde el panel Facturas con el botón "Emitir".`,
+          content: `La venta se registró (${folio}) pero NO se pudo emitir el comprobante fiscal. ${errMsg}. Avisa a un supervisor — la factura puede reintentarse desde el módulo Facturas con el botón "Emitir".`,
           okText: 'Entendido',
         });
         // No se vacía el carrito ni los datos de cobro/comprador: si el cajero

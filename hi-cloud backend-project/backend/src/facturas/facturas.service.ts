@@ -1017,6 +1017,27 @@ export class FacturasService {
     return { ...factura, ecf: ecfRow[0] ?? null };
   }
 
+  /**
+   * Respuesta idempotente para un segundo emitir-pos/estado=emitida sobre una
+   * factura que ya quedó emitida (ver el guard al inicio de cambiarEstado) —
+   * MISMO shape plano que EmitirECFUseCase.toResult() (estado/encf/qrUrl/
+   * trackId/securityCode a nivel raíz, no solo bajo `.ecf`), para que el POS
+   * la trate exactamente igual que una respuesta normal de emitir-pos: "en
+   * proceso" si el e-CF aún no tiene veredicto, sin mensaje rojo.
+   */
+  private async respuestaEcfEnCurso(id: number) {
+    const f = await this.findOne(id);
+    return {
+      ...f,
+      estado:       f.ecf?.estadoDGII ?? f.estado,
+      encf:         f.ecf?.numero,
+      qrUrl:        f.ecf?.qrUrl,
+      trackId:      f.ecf?.trackId,
+      securityCode: f.ecf?.codigoSeguridad,
+      enCurso:      true,
+    };
+  }
+
   // ── Búsqueda de facturas para E33/E34 ────────────────────────────────────────
   // Devuelve facturas con e-CF ACEPTADO que sirven como documento de referencia.
 
@@ -1212,6 +1233,24 @@ export class FacturasService {
         'El estado "pagada" se registra a través de un cobro (Recibo de Cobro), no manualmente. ' +
         'Ve a Cuentas por Cobrar → Registrar cobro.',
       );
+    }
+
+    // HOTFIX urgente (2026-10-07, incidente en producción: FAC-1705 y otras —
+    // "No se puede cambiar de 'emitida' a 'emitida'"). Causa: el camino
+    // síncrono de emitir-pos puede tardar más que el timeout del cliente
+    // (15s) cuando MSeller está lento (hasta ~39s en el peor caso: 4
+    // reintentos × 8s + backoff). El cajero, siguiendo la instrucción del
+    // propio modal, reintenta sobre la MISMA venta — y para cuando esa
+    // segunda petición llega, la primera YA escribió estado=EMITIDA. Antes
+    // de este guard, eso caía en el BadRequestException genérico de abajo
+    // ("no se puede cambiar de X a Y"). Se corta ANTES, con la respuesta
+    // idempotente: el POS lo trata como "en proceso", nunca como error rojo.
+    if (estado === FacturaEstado.EMITIDA
+        && (factura.estado === FacturaEstado.EMITIDA || factura.estado === FacturaEstado.PAGADA)) {
+      this.logger.warn(
+        `[Factura] ${factura.folio}: emitir-pos/estado=emitida repetido — ya está ${factura.estado}, se devuelve el estado actual (no es error).`,
+      );
+      return this.respuestaEcfEnCurso(id);
     }
 
     const transiciones: Record<FacturaEstado, FacturaEstado[]> = {
