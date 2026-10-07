@@ -724,8 +724,15 @@ const LOGO_EJEMPLO =
  */
 /** @param logoEmpresa el logo REAL de la empresa. Importa pasarlo: el alto que
  *  alcanza el logo depende de su proporción, y con el de muestra la vista previa
- *  daría un número que no es el que va a salir por la impresora. */
-export function ventaEjemploTicket(logoEmpresa?: string | null): TicketSale {
+ *  daría un número que no es el que va a salir por la impresora.
+ *  @param empresaInfo nombre/RNC/dirección/teléfono REALES de la empresa logueada
+ *  — sin esto, la vista previa mostraba "FERRETERIA PAVEL, SRL." fijo sin importar
+ *  qué empresa estuviera viendo la pantalla. Solo la VENTA (folio, items, montos)
+ *  sigue siendo de ejemplo; los datos de la empresa no deben mentir. */
+export function ventaEjemploTicket(
+  logoEmpresa?: string | null,
+  empresaInfo?: { nombre?: string | null; rnc?: string | null; direccion?: string | null; telefono?: string | null },
+): TicketSale {
   return {
     folio:        'FAC-825',
     total:        3600,
@@ -747,10 +754,10 @@ export function ventaEjemploTicket(logoEmpresa?: string | null): TicketSale {
     fechaEmision:  '25/08/2026',
     horaEmision:   '11:19:38',
     cajero:        'Yaribel',
-    empresaNombreComercial: 'FERRETERIA PAVEL, SRL.',
-    empresaRnc:       '132716507',
-    empresaDireccion: 'C/ Francisco Caamaño 14, Progreso',
-    empresaTelefono:  '829-562-4199',
-    empresaLogo:      logoEmpresa || LOGO_EJEMPLO,
+    empresaNombreComercial: empresaInfo?.nombre      || 'FERRETERIA PAVEL, SRL.',
+    empresaRnc:             empresaInfo?.rnc          || '132716507',
+    empresaDireccion:       empresaInfo?.direccion    || 'C/ Francisco Caamaño 14, Progreso',
+    empresaTelefono:        empresaInfo?.telefono     || '829-562-4199',
+    empresaLogo:            logoEmpresa || LOGO_EJEMPLO,
   };
 }

@@ -931,11 +931,12 @@ const OPCIONES_LOGO: Array<{ mm: number; label: string }> = [
  * `visible=false` lo dibuja fuera de pantalla: así se puede medir lo que mide
  * cada opción de logo sin enseñar cinco tickets al mismo tiempo.
  */
-function TicketMedido({ formato, logoAlturaMm, tipoImpresora, logoEmpresa, visible, onAlto }: {
+function TicketMedido({ formato, logoAlturaMm, tipoImpresora, logoEmpresa, empresaInfo, visible, onAlto }: {
   formato:       FormatoTicket;
   logoAlturaMm:  number;
   tipoImpresora: string;
   logoEmpresa?:  string | null;
+  empresaInfo?:  { nombre?: string | null; rnc?: string | null; direccion?: string | null; telefono?: string | null };
   visible:       boolean;
   onAlto:        (mm: number) => void;
 }) {
@@ -952,12 +953,12 @@ function TicketMedido({ formato, logoAlturaMm, tipoImpresora, logoEmpresa, visib
   }, [formato]);
 
   useEffect(() => {
-    setHtml(buildReciboTermicoHTML(ventaEjemploTicket(logoEmpresa), qr, {
+    setHtml(buildReciboTermicoHTML(ventaEjemploTicket(logoEmpresa, empresaInfo), qr, {
       formato, logoAlturaMm, tipoImpresora,
       mostrarEcf: true,
       soloVista:  true,
     }));
-  }, [qr, formato, logoAlturaMm, tipoImpresora, logoEmpresa]);
+  }, [qr, formato, logoAlturaMm, tipoImpresora, logoEmpresa, empresaInfo]);
 
   // Se mide el <body>, no el documento: el scrollHeight del raíz se queda con el
   // alto del viewport del iframe y los tickets cortos medirían todos lo mismo.
@@ -995,11 +996,12 @@ function TicketMedido({ formato, logoAlturaMm, tipoImpresora, logoEmpresa, visib
   );
 }
 
-function VistaPreviaTicket({ formatoElegido, logoAlturaMm, tipoImpresora, logoEmpresa, onAlturasLogo }: {
+function VistaPreviaTicket({ formatoElegido, logoAlturaMm, tipoImpresora, logoEmpresa, empresaInfo, onAlturasLogo }: {
   formatoElegido: FormatoTicket;
   logoAlturaMm:   number;
   tipoImpresora:  string;
   logoEmpresa?:   string | null;
+  empresaInfo?:   { nombre?: string | null; rnc?: string | null; direccion?: string | null; telefono?: string | null };
   /** Alto del ticket con cada opción de logo, para etiquetar el selector. */
   onAlturasLogo:  (mm: Record<number, number>) => void;
 }) {
@@ -1061,19 +1063,19 @@ function VistaPreviaTicket({ formatoElegido, logoAlturaMm, tipoImpresora, logoEm
         <Col xs={24} md={12} style={{ marginBottom: 12 }}>
           {etiqueta('normal', altos.normal)}
           <TicketMedido formato="normal" logoAlturaMm={logoAlturaMm} visible
-            tipoImpresora={tipoImpresora} logoEmpresa={logoEmpresa} onAlto={setAltoNormal} />
+            tipoImpresora={tipoImpresora} logoEmpresa={logoEmpresa} empresaInfo={empresaInfo} onAlto={setAltoNormal} />
         </Col>
         <Col xs={24} md={12} style={{ marginBottom: 12 }}>
           {etiqueta('compacto', altos.compacto)}
           <TicketMedido formato="compacto" logoAlturaMm={logoAlturaMm} visible
-            tipoImpresora={tipoImpresora} logoEmpresa={logoEmpresa} onAlto={setAltoCompacto} />
+            tipoImpresora={tipoImpresora} logoEmpresa={logoEmpresa} empresaInfo={empresaInfo} onAlto={setAltoCompacto} />
         </Col>
       </Row>
 
       {/* Medición del alto con cada opción de logo — fuera de pantalla. */}
       {OPCIONES_LOGO.map(o => (
         <TicketMedido key={o.mm} formato={formatoElegido} logoAlturaMm={o.mm} visible={false}
-          tipoImpresora={tipoImpresora} logoEmpresa={logoEmpresa} onAlto={guardarLogo(o.mm)} />
+          tipoImpresora={tipoImpresora} logoEmpresa={logoEmpresa} empresaInfo={empresaInfo} onAlto={guardarLogo(o.mm)} />
       ))}
 
       {logoInerte && (
@@ -1466,6 +1468,12 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
         logoAlturaMm={logoAlturaTicket}
         tipoImpresora={tipoImpresoraTicket}
         logoEmpresa={empresa?.logo}
+        empresaInfo={{
+          nombre:    empresa?.nombreComercial || empresa?.nombre,
+          rnc:       empresa?.rnc,
+          direccion: empresa?.direccion,
+          telefono:  empresa?.telefono,
+        }}
         onAlturasLogo={setAlturasLogo} />
 
       <Form.Item name="posMensajeTicket" label="Mensaje en ticket (máx 200 chars)">
