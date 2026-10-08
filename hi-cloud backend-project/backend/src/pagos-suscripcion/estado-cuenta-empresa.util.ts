@@ -23,6 +23,13 @@
  * puede seguir trayendo cargos/suscripciones de TODAS las empresas en una
  * sola query (sin esto, un estadoCuentaEmpresa(id) por fila sería N+1).
  *
+ * 2026-10-08 (empresa 73, VENTAS DIVERSAS ELIDO): construirEstadoCuenta()
+ * deduplica saldoSuscripcion contra los cargos de renovación que
+ * generarCargosRenovacion() (suscripciones.service.ts) ya haya creado —
+ * sin eso, un período vencido se contaba dos veces en cuanto el cron lo
+ * facturaba (RD$17,600 en vez de RD$10,000). Ver el comentario dentro de
+ * construirEstadoCuenta() para el detalle completo.
+ *
  * TODAS las fechas de calendario (fechaVencimiento, fechaFinPrueba,
  * fechaFinGracia, fechaInicio) salen como 'YYYY-MM-DD' o null — nunca un
  * Date crudo. Un Date crudo en la respuesta JSON se serializa con `Z`
@@ -196,6 +203,11 @@ export interface EstadoCuentaEmpresa extends EstadoFechas {
   saldoNeto:        number;
 }
 
+// Prefijo EXACTO que generarCargosRenovacion() (suscripciones.service.ts,
+// cron diario 00:20 UTC) pone en `concepto` de cada cargo de renovación —
+// "Renovación plan ${nombrePlan} — ciclo ${...} al ${...}".
+const PREFIJO_CARGO_RENOVACION = 'Renovación plan ';
+
 export function construirEstadoCuenta(e: EntradaEstadoCuenta): EstadoCuentaEmpresa {
   const fechas = construirEstadoFechas(e);
 
@@ -214,11 +226,43 @@ export function construirEstadoCuenta(e: EntradaEstadoCuenta): EstadoCuentaEmpre
     cargosPendientes.reduce((acc, c) => acc + c.saldoPendiente, 0),
   );
   const abonoDisponible = redondearMoneda(Number(e.abonoDisponible ?? 0));
-  const totalAdeudado   = redondearMoneda(saldoCargos + fechas.saldoSuscripcion);
-  const saldoNeto       = redondearMoneda(totalAdeudado - abonoDisponible);
+
+  // 2026-10-08 (empresa 73, VENTAS DIVERSAS ELIDO): el cron generarCargosRenovacion
+  // materializa la deuda de CADA ciclo vencido como un cargo real en
+  // pagos_suscripcion ("Renovación plan Plus — ciclo...") — pero nunca toca
+  // fechaVencimiento (solo avanza cuando el cargo se PAGA, ver
+  // aplicarResultadoImputacion). Sumar fechas.saldoSuscripcion (calculado de
+  // fechaVencimiento, ciego a si ya existe un cargo) encima de saldoCargos
+  // cuenta la MISMA renovación dos veces — ahí salió el RD$17,600 en vez de
+  // RD$10,000 (RD$7,600 de renovación + RD$2,400 de e-CF).
+  //
+  // No se puede simplemente dejar de sumar saldoSuscripcion: para una
+  // empresa que todavía NO tiene cargo de renovación generado (backlog
+  // previo a cargoAutomaticoSuscripcionDesde, o la ventana del mismo día
+  // antes de que el cron de las 00:20 UTC corra), sigue siendo la ÚNICA
+  // señal de que debe un período — ese es el caso real que esta fórmula
+  // nació para resolver (auditoría MOTO REPUESTO MANOLIN SRL, RD$70,100
+  // invisibles, ver estado-cuenta-empresa.util.spec.ts).
+  //
+  // La solución: contar cuántos cargos de renovación sin pagar ya existen y
+  // restar esa cantidad de períodos vencidos ANTES de convertir a monto —
+  // el período que ya tiene cargo deja de contarse aparte; el que no, se
+  // sigue reportando como antes.
+  const precioPorPeriodo = e.modalidad === 'anual'
+    ? Number(e.precioMensual ?? 0) * 12
+    : Number(e.precioMensual ?? 0);
+  const cargosDeRenovacion = cargosPendientes.filter(
+    c => c.concepto.startsWith(PREFIJO_CARGO_RENOVACION),
+  ).length;
+  const periodosSinCargoTodavia = Math.max(0, fechas.periodosVencidos - cargosDeRenovacion);
+  const saldoSuscripcion = redondearMoneda(periodosSinCargoTodavia * precioPorPeriodo);
+
+  const totalAdeudado = redondearMoneda(saldoCargos + saldoSuscripcion);
+  const saldoNeto     = redondearMoneda(totalAdeudado - abonoDisponible);
 
   return {
     ...fechas,
+    saldoSuscripcion,
     cargosPendientes,
     saldoCargos,
     abonoDisponible,

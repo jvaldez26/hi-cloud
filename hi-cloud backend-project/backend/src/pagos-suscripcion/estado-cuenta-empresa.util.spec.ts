@@ -28,6 +28,69 @@ describe('construirEstadoCuenta — caso real: deuda de suscripción + cargo, si
   });
 });
 
+describe('construirEstadoCuenta — 2026-10-08, empresa 73 (VENTAS DIVERSAS ELIDO): el cron ya generó el cargo de renovación', () => {
+  it('cargo de renovación YA generado + cargo de ECF: el pendiente es la suma de los cargos, UNA sola vez — no + saldoSuscripcion encima', () => {
+    const r = construirEstadoCuenta({
+      ...BASE,
+      cargosPendientes: [
+        { id: 201, concepto: 'Renovación plan Plus — ciclo 05/10/2026 al 05/11/2026', monto: 7600, montoPagado: 0 },
+        { id: 202, concepto: 'ECF', monto: 2400, montoPagado: 0 },
+      ],
+      precioMensual: 7600, // plan Plus
+    });
+
+    // El período que generarCargosRenovacion() ya facturó deja de contarse
+    // aparte — la deuda real es exactamente la suma de los dos cargos.
+    expect(r.saldoCargos).toBe(10000);
+    expect(r.saldoSuscripcion).toBe(0);
+    expect(r.totalAdeudado).toBe(10000); // NO 17600
+    expect(r.saldoNeto).toBe(10000);
+  });
+
+  it('tres períodos vencidos pero el cron solo alcanzó a facturar uno: los otros DOS siguen contando vía saldoSuscripcion', () => {
+    const r = construirEstadoCuenta({
+      ...BASE,
+      fechaVencimiento: '2026-08-05', // 08/05→09/05, 09/05→10/05, 10/05→11/05: 3 ciclos vencidos al 06/10
+      cargosPendientes: [
+        { id: 203, concepto: 'Renovación plan Plus — ciclo 05/08/2026 al 05/09/2026', monto: 7600, montoPagado: 0 },
+      ],
+      precioMensual: 7600,
+    });
+
+    expect(r.periodosVencidos).toBe(3);
+    expect(r.saldoCargos).toBe(7600);         // el único cargo ya generado
+    expect(r.saldoSuscripcion).toBe(15200);   // los 2 períodos SIN cargo todavía (2 × 7600)
+    expect(r.totalAdeudado).toBe(22800);      // 7600 + 15200
+  });
+
+  it('cargo de renovación ya PAGADO (no aparece en cargosPendientes): el período vuelve a contar vía saldoSuscripcion hasta que el cron o un pago avancen fechaVencimiento', () => {
+    const r = construirEstadoCuenta({
+      ...BASE,
+      cargosPendientes: [], // el cargo de renovación ya se pagó y se filtró
+      precioMensual: 7600,
+    });
+    expect(r.saldoSuscripcion).toBe(7600);
+    expect(r.totalAdeudado).toBe(7600);
+  });
+
+  it('ambos cargos de renovación de la empresa 73 confirmados en el historial real, sin otros cargos: pendiente exacto RD$10,000', () => {
+    // Reproduce el caso exacto de la captura: "Renovación plan Plus" RD$7,600
+    // + "ECF" RD$2,400, ambos CONFIRMADO/CARGO, 06/10/2026.
+    const r = construirEstadoCuenta({
+      ...BASE,
+      hoy: '2026-10-06',
+      fechaVencimiento: '2026-10-05',
+      precioMensual: 7600,
+      cargosPendientes: [
+        { id: 301, concepto: 'Renovación plan Plus — ciclo 05/10/2026 al 05/11/2026', monto: 7600, montoPagado: 0, creadoEn: '2026-10-06' },
+        { id: 302, concepto: 'ECF', monto: 2400, montoPagado: 0, creadoEn: '2026-10-06' },
+      ],
+    });
+    expect(r.totalAdeudado).toBe(10000);
+    expect(r.saldoNeto).toBe(10000);
+  });
+});
+
 describe('construirEstadoCuenta — pago parcial', () => {
   it('un cargo pagado a medias deja el saldo restante, no el monto completo', () => {
     const r = construirEstadoCuenta({
