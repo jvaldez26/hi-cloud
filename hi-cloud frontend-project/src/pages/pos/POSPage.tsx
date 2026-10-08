@@ -10558,6 +10558,15 @@ export default function POSPage() {
 
   // Add to cart — agrega inmediatamente al precio base, luego actualiza en background
   const addToCart = useCallback((produto: Prod) => {
+    // Venta en curso (modal de cobro abierto): nunca mezclar un producto
+    // nuevo con el carrito que se está cobrando — ver el mismo guard y su
+    // porqué en procesarScan(), arriba. Este es el funnel común a TODOS los
+    // caminos que agregan al carrito (clic, búsqueda exacta + Enter, scan),
+    // así que es la red de seguridad real, no solo la del scanner.
+    if (showPago) {
+      message.warning('Termina de cobrar antes de agregar otro producto', 2);
+      return;
+    }
     const precioBase = Number(produto.precio);
     const esServicio = (produto as any).tipo === 'servicio';
     const sinStock   = !esServicio && Number(produto.stock) <= 0;
@@ -10608,7 +10617,7 @@ export default function POSPage() {
         }
       })
       .catch(() => { precioCache.current.set(cacheKey, null); });
-  }, [clienteId, posPermitirStockNegativo, listaGlobal]);
+  }, [clienteId, posPermitirStockNegativo, listaGlobal, showPago]);
 
   /**
    * Agrega una línea de balanza al carrito.
@@ -10622,6 +10631,11 @@ export default function POSPage() {
     producto: Prod,
     match:    BalanzaMatchFrontend,
   ) => {
+    // Mismo guard que addToCart — ver el porqué ahí.
+    if (showPago) {
+      message.warning('Termina de cobrar antes de agregar otro producto', 2);
+      return;
+    }
     const precioBase  = Number(producto.precio);
     const decimales   = match.patron.decimalesValor;
 
@@ -10662,7 +10676,7 @@ export default function POSPage() {
     );
     setScanFlash(true);
     setTimeout(() => setScanFlash(false), 600);
-  }, []);
+  }, [showPago]);
 
   const updateQty = (idx: number, delta: number) => setCart(prev =>
     prev.map((it, i) => {
@@ -10829,6 +10843,22 @@ export default function POSPage() {
   const procesarScan = useCallback((codigo: string) => {
     const trimmed = codigo.replace(/[\r\n]/g, '').trim();
     if (!trimmed) return;
+    // Venta en curso (modal de cobro abierto, desde el clic en "Confirmar
+    // cobro" hasta que la respuesta del servidor vuelve — puede tardar
+    // varios segundos por la emisión del e-CF): un scan que llegue aquí
+    // nunca es para ESTA venta, casi siempre es el siguiente cliente. El
+    // listener global (handleGlobalKeyDown) no depende de dónde esté el
+    // foco, así que SÍ puede llegar aunque el modal esté abierto encima —
+    // bloquear aquí, el único funnel de todos los scans (producto normal y
+    // balanza), es lo que evita que se mezcle con el carrito que se está
+    // cobrando. Root cause de FAC-1746 (empresa 73, 2026-10-08): un
+    // producto añadido así durante la espera infló el TOTAL mostrado/
+    // impreso sin tocar la factura ya enviada (esa queda fija — ver
+    // buildSaleTotalesFromFactura, commit 829e398d).
+    if (showPago) {
+      message.warning('Termina de cobrar antes de escanear el siguiente producto', 2);
+      return;
+    }
     registrarAccionPOS('escaneo');
 
     // Una tarjeta de supervisor escaneada por error en el buscador de
@@ -10965,7 +10995,7 @@ export default function POSPage() {
         });
 
     fetchConRetry(0).finally(() => setTimeout(() => searchRef.current?.focus(), 50));
-  }, [addToCart, addBalanzaToCart, todosProdutos, posPermitirStockNegativo, qc, empresaActual]);
+  }, [addToCart, addBalanzaToCart, todosProdutos, posPermitirStockNegativo, qc, empresaActual, showPago]);
 
   useEffect(() => {
     // Un scanner HID envía chars a <10ms de intervalo; un humano tarda >100ms.
