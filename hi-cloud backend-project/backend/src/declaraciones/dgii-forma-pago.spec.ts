@@ -14,7 +14,10 @@
  */
 
 import { MetodoPago } from '../common/enums/metodo-pago.enum';
-import { mapFormaPagoDgii, resolverFormaPagoCompra, columna607PorCodigoDgii } from './dgii.constants';
+import {
+  mapFormaPagoDgii, resolverFormaPagoCompra, columna607PorCodigoDgii,
+  metodoPagoDesdeNotasExacto,
+} from './dgii.constants';
 
 describe('mapFormaPagoDgii()', () => {
   it('traduce cada MetodoPago real a su código DGII exacto', () => {
@@ -91,5 +94,44 @@ describe('resolverFormaPagoCompra()', () => {
 
   it("único método 'otro': null, no pisa nada con una suposición", () => {
     expect(resolverFormaPagoCompra([MetodoPago.OTRO])).toBeNull();
+  });
+});
+
+describe('metodoPagoDesdeNotasExacto() — 2026-10-08, fallback del 607 endurecido', () => {
+  it('reconoce los 4 prefijos exactos que escribe el POS', () => {
+    expect(metodoPagoDesdeNotasExacto('POS · Efectivo')).toBe('efectivo');
+    expect(metodoPagoDesdeNotasExacto('POS · Tarjeta')).toBe('tarjeta');
+    expect(metodoPagoDesdeNotasExacto('POS · Transfer.')).toBe('chequeTransferencia');
+    expect(metodoPagoDesdeNotasExacto('POS · Crédito 30 días')).toBe('credito');
+  });
+
+  it('el sufijo de propina no rompe el match — es startsWith, no igualdad', () => {
+    expect(metodoPagoDesdeNotasExacto('POS · Efectivo · Propina: RD$50.00')).toBe('efectivo');
+    expect(metodoPagoDesdeNotasExacto('POS · Tarjeta · Propina: RD$10.00')).toBe('tarjeta');
+  });
+
+  it('reconoce el formato exacto de cobrarDesdePos (cotización/pre-factura): sin prefijo POS', () => {
+    expect(metodoPagoDesdeNotasExacto('Efectivo')).toBe('efectivo');
+    expect(metodoPagoDesdeNotasExacto('Tarjeta')).toBe('tarjeta');
+    expect(metodoPagoDesdeNotasExacto('Transferencia')).toBe('chequeTransferencia');
+    expect(metodoPagoDesdeNotasExacto('Crédito 30 días')).toBe('credito');
+    expect(metodoPagoDesdeNotasExacto('Crédito 7 días')).toBe('credito');
+  });
+
+  it('NO reconoce una mención libre de la palabra en texto del usuario — solo el formato exacto', () => {
+    expect(metodoPagoDesdeNotasExacto('Pago en Tarjeta')).toBeNull();
+    expect(metodoPagoDesdeNotasExacto('Cliente pagó efectivo')).toBeNull();
+    expect(metodoPagoDesdeNotasExacto('Transferencia bancaria del 15')).toBeNull();
+    expect(metodoPagoDesdeNotasExacto('efectivo')).toBeNull(); // minúscula: no es el byte exacto
+  });
+
+  it('vacío, null o undefined: null, nunca adivina', () => {
+    expect(metodoPagoDesdeNotasExacto('')).toBeNull();
+    expect(metodoPagoDesdeNotasExacto(null)).toBeNull();
+    expect(metodoPagoDesdeNotasExacto(undefined)).toBeNull();
+  });
+
+  it('texto irreconocible: null', () => {
+    expect(metodoPagoDesdeNotasExacto('Venta del mostrador')).toBeNull();
   });
 });

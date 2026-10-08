@@ -101,6 +101,41 @@ export function columna607PorCodigoDgii(
 }
 
 /**
+ * Fallback del 607 para facturas SIN formasPago (anteriores a esa columna,
+ * o creadas por un camino que todavía no la llena). Parsea `notas`, pero
+ * SOLO confía en el formato EXACTO y literal que el código conocido escribe
+ * ahí al crear la factura — nunca una mención libre de la palabra en texto
+ * del usuario (el panel de Facturas no autocompleta `notas` con el método;
+ * ahí es texto libre y no se puede confiar en él).
+ *
+ * Formatos reconocidos (case-sensitive, a propósito — son los bytes exactos
+ * que escribe el código, no una búsqueda difusa):
+ *   - POS directo (POSPage.tsx):  "POS · Efectivo[...]" / "POS · Tarjeta[...]" /
+ *     "POS · Transfer.[...]" / "POS · Crédito N días" — el "[...]" cubre el
+ *     sufijo opcional de propina, por eso es startsWith y no igualdad exacta.
+ *   - cobrarDesdePos (cotización y pre-factura): notas es EXACTAMENTE
+ *     "Efectivo" / "Tarjeta" / "Transferencia", o "Crédito N días".
+ *
+ * Devuelve 'credito' tanto para el texto "Crédito..." como para no perder
+ * la distinción entre "no reconocido" (null) y "el texto dice crédito" —
+ * el llamador decide qué hacer con cada uno (ver getFormato607).
+ */
+export function metodoPagoDesdeNotasExacto(
+  notas: string | null | undefined,
+): 'efectivo' | 'tarjeta' | 'chequeTransferencia' | 'credito' | null {
+  const n = (notas ?? '').trim();
+  if (n.startsWith('POS · Efectivo'))  return 'efectivo';
+  if (n.startsWith('POS · Tarjeta'))   return 'tarjeta';
+  if (n.startsWith('POS · Transfer.')) return 'chequeTransferencia';
+  if (n.startsWith('POS · Crédito'))   return 'credito';
+  if (n === 'Efectivo')                return 'efectivo';
+  if (n === 'Tarjeta')                 return 'tarjeta';
+  if (n === 'Transferencia')           return 'chequeTransferencia';
+  if (/^Crédito \d+ días$/.test(n))    return 'credito';
+  return null;
+}
+
+/**
  * Traduce la etiqueta del botón que pulsó el cajero ('Efectivo', 'Tarjeta',
  * ...) al tipo numérico DGII-nativo que espera Factura.formasPago (1-6).
  * Antes vivía duplicado, byte a byte, como método privado en

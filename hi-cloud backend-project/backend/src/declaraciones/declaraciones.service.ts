@@ -12,7 +12,7 @@ import { Gasto } from '../gastos/entities/gasto.entity';
 import {
   mapFormaPagoDgii, columna607PorCodigoDgii, mapTipoIngreso607, tipoIdDgii,
   fechaDgii, montoEntero, TIPOS_BIENES_606, FORMAS_PAGO_DGII,
-  desgloseItbisFuenteVerdad,
+  desgloseItbisFuenteVerdad, metodoPagoDesdeNotasExacto,
 } from './dgii.constants';
 import {
   DgiiValidatorService, Fila606, Fila607, Fila608,
@@ -902,6 +902,7 @@ export class DeclaracionesService {
         f."tipoNcf",
         f.notas,
         f."formasPago",
+        f."tipoPago",
         e.numero                                        AS "encf",
         e."estadoDGII"                                  AS "estadoDgii",
         e."jsonEnviado"                                  AS "jsonEnviado",
@@ -952,6 +953,7 @@ export class DeclaracionesService {
         nc."tipoNcf",
         nc.notas,
         NULL::jsonb                                      AS "formasPago",
+        NULL::text                                       AS "tipoPago",
         e.numero                                        AS "encf",
         e."estadoDGII"                                  AS "estadoDgii",
         e."jsonEnviado"                                  AS "jsonEnviado",
@@ -991,6 +993,7 @@ export class DeclaracionesService {
         nd."tipoNcf",
         nd.notas,
         NULL::jsonb                                      AS "formasPago",
+        NULL::text                                       AS "tipoPago",
         e.numero                                        AS "encf",
         e."estadoDGII"                                  AS "estadoDgii",
         e."jsonEnviado"                                  AS "jsonEnviado",
@@ -1019,6 +1022,13 @@ export class DeclaracionesService {
 
       ORDER BY "fechaComprobante" ASC, id ASC
     `, [eid, desde, hasta]);
+
+    // Facturas CONTADO sin formasPago donde notas dice "Crédito..." — estado
+    // incoherente (una venta de contado no debería traer esa nota). Van a
+    // "Otras formas" igual que cualquier CONTADO sin forma de pago
+    // reconocible, pero se listan aparte para que alguien las revise — no es
+    // un fallback silencioso más, es una contradicción real en el dato.
+    const incoherenciasFormaPago: { facturaId: number; folio: string; notas: string }[] = [];
 
     const filas = rows.map((r, i) => {
       const rncComprador   = r.rncComprador ?? '';
@@ -1064,12 +1074,31 @@ export class DeclaracionesService {
             // columna null (tipo no reconocido): no se suma a ninguna — sin
             // bucket confiable es mejor omitir que adivinar.
           }
+        } else if (r.tipoPago === 'CREDITO') {
+          // Crédito explícito y sin formasPago (normal: el crédito no lleva
+          // cobro todavía) — sigue yendo a la columna Crédito, sin cambios.
+          credito = totalCobrado;
         } else {
-          const metodo = r.notas ?? '';
-          efectivo            = metodo.includes('Efectivo')  ? totalCobrado : 0;
-          tarjeta             = metodo.includes('Tarjeta')   ? totalCobrado : 0;
-          chequeTransferencia = metodo.includes('Transfer')  ? totalCobrado : 0;
-          credito             = (!efectivo && !tarjeta && !chequeTransferencia) ? totalCobrado : 0;
+          // tipoPago CONTADO (o ausente — nunca debería pasar, la entidad
+          // default a CONTADO) sin formasPago: una venta de contado NUNCA
+          // cae en la columna Crédito. Se intenta recuperar el método real
+          // desde notas (solo el formato exacto que escribe el código — ver
+          // metodoPagoDesdeNotasExacto); si no hay match, o si notas dice
+          // "Crédito" siendo esta factura CONTADO (incoherente, se lista
+          // aparte), el monto va a "Otras formas de venta" (columna 23) —
+          // la casilla que el propio 607 reserva para lo que no encaja en
+          // las demás. Nunca en cero (la fila sigue cuadrando) y nunca en
+          // Crédito (eso implicaría que no se cobró, cuando sí se cobró).
+          const metodoNotas = metodoPagoDesdeNotasExacto(r.notas);
+          if      (metodoNotas === 'efectivo')           efectivo            = totalCobrado;
+          else if (metodoNotas === 'tarjeta')             tarjeta             = totalCobrado;
+          else if (metodoNotas === 'chequeTransferencia') chequeTransferencia = totalCobrado;
+          else {
+            otras = totalCobrado;
+            if (metodoNotas === 'credito') {
+              incoherenciasFormaPago.push({ facturaId: r.id, folio: r.folio, notas: r.notas ?? '' });
+            }
+          }
         }
       }
 
@@ -1121,7 +1150,10 @@ export class DeclaracionesService {
       credito:        filas.reduce((s, f) => s + f.credito, 0),
     };
 
-    return { periodo: { mes, anio }, rnc: await this.getRnc(), totalLineas: filas.length, totales, filas };
+    return {
+      periodo: { mes, anio }, rnc: await this.getRnc(), totalLineas: filas.length, totales, filas,
+      incoherenciasFormaPago,
+    };
   }
 
   // ── Validacion pre-exportacion ────────────────────────────────────────────
