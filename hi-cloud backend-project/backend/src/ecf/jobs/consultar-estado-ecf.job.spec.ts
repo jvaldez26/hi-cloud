@@ -1,5 +1,10 @@
 import { ConsultarEstadoECFJob } from './consultar-estado-ecf.job';
 import { ECF, EstadoDGII } from '../entities/ecf.entity';
+import { reportServiceError } from '../../common/observability/sentry';
+
+jest.mock('../../common/observability/sentry', () => ({
+  reportServiceError: jest.fn(),
+}));
 
 /**
  * Familia 2 / Opción A — resiliencia del lote del cron.
@@ -611,9 +616,10 @@ describe('ConsultarEstadoECFJob.consultarBatch — sella PAGADA al confirmar ACE
     expect(facturaRepo.findOne).not.toHaveBeenCalled();
   });
 
-  it('un fallo del helper (ej. BD caída) no aborta el procesamiento del e-CF — ya quedó sellado ACEPTADO', async () => {
+  it('un fallo del helper (ej. BD caída) no aborta el procesamiento del e-CF — ya quedó sellado ACEPTADO, pero SÍ reporta a Sentry', async () => {
     const { job, ecfRepo, facturaRepo } = buildJob();
-    facturaRepo.findOne.mockRejectedValue(new Error('conexión perdida'));
+    const errorDelHelper = new Error('conexión perdida');
+    facturaRepo.findOne.mockRejectedValue(errorDelHelper);
     const ecf = makeEcfFactura('E320000001705', 5, 1705, 'FACTURA');
     const mseller = (job as any).mseller;
     mseller.consultarBatch.mockResolvedValue({ total: 1, results: [{ ecf: ecf.numero, status: 'Aceptado', found: true, data: {} }] });
@@ -621,5 +627,11 @@ describe('ConsultarEstadoECFJob.consultarBatch — sella PAGADA al confirmar ACE
     await expect((job as any).consultarBatch([ecf], 73)).resolves.toBeDefined();
 
     expect(ecfRepo.update).toHaveBeenCalledWith(5, expect.objectContaining({ estadoDGII: EstadoDGII.ACEPTADO }));
+    // Antes esto solo quedaba en el log del servidor — un fallo sistemático
+    // podía repetirse cron tras cron sin que nadie se enterara.
+    expect(reportServiceError).toHaveBeenCalledWith(
+      errorDelHelper, 'sellar_pagada_consultar_estado',
+      expect.objectContaining({ facturaId: '1705' }),
+    );
   });
 });

@@ -132,6 +132,16 @@ const SKIP_EXCEPTION_TYPES = new Set([
   'GoneException',                 // 410 — recurso eliminado (esperado)
   'PayloadTooLargeException',      // 413 — payload de cliente demasiado grande
   'MethodNotAllowedException',     // 405 — método HTTP incorrecto
+  // EcfError y toda su familia (EcfDuplicadoError, EcfValidacionError, etc.)
+  // ponen this.name='EcfError' en el constructor base — NUNCA el nombre de la
+  // subclase. http-exception.filter.ts ya las trata como 422 de negocio (no
+  // son instancias de UnprocessableEntityException, así que esa entrada de
+  // arriba no las cubre), pero SentryModule.forRoot() captura automáticamente
+  // toda excepción que pasa por Nest sin mirar el status — por eso llegaban
+  // igual (Sentry #7779557844, EcfDuplicadoError por una venta en curso, no
+  // un bug). Si un e-CF queda atascado de verdad (>10min en pendiente_envio),
+  // ReintentoECFJob manda su propio warning manual — ver reportWarning.
+  'EcfError',
 ]);
 
 function beforeSend(event: Sentry.ErrorEvent): Sentry.ErrorEvent | null {

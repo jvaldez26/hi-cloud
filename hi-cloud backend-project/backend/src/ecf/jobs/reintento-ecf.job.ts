@@ -15,7 +15,7 @@ import { esErrorYaExiste, decidirReconciliacionEcf } from '../services/reconcili
 import { ECFBuilderService, MSellerInfoReferencia, MSellerPayload } from '../services/ecf-builder.service';
 import { EcfConfigService } from '../services/ecf-config.service';
 import { EcfDocumentoModificadoError, EcfValidacionError } from '../errors/ecf.errors';
-import { reportServiceError } from '../../common/observability/sentry';
+import { reportServiceError, reportWarning } from '../../common/observability/sentry';
 import { fmtFecha } from '../builders/base-ecf.builder';
 import type { CompradorOriginal } from '../builders/base-ecf.builder';
 import { leerCompradorDeclarado } from '../use-cases/emitir-ecf.use-case';
@@ -101,6 +101,13 @@ export class ReintentoECFJob {
       if (sellada) this.realtimeService.notify(ecf.empresaId!, 'factura', 'updated', ecf.documentoOrigenId);
     } catch (err) {
       this.logger.error(`[SellarPagada] Error inesperado para factura #${ecf.documentoOrigenId}: ${(err as Error).message}`);
+      // Mismo criterio que ConsultarEstadoECFJob: antes solo quedaba en el
+      // log del servidor. El e-CF ya quedó ACEPTADO/reenviado (eso no se
+      // pierde); solo falla el sello PAGADA, así que esto NO aborta el
+      // reintento — solo avisa.
+      reportServiceError(err as Error, 'sellar_pagada_reintento_ecf', {
+        facturaId: String(ecf.documentoOrigenId), empresaId: String(ecf.empresaId ?? ''), ecfNumero: ecf.numero,
+      });
     }
   }
 
@@ -195,8 +202,27 @@ export class ReintentoECFJob {
 
     const bloqueadaCache = new Map<number, boolean>();
 
+    const DIEZ_MIN_MS = 10 * 60_000;
+
     for (const ecf of pendientes) {
       const empId = ecf.empresaId!;
+
+      // Aviso manual (warning, no error) si el e-CF lleva atascado de verdad —
+      // mismo umbral que alertasECFAtascados (el panel de la empresa), pero
+      // cruzando empresas y por Sentry. Dispara en cada vuelta del cron (cada
+      // 2 min) mientras siga atascado: Sentry agrupa por mensaje+fingerprint,
+      // así que esto suma eventos a UN solo issue en vez de abrir uno nuevo
+      // cada vez — la duración real queda visible sin inventar una columna de
+      // "ya avisado". No reemplaza el reporte de errores reales (EcfDuplicadoError
+      // y el resto de EcfError de negocio nunca llegan aquí como error — ver
+      // instrument.ts); esto es la contraparte: la señal de que SÍ hay que mirar.
+      const msAtascado = Date.now() - new Date(ecf.updatedAt).getTime();
+      if (msAtascado > DIEZ_MIN_MS) {
+        reportWarning(
+          `e-CF ${ecf.numero} lleva ${Math.round(msAtascado / 60_000)} min en pendiente_envio sin confirmación de DGII`,
+          { numero: ecf.numero, empresaId: empId, minutosAtascado: Math.round(msAtascado / 60_000) },
+        );
+      }
 
       if (!bloqueadaCache.has(empId)) {
         bloqueadaCache.set(empId, await this.configSvc.isEmpresaBloqueada(empId));

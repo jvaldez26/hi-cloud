@@ -7,6 +7,12 @@
  */
 import { ReintentoECFJob } from './reintento-ecf.job';
 import { EstadoDGII } from '../entities/ecf.entity';
+import { reportServiceError } from '../../common/observability/sentry';
+
+jest.mock('../../common/observability/sentry', () => ({
+  reportServiceError: jest.fn(),
+  reportWarning: jest.fn(),
+}));
 
 function buildJob() {
   const ecfRepo = { find: jest.fn().mockResolvedValue([]), update: jest.fn() };
@@ -149,5 +155,24 @@ describe('ReintentoECFJob.procesarUno — sella PAGADA al confirmar ACEPTADO (em
 
     expect(resultado).toBe('adoptado');
     expect(facturaRepo.findOne).not.toHaveBeenCalled();
+  });
+
+  it('un fallo del helper al sellar PAGADA no aborta la reconciliación — pero SÍ reporta a Sentry', async () => {
+    const { job, mseller, facturaRepo } = buildJob();
+    const errorDelHelper = new Error('conexión perdida');
+    facturaRepo.findOne.mockRejectedValue(errorDelHelper);
+    (mseller as any).consultarBatch = jest.fn().mockResolvedValue({
+      total: 1, results: [{ ecf: 'E3200000001705', status: 'Aceptado', found: true, data: {} }],
+    });
+    const ecf = ecfPendiente(1705, 1705, 'FACTURA');
+    ecf.numero = 'E3200000001705';
+
+    const resultado = await job.procesarUno(ecf);
+
+    expect(resultado).toBe('adoptado'); // el e-CF sí se reconcilió bien
+    expect(reportServiceError).toHaveBeenCalledWith(
+      errorDelHelper, 'sellar_pagada_reintento_ecf',
+      expect.objectContaining({ facturaId: '1705' }),
+    );
   });
 });

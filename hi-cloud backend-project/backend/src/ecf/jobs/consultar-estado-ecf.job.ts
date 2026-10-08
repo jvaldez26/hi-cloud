@@ -579,6 +579,14 @@ el estado directamente en el portal de DGII u ofimática de la empresa.</p>
           if (sellada) this.realtimeService.notify(ecf.empresaId!, 'factura', 'updated', ecf.documentoOrigenId);
         } catch (err) {
           this.logger.error(`[SellarPagada] Error inesperado para factura #${ecf.documentoOrigenId}: ${(err as Error).message}`);
+          // Antes solo quedaba en el log del servidor — un fallo sistemático
+          // (ej. una columna renombrada) podía repetirse en cada pasada del
+          // cron sin que nadie se enterara fuera de CloudWatch. El e-CF ya
+          // quedó ACEPTADO (eso no se pierde); lo único que falla es el sello
+          // PAGADA, así que esto NO aborta el ciclo — solo avisa.
+          reportServiceError(err as Error, 'sellar_pagada_consultar_estado', {
+            facturaId: String(ecf.documentoOrigenId), empresaId: String(ecf.empresaId ?? ''), ecfNumero: ecf.numero,
+          });
         }
       }
 

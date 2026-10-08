@@ -98,6 +98,25 @@ export function reportServiceError(
   }
 }
 
+/**
+ * Reporta a Sentry un aviso (nunca un error) de algo que no está roto pero
+ * necesita ojo humano — p. ej. un e-CF que lleva más de 10 minutos sin
+ * respuesta de la DGII. No-op si Sentry no está inicializado. Nunca lanza.
+ */
+export function reportWarning(
+  message: string,
+  tags: Record<string, string | number> = {},
+): void {
+  if (!Sentry.getClient()) return;
+  try {
+    const strTags: Record<string, string> = {};
+    for (const [k, v] of Object.entries(tags)) strTags[k] = String(v);
+    Sentry.captureMessage(message, { level: 'warning', tags: strTags });
+  } catch {
+    /* nunca romper el flujo por un fallo de observabilidad */
+  }
+}
+
 function safeCls() {
   try {
     const c = ClsServiceManager.getClsService();

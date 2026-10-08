@@ -101,6 +101,17 @@ describe('Sentry beforeSend — nada sensible sale del servidor', () => {
       expect(src).toMatch(/sentryActivo\s*=\s*true/);
     });
 
+    it('EcfError está en la lista de exclusión de Sentry — un e-CF "en curso" (Sentry #7779557844) nunca reporta como error', () => {
+      // EcfError (y toda su familia: EcfDuplicadoError, EcfValidacionError...)
+      // pone this.name='EcfError' en el constructor BASE — nunca el nombre de
+      // la subclase. Por eso basta un solo nombre en la lista para cubrirlas
+      // todas, y por eso 'UnprocessableEntityException' (ya en la lista) NO
+      // las cubre: nunca son instancias de esa clase de Nest.
+      const match = src.match(/const SKIP_EXCEPTION_TYPES = new Set\(\[([\s\S]*?)\]\);/);
+      expect(match).not.toBeNull();
+      expect(match![1]).toMatch(/'EcfError'/);
+    });
+
     it('tracesSampleRate sigue en 0 — el tracing NO se ha reactivado', () => {
       // El scrub es filtrado en el cliente: no añade carga ni instrumenta nada.
       // El tracing (0.1) es lo que instrumenta HTTP y Postgres y consume más
