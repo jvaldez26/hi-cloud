@@ -30,6 +30,7 @@ import { useVideosTutoriales } from '../../hooks/useVideosTutoriales';
 import { useAuthStore } from '../../store/auth.store';
 import {
   leerCarritoGuardado, leerVentasEsperaGuardadas, guardarCarrito, guardarVentasEspera,
+  idDePestana, listarCarritosDeOtrasPestanas, borrarCarritoDePestana,
 } from './carritoStorage';
 import { leerOrigenPendiente, limpiarOrigenPendiente } from '../car-wash/carWashOrigen';
 import { registerReauthHandler } from '../../utils/sessionEvents';
@@ -65,7 +66,7 @@ import { EscanerCamaraModal } from '../../components/EscanerCamaraModal';
 import { requiereSupervisorPorPrecioModificado } from './carritoRecuperadoGate';
 import { debeIgnorarEnterGlobal } from './confirmarCobroEnterGate';
 import { resolverIntentoCobro } from './intentoCobroGate';
-import { iniciarTelemetriaPOS, registrarVentaCompletada, registrarAccionPOS } from './posTelemetria';
+import { iniciarTelemetriaPOS, registrarVentaCompletada, registrarAccionPOS, obtenerPestanasVivasConocidas } from './posTelemetria';
 import { credencialesFueronRechazadas } from './reautenticacionGate';
 import { construirFiltroVendedorPOS } from './vendedorFiltroPanel';
 import { UomSelect } from '../../components/ui/UomSelect';
@@ -9465,17 +9466,12 @@ export default function POSPage() {
 
   // ── Telemetría (Paso 2, 2026-10-08 — diagnóstico de congelamiento) ────────
   // Una sola vez por montaje de POSPage. Ver posTelemetria.ts para qué mide y
-  // por qué — resumen: longtask > 2s, muestra periódica si se pasa de umbral,
-  // y aviso de segunda pestaña del POS abierta.
+  // por qué — resumen: longtask > 2s, muestra periódica si se pasa de umbral.
+  // Decisión 2026-10-08: varias pestañas del POS a la vez es un flujo
+  // válido — ya no hay aviso ni bloqueo por eso (ver carrito por pestaña,
+  // más abajo, y posTelemetria.ts).
   useEffect(() => {
     const cleanup = iniciarTelemetriaPOS(empresaActual, {
-      onOtraPestanaAbierta: () => {
-        Modal.warning({
-          title: 'Ya tienes el punto de venta abierto en otra pestaña',
-          content: 'Usar dos pestañas del POS a la vez puede causar inconsistencias. Se recomienda trabajar en una sola.',
-          okText: 'Usar esta pestaña',
-        });
-      },
       onImpresionPendienteAlVolver: () => {
         Modal.warning({
           title: 'Hay una impresión abierta',
@@ -9705,10 +9701,16 @@ export default function POSPage() {
   // había algo que recuperar — el efecto de más abajo lo lee para mostrar
   // "Se recuperó tu carrito" y luego lo apaga, para no repetir el aviso.
   const carritoRecuperadoRef = useRef(false);
+  // Id de ESTA pestaña (sessionStorage — estable tras recargar, nunca
+  // heredado por una pestaña nueva). Cada pestaña del POS tiene su propio
+  // carrito; ver carritoStorage.ts.
+  const tabIdRef = useRef<string>();
+  if (!tabIdRef.current) tabIdRef.current = idDePestana();
+  const tabId = tabIdRef.current;
   const [cart,          setCart]          = useState<CartItem[]>(() => {
     if (!user?.id || !empresaActual) return [];
     const sucursalIdInicial = Number(localStorage.getItem('sucursalId') ?? localStorage.getItem('pos_sucursal_id')) || null;
-    const { items, recuperado } = leerCarritoGuardado<CartItem>(empresaActual, user.id, sucursalIdInicial);
+    const { items, recuperado } = leerCarritoGuardado<CartItem>(empresaActual, user.id, sucursalIdInicial, tabId);
     if (recuperado) carritoRecuperadoRef.current = true;
     return items;
   });
@@ -9800,7 +9802,7 @@ export default function POSPage() {
   const [ventasEnEspera,     setVentasEnEspera]     = useState<ParkedSale[]>(() => {
     if (!user?.id || !empresaActual) return [];
     const sucursalIdInicial = Number(localStorage.getItem('sucursalId') ?? localStorage.getItem('pos_sucursal_id')) || null;
-    return leerVentasEsperaGuardadas<ParkedSale>(empresaActual, user.id, sucursalIdInicial).items;
+    return leerVentasEsperaGuardadas<ParkedSale>(empresaActual, user.id, sucursalIdInicial, tabId).items;
   });
   const [isOffline,          setIsOffline]          = useState(!navigator.onLine);
   const [precioInputModo,    setPrecioInputModo]    = useState<'c' | 's'>(() => {
@@ -10457,20 +10459,22 @@ export default function POSPage() {
     return () => window.removeEventListener('keydown', handler);
   }, [cart, total, totalEfectivo]);
 
-  // Persistir carrito — clave por empresa+usuario+sucursal (ver carritoStorage.ts):
-  // el cajero B nunca escribe encima de la clave del cajero A.
+  // Persistir carrito — clave por empresa+usuario+sucursal+pestaña (ver
+  // carritoStorage.ts): el cajero B nunca escribe encima de la clave del
+  // cajero A, y dos pestañas del mismo cajero nunca escriben encima la una
+  // de la otra.
   useEffect(() => {
     if (!user?.id || !empresaActual) return;
-    try { guardarCarrito(empresaActual, user.id, sucursalId ?? null, cart); }
+    try { guardarCarrito(empresaActual, user.id, sucursalId ?? null, tabId, cart); }
     catch { /* quota exceeded — ignorar */ }
-  }, [cart, user?.id, empresaActual, sucursalId]);
+  }, [cart, user?.id, empresaActual, sucursalId, tabId]);
 
   // Persistir ventas en pausa — mismo patrón que el carrito
   useEffect(() => {
     if (!user?.id || !empresaActual) return;
-    try { guardarVentasEspera(empresaActual, user.id, sucursalId ?? null, ventasEnEspera); }
+    try { guardarVentasEspera(empresaActual, user.id, sucursalId ?? null, tabId, ventasEnEspera); }
     catch { /* quota exceeded — ignorar */ }
-  }, [ventasEnEspera, user?.id, empresaActual, sucursalId]);
+  }, [ventasEnEspera, user?.id, empresaActual, sucursalId, tabId]);
 
   // Aviso "se recuperó tu carrito" — una sola vez, si el inicializador de
   // `cart` encontró algo (clave propia ya existente, o migrado desde la
@@ -10484,6 +10488,41 @@ export default function POSPage() {
         duration: 5,
       });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Carrito huérfano de otra pestaña que ya se cerró — se ofrece
+  // recuperarlo SOLO si ninguna otra pestaña viva lo tiene (decisión
+  // 2026-10-08, punto 3). "Viva" se resuelve con el ping/pong de
+  // posTelemetria.ts: se espera un respiro tras montar para que las
+  // pestañas realmente abiertas tengan tiempo de responder antes de
+  // decidir que una no respondió porque ya no existe. No se ofrece nada si
+  // esta pestaña ya arrancó con un carrito propio (recuperado o no): nunca
+  // se pisa lo que el cajero ya tiene aquí.
+  useEffect(() => {
+    if (!user?.id || !empresaActual || cart.length > 0) return;
+    const sucursalIdInicial = Number(localStorage.getItem('sucursalId') ?? localStorage.getItem('pos_sucursal_id')) || null;
+    const t = setTimeout(() => {
+      const vivas = new Set(obtenerPestanasVivasConocidas());
+      const huerfano = listarCarritosDeOtrasPestanas<CartItem>(empresaActual, user.id, sucursalIdInicial, tabId)
+        .find(c => !vivas.has(c.tabId));
+      if (!huerfano) return;
+      Modal.confirm({
+        title: 'Hay un carrito sin terminar',
+        content: `Quedó un carrito con ${huerfano.items.length} producto(s) en una pestaña del POS que ya cerraste. ¿Quieres recuperarlo en esta pestaña?`,
+        okText: 'Recuperar',
+        cancelText: 'Descartar',
+        onOk: () => {
+          setCart(huerfano.items);
+          borrarCarritoDePestana(empresaActual, user.id, sucursalIdInicial, huerfano.tabId);
+        },
+        onCancel: () => {
+          borrarCarritoDePestana(empresaActual, user.id, sucursalIdInicial, huerfano.tabId);
+        },
+      });
+    }, 600);
+    return () => clearTimeout(t);
+    // Solo al montar — una sola oferta por apertura de pestaña.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { AuthUser } from '../types';
 import { syncSentryScope } from '../observability/sentryScope';
-import { borrarCarritoYEspera } from '../pages/pos/carritoStorage';
+import { borrarCarritoYEspera, idDePestana } from '../pages/pos/carritoStorage';
 import { resolverRolPorEmpresa } from '../utils/resolverRolPorEmpresa';
 
 // Callback registrado por App.tsx para limpiar React Query al cerrar sesión.
@@ -122,15 +122,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     localStorage.removeItem('pos_cajero_nombre');
     localStorage.removeItem('pos_vendedor_id');
     localStorage.removeItem('hc_empresa_nombre');
-    // Borra el carrito y las ventas en espera SOLO en logout voluntario —
-    // los tres cierres involuntarios (expired/displaced/caducada) pasan
-    // preservarCarritoPOS:true y no tocan nada aquí. La clave ya va por
-    // usuario+empresa+sucursal (ver carritoStorage.ts), así que esto ya no
-    // es lo único que evita que el próximo cajero vea el carrito de este:
-    // aunque se omitiera, el cajero SIGUIENTE tendría su propia clave.
+    // Borra el carrito y las ventas en espera (de ESTA pestaña) SOLO en
+    // logout voluntario — los tres cierres involuntarios (expired/displaced/
+    // caducada) pasan preservarCarritoPOS:true y no tocan nada aquí. La
+    // clave ya va por usuario+empresa+sucursal+pestaña (ver
+    // carritoStorage.ts), así que esto ya no es lo único que evita que el
+    // próximo cajero (u otra pestaña) vea el carrito de este.
     if (!opts?.preservarCarritoPOS) {
       const s = get();
-      borrarCarritoYEspera(s.empresaActual, s.user?.id, s.sucursalActual);
+      borrarCarritoYEspera(s.empresaActual, s.user?.id, s.sucursalActual, idDePestana());
     }
     sessionStorage.removeItem('pos_turno');
     sessionStorage.removeItem('pos_bloqueado');

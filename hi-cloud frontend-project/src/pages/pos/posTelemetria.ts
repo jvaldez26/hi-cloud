@@ -13,14 +13,19 @@
  *      en ESTA pestaña, última acción).
  *   2. Muestra cada 15 min de memoria/DOM/horas — solo se envía si supera un
  *      umbral, para no generar ruido en Sentry con pestañas sanas.
- *   3. Segunda pestaña del POS detectada (BroadcastChannel) — la UI decide
- *      cómo avisarlo; este módulo solo detecta y notifica por callback.
+ *   3. Pestañas del POS abiertas al mismo tiempo (BroadcastChannel) — dato
+ *      SILENCIOSO (cantidad, en la muestra periódica). Decisión 2026-10-08:
+ *      abrir el POS en varias pestañas es un flujo válido, nunca se avisa
+ *      ni se bloquea nada por esto. El mismo ping/pong también le dice a
+ *      carritoStorage.ts qué pestañas siguen vivas, para no ofrecer nunca
+ *      "recuperar" un carrito que otra pestaña abierta todavía tiene.
  *
  * Deliberadamente NO toca memoria pesada por sí mismo: nada de arrays que
  * crezcan, un solo intervalo, un solo PerformanceObserver, un solo canal.
  */
 import * as Sentry from '@sentry/react';
 import { onEventoImpresion, msImpresionPendiente, type EventoImpresion } from '../../utils/printUtils';
+import { idDePestana } from './carritoStorage';
 
 // ── Umbrales — ajustables cuando haya datos reales de 1-2 días ─────────────
 const LONGTASK_MS_UMBRAL   = 2_000;
@@ -107,19 +112,26 @@ function contextoComun() {
     heapMB:           heapMBActual(),
     domNodes:         domNodesActual(),
     iframes:          iframesActual(),
+    pestanasAbiertas: pestanasVivasConocidas.size + 1, // +1 = esta misma pestaña
   };
 }
 
 let longtaskObserver: PerformanceObserver | null = null;
 let muestraIntervalId: ReturnType<typeof setInterval> | null = null;
 let bc: BroadcastChannel | null = null;
-const TAB_ID = (() => {
-  try { return crypto.randomUUID(); } catch { return `${Date.now()}-${Math.random()}`; }
-})();
+const TAB_ID = idDePestana();
+
+// Otras pestañas del POS vistas respondiendo al ping desde que arrancó la
+// telemetría de ESTA pestaña — nunca incluye el propio TAB_ID. Solo dato de
+// telemetría (cantidad) + señal de "sigue viva" para carritoStorage.ts.
+const pestanasVivasConocidas = new Set<string>();
+
+/** Ids de otras pestañas del POS vistas vivas desde que esta pestaña arrancó. */
+export function obtenerPestanasVivasConocidas(): string[] {
+  return [...pestanasVivasConocidas];
+}
 
 export interface TelemetriaPOSCallbacks {
-  /** Segunda pestaña del POS detectada — la UI decide cómo avisarlo. */
-  onOtraPestanaAbierta: () => void;
   /** Al volver a la pestaña, había una impresión sin terminar hace rato. */
   onImpresionPendienteAlVolver: () => void;
 }
@@ -132,10 +144,11 @@ export function iniciarTelemetriaPOS(
   empresaId: string | number | null | undefined,
   callbacks: TelemetriaPOSCallbacks,
 ): () => void {
-  const { onOtraPestanaAbierta, onImpresionPendienteAlVolver } = callbacks;
+  const { onImpresionPendienteAlVolver } = callbacks;
   empresaIdActual = empresaId;
   abiertaEnMs = Date.now();
   ventasEnPestana = 0;
+  pestanasVivasConocidas.clear();
 
   // 1. Long tasks > 2s en el hilo principal.
   try {
@@ -167,14 +180,17 @@ export function iniciarTelemetriaPOS(
     }
   }, 15 * 60_000);
 
-  // 3. Segunda pestaña del POS — ping/pong por BroadcastChannel.
+  // 3. Pestañas del POS abiertas — ping/pong por BroadcastChannel. Solo
+  //    telemetría silenciosa (ver contextoComun/pestanasAbiertas) y señal de
+  //    "sigue viva" para la recuperación de carritos huérfanos — nunca un
+  //    aviso al cajero.
   try {
     bc = new BroadcastChannel('hicloud-pos-tabs');
     bc.onmessage = (ev: MessageEvent) => {
       const data = ev.data as { type?: string; tabId?: string } | undefined;
       if (!data || data.tabId === TAB_ID) return;
       if (data.type === 'ping') bc?.postMessage({ type: 'pong', tabId: TAB_ID });
-      if (data.type === 'pong') onOtraPestanaAbierta();
+      if (data.type === 'pong') pestanasVivasConocidas.add(data.tabId!);
     };
     bc.postMessage({ type: 'ping', tabId: TAB_ID });
   } catch {

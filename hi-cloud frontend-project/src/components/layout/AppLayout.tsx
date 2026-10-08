@@ -11,7 +11,7 @@ import api from '../../api/client';
 import { configuracionApi } from '../../api/configuracion.api';
 import { puedeVerAuditoria } from '../../config/auditoriaMenuGate';
 import { useLogout } from '../../hooks/useLogout';
-import { borrarCarritoYEspera } from '../../pages/pos/carritoStorage';
+import { borrarCarritoYEspera, idDePestana } from '../../pages/pos/carritoStorage';
 import {
   LogoutOutlined, BellOutlined,
   MoonOutlined, SunOutlined, SearchOutlined,
@@ -574,7 +574,7 @@ export default function AppLayout() {
     // en este punto (setEmpresaActiva de arriba no muta el closure), y esta
     // función solo se usa una vez por carga de página (recarga completa al
     // final) — no hay riesgo de closure obsoleto.
-    borrarCarritoYEspera(empresaActiva, user?.id, sucursalActualId);
+    borrarCarritoYEspera(empresaActiva, user?.id, sucursalActualId, idDePestana());
     sessionStorage.removeItem('pos_turno');
     sessionStorage.removeItem('pos_bloqueado');
     // Renovar JWT con el nuevo empresaId — el TenantMiddleware lee empresaId

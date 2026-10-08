@@ -3,6 +3,7 @@ import {
   debeAlertarLongtask, debeAlertarMuestraPeriodica, horasAbiertaDesde,
   registrarVentaCompletada, registrarAccionPOS,
   debeAlertarImpresionLenta, debeAvisarImpresionPendienteAlVolver,
+  obtenerPestanasVivasConocidas,
 } from './posTelemetria';
 
 describe('debeAlertarLongtask', () => {
@@ -57,6 +58,12 @@ describe('debeAlertarImpresionLenta', () => {
   });
   it('una impresión que tardó más de 5s sí alerta', () => {
     expect(debeAlertarImpresionLenta(5001)).toBe(true);
+  });
+});
+
+describe('obtenerPestanasVivasConocidas — decisión 2026-10-08: varias pestañas del POS, sin aviso', () => {
+  it('antes de arrancar la telemetría no hay ninguna otra pestaña conocida — nunca un falso positivo', () => {
+    expect(obtenerPestanasVivasConocidas()).toEqual([]);
   });
 });
 
