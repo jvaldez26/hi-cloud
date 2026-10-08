@@ -6264,13 +6264,6 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
   const pct  = (n: number, d: number) => d > 0 ? `${((n / d) * 100).toFixed(1)}%` : '—';
 
   const handleReimprimir = async (id: number, folio: string) => {
-    // En móvil/tablet la app BT intercepta la pestaña antes de document.write() → about:blank.
-    // En móvil usamos overlay+window.print() directo (imprimirReciboTermico lo detecta solo).
-    const _esMovilReimpr = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
-    const printWin = _esMovilReimpr ? null : window.open('', '_blank', 'width=360,height=640,toolbar=0,menubar=0,location=0,scrollbars=yes');
-    if (printWin) {
-      printWin.document.write('<html><head><title>Cargando...</title></head><body style="font-family:monospace;padding:20px;text-align:center">Cargando recibo...</body></html>');
-    }
     try {
       const empresa = await api.get('/configuracion/empresa')
         .then(x => x.data?.data ?? x.data).catch(() => ({}));
@@ -6317,8 +6310,6 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
         catch { /* sin QR */ }
       }
       if (cfgTicket.tipoImpresora === 'bluetooth') {
-        // La BT no usa la ventana pre-abierta, pero hay que cerrarla igual.
-        if (printWin && !printWin.closed) { try { printWin.close(); } catch { /* noop */ } }
         imprimirReciboTermico(
           buildReciboTermicoHTML(sale, qrDUrl, {
             ...cfgTicket,
@@ -6331,7 +6322,6 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
         return;
       }
       if (empConf.posTipoImpresora === 'carta' && f.id) {
-        if (printWin && !printWin.closed) { try { printWin.close(); } catch { /* noop */ } }
         await imprimirFacturaPreviewA4(f.id);
         return;
       }
@@ -6339,21 +6329,8 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
         ...cfgTicket,
         variasSucursales: variasSucursalesFromCache(qc),
       });
-      if (printWin && !printWin.closed) {
-        printWin.document.open();
-        printWin.document.write(html);
-        printWin.document.close();
-        printWin.focus();
-        setTimeout(() => {
-          printWin.print();
-          printWin.addEventListener('afterprint', () => printWin.close(), { once: true });
-          setTimeout(() => { try { printWin.close(); } catch { /* noop */ } }, 60_000);
-        }, 400);
-      } else {
-        imprimirReciboTermico(html, undefined, cfgTicket.tipoImpresora, avisarErrorBT);
-      }
+      imprimirReciboTermico(html, undefined, cfgTicket.tipoImpresora, avisarErrorBT);
     } catch {
-      if (printWin && !printWin.closed) printWin.close();
       message.error('Error al reimprimir');
     }
   };
@@ -9853,8 +9830,6 @@ export default function POSPage() {
   };
   const [ecfStatus,          setEcfStatus]          = useState<'idle'|'loading'|'ok'|'pendiente'>('idle');
   const [ecfEncf,            setEcfEncf]            = useState<string>('');
-  const printWinRef      = useRef<Window | null>(null); // ventana pre-abierta para auto-imprimir en tablets
-  const autoYaPrintedRef = useRef(false);
   // Borrador pendiente de una emisión que falló: si el próximo intento de
   // cobro manda el MISMO payload (nada cambió en el carrito), se reintenta
   // sobre esta misma factura en vez de crear una segunda. Se limpia al
@@ -11349,11 +11324,6 @@ export default function POSPage() {
 
       // ── Sin autorización de supervisor: la venta NO se completó, sigue en BORRADOR ──
       if ((result as any)?._requiereSupervisor) {
-        if (printWinRef.current && !printWinRef.current.closed) {
-          try { printWinRef.current.close(); } catch { /* noop */ }
-          printWinRef.current = null;
-          autoYaPrintedRef.current = false;
-        }
         const folio = factura?.folio ?? 'sin folio';
         Modal.warning({
           title: 'Venta NO completada — falta autorización de supervisor',
@@ -11367,11 +11337,6 @@ export default function POSPage() {
 
       // ── Emisión e-CF falló: aviso obligatorio, sin recibo fiscal ─────────────
       if ((result as any)?._emisionFallo) {
-        if (printWinRef.current && !printWinRef.current.closed) {
-          try { printWinRef.current.close(); } catch { /* noop */ }
-          printWinRef.current = null;
-          autoYaPrintedRef.current = false;
-        }
         const folio  = factura?.folio ?? 'sin folio';
         const errMsg = (result as any)?._emisionError ?? 'Error al contactar el servicio de comprobantes fiscales';
         // HOTFIX urgente (2026-10-07): ya NO se invita a presionar "Confirmar
@@ -11458,70 +11423,21 @@ export default function POSPage() {
         empresaLogo:             empresa?.logo ?? undefined,
         modoContexto,
       };
-      // Auto-imprimir — BT funciona directo en móvil sin ventana pre-abierta
-      const _tipoImpCobro = cfgTicketPos.tipoImpresora;
-      if (_tipoImpCobro === 'bluetooth') {
-        // BT térmica — cerrar ventana pre-abierta si existe (no la necesitamos)
-        if (printWinRef.current && !printWinRef.current.closed) { try { printWinRef.current.close(); } catch { /* noop */ } printWinRef.current = null; }
-        autoYaPrintedRef.current = true;
-        // Mismo HTML que la térmica del navegador: la conversión a ESC/POS pasa
-        // dentro de imprimirReciboTermico.
-        const _mandarBT = (qr: string | null) => imprimirReciboTermico(
-          buildReciboTermicoHTML(saleObj, qr, cfgTicketPos),
-          undefined,
-          'bluetooth',
-          avisarErrorBT,
-        );
-        if (qrUrl && !saleObj.ecfPendiente) {
-          generarQrTicket(qrUrl, cfgTicketPos.formato).then(_mandarBT).catch(() => _mandarBT(null));
-        } else {
-          _mandarBT(null);
-        }
-      } else if (printWinRef.current && !printWinRef.current.closed) {
-        // Auto-imprimir con ventana pre-abierta — mantiene el gesto del usuario en tablets iOS/Android
-        const pw = printWinRef.current;
-        printWinRef.current = null;
-        if (_tipoImpCobro === 'ninguna') {
-          // Sin impresora → cerrar ventana pre-abierta sin imprimir
-          try { pw.close(); } catch { /* noop */ }
-        } else if (_tipoImpCobro === 'carta' && saleObj.facturaId) {
-          // Hoja carta → redirigir la ventana pre-abierta al HTML preview (igual que módulo Facturas)
-          autoYaPrintedRef.current = true;
-          fetch(`/api/v1/facturas/${saleObj.facturaId}/preview`, { credentials: 'include' })
-            .then(r => r.text())
-            .then(html => {
-              const blob = new Blob([html], { type: 'text/html' });
-              const blobUrl = URL.createObjectURL(blob);
-              if (!pw.closed) {
-                pw.location.href = blobUrl;
-                pw.addEventListener('load', () => {
-                  pw.focus(); pw.print();
-                  pw.addEventListener('afterprint', () => { try { pw.close(); } catch { /* noop */ } URL.revokeObjectURL(blobUrl); }, { once: true });
-                  setTimeout(() => { try { if (!pw.closed) pw.close(); } catch { /* noop */ } URL.revokeObjectURL(blobUrl); }, 60_000);
-                });
-              } else {
-                window.open(blobUrl, '_blank');
-                setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
-              }
-            })
-            .catch(() => { try { pw.close(); } catch { /* noop */ } });
-        } else {
-          // Térmica 58/80mm → comportamiento original
-          autoYaPrintedRef.current = true;
-          const doprint = (qr: string | null) => {
-            const html = buildReciboTermicoHTML(saleObj, qr, cfgTicketPos);
-            if (pw.closed) { imprimirReciboTermico(html); return; }
-            pw.document.open(); pw.document.write(html); pw.document.close(); pw.focus();
-            pw.addEventListener('afterprint', () => { try { pw.close(); } catch { /* noop */ } }, { once: true });
-            setTimeout(() => { try { if (!pw.closed) pw.close(); } catch { /* noop */ } }, 30_000);
-          };
-          if (qrUrl && !saleObj.ecfPendiente) {
-            generarQrTicket(qrUrl, cfgTicketPos.formato).then(doprint).catch(() => doprint(null));
-          } else {
-            doprint(null);
-          }
-        }
-      }
+      // El auto-imprimir real corre en ModalExito (más abajo, prop autoImprimir)
+      // — llama a imprimirReciboTermico/imprimirFacturaPreviewA4, las mismas
+      // funciones ya corregidas (iframe oculto, sin ventana que perder).
+      //
+      // 2026-10-08 (reporte de ELIDO — Ventas Diversas, no podía imprimir):
+      // aquí existía un segundo camino de auto-impresión, con su PROPIA
+      // ventana emergente (window.open) pre-abierta en confirmarCobro() para
+      // "mantener el gesto del usuario" — el mismo patrón que se acababa de
+      // corregir en printUtils.ts, pero duplicado aquí, sin pasar por esa
+      // corrección. Si la cajera hacía clic fuera, esa ventana quedaba
+      // perdida detrás de la principal — exactamente el síntoma reportado.
+      // Esa ventana pre-abierta ya no hace falta: un iframe oculto no
+      // necesita preservar el gesto de clic (no es un popup), así que se
+      // elimina el camino entero — ModalExito ya cubre bluetooth/carta/
+      // térmica/ninguna con la versión corregida.
       setSale(saleObj);
       registrarVentaCompletada();
       registrarAccionPOS('venta_completada');
@@ -11561,7 +11477,6 @@ export default function POSPage() {
       qc.invalidateQueries({ queryKey: ['pos-ganancias-dia'] });
     },
     onError: (e: any) => {
-      if (printWinRef.current && !printWinRef.current.closed) { printWinRef.current.close(); printWinRef.current = null; autoYaPrintedRef.current = false; }
       setEcfStatus('idle');
       const localMsg: string = e?.message ?? '';
       const serverMsg: string = e?.response?.data?.errors?.[0] ?? e?.response?.data?.message ?? '';
@@ -11988,15 +11903,6 @@ export default function POSPage() {
       );
       if (!r.ok) return;
     }
-    if (empresa?.configuracion?.posImpresionAuto === true) {
-      autoYaPrintedRef.current = false;
-      // En móvil no abrir popup — imprimirReciboTermico usará overlay+window.print()
-      const _esMovilPago = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
-      if (!_esMovilPago) {
-        const pw = window.open('', '_blank', 'width=360,height=640,toolbar=0,menubar=0,location=0,scrollbars=yes');
-        if (pw) { pw.document.write('<html><head><title>Procesando venta...</title></head><body style="font-family:monospace;padding:20px;text-align:center">Procesando venta...</body></html>'); printWinRef.current = pw; }
-      }
-    }
     ventaMut.mutate();
   }, [canCheckout, ventaMut, tipoPagoPos, supervisor, posConf, totalEfectivo, cart, empresa]);
 
@@ -12072,7 +11978,7 @@ export default function POSPage() {
           if (sale?.clienteId) sessionStorage.setItem('pos_conduce_cid', String(sale.clienteId));
           setSale(null); setPanelActivo('conduce');
         }}
-        autoImprimir={empresa?.configuracion?.posImpresionAuto === true && !autoYaPrintedRef.current}
+        autoImprimir={empresa?.configuracion?.posImpresionAuto === true}
         cfgTicket={cfgTicketPos} />
       <POSNotaCreditoModal open={showNotaCredito} onClose={() => setShowNotaCredito(false)} palette={palette}
         requireSupervisor={supervisor.requireSupervisor} />

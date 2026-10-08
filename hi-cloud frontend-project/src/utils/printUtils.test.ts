@@ -19,7 +19,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   imprimirReciboTermico, imprimirElemento, hayImpresionPendiente, msImpresionPendiente,
-  onEventoImpresion, obtenerDeteccionImpresionDirecta,
+  onEventoImpresion, obtenerDeteccionImpresionDirecta, imprimirPDFA4,
 } from './printUtils';
 
 const TICKET_REAL_HTML = `<!DOCTYPE html><html><head><style>
@@ -250,5 +250,51 @@ describe('obtenerDeteccionImpresionDirecta() — heurística de --kiosk-printing
     expect(() => obtenerDeteccionImpresionDirecta()).not.toThrow();
     expect(obtenerDeteccionImpresionDirecta().disponible).toBe(false);
     spy.mockRestore();
+  });
+});
+
+describe('imprimirPDFA4() — mismo iframe, para blobs de PDF (NC, cierre de caja)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    if (typeof (URL as any).createObjectURL !== 'function') (URL as any).createObjectURL = () => 'blob:mock';
+    if (typeof (URL as any).revokeObjectURL !== 'function') (URL as any).revokeObjectURL = () => {};
+    document.body.innerHTML = '';
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    document.body.innerHTML = '';
+  });
+
+  it('nunca abre una ventana nueva — usa el mismo iframe singleton que el resto', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      blob: () => Promise.resolve(new Blob(['%PDF-1.4 contenido de prueba'], { type: 'application/pdf' })),
+    }));
+    const openSpy = vi.spyOn(window, 'open');
+
+    const p = imprimirPDFA4('/api/v1/notas-credito/1/pdf');
+    await vi.advanceTimersByTimeAsync(10); // fetch + createObjectURL resueltos
+    // El iframe navega a la URL del blob — jsdom no dispara 'load' solo, el
+    // fallback (6s) es el camino determinista aquí, igual que en los demás tests.
+    await vi.advanceTimersByTimeAsync(6_200);
+    await p;
+
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(document.querySelectorAll('#__hc-print-iframe').length).toBe(1);
+  });
+
+  it('revoca el blob URL al terminar — nunca queda sin revocar', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      blob: () => Promise.resolve(new Blob(['%PDF-1.4'], { type: 'application/pdf' })),
+    }));
+    const revokeSpy = vi.spyOn(URL, 'revokeObjectURL');
+
+    const p = imprimirPDFA4('/api/v1/caja/1/pdf');
+    await vi.advanceTimersByTimeAsync(6_200);
+    await p;
+
+    expect(revokeSpy).toHaveBeenCalledTimes(1);
   });
 });

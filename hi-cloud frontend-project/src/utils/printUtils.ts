@@ -172,6 +172,32 @@ function _printViaHiddenIframe(html: string, onDone?: () => void): void {
   }
 }
 
+// Variante para un blob de PDF (no se puede document.write un PDF) — mismo
+// iframe singleton, navegado a la URL del blob en vez de escribirle HTML.
+function _printPdfViaHiddenIframe(blobUrl: string, onDone?: () => void): void {
+  const iframe = _getIframeImpresion();
+  const win = iframe.contentWindow;
+  if (!win) { window.open(blobUrl, '_blank'); setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000); onDone?.(); return; }
+
+  _marcarImpresionIniciada();
+  let terminado = false;
+  const finish = (viaFallback: boolean) => {
+    if (terminado) return;
+    terminado = true;
+    win.removeEventListener('afterprint', onAfterprint);
+    clearTimeout(fallback);
+    URL.revokeObjectURL(blobUrl);
+    _marcarImpresionTerminada(viaFallback);
+    onDone?.();
+  };
+  const onAfterprint = () => finish(false);
+  win.addEventListener('afterprint', onAfterprint, { once: true });
+  const fallback = setTimeout(() => finish(true), IFRAME_FALLBACK_MS);
+
+  iframe.onload = () => { try { win.focus(); win.print(); } catch { finish(true); } };
+  iframe.src = blobUrl;
+}
+
 // ── PDF desde endpoint del backend (puppeteer) ────────────────────────────────
 
 export async function descargarPDFDesdeURL(apiPath: string, nombreArchivo: string): Promise<void> {
@@ -211,39 +237,19 @@ export async function imprimirPDFA4(apiPath: string): Promise<void> {
   if (!res.ok) throw new Error(`Error ${res.status} al generar PDF`);
   const blob = await res.blob();
   const url  = URL.createObjectURL(blob);
-  const pw   = window.open(url, '_blank', 'width=900,height=700,scrollbars=yes');
-  if (!pw) { window.open(url, '_blank'); setTimeout(() => URL.revokeObjectURL(url), 60_000); return; }
-  const cleanup = () => { try { pw.close(); } catch { /* noop */ } URL.revokeObjectURL(url); };
-  pw.addEventListener('load', () => {
-    pw.focus();
-    pw.print();
-    pw.addEventListener('afterprint', cleanup, { once: true });
-    setTimeout(cleanup, 60_000);
-  });
-  // Fallback si load no dispara (algunos navegadores con blob PDF)
-  setTimeout(() => { if (!pw.closed) { pw.focus(); pw.print(); } }, 800);
+  // Mismo iframe oculto que el resto — sin ventana que perder detrás de otra.
+  _printPdfViaHiddenIframe(url);
 }
 
 // ── Imprimir HTML en ventana nueva ────────────────────────────────────────────
 
 export function imprimirHtml(html: string): void {
-  const blob = new Blob([html], { type: 'text/html' });
-  const url  = URL.createObjectURL(blob);
-  const pw   = window.open(url, '_blank', 'width=900,height=700,scrollbars=yes');
-  if (!pw) { window.print(); URL.revokeObjectURL(url); return; }
-
-  let printed = false;
-  const doPrint = () => {
-    if (printed) return;
-    printed = true;
-    pw.focus();
-    pw.print();
-    pw.addEventListener('afterprint', () => { pw.close(); URL.revokeObjectURL(url); });
-    setTimeout(() => { try { pw.close(); URL.revokeObjectURL(url); } catch { /* noop */ } }, 60_000);
-  };
-
-  pw.onload = doPrint;
-  setTimeout(() => { if (!pw.closed) doPrint(); }, 800);
+  // Mismo iframe oculto que imprimirReciboTermico/imprimirElemento — sin
+  // ventana que la cajera pueda perder detrás de otra, sin blob que revocar.
+  // Usado por el preview A4 de facturas (imprimirFacturaPreviewA4) y por el
+  // cierre de caja (buildCierreCajaHTML, que ya trae su propio <script>
+  // autoimprimible — _printViaHiddenIframe lo detecta y no duplica el print()).
+  _printViaHiddenIframe(html);
 }
 
 // ── Imprimir recibo térmico POS ───────────────────────────────────────────────
