@@ -65,6 +65,7 @@ import { EscanerCamaraModal } from '../../components/EscanerCamaraModal';
 import { requiereSupervisorPorPrecioModificado } from './carritoRecuperadoGate';
 import { debeIgnorarEnterGlobal } from './confirmarCobroEnterGate';
 import { resolverIntentoCobro } from './intentoCobroGate';
+import { iniciarTelemetriaPOS, registrarVentaCompletada, registrarAccionPOS } from './posTelemetria';
 import { credencialesFueronRechazadas } from './reautenticacionGate';
 import { construirFiltroVendedorPOS } from './vendedorFiltroPanel';
 import { UomSelect } from '../../components/ui/UomSelect';
@@ -9485,6 +9486,31 @@ export default function POSPage() {
   const setSucursalActualPOS = useAuthStore(s => s.setSucursalActual);
   const setAlmacenActualPOS  = useAuthStore(s => s.setAlmacenActual);
 
+  // ── Telemetría (Paso 2, 2026-10-08 — diagnóstico de congelamiento) ────────
+  // Una sola vez por montaje de POSPage. Ver posTelemetria.ts para qué mide y
+  // por qué — resumen: longtask > 2s, muestra periódica si se pasa de umbral,
+  // y aviso de segunda pestaña del POS abierta.
+  useEffect(() => {
+    const cleanup = iniciarTelemetriaPOS(empresaActual, {
+      onOtraPestanaAbierta: () => {
+        Modal.warning({
+          title: 'Ya tienes el punto de venta abierto en otra pestaña',
+          content: 'Usar dos pestañas del POS a la vez puede causar inconsistencias. Se recomienda trabajar en una sola.',
+          okText: 'Usar esta pestaña',
+        });
+      },
+      onImpresionPendienteAlVolver: () => {
+        Modal.warning({
+          title: 'Hay una impresión abierta',
+          content: 'Imprímela o ciérrala para seguir usando el punto de venta.',
+          okText: 'Entendido',
+        });
+      },
+    });
+    return cleanup;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Bloqueo de pantalla ────────────────────────────────────────────────────
   // C-5: no inicializar desde sessionStorage — cualquier valor ahí es borrable con DevTools
   const [pantallaBloqueada,   setPantallaBloqueada]   = useState(false);
@@ -10789,6 +10815,7 @@ export default function POSPage() {
   const procesarScan = useCallback((codigo: string) => {
     const trimmed = codigo.replace(/[\r\n]/g, '').trim();
     if (!trimmed) return;
+    registrarAccionPOS('escaneo');
 
     // Una tarjeta de supervisor escaneada por error en el buscador de
     // productos (el modal de autorización no estaba abierto todavía) NUNCA
@@ -11054,6 +11081,7 @@ export default function POSPage() {
   // Sale mutation — con soporte offline
   const ventaMut = useMutation({
     mutationFn: async () => {
+      registrarAccionPOS('cobro_iniciado');
       // Verificar caja con dato fresco justo antes de cobrar.
       // Regla: solo bloquear si el servidor CONFIRMA que no hay caja abierta.
       // Si la red tarda (timeout 5 s) o falla → dejar pasar; el backend valida igual.
@@ -11495,6 +11523,8 @@ export default function POSPage() {
         }
       }
       setSale(saleObj);
+      registrarVentaCompletada();
+      registrarAccionPOS('venta_completada');
       // Persistir los últimos 12 productos facturados por empresa
       const _eid = localStorage.getItem('empresaId') ?? '';
       const _nuevosIds = saleObj.items.map((i: CartItem) => i.produto.id as number);

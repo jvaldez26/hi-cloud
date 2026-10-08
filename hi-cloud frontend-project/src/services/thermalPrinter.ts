@@ -17,6 +17,13 @@ let btDevice: any = null;
 let btChar: any   = null;
 let _falloWatchAdvertisements = false; // watchAdvertisements no disponible en el último intento
 
+// _registrarDispositivo()/conectarImpresora() se llaman en cada reconexión
+// (common en Android: la impresora se duerme, el usuario se aleja, la app
+// vuelve del background). Sin este WeakSet, cada reconexión agregaba OTRO
+// listener 'gattserverdisconnected' al mismo device — nunca se quitaban,
+// acumulando uno por reconexión durante todo el turno (2026-10-08).
+const _devicesConListenerDisconnect = new WeakSet<object>();
+
 // ── Format helpers ─────────────────────────────────────────────────────────────
 
 // Elimina tildes y diacríticos para que la impresora térmica los muestre correctamente.
@@ -309,7 +316,10 @@ function gattConnectWithTimeout(device: any, ms = 7000): Promise<any> {
 function _registrarDispositivo(device: any, char: any): void {
   btDevice = device;
   btChar   = char;
-  device.addEventListener('gattserverdisconnected', () => { btChar = null; });
+  if (!_devicesConListenerDisconnect.has(device)) {
+    _devicesConListenerDisconnect.add(device);
+    device.addEventListener('gattserverdisconnected', () => { btChar = null; });
+  }
 }
 
 /** Espera el primer advertisement del device y luego ejecuta gatt.connect().
@@ -389,12 +399,9 @@ export async function conectarImpresora(): Promise<string> {
   const char   = await findCharacteristic(server);
   if (!char) throw new Error('No se encontro caracteristica de escritura en la impresora');
 
-  btDevice = device;
-  btChar   = char;
+  _registrarDispositivo(device, char);
   const nombre = device.name ?? 'Impresora BT';
   localStorage.setItem('bt_impresora_nombre', nombre);
-
-  device.addEventListener('gattserverdisconnected', () => { btChar = null; });
 
   return nombre;
 }

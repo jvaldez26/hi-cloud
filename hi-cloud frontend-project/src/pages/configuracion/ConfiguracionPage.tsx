@@ -26,6 +26,7 @@ import { ahora, fecha, fechaHora } from '../../utils/fechaRD';
 import { buildReciboTermicoHTML, ventaEjemploTicket } from '../../utils/ticketTermico';
 import { generarQrTicket, type FormatoTicket } from '../../utils/configTicket';
 import { IMPRESORA_CONFIG } from '../../utils/docTermico';
+import { obtenerDeteccionImpresionDirecta, type DeteccionImpresionDirecta } from '../../utils/printUtils';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -1259,6 +1260,63 @@ function ModoSupervisorSection() {
   );
 }
 
+// ── Impresión directa (--kiosk-printing) ──────────────────────────────────────
+// Informativo — no es un toggle que guarde nada: --kiosk-printing es un flag
+// de LANZAMIENTO de Chrome (va en el acceso directo con el que se abre el
+// POS), no algo que la app pueda activar por su cuenta. La detección es una
+// heurística sobre impresiones REALES ya hechas (ver printUtils.ts) — nunca
+// se dispara un print de prueba solo para detectarlo.
+function SeccionImpresionDirecta() {
+  const [deteccion, setDeteccion] = useState<DeteccionImpresionDirecta>(() => obtenerDeteccionImpresionDirecta());
+
+  useEffect(() => {
+    const id = setInterval(() => setDeteccion(obtenerDeteccionImpresionDirecta()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <Alert
+      type={deteccion.probablementeActiva ? 'success' : 'info'}
+      showIcon
+      style={{ marginBottom: 16 }}
+      message="Impresión directa (sin cuadro de impresión)"
+      description={
+        <div>
+          <Text style={{ fontSize: 13 }}>
+            Evita que Chrome muestre el cuadro de impresión en cada venta — imprime directo al papel.
+            Necesita un acceso directo de Windows con el flag <code>--kiosk-printing</code>.
+          </Text>
+          <div style={{ marginTop: 8 }}>
+            {deteccion.disponible ? (
+              <Text strong style={{ color: deteccion.probablementeActiva ? '#15803d' : '#B45309', fontSize: 13 }}>
+                {deteccion.probablementeActiva
+                  ? `✓ Detectada activa en esta caja (mediana ${deteccion.medianaMs} ms en las últimas ${deteccion.muestras} impresiones)`
+                  : `No se detecta activa en esta caja — las últimas ${deteccion.muestras} impresiones tardaron más de lo esperado o pasaron por el cuadro de impresión`}
+              </Text>
+            ) : (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                Aún no hay suficientes impresiones recientes en esta caja para saberlo (se necesitan al menos 3).
+              </Text>
+            )}
+          </div>
+          <details style={{ marginTop: 8 }}>
+            <summary style={{ cursor: 'pointer', fontSize: 13, color: '#3B82F6' }}>Cómo activarla en Windows</summary>
+            <ol style={{ fontSize: 12.5, marginTop: 6, paddingLeft: 18, color: 'inherit' }}>
+              <li>Clic derecho en el escritorio → Nuevo → Acceso directo.</li>
+              <li>
+                En "Ubicación del elemento" pega (ajusta la ruta de Chrome si está instalado en otro lugar):<br />
+                <code style={{ fontSize: 11.5 }}>"C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk-printing https://hicloudrd.com</code>
+              </li>
+              <li>Ponle un nombre, por ejemplo "HiCloud POS", y usa SIEMPRE ese acceso directo para abrir el punto de venta — no el ícono normal de Chrome.</li>
+              <li>En Windows, configura la impresora térmica como predeterminada — con este flag, Chrome imprime ahí sin preguntar nada.</li>
+            </ol>
+          </details>
+        </div>
+      }
+    />
+  );
+}
+
 // ── Sección: Punto de Venta ───────────────────────────────────────────────────
 
 function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void }) {
@@ -1419,6 +1477,8 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
           style={{ marginBottom: 16 }}
         />
       )}
+
+      <SeccionImpresionDirecta />
 
       <Row gutter={16}>
         <Col xs={24} sm={8}>
