@@ -1,5 +1,6 @@
 /**
- * Fix urgente — Sentry #7742858869 (factura FAC-15227, empresa 44, tipo E32).
+ * Fix urgente — Sentry #7742858869 (factura FAC-15227, empresa 44, tipo E32),
+ * endurecido después por Sentry #7779557844 (factura 25150, empresa 73).
  *
  * PATCH /facturas/:id/estado intentó emitir un e-CF para una factura que YA
  * tenía uno en ENVIADO — estado que el chequeo de idempotencia no cubría:
@@ -9,13 +10,17 @@
  * para el mismo facturaId — reventando contra la constraint uno-a-uno
  * (corregida aparte, ver migración 1765300000000 y ecf.entity.ts).
  *
- * Cobertura: para cada estado no-retriable, execute() debe lanzar
- * EcfDuplicadoError con el eNCF y estado existentes, SIN llamar al
- * generador de números — el número nunca se toca cuando no hace falta.
+ * El fix original (2026-07) cortaba esa carrera lanzando EcfDuplicadoError.
+ * Eso resolvió el crash, pero una segunda petición CASI SIMULTÁNEA sobre la
+ * MISMA venta (doble clic, el reintento que el propio POS le pedía al
+ * cajero) es exactamente este mismo camino — y no es un fallo, es la venta
+ * en curso. Desde 2026-10-07 ya NO lanza: devuelve el estado real del e-CF
+ * existente con `enCurso:true`, sin generar número nuevo ni tocar la
+ * secuencia — el caller (POS, el botón "Emitir", etc.) lo trata como "en
+ * proceso", nunca como un error rojo.
  */
 
 import { EmitirECFUseCase } from './emitir-ecf.use-case';
-import { EcfDuplicadoError } from '../errors/ecf.errors';
 import { DocumentoOrigenTipo, EstadoDGII } from '../entities/ecf.entity';
 
 function montarCaso(existente: { numero: string; estadoDGII: EstadoDGII } | null) {
@@ -53,23 +58,37 @@ const INPUT = {
 
 describe('EmitirECFUseCase — idempotencia con e-CF existente en estado no-terminal', () => {
   it.each([EstadoDGII.ENVIADO, EstadoDGII.PENDIENTE_ENVIO, EstadoDGII.OBSERVADO])(
-    'estado %s: lanza EcfDuplicadoError con el eNCF y estado existentes, sin generar número',
+    'estado %s: devuelve enCurso:true con el eNCF y estado existentes — NO lanza, sin generar número',
     async (estado) => {
       const { uc, generator } = montarCaso({ numero: 'E320000012345', estadoDGII: estado });
 
-      await expect(uc.execute(INPUT)).rejects.toThrow(EcfDuplicadoError);
-      await expect(uc.execute(INPUT)).rejects.toMatchObject({
-        encf: 'E320000012345',
+      const resultado = await uc.execute(INPUT);
+
+      expect(resultado).toMatchObject({
+        encf:    'E320000012345',
         estado,
+        enCurso: true,
       });
       expect(generator.generateNextEnTransaccion).not.toHaveBeenCalled();
     },
   );
 
-  it('el mensaje del error nombra el eNCF existente y su estado (para que el caller no adivine)', async () => {
+  it('ACEPTADO sigue siendo idempotente puro (idempotente:true) — no es "en curso", ya terminó', async () => {
+    const { uc } = montarCaso({ numero: 'E320000012345', estadoDGII: EstadoDGII.ACEPTADO });
+
+    const resultado = await uc.execute(INPUT);
+
+    expect(resultado).toMatchObject({ encf: 'E320000012345', estado: EstadoDGII.ACEPTADO, idempotente: true });
+    expect((resultado as any).enCurso).toBeUndefined();
+  });
+
+  it('dos llamadas seguidas sobre un e-CF en curso dan el mismo resultado — es seguro llamarlo repetidas veces', async () => {
     const { uc } = montarCaso({ numero: 'E320000012345', estadoDGII: EstadoDGII.PENDIENTE_ENVIO });
 
-    await expect(uc.execute(INPUT)).rejects.toThrow(/E320000012345/);
-    await expect(uc.execute(INPUT)).rejects.toThrow(/pendiente_envio/);
+    const r1 = await uc.execute(INPUT);
+    const r2 = await uc.execute(INPUT);
+
+    expect(r1).toMatchObject({ encf: 'E320000012345', enCurso: true });
+    expect(r2).toMatchObject({ encf: 'E320000012345', enCurso: true });
   });
 });

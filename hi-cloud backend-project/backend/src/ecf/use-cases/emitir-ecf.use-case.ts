@@ -26,7 +26,6 @@ import {
 } from '../rules/comprador-vigente.rule';
 
 import {
-  EcfDuplicadoError,
   EcfConfigFaltanteError,
   EcfComunicacionError,
   EcfValidacionError,
@@ -35,19 +34,19 @@ import {
 } from '../errors/ecf.errors';
 import { fmtFecha, razonSocialFiscal, normalizarRnc } from '../builders/base-ecf.builder';
 
-// ── Presupuesto de tiempo del camino síncrono del POS (hotfix 2026-10-07) ──
+// ── Presupuesto de tiempo del camino síncrono del POS ───────────────────────
 //
-// Objetivo: ~12s en total (getIdToken + UN solo envío a MSeller), siempre
-// por debajo del timeout del cliente axios para emitir-pos (20s, ver
-// facturas.api.ts). Antes el envío síncrono usaba el withRetry de 4
-// intentos + backoff de mseller-client.service.ts (hasta ~39s, más ~10s si
-// getIdToken no tenía el token cacheado) — eso superaba holgadamente
-// CUALQUIER timeout razonable del cliente, y el POS terminaba "fallando"
-// una petición que el servidor seguía procesando de verdad. El seguimiento
-// de lo que no se confirma a tiempo (incluido un 429 con el circuit breaker
-// abierto) lo hace ReintentoECFJob (cron cada 2 min), no esta petición HTTP
-// — un timeout o un 429 aquí NUNCA se traduce en un reenvío ni en RECHAZADO,
-// solo en "déjalo en pendiente_envio y responde ya".
+// Objetivo: ~12s en total (getIdToken + UN solo envío a MSeller), siempre por
+// debajo del timeout del cliente axios para emitir-pos (ver client.ts). Antes
+// el envío síncrono usaba el withRetry de 4 intentos + backoff de
+// mseller-client.service (hasta ~39s, más ~10s si getIdToken no tenía el
+// token cacheado) — eso superaba holgadamente CUALQUIER timeout razonable del
+// cliente, y el POS terminaba "fallando" una petición que el servidor seguía
+// procesando de verdad (Sentry #7779557844). El seguimiento de lo que no se
+// confirma a tiempo (incluido un 429 con el circuit breaker global abierto,
+// hotfix 2026-10-07) lo hace ReintentoECFJob (cron cada 2 min), no esta
+// petición HTTP — un timeout o un 429 aquí NUNCA se traduce en un reenvío ni
+// en RECHAZADO, solo en "déjalo en pendiente_envio y responde ya".
 const TIMEOUT_POS           = 9_000;  // un solo intento de envío a MSeller
 const AUTH_TIMEOUT_POS      = 3_000;  // getIdToken — normalmente cache Redis, ~0ms
 const TIMEOUT_REGULAR       = 30_000;
@@ -117,6 +116,14 @@ export interface EmitirECFResult {
   signedDate?:  string;
   estado:       EstadoDGII;
   idempotente:  boolean; // true si ya existía un e-CF aceptado
+  /**
+   * true = esta respuesta viene de encontrar un e-CF que YA está en curso
+   * (pendiente_envio/enviado/observado) para el mismo documento — una segunda
+   * petición casi simultánea (doble clic, reintento) sobre la MISMA venta.
+   * Antes esto lanzaba EcfDuplicadoError; el POS/los demás callers lo tratan
+   * como "en proceso", nunca como un error rojo. Ver Sentry #7779557844.
+   */
+  enCurso?:     boolean;
 }
 
 /**
@@ -216,11 +223,19 @@ export class EmitirECFUseCase {
         // #7742858869 — factura FAC-15227, empresa 44, tipo E32). Se corta
         // ANTES de tocar la secuencia, con un mensaje que dice cuál es el eNCF
         // existente y en qué estado está — nunca revienta contra la constraint.
+        //
+        // Hasta 2026-10-07 esto lanzaba EcfDuplicadoError. Una segunda petición
+        // CASI SIMULTÁNEA (doble clic, el reintento que el propio POS le pedía
+        // al cajero) cae exactamente aquí mientras la primera todavía está
+        // esperando a MSeller — no es un fallo, es la MISMA venta en curso. Se
+        // devuelve el estado real (enCurso:true) en vez de un error: el
+        // seguimiento real lo hace el cron de reintentos (ReintentoECFJob), no
+        // esta petición HTTP. Ver Sentry #7779557844.
         this.logger.warn(
           `[ECF] ${documentoOrigenTipo}#${documentoOrigenId} ya tiene un e-CF ` +
-          `${existente.numero} en estado ${existente.estadoDGII} — no se genera uno nuevo.`,
+          `${existente.numero} en estado ${existente.estadoDGII} en curso — se devuelve el estado actual (no es error).`,
         );
-        throw new EcfDuplicadoError(existente.numero, existente.estadoDGII, documentoOrigenId);
+        return this.toResult(existente, false, true);
       }
     }
 
@@ -479,7 +494,7 @@ export class EmitirECFUseCase {
     const montoItbis   = Number(iva);
     const montoTotal   = Number(total);
 
-    const { encf, payload, ecfSaved } = await this.ds.transaction(async (manager) => {
+    const resultadoTransaccion = await this.ds.transaction(async (manager) => {
       const numero = await this.generator.generateNextEnTransaccion(manager, empresaId, tipoEcf);
       this.logger.log(`eNCF generado: ${numero}`);
 
@@ -528,7 +543,35 @@ export class EmitirECFUseCase {
       }
 
       return { encf: numero, payload: payloadReal, ecfSaved: guardado };
+    }).catch(async (err: any) => {
+      // Última línea de defensa — ver idx_ecf_origen_unico_vivo (migración
+      // 1771000000000). La comprobación de idempotencia de arriba (paso 1)
+      // cierra la carrera casi siempre, pero dos peticiones que ambas pasan
+      // ese chequeo en el MISMO instante (antes de que cualquiera inserte)
+      // siguen pudiendo llegar aquí juntas — ahora el índice único parcial
+      // (cualquier estado vivo, no solo 'aceptado') hace que la SEGUNDA
+      // inserción falle con 23505 en vez de crear un eNCF duplicado de
+      // verdad. No es un error: es la misma venta/documento en curso.
+      if (err?.code === '23505' && String(err?.message ?? '').includes('idx_ecf_origen_unico_vivo')) {
+        const existente = await this.ecfRepo.findOne({
+          where: { documentoOrigenTipo, documentoOrigenId, empresaId },
+          order: { createdAt: 'DESC' },
+        });
+        if (existente) {
+          this.logger.warn(
+            `[ECF] ${documentoOrigenTipo}#${documentoOrigenId}: INSERT chocó con idx_ecf_origen_unico_vivo — ` +
+            `otra petición ya insertó ${existente.numero} (${existente.estadoDGII}) — se devuelve ese estado.`,
+          );
+          return { enCurso: true, existente };
+        }
+      }
+      throw err;
     });
+
+    if ('enCurso' in resultadoTransaccion && resultadoTransaccion.enCurso) {
+      return this.toResult(resultadoTransaccion.existente!, false, true);
+    }
+    const { encf, payload, ecfSaved } = resultadoTransaccion as { encf: string; payload: MSellerPayload; ecfSaved: ECF };
 
     await this.registrarEvento(ecfSaved.id, TipoEcfEvento.CREADO, {
       encf, tipoEcf, documentoOrigenTipo, documentoOrigenId,
@@ -1053,7 +1096,7 @@ ${JSON.stringify(payload, null, 2)}`;
     return this.toResult(ecf, idempotente);
   }
 
-  private toResult(ecf: ECF, idempotente: boolean): EmitirECFResult {
+  private toResult(ecf: ECF, idempotente: boolean, enCurso = false): EmitirECFResult {
     return {
       ecf,
       encf:         ecf.numero,
@@ -1063,6 +1106,7 @@ ${JSON.stringify(payload, null, 2)}`;
       signedDate:   (ecf.respuestaMSeller as any)?.signedDate,
       estado:       ecf.estadoDGII,
       idempotente,
+      ...(enCurso ? { enCurso } : {}),
     };
   }
 }
