@@ -900,7 +900,7 @@ function avisarErrorBT(err: any): void {
  *   precio = precioOriginal, descuentoMonto = real
  *   → la línea de descuento aparece y el total de línea cuadra con lo cobrado
  */
-function buildSaleItemsFromDetalles(detalles: any[]): CartItem[] {
+export function buildSaleItemsFromDetalles(detalles: any[]): CartItem[] {
   return (detalles ?? []).map((d: any) => {
     const precioOrig = d.precioOriginal != null ? Number(d.precioOriginal) : null;
     return {
@@ -926,7 +926,7 @@ function buildSaleItemsFromDetalles(detalles: any[]): CartItem[] {
  * reimpresión muestre el mismo "PAGADO / CAMBIO" que el recibo original hay que
  * volver a lo ENTREGADO, que vive en `montoEntregado` cuando hubo vuelto.
  */
-function buildSalePagoFromFactura(f: any): {
+export function buildSalePagoFromFactura(f: any): {
   formasPago?: { tipo: number; monto: number }[];
   pagoRecibido?: number;
   cambio: number;
@@ -960,7 +960,7 @@ function buildSalePagoFromFactura(f: any): {
  *   subtotal (BRUTO, pre-descuento) − descuentoGlobal + iva = total
  * `descuentoGlobalFinal` es el equivalente c/ITBIS (lo que tecleó el cajero).
  */
-function buildSaleTotalesFromFactura(f: any): {
+export function buildSaleTotalesFromFactura(f: any): {
   subtotal: number; iva: number; total: number;
   descuentoGlobal?: number; descuentoGlobalFinal?: number;
 } {
@@ -11410,16 +11410,45 @@ export default function POSPage() {
       const ecfFecha     = ecfResult?.ecf?.ultimoIntentoEnvio
         ? dRD(ecfResult.ecf.ultimoIntentoEnvio).format('DD-MM-YYYY HH:mm:ss')
         : dRD().format('DD-MM-YYYY HH:mm:ss');
+      // Totales y pago: SIEMPRE los que guardó el servidor — misma regla y
+      // mismas funciones que la reimpresión (buildSaleTotalesFromFactura /
+      // buildSalePagoFromFactura, arriba). `factura` es el response del POST
+      // (findOne: incluye subtotal/iva/total/formasPago reales, ya
+      // persistidos). Antes "total" salía de totalAPagar — una constante del
+      // RENDER del componente, derivada de `cart`/`totalEfectivo` — y los
+      // ítems del ticket, en cambio, SÍ ya venían de factura.detalles: si el
+      // carrito seguía cambiando (otro producto, otro descuento) entre el
+      // clic de "Confirmar cobro" y que esta respuesta volviera — un e-CF
+      // puede tardar varios segundos — el ticket imprimía un TOTAL que no
+      // coincidía con sus propios ítems (FAC-1746, empresa 73, 2026-10-08:
+      // ticket con RD$1,002.00 sobre una factura de RD$942.00 en BD; la
+      // reimpresión, que ya leía todo de la factura, salía correcta).
+      // Offline es la única excepción real: `factura` es un stub local sin
+      // subtotal/iva/total/formasPago porque todavía no existe en el
+      // servidor — ahí sí hay que imprimir con lo que calculó el frontend.
+      const esOffline = (factura as any)._offline === true;
+      const totalesTicket = esOffline
+        ? {
+            subtotal, iva: ivaEfectivo, total: totalAPagar,
+            descuentoGlobal:      descGlobalMonto > 0 ? descGlobalMonto : undefined,
+            descuentoGlobalFinal: descGlobalMonto > 0 ? descGlobalFinal : undefined,
+          }
+        : buildSaleTotalesFromFactura(factura);
+      const pagoTicket = esOffline
+        ? {
+            cambio,
+            pagoRecibido: (!esMixto && metodoPago === 'efectivo' && montoRecibido > 0) ? montoRecibido
+              : (esMixto && tieneEfec && efectivoMonto > 0) ? efectivoMonto
+              : undefined,
+            // El recibo muestra lo ENTREGADO (lo que el cliente puso sobre el
+            // mostrador) junto con el CAMBIO; lo aplicado es asunto del arqueo.
+            formasPago: esMixto ? formasPagoList.map(fp => ({ tipo: METODO_TIPO_MAP[fp.metodo], monto: fp.monto })) : undefined,
+          }
+        : buildSalePagoFromFactura(factura);
       const saleObj: Sale = {
         folio:                   factura.folio,
-        total:                   totalAPagar,
-        cambio,
-        pagoRecibido:            (!esMixto && metodoPago === 'efectivo' && montoRecibido > 0) ? montoRecibido
-          : (esMixto && tieneEfec && efectivoMonto > 0) ? efectivoMonto
-          : undefined,
-        // El recibo muestra lo ENTREGADO (lo que el cliente puso sobre el
-        // mostrador) junto con el CAMBIO; lo aplicado es asunto del arqueo.
-        formasPago:              esMixto ? formasPagoList.map(fp => ({ tipo: METODO_TIPO_MAP[fp.metodo], monto: fp.monto })) : undefined,
+        ...totalesTicket,
+        ...pagoTicket,
         propina:                 propinaMontoCalc > 0 ? propinaMontoCalc : undefined,
         metodo:                  tipoPagoPos === 'CREDITO' ? 'credito' : metodoPago,
         notas:                   tipoPagoPos === 'CREDITO' ? `Crédito ${diasCreditoPos} días` : undefined,
@@ -11432,10 +11461,6 @@ export default function POSPage() {
           ? buildSaleItemsFromDetalles(factura.detalles)
           : [...cart],
         cliente:                 clientes?.data.find((c: Cliente) => c.id === clienteId)?.nombre,
-        iva:                     ivaEfectivo,
-        subtotal,
-        descuentoGlobal:         descGlobalMonto > 0 ? descGlobalMonto : undefined,
-        descuentoGlobalFinal:    descGlobalMonto > 0 ? descGlobalFinal : undefined,
         facturaId:               factura.id > 0 ? factura.id : undefined,
         tipoNcf,
         encf:                    encfFinal,
