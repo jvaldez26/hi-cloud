@@ -20,17 +20,18 @@ function buildJob() {
   const mseller = { circuitoGlobal429Hasta: jest.fn().mockResolvedValue(null), enviarDocumento: jest.fn(), consultarEstado: jest.fn() };
   const builder = { build: jest.fn() };
   const configSvc = { isEmpresaBloqueada: jest.fn().mockResolvedValue(false) };
+  const realtimeService = { notify: jest.fn() };
 
   const job = new ReintentoECFJob(
     ecfRepo as any, eventoRepo as any, secuenciaRepo as any, facturaRepo as any,
     notaDebitoRepo as any, notaCreditoRepo as any, compraRepo as any, gastoRepo as any,
-    mseller as any, builder as any, configSvc as any,
+    mseller as any, builder as any, configSvc as any, realtimeService as any,
   );
   for (const m of ['log', 'warn', 'debug', 'error'] as const) {
     jest.spyOn((job as any).logger, m).mockImplementation(() => undefined);
   }
   jest.spyOn(job as any, 'sleep').mockResolvedValue(undefined);
-  return { job, ecfRepo, mseller, configSvc };
+  return { job, ecfRepo, mseller, configSvc, facturaRepo, realtimeService };
 }
 
 function pendienteFake(id: number) {
@@ -83,5 +84,70 @@ describe('ReintentoECFJob — circuit breaker global 429', () => {
     await job.run();
 
     expect(procesarUnoSpy).toHaveBeenCalledTimes(1); // nunca llega al 2do/3ro
+  });
+});
+
+/**
+ * Hotfix 2026-10-07 (parte 3) — empresa 73, FAC-1705/1708-1714: mismo hueco
+ * que en ConsultarEstadoECFJob (ver consultar-estado-ecf.job.spec.ts), pero
+ * por el camino de ReintentoECFJob.procesarUno(): cuando este cron adopta o
+ * reenvía un e-CF y el resultado es ACEPTADO, debe sellar la factura CONTADO
+ * como PAGADA si el cobro ya está ahí — antes no lo hacía.
+ */
+describe('ReintentoECFJob.procesarUno — sella PAGADA al confirmar ACEPTADO (empresa 73)', () => {
+  function ecfPendiente(id: number, documentoOrigenId: number, documentoOrigenTipo: string | null = 'FACTURA') {
+    return {
+      id, numero: `E320000000${id}`, empresaId: 73,
+      estadoDGII: 'pendiente_envio', intentosEnvio: 0, ultimoIntentoEnvio: null,
+      createdAt: new Date(), documentoOrigenTipo, documentoOrigenId,
+    } as any;
+  }
+
+  it('dec.accion=adoptar con estado ACEPTADO → sella la factura PAGADA y notifica', async () => {
+    const { job, mseller, facturaRepo, realtimeService } = buildJob();
+    (mseller as any).consultarBatch = jest.fn().mockResolvedValue({
+      total: 1, results: [{ ecf: 'E3200000001705', status: 'Aceptado', found: true, data: {} }],
+    });
+    facturaRepo.findOne.mockResolvedValue({
+      id: 1705, folio: 'FAC-1705', estado: 'emitida', tipoPago: 'CONTADO', formasPago: [{ tipo: 1, monto: 500 }],
+    });
+    (facturaRepo as any).update = jest.fn().mockResolvedValue(undefined);
+    (facturaRepo as any).manager = { query: jest.fn().mockResolvedValue([{ existe: false }]) };
+    const ecf = ecfPendiente(1705, 1705, 'FACTURA');
+    ecf.numero = 'E3200000001705';
+
+    const resultado = await job.procesarUno(ecf);
+
+    expect(resultado).toBe('adoptado');
+    expect(facturaRepo.update).toHaveBeenCalledWith(1705, { estado: 'pagada' });
+    expect(realtimeService.notify).toHaveBeenCalledWith(73, 'factura', 'updated', 1705);
+  });
+
+  it('dec.accion=adoptar con estado OBSERVADO (no ACEPTADO) → NUNCA toca la factura', async () => {
+    const { job, mseller, facturaRepo } = buildJob();
+    (mseller as any).consultarBatch = jest.fn().mockResolvedValue({
+      total: 1, results: [{ ecf: 'E3200000001706', status: 'Aceptado Condicional', found: true, data: { dgiiResponse: [{ codigo: '1', mensajes: [{ mensaje: 'x' }] }] } }],
+    });
+    const ecf = ecfPendiente(1706, 1706, 'FACTURA');
+    ecf.numero = 'E3200000001706';
+
+    const resultado = await job.procesarUno(ecf);
+
+    expect(resultado).toBe('adoptado');
+    expect(facturaRepo.findOne).not.toHaveBeenCalled();
+  });
+
+  it('NC (no FACTURA/VENTA_POS) adoptada como ACEPTADO → NUNCA llama al helper', async () => {
+    const { job, mseller, facturaRepo } = buildJob();
+    (mseller as any).consultarBatch = jest.fn().mockResolvedValue({
+      total: 1, results: [{ ecf: 'E3400000001001', status: 'Aceptado', found: true, data: {} }],
+    });
+    const ecf = ecfPendiente(999, 999, 'NOTA_CREDITO');
+    ecf.numero = 'E3400000001001';
+
+    const resultado = await job.procesarUno(ecf);
+
+    expect(resultado).toBe('adoptado');
+    expect(facturaRepo.findOne).not.toHaveBeenCalled();
   });
 });

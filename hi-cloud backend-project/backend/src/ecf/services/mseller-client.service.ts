@@ -108,7 +108,7 @@ export class MSellerClientService {
     baseUrl:     string;
     envPath:     string;
   }> {
-    // Circuit breaker GLOBAL (429 de MSeller, ver abrirCircuitoGlobalPor429) —
+    // Circuit breaker GLOBAL (429 de MSeller, ver abrirCircuitoGlobalMSeller) —
     // se revisa PRIMERO de todo, antes de cualquier credencial/circuit breaker
     // por empresa: MSeller es un proveedor compartido entre todas las
     // empresas, así que un 429 de CUALQUIER empresa pausa a TODAS. Único
@@ -198,7 +198,7 @@ export class MSellerClientService {
         // 429 en el LOGIN también es throttling de MSeller/Cognito — abre el
         // mismo circuit breaker global que el envío (ver withRetry).
         if (status === 429) {
-          await this.abrirCircuitoGlobalPor429(err);
+          await this.abrirCircuitoGlobalMSeller(err);
         }
 
         // Cognito bloquea la cuenta tras varios intentos fallidos → circuit breaker 30 min
@@ -259,13 +259,17 @@ export class MSellerClientService {
   }
 
   /**
-   * 429 (Too Many Requests) de MSeller — NUNCA un rechazo real, es
-   * throttling del proveedor. Abre el circuit breaker GLOBAL (todas las
-   * empresas, todos los tipos de llamada) respetando Retry-After si MSeller
-   * lo manda, con un piso de 60s. Hotfix 2026-10-07 — ver mseller-client-429
-   * .spec.ts y emitir-pos-en-curso.spec.ts para el porqué.
+   * 429 (Too Many Requests), o 401/403 persistente incluso con token fresco —
+   * NUNCA un rechazo real, es throttling o un problema de autenticación del
+   * proveedor. Abre el circuit breaker GLOBAL (todas las empresas, todos los
+   * tipos de llamada) respetando Retry-After si MSeller lo manda (solo
+   * aplica al 429), con un piso de 60s. Hotfix 2026-10-07 — ver
+   * mseller-client-429.spec.ts y emitir-pos-en-curso.spec.ts para el 429;
+   * FAC-1705 (errorEnvio="MSeller rechazó el documento [403]: Forbidden")
+   * para el 401/403.
    */
-  private async abrirCircuitoGlobalPor429(err: any): Promise<void> {
+  private async abrirCircuitoGlobalMSeller(err: any): Promise<void> {
+    const status = err?.response?.status ?? err?.status;
     const retryAfterHeader = err?.response?.headers?.['retry-after'] ?? err?.response?.headers?.['Retry-After'];
     let retryAfterMs = 0;
     if (retryAfterHeader != null) {
@@ -281,7 +285,7 @@ export class MSellerClientService {
     const hasta = Date.now() + duracionMs;
     await this.cache.set(CacheKeys.msellerCircuito429(), hasta, duracionMs + 5_000);
     this.logger.error(
-      `[CircuitBreaker GLOBAL] MSeller devolvió 429 (Too Many Requests)` +
+      `[CircuitBreaker GLOBAL] MSeller devolvió ${status ?? '(sin status)'}` +
       `${retryAfterHeader ? ` [Retry-After: ${retryAfterHeader}]` : ''} — ` +
       `TODAS las llamadas a MSeller (cualquier empresa) pausadas hasta ${new Date(hasta).toISOString()}`,
     );
@@ -317,7 +321,7 @@ export class MSellerClientService {
     timeoutMs = 30_000,
     opts?: { maxRetries?: number; authTimeoutMs?: number },
   ): Promise<MSellerEnvioResponse> {
-    const { idToken, apiKey, baseUrl, envPath } = await this.getIdToken(empresaId, opts?.authTimeoutMs);
+    const { apiKey, baseUrl, envPath } = await this.getIdToken(empresaId, opts?.authTimeoutMs);
     const url = `${baseUrl}/${envPath}/documentos-ecf`;
 
     // ── Guard: verifica FechaEmision al final (assertEmisorOrder lanza si falla) ─
@@ -330,6 +334,12 @@ export class MSellerClientService {
 
     return this.withRetry(
       async () => {
+        // idToken se resuelve en CADA intento (no una sola vez arriba): si un
+        // intento anterior recibió 401/403 y withRetry invalidó el caché, este
+        // intento debe mandar un token REALMENTE fresco, no el mismo que ya
+        // rechazaron. En el camino feliz es un cache-hit, sin costo real.
+        const { idToken } = await this.getIdToken(empresaId, opts?.authTimeoutMs);
+
         const t0 = Date.now();
         this.logger.log(
           `MSeller POST ${url} [empresa #${empresaId}] ` +
@@ -531,6 +541,14 @@ export class MSellerClientService {
     maxRetries = 3,
   ): Promise<T> {
     let lastError: Error = new EcfComunicacionError('Error desconocido');
+    // 401/403: un solo reintento con token fresco, FUERA del contador de
+    // maxRetries — así funciona también con maxRetries=0 (POS). Antes el
+    // bucket 4xx de abajo corría primero y lo convertía en EcfValidacionError
+    // (RECHAZADO) sin llegar nunca al chequeo de 401 de más abajo, que por
+    // eso era código muerto (hotfix 2026-10-07, FAC-1705: errorEnvio="MSeller
+    // rechazó el documento [403]: Forbidden" — un token rechazado por MSeller,
+    // no un rechazo real de DGII).
+    let tokenRenovadoPorAuth = false;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
@@ -546,25 +564,38 @@ export class MSellerClientService {
         // el e-CF queda pendiente_envio y el cron lo reintenta cuando el
         // circuito cierre — sin reintentar aquí mismo, de inmediato.
         if (status === 429) {
-          await this.abrirCircuitoGlobalPor429(err);
+          await this.abrirCircuitoGlobalMSeller(err);
           throw new EcfComunicacionError(
             `MSeller: 429 Too Many Requests — circuito abierto, no se reintenta de inmediato.`,
           );
         }
 
-        // ── Errores 4xx: validación / datos incorrectos → NO reintentar ──
+        // ── 401/403: token inválido/vencido para ESTA llamada, aunque
+        // getIdToken lo haya devuelto como "vigente" — nunca un rechazo real
+        // de DGII. Un solo reintento inmediato tras invalidar el caché; si
+        // persiste incluso con token fresco, no es un problema de token sino
+        // de MSeller — abre el mismo circuito global que el 429 en vez de
+        // seguir insistiendo.
+        if ((status === 401 || status === 403) && !tokenRenovadoPorAuth) {
+          tokenRenovadoPorAuth = true;
+          this.logger.warn(`Token rechazado [${status}] para empresa #${empresaId} — invalidando y reintentando una vez con token fresco...`);
+          await this.invalidateToken(empresaId);
+          attempt -= 1; // neutraliza el ++ del for: no cuenta contra maxRetries
+          continue;
+        }
+        if ((status === 401 || status === 403) && tokenRenovadoPorAuth) {
+          await this.abrirCircuitoGlobalMSeller(err);
+          throw new EcfComunicacionError(
+            `MSeller: ${status} persistente tras renovar el token — circuito abierto, no se reintenta de inmediato.`,
+          );
+        }
+
+        // ── Errores 4xx restantes: validación / datos incorrectos → NO reintentar ──
         if (status && status >= 400 && status < 500) {
           const data   = err?.response?.data;
           const msg    = data?.message ?? err?.message ?? 'Error de validación';
           const detalles = data?.details?.validationErrors;
           throw new EcfValidacionError(status, msg, detalles);
-        }
-
-        // ── 401: token expirado → invalidar caché Redis y reintentar una vez ───
-        if (status === 401) {
-          this.logger.warn(`Token expirado para empresa #${empresaId}, invalidando...`);
-          await this.invalidateToken(empresaId);
-          if (attempt === 0) continue; // reintentar inmediatamente
         }
 
         lastError = err;

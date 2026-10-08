@@ -19,6 +19,8 @@ import { reportServiceError } from '../../common/observability/sentry';
 import { fmtFecha } from '../builders/base-ecf.builder';
 import type { CompradorOriginal } from '../builders/base-ecf.builder';
 import { leerCompradorDeclarado } from '../use-cases/emitir-ecf.use-case';
+import { RealtimeService } from '../../realtime/realtime.service';
+import { sellarFacturaPagadaSiCorresponde } from '../services/sellar-factura-pagada.helper';
 
 const MAX_INTENTOS = 5;
 
@@ -81,7 +83,26 @@ export class ReintentoECFJob {
     private readonly mseller:   MSellerClientService,
     private readonly builder:   ECFBuilderService,
     private readonly configSvc: EcfConfigService,
+    private readonly realtimeService: RealtimeService,
   ) {}
+
+  /**
+   * Factura CONTADO cuyo e-CF se confirma ACEPTADO por esta vía (reconciliación/
+   * reenvío) → sellar PAGADA si el cobro ya está ahí. Ver sellar-factura-pagada
+   * .helper.ts para el porqué y el criterio exacto. Nunca lanza — un fallo acá
+   * no debe tumbar la reconciliación del e-CF, que ya se completó bien.
+   */
+  private async sellarPagadaSiAceptado(ecf: ECF, estado: EstadoDGII): Promise<void> {
+    if (estado !== EstadoDGII.ACEPTADO) return;
+    if (ecf.documentoOrigenTipo !== DocumentoOrigenTipo.FACTURA && ecf.documentoOrigenTipo !== DocumentoOrigenTipo.VENTA_POS) return;
+    if (!ecf.documentoOrigenId) return;
+    try {
+      const sellada = await sellarFacturaPagadaSiCorresponde(this.facturaRepo, ecf.documentoOrigenId, this.logger);
+      if (sellada) this.realtimeService.notify(ecf.empresaId!, 'factura', 'updated', ecf.documentoOrigenId);
+    } catch (err) {
+      this.logger.error(`[SellarPagada] Error inesperado para factura #${ecf.documentoOrigenId}: ${(err as Error).message}`);
+    }
+  }
 
   @Cron('*/2 * * * *', { name: 'reintento-ecf' })
   async run(): Promise<void> {
@@ -266,6 +287,7 @@ export class ReintentoECFJob {
         { via: 'consulta', estado: dec.estado },
         `Comprobante ${numero} ya estaba procesado → adoptado ${dec.estado} (sin reenviar)`);
       this.logger.log(`e-CF ${numero} ya existe en el proveedor → ${dec.estado} (sin reenviar)`);
+      await this.sellarPagadaSiAceptado(ecf, dec.estado);
       return 'adoptado';
     }
 
@@ -346,6 +368,7 @@ export class ReintentoECFJob {
       });
 
       this.logger.log(`e-CF ${numero} → ${estadoTrasReintento} (reintento #${intentosEnvio + 1})`);
+      await this.sellarPagadaSiAceptado(ecf, estadoTrasReintento);
       return 'reenviado';
 
     } catch (err) {
@@ -368,6 +391,7 @@ export class ReintentoECFJob {
             { via: 'ya-existe', estado: real.estado },
             `"Ya existe" → adoptado estado real ${real.estado}`);
           this.logger.log(`e-CF ${numero} "ya existe" → adoptado ${real.estado} (no rechazado)`);
+          await this.sellarPagadaSiAceptado(ecf, real.estado);
           return 'adoptado';
         }
         if (real.accion === 'dejar_rechazado') {

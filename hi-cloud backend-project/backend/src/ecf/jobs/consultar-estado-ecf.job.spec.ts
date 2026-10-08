@@ -517,3 +517,109 @@ describe('ConsultarEstadoECFJob — circuit breaker global 429', () => {
     expect(ecfRepo.createQueryBuilder).toHaveBeenCalledTimes(2);
   });
 });
+
+/**
+ * Hotfix 2026-10-07 (parte 3) — empresa 73, FAC-1705/1708-1714: el envío
+ * síncrono del POS falló/dio timeout y la factura quedó EMITIDA (nunca
+ * PAGADA sin e-CF confirmado). Cuando el e-CF se confirma ACEPTADO por este
+ * cron, nada volvía a sellar PAGADA aunque el dinero ya estuviera
+ * registrado (formasPago, desde la creación). Ver sellar-factura-pagada
+ * .helper.ts para el criterio exacto — aquí solo se verifica el CABLEADO:
+ * que consultarBatch() llama al helper con el facturaId correcto cuando
+ * corresponde, y que NO lo toca para otros documentoOrigenTipo.
+ */
+describe('ConsultarEstadoECFJob.consultarBatch — sella PAGADA al confirmar ACEPTADO (empresa 73)', () => {
+  function makeEcfFactura(numero: string, id: number, documentoOrigenId: number, documentoOrigenTipo: string | null = 'FACTURA'): ECF {
+    return {
+      id, numero, empresaId: 73, trackId: `track-${id}`,
+      respuestaDgii: null, codigoModificacion: null,
+      documentoOrigenTipo, documentoOrigenId,
+    } as unknown as ECF;
+  }
+
+  function buildJob() {
+    const ecfRepo = { update: jest.fn().mockResolvedValue(undefined) };
+    const eventoRepo = { create: jest.fn((x) => x), save: jest.fn().mockResolvedValue(undefined) };
+    const mseller = { consultarBatch: jest.fn(), consultarEstado: jest.fn(), circuitoGlobal429Hasta: jest.fn().mockResolvedValue(null) };
+    const efectosNc = { aplicarEfectosPorEstado: jest.fn().mockResolvedValue(undefined) };
+    const emailSvc = { enviar: jest.fn().mockResolvedValue({ exitoso: true }) };
+    const notificacionesSvc = { notificarSistemaEmpresa: jest.fn().mockResolvedValue(undefined) };
+    const configSvc = { get: jest.fn((_k: string, def: unknown) => def) };
+    const facturaRepo = {
+      findOne: jest.fn().mockResolvedValue({ id: 1705, folio: 'FAC-1705', estado: 'emitida', tipoPago: 'CONTADO', formasPago: [{ tipo: 1, monto: 500 }] }),
+      update:  jest.fn().mockResolvedValue(undefined),
+      manager: { query: jest.fn().mockResolvedValue([{ existe: false }]) },
+    };
+    const realtimeService = { notify: jest.fn() };
+
+    const job = new ConsultarEstadoECFJob(
+      ecfRepo as any, eventoRepo as any, mseller as any, efectosNc as any,
+      emailSvc as any, notificacionesSvc as any, configSvc as any,
+      facturaRepo as any, realtimeService as any,
+    );
+    for (const m of ['log', 'warn', 'error', 'debug'] as const) {
+      jest.spyOn((job as any).logger, m).mockImplementation(() => undefined);
+    }
+    return { job, ecfRepo, facturaRepo, realtimeService };
+  }
+
+  it('e-CF de FACTURA confirmado ACEPTADO → sella la factura PAGADA y notifica por realtime', async () => {
+    const { job, facturaRepo, realtimeService } = buildJob();
+    const ecf = makeEcfFactura('E320000001705', 1, 1705, 'FACTURA');
+    const mseller = (job as any).mseller;
+    mseller.consultarBatch.mockResolvedValue({
+      total: 1, results: [{ ecf: ecf.numero, status: 'Aceptado', found: true, data: {} }],
+    });
+
+    await (job as any).consultarBatch([ecf], 73);
+
+    expect(facturaRepo.findOne).toHaveBeenCalledWith({ where: { id: 1705 } });
+    expect(facturaRepo.update).toHaveBeenCalledWith(1705, { estado: 'pagada' });
+    expect(realtimeService.notify).toHaveBeenCalledWith(73, 'factura', 'updated', 1705);
+  });
+
+  it('e-CF de VENTA_POS confirmado ACEPTADO → también sella (mismo criterio que FACTURA)', async () => {
+    const { job, facturaRepo } = buildJob();
+    const ecf = makeEcfFactura('E320000001706', 2, 1706, 'VENTA_POS');
+    const mseller = (job as any).mseller;
+    mseller.consultarBatch.mockResolvedValue({ total: 1, results: [{ ecf: ecf.numero, status: 'Aceptado', found: true, data: {} }] });
+
+    await (job as any).consultarBatch([ecf], 73);
+
+    expect(facturaRepo.findOne).toHaveBeenCalledWith({ where: { id: 1706 } });
+  });
+
+  it('e-CF de NOTA_CREDITO confirmado ACEPTADO → NUNCA llama al helper (no es una factura)', async () => {
+    const { job, facturaRepo } = buildJob();
+    const ecf = makeEcfFactura('E340000000001', 3, 999, 'NOTA_CREDITO');
+    const mseller = (job as any).mseller;
+    mseller.consultarBatch.mockResolvedValue({ total: 1, results: [{ ecf: ecf.numero, status: 'Aceptado', found: true, data: {} }] });
+
+    await (job as any).consultarBatch([ecf], 73);
+
+    expect(facturaRepo.findOne).not.toHaveBeenCalled();
+  });
+
+  it('e-CF de FACTURA que queda OBSERVADO (no ACEPTADO) → NUNCA llama al helper', async () => {
+    const { job, facturaRepo } = buildJob();
+    const ecf = makeEcfFactura('E320000001707', 4, 1707, 'FACTURA');
+    const mseller = (job as any).mseller;
+    mseller.consultarBatch.mockResolvedValue({ total: 1, results: [{ ecf: ecf.numero, status: 'Aceptado Condicional', found: true, data: { dgiiResponse: [{ codigo: '1', mensajes: [{ mensaje: 'x' }] }] } }] });
+
+    await (job as any).consultarBatch([ecf], 73);
+
+    expect(facturaRepo.findOne).not.toHaveBeenCalled();
+  });
+
+  it('un fallo del helper (ej. BD caída) no aborta el procesamiento del e-CF — ya quedó sellado ACEPTADO', async () => {
+    const { job, ecfRepo, facturaRepo } = buildJob();
+    facturaRepo.findOne.mockRejectedValue(new Error('conexión perdida'));
+    const ecf = makeEcfFactura('E320000001705', 5, 1705, 'FACTURA');
+    const mseller = (job as any).mseller;
+    mseller.consultarBatch.mockResolvedValue({ total: 1, results: [{ ecf: ecf.numero, status: 'Aceptado', found: true, data: {} }] });
+
+    await expect((job as any).consultarBatch([ecf], 73)).resolves.toBeDefined();
+
+    expect(ecfRepo.update).toHaveBeenCalledWith(5, expect.objectContaining({ estadoDGII: EstadoDGII.ACEPTADO }));
+  });
+});

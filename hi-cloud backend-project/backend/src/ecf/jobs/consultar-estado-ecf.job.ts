@@ -4,7 +4,7 @@ import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as Sentry from '@sentry/nestjs';
-import { ECF, EstadoDGII } from '../entities/ecf.entity';
+import { ECF, EstadoDGII, DocumentoOrigenTipo } from '../entities/ecf.entity';
 import { EcfEvento, TipoEcfEvento } from '../entities/ecf-evento.entity';
 import { MSellerClientService } from '../services/mseller-client.service';
 import { EcfEfectosNcService } from '../services/ecf-efectos-nc.service';
@@ -12,6 +12,9 @@ import { EmailService } from '../../notificaciones/services/email.service';
 import { NotificacionesService } from '../../notificaciones/notificaciones.service';
 import { TipoNotificacion } from '../../notificaciones/entities/notificacion-enviada.entity';
 import { reportServiceError } from '../../common/observability/sentry';
+import { Factura } from '../../facturas/entities/factura.entity';
+import { RealtimeService } from '../../realtime/realtime.service';
+import { sellarFacturaPagadaSiCorresponde } from '../services/sellar-factura-pagada.helper';
 
 const MINUTOS_SIN_RESPUESTA = 2;   // esperar 2 min antes de primer intento
 
@@ -109,6 +112,11 @@ export class ConsultarEstadoECFJob {
     private readonly emailSvc: EmailService,
     private readonly notificacionesSvc: NotificacionesService,
     private readonly configSvc: ConfigService,
+
+    @InjectRepository(Factura)
+    private readonly facturaRepo: Repository<Factura>,
+
+    private readonly realtimeService: RealtimeService,
   ) {}
 
   @Cron('*/2 * * * *', { name: 'consultar-estado-ecf' }) // cada 2 min
@@ -556,6 +564,23 @@ el estado directamente en el portal de DGII u ofimática de la empresa.</p>
         ...(batchData?.qr_url    ? { qrUrl: batchData.qr_url }       : {}),
         fechaUso:      nuevoEstado === EstadoDGII.ACEPTADO ? new Date() : undefined,
       });
+
+      // El e-CF de una factura CONTADO se confirmó ACEPTADO por esta vía
+      // asíncrona (el envío síncrono original falló/dio timeout, por eso
+      // sigue EMITIDA) — sellar PAGADA ahora que DGII ya lo aceptó, con el
+      // mismo criterio de rastro de cobro que usa el POS. Nunca toca NOTA_
+      // DEBITO/CREDITO/COMPRA/GASTO (otros documentoOrigenTipo). Caso real:
+      // empresa 73, FAC-1705/1708-1714 (2026-10-07).
+      if (nuevoEstado === EstadoDGII.ACEPTADO
+          && (ecf.documentoOrigenTipo === DocumentoOrigenTipo.FACTURA || ecf.documentoOrigenTipo === DocumentoOrigenTipo.VENTA_POS)
+          && ecf.documentoOrigenId) {
+        try {
+          const sellada = await sellarFacturaPagadaSiCorresponde(this.facturaRepo, ecf.documentoOrigenId, this.logger);
+          if (sellada) this.realtimeService.notify(ecf.empresaId!, 'factura', 'updated', ecf.documentoOrigenId);
+        } catch (err) {
+          this.logger.error(`[SellarPagada] Error inesperado para factura #${ecf.documentoOrigenId}: ${(err as Error).message}`);
+        }
+      }
 
       // Notificar al super admin la primera vez que un e-CF quede RECHAZADO.
       // La marca superAdminNotificado garantiza idempotencia: el cron puede pasar
