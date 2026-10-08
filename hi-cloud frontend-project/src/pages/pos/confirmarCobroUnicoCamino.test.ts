@@ -44,7 +44,7 @@ describe('POSPage — confirmarCobro() es el ÚNICO camino que confirma el cobro
     const inicio = fuente.indexOf('const confirmarCobro = useCallback(async () => {');
     expect(inicio).toBeGreaterThan(-1);
 
-    const marcaCierre = '\n  }, [canCheckout, ventaMut, tipoPagoPos, supervisor, posConf, totalEfectivo, cart, empresa]);';
+    const marcaCierre = '\n  }, [canCheckout, ventaMut, tipoPagoPos, supervisor, posConf, totalEfectivo, totalAPagar, cart, empresa]);';
     const cierre = fuente.indexOf(marcaCierre, inicio);
     expect(cierre).toBeGreaterThan(inicio);
 

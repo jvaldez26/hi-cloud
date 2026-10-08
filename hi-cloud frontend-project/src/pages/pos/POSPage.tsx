@@ -67,6 +67,7 @@ import { requiereSupervisorPorPrecioModificado } from './carritoRecuperadoGate';
 import { debeIgnorarEnterGlobal } from './confirmarCobroEnterGate';
 import { resolverIntentoCobro } from './intentoCobroGate';
 import { iniciarTelemetriaPOS, registrarVentaCompletada, registrarAccionPOS, obtenerPestanasVivasConocidas } from './posTelemetria';
+import { fusionarColaEnCarrito, debeFusionarColaAhora, totalMostradoEnModal } from './ventaEnCursoGate';
 import { credencialesFueronRechazadas } from './reautenticacionGate';
 import { construirFiltroVendedorPOS } from './vendedorFiltroPanel';
 import { UomSelect } from '../../components/ui/UomSelect';
@@ -9714,6 +9715,21 @@ export default function POSPage() {
     if (recuperado) carritoRecuperadoRef.current = true;
     return items;
   });
+  // Cola de "próxima venta" (decisión 2026-10-08, FAC-1746 empresa 73): un
+  // producto escaneado/agregado mientras el modal de cobro está abierto
+  // NUNCA se mezcla con el carrito que se está cobrando — espera aquí y
+  // entra al carrito automáticamente cuando esa venta termine (éxito, o el
+  // cajero cancela/abandona el intento). Mientras una venta fallida sigue
+  // en pantalla esperando un reintento (showPago sigue true), la cola NO se
+  // mezcla con el carrito-borrador que se va a reenviar — ver el efecto más
+  // abajo, que solo fusiona en la transición showPago true→false.
+  const [colaProximaVenta, setColaProximaVenta] = useState<CartItem[]>([]);
+  // Monto congelado al hacer clic en "Confirmar cobro" — el modal de cobro
+  // lo muestra en vez del total en vivo mientras la venta está en curso
+  // (ventaMut.isPending), para que el número que ve la cajera sea siempre
+  // exactamente el que se envió, nunca uno recalculado del carrito mientras
+  // se espera la respuesta del servidor.
+  const totalCongeladoRef = useRef<number | null>(null);
   // Origen de Car Wash (botón "Cobrar" del tablero) — ver carWashOrigen.ts.
   // Se consume UNA vez al montar y pisa el carrito recuperado a propósito:
   // el cajero llegó aquí con la intención explícita de cobrar ESE turno.
@@ -10476,6 +10492,30 @@ export default function POSPage() {
     catch { /* quota exceeded — ignorar */ }
   }, [ventasEnEspera, user?.id, empresaActual, sucursalId, tabId]);
 
+  // Fusionar la cola de "próxima venta" al carrito — SOLO en la transición
+  // showPago true → false: cuando la venta en curso terminó, con éxito
+  // (cart ya quedó vacío, onSuccess lo limpió) o porque el cajero canceló/
+  // cerró el modal (cart sigue siendo el borrador a reintentar, y la cola
+  // se suma a ESE). Mientras showPago se queda en true (incluido el tramo
+  // de "la emisión falló, el cajero puede reintentar" — el modal no se
+  // cierra para eso), la cola NO se toca: fusionarla ahí mezclaría
+  // productos de otro cliente con un borrador que está a punto de
+  // reenviarse tal cual.
+  const showPagoAnteriorRef = useRef(showPago);
+  useEffect(() => {
+    const eraAbierto = showPagoAnteriorRef.current;
+    showPagoAnteriorRef.current = showPago;
+    if (!debeFusionarColaAhora(eraAbierto, showPago, colaProximaVenta.length)) return;
+
+    const cantidad = colaProximaVenta.length;
+    setCart(prev => fusionarColaEnCarrito(prev, colaProximaVenta));
+    message.success(
+      `${cantidad} producto${cantidad !== 1 ? 's' : ''} que esperaban se agregaron al carrito`,
+      2.5,
+    );
+    setColaProximaVenta([]);
+  }, [showPago, colaProximaVenta]);
+
   // Aviso "se recuperó tu carrito" — una sola vez, si el inicializador de
   // `cart` encontró algo (clave propia ya existente, o migrado desde la
   // clave vieja compartida). No se dispara en un carrito vacío recién
@@ -10558,15 +10598,6 @@ export default function POSPage() {
 
   // Add to cart — agrega inmediatamente al precio base, luego actualiza en background
   const addToCart = useCallback((produto: Prod) => {
-    // Venta en curso (modal de cobro abierto): nunca mezclar un producto
-    // nuevo con el carrito que se está cobrando — ver el mismo guard y su
-    // porqué en procesarScan(), arriba. Este es el funnel común a TODOS los
-    // caminos que agregan al carrito (clic, búsqueda exacta + Enter, scan),
-    // así que es la red de seguridad real, no solo la del scanner.
-    if (showPago) {
-      message.warning('Termina de cobrar antes de agregar otro producto', 2);
-      return;
-    }
     const precioBase = Number(produto.precio);
     const esServicio = (produto as any).tipo === 'servicio';
     const sinStock   = !esServicio && Number(produto.stock) <= 0;
@@ -10576,11 +10607,9 @@ export default function POSPage() {
       return;
     }
 
-    // 1. Agregar al carrito de forma inmediata (sin esperar API)
-    setCart(prev => {
+    const mezclar = (prev: CartItem[]): CartItem[] => {
       const idx = prev.findIndex(i => i.produto.id === produto.id);
       if (idx >= 0) {
-        const esServicio = (produto as any).tipo === 'servicio';
         if (!esServicio && prev[idx].cantidad >= Number(produto.stock)) return prev;
         return prev.map((it, i) => i === idx ? { ...it, cantidad: it.cantidad + 1 } : it);
       }
@@ -10589,7 +10618,24 @@ export default function POSPage() {
         listaGlobal === 'precio3' && (produto as any).precio3 ? Number((produto as any).precio3) :
         precioBase;
       return [{ produto, cantidad: 1, precio: precioConLista, descuentoMonto: 0, precioLista: listaGlobal }, ...prev];
-    });
+    };
+
+    // Venta en curso (modal de cobro abierto): nunca mezclar un producto
+    // nuevo con el carrito que se está cobrando — va a la cola de la
+    // próxima venta (colaProximaVenta) y entra al carrito solo cuando ESTA
+    // venta termine (ver el efecto que mira showPago, más abajo). Este es
+    // el funnel común a TODOS los caminos que agregan al carrito (clic,
+    // búsqueda exacta + Enter, scan — ver procesarScan), así que es la red
+    // de seguridad real, no solo la del scanner. Root cause de FAC-1746
+    // (empresa 73, 2026-10-08).
+    if (showPago) {
+      setColaProximaVenta(mezclar);
+      message.info(`${produto.nombre} — esperando a que termine la venta actual`, 1.8);
+      return;
+    }
+
+    // 1. Agregar al carrito de forma inmediata (sin esperar API)
+    setCart(mezclar);
 
     // 2. Si hay cliente, consultar precio especial en background y actualizar
     if (!clienteId) return;
@@ -10631,11 +10677,6 @@ export default function POSPage() {
     producto: Prod,
     match:    BalanzaMatchFrontend,
   ) => {
-    // Mismo guard que addToCart — ver el porqué ahí.
-    if (showPago) {
-      message.warning('Termina de cobrar antes de agregar otro producto', 2);
-      return;
-    }
     const precioBase  = Number(producto.precio);
     const decimales   = match.patron.decimalesValor;
 
@@ -10665,6 +10706,14 @@ export default function POSPage() {
       balanzaUnidad:    match.unidadPeso,
       balanzaTotalFijo: totalFijo,
     };
+
+    // Venta en curso: misma regla y mismo porqué que addToCart — va a la
+    // cola de la próxima venta, nunca al carrito que se está cobrando.
+    if (showPago) {
+      setColaProximaVenta(prev => [nuevaLinea, ...prev]);
+      message.info(`⚖ ${producto.nombre} — esperando a que termine la venta actual`, 1.8);
+      return;
+    }
 
     setCart(prev => [nuevaLinea, ...prev]); // prepend — siempre línea nueva
 
@@ -10843,22 +10892,14 @@ export default function POSPage() {
   const procesarScan = useCallback((codigo: string) => {
     const trimmed = codigo.replace(/[\r\n]/g, '').trim();
     if (!trimmed) return;
-    // Venta en curso (modal de cobro abierto, desde el clic en "Confirmar
-    // cobro" hasta que la respuesta del servidor vuelve — puede tardar
-    // varios segundos por la emisión del e-CF): un scan que llegue aquí
-    // nunca es para ESTA venta, casi siempre es el siguiente cliente. El
+    // Venta en curso (modal de cobro abierto): un scan que llegue aquí
+    // nunca es para ESTA venta, casi siempre es el siguiente cliente — el
     // listener global (handleGlobalKeyDown) no depende de dónde esté el
-    // foco, así que SÍ puede llegar aunque el modal esté abierto encima —
-    // bloquear aquí, el único funnel de todos los scans (producto normal y
-    // balanza), es lo que evita que se mezcle con el carrito que se está
-    // cobrando. Root cause de FAC-1746 (empresa 73, 2026-10-08): un
-    // producto añadido así durante la espera infló el TOTAL mostrado/
-    // impreso sin tocar la factura ya enviada (esa queda fija — ver
-    // buildSaleTotalesFromFactura, commit 829e398d).
-    if (showPago) {
-      message.warning('Termina de cobrar antes de escanear el siguiente producto', 2);
-      return;
-    }
+    // foco, así que SÍ puede llegar aunque el modal esté abierto encima.
+    // No se descarta: agregarProducto() más abajo llama a addToCart/
+    // addBalanzaToCart, que YA saben mandarlo a la cola de la próxima venta
+    // en vez de al carrito que se está cobrando (ver showPago ahí). Root
+    // cause de FAC-1746 (empresa 73, 2026-10-08).
     registrarAccionPOS('escaneo');
 
     // Una tarjeta de supervisor escaneada por error en el buscador de
@@ -11601,6 +11642,12 @@ export default function POSPage() {
     },
   });
 
+  // Monto que muestra el modal de cobro: congelado (totalCongeladoRef, fijado
+  // en confirmarCobro justo antes de mutate()) mientras la venta está en
+  // curso — una vez que termina (éxito o error), vuelve a seguir el total en
+  // vivo normalmente.
+  const totalCobroMostrado = totalMostradoEnModal(ventaMut.isPending, totalCongeladoRef.current, totalAPagar);
+
   // ── Mutación para modos alternativos (sin cobro) ────────────────────────────
   const modoAltMut = useMutation({
     mutationFn: async () => {
@@ -11997,8 +12044,12 @@ export default function POSPage() {
       );
       if (!r.ok) return;
     }
+    // Congela el monto que muestra el modal de cobro — desde aquí hasta que
+    // la venta termine, lo que ve la cajera es exactamente lo que se envía,
+    // nunca un total recalculado del carrito en vivo (ver totalCobroMostrado).
+    totalCongeladoRef.current = totalAPagar;
     ventaMut.mutate();
-  }, [canCheckout, ventaMut, tipoPagoPos, supervisor, posConf, totalEfectivo, cart, empresa]);
+  }, [canCheckout, ventaMut, tipoPagoPos, supervisor, posConf, totalEfectivo, totalAPagar, cart, empresa]);
 
   // Enter / NumpadEnter confirma el cobro cuando el modal de pago está abierto.
   // Se ignora si el evento viene de dentro de CUALQUIER modal (supervisor,
@@ -12469,6 +12520,26 @@ export default function POSPage() {
                     <button onClick={parkSale} style={{ height: 26, padding: '0 8px', borderRadius: 6, border: `1px solid ${C.border2}`, background: 'transparent', color: C.textSub, cursor: 'pointer', fontSize: 11, outline: 'none' }}>⏸</button>
                   </Tooltip>
                 )}
+                {colaProximaVenta.length > 0 && (
+                  <Popover placement="bottomRight" title="Esperando para la próxima venta"
+                    content={
+                      <div style={{ minWidth: 220, maxWidth: 280 }}>
+                        <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 6 }}>
+                          Se escanearon/agregaron con la venta actual en curso — entran solos al carrito en cuanto termine.
+                        </div>
+                        {colaProximaVenta.map((it, i) => (
+                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '3px 0' }}>
+                            <span>{it.produto.nombre}</span>
+                            <span style={{ fontWeight: 600 }}>×{it.cantidad}</span>
+                          </div>
+                        ))}
+                      </div>
+                    } trigger="click">
+                    <button style={{ height: 26, padding: '0 8px', borderRadius: 6, border: `1px solid ${C.blue}55`, background: C.blue+'11', color: C.blue, cursor: 'pointer', fontSize: 11, fontWeight: 600, outline: 'none' }}>
+                      🕓 {colaProximaVenta.length}
+                    </button>
+                  </Popover>
+                )}
                 {ventasEnEspera.length > 0 && (
                   <Popover placement="bottomRight" title="Ventas en espera"
                     content={
@@ -12748,10 +12819,10 @@ export default function POSPage() {
                 <button onClick={() => { setShowPago(false); resetDatosComprador(); }} style={{ width: 24, height: 24, borderRadius: 6, border: 'none', background: 'rgba(255,255,255,.12)', color: '#fff', cursor: 'pointer', outline: 'none', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
               </div>
             </div>
-            <div style={{ fontSize: 28, fontWeight: 800, color: '#fff', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{fmt.money(totalAPagar)}</div>
+            <div style={{ fontSize: 28, fontWeight: 800, color: '#fff', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{fmt.money(totalCobroMostrado)}</div>
             {monedaPOS === 'USD' && tasaCambioPOS > 1 && (
               <div style={{ fontSize: 13, color: '#FCD34D', marginTop: 2, fontWeight: 700 }}>
-                US$ {(totalAPagar / tasaCambioPOS).toFixed(2)} @ RD$ {tasaCambioPOS.toFixed(2)}
+                US$ {(totalCobroMostrado / tasaCambioPOS).toFixed(2)} @ RD$ {tasaCambioPOS.toFixed(2)}
               </div>
             )}
             {propinaMontoCalc > 0 && (
@@ -12924,8 +12995,8 @@ export default function POSPage() {
                           style={{ fontSize: 10, fontWeight: 600, color: '#6D28D9', background: 'none', border: 'none', cursor: 'pointer', padding: 0, outline: 'none' }}>
                           + Agregar método
                         </button>
-                        <span style={{ fontSize: 11, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: sumaFP >= totalAPagar && !noEfecExcede ? '#15803D' : '#DC2626' }}>
-                          {fmt.money(sumaFP)} / {fmt.money(totalAPagar)}
+                        <span style={{ fontSize: 11, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: sumaFP >= totalCobroMostrado && !noEfecExcede ? '#15803D' : '#DC2626' }}>
+                          {fmt.money(sumaFP)} / {fmt.money(totalCobroMostrado)}
                         </span>
                       </div>
                       {/* BLOQUEO: de una tarjeta o transferencia no se da vuelto.
@@ -12934,7 +13005,7 @@ export default function POSPage() {
                       {noEfecExcede && (
                         <div style={{ marginTop: 4, padding: '5px 7px', borderRadius: 5, background: '#FEF2F2',
                           border: '1px solid #FECACA', fontSize: 10, color: '#B91C1C', fontWeight: 600, lineHeight: 1.35 }}>
-                          ⚠ Tarjeta/transferencia suman {fmt.money(noEfecSum)} y el total es {fmt.money(totalAPagar)}.
+                          ⚠ Tarjeta/transferencia suman {fmt.money(noEfecSum)} y el total es {fmt.money(totalCobroMostrado)}.
                           Solo el efectivo admite cambio — corrige los montos.
                         </div>
                       )}
@@ -13003,7 +13074,7 @@ export default function POSPage() {
             </div>
             {propinaMontoCalc > 0 && (
               <div style={{ fontSize: 11, color: '#B45309', marginTop: 5, fontWeight: 600, textAlign: 'right' }}>
-                Propina: {fmt.money(propinaMontoCalc)} → Total a cobrar: {fmt.money(totalAPagar)}
+                Propina: {fmt.money(propinaMontoCalc)} → Total a cobrar: {fmt.money(totalCobroMostrado)}
               </div>
             )}
           </div>
@@ -13155,19 +13226,19 @@ export default function POSPage() {
                   <>
                     <div style={{ fontSize: 12, color: '#475569' }}>Cambio a devolver</div>
                     <div style={{ fontSize: 30, fontWeight: 800, color: '#15803D', fontVariantNumeric: 'tabular-nums' }}>{fmt.money(cambio)}</div>
-                    <div style={{ fontSize: 11, color: '#94A3B8' }}>Recibido: {fmt.money(sumaFP)} · Total: {fmt.money(totalAPagar)}</div>
+                    <div style={{ fontSize: 11, color: '#94A3B8' }}>Recibido: {fmt.money(sumaFP)} · Total: {fmt.money(totalCobroMostrado)}</div>
                   </>
-                ) : sumaFP >= totalAPagar ? (
+                ) : sumaFP >= totalCobroMostrado ? (
                   <>
                     <div style={{ fontSize: 32 }}>✓</div>
                     <div style={{ fontSize: 14, fontWeight: 700, color: '#059669' }}>Listo para cobrar</div>
-                    <div style={{ fontSize: 11, color: '#94A3B8' }}>Total: {fmt.money(totalAPagar)}</div>
+                    <div style={{ fontSize: 11, color: '#94A3B8' }}>Total: {fmt.money(totalCobroMostrado)}</div>
                   </>
                 ) : (
                   <>
                     <div style={{ fontSize: 12, color: '#94A3B8' }}>Falta por asignar</div>
-                    <div style={{ fontSize: 30, fontWeight: 800, color: '#EF4444', fontVariantNumeric: 'tabular-nums' }}>{fmt.money(round2(totalAPagar - sumaFP))}</div>
-                    <div style={{ fontSize: 11, color: '#94A3B8' }}>Ingresado: {fmt.money(sumaFP)} / {fmt.money(totalAPagar)}</div>
+                    <div style={{ fontSize: 30, fontWeight: 800, color: '#EF4444', fontVariantNumeric: 'tabular-nums' }}>{fmt.money(round2(totalCobroMostrado - sumaFP))}</div>
+                    <div style={{ fontSize: 11, color: '#94A3B8' }}>Ingresado: {fmt.money(sumaFP)} / {fmt.money(totalCobroMostrado)}</div>
                   </>
                 )}
               </div>
@@ -13224,7 +13295,7 @@ export default function POSPage() {
                     </motion.div>
                   )}
                   {/* Monto exacto */}
-                  {metodoPago === 'efectivo' && montoRecibido > 0 && Math.abs(montoRecibido - totalAPagar) < 0.01 && (
+                  {metodoPago === 'efectivo' && montoRecibido > 0 && Math.abs(montoRecibido - totalCobroMostrado) < 0.01 && (
                     <motion.div key="exacto" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} style={{ overflow: 'hidden', marginBottom: 5 }}>
                       <div style={{ background: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: 7, padding: '5px 10px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 6 }}>
                         <span style={{ fontSize: 12, fontWeight: 700, color: '#15803D' }}>✓ Monto exacto</span>
@@ -13232,11 +13303,11 @@ export default function POSPage() {
                     </motion.div>
                   )}
                   {/* Falta */}
-                  {metodoPago === 'efectivo' && montoRecibido > 0 && montoRecibido < totalAPagar - 0.01 && (
+                  {metodoPago === 'efectivo' && montoRecibido > 0 && montoRecibido < totalCobroMostrado - 0.01 && (
                     <motion.div key="falta" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} style={{ overflow: 'hidden', marginBottom: 5 }}>
                       <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 7, padding: '5px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontSize: 10, fontWeight: 700, color: '#DC2626', textTransform: 'uppercase' }}>Falta para completar</span>
-                        <span style={{ fontSize: 15, fontWeight: 800, color: '#DC2626', fontVariantNumeric: 'tabular-nums' }}>{fmt.money(totalAPagar - montoRecibido)}</span>
+                        <span style={{ fontSize: 15, fontWeight: 800, color: '#DC2626', fontVariantNumeric: 'tabular-nums' }}>{fmt.money(totalCobroMostrado - montoRecibido)}</span>
                       </div>
                     </motion.div>
                   )}
