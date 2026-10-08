@@ -23,9 +23,25 @@
  *      fallback) y siempre remueve su propio listener.
  *   4. imprimirElemento() nunca revocaba el blob URL del ticket. Corregido.
  *
- * Los fallbacks bajaron de 60s/30s a unos pocos segundos (pedido explícito:
- * "el fallback debe ser de segundos, no 60") — ya no hace falta ese margen
- * porque nada bloquea la pantalla mientras espera.
+ * 2026-10-08, hotfix urgente posterior (empresa 73, Bellamar González, PC
+ * Windows táctil — "no puede imprimir"): dos regresiones del cambio de
+ * arriba, corregidas:
+ *   5. La detección de "es móvil" usaba navigator.maxTouchPoints > 1, que es
+ *      VERDADERO en cualquier PC con pantalla táctil — Windows incluido. Una
+ *      PC Windows táctil caía en la ruta de overlay en vez de la de
+ *      escritorio. Ahora es por userAgent (Android/iOS), con el único caso
+ *      real donde el touch decide algo: iPadOS 13+, que se anuncia como
+ *      "Macintosh" — un Mac de escritorio real nunca tiene pantalla táctil.
+ *   6. print() se llamaba 150-400ms después de escribir el HTML, sin
+ *      esperar a que cargara el logo de la empresa — que es una URL real de
+ *      S3/CDN, no un data: URI como el QR/código de barras. Ahora se espera
+ *      a que todas las <img> terminen de cargar (o fallen) antes de llamar
+ *      print(), con un tope de 2.5s para no bloquear si la imagen nunca
+ *      carga. Los fallbacks de "se dio por terminada la impresión" también
+ *      volvieron a un margen generoso (30s/60s) — bajarlos a segundos pensó
+ *      solo en que ya no bloquean la pantalla, pero el overlay SÍ borra su
+ *      contenido del DOM al disparar, y hacerlo demasiado pronto arriesga
+ *      cortar la impresión si el cajero tarda en interactuar con el cuadro.
  */
 
 // JWT está en cookie httpOnly — las cookies se envían automáticamente con credentials: 'include'.
@@ -117,20 +133,58 @@ export function obtenerDeteccionImpresionDirecta(): DeteccionImpresionDirecta {
 // Reemplaza window.open(): nunca hay una ventana separada que la cajera
 // pueda perder detrás de otra. Un solo iframe singleton, reutilizado en cada
 // impresión — así tampoco acumula iframes en el DOM.
-const IFRAME_FALLBACK_MS = 6_000; // segundos, no 60 — nada bloquea pantalla mientras tanto
+//
+// 2026-10-08, hotfix urgente (empresa 73, Bellamar González, PC Windows
+// táctil): el fallback bajó de 60s/30s a unos segundos pensando SOLO en que
+// ya no bloquea la pantalla — pero el fallback también es lo que, al
+// disparar, da por terminada la impresión. Si el cajero tarda más que eso en
+// interactuar con el cuadro real de Chrome (elegir impresora, etc.), nada
+// destructivo pasa aquí (el iframe-singleton no se borra solo), pero por
+// seguridad se deja un margen generoso igual — ya no cuesta nada, no hay
+// bloqueo de pantalla de por medio.
+const IFRAME_FALLBACK_MS = 30_000;
 
 function _getIframeImpresion(): HTMLIFrameElement {
   let iframe = document.getElementById('__hc-print-iframe') as HTMLIFrameElement | null;
   if (!iframe) {
     iframe = document.createElement('iframe');
     iframe.id = '__hc-print-iframe';
-    // Fuera de pantalla y sin interacción — invisible pero con tamaño real
-    // (0×0 hace que algunos navegadores no rendericen el contenido para imprimir).
-    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:0;pointer-events:none;';
+    // Fuera de pantalla pero con tamaño REAL (no 1px, no 0) — un ticket
+    // térmico mide ~302px de ancho (80mm a 96dpi) y puede tener muchas
+    // líneas; un iframe casi-0 puede hacer que Chrome calcule un área de
+    // impresión vacía en algunas configuraciones de Windows.
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:320px;height:600px;border:0;pointer-events:none;';
     iframe.setAttribute('aria-hidden', 'true');
     document.body.appendChild(iframe);
   }
   return iframe;
+}
+
+/**
+ * Espera a que todas las <img> del documento terminen de cargar (o fallen)
+ * antes de imprimir — el logo de la empresa es una URL real (S3/CDN), no un
+ * data: URI, así que puede tardar más que los ~150-400ms que se esperaba
+ * antes de llamar print(). El QR y el código de barras sí son data: URI
+ * (instantáneos), pero el logo no lo es.
+ *
+ * Nunca bloquea para siempre: un error de red en el logo no debe impedir
+ * imprimir el resto del ticket — por eso 'error' también resuelve, y hay un
+ * tope de seguridad (maxMs) por si una imagen se queda cargando sin avisar.
+ */
+function _esperarImagenes(raiz: ParentNode, maxMs = 2_500): Promise<void> {
+  const imgs = Array.from(raiz.querySelectorAll('img'));
+  if (imgs.length === 0) return Promise.resolve();
+  const porImagen = imgs.map(img => {
+    if (img.complete) return Promise.resolve();
+    return new Promise<void>(resolve => {
+      img.addEventListener('load',  () => resolve(), { once: true });
+      img.addEventListener('error', () => resolve(), { once: true });
+    });
+  });
+  return Promise.race([
+    Promise.all(porImagen).then(() => undefined),
+    new Promise<void>(resolve => setTimeout(resolve, maxMs)),
+  ]);
 }
 
 function _printViaHiddenIframe(html: string, onDone?: () => void): void {
@@ -164,11 +218,19 @@ function _printViaHiddenIframe(html: string, onDone?: () => void): void {
   // imprimirían DOS veces. Detectamos el script y solo llamamos nosotros si
   // no está — cualquiera de los dos caminos sigue disparando 'afterprint' en
   // `win`, que es lo único que finish() necesita.
+  // No todas las plantillas de ticket son iguales: ticketTermico.ts y
+  // buildCierreCajaHTML incrustan su propio <script> que llama window.print()
+  // en el evento 'load' del documento — ese evento YA espera a que las
+  // imágenes (el logo, una URL real de S3/CDN) terminen de cargar, así que
+  // no hace falta nada extra aquí. docTermico.ts, el builder más usado, NO
+  // incrusta ese script — somos NOSOTROS quienes llamamos print(), y antes
+  // lo hacíamos a los 150ms sin esperar el logo. Ahora se espera explícito.
   const autoImprime = /<script[^>]*>[\s\S]*?window\.print\s*\(/i.test(html);
   if (!autoImprime) {
-    // Pequeño margen para que el iframe termine de montar su documento antes
-    // de llamar print() — igual que el popup viejo esperaba 'load'/800ms.
-    setTimeout(() => { try { win.focus(); win.print(); } catch { finish(true); } }, 150);
+    _esperarImagenes(win.document).then(() => {
+      if (terminado) return;
+      try { win.focus(); win.print(); } catch { finish(true); }
+    });
   }
 }
 
@@ -280,7 +342,22 @@ export function imprimirReciboTermico(
   // En escritorio: iframe oculto en la MISMA pestaña — nunca hay una ventana
   // emergente que la cajera pueda perder detrás de otra (ver nota 2026-10-08
   // al inicio del archivo). En móvil sin BT: overlay (ver _reciboOverlay).
-  const esMovil = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
+  //
+  // 2026-10-08, hotfix urgente (empresa 73, Bellamar González): esto usaba
+  // `navigator.maxTouchPoints > 1` como señal de "es móvil" — pero eso es
+  // VERDADERO en cualquier PC con pantalla táctil, Windows incluido (Surface,
+  // monitores táctiles de punto de venta...). La PC de Bellamar es Windows
+  // CON TÁCTIL: caía por error en la ruta de overlay, nunca en la de
+  // escritorio. La detección debe ser por sistema/navegador, no por si hay
+  // dedo — Android/iOS se detectan por userAgent; el único caso real donde
+  // el touch SÍ decide es iPadOS 13+, que Safari anuncia como "Macintosh"
+  // a propósito para no ser tratado como móvil — un Mac de escritorio real
+  // JAMÁS tiene pantalla táctil, así que "Macintosh" + touch es la única
+  // señal fiable de que en realidad es un iPad disfrazado.
+  const ua = navigator.userAgent;
+  const esAndroidOiOS   = /Android|iPhone|iPad|iPod/i.test(ua);
+  const esIpadDisfrazado = /Macintosh/i.test(ua) && navigator.maxTouchPoints > 1;
+  const esMovil = esAndroidOiOS || esIpadDisfrazado;
   if (!esMovil) {
     _printViaHiddenIframe(html, onDone);
     return;
@@ -298,7 +375,13 @@ export function imprimirReciboTermico(
 // máximo y SIN pointer-events:none, bloqueando de verdad). Ahora es invisible
 // y no interactivo EN PANTALLA siempre — solo @media print lo hace visible,
 // que es cuando realmente se necesita.
-const OVERLAY_FALLBACK_MS = 6_000; // segundos, no 60 — ya no bloquea nada mientras tanto
+// 2026-10-08, mismo hotfix: el fallback bajó a 6s pensando solo en que ya no
+// bloquea pantalla — pero ACÁ el fallback además BORRA el overlay/estilo del
+// DOM (document.body.removeChild). Si el cajero tarda más que eso con el
+// cuadro real de Chrome todavía abierto, se corre el riesgo de arrancar el
+// contenido justo cuando el motor de impresión lo necesita — vuelve a un
+// margen generoso, sin costo ahora que no bloquea la pantalla.
+const OVERLAY_FALLBACK_MS = 60_000;
 
 function _reciboOverlay(html: string, onDone?: () => void): void {
   // Extraer <style> y <body> del HTML completo del recibo
@@ -345,12 +428,16 @@ function _reciboOverlay(html: string, onDone?: () => void): void {
   window.addEventListener('afterprint', onAfterprint, { once: true });
   const fallback = setTimeout(() => finish(true), OVERLAY_FALLBACK_MS);
 
-  // Mismo detector que _printViaHiddenIframe — algunas plantillas ya llaman
-  // window.print() ellas mismas (ver nota ahí); no duplicar la llamada.
+  // Mismo detector y misma espera de imágenes que _printViaHiddenIframe —
+  // ver esas notas. Acotado al propio overlay (no a document entero): la
+  // página del POS ya tiene sus propios <img> (miniaturas, iconos) que no
+  // tienen nada que ver con este ticket.
   const autoImprime = /<script[^>]*>[\s\S]*?window\.print\s*\(/i.test(html);
-  // 400 ms para que el overlay renderice antes de abrir el diálogo de impresión
   if (!autoImprime) {
-    setTimeout(() => { try { window.print(); } catch { finish(true); } }, 400);
+    _esperarImagenes(overlay).then(() => {
+      if (terminado) return;
+      try { window.print(); } catch { finish(true); }
+    });
   }
 }
 

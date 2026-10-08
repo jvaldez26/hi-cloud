@@ -62,6 +62,13 @@ describe('printUtils — fuga de afterprint y bloqueo de pantalla (2026-10-08)',
       (URL as any).createObjectURL = () => 'blob:mock';
     }
     createObjectURLSpy = vi.spyOn(URL, 'createObjectURL');
+    // jsdom no expone maxTouchPoints como accessor — hay que crearlo para
+    // poder espiarlo con vi.spyOn(navigator, 'maxTouchPoints', 'get').
+    if (!Object.getOwnPropertyDescriptor(Navigator.prototype, 'maxTouchPoints')?.get) {
+      Object.defineProperty(Navigator.prototype, 'maxTouchPoints', {
+        configurable: true, get: () => 0,
+      });
+    }
     document.body.innerHTML = '';
     document.head.querySelectorAll('#__hc-ps').forEach(n => n.remove());
   });
@@ -77,14 +84,15 @@ describe('printUtils — fuga de afterprint y bloqueo de pantalla (2026-10-08)',
     // (los listeners de la ruta de escritorio van ahí, no en el window
     // principal — solo _reciboOverlay, la ruta móvil, usa window).
     imprimirReciboTermico(TICKET_REAL_HTML, undefined);
-    await vi.advanceTimersByTimeAsync(6_200);
+    await vi.advanceTimersByTimeAsync(30_200);
     const iframeWin = (document.getElementById('__hc-print-iframe') as HTMLIFrameElement).contentWindow!;
     const contador = contarListenersAfterprint(iframeWin);
 
     for (let i = 0; i < 300; i++) {
       imprimirReciboTermico(TICKET_REAL_HTML, undefined);
-      // El iframe espera 150ms antes de imprimir; el fallback dispara a los 6s.
-      await vi.advanceTimersByTimeAsync(6_200);
+      // El iframe espera a que carguen las imágenes (tope 2.5s) antes de
+      // imprimir; el fallback dispara a los 30s.
+      await vi.advanceTimersByTimeAsync(30_200);
     }
 
     expect((contador as any).adds).toBe(300);
@@ -100,7 +108,7 @@ describe('printUtils — fuga de afterprint y bloqueo de pantalla (2026-10-08)',
 
   it('300 tickets donde afterprint SÍ dispara normal: mismo resultado, cero listeners netos', async () => {
     imprimirReciboTermico(TICKET_REAL_HTML, undefined);
-    await vi.advanceTimersByTimeAsync(6_200);
+    await vi.advanceTimersByTimeAsync(30_200);
     const iframeWin = (document.getElementById('__hc-print-iframe') as HTMLIFrameElement).contentWindow!;
     const contador = contarListenersAfterprint(iframeWin);
 
@@ -118,7 +126,7 @@ describe('printUtils — fuga de afterprint y bloqueo de pantalla (2026-10-08)',
   it('nunca crea un blob URL — document.write directo, sin Blob que revocar', async () => {
     for (let i = 0; i < 10; i++) {
       imprimirReciboTermico(TICKET_REAL_HTML, undefined);
-      await vi.advanceTimersByTimeAsync(6_200);
+      await vi.advanceTimersByTimeAsync(30_200);
     }
     expect(createObjectURLSpy).not.toHaveBeenCalled();
   });
@@ -131,7 +139,7 @@ describe('printUtils — fuga de afterprint y bloqueo de pantalla (2026-10-08)',
 
     for (let i = 0; i < 10; i++) {
       imprimirElemento('panel-generico-test', '80mm auto', undefined);
-      await vi.advanceTimersByTimeAsync(6_200);
+      await vi.advanceTimersByTimeAsync(30_200);
     }
     expect(createObjectURLSpy).not.toHaveBeenCalled();
   });
@@ -141,7 +149,7 @@ describe('printUtils — fuga de afterprint y bloqueo de pantalla (2026-10-08)',
     await vi.advanceTimersByTimeAsync(10);
     const iframe = document.getElementById('__hc-print-iframe') as HTMLIFrameElement;
     expect(iframe.style.pointerEvents).toBe('none');
-    await vi.advanceTimersByTimeAsync(6_200);
+    await vi.advanceTimersByTimeAsync(30_200);
   });
 
   it('otros botones del DOM siguen respondiendo mientras la impresión está pendiente (nada los bloquea)', async () => {
@@ -158,7 +166,7 @@ describe('printUtils — fuga de afterprint y bloqueo de pantalla (2026-10-08)',
     btn.click();
     expect(clicks).toBe(1);
 
-    await vi.advanceTimersByTimeAsync(6_200);
+    await vi.advanceTimersByTimeAsync(30_200);
     expect(hayImpresionPendiente()).toBe(false);
   });
 
@@ -175,8 +183,109 @@ describe('printUtils — fuga de afterprint y bloqueo de pantalla (2026-10-08)',
     expect(overlay.style.visibility).toBe('hidden');
     expect(Number(overlay.style.zIndex)).toBeLessThan(0);
 
-    await vi.advanceTimersByTimeAsync(6_200);
+    await vi.advanceTimersByTimeAsync(60_200);
     uaSpy.mockRestore();
+  });
+
+  // ── Hotfix 2026-10-08 (empresa 73, Bellamar González, PC Windows táctil) ──
+
+  it('Windows + pantalla táctil (navigator.maxTouchPoints > 1): toma la ruta de ESCRITORIO (iframe), no la de overlay', async () => {
+    const uaSpy = vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
+    );
+    const touchSpy = vi.spyOn(navigator, 'maxTouchPoints', 'get').mockReturnValue(10);
+
+    imprimirReciboTermico(TICKET_REAL_HTML, undefined);
+    await vi.advanceTimersByTimeAsync(10);
+
+    // Ruta de escritorio: iframe montado, NINGÚN overlay — el bug reportado
+    // era exactamente lo contrario (maxTouchPoints>1 mandaba a _reciboOverlay).
+    expect(document.getElementById('__hc-print-iframe')).not.toBeNull();
+    expect(document.getElementById('__hc-po')).toBeNull();
+
+    await vi.advanceTimersByTimeAsync(30_200);
+    uaSpy.mockRestore();
+    touchSpy.mockRestore();
+  });
+
+  it('iPadOS 13+ disfrazado de "Macintosh" CON táctil: sigue tomando la ruta móvil (overlay)', async () => {
+    const uaSpy = vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/605.1.15 Safari/605.1.15',
+    );
+    const touchSpy = vi.spyOn(navigator, 'maxTouchPoints', 'get').mockReturnValue(5);
+
+    imprimirReciboTermico(TICKET_REAL_HTML, undefined);
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(document.getElementById('__hc-po')).not.toBeNull();
+
+    await vi.advanceTimersByTimeAsync(60_200);
+    uaSpy.mockRestore();
+    touchSpy.mockRestore();
+  });
+
+  it('Mac de escritorio real (sin táctil): toma la ruta de escritorio, no se confunde con un iPad', async () => {
+    const uaSpy = vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120 Safari/537.36',
+    );
+    const touchSpy = vi.spyOn(navigator, 'maxTouchPoints', 'get').mockReturnValue(0);
+
+    imprimirReciboTermico(TICKET_REAL_HTML, undefined);
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(document.getElementById('__hc-print-iframe')).not.toBeNull();
+    expect(document.getElementById('__hc-po')).toBeNull();
+
+    await vi.advanceTimersByTimeAsync(30_200);
+    uaSpy.mockRestore();
+    touchSpy.mockRestore();
+  });
+
+  // HTML mínimo con UNA sola imagen (el logo) — evita la ambigüedad de
+  // esperar también las 2 imágenes data: del ticket base, que en jsdom no
+  // disparan 'load'/'error' por su cuenta igual que las remotas.
+  const HTML_SOLO_LOGO = `<!DOCTYPE html><html><body>
+    <img id="logo-remoto" src="https://cdn.example.com/logo-elido.png" />
+    <div>HiCloud Ferretería Pavel</div>
+  </body></html>`;
+
+  it('NO imprime hasta que el logo (URL remota real, no data:) termine de cargar', async () => {
+    imprimirReciboTermico(HTML_SOLO_LOGO, undefined);
+    await vi.advanceTimersByTimeAsync(5); // iframe montado, documento escrito
+
+    const win = (document.getElementById('__hc-print-iframe') as HTMLIFrameElement).contentWindow!;
+    const printSpy = vi.spyOn(win, 'print');
+    const logoImg = win.document.getElementById('logo-remoto') as HTMLImageElement;
+    expect(logoImg).not.toBeNull();
+
+    // Pasa el margen que antes (150ms) disparaba print() sin esperar nada —
+    // con el logo todavía "cargando" (jsdom nunca dispara load por su cuenta),
+    // print() NO debe haberse llamado aún.
+    await vi.advanceTimersByTimeAsync(300);
+    expect(printSpy).not.toHaveBeenCalled();
+
+    // El logo termina de cargar — print() debe llamarse poco después.
+    logoImg.dispatchEvent(new Event('load'));
+    await vi.advanceTimersByTimeAsync(10);
+    expect(printSpy).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(30_200);
+  });
+
+  it('si el logo NUNCA carga (URL rota, red caída), imprime igual tras el tope de 2.5s — no se queda esperando para siempre', async () => {
+    imprimirReciboTermico(HTML_SOLO_LOGO, undefined);
+    await vi.advanceTimersByTimeAsync(5);
+
+    const win = (document.getElementById('__hc-print-iframe') as HTMLIFrameElement).contentWindow!;
+    const printSpy = vi.spyOn(win, 'print');
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(printSpy).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(600); // cruza el tope de 2.5s
+    expect(printSpy).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(30_200);
   });
 
   it('emite los eventos de impresión (inicio/fin con duración) para la telemetría', async () => {
@@ -186,10 +295,10 @@ describe('printUtils — fuga de afterprint y bloqueo de pantalla (2026-10-08)',
     imprimirReciboTermico(TICKET_REAL_HTML, undefined);
     expect(eventos).toEqual([{ tipo: 'inicio' }]);
 
-    await vi.advanceTimersByTimeAsync(6_200);
+    await vi.advanceTimersByTimeAsync(30_200);
     expect(eventos).toHaveLength(2);
     expect(eventos[1].tipo).toBe('fin');
-    expect(eventos[1].duracionMs).toBeGreaterThanOrEqual(6_000);
+    expect(eventos[1].duracionMs).toBeGreaterThanOrEqual(30_000);
 
     off();
   });
@@ -199,7 +308,7 @@ describe('printUtils — fuga de afterprint y bloqueo de pantalla (2026-10-08)',
     imprimirReciboTermico(TICKET_REAL_HTML, undefined);
     await vi.advanceTimersByTimeAsync(2_000);
     expect(msImpresionPendiente()).toBeGreaterThanOrEqual(2_000);
-    await vi.advanceTimersByTimeAsync(6_200);
+    await vi.advanceTimersByTimeAsync(30_200);
     expect(msImpresionPendiente()).toBeNull();
   });
 });
@@ -217,14 +326,14 @@ describe('obtenerDeteccionImpresionDirecta() — heurística de --kiosk-printing
 
   it('sin suficientes muestras (menos de 3 impresiones): no disponible', async () => {
     imprimirReciboTermico(TICKET_REAL_HTML, undefined);
-    await vi.advanceTimersByTimeAsync(6_200);
+    await vi.advanceTimersByTimeAsync(30_200);
     expect(obtenerDeteccionImpresionDirecta().disponible).toBe(false);
   });
 
   it('todas las impresiones terminan por FALLBACK (nunca por afterprint) — nunca "probablemente activa"', async () => {
     for (let i = 0; i < 5; i++) {
       imprimirReciboTermico(TICKET_REAL_HTML, undefined);
-      await vi.advanceTimersByTimeAsync(6_200); // siempre vía fallback, nunca afterprint
+      await vi.advanceTimersByTimeAsync(30_200); // siempre vía fallback, nunca afterprint
     }
     const d = obtenerDeteccionImpresionDirecta();
     expect(d.disponible).toBe(true);
@@ -276,8 +385,8 @@ describe('imprimirPDFA4() — mismo iframe, para blobs de PDF (NC, cierre de caj
     const p = imprimirPDFA4('/api/v1/notas-credito/1/pdf');
     await vi.advanceTimersByTimeAsync(10); // fetch + createObjectURL resueltos
     // El iframe navega a la URL del blob — jsdom no dispara 'load' solo, el
-    // fallback (6s) es el camino determinista aquí, igual que en los demás tests.
-    await vi.advanceTimersByTimeAsync(6_200);
+    // fallback (30s) es el camino determinista aquí, igual que en los demás tests.
+    await vi.advanceTimersByTimeAsync(30_200);
     await p;
 
     expect(openSpy).not.toHaveBeenCalled();
@@ -292,7 +401,7 @@ describe('imprimirPDFA4() — mismo iframe, para blobs de PDF (NC, cierre de caj
     const revokeSpy = vi.spyOn(URL, 'revokeObjectURL');
 
     const p = imprimirPDFA4('/api/v1/caja/1/pdf');
-    await vi.advanceTimersByTimeAsync(6_200);
+    await vi.advanceTimersByTimeAsync(30_200);
     await p;
 
     expect(revokeSpy).toHaveBeenCalledTimes(1);
