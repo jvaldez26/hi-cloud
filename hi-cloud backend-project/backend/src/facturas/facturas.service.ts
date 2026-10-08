@@ -467,6 +467,26 @@ export class FacturasService {
     }
   }
 
+  /**
+   * CONTADO sin ninguna forma de pago declarada deja la venta "sin rastro de
+   * cobro" — no hay forma de saber después si se cobró o no. Si tipoPago es
+   * CONTADO, formasPago debe cubrir el total (tolerancia 0.01 de redondeo).
+   * CREDITO no exige nada aquí.
+   */
+  private validarContadoTieneCobro(
+    tipoPago:   string,
+    formasPago: { tipo: number; monto: number }[] | null | undefined,
+    total:      number,
+  ): void {
+    if (tipoPago !== 'CONTADO') return;
+    const suma = Array.isArray(formasPago)
+      ? formasPago.reduce((s, f) => s + Number(f.monto ?? 0), 0)
+      : 0;
+    if (suma < Number(total) - 0.01) {
+      throw new BadRequestException('Indica cómo se pagó la factura o márcala a crédito.');
+    }
+  }
+
   async create(dto: CreateFacturaDto, usuario: User) {
     const empresaId = this.tenantService.getEmpresaId();
 
@@ -573,6 +593,8 @@ export class FacturasService {
     if (dto.formasPago?.length) {
       tipoPago = dto.formasPago.some(f => f.tipo === 4) ? 'CREDITO' : 'CONTADO';
     }
+
+    this.validarContadoTieneCobro(tipoPago, dto.formasPago, totalDOP);
 
     // Validar límite de crédito antes de crear la factura
     if (tipoPago === 'CREDITO' && dto.clienteId) {
@@ -813,6 +835,9 @@ export class FacturasService {
     if (dto.formasPago?.length) {
       tipoPago = dto.formasPago.some(f => f.tipo === 4) ? 'CREDITO' : 'CONTADO';
     }
+
+    this.validarContadoTieneCobro(tipoPago, dto.formasPago, totalDOP);
+
     const diasCred  = tipoPago === 'CREDITO' ? (dto.diasCredito ?? 30) : 0;
     const fechaVenc = tipoPago === 'CREDITO'
       ? (() => { const d = new Date(); d.setDate(d.getDate() + diasCred); return d; })()
@@ -1355,6 +1380,16 @@ export class FacturasService {
             `difiere de hoy por más de 30 días (${diasDeDiferencia}). Verifique que el día/mes/año sean correctos antes de emitir.`,
           );
         }
+
+        // ── Guard: CONTADO no puede emitirse sin forma de pago declarada ───────
+        //
+        // Defensa final: create()/update() ya lo exigen, pero una factura puede
+        // haber quedado en BORRADOR antes de que esta regla existiera, o haberse
+        // editado por otra vía. Repetirlo aquí, dentro de la misma transacción
+        // con pg_advisory_xact_lock, cierra el hueco también al emitir.
+        this.validarContadoTieneCobro(
+          factura.tipoPago, (factura as any).formasPago, Number(factura.total),
+        );
 
         // ── El vendedor se fija AQUI, al emitir ────────────────────────────────
         //

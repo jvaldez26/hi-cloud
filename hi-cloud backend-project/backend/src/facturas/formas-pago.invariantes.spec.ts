@@ -111,3 +111,46 @@ describe('FacturasService — invariantes de formasPago', () => {
     }, 30019.20)).not.toThrow();
   });
 });
+
+/**
+ * CONTADO sin ninguna forma de pago que cubra el total — el hueco real
+ * detrás de las facturas EMITIDA sin rastro de cobro (empresa 73 y otras,
+ * 2026-10-07; ver sellar-factura-pagada.helper.ts). `validarFormasPago` de
+ * arriba a propósito NO exige nada cuando formasPago viene vacío — esta es
+ * la OTRA mitad: exige que, si la factura es de CONTADO, sí haya algo.
+ */
+describe('FacturasService — CONTADO exige forma de pago que cubra el total', () => {
+  const validarContado = (tipoPago: string, formasPago: any, total: number) =>
+    (FacturasService.prototype as any).validarContadoTieneCobro.call({}, tipoPago, formasPago, total);
+
+  it('rechaza CONTADO sin ninguna forma de pago', () => {
+    expect(() => validarContado('CONTADO', undefined, 2035))
+      .toThrow(BadRequestException);
+    expect(() => validarContado('CONTADO', [], 2035))
+      .toThrow(BadRequestException);
+  });
+
+  it('rechaza CONTADO cuando la suma no cubre el total', () => {
+    expect(() => validarContado('CONTADO', [{ tipo: 1, monto: 1000 }], 2035))
+      .toThrow(BadRequestException);
+  });
+
+  it('mensaje claro: "indica cómo se pagó... o márcala a crédito"', () => {
+    expect(() => validarContado('CONTADO', [], 2035)).toThrow(/márcala a crédito/i);
+  });
+
+  it('acepta CONTADO cuando la suma cubre el total', () => {
+    expect(() => validarContado('CONTADO', [{ tipo: 1, monto: 2035 }], 2035))
+      .not.toThrow();
+  });
+
+  it('tolera el céntimo de redondeo (0.01), igual que validarFormasPago', () => {
+    expect(() => validarContado('CONTADO', [{ tipo: 1, monto: 2034.995 }], 2035))
+      .not.toThrow();
+  });
+
+  it('CRÉDITO está exento — nunca exige formasPago (su cobro llega después, por CxC)', () => {
+    expect(() => validarContado('CREDITO', undefined, 2035)).not.toThrow();
+    expect(() => validarContado('CREDITO', [], 2035)).not.toThrow();
+  });
+});

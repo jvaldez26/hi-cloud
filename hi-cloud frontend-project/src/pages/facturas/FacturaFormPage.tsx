@@ -560,6 +560,18 @@ export default function FacturaFormPage() {
     clienteId: number; fecha: dayjs.Dayjs; notas?: string;
     vendedorId?: number; moneda?: string; tipoCambio?: number;
   }) => {
+    // Espejo del guard del backend (facturas.service.ts, validarContadoTieneCobro):
+    // de contado sin ninguna forma de pago que cubra el total no se deja
+    // enviar — o se declara el cobro, o se marca a crédito. Cortar aquí evita
+    // el viaje redondo al backend solo para recibir el mismo 400.
+    if (tipoPago === 'CONTADO') {
+      const sumaFP = r2(formasPago.filter(fp => fp.monto > 0).reduce((s, fp) => s + fp.monto, 0));
+      if (sumaFP < total - 0.01) {
+        message.error('Indica cómo se pagó la factura (forma de pago) o márcala a crédito.');
+        return;
+      }
+    }
+
     const vendedor = vendedores.find((v: any) => v.id === values.vendedorId);
     const detalles: FacturaDetallePayload[] = lineas.map(l => ({
       productoId:     l.productoId as number,

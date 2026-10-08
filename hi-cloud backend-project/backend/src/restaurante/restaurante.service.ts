@@ -670,25 +670,34 @@ export class RestauranteService {
       const { vendedorId, nombreVendedor } =
         await this.vendedorResolver.resolverVendedor({}, userId, empresaId);
 
+      // formasPago — mismo mapeo tipo DGII que el resto del sistema (1=efectivo,
+      // 3=tarjeta, 2=transferencia). Antes este INSERT no la incluía en absoluto:
+      // la comanda SÍ sabe cómo se cobró (dto.metodoPago, va a rs_comandas y al
+      // asiento contable) pero la factura quedaba CONTADO sin ningún rastro de
+      // cobro — el mismo hueco que confirma sellar-factura-pagada.helper.ts.
+      const TIPO_DGII_POR_METODO: Record<string, number> = { efectivo: 1, tarjeta: 3, transferencia: 2 };
+      const tipoFormaPago = TIPO_DGII_POR_METODO[dto.metodoPago] ?? 1;
+      const formasPagoJson = JSON.stringify([{ tipo: tipoFormaPago, monto: totalFac }]);
+
       // 4. Insertar factura
       const facturaRows = await qr.query(`
         INSERT INTO facturas (
           folio, fecha, estado, "empresaId", "usuarioId", "vendedorId", "nombreVendedor", "sucursalId", "clienteId",
-          subtotal, iva, total, "tipoPago", "diasCredito", "tipoNcf",
+          subtotal, iva, total, "tipoPago", "formasPago", "diasCredito", "tipoNcf",
           moneda, "tipoCambio", "aplicaRetenciones",
           "retieneItbis", "porcentajeRetencionItbis", "montoRetencionItbis",
           "retieneIsr",   "porcentajeRetencionIsr",   "montoRetencionIsr",
           "netoCobrar", "isActive", "createdAt", "updatedAt"
         ) VALUES (
           $1, NOW(), 'emitida', $2, $3, $9, $10, $4, $5,
-          $6, $7, $8, 'CONTADO', 0, 'E32',
+          $6, $7, $8, 'CONTADO', $11::jsonb, 0, 'E32',
           'DOP', 1, false,
           false, 30, 0,
           false, 10, 0,
           $8, true, NOW(), NOW()
         ) RETURNING id`,
         [facturaFolio, empresaId, userId, sucursalId ?? null, comanda.clienteId ?? null,
-         subtotalFac, ivaFac, totalFac, vendedorId, nombreVendedor],
+         subtotalFac, ivaFac, totalFac, vendedorId, nombreVendedor, formasPagoJson],
       ) as { id: number }[];
       facturaId = facturaRows[0].id;
 

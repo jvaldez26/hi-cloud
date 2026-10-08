@@ -18,6 +18,7 @@ import { FacturaEstado } from './entities/factura.entity';
 const FACTURA = {
   id: 1, empresaId: 42, estado: FacturaEstado.BORRADOR, usuarioId: 5,
   vendedorId: 10, nombreVendedor: 'Juan', tipoPago: 'CONTADO',
+  formasPago: [{ tipo: 1, monto: 100 }],
   detalles: [], notas: '', fecha: new Date('2026-09-19'),
   total: 100, subtotal: 100, iva: 0, tipoNcf: 'E32', folio: 'FAC-15227',
 };

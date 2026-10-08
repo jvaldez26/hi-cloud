@@ -59,6 +59,7 @@ function buildService(opts: {
   svc.findOne = jest.fn().mockResolvedValue({
     id: 777, empresaId: EMPRESA, estado: FacturaEstado.BORRADOR,
     fecha: new Date(), folio: 'FAC-777', total: 1000,
+    formasPago: [{ tipo: 1, monto: 1000 }],
     tipoPago: opts.tipoPago, usuarioId: CAJERO,
     supervisorSessionId: opts.supervisorSessionId ?? null,
     supervisorToken: opts.supervisorToken ?? null,
