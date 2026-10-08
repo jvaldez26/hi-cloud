@@ -63,6 +63,15 @@ function emitirConFecha(fecha: Date | string) {
     id: 777, empresaId: EMPRESA, estado: FacturaEstado.BORRADOR,
     folio: 'FAC-777', total: 1000, fecha, vendedorId: 38,
   });
+  // pg_advisory_xact_lock — el candado de emitir-pos-concurrencia.spec.ts.
+  // Aquí no hay carrera que probar: el manager siempre ve BORRADOR, igual
+  // que el findOne() de arriba.
+  svc.dataSource = {
+    transaction: (cb: (m: unknown) => Promise<unknown>) => cb({
+      query: jest.fn().mockResolvedValue([{ estado: FacturaEstado.BORRADOR }]),
+      getRepository: () => svc.facturaRepository,
+    }),
+  };
 
   return svc.cambiarEstado(777, FacturaEstado.EMITIDA);
 }

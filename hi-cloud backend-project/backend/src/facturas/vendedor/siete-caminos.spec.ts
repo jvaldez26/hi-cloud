@@ -85,6 +85,14 @@ async function emitir(borrador: any) {
     notas:     borrador.notas,
     vendedorId: borrador.vendedorId ?? null,
   });
+  // pg_advisory_xact_lock — el candado de emitir-pos-concurrencia.spec.ts.
+  // Sin carrera que probar aquí: el manager siempre ve BORRADOR.
+  svc.dataSource = {
+    transaction: (cb: (m: unknown) => Promise<unknown>) => cb({
+      query: jest.fn().mockResolvedValue([{ estado: FacturaEstado.BORRADOR }]),
+      getRepository: () => facturaRepository,
+    }),
+  };
 
   await expect(svc.cambiarEstado(777, FacturaEstado.EMITIDA)).rejects.toBe(ALTO);
   return facturaRepository.update.mock.calls[0]?.[1];
@@ -302,6 +310,12 @@ describe('6. factura recurrente (cron) — nace BORRADOR y CON vendedor', () => 
       folio: 'FAC-777', total: 1180, notas: borrador.notas,
       vendedorId: borrador.vendedorId, nombreVendedor: borrador.nombreVendedor,
     });
+    svc.dataSource = {
+      transaction: (cb: (m: unknown) => Promise<unknown>) => cb({
+        query: jest.fn().mockResolvedValue([{ estado: FacturaEstado.BORRADOR }]),
+        getRepository: () => facturaRepository,
+      }),
+    };
 
     await expect(svc.cambiarEstado(777, FacturaEstado.EMITIDA)).rejects.toBe(ALTO);
 

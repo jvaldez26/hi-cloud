@@ -62,7 +62,15 @@ function makeService() {
   svc.vendedorResolver    = { resolverVendedor: jest.fn() };
   svc.inventarioService   = { registrarSalida: jest.fn() };
   svc.cxcService          = { crear: jest.fn() };
-  svc.dataSource          = { query: jest.fn().mockResolvedValue([]) };
+  // pg_advisory_xact_lock — el candado de emitir-pos-concurrencia.spec.ts.
+  // Sin carrera que probar aquí: el manager siempre ve BORRADOR.
+  svc.dataSource          = {
+    query: jest.fn().mockResolvedValue([]),
+    transaction: (cb: (m: unknown) => Promise<unknown>) => cb({
+      query: jest.fn().mockResolvedValue([{ estado: FacturaEstado.BORRADOR }]),
+      getRepository: () => facturaRepository,
+    }),
+  };
   svc.facturaEmail        = { enviar: jest.fn().mockResolvedValue(undefined) };
 
   return { svc: svc as FacturasService, realtimeService, emitirECFUseCase };

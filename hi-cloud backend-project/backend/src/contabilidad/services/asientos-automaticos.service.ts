@@ -276,12 +276,12 @@ export class AsientosAutomaticosService {
   // _crearAsientoContabilizado y el try/catch de revertirAsiento). Exigirlo
   // aquí también es la última línea de defensa si algún caller futuro deja
   // de blindarse.
-  private async generarNumero(empresaId: number): Promise<string> {
+  private async generarNumero(empresaId: number, manager?: EntityManager): Promise<string> {
     if (!empresaId) {
       throw new BadRequestException('No se puede generar el número de asiento sin contexto de empresa');
     }
     return generarNumeroSecuencial(
-      this.dataSource,
+      manager ?? this.dataSource,
       'asientos_contables',
       'numero',
       '^ASI-[0-9]+$',
@@ -329,8 +329,9 @@ export class AsientosAutomaticosService {
    * siempre: no se contabiliza costo de venta (return null) — no hay nada
    * parcial que contabilizar.
    */
-  private async resolverCostoVenta(facturaId: number, folio: string): Promise<number | null> {
-    const filas = await this.dataSource.query<{ productoId: number | null; cantidad: string; costoUnitario: string }[]>(
+  private async resolverCostoVenta(facturaId: number, folio: string, manager?: EntityManager): Promise<number | null> {
+    const runner = manager ?? this.dataSource;
+    const filas = await runner.query<{ productoId: number | null; cantidad: string; costoUnitario: string }[]>(
       `SELECT "productoId", cantidad, "costoUnitario" FROM factura_detalles WHERE "facturaId" = $1`,
       [facturaId],
     );
@@ -581,13 +582,13 @@ export class AsientosAutomaticosService {
 
     const { lineasResueltas, totalDebe, totalHaber } = resultado;
 
-    // NOTA: generarNumero() usa this.dataSource.query() — una conexión del pool
-    // FUERA de la transacción externa (si la hay). La función siguiente_numero_secuencia
-    // hace INSERT ... ON CONFLICT DO UPDATE que se confirma inmediatamente.
-    // Consecuencia aceptada: si la tx externa hace rollback, el número ASI-XXXX queda
-    // consumido y habrá un hueco en la numeración. La unicidad es invariante; la densidad
-    // no es requerimiento (un auditor puede ver el hueco pero no habrá duplicados).
-    const numero = await this.generarNumero(eid);
+    // Con `manager` (transacción externa, p.ej. el candado de
+    // FacturasService.cambiarEstado), generarNumero() también usa esa MISMA
+    // conexión — si la tx externa hace rollback, el número ASI-XXXX se
+    // libera con ella (siguiente_numero_secuencia corre dentro de la misma
+    // transacción, no en una conexión aparte del pool). Sin `manager`
+    // (llamadas sueltas), sigue siendo su propia conexión de siempre.
+    const numero = await this.generarNumero(eid, manager);
 
     const asientoData = {
       empresaId:       eid,
@@ -631,6 +632,16 @@ export class AsientosAutomaticosService {
   // Factura emitida → Clientes / Ventas / ITBIS por Pagar
   // ──────────────────────────────────────────────────────────────────
 
+  /**
+   * `manager`: EntityManager de una transacción en curso (p.ej. el candado
+   * de FacturasService.cambiarEstado) — con él, TODO lo de aquí (resolver
+   * cuentas/costo de venta, generar el número, insertar asiento+líneas) usa
+   * esa MISMA transacción, y un fallo se relanza (NO se silencia: si algo
+   * falla, la transacción externa debe poder revertir TODO, no solo lo que
+   * ya escribió este método). Sin `manager` (el resto de los ~20 callers:
+   * compras, cobros, pagos, nómina...), sigue siendo fire-and-forget — el
+   * documento origen ya existe y no puede caerse por un problema contable.
+   */
   async asientoFacturaEmitida(
     facturaId: number,
     total: number,
@@ -641,6 +652,7 @@ export class AsientosAutomaticosService {
     userId: number,
     retenciones?: { retItbis?: number; retIsr?: number; netoCobrar?: number },
     pago?: { tipoPago: 'CONTADO' | 'CREDITO'; formasPago?: { tipo: number; monto: number }[] },
+    manager?: EntityManager,
   ): Promise<void> {
     const retItbis   = retenciones?.retItbis   ?? 0;
     const retIsr     = retenciones?.retIsr     ?? 0;
@@ -688,7 +700,7 @@ export class AsientosAutomaticosService {
       // archivo). Un producto sin costo se ve peor contabilizado que sin
       // asiento — resolverCostoVenta() devuelve null y reporta a Sentry en
       // vez de dejar pasar un DR/CR en $0.
-      const costoVenta = await this.resolverCostoVenta(facturaId, folio);
+      const costoVenta = await this.resolverCostoVenta(facturaId, folio, manager);
       if (costoVenta) {
         lineas.push({ codigo: cuentas.COSTO_VENTAS, descripcion: `Costo de venta ${folio}`, debe: costoVenta, haber: 0 });
         lineas.push({ codigo: cuentas.INVENTARIO,   descripcion: `Salida de inventario ${folio}`, debe: 0, haber: costoVenta });
@@ -702,17 +714,28 @@ export class AsientosAutomaticosService {
         fecha,
         userId,
         lineas,
-      });
+      }, manager);
       if (asiento) {
         this.logger.log(`Asiento factura ${folio} generado`);
-      } else {
+      } else if (!manager) {
         this.logger.warn(`Asiento factura ${folio} NO generado (cuenta faltante) — ver Sentry`);
+      } else {
+        // Dentro de la transacción de cambiarEstado(): "cuenta faltante" NO
+        // es fire-and-forget — si el asiento no se pudo generar, la emisión
+        // completa debe revertirse igual que cualquier otro fallo de este
+        // bloque, no quedar a medias con inventario/CxC ya escritos y sin su
+        // contrapartida contable.
+        throw new Error(`Asiento factura ${folio} NO generado (cuenta faltante) — ver Sentry`);
       }
     } catch (err) {
       this.logger.error(`Error asiento factura ${folio}: ${(err as Error).message}`);
       this.reportarFalloAsiento(err, 'asiento_factura_emitida', {
         tipoOrigen: TipoOrigenAsiento.FACTURA, referenciaId: String(facturaId), referenciaFolio: folio,
       });
+      // Dentro de una transacción externa (manager), relanzar — nunca
+      // silenciar: la transacción necesita saber que falló para revertir
+      // TODO (inventario, CxC, el sello EMITIDA), no solo lo de aquí.
+      if (manager) throw err;
     }
   }
 

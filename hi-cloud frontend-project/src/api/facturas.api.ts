@@ -92,9 +92,19 @@ export const facturasApi = {
   cambiarEstado: (id: number, estado: FacturaEstado) =>
     api.patch(`/facturas/${id}/estado`, { estado }).then(r => r.data.data ?? r.data),
 
-  /** Emite desde POS con timeout de 8s en el backend — la venta no se bloquea si tu proveedor e-CF falla */
+  /**
+   * Emite desde POS. El backend acota el envío síncrono a MSeller a ~12s en
+   * total (ver TIMEOUT_POS/AUTH_TIMEOUT_POS en emitir-ecf.use-case.ts) y
+   * responde de inmediato con el e-CF en curso si no hay veredicto a tiempo
+   * — nunca deja la petición colgada más que eso. El timeout del cliente va
+   * holgado por encima (20s), para que el POS NUNCA se rinda antes que el
+   * propio servidor: un timeout del cliente más corto que el del servidor
+   * fue la causa real de los e-CF duplicados (Sentry #7779557844) — el
+   * servidor seguía procesando una petición que el POS ya daba por perdida.
+   */
   emitirPos: (id: number, body?: EmitirPosBody) =>
-    api.patch(`/facturas/${id}/emitir-pos`, { estado: 'emitida', ...body }).then(r => r.data.data ?? r.data),
+    api.patch(`/facturas/${id}/emitir-pos`, { estado: 'emitida', ...body }, { timeout: 20_000 })
+      .then(r => r.data.data ?? r.data),
 
   /** Emite e-CF para una factura EMITIDA/PAGADA que no tiene comprobante */
   /**

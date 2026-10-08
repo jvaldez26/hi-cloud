@@ -307,9 +307,10 @@ export class MSellerClientService {
    * @param timeoutMs     Timeout en ms (default 30s; usar 9000 en POS)
    * @param opts.maxRetries    Reintentos tras el primer intento (default 3).
    *   El camino síncrono del POS pasa 0 — un solo intento, para que el
-   *   presupuesto total de la petición quede acotado (~12s: ver
-   *   emitir-ecf.use-case.ts); el seguimiento real de lo que no se confirma
-   *   a tiempo lo hace ReintentoECFJob (cron), no un reintento aquí adentro.
+   *   presupuesto total de la petición quede acotado (~12s: ver el
+   *   comentario en emitir-ecf.use-case.ts); el timeout/error (incluido un
+   *   429 con el circuit breaker abierto) se resuelve ahí mismo y el
+   *   seguimiento real lo hace ReintentoECFJob (cron), no un reintento aquí.
    * @param opts.authTimeoutMs Timeout de getIdToken (default 10s; 3s en POS).
    *
    * @throws EcfValidacionError    MSeller devolvió 4xx (error de formato/datos)
@@ -334,6 +335,16 @@ export class MSellerClientService {
 
     return this.withRetry(
       async () => {
+        // Solo desarrollo — simula un MSeller lento para probar el presupuesto
+        // de tiempo del POS (ECF_EN_CURSO) sin depender de que el proveedor real
+        // esté lento el día que se prueba. Nunca activo en producción aunque
+        // alguien deje la variable puesta por error.
+        const simMs = Number(process.env.MSELLER_SIMULAR_LENTITUD_MS ?? 0);
+        if (process.env.NODE_ENV !== 'production' && simMs > 0) {
+          this.logger.warn(`[DEV] Simulando lentitud de MSeller: ${simMs}ms antes de enviar`);
+          await this.sleep(simMs);
+        }
+
         // idToken se resuelve en CADA intento (no una sola vez arriba): si un
         // intento anterior recibió 401/403 y withRetry invalidó el caché, este
         // intento debe mandar un token REALMENTE fresco, no el mismo que ya

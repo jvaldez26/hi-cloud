@@ -44,7 +44,17 @@ function buildService(opts: {
 
   let i = 0;
   const query = jest.fn(() => Promise.resolve(opts.queryResponses[i++] ?? []));
-  svc.dataSource = { query };
+  // pg_advisory_xact_lock — el candado de emitir-pos-concurrencia.spec.ts. El
+  // manager de la transacción es independiente de `query` (que sirve las
+  // respuestas secuenciales del guard de supervisor/crédito) — sin carrera
+  // que probar aquí, siempre ve BORRADOR.
+  svc.dataSource = {
+    query,
+    transaction: (cb: (m: unknown) => Promise<unknown>) => cb({
+      query: jest.fn().mockResolvedValue([{ estado: FacturaEstado.BORRADOR }]),
+      getRepository: () => facturaRepository,
+    }),
+  };
 
   svc.findOne = jest.fn().mockResolvedValue({
     id: 777, empresaId: EMPRESA, estado: FacturaEstado.BORRADOR,

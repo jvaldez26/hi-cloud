@@ -61,6 +61,7 @@ import { useOfflineQueue } from '../../hooks/useOfflineQueue';
 import { useSupervisor } from '../../hooks/useSupervisor';
 import { esFormatoTarjetaSupervisor } from '../../utils/tarjetaSupervisor';
 import { AutoEnvioTarjeta, enmascararCodigoTarjeta } from './tarjetaScanAutoSubmit';
+import { esTimeoutOReddCliente, interpretarConsultaTrasTimeout } from './emitirPosTimeout';
 import { EscanerCamaraModal } from '../../components/EscanerCamaraModal';
 import { requiereSupervisorPorPrecioModificado } from './carritoRecuperadoGate';
 import { debeIgnorarEnterGlobal } from './confirmarCobroEnterGate';
@@ -11292,23 +11293,57 @@ export default function POSPage() {
           return { factura, ecfResult: null, _requiereSupervisor: true, _emisionError: emitMsg };
         }
 
+        // Timeout o red caída del CLIENTE (nunca llegó respuesta): el servidor
+        // puede seguir procesando la petición de verdad — reenviar aquí es
+        // exactamente lo que producía el e-CF duplicado (Sentry #7779557844).
+        // El siguiente paso es CONSULTAR el estado real, nunca reintentar el
+        // envío ni mostrar el mensaje crudo de axios.
+        if (esTimeoutOReddCliente(emitErr)) {
+          const t0 = Date.now();
+          let consulta: any = null;
+          for (let intento = 0; intento < 3; intento++) {
+            if (intento > 0) await new Promise(r => setTimeout(r, 2500));
+            try { consulta = await facturasApi.getOne(factura.id); if (consulta?.estado && consulta.estado !== 'borrador') break; }
+            catch { /* red caída — reintenta */ }
+          }
+          const duracionMs = Date.now() - t0;
+          const resultado = interpretarConsultaTrasTimeout(consulta);
+          Sentry.captureException(emitErr, {
+            level: 'warning',
+            tags: { origin: 'mutation', modulo: 'POS', operacion: 'venta_directa_emitir_ecf', tipo: 'timeout_cliente' },
+            extra: { facturaId: factura?.id, folio: factura?.folio, duracionMs },
+          });
+          if (resultado.tipo === 'confirmada') {
+            const ecf = consulta?.ecf ?? null;
+            setEcfEncf(ecf?.numero ?? '');
+            setEcfStatus(resultado.estadoEcf === 'aceptado' ? 'ok' : 'pendiente');
+            intentoCobroRef.current = null;
+            return {
+              factura: consulta,
+              ecfResult: {
+                ecf, estado: resultado.estadoEcf, encf: ecf?.numero,
+                qrUrl: ecf?.qrUrl, trackId: ecf?.trackId, securityCode: ecf?.codigoSeguridad,
+              },
+              _mensajeConfirmacion: resultado.mensaje,
+            };
+          }
+          setEcfStatus('pendiente');
+          return { factura, ecfResult: null, _emisionSinConfirmar: true, _emisionError: resultado.mensaje };
+        }
+
         setEcfStatus('pendiente');
         // Observabilidad: la VENTA sí se cobró (la factura ya se creó) — solo falló la
         // emisión del e-CF. Por eso NO se relanza: un rethrow saltaría el onSuccess
         // (que muestra el aviso obligatorio al cajero y limpia el carrito) y haría
         // parecer que toda la venta falló. Reportamos aquí explícitamente para que el
         // fallo llegue a Sentry con contexto (scope global: empresaId/sucursalId/cajero).
-        // Distinguir TIMEOUT/comunicación (503 → el e-CF pudo quedar pendiente_envio,
-        // NO es rechazo definitivo) de un rechazo/fallo real de emisión.
-        const emitStatus = emitErr?.response?.status;
-        const esTimeout  = emitStatus === 503;
         Sentry.captureException(emitErr, {
-          level: esTimeout ? 'warning' : 'error',
+          level: 'error',
           tags: {
             origin:    'mutation',
             modulo:    'POS',
             operacion: 'venta_directa_emitir_ecf',
-            tipo:      esTimeout ? 'pendiente_confirmacion' : 'emision_fallida',
+            tipo:      'emision_fallida',
           },
           extra: { facturaId: factura?.id, folio: factura?.folio },
         });
@@ -11346,27 +11381,43 @@ export default function POSPage() {
         }
         const folio  = factura?.folio ?? 'sin folio';
         const errMsg = (result as any)?._emisionError ?? 'Error al contactar el servicio de comprobantes fiscales';
-        // HOTFIX urgente (2026-10-07): ya NO se invita a presionar "Confirmar
-        // cobro" de nuevo — ese reintento, cuando la primera emisión en
-        // realidad seguía procesándose (MSeller lento), caía en "no se puede
-        // cambiar de emitida a emitida" (FAC-1705 y otras). El backend ya
-        // responde idempotente ante un reintento, pero el camino seguro para
-        // el cajero es el botón "Emitir" del panel de Facturas (mismo texto
-        // que ya usan las otras dos variantes de este aviso en este archivo).
+        // Ya NO se invita a presionar "Confirmar cobro" de nuevo — reenviar
+        // sobre la misma venta fue la causa real del e-CF duplicado (Sentry
+        // #7779557844). El camino seguro para reintentar SOLO el comprobante
+        // es el botón "Emitir" del panel de Facturas (otro endpoint, sin este
+        // riesgo de carrera).
         Modal.warning({
           title: 'Comprobante fiscal pendiente de emisión',
-          content: `La venta se registró (${folio}) pero NO se pudo emitir el comprobante fiscal. ${errMsg}. Avisa a un supervisor — la factura puede reintentarse desde el módulo Facturas con el botón "Emitir".`,
+          content: `La venta se registró (${folio}) pero NO se pudo emitir el comprobante fiscal. ${errMsg}. Corrige el dato si aplica y reintenta desde el panel Facturas con el botón "Emitir" — no reintentes el cobro de esta venta.`,
           okText: 'Entendido',
         });
-        // No se vacía el carrito ni los datos de cobro/comprador: si el cajero
-        // vuelve a presionar "Confirmar cobro" sin tocar nada, el payload sale
-        // idéntico y el intento se retoma sobre ESTE borrador (intentoCobroRef)
-        // en vez de crear una factura nueva — evita los huérfanos FAC-15784/85.
+        qc.invalidateQueries({ queryKey: ['pos-panel', 'facturas'] });
+        qc.refetchQueries({ queryKey: ['pos-panel', 'facturas'] });
+        return;
+      }
+
+      // ── Timeout del cliente: no se pudo confirmar ni siquiera consultando ──
+      if ((result as any)?._emisionSinConfirmar) {
+        if (printWinRef.current && !printWinRef.current.closed) {
+          try { printWinRef.current.close(); } catch { /* noop */ }
+          printWinRef.current = null;
+          autoYaPrintedRef.current = false;
+        }
+        const folio = factura?.folio ?? 'sin folio';
+        Modal.warning({
+          title: 'No pudimos confirmar el comprobante fiscal',
+          content: `La venta se registró (${folio}). ${(result as any)._emisionError}`,
+          okText: 'Entendido',
+        });
         qc.invalidateQueries({ queryKey: ['pos-panel', 'facturas'] });
         qc.refetchQueries({ queryKey: ['pos-panel', 'facturas'] });
         return;
       }
       // ─────────────────────────────────────────────────────────────────────────
+
+      if ((result as any)?._mensajeConfirmacion) {
+        message.success((result as any)._mensajeConfirmacion, 5);
+      }
 
       if ((factura as any)._offline) {
         message.warning(`Venta guardada offline (${factura.folio}). Se sincronizará al reconectarse.`, 5);

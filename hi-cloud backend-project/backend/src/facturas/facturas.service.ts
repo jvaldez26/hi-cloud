@@ -25,6 +25,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { User } from '../users/users.entity';
 import { LimitesService } from '../suscripciones/limites.service';
 import { EmitirECFUseCase, DatosCompradorECF } from '../ecf/use-cases/emitir-ecf.use-case';
+import { EcfError } from '../ecf/errors/ecf.errors';
 import { FacturaEmailService } from './services/factura-email.service';
 import { DocumentoOrigenTipo, ECF } from '../ecf/entities/ecf.entity';
 import { ReintentoECFJob } from '../ecf/jobs/reintento-ecf.job';
@@ -1235,16 +1236,16 @@ export class FacturasService {
       );
     }
 
-    // HOTFIX urgente (2026-10-07, incidente en producción: FAC-1705 y otras —
-    // "No se puede cambiar de 'emitida' a 'emitida'"). Causa: el camino
-    // síncrono de emitir-pos puede tardar más que el timeout del cliente
-    // (15s) cuando MSeller está lento (hasta ~39s en el peor caso: 4
-    // reintentos × 8s + backoff). El cajero, siguiendo la instrucción del
-    // propio modal, reintenta sobre la MISMA venta — y para cuando esa
-    // segunda petición llega, la primera YA escribió estado=EMITIDA. Antes
-    // de este guard, eso caía en el BadRequestException genérico de abajo
-    // ("no se puede cambiar de X a Y"). Se corta ANTES, con la respuesta
-    // idempotente: el POS lo trata como "en proceso", nunca como error rojo.
+    // Doble-envío de emitir-pos/estado=emitida sobre una factura que YA quedó
+    // EMITIDA (o PAGADA): dos peticiones casi simultáneas pueden leer el mismo
+    // factura.estado=BORRADOR antes de que la primera escriba EMITIDA (línea
+    // ~1517 más abajo) — la segunda llega aquí después de que la primera ya
+    // selló EMITIDA. Sin esto, la segunda petición revienta con un
+    // BadRequestException "no se puede cambiar de emitida a emitida" por algo
+    // que, desde el cajero, es exactamente la MISMA venta (caso real: Sentry
+    // #7779557844, EcfDuplicadoError — esto cierra la MISMA carrera un paso
+    // antes, al nivel de la factura, no solo al nivel del e-CF). Responde con
+    // el estado actual en vez de error — el POS lo trata como "en proceso".
     if (estado === FacturaEstado.EMITIDA
         && (factura.estado === FacturaEstado.EMITIDA || factura.estado === FacturaEstado.PAGADA)) {
       this.logger.warn(
@@ -1279,287 +1280,339 @@ export class FacturasService {
     }
 
     if (estado === FacturaEstado.EMITIDA) {
-      // ── Guard: venta a crédito sin autorización de supervisor ──────────────
+      // ── Candado real contra la carrera (ver emitir-pos-concurrencia.spec.ts) ──
       //
-      // Única puerta BORRADOR → EMITIDA (ver validarAutorizacionVentaCredito).
-      // Solo aplica a emisión interactiva — un cron (factura recurrente) no
-      // tiene a nadie delante a quien pedirle autorización, mismo criterio
-      // que la resolución de vendedorId un poco más abajo: "si no se puede
-      // resolver, la factura se emite igual, nunca se bloquea por esto".
-      const cajeroEmisorId = this.tenantService.getUserId();
-      if (cajeroEmisorId && factura.tipoPago === 'CREDITO') {
-        await this.validarAutorizacionVentaCredito(
-          factura as any, factura.empresaId, factura.usuarioId, cajeroEmisorId,
-          (factura as any).supervisorSessionId, (factura as any).supervisorToken,
-          supervisorTokenFresco,
-        );
-        // Red de seguridad, no el guard real (ese es la línea de arriba): si
-        // por lo que sea se llega hasta aquí con la invariante violada — un
-        // bug en validarAutorizacionVentaCredito, un refactor futuro que la
-        // saltee, una carrera con /auth/supervisor-log/cerrar — nunca debería
-        // pasar en operación normal. Si pasa, es una alerta de seguridad real
-        // (no un 403 esperado del día a día) y bloquea la emisión igual.
-        await this.alarmarSiInvarianteSupervisorCreditoViolada(factura as any);
-      }
+      // El guard de arriba (línea ~1249) solo protege si la primera petición
+      // YA escribió EMITIDA cuando la segunda lee la factura — si las dos
+      // leen BORRADOR casi al mismo tiempo (cualquier paso lento antes de la
+      // escritura: RNC, caja, límites...), ninguna ve a la otra y las dos
+      // corren TODO lo de abajo por duplicado: doble salida de inventario,
+      // doble CxC, doble asiento contable. Confirmado antes de este fix.
+      //
+      // pg_advisory_xact_lock(id) serializa ese bloque completo (guards +
+      // efectos + el sello EMITIDA) por factura — se libera al terminar ESTA
+      // transacción (commit o rollback), deliberadamente ANTES de llamar a
+      // MSeller: ese llamado puede tardar hasta ~12s (ver
+      // emitir-ecf.use-case.ts) y retener la fila ese tiempo bloquearía
+      // cualquier lectura/escritura normal de la factura, no solo el doble
+      // envío que esto previene.
+      const reserva: { enCurso: boolean; ecfInput?: any; esCredito?: boolean } =
+        await this.dataSource.transaction(async (manager) => {
+        await manager.query('SELECT pg_advisory_xact_lock($1)', [id]);
 
-      // ── Guard: la fecha de la factura no puede estar a más de 30 días de hoy ──
-      //
-      // Nace del caso real de FAC-124 (empresa 59): "2027" en vez de "2026" por
-      // error de captura. Esa factura, con la fecha ya mal tecleada, se pudo
-      // emitir y hasta DGII la aceptó con `fechaemision=07-09-2027` — el error
-      // solo salió a la luz después, al intentar la Nota de Crédito, que
-      // rechaza referencias a fechas futuras (ver e34.builder.ts). Cortar aquí,
-      // al emitir, evita que un año mal tecleado llegue siquiera a DGII.
-      //
-      // ±30 días: cubre facturas fechadas unos días atrás (captura tardía) o
-      // unos días adelante (emisión programada), sin abrir la puerta a un año
-      // completo de diferencia.
-      const diasDeDiferencia = Math.abs(diferenciaDiasRD(factura.fecha));
-      if (diasDeDiferencia > 30) {
-        throw new BadRequestException(
-          `La fecha de la factura (${factura.fecha instanceof Date ? factura.fecha.toISOString().slice(0, 10) : factura.fecha}) ` +
-          `difiere de hoy por más de 30 días (${diasDeDiferencia}). Verifique que el día/mes/año sean correctos antes de emitir.`,
+        // Releer YA bajo el candado — si la otra petición ganó la carrera y
+        // alcanzó a escribir EMITIDA/PAGADA, cortar aquí, antes de tocar
+        // inventario, CxC o el asiento.
+        const [filaBloqueada] = await manager.query(
+          `SELECT estado FROM facturas WHERE id = $1`, [id],
         );
-      }
-
-      // ── El vendedor se fija AQUI, al emitir ────────────────────────────────
-      //
-      // Cinco de los siete caminos que crean facturas la dejan en BORRADOR sin
-      // vendedor (cotizacion, contrato, orden de servicio, factura recurrente y
-      // duplicar). Un borrador no entra en ningun cuadre ni reporte, asi que ahi
-      // no hacia falta; en cuanto pasa a EMITIDA si, y esta es la UNICA puerta
-      // que hace borrador -> emitida.
-      //
-      // Se resuelve aqui y no al crear porque al emitir SIEMPRE hay una persona
-      // autenticada, y es la correcta: la que esta cerrando la venta. Al crear el
-      // borrador puede no haber nadie (los crones de contratos y recurrentes) o
-      // puede ser otra (quien preparo la cotizacion hace tres semanas).
-      //
-      // Si no se puede resolver, la factura se emite igual —nunca se bloquea una
-      // venta por esto— y salta la alerta agrupada del resolver.
-      if (!(factura as any).vendedorId) {
-        const usuarioId = this.tenantService.getUserId();
-        if (usuarioId) {
-          const r = await this.vendedorResolver.resolverVendedor(
-            {}, usuarioId, factura.empresaId,
-          );
-          if (r.vendedorId) {
-            await this.facturaRepository.update(id, {
-              vendedorId:     r.vendedorId,
-              nombreVendedor: r.nombreVendedor ?? undefined,
-            });
-            (factura as any).vendedorId     = r.vendedorId;
-            (factura as any).nombreVendedor = r.nombreVendedor;
-          }
-        } else {
-          // Sin contexto de usuario no hay a quien imputar. No rompemos la
-          // emision, pero que no sea silencioso.
-          this.logger.warn(
-            `[Factura.emitir] ${factura.folio} se emite sin vendedor: no hay ` +
-            `usuario en el contexto (empresa ${factura.empresaId}).`,
-          );
+        if (!filaBloqueada) throw new NotFoundException(`Factura #${id} no encontrada`);
+        if (filaBloqueada.estado === FacturaEstado.EMITIDA || filaBloqueada.estado === FacturaEstado.PAGADA) {
+          return { enCurso: true };
         }
-      }
 
-      const vendedorFactura = (factura as any).vendedorId ?? null;
+        const facturaRepoTx = manager.getRepository(Factura);
 
-      // ── Las facturas recurrentes no pertenecen a ningún turno ──────────────
-      //
-      // Las genera un cron de madrugada a partir de una plantilla. Exigirles
-      // caja abierta las haría fallar siempre en las empresas con control de
-      // caja activo, porque a esa hora no hay ninguna abierta en ninguna parte.
-      //
-      // La excepción es por ORIGEN, no por "no hay caja abierta": se mira
-      // facturaRecurrenteId, que sólo escribe el generador de recurrentes.
-      // Exceptuar por ausencia de caja sería abrir el agujero justo en el POS,
-      // que es donde el control tiene que apretar.
-      //
-      // Por lo mismo salen del arqueo (ver caja.service.recalcularDesdeBD): no
-      // se le puede cargar a un cajero un efectivo que nadie recibió por caja.
-      const esRecurrente = (factura as any).facturaRecurrenteId != null;
+        // ── Guard: venta a crédito sin autorización de supervisor ──────────────
+        //
+        // Única puerta BORRADOR → EMITIDA (ver validarAutorizacionVentaCredito).
+        // Solo aplica a emisión interactiva — un cron (factura recurrente) no
+        // tiene a nadie delante a quien pedirle autorización, mismo criterio
+        // que la resolución de vendedorId un poco más abajo: "si no se puede
+        // resolver, la factura se emite igual, nunca se bloquea por esto".
+        const cajeroEmisorId = this.tenantService.getUserId();
+        if (cajeroEmisorId && factura.tipoPago === 'CREDITO') {
+          await this.validarAutorizacionVentaCredito(
+            factura as any, factura.empresaId, factura.usuarioId, cajeroEmisorId,
+            (factura as any).supervisorSessionId, (factura as any).supervisorToken,
+            supervisorTokenFresco,
+          );
+          // Red de seguridad, no el guard real (ese es la línea de arriba): si
+          // por lo que sea se llega hasta aquí con la invariante violada — un
+          // bug en validarAutorizacionVentaCredito, un refactor futuro que la
+          // saltee, una carrera con /auth/supervisor-log/cerrar — nunca debería
+          // pasar en operación normal. Si pasa, es una alerta de seguridad real
+          // (no un 403 esperado del día a día) y bloquea la emisión igual.
+          await this.alarmarSiInvarianteSupervisorCreditoViolada(factura as any);
+        }
 
-      if (vendedorFactura && !esRecurrente) {
-        const cajaCheck = await this.cajaService.esCajaAbiertaVendedor(
-          vendedorFactura,
-          factura.empresaId,
-        );
-        if (!cajaCheck.ok) {
-          const esHuerfana = cajaCheck.mensaje?.startsWith('CAJA_HUERFANA:');
+        // ── Guard: la fecha de la factura no puede estar a más de 30 días de hoy ──
+        //
+        // Nace del caso real de FAC-124 (empresa 59): "2027" en vez de "2026" por
+        // error de captura. Esa factura, con la fecha ya mal tecleada, se pudo
+        // emitir y hasta DGII la aceptó con `fechaemision=07-09-2027` — el error
+        // solo salió a la luz después, al intentar la Nota de Crédito, que
+        // rechaza referencias a fechas futuras (ver e34.builder.ts). Cortar aquí,
+        // al emitir, evita que un año mal tecleado llegue siquiera a DGII.
+        //
+        // ±30 días: cubre facturas fechadas unos días atrás (captura tardía) o
+        // unos días adelante (emisión programada), sin abrir la puerta a un año
+        // completo de diferencia.
+        const diasDeDiferencia = Math.abs(diferenciaDiasRD(factura.fecha));
+        if (diasDeDiferencia > 30) {
           throw new BadRequestException(
-            esHuerfana
-              // Extrae solo la parte descriptiva después de "CAJA_HUERFANA:ID:"
-              ? cajaCheck.mensaje!.split(':').slice(2).join(':').trim()
-              : 'No hay una caja diaria abierta para este vendedor. Abre el turno antes de facturar.',
+            `La fecha de la factura (${factura.fecha instanceof Date ? factura.fecha.toISOString().slice(0, 10) : factura.fecha}) ` +
+            `difiere de hoy por más de 30 días (${diasDeDiferencia}). Verifique que el día/mes/año sean correctos antes de emitir.`,
           );
         }
-      }
-      // Sin vendedor NO se bloquea la venta. Léase antes de endurecer esto:
-      //
-      // Este if antes era `if (factura.vendedorId)` envolviendo TODA la
-      // comprobación, y por eso el bug de la caja #446 fue invisible: la factura
-      // sin vendedor —justo la que se cae del cierre— era la única que nadie
-      // miraba. Lo que hay que entender es que la comprobación tampoco arregla
-      // ese caso: validar contra "cualquier caja abierta de la empresa" no
-      // restituye control alguno, porque la factura sin vendedor no se imputa a
-      // esa caja igual (recalcularDesdeBD reúne por vendedorId + fecha). Estarían
-      // bloqueándose ventas legítimas sin que ningún cuadre mejore.
-      //
-      // Y serían muchas: en las 5 empresas con control de caja hay usuarios que
-      // facturan ~5.800 veces al mes sin vendedor asociado (vendedores.usuarioId
-      // vacío). Bloquear los deja sin vender.
-      //
-      // El control real vuelve cuando vendedores."usuarioId" esté poblado en las
-      // empresas que faltan: entonces resolverVendedor() siempre resuelve, esta
-      // rama deja de alcanzarse sola y ya se puede endurecer. Hasta entonces lo
-      // que necesitamos es visibilidad, y la da la alerta agrupada por empresa y
-      // día que emite acumularFacturaSinVendedor().
 
-      // Verificar límite de ingresos ANTES de emitir
-      const aviso = await this.limitesService.verificarLimiteIngresos(
-        factura.empresaId,
-        Number(factura.total),
-      ).catch(err => { throw err; }); // deja pasar ForbiddenException con código 402
-
-      const pagoInmediato = this.esPagoInmediato(factura.notas);
-
-      const tipoEcfNum = tipoEcfOverride ?? parseInt(
-        (factura.tipoNcf ?? 'E32').replace('E', ''),
-        10,
-      );
-
-      // E46 (exportaciones): si la factura está en moneda extranjera, pasar OtraMoneda
-      const otraMoneda = tipoEcfNum === 46 && factura.moneda && factura.moneda !== 'DOP'
-        ? {
-            Moneda:     factura.moneda,
-            TipoCambio: Number(factura.tipoCambio ?? 1),
-            MontoTotal: Number(factura.totalOriginal ?? factura.total),
+        // ── El vendedor se fija AQUI, al emitir ────────────────────────────────
+        //
+        // Cinco de los siete caminos que crean facturas la dejan en BORRADOR sin
+        // vendedor (cotizacion, contrato, orden de servicio, factura recurrente y
+        // duplicar). Un borrador no entra en ningun cuadre ni reporte, asi que ahi
+        // no hacia falta; en cuanto pasa a EMITIDA si, y esta es la UNICA puerta
+        // que hace borrador -> emitida.
+        //
+        // Se resuelve aqui y no al crear porque al emitir SIEMPRE hay una persona
+        // autenticada, y es la correcta: la que esta cerrando la venta. Al crear el
+        // borrador puede no haber nadie (los crones de contratos y recurrentes) o
+        // puede ser otra (quien preparo la cotizacion hace tres semanas).
+        //
+        // Si no se puede resolver, la factura se emite igual —nunca se bloquea una
+        // venta por esto— y salta la alerta agrupada del resolver.
+        if (!(factura as any).vendedorId) {
+          const usuarioId = this.tenantService.getUserId();
+          if (usuarioId) {
+            const r = await this.vendedorResolver.resolverVendedor(
+              {}, usuarioId, factura.empresaId,
+            );
+            if (r.vendedorId) {
+              await manager.getRepository(Factura).update(id, {
+                vendedorId:     r.vendedorId,
+                nombreVendedor: r.nombreVendedor ?? undefined,
+              });
+              (factura as any).vendedorId     = r.vendedorId;
+              (factura as any).nombreVendedor = r.nombreVendedor;
+            }
+          } else {
+            // Sin contexto de usuario no hay a quien imputar. No rompemos la
+            // emision, pero que no sea silencioso.
+            this.logger.warn(
+              `[Factura.emitir] ${factura.folio} se emite sin vendedor: no hay ` +
+              `usuario en el contexto (empresa ${factura.empresaId}).`,
+            );
           }
-        : undefined;
-
-      // Fallback: si el RNC está presente pero la razón social es genérica o falta
-      // (p.ej. el cajero confirmó antes de que terminara el lookup DGII en el frontend),
-      // consultamos DGII aquí para obtener el nombre real del comprador.
-      if (datosComprador?.rnc &&
-          (!datosComprador.razonSocial || /^consumidor\s+final$/i.test(datosComprador.razonSocial))) {
-        const rncDatos = await this.rncService.consultarRNC(datosComprador.rnc).catch(() => null);
-        if (rncDatos?.encontrado && rncDatos.nombre) {
-          datosComprador = { ...datosComprador, razonSocial: rncDatos.nombre };
         }
-      }
 
-      const ecfInput = {
-        empresaId:           factura.empresaId,
-        documentoOrigenTipo: DocumentoOrigenTipo.FACTURA,
-        documentoOrigenId:   factura.id,
-        tipoEcf:             tipoEcfNum,
-        modoSincrono,
-        modoContingencia:    modoContingencia === true,
-        otraMoneda:          otraMoneda as any,
-        datosComprador,
-      };
+        const vendedorFactura = (factura as any).vendedorId ?? null;
 
-      // 1a. Descontar stock de inventario óptico si aplica
-      for (const detalle of factura.detalles) {
-        if (!(detalle as any).opticaInventarioId) continue;
-        await this.dataSource.query(
-          `UPDATE op_inventario SET "stockActual" = GREATEST(0, "stockActual" - $1), "updatedAt" = NOW() WHERE id = $2`,
-          [Number(detalle.cantidad), (detalle as any).opticaInventarioId],
-        ).catch((err: unknown) => {
-          this.logger.warn(
-            `[Factura] descuento stock óptico id=${(detalle as any).opticaInventarioId} falló (no bloquea emisión): ` +
-            `${err instanceof Error ? err.message : String(err)}`,
+        // ── Las facturas recurrentes no pertenecen a ningún turno ──────────────
+        //
+        // Las genera un cron de madrugada a partir de una plantilla. Exigirles
+        // caja abierta las haría fallar siempre en las empresas con control de
+        // caja activo, porque a esa hora no hay ninguna abierta en ninguna parte.
+        //
+        // La excepción es por ORIGEN, no por "no hay caja abierta": se mira
+        // facturaRecurrenteId, que sólo escribe el generador de recurrentes.
+        // Exceptuar por ausencia de caja sería abrir el agujero justo en el POS,
+        // que es donde el control tiene que apretar.
+        //
+        // Por lo mismo salen del arqueo (ver caja.service.recalcularDesdeBD): no
+        // se le puede cargar a un cajero un efectivo que nadie recibió por caja.
+        const esRecurrente = (factura as any).facturaRecurrenteId != null;
+
+        if (vendedorFactura && !esRecurrente) {
+          const cajaCheck = await this.cajaService.esCajaAbiertaVendedor(
+            vendedorFactura,
+            factura.empresaId,
           );
-          // TIPO B: la factura ya se emitió — reportar a Sentry SIN romper el flujo.
-          reportServiceError(err, 'factura_descuento_stock_optico', {
-            facturaId:          String(factura.id),
-            empresaId:          String(factura.empresaId ?? ''),
-            folio:              factura.folio,
-            opticaInventarioId: String((detalle as any).opticaInventarioId ?? ''),
-          });
-        });
-      }
-
-      // 1. Salida de inventario — no bloquear emisión si falla (ej. stock ya ajustado manualmente)
-      const almacenIdCtx = this.tenantService.getAlmacenId() ?? undefined;
-      for (const detalle of factura.detalles) {
-        if (!detalle.productoId) continue;
-        await this.inventarioService.registrarSalida(
-          detalle.productoId,
-          Number(detalle.cantidad),
-          factura.usuarioId,
-          `Factura emitida: ${factura.folio}`,
-          factura.folio,
-          almacenIdCtx,
-        ).catch((err: unknown) => {
-          this.logger.warn(
-            `[Factura] registrarSalida para ${factura.folio} falló (no bloquea emisión): ` +
-            `${err instanceof Error ? err.message : String(err)}`,
-          );
-          // TIPO B: la factura ya se emitió — reportar a Sentry SIN romper el flujo.
-          reportServiceError(err, 'factura_registrar_salida_inventario', {
-            facturaId:  String(factura.id),
-            empresaId:  String(factura.empresaId ?? ''),
-            folio:      factura.folio,
-            productoId: String(detalle.productoId ?? ''),
-          });
-        });
-      }
-
-      // 2. CxC — solo si tipoPago === 'CREDITO' (contado nunca genera CxC)
-      const esCredito = (factura as any).tipoPago === 'CREDITO';
-      const diasCred  = Number((factura as any).diasCredito ?? 0);
-      if (esCredito) {
-        const dias = diasCred > 0 ? diasCred : 30;
-        // Si hay retenciones la CxC es por el netoCobrar (no el total bruto)
-        await this.cxcService.crear(factura.id, factura.usuarioId, dias);
-        if (diasCred > 0) {
-          const fv = new Date();
-          fv.setDate(fv.getDate() + dias);
-          await this.facturaRepository.update(factura.id, { fechaVencimiento: fv } as any);
+          if (!cajaCheck.ok) {
+            const esHuerfana = cajaCheck.mensaje?.startsWith('CAJA_HUERFANA:');
+            throw new BadRequestException(
+              esHuerfana
+                // Extrae solo la parte descriptiva después de "CAJA_HUERFANA:ID:"
+                ? cajaCheck.mensaje!.split(':').slice(2).join(':').trim()
+                : 'No hay una caja diaria abierta para este vendedor. Abre el turno antes de facturar.',
+            );
+          }
         }
-      }
+        // Sin vendedor NO se bloquea la venta. Léase antes de endurecer esto:
+        //
+        // Este if antes era `if (factura.vendedorId)` envolviendo TODA la
+        // comprobación, y por eso el bug de la caja #446 fue invisible: la factura
+        // sin vendedor —justo la que se cae del cierre— era la única que nadie
+        // miraba. Lo que hay que entender es que la comprobación tampoco arregla
+        // ese caso: validar contra "cualquier caja abierta de la empresa" no
+        // restituye control alguno, porque la factura sin vendedor no se imputa a
+        // esa caja igual (recalcularDesdeBD reúne por vendedorId + fecha). Estarían
+        // bloqueándose ventas legítimas sin que ningún cuadre mejore.
+        //
+        // Y serían muchas: en las 5 empresas con control de caja hay usuarios que
+        // facturan ~5.800 veces al mes sin vendedor asociado (vendedores.usuarioId
+        // vacío). Bloquear los deja sin vender.
+        //
+        // El control real vuelve cuando vendedores."usuarioId" esté poblado en las
+        // empresas que faltan: entonces resolverVendedor() siempre resuelve, esta
+        // rama deja de alcanzarse sola y ya se puede endurecer. Hasta entonces lo
+        // que necesitamos es visibilidad, y la da la alerta agrupada por empresa y
+        // día que emite acumularFacturaSinVendedor().
 
-      // 3. Asiento contable — no bloquear emisión si la empresa no tiene cuentas configuradas
-      const aplicaRet   = (factura as any).aplicaRetenciones === true;
-      const retItbis    = aplicaRet ? Number((factura as any).montoRetencionItbis ?? 0) : 0;
-      const retIsr      = aplicaRet ? Number((factura as any).montoRetencionIsr   ?? 0) : 0;
-      const netoCobrar  = aplicaRet ? Number((factura as any).netoCobrar ?? factura.total) : Number(factura.total);
-      await this.asientosService.asientoFacturaEmitida(
-        factura.id,
-        Number(factura.total),
-        Number(factura.subtotal),
-        Number(factura.iva),
-        factura.folio,
-        factura.fecha as unknown as string,
-        factura.usuarioId,
-        aplicaRet ? { retItbis, retIsr, netoCobrar } : undefined,
-        // FIX 3, FASE A commit 2 — de dónde sale el débito (Clientes vs
-        // Caja/Bancos por medio de pago) ya no se decide adentro del motor
-        // con un solo criterio: se lo dice esta factura.
-        { tipoPago: esCredito ? 'CREDITO' : 'CONTADO', formasPago: (factura as any).formasPago },
-      ).catch((err: unknown) => {
-        this.logger.warn(
-          `[Factura] asientoFacturaEmitida para ${factura.folio} falló (no bloquea emisión): ` +
-          `${err instanceof Error ? err.message : String(err)}`,
+        // Verificar límite de ingresos ANTES de emitir
+        const aviso = await this.limitesService.verificarLimiteIngresos(
+          factura.empresaId,
+          Number(factura.total),
+        ).catch(err => { throw err; }); // deja pasar ForbiddenException con código 402
+
+        const pagoInmediato = this.esPagoInmediato(factura.notas);
+
+        const tipoEcfNum = tipoEcfOverride ?? parseInt(
+          (factura.tipoNcf ?? 'E32').replace('E', ''),
+          10,
         );
-        // TIPO B: la factura ya se emitió — reportar a Sentry SIN romper el flujo.
-        reportServiceError(err, 'factura_asiento_contable', {
-          facturaId: String(factura.id),
-          empresaId: String(factura.empresaId ?? ''),
-          folio:     factura.folio,
-        });
+
+        // E46 (exportaciones): si la factura está en moneda extranjera, pasar OtraMoneda
+        const otraMoneda = tipoEcfNum === 46 && factura.moneda && factura.moneda !== 'DOP'
+          ? {
+              Moneda:     factura.moneda,
+              TipoCambio: Number(factura.tipoCambio ?? 1),
+              MontoTotal: Number(factura.totalOriginal ?? factura.total),
+            }
+          : undefined;
+
+        // Fallback: si el RNC está presente pero la razón social es genérica o falta
+        // (p.ej. el cajero confirmó antes de que terminara el lookup DGII en el frontend),
+        // consultamos DGII aquí para obtener el nombre real del comprador.
+        if (datosComprador?.rnc &&
+            (!datosComprador.razonSocial || /^consumidor\s+final$/i.test(datosComprador.razonSocial))) {
+          const rncDatos = await this.rncService.consultarRNC(datosComprador.rnc).catch(() => null);
+          if (rncDatos?.encontrado && rncDatos.nombre) {
+            datosComprador = { ...datosComprador, razonSocial: rncDatos.nombre };
+          }
+        }
+
+        const ecfInput = {
+          empresaId:           factura.empresaId,
+          documentoOrigenTipo: DocumentoOrigenTipo.FACTURA,
+          documentoOrigenId:   factura.id,
+          tipoEcf:             tipoEcfNum,
+          modoSincrono,
+          modoContingencia:    modoContingencia === true,
+          otraMoneda:          otraMoneda as any,
+          datosComprador,
+        };
+
+        // Inventario, CxC, asiento y el sello EMITIDA van TODOS dentro de esta
+        // MISMA transacción (el `manager` del candado) — un fallo en
+        // CUALQUIER paso de aquí abajo revierte TODO lo anterior, de verdad
+        // (rollback de SQL, no una compensación manual). Antes no era así:
+        // inventarioService/cxcService/asientosService usaban sus propios
+        // repositorios, conexiones aparte que confirmaban de inmediato — un
+        // fallo de CxC después de descontar inventario lo dejaba descontado
+        // sin ninguna venta real detrás. Confirmado en producción (script
+        // verificar-duplicados-concurrencia-emitir-pos.js, 2026-10-07):
+        // FAC-15929/1530/12121 tienen el inventario duplicado con UN SOLO
+        // asiento — un primer intento descontó inventario y falló después,
+        // el reintento (minutos más tarde, misma venta) volvió a descontar.
+        //
+        // Por lo mismo, ninguno de estos pasos silencia sus errores aquí
+        // (el .catch que los volvía "fire-and-forget" se quitó): dentro de
+        // esta transacción, CUALQUIER fallo debe propagarse para que el
+        // candado la revierta completa. La única excepción real, explícita,
+        // es el descuento de stock óptico (op_inventario) — un módulo aparte
+        // (Óptica) sin AVCO/asiento propio, donde SÍ se mantiene la decisión
+        // original de no bloquear la emisión por un fallo puntual de esa
+        // tabla; queda documentado como la ÚNICA omisión a propósito.
+        for (const detalle of factura.detalles) {
+          if (!(detalle as any).opticaInventarioId) continue;
+          await manager.query(
+            `UPDATE op_inventario SET "stockActual" = GREATEST(0, "stockActual" - $1), "updatedAt" = NOW() WHERE id = $2`,
+            [Number(detalle.cantidad), (detalle as any).opticaInventarioId],
+          ).catch((err: unknown) => {
+            this.logger.warn(
+              `[Factura] descuento stock óptico id=${(detalle as any).opticaInventarioId} falló (decisión explícita: no bloquea emisión — Óptica no tiene asiento/AVCO propio): ` +
+              `${err instanceof Error ? err.message : String(err)}`,
+            );
+            reportServiceError(err, 'factura_descuento_stock_optico', {
+              facturaId:          String(factura.id),
+              empresaId:          String(factura.empresaId ?? ''),
+              folio:              factura.folio,
+              opticaInventarioId: String((detalle as any).opticaInventarioId ?? ''),
+            });
+          });
+        }
+
+        // 1. Salida de inventario — DENTRO de la transacción; un fallo (ej.
+        // stock insuficiente) revierte todo lo demás, nunca queda a medias.
+        const almacenIdCtx = this.tenantService.getAlmacenId() ?? undefined;
+        for (const detalle of factura.detalles) {
+          if (!detalle.productoId) continue;
+          await this.inventarioService.registrarSalida(
+            detalle.productoId,
+            Number(detalle.cantidad),
+            factura.usuarioId,
+            `Factura emitida: ${factura.folio}`,
+            factura.folio,
+            almacenIdCtx,
+            undefined,
+            manager,
+          );
+        }
+
+        // 2. CxC — solo si tipoPago === 'CREDITO' (contado nunca genera CxC)
+        const esCredito = (factura as any).tipoPago === 'CREDITO';
+        const diasCred  = Number((factura as any).diasCredito ?? 0);
+        if (esCredito) {
+          const dias = diasCred > 0 ? diasCred : 30;
+          // Si hay retenciones la CxC es por el netoCobrar (no el total bruto)
+          await this.cxcService.crear(factura.id, factura.usuarioId, dias, manager);
+          if (diasCred > 0) {
+            const fv = new Date();
+            fv.setDate(fv.getDate() + dias);
+            await facturaRepoTx.update(factura.id, { fechaVencimiento: fv } as any);
+          }
+        }
+
+        // 3. Asiento contable — DENTRO de la transacción; "cuenta faltante"
+        // ahora SÍ bloquea (ver el throw en asientoFacturaEmitida cuando se
+        // le pasa manager) — una venta sin su contrapartida contable ya no
+        // es un resultado aceptable para este camino.
+        const aplicaRet   = (factura as any).aplicaRetenciones === true;
+        const retItbis    = aplicaRet ? Number((factura as any).montoRetencionItbis ?? 0) : 0;
+        const retIsr      = aplicaRet ? Number((factura as any).montoRetencionIsr   ?? 0) : 0;
+        const netoCobrar  = aplicaRet ? Number((factura as any).netoCobrar ?? factura.total) : Number(factura.total);
+        await this.asientosService.asientoFacturaEmitida(
+          factura.id,
+          Number(factura.total),
+          Number(factura.subtotal),
+          Number(factura.iva),
+          factura.folio,
+          factura.fecha as unknown as string,
+          factura.usuarioId,
+          aplicaRet ? { retItbis, retIsr, netoCobrar } : undefined,
+          // FIX 3, FASE A commit 2 — de dónde sale el débito (Clientes vs
+          // Caja/Bancos por medio de pago) ya no se decide adentro del motor
+          // con un solo criterio: se lo dice esta factura.
+          { tipoPago: esCredito ? 'CREDITO' : 'CONTADO', formasPago: (factura as any).formasPago },
+          manager,
+        );
+
+        // 4. Estado provisional: EMITIDA siempre (PAGADA se sella en el paso 6, después
+        //    de confirmar la emisión del e-CF). Así, si DGII rechaza, la factura queda
+        //    en EMITIDA (recuperable/reintentable) y NUNCA en PAGADA-sin-e-CF-válido.
+        await facturaRepoTx.update(id, { estado: FacturaEstado.EMITIDA });
+        this.realtimeService.notify(factura.empresaId, 'factura', 'updated', id);
+
+        // 4b. Actualizar cache de ingresos del mes en suscripción — fuera de
+        // la atomicidad fiscal a propósito: es una caché de reporting, no un
+        // dato contable, y no debe poder tumbar ni esperar la transacción.
+        this.limitesService.actualizarCacheIngresos(factura.empresaId).catch(() => null);
+
+        return { enCurso: false, ecfInput, esCredito };
       });
 
-      // 4. Estado provisional: EMITIDA siempre (PAGADA se sella en el paso 6, después
-      //    de confirmar la emisión del e-CF). Así, si DGII rechaza, la factura queda
-      //    en EMITIDA (recuperable/reintentable) y NUNCA en PAGADA-sin-e-CF-válido.
-      await this.facturaRepository.update(id, { estado: FacturaEstado.EMITIDA });
-      this.realtimeService.notify(factura.empresaId, 'factura', 'updated', id);
+      if (reserva.enCurso) {
+        this.logger.warn(
+          `[Factura] ${factura.folio}: emitir-pos/estado=emitida repetido bajo candado — ya está emitida, se devuelve el estado actual (no es error).`,
+        );
+        return this.respuestaEcfEnCurso(id);
+      }
 
-      // 4b. Actualizar cache de ingresos del mes en suscripción
-      this.limitesService.actualizarCacheIngresos(factura.empresaId).catch(() => null);
+      const ecfInput  = reserva.ecfInput;
+      const esCredito = reserva.esCredito;
 
-      // 5. Emitir e-CF
+      // 5. Emitir e-CF — FUERA de la transacción de arriba: aquí es donde se
+      //    llama a MSeller, y el candado ya se liberó antes de este punto.
       if (modoSincrono) {
         // POS: awaitar el e-CF (timeout 8s ya manejado en el use case).
         // Si falla, NO fingir éxito: devolver { ecfEmitido:false, ecfError } para que
@@ -1569,11 +1622,19 @@ export class FacturasService {
             `[ECF-POS] Fallo al emitir e-CF para ${factura.folio} ` +
             `[${err?.code ?? err?.constructor?.name ?? 'Error'}]: ${err?.message}`,
           );
-          reportServiceError(err, 'ecf_pos_sincrono', {
-            folio:     factura.folio,
-            empresaId: String(factura.empresaId ?? ''),
-            tipoEcf:   String(ecfInput.tipoEcf ?? ''),
-          });
+          // EcfError (EcfValidacionError, EcfRncRequeridoError, etc.) es un 422
+          // de negocio esperado — no un fallo de infraestructura. Mismo criterio
+          // que http-exception.filter.ts e instrument.ts (SKIP_EXCEPTION_TYPES):
+          // reportar esto a Sentry como error era ruido, no señal (caso real:
+          // Sentry #7779557844, EcfDuplicadoError por una venta en curso — y
+          // ahora ni siquiera llega a lanzarse, ver emitir-ecf.use-case.ts).
+          if (!(err instanceof EcfError)) {
+            reportServiceError(err, 'ecf_pos_sincrono', {
+              folio:     factura.folio,
+              empresaId: String(factura.empresaId ?? ''),
+              tipoEcf:   String(ecfInput.tipoEcf ?? ''),
+            });
+          }
           const facturaActual = await this.findOne(id).catch(() => null);
           return { ...(facturaActual ?? {}), ecfEmitido: false, ecfError: err?.message ?? 'Error al emitir e-CF' };
         });
@@ -1655,13 +1716,17 @@ export class FacturasService {
             `[${err?.code ?? err?.constructor?.name ?? 'Error'}]: ${err?.message}`,
           );
           // TIPO B (patrón #1): igualar el path POS — reportar a Sentry SIN romper.
-          // La factura ya está EMITIDA; el fallo del e-CF non-POS no debe quedar invisible.
-          reportServiceError(err, 'ecf_non_pos', {
-            facturaId: String(id),
-            empresaId: String(factura.empresaId ?? ''),
-            folio:     factura.folio,
-            tipoEcf:   String(ecfInput.tipoEcf ?? ''),
-          });
+          // La factura ya está EMITIDA; el fallo del e-CF non-POS no debe quedar
+          // invisible. EcfError es un 422 de negocio esperado — no reporta (mismo
+          // criterio que el path POS, ver el comentario de arriba).
+          if (!(err instanceof EcfError)) {
+            reportServiceError(err, 'ecf_non_pos', {
+              facturaId: String(id),
+              empresaId: String(factura.empresaId ?? ''),
+              folio:     factura.folio,
+              tipoEcf:   String(ecfInput.tipoEcf ?? ''),
+            });
+          }
           // Intentar linkear el ECF si fue creado antes del fallo de MSeller
           try {
             const ecfCreado = await this.facturaRepository.manager

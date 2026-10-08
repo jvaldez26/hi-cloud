@@ -6,7 +6,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
-import { Repository, LessThanOrEqual, MoreThanOrEqual, DataSource } from 'typeorm';
+import { Repository, LessThanOrEqual, MoreThanOrEqual, DataSource, EntityManager } from 'typeorm';
 import { Cron } from '@nestjs/schedule';
 import { Movimiento, TipoMovimiento } from './entities/movimiento.entity';
 import { LoteProducto, EstadoLote } from './entities/lote-producto.entity';
@@ -70,22 +70,24 @@ export class InventarioService {
   async resolverAlmacenId(
     empresaId: number,
     opciones: { almacenIdExplicito?: number | null; sucursalId?: number | null } = {},
+    manager?: EntityManager,
   ): Promise<number> {
     if (opciones.almacenIdExplicito) return opciones.almacenIdExplicito;
 
     const almacenCls = this.tenantService.getAlmacenId();
     if (almacenCls) return almacenCls;
 
+    const runner = manager ?? this.ds;
     const sucursalId = opciones.sucursalId ?? this.tenantService.getSucursalId();
     if (sucursalId) {
-      const [sucursal] = await this.ds.query<{ almacenPrincipalId: number | null }[]>(
+      const [sucursal] = await runner.query<{ almacenPrincipalId: number | null }[]>(
         `SELECT "almacenPrincipalId" FROM sucursales WHERE id = $1 AND "empresaId" = $2`,
         [sucursalId, empresaId],
       );
       if (sucursal?.almacenPrincipalId) return sucursal.almacenPrincipalId;
     }
 
-    const almacenesActivos = await this.ds.query<{ id: number }[]>(
+    const almacenesActivos = await runner.query<{ id: number }[]>(
       `SELECT id FROM almacenes WHERE "empresaId" = $1 AND "isActive" = true AND activo = true`,
       [empresaId],
     );
@@ -109,11 +111,19 @@ export class InventarioService {
     nuevoStock: number,
     stockMinimo: number,
     almacenId: number,
+    manager?: EntityManager,
   ) {
     const stockSafe = Math.max(0, nuevoStock);
     const minSafe   = stockMinimo ?? 0;
+    const runner = manager ?? this.ds;
 
-    await this.ds.query(`
+    // Dentro de una transacción (manager presente) esto NO se silencia: un
+    // fallo aquí debe revertir TODO el movimiento, no dejar stock/producto
+    // actualizados sin su fila de stock_almacen. Fuera de transacción (sin
+    // manager, llamadas sueltas de otros caminos) se mantiene el catch de
+    // siempre, para no bloquear un movimiento por un problema puntual de esa
+    // tabla.
+    const promesa = runner.query(`
       INSERT INTO stock_almacen (
         "empresaId", "almacenId", "productoId", stock, "stockMinimo", "isActive", "createdAt", "updatedAt"
       )
@@ -122,9 +132,10 @@ export class InventarioService {
         stock        = EXCLUDED.stock,
         "stockMinimo"= EXCLUDED."stockMinimo",
         "updatedAt"  = NOW()
-    `, [empresaId, almacenId, productoId, stockSafe, minSafe]).catch((err: unknown) => {
-      // No bloquear el movimiento si la tabla stock_almacen tiene un problema
-      // puntual — pero sí dejar rastro, a diferencia del catch-vacío de antes.
+    `, [empresaId, almacenId, productoId, stockSafe, minSafe]);
+
+    if (manager) return promesa;
+    return promesa.catch((err: unknown) => {
       reportServiceError(err, 'inventario.syncStockAlmacen', { empresaId, productoId, almacenId });
     });
   }
@@ -143,11 +154,12 @@ export class InventarioService {
    * fallar, y devolvería el primer producto que matchee de la empresa —
    * corrompiendo el stock de un producto arbitrario en silencio, no un 404.
    */
-  private async obtenerProducto(productoId: number): Promise<Producto> {
+  private async obtenerProducto(productoId: number, manager?: EntityManager): Promise<Producto> {
     if (!Number.isInteger(productoId) || productoId <= 0) {
       throw new BadRequestException(`productoId inválido: ${String(productoId)}`);
     }
-    const producto = await this.productoRepository.findOne({
+    const repo = manager ? manager.getRepository(Producto) : this.productoRepository;
+    const producto = await repo.findOne({
       where: { id: productoId, empresaId: this.tenantService.getEmpresaId(), isActive: true },
     });
     if (!producto) throw new NotFoundException(`Producto #${productoId} no encontrado`);
@@ -173,6 +185,7 @@ export class InventarioService {
     almacenId: number,
     motivo?: string,
     referencia?: string,
+    manager?: EntityManager,
   ): Promise<Movimiento> {
     if (!empresaId) {
       const error = new Error(
@@ -181,11 +194,12 @@ export class InventarioService {
       reportServiceError(error, 'inventario.persistirMovimiento', { tipo, productoId, userId });
       throw error;
     }
-    const movimiento = this.movimientoRepository.create({
+    const repo = manager ? manager.getRepository(Movimiento) : this.movimientoRepository;
+    const movimiento = repo.create({
       tipo, productoId, cantidad, cantidadAnterior, cantidadNueva,
       motivo, referencia, userId, empresaId, almacenId,
     });
-    return this.movimientoRepository.save(movimiento);
+    return repo.save(movimiento);
   }
 
   // ──────────────────────────────────────────────────────────
@@ -220,11 +234,19 @@ export class InventarioService {
     return movimiento;
   }
 
+  /**
+   * `manager`: EntityManager de una transacción en curso (p.ej. el candado
+   * de FacturasService.cambiarEstado) — cuando se pasa, TODAS las
+   * lecturas/escrituras de este método usan esa MISMA conexión/transacción,
+   * en vez de los repositorios inyectados (su propia conexión, que confirma
+   * de inmediato). Sin `manager`, el comportamiento es exactamente el de
+   * siempre (llamadas sueltas de otros caminos).
+   */
   async registrarSalida(
     productoId: number, cantidad: number, userId: number, motivo?: string, referencia?: string,
-    almacenId?: number, sucursalId?: number,
+    almacenId?: number, sucursalId?: number, manager?: EntityManager,
   ) {
-    const producto = await this.obtenerProducto(productoId);
+    const producto = await this.obtenerProducto(productoId, manager);
 
     // Los servicios no tienen inventario físico — omitir movimiento de stock
     if ((producto as any).tipo === 'servicio') return null;
@@ -238,15 +260,16 @@ export class InventarioService {
     }
 
     const cantidadNueva = Number((cantidadAnterior - cantidad).toFixed(4));
-    const almacenResuelto = await this.resolverAlmacenId(producto.empresaId, { almacenIdExplicito: almacenId, sucursalId });
+    const almacenResuelto = await this.resolverAlmacenId(producto.empresaId, { almacenIdExplicito: almacenId, sucursalId }, manager);
 
-    await this.productoRepository.update(productoId, { stock: cantidadNueva });
+    const productoRepo = manager ? manager.getRepository(Producto) : this.productoRepository;
+    await productoRepo.update(productoId, { stock: cantidadNueva });
     this.realtimeService.notify(producto.empresaId, 'producto', 'updated', productoId);
-    await this.syncStockAlmacen(producto.empresaId, productoId, cantidadNueva, Number(producto.stockMinimo), almacenResuelto);
+    await this.syncStockAlmacen(producto.empresaId, productoId, cantidadNueva, Number(producto.stockMinimo), almacenResuelto, manager);
 
     return this.persistirMovimiento(
       TipoMovimiento.SALIDA, productoId, cantidad, cantidadAnterior, cantidadNueva,
-      userId, producto.empresaId, almacenResuelto, motivo, referencia,
+      userId, producto.empresaId, almacenResuelto, motivo, referencia, manager,
     );
   }
 

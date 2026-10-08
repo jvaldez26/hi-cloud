@@ -9,8 +9,11 @@ import { DataSource } from 'typeorm';
  *   const folio = await generarNumeroSecuencial(ds, 'facturas', 'folio', '^FAC-[0-9]+$', 'FAC-', 1, empresaId);
  *   // → 'FAC-302'
  */
+/** DataSource o el EntityManager de una transacción en curso — ambos exponen `.query()`. */
+type Ejecutor = Pick<DataSource, 'query'>;
+
 export async function generarNumeroSecuencial(
-  dataSource:     DataSource,
+  dataSource:     Ejecutor,
   _tabla:         string,   // conservado para compatibilidad — ya no se usa
   _columna:       string,
   _regex:         string,

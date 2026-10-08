@@ -5,7 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, LessThan, DataSource } from 'typeorm';
+import { Repository, In, LessThan, DataSource, EntityManager } from 'typeorm';
 import { generarDocumentoPDF } from '../common/pdf/doc-pdf.helper';
 import type { DocData } from '../common/doc.template';
 import { Cron, CronExpression } from '@nestjs/schedule';
@@ -45,32 +45,41 @@ export class CxCService {
   // Creación automática al emitir factura
   // ──────────────────────────────────────────────────────────────────
 
-  async crear(facturaId: number, userId: number, diasVencimiento = 30): Promise<CuentaPorCobrar> {
-    const factura = await this.facturaRepository.findOne({ where: { id: facturaId } });
+  /**
+   * `manager`: EntityManager de una transacción en curso (p.ej. el candado
+   * de FacturasService.cambiarEstado) — con él, TODAS las lecturas/escrituras
+   * de este método van por esa MISMA conexión/transacción. Sin `manager`,
+   * comportamiento de siempre (llamadas sueltas de otros caminos).
+   */
+  async crear(facturaId: number, userId: number, diasVencimiento = 30, manager?: EntityManager): Promise<CuentaPorCobrar> {
+    const facturaRepo = manager ? manager.getRepository(Factura)          : this.facturaRepository;
+    const cxcRepo     = manager ? manager.getRepository(CuentaPorCobrar) : this.cxcRepository;
+
+    const factura = await facturaRepo.findOne({ where: { id: facturaId } });
     if (!factura) throw new NotFoundException(`Factura #${facturaId} no encontrada`);
 
     // Si ya existe un CxC activo, devolverlo sin duplicar
-    const yaExiste = await this.cxcRepository.findOne({ where: { facturaId, isActive: true } });
+    const yaExiste = await cxcRepo.findOne({ where: { facturaId, isActive: true } });
     if (yaExiste) return yaExiste;
 
     // Si existe uno inactivo, reactivarlo en lugar de crear uno nuevo
-    const inactivo = await this.cxcRepository.findOne({ where: { facturaId, isActive: false } });
+    const inactivo = await cxcRepo.findOne({ where: { facturaId, isActive: false } });
     if (inactivo) {
-      await this.cxcRepository.update(inactivo.id, {
+      await cxcRepo.update(inactivo.id, {
         isActive:       true,
         estado:         EstadoCuenta.PENDIENTE,
         montoOriginal:  Number(factura.total),
         montoPendiente: Number(factura.total),
         montoPagado:    0,
       } as any);
-      return this.cxcRepository.findOne({ where: { id: inactivo.id } }) as Promise<CuentaPorCobrar>;
+      return cxcRepo.findOne({ where: { id: inactivo.id } }) as Promise<CuentaPorCobrar>;
     }
 
     const fechaEmision = new Date();
     const fechaVencimiento = new Date();
     fechaVencimiento.setDate(fechaVencimiento.getDate() + diasVencimiento);
 
-    const cxc = this.cxcRepository.create({
+    const cxc = cxcRepo.create({
       facturaId,
       clienteId: factura.clienteId,
       empresaId:  (factura as any).empresaId,
@@ -85,7 +94,7 @@ export class CxCService {
       tipoCambio: Number((factura as any).tipoCambio ?? 1),
     });
 
-    return this.cxcRepository.save(cxc);
+    return cxcRepo.save(cxc);
   }
 
   /**
