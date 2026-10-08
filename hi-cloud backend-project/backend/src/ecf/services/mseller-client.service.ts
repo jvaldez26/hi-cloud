@@ -86,21 +86,46 @@ export class MSellerClientService {
   // ── Autenticación ─────────────────────────────────────────────────────────
 
   /**
+   * ¿El circuit breaker GLOBAL por 429 está activo ahora mismo? Lo consultan
+   * los crones (ReintentoECFJob, ConsultarEstadoECFJob) ANTES de arrancar su
+   * ciclo — si está abierto, se saltan el ciclo completo en vez de descubrir
+   * el 429 llamada por llamada (lo que solo alargaría el bloqueo).
+   * Devuelve la fecha hasta la que está abierto, o null si está cerrado.
+   */
+  async circuitoGlobal429Hasta(): Promise<Date | null> {
+    const hasta = await this.cache.get<number>(CacheKeys.msellerCircuito429());
+    return hasta && hasta > Date.now() ? new Date(hasta) : null;
+  }
+
+  /**
    * Devuelve un idToken válido para la empresa.
    * Usa caché en memoria; renueva si está a < 2 min de expirar.
    */
-  async getIdToken(empresaId: number): Promise<{
+  async getIdToken(empresaId: number, authTimeoutMs = 10_000): Promise<{
     idToken:     string;
     accessToken: string;
     apiKey:      string;
     baseUrl:     string;
     envPath:     string;
   }> {
-    // Circuit breaker (Cognito bloqueado por intentos fallidos, ver el catch
-    // de abajo) — se revisa ANTES de autenticar o llamar a MSeller, no
-    // después: cada intento mientras está bloqueado puede alargar el
-    // bloqueo. Único punto de entrada para enviarDocumento/consultarBatch/
-    // consultarEstado — cubre los tres sin tocar cada uno por separado.
+    // Circuit breaker GLOBAL (429 de MSeller, ver abrirCircuitoGlobalPor429) —
+    // se revisa PRIMERO de todo, antes de cualquier credencial/circuit breaker
+    // por empresa: MSeller es un proveedor compartido entre todas las
+    // empresas, así que un 429 de CUALQUIER empresa pausa a TODAS. Único
+    // punto de entrada para enviarDocumento/consultarBatch/consultarEstado —
+    // cubre los tres (y los crons que los llaman) sin tocar cada uno.
+    const circuitoHasta = await this.cache.get<number>(CacheKeys.msellerCircuito429());
+    if (circuitoHasta && circuitoHasta > Date.now()) {
+      throw new EcfComunicacionError(
+        `MSeller: circuit breaker GLOBAL activo por 429 (Too Many Requests) — ` +
+        `pausado hasta ${new Date(circuitoHasta).toISOString()}, no se llama a MSeller.`,
+      );
+    }
+
+    // Circuit breaker por empresa (Cognito bloqueado por intentos fallidos,
+    // ver el catch de abajo) — se revisa ANTES de autenticar o llamar a
+    // MSeller, no después: cada intento mientras está bloqueado puede
+    // alargar el bloqueo.
     if (await this.ecfConfigSvc.isEmpresaBloqueada(empresaId)) {
       throw new EcfComunicacionError(
         `Empresa #${empresaId}: circuit breaker activo (credenciales MSeller bloqueadas temporalmente) — no se llama a MSeller.`,
@@ -122,54 +147,144 @@ export class MSellerClientService {
       };
     }
 
-    // Obtener nuevo token
-    const authUrl = `${creds.urlBase}/${creds.envPath}/customer/authentication`;
-    this.logger.log(`Autenticando en MSeller: ${authUrl} [empresa #${empresaId}]`);
+    // ── Single-flight: UNA sola petición/instancia refresca el token de esta
+    // empresa a la vez (hotfix 429, 2026-10-07) — sin esto, N ventas
+    // concurrentes con el token recién vencido disparaban N autenticaciones
+    // simultáneas contra Cognito, justo el patrón que dispara un 429. Si
+    // otra petición ya está refrescando, esperamos su resultado en vez de
+    // autenticar por nuestra cuenta.
+    const lockKey  = CacheKeys.msellerTokenLock(empresaId);
+    const tengoLock = await this.adquirirLock(lockKey, 15_000);
+    if (!tengoLock) {
+      const tokenAjeno = await this.esperarTokenDeOtraPeticion(cacheKey);
+      if (tokenAjeno) {
+        return { idToken: tokenAjeno.idToken, accessToken: tokenAjeno.accessToken, apiKey: creds.apiKey, baseUrl: creds.urlBase, envPath: creds.envPath };
+      }
+      // Nadie terminó a tiempo — seguir con el intento propio (fail-safe,
+      // nunca bloquear la emisión indefinidamente por el lock de otro).
+    }
 
-    const t0 = Date.now();
     try {
-      const resp = await firstValueFrom(
-        this.http.post<MSellerAuthResponse>(
-          authUrl,
-          { email: creds.email, password: creds.password },
-          { timeout: 10_000, headers: { 'Content-Type': 'application/json' } },
-        ),
-      );
+      // Obtener nuevo token
+      const authUrl = `${creds.urlBase}/${creds.envPath}/customer/authentication`;
+      this.logger.log(`Autenticando en MSeller: ${authUrl} [empresa #${empresaId}]`);
 
-      const { idToken, accessToken, refreshToken } = resp.data;
-      // Guardar en Redis con TTL 55 min (conservador vs 1h de Cognito)
-      await this.cache.set(
-        CacheKeys.msellerToken(empresaId),
-        { idToken, accessToken, refreshToken, expiresAt: Date.now() + 55 * 60_000 },
-        CacheTTL.MSELLER_TOKEN,
-      );
+      const t0 = Date.now();
+      try {
+        const resp = await firstValueFrom(
+          this.http.post<MSellerAuthResponse>(
+            authUrl,
+            { email: creds.email, password: creds.password },
+            { timeout: authTimeoutMs, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
 
-      this.logger.log(`Auth MSeller OK [${Date.now() - t0}ms] empresa #${empresaId}`);
-      return { idToken, accessToken, apiKey: creds.apiKey, baseUrl: creds.urlBase, envPath: creds.envPath };
-    } catch (err: any) {
-      await this.cache.del(CacheKeys.msellerToken(empresaId)); // limpiar caché si falla
-      const status  = err?.response?.status;
-      const resData = err?.response?.data;
-      const msg     = resData?.message ?? resData?.error ?? err?.message ?? 'timeout';
+        const { idToken, accessToken, refreshToken } = resp.data;
+        // Guardar en Redis con TTL 55 min (conservador vs 1h de Cognito)
+        await this.cache.set(
+          CacheKeys.msellerToken(empresaId),
+          { idToken, accessToken, refreshToken, expiresAt: Date.now() + 55 * 60_000 },
+          CacheTTL.MSELLER_TOKEN,
+        );
 
-      // Cognito bloquea la cuenta tras varios intentos fallidos → circuit breaker 30 min
-      if (typeof msg === 'string' && msg.toLowerCase().includes('password attempts exceeded')) {
-        const hasta = new Date(Date.now() + 30 * 60_000);
-        try {
-          await this.ecfConfigSvc.setBloqueadoHasta(empresaId, hasta);
-        } catch (cbErr) {
-          this.logger.error(`No se pudo guardar circuit breaker para empresa #${empresaId}: ${cbErr}`);
+        this.logger.log(`Auth MSeller OK [${Date.now() - t0}ms] empresa #${empresaId}`);
+        return { idToken, accessToken, apiKey: creds.apiKey, baseUrl: creds.urlBase, envPath: creds.envPath };
+      } catch (err: any) {
+        await this.cache.del(CacheKeys.msellerToken(empresaId)); // limpiar caché si falla
+        const status  = err?.response?.status;
+        const resData = err?.response?.data;
+        const msg     = resData?.message ?? resData?.error ?? err?.message ?? 'timeout';
+
+        // 429 en el LOGIN también es throttling de MSeller/Cognito — abre el
+        // mismo circuit breaker global que el envío (ver withRetry).
+        if (status === 429) {
+          await this.abrirCircuitoGlobalPor429(err);
         }
-        this.logger.error(
-          `[CircuitBreaker] Empresa #${empresaId} bloqueada por Cognito — ` +
-          `reintentos pausados hasta ${hasta.toISOString()}`,
+
+        // Cognito bloquea la cuenta tras varios intentos fallidos → circuit breaker 30 min
+        if (typeof msg === 'string' && msg.toLowerCase().includes('password attempts exceeded')) {
+          const hasta = new Date(Date.now() + 30 * 60_000);
+          try {
+            await this.ecfConfigSvc.setBloqueadoHasta(empresaId, hasta);
+          } catch (cbErr) {
+            this.logger.error(`No se pudo guardar circuit breaker para empresa #${empresaId}: ${cbErr}`);
+          }
+          this.logger.error(
+            `[CircuitBreaker] Empresa #${empresaId} bloqueada por Cognito — ` +
+            `reintentos pausados hasta ${hasta.toISOString()}`,
+          );
+        }
+
+        throw new EcfComunicacionError(
+          `No se pudo autenticar con MSeller [${status ?? 'timeout'}]: ${msg}`,
         );
       }
-
-      throw new EcfComunicacionError(
-        `No se pudo autenticar con MSeller [${status ?? 'timeout'}]: ${msg}`,
-      );
+    } finally {
+      if (tengoLock) {
+        try { await this.cache.del(lockKey); } catch { /* no-op — el lock expira solo por su PX/ttl */ }
+      }
     }
+  }
+
+  /**
+   * Intenta tomar un lock distribuido (Redis SET NX PX cuando hay cliente
+   * Redis real; best-effort get-then-set si no — dev sin Redis, una sola
+   * instancia, sin concurrencia entre procesos que proteger).
+   */
+  private async adquirirLock(key: string, ttlMs: number): Promise<boolean> {
+    const client = (this.cache as any)?.store?.client;
+    if (client?.set) {
+      try {
+        const resultado = await client.set(key, '1', { NX: true, PX: ttlMs });
+        return resultado === 'OK';
+      } catch (err) {
+        this.logger.warn(`adquirirLock(${key}) falló, se sigue sin lock: ${(err as Error).message}`);
+        return true; // no bloquear el flujo por un problema del lock en sí
+      }
+    }
+    const existe = await this.cache.get(key);
+    if (existe) return false;
+    await this.cache.set(key, '1', ttlMs);
+    return true;
+  }
+
+  /** Espera hasta ~5s a que OTRA petición/instancia termine de refrescar el token. */
+  private async esperarTokenDeOtraPeticion(cacheKey: string): Promise<TokenCacheEntry | null> {
+    for (let i = 0; i < 20; i++) {
+      await this.sleep(250);
+      const cached = await this.cache.get<TokenCacheEntry>(cacheKey);
+      if (cached && cached.expiresAt > Date.now()) return cached;
+    }
+    return null;
+  }
+
+  /**
+   * 429 (Too Many Requests) de MSeller — NUNCA un rechazo real, es
+   * throttling del proveedor. Abre el circuit breaker GLOBAL (todas las
+   * empresas, todos los tipos de llamada) respetando Retry-After si MSeller
+   * lo manda, con un piso de 60s. Hotfix 2026-10-07 — ver mseller-client-429
+   * .spec.ts y emitir-pos-en-curso.spec.ts para el porqué.
+   */
+  private async abrirCircuitoGlobalPor429(err: any): Promise<void> {
+    const retryAfterHeader = err?.response?.headers?.['retry-after'] ?? err?.response?.headers?.['Retry-After'];
+    let retryAfterMs = 0;
+    if (retryAfterHeader != null) {
+      const comoNumero = Number(retryAfterHeader);
+      if (!Number.isNaN(comoNumero)) {
+        retryAfterMs = comoNumero * 1000; // Retry-After en segundos
+      } else {
+        const comoFecha = new Date(retryAfterHeader).getTime();
+        if (!Number.isNaN(comoFecha)) retryAfterMs = Math.max(0, comoFecha - Date.now());
+      }
+    }
+    const duracionMs = Math.max(retryAfterMs, 60_000);
+    const hasta = Date.now() + duracionMs;
+    await this.cache.set(CacheKeys.msellerCircuito429(), hasta, duracionMs + 5_000);
+    this.logger.error(
+      `[CircuitBreaker GLOBAL] MSeller devolvió 429 (Too Many Requests)` +
+      `${retryAfterHeader ? ` [Retry-After: ${retryAfterHeader}]` : ''} — ` +
+      `TODAS las llamadas a MSeller (cualquier empresa) pausadas hasta ${new Date(hasta).toISOString()}`,
+    );
   }
 
   /** Invalida el token cacheado en Redis (forzar re-autenticación en el próximo envío). */
@@ -185,17 +300,24 @@ export class MSellerClientService {
    *
    * @param payload       JSON del e-CF construido por ECFBuilderService
    * @param empresaId     ID de la empresa (para obtener credenciales)
-   * @param timeoutMs     Timeout en ms (default 30s; usar 8000 en POS)
+   * @param timeoutMs     Timeout en ms (default 30s; usar 9000 en POS)
+   * @param opts.maxRetries    Reintentos tras el primer intento (default 3).
+   *   El camino síncrono del POS pasa 0 — un solo intento, para que el
+   *   presupuesto total de la petición quede acotado (~12s: ver
+   *   emitir-ecf.use-case.ts); el seguimiento real de lo que no se confirma
+   *   a tiempo lo hace ReintentoECFJob (cron), no un reintento aquí adentro.
+   * @param opts.authTimeoutMs Timeout de getIdToken (default 10s; 3s en POS).
    *
    * @throws EcfValidacionError    MSeller devolvió 4xx (error de formato/datos)
-   * @throws EcfComunicacionError  Timeout o error 5xx (reintentable)
+   * @throws EcfComunicacionError  Timeout, 429 o error 5xx (reintentable)
    */
   async enviarDocumento(
     payload:    MSellerPayload,
     empresaId:  number,
     timeoutMs = 30_000,
+    opts?: { maxRetries?: number; authTimeoutMs?: number },
   ): Promise<MSellerEnvioResponse> {
-    const { idToken, apiKey, baseUrl, envPath } = await this.getIdToken(empresaId);
+    const { idToken, apiKey, baseUrl, envPath } = await this.getIdToken(empresaId, opts?.authTimeoutMs);
     const url = `${baseUrl}/${envPath}/documentos-ecf`;
 
     // ── Guard: verifica FechaEmision al final (assertEmisorOrder lanza si falla) ─
@@ -248,6 +370,7 @@ export class MSellerClientService {
       },
       empresaId,
       timeoutMs,
+      opts?.maxRetries,
     );
   }
 
@@ -414,6 +537,20 @@ export class MSellerClientService {
         return await fn();
       } catch (err: any) {
         const status = err?.response?.status ?? err?.status;
+
+        // ── 429: throttling, NUNCA un rechazo real ──────────────────────
+        // Antes caía en el bucket 4xx de abajo → EcfValidacionError → el
+        // e-CF quedaba RECHAZADO permanentemente por un simple "espera un
+        // poco" del proveedor (hotfix 2026-10-07). Abre el circuit breaker
+        // global y responde como comunicación (reintentable, nunca rechazo):
+        // el e-CF queda pendiente_envio y el cron lo reintenta cuando el
+        // circuito cierre — sin reintentar aquí mismo, de inmediato.
+        if (status === 429) {
+          await this.abrirCircuitoGlobalPor429(err);
+          throw new EcfComunicacionError(
+            `MSeller: 429 Too Many Requests — circuito abierto, no se reintenta de inmediato.`,
+          );
+        }
 
         // ── Errores 4xx: validación / datos incorrectos → NO reintentar ──
         if (status && status >= 400 && status < 500) {

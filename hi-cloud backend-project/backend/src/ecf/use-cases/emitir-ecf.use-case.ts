@@ -35,8 +35,22 @@ import {
 } from '../errors/ecf.errors';
 import { fmtFecha, razonSocialFiscal, normalizarRnc } from '../builders/base-ecf.builder';
 
-const TIMEOUT_POS      = 8_000;
-const TIMEOUT_REGULAR  = 30_000;
+// ── Presupuesto de tiempo del camino síncrono del POS (hotfix 2026-10-07) ──
+//
+// Objetivo: ~12s en total (getIdToken + UN solo envío a MSeller), siempre
+// por debajo del timeout del cliente axios para emitir-pos (20s, ver
+// facturas.api.ts). Antes el envío síncrono usaba el withRetry de 4
+// intentos + backoff de mseller-client.service.ts (hasta ~39s, más ~10s si
+// getIdToken no tenía el token cacheado) — eso superaba holgadamente
+// CUALQUIER timeout razonable del cliente, y el POS terminaba "fallando"
+// una petición que el servidor seguía procesando de verdad. El seguimiento
+// de lo que no se confirma a tiempo (incluido un 429 con el circuit breaker
+// abierto) lo hace ReintentoECFJob (cron cada 2 min), no esta petición HTTP
+// — un timeout o un 429 aquí NUNCA se traduce en un reenvío ni en RECHAZADO,
+// solo en "déjalo en pendiente_envio y responde ya".
+const TIMEOUT_POS           = 9_000;  // un solo intento de envío a MSeller
+const AUTH_TIMEOUT_POS      = 3_000;  // getIdToken — normalmente cache Redis, ~0ms
+const TIMEOUT_REGULAR       = 30_000;
 
 /**
  * Comprador declarado en un comprobante ya emitido, para referenciarlo desde
@@ -577,7 +591,9 @@ export class EmitirECFUseCase {
     // ── 8. ENVIAR A MSELLER ───────────────────────────────────────────────────
     try {
       const t0 = Date.now();
-      const respuesta = await this.mseller.enviarDocumento(payload, empresaId, timeout);
+      const respuesta = await this.mseller.enviarDocumento(payload, empresaId, timeout, modoSincrono
+        ? { maxRetries: 0, authTimeoutMs: AUTH_TIMEOUT_POS }  // un solo intento — ver el comentario del presupuesto arriba
+        : undefined);
       const latencia  = Date.now() - t0;
 
       // ── 9. ACTUALIZAR ESTADO → ACEPTADO (MSeller recibió el documento) ────

@@ -144,7 +144,22 @@ export class ReintentoECFJob {
     }
   }
 
+  /** Pausa entre llamadas a MSeller dentro de una misma pasada — nunca ráfaga. */
+  private static readonly PAUSA_ENTRE_LLAMADAS_MS = 400;
+
   private async procesarPendientes(): Promise<void> {
+    // Circuit breaker GLOBAL por 429 (hotfix 2026-10-07) — si está abierto,
+    // saltar el ciclo COMPLETO: descubrirlo e-CF por e-CF solo alargaría el
+    // bloqueo (cada llamada extra cuenta contra el mismo throttling). La
+    // próxima pasada (2 min) lo revisa de nuevo.
+    const circuitoHasta = await this.mseller.circuitoGlobal429Hasta();
+    if (circuitoHasta) {
+      this.logger.warn(
+        `ReintentoECF: circuit breaker GLOBAL activo por 429 hasta ${circuitoHasta.toISOString()} — se salta todo el ciclo.`,
+      );
+      return;
+    }
+
     const ahora = new Date();
 
     const pendientes = await this.ecfRepo.find({
@@ -181,6 +196,17 @@ export class ReintentoECFJob {
       if (msPasados < minEspera) continue;
 
       await this.procesarUno(ecf);
+
+      // Lotes pequeños, nunca ráfaga — un 429 real suele ser cuestión de
+      // volumen por segundo, no por minuto.
+      await this.sleep(ReintentoECFJob.PAUSA_ENTRE_LLAMADAS_MS);
+
+      // Si ESTE envío fue el que disparó el 429, no seguir machacando el
+      // resto del lote — revisar de nuevo y cortar el resto del ciclo.
+      if (await this.mseller.circuitoGlobal429Hasta()) {
+        this.logger.warn('ReintentoECF: 429 durante el lote — se corta el resto del ciclo.');
+        return;
+      }
     }
   }
 
@@ -597,6 +623,10 @@ export class ReintentoECFJob {
     await this.eventoRepo.save(
       this.eventoRepo.create({ comprobanteId, evento, payload, mensaje }),
     );
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 }
 

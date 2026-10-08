@@ -35,7 +35,7 @@ describe('ConsultarEstadoECFJob — resiliencia del lote (Familia 2 / Opción A)
       create: jest.fn().mockImplementation((x) => x),
       save:   jest.fn().mockResolvedValue(undefined),
     };
-    mseller    = { consultarBatch: jest.fn(), consultarEstado: jest.fn() };
+    mseller    = { consultarBatch: jest.fn(), consultarEstado: jest.fn(), circuitoGlobal429Hasta: jest.fn().mockResolvedValue(null) };
     efectosNc  = { aplicarEfectosPorEstado: jest.fn() };
 
     job = new ConsultarEstadoECFJob(
@@ -138,7 +138,7 @@ describe('ConsultarEstadoECFJob — EN_VALIDACION_DGII vs RECHAZADO (hotfix E320
       create: jest.fn().mockImplementation((x) => x),
       save:   jest.fn().mockResolvedValue(undefined),
     };
-    mseller    = { consultarBatch: jest.fn(), consultarEstado: jest.fn() };
+    mseller    = { consultarBatch: jest.fn(), consultarEstado: jest.fn(), circuitoGlobal429Hasta: jest.fn().mockResolvedValue(null) };
     efectosNc  = { aplicarEfectosPorEstado: jest.fn().mockResolvedValue(undefined) };
     emailSvc   = { enviar: jest.fn().mockResolvedValue({ exitoso: true }) };
     notificacionesSvc = { notificarSistemaEmpresa: jest.fn().mockResolvedValue(undefined) };
@@ -302,7 +302,7 @@ describe('ConsultarEstadoECFJob — consultarEnValidacion (backoff automático)'
       create: jest.fn().mockImplementation((x) => x),
       save:   jest.fn().mockResolvedValue(undefined),
     };
-    mseller    = { consultarBatch: jest.fn(), consultarEstado: jest.fn() };
+    mseller    = { consultarBatch: jest.fn(), consultarEstado: jest.fn(), circuitoGlobal429Hasta: jest.fn().mockResolvedValue(null) };
     efectosNc  = { aplicarEfectosPorEstado: jest.fn().mockResolvedValue(undefined) };
     emailSvc   = { enviar: jest.fn().mockResolvedValue({ exitoso: true }) };
     notificacionesSvc = { notificarSistemaEmpresa: jest.fn().mockResolvedValue(undefined) };
@@ -414,5 +414,106 @@ describe('ConsultarEstadoECFJob — consultarEnValidacion (backoff automático)'
       ecf.empresaId, 'ecf_revision_manual',
       expect.stringContaining(ecf.numero), expect.any(String), ecf.numero,
     );
+  });
+});
+
+/**
+ * Hotfix 2026-10-07 — circuit breaker GLOBAL por 429 de MSeller: run() se
+ * salta el ciclo COMPLETO si ya está abierto al empezar, y si un 429 se
+ * dispara a mitad del lote de ENVIADO, corta el resto del ciclo (incluida
+ * la reconciliación de EN_VALIDACION_DGII) en vez de seguir machacando
+ * MSeller — descubrirlo e-CF por e-CF solo alargaría el bloqueo.
+ */
+describe('ConsultarEstadoECFJob — circuit breaker global 429', () => {
+  function makeQueryBuilderFactory(resultados: ECF[][]) {
+    let llamada = 0;
+    return jest.fn(() => {
+      const builder: any = {
+        where:    () => builder,
+        andWhere: () => builder,
+        orderBy:  () => builder,
+        take:     () => builder,
+        getMany:  () => Promise.resolve(resultados[llamada++] ?? []),
+      };
+      return builder;
+    });
+  }
+
+  function ecfEnviado(id: number, numero: string, empresaId: number): ECF {
+    return {
+      id, numero, empresaId, estadoDGII: EstadoDGII.ENVIADO,
+      createdAt: new Date(), updatedAt: new Date(Date.now() - 10 * 60_000),
+      trackId: `track-${id}`, respuestaDgii: null,
+      documentoOrigenTipo: null, codigoModificacion: null,
+    } as unknown as ECF;
+  }
+
+  function buildJob(resultadosQB: ECF[][]) {
+    const ecfRepo = {
+      update:             jest.fn().mockResolvedValue(undefined),
+      createQueryBuilder: makeQueryBuilderFactory(resultadosQB),
+      manager:            { query: jest.fn().mockResolvedValue([]) },
+    };
+    const eventoRepo = { create: jest.fn((x) => x), save: jest.fn().mockResolvedValue(undefined) };
+    const mseller = {
+      consultarBatch:        jest.fn().mockResolvedValue({ total: 0, results: [] }),
+      consultarEstado:       jest.fn(),
+      circuitoGlobal429Hasta: jest.fn().mockResolvedValue(null),
+    };
+    const efectosNc = { aplicarEfectosPorEstado: jest.fn().mockResolvedValue(undefined) };
+    const emailSvc  = { enviar: jest.fn().mockResolvedValue({ exitoso: true }) };
+    const notificacionesSvc = { notificarSistemaEmpresa: jest.fn().mockResolvedValue(undefined) };
+    const configSvc = { get: jest.fn((_k: string, def: unknown) => def) };
+
+    const job = new ConsultarEstadoECFJob(
+      ecfRepo as any, eventoRepo as any, mseller as any, efectosNc as any,
+      emailSvc as any, notificacionesSvc as any, configSvc as any,
+    );
+    for (const m of ['log', 'warn', 'error', 'debug'] as const) {
+      jest.spyOn((job as any).logger, m).mockImplementation(() => undefined);
+    }
+    jest.spyOn(job as any, 'sleep').mockResolvedValue(undefined);
+    return { job, ecfRepo, mseller };
+  }
+
+  it('circuito ya abierto al empezar → run() se salta el ciclo completo, ni busca pendientes', async () => {
+    const { job, ecfRepo, mseller } = buildJob([]);
+    mseller.circuitoGlobal429Hasta.mockResolvedValue(new Date(Date.now() + 60_000));
+
+    await job.run();
+
+    expect(ecfRepo.createQueryBuilder).not.toHaveBeenCalled();
+  });
+
+  it('circuito cerrado → consulta ENVIADO por empresa con pausa entre cada una y sigue con EN_VALIDACION_DGII', async () => {
+    const ecf1 = ecfEnviado(1, 'E320000000001', 1);
+    const ecf2 = ecfEnviado(2, 'E320000000002', 2);
+    // Orden de createQueryBuilder(): viejos, enviados(Paso2), vencidos, candidatos.
+    const { job, mseller } = buildJob([[], [ecf1, ecf2], [], []]);
+
+    await job.run();
+
+    expect(mseller.consultarBatch).toHaveBeenCalledTimes(2); // una por empresa
+    expect((job as any).sleep).toHaveBeenCalledWith(400);
+  });
+
+  it('un 429 a mitad del lote de ENVIADO corta el resto del ciclo — ni la 2da empresa ni EN_VALIDACION_DGII se procesan', async () => {
+    const ecf1 = ecfEnviado(1, 'E320000000001', 1);
+    const ecf2 = ecfEnviado(2, 'E320000000002', 2);
+    const { job, ecfRepo, mseller } = buildJob([[], [ecf1, ecf2], [], []]);
+
+    let llamadas = 0;
+    mseller.circuitoGlobal429Hasta.mockImplementation(() => {
+      llamadas += 1;
+      // 1ra llamada: chequeo inicial de run() → cerrado.
+      // 2da llamada: recheck tras el batch de la empresa 1 → el envío disparó el 429.
+      return Promise.resolve(llamadas > 1 ? new Date(Date.now() + 60_000) : null);
+    });
+
+    await job.run();
+
+    expect(mseller.consultarBatch).toHaveBeenCalledTimes(1); // nunca llega a la empresa 2
+    // Solo 2 createQueryBuilder: viejos + enviados — nunca llega a consultarEnValidacion.
+    expect(ecfRepo.createQueryBuilder).toHaveBeenCalledTimes(2);
   });
 });

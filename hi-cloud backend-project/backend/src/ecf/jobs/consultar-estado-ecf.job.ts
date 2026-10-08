@@ -43,6 +43,9 @@ function intervaloBackoffMinutos(horasDesdeEnvio: number): number {
  */
 const DIAS_MAX_POLLING = 3;
 
+/** Pausa entre llamadas a MSeller dentro de una misma pasada — nunca ráfaga (hotfix 2026-10-07). */
+const PAUSA_ENTRE_LLAMADAS_MS = 400;
+
 /**
  * Mapeo de estados MSeller → EstadoDGII interno.
  * Batch usa texto con capitalización mixta: "Aceptado", "Rechazado", etc.
@@ -111,6 +114,17 @@ export class ConsultarEstadoECFJob {
   @Cron('*/2 * * * *', { name: 'consultar-estado-ecf' }) // cada 2 min
   async run(force = false): Promise<void> {
     if (this.running) return;
+    // Circuit breaker GLOBAL por 429 (hotfix 2026-10-07) — se salta el
+    // ciclo COMPLETO (incluida la reconciliación de EN_VALIDACION_DGII):
+    // consultar e-CF por e-CF mientras MSeller está devolviendo 429 solo
+    // alarga el bloqueo. La próxima pasada (2 min) lo revisa de nuevo.
+    const circuitoHasta = await this.mseller.circuitoGlobal429Hasta();
+    if (circuitoHasta) {
+      this.logger.warn(
+        `ConsultarEstadoECF: circuit breaker GLOBAL activo por 429 hasta ${circuitoHasta.toISOString()} — se salta todo el ciclo.`,
+      );
+      return;
+    }
     this.running = true;
     try {
       await this.consultarPendientes(force);
@@ -188,6 +202,12 @@ export class ConsultarEstadoECFJob {
 
       for (const [empresaId, ecfs] of porEmpresa) {
         await this.consultarBatch(ecfs, empresaId);
+        // Lotes pequeños, nunca ráfaga entre empresas (hotfix 2026-10-07).
+        await this.sleep(PAUSA_ENTRE_LLAMADAS_MS);
+        if (await this.mseller.circuitoGlobal429Hasta()) {
+          this.logger.warn('ConsultarEstadoECF: 429 durante el lote de ENVIADO — se corta el resto del ciclo.');
+          return;
+        }
       }
     }
 
@@ -284,6 +304,11 @@ export class ConsultarEstadoECFJob {
       const stats = await this.consultarBatch(ecfs, empresaId);
       totalProcesados += stats.total;
       totalAmbiguos    += stats.ambiguos;
+      await this.sleep(PAUSA_ENTRE_LLAMADAS_MS);
+      if (await this.mseller.circuitoGlobal429Hasta()) {
+        this.logger.warn('ConsultarEstadoECF: 429 durante el lote de EN_VALIDACION_DGII — se corta el resto del ciclo.');
+        return;
+      }
     }
 
     // Si la mayoría de las respuestas de ESTA pasada siguen sin veredicto,
@@ -565,6 +590,10 @@ el estado directamente en el portal de DGII u ofimática de la empresa.</p>
     await this.eventoRepo.save(
       this.eventoRepo.create({ comprobanteId, evento, payload, mensaje }),
     );
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**
