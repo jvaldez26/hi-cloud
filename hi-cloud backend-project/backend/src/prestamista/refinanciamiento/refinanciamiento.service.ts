@@ -91,7 +91,12 @@ export class RefinanciamientoService {
     const nuevaTasa   = data.nuevaTasa   ?? Number(original.tasaInteresMensual);
     const nuevoPlazo  = data.nuevoPlazo  ?? Number(original.plazoMeses);
     const fechaPrimerPago = new Date(data.fechaPrimerPago ?? fechaHoyRD());
-    const amort = calcularAmortizacion('frances', montoNuevo, nuevaTasa, nuevoPlazo, fechaPrimerPago);
+    // C4: el préstamo nuevo debe heredar el método del original, no 'frances'
+    // a fuerza — un préstamo desembolsado en alemán se refinanciaba como si
+    // fuera francés, cambiando la forma en que se reparte capital/interés
+    // sin que nadie lo pidiera.
+    const metodoAmortizacion: 'frances' | 'aleman' = original.metodoAmortizacion === 'aleman' ? 'aleman' : 'frances';
+    const amort = calcularAmortizacion(metodoAmortizacion, montoNuevo, nuevaTasa, nuevoPlazo, fechaPrimerPago);
 
     const [seq] = await qr.query(
       `SELECT siguiente_numero_secuencia($1, $2) AS num`, [empresaId, 'PRE'],
@@ -106,7 +111,7 @@ export class RefinanciamientoService {
         "totalInteres","totalAPagar","saldoCapital","saldoInteres","saldoTotal","refinanciaDe")
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`,
       [empresaId, numero, original.deudorId, original.productoId ?? null, montoNuevo,
-       nuevaTasa, nuevoPlazo, original.frecuenciaPago, 'frances', amort.cuotaFija,
+       nuevaTasa, nuevoPlazo, original.frecuenciaPago, metodoAmortizacion, amort.cuotaFija,
        Number(original.porcentajeMora), Number(original.diasGracia),
        fechaHoyRD(),
        fechaPrimerPago.toISOString().split('T')[0],

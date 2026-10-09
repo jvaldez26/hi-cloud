@@ -403,7 +403,13 @@ export class CrearProductoPrestamoDto {
   @IsOptional() @IsIn(['mensual', 'quincenal', 'semanal', 'unico'])
   frecuenciaPago?: string;
 
-  @IsOptional() @IsIn(['frances', 'aleman', 'americano'])
+  /**
+   * C4: 'americano' (bullet) se podía configurar aquí pero
+   * amortizacion.util.ts solo implementa francés y alemán — un valor fuera
+   * de esos dos se trataba como francés en silencio. No se habilita hasta
+   * que el motor realmente lo calcule.
+   */
+  @IsOptional() @IsIn(['frances', 'aleman'])
   metodoAmortizacion?: string;
 
   @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Type(() => Number)
@@ -453,7 +459,7 @@ export class ActualizarProductoPrestamoDto {
   @IsOptional() @IsIn(['mensual', 'quincenal', 'semanal', 'unico'])
   frecuenciaPago?: string;
 
-  @IsOptional() @IsIn(['frances', 'aleman', 'americano'])
+  @IsOptional() @IsIn(['frances', 'aleman'])
   metodoAmortizacion?: string;
 
   @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Type(() => Number)

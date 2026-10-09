@@ -179,8 +179,22 @@ export class PrestamosService {
       throw new BadRequestException('fechaPrimerPago no es una fecha válida');
     }
 
+    // C4: si el caller no especifica un método explícito, usar el del
+    // producto — antes esto nunca se leía y todo préstamo se creaba en
+    // francés sin importar lo configurado en pr_productos_prestamo.
+    let metodoAmortizacion: string | undefined = data.metodoAmortizacion;
+    if (!metodoAmortizacion && data.productoId) {
+      const [producto] = await qr.query(
+        `SELECT "metodoAmortizacion" FROM pr_productos_prestamo WHERE id=$1 AND "empresaId"=$2`,
+        [data.productoId, empresaId],
+      );
+      metodoAmortizacion = producto?.metodoAmortizacion;
+    }
+    metodoAmortizacion = metodoAmortizacion ?? 'frances';
+    data.metodoAmortizacion = metodoAmortizacion;
+
     const amort = calcularAmortizacion(
-      data.metodoAmortizacion ?? 'frances',
+      metodoAmortizacion === 'aleman' ? 'aleman' : 'frances',
       Number(montoPrincipal),
       Number(tasaInteresMensual),
       Number(plazoMeses),

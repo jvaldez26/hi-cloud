@@ -151,6 +151,36 @@ describe('C2 — el desembolso es atómico', () => {
       expect(sqls.some(s => s.includes('FROM pr_deudores'))).toBe(true);
     });
   });
+
+  describe('C4 — método de amortización', () => {
+    it('usa el método configurado en el producto cuando el body no especifica uno', async () => {
+      let insertParams: any[] = [];
+      const { svc } = construir((sql: string, params: any[]) => {
+        if (sql.includes('FROM pr_productos_prestamo')) return [{ metodoAmortizacion: 'aleman' }];
+        if (sql.includes('INSERT INTO pr_prestamos')) { insertParams = params; return [{ id: 77 }]; }
+        return responderOk(sql);
+      });
+      await svc.create(1, { ...DATOS_PRESTAMO, productoId: 9 });
+      expect(insertParams[9]).toBe('aleman'); // posición de metodoAmortizacion en el INSERT
+    });
+
+    it('un body sin productoId ni método explícito sigue cayendo en francés (sin cambio de comportamiento)', async () => {
+      const { svc, sqls } = construir(responderOk);
+      await svc.create(1, { ...DATOS_PRESTAMO });
+      expect(sqls.some(s => s.includes('FROM pr_productos_prestamo'))).toBe(false);
+    });
+
+    it('un metodoAmortizacion explícito en el body gana sobre el del producto', async () => {
+      let insertParams: any[] = [];
+      const { svc } = construir((sql: string, params: any[]) => {
+        if (sql.includes('FROM pr_productos_prestamo')) return [{ metodoAmortizacion: 'aleman' }];
+        if (sql.includes('INSERT INTO pr_prestamos')) { insertParams = params; return [{ id: 77 }]; }
+        return responderOk(sql);
+      });
+      await svc.create(1, { ...DATOS_PRESTAMO, productoId: 9, metodoAmortizacion: 'frances' });
+      expect(insertParams[9]).toBe('frances');
+    });
+  });
 });
 
 describe('H2 — el refinanciamiento es atómico', () => {
@@ -210,5 +240,29 @@ describe('H2 — el refinanciamiento es atómico', () => {
     const { svc } = construir((sql: string) =>
       sql.includes('FROM pr_prestamos') ? [{ ...original, estado }] : responderOk(sql));
     await expect(svc.refinanciar(1, { prestamoOriginalId: 10 })).rejects.toThrow(BadRequestException);
+  });
+
+  describe('C4 — el préstamo nuevo hereda el método de amortización del original', () => {
+    it('original en alemán → el nuevo préstamo se crea en alemán, no en francés a fuerza', async () => {
+      let insertParams: any[] = [];
+      const { svc } = construir((sql: string, params: any[]) => {
+        if (sql.includes('FROM pr_prestamos')) return [{ ...original, metodoAmortizacion: 'aleman' }];
+        if (sql.includes('INSERT INTO pr_prestamos')) { insertParams = params; return [{ id: 99 }]; }
+        return responderOk(sql);
+      });
+      await svc.refinanciar(1, { prestamoOriginalId: 10 });
+      expect(insertParams[8]).toBe('aleman'); // posición de metodoAmortizacion en el INSERT
+    });
+
+    it('original en francés (o sin método) → el nuevo sigue en francés', async () => {
+      let insertParams: any[] = [];
+      const { svc } = construir((sql: string, params: any[]) => {
+        if (sql.includes('FROM pr_prestamos')) return [original]; // sin metodoAmortizacion
+        if (sql.includes('INSERT INTO pr_prestamos')) { insertParams = params; return [{ id: 99 }]; }
+        return responderOk(sql);
+      });
+      await svc.refinanciar(1, { prestamoOriginalId: 10 });
+      expect(insertParams[8]).toBe('frances');
+    });
   });
 });
