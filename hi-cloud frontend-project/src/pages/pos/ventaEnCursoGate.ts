@@ -61,18 +61,27 @@ export function fusionarColaEnCarrito<T extends ItemConProducto>(
 }
 
 /**
- * ¿Toca fusionar la cola AHORA? Solo en el flanco de bajada de "venta en
- * curso" (antes true, ahora false — en la práctica, ventaMut.isPending):
- * la venta terminó, con éxito (el carrito ya quedó vacío) o con un fallo
- * de negocio que deja el carrito como borrador para reintentar (la cola se
- * suma a ESE). Si el cajero reintenta, "venta en curso" vuelve a true y el
- * gate se reactiva — nada de lo agregado en el tramo anterior se pierde,
- * sigue en la cola hasta el próximo flanco de bajada.
+ * ¿Toca fusionar la cola AHORA? Detector de flanco genérico (true→false):
+ * en POSPage.tsx se usa con "el carrito TENÍA productos" como "antes" y
+ * "ahora" — o sea, dispara justo cuando el carrito se vacía.
+ *
+ * A propósito NO está atado a ventaMut.isPending: isPending también vuelve
+ * a false cuando la mutación TERMINA CON UN FALLO (_emisionFallo,
+ * _requiereSupervisor, onError) — y esos fallos dejan el carrito INTACTO a
+ * propósito, para que el cajero pueda reintentar sin rehacer nada. Fusionar
+ * ahí mezclaría la cola con un borrador que está a punto de reenviarse tal
+ * cual. El carrito vaciándose, en cambio, SOLO pasa cuando la venta
+ * terminó de verdad — con éxito (onSuccess lo limpia) o porque el cajero
+ * abandonó el intento (botón "Vaciar"/F4) — así que es la señal correcta.
+ * Si el cajero reintenta, el carrito vuelve a tener contenido, el gate
+ * (ver debeEncolarAgregado, atado a ventaMut.isPending) se reactiva para lo
+ * que se agregue en ESE nuevo tramo, y cuando ESE intento por fin concluya
+ * (éxito o abandono), la cola completa se fusiona aquí.
  */
 export function debeFusionarColaAhora(
-  ventaEnCursoAntes: boolean, ventaEnCursoAhora: boolean, colaLength: number,
+  antes: boolean, ahora: boolean, colaLength: number,
 ): boolean {
-  return ventaEnCursoAntes && !ventaEnCursoAhora && colaLength > 0;
+  return antes && !ahora && colaLength > 0;
 }
 
 /**

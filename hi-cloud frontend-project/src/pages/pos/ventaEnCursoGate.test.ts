@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   fusionarColaEnCarrito, debeFusionarColaAhora, totalMostradoEnModal, debeEncolarAgregado,
 } from './ventaEnCursoGate';
@@ -7,23 +9,31 @@ import {
  * Regresión FAC-1746 (empresa 73, 2026-10-08): un producto escaneado
  * mientras la venta se emitía se mezcló con el carrito que se estaba
  * cobrando — infló el total mostrado/impreso sin tocar la factura ya
- * enviada. Primer ajuste (commit 6d5ca099): en vez de rechazar el
- * escaneo, se encola para la próxima venta y entra solo cuando la venta en
- * curso termina de verdad.
+ * enviada.
  *
- * Segundo ajuste (el mismo día): el gate arrancaba demasiado temprano —
- * con showPago (modal de cobro abierto). Antes de hacer clic en "Confirmar
- * cobro" el modal puede llevar rato abierto (eligiendo forma de pago, el
- * cliente pidiendo "una cosa más") y ESE producto es parte de la venta
- * actual, no de la próxima. El gate ahora es "venta en curso"
- * (ventaMut.isPending en POSPage.tsx) — desde el clic en "Confirmar cobro"
- * hasta que la venta termina, con éxito o con fallo.
+ * Primer ajuste (commit 6d5ca099): en vez de rechazar el escaneo, se
+ * encola para la próxima venta y entra solo cuando la venta en curso
+ * termina de verdad.
+ *
+ * Segundo ajuste (commit 55100654): el gate arrancaba con showPago (modal
+ * de cobro abierto) en vez de con "venta en curso" — un producto agregado
+ * ANTES de confirmar debe entrar a la venta actual, no a la cola.
+ *
+ * Tercer ajuste (este): dos huecos de la revisión de 55100654 —
+ *   1. ventaEnCursoRef se sincronizaba solo en el cuerpo del render — entre
+ *      el clic en "Confirmar cobro" y el siguiente render, un scan aún
+ *      entraba al carrito que se estaba facturando. Se fija AHORA de forma
+ *      sincrónica, dentro de confirmarCobro(), justo antes de mutate().
+ *   2. La fusión de la cola se disparaba con ventaMut.isPending true→false,
+ *      que TAMBIÉN ocurre cuando la mutación falla y el carrito se
+ *      conserva para reintentar — eso mezclaría la cola con un borrador a
+ *      punto de reenviarse. La señal correcta es que el CARRITO SE VACÍE
+ *      (éxito, o la cajera abandona el intento) — un fallo de negocio no
+ *      vacía el carrito, así que ya no dispara la fusión.
  */
 
 describe('debeEncolarAgregado — el gate es "venta en curso" (isPending), nunca "modal abierto"', () => {
   it('modal de cobro abierto pero SIN confirmar todavía → no encola, entra a la venta actual', () => {
-    // showPago=true no aparece aquí a propósito: la función ni siquiera
-    // recibe ese dato — estructuralmente no puede depender de él.
     expect(debeEncolarAgregado(/* ventaEnCurso */ false)).toBe(false);
   });
 
@@ -32,29 +42,57 @@ describe('debeEncolarAgregado — el gate es "venta en curso" (isPending), nunca
   });
 });
 
-describe('debeFusionarColaAhora — solo en el flanco de bajada de "venta en curso"', () => {
-  it('venta terminó (isPending pasa de true a false) con cola pendiente → fusiona', () => {
-    expect(debeFusionarColaAhora(/* antes */ true, /* ahora */ false, /* cola */ 2)).toBe(true);
+describe('POSPage.tsx — el gate se activa SINCRÓNICAMENTE en confirmarCobro(), antes de mutate()', () => {
+  // Verificación estructural (no de comportamiento): un scanner no espera a
+  // React. Si ventaEnCursoRef.current solo se pusiera en true por la
+  // sincronización del cuerpo del render (`ventaEnCursoRef.current =
+  // ventaMut.isPending`), un scan que llega en el instante entre el clic y
+  // el siguiente render todavía vería la ref en false. La única forma
+  // robusta de cerrar esa ventana es fijarla ANTES de llamar mutate(),
+  // dentro del mismo handler síncrono del clic — así que se prueba que el
+  // código realmente lo hace ahí, en ese orden.
+  const fuente = fs.readFileSync(path.resolve(__dirname, './POSPage.tsx'), 'utf-8');
+
+  it('confirmarCobro() fija ventaEnCursoRef.current = true ANTES de ventaMut.mutate()', () => {
+    const inicio = fuente.indexOf('const confirmarCobro = useCallback(async () => {');
+    expect(inicio).toBeGreaterThan(-1);
+    const cierre = fuente.indexOf('ventaMut.mutate();', inicio);
+    expect(cierre).toBeGreaterThan(inicio);
+
+    const cuerpo = fuente.slice(inicio, cierre);
+    expect(cuerpo).toContain('ventaEnCursoRef.current = true;');
+  });
+});
+
+describe('debeFusionarColaAhora — dispara cuando el carrito se VACÍA, nunca con un fallo que lo conserva', () => {
+  it('venta terminó con éxito (carrito tenía productos, ahora está vacío) con cola pendiente → fusiona', () => {
+    expect(debeFusionarColaAhora(/* tenía algo */ true, /* tiene algo ahora */ false, /* cola */ 2)).toBe(true);
   });
 
-  it('venta fallida que SIGUE esperando reintento (isPending ya volvió a false, el modal sigue abierto) → no hace falta fusionar porque el gate ya se apagó', () => {
-    // isPending refleja el estado REAL: una vez que la mutación resuelve
-    // (éxito o fallo de negocio), isPending es false — el escenario "sigue
-    // esperando reintento" ya NO tiene el gate activo (ver
-    // debeEncolarAgregado), así que lo agregado en ese tramo entra directo
-    // al carrito-borrador, nunca pasa por la cola.
-    expect(debeFusionarColaAhora(true, false, 2)).toBe(true);
+  it('emisión fallida: el carrito se CONSERVA para reintentar (sigue teniendo lo mismo) → la cola NO lo toca', () => {
+    // Este es el caso explícito del ajuste: _emisionFallo/_requiereSupervisor/
+    // onError dejan el carrito intacto — "tenía algo" y "tiene algo ahora"
+    // son ambos true, no hay vaciado, así que no se fusiona.
+    expect(debeFusionarColaAhora(true, true, 2)).toBe(false);
   });
 
-  it('"venta en curso" nunca estuvo activa (false→false, p.ej. el montaje inicial) → NO fusiona', () => {
+  it('reintento exitoso (el carrito por fin se vacía en el segundo intento) → ahí SÍ se fusiona', () => {
+    // Simula la secuencia completa: 1er intento falla (true,true → no
+    // fusiona, la cola sigue esperando), 2do intento tiene éxito
+    // (true,false → fusiona todo lo acumulado).
+    expect(debeFusionarColaAhora(true, true, 3)).toBe(false);
+    expect(debeFusionarColaAhora(true, false, 3)).toBe(true);
+  });
+
+  it('el carrito nunca tuvo nada (false→false, p.ej. el montaje inicial) → NO fusiona', () => {
     expect(debeFusionarColaAhora(false, false, 2)).toBe(false);
   });
 
-  it('"venta en curso" se ACTIVA (false→true, clic en Confirmar cobro) → NO fusiona (no es el flanco de bajada)', () => {
+  it('el carrito EMPIEZA a tener algo (false→true, se agregó el primer producto) → NO fusiona (no es vaciado)', () => {
     expect(debeFusionarColaAhora(false, true, 2)).toBe(false);
   });
 
-  it('venta terminó pero no había nada en la cola → no hace falta fusionar nada', () => {
+  it('el carrito se vació pero no había nada en la cola → no hace falta fusionar nada', () => {
     expect(debeFusionarColaAhora(true, false, 0)).toBe(false);
   });
 });

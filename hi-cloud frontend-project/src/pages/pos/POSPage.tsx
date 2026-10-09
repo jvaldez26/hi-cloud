@@ -11650,18 +11650,25 @@ export default function POSPage() {
   // carrito en esta misma pasada.
   ventaEnCursoRef.current = ventaMut.isPending;
 
-  // Fusionar la cola de "próxima venta" al carrito — SOLO en la transición
-  // ventaMut.isPending true → false: la venta en curso terminó, con éxito
-  // (cart ya quedó vacío, onSuccess lo limpió) o con error/fallo de
-  // negocio (_emisionFallo, _requiereSupervisor, onError — todos dejan el
-  // carrito intacto para un reintento, y la cola se suma a ESE). Si el
-  // cajero reintenta, ventaMut.isPending vuelve a true y el gate se
-  // reactiva para lo que se agregue en ESE nuevo tramo.
-  const ventaEnCursoAnteriorRef = useRef(ventaMut.isPending);
+  // Fusionar la cola de "próxima venta" al carrito — SOLO cuando el
+  // carrito se VACÍA (deja de tener productos): eso pasa cuando la venta
+  // terminó con éxito (onSuccess lo limpia) o cuando la cajera abandona el
+  // intento (botón "Vaciar"/F4). A propósito NO se dispara con
+  // ventaMut.isPending true→false por sí solo: un fallo de negocio
+  // (_emisionFallo, _requiereSupervisor) o de red (onError) deja el
+  // carrito INTACTO para un reintento — isPending sí vuelve a false ahí,
+  // pero el carrito sigue siendo el mismo borrador, y mezclarlo con la
+  // cola contaminaría lo que está a punto de reenviarse tal cual. Si la
+  // cajera reintenta, el gate (ventaEnCursoRef) se reactiva para lo que se
+  // agregue en ESE nuevo tramo, y cuando ESE intento por fin tenga éxito
+  // (o también se abandone), la cola completa — de uno o de los dos
+  // intentos — se fusiona aquí.
+  const carritoTeniaAlgoRef = useRef(cart.length > 0);
   useEffect(() => {
-    const estabaEnCurso = ventaEnCursoAnteriorRef.current;
-    ventaEnCursoAnteriorRef.current = ventaMut.isPending;
-    if (!debeFusionarColaAhora(estabaEnCurso, ventaMut.isPending, colaProximaVenta.length)) return;
+    const teniaAlgo = carritoTeniaAlgoRef.current;
+    const tieneAlgoAhora = cart.length > 0;
+    carritoTeniaAlgoRef.current = tieneAlgoAhora;
+    if (!debeFusionarColaAhora(teniaAlgo, tieneAlgoAhora, colaProximaVenta.length)) return;
 
     const cantidad = colaProximaVenta.length;
     setCart(prev => fusionarColaEnCarrito(prev, colaProximaVenta));
@@ -11670,7 +11677,7 @@ export default function POSPage() {
       2.5,
     );
     setColaProximaVenta([]);
-  }, [ventaMut.isPending, colaProximaVenta]);
+  }, [cart.length, colaProximaVenta]);
 
   // ── Mutación para modos alternativos (sin cobro) ────────────────────────────
   const modoAltMut = useMutation({
@@ -12072,6 +12079,13 @@ export default function POSPage() {
     // la venta termine, lo que ve la cajera es exactamente lo que se envía,
     // nunca un total recalculado del carrito en vivo (ver totalCobroMostrado).
     totalCongeladoRef.current = totalAPagar;
+    // Activa el gate SINCRÓNICAMENTE, antes de mutate() — no se espera al
+    // próximo render (la sincronización de abajo, `ventaEnCursoRef.current =
+    // ventaMut.isPending`, solo corre en el render SIGUIENTE a que
+    // isPending cambie). Sin esto, un scan que llega entre este clic y ese
+    // render (un scanner no espera a React) todavía encontraba la ref en
+    // false y entraba al carrito que ya se está facturando.
+    ventaEnCursoRef.current = true;
     ventaMut.mutate();
   }, [canCheckout, ventaMut, tipoPagoPos, supervisor, posConf, totalEfectivo, totalAPagar, cart, empresa]);
 
