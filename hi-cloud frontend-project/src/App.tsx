@@ -269,6 +269,7 @@ const SimuladorPage               = lazy(() => import('./pages/prestamista/Simul
 const CobranzaPage                = lazy(() => import('./pages/prestamista/CobranzaPage'));
 const ReportesPrestamistaPage     = lazy(() => import('./pages/prestamista/ReportesPrestamistaPage'));
 const VehiculosPrestamistaPage    = lazy(() => import('./pages/prestamista/VehiculosPage'));
+const FeriadosPrestamistaPage     = lazy(() => import('./pages/prestamista/FeriadosPage'));
 // Agro / Finca
 const AgroDashboard               = lazy(() => import('./pages/agro/AgroDashboard'));
 const FincasPage                  = lazy(() => import('./pages/agro/FincasPage'));
@@ -1056,6 +1057,7 @@ export default function App() {
                       <Route path="cobranza"            element={<CobranzaPage />} />
                       <Route path="vehiculos"           element={<VehiculosPrestamistaPage />} />
                       <Route path="reportes"            element={<ReportesPrestamistaPage />} />
+                      <Route path="feriados"            element={<FeriadosPrestamistaPage />} />
                     </Route>
 
                     {/* ── Módulo Agro / Finca (add-on) ── */}

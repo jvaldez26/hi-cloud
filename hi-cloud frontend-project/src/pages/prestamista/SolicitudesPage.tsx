@@ -36,6 +36,11 @@ export default function SolicitudesPage() {
   const [detalleOpen, setDetalleOpen] = useState(false);
   const [decidirOpen, setDecidirOpen] = useState(false);
   const [selectedProductoTipo, setSelectedProductoTipo] = useState<string>('personal');
+  // Motor v2 (Fase 2B, punto 3): si el producto lo permite
+  // (motorConfig.permiteAjusteSolicitud !== false), se puede ajustar tasa y
+  // frecuencia al crear la solicitud. Sin motorConfig (producto "legacy" de
+  // Etapa 1) se asume que sí se permite, como siempre.
+  const [permiteAjuste, setPermiteAjuste] = useState(true);
   const [placaSearch, setPlacaSearch] = useState('');
   const [form] = Form.useForm();
   const [formDecision] = Form.useForm();
@@ -164,7 +169,9 @@ export default function SolicitudesPage() {
               onChange={(val: number) => {
                 const prod = (productos as any[]).find((p: any) => p.id === val);
                 setSelectedProductoTipo(prod?.tipoCredito ?? 'personal');
+                setPermiteAjuste(prod?.motorConfig?.permiteAjusteSolicitud !== false);
                 form.setFieldValue('vehiculoId', undefined);
+                form.setFieldsValue({ tasaInteresMensual: undefined, frecuenciaPago: undefined });
               }}
             >
               {(productos as any[]).map((p: any) => <Option key={p.id} value={p.id}>{p.nombre}</Option>)}
@@ -194,6 +201,19 @@ export default function SolicitudesPage() {
               <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
             </Form.Item>
           </div>
+          {permiteAjuste && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
+              <Form.Item name="tasaInteresMensual" label="Ajustar tasa (% mensual, opcional)">
+                <InputNumber style={{ width: '100%' }} min={0} max={100} precision={3} addonAfter="%" placeholder="Tasa del producto" />
+              </Form.Item>
+              <Form.Item name="frecuenciaPago" label="Ajustar frecuencia (opcional)">
+                <Select allowClear placeholder="Frecuencia del producto">
+                  {['diaria', 'semanal', 'quincenal', 'mensual', 'bimestral', 'trimestral', 'semestral', 'anual', 'unico'].map(f =>
+                    <Option key={f} value={f}>{f.charAt(0).toUpperCase() + f.slice(1)}</Option>)}
+                </Select>
+              </Form.Item>
+            </div>
+          )}
           <Form.Item name="proposito" label="Propósito del préstamo"><Input.TextArea rows={2} /></Form.Item>
           <Form.Item name="notas" label="Observaciones"><Input.TextArea rows={2} /></Form.Item>
         </Form>

@@ -17,6 +17,14 @@ export const prestamistalApi = {
   getProductos: () => api.get(`${base}/productos-prestamo`).then(r),
   crearProducto: (body: any) => api.post(`${base}/productos-prestamo`, body).then(r),
   updateProducto: (id: number, body: any) => api.patch(`${base}/productos-prestamo/${id}`, body).then(r),
+  // Motor v2 — vista previa de tasaEquivalentePorPeriodo/tasaAnualNominal/TEA
+  vistaTasa: (body: { tasa: any; frecuencia: string }) => api.post(`${base}/productos-prestamo/vista-tasa`, body).then(r),
+
+  // Feriados (motor v2, Configuración del módulo)
+  getFeriados: (anio: number) => api.get(`${base}/feriados`, { params: { anio } }).then(r),
+  crearFeriado: (body: any) => api.post(`${base}/feriados`, body).then(r),
+  actualizarFeriado: (id: number, body: any) => api.patch(`${base}/feriados/${id}`, body).then(r),
+  eliminarFeriado: (id: number) => api.delete(`${base}/feriados/${id}`).then(r),
 
   // Solicitudes
   getSolicitudes: (params?: any) => api.get(`${base}/solicitudes`, { params }).then(r),
