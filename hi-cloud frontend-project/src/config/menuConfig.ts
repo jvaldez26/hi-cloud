@@ -484,6 +484,11 @@ export const MENU_CATEGORIES_DATA: MenuCategoryData[] = [
       { path: '/importacion',    label: 'Importación CSV', codigo: 'AD07' },
       { path: '/documentos',     label: 'Documentos', codigo: 'AD08' },
       { path: '/contactos',      label: 'Directorio', codigo: 'AD09' },
+      // Visible para ADMIN siempre; para CONTADOR depende del switch "El
+      // Contador puede ver Auditoría" (Configuración → Punto de Venta) —
+      // ver puedeVerAuditoria()/AppLayout.tsx, que ya filtraba esta ruta
+      // en el sidebar aunque nunca existiera un ítem de menú que filtrar.
+      { path: '/auditoria',      label: 'Auditoría', codigo: 'AD10' },
       { path: '/codigos-transaccion', label: 'Códigos de Transacción', codigo: 'AD90' },
       { path: '/notificaciones', label: 'Centro de Notificaciones', codigo: 'AD91' },
     ],
