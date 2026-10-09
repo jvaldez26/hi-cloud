@@ -1,8 +1,8 @@
 # Motor Financiero — Prestamista Etapa 2, Fase 2A
 
-**Estado:** propuesta para revisión. No se ha escrito código todavía.
+**Estado:** revisado y cerrado el 2026-10-09. Las 8 decisiones abiertas de la primera versión quedaron resueltas (ver el resumen al final) — este documento ya refleja las respuestas, no las propuestas originales. Implementación en curso.
 **Objetivo:** un solo motor puro (sin BD, sin efectos secundarios) que calcula la tabla de amortización completa a partir de un conjunto de parámetros. Lo usan el simulador, el desembolso, el refinanciamiento, los abonos y la mora — nada de cálculo financiero vive fuera de él.
-**Convención de este documento:** cada fórmula está marcada como tal. Donde el encargo deja más de una interpretación razonable, lo marco explícitamente con **[DECISIÓN ABIERTA]** y propongo un default — se implementa con ese default solo si no lo cambias.
+**Convención de este documento:** cada fórmula está marcada como tal.
 
 ---
 
@@ -93,19 +93,33 @@ interface FrecuenciaConfig_Diaria {
 }
 ```
 
-**Regla (convención *forward*, igual a la que usan los calendarios bancarios):**
+**[CERRADO]** Nunca se fusionan dos cuotas en una misma fecha — las fechas se generan como una secuencia estricta de días hábiles, cada cuota cae en el siguiente día hábil después de la **fecha ya ajustada** de la cuota anterior (no después del día "crudo"). Esto se generaliza a cualquier frecuencia: si el ajuste por día inhábil hiciera que dos cuotas coincidieran, la segunda se corre al próximo día hábil libre.
 
 ```
-function fechaAjustada(fecha, config):
-  while (config.excluirDomingos && diaSemana(fecha) === 0)
-      || (config.excluirFeriados && config.feriados.has(fecha)):
-    fecha = fecha + 1 día
+function esDiaHabil(fecha, config):
+  return !(config.excluirDomingos && diaSemana(fecha) === 0)
+      && !(config.excluirFeriados && config.feriados.has(fecha))
+
+function primerDiaHabilDesde(fecha, config):     // inclusive: fecha misma si ya es hábil
+  while !esDiaHabil(fecha, config): fecha += 1 día
   return fecha
+
+function siguienteDiaHabilEstricto(fecha, config):   // EXCLUSIVO: siempre > fecha
+  return primerDiaHabilDesde(fecha + 1 día, config)
+
+// Generación, para cualquier frecuencia con exclusión de día activa:
+fecha_1 = primerDiaHabilDesde(fechaPrimerPago, config)
+para k = 2..n:
+  candidato = fechaBaseSegúnFrecuencia(k)        // ancla + paso, según §1.1/1.3/1.4, SIN exclusión aún
+  ajustado  = primerDiaHabilDesde(candidato, config)
+  si ajustado <= fecha_{k-1}:
+    ajustado = siguienteDiaHabilEstricto(fecha_{k-1}, config)
+  fecha_k = ajustado
 ```
 
-Cada `fecha_k` se calcula primero como `fecha_1 + (k−1)` días **sin acumular ajustes de las anteriores**, y luego se le aplica `fechaAjustada()` de forma independiente. Esto evita que una racha de feriados consecutivos haga que dos cuotas distintas colapsen en el mismo día: cada una se ajusta desde su propia fecha "cruda", no desde la fecha ajustada de la cuota anterior.
+Para `diaria` con `excluirDomingos=true` y sin feriados, esto se reduce exactamente a "cada cuota es el día hábil siguiente al de la cuota anterior" (el paso de la fórmula base es de 1 día, así que el candidato de cada `k` siempre colisiona o ya es el día después del anterior). Con una racha de feriados consecutivos, el algoritmo simplemente sigue empujando hacia adelante hasta encontrar un día libre — nunca dos cuotas en la misma fecha, nunca una fecha hacia atrás.
 
-**[DECISIÓN ABIERTA]** Si dos cuotas "crudas" distintas, tras el ajuste, terminan cayendo en el mismo día (posible solo con rachas de feriados largas y una cuota diaria), el motor lo deja así (dos cuotas con la misma fecha de vencimiento) salvo que prefieras que se fusionen o se corra la segunda un día más. Propongo dejarlo así por defecto — es un caso extremo y fusionar cuotas automáticamente es más sorprendente que dos fechas iguales.
+Un préstamo de 30 cuotas diarias sin domingos tiene, por construcción, 30 fechas estrictamente distintas.
 
 ### 1.3 Quincenal — variante "días fijos" (15 y 30/fin de mes)
 
@@ -131,12 +145,36 @@ Ejemplo: `diaFijo=31`, frecuencia mensual → cuota de febrero cae el 28 (o 29 e
 
 ### 1.5 Calendario de feriados (RD), por empresa
 
-Tabla nueva, editable desde Configuración, con un set precargado de feriados oficiales dominicanos y la posibilidad de agregar/quitar fechas por empresa (para feriados locales, cierres excepcionales, etc.).
+Tabla nueva (`pr_feriados` o equivalente), editable desde Configuración, por empresa y por año.
 
-**[DECISIÓN ABIERTA — verificación legal, no solo de diseño]** La Ley 139-97 traslada algunos feriados dominicanos al lunes siguiente si caen en medio de semana, pero **no todos**: de memoria, Año Nuevo (1 ene), Día de la Altagracia (21 ene), Día de Duarte (26 ene), Día de las Mercedes (24 sep) y Navidad (25 dic) son de fecha **fija** (no se trasladan); Día del Trabajo (1 may), Restauración (16 ago) y Constitución (6 nov) sí se trasladan al lunes; Viernes Santo y Corpus Christi dependen de la fecha de Pascua de cada año (cómputo astronómico/litúrgico, no fijo). No voy a precargar fechas específicas de años futuros sin que las confirmes — el riesgo de equivocarme en un detalle legal es real y el costo de un feriado mal cargado (una cuota "diaria" que cae en un día que debía excluirse) es dinero mal fechado. Propongo:
-- Precargar solo los feriados de **fecha fija** (los 5 de arriba) para el año en curso y el siguiente.
-- Dejar Viernes Santo/Corpus Christi/los de "lunes más cercano" como filas que tú completas o confirmas antes de que el motor los use en producción.
-- La tabla es editable en cualquier momento — un error se corrige sin tocar código.
+**[CERRADO]** Al crear/abrir el calendario de un año, se precargan dos grupos:
+
+1. **Feriados de fecha fija** (nunca se trasladan): 1 de enero (Año Nuevo), 21 de enero (Virgen de la Altagracia), 26 de enero (Día de Duarte), 24 de septiembre (Virgen de las Mercedes), 25 de diciembre (Navidad).
+2. **Feriados de fecha móvil, calculados por algoritmo** (deterministas, no dependen de publicación oficial): Viernes Santo y Corpus Christi, derivados de la fecha de Pascua de ese año.
+
+   Cómputo de Pascua (algoritmo de Meeus/Jones/Butcher, calendario gregoriano — determinista para cualquier año):
+   ```
+   a = año mod 19
+   b = floor(año / 100);  c = año mod 100
+   d = floor(b / 4);      e = b mod 4
+   f = floor((b + 8) / 25)
+   g = floor((b − f + 1) / 3)
+   h = (19a + b − d − g + 15) mod 30
+   i = floor(c / 4);      k = c mod 4
+   l = (32 + 2e + 2i − h − k) mod 7
+   m = floor((a + 11h + 22l) / 451)
+   mes  = floor((h + l − 7m + 114) / 31)
+   día  = ((h + l − 7m + 114) mod 31) + 1
+   → (día, mes) = Domingo de Pascua
+   ```
+   ```
+   Viernes Santo  = Pascua − 2 días
+   Corpus Christi = Pascua + 60 días
+   ```
+
+3. **Los feriados que la Ley 139-97 traslada al lunes más cercano** (Día del Trabajo 1° mayo, Restauración 16 agosto, Constitución 6 noviembre) **NO se calculan** — el calendario oficial de cada año se publica por decreto y puede variar el criterio. Al abrir/crear el calendario de un año, la pantalla muestra un aviso: *"Verifica los feriados de [año] con el calendario oficial"*, con esas tres filas en blanco para que la empresa las complete. La tabla queda editable en cualquier momento (agregar, quitar, corregir cualquier fecha, incluidas las precargadas).
+
+**[CERRADO]** Un feriado agregado o quitado del calendario **nunca reprograma cuotas ya generadas** — el calendario solo se consulta al momento de calcular la tabla de amortización de un préstamo nuevo (§10). Cambiar el calendario después no mueve ninguna fecha de un préstamo ya desembolsado.
 
 ---
 
@@ -153,9 +191,10 @@ interface ParametrosTasa {
 
 ### 2.1 Períodos por año (tabla fija)
 
+**[CERRADO]**
+
 | Período | períodos/año |
 |---|---|
-| diaria | `baseDias` (360 o 365) |
 | semanal | 52 |
 | quincenal | 24 |
 | mensual | 12 |
@@ -164,9 +203,11 @@ interface ParametrosTasa {
 | semestral | 2 |
 | anual | 1 |
 
-**[DECISIÓN ABIERTA]** Esta tabla usa conteos de calendario fijos (52 semanas, 24 quincenas, etc.) para TODAS las frecuencias excepto diaria — `baseDias` (360/365) solo entra en juego para convertir hacia o desde una tasa diaria. Es la convención que ya usa el motor actual (mes comercial de 30 días para mora) y la más simple de razonar; la alternativa (recalcular períodos/año como `baseDias ÷ díasReales del período`) agrega complejidad sin un beneficio claro para préstamos de consumo. Lo dejo así salvo que prefieras lo segundo.
+De semanal en adelante, conteos de calendario fijos — no se recalculan a partir de `baseDias`. Para **diaria**, en cambio, la tasa diaria sale directamente de la base de días configurada (`baseDias`, 360 o 365), no de un número fijo de "períodos de un día al año" — ver §2.4, que generaliza la fórmula. Los días excluidos por `excluirDomingos`/`excluirFeriados` (§1.2) afectan únicamente **qué días tienen cuota**, nunca la tasa: la tasa diaria es la misma tanto si ese día cae domingo como si no.
 
-### 2.2 Conversión: tasa ingresada → tasa del período de pago
+### 2.2 Conversión: tasa ingresada → tasa del período de pago (frecuencias semanal a anual)
+
+Aplica cuando `frecuenciaPago` es semanal, quincenal, mensual, bimestral, trimestral, semestral o anual — es decir, cuando hay un número fijo de períodos al año (§2.1). Para diaria/único/personalizado, ver §2.4.
 
 Sea `m = periodosPorAño(periodoExpresado)` y `p = periodosPorAño(frecuenciaPago)`.
 
@@ -192,9 +233,26 @@ tea (TEA nominal)         = (1 + tasaPeriodoPago)^p − 1
 
 `tea` aquí es la TEA derivada directamente de la tasa configurada (antes de cargos). La **TEA real** (con cargos, vía TIR) se calcula en §7 y es un número distinto — ambos se muestran, con esa distinción explicada en la UI para que no se confundan.
 
-### 2.4 Caso `único`/`personalizado`
+Para `diaria`/`único`/`personalizado` (§2.4), la pantalla muestra el equivalente usando `tasaDiaria`: `tasaAnualNominal = tasaDiaria × baseDias`, `tea = (1 + tasaDiaria)^baseDias − 1`.
 
-No hay "período de pago" fijo que convertir. **[DECISIÓN ABIERTA]**: para `único`, `tasaPeriodoPago` = la tasa efectiva del único período completo entre desembolso y la fecha de pago (se calcula igual que §2.2 tratando ese tramo como "el período de pago", vía la fórmula efectiva con `p` = períodos/año implícitos en los días reales de ese tramo). Para `personalizado`, cada tramo entre cuotas puede tener distinta duración — se recomienda exigir una `tasaPeriodoPago` ya resuelta por período (no una conversión automática), dado que "personalizado" ya implica que el operador define todo a mano.
+### 2.4 Tasa diaria — para `diaria`, `único` y `personalizado`
+
+**[CERRADO]** Estas tres frecuencias no tienen un "período de pago" de duración fija (en `diaria` el intervalo real entre cuotas varía según cuántos domingos/feriados se salten; en `único`/`personalizado`, por diseño). El interés se calcula por **días reales transcurridos**, sobre una tasa diaria derivada de `baseDias` (360 o 365):
+
+```
+tasaAnualNominal = valor × periodosPorAño(periodoExpresado)      // si tipo='nominal' (§2.2, mismo primer paso)
+tasaAnualEfectiva = (1 + valor)^periodosPorAño(periodoExpresado) − 1   // si tipo='efectiva'
+
+tasaDiaria =
+  tasaAnualNominal / baseDias                      si tipo='nominal'
+  (1 + tasaAnualEfectiva)^(1/baseDias) − 1          si tipo='efectiva'
+
+interes_k = saldo_{k−1} × tasaDiaria × díasReales(fecha_{k−1}, fecha_k)
+```
+
+donde `díasReales(a, b)` son los días de calendario reales entre las dos fechas (para la cuota 1, entre la fecha de desembolso y `fecha_1`). Esta es la misma fórmula para los tres casos — lo único que cambia es de dónde salen las fechas: generadas con exclusión de día (`diaria`, §1.2), dadas una por una por el operador (`único` tiene una sola; `personalizado` las que se definan).
+
+**Importante — por qué `diaria` NO usa esta fórmula para las frecuencias regulares (semanal...anual):** en esas frecuencias, la tasa por período (§2.2) es FIJA y se aplica una vez por cuota sin importar cuántos días de calendario tenga ese período exacto — igual que hoy una cuota mensual no se ajusta porque el mes tenga 28 o 31 días. En `diaria`, en cambio, como cada cuota corresponde a un solo día pero el intervalo real entre cuotas varía (1 día normalmente, 2+ si se saltó un domingo/feriado), el interés de cada cuota debe reflejar ese intervalo real — de lo contrario, el interés de los días saltados simplemente se perdería. Por eso `diaria` usa días reales mientras que el resto de frecuencias regulares no.
 
 ---
 
@@ -208,7 +266,9 @@ type MetodoAmortizacion =
 
 En todos los métodos (salvo `personalizado`), la **última cuota** se ajusta para cerrar el saldo en cero exacto — se detalla en §7.3.
 
-Sea `P` = `montoPrincipal` (ya incluyendo cualquier cargo financiado, ver §5), `i` = `tasaPeriodoPago`, `n` = `plazoPeriodos`.
+Sea `P` = `montoPrincipal` (ya incluyendo cualquier cargo financiado, ver §5), `n` = `plazoPeriodos`, e `i` = `tasaPeriodoPago` (§2.2) para las frecuencias regulares (semanal a anual) — **un valor constante, igual en todos los períodos**.
+
+**[CERRADO] Caso `diaria` (con exclusión de domingo/feriado activa), `único` y `personalizado`:** en estos tres casos `i` no es constante — el `interes_k` de cada período se calcula con la fórmula de §2.4 (`saldo_{k−1} × tasaDiaria × díasReales`), no con un `i` fijo. Donde las fórmulas de abajo usan `cuotaFija`/`capitalFijo` (francés, alemán, flat), ese valor se calcula **una sola vez** con `i = tasaDiaria` tratado como si cada período fuera exactamente un día (es decir, con la fórmula de cuota fija de la frecuencia regular, usando `tasaDiaria` en el lugar de `i`), y luego el `interes_k` real de cada cuota (que varía según el intervalo real) se resta de esa misma `cuotaFija` constante para obtener `capital_k` — igual que en frecuencia regular, solo que ahora `interes_k` no es idéntico cuota a cuota. Esto hace que la cuota sea **nominalmente fija pero el reparto capital/interés varíe levemente** cuando un intervalo abarca un domingo/feriado (más interés ese período, menos capital) — la última cuota sigue cerrando el saldo en cero exacto (§7.3), igual que en cualquier otro caso.
 
 ### 3.1 Francés (cuota fija)
 
@@ -293,7 +353,7 @@ El operador define, a mano, los montos y fechas de cada cuota (`CuotaManual[] = 
 
 ```
 por período k = 1..n (en el orden de las fechas dadas):
-  interes_k = saldo_{k−1} × i_k     // i_k: la tasa del tramo k (si la frecuencia es irregular, i_k se deriva de los días reales entre fecha_{k-1} y fecha_k — ver §2.4)
+  interes_k = saldo_{k−1} × tasaDiaria × díasReales(fecha_{k−1}, fecha_k)    // §2.4
   capital_k = montoTotal_k − interes_k
   saldo_k   = saldo_{k−1} − capital_k
 
@@ -302,7 +362,7 @@ validación: saldo_n debe ser 0 (±1 centavo de tolerancia por redondeo) — si 
   el préstamo; falta/sobra RD$X".
 ```
 
-**[DECISIÓN ABIERTA]**: si `capital_k` resultara negativo (la cuota dada no cubre ni el interés del tramo), ¿se permite (amortización negativa, el saldo crece) o se rechaza? Propongo **rechazar con error explícito** — una cuota personalizada que no cubre su propio interés casi siempre es un error de captura, no una intención real.
+**[CERRADO]**: si `capital_k` resultara negativo (la cuota dada no cubre ni el interés del tramo), se **rechaza con error explícito** — sin amortización negativa. Una cuota personalizada que no cubre su propio interés casi siempre es un error de captura, no una intención real.
 
 ---
 
@@ -312,7 +372,8 @@ validación: saldo_n debe ser 0 (±1 centavo de tolerancia por redondeo) — si 
 interface ParametrosGracia {
   tipo: 'capital' | 'total';
   periodos: number;
-  tratamientoInteresGracia?: 'capitaliza' | 'difiere';   // solo aplica si tipo='total'
+  // Solo aplica si tipo='total'. Configurable por producto. Default: 'prorratea'.
+  tratamientoInteresGracia?: 'prorratea' | 'capitaliza' | 'primera_cuota';
 }
 ```
 
@@ -331,49 +392,41 @@ por período k = G+1..n:
   con saldo inicial = P
 ```
 
-### 4.2 Gracia total — "capitaliza"
+### 4.2 Gracia total — tratamiento del interés generado durante la gracia
 
-Durante los primeros `G` períodos no se paga nada; el interés se suma al saldo cada período (interés compuesto sobre el período de gracia):
+**[CERRADO]** Durante los primeros `G` períodos no se paga nada. El saldo de capital se mantiene en `P` (no crece) en los tres tratamientos salvo que se indique lo contrario — lo que cambia es **qué pasa con el interés generado en esos `G` períodos**, configurable por producto:
 
+```
+interesGraciaTotal = P × i × G     (simple — suma del interés de cada uno de los G períodos sobre P)
+
+por período k = 1..G (los tres tratamientos):
+  interes_k = 0   (no se cobra en el período; queda registrado en interesGraciaTotal)
+  capital_k = 0
+```
+
+**`capitaliza`**: el interés se suma al saldo cada período (interés compuesto sobre el tramo de gracia) — el deudor termina pagando intereses sobre intereses del período de gracia.
 ```
 saldoDespuésDeGracia = P × (1 + i)^G
-
-por período k = G+1..n:
-  se aplica el método elegido sobre (n−G) períodos, con saldo inicial = saldoDespuésDeGracia
-  (es decir: el monto "P" de las fórmulas de §3 pasa a ser saldoDespuésDeGracia)
+por período k = G+1..n: se aplica el método elegido sobre (n−G) períodos,
+  con saldo inicial = saldoDespuésDeGracia (el "P" de §3 pasa a ser este valor)
 ```
 
-El deudor termina pagando intereses sobre intereses del período de gracia — es la interpretación estándar de "capitaliza".
-
-### 4.3 Gracia total — "difiere"
-
-Durante los primeros `G` períodos no se paga nada; el saldo de capital **no crece** (no hay interés sobre interés), pero el interés generado en esos períodos se acumula aparte:
-
+**`prorratea`** (default): el saldo de capital no crece; `interesGraciaTotal` se reparte en partes iguales sobre las `(n−G)` cuotas restantes, sumado a la cuota normal de cada una.
 ```
-interesDiferidoTotal = P × i × G     (simple, no compuesto — el capital base no cambia en la gracia)
-
-Tratamiento del interés diferido [DECISIÓN ABIERTA — propongo default "prorrateado"]:
-  "prorrateado" (default): se reparte en partes iguales sobre las (n−G) cuotas
-     restantes, SUMADO a la cuota normal de cada una:
-       cargoDiferidoPorCuota = interesDiferidoTotal / (n − G)
-       cuotaTotal_k += cargoDiferidoPorCuota   para k = G+1..n
-
-  "al_final": todo el interesDiferidoTotal se cobra en la última cuota, sumado
-     al ajuste de cierre de §7.3.
-
-por período k = 1..G:
-  interes_k = 0 (no se cobra en el período; se registra en interesDiferidoTotal)
-  capital_k = 0
-  saldo_k   = P   (no crece)
-
-por período k = G+1..n:
-  se aplica el método elegido sobre (n−G) períodos, saldo inicial = P,
-  más el cargo diferido del tratamiento elegido
+cargoGraciaPorCuota = interesGraciaTotal / (n − G)
+por período k = G+1..n: se aplica el método elegido sobre (n−G) períodos, saldo inicial = P;
+  cuotaTotal_k += cargoGraciaPorCuota
 ```
 
-La diferencia económica entre "capitaliza" y "difiere" es real y debe quedar visible en el total a pagar: "capitaliza" genera más interés total (interés sobre interés); "difiere" no.
+**`primera_cuota`**: el saldo de capital no crece; todo `interesGraciaTotal` se cobra de una sola vez, sumado a la primera cuota después de la gracia (período `G+1`) — es lo habitual para que el cargo quede cobrado aunque el préstamo se liquide anticipadamente poco después de la gracia.
+```
+por período k = G+1..n: se aplica el método elegido sobre (n−G) períodos, saldo inicial = P;
+  cuotaTotal_{G+1} += interesGraciaTotal   (solo en esa cuota)
+```
 
-### 4.4 Gracia de mora (ya existe, sin cambios)
+La diferencia económica entre `capitaliza` y los otros dos es real y debe quedar visible en el total a pagar: `capitaliza` genera más interés total (interés sobre interés); `prorratea` y `primera_cuota` cobran el mismo `interesGraciaTotal`, solo distribuido distinto en el tiempo.
+
+### 4.3 Gracia de mora (ya existe, sin cambios)
 
 `diasGracia` en `pr_prestamos`, usado por `clasificarMorosidad()`/`mora.cron.ts` (Etapa 1) — no se toca en esta fase.
 
@@ -411,7 +464,13 @@ cuotaTotal_k += montoCargoPorCuota
 
 ### 5.3 Cargo único diferido
 
-Un monto fijo o % que se cobra una sola vez en una cuota específica (por defecto, la última) — para cargos que no son ni "al desembolso" ni "recurrentes" (ej. un cargo de cierre de expediente). **[DECISIÓN ABIERTA]**: ¿en qué cuota cae por defecto? Propongo la última, configurable a otra si se necesita.
+Un monto fijo o % que se cobra una sola vez, para cargos que no son ni "al desembolso" ni "recurrentes" (ej. un cargo de cierre de expediente). **[CERRADO]**: configurable por cargo —
+
+```ts
+momentoUnicoDiferido: 'primera_cuota' | 'ultima_cuota' | 'prorrateado';   // default: 'primera_cuota'
+```
+
+Default `primera_cuota`: es lo habitual para cargos de apertura/administrativos, y evita que el cargo quede sin cobrar si el préstamo se liquida antes de llegar a la última cuota.
 
 ---
 
@@ -423,7 +482,7 @@ interface ParametrosMora {
   tasaOMonto: number;              // % mensual si base≠'monto_fijo'; monto en pesos si base='monto_fijo'
   periodoMontoFijo?: 'dia' | 'cuota';  // solo si base='monto_fijo'
   topeMora?: { tipo: 'monto' | 'porcentaje_saldo'; valor: number };
-  baseDiasMora: 360 | 'reales';
+  baseDiasMora: 360 | 365;
   diasGracia: number;               // ya existe
 }
 ```
@@ -432,14 +491,17 @@ interface ParametrosMora {
 - **`cuota_vencida`**: igual que el motor de hoy — `saldoBase = capitalPendiente + interesPendiente` de la cuota.
 - **`monto_fijo`**: no depende del saldo — `mora = montoFijo × díasDeAtraso` (si `periodoMontoFijo='dia'`) o `mora = montoFijo` una sola vez por cuota vencida (si `periodoMontoFijo='cuota'`, sin importar cuántos días lleve).
 
-Para los dos primeros, la fórmula diaria es la misma que hoy (Etapa 1, `mora.util.ts`), generalizando la base de días:
+**[CERRADO]** Para los dos primeros, la tasa diaria de mora NO usa los días del mes en curso (eso haría que la tasa diaria cambiara según caiga en febrero o en marzo, difícil de explicar al cliente) — usa una base fija, elegida al configurar el producto:
 
 ```
-tasaDiaria = tasaOMonto / 100 / (baseDiasMora === 360 ? 30 : /* 'reales': */ díasDelMesEnCurso)
-mora       = redondearDinero(saldoBase × tasaDiaria × díasDeAtraso)
+tasaDiaria = baseDiasMora === 360
+  ? (tasaOMonto / 100) / 30            // base comercial — igual que hoy (Etapa 1)
+  : (tasaOMonto / 100) × 12 / 365      // ACT/365 — tasa mensual anualizada ÷ 365
+
+mora = redondearDinero(saldoBase × tasaDiaria × díasDeAtraso)
 ```
 
-**[DECISIÓN ABIERTA]**: la opción `'reales'` para `baseDiasMora` — ¿días reales del mes en curso (28-31, variable) o un promedio fijo 365/12? Propongo días reales del mes en curso, por ser la interpretación literal de "días reales" que ya usa el sistema para el **conteo** de días de atraso (aunque hoy la tasa diaria siempre se deriva de /30). Esto es nuevo (hoy solo existe la base de 30) — confirmar antes de implementar.
+El conteo de `díasDeAtraso` sigue siendo siempre días de calendario reales (sin cambios de Etapa 1) — lo que cambia según `baseDiasMora` es solo cómo se deriva la tasa diaria a partir de la tasa mensual configurada, no el conteo de días vencidos.
 
 **Tope**: después de calcular `mora` con la fórmula de arriba, si hay `topeMora`:
 
@@ -543,13 +605,16 @@ Como mínimo, uno de cada método/variante, todos con RD$100,000, 12 períodos, 
 3. Americano, mensual.
 4. Flat, mensual.
 5. Francés con gracia de capital (3 períodos).
-6. Francés con gracia total — capitaliza (3 períodos).
-7. Francés con gracia total — difiere, prorrateado (3 períodos).
-8. Francés quincenal (días fijos) — fechas verificadas a mano contra un calendario real.
-9. Francés con tasa efectiva (en vez de nominal) — verificar que la tasa por período convertida coincide con el cálculo manual de §2.2.
-10. Diaria con exclusión de domingos — sobre un rango que cruce al menos dos domingos, fechas verificadas a mano.
-11. Un caso con cargo de apertura financiado, uno descontado, uno aparte — verificar que `P` y el monto recibido por el deudor sean los esperados en cada uno.
-12. Mora con cada una de las tres bases (`capital_vencido`, `cuota_vencida`, `monto_fijo`), con y sin tope.
+6. Francés con gracia total — `capitaliza` (3 períodos).
+7. Francés con gracia total — `prorratea` (3 períodos).
+8. Francés con gracia total — `primera_cuota` (3 períodos) — verificar que la cuota `G+1` lleva el cargo completo y las demás no.
+9. Francés quincenal (días fijos) — fechas verificadas a mano contra un calendario real.
+10. Francés con tasa efectiva (en vez de nominal) — verificar que la tasa por período convertida coincide con el cálculo manual de §2.2.
+11. Diaria con exclusión de domingos — sobre un rango que cruce al menos dos domingos, fechas Y montos de interés verificados a mano (el interés de la cuota que sigue a un domingo debe duplicar el de un día normal — §2.4).
+12. Pago único — interés por días reales entre desembolso y la fecha de pago, verificado a mano.
+13. Un caso con cargo de apertura financiado, uno descontado, uno aparte — verificar que `P` y el monto recibido por el deudor sean los esperados en cada uno.
+14. Mora con cada una de las tres bases (`capital_vencido`, `cuota_vencida`, `monto_fijo`), con y sin tope, y con `baseDiasMora` en 360 y en 365 (verificar que la tasa diaria efectiva de 365 es `×12/365`, distinta de `/30`).
+15. Cálculo de Pascua: verificar el algoritmo de §1.5 contra fechas conocidas de Viernes Santo/Corpus Christi de al menos 3 años distintos (valores públicos, fáciles de verificar independientemente).
 
 ### 9.2 Tests de propiedades, sobre TODA la matriz de combinaciones válidas (generadas, no una por una a mano)
 
@@ -582,17 +647,17 @@ Conclusión: el préstamo de la empresa 55 sigue funcionando sin ningún cambio 
 
 ---
 
-## Resumen de decisiones abiertas (para tu revisión)
+## Resumen de decisiones (cerradas el 2026-10-09)
 
-| § | Decisión | Propuesta por defecto |
+| § | Decisión | Resuelto como |
 |---|---|---|
-| 1.2 | Dos cuotas diarias que colapsan en la misma fecha tras el ajuste por feriados | Se deja así (no se fusionan) |
-| 1.5 | Feriados de fecha variable (Viernes Santo, Corpus Christi, los "lunes más cercano") | Tú los confirmas/cargas; solo precargo los 5 de fecha fija |
-| 2.1 | Períodos/año fijos por calendario (no recalculados desde `baseDias`) | Sí, fijos (52/24/12/6/4/2/1) |
-| 2.4 | Tasa para `único`/`personalizado` | Efectiva del tramo completo, vía §2.2 |
-| 3.6 | Capital negativo en una cuota personalizada | Se rechaza con error |
-| 4.3 | Tratamiento por defecto del interés diferido ("gracia total — difiere") | Prorrateado en las cuotas restantes |
-| 5.3 | Cuota donde cae un cargo "único diferido" por defecto | La última |
-| 6 | Base de días "reales" para mora: ¿días reales del mes en curso o promedio fijo? | Días reales del mes en curso |
+| 1.2 | Cuotas que colapsan en la misma fecha | Nunca se fusionan — secuencia estricta de días hábiles, cada cuota = siguiente día hábil después de la fecha **ajustada** de la anterior |
+| 1.5 | Feriados de fecha variable | Viernes Santo/Corpus Christi se calculan por algoritmo (fecha de Pascua); los trasladados al lunes (Ley 139-97) quedan en blanco con aviso para que la empresa los confirme cada año; nunca reprograma cuotas ya generadas |
+| 2.1 | Períodos/año fijos por calendario | Sí, fijos (52/24/12/6/4/2/1) para semanal en adelante; diaria sale directo de `baseDias` |
+| 2.4 | Tasa e interés para `diaria`/`único`/`personalizado` | Por días reales: `saldo × tasaDiaria × díasReales`, con `tasaDiaria` derivada de `baseDias` |
+| 3.6 | Capital negativo en una cuota personalizada | Se rechaza con error, sin amortización negativa |
+| 4.2 | Tratamiento del interés en gracia total | Configurable por producto: `prorratea` (default) / `capitaliza` / `primera_cuota` |
+| 5.3 | Cuota donde cae un cargo "único diferido" | Configurable: `primera_cuota` (default) / `ultima_cuota` / `prorrateado` |
+| 6 | Base de días para mora | `360`: tasa mensual ÷ 30 (como hoy). `365`: tasa mensual × 12 ÷ 365 (ACT/365) — nunca días del mes en curso |
 
-Nada de esto se implementa hasta que confirmes el documento completo (o ajustes lo que corresponda).
+Implementación en curso sobre esta versión del documento.
