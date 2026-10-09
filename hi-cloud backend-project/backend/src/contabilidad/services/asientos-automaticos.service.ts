@@ -1830,10 +1830,25 @@ export class AsientosAutomaticosService {
     formaPago:    string,
     fecha:        string, // data.fechaDesembolso
     userId:       number,
+    // Motor v2 (Fase 2B) — cargos de apertura/gastos retenidos al desembolsar
+    // (financiados o descontados, §5.1 del motor): la Cartera se debita por
+    // el monto COMPLETO, pero menos sale de caja/banco — la diferencia es
+    // ingreso del prestamista, no efectivo entregado.
+    cargoAperturaRetenido: number = 0,
   ): Promise<void> {
     const cuentaHaber  = await this.resolverCuentaPorMetodoPago(formaPago);
     const cuentaCartera = await this.resolverCuentaConcepto('PRESTAMO_CARTERA', '1.1.2.10');
+    const cuentaComision = cargoAperturaRetenido > 0
+      ? await this.resolverCuentaConcepto('PRESTAMO_COMISION_APERTURA', '4.1.2.03')
+      : null;
     try {
+      const lineas: Array<{ codigo: string; descripcion: string; debe: number; haber: number }> = [
+        { codigo: cuentaCartera, descripcion: `Cartera crédito ${numero}`, debe: monto, haber: 0 },
+        { codigo: cuentaHaber, descripcion: `Desembolso préstamo ${numero}`, debe: 0, haber: monto - cargoAperturaRetenido },
+      ];
+      if (cuentaComision && cargoAperturaRetenido > 0) {
+        lineas.push({ codigo: cuentaComision, descripcion: `Comisión de apertura ${numero}`, debe: 0, haber: cargoAperturaRetenido });
+      }
       const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Desembolso préstamo ${numero}`,
         tipoOrigen:      TipoOrigenAsiento.PRESTAMISTA,
@@ -1841,10 +1856,7 @@ export class AsientosAutomaticosService {
         referenciaFolio: numero,
         fecha,
         userId,
-        lineas: [
-          { codigo: cuentaCartera, descripcion: `Cartera crédito ${numero}`,  debe: monto, haber: 0     },
-          { codigo: cuentaHaber, descripcion: `Desembolso préstamo ${numero}`, debe: 0, haber: monto },
-        ],
+        lineas,
       });
       if (asiento) {
         this.logger.log(`Asiento desembolso préstamo ${numero} generado`);
@@ -1873,13 +1885,18 @@ export class AsientosAutomaticosService {
     moraAplicada:     number,
     fecha:          string, // fechaHoyRD() del caller — RegistrarPagoDto no trae fecha, el pago siempre es "ahora"
     userId:         number,
+    // Motor v2 (Fase 2B) — 4ta bolsa de aplicación del pago, junto a capital/
+    // interés/mora (ver docs/prestamista/motor-financiero.md §5 y
+    // PagosService.registrar()). Siempre 0 en préstamos 'v1'.
+    cargosAplicados: number = 0,
   ): Promise<void> {
-    const totalPago = capitalAplicado + interesAplicado + moraAplicada;
+    const totalPago = capitalAplicado + interesAplicado + moraAplicada + cargosAplicados;
     if (totalPago <= 0) return;
     const cuentaDebito  = await this.resolverCuentaPorMetodoPago(formaPago);
     const cuentaCartera = await this.resolverCuentaConcepto('PRESTAMO_CARTERA',   '1.1.2.10');
     const cuentaInteres = await this.resolverCuentaConcepto('PRESTAMO_INTERESES', '4.1.2.01');
     const cuentaMora    = await this.resolverCuentaConcepto('PRESTAMO_MORA',      '4.1.2.02');
+    const cuentaCargos  = await this.resolverCuentaConcepto('PRESTAMO_CARGOS',    '4.1.2.04');
     const lineas: Array<{ codigo: string; descripcion: string; debe: number; haber: number }> = [
       { codigo: cuentaDebito, descripcion: `Pago recibido ${numeroPago}`, debe: totalPago, haber: 0 },
     ];
@@ -1889,6 +1906,8 @@ export class AsientosAutomaticosService {
       lineas.push({ codigo: cuentaInteres, descripcion: `Intereses préstamo ${numeroPrestamo}`, debe: 0, haber: interesAplicado });
     if (moraAplicada > 0)
       lineas.push({ codigo: cuentaMora, descripcion: `Mora préstamo ${numeroPrestamo}`, debe: 0, haber: moraAplicada });
+    if (cargosAplicados > 0)
+      lineas.push({ codigo: cuentaCargos, descripcion: `Cargos préstamo ${numeroPrestamo}`, debe: 0, haber: cargosAplicados });
     try {
       const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Pago préstamo ${numeroPago} — ${numeroPrestamo}`,

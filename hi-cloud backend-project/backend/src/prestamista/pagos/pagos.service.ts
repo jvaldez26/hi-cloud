@@ -89,6 +89,7 @@ export class PagosService {
     let aplicadoMora = 0;
     let aplicadoInteres = 0;
     let aplicadoCapital = 0;
+    let aplicadoCargos = 0;
     const cuotasAfectadas: any[] = [];
     let saldoCapital = 0;
     let saldoInteres = 0;
@@ -116,15 +117,18 @@ export class PagosService {
       for (const cuota of cuotas) {
         if (restante <= 0) break;
 
-        // Orden: mora → interés → capital
-        const moraPend = r2(Number(cuota.moraGenerada) - Number(cuota.moraPagada));
-        const intPend  = r2(Number(cuota.interes)      - Number(cuota.interesPagado));
-        const capPend  = r2(Number(cuota.capital)      - Number(cuota.capitalPagado));
+        // Orden: mora → interés → capital → cargos (motor v2 — §5 del motor;
+        // en préstamos 'v1' cuota.cargos es null, cargosTotal=0, no hace nada).
+        const cargosTotal = Array.isArray(cuota.cargos) ? cuota.cargos.reduce((a: number, c: any) => a + Number(c.monto ?? 0), 0) : 0;
+        const moraPend   = r2(Number(cuota.moraGenerada) - Number(cuota.moraPagada));
+        const intPend    = r2(Number(cuota.interes)      - Number(cuota.interesPagado));
+        const capPend    = r2(Number(cuota.capital)      - Number(cuota.capitalPagado));
+        const cargosPend = r2(cargosTotal - Number(cuota.cargosPagados ?? 0));
 
         // Guard: cuota sin pendiente real (datos corruptos o ya saldada)
-        if (moraPend <= 0 && intPend <= 0 && capPend <= 0) continue;
+        if (moraPend <= 0 && intPend <= 0 && capPend <= 0 && cargosPend <= 0) continue;
 
-        let pagMora = 0; let pagInt = 0; let pagCap = 0;
+        let pagMora = 0; let pagInt = 0; let pagCap = 0; let pagCargos = 0;
 
         if (moraPend > 0 && restante > 0) {
           pagMora = Math.min(moraPend, restante);
@@ -141,26 +145,32 @@ export class PagosService {
           aplicadoCapital = r2(aplicadoCapital + pagCap);
           restante = r2(restante - pagCap);
         }
+        if (cargosPend > 0 && restante > 0) {
+          pagCargos = Math.min(cargosPend, restante);
+          aplicadoCargos = r2(aplicadoCargos + pagCargos);
+          restante = r2(restante - pagCargos);
+        }
 
-        const totalPagadoCuota = r2(pagMora + pagInt + pagCap);
+        const totalPagadoCuota = r2(pagMora + pagInt + pagCap + pagCargos);
         if (totalPagadoCuota === 0) continue;
 
-        const nuevaIntPag  = r2(Number(cuota.interesPagado) + pagInt);
-        const nuevaCapPag  = r2(Number(cuota.capitalPagado) + pagCap);
-        const nuevaMoraPag = r2(Number(cuota.moraPagada) + pagMora);
-        const nuevaTotal   = r2(Number(cuota.totalPagado) + totalPagadoCuota);
+        const nuevaIntPag    = r2(Number(cuota.interesPagado) + pagInt);
+        const nuevaCapPag    = r2(Number(cuota.capitalPagado) + pagCap);
+        const nuevaMoraPag   = r2(Number(cuota.moraPagada) + pagMora);
+        const nuevaCargosPag = r2(Number(cuota.cargosPagados ?? 0) + pagCargos);
+        const nuevaTotal     = r2(Number(cuota.totalPagado) + totalPagadoCuota);
 
-        const cuotaPagada = nuevaCapPag >= Number(cuota.capital) && nuevaIntPag >= Number(cuota.interes);
+        const cuotaPagada = nuevaCapPag >= Number(cuota.capital) && nuevaIntPag >= Number(cuota.interes) && nuevaCargosPag >= cargosTotal;
         const estCuota = cuotaPagada ? 'pagada' : 'parcial';
 
         await qr.query(
           `UPDATE pr_cuotas SET "interesPagado"=$1,"capitalPagado"=$2,"moraPagada"=$3,"totalPagado"=$4,
-            estado=$5,"fechaPago"=CURRENT_DATE WHERE id=$6`,
-          [nuevaIntPag, nuevaCapPag, nuevaMoraPag, nuevaTotal, estCuota, cuota.id],
+            "cargosPagados"=$5,estado=$6,"fechaPago"=CURRENT_DATE WHERE id=$7`,
+          [nuevaIntPag, nuevaCapPag, nuevaMoraPag, nuevaTotal, nuevaCargosPag, estCuota, cuota.id],
         );
 
         cuotasAfectadas.push({ cuotaId: cuota.id, numeroCuota: cuota.numeroCuota,
-          pagMora, pagInt, pagCap, estado: estCuota });
+          pagMora, pagInt, pagCap, pagCargos, estado: estCuota });
       }
 
       // Generar número de pago
@@ -171,11 +181,11 @@ export class PagosService {
 
       const pagoRows: any[] = await qr.query(
         `INSERT INTO pr_pagos ("empresaId",numero,"prestamoId","deudorId","montoPagado","aplicadoMora",
-          "aplicadoInteres","aplicadoCapital","metodoPago",referencia,"cobradorId","cobradorNombre",
+          "aplicadoInteres","aplicadoCapital","aplicadoCargos","metodoPago",referencia,"cobradorId","cobradorNombre",
           "cuotasAfectadas",notas,"creadoPor","claveIdempotencia")
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
         [empresaId, numero, data.prestamoId, prestamo.deudorId, data.montoPagado,
-         aplicadoMora, aplicadoInteres, aplicadoCapital,
+         aplicadoMora, aplicadoInteres, aplicadoCapital, aplicadoCargos,
          data.metodoPago ?? null, data.referencia ?? null, uid,
          data.cobradorNombre ?? null, JSON.stringify(cuotasAfectadas), data.notas ?? null, uid,
          data.claveIdempotencia ?? null],
@@ -257,6 +267,7 @@ export class PagosService {
       data.metodoPago ?? 'transferencia',
       aplicadoCapital, aplicadoInteres, aplicadoMora,
       fechaHoyRD(), uid ?? 0,
+      aplicadoCargos,
     ).catch(err => this.logger.error(`Asiento pago ${numero}: ${err.message}`));
 
     if (aplicadoInteres > 0) {
