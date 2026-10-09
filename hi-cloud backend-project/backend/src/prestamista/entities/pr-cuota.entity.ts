@@ -19,5 +19,11 @@ export class PrCuota {
   @Column({ length: 20, default: 'pendiente' }) estado!: string;
   @Column({ type: 'date', nullable: true }) fechaPago?: string;
   @Column({ type: 'int', default: 0 }) diasMora!: number;
+  /** Motor v2 — cargos de esta cuota específica (seguro por cuota, etc.): [{concepto, monto}]. `null` en cuotas 'v1'. */
+  @Column({ type: 'jsonb', nullable: true }) cargos?: { concepto: string; monto: number }[];
+  /** Motor v2 — total pagado de los cargos de esta cuota (agregado, no por concepto — mismo nivel de detalle que capitalPagado/interesPagado). */
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 }) cargosPagados!: number;
+  /** Motor v2 — si esta cuota cae dentro de un período de gracia (§4 del motor). Siempre false en cuotas 'v1'. */
+  @Column({ default: false }) esPeriodoGracia!: boolean;
   @CreateDateColumn() createdAt!: Date;
 }

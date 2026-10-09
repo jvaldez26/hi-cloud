@@ -36,6 +36,23 @@ export class PrPrestamo {
   @Column({ type: 'int', nullable: true }) facturaDesembolsoId?: number;
   @Column({ type: 'int', nullable: true }) vehiculoId?: number;
   @Column({ type: 'text', nullable: true }) notas?: string;
+  /**
+   * Motor v2 (Etapa 2, Fase 2A/2B) — 'v1': generado por amortizacion.util.ts
+   * (Etapa 1, francés/alemán mensual), sigue leyéndose igual, NUNCA se
+   * recalcula. 'v2': generado por prestamista/motor/amortizacion-v2.util.ts.
+   * Todo préstamo nuevo se crea en 'v2' (ver PrestamosService
+   * .crearEnTransaccion) — este campo decide, en mora.cron.ts, qué motor
+   * de mora usar (mora.util.ts vs. motor/mora-v2.util.ts).
+   */
+  @Column({ length: 2, default: 'v1' }) motorVersion!: string;
+  /**
+   * Snapshot EXACTO de la configuración del motor usada para generar este
+   * préstamo (frecuencia, tasa, método, gracia, cargos, mora) — copiado del
+   * producto (+ ajustes de la solicitud) al momento del desembolso, nunca
+   * leído en vivo del producto. Cambiar el producto después nunca altera
+   * préstamos ya creados. `null` en préstamos 'v1'.
+   */
+  @Column({ type: 'jsonb', nullable: true }) motorConfig?: Record<string, unknown>;
   @CreateDateColumn() createdAt!: Date;
   @UpdateDateColumn() updatedAt!: Date;
 }

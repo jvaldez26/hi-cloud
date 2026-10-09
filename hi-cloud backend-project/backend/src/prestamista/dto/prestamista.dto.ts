@@ -15,9 +15,10 @@
  */
 import {
   IsInt, IsPositive, IsNumber, IsOptional, IsString, IsNotEmpty,
-  IsDateString, MaxLength, Min, Max, IsIn, IsBoolean,
+  IsDateString, MaxLength, Min, Max, IsIn, IsBoolean, ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { MotorConfigDto } from './prestamista-motor.dto';
 
 /** Monto de dinero: > 0 y con dos decimales como máximo. */
 const MONTO = { maxDecimalPlaces: 2 } as const;
@@ -71,6 +72,15 @@ export class CrearSolicitudDto {
 
   @IsOptional() @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) @Type(() => Number)
   tasaInteresMensual?: number;
+
+  /**
+   * Motor v2 (Fase 2B): ajuste de frecuencia respecto a la del producto —
+   * solo tiene efecto si el producto permite ajustes en la solicitud
+   * (motorConfig.permiteAjusteSolicitud, default true). Ver
+   * motor-adaptador.util.ts → aplicarOverridesSolicitud().
+   */
+  @IsOptional() @IsIn(['diaria', 'semanal', 'quincenal', 'mensual', 'bimestral', 'trimestral', 'semestral', 'anual', 'unico', 'personalizado'])
+  frecuenciaPago?: string;
 
   @IsOptional() @IsString() @MaxLength(500)
   proposito?: string;
@@ -186,24 +196,28 @@ export class CancelarPrestamoDto {
  * era el DTO el desalineado (`montoPrincipal`/`fechaDesembolso`, sin método), y con
  * forbidNonWhitelisted:true eso bastaba para rechazar cualquier simulación con 400.
  */
-export class SimularPrestamoDto {
+/**
+ * Motor v2 (Fase 2B): el Simulador ahora acepta todos los parámetros que
+ * soporta el motor (docs/prestamista/motor-financiero.md) — hereda de
+ * MotorConfigDto (frecuencia, tasa, método, gracia, cargos; mora/fiscal/
+ * permiteAjusteSolicitud se heredan pero el simulador los ignora, no hace
+ * daño que vengan declarados aunque no se usen) y agrega los datos propios
+ * de una simulación puntual (monto, fechas, plazo).
+ */
+export class SimularPrestamoDto extends MotorConfigDto {
   @IsNumber(MONTO, { message: 'El monto principal debe ser un número con hasta 2 decimales' })
   @IsPositive({ message: 'El monto principal debe ser mayor que cero' })
   @Type(() => Number)
-  principal!: number;
+  montoPrincipal!: number;
 
-  @IsInt() @Min(1, { message: 'El plazo debe ser de al menos 1 mes' }) @Type(() => Number)
-  plazoMeses!: number;
-
-  @IsNumber({ maxDecimalPlaces: 3 }, { message: 'La tasa mensual admite hasta 3 decimales' })
-  @Min(0) @Type(() => Number)
-  tasaInteresMensual!: number;
-
-  @IsOptional() @IsIn(['frances', 'aleman'])
-  metodoAmortizacion?: 'frances' | 'aleman';
+  @IsDateString({}, { message: 'La fecha de desembolso debe ser una fecha válida' })
+  fechaDesembolso!: string;
 
   @IsDateString({}, { message: 'La fecha del primer pago debe ser una fecha válida' })
   fechaPrimerPago!: string;
+
+  @IsInt() @Min(1, { message: 'El plazo debe ser de al menos 1 período' }) @Type(() => Number)
+  plazoPeriodos!: number;
 }
 
 export class ActualizarSolicitudDto {
@@ -470,6 +484,15 @@ export class CrearProductoPrestamoDto {
 
   @IsOptional() @IsBoolean()
   requiereGarante?: boolean;
+
+  /**
+   * Motor v2 (Fase 2B) — configuración completa del motor financiero nuevo
+   * para este producto. Si se omite, el producto queda "legacy": todo
+   * desembolso a partir de él sintetiza un equivalente francés/alemán
+   * mensual (ver motor-adaptador.util.ts → motorConfigLegacyDesdeProducto).
+   */
+  @IsOptional() @ValidateNested() @Type(() => MotorConfigDto)
+  motorConfig?: MotorConfigDto;
 }
 
 export class ActualizarProductoPrestamoDto {
@@ -526,6 +549,9 @@ export class ActualizarProductoPrestamoDto {
 
   @IsOptional() @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional() @ValidateNested() @Type(() => MotorConfigDto)
+  motorConfig?: MotorConfigDto;
 }
 
 export class CrearVehiculoDto {
