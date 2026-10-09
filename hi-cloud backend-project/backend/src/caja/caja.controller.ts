@@ -14,6 +14,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
 import { User } from '../users/users.entity';
+import { TenantService } from '../tenant/tenant.service';
 
 class AbrirCajaDto {
   @IsNotEmpty() @IsInt() @IsPositive()
@@ -113,14 +114,20 @@ class ReporteRetirosDto {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('caja')
 export class CajaController {
-  constructor(private cajaService: CajaService) {}
+  constructor(private cajaService: CajaService, private tenantService: TenantService) {}
 
   @Get('hoy')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Cajas del día — ADMIN/CONTADOR pueden filtrar por ?vendedorId; VENDEDOR ve su propia caja' })
   getCajaHoy(@Query('vendedorId') vendedorId?: string, @GetUser() usuario?: User) {
-    const role = (usuario as any)?.role;
-    if (role === UserRole.VENDEDOR) {
+    // Rol de la empresa ACTIVA (TenantService/usuario_empresa), nunca
+    // `usuario.role` (columna global de `users`, solo sincronizada con la
+    // empresa PRINCIPAL — ver el mismo comentario en
+    // requiere-supervisor.guard.ts). Antes de este fix, un VENDEDOR cuyo
+    // rol global fuera otro caía en la rama de abajo (getCajaHoy sin
+    // vendedorId) en vez de getCajaHoyByUserId — veía el panel de
+    // ADMIN/CONTADOR en vez del suyo propio.
+    if (this.tenantService.getRolEmpresa() === UserRole.VENDEDOR) {
       // A-1: VENDEDOR solo ve su propia caja (scoped by userId, no acepta param cliente)
       return this.cajaService.getCajaHoyByUserId(usuario!.id);
     }
@@ -175,7 +182,7 @@ export class CajaController {
     return this.cajaService.cerrarCaja(
       id, dto.saldoFisico, dto.notas,
       dto.desgloseBilletes, dto.desglosePago,
-      { id: usuario.id, role: (usuario as any).role, nombre: usuario.nombre },
+      { id: usuario.id, nombre: usuario.nombre },
       dto.motivo,
     );
   }
@@ -202,13 +209,12 @@ export class CajaController {
     @Query('vendedorId') vendedorId?: string,
     @Query('mes')        mes?:        string,
     @Query('anio')       anio?:       string,
-    @GetUser()            usuario?:   User,
   ) {
     const vid = vendedorId !== undefined ? Number(vendedorId) : undefined;
     const m   = mes  ? Number(mes)  : undefined;
     const a   = anio ? Number(anio) : undefined;
     return this.cajaService.getHistorial(
-      Number(page ?? 1), Number(limit ?? 20), vid, m, a, (usuario as any)?.role,
+      Number(page ?? 1), Number(limit ?? 20), vid, m, a,
     );
   }
 
@@ -308,13 +314,13 @@ export class CajaController {
   @UseGuards(RequiereSupervisor('imprimir_cierre_caja_abierta'))
   @ApiOperation({ summary: 'Datos completos (nunca recortados por rol) para imprimir el cierre, con detalle de facturas — el frontend solo la llama para cajas ABIERTA; un VENDEDOR necesita autorización de supervisor' })
   getDatosParaImprimir(@Param('id', ParseIntPipe) id: number, @GetUser() usuario: User) {
-    return this.cajaService.getDatosParaImprimir(id, { id: usuario.id, role: (usuario as any).role });
+    return this.cajaService.getDatosParaImprimir(id, { id: usuario.id });
   }
 
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @ApiOperation({ summary: 'Una caja por id — enlace directo del aviso de caja abierta de un día anterior. VENDEDOR nunca ve el monto de una caja ABIERTA' })
-  obtenerUna(@Param('id', ParseIntPipe) id: number, @GetUser() usuario: User) {
-    return this.cajaService.obtenerUnaPorId(id, (usuario as any)?.role);
+  obtenerUna(@Param('id', ParseIntPipe) id: number) {
+    return this.cajaService.obtenerUnaPorId(id);
   }
 }

@@ -28,7 +28,11 @@ function buildDeps() {
         update: jest.fn().mockResolvedValue(undefined),
       },
     },
-    tenantSvc:   { getEmpresaId: () => EMPRESA, getSucursalId: () => undefined },
+    // getRolEmpresa: el rol de la empresa ACTIVA (usuario_empresa), nunca
+    // `usuario.role` — ver el comentario en cerrarCaja/getFacturasDetalle.
+    // Default ADMIN porque la mayoría de los casos de abajo son admin;
+    // los que de verdad dependen del rol lo sobrescriben explícitamente.
+    tenantSvc:   { getEmpresaId: () => EMPRESA, getSucursalId: () => undefined, getRolEmpresa: () => UserRole.ADMIN as string | null },
     realtimeSvc: { notify: jest.fn() },
   };
 }
@@ -57,12 +61,13 @@ function cajaAbierta(overrides: Partial<CierreCaja> = {}): CierreCaja {
 describe('CajaService.cerrarCaja — pertenencia', () => {
   it('VENDEDOR no puede cerrar la caja de OTRO cajero (ni userId ni perfil de vendedor coinciden)', async () => {
     const d = buildDeps();
+    d.tenantSvc.getRolEmpresa = () => UserRole.VENDEDOR;
     d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, userId: 100, vendedorId: 5 }));
     d.dataSource.query.mockResolvedValue([]); // sin perfil de vendedor para el usuario 999
     const service = buildService(d);
 
     await expect(
-      service.cerrarCaja(1, 500, undefined, undefined, undefined, { id: 999, role: UserRole.VENDEDOR }),
+      service.cerrarCaja(1, 500, undefined, undefined, undefined, { id: 999 }),
     ).rejects.toThrow(ForbiddenException);
 
     expect(d.repo.update).not.toHaveBeenCalled(); // nunca llega a tocar la caja
@@ -70,11 +75,12 @@ describe('CajaService.cerrarCaja — pertenencia', () => {
 
   it('VENDEDOR SÍ puede cerrar su propia caja (coincide por userId — él mismo la abrió)', async () => {
     const d = buildDeps();
+    d.tenantSvc.getRolEmpresa = () => UserRole.VENDEDOR;
     d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, userId: 42, vendedorId: 5 }));
     const service = buildService(d);
 
     await expect(
-      service.cerrarCaja(1, 500, undefined, undefined, undefined, { id: 42, role: UserRole.VENDEDOR }),
+      service.cerrarCaja(1, 500, undefined, undefined, undefined, { id: 42 }),
     ).resolves.toBeDefined();
 
     expect(d.repo.update).toHaveBeenCalled();
@@ -82,24 +88,25 @@ describe('CajaService.cerrarCaja — pertenencia', () => {
 
   it('VENDEDOR SÍ puede cerrar la caja que le abrió un encargado (coincide por su perfil de vendedor, no por userId)', async () => {
     const d = buildDeps();
+    d.tenantSvc.getRolEmpresa = () => UserRole.VENDEDOR;
     d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, userId: 999, vendedorId: 5 })); // la abrió el encargado #999
     d.dataSource.query.mockResolvedValue([{ id: 5 }]); // el perfil de vendedor del usuario #42 es el 5
     const service = buildService(d);
 
     await expect(
-      service.cerrarCaja(1, 500, undefined, undefined, undefined, { id: 42, role: UserRole.VENDEDOR }),
+      service.cerrarCaja(1, 500, undefined, undefined, undefined, { id: 42 }),
     ).resolves.toBeDefined();
 
     expect(d.repo.update).toHaveBeenCalled();
   });
 
   it('ADMIN/CONTADOR pueden cerrar la caja de cualquier cajero — pero sin motivo, 400', async () => {
-    const d = buildDeps();
+    const d = buildDeps(); // default: getRolEmpresa → ADMIN
     d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, userId: 999, vendedorId: 5 }));
     const service = buildService(d);
 
     await expect(
-      service.cerrarCaja(1, 500, undefined, undefined, undefined, { id: 1, role: UserRole.ADMIN }),
+      service.cerrarCaja(1, 500, undefined, undefined, undefined, { id: 1 }),
     ).rejects.toThrow(BadRequestException);
 
     expect(d.repo.update).not.toHaveBeenCalled();
@@ -111,7 +118,7 @@ describe('CajaService.cerrarCaja — pertenencia', () => {
     const service = buildService(d);
 
     await expect(
-      service.cerrarCaja(1, 500, undefined, undefined, undefined, { id: 1, role: UserRole.ADMIN, nombre: 'Jean Admin' }, 'Cajero se fue sin cerrar'),
+      service.cerrarCaja(1, 500, undefined, undefined, undefined, { id: 1, nombre: 'Jean Admin' }, 'Cajero se fue sin cerrar'),
     ).resolves.toBeDefined();
 
     expect(d.repo.update).toHaveBeenCalled();
@@ -127,7 +134,7 @@ describe('CajaService.cerrarCaja — pertenencia', () => {
     const service = buildService(d);
 
     await expect(
-      service.cerrarCaja(1, 500, undefined, undefined, undefined, { id: 1, role: UserRole.ADMIN }, '   '),
+      service.cerrarCaja(1, 500, undefined, undefined, undefined, { id: 1 }, '   '),
     ).rejects.toThrow(BadRequestException);
   });
 
@@ -137,7 +144,7 @@ describe('CajaService.cerrarCaja — pertenencia', () => {
     const service = buildService(d);
 
     await expect(
-      service.cerrarCaja(1, 500, undefined, undefined, undefined, { id: 1, role: UserRole.ADMIN }),
+      service.cerrarCaja(1, 500, undefined, undefined, undefined, { id: 1 }),
     ).resolves.toBeDefined();
 
     expect(d.repo.update).toHaveBeenCalled();
@@ -153,11 +160,12 @@ describe('CajaService.cerrarCaja — pertenencia', () => {
 
   it('caja ya cerrada: BadRequestException, sin importar quién la cierre', async () => {
     const d = buildDeps();
+    d.tenantSvc.getRolEmpresa = () => UserRole.VENDEDOR;
     d.repo.findOne.mockResolvedValue(cajaAbierta({ estado: EstadoCierre.CERRADA }));
     const service = buildService(d);
 
     await expect(
-      service.cerrarCaja(1, 500, undefined, undefined, undefined, { id: 1, role: UserRole.VENDEDOR }),
+      service.cerrarCaja(1, 500, undefined, undefined, undefined, { id: 1 }),
     ).rejects.toThrow(BadRequestException);
   });
 });
@@ -298,7 +306,7 @@ function cajaBase(overrides: Partial<Record<string, unknown>> = {}) {
   };
 }
 
-function makeCajaService(opts: { cajas?: any[]; facturas?: any[]; cierreCajaCiego?: boolean } = {}) {
+function makeCajaService(opts: { cajas?: any[]; facturas?: any[]; cierreCajaCiego?: boolean; rol?: string | null } = {}) {
   const cajas = opts.cajas ?? [cajaBase()];
   const facturas = opts.facturas ?? [];
 
@@ -351,7 +359,10 @@ function makeCajaService(opts: { cajas?: any[]; facturas?: any[]; cierreCajaCieg
     },
   };
 
-  const tenantService = { getEmpresaId: () => EMPRESA, getSucursalId: () => null };
+  // getRolEmpresa: el rol de la empresa ACTIVA — igual que buildDeps() más
+  // arriba, nunca `usuario.role`. null por defecto (sin rol resuelto);
+  // cada test que lo necesite pasa opts.rol.
+  const tenantService = { getEmpresaId: () => EMPRESA, getSucursalId: () => null, getRolEmpresa: () => opts.rol ?? null };
   const realtimeService = { notify: jest.fn() };
 
   const svc = new CajaService(
@@ -362,8 +373,8 @@ function makeCajaService(opts: { cajas?: any[]; facturas?: any[]; cierreCajaCieg
 
 describe('CajaService.obtenerUnaPorId — VENDEDOR nunca ve el monto de una caja ABIERTA', () => {
   it('VENDEDOR + caja ABIERTA: los montos se recortan y queda marcada ciegoCajaActivo', async () => {
-    const { svc } = makeCajaService();
-    const r = await svc.obtenerUnaPorId(1, UserRole.VENDEDOR);
+    const { svc } = makeCajaService({ rol: UserRole.VENDEDOR });
+    const r = await svc.obtenerUnaPorId(1);
 
     expect(r.ciegoCajaActivo).toBe(true);
     for (const campo of ['ventasEfectivo', 'ventasTarjeta', 'ventasTransferencia', 'ventasCredito',
@@ -380,8 +391,8 @@ describe('CajaService.obtenerUnaPorId — VENDEDOR nunca ve el monto de una caja
   });
 
   it('VENDEDOR + caja CERRADA: sin cambios — los montos se ven completos', async () => {
-    const { svc } = makeCajaService({ cajas: [cajaBase({ estado: EstadoCierre.CERRADA, saldoCierre: 1550 })] });
-    const r = await svc.obtenerUnaPorId(1, UserRole.VENDEDOR);
+    const { svc } = makeCajaService({ rol: UserRole.VENDEDOR, cajas: [cajaBase({ estado: EstadoCierre.CERRADA, saldoCierre: 1550 })] });
+    const r = await svc.obtenerUnaPorId(1);
 
     expect(r.ciegoCajaActivo).toBeUndefined();
     expect(r.ventasEfectivo).toBe(1200);
@@ -389,8 +400,8 @@ describe('CajaService.obtenerUnaPorId — VENDEDOR nunca ve el monto de una caja
   });
 
   it('ADMIN + caja ABIERTA: sin cambios — ve todo', async () => {
-    const { svc } = makeCajaService();
-    const r = await svc.obtenerUnaPorId(1, UserRole.ADMIN);
+    const { svc } = makeCajaService({ rol: UserRole.ADMIN });
+    const r = await svc.obtenerUnaPorId(1);
 
     expect(r.ciegoCajaActivo).toBeUndefined();
     expect(r.ventasEfectivo).toBe(1200);
@@ -398,28 +409,29 @@ describe('CajaService.obtenerUnaPorId — VENDEDOR nunca ve el monto de una caja
   });
 
   it('CONTADOR + caja ABIERTA: sin cambios — ve todo', async () => {
-    const { svc } = makeCajaService();
-    const r = await svc.obtenerUnaPorId(1, UserRole.CONTADOR);
+    const { svc } = makeCajaService({ rol: UserRole.CONTADOR });
+    const r = await svc.obtenerUnaPorId(1);
 
     expect(r.ciegoCajaActivo).toBeUndefined();
     expect(r.ventasEfectivo).toBe(1200);
   });
 
   it('caja inexistente: NotFoundException, para cualquier rol', async () => {
-    const { svc } = makeCajaService();
-    await expect(svc.obtenerUnaPorId(999, UserRole.VENDEDOR)).rejects.toThrow(NotFoundException);
+    const { svc } = makeCajaService({ rol: UserRole.VENDEDOR });
+    await expect(svc.obtenerUnaPorId(999)).rejects.toThrow(NotFoundException);
   });
 });
 
 describe('CajaService.getHistorial — recorta SOLO las filas ABIERTA cuando el rol es VENDEDOR', () => {
   it('VENDEDOR: la fila CERRADA sale completa, la ABIERTA sale recortada, en la MISMA respuesta', async () => {
     const { svc } = makeCajaService({
+      rol: UserRole.VENDEDOR,
       cajas: [
         cajaBase({ id: 1, estado: EstadoCierre.ABIERTA }),
         cajaBase({ id: 2, estado: EstadoCierre.CERRADA, saldoCierre: 900 }),
       ],
     });
-    const { data } = await svc.getHistorial(1, 20, undefined, undefined, undefined, UserRole.VENDEDOR);
+    const { data } = await svc.getHistorial(1, 20);
 
     const abierta = data.find((c: any) => c.id === 1);
     const cerrada = data.find((c: any) => c.id === 2);
@@ -432,15 +444,16 @@ describe('CajaService.getHistorial — recorta SOLO las filas ABIERTA cuando el 
 
   it('ADMIN: ninguna fila se recorta, ni siquiera las ABIERTA', async () => {
     const { svc } = makeCajaService({
+      rol: UserRole.ADMIN,
       cajas: [cajaBase({ id: 1, estado: EstadoCierre.ABIERTA })],
     });
-    const { data } = await svc.getHistorial(1, 20, undefined, undefined, undefined, UserRole.ADMIN);
+    const { data } = await svc.getHistorial(1, 20);
 
     expect(data[0].ciegoCajaActivo).toBeUndefined();
     expect(data[0].ventasEfectivo).toBe(1200);
   });
 
-  it('sin rol (defensivo — nunca debería pasar, pero no debe fallar): no recorta nada', async () => {
+  it('sin rol resuelto (defensivo — nunca debería pasar, pero no debe fallar): no recorta nada', async () => {
     const { svc } = makeCajaService();
     const { data } = await svc.getHistorial(1, 20);
     expect(data[0].ciegoCajaActivo).toBeUndefined();
@@ -478,10 +491,11 @@ describe('CajaService.getCajaHoyByUserId — Cierre Actual del propio VENDEDOR',
 describe('CajaService.getDatosParaImprimir — datos COMPLETOS, para después de la autorización de supervisor', () => {
   it('devuelve la caja SIN recortar (el guard de la ruta ya autorizó, o el rol no es VENDEDOR) + el detalle de facturas', async () => {
     const { svc } = makeCajaService({
+      rol: UserRole.VENDEDOR,
       facturas: [{ id: 1, folio: 'B0100000001', total: 1200, subtotal: 1017, iva: 183 }],
     });
     // usuario.id coincide con cajaBase().userId (1) — es SU propia caja.
-    const r: any = await svc.getDatosParaImprimir(1, { id: 1, role: UserRole.VENDEDOR });
+    const r: any = await svc.getDatosParaImprimir(1, { id: 1 });
 
     expect(r.ciegoCajaActivo).toBeUndefined();
     expect(r.ventasEfectivo).toBe(1200);
@@ -492,17 +506,18 @@ describe('CajaService.getDatosParaImprimir — datos COMPLETOS, para después de
 
   it('VENDEDOR pidiendo el detalle de la caja de OTRO cajero: ForbiddenException (la autorización de supervisor no reemplaza el control de dueño)', async () => {
     const { svc } = makeCajaService({
+      rol: UserRole.VENDEDOR,
       cajas: [cajaBase({ userId: 999, vendedorId: 999 })], // ni userId ni vendedorId coinciden con quien pide
     });
     await expect(
-      svc.getDatosParaImprimir(1, { id: 10, role: UserRole.VENDEDOR }),
+      svc.getDatosParaImprimir(1, { id: 10 }),
     ).rejects.toThrow(ForbiddenException);
   });
 
   it('caja inexistente: NotFoundException', async () => {
-    const { svc } = makeCajaService();
+    const { svc } = makeCajaService({ rol: UserRole.VENDEDOR });
     await expect(
-      svc.getDatosParaImprimir(999, { id: 10, role: UserRole.VENDEDOR }),
+      svc.getDatosParaImprimir(999, { id: 10 }),
     ).rejects.toThrow(NotFoundException);
   });
 });

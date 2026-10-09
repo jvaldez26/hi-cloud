@@ -258,7 +258,7 @@ export class CajaService {
     notas?: string,
     desgloseBilletes?: Record<string, number>,
     desglosePago?: Record<string, string>,
-    usuario?: { id: number; role: string; nombre?: string },
+    usuario?: { id: number; nombre?: string },
     motivo?: string,
   ) {
     const empresaId = this.tenantService.getEmpresaId();
@@ -275,11 +275,18 @@ export class CajaService {
     // explícito — antes ni se verificaba pertenencia (cualquier vendedor
     // cerraba la de otro con solo mandar su id) ni quedaba constancia de por
     // qué un admin cerró la caja de alguien más.
+    //
+    // El rol que decide es el de la empresa ACTIVA (TenantService,
+    // usuario_empresa) — nunca uno que llegue de afuera: `users.role` solo
+    // se sincroniza con la empresa PRINCIPAL del usuario, así que un
+    // VENDEDOR aquí pero admin/contador en su empresa principal pasaba
+    // este chequeo sin restricción (bug real, 2026-10-09 — ver el mismo
+    // comentario en requiere-supervisor.guard.ts).
     let notasFinal = notas ?? caja.notas;
     if (usuario) {
       const esSuya = await this.esCajaDelUsuario(caja, usuario, empresaId);
       if (!esSuya) {
-        if (usuario.role === UserRole.VENDEDOR) {
+        if (this.tenantService.getRolEmpresa() === UserRole.VENDEDOR) {
           throw new ForbiddenException('No puedes cerrar la caja de otro cajero');
         }
         if (!motivo?.trim()) {
@@ -648,7 +655,7 @@ export class CajaService {
    * efectivoEsperado — recortarlos primero lo dejaría calculando sobre
    * ceros.
    */
-  private ocultarSiVendedorYAbierta(caja: any, role?: string): any {
+  private ocultarSiVendedorYAbierta(caja: any, role?: string | null): any {
     if (!caja || role !== UserRole.VENDEDOR || caja.estado !== EstadoCierre.ABIERTA) return caja;
     return this.ocultarCamposCiego(caja);
   }
@@ -863,9 +870,12 @@ export class CajaService {
 
   // ── Historial (filtrado por empresa) ─────────────────────────────────────
 
-  async getHistorial(page = 1, limit = 20, vendedorId?: number, mes?: number, anio?: number, role?: string) {
+  async getHistorial(page = 1, limit = 20, vendedorId?: number, mes?: number, anio?: number) {
     const empresaId  = this.tenantService.getEmpresaId();
     const sucursalId = this.tenantService.getSucursalId();
+    // Rol de la empresa ACTIVA (usuario_empresa), nunca el global de `users`
+    // — ver el porqué en ocultarSiVendedorYAbierta/requiere-supervisor.guard.ts.
+    const role = this.tenantService.getRolEmpresa();
 
     // Incluimos todas las cajas (incluso las ABIERTA de días anteriores)
     // para que los admin puedan verlas y cerrarlas desde la UI — y las
@@ -909,11 +919,11 @@ export class CajaService {
   /** Una caja por id, sin importar el mes del historial que esté filtrado en
    *  pantalla — para el enlace directo del aviso "caja abierta de un día
    *  anterior" (?cajaId=...), que puede apuntar a cualquier fecha. */
-  async obtenerUnaPorId(id: number, role?: string) {
+  async obtenerUnaPorId(id: number) {
     const empresaId = this.tenantService.getEmpresaId();
     const caja = await this.repo.findOne({ where: { id, empresaId } });
     if (!caja) throw new NotFoundException(`Caja #${id} no encontrada`);
-    return this.ocultarSiVendedorYAbierta(this.conEfectivoEsperado(caja), role);
+    return this.ocultarSiVendedorYAbierta(this.conEfectivoEsperado(caja), this.tenantService.getRolEmpresa());
   }
 
   /**
@@ -928,7 +938,7 @@ export class CajaService {
    * dueño sigue aplicando tal cual, independiente de la autorización de
    * supervisor (son dos controles distintos).
    */
-  async getDatosParaImprimir(id: number, usuario?: { id: number; role?: string }) {
+  async getDatosParaImprimir(id: number, usuario?: { id: number }) {
     const empresaId = this.tenantService.getEmpresaId();
     const caja = await this.repo.findOne({ where: { id, empresaId } });
     if (!caja) throw new NotFoundException(`Caja #${id} no encontrada`);
@@ -1313,14 +1323,18 @@ export class CajaService {
    * getCajaHoyByUserId — un cajero solo puede pedir el detalle de SU PROPIA
    * caja, derivado del JWT y nunca del cajaId que mande el cliente. ADMIN y
    * CONTADOR no tienen esta restricción, igual que en el resto del módulo.
+   *
+   * El rol se resuelve por la empresa ACTIVA (TenantService), nunca por un
+   * `usuario.role` que venga de afuera — mismo motivo que cerrarCaja/
+   * requiere-supervisor.guard.ts: `users.role` no sigue a la empresa activa.
    */
-  async getFacturasDetalle(cajaId: number, usuario?: { id: number; role?: string }) {
+  async getFacturasDetalle(cajaId: number, usuario?: { id: number }) {
     const empresaId = this.tenantService.getEmpresaId();
 
     const caja = await this.repo.findOne({ where: { id: cajaId, empresaId } as any });
     if (!caja) throw new NotFoundException('Cierre de caja no encontrado');
 
-    if (usuario?.role === UserRole.VENDEDOR) {
+    if (usuario && this.tenantService.getRolEmpresa() === UserRole.VENDEDOR) {
       const perfilRows = await this.dataSource.query<{ id: number }[]>(
         `SELECT id FROM vendedores
           WHERE "usuarioId" = $1 AND "empresaId" = $2 AND "isActive" = true

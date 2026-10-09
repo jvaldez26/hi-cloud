@@ -1,11 +1,13 @@
 import {
   Injectable, CanActivate, ExecutionContext,
-  ForbiddenException, mixin, Type,
+  ForbiddenException, mixin, Type, Inject,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Request } from 'express';
 import { User } from '../../users/users.entity';
 import { CATALOGO_SUPERVISOR } from '../supervisor-catalogo';
+import { membresiaCacheKey } from '../../auth/guards/roles.guard';
 
 /**
  * Reemplaza a SupervisorGateGuard: en vez de exigir supervisor SIEMPRE que
@@ -27,6 +29,18 @@ import { CATALOGO_SUPERVISOR } from '../supervisor-catalogo';
  * `soloSi`: igual que en SupervisorGateGuard — para endpoints que manejan
  * varias transiciones bajo la misma ruta.
  *
+ * Bug real (2026-10-09, encontrado vía Cierre de Caja — empresa de Samuel):
+ * este guard comparaba contra `user.role`, la columna GLOBAL de `users` —
+ * que solo se mantiene sincronizada con la empresa PRINCIPAL del usuario
+ * (ver el mismo comentario en roles.guard.ts, `cambiarRolUsuario` en
+ * multi-empresa.service.ts). Un cajero VENDEDOR en una empresa secundaria
+ * cuyo rol global fuera otro (admin/contador en su empresa principal)
+ * pasaba CUALQUIER política de este guard sin que se le pidiera nunca
+ * autorización — afectaba las ~20 políticas del catálogo, no solo caja.
+ * Ahora resuelve el rol de la empresa ACTIVA vía `usuario_empresa`,
+ * reutilizando el mismo cache de 30s que RolesGuard.checkMembresia ya
+ * pobló para esta misma request (mismo CACHE_MANAGER, misma clave).
+ *
  * El 403 por falta de autorización lleva `supervisorClaveRequerida` y
  * `supervisorModo` en el body — el interceptor de axios del frontend
  * (api/client.ts) los lee para pedir la autorización que haga falta y
@@ -37,16 +51,36 @@ import { CATALOGO_SUPERVISOR } from '../supervisor-catalogo';
 export const RequiereSupervisor = (clave: string, opts?: { soloSi?: (body: any) => boolean }): Type<CanActivate> => {
   @Injectable()
   class RequiereSupervisorMixin implements CanActivate {
-    constructor(readonly ds: DataSource) {}
+    constructor(
+      readonly ds: DataSource,
+      @Inject(CACHE_MANAGER) private readonly cacheManager: any,
+    ) {}
+
+    /** Mismo cache (30s) y misma fuente que RolesGuard.checkMembresia — si
+     *  esta request ya pasó por RolesGuard (@Roles() a nivel de clase, que
+     *  corre ANTES que este guard de método), el valor ya está en caché. */
+    private async rolEnEmpresa(userId: number, empresaId: number): Promise<string | undefined> {
+      const cacheKey = membresiaCacheKey(userId, empresaId);
+      const cached = (await this.cacheManager.get(cacheKey)) as { activo: boolean; rol?: string } | undefined | null;
+      if (cached !== undefined && cached !== null) return cached.rol;
+
+      const [fila] = await this.ds.query<{ rol: string }[]>(`
+        SELECT rol FROM usuario_empresa WHERE "userId" = $1 AND "empresaId" = $2 AND "isActive" = true LIMIT 1
+      `, [userId, empresaId]);
+      return fila?.rol;
+    }
 
     async canActivate(ctx: ExecutionContext): Promise<boolean> {
       const req = ctx.switchToHttp().getRequest<Request & { user?: User }>();
       const user = req.user;
-      if (!user || (user as any).role !== 'vendedor') return true;
-      if (opts?.soloSi && !opts.soloSi(req.body)) return true;
+      if (!user) return true;
 
       const empresaId = (user as any).empresaId as number | null | undefined;
-      if (!empresaId) throw new ForbiddenException('Se requiere contexto de empresa activa.');
+      if (!empresaId) return true; // sin empresa activa, ninguna política de empresa aplica
+
+      const rol = await this.rolEnEmpresa(user.id, empresaId);
+      if (rol !== 'vendedor') return true;
+      if (opts?.soloSi && !opts.soloSi(req.body)) return true;
 
       const item = CATALOGO_SUPERVISOR.find(c => c.clave === clave);
       if (!item) return true; // clave no catalogada → nunca bloquea (bug de programación, no de política)
