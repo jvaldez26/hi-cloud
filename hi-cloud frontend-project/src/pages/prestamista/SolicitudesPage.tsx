@@ -66,7 +66,15 @@ export default function SolicitudesPage() {
   });
 
   const crear = useMutation({
-    mutationFn: (vals: any) => prestamistalApi.crearSolicitud(vals),
+    // Etapa 1: vehiculoId se captura en el formulario pero pr_solicitudes no
+    // tiene esa columna (ver auditoría) — se excluye del body para no
+    // chocar con forbidNonWhitelisted; el resto de campos ya coincide con
+    // CrearSolicitudDto. fechaSolicitud llega como objeto dayjs del
+    // DatePicker — CrearSolicitudDto espera un string 'YYYY-MM-DD'.
+    mutationFn: ({ vehiculoId, fechaSolicitud, ...vals }: any) => prestamistalApi.crearSolicitud({
+      ...vals,
+      ...(fechaSolicitud ? { fechaSolicitud: fechaSolicitud.format('YYYY-MM-DD') } : {}),
+    }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['prestamista-solicitudes'] }); setOpen(false); form.resetFields(); setSelectedProductoTipo('personal'); },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al crear solicitud'),
   });
@@ -148,7 +156,7 @@ export default function SolicitudesPage() {
               {(deudores as any[]).map((d: any) => <Option key={d.id} value={d.id}>{d.nombre} {d.apellidos ?? ''}</Option>)}
             </Select>
           </Form.Item>
-          <Form.Item name="productoPrestamo" label="Producto de Préstamo" rules={[{ required: true }]}>
+          <Form.Item name="productoId" label="Producto de Préstamo" rules={[{ required: true }]}>
             <Select
               showSearch
               optionFilterProp="children"
@@ -187,7 +195,7 @@ export default function SolicitudesPage() {
             </Form.Item>
           </div>
           <Form.Item name="proposito" label="Propósito del préstamo"><Input.TextArea rows={2} /></Form.Item>
-          <Form.Item name="observaciones" label="Observaciones"><Input.TextArea rows={2} /></Form.Item>
+          <Form.Item name="notas" label="Observaciones"><Input.TextArea rows={2} /></Form.Item>
         </Form>
       </Modal>
 

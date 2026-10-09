@@ -48,7 +48,13 @@ export default function CobranzaPage() {
   const cartera: any[] = (carteraResp as any)?.data ?? carteraResp ?? [];
 
   const registrarGestion = useMutation({
-    mutationFn: (vals: any) => prestamistalApi.registrarGestion({ prestamoId: selectedPrestamo?.id, ...vals }),
+    // proximaGestion llega como objeto dayjs del DatePicker — el DTO espera
+    // un string 'YYYY-MM-DD'.
+    mutationFn: ({ proximaGestion, ...vals }: any) => prestamistalApi.registrarGestion({
+      prestamoId: selectedPrestamo?.id,
+      ...vals,
+      ...(proximaGestion ? { proximaGestion: proximaGestion.format('YYYY-MM-DD') } : {}),
+    }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['prestamista-cartera-vencida'] });
       setGestionOpen(false);
@@ -157,29 +163,36 @@ export default function CobranzaPage() {
         onCancel={() => { setGestionOpen(false); formGestion.resetFields(); }}
         onOk={() => formGestion.validateFields().then(v => registrarGestion.mutate(v))} okText="Registrar" confirmLoading={registrarGestion.isPending}>
         <Form form={formGestion} layout="vertical" style={{ paddingTop: 8 }}>
-          <Form.Item name="tipoGestion" label="Tipo de Gestión" rules={[{ required: true }]}>
+          {/* Etapa 1: nombres y valores alineados a RegistrarGestionDto — el
+             formulario mandaba tipoGestion/fechaProximaGestion/notas (el DTO
+             exige tipo/proximaGestion/descripcion) y valores de tipo/resultado
+             que @IsIn() no reconoce (acuerdo_pago, judicial, contactado,
+             no_contactado, negativa) — cada envío de "Registrar Gestión"
+             terminaba en 400. */}
+          <Form.Item name="tipo" label="Tipo de Gestión" rules={[{ required: true }]}>
             <Select>
               <Option value="llamada">Llamada telefónica</Option>
               <Option value="visita">Visita domiciliaria</Option>
               <Option value="mensaje">Mensaje / WhatsApp</Option>
               <Option value="carta">Carta / Notificación</Option>
-              <Option value="acuerdo_pago">Acuerdo de pago</Option>
-              <Option value="judicial">Acción judicial</Option>
+              <Option value="acuerdo">Acuerdo de pago</Option>
+              <Option value="legal">Acción judicial</Option>
+              <Option value="otro">Otro</Option>
             </Select>
           </Form.Item>
           <Form.Item name="resultado" label="Resultado">
             <Select allowClear>
-              <Option value="contactado">Contactado — promesa de pago</Option>
-              <Option value="no_contactado">No contactado</Option>
+              <Option value="promesa_pago">Contactado — promesa de pago</Option>
+              <Option value="sin_respuesta">No contactado</Option>
               <Option value="pago_parcial">Realizó pago parcial</Option>
-              <Option value="negativa">Se negó a pagar</Option>
-              <Option value="acuerdo">Acuerdo alcanzado</Option>
+              <Option value="negado">Se negó a pagar</Option>
+              <Option value="exitoso">Acuerdo alcanzado</Option>
             </Select>
           </Form.Item>
-          <Form.Item name="fechaProximaGestion" label="Fecha Próxima Gestión">
+          <Form.Item name="proximaGestion" label="Fecha Próxima Gestión">
             <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
           </Form.Item>
-          <Form.Item name="notas" label="Notas" rules={[{ required: true }]}><Input.TextArea rows={3} /></Form.Item>
+          <Form.Item name="descripcion" label="Notas" rules={[{ required: true }]}><Input.TextArea rows={3} /></Form.Item>
         </Form>
       </Modal>
     </div>

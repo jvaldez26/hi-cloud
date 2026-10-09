@@ -28,12 +28,13 @@ export class ProductosPrestamoService {
 
   async create(empresaId: number, data: any) {
     const [row] = await this.ds.query<any[]>(
-      `INSERT INTO pr_productos_prestamo ("empresaId",nombre,descripcion,"montoMinimo","montoMaximo",
+      `INSERT INTO pr_productos_prestamo ("empresaId",nombre,"tipoCredito",descripcion,"montoMinimo","montoMaximo",
         "tasaInteresMensual","tipoTasa","plazoMinimoMeses","plazoMaximoMeses","frecuenciaPago",
         "metodoAmortizacion","porcentajeMora","cargoCierre","porcentajeCargoCierre","diasGracia",
         "requiereGarantia","requiereGarante")
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
-      [empresaId, data.nombre, data.descripcion ?? null, data.montoMinimo ?? null, data.montoMaximo ?? null,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
+      [empresaId, data.nombre, data.tipoCredito ?? 'personal', data.descripcion ?? null,
+       data.montoMinimo ?? null, data.montoMaximo ?? null,
        data.tasaInteresMensual, data.tipoTasa ?? 'mensual', data.plazoMinimoMeses ?? null,
        data.plazoMaximoMeses ?? null, data.frecuenciaPago ?? 'mensual', data.metodoAmortizacion ?? 'frances',
        data.porcentajeMora ?? 0, data.cargoCierre ?? 0, data.porcentajeCargoCierre ?? 0,
@@ -44,7 +45,7 @@ export class ProductosPrestamoService {
 
   async update(empresaId: number, id: number, data: any) {
     await this.orFail(empresaId, id);
-    const allowed = ['nombre','descripcion','montoMinimo','montoMaximo','tasaInteresMensual','tipoTasa',
+    const allowed = ['nombre','tipoCredito','descripcion','montoMinimo','montoMaximo','tasaInteresMensual','tipoTasa',
       'plazoMinimoMeses','plazoMaximoMeses','frecuenciaPago','metodoAmortizacion','porcentajeMora',
       'cargoCierre','porcentajeCargoCierre','diasGracia','requiereGarantia','requiereGarante','isActive'];
     const fields: string[] = [];

@@ -77,6 +77,16 @@ export class CrearSolicitudDto {
 
   @IsOptional() @IsString() @MaxLength(500)
   notas?: string;
+
+  /**
+   * Etapa 1: SolicitudesService.create() ya leía `data.fechaSolicitud ??
+   * fechaHoyRD()`, y SolicitudesPage.tsx ya manda este campo — pero no
+   * estaba declarado aquí, así que con forbidNonWhitelisted:true cualquier
+   * "Nueva Solicitud" con fecha era rechazada con 400 (el DatePicker del
+   * formulario es opcional, pero basta con tocarlo para que el campo viaje).
+   */
+  @IsOptional() @IsDateString({}, { message: 'La fecha de solicitud debe ser una fecha válida' })
+  fechaSolicitud?: string;
 }
 
 export class DecidirSolicitudDto {
@@ -88,6 +98,20 @@ export class DecidirSolicitudDto {
 
   @IsOptional() @IsNumber(MONTO) @IsPositive() @Type(() => Number)
   montoAprobado?: number;
+
+  /**
+   * Etapa 1: SolicitudesService.decidir() ya leía `data.tasaAprobada` y
+   * `data.motivoDecision` (este último con prioridad sobre `motivoRechazo`,
+   * que ningún caller manda), y SolicitudesPage.tsx ya manda ambos — pero
+   * ninguno estaba declarado aquí, así que cualquier decisión con tasa o
+   * motivo (ambos opcionales en el formulario, de ahí lo intermitente del
+   * bug) daba 400.
+   */
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) @Type(() => Number)
+  tasaAprobada?: number;
+
+  @IsOptional() @IsString() @MaxLength(500)
+  motivoDecision?: string;
 }
 
 export class CrearPrestamoDto {
@@ -382,6 +406,19 @@ export class CrearProductoPrestamoDto {
   @IsString() @IsNotEmpty() @MaxLength(100)
   nombre!: string;
 
+  /**
+   * Etapa 1: ProductosPrestamoPage.tsx ya manda este campo (Select
+   * personal/vehiculo/hipotecario) y SolicitudesPage.tsx depende de su
+   * valor para decidir si pedir el vehículo a financiar — pero no estaba
+   * declarado aquí (el DTO lo descartaba con forbidNonWhitelisted si se
+   * tocaba) NI en el INSERT de ProductosPrestamoService.create() (se
+   * quedaba siempre en el default 'personal' de la columna, incluso si
+   * llegara a pasar la validación). Ningún producto podía crearse como
+   * "vehículo" u "hipotecario" de verdad.
+   */
+  @IsOptional() @IsIn(['personal', 'vehiculo', 'hipotecario'])
+  tipoCredito?: string;
+
   @IsNumber({ maxDecimalPlaces: 3 }) @IsPositive({ message: 'La tasa de interés mensual debe ser mayor que cero' })
   @Type(() => Number)
   tasaInteresMensual!: number;
@@ -438,6 +475,9 @@ export class CrearProductoPrestamoDto {
 export class ActualizarProductoPrestamoDto {
   @IsOptional() @IsString() @IsNotEmpty() @MaxLength(100)
   nombre?: string;
+
+  @IsOptional() @IsIn(['personal', 'vehiculo', 'hipotecario'])
+  tipoCredito?: string;
 
   @IsOptional() @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) @Type(() => Number)
   tasaInteresMensual?: number;

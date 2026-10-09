@@ -49,7 +49,17 @@ export default function PrestamosPage() {
   const solicitudes: any[] = (solicitudesResp as any)?.data ?? solicitudesResp ?? [];
 
   const crear = useMutation({
-    mutationFn: (vals: any) => prestamistalApi.crearPrestamo(vals),
+    // Etapa 1: fechaDesembolso llega como objeto dayjs del DatePicker — sin
+    // convertir, @IsDateString() lo rechazaba SIEMPRE (el campo es
+    // obligatorio), así que ningún desembolso podía completarse desde esta
+    // pantalla. cuentaBancariaId no tiene columna ni soporte en el DTO (se
+    // excluye); observaciones se renombra a notas (CrearPrestamoDto no
+    // tiene "observaciones").
+    mutationFn: ({ cuentaBancariaId, fechaDesembolso, observaciones, ...vals }: any) => prestamistalApi.crearPrestamo({
+      ...vals,
+      fechaDesembolso: fechaDesembolso?.format('YYYY-MM-DD'),
+      ...(observaciones ? { notas: observaciones } : {}),
+    }),
     onSuccess: (d: any) => {
       qc.invalidateQueries({ queryKey: ['prestamista-prestamos'] });
       qc.invalidateQueries({ queryKey: ['prestamista-solicitudes'] });
@@ -142,14 +152,11 @@ export default function PrestamosPage() {
               ))}
             </Select>
           </Form.Item>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
-            <Form.Item name="fechaDesembolso" label="Fecha Desembolso" rules={[{ required: true }]}>
-              <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
-            </Form.Item>
-            <Form.Item name="cuentaBancariaId" label="Cuenta Bancaria (opcional)">
-              <InputNumber style={{ width: '100%' }} placeholder="ID cuenta" />
-            </Form.Item>
-          </div>
+          {/* cuentaBancariaId se quitó: pr_prestamos no tiene esa columna, no
+             hace nada (Etapa 1) */}
+          <Form.Item name="fechaDesembolso" label="Fecha Desembolso" rules={[{ required: true }]}>
+            <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
+          </Form.Item>
           <Form.Item name="observaciones" label="Observaciones"><Input.TextArea rows={2} /></Form.Item>
         </Form>
       </Modal>

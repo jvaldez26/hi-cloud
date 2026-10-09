@@ -112,7 +112,11 @@ export default function DetallePrestamo() {
   });
 
   const crearGarantia = useMutation({
-    mutationFn: (vals: any) => prestamistalApi.crearGarantia({ prestamoId: Number(id), deudorId: prestamo?.deudorId, ...vals }),
+    // fechaTasacion se captura en el formulario pero pr_garantias no tiene
+    // esa columna (ni CrearGarantiaDto ese campo) — se excluye del body
+    // para no chocar con forbidNonWhitelisted (Etapa 1).
+    mutationFn: ({ fechaTasacion, ...vals }: any) =>
+      prestamistalApi.crearGarantia({ prestamoId: Number(id), deudorId: prestamo?.deudorId, ...vals }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['prestamista-garantias', id] });
       setGarantiaOpen(false);
