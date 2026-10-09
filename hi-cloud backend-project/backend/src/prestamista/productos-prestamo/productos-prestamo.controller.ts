@@ -9,6 +9,7 @@ import { ModuloAddonGuard } from '../../modulos-addon/guards/modulo-addon.guard'
 import { TenantService } from '../../tenant/tenant.service';
 import { ProductosPrestamoService } from './productos-prestamo.service';
 import { CrearProductoPrestamoDto, ActualizarProductoPrestamoDto } from '../dto/prestamista.dto';
+import { VistaTasaDto } from '../dto/prestamista-motor.dto';
 
 @Controller('prestamista/productos-prestamo')
 @UseGuards(JwtAuthGuard, TenantGuard, RolesGuard, ModuloAddonGuard('prestamista'))
@@ -24,6 +25,10 @@ export class ProductosPrestamoController {
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   findOne(@Param('id', ParseIntPipe) id: number) { return this.svc.findOne(this.empresaId, id); }
+  // Motor v2: vista previa de tasaEquivalentePorPeriodo/tasaAnualNominal/TEA mientras se edita el producto.
+  @Post('vista-tasa')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  vistaTasa(@Body() body: VistaTasaDto) { return this.svc.vistaTasa(body as any); }
   // Config del producto financiero (tasa, plazo, mora) → CONTADOR/ADMIN.
   @Post()
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)

@@ -1,6 +1,9 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { ParametrosTasa, FrecuenciaRegular, tasaPeriodoPagoRegular, tasaDiaria, resumenTasaParaMostrar, periodosPorAnioRegular } from '../motor/tasas.util';
+
+const FRECUENCIAS_REGULARES = new Set<string>(['semanal', 'quincenal', 'mensual', 'bimestral', 'trimestral', 'semestral', 'anual']);
 
 @Injectable()
 export class ProductosPrestamoService {
@@ -31,14 +34,15 @@ export class ProductosPrestamoService {
       `INSERT INTO pr_productos_prestamo ("empresaId",nombre,"tipoCredito",descripcion,"montoMinimo","montoMaximo",
         "tasaInteresMensual","tipoTasa","plazoMinimoMeses","plazoMaximoMeses","frecuenciaPago",
         "metodoAmortizacion","porcentajeMora","cargoCierre","porcentajeCargoCierre","diasGracia",
-        "requiereGarantia","requiereGarante")
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
+        "requiereGarantia","requiereGarante","motorConfig")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
       [empresaId, data.nombre, data.tipoCredito ?? 'personal', data.descripcion ?? null,
        data.montoMinimo ?? null, data.montoMaximo ?? null,
        data.tasaInteresMensual, data.tipoTasa ?? 'mensual', data.plazoMinimoMeses ?? null,
        data.plazoMaximoMeses ?? null, data.frecuenciaPago ?? 'mensual', data.metodoAmortizacion ?? 'frances',
        data.porcentajeMora ?? 0, data.cargoCierre ?? 0, data.porcentajeCargoCierre ?? 0,
-       data.diasGracia ?? 0, data.requiereGarantia ?? false, data.requiereGarante ?? false],
+       data.diasGracia ?? 0, data.requiereGarantia ?? false, data.requiereGarante ?? false,
+       data.motorConfig ? JSON.stringify(data.motorConfig) : null],
     );
     return row;
   }
@@ -54,6 +58,10 @@ export class ProductosPrestamoService {
     for (const key of allowed) {
       if (data[key] !== undefined) { fields.push(`"${key}"=$${idx++}`); args.push(data[key]); }
     }
+    if (data.motorConfig !== undefined) {
+      fields.push(`"motorConfig"=$${idx++}`);
+      args.push(data.motorConfig ? JSON.stringify(data.motorConfig) : null);
+    }
     if (!fields.length) throw new BadRequestException('Sin campos para actualizar');
     args.push(id, empresaId);
     const [row] = await this.ds.query(
@@ -62,6 +70,16 @@ export class ProductosPrestamoService {
        ) SELECT * FROM fila`, args,
     );
     return row;
+  }
+
+  /** Motor v2 (Fase 2B) — vista previa de tasaEquivalentePorPeriodo/tasaAnualNominal/TEA mientras se edita un producto. */
+  vistaTasa(data: { tasa: ParametrosTasa; frecuencia: string }) {
+    if (FRECUENCIAS_REGULARES.has(data.frecuencia as any)) {
+      const i = tasaPeriodoPagoRegular(data.tasa, data.frecuencia as any);
+      return resumenTasaParaMostrar(i, periodosPorAnioRegular(data.frecuencia as any));
+    }
+    const tDiaria = tasaDiaria(data.tasa);
+    return resumenTasaParaMostrar(tDiaria, data.tasa.baseDias);
   }
 
   async remove(empresaId: number, id: number) {
