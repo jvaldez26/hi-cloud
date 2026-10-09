@@ -58,6 +58,11 @@ export default function DetallePrestamo() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [pagoOpen, setPagoOpen] = useState(false);
+  // C1: una clave por intento de pago — se genera al ABRIR el formulario, no
+  // al enviarlo, para que un reintento de red (el usuario nunca vio
+  // respuesta) reuse la misma clave en vez de generar una nueva en cada
+  // intento. Ver PrPago.claveIdempotencia / PagosService.registrar().
+  const [pagoClave, setPagoClave] = useState<string>(() => crypto.randomUUID());
   const [garantiaOpen, setGarantiaOpen] = useState(false);
   const [cancelarOpen, setCancelarOpen] = useState(false);
   const [formPago] = Form.useForm();
@@ -83,13 +88,24 @@ export default function DetallePrestamo() {
   });
 
   const registrarPago = useMutation({
-    mutationFn: (vals: any) => prestamistalApi.registrarPago({ prestamoId: Number(id), ...vals }),
+    // C1: nombres alineados al RegistrarPagoDto real (metodoPago/notas, no
+    // formaPago/observaciones) — ese desajuste, sumado a forbidNonWhitelisted,
+    // hacía que esta pantalla nunca pudiera registrar un pago.
+    mutationFn: (vals: any) => prestamistalApi.registrarPago({
+      prestamoId: Number(id),
+      montoPagado: vals.montoPagado,
+      metodoPago: vals.formaPago,
+      referencia: vals.referencia,
+      notas: vals.observaciones,
+      claveIdempotencia: pagoClave,
+    }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['prestamista-prestamo', id] });
       qc.invalidateQueries({ queryKey: ['prestamista-pagos', id] });
       qc.invalidateQueries({ queryKey: ['prestamista-dashboard'] });
       setPagoOpen(false);
       formPago.resetFields();
+      setPagoClave(crypto.randomUUID());
       message.success('Pago registrado');
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al registrar pago'),
@@ -173,7 +189,7 @@ export default function DetallePrestamo() {
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           <Button icon={<FileText size={14} />} onClick={() => window.open(prestamistalApi.pdfAmortizacion(Number(id)), '_blank')}>PDF Amortización</Button>
           <Button onClick={() => recalcular.mutate()} loading={recalcular.isPending}>Recalcular Saldos</Button>
-          {activo && <Button type="primary" icon={<DollarSign size={14} />} onClick={() => setPagoOpen(true)}>Registrar Pago</Button>}
+          {activo && <Button type="primary" icon={<DollarSign size={14} />} onClick={() => { setPagoClave(crypto.randomUUID()); setPagoOpen(true); }}>Registrar Pago</Button>}
           {activo && <Button danger onClick={() => setCancelarOpen(true)}>Cancelar</Button>}
         </div>
       </div>
@@ -324,9 +340,6 @@ export default function DetallePrestamo() {
         <Form form={formPago} layout="vertical" style={{ paddingTop: 8 }}>
           <Form.Item name="montoPagado" label="Monto a Pagar" rules={[{ required: true }]}>
             <InputNumber style={{ width: '100%' }} prefix="RD$" min={0.01} />
-          </Form.Item>
-          <Form.Item name="fechaPago" label="Fecha de Pago" rules={[{ required: true }]}>
-            <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
           </Form.Item>
           <Form.Item name="formaPago" label="Forma de Pago" initialValue="efectivo">
             <Select>

@@ -20,6 +20,37 @@ export class PagosService {
 
   private r2(n: number) { return Math.round(Number(n) * 100) / 100; }
 
+  /**
+   * C1 — ver PrPago.claveIdempotencia. Mismo contrato que
+   * FacturasService.buscarPorClaveIdempotencia / ComprasService.buscarPorClaveIdempotencia.
+   */
+  private async buscarPorClaveIdempotencia(empresaId: number, claveIdempotencia: string | undefined): Promise<any | null> {
+    if (!claveIdempotencia) return null;
+    const [row] = await this.ds.query(
+      `SELECT * FROM pr_pagos WHERE "empresaId"=$1 AND "claveIdempotencia"=$2`,
+      [empresaId, claveIdempotencia],
+    );
+    return row ?? null;
+  }
+
+  /** Reconstruye la respuesta de registrar() para un pago YA existente (hit de idempotencia). */
+  private async respuestaDePagoExistente(empresaId: number, pago: any) {
+    const [p] = await this.ds.query(
+      `SELECT "saldoCapital","saldoInteres","saldoMora","saldoTotal" FROM pr_prestamos WHERE id=$1 AND "empresaId"=$2`,
+      [pago.prestamoId, empresaId],
+    );
+    return {
+      pago,
+      cuotasAfectadas: pago.cuotasAfectadas ?? [],
+      saldos: {
+        saldoCapital: Number(p?.saldoCapital ?? 0),
+        saldoInteres: Number(p?.saldoInteres ?? 0),
+        saldoMora: Number(p?.saldoMora ?? 0),
+        saldoTotal: Number(p?.saldoTotal ?? 0),
+      },
+    };
+  }
+
   async findByPrestamo(empresaId: number, prestamoId: number) {
     return this.ds.query(
       `SELECT * FROM pr_pagos WHERE "prestamoId"=$1 AND "empresaId"=$2 ORDER BY fecha DESC`,
@@ -36,6 +67,11 @@ export class PagosService {
   }
 
   async registrar(empresaId: number, data: any) {
+    // C1: idempotencia — si esta clave ya generó un pago, devolver ESE en vez
+    // de aplicar el dinero de nuevo. Se resuelve ANTES de tocar cuotas/saldos.
+    const existente = await this.buscarPorClaveIdempotencia(empresaId, data.claveIdempotencia);
+    if (existente) return this.respuestaDePagoExistente(empresaId, existente);
+
     const prestamoRows: any[] = await this.ds.query(
       `SELECT * FROM pr_prestamos WHERE id=$1 AND "empresaId"=$2`, [data.prestamoId, empresaId],
     );
@@ -137,12 +173,13 @@ export class PagosService {
       const pagoRows: any[] = await qr.query(
         `INSERT INTO pr_pagos ("empresaId",numero,"prestamoId","deudorId","montoPagado","aplicadoMora",
           "aplicadoInteres","aplicadoCapital","metodoPago",referencia,"cobradorId","cobradorNombre",
-          "cuotasAfectadas",notas,"creadoPor")
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+          "cuotasAfectadas",notas,"creadoPor","claveIdempotencia")
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
         [empresaId, numero, data.prestamoId, prestamo.deudorId, data.montoPagado,
          aplicadoMora, aplicadoInteres, aplicadoCapital,
          data.metodoPago ?? null, data.referencia ?? null, uid,
-         data.cobradorNombre ?? null, JSON.stringify(cuotasAfectadas), data.notas ?? null, uid],
+         data.cobradorNombre ?? null, JSON.stringify(cuotasAfectadas), data.notas ?? null, uid,
+         data.claveIdempotencia ?? null],
       );
       pago = pagoRows[0];
 
@@ -191,8 +228,17 @@ export class PagosService {
       }
 
       await qr.commitTransaction();
-    } catch (e) {
+    } catch (e: any) {
       await qr.rollbackTransaction();
+      // Carrera de idempotencia: dos peticiones con la misma clave llegaron
+      // casi al mismo tiempo, ambas pasaron el buscarPorClaveIdempotencia()
+      // de arriba (ninguna vio la fila de la otra todavía) y la segunda
+      // choca con el índice único (empresaId, claveIdempotencia) — devolver
+      // la que sí se guardó, no reventar con un 500 al cajero.
+      if (data.claveIdempotencia && e?.code === '23505') {
+        const ganadora = await this.buscarPorClaveIdempotencia(empresaId, data.claveIdempotencia);
+        if (ganadora) return this.respuestaDePagoExistente(empresaId, ganadora);
+      }
       throw e;
     } finally {
       await qr.release();

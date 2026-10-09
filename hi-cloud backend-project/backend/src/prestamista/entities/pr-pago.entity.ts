@@ -1,6 +1,7 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } from 'typeorm';
 
 @Entity('pr_pagos')
+@Index(['empresaId', 'claveIdempotencia'], { unique: true, where: '"claveIdempotencia" IS NOT NULL' })
 export class PrPago {
   @PrimaryGeneratedColumn() id!: number;
   @Column() empresaId!: number;
@@ -21,5 +22,8 @@ export class PrPago {
   @Column({ type: 'int', nullable: true }) facturaId?: number;
   @Column({ type: 'int', nullable: true }) reciboId?: number;
   @Column({ type: 'text', nullable: true }) notas?: string;
+  // C1: ver PagosService.registrar() y el índice único (empresaId, claveIdempotencia)
+  // arriba — es lo que cierra la carrera de un doble clic/reintento de red.
+  @Column({ length: 36, nullable: true, default: null }) claveIdempotencia?: string;
   @CreateDateColumn() createdAt!: Date;
 }

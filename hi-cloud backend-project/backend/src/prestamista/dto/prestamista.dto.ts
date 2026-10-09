@@ -43,6 +43,16 @@ export class RegistrarPagoDto {
 
   @IsOptional() @IsString() @MaxLength(500)
   notas?: string;
+
+  /**
+   * C1: sin esto, un doble clic o un reintento de red en "Registrar Pago"
+   * creaba dos filas en pr_pagos y aplicaba el dinero dos veces — el bloqueo
+   * FOR UPDATE de las cuotas no lo evita (la segunda petición simplemente
+   * aplica su dinero a la SIGUIENTE cuota pendiente). Mismo patrón que
+   * Factura.claveIdempotencia / Compra.claveIdempotencia.
+   */
+  @IsOptional() @IsString() @MaxLength(36)
+  claveIdempotencia?: string;
 }
 
 export class CrearSolicitudDto {
