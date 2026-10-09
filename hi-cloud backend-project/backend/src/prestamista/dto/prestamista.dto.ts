@@ -146,24 +146,30 @@ export class CancelarPrestamoDto {
   motivo!: string;
 }
 
+/**
+ * C3: el servicio (`PrestamosService.simular`) y la pantalla (`SimuladorPage.tsx`)
+ * ya usaban este vocabulario (`principal`/`fechaPrimerPago`/`metodoAmortizacion`);
+ * era el DTO el desalineado (`montoPrincipal`/`fechaDesembolso`, sin método), y con
+ * forbidNonWhitelisted:true eso bastaba para rechazar cualquier simulación con 400.
+ */
 export class SimularPrestamoDto {
-  @IsOptional() @IsNumber(MONTO) @IsPositive() @Type(() => Number)
-  montoPrincipal?: number;
+  @IsNumber(MONTO, { message: 'El monto principal debe ser un número con hasta 2 decimales' })
+  @IsPositive({ message: 'El monto principal debe ser mayor que cero' })
+  @Type(() => Number)
+  principal!: number;
 
-  @IsOptional() @IsInt() @Min(1) @Type(() => Number)
-  plazoMeses?: number;
+  @IsInt() @Min(1, { message: 'El plazo debe ser de al menos 1 mes' }) @Type(() => Number)
+  plazoMeses!: number;
 
-  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Type(() => Number)
-  tasaInteresMensual?: number;
+  @IsNumber({ maxDecimalPlaces: 3 }, { message: 'La tasa mensual admite hasta 3 decimales' })
+  @Min(0) @Type(() => Number)
+  tasaInteresMensual!: number;
 
-  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Type(() => Number)
-  porcentajeMora?: number;
+  @IsOptional() @IsIn(['frances', 'aleman'])
+  metodoAmortizacion?: 'frances' | 'aleman';
 
-  @IsOptional() @IsInt() @Min(0) @Type(() => Number)
-  diasGracia?: number;
-
-  @IsOptional() @IsDateString()
-  fechaDesembolso?: string;
+  @IsDateString({}, { message: 'La fecha del primer pago debe ser una fecha válida' })
+  fechaPrimerPago!: string;
 }
 
 export class ActualizarSolicitudDto {
