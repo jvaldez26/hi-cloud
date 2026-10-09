@@ -16,6 +16,7 @@ import { PrGarante } from './entities/pr-garante.entity';
 import { PrCobranza } from './entities/pr-cobranza.entity';
 import { PrRefinanciamiento } from './entities/pr-refinanciamiento.entity';
 import { PrVehiculo } from './entities/pr-vehiculo.entity';
+import { PrFeriado } from './entities/pr-feriado.entity';
 import { VehiculosService } from './vehiculos/vehiculos.service';
 import { VehiculosController } from './vehiculos/vehiculos.controller';
 
@@ -42,6 +43,8 @@ import { PrestamistaPdfService } from './pdf/prestamista-pdf.service';
 import { PdfPrestamistaController } from './pdf/pdf.controller';
 import { ReportesPrestamistaService } from './reportes/reportes.service';
 import { ReportesController } from './reportes/reportes.controller';
+import { FeriadosService } from './feriados/feriados.service';
+import { FeriadosController } from './feriados/feriados.controller';
 
 @Module({
   imports: [
@@ -57,6 +60,7 @@ import { ReportesController } from './reportes/reportes.controller';
       PrCobranza,
       PrRefinanciamiento,
       PrVehiculo,
+      PrFeriado,
     ]),
     TenantModule,
     ContabilidadModule,
@@ -77,6 +81,7 @@ import { ReportesController } from './reportes/reportes.controller';
     PrestamistaPdfService,
     ReportesPrestamistaService,
     VehiculosService,
+    FeriadosService,
   ],
   controllers: [
     DeudoresController,
@@ -91,7 +96,8 @@ import { ReportesController } from './reportes/reportes.controller';
     PdfPrestamistaController,
     ReportesController,
     VehiculosController,
+    FeriadosController,
   ],
-  exports: [DeudoresService, PrestamosService, VehiculosService],
+  exports: [DeudoresService, PrestamosService, VehiculosService, FeriadosService],
 })
 export class PrestamistatModule {}
