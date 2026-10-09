@@ -15,13 +15,54 @@ export class PrestamistaPdfService {
     return Number(n ?? 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   }
 
-  private buildHeader(doc: any, titulo: string, numero?: string) {
-    doc.fontSize(16).font('Helvetica-Bold').text('HiCloud ERP', 50, 40);
-    doc.fontSize(10).font('Helvetica').text('Módulo Prestamista / Financiera', 50, 60);
-    doc.fontSize(14).font('Helvetica-Bold').text(titulo, 50, 80);
-    if (numero) doc.fontSize(10).font('Helvetica').text(`N°: ${numero}`, 450, 80, { align: 'right' });
-    doc.moveTo(50, 100).lineTo(550, 100).stroke();
-    return 115;
+  /**
+   * Las columnas `date` de Postgres llegan como objeto Date de JS (no string)
+   * vía node-postgres/TypeORM. `.toString().slice(0, 10)` cortaba los
+   * primeros 10 caracteres del toString() EN INGLÉS ("Fri Oct 09 2026...")
+   * en vez de la fecha ISO — el resultado era "Fri Oct 09", sin año y en
+   * inglés. toLocaleDateString('es-DO') funciona igual con Date o string.
+   */
+  private fecha(v: any): string {
+    if (!v) return '';
+    const d = new Date(v);
+    return isNaN(d.getTime()) ? '' : d.toLocaleDateString('es-DO');
+  }
+
+  /** Trae nombre/RNC/dirección/teléfono/email de la empresa — membrete de todo PDF del módulo. */
+  private async empresaInfo(empresaId: number): Promise<any> {
+    const [e] = await this.ds.query<any[]>(
+      `SELECT nombre, "nombreComercial", rnc, direccion, ciudad, telefono, email FROM empresa WHERE id=$1`,
+      [empresaId],
+    );
+    return e ?? {};
+  }
+
+  /**
+   * Membrete: nombre de la empresa (nunca "HiCloud ERP" — ese es el software,
+   * no quien emite el documento) + su información general, y debajo
+   * "Generado por HiCloud" como atribución del sistema, no como encabezado.
+   */
+  private buildHeader(doc: any, titulo: string, empresa: any, numero?: string) {
+    doc.fontSize(14).font('Helvetica-Bold').fillColor('#000')
+      .text(empresa?.nombreComercial || empresa?.nombre || 'Mi Empresa', 50, 40);
+
+    doc.fontSize(8).font('Helvetica').fillColor('#555');
+    const info = [
+      empresa?.rnc ? `RNC: ${empresa.rnc}` : null,
+      [empresa?.direccion, empresa?.ciudad].filter(Boolean).join(', ') || null,
+      empresa?.telefono ? `Tel: ${empresa.telefono}` : null,
+      empresa?.email || null,
+    ].filter(Boolean).join('  ·  ');
+    let y = 58;
+    if (info) { doc.text(info, 50, y, { width: 500 }); y += 13; }
+    doc.fontSize(7).font('Helvetica-Oblique').fillColor('#999').text('Generado por HiCloud', 50, y);
+    y += 16;
+
+    doc.fillColor('#000').fontSize(14).font('Helvetica-Bold').text(titulo, 50, y);
+    if (numero) doc.fontSize(10).font('Helvetica').text(`N°: ${numero}`, 450, y, { align: 'right' });
+    y += 22;
+    doc.moveTo(50, y).lineTo(550, y).stroke();
+    return y + 15;
   }
 
   async tablaAmortizacion(res: Response, prestamoId: number, empresaId: number) {
@@ -35,13 +76,14 @@ export class PrestamistaPdfService {
     const cuotas = await this.ds.query(
       `SELECT * FROM pr_cuotas WHERE "prestamoId"=$1 ORDER BY "numeroCuota"`, [prestamoId],
     );
+    const empresa = await this.empresaInfo(empresaId);
 
     const doc = new PDFDocument({ margin: 50, size: 'LETTER' });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="amortizacion-${prestamo.numero}.pdf"`);
     doc.pipe(res);
 
-    let y = this.buildHeader(doc, 'Tabla de Amortización', prestamo.numero);
+    let y = this.buildHeader(doc, 'Tabla de Amortización', empresa, prestamo.numero);
     doc.fontSize(9).font('Helvetica');
     doc.text(`Deudor: ${prestamo.deudorNombre} | Cédula: ${prestamo.deudorCedula ?? 'N/A'}`, 50, y);
     y += 14;
@@ -64,7 +106,7 @@ export class PrestamistaPdfService {
       const estado = c.estado === 'pagada' ? '✓' : c.estado === 'parcial' ? '~' : '';
       [
         c.numeroCuota,
-        c.fechaVencimiento?.toString().slice(0, 10) ?? '',
+        this.fecha(c.fechaVencimiento),
         `${this.r2(c.cuotaTotal)}`,
         `${this.r2(c.capital)}`,
         `${this.r2(c.interes)}`,
@@ -88,11 +130,13 @@ export class PrestamistaPdfService {
   async reciboPago(res: Response, pagoId: number, empresaId: number) {
     const rows: any[] = await this.ds.query(
       `SELECT pg.*,
-              p.numero       AS "prestamoNumero",
-              d.nombre       AS "deudorNombre",
-              d.cedula       AS "deudorCedula",
-              e."razonSocial" AS "empresaNombre",
-              e.telefono     AS "empresaTelefono"
+              p.numero         AS "prestamoNumero",
+              d.nombre         AS "deudorNombre",
+              d.cedula         AS "deudorCedula",
+              COALESCE(e."nombreComercial", e.nombre) AS "empresaNombre",
+              e.rnc            AS "empresaRnc",
+              e.direccion      AS "empresaDireccion",
+              e.telefono       AS "empresaTelefono"
        FROM pr_pagos pg
        JOIN pr_prestamos p ON p.id = pg."prestamoId" AND p."empresaId"=pg."empresaId"
        JOIN pr_deudores d ON d.id=pg."deudorId" AND d."empresaId"=pg."empresaId"
@@ -132,7 +176,10 @@ export class PrestamistaPdfService {
 
     // ── Encabezado ────────────────────────────────────────────────
     if (pago.empresaNombre) center(String(pago.empresaNombre), 9, 'Helvetica-Bold');
-    if (pago.empresaTelefono) center(String(pago.empresaTelefono), 7);
+    if (pago.empresaRnc) center(`RNC: ${pago.empresaRnc}`, 7);
+    if (pago.empresaDireccion) center(String(pago.empresaDireccion), 7);
+    if (pago.empresaTelefono) center(`Tel: ${pago.empresaTelefono}`, 7);
+    center('Generado por HiCloud', 6, 'Helvetica-Oblique', '#888');
     y += 3;
     center('RECIBO DE PAGO', 11, 'Helvetica-Bold');
     center(`N°: ${pago.numero ?? ''}`, 9, 'Helvetica-Bold');
@@ -167,8 +214,6 @@ export class PrestamistaPdfService {
     doc.font('Helvetica').fontSize(7).fillColor('#000')
        .text('Firma Autorizada', PL, y, { width: W, align: 'center', lineBreak: false });
     y += LH + 4;
-    center('HiCloud ERP', 7, 'Helvetica', '#888');
-    y += 4;
 
     // Recortar página al contenido real
     (doc.page as any).height = y + 15;
@@ -185,13 +230,14 @@ export class PrestamistaPdfService {
       `SELECT * FROM pr_prestamos WHERE "deudorId"=$1 AND "empresaId"=$2 ORDER BY "createdAt" DESC`,
       [deudorId, empresaId],
     );
+    const empresa = await this.empresaInfo(empresaId);
 
     const doc = new PDFDocument({ margin: 50, size: 'LETTER' });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="estado-cuenta-${deudor.cedula ?? deudorId}.pdf"`);
     doc.pipe(res);
 
-    let y = this.buildHeader(doc, 'Estado de Cuenta del Deudor');
+    let y = this.buildHeader(doc, 'Estado de Cuenta del Deudor', empresa);
     doc.fontSize(10).font('Helvetica');
     doc.text(`Deudor: ${deudor.nombre} ${deudor.apellidos ?? ''}`, 50, y);
     y += 14;
@@ -205,7 +251,7 @@ export class PrestamistaPdfService {
       doc.font('Helvetica').fontSize(8);
       doc.text(`Capital: RD$ ${this.r2(p.montoPrincipal)} | Saldo Capital: RD$ ${this.r2(p.saldoCapital)} | Mora: RD$ ${this.r2(p.saldoMora)} | Días mora: ${p.diasMoraActual}`, 60, y);
       y += 14;
-      doc.text(`Desembolso: ${p.fechaDesembolso?.toString().slice(0, 10)} | Vencimiento: ${p.fechaVencimiento?.toString().slice(0, 10)}`, 60, y);
+      doc.text(`Desembolso: ${this.fecha(p.fechaDesembolso)} | Vencimiento: ${this.fecha(p.fechaVencimiento)}`, 60, y);
       y += 20;
     }
 
