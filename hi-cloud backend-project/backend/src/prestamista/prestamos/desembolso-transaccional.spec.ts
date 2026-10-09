@@ -184,11 +184,13 @@ describe('C2 — el desembolso es atómico', () => {
 });
 
 describe('H2 — el refinanciamiento es atómico', () => {
-  const construir = (responder: any) => {
+  const construir = (responder: any, asientos?: any) => {
     const { qr, vida, sqls } = buildQueryRunner(responder);
+    (qr as any).manager = {}; // C6: solo se reenvía a asientos.asientoRefinanciamiento, nunca se usa directo aquí
     const svc = new RefinanciamientoService(
       { createQueryRunner: () => qr, query: jest.fn(async () => []) } as any,
       { getUserId: () => 42 } as any,
+      asientos ?? { asientoRefinanciamiento: jest.fn().mockResolvedValue({ id: 1 }) } as any,
     );
     return { svc, qr, vida, sqls };
   };
@@ -263,6 +265,49 @@ describe('H2 — el refinanciamiento es atómico', () => {
       });
       await svc.refinanciar(1, { prestamoOriginalId: 10 });
       expect(insertParams[8]).toBe('frances');
+    });
+  });
+
+  describe('C6 — asiento de refinanciamiento DENTRO de la transacción', () => {
+    it('llama a asientos.asientoRefinanciamiento con los saldos/condonaciones correctos, pasando qr.manager', async () => {
+      const asientos = { asientoRefinanciamiento: jest.fn().mockResolvedValue({ id: 1 }) };
+      const { svc, qr } = construir(responderOk, asientos);
+      await svc.refinanciar(1, {
+        prestamoOriginalId: 10, moraCondonada: 50, interesCondonado: 100,
+      });
+
+      expect(asientos.asientoRefinanciamiento).toHaveBeenCalledTimes(1);
+      const [params, manager] = asientos.asientoRefinanciamiento.mock.calls[0];
+      expect(params).toMatchObject({
+        prestamoNuevoId: 99,
+        saldoCapitalOriginal: 8000,
+        saldoInteresOriginal: 500,
+        saldoMoraOriginal: 0,
+        moraCondonada: 50,
+        interesCondonado: 100,
+      });
+      expect(manager).toBe((qr as any).manager);
+    });
+
+    it('si el asiento falla (cuenta faltante/descuadrado), revierte TODO el refinanciamiento', async () => {
+      const asientos = { asientoRefinanciamiento: jest.fn().mockRejectedValue(new Error('cuenta faltante')) };
+      const { svc, vida } = construir(responderOk, asientos);
+      await expect(svc.refinanciar(1, { prestamoOriginalId: 10 })).rejects.toThrow('cuenta faltante');
+      expect(vida).toEqual(['connect', 'start', 'rollback', 'release']);
+    });
+
+    it('se llama DESPUÉS de insertar el préstamo nuevo y el registro de refinanciamiento (mismo orden de la transacción)', async () => {
+      const llamadas: string[] = [];
+      const asientos = {
+        asientoRefinanciamiento: jest.fn(async () => { llamadas.push('asiento'); return { id: 1 }; }),
+      };
+      const { svc } = construir((sql: string) => {
+        if (sql.includes('INSERT INTO pr_prestamos')) llamadas.push('prestamo');
+        if (sql.includes('INSERT INTO pr_refinanciamientos')) llamadas.push('refinanciamiento');
+        return responderOk(sql);
+      }, asientos);
+      await svc.refinanciar(1, { prestamoOriginalId: 10 });
+      expect(llamadas).toEqual(['prestamo', 'refinanciamiento', 'asiento']);
     });
   });
 });

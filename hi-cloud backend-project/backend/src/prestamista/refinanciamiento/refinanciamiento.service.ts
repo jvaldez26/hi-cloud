@@ -4,6 +4,7 @@ import { DataSource, QueryRunner } from 'typeorm';
 import { calcularAmortizacion } from '../utils/amortizacion.util';
 import { fechaHoyRD } from '../../common/utils/fecha-local.util';
 import { TenantService } from '../../tenant/tenant.service';
+import { AsientosAutomaticosService } from '../../contabilidad/services/asientos-automaticos.service';
 
 @Injectable()
 export class RefinanciamientoService {
@@ -12,6 +13,7 @@ export class RefinanciamientoService {
   constructor(
     @InjectDataSource() private readonly ds: DataSource,
     private readonly tenantSvc: TenantService,
+    private readonly asientos: AsientosAutomaticosService,
   ) {}
 
   private r2(n: number) { return Math.round(Number(n) * 100) / 100; }
@@ -139,6 +141,28 @@ export class RefinanciamientoService {
        saldoCapital, saldoInteres, saldoMora, this.r2(saldoCapital + saldoInteres + saldoMora),
        montoNuevo, nuevaTasa, nuevoPlazo, moraCondonada, interesCondonado,
        uid != null ? String(uid) : null, data.motivo ?? null],
+    );
+
+    // C6: asiento DENTRO de la misma transacción — si falla (cuenta
+    // faltante, asiento descuadrado), se revierte TODO el refinanciamiento.
+    // Antes esto no generaba ningún asiento: la condonación de mora/interés
+    // (una pérdida real) y la reversa de cartera del original nunca
+    // llegaban a los libros.
+    await this.asientos.asientoRefinanciamiento(
+      {
+        prestamoNuevoId:      nuevo.id,
+        numeroOriginal:       original.numero,
+        numeroNuevo:          numero,
+        saldoCapitalOriginal: saldoCapital,
+        saldoInteresOriginal: saldoInteres,
+        saldoMoraOriginal:    saldoMora,
+        moraCondonada,
+        interesCondonado,
+        montoNuevo,
+        fecha:                fechaHoyRD(),
+        userId:               uid ?? 0,
+      },
+      qr.manager,
     );
 
     return { refinanciamiento: ref, prestamoNuevo: nuevo };

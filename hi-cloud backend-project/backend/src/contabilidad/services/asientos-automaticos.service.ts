@@ -1913,6 +1913,103 @@ export class AsientosAutomaticosService {
   }
 
   // ──────────────────────────────────────────────────────────────────
+  // PRESTAMISTA: Refinanciamiento
+  // Alta Cartera del nuevo (D) / Reversa Cartera del original (H) +
+  // Intereses/Mora capitalizados (H, ingreso) + Gasto por condonación (D)
+  //
+  // C6 (auditoría Prestamista Etapa 1) — a diferencia de
+  // asientoDesembolsoPrestamo/asientoPagoPrestamo (fire-and-forget DESPUÉS
+  // del commit), este asiento recibe el `manager` de la MISMA transacción
+  // del refinanciamiento (normalmente qr.manager) y se espera que el
+  // caller la revierta si esto falla: la condonación de mora/interés es una
+  // pérdida contable real, no puede quedar fuera de libros en silencio como
+  // si nada hubiera pasado. Por eso lanza en vez de loguear-y-continuar.
+  //
+  // El interés y la mora del préstamo original nunca se devengaron en los
+  // libros (el motor es 100% base caja: solo se asienta lo efectivamente
+  // cobrado) — al refinanciar, ese saldo pendiente se capitaliza como
+  // principal del préstamo nuevo, así que aquí SÍ se reconoce como ingreso
+  // (bruto, no neto) para que la condonación quede visible como gasto en
+  // vez de simplemente no aparecer nunca.
+  // ──────────────────────────────────────────────────────────────────
+  async asientoRefinanciamiento(
+    params: {
+      prestamoNuevoId:      number;
+      numeroOriginal:       string;
+      numeroNuevo:          string;
+      saldoCapitalOriginal: number;
+      saldoInteresOriginal: number;
+      saldoMoraOriginal:    number;
+      moraCondonada:        number;
+      interesCondonado:     number;
+      montoNuevo:           number;
+      fecha:                string;
+      userId:               number;
+    },
+    manager: EntityManager,
+  ): Promise<AsientoContable> {
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const cuentaCartera     = await this.resolverCuentaConcepto('PRESTAMO_CARTERA',   '1.1.2.10');
+    const cuentaInteres     = await this.resolverCuentaConcepto('PRESTAMO_INTERESES', '4.1.2.01');
+    const cuentaMora        = await this.resolverCuentaConcepto('PRESTAMO_MORA',      '4.1.2.02');
+    const cuentaCondonacion = await this.resolverCuentaConcepto('PRESTAMO_CONDONACION_GASTO', '5.1.9.05');
+
+    const condonado = r2(params.moraCondonada + params.interesCondonado);
+
+    const lineas: Array<{ codigo: string; descripcion: string; debe: number; haber: number }> = [
+      { codigo: cuentaCartera, descripcion: `Alta cartera préstamo nuevo ${params.numeroNuevo}`, debe: params.montoNuevo, haber: 0 },
+      { codigo: cuentaCartera, descripcion: `Reversa cartera préstamo ${params.numeroOriginal} (refinanciado)`, debe: 0, haber: params.saldoCapitalOriginal },
+    ];
+    if (params.saldoInteresOriginal > 0) {
+      lineas.push({ codigo: cuentaInteres, descripcion: `Interés capitalizado ${params.numeroOriginal}→${params.numeroNuevo}`, debe: 0, haber: params.saldoInteresOriginal });
+    }
+    if (params.saldoMoraOriginal > 0) {
+      lineas.push({ codigo: cuentaMora, descripcion: `Mora capitalizada ${params.numeroOriginal}→${params.numeroNuevo}`, debe: 0, haber: params.saldoMoraOriginal });
+    }
+    if (condonado > 0) {
+      lineas.push({ codigo: cuentaCondonacion, descripcion: `Condonación mora/interés al refinanciar ${params.numeroOriginal}`, debe: condonado, haber: 0 });
+    }
+
+    // montoNuevo normalmente es exactamente saldoCapitalOriginal + intereses
+    // y mora netos de condonación (fórmula por defecto de
+    // RefinanciamientoService.refinanciar), lo que deja este asiento
+    // cuadrado sin más. Si el caller fijó un montoNuevo explícito que no
+    // coincide, se agrega un ajuste visible en vez de dejar pasar un
+    // asiento descuadrado o reventar con un error críptico.
+    const totalDebe  = r2(lineas.reduce((s, l) => s + l.debe, 0));
+    const totalHaber = r2(lineas.reduce((s, l) => s + l.haber, 0));
+    const diff = r2(totalDebe - totalHaber);
+    if (diff !== 0) {
+      const cuentaAjuste = await this.resolverCuentaConcepto('PRESTAMO_AJUSTE_REFINANCIAMIENTO', cuentaInteres);
+      const desc = `Ajuste refinanciamiento ${params.numeroOriginal}→${params.numeroNuevo} (montoNuevo explícito)`;
+      lineas.push(diff > 0
+        ? { codigo: cuentaAjuste, descripcion: desc, debe: 0, haber: diff }
+        : { codigo: cuentaAjuste, descripcion: desc, debe: -diff, haber: 0 });
+    }
+
+    const asiento = await this._crearAsientoContabilizado({
+      descripcion:     `Refinanciamiento ${params.numeroOriginal} → ${params.numeroNuevo}`,
+      tipoOrigen:      TipoOrigenAsiento.PRESTAMISTA,
+      referenciaId:    params.prestamoNuevoId,
+      referenciaFolio: params.numeroNuevo,
+      fecha:           params.fecha,
+      userId:          params.userId,
+      lineas,
+    }, manager);
+
+    if (!asiento) {
+      const err = new Error(
+        `No se pudo generar el asiento de refinanciamiento ${params.numeroOriginal}→${params.numeroNuevo} (cuenta faltante o asiento descuadrado)`,
+      );
+      this.reportarFalloAsiento(err, 'asiento_refinanciamiento_prestamo', {
+        tipoOrigen: TipoOrigenAsiento.PRESTAMISTA, referenciaId: String(params.prestamoNuevoId), referenciaFolio: params.numeroNuevo,
+      });
+      throw err;
+    }
+    return asiento;
+  }
+
+  // ──────────────────────────────────────────────────────────────────
   // Gasto de importación aplicado
   // DR 1.1.3.01 Inventario / CR 2.1.6.01 Gastos de Importación por Aplicar
   //
