@@ -1,11 +1,13 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, QueryRunner } from 'typeorm';
-import { calcularAmortizacion } from '../utils/amortizacion.util';
 import { r2 } from '../utils/mora.util';
+import { calcularTablaAmortizacion } from '../motor/amortizacion-v2.util';
+import { resolverMotorConfig, aplicarOverridesSolicitud, construirParametrosPrestamo, aniosDelPlazo } from '../motor/motor-adaptador.util';
 import { fechaHoyRD } from '../../common/utils/fecha-local.util';
 import { TenantService } from '../../tenant/tenant.service';
 import { AsientosAutomaticosService } from '../../contabilidad/services/asientos-automaticos.service';
+import { FeriadosService } from '../feriados/feriados.service';
 
 @Injectable()
 export class RefinanciamientoService {
@@ -15,6 +17,7 @@ export class RefinanciamientoService {
     @InjectDataSource() private readonly ds: DataSource,
     private readonly tenantSvc: TenantService,
     private readonly asientos: AsientosAutomaticosService,
+    private readonly feriadosSvc: FeriadosService,
   ) {}
 
   async findByPrestamo(empresaId: number, prestamoId: number) {
@@ -31,6 +34,11 @@ export class RefinanciamientoService {
    * todas sus cuotas y registra el refinanciamiento: 6+ escrituras que antes
    * iban sueltas. Un fallo a mitad dejaba el original cerrado y al deudor sin
    * préstamo nuevo — es decir, deuda desaparecida. Ahora es todo o nada.
+   *
+   * Motor v2 (Fase 2B): el préstamo nuevo siempre se crea con el motor v2,
+   * usando la configuración del préstamo original (`original.motorConfig`
+   * si es 'v2', o un equivalente sintetizado si es 'v1') con los ajustes que
+   * se pidan al refinanciar (tasa/plazo/frecuencia/método).
    */
   async refinanciar(empresaId: number, data: any) {
     const qr = this.ds.createQueryRunner();
@@ -88,45 +96,63 @@ export class RefinanciamientoService {
       [original.id],
     );
 
-    // Crear nuevo préstamo
-    const nuevaTasa   = data.nuevaTasa   ?? Number(original.tasaInteresMensual);
-    const nuevoPlazo  = data.nuevoPlazo  ?? Number(original.plazoMeses);
-    const fechaPrimerPago = new Date(data.fechaPrimerPago ?? fechaHoyRD());
-    // C4: el préstamo nuevo debe heredar el método del original, no 'frances'
-    // a fuerza — un préstamo desembolsado en alemán se refinanciaba como si
-    // fuera francés, cambiando la forma en que se reparte capital/interés
-    // sin que nadie lo pidiera.
-    const metodoAmortizacion: 'frances' | 'aleman' = original.metodoAmortizacion === 'aleman' ? 'aleman' : 'frances';
-    const amort = calcularAmortizacion(metodoAmortizacion, montoNuevo, nuevaTasa, nuevoPlazo, fechaPrimerPago);
+    // Config del motor: la del préstamo original (o un equivalente
+    // sintetizado si es 'v1' — motorConfigLegacyDesdeProducto() funciona
+    // igual sobre un préstamo que sobre un producto: mismos nombres de
+    // columna) + los ajustes que se pidan al refinanciar.
+    let config = resolverMotorConfig(original);
+    config = aplicarOverridesSolicitud(config, {
+      tasaInteresMensual: data.nuevaTasa,
+      frecuencia: data.nuevaFrecuencia,
+      metodo: data.nuevoMetodo,
+    });
+
+    const nuevoPlazo = data.nuevoPlazo ?? Number(original.plazoMeses);
+    const fechaDesembolso = fechaHoyRD();
+    const fechaPrimerPago = data.fechaPrimerPago ?? fechaHoyRD();
+
+    const feriados = config.frecuencia === 'diaria' && config.frecuenciaDiaria?.excluirFeriados
+      ? await this.feriadosSvc.obtenerSetFeriados(empresaId, aniosDelPlazo(fechaDesembolso, Number(nuevoPlazo)))
+      : undefined;
+
+    const resultado = calcularTablaAmortizacion(construirParametrosPrestamo(config, {
+      montoPrincipal: montoNuevo,
+      fechaDesembolso,
+      fechaPrimerPago,
+      plazoPeriodos: Number(nuevoPlazo),
+    }, feriados));
 
     const [seq] = await qr.query(
       `SELECT siguiente_numero_secuencia($1, $2) AS num`, [empresaId, 'PRE'],
     );
     const numero = `PRE-${seq.num}`;
 
-    const ultimaCuota = amort.tabla[amort.tabla.length - 1];
+    const ultimaCuota = resultado.tabla[resultado.tabla.length - 1];
     const [nuevo] = await qr.query(
       `INSERT INTO pr_prestamos ("empresaId",numero,"deudorId","productoId","montoPrincipal",
         "tasaInteresMensual","plazoMeses","frecuenciaPago","metodoAmortizacion","cuotaPeriodica",
         "porcentajeMora","diasGracia","fechaDesembolso","fechaPrimerPago","fechaVencimiento",
-        "totalInteres","totalAPagar","saldoCapital","saldoInteres","saldoTotal","refinanciaDe")
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`,
-      [empresaId, numero, original.deudorId, original.productoId ?? null, montoNuevo,
-       nuevaTasa, nuevoPlazo, original.frecuenciaPago, metodoAmortizacion, amort.cuotaFija,
-       Number(original.porcentajeMora), Number(original.diasGracia),
-       fechaHoyRD(),
-       fechaPrimerPago.toISOString().split('T')[0],
-       ultimaCuota.fechaVencimiento.toISOString().split('T')[0],
-       amort.totalInteres, amort.totalAPagar, montoNuevo, amort.totalInteres, amort.totalAPagar,
-       original.id],
+        "totalInteres","totalAPagar","saldoCapital","saldoInteres","saldoTotal","refinanciaDe",
+        "motorVersion","motorConfig")
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) RETURNING *`,
+      [empresaId, numero, original.deudorId, original.productoId ?? null, resultado.montoPrincipalFinanciado,
+       config.tasa.valor * 100, nuevoPlazo, config.frecuencia, config.metodo, resultado.cuotaFija,
+       config.mora?.tasaOMonto ?? Number(original.porcentajeMora), config.gracia?.periodos ?? Number(original.diasGracia),
+       fechaDesembolso,
+       fechaPrimerPago,
+       ultimaCuota.fecha,
+       resultado.totalInteres, resultado.totalAPagar, resultado.montoPrincipalFinanciado, resultado.totalInteres, resultado.totalAPagar,
+       original.id,
+       'v2', JSON.stringify(config)],
     );
 
-    for (const linea of amort.tabla) {
+    for (const linea of resultado.tabla) {
       await qr.query(
-        `INSERT INTO pr_cuotas ("empresaId","prestamoId","numeroCuota","fechaVencimiento",capital,interes,"cuotaTotal","saldoRestante")
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [empresaId, nuevo.id, linea.numeroCuota, linea.fechaVencimiento.toISOString().split('T')[0],
-         linea.capital, linea.interes, linea.cuotaTotal, linea.saldoRestante],
+        `INSERT INTO pr_cuotas ("empresaId","prestamoId","numeroCuota","fechaVencimiento",capital,interes,"cuotaTotal","saldoRestante",cargos,"esPeriodoGracia")
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [empresaId, nuevo.id, linea.numeroCuota, linea.fecha,
+         linea.capital, linea.interes, linea.cuotaTotal, linea.saldoRestante,
+         linea.cargos?.length ? JSON.stringify(linea.cargos) : null, linea.esPeriodoGracia],
       );
     }
 
@@ -138,7 +164,7 @@ export class RefinanciamientoService {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
       [empresaId, original.id, nuevo.id, original.deudorId,
        saldoCapital, saldoInteres, saldoMora, r2(saldoCapital + saldoInteres + saldoMora),
-       montoNuevo, nuevaTasa, nuevoPlazo, moraCondonada, interesCondonado,
+       resultado.montoPrincipalFinanciado, config.tasa.valor * 100, nuevoPlazo, moraCondonada, interesCondonado,
        uid != null ? String(uid) : null, data.motivo ?? null],
     );
 
@@ -157,7 +183,7 @@ export class RefinanciamientoService {
         saldoMoraOriginal:    saldoMora,
         moraCondonada,
         interesCondonado,
-        montoNuevo,
+        montoNuevo: resultado.montoPrincipalFinanciado,
         fecha:                fechaHoyRD(),
         userId:               uid ?? 0,
       },

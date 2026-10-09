@@ -31,7 +31,7 @@ export class PrestamosController {
   // Simular es solo cálculo (lectura) → cualquier miembro.
   @Post('simular')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
-  simular(@Body() body: SimularPrestamoDto) { return this.svc.simular(body); }
+  simular(@Body() body: SimularPrestamoDto) { return this.svc.simular(this.empresaId, body); }
   @Patch(':id/cancelar')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   cancelar(@Param('id', ParseIntPipe) id: number, @Body() body: CancelarPrestamoDto) {

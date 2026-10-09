@@ -31,7 +31,7 @@ function buildQueryRunner(responder: (sql: string, params: any[]) => any) {
 
 const DATOS_PRESTAMO = {
   solicitudId: 5, deudorId: 3, montoPrincipal: 12000,
-  tasaInteresMensual: 3, plazoMeses: 6, fechaPrimerPago: '2026-09-01',
+  tasaInteresMensual: 3, plazoMeses: 6, fechaDesembolso: '2026-08-01', fechaPrimerPago: '2026-09-01',
 };
 
 describe('C2 — el desembolso es atómico', () => {
@@ -48,6 +48,7 @@ describe('C2 — el desembolso es atómico', () => {
       ds as any,
       { asientoDesembolsoPrestamo: jest.fn().mockResolvedValue(undefined) } as any,
       { getUserId: () => 42 } as any,
+      { obtenerSetFeriados: jest.fn().mockResolvedValue(new Set()) } as any,
     );
     return { svc, qr, vida, sqls };
   };
@@ -191,6 +192,7 @@ describe('H2 — el refinanciamiento es atómico', () => {
       { createQueryRunner: () => qr, query: jest.fn(async () => []) } as any,
       { getUserId: () => 42 } as any,
       asientos ?? { asientoRefinanciamiento: jest.fn().mockResolvedValue({ id: 1 }) } as any,
+      { obtenerSetFeriados: jest.fn().mockResolvedValue(new Set()) } as any,
     );
     return { svc, qr, vida, sqls };
   };
