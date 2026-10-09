@@ -1,3 +1,9 @@
+// Etapa 1: r2() vivía reimplementada 5 veces (aquí, mora.util.ts,
+// pagos.service.ts, refinanciamiento.service.ts, prestamos.service.ts) —
+// mismas 5 líneas en cada sitio. mora.util.ts la exporta como la única
+// definición del módulo.
+import { r2 } from './mora.util';
+
 export interface LineaAmortizacion {
   numeroCuota: number;
   fechaVencimiento: Date;
@@ -12,10 +18,6 @@ export interface ResultadoAmortizacion {
   cuotaFija: number;
   totalInteres: number;
   totalAPagar: number;
-}
-
-function r2(n: number): number {
-  return Math.round(n * 100) / 100;
 }
 
 function addMeses(fecha: Date, meses: number): Date {

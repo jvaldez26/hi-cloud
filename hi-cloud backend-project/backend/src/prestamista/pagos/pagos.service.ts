@@ -6,7 +6,7 @@ import { EmitirECFUseCase } from '../../ecf/use-cases/emitir-ecf.use-case';
 import { DocumentoOrigenTipo } from '../../ecf/entities/ecf.entity';
 import { TenantService } from '../../tenant/tenant.service';
 import { fechaHoyRD } from '../../common/utils/fecha-local.util';
-import { clasificarMorosidad } from '../utils/mora.util';
+import { clasificarMorosidad, r2 } from '../utils/mora.util';
 
 @Injectable()
 export class PagosService {
@@ -18,8 +18,6 @@ export class PagosService {
     private readonly emitirEcf: EmitirECFUseCase,
     private readonly tenantSvc: TenantService,
   ) {}
-
-  private r2(n: number) { return Math.round(Number(n) * 100) / 100; }
 
   /**
    * C1 — ver PrPago.claveIdempotencia. Mismo contrato que
@@ -113,15 +111,15 @@ export class PagosService {
         [data.prestamoId],
       );
 
-      let restante = this.r2(Number(data.montoPagado));
+      let restante = r2(Number(data.montoPagado));
 
       for (const cuota of cuotas) {
         if (restante <= 0) break;
 
         // Orden: mora → interés → capital
-        const moraPend = this.r2(Number(cuota.moraGenerada) - Number(cuota.moraPagada));
-        const intPend  = this.r2(Number(cuota.interes)      - Number(cuota.interesPagado));
-        const capPend  = this.r2(Number(cuota.capital)      - Number(cuota.capitalPagado));
+        const moraPend = r2(Number(cuota.moraGenerada) - Number(cuota.moraPagada));
+        const intPend  = r2(Number(cuota.interes)      - Number(cuota.interesPagado));
+        const capPend  = r2(Number(cuota.capital)      - Number(cuota.capitalPagado));
 
         // Guard: cuota sin pendiente real (datos corruptos o ya saldada)
         if (moraPend <= 0 && intPend <= 0 && capPend <= 0) continue;
@@ -130,27 +128,27 @@ export class PagosService {
 
         if (moraPend > 0 && restante > 0) {
           pagMora = Math.min(moraPend, restante);
-          aplicadoMora = this.r2(aplicadoMora + pagMora);
-          restante = this.r2(restante - pagMora);
+          aplicadoMora = r2(aplicadoMora + pagMora);
+          restante = r2(restante - pagMora);
         }
         if (intPend > 0 && restante > 0) {
           pagInt = Math.min(intPend, restante);
-          aplicadoInteres = this.r2(aplicadoInteres + pagInt);
-          restante = this.r2(restante - pagInt);
+          aplicadoInteres = r2(aplicadoInteres + pagInt);
+          restante = r2(restante - pagInt);
         }
         if (capPend > 0 && restante > 0) {
           pagCap = Math.min(capPend, restante);
-          aplicadoCapital = this.r2(aplicadoCapital + pagCap);
-          restante = this.r2(restante - pagCap);
+          aplicadoCapital = r2(aplicadoCapital + pagCap);
+          restante = r2(restante - pagCap);
         }
 
-        const totalPagadoCuota = this.r2(pagMora + pagInt + pagCap);
+        const totalPagadoCuota = r2(pagMora + pagInt + pagCap);
         if (totalPagadoCuota === 0) continue;
 
-        const nuevaIntPag  = this.r2(Number(cuota.interesPagado) + pagInt);
-        const nuevaCapPag  = this.r2(Number(cuota.capitalPagado) + pagCap);
-        const nuevaMoraPag = this.r2(Number(cuota.moraPagada) + pagMora);
-        const nuevaTotal   = this.r2(Number(cuota.totalPagado) + totalPagadoCuota);
+        const nuevaIntPag  = r2(Number(cuota.interesPagado) + pagInt);
+        const nuevaCapPag  = r2(Number(cuota.capitalPagado) + pagCap);
+        const nuevaMoraPag = r2(Number(cuota.moraPagada) + pagMora);
+        const nuevaTotal   = r2(Number(cuota.totalPagado) + totalPagadoCuota);
 
         const cuotaPagada = nuevaCapPag >= Number(cuota.capital) && nuevaIntPag >= Number(cuota.interes);
         const estCuota = cuotaPagada ? 'pagada' : 'parcial';
@@ -189,6 +187,9 @@ export class PagosService {
         `SELECT
            SUM(GREATEST(0, capital - "capitalPagado"))                                        AS "saldoCapital",
            SUM(GREATEST(0, interes - "interesPagado"))                                        AS "saldoInteres",
+           -- Misma fórmula que mora.util.ts saldoMoraPendiente()/sumarSaldoMoraPendiente()
+           -- (único lugar donde está probada) — ver el mismo comentario en
+           -- PrestamosService.recalcularSaldos() y mora.cron.ts.
            SUM(GREATEST(0, "moraGenerada" - "moraPagada"))                                    AS "saldoMora",
            COUNT(*) FILTER (WHERE estado <> 'pagada')                                         AS "cuotasPendientes",
            COUNT(*) FILTER (WHERE estado <> 'pagada' AND "fechaVencimiento" < CURRENT_DATE)   AS "cuotasVencidas",
@@ -197,10 +198,10 @@ export class PagosService {
         [data.prestamoId],
       );
       const s = saldos[0];
-      saldoCapital  = this.r2(Number(s.saldoCapital  ?? 0));
-      saldoInteres  = this.r2(Number(s.saldoInteres  ?? 0));
-      saldoMora     = this.r2(Number(s.saldoMora     ?? 0));
-      saldoTotal    = this.r2(saldoCapital + saldoInteres + saldoMora);
+      saldoCapital  = r2(Number(s.saldoCapital  ?? 0));
+      saldoInteres  = r2(Number(s.saldoInteres  ?? 0));
+      saldoMora     = r2(Number(s.saldoMora     ?? 0));
+      saldoTotal    = r2(saldoCapital + saldoInteres + saldoMora);
       const cuotasVencidas   = Number(s.cuotasVencidas   ?? 0);
       const cuotasPendientes = Number(s.cuotasPendientes ?? 0);
       const maxDiasMora      = Number(s.maxDiasMora      ?? 0);
@@ -212,7 +213,7 @@ export class PagosService {
       const nuevoEstado = (saldoCapital <= 0 && cuotasPendientes === 0)
         ? 'pagado'
         : clasificarMorosidad(cuotasVencidas, maxDiasMora, Number(prestamo.diasGracia ?? 0));
-      const totalPagado = this.r2(Number(prestamo.totalPagado) + Number(data.montoPagado));
+      const totalPagado = r2(Number(prestamo.totalPagado) + Number(data.montoPagado));
 
       await qr.query(
         `UPDATE pr_prestamos SET "saldoCapital"=$1,"saldoInteres"=$2,"saldoMora"=$3,"saldoTotal"=$4,

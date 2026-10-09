@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, Logger } from '@nes
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, QueryRunner } from 'typeorm';
 import { calcularAmortizacion } from '../utils/amortizacion.util';
+import { r2 } from '../utils/mora.util';
 import { fechaHoyRD } from '../../common/utils/fecha-local.util';
 import { TenantService } from '../../tenant/tenant.service';
 import { AsientosAutomaticosService } from '../../contabilidad/services/asientos-automaticos.service';
@@ -15,8 +16,6 @@ export class RefinanciamientoService {
     private readonly tenantSvc: TenantService,
     private readonly asientos: AsientosAutomaticosService,
   ) {}
-
-  private r2(n: number) { return Math.round(Number(n) * 100) / 100; }
 
   async findByPrestamo(empresaId: number, prestamoId: number) {
     return this.ds.query(
@@ -69,15 +68,15 @@ export class RefinanciamientoService {
     // C5: quien autoriza la condonación/refinanciación sale del CLS (JWT), no del body.
     const uid = this.tenantSvc.getUserId();
 
-    const saldoCapital = this.r2(Number(original.saldoCapital ?? 0));
-    const saldoInteres = this.r2(Number(original.saldoInteres ?? 0));
-    const saldoMora    = this.r2(Number(original.saldoMora ?? 0));
-    const moraCondonada    = this.r2(Number(data.moraCondonada    ?? 0));
-    const interesCondonado = this.r2(Number(data.interesCondonado ?? 0));
+    const saldoCapital = r2(Number(original.saldoCapital ?? 0));
+    const saldoInteres = r2(Number(original.saldoInteres ?? 0));
+    const saldoMora    = r2(Number(original.saldoMora ?? 0));
+    const moraCondonada    = r2(Number(data.moraCondonada    ?? 0));
+    const interesCondonado = r2(Number(data.interesCondonado ?? 0));
 
     const montoNuevo = data.montoNuevo
-      ? this.r2(Number(data.montoNuevo))
-      : this.r2(saldoCapital + (saldoInteres - interesCondonado) + (saldoMora - moraCondonada));
+      ? r2(Number(data.montoNuevo))
+      : r2(saldoCapital + (saldoInteres - interesCondonado) + (saldoMora - moraCondonada));
 
     // Cerrar préstamo original
     await qr.query(
@@ -138,7 +137,7 @@ export class RefinanciamientoService {
         "montoNuevo","nuevaTasa","nuevoPlazo","moraCondonada","interesCondonado","autorizadoPor",motivo)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
       [empresaId, original.id, nuevo.id, original.deudorId,
-       saldoCapital, saldoInteres, saldoMora, this.r2(saldoCapital + saldoInteres + saldoMora),
+       saldoCapital, saldoInteres, saldoMora, r2(saldoCapital + saldoInteres + saldoMora),
        montoNuevo, nuevaTasa, nuevoPlazo, moraCondonada, interesCondonado,
        uid != null ? String(uid) : null, data.motivo ?? null],
     );

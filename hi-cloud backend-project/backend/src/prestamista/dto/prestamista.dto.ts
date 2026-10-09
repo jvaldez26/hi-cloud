@@ -69,7 +69,7 @@ export class CrearSolicitudDto {
   @IsInt() @Min(1, { message: 'El plazo debe ser de al menos 1 mes' }) @Type(() => Number)
   plazoMeses!: number;
 
-  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Type(() => Number)
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) @Type(() => Number)
   tasaInteresMensual?: number;
 
   @IsOptional() @IsString() @MaxLength(500)
@@ -106,10 +106,10 @@ export class CrearPrestamoDto {
   @IsOptional() @IsInt() @Min(1) @Type(() => Number)
   plazoMeses?: number;
 
-  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Type(() => Number)
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) @Type(() => Number)
   tasaInteresMensual?: number;
 
-  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Type(() => Number)
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) @Type(() => Number)
   porcentajeMora?: number;
 
   @IsOptional() @IsInt() @Min(0) @Type(() => Number)
@@ -133,7 +133,7 @@ export class RefinanciarDto {
   @IsOptional() @IsInt() @Min(1) @Type(() => Number)
   plazoMeses?: number;
 
-  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Type(() => Number)
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) @Type(() => Number)
   tasaInteresMensual?: number;
 
   /** Condonaciones: nunca negativas (restarían deuda al revés). */
@@ -257,7 +257,11 @@ export class CrearDeudorDto {
   @IsOptional() @IsInt() @Min(0) @Max(1000) @Type(() => Number)
   scoreCredito?: number;
 
-  @IsOptional() @IsIn(['bajo', 'medio', 'alto', 'muy_alto'])
+  // Etapa 1: el Select de DeudoresPage.tsx manda 'critico' — el DTO exigía
+  // 'muy_alto' (nadie más en el backend depende de ese valor: es una
+  // columna de texto libre sin CHECK), así que guardar un deudor con riesgo
+  // "Crítico" daba 400 siempre.
+  @IsOptional() @IsIn(['bajo', 'medio', 'alto', 'critico'])
   nivelRiesgo?: string;
 
   @IsOptional() @IsIn(['activo', 'inactivo', 'moroso'])
@@ -378,7 +382,7 @@ export class CrearProductoPrestamoDto {
   @IsString() @IsNotEmpty() @MaxLength(100)
   nombre!: string;
 
-  @IsNumber({ maxDecimalPlaces: 4 }) @IsPositive({ message: 'La tasa de interés mensual debe ser mayor que cero' })
+  @IsNumber({ maxDecimalPlaces: 3 }) @IsPositive({ message: 'La tasa de interés mensual debe ser mayor que cero' })
   @Type(() => Number)
   tasaInteresMensual!: number;
 
@@ -412,13 +416,13 @@ export class CrearProductoPrestamoDto {
   @IsOptional() @IsIn(['frances', 'aleman'])
   metodoAmortizacion?: string;
 
-  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Type(() => Number)
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) @Type(() => Number)
   porcentajeMora?: number;
 
   @IsOptional() @IsNumber(MONTO) @Min(0) @Type(() => Number)
   cargoCierre?: number;
 
-  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Type(() => Number)
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) @Type(() => Number)
   porcentajeCargoCierre?: number;
 
   @IsOptional() @IsInt() @Min(0) @Type(() => Number)
@@ -435,7 +439,7 @@ export class ActualizarProductoPrestamoDto {
   @IsOptional() @IsString() @IsNotEmpty() @MaxLength(100)
   nombre?: string;
 
-  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Type(() => Number)
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) @Type(() => Number)
   tasaInteresMensual?: number;
 
   @IsOptional() @IsString() @MaxLength(300)
@@ -462,13 +466,13 @@ export class ActualizarProductoPrestamoDto {
   @IsOptional() @IsIn(['frances', 'aleman'])
   metodoAmortizacion?: string;
 
-  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Type(() => Number)
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) @Type(() => Number)
   porcentajeMora?: number;
 
   @IsOptional() @IsNumber(MONTO) @Min(0) @Type(() => Number)
   cargoCierre?: number;
 
-  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Type(() => Number)
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) @Type(() => Number)
   porcentajeCargoCierre?: number;
 
   @IsOptional() @IsInt() @Min(0) @Type(() => Number)

@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, Logger } from '@nes
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, QueryRunner } from 'typeorm';
 import { calcularAmortizacion } from '../utils/amortizacion.util';
-import { clasificarMorosidad } from '../utils/mora.util';
+import { clasificarMorosidad, r2 } from '../utils/mora.util';
 import { AsientosAutomaticosService } from '../../contabilidad/services/asientos-automaticos.service';
 import { TenantService } from '../../tenant/tenant.service';
 import { fechaHoyRD } from '../../common/utils/fecha-local.util';
@@ -262,6 +262,11 @@ export class PrestamosService {
       `SELECT
          SUM(GREATEST(0, capital - "capitalPagado"))                                        AS "saldoCapital",
          SUM(GREATEST(0, interes - "interesPagado"))                                        AS "saldoInteres",
+         -- Misma fórmula que mora.util.ts saldoMoraPendiente()/sumarSaldoMoraPendiente()
+         -- (único lugar donde está probada), reescrita en SQL para agregarla en el
+         -- mismo viaje a BD que el resto de los saldos — traer todas las cuotas a JS
+         -- solo para esta suma sería un viaje extra sin necesidad. Si cambia la
+         -- definición allá, cambiar también aquí y en pagos.service.ts/mora.cron.ts.
          SUM(GREATEST(0, "moraGenerada" - "moraPagada"))                                    AS "saldoMora",
          COUNT(*) FILTER (WHERE estado <> 'pagada')                                         AS "cuotasPendientes",
          COUNT(*) FILTER (WHERE estado <> 'pagada' AND "fechaVencimiento" < CURRENT_DATE)   AS "cuotasVencidas",
@@ -270,10 +275,9 @@ export class PrestamosService {
        FROM pr_cuotas WHERE "prestamoId"=$1`,
       [id],
     );
-    const r2 = (n: any) => Math.round(Number(n ?? 0) * 100) / 100;
-    const saldoCapital  = r2(s.saldoCapital);
-    const saldoInteres  = r2(s.saldoInteres);
-    const saldoMora     = r2(s.saldoMora);
+    const saldoCapital  = r2(Number(s.saldoCapital ?? 0));
+    const saldoInteres  = r2(Number(s.saldoInteres ?? 0));
+    const saldoMora     = r2(Number(s.saldoMora    ?? 0));
     const saldoTotal    = r2(saldoCapital + saldoInteres + saldoMora);
     const cuotasVencidas   = Number(s.cuotasVencidas   ?? 0);
     const cuotasPendientes = Number(s.cuotasPendientes ?? 0);

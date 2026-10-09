@@ -62,6 +62,11 @@ export class MoraCronService {
         // — misma definición que usa el registro de pagos. Antes se acumulaba en
         // memoria la mora BRUTA, así que el cron de medianoche pisaba el saldo
         // que el pago había dejado bien y la mora cobrada reaparecía.
+        //
+        // La línea "saldoMoraNeto" es la misma fórmula que mora.util.ts
+        // saldoMoraPendiente()/sumarSaldoMoraPendiente() (único lugar donde está
+        // probada) — ver el mismo comentario en PagosService.registrar() y
+        // PrestamosService.recalcularSaldos(). Si cambia allá, cambiar también aquí.
         const [resumen] = await this.ds.query<any[]>(`
           SELECT
             COUNT(*) FILTER (WHERE estado NOT IN ('pagada','refinanciada') AND "fechaVencimiento" < CURRENT_DATE) AS cuotasVencidas,

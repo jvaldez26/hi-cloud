@@ -75,7 +75,18 @@ export function saldoMoraPendiente(moraGenerada: number, moraPagada: number): nu
   return r2(Math.max(0, gen - pag));
 }
 
-/** Suma del saldo de mora pendiente de un conjunto de cuotas. */
+/**
+ * Suma del saldo de mora pendiente de un conjunto de cuotas.
+ *
+ * Esta es la única definición probada, pero no es lo que corre en
+ * producción: mora.cron.ts, PagosService.registrar() y PrestamosService
+ * .recalcularSaldos() reimplementan la MISMA fórmula como
+ * `SUM(GREATEST(0, "moraGenerada" - "moraPagada"))` en SQL, para agregarla
+ * en el mismo viaje a BD que el resto de los saldos (traer todas las
+ * cuotas a JS solo para esto sería un viaje de red extra). Si esta fórmula
+ * cambia, hay que cambiarla en los tres sitios también — cada uno tiene un
+ * comentario que señala aquí.
+ */
 export function sumarSaldoMoraPendiente(
   cuotas: { moraGenerada?: number | string; moraPagada?: number | string }[],
 ): number {
