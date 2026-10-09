@@ -54,6 +54,7 @@ describe('C2 — el desembolso es atómico', () => {
 
   const responderOk = (sql: string) => {
     if (sql.includes('FROM pr_solicitudes')) return [{ id: 5, estado: 'aprobada', deudorId: 3 }];
+    if (sql.includes('FROM pr_deudores')) return [{ id: 1 }]; // C5: assertDeudorDeEmpresa
     if (sql.includes('siguiente_numero_secuencia')) return [{ num: '0001' }];
     if (sql.includes('INSERT INTO pr_prestamos')) return [{ id: 77 }];
     return [];
@@ -122,6 +123,32 @@ describe('C2 — el desembolso es atómico', () => {
       const { svc } = construir((sql: string) =>
         sql.includes('FROM pr_solicitudes') ? [{ id: 5, estado: 'pendiente' }] : responderOk(sql));
       await expect(svc.create(1, { ...DATOS_PRESTAMO })).rejects.toThrow(/pendiente/);
+    });
+  });
+
+  describe('C5 — aislamiento multiempresa del deudor', () => {
+    it('rechaza el desembolso si el deudorId no pertenece a la empresa (desembolso directo, sin solicitudId)', async () => {
+      const { svc } = construir((sql: string) =>
+        sql.includes('FROM pr_deudores') ? [] : responderOk(sql));
+      await expect(svc.create(1, { ...DATOS_PRESTAMO, solicitudId: undefined }))
+        .rejects.toThrow(/Deudor #3 no encontrado/);
+    });
+
+    it('valida el deudorId del BODY aunque venga con solicitudId — no basta con que la solicitud sea válida', async () => {
+      // Body con solicitudId Y un deudorId explícito: antes del fix, ese
+      // deudorId pisaba al de la solicitud (ya validado al crearla) sin
+      // pasar por ningún chequeo de empresa.
+      const { svc, qr } = construir((sql: string) =>
+        sql.includes('FROM pr_deudores') ? [] : responderOk(sql));
+      await expect(svc.create(1, { ...DATOS_PRESTAMO, deudorId: 999 }))
+        .rejects.toThrow(/Deudor #999 no encontrado/);
+      expect(qr.rollbackTransaction).toHaveBeenCalled();
+    });
+
+    it('la verificación del deudor corre DENTRO de la transacción (vía el QueryRunner, no this.ds)', async () => {
+      const { svc, sqls } = construir(responderOk);
+      await svc.create(1, { ...DATOS_PRESTAMO });
+      expect(sqls.some(s => s.includes('FROM pr_deudores'))).toBe(true);
     });
   });
 });

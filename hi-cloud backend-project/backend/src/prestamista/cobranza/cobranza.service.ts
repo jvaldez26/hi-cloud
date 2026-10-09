@@ -27,7 +27,7 @@ export class CobranzaService {
               d.telefono  AS "deudorTelefono",
               d.direccion AS "deudorDireccion",
               d.email     AS "deudorEmail"
-       FROM pr_prestamos p JOIN pr_deudores d ON d.id=p."deudorId"
+       FROM pr_prestamos p JOIN pr_deudores d ON d.id=p."deudorId" AND d."empresaId"=p."empresaId"
        WHERE p."empresaId"=$1 AND p.estado IN ('moroso','vencido')
        ORDER BY p."diasMoraActual" DESC LIMIT $2 OFFSET $3`,
       [empresaId, limit, offset],
@@ -47,7 +47,7 @@ export class CobranzaService {
   async registrarGestion(empresaId: number, data: any) {
     const rows: any[] = await this.ds.query(
       `SELECT p.*, d.nombre AS "deudorNombre"
-       FROM pr_prestamos p JOIN pr_deudores d ON d.id=p."deudorId"
+       FROM pr_prestamos p JOIN pr_deudores d ON d.id=p."deudorId" AND d."empresaId"=p."empresaId"
        WHERE p.id=$1 AND p."empresaId"=$2`, [data.prestamoId, empresaId],
     );
     const prestamo = rows[0];
@@ -79,7 +79,7 @@ export class CobranzaService {
               e."nombreComercial" AS "empresaComercial", e.nombre AS "empresaNombre",
               e.email AS "empresaEmail", e.telefono AS "empresaTelefono"
          FROM pr_prestamos p
-         JOIN pr_deudores d ON d.id = p."deudorId"
+         JOIN pr_deudores d ON d.id=p."deudorId" AND d."empresaId"=p."empresaId"
          JOIN empresa     e ON e.id = p."empresaId"
         WHERE p.id = $1 AND p."empresaId" = $2`,
       [prestamoId, empresaId],

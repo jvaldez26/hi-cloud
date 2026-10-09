@@ -64,7 +64,7 @@ export class VehiculosService {
     const prestamos = await this.ds.query(
       `SELECT p.id, p.numero, p.estado, p."montoPrincipal", p."saldoCapital", d.nombre as deudorNombre
        FROM pr_prestamos p
-       JOIN pr_deudores d ON d.id = p."deudorId"
+       JOIN pr_deudores d ON d.id=p."deudorId" AND d."empresaId"=p."empresaId"
        WHERE p."vehiculoId"=$1 AND p."empresaId"=$2
        ORDER BY p."createdAt" DESC`,
       [id, this.empresaId],
@@ -155,7 +155,7 @@ export class VehiculosService {
     const vencidas = await this.ds.query(
       `SELECT v.*, p.numero as prestamo_numero
        FROM pr_vehiculos v
-       LEFT JOIN pr_prestamos p ON p."vehiculoId"=v.id AND p.estado NOT IN ('pagado','cancelado')
+       LEFT JOIN pr_prestamos p ON p."vehiculoId"=v.id AND p."empresaId"=v."empresaId" AND p.estado NOT IN ('pagado','cancelado')
        WHERE v."empresaId"=$1 AND v.activo=true
          AND v."fechaVencePoliza" IS NOT NULL
          AND v."fechaVencePoliza" < CURRENT_DATE
@@ -166,7 +166,7 @@ export class VehiculosService {
       `SELECT v.*, p.numero as prestamo_numero,
               (v."fechaVencePoliza" - CURRENT_DATE) AS dias_restantes
        FROM pr_vehiculos v
-       LEFT JOIN pr_prestamos p ON p."vehiculoId"=v.id AND p.estado NOT IN ('pagado','cancelado')
+       LEFT JOIN pr_prestamos p ON p."vehiculoId"=v.id AND p."empresaId"=v."empresaId" AND p.estado NOT IN ('pagado','cancelado')
        WHERE v."empresaId"=$1 AND v.activo=true
          AND v."fechaVencePoliza" BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days'
        ORDER BY v."fechaVencePoliza"`,

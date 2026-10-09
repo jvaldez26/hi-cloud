@@ -56,7 +56,7 @@ export class DashboardPrestamistaService {
 
     const topDeudores = await this.ds.query<any[]>(
       `SELECT d.nombre, d.apellidos, p."saldoTotal", p."diasMoraActual", p.estado, p.numero
-       FROM pr_prestamos p JOIN pr_deudores d ON d.id=p."deudorId"
+       FROM pr_prestamos p JOIN pr_deudores d ON d.id=p."deudorId" AND d."empresaId"=p."empresaId"
        WHERE p."empresaId"=$1 AND p.estado IN ('moroso','vencido')
        ORDER BY p."saldoTotal" DESC LIMIT 10`, [empresaId],
     );

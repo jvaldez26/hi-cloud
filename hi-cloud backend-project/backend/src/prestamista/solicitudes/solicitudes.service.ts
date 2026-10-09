@@ -34,7 +34,7 @@ export class SolicitudesService {
     const [row] = await this.ds.query<any[]>(
       `SELECT s.*, d.nombre as "deudorNombre", d.cedula as "deudorCedula", d.telefono as "deudorTelefono"
        FROM pr_solicitudes s
-       JOIN pr_deudores d ON d.id=s."deudorId"
+       JOIN pr_deudores d ON d.id=s."deudorId" AND d."empresaId"=s."empresaId"
        WHERE s.id=$1 AND s."empresaId"=$2`, [id, empresaId],
     );
     if (!row) throw new NotFoundException(`Solicitud #${id} no encontrada`);
@@ -55,11 +55,11 @@ export class SolicitudesService {
     }
     const where = conds.join(' AND ');
     const [{ count }] = await this.ds.query(
-      `SELECT COUNT(*) FROM pr_solicitudes s JOIN pr_deudores d ON d.id=s."deudorId" WHERE ${where}`, args,
+      `SELECT COUNT(*) FROM pr_solicitudes s JOIN pr_deudores d ON d.id=s."deudorId" AND d."empresaId"=s."empresaId" WHERE ${where}`, args,
     );
     const data = await this.ds.query(
       `SELECT s.*, d.nombre as "deudorNombre", d.cedula as "deudorCedula"
-       FROM pr_solicitudes s JOIN pr_deudores d ON d.id=s."deudorId"
+       FROM pr_solicitudes s JOIN pr_deudores d ON d.id=s."deudorId" AND d."empresaId"=s."empresaId"
        WHERE ${where} ORDER BY s."createdAt" DESC LIMIT $${idx} OFFSET $${idx + 1}`,
       [...args, limit, offset],
     );

@@ -27,7 +27,7 @@ export class PrestamistaPdfService {
   async tablaAmortizacion(res: Response, prestamoId: number, empresaId: number) {
     const [prestamo] = await this.ds.query<any[]>(
       `SELECT p.*, d.nombre as "deudorNombre", d.cedula as "deudorCedula"
-       FROM pr_prestamos p JOIN pr_deudores d ON d.id=p."deudorId"
+       FROM pr_prestamos p JOIN pr_deudores d ON d.id=p."deudorId" AND d."empresaId"=p."empresaId"
        WHERE p.id=$1 AND p."empresaId"=$2`, [prestamoId, empresaId],
     );
     if (!prestamo) { res.status(404).json({ message: 'Préstamo no encontrado' }); return; }
@@ -94,8 +94,8 @@ export class PrestamistaPdfService {
               e."razonSocial" AS "empresaNombre",
               e.telefono     AS "empresaTelefono"
        FROM pr_pagos pg
-       JOIN pr_prestamos p ON p.id = pg."prestamoId"
-       JOIN pr_deudores  d ON d.id = pg."deudorId"
+       JOIN pr_prestamos p ON p.id = pg."prestamoId" AND p."empresaId"=pg."empresaId"
+       JOIN pr_deudores d ON d.id=pg."deudorId" AND d."empresaId"=pg."empresaId"
        LEFT JOIN empresa e ON e.id = pg."empresaId"
        WHERE pg.id=$1 AND pg."empresaId"=$2`, [pagoId, empresaId],
     );

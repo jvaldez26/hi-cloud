@@ -16,12 +16,18 @@ export class PrestamosService {
     private readonly tenantSvc: TenantService,
   ) {}
 
+  /**
+   * C5: el JOIN a pr_deudores solo filtraba por p.empresaId, nunca por
+   * d.empresaId. Si alguna vez un préstamo quedó enlazado a un deudorId de
+   * OTRA empresa (ver assertDeudorDeEmpresa en crearEnTransaccion), este
+   * filtro es la segunda barrera que evita exponer esos datos ajenos.
+   */
   private async orFail(empresaId: number, id: number) {
     const [row] = await this.ds.query<any[]>(
       `SELECT p.*, d.nombre as "deudorNombre", d.cedula as "deudorCedula", d.telefono as "deudorTelefono",
               pp.nombre as "productoNombre"
        FROM pr_prestamos p
-       JOIN pr_deudores d ON d.id=p."deudorId"
+       JOIN pr_deudores d ON d.id=p."deudorId" AND d."empresaId"=p."empresaId"
        LEFT JOIN pr_productos_prestamo pp ON pp.id=p."productoId"
        WHERE p.id=$1 AND p."empresaId"=$2`, [id, empresaId],
     );
@@ -44,11 +50,11 @@ export class PrestamosService {
     }
     const where = conds.join(' AND ');
     const [{ count }] = await this.ds.query(
-      `SELECT COUNT(*) FROM pr_prestamos p JOIN pr_deudores d ON d.id=p."deudorId" WHERE ${where}`, args,
+      `SELECT COUNT(*) FROM pr_prestamos p JOIN pr_deudores d ON d.id=p."deudorId" AND d."empresaId"=p."empresaId" WHERE ${where}`, args,
     );
     const data = await this.ds.query(
       `SELECT p.*, d.nombre as "deudorNombre", d.cedula as "deudorCedula", d.foto as "deudorFoto"
-       FROM pr_prestamos p JOIN pr_deudores d ON d.id=p."deudorId"
+       FROM pr_prestamos p JOIN pr_deudores d ON d.id=p."deudorId" AND d."empresaId"=p."empresaId"
        WHERE ${where} ORDER BY p."createdAt" DESC LIMIT $${idx} OFFSET $${idx + 1}`,
       [...args, limit, offset],
     );
@@ -152,6 +158,16 @@ export class PrestamosService {
     if (!deudorId || !montoPrincipal || !tasaInteresMensual || !plazoMeses || !fpRaw) {
       throw new BadRequestException('Faltan campos requeridos: deudorId, montoPrincipal, tasaInteresMensual, plazoMeses, fechaPrimerPago');
     }
+
+    // C5: valida SIEMPRE, venga el deudorId de una solicitud o directo en el
+    // body — un body con solicitudId Y un deudorId explícito distinto pisaba
+    // el de la solicitud (ya validado al crearla) sin pasar por ningún
+    // chequeo de empresa. Dentro de la misma transacción, igual que el
+    // bloqueo FOR UPDATE de la solicitud.
+    const [deudor] = await qr.query(
+      `SELECT 1 FROM pr_deudores WHERE id=$1 AND "empresaId"=$2 LIMIT 1`, [deudorId, empresaId],
+    );
+    if (!deudor) throw new BadRequestException(`Deudor #${deudorId} no encontrado`);
 
     const [seq] = await qr.query(
       `SELECT siguiente_numero_secuencia($1, $2) AS num`, [empresaId, 'PRE'],

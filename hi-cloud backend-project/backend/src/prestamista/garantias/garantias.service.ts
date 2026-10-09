@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
@@ -7,6 +7,38 @@ export class GarantiasService {
   private readonly logger = new Logger(GarantiasService.name);
 
   constructor(@InjectDataSource() private readonly ds: DataSource) {}
+
+  /**
+   * C5: deudorId/prestamoId/solicitudId llegan del body sin validar — una
+   * garantía podía quedar enlazada a datos de OTRA empresa, y los reportes
+   * (reportes.service.ts → garantias(), que hace JOIN con pr_deudores
+   * filtrando solo por g.empresaId) acababan exponiéndolos. Mismo patrón que
+   * SolicitudesService.assertDeudorDeEmpresa.
+   */
+  private async assertDeudorDeEmpresa(deudorId: unknown, empresaId: number): Promise<void> {
+    const id = Number(deudorId);
+    if (!Number.isInteger(id) || id <= 0) throw new BadRequestException('deudorId inválido');
+    const [row] = await this.ds.query<any[]>(
+      `SELECT 1 FROM pr_deudores WHERE id=$1 AND "empresaId"=$2 LIMIT 1`, [id, empresaId],
+    );
+    if (!row) throw new NotFoundException(`Deudor #${id} no encontrado`);
+  }
+
+  private async assertPrestamoDeEmpresa(prestamoId: unknown, empresaId: number): Promise<void> {
+    if (prestamoId == null) return;
+    const [row] = await this.ds.query<any[]>(
+      `SELECT 1 FROM pr_prestamos WHERE id=$1 AND "empresaId"=$2 LIMIT 1`, [Number(prestamoId), empresaId],
+    );
+    if (!row) throw new NotFoundException(`Préstamo #${prestamoId} no encontrado`);
+  }
+
+  private async assertSolicitudDeEmpresa(solicitudId: unknown, empresaId: number): Promise<void> {
+    if (solicitudId == null) return;
+    const [row] = await this.ds.query<any[]>(
+      `SELECT 1 FROM pr_solicitudes WHERE id=$1 AND "empresaId"=$2 LIMIT 1`, [Number(solicitudId), empresaId],
+    );
+    if (!row) throw new NotFoundException(`Solicitud #${solicitudId} no encontrada`);
+  }
 
   async findByPrestamo(empresaId: number, prestamoId: number) {
     return this.ds.query(
@@ -30,6 +62,10 @@ export class GarantiasService {
   }
 
   async create(empresaId: number, data: any) {
+    await this.assertDeudorDeEmpresa(data.deudorId, empresaId);
+    await this.assertPrestamoDeEmpresa(data.prestamoId, empresaId);
+    await this.assertSolicitudDeEmpresa(data.solicitudId, empresaId);
+
     const [row] = await this.ds.query<any[]>(
       `INSERT INTO pr_garantias ("empresaId","prestamoId","solicitudId","deudorId",tipo,descripcion,
         "valorTasado","valorRealizacion",detalles,"documentosUrls","fotosUrls",ubicacion,notas)
