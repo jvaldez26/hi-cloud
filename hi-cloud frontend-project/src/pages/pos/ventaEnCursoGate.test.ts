@@ -1,32 +1,56 @@
 import { describe, it, expect } from 'vitest';
-import { fusionarColaEnCarrito, debeFusionarColaAhora, totalMostradoEnModal } from './ventaEnCursoGate';
+import {
+  fusionarColaEnCarrito, debeFusionarColaAhora, totalMostradoEnModal, debeEncolarAgregado,
+} from './ventaEnCursoGate';
 
 /**
  * Regresión FAC-1746 (empresa 73, 2026-10-08): un producto escaneado
- * mientras el modal de cobro estaba abierto (la emisión del e-CF puede
- * tardar varios segundos) se mezcló con el carrito que se estaba cobrando
- * — infló el total mostrado/impreso sin tocar la factura ya enviada.
- * Decisión (2026-10-08, ajuste sobre el fix anterior): en vez de rechazar
- * el escaneo, se encola para la próxima venta y entra solo cuando la venta
- * en curso termina de verdad.
+ * mientras la venta se emitía se mezcló con el carrito que se estaba
+ * cobrando — infló el total mostrado/impreso sin tocar la factura ya
+ * enviada. Primer ajuste (commit 6d5ca099): en vez de rechazar el
+ * escaneo, se encola para la próxima venta y entra solo cuando la venta en
+ * curso termina de verdad.
+ *
+ * Segundo ajuste (el mismo día): el gate arrancaba demasiado temprano —
+ * con showPago (modal de cobro abierto). Antes de hacer clic en "Confirmar
+ * cobro" el modal puede llevar rato abierto (eligiendo forma de pago, el
+ * cliente pidiendo "una cosa más") y ESE producto es parte de la venta
+ * actual, no de la próxima. El gate ahora es "venta en curso"
+ * (ventaMut.isPending en POSPage.tsx) — desde el clic en "Confirmar cobro"
+ * hasta que la venta termina, con éxito o con fallo.
  */
 
-describe('debeFusionarColaAhora — solo en el flanco de bajada del modal de cobro', () => {
-  it('venta terminó (modal pasa de abierto a cerrado) con cola pendiente → fusiona', () => {
+describe('debeEncolarAgregado — el gate es "venta en curso" (isPending), nunca "modal abierto"', () => {
+  it('modal de cobro abierto pero SIN confirmar todavía → no encola, entra a la venta actual', () => {
+    // showPago=true no aparece aquí a propósito: la función ni siquiera
+    // recibe ese dato — estructuralmente no puede depender de él.
+    expect(debeEncolarAgregado(/* ventaEnCurso */ false)).toBe(false);
+  });
+
+  it('venta en curso (tras el clic en "Confirmar cobro", esperando la respuesta del servidor) → encola', () => {
+    expect(debeEncolarAgregado(true)).toBe(true);
+  });
+});
+
+describe('debeFusionarColaAhora — solo en el flanco de bajada de "venta en curso"', () => {
+  it('venta terminó (isPending pasa de true a false) con cola pendiente → fusiona', () => {
     expect(debeFusionarColaAhora(/* antes */ true, /* ahora */ false, /* cola */ 2)).toBe(true);
   });
 
-  it('venta fallida que SIGUE esperando reintento (modal se queda abierto) → NO fusiona', () => {
-    // Este es el caso explícito del punto 2: _emisionFallo preserva el
-    // carrito-borrador y el modal no se cierra — la cola no debe tocarlo.
-    expect(debeFusionarColaAhora(true, true, 2)).toBe(false);
+  it('venta fallida que SIGUE esperando reintento (isPending ya volvió a false, el modal sigue abierto) → no hace falta fusionar porque el gate ya se apagó', () => {
+    // isPending refleja el estado REAL: una vez que la mutación resuelve
+    // (éxito o fallo de negocio), isPending es false — el escenario "sigue
+    // esperando reintento" ya NO tiene el gate activo (ver
+    // debeEncolarAgregado), así que lo agregado en ese tramo entra directo
+    // al carrito-borrador, nunca pasa por la cola.
+    expect(debeFusionarColaAhora(true, false, 2)).toBe(true);
   });
 
-  it('modal nunca estuvo abierto (false→false, p.ej. el montaje inicial) → NO fusiona', () => {
+  it('"venta en curso" nunca estuvo activa (false→false, p.ej. el montaje inicial) → NO fusiona', () => {
     expect(debeFusionarColaAhora(false, false, 2)).toBe(false);
   });
 
-  it('modal se ABRE (false→true) → NO fusiona (no es el flanco de bajada)', () => {
+  it('"venta en curso" se ACTIVA (false→true, clic en Confirmar cobro) → NO fusiona (no es el flanco de bajada)', () => {
     expect(debeFusionarColaAhora(false, true, 2)).toBe(false);
   });
 
@@ -86,7 +110,11 @@ describe('totalMostradoEnModal — el número que ve la cajera', () => {
     expect(totalMostradoEnModal(true, 942.00, 1002.00)).not.toBe(1002.00);
   });
 
-  it('sin venta en curso (isPending=false) → sigue el total en vivo, aunque haya un congelado viejo', () => {
+  it('modal abierto pero SIN confirmar (isPending=false) → sigue el total en vivo — el cliente agregó algo y el modal debe reflejarlo', () => {
+    expect(totalMostradoEnModal(false, null, 1002.00)).toBe(1002.00);
+  });
+
+  it('sin venta en curso (isPending=false) → sigue el total en vivo, aunque haya un congelado viejo de la venta anterior', () => {
     expect(totalMostradoEnModal(false, 942.00, 1002.00)).toBe(1002.00);
   });
 

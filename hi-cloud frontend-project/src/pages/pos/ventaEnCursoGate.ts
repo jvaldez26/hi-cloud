@@ -1,6 +1,15 @@
 /**
- * Venta en curso (modal de cobro abierto): reglas de qué pasa con un
- * producto agregado mientras tanto, y qué total se le muestra a la cajera.
+ * Venta EN CURSO — desde que se llama ventaMut.mutate() (clic en
+ * "Confirmar cobro") hasta que esa venta termina, con éxito o con fallo —
+ * reglas de qué pasa con un producto agregado mientras tanto, y qué total
+ * se le muestra a la cajera.
+ *
+ * A propósito NO es "modal de cobro abierto": antes de confirmar, el modal
+ * puede estar abierto un buen rato (eligiendo forma de pago, el cliente
+ * pidiendo "una cosa más") y un producto agregado en ese tramo debe entrar
+ * a ESA venta con normalidad, con el total actualizándose en vivo — recién
+ * al confirmar se congela el total y lo que se agregue después se desvía a
+ * la próxima venta.
  *
  * Root cause real: FAC-1746 (empresa 73, 2026-10-08) — un producto
  * agregado (scan de la siguiente venta, casi siempre) durante la espera de
@@ -18,6 +27,18 @@ interface ItemConProducto {
   produto: { id: number };
   cantidad: number;
   esBalanza?: boolean;
+}
+
+/**
+ * ¿Un producto agregado AHORA va a la cola de la próxima venta, o al
+ * carrito actual? Depende de "venta en curso" (ventaMut.isPending),
+ * NUNCA de si el modal de cobro está abierto (showPago): antes de hacer
+ * clic en "Confirmar cobro" el modal puede llevar rato abierto —eligiendo
+ * forma de pago, el cliente pidiendo "una cosa más"— y ese producto es
+ * parte de ESTA venta, con el total actualizándose en vivo con él.
+ */
+export function debeEncolarAgregado(ventaEnCurso: boolean): boolean {
+  return ventaEnCurso;
 }
 
 /**
@@ -40,19 +61,18 @@ export function fusionarColaEnCarrito<T extends ItemConProducto>(
 }
 
 /**
- * ¿Toca fusionar la cola AHORA? Solo en el flanco de bajada del modal de
- * cobro (showPago true → false): la venta en curso terminó, con éxito
- * (el carrito ya quedó vacío) o porque el cajero canceló/abandonó el
- * intento (el carrito sigue siendo el borrador a reintentar — la cola se
- * suma a ESE). Mientras el modal se queda abierto esperando un reintento
- * (una emisión fallida NO cierra el modal, a propósito, para que el cajero
- * pueda reintentar sin rehacer nada), no se fusiona: mezclar ahí
- * contaminaría un carrito que está a punto de reenviarse tal cual.
+ * ¿Toca fusionar la cola AHORA? Solo en el flanco de bajada de "venta en
+ * curso" (antes true, ahora false — en la práctica, ventaMut.isPending):
+ * la venta terminó, con éxito (el carrito ya quedó vacío) o con un fallo
+ * de negocio que deja el carrito como borrador para reintentar (la cola se
+ * suma a ESE). Si el cajero reintenta, "venta en curso" vuelve a true y el
+ * gate se reactiva — nada de lo agregado en el tramo anterior se pierde,
+ * sigue en la cola hasta el próximo flanco de bajada.
  */
 export function debeFusionarColaAhora(
-  showPagoAntes: boolean, showPagoAhora: boolean, colaLength: number,
+  ventaEnCursoAntes: boolean, ventaEnCursoAhora: boolean, colaLength: number,
 ): boolean {
-  return showPagoAntes && !showPagoAhora && colaLength > 0;
+  return ventaEnCursoAntes && !ventaEnCursoAhora && colaLength > 0;
 }
 
 /**

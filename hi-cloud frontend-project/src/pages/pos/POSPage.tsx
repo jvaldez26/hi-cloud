@@ -67,7 +67,7 @@ import { requiereSupervisorPorPrecioModificado } from './carritoRecuperadoGate';
 import { debeIgnorarEnterGlobal } from './confirmarCobroEnterGate';
 import { resolverIntentoCobro } from './intentoCobroGate';
 import { iniciarTelemetriaPOS, registrarVentaCompletada, registrarAccionPOS, obtenerPestanasVivasConocidas } from './posTelemetria';
-import { fusionarColaEnCarrito, debeFusionarColaAhora, totalMostradoEnModal } from './ventaEnCursoGate';
+import { fusionarColaEnCarrito, debeFusionarColaAhora, totalMostradoEnModal, debeEncolarAgregado } from './ventaEnCursoGate';
 import { credencialesFueronRechazadas } from './reautenticacionGate';
 import { construirFiltroVendedorPOS } from './vendedorFiltroPanel';
 import { UomSelect } from '../../components/ui/UomSelect';
@@ -9715,15 +9715,31 @@ export default function POSPage() {
     if (recuperado) carritoRecuperadoRef.current = true;
     return items;
   });
-  // Cola de "próxima venta" (decisión 2026-10-08, FAC-1746 empresa 73): un
-  // producto escaneado/agregado mientras el modal de cobro está abierto
-  // NUNCA se mezcla con el carrito que se está cobrando — espera aquí y
-  // entra al carrito automáticamente cuando esa venta termine (éxito, o el
-  // cajero cancela/abandona el intento). Mientras una venta fallida sigue
-  // en pantalla esperando un reintento (showPago sigue true), la cola NO se
-  // mezcla con el carrito-borrador que se va a reenviar — ver el efecto más
-  // abajo, que solo fusiona en la transición showPago true→false.
+  // Cola de "próxima venta" (decisión 2026-10-08, ajustada el mismo día tras
+  // FAC-1746 empresa 73): el gate se activa recién al hacer clic en
+  // "Confirmar cobro" — ANTES de eso el modal de cobro puede estar abierto
+  // un buen rato (la cajera eligiendo forma de pago, el cliente pidiendo
+  // "una cosa más") y un producto agregado en ese tramo debe entrar a ESTA
+  // venta con normalidad, actualizando el total en vivo. Solo desde que se
+  // llama ventaMut.mutate() hasta que la venta termina (éxito o fallo) un
+  // producto nuevo se desvía aquí en vez de mezclarse con el carrito que ya
+  // se envió — entra al carrito automáticamente cuando esa venta termina
+  // (éxito, o el cajero cancela/abandona el intento). Mientras una venta
+  // fallida sigue en pantalla esperando un reintento (el modal no se
+  // cierra para eso, pero ventaMut.isPending ya volvió a false), el gate se
+  // apaga: un producto agregado ahí entra al carrito-borrador normal, igual
+  // que antes de confirmar — y si el cajero reintenta, el gate se reactiva.
+  // Ver ventaEnCursoRef (abajo) para el porqué de la referencia aparte, y
+  // ventaEnCursoGate.ts para la lógica de fusión, extraída y probada.
   const [colaProximaVenta, setColaProximaVenta] = useState<CartItem[]>([]);
+  // addToCart/addBalanzaToCart están declarados MUCHO antes que ventaMut
+  // (useMutation, más abajo, depende de variables del componente que no
+  // existen todavía en este punto del archivo) — no se puede leer
+  // ventaMut.isPending directamente ahí. Esta ref se mantiene sincronizada
+  // justo después de declarar ventaMut (ver más abajo) y es lo que esos dos
+  // funnels consultan: una ref no necesita entrar en ningún array de
+  // dependencias, así que no hay closure vieja que arrastrar.
+  const ventaEnCursoRef = useRef(false);
   // Monto congelado al hacer clic en "Confirmar cobro" — el modal de cobro
   // lo muestra en vez del total en vivo mientras la venta está en curso
   // (ventaMut.isPending), para que el número que ve la cajera sea siempre
@@ -10492,30 +10508,6 @@ export default function POSPage() {
     catch { /* quota exceeded — ignorar */ }
   }, [ventasEnEspera, user?.id, empresaActual, sucursalId, tabId]);
 
-  // Fusionar la cola de "próxima venta" al carrito — SOLO en la transición
-  // showPago true → false: cuando la venta en curso terminó, con éxito
-  // (cart ya quedó vacío, onSuccess lo limpió) o porque el cajero canceló/
-  // cerró el modal (cart sigue siendo el borrador a reintentar, y la cola
-  // se suma a ESE). Mientras showPago se queda en true (incluido el tramo
-  // de "la emisión falló, el cajero puede reintentar" — el modal no se
-  // cierra para eso), la cola NO se toca: fusionarla ahí mezclaría
-  // productos de otro cliente con un borrador que está a punto de
-  // reenviarse tal cual.
-  const showPagoAnteriorRef = useRef(showPago);
-  useEffect(() => {
-    const eraAbierto = showPagoAnteriorRef.current;
-    showPagoAnteriorRef.current = showPago;
-    if (!debeFusionarColaAhora(eraAbierto, showPago, colaProximaVenta.length)) return;
-
-    const cantidad = colaProximaVenta.length;
-    setCart(prev => fusionarColaEnCarrito(prev, colaProximaVenta));
-    message.success(
-      `${cantidad} producto${cantidad !== 1 ? 's' : ''} que esperaban se agregaron al carrito`,
-      2.5,
-    );
-    setColaProximaVenta([]);
-  }, [showPago, colaProximaVenta]);
-
   // Aviso "se recuperó tu carrito" — una sola vez, si el inicializador de
   // `cart` encontró algo (clave propia ya existente, o migrado desde la
   // clave vieja compartida). No se dispara en un carrito vacío recién
@@ -10620,15 +10612,19 @@ export default function POSPage() {
       return [{ produto, cantidad: 1, precio: precioConLista, descuentoMonto: 0, precioLista: listaGlobal }, ...prev];
     };
 
-    // Venta en curso (modal de cobro abierto): nunca mezclar un producto
-    // nuevo con el carrito que se está cobrando — va a la cola de la
-    // próxima venta (colaProximaVenta) y entra al carrito solo cuando ESTA
-    // venta termine (ver el efecto que mira showPago, más abajo). Este es
-    // el funnel común a TODOS los caminos que agregan al carrito (clic,
+    // Venta en curso (desde el clic en "Confirmar cobro" hasta que la venta
+    // termina — ver ventaEnCursoRef más arriba, NO showPago: antes de
+    // confirmar, el modal de cobro puede estar abierto un buen rato
+    // mientras se elige forma de pago, y un producto agregado ahí debe
+    // entrar a ESTA venta con normalidad): nunca mezclar un producto nuevo
+    // con el carrito que YA SE ENVIÓ — va a la cola de la próxima venta
+    // (colaProximaVenta) y entra al carrito solo cuando ESA venta termine
+    // (ver el efecto que mira ventaMut.isPending, más abajo). Este es el
+    // funnel común a TODOS los caminos que agregan al carrito (clic,
     // búsqueda exacta + Enter, scan — ver procesarScan), así que es la red
     // de seguridad real, no solo la del scanner. Root cause de FAC-1746
     // (empresa 73, 2026-10-08).
-    if (showPago) {
+    if (debeEncolarAgregado(ventaEnCursoRef.current)) {
       setColaProximaVenta(mezclar);
       message.info(`${produto.nombre} — esperando a que termine la venta actual`, 1.8);
       return;
@@ -10663,7 +10659,7 @@ export default function POSPage() {
         }
       })
       .catch(() => { precioCache.current.set(cacheKey, null); });
-  }, [clienteId, posPermitirStockNegativo, listaGlobal, showPago]);
+  }, [clienteId, posPermitirStockNegativo, listaGlobal]);
 
   /**
    * Agrega una línea de balanza al carrito.
@@ -10707,9 +10703,10 @@ export default function POSPage() {
       balanzaTotalFijo: totalFijo,
     };
 
-    // Venta en curso: misma regla y mismo porqué que addToCart — va a la
-    // cola de la próxima venta, nunca al carrito que se está cobrando.
-    if (showPago) {
+    // Venta en curso: misma regla y mismo porqué que addToCart (ver
+    // ventaEnCursoRef más arriba) — va a la cola de la próxima venta, nunca
+    // al carrito que ya se envió.
+    if (debeEncolarAgregado(ventaEnCursoRef.current)) {
       setColaProximaVenta(prev => [nuevaLinea, ...prev]);
       message.info(`⚖ ${producto.nombre} — esperando a que termine la venta actual`, 1.8);
       return;
@@ -10725,7 +10722,7 @@ export default function POSPage() {
     );
     setScanFlash(true);
     setTimeout(() => setScanFlash(false), 600);
-  }, [showPago]);
+  }, []);
 
   const updateQty = (idx: number, delta: number) => setCart(prev =>
     prev.map((it, i) => {
@@ -11647,6 +11644,33 @@ export default function POSPage() {
   // curso — una vez que termina (éxito o error), vuelve a seguir el total en
   // vivo normalmente.
   const totalCobroMostrado = totalMostradoEnModal(ventaMut.isPending, totalCongeladoRef.current, totalAPagar);
+  // Sincroniza la ref que addToCart/addBalanzaToCart consultan — directo en
+  // el cuerpo del render (no en un useEffect): no dispara otro render, y
+  // así la ref queda al día ANTES de que el usuario pueda volver a tocar el
+  // carrito en esta misma pasada.
+  ventaEnCursoRef.current = ventaMut.isPending;
+
+  // Fusionar la cola de "próxima venta" al carrito — SOLO en la transición
+  // ventaMut.isPending true → false: la venta en curso terminó, con éxito
+  // (cart ya quedó vacío, onSuccess lo limpió) o con error/fallo de
+  // negocio (_emisionFallo, _requiereSupervisor, onError — todos dejan el
+  // carrito intacto para un reintento, y la cola se suma a ESE). Si el
+  // cajero reintenta, ventaMut.isPending vuelve a true y el gate se
+  // reactiva para lo que se agregue en ESE nuevo tramo.
+  const ventaEnCursoAnteriorRef = useRef(ventaMut.isPending);
+  useEffect(() => {
+    const estabaEnCurso = ventaEnCursoAnteriorRef.current;
+    ventaEnCursoAnteriorRef.current = ventaMut.isPending;
+    if (!debeFusionarColaAhora(estabaEnCurso, ventaMut.isPending, colaProximaVenta.length)) return;
+
+    const cantidad = colaProximaVenta.length;
+    setCart(prev => fusionarColaEnCarrito(prev, colaProximaVenta));
+    message.success(
+      `${cantidad} producto${cantidad !== 1 ? 's' : ''} que esperaban se agregaron al carrito`,
+      2.5,
+    );
+    setColaProximaVenta([]);
+  }, [ventaMut.isPending, colaProximaVenta]);
 
   // ── Mutación para modos alternativos (sin cobro) ────────────────────────────
   const modoAltMut = useMutation({
