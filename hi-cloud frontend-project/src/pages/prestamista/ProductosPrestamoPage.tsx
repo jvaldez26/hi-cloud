@@ -45,7 +45,7 @@ export default function ProductosPrestamoPage() {
 
   const openForm = (row?: any) => {
     setEditing(row ?? null);
-    form.setFieldsValue(row ? { ...row } : { metodoAmortizacion: 'frances', frecuenciaPago: 'mensual', diasGracia: 0, porcentajeMora: 0, cargoCierre: 0 });
+    form.setFieldsValue(row ? { ...row } : { metodoAmortizacion: 'frances', diasGracia: 0, porcentajeMora: 0, cargoCierre: 0 });
     setOpen(true);
   };
 
@@ -112,9 +112,9 @@ export default function ProductosPrestamoPage() {
                 <Option value="hipotecario">Hipotecario</Option>
               </Select>
             </Form.Item>
-            <Form.Item name="frecuenciaPago" label="Frecuencia de Pago">
-              <Select><Option value="semanal">Semanal</Option><Option value="quincenal">Quincenal</Option><Option value="mensual">Mensual</Option></Select>
-            </Form.Item>
+            {/* frecuenciaPago (semanal/quincenal) se quitó del formulario: el motor de
+               amortización solo genera cuotas mensuales — ofrecer la opción no hacía
+               nada (Etapa 1). Se reactivará cuando el motor la soporte de verdad. */}
             <Form.Item name="porcentajeMora" label="Mora Mensual (%)">
               <InputNumber style={{ width: '100%' }} min={0} max={100} precision={3} addonAfter="%" />
             </Form.Item>
