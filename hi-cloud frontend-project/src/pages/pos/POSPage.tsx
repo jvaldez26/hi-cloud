@@ -7475,35 +7475,61 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
       : fps.map(fp => `${PAGO_LABELS_POS[fp.tipo] ?? `T${fp.tipo}`} ${fmt.money(fp.monto)}`).join(' / ');
 
   // ── Abrir diálogo con snapshot del cierre a imprimir ─────────────────────
-  const abrirDialogoImprimir = (source: 'actual' | any) => {
+  // Caja ABIERTA: lo que ya está en caché (cajaHoy/historial) puede venir
+  // recortado — VENDEDOR nunca ve el monto de una caja abierta (backend,
+  // 2026-10-09). Se piden siempre frescos y completos por el endpoint de
+  // impresión (/caja/:id/imprimir), que exige autorización de supervisor
+  // para VENDEDOR (política 'imprimir_cierre_caja_abierta') — el
+  // interceptor de axios ya sabe pedir esa autorización y reintentar solo,
+  // de forma transparente (mismo mecanismo que cerrar_caja/registrar_retiro).
+  // Una caja CERRADA nunca pasa por aquí: sigue usando los datos en caché
+  // tal cual, sin pedir nada — "sin cambios".
+  const abrirDialogoImprimir = async (source: 'actual' | any) => {
+    let base: any = source === 'actual' ? cajaHoy : source;
+    if (!base) return;
+
+    if (base.estado === 'abierta') {
+      try {
+        base = await api.get(`/caja/${base.id}/imprimir`).then(r => r.data?.data ?? r.data);
+      } catch (err: any) {
+        if (err?.response?.status !== 403) {
+          message.error(err?.response?.data?.message ?? 'No se pudo preparar la impresión');
+        }
+        return; // cancelado, sin autorización, o error real — no abrir el diálogo
+      }
+    }
+
+    const vendidoContadoSnap  = Number(base.ventasEfectivo ?? 0);
+    const vendidoCreditoRecSnap =
+      Number(base.ventasTarjeta ?? 0) + Number(base.ventasTransferencia ?? 0) + Number(base.ventasCredito ?? 0);
+
     if (source === 'actual') {
-      if (!cajaHoy) return;
       setPrintSnapshot({
-        ...cajaHoy,
+        ...base,
         _billetes:           Object.fromEntries(Object.entries(billetes).map(([k,v]) => [k, Number(v)])),
         _pago:               pago,
         _nota:               nota || undefined,
         _totalFisico:        totalFisico,
         _totalBilletes:      totalBilletes,
-        _vendidoContado:     vendidoContado,
-        _vendidoCreditoRecibo: vendidoCreditoRecibo,
-        _efectivoInicial:    efectivoInicial,
-        _totalRecibos:       totalRecibos,
+        _vendidoContado:     vendidoContadoSnap,
+        _vendidoCreditoRecibo: vendidoCreditoRecSnap,
+        _efectivoInicial:    Number(base.saldoApertura ?? 0),
+        _totalRecibos:       Number(base.cobrosRecibidos ?? 0),
       });
     } else {
-      const bls      = (source.desgloseBilletes ?? {}) as Record<string, number>;
+      const bls      = (base.desgloseBilletes ?? {}) as Record<string, number>;
       const totalBls = Object.entries(bls).reduce((s, [den, qty]) => s + Number(den) * Number(qty), 0);
       setPrintSnapshot({
-        ...source,
+        ...base,
         _billetes:           bls,
-        _pago:               source.desglosePago ?? {},
-        _nota:               source.notas ?? undefined,
-        _totalFisico:        Number(source.saldoFisico ?? 0),
+        _pago:               base.desglosePago ?? {},
+        _nota:               base.notas ?? undefined,
+        _totalFisico:        Number(base.saldoFisico ?? 0),
         _totalBilletes:      totalBls,
-        _vendidoContado:     Number(source.ventasEfectivo ?? 0),
-        _vendidoCreditoRecibo: Number(source.ventasTarjeta ?? 0) + Number(source.ventasTransferencia ?? 0) + Number(source.ventasCredito ?? 0),
-        _efectivoInicial:    Number(source.saldoApertura ?? 0),
-        _totalRecibos:       Number(source.cobrosRecibidos ?? 0),
+        _vendidoContado:     vendidoContadoSnap,
+        _vendidoCreditoRecibo: vendidoCreditoRecSnap,
+        _efectivoInicial:    Number(base.saldoApertura ?? 0),
+        _totalRecibos:       Number(base.cobrosRecibidos ?? 0),
       });
     }
     setPrintDialogOpen(true);
@@ -7535,9 +7561,14 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
         tipoImpresora: empConf.posTipoImpresora,
       };
 
-      // El ticket usa EL MISMO endpoint que el PDF y el Excel.
-      let detalle: any = null;
-      if (conDetalle) {
+      // El ticket usa LA MISMA fuente que el PDF y el Excel. Si snap ya trae
+      // facturasDetalle (lo deja /caja/:id/imprimir, para una caja ABIERTA —
+      // ver abrirDialogoImprimir), se reutiliza tal cual: ya pasó por la
+      // autorización de supervisor que hiciera falta, pedir el detalle OTRA
+      // vez aquí repetiría ese chequeo sin necesidad. Una caja CERRADA no
+      // trae ese campo — sigue pidiéndolo aparte, "sin cambios".
+      let detalle: any = snap.facturasDetalle ?? null;
+      if (conDetalle && !detalle) {
         detalle = await api.get(`/caja/${snap.id}/facturas-detalle`).then(r => r.data?.data ?? r.data);
       }
 
@@ -7858,7 +7889,9 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
                         {item.vendedorNombre && (
                           <div style={{ fontSize:12, color:C.textSub, marginTop:2 }}>{item.vendedorNombre}</div>
                         )}
-                        <div style={{ fontSize:13, fontWeight:600, color:C.green, marginTop:2 }}>{m(vend)}</div>
+                        <div style={{ fontSize:13, fontWeight:600, color: item.ciegoCajaActivo ? C.textMuted : C.green, marginTop:2 }}>
+                          {item.ciegoCajaActivo ? '— (caja abierta)' : m(vend)}
+                        </div>
                       </div>
                       <div style={{ fontSize:11, fontWeight:700, textTransform:'uppercase',
                         color: item.estado === 'revisada' ? C.green : C.textSub }}>

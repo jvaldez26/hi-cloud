@@ -195,19 +195,20 @@ export class CajaController {
 
   @Get('historial')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  @ApiOperation({ summary: 'Historial de cierres (filtrable por ?vendedorId, ?mes, ?anio)' })
+  @ApiOperation({ summary: 'Historial de cierres (filtrable por ?vendedorId, ?mes, ?anio) — VENDEDOR nunca ve el monto de una caja ABIERTA' })
   getHistorial(
     @Query('page')       page?:       string,
     @Query('limit')      limit?:      string,
     @Query('vendedorId') vendedorId?: string,
     @Query('mes')        mes?:        string,
     @Query('anio')       anio?:       string,
+    @GetUser()            usuario?:   User,
   ) {
     const vid = vendedorId !== undefined ? Number(vendedorId) : undefined;
     const m   = mes  ? Number(mes)  : undefined;
     const a   = anio ? Number(anio) : undefined;
     return this.cajaService.getHistorial(
-      Number(page ?? 1), Number(limit ?? 20), vid, m, a,
+      Number(page ?? 1), Number(limit ?? 20), vid, m, a, (usuario as any)?.role,
     );
   }
 
@@ -302,10 +303,18 @@ export class CajaController {
     return this.cajaService.getFacturasDetalle(id, usuario);
   }
 
+  @Get(':id/imprimir')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @UseGuards(RequiereSupervisor('imprimir_cierre_caja_abierta'))
+  @ApiOperation({ summary: 'Datos completos (nunca recortados por rol) para imprimir el cierre, con detalle de facturas — el frontend solo la llama para cajas ABIERTA; un VENDEDOR necesita autorización de supervisor' })
+  getDatosParaImprimir(@Param('id', ParseIntPipe) id: number, @GetUser() usuario: User) {
+    return this.cajaService.getDatosParaImprimir(id, { id: usuario.id, role: (usuario as any).role });
+  }
+
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
-  @ApiOperation({ summary: 'Una caja por id — enlace directo del aviso de caja abierta de un día anterior' })
-  obtenerUna(@Param('id', ParseIntPipe) id: number) {
-    return this.cajaService.obtenerUnaPorId(id);
+  @ApiOperation({ summary: 'Una caja por id — enlace directo del aviso de caja abierta de un día anterior. VENDEDOR nunca ve el monto de una caja ABIERTA' })
+  obtenerUna(@Param('id', ParseIntPipe) id: number, @GetUser() usuario: User) {
+    return this.cajaService.obtenerUnaPorId(id, (usuario as any)?.role);
   }
 }

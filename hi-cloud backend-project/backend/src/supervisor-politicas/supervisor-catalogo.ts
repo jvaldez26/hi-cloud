@@ -54,6 +54,7 @@ export const CATALOGO_SUPERVISOR: CatalogoItem[] = [
   { clave: 'cerrar_caja',      label: 'Cerrar caja',        descripcion: 'Confirmar el cierre de caja del turno',          grupo: 'Caja', defaultRequerido: false, defaultModo: 'cada_vez' },
   { clave: 'registrar_retiro', label: 'Registrar retiro',   descripcion: 'Registrar un retiro de efectivo de la caja',     grupo: 'Caja', defaultRequerido: false, defaultModo: 'cada_vez' },
   { clave: 'registrar_gasto',  label: 'Registrar gasto',    descripcion: 'Registrar un gasto pagado desde la caja',        grupo: 'Caja', defaultRequerido: false, defaultModo: 'sesion' },
+  { clave: 'imprimir_cierre_caja_abierta', label: 'Imprimir cierre de caja abierta', descripcion: 'Imprimir (o exportar) el cierre de una caja que todavía está ABIERTA, con sus montos reales', grupo: 'Caja', defaultRequerido: true, defaultModo: 'sesion' },
 
   // ── Inventario y Productos ───────────────────────────────────────────────
   { clave: 'crear_producto',     label: 'Crear producto',           descripcion: 'Dar de alta un producto nuevo',                 grupo: 'Inventario y Productos', defaultRequerido: true, defaultModo: 'sesion' },

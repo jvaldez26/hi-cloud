@@ -634,6 +634,26 @@ export class CajaService {
   }
 
   /**
+   * VENDEDOR nunca ve el balance/monto de una caja ABIERTA — en NINGUNA
+   * pantalla (Cierre Actual, Historial, caja por id), sea la suya propia o
+   * la de otro cajero (decisión 2026-10-09). Reutiliza exactamente
+   * ocultarCamposCiego (el mismo recorte que ya usaba el modo ciego
+   * opcional) pero como regla FIJA del rol: no depende del toggle
+   * `cierreCajaCiego` de la empresa, que sigue existiendo para lo que ya
+   * gobernaba (el umbral de descuadre, etc. — ver getEmpresaCfg). Una caja
+   * CERRADA/REVISADA/CERRADA_SISTEMA nunca se toca aquí.
+   *
+   * Siempre corre DESPUÉS de conEfectivoEsperado (nunca antes): ese método
+   * necesita los campos crudos (ventasEfectivo, etc.) para calcular
+   * efectivoEsperado — recortarlos primero lo dejaría calculando sobre
+   * ceros.
+   */
+  private ocultarSiVendedorYAbierta(caja: any, role?: string): any {
+    if (!caja || role !== UserRole.VENDEDOR || caja.estado !== EstadoCierre.ABIERTA) return caja;
+    return this.ocultarCamposCiego(caja);
+  }
+
+  /**
    * Añade el efectivo esperado a una caja ABIERTA.
    *
    * `saldoCierre` solo se rellena al cerrar, así que para una caja abierta la
@@ -830,15 +850,20 @@ export class CajaService {
     }
     const fresh = await this.repo.findOne({ where: { id: caja.id } });
     const { cierreCajaCiego } = await this.getEmpresaCfg(empresaId);
-    // Ciego solo mientras la caja está abierta; al cerrar el vendedor recibe datos completos para imprimir
+    // Ciego mientras la caja está abierta — SIEMPRE para VENDEDOR (regla fija
+    // del rol, ver ocultarSiVendedorYAbierta), y ADEMÁS si la empresa activó
+    // el toggle opcional cierreCajaCiego (ese sigue aplicando igual que
+    // antes, por si algún día este método deja de ser exclusivo de VENDEDOR).
+    // Al cerrar, el vendedor recibe datos completos para imprimir.
+    const conEsperado = this.conEfectivoEsperado(fresh);
     return (cierreCajaCiego && fresh?.estado === EstadoCierre.ABIERTA)
       ? this.ocultarCamposCiego(fresh)
-      : this.conEfectivoEsperado(fresh);
+      : this.ocultarSiVendedorYAbierta(conEsperado, UserRole.VENDEDOR);
   }
 
   // ── Historial (filtrado por empresa) ─────────────────────────────────────
 
-  async getHistorial(page = 1, limit = 20, vendedorId?: number, mes?: number, anio?: number) {
+  async getHistorial(page = 1, limit = 20, vendedorId?: number, mes?: number, anio?: number, role?: string) {
     const empresaId  = this.tenantService.getEmpresaId();
     const sucursalId = this.tenantService.getSucursalId();
 
@@ -876,7 +901,7 @@ export class CajaService {
     // mezcladas aquí, que si no saldrían con efectivoEsperado undefined y el
     // modal de "Cerrar caja" desde este listado arrancaría mostrando 0.
     return {
-      data: data.map(c => this.conEfectivoEsperado(c)),
+      data: data.map(c => this.ocultarSiVendedorYAbierta(this.conEfectivoEsperado(c), role)),
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
   }
@@ -884,11 +909,31 @@ export class CajaService {
   /** Una caja por id, sin importar el mes del historial que esté filtrado en
    *  pantalla — para el enlace directo del aviso "caja abierta de un día
    *  anterior" (?cajaId=...), que puede apuntar a cualquier fecha. */
-  async obtenerUnaPorId(id: number) {
+  async obtenerUnaPorId(id: number, role?: string) {
     const empresaId = this.tenantService.getEmpresaId();
     const caja = await this.repo.findOne({ where: { id, empresaId } });
     if (!caja) throw new NotFoundException(`Caja #${id} no encontrada`);
-    return this.conEfectivoEsperado(caja);
+    return this.ocultarSiVendedorYAbierta(this.conEfectivoEsperado(caja), role);
+  }
+
+  /**
+   * Datos COMPLETOS (nunca recortados por rol) de una caja, para imprimir su
+   * cierre — incluye el detalle de facturas del turno. El controller exige
+   * la política 'imprimir_cierre_caja_abierta' en esta ruta
+   * (RequiereSupervisor, guard declarativo) — se activa para CUALQUIER caja
+   * que llegue aquí, pero el frontend solo llama esta ruta cuando la caja
+   * está ABIERTA (una CERRADA se imprime con los datos ya en caché, sin
+   * pasar por aquí — "sin cambios"). getFacturasDetalle() ya exige, aparte,
+   * que un VENDEDOR solo pida el detalle de SU PROPIA caja — esa regla de
+   * dueño sigue aplicando tal cual, independiente de la autorización de
+   * supervisor (son dos controles distintos).
+   */
+  async getDatosParaImprimir(id: number, usuario?: { id: number; role?: string }) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const caja = await this.repo.findOne({ where: { id, empresaId } });
+    if (!caja) throw new NotFoundException(`Caja #${id} no encontrada`);
+    const facturasDetalle = await this.getFacturasDetalle(id, usuario);
+    return { ...this.conEfectivoEsperado(caja), facturasDetalle };
   }
 
   // ── Resumen mensual (filtrado por empresa) ────────────────────────────────

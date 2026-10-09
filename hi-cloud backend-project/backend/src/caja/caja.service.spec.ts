@@ -1,4 +1,4 @@
-import { ForbiddenException, BadRequestException } from '@nestjs/common';
+import { ForbiddenException, BadRequestException, NotFoundException } from '@nestjs/common';
 import { CajaService } from './caja.service';
 import { CierreCaja, EstadoCierre } from './entities/cierre-caja.entity';
 import { UserRole } from '../users/enums/user-role.enum';
@@ -271,5 +271,238 @@ describe('CajaService.getHistorial — ABIERTA siempre primero', () => {
     const { data } = await service.getHistorial(1, 20);
 
     expect((data[0] as any).efectivoEsperado).toBeDefined();
+  });
+});
+
+/**
+ * Cierre de Caja — VENDEDOR nunca ve el balance/monto de una caja ABIERTA
+ * (decisión 2026-10-09): ni en Historial, ni en Cierre Actual, ni en
+ * ningún resumen. ADMIN/CONTADOR: sin cambios, ven e imprimen todo. Las
+ * cajas CERRADAS tampoco cambian para nadie.
+ *
+ * Mismo criterio de fakes que el resto del archivo, con un helper propio
+ * (makeCajaService/cajaBase) porque estos casos necesitan findOne() por id
+ * y un facturas-detalle con datos reales — buildDeps()/cajaAbierta() de
+ * arriba ya bastaban para los suyos y no hacía falta tocarlos.
+ */
+function cajaBase(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: 1, fecha: new Date('2026-10-09'), vendedorId: 10, vendedorNombre: 'Bellamar González',
+    sucursalId: null, estado: EstadoCierre.ABIERTA,
+    saldoApertura: 500, ventasEfectivo: 1200, ventasTarjeta: 300, ventasTransferencia: 50,
+    ventasCredito: 0, cobrosRecibidos: 80, cobrosEfectivo: 80, cobrosOtrosMedios: 0,
+    totalAnticipos: 0, anticiposEfectivo: 0, anticiposOtrosMedios: 0,
+    gastosEfectivo: 20, retiros: 0, saldoCierre: 0, saldoFisico: 0, diferencia: 0,
+    cantidadTransacciones: 5, empresaId: EMPRESA, userId: 1,
+    ...overrides,
+  };
+}
+
+function makeCajaService(opts: { cajas?: any[]; facturas?: any[]; cierreCajaCiego?: boolean } = {}) {
+  const cajas = opts.cajas ?? [cajaBase()];
+  const facturas = opts.facturas ?? [];
+
+  const repo = {
+    findOne: jest.fn(async ({ where }: any) => {
+      const id = where?.id;
+      const found = cajas.find(c => c.id === id && (where?.empresaId == null || c.empresaId === where.empresaId));
+      return found ?? null;
+    }),
+    createQueryBuilder: jest.fn(() => {
+      const qb: any = {
+        where: jest.fn(() => qb),
+        andWhere: jest.fn(() => qb),
+        orderBy: jest.fn(() => qb),
+        addOrderBy: jest.fn(() => qb),
+        skip: jest.fn(() => qb),
+        take: jest.fn(() => qb),
+        getManyAndCount: jest.fn(async () => [cajas, cajas.length]),
+        // getCajaHoyByUserId no filtra por los predicados reales en este fake
+        // (el repo no reimplementa SQL) — basta con devolver la primera caja,
+        // cada test de este bloque solo tiene UNA caja relevante.
+        getOne: jest.fn(async () => cajas[0] ?? null),
+      };
+      return qb;
+    }),
+  };
+
+  const dataSource = {
+    // SELECT configuracion FROM empresa — getEmpresaCfg()
+    query: jest.fn(async (sql: string) => {
+      if (sql.includes('SELECT configuracion FROM empresa')) {
+        return [{ configuracion: { cierreCajaCiego: opts.cierreCajaCiego === true } }];
+      }
+      // getFacturasDetalle: lookup del perfil de vendedor (usuarioId→vendedorId) y las facturas del turno
+      if (sql.includes('FROM vendedores')) return [];
+      if (sql.includes('FROM facturas f')) {
+        return facturas.map(f => ({
+          id: f.id, folio: f.folio, encf: f.encf ?? null, hora: f.hora ?? new Date(),
+          clienteNombre: f.clienteNombre ?? 'Consumidor Final', formasPago: f.formasPago ?? [],
+          subtotal: String(f.subtotal ?? 0), iva: String(f.iva ?? 0), total: String(f.total ?? 0),
+          estado: f.estado ?? 'emitida',
+        }));
+      }
+      return [{}];
+    }),
+    manager: {
+      // recalcularDesdeBD — no importa el cuadre recalculado en estas pruebas.
+      query: jest.fn(async () => [{}]),
+      update: jest.fn(async () => undefined),
+    },
+  };
+
+  const tenantService = { getEmpresaId: () => EMPRESA, getSucursalId: () => null };
+  const realtimeService = { notify: jest.fn() };
+
+  const svc = new CajaService(
+    repo as any, {} as any, dataSource as any, tenantService as any, realtimeService as any,
+  );
+  return { svc, cajas, dataSource, repo };
+}
+
+describe('CajaService.obtenerUnaPorId — VENDEDOR nunca ve el monto de una caja ABIERTA', () => {
+  it('VENDEDOR + caja ABIERTA: los montos se recortan y queda marcada ciegoCajaActivo', async () => {
+    const { svc } = makeCajaService();
+    const r = await svc.obtenerUnaPorId(1, UserRole.VENDEDOR);
+
+    expect(r.ciegoCajaActivo).toBe(true);
+    for (const campo of ['ventasEfectivo', 'ventasTarjeta', 'ventasTransferencia', 'ventasCredito',
+      'cobrosRecibidos', 'cobrosEfectivo', 'cobrosOtrosMedios', 'totalAnticipos',
+      'anticiposEfectivo', 'anticiposOtrosMedios', 'gastosEfectivo', 'retiros',
+      'saldoCierre', 'diferencia', 'cantidadTransacciones',
+      'efectivoEsperado', 'esperadoInconsistente', 'excesoRetiros']) {
+      expect(r).not.toHaveProperty(campo);
+    }
+    // El estado y el id SIGUEN visibles — el frontend necesita saber que está
+    // abierta para decidir qué pedir/ofrecer (p.ej. el botón de imprimir).
+    expect(r.estado).toBe('abierta');
+    expect(r.id).toBe(1);
+  });
+
+  it('VENDEDOR + caja CERRADA: sin cambios — los montos se ven completos', async () => {
+    const { svc } = makeCajaService({ cajas: [cajaBase({ estado: EstadoCierre.CERRADA, saldoCierre: 1550 })] });
+    const r = await svc.obtenerUnaPorId(1, UserRole.VENDEDOR);
+
+    expect(r.ciegoCajaActivo).toBeUndefined();
+    expect(r.ventasEfectivo).toBe(1200);
+    expect(r.saldoCierre).toBe(1550);
+  });
+
+  it('ADMIN + caja ABIERTA: sin cambios — ve todo', async () => {
+    const { svc } = makeCajaService();
+    const r = await svc.obtenerUnaPorId(1, UserRole.ADMIN);
+
+    expect(r.ciegoCajaActivo).toBeUndefined();
+    expect(r.ventasEfectivo).toBe(1200);
+    expect(r.efectivoEsperado).toEqual(expect.any(Number));
+  });
+
+  it('CONTADOR + caja ABIERTA: sin cambios — ve todo', async () => {
+    const { svc } = makeCajaService();
+    const r = await svc.obtenerUnaPorId(1, UserRole.CONTADOR);
+
+    expect(r.ciegoCajaActivo).toBeUndefined();
+    expect(r.ventasEfectivo).toBe(1200);
+  });
+
+  it('caja inexistente: NotFoundException, para cualquier rol', async () => {
+    const { svc } = makeCajaService();
+    await expect(svc.obtenerUnaPorId(999, UserRole.VENDEDOR)).rejects.toThrow(NotFoundException);
+  });
+});
+
+describe('CajaService.getHistorial — recorta SOLO las filas ABIERTA cuando el rol es VENDEDOR', () => {
+  it('VENDEDOR: la fila CERRADA sale completa, la ABIERTA sale recortada, en la MISMA respuesta', async () => {
+    const { svc } = makeCajaService({
+      cajas: [
+        cajaBase({ id: 1, estado: EstadoCierre.ABIERTA }),
+        cajaBase({ id: 2, estado: EstadoCierre.CERRADA, saldoCierre: 900 }),
+      ],
+    });
+    const { data } = await svc.getHistorial(1, 20, undefined, undefined, undefined, UserRole.VENDEDOR);
+
+    const abierta = data.find((c: any) => c.id === 1);
+    const cerrada = data.find((c: any) => c.id === 2);
+    expect(abierta.ciegoCajaActivo).toBe(true);
+    expect(abierta.ventasEfectivo).toBeUndefined();
+    expect(cerrada.ciegoCajaActivo).toBeUndefined();
+    expect(cerrada.ventasEfectivo).toBe(1200);
+    expect(cerrada.saldoCierre).toBe(900);
+  });
+
+  it('ADMIN: ninguna fila se recorta, ni siquiera las ABIERTA', async () => {
+    const { svc } = makeCajaService({
+      cajas: [cajaBase({ id: 1, estado: EstadoCierre.ABIERTA })],
+    });
+    const { data } = await svc.getHistorial(1, 20, undefined, undefined, undefined, UserRole.ADMIN);
+
+    expect(data[0].ciegoCajaActivo).toBeUndefined();
+    expect(data[0].ventasEfectivo).toBe(1200);
+  });
+
+  it('sin rol (defensivo — nunca debería pasar, pero no debe fallar): no recorta nada', async () => {
+    const { svc } = makeCajaService();
+    const { data } = await svc.getHistorial(1, 20);
+    expect(data[0].ciegoCajaActivo).toBeUndefined();
+  });
+});
+
+describe('CajaService.getCajaHoyByUserId — Cierre Actual del propio VENDEDOR', () => {
+  it('su caja ABIERTA: recortada SIEMPRE, aunque la empresa tenga cierreCajaCiego apagado', async () => {
+    const { svc } = makeCajaService({ cierreCajaCiego: false });
+    const r: any = await svc.getCajaHoyByUserId(1);
+
+    expect(r.ciegoCajaActivo).toBe(true);
+    expect(r.ventasEfectivo).toBeUndefined();
+  });
+
+  it('su caja ABIERTA, empresa CON cierreCajaCiego activo: sigue recortada (las dos reglas coinciden, no se pisan)', async () => {
+    const { svc } = makeCajaService({ cierreCajaCiego: true });
+    const r: any = await svc.getCajaHoyByUserId(1);
+
+    expect(r.ciegoCajaActivo).toBe(true);
+    expect(r.ventasEfectivo).toBeUndefined();
+  });
+
+  it('su caja ya CERRADA: datos completos para que pueda imprimir', async () => {
+    const { svc } = makeCajaService({
+      cajas: [cajaBase({ estado: EstadoCierre.CERRADA, saldoCierre: 1550 })],
+    });
+    const r: any = await svc.getCajaHoyByUserId(1);
+
+    expect(r.ciegoCajaActivo).toBeUndefined();
+    expect(r.ventasEfectivo).toBe(1200);
+  });
+});
+
+describe('CajaService.getDatosParaImprimir — datos COMPLETOS, para después de la autorización de supervisor', () => {
+  it('devuelve la caja SIN recortar (el guard de la ruta ya autorizó, o el rol no es VENDEDOR) + el detalle de facturas', async () => {
+    const { svc } = makeCajaService({
+      facturas: [{ id: 1, folio: 'B0100000001', total: 1200, subtotal: 1017, iva: 183 }],
+    });
+    // usuario.id coincide con cajaBase().userId (1) — es SU propia caja.
+    const r: any = await svc.getDatosParaImprimir(1, { id: 1, role: UserRole.VENDEDOR });
+
+    expect(r.ciegoCajaActivo).toBeUndefined();
+    expect(r.ventasEfectivo).toBe(1200);
+    expect(r.efectivoEsperado).toEqual(expect.any(Number));
+    expect(r.facturasDetalle.facturas).toHaveLength(1);
+    expect(r.facturasDetalle.resumen.total).toBe(1200);
+  });
+
+  it('VENDEDOR pidiendo el detalle de la caja de OTRO cajero: ForbiddenException (la autorización de supervisor no reemplaza el control de dueño)', async () => {
+    const { svc } = makeCajaService({
+      cajas: [cajaBase({ userId: 999, vendedorId: 999 })], // ni userId ni vendedorId coinciden con quien pide
+    });
+    await expect(
+      svc.getDatosParaImprimir(1, { id: 10, role: UserRole.VENDEDOR }),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('caja inexistente: NotFoundException', async () => {
+    const { svc } = makeCajaService();
+    await expect(
+      svc.getDatosParaImprimir(999, { id: 10, role: UserRole.VENDEDOR }),
+    ).rejects.toThrow(NotFoundException);
   });
 });
