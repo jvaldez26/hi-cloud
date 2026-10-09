@@ -152,6 +152,28 @@ export class CrearPrestamoDto {
   @IsOptional() @IsDateString({}, { message: 'La fecha de desembolso debe ser una fecha válida' })
   fechaDesembolso?: string;
 
+  /**
+   * Motor v2 (Fase 2B): prestamos.service.ts la exige salvo frecuencia
+   * mensual (ahí la auto-calcula a partir de fechaDesembolso) — ningún
+   * desembolso de una solicitud con otra frecuencia podía completarse hasta
+   * declararla aquí, porque forbidNonWhitelisted:true la rechazaba.
+   */
+  @IsOptional() @IsDateString({}, { message: 'La fecha del primer pago debe ser una fecha válida' })
+  fechaPrimerPago?: string;
+
+  /** Ajuste de frecuencia/método respecto al producto o la solicitud — mismo mecanismo que CrearSolicitudDto. */
+  @IsOptional() @IsIn(['diaria', 'semanal', 'quincenal', 'mensual', 'bimestral', 'trimestral', 'semestral', 'anual', 'unico', 'personalizado'])
+  frecuenciaPago?: string;
+
+  @IsOptional() @IsIn(['frances', 'aleman', 'americano', 'flat', 'solo_interes_luego_amortiza', 'personalizado'])
+  metodoAmortizacion?: string;
+
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number)
+  oficialId?: number;
+
+  @IsOptional() @IsString() @MaxLength(200)
+  oficialNombre?: string;
+
   @IsOptional() @IsString() @MaxLength(500)
   notas?: string;
 }

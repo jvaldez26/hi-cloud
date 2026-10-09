@@ -117,13 +117,19 @@ describe('Contrato de formularios — Prestamista (ValidationPipe real)', () => 
   });
 
   describe('PrestamosPage.tsx — Nuevo Préstamo / Desembolso (CrearPrestamoDto)', () => {
-    it('acepta el payload real (sin cuentaBancariaId, observaciones ya mapeado a notas, fecha como string)', () =>
+    it('acepta el payload real (sin cuentaBancariaId, observaciones ya mapeado a notas, fechas como string)', () =>
       aceptaPayloadReal(CrearPrestamoDto, {
-        solicitudId: 5, fechaDesembolso: '2026-10-09', notas: 'Desembolso en ventanilla',
+        solicitudId: 5, fechaDesembolso: '2026-10-09', fechaPrimerPago: '2026-11-09', notas: 'Desembolso en ventanilla',
       }));
 
     it('acepta el payload mínimo (sin observaciones)', () =>
-      aceptaPayloadReal(CrearPrestamoDto, { solicitudId: 5, fechaDesembolso: '2026-10-09' }));
+      aceptaPayloadReal(CrearPrestamoDto, { solicitudId: 5, fechaDesembolso: '2026-10-09', fechaPrimerPago: '2026-11-09' }));
+
+    it('REGRESIÓN Fase 2B: fechaPrimerPago/frecuenciaPago/metodoAmortizacion/oficialId/oficialNombre deben aceptarse — el formulario de desembolso de una solicitud con frecuencia no mensual las necesita', () =>
+      aceptaPayloadReal(CrearPrestamoDto, {
+        solicitudId: 5, fechaDesembolso: '2026-10-09', fechaPrimerPago: '2026-10-16',
+        frecuenciaPago: 'semanal', metodoAmortizacion: 'frances', oficialId: 3, oficialNombre: 'Jean Pérez',
+      }));
 
     it('REGRESIÓN: si volviera a mandarse cuentaBancariaId u observaciones sin mapear, 400', async () => {
       await expect(pipe.transform(
