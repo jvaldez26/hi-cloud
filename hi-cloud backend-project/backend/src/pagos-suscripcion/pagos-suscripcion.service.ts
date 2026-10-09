@@ -25,7 +25,7 @@ import { CuotaEcfService } from '../suscripciones/cuota-ecf.service';
 import { fechaDeVencimiento } from './preview-pago.util';
 import { redondearMoneda } from '../common/utils/moneda.util';
 import {
-  imputarPago, OverrideImputacion, ResultadoImputacion,
+  imputarPago, vencimientoPorCiclosLiquidados, OverrideImputacion, ResultadoImputacion,
 } from './imputacion-pago.util';
 import { construirEstadoCuenta, diasHasta, EntradaEstadoCuenta } from './estado-cuenta-empresa.util';
 
@@ -480,7 +480,8 @@ export class PagosSuscripcionService {
     }
 
     const cargosPendientes = await runner.query(`
-      SELECT id, concepto, monto, "montoPagado"
+      SELECT id, concepto, monto, "montoPagado",
+             to_char("periodoFin", 'YYYY-MM-DD') AS "periodoFin"
       FROM pagos_suscripcion
       WHERE "empresaId" = $1 AND tipo = 'CARGO' AND estado != 'RECHAZADO'
         AND monto > "montoPagado"
@@ -495,6 +496,7 @@ export class PagosSuscripcionService {
         id:             c.id,
         concepto:       c.concepto,
         saldoPendiente: redondearMoneda(Number(c.monto) - Number(c.montoPagado)),
+        periodoFin:     c.periodoFin ?? null,
       })),
       precioMensual:    precio,
       venceSuscripcion: sus.fechaVencimiento,
@@ -537,7 +539,19 @@ export class PagosSuscripcionService {
 
     if (!sus) return;
 
-    if (resultado.periodos >= 1 && resultado.nuevaFecha) {
+    // Un cargo de RENOVACIÓN liquidado ya compró su ciclo: el pago se lo comió
+    // en el paso 1 de la imputación (cargos, FIFO), así que al paso 2 no le
+    // quedó remanente y 'periodos' sale 0. Sin esto la fecha no se movía y el
+    // ciclo recién pagado seguía apareciendo vencido (ELIDO, empresa 73).
+    const finPorCiclos = vencimientoPorCiclosLiquidados(
+      resultado.cargosLiquidados, sus.fechaVencimiento,
+    );
+    const nuevaFecha = [resultado.periodos >= 1 ? resultado.nuevaFecha : null, finPorCiclos]
+      .filter((f): f is string => !!f)
+      .sort()
+      .pop() ?? null;
+
+    if (nuevaFecha) {
       await manager.query(`
         UPDATE suscripciones
         SET estado = 'activa',
@@ -546,7 +560,7 @@ export class PagosSuscripcionService {
             "enPeriodoGracia" = false,
             "abonoDisponible" = $2
         WHERE "empresaId" = $3
-      `, [resultado.nuevaFecha, resultado.abonoFinal, empresaId]);
+      `, [nuevaFecha, resultado.abonoFinal, empresaId]);
     } else {
       await manager.query(`
         UPDATE suscripciones
