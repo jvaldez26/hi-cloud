@@ -178,8 +178,10 @@ export class PrestamosService {
     }
 
     const { deudorId, montoPrincipal, plazoMeses, fechaPrimerPago: fpRaw, fechaDesembolso } = data;
-    if (!deudorId || !montoPrincipal || !plazoMeses || !fpRaw || !fechaDesembolso) {
-      throw new BadRequestException('Faltan campos requeridos: deudorId, montoPrincipal, plazoMeses, fechaDesembolso, fechaPrimerPago');
+    const faltantes = Object.entries({ deudorId, montoPrincipal, plazoMeses, fechaDesembolso, fechaPrimerPago: fpRaw })
+      .filter(([, v]) => !v).map(([k]) => k);
+    if (faltantes.length) {
+      throw new BadRequestException(`Faltan campos requeridos: ${faltantes.join(', ')}`);
     }
     if (!data.productoId && !data.tasaInteresMensual) {
       throw new BadRequestException('Sin productoId, tasaInteresMensual es obligatorio');

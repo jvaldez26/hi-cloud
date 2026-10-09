@@ -55,9 +55,13 @@ export default function PrestamosPage() {
     // pantalla. cuentaBancariaId no tiene columna ni soporte en el DTO (se
     // excluye); observaciones se renombra a notas (CrearPrestamoDto no
     // tiene "observaciones").
-    mutationFn: ({ cuentaBancariaId, fechaDesembolso, observaciones, ...vals }: any) => prestamistalApi.crearPrestamo({
+    // Motor v2 (Fase 2B): fechaPrimerPago solo se auto-calcula en el backend
+    // para frecuencia mensual — para el resto (semanal, quincenal, diaria...)
+    // es obligatorio enviarla, por eso el campo explícito en el formulario.
+    mutationFn: ({ cuentaBancariaId, fechaDesembolso, fechaPrimerPago, observaciones, ...vals }: any) => prestamistalApi.crearPrestamo({
       ...vals,
       fechaDesembolso: fechaDesembolso?.format('YYYY-MM-DD'),
+      fechaPrimerPago: fechaPrimerPago?.format('YYYY-MM-DD'),
       ...(observaciones ? { notas: observaciones } : {}),
     }),
     onSuccess: (d: any) => {
@@ -154,9 +158,14 @@ export default function PrestamosPage() {
           </Form.Item>
           {/* cuentaBancariaId se quitó: pr_prestamos no tiene esa columna, no
              hace nada (Etapa 1) */}
-          <Form.Item name="fechaDesembolso" label="Fecha Desembolso" rules={[{ required: true }]}>
-            <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
-          </Form.Item>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
+            <Form.Item name="fechaDesembolso" label="Fecha Desembolso" rules={[{ required: true }]}>
+              <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
+            </Form.Item>
+            <Form.Item name="fechaPrimerPago" label="Fecha Primer Pago" rules={[{ required: true }]}>
+              <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
+            </Form.Item>
+          </div>
           <Form.Item name="observaciones" label="Observaciones"><Input.TextArea rows={2} /></Form.Item>
         </Form>
       </Modal>
