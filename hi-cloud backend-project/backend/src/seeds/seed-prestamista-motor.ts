@@ -17,6 +17,7 @@
 
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
+import * as bcrypt from 'bcrypt';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
 
@@ -141,6 +142,40 @@ async function run(): Promise<void> {
   } else {
     console.log('ℹ️  No existe admin@hicloud.com todavía — corre `npm run seed` para crearlo, o usa un usuario propio ya vinculado a esta empresa.');
   }
+
+  // 0b. Segundo usuario (CONTADOR) — la segregación de funciones de Prestamista
+  // (Etapa 1, C5) bloquea con 403 a quien intenta aprobar su propia solicitud.
+  // Con un solo usuario (admin@hicloud.com) no se puede probar crear→aprobar.
+  const passwordHash = await bcrypt.hash('Admin1234', 12);
+  let contadorId: number;
+  const [contadorExistente] = await em.query(`SELECT id FROM users WHERE email = $1`, ['contador.demo@hicloud.test']);
+  if (contadorExistente) {
+    contadorId = contadorExistente.id;
+    await em.query(
+      `UPDATE users SET password=$1, role='contador', "isActive"=true WHERE id=$2`,
+      [passwordHash, contadorId],
+    );
+  } else {
+    const [{ id }] = await em.query(
+      `INSERT INTO users (nombre, email, password, role, "isActive", "emailVerifiedAt", "createdAt", "updatedAt")
+       VALUES ('Contador Demo', 'contador.demo@hicloud.test', $1, 'contador', true, NOW(), NOW(), NOW()) RETURNING id`,
+      [passwordHash],
+    );
+    contadorId = id;
+  }
+  const [vinculoContador] = await em.query(
+    `SELECT id FROM usuario_empresa WHERE "userId"=$1 AND "empresaId"=$2`, [contadorId, empresaId],
+  );
+  if (vinculoContador) {
+    await em.query(`UPDATE usuario_empresa SET rol='contador', "isActive"=true WHERE id=$1`, [vinculoContador.id]);
+  } else {
+    await em.query(
+      `INSERT INTO usuario_empresa ("userId","empresaId",rol,"isPrincipal","isActive","createdAt","updatedAt")
+       VALUES ($1,$2,'contador',false,true,NOW(),NOW())`,
+      [contadorId, empresaId],
+    );
+  }
+  console.log(`✅ contador.demo@hicloud.test (Admin1234) vinculado como contador de la empresa #${empresaId} — úsalo para aprobar solicitudes creadas con admin@hicloud.com (y viceversa)`);
 
   // 1. Módulo add-on "prestamista" activo para la empresa demo
   const [modulo] = await em.query(`SELECT id FROM modulos_addon WHERE codigo = $1`, ['prestamista']);
