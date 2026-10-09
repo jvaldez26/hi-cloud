@@ -28,6 +28,10 @@ export interface CargoPendienteEntrada {
   concepto:       string;
   /** monto - montoPagado del cargo. Se asume > 0 (ya filtrado por el caller). */
   saldoPendiente: number;
+  /** Fin del ciclo que cubre, en los cargos de RENOVACIÓN ('YYYY-MM-DD').
+   *  null en los cargos por servicios (activación e-CF, excedente…), que no
+   *  compran tiempo de plan. Lo pone generarCargosRenovacion(). */
+  periodoFin?:    string | null;
 }
 
 export interface CargoLiquidado {
@@ -36,6 +40,8 @@ export interface CargoLiquidado {
   montoAplicado:  number;
   /** 0 si el cargo quedó totalmente liquidado con este pago. */
   saldoRestante:  number;
+  /** Fin del ciclo, si era un cargo de renovación. */
+  periodoFin?:    string | null;
 }
 
 export interface EntradaImputacion {
@@ -94,6 +100,7 @@ export function imputarPago(e: EntradaImputacion): ResultadoImputacion {
         concepto:      cargo.concepto,
         montoAplicado: aplicar,
         saldoRestante: redondearMoneda(saldo - aplicar),
+        periodoFin:    cargo.periodoFin ?? null,
       });
       montoACargos = redondearMoneda(montoACargos + aplicar);
       disponible   = redondearMoneda(disponible - aplicar);
@@ -139,4 +146,39 @@ export function imputarPago(e: EntradaImputacion): ResultadoImputacion {
     sinPrecio,
     abonoFinal: disponible,
   };
+}
+
+/**
+ * Hasta cuándo queda cubierta la suscripción tras liquidar cargos de renovación.
+ *
+ * El agujero que tapa (ELIDO, empresa 73): un cargo de renovación es un cargo
+ * como cualquier otro, así que el pago se lo come en el paso 1 (FIFO) y al
+ * paso 2 no le queda remanente — periodos = 0, nuevaFecha = null y la
+ * fechaVencimiento NO se movía. El cliente pagaba su ciclo entero, el cargo
+ * quedaba liquidado, y la suscripción seguía marcada como vencida en ese mismo
+ * ciclo: "Vencida hace 4 días. Tu último pago cubrió hasta 05/10/2026".
+ *
+ * Un cargo de renovación YA ES el período: pagarlo entero compra hasta su
+ * periodoFin. Solo cuenta si quedó liquidado del todo (saldoRestante === 0) —
+ * medio ciclo pagado no compra medio mes — y nunca retrocede la fecha.
+ *
+ * Pura y exportada para poder verificarla — ver renovacion-pagada.spec.ts.
+ */
+export function vencimientoPorCiclosLiquidados(
+  cargosLiquidados: CargoLiquidado[],
+  vencimientoActual: string | Date,
+): string | null {
+  const actual = typeof vencimientoActual === 'string'
+    ? vencimientoActual.slice(0, 10)
+    : vencimientoActual.toISOString().slice(0, 10);
+
+  let mejor: string | null = null;
+  for (const c of cargosLiquidados) {
+    if (!c.periodoFin) continue;        // cargo por servicios: no compra tiempo
+    if (c.saldoRestante > 0) continue;  // a medio pagar: no cuenta
+    const fin = String(c.periodoFin).slice(0, 10);
+    if (fin <= actual) continue;        // ya cubierto
+    if (!mejor || fin > mejor) mejor = fin;
+  }
+  return mejor;
 }

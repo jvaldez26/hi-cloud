@@ -29,7 +29,7 @@ describe('imputarPago', () => {
     });
 
     expect(r.cargosLiquidados).toEqual([
-      { cargoId: 1, concepto: 'Activación e-CF', montoAplicado: 18_000, saldoRestante: 0 },
+      { cargoId: 1, concepto: 'Activación e-CF', montoAplicado: 18_000, saldoRestante: 0, periodoFin: null },
     ]);
     expect(r.montoACargos).toBe(18_000);
     expect(r.periodos).toBe(0);
@@ -48,7 +48,7 @@ describe('imputarPago', () => {
     });
 
     expect(r.cargosLiquidados).toEqual([
-      { cargoId: 1, concepto: 'Activación e-CF', montoAplicado: 18_000, saldoRestante: 0 },
+      { cargoId: 1, concepto: 'Activación e-CF', montoAplicado: 18_000, saldoRestante: 0, periodoFin: null },
     ]);
     expect(r.montoACargos).toBe(18_000);
     expect(r.periodos).toBe(2);
@@ -82,7 +82,7 @@ describe('imputarPago', () => {
     });
 
     expect(r.cargosLiquidados).toEqual([
-      { cargoId: 1, concepto: 'Activación e-CF', montoAplicado: 10_000, saldoRestante: 8_000 },
+      { cargoId: 1, concepto: 'Activación e-CF', montoAplicado: 10_000, saldoRestante: 8_000, periodoFin: null },
     ]);
     expect(r.montoACargos).toBe(10_000);
     expect(r.periodos).toBe(0);
@@ -104,8 +104,8 @@ describe('imputarPago', () => {
     });
 
     expect(r.cargosLiquidados).toEqual([
-      { cargoId: 1, concepto: 'Cargo viejo — contabilidad',   montoAplicado: 3_000, saldoRestante: 0 },
-      { cargoId: 2, concepto: 'Cargo nuevo — excedente e-CF', montoAplicado: 2_000, saldoRestante: 2_000 },
+      { cargoId: 1, concepto: 'Cargo viejo — contabilidad',   montoAplicado: 3_000, saldoRestante: 0, periodoFin: null },
+      { cargoId: 2, concepto: 'Cargo nuevo — excedente e-CF', montoAplicado: 2_000, saldoRestante: 2_000, periodoFin: null },
     ]);
     expect(r.montoACargos).toBe(5_000);
     expect(r.periodos).toBe(0);
