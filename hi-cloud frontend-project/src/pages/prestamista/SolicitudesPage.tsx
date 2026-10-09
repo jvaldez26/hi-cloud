@@ -196,8 +196,8 @@ export default function SolicitudesPage() {
         width={640} footer={
           detalle?.estado === 'pendiente' ? [
             <Button key="cancel" onClick={() => { setDetalleOpen(false); setDetalle(null); }}>Cerrar</Button>,
-            <Button key="reject" danger onClick={() => { formDecision.setFieldsValue({ decision: 'rechazar' }); setDecidirOpen(true); }}>Rechazar</Button>,
-            <Button key="approve" type="primary" onClick={() => { formDecision.setFieldsValue({ decision: 'aprobar' }); setDecidirOpen(true); }}>Aprobar</Button>,
+            <Button key="reject" danger onClick={() => { formDecision.setFieldsValue({ decision: 'rechazada' }); setDecidirOpen(true); }}>Rechazar</Button>,
+            <Button key="approve" type="primary" onClick={() => { formDecision.setFieldsValue({ decision: 'aprobada' }); setDecidirOpen(true); }}>Aprobar</Button>,
           ] : [<Button key="close" onClick={() => { setDetalleOpen(false); setDetalle(null); }}>Cerrar</Button>]
         }>
         {detalle && (
@@ -224,8 +224,8 @@ export default function SolicitudesPage() {
         <Form form={formDecision} layout="vertical" style={{ paddingTop: 8 }}>
           <Form.Item name="decision" label="Decisión" rules={[{ required: true }]}>
             <Select>
-              <Option value="aprobar">Aprobar</Option>
-              <Option value="rechazar">Rechazar</Option>
+              <Option value="aprobada">Aprobar</Option>
+              <Option value="rechazada">Rechazar</Option>
             </Select>
           </Form.Item>
           <Form.Item name="montoAprobado" label="Monto Aprobado"><InputNumber style={{ width: '100%' }} prefix="RD$" /></Form.Item>

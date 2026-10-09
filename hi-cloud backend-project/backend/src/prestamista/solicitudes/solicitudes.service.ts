@@ -99,7 +99,7 @@ export class SolicitudesService {
     if (!['pendiente', 'en_revision'].includes(sol.estado)) {
       throw new BadRequestException('Solo se pueden decidir solicitudes en estado pendiente o en revisión');
     }
-    const aprobado = data.aprobado === true || data.decision === 'aprobar';
+    const aprobado = data.aprobado === true || data.decision === 'aprobada';
 
     // C5 + Segregación de funciones: el aprobador sale del CLS (JWT), no del body,
     // y NO puede ser la misma persona que creó la solicitud.
