@@ -86,3 +86,38 @@ export function sumarSaldoMoraPendiente(
     ),
   );
 }
+
+/**
+ * Umbral, en días de atraso desde la FECHA DE VENCIMIENTO de la cuota (no
+ * desde el fin de la gracia), a partir del cual un préstamo moroso pasa a
+ * 'vencido'. Mismo corte que ya usa el resto del módulo para la cartera
+ * "+90 días" (dashboard.service.ts, reportes de antigüedad de mora) — antes
+ * de esto, 'vencido' se leía en varios lugares pero ningún camino lo
+ * escribía, así que esos filtros/KPI siempre mostraban cero.
+ */
+export const UMBRAL_DIAS_VENCIDO = 90;
+
+/**
+ * Clasifica la morosidad de un préstamo CON saldo pendiente, a partir de
+ * sus cuotas. Única definición — mora.cron.ts, PagosService.registrar() y
+ * PrestamosService.recalcularSaldos() deben usar esta función para decidir
+ * entre al_dia/moroso/vencido, nunca reimplementar el corte a mano. El
+ * caso 'pagado' (saldo de capital agotado) queda a cargo de cada caller,
+ * porque cada uno lo determina con su propio guard (p. ej. el "doble
+ * guard" de PagosService: saldo=0 Y cero cuotas pendientes).
+ *
+ * - 'al_dia':  sin cuotas vencidas, o vencidas pero aún dentro de gracia.
+ * - 'moroso':  al menos una cuota vencida más allá de la gracia, con un
+ *              atraso máximo de hasta UMBRAL_DIAS_VENCIDO días.
+ * - 'vencido': el atraso máximo supera UMBRAL_DIAS_VENCIDO — cartera
+ *              vencida propiamente dicha, no solo un atraso reciente.
+ */
+export function clasificarMorosidad(
+  cuotasVencidas: number,
+  maxDiasMora: number,
+  diasGracia: number,
+): 'al_dia' | 'moroso' | 'vencido' {
+  const dias = Number(maxDiasMora) || 0;
+  if (Number(cuotasVencidas) <= 0 || dias <= (Number(diasGracia) || 0)) return 'al_dia';
+  return dias > UMBRAL_DIAS_VENCIDO ? 'vencido' : 'moroso';
+}

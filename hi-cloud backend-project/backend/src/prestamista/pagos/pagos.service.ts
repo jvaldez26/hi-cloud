@@ -6,6 +6,7 @@ import { EmitirECFUseCase } from '../../ecf/use-cases/emitir-ecf.use-case';
 import { DocumentoOrigenTipo } from '../../ecf/entities/ecf.entity';
 import { TenantService } from '../../tenant/tenant.service';
 import { fechaHoyRD } from '../../common/utils/fecha-local.util';
+import { clasificarMorosidad } from '../utils/mora.util';
 
 @Injectable()
 export class PagosService {
@@ -190,7 +191,8 @@ export class PagosService {
            SUM(GREATEST(0, interes - "interesPagado"))                                        AS "saldoInteres",
            SUM(GREATEST(0, "moraGenerada" - "moraPagada"))                                    AS "saldoMora",
            COUNT(*) FILTER (WHERE estado <> 'pagada')                                         AS "cuotasPendientes",
-           COUNT(*) FILTER (WHERE estado <> 'pagada' AND "fechaVencimiento" < CURRENT_DATE)   AS "cuotasVencidas"
+           COUNT(*) FILTER (WHERE estado <> 'pagada' AND "fechaVencimiento" < CURRENT_DATE)   AS "cuotasVencidas",
+           MAX("diasMora") FILTER (WHERE estado <> 'pagada')                                  AS "maxDiasMora"
          FROM pr_cuotas WHERE "prestamoId"=$1`,
         [data.prestamoId],
       );
@@ -201,11 +203,15 @@ export class PagosService {
       saldoTotal    = this.r2(saldoCapital + saldoInteres + saldoMora);
       const cuotasVencidas   = Number(s.cuotasVencidas   ?? 0);
       const cuotasPendientes = Number(s.cuotasPendientes ?? 0);
+      const maxDiasMora      = Number(s.maxDiasMora      ?? 0);
 
-      // Préstamo pagado SOLO si saldo=0 Y no quedan cuotas pendientes (doble guard)
+      // Préstamo pagado SOLO si saldo=0 Y no quedan cuotas pendientes (doble
+      // guard). Para el resto, clasificarMorosidad() decide entre al_dia/
+      // moroso/vencido — única definición, compartida con mora.cron.ts y
+      // PrestamosService.recalcularSaldos().
       const nuevoEstado = (saldoCapital <= 0 && cuotasPendientes === 0)
         ? 'pagado'
-        : cuotasVencidas > 0 ? 'moroso' : 'al_dia';
+        : clasificarMorosidad(cuotasVencidas, maxDiasMora, Number(prestamo.diasGracia ?? 0));
       const totalPagado = this.r2(Number(prestamo.totalPagado) + Number(data.montoPagado));
 
       await qr.query(

@@ -180,3 +180,23 @@ describe('C4 — el cron no resucita la mora ya cobrada', () => {
     await expect(svc.calcularMora()).resolves.toBeUndefined();
   });
 });
+
+describe('Etapa 1 — el cron ya escribe estado "vencido" (antes: estado muerto, nunca se asignaba)', () => {
+  it('atraso por encima del umbral (90 días) → estado "vencido", no "moroso"', async () => {
+    const { svc, updatePrestamo } = buildDs({ porcentajeMora: 5, diasGracia: 5, cuotas: [cuotaBase({ diasMora: 120 })] });
+    await svc.calcularMora();
+    expect(updatePrestamo()!.params[3]).toBe('vencido');
+  });
+
+  it('atraso por debajo del umbral sigue siendo "moroso" (sin regresión)', async () => {
+    const { svc, updatePrestamo } = buildDs({ porcentajeMora: 5, diasGracia: 5, cuotas: [cuotaBase({ diasMora: 30 })] });
+    await svc.calcularMora();
+    expect(updatePrestamo()!.params[3]).toBe('moroso');
+  });
+
+  it('sin cuotas vencidas más allá de la gracia → "al_dia", nunca "vencido"', async () => {
+    const { svc, updatePrestamo } = buildDs({ porcentajeMora: 5, diasGracia: 150, cuotas: [cuotaBase({ diasMora: 120 })] });
+    await svc.calcularMora();
+    expect(updatePrestamo()!.params[3]).toBe('al_dia');
+  });
+});

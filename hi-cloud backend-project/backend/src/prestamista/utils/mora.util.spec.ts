@@ -11,6 +11,7 @@
 
 import {
   r2, tasaMoraDiaria, calcularMoraCuota, saldoMoraPendiente, sumarSaldoMoraPendiente,
+  clasificarMorosidad, UMBRAL_DIAS_VENCIDO,
 } from './mora.util';
 
 /** Fórmula anterior, para demostrar en el test qué se estaba corrigiendo. */
@@ -135,5 +136,30 @@ describe('C4 — el saldo de mora es NETO de lo cobrado', () => {
     expect(bruto).toBe(800);
     expect(neto).toBe(200);
     expect(neto).toBeLessThan(bruto);
+  });
+});
+
+describe('Etapa 1 — clasificarMorosidad() (al_dia / moroso / vencido)', () => {
+  it('sin cuotas vencidas → al_dia', () => {
+    expect(clasificarMorosidad(0, 0, 5)).toBe('al_dia');
+  });
+
+  it('cuota vencida pero dentro de la gracia → al_dia', () => {
+    expect(clasificarMorosidad(1, 5, 5)).toBe('al_dia'); // 5 días de atraso, 5 de gracia: no supera
+  });
+
+  it('cuota vencida, supera la gracia, por debajo del umbral de vencido → moroso', () => {
+    expect(clasificarMorosidad(1, 30, 5)).toBe('moroso');
+    expect(clasificarMorosidad(1, UMBRAL_DIAS_VENCIDO, 5)).toBe('moroso'); // exactamente en el umbral: todavía moroso
+  });
+
+  it('atraso máximo por encima del umbral → vencido', () => {
+    expect(clasificarMorosidad(1, UMBRAL_DIAS_VENCIDO + 1, 5)).toBe('vencido');
+    expect(clasificarMorosidad(2, 180, 0)).toBe('vencido');
+  });
+
+  it('sin días de gracia configurados (0/null/undefined) — cualquier atraso cuenta', () => {
+    expect(clasificarMorosidad(1, 1, 0)).toBe('moroso');
+    expect(clasificarMorosidad(1, 1, undefined as any)).toBe('moroso');
   });
 });

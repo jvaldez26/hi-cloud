@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { calcularMoraCuota, r2 } from '../utils/mora.util';
+import { calcularMoraCuota, clasificarMorosidad, r2 } from '../utils/mora.util';
 
 @Injectable()
 export class MoraCronService {
@@ -75,8 +75,7 @@ export class MoraCronService {
         const maxDias = Number(resumen.maxDiasMora ?? 0);
         const saldoCapActual = Number(resumen.saldoCap ?? 0);
         const saldoMoraNeto  = r2(Number(resumen.saldoMoraNeto ?? 0));
-        const nuevoEstado = saldoCapActual <= 0 ? 'pagado'
-          : cuotasVencCount > 0 && maxDias > (p.diasGracia ?? 0) ? 'moroso' : 'al_dia';
+        const nuevoEstado = saldoCapActual <= 0 ? 'pagado' : clasificarMorosidad(cuotasVencCount, maxDias, p.diasGracia ?? 0);
 
         await this.ds.query(`
           UPDATE pr_prestamos SET

@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, Logger } from '@nes
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, QueryRunner } from 'typeorm';
 import { calcularAmortizacion } from '../utils/amortizacion.util';
+import { clasificarMorosidad } from '../utils/mora.util';
 import { AsientosAutomaticosService } from '../../contabilidad/services/asientos-automaticos.service';
 import { TenantService } from '../../tenant/tenant.service';
 import { fechaHoyRD } from '../../common/utils/fecha-local.util';
@@ -264,6 +265,7 @@ export class PrestamosService {
          SUM(GREATEST(0, "moraGenerada" - "moraPagada"))                                    AS "saldoMora",
          COUNT(*) FILTER (WHERE estado <> 'pagada')                                         AS "cuotasPendientes",
          COUNT(*) FILTER (WHERE estado <> 'pagada' AND "fechaVencimiento" < CURRENT_DATE)   AS "cuotasVencidas",
+         MAX("diasMora") FILTER (WHERE estado <> 'pagada')                                  AS "maxDiasMora",
          COALESCE(SUM("totalPagado"), 0)                                                    AS "totalPagadoCuotas"
        FROM pr_cuotas WHERE "prestamoId"=$1`,
       [id],
@@ -275,9 +277,15 @@ export class PrestamosService {
     const saldoTotal    = r2(saldoCapital + saldoInteres + saldoMora);
     const cuotasVencidas   = Number(s.cuotasVencidas   ?? 0);
     const cuotasPendientes = Number(s.cuotasPendientes ?? 0);
+    const maxDiasMora      = Number(s.maxDiasMora      ?? 0);
+    // Préstamo pagado SOLO si saldo=0 Y no quedan cuotas pendientes (doble
+    // guard). Para el resto, clasificarMorosidad() decide entre al_dia/
+    // moroso/vencido — única definición, compartida con mora.cron.ts y
+    // PagosService.registrar(). Antes esta función no aplicaba diasGracia
+    // (sí lo hacían las otras dos) — queda unificado.
     const nuevoEstado = (saldoCapital <= 0 && cuotasPendientes === 0)
       ? 'pagado'
-      : cuotasVencidas > 0 ? 'moroso' : 'al_dia';
+      : clasificarMorosidad(cuotasVencidas, maxDiasMora, Number(p.diasGracia ?? 0));
     await this.ds.query(
       `UPDATE pr_prestamos SET "saldoCapital"=$1,"saldoInteres"=$2,"saldoMora"=$3,"saldoTotal"=$4,
         "cuotasVencidas"=$5,estado=$6,"updatedAt"=NOW() WHERE id=$7 AND "empresaId"=$8`,
