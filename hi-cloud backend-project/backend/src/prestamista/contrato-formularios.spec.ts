@@ -24,6 +24,7 @@ import {
   RegistrarPagoDto, CrearGarantiaDto, RegistrarGestionDto, CrearDeudorDto,
   CrearProductoPrestamoDto, CrearVehiculoDto, CancelarPrestamoDto,
 } from './dto/prestamista.dto';
+import { CrearFeriadoDto, ActualizarFeriadoDto } from './dto/prestamista-motor.dto';
 
 const pipe = new ValidationPipe({
   whitelist: true, forbidNonWhitelisted: true, transform: true,
@@ -45,6 +46,11 @@ describe('Contrato de formularios — Prestamista (ValidationPipe real)', () => 
 
     it('acepta el payload mínimo (campos opcionales nunca tocados por el usuario)', () =>
       aceptaPayloadReal(CrearSolicitudDto, { deudorId: 3, montoSolicitado: 50000, plazoMeses: 12 }));
+
+    it('Fase 2B: acepta el ajuste de frecuencia (punto 3 — "si el producto lo permite")', () =>
+      aceptaPayloadReal(CrearSolicitudDto, {
+        deudorId: 3, productoId: 9, montoSolicitado: 50000, plazoMeses: 12, frecuenciaPago: 'quincenal',
+      }));
 
     it('REGRESIÓN: si volviera a mandarse `productoPrestamo` (nombre viejo) o `vehiculoId`, 400', async () => {
       await expect(pipe.transform(
@@ -75,19 +81,36 @@ describe('Contrato de formularios — Prestamista (ValidationPipe real)', () => 
     });
   });
 
-  describe('SimuladorPage.tsx — Simular (SimularPrestamoDto)', () => {
-    it('acepta el payload real (principal/fechaPrimerPago/metodoAmortizacion)', () =>
+  describe('SimuladorPage.tsx — Simular (SimularPrestamoDto, motor v2 — Fase 2B)', () => {
+    it('acepta el payload real del Simulador rediseñado (motor v2 completo)', () =>
       aceptaPayloadReal(SimularPrestamoDto, {
-        principal: 100000, tasaInteresMensual: 3, plazoMeses: 12,
-        metodoAmortizacion: 'frances', fechaPrimerPago: '2026-11-01',
+        montoPrincipal: 100000, fechaDesembolso: '2026-10-01', fechaPrimerPago: '2026-11-01', plazoPeriodos: 12,
+        frecuencia: 'mensual',
+        tasa: { valor: 0.03, periodoExpresado: 'mensual', tipo: 'nominal', baseDias: 360 },
+        metodo: 'frances',
       }));
 
-    it('REGRESIÓN: el vocabulario viejo del DTO (montoPrincipal/fechaDesembolso) ya no es lo que se espera', async () => {
-      // Si alguien "revierte" el DTO a montoPrincipal/fechaDesembolso sin
-      // tocar el frontend, el payload real de la pantalla (arriba) volvería
-      // a fallar — ese es justamente el escenario que rompía el Simulador.
+    it('acepta diaria con exclusión de domingos/feriados', () =>
+      aceptaPayloadReal(SimularPrestamoDto, {
+        montoPrincipal: 10000, fechaDesembolso: '2026-10-01', fechaPrimerPago: '2026-10-02', plazoPeriodos: 30,
+        frecuencia: 'diaria', frecuenciaDiaria: { excluirDomingos: true, excluirFeriados: true },
+        tasa: { valor: 0.03, periodoExpresado: 'mensual', tipo: 'nominal', baseDias: 360 },
+        metodo: 'frances',
+      }));
+
+    it('acepta gracia y cargos', () =>
+      aceptaPayloadReal(SimularPrestamoDto, {
+        montoPrincipal: 100000, fechaDesembolso: '2026-10-01', fechaPrimerPago: '2026-11-01', plazoPeriodos: 12,
+        frecuencia: 'mensual',
+        tasa: { valor: 0.03, periodoExpresado: 'mensual', tipo: 'nominal', baseDias: 360 },
+        metodo: 'frances',
+        gracia: { tipo: 'capital', periodos: 2 },
+        cargos: [{ concepto: 'Seguro', tipo: 'fijo', monto: 500, momento: 'por_cuota' }],
+      }));
+
+    it('REGRESIÓN: el vocabulario viejo (principal/plazoMeses/fechaPrimerPago sin tasa estructurada) vuelve a fallar si reaparece', async () => {
       await expect(pipe.transform(
-        { montoPrincipal: 100000, tasaInteresMensual: 3, plazoMeses: 12, fechaDesembolso: '2026-11-01' },
+        { principal: 100000, tasaInteresMensual: 3, plazoMeses: 12, metodoAmortizacion: 'frances', fechaPrimerPago: '2026-11-01' },
         { type: 'body', metatype: SimularPrestamoDto, data: '' },
       )).rejects.toBeInstanceOf(BadRequestException);
     });
@@ -216,6 +239,56 @@ describe('Contrato de formularios — Prestamista (ValidationPipe real)', () => 
 
     it('el formulario ya no necesita mandar frecuenciaPago (se quitó del Select, sin efecto en el motor)', () =>
       aceptaPayloadReal(CrearProductoPrestamoDto, { nombre: 'X', tasaInteresMensual: 3 }));
+
+    it('Fase 2B: acepta motorConfig completo (frecuencia diaria, gracia, cargos, mora, fiscal vacío)', () =>
+      aceptaPayloadReal(CrearProductoPrestamoDto, {
+        nombre: 'Préstamo Diario', tasaInteresMensual: 3,
+        motorConfig: {
+          frecuencia: 'diaria',
+          frecuenciaDiaria: { excluirDomingos: true, excluirFeriados: true },
+          tasa: { valor: 0.03, periodoExpresado: 'mensual', tipo: 'nominal', baseDias: 360 },
+          metodo: 'frances',
+          gracia: { tipo: 'capital', periodos: 3 },
+          cargos: [
+            { concepto: 'Comisión de apertura', tipo: 'porcentaje', monto: 2, momento: 'desembolso', tratamientoDesembolso: 'financiado' },
+            { concepto: 'Seguro', tipo: 'fijo', monto: 150, momento: 'por_cuota' },
+          ],
+          mora: { base: 'cuota_vencida', tasaOMonto: 5, baseDiasMora: 360 },
+          fiscal: {
+            interes: { generaComprobante: null, tipoEcf: null, tratamientoItbis: null },
+            mora: { generaComprobante: null, tipoEcf: null, tratamientoItbis: null },
+          },
+          permiteAjusteSolicitud: true,
+        },
+      }));
+
+    it('Fase 2B: acepta motorConfig con frecuencia quincenal de días fijos', () =>
+      aceptaPayloadReal(CrearProductoPrestamoDto, {
+        nombre: 'Préstamo Quincenal', tasaInteresMensual: 3,
+        motorConfig: {
+          frecuencia: 'quincenal', frecuenciaQuincenal: { modo: 'dias_fijos' },
+          tasa: { valor: 0.015, periodoExpresado: 'quincenal', tipo: 'nominal', baseDias: 360 },
+          metodo: 'aleman',
+        },
+      }));
+
+    it('REGRESIÓN: un motorConfig con un método inválido (fuera de la lista del motor) da 400', async () => {
+      await expect(pipe.transform(
+        { nombre: 'X', tasaInteresMensual: 3, motorConfig: { frecuencia: 'mensual', tasa: { valor: 0.03, periodoExpresado: 'mensual', tipo: 'nominal', baseDias: 360 }, metodo: 'inventado' } },
+        { type: 'body', metatype: CrearProductoPrestamoDto, data: '' },
+      )).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  describe('FeriadosPage.tsx — Calendario de feriados (CrearFeriadoDto / ActualizarFeriadoDto)', () => {
+    it('acepta crear un feriado', () =>
+      aceptaPayloadReal(CrearFeriadoDto, { anio: 2026, fecha: '2026-05-01', nombre: 'Día del Trabajo' }));
+
+    it('acepta actualizar solo el campo confirmado (al verificar el feriado trasladable del año)', () =>
+      aceptaPayloadReal(ActualizarFeriadoDto, { confirmado: true }));
+
+    it('acepta actualizar fecha y nombre juntos', () =>
+      aceptaPayloadReal(ActualizarFeriadoDto, { fecha: '2026-05-02', nombre: 'Día del Trabajo (trasladado)' }));
   });
 
   describe('VehiculosPage.tsx — Nuevo/Editar Vehículo (CrearVehiculoDto)', () => {
