@@ -69,6 +69,7 @@ export default function ProductosPrestamoPage() {
   const metodo = Form.useWatch(['motorConfig', 'metodo'], form);
   const moraBase = Form.useWatch(['motorConfig', 'mora', 'base'], form);
   const graciaTipo = Form.useWatch(['motorConfig', 'gracia', 'tipo'], form);
+  const cargosActuales = Form.useWatch(['motorConfig', 'cargos'], form) ?? [];
 
   const { data = [], isLoading } = useQuery({
     queryKey: ['prestamista-productos'],
@@ -321,7 +322,7 @@ export default function ProductosPrestamoPage() {
                       {(fields, { add, remove }) => (
                         <>
                           {fields.map(field => {
-                            const momento = Form.useWatch(['motorConfig', 'cargos', field.name, 'momento'], form);
+                            const momento = cargosActuales[field.name]?.momento;
                             return (
                               <div key={field.key} style={{ border: `1px solid ${C.colorBorderSecondary}`, borderRadius: 8, padding: 12, marginBottom: 8 }}>
                                 <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '0 12px' }}>
