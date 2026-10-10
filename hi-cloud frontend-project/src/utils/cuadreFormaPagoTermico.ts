@@ -17,11 +17,19 @@
  * texto de ANCHO FIJO, línea por línea — ninguna línea, en ningún sub-bloque,
  * puede pasar del ancho medido del papel (requisito explícito 2026-10-10,
  * tras el primer rediseño: "ninguna línea fuera de la tabla puede pasar del
- * ancho medido"). El ancho se MIDIÓ con Chrome headless (Courier New bold
- * 8pt dentro del papel configurado — ver docTermico.ts, que mide la fuente
- * NORMAL del ticket igual: 24/30): 30 caracteres a 58mm, 41 a 80mm/bluetooth/
- * carta/ninguna. Sin medir, se repite el bug que ya truncó un e-NCF en este
- * mismo ticket por usar un ancho supuesto.
+ * ancho medido"). El ancho se MIDIÓ con Chrome headless, en Courier New
+ * bold, AL TAMAÑO DE FUENTE QUE REALMENTE USA ESTA TABLA en cada papel (ver
+ * fontSizePt en ConfigTabla, más abajo): 30 caracteres a 58mm/8pt, 41 a
+ * 80mm·bluetooth·ninguna/8pt. A carta se usa el tamaño del CUERPO del
+ * ticket (12pt — ver IMPRESORA_CONFIG en docTermico.ts), porque a 210mm hay
+ * de sobra incluso a ese tamaño (70 caracteres medidos contra los 41 que
+ * hacen falta) — por eso en carta la tabla no se ve más chica que el resto.
+ * A 58mm/80mm SÍ hay que achicarla: al tamaño del cuerpo (10pt/11pt) solo
+ * caben 24/30 caracteres, muy por debajo de los 30/41 que necesitan 4
+ * columnas de dinero real (requisito de negocio 2026-10-10: "ningún monto
+ * se corta ni se pega a la columna vecina"), y 8pt es el tamaño más grande
+ * que alcanza a cerrar esa cuenta en ambos papeles. Sin medir, se repite el
+ * bug que ya truncó un e-NCF en este mismo ticket por usar un ancho supuesto.
  *
  * Cada línea es un <div> de texto plano SIN <span> — proc() (thermalPrinter.ts,
  * impresión Bluetooth) no la trata como ".row" (que exige exactamente 2
@@ -100,9 +108,24 @@ interface ConfigTabla {
   gap1: string; gap2: string; gap3: string;
   headerEsp: string;
   labels: Record<string, string>;
+  /**
+   * Tamaño de la tabla — SOLO esta tabla, el resto del ticket sigue con el
+   * tamaño normal (IMPRESORA_CONFIG, docTermico.ts). Ideal sería que fuera
+   * igual al del cuerpo, pero a 58mm/80mm no hay ancho físico para 4
+   * columnas de dinero reales (RD$ de 5-6 cifras) al tamaño del cuerpo —
+   * medido con Chrome headless: 58mm da 24 caracteres a 10pt (el del
+   * cuerpo) contra los 30 que necesita esta tabla; 80mm da 30 a 11pt
+   * contra los 41 que necesita. 8pt es el MÁXIMO que cierra esa cuenta en
+   * ambos papeles (ver medición 2026-10-10). A carta (210mm) sí sobra
+   * espacio de sobra incluso al tamaño del cuerpo (70 caracteres a 12pt
+   * contra los ~41 que hacen falta), así que ahí la tabla usa el mismo
+   * tamaño que el resto del ticket — nunca se ve más chica.
+   */
+  fontSizePt: number;
 }
 
-// 58mm: 30 caracteres de ancho útil medidos a 8pt (ver cabecera del archivo).
+// 58mm: 30 caracteres de ancho útil medidos a 8pt (ver cabecera del archivo
+// y fontSizePt arriba — a 10pt, el tamaño del cuerpo, solo caben 24).
 // FORMA necesita 7 (cabe "Tarjeta"/"Transf."); los 3 montos se llevan los 23
 // restantes. gap3 va vacío a propósito: Contado y Difer. quedan pegados SOLO
 // cuando Difer. mide exactamente 7 (su peor caso), y Difer. siempre lleva un
@@ -115,21 +138,38 @@ const TABLA_58MM: ConfigTabla = {
   gap1: ' ', gap2: ' ', gap3: '',
   headerEsp: 'ESPER.',
   labels: LABEL_FORMA_CORTA,
+  fontSizePt: 8,
 };
 
-// 80mm / bluetooth / carta / ninguna: 41 caracteres medidos a 8pt. Hay
-// espacio de sobra para nombres completos, comas de miles y un espacio real
-// entre cada columna.
+// 80mm / bluetooth / ninguna: 41 caracteres medidos a 8pt (a 11pt, el
+// tamaño del cuerpo, solo caben 30 — ver fontSizePt arriba). Hay espacio de
+// sobra para nombres completos, comas de miles y un espacio real entre
+// cada columna.
 const TABLA_80MM: ConfigTabla = {
   ancho: 41, comas: true,
   wForma: 9, wEsp: 10, wCon: 10, wDif: 9,
   gap1: ' ', gap2: ' ', gap3: ' ',
   headerEsp: 'ESPERADO',
   labels: LABEL_FORMA,
+  fontSizePt: 8,
+};
+
+// Carta (210mm): 70 caracteres medidos a 12pt, el tamaño del CUERPO del
+// ticket — de sobra para las 41 columnas que esta tabla necesita, así que
+// aquí no hace falta achicar nada (ver fontSizePt arriba).
+const TABLA_CARTA: ConfigTabla = {
+  ancho: 41, comas: true,
+  wForma: 9, wEsp: 10, wCon: 10, wDif: 9,
+  gap1: ' ', gap2: ' ', gap3: ' ',
+  headerEsp: 'ESPERADO',
+  labels: LABEL_FORMA,
+  fontSizePt: 12,
 };
 
 function configTabla(tipoImpresora?: string): ConfigTabla {
-  return tipoImpresora === '58mm' || tipoImpresora === 'bluetooth' ? TABLA_58MM : TABLA_80MM;
+  if (tipoImpresora === '58mm' || tipoImpresora === 'bluetooth') return TABLA_58MM;
+  if (tipoImpresora === 'carta') return TABLA_CARTA;
+  return TABLA_80MM;
 }
 
 /** Monto — sin "RD$", con o sin comas de miles según el ancho del papel. */
@@ -319,15 +359,23 @@ export function bloqueCuadreFormaPagoTermico(
   });
 
   const html = lineasSeguras.map(l => `<div class="cf-linea">${escHtml(l)}</div>`).join('');
-  return `<div class="cf-bloque">${html}</div>`;
+  // El tamaño va inline (no en CSS_CUADRE_FORMA_PAGO_TERMICO, que es un
+  // único <style> fijo e inyectado sin saber el tipo de impresora): varía
+  // por papel — ver fontSizePt en ConfigTabla.
+  return `<div class="cf-bloque" style="font-size:${cfg.fontSizePt}pt">${html}</div>`;
 }
 
-/** CSS del bloque. Se inyecta una sola vez en el <style> de la plantilla. */
+/**
+ * CSS del bloque. Se inyecta una sola vez en el <style> de la plantilla.
+ * El tamaño de fuente NO va aquí — este <style> se inyecta igual sin
+ * importar el tipo de impresora, y el tamaño sí varía por papel (ver
+ * fontSizePt en ConfigTabla) — va inline en bloqueCuadreFormaPagoTermico().
+ */
 export const CSS_CUADRE_FORMA_PAGO_TERMICO = `
   /* white-space:pre es obligatorio: sin esto, un navegador real colapsa los
      espacios de relleno de filaTabla()/montoDerecha() a uno solo y las
      columnas se desalinean en pantalla y en el PDF. El conversor ESC/POS
      (htmlAEscPos) no lee CSS, así que esta regla no afecta a la impresión
      Bluetooth — ahí el espaciado ya viene bien desde el texto fuente. */
-  .cf-bloque{font-size:8pt;white-space:pre;margin:2px 0}
+  .cf-bloque{white-space:pre;margin:2px 0}
 `;

@@ -184,6 +184,33 @@ describe('bloqueCuadreFormaPagoTermico', () => {
       expect(header.length).toBe(30);
     });
 
+    // Requisito de negocio (2026-10-10, segunda vuelta): la tabla no debe
+    // VERSE más chica que el resto del ticket. A 58mm/80mm no hay ancho
+    // físico para igualar el tamaño del cuerpo sin que un monto real se
+    // corte (ver fontSizePt en el archivo), así que ahí se queda a 8pt. A
+    // carta sí sobra espacio — debe salir al mismo tamaño que el cuerpo (12pt).
+    describe('tamaño de la tabla — igual al cuerpo cuando hay espacio (carta), achicada solo si no cabe (58mm/80mm)', () => {
+      it('58mm: 8pt (el cuerpo es 10pt, pero a 10pt solo caben 24 caracteres y la tabla necesita 30)', () => {
+        const html = bloqueCuadreFormaPagoTermico({ cuadrePorFormaPago: filas }, '58mm');
+        expect(html).toContain('class="cf-bloque" style="font-size:8pt"');
+      });
+
+      it('80mm: 8pt (el cuerpo es 11pt, pero a 11pt solo caben 30 caracteres y la tabla necesita 41)', () => {
+        const html = bloqueCuadreFormaPagoTermico({ cuadrePorFormaPago: filas }, '80mm');
+        expect(html).toContain('class="cf-bloque" style="font-size:8pt"');
+      });
+
+      it('carta: 12pt, el MISMO tamaño que el cuerpo — a 210mm hay de sobra incluso ahí', () => {
+        const html = bloqueCuadreFormaPagoTermico({ cuadrePorFormaPago: filas }, 'carta');
+        expect(html).toContain('class="cf-bloque" style="font-size:12pt"');
+      });
+
+      it('sin tipo (undefined) y "ninguna": caen al mismo trato que 80mm', () => {
+        expect(bloqueCuadreFormaPagoTermico({ cuadrePorFormaPago: filas })).toContain('font-size:8pt');
+        expect(bloqueCuadreFormaPagoTermico({ cuadrePorFormaPago: filas }, 'ninguna')).toContain('font-size:8pt');
+      });
+    });
+
     it('un monto que no entra en su columna pasa a una línea aparte — nunca se corta ni se pega al vecino', () => {
       const filasGrandes = [
         { forma: 'efectivo', esperado: 15608.06, declarado: 6438.00, diferencia: -9170.06 },
