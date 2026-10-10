@@ -165,6 +165,44 @@ describe('Contrato de formularios — Prestamista (ValidationPipe real)', () => 
         { type: 'body', metatype: RegistrarPagoDto, data: '' },
       )).rejects.toBeInstanceOf(BadRequestException);
     });
+
+    it('Rediseño: acepta tipoPago=cuotas con cuotasSeleccionadas y destinoExcedente', () =>
+      aceptaPayloadReal(RegistrarPagoDto, {
+        prestamoId: 5, montoPagado: 5000, tipoPago: 'cuotas', cuotasSeleccionadas: [10, 11],
+        destinoExcedente: 'siguientes_cuotas',
+      }));
+
+    it('Rediseño: acepta tipoPago=abono_extraordinario_capital con abonoExtraordinarioOpcion', () =>
+      aceptaPayloadReal(RegistrarPagoDto, {
+        prestamoId: 5, montoPagado: 5000, tipoPago: 'abono_extraordinario_capital',
+        cuotasSeleccionadas: [10], abonoExtraordinarioOpcion: 'reducir_plazo',
+      }));
+
+    it('Rediseño: acepta tipoPago=liquidar y fecha retroactiva', () =>
+      aceptaPayloadReal(RegistrarPagoDto, {
+        prestamoId: 5, montoPagado: 50000, tipoPago: 'liquidar', fecha: '2026-09-01',
+      }));
+
+    it('Rediseño: acepta formasPago mixto (efectivo sin referencia, transferencia con referencia)', () =>
+      aceptaPayloadReal(RegistrarPagoDto, {
+        prestamoId: 5, montoPagado: 5000, tipoPago: 'abono_parcial',
+        formasPago: [{ metodo: 'efectivo', monto: 2000 }, { metodo: 'transferencia', monto: 3000, referencia: 'TRX-001' }],
+        montoRecibido: 2500,
+      }));
+
+    it('Rediseño REGRESIÓN: formasPago con un método no-efectivo sin referencia, 400', async () => {
+      await expect(pipe.transform(
+        { prestamoId: 5, montoPagado: 5000, formasPago: [{ metodo: 'transferencia', monto: 5000 }] },
+        { type: 'body', metatype: RegistrarPagoDto, data: '' },
+      )).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('Rediseño REGRESIÓN: un tipoPago fuera de los 4 válidos, 400', async () => {
+      await expect(pipe.transform(
+        { prestamoId: 5, montoPagado: 5000, tipoPago: 'inventado' },
+        { type: 'body', metatype: RegistrarPagoDto, data: '' },
+      )).rejects.toBeInstanceOf(BadRequestException);
+    });
   });
 
   describe('DetallePrestamo.tsx — Agregar Garantía (CrearGarantiaDto)', () => {

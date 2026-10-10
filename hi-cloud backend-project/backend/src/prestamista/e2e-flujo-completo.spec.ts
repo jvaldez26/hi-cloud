@@ -152,9 +152,9 @@ class BaseEnMemoria {
 
     // UPDATEs de cuotas/préstamos/deudores
     if (sql.includes('UPDATE pr_cuotas SET "interesPagado"=$1')) {
-      const [interesPagado, capitalPagado, moraPagada, totalPagado, cargosPagados, estado, id] = params;
+      const [interesPagado, capitalPagado, moraPagada, totalPagado, cargosPagados, estado, fechaPago, id] = params;
       const fila = this.tablas.pr_cuotas.find(c => c.id === id)!;
-      Object.assign(fila, { interesPagado, capitalPagado, moraPagada, totalPagado, cargosPagados, estado });
+      Object.assign(fila, { interesPagado, capitalPagado, moraPagada, totalPagado, cargosPagados, estado, fechaPago });
       return [];
     }
     if (sql.includes('UPDATE pr_prestamos SET "saldoCapital"=$1')) {
@@ -164,6 +164,14 @@ class BaseEnMemoria {
       return [];
     }
     if (sql.includes('UPDATE pr_deudores')) return [];
+
+    // Reemplazo de cuotas 100% pendientes (abono_extraordinario_capital /
+    // destinoExcedente='capital') — ver aplicarAbonoExtraordinario().
+    if (sql.includes('DELETE FROM pr_cuotas WHERE id = ANY($1)')) {
+      const [ids] = params;
+      this.tablas.pr_cuotas = this.tablas.pr_cuotas.filter(c => !ids.includes(c.id));
+      return [];
+    }
 
     return [];
   };
@@ -200,7 +208,7 @@ function construirServicios(db: BaseEnMemoria) {
     productos: new ProductosPrestamoService(dsLike as any),
     solicitudes: new SolicitudesService(dsLike as any, tenantSvc as any),
     prestamos: new PrestamosService(dsLike as any, asientosMock as any, tenantSvc as any, feriadosSvc as any),
-    pagos: new PagosService(dsLike as any, asientosMock as any, emitirEcf as any, tenantSvc as any),
+    pagos: new PagosService(dsLike as any, asientosMock as any, emitirEcf as any, tenantSvc as any, feriadosSvc as any),
   };
 }
 
@@ -225,7 +233,7 @@ async function pagarHastaSaldoCero(pagos: PagosService, prestamoId: number, db: 
     const montoPagado = Number(cuota.capital) + Number(cuota.interes) + cargosTotal
       - Number(cuota.capitalPagado) - Number(cuota.interesPagado) - Number(cuota.cargosPagados ?? 0);
     if (montoPagado <= 0) throw new Error(`Cuota #${cuota.numeroCuota} sin pendiente — bucle infinito`);
-    await pagos.registrar(EMPRESA, { prestamoId, montoPagado: Math.round(montoPagado * 100) / 100 });
+    await pagos.registrar(EMPRESA, { prestamoId, montoPagado: Math.round(montoPagado * 100) / 100, tipoPago: 'abono_parcial' });
   }
   throw new Error('No llegó a saldo cero en 50 intentos — revisar la cadena de cálculo/pago');
 }
@@ -317,4 +325,83 @@ describe('Fase 2B — punto 9: producto → solicitud → aprobación → desemb
       expect(db.tablas.pr_cuotas.filter(c => c.prestamoId === desembolso.id).every(c => c.estado === 'pagada')).toBe(true);
     });
   }
+});
+
+async function crearPrestamoMensualDePrueba(plazoMeses = 4) {
+  const db = new BaseEnMemoria();
+  const { productos, solicitudes, prestamos, pagos } = construirServicios(db);
+  const producto = await productos.create(EMPRESA, {
+    nombre: 'Producto mensual prueba', tasaInteresMensual: 3,
+    motorConfig: { frecuencia: 'mensual', tasa: { valor: 0.03, periodoExpresado: 'mensual', tipo: 'nominal', baseDias: 360 }, metodo: 'frances' },
+  });
+  const solicitud = await solicitudes.create(EMPRESA, { deudorId: DEUDOR, productoId: producto.id, montoSolicitado: 40000, plazoMeses });
+  const solicitudesComoOtro = new SolicitudesService({ query: db.query } as any, { getUserId: () => 99 } as any);
+  await solicitudesComoOtro.decidir(EMPRESA, solicitud.id, { decision: 'aprobada', montoAprobado: 40000 });
+  const desembolso = await prestamos.create(EMPRESA, { solicitudId: solicitud.id, fechaDesembolso: '2026-10-01', fechaPrimerPago: '2026-11-01' });
+  return { db, pagos, desembolso };
+}
+
+describe('Registrar Pago (precursor de Etapa 2) — tipos de pago contra servicios reales', () => {
+  it('tipoPago=cuotas paga las cuotas seleccionadas en orden, sin saltar ninguna', async () => {
+    const { db, pagos, desembolso } = await crearPrestamoMensualDePrueba(4);
+    const [c1, c2] = desembolso.cuotas;
+    const montoNecesario = Number(c1.cuotaTotal) + Number(c2.cuotaTotal);
+    const res = await pagos.registrar(EMPRESA, {
+      prestamoId: desembolso.id, montoPagado: montoNecesario, tipoPago: 'cuotas', cuotasSeleccionadas: [c1.id, c2.id],
+    });
+    expect(res.cuotasAfectadas).toHaveLength(2);
+    expect(db.tablas.pr_cuotas.find((c: any) => c.id === c1.id)!.estado).toBe('pagada');
+    expect(db.tablas.pr_cuotas.find((c: any) => c.id === c2.id)!.estado).toBe('pagada');
+  });
+
+  it('tipoPago=cuotas rechaza una selección que salta la cuota más vieja pendiente', async () => {
+    const { pagos, desembolso } = await crearPrestamoMensualDePrueba(4);
+    const [, c2] = desembolso.cuotas;
+    await expect(pagos.registrar(EMPRESA, {
+      prestamoId: desembolso.id, montoPagado: Number(c2.cuotaTotal), tipoPago: 'cuotas', cuotasSeleccionadas: [c2.id],
+    })).rejects.toThrow(/en orden/);
+  });
+
+  it('tipoPago=abono_parcial aplica a la cuota más vieja sin exigir selección, puede quedar parcial', async () => {
+    const { db, pagos, desembolso } = await crearPrestamoMensualDePrueba(4);
+    const [c1] = desembolso.cuotas;
+    const mitad = Math.round((Number(c1.cuotaTotal) / 2) * 100) / 100;
+    await pagos.registrar(EMPRESA, { prestamoId: desembolso.id, montoPagado: mitad, tipoPago: 'abono_parcial' });
+    const cuota = db.tablas.pr_cuotas.find((c: any) => c.id === c1.id)!;
+    expect(cuota.estado).toBe('parcial');
+    expect(Number(cuota.interesPagado) + Number(cuota.capitalPagado)).toBeCloseTo(mitad, 1);
+  });
+
+  it('tipoPago=liquidar exige el monto EXACTO y, con ese monto, deja el préstamo en pagado', async () => {
+    const { db, pagos, desembolso } = await crearPrestamoMensualDePrueba(3);
+    const totalExacto = desembolso.cuotas.reduce((a: number, c: any) => a + Number(c.capital) + Number(c.interes), 0);
+
+    await expect(pagos.registrar(EMPRESA, {
+      prestamoId: desembolso.id, montoPagado: totalExacto - 100, tipoPago: 'liquidar', fecha: '2026-10-01',
+    })).rejects.toThrow(/monto exacto/);
+
+    const res = await pagos.registrar(EMPRESA, {
+      prestamoId: desembolso.id, montoPagado: Math.round(totalExacto * 100) / 100, tipoPago: 'liquidar', fecha: '2026-10-01',
+    });
+    expect((res.saldos as any).saldoCapital).toBe(0);
+    expect(db.tablas.pr_prestamos.find((p: any) => p.id === desembolso.id)!.estado).toBe('pagado');
+  });
+
+  it('destinoExcedente=capital: el excedente de la cuota 1 recalcula la tabla restante en vez de pasar a la cuota 2', async () => {
+    const { db, pagos, desembolso } = await crearPrestamoMensualDePrueba(4);
+    const [c1] = desembolso.cuotas;
+    const cuotaOriginalRestante = desembolso.cuotas[1].cuotaTotal;
+    const extra = 5000;
+    const montoPagado = Number(c1.cuotaTotal) + extra;
+
+    await pagos.registrar(EMPRESA, {
+      prestamoId: desembolso.id, montoPagado, tipoPago: 'cuotas', cuotasSeleccionadas: [c1.id], destinoExcedente: 'capital',
+    });
+
+    const pendientes = db.tablas.pr_cuotas
+      .filter((c: any) => c.prestamoId === desembolso.id && c.estado !== 'pagada')
+      .sort((a: any, b: any) => a.numeroCuota - b.numeroCuota);
+    expect(pendientes).toHaveLength(3); // mismo plazo restante — reducir_cuota es el default
+    expect(Number(pendientes[0].cuotaTotal)).toBeLessThan(Number(cuotaOriginalRestante));
+  });
 });

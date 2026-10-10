@@ -15,6 +15,7 @@ function buildPagosService(saldosRow: any) {
   const asientos = { asientoPagoPrestamo: jest.fn().mockResolvedValue(undefined) };
   const emitirEcf = { execute: jest.fn().mockResolvedValue(undefined) };
   const tenantSvc = { getUserId: () => 42 };
+  const feriadosSvc = { obtenerSetFeriados: jest.fn().mockResolvedValue(new Set()) };
   const qr = {
     connect: jest.fn(async () => {}),
     startTransaction: jest.fn(async () => {}),
@@ -22,6 +23,7 @@ function buildPagosService(saldosRow: any) {
     rollbackTransaction: jest.fn(async () => {}),
     release: jest.fn(async () => {}),
     query: jest.fn(async (sql: string) => {
+      if (sql.includes('FROM pr_prestamos WHERE id=')) return [PRESTAMO_BASE];
       if (sql.includes('FROM pr_cuotas') && sql.includes('FOR UPDATE')) return [];
       if (sql.includes('siguiente_numero_secuencia')) return [{ num: '0001' }];
       if (sql.includes('INSERT INTO pr_pagos')) return [{ id: 900 }];
@@ -29,22 +31,24 @@ function buildPagosService(saldosRow: any) {
       return [];
     }),
   };
-  // La verificación del préstamo (`SELECT * FROM pr_prestamos WHERE id=...`,
-  // pagos.service.ts:76-77) corre en this.ds, NO en el QueryRunner — es
-  // ANTES de abrir la transacción.
-  const ds = {
-    createQueryRunner: () => qr,
-    query: jest.fn(async (sql: string) => (sql.includes('FROM pr_prestamos') ? [PRESTAMO_BASE] : [])),
-  };
-  return { svc: new PagosService(ds as any, asientos as any, emitirEcf as any, tenantSvc as any), qr };
+  const ds = { createQueryRunner: () => qr, query: jest.fn(async () => []) };
+  return { svc: new PagosService(ds as any, asientos as any, emitirEcf as any, tenantSvc as any, feriadosSvc as any), qr };
 }
+
+// Sin cuotas pendientes en el mock: tipoPago='abono_extraordinario_capital'
+// sin cuotasSeleccionadas es el único de los 4 tipos que no exige ninguna
+// cuota pendiente de entrada (el monto entero se vuelve montoExtraCapital,
+// y aplicarAbonoExtraordinario() es un no-op si no hay nada 100% pendiente
+// que recalcular) — lo que importa para este spec es solo la clasificación
+// final (al_dia/moroso/vencido), que sale del SUM(GREATEST...) mockeado.
+const PAGO_SIN_SELECCION = { tipoPago: 'abono_extraordinario_capital' as const };
 
 describe('PagosService.registrar() — clasifica al_dia/moroso/vencido tras aplicar el pago', () => {
   it('atraso máximo por encima del umbral (90 días) → "vencido"', async () => {
     const { svc, qr } = buildPagosService({
       saldoCapital: 100, saldoInteres: 0, saldoMora: 0, cuotasPendientes: 1, cuotasVencidas: 1, maxDiasMora: 120,
     });
-    await svc.registrar(1, { prestamoId: 5, montoPagado: 1 });
+    await svc.registrar(1, { prestamoId: 5, montoPagado: 1, ...PAGO_SIN_SELECCION });
     const params = qr.query.mock.calls.find((c: any) => c[0].includes('UPDATE pr_prestamos'))![1];
     expect(params[6]).toBe('vencido'); // posición de estado en el UPDATE
   });
@@ -53,7 +57,7 @@ describe('PagosService.registrar() — clasifica al_dia/moroso/vencido tras apli
     const { svc, qr } = buildPagosService({
       saldoCapital: 100, saldoInteres: 0, saldoMora: 0, cuotasPendientes: 1, cuotasVencidas: 1, maxDiasMora: 30,
     });
-    await svc.registrar(1, { prestamoId: 5, montoPagado: 1 });
+    await svc.registrar(1, { prestamoId: 5, montoPagado: 1, ...PAGO_SIN_SELECCION });
     const params = qr.query.mock.calls.find((c: any) => c[0].includes('UPDATE pr_prestamos'))![1];
     expect(params[6]).toBe('moroso');
   });
@@ -62,7 +66,7 @@ describe('PagosService.registrar() — clasifica al_dia/moroso/vencido tras apli
     const { svc, qr } = buildPagosService({
       saldoCapital: 0, saldoInteres: 0, saldoMora: 0, cuotasPendientes: 0, cuotasVencidas: 0, maxDiasMora: 200,
     });
-    await svc.registrar(1, { prestamoId: 5, montoPagado: 100 });
+    await svc.registrar(1, { prestamoId: 5, montoPagado: 100, ...PAGO_SIN_SELECCION });
     const params = qr.query.mock.calls.find((c: any) => c[0].includes('UPDATE pr_prestamos'))![1];
     expect(params[6]).toBe('pagado');
   });

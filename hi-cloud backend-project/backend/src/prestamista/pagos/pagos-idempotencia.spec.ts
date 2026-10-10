@@ -28,12 +28,22 @@ function buildService(responderDs: (sql: string, params: any[]) => any, responde
   const asientos = { asientoPagoPrestamo: jest.fn().mockResolvedValue(undefined) };
   const emitirEcf = { execute: jest.fn().mockResolvedValue(undefined) };
   const tenantSvc = { getUserId: () => 42 };
-  const svc = new PagosService(ds as any, asientos as any, emitirEcf as any, tenantSvc as any);
+  const feriadosSvc = { obtenerSetFeriados: jest.fn().mockResolvedValue(new Set()) };
+  const svc = new PagosService(ds as any, asientos as any, emitirEcf as any, tenantSvc as any, feriadosSvc as any);
   return { svc, ds, qr, vidaQr };
 }
 
-const DATA = { prestamoId: 5, montoPagado: 500 };
-const PRESTAMO_ACTIVO = { id: 5, estado: 'al_dia', deudorId: 3, totalPagado: 0 };
+// tipoPago='abono_parcial': se aplica a la cuota pendiente más vieja sin
+// exigir una selección explícita — lo más parecido al comportamiento
+// anterior a este rediseño, que es lo que estos tests de idempotencia
+// necesitan (no están probando la distribución, sino el contrato de la clave).
+const DATA = { prestamoId: 5, montoPagado: 500, tipoPago: 'abono_parcial' };
+const PRESTAMO_ACTIVO = { id: 5, estado: 'al_dia', deudorId: 3, totalPagado: 0, diasGracia: 0, porcentajeMora: 0 };
+const CUOTA_PENDIENTE = {
+  id: 1, numeroCuota: 1, fechaVencimiento: '2026-01-01',
+  capital: 400, interes: 100, capitalPagado: 0, interesPagado: 0,
+  moraGenerada: 0, moraPagada: 0, cargos: null, cargosPagados: 0, totalPagado: 0,
+};
 
 describe('C1 — idempotencia de PagosService.registrar()', () => {
   it('con clave ya usada: devuelve el pago existente SIN abrir transacción ni tocar cuotas', async () => {
@@ -67,14 +77,11 @@ describe('C1 — idempotencia de PagosService.registrar()', () => {
           // Segundo chequeo (tras el 23505 en el catch): ya la ganó la otra petición.
           return chequeosPrevios === 1 ? [] : [ganadora];
         }
-        if (sql.includes('FROM pr_prestamos WHERE id=')) return [PRESTAMO_ACTIVO];
-        if (sql.includes('FROM pr_prestamos') && sql.includes('saldoCapital')) {
-          return [{ saldoCapital: 100, saldoInteres: 10, saldoMora: 0, saldoTotal: 110 }];
-        }
         return [];
       },
       (sql: string) => {
-        if (sql.includes('FROM pr_cuotas') && sql.includes('FOR UPDATE')) return [];
+        if (sql.includes('FROM pr_prestamos WHERE id=')) return [PRESTAMO_ACTIVO];
+        if (sql.includes('FROM pr_cuotas') && sql.includes('FOR UPDATE')) return [CUOTA_PENDIENTE];
         if (sql.includes('siguiente_numero_secuencia')) return [{ num: '0001' }];
         if (sql.includes('INSERT INTO pr_pagos')) {
           const err: any = new Error('duplicate key value violates unique constraint');
@@ -94,9 +101,10 @@ describe('C1 — idempotencia de PagosService.registrar()', () => {
 
   it('sin claveIdempotencia: no consulta pr_pagos por clave y sigue el flujo normal (transacción completa)', async () => {
     const { svc, ds, vidaQr } = buildService(
-      (sql: string) => (sql.includes('FROM pr_prestamos WHERE id=') ? [PRESTAMO_ACTIVO] : []),
+      () => [],
       (sql: string) => {
-        if (sql.includes('FROM pr_cuotas') && sql.includes('FOR UPDATE')) return [];
+        if (sql.includes('FROM pr_prestamos WHERE id=')) return [PRESTAMO_ACTIVO];
+        if (sql.includes('FROM pr_cuotas') && sql.includes('FOR UPDATE')) return [CUOTA_PENDIENTE];
         if (sql.includes('siguiente_numero_secuencia')) return [{ num: '0002' }];
         if (sql.includes('INSERT INTO pr_pagos')) return [{ id: 902, prestamoId: 5, montoPagado: 500 }];
         if (sql.includes('SUM(GREATEST')) return [{ saldoCapital: 0, saldoInteres: 0, saldoMora: 0, cuotasPendientes: 0, cuotasVencidas: 0 }];
