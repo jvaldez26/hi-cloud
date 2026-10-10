@@ -1,4 +1,4 @@
-import { ForbiddenException, BadRequestException, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, BadRequestException, NotFoundException, HttpException } from '@nestjs/common';
 import { CajaService } from './caja.service';
 import { CierreCaja, EstadoCierre } from './entities/cierre-caja.entity';
 import { UserRole } from '../users/enums/user-role.enum';
@@ -1090,5 +1090,197 @@ describe('CajaService.aprobarDescuadre', () => {
     const service = buildService(d);
 
     await expect(service.aprobarDescuadre(999, 'motivo', 9, 'Ana')).rejects.toThrow(NotFoundException);
+  });
+});
+
+// Requisito explícito (2026-10-10): política "Cierre de caja con descuadre"
+// en Modo Supervisor — desactivada por defecto (no cambia el comportamiento
+// actual). Si está activa y el cierre queda fuera de umbral, un supervisor
+// (nunca la propia cajera) tiene que autorizar ANTES de guardar, ver la
+// tabla por forma de pago y escribir un motivo obligatorio.
+describe('CajaService.cerrarCaja — política "cierre_caja_descuadre" (supervisor antes de guardar)', () => {
+  const CAJERO_ID = 42;
+  const SUPERVISOR_ID = 9;
+
+  /** SQL-aware mock de dataSource.query — política, token (peek/consumir) y nombre del supervisor. */
+  function mockDescuadreSupervisor(d: ReturnType<typeof buildDeps>, opts: {
+    politica?: { requerido: boolean; modo: string };
+    tokenValido?: boolean;      // existe, no usado, no expirado, supervisorId <> cajeroId
+    tokenAutoasignado?: boolean; // existe pero supervisorId === cajeroId
+    supervisorNombre?: string;
+  } = {}) {
+    d.dataSource.query.mockImplementation((sql: string) => {
+      if (sql.includes('supervisor_politicas')) {
+        return Promise.resolve(opts.politica ? [opts.politica] : []);
+      }
+      if (sql.includes('UPDATE supervisor_autorizaciones')) {
+        return Promise.resolve(opts.tokenValido ? [{ id: 1, supervisorId: SUPERVISOR_ID }] : []);
+      }
+      if (sql.includes('SELECT id FROM supervisor_autorizaciones') && sql.includes('"supervisorId" <> $2')) {
+        return Promise.resolve(opts.tokenValido ? [{ id: 1 }] : []);
+      }
+      if (sql.includes('SELECT id FROM supervisor_autorizaciones') && sql.includes('"supervisorId" = $2')) {
+        return Promise.resolve(opts.tokenAutoasignado ? [{ id: 1 }] : []);
+      }
+      if (sql.includes('SELECT nombre FROM users')) {
+        return Promise.resolve([{ nombre: opts.supervisorNombre ?? 'Ana Admin' }]);
+      }
+      return Promise.resolve([]); // perfil de vendedor, etc. — igual que el resto de la suite
+    });
+  }
+
+  function cajaConVentas(overrides: Partial<CierreCaja> = {}) {
+    return cajaAbierta({
+      id: 1, userId: CAJERO_ID, vendedorId: CAJERO_ID, vendedorNombre: 'Maximo',
+      ventasEfectivo: 500,
+      ...overrides,
+    });
+  }
+
+  it('política INACTIVA (default): fuera de umbral, pero NO pide supervisor — comportamiento actual sin cambios', async () => {
+    const d = buildDeps();
+    mockDescuadreSupervisor(d); // sin política → default requerido:false
+    d.repo.findOne.mockResolvedValue(cajaConVentas());
+    const service = buildService(d);
+
+    await expect(
+      service.cerrarCaja(1, 750, undefined, undefined, undefined, { id: CAJERO_ID }),
+    ).resolves.toBeDefined();
+
+    const [, cambios] = d.repo.update.mock.calls[0];
+    expect(cambios.estado).toBe(EstadoCierre.CERRADA);
+    expect(cambios.fueraDeUmbral).toBe(true);
+    expect(cambios.motivoAprobacionDescuadre).toBeUndefined();
+  });
+
+  it('política ACTIVA, DENTRO del umbral: no pide supervisor (la política solo aplica si hay descuadre)', async () => {
+    const d = buildDeps();
+    mockDescuadreSupervisor(d, { politica: { requerido: true, modo: 'cada_vez' } });
+    d.repo.findOne.mockResolvedValue(cajaConVentas());
+    const service = buildService(d);
+
+    await expect(
+      service.cerrarCaja(1, 500, undefined, undefined, undefined, { id: CAJERO_ID }), // diferencia 0, dentro del umbral
+    ).resolves.toBeDefined();
+
+    const [, cambios] = d.repo.update.mock.calls[0];
+    expect(cambios.estado).toBe(EstadoCierre.CERRADA);
+    expect(cambios.fueraDeUmbral).toBe(false);
+  });
+
+  it('política ACTIVA, fuera de umbral, SIN token: pide autorización (403), no guarda nada', async () => {
+    const d = buildDeps();
+    mockDescuadreSupervisor(d, { politica: { requerido: true, modo: 'cada_vez' } });
+    d.repo.findOne.mockResolvedValue(cajaConVentas());
+    const service = buildService(d);
+
+    await expect(
+      service.cerrarCaja(1, 750, undefined, undefined, undefined, { id: CAJERO_ID }),
+    ).rejects.toThrow(ForbiddenException);
+    expect(d.repo.update).not.toHaveBeenCalled();
+
+    try {
+      await service.cerrarCaja(1, 750, undefined, undefined, undefined, { id: CAJERO_ID });
+      throw new Error('no debia llegar aqui');
+    } catch (e: any) {
+      const body = e.getResponse() as any;
+      expect(body.supervisorClaveRequerida).toBe('cierre_caja_descuadre');
+      expect(body.supervisorModo).toBe('cada_vez');
+      // La cajera nunca ve el monto de la diferencia — el 403 es generico.
+      expect(JSON.stringify(body)).not.toContain('829.94');
+      expect(JSON.stringify(body)).not.toMatch(/\d{3}\.\d{2}/); // ningun monto con decimales
+    }
+  });
+
+  it('política ACTIVA, fuera de umbral, CON token válido pero SIN motivo: 428 con la tabla por forma de pago, no guarda nada', async () => {
+    const d = buildDeps();
+    mockDescuadreSupervisor(d, { politica: { requerido: true, modo: 'cada_vez' }, tokenValido: true });
+    d.repo.findOne.mockResolvedValue(cajaConVentas());
+    const service = buildService(d);
+
+    try {
+      await service.cerrarCaja(1, 750, undefined, undefined, undefined, { id: CAJERO_ID }, undefined, undefined, 'tok-abc');
+      throw new Error('debia lanzar HttpException 428');
+    } catch (e: any) {
+      expect(e).toBeInstanceOf(HttpException);
+      expect(e.getStatus()).toBe(428);
+      const body = e.getResponse() as any;
+      expect(body.requiereMotivoDescuadre).toBe(true);
+      expect(body.supervisorToken).toBe('tok-abc');
+      expect(Array.isArray(body.cuadrePorFormaPago)).toBe(true);
+      const efectivo = body.cuadrePorFormaPago.find((f: any) => f.forma === 'efectivo');
+      expect(efectivo.diferencia).toBe(250);
+    }
+    expect(d.repo.update).not.toHaveBeenCalled(); // el token NO se consume todavia
+  });
+
+  it('política ACTIVA, fuera de umbral, CON token válido Y motivo: guarda REVISADA con el motivo y quién autorizó', async () => {
+    const d = buildDeps();
+    mockDescuadreSupervisor(d, {
+      politica: { requerido: true, modo: 'cada_vez' }, tokenValido: true, supervisorNombre: 'Ana Admin',
+    });
+    d.repo.findOne.mockResolvedValue(cajaConVentas());
+    const service = buildService(d);
+
+    await service.cerrarCaja(
+      1, 750, undefined, undefined, undefined, { id: CAJERO_ID }, undefined, undefined,
+      'tok-abc', 'Verificado con el cajero, el faltante es real',
+    );
+
+    const [, cambios] = d.repo.update.mock.calls[0];
+    expect(cambios.estado).toBe(EstadoCierre.REVISADA);
+    expect(cambios.fueraDeUmbral).toBe(true);
+    expect(cambios.motivoAprobacionDescuadre).toBe('Verificado con el cajero, el faltante es real');
+    expect(cambios.aprobadoPorUsuarioId).toBe(SUPERVISOR_ID);
+    expect(cambios.aprobadoPorNombre).toBe('Ana Admin');
+    expect(cambios.aprobadoEn).toBeInstanceOf(Date);
+    // Se sigue notificando a ADMIN/CONTADOR aunque ya haya autorizacion previa.
+    expect(d.notificacionesSvc.notificarDescuadreCierre).toHaveBeenCalledTimes(1);
+  });
+
+  it('quien autoriza NO puede ser la misma cajera — rechazado al ver la tabla (sin motivo todavía)', async () => {
+    const d = buildDeps();
+    mockDescuadreSupervisor(d, { politica: { requerido: true, modo: 'cada_vez' }, tokenAutoasignado: true });
+    d.repo.findOne.mockResolvedValue(cajaConVentas());
+    const service = buildService(d);
+
+    await expect(
+      service.cerrarCaja(1, 750, undefined, undefined, undefined, { id: CAJERO_ID }, undefined, undefined, 'tok-self'),
+    ).rejects.toThrow(ForbiddenException);
+    expect(d.repo.update).not.toHaveBeenCalled();
+
+    try {
+      await service.cerrarCaja(1, 750, undefined, undefined, undefined, { id: CAJERO_ID }, undefined, undefined, 'tok-self');
+      throw new Error('no debia llegar aqui');
+    } catch (e: any) {
+      expect(e.getResponse().message).toBe('Quien autoriza no puede ser la misma cajera.');
+    }
+  });
+
+  it('quien autoriza NO puede ser la misma cajera — rechazado también al intentar consumir el token con motivo', async () => {
+    const d = buildDeps();
+    mockDescuadreSupervisor(d, { politica: { requerido: true, modo: 'cada_vez' }, tokenAutoasignado: true });
+    d.repo.findOne.mockResolvedValue(cajaConVentas());
+    const service = buildService(d);
+
+    await expect(
+      service.cerrarCaja(
+        1, 750, undefined, undefined, undefined, { id: CAJERO_ID }, undefined, undefined,
+        'tok-self', 'Yo mismo lo autorizo',
+      ),
+    ).rejects.toThrow(ForbiddenException);
+    expect(d.repo.update).not.toHaveBeenCalled();
+  });
+
+  it('token inválido/expirado/ya usado: 403, no guarda nada', async () => {
+    const d = buildDeps();
+    mockDescuadreSupervisor(d, { politica: { requerido: true, modo: 'cada_vez' } }); // sin tokenValido ni tokenAutoasignado
+    d.repo.findOne.mockResolvedValue(cajaConVentas());
+    const service = buildService(d);
+
+    await expect(
+      service.cerrarCaja(1, 750, undefined, undefined, undefined, { id: CAJERO_ID }, undefined, undefined, 'tok-invalido'),
+    ).rejects.toThrow(ForbiddenException);
+    expect(d.repo.update).not.toHaveBeenCalled();
   });
 });

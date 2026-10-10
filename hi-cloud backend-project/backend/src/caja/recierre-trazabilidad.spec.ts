@@ -80,8 +80,14 @@ describe('formulaVersion — el cierre dice cómo se calculó', () => {
   });
 
   it('cerrar una caja graba la versión actual', () => {
-    const i = src.indexOf('EstadoCierre.CERRADA');
-    expect(src.slice(i - 400, i + 600)).toContain('formulaVersion:   FORMULA_EFECTIVO_VERSION');
+    // Ancla en la asignación misma, no en 'EstadoCierre.CERRADA' — desde que
+    // cerrarCaja() decide el estado final de forma condicional (ver la
+    // política 'cierre_caja_descuadre'), ese literal aparece antes en el
+    // archivo y ya no cae cerca del repo.update() real del cierre.
+    const i = src.indexOf('formulaVersion:   FORMULA_EFECTIVO_VERSION');
+    expect(i).toBeGreaterThan(-1);
+    // Confirma que es el repo.update() del CIERRE (no otro) — vecino de saldoFisico/saldoCierre.
+    expect(src.slice(i - 400, i + 50)).toContain('saldoFisico');
   });
 
   it('los campos Original son nullable — NULL significa "nunca se recerró"', () => {

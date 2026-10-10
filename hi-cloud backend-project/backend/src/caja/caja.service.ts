@@ -1,5 +1,6 @@
 import {
   Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger,
+  HttpException, HttpStatus,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, IsNull, Not, In, EntityManager } from 'typeorm';
@@ -279,6 +280,11 @@ export class CajaService {
     usuario?: { id: number; nombre?: string },
     motivo?: string,
     declaradoPorForma?: { forma: string; monto: number; confirmado?: boolean }[],
+    /** Header x-supervisor-token — ver la política 'cierre_caja_descuadre'. */
+    supervisorToken?: string,
+    /** Motivo obligatorio que escribe el SUPERVISOR (no la cajera) tras ver
+     *  la tabla por forma de pago — ver el flujo de abajo. */
+    motivoDescuadre?: string,
   ) {
     const empresaId = this.tenantService.getEmpresaId();
     const caja = await this.repo.findOne({ where: { id, empresaId } });
@@ -401,8 +407,60 @@ export class CajaService {
     const { umbralDescuadreCaja } = await this.getEmpresaCfg(empresaId);
     const descuadre = fueraDeUmbral(cuadrePorFormaPago, umbralDescuadreCaja);
 
+    // Política "Cierre de caja con descuadre" (desactivada por defecto,
+    // decisión explícita 2026-10-10) — si está activa y el cierre quedó
+    // fuera de umbral, un supervisor (nunca la propia cajera, ni siquiera un
+    // ADMIN/CONTADOR cerrando su propia caja) tiene que autorizarlo ANTES de
+    // guardar, ver la tabla por forma de pago, y escribir un motivo. La
+    // cajera nunca ve el monto de la diferencia: el 403 es genérico y la
+    // tabla solo viaja en la respuesta 428, después de que el supervisor ya
+    // probó su identidad con su propia clave/tarjeta.
+    let estadoFinal: EstadoCierre = EstadoCierre.CERRADA;
+    let autorizacionPrevia: { motivo: string; supervisorId: number; supervisorNombre: string } | null = null;
+
+    if (descuadre) {
+      const { requerido, modo } = await this.politicaCierreDescuadre(empresaId);
+      if (requerido) {
+        const cajeroId = usuario?.id;
+        const pedirAutorizacion = (mensaje: string) => {
+          throw new ForbiddenException({
+            message: mensaje,
+            supervisorClaveRequerida: 'cierre_caja_descuadre',
+            supervisorModo: modo,
+          });
+        };
+        if (!cajeroId || !supervisorToken) {
+          pedirAutorizacion('Este cierre requiere autorización de un supervisor.');
+        } else if (!motivoDescuadre?.trim()) {
+          // El token ya es válido (el supervisor probó su identidad) pero
+          // todavía no se consume: hace falta que vea la tabla y escriba el
+          // motivo antes de gastarlo.
+          const peek = await this.peekTokenDescuadre(empresaId, cajeroId, supervisorToken);
+          if (!peek.ok) pedirAutorizacion(peek.mensaje!);
+          throw new HttpException({
+            requiereMotivoDescuadre: true,
+            mensaje: 'Autorización válida — revisa la tabla y escribe el motivo para confirmar el cierre.',
+            cuadrePorFormaPago,
+            neto: Number(diferencia.toFixed(2)),
+            supervisorToken,
+          }, HttpStatus.PRECONDITION_REQUIRED);
+        } else {
+          const consumo = await this.consumirTokenDescuadre(empresaId, cajeroId, supervisorToken);
+          if (!consumo.ok) pedirAutorizacion(consumo.mensaje!);
+          else {
+            estadoFinal = EstadoCierre.REVISADA;
+            autorizacionPrevia = {
+              motivo: motivoDescuadre.trim(),
+              supervisorId: consumo.supervisorId!,
+              supervisorNombre: consumo.supervisorNombre!,
+            };
+          }
+        }
+      }
+    }
+
     await this.repo.update(id, {
-      estado:           EstadoCierre.CERRADA,
+      estado:           estadoFinal,
       saldoCierre:      Number(saldoCierre.toFixed(2)),
       saldoFisico:      Number(saldoFisico.toFixed(2)),
       diferencia:       Number(diferencia.toFixed(2)),
@@ -415,6 +473,12 @@ export class CajaService {
       facturasSinFormaPago: facturasSinFormaPago,
       sospechasFormaPago:   sospechasConCandidatas,
       fueraDeUmbral:        descuadre,
+      ...(autorizacionPrevia ? {
+        motivoAprobacionDescuadre: autorizacionPrevia.motivo,
+        aprobadoPorUsuarioId:      autorizacionPrevia.supervisorId,
+        aprobadoPorNombre:         autorizacionPrevia.supervisorNombre,
+        aprobadoEn:                new Date(),
+      } : {}),
       ...(desgloseBilletes ? { desgloseBilletes } : {}),
       ...(desglosePago     ? { desglosePago }     : {}),
     });
@@ -427,11 +491,14 @@ export class CajaService {
 
     if (descuadre) {
       this.logger.warn(
-        `[DESCUADRE] Caja #${id}${quien}: fuera de umbral (umbral=${umbralDescuadreCaja}). ` +
+        `[DESCUADRE] Caja #${id}${quien}: fuera de umbral (umbral=${umbralDescuadreCaja}).` +
+        (autorizacionPrevia ? ` Autorizado por ${autorizacionPrevia.supervisorNombre}.` : '') + ' ' +
         cuadrePorFormaPago.map(f => `${f.forma}=${f.diferencia.toFixed(2)}`).join(', '),
       );
       // Nunca bloquea el cierre — si la notificación falla (SMTP caído,
       // etc.) la caja ya está cerrada y guardada; solo se pierde el aviso.
+      // Se notifica igual aunque ya haya autorización previa del supervisor
+      // (requisito explícito: "se sigue notificando a ADMIN y CONTADOR").
       this.notificacionesService.notificarDescuadreCierre(empresaId, {
         cajero: caja.vendedorNombre ?? 'Administrador',
         caja: `Caja #${id}`,
@@ -443,6 +510,59 @@ export class CajaService {
 
     // Caja ya cerrada — siempre retornar datos completos para que la impresión sea íntegra
     return saved;
+  }
+
+  /** Política de la empresa para la clave 'cierre_caja_descuadre' — fila propia o el default del catálogo. */
+  private async politicaCierreDescuadre(empresaId: number): Promise<{ requerido: boolean; modo: 'sesion' | 'cada_vez' }> {
+    const DEFAULT = { requerido: false, modo: 'cada_vez' as const };
+    const [row] = await this.dataSource.query<{ requerido: boolean; modo: string }[]>(
+      `SELECT requerido, modo FROM supervisor_politicas WHERE "empresaId" = $1 AND clave = $2`,
+      [empresaId, 'cierre_caja_descuadre'],
+    ).catch(() => [] as { requerido: boolean; modo: string }[]);
+    if (!row) return DEFAULT;
+    return { requerido: row.requerido, modo: row.modo === 'sesion' ? 'sesion' : 'cada_vez' };
+  }
+
+  /** Valida el token de 'cierre_caja_descuadre' SIN consumirlo — para mostrar la tabla antes de pedir el motivo. */
+  private async peekTokenDescuadre(empresaId: number, cajeroId: number, token: string): Promise<{ ok: boolean; mensaje?: string }> {
+    const [valido] = await this.dataSource.query<{ id: number }[]>(`
+      SELECT id FROM supervisor_autorizaciones
+      WHERE "empresaId" = $1 AND "cajeroId" = $2 AND clave = 'cierre_caja_descuadre'
+        AND token = $3 AND usado = false AND "expiraEn" > NOW() AND "supervisorId" <> $2
+    `, [empresaId, cajeroId, token]);
+    if (valido) return { ok: true };
+    const [autoasignado] = await this.dataSource.query<{ id: number }[]>(`
+      SELECT id FROM supervisor_autorizaciones
+      WHERE "empresaId" = $1 AND "cajeroId" = $2 AND clave = 'cierre_caja_descuadre'
+        AND token = $3 AND usado = false AND "expiraEn" > NOW() AND "supervisorId" = $2
+    `, [empresaId, cajeroId, token]);
+    if (autoasignado) return { ok: false, mensaje: 'Quien autoriza no puede ser la misma cajera.' };
+    return { ok: false, mensaje: 'Esta acción requiere una autorización de supervisor nueva.' };
+  }
+
+  /** Consume (un solo uso) el token de 'cierre_caja_descuadre' — mismo chequeo de auto-asignación que peekTokenDescuadre. */
+  private async consumirTokenDescuadre(empresaId: number, cajeroId: number, token: string): Promise<
+    { ok: true; supervisorId: number; supervisorNombre: string } | { ok: false; mensaje: string }
+  > {
+    const [fila] = await this.dataSource.query<{ id: number; supervisorId: number }[]>(`
+      WITH f AS (
+        UPDATE supervisor_autorizaciones SET usado = true
+        WHERE "empresaId" = $1 AND "cajeroId" = $2 AND clave = 'cierre_caja_descuadre'
+          AND token = $3 AND usado = false AND "expiraEn" > NOW() AND "supervisorId" <> $2
+        RETURNING id, "supervisorId"
+      ) SELECT * FROM f
+    `, [empresaId, cajeroId, token]);
+    if (fila) {
+      const [sup] = await this.dataSource.query<{ nombre: string }[]>(`SELECT nombre FROM users WHERE id = $1`, [fila.supervisorId]);
+      return { ok: true, supervisorId: fila.supervisorId, supervisorNombre: sup?.nombre ?? `Usuario #${fila.supervisorId}` };
+    }
+    const [autoasignado] = await this.dataSource.query<{ id: number }[]>(`
+      SELECT id FROM supervisor_autorizaciones
+      WHERE "empresaId" = $1 AND "cajeroId" = $2 AND clave = 'cierre_caja_descuadre'
+        AND token = $3 AND usado = false AND "expiraEn" > NOW() AND "supervisorId" = $2
+    `, [empresaId, cajeroId, token]);
+    if (autoasignado) return { ok: false, mensaje: 'Quien autoriza no puede ser la misma cajera.' };
+    return { ok: false, mensaje: 'Esta acción requiere una autorización de supervisor nueva.' };
   }
 
   /**

@@ -32,6 +32,33 @@ export type CierreCajaPayload = {
   declaradoPorForma: DeclaracionForma[];
 };
 
+/**
+ * Extra que viaja en el SEGUNDO intento, cuando la política "Cierre de caja
+ * con descuadre" ya validó al supervisor y está esperando el motivo — ver
+ * handleCerrar() más abajo. El llamador (POSPage/CajaPage) debe reenviar el
+ * MISMO payload con esto encima: `motivoDescuadre` en el body y
+ * `supervisorToken` como header `x-supervisor-token`.
+ */
+export type CierreCajaOpts = { motivoDescuadre?: string; supervisorToken?: string };
+
+/** Forma del error 428 que el backend lanza cuando el token de supervisor ya es válido pero falta el motivo — ver caja.service.ts. */
+interface RequiereMotivoDescuadreError {
+  response?: {
+    status?: number;
+    data?: {
+      requiereMotivoDescuadre?: boolean;
+      cuadrePorFormaPago?: { forma: string; esperado: number; declarado: number; diferencia: number }[];
+      neto?: number;
+      supervisorToken?: string;
+      mensaje?: string;
+    };
+  };
+}
+
+const LABEL_FORMA_TABLA: Record<string, string> = {
+  efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia', otros: 'Otros',
+};
+
 const LABEL_FORMA: Record<string, string> = {
   tarjeta: 'Tarjeta',
   transferencia: 'Transferencia',
@@ -64,7 +91,10 @@ export function CierreCajaFormulario({
   cajaHoy, onCerrar, submitting, cardBg = '#fff', cardBorder = '#E2E8F0',
 }: {
   cajaHoy: any;
-  onCerrar: (payload: CierreCajaPayload) => void;
+  /** Debe devolver la promesa del PATCH — así el formulario puede detectar
+   *  el 428 "falta motivo" de la política de descuadre (ver más abajo) sin
+   *  que el llamador tenga que saber nada de ese flujo. */
+  onCerrar: (payload: CierreCajaPayload, opts?: CierreCajaOpts) => Promise<any>;
   submitting?: boolean;
   cardBg?: string;
   cardBorder?: string;
@@ -74,6 +104,20 @@ export function CierreCajaFormulario({
   const [pago, setPago] = useState<DesglosePago>({
     efectivo: '', tarjeta: '', cheque: '', transferencia: '', otro: '', deposito: '', documentos: '',
   });
+  // Política "Cierre de caja con descuadre" (Modo Supervisor, desactivada
+  // por defecto): el supervisor ya probó su identidad (el 403 genérico que
+  // la cajera recibió lo resolvió el interceptor como siempre), y el
+  // backend respondió 428 con la tabla por forma de pago — recién AHORA se
+  // le muestra al supervisor, nunca a la cajera. Falta que escriba el motivo
+  // y se reenvía el MISMO payload con eso + el token ya validado.
+  const [descuadrePendiente, setDescuadrePendiente] = useState<{
+    payload: CierreCajaPayload;
+    cuadrePorFormaPago: { forma: string; esperado: number; declarado: number; diferencia: number }[];
+    neto: number;
+    supervisorToken?: string;
+  } | null>(null);
+  const [motivoDescuadre, setMotivoDescuadre] = useState('');
+  const [autorizandoDescuadre, setAutorizandoDescuadre] = useState(false);
 
   const setBillete = (b: number, v: string) =>
     setBilletes(prev => ({ ...prev, [b]: v === '' ? 0 : Math.max(0, parseInt(v, 10) || 0) }));
@@ -129,12 +173,30 @@ export function CierreCajaFormulario({
         const e = extra.find(x => x.forma === d.forma);
         return e ? { ...d, confirmado: true } : d;
       });
-      onCerrar({
+      const payload: CierreCajaPayload = {
         saldoFisico: totalFisico,
         notas: nota || undefined,
         desgloseBilletes: billetes,
         desglosePago: pago,
         declaradoPorForma: final,
+      };
+      // Nunca relanza: el caller (POSPage/CajaPage) ya tiene su propio
+      // onError en la mutación para el resto de los casos — este catch es
+      // solo un observador extra para interceptar el 428 puntual.
+      onCerrar(payload).catch((err: RequiereMotivoDescuadreError) => {
+        const data = err?.response?.data;
+        if (err?.response?.status === 428 && data?.requiereMotivoDescuadre) {
+          // El supervisor YA probó su identidad (eso resolvió el 403 de
+          // siempre) — esto es solo la tabla + el motivo, nunca se la
+          // cajera.
+          setMotivoDescuadre('');
+          setDescuadrePendiente({
+            payload,
+            cuadrePorFormaPago: data.cuadrePorFormaPago ?? [],
+            neto: Number(data.neto ?? 0),
+            supervisorToken: data.supervisorToken,
+          });
+        }
       });
     };
     if (enCero.length === 0) {
@@ -148,6 +210,24 @@ export function CierreCajaFormulario({
       cancelText: 'Volver a revisar',
       onOk: () => enviar(enCero),
     });
+  };
+
+  const confirmarDescuadre = async () => {
+    if (!descuadrePendiente || !motivoDescuadre.trim()) return;
+    setAutorizandoDescuadre(true);
+    try {
+      await onCerrar(descuadrePendiente.payload, {
+        motivoDescuadre: motivoDescuadre.trim(),
+        supervisorToken: descuadrePendiente.supervisorToken,
+      });
+      setDescuadrePendiente(null);
+      setMotivoDescuadre('');
+    } catch {
+      // El onError del caller ya muestra el motivo (token vencido, intento
+      // de autoasignación, etc.) — el modal se queda abierto para reintentar.
+    } finally {
+      setAutorizandoDescuadre(false);
+    }
   };
 
   return (
@@ -248,6 +328,61 @@ export function CierreCajaFormulario({
           {submitting ? 'Cerrando...' : 'Grabar'}
         </button>
       </div>
+
+      {/* Autorización de descuadre — SOLO la ve el supervisor, nunca la
+          cajera (llega después de que ya probó su identidad con su propia
+          clave/tarjeta; este paso es la tabla real + el motivo). */}
+      <Modal
+        title="Autorización de descuadre"
+        open={!!descuadrePendiente}
+        onCancel={() => { setDescuadrePendiente(null); setMotivoDescuadre(''); }}
+        okText="Autorizar y cerrar"
+        cancelText="Cancelar"
+        okButtonProps={{ disabled: !motivoDescuadre.trim(), loading: autorizandoDescuadre }}
+        onOk={confirmarDescuadre}
+        maskClosable={false}
+        destroyOnHidden
+        width={440}
+      >
+        <p style={{ fontSize: 13, color: '#64748B', marginBottom: 12 }}>
+          Este cierre quedó fuera del umbral configurado. Revisa las diferencias por forma de pago antes de autorizar.
+        </p>
+        <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 14, fontSize: 12 }}>
+          <thead>
+            <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
+              <th style={{ textAlign: 'left', padding: '4px 6px' }}>Forma</th>
+              <th style={{ textAlign: 'right', padding: '4px 6px' }}>Esperado</th>
+              <th style={{ textAlign: 'right', padding: '4px 6px' }}>Declarado</th>
+              <th style={{ textAlign: 'right', padding: '4px 6px' }}>Diferencia</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(descuadrePendiente?.cuadrePorFormaPago ?? []).map(f => (
+              <tr key={f.forma} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                <td style={{ padding: '4px 6px' }}>{LABEL_FORMA_TABLA[f.forma] ?? f.forma}</td>
+                <td style={{ padding: '4px 6px', textAlign: 'right' }}>{fmt.money(f.esperado)}</td>
+                <td style={{ padding: '4px 6px', textAlign: 'right' }}>{fmt.money(f.declarado)}</td>
+                <td style={{ padding: '4px 6px', textAlign: 'right', fontWeight: 700, color: Math.abs(f.diferencia) > 0.01 ? '#dc2626' : 'inherit' }}>
+                  {f.diferencia > 0 ? '+' : ''}{fmt.money(f.diferencia)}
+                </td>
+              </tr>
+            ))}
+            <tr>
+              <td style={{ padding: '6px', fontWeight: 700 }}>Neto</td>
+              <td colSpan={2} />
+              <td style={{ padding: '6px', textAlign: 'right', fontWeight: 700 }}>
+                {(descuadrePendiente?.neto ?? 0) > 0 ? '+' : ''}{fmt.money(descuadrePendiente?.neto ?? 0)}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Motivo de la autorización (obligatorio)</div>
+        <textarea value={motivoDescuadre} onChange={e => setMotivoDescuadre(e.target.value)}
+          placeholder="Ej: Verificado con el cajero, el faltante de tarjeta es real por un error del datáfono..."
+          rows={3} maxLength={500}
+          style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #ddd',
+            fontSize: 13, resize: 'vertical', outline: 'none', boxSizing: 'border-box', background: '#fff' }} />
+      </Modal>
     </div>
   );
 }

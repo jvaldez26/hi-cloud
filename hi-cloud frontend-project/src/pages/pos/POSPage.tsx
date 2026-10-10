@@ -7395,17 +7395,26 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
   });
 
   const cerrarMut = useMutation({
-    mutationFn: (payload: CierreCajaPayload) => {
+    mutationFn: ({ payload, opts }: { payload: CierreCajaPayload; opts?: { motivoDescuadre?: string; supervisorToken?: string } }) => {
       const id = cajaHoy?.id;
       if (!id) throw new Error('No hay caja abierta');
-      return api.patch(`/caja/${id}/cerrar`, payload);
+      return api.patch(
+        `/caja/${id}/cerrar`,
+        { ...payload, motivoDescuadre: opts?.motivoDescuadre },
+        opts?.supervisorToken ? { headers: { 'x-supervisor-token': opts.supervisorToken } } : undefined,
+      );
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['pos-caja-hoy'] });
       message.success(cajaHoy?.ciegoCajaActivo ? 'Cierre registrado' : '¡Caja cerrada exitosamente!');
       onVolver();
     },
-    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al cerrar caja'),
+    onError: (e: any) => {
+      // El 428 (falta el motivo de descuadre) lo resuelve el propio
+      // CierreCajaFormulario con su modal — un toast genérico encima solo confundiría.
+      if (e?.response?.status === 428 && e.response?.data?.requiereMotivoDescuadre) return;
+      message.error(e?.response?.data?.message ?? 'Error al cerrar caja');
+    },
   });
 
   const m = (v: any) => fmt.money(Number(v ?? 0));
@@ -7716,7 +7725,7 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
             submitting={cerrarMut.isPending}
             cardBg={C.card}
             cardBorder={C.border}
-            onCerrar={(payload) => cerrarMut.mutate(payload)}
+            onCerrar={(payload, opts) => cerrarMut.mutateAsync({ payload, opts })}
           />
         </div>
         ))}

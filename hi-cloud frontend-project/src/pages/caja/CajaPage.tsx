@@ -79,7 +79,8 @@ const cajaApi = {
   abiertas:        ()                          => api.get('/caja/abiertas').then(r => r.data?.data ?? r.data),
   cajeros:         ()                          => api.get('/caja/cajeros').then(r => r.data?.data ?? r.data),
   abrir:           (body: any)                 => api.post('/caja/abrir', body).then(r => r.data?.data),
-  cerrar:          (id: number, body: any)     => api.patch(`/caja/${id}/cerrar`, body).then(r => r.data?.data),
+  cerrar:          (id: number, body: any, headers?: Record<string, string>) =>
+    api.patch(`/caja/${id}/cerrar`, body, headers ? { headers } : undefined).then(r => r.data?.data),
   anular:          (id: number, motivo: string) => api.patch(`/caja/${id}/anular`, { motivo }).then(r => r.data?.data),
   aprobarDescuadre: (id: number, motivo: string) => api.patch(`/caja/${id}/aprobar-descuadre`, { motivo }).then(r => r.data?.data),
   historial:       (p = 1, mes?: number, anio?: number) =>
@@ -220,14 +221,21 @@ export default function CajaPage() {
   });
 
   const cerrarMut = useMutation({
-    mutationFn: ({ id, body }: any) => cajaApi.cerrar(id, body),
+    mutationFn: ({ id, body, supervisorToken }: { id: number; body: any; supervisorToken?: string }) =>
+      cajaApi.cerrar(id, body, supervisorToken ? { 'x-supervisor-token': supervisorToken } : undefined),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['caja-hoy'] });
       qc.invalidateQueries({ queryKey: ['caja-hist'] });
       setCerrarTarget(null); form.resetFields(); setSaldoFisicoInput(0);
       message.success('Caja cerrada correctamente');
     },
-    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al cerrar caja'),
+    onError: (e: any) => {
+      // El 428 (falta el motivo de descuadre) lo resuelve el propio
+      // CierreCajaFormulario con su modal — un toast genérico aquí encima
+      // solo confundiría.
+      if (e?.response?.status === 428 && e.response?.data?.requiereMotivoDescuadre) return;
+      message.error(e?.response?.data?.message ?? 'Error al cerrar caja');
+    },
   });
 
   const anularMut = useMutation({
@@ -1815,12 +1823,20 @@ ${line()}
         <CierreCajaFormulario
           cajaHoy={cerrarTarget}
           submitting={cerrarMut.isPending}
-          onCerrar={(payload) => {
+          onCerrar={(payload, opts) => {
             if (esDeOtroCajero && !motivoCierre.trim()) {
               message.error('Indica por qué estás cerrando la caja de otro cajero');
-              return;
+              return Promise.reject(new Error('motivo requerido'));
             }
-            cerrarMut.mutate({ id: cerrarTarget!.id, body: { ...payload, motivo: esDeOtroCajero ? motivoCierre : undefined } });
+            return cerrarMut.mutateAsync({
+              id: cerrarTarget!.id,
+              body: {
+                ...payload,
+                motivo: esDeOtroCajero ? motivoCierre : undefined,
+                motivoDescuadre: opts?.motivoDescuadre,
+              },
+              supervisorToken: opts?.supervisorToken,
+            });
           }}
         />
       </Modal>

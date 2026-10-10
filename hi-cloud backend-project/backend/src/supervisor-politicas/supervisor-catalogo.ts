@@ -73,6 +73,13 @@ export const CATALOGO_SUPERVISOR: CatalogoItem[] = [
   // necesita la autorización de otra persona para esto.
   { clave: 'corregir_forma_pago_factura', label: 'Corregir forma de pago de una factura', descripcion: 'Cambiar cómo se registró el cobro de una factura ya emitida (el total no cambia)', grupo: 'Caja', defaultRequerido: true, defaultModo: 'cada_vez' },
   { clave: 'anular_cierre_caja', label: 'Anular cierre de caja', descripcion: 'Reabrir una caja ya cerrada para recerrarla — requiere que OTRA persona lo autorice', grupo: 'Caja', defaultRequerido: true, defaultModo: 'cada_vez' },
+  // Desactivada por defecto a propósito (2026-10-10): activarla es una
+  // decisión explícita de cada empresa, no un cambio de comportamiento para
+  // todas. Verificación propia en CajaService (no solo el guard): quien
+  // autoriza NUNCA puede ser la misma cajera, ni siquiera un ADMIN/CONTADOR
+  // cerrando su propia caja — a diferencia del resto del catálogo, aquí sí
+  // se exige.
+  { clave: 'cierre_caja_descuadre', label: 'Cierre de caja con descuadre', descripcion: 'Exige autorización de un supervisor (que no sea la propia cajera) para cerrar una caja fuera del umbral configurado — el supervisor ve las diferencias por forma de pago antes de autorizar y debe escribir un motivo', grupo: 'Caja', defaultRequerido: false, defaultModo: 'cada_vez' },
 ];
 
 export const CLAVES_VALIDAS = new Set(CATALOGO_SUPERVISOR.map(c => c.clave));

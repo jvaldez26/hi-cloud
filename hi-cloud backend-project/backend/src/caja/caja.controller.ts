@@ -1,7 +1,8 @@
 import {
   Controller, Get, Post, Patch, Body, Param,
-  ParseIntPipe, Query, HttpCode, HttpStatus, UseGuards,
+  ParseIntPipe, Query, HttpCode, HttpStatus, UseGuards, Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { IsOptional, IsNumber, IsString, IsNotEmpty, IsInt, IsPositive,
          Min, MaxLength, Max, IsEnum, IsDateString, IsBoolean, IsArray, ValidateNested } from 'class-validator';
@@ -82,6 +83,16 @@ class CerrarCajaDto {
    */
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => DeclaracionFormaPagoDto)
   declaradoPorForma?: DeclaracionFormaPagoDto[];
+
+  /**
+   * Motivo que escribe el SUPERVISOR (no la cajera) tras ver la tabla por
+   * forma de pago de un cierre fuera de umbral — ver la política
+   * 'cierre_caja_descuadre'. Ausente en el primer intento; el servicio
+   * responde 428 con la tabla y un `x-supervisor-token` ya validado, y el
+   * frontend reenvía esta misma petición con el motivo puesto.
+   */
+  @IsOptional() @IsString() @MaxLength(500)
+  motivoDescuadre?: string;
 }
 
 class AnularCierreDto {
@@ -215,13 +226,19 @@ export class CajaController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CerrarCajaDto,
     @GetUser() usuario: User,
+    @Req() req: Request,
   ) {
+    // x-supervisor-token: la política 'cierre_caja_descuadre' (desactivada
+    // por defecto) la consume el SERVICIO, no un guard — necesita el cuadre
+    // por forma de pago, que recién se conoce dentro de cerrarCaja().
     return this.cajaService.cerrarCaja(
       id, dto.saldoFisico, dto.notas,
       dto.desgloseBilletes, dto.desglosePago,
       { id: usuario.id, nombre: usuario.nombre },
       dto.motivo,
       dto.declaradoPorForma,
+      req.headers['x-supervisor-token'] as string | undefined,
+      dto.motivoDescuadre,
     );
   }
 
