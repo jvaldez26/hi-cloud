@@ -24,6 +24,7 @@ import { exportarExcel } from '../../utils/exportExcel';
 import dayjs from 'dayjs';
 import { dRD, fecha, hora, hoyRD } from '../../utils/fechaRD';
 import { bloqueFacturasTermico, CSS_FACTURAS_TERMICO } from '../../utils/cierreFacturasTermico';
+import { bloqueCuadreFormaPagoTermico, CSS_CUADRE_FORMA_PAGO_TERMICO } from '../../utils/cuadreFormaPagoTermico';
 import { estadoDiferencia } from '../../utils/diferenciaCaja';
 
 // ── Constantes de retiros ──────────────────────────────────────────────────
@@ -523,6 +524,14 @@ export default function CajaPage() {
       .map(([k,v]) => row(`  ${PAGO_LABELS[k] ?? k}:`, f(Number(v))))
       .join('\n');
 
+    // Cuadre por forma de pago (ver cuadre-por-forma-pago.util.ts, backend) —
+    // reemplaza el viejo "Efectivo esperado/contado + SOBRANTE/FALTANTE",
+    // que solo cuadraba efectivo. `r` siempre lo trae para un cierre CERRADA
+    // (real si se cerró después del fix, derivado si es un cierre viejo —
+    // ver conEfectivoEsperado() en caja.service.ts); si por algo no viniera,
+    // cae al bloque viejo para no imprimir un ticket vacío.
+    const cuadreHtml = bloqueCuadreFormaPagoTermico(r);
+
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
   @media print { @page { size:${prn.width} auto; margin:0; } }
@@ -536,6 +545,7 @@ export default function CajaPage() {
   .small{font-size:0.85em}
   .xlarge{font-size:1.2em;font-weight:900}
   ${CSS_FACTURAS_TERMICO}
+  ${CSS_CUADRE_FORMA_PAGO_TERMICO}
 </style></head><body>
 ${empRes.razonSocial ?? empRes.nombre ? `<div class="center bold">${esc(empRes.razonSocial ?? empRes.nombre)}</div>` : ''}
 ${empRes.rnc        ? `<div class="center small">RNC: ${esc(empRes.rnc)}</div>` : ''}
@@ -561,12 +571,14 @@ ${line()}
 ${row('Gastos:',  f(Number(r.gastosEfectivo ?? 0)))}
 ${row('Retiros:', f(Number(r.retiros        ?? 0)))}
 ${line()}
+${row('Apertura:', f(Number(r.saldoApertura ?? 0)))}
+${cuadreHtml || `
 <div class="small bold">CUADRE</div>
-${row('Apertura:',          f(Number(r.saldoApertura ?? 0)))}
 ${row('Efectivo esperado:', f(Number(r.efectivoEsperado ?? r.saldoCierre ?? 0)))}
 ${row('Efectivo contado:',  f(Number(r.saldoFisico   ?? 0)))}
 ${line()}
 <div class="center xlarge">${esc(difLabel)}</div>
+`}
 ${billetesRows ? `${line()}<div class="small bold">DESGLOSE DE BILLETES</div>\n${billetesRows}\n${row('Total billetes:', f(totalBilletes), true)}` : ''}
 ${pagoRows     ? `${line()}<div class="small bold">DESGLOSE DE PAGO</div>\n${pagoRows}` : ''}
 ${r.notas      ? `${line()}<div class="small">Nota: ${esc(r.notas)}</div>` : ''}
@@ -696,6 +708,11 @@ ${line()}
       .map(([k,v]) => row(`  ${PAGO_LABELS[k] ?? k}:`, f(Number(v))))
       .join('\n');
 
+    // Ver el mismo comentario en imprimirCierre() — cuadre por forma de pago
+    // (real o derivado para un cierre viejo), reemplaza el viejo bloque de
+    // solo-efectivo.
+    const cuadreHtml = bloqueCuadreFormaPagoTermico(r);
+
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
   @media print { @page { size:${prn.width} auto; margin:0; } }
@@ -709,6 +726,7 @@ ${line()}
   .small{font-size:0.85em}
   .xlarge{font-size:1.2em;font-weight:900}
   ${CSS_FACTURAS_TERMICO}
+  ${CSS_CUADRE_FORMA_PAGO_TERMICO}
 </style></head><body>
 ${empRes.razonSocial ?? empRes.nombre ? `<div class="center bold">${esc(empRes.razonSocial ?? empRes.nombre)}</div>` : ''}
 ${empRes.rnc        ? `<div class="center small">RNC: ${esc(empRes.rnc)}</div>` : ''}
@@ -734,12 +752,14 @@ ${line()}
 ${row('Gastos:',  f(Number(r.gastosEfectivo ?? 0)))}
 ${row('Retiros:', f(Number(r.retiros        ?? 0)))}
 ${line()}
+${row('Apertura:', f(Number(r.saldoApertura ?? 0)))}
+${cuadreHtml || `
 <div class="small bold">CUADRE</div>
-${row('Apertura:',          f(Number(r.saldoApertura ?? 0)))}
 ${row('Efectivo esperado:', f(Number(r.efectivoEsperado ?? r.saldoCierre ?? 0)))}
 ${row('Efectivo contado:',  f(Number(r.saldoFisico   ?? 0)))}
 ${line()}
 <div class="center xlarge">${esc(difLabel)}</div>
+`}
 ${billetesRows ? `${line()}<div class="small bold">DESGLOSE DE BILLETES</div>\n${billetesRows}\n${row('Total billetes:', f(totalBilletes), true)}` : ''}
 ${pagoRows     ? `${line()}<div class="small bold">DESGLOSE DE PAGO</div>\n${pagoRows}` : ''}
 ${seccionDetalle}
