@@ -104,26 +104,54 @@ export async function solicitarReautenticacion(): Promise<boolean> {
  * `{ ok, token? }`, no solo `boolean`, porque el interceptor necesita el
  * token para adjuntarlo a la petición reintentada.
  *
- * Un solo handler (no hay versión "por defecto" + "específica del POS" como
- * la reautenticación): Modo Supervisor solo existe dentro del POS, que es
- * donde useSupervisor.ts se monta y se registra.
+ * PILA, no un solo handler (bug real, 2026-10-09 — empresa 73, Bellamar
+ * González): la versión anterior asumía "Modo Supervisor solo existe dentro
+ * del POS", así que un solo registrador bastaba. Pero cualquier pantalla
+ * fuera del POS (Caja Diaria, por ejemplo) puede recibir el mismo 403 — y
+ * sin un handler registrado ahí, `solicitarAutorizacionSupervisor` devolvía
+ * `{ok:false}` de inmediato: la cajera veía el mensaje del backend ("requiere
+ * autorización...") sin ningún modal para dársela — indistinguible de "no
+ * tienes permiso", sin ningún camino hacia adelante.
+ *
+ * Ahora <SupervisorAuthModal/> se monta UNA VEZ en App.tsx (capa base,
+ * siempre activa) y el POS sigue montando su propia instancia más rica
+ * encima — se empuja a la pila al montar, se saca al desmontar. Siempre se
+ * usa la de más arriba (la más específica mientras esté montada); al
+ * desmontar el POS, la de App.tsx queda visible de nuevo — nunca llega a 0.
  */
 export interface AutorizacionSupervisorResultado { ok: boolean; token?: string }
 type SupervisorAuthHandler = (clave: string, action: string, detail?: string) => Promise<AutorizacionSupervisorResultado>;
-let _supervisorAuthHandler: SupervisorAuthHandler | null = null;
+const _supervisorAuthHandlers: SupervisorAuthHandler[] = [];
 
-/** Lo registra useSupervisor.ts al montar (POSPage) y lo desregistra al desmontar. */
+/** Lo registra useSupervisor.ts al montar y lo desregistra al desmontar — puede haber más de una instancia montada a la vez. */
+export function pushSupervisorAuthHandler(fn: SupervisorAuthHandler): () => void {
+  _supervisorAuthHandlers.push(fn);
+  return () => {
+    const i = _supervisorAuthHandlers.lastIndexOf(fn);
+    if (i !== -1) _supervisorAuthHandlers.splice(i, 1);
+  };
+}
+
+/**
+ * @deprecated usar pushSupervisorAuthHandler — se mantiene por si algo
+ * externo lo importa directamente. Replica la semántica del ref único de
+ * antes (último registro gana, `null` lo quita): saca su propio registro
+ * previo de la pila antes de empujar el nuevo, en vez de acumularlos.
+ */
+let _legacyUnregister: (() => void) | null = null;
 export function registerSupervisorAuthHandler(fn: SupervisorAuthHandler | null): void {
-  _supervisorAuthHandler = fn;
+  if (_legacyUnregister) { _legacyUnregister(); _legacyUnregister = null; }
+  if (fn) _legacyUnregister = pushSupervisorAuthHandler(fn);
 }
 
 /** Llamado por el interceptor de Axios ante un 403 con supervisorClaveRequerida. */
 export async function solicitarAutorizacionSupervisor(
   clave: string, action: string, detail?: string,
 ): Promise<AutorizacionSupervisorResultado> {
-  if (!_supervisorAuthHandler) return { ok: false };
+  const handler = _supervisorAuthHandlers[_supervisorAuthHandlers.length - 1];
+  if (!handler) return { ok: false };
   try {
-    return await _supervisorAuthHandler(clave, action, detail);
+    return await handler(clave, action, detail);
   } catch {
     return { ok: false };
   }

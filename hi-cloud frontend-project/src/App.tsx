@@ -16,6 +16,8 @@ import { guardarReturnTo } from './utils/returnTo';
 import AppLayout                from './components/layout/AppLayout';
 import ActividadGuard           from './components/auth/ActividadGuard';
 import ReautenticacionGlobalModal from './components/auth/ReautenticacionGlobalModal';
+import SupervisorAuthModal      from './components/ui/SupervisorAuthModal';
+import { useSupervisor }        from './hooks/useSupervisor';
 import MensajeNotificador       from './components/ui/MensajeNotificador';
 import PortalEmpleadoLayout     from './components/layout/PortalEmpleadoLayout';
 import ErrorBoundary     from './components/ui/ErrorBoundary';
@@ -376,6 +378,23 @@ function AppLoader() {
       </div>
     </div>
   );
+}
+
+// Modal de autorización de Modo Supervisor — capa BASE, siempre montada para
+// cualquier usuario autenticado (ver sessionEvents.ts, pila de handlers).
+// El POS monta su propia instancia más rica encima mientras está activo; al
+// salir del POS, esta vuelve a ser la única disponible — nunca llega a 0.
+// Bug real (2026-10-09, empresa 73): sin esto, cualquier pantalla fuera del
+// POS (Caja Diaria, por ejemplo) no tenía forma de responder un 403 de
+// supervisor — el cajero veía el error sin ningún camino hacia adelante.
+function SupervisorAuthGlobal() {
+  const isAuth = useAuthStore((s) => s.isAuth());
+  if (!isAuth) return null;
+  return <SupervisorAuthGlobalInner />;
+}
+function SupervisorAuthGlobalInner() {
+  const supervisor = useSupervisor();
+  return <SupervisorAuthModal supervisor={supervisor} />;
 }
 
 // Ruta raíz: landing para visitantes, dashboard para autenticados.
@@ -745,6 +764,9 @@ export default function App() {
                 mientras está montado y esta vuelve a tomar el control al
                 salir, no antes. */}
             <ReautenticacionGlobalModal />
+            {/* Mismo patrón que ReautenticacionGlobalModal — ver el comentario
+                en la definición de SupervisorAuthGlobal más arriba. */}
+            <SupervisorAuthGlobal />
             {/* Reporta actividad real al backend y cierra por inactividad.
                 En la raíz a propósito: antes vivía dentro de AppLayout y dejaba
                 sin cubrir /super-admin/* y el portal de empleados. */}
