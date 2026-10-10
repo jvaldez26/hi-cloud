@@ -481,8 +481,9 @@ export class ActualizarGarantiaDto {
   @IsOptional() @IsNumber(MONTO) @Min(0) @Type(() => Number)
   valorRealizacion?: number;
 
-  @IsOptional() @IsIn(['activa', 'liberada', 'ejecutada'])
-  estado?: string;
+  // 'estado' NO se edita por aquí — ver liberar()/ejecutar() en
+  // GarantiasService (Etapa 2 resto, §3): un cambio de estado siempre deja
+  // motivo y quién lo hizo, nunca un PATCH genérico silencioso.
 
   @IsOptional() @IsString() @MaxLength(200)
   ubicacion?: string;
@@ -713,4 +714,82 @@ export class ConvertirSimulacionDto {
 
   @IsOptional() @IsString() @MaxLength(500)
   proposito?: string;
+}
+
+// ── Etapa 2 (resto) — docs/prestamista/etapa-2-resto.md ───────────────────
+
+/** Anular un pago con reversa — motivo siempre obligatorio (§1). */
+export class AnularPagoDto {
+  @IsString() @IsNotEmpty() @MaxLength(500)
+  motivo!: string;
+}
+
+export class CrearGaranteDto {
+  @IsString() @IsNotEmpty() @MaxLength(200)
+  nombre!: string;
+
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number)
+  prestamoId?: number;
+
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number)
+  solicitudId?: number;
+
+  @IsOptional() @IsString() @MaxLength(20)
+  cedula?: string;
+
+  @IsOptional() @IsString() @MaxLength(20)
+  telefono?: string;
+
+  @IsOptional() @IsString() @MaxLength(500)
+  direccion?: string;
+
+  @IsOptional() @IsString() @MaxLength(100)
+  ocupacion?: string;
+
+  @IsOptional() @IsNumber(MONTO) @Min(0) @Type(() => Number)
+  ingresoMensual?: number;
+
+  @IsOptional() @IsString() @MaxLength(100)
+  relacionDeudor?: string;
+}
+
+export class ActualizarGaranteDto {
+  @IsOptional() @IsString() @MaxLength(200)
+  nombre?: string;
+
+  @IsOptional() @IsString() @MaxLength(20)
+  cedula?: string;
+
+  @IsOptional() @IsString() @MaxLength(20)
+  telefono?: string;
+
+  @IsOptional() @IsString() @MaxLength(500)
+  direccion?: string;
+
+  @IsOptional() @IsString() @MaxLength(100)
+  ocupacion?: string;
+
+  @IsOptional() @IsNumber(MONTO) @Min(0) @Type(() => Number)
+  ingresoMensual?: number;
+
+  @IsOptional() @IsString() @MaxLength(100)
+  relacionDeudor?: string;
+}
+
+/** Liberar un garante — motivo opcional (no mueve dinero, caso normal: el préstamo se pagó). */
+export class LiberarGaranteDto {
+  @IsOptional() @IsString() @MaxLength(500)
+  motivo?: string;
+}
+
+/** Liberar una garantía — motivo opcional (§3). */
+export class LiberarGarantiaDto {
+  @IsOptional() @IsString() @MaxLength(500)
+  motivo?: string;
+}
+
+/** Ejecutar una garantía — motivo siempre obligatorio (§3, acción más grave del módulo). */
+export class EjecutarGarantiaDto {
+  @IsString() @IsNotEmpty() @MaxLength(500)
+  motivo!: string;
 }

@@ -14,8 +14,13 @@ export class PrGarantia {
   @Column({ type: 'jsonb', nullable: true }) detalles?: any;
   @Column({ type: 'jsonb', nullable: true }) documentosUrls?: any;
   @Column({ type: 'jsonb', nullable: true }) fotosUrls?: any;
+  /** Ciclo de vida (Etapa 2 resto, §3): 'activa' | 'liberada' | 'ejecutada'. */
   @Column({ length: 20, default: 'activa' }) estado!: string;
   @Column({ length: 200, nullable: true }) ubicacion?: string;
   @Column({ type: 'text', nullable: true }) notas?: string;
+  @Column({ type: 'timestamp', nullable: true }) fechaEjecucion?: Date;
+  @Column({ type: 'text', nullable: true }) motivoCambioEstado?: string;
+  @Column({ type: 'int', nullable: true }) cambiadoPor?: number;
+  @Column({ length: 200, nullable: true }) cambiadoPorNombre?: string;
   @CreateDateColumn() createdAt!: Date;
 }

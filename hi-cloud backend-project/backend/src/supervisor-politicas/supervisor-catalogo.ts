@@ -70,6 +70,12 @@ export const CATALOGO_SUPERVISOR: CatalogoItem[] = [
 
   // ── Prestamista / Financiera ─────────────────────────────────────────────
   { clave: 'pago_retroactivo', label: 'Pago de préstamo con fecha anterior', descripcion: 'Registrar un pago de préstamo con fecha de ayer o antes', grupo: 'Prestamista / Financiera', defaultRequerido: true, defaultModo: 'cada_vez' },
+  // Usan RequiereSupervisorSiempre (sin bypass por rol) — Etapa 2 resto §1/§3:
+  // anular un pago o ejecutar una garantía son las acciones más graves del
+  // módulo (mueven dinero/patrimonio ya aplicado), ni el propio ADMIN que las
+  // hace puede autorizarse a sí mismo.
+  { clave: 'anular_pago_prestamo', label: 'Anular pago de préstamo', descripcion: 'Anular un pago ya aplicado — revierte cuotas, saldos y el asiento contable', grupo: 'Prestamista / Financiera', defaultRequerido: true, defaultModo: 'cada_vez' },
+  { clave: 'ejecutar_garantia',    label: 'Ejecutar garantía',       descripcion: 'Marcar una garantía como ejecutada por impago (el banco se queda con el bien)', grupo: 'Prestamista / Financiera', defaultRequerido: true, defaultModo: 'cada_vez' },
 
   // ── Caja: corrección posterior ──────────────────────────────────────────
   // Usa RequiereSupervisorSiempre (sin bypass por rol) — incluso un ADMIN

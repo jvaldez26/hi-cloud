@@ -31,5 +31,15 @@ export class PrPago {
   // C1: ver PagosService.registrar() y el índice único (empresaId, claveIdempotencia)
   // arriba — es lo que cierra la carrera de un doble clic/reintento de red.
   @Column({ length: 36, nullable: true, default: null }) claveIdempotencia?: string;
+  /**
+   * Anulación con reversa (Etapa 2 resto) — ver PagosService.anular() y
+   * docs/prestamista/etapa-2-resto.md §1. Un pago anulado NUNCA se borra:
+   * queda marcado, con las cuotas/saldos/asiento ya revertidos aparte.
+   */
+  @Column({ length: 20, default: 'activo' }) estado!: string;
+  @Column({ type: 'int', nullable: true }) anuladoPor?: number;
+  @Column({ length: 200, nullable: true }) anuladoPorNombre?: string;
+  @Column({ type: 'timestamp', nullable: true }) anuladoEn?: Date;
+  @Column({ type: 'text', nullable: true }) motivoAnulacion?: string;
   @CreateDateColumn() createdAt!: Date;
 }
