@@ -84,6 +84,7 @@ import { RestaurantePOS, TallerPOS, FarmaciaPOS, OpticaPOS, ClinicaPOS, Gimnasio
 import CompraFormInner from '../compras/CompraFormInner';
 import { ahora, dRD, fecha, fechaHora, fechaLarga, hora, horaConSegundos, hoyRD } from '../../utils/fechaRD';
 import { bloqueFacturasTermico, CSS_FACTURAS_TERMICO } from '../../utils/cierreFacturasTermico';
+import { bloqueCuadreFormaPagoTermico, CSS_CUADRE_FORMA_PAGO_TERMICO, type CierreConCuadreTermico } from '../../utils/cuadreFormaPagoTermico';
 
 // ── Alias type ────────────────────────────────────────────────────────────────
 type Prod = Producto;
@@ -2017,6 +2018,11 @@ function buildCierreCajaHTML(params: {
   /** Detalle de facturas del turno. Viene de GET /caja/:id/facturas-detalle,
    *  el mismo endpoint que alimenta el PDF y el Excel. */
   detalleFacturas?: any;
+  /** Cuadre por forma de pago del cierre — real o derivado para uno viejo
+   *  (ver cuadre-por-forma-pago.util.ts / caja.service.ts). Solo existe para
+   *  una caja ya CERRADA; en una ABIERTA (preview antes de cerrar) no hay
+   *  nada que cuadrar todavía. */
+  cuadreFormaPago?: CierreConCuadreTermico;
 }): string {
   const prn = IMPRESORA_CONFIG[params.tipoImpresora ?? '80mm'] ?? IMPRESORA_CONFIG['80mm'];
   const esc = (s: string) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -2056,6 +2062,13 @@ function buildCierreCajaHTML(params: {
     .map(([k,v]) => row(`  ${PAGO_LABELS[k] ?? k}:`, fmt(Number(v))))
     .join('\n');
 
+  // Cuadre por forma de pago — reemplaza el viejo "Efectivo esperado/contado
+  // + SOBRANTE/FALTANTE" (que solo cuadraba efectivo). Ver el mismo bloque
+  // en CajaPage.tsx (imprimirCierre/imprimirTicketConDetalle) — misma fuente,
+  // misma plantilla, para que el recibo que imprime el POS al cerrar y el
+  // que reimprime el panel de Caja nunca diverjan.
+  const cuadreHtml = bloqueCuadreFormaPagoTermico(params.cuadreFormaPago);
+
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
   @media print { @page { size:${prn.width} auto; margin:0; } }
@@ -2069,6 +2082,7 @@ function buildCierreCajaHTML(params: {
   .small{font-size:0.85em}
   .xlarge{font-size:1.2em;font-weight:900}
   ${CSS_FACTURAS_TERMICO}
+  ${CSS_CUADRE_FORMA_PAGO_TERMICO}
   .title{font-size:1.1em;font-weight:900;text-align:center;letter-spacing:1px;margin:4px 0}
 </style>
 <script>
@@ -2103,12 +2117,14 @@ ${line()}
 ${row('Gastos:',  fmt(egr.gastos))}
 ${row('Retiros:', fmt(egr.retiros))}
 ${cua ? `${line()}
+${row('Apertura:', fmt(cua.apertura))}
+${cuadreHtml || `
 <div class="small bold">CUADRE</div>
-${row('Apertura:',          fmt(cua.apertura))}
 ${row('Efectivo esperado:', fmt(cua.esperado))}
 ${row('Efectivo contado:',  fmt(cua.contado))}
 ${line()}
-<div class="center xlarge">${esc(difLabel!)}</div>` : ''}
+<div class="center xlarge">${esc(difLabel!)}</div>
+`}` : ''}
 ${params.totalBilletes > 0 ? `${line()}
 <div class="small bold">DESGLOSE DE BILLETES</div>
 ${billetesRows}
@@ -6192,8 +6208,12 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
 // ── Panel Cierre de Caja ──────────────────────────────────────────────────────
 const BILLETES_RD = [2000, 1000, 500, 200, 100, 50, 25, 20, 10, 5, 1];
 
+// Débito y crédito se unificaron en un solo campo "tarjeta" — el esperado
+// (ventasTarjeta) nunca los distinguió tampoco (DGII no los separa), así
+// que declararlos aparte no tenía con qué compararse y solo invitaba a
+// repartir mal el monto entre los dos.
 type DesglosePago = {
-  efectivo: string; tarjetaCredito: string; tarjetaDebito: string;
+  efectivo: string; tarjeta: string;
   cheque: string; transferencia: string; otro: string;
   deposito: string; documentos: string;
 };
@@ -7363,7 +7383,7 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
   const [nota,     setNota]     = useState('');
   const [billetes, setBilletes] = useState<Record<number,number>>({});
   const [pago, setPago] = useState<DesglosePago>({
-    efectivo:'', tarjetaCredito:'', tarjetaDebito:'',
+    efectivo:'', tarjeta:'',
     cheque:'', transferencia:'', otro:'', deposito:'', documentos:'',
   });
   const [tab, setTab] = useState<'actual' | 'historial'>('actual');
@@ -7376,8 +7396,21 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
   const [printSnapshot, setPrintSnapshot]     = useState<any>(null);
 
   const totalBilletes   = BILLETES_RD.reduce((s,b) => s + (billetes[b]??0)*b, 0);
+  // SOLO efectivo — antes caía a la suma de TODAS las formas (tarjeta,
+  // transferencia, cheque...) cuando no se contaban billetes, mezclando
+  // dinero que no está en el cajón con el que sí. El total de todas las
+  // formas (para el resumen informativo) es un número aparte.
+  const totalFisico       = totalBilletes || (Number(pago.efectivo) || 0);
   const totalDesglosePago = Object.values(pago).reduce((s,v) => s + (Number(v)||0), 0);
-  const totalFisico     = totalBilletes || totalDesglosePago;
+  // Mapeo a los 4 "buckets" que el backend ya usa para el esperado (DGII no
+  // distingue cheque/depósito/otro de transferencia tampoco) — ver
+  // cuadre-por-forma-pago.util.ts.
+  const declaradoPorForma = [
+    { forma: 'efectivo',      monto: totalFisico },
+    { forma: 'tarjeta',       monto: Number(pago.tarjeta) || 0 },
+    { forma: 'transferencia', monto: Number(pago.transferencia) || 0 },
+    { forma: 'otros',         monto: (Number(pago.cheque)||0) + (Number(pago.otro)||0) + (Number(pago.deposito)||0) + (Number(pago.documentos)||0) },
+  ];
 
   const { data: cajaHoy, isLoading } = useQuery<any>({
     queryKey: ['pos-caja-hoy'],
@@ -7416,7 +7449,7 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
   useEffect(() => {
     if (!cajaHoy?.id) return;
     if (cajaHoy?.ciegoCajaActivo) {
-      setPago({ efectivo:'', tarjetaCredito:'', tarjetaDebito:'',
+      setPago({ efectivo:'', tarjeta:'',
         cheque:'', transferencia:'', otro:'', deposito:'', documentos:'' });
     } else if (cajaHoy?.ventasEfectivo) {
       const ef = Number(cajaHoy.ventasEfectivo) + Number(cajaHoy.saldoApertura ?? 0);
@@ -7433,6 +7466,7 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
         notas:             nota || undefined,   // DTO espera 'notas' (plural)
         desgloseBilletes:  billetes,
         desglosePago:      pago,
+        declaradoPorForma, // cuadre por forma de pago — ver cuadre-por-forma-pago.util.ts
       });
     },
     onSuccess: () => {
@@ -7553,6 +7587,17 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
         ingresos: { ventasEfectivo: snap._vendidoContado, ventasTarjeta: Number(snap.ventasTarjeta ?? 0), ventasTransferencia: Number(snap.ventasTransferencia ?? 0), cobrosRecibidos: snap._totalRecibos, totalAnticipos: Number(snap.totalAnticipos ?? 0) },
         egresos:  { gastos: Number(snap.gastosEfectivo ?? 0), retiros: Number(snap.retiros ?? 0) },
         cuadre:   snap.ciegoCajaActivo ? null : { apertura: snap._efectivoInicial, esperado, contado: snap._totalFisico },
+        // Real (si snap viene de un cierre ya CERRADO) o derivado para uno
+        // viejo — ambos casos ya los resuelve el backend (conEfectivoEsperado
+        // en caja.service.ts); undefined en una caja ABIERTA, donde no hay
+        // nada que cuadrar todavía.
+        cuadreFormaPago: snap.ciegoCajaActivo ? undefined : {
+          cuadrePorFormaPago:   snap.cuadrePorFormaPago,
+          cuadreCorregido:      snap.cuadreCorregido,
+          cuadreEstimado:       snap.cuadreEstimado,
+          sospechasFormaPago:   snap.sospechasFormaPago,
+          facturasSinFormaPago: snap.facturasSinFormaPago,
+        },
         billetes: snap._billetes,
         pago:     snap._pago,
         totalBilletes: snap._totalBilletes,
@@ -7829,18 +7874,17 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
             <div style={{ fontSize:13, fontWeight:800, marginBottom:12 }}>Desglose de Pago</div>
             <div style={grid3}>
               <CierreField label="Efectivo"        value={pago.efectivo}        editable onChange={setPagoKey('efectivo')} />
-              <CierreField label="Tarjeta Crédito" value={pago.tarjetaCredito}  editable onChange={setPagoKey('tarjetaCredito')} />
-              <CierreField label="Tarjeta Débito"  value={pago.tarjetaDebito}   editable onChange={setPagoKey('tarjetaDebito')} />
+              <CierreField label="Tarjeta"         value={pago.tarjeta}         editable onChange={setPagoKey('tarjeta')} />
+              <CierreField label="Transferencia"   value={pago.transferencia}   editable onChange={setPagoKey('transferencia')} />
             </div>
             <div style={grid3}>
               <CierreField label="Cheque"          value={pago.cheque}          editable onChange={setPagoKey('cheque')} />
-              <CierreField label="Transferencia"   value={pago.transferencia}   editable onChange={setPagoKey('transferencia')} />
+              <CierreField label="Depósito"        value={pago.deposito}        editable onChange={setPagoKey('deposito')} />
               <CierreField label="Otro"            value={pago.otro}            editable onChange={setPagoKey('otro')} />
             </div>
             <div style={grid3}>
-              <CierreField label="Depósito"        value={pago.deposito}        editable onChange={setPagoKey('deposito')} />
               <CierreField label="Documentos"      value={pago.documentos}      editable onChange={setPagoKey('documentos')} />
-              <CierreField label="Efectivo en Sistema" value={m(totalDesglosePago)} highlight />
+              <CierreField label="Total declarado (todas las formas)" value={m(totalDesglosePago)} highlight />
             </div>
           </div>
 

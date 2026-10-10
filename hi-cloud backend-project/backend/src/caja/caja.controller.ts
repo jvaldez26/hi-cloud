@@ -50,6 +50,10 @@ class CerrarCajaDto {
    */
   @IsOptional() @IsString() @MaxLength(300)
   motivo?: string;
+
+  /** Lo que la cajera declara por forma de pago (ver cuadre-por-forma-pago.util.ts). Sin esto, el cuadre solo usa efectivo (compat). */
+  @IsOptional()
+  declaradoPorForma?: { forma: string; monto: number }[];
 }
 
 class AnularCierreDto {
@@ -184,6 +188,7 @@ export class CajaController {
       dto.desgloseBilletes, dto.desglosePago,
       { id: usuario.id, nombre: usuario.nombre },
       dto.motivo,
+      dto.declaradoPorForma,
     );
   }
 
@@ -322,5 +327,12 @@ export class CajaController {
   @ApiOperation({ summary: 'Una caja por id — enlace directo del aviso de caja abierta de un día anterior. VENDEDOR nunca ve el monto de una caja ABIERTA' })
   obtenerUna(@Param('id', ParseIntPipe) id: number) {
     return this.cajaService.obtenerUnaPorId(id);
+  }
+
+  @Get(':id/ajustes')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Correcciones de forma de pago registradas sobre facturas de un cierre YA CERRADO — el cierre original no se altera' })
+  listarAjustes(@Param('id', ParseIntPipe) id: number) {
+    return this.cajaService.listarAjustes(id);
   }
 }

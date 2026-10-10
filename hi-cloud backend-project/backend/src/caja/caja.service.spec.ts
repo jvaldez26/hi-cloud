@@ -26,6 +26,9 @@ function buildDeps() {
       manager: {
         query:  jest.fn().mockResolvedValue([{}]),
         update: jest.fn().mockResolvedValue(undefined),
+        // conCuadreCorregido() busca ajustes vía getRepository(AjusteCierreCaja)
+        // — sin ajustes por defecto, ningún test de esta suite los necesita.
+        getRepository: jest.fn(() => ({ find: jest.fn().mockResolvedValue([]) })),
       },
     },
     // getRolEmpresa: el rol de la empresa ACTIVA (usuario_empresa), nunca
@@ -167,6 +170,167 @@ describe('CajaService.cerrarCaja — pertenencia', () => {
     await expect(
       service.cerrarCaja(1, 500, undefined, undefined, undefined, { id: 1 }),
     ).rejects.toThrow(BadRequestException);
+  });
+});
+
+// Caso real (empresa 73, cajera Bellamar González, 2026-10-09): FAC-1803 se
+// registró como Tarjeta 955 + Efectivo 125 cuando fue al revés (Efectivo 955
+// + Tarjeta 125). El cierre solo cuadraba efectivo: "+829.94 SOBRANTE" — era
+// la tarjeta la que faltaba, no dinero de más. Ver cuadre-por-forma-pago.util.ts.
+describe('CajaService.cerrarCaja — cuadre por forma de pago (caso real empresa 73)', () => {
+  function mockQueryPorSql(d: ReturnType<typeof buildDeps>) {
+    d.dataSource.manager.query.mockImplementation((sql: string) => {
+      if (sql.includes('recibos_cobro') && sql.includes('tarjeta'))
+        return Promise.resolve([{ tarjeta: '0', transferencia: '0' }]);
+      if (sql.includes('anticipo_cliente') && sql.includes('tarjeta'))
+        return Promise.resolve([{ tarjeta: '0', transferencia: '0' }]);
+      if (sql.includes('recibos_cobro') || sql.includes('anticipo_cliente'))
+        return Promise.resolve([{ total: '0' }]);
+      if (sql.includes('FROM facturas f'))
+        return Promise.resolve([]); // sin facturas sin forma de pago ni candidatas, en este caso
+      return Promise.resolve([{}]);
+    });
+  }
+
+  it('efectivo +829.94 / tarjeta -830.00 → detecta "posible forma mal registrada", no un sobrante real', async () => {
+    const d = buildDeps();
+    mockQueryPorSql(d);
+    d.repo.findOne.mockResolvedValue(cajaAbierta({
+      id: 1, userId: 1, vendedorId: 12, vendedorNombre: 'Bellamar González',
+      saldoApertura: 0, ventasEfectivo: 5608.06, ventasTarjeta: 2605.00,
+    }));
+    const service = buildService(d);
+
+    const declaradoPorForma = [
+      { forma: 'efectivo', monto: 6438.00 },
+      { forma: 'tarjeta',  monto: 1775.00 },
+    ];
+    await service.cerrarCaja(1, 6438.00, undefined, undefined, undefined, { id: 1 }, undefined, declaradoPorForma);
+
+    expect(d.repo.update).toHaveBeenCalled();
+    const [, cambios] = d.repo.update.mock.calls[0];
+
+    const porForma = Object.fromEntries(cambios.cuadrePorFormaPago.map((f: any) => [f.forma, f]));
+    expect(porForma.efectivo).toEqual({ forma: 'efectivo', esperado: 5608.06, declarado: 6438.00, diferencia: 829.94 });
+    expect(porForma.tarjeta).toEqual({ forma: 'tarjeta', esperado: 2605.00, declarado: 1775.00, diferencia: -830.00 });
+
+    expect(cambios.sospechasFormaPago).toHaveLength(1);
+    expect(cambios.sospechasFormaPago[0]).toMatchObject({
+      formaSobrante: 'efectivo', formaFaltante: 'tarjeta', monto: 829.94,
+    });
+
+    // El diferencia GLOBAL (saldoFisico - saldoCierre, solo efectivo) sigue
+    // existiendo tal cual — para que nadie pierda el número con el que ya
+    // está familiarizado — pero ya no es la única señal: el cuadre por forma
+    // es el que explica qué pasó de verdad.
+    expect(cambios.diferencia).toBe(829.94);
+  });
+
+  it('sin declaradoPorForma (compat): declarado solo entra en efectivo, igual que antes', async () => {
+    const d = buildDeps();
+    mockQueryPorSql(d);
+    d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, userId: 1, ventasEfectivo: 500 }));
+    const service = buildService(d);
+
+    await service.cerrarCaja(1, 500, undefined, undefined, undefined, { id: 1 });
+
+    const [, cambios] = d.repo.update.mock.calls[0];
+    const porForma = Object.fromEntries(cambios.cuadrePorFormaPago.map((f: any) => [f.forma, f]));
+    expect(porForma.efectivo).toMatchObject({ esperado: 500, declarado: 500, diferencia: 0 });
+    expect(porForma.tarjeta).toMatchObject({ declarado: 0 });
+    expect(cambios.sospechasFormaPago).toEqual([]);
+  });
+});
+
+// Bug real (2026-10-10): reimprimir el cierre de Bellamar González volvía al
+// formato viejo porque ese cierre se cerró ANTES del fix — nunca tuvo
+// cuadrePorFormaPago guardado. Sin derivarlo al leer, ni obtenerUnaPorId ni
+// getHistorial (de donde sale todo lo que se imprime) traían la tabla.
+describe('CajaService — cuadre legacy derivado para cierres anteriores al fix', () => {
+  it('obtenerUnaPorId deriva el cuadre del caso real desde las columnas viejas (sin cuadrePorFormaPago guardado)', async () => {
+    const d = buildDeps();
+    d.repo.findOne.mockResolvedValue(cajaAbierta({
+      id: 1, estado: EstadoCierre.CERRADA,
+      saldoCierre: 5608.06, saldoFisico: 6438.00, ventasTarjeta: 2605.00,
+      desglosePago: { efectivo: '6438.00', tarjetaDebito: '1775.00' } as any,
+      cuadrePorFormaPago: undefined,
+    }));
+    const service = buildService(d);
+
+    const r: any = await service.obtenerUnaPorId(1);
+
+    expect(r.cuadreEstimado).toBe(true);
+    const porForma = Object.fromEntries(r.cuadrePorFormaPago.map((f: any) => [f.forma, f]));
+    expect(porForma.efectivo).toEqual({ forma: 'efectivo', esperado: 5608.06, declarado: 6438.00, diferencia: 829.94 });
+    expect(porForma.tarjeta).toEqual({ forma: 'tarjeta', esperado: 2605.00, declarado: 1775.00, diferencia: -830.00 });
+    expect(r.sospechasFormaPago).toEqual([
+      { formaSobrante: 'efectivo', formaFaltante: 'tarjeta', monto: 829.94, facturasCandidatas: [] },
+    ]);
+  });
+
+  it('un cierre YA con cuadrePorFormaPago guardado no se toca ni se marca estimado', async () => {
+    const d = buildDeps();
+    const snapshotReal = [{ forma: 'efectivo', esperado: 100, declarado: 100, diferencia: 0 }];
+    d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, estado: EstadoCierre.CERRADA, cuadrePorFormaPago: snapshotReal as any }));
+    const service = buildService(d);
+
+    const r: any = await service.obtenerUnaPorId(1);
+
+    expect(r.cuadrePorFormaPago).toBe(snapshotReal);
+    expect(r.cuadreEstimado).toBeUndefined();
+  });
+
+  it('una caja ABIERTA nunca deriva cuadre legacy (todavía no hay nada que cuadrar)', async () => {
+    const d = buildDeps();
+    d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, estado: EstadoCierre.ABIERTA }));
+    const service = buildService(d);
+
+    const r: any = await service.obtenerUnaPorId(1);
+
+    expect(r.cuadrePorFormaPago).toBeUndefined();
+  });
+});
+
+// Requisito explícito (2026-10-10): si una factura del turno se corrigió
+// DESPUÉS de cerrar, el reporte muestra el cuadre ORIGINAL y el CORREGIDO
+// uno junto al otro — el cierre guardado nunca se reescribe.
+describe('CajaService — cuadreCorregido cuando el cierre tiene un ajuste posterior', () => {
+  it('obtenerUnaPorId agrega cuadreCorregido aplicando el ajuste sobre el cuadre original', async () => {
+    const d = buildDeps();
+    const cuadreOriginal = [
+      { forma: 'efectivo', esperado: 5608.06, declarado: 6438.00, diferencia: 829.94 },
+      { forma: 'tarjeta',  esperado: 2605.00, declarado: 1775.00, diferencia: -830.00 },
+    ];
+    d.repo.findOne.mockResolvedValue(cajaAbierta({
+      id: 1, estado: EstadoCierre.CERRADA, cuadrePorFormaPago: cuadreOriginal as any,
+    }));
+    const ajuste = {
+      cierreCajaId: 1,
+      formasPagoAnterior: [{ tipo: 3, monto: 955 }, { tipo: 1, monto: 125 }],
+      formasPagoNuevo:    [{ tipo: 1, monto: 955 }, { tipo: 3, monto: 125 }],
+    };
+    d.dataSource.manager.getRepository = jest.fn(() => ({ find: jest.fn().mockResolvedValue([ajuste]) })) as any;
+    const service = buildService(d);
+
+    const r: any = await service.obtenerUnaPorId(1);
+
+    expect(r.cuadrePorFormaPago).toBe(cuadreOriginal); // el original NO se altera
+    const corregidoPorForma = Object.fromEntries(r.cuadreCorregido.map((f: any) => [f.forma, f]));
+    expect(corregidoPorForma.efectivo).toEqual({ forma: 'efectivo', esperado: 6438.06, declarado: 6438.00, diferencia: -0.06 });
+    expect(corregidoPorForma.tarjeta).toEqual({ forma: 'tarjeta', esperado: 1775.00, declarado: 1775.00, diferencia: 0 });
+  });
+
+  it('sin ajustes, no agrega cuadreCorregido', async () => {
+    const d = buildDeps();
+    d.repo.findOne.mockResolvedValue(cajaAbierta({
+      id: 1, estado: EstadoCierre.CERRADA,
+      cuadrePorFormaPago: [{ forma: 'efectivo', esperado: 100, declarado: 100, diferencia: 0 }] as any,
+    }));
+    const service = buildService(d);
+
+    const r: any = await service.obtenerUnaPorId(1);
+
+    expect(r.cuadreCorregido).toBeUndefined();
   });
 });
 
@@ -356,6 +520,8 @@ function makeCajaService(opts: { cajas?: any[]; facturas?: any[]; cierreCajaCieg
       // recalcularDesdeBD — no importa el cuadre recalculado en estas pruebas.
       query: jest.fn(async () => [{}]),
       update: jest.fn(async () => undefined),
+      // conCuadreCorregido() — sin ajustes por defecto en este bloque de tests.
+      getRepository: jest.fn(() => ({ find: jest.fn().mockResolvedValue([]) })),
     },
   };
 

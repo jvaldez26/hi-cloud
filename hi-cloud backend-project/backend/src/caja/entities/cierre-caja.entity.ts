@@ -168,6 +168,30 @@ export class CierreCaja {
   @Column({ type: 'jsonb', nullable: true })
   desglosePago?: Record<string, string>;
 
+  /**
+   * Cuadre por forma de pago — ver cuadre-por-forma-pago.util.ts. Snapshot
+   * calculado AL CERRAR (una fila por forma: {forma, esperado, declarado,
+   * diferencia}), nunca recalculado después — una corrección posterior a
+   * una factura del turno queda en `ajustes_cierre_caja`, no reescribe esto.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  cuadrePorFormaPago?: { forma: string; esperado: number; declarado: number; diferencia: number }[];
+
+  /** Facturas CONTADO del turno sin forma de pago (o que no cubre el total) — fuera del cuadre, se muestran aparte. */
+  @Column({ type: 'jsonb', nullable: true })
+  facturasSinFormaPago?: { id: number; folio: string; total: number; clienteNombre?: string }[];
+
+  /**
+   * Sobrante de una forma ≈ faltante de otra → probable forma mal registrada
+   * (ver cuadre-por-forma-pago.util.ts), con las facturas del turno que
+   * podrían explicarlo (pago mixto con ambas formas en juego).
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  sospechasFormaPago?: {
+    formaSobrante: string; formaFaltante: string; monto: number;
+    facturasCandidatas: { id: number; folio: string; total: number; formasPago: { tipo: number; monto: number }[] }[];
+  }[];
+
   @Column()
   userId!: number;
 
