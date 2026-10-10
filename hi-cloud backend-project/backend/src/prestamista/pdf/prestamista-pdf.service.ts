@@ -290,4 +290,58 @@ export class PrestamistaPdfService {
 
     doc.end();
   }
+
+  /** Etapa 1 — PDF de la cotización de una simulación guardada (docs/prestamista/etapa-1.md). */
+  async cotizacionSimulacion(res: Response, simulacionId: number, empresaId: number) {
+    const [sim] = await this.ds.query<any[]>(
+      `SELECT s.*, d.nombre AS "deudorNombre", d.cedula AS "deudorCedula"
+       FROM pr_simulaciones s LEFT JOIN pr_deudores d ON d.id=s."deudorId" AND d."empresaId"=s."empresaId"
+       WHERE s.id=$1 AND s."empresaId"=$2`, [simulacionId, empresaId],
+    );
+    if (!sim) { res.status(404).json({ message: 'Simulación no encontrada' }); return; }
+    const empresa = await this.empresaInfo(empresaId);
+    const p: any = sim.parametros;
+    const r: any = sim.resultado;
+
+    const doc = new PDFDocument({ margin: 50, size: 'LETTER' });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="cotizacion-${sim.id}.pdf"`);
+    doc.pipe(res);
+
+    let y = this.buildHeader(doc, 'Cotización de Préstamo', empresa, `SIM-${sim.id}`);
+    doc.fontSize(9).font('Helvetica');
+    doc.text(`Para: ${sim.deudorNombre ?? sim.nombreProspecto ?? 'Prospecto'}${sim.deudorCedula ? ` | Cédula: ${sim.deudorCedula}` : ''}`, 50, y);
+    y += 14;
+    doc.text(`Monto: RD$ ${this.r2(p.montoPrincipal)} | Tasa: ${p.tasa?.valor != null ? (Number(p.tasa.valor) * 100).toFixed(3) : '—'}% ${p.tasa?.periodoExpresado ?? ''} | Plazo: ${p.plazoPeriodos} ${p.frecuencia} | Método: ${p.metodo}`, 50, y);
+    y += 14;
+    doc.text(`Cuota: RD$ ${r.cuotaFija != null ? this.r2(r.cuotaFija) : 'Variable'} | TEA: ${r.tea != null ? (Number(r.tea) * 100).toFixed(2) : '—'}% | Costo total del crédito: RD$ ${this.r2(r.costoTotalCredito)}`, 50, y);
+    y += 20;
+
+    const cols = [50, 95, 175, 270, 350, 440];
+    doc.font('Helvetica-Bold').fontSize(8);
+    ['#', 'Fecha', 'Cuota', 'Capital', 'Interés', 'Saldo'].forEach((h, i) => {
+      doc.text(h, cols[i], y, { width: cols[i + 1] ? cols[i + 1] - cols[i] - 5 : 60 });
+    });
+    y += 12;
+    doc.moveTo(50, y).lineTo(550, y).stroke();
+    y += 5;
+
+    doc.font('Helvetica').fontSize(8);
+    for (const linea of (r.tabla ?? [])) {
+      if (y > 700) { doc.addPage(); y = 50; }
+      [linea.numeroCuota, this.fecha(linea.fecha), this.r2(linea.cuotaTotal), this.r2(linea.capital), this.r2(linea.interes), this.r2(linea.saldoRestante)]
+        .forEach((val, i) => doc.text(String(val), cols[i], y, { width: cols[i + 1] ? cols[i + 1] - cols[i] - 5 : 60 }));
+      y += 12;
+    }
+
+    y += 10;
+    doc.font('Helvetica-Bold').fontSize(9);
+    doc.text(`Total Interés: RD$ ${this.r2(r.totalInteres)}`, 50, y);
+    doc.text(`Total a Pagar: RD$ ${this.r2(r.totalAPagar)}`, 250, y);
+    y += 16;
+    doc.fontSize(7).font('Helvetica-Oblique').fillColor('#888')
+      .text('Cotización no vinculante, sujeta a aprobación de crédito.', 50, y);
+
+    doc.end();
+  }
 }
