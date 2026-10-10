@@ -32,6 +32,8 @@ import { PagosService } from './pagos/pagos.service';
 import { PagosController } from './pagos/pagos.controller';
 import { GarantiasService } from './garantias/garantias.service';
 import { GarantiasController } from './garantias/garantias.controller';
+import { GarantesService } from './garantes/garantes.service';
+import { GarantesController } from './garantes/garantes.controller';
 import { CobranzaService } from './cobranza/cobranza.service';
 import { CobranzaController } from './cobranza/cobranza.controller';
 import { MoraCronService } from './cobranza/mora.cron';
@@ -78,6 +80,7 @@ import { SimulacionesController } from './simulaciones/simulaciones.controller';
     PrestamosService,
     PagosService,
     GarantiasService,
+    GarantesService,
     CobranzaService,
     MoraCronService,
     RefinanciamientoService,
@@ -95,6 +98,7 @@ import { SimulacionesController } from './simulaciones/simulaciones.controller';
     PrestamosController,
     PagosController,
     GarantiasController,
+    GarantesController,
     CobranzaController,
     RefinanciamientoController,
     DashboardPrestamistaController,

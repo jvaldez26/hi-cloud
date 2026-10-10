@@ -82,7 +82,10 @@ export class GarantiasService {
 
   async update(empresaId: number, id: number, data: any) {
     await this.findOne(empresaId, id);
-    const allowed = ['tipo','descripcion','valorTasado','valorRealizacion','estado','ubicacion','notas'];
+    // 'estado' NO está en esta lista a propósito — un cambio de estado pasa
+    // SIEMPRE por liberar()/ejecutar() (motivo + rastro de quién lo hizo),
+    // nunca por un PATCH genérico sin dejar constancia (Etapa 2 resto, §3).
+    const allowed = ['tipo','descripcion','valorTasado','valorRealizacion','ubicacion','notas'];
     const fields: string[] = [];
     const args: any[] = [];
     let idx = 1;
@@ -97,6 +100,52 @@ export class GarantiasService {
          UPDATE pr_garantias SET ${fields.join(',')} WHERE id=$${idx++} AND "empresaId"=$${idx} RETURNING *
        ) SELECT * FROM fila`, args,
     );
+    return row;
+  }
+
+  /**
+   * Libera la garantía (caso normal: el préstamo se pagó, o se decide
+   * liberarla por otro motivo). Motivo opcional — no mueve nada grave.
+   */
+  async liberar(empresaId: number, id: number, motivo: string | undefined, usuario: { id: number; nombre?: string }) {
+    const actual = await this.findOne(empresaId, id);
+    if (actual.estado === 'ejecutada') {
+      throw new BadRequestException('Esta garantía ya fue ejecutada — no se puede liberar');
+    }
+    if (actual.estado === 'liberada') return actual;
+
+    const [row] = await this.ds.query(
+      `WITH fila AS (
+         UPDATE pr_garantias SET estado='liberada', "motivoCambioEstado"=$1, "cambiadoPor"=$2, "cambiadoPorNombre"=$3
+         WHERE id=$4 AND "empresaId"=$5 RETURNING *
+       ) SELECT * FROM fila`,
+      [motivo ?? null, usuario.id, usuario.nombre ?? null, id, empresaId],
+    );
+    this.logger.log(`Garantía #${id} liberada por ${usuario.nombre ?? `usuario #${usuario.id}`}`);
+    return row;
+  }
+
+  /**
+   * Ejecuta la garantía (el banco se queda con el bien por impago) — la
+   * acción más grave del módulo, motivo SIEMPRE obligatorio (lo exige el DTO,
+   * no aquí) y protegida con RequiereSupervisorSiempre en el controller.
+   */
+  async ejecutar(empresaId: number, id: number, motivo: string, usuario: { id: number; nombre?: string }) {
+    const actual = await this.findOne(empresaId, id);
+    if (actual.estado === 'liberada') {
+      throw new BadRequestException('Esta garantía ya fue liberada — no se puede ejecutar');
+    }
+    if (actual.estado === 'ejecutada') return actual;
+
+    const [row] = await this.ds.query(
+      `WITH fila AS (
+         UPDATE pr_garantias SET estado='ejecutada', "fechaEjecucion"=NOW(),
+           "motivoCambioEstado"=$1, "cambiadoPor"=$2, "cambiadoPorNombre"=$3
+         WHERE id=$4 AND "empresaId"=$5 RETURNING *
+       ) SELECT * FROM fila`,
+      [motivo, usuario.id, usuario.nombre ?? null, id, empresaId],
+    );
+    this.logger.log(`Garantía #${id} EJECUTADA por ${usuario.nombre ?? `usuario #${usuario.id}`} — ${motivo}`);
     return row;
   }
 }
