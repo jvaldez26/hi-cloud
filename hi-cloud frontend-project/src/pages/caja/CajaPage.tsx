@@ -1,5 +1,6 @@
 ﻿import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { CierreCajaFormulario } from '../../components/caja/CierreCajaFormulario';
 import { useMobile } from '../../hooks/useMediaQuery';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { TableActions } from '../../components/ui/TableActions';
@@ -133,13 +134,14 @@ export default function CajaPage() {
     id: number; nombre: string;
     userId?: number; vendedorId?: number;
     saldoEsperado: number; saldoApertura: number;
-    ventasEfectivo: number; ventasTarjeta: number; ventasTransferencia: number;
+    ventasEfectivo: number; ventasTarjeta: number; ventasTransferencia: number; ventasCredito?: number;
     cobrosRecibidos: number; totalAnticipos: number; gastosEfectivo: number; retiros: number;
-    cantidadTransacciones: number; fecha: string;
+    cantidadTransacciones: number; fecha: string; ciegoCajaActivo?: boolean;
   } | null>(null);
   const [anularTarget, setAnularTarget] = useState<{ id: number; nombre: string; fecha: string } | null>(null);
   const [detalleCierre, setDetalleCierre] = useState<any>(null);
   const [saldoFisicoInput, setSaldoFisicoInput] = useState<number>(0);
+  const [motivoCierre, setMotivoCierre] = useState('');
   const [openAbrir, setOpenAbrir] = useState(false);
   const [histPage, setHistPage] = useState(1);
   const [histFecha, setHistFecha] = useState(() => dayjs());
@@ -221,7 +223,7 @@ export default function CajaPage() {
       setCerrarTarget(null); form.resetFields(); setSaldoFisicoInput(0);
       message.success('Caja cerrada correctamente');
     },
-    onError: (e: any) => message.error(e?.response?.data?.errors?.[0] ?? 'Error'),
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al cerrar caja'),
   });
 
   const anularMut = useMutation({
@@ -435,8 +437,10 @@ export default function CajaPage() {
       retiros:               Number(caja.retiros ?? 0),
       cantidadTransacciones: caja.cantidadTransacciones ?? 0,
       fecha:                 caja.fecha ?? '',
+      ventasCredito:         Number(caja.ventasCredito ?? 0),
+      ciegoCajaActivo:       !!caja.ciegoCajaActivo,
     });
-    form.resetFields(); setSaldoFisicoInput(0);
+    form.resetFields(); setSaldoFisicoInput(0); setMotivoCierre('');
   };
 
   // Caso real (2026-10-04): un ADMIN/CONTADOR cerrando la caja de OTRO
@@ -1619,9 +1623,46 @@ ${line()}
                         directamente.
                       </div>
                     )}
+                    {/* El efectivo contado en el recierre casi nunca debe diferir
+                        del conteo original — si difiere, alguien contó mal la
+                        segunda vez (o el dinero físico cambió entre cierres), y
+                        el recierre no debería pasar desapercibido. */}
+                    {Math.abs(Number(detalleCierre.saldoFisico ?? 0) - Number(detalleCierre.contadoOriginal ?? 0)) > 0.5 && (
+                      <div style={{ marginTop: 6, color: token.colorError, fontWeight: 600 }}>
+                        ⚠ El efectivo contado en el recierre ({fmt.money(Number(detalleCierre.saldoFisico ?? 0))}) difiere
+                        del conteo original ({fmt.money(Number(detalleCierre.contadoOriginal ?? 0))}).
+                      </div>
+                    )}
                   </div>
                 }
               />
+            )}
+
+            {/* Original vs recierre, lado a lado por forma de pago — sin esto,
+                el cuadre por forma del primer cajero se perdía sin rastro al
+                recerrar (ver incidente 2026-10-09/10). */}
+            {Array.isArray(detalleCierre.cuadrePorFormaPagoOriginal) && detalleCierre.cuadrePorFormaPagoOriginal.length > 0 && (
+              <>
+                <Divider style={{ margin: '12px 0 8px' }}>Cuadre por forma de pago — original vs. recierre</Divider>
+                <Table
+                  size="small" pagination={false} rowKey="forma"
+                  dataSource={detalleCierre.cuadrePorFormaPagoOriginal}
+                  columns={[
+                    { title: 'Forma', dataIndex: 'forma', render: (v: string) => LABEL_FORMA[v] ?? v },
+                    { title: 'Declarado (original)', dataIndex: 'declarado', align: 'right' as const, render: (v: number) => fmt.money(Number(v ?? 0)) },
+                    { title: 'Declarado (recierre)', dataIndex: 'forma', align: 'right' as const,
+                      render: (forma: string) => {
+                        const actual = (detalleCierre.cuadrePorFormaPago ?? []).find((f: any) => f.forma === forma);
+                        return fmt.money(Number(actual?.declarado ?? 0));
+                      } },
+                  ]}
+                />
+                {Array.isArray(detalleCierre.facturasSinFormaPagoOriginal) && detalleCierre.facturasSinFormaPagoOriginal.length > 0 && (
+                  <div style={{ fontSize: 12, color: token.colorTextSecondary, marginTop: 8 }}>
+                    Facturas sin forma de pago en el cierre original: {detalleCierre.facturasSinFormaPagoOriginal.map((f: any) => f.folio).join(', ')}
+                  </div>
+                )}
+              </>
             )}
           </>
         )}
@@ -1685,125 +1726,47 @@ ${line()}
         </Form>
       </Modal>
 
-      {/* Modal cerrar caja — resumen completo + diferencia en tiempo real */}
+      {/* Modal cerrar caja — mismo formulario de declaración por forma de
+          pago que el POS (CierreCajaFormulario); ver el incidente del
+          2026-10-09/10 que llevó a unificarlo: este modal solo pedía el
+          efectivo y un recierre hecho desde aquí borraba tarjeta/
+          transferencia/otros ya declaradas en el primer cierre. */}
       <Modal
         title={<Space><LockOutlined style={{ color: '#EF4444' }} />{`Cerrar caja — ${cerrarTarget?.nombre ?? ''}`}</Space>}
         open={!!cerrarTarget}
-        onCancel={() => { setCerrarTarget(null); setSaldoFisicoInput(0); }}
+        onCancel={() => { setCerrarTarget(null); setMotivoCierre(''); }}
         footer={null}
-        width="min(460px, 95vw)"
+        width="min(520px, 95vw)"
       >
         {esDeOtroCajero && (
-          <Alert
-            type="warning" showIcon style={{ marginBottom: 16 }}
-            message={`Vas a cerrar la caja de ${cerrarTarget?.nombre}, abierta el ${cerrarTarget?.fecha ? fecha(cerrarTarget.fecha) : ''}`}
-            description="No es tu caja — indica abajo por qué la estás cerrando tú."
-          />
-        )}
-        {/* ── Resumen del turno ── */}
-        <div style={{
-          background: token.colorFillAlter,
-          border: `1px solid ${token.colorBorderSecondary}`,
-          borderRadius: 8, padding: '12px 16px', marginBottom: 16,
-        }}>
-          <div style={{
-            fontSize: 11, fontWeight: 600, textTransform: 'uppercase',
-            letterSpacing: '0.06em', color: token.colorTextTertiary, marginBottom: 10,
-          }}>
-            Resumen del turno
-          </div>
-
-          {[
-            { label: 'Ventas efectivo',      value: cerrarTarget?.ventasEfectivo ?? 0,      color: '#10B981' },
-            { label: 'Ventas tarjeta',       value: cerrarTarget?.ventasTarjeta ?? 0,       color: undefined },
-            { label: 'Ventas transferencia', value: cerrarTarget?.ventasTransferencia ?? 0, color: undefined },
-            { label: 'Cobros recibidos',     value: cerrarTarget?.cobrosRecibidos ?? 0,     color: '#0EA5E9' },
-            { label: 'Anticipos recibidos',  value: cerrarTarget?.totalAnticipos ?? 0,      color: '#7C3AED' },
-            { label: 'Apertura (fondo)',     value: cerrarTarget?.saldoApertura ?? 0,       color: undefined },
-            { label: 'Gastos registrados',   value: cerrarTarget?.gastosEfectivo ?? 0,      color: '#EF4444', signo: true },
-            { label: 'Retiros',              value: cerrarTarget?.retiros ?? 0,             color: '#EF4444', signo: true },
-          ].filter(item => item.value > 0).map(item => (
-            <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', fontSize: 13 }}>
-              <span style={{ color: token.colorTextSecondary }}>{item.label}</span>
-              <span style={{ fontWeight: 500, color: item.color ?? token.colorText }}>
-                {item.signo ? '− ' : ''}{fmt.money(item.value)}
-              </span>
-            </div>
-          ))}
-
-          <div style={{ borderTop: `1px solid ${token.colorBorder}`, marginTop: 8, paddingTop: 8, display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ fontWeight: 600, fontSize: 13, color: token.colorText }}>Efectivo esperado</span>
-            <span style={{ fontWeight: 700, fontSize: 15, color: token.colorText }}>{fmt.money(cerrarTarget?.saldoEsperado ?? 0)}</span>
-          </div>
-          <div style={{ fontSize: 11, color: token.colorTextTertiary, textAlign: 'center', marginTop: 6 }}>
-            {cerrarTarget?.cantidadTransacciones ?? 0} transacciones · {cerrarTarget?.fecha ? fmt.date(cerrarTarget.fecha) : ''}
-          </div>
-        </div>
-
-        <Form form={form} layout="vertical" onFinish={v => cerrarMut.mutate({ id: cerrarTarget!.id, body: v })}>
-          <Form.Item
-            name="saldoFisico"
-            label={<span style={{ fontWeight: 500 }}>Efectivo físico contado (RD$)</span>}
-            rules={[{ required: true, message: 'Ingresa el monto contado' }]}
-          >
-            <InputNumber
-              style={{ width: '100%', fontSize: 16 }} size="large"
-              min={0} precision={2} autoFocus placeholder="0.00"
-              onChange={v => setSaldoFisicoInput(Number(v ?? 0))}
+          <>
+            <Alert
+              type="warning" showIcon style={{ marginBottom: 16 }}
+              message={`Vas a cerrar la caja de ${cerrarTarget?.nombre}, abierta el ${cerrarTarget?.fecha ? fecha(cerrarTarget.fecha) : ''}`}
+              description="No es tu caja — indica abajo por qué la estás cerrando tú."
             />
-          </Form.Item>
-
-          {/* Diferencia en tiempo real */}
-          {saldoFisicoInput > 0 && (() => {
-            // `diferenciaCierre` es una resta de dos importes en coma flotante:
-            // cuando el arqueo cuadra exacto puede valer 1.8e-12, y `=== 0` daba
-            // false. El modal anunciaba «↓ Faltante RD$0.00» justo donde el
-            // cajero decide si cierra. estadoDiferencia trae el medio centavo de
-            // tolerancia.
-            const estadoDif = estadoDiferencia(diferenciaCierre);
-            const difColor = colorDif(diferenciaCierre);
-            const difBg    = estadoDif === 'cuadrado' ? token.colorSuccessBg
-                           : estadoDif === 'sobrante' ? token.colorPrimaryBg
-                           :                            token.colorErrorBg;
-            return (
-              <div style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                padding: '10px 14px', borderRadius: 8, marginBottom: 16, marginTop: -8,
-                background: difBg, border: `1px solid ${difColor}55`,
-              }}>
-                <span style={{ fontSize: 13, fontWeight: 500, color: token.colorText }}>Diferencia</span>
-                <span style={{ fontSize: 15, fontWeight: 700, color: difColor, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {estadoDif === 'cuadrado' ? '✅' : estadoDif === 'sobrante' ? '↑' : '↓'}
-                  {' '}{fmt.money(estadoDif === 'cuadrado' ? 0 : Math.abs(diferenciaCierre))}
-                  {estadoDif === 'cuadrado' ? ' Cuadrado' : estadoDif === 'sobrante' ? ' Sobrante' : ' Faltante'}
-                </span>
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontWeight: 500, marginBottom: 4 }}>
+                Motivo para cerrar la caja de {cerrarTarget?.nombre} (obligatorio)
               </div>
-            );
-          })()}
+              <Input.TextArea rows={2} maxLength={300} showCount
+                placeholder="Ej: El cajero se fue sin cerrar su turno"
+                value={motivoCierre} onChange={e => setMotivoCierre(e.target.value)} />
+            </div>
+          </>
+        )}
 
-          <Form.Item name="notas" label="Observaciones (opcional)">
-            <Input.TextArea rows={2} placeholder="Ej: Billete roto de RD$500, cliente pagó con dólares..." />
-          </Form.Item>
-
-          {esDeOtroCajero && (
-            <Form.Item
-              name="motivo"
-              label={<span style={{ fontWeight: 500 }}>Motivo para cerrar la caja de {cerrarTarget?.nombre} (obligatorio)</span>}
-              rules={[{ required: true, whitespace: true, message: 'Indica por qué estás cerrando la caja de otro cajero' }]}
-            >
-              <Input.TextArea rows={2} maxLength={300} showCount placeholder="Ej: El cajero se fue sin cerrar su turno" />
-            </Form.Item>
-          )}
-
-          <Row justify="end" gutter={8}>
-            <Col><Button onClick={() => { setCerrarTarget(null); setSaldoFisicoInput(0); }}>Cancelar</Button></Col>
-            <Col>
-              <Button type="primary" danger htmlType="submit" icon={<LockOutlined />} loading={cerrarMut.isPending}>
-                Confirmar cierre
-              </Button>
-            </Col>
-          </Row>
-        </Form>
+        <CierreCajaFormulario
+          cajaHoy={cerrarTarget}
+          submitting={cerrarMut.isPending}
+          onCerrar={(payload) => {
+            if (esDeOtroCajero && !motivoCierre.trim()) {
+              message.error('Indica por qué estás cerrando la caja de otro cajero');
+              return;
+            }
+            cerrarMut.mutate({ id: cerrarTarget!.id, body: { ...payload, motivo: esDeOtroCajero ? motivoCierre : undefined } });
+          }}
+        />
       </Modal>
 
       {/* Modal imprimir cierre unificado */}
@@ -1993,8 +1956,10 @@ ${line()}
                 retiros:               Number(caja.retiros ?? 0),
                 cantidadTransacciones: caja.cantidadTransacciones ?? 0,
                 fecha:                 caja.fecha ?? '',
+                ventasCredito:         Number(caja.ventasCredito ?? 0),
+                ciegoCajaActivo:       !!caja.ciegoCajaActivo,
               });
-              form.resetFields(); setSaldoFisicoInput(0);
+              form.resetFields(); setSaldoFisicoInput(0); setMotivoCierre('');
               setPreCierreData(null);
             }}>
             Cerrar de todas formas

@@ -1,4 +1,5 @@
 ﻿import { useState, useCallback, useEffect, useMemo, useRef, memo, createContext, useContext } from 'react';
+import { CierreCajaFormulario, type CierreCajaPayload } from '../../components/caja/CierreCajaFormulario';
 import { SkeletonTabla }     from '../../components/ui/SkeletonTabla';
 import { SkeletonProductos } from '../../components/ui/SkeletonProductos';
 import { useSkeletonDelay }  from '../../hooks/useSkeletonDelay';
@@ -6206,39 +6207,8 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
 }
 
 // ── Panel Cierre de Caja ──────────────────────────────────────────────────────
-const BILLETES_RD = [2000, 1000, 500, 200, 100, 50, 25, 20, 10, 5, 1];
-
-// Débito y crédito se unificaron en un solo campo "tarjeta" — el esperado
-// (ventasTarjeta) nunca los distinguió tampoco (DGII no los separa), así
-// que declararlos aparte no tenía con qué compararse y solo invitaba a
-// repartir mal el monto entre los dos.
-type DesglosePago = {
-  efectivo: string; tarjeta: string;
-  cheque: string; transferencia: string; otro: string;
-  deposito: string; documentos: string;
-};
-
-function CierreField({ label, value, editable, onChange, highlight }:
-  { label: string; value: string; editable?: boolean; onChange?: (v:string)=>void; highlight?: boolean }) {
-  const color = highlight ? '#059669' : 'inherit';
-  return (
-    <div>
-      <div style={{ fontSize:10, color:'#94A3B8', marginBottom:2 }}>{label}</div>
-      {editable ? (
-        <input type="number" value={value} onChange={e=>onChange?.(e.target.value)}
-          style={{ width:'100%', height:36, textAlign:'right', padding:'0 8px',
-            borderRadius:6, border:'1px solid #ddd', fontSize:13, outline:'none',
-            boxSizing:'border-box', fontWeight:600, color }} />
-      ) : (
-        <div style={{ height:36, display:'flex', alignItems:'center', justifyContent:'flex-end',
-          padding:'0 8px', background:'#F8FAFC', borderRadius:6, border:'1px solid #E2E8F0',
-          fontSize:13, fontWeight:600, color }}>
-          {value}
-        </div>
-      )}
-    </div>
-  );
-}
+// El formulario de declaración (billetes + pago) vive en CierreCajaFormulario
+// — único componente usado por el POS y por Caja Diaria, ver ese archivo.
 
 // ── Ganancias / Ventas de Hoy ─────────────────────────────────────────────────
 function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
@@ -7380,12 +7350,6 @@ function POSRetirosLista({ C }: { C: Palette }) {
 
 function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
   const qc = useQueryClient();
-  const [nota,     setNota]     = useState('');
-  const [billetes, setBilletes] = useState<Record<number,number>>({});
-  const [pago, setPago] = useState<DesglosePago>({
-    efectivo:'', tarjeta:'',
-    cheque:'', transferencia:'', otro:'', deposito:'', documentos:'',
-  });
   const [tab, setTab] = useState<'actual' | 'historial'>('actual');
 
   // ── Diálogo de impresión ──────────────────────────────────────────────────
@@ -7396,23 +7360,6 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
   const [printDetalle, setPrintDetalle]       = useState(true);
   const [printLoading, setPrintLoading]       = useState(false);
   const [printSnapshot, setPrintSnapshot]     = useState<any>(null);
-
-  const totalBilletes   = BILLETES_RD.reduce((s,b) => s + (billetes[b]??0)*b, 0);
-  // SOLO efectivo — antes caía a la suma de TODAS las formas (tarjeta,
-  // transferencia, cheque...) cuando no se contaban billetes, mezclando
-  // dinero que no está en el cajón con el que sí. El total de todas las
-  // formas (para el resumen informativo) es un número aparte.
-  const totalFisico       = totalBilletes || (Number(pago.efectivo) || 0);
-  const totalDesglosePago = Object.values(pago).reduce((s,v) => s + (Number(v)||0), 0);
-  // Mapeo a los 4 "buckets" que el backend ya usa para el esperado (DGII no
-  // distingue cheque/depósito/otro de transferencia tampoco) — ver
-  // cuadre-por-forma-pago.util.ts.
-  const declaradoPorForma = [
-    { forma: 'efectivo',      monto: totalFisico },
-    { forma: 'tarjeta',       monto: Number(pago.tarjeta) || 0 },
-    { forma: 'transferencia', monto: Number(pago.transferencia) || 0 },
-    { forma: 'otros',         monto: (Number(pago.cheque)||0) + (Number(pago.otro)||0) + (Number(pago.deposito)||0) + (Number(pago.documentos)||0) },
-  ];
 
   const { data: cajaHoy, isLoading } = useQuery<any>({
     queryKey: ['pos-caja-hoy'],
@@ -7444,32 +7391,11 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
     staleTime: 60_000,
   });
 
-  // Auto-llenar efectivo (modo normal) o limpiar todos los campos (modo ciego).
-  // Depende de ciegoCajaActivo además de id: cuando el caché stale activa el fill
-  // antes de recibir la flag ciego, la segunda llegada (con ciegoCajaActivo=true)
-  // vuelve a ejecutar el effect y limpia lo que quedó.
-  useEffect(() => {
-    if (!cajaHoy?.id) return;
-    if (cajaHoy?.ciegoCajaActivo) {
-      setPago({ efectivo:'', tarjeta:'',
-        cheque:'', transferencia:'', otro:'', deposito:'', documentos:'' });
-    } else if (cajaHoy?.ventasEfectivo) {
-      const ef = Number(cajaHoy.ventasEfectivo) + Number(cajaHoy.saldoApertura ?? 0);
-      setPago(p => ({ ...p, efectivo: ef.toFixed(2) }));
-    }
-  }, [cajaHoy?.id, cajaHoy?.ciegoCajaActivo]);
-
   const cerrarMut = useMutation({
-    mutationFn: () => {
+    mutationFn: (payload: CierreCajaPayload) => {
       const id = cajaHoy?.id;
       if (!id) throw new Error('No hay caja abierta');
-      return api.patch(`/caja/${id}/cerrar`, {
-        saldoFisico:       totalFisico,
-        notas:             nota || undefined,   // DTO espera 'notas' (plural)
-        desgloseBilletes:  billetes,
-        desglosePago:      pago,
-        declaradoPorForma, // cuadre por forma de pago — ver cuadre-por-forma-pago.util.ts
-      });
+      return api.patch(`/caja/${id}/cerrar`, payload);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['pos-caja-hoy'] });
@@ -7480,21 +7406,6 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
   });
 
   const m = (v: any) => fmt.money(Number(v ?? 0));
-  const setBillete = (b: number, val: string) => setBilletes(p => ({ ...p, [b]: Number(val)||0 }));
-  const setPagoKey = (k: keyof DesglosePago) => (v: string) => setPago(p => ({ ...p, [k]: v }));
-
-  // Operaciones calculadas
-  const vendidoContado   = Number(cajaHoy?.ventasEfectivo ?? 0);
-  const vendidoDigital   = Number(cajaHoy?.ventasTarjeta ?? 0) + Number(cajaHoy?.ventasTransferencia ?? 0);
-  const vendidoCredito   = Number((cajaHoy as any)?.ventasCredito ?? 0);   // factura a crédito diferido
-  const totalVendido     = vendidoContado + vendidoDigital + vendidoCredito;
-  const totalRecibos     = Number(cajaHoy?.cobrosRecibidos ?? 0);
-  const efectivoInicial  = Number(cajaHoy?.saldoApertura ?? 0);
-  const efectivoEnCaja   = efectivoInicial + vendidoContado + totalRecibos;
-  // Para el recibo térmico mantenemos compat. con la interfaz ops (vendidoCredito = digital + diferido)
-  const vendidoCreditoRecibo = vendidoDigital + vendidoCredito;
-
-  const grid3: React.CSSProperties = { display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:10 };
 
   // ── Helpers de formato ────────────────────────────────────────────────────
   const fmtHoraPOS = (iso: string) => {
@@ -7520,8 +7431,11 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
   // de forma transparente (mismo mecanismo que cerrar_caja/registrar_retiro).
   // Una caja CERRADA nunca pasa por aquí: sigue usando los datos en caché
   // tal cual, sin pedir nada — "sin cambios".
-  const abrirDialogoImprimir = async (source: 'actual' | any) => {
-    let base: any = source === 'actual' ? cajaHoy : source;
+  // El historial siempre trae un cierre ya grabado (abierto o cerrado) — la
+  // declaración en curso vive dentro de CierreCajaFormulario, así que aquí
+  // solo se imprime lo que el backend ya tiene.
+  const abrirDialogoImprimir = async (source: any) => {
+    let base: any = source;
     if (!base) return;
 
     if (base.estado === 'abierta') {
@@ -7539,35 +7453,20 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
     const vendidoCreditoRecSnap =
       Number(base.ventasTarjeta ?? 0) + Number(base.ventasTransferencia ?? 0) + Number(base.ventasCredito ?? 0);
 
-    if (source === 'actual') {
-      setPrintSnapshot({
-        ...base,
-        _billetes:           Object.fromEntries(Object.entries(billetes).map(([k,v]) => [k, Number(v)])),
-        _pago:               pago,
-        _nota:               nota || undefined,
-        _totalFisico:        totalFisico,
-        _totalBilletes:      totalBilletes,
-        _vendidoContado:     vendidoContadoSnap,
-        _vendidoCreditoRecibo: vendidoCreditoRecSnap,
-        _efectivoInicial:    Number(base.saldoApertura ?? 0),
-        _totalRecibos:       Number(base.cobrosRecibidos ?? 0),
-      });
-    } else {
-      const bls      = (base.desgloseBilletes ?? {}) as Record<string, number>;
-      const totalBls = Object.entries(bls).reduce((s, [den, qty]) => s + Number(den) * Number(qty), 0);
-      setPrintSnapshot({
-        ...base,
-        _billetes:           bls,
-        _pago:               base.desglosePago ?? {},
-        _nota:               base.notas ?? undefined,
-        _totalFisico:        Number(base.saldoFisico ?? 0),
-        _totalBilletes:      totalBls,
-        _vendidoContado:     vendidoContadoSnap,
-        _vendidoCreditoRecibo: vendidoCreditoRecSnap,
-        _efectivoInicial:    Number(base.saldoApertura ?? 0),
-        _totalRecibos:       Number(base.cobrosRecibidos ?? 0),
-      });
-    }
+    const bls      = (base.desgloseBilletes ?? {}) as Record<string, number>;
+    const totalBls = Object.entries(bls).reduce((s, [den, qty]) => s + Number(den) * Number(qty), 0);
+    setPrintSnapshot({
+      ...base,
+      _billetes:           bls,
+      _pago:               base.desglosePago ?? {},
+      _nota:               base.notas ?? undefined,
+      _totalFisico:        Number(base.saldoFisico ?? 0),
+      _totalBilletes:      totalBls,
+      _vendidoContado:     vendidoContadoSnap,
+      _vendidoCreditoRecibo: vendidoCreditoRecSnap,
+      _efectivoInicial:    Number(base.saldoApertura ?? 0),
+      _totalRecibos:       Number(base.cobrosRecibidos ?? 0),
+    });
     setPrintDialogOpen(true);
   };
 
@@ -7794,117 +7693,21 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
         ) : (
         <div style={{ maxWidth:560, color:C.text }}>
 
-          {/* ID de caja + billetes rápidos */}
+          {/* ID de caja */}
           <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14 }}>
             <div style={{ background:C.card, border:`1px solid ${C.border2}`, borderRadius:8,
               padding:'6px 14px', fontSize:13, fontWeight:700 }}>
               {cajaHoy.numero ?? `Caja #${cajaHoy.id}`}
             </div>
-            {BILLETES_RD.slice(0,5).map(b => (
-              <input key={b} type="number" min="0" value={billetes[b]??''}
-                onChange={e=>setBillete(b,e.target.value)}
-                title={`Billetes de ${b}`}
-                style={{ width:50, height:32, textAlign:'center', borderRadius:6,
-                  border:'1px solid #ddd', fontSize:12, outline:'none' }} />
-            ))}
           </div>
 
-          {/* Banner modo ciego */}
-          {cajaHoy.ciegoCajaActivo && (
-            <div style={{ background:'#fff7e6', border:'1px solid #ffa940', borderRadius:8,
-              padding:'10px 14px', marginBottom:14, fontSize:12, color:'#874d00' }}>
-              Modo ciego activo: cuente el efectivo físico y declare los montos sin ver el total esperado del sistema.
-            </div>
-          )}
-
-          {/* Desglose de Operaciones — solo en modo normal */}
-          {!cajaHoy.ciegoCajaActivo && (
-          <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:'14px 16px', marginBottom:14 }}>
-            <div style={{ fontSize:13, fontWeight:800, marginBottom:12 }}>Desglose de Operaciones</div>
-            <div style={grid3}>
-              <CierreField label="Efectivo Inicial"    value={m(efectivoInicial)} />
-              <CierreField label="Vendido Contado"     value={m(vendidoContado)} />
-              <CierreField label="Vendido Tarj./Trans." value={m(vendidoDigital)} />
-            </div>
-            <div style={grid3}>
-              <CierreField label="Vendido Crédito"    value={m(vendidoCredito)} />
-              <CierreField label="Total Vendido"      value={m(totalVendido)} highlight />
-              <CierreField label="Total Recibos"      value={m(totalRecibos)} />
-            </div>
-            <div style={grid3}>
-              <CierreField label="Total Anticipos"    value={m(cajaHoy.totalAnticipos ?? 0)} />
-              <CierreField label="Total Dev. y Des"    value={m(cajaHoy.gastosEfectivo ?? 0)} />
-              <CierreField label="Efectivo en Caja"    value={m(efectivoEnCaja)} highlight />
-            </div>
-          </div>
-          )}
-
-          {/* Desglose de Billetes */}
-          <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:'14px 16px', marginBottom:14 }}>
-            <div style={{ fontSize:13, fontWeight:800, marginBottom:10 }}>Desglose de Billetes</div>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:8, marginBottom:8 }}>
-              {BILLETES_RD.slice(0,6).map(b => (
-                <div key={b} style={{ textAlign:'center' }}>
-                  <div style={{ fontSize:10, color:C.textSub, marginBottom:3 }}>{b.toLocaleString()}</div>
-                  <input type="number" min="0" value={billetes[b]??''}
-                    onChange={e=>setBillete(b,e.target.value)}
-                    style={{ width:'100%', height:34, textAlign:'center', borderRadius:6,
-                      border:'1px solid #ddd', fontSize:12, outline:'none', boxSizing:'border-box' }} />
-                </div>
-              ))}
-            </div>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:8 }}>
-              {BILLETES_RD.slice(6).map(b => (
-                <div key={b} style={{ textAlign:'center' }}>
-                  <div style={{ fontSize:10, color:C.textSub, marginBottom:3 }}>{b}</div>
-                  <input type="number" min="0" value={billetes[b]??''}
-                    onChange={e=>setBillete(b,e.target.value)}
-                    style={{ width:'100%', height:34, textAlign:'center', borderRadius:6,
-                      border:'1px solid #ddd', fontSize:12, outline:'none', boxSizing:'border-box' }} />
-                </div>
-              ))}
-            </div>
-            {totalBilletes > 0 && (
-              <div style={{ textAlign:'right', marginTop:8, fontSize:12, color:C.green, fontWeight:700 }}>
-                Total billetes: {fmt.money(totalBilletes)}
-              </div>
-            )}
-          </div>
-
-          {/* Desglose de Pago */}
-          <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:'14px 16px', marginBottom:14 }}>
-            <div style={{ fontSize:13, fontWeight:800, marginBottom:12 }}>Desglose de Pago</div>
-            <div style={grid3}>
-              <CierreField label="Efectivo"        value={pago.efectivo}        editable onChange={setPagoKey('efectivo')} />
-              <CierreField label="Tarjeta"         value={pago.tarjeta}         editable onChange={setPagoKey('tarjeta')} />
-              <CierreField label="Transferencia"   value={pago.transferencia}   editable onChange={setPagoKey('transferencia')} />
-            </div>
-            <div style={grid3}>
-              <CierreField label="Cheque"          value={pago.cheque}          editable onChange={setPagoKey('cheque')} />
-              <CierreField label="Depósito"        value={pago.deposito}        editable onChange={setPagoKey('deposito')} />
-              <CierreField label="Otro"            value={pago.otro}            editable onChange={setPagoKey('otro')} />
-            </div>
-            <div style={grid3}>
-              <CierreField label="Documentos"      value={pago.documentos}      editable onChange={setPagoKey('documentos')} />
-              <CierreField label="Total declarado (todas las formas)" value={m(totalDesglosePago)} highlight />
-            </div>
-          </div>
-
-          {/* Nota */}
-          <div style={{ marginBottom:14 }}>
-            <div style={{ fontSize:12, fontWeight:600, marginBottom:4 }}>Nota de cierre</div>
-            <textarea value={nota} onChange={e=>setNota(e.target.value)} placeholder="Nota de cierre..."
-              rows={2} style={{ width:'100%', padding:'8px 12px', borderRadius:8, border:'1px solid #ddd',
-                fontSize:13, resize:'vertical', outline:'none', boxSizing:'border-box', background:'#fff' }} />
-          </div>
-
-          <div style={{ display:'flex', gap:8 }}>
-            <button onClick={() => cerrarMut.mutate()} disabled={cerrarMut.isPending}
-              style={{ flex:1, height:46, borderRadius:10, border:'none',
-                background:'#059669', color:'#fff', fontWeight:700, fontSize:15, cursor:'pointer' }}>
-              {cerrarMut.isPending ? 'Cerrando...' : 'Grabar'}
-            </button>
-          </div>
+          <CierreCajaFormulario
+            cajaHoy={cajaHoy}
+            submitting={cerrarMut.isPending}
+            cardBg={C.card}
+            cardBorder={C.border}
+            onCerrar={(payload) => cerrarMut.mutate(payload)}
+          />
         </div>
         ))}
         {tab === 'historial' && (
