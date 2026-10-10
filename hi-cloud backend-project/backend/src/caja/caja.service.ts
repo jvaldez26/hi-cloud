@@ -337,13 +337,17 @@ export class CajaService {
 
     // Cuadre por forma de pago (ver cuadre-por-forma-pago.util.ts) — el efectivo
     // usa la MISMA fórmula única de arriba, nunca se recalcula distinto.
-    const esperadoPorForma = await this.calcularEsperadoPorForma(id, fechaStr, caja.vendedorId, empresaId, fresh);
+    // facturasSinFormaPago se calcula PRIMERO: su total se resta del bucket
+    // "otros" dentro de calcularEsperadoPorForma — están fuera del cuadre,
+    // nunca deben inflar el esperado de ninguna forma.
+    const facturasSinFormaPago = await this.getFacturasSinFormaPago(fechaStr, caja.vendedorId, empresaId);
+    const totalSinFormaPago = facturasSinFormaPago.reduce((s, f) => s + Number(f.total || 0), 0);
+    const esperadoPorForma = await this.calcularEsperadoPorForma(id, fechaStr, caja.vendedorId, empresaId, fresh, undefined, totalSinFormaPago);
     const declaradoMap: Record<string, number> = declaradoPorForma?.length
       ? declaradoPorForma.reduce((acc, d) => { acc[d.forma] = (acc[d.forma] ?? 0) + Number(d.monto || 0); return acc; }, {} as Record<string, number>)
       : { efectivo: saldoFisico };
     const cuadrePorFormaPago = construirCuadrePorForma(esperadoPorForma, declaradoMap);
     const sospechas = detectarPosibleFormaMalRegistrada(cuadrePorFormaPago);
-    const facturasSinFormaPago = await this.getFacturasSinFormaPago(fechaStr, caja.vendedorId, empresaId);
 
     const sospechasConCandidatas = await Promise.all(sospechas.map(async s => ({
       ...s,
@@ -692,7 +696,7 @@ export class CajaService {
    */
   private async calcularEsperadoPorForma(
     cajaId: number, fecha: string, vendedorId: number | undefined, empresaId: number,
-    fresh: CierreCaja, manager?: EntityManager,
+    fresh: CierreCaja, manager?: EntityManager, totalSinFormaPago = 0,
   ): Promise<Record<string, number>> {
     const db = manager ?? this.dataSource.manager;
 
@@ -741,7 +745,16 @@ export class CajaService {
        FROM anticipo_cliente a WHERE DATE(a."fechaRegistro") = $1 AND a."isActive" = true AND a.estado != 'anulado' AND a."cajaDiariaId" = $2`,
       [fecha, cajaId],
     ).catch(() => [{ total: '0' }]);
-    const otros = Number(otrosCobros?.total ?? 0) + Number(otrosAnticipos?.total ?? 0) + Number(fresh.ventasCredito ?? 0);
+    // Las facturas CONTADO sin forma de pago (getFacturasSinFormaPago) están
+    // FUERA del cuadre por diseño — pero el fallback histórico de
+    // clasificación por notas (recalcularDesdeBD) puede haberlas contado
+    // igual dentro de ventasCredito si sus notas mencionan "crédito". Sin
+    // restarlas aquí, inflan "otros" con dinero que nadie declaró ni se
+    // espera cuadrar (caso real: FAC-1807, RD$295.00).
+    const otros = Math.max(0,
+      Number(otrosCobros?.total ?? 0) + Number(otrosAnticipos?.total ?? 0)
+        + Number(fresh.ventasCredito ?? 0) - totalSinFormaPago,
+    );
 
     return { efectivo, tarjeta, transferencia, otros };
   }
@@ -890,7 +903,7 @@ export class CajaService {
    * también las banderas de inconsistencia para que la UI no tenga que deducir
    * nada del signo.
    */
-  private conEfectivoEsperado(caja: CierreCaja | null): any {
+  private async conEfectivoEsperado(caja: CierreCaja | null): Promise<any> {
     if (!caja) return caja;
     const esperado = caja.estado === EstadoCierre.ABIERTA
       ? calcularEfectivoEsperado({
@@ -909,22 +922,46 @@ export class CajaService {
     // Nunca se persiste (no reescribe el cierre), y sin esto, reimprimir o
     // reabrir el detalle de un cierre viejo vuelve siempre al formato de
     // solo-efectivo — exactamente el bug real de reimpresión post-deploy.
-    const cuadreLegacy = (caja.estado !== EstadoCierre.ABIERTA && !caja.cuadrePorFormaPago)
-      ? derivarCuadreLegacy({
-          saldoCierre:        Number(caja.saldoCierre ?? 0),
-          saldoFisico:        Number(caja.saldoFisico ?? 0),
-          ventasTarjeta:      Number(caja.ventasTarjeta ?? 0),
-          ventasTransferencia: Number(caja.ventasTransferencia ?? 0),
-          ventasCredito:      Number((caja as any).ventasCredito ?? 0),
-          desglosePago:       caja.desglosePago as any,
-        })
-      : null;
-    const sospechasLegacy = cuadreLegacy ? detectarPosibleFormaMalRegistrada(cuadreLegacy) : null;
+    let cuadreLegacy: ReturnType<typeof derivarCuadreLegacy> | null = null;
+    let facturasSinFormaPago: any[] = [];
+    let sospechasLegacy: SospechaFormaPago[] | null = null;
+
+    if (caja.estado !== EstadoCierre.ABIERTA && !caja.cuadrePorFormaPago) {
+      const empresaId = this.tenantService.getEmpresaId();
+      const fechaDate = caja.fecha instanceof Date ? caja.fecha : new Date(caja.fecha as any);
+      const fechaStr  = fechaDate.toISOString().substring(0, 10);
+
+      // Facturas CONTADO sin forma de pago — fuera del cuadre por diseño.
+      // Sin restar su monto, el bucket donde cayeron por el fallback
+      // histórico de clasificación (ventasCredito, ver recalcularDesdeBD)
+      // infla el esperado con dinero que nadie declaró ni se espera cuadrar
+      // (caso real: FAC-1807, RD$295.00, inflaba "otros" exactamente ese
+      // monto y rompía el neto del cierre).
+      facturasSinFormaPago = await this.getFacturasSinFormaPago(fechaStr, caja.vendedorId, empresaId);
+      const totalSinForma = facturasSinFormaPago.reduce((s, f) => s + Number(f.total || 0), 0);
+
+      cuadreLegacy = derivarCuadreLegacy({
+        saldoCierre:        Number(caja.saldoCierre ?? 0),
+        saldoFisico:        Number(caja.saldoFisico ?? 0),
+        ventasTarjeta:      Number(caja.ventasTarjeta ?? 0),
+        ventasTransferencia: Number(caja.ventasTransferencia ?? 0),
+        ventasCredito:      Math.max(0, Number((caja as any).ventasCredito ?? 0) - totalSinForma),
+        desglosePago:       caja.desglosePago as any,
+      });
+
+      const sospechas = detectarPosibleFormaMalRegistrada(cuadreLegacy);
+      sospechasLegacy = sospechas.length
+        ? await Promise.all(sospechas.map(async s => ({
+            ...s,
+            facturasCandidatas: await this.buscarFacturasCandidatasSospecha(s, fechaStr, caja.vendedorId, empresaId),
+          })))
+        : [];
+    }
 
     return {
       ...caja,
-      ...(cuadreLegacy ? { cuadrePorFormaPago: cuadreLegacy, cuadreEstimado: true } : {}),
-      ...(sospechasLegacy?.length ? { sospechasFormaPago: sospechasLegacy.map(s => ({ ...s, facturasCandidatas: [] })) } : {}),
+      ...(cuadreLegacy ? { cuadrePorFormaPago: cuadreLegacy, cuadreEstimado: true, facturasSinFormaPago } : {}),
+      ...(sospechasLegacy?.length ? { sospechasFormaPago: sospechasLegacy } : {}),
       efectivoEsperado:      esperado,
       esperadoInconsistente: esperadoEsInconsistente(esperado),
       excesoRetiros:         excesoDeRetiros(esperado),
@@ -980,7 +1017,7 @@ export class CajaService {
       }
       const fresh = await this.repo.findOne({ where: { id: caja.id } });
       // getCajaHoy() solo la llaman admin/contador — nunca aplica ciego
-      return this.conEfectivoEsperado(fresh);
+      return await this.conEfectivoEsperado(fresh);
     }
 
     // Sin filtro de vendedor → todas las cajas del día de ESTA empresa
@@ -1007,7 +1044,7 @@ export class CajaService {
     // Cada caja lleva su efectivoEsperado: es la lista que pinta las tarjetas
     // del panel, donde el frontend recalculaba la fórmula por su cuenta.
     return {
-      cajas: frescas.map(c => this.conEfectivoEsperado(c)),
+      cajas: await Promise.all(frescas.map(c => this.conEfectivoEsperado(c))),
       totalCajas: frescas.length,
     };
   }
@@ -1040,13 +1077,13 @@ export class CajaService {
       order: { fecha: 'ASC', vendedorNombre: 'ASC' },
     });
 
-    return frescas.map(c => {
+    return Promise.all(frescas.map(async c => {
       const fechaStr = fechaDe(c);
       const diasAbierta = Math.round(
         (new Date(hoy).getTime() - new Date(fechaStr).getTime()) / 86_400_000,
       );
-      return { ...this.conEfectivoEsperado(c), fecha: fechaStr, diasAbierta };
-    });
+      return { ...(await this.conEfectivoEsperado(c)), fecha: fechaStr, diasAbierta };
+    }));
   }
 
   /**
@@ -1131,7 +1168,7 @@ export class CajaService {
     // el toggle opcional cierreCajaCiego (ese sigue aplicando igual que
     // antes, por si algún día este método deja de ser exclusivo de VENDEDOR).
     // Al cerrar, el vendedor recibe datos completos para imprimir.
-    const conEsperado = this.conEfectivoEsperado(fresh);
+    const conEsperado = await this.conEfectivoEsperado(fresh);
     return (cierreCajaCiego && fresh?.estado === EstadoCierre.ABIERTA)
       ? this.ocultarCamposCiego(fresh)
       : this.ocultarSiVendedorYAbierta(conEsperado, UserRole.VENDEDOR);
@@ -1180,7 +1217,7 @@ export class CajaService {
     // mezcladas aquí, que si no saldrían con efectivoEsperado undefined y el
     // modal de "Cerrar caja" desde este listado arrancaría mostrando 0.
     const conEsperado = await this.conCuadreCorregido(
-      data.map(c => this.ocultarSiVendedorYAbierta(this.conEfectivoEsperado(c), role)),
+      await Promise.all(data.map(async c => this.ocultarSiVendedorYAbierta(await this.conEfectivoEsperado(c), role))),
     );
     return {
       data: conEsperado,
@@ -1195,7 +1232,7 @@ export class CajaService {
     const empresaId = this.tenantService.getEmpresaId();
     const caja = await this.repo.findOne({ where: { id, empresaId } });
     if (!caja) throw new NotFoundException(`Caja #${id} no encontrada`);
-    const conEsperado = this.ocultarSiVendedorYAbierta(this.conEfectivoEsperado(caja), this.tenantService.getRolEmpresa());
+    const conEsperado = this.ocultarSiVendedorYAbierta(await this.conEfectivoEsperado(caja), this.tenantService.getRolEmpresa());
     const [conCorregido] = await this.conCuadreCorregido([conEsperado]);
     return conCorregido;
   }
@@ -1217,7 +1254,7 @@ export class CajaService {
     const caja = await this.repo.findOne({ where: { id, empresaId } });
     if (!caja) throw new NotFoundException(`Caja #${id} no encontrada`);
     const facturasDetalle = await this.getFacturasDetalle(id, usuario);
-    return { ...this.conEfectivoEsperado(caja), facturasDetalle };
+    return { ...(await this.conEfectivoEsperado(caja)), facturasDetalle };
   }
 
   // ── Resumen mensual (filtrado por empresa) ────────────────────────────────

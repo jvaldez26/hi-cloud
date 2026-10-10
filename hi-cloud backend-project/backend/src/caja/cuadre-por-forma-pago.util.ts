@@ -33,8 +33,18 @@ export function construirCuadrePorForma(
 export interface SospechaFormaPago {
   formaSobrante: string;
   formaFaltante: string;
-  /** Monto del sobrante (= |faltante|, dentro de la tolerancia). */
+  /**
+   * @deprecated usar montoSobrante/montoFaltante — este campo asumía que
+   * ambos valores eran simétricos (|sobrante| = |faltante|), lo que casi
+   * nunca es exacto (caso real: +829.94 / -830.00, una diferencia de 0.06
+   * dentro de tolerancia pero no idéntica). Se mantiene solo por
+   * compatibilidad con código que ya lo lea.
+   */
   monto: number;
+  /** Monto real del sobrante (> 0). */
+  montoSobrante: number;
+  /** Monto real del faltante (< 0) — NUNCA se asume igual a -montoSobrante. */
+  montoFaltante: number;
 }
 
 /** Bucket del cuadre ↔ tipo(s) DGII de `formasPago`, para buscar facturas candidatas de una sospecha. */
@@ -62,7 +72,11 @@ export function detectarPosibleFormaMalRegistrada(
   for (const sob of sobrantes) {
     for (const falt of faltantes) {
       if (Math.abs(sob.diferencia + falt.diferencia) <= tolerancia) {
-        sospechas.push({ formaSobrante: sob.forma, formaFaltante: falt.forma, monto: sob.diferencia });
+        sospechas.push({
+          formaSobrante: sob.forma, formaFaltante: falt.forma,
+          monto: sob.diferencia, // compat
+          montoSobrante: sob.diferencia, montoFaltante: falt.diferencia,
+        });
       }
     }
   }
