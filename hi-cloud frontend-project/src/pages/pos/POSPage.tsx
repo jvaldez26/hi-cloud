@@ -7391,7 +7391,9 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
   // ── Diálogo de impresión ──────────────────────────────────────────────────
   const [printDialogOpen, setPrintDialogOpen] = useState(false);
   const [printFormat, setPrintFormat]         = useState<'ticket'|'pdf'|'excel'>('ticket');
-  const [printDetalle, setPrintDetalle]       = useState(false);
+  // Default true — ver el mismo comentario en CajaPage.tsx: el detalle de
+  // facturas del turno es parte estándar del reporte, no un extra opcional.
+  const [printDetalle, setPrintDetalle]       = useState(true);
   const [printLoading, setPrintLoading]       = useState(false);
   const [printSnapshot, setPrintSnapshot]     = useState<any>(null);
 
