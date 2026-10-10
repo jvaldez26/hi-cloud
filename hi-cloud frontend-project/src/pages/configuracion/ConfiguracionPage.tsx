@@ -2678,6 +2678,7 @@ function SeccionApariencia() {
           return (
             <button
               key={t}
+              type="button"
               onClick={() => handleSelect(t)}
               disabled={isDark || saving}
               style={{
@@ -2828,6 +2829,7 @@ export default function ConfiguracionPage() {
         {SIDEBAR_GROUPS.flatMap(g => g.items).map(item => (
           <button
             key={item.key}
+            type="button"
             onClick={() => setActiveSection(item.key)}
             style={{
               padding: '6px 12px', borderRadius: 20, border: '1px solid',
