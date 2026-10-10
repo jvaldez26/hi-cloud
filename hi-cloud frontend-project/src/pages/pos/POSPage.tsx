@@ -84,6 +84,7 @@ import { RestaurantePOS, TallerPOS, FarmaciaPOS, OpticaPOS, ClinicaPOS, Gimnasio
 import CompraFormInner from '../compras/CompraFormInner';
 import { ahora, dRD, fecha, fechaHora, fechaLarga, hora, horaConSegundos, hoyRD } from '../../utils/fechaRD';
 import { bloqueFacturasTermico, CSS_FACTURAS_TERMICO } from '../../utils/cierreFacturasTermico';
+import { bloqueCuadreFormaPagoTermico, CSS_CUADRE_FORMA_PAGO_TERMICO, type CierreConCuadreTermico } from '../../utils/cuadreFormaPagoTermico';
 
 // ── Alias type ────────────────────────────────────────────────────────────────
 type Prod = Producto;
@@ -2017,6 +2018,11 @@ function buildCierreCajaHTML(params: {
   /** Detalle de facturas del turno. Viene de GET /caja/:id/facturas-detalle,
    *  el mismo endpoint que alimenta el PDF y el Excel. */
   detalleFacturas?: any;
+  /** Cuadre por forma de pago del cierre — real o derivado para uno viejo
+   *  (ver cuadre-por-forma-pago.util.ts / caja.service.ts). Solo existe para
+   *  una caja ya CERRADA; en una ABIERTA (preview antes de cerrar) no hay
+   *  nada que cuadrar todavía. */
+  cuadreFormaPago?: CierreConCuadreTermico;
 }): string {
   const prn = IMPRESORA_CONFIG[params.tipoImpresora ?? '80mm'] ?? IMPRESORA_CONFIG['80mm'];
   const esc = (s: string) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -2056,6 +2062,13 @@ function buildCierreCajaHTML(params: {
     .map(([k,v]) => row(`  ${PAGO_LABELS[k] ?? k}:`, fmt(Number(v))))
     .join('\n');
 
+  // Cuadre por forma de pago — reemplaza el viejo "Efectivo esperado/contado
+  // + SOBRANTE/FALTANTE" (que solo cuadraba efectivo). Ver el mismo bloque
+  // en CajaPage.tsx (imprimirCierre/imprimirTicketConDetalle) — misma fuente,
+  // misma plantilla, para que el recibo que imprime el POS al cerrar y el
+  // que reimprime el panel de Caja nunca diverjan.
+  const cuadreHtml = bloqueCuadreFormaPagoTermico(params.cuadreFormaPago);
+
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
   @media print { @page { size:${prn.width} auto; margin:0; } }
@@ -2069,6 +2082,7 @@ function buildCierreCajaHTML(params: {
   .small{font-size:0.85em}
   .xlarge{font-size:1.2em;font-weight:900}
   ${CSS_FACTURAS_TERMICO}
+  ${CSS_CUADRE_FORMA_PAGO_TERMICO}
   .title{font-size:1.1em;font-weight:900;text-align:center;letter-spacing:1px;margin:4px 0}
 </style>
 <script>
@@ -2103,12 +2117,14 @@ ${line()}
 ${row('Gastos:',  fmt(egr.gastos))}
 ${row('Retiros:', fmt(egr.retiros))}
 ${cua ? `${line()}
+${row('Apertura:', fmt(cua.apertura))}
+${cuadreHtml || `
 <div class="small bold">CUADRE</div>
-${row('Apertura:',          fmt(cua.apertura))}
 ${row('Efectivo esperado:', fmt(cua.esperado))}
 ${row('Efectivo contado:',  fmt(cua.contado))}
 ${line()}
-<div class="center xlarge">${esc(difLabel!)}</div>` : ''}
+<div class="center xlarge">${esc(difLabel!)}</div>
+`}` : ''}
 ${params.totalBilletes > 0 ? `${line()}
 <div class="small bold">DESGLOSE DE BILLETES</div>
 ${billetesRows}
@@ -7571,6 +7587,17 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
         ingresos: { ventasEfectivo: snap._vendidoContado, ventasTarjeta: Number(snap.ventasTarjeta ?? 0), ventasTransferencia: Number(snap.ventasTransferencia ?? 0), cobrosRecibidos: snap._totalRecibos, totalAnticipos: Number(snap.totalAnticipos ?? 0) },
         egresos:  { gastos: Number(snap.gastosEfectivo ?? 0), retiros: Number(snap.retiros ?? 0) },
         cuadre:   snap.ciegoCajaActivo ? null : { apertura: snap._efectivoInicial, esperado, contado: snap._totalFisico },
+        // Real (si snap viene de un cierre ya CERRADO) o derivado para uno
+        // viejo — ambos casos ya los resuelve el backend (conEfectivoEsperado
+        // en caja.service.ts); undefined en una caja ABIERTA, donde no hay
+        // nada que cuadrar todavía.
+        cuadreFormaPago: snap.ciegoCajaActivo ? undefined : {
+          cuadrePorFormaPago:   snap.cuadrePorFormaPago,
+          cuadreCorregido:      snap.cuadreCorregido,
+          cuadreEstimado:       snap.cuadreEstimado,
+          sospechasFormaPago:   snap.sospechasFormaPago,
+          facturasSinFormaPago: snap.facturasSinFormaPago,
+        },
         billetes: snap._billetes,
         pago:     snap._pago,
         totalBilletes: snap._totalBilletes,

@@ -74,6 +74,79 @@ export function netoCuadre(filas: FilaCuadre[]): number {
   return redondear(filas.reduce((a, f) => a + f.diferencia, 0));
 }
 
+/** Inverso de TIPOS_DGII_POR_FORMA — tipo DGII → la forma del cuadre a la que pertenece. */
+const FORMA_POR_TIPO_DGII: Record<number, string> = Object.fromEntries(
+  Object.entries(TIPOS_DGII_POR_FORMA).flatMap(([forma, tipos]) => tipos.map(t => [t, forma])),
+);
+
+/**
+ * Deriva el cuadre por forma de pago para un cierre VIEJO que se cerró antes
+ * de que este cuadre existiera — a partir de las columnas que YA se
+ * guardaban (ventasTarjeta/ventasTransferencia/ventasCredito/saldoCierre/
+ * saldoFisico/desglosePago). Nunca se persiste: es un "mejor esfuerzo"
+ * calculado al leer, para que un cierre antiguo también muestre la tabla en
+ * vez de forzar al usuario a revisarlo a mano. `desglosePago` es el campo
+ * libre (string→string) que ya existía — sus claves tarjetaCredito/
+ * tarjetaDebito (anteriores a la unificación) se suman al bucket 'tarjeta'.
+ */
+export function derivarCuadreLegacy(campos: {
+  saldoCierre: number; saldoFisico: number;
+  ventasTarjeta: number; ventasTransferencia: number; ventasCredito?: number;
+  desglosePago?: Record<string, string | number> | null;
+}): FilaCuadre[] {
+  const dp = campos.desglosePago ?? {};
+  const n = (k: string) => Number(dp[k] ?? 0);
+
+  const esperadoPorForma = {
+    efectivo:      Number(campos.saldoCierre ?? 0),
+    tarjeta:       Number(campos.ventasTarjeta ?? 0),
+    transferencia: Number(campos.ventasTransferencia ?? 0),
+    otros:         Number(campos.ventasCredito ?? 0),
+  };
+  const declaradoPorForma = {
+    efectivo:      Number(campos.saldoFisico ?? 0),
+    tarjeta:       n('tarjeta') + n('tarjetaCredito') + n('tarjetaDebito'),
+    transferencia: n('transferencia') + n('cheque') + n('deposito'),
+    otros:         n('otro') + n('documentos'),
+  };
+  return construirCuadrePorForma(esperadoPorForma, declaradoPorForma);
+}
+
+/**
+ * Cuadre CORREGIDO — el cierre original (snapshot) nunca se reescribe, pero
+ * cuando una factura de ese turno se corrigió DESPUÉS de cerrar (ver
+ * ajustes_cierre_caja / registrarAjusteSiCierreCerrado en caja.service.ts),
+ * el reporte debe poder mostrar "así hubiera cuadrado si la forma de pago
+ * hubiera estado bien desde el principio" junto al original. Cada ajuste
+ * resta su `formasPagoAnterior` y suma su `formasPagoNuevo` al ESPERADO de
+ * la forma correspondiente — el declarado nunca cambia (es lo que la cajera
+ * contó físicamente, eso no se altera por una corrección de papeleo).
+ */
+export function aplicarAjustesAlCuadre(
+  cuadreOriginal: FilaCuadre[],
+  ajustes: { formasPagoAnterior: { tipo: number; monto: number }[]; formasPagoNuevo: { tipo: number; monto: number }[] }[],
+): FilaCuadre[] {
+  const esperadoPorForma: Record<string, number> = {};
+  const declaradoPorForma: Record<string, number> = {};
+  for (const fila of cuadreOriginal) {
+    esperadoPorForma[fila.forma]  = fila.esperado;
+    declaradoPorForma[fila.forma] = fila.declarado;
+  }
+
+  for (const ajuste of ajustes) {
+    for (const fp of ajuste.formasPagoAnterior) {
+      const forma = FORMA_POR_TIPO_DGII[fp.tipo];
+      if (forma) esperadoPorForma[forma] = (esperadoPorForma[forma] ?? 0) - Number(fp.monto || 0);
+    }
+    for (const fp of ajuste.formasPagoNuevo) {
+      const forma = FORMA_POR_TIPO_DGII[fp.tipo];
+      if (forma) esperadoPorForma[forma] = (esperadoPorForma[forma] ?? 0) + Number(fp.monto || 0);
+    }
+  }
+
+  return construirCuadrePorForma(esperadoPorForma, declaradoPorForma);
+}
+
 function redondear(n: number): number {
   const v = Number(n ?? 0);
   return Number.isFinite(v) ? Number(v.toFixed(2)) : 0;

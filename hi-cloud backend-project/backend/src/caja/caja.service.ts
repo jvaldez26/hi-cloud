@@ -2,7 +2,7 @@ import {
   Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, IsNull, Not, EntityManager } from 'typeorm';
+import { Repository, DataSource, IsNull, Not, In, EntityManager } from 'typeorm';
 import { CierreCaja, EstadoCierre } from './entities/cierre-caja.entity';
 import { AjusteCierreCaja } from './entities/ajuste-cierre-caja.entity';
 import { RetiroCaja, CategoriaRetiro, EstadoRetiro } from './entities/retiro-caja.entity';
@@ -24,6 +24,8 @@ import {
 import {
   construirCuadrePorForma,
   detectarPosibleFormaMalRegistrada,
+  derivarCuadreLegacy,
+  aplicarAjustesAlCuadre,
   TIPOS_DGII_POR_FORMA,
   FilaCuadre,
   SospechaFormaPago,
@@ -901,12 +903,63 @@ export class CajaService {
         })
       : Number(caja.saldoCierre ?? 0);   // ya cerrada: el valor guardado manda
 
+    // Un cierre CERRADA sin cuadrePorFormaPago guardado es un cierre de antes
+    // de que este cuadre existiera — se deriva "mejor esfuerzo" a partir de
+    // las columnas que YA se guardaban (ver cuadre-por-forma-pago.util.ts).
+    // Nunca se persiste (no reescribe el cierre), y sin esto, reimprimir o
+    // reabrir el detalle de un cierre viejo vuelve siempre al formato de
+    // solo-efectivo — exactamente el bug real de reimpresión post-deploy.
+    const cuadreLegacy = (caja.estado !== EstadoCierre.ABIERTA && !caja.cuadrePorFormaPago)
+      ? derivarCuadreLegacy({
+          saldoCierre:        Number(caja.saldoCierre ?? 0),
+          saldoFisico:        Number(caja.saldoFisico ?? 0),
+          ventasTarjeta:      Number(caja.ventasTarjeta ?? 0),
+          ventasTransferencia: Number(caja.ventasTransferencia ?? 0),
+          ventasCredito:      Number((caja as any).ventasCredito ?? 0),
+          desglosePago:       caja.desglosePago as any,
+        })
+      : null;
+    const sospechasLegacy = cuadreLegacy ? detectarPosibleFormaMalRegistrada(cuadreLegacy) : null;
+
     return {
       ...caja,
+      ...(cuadreLegacy ? { cuadrePorFormaPago: cuadreLegacy, cuadreEstimado: true } : {}),
+      ...(sospechasLegacy?.length ? { sospechasFormaPago: sospechasLegacy.map(s => ({ ...s, facturasCandidatas: [] })) } : {}),
       efectivoEsperado:      esperado,
       esperadoInconsistente: esperadoEsInconsistente(esperado),
       excesoRetiros:         excesoDeRetiros(esperado),
     };
+  }
+
+  /**
+   * Agrega `cuadreCorregido` a las filas que tengan ajustes posteriores
+   * (ver registrarAjusteSiCierreCerrado) — una sola query por lote
+   * (WHERE cierreCajaId IN (...)), nunca N+1 por fila. El cierre original
+   * (`cuadrePorFormaPago`) nunca se toca; esto es un cálculo aparte para
+   * que el reporte pueda mostrar "cuadre original" y "cuadre corregido"
+   * uno junto al otro.
+   */
+  private async conCuadreCorregido(cajas: any[]): Promise<any[]> {
+    const empresaId = this.tenantService.getEmpresaId();
+    const ids = cajas.filter(c => Array.isArray(c?.cuadrePorFormaPago)).map(c => c.id);
+    if (!ids.length) return cajas;
+
+    const ajusteRepo = this.dataSource.manager.getRepository(AjusteCierreCaja);
+    const ajustes = await ajusteRepo.find({ where: { cierreCajaId: In(ids), empresaId } });
+    if (!ajustes.length) return cajas;
+
+    const porCierre = new Map<number, typeof ajustes>();
+    for (const a of ajustes) {
+      const lista = porCierre.get(a.cierreCajaId) ?? [];
+      lista.push(a);
+      porCierre.set(a.cierreCajaId, lista);
+    }
+
+    return cajas.map(c => {
+      const ajustesDeEsta = porCierre.get(c.id);
+      if (!ajustesDeEsta?.length) return c;
+      return { ...c, cuadreCorregido: aplicarAjustesAlCuadre(c.cuadrePorFormaPago, ajustesDeEsta) };
+    });
   }
 
   // ── Cajas del día (filtradas por empresa) ─────────────────────────────────
@@ -1126,8 +1179,11 @@ export class CajaService {
     // guardado, sin query) — solo importa para las ABIERTA que aparezcan
     // mezcladas aquí, que si no saldrían con efectivoEsperado undefined y el
     // modal de "Cerrar caja" desde este listado arrancaría mostrando 0.
+    const conEsperado = await this.conCuadreCorregido(
+      data.map(c => this.ocultarSiVendedorYAbierta(this.conEfectivoEsperado(c), role)),
+    );
     return {
-      data: data.map(c => this.ocultarSiVendedorYAbierta(this.conEfectivoEsperado(c), role)),
+      data: conEsperado,
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
   }
@@ -1139,7 +1195,9 @@ export class CajaService {
     const empresaId = this.tenantService.getEmpresaId();
     const caja = await this.repo.findOne({ where: { id, empresaId } });
     if (!caja) throw new NotFoundException(`Caja #${id} no encontrada`);
-    return this.ocultarSiVendedorYAbierta(this.conEfectivoEsperado(caja), this.tenantService.getRolEmpresa());
+    const conEsperado = this.ocultarSiVendedorYAbierta(this.conEfectivoEsperado(caja), this.tenantService.getRolEmpresa());
+    const [conCorregido] = await this.conCuadreCorregido([conEsperado]);
+    return conCorregido;
   }
 
   /**
