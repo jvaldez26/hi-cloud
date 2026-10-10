@@ -85,6 +85,22 @@ const cajaApi = {
   obtenerUna:      (id: number)                => api.get(`/caja/${id}`).then(r => r.data?.data ?? r.data),
 };
 
+/**
+ * Corrige cómo se repartió el cobro de una factura entre formas de pago (el
+ * total no cambia) — requiere ADMIN + autorización de OTRA persona
+ * (RequiereSupervisorSiempre). El 403 con supervisorClaveRequerida lo
+ * resuelve el interceptor genérico de api/client.ts: pide la clave y
+ * reintenta solo.
+ */
+const facturasApi = {
+  corregirFormaPago: (facturaId: number, body: { formasPago: { tipo: number; monto: number }[]; motivo: string }) =>
+    api.patch(`/facturas/${facturaId}/forma-pago`, body).then(r => r.data?.data ?? r.data),
+};
+
+/** Tipo DGII ↔ bucket del cuadre — igual que TIPOS_DGII_POR_FORMA en el backend. */
+const FORMA_A_TIPO_DGII: Record<string, number> = { efectivo: 1, transferencia: 2, tarjeta: 3, otros: 4 };
+const LABEL_FORMA: Record<string, string> = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia', otros: 'Otros' };
+
 const estadoColor: Record<string, string> = {
   abierta: 'green', cerrada: 'blue', revisada: 'purple',
 };
@@ -352,6 +368,34 @@ export default function CajaPage() {
     staleTime: 60_000,
   });
 
+  // Correcciones de forma de pago ya registradas sobre el cierre del drawer
+  // (ver "Cuadre por forma de pago" más abajo) — el cierre original nunca
+  // cambia, estos ajustes se muestran aparte.
+  const { data: ajustesCierre = [], refetch: refetchAjustes } = useQuery<any[]>({
+    queryKey: ['caja-ajustes-cierre', detalleCierre?.id],
+    queryFn: () => api.get(`/caja/${detalleCierre!.id}/ajustes`).then(r => r.data?.data ?? r.data ?? []),
+    enabled: !!detalleCierre && detalleCierre?.estado === 'cerrada',
+    staleTime: 10_000,
+  });
+
+  const [corregirFormaPagoTarget, setCorregirFormaPagoTarget] = useState<{
+    facturaId: number; folio: string; total: number;
+    formasPago: { tipo: number; monto: number }[];
+  } | null>(null);
+  const [formCorregirFormaPago] = Form.useForm();
+
+  const corregirFormaPagoMut = useMutation({
+    mutationFn: ({ facturaId, body }: { facturaId: number; body: any }) =>
+      facturasApi.corregirFormaPago(facturaId, body),
+    onSuccess: () => {
+      message.success('Forma de pago corregida');
+      setCorregirFormaPagoTarget(null);
+      formCorregirFormaPago.resetFields();
+      refetchAjustes();
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al corregir la forma de pago'),
+  });
+
   // ── Pre-cierre: verifica retiros pendientes antes de abrir modal de cierre ─
   const iniciarCierre = async (caja: any) => {
     const nombre = caja.vendedorNombre ?? 'Administrador';
@@ -470,7 +514,7 @@ export default function CajaPage() {
 
     // Desglose de pago (si existe)
     const PAGO_LABELS: Record<string,string> = {
-      efectivo:'Efectivo', tarjetaCredito:'Tarjeta Crédito', tarjetaDebito:'Tarjeta Débito',
+      efectivo:'Efectivo', tarjeta:'Tarjeta', tarjetaCredito:'Tarjeta Crédito', tarjetaDebito:'Tarjeta Débito',
       cheque:'Cheque', transferencia:'Transferencia', otro:'Otro', deposito:'Depósito', documentos:'Documentos',
     };
     const desglosePago: Record<string,string> = r.desglosePago ?? {};
@@ -644,7 +688,7 @@ ${line()}
       .reduce((s,[den,qty]) => s + Number(den)*Number(qty), 0);
     const desglosePago: Record<string,string> = r.desglosePago ?? {};
     const PAGO_LABELS: Record<string,string> = {
-      efectivo:'Efectivo', tarjetaCredito:'Tarjeta Crédito', tarjetaDebito:'Tarjeta Débito',
+      efectivo:'Efectivo', tarjeta:'Tarjeta', tarjetaCredito:'Tarjeta Crédito', tarjetaDebito:'Tarjeta Débito',
       cheque:'Cheque', transferencia:'Transferencia', otro:'Otro', deposito:'Depósito', documentos:'Documentos',
     };
     const pagoRows = Object.entries(desglosePago)
@@ -1392,6 +1436,127 @@ ${line()}
               )}
             </Descriptions>
 
+            {/* ── Cuadre por forma de pago ─────────────────────────────────────
+                El efectivo de arriba es solo UNA forma — este cuadre es el que
+                de verdad explica qué pasó cuando una factura se registró con
+                la forma de pago equivocada (caso real: FAC-1803, Tarjeta y
+                Efectivo invertidos — el efectivo salía "sobrante" cuando era
+                la tarjeta la que faltaba). */}
+            {Array.isArray(detalleCierre.cuadrePorFormaPago) && detalleCierre.cuadrePorFormaPago.length > 0 && (
+              <>
+                <Divider style={{ margin: '12px 0 8px' }}>Cuadre por forma de pago</Divider>
+                <Table
+                  size="small" pagination={false} rowKey="forma"
+                  dataSource={detalleCierre.cuadrePorFormaPago}
+                  columns={[
+                    { title: 'Forma', dataIndex: 'forma', render: (v: string) => LABEL_FORMA[v] ?? v },
+                    { title: 'Esperado', dataIndex: 'esperado', align: 'right' as const, render: (v: number) => fmt.money(Number(v ?? 0)) },
+                    { title: 'Declarado', dataIndex: 'declarado', align: 'right' as const, render: (v: number) => fmt.money(Number(v ?? 0)) },
+                    { title: 'Diferencia', dataIndex: 'diferencia', align: 'right' as const,
+                      render: (v: number) => (
+                        <Text strong style={{ color: colorDif(v) }}>
+                          {Number(v) > 0 ? '+' : ''}{fmt.money(Number(v ?? 0))}
+                        </Text>
+                      ) },
+                  ]}
+                  summary={() => {
+                    const neto = detalleCierre.cuadrePorFormaPago.reduce((s: number, f: any) => s + Number(f.diferencia ?? 0), 0);
+                    return (
+                      <Table.Summary.Row>
+                        <Table.Summary.Cell index={0} colSpan={2}><Text strong>Neto</Text></Table.Summary.Cell>
+                        <Table.Summary.Cell index={1} />
+                        <Table.Summary.Cell index={2} align="right">
+                          <Text strong style={{ color: colorDif(neto) }}>
+                            {neto > 0 ? '+' : ''}{fmt.money(neto)}
+                          </Text>
+                        </Table.Summary.Cell>
+                      </Table.Summary.Row>
+                    );
+                  }}
+                />
+
+                {Array.isArray(detalleCierre.sospechasFormaPago) && detalleCierre.sospechasFormaPago.map((s: any, i: number) => (
+                  <Alert
+                    key={i} type="warning" showIcon style={{ marginTop: 10 }}
+                    message={`Posible forma de pago mal registrada: ${LABEL_FORMA[s.formaSobrante] ?? s.formaSobrante} +${fmt.money(s.monto)} / ${LABEL_FORMA[s.formaFaltante] ?? s.formaFaltante} ${fmt.money(-s.monto)}`}
+                    description={
+                      s.facturasCandidatas?.length ? (
+                        <div style={{ fontSize: 12 }}>
+                          <div style={{ marginBottom: 4 }}>Facturas de este turno que podrían explicarlo (pago mixto con ambas formas):</div>
+                          {s.facturasCandidatas.map((f: any) => (
+                            <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '2px 0' }}>
+                              <span><strong>{f.folio}</strong> — {fmt.money(Number(f.total))}</span>
+                              <Button size="small" onClick={() => {
+                                // Sugerencia: invertir los montos entre la forma sobrante y la
+                                // faltante — es exactamente el fix del caso real (FAC-1803).
+                                const tipoSobrante = FORMA_A_TIPO_DGII[s.formaSobrante];
+                                const tipoFaltante = FORMA_A_TIPO_DGII[s.formaFaltante];
+                                const actuales: { tipo: number; monto: number }[] = Array.isArray(f.formasPago) ? f.formasPago : [];
+                                const montoSobrante = actuales.find((fp: any) => fp.tipo === tipoSobrante)?.monto ?? 0;
+                                const montoFaltante = actuales.find((fp: any) => fp.tipo === tipoFaltante)?.monto ?? 0;
+                                const sugerido = actuales.map((fp: any) => {
+                                  if (fp.tipo === tipoSobrante) return { ...fp, monto: montoFaltante };
+                                  if (fp.tipo === tipoFaltante) return { ...fp, monto: montoSobrante };
+                                  return fp;
+                                });
+                                setCorregirFormaPagoTarget({ facturaId: f.id, folio: f.folio, total: Number(f.total), formasPago: sugerido });
+                                formCorregirFormaPago.setFieldsValue({
+                                  filas: sugerido.map((fp: any) => ({ tipo: fp.tipo, monto: fp.monto })),
+                                  motivo: `Forma de pago invertida detectada en el cierre (${LABEL_FORMA[s.formaSobrante]}/${LABEL_FORMA[s.formaFaltante]})`,
+                                });
+                              }}>
+                                Corregir
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : 'No se encontró una factura mixta del turno que explique la diferencia — revisar a mano.'
+                    }
+                  />
+                ))}
+
+                {Array.isArray(detalleCierre.facturasSinFormaPago) && detalleCierre.facturasSinFormaPago.length > 0 && (
+                  <Alert
+                    type="error" showIcon style={{ marginTop: 10 }}
+                    message="Facturas sin forma de pago registrada"
+                    description={
+                      <div style={{ fontSize: 12 }}>
+                        <div style={{ marginBottom: 4 }}>Fuera del cuadre — no hay con qué compararlas:</div>
+                        {detalleCierre.facturasSinFormaPago.map((f: any) => (
+                          <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '2px 0' }}>
+                            <span style={{ color: token.colorError, fontWeight: 600 }}>
+                              {f.folio} — {fmt.money(Number(f.total))}{f.clienteNombre ? ` · ${f.clienteNombre}` : ''}
+                            </span>
+                            <Button size="small" onClick={() => {
+                              setCorregirFormaPagoTarget({ facturaId: f.id, folio: f.folio, total: Number(f.total), formasPago: [{ tipo: 1, monto: Number(f.total) }] });
+                              formCorregirFormaPago.setFieldsValue({
+                                filas: [{ tipo: 1, monto: Number(f.total) }],
+                                motivo: 'Factura sin forma de pago registrada en el turno',
+                              });
+                            }}>
+                              Agregar forma de pago
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    }
+                  />
+                )}
+
+                {Array.isArray(ajustesCierre) && ajustesCierre.length > 0 && (
+                  <>
+                    <Divider style={{ margin: '12px 0 8px' }}>Ajustes posteriores</Divider>
+                    {ajustesCierre.map((a: any) => (
+                      <div key={a.id} style={{ fontSize: 12, color: token.colorTextSecondary, marginBottom: 6 }}>
+                        <strong>{a.facturaFolio}</strong> corregida por {a.corregidoPorNombre ?? `usuario #${a.corregidoPor}`}
+                        {' '}el {dRD(a.createdAt).format('DD/MM/YYYY HH:mm')} — {a.motivo}
+                      </div>
+                    ))}
+                  </>
+                )}
+              </>
+            )}
+
             {/* ── Recierre: los números del cierre original ──────────────────
                 Reabrir una caja es legítimo, pero antes borraba los valores con
                 los que se cuadró dinero real. Ahora se conservan y se muestran:
@@ -1868,6 +2033,81 @@ ${line()}
             </Col>
           </Row>
         </Form>
+      </Modal>
+
+      {/* Modal corregir forma de pago de una factura — el total NUNCA cambia,
+          solo cómo se repartió. ADMIN + autorización de otra persona (el 403
+          supervisorClaveRequerida lo resuelve solo el interceptor global). */}
+      <Modal
+        title={<Space><DollarOutlined style={{ color: token.colorWarning }} />{`Corregir forma de pago — ${corregirFormaPagoTarget?.folio ?? ''}`}</Space>}
+        open={!!corregirFormaPagoTarget}
+        onCancel={() => { setCorregirFormaPagoTarget(null); formCorregirFormaPago.resetFields(); }}
+        footer={null}
+        width="min(480px, 95vw)"
+      >
+        {corregirFormaPagoTarget && (
+          <Form
+            form={formCorregirFormaPago}
+            layout="vertical"
+            initialValues={{ filas: corregirFormaPagoTarget.formasPago.map(fp => ({ tipo: fp.tipo, monto: fp.monto })) }}
+            onFinish={(v: any) => {
+              const formasPago = (v.filas ?? []).map((f: any) => ({ tipo: f.tipo, monto: Number(f.monto) }));
+              const suma = formasPago.reduce((s: number, f: any) => s + (f.monto || 0), 0);
+              if (Math.abs(suma - corregirFormaPagoTarget.total) > 0.01) {
+                message.error(`Las formas de pago suman ${fmt.money(suma)} y el total de la factura es ${fmt.money(corregirFormaPagoTarget.total)}`);
+                return;
+              }
+              corregirFormaPagoMut.mutate({ facturaId: corregirFormaPagoTarget.facturaId, body: { formasPago, motivo: v.motivo } });
+            }}
+          >
+            <Alert
+              type="info" showIcon style={{ marginBottom: 12 }}
+              message={`Total de la factura: ${fmt.money(corregirFormaPagoTarget.total)} — no cambia, solo cómo se repartió`}
+            />
+            <Form.List name="filas">
+              {(fields, { add, remove }) => (
+                <>
+                  {fields.map(field => (
+                    <Row key={field.key} gutter={8}>
+                      <Col flex="1">
+                        <Form.Item {...field} name={[field.name, 'tipo']} rules={[{ required: true, message: 'Forma' }]}>
+                          <Select options={[
+                            { value: 1, label: 'Efectivo' },
+                            { value: 3, label: 'Tarjeta' },
+                            { value: 2, label: 'Transferencia/Cheque' },
+                            { value: 4, label: 'Otro' },
+                          ]} placeholder="Forma de pago" />
+                        </Form.Item>
+                      </Col>
+                      <Col flex="1">
+                        <Form.Item {...field} name={[field.name, 'monto']} rules={[{ required: true, message: 'Monto' }]}>
+                          <InputNumber style={{ width: '100%' }} min={0.01} precision={2} placeholder="Monto" />
+                        </Form.Item>
+                      </Col>
+                      <Col>
+                        <Button danger type="text" icon={<CloseCircleOutlined />} onClick={() => remove(field.name)} />
+                      </Col>
+                    </Row>
+                  ))}
+                  <Button type="dashed" block onClick={() => add({ tipo: 1, monto: 0 })} style={{ marginBottom: 12 }}>
+                    + Agregar forma de pago
+                  </Button>
+                </>
+              )}
+            </Form.List>
+            <Form.Item name="motivo" label="Motivo de la corrección" rules={[{ required: true, message: 'Indica el motivo' }]}>
+              <Input.TextArea rows={2} placeholder="Ej: la cajera registró tarjeta y efectivo invertidos" />
+            </Form.Item>
+            <Row justify="end" gutter={8}>
+              <Col><Button onClick={() => { setCorregirFormaPagoTarget(null); formCorregirFormaPago.resetFields(); }}>Cancelar</Button></Col>
+              <Col>
+                <Button type="primary" htmlType="submit" loading={corregirFormaPagoMut.isPending}>
+                  Guardar corrección
+                </Button>
+              </Col>
+            </Row>
+          </Form>
+        )}
       </Modal>
     </div>
   );
