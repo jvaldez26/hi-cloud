@@ -184,6 +184,79 @@ describe('C2 — el desembolso es atómico', () => {
   });
 });
 
+describe('§4 (Etapa 2 resto) — desembolso parcial en create()', () => {
+  const construir = (responder: any, asientos?: any) => {
+    const { qr, vida, sqls } = buildQueryRunner(responder);
+    const ds = {
+      createQueryRunner: () => qr,
+      query: jest.fn(async (sql: string) =>
+        sql.includes('FROM pr_prestamos') ? [{ id: 77, numero: 'PRE-0001' }] : []),
+    };
+    const svc = new PrestamosService(
+      ds as any,
+      asientos ?? { asientoDesembolsoPrestamo: jest.fn().mockResolvedValue(undefined) },
+      { getUserId: () => 42 } as any,
+      { obtenerSetFeriados: jest.fn().mockResolvedValue(new Set()) } as any,
+    );
+    return { svc, qr, vida, sqls };
+  };
+
+  const responderOk = (sql: string) => {
+    if (sql.includes('FROM pr_solicitudes')) return [{ id: 5, estado: 'aprobada', deudorId: 3 }];
+    if (sql.includes('FROM pr_deudores')) return [{ id: 1 }];
+    if (sql.includes('siguiente_numero_secuencia')) return [{ num: '0001' }];
+    if (sql.includes('INSERT INTO pr_prestamos')) return [{ id: 77 }];
+    return [];
+  };
+
+  it('sin desembolsoInicial: se desembolsa el 100% de siempre, sin cambiar el comportamiento', async () => {
+    let insertPrestamoParams: any[] = [];
+    const { svc, sqls } = construir((sql: string, params: any[]) => {
+      if (sql.includes('INSERT INTO pr_prestamos')) { insertPrestamoParams = params; return [{ id: 77 }]; }
+      return responderOk(sql);
+    });
+    await svc.create(1, { ...DATOS_PRESTAMO });
+    expect(insertPrestamoParams[28]).toBe(12000); // desembolsado = montoPrincipal completo
+    expect(insertPrestamoParams[29]).toBe('al_dia');
+  });
+
+  it('desembolsoInicial menor al monto: el préstamo nace en desembolso_parcial e inserta el tramo inicial', async () => {
+    let insertPrestamoParams: any[] = [];
+    const { svc, sqls } = construir((sql: string, params: any[]) => {
+      if (sql.includes('INSERT INTO pr_prestamos')) { insertPrestamoParams = params; return [{ id: 77 }]; }
+      return responderOk(sql);
+    });
+    await svc.create(1, { ...DATOS_PRESTAMO, desembolsoInicial: 5000 });
+
+    expect(insertPrestamoParams[28]).toBe(5000);   // desembolsado
+    expect(insertPrestamoParams[29]).toBe('desembolso_parcial'); // estado
+    expect(sqls.some(s => s.includes('INSERT INTO pr_desembolsos_parciales'))).toBe(true);
+  });
+
+  it('el asiento se genera solo por el tramo inicial, no por el monto total', async () => {
+    const asientos = { asientoDesembolsoPrestamo: jest.fn().mockResolvedValue(undefined) };
+    const { svc } = construir(responderOk, asientos);
+    await svc.create(1, { ...DATOS_PRESTAMO, desembolsoInicial: 5000 });
+    expect(asientos.asientoDesembolsoPrestamo).toHaveBeenCalledWith(
+      77, 'PRE-0001', 5000, 'transferencia', '2026-08-01', 42, 0,
+    );
+  });
+
+  it('desembolsoInicial de 0: nace 100% pendiente, sin asiento ni tramo', async () => {
+    const asientos = { asientoDesembolsoPrestamo: jest.fn().mockResolvedValue(undefined) };
+    const { svc, sqls } = construir(responderOk, asientos);
+    await svc.create(1, { ...DATOS_PRESTAMO, desembolsoInicial: 0 });
+    expect(asientos.asientoDesembolsoPrestamo).not.toHaveBeenCalled();
+    expect(sqls.some(s => s.includes('INSERT INTO pr_desembolsos_parciales'))).toBe(false);
+  });
+
+  it('rechaza un desembolsoInicial mayor al monto del préstamo', async () => {
+    const { svc } = construir(responderOk);
+    await expect(svc.create(1, { ...DATOS_PRESTAMO, desembolsoInicial: 999999 }))
+      .rejects.toThrow(BadRequestException);
+  });
+});
+
 describe('H2 — el refinanciamiento es atómico', () => {
   const construir = (responder: any, asientos?: any) => {
     const { qr, vida, sqls } = buildQueryRunner(responder);

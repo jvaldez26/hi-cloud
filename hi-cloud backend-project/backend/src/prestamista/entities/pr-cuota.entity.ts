@@ -15,6 +15,9 @@ export class PrCuota {
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 }) interesPagado!: number;
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 }) moraGenerada!: number;
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 }) moraPagada!: number;
+  /** Etapa 2 resto, §6 — cuánto de interesPagado/moraPagada vino de una condonación (nunca dinero real). Solo auditoría: las fórmulas de saldo siguen leyendo interesPagado/moraPagada. */
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 }) interesCondonado!: number;
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 }) moraCondonada!: number;
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 }) totalPagado!: number;
   @Column({ length: 20, default: 'pendiente' }) estado!: string;
   @Column({ type: 'date', nullable: true }) fechaPago?: string;

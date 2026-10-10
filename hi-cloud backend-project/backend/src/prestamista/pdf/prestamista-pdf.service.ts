@@ -344,4 +344,119 @@ export class PrestamistaPdfService {
 
     doc.end();
   }
+
+  /**
+   * Contrato y pagaré (Etapa 2 resto, §7) — plantillas de TEXTO SIMPLE, sin
+   * redacción legal: un marcador de posición imprimible para que la
+   * empresa pueda firmar algo desde ya. El texto legal completo queda
+   * fuera de alcance (ver docs/prestamista/etapa-2-resto.md §7).
+   */
+  private async datosContrato(prestamoId: number, empresaId: number) {
+    const [prestamo] = await this.ds.query<any[]>(
+      `SELECT p.*, d.nombre AS "deudorNombre", d.apellidos AS "deudorApellidos", d.cedula AS "deudorCedula", d.direccion AS "deudorDireccion"
+       FROM pr_prestamos p JOIN pr_deudores d ON d.id=p."deudorId" AND d."empresaId"=p."empresaId"
+       WHERE p.id=$1 AND p."empresaId"=$2`, [prestamoId, empresaId],
+    );
+    if (!prestamo) return null;
+    const garantias = await this.ds.query<any[]>(
+      `SELECT * FROM pr_garantias WHERE "prestamoId"=$1 AND "empresaId"=$2 AND estado<>'liberada'`, [prestamoId, empresaId],
+    );
+    const garantes = await this.ds.query<any[]>(
+      `SELECT * FROM pr_garantes WHERE "prestamoId"=$1 AND "empresaId"=$2 AND estado='activo'`, [prestamoId, empresaId],
+    );
+    const ultimaCuota = await this.ds.query<any[]>(
+      `SELECT "fechaVencimiento" FROM pr_cuotas WHERE "prestamoId"=$1 ORDER BY "numeroCuota" DESC LIMIT 1`, [prestamoId],
+    );
+    const empresa = await this.empresaInfo(empresaId);
+    return { prestamo, garantias, garantes, fechaUltimaCuota: ultimaCuota[0]?.fechaVencimiento, empresa };
+  }
+
+  async contratoPrestamo(res: Response, prestamoId: number, empresaId: number) {
+    const datos = await this.datosContrato(prestamoId, empresaId);
+    if (!datos) { res.status(404).json({ message: 'Préstamo no encontrado' }); return; }
+    const { prestamo, garantias, garantes, empresa } = datos;
+
+    const doc = new PDFDocument({ margin: 50, size: 'LETTER' });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="contrato-${prestamo.numero}.pdf"`);
+    doc.pipe(res);
+
+    let y = this.buildHeader(doc, 'Contrato de Préstamo', empresa, prestamo.numero);
+    const deudorNombre = `${prestamo.deudorNombre} ${prestamo.deudorApellidos ?? ''}`.trim();
+
+    doc.fontSize(9).font('Helvetica');
+    const parrafo = (texto: string) => { doc.text(texto, 50, y, { width: 500 }); y = doc.y + 8; };
+
+    parrafo(
+      `Entre ${empresa?.nombreComercial || empresa?.nombre || 'la empresa'}${empresa?.rnc ? `, RNC ${empresa.rnc}` : ''} ` +
+      `(en adelante, "EL PRESTAMISTA") y ${deudorNombre}${prestamo.deudorCedula ? `, cédula ${prestamo.deudorCedula}` : ''}` +
+      `${prestamo.deudorDireccion ? `, domiciliado en ${prestamo.deudorDireccion}` : ''} (en adelante, "EL DEUDOR"), ` +
+      `se celebra el presente contrato de préstamo bajo los siguientes términos:`,
+    );
+    parrafo(`1. MONTO: EL PRESTAMISTA entrega a EL DEUDOR la suma de RD$ ${this.r2(prestamo.montoPrincipal)}.`);
+    parrafo(`2. TASA DE INTERÉS: ${prestamo.tasaInteresMensual}% mensual, bajo el método de amortización ${prestamo.metodoAmortizacion}.`);
+    parrafo(`3. PLAZO: ${prestamo.plazoMeses} cuota(s), con frecuencia de pago ${prestamo.frecuenciaPago}, a partir del ${this.fecha(prestamo.fechaPrimerPago)}.`);
+    parrafo(`4. CUOTA: RD$ ${this.r2(prestamo.cuotaPeriodica)} por período, hasta el ${this.fecha(prestamo.fechaVencimiento)}.`);
+    parrafo(`5. DESEMBOLSO: ${this.fecha(prestamo.fechaDesembolso)}.`);
+
+    if (garantes.length) {
+      parrafo('6. GARANTES: El presente préstamo cuenta con el aval personal de:');
+      for (const g of garantes) {
+        parrafo(`   - ${g.nombre}${g.cedula ? `, cédula ${g.cedula}` : ''}${g.relacionDeudor ? ` (${g.relacionDeudor})` : ''}.`);
+      }
+    }
+    if (garantias.length) {
+      parrafo(`${garantes.length ? '7' : '6'}. GARANTÍAS: El presente préstamo está respaldado por las siguientes garantías:`);
+      for (const g of garantias) {
+        parrafo(`   - ${g.tipo}: ${g.descripcion}${g.valorTasado ? ` (valor tasado RD$ ${this.r2(g.valorTasado)})` : ''}.`);
+      }
+    }
+
+    y += 30;
+    if (y > 680) { doc.addPage(); y = 50; }
+    doc.font('Helvetica').fontSize(9);
+    doc.text('_______________________', 60, y, { width: 200, align: 'center' });
+    doc.text('_______________________', 320, y, { width: 200, align: 'center' });
+    y += 14;
+    doc.text('EL PRESTAMISTA', 60, y, { width: 200, align: 'center' });
+    doc.text('EL DEUDOR', 320, y, { width: 200, align: 'center' });
+    y += 20;
+    doc.fontSize(7).font('Helvetica-Oblique').fillColor('#888')
+      .text('Documento generado automáticamente — no constituye asesoría legal. Revisar con un abogado antes de firmar.', 50, y, { width: 500 });
+
+    doc.end();
+  }
+
+  async pagarePrestamo(res: Response, prestamoId: number, empresaId: number) {
+    const datos = await this.datosContrato(prestamoId, empresaId);
+    if (!datos) { res.status(404).json({ message: 'Préstamo no encontrado' }); return; }
+    const { prestamo, empresa, fechaUltimaCuota } = datos;
+
+    const doc = new PDFDocument({ margin: 50, size: 'LETTER' });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="pagare-${prestamo.numero}.pdf"`);
+    doc.pipe(res);
+
+    let y = this.buildHeader(doc, 'Pagaré', empresa, prestamo.numero);
+    const deudorNombre = `${prestamo.deudorNombre} ${prestamo.deudorApellidos ?? ''}`.trim();
+
+    doc.fontSize(10).font('Helvetica');
+    doc.text(
+      `Por el presente pagaré, yo, ${deudorNombre}${prestamo.deudorCedula ? `, cédula ${prestamo.deudorCedula}` : ''}, ` +
+      `me obligo a pagar incondicionalmente a ${empresa?.nombreComercial || empresa?.nombre || 'la empresa'} ` +
+      `la suma de RD$ ${this.r2(prestamo.totalAPagar ?? prestamo.montoPrincipal)} a más tardar el ${this.fecha(fechaUltimaCuota ?? prestamo.fechaVencimiento)}, ` +
+      `correspondiente al préstamo ${prestamo.numero}.`,
+      50, y, { width: 500 },
+    );
+    y = doc.y + 40;
+    if (y > 680) { doc.addPage(); y = 50; }
+    doc.text('_______________________', 50, y, { width: 500, align: 'center' });
+    y += 14;
+    doc.text('Firma del deudor', 50, y, { width: 500, align: 'center' });
+    y += 20;
+    doc.fontSize(7).font('Helvetica-Oblique').fillColor('#888')
+      .text('Documento generado automáticamente — no constituye asesoría legal. Revisar con un abogado antes de firmar.', 50, y, { width: 500 });
+
+    doc.end();
+  }
 }

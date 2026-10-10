@@ -2029,6 +2029,68 @@ export class AsientosAutomaticosService {
   }
 
   // ──────────────────────────────────────────────────────────────────
+  // PRESTAMISTA: Condonación independiente (Etapa 2 resto, §6)
+  //
+  // Igual idea que la condonación empaquetada en asientoRefinanciamiento:
+  // el motor es 100% base caja (la mora/interés pendiente nunca se
+  // devengaron como ingreso en los libros), así que condonarlos no tiene
+  // una contrapartida real que reversar. Para que la condonación quede
+  // VISIBLE en vez de simplemente no aparecer nunca, se reconoce bruto
+  // como ingreso (CR Intereses/Mora) y se expensa de inmediato como gasto
+  // por condonación (DR) — efecto neto cero en el resultado, pero
+  // auditable en el libro diario.
+  // ──────────────────────────────────────────────────────────────────
+  async asientoCondonacionPrestamo(
+    prestamoId: number,
+    numero: string,
+    moraCondonada: number,
+    interesCondonado: number,
+    fecha: string,
+    userId: number,
+  ): Promise<void> {
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const total = r2(moraCondonada + interesCondonado);
+    if (total <= 0) return;
+    const cuentaCondonacion = await this.resolverCuentaConcepto('PRESTAMO_CONDONACION_GASTO', '5.1.9.05');
+    const cuentaInteres     = await this.resolverCuentaConcepto('PRESTAMO_INTERESES', '4.1.2.01');
+    const cuentaMora        = await this.resolverCuentaConcepto('PRESTAMO_MORA',      '4.1.2.02');
+    try {
+      const lineas: Array<{ codigo: string; descripcion: string; debe: number; haber: number }> = [];
+      if (interesCondonado > 0) {
+        lineas.push(
+          { codigo: cuentaCondonacion, descripcion: `Condonación interés préstamo ${numero}`, debe: interesCondonado, haber: 0 },
+          { codigo: cuentaInteres,     descripcion: `Interés condonado ${numero}`,              debe: 0, haber: interesCondonado },
+        );
+      }
+      if (moraCondonada > 0) {
+        lineas.push(
+          { codigo: cuentaCondonacion, descripcion: `Condonación mora préstamo ${numero}`, debe: moraCondonada, haber: 0 },
+          { codigo: cuentaMora,        descripcion: `Mora condonada ${numero}`,             debe: 0, haber: moraCondonada },
+        );
+      }
+      const asiento = await this._crearAsientoContabilizado({
+        descripcion:     `Condonación préstamo ${numero}`,
+        tipoOrigen:      TipoOrigenAsiento.PRESTAMISTA,
+        referenciaId:    prestamoId,
+        referenciaFolio: numero,
+        fecha,
+        userId,
+        lineas,
+      });
+      if (asiento) {
+        this.logger.log(`Asiento condonación préstamo ${numero} generado`);
+      } else {
+        this.logger.warn(`Asiento condonación préstamo ${numero} NO generado (cuenta faltante) — ver Sentry`);
+      }
+    } catch (err) {
+      this.logger.error(`Error asiento condonación ${numero}: ${(err as Error).message}`);
+      this.reportarFalloAsiento(err, 'asiento_condonacion_prestamo', {
+        tipoOrigen: TipoOrigenAsiento.PRESTAMISTA, referenciaId: String(prestamoId), referenciaFolio: numero,
+      });
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
   // Gasto de importación aplicado
   // DR 1.1.3.01 Inventario / CR 2.1.6.01 Gastos de Importación por Aplicar
   //

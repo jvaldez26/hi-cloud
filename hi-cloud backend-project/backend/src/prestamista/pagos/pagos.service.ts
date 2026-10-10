@@ -119,6 +119,13 @@ export class PagosService {
     if (prestamo.estado === 'cancelado' || prestamo.estado === 'pagado') {
       throw new BadRequestException('El préstamo ya está cerrado');
     }
+    // §4 (Etapa 2 resto) — mientras no se haya entregado el 100% del
+    // efectivo, no se le puede cobrar al deudor.
+    if (prestamo.estado === 'desembolso_parcial') {
+      throw new BadRequestException(
+        `Este préstamo tiene desembolso pendiente (RD$ ${r2(Number(prestamo.montoPrincipal) - Number(prestamo.desembolsado)).toFixed(2)} por entregar) — no se le puede cobrar hasta completarlo.`,
+      );
+    }
 
     const pendientesOrdenadas: CuotaPendiente[] = await queryable.query(
       `SELECT * FROM pr_cuotas WHERE "prestamoId"=$1 AND estado<>'pagada' ORDER BY "numeroCuota"${bloquear ? ' FOR UPDATE' : ''}`,

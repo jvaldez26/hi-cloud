@@ -50,6 +50,13 @@ import { FeriadosController } from './feriados/feriados.controller';
 import { PrSimulacion } from './entities/pr-simulacion.entity';
 import { SimulacionesService } from './simulaciones/simulaciones.service';
 import { SimulacionesController } from './simulaciones/simulaciones.controller';
+import { PrDesembolsoParcial } from './entities/pr-desembolso-parcial.entity';
+import { DesembolsosParcialesService } from './desembolsos-parciales/desembolsos-parciales.service';
+import { DesembolsosParcialesController } from './desembolsos-parciales/desembolsos-parciales.controller';
+import { ReestructuracionService } from './reestructuracion/reestructuracion.service';
+import { ReestructuracionController } from './reestructuracion/reestructuracion.controller';
+import { CondonacionService } from './condonacion/condonacion.service';
+import { CondonacionController } from './condonacion/condonacion.controller';
 
 @Module({
   imports: [
@@ -67,6 +74,7 @@ import { SimulacionesController } from './simulaciones/simulaciones.controller';
       PrVehiculo,
       PrFeriado,
       PrSimulacion,
+      PrDesembolsoParcial,
     ]),
     TenantModule,
     ContabilidadModule,
@@ -90,6 +98,9 @@ import { SimulacionesController } from './simulaciones/simulaciones.controller';
     VehiculosService,
     FeriadosService,
     SimulacionesService,
+    DesembolsosParcialesService,
+    ReestructuracionService,
+    CondonacionService,
   ],
   controllers: [
     DeudoresController,
@@ -107,6 +118,9 @@ import { SimulacionesController } from './simulaciones/simulaciones.controller';
     VehiculosController,
     FeriadosController,
     SimulacionesController,
+    DesembolsosParcialesController,
+    ReestructuracionController,
+    CondonacionController,
   ],
   exports: [DeudoresService, PrestamosService, VehiculosService, FeriadosService],
 })

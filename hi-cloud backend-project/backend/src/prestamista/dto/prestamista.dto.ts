@@ -232,6 +232,16 @@ export class CrearPrestamoDto {
 
   @IsOptional() @IsString() @MaxLength(500)
   notas?: string;
+
+  /**
+   * §4 (Etapa 2 resto) — monto de EFECTIVO entregado al firmar. Si se omite,
+   * se asume el 100% (caso de siempre). Si es menor al monto del préstamo,
+   * nace en estado 'desembolso_parcial' hasta completarlo (ver
+   * DesembolsosParcialesService) — la tabla de amortización sigue
+   * generándose completa sobre el monto total.
+   */
+  @IsOptional() @IsNumber(MONTO) @Min(0) @Type(() => Number)
+  desembolsoInicial?: number;
 }
 
 export class RefinanciarDto {
@@ -790,6 +800,56 @@ export class LiberarGarantiaDto {
 
 /** Ejecutar una garantía — motivo siempre obligatorio (§3, acción más grave del módulo). */
 export class EjecutarGarantiaDto {
+  @IsString() @IsNotEmpty() @MaxLength(500)
+  motivo!: string;
+}
+
+/** Registrar un tramo de efectivo entregado (§4, Etapa 2 resto). */
+export class CrearDesembolsoParcialDto {
+  @IsInt() @IsPositive() @Type(() => Number)
+  prestamoId!: number;
+
+  @IsNumber(MONTO) @IsPositive() @Type(() => Number)
+  monto!: number;
+
+  @IsDateString({}, { message: 'La fecha debe ser una fecha válida' })
+  fecha!: string;
+
+  @IsOptional() @IsString() @MaxLength(20)
+  metodoPago?: string;
+
+  @IsOptional() @IsString() @MaxLength(500)
+  notas?: string;
+}
+
+/**
+ * Reestructurar un préstamo vivo (§5) — distinto de refinanciar: el mismo
+ * préstamo sigue existiendo, solo cambia el plan de las cuotas totalmente
+ * pendientes. Todos los campos son opcionales salvo el motivo: lo que no se
+ * envía se mantiene igual.
+ */
+export class ReestructurarPrestamoDto {
+  @IsOptional() @IsInt() @Min(1) @Type(() => Number)
+  nuevoPlazoMeses?: number;
+
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) @Type(() => Number)
+  nuevaTasaInteresMensual?: number;
+
+  @IsOptional() @IsIn(['frances', 'aleman'])
+  nuevoMetodoAmortizacion?: string;
+
+  @IsString() @IsNotEmpty() @MaxLength(500)
+  motivo!: string;
+}
+
+/** Condonar mora y/o interés pendiente de un préstamo vivo, sin refinanciarlo (§6). Capital NUNCA se condona. */
+export class CondonarPrestamoDto {
+  @IsOptional() @IsNumber(MONTO) @Min(0) @Type(() => Number)
+  moraACondonar?: number;
+
+  @IsOptional() @IsNumber(MONTO) @Min(0) @Type(() => Number)
+  interesACondonar?: number;
+
   @IsString() @IsNotEmpty() @MaxLength(500)
   motivo!: string;
 }

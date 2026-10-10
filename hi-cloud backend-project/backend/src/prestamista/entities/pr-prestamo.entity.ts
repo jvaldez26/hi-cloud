@@ -30,6 +30,13 @@ export class PrPrestamo {
   @Column({ type: 'int', default: 0 }) diasMoraActual!: number;
   @Column({ type: 'int', default: 0 }) cuotasVencidas!: number;
   @Column({ length: 20, default: 'al_dia' }) estado!: string;
+  /**
+   * Suma de pr_desembolsos_parciales (Etapa 2 resto, §4). Para préstamos que
+   * desembolsan el 100% de una vez (el caso normal) queda igual a
+   * montoPrincipal desde la creación. Mientras desembolsado < montoPrincipal,
+   * estado='desembolso_parcial' y PagosService rechaza pagos.
+   */
+  @Column({ type: 'decimal', precision: 14, scale: 2, default: 0 }) desembolsado!: number;
   @Column({ type: 'int', nullable: true }) oficialId?: number;
   @Column({ length: 200, nullable: true }) oficialNombre?: string;
   @Column({ type: 'int', nullable: true }) refinanciaDe?: number;

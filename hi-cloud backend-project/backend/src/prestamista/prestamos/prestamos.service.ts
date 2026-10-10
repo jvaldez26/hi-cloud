@@ -125,13 +125,19 @@ export class PrestamosService {
       const prestamoId = await this.crearEnTransaccion(qr, empresaId, data);
       await qr.commitTransaction();
 
-      // Fuera de la transacción: si el asiento falla, el desembolso ya es válido.
-      this.asientos.asientoDesembolsoPrestamo(
-        prestamoId.id, prestamoId.numero, prestamoId.montoDesembolsado,
-        data.formaPago ?? 'transferencia', data.fechaDesembolso ?? fechaHoyRD(),
-        this.tenantSvc.getUserId() ?? 0,
-        prestamoId.cargoAperturaRetenido,
-      ).catch(err => this.logger.error(`Asiento desembolso ${prestamoId.numero}: ${err.message}`));
+      // Fuera de la transacción: si el asiento falla, el desembolso ya es
+      // válido. El asiento se genera por el tramo REAL entregado
+      // (desembolsoInicial) — §4: si el préstamo nace en 'desembolso_parcial',
+      // los tramos siguientes generan su propio asiento (ver
+      // DesembolsosParcialesService), nunca uno solo por el total.
+      if (prestamoId.desembolsoInicial > 0) {
+        this.asientos.asientoDesembolsoPrestamo(
+          prestamoId.id, prestamoId.numero, prestamoId.desembolsoInicial,
+          data.formaPago ?? 'transferencia', data.fechaDesembolso ?? fechaHoyRD(),
+          this.tenantSvc.getUserId() ?? 0,
+          prestamoId.cargoAperturaRetenido,
+        ).catch(err => this.logger.error(`Asiento desembolso ${prestamoId.numero}: ${err.message}`));
+      }
 
       return this.findOne(empresaId, prestamoId.id);
     } catch (err) {
@@ -250,6 +256,20 @@ export class PrestamosService {
     // C5: autor del desembolso desde el CLS (JWT), nunca del body.
     const uid = this.tenantSvc.getUserId();
 
+    // §4 (Etapa 2 resto) — desembolsos parciales: la tabla de amortización
+    // SIEMPRE se genera completa sobre el monto total (arriba); lo que
+    // puede entrar en tramos es el EFECTIVO. Sin `desembolsoInicial`, se
+    // asume el caso de siempre: 100% de una vez. Con uno menor al total, el
+    // préstamo nace en 'desembolso_parcial' y PagosService lo bloquea hasta
+    // completarlo (ver DesembolsosParcialesService).
+    const desembolsoInicial = data.desembolsoInicial != null
+      ? r2(Number(data.desembolsoInicial))
+      : resultado.montoPrincipalFinanciado;
+    if (desembolsoInicial < 0 || desembolsoInicial > resultado.montoPrincipalFinanciado) {
+      throw new BadRequestException('El desembolso inicial no puede ser negativo ni mayor al monto del préstamo');
+    }
+    const estadoInicial = desembolsoInicial < resultado.montoPrincipalFinanciado ? 'desembolso_parcial' : 'al_dia';
+
     // Campos planos (compat con pantallas que todavía leen tasaInteresMensual/
     // frecuenciaPago/metodoAmortizacion directo) — espejo de la config real,
     // que vive completa en "motorConfig". Ver nota en motor-adaptador.util.ts:
@@ -260,8 +280,8 @@ export class PrestamosService {
         "tasaInteresMensual","plazoMeses","frecuenciaPago","metodoAmortizacion","cuotaPeriodica",
         "porcentajeMora","diasGracia","cargoCierre","fechaDesembolso","fechaPrimerPago","fechaVencimiento",
         "totalInteres","totalAPagar","saldoCapital","saldoInteres","saldoTotal","oficialId","oficialNombre",notas,"creadoPor",
-        "motorVersion","motorConfig")
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
+        "motorVersion","motorConfig","desembolsado",estado)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
        RETURNING *`,
       [empresaId, numero, data.solicitudId ?? null, data.deudorId, data.productoId ?? null,
        resultado.montoPrincipalFinanciado, config.tasa.valor * 100, data.plazoMeses, config.frecuencia,
@@ -271,8 +291,16 @@ export class PrestamosService {
        resultado.totalInteres, resultado.totalAPagar,
        resultado.montoPrincipalFinanciado, resultado.totalInteres, resultado.totalAPagar,
        data.oficialId ?? null, data.oficialNombre ?? null, data.notas ?? null, uid,
-       'v2', JSON.stringify(config)],
+       'v2', JSON.stringify(config), desembolsoInicial, estadoInicial],
     );
+
+    if (desembolsoInicial > 0) {
+      await qr.query(
+        `INSERT INTO pr_desembolsos_parciales ("empresaId","prestamoId",monto,fecha,"metodoPago",notas,"creadoPor")
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [empresaId, prestamo.id, desembolsoInicial, data.fechaDesembolso, data.formaPago ?? null, 'Desembolso inicial', uid],
+      );
+    }
 
     // Insertar cuotas
     for (const linea of resultado.tabla) {
@@ -312,6 +340,7 @@ export class PrestamosService {
       id: prestamo.id,
       numero,
       montoDesembolsado: resultado.montoPrincipalFinanciado,
+      desembolsoInicial,
       cargoAperturaRetenido,
     };
   }
@@ -347,7 +376,13 @@ export class PrestamosService {
     // moroso/vencido — única definición, compartida con mora.cron.ts y
     // PagosService.registrar(). Antes esta función no aplicaba diasGracia
     // (sí lo hacían las otras dos) — queda unificado.
-    const nuevoEstado = (saldoCapital <= 0 && cuotasPendientes === 0)
+    // §4 — un préstamo con desembolso incompleto no se reclasifica aquí:
+    // solo DesembolsosParcialesService puede sacarlo de ese estado (al
+    // completar el monto), nunca un recálculo de saldos de cuotas que son
+    // ajenas a cuánto efectivo se ha entregado todavía.
+    const nuevoEstado = p.estado === 'desembolso_parcial'
+      ? 'desembolso_parcial'
+      : (saldoCapital <= 0 && cuotasPendientes === 0)
       ? 'pagado'
       : clasificarMorosidad(cuotasVencidas, maxDiasMora, Number(p.diasGracia ?? 0));
     await this.ds.query(

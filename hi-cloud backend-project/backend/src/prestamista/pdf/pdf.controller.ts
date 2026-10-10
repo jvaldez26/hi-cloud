@@ -38,4 +38,14 @@ export class PdfPrestamistaController {
   cotizacionSimulacion(@Param('simulacionId', ParseIntPipe) id: number, @Res() res: Response) {
     return this.pdfSvc.cotizacionSimulacion(res, id, this.empresaId);
   }
+
+  @Get('contrato/:prestamoId')
+  contrato(@Param('prestamoId', ParseIntPipe) id: number, @Res() res: Response) {
+    return this.pdfSvc.contratoPrestamo(res, id, this.empresaId);
+  }
+
+  @Get('pagare/:prestamoId')
+  pagare(@Param('prestamoId', ParseIntPipe) id: number, @Res() res: Response) {
+    return this.pdfSvc.pagarePrestamo(res, id, this.empresaId);
+  }
 }
