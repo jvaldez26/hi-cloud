@@ -216,7 +216,8 @@ describe('CajaService.cerrarCaja — cuadre por forma de pago (caso real empresa
 
     expect(cambios.sospechasFormaPago).toHaveLength(1);
     expect(cambios.sospechasFormaPago[0]).toMatchObject({
-      formaSobrante: 'efectivo', formaFaltante: 'tarjeta', monto: 829.94,
+      formaSobrante: 'efectivo', formaFaltante: 'tarjeta',
+      monto: 829.94, montoSobrante: 829.94, montoFaltante: -830.00,
     });
 
     // El diferencia GLOBAL (saldoFisico - saldoCierre, solo efectivo) sigue
@@ -224,6 +225,43 @@ describe('CajaService.cerrarCaja — cuadre por forma de pago (caso real empresa
     // está familiarizado — pero ya no es la única señal: el cuadre por forma
     // es el que explica qué pasó de verdad.
     expect(cambios.diferencia).toBe(829.94);
+  });
+
+  // Reimpresión real del mismo cierre (2026-10-10): si ese turno tiene
+  // además una factura CONTADO sin forma de pago (FAC-1807, RD$295), su
+  // monto NUNCA debe inflar "otros" — queda fuera del cuadre, y el neto
+  // sigue siendo -0.06, no -295.06.
+  it('una factura sin forma de pago en el mismo turno no infla "otros" ni cambia el neto', async () => {
+    const d = buildDeps();
+    const FAC_1807 = { id: 1807, folio: 'FAC-1807', total: '295.00', clienteNombre: 'Bellamar González' };
+    d.dataSource.manager.query.mockImplementation((sql: string) => {
+      if (sql.includes('recibos_cobro') && sql.includes('tarjeta')) return Promise.resolve([{ tarjeta: '0', transferencia: '0' }]);
+      if (sql.includes('anticipo_cliente') && sql.includes('tarjeta')) return Promise.resolve([{ tarjeta: '0', transferencia: '0' }]);
+      if (sql.includes('recibos_cobro') || sql.includes('anticipo_cliente')) return Promise.resolve([{ total: '0' }]);
+      if (sql.includes('jsonb_array_length') && sql.includes('> 1')) return Promise.resolve([]); // sin candidatas en este caso
+      if (sql.includes('FROM facturas f')) return Promise.resolve([FAC_1807]);
+      return Promise.resolve([{}]);
+    });
+    d.repo.findOne.mockResolvedValue(cajaAbierta({
+      id: 1, userId: 1, vendedorId: 12, vendedorNombre: 'Bellamar González',
+      saldoApertura: 0, ventasEfectivo: 5608.06, ventasTarjeta: 2605.00,
+      ventasCredito: 295.00, // el fallback histórico de clasificación por notas contó FAC-1807 aquí
+    }));
+    const service = buildService(d);
+
+    const declaradoPorForma = [
+      { forma: 'efectivo', monto: 6438.00 },
+      { forma: 'tarjeta',  monto: 1775.00 },
+    ];
+    await service.cerrarCaja(1, 6438.00, undefined, undefined, undefined, { id: 1 }, undefined, declaradoPorForma);
+
+    const [, cambios] = d.repo.update.mock.calls[0];
+    const porForma = Object.fromEntries(cambios.cuadrePorFormaPago.map((f: any) => [f.forma, f]));
+    expect(porForma.otros).toMatchObject({ esperado: 0, declarado: 0, diferencia: 0 });
+    expect(cambios.facturasSinFormaPago).toEqual([FAC_1807]);
+
+    const neto = cambios.cuadrePorFormaPago.reduce((s: number, f: any) => s + f.diferencia, 0);
+    expect(Number(neto.toFixed(2))).toBe(-0.06);
   });
 
   it('sin declaradoPorForma (compat): declarado solo entra en efectivo, igual que antes', async () => {
@@ -249,6 +287,10 @@ describe('CajaService.cerrarCaja — cuadre por forma de pago (caso real empresa
 describe('CajaService — cuadre legacy derivado para cierres anteriores al fix', () => {
   it('obtenerUnaPorId deriva el cuadre del caso real desde las columnas viejas (sin cuadrePorFormaPago guardado)', async () => {
     const d = buildDeps();
+    d.dataSource.manager.query.mockImplementation((sql: string) => {
+      if (sql.includes('FROM facturas f')) return Promise.resolve([]); // sin facturas sin forma ni candidatas en este caso
+      return Promise.resolve([{}]);
+    });
     d.repo.findOne.mockResolvedValue(cajaAbierta({
       id: 1, estado: EstadoCierre.CERRADA,
       saldoCierre: 5608.06, saldoFisico: 6438.00, ventasTarjeta: 2605.00,
@@ -264,8 +306,42 @@ describe('CajaService — cuadre legacy derivado para cierres anteriores al fix'
     expect(porForma.efectivo).toEqual({ forma: 'efectivo', esperado: 5608.06, declarado: 6438.00, diferencia: 829.94 });
     expect(porForma.tarjeta).toEqual({ forma: 'tarjeta', esperado: 2605.00, declarado: 1775.00, diferencia: -830.00 });
     expect(r.sospechasFormaPago).toEqual([
-      { formaSobrante: 'efectivo', formaFaltante: 'tarjeta', monto: 829.94, facturasCandidatas: [] },
+      { formaSobrante: 'efectivo', formaFaltante: 'tarjeta', monto: 829.94, montoSobrante: 829.94, montoFaltante: -830.00, facturasCandidatas: [] },
     ]);
+  });
+
+  // Reimpresión real del caso (2026-10-10): FAC-1807 (RD$295, sin forma de
+  // pago) entraba al cuadre dentro de "otros" e inflaba ventasCredito con un
+  // monto que nadie declaró — el neto salía -295.06 en vez de -0.06. Y la
+  // sospecha no traía ninguna candidata real para FAC-1803.
+  it('FAC-1807 (sin forma de pago) queda FUERA del cuadre — no infla "otros", el neto es -0.06, y la sospecha trae FAC-1803 como candidata real', async () => {
+    const d = buildDeps();
+    const FAC_1807 = { id: 1807, folio: 'FAC-1807', total: '295.00', clienteNombre: 'Bellamar González' };
+    const FAC_1803 = { id: 1803, folio: 'FAC-1803', total: '1080.00', formasPago: [{ tipo: 3, monto: 955 }, { tipo: 1, monto: 125 }] };
+    d.dataSource.manager.query.mockImplementation((sql: string) => {
+      if (sql.includes('jsonb_array_length') && sql.includes('> 1')) return Promise.resolve([FAC_1803]); // buscarFacturasCandidatasSospecha
+      if (sql.includes('FROM facturas f')) return Promise.resolve([FAC_1807]); // getFacturasSinFormaPago
+      return Promise.resolve([{}]);
+    });
+    d.repo.findOne.mockResolvedValue(cajaAbierta({
+      id: 1, estado: EstadoCierre.CERRADA,
+      saldoCierre: 5608.06, saldoFisico: 6438.00, ventasTarjeta: 2605.00,
+      ventasCredito: 295.00, // el fallback histórico de clasificación por notas contó FAC-1807 aquí
+      desglosePago: { efectivo: '6438.00', tarjetaDebito: '1775.00' } as any,
+      cuadrePorFormaPago: undefined,
+    }));
+    const service = buildService(d);
+
+    const r: any = await service.obtenerUnaPorId(1);
+
+    const porForma = Object.fromEntries(r.cuadrePorFormaPago.map((f: any) => [f.forma, f]));
+    expect(porForma.otros).toMatchObject({ esperado: 0, declarado: 0, diferencia: 0 }); // 295 - 295 = 0, no 295
+    expect(r.facturasSinFormaPago).toEqual([FAC_1807]);
+
+    const neto = r.cuadrePorFormaPago.reduce((s: number, f: any) => s + f.diferencia, 0);
+    expect(Number(neto.toFixed(2))).toBe(-0.06);
+
+    expect(r.sospechasFormaPago[0].facturasCandidatas).toEqual([FAC_1803]);
   });
 
   it('un cierre YA con cuadrePorFormaPago guardado no se toca ni se marca estimado', async () => {
