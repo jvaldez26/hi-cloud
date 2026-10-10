@@ -211,6 +211,28 @@ export class CierreCaja {
     facturasCandidatas: { id: number; folio: string; total: number; formasPago: { tipo: number; monto: number }[] }[];
   }[];
 
+  /**
+   * ¿Alguna forma de pago (o el neto) superó umbralDescuadreCaja al cerrar?
+   * Ver fueraDeUmbral() en cuadre-por-forma-pago.util.ts — se evalúa SIEMPRE
+   * al cerrar, sin importar si el cierre ciego está activo (ese toggle solo
+   * decide qué ve la cajera, no si el sistema vigila el descuadre).
+   */
+  @Column({ type: 'boolean', default: false })
+  fueraDeUmbral!: boolean;
+
+  /** Motivo con el que ADMIN/CONTADOR aprobó un cierre fuera de umbral — ver aprobarDescuadre(). */
+  @Column({ type: 'text', nullable: true })
+  motivoAprobacionDescuadre?: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  aprobadoPorUsuarioId?: number | null;
+
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  aprobadoPorNombre?: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  aprobadoEn?: Date | null;
+
   @Column()
   userId!: number;
 

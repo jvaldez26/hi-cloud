@@ -1,6 +1,6 @@
 import {
   construirCuadrePorForma, detectarPosibleFormaMalRegistrada, netoCuadre,
-  derivarCuadreLegacy, aplicarAjustesAlCuadre,
+  derivarCuadreLegacy, aplicarAjustesAlCuadre, fueraDeUmbral,
 } from './cuadre-por-forma-pago.util';
 
 describe('cuadre-por-forma-pago.util — caso real (empresa 73, Bellamar González, 2026-10-09)', () => {
@@ -142,5 +142,62 @@ describe('aplicarAjustesAlCuadre — cuadre corregido tras arreglar la forma de 
       formasPagoNuevo:    [{ tipo: 1, monto: 20 }],
     }]);
     expect(corregido.find(f => f.forma === 'transferencia')).toEqual({ forma: 'transferencia', esperado: 50, declarado: 50, diferencia: 0 });
+  });
+});
+
+// Requisito explícito (2026-10-10): el umbral de alerta por descuadre se
+// evalúa por CADA forma de pago Y por el neto — una forma mal registrada con
+// el neto cuadrado (caso real empresa 73: efectivo +829.94 / tarjeta -830.00,
+// neto -0.06) debe alertar igual, porque el umbral solo sobre el neto nunca
+// la habría detectado.
+describe('fueraDeUmbral', () => {
+  it('dentro del umbral: ninguna forma ni el neto lo superan', () => {
+    const filas = construirCuadrePorForma({ efectivo: 100 }, { efectivo: 150 });
+    expect(fueraDeUmbral(filas, 100)).toBe(false);
+  });
+
+  it('justo en el umbral (no lo supera, es igual): sigue dentro', () => {
+    const filas = construirCuadrePorForma({ efectivo: 100 }, { efectivo: 200 });
+    expect(fueraDeUmbral(filas, 100)).toBe(false);
+  });
+
+  it('una sola forma supera el umbral: fuera', () => {
+    const filas = construirCuadrePorForma({ efectivo: 100 }, { efectivo: 201 });
+    expect(fueraDeUmbral(filas, 100)).toBe(true);
+  });
+
+  it('caso real empresa 73: efectivo +829.94 / tarjeta -830.00, neto -0.06 — el neto NUNCA lo habría detectado, el chequeo por forma sí', () => {
+    const filas = construirCuadrePorForma(
+      { efectivo: 5608.06, tarjeta: 2605.00 },
+      { efectivo: 6438.00, tarjeta: 1775.00 },
+    );
+    expect(Math.abs(netoCuadre(filas))).toBeLessThan(1); // el neto por sí solo jamás pasaría un umbral de 100
+    expect(fueraDeUmbral(filas, 100)).toBe(true);
+  });
+
+  it('fuera por el NETO aunque ninguna forma individual supere el umbral', () => {
+    // 3 formas con +40 cada una: ninguna pasa 100 sola, pero el neto (120) sí.
+    const filas = construirCuadrePorForma(
+      { efectivo: 100, tarjeta: 100, transferencia: 100 },
+      { efectivo: 140, tarjeta: 140, transferencia: 140 },
+    );
+    expect(filas.every(f => Math.abs(f.diferencia) <= 100)).toBe(true);
+    expect(Math.abs(netoCuadre(filas))).toBe(120);
+    expect(fueraDeUmbral(filas, 100)).toBe(true);
+  });
+
+  it('umbral 0: cualquier diferencia alerta', () => {
+    const filas = construirCuadrePorForma({ efectivo: 100 }, { efectivo: 100.01 });
+    expect(fueraDeUmbral(filas, 0)).toBe(true);
+  });
+
+  it('cuadrado exacto con umbral 0: no alerta (tolerancia de medio centavo)', () => {
+    const filas = construirCuadrePorForma({ efectivo: 100 }, { efectivo: 100 });
+    expect(fueraDeUmbral(filas, 0)).toBe(false);
+  });
+
+  it('umbral negativo se trata como 0, no revienta', () => {
+    const filas = construirCuadrePorForma({ efectivo: 100 }, { efectivo: 100 });
+    expect(fueraDeUmbral(filas, -50)).toBe(false);
   });
 });

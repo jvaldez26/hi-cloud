@@ -81,6 +81,7 @@ const cajaApi = {
   abrir:           (body: any)                 => api.post('/caja/abrir', body).then(r => r.data?.data),
   cerrar:          (id: number, body: any)     => api.patch(`/caja/${id}/cerrar`, body).then(r => r.data?.data),
   anular:          (id: number, motivo: string) => api.patch(`/caja/${id}/anular`, { motivo }).then(r => r.data?.data),
+  aprobarDescuadre: (id: number, motivo: string) => api.patch(`/caja/${id}/aprobar-descuadre`, { motivo }).then(r => r.data?.data),
   historial:       (p = 1, mes?: number, anio?: number) =>
     api.get(`/caja/historial?page=${p}${mes ? `&mes=${mes}&anio=${anio}` : ''}`).then(r => r.data?.data),
   resumen:         (mes: number, anio: number) => api.get(`/caja/resumen?mes=${mes}&anio=${anio}`).then(r => r.data?.data),
@@ -140,6 +141,7 @@ export default function CajaPage() {
     cantidadTransacciones: number; fecha: string; ciegoCajaActivo?: boolean;
   } | null>(null);
   const [anularTarget, setAnularTarget] = useState<{ id: number; nombre: string; fecha: string } | null>(null);
+  const [aprobarDescuadreTarget, setAprobarDescuadreTarget] = useState<{ id: number; nombre: string; fecha: string } | null>(null);
   const [detalleCierre, setDetalleCierre] = useState<any>(null);
   const [saldoFisicoInput, setSaldoFisicoInput] = useState<number>(0);
   const [motivoCierre, setMotivoCierre] = useState('');
@@ -148,6 +150,7 @@ export default function CajaPage() {
   const [histFecha, setHistFecha] = useState(() => dayjs());
   const [form]       = Form.useForm();
   const [formAnular] = Form.useForm();
+  const [formAprobarDescuadre] = Form.useForm();
   const qc = useQueryClient();
   const user = useAuthStore(s => s.user);
   const puedeAnular = user?.role === 'admin' || user?.role === 'contador' || user?.role === 'super_admin';
@@ -236,6 +239,18 @@ export default function CajaPage() {
       message.success('Cierre anulado — la caja está abierta nuevamente');
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al anular'),
+  });
+
+  const aprobarDescuadreMut = useMutation({
+    mutationFn: ({ id, motivo }: { id: number; motivo: string }) => cajaApi.aprobarDescuadre(id, motivo),
+    onSuccess: (data: any) => {
+      qc.invalidateQueries({ queryKey: ['caja-hoy'] });
+      qc.invalidateQueries({ queryKey: ['caja-hist'] });
+      setAprobarDescuadreTarget(null); formAprobarDescuadre.resetFields();
+      setDetalleCierre((prev: any) => prev && prev.id === data?.id ? data : prev);
+      message.success('Descuadre aprobado');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al aprobar el descuadre'),
   });
 
   const sinApertura = !cajaData || (cajaData as any).estado === 'sin_apertura';
@@ -472,12 +487,13 @@ export default function CajaPage() {
         String(r.fecha ?? '').includes(q)
       );
     }
-    // ?descuadre=1 (aviso de la campanita) — mismo umbral por defecto que
-    // AlertasSistemaService.alertasCierreDiferencia (100, salvo que la
-    // empresa tenga su propio umbralDescuadreCaja configurado, que esta
-    // vista no conoce; es un filtro de pantalla, no la fuente del aviso).
+    // ?descuadre=1 (aviso de la campanita) — usa el mismo campo que ya
+    // calculó el backend al cerrar (fueraDeUmbral, por forma de pago y por
+    // el neto — ver fueraDeUmbral() en cuadre-por-forma-pago.util.ts). Antes
+    // recalculaba a mano con un 100 fijo y solo el efectivo: un faltante de
+    // tarjeta con el efectivo cuadrado nunca aparecía aquí.
     if (soloDescuadre) {
-      base = base.filter((r: any) => r.estado === 'cerrada' && Math.abs(Number(r.diferencia)) > 100);
+      base = base.filter((r: any) => r.estado === 'cerrada' && r.fueraDeUmbral);
     }
     return base;
   }, [historial, searchHistorial, soloDescuadre]);
@@ -1138,8 +1154,19 @@ ${line()}
                         );
                       },
                     },
-                    { title: 'Estado', dataIndex: 'estado', width: 90,
-                      render: (v: string) => <Tag color={estadoColor[v] ?? 'default'}>{v?.toUpperCase()}</Tag> },
+                    { title: 'Estado', dataIndex: 'estado', width: 130,
+                      render: (v: string, r: any) => (
+                        <Space size={4}>
+                          <Tag color={estadoColor[v] ?? 'default'}>{v?.toUpperCase()}</Tag>
+                          {r.fueraDeUmbral && (
+                            <Tooltip title={v === 'revisada'
+                              ? `Descuadre aprobado${r.aprobadoPorNombre ? ` por ${r.aprobadoPorNombre}` : ''}`
+                              : 'Diferencia fuera del umbral configurado — pendiente de revisión'}>
+                              <Tag color={v === 'revisada' ? 'default' : 'red'} style={{ margin: 0 }}>Descuadre</Tag>
+                            </Tooltip>
+                          )}
+                        </Space>
+                      ) },
                     { title: 'Apertura',       dataIndex: 'saldoApertura', width: 110, align: 'right' as const, render: (v: number) => fmt.money(v) },
                     { title: 'Total Ingresos', key: 'ing', width: 120, align: 'right' as const,
                       render: (_: any, r: any) => fmt.money(Number(r.ventasEfectivo ?? 0) + Number(r.ventasTarjeta ?? 0) + Number(r.ventasTransferencia ?? 0)) },
@@ -1354,6 +1381,12 @@ ${line()}
                 Anular
               </Button>
             )}
+            {puedeAnular && detalleCierre?.fueraDeUmbral && detalleCierre?.estado === 'cerrada' && (
+              <Button type="primary" icon={<CheckCircleOutlined />}
+                onClick={() => { setAprobarDescuadreTarget({ id: detalleCierre.id, nombre: detalleCierre.vendedorNombre ?? 'Administrador', fecha: detalleCierre.fecha }); setDetalleCierre(null); formAprobarDescuadre.resetFields(); }}>
+                Aprobar descuadre
+              </Button>
+            )}
           </Space>
         }
       >
@@ -1365,10 +1398,28 @@ ${line()}
               </Descriptions.Item>
               <Descriptions.Item label="Fecha">{fmt.date(detalleCierre.fecha)}</Descriptions.Item>
               <Descriptions.Item label="Estado">
-                <Tag color={estadoColor[detalleCierre.estado] ?? 'default'}>{detalleCierre.estado?.toUpperCase()}</Tag>
+                <Space size={4}>
+                  <Tag color={estadoColor[detalleCierre.estado] ?? 'default'}>{detalleCierre.estado?.toUpperCase()}</Tag>
+                  {detalleCierre.fueraDeUmbral && (
+                    <Tag color={detalleCierre.estado === 'revisada' ? 'default' : 'red'} style={{ margin: 0 }}>Descuadre</Tag>
+                  )}
+                </Space>
               </Descriptions.Item>
               <Descriptions.Item label="Transacciones">{detalleCierre.cantidadTransacciones ?? 0}</Descriptions.Item>
             </Descriptions>
+
+            {detalleCierre.fueraDeUmbral && detalleCierre.estado === 'revisada' && detalleCierre.motivoAprobacionDescuadre && (
+              <Alert type="success" showIcon style={{ marginBottom: 16 }}
+                message={`Descuadre aprobado${detalleCierre.aprobadoPorNombre ? ` por ${detalleCierre.aprobadoPorNombre}` : ''}${detalleCierre.aprobadoEn ? ` el ${dRD(detalleCierre.aprobadoEn).format('DD/MM/YYYY HH:mm')}` : ''}`}
+                description={`Motivo: ${detalleCierre.motivoAprobacionDescuadre}`}
+              />
+            )}
+            {detalleCierre.fueraDeUmbral && detalleCierre.estado === 'cerrada' && (
+              <Alert type="warning" showIcon style={{ marginBottom: 16 }}
+                message="Diferencia fuera del umbral configurado"
+                description="Se notificó a ADMIN/CONTADOR al cerrar. Pendiente de aprobación con motivo, o de corregir la forma de pago de la factura que lo explica."
+              />
+            )}
 
             <Divider style={{ margin: '8px 0' }}>Ingresos del turno</Divider>
             <Descriptions column={1} size="small" style={{ marginBottom: 8 }}>
@@ -2024,6 +2075,43 @@ ${line()}
               <Button type="primary" htmlType="submit" icon={<RollbackOutlined />}
                 loading={anularMut.isPending} style={{ background: '#d97706', borderColor: '#d97706' }}>
                 Confirmar anulación
+              </Button>
+            </Col>
+          </Row>
+        </Form>
+      </Modal>
+
+      {/* Modal aprobar descuadre — ADMIN/CONTADOR revisa un cierre fuera del
+          umbral configurado y registra un motivo obligatorio; el cierre pasa
+          a REVISADA (queda en auditoría: quién, cuándo, por qué). */}
+      <Modal
+        title={<Space><CheckCircleOutlined style={{ color: '#059669' }} />{`Aprobar descuadre — ${aprobarDescuadreTarget?.nombre}`}</Space>}
+        open={!!aprobarDescuadreTarget}
+        onCancel={() => { setAprobarDescuadreTarget(null); formAprobarDescuadre.resetFields(); }}
+        footer={null} width="min(460px, 95vw)" destroyOnClose
+      >
+        <Alert type="warning" showIcon
+          message="Diferencia fuera del umbral configurado"
+          description={
+            <span>
+              La caja del <strong>{aprobarDescuadreTarget?.fecha ? fecha(aprobarDescuadreTarget.fecha) : ''}</strong> de{' '}
+              <strong>{aprobarDescuadreTarget?.nombre}</strong> quedará marcada como REVISADA — ya no se podrá anular.
+            </span>
+          }
+          style={{ marginBottom: 16 }}
+        />
+        <Form form={formAprobarDescuadre} layout="vertical"
+          onFinish={v => aprobarDescuadreTarget && aprobarDescuadreMut.mutate({ id: aprobarDescuadreTarget.id, motivo: v.motivo })}>
+          <Form.Item name="motivo" label="Motivo de la aprobación"
+            rules={[{ required: true, whitespace: true, message: 'El motivo es obligatorio' }]}>
+            <Input.TextArea rows={3} maxLength={500} placeholder="Ej: Verificado con el cajero, el faltante de tarjeta es real por un error del datáfono..." showCount />
+          </Form.Item>
+          <Row justify="end" gutter={8}>
+            <Col><Button onClick={() => { setAprobarDescuadreTarget(null); formAprobarDescuadre.resetFields(); }}>Cancelar</Button></Col>
+            <Col>
+              <Button type="primary" htmlType="submit" icon={<CheckCircleOutlined />}
+                loading={aprobarDescuadreMut.isPending} style={{ background: '#059669', borderColor: '#059669' }}>
+                Confirmar aprobación
               </Button>
             </Col>
           </Row>

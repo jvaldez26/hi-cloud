@@ -89,6 +89,11 @@ class AnularCierreDto {
   motivo: string;
 }
 
+class AprobarDescuadreDto {
+  @IsString() @IsNotEmpty() @MaxLength(500)
+  motivo: string;
+}
+
 class RegistrarRetiroDto {
   /** ID de la caja diaria a la que se imputa el retiro. Obligatorio para
    *  evitar que el retiro se aplique a la caja equivocada en empresas con
@@ -236,6 +241,18 @@ export class CajaController {
   ) {
     // El nombre sale del usuario autenticado, nunca del body.
     return this.cajaService.anularCierre(id, dto.motivo, usuario.id, usuario.nombre);
+  }
+
+  @Patch(':id/aprobar-descuadre')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Aprobar un cierre fuera del umbral de descuadre — ADMIN/CONTADOR, motivo obligatorio, queda en auditoría' })
+  aprobarDescuadre(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AprobarDescuadreDto,
+    @GetUser() usuario: User,
+  ) {
+    return this.cajaService.aprobarDescuadre(id, dto.motivo, usuario.id, usuario.nombre);
   }
 
   @Get('historial')

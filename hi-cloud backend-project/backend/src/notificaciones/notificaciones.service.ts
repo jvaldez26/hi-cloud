@@ -324,6 +324,35 @@ export class NotificacionesService {
     return rows.length;
   }
 
+  /**
+   * Aviso INMEDIATO (campanita + correo) a ADMIN/CONTADOR: un cierre de caja
+   * salió fuera del umbral de descuadre — decisión explícita 2026-10-10
+   * (caso real: empresa 73, efectivo +829.94 / tarjeta -830.00, neto -0.06).
+   * A diferencia del resto de avisos de este archivo (uno por canal), este
+   * manda los DOS a la vez: el cajero no ve el umbral ni el esperado, así
+   * que el único camino para enterarse es este aviso.
+   */
+  async notificarDescuadreCierre(empresaId: number, d: {
+    cajero: string; caja: string; fecha: string;
+    filas: { forma: string; esperado: number; declarado: number; diferencia: number }[];
+    neto: number;
+  }): Promise<void> {
+    const resumenFilas = d.filas
+      .filter(f => Math.abs(f.diferencia) > 0.005)
+      .map(f => `${f.forma} ${f.diferencia > 0 ? '+' : ''}${f.diferencia.toFixed(2)}`)
+      .join(', ');
+    await this.notificarSistemaEmpresa(
+      empresaId,
+      TipoNotificacion.DESCUADRE_CAJA,
+      `Descuadre de caja — ${d.cajero}`,
+      `${d.caja} del ${d.fecha}: ${resumenFilas || `neto ${d.neto.toFixed(2)}`}. Revísalo en Caja Diaria.`,
+      `descuadre:${d.caja}:${d.fecha}`,
+    );
+    const { asunto, html } = Templates.descuadreCaja(d);
+    await this.enviarEmailsEmpresa(empresaId, TipoNotificacion.DESCUADRE_CAJA, asunto, html, `descuadre:${d.caja}:${d.fecha}`);
+    this.logger.log(`Descuadre de caja notificado — empresa ${empresaId}, ${d.caja}, neto ${d.neto.toFixed(2)}`);
+  }
+
   async notificarECFSecuenciasVencimiento(empresaId: number): Promise<number> {
     const rows = await this.dataSource.query<{
       tipo: string; secuenciaActual: number; secuenciaFinal: number; fechaVencimiento: string;

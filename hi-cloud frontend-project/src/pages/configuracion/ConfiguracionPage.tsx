@@ -1448,7 +1448,6 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
   const bloquearFueraHorario  = Form.useWatch('posBloquearFueraHorario',  form);
   const permitirDescuentos    = Form.useWatch('posPermitirDescuentos',    form);
   const inactividadMinutos    = Form.useWatch('posInactividadMinutos',    form);
-  const cierreCiego           = Form.useWatch('cierreCajaCiego',          form);
   // La vista previa se redibuja con lo que hay en el formulario, no con lo
   // guardado: así se compara antes de decidir, sin imprimir pruebas.
   const formatoTicket         = (Form.useWatch('posFormatoTicket', form) ?? 'normal') as FormatoTicket;
@@ -1768,17 +1767,20 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
             </Text>
           </div>
         </Col>
-        {cierreCiego && (
-          <Col xs={24} sm={8}>
-            <Form.Item name="umbralDescuadreCaja" label="Umbral de alerta por descuadre">
+        <Col xs={24} sm={8}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Form.Item name="umbralDescuadreCaja" label="Umbral de alerta por descuadre" style={{ marginBottom: 2 }}>
               <InputNumber
                 style={{ width: '100%' }} min={0} step={50} addonAfter="DOP"
                 formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
                 parser={(v: any) => v?.replace(/,/g, '')}
               />
             </Form.Item>
-          </Col>
-        )}
+            <Text type="secondary" style={{ fontSize: 11 }}>
+              Se evalúa SIEMPRE al cerrar (con o sin cierre ciego), por cada forma de pago y por el neto. Fuera del umbral, el cierre se guarda igual y se avisa de inmediato a ADMIN/CONTADOR.
+            </Text>
+          </div>
+        </Col>
       </Row>
 
       {/* ── Control de caja por turno — switch fuera del Form, endpoint propio ── */}

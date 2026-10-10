@@ -293,4 +293,29 @@ export const Templates = {
     };
   },
 
+  descuadreCaja: (d: {
+    cajero: string; caja: string; fecha: string;
+    filas: { forma: string; esperado: number; declarado: number; diferencia: number }[];
+    neto: number;
+  }) => ({
+    asunto: `⚠️ Descuadre de caja — ${d.cajero} (${d.fecha})`,
+    html: base(
+      `Descuadre de caja detectado`,
+      `<p><strong>${d.cajero}</strong> cerró <strong>${d.caja}</strong> el ${d.fecha} con al menos una forma de pago (o el neto) fuera del umbral configurado:</p>
+       <table class="tabla">
+         <tr><th>Forma</th><th>Esperado</th><th>Declarado</th><th>Diferencia</th></tr>
+         ${d.filas.map(f => `<tr>
+           <td>${f.forma}</td>
+           <td>RD$ ${f.esperado.toLocaleString('es-DO', { minimumFractionDigits: 2 })}</td>
+           <td>RD$ ${f.declarado.toLocaleString('es-DO', { minimumFractionDigits: 2 })}</td>
+           <td class="monto"><span class="badge ${Math.abs(f.diferencia) > 0.01 ? 'badge-danger' : 'badge-info'}">
+             ${f.diferencia > 0 ? '+' : ''}RD$ ${f.diferencia.toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+           </span></td>
+         </tr>`).join('')}
+       </table>
+       <p>Neto: <strong>RD$ ${d.neto.toLocaleString('es-DO', { minimumFractionDigits: 2 })}</strong></p>
+       <div class="alerta">💡 Revisa el cierre en HiCloud ERP — Caja Diaria. Para aprobarlo necesitas registrar un motivo, o puedes corregir la forma de pago de la factura que lo explica.</div>`,
+    ),
+  }),
+
 };

@@ -31,6 +31,8 @@ export enum TipoNotificacion {
   SUPERVISOR_BLOQUEADO = 'supervisor_bloqueado',
   /** 3+ bloqueos de la misma cuenta en 24h — a los admins de sus empresas. */
   POSIBLE_ACCESO_NO_AUTORIZADO = 'posible_acceso_no_autorizado',
+  /** Un cierre de caja salió fuera del umbral de descuadre configurado (por forma de pago o por el neto) — a ADMIN/CONTADOR, de inmediato. */
+  DESCUADRE_CAJA = 'descuadre_caja',
 }
 
 export enum CanalNotificacion {

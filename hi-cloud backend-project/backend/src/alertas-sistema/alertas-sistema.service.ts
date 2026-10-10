@@ -382,16 +382,21 @@ export class AlertasSistemaService {
 
   private async alertasCierreDiferencia(out: Alerta[], eid: number) {
     try {
+      // "fueraDeUmbral" ya se evalúa UNA vez al cerrar (ver fueraDeUmbral()
+      // en cuadre-por-forma-pago.util.ts, por cada forma de pago Y por el
+      // neto — no solo el efectivo), así que aquí solo se cuenta. Antes esta
+      // consulta recalculaba mal: solo miraba `diferencia` (efectivo) y
+      // exigía cierreCajaCiego activo, así que un faltante de tarjeta con el
+      // efectivo cuadrado nunca aparecía aquí (decisión explícita 2026-10-10).
+      // Un cierre ya REVISADA (aprobado) no sigue alertando.
       const res = await this.ds.query<{ cantidad: string; monto: string }[]>(`
         SELECT COUNT(c.id)::text AS cantidad,
                COALESCE(SUM(ABS(c.diferencia)), 0)::text AS monto
         FROM cierres_caja c
-        JOIN empresa e ON e.id = c."empresaId"
         WHERE c."empresaId" = $1
           AND c.estado = 'cerrada'
+          AND c."fueraDeUmbral" = true
           AND c.fecha >= CURRENT_DATE - INTERVAL '7 days'
-          AND (e.configuracion->>'cierreCajaCiego')::text = 'true'
-          AND ABS(c.diferencia) > COALESCE((e.configuracion->>'umbralDescuadreCaja')::numeric, 100)
       `, [eid]);
       const n = Number(res[0]?.cantidad ?? 0);
       if (n > 0) out.push({

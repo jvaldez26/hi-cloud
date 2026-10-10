@@ -26,10 +26,12 @@ import {
   detectarPosibleFormaMalRegistrada,
   derivarCuadreLegacy,
   aplicarAjustesAlCuadre,
+  fueraDeUmbral,
   TIPOS_DGII_POR_FORMA,
   FilaCuadre,
   SospechaFormaPago,
 } from './cuadre-por-forma-pago.util';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 
 /** Mismas 4 etiquetas que usa el frontend para el cuadre — para el mensaje de la validación de abajo. */
 const LABEL_FORMA_CUADRE: Record<string, string> = {
@@ -48,6 +50,7 @@ export class CajaService {
     private dataSource:      DataSource,
     private tenantService:   TenantService,
     private realtimeService: RealtimeService,
+    private notificacionesService: NotificacionesService,
   ) {}
 
   // ── Migración defensiva ───────────────────────────────────────────────────
@@ -389,6 +392,15 @@ export class CajaService {
       facturasCandidatas: await this.buscarFacturasCandidatasSospecha(s, fechaStr, caja.vendedorId, empresaId),
     })));
 
+    // Umbral de alerta por descuadre — decisión explícita 2026-10-10: se
+    // evalúa por CADA forma de pago Y por el neto, SIEMPRE al cerrar (el
+    // cierre ciego decide qué ve la cajera, no si el sistema vigila el
+    // descuadre — antes este chequeo solo corría con cierreCajaCiego activo
+    // y solo miraba el efectivo, así que un faltante de tarjeta con el
+    // efectivo cuadrado nunca se detectaba). Ver fueraDeUmbral().
+    const { umbralDescuadreCaja } = await this.getEmpresaCfg(empresaId);
+    const descuadre = fueraDeUmbral(cuadrePorFormaPago, umbralDescuadreCaja);
+
     await this.repo.update(id, {
       estado:           EstadoCierre.CERRADA,
       saldoCierre:      Number(saldoCierre.toFixed(2)),
@@ -402,6 +414,7 @@ export class CajaService {
       cuadrePorFormaPago:   cuadrePorFormaPago,
       facturasSinFormaPago: facturasSinFormaPago,
       sospechasFormaPago:   sospechasConCandidatas,
+      fueraDeUmbral:        descuadre,
       ...(desgloseBilletes ? { desgloseBilletes } : {}),
       ...(desglosePago     ? { desglosePago }     : {}),
     });
@@ -411,17 +424,61 @@ export class CajaService {
     this.realtimeService.notify(empresaId, 'caja', 'updated', id);
 
     const saved = await this.repo.findOne({ where: { id } });
-    const { cierreCajaCiego, umbralDescuadreCaja } = await this.getEmpresaCfg(empresaId);
 
-    if (cierreCajaCiego && Math.abs(diferencia) > umbralDescuadreCaja) {
+    if (descuadre) {
       this.logger.warn(
-        `[CIERRE CIEGO] Descuadre en caja #${id}${quien}: ` +
-        `diferencia=${diferencia.toFixed(2)} (umbral=${umbralDescuadreCaja})`,
+        `[DESCUADRE] Caja #${id}${quien}: fuera de umbral (umbral=${umbralDescuadreCaja}). ` +
+        cuadrePorFormaPago.map(f => `${f.forma}=${f.diferencia.toFixed(2)}`).join(', '),
       );
+      // Nunca bloquea el cierre — si la notificación falla (SMTP caído,
+      // etc.) la caja ya está cerrada y guardada; solo se pierde el aviso.
+      this.notificacionesService.notificarDescuadreCierre(empresaId, {
+        cajero: caja.vendedorNombre ?? 'Administrador',
+        caja: `Caja #${id}`,
+        fecha: fechaStr,
+        filas: cuadrePorFormaPago,
+        neto: Number(diferencia.toFixed(2)),
+      }).catch((e: Error) => this.logger.error(`Error notificando descuadre caja #${id}: ${e.message}`));
     }
 
     // Caja ya cerrada — siempre retornar datos completos para que la impresión sea íntegra
     return saved;
+  }
+
+  /**
+   * Aprobar un cierre fuera de umbral — ADMIN/CONTADOR revisa, registra un
+   * motivo obligatorio y el cierre pasa a REVISADA (decisión explícita
+   * 2026-10-10). Queda en auditoría: quién, cuándo y por qué. REVISADA ya
+   * bloquea anularCierre() — aprobar un descuadre es la última palabra, no
+   * un paso intermedio que alguien pueda deshacer reabriendo la caja.
+   */
+  async aprobarDescuadre(id: number, motivo: string, usuarioId: number, usuarioNombre?: string) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const caja = await this.repo.findOne({ where: { id, empresaId } });
+    if (!caja) throw new NotFoundException(`Caja #${id} no encontrada`);
+    if (!caja.fueraDeUmbral) {
+      throw new BadRequestException('Este cierre no tiene un descuadre pendiente de aprobación');
+    }
+    if (caja.estado === EstadoCierre.REVISADA) {
+      throw new BadRequestException('Este descuadre ya fue aprobado');
+    }
+    if (caja.estado !== EstadoCierre.CERRADA) {
+      throw new BadRequestException('Solo se puede aprobar un cierre que ya está cerrado');
+    }
+    if (!motivo?.trim()) {
+      throw new BadRequestException('El motivo es obligatorio');
+    }
+
+    await this.repo.update(id, {
+      estado: EstadoCierre.REVISADA,
+      motivoAprobacionDescuadre: motivo.trim(),
+      aprobadoPorUsuarioId: usuarioId,
+      aprobadoPorNombre: usuarioNombre ?? `Usuario #${usuarioId}`,
+      aprobadoEn: new Date(),
+    });
+    this.logger.log(`Descuadre de caja #${id} aprobado por ${usuarioNombre ?? usuarioId}. Motivo: ${motivo.trim()}`);
+    this.realtimeService.notify(empresaId, 'caja', 'updated', id);
+    return this.repo.findOne({ where: { id } });
   }
 
   /**
@@ -918,9 +975,10 @@ export class CajaService {
    * la de otro cajero (decisión 2026-10-09). Reutiliza exactamente
    * ocultarCamposCiego (el mismo recorte que ya usaba el modo ciego
    * opcional) pero como regla FIJA del rol: no depende del toggle
-   * `cierreCajaCiego` de la empresa, que sigue existiendo para lo que ya
-   * gobernaba (el umbral de descuadre, etc. — ver getEmpresaCfg). Una caja
-   * CERRADA/REVISADA/CERRADA_SISTEMA nunca se toca aquí.
+   * `cierreCajaCiego` de la empresa, que sigue existiendo solo para decidir
+   * qué ve la cajera al declarar. El umbral de descuadre (ver getEmpresaCfg)
+   * ya NO depende de este toggle — se evalúa siempre al cerrar (decisión
+   * 2026-10-10). Una caja CERRADA/REVISADA/CERRADA_SISTEMA nunca se toca aquí.
    *
    * Siempre corre DESPUÉS de conEfectivoEsperado (nunca antes): ese método
    * necesita los campos crudos (ventasEfectivo, etc.) para calcular

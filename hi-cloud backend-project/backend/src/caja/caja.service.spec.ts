@@ -37,11 +37,15 @@ function buildDeps() {
     // los que de verdad dependen del rol lo sobrescriben explícitamente.
     tenantSvc:   { getEmpresaId: () => EMPRESA, getSucursalId: () => undefined, getRolEmpresa: () => UserRole.ADMIN as string | null },
     realtimeSvc: { notify: jest.fn() },
+    notificacionesSvc: { notificarDescuadreCierre: jest.fn().mockResolvedValue(undefined) },
   };
 }
 
 function buildService(d: ReturnType<typeof buildDeps>): CajaService {
-  return new CajaService(d.repo as any, d.retiroRepo as any, d.dataSource as any, d.tenantSvc as any, d.realtimeSvc as any);
+  return new CajaService(
+    d.repo as any, d.retiroRepo as any, d.dataSource as any, d.tenantSvc as any,
+    d.realtimeSvc as any, d.notificacionesSvc as any,
+  );
 }
 
 function cajaAbierta(overrides: Partial<CierreCaja> = {}): CierreCaja {
@@ -277,6 +281,137 @@ describe('CajaService.cerrarCaja — cuadre por forma de pago (caso real empresa
     expect(porForma.efectivo).toMatchObject({ esperado: 500, declarado: 500, diferencia: 0 });
     expect(porForma.tarjeta).toMatchObject({ declarado: 0 });
     expect(cambios.sospechasFormaPago).toEqual([]);
+  });
+});
+
+// Requisito explícito (2026-10-10): el umbral de alerta por descuadre se
+// evalúa por CADA forma de pago Y por el neto, SIEMPRE al cerrar (no solo
+// con el cierre ciego activo) — antes solo miraba el efectivo y exigía
+// cierreCajaCiego, así que un faltante de tarjeta con el efectivo cuadrado
+// nunca se detectaba. Al quedar fuera de umbral, el cierre se guarda IGUAL
+// (nunca bloquea) y se notifica de inmediato a ADMIN/CONTADOR.
+describe('CajaService.cerrarCaja — umbral de alerta por descuadre', () => {
+  function mockQueryConUmbral(d: ReturnType<typeof buildDeps>, umbral?: number) {
+    d.dataSource.manager.query.mockImplementation((sql: string) => {
+      if (sql.includes('recibos_cobro') && sql.includes('tarjeta')) return Promise.resolve([{ tarjeta: '0', transferencia: '0' }]);
+      if (sql.includes('anticipo_cliente') && sql.includes('tarjeta')) return Promise.resolve([{ tarjeta: '0', transferencia: '0' }]);
+      if (sql.includes('recibos_cobro') || sql.includes('anticipo_cliente')) return Promise.resolve([{ total: '0' }]);
+      if (sql.includes('jsonb_array_length') && sql.includes('> 1')) return Promise.resolve([]);
+      if (sql.includes('FROM facturas f')) return Promise.resolve([]);
+      if (sql.includes('configuracion FROM empresa')) {
+        return Promise.resolve([{ configuracion: umbral != null ? { umbralDescuadreCaja: umbral } : {} }]);
+      }
+      return Promise.resolve([{}]);
+    });
+  }
+
+  it('dentro del umbral (default 100): fueraDeUmbral=false, no notifica', async () => {
+    const d = buildDeps();
+    mockQueryConUmbral(d);
+    d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, userId: 1, ventasEfectivo: 500 }));
+    const service = buildService(d);
+
+    await service.cerrarCaja(1, 550, undefined, undefined, undefined, { id: 1 }); // diferencia +50, dentro de 100
+
+    const [, cambios] = d.repo.update.mock.calls[0];
+    expect(cambios.fueraDeUmbral).toBe(false);
+    expect(d.notificacionesSvc.notificarDescuadreCierre).not.toHaveBeenCalled();
+  });
+
+  it('fuera de umbral por EFECTIVO: fueraDeUmbral=true, notifica', async () => {
+    const d = buildDeps();
+    mockQueryConUmbral(d);
+    d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, userId: 1, vendedorNombre: 'Maximo', ventasEfectivo: 500 }));
+    const service = buildService(d);
+
+    await service.cerrarCaja(1, 750, undefined, undefined, undefined, { id: 1 }); // diferencia +250, > 100
+
+    const [, cambios] = d.repo.update.mock.calls[0];
+    expect(cambios.fueraDeUmbral).toBe(true);
+    expect(d.notificacionesSvc.notificarDescuadreCierre).toHaveBeenCalledTimes(1);
+    const [, detalle] = d.notificacionesSvc.notificarDescuadreCierre.mock.calls[0];
+    expect(detalle.cajero).toBe('Maximo');
+    expect(detalle.neto).toBe(250);
+  });
+
+  it('fuera de umbral por TARJETA con el NETO cuadrado: el chequeo por forma lo detecta igual', async () => {
+    const d = buildDeps();
+    mockQueryConUmbral(d);
+    // efectivo cuadra exacto; tarjeta declarada 300 de menos — el neto total
+    // también da -300 (no hay nada más), así que aquí el neto SÍ lo
+    // detectaría — el punto de este test es que el chequeo POR FORMA ya
+    // detecta el problema real (tarjeta) sin depender de que el neto cuadre.
+    d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, userId: 1, ventasEfectivo: 500, ventasTarjeta: 300 }));
+    const service = buildService(d);
+
+    const declaradoPorForma = [
+      { forma: 'efectivo', monto: 500 },
+      { forma: 'tarjeta', monto: 0, confirmado: true },
+    ];
+    await service.cerrarCaja(1, 500, undefined, undefined, undefined, { id: 1 }, undefined, declaradoPorForma);
+
+    const [, cambios] = d.repo.update.mock.calls[0];
+    const porForma = Object.fromEntries(cambios.cuadrePorFormaPago.map((f: any) => [f.forma, f]));
+    expect(porForma.efectivo.diferencia).toBe(0);
+    expect(porForma.tarjeta.diferencia).toBe(-300);
+    expect(cambios.fueraDeUmbral).toBe(true);
+  });
+
+  it('caso real empresa 73 (umbral 100): efectivo +829.94 / tarjeta -830.00, neto -0.06 — fuera de umbral por las FORMAS, no por el neto', async () => {
+    const d = buildDeps();
+    mockQueryConUmbral(d, 100);
+    d.repo.findOne.mockResolvedValue(cajaAbierta({
+      id: 1, userId: 1, vendedorId: 12, vendedorNombre: 'Bellamar González',
+      saldoApertura: 0, ventasEfectivo: 5608.06, ventasTarjeta: 2605.00,
+    }));
+    const service = buildService(d);
+
+    const declaradoPorForma = [
+      { forma: 'efectivo', monto: 6438.00 },
+      { forma: 'tarjeta',  monto: 1775.00 },
+    ];
+    await service.cerrarCaja(1, 6438.00, undefined, undefined, undefined, { id: 1 }, undefined, declaradoPorForma);
+
+    const [, cambios] = d.repo.update.mock.calls[0];
+    // El neto (-0.06) por sí solo NUNCA habría disparado un umbral de 100 —
+    // es el chequeo por forma el que detecta el +829.94/-830.00 real.
+    const neto = cambios.cuadrePorFormaPago.reduce((s: number, f: any) => s + f.diferencia, 0);
+    expect(Number(neto.toFixed(2))).toBe(-0.06);
+    expect(cambios.fueraDeUmbral).toBe(true);
+
+    expect(d.notificacionesSvc.notificarDescuadreCierre).toHaveBeenCalledTimes(1);
+    const [empresaNotificada, detalle] = d.notificacionesSvc.notificarDescuadreCierre.mock.calls[0];
+    expect(empresaNotificada).toBe(EMPRESA);
+    expect(detalle.cajero).toBe('Bellamar González');
+    const filaPorForma = Object.fromEntries(detalle.filas.map((f: any) => [f.forma, f]));
+    expect(filaPorForma.efectivo.diferencia).toBe(829.94);
+    expect(filaPorForma.tarjeta.diferencia).toBe(-830.00);
+  });
+
+  it('umbral configurado distinto al default (500): una diferencia de 250 no alerta', async () => {
+    const d = buildDeps();
+    mockQueryConUmbral(d, 500);
+    d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, userId: 1, ventasEfectivo: 500 }));
+    const service = buildService(d);
+
+    await service.cerrarCaja(1, 750, undefined, undefined, undefined, { id: 1 }); // diferencia +250, < 500
+
+    const [, cambios] = d.repo.update.mock.calls[0];
+    expect(cambios.fueraDeUmbral).toBe(false);
+    expect(d.notificacionesSvc.notificarDescuadreCierre).not.toHaveBeenCalled();
+  });
+
+  it('una falla al notificar NUNCA bloquea el cierre — la caja ya quedó cerrada y guardada', async () => {
+    const d = buildDeps();
+    mockQueryConUmbral(d);
+    d.notificacionesSvc.notificarDescuadreCierre.mockRejectedValue(new Error('SMTP caído'));
+    d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, userId: 1, ventasEfectivo: 500 }));
+    const service = buildService(d);
+
+    await expect(
+      service.cerrarCaja(1, 750, undefined, undefined, undefined, { id: 1 }),
+    ).resolves.toBeDefined();
+    expect(d.repo.update).toHaveBeenCalled();
   });
 });
 
@@ -691,9 +826,11 @@ function makeCajaService(opts: { cajas?: any[]; facturas?: any[]; cierreCajaCieg
   // cada test que lo necesite pasa opts.rol.
   const tenantService = { getEmpresaId: () => EMPRESA, getSucursalId: () => null, getRolEmpresa: () => opts.rol ?? null };
   const realtimeService = { notify: jest.fn() };
+  const notificacionesService = { notificarDescuadreCierre: jest.fn().mockResolvedValue(undefined) };
 
   const svc = new CajaService(
     repo as any, {} as any, dataSource as any, tenantService as any, realtimeService as any,
+    notificacionesService as any,
   );
   return { svc, cajas, dataSource, repo };
 }
@@ -895,5 +1032,63 @@ describe('CajaService.anularCierre — preserva el cuadre por forma de pago del 
 
     const [, cambios] = d.repo.update.mock.calls[0];
     expect(cambios.cuadrePorFormaPagoOriginal).toBeUndefined(); // no se vuelve a escribir
+  });
+});
+
+// Requisito explícito (2026-10-10): para aprobar un cierre con descuadre,
+// ADMIN/CONTADOR registra un motivo obligatorio y el cierre pasa a
+// REVISADA — queda en auditoría (quién, cuándo, por qué).
+describe('CajaService.aprobarDescuadre', () => {
+  it('aprueba un cierre fuera de umbral: pasa a REVISADA con motivo, autor y fecha', async () => {
+    const d = buildDeps();
+    d.repo.findOne.mockResolvedValue(cajaAbierta({
+      id: 1, estado: EstadoCierre.CERRADA, fueraDeUmbral: true,
+    }));
+    const service = buildService(d);
+
+    await service.aprobarDescuadre(1, 'Verificado con el cajero, el faltante es real', 9, 'Ana Admin');
+
+    expect(d.repo.update).toHaveBeenCalled();
+    const [, cambios] = d.repo.update.mock.calls[0];
+    expect(cambios.estado).toBe(EstadoCierre.REVISADA);
+    expect(cambios.motivoAprobacionDescuadre).toBe('Verificado con el cajero, el faltante es real');
+    expect(cambios.aprobadoPorUsuarioId).toBe(9);
+    expect(cambios.aprobadoPorNombre).toBe('Ana Admin');
+    expect(cambios.aprobadoEn).toBeInstanceOf(Date);
+  });
+
+  it('rechaza aprobar un cierre que NO tiene descuadre pendiente', async () => {
+    const d = buildDeps();
+    d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, estado: EstadoCierre.CERRADA, fueraDeUmbral: false }));
+    const service = buildService(d);
+
+    await expect(service.aprobarDescuadre(1, 'motivo', 9, 'Ana')).rejects.toThrow(BadRequestException);
+    expect(d.repo.update).not.toHaveBeenCalled();
+  });
+
+  it('rechaza aprobar un cierre ya REVISADA (no se puede aprobar dos veces)', async () => {
+    const d = buildDeps();
+    d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, estado: EstadoCierre.REVISADA, fueraDeUmbral: true }));
+    const service = buildService(d);
+
+    await expect(service.aprobarDescuadre(1, 'motivo', 9, 'Ana')).rejects.toThrow(BadRequestException);
+    expect(d.repo.update).not.toHaveBeenCalled();
+  });
+
+  it('exige motivo — rechaza vacío o solo espacios', async () => {
+    const d = buildDeps();
+    d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, estado: EstadoCierre.CERRADA, fueraDeUmbral: true }));
+    const service = buildService(d);
+
+    await expect(service.aprobarDescuadre(1, '   ', 9, 'Ana')).rejects.toThrow(BadRequestException);
+    expect(d.repo.update).not.toHaveBeenCalled();
+  });
+
+  it('caja inexistente → 404', async () => {
+    const d = buildDeps();
+    d.repo.findOne.mockResolvedValue(null);
+    const service = buildService(d);
+
+    await expect(service.aprobarDescuadre(999, 'motivo', 9, 'Ana')).rejects.toThrow(NotFoundException);
   });
 });

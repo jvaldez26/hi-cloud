@@ -6,9 +6,10 @@ import { CierreCaja } from './entities/cierre-caja.entity';
 import { RetiroCaja } from './entities/retiro-caja.entity';
 import { AjusteCierreCaja } from './entities/ajuste-cierre-caja.entity';
 import { TenantModule } from '../tenant/tenant.module';
+import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([CierreCaja, RetiroCaja, AjusteCierreCaja]), TenantModule],
+  imports: [TypeOrmModule.forFeature([CierreCaja, RetiroCaja, AjusteCierreCaja]), TenantModule, NotificacionesModule],
   controllers: [CajaController],
   providers: [CajaService],
   exports: [CajaService],

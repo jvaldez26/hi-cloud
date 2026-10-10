@@ -88,6 +88,22 @@ export function netoCuadre(filas: FilaCuadre[]): number {
   return redondear(filas.reduce((a, f) => a + f.diferencia, 0));
 }
 
+/**
+ * ¿Este cierre está fuera del umbral de alerta por descuadre? Decisión
+ * explícita (2026-10-10, tras el caso real de la empresa 73): se evalúa por
+ * CADA forma de pago Y por el neto — una forma mal registrada con el neto
+ * cuadrado (efectivo +829.94 / tarjeta -830.00, neto -0.06) igual debe
+ * alertar, porque el umbral solo sobre el neto nunca la habría detectado.
+ *
+ * Medio centavo de tolerancia — mismo criterio que estadoDiferencia() en el
+ * frontend: por debajo de eso no hay diferencia que alguien pueda contar.
+ */
+export function fueraDeUmbral(filas: FilaCuadre[], umbral: number): boolean {
+  const u = Math.max(0, Number(umbral) || 0) + 0.005;
+  if (filas.some(f => Math.abs(f.diferencia) > u)) return true;
+  return Math.abs(netoCuadre(filas)) > u;
+}
+
 /** Inverso de TIPOS_DGII_POR_FORMA — tipo DGII → la forma del cuadre a la que pertenece. */
 const FORMA_POR_TIPO_DGII: Record<number, string> = Object.fromEntries(
   Object.entries(TIPOS_DGII_POR_FORMA).flatMap(([forma, tipos]) => tipos.map(t => [t, forma])),
