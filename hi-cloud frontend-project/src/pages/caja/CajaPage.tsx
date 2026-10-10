@@ -27,6 +27,7 @@ import { dRD, fecha, hora, hoyRD } from '../../utils/fechaRD';
 import { bloqueFacturasTermico, CSS_FACTURAS_TERMICO } from '../../utils/cierreFacturasTermico';
 import { bloqueCuadreFormaPagoTermico, CSS_CUADRE_FORMA_PAGO_TERMICO } from '../../utils/cuadreFormaPagoTermico';
 import { estadoDiferencia } from '../../utils/diferenciaCaja';
+import { sanear } from '../../services/thermalPrinter';
 
 // ── Constantes de retiros ──────────────────────────────────────────────────
 const CATEGORIA_OPTIONS = [
@@ -497,7 +498,9 @@ export default function CajaPage() {
       'ninguna': { width: '80mm',  fontSize: '11pt', paddingLR: '5mm' },
     };
     const prn = IMP_CFG[tipoImp] ?? IMP_CFG['80mm'];
-    const esc = (s: string) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    // sanear() antes del escape — sin tildes ni caracteres especiales en
+    // ningún dato del ticket térmico (cajero, cliente, notas).
+    const esc = (s: string) => sanear(String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     const f   = (v: number) => `RD$${v.toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
     const line = () => `<div class="sep">--------------------------------</div>`;
     const row  = (lbl: string, val: string, bold = false) =>
@@ -539,7 +542,7 @@ export default function CajaPage() {
     // (real si se cerró después del fix, derivado si es un cierre viejo —
     // ver conEfectivoEsperado() en caja.service.ts); si por algo no viniera,
     // cae al bloque viejo para no imprimir un ticket vacío.
-    const cuadreHtml = bloqueCuadreFormaPagoTermico(r);
+    const cuadreHtml = bloqueCuadreFormaPagoTermico(r, tipoImp);
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
@@ -649,7 +652,9 @@ ${line()}
       'ninguna': { width: '80mm',  fontSize: '11pt', paddingLR: '5mm' },
     };
     const prn  = IMP_CFG[tipoImp] ?? IMP_CFG['80mm'];
-    const esc  = (s: string) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    // sanear() antes del escape — sin tildes ni caracteres especiales en
+    // ningún dato del ticket térmico (cajero, cliente, notas).
+    const esc  = (s: string) => sanear(String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     const f    = (v: number) => `RD$${v.toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
     const line = () => `<div class="sep">--------------------------------</div>`;
     const row  = (lbl: string, val: string, bold = false) =>
@@ -671,10 +676,10 @@ ${line()}
       const filas = detalle.facturas.map((fac: any) =>
         `<div class="fac-row${fac.cancelada?' anulada':''}">
           <div class="fac-top">
-            <span class="fac-num">${esc(fac.folio)}${fac.encf ? ` · ${esc(fac.encf)}` : ''}${fac.cancelada ? ' [ANULADA]' : ''}</span>
+            <span class="fac-num">${esc(fac.folio)}${fac.encf ? ` - ${esc(fac.encf)}` : ''}${fac.cancelada ? ' [ANULADA]' : ''}</span>
             <span class="fac-total">${f(fac.cancelada ? 0 : fac.total)}</span>
           </div>
-          <div class="fac-sub">${esc(fmtHora(fac.hora))} · ${esc(fac.clienteNombre)} · ${esc(fmtFormasPago(fac.formasPago))}</div>
+          <div class="fac-sub">${esc(fmtHora(fac.hora))} - ${esc(fac.clienteNombre)} - ${esc(fmtFormasPago(fac.formasPago))}</div>
         </div>`
       ).join('');
 
@@ -720,7 +725,7 @@ ${line()}
     // Ver el mismo comentario en imprimirCierre() — cuadre por forma de pago
     // (real o derivado para un cierre viejo), reemplaza el viejo bloque de
     // solo-efectivo.
-    const cuadreHtml = bloqueCuadreFormaPagoTermico(r);
+    const cuadreHtml = bloqueCuadreFormaPagoTermico(r, tipoImp);
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>

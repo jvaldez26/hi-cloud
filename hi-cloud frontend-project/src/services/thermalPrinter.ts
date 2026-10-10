@@ -27,17 +27,21 @@ const _devicesConListenerDisconnect = new WeakSet<object>();
 // ── Format helpers ─────────────────────────────────────────────────────────────
 
 // Elimina tildes y diacríticos para que la impresora térmica los muestre correctamente.
-function sanear(txt: string): string {
+export function sanear(txt: string): string {
   // El texto sale por TextEncoder (UTF-8) y estas impresoras interpretan CP437:
   // cualquier carácter fuera de ASCII se imprime como dos o tres símbolos basura.
   // Los guiones y comillas tipográficos entran por los datos (un nombre pegado
   // desde Word, un guion largo de fallback) y hay que bajarlos a su equivalente
   // ASCII antes de mandarlos.
   //
-  // La degradación vive AQUÍ y solo aquí. El ticket del navegador es una página
-  // rasterizada y dibuja estos glifos perfectamente; no tiene por qué
-  // empobrecerse porque la BT-58UB no pueda con ellos. La plantilla se queda con
-  // el carácter bueno y este es el único camino que lo baja.
+  // Se exporta (2026-10-10) para que cuadreFormaPagoTermico.ts y los
+  // constructores del ticket de cierre (CajaPage.tsx, POSPage.tsx) también
+  // bajen tildes y caracteres especiales en el HTML que renderiza el
+  // navegador — no solo en el camino Bluetooth. Pedido explícito: el ticket
+  // de cierre nunca debe mostrar "González" ni "·", en ningún canal,
+  // incluidos los datos (nombres de clientes/cajeros) — ni siquiera cuando
+  // ese mismo HTML se reutiliza a tamaño carta para el PDF/Excel del cierre:
+  // es el mismo ticket, solo en papel más grande.
   const ascii = txt
     .replace(/[‐-―]/g, '-')   // ‐ ‑ ‒ – —
     .replace(/[‘’]/g, "'")    // ' '

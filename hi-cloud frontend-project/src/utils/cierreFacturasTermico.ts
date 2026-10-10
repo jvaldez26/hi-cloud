@@ -12,6 +12,8 @@
  * los otros dos formatos ante la misma caja.
  */
 
+import { sanear } from '../services/thermalPrinter';
+
 /** Forma exacta de lo que devuelve el endpoint. */
 export interface FacturaDetalleTermico {
   folio:      string;
@@ -46,8 +48,10 @@ function metodoCorto(fps: { tipo: number; monto: number }[]): string {
   return 'MIXTO';
 }
 
+// sanear() antes del escape — sin tildes ni caracteres especiales en ningún
+// dato del ticket térmico, en ningún canal (no solo camino Bluetooth).
 const esc = (s: unknown) =>
-  String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  sanear(String(s ?? '')).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 const money = (v: number) =>
   Number(v ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

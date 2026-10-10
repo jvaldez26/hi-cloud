@@ -57,7 +57,7 @@ import { descuentoFinalABase, descuentoBaseAFinal, pctIvaEfectivo, round4 } from
 import { calcularTotalesCarritoPOS } from '../../utils/totalesCarritoPOS';
 import { imprimirElemento, imprimirReciboTermico, imprimirPDFA4, imprimirFacturaPreviewA4, imprimirHtml } from '../../utils/printUtils';
 import { exportarExcel } from '../../utils/exportExcel';
-import { conectarImpresora, desconectarImpresora, estaConectada, getNombreImpresora, imprimirPruebaEscPos, autoReconectarImpresora, bluetoothAutoReconexionDisponible, huboFalloWatchAdvertisements } from '../../services/thermalPrinter';
+import { conectarImpresora, desconectarImpresora, estaConectada, getNombreImpresora, imprimirPruebaEscPos, autoReconectarImpresora, bluetoothAutoReconexionDisponible, huboFalloWatchAdvertisements, sanear } from '../../services/thermalPrinter';
 import { useThemeStore } from '../../store/theme.store';
 import { useOfflineQueue } from '../../hooks/useOfflineQueue';
 import { useSupervisor } from '../../hooks/useSupervisor';
@@ -2026,7 +2026,10 @@ function buildCierreCajaHTML(params: {
   cuadreFormaPago?: CierreConCuadreTermico;
 }): string {
   const prn = IMPRESORA_CONFIG[params.tipoImpresora ?? '80mm'] ?? IMPRESORA_CONFIG['80mm'];
-  const esc = (s: string) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // sanear() antes del escape — sin tildes ni caracteres especiales en ningún
+  // dato del ticket térmico (nombre de empresa, cajero, notas), ni siquiera
+  // cuando este mismo HTML se reutiliza a tamaño carta para el PDF del cierre.
+  const esc = (s: string) => sanear(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const fmt = (v: number) => `RD$${v.toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
   const line = () => `<div class="sep">--------------------------------</div>`;
   const row  = (lbl: string, val: string, bold = false) =>
@@ -2068,7 +2071,7 @@ function buildCierreCajaHTML(params: {
   // en CajaPage.tsx (imprimirCierre/imprimirTicketConDetalle) — misma fuente,
   // misma plantilla, para que el recibo que imprime el POS al cerrar y el
   // que reimprime el panel de Caja nunca diverjan.
-  const cuadreHtml = bloqueCuadreFormaPagoTermico(params.cuadreFormaPago);
+  const cuadreHtml = bloqueCuadreFormaPagoTermico(params.cuadreFormaPago, params.tipoImpresora);
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
@@ -7498,6 +7501,13 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
           cuadreEstimado:       snap.cuadreEstimado,
           sospechasFormaPago:   snap.sospechasFormaPago,
           facturasSinFormaPago: snap.facturasSinFormaPago,
+          // Preservados del PRIMER cierre al recerrar — ver anularCierre()
+          // en caja.service.ts. Si existen, este cierre fue recerrado y el
+          // bloque "CIERRE ORIGINAL ANULADO" se imprime aparte.
+          saldoFisico:                  snap.saldoFisico,
+          contadoOriginal:              snap.contadoOriginal,
+          cuadrePorFormaPagoOriginal:   snap.cuadrePorFormaPagoOriginal,
+          facturasSinFormaPagoOriginal: snap.facturasSinFormaPagoOriginal,
         },
         billetes: snap._billetes,
         pago:     snap._pago,
