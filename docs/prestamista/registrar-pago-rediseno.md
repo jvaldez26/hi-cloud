@@ -99,3 +99,36 @@ Anular un pago ya registrado con reversa completa — el pedido lo agrupa
 explícitamente en la Etapa 2 ("anulación de pagos con reversa completa"), así
 que esta pieza no la construye. `registrar_pago` sigue sin exigir supervisor
 por sí solo (solo `pago_retroactivo`, condicional a la fecha).
+
+## Resumen (cerrado 2026-10-09)
+
+**Qué quedó:**
+- Backend: `pagos-calculo.util.ts` (puro, testeado), `prepararOperacion()`
+  compartido entre `preview()`/`registrar()`, los 4 tipos de pago,
+  `aplicarAbonoExtraordinario()` (recalcula la tabla restante con el motor
+  v2, probado de punta a punta), mora recalculada a una fecha retroactiva,
+  supervisor (`pago_retroactivo`), recibo por correo y link de WhatsApp.
+- DB: migración `1773000000000-RegistrarPagoRediseno` aplicada en local.
+- Frontend: modal de "Registrar Pago" rediseñado por completo en
+  `DetallePrestamo.tsx`, con vista previa en vivo.
+- 285 tests en `src/prestamista` en verde (10 nuevos puros + 6 de contrato +
+  5 e2e contra servicios reales), `tsc --noEmit` limpio en los dos lados.
+
+**Qué probar (local, antes de seguir con Etapa 1):**
+1. Pagar cuotas seleccionadas en orden (y confirmar que selecciona en orden
+   desde la más vieja, no deja saltar ninguna).
+2. Abono parcial — menor al pendiente de la cuota más vieja.
+3. Liquidar préstamo — confirmar que el monto se auto-llena desde la vista
+   previa, no hay que calcularlo a mano.
+4. Abono extraordinario a capital, las dos opciones (reducir cuota / reducir
+   plazo) — revisar la tabla de cuotas después, que la recalculada tenga
+   sentido.
+5. Un pago con fecha de ayer con un usuario rol VENDEDOR — debe pedir
+   supervisor. Con ADMIN/CONTADOR no debería pedir nada (ver decisión
+   pendiente abajo).
+6. Imprimir, WhatsApp y correo del recibo recién creado.
+
+**Decisiones tomadas** — ver `docs/prestamista/decisiones-pendientes.md` para
+el detalle completo y los defaults usados: excedente del pago (default
+`siguientes_cuotas`, configurable por producto) y alcance de
+`pago_retroactivo` (solo vendedor, por diseño del guard existente).
