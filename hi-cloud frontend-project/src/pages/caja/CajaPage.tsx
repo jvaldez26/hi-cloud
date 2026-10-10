@@ -449,7 +449,12 @@ export default function CajaPage() {
   // ── Diálogo de impresión unificado ────────────────────────────────────────
   const [printTarget, setPrintTarget]       = useState<any>(null);
   const [printFormat, setPrintFormat]       = useState<'ticket'|'pdf'|'excel'>('ticket');
-  const [printDetalle, setPrintDetalle]     = useState(false);
+  // Default true: el detalle de facturas del turno (folio, hora, cliente,
+  // forma de pago, monto) es parte estándar del reporte de cierre, no un
+  // extra opcional — sobre todo cuando hay una sospecha de forma mal
+  // registrada, donde es imprescindible para auditar. Bug real (2026-10-10):
+  // con el default en false, reimprimir "perdía" la lista sin que se notara.
+  const [printDetalle, setPrintDetalle]     = useState(true);
   const [printLoading, setPrintLoading]     = useState(false);
 
   // Filtro local de texto; el historial ahora incluye también cajas abierta (huérfanas de días anteriores)
@@ -1498,14 +1503,14 @@ ${line()}
                 {Array.isArray(detalleCierre.sospechasFormaPago) && detalleCierre.sospechasFormaPago.map((s: any, i: number) => (
                   <Alert
                     key={i} type="warning" showIcon style={{ marginTop: 10 }}
-                    message={`Posible forma de pago mal registrada: ${LABEL_FORMA[s.formaSobrante] ?? s.formaSobrante} +${fmt.money(s.monto)} / ${LABEL_FORMA[s.formaFaltante] ?? s.formaFaltante} ${fmt.money(-s.monto)}`}
+                    message={`Posible forma de pago mal registrada: ${LABEL_FORMA[s.formaSobrante] ?? s.formaSobrante} +${fmt.money(s.montoSobrante ?? s.monto)} / ${LABEL_FORMA[s.formaFaltante] ?? s.formaFaltante} ${fmt.money(s.montoFaltante ?? -s.monto)}`}
                     description={
                       s.facturasCandidatas?.length ? (
                         <div style={{ fontSize: 12 }}>
                           <div style={{ marginBottom: 4 }}>Facturas de este turno que podrían explicarlo (pago mixto con ambas formas):</div>
                           {s.facturasCandidatas.map((f: any) => (
                             <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '2px 0' }}>
-                              <span><strong>{f.folio}</strong> — {fmt.money(Number(f.total))}</span>
+                              <span><strong>{f.folio}</strong> — {fmtFormasPago(Array.isArray(f.formasPago) ? f.formasPago : [])}</span>
                               <Button size="small" onClick={() => {
                                 // Sugerencia: invertir los montos entre la forma sobrante y la
                                 // faltante — es exactamente el fix del caso real (FAC-1803).
