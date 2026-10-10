@@ -14,14 +14,41 @@
  * numéricos usan @Type(() => Number).
  */
 import {
-  IsInt, IsPositive, IsNumber, IsOptional, IsString, IsNotEmpty,
-  IsDateString, MaxLength, Min, Max, IsIn, IsBoolean, ValidateNested,
+  IsInt, IsPositive, IsNumber, IsOptional, IsString, IsNotEmpty, IsEmail,
+  IsDateString, MaxLength, Min, Max, IsIn, IsBoolean, IsArray, ValidateNested, ValidateIf,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { MotorConfigDto } from './prestamista-motor.dto';
 
 /** Monto de dinero: > 0 y con dos decimales como máximo. */
 const MONTO = { maxDecimalPlaces: 2 } as const;
+
+/** Registrar Pago (precursor de Etapa 2): una forma de pago dentro de un pago mixto. */
+export class FormaPagoDto {
+  @IsIn(['efectivo', 'transferencia', 'cheque', 'tarjeta'])
+  metodo!: string;
+
+  @IsNumber(MONTO) @IsPositive() @Type(() => Number)
+  monto!: number;
+
+  /** Obligatoria salvo en efectivo — no hay cómo rastrear un cheque/transferencia/tarjeta sin ella. */
+  @ValidateIf(o => o.metodo !== 'efectivo')
+  @IsString() @IsNotEmpty({ message: 'La referencia es obligatoria salvo en efectivo' }) @MaxLength(100)
+  referencia?: string;
+}
+
+/** Registrar Pago (precursor de Etapa 2) — enviar el recibo por correo. */
+export class EnviarReciboCorreoDto {
+  @IsEmail({}, { message: 'El correo del destinatario no es válido' })
+  email!: string;
+
+  /** Lista separada por comas (EmailConCopiaModal del frontend) — nodemailer la acepta tal cual. */
+  @IsOptional() @IsString() @MaxLength(500)
+  cc?: string;
+
+  @IsOptional() @IsString() @MaxLength(500)
+  cco?: string;
+}
 
 export class RegistrarPagoDto {
   @IsInt() @IsPositive() @Type(() => Number)
@@ -32,6 +59,35 @@ export class RegistrarPagoDto {
   @IsPositive({ message: 'El monto pagado debe ser mayor que cero' })
   @Type(() => Number)
   montoPagado!: number;
+
+  /**
+   * Registrar Pago (precursor de Etapa 2) — ver docs/prestamista/registrar-pago-rediseno.md.
+   * Default 'cuotas' si se omite (resuelto en el service, no aquí).
+   */
+  @IsOptional() @IsIn(['cuotas', 'abono_parcial', 'abono_extraordinario_capital', 'liquidar'])
+  tipoPago?: 'cuotas' | 'abono_parcial' | 'abono_extraordinario_capital' | 'liquidar';
+
+  /** ids de pr_cuotas — requerido solo para tipoPago='cuotas'; el servidor valida que estén en orden. */
+  @IsOptional() @IsArray() @IsInt({ each: true })
+  cuotasSeleccionadas?: number[];
+
+  @IsOptional() @IsIn(['siguientes_cuotas', 'capital'])
+  destinoExcedente?: 'siguientes_cuotas' | 'capital';
+
+  @IsOptional() @IsIn(['reducir_cuota', 'reducir_plazo'])
+  abonoExtraordinarioOpcion?: 'reducir_cuota' | 'reducir_plazo';
+
+  /** Fecha del pago — hoy si se omite. Anterior a hoy exige autorización de supervisor (clave 'pago_retroactivo'). */
+  @IsOptional() @IsDateString({}, { message: 'La fecha del pago debe ser una fecha válida' })
+  fecha?: string;
+
+  /** Pago mixto (varias formas) — si viene, tiene prioridad sobre metodoPago/referencia sueltos. */
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => FormaPagoDto)
+  formasPago?: FormaPagoDto[];
+
+  /** Solo en efectivo — calcula el cambio en el frontend, no es dinero que el sistema registre aparte. */
+  @IsOptional() @IsNumber(MONTO) @Min(0) @Type(() => Number)
+  montoRecibido?: number;
 
   @IsOptional() @IsString() @MaxLength(50)
   metodoPago?: string;
