@@ -127,12 +127,14 @@ export class PrestamistaPdfService {
     doc.end();
   }
 
-  async reciboPago(res: Response, pagoId: number, empresaId: number) {
+  /** Público: también lo usa PagosController para el link de WhatsApp (mismos datos, sin generar el PDF). */
+  async buscarPagoParaRecibo(pagoId: number, empresaId: number): Promise<any | null> {
     const rows: any[] = await this.ds.query(
       `SELECT pg.*,
               p.numero         AS "prestamoNumero",
               d.nombre         AS "deudorNombre",
               d.cedula         AS "deudorCedula",
+              d.telefono       AS "deudorTelefono",
               COALESCE(e."nombreComercial", e.nombre) AS "empresaNombre",
               e.rnc            AS "empresaRnc",
               e.direccion      AS "empresaDireccion",
@@ -143,15 +145,13 @@ export class PrestamistaPdfService {
        LEFT JOIN empresa e ON e.id = pg."empresaId"
        WHERE pg.id=$1 AND pg."empresaId"=$2`, [pagoId, empresaId],
     );
-    const pago = rows[0];
-    if (!pago) { res.status(404).json({ message: 'Pago no encontrado' }); return; }
+    return rows[0] ?? null;
+  }
 
+  /** Dibuja el recibo sobre un `doc` ya creado — compartido entre reciboPago() (HTTP) y reciboPagoBuffer() (adjunto de correo). */
+  private dibujarRecibo(doc: any, pago: any): void {
     // ── Papel térmico 80 mm (~200 pt ancho útil) ────────────────
-    const TW = 200; const PL = 8; const PR = TW - 8; const W = PR - PL;
-    const doc = new PDFDocument({ size: [TW, 800], margin: 0, compress: true });
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="recibo-${pago.numero}.pdf"`);
-    doc.pipe(res);
+    const PL = 8; const PR = 200 - 8; const W = PR - PL;
 
     let y = 10;
     const LH = 11;
@@ -217,7 +217,37 @@ export class PrestamistaPdfService {
 
     // Recortar página al contenido real
     (doc.page as any).height = y + 15;
+  }
+
+  async reciboPago(res: Response, pagoId: number, empresaId: number) {
+    const pago = await this.buscarPagoParaRecibo(pagoId, empresaId);
+    if (!pago) { res.status(404).json({ message: 'Pago no encontrado' }); return; }
+
+    const doc = new PDFDocument({ size: [200, 800], margin: 0, compress: true });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="recibo-${pago.numero}.pdf"`);
+    doc.pipe(res);
+    this.dibujarRecibo(doc, pago);
     doc.end();
+  }
+
+  /**
+   * Mismo recibo que reciboPago(), como buffer en memoria — para adjuntarlo
+   * a un correo (enviarReciboPorCorreo en notificaciones) en vez de
+   * escribirlo directo a una Response HTTP.
+   */
+  async reciboPagoBuffer(pagoId: number, empresaId: number): Promise<{ buffer: Buffer; filename: string; pago: any } | null> {
+    const pago = await this.buscarPagoParaRecibo(pagoId, empresaId);
+    if (!pago) return null;
+
+    const doc = new PDFDocument({ size: [200, 800], margin: 0, compress: true });
+    const chunks: Buffer[] = [];
+    doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+    const fin = new Promise<Buffer>(resolve => doc.on('end', () => resolve(Buffer.concat(chunks))));
+    this.dibujarRecibo(doc, pago);
+    doc.end();
+    const buffer = await fin;
+    return { buffer, filename: `recibo-${pago.numero}.pdf`, pago };
   }
 
   async estadoCuenta(res: Response, deudorId: number, empresaId: number) {
