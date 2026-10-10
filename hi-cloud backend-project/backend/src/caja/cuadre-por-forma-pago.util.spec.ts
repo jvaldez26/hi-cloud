@@ -19,10 +19,10 @@ describe('cuadre-por-forma-pago.util — caso real (empresa 73, Bellamar Gonzál
     ]);
   });
 
-  it('detecta la sospecha exacta: efectivo sobra, tarjeta falta, misma magnitud', () => {
+  it('detecta la sospecha con las diferencias REALES de cada forma, no asumidas simétricas', () => {
     const sospechas = detectarPosibleFormaMalRegistrada(filas, 1);
     expect(sospechas).toEqual([
-      { formaSobrante: 'efectivo', formaFaltante: 'tarjeta', monto: 829.94 },
+      { formaSobrante: 'efectivo', formaFaltante: 'tarjeta', monto: 829.94, montoSobrante: 829.94, montoFaltante: -830.00 },
     ]);
   });
 
@@ -58,7 +58,7 @@ describe('cuadre-por-forma-pago.util — casos generales', () => {
       { efectivo: 1100, tarjeta: 400, transferencia: 300 },
     );
     const sospechas = detectarPosibleFormaMalRegistrada(filas, 1);
-    expect(sospechas).toEqual([{ formaSobrante: 'efectivo', formaFaltante: 'tarjeta', monto: 100 }]);
+    expect(sospechas).toEqual([{ formaSobrante: 'efectivo', formaFaltante: 'tarjeta', monto: 100, montoSobrante: 100, montoFaltante: -100 }]);
   });
 });
 
@@ -82,7 +82,7 @@ describe('derivarCuadreLegacy — reconstruye el cuadre de un cierre viejo sin s
       { forma: 'tarjeta', esperado: 2605.00, declarado: 1775.00, diferencia: -830.00 },
     );
     expect(detectarPosibleFormaMalRegistrada(filas, 1)).toEqual([
-      { formaSobrante: 'efectivo', formaFaltante: 'tarjeta', monto: 829.94 },
+      { formaSobrante: 'efectivo', formaFaltante: 'tarjeta', monto: 829.94, montoSobrante: 829.94, montoFaltante: -830.00 },
     ]);
   });
 
