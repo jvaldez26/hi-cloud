@@ -51,12 +51,26 @@ export const prestamistalApi = {
   previewPago: (body: any) => api.post(`${base}/pagos/preview`, body).then(r),
   enviarReciboCorreo: (pagoId: number, body: { email: string; cc?: string; cco?: string }) =>
     api.post(`${base}/pagos/${pagoId}/enviar-recibo`, body).then(r),
+  // Anulación con reversa — ADMIN + supervisor SIEMPRE (clave
+  // 'anular_pago_prestamo', el 403 lo resuelve el interceptor global). Ver
+  // docs/prestamista/etapa-2-resto.md §1.
+  anularPago: (pagoId: number, motivo: string) => api.patch(`${base}/pagos/${pagoId}/anular`, { motivo }).then(r),
 
   // Garantías
   getGarantiasByPrestamo: (prestamoId: number) => api.get(`${base}/garantias/prestamo/${prestamoId}`).then(r),
   getGarantiasByDeudor:   (deudorId: number)   => api.get(`${base}/garantias/deudor/${deudorId}`).then(r),
   crearGarantia:  (body: any)            => api.post(`${base}/garantias`, body).then(r),
   updateGarantia: (id: number, body: any) => api.patch(`${base}/garantias/${id}`, body).then(r),
+  liberarGarantia: (id: number, motivo?: string) => api.patch(`${base}/garantias/${id}/liberar`, { motivo }).then(r),
+  // Supervisor SIEMPRE, motivo obligatorio (clave 'ejecutar_garantia').
+  ejecutarGarantia: (id: number, motivo: string) => api.patch(`${base}/garantias/${id}/ejecutar`, { motivo }).then(r),
+
+  // Garantes (avales personales) — CRUD + liberar (§2)
+  getGarantesByPrestamo: (prestamoId: number) => api.get(`${base}/garantes/prestamo/${prestamoId}`).then(r),
+  crearGarante:   (body: any)             => api.post(`${base}/garantes`, body).then(r),
+  updateGarante:  (id: number, body: any) => api.patch(`${base}/garantes/${id}`, body).then(r),
+  liberarGarante: (id: number, motivo?: string) => api.patch(`${base}/garantes/${id}/liberar`, { motivo }).then(r),
+  eliminarGarante: (id: number) => api.delete(`${base}/garantes/${id}`).then(r),
 
   // Cobranza
   getCarteraVencida: (params?: any) => api.get(`${base}/cobranza/cartera-vencida`, { params }).then(r),

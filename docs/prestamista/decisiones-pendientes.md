@@ -35,6 +35,19 @@ valores de arranque.
 - **Desembolsos parciales, reestructuración, condonación independiente,
   contratos/pagarés en PDF**: Etapa 2 — diseño cerrado en `etapa-2-resto.md`
   §4-§7, implementación pendiente.
+- **Frontend de §1-3 (2026-10-10)**: agregado en `DetallePrestamo.tsx` —
+  botón "Anular" en Pagos, tab nueva "Garantes" (CRUD + liberar) y acciones
+  Liberar/Ejecutar en la tab Garantías. No se tocó el backend.
+  **[HALLAZGO]** `etapa-2-resto.md` §2 dice que liberar un garante requiere
+  `RequiereSupervisor` (no Siempre) y motivo obligatorio — el código real
+  (`GarantesController.liberar`, `LiberarGaranteDto`) no tiene ningún guard
+  de supervisor y el motivo es opcional. Se dejó el frontend consistente con
+  el código real (motivo opcional, sin paso de autorización) en vez de con el
+  documento, para no inventar una regla de autorización que el backend no
+  exige — si Jean confirma que sí debería exigirla, es un cambio de una
+  línea en el controller (agregar `@UseGuards(RequiereSupervisor('liberar_garante'))`
+  + la clave nueva en `supervisor-catalogo.ts`) más volver `motivo` obligatorio
+  en el DTO.
 - **Tratamiento fiscal (e-CF/ITBIS por concepto)**: Etapa 5. Por instrucción
   explícita, NO se decide — se construye la integración pero queda
   desactivada hasta que se configure cada concepto en Productos de Préstamo

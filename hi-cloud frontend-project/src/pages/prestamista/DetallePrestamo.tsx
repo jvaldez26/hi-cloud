@@ -20,6 +20,8 @@ const { Option } = Select;
 const fmt = (n: any) => `RD$ ${Number(n ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
 const estadoColor: Record<string, string> = { al_dia: 'green', moroso: 'orange', vencido: 'red', pagado: 'blue', cancelado: 'default', refinanciado: 'purple' };
 const cuotaColor: Record<string, string> = { pendiente: 'default', pagada: 'green', vencida: 'red', pagada_parcial: 'orange' };
+const estadoGarantiaColor: Record<string, string> = { activa: 'green', liberada: 'blue', ejecutada: 'red' };
+const estadoGaranteColor: Record<string, string> = { activo: 'green', liberado: 'blue' };
 
 type TipoPago = 'cuotas' | 'abono_parcial' | 'abono_extraordinario_capital' | 'liquidar';
 
@@ -83,6 +85,18 @@ export default function DetallePrestamo() {
   const [formGarantia] = Form.useForm();
   const [formCancelar] = Form.useForm();
 
+  // ── Anular pago (§1), garantes (§2) y ciclo de vida de garantías (§3) ──
+  const [anularPagoTarget, setAnularPagoTarget] = useState<any>(null);
+  const [formAnularPago] = Form.useForm();
+  const [garanteOpen, setGaranteOpen] = useState(false);
+  const [formGarante] = Form.useForm();
+  const [liberarGaranteTarget, setLiberarGaranteTarget] = useState<any>(null);
+  const [formLiberarGarante] = Form.useForm();
+  const [liberarGarantiaTarget, setLiberarGarantiaTarget] = useState<any>(null);
+  const [formLiberarGarantia] = Form.useForm();
+  const [ejecutarGarantiaTarget, setEjecutarGarantiaTarget] = useState<any>(null);
+  const [formEjecutarGarantia] = Form.useForm();
+
   // ── Registrar Pago (rediseño) ──────────────────────────────────────────
   const [tipoPago, setTipoPago] = useState<TipoPago>('cuotas');
   const [cuotasSel, setCuotasSel] = useState<number[]>([]);
@@ -116,6 +130,12 @@ export default function DetallePrestamo() {
   const { data: garantias = [] } = useQuery({
     queryKey: ['prestamista-garantias', id],
     queryFn: () => prestamistalApi.getGarantiasByPrestamo(Number(id)),
+    enabled: !!id,
+  });
+
+  const { data: garantes = [] } = useQuery({
+    queryKey: ['prestamista-garantes', id],
+    queryFn: () => prestamistalApi.getGarantesByPrestamo(Number(id)),
     enabled: !!id,
   });
 
@@ -251,6 +271,63 @@ export default function DetallePrestamo() {
       formGarantia.resetFields();
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al guardar garantía'),
+  });
+
+  const anularPago = useMutation({
+    mutationFn: ({ pagoId, motivo }: { pagoId: number; motivo: string }) => prestamistalApi.anularPago(pagoId, motivo),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['prestamista-prestamo', id] });
+      qc.invalidateQueries({ queryKey: ['prestamista-pagos', id] });
+      qc.invalidateQueries({ queryKey: ['prestamista-dashboard'] });
+      setAnularPagoTarget(null);
+      formAnularPago.resetFields();
+      message.success('Pago anulado — saldos y cuotas revertidos');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al anular el pago'),
+  });
+
+  const crearGarante = useMutation({
+    mutationFn: (vals: any) => prestamistalApi.crearGarante({ prestamoId: Number(id), ...vals }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['prestamista-garantes', id] });
+      setGaranteOpen(false);
+      formGarante.resetFields();
+      message.success('Garante agregado');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al guardar garante'),
+  });
+
+  const liberarGarante = useMutation({
+    mutationFn: ({ garanteId, motivo }: { garanteId: number; motivo?: string }) => prestamistalApi.liberarGarante(garanteId, motivo),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['prestamista-garantes', id] });
+      setLiberarGaranteTarget(null);
+      formLiberarGarante.resetFields();
+      message.success('Garante liberado');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al liberar garante'),
+  });
+
+  const liberarGarantia = useMutation({
+    mutationFn: ({ garantiaId, motivo }: { garantiaId: number; motivo?: string }) => prestamistalApi.liberarGarantia(garantiaId, motivo),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['prestamista-garantias', id] });
+      setLiberarGarantiaTarget(null);
+      formLiberarGarantia.resetFields();
+      message.success('Garantía liberada');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al liberar garantía'),
+  });
+
+  const ejecutarGarantia = useMutation({
+    mutationFn: ({ garantiaId, motivo }: { garantiaId: number; motivo: string }) => prestamistalApi.ejecutarGarantia(garantiaId, motivo),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['prestamista-garantias', id] });
+      setEjecutarGarantiaTarget(null);
+      formEjecutarGarantia.resetFields();
+      message.success('Garantía ejecutada');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al ejecutar garantía'),
   });
 
   const cancelar = useMutation({
@@ -431,9 +508,17 @@ export default function DetallePrestamo() {
                   { title: 'Interés', dataIndex: 'aplicadoInteres', render: fmt },
                   { title: 'Mora', dataIndex: 'aplicadoMora', render: fmt },
                   { title: 'Forma Pago', dataIndex: 'metodoPago' },
+                  { title: 'Estado', dataIndex: 'estado', render: (v: string) => <Tag color={v === 'anulado' ? 'red' : 'green'}>{v ?? 'activo'}</Tag> },
                   {
-                    title: '', key: 'pdf', width: 70,
-                    render: (_: any, r: any) => <Button size="small" icon={<FileText size={13} />} onClick={() => window.open(prestamistalApi.pdfRecibo(r.id), '_blank')} />,
+                    title: '', key: 'acciones', width: 130,
+                    render: (_: any, r: any) => (
+                      <Space size={4}>
+                        <Button size="small" icon={<FileText size={13} />} onClick={() => window.open(prestamistalApi.pdfRecibo(r.id), '_blank')} />
+                        {r.estado !== 'anulado' && (
+                          <Button size="small" danger onClick={() => setAnularPagoTarget(r)}>Anular</Button>
+                        )}
+                      </Space>
+                    ),
                   },
                 ]}
               />
@@ -462,8 +547,44 @@ export default function DetallePrestamo() {
                   { title: 'Tipo', dataIndex: 'tipo' },
                   { title: 'Descripción', dataIndex: 'descripcion' },
                   { title: 'Valor Tasado', dataIndex: 'valorTasado', render: fmt },
-                  { title: 'Estado', dataIndex: 'estado', render: (v: string) => <Tag>{v}</Tag> },
+                  { title: 'Estado', dataIndex: 'estado', render: (v: string) => <Tag color={estadoGarantiaColor[v] ?? 'default'}>{v}</Tag> },
                   { title: 'Fecha Tasación', dataIndex: 'fechaTasacion', render: (v: string) => v?.slice(0, 10) },
+                  {
+                    title: '', key: 'acciones', width: 170,
+                    render: (_: any, r: any) => r.estado === 'activa' ? (
+                      <Space size={4}>
+                        <Button size="small" onClick={() => setLiberarGarantiaTarget(r)}>Liberar</Button>
+                        <Button size="small" danger onClick={() => setEjecutarGarantiaTarget(r)}>Ejecutar</Button>
+                      </Space>
+                    ) : null,
+                  },
+                ]}
+              />
+            </div>
+          ),
+        },
+        {
+          key: 'garantes',
+          label: `Garantes (${(garantes as any[]).length})`,
+          children: (
+            <div>
+              <Button icon={<Plus size={14} />} style={{ marginBottom: 12 }} onClick={() => setGaranteOpen(true)}>Agregar Garante</Button>
+              <Table
+                dataSource={(garantes as any[]).map((r: any) => ({ ...r, key: r.id }))}
+                scroll={{ x: 'max-content' }} size="small"
+                columns={[
+                  { title: 'Nombre', dataIndex: 'nombre' },
+                  { title: 'Cédula', dataIndex: 'cedula' },
+                  { title: 'Teléfono', dataIndex: 'telefono' },
+                  { title: 'Relación', dataIndex: 'relacionDeudor' },
+                  { title: 'Ingreso Mensual', dataIndex: 'ingresoMensual', render: (v: any) => v != null ? fmt(v) : '—' },
+                  { title: 'Estado', dataIndex: 'estado', render: (v: string) => <Tag color={estadoGaranteColor[v] ?? 'default'}>{v}</Tag> },
+                  {
+                    title: '', key: 'acciones', width: 100,
+                    render: (_: any, r: any) => r.estado !== 'liberado' ? (
+                      <Button size="small" onClick={() => setLiberarGaranteTarget(r)}>Liberar</Button>
+                    ) : null,
+                  },
                 ]}
               />
             </div>
@@ -723,6 +844,82 @@ export default function DetallePrestamo() {
         onOk={() => formCancelar.validateFields().then(v => cancelar.mutate(v))} okText="Cancelar Préstamo" okButtonProps={{ danger: true }} confirmLoading={cancelar.isPending}>
         <Form form={formCancelar} layout="vertical" style={{ paddingTop: 8 }}>
           <Form.Item name="motivo" label="Motivo de cancelación" rules={[{ required: true }]}><Input.TextArea rows={3} /></Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Modal anular pago (§1) — motivo obligatorio; el 403 de supervisor
+          SIEMPRE (clave anular_pago_prestamo) lo resuelve el interceptor global. */}
+      <Modal
+        title="Anular Pago" open={!!anularPagoTarget}
+        onCancel={() => { setAnularPagoTarget(null); formAnularPago.resetFields(); }}
+        onOk={() => formAnularPago.validateFields().then(v => anularPago.mutate({ pagoId: anularPagoTarget.id, motivo: v.motivo }))}
+        okText="Anular Pago" okButtonProps={{ danger: true }} confirmLoading={anularPago.isPending}
+      >
+        <Alert type="warning" showIcon style={{ marginBottom: 12 }}
+          message={`Se revertirán las cuotas, saldos y el asiento contable del pago ${anularPagoTarget?.numero ?? ''}.`} />
+        <Form form={formAnularPago} layout="vertical">
+          <Form.Item name="motivo" label="Motivo de la anulación" rules={[{ required: true, whitespace: true, message: 'El motivo es obligatorio' }]}>
+            <Input.TextArea rows={3} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Modal garante (§2) */}
+      <Modal title="Agregar Garante" open={garanteOpen} onCancel={() => { setGaranteOpen(false); formGarante.resetFields(); }}
+        onOk={() => formGarante.validateFields().then(v => crearGarante.mutate(v))} okText="Guardar" confirmLoading={crearGarante.isPending}>
+        <Form form={formGarante} layout="vertical" style={{ paddingTop: 8 }}>
+          <Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input /></Form.Item>
+          <Row gutter={12}>
+            <Col span={12}><Form.Item name="cedula" label="Cédula"><Input /></Form.Item></Col>
+            <Col span={12}><Form.Item name="telefono" label="Teléfono"><Input /></Form.Item></Col>
+          </Row>
+          <Form.Item name="direccion" label="Dirección"><Input /></Form.Item>
+          <Row gutter={12}>
+            <Col span={12}><Form.Item name="ocupacion" label="Ocupación"><Input /></Form.Item></Col>
+            <Col span={12}><Form.Item name="ingresoMensual" label="Ingreso Mensual (RD$)"><InputNumber style={{ width: '100%' }} prefix="RD$" min={0} /></Form.Item></Col>
+          </Row>
+          <Form.Item name="relacionDeudor" label="Relación con el deudor"><Input placeholder="Cónyuge, hermano, socio..." /></Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Modal liberar garante (§2) — motivo opcional, no mueve dinero */}
+      <Modal title="Liberar Garante" open={!!liberarGaranteTarget}
+        onCancel={() => { setLiberarGaranteTarget(null); formLiberarGarante.resetFields(); }}
+        onOk={() => formLiberarGarante.validateFields().then(v => liberarGarante.mutate({ garanteId: liberarGaranteTarget.id, motivo: v.motivo }))}
+        okText="Liberar" confirmLoading={liberarGarante.isPending}>
+        <p style={{ color: C.colorTextSecondary, fontSize: 13 }}>
+          {liberarGaranteTarget?.nombre} deja de respaldar este préstamo. Esto no afecta otros préstamos que respalde.
+        </p>
+        <Form form={formLiberarGarante} layout="vertical">
+          <Form.Item name="motivo" label="Motivo (opcional)"><Input.TextArea rows={2} /></Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Modal liberar garantía (§3) — caso normal, motivo opcional, no requiere supervisor */}
+      <Modal title="Liberar Garantía" open={!!liberarGarantiaTarget}
+        onCancel={() => { setLiberarGarantiaTarget(null); formLiberarGarantia.resetFields(); }}
+        onOk={() => formLiberarGarantia.validateFields().then(v => liberarGarantia.mutate({ garantiaId: liberarGarantiaTarget.id, motivo: v.motivo }))}
+        okText="Liberar" confirmLoading={liberarGarantia.isPending}>
+        <p style={{ color: C.colorTextSecondary, fontSize: 13 }}>
+          La garantía "{liberarGarantiaTarget?.descripcion}" queda liberada — ya no respalda este préstamo.
+        </p>
+        <Form form={formLiberarGarantia} layout="vertical">
+          <Form.Item name="motivo" label="Motivo (opcional)"><Input.TextArea rows={2} /></Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Modal ejecutar garantía (§3) — la acción más grave: motivo
+          obligatorio, supervisor SIEMPRE (clave ejecutar_garantia). */}
+      <Modal title="Ejecutar Garantía" open={!!ejecutarGarantiaTarget}
+        onCancel={() => { setEjecutarGarantiaTarget(null); formEjecutarGarantia.resetFields(); }}
+        onOk={() => formEjecutarGarantia.validateFields().then(v => ejecutarGarantia.mutate({ garantiaId: ejecutarGarantiaTarget.id, motivo: v.motivo }))}
+        okText="Ejecutar Garantía" okButtonProps={{ danger: true }} confirmLoading={ejecutarGarantia.isPending}>
+        <Alert type="error" showIcon style={{ marginBottom: 12 }}
+          message={`El banco se queda con "${ejecutarGarantiaTarget?.descripcion ?? ''}" por impago. Esta acción requiere autorización de otra persona.`} />
+        <Form form={formEjecutarGarantia} layout="vertical">
+          <Form.Item name="motivo" label="Motivo de la ejecución" rules={[{ required: true, whitespace: true, message: 'El motivo es obligatorio' }]}>
+            <Input.TextArea rows={3} />
+          </Form.Item>
         </Form>
       </Modal>
     </div>
