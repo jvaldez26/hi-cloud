@@ -280,6 +280,91 @@ describe('CajaService.cerrarCaja — cuadre por forma de pago (caso real empresa
   });
 });
 
+// Requisito explícito (2026-10-10): el endpoint EXIGE la declaración por
+// forma de pago y rechaza un cierre que solo trae efectivo cuando el turno
+// tiene ventas con otras formas — así ningún formulario viejo o externo
+// (como el de Caja Diaria, antes de unificarse con el del POS) puede volver
+// a cerrar dejando tarjeta/transferencia en 0 sin que nadie se entere.
+describe('CajaService.cerrarCaja — exige declarar toda forma con ventas en el turno', () => {
+  function mockQueryPorSql(d: ReturnType<typeof buildDeps>) {
+    d.dataSource.manager.query.mockImplementation((sql: string) => {
+      if (sql.includes('recibos_cobro') && sql.includes('tarjeta')) return Promise.resolve([{ tarjeta: '0', transferencia: '0' }]);
+      if (sql.includes('anticipo_cliente') && sql.includes('tarjeta')) return Promise.resolve([{ tarjeta: '0', transferencia: '0' }]);
+      if (sql.includes('recibos_cobro') || sql.includes('anticipo_cliente')) return Promise.resolve([{ total: '0' }]);
+      if (sql.includes('FROM facturas f')) return Promise.resolve([]);
+      return Promise.resolve([{}]);
+    });
+  }
+
+  it('rechaza un cierre que solo trae efectivo cuando el turno tuvo ventas por tarjeta', async () => {
+    const d = buildDeps();
+    mockQueryPorSql(d);
+    d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, userId: 1, ventasEfectivo: 500, ventasTarjeta: 300 }));
+    const service = buildService(d);
+
+    // Sin declaradoPorForma — el formulario viejo de Caja Diaria, que solo pide efectivo.
+    await expect(
+      service.cerrarCaja(1, 500, undefined, undefined, undefined, { id: 1 }),
+    ).rejects.toThrow(BadRequestException);
+    expect(d.repo.update).not.toHaveBeenCalled();
+  });
+
+  it('rechaza igual aunque declaradoPorForma venga, si deja la tarjeta en 0 sin confirmar', async () => {
+    const d = buildDeps();
+    mockQueryPorSql(d);
+    d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, userId: 1, ventasEfectivo: 500, ventasTarjeta: 300 }));
+    const service = buildService(d);
+
+    await expect(
+      service.cerrarCaja(1, 500, undefined, undefined, undefined, { id: 1 }, undefined, [
+        { forma: 'efectivo', monto: 500 },
+        { forma: 'tarjeta', monto: 0 },
+      ]),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('acepta si la tarjeta se declara con un monto', async () => {
+    const d = buildDeps();
+    mockQueryPorSql(d);
+    d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, userId: 1, ventasEfectivo: 500, ventasTarjeta: 300 }));
+    const service = buildService(d);
+
+    await expect(
+      service.cerrarCaja(1, 500, undefined, undefined, undefined, { id: 1 }, undefined, [
+        { forma: 'efectivo', monto: 500 },
+        { forma: 'tarjeta', monto: 300 },
+      ]),
+    ).resolves.toBeDefined();
+    expect(d.repo.update).toHaveBeenCalled();
+  });
+
+  it('acepta si confirma explícitamente que la tarjeta quedó en 0 (genuinamente no se cobró nada)', async () => {
+    const d = buildDeps();
+    mockQueryPorSql(d);
+    d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, userId: 1, ventasEfectivo: 500, ventasTarjeta: 300 }));
+    const service = buildService(d);
+
+    await expect(
+      service.cerrarCaja(1, 500, undefined, undefined, undefined, { id: 1 }, undefined, [
+        { forma: 'efectivo', monto: 500 },
+        { forma: 'tarjeta', monto: 0, confirmado: true },
+      ]),
+    ).resolves.toBeDefined();
+    expect(d.repo.update).toHaveBeenCalled();
+  });
+
+  it('sin ventas en ninguna otra forma, no exige nada — el fallback solo-efectivo sigue funcionando', async () => {
+    const d = buildDeps();
+    mockQueryPorSql(d);
+    d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, userId: 1, ventasEfectivo: 500 }));
+    const service = buildService(d);
+
+    await expect(
+      service.cerrarCaja(1, 500, undefined, undefined, undefined, { id: 1 }),
+    ).resolves.toBeDefined();
+  });
+});
+
 // Bug real (2026-10-10): reimprimir el cierre de Bellamar González volvía al
 // formato viejo porque ese cierre se cerró ANTES del fix — nunca tuvo
 // cuadrePorFormaPago guardado. Sin derivarlo al leer, ni obtenerUnaPorId ni
@@ -761,5 +846,54 @@ describe('CajaService.getDatosParaImprimir — datos COMPLETOS, para después de
     await expect(
       svc.getDatosParaImprimir(999, { id: 10 }),
     ).rejects.toThrow(NotFoundException);
+  });
+});
+
+// Bug real (2026-10-10): el recierre de Beatriz Riva a nombre de Bellamar
+// González perdió el cuadre por forma de pago del cierre ORIGINAL — se
+// sobrescribió en silencio al recerrar solo con efectivo (ver el bug de
+// Caja Diaria, ahora corregido). anularCierre() debe preservarlo la primera
+// vez, igual que ya preserva esperadoOriginal/contadoOriginal/diferenciaOriginal.
+describe('CajaService.anularCierre — preserva el cuadre por forma de pago del PRIMER cierre', () => {
+  const CUADRE_ORIGINAL = [
+    { forma: 'efectivo', esperado: 5608.06, declarado: 6438.00, diferencia: 829.94 },
+    { forma: 'tarjeta',  esperado: 2605.00, declarado: 0,       diferencia: -2605.00 },
+  ];
+
+  it('primer recierre: copia cuadrePorFormaPago/facturasSinFormaPago/sospechasFormaPago a los campos Original', async () => {
+    const d = buildDeps();
+    d.repo.findOne.mockResolvedValue(cajaAbierta({
+      id: 1, estado: EstadoCierre.CERRADA,
+      saldoCierre: 5608.06, saldoFisico: 6438.00, diferencia: 829.94, formulaVersion: 2,
+      cuadrePorFormaPago: CUADRE_ORIGINAL as any,
+      facturasSinFormaPago: [{ id: 1807, folio: 'FAC-1807', total: 295 }] as any,
+      sospechasFormaPago: [] as any,
+      esperadoOriginal: undefined,
+    }));
+    const service = buildService(d);
+
+    await service.anularCierre(1, 'el cajero no realizo cierre', 113, 'Beatriz Riva');
+
+    expect(d.repo.update).toHaveBeenCalled();
+    const [, cambios] = d.repo.update.mock.calls[0];
+    expect(cambios.cuadrePorFormaPagoOriginal).toEqual(CUADRE_ORIGINAL);
+    expect(cambios.facturasSinFormaPagoOriginal).toEqual([{ id: 1807, folio: 'FAC-1807', total: 295 }]);
+    expect(cambios.sospechasFormaPagoOriginal).toEqual([]);
+  });
+
+  it('un SEGUNDO recierre no pisa el original — esperadoOriginal ya estaba escrito', async () => {
+    const d = buildDeps();
+    const cuadreDelPrimerCierre = [{ forma: 'efectivo', esperado: 100, declarado: 100, diferencia: 0 }];
+    d.repo.findOne.mockResolvedValue(cajaAbierta({
+      id: 1, estado: EstadoCierre.CERRADA,
+      esperadoOriginal: 5608.06, // ya hubo un recierre antes
+      cuadrePorFormaPago: [{ forma: 'efectivo', esperado: 999, declarado: 999, diferencia: 0 }] as any, // el del cierre ACTUAL (segundo), no el primero
+    }));
+    const service = buildService(d);
+
+    await service.anularCierre(1, 'motivo', 1, 'Admin');
+
+    const [, cambios] = d.repo.update.mock.calls[0];
+    expect(cambios.cuadrePorFormaPagoOriginal).toBeUndefined(); // no se vuelve a escribir
   });
 });

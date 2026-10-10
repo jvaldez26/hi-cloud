@@ -177,4 +177,32 @@ describe('RequiereSupervisor guard', () => {
     expect(cacheManager.get).toHaveBeenCalledWith('membresia:10:7');
     expect(ds.query).toHaveBeenCalledTimes(2); // política + chequeo de sesión — NUNCA el lookup de rol
   });
+
+  // Bug real (2026-10-09, empresa 73, Bellamar González): "sin permiso" para
+  // cerrar su PROPIA caja. El guard en sí nunca bloquea permanentemente —
+  // siempre responde con los datos que el frontend necesita para abrir el
+  // modal de autorización (supervisorClaveRequerida/supervisorModo). La
+  // causa real estaba en que esa respuesta no tenía ningún modal que la
+  // resolviera fuera del POS (ver SupervisorAuthModal/App.tsx) — pero el
+  // guard, que es lo que le toca a este archivo, siempre se comportó bien:
+  // este test lo deja en negro sobre blanco.
+  it('cerrar_caja para un VENDEDOR con la política activa: el 403 SIEMPRE trae supervisorClaveRequerida — nunca un bloqueo sordo', async () => {
+    const { guard } = buildGuard('cerrar_caja', 'vendedor', [[{ requerido: true, modo: 'cada_vez' }]]);
+    const ctx = buildCtx({ id: CAJERO, role: 'vendedor', empresaId: EMPRESA });
+    try {
+      await guard.canActivate(ctx);
+      throw new Error('debía lanzar ForbiddenException');
+    } catch (e: any) {
+      expect(e).toBeInstanceOf(ForbiddenException);
+      const body = e.getResponse() as any;
+      expect(body.supervisorClaveRequerida).toBe('cerrar_caja');
+      expect(body.supervisorModo).toBe('cada_vez');
+    }
+  });
+
+  it('cerrar_caja para ADMIN/CONTADOR: nunca exige nada (son quienes autorizan)', async () => {
+    const { guard } = buildGuard('cerrar_caja', 'admin', []);
+    const ctx = buildCtx({ id: CAJERO, role: 'admin', empresaId: EMPRESA });
+    await expect(guard.canActivate(ctx)).resolves.toBe(true);
+  });
 });

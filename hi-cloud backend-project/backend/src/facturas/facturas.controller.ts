@@ -232,13 +232,13 @@ export class FacturasController {
 
   /**
    * Corrige CÓMO se cobró una factura ya emitida (el total no cambia) —
-   * ver "Cierre de caja por forma de pago". Solo ADMIN, y requiere la
+   * ver "Cierre de caja por forma de pago". ADMIN o CONTADOR, y requiere la
    * autorización de OTRO ADMIN/CONTADOR (RequiereSupervisorSiempre: a
-   * diferencia de RequiereSupervisor, aquí no hay bypass por rol — ni el
-   * propio ADMIN que corrige puede autorizarse a sí mismo).
+   * diferencia de RequiereSupervisor, aquí no hay bypass por rol — ni quien
+   * corrige puede autorizarse a sí mismo).
    */
   @Patch(':id/forma-pago')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
   @UseGuards(RequiereSupervisorSiempre('corregir_forma_pago_factura'))
   @ApiOperation({ summary: 'Corregir la forma de pago de una factura emitida (no cambia el total; queda en auditoría)' })
   corregirFormaPago(

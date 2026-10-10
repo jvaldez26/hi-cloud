@@ -145,6 +145,25 @@ export class CierreCaja {
   @Column({ type: 'int', nullable: true })
   formulaVersionOriginal?: number | null;
 
+  /**
+   * Cuadre por forma de pago del PRIMER cierre, guardado al reabrirlo —
+   * mismo criterio que esperadoOriginal: sin esto, el recierre sobrescribe
+   * cuadrePorFormaPago/facturasSinFormaPago/sospechasFormaPago sin dejar
+   * rastro de lo que el primer cajero declaró por cada forma. NULL = nunca
+   * se recerró. Solo se escribe una vez — el original es el PRIMERO.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  cuadrePorFormaPagoOriginal?: { forma: string; esperado: number; declarado: number; diferencia: number }[] | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  facturasSinFormaPagoOriginal?: { id: number; folio: string; total: number; clienteNombre?: string }[] | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  sospechasFormaPagoOriginal?: {
+    formaSobrante: string; formaFaltante: string; monto: number;
+    facturasCandidatas: { id: number; folio: string; total: number; formasPago: { tipo: number; monto: number }[] }[];
+  }[] | null;
+
   /** Quién reabrió y cuándo — del usuario autenticado, nunca del body. */
   @Column({ type: 'int', nullable: true })
   reabiertoPorUsuarioId?: number | null;

@@ -31,6 +31,11 @@ import {
   SospechaFormaPago,
 } from './cuadre-por-forma-pago.util';
 
+/** Mismas 4 etiquetas que usa el frontend para el cuadre — para el mensaje de la validación de abajo. */
+const LABEL_FORMA_CUADRE: Record<string, string> = {
+  efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia', otros: 'Otros',
+};
+
 @Injectable()
 export class CajaService {
   private readonly logger = new Logger(CajaService.name);
@@ -270,7 +275,7 @@ export class CajaService {
     desglosePago?: Record<string, string>,
     usuario?: { id: number; nombre?: string },
     motivo?: string,
-    declaradoPorForma?: { forma: string; monto: number }[],
+    declaradoPorForma?: { forma: string; monto: number; confirmado?: boolean }[],
   ) {
     const empresaId = this.tenantService.getEmpresaId();
     const caja = await this.repo.findOne({ where: { id, empresaId } });
@@ -343,9 +348,39 @@ export class CajaService {
     const facturasSinFormaPago = await this.getFacturasSinFormaPago(fechaStr, caja.vendedorId, empresaId);
     const totalSinFormaPago = facturasSinFormaPago.reduce((s, f) => s + Number(f.total || 0), 0);
     const esperadoPorForma = await this.calcularEsperadoPorForma(id, fechaStr, caja.vendedorId, empresaId, fresh, undefined, totalSinFormaPago);
-    const declaradoMap: Record<string, number> = declaradoPorForma?.length
-      ? declaradoPorForma.reduce((acc, d) => { acc[d.forma] = (acc[d.forma] ?? 0) + Number(d.monto || 0); return acc; }, {} as Record<string, number>)
-      : { efectivo: saldoFisico };
+
+    const declaradoRecibido = declaradoPorForma ?? [];
+    const declaradoMap: Record<string, number> = declaradoRecibido.reduce(
+      (acc, d) => { acc[d.forma] = (acc[d.forma] ?? 0) + Number(d.monto || 0); return acc; },
+      {} as Record<string, number>,
+    );
+    declaradoMap.efectivo = saldoFisico; // el efectivo siempre viene de saldoFisico, declaradoPorForma lo ignora si lo trae
+
+    // El endpoint EXIGE la declaración por cada forma con ventas en el turno
+    // — sin esto, un formulario que solo pide efectivo (como el de Caja
+    // Diaria, antes de unificarse con el del POS) podía cerrar silenciando
+    // tarjeta/transferencia en 0. `confirmado: true` es la salida explícita
+    // para cuando genuinamente no se cobró nada por esa forma a pesar de las
+    // ventas (caso real, bug de origen: FAC-1803 con tarjeta/efectivo
+    // invertidos — una forma que SÍ tuvo ventas pero el cajero no declaró).
+    const confirmadosEnCero = new Set(declaradoRecibido.filter(d => d.confirmado).map(d => d.forma));
+    const formasSinDeclarar = Object.keys(esperadoPorForma).filter(forma => {
+      if (forma === 'efectivo') return false; // siempre viene por saldoFisico
+      const esperado = Number(esperadoPorForma[forma] ?? 0);
+      if (esperado <= 0.01) return false; // sin ventas en esta forma, no hay nada que declarar
+      const declarado = Number(declaradoMap[forma] ?? 0);
+      if (declarado > 0.01) return false; // sí se declaró algo
+      return !confirmadosEnCero.has(forma);
+    });
+    if (formasSinDeclarar.length) {
+      const detalle = formasSinDeclarar
+        .map(f => `${LABEL_FORMA_CUADRE[f] ?? f} (${Number(esperadoPorForma[f] ?? 0).toFixed(2)} esperado)`)
+        .join(', ');
+      throw new BadRequestException(
+        `Declara cuánto se cobró por ${detalle} antes de cerrar, o confirma explícitamente que no se cobró nada por esa forma.`,
+      );
+    }
+
     const cuadrePorFormaPago = construirCuadrePorForma(esperadoPorForma, declaradoMap);
     const sospechas = detectarPosibleFormaMalRegistrada(cuadrePorFormaPago);
 
@@ -481,6 +516,12 @@ export class CajaService {
           contadoOriginal:        caja.saldoFisico,
           diferenciaOriginal:     caja.diferencia,
           formulaVersionOriginal: caja.formulaVersion,
+          // Mismo criterio — el cuadre por forma de pago del PRIMER cierre
+          // también se pierde si no se preserva aquí: cerrarCaja() lo
+          // sobrescribe sin piedad en el recierre (ver más abajo).
+          cuadrePorFormaPagoOriginal:   caja.cuadrePorFormaPago ?? null,
+          facturasSinFormaPagoOriginal: caja.facturasSinFormaPago ?? null,
+          sospechasFormaPagoOriginal:   caja.sospechasFormaPago ?? null,
         }
       : {};
 

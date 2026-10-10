@@ -69,9 +69,10 @@ export const CATALOGO_SUPERVISOR: CatalogoItem[] = [
   { clave: 'ver_reportes', label: 'Ver reportes y analítica', descripcion: 'Reportes, Business Intelligence y KPI ejecutivo', grupo: 'Reportes', defaultRequerido: true, defaultModo: 'sesion' },
 
   // ── Caja: corrección posterior ──────────────────────────────────────────
-  // Usa RequiereSupervisorSiempre (sin bypass por rol) — incluso un ADMIN
+  // Usan RequiereSupervisorSiempre (sin bypass por rol) — incluso un ADMIN
   // necesita la autorización de otra persona para esto.
   { clave: 'corregir_forma_pago_factura', label: 'Corregir forma de pago de una factura', descripcion: 'Cambiar cómo se registró el cobro de una factura ya emitida (el total no cambia)', grupo: 'Caja', defaultRequerido: true, defaultModo: 'cada_vez' },
+  { clave: 'anular_cierre_caja', label: 'Anular cierre de caja', descripcion: 'Reabrir una caja ya cerrada para recerrarla — requiere que OTRA persona lo autorice', grupo: 'Caja', defaultRequerido: true, defaultModo: 'cada_vez' },
 ];
 
 export const CLAVES_VALIDAS = new Set(CATALOGO_SUPERVISOR.map(c => c.clave));
