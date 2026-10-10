@@ -6192,8 +6192,12 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
 // ── Panel Cierre de Caja ──────────────────────────────────────────────────────
 const BILLETES_RD = [2000, 1000, 500, 200, 100, 50, 25, 20, 10, 5, 1];
 
+// Débito y crédito se unificaron en un solo campo "tarjeta" — el esperado
+// (ventasTarjeta) nunca los distinguió tampoco (DGII no los separa), así
+// que declararlos aparte no tenía con qué compararse y solo invitaba a
+// repartir mal el monto entre los dos.
 type DesglosePago = {
-  efectivo: string; tarjetaCredito: string; tarjetaDebito: string;
+  efectivo: string; tarjeta: string;
   cheque: string; transferencia: string; otro: string;
   deposito: string; documentos: string;
 };
@@ -7363,7 +7367,7 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
   const [nota,     setNota]     = useState('');
   const [billetes, setBilletes] = useState<Record<number,number>>({});
   const [pago, setPago] = useState<DesglosePago>({
-    efectivo:'', tarjetaCredito:'', tarjetaDebito:'',
+    efectivo:'', tarjeta:'',
     cheque:'', transferencia:'', otro:'', deposito:'', documentos:'',
   });
   const [tab, setTab] = useState<'actual' | 'historial'>('actual');
@@ -7376,8 +7380,21 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
   const [printSnapshot, setPrintSnapshot]     = useState<any>(null);
 
   const totalBilletes   = BILLETES_RD.reduce((s,b) => s + (billetes[b]??0)*b, 0);
+  // SOLO efectivo — antes caía a la suma de TODAS las formas (tarjeta,
+  // transferencia, cheque...) cuando no se contaban billetes, mezclando
+  // dinero que no está en el cajón con el que sí. El total de todas las
+  // formas (para el resumen informativo) es un número aparte.
+  const totalFisico       = totalBilletes || (Number(pago.efectivo) || 0);
   const totalDesglosePago = Object.values(pago).reduce((s,v) => s + (Number(v)||0), 0);
-  const totalFisico     = totalBilletes || totalDesglosePago;
+  // Mapeo a los 4 "buckets" que el backend ya usa para el esperado (DGII no
+  // distingue cheque/depósito/otro de transferencia tampoco) — ver
+  // cuadre-por-forma-pago.util.ts.
+  const declaradoPorForma = [
+    { forma: 'efectivo',      monto: totalFisico },
+    { forma: 'tarjeta',       monto: Number(pago.tarjeta) || 0 },
+    { forma: 'transferencia', monto: Number(pago.transferencia) || 0 },
+    { forma: 'otros',         monto: (Number(pago.cheque)||0) + (Number(pago.otro)||0) + (Number(pago.deposito)||0) + (Number(pago.documentos)||0) },
+  ];
 
   const { data: cajaHoy, isLoading } = useQuery<any>({
     queryKey: ['pos-caja-hoy'],
@@ -7416,7 +7433,7 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
   useEffect(() => {
     if (!cajaHoy?.id) return;
     if (cajaHoy?.ciegoCajaActivo) {
-      setPago({ efectivo:'', tarjetaCredito:'', tarjetaDebito:'',
+      setPago({ efectivo:'', tarjeta:'',
         cheque:'', transferencia:'', otro:'', deposito:'', documentos:'' });
     } else if (cajaHoy?.ventasEfectivo) {
       const ef = Number(cajaHoy.ventasEfectivo) + Number(cajaHoy.saldoApertura ?? 0);
@@ -7433,6 +7450,7 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
         notas:             nota || undefined,   // DTO espera 'notas' (plural)
         desgloseBilletes:  billetes,
         desglosePago:      pago,
+        declaradoPorForma, // cuadre por forma de pago — ver cuadre-por-forma-pago.util.ts
       });
     },
     onSuccess: () => {
@@ -7829,18 +7847,17 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
             <div style={{ fontSize:13, fontWeight:800, marginBottom:12 }}>Desglose de Pago</div>
             <div style={grid3}>
               <CierreField label="Efectivo"        value={pago.efectivo}        editable onChange={setPagoKey('efectivo')} />
-              <CierreField label="Tarjeta Crédito" value={pago.tarjetaCredito}  editable onChange={setPagoKey('tarjetaCredito')} />
-              <CierreField label="Tarjeta Débito"  value={pago.tarjetaDebito}   editable onChange={setPagoKey('tarjetaDebito')} />
+              <CierreField label="Tarjeta"         value={pago.tarjeta}         editable onChange={setPagoKey('tarjeta')} />
+              <CierreField label="Transferencia"   value={pago.transferencia}   editable onChange={setPagoKey('transferencia')} />
             </div>
             <div style={grid3}>
               <CierreField label="Cheque"          value={pago.cheque}          editable onChange={setPagoKey('cheque')} />
-              <CierreField label="Transferencia"   value={pago.transferencia}   editable onChange={setPagoKey('transferencia')} />
+              <CierreField label="Depósito"        value={pago.deposito}        editable onChange={setPagoKey('deposito')} />
               <CierreField label="Otro"            value={pago.otro}            editable onChange={setPagoKey('otro')} />
             </div>
             <div style={grid3}>
-              <CierreField label="Depósito"        value={pago.deposito}        editable onChange={setPagoKey('deposito')} />
               <CierreField label="Documentos"      value={pago.documentos}      editable onChange={setPagoKey('documentos')} />
-              <CierreField label="Efectivo en Sistema" value={m(totalDesglosePago)} highlight />
+              <CierreField label="Total declarado (todas las formas)" value={m(totalDesglosePago)} highlight />
             </div>
           </div>
 

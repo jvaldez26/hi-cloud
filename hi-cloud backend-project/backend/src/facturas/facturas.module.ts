@@ -14,6 +14,7 @@ import { CxCModule } from '../cxc/cxc.module';
 import { ContabilidadModule } from '../contabilidad/contabilidad.module';
 import { SuscripcionesModule } from '../suscripciones/suscripciones.module';
 import { CajaModule } from '../caja/caja.module';
+import { AuditoriaModule } from '../auditoria/auditoria.module';
 import { RncModule } from '../rnc/rnc.module';
 import { VendedorResolverModule } from './vendedor/vendedor-resolver.module';
 import { XlinkModule } from '../xlink/xlink.module';
@@ -23,7 +24,7 @@ import { XlinkModule } from '../xlink/xlink.module';
     TypeOrmModule.forFeature([Factura, FacturaDetalle]),
     ClientesModule, ProductosModule, InventarioModule,
     ECFModule, CxCModule, ContabilidadModule,
-    SuscripcionesModule, CajaModule, RncModule,
+    SuscripcionesModule, CajaModule, AuditoriaModule, RncModule,
     VendedorResolverModule,
     PdfModule,           // PDFService + NumeroLetrasService encapsulados aquí
     FacturaEmailModule,  // envio/reenvio de la factura por correo

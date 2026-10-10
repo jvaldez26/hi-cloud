@@ -43,6 +43,8 @@ import {
 import { VendedorResolverService } from './vendedor/vendedor-resolver.service';
 import { XlinkPublicarService } from '../xlink/xlink-publicar.service';
 import { XlinkTipoDocumento } from '../xlink/entities/xlink-documento.entity';
+import { AuditoriaService } from '../auditoria/auditoria.service';
+import { AccionAuditoria } from '../auditoria/entities/audit-log.entity';
 
 @Injectable()
 export class FacturasService {
@@ -74,6 +76,7 @@ export class FacturasService {
     private vendedorResolver: VendedorResolverService,
     private xlinkPublicar: XlinkPublicarService,
     private origenValidadores: OrigenFacturaValidadoresRegistry,
+    private auditoriaService: AuditoriaService,
   ) {}
 
 
@@ -1798,6 +1801,73 @@ export class FacturasService {
     }
     await this.facturaRepository.update(id, { isActive: false });
     return { message: `Factura ${factura.folio} eliminada` };
+  }
+
+  /**
+   * Corrige CÓMO se cobró una factura ya emitida — el total nunca cambia,
+   * solo cómo se repartió entre efectivo/tarjeta/transferencia/etc. Nace
+   * del incidente de cierre de caja de la empresa 73 (2026-10-09): FAC-1803
+   * se registró con tarjeta y efectivo invertidos.
+   *
+   * No afecta el e-CF ya emitido — E31/E32 nunca llevan forma de pago en su
+   * payload (ver emitir-ecf.use-case.ts / mseller-client.service.ts) — y SÍ
+   * se refleja en el 607 (declaraciones.service.ts lee `formasPago` en vivo
+   * al generarlo, no un snapshot).
+   *
+   * Autorización: el controller exige ADMIN + RequiereSupervisorSiempre —
+   * incluso el propio ADMIN que corrige necesita el visto de OTRA persona.
+   */
+  async corregirFormaPago(
+    id: number,
+    formasPagoNuevo: FormaPagoDto[],
+    motivo: string,
+    usuario: { id: number; nombre?: string },
+  ) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const factura = await this.facturaRepository.findOne({ where: { id, empresaId, isActive: true } });
+    if (!factura) throw new NotFoundException(`Factura #${id} no encontrada`);
+
+    if (factura.estado === FacturaEstado.BORRADOR || factura.estado === FacturaEstado.CANCELADA) {
+      throw new BadRequestException('Solo se puede corregir la forma de pago de una factura emitida o pagada');
+    }
+
+    const sumaNueva = formasPagoNuevo.reduce((s, f) => s + Number(f.monto || 0), 0);
+    if (Math.abs(sumaNueva - Number(factura.total)) > 0.01) {
+      throw new BadRequestException(
+        `Las formas de pago suman RD$${sumaNueva.toFixed(2)} y el total de la factura es RD$${Number(factura.total).toFixed(2)} — deben coincidir`,
+      );
+    }
+
+    const formasPagoAnterior = Array.isArray(factura.formasPago) ? factura.formasPago : [];
+    const nuevo = formasPagoNuevo.map(f => ({ tipo: f.tipo, monto: Number(f.monto), ...(f.referencia ? { referencia: f.referencia } : {}) }));
+
+    await this.facturaRepository.update(id, { formasPago: nuevo });
+
+    await this.auditoriaService.registrar({
+      userId:     usuario.id,
+      userName:   usuario.nombre,
+      empresaId,
+      accion:     AccionAuditoria.UPDATE,
+      nivel:      'IMPORTANTE',
+      modulo:     'facturas',
+      entidad:    'factura',
+      entidadId:  String(id),
+      descripcion: `Corrección de forma de pago — ${factura.folio}. Motivo: ${motivo}`,
+      valorAnterior: JSON.stringify(formasPagoAnterior),
+      valorNuevo:    JSON.stringify(nuevo),
+      metodo:     'PATCH',
+      ruta:       `/facturas/${id}/forma-pago`,
+      exitoso:    true,
+    });
+
+    // Si el turno de esta factura ya cerró, deja un ajuste aparte — el
+    // cierre original no se reescribe (ver caja.service.ts).
+    await this.cajaService.registrarAjusteSiCierreCerrado(
+      { id: factura.id, folio: factura.folio, fecha: factura.fecha, vendedorId: factura.vendedorId },
+      formasPagoAnterior, nuevo, motivo, usuario,
+    );
+
+    return { message: `Forma de pago de ${factura.folio} corregida`, formasPago: nuevo };
   }
 
   /**

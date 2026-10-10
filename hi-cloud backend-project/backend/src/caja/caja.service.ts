@@ -4,6 +4,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, IsNull, Not, EntityManager } from 'typeorm';
 import { CierreCaja, EstadoCierre } from './entities/cierre-caja.entity';
+import { AjusteCierreCaja } from './entities/ajuste-cierre-caja.entity';
 import { RetiroCaja, CategoriaRetiro, EstadoRetiro } from './entities/retiro-caja.entity';
 import { UserRole } from '../users/enums/user-role.enum';
 import { TenantService } from '../tenant/tenant.service';
@@ -20,6 +21,13 @@ import {
   excesoDeRetiros,
   FORMULA_EFECTIVO_VERSION,
 } from './efectivo-esperado.util';
+import {
+  construirCuadrePorForma,
+  detectarPosibleFormaMalRegistrada,
+  TIPOS_DGII_POR_FORMA,
+  FilaCuadre,
+  SospechaFormaPago,
+} from './cuadre-por-forma-pago.util';
 
 @Injectable()
 export class CajaService {
@@ -260,6 +268,7 @@ export class CajaService {
     desglosePago?: Record<string, string>,
     usuario?: { id: number; nombre?: string },
     motivo?: string,
+    declaradoPorForma?: { forma: string; monto: number }[],
   ) {
     const empresaId = this.tenantService.getEmpresaId();
     const caja = await this.repo.findOne({ where: { id, empresaId } });
@@ -324,6 +333,21 @@ export class CajaService {
 
     const diferencia = calcularDiferencia(saldoFisico, saldoCierre);
 
+    // Cuadre por forma de pago (ver cuadre-por-forma-pago.util.ts) — el efectivo
+    // usa la MISMA fórmula única de arriba, nunca se recalcula distinto.
+    const esperadoPorForma = await this.calcularEsperadoPorForma(id, fechaStr, caja.vendedorId, empresaId, fresh);
+    const declaradoMap: Record<string, number> = declaradoPorForma?.length
+      ? declaradoPorForma.reduce((acc, d) => { acc[d.forma] = (acc[d.forma] ?? 0) + Number(d.monto || 0); return acc; }, {} as Record<string, number>)
+      : { efectivo: saldoFisico };
+    const cuadrePorFormaPago = construirCuadrePorForma(esperadoPorForma, declaradoMap);
+    const sospechas = detectarPosibleFormaMalRegistrada(cuadrePorFormaPago);
+    const facturasSinFormaPago = await this.getFacturasSinFormaPago(fechaStr, caja.vendedorId, empresaId);
+
+    const sospechasConCandidatas = await Promise.all(sospechas.map(async s => ({
+      ...s,
+      facturasCandidatas: await this.buscarFacturasCandidatasSospecha(s, fechaStr, caja.vendedorId, empresaId),
+    })));
+
     await this.repo.update(id, {
       estado:           EstadoCierre.CERRADA,
       saldoCierre:      Number(saldoCierre.toFixed(2)),
@@ -334,6 +358,9 @@ export class CajaService {
       // formulaVersionOriginal.
       formulaVersion:   FORMULA_EFECTIVO_VERSION,
       notas:            notasFinal,
+      cuadrePorFormaPago:   cuadrePorFormaPago,
+      facturasSinFormaPago: facturasSinFormaPago,
+      sospechasFormaPago:   sospechasConCandidatas,
       ...(desgloseBilletes ? { desgloseBilletes } : {}),
       ...(desglosePago     ? { desglosePago }     : {}),
     });
@@ -354,6 +381,61 @@ export class CajaService {
 
     // Caja ya cerrada — siempre retornar datos completos para que la impresión sea íntegra
     return saved;
+  }
+
+  /**
+   * Corrección de forma de pago de una factura (ver corregirFormaPago en
+   * facturas.service.ts) — si el turno de esa factura YA CERRÓ, deja un
+   * ajuste aparte en `ajustes_cierre_caja` sin reescribir el cierre
+   * original (el cuadre con el que la cajera cerró de verdad no cambia).
+   * Si la caja sigue ABIERTA no hace falta nada: el esperado se recalcula
+   * en vivo la próxima vez que se consulte o se cierre.
+   */
+  async registrarAjusteSiCierreCerrado(
+    factura: { id: number; folio: string; fecha: Date | string; vendedorId?: number | null },
+    formasPagoAnterior: { tipo: number; monto: number }[],
+    formasPagoNuevo: { tipo: number; monto: number }[],
+    motivo: string,
+    usuario: { id: number; nombre?: string },
+  ): Promise<void> {
+    const empresaId = this.tenantService.getEmpresaId();
+    const fechaDate = factura.fecha instanceof Date ? factura.fecha : new Date(factura.fecha);
+    const fechaStr  = fechaDate.toISOString().substring(0, 10);
+
+    const cierre = await this.repo.findOne({
+      where: {
+        empresaId,
+        fecha:      new Date(`${fechaStr}T00:00:00.000Z`) as any,
+        vendedorId: factura.vendedorId ?? IsNull() as any,
+        estado:     EstadoCierre.CERRADA,
+      },
+      order: { id: 'DESC' },
+    });
+    if (!cierre) return; // caja todavía abierta (o sin cierre para ese turno) — nada que ajustar
+
+    const ajusteRepo = this.dataSource.manager.getRepository(AjusteCierreCaja);
+    await ajusteRepo.save(ajusteRepo.create({
+      empresaId,
+      cierreCajaId:       cierre.id,
+      facturaId:          factura.id,
+      facturaFolio:       factura.folio,
+      formasPagoAnterior,
+      formasPagoNuevo,
+      motivo,
+      corregidoPor:       usuario.id,
+      corregidoPorNombre: usuario.nombre,
+    }));
+    this.realtimeService.notify(empresaId, 'caja', 'updated', cierre.id);
+  }
+
+  /** Correcciones de forma de pago registradas sobre este cierre (ver registrarAjusteSiCierreCerrado). */
+  async listarAjustes(cierreCajaId: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const ajusteRepo = this.dataSource.manager.getRepository(AjusteCierreCaja);
+    return ajusteRepo.find({
+      where: { cierreCajaId, empresaId },
+      order: { createdAt: 'DESC' },
+    });
   }
 
   // ── Anular cierre de caja ─────────────────────────────────────────────────
@@ -595,6 +677,140 @@ export class CajaService {
       retiros:               Number(retiros?.total        ?? 0),
       gastosEfectivo:        gastosTotal,
     });
+  }
+
+  // ── Cuadre por forma de pago (ver cuadre-por-forma-pago.util.ts) ─────────
+
+  /**
+   * Esperado por forma de pago — efectivo (fórmula única, sin tocar),
+   * tarjeta, transferencia (incluye cheque/depósito, igual que ventas por
+   * DGII), y otros. Cobros y anticipos se desglosan por método igual que
+   * ventas, para que una tarjeta/transferencia cobrada por CxC o un
+   * anticipo también entre al cuadre de su forma.
+   */
+  private async calcularEsperadoPorForma(
+    cajaId: number, fecha: string, vendedorId: number | undefined, empresaId: number,
+    fresh: CierreCaja, manager?: EntityManager,
+  ): Promise<Record<string, number>> {
+    const db = manager ?? this.dataSource.manager;
+
+    const efectivo = calcularEfectivoEsperado({
+      saldoApertura:     fresh.saldoApertura,
+      ventasEfectivo:    fresh.ventasEfectivo,
+      cobrosEfectivo:    fresh.cobrosEfectivo,
+      anticiposEfectivo: fresh.anticiposEfectivo,
+      gastosEfectivo:    fresh.gastosEfectivo,
+      retiros:           fresh.retiros,
+    });
+
+    const [cobrosPorForma] = await db.query<{ tarjeta: string; transferencia: string }[]>(
+      `SELECT
+         COALESCE(SUM(r.monto) FILTER (WHERE r."metodoPago" = 'tarjeta'), 0)::text AS tarjeta,
+         COALESCE(SUM(r.monto) FILTER (WHERE r."metodoPago" IN ('transferencia','cheque','deposito')), 0)::text AS transferencia
+       FROM recibos_cobro r
+       WHERE DATE(r.fecha) = $1 AND r."isActive" = true AND r."cajaDiariaId" = $2`,
+      [fecha, cajaId],
+    ).catch(() => [{ tarjeta: '0', transferencia: '0' }]);
+
+    const [anticiposPorForma] = await db.query<{ tarjeta: string; transferencia: string }[]>(
+      `SELECT
+         COALESCE(SUM(a.monto) FILTER (WHERE LOWER(a."tipoPago") = 'tarjeta'), 0)::text AS tarjeta,
+         COALESCE(SUM(a.monto) FILTER (WHERE LOWER(a."tipoPago") IN ('transferencia','cheque','deposito')), 0)::text AS transferencia
+       FROM anticipo_cliente a
+       WHERE DATE(a."fechaRegistro") = $1 AND a."isActive" = true AND a.estado != 'anulado' AND a."cajaDiariaId" = $2`,
+      [fecha, cajaId],
+    ).catch(() => [{ tarjeta: '0', transferencia: '0' }]);
+
+    const tarjeta = Number(fresh.ventasTarjeta ?? 0)
+      + Number(cobrosPorForma?.tarjeta ?? 0)
+      + Number(anticiposPorForma?.tarjeta ?? 0);
+    const transferencia = Number(fresh.ventasTransferencia ?? 0)
+      + Number(cobrosPorForma?.transferencia ?? 0)
+      + Number(anticiposPorForma?.transferencia ?? 0);
+
+    // "otros" (depósito/otro de cobros y anticipos que no caen en tarjeta/transferencia)
+    const [otrosCobros] = await db.query<{ total: string }[]>(
+      `SELECT COALESCE(SUM(r.monto) FILTER (WHERE r."metodoPago" = 'otro'), 0)::text AS total
+       FROM recibos_cobro r WHERE DATE(r.fecha) = $1 AND r."isActive" = true AND r."cajaDiariaId" = $2`,
+      [fecha, cajaId],
+    ).catch(() => [{ total: '0' }]);
+    const [otrosAnticipos] = await db.query<{ total: string }[]>(
+      `SELECT COALESCE(SUM(a.monto) FILTER (WHERE LOWER(a."tipoPago") NOT IN ('efectivo','tarjeta','transferencia','cheque','deposito')), 0)::text AS total
+       FROM anticipo_cliente a WHERE DATE(a."fechaRegistro") = $1 AND a."isActive" = true AND a.estado != 'anulado' AND a."cajaDiariaId" = $2`,
+      [fecha, cajaId],
+    ).catch(() => [{ total: '0' }]);
+    const otros = Number(otrosCobros?.total ?? 0) + Number(otrosAnticipos?.total ?? 0) + Number(fresh.ventasCredito ?? 0);
+
+    return { efectivo, tarjeta, transferencia, otros };
+  }
+
+  /**
+   * Facturas CONTADO del turno sin forma de pago que cubra el total —
+   * mismo criterio que validarContadoTieneCobro() en facturas.service.ts.
+   * Fuera del cuadre a propósito: no hay con qué compararlas, se muestran
+   * aparte para que alguien las revise, nunca se cuentan como sobrante o
+   * faltante de ninguna forma.
+   */
+  private async getFacturasSinFormaPago(
+    fecha: string, vendedorId: number | undefined, empresaId: number, manager?: EntityManager,
+  ): Promise<{ id: number; folio: string; total: number; clienteNombre?: string }[]> {
+    const db = manager ?? this.dataSource.manager;
+    const vendedorFilter = vendedorId ? `AND f."vendedorId" = ${Number(vendedorId)}` : `AND f."vendedorId" IS NULL`;
+
+    return db.query(
+      `SELECT f.id, f.folio, f.total::numeric AS total, c.nombre AS "clienteNombre"
+       FROM facturas f
+       LEFT JOIN clientes c ON c.id = f."clienteId"
+       WHERE DATE(f.fecha) = $1
+         AND f."empresaId" = $2
+         AND f.estado IN ('emitida', 'pagada')
+         AND f."isActive" = true
+         AND f."facturaRecurrenteId" IS NULL
+         AND f."tipoPago" = 'CONTADO'
+         AND (
+           f."formasPago" IS NULL
+           OR f."formasPago" = 'null'::jsonb
+           OR jsonb_array_length(f."formasPago") = 0
+           OR (SELECT COALESCE(SUM((fp->>'monto')::numeric), 0) FROM jsonb_array_elements(f."formasPago") fp) < f.total - 0.01
+         )
+         ${vendedorFilter}
+       ORDER BY f.id`,
+      [fecha, empresaId],
+    );
+  }
+
+  /**
+   * Facturas del turno que podrían explicar una sospecha de forma mal
+   * registrada: pagos mixtos que incluyen AMBAS formas en juego (el caso
+   * exacto de FAC-1803: Tarjeta 955 + Efectivo 125 en vez de al revés), o
+   * una línea de la forma sobrante con monto cercano a la diferencia.
+   */
+  private async buscarFacturasCandidatasSospecha(
+    sospecha: { formaSobrante: string; formaFaltante: string; monto: number },
+    fecha: string, vendedorId: number | undefined, empresaId: number, manager?: EntityManager,
+  ): Promise<{ id: number; folio: string; total: number; formasPago: { tipo: number; monto: number }[] }[]> {
+    const db = manager ?? this.dataSource.manager;
+    const vendedorFilter = vendedorId ? `AND f."vendedorId" = ${Number(vendedorId)}` : `AND f."vendedorId" IS NULL`;
+    const tiposSobrante = TIPOS_DGII_POR_FORMA[sospecha.formaSobrante] ?? [];
+    const tiposFaltante = TIPOS_DGII_POR_FORMA[sospecha.formaFaltante] ?? [];
+    if (!tiposSobrante.length || !tiposFaltante.length) return [];
+
+    return db.query(
+      `SELECT f.id, f.folio, f.total::numeric AS total, f."formasPago"
+       FROM facturas f
+       WHERE DATE(f.fecha) = $1
+         AND f."empresaId" = $2
+         AND f."isActive" = true
+         AND f.estado IN ('emitida', 'pagada')
+         AND f."formasPago" IS NOT NULL
+         AND f."formasPago" != 'null'::jsonb
+         AND jsonb_array_length(f."formasPago") > 1
+         AND EXISTS (SELECT 1 FROM jsonb_array_elements(f."formasPago") fp WHERE (fp->>'tipo')::int = ANY($3))
+         AND EXISTS (SELECT 1 FROM jsonb_array_elements(f."formasPago") fp WHERE (fp->>'tipo')::int = ANY($4))
+         ${vendedorFilter}
+       ORDER BY f.id`,
+      [fecha, empresaId, tiposSobrante, tiposFaltante],
+    );
   }
 
   // ── Helpers: configuración ciego ─────────────────────────────────────────

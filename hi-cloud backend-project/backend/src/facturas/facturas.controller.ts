@@ -24,17 +24,18 @@ import { FacturasService } from './facturas.service';
 import { PDFService } from './services/pdf.service';
 import { FacturaEmailService } from './services/factura-email.service';
 import { TenantService } from '../tenant/tenant.service';
-import { CreateFacturaDto } from './dto/create-factura.dto';
+import { CreateFacturaDto, FormaPagoDto } from './dto/create-factura.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { RequiereSupervisor } from '../supervisor-politicas/guards/requiere-supervisor.guard';
+import { RequiereSupervisorSiempre } from '../supervisor-politicas/guards/requiere-supervisor-siempre.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
 import { User } from '../users/users.entity';
 import { FacturaEstado } from './entities/factura.entity';
-import { IsEnum, IsOptional, IsString, IsInt, IsBoolean, ValidateNested } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsInt, IsBoolean, IsNotEmpty, ArrayMinSize, MaxLength, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 class FacturasFilterDto extends PaginationDto {
@@ -102,6 +103,14 @@ class EmitirEcfIndividualDto {
    */
   @IsOptional() @IsBoolean()
   confirmaRncNoVigente?: boolean;
+}
+
+class CorregirFormaPagoDto {
+  @ValidateNested({ each: true }) @Type(() => FormaPagoDto) @ArrayMinSize(1)
+  formasPago: FormaPagoDto[];
+
+  @IsNotEmpty() @IsString() @MaxLength(300)
+  motivo: string;
 }
 
 class EmitirDesdePos {
@@ -219,6 +228,27 @@ export class FacturasController {
       id, dto.estado, false, undefined, undefined, undefined, true,
       req.headers['x-supervisor-token'] as string | undefined,
     );
+  }
+
+  /**
+   * Corrige CÓMO se cobró una factura ya emitida (el total no cambia) —
+   * ver "Cierre de caja por forma de pago". Solo ADMIN, y requiere la
+   * autorización de OTRO ADMIN/CONTADOR (RequiereSupervisorSiempre: a
+   * diferencia de RequiereSupervisor, aquí no hay bypass por rol — ni el
+   * propio ADMIN que corrige puede autorizarse a sí mismo).
+   */
+  @Patch(':id/forma-pago')
+  @Roles(UserRole.ADMIN)
+  @UseGuards(RequiereSupervisorSiempre('corregir_forma_pago_factura'))
+  @ApiOperation({ summary: 'Corregir la forma de pago de una factura emitida (no cambia el total; queda en auditoría)' })
+  corregirFormaPago(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CorregirFormaPagoDto,
+    @GetUser() usuario: User,
+  ) {
+    return this.facturasService.corregirFormaPago(id, dto.formasPago, dto.motivo, {
+      id: usuario.id, nombre: usuario.nombre,
+    });
   }
 
   /**
