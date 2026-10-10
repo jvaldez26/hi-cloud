@@ -150,44 +150,53 @@ describe('aplicarAjustesAlCuadre — cuadre corregido tras arreglar la forma de 
 // el neto cuadrado (caso real empresa 73: efectivo +829.94 / tarjeta -830.00,
 // neto -0.06) debe alertar igual, porque el umbral solo sobre el neto nunca
 // la habría detectado.
+// Regla de negocio (2026-10-10, segunda vuelta): solo el FALTANTE de
+// EFECTIVO alerta. Un sobrante de efectivo, o una diferencia de cualquier
+// otra forma de pago (con el efectivo cuadrado), nunca dispara esta alerta.
 describe('fueraDeUmbral', () => {
-  it('dentro del umbral: ninguna forma ni el neto lo superan', () => {
-    const filas = construirCuadrePorForma({ efectivo: 100 }, { efectivo: 150 });
-    expect(fueraDeUmbral(filas, 100)).toBe(false);
-  });
-
-  it('justo en el umbral (no lo supera, es igual): sigue dentro', () => {
-    const filas = construirCuadrePorForma({ efectivo: 100 }, { efectivo: 200 });
-    expect(fueraDeUmbral(filas, 100)).toBe(false);
-  });
-
-  it('una sola forma supera el umbral: fuera', () => {
-    const filas = construirCuadrePorForma({ efectivo: 100 }, { efectivo: 201 });
+  it('faltante de efectivo MAYOR al umbral: alerta', () => {
+    const filas = construirCuadrePorForma({ efectivo: 500 }, { efectivo: 350 }); // falta 150
     expect(fueraDeUmbral(filas, 100)).toBe(true);
   });
 
-  it('caso real empresa 73: efectivo +829.94 / tarjeta -830.00, neto -0.06 — el neto NUNCA lo habría detectado, el chequeo por forma sí', () => {
+  it('faltante de efectivo IGUAL al umbral: no alerta (no lo supera)', () => {
+    const filas = construirCuadrePorForma({ efectivo: 500 }, { efectivo: 400 }); // falta 100
+    expect(fueraDeUmbral(filas, 100)).toBe(false);
+  });
+
+  it('faltante de efectivo MENOR al umbral: no alerta', () => {
+    const filas = construirCuadrePorForma({ efectivo: 500 }, { efectivo: 450 }); // falta 50
+    expect(fueraDeUmbral(filas, 100)).toBe(false);
+  });
+
+  it('sobrante de efectivo: no alerta, sin importar cuán grande sea', () => {
+    const filas = construirCuadrePorForma({ efectivo: 500 }, { efectivo: 10000 }); // sobran 9500
+    expect(fueraDeUmbral(filas, 100)).toBe(false);
+  });
+
+  it('faltante de TARJETA con el efectivo cuadrado: no alerta — solo importa el efectivo', () => {
+    const filas = construirCuadrePorForma(
+      { efectivo: 500, tarjeta: 300 },
+      { efectivo: 500, tarjeta: 0 }, // falta toda la tarjeta
+    );
+    expect(fueraDeUmbral(filas, 100)).toBe(false);
+  });
+
+  it('caso real empresa 73: efectivo SOBRANTE +829.94 (tarjeta faltante aparte) — ya no alerta bajo la nueva regla', () => {
     const filas = construirCuadrePorForma(
       { efectivo: 5608.06, tarjeta: 2605.00 },
       { efectivo: 6438.00, tarjeta: 1775.00 },
     );
-    expect(Math.abs(netoCuadre(filas))).toBeLessThan(1); // el neto por sí solo jamás pasaría un umbral de 100
-    expect(fueraDeUmbral(filas, 100)).toBe(true);
+    expect(fueraDeUmbral(filas, 100)).toBe(false);
   });
 
-  it('fuera por el NETO aunque ninguna forma individual supere el umbral', () => {
-    // 3 formas con +40 cada una: ninguna pasa 100 sola, pero el neto (120) sí.
-    const filas = construirCuadrePorForma(
-      { efectivo: 100, tarjeta: 100, transferencia: 100 },
-      { efectivo: 140, tarjeta: 140, transferencia: 140 },
-    );
-    expect(filas.every(f => Math.abs(f.diferencia) <= 100)).toBe(true);
-    expect(Math.abs(netoCuadre(filas))).toBe(120);
-    expect(fueraDeUmbral(filas, 100)).toBe(true);
+  it('sin fila de efectivo en el cuadre: no alerta (nada que evaluar)', () => {
+    const filas = construirCuadrePorForma({ tarjeta: 300 }, { tarjeta: 0 });
+    expect(fueraDeUmbral(filas, 100)).toBe(false);
   });
 
-  it('umbral 0: cualquier diferencia alerta', () => {
-    const filas = construirCuadrePorForma({ efectivo: 100 }, { efectivo: 100.01 });
+  it('umbral 0: cualquier faltante de efectivo alerta', () => {
+    const filas = construirCuadrePorForma({ efectivo: 100.01 }, { efectivo: 100 });
     expect(fueraDeUmbral(filas, 0)).toBe(true);
   });
 

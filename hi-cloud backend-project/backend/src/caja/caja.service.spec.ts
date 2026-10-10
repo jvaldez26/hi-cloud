@@ -284,12 +284,12 @@ describe('CajaService.cerrarCaja — cuadre por forma de pago (caso real empresa
   });
 });
 
-// Requisito explícito (2026-10-10): el umbral de alerta por descuadre se
-// evalúa por CADA forma de pago Y por el neto, SIEMPRE al cerrar (no solo
-// con el cierre ciego activo) — antes solo miraba el efectivo y exigía
-// cierreCajaCiego, así que un faltante de tarjeta con el efectivo cuadrado
-// nunca se detectaba. Al quedar fuera de umbral, el cierre se guarda IGUAL
-// (nunca bloquea) y se notifica de inmediato a ADMIN/CONTADOR.
+// Requisito de negocio (2026-10-10, segunda vuelta): la alerta por
+// descuadre SOLO mira el FALTANTE de EFECTIVO (esperado > contado) — un
+// sobrante de efectivo, o una diferencia de tarjeta/transferencia/otros/el
+// neto, nunca la disparan por sí solos. Se evalúa SIEMPRE al cerrar (no
+// solo con el cierre ciego activo). Al quedar fuera de umbral, el cierre se
+// guarda IGUAL (nunca bloquea) y se notifica de inmediato a ADMIN/CONTADOR.
 describe('CajaService.cerrarCaja — umbral de alerta por descuadre', () => {
   function mockQueryConUmbral(d: ReturnType<typeof buildDeps>, umbral?: number) {
     d.dataSource.manager.query.mockImplementation((sql: string) => {
@@ -305,42 +305,51 @@ describe('CajaService.cerrarCaja — umbral de alerta por descuadre', () => {
     });
   }
 
-  it('dentro del umbral (default 100): fueraDeUmbral=false, no notifica', async () => {
+  it('faltante de efectivo DENTRO del umbral (default 100): fueraDeUmbral=false, no notifica', async () => {
     const d = buildDeps();
     mockQueryConUmbral(d);
     d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, userId: 1, ventasEfectivo: 500 }));
     const service = buildService(d);
 
-    await service.cerrarCaja(1, 550, undefined, undefined, undefined, { id: 1 }); // diferencia +50, dentro de 100
+    await service.cerrarCaja(1, 450, undefined, undefined, undefined, { id: 1 }); // faltan 50, dentro de 100
 
     const [, cambios] = d.repo.update.mock.calls[0];
     expect(cambios.fueraDeUmbral).toBe(false);
     expect(d.notificacionesSvc.notificarDescuadreCierre).not.toHaveBeenCalled();
   });
 
-  it('fuera de umbral por EFECTIVO: fueraDeUmbral=true, notifica', async () => {
+  it('faltante de efectivo FUERA del umbral: fueraDeUmbral=true, notifica', async () => {
     const d = buildDeps();
     mockQueryConUmbral(d);
     d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, userId: 1, vendedorNombre: 'Maximo', ventasEfectivo: 500 }));
     const service = buildService(d);
 
-    await service.cerrarCaja(1, 750, undefined, undefined, undefined, { id: 1 }); // diferencia +250, > 100
+    await service.cerrarCaja(1, 200, undefined, undefined, undefined, { id: 1 }); // faltan 300, > 100
 
     const [, cambios] = d.repo.update.mock.calls[0];
     expect(cambios.fueraDeUmbral).toBe(true);
     expect(d.notificacionesSvc.notificarDescuadreCierre).toHaveBeenCalledTimes(1);
     const [, detalle] = d.notificacionesSvc.notificarDescuadreCierre.mock.calls[0];
     expect(detalle.cajero).toBe('Maximo');
-    expect(detalle.neto).toBe(250);
+    expect(detalle.neto).toBe(-300);
   });
 
-  it('fuera de umbral por TARJETA con el NETO cuadrado: el chequeo por forma lo detecta igual', async () => {
+  it('SOBRANTE de efectivo: no alerta sin importar cuán grande sea', async () => {
     const d = buildDeps();
     mockQueryConUmbral(d);
-    // efectivo cuadra exacto; tarjeta declarada 300 de menos — el neto total
-    // también da -300 (no hay nada más), así que aquí el neto SÍ lo
-    // detectaría — el punto de este test es que el chequeo POR FORMA ya
-    // detecta el problema real (tarjeta) sin depender de que el neto cuadre.
+    d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, userId: 1, ventasEfectivo: 500 }));
+    const service = buildService(d);
+
+    await service.cerrarCaja(1, 5000, undefined, undefined, undefined, { id: 1 }); // sobran 4500
+
+    const [, cambios] = d.repo.update.mock.calls[0];
+    expect(cambios.fueraDeUmbral).toBe(false);
+    expect(d.notificacionesSvc.notificarDescuadreCierre).not.toHaveBeenCalled();
+  });
+
+  it('faltante de TARJETA con el efectivo cuadrado: no alerta — la regla solo mira el efectivo', async () => {
+    const d = buildDeps();
+    mockQueryConUmbral(d);
     d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, userId: 1, ventasEfectivo: 500, ventasTarjeta: 300 }));
     const service = buildService(d);
 
@@ -354,10 +363,11 @@ describe('CajaService.cerrarCaja — umbral de alerta por descuadre', () => {
     const porForma = Object.fromEntries(cambios.cuadrePorFormaPago.map((f: any) => [f.forma, f]));
     expect(porForma.efectivo.diferencia).toBe(0);
     expect(porForma.tarjeta.diferencia).toBe(-300);
-    expect(cambios.fueraDeUmbral).toBe(true);
+    expect(cambios.fueraDeUmbral).toBe(false);
+    expect(d.notificacionesSvc.notificarDescuadreCierre).not.toHaveBeenCalled();
   });
 
-  it('caso real empresa 73 (umbral 100): efectivo +829.94 / tarjeta -830.00, neto -0.06 — fuera de umbral por las FORMAS, no por el neto', async () => {
+  it('caso real empresa 73 (umbral 100): efectivo SOBRANTE +829.94 / tarjeta -830.00 — ya no alerta bajo la nueva regla (solo importa el faltante de efectivo)', async () => {
     const d = buildDeps();
     mockQueryConUmbral(d, 100);
     d.repo.findOne.mockResolvedValue(cajaAbierta({
@@ -373,28 +383,20 @@ describe('CajaService.cerrarCaja — umbral de alerta por descuadre', () => {
     await service.cerrarCaja(1, 6438.00, undefined, undefined, undefined, { id: 1 }, undefined, declaradoPorForma);
 
     const [, cambios] = d.repo.update.mock.calls[0];
-    // El neto (-0.06) por sí solo NUNCA habría disparado un umbral de 100 —
-    // es el chequeo por forma el que detecta el +829.94/-830.00 real.
-    const neto = cambios.cuadrePorFormaPago.reduce((s: number, f: any) => s + f.diferencia, 0);
-    expect(Number(neto.toFixed(2))).toBe(-0.06);
-    expect(cambios.fueraDeUmbral).toBe(true);
-
-    expect(d.notificacionesSvc.notificarDescuadreCierre).toHaveBeenCalledTimes(1);
-    const [empresaNotificada, detalle] = d.notificacionesSvc.notificarDescuadreCierre.mock.calls[0];
-    expect(empresaNotificada).toBe(EMPRESA);
-    expect(detalle.cajero).toBe('Bellamar González');
-    const filaPorForma = Object.fromEntries(detalle.filas.map((f: any) => [f.forma, f]));
+    const filaPorForma = Object.fromEntries(cambios.cuadrePorFormaPago.map((f: any) => [f.forma, f]));
     expect(filaPorForma.efectivo.diferencia).toBe(829.94);
     expect(filaPorForma.tarjeta.diferencia).toBe(-830.00);
+    expect(cambios.fueraDeUmbral).toBe(false);
+    expect(d.notificacionesSvc.notificarDescuadreCierre).not.toHaveBeenCalled();
   });
 
-  it('umbral configurado distinto al default (500): una diferencia de 250 no alerta', async () => {
+  it('umbral configurado distinto al default (500): un faltante de efectivo de 250 no alerta', async () => {
     const d = buildDeps();
     mockQueryConUmbral(d, 500);
     d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, userId: 1, ventasEfectivo: 500 }));
     const service = buildService(d);
 
-    await service.cerrarCaja(1, 750, undefined, undefined, undefined, { id: 1 }); // diferencia +250, < 500
+    await service.cerrarCaja(1, 250, undefined, undefined, undefined, { id: 1 }); // faltan 250, < 500
 
     const [, cambios] = d.repo.update.mock.calls[0];
     expect(cambios.fueraDeUmbral).toBe(false);
@@ -409,9 +411,32 @@ describe('CajaService.cerrarCaja — umbral de alerta por descuadre', () => {
     const service = buildService(d);
 
     await expect(
-      service.cerrarCaja(1, 750, undefined, undefined, undefined, { id: 1 }),
+      service.cerrarCaja(1, 200, undefined, undefined, undefined, { id: 1 }), // faltan 300, > 100
     ).resolves.toBeDefined();
     expect(d.repo.update).toHaveBeenCalled();
+  });
+
+  it('notificarDescuadreCaja=false en configuración: queda fueraDeUmbral=true pero NO notifica', async () => {
+    const d = buildDeps();
+    d.dataSource.manager.query.mockImplementation((sql: string) => {
+      if (sql.includes('recibos_cobro') && sql.includes('tarjeta')) return Promise.resolve([{ tarjeta: '0', transferencia: '0' }]);
+      if (sql.includes('anticipo_cliente') && sql.includes('tarjeta')) return Promise.resolve([{ tarjeta: '0', transferencia: '0' }]);
+      if (sql.includes('recibos_cobro') || sql.includes('anticipo_cliente')) return Promise.resolve([{ total: '0' }]);
+      if (sql.includes('jsonb_array_length') && sql.includes('> 1')) return Promise.resolve([]);
+      if (sql.includes('FROM facturas f')) return Promise.resolve([]);
+      if (sql.includes('configuracion FROM empresa')) {
+        return Promise.resolve([{ configuracion: { notificarDescuadreCaja: false } }]);
+      }
+      return Promise.resolve([{}]);
+    });
+    d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, userId: 1, ventasEfectivo: 500 }));
+    const service = buildService(d);
+
+    await service.cerrarCaja(1, 200, undefined, undefined, undefined, { id: 1 }); // faltan 300, > 100
+
+    const [, cambios] = d.repo.update.mock.calls[0];
+    expect(cambios.fueraDeUmbral).toBe(true);
+    expect(d.notificacionesSvc.notificarDescuadreCierre).not.toHaveBeenCalled();
   });
 });
 
@@ -1144,7 +1169,7 @@ describe('CajaService.cerrarCaja — política "cierre_caja_descuadre" (supervis
     const service = buildService(d);
 
     await expect(
-      service.cerrarCaja(1, 750, undefined, undefined, undefined, { id: CAJERO_ID }),
+      service.cerrarCaja(1, 250, undefined, undefined, undefined, { id: CAJERO_ID }),
     ).resolves.toBeDefined();
 
     const [, cambios] = d.repo.update.mock.calls[0];
@@ -1175,12 +1200,12 @@ describe('CajaService.cerrarCaja — política "cierre_caja_descuadre" (supervis
     const service = buildService(d);
 
     await expect(
-      service.cerrarCaja(1, 750, undefined, undefined, undefined, { id: CAJERO_ID }),
+      service.cerrarCaja(1, 250, undefined, undefined, undefined, { id: CAJERO_ID }),
     ).rejects.toThrow(ForbiddenException);
     expect(d.repo.update).not.toHaveBeenCalled();
 
     try {
-      await service.cerrarCaja(1, 750, undefined, undefined, undefined, { id: CAJERO_ID });
+      await service.cerrarCaja(1, 250, undefined, undefined, undefined, { id: CAJERO_ID });
       throw new Error('no debia llegar aqui');
     } catch (e: any) {
       const body = e.getResponse() as any;
@@ -1199,7 +1224,7 @@ describe('CajaService.cerrarCaja — política "cierre_caja_descuadre" (supervis
     const service = buildService(d);
 
     try {
-      await service.cerrarCaja(1, 750, undefined, undefined, undefined, { id: CAJERO_ID }, undefined, undefined, 'tok-abc');
+      await service.cerrarCaja(1, 250, undefined, undefined, undefined, { id: CAJERO_ID }, undefined, undefined, 'tok-abc');
       throw new Error('debia lanzar HttpException 428');
     } catch (e: any) {
       expect(e).toBeInstanceOf(HttpException);
@@ -1209,7 +1234,7 @@ describe('CajaService.cerrarCaja — política "cierre_caja_descuadre" (supervis
       expect(body.supervisorToken).toBe('tok-abc');
       expect(Array.isArray(body.cuadrePorFormaPago)).toBe(true);
       const efectivo = body.cuadrePorFormaPago.find((f: any) => f.forma === 'efectivo');
-      expect(efectivo.diferencia).toBe(250);
+      expect(efectivo.diferencia).toBe(-250);
     }
     expect(d.repo.update).not.toHaveBeenCalled(); // el token NO se consume todavia
   });
@@ -1223,7 +1248,7 @@ describe('CajaService.cerrarCaja — política "cierre_caja_descuadre" (supervis
     const service = buildService(d);
 
     await service.cerrarCaja(
-      1, 750, undefined, undefined, undefined, { id: CAJERO_ID }, undefined, undefined,
+      1, 250, undefined, undefined, undefined, { id: CAJERO_ID }, undefined, undefined,
       'tok-abc', 'Verificado con el cajero, el faltante es real',
     );
 
@@ -1245,12 +1270,12 @@ describe('CajaService.cerrarCaja — política "cierre_caja_descuadre" (supervis
     const service = buildService(d);
 
     await expect(
-      service.cerrarCaja(1, 750, undefined, undefined, undefined, { id: CAJERO_ID }, undefined, undefined, 'tok-self'),
+      service.cerrarCaja(1, 250, undefined, undefined, undefined, { id: CAJERO_ID }, undefined, undefined, 'tok-self'),
     ).rejects.toThrow(ForbiddenException);
     expect(d.repo.update).not.toHaveBeenCalled();
 
     try {
-      await service.cerrarCaja(1, 750, undefined, undefined, undefined, { id: CAJERO_ID }, undefined, undefined, 'tok-self');
+      await service.cerrarCaja(1, 250, undefined, undefined, undefined, { id: CAJERO_ID }, undefined, undefined, 'tok-self');
       throw new Error('no debia llegar aqui');
     } catch (e: any) {
       expect(e.getResponse().message).toBe('Quien autoriza no puede ser la misma cajera.');
@@ -1265,7 +1290,7 @@ describe('CajaService.cerrarCaja — política "cierre_caja_descuadre" (supervis
 
     await expect(
       service.cerrarCaja(
-        1, 750, undefined, undefined, undefined, { id: CAJERO_ID }, undefined, undefined,
+        1, 250, undefined, undefined, undefined, { id: CAJERO_ID }, undefined, undefined,
         'tok-self', 'Yo mismo lo autorizo',
       ),
     ).rejects.toThrow(ForbiddenException);
@@ -1279,7 +1304,7 @@ describe('CajaService.cerrarCaja — política "cierre_caja_descuadre" (supervis
     const service = buildService(d);
 
     await expect(
-      service.cerrarCaja(1, 750, undefined, undefined, undefined, { id: CAJERO_ID }, undefined, undefined, 'tok-invalido'),
+      service.cerrarCaja(1, 250, undefined, undefined, undefined, { id: CAJERO_ID }, undefined, undefined, 'tok-invalido'),
     ).rejects.toThrow(ForbiddenException);
     expect(d.repo.update).not.toHaveBeenCalled();
   });

@@ -89,19 +89,26 @@ export function netoCuadre(filas: FilaCuadre[]): number {
 }
 
 /**
- * ¿Este cierre está fuera del umbral de alerta por descuadre? Decisión
- * explícita (2026-10-10, tras el caso real de la empresa 73): se evalúa por
- * CADA forma de pago Y por el neto — una forma mal registrada con el neto
- * cuadrado (efectivo +829.94 / tarjeta -830.00, neto -0.06) igual debe
- * alertar, porque el umbral solo sobre el neto nunca la habría detectado.
+ * ¿Este cierre está fuera del umbral de alerta por descuadre? Decisión de
+ * negocio explícita (2026-10-10, segunda vuelta, tras el caso de la empresa
+ * 73): solo importa el EFECTIVO, y solo el FALTANTE (esperado > contado) —
+ * un sobrante de efectivo nunca alerta, y las diferencias de tarjeta,
+ * transferencia, otros o el neto tampoco disparan esta alerta por sí solas
+ * (el primer diseño evaluaba cada forma y el neto; el negocio decidió que
+ * eso generaba demasiado ruido y que lo único que importa vigilar de cerca
+ * es que no falte dinero en el cajón). El cuadre por forma de pago y el
+ * aviso de "posible forma mal registrada" (detectarPosibleFormaMalRegistrada)
+ * siguen calculándose y mostrándose igual — esto solo decide si se notifica.
  *
  * Medio centavo de tolerancia — mismo criterio que estadoDiferencia() en el
  * frontend: por debajo de eso no hay diferencia que alguien pueda contar.
  */
 export function fueraDeUmbral(filas: FilaCuadre[], umbral: number): boolean {
   const u = Math.max(0, Number(umbral) || 0) + 0.005;
-  if (filas.some(f => Math.abs(f.diferencia) > u)) return true;
-  return Math.abs(netoCuadre(filas)) > u;
+  const efectivo = filas.find(f => f.forma === 'efectivo');
+  if (!efectivo) return false;
+  const faltante = -efectivo.diferencia; // > 0 cuando esperado > contado (falta dinero)
+  return faltante > u;
 }
 
 /** Inverso de TIPOS_DGII_POR_FORMA — tipo DGII → la forma del cuadre a la que pertenece. */

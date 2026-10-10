@@ -398,13 +398,15 @@ export class CajaService {
       facturasCandidatas: await this.buscarFacturasCandidatasSospecha(s, fechaStr, caja.vendedorId, empresaId),
     })));
 
-    // Umbral de alerta por descuadre — decisión explícita 2026-10-10: se
-    // evalúa por CADA forma de pago Y por el neto, SIEMPRE al cerrar (el
-    // cierre ciego decide qué ve la cajera, no si el sistema vigila el
-    // descuadre — antes este chequeo solo corría con cierreCajaCiego activo
-    // y solo miraba el efectivo, así que un faltante de tarjeta con el
-    // efectivo cuadrado nunca se detectaba). Ver fueraDeUmbral().
-    const { umbralDescuadreCaja } = await this.getEmpresaCfg(empresaId);
+    // Umbral de alerta por descuadre — decisión de negocio 2026-10-10
+    // (segunda vuelta): solo el FALTANTE de EFECTIVO alerta (esperado >
+    // contado); un sobrante de efectivo, o una diferencia de tarjeta/
+    // transferencia/otros/el neto, no disparan esta alerta por sí solos. Se
+    // evalúa SIEMPRE al cerrar, sin depender de cierreCajaCiego. El cuadre
+    // por forma de pago completo y el aviso de "posible forma mal
+    // registrada" siguen calculándose y mostrándose igual — esto solo
+    // decide si se notifica/guarda como descuadre. Ver fueraDeUmbral().
+    const { umbralDescuadreCaja, notificarDescuadreCaja } = await this.getEmpresaCfg(empresaId);
     const descuadre = fueraDeUmbral(cuadrePorFormaPago, umbralDescuadreCaja);
 
     // Política "Cierre de caja con descuadre" (desactivada por defecto,
@@ -498,14 +500,17 @@ export class CajaService {
       // Nunca bloquea el cierre — si la notificación falla (SMTP caído,
       // etc.) la caja ya está cerrada y guardada; solo se pierde el aviso.
       // Se notifica igual aunque ya haya autorización previa del supervisor
-      // (requisito explícito: "se sigue notificando a ADMIN y CONTADOR").
-      this.notificacionesService.notificarDescuadreCierre(empresaId, {
-        cajero: caja.vendedorNombre ?? 'Administrador',
-        caja: `Caja #${id}`,
-        fecha: fechaStr,
-        filas: cuadrePorFormaPago,
-        neto: Number(diferencia.toFixed(2)),
-      }).catch((e: Error) => this.logger.error(`Error notificando descuadre caja #${id}: ${e.message}`));
+      // (requisito explícito: "se sigue notificando a ADMIN y CONTADOR"),
+      // salvo que la empresa haya apagado el aviso en Configuración.
+      if (notificarDescuadreCaja) {
+        this.notificacionesService.notificarDescuadreCierre(empresaId, {
+          cajero: caja.vendedorNombre ?? 'Administrador',
+          caja: `Caja #${id}`,
+          fecha: fechaStr,
+          filas: cuadrePorFormaPago,
+          neto: Number(diferencia.toFixed(2)),
+        }).catch((e: Error) => this.logger.error(`Error notificando descuadre caja #${id}: ${e.message}`));
+      }
     }
 
     // Caja ya cerrada — siempre retornar datos completos para que la impresión sea íntegra
@@ -1051,6 +1056,7 @@ export class CajaService {
   private async getEmpresaCfg(empresaId: number, manager?: EntityManager): Promise<{
     cierreCajaCiego: boolean;
     umbralDescuadreCaja: number;
+    notificarDescuadreCaja: boolean;
     montoMaxRetiroSinAutorizacion: number;
   }> {
     // Acepta un EntityManager para poder correr DENTRO de la transacción de
@@ -1068,6 +1074,10 @@ export class CajaService {
     return {
       cierreCajaCiego:               cfg.cierreCajaCiego === true,
       umbralDescuadreCaja:           Number(cfg.umbralDescuadreCaja ?? 100),
+      // Configurable (2026-10-11) — default true: una empresa que nunca
+      // tocó este switch sigue recibiendo el aviso, igual que antes de que
+      // existiera la opción de apagarlo.
+      notificarDescuadreCaja:        cfg.notificarDescuadreCaja !== false,
       /** 0 = sin restricción (cualquier monto es válido sin autorización) */
       montoMaxRetiroSinAutorizacion: Number(cfg.montoMaxRetiroSinAutorizacion ?? 0),
     };

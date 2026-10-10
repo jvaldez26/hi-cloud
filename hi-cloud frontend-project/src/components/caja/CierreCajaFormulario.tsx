@@ -342,40 +342,45 @@ export function CierreCajaFormulario({
         onOk={confirmarDescuadre}
         maskClosable={false}
         destroyOnHidden
-        width={440}
+        width="min(440px, 95vw)"
       >
         <p style={{ fontSize: 13, color: '#64748B', marginBottom: 12 }}>
           Este cierre quedó fuera del umbral configurado. Revisa las diferencias por forma de pago antes de autorizar.
         </p>
-        <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 14, fontSize: 12 }}>
-          <thead>
-            <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
-              <th style={{ textAlign: 'left', padding: '4px 6px' }}>Forma</th>
-              <th style={{ textAlign: 'right', padding: '4px 6px' }}>Esperado</th>
-              <th style={{ textAlign: 'right', padding: '4px 6px' }}>Declarado</th>
-              <th style={{ textAlign: 'right', padding: '4px 6px' }}>Diferencia</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(descuadrePendiente?.cuadrePorFormaPago ?? []).map(f => (
-              <tr key={f.forma} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                <td style={{ padding: '4px 6px' }}>{LABEL_FORMA_TABLA[f.forma] ?? f.forma}</td>
-                <td style={{ padding: '4px 6px', textAlign: 'right' }}>{fmt.money(f.esperado)}</td>
-                <td style={{ padding: '4px 6px', textAlign: 'right' }}>{fmt.money(f.declarado)}</td>
-                <td style={{ padding: '4px 6px', textAlign: 'right', fontWeight: 700, color: Math.abs(f.diferencia) > 0.01 ? '#dc2626' : 'inherit' }}>
-                  {f.diferencia > 0 ? '+' : ''}{fmt.money(f.diferencia)}
+        {/* overflowX:auto — en móvil, 4 columnas de dinero con cabeceras como
+            "Diferencia" no siempre caben en el ancho disponible; que la
+            tabla se desplace de lado nunca es peor que un monto cortado. */}
+        <div style={{ overflowX: 'auto', marginBottom: 14 }}>
+          <table style={{ width: '100%', minWidth: 360, borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
+                <th style={{ textAlign: 'left', padding: '4px 6px', whiteSpace: 'nowrap' }}>Forma</th>
+                <th style={{ textAlign: 'right', padding: '4px 6px', whiteSpace: 'nowrap' }}>Esperado</th>
+                <th style={{ textAlign: 'right', padding: '4px 6px', whiteSpace: 'nowrap' }}>Declarado</th>
+                <th style={{ textAlign: 'right', padding: '4px 6px', whiteSpace: 'nowrap' }}>Diferencia</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(descuadrePendiente?.cuadrePorFormaPago ?? []).map(f => (
+                <tr key={f.forma} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <td style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>{LABEL_FORMA_TABLA[f.forma] ?? f.forma}</td>
+                  <td style={{ padding: '4px 6px', textAlign: 'right', whiteSpace: 'nowrap' }}>{fmt.money(f.esperado)}</td>
+                  <td style={{ padding: '4px 6px', textAlign: 'right', whiteSpace: 'nowrap' }}>{fmt.money(f.declarado)}</td>
+                  <td style={{ padding: '4px 6px', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 700, color: Math.abs(f.diferencia) > 0.01 ? '#dc2626' : 'inherit' }}>
+                    {f.diferencia > 0 ? '+' : ''}{fmt.money(f.diferencia)}
+                  </td>
+                </tr>
+              ))}
+              <tr>
+                <td style={{ padding: '6px', fontWeight: 700, whiteSpace: 'nowrap' }}>Neto</td>
+                <td colSpan={2} />
+                <td style={{ padding: '6px', textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                  {(descuadrePendiente?.neto ?? 0) > 0 ? '+' : ''}{fmt.money(descuadrePendiente?.neto ?? 0)}
                 </td>
               </tr>
-            ))}
-            <tr>
-              <td style={{ padding: '6px', fontWeight: 700 }}>Neto</td>
-              <td colSpan={2} />
-              <td style={{ padding: '6px', textAlign: 'right', fontWeight: 700 }}>
-                {(descuadrePendiente?.neto ?? 0) > 0 ? '+' : ''}{fmt.money(descuadrePendiente?.neto ?? 0)}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+            </tbody>
+          </table>
+        </div>
         <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Motivo de la autorización (obligatorio)</div>
         <textarea value={motivoDescuadre} onChange={e => setMotivoDescuadre(e.target.value)}
           placeholder="Ej: Verificado con el cajero, el faltante de tarjeta es real por un error del datáfono..."

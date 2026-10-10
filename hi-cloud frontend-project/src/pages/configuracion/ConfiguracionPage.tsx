@@ -1363,6 +1363,7 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
       posPrecioConsultaClinica:    conf.posPrecioConsultaClinica ?? 0,
       cierreCajaCiego:             conf.cierreCajaCiego ?? false,
       umbralDescuadreCaja:         conf.umbralDescuadreCaja ?? 100,
+      notificarDescuadreCaja:      conf.notificarDescuadreCaja ?? true,
       posFormatoTicket:            conf.posFormatoTicket ?? 'normal',
       // El valor GUARDADO, tal cual. Redondearlo aquí a la opción más cercana
       // parecía cortés y era una trampa: el admin entraba a activar el formato
@@ -1777,9 +1778,20 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
               />
             </Form.Item>
             <Text type="secondary" style={{ fontSize: 11 }}>
-              Se evalúa SIEMPRE al cerrar (con o sin cierre ciego), por cada forma de pago y por el neto. Fuera del umbral, el cierre se guarda igual y se avisa de inmediato a ADMIN/CONTADOR.
+              Se evalúa al cerrar el faltante de efectivo. Si falta más de este monto, el cierre se guarda igual y se avisa de inmediato a ADMIN/CONTADOR.
             </Text>
           </div>
+        </Col>
+        <Col xs={24}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Form.Item name="notificarDescuadreCaja" valuePropName="checked" style={{ marginBottom: 0 }}>
+              <Switch size="small" />
+            </Form.Item>
+            <Text style={{ fontSize: 13 }}>Notificar descuadre a ADMIN/CONTADOR</Text>
+          </div>
+          <Text type="secondary" style={{ fontSize: 11, marginLeft: 36 }}>
+            Avisa por campanita y correo cuando un cierre queda fuera del umbral. El cierre siempre queda marcado "Descuadre" en el historial, aunque este aviso esté apagado.
+          </Text>
         </Col>
       </Row>
 
