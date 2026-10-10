@@ -17,6 +17,7 @@ import { ProductosPrestamoService } from './productos-prestamo/productos-prestam
 import { SolicitudesService } from './solicitudes/solicitudes.service';
 import { PrestamosService } from './prestamos/prestamos.service';
 import { PagosService } from './pagos/pagos.service';
+import { SimulacionesService } from './simulaciones/simulaciones.service';
 
 interface Fila { id: number; [key: string]: any }
 
@@ -25,6 +26,7 @@ class BaseEnMemoria {
     pr_productos_prestamo: [], pr_solicitudes: [], pr_prestamos: [], pr_cuotas: [],
     pr_deudores: [{ id: 1, empresaId: 1, nombre: 'Deudor Test', totalPrestado: 0, prestamosActivos: 0, totalPagado: 0 }],
     pr_pagos: [],
+    pr_simulaciones: [],
   };
   private secuencia = 0;
 
@@ -78,8 +80,32 @@ class BaseEnMemoria {
       fila.cuotasAfectadas = fila.cuotasAfectadas ? JSON.parse(fila.cuotasAfectadas) : [];
       return [fila];
     }
+    if (sql.includes('INSERT INTO pr_simulaciones')) {
+      const cols = this.columnasDeInsert(sql);
+      const fila = this.insertarDesdeInsert('pr_simulaciones', sql, params, cols);
+      fila.parametros = fila.parametros ? JSON.parse(fila.parametros) : null;
+      fila.resultado = fila.resultado ? JSON.parse(fila.resultado) : null;
+      return [fila];
+    }
 
     // SELECTs puntuales
+    if (sql.includes('FROM pr_simulaciones') && sql.includes("resultado->>'cuotaFija'")) {
+      // listar(): liviano, filtra por empresaId (y deudorId si viene)
+      const [empresaId, deudorId] = params;
+      return this.tablas.pr_simulaciones
+        .filter(s => s.empresaId === empresaId && (deudorId == null || s.deudorId === deudorId))
+        .map(s => ({ id: s.id, nombre: s.nombre, deudorId: s.deudorId, nombreProspecto: s.nombreProspecto, createdAt: s.createdAt }));
+    }
+    if (sql.includes('SELECT * FROM pr_simulaciones WHERE id=$1')) {
+      const [id, empresaId] = params;
+      const fila = this.tablas.pr_simulaciones.find(s => s.id === id && s.empresaId === empresaId);
+      return fila ? [fila] : [];
+    }
+    if (sql.includes('DELETE FROM pr_simulaciones')) {
+      const [id, empresaId] = params;
+      this.tablas.pr_simulaciones = this.tablas.pr_simulaciones.filter(s => !(s.id === id && s.empresaId === empresaId));
+      return [];
+    }
     if (sql.includes('SELECT 1 FROM pr_deudores')) {
       const [id, empresaId] = params;
       return this.tablas.pr_deudores.some(d => d.id === id && d.empresaId === empresaId) ? [{ x: 1 }] : [];
@@ -209,6 +235,7 @@ function construirServicios(db: BaseEnMemoria) {
     solicitudes: new SolicitudesService(dsLike as any, tenantSvc as any),
     prestamos: new PrestamosService(dsLike as any, asientosMock as any, tenantSvc as any, feriadosSvc as any),
     pagos: new PagosService(dsLike as any, asientosMock as any, emitirEcf as any, tenantSvc as any, feriadosSvc as any),
+    simulaciones: new SimulacionesService(dsLike as any, tenantSvc as any, feriadosSvc as any),
   };
 }
 
@@ -403,5 +430,61 @@ describe('Registrar Pago (precursor de Etapa 2) — tipos de pago contra servici
       .sort((a: any, b: any) => a.numeroCuota - b.numeroCuota);
     expect(pendientes).toHaveLength(3); // mismo plazo restante — reducir_cuota es el default
     expect(Number(pendientes[0].cuotaTotal)).toBeLessThan(Number(cuotaOriginalRestante));
+  });
+});
+
+describe('Etapa 1 — Simulador avanzado: guardar, recuperar, duplicar, convertir en solicitud', () => {
+  const PARAMETROS = {
+    montoPrincipal: 80000, fechaDesembolso: '2026-10-01', fechaPrimerPago: '2026-11-01', plazoPeriodos: 6,
+    frecuencia: 'mensual', tasa: { valor: 0.03, periodoExpresado: 'mensual', tipo: 'nominal', baseDias: 360 }, metodo: 'frances',
+  };
+
+  it('guarda, recupera, duplica y convierte en solicitud — con deudor real', async () => {
+    const db = new BaseEnMemoria();
+    const { simulaciones, solicitudes } = construirServicios(db);
+
+    const guardada = await simulaciones.crear(EMPRESA, { deudorId: DEUDOR, nombre: 'Primer escenario', parametros: PARAMETROS });
+    expect(guardada.resultado.cuotaFija).toBeGreaterThan(0);
+    expect(db.tablas.pr_simulaciones).toHaveLength(1);
+
+    const recuperada = await simulaciones.obtener(EMPRESA, guardada.id);
+    expect(recuperada.parametros.montoPrincipal).toBe(80000);
+    expect(recuperada.resultado.tabla.length).toBe(6);
+
+    // Duplicar: tomar los mismos parametros y guardar OTRA simulación — no hay endpoint propio, es un crear() más.
+    const duplicada = await simulaciones.crear(EMPRESA, { deudorId: DEUDOR, nombre: 'Primer escenario (copia)', parametros: recuperada.parametros });
+    expect(db.tablas.pr_simulaciones).toHaveLength(2);
+    expect(duplicada.id).not.toBe(guardada.id);
+
+    const listado = await simulaciones.listar(EMPRESA);
+    expect(listado).toHaveLength(2);
+
+    const solicitud = await simulaciones.convertirSolicitud(EMPRESA, guardada.id, {});
+    expect(solicitud.deudorId).toBe(DEUDOR);
+    expect(Number(solicitud.montoSolicitado)).toBe(80000);
+    expect(solicitud.simulacionId).toBe(guardada.id);
+    expect(solicitud.estado).toBe('pendiente');
+
+    // La solicitud creada es real — solicitudes.findOne/orFail debe poder leerla.
+    const releida = await solicitudes.findOne(EMPRESA, solicitud.id);
+    expect(releida.id).toBe(solicitud.id);
+  });
+
+  it('un prospecto sin deudorId no puede convertirse sin indicar uno', async () => {
+    const db = new BaseEnMemoria();
+    const { simulaciones } = construirServicios(db);
+    const sim = await simulaciones.crear(EMPRESA, { nombreProspecto: 'Juan Prospecto', nombre: 'Cotización inicial', parametros: PARAMETROS });
+    await expect(simulaciones.convertirSolicitud(EMPRESA, sim.id, {})).rejects.toThrow(/prospecto sin ficha/);
+    const conDeudor = await simulaciones.convertirSolicitud(EMPRESA, sim.id, { deudorId: DEUDOR });
+    expect(conDeudor.deudorId).toBe(DEUDOR);
+  });
+
+  it('eliminar() la quita de verdad', async () => {
+    const db = new BaseEnMemoria();
+    const { simulaciones } = construirServicios(db);
+    const sim = await simulaciones.crear(EMPRESA, { deudorId: DEUDOR, nombre: 'Para borrar', parametros: PARAMETROS });
+    await simulaciones.eliminar(EMPRESA, sim.id);
+    expect(db.tablas.pr_simulaciones).toHaveLength(0);
+    await expect(simulaciones.obtener(EMPRESA, sim.id)).rejects.toThrow();
   });
 });

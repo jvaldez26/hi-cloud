@@ -23,6 +23,7 @@ import {
   CrearSolicitudDto, DecidirSolicitudDto, CrearPrestamoDto, SimularPrestamoDto,
   RegistrarPagoDto, CrearGarantiaDto, RegistrarGestionDto, CrearDeudorDto,
   CrearProductoPrestamoDto, CrearVehiculoDto, CancelarPrestamoDto,
+  CrearSimulacionDto, ConvertirSimulacionDto,
 } from './dto/prestamista.dto';
 import { CrearFeriadoDto, ActualizarFeriadoDto } from './dto/prestamista-motor.dto';
 
@@ -114,6 +115,34 @@ describe('Contrato de formularios — Prestamista (ValidationPipe real)', () => 
         { type: 'body', metatype: SimularPrestamoDto, data: '' },
       )).rejects.toBeInstanceOf(BadRequestException);
     });
+  });
+
+  describe('Etapa 1 — Guardar Simulación (CrearSimulacionDto)', () => {
+    const PARAMETROS = {
+      montoPrincipal: 100000, fechaDesembolso: '2026-10-01', fechaPrimerPago: '2026-11-01', plazoPeriodos: 12,
+      frecuencia: 'mensual', tasa: { valor: 0.03, periodoExpresado: 'mensual', tipo: 'nominal', baseDias: 360 }, metodo: 'frances',
+    };
+
+    it('acepta el payload real con deudorId', () =>
+      aceptaPayloadReal(CrearSimulacionDto, { deudorId: 3, nombre: 'Préstamo 100k a 12 meses', parametros: PARAMETROS }));
+
+    it('acepta el payload real con nombreProspecto (sin ficha de deudor todavía)', () =>
+      aceptaPayloadReal(CrearSimulacionDto, { nombreProspecto: 'Juan Pérez (prospecto)', nombre: 'Cotización inicial', parametros: PARAMETROS }));
+
+    it('REGRESIÓN: parametros con el vocabulario viejo del motor, 400 (mismo DTO que /simular)', async () => {
+      await expect(pipe.transform(
+        { deudorId: 3, nombre: 'x', parametros: { principal: 100000, tasaInteresMensual: 3, plazoMeses: 12 } },
+        { type: 'body', metatype: CrearSimulacionDto, data: '' },
+      )).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  describe('Etapa 1 — Convertir Simulación en Solicitud (ConvertirSimulacionDto)', () => {
+    it('acepta el payload mínimo (sin nada — deudorId viene de la simulación)', () =>
+      aceptaPayloadReal(ConvertirSimulacionDto, {}));
+
+    it('acepta deudorId explícito (simulación de un prospecto) + productoId + proposito', () =>
+      aceptaPayloadReal(ConvertirSimulacionDto, { deudorId: 5, productoId: 2, proposito: 'Capital de trabajo' }));
   });
 
   describe('PrestamosPage.tsx — Nuevo Préstamo / Desembolso (CrearPrestamoDto)', () => {
