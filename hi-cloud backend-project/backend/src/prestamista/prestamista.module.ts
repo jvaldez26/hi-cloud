@@ -45,6 +45,9 @@ import { ReportesPrestamistaService } from './reportes/reportes.service';
 import { ReportesController } from './reportes/reportes.controller';
 import { FeriadosService } from './feriados/feriados.service';
 import { FeriadosController } from './feriados/feriados.controller';
+import { PrSimulacion } from './entities/pr-simulacion.entity';
+import { SimulacionesService } from './simulaciones/simulaciones.service';
+import { SimulacionesController } from './simulaciones/simulaciones.controller';
 
 @Module({
   imports: [
@@ -61,6 +64,7 @@ import { FeriadosController } from './feriados/feriados.controller';
       PrRefinanciamiento,
       PrVehiculo,
       PrFeriado,
+      PrSimulacion,
     ]),
     TenantModule,
     ContabilidadModule,
@@ -82,6 +86,7 @@ import { FeriadosController } from './feriados/feriados.controller';
     ReportesPrestamistaService,
     VehiculosService,
     FeriadosService,
+    SimulacionesService,
   ],
   controllers: [
     DeudoresController,
@@ -97,6 +102,7 @@ import { FeriadosController } from './feriados/feriados.controller';
     ReportesController,
     VehiculosController,
     FeriadosController,
+    SimulacionesController,
   ],
   exports: [DeudoresService, PrestamosService, VehiculosService, FeriadosService],
 })

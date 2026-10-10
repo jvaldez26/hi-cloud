@@ -680,3 +680,37 @@ export class CrearVehiculoDto {
 }
 
 export class ActualizarVehiculoDto extends CrearVehiculoDto {}
+
+/**
+ * Etapa 1 — Simulador avanzado (docs/prestamista/etapa-1.md). `parametros`
+ * es exactamente lo que ya acepta /prestamos/simular (SimularPrestamoDto) —
+ * guardar una simulación no inventa un segundo formato de parámetros.
+ * Debe traer deudorId o nombreProspecto (uno de los dos) — se valida en el
+ * service, no aquí: class-validator no tiene una forma limpia de "al menos
+ * uno de estos dos campos" sin un validador custom para un caso tan puntual.
+ */
+export class CrearSimulacionDto {
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number)
+  deudorId?: number;
+
+  @IsOptional() @IsString() @MaxLength(200)
+  nombreProspecto?: string;
+
+  @IsString() @IsNotEmpty() @MaxLength(200)
+  nombre!: string;
+
+  @ValidateNested() @Type(() => SimularPrestamoDto)
+  parametros!: SimularPrestamoDto;
+}
+
+/** Convertir una simulación en solicitud — si la simulación era de un prospecto sin ficha, deudorId es obligatorio aquí. */
+export class ConvertirSimulacionDto {
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number)
+  deudorId?: number;
+
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number)
+  productoId?: number;
+
+  @IsOptional() @IsString() @MaxLength(500)
+  proposito?: string;
+}
