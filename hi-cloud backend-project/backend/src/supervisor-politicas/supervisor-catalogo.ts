@@ -67,6 +67,9 @@ export const CATALOGO_SUPERVISOR: CatalogoItem[] = [
 
   // ── Reportes ─────────────────────────────────────────────────────────────
   { clave: 'ver_reportes', label: 'Ver reportes y analítica', descripcion: 'Reportes, Business Intelligence y KPI ejecutivo', grupo: 'Reportes', defaultRequerido: true, defaultModo: 'sesion' },
+
+  // ── Prestamista / Financiera ─────────────────────────────────────────────
+  { clave: 'pago_retroactivo', label: 'Pago de préstamo con fecha anterior', descripcion: 'Registrar un pago de préstamo con fecha de ayer o antes', grupo: 'Prestamista / Financiera', defaultRequerido: true, defaultModo: 'cada_vez' },
 ];
 
 export const CLAVES_VALIDAS = new Set(CATALOGO_SUPERVISOR.map(c => c.clave));
