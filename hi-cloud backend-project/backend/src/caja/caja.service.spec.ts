@@ -26,6 +26,9 @@ function buildDeps() {
       manager: {
         query:  jest.fn().mockResolvedValue([{}]),
         update: jest.fn().mockResolvedValue(undefined),
+        // conCuadreCorregido() busca ajustes vía getRepository(AjusteCierreCaja)
+        // — sin ajustes por defecto, ningún test de esta suite los necesita.
+        getRepository: jest.fn(() => ({ find: jest.fn().mockResolvedValue([]) })),
       },
     },
     // getRolEmpresa: el rol de la empresa ACTIVA (usuario_empresa), nunca
@@ -239,6 +242,98 @@ describe('CajaService.cerrarCaja — cuadre por forma de pago (caso real empresa
   });
 });
 
+// Bug real (2026-10-10): reimprimir el cierre de Bellamar González volvía al
+// formato viejo porque ese cierre se cerró ANTES del fix — nunca tuvo
+// cuadrePorFormaPago guardado. Sin derivarlo al leer, ni obtenerUnaPorId ni
+// getHistorial (de donde sale todo lo que se imprime) traían la tabla.
+describe('CajaService — cuadre legacy derivado para cierres anteriores al fix', () => {
+  it('obtenerUnaPorId deriva el cuadre del caso real desde las columnas viejas (sin cuadrePorFormaPago guardado)', async () => {
+    const d = buildDeps();
+    d.repo.findOne.mockResolvedValue(cajaAbierta({
+      id: 1, estado: EstadoCierre.CERRADA,
+      saldoCierre: 5608.06, saldoFisico: 6438.00, ventasTarjeta: 2605.00,
+      desglosePago: { efectivo: '6438.00', tarjetaDebito: '1775.00' } as any,
+      cuadrePorFormaPago: undefined,
+    }));
+    const service = buildService(d);
+
+    const r: any = await service.obtenerUnaPorId(1);
+
+    expect(r.cuadreEstimado).toBe(true);
+    const porForma = Object.fromEntries(r.cuadrePorFormaPago.map((f: any) => [f.forma, f]));
+    expect(porForma.efectivo).toEqual({ forma: 'efectivo', esperado: 5608.06, declarado: 6438.00, diferencia: 829.94 });
+    expect(porForma.tarjeta).toEqual({ forma: 'tarjeta', esperado: 2605.00, declarado: 1775.00, diferencia: -830.00 });
+    expect(r.sospechasFormaPago).toEqual([
+      { formaSobrante: 'efectivo', formaFaltante: 'tarjeta', monto: 829.94, facturasCandidatas: [] },
+    ]);
+  });
+
+  it('un cierre YA con cuadrePorFormaPago guardado no se toca ni se marca estimado', async () => {
+    const d = buildDeps();
+    const snapshotReal = [{ forma: 'efectivo', esperado: 100, declarado: 100, diferencia: 0 }];
+    d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, estado: EstadoCierre.CERRADA, cuadrePorFormaPago: snapshotReal as any }));
+    const service = buildService(d);
+
+    const r: any = await service.obtenerUnaPorId(1);
+
+    expect(r.cuadrePorFormaPago).toBe(snapshotReal);
+    expect(r.cuadreEstimado).toBeUndefined();
+  });
+
+  it('una caja ABIERTA nunca deriva cuadre legacy (todavía no hay nada que cuadrar)', async () => {
+    const d = buildDeps();
+    d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, estado: EstadoCierre.ABIERTA }));
+    const service = buildService(d);
+
+    const r: any = await service.obtenerUnaPorId(1);
+
+    expect(r.cuadrePorFormaPago).toBeUndefined();
+  });
+});
+
+// Requisito explícito (2026-10-10): si una factura del turno se corrigió
+// DESPUÉS de cerrar, el reporte muestra el cuadre ORIGINAL y el CORREGIDO
+// uno junto al otro — el cierre guardado nunca se reescribe.
+describe('CajaService — cuadreCorregido cuando el cierre tiene un ajuste posterior', () => {
+  it('obtenerUnaPorId agrega cuadreCorregido aplicando el ajuste sobre el cuadre original', async () => {
+    const d = buildDeps();
+    const cuadreOriginal = [
+      { forma: 'efectivo', esperado: 5608.06, declarado: 6438.00, diferencia: 829.94 },
+      { forma: 'tarjeta',  esperado: 2605.00, declarado: 1775.00, diferencia: -830.00 },
+    ];
+    d.repo.findOne.mockResolvedValue(cajaAbierta({
+      id: 1, estado: EstadoCierre.CERRADA, cuadrePorFormaPago: cuadreOriginal as any,
+    }));
+    const ajuste = {
+      cierreCajaId: 1,
+      formasPagoAnterior: [{ tipo: 3, monto: 955 }, { tipo: 1, monto: 125 }],
+      formasPagoNuevo:    [{ tipo: 1, monto: 955 }, { tipo: 3, monto: 125 }],
+    };
+    d.dataSource.manager.getRepository = jest.fn(() => ({ find: jest.fn().mockResolvedValue([ajuste]) })) as any;
+    const service = buildService(d);
+
+    const r: any = await service.obtenerUnaPorId(1);
+
+    expect(r.cuadrePorFormaPago).toBe(cuadreOriginal); // el original NO se altera
+    const corregidoPorForma = Object.fromEntries(r.cuadreCorregido.map((f: any) => [f.forma, f]));
+    expect(corregidoPorForma.efectivo).toEqual({ forma: 'efectivo', esperado: 6438.06, declarado: 6438.00, diferencia: -0.06 });
+    expect(corregidoPorForma.tarjeta).toEqual({ forma: 'tarjeta', esperado: 1775.00, declarado: 1775.00, diferencia: 0 });
+  });
+
+  it('sin ajustes, no agrega cuadreCorregido', async () => {
+    const d = buildDeps();
+    d.repo.findOne.mockResolvedValue(cajaAbierta({
+      id: 1, estado: EstadoCierre.CERRADA,
+      cuadrePorFormaPago: [{ forma: 'efectivo', esperado: 100, declarado: 100, diferencia: 0 }] as any,
+    }));
+    const service = buildService(d);
+
+    const r: any = await service.obtenerUnaPorId(1);
+
+    expect(r.cuadreCorregido).toBeUndefined();
+  });
+});
+
 // Caso real (caja #714, empresa 44, 2026-10-03): un access token renovado por
 // /auth/refresh no traía sucursalId → abrirCaja() la escribía en silencio
 // como NULL. Ahora corta con 400 en vez de crear la caja sin sucursal.
@@ -425,6 +520,8 @@ function makeCajaService(opts: { cajas?: any[]; facturas?: any[]; cierreCajaCieg
       // recalcularDesdeBD — no importa el cuadre recalculado en estas pruebas.
       query: jest.fn(async () => [{}]),
       update: jest.fn(async () => undefined),
+      // conCuadreCorregido() — sin ajustes por defecto en este bloque de tests.
+      getRepository: jest.fn(() => ({ find: jest.fn().mockResolvedValue([]) })),
     },
   };
 
