@@ -12,7 +12,8 @@ type TipoDocumento =
   | 'conduce'
   | 'cxc'
   | 'nota-credito'
-  | 'nota-debito';
+  | 'nota-debito'
+  | 'recibo-prestamo';
 
 interface Props {
   tipo:       TipoDocumento;
@@ -34,6 +35,8 @@ const ENDPOINT: Record<TipoDocumento, string> = {
   'cxc':          (id: number) => `/comunicaciones/whatsapp/cxc/${id}`,
   'nota-credito': (id: number) => `/comunicaciones/whatsapp/nota-credito/${id}`,
   'nota-debito':  (id: number) => `/comunicaciones/whatsapp/nota-debito/${id}`,
+  // Self-contained en Prestamista (pagos.controller.ts), no en comunicaciones.service.ts.
+  'recibo-prestamo': (id: number) => `/prestamista/pagos/${id}/whatsapp`,
 } as any;
 
 function getEndpoint(tipo: TipoDocumento, id: number): string {
@@ -42,10 +45,11 @@ function getEndpoint(tipo: TipoDocumento, id: number): string {
 }
 
 const PDF_ENDPOINT: Partial<Record<TipoDocumento, (id: number) => string>> = {
-  'factura':      id => `/facturas/${id}/pdf`,
-  'cotizacion':   id => `/cotizaciones/${id}/pdf`,
-  'nota-credito': id => `/notas-credito/${id}/pdf`,
-  'nota-debito':  id => `/notas-debito/${id}/pdf`,
+  'factura':         id => `/facturas/${id}/pdf`,
+  'cotizacion':      id => `/cotizaciones/${id}/pdf`,
+  'nota-credito':    id => `/notas-credito/${id}/pdf`,
+  'nota-debito':     id => `/notas-debito/${id}/pdf`,
+  'recibo-prestamo': id => `/prestamista/pdf/recibo/${id}`,
 };
 
 export default function WhatsAppButton({

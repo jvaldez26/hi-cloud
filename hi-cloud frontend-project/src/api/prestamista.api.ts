@@ -44,7 +44,13 @@ export const prestamistalApi = {
 
   // Pagos
   getPagosByPrestamo: (prestamoId: number) => api.get(`${base}/pagos/prestamo/${prestamoId}`).then(r),
-  registrarPago: (body: any) => api.post(`${base}/pagos`, body).then(r),
+  // headers: x-supervisor-token cuando la fecha del pago es retroactiva (ver
+  // RequiereSupervisor('pago_retroactivo') en pagos.controller.ts).
+  registrarPago: (body: any, headers?: Record<string, string>) =>
+    api.post(`${base}/pagos`, body, { headers }).then(r),
+  previewPago: (body: any) => api.post(`${base}/pagos/preview`, body).then(r),
+  enviarReciboCorreo: (pagoId: number, body: { email: string; cc?: string; cco?: string }) =>
+    api.post(`${base}/pagos/${pagoId}/enviar-recibo`, body).then(r),
 
   // Garantías
   getGarantiasByPrestamo: (prestamoId: number) => api.get(`${base}/garantias/prestamo/${prestamoId}`).then(r),
