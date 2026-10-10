@@ -72,6 +72,14 @@ export const prestamistalApi = {
   pdfAmortizacion: (prestamoId: number) => `${api.defaults.baseURL}${base}/pdf/amortizacion/${prestamoId}`,
   pdfRecibo:       (pagoId: number)     => `${api.defaults.baseURL}${base}/pdf/recibo/${pagoId}`,
   pdfEstadoCuenta: (deudorId: number)   => `${api.defaults.baseURL}${base}/pdf/estado-cuenta/${deudorId}`,
+  pdfCotizacion:   (simulacionId: number) => `${api.defaults.baseURL}${base}/pdf/cotizacion/${simulacionId}`,
+
+  // Simulaciones (Etapa 1)
+  crearSimulacion: (body: any) => api.post(`${base}/simulaciones`, body).then(r),
+  listarSimulaciones: (deudorId?: number) => api.get(`${base}/simulaciones`, { params: deudorId ? { deudorId } : undefined }).then(r),
+  obtenerSimulacion: (id: number) => api.get(`${base}/simulaciones/${id}`).then(r),
+  eliminarSimulacion: (id: number) => api.delete(`${base}/simulaciones/${id}`).then(r),
+  convertirSimulacion: (id: number, body: any) => api.post(`${base}/simulaciones/${id}/convertir-solicitud`, body).then(r),
 
   // Vehículos
   getVehiculos: (params?: any)          => api.get(`${base}/vehiculos`, { params }).then(r),
