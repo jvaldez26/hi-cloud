@@ -70,7 +70,21 @@ para crear/listar/convertir, igual que Simulador y Solicitudes hoy.
 - E2E: simular → guardar → recuperar → duplicar → convertir en solicitud,
   contra los servicios reales (mismo patrón `BaseEnMemoria` ya usado).
 
-## Siguiente paso
+## Resumen (cerrado 2026-10-09)
 
-Implementación (migración, entidad, service, controller, frontend) —
-continúa en la próxima pasada de este mismo trabajo por etapas.
+Implementado: migración (`pr_simulaciones` + `pr_solicitudes.simulacionId`),
+`SimulacionesService`/`SimulacionesController` (crear/listar/obtener/
+eliminar/convertir), PDF de cotización, y el frontend completo (guardar,
+"Mis simulaciones" con recuperar/duplicar/PDF/convertir/eliminar,
+comparador de hasta 4 escenarios lado a lado). 22 tests nuevos (contrato +
+e2e contra servicios reales) en verde, suite completa del backend (4689)
+en verde, `tsc` limpio en los dos lados.
+
+**Qué probar:** guardar una simulación con deudor existente y con
+prospecto (nombre libre); recuperar/duplicar desde "Mis simulaciones";
+comparar 2-3 escenarios con distinto plazo/tasa/método; convertir una
+simulación de prospecto (debe pedir elegir deudor) y una de deudor real
+(no debe pedir nada); PDF de cotización.
+
+**Pausa:** un incidente urgente de producción (cierre de caja) interrumpe
+la cadena de etapas aquí — Etapa 2 continúa después de resolverlo.
