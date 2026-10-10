@@ -1,6 +1,13 @@
 # Prestamista Etapa 2 (resto) — nota de diseño
 
-**Estado:** diseño cerrado el 2026-10-10, implementación en curso.
+**Estado:** diseño cerrado el 2026-10-10. Implementado y con tests (backend):
+**§1 anulación de pagos con reversa**, **§2 garantes (CRUD + liberar)**,
+**§3 garantías (liberar/ejecutar)**. **Pendiente**: §4 desembolsos parciales,
+§5 reestructuración, §6 condonación independiente, §7 contratos/pagarés PDF
+— y el FRONTEND de las tres piezas ya implementadas (hoy solo tienen
+endpoint backend, sin pantalla). El diseño de las 4 piezas pendientes queda
+cerrado en este documento — se puede implementar directamente sin volver a
+decidir nada, cuando se reanude.
 
 El "Motor Financiero" (Fase 2A/2B, ver `motor-financiero.md`) ya estaba completo
 e integrado antes de este documento — era infraestructura de cálculo, no las
