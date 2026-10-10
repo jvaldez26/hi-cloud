@@ -64,6 +64,16 @@ export class MoraConfigDto {
   @IsIn([360, 365]) @Type(() => Number) baseDiasMora!: 360 | 365;
 }
 
+/**
+ * Registrar Pago (precursor de Etapa 2) — a qué se aplica el excedente
+ * cuando un pago cubre de más las cuotas/selección. Ver
+ * docs/prestamista/decisiones-pendientes.md. Default 'siguientes_cuotas'
+ * cuando el producto no lo configura (motorConfigLegacyDesdeProducto()).
+ */
+export class ExcedentePagoConfigDto {
+  @IsIn(['siguientes_cuotas', 'capital']) destino!: 'siguientes_cuotas' | 'capital';
+}
+
 export class CargoConfigDto {
   @IsString() @IsNotEmpty() @MaxLength(100) concepto!: string;
   @IsIn(['fijo', 'porcentaje']) tipo!: 'fijo' | 'porcentaje';
@@ -88,6 +98,7 @@ export class MotorConfigDto {
   @IsOptional() @ValidateNested() @Type(() => MoraConfigDto) mora?: MoraConfigDto;
   @IsOptional() fiscal?: Record<string, ConfigFiscalConceptoDto>;
   @IsOptional() @IsBoolean() permiteAjusteSolicitud?: boolean;
+  @IsOptional() @ValidateNested() @Type(() => ExcedentePagoConfigDto) excedentePago?: ExcedentePagoConfigDto;
 }
 
 export class CrearFeriadoDto {

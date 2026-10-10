@@ -42,6 +42,12 @@ export interface MotorConfigAlmacenado {
   fiscal?: Record<string, ConfigFiscalConcepto>;
   /** Si la solicitud puede ajustar tasa/plazo/frecuencia del producto. Default: true. */
   permiteAjusteSolicitud?: boolean;
+  /**
+   * Registrar Pago (precursor de Etapa 2): a qué se aplica el excedente de
+   * un pago mayor a las cuotas seleccionadas. Default 'siguientes_cuotas'
+   * — ver docs/prestamista/decisiones-pendientes.md.
+   */
+  excedentePago?: { destino: 'siguientes_cuotas' | 'capital' };
 }
 
 /**
@@ -59,6 +65,7 @@ export function motorConfigLegacyDesdeProducto(producto: any): MotorConfigAlmace
     metodo: producto.metodoAmortizacion === 'aleman' ? 'aleman' : 'frances',
     mora: { base: 'cuota_vencida', tasaOMonto: Number(producto.porcentajeMora ?? 0), baseDiasMora: 360 },
     permiteAjusteSolicitud: true,
+    excedentePago: { destino: 'siguientes_cuotas' },
   };
 }
 
