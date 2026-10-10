@@ -103,7 +103,9 @@ console.log('\nMétodo de pago');
   });
   ok('varias formas → MIXTO (en 80mm no caben escritas)', mixto.includes('MIXTO'));
   const sinPago = M.bloqueFacturasTermico({ facturas: [fac({ formasPago: [] })] });
-  ok('sin forma de pago no rompe', sinPago.includes('—'));
+  // sanear() (2026-10-10) baja el guion largo a uno normal — sin caracteres
+  // especiales en ningún dato de la impresión térmica, en ningún canal.
+  ok('sin forma de pago no rompe', sinPago.includes('<span class="fe-pago">-</span>') && !sinPago.includes('—'));
 }
 
 console.log('\nLínea final — el ticket viene completo, y por qué no cuadra con el de arriba');

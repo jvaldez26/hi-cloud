@@ -5,16 +5,51 @@
  * dentro de cada pantalla porque hay varias plantillas que imprimen el mismo
  * cierre — el recibo inmediato del POS al cerrar (POSPage.tsx) y las dos del
  * panel de Caja (CajaPage.tsx: ticket simple y ticket con detalle) — y deben
- * salir idénticas. Bug real (2026-10-10): el cuadre por forma de pago se
- * agregó al Drawer en pantalla pero NUNCA a estas tres plantillas de
- * impresión, así que reimprimir cualquier cierre (viejo o recién cerrado)
- * seguía mostrando el formato de solo-efectivo.
+ * salir idénticas.
  *
  * Los datos vienen del cierre tal cual lo devuelve el backend
  * (`cuadrePorFormaPago`/`sospechasFormaPago`/`facturasSinFormaPago`/
- * `cuadreCorregido`, ver cuadre-por-forma-pago.util.ts y caja.service.ts) —
- * aquí no se calcula ningún monto, solo se formatea.
+ * `cuadreCorregido`/los campos `*Original` del recierre, ver
+ * cuadre-por-forma-pago.util.ts y caja.service.ts) — aquí no se calcula
+ * ningún monto, solo se formatea.
+ *
+ * TODO el bloque (tabla, aviso, candidatas, facturas sin forma, recierre) es
+ * texto de ANCHO FIJO, línea por línea — ninguna línea, en ningún sub-bloque,
+ * puede pasar del ancho medido del papel (requisito explícito 2026-10-10,
+ * tras el primer rediseño: "ninguna línea fuera de la tabla puede pasar del
+ * ancho medido"). El ancho se MIDIÓ con Chrome headless, en Courier New
+ * bold, AL TAMAÑO DE FUENTE QUE REALMENTE USA ESTA TABLA en cada papel (ver
+ * fontSizePt en ConfigTabla, más abajo): 30 caracteres a 58mm/8pt, 41 a
+ * 80mm·bluetooth·ninguna/8pt. A carta se usa el tamaño del CUERPO del
+ * ticket (12pt — ver IMPRESORA_CONFIG en docTermico.ts), porque a 210mm hay
+ * de sobra incluso a ese tamaño (70 caracteres medidos contra los 41 que
+ * hacen falta) — por eso en carta la tabla no se ve más chica que el resto.
+ * A 58mm/80mm SÍ hay que achicarla: al tamaño del cuerpo (10pt/11pt) solo
+ * caben 24/30 caracteres, muy por debajo de los 30/41 que necesitan 4
+ * columnas de dinero real (requisito de negocio 2026-10-10: "ningún monto
+ * se corta ni se pega a la columna vecina"), y 8pt es el tamaño más grande
+ * que alcanza a cerrar esa cuenta en ambos papeles. Sin medir, se repite el
+ * bug que ya truncó un e-NCF en este mismo ticket por usar un ancho supuesto.
+ *
+ * Cada línea es un <div> de texto plano SIN <span> — proc() (thermalPrinter.ts,
+ * impresión Bluetooth) no la trata como ".row" (que exige exactamente 2
+ * columnas y perdería cualquier columna de más) sino como una hoja de texto
+ * normal, y la envía tal cual por ESC/POS. Todo el texto libre (nombres,
+ * folios, desgloses) pasa por `envolver()`/`lineaLR()`/`centrar()`
+ * (thermalPrinter.ts) antes de convertirse en línea: además de respetar el
+ * ancho, esas tres funciones ya bajan tildes y caracteres especiales
+ * (sanear()) — requisito explícito: ni el texto fijo ni los datos (nombre de
+ * cliente, de cajero) llevan tildes ni "·" en ningún canal, ni siquiera en el
+ * HTML que renderiza el navegador (antes solo se bajaban camino a Bluetooth).
+ *
+ * En el navegador (ticket/PDF), el relleno con espacios se preserva con
+ * `white-space:pre` en `.cf-bloque` (ver el CSS al final del archivo) — sin
+ * eso, un navegador real colapsa los espacios repetidos a uno solo y
+ * desalinea las columnas.
  */
+
+import { estadoDiferencia } from './diferenciaCaja';
+import { sanear, envolver, lineaLR, centrar } from '../services/thermalPrinter';
 
 export interface FilaCuadreTermico {
   forma:      string;
@@ -23,102 +58,324 @@ export interface FilaCuadreTermico {
   diferencia: number;
 }
 
+export interface FacturaSinFormaTermico { id: number; folio: string; total: number; clienteNombre?: string }
+export interface SospechaFormaTermico {
+  formaSobrante: string; formaFaltante: string;
+  montoSobrante: number; montoFaltante: number;
+  facturasCandidatas?: { id: number; folio: string; total: number; formasPago?: { tipo: number; monto: number }[] }[];
+}
+
 export interface CierreConCuadreTermico {
   cuadrePorFormaPago?:  FilaCuadreTermico[];
   cuadreCorregido?:     FilaCuadreTermico[];
   cuadreEstimado?:      boolean;
-  sospechasFormaPago?:  { formaSobrante: string; formaFaltante: string; monto: number }[];
-  facturasSinFormaPago?: { id: number; folio: string; total: number; clienteNombre?: string }[];
+  sospechasFormaPago?:  SospechaFormaTermico[];
+  facturasSinFormaPago?: FacturaSinFormaTermico[];
+  // Preservados en el PRIMER cierre al recerrar (ver anularCierre() en
+  // caja.service.ts) — si existen, este cierre fue recerrado.
+  saldoFisico?:                number;
+  contadoOriginal?:             number;
+  cuadrePorFormaPagoOriginal?:  FilaCuadreTermico[];
+  facturasSinFormaPagoOriginal?: FacturaSinFormaTermico[];
 }
 
+/** Nombres completos — usados en el aviso y en la tabla a 80mm (hay espacio de sobra). */
 const LABEL_FORMA: Record<string, string> = {
   efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transfer.', otros: 'Otros',
 };
 
-const esc = (s: unknown) =>
+/** Nombres cortos — SOLO la tabla a 58mm, donde "Transferencia"/"Efectivo" no entran en 7 caracteres. */
+const LABEL_FORMA_CORTA: Record<string, string> = {
+  efectivo: 'Efect.', tarjeta: 'Tarjeta', transferencia: 'Transf.', otros: 'Otros',
+};
+
+/** Tipo DGII de formasPago (ver cuadre-por-forma-pago.util.ts, backend) → nombre corto para el desglose de una candidata. */
+const LABEL_TIPO_DGII: Record<number, string> = {
+  1: 'Efectivo', 2: 'Transfer.', 3: 'Tarjeta', 4: 'Crédito', 5: 'Permuta', 6: 'NC',
+};
+
+const escHtml = (s: unknown) =>
   String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-const money = (v: number) =>
-  Number(v ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// ── Configuración de ancho (tabla Y el resto del bloque comparten el mismo
+// ancho medido — requisito explícito: "ninguna línea fuera de la tabla
+// puede pasar del ancho medido") ────────────────────────────────────────────
 
-function tabla(filas: FilaCuadreTermico[]): string {
-  const filasHtml = filas.map(f => `
-    <div class="cf-row">
-      <span class="cf-forma">${esc(LABEL_FORMA[f.forma] ?? f.forma)}</span>
-      <span class="cf-num">${esc(money(f.esperado))}</span>
-      <span class="cf-num">${esc(money(f.declarado))}</span>
-      <span class="cf-num cf-dif" style="${f.diferencia > 0.01 ? 'font-weight:700' : f.diferencia < -0.01 ? 'font-weight:700' : ''}">
-        ${f.diferencia > 0 ? '+' : ''}${esc(money(f.diferencia))}
-      </span>
-    </div>
-  `).join('');
+interface ConfigTabla {
+  ancho: number;
+  comas: boolean;
+  wForma: number; wEsp: number; wCon: number; wDif: number;
+  gap1: string; gap2: string; gap3: string;
+  headerEsp: string;
+  labels: Record<string, string>;
+  /**
+   * Tamaño de la tabla — SOLO esta tabla, el resto del ticket sigue con el
+   * tamaño normal (IMPRESORA_CONFIG, docTermico.ts). Ideal sería que fuera
+   * igual al del cuerpo, pero a 58mm/80mm no hay ancho físico para 4
+   * columnas de dinero reales (RD$ de 5-6 cifras) al tamaño del cuerpo —
+   * medido con Chrome headless: 58mm da 24 caracteres a 10pt (el del
+   * cuerpo) contra los 30 que necesita esta tabla; 80mm da 30 a 11pt
+   * contra los 41 que necesita. 8pt es el MÁXIMO que cierra esa cuenta en
+   * ambos papeles (ver medición 2026-10-10). A carta (210mm) sí sobra
+   * espacio de sobra incluso al tamaño del cuerpo (70 caracteres a 12pt
+   * contra los ~41 que hacen falta), así que ahí la tabla usa el mismo
+   * tamaño que el resto del ticket — nunca se ve más chica.
+   */
+  fontSizePt: number;
+}
 
-  const neto = filas.reduce((s, f) => s + Number(f.diferencia || 0), 0);
+// 58mm: 30 caracteres de ancho útil medidos a 8pt (ver cabecera del archivo
+// y fontSizePt arriba — a 10pt, el tamaño del cuerpo, solo caben 24).
+// FORMA necesita 7 (cabe "Tarjeta"/"Transf."); los 3 montos se llevan los 23
+// restantes. gap3 va vacío a propósito: Contado y Difer. quedan pegados SOLO
+// cuando Difer. mide exactamente 7 (su peor caso), y Difer. siempre lleva un
+// signo ('+'/'-') al frente — ese signo, no un espacio, es lo que separa
+// visualmente los dos números. Cuando Difer. mide menos de 7 (el caso común),
+// padStart ya le pone el espacio de relleno delante.
+const TABLA_58MM: ConfigTabla = {
+  ancho: 30, comas: false,
+  wForma: 7, wEsp: 7, wCon: 7, wDif: 7,
+  gap1: ' ', gap2: ' ', gap3: '',
+  headerEsp: 'ESPER.',
+  labels: LABEL_FORMA_CORTA,
+  fontSizePt: 8,
+};
 
-  return `
-    <div class="cf-cab">
-      <span class="cf-forma">FORMA</span>
-      <span class="cf-num">ESPER.</span>
-      <span class="cf-num">DECL.</span>
-      <span class="cf-num">DIF.</span>
-    </div>
-    ${filasHtml}
-    <div class="cf-row cf-bold">
-      <span class="cf-forma">NETO</span>
-      <span class="cf-num"></span>
-      <span class="cf-num"></span>
-      <span class="cf-num">${neto > 0 ? '+' : ''}${esc(money(neto))}</span>
-    </div>
-  `;
+// 80mm / bluetooth / ninguna: 41 caracteres medidos a 8pt (a 11pt, el
+// tamaño del cuerpo, solo caben 30 — ver fontSizePt arriba). Hay espacio de
+// sobra para nombres completos, comas de miles y un espacio real entre
+// cada columna.
+const TABLA_80MM: ConfigTabla = {
+  ancho: 41, comas: true,
+  wForma: 9, wEsp: 10, wCon: 10, wDif: 9,
+  gap1: ' ', gap2: ' ', gap3: ' ',
+  headerEsp: 'ESPERADO',
+  labels: LABEL_FORMA,
+  fontSizePt: 8,
+};
+
+// Carta (210mm): 70 caracteres medidos a 12pt, el tamaño del CUERPO del
+// ticket — de sobra para las 41 columnas que esta tabla necesita, así que
+// aquí no hace falta achicar nada (ver fontSizePt arriba).
+const TABLA_CARTA: ConfigTabla = {
+  ancho: 41, comas: true,
+  wForma: 9, wEsp: 10, wCon: 10, wDif: 9,
+  gap1: ' ', gap2: ' ', gap3: ' ',
+  headerEsp: 'ESPERADO',
+  labels: LABEL_FORMA,
+  fontSizePt: 12,
+};
+
+function configTabla(tipoImpresora?: string): ConfigTabla {
+  if (tipoImpresora === '58mm' || tipoImpresora === 'bluetooth') return TABLA_58MM;
+  if (tipoImpresora === 'carta') return TABLA_CARTA;
+  return TABLA_80MM;
+}
+
+/** Monto — sin "RD$", con o sin comas de miles según el ancho del papel. */
+function moneyTabla(v: number, comas: boolean): string {
+  const n    = Number(v ?? 0);
+  const sign = n < 0 ? '-' : '';
+  const abs  = Math.abs(n).toFixed(2);
+  if (!comas) return sign + abs;
+  const [ent, dec] = abs.split('.');
+  return sign + Number(ent).toLocaleString('en-US') + '.' + dec;
+}
+
+/** La diferencia SIEMPRE lleva signo — es el separador visual cuando queda pegada a Contado (ver TABLA_58MM). */
+function difTabla(v: number, comas: boolean): string {
+  const n = Number(v ?? 0);
+  return (n >= 0 ? '+' : '') + moneyTabla(n, comas);
+}
+
+/** "Tarjeta 955.00 / Efectivo 125.00" — el desglose real de la factura candidata, lo que explica la sospecha. */
+function desgloseFormasPago(fps: { tipo: number; monto: number }[] | undefined, comas: boolean): string {
+  if (!fps?.length) return '';
+  return fps.map(fp => `${LABEL_TIPO_DGII[fp.tipo] ?? `T${fp.tipo}`} ${moneyTabla(Number(fp.monto), comas)}`).join(' / ');
+}
+
+/**
+ * Una fila de la tabla. Si algún monto no entra en su columna, la fila NUNCA
+ * se corta ni se pega a la columna vecina: pasa a varias líneas, una por
+ * cada monto que no cupo, con su propia etiqueta.
+ */
+function filaTabla(cfg: ConfigTabla, label: string, esperado: number, contado: number, diferencia: number): string[] {
+  const fEsp = moneyTabla(esperado, cfg.comas);
+  const fCon = moneyTabla(contado, cfg.comas);
+  const fDif = difTabla(diferencia, cfg.comas);
+  const cabe = fEsp.length <= cfg.wEsp && fCon.length <= cfg.wCon && fDif.length <= cfg.wDif;
+
+  if (cabe) {
+    return [
+      label.padEnd(cfg.wForma) + cfg.gap1 + fEsp.padStart(cfg.wEsp) +
+      cfg.gap2 + fCon.padStart(cfg.wCon) + cfg.gap3 + fDif.padStart(cfg.wDif),
+    ];
+  }
+
+  const primera =
+    label.padEnd(cfg.wForma) + cfg.gap1 + (fEsp.length <= cfg.wEsp ? fEsp.padStart(cfg.wEsp) : ' '.repeat(cfg.wEsp)) +
+    cfg.gap2 + (fCon.length <= cfg.wCon ? fCon.padStart(cfg.wCon) : ' '.repeat(cfg.wCon)) +
+    cfg.gap3 + (fDif.length <= cfg.wDif ? fDif.padStart(cfg.wDif) : ' '.repeat(cfg.wDif));
+  const extra: string[] = [];
+  if (fEsp.length > cfg.wEsp) extra.push(...envolver(`  Esperado: ${fEsp}`, cfg.ancho));
+  if (fCon.length > cfg.wCon) extra.push(...envolver(`  Contado: ${fCon}`, cfg.ancho));
+  if (fDif.length > cfg.wDif) extra.push(...envolver(`  Difer.: ${fDif}`, cfg.ancho));
+  return [primera, ...extra];
+}
+
+/** Encabezado + filas (con movimiento o declaración) + TOTAL + leyenda + resultado. Todas las líneas miden exactamente cfg.ancho. */
+function tablaCuadre(filas: FilaCuadreTermico[], cfg: ConfigTabla): string[] {
+  const header =
+    'FORMA'.padEnd(cfg.wForma) + cfg.gap1 + cfg.headerEsp.padStart(cfg.wEsp) +
+    cfg.gap2 + 'CONTADO'.padStart(cfg.wCon) + cfg.gap3 + 'DIFER.'.padStart(cfg.wDif);
+  const sep = '-'.repeat(cfg.ancho);
+
+  const lineas: string[] = [header, sep];
+  let sEsp = 0, sCon = 0, sDif = 0;
+  for (const f of filas) {
+    // Sin movimiento esperado ni declarado: no aporta nada a la tabla.
+    if (Math.abs(f.esperado) < 0.005 && Math.abs(f.declarado) < 0.005 && Math.abs(f.diferencia) < 0.005) continue;
+    lineas.push(...filaTabla(cfg, cfg.labels[f.forma] ?? f.forma, f.esperado, f.declarado, f.diferencia));
+    sEsp += Number(f.esperado || 0);
+    sCon += Number(f.declarado || 0);
+    sDif += Number(f.diferencia || 0);
+  }
+  lineas.push(sep);
+  lineas.push(...filaTabla(cfg, 'TOTAL', sEsp, sCon, sDif));
+
+  const estado = estadoDiferencia(sDif);
+  const resultado =
+    estado === 'cuadrado' ? 'RESULTADO: CUADRA'
+    : estado === 'sobrante' ? `RESULTADO: SOBRAN RD$${moneyTabla(Math.abs(sDif), cfg.comas)}`
+    : `RESULTADO: FALTAN RD$${moneyTabla(Math.abs(sDif), cfg.comas)}`;
+
+  lineas.push(...envolver('(+) sobra   (-) falta', cfg.ancho));
+  lineas.push(...envolver(resultado, cfg.ancho));
+  return lineas;
+}
+
+/** Línea con un monto ya formateado, alineada a la derecha dentro de `ancho`. El monto es puro ASCII — nunca necesita envolver()/sanear(). */
+function montoDerecha(monto: string, ancho: number): string {
+  return monto.length >= ancho ? monto : ' '.repeat(ancho - monto.length) + monto;
+}
+
+/** folio / detalle (envuelto en 1+ líneas) / monto a la derecha — el formato de 3 líneas de una candidata o una factura sin forma de pago. */
+function filasItemConMonto(folio: string, detalle: string | undefined, monto: string, cfg: ConfigTabla): string[] {
+  const lineas = [...envolver(folio, cfg.ancho)];
+  if (detalle) lineas.push(...envolver(detalle, cfg.ancho));
+  lineas.push(montoDerecha(monto, cfg.ancho));
+  return lineas;
+}
+
+/** Título de sección — envuelto y centrado si no entra en una sola línea. */
+function tituloCentrado(texto: string, ancho: number): string[] {
+  return envolver(texto, ancho).map(l => centrar(l, ancho));
+}
+
+export interface BloqueCuadreOpts {
+  /** '58mm' | '80mm' | 'bluetooth' | 'carta' | 'ninguna' — decide ancho, comas y nombres cortos/completos. */
+  tipoImpresora?: string;
 }
 
 /** Devuelve el HTML del bloque completo, o cadena vacía si no hay cuadre que mostrar. */
-export function bloqueCuadreFormaPagoTermico(r: CierreConCuadreTermico | null | undefined): string {
+export function bloqueCuadreFormaPagoTermico(
+  r: CierreConCuadreTermico | null | undefined,
+  tipoImpresora?: string,
+): string {
   if (!r?.cuadrePorFormaPago?.length) return '';
+  const cfg = configTabla(tipoImpresora);
+  const sep = '-'.repeat(cfg.ancho);
 
-  const sospechas = r.sospechasFormaPago ?? [];
-  const sinForma  = r.facturasSinFormaPago ?? [];
+  const lineas: string[] = [];
+  lineas.push(sep);
+  lineas.push(...tituloCentrado(`CUADRE POR FORMA DE PAGO${r.cuadreEstimado ? ' (estimado)' : ''}`, cfg.ancho));
+  lineas.push(...tablaCuadre(r.cuadrePorFormaPago, cfg));
 
-  return `
-    <div class="sep">--------------------------------</div>
-    <div class="cf-titulo">CUADRE POR FORMA DE PAGO${r.cuadreEstimado ? ' (estimado)' : ''}</div>
-    ${tabla(r.cuadrePorFormaPago)}
-    ${sospechas.map(s => `
-      <div class="sep">--------------------------------</div>
-      <div class="cf-aviso">⚠ POSIBLE FORMA MAL REGISTRADA</div>
-      <div class="cf-aviso-detalle">
-        ${esc(LABEL_FORMA[s.formaSobrante] ?? s.formaSobrante)} +${esc(money(s.monto))} /
-        ${esc(LABEL_FORMA[s.formaFaltante] ?? s.formaFaltante)} ${esc(money(-s.monto))}
-      </div>
-    `).join('')}
-    ${r.cuadreCorregido?.length ? `
-      <div class="sep">--------------------------------</div>
-      <div class="cf-titulo">CUADRE CORREGIDO (tras ajuste de forma de pago)</div>
-      ${tabla(r.cuadreCorregido)}
-    ` : ''}
-    ${sinForma.length ? `
-      <div class="sep">--------------------------------</div>
-      <div class="cf-titulo cf-rojo">FACTURAS SIN FORMA DE PAGO</div>
-      ${sinForma.map(f => `
-        <div class="cf-row cf-rojo">
-          <span class="cf-forma">${esc(f.folio)}${f.clienteNombre ? ` · ${esc(f.clienteNombre)}` : ''}</span>
-          <span class="cf-num"></span><span class="cf-num"></span>
-          <span class="cf-num">${esc(money(f.total))}</span>
-        </div>
-      `).join('')}
-    ` : ''}
-  `;
+  for (const s of r.sospechasFormaPago ?? []) {
+    lineas.push(sep);
+    lineas.push(...tituloCentrado('!! POSIBLE FORMA MAL REGISTRADA', cfg.ancho));
+    lineas.push(...lineaLR(LABEL_FORMA[s.formaSobrante] ?? s.formaSobrante, `+${moneyTabla(s.montoSobrante, cfg.comas)}`, cfg.ancho).split('\n'));
+    lineas.push(...lineaLR(LABEL_FORMA[s.formaFaltante] ?? s.formaFaltante, moneyTabla(s.montoFaltante, cfg.comas), cfg.ancho).split('\n'));
+    if (s.facturasCandidatas?.length) {
+      lineas.push(...envolver('Facturas que podrian explicarlo:', cfg.ancho));
+      for (const f of s.facturasCandidatas) {
+        const desglose = desgloseFormasPago(f.formasPago, cfg.comas);
+        lineas.push(...filasItemConMonto(f.folio, desglose || undefined, moneyTabla(Number(f.total), cfg.comas), cfg));
+      }
+    }
+  }
+
+  if (r.cuadreCorregido?.length) {
+    lineas.push(sep);
+    lineas.push(...tituloCentrado('CUADRE CORREGIDO (tras ajuste de forma de pago)', cfg.ancho));
+    lineas.push(...tablaCuadre(r.cuadreCorregido, cfg));
+  }
+
+  const sinForma = r.facturasSinFormaPago ?? [];
+  if (sinForma.length) {
+    lineas.push(sep);
+    lineas.push(...tituloCentrado('FACTURAS SIN FORMA DE PAGO', cfg.ancho));
+    for (const f of sinForma) {
+      lineas.push(...filasItemConMonto(f.folio, f.clienteNombre, moneyTabla(Number(f.total), cfg.comas), cfg));
+    }
+  }
+
+  // Recierre: el cierre vigente ya se imprimió arriba — el ORIGINAL anulado
+  // va en un bloque aparte, con lo que contó/declaró la primera vez y la
+  // diferencia contra el conteo actual (requisito explícito 2026-10-10, caso
+  // real: Beatriz Riva recerró la caja de Bellamar González y la tarjeta
+  // esperada del primer cierre se perdió sin dejar rastro).
+  if (r.contadoOriginal != null) {
+    lineas.push(sep);
+    lineas.push(...tituloCentrado('CIERRE ORIGINAL ANULADO', cfg.ancho));
+    const contadoActual = Number(r.saldoFisico ?? 0);
+    const contadoOrig   = Number(r.contadoOriginal);
+    lineas.push(...lineaLR('Contado original:', moneyTabla(contadoOrig, cfg.comas), cfg.ancho).split('\n'));
+    lineas.push(...lineaLR('Contado recierre:', moneyTabla(contadoActual, cfg.comas), cfg.ancho).split('\n'));
+    lineas.push(...lineaLR('Diferencia:', difTabla(contadoActual - contadoOrig, cfg.comas), cfg.ancho).split('\n'));
+    if (r.cuadrePorFormaPagoOriginal?.length) {
+      lineas.push(...tablaCuadre(r.cuadrePorFormaPagoOriginal, cfg));
+    }
+    if (r.facturasSinFormaPagoOriginal?.length) {
+      lineas.push(sep);
+      lineas.push(...tituloCentrado('Sin forma de pago (original)', cfg.ancho));
+      for (const f of r.facturasSinFormaPagoOriginal) {
+        lineas.push(...filasItemConMonto(f.folio, f.clienteNombre, moneyTabla(Number(f.total), cfg.comas), cfg));
+      }
+    }
+  }
+
+  // Red de seguridad final: envolver()/lineaLR() reparten por PALABRAS, así
+  // que un solo "token" sin espacios más largo que el ancho (un folio
+  // absurdamente largo, por ejemplo) sale tal cual, más ancho que el papel.
+  // Aquí se corta a la fuerza, carácter a carácter — ninguna línea, de
+  // ningún origen, puede pasar del ancho medido (requisito explícito).
+  const lineasSeguras = lineas.flatMap(l => {
+    const s = sanear(l);
+    if (s.length <= cfg.ancho) return [s];
+    const partes: string[] = [];
+    for (let i = 0; i < s.length; i += cfg.ancho) partes.push(s.slice(i, i + cfg.ancho));
+    return partes;
+  });
+
+  const html = lineasSeguras.map(l => `<div class="cf-linea">${escHtml(l)}</div>`).join('');
+  // El tamaño va inline (no en CSS_CUADRE_FORMA_PAGO_TERMICO, que es un
+  // único <style> fijo e inyectado sin saber el tipo de impresora): varía
+  // por papel — ver fontSizePt en ConfigTabla.
+  return `<div class="cf-bloque" style="font-size:${cfg.fontSizePt}pt">${html}</div>`;
 }
 
-/** CSS del bloque. Se inyecta una sola vez en el <style> de la plantilla. */
+/**
+ * CSS del bloque. Se inyecta una sola vez en el <style> de la plantilla.
+ * El tamaño de fuente NO va aquí — este <style> se inyecta igual sin
+ * importar el tipo de impresora, y el tamaño sí varía por papel (ver
+ * fontSizePt en ConfigTabla) — va inline en bloqueCuadreFormaPagoTermico().
+ */
 export const CSS_CUADRE_FORMA_PAGO_TERMICO = `
-  .cf-titulo{font-weight:700;text-align:center;margin:3px 0 2px}
-  .cf-cab{display:flex;font-size:.72em;font-weight:700;border-bottom:1px solid #000;padding-bottom:1px}
-  .cf-row{display:flex;font-size:.8em;padding:1px 0}
-  .cf-row.cf-bold{font-weight:700;border-top:1px solid #000;margin-top:2px;padding-top:2px}
-  .cf-forma{flex:0 0 34%;overflow:hidden;white-space:nowrap}
-  .cf-num{flex:1 1 22%;text-align:right;font-variant-numeric:tabular-nums}
-  .cf-aviso{font-weight:700;text-align:center;font-size:.85em}
-  .cf-aviso-detalle{text-align:center;font-size:.78em}
-  .cf-rojo{color:#c00!important}
+  /* white-space:pre es obligatorio: sin esto, un navegador real colapsa los
+     espacios de relleno de filaTabla()/montoDerecha() a uno solo y las
+     columnas se desalinean en pantalla y en el PDF. El conversor ESC/POS
+     (htmlAEscPos) no lee CSS, así que esta regla no afecta a la impresión
+     Bluetooth — ahí el espaciado ya viene bien desde el texto fuente. */
+  .cf-bloque{white-space:pre;margin:2px 0}
 `;

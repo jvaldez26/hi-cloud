@@ -1,5 +1,6 @@
 ﻿import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { CierreCajaFormulario } from '../../components/caja/CierreCajaFormulario';
 import { useMobile } from '../../hooks/useMediaQuery';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { TableActions } from '../../components/ui/TableActions';
@@ -26,6 +27,7 @@ import { dRD, fecha, hora, hoyRD } from '../../utils/fechaRD';
 import { bloqueFacturasTermico, CSS_FACTURAS_TERMICO } from '../../utils/cierreFacturasTermico';
 import { bloqueCuadreFormaPagoTermico, CSS_CUADRE_FORMA_PAGO_TERMICO } from '../../utils/cuadreFormaPagoTermico';
 import { estadoDiferencia } from '../../utils/diferenciaCaja';
+import { sanear } from '../../services/thermalPrinter';
 
 // ── Constantes de retiros ──────────────────────────────────────────────────
 const CATEGORIA_OPTIONS = [
@@ -77,8 +79,10 @@ const cajaApi = {
   abiertas:        ()                          => api.get('/caja/abiertas').then(r => r.data?.data ?? r.data),
   cajeros:         ()                          => api.get('/caja/cajeros').then(r => r.data?.data ?? r.data),
   abrir:           (body: any)                 => api.post('/caja/abrir', body).then(r => r.data?.data),
-  cerrar:          (id: number, body: any)     => api.patch(`/caja/${id}/cerrar`, body).then(r => r.data?.data),
+  cerrar:          (id: number, body: any, headers?: Record<string, string>) =>
+    api.patch(`/caja/${id}/cerrar`, body, headers ? { headers } : undefined).then(r => r.data?.data),
   anular:          (id: number, motivo: string) => api.patch(`/caja/${id}/anular`, { motivo }).then(r => r.data?.data),
+  aprobarDescuadre: (id: number, motivo: string) => api.patch(`/caja/${id}/aprobar-descuadre`, { motivo }).then(r => r.data?.data),
   historial:       (p = 1, mes?: number, anio?: number) =>
     api.get(`/caja/historial?page=${p}${mes ? `&mes=${mes}&anio=${anio}` : ''}`).then(r => r.data?.data),
   resumen:         (mes: number, anio: number) => api.get(`/caja/resumen?mes=${mes}&anio=${anio}`).then(r => r.data?.data),
@@ -133,18 +137,21 @@ export default function CajaPage() {
     id: number; nombre: string;
     userId?: number; vendedorId?: number;
     saldoEsperado: number; saldoApertura: number;
-    ventasEfectivo: number; ventasTarjeta: number; ventasTransferencia: number;
+    ventasEfectivo: number; ventasTarjeta: number; ventasTransferencia: number; ventasCredito?: number;
     cobrosRecibidos: number; totalAnticipos: number; gastosEfectivo: number; retiros: number;
-    cantidadTransacciones: number; fecha: string;
+    cantidadTransacciones: number; fecha: string; ciegoCajaActivo?: boolean;
   } | null>(null);
   const [anularTarget, setAnularTarget] = useState<{ id: number; nombre: string; fecha: string } | null>(null);
+  const [aprobarDescuadreTarget, setAprobarDescuadreTarget] = useState<{ id: number; nombre: string; fecha: string } | null>(null);
   const [detalleCierre, setDetalleCierre] = useState<any>(null);
   const [saldoFisicoInput, setSaldoFisicoInput] = useState<number>(0);
+  const [motivoCierre, setMotivoCierre] = useState('');
   const [openAbrir, setOpenAbrir] = useState(false);
   const [histPage, setHistPage] = useState(1);
   const [histFecha, setHistFecha] = useState(() => dayjs());
   const [form]       = Form.useForm();
   const [formAnular] = Form.useForm();
+  const [formAprobarDescuadre] = Form.useForm();
   const qc = useQueryClient();
   const user = useAuthStore(s => s.user);
   const puedeAnular = user?.role === 'admin' || user?.role === 'contador' || user?.role === 'super_admin';
@@ -214,14 +221,21 @@ export default function CajaPage() {
   });
 
   const cerrarMut = useMutation({
-    mutationFn: ({ id, body }: any) => cajaApi.cerrar(id, body),
+    mutationFn: ({ id, body, supervisorToken }: { id: number; body: any; supervisorToken?: string }) =>
+      cajaApi.cerrar(id, body, supervisorToken ? { 'x-supervisor-token': supervisorToken } : undefined),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['caja-hoy'] });
       qc.invalidateQueries({ queryKey: ['caja-hist'] });
       setCerrarTarget(null); form.resetFields(); setSaldoFisicoInput(0);
       message.success('Caja cerrada correctamente');
     },
-    onError: (e: any) => message.error(e?.response?.data?.errors?.[0] ?? 'Error'),
+    onError: (e: any) => {
+      // El 428 (falta el motivo de descuadre) lo resuelve el propio
+      // CierreCajaFormulario con su modal — un toast genérico aquí encima
+      // solo confundiría.
+      if (e?.response?.status === 428 && e.response?.data?.requiereMotivoDescuadre) return;
+      message.error(e?.response?.data?.message ?? 'Error al cerrar caja');
+    },
   });
 
   const anularMut = useMutation({
@@ -233,6 +247,18 @@ export default function CajaPage() {
       message.success('Cierre anulado — la caja está abierta nuevamente');
     },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al anular'),
+  });
+
+  const aprobarDescuadreMut = useMutation({
+    mutationFn: ({ id, motivo }: { id: number; motivo: string }) => cajaApi.aprobarDescuadre(id, motivo),
+    onSuccess: (data: any) => {
+      qc.invalidateQueries({ queryKey: ['caja-hoy'] });
+      qc.invalidateQueries({ queryKey: ['caja-hist'] });
+      setAprobarDescuadreTarget(null); formAprobarDescuadre.resetFields();
+      setDetalleCierre((prev: any) => prev && prev.id === data?.id ? data : prev);
+      message.success('Descuadre aprobado');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al aprobar el descuadre'),
   });
 
   const sinApertura = !cajaData || (cajaData as any).estado === 'sin_apertura';
@@ -435,8 +461,10 @@ export default function CajaPage() {
       retiros:               Number(caja.retiros ?? 0),
       cantidadTransacciones: caja.cantidadTransacciones ?? 0,
       fecha:                 caja.fecha ?? '',
+      ventasCredito:         Number(caja.ventasCredito ?? 0),
+      ciegoCajaActivo:       !!caja.ciegoCajaActivo,
     });
-    form.resetFields(); setSaldoFisicoInput(0);
+    form.resetFields(); setSaldoFisicoInput(0); setMotivoCierre('');
   };
 
   // Caso real (2026-10-04): un ADMIN/CONTADOR cerrando la caja de OTRO
@@ -449,7 +477,12 @@ export default function CajaPage() {
   // ── Diálogo de impresión unificado ────────────────────────────────────────
   const [printTarget, setPrintTarget]       = useState<any>(null);
   const [printFormat, setPrintFormat]       = useState<'ticket'|'pdf'|'excel'>('ticket');
-  const [printDetalle, setPrintDetalle]     = useState(false);
+  // Default true: el detalle de facturas del turno (folio, hora, cliente,
+  // forma de pago, monto) es parte estándar del reporte de cierre, no un
+  // extra opcional — sobre todo cuando hay una sospecha de forma mal
+  // registrada, donde es imprescindible para auditar. Bug real (2026-10-10):
+  // con el default en false, reimprimir "perdía" la lista sin que se notara.
+  const [printDetalle, setPrintDetalle]     = useState(true);
   const [printLoading, setPrintLoading]     = useState(false);
 
   // Filtro local de texto; el historial ahora incluye también cajas abierta (huérfanas de días anteriores)
@@ -462,12 +495,13 @@ export default function CajaPage() {
         String(r.fecha ?? '').includes(q)
       );
     }
-    // ?descuadre=1 (aviso de la campanita) — mismo umbral por defecto que
-    // AlertasSistemaService.alertasCierreDiferencia (100, salvo que la
-    // empresa tenga su propio umbralDescuadreCaja configurado, que esta
-    // vista no conoce; es un filtro de pantalla, no la fuente del aviso).
+    // ?descuadre=1 (aviso de la campanita) — usa el mismo campo que ya
+    // calculó el backend al cerrar (fueraDeUmbral, por forma de pago y por
+    // el neto — ver fueraDeUmbral() en cuadre-por-forma-pago.util.ts). Antes
+    // recalculaba a mano con un 100 fijo y solo el efectivo: un faltante de
+    // tarjeta con el efectivo cuadrado nunca aparecía aquí.
     if (soloDescuadre) {
-      base = base.filter((r: any) => r.estado === 'cerrada' && Math.abs(Number(r.diferencia)) > 100);
+      base = base.filter((r: any) => r.estado === 'cerrada' && r.fueraDeUmbral);
     }
     return base;
   }, [historial, searchHistorial, soloDescuadre]);
@@ -488,7 +522,9 @@ export default function CajaPage() {
       'ninguna': { width: '80mm',  fontSize: '11pt', paddingLR: '5mm' },
     };
     const prn = IMP_CFG[tipoImp] ?? IMP_CFG['80mm'];
-    const esc = (s: string) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    // sanear() antes del escape — sin tildes ni caracteres especiales en
+    // ningún dato del ticket térmico (cajero, cliente, notas).
+    const esc = (s: string) => sanear(String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     const f   = (v: number) => `RD$${v.toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
     const line = () => `<div class="sep">--------------------------------</div>`;
     const row  = (lbl: string, val: string, bold = false) =>
@@ -530,7 +566,7 @@ export default function CajaPage() {
     // (real si se cerró después del fix, derivado si es un cierre viejo —
     // ver conEfectivoEsperado() en caja.service.ts); si por algo no viniera,
     // cae al bloque viejo para no imprimir un ticket vacío.
-    const cuadreHtml = bloqueCuadreFormaPagoTermico(r);
+    const cuadreHtml = bloqueCuadreFormaPagoTermico(r, tipoImp);
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
@@ -640,7 +676,9 @@ ${line()}
       'ninguna': { width: '80mm',  fontSize: '11pt', paddingLR: '5mm' },
     };
     const prn  = IMP_CFG[tipoImp] ?? IMP_CFG['80mm'];
-    const esc  = (s: string) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    // sanear() antes del escape — sin tildes ni caracteres especiales en
+    // ningún dato del ticket térmico (cajero, cliente, notas).
+    const esc  = (s: string) => sanear(String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     const f    = (v: number) => `RD$${v.toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
     const line = () => `<div class="sep">--------------------------------</div>`;
     const row  = (lbl: string, val: string, bold = false) =>
@@ -662,10 +700,10 @@ ${line()}
       const filas = detalle.facturas.map((fac: any) =>
         `<div class="fac-row${fac.cancelada?' anulada':''}">
           <div class="fac-top">
-            <span class="fac-num">${esc(fac.folio)}${fac.encf ? ` · ${esc(fac.encf)}` : ''}${fac.cancelada ? ' [ANULADA]' : ''}</span>
+            <span class="fac-num">${esc(fac.folio)}${fac.encf ? ` - ${esc(fac.encf)}` : ''}${fac.cancelada ? ' [ANULADA]' : ''}</span>
             <span class="fac-total">${f(fac.cancelada ? 0 : fac.total)}</span>
           </div>
-          <div class="fac-sub">${esc(fmtHora(fac.hora))} · ${esc(fac.clienteNombre)} · ${esc(fmtFormasPago(fac.formasPago))}</div>
+          <div class="fac-sub">${esc(fmtHora(fac.hora))} - ${esc(fac.clienteNombre)} - ${esc(fmtFormasPago(fac.formasPago))}</div>
         </div>`
       ).join('');
 
@@ -711,7 +749,7 @@ ${line()}
     // Ver el mismo comentario en imprimirCierre() — cuadre por forma de pago
     // (real o derivado para un cierre viejo), reemplaza el viejo bloque de
     // solo-efectivo.
-    const cuadreHtml = bloqueCuadreFormaPagoTermico(r);
+    const cuadreHtml = bloqueCuadreFormaPagoTermico(r, tipoImp);
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
@@ -1124,8 +1162,19 @@ ${line()}
                         );
                       },
                     },
-                    { title: 'Estado', dataIndex: 'estado', width: 90,
-                      render: (v: string) => <Tag color={estadoColor[v] ?? 'default'}>{v?.toUpperCase()}</Tag> },
+                    { title: 'Estado', dataIndex: 'estado', width: 130,
+                      render: (v: string, r: any) => (
+                        <Space size={4}>
+                          <Tag color={estadoColor[v] ?? 'default'}>{v?.toUpperCase()}</Tag>
+                          {r.fueraDeUmbral && (
+                            <Tooltip title={v === 'revisada'
+                              ? `Descuadre aprobado${r.aprobadoPorNombre ? ` por ${r.aprobadoPorNombre}` : ''}`
+                              : 'Diferencia fuera del umbral configurado — pendiente de revisión'}>
+                              <Tag color={v === 'revisada' ? 'default' : 'red'} style={{ margin: 0 }}>Descuadre</Tag>
+                            </Tooltip>
+                          )}
+                        </Space>
+                      ) },
                     { title: 'Apertura',       dataIndex: 'saldoApertura', width: 110, align: 'right' as const, render: (v: number) => fmt.money(v) },
                     { title: 'Total Ingresos', key: 'ing', width: 120, align: 'right' as const,
                       render: (_: any, r: any) => fmt.money(Number(r.ventasEfectivo ?? 0) + Number(r.ventasTarjeta ?? 0) + Number(r.ventasTransferencia ?? 0)) },
@@ -1340,6 +1389,12 @@ ${line()}
                 Anular
               </Button>
             )}
+            {puedeAnular && detalleCierre?.fueraDeUmbral && detalleCierre?.estado === 'cerrada' && (
+              <Button type="primary" icon={<CheckCircleOutlined />}
+                onClick={() => { setAprobarDescuadreTarget({ id: detalleCierre.id, nombre: detalleCierre.vendedorNombre ?? 'Administrador', fecha: detalleCierre.fecha }); setDetalleCierre(null); formAprobarDescuadre.resetFields(); }}>
+                Aprobar descuadre
+              </Button>
+            )}
           </Space>
         }
       >
@@ -1351,10 +1406,28 @@ ${line()}
               </Descriptions.Item>
               <Descriptions.Item label="Fecha">{fmt.date(detalleCierre.fecha)}</Descriptions.Item>
               <Descriptions.Item label="Estado">
-                <Tag color={estadoColor[detalleCierre.estado] ?? 'default'}>{detalleCierre.estado?.toUpperCase()}</Tag>
+                <Space size={4}>
+                  <Tag color={estadoColor[detalleCierre.estado] ?? 'default'}>{detalleCierre.estado?.toUpperCase()}</Tag>
+                  {detalleCierre.fueraDeUmbral && (
+                    <Tag color={detalleCierre.estado === 'revisada' ? 'default' : 'red'} style={{ margin: 0 }}>Descuadre</Tag>
+                  )}
+                </Space>
               </Descriptions.Item>
               <Descriptions.Item label="Transacciones">{detalleCierre.cantidadTransacciones ?? 0}</Descriptions.Item>
             </Descriptions>
+
+            {detalleCierre.fueraDeUmbral && detalleCierre.estado === 'revisada' && detalleCierre.motivoAprobacionDescuadre && (
+              <Alert type="success" showIcon style={{ marginBottom: 16 }}
+                message={`Descuadre aprobado${detalleCierre.aprobadoPorNombre ? ` por ${detalleCierre.aprobadoPorNombre}` : ''}${detalleCierre.aprobadoEn ? ` el ${dRD(detalleCierre.aprobadoEn).format('DD/MM/YYYY HH:mm')}` : ''}`}
+                description={`Motivo: ${detalleCierre.motivoAprobacionDescuadre}`}
+              />
+            )}
+            {detalleCierre.fueraDeUmbral && detalleCierre.estado === 'cerrada' && (
+              <Alert type="warning" showIcon style={{ marginBottom: 16 }}
+                message="Diferencia fuera del umbral configurado"
+                description="Se notificó a ADMIN/CONTADOR al cerrar. Pendiente de aprobación con motivo, o de corregir la forma de pago de la factura que lo explica."
+              />
+            )}
 
             <Divider style={{ margin: '8px 0' }}>Ingresos del turno</Divider>
             <Descriptions column={1} size="small" style={{ marginBottom: 8 }}>
@@ -1498,14 +1571,14 @@ ${line()}
                 {Array.isArray(detalleCierre.sospechasFormaPago) && detalleCierre.sospechasFormaPago.map((s: any, i: number) => (
                   <Alert
                     key={i} type="warning" showIcon style={{ marginTop: 10 }}
-                    message={`Posible forma de pago mal registrada: ${LABEL_FORMA[s.formaSobrante] ?? s.formaSobrante} +${fmt.money(s.monto)} / ${LABEL_FORMA[s.formaFaltante] ?? s.formaFaltante} ${fmt.money(-s.monto)}`}
+                    message={`Posible forma de pago mal registrada: ${LABEL_FORMA[s.formaSobrante] ?? s.formaSobrante} +${fmt.money(s.montoSobrante ?? s.monto)} / ${LABEL_FORMA[s.formaFaltante] ?? s.formaFaltante} ${fmt.money(s.montoFaltante ?? -s.monto)}`}
                     description={
                       s.facturasCandidatas?.length ? (
                         <div style={{ fontSize: 12 }}>
                           <div style={{ marginBottom: 4 }}>Facturas de este turno que podrían explicarlo (pago mixto con ambas formas):</div>
                           {s.facturasCandidatas.map((f: any) => (
                             <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '2px 0' }}>
-                              <span><strong>{f.folio}</strong> — {fmt.money(Number(f.total))}</span>
+                              <span><strong>{f.folio}</strong> — {fmtFormasPago(Array.isArray(f.formasPago) ? f.formasPago : [])}</span>
                               <Button size="small" onClick={() => {
                                 // Sugerencia: invertir los montos entre la forma sobrante y la
                                 // faltante — es exactamente el fix del caso real (FAC-1803).
@@ -1614,9 +1687,46 @@ ${line()}
                         directamente.
                       </div>
                     )}
+                    {/* El efectivo contado en el recierre casi nunca debe diferir
+                        del conteo original — si difiere, alguien contó mal la
+                        segunda vez (o el dinero físico cambió entre cierres), y
+                        el recierre no debería pasar desapercibido. */}
+                    {Math.abs(Number(detalleCierre.saldoFisico ?? 0) - Number(detalleCierre.contadoOriginal ?? 0)) > 0.5 && (
+                      <div style={{ marginTop: 6, color: token.colorError, fontWeight: 600 }}>
+                        ⚠ El efectivo contado en el recierre ({fmt.money(Number(detalleCierre.saldoFisico ?? 0))}) difiere
+                        del conteo original ({fmt.money(Number(detalleCierre.contadoOriginal ?? 0))}).
+                      </div>
+                    )}
                   </div>
                 }
               />
+            )}
+
+            {/* Original vs recierre, lado a lado por forma de pago — sin esto,
+                el cuadre por forma del primer cajero se perdía sin rastro al
+                recerrar (ver incidente 2026-10-09/10). */}
+            {Array.isArray(detalleCierre.cuadrePorFormaPagoOriginal) && detalleCierre.cuadrePorFormaPagoOriginal.length > 0 && (
+              <>
+                <Divider style={{ margin: '12px 0 8px' }}>Cuadre por forma de pago — original vs. recierre</Divider>
+                <Table
+                  size="small" pagination={false} rowKey="forma"
+                  dataSource={detalleCierre.cuadrePorFormaPagoOriginal}
+                  columns={[
+                    { title: 'Forma', dataIndex: 'forma', render: (v: string) => LABEL_FORMA[v] ?? v },
+                    { title: 'Declarado (original)', dataIndex: 'declarado', align: 'right' as const, render: (v: number) => fmt.money(Number(v ?? 0)) },
+                    { title: 'Declarado (recierre)', dataIndex: 'forma', align: 'right' as const,
+                      render: (forma: string) => {
+                        const actual = (detalleCierre.cuadrePorFormaPago ?? []).find((f: any) => f.forma === forma);
+                        return fmt.money(Number(actual?.declarado ?? 0));
+                      } },
+                  ]}
+                />
+                {Array.isArray(detalleCierre.facturasSinFormaPagoOriginal) && detalleCierre.facturasSinFormaPagoOriginal.length > 0 && (
+                  <div style={{ fontSize: 12, color: token.colorTextSecondary, marginTop: 8 }}>
+                    Facturas sin forma de pago en el cierre original: {detalleCierre.facturasSinFormaPagoOriginal.map((f: any) => f.folio).join(', ')}
+                  </div>
+                )}
+              </>
             )}
           </>
         )}
@@ -1680,125 +1790,55 @@ ${line()}
         </Form>
       </Modal>
 
-      {/* Modal cerrar caja — resumen completo + diferencia en tiempo real */}
+      {/* Modal cerrar caja — mismo formulario de declaración por forma de
+          pago que el POS (CierreCajaFormulario); ver el incidente del
+          2026-10-09/10 que llevó a unificarlo: este modal solo pedía el
+          efectivo y un recierre hecho desde aquí borraba tarjeta/
+          transferencia/otros ya declaradas en el primer cierre. */}
       <Modal
         title={<Space><LockOutlined style={{ color: '#EF4444' }} />{`Cerrar caja — ${cerrarTarget?.nombre ?? ''}`}</Space>}
         open={!!cerrarTarget}
-        onCancel={() => { setCerrarTarget(null); setSaldoFisicoInput(0); }}
+        onCancel={() => { setCerrarTarget(null); setMotivoCierre(''); }}
         footer={null}
-        width="min(460px, 95vw)"
+        width="min(520px, 95vw)"
       >
         {esDeOtroCajero && (
-          <Alert
-            type="warning" showIcon style={{ marginBottom: 16 }}
-            message={`Vas a cerrar la caja de ${cerrarTarget?.nombre}, abierta el ${cerrarTarget?.fecha ? fecha(cerrarTarget.fecha) : ''}`}
-            description="No es tu caja — indica abajo por qué la estás cerrando tú."
-          />
-        )}
-        {/* ── Resumen del turno ── */}
-        <div style={{
-          background: token.colorFillAlter,
-          border: `1px solid ${token.colorBorderSecondary}`,
-          borderRadius: 8, padding: '12px 16px', marginBottom: 16,
-        }}>
-          <div style={{
-            fontSize: 11, fontWeight: 600, textTransform: 'uppercase',
-            letterSpacing: '0.06em', color: token.colorTextTertiary, marginBottom: 10,
-          }}>
-            Resumen del turno
-          </div>
-
-          {[
-            { label: 'Ventas efectivo',      value: cerrarTarget?.ventasEfectivo ?? 0,      color: '#10B981' },
-            { label: 'Ventas tarjeta',       value: cerrarTarget?.ventasTarjeta ?? 0,       color: undefined },
-            { label: 'Ventas transferencia', value: cerrarTarget?.ventasTransferencia ?? 0, color: undefined },
-            { label: 'Cobros recibidos',     value: cerrarTarget?.cobrosRecibidos ?? 0,     color: '#0EA5E9' },
-            { label: 'Anticipos recibidos',  value: cerrarTarget?.totalAnticipos ?? 0,      color: '#7C3AED' },
-            { label: 'Apertura (fondo)',     value: cerrarTarget?.saldoApertura ?? 0,       color: undefined },
-            { label: 'Gastos registrados',   value: cerrarTarget?.gastosEfectivo ?? 0,      color: '#EF4444', signo: true },
-            { label: 'Retiros',              value: cerrarTarget?.retiros ?? 0,             color: '#EF4444', signo: true },
-          ].filter(item => item.value > 0).map(item => (
-            <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', fontSize: 13 }}>
-              <span style={{ color: token.colorTextSecondary }}>{item.label}</span>
-              <span style={{ fontWeight: 500, color: item.color ?? token.colorText }}>
-                {item.signo ? '− ' : ''}{fmt.money(item.value)}
-              </span>
-            </div>
-          ))}
-
-          <div style={{ borderTop: `1px solid ${token.colorBorder}`, marginTop: 8, paddingTop: 8, display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ fontWeight: 600, fontSize: 13, color: token.colorText }}>Efectivo esperado</span>
-            <span style={{ fontWeight: 700, fontSize: 15, color: token.colorText }}>{fmt.money(cerrarTarget?.saldoEsperado ?? 0)}</span>
-          </div>
-          <div style={{ fontSize: 11, color: token.colorTextTertiary, textAlign: 'center', marginTop: 6 }}>
-            {cerrarTarget?.cantidadTransacciones ?? 0} transacciones · {cerrarTarget?.fecha ? fmt.date(cerrarTarget.fecha) : ''}
-          </div>
-        </div>
-
-        <Form form={form} layout="vertical" onFinish={v => cerrarMut.mutate({ id: cerrarTarget!.id, body: v })}>
-          <Form.Item
-            name="saldoFisico"
-            label={<span style={{ fontWeight: 500 }}>Efectivo físico contado (RD$)</span>}
-            rules={[{ required: true, message: 'Ingresa el monto contado' }]}
-          >
-            <InputNumber
-              style={{ width: '100%', fontSize: 16 }} size="large"
-              min={0} precision={2} autoFocus placeholder="0.00"
-              onChange={v => setSaldoFisicoInput(Number(v ?? 0))}
+          <>
+            <Alert
+              type="warning" showIcon style={{ marginBottom: 16 }}
+              message={`Vas a cerrar la caja de ${cerrarTarget?.nombre}, abierta el ${cerrarTarget?.fecha ? fecha(cerrarTarget.fecha) : ''}`}
+              description="No es tu caja — indica abajo por qué la estás cerrando tú."
             />
-          </Form.Item>
-
-          {/* Diferencia en tiempo real */}
-          {saldoFisicoInput > 0 && (() => {
-            // `diferenciaCierre` es una resta de dos importes en coma flotante:
-            // cuando el arqueo cuadra exacto puede valer 1.8e-12, y `=== 0` daba
-            // false. El modal anunciaba «↓ Faltante RD$0.00» justo donde el
-            // cajero decide si cierra. estadoDiferencia trae el medio centavo de
-            // tolerancia.
-            const estadoDif = estadoDiferencia(diferenciaCierre);
-            const difColor = colorDif(diferenciaCierre);
-            const difBg    = estadoDif === 'cuadrado' ? token.colorSuccessBg
-                           : estadoDif === 'sobrante' ? token.colorPrimaryBg
-                           :                            token.colorErrorBg;
-            return (
-              <div style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                padding: '10px 14px', borderRadius: 8, marginBottom: 16, marginTop: -8,
-                background: difBg, border: `1px solid ${difColor}55`,
-              }}>
-                <span style={{ fontSize: 13, fontWeight: 500, color: token.colorText }}>Diferencia</span>
-                <span style={{ fontSize: 15, fontWeight: 700, color: difColor, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {estadoDif === 'cuadrado' ? '✅' : estadoDif === 'sobrante' ? '↑' : '↓'}
-                  {' '}{fmt.money(estadoDif === 'cuadrado' ? 0 : Math.abs(diferenciaCierre))}
-                  {estadoDif === 'cuadrado' ? ' Cuadrado' : estadoDif === 'sobrante' ? ' Sobrante' : ' Faltante'}
-                </span>
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontWeight: 500, marginBottom: 4 }}>
+                Motivo para cerrar la caja de {cerrarTarget?.nombre} (obligatorio)
               </div>
-            );
-          })()}
+              <Input.TextArea rows={2} maxLength={300} showCount
+                placeholder="Ej: El cajero se fue sin cerrar su turno"
+                value={motivoCierre} onChange={e => setMotivoCierre(e.target.value)} />
+            </div>
+          </>
+        )}
 
-          <Form.Item name="notas" label="Observaciones (opcional)">
-            <Input.TextArea rows={2} placeholder="Ej: Billete roto de RD$500, cliente pagó con dólares..." />
-          </Form.Item>
-
-          {esDeOtroCajero && (
-            <Form.Item
-              name="motivo"
-              label={<span style={{ fontWeight: 500 }}>Motivo para cerrar la caja de {cerrarTarget?.nombre} (obligatorio)</span>}
-              rules={[{ required: true, whitespace: true, message: 'Indica por qué estás cerrando la caja de otro cajero' }]}
-            >
-              <Input.TextArea rows={2} maxLength={300} showCount placeholder="Ej: El cajero se fue sin cerrar su turno" />
-            </Form.Item>
-          )}
-
-          <Row justify="end" gutter={8}>
-            <Col><Button onClick={() => { setCerrarTarget(null); setSaldoFisicoInput(0); }}>Cancelar</Button></Col>
-            <Col>
-              <Button type="primary" danger htmlType="submit" icon={<LockOutlined />} loading={cerrarMut.isPending}>
-                Confirmar cierre
-              </Button>
-            </Col>
-          </Row>
-        </Form>
+        <CierreCajaFormulario
+          cajaHoy={cerrarTarget}
+          submitting={cerrarMut.isPending}
+          onCerrar={(payload, opts) => {
+            if (esDeOtroCajero && !motivoCierre.trim()) {
+              message.error('Indica por qué estás cerrando la caja de otro cajero');
+              return Promise.reject(new Error('motivo requerido'));
+            }
+            return cerrarMut.mutateAsync({
+              id: cerrarTarget!.id,
+              body: {
+                ...payload,
+                motivo: esDeOtroCajero ? motivoCierre : undefined,
+                motivoDescuadre: opts?.motivoDescuadre,
+              },
+              supervisorToken: opts?.supervisorToken,
+            });
+          }}
+        />
       </Modal>
 
       {/* Modal imprimir cierre unificado */}
@@ -1988,8 +2028,10 @@ ${line()}
                 retiros:               Number(caja.retiros ?? 0),
                 cantidadTransacciones: caja.cantidadTransacciones ?? 0,
                 fecha:                 caja.fecha ?? '',
+                ventasCredito:         Number(caja.ventasCredito ?? 0),
+                ciegoCajaActivo:       !!caja.ciegoCajaActivo,
               });
-              form.resetFields(); setSaldoFisicoInput(0);
+              form.resetFields(); setSaldoFisicoInput(0); setMotivoCierre('');
               setPreCierreData(null);
             }}>
             Cerrar de todas formas
@@ -2049,6 +2091,43 @@ ${line()}
               <Button type="primary" htmlType="submit" icon={<RollbackOutlined />}
                 loading={anularMut.isPending} style={{ background: '#d97706', borderColor: '#d97706' }}>
                 Confirmar anulación
+              </Button>
+            </Col>
+          </Row>
+        </Form>
+      </Modal>
+
+      {/* Modal aprobar descuadre — ADMIN/CONTADOR revisa un cierre fuera del
+          umbral configurado y registra un motivo obligatorio; el cierre pasa
+          a REVISADA (queda en auditoría: quién, cuándo, por qué). */}
+      <Modal
+        title={<Space><CheckCircleOutlined style={{ color: '#059669' }} />{`Aprobar descuadre — ${aprobarDescuadreTarget?.nombre}`}</Space>}
+        open={!!aprobarDescuadreTarget}
+        onCancel={() => { setAprobarDescuadreTarget(null); formAprobarDescuadre.resetFields(); }}
+        footer={null} width="min(460px, 95vw)" destroyOnClose
+      >
+        <Alert type="warning" showIcon
+          message="Diferencia fuera del umbral configurado"
+          description={
+            <span>
+              La caja del <strong>{aprobarDescuadreTarget?.fecha ? fecha(aprobarDescuadreTarget.fecha) : ''}</strong> de{' '}
+              <strong>{aprobarDescuadreTarget?.nombre}</strong> quedará marcada como REVISADA — ya no se podrá anular.
+            </span>
+          }
+          style={{ marginBottom: 16 }}
+        />
+        <Form form={formAprobarDescuadre} layout="vertical"
+          onFinish={v => aprobarDescuadreTarget && aprobarDescuadreMut.mutate({ id: aprobarDescuadreTarget.id, motivo: v.motivo })}>
+          <Form.Item name="motivo" label="Motivo de la aprobación"
+            rules={[{ required: true, whitespace: true, message: 'El motivo es obligatorio' }]}>
+            <Input.TextArea rows={3} maxLength={500} placeholder="Ej: Verificado con el cajero, el faltante de tarjeta es real por un error del datáfono..." showCount />
+          </Form.Item>
+          <Row justify="end" gutter={8}>
+            <Col><Button onClick={() => { setAprobarDescuadreTarget(null); formAprobarDescuadre.resetFields(); }}>Cancelar</Button></Col>
+            <Col>
+              <Button type="primary" htmlType="submit" icon={<CheckCircleOutlined />}
+                loading={aprobarDescuadreMut.isPending} style={{ background: '#059669', borderColor: '#059669' }}>
+                Confirmar aprobación
               </Button>
             </Col>
           </Row>

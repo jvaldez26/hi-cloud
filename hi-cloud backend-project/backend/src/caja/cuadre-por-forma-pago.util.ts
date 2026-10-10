@@ -33,8 +33,18 @@ export function construirCuadrePorForma(
 export interface SospechaFormaPago {
   formaSobrante: string;
   formaFaltante: string;
-  /** Monto del sobrante (= |faltante|, dentro de la tolerancia). */
+  /**
+   * @deprecated usar montoSobrante/montoFaltante — este campo asumía que
+   * ambos valores eran simétricos (|sobrante| = |faltante|), lo que casi
+   * nunca es exacto (caso real: +829.94 / -830.00, una diferencia de 0.06
+   * dentro de tolerancia pero no idéntica). Se mantiene solo por
+   * compatibilidad con código que ya lo lea.
+   */
   monto: number;
+  /** Monto real del sobrante (> 0). */
+  montoSobrante: number;
+  /** Monto real del faltante (< 0) — NUNCA se asume igual a -montoSobrante. */
+  montoFaltante: number;
 }
 
 /** Bucket del cuadre ↔ tipo(s) DGII de `formasPago`, para buscar facturas candidatas de una sospecha. */
@@ -62,7 +72,11 @@ export function detectarPosibleFormaMalRegistrada(
   for (const sob of sobrantes) {
     for (const falt of faltantes) {
       if (Math.abs(sob.diferencia + falt.diferencia) <= tolerancia) {
-        sospechas.push({ formaSobrante: sob.forma, formaFaltante: falt.forma, monto: sob.diferencia });
+        sospechas.push({
+          formaSobrante: sob.forma, formaFaltante: falt.forma,
+          monto: sob.diferencia, // compat
+          montoSobrante: sob.diferencia, montoFaltante: falt.diferencia,
+        });
       }
     }
   }
@@ -72,6 +86,29 @@ export function detectarPosibleFormaMalRegistrada(
 /** Neto de todas las diferencias — si es ~0 pero hay sospechas, confirma que es un error de registro, no una pérdida real. */
 export function netoCuadre(filas: FilaCuadre[]): number {
   return redondear(filas.reduce((a, f) => a + f.diferencia, 0));
+}
+
+/**
+ * ¿Este cierre está fuera del umbral de alerta por descuadre? Decisión de
+ * negocio explícita (2026-10-10, segunda vuelta, tras el caso de la empresa
+ * 73): solo importa el EFECTIVO, y solo el FALTANTE (esperado > contado) —
+ * un sobrante de efectivo nunca alerta, y las diferencias de tarjeta,
+ * transferencia, otros o el neto tampoco disparan esta alerta por sí solas
+ * (el primer diseño evaluaba cada forma y el neto; el negocio decidió que
+ * eso generaba demasiado ruido y que lo único que importa vigilar de cerca
+ * es que no falte dinero en el cajón). El cuadre por forma de pago y el
+ * aviso de "posible forma mal registrada" (detectarPosibleFormaMalRegistrada)
+ * siguen calculándose y mostrándose igual — esto solo decide si se notifica.
+ *
+ * Medio centavo de tolerancia — mismo criterio que estadoDiferencia() en el
+ * frontend: por debajo de eso no hay diferencia que alguien pueda contar.
+ */
+export function fueraDeUmbral(filas: FilaCuadre[], umbral: number): boolean {
+  const u = Math.max(0, Number(umbral) || 0) + 0.005;
+  const efectivo = filas.find(f => f.forma === 'efectivo');
+  if (!efectivo) return false;
+  const faltante = -efectivo.diferencia; // > 0 cuando esperado > contado (falta dinero)
+  return faltante > u;
 }
 
 /** Inverso de TIPOS_DGII_POR_FORMA — tipo DGII → la forma del cuadre a la que pertenece. */

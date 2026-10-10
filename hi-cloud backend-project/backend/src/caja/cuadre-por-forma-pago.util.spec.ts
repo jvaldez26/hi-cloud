@@ -1,6 +1,6 @@
 import {
   construirCuadrePorForma, detectarPosibleFormaMalRegistrada, netoCuadre,
-  derivarCuadreLegacy, aplicarAjustesAlCuadre,
+  derivarCuadreLegacy, aplicarAjustesAlCuadre, fueraDeUmbral,
 } from './cuadre-por-forma-pago.util';
 
 describe('cuadre-por-forma-pago.util — caso real (empresa 73, Bellamar González, 2026-10-09)', () => {
@@ -19,10 +19,10 @@ describe('cuadre-por-forma-pago.util — caso real (empresa 73, Bellamar Gonzál
     ]);
   });
 
-  it('detecta la sospecha exacta: efectivo sobra, tarjeta falta, misma magnitud', () => {
+  it('detecta la sospecha con las diferencias REALES de cada forma, no asumidas simétricas', () => {
     const sospechas = detectarPosibleFormaMalRegistrada(filas, 1);
     expect(sospechas).toEqual([
-      { formaSobrante: 'efectivo', formaFaltante: 'tarjeta', monto: 829.94 },
+      { formaSobrante: 'efectivo', formaFaltante: 'tarjeta', monto: 829.94, montoSobrante: 829.94, montoFaltante: -830.00 },
     ]);
   });
 
@@ -58,7 +58,7 @@ describe('cuadre-por-forma-pago.util — casos generales', () => {
       { efectivo: 1100, tarjeta: 400, transferencia: 300 },
     );
     const sospechas = detectarPosibleFormaMalRegistrada(filas, 1);
-    expect(sospechas).toEqual([{ formaSobrante: 'efectivo', formaFaltante: 'tarjeta', monto: 100 }]);
+    expect(sospechas).toEqual([{ formaSobrante: 'efectivo', formaFaltante: 'tarjeta', monto: 100, montoSobrante: 100, montoFaltante: -100 }]);
   });
 });
 
@@ -82,7 +82,7 @@ describe('derivarCuadreLegacy — reconstruye el cuadre de un cierre viejo sin s
       { forma: 'tarjeta', esperado: 2605.00, declarado: 1775.00, diferencia: -830.00 },
     );
     expect(detectarPosibleFormaMalRegistrada(filas, 1)).toEqual([
-      { formaSobrante: 'efectivo', formaFaltante: 'tarjeta', monto: 829.94 },
+      { formaSobrante: 'efectivo', formaFaltante: 'tarjeta', monto: 829.94, montoSobrante: 829.94, montoFaltante: -830.00 },
     ]);
   });
 
@@ -142,5 +142,71 @@ describe('aplicarAjustesAlCuadre — cuadre corregido tras arreglar la forma de 
       formasPagoNuevo:    [{ tipo: 1, monto: 20 }],
     }]);
     expect(corregido.find(f => f.forma === 'transferencia')).toEqual({ forma: 'transferencia', esperado: 50, declarado: 50, diferencia: 0 });
+  });
+});
+
+// Requisito explícito (2026-10-10): el umbral de alerta por descuadre se
+// evalúa por CADA forma de pago Y por el neto — una forma mal registrada con
+// el neto cuadrado (caso real empresa 73: efectivo +829.94 / tarjeta -830.00,
+// neto -0.06) debe alertar igual, porque el umbral solo sobre el neto nunca
+// la habría detectado.
+// Regla de negocio (2026-10-10, segunda vuelta): solo el FALTANTE de
+// EFECTIVO alerta. Un sobrante de efectivo, o una diferencia de cualquier
+// otra forma de pago (con el efectivo cuadrado), nunca dispara esta alerta.
+describe('fueraDeUmbral', () => {
+  it('faltante de efectivo MAYOR al umbral: alerta', () => {
+    const filas = construirCuadrePorForma({ efectivo: 500 }, { efectivo: 350 }); // falta 150
+    expect(fueraDeUmbral(filas, 100)).toBe(true);
+  });
+
+  it('faltante de efectivo IGUAL al umbral: no alerta (no lo supera)', () => {
+    const filas = construirCuadrePorForma({ efectivo: 500 }, { efectivo: 400 }); // falta 100
+    expect(fueraDeUmbral(filas, 100)).toBe(false);
+  });
+
+  it('faltante de efectivo MENOR al umbral: no alerta', () => {
+    const filas = construirCuadrePorForma({ efectivo: 500 }, { efectivo: 450 }); // falta 50
+    expect(fueraDeUmbral(filas, 100)).toBe(false);
+  });
+
+  it('sobrante de efectivo: no alerta, sin importar cuán grande sea', () => {
+    const filas = construirCuadrePorForma({ efectivo: 500 }, { efectivo: 10000 }); // sobran 9500
+    expect(fueraDeUmbral(filas, 100)).toBe(false);
+  });
+
+  it('faltante de TARJETA con el efectivo cuadrado: no alerta — solo importa el efectivo', () => {
+    const filas = construirCuadrePorForma(
+      { efectivo: 500, tarjeta: 300 },
+      { efectivo: 500, tarjeta: 0 }, // falta toda la tarjeta
+    );
+    expect(fueraDeUmbral(filas, 100)).toBe(false);
+  });
+
+  it('caso real empresa 73: efectivo SOBRANTE +829.94 (tarjeta faltante aparte) — ya no alerta bajo la nueva regla', () => {
+    const filas = construirCuadrePorForma(
+      { efectivo: 5608.06, tarjeta: 2605.00 },
+      { efectivo: 6438.00, tarjeta: 1775.00 },
+    );
+    expect(fueraDeUmbral(filas, 100)).toBe(false);
+  });
+
+  it('sin fila de efectivo en el cuadre: no alerta (nada que evaluar)', () => {
+    const filas = construirCuadrePorForma({ tarjeta: 300 }, { tarjeta: 0 });
+    expect(fueraDeUmbral(filas, 100)).toBe(false);
+  });
+
+  it('umbral 0: cualquier faltante de efectivo alerta', () => {
+    const filas = construirCuadrePorForma({ efectivo: 100.01 }, { efectivo: 100 });
+    expect(fueraDeUmbral(filas, 0)).toBe(true);
+  });
+
+  it('cuadrado exacto con umbral 0: no alerta (tolerancia de medio centavo)', () => {
+    const filas = construirCuadrePorForma({ efectivo: 100 }, { efectivo: 100 });
+    expect(fueraDeUmbral(filas, 0)).toBe(false);
+  });
+
+  it('umbral negativo se trata como 0, no revienta', () => {
+    const filas = construirCuadrePorForma({ efectivo: 100 }, { efectivo: 100 });
+    expect(fueraDeUmbral(filas, -50)).toBe(false);
   });
 });

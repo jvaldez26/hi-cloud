@@ -1,13 +1,16 @@
 import {
   Controller, Get, Post, Patch, Body, Param,
-  ParseIntPipe, Query, HttpCode, HttpStatus, UseGuards,
+  ParseIntPipe, Query, HttpCode, HttpStatus, UseGuards, Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { IsOptional, IsNumber, IsString, IsNotEmpty, IsInt, IsPositive,
-         Min, MaxLength, Max, IsEnum, IsDateString } from 'class-validator';
+         Min, MaxLength, Max, IsEnum, IsDateString, IsBoolean, IsArray, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import { CajaService } from './caja.service';
 import { CategoriaRetiro } from './entities/retiro-caja.entity';
 import { RequiereSupervisor } from '../supervisor-politicas/guards/requiere-supervisor.guard';
+import { RequiereSupervisorSiempre } from '../supervisor-politicas/guards/requiere-supervisor-siempre.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -28,6 +31,26 @@ class AbrirCajaDto {
 
   @IsOptional() @IsString()
   notas?: string;
+}
+
+/**
+ * Una línea de lo que la cajera declara por forma de pago al cerrar — ver
+ * cuadre-por-forma-pago.util.ts. `confirmado` es la salida de emergencia
+ * para una forma que SÍ tuvo ventas pero genuinamente no se cobró nada por
+ * ahí (error del datáfono, venta corregida después, etc.): sin marcarlo, el
+ * servicio rechaza el cierre en vez de asumir el 0 en silencio (requisito
+ * que cierra el bug real de Caja Diaria: un formulario que no declaraba por
+ * forma dejaba tarjeta/transferencia en 0 sin que nadie lo confirmara).
+ */
+class DeclaracionFormaPagoDto {
+  @IsString() @IsNotEmpty()
+  forma: string;
+
+  @IsNumber({ maxDecimalPlaces: 2 }) @Min(0)
+  monto: number;
+
+  @IsOptional() @IsBoolean()
+  confirmado?: boolean;
 }
 
 class CerrarCajaDto {
@@ -51,13 +74,34 @@ class CerrarCajaDto {
   @IsOptional() @IsString() @MaxLength(300)
   motivo?: string;
 
-  /** Lo que la cajera declara por forma de pago (ver cuadre-por-forma-pago.util.ts). Sin esto, el cuadre solo usa efectivo (compat). */
-  @IsOptional()
-  declaradoPorForma?: { forma: string; monto: number }[];
+  /**
+   * Lo que la cajera declara por forma de pago — ver DeclaracionFormaPagoDto.
+   * El servicio exige una línea por cada forma con ventas en el turno
+   * (o `confirmado: true` si genuinamente fue 0); sin esto, un formulario
+   * viejo o externo podía cerrar solo con efectivo y dejar tarjeta/
+   * transferencia en 0 sin que nadie se enterara.
+   */
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => DeclaracionFormaPagoDto)
+  declaradoPorForma?: DeclaracionFormaPagoDto[];
+
+  /**
+   * Motivo que escribe el SUPERVISOR (no la cajera) tras ver la tabla por
+   * forma de pago de un cierre fuera de umbral — ver la política
+   * 'cierre_caja_descuadre'. Ausente en el primer intento; el servicio
+   * responde 428 con la tabla y un `x-supervisor-token` ya validado, y el
+   * frontend reenvía esta misma petición con el motivo puesto.
+   */
+  @IsOptional() @IsString() @MaxLength(500)
+  motivoDescuadre?: string;
 }
 
 class AnularCierreDto {
   @IsString() @MaxLength(300)
+  motivo: string;
+}
+
+class AprobarDescuadreDto {
+  @IsString() @IsNotEmpty() @MaxLength(500)
   motivo: string;
 }
 
@@ -182,20 +226,31 @@ export class CajaController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CerrarCajaDto,
     @GetUser() usuario: User,
+    @Req() req: Request,
   ) {
+    // x-supervisor-token: la política 'cierre_caja_descuadre' (desactivada
+    // por defecto) la consume el SERVICIO, no un guard — necesita el cuadre
+    // por forma de pago, que recién se conoce dentro de cerrarCaja().
     return this.cajaService.cerrarCaja(
       id, dto.saldoFisico, dto.notas,
       dto.desgloseBilletes, dto.desglosePago,
       { id: usuario.id, nombre: usuario.nombre },
       dto.motivo,
       dto.declaradoPorForma,
+      req.headers['x-supervisor-token'] as string | undefined,
+      dto.motivoDescuadre,
     );
   }
 
+  // Anular un cierre (reabrirlo para recerrarlo) exige la autorización de
+  // OTRA persona — RequiereSupervisorSiempre, sin bypass por rol: ni el
+  // propio ADMIN que anula puede autorizarse a sí mismo. La clave ya estaba
+  // en el catálogo (anular_cierre_caja) pero nunca se conectó a este guard.
   @Patch(':id/anular')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @UseGuards(RequiereSupervisorSiempre('anular_cierre_caja'))
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Anular cierre de caja — regresa a estado abierta para seguir facturando' })
+  @ApiOperation({ summary: 'Anular cierre de caja — regresa a estado abierta para seguir facturando; requiere autorización de otra persona' })
   anularCierre(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: AnularCierreDto,
@@ -203,6 +258,18 @@ export class CajaController {
   ) {
     // El nombre sale del usuario autenticado, nunca del body.
     return this.cajaService.anularCierre(id, dto.motivo, usuario.id, usuario.nombre);
+  }
+
+  @Patch(':id/aprobar-descuadre')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Aprobar un cierre fuera del umbral de descuadre — ADMIN/CONTADOR, motivo obligatorio, queda en auditoría' })
+  aprobarDescuadre(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AprobarDescuadreDto,
+    @GetUser() usuario: User,
+  ) {
+    return this.cajaService.aprobarDescuadre(id, dto.motivo, usuario.id, usuario.nombre);
   }
 
   @Get('historial')

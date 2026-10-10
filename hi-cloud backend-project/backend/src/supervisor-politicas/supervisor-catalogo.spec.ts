@@ -13,3 +13,17 @@ describe('CATALOGO_SUPERVISOR — imprimir_cierre_caja_abierta', () => {
     expect(esClaveValida('imprimir_cierre_caja_abierta')).toBe(true);
   });
 });
+
+describe('CATALOGO_SUPERVISOR — cierre_caja_descuadre', () => {
+  it('existe en el grupo "Caja", DESACTIVADA por defecto (no cambia el comportamiento actual)', () => {
+    const item = CATALOGO_SUPERVISOR.find(c => c.clave === 'cierre_caja_descuadre');
+    expect(item).toBeDefined();
+    expect(item!.grupo).toBe('Caja');
+    expect(item!.defaultRequerido).toBe(false);
+    expect(item!.defaultModo).toBe('cada_vez');
+  });
+
+  it('esClaveValida la reconoce', () => {
+    expect(esClaveValida('cierre_caja_descuadre')).toBe(true);
+  });
+});

@@ -1,5 +1,6 @@
 import {
   Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger,
+  HttpException, HttpStatus,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, IsNull, Not, In, EntityManager } from 'typeorm';
@@ -26,10 +27,17 @@ import {
   detectarPosibleFormaMalRegistrada,
   derivarCuadreLegacy,
   aplicarAjustesAlCuadre,
+  fueraDeUmbral,
   TIPOS_DGII_POR_FORMA,
   FilaCuadre,
   SospechaFormaPago,
 } from './cuadre-por-forma-pago.util';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
+
+/** Mismas 4 etiquetas que usa el frontend para el cuadre — para el mensaje de la validación de abajo. */
+const LABEL_FORMA_CUADRE: Record<string, string> = {
+  efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia', otros: 'Otros',
+};
 
 @Injectable()
 export class CajaService {
@@ -43,6 +51,7 @@ export class CajaService {
     private dataSource:      DataSource,
     private tenantService:   TenantService,
     private realtimeService: RealtimeService,
+    private notificacionesService: NotificacionesService,
   ) {}
 
   // ── Migración defensiva ───────────────────────────────────────────────────
@@ -270,7 +279,12 @@ export class CajaService {
     desglosePago?: Record<string, string>,
     usuario?: { id: number; nombre?: string },
     motivo?: string,
-    declaradoPorForma?: { forma: string; monto: number }[],
+    declaradoPorForma?: { forma: string; monto: number; confirmado?: boolean }[],
+    /** Header x-supervisor-token — ver la política 'cierre_caja_descuadre'. */
+    supervisorToken?: string,
+    /** Motivo obligatorio que escribe el SUPERVISOR (no la cajera) tras ver
+     *  la tabla por forma de pago — ver el flujo de abajo. */
+    motivoDescuadre?: string,
   ) {
     const empresaId = this.tenantService.getEmpresaId();
     const caja = await this.repo.findOne({ where: { id, empresaId } });
@@ -337,21 +351,118 @@ export class CajaService {
 
     // Cuadre por forma de pago (ver cuadre-por-forma-pago.util.ts) — el efectivo
     // usa la MISMA fórmula única de arriba, nunca se recalcula distinto.
-    const esperadoPorForma = await this.calcularEsperadoPorForma(id, fechaStr, caja.vendedorId, empresaId, fresh);
-    const declaradoMap: Record<string, number> = declaradoPorForma?.length
-      ? declaradoPorForma.reduce((acc, d) => { acc[d.forma] = (acc[d.forma] ?? 0) + Number(d.monto || 0); return acc; }, {} as Record<string, number>)
-      : { efectivo: saldoFisico };
+    // facturasSinFormaPago se calcula PRIMERO: su total se resta del bucket
+    // "otros" dentro de calcularEsperadoPorForma — están fuera del cuadre,
+    // nunca deben inflar el esperado de ninguna forma.
+    const facturasSinFormaPago = await this.getFacturasSinFormaPago(fechaStr, caja.vendedorId, empresaId);
+    const totalSinFormaPago = facturasSinFormaPago.reduce((s, f) => s + Number(f.total || 0), 0);
+    const esperadoPorForma = await this.calcularEsperadoPorForma(id, fechaStr, caja.vendedorId, empresaId, fresh, undefined, totalSinFormaPago);
+
+    const declaradoRecibido = declaradoPorForma ?? [];
+    const declaradoMap: Record<string, number> = declaradoRecibido.reduce(
+      (acc, d) => { acc[d.forma] = (acc[d.forma] ?? 0) + Number(d.monto || 0); return acc; },
+      {} as Record<string, number>,
+    );
+    declaradoMap.efectivo = saldoFisico; // el efectivo siempre viene de saldoFisico, declaradoPorForma lo ignora si lo trae
+
+    // El endpoint EXIGE la declaración por cada forma con ventas en el turno
+    // — sin esto, un formulario que solo pide efectivo (como el de Caja
+    // Diaria, antes de unificarse con el del POS) podía cerrar silenciando
+    // tarjeta/transferencia en 0. `confirmado: true` es la salida explícita
+    // para cuando genuinamente no se cobró nada por esa forma a pesar de las
+    // ventas (caso real, bug de origen: FAC-1803 con tarjeta/efectivo
+    // invertidos — una forma que SÍ tuvo ventas pero el cajero no declaró).
+    const confirmadosEnCero = new Set(declaradoRecibido.filter(d => d.confirmado).map(d => d.forma));
+    const formasSinDeclarar = Object.keys(esperadoPorForma).filter(forma => {
+      if (forma === 'efectivo') return false; // siempre viene por saldoFisico
+      const esperado = Number(esperadoPorForma[forma] ?? 0);
+      if (esperado <= 0.01) return false; // sin ventas en esta forma, no hay nada que declarar
+      const declarado = Number(declaradoMap[forma] ?? 0);
+      if (declarado > 0.01) return false; // sí se declaró algo
+      return !confirmadosEnCero.has(forma);
+    });
+    if (formasSinDeclarar.length) {
+      const detalle = formasSinDeclarar
+        .map(f => `${LABEL_FORMA_CUADRE[f] ?? f} (${Number(esperadoPorForma[f] ?? 0).toFixed(2)} esperado)`)
+        .join(', ');
+      throw new BadRequestException(
+        `Declara cuánto se cobró por ${detalle} antes de cerrar, o confirma explícitamente que no se cobró nada por esa forma.`,
+      );
+    }
+
     const cuadrePorFormaPago = construirCuadrePorForma(esperadoPorForma, declaradoMap);
     const sospechas = detectarPosibleFormaMalRegistrada(cuadrePorFormaPago);
-    const facturasSinFormaPago = await this.getFacturasSinFormaPago(fechaStr, caja.vendedorId, empresaId);
 
     const sospechasConCandidatas = await Promise.all(sospechas.map(async s => ({
       ...s,
       facturasCandidatas: await this.buscarFacturasCandidatasSospecha(s, fechaStr, caja.vendedorId, empresaId),
     })));
 
+    // Umbral de alerta por descuadre — decisión de negocio 2026-10-10
+    // (segunda vuelta): solo el FALTANTE de EFECTIVO alerta (esperado >
+    // contado); un sobrante de efectivo, o una diferencia de tarjeta/
+    // transferencia/otros/el neto, no disparan esta alerta por sí solos. Se
+    // evalúa SIEMPRE al cerrar, sin depender de cierreCajaCiego. El cuadre
+    // por forma de pago completo y el aviso de "posible forma mal
+    // registrada" siguen calculándose y mostrándose igual — esto solo
+    // decide si se notifica/guarda como descuadre. Ver fueraDeUmbral().
+    const { umbralDescuadreCaja, notificarDescuadreCaja } = await this.getEmpresaCfg(empresaId);
+    const descuadre = fueraDeUmbral(cuadrePorFormaPago, umbralDescuadreCaja);
+
+    // Política "Cierre de caja con descuadre" (desactivada por defecto,
+    // decisión explícita 2026-10-10) — si está activa y el cierre quedó
+    // fuera de umbral, un supervisor (nunca la propia cajera, ni siquiera un
+    // ADMIN/CONTADOR cerrando su propia caja) tiene que autorizarlo ANTES de
+    // guardar, ver la tabla por forma de pago, y escribir un motivo. La
+    // cajera nunca ve el monto de la diferencia: el 403 es genérico y la
+    // tabla solo viaja en la respuesta 428, después de que el supervisor ya
+    // probó su identidad con su propia clave/tarjeta.
+    let estadoFinal: EstadoCierre = EstadoCierre.CERRADA;
+    let autorizacionPrevia: { motivo: string; supervisorId: number; supervisorNombre: string } | null = null;
+
+    if (descuadre) {
+      const { requerido, modo } = await this.politicaCierreDescuadre(empresaId);
+      if (requerido) {
+        const cajeroId = usuario?.id;
+        const pedirAutorizacion = (mensaje: string) => {
+          throw new ForbiddenException({
+            message: mensaje,
+            supervisorClaveRequerida: 'cierre_caja_descuadre',
+            supervisorModo: modo,
+          });
+        };
+        if (!cajeroId || !supervisorToken) {
+          pedirAutorizacion('Este cierre requiere autorización de un supervisor.');
+        } else if (!motivoDescuadre?.trim()) {
+          // El token ya es válido (el supervisor probó su identidad) pero
+          // todavía no se consume: hace falta que vea la tabla y escriba el
+          // motivo antes de gastarlo.
+          const peek = await this.peekTokenDescuadre(empresaId, cajeroId, supervisorToken);
+          if (!peek.ok) pedirAutorizacion(peek.mensaje!);
+          throw new HttpException({
+            requiereMotivoDescuadre: true,
+            mensaje: 'Autorización válida — revisa la tabla y escribe el motivo para confirmar el cierre.',
+            cuadrePorFormaPago,
+            neto: Number(diferencia.toFixed(2)),
+            supervisorToken,
+          }, HttpStatus.PRECONDITION_REQUIRED);
+        } else {
+          const consumo = await this.consumirTokenDescuadre(empresaId, cajeroId, supervisorToken);
+          if (!consumo.ok) pedirAutorizacion(consumo.mensaje!);
+          else {
+            estadoFinal = EstadoCierre.REVISADA;
+            autorizacionPrevia = {
+              motivo: motivoDescuadre.trim(),
+              supervisorId: consumo.supervisorId!,
+              supervisorNombre: consumo.supervisorNombre!,
+            };
+          }
+        }
+      }
+    }
+
     await this.repo.update(id, {
-      estado:           EstadoCierre.CERRADA,
+      estado:           estadoFinal,
       saldoCierre:      Number(saldoCierre.toFixed(2)),
       saldoFisico:      Number(saldoFisico.toFixed(2)),
       diferencia:       Number(diferencia.toFixed(2)),
@@ -363,6 +474,13 @@ export class CajaService {
       cuadrePorFormaPago:   cuadrePorFormaPago,
       facturasSinFormaPago: facturasSinFormaPago,
       sospechasFormaPago:   sospechasConCandidatas,
+      fueraDeUmbral:        descuadre,
+      ...(autorizacionPrevia ? {
+        motivoAprobacionDescuadre: autorizacionPrevia.motivo,
+        aprobadoPorUsuarioId:      autorizacionPrevia.supervisorId,
+        aprobadoPorNombre:         autorizacionPrevia.supervisorNombre,
+        aprobadoEn:                new Date(),
+      } : {}),
       ...(desgloseBilletes ? { desgloseBilletes } : {}),
       ...(desglosePago     ? { desglosePago }     : {}),
     });
@@ -372,17 +490,120 @@ export class CajaService {
     this.realtimeService.notify(empresaId, 'caja', 'updated', id);
 
     const saved = await this.repo.findOne({ where: { id } });
-    const { cierreCajaCiego, umbralDescuadreCaja } = await this.getEmpresaCfg(empresaId);
 
-    if (cierreCajaCiego && Math.abs(diferencia) > umbralDescuadreCaja) {
+    if (descuadre) {
       this.logger.warn(
-        `[CIERRE CIEGO] Descuadre en caja #${id}${quien}: ` +
-        `diferencia=${diferencia.toFixed(2)} (umbral=${umbralDescuadreCaja})`,
+        `[DESCUADRE] Caja #${id}${quien}: fuera de umbral (umbral=${umbralDescuadreCaja}).` +
+        (autorizacionPrevia ? ` Autorizado por ${autorizacionPrevia.supervisorNombre}.` : '') + ' ' +
+        cuadrePorFormaPago.map(f => `${f.forma}=${f.diferencia.toFixed(2)}`).join(', '),
       );
+      // Nunca bloquea el cierre — si la notificación falla (SMTP caído,
+      // etc.) la caja ya está cerrada y guardada; solo se pierde el aviso.
+      // Se notifica igual aunque ya haya autorización previa del supervisor
+      // (requisito explícito: "se sigue notificando a ADMIN y CONTADOR"),
+      // salvo que la empresa haya apagado el aviso en Configuración.
+      if (notificarDescuadreCaja) {
+        this.notificacionesService.notificarDescuadreCierre(empresaId, {
+          cajero: caja.vendedorNombre ?? 'Administrador',
+          caja: `Caja #${id}`,
+          fecha: fechaStr,
+          filas: cuadrePorFormaPago,
+          neto: Number(diferencia.toFixed(2)),
+        }).catch((e: Error) => this.logger.error(`Error notificando descuadre caja #${id}: ${e.message}`));
+      }
     }
 
     // Caja ya cerrada — siempre retornar datos completos para que la impresión sea íntegra
     return saved;
+  }
+
+  /** Política de la empresa para la clave 'cierre_caja_descuadre' — fila propia o el default del catálogo. */
+  private async politicaCierreDescuadre(empresaId: number): Promise<{ requerido: boolean; modo: 'sesion' | 'cada_vez' }> {
+    const DEFAULT = { requerido: false, modo: 'cada_vez' as const };
+    const [row] = await this.dataSource.query<{ requerido: boolean; modo: string }[]>(
+      `SELECT requerido, modo FROM supervisor_politicas WHERE "empresaId" = $1 AND clave = $2`,
+      [empresaId, 'cierre_caja_descuadre'],
+    ).catch(() => [] as { requerido: boolean; modo: string }[]);
+    if (!row) return DEFAULT;
+    return { requerido: row.requerido, modo: row.modo === 'sesion' ? 'sesion' : 'cada_vez' };
+  }
+
+  /** Valida el token de 'cierre_caja_descuadre' SIN consumirlo — para mostrar la tabla antes de pedir el motivo. */
+  private async peekTokenDescuadre(empresaId: number, cajeroId: number, token: string): Promise<{ ok: boolean; mensaje?: string }> {
+    const [valido] = await this.dataSource.query<{ id: number }[]>(`
+      SELECT id FROM supervisor_autorizaciones
+      WHERE "empresaId" = $1 AND "cajeroId" = $2 AND clave = 'cierre_caja_descuadre'
+        AND token = $3 AND usado = false AND "expiraEn" > NOW() AND "supervisorId" <> $2
+    `, [empresaId, cajeroId, token]);
+    if (valido) return { ok: true };
+    const [autoasignado] = await this.dataSource.query<{ id: number }[]>(`
+      SELECT id FROM supervisor_autorizaciones
+      WHERE "empresaId" = $1 AND "cajeroId" = $2 AND clave = 'cierre_caja_descuadre'
+        AND token = $3 AND usado = false AND "expiraEn" > NOW() AND "supervisorId" = $2
+    `, [empresaId, cajeroId, token]);
+    if (autoasignado) return { ok: false, mensaje: 'Quien autoriza no puede ser la misma cajera.' };
+    return { ok: false, mensaje: 'Esta acción requiere una autorización de supervisor nueva.' };
+  }
+
+  /** Consume (un solo uso) el token de 'cierre_caja_descuadre' — mismo chequeo de auto-asignación que peekTokenDescuadre. */
+  private async consumirTokenDescuadre(empresaId: number, cajeroId: number, token: string): Promise<
+    { ok: true; supervisorId: number; supervisorNombre: string } | { ok: false; mensaje: string }
+  > {
+    const [fila] = await this.dataSource.query<{ id: number; supervisorId: number }[]>(`
+      WITH f AS (
+        UPDATE supervisor_autorizaciones SET usado = true
+        WHERE "empresaId" = $1 AND "cajeroId" = $2 AND clave = 'cierre_caja_descuadre'
+          AND token = $3 AND usado = false AND "expiraEn" > NOW() AND "supervisorId" <> $2
+        RETURNING id, "supervisorId"
+      ) SELECT * FROM f
+    `, [empresaId, cajeroId, token]);
+    if (fila) {
+      const [sup] = await this.dataSource.query<{ nombre: string }[]>(`SELECT nombre FROM users WHERE id = $1`, [fila.supervisorId]);
+      return { ok: true, supervisorId: fila.supervisorId, supervisorNombre: sup?.nombre ?? `Usuario #${fila.supervisorId}` };
+    }
+    const [autoasignado] = await this.dataSource.query<{ id: number }[]>(`
+      SELECT id FROM supervisor_autorizaciones
+      WHERE "empresaId" = $1 AND "cajeroId" = $2 AND clave = 'cierre_caja_descuadre'
+        AND token = $3 AND usado = false AND "expiraEn" > NOW() AND "supervisorId" = $2
+    `, [empresaId, cajeroId, token]);
+    if (autoasignado) return { ok: false, mensaje: 'Quien autoriza no puede ser la misma cajera.' };
+    return { ok: false, mensaje: 'Esta acción requiere una autorización de supervisor nueva.' };
+  }
+
+  /**
+   * Aprobar un cierre fuera de umbral — ADMIN/CONTADOR revisa, registra un
+   * motivo obligatorio y el cierre pasa a REVISADA (decisión explícita
+   * 2026-10-10). Queda en auditoría: quién, cuándo y por qué. REVISADA ya
+   * bloquea anularCierre() — aprobar un descuadre es la última palabra, no
+   * un paso intermedio que alguien pueda deshacer reabriendo la caja.
+   */
+  async aprobarDescuadre(id: number, motivo: string, usuarioId: number, usuarioNombre?: string) {
+    const empresaId = this.tenantService.getEmpresaId();
+    const caja = await this.repo.findOne({ where: { id, empresaId } });
+    if (!caja) throw new NotFoundException(`Caja #${id} no encontrada`);
+    if (!caja.fueraDeUmbral) {
+      throw new BadRequestException('Este cierre no tiene un descuadre pendiente de aprobación');
+    }
+    if (caja.estado === EstadoCierre.REVISADA) {
+      throw new BadRequestException('Este descuadre ya fue aprobado');
+    }
+    if (caja.estado !== EstadoCierre.CERRADA) {
+      throw new BadRequestException('Solo se puede aprobar un cierre que ya está cerrado');
+    }
+    if (!motivo?.trim()) {
+      throw new BadRequestException('El motivo es obligatorio');
+    }
+
+    await this.repo.update(id, {
+      estado: EstadoCierre.REVISADA,
+      motivoAprobacionDescuadre: motivo.trim(),
+      aprobadoPorUsuarioId: usuarioId,
+      aprobadoPorNombre: usuarioNombre ?? `Usuario #${usuarioId}`,
+      aprobadoEn: new Date(),
+    });
+    this.logger.log(`Descuadre de caja #${id} aprobado por ${usuarioNombre ?? usuarioId}. Motivo: ${motivo.trim()}`);
+    this.realtimeService.notify(empresaId, 'caja', 'updated', id);
+    return this.repo.findOne({ where: { id } });
   }
 
   /**
@@ -477,6 +698,12 @@ export class CajaService {
           contadoOriginal:        caja.saldoFisico,
           diferenciaOriginal:     caja.diferencia,
           formulaVersionOriginal: caja.formulaVersion,
+          // Mismo criterio — el cuadre por forma de pago del PRIMER cierre
+          // también se pierde si no se preserva aquí: cerrarCaja() lo
+          // sobrescribe sin piedad en el recierre (ver más abajo).
+          cuadrePorFormaPagoOriginal:   caja.cuadrePorFormaPago ?? null,
+          facturasSinFormaPagoOriginal: caja.facturasSinFormaPago ?? null,
+          sospechasFormaPagoOriginal:   caja.sospechasFormaPago ?? null,
         }
       : {};
 
@@ -692,7 +919,7 @@ export class CajaService {
    */
   private async calcularEsperadoPorForma(
     cajaId: number, fecha: string, vendedorId: number | undefined, empresaId: number,
-    fresh: CierreCaja, manager?: EntityManager,
+    fresh: CierreCaja, manager?: EntityManager, totalSinFormaPago = 0,
   ): Promise<Record<string, number>> {
     const db = manager ?? this.dataSource.manager;
 
@@ -741,7 +968,16 @@ export class CajaService {
        FROM anticipo_cliente a WHERE DATE(a."fechaRegistro") = $1 AND a."isActive" = true AND a.estado != 'anulado' AND a."cajaDiariaId" = $2`,
       [fecha, cajaId],
     ).catch(() => [{ total: '0' }]);
-    const otros = Number(otrosCobros?.total ?? 0) + Number(otrosAnticipos?.total ?? 0) + Number(fresh.ventasCredito ?? 0);
+    // Las facturas CONTADO sin forma de pago (getFacturasSinFormaPago) están
+    // FUERA del cuadre por diseño — pero el fallback histórico de
+    // clasificación por notas (recalcularDesdeBD) puede haberlas contado
+    // igual dentro de ventasCredito si sus notas mencionan "crédito". Sin
+    // restarlas aquí, inflan "otros" con dinero que nadie declaró ni se
+    // espera cuadrar (caso real: FAC-1807, RD$295.00).
+    const otros = Math.max(0,
+      Number(otrosCobros?.total ?? 0) + Number(otrosAnticipos?.total ?? 0)
+        + Number(fresh.ventasCredito ?? 0) - totalSinFormaPago,
+    );
 
     return { efectivo, tarjeta, transferencia, otros };
   }
@@ -820,6 +1056,7 @@ export class CajaService {
   private async getEmpresaCfg(empresaId: number, manager?: EntityManager): Promise<{
     cierreCajaCiego: boolean;
     umbralDescuadreCaja: number;
+    notificarDescuadreCaja: boolean;
     montoMaxRetiroSinAutorizacion: number;
   }> {
     // Acepta un EntityManager para poder correr DENTRO de la transacción de
@@ -837,6 +1074,10 @@ export class CajaService {
     return {
       cierreCajaCiego:               cfg.cierreCajaCiego === true,
       umbralDescuadreCaja:           Number(cfg.umbralDescuadreCaja ?? 100),
+      // Configurable (2026-10-11) — default true: una empresa que nunca
+      // tocó este switch sigue recibiendo el aviso, igual que antes de que
+      // existiera la opción de apagarlo.
+      notificarDescuadreCaja:        cfg.notificarDescuadreCaja !== false,
       /** 0 = sin restricción (cualquier monto es válido sin autorización) */
       montoMaxRetiroSinAutorizacion: Number(cfg.montoMaxRetiroSinAutorizacion ?? 0),
     };
@@ -864,9 +1105,10 @@ export class CajaService {
    * la de otro cajero (decisión 2026-10-09). Reutiliza exactamente
    * ocultarCamposCiego (el mismo recorte que ya usaba el modo ciego
    * opcional) pero como regla FIJA del rol: no depende del toggle
-   * `cierreCajaCiego` de la empresa, que sigue existiendo para lo que ya
-   * gobernaba (el umbral de descuadre, etc. — ver getEmpresaCfg). Una caja
-   * CERRADA/REVISADA/CERRADA_SISTEMA nunca se toca aquí.
+   * `cierreCajaCiego` de la empresa, que sigue existiendo solo para decidir
+   * qué ve la cajera al declarar. El umbral de descuadre (ver getEmpresaCfg)
+   * ya NO depende de este toggle — se evalúa siempre al cerrar (decisión
+   * 2026-10-10). Una caja CERRADA/REVISADA/CERRADA_SISTEMA nunca se toca aquí.
    *
    * Siempre corre DESPUÉS de conEfectivoEsperado (nunca antes): ese método
    * necesita los campos crudos (ventasEfectivo, etc.) para calcular
@@ -890,7 +1132,7 @@ export class CajaService {
    * también las banderas de inconsistencia para que la UI no tenga que deducir
    * nada del signo.
    */
-  private conEfectivoEsperado(caja: CierreCaja | null): any {
+  private async conEfectivoEsperado(caja: CierreCaja | null): Promise<any> {
     if (!caja) return caja;
     const esperado = caja.estado === EstadoCierre.ABIERTA
       ? calcularEfectivoEsperado({
@@ -909,22 +1151,46 @@ export class CajaService {
     // Nunca se persiste (no reescribe el cierre), y sin esto, reimprimir o
     // reabrir el detalle de un cierre viejo vuelve siempre al formato de
     // solo-efectivo — exactamente el bug real de reimpresión post-deploy.
-    const cuadreLegacy = (caja.estado !== EstadoCierre.ABIERTA && !caja.cuadrePorFormaPago)
-      ? derivarCuadreLegacy({
-          saldoCierre:        Number(caja.saldoCierre ?? 0),
-          saldoFisico:        Number(caja.saldoFisico ?? 0),
-          ventasTarjeta:      Number(caja.ventasTarjeta ?? 0),
-          ventasTransferencia: Number(caja.ventasTransferencia ?? 0),
-          ventasCredito:      Number((caja as any).ventasCredito ?? 0),
-          desglosePago:       caja.desglosePago as any,
-        })
-      : null;
-    const sospechasLegacy = cuadreLegacy ? detectarPosibleFormaMalRegistrada(cuadreLegacy) : null;
+    let cuadreLegacy: ReturnType<typeof derivarCuadreLegacy> | null = null;
+    let facturasSinFormaPago: any[] = [];
+    let sospechasLegacy: SospechaFormaPago[] | null = null;
+
+    if (caja.estado !== EstadoCierre.ABIERTA && !caja.cuadrePorFormaPago) {
+      const empresaId = this.tenantService.getEmpresaId();
+      const fechaDate = caja.fecha instanceof Date ? caja.fecha : new Date(caja.fecha as any);
+      const fechaStr  = fechaDate.toISOString().substring(0, 10);
+
+      // Facturas CONTADO sin forma de pago — fuera del cuadre por diseño.
+      // Sin restar su monto, el bucket donde cayeron por el fallback
+      // histórico de clasificación (ventasCredito, ver recalcularDesdeBD)
+      // infla el esperado con dinero que nadie declaró ni se espera cuadrar
+      // (caso real: FAC-1807, RD$295.00, inflaba "otros" exactamente ese
+      // monto y rompía el neto del cierre).
+      facturasSinFormaPago = await this.getFacturasSinFormaPago(fechaStr, caja.vendedorId, empresaId);
+      const totalSinForma = facturasSinFormaPago.reduce((s, f) => s + Number(f.total || 0), 0);
+
+      cuadreLegacy = derivarCuadreLegacy({
+        saldoCierre:        Number(caja.saldoCierre ?? 0),
+        saldoFisico:        Number(caja.saldoFisico ?? 0),
+        ventasTarjeta:      Number(caja.ventasTarjeta ?? 0),
+        ventasTransferencia: Number(caja.ventasTransferencia ?? 0),
+        ventasCredito:      Math.max(0, Number((caja as any).ventasCredito ?? 0) - totalSinForma),
+        desglosePago:       caja.desglosePago as any,
+      });
+
+      const sospechas = detectarPosibleFormaMalRegistrada(cuadreLegacy);
+      sospechasLegacy = sospechas.length
+        ? await Promise.all(sospechas.map(async s => ({
+            ...s,
+            facturasCandidatas: await this.buscarFacturasCandidatasSospecha(s, fechaStr, caja.vendedorId, empresaId),
+          })))
+        : [];
+    }
 
     return {
       ...caja,
-      ...(cuadreLegacy ? { cuadrePorFormaPago: cuadreLegacy, cuadreEstimado: true } : {}),
-      ...(sospechasLegacy?.length ? { sospechasFormaPago: sospechasLegacy.map(s => ({ ...s, facturasCandidatas: [] })) } : {}),
+      ...(cuadreLegacy ? { cuadrePorFormaPago: cuadreLegacy, cuadreEstimado: true, facturasSinFormaPago } : {}),
+      ...(sospechasLegacy?.length ? { sospechasFormaPago: sospechasLegacy } : {}),
       efectivoEsperado:      esperado,
       esperadoInconsistente: esperadoEsInconsistente(esperado),
       excesoRetiros:         excesoDeRetiros(esperado),
@@ -980,7 +1246,7 @@ export class CajaService {
       }
       const fresh = await this.repo.findOne({ where: { id: caja.id } });
       // getCajaHoy() solo la llaman admin/contador — nunca aplica ciego
-      return this.conEfectivoEsperado(fresh);
+      return await this.conEfectivoEsperado(fresh);
     }
 
     // Sin filtro de vendedor → todas las cajas del día de ESTA empresa
@@ -1007,7 +1273,7 @@ export class CajaService {
     // Cada caja lleva su efectivoEsperado: es la lista que pinta las tarjetas
     // del panel, donde el frontend recalculaba la fórmula por su cuenta.
     return {
-      cajas: frescas.map(c => this.conEfectivoEsperado(c)),
+      cajas: await Promise.all(frescas.map(c => this.conEfectivoEsperado(c))),
       totalCajas: frescas.length,
     };
   }
@@ -1040,13 +1306,13 @@ export class CajaService {
       order: { fecha: 'ASC', vendedorNombre: 'ASC' },
     });
 
-    return frescas.map(c => {
+    return Promise.all(frescas.map(async c => {
       const fechaStr = fechaDe(c);
       const diasAbierta = Math.round(
         (new Date(hoy).getTime() - new Date(fechaStr).getTime()) / 86_400_000,
       );
-      return { ...this.conEfectivoEsperado(c), fecha: fechaStr, diasAbierta };
-    });
+      return { ...(await this.conEfectivoEsperado(c)), fecha: fechaStr, diasAbierta };
+    }));
   }
 
   /**
@@ -1131,7 +1397,7 @@ export class CajaService {
     // el toggle opcional cierreCajaCiego (ese sigue aplicando igual que
     // antes, por si algún día este método deja de ser exclusivo de VENDEDOR).
     // Al cerrar, el vendedor recibe datos completos para imprimir.
-    const conEsperado = this.conEfectivoEsperado(fresh);
+    const conEsperado = await this.conEfectivoEsperado(fresh);
     return (cierreCajaCiego && fresh?.estado === EstadoCierre.ABIERTA)
       ? this.ocultarCamposCiego(fresh)
       : this.ocultarSiVendedorYAbierta(conEsperado, UserRole.VENDEDOR);
@@ -1180,7 +1446,7 @@ export class CajaService {
     // mezcladas aquí, que si no saldrían con efectivoEsperado undefined y el
     // modal de "Cerrar caja" desde este listado arrancaría mostrando 0.
     const conEsperado = await this.conCuadreCorregido(
-      data.map(c => this.ocultarSiVendedorYAbierta(this.conEfectivoEsperado(c), role)),
+      await Promise.all(data.map(async c => this.ocultarSiVendedorYAbierta(await this.conEfectivoEsperado(c), role))),
     );
     return {
       data: conEsperado,
@@ -1195,7 +1461,7 @@ export class CajaService {
     const empresaId = this.tenantService.getEmpresaId();
     const caja = await this.repo.findOne({ where: { id, empresaId } });
     if (!caja) throw new NotFoundException(`Caja #${id} no encontrada`);
-    const conEsperado = this.ocultarSiVendedorYAbierta(this.conEfectivoEsperado(caja), this.tenantService.getRolEmpresa());
+    const conEsperado = this.ocultarSiVendedorYAbierta(await this.conEfectivoEsperado(caja), this.tenantService.getRolEmpresa());
     const [conCorregido] = await this.conCuadreCorregido([conEsperado]);
     return conCorregido;
   }
@@ -1217,7 +1483,7 @@ export class CajaService {
     const caja = await this.repo.findOne({ where: { id, empresaId } });
     if (!caja) throw new NotFoundException(`Caja #${id} no encontrada`);
     const facturasDetalle = await this.getFacturasDetalle(id, usuario);
-    return { ...this.conEfectivoEsperado(caja), facturasDetalle };
+    return { ...(await this.conEfectivoEsperado(caja)), facturasDetalle };
   }
 
   // ── Resumen mensual (filtrado por empresa) ────────────────────────────────

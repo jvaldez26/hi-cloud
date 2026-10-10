@@ -30,7 +30,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
-import { registerSupervisorAuthHandler } from '../utils/sessionEvents';
+import { pushSupervisorAuthHandler } from '../utils/sessionEvents';
 
 export interface SupervisorSession {
   nombre:     string;
@@ -229,12 +229,11 @@ export function useSupervisor(): UseSupervisorReturn {
   }, [supervisorActive, queryClient]);
 
   // Se registra como el puente genérico 403 → autorización → reintento (ver
-  // sessionEvents.ts). Solo existe un registrador (este hook vive una sola
-  // vez, montado en el POS) — a diferencia de la reautenticación de sesión
-  // no hace falta un nivel "por defecto" separado.
+  // sessionEvents.ts). Puede haber más de una instancia montada a la vez
+  // (App.tsx mantiene una base siempre activa; el POS monta la suya encima)
+  // — se usa una pila, nunca un solo registrador.
   useEffect(() => {
-    registerSupervisorAuthHandler(requireSupervisor);
-    return () => registerSupervisorAuthHandler(null);
+    return pushSupervisorAuthHandler(requireSupervisor);
   }, [requireSupervisor]);
 
   return {
