@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, ParseIntPipe, UseGuards, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, ParseIntPipe, UseGuards, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { TenantGuard } from '../../tenant/tenant.guard';
@@ -7,11 +7,14 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { UserRole } from '../../users/enums/user-role.enum';
 import { ModuloAddonGuard } from '../../modulos-addon/guards/modulo-addon.guard';
 import { RequiereSupervisor } from '../../supervisor-politicas/guards/requiere-supervisor.guard';
+import { RequiereSupervisorSiempre } from '../../supervisor-politicas/guards/requiere-supervisor-siempre.guard';
 import { TenantService } from '../../tenant/tenant.service';
+import { GetUser } from '../../auth/decorators/get-user.decorator';
+import { User } from '../../users/users.entity';
 import { EmailService } from '../../notificaciones/services/email.service';
 import { PagosService } from './pagos.service';
 import { PrestamistaPdfService } from '../pdf/prestamista-pdf.service';
-import { RegistrarPagoDto, EnviarReciboCorreoDto } from '../dto/prestamista.dto';
+import { RegistrarPagoDto, EnviarReciboCorreoDto, AnularPagoDto } from '../dto/prestamista.dto';
 import { r2 } from '../utils/mora.util';
 
 /** Pago retroactivo: fecha anterior a hoy — ver supervisor-catalogo.ts clave 'pago_retroactivo'. */
@@ -56,6 +59,16 @@ export class PagosController {
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
   @UseGuards(RequiereSupervisor('pago_retroactivo', { soloSi: esPagoRetroactivo }))
   registrar(@Body() body: RegistrarPagoDto) { return this.svc.registrar(this.empresaId, body); }
+
+  // Anulación con reversa — solo ADMIN + autorización de OTRA persona (ni el
+  // propio ADMIN puede autorizarse), motivo siempre obligatorio. Ver
+  // docs/prestamista/etapa-2-resto.md §1.
+  @Patch(':id/anular')
+  @Roles(UserRole.ADMIN)
+  @UseGuards(RequiereSupervisorSiempre('anular_pago_prestamo'))
+  anular(@Param('id', ParseIntPipe) id: number, @Body() body: AnularPagoDto, @GetUser() usuario: User) {
+    return this.svc.anular(this.empresaId, id, body.motivo, { id: usuario.id, nombre: usuario.nombre });
+  }
 
   // Link wa.me para compartir el recibo — igual que el resto del ERP
   // (WhatsAppButton.tsx + comunicaciones.controller.ts), pero self-contained

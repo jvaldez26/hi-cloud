@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, Logger } from '@nes
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, QueryRunner } from 'typeorm';
 import { AsientosAutomaticosService } from '../../contabilidad/services/asientos-automaticos.service';
+import { TipoOrigenAsiento } from '../../contabilidad/entities/asiento-contable.entity';
 import { EmitirECFUseCase } from '../../ecf/use-cases/emitir-ecf.use-case';
 import { DocumentoOrigenTipo } from '../../ecf/entities/ecf.entity';
 import { TenantService } from '../../tenant/tenant.service';
@@ -436,5 +437,150 @@ export class PagosService {
     }
 
     return { pago, cuotasAfectadas: dist.lineas, saldos: _saldosFinales };
+  }
+
+  /**
+   * Anulación con reversa — ver docs/prestamista/etapa-2-resto.md §1.
+   * Solo el pago más reciente NO anulado de ese préstamo (LIFO: registrar()
+   * aplica cada pago sobre el saldo que dejó el anterior, así que anular uno
+   * de en medio sin anular los posteriores dejaría cuotas en un estado que
+   * no corresponde a ningún momento real del préstamo). Un pago con
+   * abono extraordinario (recalculó la tabla futura) no se puede anular
+   * automáticamente — se rechaza explícitamente.
+   */
+  async anular(empresaId: number, pagoId: number, motivo: string, usuario: { id: number; nombre?: string }) {
+    const qr = this.ds.createQueryRunner();
+    await qr.connect();
+    await qr.startTransaction();
+
+    try {
+      const [pago] = await qr.query(
+        `SELECT * FROM pr_pagos WHERE id=$1 AND "empresaId"=$2 FOR UPDATE`, [pagoId, empresaId],
+      );
+      if (!pago) throw new NotFoundException(`Pago #${pagoId} no encontrado`);
+      if (pago.estado === 'anulado') throw new BadRequestException('Este pago ya está anulado');
+
+      if (Number(pago.montoExtraCapital) > 0) {
+        throw new BadRequestException(
+          'Este pago incluyó un abono extraordinario que recalculó las cuotas futuras; no se puede anular automáticamente. Contacta soporte.',
+        );
+      }
+
+      const [masReciente] = await qr.query(
+        `SELECT id FROM pr_pagos WHERE "prestamoId"=$1 AND "empresaId"=$2 AND estado='activo'
+         ORDER BY fecha DESC, id DESC LIMIT 1`,
+        [pago.prestamoId, empresaId],
+      );
+      if (!masReciente || masReciente.id !== pago.id) {
+        throw new BadRequestException(
+          'Solo se puede anular el pago más reciente de este préstamo — anula primero los pagos posteriores, en orden',
+        );
+      }
+
+      // El e-CF (tipo 32, interés) solo bloquea si ya quedó ACEPTADO por
+      // DGII — en ese caso se corrige vía Nota de Crédito al 607, no se anula
+      // aquí. Si nunca llegó a aceptarse, se cancela junto con el pago.
+      const [ecf] = await qr.query(
+        `SELECT id, "estadoDGII" FROM ecf WHERE "documentoOrigenTipo"='PAGO_PRESTAMO' AND "documentoOrigenId"=$1
+         AND "isActive"=true ORDER BY id DESC LIMIT 1`,
+        [pago.id],
+      );
+      if (ecf?.estadoDGII === 'aceptado') {
+        throw new BadRequestException(
+          'Este pago generó un e-CF ya aceptado por DGII — no se puede anular; corrígelo vía Nota de Crédito al 607.',
+        );
+      }
+
+      const cuotasAfectadas: Array<{ cuotaId: number; pagInt: number; pagCap: number; pagMora: number; pagCargos: number; totalPagado: number }> =
+        Array.isArray(pago.cuotasAfectadas) ? pago.cuotasAfectadas : JSON.parse(pago.cuotasAfectadas ?? '[]');
+
+      for (const linea of cuotasAfectadas) {
+        const [cuota] = await qr.query(`SELECT * FROM pr_cuotas WHERE id=$1 FOR UPDATE`, [linea.cuotaId]);
+        if (!cuota) continue; // defensivo — no debería faltar nunca
+        const nuevaIntPag    = r2(Number(cuota.interesPagado) - linea.pagInt);
+        const nuevaCapPag    = r2(Number(cuota.capitalPagado) - linea.pagCap);
+        const nuevaMoraPag   = r2(Number(cuota.moraPagada) - linea.pagMora);
+        const nuevaCargosPag = r2(Number(cuota.cargosPagados ?? 0) - linea.pagCargos);
+        const nuevaTotal     = r2(Number(cuota.totalPagado ?? 0) - linea.totalPagado);
+        const estCuota = nuevaCapPag <= 0 && nuevaIntPag <= 0 && nuevaCargosPag <= 0 ? 'pendiente' : 'parcial';
+        await qr.query(
+          `UPDATE pr_cuotas SET "interesPagado"=$1,"capitalPagado"=$2,"moraPagada"=$3,"totalPagado"=$4,
+            "cargosPagados"=$5,estado=$6,"fechaPago"=CASE WHEN $6='pendiente' THEN NULL ELSE "fechaPago" END
+           WHERE id=$7`,
+          [Math.max(0, nuevaIntPag), Math.max(0, nuevaCapPag), Math.max(0, nuevaMoraPag), Math.max(0, nuevaTotal),
+           Math.max(0, nuevaCargosPag), estCuota, linea.cuotaId],
+        );
+      }
+
+      // Recalcular saldos — misma query que registrar().
+      const [prestamo] = await qr.query(`SELECT * FROM pr_prestamos WHERE id=$1 AND "empresaId"=$2 FOR UPDATE`, [pago.prestamoId, empresaId]);
+      const [s] = await qr.query(
+        `SELECT
+           SUM(GREATEST(0, capital - "capitalPagado"))                                        AS "saldoCapital",
+           SUM(GREATEST(0, interes - "interesPagado"))                                        AS "saldoInteres",
+           SUM(GREATEST(0, "moraGenerada" - "moraPagada"))                                    AS "saldoMora",
+           COUNT(*) FILTER (WHERE estado <> 'pagada')                                         AS "cuotasPendientes",
+           COUNT(*) FILTER (WHERE estado <> 'pagada' AND "fechaVencimiento" < CURRENT_DATE)   AS "cuotasVencidas",
+           MAX("diasMora") FILTER (WHERE estado <> 'pagada')                                  AS "maxDiasMora"
+         FROM pr_cuotas WHERE "prestamoId"=$1`,
+        [pago.prestamoId],
+      );
+      const saldoCapital = r2(Number(s.saldoCapital ?? 0));
+      const saldoInteres = r2(Number(s.saldoInteres ?? 0));
+      const saldoMora    = r2(Number(s.saldoMora ?? 0));
+      const saldoTotal   = r2(saldoCapital + saldoInteres + saldoMora);
+      const cuotasVencidas   = Number(s.cuotasVencidas ?? 0);
+      const cuotasPendientes = Number(s.cuotasPendientes ?? 0);
+      const maxDiasMora      = Number(s.maxDiasMora ?? 0);
+
+      const estabaPagado = prestamo.estado === 'pagado';
+      const nuevoEstado = (saldoCapital <= 0 && cuotasPendientes === 0)
+        ? 'pagado'
+        : clasificarMorosidad(cuotasVencidas, maxDiasMora, Number(prestamo.diasGracia ?? 0));
+      const totalPagado = r2(Math.max(0, Number(prestamo.totalPagado) - Number(pago.montoPagado)));
+
+      await qr.query(
+        `UPDATE pr_prestamos SET "saldoCapital"=$1,"saldoInteres"=$2,"saldoMora"=$3,"saldoTotal"=$4,
+          "totalPagado"=$5,"cuotasVencidas"=$6,estado=$7,"updatedAt"=NOW() WHERE id=$8`,
+        [saldoCapital, saldoInteres, saldoMora, saldoTotal, totalPagado, cuotasVencidas, nuevoEstado, pago.prestamoId],
+      );
+
+      if (estabaPagado && nuevoEstado !== 'pagado') {
+        await qr.query(
+          `UPDATE pr_deudores SET "totalPagado"=GREATEST(0,"totalPagado"-$1),"prestamosActivos"="prestamosActivos"+1,
+            "updatedAt"=NOW() WHERE id=$2 AND "empresaId"=$3`,
+          [Number(pago.montoPagado), pago.deudorId, empresaId],
+        );
+      } else {
+        await qr.query(
+          `UPDATE pr_deudores SET "totalPagado"=GREATEST(0,"totalPagado"-$1),"updatedAt"=NOW() WHERE id=$2 AND "empresaId"=$3`,
+          [Number(pago.montoPagado), pago.deudorId, empresaId],
+        );
+      }
+
+      if (ecf) {
+        await qr.query(`UPDATE ecf SET "isActive"=false WHERE id=$1`, [ecf.id]);
+      }
+
+      const [pagoAnulado] = await qr.query(
+        `UPDATE pr_pagos SET estado='anulado', "anuladoPor"=$1, "anuladoPorNombre"=$2, "anuladoEn"=NOW(), "motivoAnulacion"=$3
+         WHERE id=$4 RETURNING *`,
+        [usuario.id, usuario.nombre ?? null, motivo, pago.id],
+      );
+
+      await qr.commitTransaction();
+
+      // Fire-and-forget DESPUÉS del commit — mismo patrón que registrar().
+      this.asientos.revertirAsiento(
+        TipoOrigenAsiento.PRESTAMISTA, pago.id, fechaHoyRD(), motivo, pago.numero,
+      ).catch(err => this.logger.error(`Reversa asiento pago ${pago.numero}: ${err.message}`));
+
+      return { pago: pagoAnulado, saldos: { saldoCapital, saldoInteres, saldoMora, saldoTotal } };
+    } catch (e) {
+      await qr.rollbackTransaction();
+      throw e;
+    } finally {
+      await qr.release();
+    }
   }
 }
