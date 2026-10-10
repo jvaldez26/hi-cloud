@@ -170,6 +170,75 @@ describe('CajaService.cerrarCaja — pertenencia', () => {
   });
 });
 
+// Caso real (empresa 73, cajera Bellamar González, 2026-10-09): FAC-1803 se
+// registró como Tarjeta 955 + Efectivo 125 cuando fue al revés (Efectivo 955
+// + Tarjeta 125). El cierre solo cuadraba efectivo: "+829.94 SOBRANTE" — era
+// la tarjeta la que faltaba, no dinero de más. Ver cuadre-por-forma-pago.util.ts.
+describe('CajaService.cerrarCaja — cuadre por forma de pago (caso real empresa 73)', () => {
+  function mockQueryPorSql(d: ReturnType<typeof buildDeps>) {
+    d.dataSource.manager.query.mockImplementation((sql: string) => {
+      if (sql.includes('recibos_cobro') && sql.includes('tarjeta'))
+        return Promise.resolve([{ tarjeta: '0', transferencia: '0' }]);
+      if (sql.includes('anticipo_cliente') && sql.includes('tarjeta'))
+        return Promise.resolve([{ tarjeta: '0', transferencia: '0' }]);
+      if (sql.includes('recibos_cobro') || sql.includes('anticipo_cliente'))
+        return Promise.resolve([{ total: '0' }]);
+      if (sql.includes('FROM facturas f'))
+        return Promise.resolve([]); // sin facturas sin forma de pago ni candidatas, en este caso
+      return Promise.resolve([{}]);
+    });
+  }
+
+  it('efectivo +829.94 / tarjeta -830.00 → detecta "posible forma mal registrada", no un sobrante real', async () => {
+    const d = buildDeps();
+    mockQueryPorSql(d);
+    d.repo.findOne.mockResolvedValue(cajaAbierta({
+      id: 1, userId: 1, vendedorId: 12, vendedorNombre: 'Bellamar González',
+      saldoApertura: 0, ventasEfectivo: 5608.06, ventasTarjeta: 2605.00,
+    }));
+    const service = buildService(d);
+
+    const declaradoPorForma = [
+      { forma: 'efectivo', monto: 6438.00 },
+      { forma: 'tarjeta',  monto: 1775.00 },
+    ];
+    await service.cerrarCaja(1, 6438.00, undefined, undefined, undefined, { id: 1 }, undefined, declaradoPorForma);
+
+    expect(d.repo.update).toHaveBeenCalled();
+    const [, cambios] = d.repo.update.mock.calls[0];
+
+    const porForma = Object.fromEntries(cambios.cuadrePorFormaPago.map((f: any) => [f.forma, f]));
+    expect(porForma.efectivo).toEqual({ forma: 'efectivo', esperado: 5608.06, declarado: 6438.00, diferencia: 829.94 });
+    expect(porForma.tarjeta).toEqual({ forma: 'tarjeta', esperado: 2605.00, declarado: 1775.00, diferencia: -830.00 });
+
+    expect(cambios.sospechasFormaPago).toHaveLength(1);
+    expect(cambios.sospechasFormaPago[0]).toMatchObject({
+      formaSobrante: 'efectivo', formaFaltante: 'tarjeta', monto: 829.94,
+    });
+
+    // El diferencia GLOBAL (saldoFisico - saldoCierre, solo efectivo) sigue
+    // existiendo tal cual — para que nadie pierda el número con el que ya
+    // está familiarizado — pero ya no es la única señal: el cuadre por forma
+    // es el que explica qué pasó de verdad.
+    expect(cambios.diferencia).toBe(829.94);
+  });
+
+  it('sin declaradoPorForma (compat): declarado solo entra en efectivo, igual que antes', async () => {
+    const d = buildDeps();
+    mockQueryPorSql(d);
+    d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, userId: 1, ventasEfectivo: 500 }));
+    const service = buildService(d);
+
+    await service.cerrarCaja(1, 500, undefined, undefined, undefined, { id: 1 });
+
+    const [, cambios] = d.repo.update.mock.calls[0];
+    const porForma = Object.fromEntries(cambios.cuadrePorFormaPago.map((f: any) => [f.forma, f]));
+    expect(porForma.efectivo).toMatchObject({ esperado: 500, declarado: 500, diferencia: 0 });
+    expect(porForma.tarjeta).toMatchObject({ declarado: 0 });
+    expect(cambios.sospechasFormaPago).toEqual([]);
+  });
+});
+
 // Caso real (caja #714, empresa 44, 2026-10-03): un access token renovado por
 // /auth/refresh no traía sucursalId → abrirCaja() la escribía en silencio
 // como NULL. Ahora corta con 400 en vez de crear la caja sin sucursal.
