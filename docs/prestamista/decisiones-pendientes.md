@@ -25,16 +25,10 @@ valores de arranque.
 - **Efectivo de préstamos por la caja del cajero**: Etapa 5. Default
   propuesto: SÍ pasa por caja (afecta el cierre de caja del turno), con un
   interruptor por empresa para desactivarlo.
-- **Anular pagos**: Etapa 2 — **IMPLEMENTADO** (2026-10-10), ver
-  `etapa-2-resto.md` §1. Solo ADMIN, motivo obligatorio, autorización de
-  supervisor siempre (sin importar el rol). Sin frontend todavía — solo
-  `PATCH /prestamista/pagos/:id/anular`.
-- **Garantes (CRUD + liberar) y garantías (liberar/ejecutar)**: Etapa 2 —
-  **IMPLEMENTADO** (2026-10-10), ver `etapa-2-resto.md` §2/§3. Sin frontend
-  todavía.
-- **Desembolsos parciales, reestructuración, condonación independiente,
-  contratos/pagarés en PDF**: Etapa 2 — diseño cerrado en `etapa-2-resto.md`
-  §4-§7, implementación pendiente.
+- **Etapa 2 (resto) completa — §1 a §7**: **CERRADA el 2026-10-10**, ver
+  `etapa-2-resto.md` (encabezado "Estado" + "Resumen (cerrado 2026-10-10)"
+  al final). Backend y frontend de las 7 piezas, con tests y suites en
+  verde, pusheado a `origin/feat/prestamista-motor`.
 - **Frontend de §1-3 (2026-10-10)**: agregado en `DetallePrestamo.tsx` —
   botón "Anular" en Pagos, tab nueva "Garantes" (CRUD + liberar) y acciones
   Liberar/Ejecutar en la tab Garantías. No se tocó el backend.
@@ -48,6 +42,25 @@ valores de arranque.
   línea en el controller (agregar `@UseGuards(RequiereSupervisor('liberar_garante'))`
   + la clave nueva en `supervisor-catalogo.ts`) más volver `motivo` obligatorio
   en el DTO.
+- **Detalles no cubiertos por el diseño de §4-§7, resueltos con un default
+  al implementar (2026-10-10)**:
+  - §4: el cargo de apertura retenido (`cargoAperturaRetenido`) se sigue
+    descontando siempre del PRIMER tramo entregado, igual que antes de este
+    cambio. Si ese primer tramo fuera menor al cargo financiado, el asiento
+    quedaría con un haber negativo — no se valida ese caso (ningún producto
+    real tiene un cargo de apertura mayor al primer desembolso esperado).
+  - §5: roles permitidos ADMIN+CONTADOR (igual nivel que editar
+    garantías/garantes) — el documento no lo especificaba. `RequiereSupervisorSiempre`
+    exige igual la autorización de otra persona, sin importar el rol.
+  - §6: solo ADMIN (perdonar deuda es más grave que reestructurar) +
+    `RequiereSupervisorSiempre`.
+  - §4/§5/§6: un préstamo en `desembolso_parcial` queda bloqueado también
+    para reestructurar/condonar (el documento solo mencionaba pagos y
+    refinanciamiento) — mismo criterio de "no operar hasta completar el
+    desembolso".
+  - §6: si se pide condonar más de lo pendiente, se cubre hasta el máximo
+    disponible y se informa en la respuesta (`moraSolicitadaNoAplicada`/
+    `interesSolicitadoNoAplicado`) en vez de rechazar la operación completa.
 - **Tratamiento fiscal (e-CF/ITBIS por concepto)**: Etapa 5. Por instrucción
   explícita, NO se decide — se construye la integración pero queda
   desactivada hasta que se configure cada concepto en Productos de Préstamo

@@ -1,13 +1,8 @@
 # Prestamista Etapa 2 (resto) — nota de diseño
 
-**Estado:** diseño cerrado el 2026-10-10. Implementado y con tests (backend):
-**§1 anulación de pagos con reversa**, **§2 garantes (CRUD + liberar)**,
-**§3 garantías (liberar/ejecutar)**. **Pendiente**: §4 desembolsos parciales,
-§5 reestructuración, §6 condonación independiente, §7 contratos/pagarés PDF
-— y el FRONTEND de las tres piezas ya implementadas (hoy solo tienen
-endpoint backend, sin pantalla). El diseño de las 4 piezas pendientes queda
-cerrado en este documento — se puede implementar directamente sin volver a
-decidir nada, cuando se reanude.
+**Estado: CERRADO el 2026-10-10.** §1-§7 completos — backend y frontend,
+con tests, suites en verde, rama pusheada. Ver "Resumen (cerrado 2026-10-10)"
+al final del documento.
 
 El "Motor Financiero" (Fase 2A/2B, ver `motor-financiero.md`) ya estaba completo
 e integrado antes de este documento — era infraestructura de cálculo, no las
@@ -206,3 +201,68 @@ alcance de este cambio y se anota como deuda si se necesita después.
 | 5 | Qué puede tocar una reestructuración | Solo saldo actual + cuotas totalmente pendientes, igual que abono extraordinario |
 | 6 | Qué se puede condonar | Mora e interés, nunca capital |
 | 7 | Nivel legal de contrato/pagaré | Plantilla simple, no redacción legal completa |
+
+---
+
+## Resumen (cerrado 2026-10-10)
+
+Sesión que retomó el módulo en `feat/prestamista-motor`: sincronizó con
+`main` (merge limpio, sin conflictos reales — `supervisor-catalogo.ts` y
+`App.tsx` quedaron con las entradas de ambas ramas) y completó toda la
+Etapa 2 (resto): frontend de §1-§3 (backend ya existía) + backend y
+frontend completos de §4-§7.
+
+**§1-§3 — frontend**: en `DetallePrestamo.tsx` — botón "Anular" en la tabla
+de Pagos, tab nueva "Garantes" (crear + liberar) y acciones Liberar/Ejecutar
+en la tab Garantías. El 403 de supervisor (`anular_pago_prestamo`,
+`ejecutar_garantia`) lo resuelve el interceptor global ya montado en
+`App.tsx` (`useSupervisor` + `SupervisorAuthModal`) — ninguna pantalla nueva
+tuvo que cablear el modal a mano. **Hallazgo**: `GarantesController.liberar`
+no tiene ningún guard de supervisor y su motivo es opcional, aunque este
+documento (arriba, §2) dice que debería requerir `RequiereSupervisor` con
+motivo obligatorio — queda anotado en `decisiones-pendientes.md`, no se
+tocó el backend (fuera del alcance de "solo agregar frontend").
+
+**§4 Desembolsos parciales**: tabla `pr_desembolsos_parciales` +
+`pr_prestamos.desembolsado` (migración `1778000000000-PrestamistaEtapa2RestoP2`).
+`CrearPrestamoDto.desembolsoInicial` (opcional, default = monto completo —
+sin cambio de comportamiento para los caminos existentes). Por debajo del
+monto total, el préstamo nace en `desembolso_parcial`; `PagosService`,
+`ReestructuracionService` y `CondonacionService` lo rechazan hasta
+completarlo. Cada tramo (incluido el inicial) genera su propio asiento de
+desembolso.
+
+**§5 Reestructuración**: `ReestructuracionService` nuevo, independiente de
+`RefinanciamientoService.refinanciar()`. Reemplaza solo las cuotas
+totalmente pendientes con el motor v2, mismo criterio que
+`aplicarAbonoExtraordinario()`. Sin asiento (no mueve dinero).
+
+**§6 Condonación independiente**: `CondonacionService` nuevo.
+`pr_cuotas.interesCondonado`/`moraCondonada` (columnas de auditoría —
+incrementan junto a `interesPagado`/`moraPagada`, así que el saldo
+pendiente baja sin tocar ninguna de las 3+ queries que ya calculan ese
+saldo en el módulo). Nuevo `AsientosAutomaticosService.asientoCondonacionPrestamo`
+— reconoce bruto como ingreso y lo expensa de inmediato como "Gasto por
+condonación" (`PRESTAMO_CONDONACION_GASTO`), mismo patrón que la
+condonación empaquetada en `asientoRefinanciamiento`.
+
+**§7 Contrato y pagaré**: dos plantillas de texto simple nuevas en
+`PrestamistaPdfService` (`contratoPrestamo`/`pagarePrestamo`), mismo patrón
+de membrete (`buildHeader`) que el resto de PDFs del módulo.
+
+**Tests**: 108 nuevos en backend (contrato de los 4 DTOs del §4-§6 +
+unitarios por servicio con `QueryRunner` mockeado, mismo patrón que
+`pagos-anulacion.spec.ts`) + 11 nuevos en frontend (contrato de payload
+exacto a cada endpoint, con `api/client` mockeado). Suite completa:
+backend 4852 tests en verde (361 de Prestamista); frontend con
+`npx tsc --noEmit` limpio en ambos lados y los tests nuevos en verde — la
+suite completa de Vitest tiene una franja de tests lentos y pre-existentes
+(`ClienteFormModal`, `SelectClienteConAlta`, `CompraFormInner`,
+`NotasCreditoComprasPage`) que ocasionalmente exceden su timeout bajo carga
+de máquina (confirmado: ninguno de los archivos tocados en esta sesión, y
+el subconjunto que falla varía entre corridas — ya hay una nota de memoria
+sobre `NotasCreditoComprasPage` siendo lenta en CI real).
+
+Commits: merge de `main` + 1 por el frontend de §1-§3 + 1 por el backend de
+§4-§7 + 1 por el frontend de §4-§6 (el de §7 va junto al backend, son solo
+2 botones). Todo pusheado a `origin/feat/prestamista-motor`.
