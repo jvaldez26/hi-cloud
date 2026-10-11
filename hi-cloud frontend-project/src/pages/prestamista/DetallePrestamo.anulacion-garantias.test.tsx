@@ -93,6 +93,25 @@ describe('DetallePrestamo — Anular pago (§1)', () => {
     await screen.findByText('PAGO-00077');
     expect(screen.queryByRole('button', { name: 'Anular' })).not.toBeInTheDocument();
   });
+
+  // Etapa 6 (Seguridad): pagos.service.ts ya graba anuladoPorNombre/anuladoEn/
+  // motivoAnulacion al anular — esta pantalla nunca lo mostraba, solo la
+  // etiqueta roja "anulado" sin decir quién ni por qué.
+  it('un pago anulado muestra quién lo anuló y el motivo en un tooltip sobre el estado', async () => {
+    mockGetDefault([{
+      ...PAGO_ACTIVO, estado: 'anulado',
+      anuladoPorNombre: 'Jean Admin', anuladoEn: '2026-03-02T10:00:00.000Z', motivoAnulacion: 'Cajera registró el monto equivocado',
+    }], [], []);
+    const user = nuevoUsuario();
+    montar();
+
+    await user.click(await screen.findByRole('tab', { name: /Pagos/ }));
+    const tag = await screen.findByText('anulado');
+    await user.hover(tag);
+
+    await waitFor(() => expect(screen.getByText(/Jean Admin/)).toBeInTheDocument());
+    expect(screen.getByText(/Cajera registró el monto equivocado/)).toBeInTheDocument();
+  });
 });
 
 describe('DetallePrestamo — Garantes (§2)', () => {
@@ -126,6 +145,24 @@ describe('DetallePrestamo — Garantes (§2)', () => {
       '/prestamista/garantes/40/liberar', { motivo: undefined },
     ));
   });
+
+  // Etapa 6 (Seguridad): garantes.service.ts ya graba liberadoPorNombre/
+  // liberadoEn/motivoLiberacion — esta pantalla nunca lo mostraba.
+  it('un garante liberado muestra quién lo liberó y el motivo en un tooltip', async () => {
+    mockGetDefault([], [], [{
+      ...GARANTE_ACTIVO, estado: 'liberado',
+      liberadoPorNombre: 'Jean Admin', liberadoEn: '2026-04-01T09:00:00.000Z', motivoLiberacion: 'Préstamo pagado en su totalidad',
+    }]);
+    const user = nuevoUsuario();
+    montar();
+
+    await user.click(await screen.findByRole('tab', { name: /Garantes/ }));
+    const tag = await screen.findByText('liberado');
+    await user.hover(tag);
+
+    await waitFor(() => expect(screen.getByText(/Jean Admin/)).toBeInTheDocument());
+    expect(screen.getByText(/Préstamo pagado en su totalidad/)).toBeInTheDocument();
+  });
 });
 
 describe('DetallePrestamo — Ciclo de vida de garantías (§3)', () => {
@@ -158,5 +195,24 @@ describe('DetallePrestamo — Ciclo de vida de garantías (§3)', () => {
     await waitFor(() => expect(apiMock.patch).toHaveBeenCalledWith(
       '/prestamista/garantias/30/ejecutar', { motivo: 'Deudor incumplió 6 cuotas consecutivas' },
     ));
+  });
+
+  // Etapa 6 (Seguridad): garantias.service.ts ya graba cambiadoPorNombre/
+  // motivoCambioEstado/fechaEjecucion al ejecutar — esta pantalla nunca lo
+  // mostraba, solo la etiqueta roja "ejecutada".
+  it('una garantía ejecutada muestra quién la ejecutó y el motivo en un tooltip', async () => {
+    mockGetDefault([], [{
+      ...GARANTIA_ACTIVA, estado: 'ejecutada',
+      cambiadoPorNombre: 'Jean Admin', fechaEjecucion: '2026-05-01T08:00:00.000Z', motivoCambioEstado: 'Impago de 6 meses',
+    }], []);
+    const user = nuevoUsuario();
+    montar();
+
+    await user.click(await screen.findByRole('tab', { name: /Garantías/ }));
+    const tag = await screen.findByText('ejecutada');
+    await user.hover(tag);
+
+    await waitFor(() => expect(screen.getByText(/Jean Admin/)).toBeInTheDocument());
+    expect(screen.getByText(/Impago de 6 meses/)).toBeInTheDocument();
   });
 });

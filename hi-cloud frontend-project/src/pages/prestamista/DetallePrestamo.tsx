@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Card, Tabs, Table, Tag, Button, Descriptions, Row, Col, Spin, Checkbox, Radio, Alert, Switch, Space, Divider,
-  Modal, Form, InputNumber, DatePicker, Select, Input, message, Progress, theme
+  Modal, Form, InputNumber, DatePicker, Select, Input, message, Progress, theme, Tooltip
 } from 'antd';
 import dayjs from 'dayjs';
 import { ArrowLeft, FileText, DollarSign, Plus, Printer, Mail, RefreshCw, Scissors, FileSignature } from 'lucide-react';
@@ -22,6 +22,25 @@ const estadoColor: Record<string, string> = { al_dia: 'green', moroso: 'orange',
 const cuotaColor: Record<string, string> = { pendiente: 'default', pagada: 'green', vencida: 'red', pagada_parcial: 'orange' };
 const estadoGarantiaColor: Record<string, string> = { activa: 'green', liberada: 'blue', ejecutada: 'red' };
 const estadoGaranteColor: Record<string, string> = { activo: 'green', liberado: 'blue' };
+
+/**
+ * Etapa 6 (Seguridad): anular un pago, liberar/ejecutar una garantía y
+ * liberar un garante ya quedan registrados en el backend (quién, cuándo,
+ * motivo — pagos.service.ts/garantias.service.ts/garantes.service.ts), pero
+ * esta pantalla nunca lo mostraba — solo la etiqueta de estado, sin decir
+ * quién lo hizo ni por qué. Un Tooltip sobre el Tag de estado, sin agregar
+ * columnas nuevas a tablas que ya van apretadas de ancho.
+ */
+function tooltipAuditoria(partes: { quien?: string; cuando?: any; motivo?: string }): string | undefined {
+  const { quien, cuando, motivo } = partes;
+  if (!quien && !cuando && !motivo) return undefined;
+  const lineas = [
+    quien ? `Por: ${quien}` : null,
+    cuando ? `Fecha: ${String(cuando).slice(0, 19).replace('T', ' ')}` : null,
+    motivo ? `Motivo: ${motivo}` : null,
+  ].filter(Boolean);
+  return lineas.join(' · ');
+}
 
 type TipoPago = 'cuotas' | 'abono_parcial' | 'abono_extraordinario_capital' | 'liquidar';
 
@@ -597,7 +616,15 @@ export default function DetallePrestamo() {
                   { title: 'Interés', dataIndex: 'aplicadoInteres', render: fmt },
                   { title: 'Mora', dataIndex: 'aplicadoMora', render: fmt },
                   { title: 'Forma Pago', dataIndex: 'metodoPago' },
-                  { title: 'Estado', dataIndex: 'estado', render: (v: string) => <Tag color={v === 'anulado' ? 'red' : 'green'}>{v ?? 'activo'}</Tag> },
+                  {
+                    title: 'Estado', dataIndex: 'estado',
+                    render: (v: string, r: any) => {
+                      const tag = <Tag color={v === 'anulado' ? 'red' : 'green'}>{v ?? 'activo'}</Tag>;
+                      if (v !== 'anulado') return tag;
+                      const detalle = tooltipAuditoria({ quien: r.anuladoPorNombre, cuando: r.anuladoEn, motivo: r.motivoAnulacion });
+                      return detalle ? <Tooltip title={detalle}>{tag}</Tooltip> : tag;
+                    },
+                  },
                   {
                     title: '', key: 'acciones', width: 130,
                     render: (_: any, r: any) => (
@@ -636,7 +663,15 @@ export default function DetallePrestamo() {
                   { title: 'Tipo', dataIndex: 'tipo' },
                   { title: 'Descripción', dataIndex: 'descripcion' },
                   { title: 'Valor Tasado', dataIndex: 'valorTasado', render: fmt },
-                  { title: 'Estado', dataIndex: 'estado', render: (v: string) => <Tag color={estadoGarantiaColor[v] ?? 'default'}>{v}</Tag> },
+                  {
+                    title: 'Estado', dataIndex: 'estado',
+                    render: (v: string, r: any) => {
+                      const tag = <Tag color={estadoGarantiaColor[v] ?? 'default'}>{v}</Tag>;
+                      if (v !== 'liberada' && v !== 'ejecutada') return tag;
+                      const detalle = tooltipAuditoria({ quien: r.cambiadoPorNombre, cuando: r.fechaEjecucion ?? r.updatedAt, motivo: r.motivoCambioEstado });
+                      return detalle ? <Tooltip title={detalle}>{tag}</Tooltip> : tag;
+                    },
+                  },
                   { title: 'Fecha Tasación', dataIndex: 'fechaTasacion', render: (v: string) => v?.slice(0, 10) },
                   {
                     title: '', key: 'acciones', width: 170,
@@ -667,7 +702,15 @@ export default function DetallePrestamo() {
                   { title: 'Teléfono', dataIndex: 'telefono' },
                   { title: 'Relación', dataIndex: 'relacionDeudor' },
                   { title: 'Ingreso Mensual', dataIndex: 'ingresoMensual', render: (v: any) => v != null ? fmt(v) : '—' },
-                  { title: 'Estado', dataIndex: 'estado', render: (v: string) => <Tag color={estadoGaranteColor[v] ?? 'default'}>{v}</Tag> },
+                  {
+                    title: 'Estado', dataIndex: 'estado',
+                    render: (v: string, r: any) => {
+                      const tag = <Tag color={estadoGaranteColor[v] ?? 'default'}>{v}</Tag>;
+                      if (v !== 'liberado') return tag;
+                      const detalle = tooltipAuditoria({ quien: r.liberadoPorNombre, cuando: r.liberadoEn, motivo: r.motivoLiberacion });
+                      return detalle ? <Tooltip title={detalle}>{tag}</Tooltip> : tag;
+                    },
+                  },
                   {
                     title: '', key: 'acciones', width: 100,
                     render: (_: any, r: any) => r.estado !== 'liberado' ? (
