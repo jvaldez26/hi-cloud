@@ -42,7 +42,14 @@ export class SessionLifetimeService {
   /** Tope duro del rango admitido, en horas. Coincide con el max de la UI de Super Admin. */
   private static readonly MAX_HORAS = 720;
   private static readonly MIN_HORAS = 1;
-  private static readonly DEFAULT_HORAS = 24;
+  // Decisión de negocio (2026-10-11, incidente real: Elvia bloqueada a mitad
+  // de turno con un default de 24h): la sesión es DESLIZANTE — rotar() le da
+  // una ventana nueva en cada uso — así que el default debe ser el mismo
+  // tope que el máximo permitido, no una ventana corta. Con 24h, cualquier
+  // hueco de un día sin ABRIR el POS ni una sola vez (fin de semana, día
+  // libre) expiraba el refresh token de verdad, no por inactividad dentro
+  // de una sesión — eso lo decide posInactividadMinutos, un control aparte.
+  private static readonly DEFAULT_HORAS = 720;
 
   private globalCache?: { horas: number; at: number };
 

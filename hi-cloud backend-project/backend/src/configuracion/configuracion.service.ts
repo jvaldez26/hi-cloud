@@ -65,7 +65,11 @@ const CONFIGS_DEFECTO = [
   { clave: 'INVENTARIO_METODO',      valor: 'PROMEDIO',               tipo: TipoConfiguracion.STRING,  grupo: 'inventario',  descripcion: 'Método de costeo: PROMEDIO | FIFO | LIFO', editable: true },
 
   // ── Seguridad
-  { clave: 'SESION_HORAS',           valor: '24',                     tipo: TipoConfiguracion.NUMBER,  grupo: 'seguridad',   descripcion: 'Duración sesión JWT (horas)', editable: true },
+  // Deslizante (rotar() renueva la ventana en cada uso) — el default es el
+  // mismo tope que el máximo permitido (ver session-lifetime.service.ts):
+  // con uso periódico la sesión no vence nunca por tiempo, solo tras 30
+  // días SEGUIDOS sin ningún uso.
+  { clave: 'SESION_HORAS',           valor: '720',                    tipo: TipoConfiguracion.NUMBER,  grupo: 'seguridad',   descripcion: 'Duración sesión JWT (horas) — deslizante, se renueva con el uso', editable: true },
   { clave: 'MAX_INTENTOS_LOGIN',     valor: '5',                      tipo: TipoConfiguracion.NUMBER,  grupo: 'seguridad',   descripcion: 'Máximo intentos de login fallidos', editable: true },
   { clave: 'AUDITORIA_ACTIVA',       valor: 'true',                   tipo: TipoConfiguracion.BOOLEAN, grupo: 'seguridad',   descripcion: 'Registro de auditoría activo', editable: true },
 ];
@@ -198,9 +202,9 @@ export class ConfiguracionService implements OnModuleInit {
           const globals = await this.configRepository.find({
             where: { grupo: 'seguridad', isActive: true },
           });
-          const rawSesion   = parseInt(globals.find(g => g.clave === 'SESION_HORAS')?.valor ?? '24', 10);
+          const rawSesion   = parseInt(globals.find(g => g.clave === 'SESION_HORAS')?.valor ?? '720', 10);
           const rawIntentos = parseInt(globals.find(g => g.clave === 'MAX_INTENTOS_LOGIN')?.valor ?? '5', 10);
-          const globalSesion   = isNaN(rawSesion)   ? 24 : rawSesion;
+          const globalSesion   = isNaN(rawSesion)   ? 720 : rawSesion;
           const globalIntentos = isNaN(rawIntentos) ? 5  : rawIntentos;
           if (typeof updConf['sesionHoras'] === 'number') {
             updConf['sesionHoras'] = Math.min(updConf['sesionHoras'] as number, globalSesion);
