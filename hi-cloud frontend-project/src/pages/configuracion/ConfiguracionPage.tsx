@@ -1364,6 +1364,7 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
       cierreCajaCiego:             conf.cierreCajaCiego ?? false,
       umbralDescuadreCaja:         conf.umbralDescuadreCaja ?? 100,
       notificarDescuadreCaja:      conf.notificarDescuadreCaja ?? true,
+      prestamoEfectivoPorCaja:     conf.prestamoEfectivoPorCaja ?? true,
       posFormatoTicket:            conf.posFormatoTicket ?? 'normal',
       // El valor GUARDADO, tal cual. Redondearlo aquí a la opción más cercana
       // parecía cortés y era una trampa: el admin entraba a activar el formato
@@ -1791,6 +1792,17 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
           </div>
           <Text type="secondary" style={{ fontSize: 11, marginLeft: 36 }}>
             Avisa por campanita y correo cuando un cierre queda fuera del umbral. El cierre siempre queda marcado "Descuadre" en el historial, aunque este aviso esté apagado.
+          </Text>
+        </Col>
+        <Col xs={24}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Form.Item name="prestamoEfectivoPorCaja" valuePropName="checked" style={{ marginBottom: 0 }}>
+              <Switch size="small" />
+            </Form.Item>
+            <Text style={{ fontSize: 13 }}>Efectivo de préstamos por la caja del cajero</Text>
+          </div>
+          <Text type="secondary" style={{ fontSize: 11, marginLeft: 36 }}>
+            Un cobro de cuota o un desembolso en efectivo entra/sale del cuadre de caja del turno, igual que una venta o un gasto. Apágalo si el módulo Prestamista maneja su efectivo fuera de la caja del POS.
           </Text>
         </Col>
       </Row>

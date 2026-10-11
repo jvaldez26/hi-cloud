@@ -110,6 +110,16 @@ export class RegistrarPagoDto {
    */
   @IsOptional() @IsString() @MaxLength(36)
   claveIdempotencia?: string;
+
+  /**
+   * Etapa 5 — integración con Caja. Solo tiene efecto con metodoPago='efectivo'
+   * (PagosService la ignora en cualquier otro caso) y si la empresa no apagó
+   * `configuracion.prestamoEfectivoPorCaja`. Se valida que la caja exista,
+   * pertenezca a esta empresa y esté abierta — mismo criterio que
+   * GastosService.crear().
+   */
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number)
+  cajaDiariaId?: number;
 }
 
 export class CrearSolicitudDto {
@@ -242,6 +252,21 @@ export class CrearPrestamoDto {
    */
   @IsOptional() @IsNumber(MONTO) @Min(0) @Type(() => Number)
   desembolsoInicial?: number;
+
+  /**
+   * Método del desembolso inicial — nunca estuvo declarado aquí: con
+   * forbidNonWhitelisted:true el campo se descartaba siempre y
+   * PrestamosService.crearEnTransaccion() recibía `data.formaPago`
+   * indefinido (fallback 'transferencia' en el asiento). Se agrega en la
+   * Etapa 5 junto con cajaDiariaId — antes de esto, un desembolso creado
+   * desde esta pantalla nunca podía ser en efectivo con caja asociada.
+   */
+  @IsOptional() @IsString() @MaxLength(20)
+  formaPago?: string;
+
+  /** Etapa 5 — integración con Caja. Mismo criterio que RegistrarPagoDto.cajaDiariaId. */
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number)
+  cajaDiariaId?: number;
 }
 
 export class RefinanciarDto {
@@ -826,6 +851,10 @@ export class CrearDesembolsoParcialDto {
 
   @IsOptional() @IsString() @MaxLength(500)
   notas?: string;
+
+  /** Etapa 5 — integración con Caja. Mismo criterio que RegistrarPagoDto.cajaDiariaId. */
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number)
+  cajaDiariaId?: number;
 }
 
 /**

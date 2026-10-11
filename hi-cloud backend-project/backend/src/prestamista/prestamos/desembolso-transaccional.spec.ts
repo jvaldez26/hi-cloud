@@ -255,6 +255,39 @@ describe('§4 (Etapa 2 resto) — desembolso parcial en create()', () => {
     await expect(svc.create(1, { ...DATOS_PRESTAMO, desembolsoInicial: 999999 }))
       .rejects.toThrow(BadRequestException);
   });
+
+  // Etapa 5, Parte B — ver docs/prestamista/etapa-5-contabilidad-caja-fiscal.md.
+  // El desembolso inicial SIEMPRE pasa por aquí (crearEnTransaccion inserta
+  // en pr_desembolsos_parciales incluso cuando desembolsoInicial = 100%), así
+  // que este es el único camino de "desembolso directo" que hace falta cubrir.
+  describe('integración con Caja', () => {
+    const responderConCaja = (cajaRow: any[]) => (sql: string) => {
+      if (sql.includes('FROM empresa')) return [{}];
+      if (sql.includes('FROM cierres_caja')) return cajaRow;
+      return responderOk(sql);
+    };
+
+    it('formaPago="efectivo" con caja abierta de esta empresa: guarda cajaDiariaId en el tramo inicial', async () => {
+      const { svc, sqls } = construir(responderConCaja([{ estado: 'abierta' }]));
+      await svc.create(1, { ...DATOS_PRESTAMO, formaPago: 'efectivo', cajaDiariaId: 4 });
+
+      const insert = sqls.find(s => s.includes('INSERT INTO pr_desembolsos_parciales'));
+      expect(insert).toContain('"cajaDiariaId"');
+    });
+
+    it('caja que no pertenece a esta empresa: rechaza antes de insertar el tramo', async () => {
+      const { svc } = construir(responderConCaja([]));
+      await expect(svc.create(1, { ...DATOS_PRESTAMO, formaPago: 'efectivo', cajaDiariaId: 999 }))
+        .rejects.toThrow(BadRequestException);
+    });
+
+    it('sin formaPago="efectivo": nunca valida ni guarda ninguna caja, aunque venga cajaDiariaId', async () => {
+      const { svc, sqls } = construir(responderConCaja([{ estado: 'abierta' }]));
+      await svc.create(1, { ...DATOS_PRESTAMO, formaPago: 'transferencia', cajaDiariaId: 4 });
+
+      expect(sqls.some(s => s.includes('FROM cierres_caja'))).toBe(false);
+    });
+  });
 });
 
 describe('H2 — el refinanciamiento es atómico', () => {

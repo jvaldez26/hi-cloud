@@ -75,3 +75,40 @@ describe('DesembolsosParcialesService.registrar', () => {
       .rejects.toThrow(BadRequestException);
   });
 });
+
+// Etapa 5, Parte B — ver docs/prestamista/etapa-5-contabilidad-caja-fiscal.md.
+describe('DesembolsosParcialesService.registrar — integración con Caja', () => {
+  function mockConCaja(cajaRow: any[]) {
+    return (sql: string) => {
+      if (sql.includes('FROM pr_prestamos') && sql.includes('FOR UPDATE')) return [PRESTAMO_PARCIAL];
+      if (sql.includes('FROM empresa')) return [{}];
+      if (sql.includes('FROM cierres_caja')) return cajaRow;
+      if (sql.includes('INSERT INTO pr_desembolsos_parciales')) return [{ id: 1, monto: 2000 }];
+      return [];
+    };
+  }
+
+  it('efectivo con caja abierta de esta empresa: la guarda en el INSERT', async () => {
+    const { svc, qr } = buildService(mockConCaja([{ estado: 'abierta' }]));
+    await svc.registrar(7, { prestamoId: 10, monto: 2000, fecha: '2026-10-10', metodoPago: 'efectivo', cajaDiariaId: 4 }, USUARIO);
+
+    const insert = qr.query.mock.calls.find(([sql]: any[]) => sql.includes('INSERT INTO pr_desembolsos_parciales'));
+    expect(insert[0]).toContain('"cajaDiariaId"');
+    expect(insert[1]).toContain(4);
+  });
+
+  it('caja de otra empresa (no aparece con ese empresaId): rechaza', async () => {
+    const { svc } = buildService(mockConCaja([]));
+    await expect(svc.registrar(7, { prestamoId: 10, monto: 2000, fecha: '2026-10-10', metodoPago: 'efectivo', cajaDiariaId: 999 }, USUARIO))
+      .rejects.toThrow(BadRequestException);
+  });
+
+  it('transferencia: el cajaDiariaId se ignora aunque venga en el body', async () => {
+    const { svc, qr } = buildService(mockConCaja([{ estado: 'abierta' }]));
+    await svc.registrar(7, { prestamoId: 10, monto: 2000, fecha: '2026-10-10', metodoPago: 'transferencia', cajaDiariaId: 4 }, USUARIO);
+
+    const insert = qr.query.mock.calls.find(([sql]: any[]) => sql.includes('INSERT INTO pr_desembolsos_parciales'));
+    expect(insert[1]).toContain(null);
+    expect(qr.query.mock.calls.some(([sql]: any[]) => sql.includes('FROM cierres_caja'))).toBe(false);
+  });
+});

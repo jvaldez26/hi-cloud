@@ -10,6 +10,7 @@ import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
 import { prestamistalApi } from '../../api/prestamista.api';
 import { hoyRD } from '../../utils/fechaRD';
+import api from '../../api/client';
 
 const { Option } = Select;
 const fmt = (n: any) => `RD$ ${Number(n ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
@@ -47,6 +48,20 @@ export default function PrestamosPage() {
     queryFn: () => prestamistalApi.getSolicitudes({ estado: 'aprobada' }),
   });
   const solicitudes: any[] = (solicitudesResp as any)?.data ?? solicitudesResp ?? [];
+
+  // Cajas abiertas hoy — para el selector cuando el desembolso inicial es en
+  // efectivo (Etapa 5, Parte B). Mismo patrón que GastosPage/DetallePrestamo.
+  const { data: cajasHoy } = useQuery({
+    queryKey: ['caja-hoy-prestamista-crear'],
+    queryFn: () => api.get('/caja/hoy').then(r => {
+      const d = r.data?.data ?? r.data;
+      if (Array.isArray(d?.cajas)) return d.cajas as any[];
+      if (d?.id)                   return [d] as any[];
+      return [] as any[];
+    }),
+    enabled: open,
+    staleTime: 30_000,
+  });
 
   const crear = useMutation({
     // Etapa 1: fechaDesembolso llega como objeto dayjs del DatePicker — sin
@@ -166,6 +181,33 @@ export default function PrestamosPage() {
               <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
             </Form.Item>
           </div>
+          <Form.Item name="formaPago" label="Forma del desembolso" initialValue="transferencia">
+            <Select onChange={val => { if (val !== 'efectivo') form.setFieldsValue({ cajaDiariaId: undefined }); }}>
+              <Option value="transferencia">Transferencia</Option>
+              <Option value="efectivo">Efectivo</Option>
+              <Option value="cheque">Cheque</Option>
+            </Select>
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(p, c) => p.formaPago !== c.formaPago}>
+            {() => form.getFieldValue('formaPago') === 'efectivo' ? (
+              <Form.Item
+                name="cajaDiariaId"
+                label="Caja de efectivo (opcional)"
+                tooltip="Si se selecciona, el desembolso sale del cuadre de esa caja. Déjalo vacío si no aplica."
+              >
+                <Select
+                  placeholder="Seleccionar caja (opcional)"
+                  loading={!cajasHoy}
+                  allowClear
+                  notFoundContent="No hay cajas abiertas hoy"
+                  options={(cajasHoy ?? []).map((c: any) => ({
+                    value: c.id,
+                    label: c.vendedorNombre ? `${c.vendedorNombre} — Caja #${c.id}` : `Caja #${c.id}`,
+                  }))}
+                />
+              </Form.Item>
+            ) : null}
+          </Form.Item>
           <Form.Item name="observaciones" label="Observaciones"><Input.TextArea rows={2} /></Form.Item>
         </Form>
       </Modal>

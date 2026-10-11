@@ -8,6 +8,7 @@ import { AsientosAutomaticosService } from '../../contabilidad/services/asientos
 import { TenantService } from '../../tenant/tenant.service';
 import { FeriadosService } from '../feriados/feriados.service';
 import { fechaHoyRD } from '../../common/utils/fecha-local.util';
+import { resolverCajaDiariaPrestamo } from '../utils/caja-efectivo.util';
 
 @Injectable()
 export class PrestamosService {
@@ -295,10 +296,12 @@ export class PrestamosService {
     );
 
     if (desembolsoInicial > 0) {
+      // Etapa 5 — integración con Caja: solo tiene efecto en efectivo.
+      const cajaDiariaIdResuelto = await resolverCajaDiariaPrestamo(qr, empresaId, data.formaPago ?? null, data.cajaDiariaId);
       await qr.query(
-        `INSERT INTO pr_desembolsos_parciales ("empresaId","prestamoId",monto,fecha,"metodoPago",notas,"creadoPor")
-         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [empresaId, prestamo.id, desembolsoInicial, data.fechaDesembolso, data.formaPago ?? null, 'Desembolso inicial', uid],
+        `INSERT INTO pr_desembolsos_parciales ("empresaId","prestamoId",monto,fecha,"metodoPago",notas,"creadoPor","cajaDiariaId")
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [empresaId, prestamo.id, desembolsoInicial, data.fechaDesembolso, data.formaPago ?? null, 'Desembolso inicial', uid, cajaDiariaIdResuelto],
       );
     }
 

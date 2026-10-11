@@ -153,6 +153,20 @@ export default function DetallePrestamo() {
     enabled: !!id,
   });
 
+  // Cajas abiertas hoy — para el selector cuando el pago/tramo es en efectivo
+  // (Etapa 5, Parte B). Mismo patrón que GastosPage.
+  const { data: cajasHoy } = useQuery({
+    queryKey: ['caja-hoy-prestamista'],
+    queryFn: () => api.get('/caja/hoy').then(r => {
+      const d = r.data?.data ?? r.data;
+      if (Array.isArray(d?.cajas)) return d.cajas as any[];
+      if (d?.id)                   return [d] as any[];
+      return [] as any[];
+    }),
+    enabled: pagoOpen || tramoOpen,
+    staleTime: 30_000,
+  });
+
   const cuotasPendientes: any[] = useMemo(
     () => (prestamo?.cuotas ?? []).filter((c: any) => c.estado !== 'pagada').sort((a: any, b: any) => a.numeroCuota - b.numeroCuota),
     [prestamo],
@@ -253,7 +267,10 @@ export default function DetallePrestamo() {
         body.metodoPago = vals.formaPago;
         body.referencia = vals.referencia;
       }
-      if (vals.formaPago === 'efectivo' && !pagoMixto) body.montoRecibido = vals.montoRecibido;
+      if (vals.formaPago === 'efectivo' && !pagoMixto) {
+        body.montoRecibido = vals.montoRecibido;
+        if (vals.cajaDiariaId) body.cajaDiariaId = vals.cajaDiariaId;
+      }
       const headers = esRetroactivo && supervisorToken && supervisorToken !== 'sesion'
         ? { 'x-supervisor-token': supervisorToken } : undefined;
       return prestamistalApi.registrarPago(body, headers);
@@ -348,6 +365,7 @@ export default function DetallePrestamo() {
     mutationFn: (vals: any) => prestamistalApi.registrarDesembolsoParcial({
       prestamoId: Number(id), monto: vals.monto, fecha: vals.fecha.format('YYYY-MM-DD'),
       metodoPago: vals.metodoPago, notas: vals.notas,
+      ...(vals.metodoPago === 'efectivo' && vals.cajaDiariaId ? { cajaDiariaId: vals.cajaDiariaId } : {}),
     }),
     onSuccess: (d: any) => {
       qc.invalidateQueries({ queryKey: ['prestamista-prestamo', id] });
@@ -800,16 +818,34 @@ export default function DetallePrestamo() {
                     <Input placeholder="N° cheque, transferencia, confirmación..." />
                   </Form.Item>
                 ) : (
-                  <Row gutter={12}>
-                    <Col span={12}>
-                      <Form.Item name="montoRecibido" label="Monto Recibido"><InputNumber style={{ width: '100%' }} prefix="RD$" /></Form.Item>
-                    </Col>
-                    <Col span={12}>
-                      <div style={{ paddingTop: 30, fontSize: 13 }}>
-                        Cambio: <b>{fmt(Math.max(0, Number(montoRecibidoWatch ?? 0) - Number(montoPagadoWatch ?? 0)))}</b>
-                      </div>
-                    </Col>
-                  </Row>
+                  <>
+                    <Row gutter={12}>
+                      <Col span={12}>
+                        <Form.Item name="montoRecibido" label="Monto Recibido"><InputNumber style={{ width: '100%' }} prefix="RD$" /></Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <div style={{ paddingTop: 30, fontSize: 13 }}>
+                          Cambio: <b>{fmt(Math.max(0, Number(montoRecibidoWatch ?? 0) - Number(montoPagadoWatch ?? 0)))}</b>
+                        </div>
+                      </Col>
+                    </Row>
+                    <Form.Item
+                      name="cajaDiariaId"
+                      label="Caja de efectivo (opcional)"
+                      tooltip="Si se selecciona, el cobro entra al cuadre de esa caja. Déjalo vacío si no aplica."
+                    >
+                      <Select
+                        placeholder="Seleccionar caja (opcional)"
+                        loading={!cajasHoy}
+                        allowClear
+                        notFoundContent="No hay cajas abiertas hoy"
+                        options={(cajasHoy ?? []).map((c: any) => ({
+                          value: c.id,
+                          label: c.vendedorNombre ? `${c.vendedorNombre} — Caja #${c.id}` : `Caja #${c.id}`,
+                        }))}
+                      />
+                    </Form.Item>
+                  </>
                 )}
               </Form.Item>
             </>
@@ -1030,7 +1066,7 @@ export default function DetallePrestamo() {
             </Col>
             <Col span={12}>
               <Form.Item name="metodoPago" label="Forma de Pago">
-                <Select>
+                <Select onChange={val => { if (val !== 'efectivo') formTramo.setFieldsValue({ cajaDiariaId: undefined }); }}>
                   <Option value="efectivo">Efectivo</Option>
                   <Option value="transferencia">Transferencia</Option>
                   <Option value="cheque">Cheque</Option>
@@ -1038,6 +1074,26 @@ export default function DetallePrestamo() {
               </Form.Item>
             </Col>
           </Row>
+          <Form.Item noStyle shouldUpdate={(p, c) => p.metodoPago !== c.metodoPago}>
+            {() => formTramo.getFieldValue('metodoPago') === 'efectivo' ? (
+              <Form.Item
+                name="cajaDiariaId"
+                label="Caja de efectivo (opcional)"
+                tooltip="Si se selecciona, el desembolso sale del cuadre de esa caja. Déjalo vacío si no aplica."
+              >
+                <Select
+                  placeholder="Seleccionar caja (opcional)"
+                  loading={!cajasHoy}
+                  allowClear
+                  notFoundContent="No hay cajas abiertas hoy"
+                  options={(cajasHoy ?? []).map((c: any) => ({
+                    value: c.id,
+                    label: c.vendedorNombre ? `${c.vendedorNombre} — Caja #${c.id}` : `Caja #${c.id}`,
+                  }))}
+                />
+              </Form.Item>
+            ) : null}
+          </Form.Item>
           <Form.Item name="notas" label="Notas"><Input.TextArea rows={2} /></Form.Item>
         </Form>
       </Modal>

@@ -4,6 +4,7 @@ import { DataSource } from 'typeorm';
 import { AsientosAutomaticosService } from '../../contabilidad/services/asientos-automaticos.service';
 import { PrestamosService } from '../prestamos/prestamos.service';
 import { r2 } from '../utils/mora.util';
+import { resolverCajaDiariaPrestamo } from '../utils/caja-efectivo.util';
 
 /**
  * Tramos de efectivo entregados a un préstamo que nació en
@@ -49,10 +50,13 @@ export class DesembolsosParcialesService {
         throw new BadRequestException(`El tramo excede lo que falta por desembolsar (RD$ ${restante.toFixed(2)})`);
       }
 
+      // Etapa 5 — integración con Caja: solo tiene efecto en efectivo.
+      const cajaDiariaIdResuelto = await resolverCajaDiariaPrestamo(qr, empresaId, data.metodoPago ?? null, data.cajaDiariaId);
+
       const [tramo] = await qr.query(
-        `INSERT INTO pr_desembolsos_parciales ("empresaId","prestamoId",monto,fecha,"metodoPago",notas,"creadoPor")
-         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-        [empresaId, prestamo.id, monto, data.fecha, data.metodoPago ?? null, data.notas ?? null, usuario.id],
+        `INSERT INTO pr_desembolsos_parciales ("empresaId","prestamoId",monto,fecha,"metodoPago",notas,"creadoPor","cajaDiariaId")
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+        [empresaId, prestamo.id, monto, data.fecha, data.metodoPago ?? null, data.notas ?? null, usuario.id, cajaDiariaIdResuelto],
       );
 
       const nuevoDesembolsado = r2(desembolsadoActual + monto);
