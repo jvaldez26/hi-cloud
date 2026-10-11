@@ -104,6 +104,52 @@ valores de arranque.
   cobranza a enviar de verdad es un cambio acotado a
   `CobranzaService.linkWhatsappMora()` + `WhatsAppService.enviarMensaje()`.
 
+## Etapa 6 — Seguridad (2026-10-11)
+
+- **Auditoría de seguridad completa — CERRADA el 2026-10-11**, ver
+  `etapa-6-seguridad.md`. Encontró y corrigió 1 hallazgo CRÍTICO
+  (`/refinanciamientos` condonaba deuda sin la autorización dual de
+  `/condonar`), 1 ALTO (`cancelar()` sin guarda de estado — permitía
+  "cancelar" un préstamo con dinero ya desembolsado/cobrado, sin reversar
+  nada), y 2 MEDIO (carrera en `SolicitudesService.decidir()`; descripción
+  de auditoría incorrecta para condonar/reestructurar de Prestamista, que
+  colisionaba con la de educativo). Todos corregidos con tests
+  adversariales. También corrigió, a mitad de la etapa, un bug de CI (CAPA
+  5 — `query()` con UPDATE/DELETE devuelve `[filas, rowCount]`, no la fila)
+  en `pagos.service.ts`/`reestructuracion.service.ts`, encontrado por
+  GitHub Actions y no por la suite local.
+- **`cancelar()` ya no puede tocar dinero real — ¿debería ADEMÁS exigir
+  autorización dual?** Con las dos guardas nuevas (bloquea
+  `desembolso_parcial` y `totalPagado > 0`), `cancelar()` queda limitado a
+  préstamos sin ningún movimiento de efectivo — el peor caso real (un
+  "write-off" silencioso de deuda ya desembolsada) ya está cerrado. No se
+  agregó `RequiereSupervisorSiempre` nueva porque ya no hace falta para
+  cerrar el hueco encontrado; si Jean prefiere que CUALQUIER cancelación
+  (incluso de un préstamo recién creado, sin desembolsar) quede respaldada
+  por una segunda persona —por consistencia con anular/condonar/
+  reestructurar/ejecutar—, es un cambio de una línea en el controller
+  (nueva clave `cancelar_prestamo` en `supervisor-catalogo.ts` +
+  `@UseGuards(RequiereSupervisorSiempre('cancelar_prestamo'))`).
+- **`DetallePrestamo.desembolso-reestructura-condonacion.test.tsx` se une a
+  la franja de tests lentos bajo carga completa**: sus 5 tests pasan limpio
+  en ~37s corridos solos (incluidos los dos de Condonación §6, que
+  ejercitan justo el camino que esta etapa auditó), pero bajo la suite
+  completa de Vitest el test de "condona solo mora..." excedió su timeout
+  de 30s en una corrida, y en otra fue el de "sin mora ni interés
+  indicado..." — la carrera específica varía según la corrida, igual que
+  `PrestamosPage.test.tsx` (anotado en Etapa 5) y
+  `SelectClienteConAlta.test.tsx` (que también falló en la corrida completa
+  de hoy, confirmado sin relación con Prestamista al pasar limpio solo).
+  Misma causa raíz ya documentada (contención de recursos del runner de
+  Vitest bajo carga), no una regresión de esta etapa — queda en la misma
+  categoría de deuda aceptada.
+- **Cartera asignada (cobranza) no restringe ACCESO, solo organiza** —
+  confirmado que es el comportamiento esperado del diseño actual (igual
+  que el resto de Prestamista: ningún listado restringe por "mi cartera").
+  Si en el futuro el negocio decide que un vendedor/cobrador no debería ver
+  préstamos de otro cobrador, es un cambio de autorización nuevo, no una
+  corrección de un hueco encontrado hoy.
+
 ## Etapa 5 — Contabilidad, Caja y Fiscal (2026-10-11)
 
 - **Auditoría de contabilidad**: sin huecos — ver
