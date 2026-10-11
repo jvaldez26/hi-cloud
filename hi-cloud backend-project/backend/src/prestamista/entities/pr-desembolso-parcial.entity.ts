@@ -14,6 +14,12 @@ export class PrDesembolsoParcial {
   @Column({ type: 'decimal', precision: 14, scale: 2 }) monto!: number;
   @Column({ type: 'date' }) fecha!: string;
   @Column({ length: 20, nullable: true }) metodoPago?: string;
+  /**
+   * Etapa 5 — integración con Caja: solo se llena cuando metodoPago='efectivo'
+   * y el cajero tiene una caja abierta (mismo patrón que Gasto.cajaDiariaId).
+   * CajaService.recalcularDesdeBD() la suma a desembolsosPrestamoEfectivo.
+   */
+  @Column({ type: 'int', nullable: true }) cajaDiariaId?: number;
   @Column({ type: 'text', nullable: true }) notas?: string;
   @Column({ type: 'int', nullable: true }) creadoPor?: number;
   @CreateDateColumn() createdAt!: Date;

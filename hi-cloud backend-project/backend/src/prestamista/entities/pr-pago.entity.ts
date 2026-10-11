@@ -16,6 +16,12 @@ export class PrPago {
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 }) aplicadoCargos!: number;
   @Column({ length: 50, nullable: true }) metodoPago?: string;
   @Column({ length: 100, nullable: true }) referencia?: string;
+  /**
+   * Etapa 5 — integración con Caja: solo se llena cuando metodoPago='efectivo'
+   * y el cajero tiene una caja abierta (mismo patrón que Gasto.cajaDiariaId).
+   * CajaService.recalcularDesdeBD() la suma a cobrosPrestamoEfectivo.
+   */
+  @Column({ type: 'int', nullable: true }) cajaDiariaId?: number;
   @Column({ type: 'int', nullable: true }) cobradorId?: number;
   @Column({ length: 200, nullable: true }) cobradorNombre?: string;
   @Column({ type: 'jsonb', nullable: true }) cuotasAfectadas?: any;
