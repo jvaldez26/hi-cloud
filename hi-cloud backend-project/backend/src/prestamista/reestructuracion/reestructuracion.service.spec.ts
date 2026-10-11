@@ -126,4 +126,24 @@ describe('ReestructuracionService.reestructurar', () => {
     await expect(svc.reestructurar(7, 20, { motivo: 'x' }, USUARIO)).rejects.toThrow('BD caída');
     expect(vida).toEqual(['connect', 'start', 'rollback', 'release']);
   });
+
+  // Regresión (Etapa 6 — Seguridad): query() con UPDATE/DELETE devuelve
+  // [filas, rowCount] en TypeORM+PostgresQueryRunner, NUNCA la fila sola —
+  // `const [actualizado] = await qr.query('UPDATE ... RETURNING *')` sin
+  // envolver en un CTE deja `actualizado` como el array [fila] entero, no
+  // la fila (actualizado.id === undefined). El mock de este spec devuelve
+  // filas directamente sin importar la forma real del SQL, así que no
+  // atrapa el bug por sí solo — por eso esta prueba verifica la FORMA del
+  // SQL enviado, no solo lo que el mock responde. Ver
+  // scripts/validate-update-returning.js (CI "CAPA 5"), que es la guarda
+  // global para toda la base de código.
+  it('el UPDATE final de pr_prestamos va envuelto en un CTE (WITH ... RETURNING * ... SELECT), nunca un UPDATE...RETURNING a secas', async () => {
+    const { svc, sqls } = construir(responderOk);
+    await svc.reestructurar(7, 20, { motivo: 'x' }, USUARIO);
+
+    const updateFinal = sqls.find(sql => sql.includes('UPDATE pr_prestamos SET "tasaInteresMensual"'));
+    expect(updateFinal).toBeDefined();
+    expect(updateFinal!.trim().startsWith('WITH')).toBe(true);
+    expect(updateFinal).toMatch(/\)\s*SELECT \* FROM fila\s*$/);
+  });
 });

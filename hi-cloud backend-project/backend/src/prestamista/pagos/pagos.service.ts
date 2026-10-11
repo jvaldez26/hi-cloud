@@ -587,9 +587,14 @@ export class PagosService {
         await qr.query(`UPDATE ecf SET "isActive"=false WHERE id=$1`, [ecf.id]);
       }
 
+      // query() con UPDATE/DELETE devuelve [filas, rowCount] (TypeORM +
+      // PostgresQueryRunner), nunca la fila sola — envolver en CTE para que
+      // SÍ devuelva filas planas (ver scripts/validate-update-returning.js).
       const [pagoAnulado] = await qr.query(
-        `UPDATE pr_pagos SET estado='anulado', "anuladoPor"=$1, "anuladoPorNombre"=$2, "anuladoEn"=NOW(), "motivoAnulacion"=$3
-         WHERE id=$4 RETURNING *`,
+        `WITH fila AS (
+           UPDATE pr_pagos SET estado='anulado', "anuladoPor"=$1, "anuladoPorNombre"=$2, "anuladoEn"=NOW(), "motivoAnulacion"=$3
+           WHERE id=$4 RETURNING *
+         ) SELECT * FROM fila`,
         [usuario.id, usuario.nombre ?? null, motivo, pago.id],
       );
 

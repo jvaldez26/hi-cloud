@@ -145,4 +145,27 @@ describe('PagosService.anular — reversa completa', () => {
     // 500-400=100 capital, 150-100=50 interes — queda algo pagado → 'parcial'
     expect(updateCuota[1]).toEqual([50, 100, 0, 0, 0, 'parcial', 1]);
   });
+
+  // Regresión (Etapa 6 — Seguridad): query() con UPDATE/DELETE devuelve
+  // [filas, rowCount] en TypeORM+PostgresQueryRunner, NUNCA la fila sola —
+  // `const [pagoAnulado] = await qr.query('UPDATE ... RETURNING *')` sin
+  // envolver en un CTE deja `pagoAnulado` como el array [fila] entero, no
+  // la fila (pagoAnulado.id === undefined, pagoAnulado.estado === undefined).
+  // El resto de los mocks de este archivo devuelven filas directamente sin
+  // importar la forma real del SQL, así que no atrapan el bug por sí solos
+  // — esta prueba verifica la FORMA del SQL enviado. Ver
+  // scripts/validate-update-returning.js (CI "CAPA 5"), guarda global para
+  // toda la base de código, que es la que de verdad atrapó este bug.
+  it('el UPDATE final de pr_pagos (anulación) va envuelto en un CTE, nunca un UPDATE...RETURNING a secas', async () => {
+    const { svc, qr } = buildService(() => []);
+    qr.query.mockImplementation(async (sql: string) => mockFeliz(qr)(sql));
+
+    await svc.anular(7, 900, 'motivo', USUARIO);
+
+    const updateFinal = qr.query.mock.calls.find(([sql]: any[]) => sql.includes("UPDATE pr_pagos SET estado='anulado'"));
+    expect(updateFinal).toBeDefined();
+    const sqlFinal = updateFinal![0] as string;
+    expect(sqlFinal.trim().startsWith('WITH')).toBe(true);
+    expect(sqlFinal).toMatch(/\)\s*SELECT \* FROM fila\s*$/);
+  });
 });

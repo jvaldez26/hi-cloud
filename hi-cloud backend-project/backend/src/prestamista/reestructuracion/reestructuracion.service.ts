@@ -113,11 +113,16 @@ export class ReestructuracionService {
       `SELECT COUNT(*)::int AS total FROM pr_cuotas WHERE "prestamoId"=$1`, [prestamoId],
     );
 
+    // query() con UPDATE/DELETE devuelve [filas, rowCount] (TypeORM +
+    // PostgresQueryRunner), nunca la fila sola — envolver en CTE para que
+    // SÍ devuelva filas planas (ver scripts/validate-update-returning.js).
     const [actualizado] = await qr.query(
-      `UPDATE pr_prestamos SET "tasaInteresMensual"=$1,"metodoAmortizacion"=$2,"cuotaPeriodica"=$3,
-         "plazoMeses"=$4,"fechaVencimiento"=$5,"motorConfig"=$6,
-         notas=CONCAT(COALESCE(notas,''), ' | Reestructurado: ', $7), "updatedAt"=NOW()
-       WHERE id=$8 AND "empresaId"=$9 RETURNING *`,
+      `WITH fila AS (
+         UPDATE pr_prestamos SET "tasaInteresMensual"=$1,"metodoAmortizacion"=$2,"cuotaPeriodica"=$3,
+           "plazoMeses"=$4,"fechaVencimiento"=$5,"motorConfig"=$6,
+           notas=CONCAT(COALESCE(notas,''), ' | Reestructurado: ', $7), "updatedAt"=NOW()
+         WHERE id=$8 AND "empresaId"=$9 RETURNING *
+       ) SELECT * FROM fila`,
       [config.tasa.valor * 100, config.metodo, resultado.cuotaFija,
        plazoMesesInformativo, ultimaCuotaNueva.fecha, JSON.stringify(config),
        data.motivo, prestamoId, empresaId],
