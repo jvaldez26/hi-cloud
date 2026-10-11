@@ -8,6 +8,7 @@ import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/Tab
 import { exportarExcel } from '../../utils/exportExcel';
 import { prestamistalApi } from '../../api/prestamista.api';
 import { hoyRD } from '../../utils/fechaRD';
+import ScoreDeudorBadge from './ScoreDeudorBadge';
 
 const fmt = (n: any) => `RD$ ${Number(n ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
 const estadoColor: Record<string, string> = { al_dia: 'green', moroso: 'orange', vencido: 'red', pagado: 'blue', cancelado: 'default', refinanciado: 'purple' };
@@ -56,6 +57,7 @@ export default function FichaDeudorPage() {
         <h2 style={{ margin: 0, color: C.colorText }}>{deudor.nombre} {deudor.apellidos ?? ''}</h2>
         <Tag color={riesgoColor[deudor.nivelRiesgo] ?? 'default'}>{deudor.nivelRiesgo}</Tag>
         {deudor.enListaNegra && <Tag color="red">Lista Negra</Tag>}
+        <ScoreDeudorBadge deudorId={deudor.id} />
       </div>
 
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>

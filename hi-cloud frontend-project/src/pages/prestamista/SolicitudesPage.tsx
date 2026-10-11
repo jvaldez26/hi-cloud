@@ -9,6 +9,7 @@ import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
 import { prestamistalApi } from '../../api/prestamista.api';
 import { hoyRD } from '../../utils/fechaRD';
+import ScoreDeudorBadge from './ScoreDeudorBadge';
 
 const { Option } = Select;
 
@@ -229,6 +230,12 @@ export default function SolicitudesPage() {
           ] : [<Button key="close" onClick={() => { setDetalleOpen(false); setDetalle(null); }}>Cerrar</Button>]
         }>
         {detalle && (
+          <>
+          {detalle.estado === 'pendiente' && (
+            <div style={{ marginBottom: 12 }}>
+              <ScoreDeudorBadge deudorId={detalle.deudorId} />
+            </div>
+          )}
           <Descriptions column={2} bordered size="small">
             <Descriptions.Item label="Número">{detalle.numero}</Descriptions.Item>
             <Descriptions.Item label="Estado"><Tag color={estadoColor[detalle.estado]}>{detalle.estado}</Tag></Descriptions.Item>
@@ -242,6 +249,7 @@ export default function SolicitudesPage() {
             <Descriptions.Item label="Observaciones" span={2}>{detalle.observaciones ?? '—'}</Descriptions.Item>
             {detalle.motivoDecision && <Descriptions.Item label="Motivo Decisión" span={2}>{detalle.motivoDecision}</Descriptions.Item>}
           </Descriptions>
+          </>
         )}
       </Modal>
 

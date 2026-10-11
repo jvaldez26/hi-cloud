@@ -12,6 +12,8 @@ export const prestamistalApi = {
   getDeudor:   (id: number)   => api.get(`${base}/deudores/${id}`).then(r),
   crearDeudor: (body: any)    => api.post(`${base}/deudores`, body).then(r),
   updateDeudor:(id: number, body: any) => api.patch(`${base}/deudores/${id}`, body).then(r),
+  // Scoring (Etapa 7) — motor de reglas, nunca aprueba/rechaza nada solo.
+  getScoreDeudor: (id: number) => api.get(`${base}/deudores/${id}/score`).then(r),
 
   // Productos préstamo
   getProductos: () => api.get(`${base}/productos-prestamo`).then(r),
