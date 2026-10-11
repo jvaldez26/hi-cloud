@@ -57,6 +57,8 @@ import { ReestructuracionService } from './reestructuracion/reestructuracion.ser
 import { ReestructuracionController } from './reestructuracion/reestructuracion.controller';
 import { CondonacionService } from './condonacion/condonacion.service';
 import { CondonacionController } from './condonacion/condonacion.controller';
+import { DeudorScoringService } from './scoring/scoring.service';
+import { ScoringController } from './scoring/scoring.controller';
 
 @Module({
   imports: [
@@ -101,6 +103,7 @@ import { CondonacionController } from './condonacion/condonacion.controller';
     DesembolsosParcialesService,
     ReestructuracionService,
     CondonacionService,
+    DeudorScoringService,
   ],
   controllers: [
     DeudoresController,
@@ -121,6 +124,7 @@ import { CondonacionController } from './condonacion/condonacion.controller';
     DesembolsosParcialesController,
     ReestructuracionController,
     CondonacionController,
+    ScoringController,
   ],
   exports: [DeudoresService, PrestamosService, VehiculosService, FeriadosService],
 })
