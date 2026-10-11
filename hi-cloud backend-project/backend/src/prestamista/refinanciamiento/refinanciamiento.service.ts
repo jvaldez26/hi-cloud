@@ -79,8 +79,15 @@ export class RefinanciamientoService {
     const saldoCapital = r2(Number(original.saldoCapital ?? 0));
     const saldoInteres = r2(Number(original.saldoInteres ?? 0));
     const saldoMora    = r2(Number(original.saldoMora ?? 0));
-    const moraCondonada    = r2(Number(data.moraCondonada    ?? 0));
-    const interesCondonado = r2(Number(data.interesCondonado ?? 0));
+    // Etapa 6 — Seguridad: igual que CondonacionService.condonarEnTransaccion()
+    // (Math.min contra lo realmente pendiente), nunca se puede condonar más
+    // mora/interés del que el préstamo tiene pendiente — sin este tope,
+    // moraCondonada/interesCondonado solo tenían @Min(0) en el DTO (sin cota
+    // superior) y podían superar el saldo real, dejando `montoNuevo`
+    // (calculado como saldoCapital + (saldoInteres-interesCondonado) +
+    // (saldoMora-moraCondonada)) negativo o absurdo.
+    const moraCondonada    = Math.min(r2(Number(data.moraCondonada    ?? 0)), saldoMora);
+    const interesCondonado = Math.min(r2(Number(data.interesCondonado ?? 0)), saldoInteres);
 
     const montoNuevo = data.montoNuevo
       ? r2(Number(data.montoNuevo))

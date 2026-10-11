@@ -379,7 +379,12 @@ describe('H2 — el refinanciamiento es atómico', () => {
   describe('C6 — asiento de refinanciamiento DENTRO de la transacción', () => {
     it('llama a asientos.asientoRefinanciamiento con los saldos/condonaciones correctos, pasando qr.manager', async () => {
       const asientos = { asientoRefinanciamiento: jest.fn().mockResolvedValue({ id: 1 }) };
-      const { svc, qr } = construir(responderOk, asientos);
+      // Etapa 6 (Seguridad): moraCondonada/interesCondonado ahora se topan al
+      // saldo real (Math.min) — con saldoMora:0 del fixture base, pedir
+      // moraCondonada:50 quedaría en 0. Este préstamo trae su propio saldoMora
+      // para seguir probando una condonación de mora efectiva y no nula.
+      const { svc, qr } = construir((sql: string) =>
+        sql.includes('FROM pr_prestamos') ? [{ ...original, saldoMora: 50 }] : responderOk(sql), asientos);
       await svc.refinanciar(1, {
         prestamoOriginalId: 10, moraCondonada: 50, interesCondonado: 100,
       });
@@ -390,11 +395,31 @@ describe('H2 — el refinanciamiento es atómico', () => {
         prestamoNuevoId: 99,
         saldoCapitalOriginal: 8000,
         saldoInteresOriginal: 500,
-        saldoMoraOriginal: 0,
+        saldoMoraOriginal: 50,
         moraCondonada: 50,
         interesCondonado: 100,
       });
       expect(manager).toBe((qr as any).manager);
+    });
+
+    // Etapa 6 — Seguridad: antes de este fix, moraCondonada/interesCondonado
+    // solo tenían @Min(0) en el DTO (sin cota superior) y se aplicaban tal
+    // cual — se podía condonar MÁS de lo que el préstamo tenía pendiente,
+    // dejando `montoNuevo` (saldoCapital + saldos netos de lo condonado)
+    // negativo o absurdo. Ahora se topan al saldo real, igual que
+    // CondonacionService.condonarEnTransaccion().
+    it('nunca condona más mora/interés del que el préstamo tiene pendiente — se topa al saldo real', async () => {
+      const asientos = { asientoRefinanciamiento: jest.fn().mockResolvedValue({ id: 1 }) };
+      const { svc } = construir((sql: string) =>
+        sql.includes('FROM pr_prestamos') ? [{ ...original, saldoMora: 30, saldoInteres: 500 }] : responderOk(sql), asientos);
+
+      await svc.refinanciar(1, {
+        prestamoOriginalId: 10, moraCondonada: 999999, interesCondonado: 999999,
+      });
+
+      const [params] = asientos.asientoRefinanciamiento.mock.calls[0];
+      expect(params.moraCondonada).toBe(30);      // topado al saldoMora real, no 999999
+      expect(params.interesCondonado).toBe(500);  // topado al saldoInteres real, no 999999
     });
 
     it('si el asiento falla (cuenta faltante/descuadrado), revierte TODO el refinanciamiento', async () => {
