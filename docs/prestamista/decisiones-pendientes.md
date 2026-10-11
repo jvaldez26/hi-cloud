@@ -180,6 +180,42 @@ valores de arranque.
   `SelectClienteConAlta`, dos Selects antd encadenados dentro de un Modal).
   No se intentó resolver la causa raíz (contención de recursos del runner
   de Vitest bajo carga) — queda en la misma categoría de deuda aceptada.
+## Etapa 7 — Scoring e inteligencia (2026-10-11)
+
+- **Pesos exactos del score (0-100, 5 factores) son el default de
+  arranque**, ver `etapa-7-scoring.md` §2: Puntualidad 30, Mora vigente 20,
+  Refinanciamientos/condonaciones 25, Trayectoria de préstamos cerrados 15,
+  Respaldo (garantías/garantes) 10. Si Jean los quiere distintos (más peso
+  a mora, menos a respaldo, etc.) es un cambio acotado a las constantes de
+  `DeudorScoringService.calcular()` — no hay nada más que dependa de estos
+  números exactos.
+- **Reestructuración NO cuenta como factor propio del score** — a
+  diferencia de refinanciamiento (tabla `pr_refinanciamientos`) y
+  condonación (columnas por cuota), reestructurar un préstamo no deja
+  ningún registro estructurado (solo texto libre concatenado a
+  `pr_prestamos.notas`). Contarla con precisión necesitaría una tabla
+  `pr_reestructuraciones` nueva (mismo patrón que `pr_refinanciamientos`)
+  — no se construyó (feature de catálogo nueva fuera de alcance de esta
+  etapa). Queda cubierta indirectamente: casi toda reestructuración real
+  coincide con un deudor que también refinanció o fue condonado alguna
+  vez, que sí pesa en el Factor 3.
+- **`pr_deudores.diasMoraHistorico` es una columna muerta** — nunca se
+  escribe desde ningún servicio (ni `prestamos.service.ts`, ni
+  `pagos.service.ts`, ni `mora.cron.ts`), siempre vale 0. El CSV "Deudores
+  con saldos" de Reportes (Etapa 4) la exporta tal cual — siempre en 0 para
+  todo deudor real. El score de Etapa 7 nunca la lee (calcula el
+  equivalente en vivo desde `pr_prestamos`/`pr_cuotas`); corregir qué
+  escribe esa columna, si se necesita, es trabajo de Reportes/Etapa 4, no
+  de Scoring.
+- **Score calculado al vuelo, nunca persistido ni cacheado** — mismo
+  patrón que el resto de analítica de Prestamista (Dashboard/Reportes). Si
+  el volumen por tenant crece lo suficiente para que 5 queries por consulta
+  de un deudor pesen, la alternativa es una columna
+  `pr_deudores.scoreAutomatico`/`bandaAutomatica` recalculada por un cron
+  nocturno o un trigger en cada mutación relevante (pagos, anulación,
+  refinanciamiento, condonación, reestructuración, garantías/garantes) — no
+  construida hoy, ver `etapa-7-scoring.md` §4.
+
 - **Base de datos local de integración desactualizada**: la BD de pruebas
   de integración real (`127.0.0.1:5433/hicloud_test`, nunca producción —
   usada por specs como `cw-liquidaciones.service.spec.ts`) no tenía ninguna
