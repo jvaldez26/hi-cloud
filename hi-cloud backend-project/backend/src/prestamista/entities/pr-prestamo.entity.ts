@@ -39,6 +39,15 @@ export class PrPrestamo {
   @Column({ type: 'decimal', precision: 14, scale: 2, default: 0 }) desembolsado!: number;
   @Column({ type: 'int', nullable: true }) oficialId?: number;
   @Column({ length: 200, nullable: true }) oficialNombre?: string;
+  /**
+   * Etapa 3 — cobranza: a quién está asignada la cartera HOY. Distinto de
+   * oficialId (quien originó el préstamo, fijo) y de la snapshot por-gestión
+   * en pr_cobranzas.cobradorId (quién hizo cada gestión puntual). Se
+   * reasigna con CobranzaService.asignarCobrador(); null = sin asignar, la
+   * UI muestra el oficial como sugerencia pero no se auto-asigna en BD.
+   */
+  @Column({ type: 'int', nullable: true }) cobradorId?: number;
+  @Column({ length: 200, nullable: true }) cobradorNombre?: string;
   @Column({ type: 'int', nullable: true }) refinanciaDe?: number;
   @Column({ type: 'int', nullable: true }) facturaDesembolsoId?: number;
   @Column({ type: 'int', nullable: true }) vehiculoId?: number;
