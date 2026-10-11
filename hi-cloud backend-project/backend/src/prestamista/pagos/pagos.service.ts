@@ -13,6 +13,7 @@ import { ParametrosMora } from '../motor/mora-v2.util';
 import { calcularTablaAmortizacion } from '../motor/amortizacion-v2.util';
 import { resolverMotorConfig, construirParametrosPrestamo, aniosDelPlazo } from '../motor/motor-adaptador.util';
 import { distribuirPago, calcularSaldoLiquidacion, moraACuotaEnFecha, CuotaPendiente, TipoPago, DestinoExcedente, ResultadoDistribucion } from './pagos-calculo.util';
+import { resolverCajaDiariaPrestamo } from '../utils/caja-efectivo.util';
 
 @Injectable()
 export class PagosService {
@@ -344,18 +345,25 @@ export class PagosService {
 
       const aplicadoCapitalTotal = r2(dist.aplicadoCapital + montoExtraCapital);
       const montoPagadoTotal = r2(dist.totalAplicado + montoExtraCapital);
+      const metodoPagoResuelto = data.metodoPago ?? (data.formasPago?.length ? 'mixto' : null);
+
+      // Etapa 5 — integración con Caja: solo tiene efecto en efectivo (pago
+      // mixto con una línea en efectivo no entra aquí, ver
+      // docs/prestamista/decisiones-pendientes.md). Valida pertenencia y que
+      // la caja esté abierta ANTES de guardar.
+      const cajaDiariaIdResuelto = await resolverCajaDiariaPrestamo(qr, empresaId, metodoPagoResuelto, data.cajaDiariaId);
 
       const pagoRows: any[] = await qr.query(
         `INSERT INTO pr_pagos ("empresaId",numero,"prestamoId","deudorId",fecha,"montoPagado","aplicadoMora",
           "aplicadoInteres","aplicadoCapital","aplicadoCargos","tipoPago","formasPago","montoExtraCapital","metodoPago",referencia,"cobradorId","cobradorNombre",
-          "cuotasAfectadas",notas,"creadoPor","claveIdempotencia")
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`,
+          "cuotasAfectadas",notas,"creadoPor","claveIdempotencia","cajaDiariaId")
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING *`,
         [empresaId, numero, data.prestamoId, prestamo.deudorId, fecha, montoPagadoTotal,
          dist.aplicadoMora, dist.aplicadoInteres, aplicadoCapitalTotal, dist.aplicadoCargos,
          tipoPago, data.formasPago?.length ? JSON.stringify(data.formasPago) : null, montoExtraCapital,
-         data.metodoPago ?? (data.formasPago?.length ? 'mixto' : null), data.referencia ?? null, uid,
+         metodoPagoResuelto, data.referencia ?? null, uid,
          data.cobradorNombre ?? null, JSON.stringify(dist.lineas), data.notas ?? null, uid,
-         data.claveIdempotencia ?? null],
+         data.claveIdempotencia ?? null, cajaDiariaIdResuelto],
       );
       pago = pagoRows[0];
 
@@ -434,7 +442,17 @@ export class PagosService {
       dist.aplicadoCargos,
     ).catch(err => this.logger.error(`Asiento pago ${numero}: ${err.message}`));
 
-    if (dist.aplicadoInteres > 0) {
+    // Interés: circuito preexistente, sin cambios (etapa-2-resto.md §1) —
+    // genera su e-CF SIEMPRE que haya interés aplicado, sin mirar
+    // "Fiscal" del producto. Mora/cargos son NUEVOS (Etapa 5, Parte C): solo
+    // disparan si el producto configuró generaComprobante=true para ese
+    // concepto — con la sección "Fiscal" vacía (hoy, en todos los
+    // productos), esta condición extra nunca se cumple y el comportamiento
+    // es idéntico al de antes de esta etapa.
+    const fiscalCfg = (prestamo.motorConfig?.fiscal ?? {}) as Record<string, { generaComprobante?: boolean | null }>;
+    const disparaPorMora   = fiscalCfg.mora?.generaComprobante   === true && dist.aplicadoMora   > 0;
+    const disparaPorCargos = fiscalCfg.gastos?.generaComprobante === true && dist.aplicadoCargos > 0;
+    if (dist.aplicadoInteres > 0 || disparaPorMora || disparaPorCargos) {
       this.emitirEcf.execute({
         empresaId,
         documentoOrigenTipo: DocumentoOrigenTipo.PAGO_PRESTAMO,
