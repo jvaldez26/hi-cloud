@@ -13,7 +13,8 @@ type TipoDocumento =
   | 'cxc'
   | 'nota-credito'
   | 'nota-debito'
-  | 'recibo-prestamo';
+  | 'recibo-prestamo'
+  | 'recordatorio-mora-prestamo';
 
 interface Props {
   tipo:       TipoDocumento;
@@ -37,6 +38,7 @@ const ENDPOINT: Record<TipoDocumento, string> = {
   'nota-debito':  (id: number) => `/comunicaciones/whatsapp/nota-debito/${id}`,
   // Self-contained en Prestamista (pagos.controller.ts), no en comunicaciones.service.ts.
   'recibo-prestamo': (id: number) => `/prestamista/pagos/${id}/whatsapp`,
+  'recordatorio-mora-prestamo': (id: number) => `/prestamista/cobranza/prestamo/${id}/whatsapp-mora`,
 } as any;
 
 function getEndpoint(tipo: TipoDocumento, id: number): string {

@@ -78,6 +78,9 @@ export const prestamistalApi = {
   getGestiones: (prestamoId: number) => api.get(`${base}/cobranza/prestamo/${prestamoId}/gestiones`).then(r),
   registrarGestion: (body: any) => api.post(`${base}/cobranza/gestiones`, body).then(r),
   notificarMoraEmail: (prestamoId: number) => api.post(`${base}/cobranza/prestamo/${prestamoId}/notificar-mora`).then(r),
+  getCobradores: () => api.get(`${base}/cobranza/cobradores`).then(r),
+  asignarCobrador: (prestamoId: number, cobradorId: number | null) =>
+    api.patch(`${base}/cobranza/prestamo/${prestamoId}/cobrador`, { cobradorId }).then(r),
 
   // Refinanciamiento
   refinanciar: (body: any) => api.post(`${base}/refinanciamientos`, body).then(r),
