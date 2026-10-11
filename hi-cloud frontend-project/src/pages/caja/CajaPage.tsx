@@ -549,17 +549,6 @@ export default function CajaPage() {
     const totalBilletes = Object.entries(desgloseBilletes)
       .reduce((s,[den,qty]) => s + Number(den)*Number(qty), 0);
 
-    // Desglose de pago (si existe)
-    const PAGO_LABELS: Record<string,string> = {
-      efectivo:'Efectivo', tarjeta:'Tarjeta', tarjetaCredito:'Tarjeta Crédito', tarjetaDebito:'Tarjeta Débito',
-      cheque:'Cheque', transferencia:'Transferencia', otro:'Otro', deposito:'Depósito', documentos:'Documentos',
-    };
-    const desglosePago: Record<string,string> = r.desglosePago ?? {};
-    const pagoRows = Object.entries(desglosePago)
-      .filter(([,v]) => Number(v) > 0)
-      .map(([k,v]) => row(`  ${PAGO_LABELS[k] ?? k}:`, f(Number(v))))
-      .join('\n');
-
     // Cuadre por forma de pago (ver cuadre-por-forma-pago.util.ts, backend) —
     // reemplaza el viejo "Efectivo esperado/contado + SOBRANTE/FALTANTE",
     // que solo cuadraba efectivo. `r` siempre lo trae para un cierre CERRADA
@@ -616,7 +605,6 @@ ${line()}
 <div class="center xlarge">${esc(difLabel)}</div>
 `}
 ${billetesRows ? `${line()}<div class="small bold">DESGLOSE DE BILLETES</div>\n${billetesRows}\n${row('Total billetes:', f(totalBilletes), true)}` : ''}
-${pagoRows     ? `${line()}<div class="small bold">DESGLOSE DE PAGO</div>\n${pagoRows}` : ''}
 ${r.notas      ? `${line()}<div class="small">Nota: ${esc(r.notas)}</div>` : ''}
 ${bloqueFacturasTermico(detalle)}
 ${line()}
@@ -736,15 +724,6 @@ ${line()}
       .join('\n');
     const totalBilletes = Object.entries(desgloseBilletes)
       .reduce((s,[den,qty]) => s + Number(den)*Number(qty), 0);
-    const desglosePago: Record<string,string> = r.desglosePago ?? {};
-    const PAGO_LABELS: Record<string,string> = {
-      efectivo:'Efectivo', tarjeta:'Tarjeta', tarjetaCredito:'Tarjeta Crédito', tarjetaDebito:'Tarjeta Débito',
-      cheque:'Cheque', transferencia:'Transferencia', otro:'Otro', deposito:'Depósito', documentos:'Documentos',
-    };
-    const pagoRows = Object.entries(desglosePago)
-      .filter(([,v]) => Number(v) > 0)
-      .map(([k,v]) => row(`  ${PAGO_LABELS[k] ?? k}:`, f(Number(v))))
-      .join('\n');
 
     // Ver el mismo comentario en imprimirCierre() — cuadre por forma de pago
     // (real o derivado para un cierre viejo), reemplaza el viejo bloque de
@@ -799,7 +778,6 @@ ${line()}
 <div class="center xlarge">${esc(difLabel)}</div>
 `}
 ${billetesRows ? `${line()}<div class="small bold">DESGLOSE DE BILLETES</div>\n${billetesRows}\n${row('Total billetes:', f(totalBilletes), true)}` : ''}
-${pagoRows     ? `${line()}<div class="small bold">DESGLOSE DE PAGO</div>\n${pagoRows}` : ''}
 ${seccionDetalle}
 ${r.notas      ? `${line()}<div class="small">Nota: ${esc(r.notas)}</div>` : ''}
 ${bloqueFacturasTermico(detalle)}

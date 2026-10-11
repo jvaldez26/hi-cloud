@@ -18,10 +18,26 @@ import { bloqueCuadreFormaPagoTermico } from './cuadreFormaPagoTermico';
  * "·" en ningún dato (nombres de cliente/cajero); y un cierre recerrado
  * imprime el original anulado aparte, con la diferencia contra el conteo
  * vigente.
+ *
+ * Cuarta vuelta (2026-10-11): la tabla se achicaba a 8pt para que una fila
+ * FORMA+3 montos cupiera en una sola línea — se veía más chica que el resto
+ * del ticket. Rediseño: la tabla usa SIEMPRE el tamaño del cuerpo; a 58mm/80mm,
+ * donde una fila completa no cabe a ese tamaño, el nombre de la forma va en
+ * su propia línea y los 3 montos en la siguiente (ver filaTabla() en el
+ * archivo) — a carta sigue en una sola línea, ahí sobra espacio.
  */
 function lineasDe(html: string): string[] {
   return Array.from(html.matchAll(/<div class="cf-linea">(.*?)<\/div>/g))
     .map(m => m[1].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>'));
+}
+
+/**
+ * Líneas unidas y con espacios de relleno colapsados — para buscar un
+ * título que, a 58mm/80mm, envolver()/centrar() puede partir en dos líneas
+ * centradas (ej. "POSIBLE FORMA MAL REGISTRADA").
+ */
+function textoPlano(html: string): string {
+  return lineasDe(html).join(' ').replace(/\s+/g, ' ').trim();
 }
 
 describe('bloqueCuadreFormaPagoTermico', () => {
@@ -51,10 +67,12 @@ describe('bloqueCuadreFormaPagoTermico', () => {
     expect(html).toContain('1,775.00');
     expect(html).toContain('+829.94');
     expect(html).toContain('-830.00');
-    expect(html).toContain('POSIBLE FORMA MAL REGISTRADA');
+    expect(textoPlano(html)).toContain('POSIBLE FORMA MAL REGISTRADA');
     expect(html).toContain('FAC-1803'); // candidata que explica la sospecha
-    expect(html).toContain('Tarjeta 955.00'); // su desglose real — lo que explica la sospecha
-    expect(html).toContain('Efectivo 125.00');
+    // el desglose real ("Tarjeta 955.00 / Efectivo 125.00") envuelve a 30
+    // caracteres — lo que explica la sospecha sigue ahí, solo en 2 líneas.
+    expect(textoPlano(html)).toContain('Tarjeta 955.00');
+    expect(textoPlano(html)).toContain('Efectivo 125.00');
     expect(html).toContain('FACTURAS SIN FORMA DE PAGO');
     expect(html).toContain('FAC-1807');
     expect(html).toContain('Bellamar Gonzalez'); // sin tilde — ver describe('sin tildes...')
@@ -64,7 +82,7 @@ describe('bloqueCuadreFormaPagoTermico', () => {
 
   it('nunca imprime caracteres especiales (⚠) — texto plano para ESC/POS', () => {
     const html = bloqueCuadreFormaPagoTermico(cierreReal);
-    expect(html).toContain('!! POSIBLE FORMA MAL REGISTRADA');
+    expect(textoPlano(html)).toContain('!! POSIBLE FORMA MAL REGISTRADA');
     expect(html).not.toContain('⚠');
   });
 
@@ -91,7 +109,7 @@ describe('bloqueCuadreFormaPagoTermico', () => {
 
   it('cierre derivado (legacy, cuadreEstimado): lo marca "(estimado)" en el título', () => {
     const html = bloqueCuadreFormaPagoTermico({ ...cierreReal, cuadreEstimado: true });
-    expect(html).toContain('CUADRE POR FORMA DE PAGO (estimado)');
+    expect(textoPlano(html)).toContain('CUADRE POR FORMA DE PAGO (estimado)');
   });
 
   it('sin sospechas ni facturas sin forma de pago: solo la tabla, sin avisos', () => {
@@ -108,7 +126,7 @@ describe('bloqueCuadreFormaPagoTermico', () => {
       cuadrePorFormaPago: [{ forma: 'efectivo', esperado: 100, declarado: 150, diferencia: 50 }],
       sospechasFormaPago: [{ formaSobrante: 'efectivo', formaFaltante: 'tarjeta', montoSobrante: 50, montoFaltante: -50 }],
     });
-    expect(html).toContain('POSIBLE FORMA MAL REGISTRADA');
+    expect(textoPlano(html)).toContain('POSIBLE FORMA MAL REGISTRADA');
     expect(html).not.toContain('podrian explicarlo');
   });
 
@@ -126,100 +144,100 @@ describe('bloqueCuadreFormaPagoTermico', () => {
     expect(html).toContain('5,608.06');
   });
 
-  // Requisito explícito (2026-10-10): la tabla FORMA|ESPERADO|CONTADO|DIFER.
-  // reemplaza el viejo formato de 3 líneas por forma. Ancho medido con Chrome
-  // headless (Courier New bold 8pt): 41 caracteres a 80mm/bluetooth/carta/
-  // ninguna, 30 a 58mm — ver el comentario de ConfigTabla en el archivo.
-  describe('tabla FORMA|ESPERADO|CONTADO|DIFER.', () => {
+  // Requisito explícito (2026-10-11): a 58mm/80mm la tabla usa el tamaño del
+  // CUERPO del ticket — no cabe una fila FORMA+3 montos completa a ese
+  // tamaño (24/30 caracteres medidos), así que el nombre de la forma va en
+  // su propia línea y ESPERADO/CONTADO/DIFER. (con su encabezado una sola
+  // vez) en la línea siguiente, alineados a la derecha bajo su columna.
+  describe('tabla ESPERADO/CONTADO/DIFER. — forma en su línea, montos en la siguiente (58mm/80mm)', () => {
     const filas = [
       { forma: 'efectivo', esperado: 5608.06, declarado: 6438.00, diferencia: 829.94 },
       { forma: 'tarjeta',  esperado: 2605.00, declarado: 1775.00, diferencia: -830.00 },
     ];
 
-    it('80mm (por defecto): encabezado y filas de 41 caracteres, con comas de miles y nombres completos', () => {
+    it('80mm (por defecto): encabezado de 30 caracteres, una línea por forma + una de montos, con comas de miles', () => {
       const html = bloqueCuadreFormaPagoTermico({ cuadrePorFormaPago: filas });
       const lineas = lineasDe(html);
-      const header = lineas.find(l => l.startsWith('FORMA'))!;
-      const efectivo = lineas.find(l => l.includes('Efectivo'))!;
-      const tarjeta = lineas.find(l => l.includes('Tarjeta') && !l.includes('explicarlo'))!;
-      const total = lineas.find(l => l.startsWith('TOTAL'))!;
-      for (const l of [header, efectivo, tarjeta, total]) expect(l.length).toBe(41);
-      expect(header).toBe('FORMA       ESPERADO    CONTADO    DIFER.');
-      expect(efectivo).toContain('5,608.06');
-      expect(efectivo).toContain('+829.94');
-      expect(tarjeta).toContain('2,605.00');
-      expect(tarjeta).toContain('-830.00');
-      expect(total).toContain('8,213.06');
-      expect(total).toContain('8,213.00');
-      expect(total).toContain('-0.06');
+      const header = lineas.find(l => l.includes('ESPERADO'))!;
+      const iEf = lineas.findIndex(l => l === 'Efectivo');
+      const iTa = lineas.findIndex(l => l === 'Tarjeta');
+      const iTo = lineas.findIndex(l => l === 'TOTAL');
+      for (const l of [header, lineas[iEf + 1], lineas[iTa + 1], lineas[iTo + 1]]) expect(l.length).toBe(30);
+      expect(header).toBe('  ESPERADO    CONTADO   DIFER.');
+      expect(lineas[iEf + 1]).toContain('5,608.06');
+      expect(lineas[iEf + 1]).toContain('+829.94');
+      expect(lineas[iTa + 1]).toContain('2,605.00');
+      expect(lineas[iTa + 1]).toContain('-830.00');
+      expect(lineas[iTo + 1]).toContain('8,213.06');
+      expect(lineas[iTo + 1]).toContain('8,213.00');
+      expect(lineas[iTo + 1]).toContain('-0.06');
       expect(html).toContain('(+) sobra   (-) falta');
       expect(html).toContain('RESULTADO: FALTAN');
       expect(html).toContain('RD$0.06');
     });
 
-    it('58mm: 30 caracteres, sin comas de miles, nombres cortos (Efect./Transf.)', () => {
+    it('58mm: encabezado y filas de 24 caracteres, sin comas de miles', () => {
       const html = bloqueCuadreFormaPagoTermico({ cuadrePorFormaPago: filas }, '58mm');
       const lineas = lineasDe(html);
-      const header = lineas.find(l => l.startsWith('FORMA'))!;
-      const efectivo = lineas.find(l => l.includes('Efect.'))!;
-      const tarjeta = lineas.find(l => l.includes('Tarjeta') && !l.includes('explicarlo'))!;
-      const total = lineas.find(l => l.startsWith('TOTAL'))!;
-      for (const l of [header, efectivo, tarjeta, total]) expect(l.length).toBe(30);
-      expect(header).toBe('FORMA    ESPER. CONTADO DIFER.');
-      expect(efectivo).not.toContain('5,608.06'); // sin comas
-      expect(efectivo).toContain('5608.06');
-      expect(efectivo).toContain('6438.00');
-      expect(efectivo).toContain('+829.94');
-      expect(tarjeta).toContain('2605.00');
-      expect(tarjeta).toContain('1775.00');
-      expect(tarjeta).toContain('-830.00');
-      expect(total).toContain('8213.06');
-      expect(total).toContain('8213.00');
-      expect(total).toContain('-0.06');
+      const header = lineas.find(l => l.includes('ESPERADO'))!;
+      const iEf = lineas.findIndex(l => l === 'Efectivo');
+      const iTa = lineas.findIndex(l => l === 'Tarjeta');
+      const iTo = lineas.findIndex(l => l === 'TOTAL');
+      for (const l of [header, lineas[iEf + 1], lineas[iTa + 1], lineas[iTo + 1]]) expect(l.length).toBe(24);
+      expect(header).toBe('ESPERADO  CONTADO DIFER.');
+      expect(lineas[iEf + 1]).not.toContain('5,608.06'); // sin comas
+      expect(lineas[iEf + 1]).toContain('5608.06');
+      expect(lineas[iEf + 1]).toContain('6438.00');
+      expect(lineas[iEf + 1]).toContain('+829.94');
+      expect(lineas[iTa + 1]).toContain('2605.00');
+      expect(lineas[iTa + 1]).toContain('1775.00');
+      expect(lineas[iTa + 1]).toContain('-830.00');
+      expect(lineas[iTo + 1]).toContain('8213.06');
+      expect(lineas[iTo + 1]).toContain('8213.00');
+      expect(lineas[iTo + 1]).toContain('-0.06');
     });
 
-    it('bluetooth usa el mismo ancho de 30 que 58mm (la BT-58UB es una impresora de 58mm)', () => {
+    it('bluetooth usa el mismo ancho de 24 que 58mm (la BT-58UB es una impresora de 58mm)', () => {
       const html = bloqueCuadreFormaPagoTermico({ cuadrePorFormaPago: filas }, 'bluetooth');
-      const header = lineasDe(html).find(l => l.startsWith('FORMA'))!;
-      expect(header.length).toBe(30);
+      const header = lineasDe(html).find(l => l.includes('ESPERADO'))!;
+      expect(header.length).toBe(24);
     });
 
-    // Requisito de negocio (2026-10-10, segunda vuelta): la tabla no debe
-    // VERSE más chica que el resto del ticket. A 58mm/80mm no hay ancho
-    // físico para igualar el tamaño del cuerpo sin que un monto real se
-    // corte (ver fontSizePt en el archivo), así que ahí se queda a 8pt. A
-    // carta sí sobra espacio — debe salir al mismo tamaño que el cuerpo (12pt).
-    describe('tamaño de la tabla — igual al cuerpo cuando hay espacio (carta), achicada solo si no cabe (58mm/80mm)', () => {
-      it('58mm: 8pt (el cuerpo es 10pt, pero a 10pt solo caben 24 caracteres y la tabla necesita 30)', () => {
+    // Requisito de negocio (2026-10-11, segunda vuelta): la tabla no debe
+    // VERSE más chica que el resto del ticket, en NINGÚN papel — por eso el
+    // formato cambió (forma en su línea, montos en la siguiente a 58mm/80mm)
+    // en vez de achicar la letra.
+    describe('tamaño de la tabla — SIEMPRE el mismo que el cuerpo del ticket', () => {
+      it('58mm: 10pt, igual que el cuerpo', () => {
         const html = bloqueCuadreFormaPagoTermico({ cuadrePorFormaPago: filas }, '58mm');
-        expect(html).toContain('class="cf-bloque" style="font-size:8pt"');
+        expect(html).toContain('class="cf-bloque" style="font-size:10pt"');
       });
 
-      it('80mm: 8pt (el cuerpo es 11pt, pero a 11pt solo caben 30 caracteres y la tabla necesita 41)', () => {
+      it('80mm: 11pt, igual que el cuerpo', () => {
         const html = bloqueCuadreFormaPagoTermico({ cuadrePorFormaPago: filas }, '80mm');
-        expect(html).toContain('class="cf-bloque" style="font-size:8pt"');
+        expect(html).toContain('class="cf-bloque" style="font-size:11pt"');
       });
 
-      it('carta: 12pt, el MISMO tamaño que el cuerpo — a 210mm hay de sobra incluso ahí', () => {
+      it('carta: 12pt, igual que el cuerpo', () => {
         const html = bloqueCuadreFormaPagoTermico({ cuadrePorFormaPago: filas }, 'carta');
         expect(html).toContain('class="cf-bloque" style="font-size:12pt"');
       });
 
-      it('sin tipo (undefined) y "ninguna": caen al mismo trato que 80mm', () => {
-        expect(bloqueCuadreFormaPagoTermico({ cuadrePorFormaPago: filas })).toContain('font-size:8pt');
-        expect(bloqueCuadreFormaPagoTermico({ cuadrePorFormaPago: filas }, 'ninguna')).toContain('font-size:8pt');
+      it('sin tipo (undefined) y "ninguna": caen al mismo trato que 80mm (11pt)', () => {
+        expect(bloqueCuadreFormaPagoTermico({ cuadrePorFormaPago: filas })).toContain('font-size:11pt');
+        expect(bloqueCuadreFormaPagoTermico({ cuadrePorFormaPago: filas }, 'ninguna')).toContain('font-size:11pt');
       });
     });
 
     it('un monto que no entra en su columna pasa a una línea aparte — nunca se corta ni se pega al vecino', () => {
+      // A 58mm, wEsp=8 y wDif=6: "100000.00" (9) y "-93562.00" (9) exceden
+      // sus columnas; "6438.00" (7) sí entra en wCon=8.
       const filasGrandes = [
-        { forma: 'efectivo', esperado: 15608.06, declarado: 6438.00, diferencia: -9170.06 },
+        { forma: 'efectivo', esperado: 100000.00, declarado: 6438.00, diferencia: -93562.00 },
       ];
       const html = bloqueCuadreFormaPagoTermico({ cuadrePorFormaPago: filasGrandes }, '58mm');
-      expect(html).toContain('Esperado: 15608.06');
-      expect(html).toContain('Difer.: -9170.06');
-      // la línea principal de la fila no quedó con el monto pegado a Contado
-      expect(html).not.toContain('15608.066438.00');
+      expect(html).toContain('Esperado: 100000.00');
+      expect(html).toContain('Difer.: -93562.00');
     });
 
     it('cuadrado: el resultado dice CUADRA, no "SOBRAN RD$0.00" ni "FALTAN RD$0.00"', () => {
@@ -239,6 +257,50 @@ describe('bloqueCuadreFormaPagoTermico', () => {
         ],
       });
       expect(lineasDe(html).some(l => l.includes('Transfer'))).toBe(false);
+    });
+  });
+
+  // Caso real reportado 2026-10-11: turno con solo efectivo y tarjeta,
+  // esperado 27,948.00/contado 27,995.00 en efectivo (sobran RD$47.00),
+  // tarjeta 1,120.00/1,120.00 exacto.
+  describe('caso real 2026-10-11 — turno Ferretería Pavel', () => {
+    const filas = [
+      { forma: 'efectivo', esperado: 27948.00, declarado: 27995.00, diferencia: 47.00 },
+      { forma: 'tarjeta',  esperado: 1120.00,  declarado: 1120.00,  diferencia: 0 },
+    ];
+
+    it('80mm: cada valor cabe sin desbordar ninguna columna (ningún "Esperado:"/"Contado:"/"Difer.:" de respaldo)', () => {
+      const html = bloqueCuadreFormaPagoTermico({ cuadrePorFormaPago: filas }, '80mm');
+      const lineas = lineasDe(html);
+      const lEf = lineas[lineas.findIndex(l => l === 'Efectivo') + 1];
+      const lTa = lineas[lineas.findIndex(l => l === 'Tarjeta') + 1];
+      const lTo = lineas[lineas.findIndex(l => l === 'TOTAL') + 1];
+      expect(lEf).toContain('27,948.00');
+      expect(lEf).toContain('27,995.00');
+      expect(lEf).toContain('+47.00');
+      expect(lTa).toContain('1,120.00');
+      expect(lTa).toContain('+0.00');
+      expect(lTo).toContain('29,068.00');
+      expect(lTo).toContain('29,115.00');
+      expect(html).not.toContain('Esperado:');
+      expect(html).toContain('RESULTADO: SOBRAN RD$47.00');
+    });
+
+    it('58mm: cada valor cabe sin desbordar ninguna columna (ningún "Esperado:"/"Contado:"/"Difer.:" de respaldo)', () => {
+      const html = bloqueCuadreFormaPagoTermico({ cuadrePorFormaPago: filas }, '58mm');
+      const lineas = lineasDe(html);
+      const lEf = lineas[lineas.findIndex(l => l === 'Efectivo') + 1];
+      const lTa = lineas[lineas.findIndex(l => l === 'Tarjeta') + 1];
+      const lTo = lineas[lineas.findIndex(l => l === 'TOTAL') + 1];
+      expect(lEf).toContain('27948.00');
+      expect(lEf).toContain('27995.00');
+      expect(lEf).toContain('+47.00');
+      expect(lTa).toContain('1120.00');
+      expect(lTa).toContain('+0.00');
+      expect(lTo).toContain('29068.00');
+      expect(lTo).toContain('29115.00');
+      expect(html).not.toContain('Esperado:');
+      expect(textoPlano(html)).toContain('RESULTADO: SOBRAN RD$47.00');
     });
   });
 
@@ -309,12 +371,12 @@ describe('bloqueCuadreFormaPagoTermico', () => {
       expect(html).toContain('Jose Perez'); // sin tilde
     });
 
-    it('58mm: el bloque de recierre también respeta el ancho de 30 y no lleva comas', () => {
+    it('58mm: el bloque de recierre también respeta el ancho de 24 y no lleva comas', () => {
       const html = bloqueCuadreFormaPagoTermico(recierre, '58mm');
       expect(html).toContain('CIERRE ORIGINAL ANULADO');
       expect(html).toContain('6200.00');
       expect(html).toContain('6438.00');
-      for (const l of lineasDe(html)) expect(l.length).toBeLessThanOrEqual(30);
+      for (const l of lineasDe(html)) expect(l.length).toBeLessThanOrEqual(24);
     });
   });
 
@@ -322,7 +384,7 @@ describe('bloqueCuadreFormaPagoTermico', () => {
   // pasar del ancho medido" — se extiende a TODO el bloque (tabla, aviso,
   // candidatas, facturas sin forma, recierre), para cualquier dato.
   describe('ninguna línea supera el ancho medido del papel, para cualquier dato', () => {
-    const ANCHOS: Record<string, number> = { '58mm': 30, '80mm': 41, bluetooth: 30, carta: 41, ninguna: 41 };
+    const ANCHOS: Record<string, number> = { '58mm': 24, '80mm': 30, bluetooth: 24, carta: 41, ninguna: 30 };
 
     // Escenarios variados: nombres largos y con tildes, folios largos, varias
     // candidatas, montos grandes y negativos, varias formas, con y sin

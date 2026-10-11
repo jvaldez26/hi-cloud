@@ -18,18 +18,21 @@
  * puede pasar del ancho medido del papel (requisito explícito 2026-10-10,
  * tras el primer rediseño: "ninguna línea fuera de la tabla puede pasar del
  * ancho medido"). El ancho se MIDIÓ con Chrome headless, en Courier New
- * bold, AL TAMAÑO DE FUENTE QUE REALMENTE USA ESTA TABLA en cada papel (ver
- * fontSizePt en ConfigTabla, más abajo): 30 caracteres a 58mm/8pt, 41 a
- * 80mm·bluetooth·ninguna/8pt. A carta se usa el tamaño del CUERPO del
- * ticket (12pt — ver IMPRESORA_CONFIG en docTermico.ts), porque a 210mm hay
- * de sobra incluso a ese tamaño (70 caracteres medidos contra los 41 que
- * hacen falta) — por eso en carta la tabla no se ve más chica que el resto.
- * A 58mm/80mm SÍ hay que achicarla: al tamaño del cuerpo (10pt/11pt) solo
- * caben 24/30 caracteres, muy por debajo de los 30/41 que necesitan 4
- * columnas de dinero real (requisito de negocio 2026-10-10: "ningún monto
- * se corta ni se pega a la columna vecina"), y 8pt es el tamaño más grande
- * que alcanza a cerrar esa cuenta en ambos papeles. Sin medir, se repite el
- * bug que ya truncó un e-NCF en este mismo ticket por usar un ancho supuesto.
+ * bold, AL TAMAÑO DEL CUERPO del ticket (IMPRESORA_CONFIG, docTermico.ts):
+ * 24 caracteres a 58mm/10pt, 30 a 80mm·bluetooth·ninguna/11pt, 70 a
+ * carta/12pt.
+ *
+ * Tamaño de letra (requisito de negocio 2026-10-11, segunda vuelta — la
+ * tabla NUNCA debe verse más chica que el resto del ticket): la tabla usa
+ * SIEMPRE el mismo tamaño que el cuerpo, en los cuatro papeles. A 58mm/80mm
+ * esos 24/30 caracteres no alcanzan para una fila de FORMA + 3 montos en una
+ * sola línea (se necesitaban 30/41 con el diseño de una sola línea) — en vez
+ * de achicar la letra (el primer intento, descartado), el nombre de la forma
+ * va en su propia línea y los 3 montos (ESPERADO/CONTADO/DIFER., con su
+ * encabezado una sola vez arriba) en la línea siguiente, alineados a la
+ * derecha bajo su columna. A carta sobra espacio de sobra (70 contra los 41
+ * que hacen falta) para el formato de una sola línea de siempre, así que ahí
+ * no cambia nada.
  *
  * Cada línea es un <div> de texto plano SIN <span> — proc() (thermalPrinter.ts,
  * impresión Bluetooth) no la trata como ".row" (que exige exactamente 2
@@ -79,14 +82,9 @@ export interface CierreConCuadreTermico {
   facturasSinFormaPagoOriginal?: FacturaSinFormaTermico[];
 }
 
-/** Nombres completos — usados en el aviso y en la tabla a 80mm (hay espacio de sobra). */
+/** Nombres completos — el nombre de la forma siempre tiene su propia línea o espacio de sobra (carta), así que no hace falta una versión corta. */
 const LABEL_FORMA: Record<string, string> = {
   efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transfer.', otros: 'Otros',
-};
-
-/** Nombres cortos — SOLO la tabla a 58mm, donde "Transferencia"/"Efectivo" no entran en 7 caracteres. */
-const LABEL_FORMA_CORTA: Record<string, string> = {
-  efectivo: 'Efect.', tarjeta: 'Tarjeta', transferencia: 'Transf.', otros: 'Otros',
 };
 
 /** Tipo DGII de formasPago (ver cuadre-por-forma-pago.util.ts, backend) → nombre corto para el desglose de una candidata. */
@@ -104,61 +102,55 @@ const escHtml = (s: unknown) =>
 interface ConfigTabla {
   ancho: number;
   comas: boolean;
+  /**
+   * 'linea': forma + 3 montos en la misma línea (carta — sobra ancho).
+   * '2lineas': forma en su propia línea, los 3 montos en la siguiente, con
+   * el encabezado ESPERADO/CONTADO/DIFER. una sola vez arriba de la tabla
+   * (58mm/80mm/bluetooth/ninguna — al tamaño del cuerpo no cabe una fila
+   * completa, ver cabecera del archivo).
+   */
+  formato: 'linea' | '2lineas';
   wForma: number; wEsp: number; wCon: number; wDif: number;
   gap1: string; gap2: string; gap3: string;
   headerEsp: string;
   labels: Record<string, string>;
-  /**
-   * Tamaño de la tabla — SOLO esta tabla, el resto del ticket sigue con el
-   * tamaño normal (IMPRESORA_CONFIG, docTermico.ts). Ideal sería que fuera
-   * igual al del cuerpo, pero a 58mm/80mm no hay ancho físico para 4
-   * columnas de dinero reales (RD$ de 5-6 cifras) al tamaño del cuerpo —
-   * medido con Chrome headless: 58mm da 24 caracteres a 10pt (el del
-   * cuerpo) contra los 30 que necesita esta tabla; 80mm da 30 a 11pt
-   * contra los 41 que necesita. 8pt es el MÁXIMO que cierra esa cuenta en
-   * ambos papeles (ver medición 2026-10-10). A carta (210mm) sí sobra
-   * espacio de sobra incluso al tamaño del cuerpo (70 caracteres a 12pt
-   * contra los ~41 que hacen falta), así que ahí la tabla usa el mismo
-   * tamaño que el resto del ticket — nunca se ve más chica.
-   */
   fontSizePt: number;
 }
 
-// 58mm: 30 caracteres de ancho útil medidos a 8pt (ver cabecera del archivo
-// y fontSizePt arriba — a 10pt, el tamaño del cuerpo, solo caben 24).
-// FORMA necesita 7 (cabe "Tarjeta"/"Transf."); los 3 montos se llevan los 23
-// restantes. gap3 va vacío a propósito: Contado y Difer. quedan pegados SOLO
-// cuando Difer. mide exactamente 7 (su peor caso), y Difer. siempre lleva un
-// signo ('+'/'-') al frente — ese signo, no un espacio, es lo que separa
-// visualmente los dos números. Cuando Difer. mide menos de 7 (el caso común),
-// padStart ya le pone el espacio de relleno delante.
+// 58mm: 24 caracteres medidos a 10pt, el tamaño del CUERPO del ticket.
+// wEsp(8) + gap(1) + wCon(8) + wDif(7) = 24 — gap2 va vacío a propósito
+// (mismo truco que el diseño de una sola línea original): Difer. SIEMPRE
+// lleva un signo ('+'/'-') al frente, así que ese signo, no un espacio, es
+// lo que separa Contado de Difer. cuando Contado llena sus 8 cifras enteras
+// ("27995.00-830.00" se lee igual de claro que con espacio). Con wDif=7
+// entran tanto el caso real (+47.00, 6) como un descuadre de 3 cifras
+// (+829.94, 7) sin cortar.
 const TABLA_58MM: ConfigTabla = {
-  ancho: 30, comas: false,
-  wForma: 7, wEsp: 7, wCon: 7, wDif: 7,
-  gap1: ' ', gap2: ' ', gap3: '',
-  headerEsp: 'ESPER.',
-  labels: LABEL_FORMA_CORTA,
-  fontSizePt: 8,
-};
-
-// 80mm / bluetooth / ninguna: 41 caracteres medidos a 8pt (a 11pt, el
-// tamaño del cuerpo, solo caben 30 — ver fontSizePt arriba). Hay espacio de
-// sobra para nombres completos, comas de miles y un espacio real entre
-// cada columna.
-const TABLA_80MM: ConfigTabla = {
-  ancho: 41, comas: true,
-  wForma: 9, wEsp: 10, wCon: 10, wDif: 9,
-  gap1: ' ', gap2: ' ', gap3: ' ',
+  ancho: 24, comas: false, formato: '2lineas',
+  wForma: 0, wEsp: 8, wCon: 8, wDif: 7,
+  gap1: ' ', gap2: '', gap3: '',
   headerEsp: 'ESPERADO',
   labels: LABEL_FORMA,
-  fontSizePt: 8,
+  fontSizePt: 10,
+};
+
+// 80mm / bluetooth / ninguna: 30 caracteres medidos a 11pt, el tamaño del
+// CUERPO. Con comas de miles: wEsp(10) + gap(1) + wCon(10) + gap(1) +
+// wDif(8) = 30.
+const TABLA_80MM: ConfigTabla = {
+  ancho: 30, comas: true, formato: '2lineas',
+  wForma: 0, wEsp: 10, wCon: 10, wDif: 8,
+  gap1: ' ', gap2: ' ', gap3: '',
+  headerEsp: 'ESPERADO',
+  labels: LABEL_FORMA,
+  fontSizePt: 11,
 };
 
 // Carta (210mm): 70 caracteres medidos a 12pt, el tamaño del CUERPO del
-// ticket — de sobra para las 41 columnas que esta tabla necesita, así que
-// aquí no hace falta achicar nada (ver fontSizePt arriba).
+// ticket — de sobra para una fila FORMA + 3 montos completa (41 caracteres),
+// así que aquí se mantiene el formato de una sola línea de siempre.
 const TABLA_CARTA: ConfigTabla = {
-  ancho: 41, comas: true,
+  ancho: 41, comas: true, formato: 'linea',
   wForma: 9, wEsp: 10, wCon: 10, wDif: 9,
   gap1: ' ', gap2: ' ', gap3: ' ',
   headerEsp: 'ESPERADO',
@@ -182,7 +174,7 @@ function moneyTabla(v: number, comas: boolean): string {
   return sign + Number(ent).toLocaleString('en-US') + '.' + dec;
 }
 
-/** La diferencia SIEMPRE lleva signo — es el separador visual cuando queda pegada a Contado (ver TABLA_58MM). */
+/** La diferencia SIEMPRE lleva signo — en el formato 'linea' es el separador visual cuando queda pegada a Contado (ver TABLA_CARTA). */
 function difTabla(v: number, comas: boolean): string {
   const n = Number(v ?? 0);
   return (n >= 0 ? '+' : '') + moneyTabla(n, comas);
@@ -205,29 +197,51 @@ function filaTabla(cfg: ConfigTabla, label: string, esperado: number, contado: n
   const fDif = difTabla(diferencia, cfg.comas);
   const cabe = fEsp.length <= cfg.wEsp && fCon.length <= cfg.wCon && fDif.length <= cfg.wDif;
 
-  if (cabe) {
-    return [
-      label.padEnd(cfg.wForma) + cfg.gap1 + fEsp.padStart(cfg.wEsp) +
-      cfg.gap2 + fCon.padStart(cfg.wCon) + cfg.gap3 + fDif.padStart(cfg.wDif),
-    ];
+  if (cfg.formato === 'linea') {
+    if (cabe) {
+      return [
+        label.padEnd(cfg.wForma) + cfg.gap1 + fEsp.padStart(cfg.wEsp) +
+        cfg.gap2 + fCon.padStart(cfg.wCon) + cfg.gap3 + fDif.padStart(cfg.wDif),
+      ];
+    }
+    const primera =
+      label.padEnd(cfg.wForma) + cfg.gap1 + (fEsp.length <= cfg.wEsp ? fEsp.padStart(cfg.wEsp) : ' '.repeat(cfg.wEsp)) +
+      cfg.gap2 + (fCon.length <= cfg.wCon ? fCon.padStart(cfg.wCon) : ' '.repeat(cfg.wCon)) +
+      cfg.gap3 + (fDif.length <= cfg.wDif ? fDif.padStart(cfg.wDif) : ' '.repeat(cfg.wDif));
+    const extra: string[] = [];
+    if (fEsp.length > cfg.wEsp) extra.push(...envolver(`  Esperado: ${fEsp}`, cfg.ancho));
+    if (fCon.length > cfg.wCon) extra.push(...envolver(`  Contado: ${fCon}`, cfg.ancho));
+    if (fDif.length > cfg.wDif) extra.push(...envolver(`  Difer.: ${fDif}`, cfg.ancho));
+    return [primera, ...extra];
   }
 
-  const primera =
-    label.padEnd(cfg.wForma) + cfg.gap1 + (fEsp.length <= cfg.wEsp ? fEsp.padStart(cfg.wEsp) : ' '.repeat(cfg.wEsp)) +
-    cfg.gap2 + (fCon.length <= cfg.wCon ? fCon.padStart(cfg.wCon) : ' '.repeat(cfg.wCon)) +
-    cfg.gap3 + (fDif.length <= cfg.wDif ? fDif.padStart(cfg.wDif) : ' '.repeat(cfg.wDif));
+  // '2lineas': el nombre de la forma ocupa su propia línea (los nombres ya
+  // son cortos — ninguno necesita envolver() a estos anchos) y los 3 montos
+  // van alineados a la derecha, bajo su columna, en la línea siguiente.
+  if (cabe) {
+    return [
+      label,
+      fEsp.padStart(cfg.wEsp) + cfg.gap1 + fCon.padStart(cfg.wCon) + cfg.gap2 + fDif.padStart(cfg.wDif),
+    ];
+  }
+  const valores =
+    (fEsp.length <= cfg.wEsp ? fEsp.padStart(cfg.wEsp) : ' '.repeat(cfg.wEsp)) + cfg.gap1 +
+    (fCon.length <= cfg.wCon ? fCon.padStart(cfg.wCon) : ' '.repeat(cfg.wCon)) + cfg.gap2 +
+    (fDif.length <= cfg.wDif ? fDif.padStart(cfg.wDif) : ' '.repeat(cfg.wDif));
   const extra: string[] = [];
   if (fEsp.length > cfg.wEsp) extra.push(...envolver(`  Esperado: ${fEsp}`, cfg.ancho));
   if (fCon.length > cfg.wCon) extra.push(...envolver(`  Contado: ${fCon}`, cfg.ancho));
   if (fDif.length > cfg.wDif) extra.push(...envolver(`  Difer.: ${fDif}`, cfg.ancho));
-  return [primera, ...extra];
+  return [label, valores, ...extra];
 }
 
-/** Encabezado + filas (con movimiento o declaración) + TOTAL + leyenda + resultado. Todas las líneas miden exactamente cfg.ancho. */
+/** Encabezado + filas (con movimiento o declaración) + TOTAL + leyenda + resultado. */
 function tablaCuadre(filas: FilaCuadreTermico[], cfg: ConfigTabla): string[] {
-  const header =
-    'FORMA'.padEnd(cfg.wForma) + cfg.gap1 + cfg.headerEsp.padStart(cfg.wEsp) +
-    cfg.gap2 + 'CONTADO'.padStart(cfg.wCon) + cfg.gap3 + 'DIFER.'.padStart(cfg.wDif);
+  const header = cfg.formato === 'linea'
+    ? 'FORMA'.padEnd(cfg.wForma) + cfg.gap1 + cfg.headerEsp.padStart(cfg.wEsp) +
+      cfg.gap2 + 'CONTADO'.padStart(cfg.wCon) + cfg.gap3 + 'DIFER.'.padStart(cfg.wDif)
+    : cfg.headerEsp.padStart(cfg.wEsp) + cfg.gap1 + 'CONTADO'.padStart(cfg.wCon) +
+      cfg.gap2 + 'DIFER.'.padStart(cfg.wDif);
   const sep = '-'.repeat(cfg.ancho);
 
   const lineas: string[] = [header, sep];
@@ -322,7 +336,7 @@ export function bloqueCuadreFormaPagoTermico(
 
   // Recierre: el cierre vigente ya se imprimió arriba — el ORIGINAL anulado
   // va en un bloque aparte, con lo que contó/declaró la primera vez y la
-  // diferencia contra el conteo actual (requisito explícito 2026-10-10, caso
+  // diferencia contra el conteo vigente (requisito explícito 2026-10-10, caso
   // real: Beatriz Riva recerró la caja de Bellamar González y la tarjeta
   // esperada del primer cierre se perdió sin dejar rastro).
   if (r.contadoOriginal != null) {

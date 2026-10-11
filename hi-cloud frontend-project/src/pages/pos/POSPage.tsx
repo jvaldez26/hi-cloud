@@ -2057,15 +2057,6 @@ function buildCierreCajaHTML(params: {
     .map(([den,qty]) => row(`  ${Number(den).toLocaleString()} x${qty}:`, fmt(Number(den)*Number(qty))))
     .join('\n');
 
-  const PAGO_LABELS: Record<string,string> = {
-    efectivo:'Efectivo', tarjetaCredito:'Tarjeta Crédito', tarjetaDebito:'Tarjeta Débito',
-    cheque:'Cheque', transferencia:'Transferencia', otro:'Otro', deposito:'Depósito', documentos:'Documentos',
-  };
-  const pagoRows = Object.entries(params.pago)
-    .filter(([,v]) => Number(v) > 0)
-    .map(([k,v]) => row(`  ${PAGO_LABELS[k] ?? k}:`, fmt(Number(v))))
-    .join('\n');
-
   // Cuadre por forma de pago — reemplaza el viejo "Efectivo esperado/contado
   // + SOBRANTE/FALTANTE" (que solo cuadraba efectivo). Ver el mismo bloque
   // en CajaPage.tsx (imprimirCierre/imprimirTicketConDetalle) — misma fuente,
@@ -2133,9 +2124,6 @@ ${params.totalBilletes > 0 ? `${line()}
 <div class="small bold">DESGLOSE DE BILLETES</div>
 ${billetesRows}
 ${row('Total billetes:', fmt(params.totalBilletes), true)}` : ''}
-${pagoRows ? `${line()}
-<div class="small bold">DESGLOSE DE PAGO</div>
-${pagoRows}` : ''}
 ${params.nota ? `${line()}<div class="small">Nota: ${esc(params.nota)}</div>` : ''}
 ${bloqueFacturasTermico(params.detalleFacturas)}
 ${line()}
