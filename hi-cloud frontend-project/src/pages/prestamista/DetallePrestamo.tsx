@@ -6,7 +6,7 @@ import {
   Modal, Form, InputNumber, DatePicker, Select, Input, message, Progress, theme
 } from 'antd';
 import dayjs from 'dayjs';
-import { ArrowLeft, FileText, DollarSign, Plus, Printer, Mail } from 'lucide-react';
+import { ArrowLeft, FileText, DollarSign, Plus, Printer, Mail, RefreshCw, Scissors, FileSignature } from 'lucide-react';
 import { FileExcelOutlined } from '@ant-design/icons';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { exportarExcel } from '../../utils/exportExcel';
@@ -18,7 +18,7 @@ import { ahora, fecha, hoyRD } from '../../utils/fechaRD';
 
 const { Option } = Select;
 const fmt = (n: any) => `RD$ ${Number(n ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
-const estadoColor: Record<string, string> = { al_dia: 'green', moroso: 'orange', vencido: 'red', pagado: 'blue', cancelado: 'default', refinanciado: 'purple' };
+const estadoColor: Record<string, string> = { al_dia: 'green', moroso: 'orange', vencido: 'red', pagado: 'blue', cancelado: 'default', refinanciado: 'purple', desembolso_parcial: 'gold' };
 const cuotaColor: Record<string, string> = { pendiente: 'default', pagada: 'green', vencida: 'red', pagada_parcial: 'orange' };
 const estadoGarantiaColor: Record<string, string> = { activa: 'green', liberada: 'blue', ejecutada: 'red' };
 const estadoGaranteColor: Record<string, string> = { activo: 'green', liberado: 'blue' };
@@ -97,6 +97,14 @@ export default function DetallePrestamo() {
   const [ejecutarGarantiaTarget, setEjecutarGarantiaTarget] = useState<any>(null);
   const [formEjecutarGarantia] = Form.useForm();
 
+  // ── Desembolsos parciales (§4), reestructuración (§5) y condonación (§6) ──
+  const [tramoOpen, setTramoOpen] = useState(false);
+  const [formTramo] = Form.useForm();
+  const [reestructurarOpen, setReestructurarOpen] = useState(false);
+  const [formReestructurar] = Form.useForm();
+  const [condonarOpen, setCondonarOpen] = useState(false);
+  const [formCondonar] = Form.useForm();
+
   // ── Registrar Pago (rediseño) ──────────────────────────────────────────
   const [tipoPago, setTipoPago] = useState<TipoPago>('cuotas');
   const [cuotasSel, setCuotasSel] = useState<number[]>([]);
@@ -136,6 +144,12 @@ export default function DetallePrestamo() {
   const { data: garantes = [] } = useQuery({
     queryKey: ['prestamista-garantes', id],
     queryFn: () => prestamistalApi.getGarantesByPrestamo(Number(id)),
+    enabled: !!id,
+  });
+
+  const { data: tramos = [] } = useQuery({
+    queryKey: ['prestamista-desembolsos-parciales', id],
+    queryFn: () => prestamistalApi.getDesembolsosParciales(Number(id)),
     enabled: !!id,
   });
 
@@ -330,6 +344,44 @@ export default function DetallePrestamo() {
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al ejecutar garantía'),
   });
 
+  const registrarTramo = useMutation({
+    mutationFn: (vals: any) => prestamistalApi.registrarDesembolsoParcial({
+      prestamoId: Number(id), monto: vals.monto, fecha: vals.fecha.format('YYYY-MM-DD'),
+      metodoPago: vals.metodoPago, notas: vals.notas,
+    }),
+    onSuccess: (d: any) => {
+      qc.invalidateQueries({ queryKey: ['prestamista-prestamo', id] });
+      qc.invalidateQueries({ queryKey: ['prestamista-desembolsos-parciales', id] });
+      qc.invalidateQueries({ queryKey: ['prestamista-prestamos'] });
+      setTramoOpen(false);
+      formTramo.resetFields();
+      message.success(d?.completo ? 'Desembolso completado' : 'Tramo registrado');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al registrar el tramo'),
+  });
+
+  const reestructurar = useMutation({
+    mutationFn: (vals: any) => prestamistalApi.reestructurarPrestamo(Number(id), vals),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['prestamista-prestamo', id] });
+      setReestructurarOpen(false);
+      formReestructurar.resetFields();
+      message.success('Préstamo reestructurado');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al reestructurar'),
+  });
+
+  const condonar = useMutation({
+    mutationFn: (vals: any) => prestamistalApi.condonarPrestamo(Number(id), vals),
+    onSuccess: (d: any) => {
+      qc.invalidateQueries({ queryKey: ['prestamista-prestamo', id] });
+      setCondonarOpen(false);
+      formCondonar.resetFields();
+      message.success(`Condonado: ${fmt(d?.moraCondonada ?? 0)} de mora, ${fmt(d?.interesCondonado ?? 0)} de interés`);
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al condonar'),
+  });
+
   const cancelar = useMutation({
     mutationFn: (vals: any) => prestamistalApi.cancelarPrestamo(Number(id), vals.motivo),
     onSuccess: () => {
@@ -357,6 +409,9 @@ export default function DetallePrestamo() {
   const pagado = Number(prestamo.montoPrincipal) - Number(prestamo.saldoCapital);
   const pctPagado = prestamo.montoPrincipal > 0 ? Math.round((pagado / Number(prestamo.montoPrincipal)) * 100) : 0;
   const activo = !['pagado', 'cancelado', 'refinanciado'].includes(prestamo.estado);
+  // §4 — con desembolso pendiente no se puede cobrar, reestructurar ni condonar.
+  const operable = activo && prestamo.estado !== 'desembolso_parcial';
+  const faltaPorDesembolsar = Math.max(0, Number(prestamo.montoPrincipal) - Number(prestamo.desembolsado ?? prestamo.montoPrincipal));
 
   const exportarCuotas = () => {
     const filas = cuotas.map((r: any) => ({
@@ -395,10 +450,19 @@ export default function DetallePrestamo() {
         <Button icon={<ArrowLeft size={14} />} onClick={() => navigate('/prestamista/prestamos')}>Volver</Button>
         <h2 style={{ margin: 0, color: C.colorText }}>{prestamo.numero}</h2>
         <Tag color={estadoColor[prestamo.estado] ?? 'default'}>{prestamo.estado?.replace('_', ' ')}</Tag>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <Button icon={<FileText size={14} />} onClick={() => window.open(prestamistalApi.pdfAmortizacion(Number(id)), '_blank')}>PDF Amortización</Button>
+          <Button icon={<FileSignature size={14} />} onClick={() => window.open(prestamistalApi.pdfContrato(Number(id)), '_blank')}>Contrato</Button>
+          <Button icon={<FileSignature size={14} />} onClick={() => window.open(prestamistalApi.pdfPagare(Number(id)), '_blank')}>Pagaré</Button>
           <Button onClick={() => recalcular.mutate()} loading={recalcular.isPending}>Recalcular Saldos</Button>
-          {activo && <Button type="primary" icon={<DollarSign size={14} />} onClick={() => {
+          {operable && <Button icon={<RefreshCw size={14} />} onClick={() => setReestructurarOpen(true)}>Reestructurar</Button>}
+          {operable && <Button icon={<Scissors size={14} />} onClick={() => setCondonarOpen(true)}>Condonar</Button>}
+          {activo && prestamo.estado === 'desembolso_parcial' && (
+            <Button type="primary" icon={<DollarSign size={14} />} onClick={() => { formTramo.resetFields(); setTramoOpen(true); }}>
+              Registrar Tramo
+            </Button>
+          )}
+          {operable && <Button type="primary" icon={<DollarSign size={14} />} onClick={() => {
             setPagoClave(crypto.randomUUID()); setCuotasSel([]); setTipoPago('cuotas');
             setDestinoExcedente(''); setPagoMixto(false); setSupervisorToken(null); setPreview(null);
             formPago.setFieldsValue({ fecha: dayjs(hoyRD()) });
@@ -407,6 +471,13 @@ export default function DetallePrestamo() {
           {activo && <Button danger onClick={() => setCancelarOpen(true)}>Cancelar</Button>}
         </div>
       </div>
+
+      {prestamo.estado === 'desembolso_parcial' && (
+        <Alert
+          type="warning" showIcon style={{ marginBottom: 16 }}
+          message={`Desembolso pendiente: falta entregar ${fmt(faltaPorDesembolsar)} de ${fmt(prestamo.montoPrincipal)} — no se le puede cobrar hasta completarlo.`}
+        />
+      )}
 
       <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
         {([
@@ -590,6 +661,22 @@ export default function DetallePrestamo() {
             </div>
           ),
         },
+        ...((tramos as any[]).length ? [{
+          key: 'desembolsos',
+          label: `Desembolsos (${(tramos as any[]).length})`,
+          children: (
+            <Table
+              dataSource={(tramos as any[]).map((r: any) => ({ ...r, key: r.id }))}
+              scroll={{ x: 'max-content' }} size="small"
+              columns={[
+                { title: 'Fecha', dataIndex: 'fecha', render: (v: any) => v?.toString().slice(0, 10) },
+                { title: 'Monto', dataIndex: 'monto', render: fmt },
+                { title: 'Forma de Pago', dataIndex: 'metodoPago' },
+                { title: 'Notas', dataIndex: 'notas' },
+              ]}
+            />
+          ),
+        }] : []),
       ]} />
 
       {/* Modal pago */}
@@ -918,6 +1005,102 @@ export default function DetallePrestamo() {
           message={`El banco se queda con "${ejecutarGarantiaTarget?.descripcion ?? ''}" por impago. Esta acción requiere autorización de otra persona.`} />
         <Form form={formEjecutarGarantia} layout="vertical">
           <Form.Item name="motivo" label="Motivo de la ejecución" rules={[{ required: true, whitespace: true, message: 'El motivo es obligatorio' }]}>
+            <Input.TextArea rows={3} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Modal registrar tramo (§4) — solo visible con desembolso pendiente */}
+      <Modal title="Registrar Tramo de Desembolso" open={tramoOpen}
+        onCancel={() => { setTramoOpen(false); formTramo.resetFields(); }}
+        onOk={() => formTramo.validateFields().then(v => registrarTramo.mutate(v))}
+        okText="Registrar" confirmLoading={registrarTramo.isPending}>
+        <p style={{ color: C.colorTextSecondary, fontSize: 13 }}>
+          Falta entregar {fmt(faltaPorDesembolsar)} de {fmt(prestamo.montoPrincipal)}.
+        </p>
+        <Form form={formTramo} layout="vertical" initialValues={{ fecha: dayjs(hoyRD()), metodoPago: 'efectivo' }}>
+          <Form.Item name="monto" label="Monto del tramo" rules={[{ required: true }]}>
+            <InputNumber style={{ width: '100%' }} prefix="RD$" min={0.01} max={faltaPorDesembolsar} />
+          </Form.Item>
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="fecha" label="Fecha" rules={[{ required: true }]}>
+                <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="metodoPago" label="Forma de Pago">
+                <Select>
+                  <Option value="efectivo">Efectivo</Option>
+                  <Option value="transferencia">Transferencia</Option>
+                  <Option value="cheque">Cheque</Option>
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="notas" label="Notas"><Input.TextArea rows={2} /></Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Modal reestructurar (§5) — distinto de refinanciar: el MISMO préstamo,
+          solo cambia el plan de las cuotas totalmente pendientes. Supervisor
+          SIEMPRE + motivo obligatorio. */}
+      <Modal title="Reestructurar Préstamo" open={reestructurarOpen}
+        onCancel={() => { setReestructurarOpen(false); formReestructurar.resetFields(); }}
+        onOk={() => formReestructurar.validateFields().then(v => reestructurar.mutate(v))}
+        okText="Reestructurar" confirmLoading={reestructurar.isPending}>
+        <Alert type="info" showIcon style={{ marginBottom: 12 }}
+          message="Solo cambia el plan de las cuotas totalmente pendientes (sin ningún pago aplicado) — el historial ya pagado no se toca." />
+        <Form form={formReestructurar} layout="vertical">
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="nuevoPlazoMeses" label="Nuevo plazo (cuotas restantes)">
+                <InputNumber style={{ width: '100%' }} min={1} placeholder="Deja vacío para mantener" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="nuevaTasaInteresMensual" label="Nueva tasa mensual (%)">
+                <InputNumber style={{ width: '100%' }} min={0} placeholder="Deja vacío para mantener" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="nuevoMetodoAmortizacion" label="Nuevo método de amortización">
+            <Select allowClear placeholder="Deja vacío para mantener">
+              <Option value="frances">Francés</Option>
+              <Option value="aleman">Alemán</Option>
+            </Select>
+          </Form.Item>
+          <Form.Item name="motivo" label="Motivo" rules={[{ required: true, whitespace: true, message: 'El motivo es obligatorio' }]}>
+            <Input.TextArea rows={3} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Modal condonar (§6) — solo mora y/o interés, NUNCA capital. Supervisor
+          SIEMPRE + motivo obligatorio. */}
+      <Modal title="Condonar Mora / Interés" open={condonarOpen}
+        onCancel={() => { setCondonarOpen(false); formCondonar.resetFields(); }}
+        onOk={() => formCondonar.validateFields().then(v => {
+          if (!v.moraACondonar && !v.interesACondonar) { message.warning('Indica un monto de mora o interés a condonar'); return; }
+          condonar.mutate(v);
+        })}
+        okText="Condonar" confirmLoading={condonar.isPending}>
+        <Alert type="warning" showIcon style={{ marginBottom: 12 }}
+          message={`Saldo de mora: ${fmt(prestamo.saldoMora)} — Saldo de interés: ${fmt(prestamo.saldoInteres)}. El capital nunca se condona.`} />
+        <Form form={formCondonar} layout="vertical">
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="moraACondonar" label="Mora a condonar">
+                <InputNumber style={{ width: '100%' }} prefix="RD$" min={0} max={Number(prestamo.saldoMora)} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="interesACondonar" label="Interés a condonar">
+                <InputNumber style={{ width: '100%' }} prefix="RD$" min={0} max={Number(prestamo.saldoInteres)} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="motivo" label="Motivo" rules={[{ required: true, whitespace: true, message: 'El motivo es obligatorio' }]}>
             <Input.TextArea rows={3} />
           </Form.Item>
         </Form>

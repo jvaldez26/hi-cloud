@@ -82,11 +82,26 @@ export const prestamistalApi = {
   // Refinanciamiento
   refinanciar: (body: any) => api.post(`${base}/refinanciamientos`, body).then(r),
 
+  // Desembolsos parciales (§4) — el préstamo nace en 'desembolso_parcial' si
+  // se crea con desembolsoInicial < montoPrincipal.
+  getDesembolsosParciales: (prestamoId: number) => api.get(`${base}/desembolsos-parciales/prestamo/${prestamoId}`).then(r),
+  registrarDesembolsoParcial: (body: any) => api.post(`${base}/desembolsos-parciales`, body).then(r),
+
+  // Reestructuración (§5) — distinto de refinanciar: el mismo préstamo, solo
+  // cambia el plan de las cuotas totalmente pendientes.
+  reestructurarPrestamo: (id: number, body: any) => api.patch(`${base}/prestamos/${id}/reestructurar`, body).then(r),
+
+  // Condonación independiente (§6) — mora/interés pendiente, nunca capital.
+  condonarPrestamo: (id: number, body: any) => api.patch(`${base}/prestamos/${id}/condonar`, body).then(r),
+
   // PDFs
   pdfAmortizacion: (prestamoId: number) => `${api.defaults.baseURL}${base}/pdf/amortizacion/${prestamoId}`,
   pdfRecibo:       (pagoId: number)     => `${api.defaults.baseURL}${base}/pdf/recibo/${pagoId}`,
   pdfEstadoCuenta: (deudorId: number)   => `${api.defaults.baseURL}${base}/pdf/estado-cuenta/${deudorId}`,
   pdfCotizacion:   (simulacionId: number) => `${api.defaults.baseURL}${base}/pdf/cotizacion/${simulacionId}`,
+  // Contrato y pagaré (§7) — plantillas simples, sin redacción legal.
+  pdfContrato:     (prestamoId: number) => `${api.defaults.baseURL}${base}/pdf/contrato/${prestamoId}`,
+  pdfPagare:       (prestamoId: number) => `${api.defaults.baseURL}${base}/pdf/pagare/${prestamoId}`,
 
   // Simulaciones (Etapa 1)
   crearSimulacion: (body: any) => api.post(`${base}/simulaciones`, body).then(r),
