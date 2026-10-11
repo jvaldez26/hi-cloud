@@ -69,6 +69,11 @@ valores de arranque.
 - **Etapa 3 — Cobranza completa — CERRADA el 2026-10-11**, ver
   `etapa-3-cobranza.md`. Backend y frontend, con tests y suite en verde,
   pusheado a `origin/feat/prestamista-motor`.
+- **Etapa 4 — Cartera e indicadores — CERRADA el 2026-10-11**, ver
+  `etapa-4-cartera-indicadores.md`. Auditoría encontró y corrigió una fuga
+  multi-tenant real (3 JOIN sin filtro de empresa) y un cálculo de índice
+  de morosidad inconsistente con el de Cobranza; backend y frontend con
+  tests y suite en verde, pusheado a `origin/feat/prestamista-motor`.
 
 ## Etapa 3 — Cobranza (2026-10-11)
 
