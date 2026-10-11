@@ -66,3 +66,32 @@ valores de arranque.
   desactivada hasta que se configure cada concepto en Productos de Préstamo
   (sección "Fiscal", ya existe en el formulario desde la Fase 2B, hoy vacía
   a propósito).
+- **Etapa 3 — Cobranza completa — CERRADA el 2026-10-11**, ver
+  `etapa-3-cobranza.md`. Backend y frontend, con tests y suite en verde,
+  pusheado a `origin/feat/prestamista-motor`.
+
+## Etapa 3 — Cobranza (2026-10-11)
+
+- **Umbrales de escalamiento por días de mora**: el pedido dio 5/15/30
+  días (recordatorio/telefónica/carta); se agregó un cuarto escalón a los
+  60 días (acción legal), mismo orden de magnitud que el umbral `moroso`→
+  `vencido` de `MoraCronService`. Quedaron **hardcodeados en
+  `CobranzaService`, iguales para todas las empresas** — ninguna
+  financiera puede ajustarlos todavía. Si alguna necesita umbrales propios
+  (ej. más agresiva o más laxa que el default), haría falta un campo de
+  configuración por empresa — no construido, es puramente informativo hoy
+  (una Tag en la UI) así que no bloquea nada mientras tanto.
+- **Reasignación de cartera**: solo préstamo por préstamo
+  (`PATCH prestamo/:id/cobrador`). No hay un endpoint de "mover TODA la
+  cartera del cobrador X al cobrador Y de un golpe" (útil cuando alguien
+  deja el puesto) — si se necesita, hoy habría que reasignar uno por uno
+  desde la UI.
+- **WhatsApp de cobranza por API real (WhatsApp Business)**: se mantuvo el
+  mecanismo manual de link `wa.me` (igual que el resto del ERP) en vez de
+  integrar `WhatsAppService` (Notificaciones) porque **ningún tenant tiene
+  un proveedor de WhatsApp Business configurado hoy** — construir sobre
+  esa base habría hecho parecer que el envío es automático cuando en
+  realidad solo quedaría logueado en el servidor. Si algún tenant activa
+  un proveedor (Meta Cloud/Twilio/360dialog/Ultramsg), cambiar el botón de
+  cobranza a enviar de verdad es un cambio acotado a
+  `CobranzaService.linkWhatsappMora()` + `WhatsAppService.enviarMensaje()`.
