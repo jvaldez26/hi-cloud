@@ -440,6 +440,12 @@ export class RegistrarGestionDto {
   cobradorNombre?: string;
 }
 
+/** Etapa 3 — asignar/reasignar la cartera de un préstamo a un cobrador. null = desasignar. */
+export class AsignarCobradorDto {
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number)
+  cobradorId?: number | null;
+}
+
 export class CrearGarantiaDto {
   @IsInt() @IsPositive() @Type(() => Number)
   deudorId!: number;
