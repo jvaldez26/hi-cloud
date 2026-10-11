@@ -46,11 +46,11 @@ describe('SessionLifetimeService', () => {
     await expect(new SessionLifetimeService(ds).paraUsuario(1)).resolves.toBe(12 * HORA);
   });
 
-  it('un global ausente o ilegible cae al default de 24 h, no a infinito', async () => {
+  it('un global ausente o ilegible cae al default de 720 h (30 días), no a infinito', async () => {
     const { ds: sinFila }  = fakeDataSource({ globalHoras: null });
     const { ds: ilegible } = fakeDataSource({ globalHoras: 'muchas' });
-    await expect(new SessionLifetimeService(sinFila).paraUsuario(1)).resolves.toBe(24 * HORA);
-    await expect(new SessionLifetimeService(ilegible).paraUsuario(1)).resolves.toBe(24 * HORA);
+    await expect(new SessionLifetimeService(sinFila).paraUsuario(1)).resolves.toBe(720 * HORA);
+    await expect(new SessionLifetimeService(ilegible).paraUsuario(1)).resolves.toBe(720 * HORA);
   });
 
   it('el rango se clampea a [1h, 720h] aunque la BD traiga basura', async () => {
@@ -62,7 +62,7 @@ describe('SessionLifetimeService', () => {
 
   it('un fallo de BD no deja la sesión sin límite', async () => {
     const ds = { query: jest.fn().mockRejectedValue(new Error('conexión caída')) } as any;
-    await expect(new SessionLifetimeService(ds).paraUsuario(1)).resolves.toBe(24 * HORA);
+    await expect(new SessionLifetimeService(ds).paraUsuario(1)).resolves.toBe(720 * HORA);
   });
 
   // ── Caché ────────────────────────────────────────────────────────────────
