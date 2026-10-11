@@ -797,9 +797,18 @@ function makeCajaService(opts: { cajas?: any[]; facturas?: any[]; cierreCajaCieg
 
   const repo = {
     findOne: jest.fn(async ({ where }: any) => {
-      const id = where?.id;
-      const found = cajas.find(c => c.id === id && (where?.empresaId == null || c.empresaId === where.empresaId));
-      return found ?? null;
+      if (where?.id != null) {
+        const found = cajas.find(c => c.id === where.id && (where?.empresaId == null || c.empresaId === where.empresaId));
+        return found ?? null;
+      }
+      // getCajaHoy(vendedorId) busca por {fecha, empresaId, vendedorId} — sin
+      // id. El fake no reimplementa fecha/IsNull(); basta con vendedorId para
+      // los tests de este bloque, que solo tienen UNA caja relevante.
+      if (where?.vendedorId != null && typeof where.vendedorId !== 'object') {
+        const found = cajas.find(c => c.vendedorId === where.vendedorId && (where?.empresaId == null || c.empresaId === where.empresaId));
+        return found ?? null;
+      }
+      return cajas[0] ?? null;
     }),
     createQueryBuilder: jest.fn(() => {
       const qb: any = {
@@ -971,6 +980,32 @@ describe('CajaService.getCajaHoyByUserId — Cierre Actual del propio VENDEDOR',
       cajas: [cajaBase({ estado: EstadoCierre.CERRADA, saldoCierre: 1550 })],
     });
     const r: any = await svc.getCajaHoyByUserId(1);
+
+    expect(r.ciegoCajaActivo).toBeUndefined();
+    expect(r.ventasEfectivo).toBe(1200);
+  });
+});
+
+// Requisito explícito (2026-10-11): ADMIN/CONTADOR deben ver el Desglose de
+// Operaciones completo al cerrar la caja de un cajero, CON O SIN el cierre
+// ciego de la empresa activo — ese toggle decide qué ve la CAJERA al
+// declarar, nunca lo que ve quien revisa/autoriza. El controller ya solo
+// enruta aquí fuera de VENDEDOR (CajaController.getCajaHoy), pero no había
+// ningún test que lo confirmara — el hueco quedaba cubierto solo por el
+// routing del controller, nunca verificado contra el servicio real.
+describe('CajaService.getCajaHoy (por vendedorId) — ADMIN/CONTADOR nunca ven la caja recortada', () => {
+  it('caja ABIERTA, empresa CON cierreCajaCiego activo: datos completos igual, ciegoCajaActivo nunca se marca', async () => {
+    const { svc } = makeCajaService({ cierreCajaCiego: true });
+    const r: any = await svc.getCajaHoy(10); // vendedorId de cajaBase()
+
+    expect(r.ciegoCajaActivo).toBeUndefined();
+    expect(r.ventasEfectivo).toBe(1200);
+    expect(r.ventasTarjeta).toBe(300);
+  });
+
+  it('caja ABIERTA, empresa SIN cierreCajaCiego: mismo resultado, datos completos', async () => {
+    const { svc } = makeCajaService({ cierreCajaCiego: false });
+    const r: any = await svc.getCajaHoy(10);
 
     expect(r.ciegoCajaActivo).toBeUndefined();
     expect(r.ventasEfectivo).toBe(1200);

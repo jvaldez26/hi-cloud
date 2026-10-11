@@ -61,8 +61,8 @@ const LABEL_FORMA_TABLA: Record<string, string> = {
 
 const LABEL_FORMA: Record<string, string> = {
   tarjeta: 'Tarjeta',
-  transferencia: 'Transferencia',
-  otros: 'Cheque / Depósito / Otro / Documentos',
+  transferencia: 'Transferencia / Cheque / Depósito',
+  otros: 'Otro / Documentos',
 };
 
 function CierreField({ label, value, editable, onChange, highlight }:
@@ -129,13 +129,19 @@ export function CierreCajaFormulario({
   const totalFisico = totalBilletes || (Number(pago.efectivo) || 0);
   const totalDesglosePago = Object.values(pago).reduce((s, v) => s + (Number(v) || 0), 0);
 
-  // Mapeo a los 4 "buckets" que el backend ya usa para el esperado (DGII no
-  // distingue cheque/depósito/otro de transferencia tampoco).
+  // Mapeo a los 4 "buckets" que el backend ya usa para el esperado — mismo
+  // criterio DGII que calcularEsperadoPorForma() en caja.service.ts: tipo 2
+  // (transferencia) agrupa cheque y depósito igual que transferencia
+  // bancaria, tipo 5 (permuta) también. Bug real (2026-10-11): esto ponía
+  // cheque/depósito en "otros", que el backend compara contra ventasCredito
+  // (ventas SIN cobrar) — una tarjeta/cheque declarado ahí nunca cuadraba
+  // contra nada real. "Otro"/"Documentos" sí se quedan en "otros": no tienen
+  // tipo DGII propio y mezclarlos con transferencia sería igual de arbitrario.
   const declaradoPorForma: DeclaracionForma[] = [
     { forma: 'efectivo', monto: totalFisico },
     { forma: 'tarjeta', monto: Number(pago.tarjeta) || 0 },
-    { forma: 'transferencia', monto: Number(pago.transferencia) || 0 },
-    { forma: 'otros', monto: (Number(pago.cheque) || 0) + (Number(pago.otro) || 0) + (Number(pago.deposito) || 0) + (Number(pago.documentos) || 0) },
+    { forma: 'transferencia', monto: (Number(pago.transferencia) || 0) + (Number(pago.cheque) || 0) + (Number(pago.deposito) || 0) },
+    { forma: 'otros', monto: (Number(pago.otro) || 0) + (Number(pago.documentos) || 0) },
   ];
 
   // Auto-llenar efectivo (modo normal) o limpiar todos los campos (modo ciego).
@@ -150,13 +156,18 @@ export function CierreCajaFormulario({
   }, [cajaHoy?.id, cajaHoy?.ciegoCajaActivo]);
 
   const m = (v: any) => fmt.money(Number(v ?? 0));
-  const vendidoContado = Number(cajaHoy?.ventasEfectivo ?? 0);
-  const vendidoDigital = Number(cajaHoy?.ventasTarjeta ?? 0) + Number(cajaHoy?.ventasTransferencia ?? 0);
+  // Mismas 4 formas que declaradoPorForma/el cuadre — antes "Vendido
+  // Tarj./Trans." las juntaba en un solo monto mientras el Desglose de Pago
+  // ya las pedía separadas, así que no había con qué comparar cada campo a
+  // simple vista (requisito explícito 2026-10-11).
+  const vendidoEfectivo = Number(cajaHoy?.ventasEfectivo ?? 0);
+  const vendidoTarjeta = Number(cajaHoy?.ventasTarjeta ?? 0);
+  const vendidoTransferencia = Number(cajaHoy?.ventasTransferencia ?? 0);
   const vendidoCredito = Number(cajaHoy?.ventasCredito ?? 0);
-  const totalVendido = vendidoContado + vendidoDigital + vendidoCredito;
+  const totalVendido = vendidoEfectivo + vendidoTarjeta + vendidoTransferencia + vendidoCredito;
   const totalRecibos = Number(cajaHoy?.cobrosRecibidos ?? 0);
   const efectivoInicial = Number(cajaHoy?.saldoApertura ?? 0);
-  const efectivoEnCaja = efectivoInicial + vendidoContado + totalRecibos;
+  const efectivoEnCaja = efectivoInicial + vendidoEfectivo + totalRecibos;
   const grid3: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 10 };
   const card: React.CSSProperties = { background: cardBg, border: `1px solid ${cardBorder}`, borderRadius: 10, padding: '14px 16px', marginBottom: 14 };
 
@@ -246,17 +257,20 @@ export function CierreCajaFormulario({
           <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 12 }}>Desglose de Operaciones</div>
           <div style={grid3}>
             <CierreField label="Efectivo Inicial" value={m(efectivoInicial)} />
-            <CierreField label="Vendido Contado" value={m(vendidoContado)} />
-            <CierreField label="Vendido Tarj./Trans." value={m(vendidoDigital)} />
+            <CierreField label="Vendido en Efectivo" value={m(vendidoEfectivo)} />
+            <CierreField label="Vendido Tarjeta" value={m(vendidoTarjeta)} />
           </div>
           <div style={grid3}>
+            <CierreField label="Vendido Transferencia" value={m(vendidoTransferencia)} />
             <CierreField label="Vendido Crédito" value={m(vendidoCredito)} />
             <CierreField label="Total Vendido" value={m(totalVendido)} highlight />
-            <CierreField label="Total Recibos" value={m(totalRecibos)} />
           </div>
           <div style={grid3}>
+            <CierreField label="Total Recibos" value={m(totalRecibos)} />
             <CierreField label="Total Anticipos" value={m(cajaHoy?.totalAnticipos ?? 0)} />
             <CierreField label="Total Dev. y Des" value={m(cajaHoy?.gastosEfectivo ?? 0)} />
+          </div>
+          <div style={grid3}>
             <CierreField label="Efectivo en Caja" value={m(efectivoEnCaja)} highlight />
           </div>
         </div>
