@@ -26,7 +26,7 @@ export class ReportesPrestamistaService {
               p."cuotasVencidas", p."tasaInteresMensual"
          FROM pr_prestamos p
          JOIN pr_deudores d ON d.id=p."deudorId" AND d."empresaId"=p."empresaId"
-         LEFT JOIN pr_productos_prestamo pr ON pr.id=p."productoId"
+         LEFT JOIN pr_productos_prestamo pr ON pr.id=p."productoId" AND pr."empresaId"=p."empresaId"
         WHERE p."empresaId"=$1 AND p.estado NOT IN ('cancelado','refinanciado')
         ORDER BY p.estado, p."saldoTotal" DESC`,
       [empresaId],
@@ -153,7 +153,7 @@ export class ReportesPrestamistaService {
               COUNT(p.id) FILTER(WHERE p.estado='vencido') AS vencidos,
               COUNT(p.id) FILTER(WHERE p.estado='pagado') AS pagados
          FROM pr_prestamos p
-         LEFT JOIN pr_productos_prestamo pr ON pr.id=p."productoId"
+         LEFT JOIN pr_productos_prestamo pr ON pr.id=p."productoId" AND pr."empresaId"=p."empresaId"
         WHERE p."empresaId"=$1
         GROUP BY pr.nombre ORDER BY "capitalTotal" DESC`,
       [empresaId],
@@ -343,7 +343,7 @@ export class ReportesPrestamistaService {
               pg.numero AS pago, pg.fecha AS "fechaPago", pg."montoPagado",
               pg."aplicadoCapital", pg."aplicadoInteres", pg."aplicadoMora"
          FROM pr_prestamos p
-         LEFT JOIN pr_pagos pg ON pg."prestamoId"=p.id
+         LEFT JOIN pr_pagos pg ON pg."prestamoId"=p.id AND pg."empresaId"=p."empresaId"
         WHERE p."empresaId"=$1 AND p."deudorId"=$2
         ORDER BY p.id, pg.fecha`,
       [empresaId, deudorId],
