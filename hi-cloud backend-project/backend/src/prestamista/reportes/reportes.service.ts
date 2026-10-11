@@ -272,10 +272,20 @@ export class ReportesPrestamistaService {
   }
 
   // 10. Índices financieros (resumen)
+  //
+  // `indiceMorosidad` replica EXACTAMENTE la fórmula de
+  // CobranzaService.resumenCobranza (% de préstamos activos que están en
+  // moroso/vencido) — antes este método calculaba algo distinto y con el
+  // mismo nombre: saldoMora/saldoCapitalTotal*100 (mora acumulada sobre
+  // capital), que no es una tasa de morosidad real y nunca coincidía con el
+  // número que ve el cobrador en su propio resumen. Esa fórmula vieja se
+  // conserva como `moraSobreCartera`, que sí es una métrica útil pero con
+  // su propio nombre, sin pisar el índice real.
   async indicesFinancieros(empresaId: number) {
     const [kpis] = await this.ds.query<any[]>(
       `SELECT
          COUNT(*) FILTER(WHERE estado NOT IN ('cancelado','refinanciado')) AS "totalActivos",
+         COUNT(*) FILTER(WHERE estado NOT IN ('pagado','cancelado')) AS "totalParaIndice",
          COUNT(*) FILTER(WHERE estado='al_dia') AS "alDia",
          COUNT(*) FILTER(WHERE estado='moroso') AS morosos,
          COUNT(*) FILTER(WHERE estado='vencido') AS vencidos,
@@ -287,9 +297,13 @@ export class ReportesPrestamistaService {
        FROM pr_prestamos WHERE "empresaId"=$1`,
       [empresaId],
     );
-    const indiceMorosidad = kpis.saldoCapitalTotal > 0
+    const totalParaIndice = Number(kpis.totalParaIndice) || 0;
+    const totalEnMora = Number(kpis.morosos ?? 0) + Number(kpis.vencidos ?? 0);
+    const indiceMorosidad = totalParaIndice > 0
+      ? ((totalEnMora / totalParaIndice) * 100).toFixed(1) : '0.0';
+    const moraSobreCartera = kpis.saldoCapitalTotal > 0
       ? ((kpis.moraTotal / kpis.saldoCapitalTotal) * 100).toFixed(2) : '0.00';
-    const rows = [{ ...kpis, indiceMorosidad: `${indiceMorosidad}%` }];
+    const rows = [{ ...kpis, indiceMorosidad: `${indiceMorosidad}%`, moraSobreCartera: `${moraSobreCartera}%` }];
     return toCsv(rows, [
       { key: 'totalActivos', label: 'Préstamos Activos' },
       { key: 'alDia', label: 'Al Día' },
@@ -300,7 +314,8 @@ export class ReportesPrestamistaService {
       { key: 'saldoCapitalTotal', label: 'Saldo Capital Total (RD$)' },
       { key: 'moraTotal', label: 'Mora Total (RD$)' },
       { key: 'recaudadoTotal', label: 'Recaudado Total (RD$)' },
-      { key: 'indiceMorosidad', label: 'Índice de Morosidad' },
+      { key: 'indiceMorosidad', label: 'Índice de Morosidad (% préstamos en mora)' },
+      { key: 'moraSobreCartera', label: 'Mora Acumulada / Saldo Capital (%)' },
     ]);
   }
 
