@@ -17,6 +17,7 @@ import {
   RegistrarPagoDto, CrearSolicitudDto, DecidirSolicitudDto,
   CrearPrestamoDto, RefinanciarDto, CancelarPrestamoDto,
   CrearDesembolsoParcialDto, ReestructurarPrestamoDto, CondonarPrestamoDto,
+  RegistrarGestionDto, AsignarCobradorDto,
 } from './prestamista.dto';
 
 const OPCIONES_PIPE = { whitelist: true, forbidNonWhitelisted: true };
@@ -220,5 +221,56 @@ describe('CondonarPrestamoDto (§6)', () => {
   it('no existe ningún campo para condonar capital — fuera de alcance por diseño', async () => {
     const errs = await errores(CondonarPrestamoDto, { motivo: 'x', capitalACondonar: 100 });
     expect(errs.join(' ')).toMatch(/should not exist/i);
+  });
+});
+
+describe('RegistrarGestionDto (Etapa 3 — Cobranza)', () => {
+  const base = { prestamoId: 1, descripcion: 'Llamó, dijo que paga el viernes' };
+
+  it('acepta una gestión mínima (solo prestamoId + descripción)', async () => {
+    expect(await valido(RegistrarGestionDto, base)).toBe(true);
+  });
+
+  it('exige descripción no vacía', async () => {
+    expect(await valido(RegistrarGestionDto, { ...base, descripcion: '' })).toBe(false);
+    expect(await valido(RegistrarGestionDto, { prestamoId: 1 })).toBe(false);
+  });
+
+  it('solo admite los tipos del catálogo de gestión', async () => {
+    expect(await valido(RegistrarGestionDto, { ...base, tipo: 'llamada' })).toBe(true);
+    expect(await valido(RegistrarGestionDto, { ...base, tipo: 'telegrama' })).toBe(false);
+  });
+
+  it('solo admite los resultados del catálogo', async () => {
+    expect(await valido(RegistrarGestionDto, { ...base, resultado: 'promesa_pago' })).toBe(true);
+    expect(await valido(RegistrarGestionDto, { ...base, resultado: 'contactado' })).toBe(false);
+  });
+
+  it('rechaza montoPrometido negativo', async () => {
+    expect(await valido(RegistrarGestionDto, { ...base, montoPrometido: -1 })).toBe(false);
+  });
+
+  it('el formulario no puede mandar cobradorId a mano — se toma SIEMPRE del usuario autenticado', async () => {
+    const errs = await errores(RegistrarGestionDto, { ...base, cobradorId: 99 });
+    expect(errs.join(' ')).toMatch(/should not exist/i);
+  });
+});
+
+describe('AsignarCobradorDto (Etapa 3 — reasignación de cartera)', () => {
+  it('acepta un cobradorId positivo', async () => {
+    expect(await valido(AsignarCobradorDto, { cobradorId: 5 })).toBe(true);
+  });
+
+  it('acepta cobradorId null para desasignar', async () => {
+    expect(await valido(AsignarCobradorDto, { cobradorId: null })).toBe(true);
+  });
+
+  it('acepta el body vacío (equivalente a desasignar)', async () => {
+    expect(await valido(AsignarCobradorDto, {})).toBe(true);
+  });
+
+  it('rechaza un cobradorId que no sea un entero positivo', async () => {
+    expect(await valido(AsignarCobradorDto, { cobradorId: 0 })).toBe(false);
+    expect(await valido(AsignarCobradorDto, { cobradorId: -3 })).toBe(false);
   });
 });
