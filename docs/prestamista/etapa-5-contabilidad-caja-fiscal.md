@@ -203,9 +203,18 @@ quedó al día para lo que esta etapa necesitaba.
 - **Frontend** (Vitest): `PrestamosPage.test.tsx` (2, nuevo — selector de
   caja en "Nuevo Préstamo"); `DetallePrestamo.*` y `ConfiguracionPage.tsx`
   no necesitaron tests nuevos propios para esta etapa aparte de los ya
-  existentes, que siguen en verde sin cambios (confirmado al correr la
-  suite completa). Suite completa: **79/79 archivos, 673 + 2 nuevos en
-  verde**.
+  existentes. Corridos SOLOS (sin la suite completa en paralelo), los 2
+  tests nuevos pasan en ~37s. En la suite COMPLETA (`npx vitest run`) se
+  unen a la franja YA DOCUMENTADA (memoria: "Deuda: test NC-compras lento")
+  de tests que exceden su timeout bajo carga de máquina —
+  `ClienteFormModal`, `SelectClienteConAlta`, `NotasCreditoComprasPage`
+  (preexistentes, no tocados por esta etapa) y, de forma nueva,
+  `DetallePrestamo.anulacion-garantias.test.tsx` (tampoco tocado por el
+  código de esta etapa) y `PrestamosPage.test.tsx` mismo (ya con su timeout
+  individual subido a 60s, igual que el precedente de NC-compras). Confirmado
+  con dos corridas completas independientes — ninguna rompió
+  `efectivo-esperado.util.spec.ts` ni `caja.service.spec.ts`, los archivos
+  centrales que esta etapa sí modifica y los que de verdad importan aquí.
 - Typecheck limpio (`npx tsc --noEmit`) en ambos lados.
 
 ## Resumen final

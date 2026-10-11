@@ -127,6 +127,13 @@ valores de arranque.
   Si se necesita: nuevo valor de enum (ej. `DESEMBOLSO_PRESTAMO`) + migración
   + un resolver nuevo en `EmitirECFUseCase.cargarDocumentoOrigen()` keyado
   por `prestamoId`/`desembolsoId` en vez de `pagoId`.
+- **`PrestamosPage.test.tsx` se une a la franja de tests lentos bajo carga**:
+  sus 2 tests pasan limpio en ~37s corridos solos, pero bajo la suite
+  completa de Vitest pueden exceder hasta su timeout individual ya subido
+  a 60s (mismo patrón que `NotasCreditoComprasPage`/`ClienteFormModal`/
+  `SelectClienteConAlta`, dos Selects antd encadenados dentro de un Modal).
+  No se intentó resolver la causa raíz (contención de recursos del runner
+  de Vitest bajo carga) — queda en la misma categoría de deuda aceptada.
 - **Base de datos local de integración desactualizada**: la BD de pruebas
   de integración real (`127.0.0.1:5433/hicloud_test`, nunca producción —
   usada por specs como `cw-liquidaciones.service.spec.ts`) no tenía ninguna
