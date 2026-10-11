@@ -396,9 +396,30 @@ export class PrestamosService {
     return { id, numero: p.numero, saldoCapital, saldoInteres, saldoMora, saldoTotal, estado: nuevoEstado };
   }
 
+  // Etapa 6 — Seguridad: cancelar() solo verificaba `estado === 'cancelado'`,
+  // así que dejaba cancelar un préstamo con dinero YA entregado
+  // (desembolso_parcial) o con pagos YA cobrados (totalPagado > 0) — sin
+  // reversar ningún asiento contable del desembolso ni exigir la misma
+  // autorización que anular()/condonar()/reestructurar(). Un préstamo así
+  // queda "cancelado" (sale de cartera activa, resta prestamosActivos al
+  // deudor) con la plata ya fuera y sin rastro de por qué el saldo nunca se
+  // recuperó — el mismo efecto que condonar el 100%, pero sin ninguna de
+  // sus salvaguardas. Cancelar debe quedar para préstamos SIN movimiento de
+  // dinero real: anula los pagos primero (PagosService.anular, que sí
+  // reversa todo) o usa condonación/reestructuración si ya hubo desembolso.
   async cancelar(empresaId: number, id: number, motivo?: string) {
     const p = await this.orFail(empresaId, id);
     if (p.estado === 'cancelado') throw new BadRequestException('Préstamo ya cancelado');
+    if (p.estado === 'desembolso_parcial') {
+      throw new BadRequestException(
+        'Este préstamo tiene desembolso pendiente — no se puede cancelar con dinero ya entregado.',
+      );
+    }
+    if (Number(p.totalPagado ?? 0) > 0) {
+      throw new BadRequestException(
+        'Este préstamo ya tiene pagos registrados — anula los pagos primero, o usa condonación/reestructuración en vez de cancelar.',
+      );
+    }
     await this.ds.query(
       `UPDATE pr_prestamos SET estado='cancelado', notas=CONCAT(COALESCE(notas,''), ' | Cancelado: ', $1), "updatedAt"=NOW()
        WHERE id=$2 AND "empresaId"=$3`,
