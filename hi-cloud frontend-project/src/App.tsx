@@ -10,6 +10,8 @@ import 'dayjs/locale/es';
 
 import { useAuthStore, registerLogoutCallback }  from './store/auth.store';
 import { onSessionEnd, markNavigatingAway }      from './utils/sessionEvents';
+import { leerJSON, leerTexto } from './utils/safeStorage';
+import type { AuthUser } from './types';
 import { useThemeStore } from './store/theme.store';
 import { purgarBorradoresVencidos } from './hooks/useFormDraft';
 import { guardarReturnTo } from './utils/returnTo';
@@ -548,7 +550,7 @@ export default function App() {
     // Si el usuario hizo logout (no hay auth_user en localStorage) y está en una
     // página pública, no intentar rehidratar — evita que la cookie httpOnly restaure
     // la sesión silenciosamente después de un logout explícito.
-    const savedUser = localStorage.getItem('auth_user');
+    const savedUser = leerJSON<AuthUser>(localStorage, 'auth_user');
     const publicPaths = ['/login', '/registrar', '/solicitar-demo', '/recuperar-contrasena',
                          '/restablecer', '/verificar-correo', '/portal/',
                          '/invitacion/', '/precios', '/auth/callback',
@@ -576,15 +578,13 @@ export default function App() {
           // si la cookie httpOnly ahora resuelve a un usuario distinto al que
           // dejó esos datos, no son suyos: se descartan en vez de arrastrarlos
           // a una empresa (y un rol) que no le pertenecen.
-          let cachedUserId: number | undefined;
-          try { cachedUserId = savedUser ? JSON.parse(savedUser)?.id : undefined; } catch { /* ignorar */ }
+          const cachedUserId = savedUser?.id;
           const esMismoUsuario = cachedUserId === user?.id;
 
-          const empresaId      = esMismoUsuario ? localStorage.getItem('empresaId') : null;
-          const empresasRaw    = esMismoUsuario ? localStorage.getItem('mis_empresas') : null;
-          const empresas       = empresasRaw ? JSON.parse(empresasRaw) : [];
-          const sucursalId     = esMismoUsuario ? localStorage.getItem('sucursalId') : null;
-          const sucursalNombre = esMismoUsuario ? localStorage.getItem('sucursalNombre') : null;
+          const empresaId      = esMismoUsuario ? leerTexto(localStorage, 'empresaId') : null;
+          const empresas       = esMismoUsuario ? (leerJSON<any[]>(localStorage, 'mis_empresas') ?? []) : [];
+          const sucursalId     = esMismoUsuario ? leerTexto(localStorage, 'sucursalId') : null;
+          const sucursalNombre = esMismoUsuario ? leerTexto(localStorage, 'sucursalNombre') : null;
           // login() resuelve el rol por la empresa activa internamente
           // (resolverRolPorEmpresa) — no hay que corregirlo aquí también.
           login(user, empresaId ? Number(empresaId) : null, empresas,

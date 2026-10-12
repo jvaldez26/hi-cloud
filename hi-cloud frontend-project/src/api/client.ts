@@ -4,6 +4,7 @@ import * as Sentry from '@sentry/react';
 import { moduloActual } from '../observability/sentryScope';
 import { emitSessionEnd, markNavigatingAway, isNavigatingAway, solicitarReautenticacion, solicitarAutorizacionSupervisor } from '../utils/sessionEvents';
 import { registrarHoraServidor } from '../utils/fechaRD';
+import { leerJSON } from '../utils/safeStorage';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '/api/v1';
 
@@ -421,8 +422,7 @@ apiClient.interceptors.response.use(
       localStorage.removeItem('empresaId');
 
       // Verificar si el usuario tiene otras empresas activas
-      const misEmpresasRaw = localStorage.getItem('mis_empresas');
-      const misEmpresas: any[] = misEmpresasRaw ? JSON.parse(misEmpresasRaw) : [];
+      const misEmpresas: any[] = leerJSON<any[]>(localStorage, 'mis_empresas') ?? [];
       const otraEmpresaActiva = misEmpresas.find(
         (e: any) => String(e.empresaId) !== String(empresaIdActual),
       );

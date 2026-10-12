@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAuthStore } from './auth.store';
 import type { AuthUser, EmpresaItem } from '../types';
 
@@ -127,5 +127,73 @@ describe('auth.store — resolución de rol por empresa activa', () => {
 
     expect(useAuthStore.getState().user?.role).toBe('admin');
     expect(useAuthStore.getState().empresaActual).toBe(EMPRESA_A.empresaId);
+  });
+});
+
+// Sentry 7683266205 (producción, 2026-10-12): la inicialización del store
+// (`user: savedUser ? JSON.parse(savedUser) : null`) corre a nivel de MÓDULO
+// — antes de que React monte nada — así que un dato corrupto en localStorage
+// (la cadena literal "undefined", guardada quién sabe cómo) tumbaba la carga
+// ENTERA de la app, sin pasar por ningún try/catch de componente. El módulo
+// solo se ejecuta una vez por proceso, así que cada caso necesita su propio
+// `vi.resetModules()` + reimportación dinámica para forzar una inicialización
+// nueva con el localStorage ya sembrado.
+describe('auth.store — inicialización defensiva contra localStorage corrupto', () => {
+  it('auth_user = "undefined" (el caso real del incidente): la app carga igual, con user null, en vez de reventar al importar el módulo', async () => {
+    localStorage.clear();
+    localStorage.setItem('auth_user', 'undefined');
+    vi.resetModules();
+    const { useAuthStore: store } = await import('./auth.store');
+    expect(store.getState().user).toBeNull();
+    expect(localStorage.getItem('auth_user')).toBeNull(); // la clave corrupta se limpia, no se vuelve a tropezar con ella
+  });
+
+  it('mis_empresas = "null": empresas queda como lista vacía, no revienta', async () => {
+    localStorage.clear();
+    localStorage.setItem('mis_empresas', 'null');
+    vi.resetModules();
+    const { useAuthStore: store } = await import('./auth.store');
+    expect(store.getState().empresas).toEqual([]);
+  });
+
+  it('auth_user con JSON roto (truncado): user queda null, la clave se limpia', async () => {
+    localStorage.clear();
+    localStorage.setItem('auth_user', '{"id":1,"nombre":"Ana"');
+    vi.resetModules();
+    const { useAuthStore: store } = await import('./auth.store');
+    expect(store.getState().user).toBeNull();
+    expect(localStorage.getItem('auth_user')).toBeNull();
+  });
+
+  it('todas las claves corruptas a la vez: la app sigue cargando, con el estado por defecto', async () => {
+    localStorage.clear();
+    localStorage.setItem('auth_user', 'undefined');
+    localStorage.setItem('mis_empresas', 'undefined');
+    localStorage.setItem('empresaId', 'undefined');
+    localStorage.setItem('sucursalId', 'undefined');
+    localStorage.setItem('almacenId', 'undefined');
+    localStorage.setItem('sucursalNombre', 'undefined');
+    vi.resetModules();
+    const { useAuthStore: store } = await import('./auth.store');
+    const s = store.getState();
+    expect(s.user).toBeNull();
+    expect(s.empresas).toEqual([]);
+    expect(s.empresaActual).toBeNull();
+    expect(s.sucursalActual).toBeNull();
+    expect(s.almacenActual).toBeNull();
+    expect(s.sucursalNombre).toBeNull();
+  });
+
+  it('login() nunca guarda la cadena "undefined" — si el user resuelto quedara undefined, borra la clave en vez de escribirla', async () => {
+    vi.resetModules();
+    const { useAuthStore: store } = await import('./auth.store');
+    store.getState().login(USUARIO, null, []);
+    // El flujo normal nunca pasa undefined, pero la escritura en sí
+    // (guardarJSON) es la barrera real: lo prueba safeStorage.test.ts
+    // directamente. Aquí solo confirmamos que un login real nunca deja
+    // la cadena "undefined" en ninguna clave.
+    for (const clave of ['auth_user', 'empresaId', 'mis_empresas', 'almacenId', 'sucursalId', 'sucursalNombre']) {
+      expect(localStorage.getItem(clave)).not.toBe('undefined');
+    }
   });
 });

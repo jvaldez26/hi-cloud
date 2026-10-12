@@ -3,6 +3,7 @@ import type { AuthUser } from '../types';
 import { syncSentryScope } from '../observability/sentryScope';
 import { borrarCarritoYEspera, idDePestana } from '../pages/pos/carritoStorage';
 import { resolverRolPorEmpresa } from '../utils/resolverRolPorEmpresa';
+import { leerJSON, leerTexto, guardarJSON, guardarTexto } from '../utils/safeStorage';
 
 // Callback registrado por App.tsx para limpiar React Query al cerrar sesión.
 let _onLogout: (() => void) | null = null;
@@ -57,21 +58,22 @@ interface AuthState {
   updateUser:        (partial: Partial<AuthUser>) => void;
 }
 
-// Solo guardamos info de UI (NO el token — ahora vive en cookie httpOnly)
-const savedUser          = (() => { try { return localStorage.getItem('auth_user'); } catch { return null; } })();
-const savedEmpresa       = (() => { try { return localStorage.getItem('empresaId'); } catch { return null; } })();
-const savedEmpresas      = (() => { try { return localStorage.getItem('mis_empresas'); } catch { return null; } })();
-const savedAlmacen       = (() => { try { return localStorage.getItem('almacenId'); } catch { return null; } })();
-const savedSucursal      = (() => { try { return localStorage.getItem('sucursalId'); } catch { return null; } })();
-const savedSucursalNom   = (() => { try { return localStorage.getItem('sucursalNombre'); } catch { return null; } })();
+// Solo guardamos info de UI (NO el token — ahora vive en cookie httpOnly).
+// Toda lectura/escritura pasa por safeStorage: un dato corrupto (incluida la
+// cadena literal "undefined") nunca puede tumbar la carga de la app — esta
+// inicialización corre a nivel de MÓDULO, antes de que React monte nada, así
+// que ningún try/catch de componente llega a protegerla (ver safeStorage.ts).
+const savedEmpresa  = leerTexto(localStorage, 'empresaId');
+const savedAlmacen  = leerTexto(localStorage, 'almacenId');
+const savedSucursal = leerTexto(localStorage, 'sucursalId');
 
 export const useAuthStore = create<AuthState>((set, get) => ({
-  user:           savedUser     ? (JSON.parse(savedUser) as AuthUser) : null,
+  user:           leerJSON<AuthUser>(localStorage, 'auth_user'),
   empresaActual:  savedEmpresa  ? Number(savedEmpresa) : null,
-  empresas:       savedEmpresas ? (JSON.parse(savedEmpresas) as EmpresaItem[]) : [],
+  empresas:       leerJSON<EmpresaItem[]>(localStorage, 'mis_empresas') ?? [],
   almacenActual:  savedAlmacen  ? Number(savedAlmacen) : null,
   sucursalActual: savedSucursal ? Number(savedSucursal) : null,
-  sucursalNombre: savedSucursalNom ?? null,
+  sucursalNombre: leerTexto(localStorage, 'sucursalNombre'),
   hydrated:       false,
 
   login: (user, empresaActual, empresas = [], almacenActual?, sucursalActual?, sucursalNombre?) => {
@@ -85,22 +87,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const userResuelto = rolResuelto === user.role ? user : { ...user, role: rolResuelto };
 
     // Token NO se guarda — está en cookie httpOnly, JS no puede verlo
-    localStorage.setItem('auth_user', JSON.stringify(userResuelto));
+    guardarJSON(localStorage, 'auth_user', userResuelto);
 
     if (empresaResuelta) {
-      localStorage.setItem('empresaId',    String(empresaResuelta));
-      localStorage.setItem('mis_empresas', JSON.stringify(empresas));
+      guardarTexto(localStorage, 'empresaId',    String(empresaResuelta));
+      guardarJSON(localStorage,  'mis_empresas', empresas);
     } else {
-      localStorage.removeItem('empresaId');
-      localStorage.removeItem('mis_empresas');
+      guardarTexto(localStorage, 'empresaId', null);
+      guardarJSON(localStorage,  'mis_empresas', null);
     }
 
-    if (almacenActual)   localStorage.setItem('almacenId',      String(almacenActual));
-    else                 localStorage.removeItem('almacenId');
-    if (sucursalActual)  localStorage.setItem('sucursalId',     String(sucursalActual));
-    else                 localStorage.removeItem('sucursalId');
-    if (sucursalNombre)  localStorage.setItem('sucursalNombre', sucursalNombre);
-    else                 localStorage.removeItem('sucursalNombre');
+    guardarTexto(localStorage, 'almacenId',      almacenActual   ? String(almacenActual)  : null);
+    guardarTexto(localStorage, 'sucursalId',     sucursalActual  ? String(sucursalActual) : null);
+    guardarTexto(localStorage, 'sucursalNombre', sucursalNombre  || null);
 
     set({ user: userResuelto, empresaActual: empresaResuelta, empresas, almacenActual: almacenActual ?? null, sucursalActual: sucursalActual ?? null, sucursalNombre: sucursalNombre ?? null, hydrated: true });
   },
@@ -141,7 +140,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isAuth: () => !!get().user,
 
   cambiarEmpresa: (empresaId, empresasFrescas) => {
-    localStorage.setItem('empresaId', String(empresaId));
+    guardarTexto(localStorage, 'empresaId', String(empresaId));
     set(state => {
       if (!state.user) return { empresaActual: empresaId };
       // Si el caller trae una lista más fresca que la del store (ej. AppLayout
@@ -151,26 +150,24 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const listaParaResolver = empresasFrescas && empresasFrescas.length > 0 ? empresasFrescas : state.empresas;
       const { rol: rolResuelto } = resolverRolPorEmpresa(state.user.role, empresaId, listaParaResolver);
       const newUser = rolResuelto === state.user.role ? state.user : { ...state.user, role: rolResuelto };
-      if (newUser !== state.user) localStorage.setItem('auth_user', JSON.stringify(newUser));
-      if (empresasFrescas && empresasFrescas.length > 0) localStorage.setItem('mis_empresas', JSON.stringify(empresasFrescas));
+      if (newUser !== state.user) guardarJSON(localStorage, 'auth_user', newUser);
+      if (empresasFrescas && empresasFrescas.length > 0) guardarJSON(localStorage, 'mis_empresas', empresasFrescas);
       return { empresaActual: empresaId, user: newUser, empresas: listaParaResolver };
     });
   },
 
   setSucursalActual: (sucursalId) => {
-    localStorage.setItem('sucursalId', String(sucursalId));
+    guardarTexto(localStorage, 'sucursalId', String(sucursalId));
     set(() => ({ sucursalActual: sucursalId }));
   },
 
   setSucursalNombre: (nombre) => {
-    if (nombre) localStorage.setItem('sucursalNombre', nombre);
-    else        localStorage.removeItem('sucursalNombre');
+    guardarTexto(localStorage, 'sucursalNombre', nombre);
     set(() => ({ sucursalNombre: nombre }));
   },
 
   setAlmacenActual: (almacenId) => {
-    if (almacenId != null) localStorage.setItem('almacenId', String(almacenId));
-    else localStorage.removeItem('almacenId');
+    guardarTexto(localStorage, 'almacenId', almacenId != null ? String(almacenId) : null);
     set(() => ({ almacenActual: almacenId }));
   },
 
@@ -186,7 +183,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set(state => {
       if (!state.user) return {};
       const updated = { ...state.user, ...partial };
-      localStorage.setItem('auth_user', JSON.stringify(updated));
+      guardarJSON(localStorage, 'auth_user', updated);
       return { user: updated };
     });
   },
