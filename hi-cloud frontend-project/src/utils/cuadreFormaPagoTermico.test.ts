@@ -30,30 +30,30 @@ import { bloqueCuadreFormaPagoTermico } from './cuadreFormaPagoTermico';
  * ajeno al que ya usa el resto del ticket — bastaba con que divergiera un
  * punto del tamaño real del cuerpo (ej. un cambio futuro en IMPRESORA_CONFIG)
  * para que la tabla volviera a verse distinta sin que nadie lo notara.
- * Rediseño final: el bloque se construye con el MISMO elemento, la MISMA
- * clase CSS y la MISMA función de línea que el resto del cierre — `.row`
- * (exactamente la que ya pinta "Gastos:"/"Retiros:") y `.small.bold` para
- * los títulos (exactamente la que ya atenúa "EGRESOS") — así es estructuralmente
- * imposible que este bloque divergiera en tamaño del resto, sin depender de
- * medir ni mantener un valor en pt. A 58mm/80mm, donde una fila FORMA+3
- * montos no cabe en los 2 spans de `.row`, el nombre de la forma va en su
- * propio `<div>` y los 3 montos en un `.row` aparte, alineados con NBSP.
+ * Rediseño: el bloque se construye con el MISMO elemento, la MISMA clase CSS
+ * y la MISMA función de línea que el resto del cierre — `.row` (exactamente
+ * la que ya pinta "Gastos:"/"Retiros:") y `.small.bold` para los títulos
+ * (exactamente la que ya atenúa "EGRESOS") — así es estructuralmente
+ * imposible que este bloque divergiera en tamaño del resto. A 58mm/80mm,
+ * donde una fila FORMA+3 montos no cabe en los 2 spans de `.row`, el nombre
+ * de la forma va en su propio `<div>` y los 3 montos en una fila aparte.
+ *
+ * Sexta vuelta (2026-10-12): esa fila de 3 montos primero rellenaba cada
+ * columna con NBSP dentro de UN solo `<span>` de `.row` — pero `sanear()`
+ * (thermalPrinter.ts, aplicada a TODO dato del ticket) convierte NBSP a
+ * espacio normal antes de llegar al HTML, y el navegador colapsa esos
+ * espacios: la alineación por caracteres se rompía en la impresión real.
+ * Rediseño: `.row3`, 3 `<span>` de ancho igual (flex:1) con `text-align`
+ * fijo (ESPERADO izquierda, CONTADO centro, DIFER. derecha) — la alineación
+ * la da el CSS, nunca el contenido del texto, así que sanear() no puede
+ * romperla. `.row3` es puro layout, sin font-size/letter-spacing/
+ * line-height propios.
  */
 
 function parse(html: string): HTMLDivElement {
   const div = document.createElement('div');
   div.innerHTML = html;
   return div;
-}
-
-interface FilaRow { clase: string; izq: string; der: string }
-
-function filas(html: string): FilaRow[] {
-  return Array.from(parse(html).querySelectorAll('div.row')).map(el => ({
-    clase: el.className,
-    izq: el.children[0]?.textContent ?? '',
-    der: el.children[1]?.textContent ?? '',
-  }));
 }
 
 function textos(html: string, selector: string): string[] {
@@ -65,7 +65,7 @@ function textoPlano(html: string): string {
   return Array.from(parse(html).children).map(d => d.textContent ?? '').join(' ').replace(/\s+/g, ' ').trim();
 }
 
-const CLASES_PERMITIDAS = new Set(['row', 'small', 'bold', 'sep', 'center', 'fe-anulada']);
+const CLASES_PERMITIDAS = new Set(['row', 'row3', 'small', 'bold', 'sep', 'center', 'fe-anulada']);
 
 /** Nunca un [style] propio, y nunca una clase fuera de las que ya usa el resto del ticket. */
 function sinEstiloPropio(html: string): boolean {

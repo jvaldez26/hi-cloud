@@ -565,6 +565,10 @@ export default function CajaPage() {
     color:#000;background:#fff;-webkit-font-smoothing:none;font-smooth:never}
   .center{text-align:center}
   .row{display:flex;justify-content:space-between;gap:4px}
+  .row3{display:flex;gap:2px}
+  .row3>span{flex:1;min-width:0;text-align:left}
+  .row3>span:nth-child(2){text-align:center}
+  .row3>span:last-child{text-align:right}
   .bold{font-weight:900}
   .sep{color:#000;margin:2px 0}
   .small{font-size:0.85em}
@@ -737,6 +741,10 @@ ${line()}
     color:#000;background:#fff;-webkit-font-smoothing:none;font-smooth:never}
   .center{text-align:center}
   .row{display:flex;justify-content:space-between;gap:4px}
+  .row3{display:flex;gap:2px}
+  .row3>span{flex:1;min-width:0;text-align:left}
+  .row3>span:nth-child(2){text-align:center}
+  .row3>span:last-child{text-align:right}
   .bold{font-weight:900}
   .sep{color:#000;margin:2px 0}
   .small{font-size:0.85em}
