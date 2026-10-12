@@ -25,7 +25,7 @@ import { exportarExcel } from '../../utils/exportExcel';
 import dayjs from 'dayjs';
 import { dRD, fecha, hora, hoyRD } from '../../utils/fechaRD';
 import { bloqueFacturasTermico, CSS_FACTURAS_TERMICO } from '../../utils/cierreFacturasTermico';
-import { bloqueCuadreFormaPagoTermico, CSS_CUADRE_FORMA_PAGO_TERMICO } from '../../utils/cuadreFormaPagoTermico';
+import { bloqueCuadreFormaPagoTermico } from '../../utils/cuadreFormaPagoTermico';
 import { estadoDiferencia } from '../../utils/diferenciaCaja';
 import { sanear } from '../../services/thermalPrinter';
 
@@ -570,7 +570,6 @@ export default function CajaPage() {
   .small{font-size:0.85em}
   .xlarge{font-size:1.2em;font-weight:900}
   ${CSS_FACTURAS_TERMICO}
-  ${CSS_CUADRE_FORMA_PAGO_TERMICO}
 </style></head><body>
 ${empRes.razonSocial ?? empRes.nombre ? `<div class="center bold">${esc(empRes.razonSocial ?? empRes.nombre)}</div>` : ''}
 ${empRes.rnc        ? `<div class="center small">RNC: ${esc(empRes.rnc)}</div>` : ''}
@@ -606,7 +605,7 @@ ${line()}
 `}
 ${billetesRows ? `${line()}<div class="small bold">DESGLOSE DE BILLETES</div>\n${billetesRows}\n${row('Total billetes:', f(totalBilletes), true)}` : ''}
 ${r.notas      ? `${line()}<div class="small">Nota: ${esc(r.notas)}</div>` : ''}
-${bloqueFacturasTermico(detalle)}
+${bloqueFacturasTermico(detalle, tipoImp)}
 ${line()}
 <div class="center bold">** CIERRE DE CAJA **</div>
 <div class="center small">Documento interno</div>
@@ -743,7 +742,6 @@ ${line()}
   .small{font-size:0.85em}
   .xlarge{font-size:1.2em;font-weight:900}
   ${CSS_FACTURAS_TERMICO}
-  ${CSS_CUADRE_FORMA_PAGO_TERMICO}
 </style></head><body>
 ${empRes.razonSocial ?? empRes.nombre ? `<div class="center bold">${esc(empRes.razonSocial ?? empRes.nombre)}</div>` : ''}
 ${empRes.rnc        ? `<div class="center small">RNC: ${esc(empRes.rnc)}</div>` : ''}
@@ -780,7 +778,7 @@ ${line()}
 ${billetesRows ? `${line()}<div class="small bold">DESGLOSE DE BILLETES</div>\n${billetesRows}\n${row('Total billetes:', f(totalBilletes), true)}` : ''}
 ${seccionDetalle}
 ${r.notas      ? `${line()}<div class="small">Nota: ${esc(r.notas)}</div>` : ''}
-${bloqueFacturasTermico(detalle)}
+${bloqueFacturasTermico(detalle, tipoImp)}
 ${line()}
 <div class="center bold">** CIERRE DE CAJA **</div>
 <div class="center small">Documento interno</div>

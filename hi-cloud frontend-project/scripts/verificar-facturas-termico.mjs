@@ -105,7 +105,7 @@ console.log('\nMétodo de pago');
   const sinPago = M.bloqueFacturasTermico({ facturas: [fac({ formasPago: [] })] });
   // sanear() (2026-10-10) baja el guion largo a uno normal — sin caracteres
   // especiales en ningún dato de la impresión térmica, en ningún canal.
-  ok('sin forma de pago no rompe', sinPago.includes('<span class="fe-pago">-</span>') && !sinPago.includes('—'));
+  ok('sin forma de pago no rompe', sinPago.includes('14:30 - -') && !sinPago.includes('—'));
 }
 
 console.log('\nLínea final — el ticket viene completo, y por qué no cuadra con el de arriba');
@@ -144,6 +144,26 @@ console.log('\nLínea final — el ticket viene completo, y por qué no cuadra c
   // La suma del paréntesis SIEMPRE cuadra con el total de la línea.
   ok('emitidas + anuladas = impresas', conAnulada.includes('3 líneas') &&
      conAnulada.includes('(2 emitidas + 1 anulada)'));
+}
+
+console.log('\nTotal facturado: sin comas de millar a 58mm (si no, "Total facturado:" + el monto no cabe en una línea de .row, igual que el cuadre por forma de pago)');
+{
+  const grande = M.bloqueFacturasTermico(
+    { facturas: [fac({ total: 4650.50 })], resumen: { totalFacturas: 1, totalCanceladas: 0, total: 4650.50 } },
+    '58mm',
+  );
+  ok('a 58mm sale sin coma de millar', grande.includes('RD$4650.50') && !grande.includes('RD$4,650.50'));
+
+  const grande80 = M.bloqueFacturasTermico(
+    { facturas: [fac({ total: 4650.50 })], resumen: { totalFacturas: 1, totalCanceladas: 0, total: 4650.50 } },
+    '80mm',
+  );
+  ok('a 80mm conserva la coma de millar', grande80.includes('RD$4,650.50'));
+
+  const sinTipo = M.bloqueFacturasTermico(
+    { facturas: [fac({ total: 4650.50 })], resumen: { totalFacturas: 1, totalCanceladas: 0, total: 4650.50 } },
+  );
+  ok('sin tipoImpresora (carta/ninguna) conserva la coma, como antes', sinTipo.includes('RD$4,650.50'));
 }
 
 console.log('\nEl bloque no calcula dinero del cuadre');

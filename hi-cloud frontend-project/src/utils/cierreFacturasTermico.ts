@@ -10,6 +10,15 @@
  * endpoint que alimentan el PDF y el Excel. Aquí no se calcula ningún monto:
  * solo se formatea. Si el ticket sumara por su cuenta, acabaría discrepando de
  * los otros dos formatos ante la misma caja.
+ *
+ * Tamaño de letra (requisito de negocio 2026-10-11, mismo criterio que
+ * cuadreFormaPagoTermico.ts): la línea principal de cada factura (folio +
+ * monto) usa `.row`, la MISMA clase que ya imprime "Gastos:"/"Retiros:" en
+ * la plantilla — nada de font-size propio. Hora y método de pago, al ser un
+ * dato secundario (igual que "RNC: ..." bajo el nombre de la empresa, que ya
+ * usa `.small` en toda la plantilla), sí usan `.small` — esa es la MISMA
+ * clase que atenúa el resto de los datos secundarios del ticket, no un
+ * tamaño inventado para esta tabla.
  */
 
 import { sanear } from '../services/thermalPrinter';
@@ -55,6 +64,13 @@ const esc = (s: unknown) =>
 
 const money = (v: number) =>
   Number(v ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// Sin comas de millar: a 58mm, "Total facturado:" + un monto con comas puede
+// no caber en una sola línea de `.row` (mismo ancho que el resto del ticket,
+// sin tamaño propio) y partirse a media palabra. Igual que ya hace el cuadre
+// por forma de pago a 58mm (ver cuadreFormaPagoTermico.ts, TABLA_58MM.comas).
+const moneySinComas = (v: number) =>
+  Number(v ?? 0).toFixed(2);
 
 /**
  * Hora en zona RD. Igual que en el resto del ERP: el locale elige el formato,
@@ -110,20 +126,24 @@ function lineaImpresas(facturas: FacturaDetalleTermico[]): string {
  * cierre a medias no sirve para cuadrar, y quien quiera algo más corto tiene
  * el PDF y el Excel.
  */
-export function bloqueFacturasTermico(detalle: DetalleCierreTermico | null | undefined): string {
+export function bloqueFacturasTermico(
+  detalle: DetalleCierreTermico | null | undefined,
+  tipoImpresora?: string,
+): string {
   const facturas = detalle?.facturas ?? [];
   if (facturas.length === 0) return '';
 
+  // Dos líneas por factura: folio + monto con `.row` (la MISMA clase que
+  // "Gastos:"/"Retiros:" — flexbox ya alinea el monto a la derecha, sin
+  // tamaño propio) y, debajo, hora + método con `.small` (dato secundario,
+  // igual que "RNC: ..." bajo el nombre de la empresa, que ya usa `.small`
+  // en toda la plantilla).
   const filas = facturas.map(f => {
-    const clases = `fe-row${f.cancelada ? ' fe-anulada' : ''}`;
-    // Una sola línea: número · hora · método · monto. Sin líneas de producto.
+    const folio  = `${f.folio}${f.cancelada ? ' ANULADA' : ''}`;
+    const clase  = `row${f.cancelada ? ' fe-anulada' : ''}`;
     return (
-      `<div class="${clases}">` +
-        `<span class="fe-num">${esc(f.folio)}${f.cancelada ? ' ANULADA' : ''}</span>` +
-        `<span class="fe-hora">${esc(horaRD(f.hora))}</span>` +
-        `<span class="fe-pago">${esc(metodoCorto(f.formasPago))}</span>` +
-        `<span class="fe-tot">${esc(money(f.total))}</span>` +
-      `</div>`
+      `<div class="${clase}"><span>${esc(folio)}</span><span>${esc(money(f.total))}</span></div>` +
+      `<div class="small${f.cancelada ? ' fe-anulada' : ''}">${esc(horaRD(f.hora))} - ${esc(metodoCorto(f.formasPago))}</div>`
     );
   }).join('');
 
@@ -133,41 +153,28 @@ export function bloqueFacturasTermico(detalle: DetalleCierreTermico | null | und
   const nEmitidas = detalle?.resumen?.totalFacturas   ?? activas.length;
   const nAnuladas = detalle?.resumen?.totalCanceladas ?? (facturas.length - activas.length);
   const suma      = detalle?.resumen?.total           ?? activas.reduce((s, f) => s + Number(f.total), 0);
+  const montoTotal = tipoImpresora === '58mm' ? moneySinComas(suma) : money(suma);
 
   return `
     <div class="sep">--------------------------------</div>
-    <div class="fe-titulo">FACTURAS EMITIDAS</div>
-    <div class="fe-cab">
-      <span class="fe-num">FACTURA</span>
-      <span class="fe-hora">HORA</span>
-      <span class="fe-pago">PAGO</span>
-      <span class="fe-tot">MONTO</span>
-    </div>
+    <div class="small bold">FACTURAS EMITIDAS</div>
     ${filas}
     <div class="sep">--------------------------------</div>
-    <div class="fe-res"><span>Facturas emitidas:</span><span>${nEmitidas}</span></div>
-    ${nAnuladas > 0 ? `<div class="fe-res"><span>Anuladas (no suman):</span><span>${nAnuladas}</span></div>` : ''}
-    <div class="fe-res fe-bold"><span>Total facturado:</span><span>RD$${esc(money(suma))}</span></div>
-    <div class="fe-impresas">${lineaImpresas(facturas)}</div>
+    <div class="row"><span>Facturas emitidas:</span><span>${nEmitidas}</span></div>
+    ${nAnuladas > 0 ? `<div class="row"><span>Anuladas (no suman):</span><span>${nAnuladas}</span></div>` : ''}
+    <div class="row bold"><span>Total facturado:</span><span>RD$${esc(montoTotal)}</span></div>
+    <div class="center small">${lineaImpresas(facturas)}</div>
   `;
 }
 
 /**
  * CSS del bloque. Se inyecta una sola vez en el <style> de la plantilla.
  *
- * Anchos en porcentaje, no en mm: la plantilla ya define el ancho del papel
- * (58 mm, 80 mm o carta) y este bloque se adapta al que haya. No se inventa uno.
+ * Solo lo que NINGUNA clase ya definida en la plantilla cubre: el tachado
+ * de las anuladas. Todo lo demás (tamaño de letra, alineación, negrita)
+ * sale de `.row`/`.small`/`.bold`, las mismas clases que usa el resto del
+ * ticket — así es imposible que este bloque divergiera en tamaño del resto.
  */
 export const CSS_FACTURAS_TERMICO = `
-  .fe-titulo{font-weight:700;text-align:center;margin:2px 0}
-  .fe-cab{display:flex;font-size:.72em;font-weight:700;border-bottom:1px solid #000;padding-bottom:1px}
-  .fe-row{display:flex;font-size:.78em;padding:1px 0}
-  .fe-row.fe-anulada{text-decoration:line-through;opacity:.6}
-  .fe-num{flex:0 0 34%;overflow:hidden;white-space:nowrap}
-  .fe-hora{flex:0 0 16%}
-  .fe-pago{flex:0 0 20%}
-  .fe-tot{flex:1 1 30%;text-align:right;font-variant-numeric:tabular-nums}
-  .fe-res{display:flex;justify-content:space-between;font-size:.85em}
-  .fe-res.fe-bold{font-weight:700}
-  .fe-impresas{text-align:center;font-size:.72em;margin-top:2px}
+  .fe-anulada{text-decoration:line-through;opacity:.6}
 `;
