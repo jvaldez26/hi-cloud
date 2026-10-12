@@ -34,7 +34,7 @@ describe('CierreCajaFormulario', () => {
     // tarjeta>0 y efectivo>0 (vía billetes), transferencia/otros en 0 →
     // la confirmación aparece SOLO para esas dos formas vacías.
     await screen.findByRole('button', { name: 'Sí, confirmar y cerrar' });
-    expect(screen.getByText(/Transferencia, Cheque \/ Depósito \/ Otro \/ Documentos/)).toBeInTheDocument();
+    expect(screen.getByText(/Transferencia \/ Cheque \/ Depósito, Otro \/ Documentos/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Sí, confirmar y cerrar' }));
 
     await waitFor(() => expect(onCerrar).toHaveBeenCalledTimes(1));
@@ -58,17 +58,21 @@ describe('CierreCajaFormulario', () => {
     fireEvent.change(screen.getByLabelText('Tarjeta'), { target: { value: '2000' } });
     fireEvent.change(screen.getByLabelText('Transferencia'), { target: { value: '100' } });
     fireEvent.change(screen.getByLabelText('Cheque'), { target: { value: '50' } });
+    fireEvent.change(screen.getByLabelText('Otro'), { target: { value: '25' } });
 
     fireEvent.click(screen.getByRole('button', { name: 'Grabar' }));
 
     await waitFor(() => expect(onCerrar).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole('button', { name: 'Sí, confirmar y cerrar' })).not.toBeInTheDocument();
     const payload: CierreCajaPayload = onCerrar.mock.calls[0][0];
+    // Cheque entra al bucket "transferencia" (DGII tipo 2, igual que
+    // ventasTransferencia en el backend) — NO a "otros", que compara contra
+    // ventas a crédito y nunca tendría con qué cuadrar un cheque real.
     expect(payload.declaradoPorForma).toEqual([
       { forma: 'efectivo', monto: 1500 },
       { forma: 'tarjeta', monto: 2000 },
-      { forma: 'transferencia', monto: 100 },
-      { forma: 'otros', monto: 50 },
+      { forma: 'transferencia', monto: 150 },
+      { forma: 'otros', monto: 25 },
     ]);
   });
 
@@ -92,6 +96,25 @@ describe('CierreCajaFormulario', () => {
     expect(screen.getByText(/Modo ciego activo/)).toBeInTheDocument();
   });
 
+  // Requisito explícito (2026-10-11): un turno con efectivo, tarjeta Y
+  // transferencia debe mostrar cada forma en su propio renglón del Desglose
+  // de Operaciones — antes tarjeta+transferencia salían sumadas en un solo
+  // "Vendido Tarj./Trans.", sin con qué comparar cada campo del Desglose de
+  // Pago (que ya las pedía por separado).
+  it('el Desglose de Operaciones muestra efectivo, tarjeta y transferencia en renglones separados, no combinados', () => {
+    const valorDe = (label: string) => screen.getByText(label).nextElementSibling?.textContent ?? '';
+    render(<CierreCajaFormulario
+      cajaHoy={{ ...CAJA_HOY, ventasEfectivo: 1000, ventasTarjeta: 2000, ventasTransferencia: 300 }}
+      onCerrar={vi.fn().mockResolvedValue(undefined)}
+    />);
+
+    expect(screen.queryByText('Vendido Contado')).not.toBeInTheDocument();
+    expect(screen.queryByText('Vendido Tarj./Trans.')).not.toBeInTheDocument();
+    expect(valorDe('Vendido en Efectivo')).toMatch(/1,000\.00/);
+    expect(valorDe('Vendido Tarjeta')).toMatch(/2,000\.00/);
+    expect(valorDe('Vendido Transferencia')).toMatch(/300\.00/);
+  });
+
   // Requisito explícito (2026-10-10): política "Cierre de caja con
   // descuadre" en Modo Supervisor. El backend responde 428 cuando el
   // supervisor YA probó su identidad (eso lo resolvió el interceptor
@@ -105,7 +128,11 @@ describe('CierreCajaFormulario', () => {
       fireEvent.change(screen.getByLabelText('Efectivo'), { target: { value: '1500' } });
       fireEvent.change(screen.getByLabelText('Tarjeta'), { target: { value: '100' } });
       fireEvent.change(screen.getByLabelText('Transferencia'), { target: { value: '50' } });
+      // Cheque va al bucket "transferencia" (DGII tipo 2) — Otro se queda en
+      // "otros", así los 4 buckets quedan en positivo y no pide confirmar
+      // ningún RD$0.00 antes de llegar al flujo de descuadre que prueba este bloque.
       fireEvent.change(screen.getByLabelText('Cheque'), { target: { value: '25' } });
+      fireEvent.change(screen.getByLabelText('Otro'), { target: { value: '10' } });
     }
 
     function error428() {

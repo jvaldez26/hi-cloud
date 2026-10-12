@@ -25,7 +25,7 @@ import { exportarExcel } from '../../utils/exportExcel';
 import dayjs from 'dayjs';
 import { dRD, fecha, hora, hoyRD } from '../../utils/fechaRD';
 import { bloqueFacturasTermico, CSS_FACTURAS_TERMICO } from '../../utils/cierreFacturasTermico';
-import { bloqueCuadreFormaPagoTermico, CSS_CUADRE_FORMA_PAGO_TERMICO } from '../../utils/cuadreFormaPagoTermico';
+import { bloqueCuadreFormaPagoTermico } from '../../utils/cuadreFormaPagoTermico';
 import { estadoDiferencia } from '../../utils/diferenciaCaja';
 import { sanear } from '../../services/thermalPrinter';
 
@@ -549,17 +549,6 @@ export default function CajaPage() {
     const totalBilletes = Object.entries(desgloseBilletes)
       .reduce((s,[den,qty]) => s + Number(den)*Number(qty), 0);
 
-    // Desglose de pago (si existe)
-    const PAGO_LABELS: Record<string,string> = {
-      efectivo:'Efectivo', tarjeta:'Tarjeta', tarjetaCredito:'Tarjeta Crédito', tarjetaDebito:'Tarjeta Débito',
-      cheque:'Cheque', transferencia:'Transferencia', otro:'Otro', deposito:'Depósito', documentos:'Documentos',
-    };
-    const desglosePago: Record<string,string> = r.desglosePago ?? {};
-    const pagoRows = Object.entries(desglosePago)
-      .filter(([,v]) => Number(v) > 0)
-      .map(([k,v]) => row(`  ${PAGO_LABELS[k] ?? k}:`, f(Number(v))))
-      .join('\n');
-
     // Cuadre por forma de pago (ver cuadre-por-forma-pago.util.ts, backend) —
     // reemplaza el viejo "Efectivo esperado/contado + SOBRANTE/FALTANTE",
     // que solo cuadraba efectivo. `r` siempre lo trae para un cierre CERRADA
@@ -576,12 +565,15 @@ export default function CajaPage() {
     color:#000;background:#fff;-webkit-font-smoothing:none;font-smooth:never}
   .center{text-align:center}
   .row{display:flex;justify-content:space-between;gap:4px}
+  .row3{display:flex;gap:2px}
+  .row3>span{flex:1;min-width:0;text-align:left}
+  .row3>span:nth-child(2){text-align:center}
+  .row3>span:last-child{text-align:right}
   .bold{font-weight:900}
   .sep{color:#000;margin:2px 0}
   .small{font-size:0.85em}
   .xlarge{font-size:1.2em;font-weight:900}
   ${CSS_FACTURAS_TERMICO}
-  ${CSS_CUADRE_FORMA_PAGO_TERMICO}
 </style></head><body>
 ${empRes.razonSocial ?? empRes.nombre ? `<div class="center bold">${esc(empRes.razonSocial ?? empRes.nombre)}</div>` : ''}
 ${empRes.rnc        ? `<div class="center small">RNC: ${esc(empRes.rnc)}</div>` : ''}
@@ -616,9 +608,8 @@ ${line()}
 <div class="center xlarge">${esc(difLabel)}</div>
 `}
 ${billetesRows ? `${line()}<div class="small bold">DESGLOSE DE BILLETES</div>\n${billetesRows}\n${row('Total billetes:', f(totalBilletes), true)}` : ''}
-${pagoRows     ? `${line()}<div class="small bold">DESGLOSE DE PAGO</div>\n${pagoRows}` : ''}
 ${r.notas      ? `${line()}<div class="small">Nota: ${esc(r.notas)}</div>` : ''}
-${bloqueFacturasTermico(detalle)}
+${bloqueFacturasTermico(detalle, tipoImp)}
 ${line()}
 <div class="center bold">** CIERRE DE CAJA **</div>
 <div class="center small">Documento interno</div>
@@ -736,15 +727,6 @@ ${line()}
       .join('\n');
     const totalBilletes = Object.entries(desgloseBilletes)
       .reduce((s,[den,qty]) => s + Number(den)*Number(qty), 0);
-    const desglosePago: Record<string,string> = r.desglosePago ?? {};
-    const PAGO_LABELS: Record<string,string> = {
-      efectivo:'Efectivo', tarjeta:'Tarjeta', tarjetaCredito:'Tarjeta Crédito', tarjetaDebito:'Tarjeta Débito',
-      cheque:'Cheque', transferencia:'Transferencia', otro:'Otro', deposito:'Depósito', documentos:'Documentos',
-    };
-    const pagoRows = Object.entries(desglosePago)
-      .filter(([,v]) => Number(v) > 0)
-      .map(([k,v]) => row(`  ${PAGO_LABELS[k] ?? k}:`, f(Number(v))))
-      .join('\n');
 
     // Ver el mismo comentario en imprimirCierre() — cuadre por forma de pago
     // (real o derivado para un cierre viejo), reemplaza el viejo bloque de
@@ -759,12 +741,15 @@ ${line()}
     color:#000;background:#fff;-webkit-font-smoothing:none;font-smooth:never}
   .center{text-align:center}
   .row{display:flex;justify-content:space-between;gap:4px}
+  .row3{display:flex;gap:2px}
+  .row3>span{flex:1;min-width:0;text-align:left}
+  .row3>span:nth-child(2){text-align:center}
+  .row3>span:last-child{text-align:right}
   .bold{font-weight:900}
   .sep{color:#000;margin:2px 0}
   .small{font-size:0.85em}
   .xlarge{font-size:1.2em;font-weight:900}
   ${CSS_FACTURAS_TERMICO}
-  ${CSS_CUADRE_FORMA_PAGO_TERMICO}
 </style></head><body>
 ${empRes.razonSocial ?? empRes.nombre ? `<div class="center bold">${esc(empRes.razonSocial ?? empRes.nombre)}</div>` : ''}
 ${empRes.rnc        ? `<div class="center small">RNC: ${esc(empRes.rnc)}</div>` : ''}
@@ -799,10 +784,9 @@ ${line()}
 <div class="center xlarge">${esc(difLabel)}</div>
 `}
 ${billetesRows ? `${line()}<div class="small bold">DESGLOSE DE BILLETES</div>\n${billetesRows}\n${row('Total billetes:', f(totalBilletes), true)}` : ''}
-${pagoRows     ? `${line()}<div class="small bold">DESGLOSE DE PAGO</div>\n${pagoRows}` : ''}
 ${seccionDetalle}
 ${r.notas      ? `${line()}<div class="small">Nota: ${esc(r.notas)}</div>` : ''}
-${bloqueFacturasTermico(detalle)}
+${bloqueFacturasTermico(detalle, tipoImp)}
 ${line()}
 <div class="center bold">** CIERRE DE CAJA **</div>
 <div class="center small">Documento interno</div>

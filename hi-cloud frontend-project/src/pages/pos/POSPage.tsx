@@ -85,7 +85,7 @@ import { RestaurantePOS, TallerPOS, FarmaciaPOS, OpticaPOS, ClinicaPOS, Gimnasio
 import CompraFormInner from '../compras/CompraFormInner';
 import { ahora, dRD, fecha, fechaHora, fechaLarga, hora, horaConSegundos, hoyRD } from '../../utils/fechaRD';
 import { bloqueFacturasTermico, CSS_FACTURAS_TERMICO } from '../../utils/cierreFacturasTermico';
-import { bloqueCuadreFormaPagoTermico, CSS_CUADRE_FORMA_PAGO_TERMICO, type CierreConCuadreTermico } from '../../utils/cuadreFormaPagoTermico';
+import { bloqueCuadreFormaPagoTermico, type CierreConCuadreTermico } from '../../utils/cuadreFormaPagoTermico';
 
 // ── Alias type ────────────────────────────────────────────────────────────────
 type Prod = Producto;
@@ -2057,15 +2057,6 @@ function buildCierreCajaHTML(params: {
     .map(([den,qty]) => row(`  ${Number(den).toLocaleString()} x${qty}:`, fmt(Number(den)*Number(qty))))
     .join('\n');
 
-  const PAGO_LABELS: Record<string,string> = {
-    efectivo:'Efectivo', tarjetaCredito:'Tarjeta Crédito', tarjetaDebito:'Tarjeta Débito',
-    cheque:'Cheque', transferencia:'Transferencia', otro:'Otro', deposito:'Depósito', documentos:'Documentos',
-  };
-  const pagoRows = Object.entries(params.pago)
-    .filter(([,v]) => Number(v) > 0)
-    .map(([k,v]) => row(`  ${PAGO_LABELS[k] ?? k}:`, fmt(Number(v))))
-    .join('\n');
-
   // Cuadre por forma de pago — reemplaza el viejo "Efectivo esperado/contado
   // + SOBRANTE/FALTANTE" (que solo cuadraba efectivo). Ver el mismo bloque
   // en CajaPage.tsx (imprimirCierre/imprimirTicketConDetalle) — misma fuente,
@@ -2081,12 +2072,15 @@ function buildCierreCajaHTML(params: {
     color:#000;background:#fff;-webkit-font-smoothing:none;font-smooth:never}
   .center{text-align:center}
   .row{display:flex;justify-content:space-between;gap:4px}
+  .row3{display:flex;gap:2px}
+  .row3>span{flex:1;min-width:0;text-align:left}
+  .row3>span:nth-child(2){text-align:center}
+  .row3>span:last-child{text-align:right}
   .bold{font-weight:900}
   .sep{color:#000;margin:2px 0}
   .small{font-size:0.85em}
   .xlarge{font-size:1.2em;font-weight:900}
   ${CSS_FACTURAS_TERMICO}
-  ${CSS_CUADRE_FORMA_PAGO_TERMICO}
   .title{font-size:1.1em;font-weight:900;text-align:center;letter-spacing:1px;margin:4px 0}
 </style>
 <script>
@@ -2133,11 +2127,8 @@ ${params.totalBilletes > 0 ? `${line()}
 <div class="small bold">DESGLOSE DE BILLETES</div>
 ${billetesRows}
 ${row('Total billetes:', fmt(params.totalBilletes), true)}` : ''}
-${pagoRows ? `${line()}
-<div class="small bold">DESGLOSE DE PAGO</div>
-${pagoRows}` : ''}
 ${params.nota ? `${line()}<div class="small">Nota: ${esc(params.nota)}</div>` : ''}
-${bloqueFacturasTermico(params.detalleFacturas)}
+${bloqueFacturasTermico(params.detalleFacturas, params.tipoImpresora)}
 ${line()}
 <div class="center bold">** CIERRE DE CAJA **</div>
 <div class="center small">Documento interno</div>
