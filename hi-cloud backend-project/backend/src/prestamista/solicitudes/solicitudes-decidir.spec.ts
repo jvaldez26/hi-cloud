@@ -47,10 +47,50 @@ describe('SolicitudesService.decidir', () => {
     expect(ds.query.mock.calls.some(([sql]: any[]) => sql.includes('UPDATE pr_solicitudes SET'))).toBe(false);
   });
 
-  it('quien creó la solicitud no puede aprobarla (segregación de funciones)', async () => {
-    const { svc } = buildService((sql: string) =>
-      sql.includes('FROM pr_solicitudes s') ? [{ ...SOLICITUD_PENDIENTE, creadoPor: 1 }] : []); // uid del tenantSvc mock es 1
+  // Decisión de negocio (2026-10-13): la segregación de funciones en la
+  // decisión de solicitudes ya NO es obligatoria — es una config opcional
+  // por empresa (`empresa.configuracion.solicitudesExigirOtroAprobador`),
+  // desactivada por defecto.
+  it('por defecto (config desactivada): quien creó la solicitud SÍ puede aprobarla', async () => {
+    const { svc, ds } = buildService((sql: string) => {
+      if (sql.includes('FROM pr_solicitudes s')) return [{ ...SOLICITUD_PENDIENTE, creadoPor: 1 }]; // uid del tenantSvc mock es 1
+      if (sql.includes('SELECT configuracion FROM empresa')) return [{ configuracion: {} }];
+      if (sql.includes('UPDATE pr_solicitudes SET')) return [{ ...SOLICITUD_PENDIENTE, creadoPor: 1, estado: 'aprobada' }];
+      return [];
+    });
+    const r: any = await svc.decidir(7, 10, { aprobado: true });
+    expect(r.estado).toBe('aprobada');
+    // Ninguna empresa que nunca tocó esta config nota un cambio: sin fila en
+    // `empresa` (configuracion ausente) también debe permitir, no reventar.
+    const { svc: svc2 } = buildService((sql: string) => {
+      if (sql.includes('FROM pr_solicitudes s')) return [{ ...SOLICITUD_PENDIENTE, creadoPor: 1 }];
+      if (sql.includes('SELECT configuracion FROM empresa')) return [];
+      if (sql.includes('UPDATE pr_solicitudes SET')) return [{ ...SOLICITUD_PENDIENTE, creadoPor: 1, estado: 'aprobada' }];
+      return [];
+    });
+    await expect(svc2.decidir(7, 10, { aprobado: true })).resolves.toMatchObject({ estado: 'aprobada' });
+  });
+
+  it('con la opción "Exigir que otra persona apruebe" activada: quien creó la solicitud NO puede aprobarla', async () => {
+    const { svc } = buildService((sql: string) => {
+      if (sql.includes('FROM pr_solicitudes s')) return [{ ...SOLICITUD_PENDIENTE, creadoPor: 1 }]; // uid del tenantSvc mock es 1
+      if (sql.includes('SELECT configuracion FROM empresa')) return [{ configuracion: { solicitudesExigirOtroAprobador: true } }];
+      return [];
+    });
     await expect(svc.decidir(7, 10, { aprobado: true })).rejects.toThrow(ForbiddenException);
+  });
+
+  it('con la opción activada: rechazar SÍ lo puede hacer quien creó la solicitud (la restricción es solo para aprobar)', async () => {
+    const { svc, ds } = buildService((sql: string) => {
+      if (sql.includes('FROM pr_solicitudes s')) return [{ ...SOLICITUD_PENDIENTE, creadoPor: 1 }];
+      if (sql.includes('SELECT configuracion FROM empresa')) return [{ configuracion: { solicitudesExigirOtroAprobador: true } }];
+      if (sql.includes('UPDATE pr_solicitudes SET')) return [{ ...SOLICITUD_PENDIENTE, creadoPor: 1, estado: 'rechazada' }];
+      return [];
+    });
+    const r: any = await svc.decidir(7, 10, { aprobado: false });
+    expect(r.estado).toBe('rechazada');
+    // Rechazar nunca consulta la config — la restricción solo aplica a aprobar.
+    expect(ds.query.mock.calls.some(([sql]: any[]) => sql.includes('SELECT configuracion FROM empresa'))).toBe(false);
   });
 
   // Regresión del hueco real (TOCTOU): si entre el SELECT y el UPDATE otra

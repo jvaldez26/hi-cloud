@@ -1,4 +1,5 @@
 import Decimal from 'decimal.js';
+import { BadRequestException } from '@nestjs/common';
 import { d, redondearDecimal, redondearDinero } from './dinero.util';
 import { ConfigDiaHabil } from './feriados.util';
 import { Frecuencia, ModoQuincenal, generarFechas, diasReales } from './fechas.util';
@@ -272,8 +273,77 @@ function construirTabla(
   }));
 }
 
+/**
+ * 400 con el nombre exacto del campo — nunca el 500 crudo que lanzaba
+ * Decimal.js cuando el motor recibía `undefined`. Hereda de
+ * BadRequestException (mismo patrón que caja-efectivo.util.ts: un util de
+ * backend puede lanzar excepciones de Nest directamente, no hace falta un
+ * try/catch en cada uno de los 5 call sites de este archivo para traducirlo).
+ */
+export class ParametroMotorInvalidoError extends BadRequestException {
+  constructor(public readonly campo: string, mensaje: string) {
+    super(mensaje);
+  }
+}
+
+/**
+ * Incidente Sentry 7790156766 (producción, 2026-10-13, empresa 57):
+ * `gracia.periodos >= plazoPeriodos` hacía que el loop de gracia (0..G-1)
+ * leyera `tasasPeriodo[k]` para k ≥ n — el array solo tiene `n` elementos
+ * (ver `resolverFechasYTasas`), así que `tasasPeriodo[k]` era `undefined` y
+ * `saldo.times(undefined)` reventaba con `DecimalError: Invalid argument:
+ * undefined`, un 500 sin pista de qué parámetro estaba mal. Nada validaba
+ * antes que la gracia configurada en el PRODUCTO (que puede pensarse para
+ * préstamos largos) siguiera siendo válida para el PLAZO real de la
+ * solicitud/préstamo (que puede ser corto) — exactamente el caso real de
+ * empresa 57.
+ *
+ * Valida TODO lo que el motor necesita para no recibir `undefined` en
+ * ningún cálculo — no solo la gracia. `metodo='personalizado'` no depende
+ * de `plazoPeriodos`/`gracia` (usa `cuotasPersonalizadas.length`), así que
+ * esas dos reglas se saltan para ese método; el resto de campos sí aplica
+ * siempre.
+ */
+function validarParametrosMotor(params: ParametrosPrestamo): void {
+  const requerido = (campo: string, valor: unknown) => {
+    if (valor === undefined || valor === null || (typeof valor === 'string' && valor === '')) {
+      throw new ParametroMotorInvalidoError(campo, `Falta el campo "${campo}" — el motor no puede calcular la tabla de amortización sin él.`);
+    }
+  };
+
+  requerido('montoPrincipal', params.montoPrincipal);
+  requerido('frecuencia', params.frecuencia);
+  requerido('fechaDesembolso', params.fechaDesembolso);
+  requerido('fechaPrimerPago', params.fechaPrimerPago);
+  requerido('metodo', params.metodo);
+  requerido('tasa', params.tasa);
+  if (params.tasa) requerido('tasa.valor', params.tasa.valor);
+
+  if (!(Number(params.montoPrincipal) > 0)) {
+    throw new ParametroMotorInvalidoError('montoPrincipal', `"montoPrincipal" debe ser mayor a 0 (llegó: ${params.montoPrincipal}).`);
+  }
+
+  if (params.metodo === 'personalizado') return;
+
+  if (!Number.isInteger(params.plazoPeriodos) || params.plazoPeriodos <= 0) {
+    throw new ParametroMotorInvalidoError('plazoPeriodos', `"plazoPeriodos" debe ser un entero mayor a 0 (llegó: ${params.plazoPeriodos}).`);
+  }
+  if (params.gracia) {
+    if (!Number.isInteger(params.gracia.periodos) || params.gracia.periodos <= 0) {
+      throw new ParametroMotorInvalidoError('gracia.periodos', `"gracia.periodos" debe ser un entero mayor a 0 (llegó: ${params.gracia.periodos}).`);
+    }
+    if (params.gracia.periodos >= params.plazoPeriodos) {
+      throw new ParametroMotorInvalidoError(
+        'gracia.periodos',
+        `El período de gracia (${params.gracia.periodos}) debe ser MENOR al plazo total (${params.plazoPeriodos} cuotas) — con gracia igual o mayor al plazo no queda ninguna cuota para pagar capital.`,
+      );
+    }
+  }
+}
+
 export function calcularTablaAmortizacion(paramsEntrada: ParametrosPrestamo): TablaAmortizacion {
   const params = normalizarSoloInteresLuegoAmortiza(paramsEntrada);
+  validarParametrosMotor(params);
   const cargos = params.cargos ?? [];
   const montoPrincipalOriginal = d(params.montoPrincipal);
 
@@ -359,7 +429,7 @@ function calcularPersonalizado(
   montoPrincipalOriginal: Decimal,
 ): TablaAmortizacion {
   const cuotas = params.cuotasPersonalizadas ?? [];
-  if (!cuotas.length) throw new Error('metodo="personalizado" requiere cuotasPersonalizadas.');
+  if (!cuotas.length) throw new ParametroMotorInvalidoError('cuotasPersonalizadas', 'metodo="personalizado" requiere cuotasPersonalizadas.');
 
   const { P, montoRecibidoDeudor, totalCargosDesembolso } = resolverCargosDesembolso(montoPrincipalOriginal, cargos);
   const fechas = generarFechas({ frecuencia: 'personalizado', fechaPrimerPago: params.fechaPrimerPago, n: cuotas.length, fechasPersonalizadas: cuotas.map(c => c.fecha) });
@@ -373,7 +443,8 @@ function calcularPersonalizado(
     const interes = redondearDecimal(saldo.times(tDiaria).times(dias));
     const capital = redondearDecimal(d(cuotas[k].montoTotal).minus(interes));
     if (capital.lessThan(0)) {
-      throw new Error(
+      throw new ParametroMotorInvalidoError(
+        `cuotasPersonalizadas[${k}].montoTotal`,
         `La cuota #${k + 1} (RD$${cuotas[k].montoTotal}) no cubre ni el interés del tramo (RD$${interes.toFixed(2)}). ` +
         `No se permite amortización negativa — ajusta el monto de la cuota.`,
       );
@@ -384,7 +455,8 @@ function calcularPersonalizado(
 
   const saldoFinal = lineasBase[lineasBase.length - 1].saldo;
   if (saldoFinal.abs().greaterThan(0.01)) {
-    throw new Error(
+    throw new ParametroMotorInvalidoError(
+      'cuotasPersonalizadas',
       `Las cuotas definidas no cierran el préstamo: ${saldoFinal.greaterThan(0) ? 'falta' : 'sobra'} ` +
       `RD$${saldoFinal.abs().toFixed(2)}.`,
     );
@@ -450,7 +522,10 @@ function ensamblarResultado(args: {
 function normalizarSoloInteresLuegoAmortiza(params: ParametrosPrestamo): ParametrosPrestamo {
   if (params.metodo !== 'solo_interes_luego_amortiza') return params;
   if (!params.periodosSoloInteres || !params.metodoPosteriorGracia) {
-    throw new Error('solo_interes_luego_amortiza requiere periodosSoloInteres y metodoPosteriorGracia.');
+    throw new ParametroMotorInvalidoError(
+      !params.periodosSoloInteres ? 'periodosSoloInteres' : 'metodoPosteriorGracia',
+      'metodo="solo_interes_luego_amortiza" requiere periodosSoloInteres y metodoPosteriorGracia.',
+    );
   }
   return {
     ...params,

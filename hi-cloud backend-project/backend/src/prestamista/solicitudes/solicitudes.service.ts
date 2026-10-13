@@ -94,6 +94,22 @@ export class SolicitudesService {
     return row;
   }
 
+  /**
+   * Decisión de negocio (2026-10-13): la segregación de funciones en la
+   * decisión de solicitudes es OPCIONAL por empresa, desactivada por
+   * defecto — toda empresa que nunca tocó esta config conserva el
+   * comportamiento nuevo (el creador SÍ puede decidir su propia solicitud).
+   * Mismo patrón JSONB por empresa que `CajaService.getEmpresaCfg()` /
+   * `CobranzaService.getUmbralesEscalamiento()`.
+   */
+  private async exigeOtroAprobador(empresaId: number): Promise<boolean> {
+    const [row] = await this.ds.query<{ configuracion: Record<string, unknown> }[]>(
+      'SELECT configuracion FROM empresa WHERE id = $1 LIMIT 1',
+      [empresaId],
+    );
+    return (row?.configuracion as Record<string, unknown>)?.solicitudesExigirOtroAprobador === true;
+  }
+
   async decidir(empresaId: number, id: number, data: any) {
     const sol = await this.orFail(empresaId, id);
     if (!['pendiente', 'en_revision'].includes(sol.estado)) {
@@ -101,11 +117,13 @@ export class SolicitudesService {
     }
     const aprobado = data.aprobado === true || data.decision === 'aprobada';
 
-    // C5 + Segregación de funciones: el aprobador sale del CLS (JWT), no del body,
-    // y NO puede ser la misma persona que creó la solicitud.
+    // C5 + Segregación de funciones (ahora opcional por empresa, ver
+    // exigeOtroAprobador arriba): el aprobador sale del CLS (JWT), no del
+    // body. Si la empresa exige otra persona, NO puede ser quien creó la
+    // solicitud.
     const uid = this.tenantSvc.getUserId();
-    if (aprobado && sol.creadoPor != null && Number(sol.creadoPor) === uid) {
-      throw new ForbiddenException('Quien crea una solicitud no puede aprobarla');
+    if (aprobado && sol.creadoPor != null && Number(sol.creadoPor) === uid && await this.exigeOtroAprobador(empresaId)) {
+      throw new ForbiddenException('Esta empresa exige que otra persona apruebe la solicitud — quien la creó no puede aprobarla');
     }
 
     const estado = aprobado ? 'aprobada' : 'rechazada';

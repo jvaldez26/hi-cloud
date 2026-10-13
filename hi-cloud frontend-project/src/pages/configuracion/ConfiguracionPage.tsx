@@ -1349,6 +1349,32 @@ export function SwitchPrestamoEfectivoPorCaja() {
   );
 }
 
+/**
+ * Decisión de negocio (2026-10-13): quien crea una solicitud de préstamo SÍ
+ * puede aprobarla o rechazarla — la segregación de funciones (que antes era
+ * obligatoria) ahora es opcional por empresa, desactivada por defecto. Mismo
+ * patrón de gating por add-on que `SwitchPrestamoEfectivoPorCaja` arriba;
+ * vive dentro del <Form> de SeccionSeguridad (no de SeccionPOS) porque es
+ * una regla de autorización, no de caja.
+ */
+export function SwitchSolicitudesExigirOtroAprobador() {
+  const { activo: prestamistaActivo } = useModuloAddon('prestamista');
+  if (!prestamistaActivo) return null;
+  return (
+    <Col xs={24} data-testid="seccion-seguridad-solicitudes-otro-aprobador">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Form.Item name="solicitudesExigirOtroAprobador" valuePropName="checked" style={{ marginBottom: 0 }}>
+          <Switch size="small" />
+        </Form.Item>
+        <Text style={{ fontSize: 13 }}>Exigir que otra persona apruebe las solicitudes de préstamo</Text>
+      </div>
+      <Text type="secondary" style={{ fontSize: 11, marginLeft: 36 }}>
+        Apagado: quien crea una solicitud puede también aprobarla o rechazarla. Encendido: solo alguien distinto de quien la creó puede aprobarla (rechazarla sigue sin restricción). No afecta condonación/reestructuración/refinanciamiento, que siempre exigen otra persona.
+      </Text>
+    </Col>
+  );
+}
+
 function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void }) {
   const [form] = Form.useForm();
   const qc = useQueryClient();
@@ -2480,6 +2506,7 @@ function SeccionSeguridad({ empresa, onSaved }: { empresa: any; onSaved: () => v
       sesionHoras:    Math.min(conf.sesionHoras ?? maxSesion, maxSesion),
       maxIntentos:    Math.min(conf.maxIntentos ?? maxIntentos, maxIntentos),
       auditoriaActiva:conf.auditoriaActiva ?? true,
+      solicitudesExigirOtroAprobador: conf.solicitudesExigirOtroAprobador ?? false,
     });
   }, [empresa, maxSesion, maxIntentos]);
 
@@ -2524,6 +2551,7 @@ function SeccionSeguridad({ empresa, onSaved }: { empresa: any; onSaved: () => v
             </div>
           </div>
         </Col>
+        <SwitchSolicitudesExigirOtroAprobador />
       </Row>
 
       <Alert
