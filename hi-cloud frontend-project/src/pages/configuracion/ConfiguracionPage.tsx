@@ -27,6 +27,7 @@ import { buildReciboTermicoHTML, ventaEjemploTicket } from '../../utils/ticketTe
 import { generarQrTicket, type FormatoTicket } from '../../utils/configTicket';
 import { IMPRESORA_CONFIG } from '../../utils/docTermico';
 import { obtenerDeteccionImpresionDirecta, type DeteccionImpresionDirecta } from '../../utils/printUtils';
+import { useModuloAddon } from '../../hooks/useModuloAddon';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -1319,6 +1320,35 @@ function SeccionImpresionDirecta() {
 
 // ── Sección: Punto de Venta ───────────────────────────────────────────────────
 
+/**
+ * El switch "Efectivo de préstamos por la caja del cajero" solo tiene
+ * sentido para empresas con el add-on Prestamista activo — mismo patrón de
+ * gating que ClinicaLayout/TransporteLayout/FarmaciaLayout/TallerLayout/
+ * OpticaLayout (ver `useModuloAddon`), aplicado aquí a un control puntual en
+ * vez de a una pantalla completa (ver docs/prestamista/decisiones-pendientes.md,
+ * punto 14). Extraído como componente propio (en vez de un `&&` inline
+ * dentro de SeccionPOS) para poder probarlo sin montar todo el formulario de
+ * configuración de POS. Debe vivir dentro del mismo <Form> que SeccionPOS
+ * (su <Form.Item> depende de ese contexto) — nunca se renderiza solo.
+ */
+export function SwitchPrestamoEfectivoPorCaja() {
+  const { activo: prestamistaActivo } = useModuloAddon('prestamista');
+  if (!prestamistaActivo) return null;
+  return (
+    <Col xs={24} data-testid="seccion-pos-prestamo-efectivo">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Form.Item name="prestamoEfectivoPorCaja" valuePropName="checked" style={{ marginBottom: 0 }}>
+          <Switch size="small" />
+        </Form.Item>
+        <Text style={{ fontSize: 13 }}>Efectivo de préstamos por la caja del cajero</Text>
+      </div>
+      <Text type="secondary" style={{ fontSize: 11, marginLeft: 36 }}>
+        Un cobro de cuota o un desembolso en efectivo entra/sale del cuadre de caja del turno, igual que una venta o un gasto. Apágalo si el módulo Prestamista maneja su efectivo fuera de la caja del POS.
+      </Text>
+    </Col>
+  );
+}
+
 function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void }) {
   const [form] = Form.useForm();
   const qc = useQueryClient();
@@ -1794,17 +1824,7 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
             Avisa por campanita y correo cuando un cierre queda fuera del umbral. El cierre siempre queda marcado "Descuadre" en el historial, aunque este aviso esté apagado.
           </Text>
         </Col>
-        <Col xs={24}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Form.Item name="prestamoEfectivoPorCaja" valuePropName="checked" style={{ marginBottom: 0 }}>
-              <Switch size="small" />
-            </Form.Item>
-            <Text style={{ fontSize: 13 }}>Efectivo de préstamos por la caja del cajero</Text>
-          </div>
-          <Text type="secondary" style={{ fontSize: 11, marginLeft: 36 }}>
-            Un cobro de cuota o un desembolso en efectivo entra/sale del cuadre de caja del turno, igual que una venta o un gasto. Apágalo si el módulo Prestamista maneja su efectivo fuera de la caja del POS.
-          </Text>
-        </Col>
+        <SwitchPrestamoEfectivoPorCaja />
       </Row>
 
       {/* ── Control de caja por turno — switch fuera del Form, endpoint propio ── */}

@@ -33,6 +33,7 @@ import {
   SospechaFormaPago,
 } from './cuadre-por-forma-pago.util';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
+import { ModulosAddonService } from '../modulos-addon/modulos-addon.service';
 
 /** Mismas 4 etiquetas que usa el frontend para el cuadre — para el mensaje de la validación de abajo. */
 const LABEL_FORMA_CUADRE: Record<string, string> = {
@@ -52,6 +53,7 @@ export class CajaService {
     private tenantService:   TenantService,
     private realtimeService: RealtimeService,
     private notificacionesService: NotificacionesService,
+    private modulosAddonService: ModulosAddonService,
   ) {}
 
   // ── Migración defensiva ───────────────────────────────────────────────────
@@ -895,14 +897,17 @@ export class CajaService {
 
     // Prestamista Etapa 5 — cobros de cuota y desembolsos de préstamo en
     // efectivo imputados a esta caja, mismo patrón que gastos.cajaDiariaId
-    // arriba. Solo corre si la empresa no apagó el interruptor — apagado,
-    // el cálculo queda exactamente igual que antes de esta etapa (columnas
-    // en 0, nunca se ejecutan las queries).
+    // arriba. Solo corre si la empresa no apagó el interruptor Y tiene el
+    // add-on 'prestamista' activo — para TODA empresa sin el add-on (la
+    // inmensa mayoría de clientes del ERP), ninguna de las 2 queries contra
+    // pr_pagos/pr_desembolsos_parciales se ejecuta nunca, sin importar el
+    // valor (por defecto `true`) del switch de configuración. El gate del
+    // add-on se evalúa ANTES de la query a pr_pagos — `&&` corta en corto.
     let cobrosPrestamoEfectivoTotal = 0;
     let desembolsosPrestamoEfectivoTotal = 0;
     if (empresaId) {
       const { prestamoEfectivoPorCaja } = await this.getEmpresaCfg(empresaId, manager);
-      if (prestamoEfectivoPorCaja) {
+      if (prestamoEfectivoPorCaja && await this.modulosAddonService.checkModuloActivo(empresaId, 'prestamista')) {
         const [cobrosPrestamo] = await db.query<{ total: string }[]>(
           `SELECT COALESCE(SUM(p."montoPagado"), 0)::text AS total
            FROM pr_pagos p
@@ -998,7 +1003,9 @@ export class CajaService {
     let prestamoTransferencia = 0;
     if (empresaId) {
       const { prestamoEfectivoPorCaja } = await this.getEmpresaCfg(empresaId, manager);
-      if (prestamoEfectivoPorCaja) {
+      // Mismo gate de add-on que calcularEsperadoPorForma/recalcularDesdeBD
+      // arriba — ver el comentario extenso ahí.
+      if (prestamoEfectivoPorCaja && await this.modulosAddonService.checkModuloActivo(empresaId, 'prestamista')) {
         const [prestamoPorForma] = await db.query<{ tarjeta: string; transferencia: string }[]>(
           `SELECT
              COALESCE(SUM(p."montoPagado") FILTER (WHERE p."metodoPago" = 'tarjeta'), 0)::text AS tarjeta,
@@ -1149,6 +1156,16 @@ export class CajaService {
       // docs/prestamista/decisiones-pendientes.md, "Efectivo de préstamos por
       // la caja del cajero"): por defecto SÍ afecta el cierre de caja del
       // turno. Apagarlo deja el cálculo exactamente como antes de esta etapa.
+      // OJO: este flag es solo la mitad de la condición real — los 2 call
+      // sites que lo usan (calcularEfectivoEsperado/recalcularDesdeBD y
+      // desglosePorFormaDePago) SIEMPRE lo combinan con
+      // `modulosAddonService.checkModuloActivo(empresaId, 'prestamista')`
+      // antes de correr las queries contra pr_pagos/pr_desembolsos_parciales
+      // — así ninguna empresa sin el add-on paga ese costo, sin importar el
+      // default `true` de este campo. No se movió ese gate aquí adentro a
+      // propósito: esta función tiene otros 3 call sites (umbral/notificar/
+      // cierreCajaCiego/montoMaxRetiro) que no tienen nada que ver con
+      // Prestamista y no deben pagar una query extra a empresa_modulos.
       prestamoEfectivoPorCaja: cfg.prestamoEfectivoPorCaja !== false,
     };
   }
