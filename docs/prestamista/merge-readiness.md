@@ -473,3 +473,311 @@ encontrado en este informe** — no hay ningún hallazgo de la sección 2 o 3
 que en sí mismo sea motivo de no mergear; la recomendación de dividir es
 puramente una medida de prudencia dado que la Parte 2 toca el camino más
 usado de todo el ERP (caja/POS), no una señal de que algo esté mal hecho.
+
+---
+
+## 7. Actualización 2026-10-13 — merge con main de hoy, aislamiento por add-on cerrado, y suite completa
+
+Preparado por un agente autónomo, sobre un checkout aislado (worktree) con
+el contenido de `feat/prestamista-motor` al commit `a2b167c9` (el HEAD
+descrito en la sección 1-6 de este mismo documento). Jean autorizó
+explícitamente en este punto que esta rama SÍ se mergee a `main` — la
+instrucción "esta rama nunca se mergea a main" del README ya no aplica
+(corregida ahí mismo).
+
+### 7.1 Estado de la rama contra `main` de hoy
+
+`main` avanzó 7 commits más desde el `ff1f6bc6` que esta rama ya tenía
+integrado (sesión única entre pestañas, cuadre de caja por forma de pago
+definitivo, umbral de descuadre configurable, lectura segura de
+`localStorage`, defensa 409 por sesión desincronizada, banner + motivo
+obligatorio al cerrar caja ajena). Se corrió:
+
+```
+git fetch origin
+git merge main --no-edit
+```
+
+**Merge limpio, sin un solo marcador de conflicto** (confirmado con una
+búsqueda de `<<<<<<<`/`=======`/`>>>>>>>` tras el merge — 0 resultados).
+Git usó la estrategia `ort` y auto-mezcló los 3 archivos que ambos lados
+tocaban (`caja.service.ts`, `caja.service.spec.ts`, `App.tsx`) sin
+intervención manual, porque los cambios de cada lado viven en regiones
+disjuntas del archivo:
+
+- **`caja.service.ts`**: main agregó `esMiCaja` (aviso de "esta caja no es
+  tuya" en `getCajaHoy()`/`getDatosParaImprimir()`, líneas ~1303-1487);
+  Prestamista agrega `cobrosPrestamoEfectivo`/`desembolsosPrestamoEfectivo`/
+  `prestamoEfectivoPorCaja` (líneas ~345-1155). Verificado línea por línea
+  tras el merge: **ambos bloques de lógica quedaron intactos y completos**,
+  ninguno pisó al otro.
+- **`caja.service.spec.ts`**: mismo patrón que la sección 4 anterior — cada
+  lado agregó `describe`/`it` nuevos en regiones distintas del archivo.
+- **`App.tsx`**: main agregó rutas/imports ajenos a Prestamista; se
+  verificaron las 12 rutas de `/prestamista/*` (incluyendo `feriados`,
+  agregada en esta rama) intactas tras el merge.
+
+Commit de merge: **`e910ca109b1cd3ce2b5882a8a683c6c6f9aacc62`**
+("Merge branch 'main' into prestamista-merge-main"). Tras el merge:
+**0 commits detrás, 93 adelante** de `main`.
+
+**Nota sobre el nombre de la rama**: el worktree asignado a esta tarea no
+pudo usar el nombre `feat/prestamista-motor` porque ese nombre ya estaba
+registrado en OTRO worktree local de este mismo repo (git no permite el
+mismo nombre de rama en dos worktrees a la vez). Todo este trabajo vive en
+una rama local nueva (`prestamista-merge-main`) creada desde el mismo commit
+que `feat/prestamista-motor` (`a2b167c9`) — mismo contenido, solo un nombre
+de rama distinto por la restricción del entorno. **No se hizo push a ningún
+remoto.** Jean debe decidir si renombra esta rama a `feat/prestamista-motor`
+(fast-forward) o la usa directamente para el merge real a `main`.
+
+### 7.2 Repaso de Etapas 1-7 contra el código real (post-merge)
+
+Se repitió la verificación completa de las 7 etapas contra el código, tras
+el merge de 7.1 — no se asumió que lo documentado en las secciones 1-6
+siguiera siendo cierto. **Las 7 etapas están confirmadas completas**, línea
+por línea, incluyendo los 2 hallazgos de seguridad más críticos
+re-verificados con máximo rigor tras el merge:
+
+- La fuga multi-tenant de Etapa 4 (3 JOIN sin filtro de empresa en
+  `reportes.service.ts`) **sigue corregida** —
+  `carteraActiva()` (línea 29), `prestamosPorProducto()` (línea 156) y
+  `estadoCuentaDeudor()` (línea 361) tienen el filtro `AND ...empresaId=...`
+  en cada JOIN, confirmado tras el merge de hoy.
+- Los 4 fixes de seguridad de Etapa 6 (condonación vía refinanciamiento sin
+  autorización dual, `cancelar()` sin guardas de estado, TOCTOU en
+  `decidir()` de solicitudes, y la rama de auditoría mal descrita) **siguen
+  los 4 presentes**, verificados archivo+línea exacta.
+
+El único hallazgo "sin corregir" encontrado es el mismo que el propio
+`etapa-2-resto.md` ya reconoce y deja anotado (`GarantesController.liberar`
+sin guard de supervisor, `motivo` opcional) — no es una sorpresa ni una
+regresión de este merge, es una decisión ya documentada de que "liberar un
+garante" no mueve dinero ni perdona deuda, a diferencia de "ejecutar una
+garantía" (que sí tiene el guard).
+
+### 7.3 Huecos de aislamiento por add-on — cerrados
+
+Los 2 huecos reales descritos en la sección 2 de este documento (el
+interruptor `prestamoEfectivoPorCaja` con default `true` sin gate por
+add-on, y el switch de `ConfiguracionPage.tsx` visible a toda empresa) están
+**cerrados**:
+
+- **Backend** (`hi-cloud backend-project/backend/src/caja/caja.service.ts`):
+  los 2 call sites que ejecutaban las queries contra
+  `pr_pagos`/`pr_desembolsos_parciales` (dentro de `recalcularDesdeBD()` y
+  `calcularEsperadoPorForma()`) ahora exigen también
+  `this.modulosAddonService.checkModuloActivo(empresaId, 'prestamista')`
+  antes de correrlas — con `&&` de cortocircuito, así que si el add-on no
+  está activo, el método `checkModuloActivo` ni siquiera llega a ejecutar
+  su propia query contra `pr_pagos`/`pr_desembolsos_parciales` (sí ejecuta
+  una consulta barata y ya existente contra `empresa_modulos`, pero NUNCA
+  las 2 queries caras). `caja.module.ts` importa `ModulosAddonModule` para
+  la inyección. **Se deliberadamente NO se movió este gate dentro de
+  `getEmpresaCfg()`** (que tiene otros 3 call sites ajenos a Prestamista:
+  `umbralDescuadreCaja`, `notificarDescuadreCaja`, `cierreCajaCiego`,
+  `montoMaxRetiroSinAutorizacion`) — eso hubiera agregado una query extra a
+  esos 3 call sites también, el efecto contrario al que se buscaba.
+  - Tests nuevos en `caja.service.spec.ts` (demuestran el comportamiento,
+    no solo "el resultado da 0"): un test espía `modulosAddonService.checkModuloActivo`
+    y confirma con `dataSource.manager.query.mock.calls.some(...)` que las
+    2 queries de `pr_pagos`/`pr_desembolsos_parciales` **nunca se
+    ejecutan** cuando el add-on está inactivo (aunque el switch de
+    configuración esté en su default `true`); un test paralelo con el
+    add-on activo y filas reales confirma que los montos sí fluyen al
+    cierre (saldo, diferencia, columnas `cobrosPrestamoEfectivo`/
+    `desembolsosPrestamoEfectivo`).
+  - Se actualizaron los 2 archivos de test que instancian `CajaService`
+    manualmente fuera de Nest DI (`caja.service.retiro-concurrencia.spec.ts`,
+    `car-wash/services/cw-liquidaciones.service.spec.ts`) con un stub del
+    nuevo parámetro del constructor — ninguno de los dos ejercía el camino
+    de Prestamista, pero sin el stub el constructor habría quedado con
+    `modulosAddonService` en `undefined` y roto con un `TypeError` si
+    alguna vez tocan ese camino.
+
+- **Frontend**
+  (`hi-cloud frontend-project/src/pages/configuracion/ConfiguracionPage.tsx`):
+  el switch se extrajo a un componente propio,
+  `SwitchPrestamoEfectivoPorCaja` (exportado), que solo se renderiza si
+  `useModuloAddon('prestamista').activo === true` — mismo hook y mismo
+  patrón que `ClinicaLayout`/`TransporteLayout`/`FarmaciaLayout`/
+  `TallerLayout`/`OpticaLayout`. Se extrajo a un componente aparte (en vez
+  de un `&&` inline dentro de `SeccionPOS`) para poder probarlo sin montar
+  los ~660 líneas del formulario completo de POS (que renderiza una vista
+  previa de ticket con generación de QR, pesada de montar en jsdom).
+  - Test nuevo:
+    `hi-cloud frontend-project/src/pages/configuracion/SwitchPrestamoEfectivoPorCaja.test.tsx`
+    — confirma que NO se renderiza (`queryByTestId` da `null`) con el
+    add-on inactivo, y que SÍ se renderiza con el add-on activo.
+
+- **Confirmado no-operativo para empresas sin el add-on** (sin necesidad de
+  test nuevo, por diseño ya existente, re-verificado):
+  `asientos-automaticos.service.ts` (los 2 métodos nuevos de Prestamista
+  son exclusivos del módulo, ningún caller fuera de `src/prestamista/` los
+  invoca), `emitir-ecf.use-case.ts` (la rama `PAGO_PRESTAMO` solo se
+  ejecuta cuando el documento origen es un pago de préstamo, que solo
+  existe si se usó un endpoint de `/prestamista/`, que ya está bloqueado
+  por `ModuloAddonGuard('prestamista')` en el controller), `audit.interceptor.ts`
+  (las 2 ramas nuevas exigen el prefijo de ruta `/prestamista/prestamos/`
+  en el `if`, nunca se evalúan para ninguna otra ruta del ERP).
+
+### 7.4 Trampa de e-CF — verificada personalmente, no delegada
+
+Verificación pedida explícitamente con `git log`/`git diff` sobre
+`emitir-ecf.use-case.ts` y `pagos.service.ts`:
+
+- **El e-CF de interés de v1 (ya en producción) queda intacto por
+  default.** En `emitir-ecf.use-case.ts`, método `cargarDocumentoOrigen()`
+  (rama `PAGO_PRESTAMO`), la línea de "Interés" se construye **siempre**,
+  sin ninguna condición (`lineaFiscalPrestamo('Interés', ..., interes, 0)`
+  — el `0` es el `tratamientoItbis`, hardcodeado exento, igual que antes).
+  Cuando `motorConfig.fiscal` está vacío o ausente (el caso de HOY para
+  TODOS los productos, nuevos y existentes), el array `detalles` queda
+  con un único elemento — exactamente el mismo resultado numérico
+  (`subtotal = interes`, `iva = 0`, `total = interes`) que el código antes
+  de la Etapa 5, Parte C (commit `3036caa5`, que introdujo este cambio).
+- **Mora/cargos (la capacidad NUEVA) queda apagada por default, para
+  productos nuevos Y existentes.** El disparo está en
+  `pagos.service.ts:453-455`:
+  `disparaPorMora = fiscalCfg.mora?.generaComprobante === true && dist.aplicadoMora > 0`
+  (comparación estricta `=== true`, nunca "truthy") — para cualquier
+  producto cuyo `motorConfig` sea `NULL`/vacío, esto es `false` sin
+  excepción.
+  - **Productos existentes** (creados antes de esta etapa): la migración
+    `1772000000000-MotorV2Prestamista.ts` agrega la columna
+    `"motorConfig" JSONB DEFAULT NULL` — cada producto/préstamo que ya
+    existía en producción (la empresa #55 real) tiene `motorConfig = NULL`
+    hasta que alguien lo edite a mano.
+  - **Productos nuevos**: en
+    `hi-cloud frontend-project/src/pages/prestamista/ProductosPrestamoPage.tsx`
+    línea 51, el formulario de "Nuevo producto" inicializa
+    `fiscal: { ...., generaComprobante: null, ... }` para cada concepto —
+    **nunca `true`** — y la UI de esa sección (línea ~419) la rotula
+    explícitamente "Fiscal (pendiente de configurar)" con un tag naranja
+    "Pendiente" mientras `generaComprobante` sea falsy. No existe ningún
+    camino (formulario, default, seed) que active esto sin una acción
+    explícita del admin.
+  - **Apertura y seguro** (punto 8 de `decisiones-pendientes.md`): ni
+    siquiera tienen el camino construido — cobrarlos pasa por
+    "desembolso", no por "pago", y ese circuito fiscal no existe en el
+    motor de e-CF del ERP. Sin cambios de este merge.
+
+**Conclusión de la trampa**: v1 interés intacto, mora/cargos apagados por
+default para todo producto — confirmado con el código, no inferido del
+mensaje del commit.
+
+### 7.5 Resultado de la suite completa (hoy, 2026-10-13, tras el merge + los fixes de 7.3 + Punto 3 de decisiones-pendientes.md)
+
+`npm ci` fresco en ambos proyectos (el worktree no traía `node_modules`).
+
+**Backend**
+- `npx tsc --noEmit` → limpio, 0 errores.
+- `npx jest` (suite completa) →
+  **`Test Suites: 1 failed, 12 skipped, 333 passed, 334 of 346 total`**
+  **`Tests: 1 failed, 131 skipped, 1 todo, 4992 passed, 5125 total`**
+  (235.2s). Los `skipped` son los de siempre (integración contra Postgres
+  real sin esa BD levantada en CI).
+  - **El único fallo es ajeno a Prestamista y preexistente en `main`**:
+    `src/car-wash/services/cw-turnos.service.spec.ts` →
+    `CwDashboardService.resumen() también cuenta "vehiculosHoy" en hora RD,
+    no UTC`, `Expected: 0, Received: 7`. Confirmado con
+    `git diff --stat main e910ca10 -- .../car-wash` → **0 archivos**, el
+    módulo car-wash no tiene un solo cambio en esta rama. Re-ejecutado
+    aislado (`npx jest car-wash/services/cw-turnos.service.spec.ts`): falla
+    igual, de forma reproducible (no es contención de recursos). Causa
+    diagnosticada: el test simula "cruzar la medianoche RD" mockeando
+    `fechaHoyRD()` a `'2026-10-13'` como el día "siguiente" al de la
+    prueba — pero la fecha REAL del sistema hoy, 2026-10-13, coincide
+    exactamente con ese valor mockeado, y alguna parte de la consulta de
+    `CwDashboardService.resumen()` usa la fecha real del servidor (no la
+    inyectada) para "hoy", por lo que termina contando turnos reales de
+    OTRAS pruebas del mismo archivo creados en la fecha real de hoy. Es un
+    defecto de fecha-coincidente, 100% preexistente en `main`, que se
+    manifiesta específicamente HOY — no una regresión de este trabajo. No
+    se tocó (fuera de alcance: módulo car-wash, no Prestamista).
+
+**Frontend**
+- `npx tsc --noEmit` → limpio, 0 errores.
+- `npm run build` → `✓ built in 1m 19s`. Solo el warning estándar de Vite
+  por chunks >500kB (preexistente, no introducido por este trabajo).
+- `npx vitest run` (suite completa) → **`Test Files: 4 failed | 82 passed
+  (86)`**, **`Tests: 8 failed | 721 passed (729)`** (492.1s). Los 4
+  archivos que fallaron, con el mismo patrón de timeout ya documentado en
+  README.md/este documento (contención de recursos bajo la suite COMPLETA
+  con todos los workers en paralelo):
+  - `src/components/clientes/ClienteFormModal.test.tsx` (1 test) — ajeno a
+    Prestamista.
+  - `src/components/clientes/SelectClienteConAlta.test.tsx` (3 tests) —
+    ajeno a Prestamista, ya documentado en etapas anteriores.
+  - `src/components/proveedores/ProveedorFormModal.test.tsx` (1 test) —
+    ajeno a Prestamista, **nuevo en esta lista** (misma familia de
+    componente — formulario con Select+alta rápida — que
+    `ClienteFormModal`, mismo patrón de timeout).
+  - `src/pages/prestamista/DetallePrestamo.anulacion-garantias.test.tsx`
+    (3 de 9 tests) — de Prestamista, ya documentado desde Etapa 3.
+
+  **Re-ejecutados los 4 juntos, aislados del resto de la suite**
+  (`npx vitest run` con los 4 paths): **`Test Files: 4 passed (4)`,
+  `Tests: 32 passed (32)`**, 105.5s. Confirma que es la misma
+  contención de recursos ya conocida, no una regresión real — ninguno de
+  los 4 archivos tiene relación de código con los cambios de esta tarea
+  (los 3 de clientes/proveedores son completamente ajenos; el de
+  `DetallePrestamo` prueba anulación/garantes/garantías, no caja/cobranza/
+  configuración, que es lo que se tocó).
+
+### 7.6 Los 4 checks estáticos de CI
+
+Desde `hi-cloud backend-project/backend/`:
+
+```
+node scripts/check-entity-migrations.js
+→ ✅ CAPA 3 OK — 2579 columnas en 343 entidades, todas cubiertas por migración o baseline
+
+node scripts/validate-update-returning.js --autotest
+→ ✅ Autotest OK — marca los dos casos rotos y deja pasar las dos formas correctas.
+node scripts/validate-update-returning.js
+→ ✅ UPDATE/RETURNING OK — 1514 archivos revisados, sin guardas rotas nuevas (1 en baseline pendientes del barrido)
+
+node scripts/check-tenant-empresaid-filter.js --autotest
+→ ✅ Autotest OK — marca los casos sin empresaId y deja pasar los filtrados / no vigilados.
+node scripts/check-tenant-empresaid-filter.js
+→ ✅ Sin consultas nuevas sin empresaId sobre las 4 tablas vigiladas (7 en baseline, revisar aparte)
+
+bash scripts/security-check.sh
+→ ⚠️  1 advertencia (3 servicios con QueryBuilder sin referencia a empresaId:
+   two-factor.service.ts, demo.service.ts, parametros-fiscales.service.ts —
+   los 3 preexistentes, ninguno tocado por Prestamista ni por esta tarea)
+→ ✅ Sin errores críticos — push permitido
+```
+
+**Ningún check reporta una advertencia NUEVA.** Las menciones a "baseline"
+(1 en UPDATE/RETURNING, 7 en tenant-filter) y la advertencia de
+`security-check.sh` son exactamente las mismas que ya existían en `main`
+antes de este merge — no se agregó ninguna.
+
+### 7.7 Migraciones de esta actualización
+
+**No se agregó ninguna migración nueva.** El punto 3 de
+`decisiones-pendientes.md` (umbrales de escalamiento configurables por
+empresa) se implementó como 4 claves nuevas dentro de la columna JSONB
+`empresa.configuracion` que ya existe — el mismo mecanismo que usan
+`umbralDescuadreCaja`, `notificarDescuadreCaja`, `prestamoEfectivoPorCaja`,
+etc. Ninguna tabla ni columna nueva, por lo tanto ninguna migración ni
+riesgo de colisión de numeración con lo que haya entrado a `main` entre el
+2026-10-12 y hoy.
+
+### 7.8 Veredicto de esta actualización
+
+- **Punto 4 del pedido (aislamiento total para empresas sin el add-on)**:
+  CUMPLIDO. Los 2 huecos reales quedaron cerrados con tests que demuestran
+  el comportamiento (no solo que el resultado da 0), y se re-confirmaron
+  no-operativos los puntos que ya lo eran por diseño.
+- **Punto 5 del pedido (suites verdes, tsc limpio, migraciones revisadas)**:
+  CUMPLIDO con una salvedad honesta: la suite de backend tiene 1 fallo
+  real pero **ajeno a este roadmap y preexistente en `main`** (ver 7.5);
+  la suite de frontend tiene la misma clase de flakiness por contención de
+  recursos ya documentada en etapas anteriores, con un archivo nuevo en la
+  lista (`ProveedorFormModal.test.tsx`) que sigue el mismo patrón y se
+  verificó aislado. tsc limpio en ambos proyectos, build limpio, los 4
+  checks estáticos sin advertencias nuevas, sin migraciones nuevas que
+  revisar.

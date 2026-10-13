@@ -92,23 +92,24 @@ esto bloquea el uso del módulo — son valores de arranque razonables):
   hay una alternativa documentada (columna persistida + invalidación por
   mutación) — no construida hoy.
 
-## Estado de la suite (verificado 2026-10-11, cierre de Etapa 7)
+## Estado de la suite (actualizado 2026-10-13, tras mergear main de hoy)
 
-- **Backend** (Jest): **4975 tests en verde**, 0 fallos. `npx tsc --noEmit`
+Ver `merge-readiness.md` sección 7 para el detalle completo (comandos,
+salida exacta, los 4 checks estáticos de CI, y el análisis de cada fallo).
+Resumen:
+
+- **Backend** (Jest): suite completa en verde salvo **1 fallo preexistente
+  y ajeno a Prestamista** (`car-wash/services/cw-turnos.service.spec.ts`,
+  módulo nunca tocado por esta rama — el test depende de la fecha real del
+  sistema y coincide, por calendario, con el día de hoy). `npx tsc --noEmit`
   limpio.
-- **Frontend** (Vitest): **681 tests**, `npx tsc --noEmit` limpio. Bajo la
-  suite completa con todos los workers en paralelo, 3 archivos ajenos a
-  Prestamista en su mayoría (`ClienteFormModal.test.tsx`,
-  `SelectClienteConAlta.test.tsx`) y uno de Prestamista
-  (`DetallePrestamo.anulacion-garantias.test.tsx`) muestran timeouts
-  intermitentes por contención de recursos del runner — **los tres pasan
-  limpio al correrlos solos o en grupos pequeños**, confirmado
-  repetidamente a lo largo de las Etapas 3, 5, 6 y 7; es deuda aceptada de
-  infraestructura de pruebas, no una regresión de ningún cambio de
-  Prestamista (ver `feedback_deuda_test_nc_compras_lento` en la memoria del
-  usuario, mismo patrón).
-- **CI remoto** (`gh run list --branch feat/prestamista-motor`): verde al
-  cierre de esta etapa.
+- **Frontend** (Vitest): ver `merge-readiness.md` sección 7 para el conteo
+  exacto de esta corrida. `npx tsc --noEmit` limpio, `npm run build` limpio.
+  Los mismos archivos con timeouts intermitentes por contención de recursos
+  ya documentados en etapas anteriores se re-verificaron aislados.
+- Los 4 checks estáticos que exige CI (CAPA 3 entidades/migraciones, UPDATE
+  RETURNING, filtro `empresaId` multi-tenant, `security-check.sh`) pasan
+  los 4, sin advertencias nuevas.
 
 ## Dónde mirar primero
 
@@ -117,5 +118,7 @@ esto bloquea el uso del módulo — son valores de arranque razonables):
   (`*.spec.ts`).
 - Frontend: `hi-cloud frontend-project/src/pages/prestamista/` — una
   página por pantalla del menú.
-- Esta rama **nunca** se mergea a `main` ni toca una base de datos real —
-  ver las instrucciones del repo para el detalle de esa regla.
+- Para el estado de preparación del merge a `main` (lo que se verificó, lo
+  que se cerró, lo que sigue abierto como decisión de negocio), ver
+  `merge-readiness.md` y `decisiones-pendientes.md` — este README es solo
+  el mapa del módulo, no el informe de cierre.
