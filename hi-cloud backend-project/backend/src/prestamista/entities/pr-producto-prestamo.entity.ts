@@ -23,5 +23,14 @@ export class PrProductoPrestamo {
   @Column({ default: false }) requiereGarantia!: boolean;
   @Column({ default: false }) requiereGarante!: boolean;
   @Column({ default: true }) isActive!: boolean;
+  /**
+   * Motor v2 (Etapa 2, Fase 2A/2B) — configuración completa del motor
+   * financiero nuevo (prestamista/motor/amortizacion-v2.util.ts): frecuencia
+   * y su config, tasa (tipo/periodoExpresado/baseDias), método, gracia,
+   * cargos[], mora, fiscal por concepto. `null` en productos creados antes
+   * de esta fase — ProductosPrestamoService sintetiza un equivalente a
+   * partir de los campos planos de arriba (ver motor-adaptador.util.ts).
+   */
+  @Column({ type: 'jsonb', nullable: true }) motorConfig?: Record<string, unknown>;
   @CreateDateColumn() createdAt!: Date;
 }

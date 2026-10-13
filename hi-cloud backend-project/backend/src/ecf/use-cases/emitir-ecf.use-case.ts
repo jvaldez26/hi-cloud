@@ -965,7 +965,7 @@ ${JSON.stringify(payload, null, 2)}`;
       const rows = await this.ds.query<any[]>(
         `SELECT p.*, d.nombre AS deudor_nombre, d.rnc AS deudor_rnc,
                 d.cedula AS deudor_cedula, d.direccion AS deudor_direccion,
-                pr.numero AS prestamo_numero
+                pr.numero AS prestamo_numero, pr."motorConfig" AS prestamo_motor_config
          FROM pr_pagos p
          JOIN pr_deudores d  ON d.id  = p."deudorId"  AND d."empresaId"  = $2
          JOIN pr_prestamos pr ON pr.id = p."prestamoId" AND pr."empresaId" = $2
@@ -975,6 +975,28 @@ ${JSON.stringify(payload, null, 2)}`;
       if (!rows.length) throw new NotFoundException(`Pago préstamo #${id} no encontrado para empresa #${empresaId}`);
       const pag = rows[0];
       const interes = Number(pag.aplicadoInteres ?? 0);
+
+      // Interés: línea preexistente, sin cambios (etapa-2-resto.md §1) —
+      // siempre exenta, siempre presente. Mora/cargos son NUEVOS (Etapa 5,
+      // Parte C): solo se agregan si el producto configuró su "Fiscal" por
+      // concepto (pr_productos_prestamo.motorConfig.fiscal, hoy vacío en
+      // todos los productos) — mientras eso no se llene, `detalles` queda
+      // igual que antes de esta etapa.
+      const fiscal = (pag.prestamo_motor_config?.fiscal ?? {}) as Record<string, {
+        generaComprobante?: boolean | null; tratamientoItbis?: 0 | 16 | 18 | 'exento' | null;
+      }>;
+      const detalles = [lineaFiscalPrestamo('Interés', pag.prestamo_numero, interes, 0)];
+      const mora = Number(pag.aplicadoMora ?? 0);
+      if (fiscal.mora?.generaComprobante === true && mora > 0) {
+        detalles.push(lineaFiscalPrestamo('Mora', pag.prestamo_numero, mora, fiscal.mora.tratamientoItbis));
+      }
+      const cargos = Number(pag.aplicadoCargos ?? 0);
+      if (fiscal.gastos?.generaComprobante === true && cargos > 0) {
+        detalles.push(lineaFiscalPrestamo('Cargos', pag.prestamo_numero, cargos, fiscal.gastos.tratamientoItbis));
+      }
+      const subtotal = detalles.reduce((s, d) => s + d.subtotal, 0);
+      const iva      = detalles.reduce((s, d) => s + d.importeIva, 0);
+
       return {
         fecha: pag.createdat ?? new Date(),
         cliente: {
@@ -983,17 +1005,10 @@ ${JSON.stringify(payload, null, 2)}`;
           nombre:      pag.deudor_nombre,
           direccion:   pag.deudor_direccion ?? undefined,
         },
-        detalles: [{
-          descripcion:    `Interés préstamo ${pag.prestamo_numero}`,
-          cantidad:       1,
-          precioUnitario: interes,
-          porcentajeIva:  0,  // interés financiero: exento ITBIS
-          importeIva:     0,
-          subtotal:       interes,
-        }],
-        iva:      0,
-        subtotal: interes,
-        total:    interes,
+        detalles,
+        iva,
+        subtotal,
+        total: subtotal + iva,
       } as unknown as Factura;
     }
 
@@ -1065,6 +1080,28 @@ ${JSON.stringify(payload, null, 2)}`;
       idempotente,
     };
   }
+}
+
+/**
+ * Prestamista Etapa 5, Parte C — una línea de detalle para un concepto de
+ * pago de préstamo (interés/mora/cargos) con el tratamiento ITBIS que diga
+ * `motorConfig.fiscal[concepto]`. `null`/`'exento'` → 0% (mismo criterio que
+ * el resto del ERP para conceptos financieros sin ITBIS).
+ */
+function lineaFiscalPrestamo(
+  label: string, numeroPrestamo: string, monto: number,
+  tratamientoItbis: 0 | 16 | 18 | 'exento' | null | undefined,
+) {
+  const porcentajeIva = typeof tratamientoItbis === 'number' ? tratamientoItbis : 0;
+  const importeIva = porcentajeIva > 0 ? Number((monto * porcentajeIva / 100).toFixed(2)) : 0;
+  return {
+    descripcion:    `${label} préstamo ${numeroPrestamo}`,
+    cantidad:       1,
+    precioUnitario: monto,
+    porcentajeIva,
+    importeIva,
+    subtotal:       monto,
+  };
 }
 
 // "DD-MM-YYYY HH:MM:SS" → Date en RD (UTC-4). Returns undefined si no parseable.

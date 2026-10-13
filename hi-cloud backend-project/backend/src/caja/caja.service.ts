@@ -33,6 +33,7 @@ import {
   SospechaFormaPago,
 } from './cuadre-por-forma-pago.util';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
+import { ModulosAddonService } from '../modulos-addon/modulos-addon.service';
 
 /** Mismas 4 etiquetas que usa el frontend para el cuadre — para el mensaje de la validación de abajo. */
 const LABEL_FORMA_CUADRE: Record<string, string> = {
@@ -52,6 +53,7 @@ export class CajaService {
     private tenantService:   TenantService,
     private realtimeService: RealtimeService,
     private notificacionesService: NotificacionesService,
+    private modulosAddonService: ModulosAddonService,
   ) {}
 
   // ── Migración defensiva ───────────────────────────────────────────────────
@@ -345,6 +347,8 @@ export class CajaService {
       anticiposEfectivo: fresh.anticiposEfectivo,
       gastosEfectivo:    fresh.gastosEfectivo,
       retiros:           fresh.retiros,
+      cobrosPrestamoEfectivo:      fresh.cobrosPrestamoEfectivo,
+      desembolsosPrestamoEfectivo: fresh.desembolsosPrestamoEfectivo,
     });
 
     const diferencia = calcularDiferencia(saldoFisico, saldoCierre);
@@ -891,6 +895,42 @@ export class CajaService {
     ).catch(() => [{ total: '0' }]);
     const gastosTotal = Number(gastos?.total ?? 0);
 
+    // Prestamista Etapa 5 — cobros de cuota y desembolsos de préstamo en
+    // efectivo imputados a esta caja, mismo patrón que gastos.cajaDiariaId
+    // arriba. Solo corre si la empresa no apagó el interruptor Y tiene el
+    // add-on 'prestamista' activo — para TODA empresa sin el add-on (la
+    // inmensa mayoría de clientes del ERP), ninguna de las 2 queries contra
+    // pr_pagos/pr_desembolsos_parciales se ejecuta nunca, sin importar el
+    // valor (por defecto `true`) del switch de configuración. El gate del
+    // add-on se evalúa ANTES de la query a pr_pagos — `&&` corta en corto.
+    let cobrosPrestamoEfectivoTotal = 0;
+    let desembolsosPrestamoEfectivoTotal = 0;
+    if (empresaId) {
+      const { prestamoEfectivoPorCaja } = await this.getEmpresaCfg(empresaId, manager);
+      if (prestamoEfectivoPorCaja && await this.modulosAddonService.checkModuloActivo(empresaId, 'prestamista')) {
+        const [cobrosPrestamo] = await db.query<{ total: string }[]>(
+          `SELECT COALESCE(SUM(p."montoPagado"), 0)::text AS total
+           FROM pr_pagos p
+           WHERE p."cajaDiariaId" = $1
+             AND p."empresaId" = $2
+             AND p.estado = 'activo'
+             AND p."metodoPago" = 'efectivo'`,
+          [cajaId, empresaId],
+        ).catch(() => [{ total: '0' }]);
+        cobrosPrestamoEfectivoTotal = Number(cobrosPrestamo?.total ?? 0);
+
+        const [desembolsosPrestamo] = await db.query<{ total: string }[]>(
+          `SELECT COALESCE(SUM(d.monto), 0)::text AS total
+           FROM pr_desembolsos_parciales d
+           WHERE d."cajaDiariaId" = $1
+             AND d."empresaId" = $2
+             AND d."metodoPago" = 'efectivo'`,
+          [cajaId, empresaId],
+        ).catch(() => [{ total: '0' }]);
+        desembolsosPrestamoEfectivoTotal = Number(desembolsosPrestamo?.total ?? 0);
+      }
+    }
+
     await db.update(CierreCaja, cajaId, {
       ventasEfectivo:        Number(ventas?.efectivo      ?? 0),
       ventasTarjeta:         Number(ventas?.tarjeta       ?? 0),
@@ -905,6 +945,8 @@ export class CajaService {
       cantidadTransacciones: Number(ventas?.cantidad      ?? 0),
       retiros:               Number(retiros?.total        ?? 0),
       gastosEfectivo:        gastosTotal,
+      cobrosPrestamoEfectivo:      cobrosPrestamoEfectivoTotal,
+      desembolsosPrestamoEfectivo: desembolsosPrestamoEfectivoTotal,
     });
   }
 
@@ -930,6 +972,8 @@ export class CajaService {
       anticiposEfectivo: fresh.anticiposEfectivo,
       gastosEfectivo:    fresh.gastosEfectivo,
       retiros:           fresh.retiros,
+      cobrosPrestamoEfectivo:      fresh.cobrosPrestamoEfectivo,
+      desembolsosPrestamoEfectivo: fresh.desembolsosPrestamoEfectivo,
     });
 
     const [cobrosPorForma] = await db.query<{ tarjeta: string; transferencia: string }[]>(
@@ -950,12 +994,39 @@ export class CajaService {
       [fecha, cajaId],
     ).catch(() => [{ tarjeta: '0', transferencia: '0' }]);
 
+    // Prestamista Etapa 5 — un cobro de cuota por tarjeta/transferencia entra
+    // al bucket de SU forma, nunca al de efectivo (ese solo lo toca
+    // calcularEfectivoEsperado arriba). Los desembolsos NO entran aquí: uno
+    // por tarjeta/transferencia es una salida bancaria, no algo que el
+    // cajero deba cuadrar contra ningún lote/declaración de esa forma.
+    let prestamoTarjeta = 0;
+    let prestamoTransferencia = 0;
+    if (empresaId) {
+      const { prestamoEfectivoPorCaja } = await this.getEmpresaCfg(empresaId, manager);
+      // Mismo gate de add-on que calcularEsperadoPorForma/recalcularDesdeBD
+      // arriba — ver el comentario extenso ahí.
+      if (prestamoEfectivoPorCaja && await this.modulosAddonService.checkModuloActivo(empresaId, 'prestamista')) {
+        const [prestamoPorForma] = await db.query<{ tarjeta: string; transferencia: string }[]>(
+          `SELECT
+             COALESCE(SUM(p."montoPagado") FILTER (WHERE p."metodoPago" = 'tarjeta'), 0)::text AS tarjeta,
+             COALESCE(SUM(p."montoPagado") FILTER (WHERE p."metodoPago" IN ('transferencia','cheque')), 0)::text AS transferencia
+           FROM pr_pagos p
+           WHERE p."cajaDiariaId" = $1 AND p."empresaId" = $2 AND p.estado = 'activo'`,
+          [cajaId, empresaId],
+        ).catch(() => [{ tarjeta: '0', transferencia: '0' }]);
+        prestamoTarjeta = Number(prestamoPorForma?.tarjeta ?? 0);
+        prestamoTransferencia = Number(prestamoPorForma?.transferencia ?? 0);
+      }
+    }
+
     const tarjeta = Number(fresh.ventasTarjeta ?? 0)
       + Number(cobrosPorForma?.tarjeta ?? 0)
-      + Number(anticiposPorForma?.tarjeta ?? 0);
+      + Number(anticiposPorForma?.tarjeta ?? 0)
+      + prestamoTarjeta;
     const transferencia = Number(fresh.ventasTransferencia ?? 0)
       + Number(cobrosPorForma?.transferencia ?? 0)
-      + Number(anticiposPorForma?.transferencia ?? 0);
+      + Number(anticiposPorForma?.transferencia ?? 0)
+      + prestamoTransferencia;
 
     // "otros" (depósito/otro de cobros y anticipos que no caen en tarjeta/transferencia)
     const [otrosCobros] = await db.query<{ total: string }[]>(
@@ -1058,6 +1129,7 @@ export class CajaService {
     umbralDescuadreCaja: number;
     notificarDescuadreCaja: boolean;
     montoMaxRetiroSinAutorizacion: number;
+    prestamoEfectivoPorCaja: boolean;
   }> {
     // Acepta un EntityManager para poder correr DENTRO de la transacción de
     // registrarRetiro (que ya reservó una conexión y sostiene un lock
@@ -1080,6 +1152,21 @@ export class CajaService {
       notificarDescuadreCaja:        cfg.notificarDescuadreCaja !== false,
       /** 0 = sin restricción (cualquier monto es válido sin autorización) */
       montoMaxRetiroSinAutorizacion: Number(cfg.montoMaxRetiroSinAutorizacion ?? 0),
+      // Prestamista Etapa 5 — decisión de negocio ya cerrada (ver
+      // docs/prestamista/decisiones-pendientes.md, "Efectivo de préstamos por
+      // la caja del cajero"): por defecto SÍ afecta el cierre de caja del
+      // turno. Apagarlo deja el cálculo exactamente como antes de esta etapa.
+      // OJO: este flag es solo la mitad de la condición real — los 2 call
+      // sites que lo usan (calcularEfectivoEsperado/recalcularDesdeBD y
+      // desglosePorFormaDePago) SIEMPRE lo combinan con
+      // `modulosAddonService.checkModuloActivo(empresaId, 'prestamista')`
+      // antes de correr las queries contra pr_pagos/pr_desembolsos_parciales
+      // — así ninguna empresa sin el add-on paga ese costo, sin importar el
+      // default `true` de este campo. No se movió ese gate aquí adentro a
+      // propósito: esta función tiene otros 3 call sites (umbral/notificar/
+      // cierreCajaCiego/montoMaxRetiro) que no tienen nada que ver con
+      // Prestamista y no deben pagar una query extra a empresa_modulos.
+      prestamoEfectivoPorCaja: cfg.prestamoEfectivoPorCaja !== false,
     };
   }
 

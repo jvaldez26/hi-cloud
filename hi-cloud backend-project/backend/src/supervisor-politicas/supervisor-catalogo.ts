@@ -68,6 +68,19 @@ export const CATALOGO_SUPERVISOR: CatalogoItem[] = [
   // ── Reportes ─────────────────────────────────────────────────────────────
   { clave: 'ver_reportes', label: 'Ver reportes y analítica', descripcion: 'Reportes, Business Intelligence y KPI ejecutivo', grupo: 'Reportes', defaultRequerido: true, defaultModo: 'sesion' },
 
+  // ── Prestamista / Financiera ─────────────────────────────────────────────
+  { clave: 'pago_retroactivo', label: 'Pago de préstamo con fecha anterior', descripcion: 'Registrar un pago de préstamo con fecha de ayer o antes', grupo: 'Prestamista / Financiera', defaultRequerido: true, defaultModo: 'cada_vez' },
+  // Usan RequiereSupervisorSiempre (sin bypass por rol) — Etapa 2 resto §1/§3:
+  // anular un pago o ejecutar una garantía son las acciones más graves del
+  // módulo (mueven dinero/patrimonio ya aplicado), ni el propio ADMIN que las
+  // hace puede autorizarse a sí mismo.
+  { clave: 'anular_pago_prestamo', label: 'Anular pago de préstamo', descripcion: 'Anular un pago ya aplicado — revierte cuotas, saldos y el asiento contable', grupo: 'Prestamista / Financiera', defaultRequerido: true, defaultModo: 'cada_vez' },
+  { clave: 'ejecutar_garantia',    label: 'Ejecutar garantía',       descripcion: 'Marcar una garantía como ejecutada por impago (el banco se queda con el bien)', grupo: 'Prestamista / Financiera', defaultRequerido: true, defaultModo: 'cada_vez' },
+  // Etapa 2 resto §5/§6 — mismo criterio: cambian lo que el deudor debe o va
+  // a pagar, ni el propio ADMIN que las hace puede autorizarse a sí mismo.
+  { clave: 'reestructurar_prestamo', label: 'Reestructurar préstamo', descripcion: 'Cambiar plazo/tasa/método de las cuotas totalmente pendientes de un préstamo vivo', grupo: 'Prestamista / Financiera', defaultRequerido: true, defaultModo: 'cada_vez' },
+  { clave: 'condonar_prestamo',      label: 'Condonar mora/interés',  descripcion: 'Perdonar mora y/o interés pendiente de un préstamo vivo, sin refinanciarlo (nunca capital)', grupo: 'Prestamista / Financiera', defaultRequerido: true, defaultModo: 'cada_vez' },
+
   // ── Caja: corrección posterior ──────────────────────────────────────────
   // Usan RequiereSupervisorSiempre (sin bypass por rol) — incluso un ADMIN
   // necesita la autorización de otra persona para esto.

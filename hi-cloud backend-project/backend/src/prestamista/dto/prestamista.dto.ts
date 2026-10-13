@@ -14,13 +14,41 @@
  * numéricos usan @Type(() => Number).
  */
 import {
-  IsInt, IsPositive, IsNumber, IsOptional, IsString, IsNotEmpty,
-  IsDateString, MaxLength, Min, Max, IsIn, IsBoolean,
+  IsInt, IsPositive, IsNumber, IsOptional, IsString, IsNotEmpty, IsEmail,
+  IsDateString, MaxLength, Min, Max, IsIn, IsBoolean, IsArray, ValidateNested, ValidateIf,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { MotorConfigDto } from './prestamista-motor.dto';
 
 /** Monto de dinero: > 0 y con dos decimales como máximo. */
 const MONTO = { maxDecimalPlaces: 2 } as const;
+
+/** Registrar Pago (precursor de Etapa 2): una forma de pago dentro de un pago mixto. */
+export class FormaPagoDto {
+  @IsIn(['efectivo', 'transferencia', 'cheque', 'tarjeta'])
+  metodo!: string;
+
+  @IsNumber(MONTO) @IsPositive() @Type(() => Number)
+  monto!: number;
+
+  /** Obligatoria salvo en efectivo — no hay cómo rastrear un cheque/transferencia/tarjeta sin ella. */
+  @ValidateIf(o => o.metodo !== 'efectivo')
+  @IsString() @IsNotEmpty({ message: 'La referencia es obligatoria salvo en efectivo' }) @MaxLength(100)
+  referencia?: string;
+}
+
+/** Registrar Pago (precursor de Etapa 2) — enviar el recibo por correo. */
+export class EnviarReciboCorreoDto {
+  @IsEmail({}, { message: 'El correo del destinatario no es válido' })
+  email!: string;
+
+  /** Lista separada por comas (EmailConCopiaModal del frontend) — nodemailer la acepta tal cual. */
+  @IsOptional() @IsString() @MaxLength(500)
+  cc?: string;
+
+  @IsOptional() @IsString() @MaxLength(500)
+  cco?: string;
+}
 
 export class RegistrarPagoDto {
   @IsInt() @IsPositive() @Type(() => Number)
@@ -31,6 +59,35 @@ export class RegistrarPagoDto {
   @IsPositive({ message: 'El monto pagado debe ser mayor que cero' })
   @Type(() => Number)
   montoPagado!: number;
+
+  /**
+   * Registrar Pago (precursor de Etapa 2) — ver docs/prestamista/registrar-pago-rediseno.md.
+   * Default 'cuotas' si se omite (resuelto en el service, no aquí).
+   */
+  @IsOptional() @IsIn(['cuotas', 'abono_parcial', 'abono_extraordinario_capital', 'liquidar'])
+  tipoPago?: 'cuotas' | 'abono_parcial' | 'abono_extraordinario_capital' | 'liquidar';
+
+  /** ids de pr_cuotas — requerido solo para tipoPago='cuotas'; el servidor valida que estén en orden. */
+  @IsOptional() @IsArray() @IsInt({ each: true })
+  cuotasSeleccionadas?: number[];
+
+  @IsOptional() @IsIn(['siguientes_cuotas', 'capital'])
+  destinoExcedente?: 'siguientes_cuotas' | 'capital';
+
+  @IsOptional() @IsIn(['reducir_cuota', 'reducir_plazo'])
+  abonoExtraordinarioOpcion?: 'reducir_cuota' | 'reducir_plazo';
+
+  /** Fecha del pago — hoy si se omite. Anterior a hoy exige autorización de supervisor (clave 'pago_retroactivo'). */
+  @IsOptional() @IsDateString({}, { message: 'La fecha del pago debe ser una fecha válida' })
+  fecha?: string;
+
+  /** Pago mixto (varias formas) — si viene, tiene prioridad sobre metodoPago/referencia sueltos. */
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => FormaPagoDto)
+  formasPago?: FormaPagoDto[];
+
+  /** Solo en efectivo — calcula el cambio en el frontend, no es dinero que el sistema registre aparte. */
+  @IsOptional() @IsNumber(MONTO) @Min(0) @Type(() => Number)
+  montoRecibido?: number;
 
   @IsOptional() @IsString() @MaxLength(50)
   metodoPago?: string;
@@ -43,6 +100,26 @@ export class RegistrarPagoDto {
 
   @IsOptional() @IsString() @MaxLength(500)
   notas?: string;
+
+  /**
+   * C1: sin esto, un doble clic o un reintento de red en "Registrar Pago"
+   * creaba dos filas en pr_pagos y aplicaba el dinero dos veces — el bloqueo
+   * FOR UPDATE de las cuotas no lo evita (la segunda petición simplemente
+   * aplica su dinero a la SIGUIENTE cuota pendiente). Mismo patrón que
+   * Factura.claveIdempotencia / Compra.claveIdempotencia.
+   */
+  @IsOptional() @IsString() @MaxLength(36)
+  claveIdempotencia?: string;
+
+  /**
+   * Etapa 5 — integración con Caja. Solo tiene efecto con metodoPago='efectivo'
+   * (PagosService la ignora en cualquier otro caso) y si la empresa no apagó
+   * `configuracion.prestamoEfectivoPorCaja`. Se valida que la caja exista,
+   * pertenezca a esta empresa y esté abierta — mismo criterio que
+   * GastosService.crear().
+   */
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number)
+  cajaDiariaId?: number;
 }
 
 export class CrearSolicitudDto {
@@ -59,14 +136,33 @@ export class CrearSolicitudDto {
   @IsInt() @Min(1, { message: 'El plazo debe ser de al menos 1 mes' }) @Type(() => Number)
   plazoMeses!: number;
 
-  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Type(() => Number)
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) @Type(() => Number)
   tasaInteresMensual?: number;
+
+  /**
+   * Motor v2 (Fase 2B): ajuste de frecuencia respecto a la del producto —
+   * solo tiene efecto si el producto permite ajustes en la solicitud
+   * (motorConfig.permiteAjusteSolicitud, default true). Ver
+   * motor-adaptador.util.ts → aplicarOverridesSolicitud().
+   */
+  @IsOptional() @IsIn(['diaria', 'semanal', 'quincenal', 'mensual', 'bimestral', 'trimestral', 'semestral', 'anual', 'unico', 'personalizado'])
+  frecuenciaPago?: string;
 
   @IsOptional() @IsString() @MaxLength(500)
   proposito?: string;
 
   @IsOptional() @IsString() @MaxLength(500)
   notas?: string;
+
+  /**
+   * Etapa 1: SolicitudesService.create() ya leía `data.fechaSolicitud ??
+   * fechaHoyRD()`, y SolicitudesPage.tsx ya manda este campo — pero no
+   * estaba declarado aquí, así que con forbidNonWhitelisted:true cualquier
+   * "Nueva Solicitud" con fecha era rechazada con 400 (el DatePicker del
+   * formulario es opcional, pero basta con tocarlo para que el campo viaje).
+   */
+  @IsOptional() @IsDateString({}, { message: 'La fecha de solicitud debe ser una fecha válida' })
+  fechaSolicitud?: string;
 }
 
 export class DecidirSolicitudDto {
@@ -78,6 +174,20 @@ export class DecidirSolicitudDto {
 
   @IsOptional() @IsNumber(MONTO) @IsPositive() @Type(() => Number)
   montoAprobado?: number;
+
+  /**
+   * Etapa 1: SolicitudesService.decidir() ya leía `data.tasaAprobada` y
+   * `data.motivoDecision` (este último con prioridad sobre `motivoRechazo`,
+   * que ningún caller manda), y SolicitudesPage.tsx ya manda ambos — pero
+   * ninguno estaba declarado aquí, así que cualquier decisión con tasa o
+   * motivo (ambos opcionales en el formulario, de ahí lo intermitente del
+   * bug) daba 400.
+   */
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) @Type(() => Number)
+  tasaAprobada?: number;
+
+  @IsOptional() @IsString() @MaxLength(500)
+  motivoDecision?: string;
 }
 
 export class CrearPrestamoDto {
@@ -96,10 +206,10 @@ export class CrearPrestamoDto {
   @IsOptional() @IsInt() @Min(1) @Type(() => Number)
   plazoMeses?: number;
 
-  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Type(() => Number)
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) @Type(() => Number)
   tasaInteresMensual?: number;
 
-  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Type(() => Number)
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) @Type(() => Number)
   porcentajeMora?: number;
 
   @IsOptional() @IsInt() @Min(0) @Type(() => Number)
@@ -108,8 +218,55 @@ export class CrearPrestamoDto {
   @IsOptional() @IsDateString({}, { message: 'La fecha de desembolso debe ser una fecha válida' })
   fechaDesembolso?: string;
 
+  /**
+   * Motor v2 (Fase 2B): prestamos.service.ts la exige salvo frecuencia
+   * mensual (ahí la auto-calcula a partir de fechaDesembolso) — ningún
+   * desembolso de una solicitud con otra frecuencia podía completarse hasta
+   * declararla aquí, porque forbidNonWhitelisted:true la rechazaba.
+   */
+  @IsOptional() @IsDateString({}, { message: 'La fecha del primer pago debe ser una fecha válida' })
+  fechaPrimerPago?: string;
+
+  /** Ajuste de frecuencia/método respecto al producto o la solicitud — mismo mecanismo que CrearSolicitudDto. */
+  @IsOptional() @IsIn(['diaria', 'semanal', 'quincenal', 'mensual', 'bimestral', 'trimestral', 'semestral', 'anual', 'unico', 'personalizado'])
+  frecuenciaPago?: string;
+
+  @IsOptional() @IsIn(['frances', 'aleman', 'americano', 'flat', 'solo_interes_luego_amortiza', 'personalizado'])
+  metodoAmortizacion?: string;
+
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number)
+  oficialId?: number;
+
+  @IsOptional() @IsString() @MaxLength(200)
+  oficialNombre?: string;
+
   @IsOptional() @IsString() @MaxLength(500)
   notas?: string;
+
+  /**
+   * §4 (Etapa 2 resto) — monto de EFECTIVO entregado al firmar. Si se omite,
+   * se asume el 100% (caso de siempre). Si es menor al monto del préstamo,
+   * nace en estado 'desembolso_parcial' hasta completarlo (ver
+   * DesembolsosParcialesService) — la tabla de amortización sigue
+   * generándose completa sobre el monto total.
+   */
+  @IsOptional() @IsNumber(MONTO) @Min(0) @Type(() => Number)
+  desembolsoInicial?: number;
+
+  /**
+   * Método del desembolso inicial — nunca estuvo declarado aquí: con
+   * forbidNonWhitelisted:true el campo se descartaba siempre y
+   * PrestamosService.crearEnTransaccion() recibía `data.formaPago`
+   * indefinido (fallback 'transferencia' en el asiento). Se agrega en la
+   * Etapa 5 junto con cajaDiariaId — antes de esto, un desembolso creado
+   * desde esta pantalla nunca podía ser en efectivo con caja asociada.
+   */
+  @IsOptional() @IsString() @MaxLength(20)
+  formaPago?: string;
+
+  /** Etapa 5 — integración con Caja. Mismo criterio que RegistrarPagoDto.cajaDiariaId. */
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number)
+  cajaDiariaId?: number;
 }
 
 export class RefinanciarDto {
@@ -123,7 +280,7 @@ export class RefinanciarDto {
   @IsOptional() @IsInt() @Min(1) @Type(() => Number)
   plazoMeses?: number;
 
-  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Type(() => Number)
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) @Type(() => Number)
   tasaInteresMensual?: number;
 
   /** Condonaciones: nunca negativas (restarían deuda al revés). */
@@ -146,24 +303,34 @@ export class CancelarPrestamoDto {
   motivo!: string;
 }
 
-export class SimularPrestamoDto {
-  @IsOptional() @IsNumber(MONTO) @IsPositive() @Type(() => Number)
-  montoPrincipal?: number;
+/**
+ * C3: el servicio (`PrestamosService.simular`) y la pantalla (`SimuladorPage.tsx`)
+ * ya usaban este vocabulario (`principal`/`fechaPrimerPago`/`metodoAmortizacion`);
+ * era el DTO el desalineado (`montoPrincipal`/`fechaDesembolso`, sin método), y con
+ * forbidNonWhitelisted:true eso bastaba para rechazar cualquier simulación con 400.
+ */
+/**
+ * Motor v2 (Fase 2B): el Simulador ahora acepta todos los parámetros que
+ * soporta el motor (docs/prestamista/motor-financiero.md) — hereda de
+ * MotorConfigDto (frecuencia, tasa, método, gracia, cargos; mora/fiscal/
+ * permiteAjusteSolicitud se heredan pero el simulador los ignora, no hace
+ * daño que vengan declarados aunque no se usen) y agrega los datos propios
+ * de una simulación puntual (monto, fechas, plazo).
+ */
+export class SimularPrestamoDto extends MotorConfigDto {
+  @IsNumber(MONTO, { message: 'El monto principal debe ser un número con hasta 2 decimales' })
+  @IsPositive({ message: 'El monto principal debe ser mayor que cero' })
+  @Type(() => Number)
+  montoPrincipal!: number;
 
-  @IsOptional() @IsInt() @Min(1) @Type(() => Number)
-  plazoMeses?: number;
+  @IsDateString({}, { message: 'La fecha de desembolso debe ser una fecha válida' })
+  fechaDesembolso!: string;
 
-  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Type(() => Number)
-  tasaInteresMensual?: number;
+  @IsDateString({}, { message: 'La fecha del primer pago debe ser una fecha válida' })
+  fechaPrimerPago!: string;
 
-  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Type(() => Number)
-  porcentajeMora?: number;
-
-  @IsOptional() @IsInt() @Min(0) @Type(() => Number)
-  diasGracia?: number;
-
-  @IsOptional() @IsDateString()
-  fechaDesembolso?: string;
+  @IsInt() @Min(1, { message: 'El plazo debe ser de al menos 1 período' }) @Type(() => Number)
+  plazoPeriodos!: number;
 }
 
 export class ActualizarSolicitudDto {
@@ -241,7 +408,11 @@ export class CrearDeudorDto {
   @IsOptional() @IsInt() @Min(0) @Max(1000) @Type(() => Number)
   scoreCredito?: number;
 
-  @IsOptional() @IsIn(['bajo', 'medio', 'alto', 'muy_alto'])
+  // Etapa 1: el Select de DeudoresPage.tsx manda 'critico' — el DTO exigía
+  // 'muy_alto' (nadie más en el backend depende de ese valor: es una
+  // columna de texto libre sin CHECK), así que guardar un deudor con riesgo
+  // "Crítico" daba 400 siempre.
+  @IsOptional() @IsIn(['bajo', 'medio', 'alto', 'critico'])
   nivelRiesgo?: string;
 
   @IsOptional() @IsIn(['activo', 'inactivo', 'moroso'])
@@ -292,6 +463,12 @@ export class RegistrarGestionDto {
 
   @IsOptional() @IsString() @MaxLength(200)
   cobradorNombre?: string;
+}
+
+/** Etapa 3 — asignar/reasignar la cartera de un préstamo a un cobrador. null = desasignar. */
+export class AsignarCobradorDto {
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number)
+  cobradorId?: number | null;
 }
 
 export class CrearGarantiaDto {
@@ -345,8 +522,9 @@ export class ActualizarGarantiaDto {
   @IsOptional() @IsNumber(MONTO) @Min(0) @Type(() => Number)
   valorRealizacion?: number;
 
-  @IsOptional() @IsIn(['activa', 'liberada', 'ejecutada'])
-  estado?: string;
+  // 'estado' NO se edita por aquí — ver liberar()/ejecutar() en
+  // GarantiasService (Etapa 2 resto, §3): un cambio de estado siempre deja
+  // motivo y quién lo hizo, nunca un PATCH genérico silencioso.
 
   @IsOptional() @IsString() @MaxLength(200)
   ubicacion?: string;
@@ -362,7 +540,20 @@ export class CrearProductoPrestamoDto {
   @IsString() @IsNotEmpty() @MaxLength(100)
   nombre!: string;
 
-  @IsNumber({ maxDecimalPlaces: 4 }) @IsPositive({ message: 'La tasa de interés mensual debe ser mayor que cero' })
+  /**
+   * Etapa 1: ProductosPrestamoPage.tsx ya manda este campo (Select
+   * personal/vehiculo/hipotecario) y SolicitudesPage.tsx depende de su
+   * valor para decidir si pedir el vehículo a financiar — pero no estaba
+   * declarado aquí (el DTO lo descartaba con forbidNonWhitelisted si se
+   * tocaba) NI en el INSERT de ProductosPrestamoService.create() (se
+   * quedaba siempre en el default 'personal' de la columna, incluso si
+   * llegara a pasar la validación). Ningún producto podía crearse como
+   * "vehículo" u "hipotecario" de verdad.
+   */
+  @IsOptional() @IsIn(['personal', 'vehiculo', 'hipotecario'])
+  tipoCredito?: string;
+
+  @IsNumber({ maxDecimalPlaces: 3 }) @IsPositive({ message: 'La tasa de interés mensual debe ser mayor que cero' })
   @Type(() => Number)
   tasaInteresMensual!: number;
 
@@ -387,16 +578,22 @@ export class CrearProductoPrestamoDto {
   @IsOptional() @IsIn(['mensual', 'quincenal', 'semanal', 'unico'])
   frecuenciaPago?: string;
 
-  @IsOptional() @IsIn(['frances', 'aleman', 'americano'])
+  /**
+   * C4: 'americano' (bullet) se podía configurar aquí pero
+   * amortizacion.util.ts solo implementa francés y alemán — un valor fuera
+   * de esos dos se trataba como francés en silencio. No se habilita hasta
+   * que el motor realmente lo calcule.
+   */
+  @IsOptional() @IsIn(['frances', 'aleman'])
   metodoAmortizacion?: string;
 
-  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Type(() => Number)
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) @Type(() => Number)
   porcentajeMora?: number;
 
   @IsOptional() @IsNumber(MONTO) @Min(0) @Type(() => Number)
   cargoCierre?: number;
 
-  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Type(() => Number)
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) @Type(() => Number)
   porcentajeCargoCierre?: number;
 
   @IsOptional() @IsInt() @Min(0) @Type(() => Number)
@@ -407,13 +604,25 @@ export class CrearProductoPrestamoDto {
 
   @IsOptional() @IsBoolean()
   requiereGarante?: boolean;
+
+  /**
+   * Motor v2 (Fase 2B) — configuración completa del motor financiero nuevo
+   * para este producto. Si se omite, el producto queda "legacy": todo
+   * desembolso a partir de él sintetiza un equivalente francés/alemán
+   * mensual (ver motor-adaptador.util.ts → motorConfigLegacyDesdeProducto).
+   */
+  @IsOptional() @ValidateNested() @Type(() => MotorConfigDto)
+  motorConfig?: MotorConfigDto;
 }
 
 export class ActualizarProductoPrestamoDto {
   @IsOptional() @IsString() @IsNotEmpty() @MaxLength(100)
   nombre?: string;
 
-  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Type(() => Number)
+  @IsOptional() @IsIn(['personal', 'vehiculo', 'hipotecario'])
+  tipoCredito?: string;
+
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) @Type(() => Number)
   tasaInteresMensual?: number;
 
   @IsOptional() @IsString() @MaxLength(300)
@@ -437,16 +646,16 @@ export class ActualizarProductoPrestamoDto {
   @IsOptional() @IsIn(['mensual', 'quincenal', 'semanal', 'unico'])
   frecuenciaPago?: string;
 
-  @IsOptional() @IsIn(['frances', 'aleman', 'americano'])
+  @IsOptional() @IsIn(['frances', 'aleman'])
   metodoAmortizacion?: string;
 
-  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Type(() => Number)
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) @Type(() => Number)
   porcentajeMora?: number;
 
   @IsOptional() @IsNumber(MONTO) @Min(0) @Type(() => Number)
   cargoCierre?: number;
 
-  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Type(() => Number)
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) @Type(() => Number)
   porcentajeCargoCierre?: number;
 
   @IsOptional() @IsInt() @Min(0) @Type(() => Number)
@@ -460,6 +669,9 @@ export class ActualizarProductoPrestamoDto {
 
   @IsOptional() @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional() @ValidateNested() @Type(() => MotorConfigDto)
+  motorConfig?: MotorConfigDto;
 }
 
 export class CrearVehiculoDto {
@@ -510,3 +722,169 @@ export class CrearVehiculoDto {
 }
 
 export class ActualizarVehiculoDto extends CrearVehiculoDto {}
+
+/**
+ * Etapa 1 — Simulador avanzado (docs/prestamista/etapa-1.md). `parametros`
+ * es exactamente lo que ya acepta /prestamos/simular (SimularPrestamoDto) —
+ * guardar una simulación no inventa un segundo formato de parámetros.
+ * Debe traer deudorId o nombreProspecto (uno de los dos) — se valida en el
+ * service, no aquí: class-validator no tiene una forma limpia de "al menos
+ * uno de estos dos campos" sin un validador custom para un caso tan puntual.
+ */
+export class CrearSimulacionDto {
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number)
+  deudorId?: number;
+
+  @IsOptional() @IsString() @MaxLength(200)
+  nombreProspecto?: string;
+
+  @IsString() @IsNotEmpty() @MaxLength(200)
+  nombre!: string;
+
+  @ValidateNested() @Type(() => SimularPrestamoDto)
+  parametros!: SimularPrestamoDto;
+}
+
+/** Convertir una simulación en solicitud — si la simulación era de un prospecto sin ficha, deudorId es obligatorio aquí. */
+export class ConvertirSimulacionDto {
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number)
+  deudorId?: number;
+
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number)
+  productoId?: number;
+
+  @IsOptional() @IsString() @MaxLength(500)
+  proposito?: string;
+}
+
+// ── Etapa 2 (resto) — docs/prestamista/etapa-2-resto.md ───────────────────
+
+/** Anular un pago con reversa — motivo siempre obligatorio (§1). */
+export class AnularPagoDto {
+  @IsString() @IsNotEmpty() @MaxLength(500)
+  motivo!: string;
+}
+
+export class CrearGaranteDto {
+  @IsString() @IsNotEmpty() @MaxLength(200)
+  nombre!: string;
+
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number)
+  prestamoId?: number;
+
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number)
+  solicitudId?: number;
+
+  @IsOptional() @IsString() @MaxLength(20)
+  cedula?: string;
+
+  @IsOptional() @IsString() @MaxLength(20)
+  telefono?: string;
+
+  @IsOptional() @IsString() @MaxLength(500)
+  direccion?: string;
+
+  @IsOptional() @IsString() @MaxLength(100)
+  ocupacion?: string;
+
+  @IsOptional() @IsNumber(MONTO) @Min(0) @Type(() => Number)
+  ingresoMensual?: number;
+
+  @IsOptional() @IsString() @MaxLength(100)
+  relacionDeudor?: string;
+}
+
+export class ActualizarGaranteDto {
+  @IsOptional() @IsString() @MaxLength(200)
+  nombre?: string;
+
+  @IsOptional() @IsString() @MaxLength(20)
+  cedula?: string;
+
+  @IsOptional() @IsString() @MaxLength(20)
+  telefono?: string;
+
+  @IsOptional() @IsString() @MaxLength(500)
+  direccion?: string;
+
+  @IsOptional() @IsString() @MaxLength(100)
+  ocupacion?: string;
+
+  @IsOptional() @IsNumber(MONTO) @Min(0) @Type(() => Number)
+  ingresoMensual?: number;
+
+  @IsOptional() @IsString() @MaxLength(100)
+  relacionDeudor?: string;
+}
+
+/** Liberar un garante — motivo opcional (no mueve dinero, caso normal: el préstamo se pagó). */
+export class LiberarGaranteDto {
+  @IsOptional() @IsString() @MaxLength(500)
+  motivo?: string;
+}
+
+/** Liberar una garantía — motivo opcional (§3). */
+export class LiberarGarantiaDto {
+  @IsOptional() @IsString() @MaxLength(500)
+  motivo?: string;
+}
+
+/** Ejecutar una garantía — motivo siempre obligatorio (§3, acción más grave del módulo). */
+export class EjecutarGarantiaDto {
+  @IsString() @IsNotEmpty() @MaxLength(500)
+  motivo!: string;
+}
+
+/** Registrar un tramo de efectivo entregado (§4, Etapa 2 resto). */
+export class CrearDesembolsoParcialDto {
+  @IsInt() @IsPositive() @Type(() => Number)
+  prestamoId!: number;
+
+  @IsNumber(MONTO) @IsPositive() @Type(() => Number)
+  monto!: number;
+
+  @IsDateString({}, { message: 'La fecha debe ser una fecha válida' })
+  fecha!: string;
+
+  @IsOptional() @IsString() @MaxLength(20)
+  metodoPago?: string;
+
+  @IsOptional() @IsString() @MaxLength(500)
+  notas?: string;
+
+  /** Etapa 5 — integración con Caja. Mismo criterio que RegistrarPagoDto.cajaDiariaId. */
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number)
+  cajaDiariaId?: number;
+}
+
+/**
+ * Reestructurar un préstamo vivo (§5) — distinto de refinanciar: el mismo
+ * préstamo sigue existiendo, solo cambia el plan de las cuotas totalmente
+ * pendientes. Todos los campos son opcionales salvo el motivo: lo que no se
+ * envía se mantiene igual.
+ */
+export class ReestructurarPrestamoDto {
+  @IsOptional() @IsInt() @Min(1) @Type(() => Number)
+  nuevoPlazoMeses?: number;
+
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 3 }) @Min(0) @Type(() => Number)
+  nuevaTasaInteresMensual?: number;
+
+  @IsOptional() @IsIn(['frances', 'aleman'])
+  nuevoMetodoAmortizacion?: string;
+
+  @IsString() @IsNotEmpty() @MaxLength(500)
+  motivo!: string;
+}
+
+/** Condonar mora y/o interés pendiente de un préstamo vivo, sin refinanciarlo (§6). Capital NUNCA se condona. */
+export class CondonarPrestamoDto {
+  @IsOptional() @IsNumber(MONTO) @Min(0) @Type(() => Number)
+  moraACondonar?: number;
+
+  @IsOptional() @IsNumber(MONTO) @Min(0) @Type(() => Number)
+  interesACondonar?: number;
+
+  @IsString() @IsNotEmpty() @MaxLength(500)
+  motivo!: string;
+}

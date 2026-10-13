@@ -1,12 +1,14 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Tabs, Table, Tag, Button, Descriptions, Statistic, Row, Col, Spin, message, theme } from 'antd';
-import { ArrowLeft, FileText } from 'lucide-react';
+import { ArrowLeft, FileText, Download } from 'lucide-react';
 import { FileExcelOutlined } from '@ant-design/icons';
 import { RefreshByKeyButton, VideoTutorialButton } from '../../components/ui/TableToolbar';
 import { exportarExcel } from '../../utils/exportExcel';
 import { prestamistalApi } from '../../api/prestamista.api';
 import { hoyRD } from '../../utils/fechaRD';
+import ScoreDeudorBadge from './ScoreDeudorBadge';
 
 const fmt = (n: any) => `RD$ ${Number(n ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
 const estadoColor: Record<string, string> = { al_dia: 'green', moroso: 'orange', vencido: 'red', pagado: 'blue', cancelado: 'default', refinanciado: 'purple' };
@@ -16,6 +18,7 @@ export default function FichaDeudorPage() {
   const { token: C } = theme.useToken();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [descargandoCsv, setDescargandoCsv] = useState(false);
 
   const { data: deudor, isLoading } = useQuery({
     queryKey: ['prestamista-deudor', id],
@@ -54,6 +57,7 @@ export default function FichaDeudorPage() {
         <h2 style={{ margin: 0, color: C.colorText }}>{deudor.nombre} {deudor.apellidos ?? ''}</h2>
         <Tag color={riesgoColor[deudor.nivelRiesgo] ?? 'default'}>{deudor.nivelRiesgo}</Tag>
         {deudor.enListaNegra && <Tag color="red">Lista Negra</Tag>}
+        <ScoreDeudorBadge deudorId={deudor.id} />
       </div>
 
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
@@ -140,12 +144,25 @@ export default function FichaDeudorPage() {
         },
         {
           key: 'estado-cuenta',
-          label: 'Estado de Cuenta PDF',
+          label: 'Estado de Cuenta',
           children: (
-            <div style={{ padding: 16 }}>
+            <div style={{ padding: 16, display: 'flex', gap: 8 }}>
               <Button type="primary" icon={<FileText size={14} />}
                 onClick={() => window.open(prestamistalApi.pdfEstadoCuenta(Number(id)), '_blank')}>
-                Descargar Estado de Cuenta
+                PDF para el deudor
+              </Button>
+              <Button icon={<Download size={14} />} loading={descargandoCsv}
+                onClick={async () => {
+                  setDescargandoCsv(true);
+                  try {
+                    await prestamistalApi.descargarReporte(`estado-cuenta-deudor/${id}`, `estado-cuenta-${deudor.numero}`);
+                  } catch {
+                    message.error('Error al descargar el historial');
+                  } finally {
+                    setDescargandoCsv(false);
+                  }
+                }}>
+                CSV completo (contable)
               </Button>
             </div>
           ),

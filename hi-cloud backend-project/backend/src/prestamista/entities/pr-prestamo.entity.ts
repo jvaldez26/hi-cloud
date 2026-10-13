@@ -30,12 +30,45 @@ export class PrPrestamo {
   @Column({ type: 'int', default: 0 }) diasMoraActual!: number;
   @Column({ type: 'int', default: 0 }) cuotasVencidas!: number;
   @Column({ length: 20, default: 'al_dia' }) estado!: string;
+  /**
+   * Suma de pr_desembolsos_parciales (Etapa 2 resto, §4). Para préstamos que
+   * desembolsan el 100% de una vez (el caso normal) queda igual a
+   * montoPrincipal desde la creación. Mientras desembolsado < montoPrincipal,
+   * estado='desembolso_parcial' y PagosService rechaza pagos.
+   */
+  @Column({ type: 'decimal', precision: 14, scale: 2, default: 0 }) desembolsado!: number;
   @Column({ type: 'int', nullable: true }) oficialId?: number;
   @Column({ length: 200, nullable: true }) oficialNombre?: string;
+  /**
+   * Etapa 3 — cobranza: a quién está asignada la cartera HOY. Distinto de
+   * oficialId (quien originó el préstamo, fijo) y de la snapshot por-gestión
+   * en pr_cobranzas.cobradorId (quién hizo cada gestión puntual). Se
+   * reasigna con CobranzaService.asignarCobrador(); null = sin asignar, la
+   * UI muestra el oficial como sugerencia pero no se auto-asigna en BD.
+   */
+  @Column({ type: 'int', nullable: true }) cobradorId?: number;
+  @Column({ length: 200, nullable: true }) cobradorNombre?: string;
   @Column({ type: 'int', nullable: true }) refinanciaDe?: number;
   @Column({ type: 'int', nullable: true }) facturaDesembolsoId?: number;
   @Column({ type: 'int', nullable: true }) vehiculoId?: number;
   @Column({ type: 'text', nullable: true }) notas?: string;
+  /**
+   * Motor v2 (Etapa 2, Fase 2A/2B) — 'v1': generado por amortizacion.util.ts
+   * (Etapa 1, francés/alemán mensual), sigue leyéndose igual, NUNCA se
+   * recalcula. 'v2': generado por prestamista/motor/amortizacion-v2.util.ts.
+   * Todo préstamo nuevo se crea en 'v2' (ver PrestamosService
+   * .crearEnTransaccion) — este campo decide, en mora.cron.ts, qué motor
+   * de mora usar (mora.util.ts vs. motor/mora-v2.util.ts).
+   */
+  @Column({ length: 2, default: 'v1' }) motorVersion!: string;
+  /**
+   * Snapshot EXACTO de la configuración del motor usada para generar este
+   * préstamo (frecuencia, tasa, método, gracia, cargos, mora) — copiado del
+   * producto (+ ajustes de la solicitud) al momento del desembolso, nunca
+   * leído en vivo del producto. Cambiar el producto después nunca altera
+   * préstamos ya creados. `null` en préstamos 'v1'.
+   */
+  @Column({ type: 'jsonb', nullable: true }) motorConfig?: Record<string, unknown>;
   @CreateDateColumn() createdAt!: Date;
   @UpdateDateColumn() updatedAt!: Date;
 }

@@ -33,6 +33,15 @@ function fakeTenantService(empresaId: number) {
 function fakeRealtime() {
   return { notify: () => {} } as any;
 }
+function fakeNotificaciones() {
+  return { notificarDescuadreCierre: async () => undefined } as any;
+}
+// recalcularDesdeBD() (que sí corre en este flujo, via cerrarCaja/conEfectivoEsperado)
+// gatea el bloque de Prestamista Etapa 5 con este servicio — stub en true,
+// este test no usa el módulo Prestamista, solo evita el TypeError.
+function fakeModulosAddon() {
+  return { checkModuloActivo: async () => true } as any;
+}
 
 async function limpiar() {
   await ds.query(`DELETE FROM cw_liquidaciones WHERE "empresaId" = $1`, [EMPRESA]);
@@ -75,6 +84,7 @@ beforeAll(async () => {
 
   const cajaService = new CajaService(
     ds.getRepository(CierreCaja), ds.getRepository(RetiroCaja), ds, fakeTenantService(EMPRESA), fakeRealtime(),
+    fakeNotificaciones(), fakeModulosAddon(),
   );
   svc = new CwLiquidacionesService(ds, cajaService);
 

@@ -23,7 +23,7 @@ interface Cuota {
  * de moraGenerada sobre las cuotas en memoria, para que el resumen posterior
  * vea los valores ya actualizados (igual que haría Postgres).
  */
-function buildDs(opts: { porcentajeMora: number; diasGracia?: number; cuotas: Cuota[] }) {
+function buildDs(opts: { porcentajeMora: number; diasGracia?: number; cuotas: Cuota[]; motorVersion?: string; motorConfig?: any }) {
   const cuotas = opts.cuotas.map(c => ({ ...c }));
   const updates: { sql: string; params: any[] }[] = [];
 
@@ -38,6 +38,8 @@ function buildDs(opts: { porcentajeMora: number; diasGracia?: number; cuotas: Cu
         porcentajeMora: opts.porcentajeMora,
         diasGracia: opts.diasGracia ?? 0,
         saldoCapital: 0, saldoMora: 0,
+        motorVersion: opts.motorVersion ?? 'v1',
+        motorConfig: opts.motorConfig ?? null,
       }];
     }
 
@@ -178,5 +180,64 @@ describe('C4 — el cron no resucita la mora ya cobrada', () => {
   it('un fallo de BD no tumba el cron (sigue capturando el error)', async () => {
     const svc = new MoraCronService({ query: jest.fn().mockRejectedValue(new Error('BD caída')) } as any);
     await expect(svc.calcularMora()).resolves.toBeUndefined();
+  });
+});
+
+describe('Etapa 1 — el cron ya escribe estado "vencido" (antes: estado muerto, nunca se asignaba)', () => {
+  it('atraso por encima del umbral (90 días) → estado "vencido", no "moroso"', async () => {
+    const { svc, updatePrestamo } = buildDs({ porcentajeMora: 5, diasGracia: 5, cuotas: [cuotaBase({ diasMora: 120 })] });
+    await svc.calcularMora();
+    expect(updatePrestamo()!.params[3]).toBe('vencido');
+  });
+
+  it('atraso por debajo del umbral sigue siendo "moroso" (sin regresión)', async () => {
+    const { svc, updatePrestamo } = buildDs({ porcentajeMora: 5, diasGracia: 5, cuotas: [cuotaBase({ diasMora: 30 })] });
+    await svc.calcularMora();
+    expect(updatePrestamo()!.params[3]).toBe('moroso');
+  });
+
+  it('sin cuotas vencidas más allá de la gracia → "al_dia", nunca "vencido"', async () => {
+    const { svc, updatePrestamo } = buildDs({ porcentajeMora: 5, diasGracia: 150, cuotas: [cuotaBase({ diasMora: 120 })] });
+    await svc.calcularMora();
+    expect(updatePrestamo()!.params[3]).toBe('al_dia');
+  });
+});
+
+describe('Fase 2B — préstamos "v2" usan motor/mora-v2.util.ts (motorConfig.mora), no calcularMoraCuota()', () => {
+  it("base 'capital_vencido' (v2) da un resultado DISTINTO a la base cuota_vencida (v1) para la misma cuota con interés pendiente", async () => {
+    const cuota = cuotaBase({ capital: 8000, interes: 1456, diasMora: 15 });
+
+    const v1 = buildDs({ porcentajeMora: 5, cuotas: [{ ...cuota }] }); // v1: siempre capital+interés
+    await v1.svc.calcularMora();
+    const moraV1 = v1.cuotas[0].moraGenerada;
+
+    const v2 = buildDs({
+      porcentajeMora: 5, cuotas: [{ ...cuota }],
+      motorVersion: 'v2', motorConfig: { mora: { base: 'capital_vencido', tasaOMonto: 5, baseDiasMora: 360 } },
+    });
+    await v2.svc.calcularMora();
+    const moraV2 = v2.cuotas[0].moraGenerada;
+
+    expect(moraV1).toBeCloseTo(9456 * 0.025, 2); // cuota_vencida: capital+interés
+    expect(moraV2).toBeCloseTo(8000 * 0.025, 2); // capital_vencido: solo capital
+    expect(moraV2).toBeLessThan(moraV1);
+  });
+
+  it("base 'monto_fijo' por cuota (v2): un monto fijo sin importar el saldo", async () => {
+    const { svc, cuotas } = buildDs({
+      porcentajeMora: 5, cuotas: [cuotaBase({ capital: 50000, interes: 10000, diasMora: 20 })],
+      motorVersion: 'v2', motorConfig: { mora: { base: 'monto_fijo', tasaOMonto: 75, periodoMontoFijo: 'cuota', baseDiasMora: 360 } },
+    });
+    await svc.calcularMora();
+    expect(cuotas[0].moraGenerada).toBe(75);
+  });
+
+  it('un préstamo sin motorConfig.mora (v2 pero sin config de mora) no revienta — cae en null, usa v1', async () => {
+    const { svc, cuotas } = buildDs({
+      porcentajeMora: 5, cuotas: [cuotaBase({ diasMora: 10 })],
+      motorVersion: 'v2', motorConfig: {},
+    });
+    await expect(svc.calcularMora()).resolves.toBeUndefined();
+    expect(cuotas[0].moraGenerada).toBeGreaterThan(0);
   });
 });

@@ -31,7 +31,7 @@ function buildQueryRunner(responder: (sql: string, params: any[]) => any) {
 
 const DATOS_PRESTAMO = {
   solicitudId: 5, deudorId: 3, montoPrincipal: 12000,
-  tasaInteresMensual: 3, plazoMeses: 6, fechaPrimerPago: '2026-09-01',
+  tasaInteresMensual: 3, plazoMeses: 6, fechaDesembolso: '2026-08-01', fechaPrimerPago: '2026-09-01',
 };
 
 describe('C2 — el desembolso es atómico', () => {
@@ -48,12 +48,14 @@ describe('C2 — el desembolso es atómico', () => {
       ds as any,
       { asientoDesembolsoPrestamo: jest.fn().mockResolvedValue(undefined) } as any,
       { getUserId: () => 42 } as any,
+      { obtenerSetFeriados: jest.fn().mockResolvedValue(new Set()) } as any,
     );
     return { svc, qr, vida, sqls };
   };
 
   const responderOk = (sql: string) => {
     if (sql.includes('FROM pr_solicitudes')) return [{ id: 5, estado: 'aprobada', deudorId: 3 }];
+    if (sql.includes('FROM pr_deudores')) return [{ id: 1 }]; // C5: assertDeudorDeEmpresa
     if (sql.includes('siguiente_numero_secuencia')) return [{ num: '0001' }];
     if (sql.includes('INSERT INTO pr_prestamos')) return [{ id: 77 }];
     return [];
@@ -124,14 +126,179 @@ describe('C2 — el desembolso es atómico', () => {
       await expect(svc.create(1, { ...DATOS_PRESTAMO })).rejects.toThrow(/pendiente/);
     });
   });
+
+  describe('C5 — aislamiento multiempresa del deudor', () => {
+    it('rechaza el desembolso si el deudorId no pertenece a la empresa (desembolso directo, sin solicitudId)', async () => {
+      const { svc } = construir((sql: string) =>
+        sql.includes('FROM pr_deudores') ? [] : responderOk(sql));
+      await expect(svc.create(1, { ...DATOS_PRESTAMO, solicitudId: undefined }))
+        .rejects.toThrow(/Deudor #3 no encontrado/);
+    });
+
+    it('valida el deudorId del BODY aunque venga con solicitudId — no basta con que la solicitud sea válida', async () => {
+      // Body con solicitudId Y un deudorId explícito: antes del fix, ese
+      // deudorId pisaba al de la solicitud (ya validado al crearla) sin
+      // pasar por ningún chequeo de empresa.
+      const { svc, qr } = construir((sql: string) =>
+        sql.includes('FROM pr_deudores') ? [] : responderOk(sql));
+      await expect(svc.create(1, { ...DATOS_PRESTAMO, deudorId: 999 }))
+        .rejects.toThrow(/Deudor #999 no encontrado/);
+      expect(qr.rollbackTransaction).toHaveBeenCalled();
+    });
+
+    it('la verificación del deudor corre DENTRO de la transacción (vía el QueryRunner, no this.ds)', async () => {
+      const { svc, sqls } = construir(responderOk);
+      await svc.create(1, { ...DATOS_PRESTAMO });
+      expect(sqls.some(s => s.includes('FROM pr_deudores'))).toBe(true);
+    });
+  });
+
+  describe('C4 — método de amortización', () => {
+    it('usa el método configurado en el producto cuando el body no especifica uno', async () => {
+      let insertParams: any[] = [];
+      const { svc } = construir((sql: string, params: any[]) => {
+        if (sql.includes('FROM pr_productos_prestamo')) return [{ metodoAmortizacion: 'aleman' }];
+        if (sql.includes('INSERT INTO pr_prestamos')) { insertParams = params; return [{ id: 77 }]; }
+        return responderOk(sql);
+      });
+      await svc.create(1, { ...DATOS_PRESTAMO, productoId: 9 });
+      expect(insertParams[9]).toBe('aleman'); // posición de metodoAmortizacion en el INSERT
+    });
+
+    it('un body sin productoId ni método explícito sigue cayendo en francés (sin cambio de comportamiento)', async () => {
+      const { svc, sqls } = construir(responderOk);
+      await svc.create(1, { ...DATOS_PRESTAMO });
+      expect(sqls.some(s => s.includes('FROM pr_productos_prestamo'))).toBe(false);
+    });
+
+    it('un metodoAmortizacion explícito en el body gana sobre el del producto', async () => {
+      let insertParams: any[] = [];
+      const { svc } = construir((sql: string, params: any[]) => {
+        if (sql.includes('FROM pr_productos_prestamo')) return [{ metodoAmortizacion: 'aleman' }];
+        if (sql.includes('INSERT INTO pr_prestamos')) { insertParams = params; return [{ id: 77 }]; }
+        return responderOk(sql);
+      });
+      await svc.create(1, { ...DATOS_PRESTAMO, productoId: 9, metodoAmortizacion: 'frances' });
+      expect(insertParams[9]).toBe('frances');
+    });
+  });
+});
+
+describe('§4 (Etapa 2 resto) — desembolso parcial en create()', () => {
+  const construir = (responder: any, asientos?: any) => {
+    const { qr, vida, sqls } = buildQueryRunner(responder);
+    const ds = {
+      createQueryRunner: () => qr,
+      query: jest.fn(async (sql: string) =>
+        sql.includes('FROM pr_prestamos') ? [{ id: 77, numero: 'PRE-0001' }] : []),
+    };
+    const svc = new PrestamosService(
+      ds as any,
+      asientos ?? { asientoDesembolsoPrestamo: jest.fn().mockResolvedValue(undefined) },
+      { getUserId: () => 42 } as any,
+      { obtenerSetFeriados: jest.fn().mockResolvedValue(new Set()) } as any,
+    );
+    return { svc, qr, vida, sqls };
+  };
+
+  const responderOk = (sql: string) => {
+    if (sql.includes('FROM pr_solicitudes')) return [{ id: 5, estado: 'aprobada', deudorId: 3 }];
+    if (sql.includes('FROM pr_deudores')) return [{ id: 1 }];
+    if (sql.includes('siguiente_numero_secuencia')) return [{ num: '0001' }];
+    if (sql.includes('INSERT INTO pr_prestamos')) return [{ id: 77 }];
+    return [];
+  };
+
+  it('sin desembolsoInicial: se desembolsa el 100% de siempre, sin cambiar el comportamiento', async () => {
+    let insertPrestamoParams: any[] = [];
+    const { svc, sqls } = construir((sql: string, params: any[]) => {
+      if (sql.includes('INSERT INTO pr_prestamos')) { insertPrestamoParams = params; return [{ id: 77 }]; }
+      return responderOk(sql);
+    });
+    await svc.create(1, { ...DATOS_PRESTAMO });
+    expect(insertPrestamoParams[28]).toBe(12000); // desembolsado = montoPrincipal completo
+    expect(insertPrestamoParams[29]).toBe('al_dia');
+  });
+
+  it('desembolsoInicial menor al monto: el préstamo nace en desembolso_parcial e inserta el tramo inicial', async () => {
+    let insertPrestamoParams: any[] = [];
+    const { svc, sqls } = construir((sql: string, params: any[]) => {
+      if (sql.includes('INSERT INTO pr_prestamos')) { insertPrestamoParams = params; return [{ id: 77 }]; }
+      return responderOk(sql);
+    });
+    await svc.create(1, { ...DATOS_PRESTAMO, desembolsoInicial: 5000 });
+
+    expect(insertPrestamoParams[28]).toBe(5000);   // desembolsado
+    expect(insertPrestamoParams[29]).toBe('desembolso_parcial'); // estado
+    expect(sqls.some(s => s.includes('INSERT INTO pr_desembolsos_parciales'))).toBe(true);
+  });
+
+  it('el asiento se genera solo por el tramo inicial, no por el monto total', async () => {
+    const asientos = { asientoDesembolsoPrestamo: jest.fn().mockResolvedValue(undefined) };
+    const { svc } = construir(responderOk, asientos);
+    await svc.create(1, { ...DATOS_PRESTAMO, desembolsoInicial: 5000 });
+    expect(asientos.asientoDesembolsoPrestamo).toHaveBeenCalledWith(
+      77, 'PRE-0001', 5000, 'transferencia', '2026-08-01', 42, 0,
+    );
+  });
+
+  it('desembolsoInicial de 0: nace 100% pendiente, sin asiento ni tramo', async () => {
+    const asientos = { asientoDesembolsoPrestamo: jest.fn().mockResolvedValue(undefined) };
+    const { svc, sqls } = construir(responderOk, asientos);
+    await svc.create(1, { ...DATOS_PRESTAMO, desembolsoInicial: 0 });
+    expect(asientos.asientoDesembolsoPrestamo).not.toHaveBeenCalled();
+    expect(sqls.some(s => s.includes('INSERT INTO pr_desembolsos_parciales'))).toBe(false);
+  });
+
+  it('rechaza un desembolsoInicial mayor al monto del préstamo', async () => {
+    const { svc } = construir(responderOk);
+    await expect(svc.create(1, { ...DATOS_PRESTAMO, desembolsoInicial: 999999 }))
+      .rejects.toThrow(BadRequestException);
+  });
+
+  // Etapa 5, Parte B — ver docs/prestamista/etapa-5-contabilidad-caja-fiscal.md.
+  // El desembolso inicial SIEMPRE pasa por aquí (crearEnTransaccion inserta
+  // en pr_desembolsos_parciales incluso cuando desembolsoInicial = 100%), así
+  // que este es el único camino de "desembolso directo" que hace falta cubrir.
+  describe('integración con Caja', () => {
+    const responderConCaja = (cajaRow: any[]) => (sql: string) => {
+      if (sql.includes('FROM empresa')) return [{}];
+      if (sql.includes('FROM cierres_caja')) return cajaRow;
+      return responderOk(sql);
+    };
+
+    it('formaPago="efectivo" con caja abierta de esta empresa: guarda cajaDiariaId en el tramo inicial', async () => {
+      const { svc, sqls } = construir(responderConCaja([{ estado: 'abierta' }]));
+      await svc.create(1, { ...DATOS_PRESTAMO, formaPago: 'efectivo', cajaDiariaId: 4 });
+
+      const insert = sqls.find(s => s.includes('INSERT INTO pr_desembolsos_parciales'));
+      expect(insert).toContain('"cajaDiariaId"');
+    });
+
+    it('caja que no pertenece a esta empresa: rechaza antes de insertar el tramo', async () => {
+      const { svc } = construir(responderConCaja([]));
+      await expect(svc.create(1, { ...DATOS_PRESTAMO, formaPago: 'efectivo', cajaDiariaId: 999 }))
+        .rejects.toThrow(BadRequestException);
+    });
+
+    it('sin formaPago="efectivo": nunca valida ni guarda ninguna caja, aunque venga cajaDiariaId', async () => {
+      const { svc, sqls } = construir(responderConCaja([{ estado: 'abierta' }]));
+      await svc.create(1, { ...DATOS_PRESTAMO, formaPago: 'transferencia', cajaDiariaId: 4 });
+
+      expect(sqls.some(s => s.includes('FROM cierres_caja'))).toBe(false);
+    });
+  });
 });
 
 describe('H2 — el refinanciamiento es atómico', () => {
-  const construir = (responder: any) => {
+  const construir = (responder: any, asientos?: any) => {
     const { qr, vida, sqls } = buildQueryRunner(responder);
+    (qr as any).manager = {}; // C6: solo se reenvía a asientos.asientoRefinanciamiento, nunca se usa directo aquí
     const svc = new RefinanciamientoService(
       { createQueryRunner: () => qr, query: jest.fn(async () => []) } as any,
       { getUserId: () => 42 } as any,
+      asientos ?? { asientoRefinanciamiento: jest.fn().mockResolvedValue({ id: 1 }) } as any,
+      { obtenerSetFeriados: jest.fn().mockResolvedValue(new Set()) } as any,
     );
     return { svc, qr, vida, sqls };
   };
@@ -183,5 +350,97 @@ describe('H2 — el refinanciamiento es atómico', () => {
     const { svc } = construir((sql: string) =>
       sql.includes('FROM pr_prestamos') ? [{ ...original, estado }] : responderOk(sql));
     await expect(svc.refinanciar(1, { prestamoOriginalId: 10 })).rejects.toThrow(BadRequestException);
+  });
+
+  describe('C4 — el préstamo nuevo hereda el método de amortización del original', () => {
+    it('original en alemán → el nuevo préstamo se crea en alemán, no en francés a fuerza', async () => {
+      let insertParams: any[] = [];
+      const { svc } = construir((sql: string, params: any[]) => {
+        if (sql.includes('FROM pr_prestamos')) return [{ ...original, metodoAmortizacion: 'aleman' }];
+        if (sql.includes('INSERT INTO pr_prestamos')) { insertParams = params; return [{ id: 99 }]; }
+        return responderOk(sql);
+      });
+      await svc.refinanciar(1, { prestamoOriginalId: 10 });
+      expect(insertParams[8]).toBe('aleman'); // posición de metodoAmortizacion en el INSERT
+    });
+
+    it('original en francés (o sin método) → el nuevo sigue en francés', async () => {
+      let insertParams: any[] = [];
+      const { svc } = construir((sql: string, params: any[]) => {
+        if (sql.includes('FROM pr_prestamos')) return [original]; // sin metodoAmortizacion
+        if (sql.includes('INSERT INTO pr_prestamos')) { insertParams = params; return [{ id: 99 }]; }
+        return responderOk(sql);
+      });
+      await svc.refinanciar(1, { prestamoOriginalId: 10 });
+      expect(insertParams[8]).toBe('frances');
+    });
+  });
+
+  describe('C6 — asiento de refinanciamiento DENTRO de la transacción', () => {
+    it('llama a asientos.asientoRefinanciamiento con los saldos/condonaciones correctos, pasando qr.manager', async () => {
+      const asientos = { asientoRefinanciamiento: jest.fn().mockResolvedValue({ id: 1 }) };
+      // Etapa 6 (Seguridad): moraCondonada/interesCondonado ahora se topan al
+      // saldo real (Math.min) — con saldoMora:0 del fixture base, pedir
+      // moraCondonada:50 quedaría en 0. Este préstamo trae su propio saldoMora
+      // para seguir probando una condonación de mora efectiva y no nula.
+      const { svc, qr } = construir((sql: string) =>
+        sql.includes('FROM pr_prestamos') ? [{ ...original, saldoMora: 50 }] : responderOk(sql), asientos);
+      await svc.refinanciar(1, {
+        prestamoOriginalId: 10, moraCondonada: 50, interesCondonado: 100,
+      });
+
+      expect(asientos.asientoRefinanciamiento).toHaveBeenCalledTimes(1);
+      const [params, manager] = asientos.asientoRefinanciamiento.mock.calls[0];
+      expect(params).toMatchObject({
+        prestamoNuevoId: 99,
+        saldoCapitalOriginal: 8000,
+        saldoInteresOriginal: 500,
+        saldoMoraOriginal: 50,
+        moraCondonada: 50,
+        interesCondonado: 100,
+      });
+      expect(manager).toBe((qr as any).manager);
+    });
+
+    // Etapa 6 — Seguridad: antes de este fix, moraCondonada/interesCondonado
+    // solo tenían @Min(0) en el DTO (sin cota superior) y se aplicaban tal
+    // cual — se podía condonar MÁS de lo que el préstamo tenía pendiente,
+    // dejando `montoNuevo` (saldoCapital + saldos netos de lo condonado)
+    // negativo o absurdo. Ahora se topan al saldo real, igual que
+    // CondonacionService.condonarEnTransaccion().
+    it('nunca condona más mora/interés del que el préstamo tiene pendiente — se topa al saldo real', async () => {
+      const asientos = { asientoRefinanciamiento: jest.fn().mockResolvedValue({ id: 1 }) };
+      const { svc } = construir((sql: string) =>
+        sql.includes('FROM pr_prestamos') ? [{ ...original, saldoMora: 30, saldoInteres: 500 }] : responderOk(sql), asientos);
+
+      await svc.refinanciar(1, {
+        prestamoOriginalId: 10, moraCondonada: 999999, interesCondonado: 999999,
+      });
+
+      const [params] = asientos.asientoRefinanciamiento.mock.calls[0];
+      expect(params.moraCondonada).toBe(30);      // topado al saldoMora real, no 999999
+      expect(params.interesCondonado).toBe(500);  // topado al saldoInteres real, no 999999
+    });
+
+    it('si el asiento falla (cuenta faltante/descuadrado), revierte TODO el refinanciamiento', async () => {
+      const asientos = { asientoRefinanciamiento: jest.fn().mockRejectedValue(new Error('cuenta faltante')) };
+      const { svc, vida } = construir(responderOk, asientos);
+      await expect(svc.refinanciar(1, { prestamoOriginalId: 10 })).rejects.toThrow('cuenta faltante');
+      expect(vida).toEqual(['connect', 'start', 'rollback', 'release']);
+    });
+
+    it('se llama DESPUÉS de insertar el préstamo nuevo y el registro de refinanciamiento (mismo orden de la transacción)', async () => {
+      const llamadas: string[] = [];
+      const asientos = {
+        asientoRefinanciamiento: jest.fn(async () => { llamadas.push('asiento'); return { id: 1 }; }),
+      };
+      const { svc } = construir((sql: string) => {
+        if (sql.includes('INSERT INTO pr_prestamos')) llamadas.push('prestamo');
+        if (sql.includes('INSERT INTO pr_refinanciamientos')) llamadas.push('refinanciamiento');
+        return responderOk(sql);
+      }, asientos);
+      await svc.refinanciar(1, { prestamoOriginalId: 10 });
+      expect(llamadas).toEqual(['prestamo', 'refinanciamiento', 'asiento']);
+    });
   });
 });

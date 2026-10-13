@@ -279,6 +279,7 @@ export const PATH_ROLES: Record<string, string[]> = {
   '/prestamista/vehiculos':          ADMIN_CONT,
   '/prestamista/productos':          ADMIN_CONT,
   '/prestamista/reportes':           ADMIN_CONT,
+  '/prestamista/feriados':           ADMIN_CONT,
   '/agro':                           ADMIN_CONT,
   '/agro/fincas':                    ADMIN_CONT,
   '/agro/parcelas':                  ADMIN_CONT,
@@ -622,6 +623,7 @@ export const MENU_CATEGORIES_DATA: MenuCategoryData[] = [
       { path: '/prestamista/vehiculos',    label: 'Vehículos', codigo: 'PR07' },
       { path: '/prestamista/productos',    label: 'Productos', codigo: 'PR08' },
       { path: '/prestamista/reportes',     label: 'Reportes', codigo: 'PR09' },
+      { path: '/prestamista/feriados',     label: 'Feriados', codigo: 'PR10' },
     ],
   },
   {

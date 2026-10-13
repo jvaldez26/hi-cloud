@@ -14,7 +14,12 @@
     "sourceMap": false,
     "outDir": "./dist",
     "rootDir": "./src",
+    // Dentro de dist/: nest-cli.json tiene deleteOutDir=true, y un .tsbuildinfo
+    // que sobrevive al borrado de dist/ hace que tsc confíe en un build que ya
+    // no existe en disco y reporte "0 errors" SIN volver a emitir nada —
+    // dist/ queda vacío/parcial aunque la compilación "funcionó".
     "incremental": true,
+    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
     "skipLibCheck": true,
     "strictNullChecks": true,
     "forceConsistentCasingInFileNames": true,

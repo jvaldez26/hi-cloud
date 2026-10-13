@@ -85,6 +85,19 @@ export class CierreCaja {
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   retiros!: number;
 
+  /**
+   * Prestamista Etapa 5 — cobros de cuota en efectivo imputados a esta caja
+   * (pr_pagos.cajaDiariaId). Entra al efectivo esperado igual que cobrosEfectivo
+   * — decisión de negocio ya cerrada (ver docs/prestamista/decisiones-pendientes.md),
+   * con interruptor por empresa (configuracion.prestamoEfectivoPorCaja).
+   */
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  cobrosPrestamoEfectivo!: number;
+
+  /** Tramos de desembolso en efectivo entregados desde esta caja (pr_desembolsos_parciales.cajaDiariaId) — sale del cajón, igual que gastosEfectivo. */
+  @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
+  desembolsosPrestamoEfectivo!: number;
+
   // Cierre
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   saldoCierre!: number;

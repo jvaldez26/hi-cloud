@@ -16,6 +16,7 @@ import { PrGarante } from './entities/pr-garante.entity';
 import { PrCobranza } from './entities/pr-cobranza.entity';
 import { PrRefinanciamiento } from './entities/pr-refinanciamiento.entity';
 import { PrVehiculo } from './entities/pr-vehiculo.entity';
+import { PrFeriado } from './entities/pr-feriado.entity';
 import { VehiculosService } from './vehiculos/vehiculos.service';
 import { VehiculosController } from './vehiculos/vehiculos.controller';
 
@@ -31,6 +32,8 @@ import { PagosService } from './pagos/pagos.service';
 import { PagosController } from './pagos/pagos.controller';
 import { GarantiasService } from './garantias/garantias.service';
 import { GarantiasController } from './garantias/garantias.controller';
+import { GarantesService } from './garantes/garantes.service';
+import { GarantesController } from './garantes/garantes.controller';
 import { CobranzaService } from './cobranza/cobranza.service';
 import { CobranzaController } from './cobranza/cobranza.controller';
 import { MoraCronService } from './cobranza/mora.cron';
@@ -42,6 +45,20 @@ import { PrestamistaPdfService } from './pdf/prestamista-pdf.service';
 import { PdfPrestamistaController } from './pdf/pdf.controller';
 import { ReportesPrestamistaService } from './reportes/reportes.service';
 import { ReportesController } from './reportes/reportes.controller';
+import { FeriadosService } from './feriados/feriados.service';
+import { FeriadosController } from './feriados/feriados.controller';
+import { PrSimulacion } from './entities/pr-simulacion.entity';
+import { SimulacionesService } from './simulaciones/simulaciones.service';
+import { SimulacionesController } from './simulaciones/simulaciones.controller';
+import { PrDesembolsoParcial } from './entities/pr-desembolso-parcial.entity';
+import { DesembolsosParcialesService } from './desembolsos-parciales/desembolsos-parciales.service';
+import { DesembolsosParcialesController } from './desembolsos-parciales/desembolsos-parciales.controller';
+import { ReestructuracionService } from './reestructuracion/reestructuracion.service';
+import { ReestructuracionController } from './reestructuracion/reestructuracion.controller';
+import { CondonacionService } from './condonacion/condonacion.service';
+import { CondonacionController } from './condonacion/condonacion.controller';
+import { DeudorScoringService } from './scoring/scoring.service';
+import { ScoringController } from './scoring/scoring.controller';
 
 @Module({
   imports: [
@@ -57,6 +74,9 @@ import { ReportesController } from './reportes/reportes.controller';
       PrCobranza,
       PrRefinanciamiento,
       PrVehiculo,
+      PrFeriado,
+      PrSimulacion,
+      PrDesembolsoParcial,
     ]),
     TenantModule,
     ContabilidadModule,
@@ -70,6 +90,7 @@ import { ReportesController } from './reportes/reportes.controller';
     PrestamosService,
     PagosService,
     GarantiasService,
+    GarantesService,
     CobranzaService,
     MoraCronService,
     RefinanciamientoService,
@@ -77,6 +98,12 @@ import { ReportesController } from './reportes/reportes.controller';
     PrestamistaPdfService,
     ReportesPrestamistaService,
     VehiculosService,
+    FeriadosService,
+    SimulacionesService,
+    DesembolsosParcialesService,
+    ReestructuracionService,
+    CondonacionService,
+    DeudorScoringService,
   ],
   controllers: [
     DeudoresController,
@@ -85,13 +112,20 @@ import { ReportesController } from './reportes/reportes.controller';
     PrestamosController,
     PagosController,
     GarantiasController,
+    GarantesController,
     CobranzaController,
     RefinanciamientoController,
     DashboardPrestamistaController,
     PdfPrestamistaController,
     ReportesController,
     VehiculosController,
+    FeriadosController,
+    SimulacionesController,
+    DesembolsosParcialesController,
+    ReestructuracionController,
+    CondonacionController,
+    ScoringController,
   ],
-  exports: [DeudoresService, PrestamosService, VehiculosService],
+  exports: [DeudoresService, PrestamosService, VehiculosService, FeriadosService],
 })
 export class PrestamistatModule {}

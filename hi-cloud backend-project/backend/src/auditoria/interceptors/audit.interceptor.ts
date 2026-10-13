@@ -223,6 +223,30 @@ export function generarDescripcion(
     return `${quien} ajustó stock${prod ? ` de "${prod}"` : ''}${motivo ? ` (${motivo})` : ''}`;
   }
 
+  // Prestamista — condonar/reestructurar comparten verbo con rutas de otros
+  // módulos ('/condonar' también la usa "condonar-mora" de educativo, más
+  // abajo) pero tienen una forma de respuesta propia: sin esta rama
+  // específica ANTES de la de educativo, el log de Prestamista salía con
+  // una descripción vacía/equivocada ("X condonó mora", sin monto ni
+  // préstamo) porque leía `body.condonacion.montoCondonado`, un campo que
+  // CondonacionService.condonar() nunca devuelve (ver Etapa 6, Seguridad).
+  if (r.includes('/prestamista/prestamos/') && r.includes('/condonar')) {
+    const mora = Number(body?.moraCondonada ?? 0);
+    const interes = Number(body?.interesCondonado ?? 0);
+    const fmt = (n: number) => `RD$${n.toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
+    const partes = [mora > 0 ? `${fmt(mora)} de mora` : '', interes > 0 ? `${fmt(interes)} de interés` : '']
+      .filter(Boolean).join(' y ');
+    return `${quien} condonó préstamo${eid ? ` #${eid}` : ''}${partes ? ` — ${partes}` : ''}`;
+  }
+  if (r.includes('/prestamista/prestamos/') && r.includes('/reestructurar')) {
+    const cuotasReemplazadas = body?.cuotasReemplazadas;
+    const cuotasNuevas = body?.cuotasNuevas;
+    const detalle = cuotasReemplazadas != null && cuotasNuevas != null
+      ? ` — ${cuotasReemplazadas} cuota(s) reemplazadas por ${cuotasNuevas}`
+      : '';
+    return `${quien} reestructuró préstamo${eid ? ` #${eid}` : ''}${detalle}`;
+  }
+
   // Condonar mora (educativo)
   if (r.includes('/condonar')) {
     const cond   = body?.condonacion ?? {};

@@ -12,13 +12,97 @@ export class CobranzaService {
     private readonly emailService: EmailService,
   ) {}
 
+  /**
+   * Umbrales de días de mora para sugerir el nivel de escalamiento —
+   * configurables por empresa desde 2026-10-13 (ver
+   * docs/prestamista/decisiones-pendientes.md, punto 3: antes eran fijos
+   * 5/15/30/60 para TODAS las financieras). Mismo patrón que
+   * `CajaService.getEmpresaCfg()`: una fila JSONB en `empresa.configuracion`,
+   * con default que preserva el comportamiento de toda empresa que nunca
+   * tocó esta config. Una empresa más estricta (ej. acción legal a los 45
+   * días en vez de 60) solo necesita guardar
+   * `configuracion.cobranzaUmbralLegal = 45` — mismo mecanismo genérico que
+   * ya usa `PATCH /configuracion/empresa` para `umbralDescuadreCaja`,
+   * `prestamoEfectivoPorCaja`, etc.
+   */
+  private async getUmbralesEscalamiento(empresaId: number): Promise<{
+    recordatorio: number; telefonica: number; carta: number; legal: number;
+  }> {
+    const [row] = await this.ds.query<{ configuracion: Record<string, unknown> }[]>(
+      'SELECT configuracion FROM empresa WHERE id = $1 LIMIT 1',
+      [empresaId],
+    );
+    const cfg = (row?.configuracion ?? {}) as Record<string, unknown>;
+    // Entero positivo válido → se usa; cualquier otra cosa (ausente, texto,
+    // negativo, 0, NaN) → cae al default de arranque. Nunca se interpola un
+    // valor no numérico en el SQL de abajo.
+    const num = (v: unknown, def: number) => {
+      const n = Number(v);
+      return Number.isFinite(n) && n > 0 ? Math.trunc(n) : def;
+    };
+    return {
+      recordatorio: num(cfg.cobranzaUmbralRecordatorio, 5),
+      telefonica:   num(cfg.cobranzaUmbralTelefonica,   15),
+      carta:        num(cfg.cobranzaUmbralCarta,        30),
+      legal:        num(cfg.cobranzaUmbralLegal,        60),
+    };
+  }
+
+  /**
+   * Nivel de escalamiento sugerido según días de mora — puramente
+   * informativo (una Tag en la UI para priorizar a quién llamar hoy), nunca
+   * bloquea ni dispara nada solo. Los 4 umbrales ya pasaron por `num()` en
+   * `getUmbralesEscalamiento()` (siempre enteros positivos) antes de llegar
+   * aquí — interpolarlos directo en el CASE es seguro, no hay forma de que
+   * lleven SQL arbitrario.
+   */
+  private sqlEscalamiento(u: { recordatorio: number; telefonica: number; carta: number; legal: number }): string {
+    return `
+    CASE
+      WHEN p."diasMoraActual" >= ${u.legal}       THEN 'legal'
+      WHEN p."diasMoraActual" >= ${u.carta}       THEN 'carta'
+      WHEN p."diasMoraActual" >= ${u.telefonica}  THEN 'telefonica'
+      WHEN p."diasMoraActual" >= ${u.recordatorio} THEN 'recordatorio'
+      ELSE 'sin_accion'
+    END`;
+  }
+
+  /**
+   * Última gestión por préstamo (DISTINCT ON por fecha) — base de
+   * "diasUltimaGestion" (priorizar a quién llamar hoy) y "promesaIncumplida"
+   * (la última gestión fue una promesa de pago cuya fecha ya pasó y nadie
+   * registró nada después — si el cobrador hizo seguimiento, esa gestión
+   * nueva pasa a ser la "última" y la bandera se apaga sola).
+   */
+  private static readonly SQL_ULTIMA_GESTION = `
+    SELECT DISTINCT ON (c."prestamoId")
+      c."prestamoId", c.fecha, c.resultado, c."fechaPromesaPago"
+    FROM pr_cobranzas c
+    WHERE c."empresaId" = $1
+    ORDER BY c."prestamoId", c.fecha DESC`;
+
   async carteraVencida(empresaId: number, params: any) {
     const page  = Math.max(1, Number(params.page)  || 1);
     const limit = Math.min(100, Number(params.limit) || 20);
     const offset = (page - 1) * limit;
+    const soloCobradorId = params.cobradorId != null && params.cobradorId !== '' ? Number(params.cobradorId) : null;
+    const soloPromesasIncumplidas = String(params.soloPromesasIncumplidas) === 'true';
+
+    const filtroCobrador = soloCobradorId != null ? `AND COALESCE(p."cobradorId", p."oficialId") = $2` : '';
+    const havingPromesa   = soloPromesasIncumplidas
+      ? `AND ug.resultado = 'promesa_pago' AND ug."fechaPromesaPago" < CURRENT_DATE`
+      : '';
+
+    const paramsBase: any[] = [empresaId];
+    if (soloCobradorId != null) paramsBase.push(soloCobradorId);
+
+    const umbrales = await this.getUmbralesEscalamiento(empresaId);
+
     const [{ count }] = await this.ds.query(
-      `SELECT COUNT(*) FROM pr_prestamos p WHERE p."empresaId"=$1 AND p.estado IN ('moroso','vencido')`,
-      [empresaId],
+      `SELECT COUNT(*) FROM pr_prestamos p
+       LEFT JOIN (${CobranzaService.SQL_ULTIMA_GESTION}) ug ON ug."prestamoId" = p.id
+       WHERE p."empresaId"=$1 AND p.estado IN ('moroso','vencido') ${filtroCobrador} ${havingPromesa}`,
+      paramsBase,
     );
     const data = await this.ds.query(
       `SELECT p.*,
@@ -26,13 +110,53 @@ export class CobranzaService {
               d.cedula    AS "deudorCedula",
               d.telefono  AS "deudorTelefono",
               d.direccion AS "deudorDireccion",
-              d.email     AS "deudorEmail"
-       FROM pr_prestamos p JOIN pr_deudores d ON d.id=p."deudorId"
-       WHERE p."empresaId"=$1 AND p.estado IN ('moroso','vencido')
-       ORDER BY p."diasMoraActual" DESC LIMIT $2 OFFSET $3`,
-      [empresaId, limit, offset],
+              d.email     AS "deudorEmail",
+              COALESCE(p."cobradorId", p."oficialId")         AS "cobradorEfectivoId",
+              COALESCE(p."cobradorNombre", p."oficialNombre") AS "cobradorEfectivoNombre",
+              ug.fecha                                        AS "ultimaGestion",
+              CASE WHEN ug.fecha IS NOT NULL
+                   THEN GREATEST(0, (CURRENT_DATE - ug.fecha::date))
+                   ELSE NULL END                               AS "diasUltimaGestion",
+              (ug.resultado = 'promesa_pago' AND ug."fechaPromesaPago" < CURRENT_DATE) AS "promesaIncumplida",
+              (${this.sqlEscalamiento(umbrales)})                AS "nivelEscalamiento"
+       FROM pr_prestamos p
+       JOIN pr_deudores d ON d.id=p."deudorId" AND d."empresaId"=p."empresaId"
+       LEFT JOIN (${CobranzaService.SQL_ULTIMA_GESTION}) ug ON ug."prestamoId" = p.id
+       WHERE p."empresaId"=$1 AND p.estado IN ('moroso','vencido') ${filtroCobrador} ${havingPromesa}
+       ORDER BY "diasUltimaGestion" DESC NULLS FIRST, p."diasMoraActual" DESC
+       LIMIT $${paramsBase.length + 1} OFFSET $${paramsBase.length + 2}`,
+      [...paramsBase, limit, offset],
     );
-    return { data, total: Number(count), page, limit };
+    return { data, total: Number(count), page, limit, umbralesEscalamiento: umbrales };
+  }
+
+  /** Lista de usuarios activos de la empresa elegibles como cobrador — mismo criterio multi-tenant que UsersService.findAll, pero accesible a VENDEDOR/CONTADOR (no solo ADMIN) porque aquí es solo para poblar un selector. */
+  async listarCobradores(empresaId: number) {
+    return this.ds.query(
+      `SELECT u.id, u.nombre, u.email
+       FROM users u
+       JOIN usuario_empresa ue ON ue."userId" = u.id
+       WHERE ue."empresaId" = $1 AND ue."isActive" = true AND u."isActive" = true
+       ORDER BY u.nombre ASC`,
+      [empresaId],
+    );
+  }
+
+  /** Asigna/reasigna de forma persistente la cartera de un préstamo a un cobrador. cobradorId null = desasignar (vuelve a sugerir el oficial). */
+  async asignarCobrador(empresaId: number, prestamoId: number, cobradorId: number | null) {
+    let cobradorNombre: string | null = null;
+    if (cobradorId != null) {
+      const [u] = await this.ds.query(`SELECT nombre FROM users u JOIN usuario_empresa ue ON ue."userId"=u.id WHERE u.id=$1 AND ue."empresaId"=$2 AND ue."isActive"=true`, [cobradorId, empresaId]);
+      if (!u) throw new NotFoundException('El cobrador indicado no pertenece a esta empresa');
+      cobradorNombre = u.nombre;
+    }
+    const result: any[] = await this.ds.query(
+      `UPDATE pr_prestamos SET "cobradorId"=$1, "cobradorNombre"=$2, "updatedAt"=NOW()
+       WHERE id=$3 AND "empresaId"=$4 RETURNING id, "cobradorId", "cobradorNombre"`,
+      [cobradorId, cobradorNombre, prestamoId, empresaId],
+    );
+    if (!result[0]) throw new NotFoundException(`Préstamo #${prestamoId} no encontrado`);
+    return result[0];
   }
 
   async gestionesByPrestamo(empresaId: number, prestamoId: number) {
@@ -44,22 +168,33 @@ export class CobranzaService {
     );
   }
 
-  async registrarGestion(empresaId: number, data: any) {
+  /**
+   * `usuarioActual` queda SOLO como fallback: el formulario de "Registrar
+   * Gestión" nunca pedía quién la hizo (bug encontrado en la auditoría de
+   * Etapa 3) y toda gestión quedaba con cobradorId NULL — sin esto no hay
+   * forma de calcular carga de trabajo por cobrador ni de filtrar "mi
+   * cartera". Si el llamador manda cobradorId explícito (p.ej. reasignando a
+   * nombre de otro cobrador) se respeta ese valor.
+   */
+  async registrarGestion(empresaId: number, data: any, usuarioActual?: { id: number; nombre: string }) {
     const rows: any[] = await this.ds.query(
       `SELECT p.*, d.nombre AS "deudorNombre"
-       FROM pr_prestamos p JOIN pr_deudores d ON d.id=p."deudorId"
+       FROM pr_prestamos p JOIN pr_deudores d ON d.id=p."deudorId" AND d."empresaId"=p."empresaId"
        WHERE p.id=$1 AND p."empresaId"=$2`, [data.prestamoId, empresaId],
     );
     const prestamo = rows[0];
     if (!prestamo) throw new NotFoundException(`Préstamo #${data.prestamoId} no encontrado`);
+
+    const cobradorId     = data.cobradorId     ?? usuarioActual?.id     ?? null;
+    const cobradorNombre = data.cobradorNombre ?? usuarioActual?.nombre ?? null;
 
     const result: any[] = await this.ds.query(
       `INSERT INTO pr_cobranzas ("empresaId","prestamoId","deudorId","cobradorId","cobradorNombre",
         tipo,resultado,"montoPrometido","fechaPromesaPago",descripcion,"diasMoraAlMomento",
         "saldoAlMomento","proximaGestion")
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-      [empresaId, data.prestamoId, prestamo.deudorId, data.cobradorId ?? null,
-       data.cobradorNombre ?? null, data.tipo ?? null, data.resultado ?? null,
+      [empresaId, data.prestamoId, prestamo.deudorId, cobradorId,
+       cobradorNombre, data.tipo ?? null, data.resultado ?? null,
        data.montoPrometido ?? null, data.fechaPromesaPago ?? null, data.descripcion,
        prestamo.diasMoraActual ?? 0, prestamo.saldoTotal ?? 0, data.proximaGestion ?? null],
     );
@@ -72,14 +207,14 @@ export class CobranzaService {
    * Multi-tenant: todo filtrado por empresaId (del CLS) + prestamoId. Registra la gestión SOLO
    * si el envío fue exitoso.
    */
-  async notificarMora(empresaId: number, prestamoId: number, cobradorId?: number | null) {
+  async notificarMora(empresaId: number, prestamoId: number, usuarioActual?: { id: number; nombre: string }) {
     const [row] = await this.ds.query<any[]>(
       `SELECT p.numero, p."saldoMora", p."saldoTotal", p."cuotasVencidas", p."diasMoraActual",
               d.nombre AS "deudorNombre", d.email AS "deudorEmail",
               e."nombreComercial" AS "empresaComercial", e.nombre AS "empresaNombre",
               e.email AS "empresaEmail", e.telefono AS "empresaTelefono"
          FROM pr_prestamos p
-         JOIN pr_deudores d ON d.id = p."deudorId"
+         JOIN pr_deudores d ON d.id=p."deudorId" AND d."empresaId"=p."empresaId"
          JOIN empresa     e ON e.id = p."empresaId"
         WHERE p.id = $1 AND p."empresaId" = $2`,
       [prestamoId, empresaId],
@@ -110,11 +245,54 @@ export class CobranzaService {
       prestamoId,
       tipo:        'mensaje',
       descripcion: `Recordatorio de mora enviado por email a ${row.deudorEmail}`,
-      cobradorId:  cobradorId ?? null,
-    });
+    }, usuarioActual);
 
     this.logger.log(`Recordatorio de mora enviado a ${row.deudorEmail} (préstamo ${row.numero})`);
     return { exitoso: true, mensaje: `Recordatorio enviado a ${row.deudorEmail}` };
+  }
+
+  /**
+   * Link wa.me de recordatorio de mora — mismo mecanismo manual que
+   * PagosController.whatsapp() (sin proveedor de WhatsApp Business activado
+   * en ningún tenant todavía): solo arma el texto y el link, el navegador lo
+   * abre. No hay forma de confirmar que el deudor lo recibió, así que —a
+   * diferencia del email— NO registra una gestión sola; el cobrador registra
+   * la suya desde el botón "Gestión" si corresponde.
+   */
+  async linkWhatsappMora(empresaId: number, prestamoId: number) {
+    const [row] = await this.ds.query<any[]>(
+      `SELECT p.numero, p."saldoMora", p."saldoTotal", p."cuotasVencidas", p."diasMoraActual",
+              d.nombre AS "deudorNombre", d.telefono AS "deudorTelefono",
+              e."nombreComercial" AS "empresaComercial", e.nombre AS "empresaNombre"
+         FROM pr_prestamos p
+         JOIN pr_deudores d ON d.id=p."deudorId" AND d."empresaId"=p."empresaId"
+         JOIN empresa     e ON e.id = p."empresaId"
+        WHERE p.id = $1 AND p."empresaId" = $2`,
+      [prestamoId, empresaId],
+    );
+    if (!row) throw new NotFoundException(`Préstamo #${prestamoId} no encontrado`);
+
+    const fmt = (v: any) => `RD$ ${Number(v ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
+    const financiera = row.empresaComercial || row.empresaNombre || 'HiCloud ERP';
+    const texto = [
+      `Estimado/a *${row.deudorNombre}*,`,
+      '',
+      `Le recordamos que su préstamo *${row.numero}* presenta *${row.cuotasVencidas} cuota(s)*`,
+      `pendiente(s) de pago, con *${row.diasMoraActual} día(s)* de atraso.`,
+      '',
+      `💰 Saldo en mora: *${fmt(row.saldoMora)}*`,
+      `📊 Saldo total: *${fmt(row.saldoTotal)}*`,
+      '',
+      `Le agradecemos regularizar su situación a la brevedad posible.`,
+      '',
+      `_${financiera}_`,
+    ].join('\n');
+
+    const numero = String(row.deudorTelefono ?? '').replace(/\D/g, '');
+    const link = numero
+      ? `https://wa.me/${numero.startsWith('1') ? '' : '1809'}${numero}?text=${encodeURIComponent(texto)}`
+      : `https://wa.me/?text=${encodeURIComponent(texto)}`;
+    return { texto, link, numero: numero || undefined };
   }
 
   /** HTML del recordatorio de mora — tono aprobado (ámbar, respetuoso), white-label. */
@@ -194,6 +372,14 @@ export class CobranzaService {
        FROM pr_prestamos WHERE "empresaId"=$1`,
       [empresaId],
     );
+    const [{ promesasIncumplidas }] = await this.ds.query(
+      `SELECT COUNT(*) AS "promesasIncumplidas"
+       FROM pr_prestamos p
+       JOIN (${CobranzaService.SQL_ULTIMA_GESTION}) ug ON ug."prestamoId" = p.id
+       WHERE p."empresaId"=$1 AND p.estado IN ('moroso','vencido')
+         AND ug.resultado = 'promesa_pago' AND ug."fechaPromesaPago" < CURRENT_DATE`,
+      [empresaId],
+    );
     return {
       totalMorosos:       Number(stats.totalMorosos       ?? 0),
       totalVencidos:      Number(stats.totalVencidos       ?? 0),
@@ -202,6 +388,7 @@ export class CobranzaService {
       totalActivos:       Number(stats.totalActivos        ?? 0),
       totalEnMora:        Number(stats.totalEnMora         ?? 0),
       indiceMorosidad:    Number(stats.indiceMorosidad     ?? 0),
+      promesasIncumplidas:Number(promesasIncumplidas       ?? 0),
     };
   }
 }

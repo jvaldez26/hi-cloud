@@ -9,6 +9,7 @@ import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
 import { prestamistalApi } from '../../api/prestamista.api';
 import { hoyRD } from '../../utils/fechaRD';
+import ScoreDeudorBadge from './ScoreDeudorBadge';
 
 const { Option } = Select;
 
@@ -36,6 +37,11 @@ export default function SolicitudesPage() {
   const [detalleOpen, setDetalleOpen] = useState(false);
   const [decidirOpen, setDecidirOpen] = useState(false);
   const [selectedProductoTipo, setSelectedProductoTipo] = useState<string>('personal');
+  // Motor v2 (Fase 2B, punto 3): si el producto lo permite
+  // (motorConfig.permiteAjusteSolicitud !== false), se puede ajustar tasa y
+  // frecuencia al crear la solicitud. Sin motorConfig (producto "legacy" de
+  // Etapa 1) se asume que sí se permite, como siempre.
+  const [permiteAjuste, setPermiteAjuste] = useState(true);
   const [placaSearch, setPlacaSearch] = useState('');
   const [form] = Form.useForm();
   const [formDecision] = Form.useForm();
@@ -66,7 +72,15 @@ export default function SolicitudesPage() {
   });
 
   const crear = useMutation({
-    mutationFn: (vals: any) => prestamistalApi.crearSolicitud(vals),
+    // Etapa 1: vehiculoId se captura en el formulario pero pr_solicitudes no
+    // tiene esa columna (ver auditoría) — se excluye del body para no
+    // chocar con forbidNonWhitelisted; el resto de campos ya coincide con
+    // CrearSolicitudDto. fechaSolicitud llega como objeto dayjs del
+    // DatePicker — CrearSolicitudDto espera un string 'YYYY-MM-DD'.
+    mutationFn: ({ vehiculoId, fechaSolicitud, ...vals }: any) => prestamistalApi.crearSolicitud({
+      ...vals,
+      ...(fechaSolicitud ? { fechaSolicitud: fechaSolicitud.format('YYYY-MM-DD') } : {}),
+    }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['prestamista-solicitudes'] }); setOpen(false); form.resetFields(); setSelectedProductoTipo('personal'); },
     onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al crear solicitud'),
   });
@@ -148,7 +162,7 @@ export default function SolicitudesPage() {
               {(deudores as any[]).map((d: any) => <Option key={d.id} value={d.id}>{d.nombre} {d.apellidos ?? ''}</Option>)}
             </Select>
           </Form.Item>
-          <Form.Item name="productoPrestamo" label="Producto de Préstamo" rules={[{ required: true }]}>
+          <Form.Item name="productoId" label="Producto de Préstamo" rules={[{ required: true }]}>
             <Select
               showSearch
               optionFilterProp="children"
@@ -156,7 +170,9 @@ export default function SolicitudesPage() {
               onChange={(val: number) => {
                 const prod = (productos as any[]).find((p: any) => p.id === val);
                 setSelectedProductoTipo(prod?.tipoCredito ?? 'personal');
+                setPermiteAjuste(prod?.motorConfig?.permiteAjusteSolicitud !== false);
                 form.setFieldValue('vehiculoId', undefined);
+                form.setFieldsValue({ tasaInteresMensual: undefined, frecuenciaPago: undefined });
               }}
             >
               {(productos as any[]).map((p: any) => <Option key={p.id} value={p.id}>{p.nombre}</Option>)}
@@ -186,8 +202,21 @@ export default function SolicitudesPage() {
               <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
             </Form.Item>
           </div>
+          {permiteAjuste && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
+              <Form.Item name="tasaInteresMensual" label="Ajustar tasa (% mensual, opcional)">
+                <InputNumber style={{ width: '100%' }} min={0} max={100} precision={3} addonAfter="%" placeholder="Tasa del producto" />
+              </Form.Item>
+              <Form.Item name="frecuenciaPago" label="Ajustar frecuencia (opcional)">
+                <Select allowClear placeholder="Frecuencia del producto">
+                  {['diaria', 'semanal', 'quincenal', 'mensual', 'bimestral', 'trimestral', 'semestral', 'anual', 'unico'].map(f =>
+                    <Option key={f} value={f}>{f.charAt(0).toUpperCase() + f.slice(1)}</Option>)}
+                </Select>
+              </Form.Item>
+            </div>
+          )}
           <Form.Item name="proposito" label="Propósito del préstamo"><Input.TextArea rows={2} /></Form.Item>
-          <Form.Item name="observaciones" label="Observaciones"><Input.TextArea rows={2} /></Form.Item>
+          <Form.Item name="notas" label="Observaciones"><Input.TextArea rows={2} /></Form.Item>
         </Form>
       </Modal>
 
@@ -196,11 +225,17 @@ export default function SolicitudesPage() {
         width={640} footer={
           detalle?.estado === 'pendiente' ? [
             <Button key="cancel" onClick={() => { setDetalleOpen(false); setDetalle(null); }}>Cerrar</Button>,
-            <Button key="reject" danger onClick={() => { formDecision.setFieldsValue({ decision: 'rechazar' }); setDecidirOpen(true); }}>Rechazar</Button>,
-            <Button key="approve" type="primary" onClick={() => { formDecision.setFieldsValue({ decision: 'aprobar' }); setDecidirOpen(true); }}>Aprobar</Button>,
+            <Button key="reject" danger onClick={() => { formDecision.setFieldsValue({ decision: 'rechazada' }); setDecidirOpen(true); }}>Rechazar</Button>,
+            <Button key="approve" type="primary" onClick={() => { formDecision.setFieldsValue({ decision: 'aprobada' }); setDecidirOpen(true); }}>Aprobar</Button>,
           ] : [<Button key="close" onClick={() => { setDetalleOpen(false); setDetalle(null); }}>Cerrar</Button>]
         }>
         {detalle && (
+          <>
+          {detalle.estado === 'pendiente' && (
+            <div style={{ marginBottom: 12 }}>
+              <ScoreDeudorBadge deudorId={detalle.deudorId} />
+            </div>
+          )}
           <Descriptions column={2} bordered size="small">
             <Descriptions.Item label="Número">{detalle.numero}</Descriptions.Item>
             <Descriptions.Item label="Estado"><Tag color={estadoColor[detalle.estado]}>{detalle.estado}</Tag></Descriptions.Item>
@@ -214,6 +249,7 @@ export default function SolicitudesPage() {
             <Descriptions.Item label="Observaciones" span={2}>{detalle.observaciones ?? '—'}</Descriptions.Item>
             {detalle.motivoDecision && <Descriptions.Item label="Motivo Decisión" span={2}>{detalle.motivoDecision}</Descriptions.Item>}
           </Descriptions>
+          </>
         )}
       </Modal>
 
@@ -224,8 +260,8 @@ export default function SolicitudesPage() {
         <Form form={formDecision} layout="vertical" style={{ paddingTop: 8 }}>
           <Form.Item name="decision" label="Decisión" rules={[{ required: true }]}>
             <Select>
-              <Option value="aprobar">Aprobar</Option>
-              <Option value="rechazar">Rechazar</Option>
+              <Option value="aprobada">Aprobar</Option>
+              <Option value="rechazada">Rechazar</Option>
             </Select>
           </Form.Item>
           <Form.Item name="montoAprobado" label="Monto Aprobado"><InputNumber style={{ width: '100%' }} prefix="RD$" /></Form.Item>

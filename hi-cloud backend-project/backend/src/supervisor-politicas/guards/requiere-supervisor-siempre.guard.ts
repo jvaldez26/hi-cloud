@@ -22,8 +22,20 @@ import { CATALOGO_SUPERVISOR } from '../supervisor-catalogo';
  * token de un solo uso en `x-supervisor-token`, emitido por POST
  * /auth/verificar-supervisor) — la única diferencia es que aquí NO hay
  * bypass por rol.
+ *
+ * `soloSi`: igual que en RequiereSupervisor — para endpoints que solo
+ * necesitan la autorización dual EN ALGUNOS casos según el body (ej.
+ * RefinanciamientoController.refinanciar() solo debe exigir la misma
+ * autorización que /condonar cuando el body trae moraCondonada/interesCondonado,
+ * no en un refinanciamiento normal sin condonación — ver Etapa 6, Seguridad).
+ * A diferencia de RequiereSupervisor, esto NO es un bypass por rol: si
+ * `soloSi` no está definido, SIEMPRE se evalúa la política (comportamiento
+ * previo, sin cambios).
  */
-export const RequiereSupervisorSiempre = (clave: string): Type<CanActivate> => {
+export const RequiereSupervisorSiempre = (
+  clave: string,
+  opts?: { soloSi?: (body: any) => boolean },
+): Type<CanActivate> => {
   @Injectable()
   class RequiereSupervisorSiempreMixin implements CanActivate {
     constructor(
@@ -38,6 +50,8 @@ export const RequiereSupervisorSiempre = (clave: string): Type<CanActivate> => {
 
       const empresaId = (user as any).empresaId as number | null | undefined;
       if (!empresaId) return true;
+
+      if (opts?.soloSi && !opts.soloSi(req.body)) return true;
 
       const item = CATALOGO_SUPERVISOR.find(c => c.clave === clave);
       if (!item) return true; // clave no catalogada → nunca bloquea (bug de programación, no de política)

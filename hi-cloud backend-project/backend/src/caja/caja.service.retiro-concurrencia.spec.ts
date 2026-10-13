@@ -55,6 +55,12 @@ const EMPRESA_TEST = 9998;
 
     const tenantServiceStub = { getEmpresaId: () => EMPRESA_TEST } as any;
     const realtimeServiceStub = { notify: jest.fn() } as any;
+    const notificacionesServiceStub = { notificarDescuadreCierre: jest.fn().mockResolvedValue(undefined) } as any;
+    // registrarRetiro() no toca el camino de prestamoEfectivoPorCaja (eso solo
+    // corre dentro de recalcularDesdeBD/calcularEsperadoPorForma), pero el
+    // constructor ahora exige este 7mo parámetro — stub para no romper con un
+    // TypeError si alguna vez cambia el alcance de getEmpresaCfg.
+    const modulosAddonServiceStub = { checkModuloActivo: jest.fn().mockResolvedValue(true) } as any;
 
     service = new CajaService(
       dataSource.getRepository(CierreCaja),
@@ -62,6 +68,8 @@ const EMPRESA_TEST = 9998;
       dataSource,
       tenantServiceStub,
       realtimeServiceStub,
+      notificacionesServiceStub,
+      modulosAddonServiceStub,
     );
   });
 

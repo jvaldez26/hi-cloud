@@ -1830,10 +1830,25 @@ export class AsientosAutomaticosService {
     formaPago:    string,
     fecha:        string, // data.fechaDesembolso
     userId:       number,
+    // Motor v2 (Fase 2B) — cargos de apertura/gastos retenidos al desembolsar
+    // (financiados o descontados, §5.1 del motor): la Cartera se debita por
+    // el monto COMPLETO, pero menos sale de caja/banco — la diferencia es
+    // ingreso del prestamista, no efectivo entregado.
+    cargoAperturaRetenido: number = 0,
   ): Promise<void> {
     const cuentaHaber  = await this.resolverCuentaPorMetodoPago(formaPago);
     const cuentaCartera = await this.resolverCuentaConcepto('PRESTAMO_CARTERA', '1.1.2.10');
+    const cuentaComision = cargoAperturaRetenido > 0
+      ? await this.resolverCuentaConcepto('PRESTAMO_COMISION_APERTURA', '4.1.2.03')
+      : null;
     try {
+      const lineas: Array<{ codigo: string; descripcion: string; debe: number; haber: number }> = [
+        { codigo: cuentaCartera, descripcion: `Cartera crédito ${numero}`, debe: monto, haber: 0 },
+        { codigo: cuentaHaber, descripcion: `Desembolso préstamo ${numero}`, debe: 0, haber: monto - cargoAperturaRetenido },
+      ];
+      if (cuentaComision && cargoAperturaRetenido > 0) {
+        lineas.push({ codigo: cuentaComision, descripcion: `Comisión de apertura ${numero}`, debe: 0, haber: cargoAperturaRetenido });
+      }
       const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Desembolso préstamo ${numero}`,
         tipoOrigen:      TipoOrigenAsiento.PRESTAMISTA,
@@ -1841,10 +1856,7 @@ export class AsientosAutomaticosService {
         referenciaFolio: numero,
         fecha,
         userId,
-        lineas: [
-          { codigo: cuentaCartera, descripcion: `Cartera crédito ${numero}`,  debe: monto, haber: 0     },
-          { codigo: cuentaHaber, descripcion: `Desembolso préstamo ${numero}`, debe: 0, haber: monto },
-        ],
+        lineas,
       });
       if (asiento) {
         this.logger.log(`Asiento desembolso préstamo ${numero} generado`);
@@ -1873,13 +1885,18 @@ export class AsientosAutomaticosService {
     moraAplicada:     number,
     fecha:          string, // fechaHoyRD() del caller — RegistrarPagoDto no trae fecha, el pago siempre es "ahora"
     userId:         number,
+    // Motor v2 (Fase 2B) — 4ta bolsa de aplicación del pago, junto a capital/
+    // interés/mora (ver docs/prestamista/motor-financiero.md §5 y
+    // PagosService.registrar()). Siempre 0 en préstamos 'v1'.
+    cargosAplicados: number = 0,
   ): Promise<void> {
-    const totalPago = capitalAplicado + interesAplicado + moraAplicada;
+    const totalPago = capitalAplicado + interesAplicado + moraAplicada + cargosAplicados;
     if (totalPago <= 0) return;
     const cuentaDebito  = await this.resolverCuentaPorMetodoPago(formaPago);
     const cuentaCartera = await this.resolverCuentaConcepto('PRESTAMO_CARTERA',   '1.1.2.10');
     const cuentaInteres = await this.resolverCuentaConcepto('PRESTAMO_INTERESES', '4.1.2.01');
     const cuentaMora    = await this.resolverCuentaConcepto('PRESTAMO_MORA',      '4.1.2.02');
+    const cuentaCargos  = await this.resolverCuentaConcepto('PRESTAMO_CARGOS',    '4.1.2.04');
     const lineas: Array<{ codigo: string; descripcion: string; debe: number; haber: number }> = [
       { codigo: cuentaDebito, descripcion: `Pago recibido ${numeroPago}`, debe: totalPago, haber: 0 },
     ];
@@ -1889,6 +1906,8 @@ export class AsientosAutomaticosService {
       lineas.push({ codigo: cuentaInteres, descripcion: `Intereses préstamo ${numeroPrestamo}`, debe: 0, haber: interesAplicado });
     if (moraAplicada > 0)
       lineas.push({ codigo: cuentaMora, descripcion: `Mora préstamo ${numeroPrestamo}`, debe: 0, haber: moraAplicada });
+    if (cargosAplicados > 0)
+      lineas.push({ codigo: cuentaCargos, descripcion: `Cargos préstamo ${numeroPrestamo}`, debe: 0, haber: cargosAplicados });
     try {
       const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Pago préstamo ${numeroPago} — ${numeroPrestamo}`,
@@ -1908,6 +1927,165 @@ export class AsientosAutomaticosService {
       this.logger.error(`Error asiento pago ${numeroPago}: ${(err as Error).message}`);
       this.reportarFalloAsiento(err, 'asiento_pago_prestamo', {
         tipoOrigen: TipoOrigenAsiento.PRESTAMISTA, referenciaId: String(pagoId), referenciaFolio: numeroPago,
+      });
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // PRESTAMISTA: Refinanciamiento
+  // Alta Cartera del nuevo (D) / Reversa Cartera del original (H) +
+  // Intereses/Mora capitalizados (H, ingreso) + Gasto por condonación (D)
+  //
+  // C6 (auditoría Prestamista Etapa 1) — a diferencia de
+  // asientoDesembolsoPrestamo/asientoPagoPrestamo (fire-and-forget DESPUÉS
+  // del commit), este asiento recibe el `manager` de la MISMA transacción
+  // del refinanciamiento (normalmente qr.manager) y se espera que el
+  // caller la revierta si esto falla: la condonación de mora/interés es una
+  // pérdida contable real, no puede quedar fuera de libros en silencio como
+  // si nada hubiera pasado. Por eso lanza en vez de loguear-y-continuar.
+  //
+  // El interés y la mora del préstamo original nunca se devengaron en los
+  // libros (el motor es 100% base caja: solo se asienta lo efectivamente
+  // cobrado) — al refinanciar, ese saldo pendiente se capitaliza como
+  // principal del préstamo nuevo, así que aquí SÍ se reconoce como ingreso
+  // (bruto, no neto) para que la condonación quede visible como gasto en
+  // vez de simplemente no aparecer nunca.
+  // ──────────────────────────────────────────────────────────────────
+  async asientoRefinanciamiento(
+    params: {
+      prestamoNuevoId:      number;
+      numeroOriginal:       string;
+      numeroNuevo:          string;
+      saldoCapitalOriginal: number;
+      saldoInteresOriginal: number;
+      saldoMoraOriginal:    number;
+      moraCondonada:        number;
+      interesCondonado:     number;
+      montoNuevo:           number;
+      fecha:                string;
+      userId:               number;
+    },
+    manager: EntityManager,
+  ): Promise<AsientoContable> {
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const cuentaCartera     = await this.resolverCuentaConcepto('PRESTAMO_CARTERA',   '1.1.2.10');
+    const cuentaInteres     = await this.resolverCuentaConcepto('PRESTAMO_INTERESES', '4.1.2.01');
+    const cuentaMora        = await this.resolverCuentaConcepto('PRESTAMO_MORA',      '4.1.2.02');
+    const cuentaCondonacion = await this.resolverCuentaConcepto('PRESTAMO_CONDONACION_GASTO', '5.1.9.05');
+
+    const condonado = r2(params.moraCondonada + params.interesCondonado);
+
+    const lineas: Array<{ codigo: string; descripcion: string; debe: number; haber: number }> = [
+      { codigo: cuentaCartera, descripcion: `Alta cartera préstamo nuevo ${params.numeroNuevo}`, debe: params.montoNuevo, haber: 0 },
+      { codigo: cuentaCartera, descripcion: `Reversa cartera préstamo ${params.numeroOriginal} (refinanciado)`, debe: 0, haber: params.saldoCapitalOriginal },
+    ];
+    if (params.saldoInteresOriginal > 0) {
+      lineas.push({ codigo: cuentaInteres, descripcion: `Interés capitalizado ${params.numeroOriginal}→${params.numeroNuevo}`, debe: 0, haber: params.saldoInteresOriginal });
+    }
+    if (params.saldoMoraOriginal > 0) {
+      lineas.push({ codigo: cuentaMora, descripcion: `Mora capitalizada ${params.numeroOriginal}→${params.numeroNuevo}`, debe: 0, haber: params.saldoMoraOriginal });
+    }
+    if (condonado > 0) {
+      lineas.push({ codigo: cuentaCondonacion, descripcion: `Condonación mora/interés al refinanciar ${params.numeroOriginal}`, debe: condonado, haber: 0 });
+    }
+
+    // montoNuevo normalmente es exactamente saldoCapitalOriginal + intereses
+    // y mora netos de condonación (fórmula por defecto de
+    // RefinanciamientoService.refinanciar), lo que deja este asiento
+    // cuadrado sin más. Si el caller fijó un montoNuevo explícito que no
+    // coincide, se agrega un ajuste visible en vez de dejar pasar un
+    // asiento descuadrado o reventar con un error críptico.
+    const totalDebe  = r2(lineas.reduce((s, l) => s + l.debe, 0));
+    const totalHaber = r2(lineas.reduce((s, l) => s + l.haber, 0));
+    const diff = r2(totalDebe - totalHaber);
+    if (diff !== 0) {
+      const cuentaAjuste = await this.resolverCuentaConcepto('PRESTAMO_AJUSTE_REFINANCIAMIENTO', cuentaInteres);
+      const desc = `Ajuste refinanciamiento ${params.numeroOriginal}→${params.numeroNuevo} (montoNuevo explícito)`;
+      lineas.push(diff > 0
+        ? { codigo: cuentaAjuste, descripcion: desc, debe: 0, haber: diff }
+        : { codigo: cuentaAjuste, descripcion: desc, debe: -diff, haber: 0 });
+    }
+
+    const asiento = await this._crearAsientoContabilizado({
+      descripcion:     `Refinanciamiento ${params.numeroOriginal} → ${params.numeroNuevo}`,
+      tipoOrigen:      TipoOrigenAsiento.PRESTAMISTA,
+      referenciaId:    params.prestamoNuevoId,
+      referenciaFolio: params.numeroNuevo,
+      fecha:           params.fecha,
+      userId:          params.userId,
+      lineas,
+    }, manager);
+
+    if (!asiento) {
+      const err = new Error(
+        `No se pudo generar el asiento de refinanciamiento ${params.numeroOriginal}→${params.numeroNuevo} (cuenta faltante o asiento descuadrado)`,
+      );
+      this.reportarFalloAsiento(err, 'asiento_refinanciamiento_prestamo', {
+        tipoOrigen: TipoOrigenAsiento.PRESTAMISTA, referenciaId: String(params.prestamoNuevoId), referenciaFolio: params.numeroNuevo,
+      });
+      throw err;
+    }
+    return asiento;
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // PRESTAMISTA: Condonación independiente (Etapa 2 resto, §6)
+  //
+  // Igual idea que la condonación empaquetada en asientoRefinanciamiento:
+  // el motor es 100% base caja (la mora/interés pendiente nunca se
+  // devengaron como ingreso en los libros), así que condonarlos no tiene
+  // una contrapartida real que reversar. Para que la condonación quede
+  // VISIBLE en vez de simplemente no aparecer nunca, se reconoce bruto
+  // como ingreso (CR Intereses/Mora) y se expensa de inmediato como gasto
+  // por condonación (DR) — efecto neto cero en el resultado, pero
+  // auditable en el libro diario.
+  // ──────────────────────────────────────────────────────────────────
+  async asientoCondonacionPrestamo(
+    prestamoId: number,
+    numero: string,
+    moraCondonada: number,
+    interesCondonado: number,
+    fecha: string,
+    userId: number,
+  ): Promise<void> {
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const total = r2(moraCondonada + interesCondonado);
+    if (total <= 0) return;
+    const cuentaCondonacion = await this.resolverCuentaConcepto('PRESTAMO_CONDONACION_GASTO', '5.1.9.05');
+    const cuentaInteres     = await this.resolverCuentaConcepto('PRESTAMO_INTERESES', '4.1.2.01');
+    const cuentaMora        = await this.resolverCuentaConcepto('PRESTAMO_MORA',      '4.1.2.02');
+    try {
+      const lineas: Array<{ codigo: string; descripcion: string; debe: number; haber: number }> = [];
+      if (interesCondonado > 0) {
+        lineas.push(
+          { codigo: cuentaCondonacion, descripcion: `Condonación interés préstamo ${numero}`, debe: interesCondonado, haber: 0 },
+          { codigo: cuentaInteres,     descripcion: `Interés condonado ${numero}`,              debe: 0, haber: interesCondonado },
+        );
+      }
+      if (moraCondonada > 0) {
+        lineas.push(
+          { codigo: cuentaCondonacion, descripcion: `Condonación mora préstamo ${numero}`, debe: moraCondonada, haber: 0 },
+          { codigo: cuentaMora,        descripcion: `Mora condonada ${numero}`,             debe: 0, haber: moraCondonada },
+        );
+      }
+      const asiento = await this._crearAsientoContabilizado({
+        descripcion:     `Condonación préstamo ${numero}`,
+        tipoOrigen:      TipoOrigenAsiento.PRESTAMISTA,
+        referenciaId:    prestamoId,
+        referenciaFolio: numero,
+        fecha,
+        userId,
+        lineas,
+      });
+      if (asiento) {
+        this.logger.log(`Asiento condonación préstamo ${numero} generado`);
+      } else {
+        this.logger.warn(`Asiento condonación préstamo ${numero} NO generado (cuenta faltante) — ver Sentry`);
+      }
+    } catch (err) {
+      this.logger.error(`Error asiento condonación ${numero}: ${(err as Error).message}`);
+      this.reportarFalloAsiento(err, 'asiento_condonacion_prestamo', {
+        tipoOrigen: TipoOrigenAsiento.PRESTAMISTA, referenciaId: String(prestamoId), referenciaFolio: numero,
       });
     }
   }

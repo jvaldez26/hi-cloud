@@ -109,6 +109,31 @@ describe('esperado negativo — no se acota ni se disfraza', () => {
   });
 });
 
+describe('Prestamista Etapa 5 — efectivo de préstamos por caja', () => {
+  it('un cobro de cuota en efectivo SUMA al esperado, igual que un cobro de CxC', () => {
+    expect(calcularEfectivoEsperado(base({ ventasEfectivo: 1000, cobrosPrestamoEfectivo: 300 })))
+      .toBe(1300);
+  });
+
+  it('un desembolso de préstamo en efectivo RESTA del esperado — sale del cajón, igual que un gasto', () => {
+    expect(calcularEfectivoEsperado(base({ saldoApertura: 2000, desembolsosPrestamoEfectivo: 800 })))
+      .toBe(1200);
+  });
+
+  it('cobro y desembolso de préstamo en el mismo turno: sube por el cobro, baja por el desembolso', () => {
+    expect(calcularEfectivoEsperado(base({
+      saldoApertura: 1000, cobrosPrestamoEfectivo: 500, desembolsosPrestamoEfectivo: 200,
+    }))).toBe(1300);
+  });
+
+  it('sin datos de préstamo (campo omitido): se comporta exactamente como antes de este cambio', () => {
+    const conPrestamo = calcularEfectivoEsperado(base({ ventasEfectivo: 1000, cobrosPrestamoEfectivo: 0, desembolsosPrestamoEfectivo: 0 }));
+    const sinCampo     = calcularEfectivoEsperado(base({ ventasEfectivo: 1000 }));
+    expect(conPrestamo).toBe(sinCampo);
+    expect(sinCampo).toBe(1000);
+  });
+});
+
 describe('calcularDiferencia', () => {
   it('sobrante, faltante y cuadre', () => {
     expect(calcularDiferencia(1100, 1000)).toBe(100);

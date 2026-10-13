@@ -16,6 +16,8 @@ import { plainToInstance } from 'class-transformer';
 import {
   RegistrarPagoDto, CrearSolicitudDto, DecidirSolicitudDto,
   CrearPrestamoDto, RefinanciarDto, CancelarPrestamoDto,
+  CrearDesembolsoParcialDto, ReestructurarPrestamoDto, CondonarPrestamoDto,
+  RegistrarGestionDto, AsignarCobradorDto,
 } from './prestamista.dto';
 
 const OPCIONES_PIPE = { whitelist: true, forbidNonWhitelisted: true };
@@ -142,5 +144,133 @@ describe('CancelarPrestamoDto', () => {
     expect(await valido(CancelarPrestamoDto, { motivo: 'Acuerdo con el cliente' })).toBe(true);
     expect(await valido(CancelarPrestamoDto, { motivo: '' })).toBe(false);
     expect(await valido(CancelarPrestamoDto, {})).toBe(false);
+  });
+});
+
+describe('CrearPrestamoDto — desembolsoInicial (§4)', () => {
+  it('acepta un desembolso inicial menor al monto (desembolso parcial)', async () => {
+    expect(await valido(CrearPrestamoDto, { solicitudId: 1, desembolsoInicial: 5000 })).toBe(true);
+  });
+
+  it('rechaza un desembolso inicial negativo', async () => {
+    expect(await valido(CrearPrestamoDto, { solicitudId: 1, desembolsoInicial: -1 })).toBe(false);
+  });
+
+  it('acepta un desembolso inicial de 0 (nace 100% pendiente de desembolsar)', async () => {
+    expect(await valido(CrearPrestamoDto, { solicitudId: 1, desembolsoInicial: 0 })).toBe(true);
+  });
+});
+
+describe('CrearDesembolsoParcialDto (§4)', () => {
+  const base = { prestamoId: 5, monto: 2000, fecha: '2026-10-10' };
+
+  it('acepta un tramo normal', async () => {
+    expect(await valido(CrearDesembolsoParcialDto, base)).toBe(true);
+  });
+
+  it.each([0, -1])('rechaza monto %s', async (monto) => {
+    expect(await valido(CrearDesembolsoParcialDto, { ...base, monto })).toBe(false);
+  });
+
+  it('exige prestamoId y fecha', async () => {
+    expect(await valido(CrearDesembolsoParcialDto, { monto: 100 })).toBe(false);
+  });
+
+  it('rechaza una fecha inválida', async () => {
+    expect(await valido(CrearDesembolsoParcialDto, { ...base, fecha: 'ayer' })).toBe(false);
+  });
+});
+
+describe('ReestructurarPrestamoDto (§5)', () => {
+  it('acepta reestructurar solo con motivo (nada más cambia)', async () => {
+    expect(await valido(ReestructurarPrestamoDto, { motivo: 'El deudor pidió extender el plazo' })).toBe(true);
+  });
+
+  it('exige motivo', async () => {
+    expect(await valido(ReestructurarPrestamoDto, {})).toBe(false);
+    expect(await valido(ReestructurarPrestamoDto, { motivo: '' })).toBe(false);
+  });
+
+  it('solo admite francés o alemán como nuevo método', async () => {
+    expect(await valido(ReestructurarPrestamoDto, { motivo: 'x', nuevoMetodoAmortizacion: 'frances' })).toBe(true);
+    expect(await valido(ReestructurarPrestamoDto, { motivo: 'x', nuevoMetodoAmortizacion: 'flat' })).toBe(false);
+  });
+
+  it('rechaza plazo o tasa negativos', async () => {
+    expect(await valido(ReestructurarPrestamoDto, { motivo: 'x', nuevoPlazoMeses: 0 })).toBe(false);
+    expect(await valido(ReestructurarPrestamoDto, { motivo: 'x', nuevaTasaInteresMensual: -1 })).toBe(false);
+  });
+});
+
+describe('CondonarPrestamoDto (§6)', () => {
+  it('acepta condonar solo mora, solo interés, o ambos', async () => {
+    expect(await valido(CondonarPrestamoDto, { motivo: 'x', moraACondonar: 100 })).toBe(true);
+    expect(await valido(CondonarPrestamoDto, { motivo: 'x', interesACondonar: 50 })).toBe(true);
+    expect(await valido(CondonarPrestamoDto, { motivo: 'x', moraACondonar: 100, interesACondonar: 50 })).toBe(true);
+  });
+
+  it('exige motivo', async () => {
+    expect(await valido(CondonarPrestamoDto, { moraACondonar: 100 })).toBe(false);
+  });
+
+  it('rechaza montos negativos', async () => {
+    expect(await valido(CondonarPrestamoDto, { motivo: 'x', moraACondonar: -1 })).toBe(false);
+    expect(await valido(CondonarPrestamoDto, { motivo: 'x', interesACondonar: -1 })).toBe(false);
+  });
+
+  it('no existe ningún campo para condonar capital — fuera de alcance por diseño', async () => {
+    const errs = await errores(CondonarPrestamoDto, { motivo: 'x', capitalACondonar: 100 });
+    expect(errs.join(' ')).toMatch(/should not exist/i);
+  });
+});
+
+describe('RegistrarGestionDto (Etapa 3 — Cobranza)', () => {
+  const base = { prestamoId: 1, descripcion: 'Llamó, dijo que paga el viernes' };
+
+  it('acepta una gestión mínima (solo prestamoId + descripción)', async () => {
+    expect(await valido(RegistrarGestionDto, base)).toBe(true);
+  });
+
+  it('exige descripción no vacía', async () => {
+    expect(await valido(RegistrarGestionDto, { ...base, descripcion: '' })).toBe(false);
+    expect(await valido(RegistrarGestionDto, { prestamoId: 1 })).toBe(false);
+  });
+
+  it('solo admite los tipos del catálogo de gestión', async () => {
+    expect(await valido(RegistrarGestionDto, { ...base, tipo: 'llamada' })).toBe(true);
+    expect(await valido(RegistrarGestionDto, { ...base, tipo: 'telegrama' })).toBe(false);
+  });
+
+  it('solo admite los resultados del catálogo', async () => {
+    expect(await valido(RegistrarGestionDto, { ...base, resultado: 'promesa_pago' })).toBe(true);
+    expect(await valido(RegistrarGestionDto, { ...base, resultado: 'contactado' })).toBe(false);
+  });
+
+  it('rechaza montoPrometido negativo', async () => {
+    expect(await valido(RegistrarGestionDto, { ...base, montoPrometido: -1 })).toBe(false);
+  });
+
+  it('el formulario no puede mandar cobradorId a mano — se toma SIEMPRE del usuario autenticado', async () => {
+    const errs = await errores(RegistrarGestionDto, { ...base, cobradorId: 99 });
+    expect(errs.join(' ')).toMatch(/should not exist/i);
+  });
+});
+
+describe('AsignarCobradorDto (Etapa 3 — reasignación de cartera)', () => {
+  it('acepta un cobradorId positivo', async () => {
+    expect(await valido(AsignarCobradorDto, { cobradorId: 5 })).toBe(true);
+  });
+
+  it('acepta cobradorId null para desasignar', async () => {
+    expect(await valido(AsignarCobradorDto, { cobradorId: null })).toBe(true);
+  });
+
+  it('acepta el body vacío (equivalente a desasignar)', async () => {
+    expect(await valido(AsignarCobradorDto, {})).toBe(true);
+  });
+
+  it('rechaza un cobradorId que no sea un entero positivo', async () => {
+    expect(await valido(AsignarCobradorDto, { cobradorId: 0 })).toBe(false);
+    expect(await valido(AsignarCobradorDto, { cobradorId: -3 })).toBe(false);
   });
 });

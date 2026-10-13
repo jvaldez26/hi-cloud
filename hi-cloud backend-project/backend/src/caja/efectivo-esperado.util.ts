@@ -59,6 +59,16 @@ export interface EntradasEfectivo {
    * volvió. Solo `anulado` revierte el monto.
    */
   retiros: number;
+  /**
+   * Prestamista Etapa 5 — cobros de cuota de préstamo en efectivo, imputados
+   * a esta caja. Opcional: un cierre que no pasó por CajaService.recalcularDesdeBD()
+   * con la query nueva (cierres viejos, o la empresa tiene el interruptor
+   * apagado) simplemente no la manda y entra como 0 — mismo comportamiento
+   * que antes de que existiera este campo.
+   */
+  cobrosPrestamoEfectivo?: number;
+  /** Prestamista Etapa 5 — desembolsos de préstamo en efectivo entregados desde esta caja. Opcional, mismo criterio que cobrosPrestamoEfectivo. */
+  desembolsosPrestamoEfectivo?: number;
 }
 
 /**
@@ -75,8 +85,10 @@ export function calcularEfectivoEsperado(e: EntradasEfectivo): number {
     + num(e.ventasEfectivo)
     + num(e.cobrosEfectivo)
     + num(e.anticiposEfectivo)
+    + num(e.cobrosPrestamoEfectivo)
     - num(e.gastosEfectivo)
-    - num(e.retiros);
+    - num(e.retiros)
+    - num(e.desembolsosPrestamoEfectivo);
   return redondear(total);
 }
 

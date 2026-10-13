@@ -122,6 +122,47 @@ describe('generarDescripcion — caja (el id y el dueño salían solo con suerte
   });
 });
 
+// Etapa 6 (Seguridad, Prestamista): /prestamista/prestamos/:id/condonar
+// compartía la rama genérica de "/condonar" con educativo (condonar-mora de
+// un cargo), que lee `body.condonacion.montoCondonado` — un campo que
+// CondonacionService.condonar() de Prestamista NUNCA devuelve (su respuesta
+// es { numero, moraCondonada, interesCondonado, ... }). El log de auditoría
+// salía con "X condonó mora" sin monto ni préstamo. /reestructurar no
+// colisionaba con nada, pero caía al fallback genérico sin ningún detalle.
+describe('generarDescripcion — Prestamista: condonar/reestructurar (antes colisionaba con educativo o caía al fallback)', () => {
+  it('condonar con mora e interés: los incluye por su nombre y el id del préstamo', () => {
+    const desc = generarDescripcion('PATCH', '/api/v1/prestamista/prestamos/40/condonar', 'Ana', {
+      moraCondonada: 500, interesCondonado: 120.5,
+    });
+    expect(desc).toBe('Ana condonó préstamo #40 — RD$500.00 de mora y RD$120.50 de interés');
+  });
+
+  it('condonar solo mora (interés en 0): no menciona interés', () => {
+    const desc = generarDescripcion('PATCH', '/api/v1/prestamista/prestamos/40/condonar', 'Ana', { moraCondonada: 300, interesCondonado: 0 });
+    expect(desc).toBe('Ana condonó préstamo #40 — RD$300.00 de mora');
+  });
+
+  it('NUNCA cae en la rama de educativo (que leería body.condonacion.montoCondonado y daría vacío)', () => {
+    const desc = generarDescripcion('PATCH', '/api/v1/prestamista/prestamos/40/condonar', 'Ana', { moraCondonada: 500, interesCondonado: 0 });
+    expect(desc).not.toContain('condonó mora'); // la frase genérica de educativo, sin "préstamo"
+    expect(desc).toContain('préstamo #40');
+  });
+
+  it('reestructurar: incluye cuántas cuotas se reemplazaron y por cuántas', () => {
+    const desc = generarDescripcion('PATCH', '/api/v1/prestamista/prestamos/40/reestructurar', 'Ana', {
+      cuotasReemplazadas: 3, cuotasNuevas: 12,
+    });
+    expect(desc).toBe('Ana reestructuró préstamo #40 — 3 cuota(s) reemplazadas por 12');
+  });
+
+  it('educativo /condonar-mora sigue funcionando igual que antes (sin regresión)', () => {
+    const desc = generarDescripcion('PATCH', '/api/v1/educativo/colegiatura/cargos/9/condonar-mora', 'Ana', {
+      cargo: { id: 9 }, condonacion: { montoCondonado: 200, motivo: 'Buen pagador' },
+    });
+    expect(desc).toBe('Ana condonó mora — RD$200.00 del cargo #9 (Buen pagador)');
+  });
+});
+
 // Nota: las rutas de /caja NO pasan por extraerEntidadId para el id que
 // aparece en el texto (usan body.id — ver el describe de arriba) — esto
 // prueba el fallback GENÉRICO, que sí depende de extraerEntidadId().

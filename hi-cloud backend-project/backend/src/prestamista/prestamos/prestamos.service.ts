@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, QueryRunner } from 'typeorm';
-import { calcularAmortizacion } from '../utils/amortizacion.util';
+import { clasificarMorosidad, r2 } from '../utils/mora.util';
+import { calcularTablaAmortizacion } from '../motor/amortizacion-v2.util';
+import { resolverMotorConfig, aplicarOverridesSolicitud, construirParametrosPrestamo, aniosDelPlazo, MotorConfigAlmacenado } from '../motor/motor-adaptador.util';
 import { AsientosAutomaticosService } from '../../contabilidad/services/asientos-automaticos.service';
 import { TenantService } from '../../tenant/tenant.service';
+import { FeriadosService } from '../feriados/feriados.service';
 import { fechaHoyRD } from '../../common/utils/fecha-local.util';
+import { resolverCajaDiariaPrestamo } from '../utils/caja-efectivo.util';
 
 @Injectable()
 export class PrestamosService {
@@ -14,14 +18,21 @@ export class PrestamosService {
     @InjectDataSource() private readonly ds: DataSource,
     private readonly asientos: AsientosAutomaticosService,
     private readonly tenantSvc: TenantService,
+    private readonly feriadosSvc: FeriadosService,
   ) {}
 
+  /**
+   * C5: el JOIN a pr_deudores solo filtraba por p.empresaId, nunca por
+   * d.empresaId. Si alguna vez un préstamo quedó enlazado a un deudorId de
+   * OTRA empresa (ver assertDeudorDeEmpresa en crearEnTransaccion), este
+   * filtro es la segunda barrera que evita exponer esos datos ajenos.
+   */
   private async orFail(empresaId: number, id: number) {
     const [row] = await this.ds.query<any[]>(
       `SELECT p.*, d.nombre as "deudorNombre", d.cedula as "deudorCedula", d.telefono as "deudorTelefono",
               pp.nombre as "productoNombre"
        FROM pr_prestamos p
-       JOIN pr_deudores d ON d.id=p."deudorId"
+       JOIN pr_deudores d ON d.id=p."deudorId" AND d."empresaId"=p."empresaId"
        LEFT JOIN pr_productos_prestamo pp ON pp.id=p."productoId"
        WHERE p.id=$1 AND p."empresaId"=$2`, [id, empresaId],
     );
@@ -44,11 +55,11 @@ export class PrestamosService {
     }
     const where = conds.join(' AND ');
     const [{ count }] = await this.ds.query(
-      `SELECT COUNT(*) FROM pr_prestamos p JOIN pr_deudores d ON d.id=p."deudorId" WHERE ${where}`, args,
+      `SELECT COUNT(*) FROM pr_prestamos p JOIN pr_deudores d ON d.id=p."deudorId" AND d."empresaId"=p."empresaId" WHERE ${where}`, args,
     );
     const data = await this.ds.query(
       `SELECT p.*, d.nombre as "deudorNombre", d.cedula as "deudorCedula", d.foto as "deudorFoto"
-       FROM pr_prestamos p JOIN pr_deudores d ON d.id=p."deudorId"
+       FROM pr_prestamos p JOIN pr_deudores d ON d.id=p."deudorId" AND d."empresaId"=p."empresaId"
        WHERE ${where} ORDER BY p."createdAt" DESC LIMIT $${idx} OFFSET $${idx + 1}`,
       [...args, limit, offset],
     );
@@ -66,19 +77,34 @@ export class PrestamosService {
     return { ...prestamo, cuotas, pagos };
   }
 
-  async simular(data: any) {
-    const { principal, tasaInteresMensual, plazoMeses, fechaPrimerPago, metodoAmortizacion } = data;
-    if (!principal || !tasaInteresMensual || !plazoMeses || !fechaPrimerPago) {
-      throw new BadRequestException('Faltan parámetros de simulación');
-    }
-    const fecha = new Date(fechaPrimerPago);
-    return calcularAmortizacion(
-      metodoAmortizacion ?? 'frances',
-      Number(principal),
-      Number(tasaInteresMensual),
-      Number(plazoMeses),
-      fecha,
-    );
+  /**
+   * Motor v2 (Fase 2B) — el simulador ya no tiene su propia copia de la
+   * aritmética financiera: construye los mismos ParametrosPrestamo que el
+   * desembolso real y llama al mismo `calcularTablaAmortizacion()`. Una
+   * sola fuente de verdad — ver docs/prestamista/motor-financiero.md.
+   */
+  async simular(empresaId: number, data: any) {
+    const config: MotorConfigAlmacenado = {
+      frecuencia: data.frecuencia,
+      frecuenciaDiaria: data.frecuenciaDiaria,
+      frecuenciaQuincenal: data.frecuenciaQuincenal,
+      tasa: data.tasa,
+      metodo: data.metodo,
+      metodoPosteriorGracia: data.metodoPosteriorGracia,
+      periodosSoloInteres: data.periodosSoloInteres,
+      gracia: data.gracia,
+      cargos: data.cargos,
+    };
+    const feriados = data.frecuencia === 'diaria' && data.frecuenciaDiaria?.excluirFeriados
+      ? await this.feriadosSvc.obtenerSetFeriados(empresaId, aniosDelPlazo(data.fechaDesembolso, data.plazoPeriodos))
+      : undefined;
+    const params = construirParametrosPrestamo(config, {
+      montoPrincipal: Number(data.montoPrincipal),
+      fechaDesembolso: data.fechaDesembolso,
+      fechaPrimerPago: data.fechaPrimerPago,
+      plazoPeriodos: Number(data.plazoPeriodos),
+    }, feriados);
+    return calcularTablaAmortizacion(params);
   }
 
   /**
@@ -100,12 +126,19 @@ export class PrestamosService {
       const prestamoId = await this.crearEnTransaccion(qr, empresaId, data);
       await qr.commitTransaction();
 
-      // Fuera de la transacción: si el asiento falla, el desembolso ya es válido.
-      this.asientos.asientoDesembolsoPrestamo(
-        prestamoId.id, prestamoId.numero, Number(data.montoPrincipal),
-        data.formaPago ?? 'transferencia', data.fechaDesembolso ?? fechaHoyRD(),
-        this.tenantSvc.getUserId() ?? 0,
-      ).catch(err => this.logger.error(`Asiento desembolso ${prestamoId.numero}: ${err.message}`));
+      // Fuera de la transacción: si el asiento falla, el desembolso ya es
+      // válido. El asiento se genera por el tramo REAL entregado
+      // (desembolsoInicial) — §4: si el préstamo nace en 'desembolso_parcial',
+      // los tramos siguientes generan su propio asiento (ver
+      // DesembolsosParcialesService), nunca uno solo por el total.
+      if (prestamoId.desembolsoInicial > 0) {
+        this.asientos.asientoDesembolsoPrestamo(
+          prestamoId.id, prestamoId.numero, prestamoId.desembolsoInicial,
+          data.formaPago ?? 'transferencia', data.fechaDesembolso ?? fechaHoyRD(),
+          this.tenantSvc.getUserId() ?? 0,
+          prestamoId.cargoAperturaRetenido,
+        ).catch(err => this.logger.error(`Asiento desembolso ${prestamoId.numero}: ${err.message}`));
+      }
 
       return this.findOne(empresaId, prestamoId.id);
     } catch (err) {
@@ -141,69 +174,145 @@ export class PrestamosService {
       data.oficialNombre      = data.oficialNombre      ?? sol.oficialNombre;
     }
 
-    // Si no se especifica fechaPrimerPago, calcularla 1 mes después del desembolso
-    if (!data.fechaPrimerPago && data.fechaDesembolso) {
+    // Motor v2 (Fase 2B): todo préstamo nuevo se crea con el motor v2 — ver
+    // docs/prestamista/motor-financiero.md. fechaPrimerPago sin especificar
+    // solo tiene default para frecuencia mensual (el caso de siempre); para
+    // el resto de frecuencias hay que indicarla explícitamente.
+    if (!data.fechaPrimerPago && data.fechaDesembolso && (!data.frecuenciaPago || data.frecuenciaPago === 'mensual')) {
       const fd = new Date(data.fechaDesembolso);
       fd.setMonth(fd.getMonth() + 1);
       data.fechaPrimerPago = fd.toISOString().split('T')[0];
     }
 
-    const { deudorId, montoPrincipal, tasaInteresMensual, plazoMeses, fechaPrimerPago: fpRaw } = data;
-    if (!deudorId || !montoPrincipal || !tasaInteresMensual || !plazoMeses || !fpRaw) {
-      throw new BadRequestException('Faltan campos requeridos: deudorId, montoPrincipal, tasaInteresMensual, plazoMeses, fechaPrimerPago');
+    const { deudorId, montoPrincipal, plazoMeses, fechaPrimerPago: fpRaw, fechaDesembolso } = data;
+    const faltantes = Object.entries({ deudorId, montoPrincipal, plazoMeses, fechaDesembolso, fechaPrimerPago: fpRaw })
+      .filter(([, v]) => !v).map(([k]) => k);
+    if (faltantes.length) {
+      throw new BadRequestException(`Faltan campos requeridos: ${faltantes.join(', ')}`);
     }
+    if (!data.productoId && !data.tasaInteresMensual) {
+      throw new BadRequestException('Sin productoId, tasaInteresMensual es obligatorio');
+    }
+
+    // C5: valida SIEMPRE, venga el deudorId de una solicitud o directo en el
+    // body — un body con solicitudId Y un deudorId explícito distinto pisaba
+    // el de la solicitud (ya validado al crearla) sin pasar por ningún
+    // chequeo de empresa. Dentro de la misma transacción, igual que el
+    // bloqueo FOR UPDATE de la solicitud.
+    const [deudor] = await qr.query(
+      `SELECT 1 FROM pr_deudores WHERE id=$1 AND "empresaId"=$2 LIMIT 1`, [deudorId, empresaId],
+    );
+    if (!deudor) throw new BadRequestException(`Deudor #${deudorId} no encontrado`);
 
     const [seq] = await qr.query(
       `SELECT siguiente_numero_secuencia($1, $2) AS num`, [empresaId, 'PRE'],
     );
     const numero = `PRE-${seq.num}`;
 
-    const fechaPrimerPago = new Date(fpRaw);
-    if (isNaN(fechaPrimerPago.getTime())) {
+    if (isNaN(new Date(fpRaw).getTime())) {
       throw new BadRequestException('fechaPrimerPago no es una fecha válida');
     }
 
-    const amort = calcularAmortizacion(
-      data.metodoAmortizacion ?? 'frances',
-      Number(montoPrincipal),
-      Number(tasaInteresMensual),
-      Number(plazoMeses),
-      fechaPrimerPago,
-    );
+    // Config del motor: la del producto (o un equivalente sintetizado si no
+    // tiene motorConfig — Etapa 1 — o si no viene de un producto) + los
+    // ajustes de la solicitud/body (tasa y frecuencia), si se permiten.
+    let config: MotorConfigAlmacenado;
+    if (data.productoId) {
+      const [producto] = await qr.query(
+        `SELECT * FROM pr_productos_prestamo WHERE id=$1 AND "empresaId"=$2`, [data.productoId, empresaId],
+      );
+      if (!producto) throw new BadRequestException(`Producto #${data.productoId} no encontrado`);
+      config = resolverMotorConfig(producto);
+    } else {
+      config = {
+        frecuencia: (data.frecuenciaPago ?? 'mensual') as any,
+        tasa: { valor: Number(data.tasaInteresMensual) / 100, periodoExpresado: 'mensual', tipo: 'nominal', baseDias: 360 },
+        metodo: (data.metodoAmortizacion === 'aleman' ? 'aleman' : 'frances') as any,
+        mora: { base: 'cuota_vencida', tasaOMonto: Number(data.porcentajeMora ?? 0), baseDiasMora: 360 },
+      };
+    }
+    config = aplicarOverridesSolicitud(config, {
+      tasaInteresMensual: data.tasaInteresMensual,
+      frecuencia: data.frecuenciaPago,
+      metodo: data.metodoAmortizacion,
+    });
 
-    if (!amort.tabla.length) {
+    const feriados = config.frecuencia === 'diaria' && config.frecuenciaDiaria?.excluirFeriados
+      ? await this.feriadosSvc.obtenerSetFeriados(empresaId, aniosDelPlazo(fechaDesembolso, Number(plazoMeses)))
+      : undefined;
+
+    const resultado = calcularTablaAmortizacion(construirParametrosPrestamo(config, {
+      montoPrincipal: Number(montoPrincipal),
+      fechaDesembolso,
+      fechaPrimerPago: fpRaw,
+      plazoPeriodos: Number(plazoMeses),
+    }, feriados));
+
+    if (!resultado.tabla.length) {
       throw new BadRequestException('No se pudo generar el plan de amortización (plazo inválido)');
     }
 
-    const ultimaCuota = amort.tabla[amort.tabla.length - 1];
+    const ultimaCuota = resultado.tabla[resultado.tabla.length - 1];
 
     // C5: autor del desembolso desde el CLS (JWT), nunca del body.
     const uid = this.tenantSvc.getUserId();
 
+    // §4 (Etapa 2 resto) — desembolsos parciales: la tabla de amortización
+    // SIEMPRE se genera completa sobre el monto total (arriba); lo que
+    // puede entrar en tramos es el EFECTIVO. Sin `desembolsoInicial`, se
+    // asume el caso de siempre: 100% de una vez. Con uno menor al total, el
+    // préstamo nace en 'desembolso_parcial' y PagosService lo bloquea hasta
+    // completarlo (ver DesembolsosParcialesService).
+    const desembolsoInicial = data.desembolsoInicial != null
+      ? r2(Number(data.desembolsoInicial))
+      : resultado.montoPrincipalFinanciado;
+    if (desembolsoInicial < 0 || desembolsoInicial > resultado.montoPrincipalFinanciado) {
+      throw new BadRequestException('El desembolso inicial no puede ser negativo ni mayor al monto del préstamo');
+    }
+    const estadoInicial = desembolsoInicial < resultado.montoPrincipalFinanciado ? 'desembolso_parcial' : 'al_dia';
+
+    // Campos planos (compat con pantallas que todavía leen tasaInteresMensual/
+    // frecuenciaPago/metodoAmortizacion directo) — espejo de la config real,
+    // que vive completa en "motorConfig". Ver nota en motor-adaptador.util.ts:
+    // para frecuencias no mensuales, "tasaInteresMensual" no es literal
+    // (queda como referencia aproximada, no como fuente de verdad).
     const [prestamo] = await qr.query(
       `INSERT INTO pr_prestamos ("empresaId",numero,"solicitudId","deudorId","productoId","montoPrincipal",
         "tasaInteresMensual","plazoMeses","frecuenciaPago","metodoAmortizacion","cuotaPeriodica",
         "porcentajeMora","diasGracia","cargoCierre","fechaDesembolso","fechaPrimerPago","fechaVencimiento",
-        "totalInteres","totalAPagar","saldoCapital","saldoInteres","saldoTotal","oficialId","oficialNombre",notas,"creadoPor")
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
+        "totalInteres","totalAPagar","saldoCapital","saldoInteres","saldoTotal","oficialId","oficialNombre",notas,"creadoPor",
+        "motorVersion","motorConfig","desembolsado",estado)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
        RETURNING *`,
       [empresaId, numero, data.solicitudId ?? null, data.deudorId, data.productoId ?? null,
-       data.montoPrincipal, data.tasaInteresMensual, data.plazoMeses, data.frecuenciaPago ?? 'mensual',
-       data.metodoAmortizacion ?? 'frances', amort.cuotaFija,
-       data.porcentajeMora ?? 0, data.diasGracia ?? 0, data.cargoCierre ?? 0,
-       data.fechaDesembolso, data.fechaPrimerPago, ultimaCuota.fechaVencimiento.toISOString().split('T')[0],
-       amort.totalInteres, amort.totalAPagar,
-       data.montoPrincipal, amort.totalInteres, amort.totalAPagar,
-       data.oficialId ?? null, data.oficialNombre ?? null, data.notas ?? null, uid],
+       resultado.montoPrincipalFinanciado, config.tasa.valor * 100, data.plazoMeses, config.frecuencia,
+       config.metodo, resultado.cuotaFija,
+       config.mora?.tasaOMonto ?? 0, config.gracia?.periodos ?? 0, 0,
+       data.fechaDesembolso, data.fechaPrimerPago, ultimaCuota.fecha,
+       resultado.totalInteres, resultado.totalAPagar,
+       resultado.montoPrincipalFinanciado, resultado.totalInteres, resultado.totalAPagar,
+       data.oficialId ?? null, data.oficialNombre ?? null, data.notas ?? null, uid,
+       'v2', JSON.stringify(config), desembolsoInicial, estadoInicial],
     );
 
-    // Insertar cuotas
-    for (const linea of amort.tabla) {
+    if (desembolsoInicial > 0) {
+      // Etapa 5 — integración con Caja: solo tiene efecto en efectivo.
+      const cajaDiariaIdResuelto = await resolverCajaDiariaPrestamo(qr, empresaId, data.formaPago ?? null, data.cajaDiariaId);
       await qr.query(
-        `INSERT INTO pr_cuotas ("empresaId","prestamoId","numeroCuota","fechaVencimiento",capital,interes,"cuotaTotal","saldoRestante")
+        `INSERT INTO pr_desembolsos_parciales ("empresaId","prestamoId",monto,fecha,"metodoPago",notas,"creadoPor","cajaDiariaId")
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [empresaId, prestamo.id, linea.numeroCuota, linea.fechaVencimiento.toISOString().split('T')[0],
-         linea.capital, linea.interes, linea.cuotaTotal, linea.saldoRestante],
+        [empresaId, prestamo.id, desembolsoInicial, data.fechaDesembolso, data.formaPago ?? null, 'Desembolso inicial', uid, cajaDiariaIdResuelto],
+      );
+    }
+
+    // Insertar cuotas
+    for (const linea of resultado.tabla) {
+      await qr.query(
+        `INSERT INTO pr_cuotas ("empresaId","prestamoId","numeroCuota","fechaVencimiento",capital,interes,"cuotaTotal","saldoRestante",cargos,"esPeriodoGracia")
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [empresaId, prestamo.id, linea.numeroCuota, linea.fecha,
+         linea.capital, linea.interes, linea.cuotaTotal, linea.saldoRestante,
+         linea.cargos?.length ? JSON.stringify(linea.cargos) : null, linea.esPeriodoGracia],
       );
     }
 
@@ -211,7 +320,7 @@ export class PrestamosService {
     await qr.query(
       `UPDATE pr_deudores SET "totalPrestado"="totalPrestado"+$1,"prestamosActivos"="prestamosActivos"+1,"updatedAt"=NOW()
        WHERE id=$2 AND "empresaId"=$3`,
-      [data.montoPrincipal, data.deudorId, empresaId],
+      [resultado.montoPrincipalFinanciado, data.deudorId, empresaId],
     );
 
     // Marcar solicitud como desembolsada si viene de una
@@ -222,7 +331,21 @@ export class PrestamosService {
       );
     }
 
-    return { id: prestamo.id, numero };
+    // §5.1 del motor — lo que sale de cartera (montoPrincipalFinanciado, que
+    // ya incluye cualquier cargo financiado) no es lo que el deudor recibe
+    // en mano (montoRecibidoDeudor, que ya restó lo descontado) — la
+    // diferencia es el total de cargos retenidos por el prestamista al
+    // desembolsar (financiados + descontados). El asiento contable (fuera
+    // de esta transacción, en create()) lo necesita para registrarlo.
+    const cargoAperturaRetenido = r2(resultado.montoPrincipalFinanciado - resultado.montoRecibidoDeudor);
+
+    return {
+      id: prestamo.id,
+      numero,
+      montoDesembolsado: resultado.montoPrincipalFinanciado,
+      desembolsoInicial,
+      cargoAperturaRetenido,
+    };
   }
 
   async recalcularSaldos(empresaId: number, id: number) {
@@ -231,23 +354,40 @@ export class PrestamosService {
       `SELECT
          SUM(GREATEST(0, capital - "capitalPagado"))                                        AS "saldoCapital",
          SUM(GREATEST(0, interes - "interesPagado"))                                        AS "saldoInteres",
+         -- Misma fórmula que mora.util.ts saldoMoraPendiente()/sumarSaldoMoraPendiente()
+         -- (único lugar donde está probada), reescrita en SQL para agregarla en el
+         -- mismo viaje a BD que el resto de los saldos — traer todas las cuotas a JS
+         -- solo para esta suma sería un viaje extra sin necesidad. Si cambia la
+         -- definición allá, cambiar también aquí y en pagos.service.ts/mora.cron.ts.
          SUM(GREATEST(0, "moraGenerada" - "moraPagada"))                                    AS "saldoMora",
          COUNT(*) FILTER (WHERE estado <> 'pagada')                                         AS "cuotasPendientes",
          COUNT(*) FILTER (WHERE estado <> 'pagada' AND "fechaVencimiento" < CURRENT_DATE)   AS "cuotasVencidas",
+         MAX("diasMora") FILTER (WHERE estado <> 'pagada')                                  AS "maxDiasMora",
          COALESCE(SUM("totalPagado"), 0)                                                    AS "totalPagadoCuotas"
        FROM pr_cuotas WHERE "prestamoId"=$1`,
       [id],
     );
-    const r2 = (n: any) => Math.round(Number(n ?? 0) * 100) / 100;
-    const saldoCapital  = r2(s.saldoCapital);
-    const saldoInteres  = r2(s.saldoInteres);
-    const saldoMora     = r2(s.saldoMora);
+    const saldoCapital  = r2(Number(s.saldoCapital ?? 0));
+    const saldoInteres  = r2(Number(s.saldoInteres ?? 0));
+    const saldoMora     = r2(Number(s.saldoMora    ?? 0));
     const saldoTotal    = r2(saldoCapital + saldoInteres + saldoMora);
     const cuotasVencidas   = Number(s.cuotasVencidas   ?? 0);
     const cuotasPendientes = Number(s.cuotasPendientes ?? 0);
-    const nuevoEstado = (saldoCapital <= 0 && cuotasPendientes === 0)
+    const maxDiasMora      = Number(s.maxDiasMora      ?? 0);
+    // Préstamo pagado SOLO si saldo=0 Y no quedan cuotas pendientes (doble
+    // guard). Para el resto, clasificarMorosidad() decide entre al_dia/
+    // moroso/vencido — única definición, compartida con mora.cron.ts y
+    // PagosService.registrar(). Antes esta función no aplicaba diasGracia
+    // (sí lo hacían las otras dos) — queda unificado.
+    // §4 — un préstamo con desembolso incompleto no se reclasifica aquí:
+    // solo DesembolsosParcialesService puede sacarlo de ese estado (al
+    // completar el monto), nunca un recálculo de saldos de cuotas que son
+    // ajenas a cuánto efectivo se ha entregado todavía.
+    const nuevoEstado = p.estado === 'desembolso_parcial'
+      ? 'desembolso_parcial'
+      : (saldoCapital <= 0 && cuotasPendientes === 0)
       ? 'pagado'
-      : cuotasVencidas > 0 ? 'moroso' : 'al_dia';
+      : clasificarMorosidad(cuotasVencidas, maxDiasMora, Number(p.diasGracia ?? 0));
     await this.ds.query(
       `UPDATE pr_prestamos SET "saldoCapital"=$1,"saldoInteres"=$2,"saldoMora"=$3,"saldoTotal"=$4,
         "cuotasVencidas"=$5,estado=$6,"updatedAt"=NOW() WHERE id=$7 AND "empresaId"=$8`,
@@ -256,9 +396,30 @@ export class PrestamosService {
     return { id, numero: p.numero, saldoCapital, saldoInteres, saldoMora, saldoTotal, estado: nuevoEstado };
   }
 
+  // Etapa 6 — Seguridad: cancelar() solo verificaba `estado === 'cancelado'`,
+  // así que dejaba cancelar un préstamo con dinero YA entregado
+  // (desembolso_parcial) o con pagos YA cobrados (totalPagado > 0) — sin
+  // reversar ningún asiento contable del desembolso ni exigir la misma
+  // autorización que anular()/condonar()/reestructurar(). Un préstamo así
+  // queda "cancelado" (sale de cartera activa, resta prestamosActivos al
+  // deudor) con la plata ya fuera y sin rastro de por qué el saldo nunca se
+  // recuperó — el mismo efecto que condonar el 100%, pero sin ninguna de
+  // sus salvaguardas. Cancelar debe quedar para préstamos SIN movimiento de
+  // dinero real: anula los pagos primero (PagosService.anular, que sí
+  // reversa todo) o usa condonación/reestructuración si ya hubo desembolso.
   async cancelar(empresaId: number, id: number, motivo?: string) {
     const p = await this.orFail(empresaId, id);
     if (p.estado === 'cancelado') throw new BadRequestException('Préstamo ya cancelado');
+    if (p.estado === 'desembolso_parcial') {
+      throw new BadRequestException(
+        'Este préstamo tiene desembolso pendiente — no se puede cancelar con dinero ya entregado.',
+      );
+    }
+    if (Number(p.totalPagado ?? 0) > 0) {
+      throw new BadRequestException(
+        'Este préstamo ya tiene pagos registrados — anula los pagos primero, o usa condonación/reestructuración en vez de cancelar.',
+      );
+    }
     await this.ds.query(
       `UPDATE pr_prestamos SET estado='cancelado', notas=CONCAT(COALESCE(notas,''), ' | Cancelado: ', $1), "updatedAt"=NOW()
        WHERE id=$2 AND "empresaId"=$3`,

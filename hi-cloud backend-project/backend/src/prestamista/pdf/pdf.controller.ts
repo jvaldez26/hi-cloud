@@ -33,4 +33,19 @@ export class PdfPrestamistaController {
   estadoCuenta(@Param('deudorId', ParseIntPipe) id: number, @Res() res: Response) {
     return this.pdfSvc.estadoCuenta(res, id, this.empresaId);
   }
+
+  @Get('cotizacion/:simulacionId')
+  cotizacionSimulacion(@Param('simulacionId', ParseIntPipe) id: number, @Res() res: Response) {
+    return this.pdfSvc.cotizacionSimulacion(res, id, this.empresaId);
+  }
+
+  @Get('contrato/:prestamoId')
+  contrato(@Param('prestamoId', ParseIntPipe) id: number, @Res() res: Response) {
+    return this.pdfSvc.contratoPrestamo(res, id, this.empresaId);
+  }
+
+  @Get('pagare/:prestamoId')
+  pagare(@Param('prestamoId', ParseIntPipe) id: number, @Res() res: Response) {
+    return this.pdfSvc.pagarePrestamo(res, id, this.empresaId);
+  }
 }

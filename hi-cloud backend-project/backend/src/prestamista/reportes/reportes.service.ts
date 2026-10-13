@@ -25,8 +25,8 @@ export class ReportesPrestamistaService {
               p."saldoMora", p."saldoTotal", p.estado, p."fechaDesembolso", p."fechaVencimiento",
               p."cuotasVencidas", p."tasaInteresMensual"
          FROM pr_prestamos p
-         JOIN pr_deudores d ON d.id=p."deudorId"
-         LEFT JOIN pr_productos_prestamo pr ON pr.id=p."productoId"
+         JOIN pr_deudores d ON d.id=p."deudorId" AND d."empresaId"=p."empresaId"
+         LEFT JOIN pr_productos_prestamo pr ON pr.id=p."productoId" AND pr."empresaId"=p."empresaId"
         WHERE p."empresaId"=$1 AND p.estado NOT IN ('cancelado','refinanciado')
         ORDER BY p.estado, p."saldoTotal" DESC`,
       [empresaId],
@@ -61,7 +61,7 @@ export class ReportesPrestamistaService {
                    WHEN p."diasMoraActual"<=90 THEN '61-90 días'
                    ELSE '+90 días' END AS rangomora
          FROM pr_prestamos p
-         JOIN pr_deudores d ON d.id=p."deudorId"
+         JOIN pr_deudores d ON d.id=p."deudorId" AND d."empresaId"=p."empresaId"
         WHERE p."empresaId"=$1 AND p.estado IN ('moroso','vencido','al_dia')
         ORDER BY p."diasMoraActual" DESC`,
       [empresaId],
@@ -90,8 +90,8 @@ export class ReportesPrestamistaService {
               pr.numero AS prestamo, pg."montoPagado", pg."aplicadoCapital",
               pg."aplicadoInteres", pg."aplicadoMora", pg."metodoPago", pg.referencia
          FROM pr_pagos pg
-         JOIN pr_prestamos pr ON pr.id=pg."prestamoId"
-         JOIN pr_deudores d ON d.id=pg."deudorId"
+         JOIN pr_prestamos pr ON pr.id=pg."prestamoId" AND pr."empresaId"=pg."empresaId"
+         JOIN pr_deudores d ON d.id=pg."deudorId" AND d."empresaId"=pg."empresaId"
         WHERE ${conds.join(' AND ')}
         ORDER BY pg.fecha DESC, pg.id DESC`,
       args,
@@ -120,8 +120,8 @@ export class ReportesPrestamistaService {
               c.estado AS "estadoCuota",
               p.numero AS prestamo, d.nombre||' '||COALESCE(d.apellidos,'') AS deudor, d.telefono
          FROM pr_cuotas c
-         JOIN pr_prestamos p ON p.id=c."prestamoId"
-         JOIN pr_deudores d ON d.id=p."deudorId"
+         JOIN pr_prestamos p ON p.id=c."prestamoId" AND p."empresaId"=c."empresaId"
+         JOIN pr_deudores d ON d.id=p."deudorId" AND d."empresaId"=p."empresaId"
         WHERE c."empresaId"=$1
           AND c.estado IN ('pendiente','vencida')
           AND c."fechaVencimiento" BETWEEN CURRENT_DATE AND CURRENT_DATE+$2::int
@@ -153,7 +153,7 @@ export class ReportesPrestamistaService {
               COUNT(p.id) FILTER(WHERE p.estado='vencido') AS vencidos,
               COUNT(p.id) FILTER(WHERE p.estado='pagado') AS pagados
          FROM pr_prestamos p
-         LEFT JOIN pr_productos_prestamo pr ON pr.id=p."productoId"
+         LEFT JOIN pr_productos_prestamo pr ON pr.id=p."productoId" AND pr."empresaId"=p."empresaId"
         WHERE p."empresaId"=$1
         GROUP BY pr.nombre ORDER BY "capitalTotal" DESC`,
       [empresaId],
@@ -177,8 +177,8 @@ export class ReportesPrestamistaService {
       `SELECT g.tipo, g.descripcion, g."valorTasado", g.estado, g."createdAt" AS "fechaRegistro",
               p.numero AS prestamo, d.nombre||' '||COALESCE(d.apellidos,'') AS deudor
          FROM pr_garantias g
-         JOIN pr_deudores d ON d.id=g."deudorId"
-         LEFT JOIN pr_prestamos p ON p.id=g."prestamoId"
+         JOIN pr_deudores d ON d.id=g."deudorId" AND d."empresaId"=g."empresaId"
+         LEFT JOIN pr_prestamos p ON p.id=g."prestamoId" AND p."empresaId"=g."empresaId"
         WHERE g."empresaId"=$1 ORDER BY g.tipo, g."valorTasado" DESC`,
       [empresaId],
     );
@@ -204,8 +204,8 @@ export class ReportesPrestamistaService {
               c."proximaGestion", p.numero AS prestamo,
               d.nombre||' '||COALESCE(d.apellidos,'') AS deudor, d.telefono
          FROM pr_cobranzas c
-         JOIN pr_prestamos p ON p.id=c."prestamoId"
-         JOIN pr_deudores d ON d.id=p."deudorId"
+         JOIN pr_prestamos p ON p.id=c."prestamoId" AND p."empresaId"=c."empresaId"
+         JOIN pr_deudores d ON d.id=p."deudorId" AND d."empresaId"=p."empresaId"
         WHERE ${conds.join(' AND ')}
         ORDER BY c.fecha DESC`,
       args,
@@ -253,9 +253,9 @@ export class ReportesPrestamistaService {
               po.numero AS "prestamoOriginal", pn.numero AS "prestamoNuevo",
               d.nombre||' '||COALESCE(d.apellidos,'') AS deudor
          FROM pr_refinanciamientos r
-         JOIN pr_prestamos po ON po.id=r."prestamoOriginalId"
-         JOIN pr_prestamos pn ON pn.id=r."prestamoNuevoId"
-         JOIN pr_deudores d ON d.id=po."deudorId"
+         JOIN pr_prestamos po ON po.id=r."prestamoOriginalId" AND po."empresaId"=r."empresaId"
+         JOIN pr_prestamos pn ON pn.id=r."prestamoNuevoId" AND pn."empresaId"=r."empresaId"
+         JOIN pr_deudores d ON d.id=po."deudorId" AND d."empresaId"=po."empresaId"
         WHERE r."empresaId"=$1 ORDER BY r.fecha DESC`,
       [empresaId],
     );
@@ -272,10 +272,20 @@ export class ReportesPrestamistaService {
   }
 
   // 10. Índices financieros (resumen)
+  //
+  // `indiceMorosidad` replica EXACTAMENTE la fórmula de
+  // CobranzaService.resumenCobranza (% de préstamos activos que están en
+  // moroso/vencido) — antes este método calculaba algo distinto y con el
+  // mismo nombre: saldoMora/saldoCapitalTotal*100 (mora acumulada sobre
+  // capital), que no es una tasa de morosidad real y nunca coincidía con el
+  // número que ve el cobrador en su propio resumen. Esa fórmula vieja se
+  // conserva como `moraSobreCartera`, que sí es una métrica útil pero con
+  // su propio nombre, sin pisar el índice real.
   async indicesFinancieros(empresaId: number) {
     const [kpis] = await this.ds.query<any[]>(
       `SELECT
          COUNT(*) FILTER(WHERE estado NOT IN ('cancelado','refinanciado')) AS "totalActivos",
+         COUNT(*) FILTER(WHERE estado NOT IN ('pagado','cancelado')) AS "totalParaIndice",
          COUNT(*) FILTER(WHERE estado='al_dia') AS "alDia",
          COUNT(*) FILTER(WHERE estado='moroso') AS morosos,
          COUNT(*) FILTER(WHERE estado='vencido') AS vencidos,
@@ -287,9 +297,13 @@ export class ReportesPrestamistaService {
        FROM pr_prestamos WHERE "empresaId"=$1`,
       [empresaId],
     );
-    const indiceMorosidad = kpis.saldoCapitalTotal > 0
+    const totalParaIndice = Number(kpis.totalParaIndice) || 0;
+    const totalEnMora = Number(kpis.morosos ?? 0) + Number(kpis.vencidos ?? 0);
+    const indiceMorosidad = totalParaIndice > 0
+      ? ((totalEnMora / totalParaIndice) * 100).toFixed(1) : '0.0';
+    const moraSobreCartera = kpis.saldoCapitalTotal > 0
       ? ((kpis.moraTotal / kpis.saldoCapitalTotal) * 100).toFixed(2) : '0.00';
-    const rows = [{ ...kpis, indiceMorosidad: `${indiceMorosidad}%` }];
+    const rows = [{ ...kpis, indiceMorosidad: `${indiceMorosidad}%`, moraSobreCartera: `${moraSobreCartera}%` }];
     return toCsv(rows, [
       { key: 'totalActivos', label: 'Préstamos Activos' },
       { key: 'alDia', label: 'Al Día' },
@@ -300,7 +314,8 @@ export class ReportesPrestamistaService {
       { key: 'saldoCapitalTotal', label: 'Saldo Capital Total (RD$)' },
       { key: 'moraTotal', label: 'Mora Total (RD$)' },
       { key: 'recaudadoTotal', label: 'Recaudado Total (RD$)' },
-      { key: 'indiceMorosidad', label: 'Índice de Morosidad' },
+      { key: 'indiceMorosidad', label: 'Índice de Morosidad (% préstamos en mora)' },
+      { key: 'moraSobreCartera', label: 'Mora Acumulada / Saldo Capital (%)' },
     ]);
   }
 
@@ -314,8 +329,8 @@ export class ReportesPrestamistaService {
               CURRENT_DATE-c."fechaVencimiento" AS "diasVencida",
               p.numero AS prestamo, d.nombre||' '||COALESCE(d.apellidos,'') AS deudor, d.telefono
          FROM pr_cuotas c
-         JOIN pr_prestamos p ON p.id=c."prestamoId"
-         JOIN pr_deudores d ON d.id=p."deudorId"
+         JOIN pr_prestamos p ON p.id=c."prestamoId" AND p."empresaId"=c."empresaId"
+         JOIN pr_deudores d ON d.id=p."deudorId" AND d."empresaId"=p."empresaId"
         WHERE c."empresaId"=$1 AND c.estado IN ('vencida','parcial')
           AND c."fechaVencimiento" < CURRENT_DATE
         ORDER BY c."fechaVencimiento"`,
@@ -343,7 +358,7 @@ export class ReportesPrestamistaService {
               pg.numero AS pago, pg.fecha AS "fechaPago", pg."montoPagado",
               pg."aplicadoCapital", pg."aplicadoInteres", pg."aplicadoMora"
          FROM pr_prestamos p
-         LEFT JOIN pr_pagos pg ON pg."prestamoId"=p.id
+         LEFT JOIN pr_pagos pg ON pg."prestamoId"=p.id AND pg."empresaId"=p."empresaId"
         WHERE p."empresaId"=$1 AND p."deudorId"=$2
         ORDER BY p.id, pg.fecha`,
       [empresaId, deudorId],

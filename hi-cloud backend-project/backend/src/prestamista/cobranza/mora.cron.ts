@@ -2,7 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { calcularMoraCuota, r2 } from '../utils/mora.util';
+import { calcularMoraCuota, clasificarMorosidad, r2 } from '../utils/mora.util';
+import { calcularMora as calcularMoraV2, ParametrosMora } from '../motor/mora-v2.util';
 
 @Injectable()
 export class MoraCronService {
@@ -23,13 +24,19 @@ export class MoraCronService {
 
       // Obtener préstamos activos con configuración de mora
       const prestamos = await this.ds.query<any[]>(`
-        SELECT p.id, p."empresaId", p."porcentajeMora", p."diasGracia", p."saldoCapital", p."saldoMora"
+        SELECT p.id, p."empresaId", p."porcentajeMora", p."diasGracia", p."saldoCapital", p."saldoMora",
+               p."motorVersion", p."motorConfig"
         FROM pr_prestamos p
         WHERE p.estado NOT IN ('pagado','cancelado','refinanciado')
         AND p."porcentajeMora" > 0
       `);
 
       for (const p of prestamos) {
+        // Motor v2 (Fase 2B): préstamos 'v2' usan la config de mora del
+        // motor (3 bases + tope + base de días 360/365, §6 del motor);
+        // 'v1' sigue con calcularMoraCuota() de siempre, sin cambios.
+        const moraConfigV2: ParametrosMora | null = p.motorVersion === 'v2' ? (p.motorConfig?.mora ?? null) : null;
+
         // Cuotas vencidas que superaron días de gracia
         const cuotasVencidas = await this.ds.query<any[]>(`
           SELECT id, capital, interes, "capitalPagado", "interesPagado", "diasMora", "moraGenerada"
@@ -42,12 +49,13 @@ export class MoraCronService {
         for (const cuota of cuotasVencidas) {
           const saldoCap  = Math.max(0, Number(cuota.capital)  - Number(cuota.capitalPagado));
           const saldoInt  = Math.max(0, Number(cuota.interes)  - Number(cuota.interesPagado));
-          const saldoBase = r2(saldoCap + saldoInt);
 
           // C3: la tasa diaria NO se redondea — solo el monto final. Redondearla
           // antes hacía que toda tasa < ~15 %/mes generara 0 de mora.
-          const moraCalculada = calcularMoraCuota(saldoBase, p.porcentajeMora, cuota.diasMora);
-          const moraActual    = Number(cuota.moraGenerada) || 0;
+          const moraCalculada = moraConfigV2
+            ? calcularMoraV2(moraConfigV2, { capitalPendiente: saldoCap, interesPendiente: saldoInt, diasDeAtraso: Number(cuota.diasMora) })
+            : calcularMoraCuota(r2(saldoCap + saldoInt), p.porcentajeMora, cuota.diasMora);
+          const moraActual = Number(cuota.moraGenerada) || 0;
 
           // La mora generada solo crece: nunca se rebaja lo ya devengado.
           if (moraCalculada > moraActual) {
@@ -62,6 +70,11 @@ export class MoraCronService {
         // — misma definición que usa el registro de pagos. Antes se acumulaba en
         // memoria la mora BRUTA, así que el cron de medianoche pisaba el saldo
         // que el pago había dejado bien y la mora cobrada reaparecía.
+        //
+        // La línea "saldoMoraNeto" es la misma fórmula que mora.util.ts
+        // saldoMoraPendiente()/sumarSaldoMoraPendiente() (único lugar donde está
+        // probada) — ver el mismo comentario en PagosService.registrar() y
+        // PrestamosService.recalcularSaldos(). Si cambia allá, cambiar también aquí.
         const [resumen] = await this.ds.query<any[]>(`
           SELECT
             COUNT(*) FILTER (WHERE estado NOT IN ('pagada','refinanciada') AND "fechaVencimiento" < CURRENT_DATE) AS cuotasVencidas,
@@ -75,8 +88,7 @@ export class MoraCronService {
         const maxDias = Number(resumen.maxDiasMora ?? 0);
         const saldoCapActual = Number(resumen.saldoCap ?? 0);
         const saldoMoraNeto  = r2(Number(resumen.saldoMoraNeto ?? 0));
-        const nuevoEstado = saldoCapActual <= 0 ? 'pagado'
-          : cuotasVencCount > 0 && maxDias > (p.diasGracia ?? 0) ? 'moroso' : 'al_dia';
+        const nuevoEstado = saldoCapActual <= 0 ? 'pagado' : clasificarMorosidad(cuotasVencCount, maxDias, p.diasGracia ?? 0);
 
         await this.ds.query(`
           UPDATE pr_prestamos SET

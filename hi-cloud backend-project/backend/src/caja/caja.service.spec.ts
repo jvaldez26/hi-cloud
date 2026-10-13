@@ -38,13 +38,18 @@ function buildDeps() {
     tenantSvc:   { getEmpresaId: () => EMPRESA, getSucursalId: () => undefined, getRolEmpresa: () => UserRole.ADMIN as string | null },
     realtimeSvc: { notify: jest.fn() },
     notificacionesSvc: { notificarDescuadreCierre: jest.fn().mockResolvedValue(undefined) },
+    // Default: add-on 'prestamista' activo — preserva el comportamiento de
+    // TODA esta suite (escrita antes de que existiera el gate por add-on).
+    // Los tests de aislamiento (ver "efectivo de préstamos por caja (Etapa 5)"
+    // más abajo) lo sobrescriben a `false` explícitamente.
+    modulosAddonSvc: { checkModuloActivo: jest.fn().mockResolvedValue(true) },
   };
 }
 
 function buildService(d: ReturnType<typeof buildDeps>): CajaService {
   return new CajaService(
     d.repo as any, d.retiroRepo as any, d.dataSource as any, d.tenantSvc as any,
-    d.realtimeSvc as any, d.notificacionesSvc as any,
+    d.realtimeSvc as any, d.notificacionesSvc as any, d.modulosAddonSvc as any,
   );
 }
 
@@ -281,6 +286,156 @@ describe('CajaService.cerrarCaja — cuadre por forma de pago (caso real empresa
     expect(porForma.efectivo).toMatchObject({ esperado: 500, declarado: 500, diferencia: 0 });
     expect(porForma.tarjeta).toMatchObject({ declarado: 0 });
     expect(cambios.sospechasFormaPago).toEqual([]);
+  });
+});
+
+// Prestamista Etapa 5, Parte B — ver
+// docs/prestamista/etapa-5-contabilidad-caja-fiscal.md. El efectivo de
+// préstamos (cobros de cuota y desembolsos) entra al cierre de caja del
+// cajero, con un interruptor por empresa.
+describe('CajaService.cerrarCaja — efectivo de préstamos por caja (Etapa 5)', () => {
+  function mockConPrestamo(d: ReturnType<typeof buildDeps>, opts: {
+    cobrosPrestamoEfectivo?: string; desembolsosPrestamoEfectivo?: string;
+    prestamoTarjeta?: string; prestamoTransferencia?: string;
+    prestamoEfectivoPorCaja?: boolean;
+  }) {
+    d.dataSource.manager.query.mockImplementation((sql: string) => {
+      if (sql.includes('recibos_cobro') && sql.includes('tarjeta')) return Promise.resolve([{ tarjeta: '0', transferencia: '0' }]);
+      if (sql.includes('anticipo_cliente') && sql.includes('tarjeta')) return Promise.resolve([{ tarjeta: '0', transferencia: '0' }]);
+      if (sql.includes('recibos_cobro') || sql.includes('anticipo_cliente')) return Promise.resolve([{ total: '0' }]);
+      if (sql.includes('FROM facturas f')) return Promise.resolve([]);
+      if (sql.includes('configuracion FROM empresa')) {
+        return Promise.resolve([{ configuracion: opts.prestamoEfectivoPorCaja === false ? { prestamoEfectivoPorCaja: false } : {} }]);
+      }
+      if (sql.includes('FROM pr_pagos p') && sql.includes('tarjeta')) {
+        return Promise.resolve([{ tarjeta: opts.prestamoTarjeta ?? '0', transferencia: opts.prestamoTransferencia ?? '0' }]);
+      }
+      if (sql.includes('FROM pr_pagos p')) {
+        return Promise.resolve([{ total: opts.cobrosPrestamoEfectivo ?? '0' }]);
+      }
+      if (sql.includes('FROM pr_desembolsos_parciales')) {
+        return Promise.resolve([{ total: opts.desembolsosPrestamoEfectivo ?? '0' }]);
+      }
+      return Promise.resolve([{}]);
+    });
+  }
+
+  it('interruptor ON: un cobro de cuota y un desembolso en efectivo en el mismo turno ajustan el efectivo esperado (sube/baja) y se escriben en el cierre', async () => {
+    const d = buildDeps();
+    mockConPrestamo(d, { cobrosPrestamoEfectivo: '500', desembolsosPrestamoEfectivo: '200' });
+    // `fresh` simula lo que recalcularDesdeBD ya escribió — mismo patrón que
+    // el resto de esta suite para ventasEfectivo/cobrosEfectivo.
+    d.repo.findOne.mockResolvedValue(cajaAbierta({
+      id: 1, userId: 1, saldoApertura: 1000,
+      cobrosPrestamoEfectivo: 500, desembolsosPrestamoEfectivo: 200,
+    } as any));
+    const service = buildService(d);
+
+    await service.cerrarCaja(1, 1300, undefined, undefined, undefined, { id: 1 });
+
+    const [, cambios] = d.repo.update.mock.calls[0];
+    expect(cambios.saldoCierre).toBe(1300); // 1000 + 500 (cobro) − 200 (desembolso)
+    expect(cambios.diferencia).toBe(0);
+
+    const updateManager = d.dataSource.manager.update.mock.calls.find(
+      ([entity]: any[]) => entity && entity.name === 'CierreCaja',
+    ) ?? d.dataSource.manager.update.mock.calls[0];
+    expect(updateManager[2].cobrosPrestamoEfectivo).toBe(500);
+    expect(updateManager[2].desembolsosPrestamoEfectivo).toBe(200);
+  });
+
+  it('interruptor OFF: las queries nuevas nunca se ejecutan y las columnas quedan en 0', async () => {
+    const d = buildDeps();
+    mockConPrestamo(d, {
+      cobrosPrestamoEfectivo: '500', desembolsosPrestamoEfectivo: '200', prestamoEfectivoPorCaja: false,
+    });
+    d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, userId: 1, saldoApertura: 1000 } as any));
+    const service = buildService(d);
+
+    await service.cerrarCaja(1, 1000, undefined, undefined, undefined, { id: 1 });
+
+    expect(d.dataSource.manager.query.mock.calls.some(([sql]: any[]) => sql.includes('FROM pr_pagos p'))).toBe(false);
+    expect(d.dataSource.manager.query.mock.calls.some(([sql]: any[]) => sql.includes('FROM pr_desembolsos_parciales'))).toBe(false);
+
+    const updateManager = d.dataSource.manager.update.mock.calls[0];
+    expect(updateManager[2].cobrosPrestamoEfectivo).toBe(0);
+    expect(updateManager[2].desembolsosPrestamoEfectivo).toBe(0);
+  });
+
+  it('un cobro de cuota por tarjeta/transferencia entra al bucket correcto, no al de efectivo', async () => {
+    const d = buildDeps();
+    mockConPrestamo(d, { prestamoTarjeta: '300', prestamoTransferencia: '150' });
+    d.repo.findOne.mockResolvedValue(cajaAbierta({
+      id: 1, userId: 1, saldoApertura: 0, ventasEfectivo: 500,
+    } as any));
+    const service = buildService(d);
+
+    const declaradoPorForma = [
+      { forma: 'tarjeta', monto: 300 },
+      { forma: 'transferencia', monto: 150 },
+    ];
+    await service.cerrarCaja(1, 500, undefined, undefined, undefined, { id: 1 }, undefined, declaradoPorForma);
+
+    const [, cambios] = d.repo.update.mock.calls[0];
+    expect(cambios.saldoCierre).toBe(500); // el efectivo NUNCA ve el préstamo por tarjeta/transferencia
+    const porForma = Object.fromEntries(cambios.cuadrePorFormaPago.map((f: any) => [f.forma, f]));
+    expect(porForma.tarjeta.esperado).toBe(300);
+    expect(porForma.transferencia.esperado).toBe(150);
+  });
+
+  // Aislamiento multi-tenant (ver docs/prestamista/decisiones-pendientes.md,
+  // punto 14, y merge-readiness.md sección 2): el switch de configuración
+  // por sí solo NO basta — una empresa SIN el add-on 'prestamista' activo
+  // (tabla empresa_modulos) nunca debe pagar las 2 queries extra contra
+  // pr_pagos/pr_desembolsos_parciales, sin importar que el switch quede en
+  // su default `true`.
+  it('SIN el add-on prestamista activo: las 2 queries extra nunca se ejecutan, aunque el switch esté en true (default)', async () => {
+    const d = buildDeps();
+    // El switch de configuración queda en su default (true) — la única
+    // diferencia de este test es que el add-on NO está activo.
+    mockConPrestamo(d, { cobrosPrestamoEfectivo: '500', desembolsosPrestamoEfectivo: '200' });
+    d.modulosAddonSvc.checkModuloActivo.mockResolvedValue(false);
+    d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, userId: 1, saldoApertura: 1000 } as any));
+    const service = buildService(d);
+
+    await service.cerrarCaja(1, 1000, undefined, undefined, undefined, { id: 1 });
+
+    // Las 2 queries contra las tablas de Prestamista NUNCA corrieron.
+    expect(d.dataSource.manager.query.mock.calls.some(([sql]: any[]) => sql.includes('FROM pr_pagos p'))).toBe(false);
+    expect(d.dataSource.manager.query.mock.calls.some(([sql]: any[]) => sql.includes('FROM pr_desembolsos_parciales'))).toBe(false);
+    // Sí se consultó si el add-on estaba activo — ese es el gate real.
+    expect(d.modulosAddonSvc.checkModuloActivo).toHaveBeenCalledWith(EMPRESA, 'prestamista');
+
+    const updateManager = d.dataSource.manager.update.mock.calls[0];
+    expect(updateManager[2].cobrosPrestamoEfectivo).toBe(0);
+    expect(updateManager[2].desembolsosPrestamoEfectivo).toBe(0);
+  });
+
+  it('CON el add-on prestamista activo y filas reales en pr_pagos/pr_desembolsos_parciales: los cobros y desembolsos SÍ fluyen al cierre', async () => {
+    const d = buildDeps();
+    mockConPrestamo(d, { cobrosPrestamoEfectivo: '750', desembolsosPrestamoEfectivo: '300' });
+    d.modulosAddonSvc.checkModuloActivo.mockResolvedValue(true);
+    d.repo.findOne.mockResolvedValue(cajaAbierta({
+      id: 1, userId: 1, saldoApertura: 1000,
+      cobrosPrestamoEfectivo: 750, desembolsosPrestamoEfectivo: 300,
+    } as any));
+    const service = buildService(d);
+
+    await service.cerrarCaja(1, 1450, undefined, undefined, undefined, { id: 1 });
+
+    expect(d.dataSource.manager.query.mock.calls.some(([sql]: any[]) => sql.includes('FROM pr_pagos p'))).toBe(true);
+    expect(d.dataSource.manager.query.mock.calls.some(([sql]: any[]) => sql.includes('FROM pr_desembolsos_parciales'))).toBe(true);
+    expect(d.modulosAddonSvc.checkModuloActivo).toHaveBeenCalledWith(EMPRESA, 'prestamista');
+
+    const [, cambios] = d.repo.update.mock.calls[0];
+    expect(cambios.saldoCierre).toBe(1450); // 1000 + 750 (cobro) − 300 (desembolso)
+    expect(cambios.diferencia).toBe(0);
+
+    const updateManager = d.dataSource.manager.update.mock.calls.find(
+      ([entity]: any[]) => entity && entity.name === 'CierreCaja',
+    ) ?? d.dataSource.manager.update.mock.calls[0];
+    expect(updateManager[2].cobrosPrestamoEfectivo).toBe(750);
+    expect(updateManager[2].desembolsosPrestamoEfectivo).toBe(300);
   });
 });
 
@@ -861,12 +1016,15 @@ function makeCajaService(opts: { cajas?: any[]; facturas?: any[]; cierreCajaCieg
   const tenantService = { getEmpresaId: () => EMPRESA, getSucursalId: () => null, getRolEmpresa: () => opts.rol ?? null };
   const realtimeService = { notify: jest.fn() };
   const notificacionesService = { notificarDescuadreCierre: jest.fn().mockResolvedValue(undefined) };
+  // Default: add-on 'prestamista' activo — este bloque de tests no es sobre
+  // Prestamista, preserva el comportamiento previo a la existencia del gate.
+  const modulosAddonService = { checkModuloActivo: jest.fn().mockResolvedValue(true) };
 
   const svc = new CajaService(
     repo as any, {} as any, dataSource as any, tenantService as any, realtimeService as any,
-    notificacionesService as any,
+    notificacionesService as any, modulosAddonService as any,
   );
-  return { svc, cajas, dataSource, repo };
+  return { svc, cajas, dataSource, repo, modulosAddonService };
 }
 
 describe('CajaService.obtenerUnaPorId — VENDEDOR nunca ve el monto de una caja ABIERTA', () => {

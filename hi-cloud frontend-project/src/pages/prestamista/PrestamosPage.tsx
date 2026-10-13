@@ -10,6 +10,7 @@ import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
 import { prestamistalApi } from '../../api/prestamista.api';
 import { hoyRD } from '../../utils/fechaRD';
+import api from '../../api/client';
 
 const { Option } = Select;
 const fmt = (n: any) => `RD$ ${Number(n ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
@@ -48,8 +49,36 @@ export default function PrestamosPage() {
   });
   const solicitudes: any[] = (solicitudesResp as any)?.data ?? solicitudesResp ?? [];
 
+  // Cajas abiertas hoy — para el selector cuando el desembolso inicial es en
+  // efectivo (Etapa 5, Parte B). Mismo patrón que GastosPage/DetallePrestamo.
+  const { data: cajasHoy } = useQuery({
+    queryKey: ['caja-hoy-prestamista-crear'],
+    queryFn: () => api.get('/caja/hoy').then(r => {
+      const d = r.data?.data ?? r.data;
+      if (Array.isArray(d?.cajas)) return d.cajas as any[];
+      if (d?.id)                   return [d] as any[];
+      return [] as any[];
+    }),
+    enabled: open,
+    staleTime: 30_000,
+  });
+
   const crear = useMutation({
-    mutationFn: (vals: any) => prestamistalApi.crearPrestamo(vals),
+    // Etapa 1: fechaDesembolso llega como objeto dayjs del DatePicker — sin
+    // convertir, @IsDateString() lo rechazaba SIEMPRE (el campo es
+    // obligatorio), así que ningún desembolso podía completarse desde esta
+    // pantalla. cuentaBancariaId no tiene columna ni soporte en el DTO (se
+    // excluye); observaciones se renombra a notas (CrearPrestamoDto no
+    // tiene "observaciones").
+    // Motor v2 (Fase 2B): fechaPrimerPago solo se auto-calcula en el backend
+    // para frecuencia mensual — para el resto (semanal, quincenal, diaria...)
+    // es obligatorio enviarla, por eso el campo explícito en el formulario.
+    mutationFn: ({ cuentaBancariaId, fechaDesembolso, fechaPrimerPago, observaciones, ...vals }: any) => prestamistalApi.crearPrestamo({
+      ...vals,
+      fechaDesembolso: fechaDesembolso?.format('YYYY-MM-DD'),
+      fechaPrimerPago: fechaPrimerPago?.format('YYYY-MM-DD'),
+      ...(observaciones ? { notas: observaciones } : {}),
+    }),
     onSuccess: (d: any) => {
       qc.invalidateQueries({ queryKey: ['prestamista-prestamos'] });
       qc.invalidateQueries({ queryKey: ['prestamista-solicitudes'] });
@@ -142,14 +171,43 @@ export default function PrestamosPage() {
               ))}
             </Select>
           </Form.Item>
+          {/* cuentaBancariaId se quitó: pr_prestamos no tiene esa columna, no
+             hace nada (Etapa 1) */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
             <Form.Item name="fechaDesembolso" label="Fecha Desembolso" rules={[{ required: true }]}>
               <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
             </Form.Item>
-            <Form.Item name="cuentaBancariaId" label="Cuenta Bancaria (opcional)">
-              <InputNumber style={{ width: '100%' }} placeholder="ID cuenta" />
+            <Form.Item name="fechaPrimerPago" label="Fecha Primer Pago" rules={[{ required: true }]}>
+              <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
             </Form.Item>
           </div>
+          <Form.Item name="formaPago" label="Forma del desembolso" initialValue="transferencia">
+            <Select onChange={val => { if (val !== 'efectivo') form.setFieldsValue({ cajaDiariaId: undefined }); }}>
+              <Option value="transferencia">Transferencia</Option>
+              <Option value="efectivo">Efectivo</Option>
+              <Option value="cheque">Cheque</Option>
+            </Select>
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(p, c) => p.formaPago !== c.formaPago}>
+            {() => form.getFieldValue('formaPago') === 'efectivo' ? (
+              <Form.Item
+                name="cajaDiariaId"
+                label="Caja de efectivo (opcional)"
+                tooltip="Si se selecciona, el desembolso sale del cuadre de esa caja. Déjalo vacío si no aplica."
+              >
+                <Select
+                  placeholder="Seleccionar caja (opcional)"
+                  loading={!cajasHoy}
+                  allowClear
+                  notFoundContent="No hay cajas abiertas hoy"
+                  options={(cajasHoy ?? []).map((c: any) => ({
+                    value: c.id,
+                    label: c.vendedorNombre ? `${c.vendedorNombre} — Caja #${c.id}` : `Caja #${c.id}`,
+                  }))}
+                />
+              </Form.Item>
+            ) : null}
+          </Form.Item>
           <Form.Item name="observaciones" label="Observaciones"><Input.TextArea rows={2} /></Form.Item>
         </Form>
       </Modal>

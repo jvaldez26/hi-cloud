@@ -34,7 +34,7 @@ export class SolicitudesService {
     const [row] = await this.ds.query<any[]>(
       `SELECT s.*, d.nombre as "deudorNombre", d.cedula as "deudorCedula", d.telefono as "deudorTelefono"
        FROM pr_solicitudes s
-       JOIN pr_deudores d ON d.id=s."deudorId"
+       JOIN pr_deudores d ON d.id=s."deudorId" AND d."empresaId"=s."empresaId"
        WHERE s.id=$1 AND s."empresaId"=$2`, [id, empresaId],
     );
     if (!row) throw new NotFoundException(`Solicitud #${id} no encontrada`);
@@ -55,11 +55,11 @@ export class SolicitudesService {
     }
     const where = conds.join(' AND ');
     const [{ count }] = await this.ds.query(
-      `SELECT COUNT(*) FROM pr_solicitudes s JOIN pr_deudores d ON d.id=s."deudorId" WHERE ${where}`, args,
+      `SELECT COUNT(*) FROM pr_solicitudes s JOIN pr_deudores d ON d.id=s."deudorId" AND d."empresaId"=s."empresaId" WHERE ${where}`, args,
     );
     const data = await this.ds.query(
       `SELECT s.*, d.nombre as "deudorNombre", d.cedula as "deudorCedula"
-       FROM pr_solicitudes s JOIN pr_deudores d ON d.id=s."deudorId"
+       FROM pr_solicitudes s JOIN pr_deudores d ON d.id=s."deudorId" AND d."empresaId"=s."empresaId"
        WHERE ${where} ORDER BY s."createdAt" DESC LIMIT $${idx} OFFSET $${idx + 1}`,
       [...args, limit, offset],
     );
@@ -99,7 +99,7 @@ export class SolicitudesService {
     if (!['pendiente', 'en_revision'].includes(sol.estado)) {
       throw new BadRequestException('Solo se pueden decidir solicitudes en estado pendiente o en revisión');
     }
-    const aprobado = data.aprobado === true || data.decision === 'aprobar';
+    const aprobado = data.aprobado === true || data.decision === 'aprobada';
 
     // C5 + Segregación de funciones: el aprobador sale del CLS (JWT), no del body,
     // y NO puede ser la misma persona que creó la solicitud.
@@ -110,14 +110,31 @@ export class SolicitudesService {
 
     const estado = aprobado ? 'aprobada' : 'rechazada';
     const motivoFinal = data.motivoRechazo ?? data.motivoDecision ?? null;
+    // Etapa 6 — Seguridad: el SELECT de orFail() no bloquea la fila
+    // (sin FOR UPDATE), así que dos llamadas concurrentes a /decidir sobre
+    // la MISMA solicitud (doble clic, o dos aprobadores distintos a la vez)
+    // podían leer ambas "pendiente" antes de que cualquiera escribiera, y
+    // ambas ejecutar este UPDATE — la segunda sobrescribía en silencio el
+    // estado/monto/tasa/decididoPor de la primera, sin ningún error.
+    // Repetir la condición de estado DENTRO del propio UPDATE lo vuelve
+    // atómico: si la fila ya no está en pendiente/en_revision (porque otra
+    // request ganó la carrera entre el SELECT y este UPDATE), no actualiza
+    // nada y RETURNING * viene vacío — se detecta y se rechaza.
     const [row] = await this.ds.query(
       `WITH fila AS (
          UPDATE pr_solicitudes SET estado=$1,"montoAprobado"=$2,"tasaAprobada"=$3,"fechaDecision"=CURRENT_DATE,
-          "decididoPor"=$4,"motivoRechazo"=$5 WHERE id=$6 AND "empresaId"=$7 RETURNING *
+          "decididoPor"=$4,"motivoRechazo"=$5
+         WHERE id=$6 AND "empresaId"=$7 AND estado IN ('pendiente','en_revision')
+         RETURNING *
        ) SELECT * FROM fila`,
       [estado, data.montoAprobado ?? null, data.tasaAprobada ?? null, uid != null ? String(uid) : null,
        motivoFinal, id, empresaId],
     );
+    if (!row) {
+      throw new BadRequestException(
+        'Esta solicitud ya fue decidida por otra persona mientras tanto — recarga para ver el estado actual',
+      );
+    }
     return row;
   }
 
