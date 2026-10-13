@@ -18,6 +18,7 @@ import {
 import { normalizarNcf, esNcfCompleto, errorNcf } from '../../utils/ncf';
 import { tipoIdentificacion } from '../../utils/identificacionDgii';
 import { buildReciboTermicoHTML } from '../../utils/ticketTermico';
+import { registrarCajaAbiertaEquipo, limpiarCajaAbiertaEquipoSiEs } from '../../utils/cajaEquipoStorage';
 import { useRncLookup } from '../../hooks/useRncLookup';
 import { POS_PANELES, NAV_ITEMS, MENU_EXTRAS, PANEL_TITLES, CLAVE_SUPERVISOR_POR_PANEL, type PanelId } from '../../config/posPanelesConfig';
 import QRCode from 'qrcode';
@@ -1645,11 +1646,17 @@ function ModalAperturaTurno({ open, vendedores, sucursales, onAbrir, onCancelar,
     const nombreVendedor       = vendedorSeleccionado?.nombre ?? undefined;
     try {
       if (!soloVendedor && cajaStatus === 'sin_apertura') {
-        await api.post('/caja/abrir', {
+        const { data } = await api.post('/caja/abrir', {
           saldoApertura:  monto,
           vendedorId,
           vendedorNombre: nombreVendedor,
         });
+        // "Hay una caja abierta de [cajero] en este equipo" al próximo login
+        // — ver cajaEquipoStorage.ts.
+        const cajaId = data?.data?.id ?? data?.id;
+        if (cajaId) {
+          registrarCajaAbiertaEquipo({ cajaId, vendedorId, vendedorNombre: nombreVendedor ?? '' });
+        }
       }
       onAbrir(monto, vendedorId, sucursalAAplicar);
     } catch (e: any) {
@@ -7398,6 +7405,7 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['pos-caja-hoy'] });
       message.success(cajaHoy?.ciegoCajaActivo ? 'Cierre registrado' : '¡Caja cerrada exitosamente!');
+      if (cajaHoy?.id) limpiarCajaAbiertaEquipoSiEs(cajaHoy.id);
       onVolver();
     },
     onError: (e: any) => {

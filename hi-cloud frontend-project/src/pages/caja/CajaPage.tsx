@@ -27,6 +27,7 @@ import { dRD, fecha, hora, hoyRD } from '../../utils/fechaRD';
 import { bloqueFacturasTermico, CSS_FACTURAS_TERMICO } from '../../utils/cierreFacturasTermico';
 import { bloqueCuadreFormaPagoTermico } from '../../utils/cuadreFormaPagoTermico';
 import { estadoDiferencia } from '../../utils/diferenciaCaja';
+import { registrarCajaAbiertaEquipo, limpiarCajaAbiertaEquipoSiEs } from '../../utils/cajaEquipoStorage';
 import { sanear } from '../../services/thermalPrinter';
 
 // ── Constantes de retiros ──────────────────────────────────────────────────
@@ -211,11 +212,21 @@ export default function CajaPage() {
 
   const abrirMut = useMutation({
     mutationFn: cajaApi.abrir,
-    onSuccess: () => {
+    onSuccess: (data: any, variables: any) => {
       qc.invalidateQueries({ queryKey: ['caja-hoy'] });
       qc.invalidateQueries({ queryKey: ['caja-hist'] });
       setOpenAbrir(false); form.resetFields();
       message.success('Caja abierta');
+      // "Hay una caja abierta de [cajero] en este equipo" al próximo login —
+      // ver cajaEquipoStorage.ts.
+      const cajaId = data?.id;
+      if (cajaId) {
+        registrarCajaAbiertaEquipo({
+          cajaId,
+          vendedorId:     variables?.vendedorId,
+          vendedorNombre: variables?.vendedorNombre ?? '',
+        });
+      }
     },
     onError: (e: any) => message.error(e?.response?.data?.errors?.[0] ?? 'Error'),
   });
@@ -223,11 +234,12 @@ export default function CajaPage() {
   const cerrarMut = useMutation({
     mutationFn: ({ id, body, supervisorToken }: { id: number; body: any; supervisorToken?: string }) =>
       cajaApi.cerrar(id, body, supervisorToken ? { 'x-supervisor-token': supervisorToken } : undefined),
-    onSuccess: () => {
+    onSuccess: (_data: any, variables: any) => {
       qc.invalidateQueries({ queryKey: ['caja-hoy'] });
       qc.invalidateQueries({ queryKey: ['caja-hist'] });
       setCerrarTarget(null); form.resetFields(); setSaldoFisicoInput(0);
       message.success('Caja cerrada correctamente');
+      if (variables?.id) limpiarCajaAbiertaEquipoSiEs(variables.id);
     },
     onError: (e: any) => {
       // El 428 (falta el motivo de descuadre) lo resuelve el propio
