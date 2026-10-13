@@ -149,6 +149,64 @@ describe('bloqueCuadreFormaPagoTermico', () => {
     expect(textoPlano(html)).toContain('CUADRE POR FORMA DE PAGO (estimado)');
   });
 
+  // Fix real (2026-10-13): una factura a CRÉDITO se sumaba al esperado de
+  // "Otros" (vía ventasCredito, un dato fiscal del e-CF, no dinero físico) y
+  // generaba un faltante falso. Ahora queda fuera del cuadre y se muestra
+  // aparte — informativo, nunca mezclado con "FACTURAS SIN FORMA DE PAGO"
+  // (eso sí es un error a revisar; una venta a crédito es normal).
+  describe('VENTAS A CREDITO (informativo, fuera del cuadre)', () => {
+    it('las imprime en su propio bloque, separado de "FACTURAS SIN FORMA DE PAGO", con el total', () => {
+      const html = bloqueCuadreFormaPagoTermico({
+        ...cierreReal,
+        facturasCredito: [
+          { id: 901, folio: 'FAC-901', total: 90.00, clienteNombre: 'Cliente Credito' },
+        ],
+      });
+      expect(textoPlano(html)).toContain('VENTAS A CREDITO');
+      expect(html).toContain('FAC-901');
+      expect(html).toContain('Cliente Credito');
+      expect(html).toContain('90.00');
+      // Las dos secciones coexisten, cada factura en la suya.
+      expect(textoPlano(html)).toContain('FACTURAS SIN FORMA DE PAGO');
+      expect(html).toContain('FAC-1807');
+    });
+
+    it('con varias facturas a crédito, suma el total correctamente', () => {
+      const html = bloqueCuadreFormaPagoTermico({
+        cuadrePorFormaPago: [{ forma: 'efectivo', esperado: 100, declarado: 100, diferencia: 0 }],
+        facturasCredito: [
+          { id: 1, folio: 'FAC-1', total: 50.00 },
+          { id: 2, folio: 'FAC-2', total: 40.00 },
+        ],
+      });
+      expect(html).toContain('90.00'); // total: 50 + 40
+    });
+
+    it('sin facturas a crédito: no imprime la sección', () => {
+      const html = bloqueCuadreFormaPagoTermico(cierreReal);
+      expect(html).not.toContain('VENTAS A CREDITO');
+    });
+
+    it('recierre: facturasCreditoOriginal se imprime en el bloque "CIERRE ORIGINAL ANULADO"', () => {
+      const html = bloqueCuadreFormaPagoTermico({
+        cuadrePorFormaPago: [{ forma: 'efectivo', esperado: 100, declarado: 100, diferencia: 0 }],
+        saldoFisico: 100, contadoOriginal: 90,
+        facturasCreditoOriginal: [{ id: 5, folio: 'FAC-5', total: 60.00, clienteNombre: 'Original' }],
+      });
+      expect(textoPlano(html)).toContain('CIERRE ORIGINAL ANULADO');
+      expect(html).toContain('FAC-5');
+      expect(html).toContain('Original');
+    });
+
+    it('nunca declara font-size/letter-spacing/line-height propio', () => {
+      const html = bloqueCuadreFormaPagoTermico({
+        ...cierreReal,
+        facturasCredito: [{ id: 901, folio: 'FAC-901', total: 90.00, clienteNombre: 'Cliente' }],
+      });
+      expect(sinEstiloPropio(html)).toBe(true);
+    });
+  });
+
   it('sin sospechas ni facturas sin forma de pago: solo la tabla, sin avisos', () => {
     const html = bloqueCuadreFormaPagoTermico({
       cuadrePorFormaPago: [{ forma: 'efectivo', esperado: 100, declarado: 100, diferencia: 0 }],

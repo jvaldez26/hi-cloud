@@ -106,6 +106,32 @@ console.log('\nMétodo de pago');
   // sanear() (2026-10-10) baja el guion largo a uno normal — sin caracteres
   // especiales en ningún dato de la impresión térmica, en ningún canal.
   ok('sin forma de pago no rompe', sinPago.includes('14:30 - -') && !sinPago.includes('—'));
+
+  // Fix real (2026-10-13): una venta a CRÉDITO normalmente no trae
+  // formasPago (el cliente paga después) — antes salía "- -", el MISMO texto
+  // que una factura de CONTADO sin forma de pago registrada (un error real).
+  // Con tipoPago='CREDITO' siempre sale "CRED", tenga o no formasPago.
+  const creditoSinFormasPago = M.bloqueFacturasTermico({
+    facturas: [fac({ formasPago: [], tipoPago: 'CREDITO' })],
+  });
+  ok('venta a crédito sin formasPago → "CRED", nunca "- -"',
+     creditoSinFormasPago.includes('CRED') && !creditoSinFormasPago.includes(' - -'));
+
+  // Si además trae formasPago con el tipo DGII 4 (declaración fiscal del
+  // e-CF), el resultado es el mismo "CRED" — no cambia según venga o no.
+  const creditoConFormasPago = M.bloqueFacturasTermico({
+    facturas: [fac({ formasPago: [{ tipo: 4, monto: 1180 }], tipoPago: 'CREDITO' })],
+  });
+  ok('venta a crédito con formasPago (tipo DGII 4) → también "CRED"',
+     creditoConFormasPago.includes('CRED'));
+
+  // Una venta de CONTADO sin forma de pago (el error real a revisar) sigue
+  // saliendo "- -" — nunca se confunde con una venta a crédito.
+  const contadoSinForma = M.bloqueFacturasTermico({
+    facturas: [fac({ formasPago: [], tipoPago: 'CONTADO' })],
+  });
+  ok('contado sin forma de pago sigue en "- -" (es un error, no una venta a crédito)',
+     contadoSinForma.includes('14:30 - -'));
 }
 
 console.log('\nLínea final — el ticket viene completo, y por qué no cuadra con el de arriba');

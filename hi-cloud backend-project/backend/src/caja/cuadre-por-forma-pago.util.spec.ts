@@ -96,11 +96,22 @@ describe('derivarCuadreLegacy — reconstruye el cuadre de un cierre viejo sin s
 
   it('transferencia agrupa cheque y depósito, otros agrupa otro y documentos — sin desglosePago, todo en cero', () => {
     const filas = derivarCuadreLegacy({
-      saldoCierre: 100, saldoFisico: 100, ventasTarjeta: 0, ventasTransferencia: 50, ventasCredito: 20,
+      saldoCierre: 100, saldoFisico: 100, ventasTarjeta: 0, ventasTransferencia: 50,
       desglosePago: { cheque: '30', deposito: '20', otro: '5', documentos: '15' },
     });
     expect(filas.find(f => f.forma === 'transferencia')).toMatchObject({ esperado: 50, declarado: 50 });
-    expect(filas.find(f => f.forma === 'otros')).toMatchObject({ esperado: 20, declarado: 20 });
+    expect(filas.find(f => f.forma === 'otros')).toMatchObject({ esperado: 0, declarado: 20 });
+  });
+
+  // Fix 2026-10-13: ventasCredito ya NO se suma a "otros" — esa columna
+  // clasifica por el tipo DGII 4 = "Venta a Crédito", una declaración fiscal
+  // del e-CF, no dinero físico. El parámetro sigue aceptándose (deprecated)
+  // por compatibilidad, pero se ignora.
+  it('ventasCredito (deprecated) se ignora — nunca infla el esperado de "otros"', () => {
+    const filas = derivarCuadreLegacy({
+      saldoCierre: 100, saldoFisico: 100, ventasTarjeta: 0, ventasTransferencia: 0, ventasCredito: 90,
+    });
+    expect(filas.find(f => f.forma === 'otros')).toMatchObject({ esperado: 0, declarado: 0, diferencia: 0 });
   });
 
   it('sin desglosePago (cierre muy viejo): no revienta, todo declarado en cero salvo efectivo', () => {

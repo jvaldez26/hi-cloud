@@ -7509,6 +7509,8 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
           cuadreEstimado:       snap.cuadreEstimado,
           sospechasFormaPago:   snap.sospechasFormaPago,
           facturasSinFormaPago: snap.facturasSinFormaPago,
+          // Informativo, fuera del cuadre — ver getFacturasCredito() en caja.service.ts.
+          facturasCredito:      snap.facturasCredito,
           // Preservados del PRIMER cierre al recerrar — ver anularCierre()
           // en caja.service.ts. Si existen, este cierre fue recerrado y el
           // bloque "CIERRE ORIGINAL ANULADO" se imprime aparte.
@@ -7516,6 +7518,7 @@ function POSCierreCajaPanel({ C, onVolver }: { C: Palette; onVolver: () => void 
           contadoOriginal:              snap.contadoOriginal,
           cuadrePorFormaPagoOriginal:   snap.cuadrePorFormaPagoOriginal,
           facturasSinFormaPagoOriginal: snap.facturasSinFormaPagoOriginal,
+          facturasCreditoOriginal:      snap.facturasCreditoOriginal,
         },
         billetes: snap._billetes,
         pago:     snap._pago,

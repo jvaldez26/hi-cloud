@@ -1632,6 +1632,31 @@ ${line()}
                   />
                 )}
 
+                {/* Informativo, no un error — por eso es un Alert "info" y no
+                    "error", y nunca lleva el botón "Agregar forma de pago":
+                    una venta a crédito es normal, el cliente la paga
+                    después. Nunca entra al cuadre de arriba (fix 2026-10-13,
+                    caso real: una factura a crédito de RD$90 inflaba "Otros"
+                    y generaba un faltante falso de -91.13 en vez de -1.13). */}
+                {Array.isArray(detalleCierre.facturasCredito) && detalleCierre.facturasCredito.length > 0 && (
+                  <Alert
+                    type="info" showIcon style={{ marginTop: 10 }}
+                    message="Ventas a crédito (no entran al cuadre)"
+                    description={
+                      <div style={{ fontSize: 12 }}>
+                        {detalleCierre.facturasCredito.map((f: any) => (
+                          <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '2px 0' }}>
+                            <span>{f.folio} — {fmt.money(Number(f.total))}{f.clienteNombre ? ` · ${f.clienteNombre}` : ''}</span>
+                          </div>
+                        ))}
+                        <div style={{ marginTop: 4, fontWeight: 600 }}>
+                          Total a crédito: {fmt.money(detalleCierre.facturasCredito.reduce((s: number, f: any) => s + Number(f.total), 0))}
+                        </div>
+                      </div>
+                    }
+                  />
+                )}
+
                 {Array.isArray(ajustesCierre) && ajustesCierre.length > 0 && (
                   <>
                     <Divider style={{ margin: '12px 0 8px' }}>Ajustes posteriores</Divider>
@@ -1720,6 +1745,11 @@ ${line()}
                 {Array.isArray(detalleCierre.facturasSinFormaPagoOriginal) && detalleCierre.facturasSinFormaPagoOriginal.length > 0 && (
                   <div style={{ fontSize: 12, color: token.colorTextSecondary, marginTop: 8 }}>
                     Facturas sin forma de pago en el cierre original: {detalleCierre.facturasSinFormaPagoOriginal.map((f: any) => f.folio).join(', ')}
+                  </div>
+                )}
+                {Array.isArray(detalleCierre.facturasCreditoOriginal) && detalleCierre.facturasCreditoOriginal.length > 0 && (
+                  <div style={{ fontSize: 12, color: token.colorTextSecondary, marginTop: 4 }}>
+                    Ventas a crédito en el cierre original: {detalleCierre.facturasCreditoOriginal.map((f: any) => f.folio).join(', ')}
                   </div>
                 )}
               </>

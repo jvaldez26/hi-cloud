@@ -72,12 +72,18 @@ export interface CierreConCuadreTermico {
   cuadreEstimado?:      boolean;
   sospechasFormaPago?:  SospechaFormaTermico[];
   facturasSinFormaPago?: FacturaSinFormaTermico[];
+  // Facturas a CRÉDITO del turno — fuera del cuadre por diseño (no es dinero
+  // en caja), se muestran aparte como dato INFORMATIVO (ver
+  // caja.service.ts, getFacturasCredito). A diferencia de
+  // facturasSinFormaPago, una venta a crédito es normal, no un error.
+  facturasCredito?: FacturaSinFormaTermico[];
   // Preservados en el PRIMER cierre al recerrar (ver anularCierre() en
   // caja.service.ts) — si existen, este cierre fue recerrado.
   saldoFisico?:                number;
   contadoOriginal?:             number;
   cuadrePorFormaPagoOriginal?:  FilaCuadreTermico[];
   facturasSinFormaPagoOriginal?: FacturaSinFormaTermico[];
+  facturasCreditoOriginal?:      FacturaSinFormaTermico[];
 }
 
 /** Nombres completos — el nombre de la forma siempre tiene su propia línea o espacio de sobra (carta), así que no hace falta una versión corta. */
@@ -320,6 +326,24 @@ export function bloqueCuadreFormaPagoTermico(
     }
   }
 
+  // Informativo, no un error — por eso va en su propio bloque, nunca
+  // mezclado con "FACTURAS SIN FORMA DE PAGO" de arriba (una venta a
+  // crédito es normal; una de contado sin forma de pago es un error a
+  // revisar). Nunca se suma al cuadre de arriba.
+  const credito = r.facturasCredito ?? [];
+  if (credito.length) {
+    html += sep;
+    html += tituloSeccion('VENTAS A CREDITO (no entran al cuadre)', cfg.ancho);
+    let totalCredito = 0;
+    for (const f of credito) {
+      totalCredito += Number(f.total);
+      html += envolver(f.folio, cfg.ancho).map(l => divTexto(l)).join('');
+      if (f.clienteNombre) html += divRow('', f.clienteNombre);
+      html += divRow('', moneyTabla(Number(f.total), cfg.comas));
+    }
+    html += divRow('Total a crédito:', moneyTabla(totalCredito, cfg.comas), 'bold');
+  }
+
   // Recierre: el cierre vigente ya se imprimió arriba — el ORIGINAL anulado
   // va en un bloque aparte, con lo que contó/declaró la primera vez y la
   // diferencia contra el conteo vigente (requisito explícito 2026-10-10, caso
@@ -340,6 +364,15 @@ export function bloqueCuadreFormaPagoTermico(
       html += sep;
       html += tituloSeccion('Sin forma de pago (original)', cfg.ancho);
       for (const f of r.facturasSinFormaPagoOriginal) {
+        html += envolver(f.folio, cfg.ancho).map(l => divTexto(l)).join('');
+        if (f.clienteNombre) html += divRow('', f.clienteNombre);
+        html += divRow('', moneyTabla(Number(f.total), cfg.comas));
+      }
+    }
+    if (r.facturasCreditoOriginal?.length) {
+      html += sep;
+      html += tituloSeccion('Ventas a credito (original)', cfg.ancho);
+      for (const f of r.facturasCreditoOriginal) {
         html += envolver(f.folio, cfg.ancho).map(l => divTexto(l)).join('');
         if (f.clienteNombre) html += divRow('', f.clienteNombre);
         html += divRow('', moneyTabla(Number(f.total), cfg.comas));

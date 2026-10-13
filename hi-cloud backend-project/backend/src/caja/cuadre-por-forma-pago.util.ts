@@ -128,7 +128,15 @@ const FORMA_POR_TIPO_DGII: Record<number, string> = Object.fromEntries(
  */
 export function derivarCuadreLegacy(campos: {
   saldoCierre: number; saldoFisico: number;
-  ventasTarjeta: number; ventasTransferencia: number; ventasCredito?: number;
+  ventasTarjeta: number; ventasTransferencia: number;
+  /**
+   * @deprecated ya no se suma a "otros" (fix 2026-10-13): clasificaba por el
+   * tipo DGII 4 = "Venta a Crédito" dentro de `formasPago`, una declaración
+   * fiscal del e-CF, no dinero físico — sumarla generaba un faltante falso.
+   * Se mantiene como parámetro opcional solo por compatibilidad con
+   * callers existentes; el valor se ignora.
+   */
+  ventasCredito?: number;
   desglosePago?: Record<string, string | number> | null;
 }): FilaCuadre[] {
   const dp = campos.desglosePago ?? {};
@@ -138,7 +146,7 @@ export function derivarCuadreLegacy(campos: {
     efectivo:      Number(campos.saldoCierre ?? 0),
     tarjeta:       Number(campos.ventasTarjeta ?? 0),
     transferencia: Number(campos.ventasTransferencia ?? 0),
-    otros:         Number(campos.ventasCredito ?? 0),
+    otros:         0,
   };
   const declaradoPorForma = {
     efectivo:      Number(campos.saldoFisico ?? 0),

@@ -357,9 +357,12 @@ export class CajaService {
     // usa la MISMA fórmula única de arriba, nunca se recalcula distinto.
     // facturasSinFormaPago se calcula PRIMERO: su total se resta del bucket
     // "otros" dentro de calcularEsperadoPorForma — están fuera del cuadre,
-    // nunca deben inflar el esperado de ninguna forma.
+    // nunca deben inflar el esperado de ninguna forma. facturasCredito NUNCA
+    // entra al cuadre (ver getFacturasCredito) — no hace falta restar su
+    // total de ningún bucket porque calcularEsperadoPorForma ya no lo suma.
     const facturasSinFormaPago = await this.getFacturasSinFormaPago(fechaStr, caja.vendedorId, empresaId);
     const totalSinFormaPago = facturasSinFormaPago.reduce((s, f) => s + Number(f.total || 0), 0);
+    const facturasCredito = await this.getFacturasCredito(fechaStr, caja.vendedorId, empresaId);
     const esperadoPorForma = await this.calcularEsperadoPorForma(id, fechaStr, caja.vendedorId, empresaId, fresh, undefined, totalSinFormaPago);
 
     const declaradoRecibido = declaradoPorForma ?? [];
@@ -477,6 +480,7 @@ export class CajaService {
       notas:            notasFinal,
       cuadrePorFormaPago:   cuadrePorFormaPago,
       facturasSinFormaPago: facturasSinFormaPago,
+      facturasCredito:      facturasCredito,
       sospechasFormaPago:   sospechasConCandidatas,
       fueraDeUmbral:        descuadre,
       ...(autorizacionPrevia ? {
@@ -707,6 +711,7 @@ export class CajaService {
           // sobrescribe sin piedad en el recierre (ver más abajo).
           cuadrePorFormaPagoOriginal:   caja.cuadrePorFormaPago ?? null,
           facturasSinFormaPagoOriginal: caja.facturasSinFormaPago ?? null,
+          facturasCreditoOriginal:      caja.facturasCredito ?? null,
           sospechasFormaPagoOriginal:   caja.sospechasFormaPago ?? null,
         }
       : {};
@@ -1045,9 +1050,16 @@ export class CajaService {
     // igual dentro de ventasCredito si sus notas mencionan "crédito". Sin
     // restarlas aquí, inflan "otros" con dinero que nadie declaró ni se
     // espera cuadrar (caso real: FAC-1807, RD$295.00).
+    //
+    // `ventasCredito` (fresh.ventasCredito) YA NO se suma aquí (fix
+    // 2026-10-13): esa columna clasifica por el tipo DGII 4 = "Venta a
+    // Crédito" dentro de `formasPago` — una declaración FISCAL del e-CF, no
+    // dinero físico que el cajero vaya a cuadrar. Sumarla a "otros" generaba
+    // un faltante falso (caso real: RD$90.00 de una factura a crédito,
+    // faltante reportado -91.13 en vez de -1.13 real). Las facturas a
+    // crédito se muestran aparte — ver getFacturasCredito().
     const otros = Math.max(0,
-      Number(otrosCobros?.total ?? 0) + Number(otrosAnticipos?.total ?? 0)
-        + Number(fresh.ventasCredito ?? 0) - totalSinFormaPago,
+      Number(otrosCobros?.total ?? 0) + Number(otrosAnticipos?.total ?? 0) - totalSinFormaPago,
     );
 
     return { efectivo, tarjeta, transferencia, otros };
@@ -1082,6 +1094,42 @@ export class CajaService {
            OR jsonb_array_length(f."formasPago") = 0
            OR (SELECT COALESCE(SUM((fp->>'monto')::numeric), 0) FROM jsonb_array_elements(f."formasPago") fp) < f.total - 0.01
          )
+         ${vendedorFilter}
+       ORDER BY f.id`,
+      [fecha, empresaId],
+    );
+  }
+
+  /**
+   * Facturas a CRÉDITO del turno — fuera del cuadre por diseño (ver
+   * decisiones-pendientes y el comentario de `facturasCredito` en la
+   * entidad): no es dinero que el cajero deba cuadrar, el cliente la paga
+   * después. Se muestran aparte, como dato informativo — una venta a
+   * crédito es normal, a diferencia de una de contado sin forma de pago
+   * (getFacturasSinFormaPago, un error a revisar).
+   *
+   * Incidente real (2026-10-13): antes, `calcularEsperadoPorForma()` sumaba
+   * el total de estas facturas al esperado de "Otros" (vía la columna
+   * `ventasCredito`, que clasifica por el tipo DGII 4 = "Venta a Crédito" en
+   * `formasPago` — una declaración fiscal, no dinero físico) — un faltante
+   * falso de RD$90.00 en vez del faltante real de RD$1.13.
+   */
+  private async getFacturasCredito(
+    fecha: string, vendedorId: number | undefined, empresaId: number, manager?: EntityManager,
+  ): Promise<{ id: number; folio: string; total: number; clienteNombre?: string }[]> {
+    const db = manager ?? this.dataSource.manager;
+    const vendedorFilter = vendedorId ? `AND f."vendedorId" = ${Number(vendedorId)}` : `AND f."vendedorId" IS NULL`;
+
+    return db.query(
+      `SELECT f.id, f.folio, f.total::numeric AS total, c.nombre AS "clienteNombre"
+       FROM facturas f
+       LEFT JOIN clientes c ON c.id = f."clienteId"
+       WHERE DATE(f.fecha) = $1
+         AND f."empresaId" = $2
+         AND f.estado IN ('emitida', 'pagada')
+         AND f."isActive" = true
+         AND f."facturaRecurrenteId" IS NULL
+         AND f."tipoPago" = 'CREDITO'
          ${vendedorFilter}
        ORDER BY f.id`,
       [fecha, empresaId],
@@ -1240,6 +1288,7 @@ export class CajaService {
     // solo-efectivo — exactamente el bug real de reimpresión post-deploy.
     let cuadreLegacy: ReturnType<typeof derivarCuadreLegacy> | null = null;
     let facturasSinFormaPago: any[] = [];
+    let facturasCredito: any[] = [];
     let sospechasLegacy: SospechaFormaPago[] | null = null;
 
     if (caja.estado !== EstadoCierre.ABIERTA && !caja.cuadrePorFormaPago) {
@@ -1254,14 +1303,14 @@ export class CajaService {
       // (caso real: FAC-1807, RD$295.00, inflaba "otros" exactamente ese
       // monto y rompía el neto del cierre).
       facturasSinFormaPago = await this.getFacturasSinFormaPago(fechaStr, caja.vendedorId, empresaId);
-      const totalSinForma = facturasSinFormaPago.reduce((s, f) => s + Number(f.total || 0), 0);
+      // Facturas a CRÉDITO — ídem, fuera del cuadre, se muestran aparte.
+      facturasCredito = await this.getFacturasCredito(fechaStr, caja.vendedorId, empresaId);
 
       cuadreLegacy = derivarCuadreLegacy({
         saldoCierre:        Number(caja.saldoCierre ?? 0),
         saldoFisico:        Number(caja.saldoFisico ?? 0),
         ventasTarjeta:      Number(caja.ventasTarjeta ?? 0),
         ventasTransferencia: Number(caja.ventasTransferencia ?? 0),
-        ventasCredito:      Math.max(0, Number((caja as any).ventasCredito ?? 0) - totalSinForma),
         desglosePago:       caja.desglosePago as any,
       });
 
@@ -1276,7 +1325,7 @@ export class CajaService {
 
     return {
       ...caja,
-      ...(cuadreLegacy ? { cuadrePorFormaPago: cuadreLegacy, cuadreEstimado: true, facturasSinFormaPago } : {}),
+      ...(cuadreLegacy ? { cuadrePorFormaPago: cuadreLegacy, cuadreEstimado: true, facturasSinFormaPago, facturasCredito } : {}),
       ...(sospechasLegacy?.length ? { sospechasFormaPago: sospechasLegacy } : {}),
       efectivoEsperado:      esperado,
       esperadoInconsistente: esperadoEsInconsistente(esperado),
@@ -2008,7 +2057,7 @@ export class CajaService {
       id: number; folio: string; encf: string | null;
       hora: string; clienteNombre: string;
       formasPago: { tipo: number; monto: number }[] | null;
-      subtotal: string; iva: string; total: string; estado: string;
+      subtotal: string; iva: string; total: string; estado: string; tipoPago: string;
     }[]>(
       `SELECT
          f.id,
@@ -2020,7 +2069,8 @@ export class CajaService {
          f.subtotal,
          f.iva,
          f.total,
-         f.estado
+         f.estado,
+         f."tipoPago"
        FROM facturas f
        LEFT JOIN ecf e ON e.id = f."ecfId" AND e."isActive" = true
        LEFT JOIN clientes c ON c.id = f."clienteId" AND c."isActive" = true
@@ -2036,10 +2086,18 @@ export class CajaService {
       [fechaStr, empresaId],
     );
 
-    // Totales por forma de pago (solo facturas no canceladas)
+    // Totales por forma de pago (solo facturas no canceladas). Una factura a
+    // CRÉDITO va SIEMPRE a su propio bucket "Crédito" por el total — nunca a
+    // "Otro" (no es un error de registro, es una venta a crédito normal) ni
+    // distribuida por `formasPago` (que para una venta a crédito declara el
+    // tipo DGII 4 como dato fiscal, no como dinero recibido).
     const totalesPago: Record<string, number> = {};
     for (const f of rows) {
       if (f.estado === 'cancelada') continue;
+      if (f.tipoPago === 'CREDITO') {
+        totalesPago['Crédito'] = (totalesPago['Crédito'] ?? 0) + Number(f.total);
+        continue;
+      }
       const fps = Array.isArray(f.formasPago) ? f.formasPago : [];
       if (fps.length > 0) {
         for (const fp of fps) {
@@ -2058,6 +2116,7 @@ export class CajaService {
       hora:          f.hora,
       clienteNombre: f.clienteNombre,
       formasPago:    Array.isArray(f.formasPago) ? f.formasPago : [],
+      tipoPago:      f.tipoPago,
       subtotal:      Number(f.subtotal),
       iva:           Number(f.iva),
       total:         Number(f.total),

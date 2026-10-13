@@ -289,6 +289,94 @@ describe('CajaService.cerrarCaja — cuadre por forma de pago (caso real empresa
   });
 });
 
+// Fix real (2026-10-13): una factura a CRÉDITO (tipoPago='CREDITO') se
+// clasificaba vía el tipo DGII 4 ("Venta a Crédito" en formasPago — una
+// declaración fiscal del e-CF, no dinero físico) y se sumaba al esperado de
+// "Otros" del cuadre. Eso generaba un faltante falso: una factura a crédito
+// de RD$90.00 convertía un faltante real de -1.13 en uno reportado de
+// -91.13. Las facturas a crédito ahora quedan FUERA del cuadre (ningún
+// bucket las suma) y se muestran aparte, como dato informativo — una venta
+// a crédito es normal, a diferencia de una de contado sin forma de pago.
+describe('CajaService.cerrarCaja — facturas a crédito fuera del cuadre (caso real)', () => {
+  const FAC_CREDITO   = { id: 901, folio: 'FAC-CRED', total: '90.00',  clienteNombre: 'Cliente Crédito' };
+  const FAC_SIN_FORMA = { id: 902, folio: 'FAC-SINF', total: '100.00', clienteNombre: 'Cliente Contado' };
+
+  function mockTurnoMixto(d: ReturnType<typeof buildDeps>) {
+    d.dataSource.manager.query.mockImplementation((sql: string) => {
+      // Un recibo de cobro de la factura a crédito, cobrado por transferencia
+      // DURANTE este turno — ESE sí entra al cuadre, en su forma real.
+      if (sql.includes('recibos_cobro') && sql.includes('tarjeta'))
+        return Promise.resolve([{ tarjeta: '0', transferencia: '500.00' }]);
+      if (sql.includes('anticipo_cliente') && sql.includes('tarjeta'))
+        return Promise.resolve([{ tarjeta: '0', transferencia: '0' }]);
+      if (sql.includes('recibos_cobro') || sql.includes('anticipo_cliente'))
+        return Promise.resolve([{ total: '0' }]);
+      if (sql.includes('jsonb_array_length') && sql.includes('> 1'))
+        return Promise.resolve([]); // sin candidatas a "forma mal registrada"
+      if (sql.includes('FROM facturas f') && sql.includes("'CREDITO'"))
+        return Promise.resolve([FAC_CREDITO]); // getFacturasCredito
+      if (sql.includes('FROM facturas f') && sql.includes("'CONTADO'"))
+        return Promise.resolve([FAC_SIN_FORMA]); // getFacturasSinFormaPago
+      return Promise.resolve([{}]);
+    });
+  }
+
+  it('contado + crédito + un recibo de cobro + contado sin forma — cada uno en su lugar, sin faltante falso', async () => {
+    const d = buildDeps();
+    mockTurnoMixto(d);
+    d.repo.findOne.mockResolvedValue(cajaAbierta({
+      id: 1, userId: 1, vendedorId: 12, vendedorNombre: 'Cajero',
+      saldoApertura: 0,
+      ventasEfectivo: 1000,   // la venta de CONTADO del turno, pagada en efectivo
+      ventasCredito:  90,     // FAC-CRED — el fallback histórico la clasifica aquí, pero ya no cuenta
+    }));
+    const service = buildService(d);
+
+    const declaradoPorForma = [
+      { forma: 'transferencia', monto: 500 }, // el recibo de cobro de FAC-CRED
+    ];
+    await service.cerrarCaja(1, 1000, undefined, undefined, undefined, { id: 1 }, undefined, declaradoPorForma);
+
+    const [, cambios] = d.repo.update.mock.calls[0];
+    const porForma = Object.fromEntries(cambios.cuadrePorFormaPago.map((f: any) => [f.forma, f]));
+
+    // Efectivo: solo la venta de contado — cuadra exacto.
+    expect(porForma.efectivo).toMatchObject({ esperado: 1000, declarado: 1000, diferencia: 0 });
+    // Transferencia: el COBRO de la factura a crédito — SÍ entra, en su forma real.
+    expect(porForma.transferencia).toMatchObject({ esperado: 500, declarado: 500, diferencia: 0 });
+    // Otros: la factura a crédito NO aparece aquí — nunca infló "otros".
+    expect(porForma.otros).toMatchObject({ esperado: 0, declarado: 0, diferencia: 0 });
+
+    // El faltante falso de -91.13 (caso real) no puede volver a pasar: el
+    // neto es exactamente 0, no -90.
+    const neto = cambios.cuadrePorFormaPago.reduce((s: number, f: any) => s + f.diferencia, 0);
+    expect(Number(neto.toFixed(2))).toBe(0);
+
+    // Cada factura en su sección — nunca la misma en las dos.
+    expect(cambios.facturasCredito).toEqual([FAC_CREDITO]);
+    expect(cambios.facturasSinFormaPago).toEqual([FAC_SIN_FORMA]);
+
+    // No dispara "posible forma mal registrada" — nada de esto es un error.
+    expect(cambios.sospechasFormaPago).toEqual([]);
+  });
+
+  it('el umbral de faltante de efectivo no se entera de la factura a crédito — no cuenta como faltante', async () => {
+    const d = buildDeps();
+    mockTurnoMixto(d);
+    d.repo.findOne.mockResolvedValue(cajaAbierta({
+      id: 1, userId: 1, vendedorId: 12, vendedorNombre: 'Cajero',
+      saldoApertura: 0, ventasEfectivo: 1000, ventasCredito: 90,
+    }));
+    const service = buildService(d);
+
+    const declaradoPorForma = [{ forma: 'transferencia', monto: 500 }];
+    await service.cerrarCaja(1, 1000, undefined, undefined, undefined, { id: 1 }, undefined, declaradoPorForma);
+
+    const [, cambios] = d.repo.update.mock.calls[0];
+    expect(cambios.fueraDeUmbral).toBe(false); // el efectivo cuadra exacto — ningún "faltante" fantasma
+  });
+});
+
 // Prestamista Etapa 5, Parte B — ver
 // docs/prestamista/etapa-5-contabilidad-caja-fiscal.md. El efectivo de
 // préstamos (cobros de cuota y desembolsos) entra al cierre de caja del

@@ -172,6 +172,9 @@ export class CierreCaja {
   facturasSinFormaPagoOriginal?: { id: number; folio: string; total: number; clienteNombre?: string }[] | null;
 
   @Column({ type: 'jsonb', nullable: true })
+  facturasCreditoOriginal?: { id: number; folio: string; total: number; clienteNombre?: string }[] | null;
+
+  @Column({ type: 'jsonb', nullable: true })
   sospechasFormaPagoOriginal?: {
     formaSobrante: string; formaFaltante: string; monto: number;
     facturasCandidatas: { id: number; folio: string; total: number; formasPago: { tipo: number; monto: number }[] }[];
@@ -212,6 +215,15 @@ export class CierreCaja {
   /** Facturas CONTADO del turno sin forma de pago (o que no cubre el total) — fuera del cuadre, se muestran aparte. */
   @Column({ type: 'jsonb', nullable: true })
   facturasSinFormaPago?: { id: number; folio: string; total: number; clienteNombre?: string }[];
+
+  /**
+   * Facturas a CRÉDITO (tipoPago='CREDITO') del turno — fuera del cuadre por
+   * diseño (no es dinero en caja, el cliente la paga después), se muestran
+   * aparte como dato informativo. Nunca se suma al esperado de ninguna forma
+   * de pago (fix 2026-10-13: antes inflaba "Otros" con un faltante falso).
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  facturasCredito?: { id: number; folio: string; total: number; clienteNombre?: string }[];
 
   /**
    * Sobrante de una forma ≈ faltante de otra → probable forma mal registrada

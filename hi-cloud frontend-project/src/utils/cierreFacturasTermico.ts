@@ -29,6 +29,9 @@ export interface FacturaDetalleTermico {
   encf:       string | null;
   hora:       string;
   formasPago: { tipo: number; monto: number }[];
+  /** 'CREDITO' | 'CONTADO' — una venta a crédito nunca debe salir como "— —"
+   * (eso es solo para una de CONTADO sin forma de pago registrada). */
+  tipoPago?:  string;
   total:      number;
   cancelada:  boolean;
 }
@@ -50,8 +53,15 @@ const PAGO_CORTO: Record<number, string> = {
 /**
  * Método de pago en corto. En 80 mm no caben "Transferencia" ni varias formas
  * escritas enteras, y partir la línea rompe la lectura de la columna de montos.
+ *
+ * Una factura a CRÉDITO normalmente no trae `formasPago` (el cliente paga
+ * después, no hay nada que declarar al emitir) — sin `tipoPago`, eso caía en
+ * "— —", el mismo texto que una factura de CONTADO sin forma de pago
+ * registrada (un error real). Con `tipoPago='CREDITO'` siempre se muestra
+ * "CRED", tenga o no `formasPago` — nunca se confunde con el caso de error.
  */
-function metodoCorto(fps: { tipo: number; monto: number }[]): string {
+function metodoCorto(fps: { tipo: number; monto: number }[], tipoPago?: string): string {
+  if (tipoPago === 'CREDITO') return 'CRED';
   if (!fps || fps.length === 0) return '—';
   if (fps.length === 1) return PAGO_CORTO[fps[0].tipo] ?? `T${fps[0].tipo}`;
   return 'MIXTO';
@@ -143,7 +153,7 @@ export function bloqueFacturasTermico(
     const clase  = `row${f.cancelada ? ' fe-anulada' : ''}`;
     return (
       `<div class="${clase}"><span>${esc(folio)}</span><span>${esc(money(f.total))}</span></div>` +
-      `<div class="small${f.cancelada ? ' fe-anulada' : ''}">${esc(horaRD(f.hora))} - ${esc(metodoCorto(f.formasPago))}</div>`
+      `<div class="small${f.cancelada ? ' fe-anulada' : ''}">${esc(horaRD(f.hora))} - ${esc(metodoCorto(f.formasPago, f.tipoPago))}</div>`
     );
   }).join('');
 
