@@ -115,6 +115,57 @@ describe('CierreCajaFormulario', () => {
     expect(valorDe('Vendido Transferencia')).toMatch(/300\.00/);
   });
 
+  // Incidente real (empresa 73, caja #788, 2026-10-12): Beatriz Riva intentó
+  // cerrar la caja de Franchesca Sosa 6 veces seguidas, siempre con el mismo
+  // 400 "Debes indicar un motivo para cerrar la caja de otro cajero" — el
+  // formulario no avisaba de antemano. `esMiCaja` lo calcula el backend con
+  // la MISMA lógica que valida el cierre (ver caja.service.ts).
+  describe('esMiCaja === false — cerrando la caja de otro cajero', () => {
+    const CAJA_AJENA = { ...CAJA_HOY, vendedorNombre: 'Franchesca Sosa', esMiCaja: false };
+
+    it('muestra el aviso con el nombre del cajero desde el inicio', () => {
+      render(<CierreCajaFormulario cajaHoy={CAJA_AJENA} onCerrar={vi.fn().mockResolvedValue(undefined)} />);
+      expect(screen.getByText(/Estás cerrando la caja de Franchesca Sosa/)).toBeInTheDocument();
+    });
+
+    it('el botón Grabar arranca deshabilitado sin motivo — nunca llega a mandar la petición que daría 400', () => {
+      render(<CierreCajaFormulario cajaHoy={CAJA_AJENA} onCerrar={vi.fn().mockResolvedValue(undefined)} />);
+      expect(screen.getByRole('button', { name: 'Grabar' })).toBeDisabled();
+    });
+
+    it('con el motivo escrito, Grabar se habilita y cierra normalmente', async () => {
+      const onCerrar = vi.fn().mockResolvedValue(undefined);
+      render(<CierreCajaFormulario cajaHoy={CAJA_AJENA} onCerrar={onCerrar} />);
+
+      fireEvent.change(screen.getByPlaceholderText(/El cajero no pudo cerrar/), {
+        target: { value: 'El cajero no pudo cerrar, autorizado por mí' },
+      });
+      expect(screen.getByRole('button', { name: 'Grabar' })).not.toBeDisabled();
+
+      fireEvent.change(screen.getByLabelText('Efectivo'), { target: { value: '1500' } });
+      fireEvent.change(screen.getByLabelText('Tarjeta'), { target: { value: '2000' } });
+      fireEvent.change(screen.getByLabelText('Transferencia'), { target: { value: '100' } });
+      fireEvent.change(screen.getByLabelText('Otro'), { target: { value: '25' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Grabar' }));
+
+      await waitFor(() => expect(onCerrar).toHaveBeenCalledTimes(1));
+      const payload: CierreCajaPayload = onCerrar.mock.calls[0][0];
+      expect(payload.notas).toBe('El cajero no pudo cerrar, autorizado por mí');
+    });
+
+    it('esMiCaja true (caja propia): no muestra ningún aviso, Grabar no requiere motivo', () => {
+      render(<CierreCajaFormulario cajaHoy={{ ...CAJA_HOY, esMiCaja: true }} onCerrar={vi.fn().mockResolvedValue(undefined)} />);
+      expect(screen.queryByText(/Estás cerrando la caja de/)).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Grabar' })).not.toBeDisabled();
+    });
+
+    it('esMiCaja undefined (caller que todavía no lo pasa, o backend viejo): se comporta como antes, sin aviso ni bloqueo', () => {
+      render(<CierreCajaFormulario cajaHoy={CAJA_HOY} onCerrar={vi.fn().mockResolvedValue(undefined)} />);
+      expect(screen.queryByText(/Estás cerrando la caja de/)).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Grabar' })).not.toBeDisabled();
+    });
+  });
+
   // Requisito explícito (2026-10-10): política "Cierre de caja con
   // descuadre" en Modo Supervisor. El backend responde 428 cuando el
   // supervisor YA probó su identidad (eso lo resolvió el interceptor

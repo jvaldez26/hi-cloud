@@ -1,8 +1,39 @@
 import { create } from 'zustand';
+import { message } from 'antd';
 import type { AuthUser } from '../types';
 import { syncSentryScope } from '../observability/sentryScope';
 import { borrarCarritoYEspera, idDePestana } from '../pages/pos/carritoStorage';
 import { resolverRolPorEmpresa } from '../utils/resolverRolPorEmpresa';
+import { leerJSON, leerTexto, guardarJSON, guardarTexto } from '../utils/safeStorage';
+import { leerCajaAbiertaEquipo, limpiarCajaAbiertaEquipoSiEs } from '../utils/cajaEquipoStorage';
+
+/**
+ * "Hay una caja abierta de [cajero] en este equipo" — incidente real,
+ * empresa 73: un cajero deja su caja abierta en un equipo compartido y otro
+ * usuario entra ahí sin saber que ya hay un turno abierto. La clave de
+ * localStorage es solo la PISTA de qué mirar (puede estar obsoleta si esa
+ * caja se cerró desde otro equipo) — por eso siempre se reverifica contra
+ * el backend antes de avisar. Import dinámico de api/client para no crear
+ * una dependencia de módulo en la carga del store (mismo patrón que la
+ * rehidratación de App.tsx).
+ */
+async function avisarSiHayCajaAbiertaDeOtroEquipo(usuarioQueEntra: AuthUser): Promise<void> {
+  const registro = leerCajaAbiertaEquipo();
+  if (!registro || registro.vendedorId === usuarioQueEntra.id) return;
+  try {
+    const { default: api } = await import('../api/client');
+    const { data } = await api.get(`/caja/${registro.cajaId}`);
+    const caja = data?.data ?? data;
+    if (caja?.estado !== 'abierta') {
+      limpiarCajaAbiertaEquipoSiEs(registro.cajaId);
+      return;
+    }
+    message.warning({
+      content: `Hay una caja abierta de ${registro.vendedorNombre || 'otro cajero'} en este equipo`,
+      duration: 6,
+    });
+  } catch { /* verificación best-effort — un fallo de red no debe bloquear el login */ }
+}
 
 // Callback registrado por App.tsx para limpiar React Query al cerrar sesión.
 let _onLogout: (() => void) | null = null;
@@ -57,21 +88,22 @@ interface AuthState {
   updateUser:        (partial: Partial<AuthUser>) => void;
 }
 
-// Solo guardamos info de UI (NO el token — ahora vive en cookie httpOnly)
-const savedUser          = (() => { try { return localStorage.getItem('auth_user'); } catch { return null; } })();
-const savedEmpresa       = (() => { try { return localStorage.getItem('empresaId'); } catch { return null; } })();
-const savedEmpresas      = (() => { try { return localStorage.getItem('mis_empresas'); } catch { return null; } })();
-const savedAlmacen       = (() => { try { return localStorage.getItem('almacenId'); } catch { return null; } })();
-const savedSucursal      = (() => { try { return localStorage.getItem('sucursalId'); } catch { return null; } })();
-const savedSucursalNom   = (() => { try { return localStorage.getItem('sucursalNombre'); } catch { return null; } })();
+// Solo guardamos info de UI (NO el token — ahora vive en cookie httpOnly).
+// Toda lectura/escritura pasa por safeStorage: un dato corrupto (incluida la
+// cadena literal "undefined") nunca puede tumbar la carga de la app — esta
+// inicialización corre a nivel de MÓDULO, antes de que React monte nada, así
+// que ningún try/catch de componente llega a protegerla (ver safeStorage.ts).
+const savedEmpresa  = leerTexto(localStorage, 'empresaId');
+const savedAlmacen  = leerTexto(localStorage, 'almacenId');
+const savedSucursal = leerTexto(localStorage, 'sucursalId');
 
 export const useAuthStore = create<AuthState>((set, get) => ({
-  user:           savedUser     ? (JSON.parse(savedUser) as AuthUser) : null,
+  user:           leerJSON<AuthUser>(localStorage, 'auth_user'),
   empresaActual:  savedEmpresa  ? Number(savedEmpresa) : null,
-  empresas:       savedEmpresas ? (JSON.parse(savedEmpresas) as EmpresaItem[]) : [],
+  empresas:       leerJSON<EmpresaItem[]>(localStorage, 'mis_empresas') ?? [],
   almacenActual:  savedAlmacen  ? Number(savedAlmacen) : null,
   sucursalActual: savedSucursal ? Number(savedSucursal) : null,
-  sucursalNombre: savedSucursalNom ?? null,
+  sucursalNombre: leerTexto(localStorage, 'sucursalNombre'),
   hydrated:       false,
 
   login: (user, empresaActual, empresas = [], almacenActual?, sucursalActual?, sucursalNombre?) => {
@@ -85,24 +117,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const userResuelto = rolResuelto === user.role ? user : { ...user, role: rolResuelto };
 
     // Token NO se guarda — está en cookie httpOnly, JS no puede verlo
-    localStorage.setItem('auth_user', JSON.stringify(userResuelto));
+    guardarJSON(localStorage, 'auth_user', userResuelto);
 
     if (empresaResuelta) {
-      localStorage.setItem('empresaId',    String(empresaResuelta));
-      localStorage.setItem('mis_empresas', JSON.stringify(empresas));
+      guardarTexto(localStorage, 'empresaId',    String(empresaResuelta));
+      guardarJSON(localStorage,  'mis_empresas', empresas);
     } else {
-      localStorage.removeItem('empresaId');
-      localStorage.removeItem('mis_empresas');
+      guardarTexto(localStorage, 'empresaId', null);
+      guardarJSON(localStorage,  'mis_empresas', null);
     }
 
-    if (almacenActual)   localStorage.setItem('almacenId',      String(almacenActual));
-    else                 localStorage.removeItem('almacenId');
-    if (sucursalActual)  localStorage.setItem('sucursalId',     String(sucursalActual));
-    else                 localStorage.removeItem('sucursalId');
-    if (sucursalNombre)  localStorage.setItem('sucursalNombre', sucursalNombre);
-    else                 localStorage.removeItem('sucursalNombre');
+    guardarTexto(localStorage, 'almacenId',      almacenActual   ? String(almacenActual)  : null);
+    guardarTexto(localStorage, 'sucursalId',     sucursalActual  ? String(sucursalActual) : null);
+    guardarTexto(localStorage, 'sucursalNombre', sucursalNombre  || null);
 
     set({ user: userResuelto, empresaActual: empresaResuelta, empresas, almacenActual: almacenActual ?? null, sucursalActual: sucursalActual ?? null, sucursalNombre: sucursalNombre ?? null, hydrated: true });
+
+    void avisarSiHayCajaAbiertaDeOtroEquipo(userResuelto);
   },
 
   logout: (opts) => {
@@ -141,7 +172,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isAuth: () => !!get().user,
 
   cambiarEmpresa: (empresaId, empresasFrescas) => {
-    localStorage.setItem('empresaId', String(empresaId));
+    guardarTexto(localStorage, 'empresaId', String(empresaId));
     set(state => {
       if (!state.user) return { empresaActual: empresaId };
       // Si el caller trae una lista más fresca que la del store (ej. AppLayout
@@ -151,26 +182,24 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const listaParaResolver = empresasFrescas && empresasFrescas.length > 0 ? empresasFrescas : state.empresas;
       const { rol: rolResuelto } = resolverRolPorEmpresa(state.user.role, empresaId, listaParaResolver);
       const newUser = rolResuelto === state.user.role ? state.user : { ...state.user, role: rolResuelto };
-      if (newUser !== state.user) localStorage.setItem('auth_user', JSON.stringify(newUser));
-      if (empresasFrescas && empresasFrescas.length > 0) localStorage.setItem('mis_empresas', JSON.stringify(empresasFrescas));
+      if (newUser !== state.user) guardarJSON(localStorage, 'auth_user', newUser);
+      if (empresasFrescas && empresasFrescas.length > 0) guardarJSON(localStorage, 'mis_empresas', empresasFrescas);
       return { empresaActual: empresaId, user: newUser, empresas: listaParaResolver };
     });
   },
 
   setSucursalActual: (sucursalId) => {
-    localStorage.setItem('sucursalId', String(sucursalId));
+    guardarTexto(localStorage, 'sucursalId', String(sucursalId));
     set(() => ({ sucursalActual: sucursalId }));
   },
 
   setSucursalNombre: (nombre) => {
-    if (nombre) localStorage.setItem('sucursalNombre', nombre);
-    else        localStorage.removeItem('sucursalNombre');
+    guardarTexto(localStorage, 'sucursalNombre', nombre);
     set(() => ({ sucursalNombre: nombre }));
   },
 
   setAlmacenActual: (almacenId) => {
-    if (almacenId != null) localStorage.setItem('almacenId', String(almacenId));
-    else localStorage.removeItem('almacenId');
+    guardarTexto(localStorage, 'almacenId', almacenId != null ? String(almacenId) : null);
     set(() => ({ almacenActual: almacenId }));
   },
 
@@ -186,7 +215,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set(state => {
       if (!state.user) return {};
       const updated = { ...state.user, ...partial };
-      localStorage.setItem('auth_user', JSON.stringify(updated));
+      guardarJSON(localStorage, 'auth_user', updated);
       return { user: updated };
     });
   },
@@ -197,3 +226,49 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 // Una vez al cargar (estado hidratado desde localStorage) + en cada cambio.
 syncSentryScope(useAuthStore.getState());
 useAuthStore.subscribe((s) => syncSentryScope(s));
+
+// ── Sincronización entre pestañas (incidente real, empresa 73, 2026-10-12 y
+// 2026-10-09): en un equipo compartido del local, una pestaña vieja se queda
+// mostrando el usuario con el que se cargó, en memoria, aunque OTRA pestaña
+// haya cerrado esa sesión o haya iniciado una nueva — la cookie httpOnly se
+// comparte por NAVEGADOR, no por pestaña, así que las peticiones de la
+// pestaña vieja empiezan a salir con el usuario nuevo sin que nadie lo note
+// hasta que el backend rechaza una acción ("no es tu caja").
+//
+// El evento 'storage' SOLO se dispara en pestañas DISTINTAS a la que hizo el
+// cambio (estándar del navegador) — la pestaña que hizo login/logout ya se
+// actualiza sola por el flujo normal de React.
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key !== 'auth_user') return;
+
+    const idAnterior = useAuthStore.getState().user?.id ?? null;
+    const nuevoUsuario = leerJSON<AuthUser>(localStorage, 'auth_user');
+    const idNuevo = nuevoUsuario?.id ?? null;
+
+    if (idNuevo === idAnterior) return; // mismo usuario (ej. solo cambió el rol) — nada que avisar aquí
+
+    if (idNuevo == null) {
+      // Logout en otra pestaña — a login de inmediato, sin esperar la
+      // próxima petición (que de todas formas fallaría, pero tarde).
+      useAuthStore.setState({
+        user: null, empresaActual: null, empresas: [],
+        almacenActual: null, sucursalActual: null, hydrated: true,
+      });
+      window.location.href = '/login';
+      return;
+    }
+
+    // Otro usuario inició sesión en este navegador — esta pestaña NUNCA debe
+    // seguir actuando como si fuera la anterior. Aviso + recarga completa
+    // (no solo actualizar el store: React Query, el store del POS, etc.
+    // también tienen que repartir desde cero con el usuario correcto).
+    try {
+      message.warning({
+        content: `La sesión cambió a ${nuevoUsuario?.nombre ?? 'otro usuario'} — recargando…`,
+        duration: 2,
+      });
+    } catch { /* antd aún no montado — no es crítico, igual se recarga */ }
+    setTimeout(() => window.location.reload(), 1200);
+  });
+}

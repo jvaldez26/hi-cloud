@@ -180,7 +180,7 @@ export class CajaController {
       return this.cajaService.getCajaHoyByUserId(usuario!.id);
     }
     const vid = vendedorId !== undefined ? Number(vendedorId) : undefined;
-    return this.cajaService.getCajaHoy(vid);
+    return this.cajaService.getCajaHoy(vid, usuario);
   }
 
   @Get('abiertas')

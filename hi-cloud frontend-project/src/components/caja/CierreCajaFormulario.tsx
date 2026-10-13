@@ -171,6 +171,16 @@ export function CierreCajaFormulario({
   const grid3: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 10 };
   const card: React.CSSProperties = { background: cardBg, border: `1px solid ${cardBorder}`, borderRadius: 10, padding: '14px 16px', marginBottom: 14 };
 
+  // Incidente real (empresa 73, caja #788, 2026-10-12): Beatriz Riva intentó
+  // cerrar la caja de Franchesca Sosa 6 veces seguidas, siempre con el mismo
+  // 400 "Debes indicar un motivo para cerrar la caja de otro cajero" —
+  // porque el formulario no decía nada hasta que el backend lo rechazaba.
+  // `esMiCaja` lo calcula el backend (getCajaHoy, misma función que valida
+  // el cierre) — si es false, el usuario actual NO es el dueño de esta caja
+  // (solo puede pasar siendo ADMIN/CONTADOR; un VENDEDOR nunca ve la caja de
+  // otro). El aviso y el motivo obligatorio van desde el inicio, no tras el error.
+  const cerrandoCajaAjena = cajaHoy?.esMiCaja === false;
+
   const handleCerrar = () => {
     // "Una forma con ventas no puede quedar en 0 sin confirmación explícita."
     // El frontend no conoce el esperado real (el vendedor no lo ve en su caja
@@ -251,6 +261,14 @@ export function CierreCajaFormulario({
         </div>
       )}
 
+      {/* Caja de otro cajero — aviso + motivo obligatorio desde el inicio */}
+      {cerrandoCajaAjena && (
+        <div style={{ background: '#fff1f0', border: '1px solid #ffa39e', borderRadius: 8,
+          padding: '10px 14px', marginBottom: 14, fontSize: 13, color: '#a8071a', fontWeight: 600 }}>
+          Estás cerrando la caja de {cajaHoy?.vendedorNombre ?? 'otro cajero'} — indica el motivo abajo para continuar.
+        </div>
+      )}
+
       {/* Desglose de Operaciones — solo en modo normal (el vendedor no ve el esperado de su caja abierta) */}
       {!cajaHoy?.ciegoCajaActivo && (
         <div style={card}>
@@ -327,18 +345,24 @@ export function CierreCajaFormulario({
         </div>
       </div>
 
-      {/* Nota */}
+      {/* Nota — obligatoria si se está cerrando la caja de otro cajero (el backend igual la exige; esto solo evita el ida y vuelta de un 400). */}
       <div style={{ marginBottom: 14 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Nota de cierre</div>
-        <textarea value={nota} onChange={e => setNota(e.target.value)} placeholder="Nota de cierre..."
-          rows={2} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #ddd',
+        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: cerrandoCajaAjena ? '#a8071a' : 'inherit' }}>
+          {cerrandoCajaAjena ? 'Motivo (obligatorio)' : 'Nota de cierre'}
+        </div>
+        <textarea value={nota} onChange={e => setNota(e.target.value)}
+          placeholder={cerrandoCajaAjena ? 'Ej: El cajero no pudo cerrar, autorizado por...' : 'Nota de cierre...'}
+          rows={2} style={{ width: '100%', padding: '8px 12px', borderRadius: 8,
+            border: `1px solid ${cerrandoCajaAjena && !nota.trim() ? '#ff4d4f' : '#ddd'}`,
             fontSize: 13, resize: 'vertical', outline: 'none', boxSizing: 'border-box', background: '#fff' }} />
       </div>
 
       <div style={{ display: 'flex', gap: 8 }}>
-        <button onClick={handleCerrar} disabled={submitting}
+        <button onClick={handleCerrar} disabled={submitting || (cerrandoCajaAjena && !nota.trim())}
           style={{ flex: 1, height: 46, borderRadius: 10, border: 'none',
-            background: '#059669', color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
+            background: '#059669', color: '#fff', fontWeight: 700, fontSize: 15,
+            cursor: (submitting || (cerrandoCajaAjena && !nota.trim())) ? 'not-allowed' : 'pointer',
+            opacity: (cerrandoCajaAjena && !nota.trim()) ? 0.6 : 1 }}>
           {submitting ? 'Cerrando...' : 'Grabar'}
         </button>
       </div>

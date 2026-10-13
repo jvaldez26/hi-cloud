@@ -154,6 +154,7 @@ import { GastosImportacionModule }  from './gastos-importacion/gastos-importacio
 import { ActivacionEcfModule } from './activacion-ecf/activacion-ecf.module';
 import { JWT_EXPIRES_IN_DEFAULT } from './auth/auth.constants';
 import { ActividadInterceptor } from './auth/actividad.interceptor';
+import { SesionCoherenteInterceptor } from './auth/sesion-coherente.interceptor';
 import { OrigenFacturaModule } from './common/origen-factura/origen-factura.module';
 import { CarWashModule } from './car-wash/car-wash.module';
 
@@ -439,6 +440,11 @@ import { CarWashModule } from './car-wash/car-wash.module';
     // Global (y no dentro de TenantMiddleware) a propósito: el middleware sale
     // temprano en RUTAS_SIN_TENANT y dejaba a '/admin/' sin registrar actividad.
     { provide: APP_INTERCEPTOR, useClass: ActividadInterceptor },
+    // Respaldo del evento 'storage' entre pestañas (ver auth.store.ts): si
+    // el id de usuario que la pantalla cree tener (header del frontend) no
+    // coincide con el del JWT real, 409 — nunca deja operar con un usuario
+    // desincronizado aunque la señal de la otra pestaña falle.
+    { provide: APP_INTERCEPTOR, useClass: SesionCoherenteInterceptor },
   ],
 })
 export class AppModule implements NestModule {

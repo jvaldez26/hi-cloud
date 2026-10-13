@@ -1107,6 +1107,35 @@ describe('CajaService.getCajaHoy (por vendedorId) — ADMIN/CONTADOR nunca ven l
   });
 });
 
+// Incidente real (empresa 73, caja #788, 2026-10-12): Beatriz Riva intentó
+// cerrar la caja de Franchesca Sosa 6 veces, siempre con el mismo 400,
+// porque el formulario no avisaba de antemano que no era su caja. `esMiCaja`
+// es lo que el frontend usa para mostrar "Estás cerrando la caja de
+// [cajero]" y exigir el motivo ANTES de intentar cerrar, con la MISMA lógica
+// que ya valida el cierre (esCajaDelUsuario) — nunca una copia aparte.
+describe('CajaService.getCajaHoy — esMiCaja (para el aviso del frontend, no decide el permiso real)', () => {
+  it('sin usuarioActual (ningún caller lo pasa): esMiCaja no se calcula — undefined, no rompe nada existente', async () => {
+    const { svc } = makeCajaService();
+    const r: any = await svc.getCajaHoy(10);
+
+    expect(r.esMiCaja).toBeUndefined();
+  });
+
+  it('caja.userId === usuarioActual.id: esMiCaja true', async () => {
+    const { svc } = makeCajaService({ cajas: [cajaBase({ userId: 114 })] });
+    const r: any = await svc.getCajaHoy(10, { id: 114 });
+
+    expect(r.esMiCaja).toBe(true);
+  });
+
+  it('caja.userId distinto y sin vendedorId propio resuelto (el caso real: Beatriz admin, caja de Franchesca): esMiCaja false', async () => {
+    const { svc } = makeCajaService({ cajas: [cajaBase({ userId: 114 })] }); // dataSource.query → [] por defecto, resolverMiVendedorId no resuelve nada
+    const r: any = await svc.getCajaHoy(10, { id: 113 });
+
+    expect(r.esMiCaja).toBe(false);
+  });
+});
+
 describe('CajaService.getDatosParaImprimir — datos COMPLETOS, para después de la autorización de supervisor', () => {
   it('devuelve la caja SIN recortar (el guard de la ruta ya autorizó, o el rol no es VENDEDOR) + el detalle de facturas', async () => {
     const { svc } = makeCajaService({

@@ -1300,7 +1300,7 @@ export class CajaService {
 
   // ── Cajas del día (filtradas por empresa) ─────────────────────────────────
 
-  async getCajaHoy(vendedorId?: number) {
+  async getCajaHoy(vendedorId?: number, usuarioActual?: { id: number }) {
     const empresaId = this.tenantService.getEmpresaId();
     const hoy = fechaHoyRD();
 
@@ -1315,8 +1315,15 @@ export class CajaService {
         await this.recalcularDesdeBD(caja.id, hoy, caja.vendedorId, empresaId);
       }
       const fresh = await this.repo.findOne({ where: { id: caja.id } });
-      // getCajaHoy() solo la llaman admin/contador — nunca aplica ciego
-      return await this.conEfectivoEsperado(fresh);
+      // getCajaHoy() solo la llaman admin/contador — nunca aplica ciego.
+      // esMiCaja: misma lógica EXACTA que valida el cierre (esCajaDelUsuario)
+      // — el frontend la usa SOLO para avisar "Estás cerrando la caja de
+      // [cajero]" antes de que el admin/contador intente cerrar, en vez de
+      // que se entere tras un 400 (incidente real: 6 intentos fallidos
+      // seguidos, empresa 73, caja #788). Nunca es la fuente de verdad del
+      // permiso — eso lo sigue decidiendo el backend en cerrar().
+      const esMiCaja = usuarioActual ? await this.esCajaDelUsuario(fresh!, usuarioActual, empresaId) : undefined;
+      return { ...(await this.conEfectivoEsperado(fresh)), esMiCaja };
     }
 
     // Sin filtro de vendedor → todas las cajas del día de ESTA empresa
@@ -1343,7 +1350,10 @@ export class CajaService {
     // Cada caja lleva su efectivoEsperado: es la lista que pinta las tarjetas
     // del panel, donde el frontend recalculaba la fórmula por su cuenta.
     return {
-      cajas: await Promise.all(frescas.map(c => this.conEfectivoEsperado(c))),
+      cajas: await Promise.all(frescas.map(async c => ({
+        ...(await this.conEfectivoEsperado(c)),
+        esMiCaja: usuarioActual ? await this.esCajaDelUsuario(c, usuarioActual, empresaId) : undefined,
+      }))),
       totalCajas: frescas.length,
     };
   }
@@ -1468,9 +1478,13 @@ export class CajaService {
     // antes, por si algún día este método deja de ser exclusivo de VENDEDOR).
     // Al cerrar, el vendedor recibe datos completos para imprimir.
     const conEsperado = await this.conEfectivoEsperado(fresh);
-    return (cierreCajaCiego && fresh?.estado === EstadoCierre.ABIERTA)
+    // Este método solo lo llama el propio VENDEDOR sobre SU caja (scoped por
+    // userId/vendedorId arriba) — esMiCaja siempre true, por consistencia
+    // con getCajaHoy() (ver ahí por qué existe el campo).
+    const resultado = (cierreCajaCiego && fresh?.estado === EstadoCierre.ABIERTA)
       ? this.ocultarCamposCiego(fresh)
       : this.ocultarSiVendedorYAbierta(conEsperado, UserRole.VENDEDOR);
+    return { ...resultado, esMiCaja: true };
   }
 
   // ── Historial (filtrado por empresa) ─────────────────────────────────────
