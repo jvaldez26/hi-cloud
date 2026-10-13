@@ -47,6 +47,15 @@ apiClient.interceptors.request.use((config) => {
   const empresaId = localStorage.getItem('empresaId');
   if (empresaId) config.headers['X-Empresa-ID'] = empresaId;
 
+  // Defensa en profundidad contra sesión compartida entre pestañas (ver
+  // sesion-coherente.interceptor.ts, backend): el id de usuario que ESTA
+  // pantalla cree tener, leído directo de localStorage (no del store en
+  // memoria, que es justo lo que puede estar desactualizado en una pestaña
+  // vieja). Si no coincide con el JWT real de la cookie, el backend
+  // responde 409 — lo atrapa el interceptor de respuesta de abajo.
+  const usuarioEsperado = leerJSON<{ id?: number }>(localStorage, 'auth_user');
+  if (usuarioEsperado?.id != null) config.headers['x-usuario-esperado'] = String(usuarioEsperado.id);
+
   // ── Subidas de archivos ──────────────────────────────────────────────────
   //
   // El cliente se crea con 'Content-Type: application/json' por defecto, y si
@@ -139,6 +148,13 @@ const REFRESH_MAX_INTENTOS      = 3;
 const REFRESH_BACKOFF_BASE_MS   = 1500;
 const REFRESH_BACKOFF_MAX_MS    = 8000;
 const AVISO_REINTENTO_KEY       = 'hc-auth-reintentando';
+
+// `message` (antd) queda sombreado dentro del interceptor de respuesta por
+// `const message = extractBackendMessage(err)` — por eso este aviso vive
+// aquí, en el scope del módulo, igual que mostrarAvisoReintentando().
+function avisarSesionCambio(): void {
+  try { message.warning({ content: 'La sesión de este equipo cambió — recargando…', duration: 2 }); } catch { /* antd aún no montado */ }
+}
 
 function mostrarAvisoReintentando(): void {
   try {
@@ -239,6 +255,18 @@ apiClient.interceptors.response.use(
 
     // Un error también trae la cabecera: sirve igual para sincronizar.
     registrarHoraServidor(err.response?.headers?.date as string | undefined);
+
+    // ── 409 SESION_CAMBIO: esta pestaña está operando con un usuario que ya
+    // no es el de la sesión real del navegador (ver sesion-coherente.
+    // interceptor.ts, backend) — respaldo del evento 'storage' (auth.store.ts)
+    // para cuando esa señal falla. Recarga completa: es la única forma de
+    // reinicializar TODO el estado (store, React Query, el store del POS)
+    // con el usuario correcto, igual que el aviso de la otra pestaña.
+    if (status === 409 && message === 'SESION_CAMBIO') {
+      avisarSesionCambio();
+      setTimeout(() => window.location.reload(), 1200);
+      return Promise.reject(err);
+    }
 
     // ── 401: access token expirado → intentar refresh automático (S-28) ─────
     if (status === 401) {
