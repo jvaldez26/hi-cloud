@@ -360,3 +360,71 @@ describe('CobranzaService — flujo completo de cobranza (Etapa 3)', () => {
     await expect(svc.notificarMora(2, 100, ANA)).rejects.toThrow(NotFoundException);
   });
 });
+
+// Punto 3 de docs/prestamista/decisiones-pendientes.md: los umbrales de
+// escalamiento (antes fijos 5/15/30/60 para TODAS las financieras) ahora se
+// leen de `empresa.configuracion` por empresa, con ese mismo default. El
+// dispatcher de `buildDs()` arriba no evalúa el SQL real (el CASE WHEN se
+// manda a Postgres, no a un parser), así que estas pruebas interceptan
+// directamente el string de SQL que `carteraVencida()` ejecuta — es la
+// única forma de demostrar qué umbral quedó realmente interpolado.
+describe('CobranzaService.carteraVencida — umbrales de escalamiento configurables por empresa', () => {
+  function buildDsConCfg(configuracion: Record<string, unknown> | undefined) {
+    const sqlCapturado: string[] = [];
+    const query = jest.fn(async (sql: string, _params: any[] = []): Promise<any[]> => {
+      sqlCapturado.push(sql);
+      if (sql.includes('SELECT configuracion FROM empresa')) {
+        return configuracion === undefined ? [] : [{ configuracion }];
+      }
+      if (sql.includes('SELECT COUNT(*) FROM pr_prestamos p')) return [{ count: '0' }];
+      if (sql.includes('"cobradorEfectivoId"')) return [];
+      return [];
+    });
+    const svc = new CobranzaService({ query } as any, { enviar: jest.fn() } as any);
+    return { svc, sqlCapturado };
+  }
+
+  it('sin configuración (empresa que nunca tocó el default): el SQL usa 5/15/30/60, igual que antes de ser configurable', async () => {
+    const { svc, sqlCapturado } = buildDsConCfg(undefined);
+    await svc.carteraVencida(1, {});
+    const sqlPrincipal = sqlCapturado.find(s => s.includes('"cobradorEfectivoId"'))!;
+    expect(sqlPrincipal).toContain(`>= 60`);
+    expect(sqlPrincipal).toContain(`>= 30`);
+    expect(sqlPrincipal).toContain(`>= 15`);
+    expect(sqlPrincipal).toContain(`>= 5`);
+  });
+
+  it('con configuración custom por empresa: el SQL usa los umbrales guardados, no el default', async () => {
+    const { svc, sqlCapturado } = buildDsConCfg({
+      cobranzaUmbralRecordatorio: 3, cobranzaUmbralTelefonica: 10,
+      cobranzaUmbralCarta: 20, cobranzaUmbralLegal: 45,
+    });
+    await svc.carteraVencida(1, {});
+    const sqlPrincipal = sqlCapturado.find(s => s.includes('"cobradorEfectivoId"'))!;
+    expect(sqlPrincipal).toContain(`>= 45`);
+    expect(sqlPrincipal).toContain(`>= 20`);
+    expect(sqlPrincipal).toContain(`>= 10`);
+    expect(sqlPrincipal).toContain(`>= 3`);
+    // Los defaults viejos no deben quedar colados en el SQL para esta empresa.
+    expect(sqlPrincipal).not.toContain(`>= 60`);
+  });
+
+  it('configuración inválida (texto, negativo, 0) cae al default — nunca se interpola un valor no numérico', async () => {
+    const { svc, sqlCapturado } = buildDsConCfg({
+      cobranzaUmbralRecordatorio: 'pronto', cobranzaUmbralTelefonica: -5,
+      cobranzaUmbralCarta: 0, cobranzaUmbralLegal: null,
+    });
+    await svc.carteraVencida(1, {});
+    const sqlPrincipal = sqlCapturado.find(s => s.includes('"cobradorEfectivoId"'))!;
+    expect(sqlPrincipal).toContain(`>= 60`);
+    expect(sqlPrincipal).toContain(`>= 30`);
+    expect(sqlPrincipal).toContain(`>= 15`);
+    expect(sqlPrincipal).toContain(`>= 5`);
+  });
+
+  it('expone los umbrales vigentes en la respuesta (para que la UI los pueda mostrar/editar)', async () => {
+    const { svc } = buildDsConCfg({ cobranzaUmbralLegal: 45 });
+    const r = await svc.carteraVencida(1, {});
+    expect(r.umbralesEscalamiento).toEqual({ recordatorio: 5, telefonica: 15, carta: 30, legal: 45 });
+  });
+});

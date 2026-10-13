@@ -10,13 +10,20 @@ import WhatsAppButton from '../../components/ui/WhatsAppButton';
 import { useColumnVisibility } from '../../hooks/useColumnVisibility';
 import { exportarExcel } from '../../utils/exportExcel';
 import { prestamistalApi } from '../../api/prestamista.api';
+import { configuracionApi } from '../../api/configuracion.api';
 import { hoyRD } from '../../utils/fechaRD';
 import { useAuthStore } from '../../store/auth.store';
+import { Settings } from 'lucide-react';
 
 const { Option } = Select;
 const fmt = (n: any) => `RD$ ${Number(n ?? 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`;
 
-/** Etapa 3 — ver docs/prestamista/etapa-3-cobranza.md (umbrales 5/15/30/60). */
+/**
+ * Etapa 3 — ver docs/prestamista/etapa-3-cobranza.md. Default de arranque
+ * 5/15/30/60 días; configurable por empresa desde `carteraResp.umbralesEscalamiento`
+ * / el modal "Umbrales de escalamiento" más abajo (ver
+ * docs/prestamista/decisiones-pendientes.md, punto 3).
+ */
 const ESCALAMIENTO: Record<string, { label: string; color: string }> = {
   sin_accion:   { label: 'Al día',               color: 'default' },
   recordatorio: { label: 'Recordatorio',          color: 'blue' },
@@ -73,6 +80,9 @@ export default function CobranzaPage() {
     }),
   });
   const cartera: any[] = (carteraResp as any)?.data ?? carteraResp ?? [];
+  const umbralesVigentes = (carteraResp as any)?.umbralesEscalamiento
+    ?? { recordatorio: 5, telefonica: 15, carta: 30, legal: 60 };
+  const esAdmin = usuario?.role === 'admin';
 
   const registrarGestion = useMutation({
     // proximaGestion/fechaPromesaPago llegan como objeto dayjs del
@@ -137,6 +147,32 @@ export default function CobranzaPage() {
     setSelectedPrestamo(row);
     formAsignar.setFieldsValue({ cobradorId: row.cobradorId ?? undefined });
     setAsignarOpen(true);
+  };
+
+  // Umbrales de escalamiento — punto 3 de decisiones-pendientes.md. Solo
+  // ADMIN (mismo rol que exige el backend en PATCH /configuracion/empresa).
+  const [umbralesOpen, setUmbralesOpen] = useState(false);
+  const [formUmbrales] = Form.useForm();
+  const guardarUmbrales = useMutation({
+    mutationFn: (v: { recordatorio: number; telefonica: number; carta: number; legal: number }) =>
+      configuracionApi.updateEmpresa({
+        configuracion: {
+          cobranzaUmbralRecordatorio: v.recordatorio,
+          cobranzaUmbralTelefonica:   v.telefonica,
+          cobranzaUmbralCarta:        v.carta,
+          cobranzaUmbralLegal:        v.legal,
+        },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['prestamista-cartera-vencida'] });
+      setUmbralesOpen(false);
+      message.success('Umbrales de escalamiento actualizados');
+    },
+    onError: (e: any) => message.error(e?.response?.data?.message ?? 'Error al guardar los umbrales'),
+  });
+  const abrirUmbrales = () => {
+    formUmbrales.setFieldsValue(umbralesVigentes);
+    setUmbralesOpen(true);
   };
 
   const cols = [
@@ -237,6 +273,11 @@ export default function CobranzaPage() {
             Promesas incumplidas
           </Button>
           <Button icon={<FileExcelOutlined />} onClick={exportar}>Excel</Button>
+          {esAdmin && (
+            <Tooltip title="Días de mora para sugerir recordatorio / gestión telefónica / carta / acción legal">
+              <Button icon={<Settings size={14} />} onClick={abrirUmbrales}>Umbrales</Button>
+            </Tooltip>
+          )}
           <ColumnToggle columns={COLS_DEF} visibleColumns={visibleColumns} onChange={updateVisibility} />
           <RefreshByKeyButton queryKey={['prestamista-cartera-vencida']} />
           <VideoTutorialButton />
@@ -307,6 +348,31 @@ export default function CobranzaPage() {
             <Select allowClear placeholder="Sin asignar (sugiere al oficial del préstamo)">
               {((cobradores as any[]) ?? []).map((c: any) => <Option key={c.id} value={c.id}>{c.nombre}</Option>)}
             </Select>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal title="Umbrales de escalamiento de cobranza" open={umbralesOpen}
+        onCancel={() => setUmbralesOpen(false)}
+        onOk={() => formUmbrales.validateFields().then(v => guardarUmbrales.mutate(v))}
+        okText="Guardar" confirmLoading={guardarUmbrales.isPending}>
+        <p style={{ color: '#6b7280', fontSize: 13, marginTop: 0 }}>
+          Días de mora a partir de los cuales la columna "Escalamiento" sugiere cada nivel.
+          Es solo una guía visual para priorizar a quién llamar hoy — nunca bloquea ni dispara nada
+          automáticamente. Default de fábrica: 5 / 15 / 30 / 60.
+        </p>
+        <Form form={formUmbrales} layout="vertical" style={{ paddingTop: 8 }}>
+          <Form.Item name="recordatorio" label="Recordatorio (días)" rules={[{ required: true, type: 'number', min: 1 }]}>
+            <InputNumber style={{ width: '100%' }} min={1} />
+          </Form.Item>
+          <Form.Item name="telefonica" label="Gestión telefónica (días)" rules={[{ required: true, type: 'number', min: 1 }]}>
+            <InputNumber style={{ width: '100%' }} min={1} />
+          </Form.Item>
+          <Form.Item name="carta" label="Carta formal (días)" rules={[{ required: true, type: 'number', min: 1 }]}>
+            <InputNumber style={{ width: '100%' }} min={1} />
+          </Form.Item>
+          <Form.Item name="legal" label="Acción legal (días)" rules={[{ required: true, type: 'number', min: 1 }]}>
+            <InputNumber style={{ width: '100%' }} min={1} />
           </Form.Item>
         </Form>
       </Modal>

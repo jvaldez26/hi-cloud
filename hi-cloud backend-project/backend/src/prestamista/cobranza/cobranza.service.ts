@@ -13,19 +13,59 @@ export class CobranzaService {
   ) {}
 
   /**
+   * Umbrales de días de mora para sugerir el nivel de escalamiento —
+   * configurables por empresa desde 2026-10-13 (ver
+   * docs/prestamista/decisiones-pendientes.md, punto 3: antes eran fijos
+   * 5/15/30/60 para TODAS las financieras). Mismo patrón que
+   * `CajaService.getEmpresaCfg()`: una fila JSONB en `empresa.configuracion`,
+   * con default que preserva el comportamiento de toda empresa que nunca
+   * tocó esta config. Una empresa más estricta (ej. acción legal a los 45
+   * días en vez de 60) solo necesita guardar
+   * `configuracion.cobranzaUmbralLegal = 45` — mismo mecanismo genérico que
+   * ya usa `PATCH /configuracion/empresa` para `umbralDescuadreCaja`,
+   * `prestamoEfectivoPorCaja`, etc.
+   */
+  private async getUmbralesEscalamiento(empresaId: number): Promise<{
+    recordatorio: number; telefonica: number; carta: number; legal: number;
+  }> {
+    const [row] = await this.ds.query<{ configuracion: Record<string, unknown> }[]>(
+      'SELECT configuracion FROM empresa WHERE id = $1 LIMIT 1',
+      [empresaId],
+    );
+    const cfg = (row?.configuracion ?? {}) as Record<string, unknown>;
+    // Entero positivo válido → se usa; cualquier otra cosa (ausente, texto,
+    // negativo, 0, NaN) → cae al default de arranque. Nunca se interpola un
+    // valor no numérico en el SQL de abajo.
+    const num = (v: unknown, def: number) => {
+      const n = Number(v);
+      return Number.isFinite(n) && n > 0 ? Math.trunc(n) : def;
+    };
+    return {
+      recordatorio: num(cfg.cobranzaUmbralRecordatorio, 5),
+      telefonica:   num(cfg.cobranzaUmbralTelefonica,   15),
+      carta:        num(cfg.cobranzaUmbralCarta,        30),
+      legal:        num(cfg.cobranzaUmbralLegal,        60),
+    };
+  }
+
+  /**
    * Nivel de escalamiento sugerido según días de mora — puramente
    * informativo (una Tag en la UI para priorizar a quién llamar hoy), nunca
-   * bloquea ni dispara nada solo. Umbrales de arranque (ver
-   * docs/prestamista/decisiones-pendientes.md): 5/15/30/60 días.
+   * bloquea ni dispara nada solo. Los 4 umbrales ya pasaron por `num()` en
+   * `getUmbralesEscalamiento()` (siempre enteros positivos) antes de llegar
+   * aquí — interpolarlos directo en el CASE es seguro, no hay forma de que
+   * lleven SQL arbitrario.
    */
-  private static readonly SQL_ESCALAMIENTO = `
+  private sqlEscalamiento(u: { recordatorio: number; telefonica: number; carta: number; legal: number }): string {
+    return `
     CASE
-      WHEN p."diasMoraActual" >= 60 THEN 'legal'
-      WHEN p."diasMoraActual" >= 30 THEN 'carta'
-      WHEN p."diasMoraActual" >= 15 THEN 'telefonica'
-      WHEN p."diasMoraActual" >= 5  THEN 'recordatorio'
+      WHEN p."diasMoraActual" >= ${u.legal}       THEN 'legal'
+      WHEN p."diasMoraActual" >= ${u.carta}       THEN 'carta'
+      WHEN p."diasMoraActual" >= ${u.telefonica}  THEN 'telefonica'
+      WHEN p."diasMoraActual" >= ${u.recordatorio} THEN 'recordatorio'
       ELSE 'sin_accion'
     END`;
+  }
 
   /**
    * Última gestión por préstamo (DISTINCT ON por fecha) — base de
@@ -56,6 +96,8 @@ export class CobranzaService {
     const paramsBase: any[] = [empresaId];
     if (soloCobradorId != null) paramsBase.push(soloCobradorId);
 
+    const umbrales = await this.getUmbralesEscalamiento(empresaId);
+
     const [{ count }] = await this.ds.query(
       `SELECT COUNT(*) FROM pr_prestamos p
        LEFT JOIN (${CobranzaService.SQL_ULTIMA_GESTION}) ug ON ug."prestamoId" = p.id
@@ -76,7 +118,7 @@ export class CobranzaService {
                    THEN GREATEST(0, (CURRENT_DATE - ug.fecha::date))
                    ELSE NULL END                               AS "diasUltimaGestion",
               (ug.resultado = 'promesa_pago' AND ug."fechaPromesaPago" < CURRENT_DATE) AS "promesaIncumplida",
-              (${CobranzaService.SQL_ESCALAMIENTO})             AS "nivelEscalamiento"
+              (${this.sqlEscalamiento(umbrales)})                AS "nivelEscalamiento"
        FROM pr_prestamos p
        JOIN pr_deudores d ON d.id=p."deudorId" AND d."empresaId"=p."empresaId"
        LEFT JOIN (${CobranzaService.SQL_ULTIMA_GESTION}) ug ON ug."prestamoId" = p.id
@@ -85,7 +127,7 @@ export class CobranzaService {
        LIMIT $${paramsBase.length + 1} OFFSET $${paramsBase.length + 2}`,
       [...paramsBase, limit, offset],
     );
-    return { data, total: Number(count), page, limit };
+    return { data, total: Number(count), page, limit, umbralesEscalamiento: umbrales };
   }
 
   /** Lista de usuarios activos de la empresa elegibles como cobrador — mismo criterio multi-tenant que UsersService.findAll, pero accesible a VENDEDOR/CONTADOR (no solo ADMIN) porque aquí es solo para poblar un selector. */
