@@ -36,4 +36,17 @@ export class SupervisorAutorizacion {
 
   @Column({ type: 'timestamptz', default: () => 'NOW()' })
   createdAt!: Date;
+
+  /**
+   * Id de la fila de `pos_supervisor_log` de la MISMA autorización (ambas se
+   * insertan en la misma llamada a `finalizarAutorizacionSupervisor()`, ver
+   * auth.service.ts) — sin esto, el reporte de Modo Supervisor
+   * (`listarSupervisorLog`) no puede encontrar las facturas autorizadas en
+   * modo 'cada_vez': solo buscaba por `facturas.supervisorSessionId`, que
+   * ese modo nunca llena (usa `supervisorToken` en su lugar). Caso real
+   * (2026-10-14): dos ventas a crédito de Bellamar, autorizadas por
+   * Beatriz, nunca aparecían en "Transacciones".
+   */
+  @Column({ type: 'int', nullable: true })
+  posSupervisorLogId?: number | null;
 }

@@ -29,9 +29,11 @@ beforeAll(async () => {
   HASH_SUP = await bcrypt.hash(PASSWORD_SUP, 4); // costo bajo — el spec no valida el costo, solo el compare
 });
 
-function makeAuthService() {
+function makeAuthService(opts: { politicas?: Record<string, string> } = {}) {
   const posLog: any[] = [];
   const facturas: any[] = [];
+  const supervisorAutorizaciones: any[] = [];
+  const politicas = opts.politicas ?? {};
   const usuarios = [
     { id: 1, nombre: 'Carlos Cajero',  email: 'carlos@empresa.com',  password: HASH_SUP, role: 'vendedor' },
     { id: 2, nombre: 'Ana Supervisor', email: 'ana@empresa.com',     password: HASH_SUP, role: 'admin' },
@@ -126,10 +128,36 @@ function makeAuthService() {
       }));
     }
 
-    // 9) Facturas vinculadas a las sesiones de la página (listarSupervisorLog)
+    // 9) Política de una clave de Modo Supervisor (finalizarAutorizacionSupervisor)
+    if (sql.includes('SELECT modo FROM supervisor_politicas')) {
+      const [, clave] = params;
+      return politicas[clave] ? [{ modo: politicas[clave] }] : [];
+    }
+
+    // 10) Token de un solo uso para modo 'cada_vez' (finalizarAutorizacionSupervisor)
+    if (sql.includes('INSERT INTO supervisor_autorizaciones')) {
+      const [empresaId, cajeroId, supervisorId, clave, token, posSupervisorLogId] = params;
+      supervisorAutorizaciones.push({ empresaId, cajeroId, supervisorId, clave, token, posSupervisorLogId });
+      return [];
+    }
+
+    // 11) Facturas vinculadas a las sesiones de la página (listarSupervisorLog)
+    // — dos caminos, igual que el servicio real: por supervisorSessionId
+    // directo (modo 'sesion') y por supervisorToken vía
+    // supervisor_autorizaciones.posSupervisorLogId (modo 'cada_vez').
     if (sql.includes('FROM facturas')) {
       const [ids] = params;
-      return facturas.filter(f => ids.includes(f.supervisorSessionId)).map(f => ({
+      const porSesion = facturas.filter(f => ids.includes(f.supervisorSessionId));
+      const porToken = facturas.filter(f => {
+        if (!f.supervisorToken) return false;
+        const auth = supervisorAutorizaciones.find(a => a.token === f.supervisorToken);
+        return auth && ids.includes(auth.posSupervisorLogId);
+      }).map(f => ({
+        ...f,
+        supervisorSessionId: supervisorAutorizaciones.find(a => a.token === f.supervisorToken)!.posSupervisorLogId,
+      }));
+      const vistos = new Set<number>();
+      return [...porSesion, ...porToken].filter(f => (vistos.has(f.id) ? false : (vistos.add(f.id), true))).map(f => ({
         sessionId: f.supervisorSessionId, id: f.id, folio: f.folio,
         total: f.total, estado: f.estado, createdAt: f.createdAt,
       }));
@@ -151,7 +179,7 @@ function makeAuthService() {
     noop, supervisorAttempts, noop, noop, noop,
   );
 
-  return { svc, posLog, facturas, query };
+  return { svc, posLog, facturas, supervisorAutorizaciones, query };
 }
 
 const EMPRESA = 7;
@@ -291,6 +319,74 @@ describe('AuthService.listarSupervisorLog', () => {
     expect(data[0].cierre).toBeTruthy();
     expect(data[0].transacciones).toHaveLength(1);
     expect(data[0].transacciones[0]).toMatchObject({ folio: 'B0100000001', total: 1500 });
+  });
+
+  // Caso real (2026-10-14, empresa VENTAS DIVERSAS ELIDO): Bellamar hizo dos
+  // ventas a crédito con autorización de Beatriz, pero nunca aparecían en
+  // "Transacciones" — la política 'venta_credito' de esa empresa está en
+  // modo 'cada_vez', que deja el vínculo en facturas.supervisorToken (no en
+  // supervisorSessionId, que ese modo nunca llena). Ver la migración
+  // SupervisorAutorizacionPosLogId y finalizarAutorizacionSupervisor.
+  it('modo "cada_vez" (ej. venta_credito): la factura autorizada con el token SÍ aparece en transacciones', async () => {
+    const { svc, facturas } = makeAuthService({ politicas: { venta_credito: 'cada_vez' } });
+    const r = await svc.verificarSupervisor(
+      2, PASSWORD_SUP, 1, EMPRESA, 'Autorizar venta a crédito', undefined, 5,
+      undefined, undefined, 'venta_credito',
+    );
+    expect(r.supervisorToken).toEqual(expect.any(String));
+
+    // La factura NUNCA llena supervisorSessionId en este modo — solo supervisorToken.
+    facturas.push({
+      id: 1959, folio: 'B0100001959', total: 2500, estado: 'EMITIDA', createdAt: new Date(),
+      supervisorSessionId: null, supervisorToken: r.supervisorToken,
+    });
+
+    const { data } = await svc.listarSupervisorLog(EMPRESA, {});
+
+    expect(data).toHaveLength(1);
+    expect(data[0].transacciones).toHaveLength(1);
+    expect(data[0].transacciones[0]).toMatchObject({ folio: 'B0100001959', total: 2500 });
+  });
+
+  it('modo "cada_vez": DOS facturas autorizadas en la misma sesión aparecen las dos (FAC-1959 y FAC-1967)', async () => {
+    const { svc, facturas } = makeAuthService({ politicas: { venta_credito: 'cada_vez' } });
+    const r1 = await svc.verificarSupervisor(
+      2, PASSWORD_SUP, 1, EMPRESA, 'Autorizar venta a crédito', undefined, 5,
+      undefined, undefined, 'venta_credito',
+    );
+    facturas.push({ id: 1959, folio: 'B0100001959', total: 2500, estado: 'EMITIDA', createdAt: new Date(), supervisorToken: r1.supervisorToken });
+
+    const r2 = await svc.verificarSupervisor(
+      2, PASSWORD_SUP, 1, EMPRESA, 'Autorizar venta a crédito', undefined, 5,
+      undefined, undefined, 'venta_credito',
+    );
+    facturas.push({ id: 1967, folio: 'B0100001967', total: 1800, estado: 'EMITIDA', createdAt: new Date(), supervisorToken: r2.supervisorToken });
+
+    const { data } = await svc.listarSupervisorLog(EMPRESA, {});
+
+    const folios = data.flatMap((d: any) => d.transacciones.map((t: any) => t.folio));
+    expect(folios).toEqual(expect.arrayContaining(['B0100001959', 'B0100001967']));
+  });
+
+  it('modo "cada_vez": un token de OTRA sesión no se cuela en esta', async () => {
+    const { svc, facturas } = makeAuthService({ politicas: { venta_credito: 'cada_vez' } });
+    await svc.verificarSupervisor(2, PASSWORD_SUP, 1, EMPRESA, 'Autorizar venta a crédito', undefined, 5, undefined, undefined, 'venta_credito');
+    const r2 = await svc.verificarSupervisor(3, PASSWORD_SUP, 1, EMPRESA, 'Autorizar venta a crédito', undefined, 5, undefined, undefined, 'venta_credito');
+    facturas.push({ id: 2000, folio: 'B0100002000', total: 100, estado: 'EMITIDA', createdAt: new Date(), supervisorToken: r2.supervisorToken });
+
+    const { data } = await svc.listarSupervisorLog(EMPRESA, { supervisorId: 2 });
+
+    expect(data).toHaveLength(1);
+    expect(data[0].transacciones).toHaveLength(0); // la factura es de la sesión del supervisor 3, no del 2
+  });
+
+  it('política en modo "sesion" (default): no emite supervisorToken', async () => {
+    const { svc } = makeAuthService({ politicas: { venta_credito: 'sesion' } });
+    const r = await svc.verificarSupervisor(
+      2, PASSWORD_SUP, 1, EMPRESA, 'Autorizar venta a crédito', undefined, 5,
+      undefined, undefined, 'venta_credito',
+    );
+    expect(r.supervisorToken).toBeUndefined();
   });
 
   it('filtra por supervisorId', async () => {

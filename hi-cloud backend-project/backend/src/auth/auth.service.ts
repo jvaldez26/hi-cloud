@@ -1588,11 +1588,16 @@ export class AuthService implements OnModuleInit {
       ).catch(() => [] as { modo: string }[]);
       if (politica?.modo === 'cada_vez') {
         supervisorToken = randomBytes(24).toString('hex');
+        // posSupervisorLogId: vincula este token a la fila de pos_supervisor_log
+        // insertada arriba en esta misma llamada — sin esto, listarSupervisorLog()
+        // no puede encontrar las facturas autorizadas en modo 'cada_vez' (ese modo
+        // nunca llena facturas.supervisorSessionId). Caso real 2026-10-14: ver
+        // migración SupervisorAutorizacionPosLogId.
         await this.dataSource.query(`
           INSERT INTO supervisor_autorizaciones
-            ("empresaId", "cajeroId", "supervisorId", clave, token, usado, "expiraEn", "createdAt")
-          VALUES ($1, $2, $3, $4, $5, false, NOW() + INTERVAL '3 minutes', NOW())
-        `, [empresaId, cajeroId, sup.id, clave, supervisorToken]).catch(err => {
+            ("empresaId", "cajeroId", "supervisorId", clave, token, usado, "expiraEn", "createdAt", "posSupervisorLogId")
+          VALUES ($1, $2, $3, $4, $5, false, NOW() + INTERVAL '3 minutes', NOW(), $6)
+        `, [empresaId, cajeroId, sup.id, clave, supervisorToken, row?.id ?? null]).catch(err => {
           this.logger.error(`[AUDITORIA-PERDIDA] supervisor_autorizaciones INSERT falló: ${(err as Error).message}`);
           reportServiceError(err, 'auth.verificarSupervisor.insertToken');
           supervisorToken = undefined;
@@ -1803,10 +1808,25 @@ export class AuthService implements OnModuleInit {
         `SELECT "sessionId", detail, "createdAt" FROM pos_supervisor_log WHERE "sessionId" = ANY($1)`,
         [ids],
       );
+      // Dos caminos, nunca uno solo: modo 'sesion' deja el vínculo directo en
+      // facturas.supervisorSessionId; modo 'cada_vez' lo deja en
+      // facturas.supervisorToken, y ese token se vincula a esta sesión vía
+      // supervisor_autorizaciones.posSupervisorLogId (ver la migración
+      // SupervisorAutorizacionPosLogId y finalizarAutorizacionSupervisor en
+      // este mismo archivo). Sin el segundo camino, toda venta a crédito
+      // autorizada en modo 'cada_vez' —el modo real de varias empresas—
+      // quedaba invisible en "Transacciones" aunque la venta fuera real
+      // (caso real 2026-10-14: dos facturas de Bellamar, autorizadas por
+      // Beatriz, nunca aparecían).
       facturas = await this.dataSource.query<any[]>(`
         SELECT "supervisorSessionId" AS "sessionId", id, folio, total, estado, "createdAt"
         FROM facturas
         WHERE "supervisorSessionId" = ANY($1)
+        UNION
+        SELECT sa."posSupervisorLogId" AS "sessionId", f.id, f.folio, f.total, f.estado, f."createdAt"
+        FROM facturas f
+        JOIN supervisor_autorizaciones sa ON sa.token = f."supervisorToken"
+        WHERE sa."posSupervisorLogId" = ANY($1)
         ORDER BY "createdAt" ASC
       `, [ids]);
     }
