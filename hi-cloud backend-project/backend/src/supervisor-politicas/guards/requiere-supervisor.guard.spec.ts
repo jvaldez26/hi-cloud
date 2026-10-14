@@ -130,6 +130,42 @@ describe('RequiereSupervisor guard', () => {
     await expect(guard.canActivate(ctx)).resolves.toBe(true);
   });
 
+  // Caso real (2026-10-14, empresa VENTAS DIVERSAS ELIDO): una autorización
+  // de un solo uso (modo 'cada_vez') consumida quedaba "Activa" para
+  // siempre en el reporte de Modo Supervisor — ver
+  // cerrar-pos-supervisor-log.util.ts.
+  it('clave marcada (modo cada_vez), con token válido vinculado a una sesión: cierra esa fila de pos_supervisor_log al consumirse', async () => {
+    const { guard, query } = buildGuard(
+      'cerrar_caja', 'vendedor',
+      [
+        [{ requerido: true, modo: 'cada_vez' }],
+        [{ id: 1, posSupervisorLogId: 55 }], // RETURNING del UPDATE supervisor_autorizaciones
+        [{ empresaId: EMPRESA, cajeroId: CAJERO, supervisorId: 2, supervisorNombre: 'Ana', sucursalId: 5 }], // SELECT activación
+        [], // SELECT yaCerrada — ninguna todavía
+        [], // INSERT de cierre
+      ],
+    );
+    const ctx = buildCtx({ id: CAJERO, role: 'admin', empresaId: EMPRESA }, {}, { 'x-supervisor-token': 'tok1' });
+
+    await expect(guard.canActivate(ctx)).resolves.toBe(true);
+
+    const sqlCierre = query.mock.calls.find(([sql]) => sql.includes('INSERT INTO pos_supervisor_log'));
+    expect(sqlCierre).toBeTruthy();
+    expect(sqlCierre![0]).toContain('Autorización de un solo uso consumida');
+    expect(sqlCierre![1]).toEqual([EMPRESA, CAJERO, 2, 'Ana', 5, 55]);
+  });
+
+  it('clave marcada (modo cada_vez), token válido pero SIN posSupervisorLogId (fila vieja, pre-backfill): pasa igual, no intenta cerrar nada', async () => {
+    const { guard, query } = buildGuard(
+      'cerrar_caja', 'vendedor',
+      [[{ requerido: true, modo: 'cada_vez' }], [{ id: 1, posSupervisorLogId: null }]],
+    );
+    const ctx = buildCtx({ id: CAJERO, role: 'admin', empresaId: EMPRESA }, {}, { 'x-supervisor-token': 'tok1' });
+
+    await expect(guard.canActivate(ctx)).resolves.toBe(true);
+    expect(query).toHaveBeenCalledTimes(3); // rol + política + consumo del token — nada más
+  });
+
   it('sin fila en supervisor_politicas (empresa nunca migrada) → usa el default del catálogo', async () => {
     // 'crear_producto' por defecto es requerido=true en el catálogo.
     const { guard } = buildGuard('crear_producto', 'vendedor', [[], []]);

@@ -1443,13 +1443,18 @@ describe('CajaService.cerrarCaja — política "cierre_caja_descuadre" (supervis
     tokenValido?: boolean;      // existe, no usado, no expirado, supervisorId <> cajeroId
     tokenAutoasignado?: boolean; // existe pero supervisorId === cajeroId
     supervisorNombre?: string;
+    posSupervisorLogId?: number | null; // ver cerrarPosSupervisorLogPorConsumo
+    activacionParaCierre?: { empresaId: number; cajeroId: number; supervisorId: number; supervisorNombre: string; sucursalId: number | null };
+    yaCerrada?: boolean;
   } = {}) {
     d.dataSource.query.mockImplementation((sql: string) => {
       if (sql.includes('supervisor_politicas')) {
         return Promise.resolve(opts.politica ? [opts.politica] : []);
       }
       if (sql.includes('UPDATE supervisor_autorizaciones')) {
-        return Promise.resolve(opts.tokenValido ? [{ id: 1, supervisorId: SUPERVISOR_ID }] : []);
+        return Promise.resolve(opts.tokenValido
+          ? [{ id: 1, supervisorId: SUPERVISOR_ID, posSupervisorLogId: opts.posSupervisorLogId ?? null }]
+          : []);
       }
       if (sql.includes('SELECT id FROM supervisor_autorizaciones') && sql.includes('"supervisorId" <> $2')) {
         return Promise.resolve(opts.tokenValido ? [{ id: 1 }] : []);
@@ -1459,6 +1464,16 @@ describe('CajaService.cerrarCaja — política "cierre_caja_descuadre" (supervis
       }
       if (sql.includes('SELECT nombre FROM users')) {
         return Promise.resolve([{ nombre: opts.supervisorNombre ?? 'Ana Admin' }]);
+      }
+      // cerrarPosSupervisorLogPorConsumo — activación, ¿ya cerrada?, INSERT.
+      if (sql.includes('FROM pos_supervisor_log') && sql.includes('"sessionId" IS NULL')) {
+        return Promise.resolve(opts.activacionParaCierre ? [opts.activacionParaCierre] : []);
+      }
+      if (sql.includes('FROM pos_supervisor_log') && sql.includes('"sessionId" = $1')) {
+        return Promise.resolve(opts.yaCerrada ? [{ id: 999 }] : []);
+      }
+      if (sql.includes('INSERT INTO pos_supervisor_log')) {
+        return Promise.resolve([]);
       }
       return Promise.resolve([]); // perfil de vendedor, etc. — igual que el resto de la suite
     });
@@ -1571,6 +1586,30 @@ describe('CajaService.cerrarCaja — política "cierre_caja_descuadre" (supervis
     expect(cambios.aprobadoEn).toBeInstanceOf(Date);
     // Se sigue notificando a ADMIN/CONTADOR aunque ya haya autorizacion previa.
     expect(d.notificacionesSvc.notificarDescuadreCierre).toHaveBeenCalledTimes(1);
+  });
+
+  // Caso real (2026-10-14, empresa VENTAS DIVERSAS ELIDO): una autorización
+  // de un solo uso (modo 'cada_vez') consumida quedaba "Activa" para
+  // siempre en el reporte de Modo Supervisor. Ver cerrar-pos-supervisor-log.util.ts.
+  it('política ACTIVA, fuera de umbral, CON token válido vinculado a una sesión: cierra esa sesión al consumir el token', async () => {
+    const d = buildDeps();
+    mockDescuadreSupervisor(d, {
+      politica: { requerido: true, modo: 'cada_vez' }, tokenValido: true, supervisorNombre: 'Ana Admin',
+      posSupervisorLogId: 77,
+      activacionParaCierre: { empresaId: 7, cajeroId: CAJERO_ID, supervisorId: SUPERVISOR_ID, supervisorNombre: 'Ana Admin', sucursalId: null },
+    });
+    d.repo.findOne.mockResolvedValue(cajaConVentas());
+    const service = buildService(d);
+
+    await service.cerrarCaja(
+      1, 250, undefined, undefined, undefined, { id: CAJERO_ID }, undefined, undefined,
+      'tok-abc', 'Verificado con el cajero, el faltante es real',
+    );
+
+    const sqlCierre = d.dataSource.query.mock.calls.find(([sql]: any[]) => sql.includes('INSERT INTO pos_supervisor_log'));
+    expect(sqlCierre).toBeTruthy();
+    expect(sqlCierre![0]).toContain('Autorización de un solo uso consumida');
+    expect(sqlCierre![1]).toEqual([7, CAJERO_ID, SUPERVISOR_ID, 'Ana Admin', null, 77]);
   });
 
   it('quien autoriza NO puede ser la misma cajera — rechazado al ver la tabla (sin motivo todavía)', async () => {

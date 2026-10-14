@@ -149,6 +149,36 @@ describe('FacturasService — validarAutorizacionVentaCredito', () => {
       expect(factura.supervisorToken).toBe(TOKEN_FRESCO);
       expect(query).toHaveBeenCalledTimes(3);
     });
+
+    // Caso real (2026-10-14, empresa VENTAS DIVERSAS ELIDO): Bellamar hizo
+    // dos ventas a crédito (FAC-1959, FAC-1967) con la aprobación de Beatriz
+    // — pero la autorización consumida quedaba "Activa" para siempre en el
+    // reporte de Modo Supervisor. Ver cerrar-pos-supervisor-log.util.ts.
+    it('token estático válido, vinculado a una sesión (posSupervisorLogId): cierra esa sesión al consumirse', async () => {
+      const POS_LOG_ID = 55;
+      const { call, query } = makeService([
+        politicaCadaVez,
+        [{ id: 1, posSupervisorLogId: POS_LOG_ID }], // RETURNING del UPDATE supervisor_autorizaciones
+        [{ empresaId: EMPRESA, cajeroId: CAJERO_EMISOR, supervisorId: 2, supervisorNombre: 'Beatriz Riva', sucursalId: 5 }], // SELECT activación
+        [], // SELECT yaCerrada — ninguna todavía
+        [], // INSERT de cierre
+      ]);
+      const { resultado } = await call({ supervisorToken: TOKEN });
+
+      expect(resultado).toBeUndefined();
+      const sqlCierre = query.mock.calls.find(([sql]) => sql.includes('INSERT INTO pos_supervisor_log'));
+      expect(sqlCierre).toBeTruthy();
+      expect(sqlCierre![0]).toContain('Autorización de un solo uso consumida');
+      expect(sqlCierre![1]).toEqual([EMPRESA, CAJERO_EMISOR, 2, 'Beatriz Riva', 5, POS_LOG_ID]);
+    });
+
+    it('token estático válido SIN posSupervisorLogId (fila vieja, previa al backfill): OK igual, no intenta cerrar nada', async () => {
+      const { call, query } = makeService([politicaCadaVez, [{ id: 1, posSupervisorLogId: null }]]);
+      const { resultado } = await call({ supervisorToken: TOKEN });
+
+      expect(resultado).toBeUndefined();
+      expect(query).toHaveBeenCalledTimes(2); // política + consumo del token — nada más
+    });
   });
 
   it('política desmarcada (requerido=false) → no exige nada, ni siquiera consulta sesión/token', async () => {

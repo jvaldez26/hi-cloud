@@ -45,6 +45,7 @@ import { XlinkPublicarService } from '../xlink/xlink-publicar.service';
 import { XlinkTipoDocumento } from '../xlink/entities/xlink-documento.entity';
 import { AuditoriaService } from '../auditoria/auditoria.service';
 import { AccionAuditoria } from '../auditoria/entities/audit-log.entity';
+import { cerrarPosSupervisorLogPorConsumo } from '../supervisor-politicas/cerrar-pos-supervisor-log.util';
 
 @Injectable()
 export class FacturasService {
@@ -258,12 +259,12 @@ export class FacturasService {
     // borrador, o uno fresco de ESTA petición de emitir.
     for (const token of [supervisorToken, supervisorTokenFresco]) {
       if (!token) continue;
-      const consumidos = await this.dataSource.query<{ id: number }[]>(`
+      const consumidos = await this.dataSource.query<{ id: number; posSupervisorLogId: number | null }[]>(`
         WITH fila AS (
           UPDATE supervisor_autorizaciones SET usado = true
           WHERE token = $1 AND "empresaId" = $2 AND "cajeroId" = $3 AND clave = 'venta_credito'
             AND usado = false AND "expiraEn" > NOW()
-          RETURNING id
+          RETURNING id, "posSupervisorLogId"
         ) SELECT * FROM fila
       `, [token, empresaId, cajeroEmisorId]);
       if (consumidos.length) {
@@ -274,6 +275,9 @@ export class FacturasService {
           );
           factura.supervisorToken = token;
         }
+        // Una autorización de un solo uso ya gastada no sigue "activa" en el
+        // reporte de Modo Supervisor — ver cerrar-pos-supervisor-log.util.ts.
+        await cerrarPosSupervisorLogPorConsumo(this.dataSource, consumidos[0].posSupervisorLogId);
         return;
       }
     }

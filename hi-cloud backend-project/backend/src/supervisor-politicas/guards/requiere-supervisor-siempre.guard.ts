@@ -7,6 +7,7 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Request } from 'express';
 import { User } from '../../users/users.entity';
 import { CATALOGO_SUPERVISOR } from '../supervisor-catalogo';
+import { cerrarPosSupervisorLogPorConsumo } from '../cerrar-pos-supervisor-log.util';
 
 /**
  * Variante de RequiereSupervisor para las pocas acciones donde incluso un
@@ -82,10 +83,15 @@ export const RequiereSupervisorSiempre = (
               UPDATE supervisor_autorizaciones SET usado = true
               WHERE token = $1 AND "empresaId" = $2 AND "cajeroId" = $3 AND clave = $4
                 AND usado = false AND "expiraEn" > NOW()
-              RETURNING id
+              RETURNING id, "posSupervisorLogId"
             ) SELECT * FROM fila
           `, [token, empresaId, user.id, clave]);
-          if (consumidos.length) return true;
+          if (consumidos.length) {
+            // Una autorización de un solo uso ya gastada no sigue "activa"
+            // en el reporte de Modo Supervisor — ver cerrar-pos-supervisor-log.util.ts.
+            await cerrarPosSupervisorLogPorConsumo(this.ds, consumidos[0].posSupervisorLogId);
+            return true;
+          }
         }
       }
 

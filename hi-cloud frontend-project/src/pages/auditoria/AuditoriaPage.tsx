@@ -588,10 +588,18 @@ function SupervisorLogTab() {
             title: 'Cierre', key: 'cierre', width: 180,
             render: (_: any, r: any) => {
               if (r.cierre) {
+                // "consumida": autorización de un solo uso (modo 'cada_vez')
+                // que ya se gastó en la transacción que la pidió — distinto
+                // de un cierre manual (botón ESC/× de una sesión de 8h) o de
+                // una expiración por inactividad. Caso real 2026-10-14: sin
+                // esto, estas filas quedaban "Activa" para siempre aunque la
+                // autorización ya no sirviera para nada más.
+                const esConsumida = r.cierre.detail?.includes('consumida');
+                const esExpiracion = r.cierre.detail?.includes('Expiración');
                 return (
                   <div>
-                    <Tag color={r.cierre.detail?.includes('Expiración') ? 'orange' : 'default'} style={{ fontSize: 11 }}>
-                      {r.cierre.detail?.includes('Expiración') ? 'Expiró (8h)' : 'Cierre manual'}
+                    <Tag color={esExpiracion ? 'orange' : esConsumida ? 'blue' : 'default'} style={{ fontSize: 11 }}>
+                      {esExpiracion ? 'Expiró (8h)' : esConsumida ? 'Autorización usada' : 'Cierre manual'}
                     </Tag>
                     <div style={{ fontSize: 11, color: token.colorTextTertiary }}>{fmt.dateTime(r.cierre.createdAt)}</div>
                   </div>

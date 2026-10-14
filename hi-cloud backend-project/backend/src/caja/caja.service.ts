@@ -34,6 +34,7 @@ import {
 } from './cuadre-por-forma-pago.util';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { ModulosAddonService } from '../modulos-addon/modulos-addon.service';
+import { cerrarPosSupervisorLogPorConsumo } from '../supervisor-politicas/cerrar-pos-supervisor-log.util';
 
 /** Mismas 4 etiquetas que usa el frontend para el cuadre — para el mensaje de la validación de abajo. */
 const LABEL_FORMA_CUADRE: Record<string, string> = {
@@ -557,16 +558,19 @@ export class CajaService {
   private async consumirTokenDescuadre(empresaId: number, cajeroId: number, token: string): Promise<
     { ok: true; supervisorId: number; supervisorNombre: string } | { ok: false; mensaje: string }
   > {
-    const [fila] = await this.dataSource.query<{ id: number; supervisorId: number }[]>(`
+    const [fila] = await this.dataSource.query<{ id: number; supervisorId: number; posSupervisorLogId: number | null }[]>(`
       WITH f AS (
         UPDATE supervisor_autorizaciones SET usado = true
         WHERE "empresaId" = $1 AND "cajeroId" = $2 AND clave = 'cierre_caja_descuadre'
           AND token = $3 AND usado = false AND "expiraEn" > NOW() AND "supervisorId" <> $2
-        RETURNING id, "supervisorId"
+        RETURNING id, "supervisorId", "posSupervisorLogId"
       ) SELECT * FROM f
     `, [empresaId, cajeroId, token]);
     if (fila) {
       const [sup] = await this.dataSource.query<{ nombre: string }[]>(`SELECT nombre FROM users WHERE id = $1`, [fila.supervisorId]);
+      // Una autorización de un solo uso ya gastada no sigue "activa" en el
+      // reporte de Modo Supervisor — ver cerrar-pos-supervisor-log.util.ts.
+      await cerrarPosSupervisorLogPorConsumo(this.dataSource, fila.posSupervisorLogId);
       return { ok: true, supervisorId: fila.supervisorId, supervisorNombre: sup?.nombre ?? `Usuario #${fila.supervisorId}` };
     }
     const [autoasignado] = await this.dataSource.query<{ id: number }[]>(`
