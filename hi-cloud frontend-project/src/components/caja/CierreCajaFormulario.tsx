@@ -27,6 +27,15 @@ export type DeclaracionForma = { forma: string; monto: number; confirmado?: bool
 export type CierreCajaPayload = {
   saldoFisico: number;
   notas?: string;
+  /**
+   * Obligatorio cuando `cajaHoy.esMiCaja === false` (cerrando la caja de
+   * otro cajero) — el backend lo exige en este campo exacto (`motivo`, no
+   * `notas`); ver caja.service.ts. Bug real (2026-10-14, cajero Samuel): el
+   * texto escrito en "Motivo (obligatorio)" se mandaba como `notas`, que el
+   * backend ignora para esta validación — el 400 salía aunque el cajero SÍ
+   * hubiera escrito el motivo.
+   */
+  motivo?: string;
   desgloseBilletes: Record<number, number>;
   desglosePago: DesglosePago;
   declaradoPorForma: DeclaracionForma[];
@@ -194,9 +203,13 @@ export function CierreCajaFormulario({
         const e = extra.find(x => x.forma === d.forma);
         return e ? { ...d, confirmado: true } : d;
       });
+      // Cerrando caja ajena: el texto va en `motivo` (lo que el backend
+      // valida y exige) y no en `notas` — si viajara en ambos, el backend
+      // lo duplicaría (antepone un "[Cerrada por... motivo: ...]" a notas).
       const payload: CierreCajaPayload = {
         saldoFisico: totalFisico,
-        notas: nota || undefined,
+        notas: cerrandoCajaAjena ? undefined : (nota || undefined),
+        motivo: cerrandoCajaAjena ? nota.trim() : undefined,
         desgloseBilletes: billetes,
         desglosePago: pago,
         declaradoPorForma: final,

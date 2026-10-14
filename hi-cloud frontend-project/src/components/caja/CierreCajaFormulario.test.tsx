@@ -133,7 +133,14 @@ describe('CierreCajaFormulario', () => {
       expect(screen.getByRole('button', { name: 'Grabar' })).toBeDisabled();
     });
 
-    it('con el motivo escrito, Grabar se habilita y cierra normalmente', async () => {
+    // Bug real (2026-10-14, cajero Samuel, con modo supervisor activo): el
+    // texto escrito aquí se mandaba como `notas`, que el backend NUNCA lee
+    // para esta validación (exige `motivo` — ver caja.service.ts) — el 400
+    // "Debes indicar un motivo..." salía aunque el cajero sí hubiera
+    // escrito algo. El payload es exactamente el que POSPage/CajaPage
+    // reenvían sin tocar (spread directo), así que este es el contrato real
+    // contra el backend.
+    it('con el motivo escrito, Grabar se habilita y manda el texto en `motivo` (no en `notas`)', async () => {
       const onCerrar = vi.fn().mockResolvedValue(undefined);
       render(<CierreCajaFormulario cajaHoy={CAJA_AJENA} onCerrar={onCerrar} />);
 
@@ -150,13 +157,32 @@ describe('CierreCajaFormulario', () => {
 
       await waitFor(() => expect(onCerrar).toHaveBeenCalledTimes(1));
       const payload: CierreCajaPayload = onCerrar.mock.calls[0][0];
-      expect(payload.notas).toBe('El cajero no pudo cerrar, autorizado por mí');
+      expect(payload.motivo).toBe('El cajero no pudo cerrar, autorizado por mí');
+      // Nunca duplicado en notas — el backend ya arma su propia marca desde `motivo`.
+      expect(payload.notas).toBeUndefined();
     });
 
     it('esMiCaja true (caja propia): no muestra ningún aviso, Grabar no requiere motivo', () => {
       render(<CierreCajaFormulario cajaHoy={{ ...CAJA_HOY, esMiCaja: true }} onCerrar={vi.fn().mockResolvedValue(undefined)} />);
       expect(screen.queryByText(/Estás cerrando la caja de/)).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Grabar' })).not.toBeDisabled();
+    });
+
+    it('esMiCaja true (caja propia): la nota de cierre viaja en `notas`, nunca en `motivo`', async () => {
+      const onCerrar = vi.fn().mockResolvedValue(undefined);
+      render(<CierreCajaFormulario cajaHoy={{ ...CAJA_HOY, esMiCaja: true }} onCerrar={onCerrar} />);
+
+      fireEvent.change(screen.getByPlaceholderText('Nota de cierre...'), { target: { value: 'Turno sin novedades' } });
+      fireEvent.change(screen.getByLabelText('Efectivo'), { target: { value: '1500' } });
+      fireEvent.change(screen.getByLabelText('Tarjeta'), { target: { value: '2000' } });
+      fireEvent.change(screen.getByLabelText('Transferencia'), { target: { value: '100' } });
+      fireEvent.change(screen.getByLabelText('Otro'), { target: { value: '25' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Grabar' }));
+
+      await waitFor(() => expect(onCerrar).toHaveBeenCalledTimes(1));
+      const payload: CierreCajaPayload = onCerrar.mock.calls[0][0];
+      expect(payload.notas).toBe('Turno sin novedades');
+      expect(payload.motivo).toBeUndefined();
     });
 
     it('esMiCaja undefined (caller que todavía no lo pasa, o backend viejo): se comporta como antes, sin aviso ni bloqueo', () => {

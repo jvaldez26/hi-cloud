@@ -162,6 +162,30 @@ describe('CajaService.cerrarCaja — pertenencia', () => {
     expect(d.repo.update).toHaveBeenCalled();
   });
 
+  // Caso real (2026-10-14, cajero Samuel, modo supervisor activo): confirma
+  // que el token de supervisor (header x-supervisor-token, RequiereSupervisor
+  // guard) nunca sustituye la identidad de la sesión — la pertenencia la
+  // decide SIEMPRE `usuario` (req.user, del JWT), nunca el supervisor que
+  // autorizó la acción. Un VENDEDOR cerrando SU PROPIA caja con modo
+  // supervisor activo no debe pedir motivo.
+  it('VENDEDOR cerrando SU PROPIA caja con modo supervisor activo (supervisorToken presente): no exige motivo', async () => {
+    const d = buildDeps();
+    d.tenantSvc.getRolEmpresa = () => UserRole.VENDEDOR;
+    d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, userId: 42, vendedorId: 5 }));
+    const service = buildService(d);
+
+    await expect(
+      service.cerrarCaja(
+        1, 500, undefined, undefined, undefined, { id: 42, nombre: 'Samuel' },
+        undefined, undefined, 'tok-supervisor-ya-validado',
+      ),
+    ).resolves.toBeDefined();
+
+    expect(d.repo.update).toHaveBeenCalled();
+    const [, cambios] = d.repo.update.mock.calls[0];
+    expect(cambios.notas).toBeUndefined(); // sin marca de "cerrada por otro" — es su propia caja
+  });
+
   it('sin `usuario` (compatibilidad): no aplica el chequeo de pertenencia', async () => {
     const d = buildDeps();
     d.repo.findOne.mockResolvedValue(cajaAbierta({ id: 1, userId: 999, vendedorId: 5 }));
