@@ -15,6 +15,7 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { TesoreriaService } from './tesoreria.service';
 import { CreateCuentaBancariaDto } from './dto/create-cuenta-bancaria.dto';
+import { UpdateCuentaBancariaDto } from './dto/update-cuenta-bancaria.dto';
 import {
   RegistrarDepositoDto,
   RegistrarRetiroDto,
@@ -83,7 +84,7 @@ export class TesoreriaController {
   @ApiOperation({ summary: 'Actualizar datos de cuenta bancaria' })
   updateCuenta(
     @Param('id', ParseIntPipe) id: number,
-    @Body() dto: Partial<CreateCuentaBancariaDto>,
+    @Body() dto: UpdateCuentaBancariaDto,
   ) {
     return this.tesoreriaService.updateCuenta(id, dto);
   }

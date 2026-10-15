@@ -6,6 +6,7 @@ import { MovimientoBancario, TipoMovimientoBanco } from './entities/movimiento-b
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { TenantService } from '../tenant/tenant.service';
 import { ExtractoParserService } from './extracto-parser.service';
+import { obtenerDatosUnificadosCuentasBancarias } from '../common/cuentas-bancarias/saldo-cuenta-bancaria.util';
 
 interface CreateCuentaDto {
   nombre: string; banco: string; numeroCuenta: string;
@@ -36,9 +37,17 @@ export class BancosService {
     return this.cuentaRepo.save(this.cuentaRepo.create({ ...dto, empresaId }));
   }
 
-  async listarCuentas(): Promise<CuentaBancaria[]> {
+  /**
+   * `saldoInicial` sigue viniendo tal cual lo declaró quien registró la
+   * cuenta (lo usa el formulario de edición) — `saldoActual` es la cifra que
+   * de verdad hay que mostrar (ver saldo-cuenta-bancaria.util.ts: la misma
+   * fórmula que usa el widget de Inicio).
+   */
+  async listarCuentas(): Promise<(CuentaBancaria & { saldoActual: number })[]> {
     const empresaId = this.tenantService.getEmpresaId();
-    return this.cuentaRepo.find({ where: { empresaId, isActive: true }, order: { banco: 'ASC' } });
+    const cuentas = await this.cuentaRepo.find({ where: { empresaId, isActive: true }, order: { banco: 'ASC' } });
+    const saldos  = await obtenerDatosUnificadosCuentasBancarias(this.cuentaRepo.manager, empresaId);
+    return cuentas.map(c => ({ ...c, saldoActual: saldos.get(c.id)?.saldoActual ?? Number(c.saldoInicial) }));
   }
 
   async getCuenta(id: number): Promise<CuentaBancaria> {
@@ -125,20 +134,31 @@ export class BancosService {
     const conciliados      = delPeriodo.filter(m => m.conciliado).length;
     const noConciliados    = delPeriodo.filter(m => !m.conciliado).length;
 
+    // Misma base que el widget de Inicio y la lista de cuentas (ver
+    // saldo-cuenta-bancaria.util.ts): `saldoInicial` + la columna `saldo`
+    // que mantiene el módulo de tesorería para esta MISMA fila física (0 si
+    // esta cuenta nunca se tocó desde ahí) — sin eso, una cuenta creada aquí
+    // pero con movimientos de tesorería (CxC/CxP/nómina) se habría visto
+    // descuadrada en este resumen.
+    const [filaTesoreria] = await this.cuentaRepo.manager.query<{ saldo: string }[]>(
+      'SELECT saldo FROM cuentas_bancarias WHERE id = $1', [cuentaId],
+    );
+    const baseInicial = Number(cuenta.saldoInicial) + Number(filaTesoreria?.saldo ?? 0);
+
     // Saldo calculado desde el inicio
     const saldoActual = movimientos.reduce((s, m) => {
       return m.tipo === TipoMovimientoBanco.CREDITO
         ? s + Number(m.monto)
         : s - Number(m.monto);
-    }, Number(cuenta.saldoInicial));
+    }, baseInicial);
 
     return {
       cuenta: { id: cuenta.id, nombre: cuenta.nombre, banco: cuenta.banco, numeroCuenta: cuenta.numeroCuenta },
       periodo: { mes, anio },
-      saldoInicial:    Number(cuenta.saldoInicial),
+      saldoInicial:    baseInicial,
       totalCreditos,
       totalDebitos,
-      saldoFinal:      Number(cuenta.saldoInicial) + totalCreditos - totalDebitos,
+      saldoFinal:      baseInicial + totalCreditos - totalDebitos,
       saldoActual,
       movimientosPeriodo: delPeriodo.length,
       conciliados,

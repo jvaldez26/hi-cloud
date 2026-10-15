@@ -185,7 +185,7 @@ export default function TesoreriaPage() {
                   { title: 'Número',  dataIndex: 'numeroCuenta', width: 160 },
                   { title: 'Tipo',    dataIndex: 'tipoCuenta',   width: 110, render: (v: string) => <Tag style={{ textTransform: 'capitalize' }}>{v}</Tag> },
                   { title: 'Moneda',  dataIndex: 'moneda',       width: 80,  render: (v: string) => <Tag color="blue">{v}</Tag> },
-                  { title: 'Saldo',   dataIndex: 'saldo',        width: 130, render: (v: number) => <strong style={{ color: '#1677ff' }}>{fmt.money(v)}</strong> },
+                  { title: 'Saldo',   dataIndex: 'saldoActual',  width: 130, render: (v: number, r: any) => <strong style={{ color: '#1677ff' }}>{fmt.money(v ?? r.saldo)}</strong> },
                   { title: 'Estado',  dataIndex: 'isActiva',     width: 80,  render: (v: boolean) => <Tag color={v ? 'green' : 'red'}>{v ? 'Activa' : 'Inactiva'}</Tag> },
                 ]} pagination={false} />
             </>

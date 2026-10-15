@@ -223,7 +223,7 @@ export default function BancosPage() {
                 </div>
                 <div style={{ marginTop: 8 }}>
                   <Text style={{ color: '#1677ff', fontWeight: 700 }}>
-                    Saldo inicial: {fmt.money(c.saldoInicial)}
+                    Saldo actual: {fmt.money(c.saldoActual ?? c.saldoInicial)}
                   </Text>
                 </div>
               </div>

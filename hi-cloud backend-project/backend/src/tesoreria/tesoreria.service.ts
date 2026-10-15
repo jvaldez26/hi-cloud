@@ -19,6 +19,7 @@ import {
   EstadoConciliacion,
 } from './entities/conciliacion-bancaria.entity';
 import { CreateCuentaBancariaDto } from './dto/create-cuenta-bancaria.dto';
+import { UpdateCuentaBancariaDto } from './dto/update-cuenta-bancaria.dto';
 import {
   RegistrarDepositoDto,
   RegistrarRetiroDto,
@@ -29,6 +30,7 @@ import { FiltroMovimientoDto, FiltroConciliacionDto } from './dto/filtro-tesorer
 import { TenantService } from '../tenant/tenant.service';
 import { fechaHoyRD } from '../common/utils/fecha-local.util';
 import { AsientosAutomaticosService } from '../contabilidad/services/asientos-automaticos.service';
+import { obtenerDatosUnificadosCuentasBancarias, etiquetaCuentaBancaria } from '../common/cuentas-bancarias/saldo-cuenta-bancaria.util';
 
 @Injectable()
 export class TesoreriaService {
@@ -146,10 +148,14 @@ export class TesoreriaService {
 
   async getCuentas() {
     const empresaId = this.eid;
-    return this.cuentaRepository.find({
+    const cuentas = await this.cuentaRepository.find({
       where: { isActive: true, empresaId } as any,
       order: { moneda: 'ASC', banco: 'ASC' },
     });
+    // Mismo criterio que el widget de Inicio y "Cuentas Bancarias &
+    // Conciliación" — ver saldo-cuenta-bancaria.util.ts.
+    const datos = await obtenerDatosUnificadosCuentasBancarias(this.cuentaRepository.manager, empresaId);
+    return cuentas.map(c => ({ ...c, saldoActual: datos.get(c.id)?.saldoActual ?? Number(c.saldo) }));
   }
 
   async findCuentaById(id: number) {
@@ -161,7 +167,7 @@ export class TesoreriaService {
     return c;
   }
 
-  async updateCuenta(id: number, dto: Partial<CreateCuentaBancariaDto>) {
+  async updateCuenta(id: number, dto: UpdateCuentaBancariaDto) {
     await this.findCuentaById(id);
     await this.cuentaRepository.update(id, dto);
     return this.findCuentaById(id);
@@ -458,7 +464,13 @@ export class TesoreriaService {
       order: { moneda: 'ASC', banco: 'ASC' },
     });
 
-    const balanceTotal = cuentas.reduce((sum, c) => sum + Number(c.saldo), 0);
+    // Misma fórmula que "Cuentas Bancarias & Conciliación" (ver
+    // saldo-cuenta-bancaria.util.ts) — antes este widget solo leía `c.saldo`
+    // (la columna que mantiene ESTE módulo) y se veía en RD$0.00 cualquier
+    // cuenta registrada desde Bancos, aunque tuviera saldo inicial real
+    // (incidente 2026-10-15, empresa 53).
+    const datosUnificados = await obtenerDatosUnificadosCuentasBancarias(this.cuentaRepository.manager, eid);
+    const balanceTotal = cuentas.reduce((sum, c) => sum + (datosUnificados.get(c.id)?.saldoActual ?? Number(c.saldo)), 0);
 
     // Movimientos de hoy
     const movsHoy = await this.movimientoRepository
@@ -542,13 +554,18 @@ export class TesoreriaService {
     const actSemana = [...movsSemana.map(toActividad), ...factSemana, ...gastSemana].sort(sortByFecha).slice(0, 20);
 
     return {
-      cuentas: cuentas.map(c => ({
-        id:     c.id,
-        nombre: c.banco,
-        tipo:   c.tipoCuenta,
-        saldo:  Number(c.saldo),
-        moneda: c.moneda,
-      })),
+      cuentas: cuentas.map(c => {
+        const datos = datosUnificados.get(c.id);
+        return {
+          id:     c.id,
+          // Alias/titular + banco + últimos dígitos — nunca solo el banco
+          // (requisito explícito: antes mostraba "SCOTIABANK" a secas).
+          nombre: etiquetaCuentaBancaria({ nombre: datos?.nombre, banco: c.banco, numeroCuenta: datos?.numeroCuenta ?? c.numeroCuenta }),
+          tipo:   c.tipoCuenta,
+          saldo:  datos?.saldoActual ?? Number(c.saldo),
+          moneda: c.moneda,
+        };
+      }),
       balanceTotal,
       actividad: {
         hoy:    actHoy,
