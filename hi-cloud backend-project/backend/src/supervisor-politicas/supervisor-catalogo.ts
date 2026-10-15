@@ -49,6 +49,10 @@ export const CATALOGO_SUPERVISOR: CatalogoItem[] = [
   { clave: 'devolucion_efectivo', label: 'Devolución en efectivo',      descripcion: 'Devolver dinero en efectivo al crear una NC',            grupo: 'Acciones de venta', defaultRequerido: false, defaultModo: 'cada_vez' },
   { clave: 'descuento_excedido',  label: 'Descuento sobre el máximo',   descripcion: 'Aplicar un descuento mayor al % máximo configurado',    grupo: 'Acciones de venta', defaultRequerido: false, defaultModo: 'cada_vez' },
   { clave: 'modificar_precio',    label: 'Modificar precio de línea',   descripcion: 'Cambiar a mano el precio de un ítem en el carrito',     grupo: 'Acciones de venta', defaultRequerido: false, defaultModo: 'cada_vez' },
+  // Desactivada por defecto a propósito: con la política apagada, el
+  // servicio exige en su lugar un motivo (mínimo 5 caracteres) antes de
+  // reimprimir — nunca queda sin rastro en ningún caso (ver facturas.service.ts).
+  { clave: 'reimprimir_factura',  label: 'Reimprimir factura',          descripcion: 'Reimprimir el recibo/factura de una venta ya emitida — si está apagada, pide un motivo obligatorio en su lugar; siempre queda en auditoría', grupo: 'Acciones de venta', defaultRequerido: false, defaultModo: 'cada_vez' },
 
   // ── Caja ─────────────────────────────────────────────────────────────────
   { clave: 'cerrar_caja',      label: 'Cerrar caja',        descripcion: 'Confirmar el cierre de caja del turno',          grupo: 'Caja', defaultRequerido: false, defaultModo: 'cada_vez' },

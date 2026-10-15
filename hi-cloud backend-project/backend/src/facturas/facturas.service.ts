@@ -23,6 +23,7 @@ import { PaginationDto } from '../common/dto/pagination.dto';
 import { TenantService } from '../tenant/tenant.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { User } from '../users/users.entity';
+import { UserRole } from '../users/enums/user-role.enum';
 import { LimitesService } from '../suscripciones/limites.service';
 import { EmitirECFUseCase, DatosCompradorECF } from '../ecf/use-cases/emitir-ecf.use-case';
 import { FacturaEmailService } from './services/factura-email.service';
@@ -370,6 +371,55 @@ export class FacturasService {
       LIMIT 1
     `, [cajeroId, empresaId]);
     return !!row;
+  }
+
+  /**
+   * Configuración → Punto de Venta → "Ocultar montos de facturas al cajero"
+   * (activado por defecto) — para que el cajero no pueda cuadrar su caja con
+   * los montos que ve en el historial de facturas. Se evalúa SIEMPRE junto a
+   * `tieneSupervisorActivo`: un VENDEDOR con modo supervisor activo, o
+   * ADMIN/CONTADOR, ven todo sin llamar a esto.
+   */
+  private async ocultarMontosActivoParaEmpresa(empresaId: number): Promise<boolean> {
+    const rows = await this.dataSource.query<{ configuracion: Record<string, unknown> }[]>(
+      'SELECT configuracion FROM empresa WHERE id = $1 LIMIT 1',
+      [empresaId],
+    );
+    const cfg = (rows[0]?.configuracion ?? {}) as Record<string, unknown>;
+    return cfg.ocultarMontosFacturasCajero !== false;
+  }
+
+  /**
+   * ¿Debe ESTA respuesta de facturas ocultar montos a quien la pide? Centraliza
+   * el mismo criterio (VENDEDOR + sin supervisor activo + toggle de empresa)
+   * para findAll/findOne/buscarParaNota — un `usuario` ausente (llamadas
+   * internas del propio servicio, ej. respuestaEcfEnCurso tras emitir) nunca
+   * oculta nada: esas lecturas son parte de la venta en curso, no del
+   * historial, y el cajero necesita ver lo que acaba de cobrar.
+   */
+  private async debeOcultarMontos(usuario: User | undefined, empresaId: number): Promise<boolean> {
+    if (!usuario || (usuario as any).role !== UserRole.VENDEDOR) return false;
+    if (await this.tieneSupervisorActivo(usuario.id, empresaId)) return false;
+    return this.ocultarMontosActivoParaEmpresa(empresaId);
+  }
+
+  /**
+   * Quita subtotal/ITBIS/total/formasPago (y, por línea, los mismos campos de
+   * dinero + el costo de compra — nunca debe llegarle a un cajero) de una
+   * factura ya cargada. Nunca toca folio/fecha/cliente/estado/detalle de
+   * productos — solo las cifras que permitirían reconstruir el cuadre.
+   */
+  private ocultarMontosFactura<T extends Record<string, any>>(factura: T): T {
+    const { subtotal, iva, total, totalOriginal, formasPago, detalles, ...resto } = factura as any;
+    return {
+      ...resto,
+      ...(Array.isArray(detalles) ? {
+        detalles: detalles.map((d: any) => {
+          const { precioUnitario, subtotal: _s, importeIva, total: _t, descuentoMonto, precioOriginal, costoUnitario, ...dResto } = d;
+          return dResto;
+        }),
+      } : {}),
+    } as T;
   }
 
   /**
@@ -907,13 +957,26 @@ export class FacturasService {
     // ajenas. Cerrarlo al 100% requiere ligar vendedores.usuarioId — pendiente
     // aparte, fuera de este fix.
     let vendedorIdEfectivo = vendedorId;
-    if (usuario && (usuario as any).role === 'vendedor') {
+    // Ocultar montos (Configuración → Punto de Venta): además de su propio
+    // vendedorId, un VENDEDOR sin supervisor activo con el toggle encendido
+    // solo ve el turno ACTUAL — nunca otros días — para que la lista no sirva
+    // para reconstruir el cuadre de un cierre ya pasado.
+    let ocultarMontos = false;
+    let desdeEfectivo = desde;
+    let hastaEfectivo = hasta;
+    if (usuario && (usuario as any).role === UserRole.VENDEDOR) {
       const activo = await this.tieneSupervisorActivo(usuario.id, empresaId);
       if (activo) {
         vendedorIdEfectivo = undefined;
       } else {
         const enlazado = await this.vendedorResolver.vendedorEnlazado(usuario.id, empresaId);
         vendedorIdEfectivo = enlazado?.id ?? vendedorId;
+        ocultarMontos = await this.ocultarMontosActivoParaEmpresa(empresaId);
+        if (ocultarMontos) {
+          const hoy = fechaHoyRD();
+          desdeEfectivo = hoy;
+          hastaEfectivo = hoy;
+        }
       }
     }
 
@@ -942,10 +1005,10 @@ export class FacturasService {
         { s: `%${search}%` },
       );
     }
-    if (estado)    qb.andWhere('f.estado = :estado', { estado });
-    if (clienteId) qb.andWhere('f.clienteId = :clienteId', { clienteId });
-    if (desde)     qb.andWhere('f.fecha >= :desde', { desde });
-    if (hasta)     qb.andWhere('f.fecha <= :hasta', { hasta });
+    if (estado)         qb.andWhere('f.estado = :estado', { estado });
+    if (clienteId)      qb.andWhere('f.clienteId = :clienteId', { clienteId });
+    if (desdeEfectivo)  qb.andWhere('f.fecha >= :desde', { desde: desdeEfectivo });
+    if (hastaEfectivo)  qb.andWhere('f.fecha <= :hasta', { hasta: hastaEfectivo });
     if (tipoPago)  qb.andWhere('f."tipoPago" = :tipoPago', { tipoPago });
     if (tipoNcf)   qb.andWhere('f."tipoNcf" = :tipoNcf', { tipoNcf });
     if (montoMin != null)  qb.andWhere('f.total >= :montoMin', { montoMin });
@@ -989,11 +1052,12 @@ export class FacturasService {
       for (const s of sRows) sucursalNombreMap[s.id] = s.nombre;
     }
 
-    const enriched = data.map((f: any) => ({
+    let enriched = data.map((f: any) => ({
       ...f,
       ecf:            ecfByFacturaId[f.id] ?? null,
       sucursalNombre: sucursalNombreMap[f.sucursalId] ?? null,
     }));
+    if (ocultarMontos) enriched = enriched.map((f: any) => this.ocultarMontosFactura(f));
 
     return {
       data: enriched,
@@ -1001,7 +1065,7 @@ export class FacturasService {
     };
   }
 
-  async findOne(id: number) {
+  async findOne(id: number, usuario?: User) {
     const empresaId = this.tenantService.getEmpresaId();
     const factura = await this.facturaRepository.findOne({
       where: { id, empresaId, isActive: true },
@@ -1021,7 +1085,123 @@ export class FacturasService {
       LIMIT 1
     `, [id]);
 
-    return { ...factura, ecf: ecfRow[0] ?? null };
+    const resultado = { ...factura, ecf: ecfRow[0] ?? null };
+    if (await this.debeOcultarMontos(usuario, empresaId)) {
+      return this.ocultarMontosFactura(resultado);
+    }
+    return resultado;
+  }
+
+  /** Política de la empresa para la clave 'reimprimir_factura' — fila propia o el default del catálogo (desactivada). */
+  private async politicaReimprimir(empresaId: number): Promise<{ requerido: boolean; modo: 'sesion' | 'cada_vez' }> {
+    const DEFAULT = { requerido: false, modo: 'cada_vez' as const };
+    const [row] = await this.dataSource.query<{ requerido: boolean; modo: string }[]>(
+      `SELECT requerido, modo FROM supervisor_politicas WHERE "empresaId" = $1 AND clave = $2`,
+      [empresaId, 'reimprimir_factura'],
+    ).catch(() => [] as { requerido: boolean; modo: string }[]);
+    if (!row) return DEFAULT;
+    return { requerido: row.requerido, modo: row.modo === 'sesion' ? 'sesion' : 'cada_vez' };
+  }
+
+  /**
+   * Reimprimir el recibo/factura de una venta ya emitida. El guard
+   * `RequiereSupervisor('reimprimir_factura')` del controller YA bloqueó con
+   * 403/consumió la autorización si la política está ACTIVA — si llegamos
+   * aquí con `requerido=true`, ya está autorizado (sesión activa, o el token
+   * de un solo uso ya se consumió). Si la política está DESACTIVADA, el
+   * guard no exige nada y el motivo se valida aquí.
+   *
+   * SIEMPRE deja un rastro en `factura_reimpresiones` — con motivo, con
+   * supervisor, o (si la política está desactivada y aun así no llegó
+   * motivo) nunca se llega a imprimir, por diseño: no hay reimpresión sin
+   * alguna de las dos auditorías.
+   */
+  async reimprimir(
+    id: number,
+    formato: 'termico' | 'pdf',
+    motivo: string | undefined,
+    usuario: User,
+    supervisorToken?: string,
+  ) {
+    const empresaId = this.tenantService.getEmpresaId();
+    // Sin `usuario` en el llamado a findOne: la reimpresión ya está
+    // autorizada en este punto (por supervisor o por motivo) — el cajero
+    // necesita ver los montos reales para que el ticket salga correcto.
+    const factura = await this.findOne(id);
+
+    const { requerido, modo } = await this.politicaReimprimir(empresaId);
+    let supervisorId: number | undefined;
+    let supervisorNombre: string | undefined;
+
+    if (requerido) {
+      if (modo === 'sesion') {
+        const [row] = await this.dataSource.query<{ supervisorId: number; supervisorNombre: string }[]>(`
+          SELECT act."supervisorId", act."supervisorNombre"
+          FROM pos_supervisor_log act
+          WHERE act."cajeroId" = $1 AND act."empresaId" = $2 AND act."sessionId" IS NULL
+            AND act."createdAt" >= NOW() - INTERVAL '8 hours'
+            AND NOT EXISTS (SELECT 1 FROM pos_supervisor_log c WHERE c."sessionId" = act.id)
+          ORDER BY act."createdAt" DESC LIMIT 1
+        `, [usuario.id, empresaId]);
+        supervisorId = row?.supervisorId;
+        supervisorNombre = row?.supervisorNombre;
+      } else if (supervisorToken) {
+        // El guard ya marcó el token `usado = true` — esta lectura es solo
+        // para saber QUIÉN autorizó, no para consumirlo de nuevo.
+        const [row] = await this.dataSource.query<{ supervisorId: number; nombre: string }[]>(`
+          SELECT sa."supervisorId", u.nombre
+          FROM supervisor_autorizaciones sa
+          JOIN users u ON u.id = sa."supervisorId"
+          WHERE sa.token = $1 AND sa."empresaId" = $2 AND sa."cajeroId" = $3 AND sa.clave = 'reimprimir_factura'
+          ORDER BY sa."createdAt" DESC LIMIT 1
+        `, [supervisorToken, empresaId, usuario.id]);
+        supervisorId = row?.supervisorId;
+        supervisorNombre = row?.nombre;
+      }
+    } else if (!motivo?.trim() || motivo.trim().length < 5) {
+      throw new BadRequestException('Escribe el motivo de la reimpresión (mínimo 5 caracteres) para continuar.');
+    }
+
+    const [{ n }] = await this.dataSource.query<{ n: number }[]>(
+      `SELECT COALESCE(MAX(numero), 0) + 1 AS n FROM factura_reimpresiones WHERE "facturaId" = $1`,
+      [id],
+    );
+
+    // Caja/turno abierto del cajero — informativo, nunca bloquea la reimpresión.
+    const [cajaRow] = await this.dataSource.query<{ id: number }[]>(`
+      SELECT id FROM cierres_caja
+      WHERE "empresaId" = $1 AND estado = 'abierta'
+        AND ("userId" = $2 OR "vendedorId" = (SELECT id FROM vendedores WHERE "usuarioId" = $2 AND "empresaId" = $1 LIMIT 1))
+      ORDER BY id DESC LIMIT 1
+    `, [empresaId, usuario.id]).catch(() => [] as { id: number }[]);
+
+    await this.dataSource.query(`
+      INSERT INTO factura_reimpresiones
+        ("empresaId", "facturaId", numero, "usuarioId", "usuarioNombre", formato, motivo, "supervisorId", "supervisorNombre", "cajaId")
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    `, [
+      empresaId, id, n, usuario.id, usuario.nombre, formato,
+      motivo?.trim() || null, supervisorId ?? null, supervisorNombre ?? null, cajaRow?.id ?? null,
+    ]);
+
+    this.logger.log(
+      `[REIMPRESION] Factura #${id} (${factura.folio}) reimpresión #${n} por ${usuario.nombre} (usuario #${usuario.id})` +
+      (supervisorNombre ? ` — autorizado por ${supervisorNombre}` : '') +
+      (motivo ? ` — motivo: ${motivo.trim()}` : ''),
+    );
+
+    return { ...factura, reimpresionNumero: n };
+  }
+
+  /** Reimpresiones registradas de una factura — ADMIN/CONTADOR las ven en el detalle. */
+  async reimpresiones(id: number) {
+    const empresaId = this.tenantService.getEmpresaId();
+    return this.dataSource.query<any[]>(`
+      SELECT numero, "usuarioNombre", formato, motivo, "supervisorNombre", "createdAt"
+      FROM factura_reimpresiones
+      WHERE "facturaId" = $1 AND "empresaId" = $2
+      ORDER BY numero ASC
+    `, [id, empresaId]);
   }
 
   /**
@@ -1054,7 +1234,7 @@ export class FacturasService {
    *   - E33 solo puede referenciar E31.
    *   - E34 puede referenciar E31, E32, E41, E43, E44, E45, E46, E47.
    */
-  async buscarParaNota(q: string, tipoNota: 'E33' | 'E34' = 'E34') {
+  async buscarParaNota(q: string, tipoNota: 'E33' | 'E34' = 'E34', usuario?: User) {
     const empresaId = this.tenantService.getEmpresaId();
     if (!q || q.length < 2) return [];
 
@@ -1124,6 +1304,9 @@ export class FacturasService {
     this.logger.debug(
       `[buscarParaNota] q="${q}" tipoNota=${tipoNota} empresa=${empresaId} → ${rows.length} resultados`,
     );
+    if (await this.debeOcultarMontos(usuario, empresaId)) {
+      return rows.map(r => this.ocultarMontosFactura(r));
+    }
     return rows;
   }
 

@@ -44,6 +44,8 @@ export interface TicketSale {
   ecfFecha?:               string;
   fechaEmision?:           string;
   horaEmision?:            string;
+  /** Presente solo en una reimpresión (ver facturas.service.ts.reimprimir) — imprime "REIMPRESIÓN #N" en el ticket. */
+  reimpresionNumero?:      number;
   rncComprador?:           string;
   razonSocial?:            string;
   securityCode?:           string;
@@ -493,6 +495,7 @@ export function buildReciboTermicoHTML(
       modoInfo ? `${modoInfo.icono} ${modoInfo.label}` : '',
     ];
     for (const l of unir(emisor)) B.push(txt(l));
+    if (sale.reimpresionNumero) B.push(`<div class="center bold">*** REIMPRESIÓN #${sale.reimpresionNumero} ***</div>`);
   } else {
     B.push(row('Fecha:', fechaTicket));
     B.push(row('Hora:', horaTicket));
@@ -500,6 +503,7 @@ export function buildReciboTermicoHTML(
     if (sale.cajero)         B.push(row('Cajero:', sale.cajero));
     if (sale.sucursalNombre) B.push(row('Sucursal:', sale.sucursalNombre));
     if (modoInfo)            B.push(row('Módulo:', `${modoInfo.icono} ${modoInfo.label}`));
+    if (sale.reimpresionNumero) B.push(`<div class="center bold">*** REIMPRESIÓN #${sale.reimpresionNumero} ***</div>`);
   }
 
   // Comprador — cuando el cliente declaró RNC.

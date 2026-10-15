@@ -31,20 +31,30 @@ function makeQueryBuilder(rows: any[] = [], total = 0) {
 function makeCtx(opts: {
   supervisorActivo: boolean;
   vendedorEnlazado: { id: number; nombre: string } | null;
+  ocultarMontos?: boolean;
 }) {
   const { qb, andWhereCalls } = makeQueryBuilder();
-  const query = jest.fn().mockResolvedValue(opts.supervisorActivo ? [{ id: 1 }] : []);
+  // Dos consultas distintas comparten dataSource.query: pos_supervisor_log
+  // (tieneSupervisorActivo) y empresa.configuracion (ocultarMontosActivoParaEmpresa)
+  // — se distinguen por el SQL, no por orden de llamada.
+  const query = jest.fn((sql: string) => {
+    if (sql.includes('pos_supervisor_log')) return Promise.resolve(opts.supervisorActivo ? [{ id: 1 }] : []);
+    if (sql.includes('FROM empresa')) return Promise.resolve([{ configuracion: { ocultarMontosFacturasCajero: opts.ocultarMontos ?? true } }]);
+    return Promise.resolve([]);
+  });
   const ctx = {
     facturaRepository: { createQueryBuilder: () => qb, manager: { query: jest.fn() } },
     tenantService:      { getEmpresaId: () => 7, getSucursalId: () => null },
     dataSource:         { query },
     vendedorResolver:   { vendedorEnlazado: jest.fn().mockResolvedValue(opts.vendedorEnlazado) },
-    // El método privado que consulta pos_supervisor_log — se reusa el `ctx`
-    // completo (misma técnica que costo-venta-validacion.spec.ts), así que
-    // apunta al `this` real del prototipo, no a un stub aparte.
-    tieneSupervisorActivo: (FacturasService.prototype as any).tieneSupervisorActivo,
+    // Métodos privados reales del prototipo — misma técnica que
+    // costo-venta-validacion.spec.ts: se reusa el `ctx` completo en vez de
+    // un stub aparte, así findAll() los llama tal cual los llamaría en producción.
+    tieneSupervisorActivo:         (FacturasService.prototype as any).tieneSupervisorActivo,
+    ocultarMontosActivoParaEmpresa: (FacturasService.prototype as any).ocultarMontosActivoParaEmpresa,
   };
   (ctx as any).tieneSupervisorActivo = (ctx as any).tieneSupervisorActivo.bind(ctx);
+  (ctx as any).ocultarMontosActivoParaEmpresa = (ctx as any).ocultarMontosActivoParaEmpresa.bind(ctx);
   return { ctx, andWhereCalls };
 }
 

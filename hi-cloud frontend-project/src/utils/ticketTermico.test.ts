@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ventaEjemploTicket } from './ticketTermico';
+import { ventaEjemploTicket, buildReciboTermicoHTML } from './ticketTermico';
 
 /**
  * ventaEjemploTicket — la venta en sí (folio, items, montos) es de ejemplo a
@@ -72,5 +72,27 @@ describe('ventaEjemploTicket', () => {
       expect(venta.empresaLogo).not.toContain('<Store>'); // sin escapar rompería el XML
       expect(textoSvg(venta.empresaLogo!)).toContain('&amp;T');
     });
+  });
+});
+
+// Marca "REIMPRESIÓN #N" (política 'reimprimir_factura', 2026-10-15) — el
+// ticket reimpreso debe distinguirse del original en ambos formatos.
+describe('buildReciboTermicoHTML — marca de reimpresión', () => {
+  it('con reimpresionNumero: imprime "REIMPRESIÓN #N" en formato normal', () => {
+    const venta = ventaEjemploTicket(null, { nombre: 'Multiservicios Hi Global SRL' });
+    const html = buildReciboTermicoHTML({ ...venta, reimpresionNumero: 2 }, null, { formato: 'normal' });
+    expect(html).toContain('REIMPRESIÓN #2');
+  });
+
+  it('con reimpresionNumero: imprime "REIMPRESIÓN #N" en formato compacto', () => {
+    const venta = ventaEjemploTicket(null, { nombre: 'Multiservicios Hi Global SRL' });
+    const html = buildReciboTermicoHTML({ ...venta, reimpresionNumero: 1 }, null, { formato: 'compacto' });
+    expect(html).toContain('REIMPRESIÓN #1');
+  });
+
+  it('sin reimpresionNumero (venta original): nunca imprime la marca', () => {
+    const venta = ventaEjemploTicket(null, { nombre: 'Multiservicios Hi Global SRL' });
+    const html = buildReciboTermicoHTML(venta, null, { formato: 'normal' });
+    expect(html).not.toContain('REIMPRESIÓN');
   });
 });

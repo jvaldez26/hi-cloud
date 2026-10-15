@@ -1418,6 +1418,7 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
       posModoPorDefecto:           conf.posModoPorDefecto ?? 'general',
       posPrecioConsultaClinica:    conf.posPrecioConsultaClinica ?? 0,
       cierreCajaCiego:             conf.cierreCajaCiego ?? false,
+      ocultarMontosFacturasCajero: conf.ocultarMontosFacturasCajero ?? true,
       umbralDescuadreCaja:         conf.umbralDescuadreCaja ?? 100,
       notificarDescuadreCaja:      conf.notificarDescuadreCaja ?? true,
       prestamoEfectivoPorCaja:     conf.prestamoEfectivoPorCaja ?? true,
@@ -1848,6 +1849,17 @@ function SeccionPOS({ empresa, onSaved }: { empresa: any; onSaved: () => void })
           </div>
           <Text type="secondary" style={{ fontSize: 11, marginLeft: 36 }}>
             Avisa por campanita y correo cuando un cierre queda fuera del umbral. El cierre siempre queda marcado "Descuadre" en el historial, aunque este aviso esté apagado.
+          </Text>
+        </Col>
+        <Col xs={24}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Form.Item name="ocultarMontosFacturasCajero" valuePropName="checked" style={{ marginBottom: 0 }}>
+              <Switch size="small" />
+            </Form.Item>
+            <Text style={{ fontSize: 13 }}>Ocultar montos de facturas al cajero</Text>
+          </div>
+          <Text type="secondary" style={{ fontSize: 11, marginLeft: 36 }}>
+            Sin modo supervisor activo, un VENDEDOR ve sus facturas del turno actual sin total, subtotal, ITBIS ni forma de pago — así no puede cuadrar su caja con lo que ve en la lista. ADMIN/CONTADOR y modo supervisor activo siempre ven todo.
           </Text>
         </Col>
         <SwitchPrestamoEfectivoPorCaja />

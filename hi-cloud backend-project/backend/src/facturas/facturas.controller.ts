@@ -35,7 +35,7 @@ import { GetUser } from '../auth/decorators/get-user.decorator';
 import { UserRole } from '../users/enums/user-role.enum';
 import { User } from '../users/users.entity';
 import { FacturaEstado } from './entities/factura.entity';
-import { IsEnum, IsOptional, IsString, IsInt, IsBoolean, IsNotEmpty, ArrayMinSize, MaxLength, ValidateNested } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsInt, IsBoolean, IsNotEmpty, ArrayMinSize, MaxLength, MinLength, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 class FacturasFilterDto extends PaginationDto {
@@ -103,6 +103,20 @@ class EmitirEcfIndividualDto {
    */
   @IsOptional() @IsBoolean()
   confirmaRncNoVigente?: boolean;
+}
+
+class ReimprimirFacturaDto {
+  @IsEnum(['termico', 'pdf'])
+  formato: 'termico' | 'pdf';
+
+  /**
+   * Obligatorio SOLO cuando la política 'reimprimir_factura' está
+   * desactivada (lo exige el servicio, no aquí — acá no se sabe todavía si
+   * hace falta). Si viene, siempre debe tener al menos 5 caracteres —
+   * "ok" o "." no cuentan como motivo real.
+   */
+  @IsOptional() @IsString() @MinLength(5) @MaxLength(300)
+  motivo?: string;
 }
 
 class CorregirFormaPagoDto {
@@ -175,9 +189,10 @@ export class FacturasController {
   buscarParaNota(
     @Query('q')        q:        string,
     @Query('tipoNota') tipoNota: string,
+    @GetUser()         usuario:  User,
   ) {
     const tipo = (tipoNota === 'E33' ? 'E33' : 'E34') as 'E33' | 'E34';
-    return this.facturasService.buscarParaNota(q ?? '', tipo);
+    return this.facturasService.buscarParaNota(q ?? '', tipo, usuario);
   }
 
   @Get('pendientes-cobro')
@@ -198,8 +213,41 @@ export class FacturasController {
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR, UserRole.VIEWER)
   @ApiOperation({ summary: 'Obtener factura por ID con detalles' })
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.facturasService.findOne(id);
+  findOne(@Param('id', ParseIntPipe) id: number, @GetUser() usuario: User) {
+    return this.facturasService.findOne(id, usuario);
+  }
+
+  /**
+   * Reimprimir el recibo/factura de una venta ya emitida. Política
+   * 'reimprimir_factura' (Modo Supervisor): ACTIVADA exige autorización de
+   * supervisor (el guard ya la resuelve, igual que el resto del catálogo);
+   * DESACTIVADA exige en su lugar un motivo (el servicio lo valida, porque
+   * aquí no se sabe todavía qué política aplica). En ambos casos queda en
+   * auditoría — ver facturas.service.ts.reimprimir(). Devuelve la factura
+   * COMPLETA (sin máscara de montos): reimprimir ya es, por definición, una
+   * acción autorizada para ver lo que se va a reimprimir.
+   */
+  @Post(':id/reimprimir')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @UseGuards(RequiereSupervisor('reimprimir_factura'))
+  @ApiOperation({ summary: 'Reimprimir factura — exige motivo o autorización de supervisor según la política; siempre audita' })
+  reimprimir(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ReimprimirFacturaDto,
+    @GetUser() usuario: User,
+    @Req() req: Request,
+  ) {
+    return this.facturasService.reimprimir(
+      id, dto.formato, dto.motivo, usuario,
+      req.headers['x-supervisor-token'] as string | undefined,
+    );
+  }
+
+  @Get(':id/reimpresiones')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Historial de reimpresiones de una factura — cuántas veces y con qué motivo/autorización' })
+  reimpresiones(@Param('id', ParseIntPipe) id: number) {
+    return this.facturasService.reimpresiones(id);
   }
 
   @Patch(':id/estado')

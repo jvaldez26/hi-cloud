@@ -179,6 +179,7 @@ interface Sale {
   ecfFecha?:               string;
   fechaEmision?:           string;   // DD/MM/YYYY — fecha original de emisión (reimpresión)
   horaEmision?:            string;   // HH:mm:ss — hora original de emisión (reimpresión)
+  reimpresionNumero?:      number;   // presente solo en una reimpresión — imprime "REIMPRESIÓN #N" en el ticket
   rncComprador?:           string;
   razonSocial?:            string;
   securityCode?:           string;
@@ -3730,6 +3731,92 @@ function POSCompraDetailModal({ id, onClose, onRecibir, onRefresh }: {
   );
 }
 
+// Mensaje de "Empty" para los paneles del POS que listan datos vía API: un
+// 403 (sin permiso de rol) nunca debe verse igual que una lista genuinamente
+// vacía — antes todos los paneles hacían `data ?? []` sin mirar `isError`,
+// así que un VENDEDOR sin acceso a un listado (ej. recibos de cobro,
+// anticipos) veía "Sin registros" en vez de enterarse de que es un permiso.
+function mensajeVacioPanel(isError: boolean, status: number | undefined, nombrePlural: string): string {
+  if (isError) {
+    return status === 403
+      ? `No tienes permiso para ver ${nombrePlural}`
+      : `No se pudo cargar ${nombrePlural} — intenta de nuevo`;
+  }
+  return `Sin ${nombrePlural}`;
+}
+
+const MOTIVOS_REIMPRESION_RAPIDOS = ['Cliente la pidió', 'Ticket salió mal', 'Impresora falló'];
+
+/**
+ * Reimprimir una factura — política 'reimprimir_factura' (Modo Supervisor).
+ * ACTIVADA: pide autorización de supervisor (mismo flujo que el resto del
+ * catálogo, `requireSupervisor`). DESACTIVADA: pide un motivo obligatorio
+ * (mínimo 5 caracteres) antes de imprimir — nunca se reimprime sin uno de
+ * los dos. El backend (facturas.service.ts.reimprimir) valida y audita
+ * igual sin importar qué camino tomó el frontend; esto es solo para no
+ * mandar una petición que el backend va a rechazar.
+ *
+ * Devuelve la factura COMPLETA (sin máscara de montos — reimprimir ya es
+ * una acción autorizada) con `reimpresionNumero` para el "REIMPRESIÓN #N"
+ * del ticket.
+ */
+function useReimprimirFactura(opts: {
+  requireSupervisor?: (clave: string, action: string, detail?: string) => Promise<{ ok: boolean; token?: string }>;
+  supervisorPoliticas?: { clave: string; requerido: boolean }[];
+}) {
+  const [pendiente, setPendiente] = useState<{ folio: string; resolve: (m: string) => void; reject: (e: unknown) => void } | null>(null);
+  const [motivo, setMotivo] = useState('');
+  const requiereSupervisor = opts.supervisorPoliticas?.find(p => p.clave === 'reimprimir_factura')?.requerido ?? false;
+
+  const reimprimir = async (id: number, folio: string, formato: 'termico' | 'pdf'): Promise<any> => {
+    if (requiereSupervisor) {
+      const r = await (opts.requireSupervisor ?? (async () => ({ ok: true as const, token: undefined as string | undefined })))('reimprimir_factura', 'Reimprimir factura', folio);
+      if (!r.ok) throw new Error('Autorización de supervisor requerida');
+      const resp = await api.post(`/facturas/${id}/reimprimir`, { formato },
+        r.token ? { headers: { 'x-supervisor-token': r.token } } : undefined);
+      return resp.data?.data ?? resp.data;
+    }
+    const motivoFinal = await new Promise<string>((resolve, reject) => {
+      setMotivo('');
+      setPendiente({ folio, resolve, reject });
+    });
+    const resp = await api.post(`/facturas/${id}/reimprimir`, { formato, motivo: motivoFinal });
+    return resp.data?.data ?? resp.data;
+  };
+
+  const modal = (
+    <Modal
+      title="Motivo de la reimpresión"
+      open={!!pendiente}
+      onCancel={() => { pendiente?.reject(new Error('cancelado')); setPendiente(null); }}
+      okText="Reimprimir"
+      cancelText="Cancelar"
+      okButtonProps={{ disabled: motivo.trim().length < 5 }}
+      onOk={() => { const r = pendiente?.resolve; const m = motivo.trim(); setPendiente(null); r?.(m); }}
+      maskClosable={false}
+      destroyOnHidden
+      width="min(420px, 95vw)"
+    >
+      <p style={{ fontSize: 13, color: '#64748B', marginBottom: 10 }}>
+        Factura {pendiente?.folio} — escribe por qué se reimprime (mínimo 5 caracteres).
+      </p>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+        {MOTIVOS_REIMPRESION_RAPIDOS.map(m => (
+          <button key={m} onClick={() => setMotivo(m)}
+            style={{ padding: '4px 10px', borderRadius: 14, border: '1px solid #ddd', background: motivo === m ? '#059669' : '#fff',
+              color: motivo === m ? '#fff' : '#334155', fontSize: 12, cursor: 'pointer' }}>
+            {m}
+          </button>
+        ))}
+      </div>
+      <Input.TextArea value={motivo} onChange={e => setMotivo(e.target.value)} rows={3} maxLength={300}
+        placeholder="Otro — describe el motivo" />
+    </Modal>
+  );
+
+  return { reimprimir, modal };
+}
+
 // ── Panel Compras (Órdenes de Compra) ────────────────────────────────────────
 function POSComprasPanel({ C, onVolver, supervisorActive, requiereSupervisorPanel, requireSupervisor }: {
   C: Palette;
@@ -3765,11 +3852,17 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requiereSupervisorPane
   const compUser   = useAuthStore(s => s.user);
   const esAdminCxP = compUser?.role === 'admin' || compUser?.role === 'contador';
 
-  // Fetch compras — disabled until supervisor is active
+  // Fetch compras — solo se detiene cuando la política 'pos.panel.compras'
+  // SÍ exige supervisor y aún no está activo (ver el gate de abajo, misma
+  // condición). Bug real (2026-10-15, empresa MULTISERVICIOS HI GLOBAL,
+  // cajero Samuel): esto estaba en `enabled: supervisorActive` a secas, sin
+  // mirar `requiereSupervisorPanel` — con la política DESACTIVADA el panel
+  // abría (el gate de abajo no bloqueaba) pero la query nunca corría, y
+  // "Sin órdenes de compra" salía aunque la empresa sí tuviera órdenes.
   const busqD = useDebounce(busq, 300);
-  const { data: comprasData, isLoading, refetch } = useQuery<any>({
+  const { data: comprasData, isLoading, isError, error: comprasError, refetch } = useQuery<any>({
     queryKey: ['compras-pos', busqD, estadoFiltro],
-    enabled:  supervisorActive,
+    enabled:  supervisorActive || !requiereSupervisorPanel,
     queryFn:  () => {
       const params = new URLSearchParams({ page: '1', limit: '50' });
       if (busqD)        params.set('search', busqD);
@@ -3990,7 +4083,9 @@ function POSComprasPanel({ C, onVolver, supervisorActive, requiereSupervisorPane
         {isLoading ? (
           <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
         ) : compras.length === 0 ? (
-          <Empty style={{ marginTop: 40 }} description={<span style={{ color: C.textSub }}>Sin órdenes de compra</span>} />
+          <Empty style={{ marginTop: 40 }} description={<span style={{ color: C.textSub }}>
+            {mensajeVacioPanel(isError, (comprasError as any)?.response?.status, 'órdenes de compra')}
+          </span>} />
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
@@ -5493,7 +5588,7 @@ function POSClientesPanel({ C, onVolver }: { C: Palette; onVolver: () => void })
   const [busq, setBusq] = useState('');
   const { datos: rncDatos, loading: rncLoading, consultarDebounced, limpiar: limpiarRnc } = useRncLookup();
   const busqD = useDebounce(busq, 300);
-  const { data, isLoading } = useQuery<any>({
+  const { data, isLoading, isError, error: clientesError } = useQuery<any>({
     queryKey: ['pos-clientes', busqD],
     queryFn: () => api.get(`/clientes?limit=40${busqD?'&search='+encodeURIComponent(busqD):''}`)
       .then(r=>{ const d=r.data?.data??r.data; return d?.data??d??[]; }),
@@ -5642,7 +5737,7 @@ function POSClientesPanel({ C, onVolver }: { C: Palette; onVolver: () => void })
           </div>
           <div style={{ flex:1, overflowY:'auto', scrollbarWidth:'thin' }}>
             {isLoading ? <div style={{textAlign:'center',padding:40}}><Spin/></div> :
-             (data??[]).length===0 ? <Empty style={{marginTop:40}} description={<span style={{color:C.textSub}}>Sin clientes</span>}/> : (
+             (data??[]).length===0 ? <Empty style={{marginTop:40}} description={<span style={{color:C.textSub}}>{mensajeVacioPanel(isError, (clientesError as any)?.response?.status, 'clientes')}</span>}/> : (
               <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
                 <thead><tr style={{background:C.card,position:'sticky',top:0}}>
                   {['Nombre','RNC/Cédula','Teléfono',''].map(h=>(
@@ -5771,7 +5866,7 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
     enabled: !!clienteId && !esAnticipo,
     staleTime: 0,
   });
-  const { data: lista, isLoading } = useQuery<any>({
+  const { data: lista, isLoading, isError, error: listaError } = useQuery<any>({
     queryKey: ['pos-panel', tipo],
     queryFn: () => api.get(`/${tipo}?limit=20`)
       .then(r=>{ const d=r.data?.data??r.data; return d?.data??d??[]; }),
@@ -6111,7 +6206,9 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
       ) : (
         <div style={{ flex:1, overflowY:'auto', scrollbarWidth:'thin' }}>
           {isLoading ? <div style={{textAlign:'center',padding:40}}><Spin/></div> :
-           (lista??[]).length===0 ? <Empty style={{marginTop:40}} description={<span style={{color:C.textSub}}>Sin registros</span>}/> : (
+           (lista??[]).length===0 ? <Empty style={{marginTop:40}} description={<span style={{color:C.textSub}}>
+             {mensajeVacioPanel(isError, (listaError as any)?.response?.status, esAnticipo ? 'anticipos' : 'recibos de cobro')}
+           </span>}/> : (
             <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
               <thead><tr style={{background:C.card,position:'sticky',top:0}}>
                 {(esAnticipo
@@ -6212,13 +6309,19 @@ function POSReciboAnticipoPanel({ tipo, C, onVolver }: { tipo: 'recibos-cobro'|'
 // — único componente usado por el POS y por Caja Diaria, ver ese archivo.
 
 // ── Ganancias / Ventas de Hoy ─────────────────────────────────────────────────
-function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }) {
+function POSVentasHoyPanel({ C, onVolver, requireSupervisor, supervisorPoliticas }: {
+  C: Palette;
+  onVolver: () => void;
+  requireSupervisor?: (clave: string, action: string, detail?: string) => Promise<{ ok: boolean; token?: string }>;
+  supervisorPoliticas?: { clave: string; requerido: boolean }[];
+}) {
   const hoy        = dayjs().format('YYYY-MM-DD');
   const vendedorId = localStorage.getItem('pos_vendedor_id');
   const qc         = useQueryClient();
   const user       = useAuthStore(s => s.user);
   const esAdmin    = user?.role === 'admin' || user?.role === 'contador';
   const [tab, setTab] = useState<'hoy' | 'historial'>('hoy');
+  const { reimprimir: reimprimirFactura, modal: reimprimirModal } = useReimprimirFactura({ requireSupervisor, supervisorPoliticas });
 
   // ── Facturas del día (ambos roles — admin ve todas, vendedor solo las suyas)
   // Admin no filtra por vendedorId: debe ver todas las facturas del negocio.
@@ -6260,7 +6363,11 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
     try {
       const empresa = await api.get('/configuracion/empresa')
         .then(x => x.data?.data ?? x.data).catch(() => ({}));
-      const f = await api.get(`/facturas/${id}`).then(r => r.data?.data ?? r.data);
+      const empConfPre = (empresa.configuracion ?? {}) as any;
+      // reimprimir(): política 'reimprimir_factura' — pide motivo o
+      // autorización de supervisor según corresponda, y audita. Devuelve la
+      // factura COMPLETA (sin máscara de montos) con reimpresionNumero.
+      const f = await reimprimirFactura(id, folio, empConfPre.posTipoImpresora === 'carta' ? 'pdf' : 'termico');
       // Fecha original de emisión (date-only, sin timezone)
       const _fechaEmision = f.fecha
         ? String(f.fecha).substring(0, 10).split('-').reverse().join('/')
@@ -6293,8 +6400,8 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
         empresaNombreComercial: empresa.razonSocial ?? empresa.nombre,
         empresaRnc: empresa.rnc, empresaDireccion: empresa.direccion, empresaTelefono: empresa.telefono,
         empresaLogo: empresa.logo,
+        reimpresionNumero: f.reimpresionNumero,
       };
-      const empConf = (empresa.configuracion ?? {}) as any;
       // El tamaño del QR depende del formato: la config del ticket va primero.
       const cfgTicket = resolverConfigTicket(empresa);
       let qrDUrl: string | null = null;
@@ -6314,7 +6421,7 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
         );
         return;
       }
-      if (empConf.posTipoImpresora === 'carta' && f.id) {
+      if (empConfPre.posTipoImpresora === 'carta' && f.id) {
         await imprimirFacturaPreviewA4(f.id);
         return;
       }
@@ -6323,8 +6430,9 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
         variasSucursales: variasSucursalesFromCache(qc),
       });
       imprimirReciboTermico(html, undefined, cfgTicket.tipoImpresora, avisarErrorBT);
-    } catch {
-      message.error('Error al reimprimir');
+    } catch (e: any) {
+      if (e?.message === 'cancelado') return;
+      message.error(e?.response?.data?.message ?? 'Error al reimprimir');
     }
   };
 
@@ -6485,6 +6593,7 @@ function POSVentasHoyPanel({ C, onVolver }: { C: Palette; onVolver: () => void }
           </div>
         </>
       )}
+      {reimprimirModal}
     </div>
   );
 }
@@ -7894,6 +8003,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
   const [cobrarCotDias,   setCobrarCotDias]   = useState<number>(30);
   const [genericDoc,     setGenericDoc]     = useState<GenericDocData | null>(null);
   const PANEL_GENERIC_ID  = 'hc-pos-panel-generic';
+  const { reimprimir: reimprimirFactura, modal: reimprimirModal } = useReimprimirFactura({ requireSupervisor, supervisorPoliticas });
 
   // Imprimir documento genérico (cotización, conduce, etc.)
   useEffect(() => {
@@ -8163,7 +8273,13 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
 
       // Hoja carta → preview HTML para facturas (igual que módulo Facturas); PDF para otros
       if (_tipoImp === 'carta') {
-        if (panel === 'facturas') { await imprimirFacturaPreviewA4(id); return; }
+        if (panel === 'facturas') {
+          // reimprimir(): política 'reimprimir_factura' — pide motivo o
+          // autorización de supervisor, y audita, ANTES de generar el PDF.
+          await reimprimirFactura(id, folio, 'pdf');
+          await imprimirFacturaPreviewA4(id);
+          return;
+        }
         const _ep = _a4PdfMap(id)[panel];
         if (_ep) { await imprimirPDFA4(_ep); return; }
         // Si el panel no tiene A4 (ej. cierre de caja), cae al ticket térmico
@@ -8178,7 +8294,10 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
 
       // ── Facturas → recibo estándar del POS (con e-CF y QR) ──────────
       if (panel === 'facturas') {
-        const f = await api.get(`/facturas/${id}`).then(r => r.data?.data ?? r.data);
+        // reimprimir(): política 'reimprimir_factura' — pide motivo o
+        // autorización de supervisor, y audita. Devuelve la factura COMPLETA
+        // (sin máscara de montos) con reimpresionNumero para el ticket.
+        const f = await reimprimirFactura(id, folio, 'termico');
         const _fechaEmision = f.fecha
           ? String(f.fecha).substring(0, 10).split('-').reverse().join('/')
           : undefined;
@@ -8212,6 +8331,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           empresaNombreComercial: empInfo.nombre, empresaRnc: empInfo.rnc,
           empresaDireccion: empInfo.direccion, empresaTelefono: empInfo.telefono,
           empresaLogo: empresa.logo,
+          reimpresionNumero: f.reimpresionNumero,
         };
         // Generar QR antes de construir el HTML
         const empConfPanel = (empresa.configuracion ?? {}) as any;
@@ -8480,7 +8600,8 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
       const cfgTicket = resolverConfigTicket(empresa);
       imprimirReciboTermico(buildDocTermicoHTML(gd, { tipoImpresora: empConfPanel.posTipoImpresora }), undefined, empConfPanel.posTipoImpresora);
     } catch (e: any) {
-      message.error('Error al imprimir: ' + (e.message ?? ''));
+      if (e?.message === 'cancelado') return;
+      message.error(e?.response?.data?.message ?? 'Error al imprimir: ' + (e.message ?? ''));
     } finally {
       setImprimiendo(null);
     }
@@ -8513,7 +8634,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
   const user       = useAuthStore(s => s.user);
   const esAdminPOS = user?.role === 'admin' || user?.role === 'contador';
   const vendedorIdPOS = localStorage.getItem('pos_vendedor_id');
-  const { data: rows, isLoading } = useQuery<any>({
+  const { data: rows, isLoading, isError, error: rowsError } = useQuery<any>({
     queryKey: ['pos-panel', panel, busqD, esAdminPOS ? null : (supervisorSessionActive ? 'supervisor' : vendedorIdPOS)],
     queryFn: async () => {
       const s = busqD ? `&search=${encodeURIComponent(busqD)}` : '';
@@ -8731,7 +8852,9 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
   // lanzaría "Rendered fewer hooks than expected" al pasar de Facturas a
   // Inventario. Por eso los paneles delegados se excluyen vía PANELES_DELEGADOS
   // en el `enabled` de esa query — mismo efecto, sin tocar el orden de hooks.
-  if (panel === 'ventas-hoy')   return <POSVentasHoyPanel  C={C} onVolver={onVolver} />;
+  if (panel === 'ventas-hoy')
+    return <POSVentasHoyPanel C={C} onVolver={onVolver}
+      requireSupervisor={requireSupervisor} supervisorPoliticas={supervisorPoliticas} />;
   if (panel === 'inventario')   return <POSInventarioPanel C={C} onVolver={onVolver} />;
   if (panel === 'clientes')     return <POSClientesPanel   C={C} onVolver={onVolver} />;
   if (panel === 'cierre-caja')  return <POSCierreCajaPanel C={C} onVolver={onVolver} />;
@@ -8745,7 +8868,16 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
       requiereSupervisorPanel={supervisorPoliticas?.find(p => p.clave === 'pos.panel.compras')?.requerido ?? true}
       requireSupervisor={requireSupervisor ?? (async () => ({ ok: true }))} />;
 
-  const cols  = (colsConfig as any)[panel] ?? [];
+  // Montos ocultos al cajero (Configuración → Punto de Venta): el backend YA
+  // omite total/subtotal/ITBIS/formasPago en la respuesta cuando corresponde
+  // (facturas.service.ts) — esto solo quita las columnas "Total"/"Pago" de
+  // la tabla en vez de pintarlas vacías. Se deriva de la fila real (nunca
+  // de una copia del toggle de configuración en el frontend) porque la tabla
+  // solo se pinta cuando ya hay al menos una fila — así nunca se desincroniza
+  // de lo que el backend decidió.
+  const montosOcultos = panel === 'facturas' && !!(rows ?? [])[0] && !('total' in (rows as any[])[0]);
+  const colsBase = (colsConfig as any)[panel] ?? [];
+  const cols  = montosOcultos ? colsBase.filter((c: any) => c.key !== 'total' && c.key !== 'formasPago') : colsBase;
   const title = PANEL_TITLES[panel];
 
   return (
@@ -8770,7 +8902,9 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
             <Spin />
           </div>
         ) : (rows ?? []).length === 0 ? (
-          <Empty description={<span style={{ color: C.textSub, fontSize: 13 }}>Sin registros</span>} style={{ marginTop: 40 }} />
+          <Empty description={<span style={{ color: C.textSub, fontSize: 13 }}>
+            {mensajeVacioPanel(isError, (rowsError as any)?.response?.status, title.label.toLowerCase())}
+          </span>} style={{ marginTop: 40 }} />
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
@@ -9156,6 +9290,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           }}
         />
       </Modal>
+      {reimprimirModal}
     </div>
   );
 }
