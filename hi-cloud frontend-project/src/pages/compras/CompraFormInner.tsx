@@ -10,6 +10,7 @@ import { ColumnToggle } from '../../components/ui/ColumnToggle';
 import { comprasApi, type CompraDetallePayload } from '../../api/compras.api';
 import { proveedoresApi } from '../../api/proveedores.api';
 import { productosApi } from '../../api/productos.api';
+import { ProductoFormModal } from '../../components/productos/ProductoFormModal';
 import api from '../../api/client';
 import { useAuthStore } from '../../store/auth.store';
 import { TIPOS_BIENES_606, FORMAS_PAGO_606 } from '../../constants/dgii-606';
@@ -285,9 +286,11 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
   const [selectedProds, setSelectedProds] = useState<Map<number, string>>(new Map());
 
   // ── Crear producto rápido desde la OC ──────────────────────────────
+  // El formulario vive en ProductoFormModal (modo rápido) — mismo componente
+  // que Inventario, POS y Xlink.
   const [showCrearProd,      setShowCrearProd]      = useState(false);
   const [crearProdLineasIdx, setCrearProdLineasIdx]  = useState(0);
-  const [crearProdForm] = Form.useForm();
+  const [nombreParaCrear,    setNombreParaCrear]     = useState('');
 
   const { data: proveedores } = useQuery({ queryKey: ['proveedores-sel'], queryFn: () => proveedoresApi.list(1, 200) });
   // Debounced: sin esto, cada tecla dispara un fetch nuevo y cambia las
@@ -505,32 +508,29 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
     }
   }, [compraEdit, form]);
 
-  const crearProdMut = useMutation({
-    mutationFn: (body: any) => api.post('/productos', body).then((r: any) => r.data?.data ?? r.data),
-    onSuccess: (prod: any, variables: any) => {
-      // Precio de la línea: costo de compra ingresado, o precio de venta como fallback
-      const precioLinea = Number(variables.costo) > 0 ? Number(variables.costo) : Number(prod.precio ?? 0);
-      const updated = [...lineas];
-      updated[crearProdLineasIdx] = {
-        ...updated[crearProdLineasIdx],
-        productoId:         prod.id,
-        productoTipo:       prod.tipo,
-        descripcion:        prod.nombre,
-        precioUnitario:     precioLinea,
-        porcentajeItbis:    18,
-        permiteDecimales:   false,
-        cantidadBonificada: updated[crearProdLineasIdx].cantidadBonificada ?? 0,
-      };
-      setLineas(updated);
-      const label = prod.codigo ? `${prod.codigo} — ${prod.nombre}` : prod.nombre;
-      setSelectedProds(prev => new Map(prev).set(prod.id, label));
-      qc.invalidateQueries({ queryKey: ['productos-compra-search'] });
-      setShowCrearProd(false);
-      crearProdForm.resetFields();
-      message.success(`Producto "${prod.nombre}" creado y agregado a la línea`);
-    },
-    onError: (e: any) => message.error(e?.friendlyMessage ?? e?.response?.data?.message ?? 'Error al crear producto'),
-  });
+  // La creación en sí (validar duplicados, ITBIS por defecto de la empresa,
+  // UomSelect real) vive en ProductoFormModal (modo rápido) — aquí solo se
+  // engancha el producto recién creado a la línea de la OC que lo disparó.
+  const onProductoCreadoRapido = (prod: any) => {
+    const precioLinea = Number(prod.costo) > 0 ? Number(prod.costo) : Number(prod.precio ?? 0);
+    const updated = [...lineas];
+    updated[crearProdLineasIdx] = {
+      ...updated[crearProdLineasIdx],
+      productoId:         prod.id,
+      productoTipo:       prod.tipo,
+      descripcion:        prod.nombre,
+      precioUnitario:     precioLinea,
+      porcentajeItbis:    Number(prod.porcentajeIva ?? 18),
+      permiteDecimales:   false,
+      cantidadBonificada: updated[crearProdLineasIdx].cantidadBonificada ?? 0,
+    };
+    setLineas(updated);
+    const label = prod.codigo ? `${prod.codigo} — ${prod.nombre}` : prod.nombre;
+    setSelectedProds(prev => new Map(prev).set(prod.id, label));
+    qc.invalidateQueries({ queryKey: ['productos-compra-search'] });
+    setShowCrearProd(false);
+    message.success(`Producto "${prod.nombre}" creado y agregado a la línea`);
+  };
 
   // Preview en el frontend — el backend recalcula esto mismo, línea por
   // línea con su propia tasa y el mismo reparto proporcional del descuento
@@ -812,7 +812,7 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
                       onMouseDown={e => e.preventDefault()}
                       onClick={() => {
                         setCrearProdLineasIdx(idx);
-                        crearProdForm.setFieldsValue({ nombre: productoSearch });
+                        setNombreParaCrear(productoSearch);
                         setShowCrearProd(true);
                       }}
                     >
@@ -1365,113 +1365,17 @@ export default function CompraFormInner({ onSuccess, onCancel, compraId, altoCom
           </Button>
         </div>
       </Card>
-      {/* ── Modal: crear producto rápido desde la OC ─────────────────── */}
-      <Modal
-        title="Crear producto rápido"
+      {/* ── Crear producto rápido desde la OC — mismo formulario que Inventario/POS/Xlink ── */}
+      <ProductoFormModal
         open={showCrearProd}
-        onCancel={() => { setShowCrearProd(false); crearProdForm.resetFields(); }}
-        footer={null}
-        destroyOnClose
+        onClose={() => setShowCrearProd(false)}
+        modoInicial="rapido"
+        marcarCreacionRapida
+        nombreInicial={nombreParaCrear}
+        proveedorIdInicial={form.getFieldValue('proveedorId') || undefined}
         width={480}
-      >
-        <Form
-          form={crearProdForm}
-          layout="vertical"
-          onFinish={(vals) => crearProdMut.mutate({
-            nombre:           vals.nombre,
-            precio:           Number(vals.precio),
-            costo:            vals.costo ? Number(vals.costo) : undefined,
-            categoria:        vals.categoria  || undefined,
-            unidadMedida:     vals.unidadMedida || undefined,
-            codigoBarras:     vals.codigoBarras || undefined,
-            // El proveedor de la orden que se está capturando. Es el único sitio
-            // del sistema donde el par producto↔proveedor es deducible sin
-            // preguntar nada: ya está elegido arriba en este mismo formulario.
-            //
-            // No espera a la recepción: el enganche de compras vincula al recibir,
-            // pero una orden puede quedarse en borrador mucho tiempo — y es justo
-            // ahí cuando quieres ver el catálogo del proveedor en reposición.
-            //
-            // El `costo` NO viaja como precio pactado: es un estimado de compra.
-            proveedorId:      form.getFieldValue('proveedorId') || undefined,
-            esCreacionRapida: true,
-            porcentajeIva:    18,
-          })}
-        >
-          <Form.Item
-            name="nombre"
-            label="Nombre del producto"
-            rules={[{ required: true, message: 'El nombre es obligatorio' }]}
-          >
-            <Input placeholder="Ej: Aceite Motor 5W30 1L" autoFocus />
-          </Form.Item>
-          <Form.Item name="codigoBarras" label="Código de barra">
-            <Input placeholder="Escanea o escribe el código" />
-          </Form.Item>
-          <Row gutter={12}>
-            <Col span={12}>
-              <Form.Item
-                name="precio"
-                label="Precio de venta"
-                rules={[
-                  { required: true, message: 'Ingresa un precio de venta' },
-                  { type: 'number', min: 0.01, message: 'Debe ser mayor a 0' },
-                ]}
-                extra="Editable luego en Inventario"
-              >
-                <InputNumber min={0.01} precision={2} style={{ width: '100%' }} addonBefore="RD$" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                name="costo"
-                label="Costo de compra"
-                extra="Se usará como precio en esta OC"
-              >
-                <InputNumber min={0} precision={2} style={{ width: '100%' }} addonBefore="RD$" placeholder="0.00" />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Row gutter={12}>
-            <Col span={12}>
-              <Form.Item name="categoria" label="Categoría">
-                <Input placeholder="Ej: Lubricantes" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="unidadMedida" label="Unidad de medida" initialValue="PZA">
-                <Select>
-                  <Select.Option value="PZA">PZA — Pieza</Select.Option>
-                  <Select.Option value="UNIDAD">UNIDAD</Select.Option>
-                  <Select.Option value="LITRO">LITRO</Select.Option>
-                  <Select.Option value="KG">KG</Select.Option>
-                  <Select.Option value="METRO">METRO</Select.Option>
-                  <Select.Option value="CAJA">CAJA</Select.Option>
-                  <Select.Option value="GALON">GALÓN</Select.Option>
-                </Select>
-              </Form.Item>
-            </Col>
-          </Row>
-          <Alert
-            type="info"
-            showIcon
-            style={{ marginBottom: 16 }}
-            message="Creación rápida — completa los detalles del producto en Inventario después."
-          />
-          <Row gutter={8} justify="end">
-            <Col>
-              <Button onClick={() => { setShowCrearProd(false); crearProdForm.resetFields(); }}>
-                Cancelar
-              </Button>
-            </Col>
-            <Col>
-              <Button type="primary" htmlType="submit" loading={crearProdMut.isPending} icon={<PlusOutlined />}>
-                Crear y agregar a la OC
-              </Button>
-            </Col>
-          </Row>
-        </Form>
-      </Modal>
+        onSuccess={onProductoCreadoRapido}
+      />
     </Form>
   );
 }

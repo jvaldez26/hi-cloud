@@ -4,6 +4,7 @@ import type { ApiResponse, PaginatedData, Producto } from '../types';
 export interface ProductoPayload {
   tipo?: string;   // 'producto' | 'servicio'
   codigo: string; nombre: string; precio: number;
+  codigoBarras?: string | null;
   precio2?: number | null; precio3?: number | null;
   costo?: number | null;
   unidadMedida?: string; porcentajeIva?: number;
@@ -14,6 +15,8 @@ export interface ProductoPayload {
   marca?: string;
   modelo?: string;
   referencia?: string;
+  /** Creado desde un "modo rápido" (Compras/POS/Xlink) — pendiente de completar en Inventario. */
+  esCreacionRapida?: boolean;
   /**
    * Proveedor que vende el producto. OPCIONAL. No es columna de `productos`: el
    * backend lo saca del payload y crea el par en `producto_proveedor`.
@@ -60,6 +63,12 @@ export const productosApi = {
 
   update: (id: number, body: Partial<ProductoPayload>) =>
     api.patch<ApiResponse<Producto>>(`/productos/${id}`, body).then(r => r.data.data),
+
+  /** Verifica si codigo/nombre/codigoBarras ya existe (validación en tiempo real, mismo campo en los 4 formularios). */
+  checkDuplicado: (campo: 'codigo' | 'nombre' | 'codigoBarras', valor: string, excludeId?: number) =>
+    api.get<ApiResponse<{ disponible: boolean }>>(
+      `/productos/check-duplicado?campo=${campo}&valor=${encodeURIComponent(valor)}${excludeId ? `&excludeId=${excludeId}` : ''}`,
+    ).then(r => r.data.data ?? (r.data as any)),
 
   /**
    * Fija costoPromedio (AVCO) a mano — solo para productos sin historial de

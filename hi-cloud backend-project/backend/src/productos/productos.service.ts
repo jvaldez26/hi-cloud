@@ -19,6 +19,7 @@ import { PreviewAjustePreciosDto, AplicarAjustePreciosDto } from './dto/ajuste-p
 import { AjustarCostoManualDto } from './dto/ajustar-costo-manual.dto';
 import { calcularFila } from './ajuste-precios.util';
 import { TenantService } from '../tenant/tenant.service';
+import { UserRole } from '../users/enums/user-role.enum';
 import { ProductoProveedorService } from './producto-proveedor.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { LimitesService } from '../suscripciones/limites.service';
@@ -260,8 +261,24 @@ export class ProductosService implements OnModuleInit {
     }
   }
 
+  /**
+   * VENDEDOR nunca ve ni edita costo/precio2/precio3 (precios mayoristas) —
+   * requisito explícito del formulario único de producto (2026-10-16). El
+   * frontend ya oculta estos campos para ese rol, pero esto es la puerta
+   * real: si alguien manda el valor de todas formas (API directa, DevTools),
+   * el backend lo ignora en silencio en vez de confiar en que el cliente
+   * nunca lo envíe.
+   */
+  private ignorarCamposRestringidosSiVendedor<T extends { costo?: unknown; precio2?: unknown; precio3?: unknown }>(dto: T): void {
+    if (this.tenantService.getRolEmpresa() !== UserRole.VENDEDOR) return;
+    delete dto.costo;
+    delete dto.precio2;
+    delete dto.precio3;
+  }
+
   async create(dto: CreateProductoDto) {
     const empresaId = this.tenantService.getEmpresaId();
+    this.ignorarCamposRestringidosSiVendedor(dto);
     await this.limitesService.verificarLimiteProductos(empresaId);
 
     // Sanitizar código: undefined/null/vacío/string-literal → undefined para no hacer query con valor basura
@@ -275,6 +292,11 @@ export class ProductosService implements OnModuleInit {
     if (dto.codigo) {
       const byCodigo = await this.productoRepository.findOne({ where: { codigo: dto.codigo, empresaId, isActive: true } });
       if (byCodigo) throw new ConflictException(`Ya existe un producto con el código '${dto.codigo}'`);
+    }
+
+    if (dto.codigoBarras) {
+      const byBarras = await this.productoRepository.findOne({ where: { codigoBarras: dto.codigoBarras, empresaId, isActive: true } });
+      if (byBarras) throw new ConflictException(`Ya existe un producto con el código de barras '${dto.codigoBarras}'`);
     }
 
     // proveedorId se extrae aquí: no es columna de `productos` sino un vínculo en
@@ -390,6 +412,13 @@ export class ProductosService implements OnModuleInit {
            WHERE fd."productoId" = producto.id AND f."empresaId" = producto."empresaId"
              AND f."isActive" = true AND f."createdAt" >= NOW() - INTERVAL '90 days'
          )`);
+    }
+
+    // Productos creados en "modo rápido" (Compras/POS/Xlink) — se les falta
+    // completar costo/stock/almacén/proveedor/etc. Se limpia solo (ver
+    // update(): "cualquier edición manual del producto lo completa").
+    if (filtro === 'pendiente-completar') {
+      qb.andWhere('producto.esCreacionRapida = true');
     }
 
     // Si hay almacén activo en el JWT y no se pide ver todos → filtrar por stock en ese almacén.
@@ -662,6 +691,7 @@ export class ProductosService implements OnModuleInit {
 
   async update(id: number, dto: UpdateProductoDto) {
     const empresaId = this.tenantService.getEmpresaId();
+    this.ignorarCamposRestringidosSiVendedor(dto);
     const producto  = await this.findOne(id);
 
     // null explícito = usuario quiere borrar el código → auto-generar uno nuevo
@@ -680,6 +710,13 @@ export class ProductosService implements OnModuleInit {
         where: { codigo: dto.codigo, empresaId, isActive: true },
       });
       if (codExists) throw new ConflictException(`Ya existe un producto con el código '${dto.codigo}'`);
+    }
+
+    if (dto.codigoBarras && dto.codigoBarras !== producto.codigoBarras) {
+      const barrasExists = await this.productoRepository.findOne({
+        where: { codigoBarras: dto.codigoBarras, empresaId, isActive: true },
+      });
+      if (barrasExists) throw new ConflictException(`Ya existe un producto con el código de barras '${dto.codigoBarras}'`);
     }
 
     if (dto.nombre && dto.nombre !== producto.nombre) {
@@ -762,7 +799,21 @@ export class ProductosService implements OnModuleInit {
     return this.findOne(id);
   }
 
-  async checkDuplicado(campo: 'codigo' | 'nombre', valor: string, excludeId?: number): Promise<{ disponible: boolean }> {
+  /**
+   * `campo` se interpola directo en el nombre de columna del WHERE — el tipo
+   * `'codigo' | 'nombre' | 'codigoBarras'` del controller es solo una pista
+   * de compilación, NO valida en runtime (NestJS no corre class-validator
+   * sobre un `@Query()` suelto). Sin esta lista blanca, cualquier string en
+   * `?campo=` pasaba directo al SQL (inyección de nombre de columna).
+   */
+  private static readonly CAMPOS_CHECK_DUPLICADO = ['codigo', 'nombre', 'codigoBarras'] as const;
+
+  async checkDuplicado(
+    campo: 'codigo' | 'nombre' | 'codigoBarras', valor: string, excludeId?: number,
+  ): Promise<{ disponible: boolean }> {
+    if (!ProductosService.CAMPOS_CHECK_DUPLICADO.includes(campo as any)) {
+      throw new BadRequestException(`Campo '${campo}' no válido para verificar duplicados`);
+    }
     const empresaId = this.tenantService.getEmpresaId();
     const qb = this.productoRepository
       .createQueryBuilder('p')

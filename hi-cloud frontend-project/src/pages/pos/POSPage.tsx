@@ -43,7 +43,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useMobile } from '../../hooks/useMediaQuery';
 import { productosApi } from '../../api/productos.api';
-import { useProductoImagen } from '../../hooks/useProductoImagen';
+import { ProductoFormModal } from '../../components/productos/ProductoFormModal';
 import api from '../../api/client';
 import { clientesApi } from '../../api/clientes.api';
 import { proveedoresApi, type ProveedorPayload } from '../../api/proveedores.api';
@@ -2989,27 +2989,12 @@ function POSInventarioPanel({ C, onVolver }: {
   const isAdmin  = userRole === 'admin' || userRole === 'super_admin';
 
   // ── estados producto CRUD ─────────────────────────────────────────────────
+  // El formulario (crear/editar) vive en ProductoFormModal — el mismo
+  // componente que Inventario, Compras y Xlink. Esta pantalla solo decide
+  // CUÁNDO abrirlo (showForm/editingProd).
   const [busq, setBusq] = useState('');
   const [showForm, setShowForm]       = useState(false);
   const [editingProd, setEditingProd] = useState<any>(null);
-  const [saving, setSaving]           = useState(false);
-  const [fTipo,           setFTipo]           = useState<'producto'|'servicio'>('producto');
-  const [fNombre,         setFNombre]         = useState('');
-  const [fCodigo,         setFCodigo]         = useState('');
-  const [fPrecio,         setFPrecio]         = useState('');
-  const [fPrecio2,        setFPrecio2]        = useState('');
-  const [fPrecio3,        setFPrecio3]        = useState('');
-  const [fPrecioConItbis, setFPrecioConItbis] = useState(false);
-  const [fItbis,          setFItbis]          = useState('18');
-  const [fStock,          setFStock]          = useState('0');
-  const [fStockMin,       setFStockMin]       = useState('0');
-  const [fCategoria,      setFCategoria]      = useState('');
-  const [fCosto,          setFCosto]          = useState('');
-  const [fUnidadMedida,   setFUnidadMedida]   = useState('');
-  const [fDescripcion,    setFDescripcion]    = useState('');
-  const [fImagenUrl,      setFImagenUrl]      = useState('');
-  // Preview del formulario: resuelve URL firmada cuando fImagenUrl es key S3
-  const { src: imagenFormPreviewSrc } = useProductoImagen(editingProd?.id, fImagenUrl || null);
 
   // ── estados movimientos ───────────────────────────────────────────────────
   const [movLimit, setMovLimit] = useState(10);
@@ -3051,67 +3036,9 @@ function POSInventarioPanel({ C, onVolver }: {
   const mProdOpts: any[] = mProdData ?? [];
 
   // ── handlers producto ─────────────────────────────────────────────────────
-  const openForm = (prod?: any) => {
-    setEditingProd(prod ?? null);
-    setFTipo((prod?.tipo ?? 'producto') as 'producto'|'servicio');
-    setFNombre(prod?.nombre ?? '');
-    setFCodigo(prod?.codigo ?? '');
-    setFPrecio(prod ? String(prod.precio ?? '') : '');
-    setFPrecio2(prod?.precio2 != null ? String(prod.precio2) : '');
-    setFPrecio3(prod?.precio3 != null ? String(prod.precio3) : '');
-    setFPrecioConItbis(false);
-    setFItbis(String(prod?.porcentajeIva ?? 18));
-    setFStock(String(prod?.stock ?? 0));
-    setFStockMin(String(prod?.stockMinimo ?? 0));
-    setFCategoria(prod?.categoria ?? '');
-    setFCosto(prod?.costo != null ? String(prod.costo) : '');
-    setFUnidadMedida(prod?.unidadMedida ?? '');
-    setFDescripcion(prod?.descripcion ?? '');
-    setFImagenUrl(prod?.imagenUrl ?? '');
-    setShowForm(true);
-  };
+  const handleNuevo = () => { setEditingProd(null); setShowForm(true); };
 
-  const handleNuevo = () => { openForm(); };
-
-  const handleEditar = (prod: any) => { openForm(prod); };
-
-  const handleSave = async () => {
-    if (!fNombre.trim() || !fPrecio.trim()) { message.error('Nombre y precio son obligatorios'); return; }
-    setSaving(true);
-    try {
-      const esServicio = fTipo === 'servicio';
-      const itbis  = Number(fItbis) || 0;
-      const pBase  = fPrecioConItbis && itbis > 0
-        ? Math.round(Number(fPrecio) / (1 + itbis / 100) * 10000) / 10000
-        : Number(fPrecio);
-      const body: Record<string, unknown> = {
-        nombre: fNombre.trim(), codigo: fCodigo.trim() || (editingProd ? null : undefined),
-        precio: pBase, porcentajeIva: itbis,
-        precio2: fPrecio2 && Number(fPrecio2) > 0 ? Number(fPrecio2) : null,
-        precio3: fPrecio3 && Number(fPrecio3) > 0 ? Number(fPrecio3) : null,
-        stockMinimo: esServicio ? 0 : Number(fStockMin),
-        categoria: fCategoria.trim() || undefined, tipo: fTipo,
-        costo: fCosto && Number(fCosto) > 0 ? Number(fCosto) : null,
-        unidadMedida: fUnidadMedida.trim() || undefined,
-        descripcion: fDescripcion.trim() || undefined,
-        imagenUrl: fImagenUrl.trim() || undefined,
-      };
-      if (!editingProd && !esServicio) body.stock = Number(fStock);
-      const tipoLabel = esServicio ? 'Servicio' : 'Producto';
-      if (editingProd) {
-        await api.patch(`/productos/${editingProd.id}`, body);
-        message.success(`${tipoLabel} actualizado`);
-      } else {
-        await api.post('/productos', body);
-        message.success(`${tipoLabel} creado`);
-      }
-      qc.invalidateQueries({ queryKey: ['pos-productos'] });
-      qc.invalidateQueries({ queryKey: ['pos-products-scan'] });
-      setShowForm(false);
-    } catch (e: any) {
-      message.error(e?.response?.data?.message ?? 'Error al guardar producto');
-    } finally { setSaving(false); }
-  };
+  const handleEditar = (prod: any) => { setEditingProd(prod); setShowForm(true); };
 
   // ── handlers movimientos ──────────────────────────────────────────────────
   const handleMovModal = (tipo: 'entrada'|'salida') => {
@@ -3322,175 +3249,15 @@ function POSInventarioPanel({ C, onVolver }: {
         ]}
       />
 
-      {/* Modal — formulario de producto */}
-      {showForm && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.6)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div style={{ background: C.card, width: '100%', maxWidth: 420, borderRadius: 12,
-            display: 'flex', flexDirection: 'column', overflow: 'hidden', maxHeight: '92vh' }}>
-            <div style={{ padding: '14px 18px', borderBottom: `1px solid ${C.border}`,
-              display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontWeight: 700, fontSize: 15, color: C.text, flex: 1 }}>
-                {editingProd
-                  ? `Editar ${fTipo === 'servicio' ? 'Servicio' : 'Producto'}`
-                  : `Nuevo ${fTipo === 'servicio' ? 'Servicio' : 'Producto'}`}
-              </span>
-              <button onClick={() => setShowForm(false)} style={{ background: 'none', border: 'none',
-                color: C.textSub, cursor: 'pointer', fontSize: 18, padding: 4, lineHeight: 1 }}>✕</button>
-            </div>
-            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px' }}>
-              <div style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: C.text }}>Tipo</div>
-                <Segmented
-                  value={fTipo}
-                  onChange={v => setFTipo(v as 'producto'|'servicio')}
-                  options={[
-                    { label: '📦 Producto', value: 'producto' },
-                    { label: '⚙️ Servicio', value: 'servicio' },
-                  ]}
-                  block
-                />
-              </div>
-              <PanelInput C={C} label="Nombre *" value={fNombre}
-                onChange={e => setFNombre(e.target.value)}
-                placeholder={fTipo === 'servicio' ? 'Nombre del servicio' : 'Nombre del producto'} />
-              <PanelInput C={C} label="Código" value={fCodigo}
-                onChange={e => setFCodigo(e.target.value)} placeholder="Código (opcional)" />
-              {/* ── Precios P1 / P2 / P3 ── */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 10 }}>
-                {/* P1 + toggle Sin/Con ITBIS */}
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4, color: C.text }}>
-                    Precio * (RD$)
-                  </div>
-                  <div style={{ display: 'flex' }}>
-                    <input type="number" min="0" step="0.01" value={fPrecio}
-                      onChange={e => setFPrecio(e.target.value)}
-                      style={{ flex: 1, minWidth: 0, height: 36, padding: '0 6px', fontSize: 13,
-                        borderRadius: '8px 0 0 8px', border: `1px solid ${C.border}`, borderRight: 'none',
-                        background: C.inputBg, color: C.text, outline: 'none', boxSizing: 'border-box' }} />
-                    <button type="button" onClick={() => setFPrecioConItbis(v => !v)}
-                      style={{ height: 36, padding: '0 7px', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap',
-                        borderRadius: '0 8px 8px 0', border: `1px solid ${C.border}`, cursor: 'pointer',
-                        background: fPrecioConItbis ? C.blue : C.card, color: fPrecioConItbis ? '#fff' : C.textSub,
-                        flexShrink: 0 }}>
-                      {fPrecioConItbis ? 'Con ITBIS' : 'Sin ITBIS'}
-                    </button>
-                  </div>
-                  {fPrecioConItbis && Number(fPrecio) > 0 && Number(fItbis) > 0 && (
-                    <div style={{ fontSize: 10, color: C.textSub, marginTop: 3 }}>
-                      Base: {fmt.money(Math.round(Number(fPrecio) / (1 + Number(fItbis) / 100) * 100) / 100)}
-                    </div>
-                  )}
-                </div>
-                {/* P2 */}
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4, color: C.textSub }}>
-                    Precio 2 <span style={{ fontWeight: 400, fontSize: 10 }}>(Mayorista)</span>
-                  </div>
-                  <input type="number" min="0" step="0.01" value={fPrecio2}
-                    onChange={e => setFPrecio2(e.target.value)} placeholder="Opcional"
-                    style={{ width: '100%', height: 36, padding: '0 8px', fontSize: 13,
-                      borderRadius: 8, border: `1px solid ${C.border}`,
-                      background: C.inputBg, color: C.text, outline: 'none', boxSizing: 'border-box' }} />
-                </div>
-                {/* P3 */}
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4, color: C.textSub }}>
-                    Precio 3 <span style={{ fontWeight: 400, fontSize: 10 }}>(Especial)</span>
-                  </div>
-                  <input type="number" min="0" step="0.01" value={fPrecio3}
-                    onChange={e => setFPrecio3(e.target.value)} placeholder="Opcional"
-                    style={{ width: '100%', height: 36, padding: '0 8px', fontSize: 13,
-                      borderRadius: 8, border: `1px solid ${C.border}`,
-                      background: C.inputBg, color: C.text, outline: 'none', boxSizing: 'border-box' }} />
-                </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <PanelInput C={C} label="ITBIS %" type="number" min="0" max="100"
-                  value={fItbis} onChange={e => setFItbis(e.target.value)} />
-                <div />{/* espaciador */}
-                {fTipo !== 'servicio' && (
-                  <>
-                    <div style={{ marginBottom: 12 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: C.text }}>
-                        {editingProd ? 'Stock actual' : 'Stock'}
-                      </div>
-                      <input type="number" min="0" value={fStock}
-                        onChange={e => setFStock(e.target.value)}
-                        disabled={!!editingProd}
-                        style={{ width: '100%', height: 38, padding: '0 12px', borderRadius: 8,
-                          border: `1px solid ${C.border2}`, fontSize: 13, boxSizing: 'border-box',
-                          background: editingProd ? C.border : C.inputBg,
-                          color: editingProd ? C.textSub : C.text, cursor: editingProd ? 'not-allowed' : 'text',
-                          outline: 'none' }} />
-                      {editingProd && (
-                        <div style={{ fontSize: 11, color: C.textSub, marginTop: 3 }}>
-                          El stock se ajusta mediante movimientos de inventario
-                        </div>
-                      )}
-                    </div>
-                    <PanelInput C={C} label="Stock Mín." type="number" min="0"
-                      value={fStockMin} onChange={e => setFStockMin(e.target.value)} />
-                  </>
-                )}
-              </div>
-              <PanelInput C={C} label="Categoría" value={fCategoria}
-                onChange={e => setFCategoria(e.target.value)} placeholder="Categoría (opcional)" />
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: C.text }}>
-                    Costo <span style={{ fontWeight: 400, fontSize: 10, color: C.textSub }}>(precio de compra)</span>
-                  </div>
-                  <input type="number" min="0" step="0.01" value={fCosto}
-                    onChange={e => setFCosto(e.target.value)} placeholder="Opcional"
-                    style={{ width: '100%', height: 36, padding: '0 8px', fontSize: 13,
-                      borderRadius: 8, border: `1px solid ${C.border}`,
-                      background: C.inputBg, color: C.text, outline: 'none', boxSizing: 'border-box' }} />
-                </div>
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: C.text }}>Unidad de Medida</div>
-                  <UomSelect value={fUnidadMedida || undefined} onChange={v => setFUnidadMedida(v)} />
-                </div>
-              </div>
-              <PanelInput C={C} label="Imagen URL" value={fImagenUrl}
-                onChange={e => setFImagenUrl(e.target.value)} placeholder="https://… (opcional)" />
-              {imagenFormPreviewSrc && (
-                <div style={{ marginBottom: 10 }}>
-                  <img src={imagenFormPreviewSrc} alt="preview"
-                    style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8,
-                      border: `1px solid ${C.border}` }}
-                    onError={e => (e.currentTarget.style.display = 'none')} />
-                </div>
-              )}
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: C.text }}>Descripción</div>
-                <textarea value={fDescripcion} rows={2}
-                  onChange={e => setFDescripcion(e.target.value)}
-                  placeholder="Descripción opcional"
-                  style={{ width: '100%', padding: '8px 10px', fontSize: 13, resize: 'vertical',
-                    borderRadius: 8, border: `1px solid ${C.border}`, boxSizing: 'border-box',
-                    background: C.inputBg, color: C.text, outline: 'none', fontFamily: 'inherit' }} />
-              </div>
-            </div>
-            <div style={{ padding: '12px 18px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: 8 }}>
-              <button onClick={() => setShowForm(false)}
-                style={{ flex: 1, height: 40, borderRadius: 8, border: `1px solid ${C.border}`,
-                  background: 'transparent', color: C.text, cursor: 'pointer', fontSize: 13 }}>
-                Cancelar
-              </button>
-              <button onClick={handleSave} disabled={saving}
-                style={{ flex: 2, height: 40, borderRadius: 8, border: 'none',
-                  background: saving ? '#9ca3af' : C.green, color: '#fff',
-                  cursor: saving ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 700 }}>
-                {saving ? 'Guardando...' : editingProd
-                  ? 'Guardar Cambios'
-                  : `Crear ${fTipo === 'servicio' ? 'Servicio' : 'Producto'}`}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ProductoFormModal
+        open={showForm}
+        onClose={() => setShowForm(false)}
+        producto={editingProd}
+        onSuccess={() => {
+          qc.invalidateQueries({ queryKey: ['pos-productos'] });
+          qc.invalidateQueries({ queryKey: ['pos-products-scan'] });
+        }}
+      />
 
       {/* Modal — entrada / salida de stock */}
       {movModal && (

@@ -36,6 +36,7 @@ function buildDeps() {
       getEmpresaId: () => EMPRESA,
       getAlmacenId: () => null,
       getUserId:    () => USER_ID,
+      getRolEmpresa: () => 'admin',
     },
     realtimeSvc:  { notify: jest.fn() },
     limitesSvc:   { verificarLimiteProductos: jest.fn().mockResolvedValue(undefined) },

@@ -77,6 +77,7 @@ export interface Producto {
   id:              number;
   tipo?:           string;   // 'producto' | 'servicio'
   codigo:          string;
+  codigoBarras?:   string | null;
   nombre:          string;
   descripcion?:    string;
   unidadMedida:    string;
@@ -102,6 +103,12 @@ export interface Producto {
   // Balanzas etiquetadoras
   plu?:      number | null;
   esPesable?: boolean;
+  /** Creado desde un "modo rápido" (Compras/POS/Xlink) — pendiente de completar en Inventario. */
+  esCreacionRapida?: boolean;
+  marca?:    string;
+  modelo?:   string;
+  referencia?: string;
+  almacenId?: number;
 }
 
 // ── Facturas ──────────────────────────────────────────────────────────────────
