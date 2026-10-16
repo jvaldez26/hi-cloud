@@ -360,14 +360,18 @@ export class RecibosCobrosService {
         otro:          MetodoPago.OTRO,
       };
 
-      // Un RDP-XXXXX por CxC aplicada — se generan ANTES de la transacción
-      // (cada llamada tiene su propio lock atómico, mismo criterio que
-      // siempre tuvo esta función para el caso de una sola factura).
+      // Un RDP-00XXX por CxC aplicada — se generan ANTES de la transacción
+      // (cada llamada tiene su propio lock atómico). Con padding a 5
+      // dígitos como cxc.service.ts (RDP-00064, el formato que de verdad
+      // está impreso en los recibos) — generarNumeroSecuencial() no
+      // rellena con ceros y esta función lo usaba así desde antes, dejando
+      // mezclados "RDP-110" junto a "RDP-00064" en la misma empresa.
       const rdpNumeros: string[] = [];
       for (let i = 0; i < aplicaciones.length; i++) {
-        rdpNumeros.push(await generarNumeroSecuencial(
-          this.dataSource, 'pagos_cobrados', 'numero', '^RDP-[0-9]+$', 'RDP-', 1, empresaId,
-        ));
+        const [{ n }] = await this.dataSource.query<{ n: number }[]>(
+          `SELECT siguiente_numero_secuencia($1, 'RDP') AS n`, [empresaId],
+        );
+        rdpNumeros.push(`RDP-${String(n).padStart(5, '0')}`);
       }
 
       const pagosCreados: { pagoId: number; cxcId: number; monto: number }[] = [];

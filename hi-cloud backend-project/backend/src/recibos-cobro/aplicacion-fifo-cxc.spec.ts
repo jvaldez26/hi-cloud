@@ -55,14 +55,19 @@ function makeService(opts: {
     },
   };
 
-  let rdpSeq = 1;
+  let secuencia = 1;
   const dataSource = {
     query: jest.fn((sql: string) => {
       if (sql.includes('cierres_caja')) return Promise.resolve([{ id: 900 }]);
       if (sql.includes('vendedores'))   return Promise.resolve([]);
       if (sql.includes('clientes'))     return Promise.resolve([{ nombre: 'Cliente de prueba' }]);
-      // siguiente_numero_secuencia — un número distinto por llamada
-      return Promise.resolve([{ numero: rdpSeq++ }]);
+      // siguiente_numero_secuencia — un número distinto por llamada. Dos
+      // formas de leerlo según quién llama: generarNumeroSecuencial()
+      // (REC-/ANT-) espera la columna "numero"; el RDP de crear() la pide
+      // como "n" directo (ver recibos-cobro.service.ts) — se devuelven
+      // las dos para que cualquiera de los dos destructuring funcione.
+      const n = secuencia++;
+      return Promise.resolve([{ numero: n, n }]);
     }),
     transaction: jest.fn(async (cb: any) => cb(em)),
   };
@@ -86,7 +91,7 @@ function makeService(opts: {
   svc.asientosService  = asientosService;
   svc.tesoreriaService = tesoreriaService;
   svc.tenantSvc        = tenantSvc;
-  return { svc, repo, cxcRepo, pagoRepoEm, cxcRepoEm, asientosService, anticipoRepo, tesoreriaService };
+  return { svc, repo, cxcRepo, pagoRepoEm, cxcRepoEm, asientosService, anticipoRepo, tesoreriaService, dataSource };
 }
 
 describe('RecibosCobrosService.crear — aplicación FIFO cuando no se elige factura', () => {
