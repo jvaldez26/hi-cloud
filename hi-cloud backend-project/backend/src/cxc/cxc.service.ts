@@ -96,6 +96,13 @@ export class CxCService {
    * Detecta facturas de crédito EMITIDAS sin CxC y las crea.
    * Útil para corregir inconsistencias históricas o errores silenciosos
    * durante la emisión.
+   *
+   * CRÍTICO (2026-10-16): el filtro `f."tipoPago" = 'CREDITO'` faltaba —
+   * creaba CxC para CUALQUIER factura emitida sin una, incluyendo CONTADO
+   * (que nunca debe tener CxC, ver cambiarEstado()). Caso real: empresa 53,
+   * 2026-10-03, este endpoint creó 6 CxC fantasma (RD$253,722.85) sobre
+   * facturas de Transporte/Viajes que eran CONTADO — Transporte mismo nunca
+   * tuvo el bug, este método sí.
    */
   async sincronizarCxCFaltantes(): Promise<{ creadas: number; folios: string[] }> {
     const empresaId = this.tenantService.getEmpresaId();
@@ -108,6 +115,7 @@ export class CxCService {
       WHERE f."empresaId" = $1
         AND f.estado      = 'emitida'
         AND f."isActive"  = true
+        AND f."tipoPago"  = 'CREDITO'
         AND NOT EXISTS (
           SELECT 1 FROM cuentas_por_cobrar c
           WHERE c."facturaId" = f.id AND c."isActive" = true
