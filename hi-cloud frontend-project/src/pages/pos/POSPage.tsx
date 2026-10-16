@@ -67,6 +67,7 @@ import { AutoEnvioTarjeta, enmascararCodigoTarjeta } from './tarjetaScanAutoSubm
 import { EscanerCamaraModal } from '../../components/EscanerCamaraModal';
 import { requiereSupervisorPorPrecioModificado } from './carritoRecuperadoGate';
 import { debeIgnorarEnterGlobal } from './confirmarCobroEnterGate';
+import { debeBloquearPorCajaPrecheck } from './cajaPrecheckGate';
 import { resolverIntentoCobro } from './intentoCobroGate';
 import { iniciarTelemetriaPOS, registrarVentaCompletada, registrarAccionPOS, obtenerPestanasVivasConocidas } from './posTelemetria';
 import { fusionarColaEnCarrito, debeFusionarColaAhora, totalMostradoEnModal, debeEncolarAgregado } from './ventaEnCursoGate';
@@ -10968,9 +10969,20 @@ export default function POSPage() {
   const ventaMut = useMutation({
     mutationFn: async () => {
       registrarAccionPOS('cobro_iniciado');
-      // Verificar caja con dato fresco justo antes de cobrar.
-      // Regla: solo bloquear si el servidor CONFIRMA que no hay caja abierta.
-      // Si la red tarda (timeout 5 s) o falla → dejar pasar; el backend valida igual.
+      // Precheck de caja — SOLO informativo (banner "Caja no detectada en
+      // caché"), NUNCA bloquea. Incidente real (2026-10-16, empresa 44):
+      // esto SÍ bloqueaba antes, lanzando SIN_CAJA sin llegar nunca al
+      // backend — las 231 facturas de ese día y cero rechazos en
+      // audit_logs lo prueban. GET /caja/hoy?vendedorId= solo reconoce la
+      // caja de HOY para ESE vendedorId; cualquier desajuste transitorio
+      // (vendedorId stale, un refresh de token a mitad de turno, timing del
+      // polling) hacía que esta pregunta estrecha dijera "cerrada" aunque
+      // el cajero sí tuviera su caja abierta — como de hecho la tenía.
+      // El backend (esCajaAbiertaVendedor, caja.service.ts) es la ÚNICA
+      // autoridad real: acepta cualquier caja abierta del vendedor,
+      // cualquiera sea el día, y es el que de verdad rechaza si no hay
+      // ninguna — con el mismo mensaje que este manejador ya reconoce más
+      // abajo (ver debeBloquearPorCajaPrecheck/cajaPrecheckGate.ts).
       if (vendedorId && controlCajaActivo) {
         const vid = vendedorId;
         const queryFnCaja = () =>
@@ -10990,11 +11002,13 @@ export default function POSPage() {
           ]);
           cajaStatus = race.kind === 'timeout' ? 'desconocida' : (race.data ? 'abierta' : 'cerrada');
         } catch {
-          cajaStatus = 'desconocida'; // error de red → dejar pasar; backend decide
+          cajaStatus = 'desconocida';
         }
 
-        // Solo bloquear con dato fresco confirmado. Desconocida = timeout/error → continuar.
-        if (cajaStatus === 'cerrada') {
+        // debeBloquearPorCajaPrecheck() SIEMPRE devuelve false — ver
+        // cajaPrecheckGate.ts para el porqué. `cajaStatus` solo refresca el
+        // cache que alimenta el banner informativo "Caja no detectada en caché".
+        if (debeBloquearPorCajaPrecheck(cajaStatus)) {
           throw new Error('SIN_CAJA');
         }
       }

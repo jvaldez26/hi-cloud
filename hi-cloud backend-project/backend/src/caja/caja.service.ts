@@ -1375,7 +1375,13 @@ export class CajaService {
     const hoy = fechaHoyRD();
 
     if (vendedorId !== undefined) {
-      const where: any = { fecha: new Date(hoy) as any, empresaId };
+      // `hoy` (string 'YYYY-MM-DD', ya en zona RD) directo, NUNCA
+      // envuelto en `new Date(...)`: un `date` de Postgres compara contra
+      // el string sin ambigüedad, mientras que pasar un objeto Date fuerza
+      // a TypeORM a reconvertirlo con los getters LOCALES del proceso
+      // (getFullYear/getMonth/getDate) — correcto solo mientras el
+      // servidor corra con TZ=UTC, y un riesgo silencioso si eso cambia.
+      const where: any = { fecha: hoy as any, empresaId };
       where.vendedorId = vendedorId === 0 ? IsNull() : vendedorId;
 
       const caja = await this.repo.findOne({ where });
@@ -1396,9 +1402,10 @@ export class CajaService {
       return { ...(await this.conEfectivoEsperado(fresh)), esMiCaja };
     }
 
-    // Sin filtro de vendedor → todas las cajas del día de ESTA empresa
+    // Sin filtro de vendedor → todas las cajas del día de ESTA empresa.
+    // `hoy` directo, nunca `new Date(hoy)` — ver el comentario arriba.
     const cajas = await this.repo.find({
-      where: { fecha: new Date(hoy) as any, empresaId } as any,
+      where: { fecha: hoy as any, empresaId } as any,
       order: { vendedorNombre: 'ASC' },
     });
 
@@ -1413,7 +1420,7 @@ export class CajaService {
     );
 
     const frescas = await this.repo.find({
-      where: { fecha: new Date(hoy) as any, empresaId } as any,
+      where: { fecha: hoy as any, empresaId } as any,
       order: { vendedorNombre: 'ASC' },
     });
 
@@ -2162,7 +2169,7 @@ export class CajaService {
   async esCajaAbiertaVendedor(
     vendedorId: number | null | undefined,
     empresaId:  number,
-  ): Promise<{ ok: boolean; mensaje?: string }> {
+  ): Promise<{ ok: boolean; mensaje?: string; advertencia?: string }> {
     // Si la empresa no requiere control de caja, cualquier venta está permitida.
     const controlActivo = await this.controlCajaActivoParaEmpresa(empresaId);
     if (!controlActivo) return { ok: true };
@@ -2186,9 +2193,12 @@ export class CajaService {
 
     if (!caja) return { ok: false, mensaje: 'no_caja' };
 
-    // Detectar caja huérfana: abierta pero de un día anterior.
-    // No se filtra por fecha desde el inicio para soportar turnos que cruzan la medianoche,
-    // pero si la diferencia supera las 24 horas es una caja olvidada abierta desde días atrás.
+    // Caja huérfana: abierta pero de un día anterior. YA NO BLOQUEA la venta
+    // (incidente real, empresa 44, 2026-10-16: cajeros con turnos largos que
+    // cruzan la medianoche quedaban sin poder cobrar) — regla explícita: "si
+    // el cajero tiene CUALQUIER caja abierta, de hoy o de antes, el cobro
+    // procede". Solo se avisa, para que la cierre cuando pueda — el aviso
+    // real y persistente ya vive en Caja Diaria (badge de caja vieja).
     const fechaCaja = (caja.fecha instanceof Date ? caja.fecha : new Date(caja.fecha as any))
       .toISOString().substring(0, 10);
     const hoy = fechaHoyRD();
@@ -2197,9 +2207,8 @@ export class CajaService {
       const [anio, mes, dia] = fechaCaja.split('-');
       const fechaFormateada  = `${dia}/${mes}/${anio}`;
       return {
-        ok:     false,
-        mensaje: `CAJA_HUERFANA:${caja.id}:Tienes una caja abierta desde el ${fechaFormateada}. ` +
-                 `Ciérrala antes de facturar.`,
+        ok: true,
+        advertencia: `Tienes una caja abierta desde el ${fechaFormateada}. Ciérrala cuando puedas.`,
       };
     }
 

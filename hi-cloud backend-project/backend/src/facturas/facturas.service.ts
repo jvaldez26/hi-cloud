@@ -1637,13 +1637,15 @@ export class FacturasService {
           factura.empresaId,
         );
         if (!cajaCheck.ok) {
-          const esHuerfana = cajaCheck.mensaje?.startsWith('CAJA_HUERFANA:');
           throw new BadRequestException(
-            esHuerfana
-              // Extrae solo la parte descriptiva después de "CAJA_HUERFANA:ID:"
-              ? cajaCheck.mensaje!.split(':').slice(2).join(':').trim()
-              : 'No hay una caja diaria abierta para este vendedor. Abre el turno antes de facturar.',
+            'No hay una caja diaria abierta para este vendedor. Abre el turno antes de facturar.',
           );
+        }
+        // Caja abierta desde un día anterior (turno que cruzó medianoche) —
+        // YA NO bloquea (incidente 2026-10-16, empresa 44), solo deja
+        // rastro. El aviso visible y persistente vive en Caja Diaria.
+        if (cajaCheck.advertencia) {
+          this.logger.warn(`[Factura.emitir] ${factura.folio}: ${cajaCheck.advertencia} (vendedor ${vendedorFactura})`);
         }
       }
       // Sin vendedor NO se bloquea la venta. Léase antes de endurecer esto:
