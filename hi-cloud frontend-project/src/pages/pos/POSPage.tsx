@@ -72,7 +72,6 @@ import { iniciarTelemetriaPOS, registrarVentaCompletada, registrarAccionPOS, obt
 import { fusionarColaEnCarrito, debeFusionarColaAhora, totalMostradoEnModal, debeEncolarAgregado } from './ventaEnCursoGate';
 import { credencialesFueronRechazadas } from './reautenticacionGate';
 import { construirFiltroVendedorPOS } from './vendedorFiltroPanel';
-import { UomSelect } from '../../components/ui/UomSelect';
 import { AvisoRncNoVigente } from '../../components/ui/RncNoVigente';
 import type { Producto, Cliente } from '../../types';
 import { posEstado } from '../../utils/posEstado';
