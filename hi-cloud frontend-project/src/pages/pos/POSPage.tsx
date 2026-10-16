@@ -69,7 +69,7 @@ import { requiereSupervisorPorPrecioModificado } from './carritoRecuperadoGate';
 import { debeIgnorarEnterGlobal } from './confirmarCobroEnterGate';
 import { debeBloquearPorCajaPrecheck } from './cajaPrecheckGate';
 import { resolverIntentoCobro } from './intentoCobroGate';
-import { iniciarTelemetriaPOS, registrarVentaCompletada, registrarAccionPOS, obtenerPestanasVivasConocidas } from './posTelemetria';
+import { iniciarTelemetriaPOS, registrarVentaCompletada, registrarAccionPOS, obtenerPestanasVivasConocidas, registrarCajaPrecheckVacio } from './posTelemetria';
 import { fusionarColaEnCarrito, debeFusionarColaAhora, totalMostradoEnModal, debeEncolarAgregado } from './ventaEnCursoGate';
 import { credencialesFueronRechazadas } from './reautenticacionGate';
 import { construirFiltroVendedorPOS } from './vendedorFiltroPanel';
@@ -10992,6 +10992,13 @@ export default function POSPage() {
             return caja?.estado === 'abierta' ? caja : null;
           }).catch(() => null);
 
+        // Capturado ANTES del fetch de este precheck — para saber qué tan
+        // viejo era el dato de ['pos-caja-abierta', vid] (el mismo que
+        // alimenta el polling de 30s) cuando el precheck arrancó. Ver
+        // registrarCajaPrecheckVacio más abajo.
+        const dataUpdatedAtPrevio = qc.getQueryState(['pos-caja-abierta', vid])?.dataUpdatedAt;
+        const msDesdeUltimoPollingCajaHoy = dataUpdatedAtPrevio ? Date.now() - dataUpdatedAtPrevio : null;
+
         let cajaStatus: 'abierta' | 'cerrada' | 'desconocida' = 'desconocida';
         try {
           const race = await Promise.race([
@@ -11010,6 +11017,25 @@ export default function POSPage() {
         // cache que alimenta el banner informativo "Caja no detectada en caché".
         if (debeBloquearPorCajaPrecheck(cajaStatus)) {
           throw new Error('SIN_CAJA');
+        }
+
+        // Telemetría temporal (incidente empresa 44, 2026-10-16) — solo
+        // cuando el precheck NO encontró la caja, nunca en el camino feliz.
+        if (cajaStatus !== 'abierta') {
+          let msDesdeUltimoRefreshToken: number | null = null;
+          try {
+            const refreshState = JSON.parse(localStorage.getItem('hc_refresh_state') ?? 'null');
+            msDesdeUltimoRefreshToken = refreshState?.at ? Date.now() - refreshState.at : null;
+          } catch { /* dato opcional de diagnóstico — nunca debe romper el cobro */ }
+
+          registrarCajaPrecheckVacio({
+            usuarioId:  user?.id,
+            sucursalId,
+            vendedorId: vid,
+            msDesdeUltimoRefreshToken,
+            msDesdeUltimoPollingCajaHoy,
+            pestanaOculta: document.hidden,
+          });
         }
       }
 

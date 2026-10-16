@@ -71,6 +71,34 @@ export function horasAbiertaDesde(abiertaEnMs: number, ahoraMs = Date.now()): nu
   return +((ahoraMs - abiertaEnMs) / 3_600_000).toFixed(2);
 }
 
+export interface ContextoCajaPrecheckVacio {
+  usuarioId:                   string | number | null | undefined;
+  sucursalId:                  string | number | null | undefined;
+  vendedorId:                  string | number | null | undefined;
+  msDesdeUltimoRefreshToken:   number | null;
+  msDesdeUltimoPollingCajaHoy: number | null;
+  pestanaOculta:               boolean;
+}
+
+/**
+ * Incidente 2026-10-16 (empresa 44, Ventas Populares R&M): el precheck de
+ * caja del POS (ventaMut, ver cajaPrecheckGate.ts) se resolvía
+ * 'cerrada'/'desconocida' sin que la caja real estuviera cerrada — nunca
+ * bloquea desde el fix, pero el disparador exacto (vendedorId obsoleto, un
+ * refresh de token a mitad de turno, el timing del polling de 30s, la
+ * pestaña oculta) no se pudo reproducir. Sube un warning SOLO cuando el
+ * precheck no encuentra la caja en caché, con el contexto para
+ * correlacionarlo — en 1-2 días de datos reales debería apuntar a la causa.
+ * Quitar esta señal (y su llamador en POSPage.tsx) una vez identificada.
+ */
+export function registrarCajaPrecheckVacio(ctx: ContextoCajaPrecheckVacio): void {
+  Sentry.captureMessage('[POS] Precheck de caja no encontró caja en caché', {
+    level: 'warning',
+    tags:  { origen: 'pos-telemetria', tipo: 'caja-precheck-vacio' },
+    extra: { ...ctx, ...contextoComun() },
+  });
+}
+
 function heapMBActual(): number | null {
   const mem = (performance as any).memory;
   return mem ? +(mem.usedJSHeapSize / 1_048_576).toFixed(1) : null;
