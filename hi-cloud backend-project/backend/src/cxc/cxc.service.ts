@@ -22,6 +22,8 @@ import { EstadoCuenta } from '../common/enums/estado-cuenta.enum';
 import { RealtimeService } from '../realtime/realtime.service';
 import { TenantService } from '../tenant/tenant.service';
 import { fechaHoyRD } from '../common/utils/fecha-local.util';
+import { MetodoPago } from '../common/enums/metodo-pago.enum';
+import { reportServiceError } from '../common/observability/sentry';
 
 @Injectable()
 export class CxCService {
@@ -210,14 +212,26 @@ export class CxCService {
       );
     }
 
-    await this.tesoreriaService.registrarMovimientoAutomatico(
-      TipoMovimientoBancario.DEPOSITO,
-      montoDOP,
-      `Cobro CxC #${id} — ${dto.referencia ?? dto.metodoPago}`,
-      OrigenMovimiento.COBRO_CXC,
-      id,
-      userId,
-    ).catch(err => this.logger.error(`Error tesorería cobro CxC #${id}: ${err.message}`));
+    // EFECTIVO nunca se postea solo a un banco — ver incidente 2026-10-15
+    // (empresa 53): este método siempre elegía "la cuenta DOP más antigua",
+    // sin que el usuario pudiera elegir ninguna, así que un cobro en
+    // efectivo (que en realidad entra a la caja física, no a un banco)
+    // terminaba abultando el saldo de un banco cualquiera. El resto de los
+    // métodos (transferencia/cheque/tarjeta) sí representan dinero que
+    // entra directo al banco.
+    if (dto.metodoPago !== MetodoPago.EFECTIVO) {
+      await this.tesoreriaService.registrarMovimientoAutomatico(
+        TipoMovimientoBancario.DEPOSITO,
+        montoDOP,
+        `Cobro CxC #${id} — ${dto.referencia ?? dto.metodoPago}`,
+        OrigenMovimiento.COBRO_CXC,
+        id,
+        userId,
+      ).catch(err => {
+        this.logger.error(`Error tesorería cobro CxC #${id}: ${err.message}`);
+        reportServiceError(err, 'cxc.registrarPago.tesoreria', { cxcId: id });
+      });
+    }
 
     // Notificar en tiempo real
     const cuentaFinal = await this.findById(id);

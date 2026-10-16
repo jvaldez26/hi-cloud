@@ -10,6 +10,7 @@
  */
 
 import { TesoreriaService } from './tesoreria.service';
+import { CuentaBancaria } from './entities/cuenta-bancaria.entity';
 
 const CUENTA_BANCARIA = { id: 1, empresaId: 7, saldo: 1000, isActiva: true };
 
@@ -21,6 +22,14 @@ function makeService() {
   const movimientoRepository: any = {
     create: jest.fn((data: any) => data),
     save:   jest.fn(async (data: any) => ({ id: 900, ...data })),
+  };
+  // registrarMovimiento() es atómico (ver incidente 2026-10-15, empresa 53)
+  // — usa cuentaRepository.manager.transaction(cb) con repos transaccionales
+  // vía manager.getRepository(Entity); aquí se devuelven los mismos mocks.
+  cuentaRepository.manager = {
+    transaction: (cb: (manager: any) => Promise<any>) => cb({
+      getRepository: (entity: any) => entity === CuentaBancaria ? cuentaRepository : movimientoRepository,
+    }),
   };
   const asientosService: any = {
     asientoMovimientoBancario:      jest.fn().mockResolvedValue(undefined),

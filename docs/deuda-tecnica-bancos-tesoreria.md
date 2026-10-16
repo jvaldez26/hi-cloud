@@ -5,6 +5,12 @@
 
 ---
 
+## HALLAZGO MAYOR (misma tarde, segunda vuelta): movimientos_bancarios lleva toda su vida rechazando cualquier INSERT
+
+Ver detalle completo más abajo en este documento, sección "Hallazgo mayor".
+
+---
+
 ## Qué se corrigió ya (2026-10-15, bajo riesgo)
 
 No se tocó la escritura de ningún módulo ni se migraron datos. Se agregó una
@@ -125,3 +131,95 @@ vulnerabilidad que lo habría permitido.
 
 La fórmula unificada y su razonamiento completo están documentados en el
 docblock de `backend/src/common/cuentas-bancarias/saldo-cuenta-bancaria.util.ts`.
+
+---
+
+## Hallazgo mayor (misma tarde, segunda vuelta) — detalle completo
+
+Después de arreglar la lectura (arriba), el saldo de la cuenta de la
+empresa 53 saltó de RD$16,202.56 a RD$40,202.56 sin que el historial
+mostrara nada nuevo. Causa real, confirmada con datos:
+
+1. A las 21:55:30 del 2026-10-15, Elvin Peña (empresa 53) cobró RD$24,000
+   en efectivo de la factura #27263 (cliente #38) vía CxC #246, pago
+   RDP-00064 — 100% legítimo, confirmado en `pagos_cobrados` y `audit_logs`.
+2. `cxc.service.ts` llama, después de guardar el cobro, a
+   `TesoreriaService.registrarMovimientoAutomatico(...)` dentro de un
+   `.catch(err => logger.error(...))` — si falla, el cobro ya se guardó
+   pero el aviso solo queda en el log del servidor.
+3. Esa llamada SIEMPRE fallaba, para cualquier empresa: `movimientos_bancarios`
+   (la tabla real de la entidad de tesorería) tiene una columna huérfana
+   `"cuentaId" INTEGER NOT NULL` que esa entidad (usa `cuentaBancariaId`)
+   nunca llena. Confirmado: `SELECT COUNT(*) FROM movimientos_bancarios` →
+   0 filas en TODA la base de producción, siempre.
+4. Es un resto de la MISMA colisión de esquema ya diagnosticada a medias en
+   `migrations/1748100000000-CreateBancosConciliacion.ts` — esa migración
+   le dio al módulo `bancos` su propia tabla (`bancos_conciliacion`) y
+   arregló SU lado, pero nunca limpió la columna que dejó en
+   `movimientos_bancarios`, así que desde entonces es TESORERÍA quien
+   rebota contra la misma pared, en sentido inverso.
+5. Como el guardado del saldo y el del movimiento eran dos escrituras
+   separadas sin transacción, el saldo SÍ se actualizaba y el movimiento
+   NUNCA se guardaba — para cualquier depósito/retiro/transferencia manual
+   y para cada cobro de CxC, pago de CxP, pago de nómina o recibo de cobro
+   (no efectivo) de cualquier empresa, desde que la tabla quedó así.
+
+Por qué solo 2 cuentas mostraban el síntoma (empresa 53 y 72): la mayoría
+de las empresas no usa cuentas de tesorería con saldo activo. El bug (el
+INSERT fallando) corría igual para todas; el síntoma solo se nota donde de
+verdad hubo cobros/pagos por este camino.
+
+### Corregido (commit de esta sesión)
+
+1. Migración `1786000000000-FixMovimientosBancariosCuentaIdNotNull.ts` —
+   `ALTER TABLE movimientos_bancarios ALTER COLUMN "cuentaId" DROP NOT NULL`.
+   Sin esto, cualquier movimiento de tesorería sigue fallando siempre.
+2. `registrarMovimiento()` (tesorería) ahora es atómico —
+   `cuentaRepository.manager.transaction(...)`: si el INSERT del movimiento
+   falla, el UPDATE del saldo se revierte con él.
+3. EFECTIVO ya no se postea a tesorería en `cxc.service.ts`,
+   `cxp.service.ts` y `recibos-cobro.service.ts` — antes CUALQUIER cobro/
+   pago (incluido efectivo) se posteaba a "la cuenta DOP más antigua" de la
+   empresa sin que el usuario pudiera elegir ninguna.
+4. Los `.catch()` de `registrarMovimientoAutomatico` en cxc/cxp/recibos-cobro
+   ahora también llaman a `reportServiceError` (Sentry) — antes un fallo
+   solo quedaba en el log del servidor.
+5. Nueva política explícita: `ajustarSaldo()` / `POST /tesoreria/movimientos/ajuste`
+   (ADMIN/CONTADOR, motivo obligatorio ≥5 caracteres) — única forma
+   legítima de cambiar un saldo fuera de una operación normal.
+6. Defensa en profundidad en `BancosService.actualizarCuenta` y
+   `TesoreriaService.updateCuenta` — UPDATE armado a mano con campos
+   permitidos explícitos.
+7. `BancosService.listarMovimientos()` unifica las DOS tablas de movimientos
+   más el saldo de apertura como primera línea del historial.
+8. `getResumenConciliacion()` corregido: "saldo inicial de un mes" =
+   saldoInicial + TODOS los movimientos anteriores al mes, de ambas tablas.
+
+### Datos corregidos (backfill, con transacción y verificación)
+
+- Empresa 53, cuenta 7 (SCOTIABANK ···1851): se insertó el movimiento real
+  que debió guardarse junto al cobro de CxC #246 (RDP-00064, efectivo,
+  factura #27263, cliente #38, RD$24,000, 2026-10-15). No se tocó
+  `cuentas_bancarias.saldo` (ya estaba correcto) — solo se rellenó el
+  movimiento que faltaba, con saldoAnterior/saldoNuevo calzando exacto.
+
+### Datos pendientes de decisión (NO corregidos)
+
+- Empresa 72, cuenta 4 (Banreservas ···5928, saldo RD$153,777): a
+  diferencia de la empresa 53, no tiene un origen único y limpio.
+  Reconstruido con todo lo que existe en `recibos_cobro` + `pagos_cobrados`
+  (13 transacciones reales, no-efectivo, 2026-09-08 a 2026-09-22): suman
+  RD$135,476.98 — quedan RD$18,300.02 sin explicar incluso revisando CxP
+  (vacío) y movimientos manuales de tesorería (vacío) para esa empresa. No
+  se inventó ningún movimiento para cubrir la diferencia.
+- Integrar el efectivo de CxC directo / Recibos de Cobro con el cuadre de
+  Caja (hoy, tras el fix, un cobro en efectivo por esos dos caminos no
+  aparece en ningún lado — antes al menos se posteaba, mal, a un banco).
+- `nomina.service.ts.pagarPeriodo()` llama a `registrarMovimientoAutomatico`
+  SIN `.catch()` — si tesorería falla, la petición entera falla, pero
+  `estado = PAGADA` ya se guardó antes, fuera de cualquier transacción
+  compartida. No tocado (nómina no tiene concepto de efectivo).
+- `BancosService.importarCSV()` tiene un bug de nombres de columna
+  independiente (usa `cuentaBancariaId` contra una entidad que solo tiene
+  `cuentaId`) — cada fila importada probablemente falla en silencio. No
+  tocado, mismo patrón de confusión entre los dos módulos, fuera de alcance.

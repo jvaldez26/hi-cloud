@@ -7,6 +7,22 @@ import { PaginationDto } from '../common/dto/pagination.dto';
 import { TenantService } from '../tenant/tenant.service';
 import { ExtractoParserService } from './extracto-parser.service';
 import { obtenerDatosUnificadosCuentasBancarias } from '../common/cuentas-bancarias/saldo-cuenta-bancaria.util';
+import { TIPOS_ENTRADA as TIPOS_ENTRADA_TESORERIA } from '../tesoreria/entities/movimiento-bancario.entity';
+
+/** Una fila del historial unificado de una cuenta — ver listarMovimientos(). */
+export interface MovimientoUnificado {
+  id: string;
+  fecha: Date;
+  descripcion: string;
+  tipo: 'credito' | 'debito';
+  monto: number;
+  saldoResultante?: number;
+  conciliado: boolean;
+  referencia?: string;
+  /** De qué tabla salió esta fila — para que la pantalla nunca mezcle sin decir de dónde viene cada una. */
+  origenTabla: 'bancos' | 'tesoreria' | 'apertura';
+  origen?: string;
+}
 
 interface CreateCuentaDto {
   nombre: string; banco: string; numeroCuenta: string;
@@ -56,9 +72,24 @@ export class BancosService {
     return c;
   }
 
+  /**
+   * Defensa en profundidad: arma el UPDATE a mano con solo los campos de
+   * identidad de la cuenta (nunca `dto` completo con un spread/`as any`) —
+   * ver el mismo patrón en tesoreria.service.ts.updateCuenta, cerrado tras
+   * el incidente 2026-10-15 (docs/deuda-tecnica-bancos-tesoreria.md).
+   * `saldoInicial` SÍ se permite aquí: es un valor estático que declara
+   * quien registra la cuenta, no un libro vivo — nunca fue la columna
+   * involucrada en ese incidente (esa es `saldo`, del módulo tesorería).
+   */
   async actualizarCuenta(id: number, dto: Partial<CreateCuentaDto>) {
     await this.getCuenta(id);
-    await this.cuentaRepo.update(id, dto as any);
+    const { nombre, banco, numeroCuenta, tipo, moneda, saldoInicial, descripcion } = dto;
+    const cambios = Object.fromEntries(
+      Object.entries({ nombre, banco, numeroCuenta, tipo, moneda, saldoInicial, descripcion }).filter(([, v]) => v !== undefined),
+    );
+    if (Object.keys(cambios).length > 0) {
+      await this.cuentaRepo.update(id, cambios);
+    }
     return this.getCuenta(id);
   }
 
@@ -80,18 +111,71 @@ export class BancosService {
     }));
   }
 
+  /**
+   * TODOS los movimientos que componen el saldo de la cuenta, de las DOS
+   * tablas que lo pueden tocar (`bancos_conciliacion` y
+   * `movimientos_bancarios` — ver saldo-cuenta-bancaria.util.ts), más el
+   * saldo de apertura como primera línea del historial. El saldo nunca
+   * puede incluir algo que esta lista no muestre — requisito explícito
+   * tras el incidente 2026-10-15 (empresa 53): el saldo subió RD$24,000 sin
+   * que ningún movimiento lo explicara en ninguna de las dos tablas.
+   */
   async listarMovimientos(cuentaId: number, pagination: PaginationDto, soloNoConciliados = false) {
     const { limit = 20, page = 1 } = pagination;
+    const cuenta = await this.getCuenta(cuentaId);
+
     const qb = this.movRepo.createQueryBuilder('m')
       .where('m.cuentaId = :cid', { cid: cuentaId })
       .andWhere('m.isActive = true');
-
     if (soloNoConciliados) qb.andWhere('m.conciliado = false');
+    const movsBancos = await qb.getMany();
 
-    const [data, total] = await qb
-      .orderBy('m.fecha', 'DESC')
-      .skip((page - 1) * limit).take(limit)
-      .getManyAndCount();
+    const movsTesoreria = await this.cuentaRepo.manager.query<any[]>(`
+      SELECT id, tipo, monto, fecha, descripcion, referencia, origen, "saldoNuevo", conciliado
+      FROM movimientos_bancarios
+      WHERE "cuentaBancariaId" = $1 AND "isActive" = true ${soloNoConciliados ? 'AND conciliado = false' : ''}
+    `, [cuentaId]);
+
+    const unificados: MovimientoUnificado[] = [
+      {
+        id: `apertura-${cuenta.id}`,
+        fecha: cuenta.createdAt,
+        descripcion: 'Saldo de apertura',
+        tipo: 'credito' as const,
+        monto: Number(cuenta.saldoInicial),
+        saldoResultante: Number(cuenta.saldoInicial),
+        conciliado: true,
+        origenTabla: 'apertura' as const,
+      },
+      ...movsBancos.map((m): MovimientoUnificado => ({
+        id: `bancos-${m.id}`,
+        fecha: m.fecha,
+        descripcion: m.descripcion,
+        tipo: m.tipo === TipoMovimientoBanco.CREDITO ? 'credito' : 'debito',
+        monto: Number(m.monto),
+        saldoResultante: m.saldoResultante != null ? Number(m.saldoResultante) : undefined,
+        conciliado: m.conciliado,
+        referencia: m.referencia ?? undefined,
+        origenTabla: 'bancos',
+        origen: m.sistemaTipo ?? 'manual',
+      })),
+      ...movsTesoreria.map((m: any): MovimientoUnificado => ({
+        id: `tesoreria-${m.id}`,
+        fecha: m.fecha,
+        descripcion: m.descripcion,
+        tipo: TIPOS_ENTRADA_TESORERIA.includes(m.tipo) ? 'credito' : 'debito',
+        monto: Number(m.monto),
+        saldoResultante: Number(m.saldoNuevo),
+        conciliado: m.conciliado,
+        referencia: m.referencia ?? undefined,
+        origenTabla: 'tesoreria',
+        origen: m.origen,
+      })),
+    ].sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
+
+    const total = unificados.length;
+    const start = (page - 1) * limit;
+    const data  = unificados.slice(start, start + limit);
 
     return { data, meta: { total, page, limit } };
   }
@@ -115,56 +199,71 @@ export class BancosService {
 
   // ── Resumen de conciliación ───────────────────────────────────────────────
 
+  /**
+   * "Saldo inicial" de un mes = saldoInicial de la cuenta + TODOS los
+   * movimientos anteriores al mes, de las DOS tablas (requisito explícito
+   * tras el incidente 2026-10-15 — antes esto solo miraba
+   * `bancos_conciliacion` y usaba `cuenta.saldo`(tesorería) como un bloque
+   * fijo, sin filtrar por fecha: una cuenta con movimientos de tesorería
+   * quedaba igual en cualquier mes que se consultara). Permite moverse a
+   * meses anteriores (parámetros `mes`/`anio`) para encontrar de dónde
+   * salió cualquier diferencia.
+   */
   async getResumenConciliacion(cuentaId: number, mes: number, anio: number) {
     const cuenta  = await this.getCuenta(cuentaId);
     const desde   = new Date(anio, mes - 1, 1);
     const hasta   = new Date(anio, mes, 0, 23, 59, 59);
 
-    const movimientos = await this.movRepo.find({
+    const movimientosBancos = await this.movRepo.find({
       where: { cuentaId, isActive: true },
       order: { fecha: 'ASC' },
     });
+    const movimientosTesoreria = await this.cuentaRepo.manager.query<{ tipo: string; monto: string; fecha: string }[]>(`
+      SELECT tipo, monto, fecha FROM movimientos_bancarios
+      WHERE "cuentaBancariaId" = $1 AND "isActive" = true
+    `, [cuentaId]);
 
-    const delPeriodo = movimientos.filter(m => m.fecha >= desde && m.fecha <= hasta);
-
-    const totalCreditos    = delPeriodo.filter(m => m.tipo === TipoMovimientoBanco.CREDITO)
-                              .reduce((s, m) => s + Number(m.monto), 0);
-    const totalDebitos     = delPeriodo.filter(m => m.tipo === TipoMovimientoBanco.DEBITO)
-                              .reduce((s, m) => s + Number(m.monto), 0);
-    const conciliados      = delPeriodo.filter(m => m.conciliado).length;
-    const noConciliados    = delPeriodo.filter(m => !m.conciliado).length;
-
-    // Misma base que el widget de Inicio y la lista de cuentas (ver
-    // saldo-cuenta-bancaria.util.ts): `saldoInicial` + la columna `saldo`
-    // que mantiene el módulo de tesorería para esta MISMA fila física (0 si
-    // esta cuenta nunca se tocó desde ahí) — sin eso, una cuenta creada aquí
-    // pero con movimientos de tesorería (CxC/CxP/nómina) se habría visto
-    // descuadrada en este resumen.
-    const [filaTesoreria] = await this.cuentaRepo.manager.query<{ saldo: string }[]>(
-      'SELECT saldo FROM cuentas_bancarias WHERE id = $1', [cuentaId],
+    const netoBancos = (arr: MovimientoBancario[]) => arr.reduce(
+      (s, m) => s + (m.tipo === TipoMovimientoBanco.CREDITO ? Number(m.monto) : -Number(m.monto)), 0,
     );
-    const baseInicial = Number(cuenta.saldoInicial) + Number(filaTesoreria?.saldo ?? 0);
+    const netoTesoreria = (arr: { tipo: string; monto: string }[]) => arr.reduce(
+      (s, m) => s + (TIPOS_ENTRADA_TESORERIA.includes(m.tipo as any) ? Number(m.monto) : -Number(m.monto)), 0,
+    );
 
-    // Saldo calculado desde el inicio
-    const saldoActual = movimientos.reduce((s, m) => {
-      return m.tipo === TipoMovimientoBanco.CREDITO
-        ? s + Number(m.monto)
-        : s - Number(m.monto);
-    }, baseInicial);
+    const antesBancos      = movimientosBancos.filter(m => m.fecha < desde);
+    const delPeriodoBancos = movimientosBancos.filter(m => m.fecha >= desde && m.fecha <= hasta);
+    const antesTesoreria      = movimientosTesoreria.filter(m => new Date(m.fecha) < desde);
+    const delPeriodoTesoreria = movimientosTesoreria.filter(m => new Date(m.fecha) >= desde && new Date(m.fecha) <= hasta);
+
+    const totalCreditos = delPeriodoBancos.filter(m => m.tipo === TipoMovimientoBanco.CREDITO).reduce((s, m) => s + Number(m.monto), 0)
+      + delPeriodoTesoreria.filter(m => TIPOS_ENTRADA_TESORERIA.includes(m.tipo as any)).reduce((s, m) => s + Number(m.monto), 0);
+    const totalDebitos = delPeriodoBancos.filter(m => m.tipo === TipoMovimientoBanco.DEBITO).reduce((s, m) => s + Number(m.monto), 0)
+      + delPeriodoTesoreria.filter(m => !TIPOS_ENTRADA_TESORERIA.includes(m.tipo as any)).reduce((s, m) => s + Number(m.monto), 0);
+
+    const conciliados      = delPeriodoBancos.filter(m => m.conciliado).length;
+    const noConciliados    = delPeriodoBancos.filter(m => !m.conciliado).length;
+    const movimientosPeriodo = delPeriodoBancos.length + delPeriodoTesoreria.length;
+
+    const saldoInicial = Number(cuenta.saldoInicial) + netoBancos(antesBancos) + netoTesoreria(antesTesoreria);
+    const saldoFinal   = saldoInicial + totalCreditos - totalDebitos;
+    // Saldo de HOY (replay completo, sin importar el mes consultado) — para
+    // que el encabezado de la cuenta siempre muestre el real, aunque se esté
+    // mirando un mes anterior para investigar una diferencia.
+    const saldoActual  = Number(cuenta.saldoInicial) + netoBancos(movimientosBancos) + netoTesoreria(movimientosTesoreria);
 
     return {
       cuenta: { id: cuenta.id, nombre: cuenta.nombre, banco: cuenta.banco, numeroCuenta: cuenta.numeroCuenta },
       periodo: { mes, anio },
-      saldoInicial:    baseInicial,
+      saldoInicial,
       totalCreditos,
       totalDebitos,
-      saldoFinal:      baseInicial + totalCreditos - totalDebitos,
+      saldoFinal,
       saldoActual,
-      movimientosPeriodo: delPeriodo.length,
+      movimientosPeriodo,
       conciliados,
       noConciliados,
-      porcentajeConciliado: delPeriodo.length > 0
-        ? Math.round((conciliados / delPeriodo.length) * 100) : 100,
+      porcentajeConciliado: movimientosPeriodo > 0
+        ? Math.round((conciliados / movimientosPeriodo) * 100) : 100,
     };
   }
 

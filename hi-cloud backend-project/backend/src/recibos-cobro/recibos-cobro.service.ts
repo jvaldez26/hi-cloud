@@ -17,6 +17,7 @@ import { TesoreriaService } from '../tesoreria/tesoreria.service';
 import { TipoMovimientoBancario, OrigenMovimiento } from '../tesoreria/entities/movimiento-bancario.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
+import { reportServiceError } from '../common/observability/sentry';
 
 interface CreateReciboDto {
   clienteId?:          number;
@@ -283,17 +284,23 @@ export class RecibosCobrosService {
         this.logger.error(`Error asiento cobro ${recibo.numero} — pago #${pagoId}: ${err.message}`),
       );
 
-      // Tesorería: movimiento de entrada (monto total recibido)
-      await this.tesoreriaService.registrarMovimientoAutomatico(
-        TipoMovimientoBancario.DEPOSITO,
-        monto,
-        `Recibo ${recibo.numero} — ${dto.clienteNombre ?? dto.concepto}`,
-        OrigenMovimiento.COBRO_CXC,
-        cxc.id,
-        usuarioId,
-      ).catch(err =>
-        this.logger.error(`Error tesorería ${recibo.numero}: ${err.message}`),
-      );
+      // EFECTIVO nunca se postea a un banco — ya entró a la caja física del
+      // día (recibos_cobro alimenta caja.service.ts directamente); postearlo
+      // TAMBIÉN en tesorería lo habría contado dos veces en dos lugares
+      // distintos (incidente 2026-10-15, empresa 53, mismo patrón).
+      if (dto.metodoPago !== MetodoPagoRecibo.EFECTIVO) {
+        await this.tesoreriaService.registrarMovimientoAutomatico(
+          TipoMovimientoBancario.DEPOSITO,
+          monto,
+          `Recibo ${recibo.numero} — ${dto.clienteNombre ?? dto.concepto}`,
+          OrigenMovimiento.COBRO_CXC,
+          cxc.id,
+          usuarioId,
+        ).catch(err => {
+          this.logger.error(`Error tesorería ${recibo.numero}: ${err.message}`);
+          reportServiceError(err, 'recibosCobro.registrar.tesoreria', { reciboNumero: recibo.numero });
+        });
+      }
 
       // ── Excedente → crear anticipo automáticamente ─────────────
       if (excedente > 0.01 && dto.registrarExcedente) {
@@ -345,16 +352,19 @@ export class RecibosCobrosService {
         this.logger.error(`Error asiento recibo ${recibo.numero}: ${err.message}`),
       );
 
-      await this.tesoreriaService.registrarMovimientoAutomatico(
-        TipoMovimientoBancario.DEPOSITO,
-        monto,
-        `Recibo ${recibo.numero} — ${dto.concepto}`,
-        OrigenMovimiento.COBRO_CXC,
-        recibo.id,
-        usuarioId,
-      ).catch(err =>
-        this.logger.error(`Error tesorería ${recibo.numero}: ${err.message}`),
-      );
+      if (dto.metodoPago !== MetodoPagoRecibo.EFECTIVO) {
+        await this.tesoreriaService.registrarMovimientoAutomatico(
+          TipoMovimientoBancario.DEPOSITO,
+          monto,
+          `Recibo ${recibo.numero} — ${dto.concepto}`,
+          OrigenMovimiento.COBRO_CXC,
+          recibo.id,
+          usuarioId,
+        ).catch(err => {
+          this.logger.error(`Error tesorería ${recibo.numero}: ${err.message}`);
+          reportServiceError(err, 'recibosCobro.registrar.tesoreria', { reciboNumero: recibo.numero });
+        });
+      }
     }
 
     return recibo;

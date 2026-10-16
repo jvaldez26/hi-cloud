@@ -21,6 +21,8 @@ export enum OrigenMovimiento {
   PAGO_CXP      = 'pago_cxp',
   NOMINA        = 'nomina',
   TRANSFERENCIA = 'transferencia',
+  /** Corrección manual de saldo (AjustarSaldoDto) — nunca una operación del día a día, siempre con motivo. */
+  AJUSTE        = 'ajuste',
 }
 
 // Entradas: DEPOSITO, TRANSFERENCIA_ENTRADA, NOTA_CREDITO, INTERES

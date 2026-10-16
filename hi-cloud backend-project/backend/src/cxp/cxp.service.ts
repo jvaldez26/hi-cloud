@@ -21,6 +21,8 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { resolverFormaPagoCompra } from '../declaraciones/dgii.constants';
 import { TenantService } from '../tenant/tenant.service';
 import { fechaHoyRD } from '../common/utils/fecha-local.util';
+import { MetodoPago } from '../common/enums/metodo-pago.enum';
+import { reportServiceError } from '../common/observability/sentry';
 
 @Injectable()
 export class CxPService {
@@ -143,17 +145,23 @@ export class CxPService {
       );
     }
 
-    // Retiro bancario automático (montoDOP para tesorería)
-    await this.tesoreriaService.registrarMovimientoAutomatico(
-      TipoMovimientoBancario.RETIRO,
-      montoDOP,
-      `Pago CxP #${id} — ${dto.referencia ?? dto.metodoPago}`,
-      OrigenMovimiento.PAGO_CXP,
-      id,
-      userId,
-    ).catch(err =>
-      this.logger.error(`Error tesorería pago CxP #${id}: ${err?.message ?? err}`),
-    );
+    // EFECTIVO nunca se postea solo a un banco — mismo criterio que
+    // cxc.service.ts (ver incidente 2026-10-15, empresa 53): un pago en
+    // efectivo sale de la caja física, no de "la cuenta DOP más antigua"
+    // que este método elegía sin que nadie la escogiera.
+    if (dto.metodoPago !== MetodoPago.EFECTIVO) {
+      await this.tesoreriaService.registrarMovimientoAutomatico(
+        TipoMovimientoBancario.RETIRO,
+        montoDOP,
+        `Pago CxP #${id} — ${dto.referencia ?? dto.metodoPago}`,
+        OrigenMovimiento.PAGO_CXP,
+        id,
+        userId,
+      ).catch(err => {
+        this.logger.error(`Error tesorería pago CxP #${id}: ${err?.message ?? err}`);
+        reportServiceError(err, 'cxp.registrarPago.tesoreria', { cxpId: id });
+      });
+    }
 
     // DGII 606 — ahora que hay un pago real, se prefiere ese dato sobre la
     // sugerencia que se puso al crear la OC (que era una suposición: contado

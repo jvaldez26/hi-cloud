@@ -129,6 +129,7 @@ export default function BancosPage() {
     { key: 'referencia',  label: 'Referencia',  defaultVisible: false },
     { key: 'tipo',        label: 'Tipo',        defaultVisible: true  },
     { key: 'monto',       label: 'Monto',       defaultVisible: true  },
+    { key: 'origenTabla', label: 'Origen',      defaultVisible: true  },
     { key: 'conciliado',  label: 'Estado',      defaultVisible: true  },
   ];
   const { visibleColumns, updateVisibility, filterColumns } = useColumnVisibility('bancos-movimientos', COLS_DEF);
@@ -145,19 +146,36 @@ export default function BancosPage() {
           {r.tipo === 'credito' ? '+' : '-'}{fmt.money(v)}
         </Text>
       )},
+    { title: 'Origen', dataIndex: 'origenTabla', width: 110,
+      // El saldo nunca puede incluir algo que esta lista no muestre — cada
+      // fila dice explícitamente de dónde viene (incidente 2026-10-15).
+      render: (v: string) => {
+        const LABEL: Record<string, { color: string; text: string }> = {
+          apertura:  { color: 'default', text: 'Apertura' },
+          bancos:    { color: 'blue',    text: 'Conciliación' },
+          tesoreria: { color: 'purple',  text: 'Tesorería' },
+        };
+        const l = LABEL[v] ?? { color: 'default', text: v };
+        return <Tag color={l.color}>{l.text}</Tag>;
+      } },
     { title: 'Estado', dataIndex: 'conciliado', width: 110,
       render: (v: boolean) => v
         ? <Tag color="green" icon={<CheckOutlined />}>Conciliado</Tag>
         : <Tag color="orange">Pendiente</Tag> },
     { title: '', key: 'acciones', width: 72, align: 'right' as const,
-      render: (_: any, r: any) => (
+      // Conciliar/desconciliar/eliminar solo existen para filas de
+      // bancos_conciliacion (id numérico real) — la lista unificada también
+      // trae movimientos de tesorería y el saldo de apertura (ver
+      // listarMovimientos en bancos.service.ts), que no tienen equivalente
+      // en este endpoint.
+      render: (_: any, r: any) => r.origenTabla !== 'bancos' ? null : (
         <TableActions
           onView={() => {}}
           viewLabel="Ver movimiento"
           items={[
             r.conciliado
-              ? { key: 'desconciliar', label: 'Desconciliar', icon: <DisconnectOutlined />, onClick: () => desconciliarMut.mutate(r.id) }
-              : { key: 'conciliar', label: 'Marcar conciliado', icon: <LinkOutlined />, onClick: () => conciliarMut.mutate(r.id) },
+              ? { key: 'desconciliar', label: 'Desconciliar', icon: <DisconnectOutlined />, onClick: () => desconciliarMut.mutate(Number(String(r.id).replace('bancos-', ''))) }
+              : { key: 'conciliar', label: 'Marcar conciliado', icon: <LinkOutlined />, onClick: () => conciliarMut.mutate(Number(String(r.id).replace('bancos-', ''))) },
             { type: 'divider' as const },
             { key: 'eliminar', label: 'Eliminar movimiento', icon: <DeleteOutlined />, danger: true,
               onClick: () => Modal.confirm({
@@ -165,7 +183,7 @@ export default function BancosPage() {
                 okText: 'Confirmar',
                 cancelText: 'Cancelar',
                 okButtonProps: { danger: true },
-                onOk: () => eliminarMovMut.mutate(r.id),
+                onOk: () => eliminarMovMut.mutate(Number(String(r.id).replace('bancos-', ''))),
               }) },
           ]}
         />

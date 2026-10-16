@@ -20,6 +20,7 @@ import {
   RegistrarDepositoDto,
   RegistrarRetiroDto,
   RegistrarTransferenciaDto,
+  AjustarSaldoDto,
 } from './dto/registrar-movimiento.dto';
 import { CreateConciliacionDto } from './dto/create-conciliacion.dto';
 import { FiltroMovimientoDto, FiltroConciliacionDto } from './dto/filtro-tesoreria.dto';
@@ -112,6 +113,20 @@ export class TesoreriaController {
   @ApiOperation({ summary: 'Registrar retiro manual de cuenta bancaria' })
   registrarRetiro(@Body() dto: RegistrarRetiroDto, @GetUser() usuario: User) {
     return this.tesoreriaService.registrarRetiro(dto, usuario.id);
+  }
+
+  /**
+   * Única forma legítima de corregir un saldo fuera de una operación normal
+   * — ver AjustarSaldoDto. ADMIN o CONTADOR, siempre con motivo, siempre
+   * genera un movimiento auditado y su asiento contable (nunca un UPDATE
+   * directo a la cuenta).
+   */
+  @Post('movimientos/ajuste')
+  @HttpCode(HttpStatus.CREATED)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @ApiOperation({ summary: 'Ajustar el saldo de una cuenta bancaria — exige motivo, queda auditado y genera asiento' })
+  ajustarSaldo(@Body() dto: AjustarSaldoDto, @GetUser() usuario: User) {
+    return this.tesoreriaService.ajustarSaldo(dto, usuario.id);
   }
 
   @Post('movimientos/previsualizar-asiento')

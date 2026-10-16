@@ -24,6 +24,7 @@ import {
   RegistrarDepositoDto,
   RegistrarRetiroDto,
   RegistrarTransferenciaDto,
+  AjustarSaldoDto,
 } from './dto/registrar-movimiento.dto';
 import { CreateConciliacionDto } from './dto/create-conciliacion.dto';
 import { FiltroMovimientoDto, FiltroConciliacionDto } from './dto/filtro-tesoreria.dto';
@@ -64,6 +65,19 @@ export class TesoreriaService {
     return c;
   }
 
+  /**
+   * ATÓMICO — ver docs/deuda-tecnica-bancos-tesoreria.md, incidente
+   * 2026-10-15 (empresa 53): un cobro de CxC real (cxc.service.ts,
+   * `registrarMovimientoAutomatico().catch(err => logger.error(...))`)
+   * subió el saldo de la cuenta, pero el INSERT del movimiento falló
+   * después — como las dos escrituras no estaban en una transacción, el
+   * saldo quedó en RD$24,000 más alto que su historial real, sin ningún
+   * movimiento que lo explicara, y el error quedó solo en el log del
+   * servidor (nadie lo vio). Con `cuentaRepository.manager.transaction`,
+   * si el INSERT del movimiento falla, el UPDATE del saldo se revierte
+   * también — el saldo de una cuenta nunca puede volver a adelantarse a su
+   * propio historial.
+   */
   private async registrarMovimiento(
     cuentaId: number,
     tipo: TipoMovimientoBancario,
@@ -75,37 +89,47 @@ export class TesoreriaService {
     origenId?: number,
     referencia?: string,
   ): Promise<MovimientoBancario> {
-    const cuenta = await this.findCuentaActiva(cuentaId);
-    const saldoAnterior = Number(cuenta.saldo);
-    const esEntrada = TIPOS_ENTRADA.includes(tipo);
-    const saldoNuevo = esEntrada
-      ? Number((saldoAnterior + monto).toFixed(2))
-      : Number((saldoAnterior - monto).toFixed(2));
+    const eid = this.eid;
+    return this.cuentaRepository.manager.transaction(async (manager) => {
+      const cuentaRepo = manager.getRepository(CuentaBancaria);
+      const movRepo    = manager.getRepository(MovimientoBancario);
 
-    if (!esEntrada && saldoNuevo < 0) {
-      throw new BadRequestException(
-        `Saldo insuficiente. Disponible: ${saldoAnterior.toFixed(2)}, requerido: ${monto.toFixed(2)}`,
-      );
-    }
+      const cuenta = await cuentaRepo.findOne({
+        where: { id: cuentaId, isActive: true, isActiva: true, ...(eid ? { empresaId: eid } : {}) } as any,
+      });
+      if (!cuenta) throw new NotFoundException(`Cuenta bancaria #${cuentaId} no encontrada o inactiva`);
 
-    await this.cuentaRepository.update(cuentaId, { saldo: saldoNuevo });
+      const saldoAnterior = Number(cuenta.saldo);
+      const esEntrada = TIPOS_ENTRADA.includes(tipo);
+      const saldoNuevo = esEntrada
+        ? Number((saldoAnterior + monto).toFixed(2))
+        : Number((saldoAnterior - monto).toFixed(2));
 
-    const mov = this.movimientoRepository.create({
-      ...(this.eid ? { empresaId: this.eid } : {}),
-      cuentaBancariaId: cuentaId,
-      tipo,
-      monto,
-      fecha: new Date(fecha),
-      descripcion,
-      referencia,
-      origen,
-      origenId,
-      saldoAnterior,
-      saldoNuevo,
-      userId,
+      if (!esEntrada && saldoNuevo < 0) {
+        throw new BadRequestException(
+          `Saldo insuficiente. Disponible: ${saldoAnterior.toFixed(2)}, requerido: ${monto.toFixed(2)}`,
+        );
+      }
+
+      await cuentaRepo.update(cuentaId, { saldo: saldoNuevo });
+
+      const mov = movRepo.create({
+        ...(eid ? { empresaId: eid } : {}),
+        cuentaBancariaId: cuentaId,
+        tipo,
+        monto,
+        fecha: new Date(fecha),
+        descripcion,
+        referencia,
+        origen,
+        origenId,
+        saldoAnterior,
+        saldoNuevo,
+        userId,
+      });
+
+      return movRepo.save(mov);
     });
-
-    return this.movimientoRepository.save(mov);
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -119,31 +143,38 @@ export class TesoreriaService {
     });
     if (existe) throw new ConflictException(`Cuenta ${dto.numeroCuenta} ya registrada`);
 
-    const cuenta = this.cuentaRepository.create({
-      ...dto,
-      saldo: dto.saldoInicial ?? 0,
-      ...(eid ? { empresaId: eid } : {}),
-    });
+    // Atómico por el mismo motivo que registrarMovimiento: si el INSERT del
+    // movimiento de saldo inicial fallara después de crear la cuenta, no
+    // debe quedar una cuenta con saldo > 0 y cero movimientos detrás.
+    return this.cuentaRepository.manager.transaction(async (manager) => {
+      const cuentaRepo = manager.getRepository(CuentaBancaria);
+      const movRepo    = manager.getRepository(MovimientoBancario);
 
-    const saved = await this.cuentaRepository.save(cuenta);
-
-    // Registrar saldo inicial como depósito si > 0
-    if ((dto.saldoInicial ?? 0) > 0) {
-      const mov = this.movimientoRepository.create({
-        cuentaBancariaId: saved.id,
-        tipo:         TipoMovimientoBancario.DEPOSITO,
-        monto:        dto.saldoInicial!,
-        fecha:        new Date(),
-        descripcion:  'Saldo inicial',
-        origen:       OrigenMovimiento.MANUAL,
-        saldoAnterior: 0,
-        saldoNuevo:   dto.saldoInicial!,
-        userId,
+      const cuenta = cuentaRepo.create({
+        ...dto,
+        saldo: dto.saldoInicial ?? 0,
+        ...(eid ? { empresaId: eid } : {}),
       });
-      await this.movimientoRepository.save(mov);
-    }
+      const saved = await cuentaRepo.save(cuenta);
 
-    return saved;
+      if ((dto.saldoInicial ?? 0) > 0) {
+        const mov = movRepo.create({
+          ...(eid ? { empresaId: eid } : {}),
+          cuentaBancariaId: saved.id,
+          tipo:         TipoMovimientoBancario.DEPOSITO,
+          monto:        dto.saldoInicial!,
+          fecha:        new Date(),
+          descripcion:  'Saldo inicial',
+          origen:       OrigenMovimiento.MANUAL,
+          saldoAnterior: 0,
+          saldoNuevo:   dto.saldoInicial!,
+          userId,
+        });
+        await movRepo.save(mov);
+      }
+
+      return saved;
+    });
   }
 
   async getCuentas() {
@@ -167,9 +198,21 @@ export class TesoreriaService {
     return c;
   }
 
+  /**
+   * Defensa en profundidad además del DTO (ver update-cuenta-bancaria.dto.ts):
+   * arma el UPDATE a mano con solo los campos permitidos, nunca con el `dto`
+   * completo — así ni un cambio futuro al DTO, ni una llamada interna que
+   * salte el controller, pueden volver a filtrar `saldo`/`saldoInicial`.
+   */
   async updateCuenta(id: number, dto: UpdateCuentaBancariaDto) {
     await this.findCuentaById(id);
-    await this.cuentaRepository.update(id, dto);
+    const { banco, numeroCuenta, tipoCuenta, moneda, descripcion } = dto;
+    const cambios = Object.fromEntries(
+      Object.entries({ banco, numeroCuenta, tipoCuenta, moneda, descripcion }).filter(([, v]) => v !== undefined),
+    );
+    if (Object.keys(cambios).length > 0) {
+      await this.cuentaRepository.update(id, cambios);
+    }
     return this.findCuentaById(id);
   }
 
@@ -259,6 +302,30 @@ export class TesoreriaService {
     );
 
     return { message: 'Transferencia registrada exitosamente', salida };
+  }
+
+  /**
+   * Única forma legítima de cambiar un saldo fuera de una operación normal
+   * (depósito/retiro/transferencia/cobro/pago) — ver docs/deuda-tecnica-bancos-tesoreria.md,
+   * incidente 2026-10-15. Pasa SIEMPRE por `registrarMovimiento` (mismo
+   * saldoAnterior/saldoNuevo/userId que cualquier otro movimiento) y genera
+   * su asiento contable — nunca un UPDATE directo a `cuentas_bancarias`.
+   */
+  async ajustarSaldo(dto: AjustarSaldoDto, userId: number) {
+    if (!dto.monto) throw new BadRequestException('El ajuste debe tener un monto distinto de 0');
+
+    const tipo = dto.monto > 0 ? TipoMovimientoBancario.DEPOSITO : TipoMovimientoBancario.RETIRO;
+    const descripcion = `Ajuste de saldo: ${dto.motivo}`;
+    const mov = await this.registrarMovimiento(
+      dto.cuentaBancariaId, tipo, Math.abs(dto.monto), dto.fecha, descripcion,
+      userId, OrigenMovimiento.AJUSTE,
+    );
+
+    await this.asientosService.asientoMovimientoBancario(
+      mov.id, Math.abs(dto.monto), descripcion, dto.monto > 0, dto.fecha, userId, undefined, false,
+    ).catch(err => this.logger.error(`Error asiento de ajuste #${mov.id}: ${err?.message ?? err}`));
+
+    return mov;
   }
 
   // ──────────────────────────────────────────────────────────────────
