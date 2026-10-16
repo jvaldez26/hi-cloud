@@ -35,6 +35,7 @@ import { AsientosAutomaticosService } from '../contabilidad/services/asientos-au
 import { obtenerDatosUnificadosCuentasBancarias, etiquetaCuentaBancaria } from '../common/cuentas-bancarias/saldo-cuenta-bancaria.util';
 import { CajaService } from '../caja/caja.service';
 import { CategoriaRetiro } from '../caja/entities/retiro-caja.entity';
+import { UserRole } from '../users/enums/user-role.enum';
 
 @Injectable()
 export class TesoreriaService {
@@ -593,6 +594,24 @@ export class TesoreriaService {
       order: { moneda: 'ASC', banco: 'ASC' },
     });
 
+    // Efectivo de cajas ABIERTAS — cierre ciego: solo ADMIN/CONTADOR lo ven
+    // (ver CajaController 'caja/abiertas', misma regla). Antes el widget
+    // mezclaba cuentas bancarias bajo un encabezado "Efectivo y Cuentas" sin
+    // que hubiera ningún efectivo real ahí — un VENDEDOR nunca debe ver el
+    // esperado de una caja abierta, ni la suya ni la de otro cajero.
+    const rolEmpresa = this.tenantService.getRolEmpresa();
+    const puedeVerEfectivo = rolEmpresa === UserRole.ADMIN || rolEmpresa === UserRole.CONTADOR;
+    const cajasAbiertas = puedeVerEfectivo ? await this.cajaService.getCajasAbiertas() : [];
+    const cajas = cajasAbiertas.map((c: any) => ({
+      id: c.id,
+      cajero: c.vendedorNombre ?? 'Sin asignar',
+      sucursalId: c.sucursalId ?? null,
+      efectivoEsperado: Number(c.efectivoEsperado ?? 0),
+    }));
+    const efectivoTotal = puedeVerEfectivo
+      ? Number(cajas.reduce((sum: number, c: any) => sum + c.efectivoEsperado, 0).toFixed(2))
+      : null;
+
     // Misma fórmula que "Cuentas Bancarias & Conciliación" (ver
     // saldo-cuenta-bancaria.util.ts) — antes este widget solo leía `c.saldo`
     // (la columna que mantiene ESTE módulo) y se veía en RD$0.00 cualquier
@@ -683,6 +702,7 @@ export class TesoreriaService {
     const actSemana = [...movsSemana.map(toActividad), ...factSemana, ...gastSemana].sort(sortByFecha).slice(0, 20);
 
     return {
+      // BANCOS — nunca mezclado con efectivo (ver `cajas` abajo, grupo aparte).
       cuentas: cuentas.map(c => {
         const datos = datosUnificados.get(c.id);
         return {
@@ -696,6 +716,13 @@ export class TesoreriaService {
         };
       }),
       balanceTotal,
+      // EFECTIVO — cajas ABIERTA, una línea por cajero. `null` (no []) para
+      // VENDEDOR/VIEWER: el frontend debe poder distinguir "no tiene permiso
+      // de verlo" de "no hay cajas abiertas" y ocultar el grupo entero, no
+      // mostrarlo vacío ni en cero (cierre ciego).
+      cajas: puedeVerEfectivo ? cajas : null,
+      efectivoTotal,
+      totalDisponible: puedeVerEfectivo ? Number((balanceTotal + (efectivoTotal ?? 0)).toFixed(2)) : null,
       actividad: {
         hoy:    actHoy,
         semana: actSemana,

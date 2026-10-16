@@ -42,7 +42,8 @@ function makeTesoreria() {
     }),
     manager: { query: jest.fn().mockResolvedValue([]) },
   };
-  svc.tenantService = { getEmpresaId: () => CUENTA_FISICA.empresaId };
+  svc.tenantService = { getEmpresaId: () => CUENTA_FISICA.empresaId, getRolEmpresa: () => 'admin' };
+  svc.cajaService = { getCajasAbiertas: jest.fn().mockResolvedValue([]) };
   return svc;
 }
 

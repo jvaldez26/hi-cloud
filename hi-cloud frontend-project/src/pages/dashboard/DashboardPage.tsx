@@ -19,7 +19,8 @@ import { dRD, horaDelDiaRD } from '../../utils/fechaRD';
 import { useDashboardWidgets } from '../../hooks/useDashboardWidgets';
 import { useModoEjemplo } from '../../hooks/useModoEjemplo';
 import {
-  EJEMPLO_BANCOS, EJEMPLO_BALANCE_BANCOS, EJEMPLO_ACTIVIDAD_HOY, EJEMPLO_ACTIVIDAD_SEMANA,
+  EJEMPLO_BANCOS, EJEMPLO_BALANCE_BANCOS, EJEMPLO_CAJAS, EJEMPLO_EFECTIVO_TOTAL, EJEMPLO_TOTAL_DISPONIBLE,
+  EJEMPLO_ACTIVIDAD_HOY, EJEMPLO_ACTIVIDAD_SEMANA,
   EJEMPLO_FACTURAS_PENDIENTES,
 } from './widgets/datosEjemplo';
 import { BadgeEjemplo } from './widgets/TarjetaGrafica';
@@ -358,6 +359,7 @@ function DashboardAdmin() {
   const qc        = useQueryClient();
   const isMobile  = useMobile();
   const [grupoAbierto,  setGrupoAbierto]  = useState(true);
+  const [grupoEfectivoAbierto, setGrupoEfectivoAbierto] = useState(true);
 
   // Que graficas ve ESTE usuario en ESTA empresa. Si la preferencia falla, el
   // hook cae a las cuatro de siempre: nadie se queda sin panel por eso.
@@ -444,12 +446,20 @@ function DashboardAdmin() {
 
   const bancosReal        = tesoreriaRaw?.cuentas ?? [];
   const balanceBancosReal = tesoreriaRaw?.balanceTotal ?? 0;
+  // null = sin permiso de verlo (cierre ciego, rol VENDEDOR/VIEWER) — nunca
+  // se confunde con "no hay cajas abiertas" ([]). Ver TesoreriaService.getDashboard.
+  const cajasReal          = tesoreriaRaw?.cajas ?? null;
+  const efectivoTotalReal  = tesoreriaRaw?.efectivoTotal ?? null;
+  const totalDisponibleReal = tesoreriaRaw?.totalDisponible ?? null;
   const actHoyReal        = tesoreriaRaw?.actividad?.hoy    ?? [];
   const actSemanaReal     = tesoreriaRaw?.actividad?.semana ?? [];
   const usarEjemploTesoreria = modoEjemplo && bancosReal.length === 0 && !cargandoTesoreria && !errorTesoreria;
 
-  const bancos         = usarEjemploTesoreria ? EJEMPLO_BANCOS          : bancosReal;
-  const balanceBancos  = usarEjemploTesoreria ? EJEMPLO_BALANCE_BANCOS  : balanceBancosReal;
+  const bancos          = usarEjemploTesoreria ? EJEMPLO_BANCOS          : bancosReal;
+  const balanceBancos   = usarEjemploTesoreria ? EJEMPLO_BALANCE_BANCOS  : balanceBancosReal;
+  const cajas           = usarEjemploTesoreria ? EJEMPLO_CAJAS           : cajasReal;
+  const efectivoTotal   = usarEjemploTesoreria ? EJEMPLO_EFECTIVO_TOTAL  : efectivoTotalReal;
+  const totalDisponible = usarEjemploTesoreria ? EJEMPLO_TOTAL_DISPONIBLE: totalDisponibleReal;
   const actHoy         = usarEjemploTesoreria ? EJEMPLO_ACTIVIDAD_HOY   : actHoyReal;
   const actSemana      = usarEjemploTesoreria ? EJEMPLO_ACTIVIDAD_SEMANA: actSemanaReal;
 
@@ -497,7 +507,63 @@ function DashboardAdmin() {
               </div>
             }
           >
-            {/* Grupo expandible */}
+            {/* Grupo EFECTIVO — cajas abiertas. Cierre ciego: `cajas` viene
+                `null` (no []) cuando el rol no tiene permiso de verlo
+                (VENDEDOR/VIEWER) — en ese caso el grupo entero no se dibuja,
+                nunca se muestra vacío ni en RD$0.00. */}
+            {cajas !== null && (
+              <>
+                <div
+                  onClick={() => setGrupoEfectivoAbierto(v => !v)}
+                  style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '10px 16px', cursor: 'pointer',
+                    background: grupoEfectivoAbierto ? token.colorFillAlter : 'transparent',
+                    borderBottom: `1px solid ${token.colorBorderSecondary}`,
+                  }}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: token.colorTextSecondary }}>
+                    <span style={{ fontSize: 10 }}>{grupoEfectivoAbierto ? '▾' : '›'}</span>
+                    Efectivo
+                  </span>
+                  <Text style={{ fontSize: 13, fontWeight: 500 }}>
+                    {fmt.money(efectivoTotal ?? 0)}
+                  </Text>
+                </div>
+
+                {grupoEfectivoAbierto && (
+                  cajas.length === 0 ? (
+                    <div style={{ padding: '16px', textAlign: 'center', borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
+                      <Text type="secondary" style={{ fontSize: 13 }}>Sin cajas abiertas</Text>
+                    </div>
+                  ) : (
+                    cajas.map((c: any, i: number) => (
+                      <div key={c.id ?? i} style={{
+                        display: 'flex', alignItems: 'center', gap: 12,
+                        padding: '10px 16px 10px 24px',
+                        borderBottom: `1px solid ${token.colorBorderSecondary}`,
+                      }}>
+                        <div style={{
+                          width: 36, height: 36, borderRadius: '50%', background: '#F59E0B',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                        }}>
+                          <DollarOutlined style={{ color: '#FFF', fontSize: 16 }} />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 500 }}>{c.cajero ?? 'Caja'}</div>
+                          <div style={{ fontSize: 11, color: token.colorTextTertiary }}>Caja abierta</div>
+                        </div>
+                        <Text style={{ fontSize: 13, fontWeight: 500 }}>
+                          {fmt.money(Number(c.efectivoEsperado ?? 0))}
+                        </Text>
+                      </div>
+                    ))
+                  )
+                )}
+              </>
+            )}
+
+            {/* Grupo BANCOS — nunca mezclado con efectivo */}
             <div
               onClick={() => setGrupoAbierto(v => !v)}
               style={{
@@ -509,7 +575,7 @@ function DashboardAdmin() {
             >
               <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: token.colorTextSecondary }}>
                 <span style={{ fontSize: 10 }}>{grupoAbierto ? '▾' : '›'}</span>
-                Efectivo y Cuentas
+                Bancos
               </span>
               <Text style={{ fontSize: 13, fontWeight: 500 }}>
                 {fmt.money(balanceBancos)}
@@ -554,16 +620,22 @@ function DashboardAdmin() {
               )
             )}
 
-            {/* Balance total */}
-            <div style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              padding: '12px 16px', background: token.colorFillAlter,
-            }}>
-              <Text strong style={{ fontSize: 14 }}>Balance</Text>
-              <Text strong style={{ fontSize: 14, color: '#0EA5E9' }}>
-                DOP${balanceBancos.toLocaleString('es-DO', { minimumFractionDigits: 2 })}
-              </Text>
-            </div>
+            {/* Total disponible — solo cuando el rol ve efectivo (ADMIN/
+                CONTADOR); de lo contrario sumaría bancos + 0 y mostraría un
+                número que el VENDEDOR no debe interpretar como "todo el
+                dinero disponible". */}
+            {totalDisponible !== null && (
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '12px 16px', background: token.colorFillAlter,
+                borderTop: `1px solid ${token.colorBorderSecondary}`,
+              }}>
+                <Text strong style={{ fontSize: 14 }}>Total disponible</Text>
+                <Text strong style={{ fontSize: 14, color: '#0EA5E9' }}>
+                  DOP${totalDisponible.toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+                </Text>
+              </div>
+            )}
           </CardWidget>
 
           {/* Widget: Actividad */}

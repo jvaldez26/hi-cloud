@@ -39,7 +39,8 @@ function makeService(opts: {
   svc.logger = { log: jest.fn(), warn: jest.fn(), error: jest.fn() };
   svc.cuentaRepository = cuentaRepository;
   svc.movimientoRepository = movimientoRepository;
-  svc.tenantService = { getEmpresaId: () => 53 };
+  svc.tenantService = { getEmpresaId: () => 53, getRolEmpresa: () => 'admin' };
+  svc.cajaService = { getCajasAbiertas: jest.fn().mockResolvedValue([]) };
   return { svc };
 }
 

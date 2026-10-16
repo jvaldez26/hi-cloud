@@ -156,12 +156,20 @@ export const EJEMPLO_HORAS_PICO = [
 const haceDias = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString();
 
 // ── Cuentas de banco + actividad reciente (dashboard, columna izquierda) ───
+// Efectivo y bancos NUNCA van en el mismo grupo — ver el widget "Cuentas de
+// Bancos" de Inicio: antes esta misma lista de ejemplo metía "Caja Chica"
+// (efectivo) junto a las cuentas bancarias bajo un solo total.
 export const EJEMPLO_BANCOS = [
   { id: 'ej-b1', nombre: 'Cuenta Corriente BHD León',      tipo: 'corriente', moneda: 'DOP', saldo: 142000 },
   { id: 'ej-b2', nombre: 'Cuenta de Ahorros Banreservas',  tipo: 'ahorros',   moneda: 'DOP', saldo: 38500 },
-  { id: 'ej-b3', nombre: 'Caja Chica',                     tipo: 'efectivo',  moneda: 'DOP', saldo: 5200 },
 ];
 export const EJEMPLO_BALANCE_BANCOS = EJEMPLO_BANCOS.reduce((s, b) => s + b.saldo, 0);
+
+export const EJEMPLO_CAJAS = [
+  { id: 'ej-c1', cajero: 'Cajero de ejemplo', sucursalId: null, efectivoEsperado: 5200 },
+];
+export const EJEMPLO_EFECTIVO_TOTAL = EJEMPLO_CAJAS.reduce((s, c) => s + c.efectivoEsperado, 0);
+export const EJEMPLO_TOTAL_DISPONIBLE = EJEMPLO_BALANCE_BANCOS + EJEMPLO_EFECTIVO_TOTAL;
 
 export const EJEMPLO_ACTIVIDAD_HOY = [
   { descripcion: 'Cobro — Ferretería San José',            monto: 8200, tipo: 'ingreso', hora: '10:15' },

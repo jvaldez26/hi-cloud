@@ -3,6 +3,7 @@ import {
   EJEMPLO_VENTAS_MENSUALES, EJEMPLO_GASTOS_MENSUALES, EJEMPLO_INGRESOS_GASTOS_ANUAL,
   EJEMPLO_VENTAS_TENDENCIA, EJEMPLO_RESUMEN_GASTOS_CATEGORIAS, EJEMPLO_RESUMEN_GASTOS_TOTAL,
   EJEMPLO_ANTIGUEDAD_COBRAR, EJEMPLO_ANTIGUEDAD_PAGAR, ejemploDetallePorDia,
+  EJEMPLO_BANCOS, EJEMPLO_BALANCE_BANCOS, EJEMPLO_CAJAS, EJEMPLO_EFECTIVO_TOTAL, EJEMPLO_TOTAL_DISPONIBLE,
 } from './datosEjemplo';
 
 /**
@@ -59,5 +60,13 @@ describe('datosEjemplo — coherencia del negocio ficticio', () => {
       expect(Math.abs(suma - 60_000)).toBeLessThan(dias * 10);
       expect(detalle.every(d => d.total >= 0 && d.cantidad >= 1)).toBe(true);
     }
+  });
+
+  it('bancos y efectivo (cajas) son listas separadas — ninguna cuenta de EJEMPLO_BANCOS es efectivo', () => {
+    expect(EJEMPLO_BANCOS.every(b => b.tipo !== 'efectivo')).toBe(true);
+    expect(EJEMPLO_CAJAS.length).toBeGreaterThan(0);
+    expect(EJEMPLO_BALANCE_BANCOS).toBe(EJEMPLO_BANCOS.reduce((s, b) => s + b.saldo, 0));
+    expect(EJEMPLO_EFECTIVO_TOTAL).toBe(EJEMPLO_CAJAS.reduce((s, c) => s + c.efectivoEsperado, 0));
+    expect(EJEMPLO_TOTAL_DISPONIBLE).toBe(EJEMPLO_BALANCE_BANCOS + EJEMPLO_EFECTIVO_TOTAL);
   });
 });
