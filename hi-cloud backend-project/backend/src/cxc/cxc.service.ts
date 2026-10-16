@@ -258,7 +258,7 @@ export class CxCService {
       const cuentaContrapartida = dto.cuentaContrapartida || undefined;
       await this.asientosService.asientoCobro(
         dto.monto, ultimoPagoId, id, fechaPago, userId,
-        cuentaContrapartida, !!cuentaContrapartida,
+        cuentaContrapartida, !!cuentaContrapartida, dto.metodoPago,
       ).catch(err =>
         this.logger.error(`Error asiento cobro CxC #${id} — pago #${ultimoPagoId}: ${err.message}`),
       );
@@ -303,13 +303,13 @@ export class CxCService {
    * asiento incompleto que no coincide con el real, avisa por qué no hay
    * vista previa disponible.
    */
-  async previsualizarAsiento(id: number, monto: number, cuentaContrapartida?: string) {
+  async previsualizarAsiento(id: number, monto: number, cuentaContrapartida?: string, metodoPago?: string) {
     const cuenta = await this.findById(id);
     const moneda = (cuenta as any).moneda ?? 'DOP';
     if (moneda !== 'DOP') {
       return { ok: false, lineas: [], totalDebe: 0, totalHaber: 0, cuadrado: false, error: `Cuenta en ${moneda} — la vista previa no está disponible para cobros en moneda extranjera (la ganancia/pérdida cambiaria depende de la tasa del día).` };
     }
-    return this.asientosService.previsualizarCobro(monto, 0, id, cuentaContrapartida || undefined);
+    return this.asientosService.previsualizarCobro(monto, 0, id, cuentaContrapartida || undefined, metodoPago);
   }
 
   // ──────────────────────────────────────────────────────────────────

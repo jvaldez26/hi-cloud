@@ -851,12 +851,23 @@ export class AsientosAutomaticosService {
 
   /** Panel de vista previa: calcula el asiento de cobro SIN guardar el pago. */
   async previsualizarCobro(
-    monto: number, pagoId: number, cxcId: number, cuentaContrapartida?: string,
+    monto: number, pagoId: number, cxcId: number, cuentaContrapartida?: string, metodoPago?: string,
   ): Promise<PreviewAsientoResultado> {
-    const cuentas = await this.resolverCuentasConcepto([['BANCOS', COD.BANCOS], ['CLIENTES', COD.CLIENTES]]);
-    return this.previsualizarLineas(this.construirLineasCobro(monto, pagoId, cxcId, cuentaContrapartida || cuentas.BANCOS, false, cuentas.CLIENTES));
+    const cuenta = cuentaContrapartida
+      || (metodoPago ? await this.resolverCuentaPorMetodoPago(metodoPago) : undefined)
+      || (await this.resolverCuentasConcepto([['BANCOS', COD.BANCOS]])).BANCOS;
+    const cuentas = await this.resolverCuentasConcepto([['CLIENTES', COD.CLIENTES]]);
+    return this.previsualizarLineas(this.construirLineasCobro(monto, pagoId, cxcId, cuenta, false, cuentas.CLIENTES));
   }
 
+  /**
+   * `metodoPago` decide la contrapartida cuando el llamador no la fija a
+   * mano (`cuentaContrapartida`) — antes SIEMPRE caía en BANCOS sin
+   * importar el método, así que un cobro en EFECTIVO (que nunca entra a un
+   * banco) debitaba la cuenta de Bancos en vez de Caja. Caso real
+   * (2026-10-15, empresa 53, CxC #246 / RDP-00064): el cobro fue en
+   * efectivo y el asiento quedó contra Bancos.
+   */
   async asientoCobro(
     monto: number,
     pagoId: number,
@@ -865,9 +876,13 @@ export class AsientosAutomaticosService {
     userId: number,
     cuentaContrapartida?: string,
     cuentaContrapartidaManual = false,
+    metodoPago?: string,
   ): Promise<void> {
     const folio = `PAGO-${pagoId}`;
-    const cuentas = await this.resolverCuentasConcepto([['BANCOS', COD.BANCOS], ['CLIENTES', COD.CLIENTES]]);
+    const cuentaDebito = cuentaContrapartida
+      || (metodoPago ? await this.resolverCuentaPorMetodoPago(metodoPago) : undefined)
+      || (await this.resolverCuentasConcepto([['BANCOS', COD.BANCOS]])).BANCOS;
+    const cuentas = await this.resolverCuentasConcepto([['CLIENTES', COD.CLIENTES]]);
     try {
       const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Cobro CxC #${cxcId} — pago #${pagoId}`,
@@ -876,7 +891,7 @@ export class AsientosAutomaticosService {
         referenciaFolio: folio,
         fecha,
         userId,
-        lineas: this.construirLineasCobro(monto, pagoId, cxcId, cuentaContrapartida || cuentas.BANCOS, cuentaContrapartidaManual, cuentas.CLIENTES),
+        lineas: this.construirLineasCobro(monto, pagoId, cxcId, cuentaDebito, cuentaContrapartidaManual, cuentas.CLIENTES),
       });
       if (asiento) {
         this.logger.log(`Asiento cobro CxC #${cxcId} — pago #${pagoId} generado`);
@@ -1076,12 +1091,17 @@ export class AsientosAutomaticosService {
 
   /** Panel de vista previa: calcula el asiento de pago SIN guardar el pago. */
   async previsualizarPago(
-    monto: number, pagoId: number, cxpId: number, cuentaContrapartida?: string,
+    monto: number, pagoId: number, cxpId: number, cuentaContrapartida?: string, metodoPago?: string,
   ): Promise<PreviewAsientoResultado> {
-    const cuentas = await this.resolverCuentasConcepto([['BANCOS', COD.BANCOS], ['PROVEEDORES', COD.PROVEEDORES]]);
-    return this.previsualizarLineas(this.construirLineasPago(monto, pagoId, cxpId, cuentaContrapartida || cuentas.BANCOS, false, cuentas.PROVEEDORES));
+    const cuenta = cuentaContrapartida
+      || (metodoPago ? await this.resolverCuentaPorMetodoPago(metodoPago) : undefined)
+      || (await this.resolverCuentasConcepto([['BANCOS', COD.BANCOS]])).BANCOS;
+    const cuentas = await this.resolverCuentasConcepto([['PROVEEDORES', COD.PROVEEDORES]]);
+    return this.previsualizarLineas(this.construirLineasPago(monto, pagoId, cxpId, cuenta, false, cuentas.PROVEEDORES));
   }
 
+  /** Mismo motivo que asientoCobro: `metodoPago` decide Caja vs Bancos — antes
+   * un pago de CxP en EFECTIVO también caía siempre en Bancos. */
   async asientoPago(
     monto: number,
     pagoId: number,
@@ -1090,9 +1110,13 @@ export class AsientosAutomaticosService {
     userId: number,
     cuentaContrapartida?: string,
     cuentaContrapartidaManual = false,
+    metodoPago?: string,
   ): Promise<void> {
     const folio = `PAGOCXP-${pagoId}`;
-    const cuentas = await this.resolverCuentasConcepto([['BANCOS', COD.BANCOS], ['PROVEEDORES', COD.PROVEEDORES]]);
+    const cuentaCredito = cuentaContrapartida
+      || (metodoPago ? await this.resolverCuentaPorMetodoPago(metodoPago) : undefined)
+      || (await this.resolverCuentasConcepto([['BANCOS', COD.BANCOS]])).BANCOS;
+    const cuentas = await this.resolverCuentasConcepto([['PROVEEDORES', COD.PROVEEDORES]]);
     try {
       const asiento = await this._crearAsientoContabilizado({
         descripcion:     `Pago CxP #${cxpId} — pago #${pagoId}`,
@@ -1101,7 +1125,7 @@ export class AsientosAutomaticosService {
         referenciaFolio: folio,
         fecha,
         userId,
-        lineas: this.construirLineasPago(monto, pagoId, cxpId, cuentaContrapartida || cuentas.BANCOS, cuentaContrapartidaManual, cuentas.PROVEEDORES),
+        lineas: this.construirLineasPago(monto, pagoId, cxpId, cuentaCredito, cuentaContrapartidaManual, cuentas.PROVEEDORES),
       });
       if (asiento) {
         this.logger.log(`Asiento pago CxP #${cxpId} — pago #${pagoId} generado`);

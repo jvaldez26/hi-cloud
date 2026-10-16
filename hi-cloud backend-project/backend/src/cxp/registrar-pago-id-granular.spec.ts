@@ -54,7 +54,7 @@ describe('CxPService.registrarPago — asiento etiquetado por el pago, no por la
 
     await svc.registrarPago(30, { monto: 300, metodoPago: 'efectivo' }, 5);
 
-    expect(asientosService.asientoPago).toHaveBeenCalledWith(300, 700, 30, expect.any(String), 5, undefined, false);
+    expect(asientosService.asientoPago).toHaveBeenCalledWith(300, 700, 30, expect.any(String), 5, undefined, false, 'efectivo');
   });
 
   it('asientoPagoME recibe el id del pago recién creado (moneda extranjera)', async () => {
@@ -80,7 +80,7 @@ describe('CxPService — selector de cuenta contable (cuentaContrapartida, 2026-
 
     await svc.registrarPago(30, { monto: 300, metodoPago: 'efectivo', cuentaContrapartida: '6.1.2.09' }, 5);
 
-    expect(asientosService.asientoPago).toHaveBeenCalledWith(300, 700, 30, expect.any(String), 5, '6.1.2.09', true);
+    expect(asientosService.asientoPago).toHaveBeenCalledWith(300, 700, 30, expect.any(String), 5, '6.1.2.09', true, 'efectivo');
   });
 
   it('previsualizarAsiento() delega en el motor sin registrar el pago', async () => {

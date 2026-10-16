@@ -117,9 +117,9 @@ export class CxCController {
   @ApiOperation({ summary: 'Panel de vista previa: calcula el asiento de cobro SIN registrar el pago' })
   previsualizarAsiento(
     @Param('id', ParseIntPipe) id: number,
-    @Body() dto: { monto: number; cuentaContrapartida?: string },
+    @Body() dto: { monto: number; cuentaContrapartida?: string; metodoPago?: string },
   ) {
-    return this.cxcService.previsualizarAsiento(id, dto.monto, dto.cuentaContrapartida);
+    return this.cxcService.previsualizarAsiento(id, dto.monto, dto.cuentaContrapartida, dto.metodoPago);
   }
 
   @Patch(':id/anular')

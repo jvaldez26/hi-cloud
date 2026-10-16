@@ -162,7 +162,7 @@ export class CxPService {
       const cuentaContrapartida = dto.cuentaContrapartida || undefined;
       await this.asientosService.asientoPago(
         dto.monto, pagoGuardado.id, id, fechaPago, userId,
-        cuentaContrapartida, !!cuentaContrapartida,
+        cuentaContrapartida, !!cuentaContrapartida, dto.metodoPago,
       ).catch(err =>
         this.logger.error(`Error asiento pago CxP #${id} — pago #${pagoGuardado.id}: ${err?.message ?? err}`),
       );

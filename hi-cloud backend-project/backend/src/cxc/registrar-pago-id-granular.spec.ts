@@ -69,7 +69,7 @@ describe('CxCService.registrarPago — asiento etiquetado por el pago, no por la
 
     await svc.registrarPago(47, { monto: 400, metodoPago: 'efectivo' }, 5);
 
-    expect(asientosService.asientoCobro).toHaveBeenCalledWith(400, 888, 47, expect.any(String), 5, undefined, false);
+    expect(asientosService.asientoCobro).toHaveBeenCalledWith(400, 888, 47, expect.any(String), 5, undefined, false, 'efectivo');
   });
 
   it('asientoCobroME recibe el id del pago recién creado (moneda extranjera)', async () => {
@@ -95,7 +95,7 @@ describe('CxCService — selector de cuenta contable (cuentaContrapartida, 2026-
 
     await svc.registrarPago(47, { monto: 400, metodoPago: 'efectivo', cuentaContrapartida: '1.1.1.02' }, 5);
 
-    expect(asientosService.asientoCobro).toHaveBeenCalledWith(400, 888, 47, expect.any(String), 5, '1.1.1.02', true);
+    expect(asientosService.asientoCobro).toHaveBeenCalledWith(400, 888, 47, expect.any(String), 5, '1.1.1.02', true, 'efectivo');
   });
 
   it('previsualizarAsiento() delega en el motor sin registrar el pago', async () => {
@@ -114,7 +114,7 @@ describe('CxCService — selector de cuenta contable (cuentaContrapartida, 2026-
     const r = await svc.previsualizarAsiento(47, 400, '1.1.1.02');
 
     expect(r.ok).toBe(true);
-    expect(asientosService.previsualizarCobro).toHaveBeenCalledWith(400, 0, 47, '1.1.1.02');
+    expect(asientosService.previsualizarCobro).toHaveBeenCalledWith(400, 0, 47, '1.1.1.02', undefined);
   });
 
   it('previsualizarAsiento() en moneda extranjera: avisa que no está disponible, no llama al motor', async () => {
