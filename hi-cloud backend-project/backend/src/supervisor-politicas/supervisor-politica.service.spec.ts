@@ -58,6 +58,22 @@ describe('SupervisorPoliticaService.listarPoliticas', () => {
     expect(lista.find(p => p.clave === 'venta_credito')).toMatchObject({ requerido: true, modo: 'sesion' });
     expect(lista.find(p => p.clave === 'crear_producto')).toMatchObject({ requerido: true, modo: 'sesion' }); // default, no tocado
   });
+
+  // permiteRemoto (autorización remota) — por defecto true, salvo las 2
+  // claves presenciales a propósito, ver 1789000000000-AutorizacionRemotaSupervisor.ts.
+  it('sin filas guardadas: permiteRemoto sale del default del catálogo (true salvo descuadre/anular cierre)', async () => {
+    const { svc } = buildService();
+    const lista = await svc.listarPoliticas(EMPRESA);
+    expect(lista.find(p => p.clave === 'venta_credito')).toMatchObject({ permiteRemoto: true });
+    expect(lista.find(p => p.clave === 'cierre_caja_descuadre')).toMatchObject({ permiteRemoto: false });
+    expect(lista.find(p => p.clave === 'anular_cierre_caja')).toMatchObject({ permiteRemoto: false });
+  });
+
+  it('con una fila guardada que apagó permiteRemoto, esa clave lo refleja', async () => {
+    const { svc } = buildService({ filas: [{ empresaId: EMPRESA, clave: 'venta_credito', requerido: true, modo: 'cada_vez', permiteRemoto: false }] });
+    const lista = await svc.listarPoliticas(EMPRESA);
+    expect(lista.find(p => p.clave === 'venta_credito')).toMatchObject({ permiteRemoto: false });
+  });
 });
 
 describe('SupervisorPoliticaService.guardarPoliticas', () => {
@@ -83,9 +99,21 @@ describe('SupervisorPoliticaService.guardarPoliticas', () => {
     );
   });
 
+  it('apagar permiteRemoto en una clave existente: lo guarda y lo audita', async () => {
+    const { svc, politicaRepo, auditoria } = buildService({
+      filas: [{ empresaId: EMPRESA, clave: 'venta_credito', requerido: true, modo: 'cada_vez', permiteRemoto: true }],
+    });
+    await svc.guardarPoliticas(EMPRESA, [{ clave: 'venta_credito', requerido: true, modo: 'cada_vez', permiteRemoto: false }], { id: 1, nombre: 'Admin' });
+    expect(politicaRepo.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ clave: 'venta_credito', permiteRemoto: false }),
+      ['empresaId', 'clave'],
+    );
+    expect(auditoria.registrar).toHaveBeenCalledTimes(1);
+  });
+
   it('no guarda ni audita una clave cuyo valor no cambió', async () => {
     const { svc, politicaRepo, auditoria } = buildService({
-      filas: [{ empresaId: EMPRESA, clave: 'venta_credito', requerido: true, modo: 'sesion' }],
+      filas: [{ empresaId: EMPRESA, clave: 'venta_credito', requerido: true, modo: 'sesion', permiteRemoto: true }],
     });
     await svc.guardarPoliticas(EMPRESA, [{ clave: 'venta_credito', requerido: true, modo: 'sesion' }], { id: 1, nombre: 'Admin' });
     expect(politicaRepo.upsert).not.toHaveBeenCalled();

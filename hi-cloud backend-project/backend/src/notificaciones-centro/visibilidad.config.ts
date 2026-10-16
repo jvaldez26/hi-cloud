@@ -31,6 +31,7 @@ export const VISIBILIDAD_EVENTOS: Record<string, VisibilidadTipo> = {
   supervisor_bloqueado:          { roles: ADMIN_CONT_VEND, prioridad: 0, label: 'Supervisor bloqueado' },
   caja_huerfana:                 { roles: ADMIN_CONT,      prioridad: 0, label: 'Caja abierta de un día anterior' },
   descuadre_caja:                { roles: ADMIN_CONT,      prioridad: 0, label: 'Descuadre de caja' },
+  autorizacion_remota_solicitada:{ roles: ADMIN_CONT,      prioridad: 0, label: 'Solicitud de autorización remota' },
   ecf_revision_manual:           { roles: ADMIN_CONT,      prioridad: 0, label: 'e-CF en revisión manual' },
   xlink_documento_recibido:      { roles: ADMIN_CONT,      prioridad: 1, label: 'Documento recibido por Xlink' },
   manual:                        { roles: ADMIN_CONT,      prioridad: 1, label: 'Aviso' },

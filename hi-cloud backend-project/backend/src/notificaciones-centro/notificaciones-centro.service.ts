@@ -211,6 +211,7 @@ export class NotificacionesCentroService {
     switch (tipo) {
       case 'xlink_documento_recibido': return '/xlink?tab=porProcesar';
       case 'caja_huerfana':            return referencia ? `/caja?cajaId=${referencia}` : '/caja';
+      case 'autorizacion_remota_solicitada': return referencia ? `/autorizacion-remota?id=${referencia}` : '/autorizacion-remota';
       case 'ecf_revision_manual':      return '/ecf';
       case 'login_bloqueado':
       case 'posible_acceso_no_autorizado':

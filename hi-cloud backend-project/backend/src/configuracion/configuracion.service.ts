@@ -230,17 +230,28 @@ export class ConfiguracionService implements OnModuleInit {
 
   /** Configuración del modo supervisor — lee claves planas (escritas por ConfiguracionPage vía updateEmpresa).
    *  Fallback a .pos para compatibilidad con entradas antiguas creadas por updatePosConfig. */
-  async getPosConfig(): Promise<{ supervisorModeEnabled: boolean; maxDiscountPercent: number }> {
+  async getPosConfig(): Promise<{
+    supervisorModeEnabled: boolean; maxDiscountPercent: number;
+    autorizacionRemotaActiva: boolean; autorizacionRemotaDestinatarios: number[] | null;
+  }> {
     const empresa = await this.getEmpresa();
     const conf = (empresa.configuracion ?? {}) as any;
     const pos  = conf.pos ?? {};
     return {
       supervisorModeEnabled: conf.supervisorModeEnabled ?? pos.supervisorModeEnabled ?? false,
       maxDiscountPercent:    conf.maxDiscountPercent    ?? pos.maxDiscountPercent    ?? 10,
+      // Activado por defecto — interruptor general del flujo "Solicitar
+      // autorización remota" del POS, ver src/autorizacion-remota/.
+      autorizacionRemotaActiva: conf.autorizacionRemotaActiva ?? pos.autorizacionRemotaActiva ?? true,
+      // null = todos los ADMIN/CONTADOR activos de la empresa (default).
+      autorizacionRemotaDestinatarios: conf.autorizacionRemotaDestinatarios ?? pos.autorizacionRemotaDestinatarios ?? null,
     };
   }
 
-  async updatePosConfig(data: { supervisorModeEnabled: boolean; maxDiscountPercent: number }): Promise<void> {
+  async updatePosConfig(data: {
+    supervisorModeEnabled: boolean; maxDiscountPercent: number;
+    autorizacionRemotaActiva?: boolean; autorizacionRemotaDestinatarios?: number[] | null;
+  }): Promise<void> {
     const empresa = await this.getEmpresa();
     const cfg = (empresa.configuracion ?? {}) as any;
     cfg.pos = { ...(cfg.pos ?? {}), ...data };

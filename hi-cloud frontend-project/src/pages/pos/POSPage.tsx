@@ -11864,7 +11864,10 @@ export default function POSPage() {
     if (tipoPagoPos === 'CREDITO') {
       // La política 'venta_credito' decide si hace falta algo (requerido/modo) —
       // ya no hay un interruptor aparte que consultar aquí.
-      const r = await supervisor.requireSupervisor('venta_credito', 'Venta a Crédito', `Monto: ${fmt.money(totalEfectivo)}`);
+      // huella: si el cajero cambia el carrito (o el cliente) después de
+      // pedir una autorización REMOTA, el backend la rechaza al emitir la
+      // factura — ver validarAutorizacionVentaCredito en facturas.service.ts.
+      const r = await supervisor.requireSupervisor('venta_credito', 'Venta a Crédito', `Monto: ${fmt.money(totalEfectivo)}`, { monto: totalEfectivo, clienteId });
       if (!r.ok) return;
       supervisorTokenVentaCreditoRef.current = r.token;
     }
@@ -11891,7 +11894,7 @@ export default function POSPage() {
     // false y entraba al carrito que ya se está facturando.
     ventaEnCursoRef.current = true;
     ventaMut.mutate();
-  }, [canCheckout, ventaMut, tipoPagoPos, supervisor, posConf, totalEfectivo, totalAPagar, cart, empresa]);
+  }, [canCheckout, ventaMut, tipoPagoPos, supervisor, posConf, totalEfectivo, totalAPagar, cart, empresa, clienteId]);
 
   // Enter / NumpadEnter confirma el cobro cuando el modal de pago está abierto.
   // Se ignora si el evento viene de dentro de CUALQUIER modal (supervisor,

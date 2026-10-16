@@ -130,6 +130,38 @@ describe('RequiereSupervisor guard', () => {
     await expect(guard.canActivate(ctx)).resolves.toBe(true);
   });
 
+  // Autorización REMOTA (ver src/autorizacion-remota/): el token de un solo
+  // uso ya se consumió (usado=true) con los datos que el ADMIN aprobó —
+  // "monto: 1500". Si el cajero cambió el carrito DESPUÉS de pedirla (ahora
+  // factura por 2200), la huella guardada en el token ya no coincide con el
+  // body real y el guard rechaza, aunque el token en sí era válido y fresco.
+  // El token NO se "devuelve" — queda consumido igual (fail-closed).
+  it('token remoto válido, pero el carrito cambió después de pedir la autorización: 403 — la huella ya no coincide', async () => {
+    const { guard } = buildGuard(
+      'venta_credito', 'vendedor',
+      [[{ requerido: true, modo: 'cada_vez' }], [{ id: 1, posSupervisorLogId: null, facturaId: null, clienteId: null, monto: '1500.00' }]],
+    );
+    const ctx = buildCtx(
+      { id: CAJERO, role: 'admin', empresaId: EMPRESA },
+      { monto: 2200 }, // la venta real, después de que el cajero agregó más ítems
+      { 'x-supervisor-token': 'tok1' },
+    );
+    await expect(guard.canActivate(ctx)).rejects.toThrow(ForbiddenException);
+  });
+
+  it('token remoto válido y el carrito NO cambió (mismo monto): pasa', async () => {
+    const { guard } = buildGuard(
+      'venta_credito', 'vendedor',
+      [[{ requerido: true, modo: 'cada_vez' }], [{ id: 1, posSupervisorLogId: null, facturaId: null, clienteId: null, monto: '1500.00' }]],
+    );
+    const ctx = buildCtx(
+      { id: CAJERO, role: 'admin', empresaId: EMPRESA },
+      { monto: 1500 },
+      { 'x-supervisor-token': 'tok1' },
+    );
+    await expect(guard.canActivate(ctx)).resolves.toBe(true);
+  });
+
   // Caso real (2026-10-14, empresa VENTAS DIVERSAS ELIDO): una autorización
   // de un solo uso (modo 'cada_vez') consumida quedaba "Activa" para
   // siempre en el reporte de Modo Supervisor — ver

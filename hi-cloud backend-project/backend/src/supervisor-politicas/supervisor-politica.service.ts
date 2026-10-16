@@ -8,7 +8,7 @@ import { CATALOGO_SUPERVISOR, esClaveValida } from './supervisor-catalogo';
 import { AuditoriaService } from '../auditoria/auditoria.service';
 import { AccionAuditoria } from '../auditoria/entities/audit-log.entity';
 
-export interface PoliticaResuelta { requerido: boolean; modo: ModoSupervisor }
+export interface PoliticaResuelta { requerido: boolean; modo: ModoSupervisor; permiteRemoto: boolean }
 
 const TTL_TOKEN_MS = 3 * 60_000; // 3 minutos — "vida corta" para el modo cada_vez
 const TTL_SESION_HORAS = 8;      // misma ventana que pos_supervisor_log hoy
@@ -37,24 +37,26 @@ export class SupervisorPoliticaService {
         grupo:       item.grupo,
         requerido:   fila?.requerido ?? item.defaultRequerido,
         modo:        fila?.modo      ?? item.defaultModo,
+        permiteRemoto: fila?.permiteRemoto ?? item.defaultPermiteRemoto,
       };
     });
   }
 
   async obtenerPolitica(empresaId: number, clave: string): Promise<PoliticaResuelta> {
     const item = CATALOGO_SUPERVISOR.find(c => c.clave === clave);
-    if (!item) return { requerido: false, modo: 'sesion' }; // clave no catalogada → nunca bloquea
+    if (!item) return { requerido: false, modo: 'sesion', permiteRemoto: false }; // clave no catalogada → nunca bloquea
     const fila = await this.politicaRepo.findOne({ where: { empresaId, clave } });
     return {
       requerido: fila?.requerido ?? item.defaultRequerido,
       modo:      fila?.modo      ?? item.defaultModo,
+      permiteRemoto: fila?.permiteRemoto ?? item.defaultPermiteRemoto,
     };
   }
 
   /** Solo ADMIN llega aquí (lo exige el controller) — cada cambio queda auditado. */
   async guardarPoliticas(
     empresaId: number,
-    items: { clave: string; requerido: boolean; modo: ModoSupervisor }[],
+    items: { clave: string; requerido: boolean; modo: ModoSupervisor; permiteRemoto?: boolean }[],
     actor: { id: number; nombre: string },
   ): Promise<void> {
     for (const it of items) {
@@ -69,11 +71,14 @@ export class SupervisorPoliticaService {
 
     for (const it of items) {
       const anterior = porClave.get(it.clave);
-      const cambio = !anterior || anterior.requerido !== it.requerido || anterior.modo !== it.modo;
+      const item = CATALOGO_SUPERVISOR.find(c => c.clave === it.clave);
+      const permiteRemoto = it.permiteRemoto ?? anterior?.permiteRemoto ?? item?.defaultPermiteRemoto ?? true;
+      const cambio = !anterior || anterior.requerido !== it.requerido || anterior.modo !== it.modo
+        || anterior.permiteRemoto !== permiteRemoto;
       if (!cambio) continue;
 
       await this.politicaRepo.upsert(
-        { empresaId, clave: it.clave, requerido: it.requerido, modo: it.modo, updatedAt: new Date() },
+        { empresaId, clave: it.clave, requerido: it.requerido, modo: it.modo, permiteRemoto, updatedAt: new Date() },
         ['empresaId', 'clave'],
       );
 
@@ -81,9 +86,9 @@ export class SupervisorPoliticaService {
         userId: actor.id, userName: actor.nombre, empresaId,
         accion: AccionAuditoria.UPDATE, modulo: 'supervisor-politicas',
         entidad: 'SupervisorPolitica', entidadId: it.clave,
-        descripcion: `Política "${it.clave}": requerido ${anterior?.requerido ?? false}→${it.requerido}, modo ${anterior?.modo ?? 'sesion'}→${it.modo}`,
-        valorAnterior: anterior ? JSON.stringify({ requerido: anterior.requerido, modo: anterior.modo }) : undefined,
-        valorNuevo:    JSON.stringify({ requerido: it.requerido, modo: it.modo }),
+        descripcion: `Política "${it.clave}": requerido ${anterior?.requerido ?? false}→${it.requerido}, modo ${anterior?.modo ?? 'sesion'}→${it.modo}, remoto ${anterior?.permiteRemoto ?? true}→${permiteRemoto}`,
+        valorAnterior: anterior ? JSON.stringify({ requerido: anterior.requerido, modo: anterior.modo, permiteRemoto: anterior.permiteRemoto }) : undefined,
+        valorNuevo:    JSON.stringify({ requerido: it.requerido, modo: it.modo, permiteRemoto }),
         metodo: 'PATCH', ruta: '/configuracion/supervisor-politicas', exitoso: true,
       });
     }

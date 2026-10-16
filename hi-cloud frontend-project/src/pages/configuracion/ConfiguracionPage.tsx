@@ -2,7 +2,7 @@
 import {
   Form, Input, Button, Card, Row, Col, Typography, message, Tag, Table,
   Select, InputNumber, Switch, Divider, Avatar, Modal, Space, Badge,
-  Progress, Skeleton, Alert, Popconfirm, Upload, Tooltip, theme,
+  Progress, Skeleton, Alert, Popconfirm, Upload, Tooltip, theme, Checkbox,
 } from 'antd';
 import {
   SaveOutlined, UserAddOutlined, DeleteOutlined, ReloadOutlined,
@@ -1116,6 +1116,7 @@ interface PoliticaSupervisorRow {
   grupo:       string;
   requerido:   boolean;
   modo:        'sesion' | 'cada_vez';
+  permiteRemoto: boolean;
 }
 
 /**
@@ -1143,6 +1144,29 @@ function ModoSupervisorSection() {
     enabled:  esAdmin,
   });
 
+  // Autorización remota (ver src/autorizacion-remota/) — interruptor general
+  // y destinatarios, guardados como claves planas en empresa.configuracion
+  // (mismo lugar/mecanismo que maxDiscountPercent, vía updateEmpresa).
+  const { data: posConfigRemoto } = useQuery({
+    queryKey: ['pos-config-supervisor'],
+    queryFn:  () => api.get('/configuracion/empresa/pos-config').then(r => r.data?.data ?? r.data),
+    enabled:  esAdmin,
+  });
+  const { data: supervisoresDisponibles } = useQuery<{ id: number; nombre: string; role: string }[]>({
+    queryKey: ['supervisores-pos'],
+    queryFn:  () => api.get('/auth/supervisores').then(r => {
+      const d = r.data?.data ?? r.data;
+      return Array.isArray(d) ? d : [];
+    }),
+    enabled:  esAdmin,
+  });
+  const remotoActivaMut = useMutation({
+    mutationFn: (v: { autorizacionRemotaActiva?: boolean; autorizacionRemotaDestinatarios?: number[] | null }) =>
+      configuracionApi.updateEmpresa({ configuracion: v }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['pos-config-supervisor'] }),
+    onError:   () => message.error('No se pudo guardar'),
+  });
+
   const nivelMut = useMutation({
     mutationFn: (nivel: 'solo_tarjeta' | 'tarjeta_pin') => api.patch('/supervisor-tarjetas/nivel', { nivel }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['supervisor-tarjetas-nivel'] }),
@@ -1150,7 +1174,7 @@ function ModoSupervisorSection() {
   });
 
   const guardarMut = useMutation({
-    mutationFn: (items: { clave: string; requerido: boolean; modo: 'sesion' | 'cada_vez' }[]) =>
+    mutationFn: (items: { clave: string; requerido: boolean; modo: 'sesion' | 'cada_vez'; permiteRemoto?: boolean }[]) =>
       api.patch('/configuracion/supervisor-politicas', { items }),
     onMutate: (items) => {
       qc.setQueryData<PoliticaSupervisorRow[]>(['supervisor-politicas'], prev => {
@@ -1181,15 +1205,15 @@ function ModoSupervisorSection() {
     g.items.push(it);
   }
 
-  const guardarUno = (clave: string, cambios: Partial<Pick<PoliticaSupervisorRow, 'requerido' | 'modo'>>) => {
+  const guardarUno = (clave: string, cambios: Partial<Pick<PoliticaSupervisorRow, 'requerido' | 'modo' | 'permiteRemoto'>>) => {
     const actual = items.find(p => p.clave === clave);
     if (!actual) return;
-    guardarMut.mutate([{ clave, requerido: actual.requerido, modo: actual.modo, ...cambios }]);
+    guardarMut.mutate([{ clave, requerido: actual.requerido, modo: actual.modo, permiteRemoto: actual.permiteRemoto, ...cambios }]);
   };
 
   const marcarGrupo = (nombreGrupo: string, requerido: boolean) => {
     const delGrupo = items.filter(p => p.grupo === nombreGrupo);
-    guardarMut.mutate(delGrupo.map(p => ({ clave: p.clave, requerido, modo: p.modo })));
+    guardarMut.mutate(delGrupo.map(p => ({ clave: p.clave, requerido, modo: p.modo, permiteRemoto: p.permiteRemoto })));
   };
 
   return (
@@ -1220,6 +1244,31 @@ function ModoSupervisorSection() {
         </Text>
       </Card>
 
+      <Card size="small" title="Autorización remota" style={{ marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Switch size="small"
+            checked={posConfigRemoto?.autorizacionRemotaActiva ?? true}
+            loading={remotoActivaMut.isPending}
+            onChange={v => remotoActivaMut.mutate({ autorizacionRemotaActiva: v })} />
+          <Text style={{ fontSize: 13 }}>Permitir autorización remota</Text>
+        </div>
+        <Text type="secondary" style={{ fontSize: 11, display: 'block', margin: '4px 0 12px' }}>
+          Deja que el cajero pida la autorización a un ADMIN/CONTADOR desde cualquier dispositivo, en vez de
+          exigir que esté presente en la caja. Cada política decide, con la casilla "Permite remoto" de abajo,
+          si acepta este camino.
+        </Text>
+        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Quién recibe las solicitudes</div>
+        <Select
+          mode="multiple"
+          allowClear
+          style={{ width: '100%' }}
+          placeholder="Todos los ADMIN/CONTADOR activos (por defecto)"
+          value={posConfigRemoto?.autorizacionRemotaDestinatarios ?? undefined}
+          options={(supervisoresDisponibles ?? []).map(u => ({ value: u.id, label: u.nombre }))}
+          onChange={v => remotoActivaMut.mutate({ autorizacionRemotaDestinatarios: v.length ? v : null })}
+        />
+      </Card>
+
       {isLoading && <Skeleton active paragraph={{ rows: 4 }} />}
       {!isLoading && grupos.map(g => (
         <Card key={g.nombre} size="small" title={g.nombre} style={{ marginBottom: 12 }}
@@ -1240,6 +1289,15 @@ function ModoSupervisorSection() {
                     <br />
                     <Text type="secondary" style={{ fontSize: 11 }}>{p.descripcion}</Text>
                   </div>
+                  <Tooltip title="Permite que el cajero pida esta autorización de forma remota, no solo presencial">
+                    <Checkbox
+                      checked={p.permiteRemoto}
+                      disabled={!p.requerido}
+                      onChange={e => guardarUno(p.clave, { permiteRemoto: e.target.checked })}
+                    >
+                      <Text style={{ fontSize: 11 }}>Remoto</Text>
+                    </Checkbox>
+                  </Tooltip>
                   <Select
                     size="small"
                     value={p.modo}

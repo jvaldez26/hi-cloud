@@ -31,6 +31,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
 import { pushSupervisorAuthHandler } from '../utils/sessionEvents';
+import { autorizacionRemotaApi } from '../api/autorizacionRemota.api';
 
 export interface SupervisorSession {
   nombre:     string;
@@ -46,6 +47,17 @@ export interface PoliticaSupervisor {
   grupo:       string;
   requerido:   boolean;
   modo:        'sesion' | 'cada_vez';
+  permiteRemoto: boolean;
+}
+
+export interface RemotoEnEspera {
+  solicitudId: number;
+  expiraEn:    number; // timestamp ms
+}
+
+export interface RemotoResultado {
+  estado:     'rechazada' | 'expirada' | 'cancelada';
+  comentario: string | null;
 }
 
 export interface AutorizacionResultado {
@@ -70,7 +82,14 @@ interface UseSupervisorReturn {
    * si la política es 'cada_vez' — ese token hay que mandarlo en la llamada
    * real que sigue (header X-Supervisor-Token).
    */
-  requireSupervisor: (clave: string, action?: string, detail?: string) => Promise<AutorizacionResultado>;
+  requireSupervisor: (
+    clave: string, action?: string, detail?: string,
+    /** Huella de la acción (solo las que pueden darla al momento de pedir
+     *  supervisor) — si el cajero cambia el carrito después de pedir una
+     *  autorización REMOTA, el backend la rechaza al usarla (ver
+     *  huella-autorizacion-remota.util.ts). */
+    huella?: { monto?: number; clienteId?: number; facturaId?: number },
+  ) => Promise<AutorizacionResultado>;
   /** Abre el modal programáticamente (botón "Activar modo supervisor" / badge) */
   openSupervisorModal: (action: string, detail?: string) => void;
   /** Limpiar sesión de supervisor (ESC / badge ×) — audita el cierre */
@@ -79,6 +98,19 @@ interface UseSupervisorReturn {
   resolveModal: (result: boolean, nombre?: string, role?: string, sessionId?: number | null, supervisorToken?: string) => void;
   /** Estado del modal: null = cerrado */
   pendingAction: { action: string; detail?: string; clave?: string } | null;
+
+  // ── Autorización remota (ver src/autorizacion-remota/ en el backend) ──────
+  /** true si la clave pendiente admite "Solicitar autorización remota". */
+  pendingActionPermiteRemoto: boolean;
+  /** Crea la solicitud y empieza a esperar la respuesta del supervisor. */
+  solicitarAutorizacionRemota: (motivo: string) => Promise<void>;
+  /** No-null mientras se espera respuesta — countdown + botón Cancelar. */
+  remotoEnEspera: RemotoEnEspera | null;
+  /** Cancela la solicitud en espera (la cajera se arrepiente o sigue con clave/tarjeta). */
+  cancelarAutorizacionRemota: () => Promise<void>;
+  /** No-null tras un rechazo/vencimiento/cancelación remota — el modal lo muestra y lo limpia. */
+  remotoResultado: RemotoResultado | null;
+  limpiarRemotoResultado: () => void;
 }
 
 const STORAGE_KEY        = 'pos_supervisor';
@@ -130,6 +162,76 @@ export function useSupervisor(): UseSupervisorReturn {
   const [supervisorSession, setSupervisorSession] = useState<SupervisorSession | null>(loadSessionFromStorage);
   const [pendingAction, setPendingAction] = useState<{ action: string; detail?: string; clave?: string } | null>(null);
   const resolveRef = useRef<((result: AutorizacionResultado) => void) | null>(null);
+  // Huella de la acción pendiente — solo la llevan los call sites que la
+  // conocen al pedir supervisor (venta_credito, descuento_excedido...); el
+  // resto sigue igual (huella undefined → no se valida nada extra al usar
+  // el token, ver huella-autorizacion-remota.util.ts en el backend).
+  const huellaPendienteRef = useRef<{ monto?: number; clienteId?: number; facturaId?: number } | undefined>(undefined);
+
+  const [remotoEnEspera, setRemotoEnEspera] = useState<RemotoEnEspera | null>(null);
+  const [remotoResultado, setRemotoResultado] = useState<RemotoResultado | null>(null);
+  const limpiarRemotoResultado = useCallback(() => setRemotoResultado(null), []);
+
+  const pendingActionPermiteRemoto = !!pendingAction?.clave
+    && (politicas.find(p => p.clave === pendingAction.clave)?.permiteRemoto ?? false);
+
+  const { data: remotoEstado } = useQuery({
+    queryKey: ['autorizacion-remota-estado', remotoEnEspera?.solicitudId],
+    queryFn:  () => autorizacionRemotaApi.estado(remotoEnEspera!.solicitudId),
+    enabled:  !!remotoEnEspera,
+    refetchInterval: 3000, // respaldo del WebSocket — el socket ya invalida esta key al responder
+  });
+
+  useEffect(() => {
+    if (!remotoEstado || !remotoEnEspera) return;
+    if (remotoEstado.estado === 'aprobada') {
+      if (!remotoEstado.token) return; // el UPDATE que emite el token puede tardar un instante más que el estado
+      setRemotoEnEspera(null);
+      setPendingAction(null);
+      resolveRef.current?.({ ok: true, token: remotoEstado.token });
+      resolveRef.current = null;
+    } else if (remotoEstado.estado === 'rechazada' || remotoEstado.estado === 'expirada' || remotoEstado.estado === 'cancelada') {
+      setRemotoEnEspera(null);
+      setRemotoResultado({ estado: remotoEstado.estado, comentario: remotoEstado.comentario });
+      resolveRef.current?.({ ok: false });
+      resolveRef.current = null;
+    }
+  }, [remotoEstado, remotoEnEspera]);
+
+  // Countdown en el front — el backend es quien de verdad expira el token
+  // (3 min); esto solo refresca el "2:45" sin esperar al próximo poll.
+  useEffect(() => {
+    if (!remotoEnEspera) return;
+    if (remotoEnEspera.expiraEn <= Date.now()) {
+      setRemotoEnEspera(null);
+      setRemotoResultado({ estado: 'expirada', comentario: null });
+      resolveRef.current?.({ ok: false });
+      resolveRef.current = null;
+      return;
+    }
+    const id = setInterval(() => {
+      setRemotoEnEspera(current => (current && current.expiraEn <= Date.now() ? null : current));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [remotoEnEspera]);
+
+  const solicitarAutorizacionRemota = useCallback(async (motivo: string) => {
+    if (!pendingAction?.clave) return;
+    const s = await autorizacionRemotaApi.crear({
+      clave: pendingAction.clave, motivo,
+      ...huellaPendienteRef.current,
+    });
+    setRemotoEnEspera({ solicitudId: s.id, expiraEn: new Date(s.expiraEn).getTime() });
+  }, [pendingAction]);
+
+  const cancelarAutorizacionRemota = useCallback(async () => {
+    if (!remotoEnEspera) return;
+    const id = remotoEnEspera.solicitudId;
+    setRemotoEnEspera(null);
+    await autorizacionRemotaApi.cancelar(id).catch(() => { /* best-effort */ });
+    resolveRef.current?.({ ok: false });
+    resolveRef.current = null;
+  }, [remotoEnEspera]);
 
   const supervisorActive = supervisorSession !== null && supervisorSession.until > Date.now();
   const supervisorName   = supervisorActive ? supervisorSession!.nombre : '';
@@ -179,7 +281,11 @@ export function useSupervisor(): UseSupervisorReturn {
     resolveRef.current = null;
   }, []);
 
-  const requireSupervisor = useCallback(async (clave: string, action?: string, detail?: string): Promise<AutorizacionResultado> => {
+  const requireSupervisor = useCallback(async (
+    clave: string, action?: string, detail?: string,
+    huella?: { monto?: number; clienteId?: number; facturaId?: number },
+  ): Promise<AutorizacionResultado> => {
+    huellaPendienteRef.current = huella;
     // fetchQuery: devuelve el caché al toque si ya está fresco, o ESPERA la
     // petición si todavía no resolvió — nunca decide con el catálogo vacío.
     // Antes se leía el estado reactivo de useQuery directamente: justo
@@ -247,5 +353,11 @@ export function useSupervisor(): UseSupervisorReturn {
     clearSupervisor,
     resolveModal,
     pendingAction,
+    pendingActionPermiteRemoto,
+    solicitarAutorizacionRemota,
+    remotoEnEspera,
+    cancelarAutorizacionRemota,
+    remotoResultado,
+    limpiarRemotoResultado,
   };
 }

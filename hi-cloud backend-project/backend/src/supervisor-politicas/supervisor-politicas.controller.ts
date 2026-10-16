@@ -1,6 +1,6 @@
 import { Controller, Get, Patch, Body, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiHeader } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsIn, IsString, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsOptional, IsString, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -21,6 +21,10 @@ class ItemPoliticaDto {
 
   @IsIn(['sesion', 'cada_vez'])
   modo!: ModoSupervisor;
+
+  @IsOptional()
+  @IsBoolean()
+  permiteRemoto?: boolean;
 }
 
 class GuardarPoliticasDto {

@@ -25,6 +25,11 @@ const ENTITY_KEYS: Record<string, string[][]> = {
   // evento nuevo (bloqueo, Xlink, e-CF en revisión manual...) empuja por
   // WebSocket en vez de esperar el polling de respaldo.
   notificaciones: [['notificaciones-centro']],
+  // Autorización remota de Modo Supervisor — el emisor nunca manda el token
+  // por el socket (mismo criterio que notificarMensajeNuevo): esto solo
+  // dispara que la pantalla de "Esperando autorización" y la lista de
+  // pendientes del ADMIN vuelvan a preguntar al servidor.
+  autorizacion_remota: [['autorizacion-remota-pendientes'], ['autorizacion-remota-historial'], ['autorizacion-remota-estado']],
 };
 
 export type RealtimeStatus = 'connecting' | 'connected' | 'disconnected';

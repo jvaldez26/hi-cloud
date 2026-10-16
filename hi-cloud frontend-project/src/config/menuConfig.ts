@@ -482,6 +482,7 @@ export const MENU_CATEGORIES_DATA: MenuCategoryData[] = [
       { path: '/sucursales',     label: 'Sucursales', codigo: 'AD04' },
       { path: '/equipo',         label: 'Usuarios y Roles', codigo: 'AD05' },
       { path: '/aprobaciones',   label: 'Aprobaciones', codigo: 'AD06' },
+      { path: '/autorizacion-remota', label: 'Solicitudes de Autorización', codigo: 'AD11' },
       { path: '/importacion',    label: 'Importación CSV', codigo: 'AD07' },
       { path: '/documentos',     label: 'Documentos', codigo: 'AD08' },
       { path: '/contactos',      label: 'Directorio', codigo: 'AD09' },

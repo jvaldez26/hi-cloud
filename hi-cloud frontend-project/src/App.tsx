@@ -147,6 +147,7 @@ const AnticiposClientePage        = lazy(() => import('./pages/anticipos-cliente
 const GeneradorReportesPage       = lazy(() => import('./pages/generador-reportes/GeneradorReportesPage'));
 const ContactosPage               = lazy(() => import('./pages/contactos/ContactosPage'));
 const AprobacionesPage            = lazy(() => import('./pages/aprobaciones/AprobacionesPage'));
+const SolicitudesAutorizacionPage = lazy(() => import('./pages/autorizacion-remota/SolicitudesAutorizacionPage'));
 const FidelidadPage               = lazy(() => import('./pages/fidelidad/FidelidadPage'));
 const TicketsSoportePage          = lazy(() => import('./pages/soporte/TicketsSoportePage'));
 const CuotasPage                  = lazy(() => import('./pages/cuotas/CuotasPage'));
@@ -937,6 +938,7 @@ export default function App() {
                     <Route path="/generador-reportes"     element={<GeneradorReportesPage />} />
                     <Route path="/contactos"              element={<ContactosPage />} />
                     <Route path="/aprobaciones"           element={<RolRoute roles={['admin']}><AprobacionesPage /></RolRoute>} />
+                    <Route path="/autorizacion-remota"    element={<RolRoute roles={['admin','contador']}><SolicitudesAutorizacionPage /></RolRoute>} />
                     <Route path="/fidelidad"              element={<FidelidadPage />} />
                     <Route path="/soporte/tickets"        element={<TicketsSoportePage />} />
                     <Route path="/cuotas"                 element={<CuotasPage />} />

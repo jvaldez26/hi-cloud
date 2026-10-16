@@ -22,6 +22,12 @@ export class SupervisorPolitica {
   @Column({ type: 'varchar', length: 20, default: 'sesion' })
   modo!: ModoSupervisor;
 
+  /** Si esta política acepta autorización REMOTA (ADMIN/CONTADOR responde
+   *  desde cualquier dispositivo) además de la presencial — ver
+   *  src/autorizacion-remota/. */
+  @Column({ default: true })
+  permiteRemoto!: boolean;
+
   @Column({ type: 'timestamptz', default: () => 'NOW()' })
   updatedAt!: Date;
 }

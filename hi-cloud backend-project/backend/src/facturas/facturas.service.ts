@@ -36,6 +36,7 @@ import { CajaService } from '../caja/caja.service';
 import { RncService } from '../rnc/rnc.service';
 import { reportServiceError } from '../common/observability/sentry';
 import { fechaHoyRD, diferenciaDiasRD } from '../common/utils/fecha-local.util';
+import { huellaCoincide, huellaDesdeBody } from '../autorizacion-remota/huella-autorizacion-remota.util';
 import {
   calcularTotalesConDescuento,
   validarInvarianteConvencionB,
@@ -240,7 +241,7 @@ export class FacturasService {
   }
 
   private async validarAutorizacionVentaCredito(
-    factura: { id: number; supervisorSessionId?: number | null; supervisorToken?: string | null },
+    factura: { id: number; supervisorSessionId?: number | null; supervisorToken?: string | null; clienteId?: number; total?: number },
     empresaId: number,
     cajeroCreadorId: number,
     cajeroEmisorId: number,
@@ -301,15 +302,33 @@ export class FacturasService {
     // borrador, o uno fresco de ESTA petición de emitir.
     for (const token of [supervisorToken, supervisorTokenFresco]) {
       if (!token) continue;
-      const consumidos = await this.dataSource.query<{ id: number; posSupervisorLogId: number | null }[]>(`
+      const consumidos = await this.dataSource.query<{
+        id: number; posSupervisorLogId: number | null;
+        facturaId: number | null; clienteId: number | null; monto: string | null;
+      }[]>(`
         WITH fila AS (
           UPDATE supervisor_autorizaciones SET usado = true
           WHERE token = $1 AND "empresaId" = $2 AND "cajeroId" = $3 AND clave = 'venta_credito'
             AND usado = false AND "expiraEn" > NOW()
-          RETURNING id, "posSupervisorLogId"
+          RETURNING id, "posSupervisorLogId", "facturaId", "clienteId", monto
         ) SELECT * FROM fila
       `, [token, empresaId, cajeroEmisorId]);
       if (consumidos.length) {
+        const fila = consumidos[0];
+        // Huella de autorización remota (ver huella-autorizacion-remota.util.ts)
+        // — fail-closed: el token ya se consumió, un mismatch rechaza la
+        // emisión igual (nunca se "devuelve" el token). NULL en la fila =
+        // token presencial o remoto sin huella → no bloquea nada.
+        if (!huellaCoincide(
+          { facturaId: fila.facturaId, clienteId: fila.clienteId, monto: fila.monto != null ? Number(fila.monto) : null },
+          { facturaId: factura.id, clienteId: factura.clienteId, monto: factura.total },
+        )) {
+          throw new ForbiddenException({
+            message: 'La venta cambió después de pedir la autorización (cliente o monto distintos) — pide una autorización nueva.',
+            supervisorClaveRequerida: 'venta_credito',
+            supervisorModo: modo,
+          });
+        }
         if (token === supervisorTokenFresco) {
           await this.dataSource.query(
             `UPDATE facturas SET "supervisorToken" = $1 WHERE id = $2`,
@@ -319,7 +338,7 @@ export class FacturasService {
         }
         // Una autorización de un solo uso ya gastada no sigue "activa" en el
         // reporte de Modo Supervisor — ver cerrar-pos-supervisor-log.util.ts.
-        await cerrarPosSupervisorLogPorConsumo(this.dataSource, consumidos[0].posSupervisorLogId);
+        await cerrarPosSupervisorLogPorConsumo(this.dataSource, fila.posSupervisorLogId);
         return;
       }
     }

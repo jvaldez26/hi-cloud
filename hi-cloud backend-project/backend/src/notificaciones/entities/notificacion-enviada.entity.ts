@@ -33,6 +33,8 @@ export enum TipoNotificacion {
   POSIBLE_ACCESO_NO_AUTORIZADO = 'posible_acceso_no_autorizado',
   /** Un cierre de caja salió fuera del umbral de descuadre configurado (faltante de efectivo) — a ADMIN/CONTADOR, de inmediato. */
   DESCUADRE_CAJA = 'descuadre_caja',
+  /** Un cajero pidió autorización REMOTA de Modo Supervisor desde el POS — a ADMIN/CONTADOR, de inmediato. */
+  AUTORIZACION_REMOTA_SOLICITADA = 'autorizacion_remota_solicitada',
 }
 
 export enum CanalNotificacion {

@@ -95,7 +95,10 @@ export class ConfiguracionController {
   @Roles(UserRole.ADMIN)
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Actualizar configuración del POS (solo ADMIN)' })
-  updatePosConfig(@Body() body: { supervisorModeEnabled: boolean; maxDiscountPercent: number }) {
+  updatePosConfig(@Body() body: {
+    supervisorModeEnabled: boolean; maxDiscountPercent: number;
+    autorizacionRemotaActiva?: boolean; autorizacionRemotaDestinatarios?: number[] | null;
+  }) {
     return this.configuracionService.updatePosConfig(body);
   }
 

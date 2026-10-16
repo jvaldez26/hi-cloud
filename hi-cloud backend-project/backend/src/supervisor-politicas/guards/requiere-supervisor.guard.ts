@@ -9,6 +9,7 @@ import { User } from '../../users/users.entity';
 import { CATALOGO_SUPERVISOR } from '../supervisor-catalogo';
 import { membresiaCacheKey } from '../../auth/guards/roles.guard';
 import { cerrarPosSupervisorLogPorConsumo } from '../cerrar-pos-supervisor-log.util';
+import { huellaCoincide, huellaDesdeBody } from '../../autorizacion-remota/huella-autorizacion-remota.util';
 
 /**
  * Reemplaza a SupervisorGateGuard: en vez de exigir supervisor SIEMPRE que
@@ -93,6 +94,51 @@ export const RequiereSupervisor = (clave: string, opts?: { soloSi?: (body: any) 
       const modo      = fila?.modo      ?? item.defaultModo;
       if (!requerido) return true;
 
+      // El token de un solo uso se chequea SIEMPRE, sin importar `modo` —
+      // una autorización REMOTA (ver src/autorizacion-remota/) siempre emite
+      // un token 'cada_vez', incluso para una clave configurada en modo
+      // 'sesion': el supervisor que responde desde su celular no está
+      // abriendo una sesión de 8h en la caja de otra persona, autoriza
+      // exactamente esa acción puntual. Si la clave es 'sesion' y no llega
+      // token (el caso normal, de siempre), cae al chequeo de sesión de
+      // abajo sin cambiar nada del comportamiento previo.
+      const token = req.headers['x-supervisor-token'] as string | undefined;
+      if (token) {
+        // UPDATE...RETURNING envuelto en SELECT: .query() devuelve [rows,
+        // rowCount] para un UPDATE crudo (nunca .length directo sobre eso —
+        // ver feedback_typeorm_query_returning) — envolver en WITH...SELECT
+        // lo vuelve un SELECT normal, sin ambigüedad.
+        const consumidos = await this.ds.query(`
+          WITH fila AS (
+            UPDATE supervisor_autorizaciones SET usado = true
+            WHERE token = $1 AND "empresaId" = $2 AND "cajeroId" = $3 AND clave = $4
+              AND usado = false AND "expiraEn" > NOW()
+            RETURNING id, "posSupervisorLogId", "facturaId", "clienteId", monto
+          ) SELECT * FROM fila
+        `, [token, empresaId, user.id, clave]);
+        if (consumidos.length) {
+          const fila = consumidos[0];
+          // Una autorización de un solo uso ya gastada no sigue "activa"
+          // en el reporte de Modo Supervisor — ver cerrar-pos-supervisor-log.util.ts.
+          await cerrarPosSupervisorLogPorConsumo(this.ds, fila.posSupervisorLogId);
+          // Huella (solo la llenan los tokens remotos con ese dato
+          // disponible al pedirla) — el token YA se consumió arriba, así
+          // que un mismatch aquí es fail-closed: no hay "devolver" el token,
+          // la petición real se rechaza igual (ver huella-autorizacion-remota.util.ts).
+          if (!huellaCoincide(
+            { facturaId: fila.facturaId, clienteId: fila.clienteId, monto: fila.monto },
+            huellaDesdeBody(req.body),
+          )) {
+            throw new ForbiddenException({
+              message: 'Lo que se va a hacer cambió después de pedir la autorización — pide una autorización nueva.',
+              supervisorClaveRequerida: clave,
+              supervisorModo: modo,
+            });
+          }
+          return true;
+        }
+      }
+
       if (modo === 'sesion') {
         const [row] = await this.ds.query<{ id: number }[]>(`
           SELECT act.id
@@ -104,28 +150,6 @@ export const RequiereSupervisor = (clave: string, opts?: { soloSi?: (body: any) 
           LIMIT 1
         `, [user.id, empresaId]);
         if (row) return true;
-      } else {
-        const token = req.headers['x-supervisor-token'] as string | undefined;
-        if (token) {
-          // UPDATE...RETURNING envuelto en SELECT: .query() devuelve [rows,
-          // rowCount] para un UPDATE crudo (nunca .length directo sobre eso —
-          // ver feedback_typeorm_query_returning) — envolver en WITH...SELECT
-          // lo vuelve un SELECT normal, sin ambigüedad.
-          const consumidos = await this.ds.query(`
-            WITH fila AS (
-              UPDATE supervisor_autorizaciones SET usado = true
-              WHERE token = $1 AND "empresaId" = $2 AND "cajeroId" = $3 AND clave = $4
-                AND usado = false AND "expiraEn" > NOW()
-              RETURNING id, "posSupervisorLogId"
-            ) SELECT * FROM fila
-          `, [token, empresaId, user.id, clave]);
-          if (consumidos.length) {
-            // Una autorización de un solo uso ya gastada no sigue "activa"
-            // en el reporte de Modo Supervisor — ver cerrar-pos-supervisor-log.util.ts.
-            await cerrarPosSupervisorLogPorConsumo(this.ds, consumidos[0].posSupervisorLogId);
-            return true;
-          }
-        }
       }
 
       throw new ForbiddenException({

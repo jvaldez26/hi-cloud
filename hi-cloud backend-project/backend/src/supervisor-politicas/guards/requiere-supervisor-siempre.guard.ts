@@ -8,6 +8,7 @@ import type { Request } from 'express';
 import { User } from '../../users/users.entity';
 import { CATALOGO_SUPERVISOR } from '../supervisor-catalogo';
 import { cerrarPosSupervisorLogPorConsumo } from '../cerrar-pos-supervisor-log.util';
+import { huellaCoincide, huellaDesdeBody } from '../../autorizacion-remota/huella-autorizacion-remota.util';
 
 /**
  * Variante de RequiereSupervisor para las pocas acciones donde incluso un
@@ -64,6 +65,37 @@ export const RequiereSupervisorSiempre = (
       const modo      = fila?.modo      ?? item.defaultModo;
       if (!requerido) return true;
 
+      // Mismo orden que RequiereSupervisor: el token se chequea SIEMPRE,
+      // sin importar `modo` — ver el comentario largo ahí.
+      const token = req.headers['x-supervisor-token'] as string | undefined;
+      if (token) {
+        const consumidos = await this.ds.query(`
+          WITH fila AS (
+            UPDATE supervisor_autorizaciones SET usado = true
+            WHERE token = $1 AND "empresaId" = $2 AND "cajeroId" = $3 AND clave = $4
+              AND usado = false AND "expiraEn" > NOW()
+            RETURNING id, "posSupervisorLogId", "facturaId", "clienteId", monto
+          ) SELECT * FROM fila
+        `, [token, empresaId, user.id, clave]);
+        if (consumidos.length) {
+          const fila = consumidos[0];
+          // Una autorización de un solo uso ya gastada no sigue "activa"
+          // en el reporte de Modo Supervisor — ver cerrar-pos-supervisor-log.util.ts.
+          await cerrarPosSupervisorLogPorConsumo(this.ds, fila.posSupervisorLogId);
+          if (!huellaCoincide(
+            { facturaId: fila.facturaId, clienteId: fila.clienteId, monto: fila.monto },
+            huellaDesdeBody(req.body),
+          )) {
+            throw new ForbiddenException({
+              message: 'Lo que se va a hacer cambió después de pedir la autorización — pide una autorización nueva.',
+              supervisorClaveRequerida: clave,
+              supervisorModo: modo,
+            });
+          }
+          return true;
+        }
+      }
+
       if (modo === 'sesion') {
         const [row] = await this.ds.query<{ id: number }[]>(`
           SELECT act.id
@@ -75,24 +107,6 @@ export const RequiereSupervisorSiempre = (
           LIMIT 1
         `, [user.id, empresaId]);
         if (row) return true;
-      } else {
-        const token = req.headers['x-supervisor-token'] as string | undefined;
-        if (token) {
-          const consumidos = await this.ds.query(`
-            WITH fila AS (
-              UPDATE supervisor_autorizaciones SET usado = true
-              WHERE token = $1 AND "empresaId" = $2 AND "cajeroId" = $3 AND clave = $4
-                AND usado = false AND "expiraEn" > NOW()
-              RETURNING id, "posSupervisorLogId"
-            ) SELECT * FROM fila
-          `, [token, empresaId, user.id, clave]);
-          if (consumidos.length) {
-            // Una autorización de un solo uso ya gastada no sigue "activa"
-            // en el reporte de Modo Supervisor — ver cerrar-pos-supervisor-log.util.ts.
-            await cerrarPosSupervisorLogPorConsumo(this.ds, consumidos[0].posSupervisorLogId);
-            return true;
-          }
-        }
       }
 
       throw new ForbiddenException({

@@ -20,9 +20,9 @@ vi.mock('../api/client', () => ({ default: apiMock }));
 
 const STORAGE_KEY = 'pos_supervisor';
 
-const POLITICA_CERRAR_CAJA_SESION: PoliticaSupervisor = { clave: 'cerrar_caja', label: 'Cerrar caja', descripcion: '', grupo: 'Caja', requerido: true, modo: 'sesion' };
+const POLITICA_CERRAR_CAJA_SESION: PoliticaSupervisor = { clave: 'cerrar_caja', label: 'Cerrar caja', descripcion: '', grupo: 'Caja', requerido: true, modo: 'sesion', permiteRemoto: true };
 const POLITICA_CERRAR_CAJA_APAGADA: PoliticaSupervisor = { ...POLITICA_CERRAR_CAJA_SESION, requerido: false };
-const POLITICA_VENTA_CREDITO_CADA_VEZ: PoliticaSupervisor = { clave: 'venta_credito', label: 'Venta a crédito', descripcion: '', grupo: 'Acciones de venta', requerido: true, modo: 'cada_vez' };
+const POLITICA_VENTA_CREDITO_CADA_VEZ: PoliticaSupervisor = { clave: 'venta_credito', label: 'Venta a crédito', descripcion: '', grupo: 'Acciones de venta', requerido: true, modo: 'cada_vez', permiteRemoto: true };
 
 /** Por defecto: el umbral de descuento y el catálogo con la política de prueba que cada test necesite. */
 function mockEndpoints(politicas: PoliticaSupervisor[]) {
