@@ -66,6 +66,22 @@ export class RecibosCobrosController {
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   resumen() { return this.svc.resumen(); }
 
+  @Get('previsualizar-aplicacion')
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @ApiOperation({ summary: 'A qué facturas se aplicará el recibo antes de grabarlo (FIFO si no se elige factura)' })
+  previsualizarAplicacion(
+    @Query('clienteId') clienteId: string,
+    @Query('monto') monto: string,
+    @Query('facturaId') facturaId?: string,
+    @Query('moneda') moneda?: string,
+  ) {
+    return this.svc.previsualizarAplicacion(
+      parseInt(clienteId, 10), Number(monto),
+      facturaId ? parseInt(facturaId, 10) : undefined,
+      moneda || 'DOP',
+    );
+  }
+
   @Get()
   @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VIEWER)
   listar(

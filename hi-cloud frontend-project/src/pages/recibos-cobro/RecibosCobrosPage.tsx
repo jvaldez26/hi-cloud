@@ -140,6 +140,21 @@ export default function RecibosCobrosPage() {
     staleTime: 0,
   });
 
+  // "A qué facturas se aplicará" — mismo cálculo que crear() usará de
+  // verdad (FIFO si no se elige factura), para que el cajero lo vea ANTES
+  // de grabar (incidente 2026-10-16: tres recibos sin factura elegida se
+  // guardaron sin aplicarse a ninguna CxC porque nadie podía verlo venir).
+  const montoWatch     = Form.useWatch('monto', form);
+  const facturaIdWatch = Form.useWatch('facturaId', form);
+  const { data: previewAplicacion } = useQuery<{ aplicaciones: { facturaId: number; cxcId: number; monto: number }[]; excedente: number }>({
+    queryKey: ['previsualizar-aplicacion', clienteIdWatch, montoWatch, facturaIdWatch, monedaForm],
+    queryFn:  () => api.get('/recibos-cobro/previsualizar-aplicacion', {
+      params: { clienteId: clienteIdWatch, monto: montoWatch, facturaId: facturaIdWatch || undefined, moneda: monedaForm },
+    }).then((r: any) => r.data?.data ?? r.data),
+    enabled: !!clienteIdWatch && Number(montoWatch) > 0,
+    staleTime: 0,
+  });
+
   const { data: resumen } = useQuery<any>({
     queryKey: ['recibos-resumen'],
     queryFn:  () => api.get('/recibos-cobro/resumen').then((r: any) => r.data?.data ?? r.data),
@@ -702,6 +717,38 @@ export default function RecibosCobrosPage() {
           </Form.Item>
           {/* Campo oculto que almacena el folio para enviarlo al backend */}
           <Form.Item name="facturaFolio" hidden><Input /></Form.Item>
+
+          {/* A qué facturas se aplicará — FIFO si no se eligió ninguna. Ver
+              incidente 2026-10-16: sin esto, un recibo sin factura elegida
+              podía quedar sin aplicarse a nada sin que nadie lo notara. */}
+          {!!previewAplicacion && (previewAplicacion.aplicaciones.length > 0 || previewAplicacion.excedente > 0) && (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message="Se aplicará a"
+              description={
+                <div style={{ fontSize: 12 }}>
+                  {previewAplicacion.aplicaciones.map(a => {
+                    const factura = facturasCliente.find((f: any) => f.id === a.facturaId);
+                    return (
+                      <div key={a.cxcId} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ fontFamily: 'monospace' }}>{factura?.numero ?? factura?.folio ?? `Factura #${a.facturaId}`}</span>
+                        <span>{fmt(a.monto, monedaForm)}</span>
+                      </div>
+                    );
+                  })}
+                  {previewAplicacion.excedente > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#B45309', marginTop: previewAplicacion.aplicaciones.length ? 4 : 0 }}>
+                      <span>Excedente (quedará como anticipo)</span>
+                      <span>{fmt(previewAplicacion.excedente, monedaForm)}</span>
+                    </div>
+                  )}
+                </div>
+              }
+            />
+          )}
+
           <Form.Item name="referencia" label="Referencia / Cheque #">
             <Input placeholder="Banco, número de cheque..." />
           </Form.Item>

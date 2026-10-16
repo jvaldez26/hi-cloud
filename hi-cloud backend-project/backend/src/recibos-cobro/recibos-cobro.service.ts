@@ -2,7 +2,7 @@ import {
   Injectable, NotFoundException, BadRequestException, Logger,
 } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import { generarNumeroSecuencial } from '../common/utils/generar-numero.util';
 import { fechaHoyRD, mesHoyRD } from '../common/utils/fecha-local.util';
 import { ReciboCobro, MetodoPagoRecibo } from './entities/recibo-cobro.entity';
@@ -78,6 +78,134 @@ export class RecibosCobrosService {
     return resolverCajaDiariaAbierta(this.dataSource, empresaId, usuarioId, vendedorId);
   }
 
+  /**
+   * Todas las CxC pendientes de un cliente, más antigua primero — la base de
+   * la aplicación FIFO (ver calcularAplicacionFifo). Solo de la MISMA
+   * moneda que el recibo: aplicar RD$ a una factura en US$ sin tipo de
+   * cambio explícito sería un monto inventado, igual que exige hoy el
+   * selector manual de "Factura de referencia" (que también es por cliente,
+   * sin cruzar monedas).
+   */
+  private async resolverPendientesCliente(
+    clienteId: number, empresaId: number, moneda: string,
+  ): Promise<CuentaPorCobrar[]> {
+    return this.cxcRepo.find({
+      where: {
+        clienteId, empresaId, moneda, isActive: true,
+        estado: In([EstadoCuenta.PENDIENTE, EstadoCuenta.PAGADA_PARCIAL, EstadoCuenta.VENCIDA]),
+      },
+      order: { fechaVencimiento: 'ASC', id: 'ASC' },
+    });
+  }
+
+  /**
+   * Reparte `monto` entre las CxC pendientes, de la más antigua a la más
+   * nueva, hasta agotarlo o quedarse sin facturas. Lo que sobra es
+   * `excedente` — crear() lo convierte en anticipo (con confirmación del
+   * cajero, igual que ya hacía para una sola factura).
+   *
+   * Incidente real (2026-10-16, empresa 73): un recibo "Karla Jiménez
+   * RD$685.00" sin "Factura de referencia" se guardaba como cobro genérico
+   * y la cliente seguía debiendo los mismos RD$685.00 en Antigüedad de
+   * Saldos — nada en el código buscaba sus CxC pendientes. Pura coincidencia
+   * reveladora: RD$685.00 es la suma EXACTA de sus 6 facturas pendientes —
+   * el cajero cobró todo lo que debía de una vez, sin elegir factura por
+   * factura, y el sistema no sabía qué hacer con eso.
+   */
+  private calcularAplicacionFifo(
+    pendientes: CuentaPorCobrar[], monto: number,
+  ): { aplicaciones: { cxc: CuentaPorCobrar; monto: number }[]; excedente: number } {
+    let restante = monto;
+    const aplicaciones: { cxc: CuentaPorCobrar; monto: number }[] = [];
+    for (const cxc of pendientes) {
+      if (restante <= 0.01) break;
+      const pendiente = Number(cxc.montoPendiente);
+      const aplicado = Math.min(restante, pendiente);
+      if (aplicado > 0.01) {
+        aplicaciones.push({ cxc, monto: +aplicado.toFixed(2) });
+        restante = +(restante - aplicado).toFixed(2);
+      }
+    }
+    return { aplicaciones, excedente: Math.max(0, +restante.toFixed(2)) };
+  }
+
+  /**
+   * Previsualización para el formulario — "a qué facturas se aplicará" antes
+   * de grabar (pedido explícito, incidente 2026-10-16). Misma lógica que
+   * crear() usará de verdad, nunca una copia que pueda desincronizarse.
+   */
+  async previsualizarAplicacion(clienteId: number, monto: number, facturaId?: number, moneda = 'DOP') {
+    const empresaId = this.tenantSvc.getEmpresaId();
+    if (facturaId) {
+      const cxc = await this.cxcRepo.findOne({ where: { facturaId, empresaId, isActive: true } });
+      if (!cxc || [EstadoCuenta.PAGADA, EstadoCuenta.ANULADA].includes(cxc.estado as EstadoCuenta)) {
+        return { aplicaciones: [], excedente: monto };
+      }
+      const aplicado = Math.min(monto, Number(cxc.montoPendiente));
+      return {
+        aplicaciones: [{ facturaId: cxc.facturaId, cxcId: cxc.id, monto: +aplicado.toFixed(2) }],
+        excedente: +(monto - aplicado).toFixed(2),
+      };
+    }
+    const pendientes = await this.resolverPendientesCliente(clienteId, empresaId, moneda);
+    const { aplicaciones, excedente } = this.calcularAplicacionFifo(pendientes, monto);
+    return {
+      aplicaciones: aplicaciones.map(a => ({ facturaId: a.cxc.facturaId, cxcId: a.cxc.id, monto: a.monto })),
+      excedente,
+    };
+  }
+
+  /**
+   * Registra el monto como anticipo del cliente — reutilizado por el
+   * excedente sobre lo pendiente (cxc parcial) y por un recibo sin ninguna
+   * CxC pendiente (cxc.length === 0): en ambos casos es dinero que el
+   * cliente adelantó sin que haya, hoy, una factura a la que aplicarlo.
+   */
+  private async crearAnticipoDesdeRecibo(
+    empresaId: number, clienteId: number, monto: number, descripcion: string,
+    dto: CreateReciboDto, usuarioId: number,
+  ) {
+    try {
+      const hoy = fechaHoyRD();
+      const [cajaRow] = await this.dataSource.query<{ id: number }[]>(
+        `SELECT id FROM cierres_caja WHERE "empresaId" = $1 AND DATE(fecha) = $2 AND estado = 'abierta' ORDER BY id DESC LIMIT 1`,
+        [empresaId, hoy],
+      ).catch(() => []);
+      const antNumero = await generarNumeroSecuencial(
+        this.dataSource, 'anticipo_cliente', 'numero', '^ANT-[0-9]+$', 'ANT-', 1, empresaId,
+      );
+
+      const anticipo = await this.anticipoRepo.save(
+        this.anticipoRepo.create({
+          numero:        antNumero,
+          clienteId,
+          clienteNombre: dto.clienteNombre,
+          monto,
+          montoPendiente: monto,
+          tipoPago:      dto.metodoPago,
+          descripcion,
+          estado:        EstadoAnticipo.ACTIVO,
+          fechaRegistro: hoy,
+          cajaDiariaId:  cajaRow?.id,
+          usuarioId,
+          nombreUsuario: dto.nombreUsuario,
+          empresaId,
+        }),
+      );
+
+      // Asiento: DÉBITO Caja/Banco, CRÉDITO Anticipos de Clientes
+      await this.asientosService.asientoAnticipo(monto, anticipo.id, dto.metodoPago, hoy, usuarioId)
+        .then(async (asientoId) => { if (asientoId) await this.anticipoRepo.update(anticipo.id, { asientoId }); })
+        .catch(err => this.logger.error(`Asiento anticipo ${anticipo.numero}: ${err.message}`));
+
+      this.logger.log(`Anticipo ${anticipo.numero} creado — ${descripcion}`);
+      return anticipo;
+    } catch (err: any) {
+      this.logger.error(`Error creando anticipo (${descripcion}): ${err.message}`);
+      return null;
+    }
+  }
+
   async crear(dto: CreateReciboDto, usuarioId: number) {
     const empresaId = this.tenantSvc.getEmpresaId();
     const monto     = Number(dto.monto);
@@ -141,7 +269,16 @@ export class RecibosCobrosService {
       }
     }
 
-    // ── 2. Validar CxC ──────────────────────────────────────────────
+    // ── 2. Validar CxC / calcular a qué se aplica ──────────────────
+    //
+    // Si se eligió factura/CxC: se aplica a ESA, como siempre.
+    // Si NO se eligió ninguna pero sí hay cliente: se buscan TODAS sus CxC
+    // pendientes y se reparte el monto de la más antigua a la más nueva
+    // (FIFO) — ver calcularAplicacionFifo(). Antes de esto, un recibo sin
+    // "Factura de referencia" nunca tocaba ninguna CxC (incidente
+    // 2026-10-16, empresa 73: REC-101/102/103 por RD$685.00/1,819.03/
+    // 2,969.00 — la suma EXACTA de las pendientes de cada cliente —
+    // quedaron sin aplicar y los tres seguían debiendo lo mismo).
     if (cxc) {
       if (dto.clienteId && cxc.clienteId !== dto.clienteId) {
         throw new BadRequestException('La factura de referencia no pertenece al cliente seleccionado');
@@ -149,13 +286,29 @@ export class RecibosCobrosService {
       if ([EstadoCuenta.PAGADA, EstadoCuenta.ANULADA].includes(cxc.estado as EstadoCuenta)) {
         throw new BadRequestException(`La cuenta por cobrar está "${cxc.estado}" y no acepta más pagos`);
       }
-      const pendiente = Number(cxc.montoPendiente);
-      if (monto > pendiente + 0.01 && !dto.registrarExcedente) {
-        // El frontend debe preguntar al usuario y reenviar con registrarExcedente=true
-        throw new BadRequestException(
-          `EXCEDENTE:${(monto - pendiente).toFixed(2)}:${pendiente.toFixed(2)}`,
-        );
-      }
+    }
+
+    let aplicaciones: { cxc: CuentaPorCobrar; monto: number }[] = [];
+    let excedente = 0;
+    if (cxc) {
+      const aplicado = Math.min(monto, Number(cxc.montoPendiente));
+      aplicaciones = [{ cxc, monto: +aplicado.toFixed(2) }];
+      excedente = +(monto - aplicado).toFixed(2);
+    } else if (dto.clienteId) {
+      const pendientesFifo = await this.resolverPendientesCliente(dto.clienteId, empresaId, moneda);
+      // Sin ninguna CxC pendiente, no hay nada que "exceder" — es un cobro
+      // genérico (más abajo), no un excedente que necesite confirmación.
+      const resultado = pendientesFifo.length
+        ? this.calcularAplicacionFifo(pendientesFifo, monto)
+        : { aplicaciones: [], excedente: 0 };
+      aplicaciones = resultado.aplicaciones;
+      excedente    = resultado.excedente;
+    }
+
+    if (excedente > 0.01 && !dto.registrarExcedente) {
+      // El frontend debe preguntar al usuario y reenviar con registrarExcedente=true
+      const totalPendiente = +(monto - excedente).toFixed(2);
+      throw new BadRequestException(`EXCEDENTE:${excedente.toFixed(2)}:${totalPendiente.toFixed(2)}`);
     }
 
     // ── 2b. Resolver clienteNombre si no vino en el DTO ────────────
@@ -177,12 +330,6 @@ export class RecibosCobrosService {
       throw new BadRequestException('Debes tener una caja abierta para cobrar en efectivo.');
     }
     const numero    = await this.generarNumero();
-    // Número secuencial del registro en pagos_cobrados (RDP-XXXXX).
-    // Se genera aquí —antes de la transacción— para que el contador se
-    // incremente en su propio lock atómico, independientemente del tx.
-    const rdpNumero = await generarNumeroSecuencial(
-      this.dataSource, 'pagos_cobrados', 'numero', '^RDP-[0-9]+$', 'RDP-', 1, empresaId,
-    );
     const recibo = await this.repo.save(
       this.repo.create({
         ...dto,
@@ -192,19 +339,17 @@ export class RecibosCobrosService {
         moneda,
         cajaDiariaId: cajaDiariaId ?? undefined,
         usuarioId,
-        cxcId: cxc?.id ?? dto.cxcId,
+        // La CxC más antigua tocada (si hubo varias, vía FIFO) — solo para
+        // mostrar algo en el detalle del recibo; la relación real, completa,
+        // vive en pagos_cobrados.reciboCobroId (una fila por CxC aplicada).
+        cxcId: aplicaciones[0]?.cxc.id ?? dto.cxcId,
       }),
     );
 
-    // ── 4. Actualizar CxC y Factura (transacción atómica) ──────────
-    if (cxc) {
-      const pendiente      = Number(cxc.montoPendiente);
-      const excedente      = monto - pendiente;
-      const montoParaCxc   = excedente > 0.01 ? pendiente : monto; // si hay excedente, aplicar solo el pendiente
-      const nuevoPagado    = Number((Number(cxc.montoPagado) + montoParaCxc).toFixed(2));
-      const nuevoPendiente = Number((Number(cxc.montoOriginal) - nuevoPagado).toFixed(2));
-      const nuevoEstado    = nuevoPendiente <= 0 ? EstadoCuenta.PAGADA : EstadoCuenta.PAGADA_PARCIAL;
-
+    // ── 4. Aplicar a cada CxC tocada (una transacción, una fila en
+    //      pagos_cobrados por CxC — antes siempre era una sola; un recibo
+    //      FIFO sin factura elegida puede pagar varias a la vez) ────────
+    if (aplicaciones.length) {
       // Mapeo MetodoPagoRecibo → MetodoPago (depósito no existe en MetodoPago)
       const METODO_MAP: Record<string, MetodoPago> = {
         efectivo:      MetodoPago.EFECTIVO,
@@ -215,51 +360,71 @@ export class RecibosCobrosService {
         otro:          MetodoPago.OTRO,
       };
 
-      // Id propio del pago (pagos_cobrados) — el asiento de cobro se etiqueta
-      // por este id, no por cxc.id, para que revertirAsiento() pueda apuntar
-      // a este pago sin ambigüedad si algún día se necesita revertirlo aparte.
-      let pagoId = 0;
+      // Un RDP-XXXXX por CxC aplicada — se generan ANTES de la transacción
+      // (cada llamada tiene su propio lock atómico, mismo criterio que
+      // siempre tuvo esta función para el caso de una sola factura).
+      const rdpNumeros: string[] = [];
+      for (let i = 0; i < aplicaciones.length; i++) {
+        rdpNumeros.push(await generarNumeroSecuencial(
+          this.dataSource, 'pagos_cobrados', 'numero', '^RDP-[0-9]+$', 'RDP-', 1, empresaId,
+        ));
+      }
+
+      const pagosCreados: { pagoId: number; cxcId: number; monto: number }[] = [];
       await this.dataSource.transaction(async (em) => {
-        // 1. Registrar pago en pagos_cobrados → alimenta el historial de cobros
         const pagoRepo = em.getRepository(PagoCobrado);
-        const pagoGuardado = await pagoRepo.save(pagoRepo.create({
-          cuentaPorCobrarId: cxc!.id,
-          monto:      montoParaCxc,
-          fecha,
-          metodoPago: METODO_MAP[dto.metodoPago] ?? MetodoPago.OTRO,
-          referencia: dto.referencia,
-          notas:      `Recibo ${recibo.numero}${dto.notas ? ' — ' + dto.notas : ''}`,
-          userId:     usuarioId,
-          moneda,
-          tipoCambio: 1,
-          numero:     rdpNumero,   // RDP-XXXXX — NOT NULL en pagos_cobrados
-          empresaId,               // necesario para el índice único (empresaId, numero)
-          reciboCobroId: recibo.id, // vínculo real — listar() lo usa para no mostrar este pago aparte
-        }));
-        pagoId = pagoGuardado.id;
+        const cxcRepoTx = em.getRepository(CuentaPorCobrar);
+        const factRepoTx = em.getRepository(Factura);
 
-        // 2. Actualizar saldos de CxC
-        await em.getRepository(CuentaPorCobrar).update(cxc!.id, {
-          montoPagado:    nuevoPagado,
-          montoPendiente: nuevoPendiente,
-          estado:         nuevoEstado as any,
-        });
+        for (let i = 0; i < aplicaciones.length; i++) {
+          const ap = aplicaciones[i];
+          const rdpNumero = rdpNumeros[i];
 
-        // 3. Marcar factura como PAGADA si el saldo quedó en 0
-        if (nuevoEstado === EstadoCuenta.PAGADA && cxc!.facturaId) {
-          await em.getRepository(Factura).update(cxc!.facturaId, {
-            estado: FacturaEstado.PAGADA,
+          const nuevoPagado    = Number((Number(ap.cxc.montoPagado) + ap.monto).toFixed(2));
+          const nuevoPendiente = Number((Number(ap.cxc.montoOriginal) - nuevoPagado).toFixed(2));
+          const nuevoEstado    = nuevoPendiente <= 0 ? EstadoCuenta.PAGADA : EstadoCuenta.PAGADA_PARCIAL;
+
+          // 1. Registrar pago en pagos_cobrados → alimenta el historial de cobros
+          const pagoGuardado = await pagoRepo.save(pagoRepo.create({
+            cuentaPorCobrarId: ap.cxc.id,
+            monto:      ap.monto,
+            fecha,
+            metodoPago: METODO_MAP[dto.metodoPago] ?? MetodoPago.OTRO,
+            referencia: dto.referencia,
+            notas:      `Recibo ${recibo.numero}${dto.notas ? ' — ' + dto.notas : ''}`,
+            userId:     usuarioId,
+            moneda,
+            tipoCambio: 1,
+            numero:     rdpNumero,   // RDP-XXXXX — NOT NULL en pagos_cobrados
+            empresaId,               // necesario para el índice único (empresaId, numero)
+            reciboCobroId: recibo.id, // vínculo real — listar() lo usa para no mostrar este pago aparte
+          }));
+
+          // 2. Actualizar saldos de esa CxC
+          await cxcRepoTx.update(ap.cxc.id, {
+            montoPagado:    nuevoPagado,
+            montoPendiente: nuevoPendiente,
+            estado:         nuevoEstado as any,
           });
-          this.logger.log(
-            `Factura #${cxc!.facturaId} marcada como PAGADA — Recibo ${recibo.numero}`,
-          );
+
+          // 3. Marcar factura como PAGADA si el saldo quedó en 0
+          if (nuevoEstado === EstadoCuenta.PAGADA && ap.cxc.facturaId) {
+            await factRepoTx.update(ap.cxc.facturaId, { estado: FacturaEstado.PAGADA });
+            this.logger.log(`Factura #${ap.cxc.facturaId} marcada como PAGADA — Recibo ${recibo.numero}`);
+          }
+
+          pagosCreados.push({ pagoId: pagoGuardado.id, cxcId: ap.cxc.id, monto: ap.monto });
         }
       });
 
-      // Asiento contable: DÉBITO Bancos, CRÉDITO Clientes (solo por el monto aplicado a CxC)
-      await this.asientosService.asientoCobro(montoParaCxc, pagoId, cxc.id, fecha, usuarioId).catch(err =>
-        this.logger.error(`Error asiento cobro ${recibo.numero} — pago #${pagoId}: ${err.message}`),
-      );
+      // Un asiento contable por cada CxC pagada (DÉBITO Bancos, CRÉDITO
+      // Clientes) — granularidad por pago, igual que antes, ahora puede
+      // haber más de uno por recibo.
+      for (const p of pagosCreados) {
+        await this.asientosService.asientoCobro(p.monto, p.pagoId, p.cxcId, fecha, usuarioId).catch(err =>
+          this.logger.error(`Error asiento cobro ${recibo.numero} — pago #${p.pagoId}: ${err.message}`),
+        );
+      }
 
       // EFECTIVO nunca se postea a un banco — ya entró a la caja física del
       // día (recibos_cobro alimenta caja.service.ts directamente); postearlo
@@ -271,7 +436,7 @@ export class RecibosCobrosService {
           monto,
           `Recibo ${recibo.numero} — ${dto.clienteNombre ?? dto.concepto}`,
           OrigenMovimiento.COBRO_CXC,
-          cxc.id,
+          recibo.id,
           usuarioId,
         ).catch(err => {
           this.logger.error(`Error tesorería ${recibo.numero}: ${err.message}`);
@@ -281,48 +446,44 @@ export class RecibosCobrosService {
 
       // ── Excedente → crear anticipo automáticamente ─────────────
       if (excedente > 0.01 && dto.registrarExcedente) {
-        try {
-          const hoy = fechaHoyRD();
-          const [cajaRow] = await this.dataSource.query<{ id: number }[]>(
-            `SELECT id FROM cierres_caja WHERE "empresaId" = $1 AND DATE(fecha) = $2 AND estado = 'abierta' ORDER BY id DESC LIMIT 1`,
-            [empresaId, hoy],
-          ).catch(() => []);
-          const antNumero = await generarNumeroSecuencial(
-            this.dataSource, 'anticipo_cliente', 'numero', '^ANT-[0-9]+$', 'ANT-', 1, empresaId,
-          );
+        const anticipo = await this.crearAnticipoDesdeRecibo(
+          empresaId, aplicaciones[0].cxc.clienteId, excedente,
+          `Excedente de Recibo ${recibo.numero}`, dto, usuarioId,
+        );
+        if (anticipo) return { recibo, anticipo };
+      }
+    } else if (dto.clienteId) {
+      // Cliente conocido, pero SIN ninguna CxC pendiente — el monto queda
+      // como anticipo (regla explícita, incidente 2026-10-16): un recibo de
+      // un cliente nunca se pierde en un asiento genérico sin rastro de a
+      // quién o para qué quedó disponible ese dinero.
+      const anticipo = await this.crearAnticipoDesdeRecibo(
+        empresaId, dto.clienteId, monto,
+        `Recibo ${recibo.numero} — sin facturas pendientes al momento del cobro`, dto, usuarioId,
+      );
+      if (anticipo) return { recibo, anticipo };
 
-          const anticipo = await this.anticipoRepo.save(
-            this.anticipoRepo.create({
-              numero:        antNumero,
-              clienteId:     cxc.clienteId,
-              clienteNombre: dto.clienteNombre,
-              monto:         excedente,
-              montoPendiente: excedente,
-              tipoPago:      dto.metodoPago,
-              descripcion:   `Excedente de Recibo ${recibo.numero}`,
-              estado:        EstadoAnticipo.ACTIVO,
-              fechaRegistro: hoy,
-              cajaDiariaId:  cajaRow?.id,
-              usuarioId,
-              nombreUsuario: dto.nombreUsuario,
-              empresaId,
-            }),
-          );
-
-          // Asiento excedente: DÉBITO Caja/Banco, CRÉDITO Anticipos de Clientes
-          await this.asientosService.asientoAnticipo(excedente, anticipo.id, dto.metodoPago, hoy, usuarioId)
-            .then(async (asientoId) => { if (asientoId) await this.anticipoRepo.update(anticipo.id, { asientoId }); })
-            .catch(err => this.logger.error(`Asiento anticipo excedente ${anticipo.numero}: ${err.message}`));
-
-          this.logger.log(`Anticipo ${anticipo.numero} creado por excedente de recibo ${recibo.numero}`);
-          return { recibo, anticipo };
-        } catch (err: any) {
-          this.logger.error(`Error creando anticipo por excedente: ${err.message}`);
-        }
+      // El propio anticipo ya generó su asiento (DÉBITO Caja/Banco, CRÉDITO
+      // Anticipos) — si por lo que sea no se pudo crear, cae al mismo
+      // camino genérico de abajo en vez de perder el registro contable.
+      await this.asientosService.asientoRecibo(
+        monto, recibo.id, dto.metodoPago, fecha, usuarioId,
+      ).catch(err =>
+        this.logger.error(`Error asiento recibo ${recibo.numero}: ${err.message}`),
+      );
+      if (dto.metodoPago !== MetodoPagoRecibo.EFECTIVO) {
+        await this.tesoreriaService.registrarMovimientoAutomatico(
+          TipoMovimientoBancario.DEPOSITO, monto,
+          `Recibo ${recibo.numero} — ${dto.clienteNombre ?? dto.concepto}`,
+          OrigenMovimiento.COBRO_CXC, recibo.id, usuarioId,
+        ).catch(err => {
+          this.logger.error(`Error tesorería ${recibo.numero}: ${err.message}`);
+          reportServiceError(err, 'recibosCobro.registrar.tesoreria', { reciboNumero: recibo.numero });
+        });
       }
     } else {
-      // Sin CxC — anticipo o cobro genérico
-      // Asiento: DÉBITO Caja/Bancos, CRÉDITO Clientes
+      // Sin cliente — cobro genérico, sin ningún rastro de a quién
+      // aplicarlo. Asiento: DÉBITO Caja/Bancos, CRÉDITO Clientes.
       await this.asientosService.asientoRecibo(
         monto, recibo.id, dto.metodoPago, fecha, usuarioId,
       ).catch(err =>
@@ -514,42 +675,73 @@ export class RecibosCobrosService {
   async eliminar(id: number) {
     const recibo     = await this.findOne(id);
     const empresaId  = this.tenantSvc.getEmpresaId();
-    const monto      = Number(recibo.monto);
 
-    // ── 1. Revertir CxC si el recibo estaba vinculado a una factura ──
-    if (recibo.cxcId) {
+    // ── 1. Revertir CADA CxC que este recibo pagó ──────────────────
+    //
+    // Por reciboCobroId (en pagos_cobrados), no por recibo.cxcId ni por el
+    // monto TOTAL del recibo: un recibo FIFO (crear(), sin "Factura de
+    // referencia") puede haber pagado varias CxC a la vez, cada una por un
+    // monto DISTINTO al monto completo del recibo. Revertir con el monto
+    // total contra una sola CxC —lo que hacía esto antes— ya era incorrecto
+    // incluso en el caso de una sola factura con excedente: solo se le
+    // había aplicado el pendiente, no el monto completo del recibo, así que
+    // restar el monto completo al anular dejaba montoPagado mal (de más).
+    const pagos = await this.pagoRepo.find({ where: { reciboCobroId: recibo.id, isActive: true } });
+
+    for (const pago of pagos) {
+      const cxc = await this.cxcRepo.findOne({ where: { id: pago.cuentaPorCobrarId, empresaId, isActive: true } });
+      if (!cxc) continue;
+
+      const montoPago           = Number(pago.monto);
+      const nuevoMontoPagado    = Math.max(0, +(Number(cxc.montoPagado) - montoPago).toFixed(2));
+      const nuevoMontoPendiente = +(Number(cxc.montoOriginal) - nuevoMontoPagado).toFixed(2);
+      const nuevoEstado =
+        nuevoMontoPagado <= 0   ? EstadoCuenta.PENDIENTE :
+        nuevoMontoPendiente > 0 ? EstadoCuenta.PAGADA_PARCIAL :
+                                   EstadoCuenta.PAGADA;
+
+      await this.dataSource.transaction(async (em) => {
+        await em.getRepository(CuentaPorCobrar).update(cxc.id, {
+          montoPagado:    nuevoMontoPagado,
+          montoPendiente: nuevoMontoPendiente,
+          estado:         nuevoEstado as any,
+        });
+        // Revertir estado de factura si había quedado PAGADA por este pago
+        if (cxc.facturaId && nuevoEstado !== EstadoCuenta.PAGADA) {
+          await em.getRepository(Factura).update(cxc.facturaId, {
+            estado: FacturaEstado.EMITIDA,
+          });
+        }
+        await em.getRepository(PagoCobrado).update(pago.id, { isActive: false });
+      });
+
+      // Asiento de reversión: CRÉDITO Bancos, DÉBITO Clientes (inverso del cobro) — uno por CxC revertida.
+      await this.asientosService.asientoReversion(
+        montoPago, cxc.id, recibo.id, 'recibo', fechaHoyRD(), recibo.usuarioId,
+      ).catch(err => this.logger.error(`Error asiento reversión ${recibo.numero} — CxC #${cxc.id}: ${err.message}`));
+    }
+
+    // Compatibilidad con recibos antiguos (anteriores a reciboCobroId en
+    // pagos_cobrados): si no se encontró ningún pago por esa vía pero el
+    // recibo sí tenía un cxcId directo, revertir con el método de siempre.
+    if (!pagos.length && recibo.cxcId) {
+      const monto = Number(recibo.monto);
       const cxc = await this.cxcRepo.findOne({ where: { id: recibo.cxcId, empresaId, isActive: true } });
       if (cxc) {
         const nuevoMontoPagado    = Math.max(0, +(Number(cxc.montoPagado) - monto).toFixed(2));
         const nuevoMontoPendiente = +(Number(cxc.montoOriginal) - nuevoMontoPagado).toFixed(2);
         const nuevoEstado =
-          nuevoMontoPagado <= 0          ? EstadoCuenta.PENDIENTE :
-          nuevoMontoPendiente > 0        ? EstadoCuenta.PAGADA_PARCIAL :
-                                           EstadoCuenta.PAGADA;
-
+          nuevoMontoPagado <= 0   ? EstadoCuenta.PENDIENTE :
+          nuevoMontoPendiente > 0 ? EstadoCuenta.PAGADA_PARCIAL :
+                                     EstadoCuenta.PAGADA;
         await this.dataSource.transaction(async (em) => {
           await em.getRepository(CuentaPorCobrar).update(cxc.id, {
-            montoPagado:    nuevoMontoPagado,
-            montoPendiente: nuevoMontoPendiente,
-            estado:         nuevoEstado as any,
+            montoPagado: nuevoMontoPagado, montoPendiente: nuevoMontoPendiente, estado: nuevoEstado as any,
           });
-          // Revertir estado de factura si había quedado PAGADA por este recibo
           if (cxc.facturaId && nuevoEstado !== EstadoCuenta.PAGADA) {
-            await em.getRepository(Factura).update(cxc.facturaId, {
-              estado: FacturaEstado.EMITIDA,
-            });
+            await em.getRepository(Factura).update(cxc.facturaId, { estado: FacturaEstado.EMITIDA });
           }
-          // Marcar el pago_cobrado asociado como inactivo para que no aparezca
-          // en el estado de cuenta ni en el historial de cobros del cliente.
-          // Por reciboCobroId, no por notas: un LIKE con comodín sobre el
-          // número ('Recibo REC-101%') también matchea REC-1010, REC-1011...
-          await em.getRepository(PagoCobrado).update(
-            { reciboCobroId: recibo.id, isActive: true },
-            { isActive: false },
-          );
         });
-
-        // Asiento de reversión: CRÉDITO Bancos, DÉBITO Clientes (inverso del cobro)
         await this.asientosService.asientoReversion(
           monto, recibo.cxcId, recibo.id, 'recibo', fechaHoyRD(), recibo.usuarioId,
         ).catch(err => this.logger.error(`Error asiento reversión ${recibo.numero}: ${err.message}`));
@@ -558,7 +750,12 @@ export class RecibosCobrosService {
 
     // ── 2. Anular el recibo ───────────────────────────────────────────
     await this.repo.update(id, { isActive: false });
-    return { ok: true, mensaje: `Recibo ${recibo.numero} anulado y CxC revertida` };
+    return {
+      ok: true,
+      mensaje: pagos.length
+        ? `Recibo ${recibo.numero} anulado y ${pagos.length} CxC revertida(s)`
+        : `Recibo ${recibo.numero} anulado`,
+    };
   }
 
   /**
