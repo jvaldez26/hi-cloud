@@ -6,11 +6,13 @@ import { CuentaBancaria } from './entities/cuenta-bancaria.entity';
 import { MovimientoBancario } from './entities/movimiento-bancario.entity';
 import { ConciliacionBancaria } from './entities/conciliacion-bancaria.entity';
 import { ContabilidadModule } from '../contabilidad/contabilidad.module';
+import { CajaModule } from '../caja/caja.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([CuentaBancaria, MovimientoBancario, ConciliacionBancaria]),
     ContabilidadModule,
+    CajaModule,
   ],
   controllers: [TesoreriaController],
   providers: [TesoreriaService],

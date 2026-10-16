@@ -40,7 +40,12 @@ describe('RecibosCobrosService.crear — enlaza el pago al recibo por FK', () =>
       },
     };
     const dataSource = {
-      query: jest.fn().mockResolvedValue([{ numero: 1 }]),
+      // resolverCajaDiariaAbierta() (EFECTIVO) consulta cierres_caja/vendedores.
+      query: jest.fn((sql: string) => {
+        if (sql.includes('cierres_caja')) return Promise.resolve([{ id: 900 }]);
+        if (sql.includes('vendedores'))   return Promise.resolve([]);
+        return Promise.resolve([{ numero: 1 }]);
+      }),
       transaction: jest.fn(async (cb: any) => cb(em)),
     };
     const asientosService  = { asientoCobro: jest.fn().mockResolvedValue(undefined) };

@@ -23,6 +23,8 @@ export enum OrigenMovimiento {
   TRANSFERENCIA = 'transferencia',
   /** Corrección manual de saldo (AjustarSaldoDto) — nunca una operación del día a día, siempre con motivo. */
   AJUSTE        = 'ajuste',
+  /** Efectivo que sale de una caja diaria y entra al banco (volante de depósito) — ver registrarDepositoEfectivo. */
+  DEPOSITO_EFECTIVO = 'deposito_efectivo',
 }
 
 // Entradas: DEPOSITO, TRANSFERENCIA_ENTRADA, NOTA_CREDITO, INTERES

@@ -48,6 +48,30 @@ export class AjustarSaldoDto {
   motivo: string;
 }
 
+/**
+ * Efectivo que sale de una caja diaria abierta y entra a una cuenta
+ * bancaria (depósito físico) — ver TesoreriaService.registrarDepositoEfectivo.
+ * Caso real (2026-10-15, empresa 53): un cobro en efectivo se posteó
+ * directo al banco sin pasar nunca por una caja. `referencia` es el número
+ * del volante de depósito del banco.
+ */
+export class RegistrarDepositoEfectivoDto {
+  @IsInt() @IsPositive()
+  cajaId: number;
+
+  @IsInt() @IsPositive()
+  cuentaBancariaId: number;
+
+  @IsNumber({ maxDecimalPlaces: 2 }) @IsPositive()
+  monto: number;
+
+  @IsDateString()
+  fecha: string;
+
+  @IsOptional() @IsString() @MaxLength(50)
+  referencia?: string;
+}
+
 export class RegistrarTransferenciaDto {
   @IsInt() @IsPositive()
   cuentaOrigenId: number;

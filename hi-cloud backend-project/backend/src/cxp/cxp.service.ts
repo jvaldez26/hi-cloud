@@ -4,7 +4,7 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, In, LessThan } from 'typeorm';
 import { Cron } from '@nestjs/schedule';
 import { AsientosAutomaticosService } from '../contabilidad/services/asientos-automaticos.service';
@@ -23,6 +23,10 @@ import { TenantService } from '../tenant/tenant.service';
 import { fechaHoyRD } from '../common/utils/fecha-local.util';
 import { MetodoPago } from '../common/enums/metodo-pago.enum';
 import { reportServiceError } from '../common/observability/sentry';
+import { CajaService } from '../caja/caja.service';
+import { CategoriaRetiro } from '../caja/entities/retiro-caja.entity';
+import { resolverCajaDiariaAbierta } from '../common/caja/resolver-caja-diaria.util';
+import { DataSource } from 'typeorm';
 
 @Injectable()
 export class CxPService {
@@ -39,6 +43,8 @@ export class CxPService {
     private tesoreriaService: TesoreriaService,
     private realtimeService:  RealtimeService,
     private tenantService: TenantService,
+    private cajaService:   CajaService,
+    @InjectDataSource() private dataSource: DataSource,
   ) {}
 
   // ──────────────────────────────────────────────────────────────────
@@ -97,6 +103,23 @@ export class CxPService {
     const nuevoPagado    = Number((Number(cuenta.montoPagado) + dto.monto).toFixed(2));
     const nuevoPendiente = Number((Number(cuenta.montoOriginal) - nuevoPagado).toFixed(2));
     const nuevoEstado    = nuevoPendiente <= 0 ? EstadoCuenta.PAGADA : EstadoCuenta.PAGADA_PARCIAL;
+    const empresaId = (cuenta as any).empresaId as number;
+
+    // EFECTIVO exige una caja abierta y SALE de ella — mismo criterio que
+    // cxc.service.ts (ver incidente 2026-10-15/16): antes este pago no
+    // quedaba imputado a ningún lado del sistema. Se hace ANTES de guardar
+    // nada (falla rápido) — registrarRetiro ya valida disponible y bloquea
+    // si la caja está cerrada.
+    if (dto.metodoPago === MetodoPago.EFECTIVO) {
+      const cajaId = await resolverCajaDiariaAbierta(this.dataSource, empresaId, userId);
+      if (!cajaId) {
+        throw new BadRequestException('Debes tener una caja abierta para pagar en efectivo.');
+      }
+      await this.cajaService.registrarRetiro(
+        cajaId, dto.monto, `Pago CxP #${id}${dto.referencia ? ' — ' + dto.referencia : ''}`,
+        userId, undefined, CategoriaRetiro.PAGO_PROVEEDOR,
+      );
+    }
 
     const moneda   = (cuenta as any).moneda    ?? 'DOP';
     const tasaOrig = Number((cuenta as any).tipoCambio ?? 1);

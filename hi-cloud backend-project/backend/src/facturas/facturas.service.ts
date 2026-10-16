@@ -148,6 +148,47 @@ export class FacturasService {
   }
 
   /**
+   * Una venta a crédito exige un cliente IDENTIFICADO — con cédula/RNC real
+   * y que no sea el cliente genérico "Consumidor Final". Sin esto, CxC queda
+   * abierta contra un cliente que no se puede localizar ni cobrar — caso
+   * real (2026-10-16, empresa 53): factura a crédito a "CONSUMIDOR FINAL",
+   * cobrada después por un cajero distinto sin ninguna forma real de
+   * verificar quién debía el dinero.
+   *
+   * IMPORTANTE: NO usar la columna tipoCliente para esto. En producción
+   * 176 de 199 clientes (88%) tienen tipoCliente=consumidor_final aunque
+   * sean empresas o personas reales con RFC/RNC cargado (ej. "BEST
+   * EQUIPMENT SERVICE SRL", "GRUPO ENARA SRL") — el campo nunca se
+   * actualiza al crear el cliente y no refleja si está identificado.
+   * La identificación real se determina por nombre + rfc/rncReceptor.
+   */
+  private async validarClienteParaCredito(tipoPago: string, clienteId: number | undefined, empresaId: number): Promise<void> {
+    if (tipoPago !== 'CREDITO') return;
+    if (!clienteId) {
+      throw new BadRequestException(
+        'Una venta a crédito exige un cliente identificado (nombre y cédula/RNC) — selecciona un cliente real, no "Consumidor Final".',
+      );
+    }
+    const [clienteRow] = await this.dataSource.query<{
+      rncReceptor: string | null; rfc: string | null; nombre: string;
+    }[]>(
+      `SELECT "rncReceptor", rfc, nombre FROM clientes WHERE id = $1 AND "empresaId" = $2`,
+      [clienteId, empresaId],
+    );
+    if (!clienteRow) throw new BadRequestException(`Cliente #${clienteId} no encontrado`);
+    const esGenerico = /^consumidor\s*final$/i.test((clienteRow.nombre ?? '').trim());
+    const rncVacio = !clienteRow.rncReceptor || clienteRow.rncReceptor.trim() === '' || /^0+$/.test(clienteRow.rncReceptor.trim());
+    const rfcVacio = !clienteRow.rfc || clienteRow.rfc.trim() === '' || /^0+$/.test(clienteRow.rfc.trim());
+    const identificado = !esGenerico && !(rncVacio && rfcVacio);
+    if (!identificado) {
+      throw new BadRequestException(
+        `Una venta a crédito exige un cliente identificado con cédula/RNC. "${clienteRow.nombre}" no tiene esos datos — ` +
+        `regístralo con su RNC/cédula o cobra de contado.`,
+      );
+    }
+  }
+
+  /**
    * ÚNICA puerta que de verdad exige autorización de supervisor para una
    * venta a crédito — llamada desde cambiarEstado() en la transición
    * BORRADOR → EMITIDA, que es la ÚNICA puerta que hace borrador → emitida
@@ -630,6 +671,8 @@ export class FacturasService {
       tipoPago = dto.formasPago.some(f => f.tipo === 4) ? 'CREDITO' : 'CONTADO';
     }
 
+    await this.validarClienteParaCredito(tipoPago, dto.clienteId, empresaId);
+
     // Validar límite de crédito antes de crear la factura
     if (tipoPago === 'CREDITO' && dto.clienteId) {
       const [clienteRow] = await this.dataSource.query<{ limiteCredito: string }[]>(
@@ -869,6 +912,7 @@ export class FacturasService {
     if (dto.formasPago?.length) {
       tipoPago = dto.formasPago.some(f => f.tipo === 4) ? 'CREDITO' : 'CONTADO';
     }
+    await this.validarClienteParaCredito(tipoPago, dto.clienteId ?? factura.clienteId, factura.empresaId);
     const diasCred  = tipoPago === 'CREDITO' ? (dto.diasCredito ?? 30) : 0;
     const fechaVenc = tipoPago === 'CREDITO'
       ? (() => { const d = new Date(); d.setDate(d.getDate() + diasCred); return d; })()

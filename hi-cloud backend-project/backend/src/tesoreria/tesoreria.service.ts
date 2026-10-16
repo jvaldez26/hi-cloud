@@ -25,6 +25,7 @@ import {
   RegistrarRetiroDto,
   RegistrarTransferenciaDto,
   AjustarSaldoDto,
+  RegistrarDepositoEfectivoDto,
 } from './dto/registrar-movimiento.dto';
 import { CreateConciliacionDto } from './dto/create-conciliacion.dto';
 import { FiltroMovimientoDto, FiltroConciliacionDto } from './dto/filtro-tesoreria.dto';
@@ -32,6 +33,8 @@ import { TenantService } from '../tenant/tenant.service';
 import { fechaHoyRD } from '../common/utils/fecha-local.util';
 import { AsientosAutomaticosService } from '../contabilidad/services/asientos-automaticos.service';
 import { obtenerDatosUnificadosCuentasBancarias, etiquetaCuentaBancaria } from '../common/cuentas-bancarias/saldo-cuenta-bancaria.util';
+import { CajaService } from '../caja/caja.service';
+import { CategoriaRetiro } from '../caja/entities/retiro-caja.entity';
 
 @Injectable()
 export class TesoreriaService {
@@ -46,6 +49,7 @@ export class TesoreriaService {
     private conciliacionRepository:  Repository<ConciliacionBancaria>,
     private tenantService:           TenantService,
     private asientosService:         AsientosAutomaticosService,
+    private cajaService:             CajaService,
   ) {}
 
   private get eid(): number {
@@ -326,6 +330,64 @@ export class TesoreriaService {
     ).catch(err => this.logger.error(`Error asiento de ajuste #${mov.id}: ${err?.message ?? err}`));
 
     return mov;
+  }
+
+  /**
+   * Efectivo que sale de una caja diaria abierta y entra a una cuenta
+   * bancaria (depósito físico, con volante). Antes no existía ninguna
+   * forma correcta de hacer esto: el cobro en efectivo de CxC #246
+   * (empresa 53, 2026-10-15, RD$24,000) se posteó directo al banco como
+   * si fuera un cobro bancario — nunca pasó por una caja, así que el
+   * efectivo "desapareció" del cuadre del cajero sin que el banco subiera
+   * por el motivo correcto.
+   *
+   * No es una sola transacción de base de datos (CajaService.registrarRetiro
+   * y este registrarMovimiento corren cada uno en la suya, por bloqueo
+   * pesimista sobre la caja) — si el lado bancario falla DESPUÉS de sacar
+   * el efectivo de caja, se revierte (anula) el retiro automáticamente en
+   * vez de dejar el efectivo "perdido en tránsito".
+   */
+  async registrarDepositoEfectivo(dto: RegistrarDepositoEfectivoDto, userId: number, usuarioNombre?: string) {
+    const descripcion = `Depósito de efectivo a banco${dto.referencia ? ` — volante ${dto.referencia}` : ''}`;
+
+    const retiro: any = await this.cajaService.registrarRetiro(
+      dto.cajaId, dto.monto, descripcion, userId, usuarioNombre,
+      CategoriaRetiro.DEPOSITO_BANCO, dto.cuentaBancariaId,
+    );
+
+    if (retiro.requiereAuth) {
+      // El retiro quedó PENDIENTE de autorización — el efectivo todavía no
+      // salió de caja, así que el banco no debe subir todavía. Cuando un
+      // supervisor lo autorice, el movimiento bancario se registra desde
+      // Tesorería a mano (POST /tesoreria/movimientos/deposito-efectivo con
+      // el mismo cajaId, una vez autorizado) — no hay enganche automático.
+      return { retiro, movimiento: null, pendienteAutorizacion: true };
+    }
+
+    try {
+      const mov = await this.registrarMovimiento(
+        dto.cuentaBancariaId, TipoMovimientoBancario.DEPOSITO, dto.monto,
+        dto.fecha ?? fechaHoyRD(), descripcion, userId,
+        OrigenMovimiento.DEPOSITO_EFECTIVO, retiro.id, dto.referencia,
+      );
+
+      await this.asientosService.asientoMovimientoBancario(
+        mov.id, dto.monto, descripcion, true, dto.fecha ?? fechaHoyRD(), userId, undefined, false,
+      ).catch(err => this.logger.error(`Error asiento de depósito de efectivo #${mov.id}: ${err?.message ?? err}`));
+
+      return { retiro, movimiento: mov, pendienteAutorizacion: false };
+    } catch (err) {
+      await this.cajaService.anularRetiro(
+        retiro.id,
+        'Reversado automáticamente — el movimiento bancario correspondiente falló al registrarse',
+        userId, usuarioNombre ?? 'sistema',
+      ).catch(err2 => this.logger.error(
+        `No se pudo compensar el retiro #${retiro.id} tras fallo bancario: ${(err2 as Error)?.message ?? err2}`,
+      ));
+      throw new BadRequestException(
+        `No se pudo registrar el depósito en la cuenta bancaria: ${(err as Error).message}. El retiro de caja fue revertido — el efectivo sigue en caja.`,
+      );
+    }
   }
 
   // ──────────────────────────────────────────────────────────────────

@@ -24,6 +24,11 @@ function makeService(cuenta: any, pagoGuardadoId: number) {
   const tesoreriaService = { registrarMovimientoAutomatico: jest.fn().mockResolvedValue(undefined) };
   const realtimeService  = { notify: jest.fn() };
   const tenantService    = { getEmpresaId: () => cuenta.empresaId };
+  // EFECTIVO exige caja abierta (resolverCajaDiariaAbierta) y sale de ella
+  // (cajaService.registrarRetiro) — todos los tests de este archivo usan
+  // metodoPago: 'efectivo', así que ambos se mockean por defecto.
+  const dataSource   = { query: jest.fn().mockResolvedValue([{ id: 900 }]) };
+  const cajaService  = { registrarRetiro: jest.fn().mockResolvedValue({ id: 1 }) };
 
   const svc: any = Object.create(CxPService.prototype);
   svc.logger           = { log: jest.fn(), warn: jest.fn(), error: jest.fn() };
@@ -34,7 +39,9 @@ function makeService(cuenta: any, pagoGuardadoId: number) {
   svc.tesoreriaService  = tesoreriaService;
   svc.realtimeService   = realtimeService;
   svc.tenantService     = tenantService;
-  return { svc, asientosService, pagoRepository };
+  svc.dataSource        = dataSource;
+  svc.cajaService       = cajaService;
+  return { svc, asientosService, pagoRepository, cajaService };
 }
 
 describe('CxPService.registrarPago — asiento etiquetado por el pago, no por la CxP', () => {

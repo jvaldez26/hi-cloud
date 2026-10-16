@@ -16,18 +16,27 @@ function makeService(cuenta: any, pagoGuardadoId: number) {
   };
   const cxcRepoEm      = { update: jest.fn().mockResolvedValue({}) };
   const facturaRepoEm  = { update: jest.fn().mockResolvedValue({}) };
+  const reciboRepoEm   = {
+    create: jest.fn((data: any) => data),
+    save:   jest.fn(async (data: any) => ({ id: 777, ...data })),
+  };
 
   const em = {
     getRepository: (entity: any) => {
       if (entity?.name === 'PagoCobrado')     return pagoRepoEm;
       if (entity?.name === 'CuentaPorCobrar') return cxcRepoEm;
       if (entity?.name === 'Factura')         return facturaRepoEm;
+      if (entity?.name === 'ReciboCobro')     return reciboRepoEm;
       throw new Error(`Entidad no mockeada: ${entity?.name}`);
     },
     query: jest.fn().mockResolvedValue([{ n: 1 }]),
   };
 
   const dataSource = {
+    // resolverCajaDiariaAbierta() (EFECTIVO) corre ANTES de la transacción —
+    // devuelve una caja abierta por defecto para que estos tests (todos con
+    // metodoPago: 'efectivo') no se bloqueen por falta de caja.
+    query:       jest.fn().mockResolvedValue([{ id: 900 }]),
     transaction: jest.fn(async (cb: any) => cb(em)),
   };
 

@@ -56,6 +56,9 @@ function makeService(opts: {
   const tesoreriaService = { registrarMovimientoAutomatico: jest.fn().mockResolvedValue(undefined) };
   const realtimeService  = { notify: jest.fn() };
   const tenantService    = { getEmpresaId: () => cuenta.empresaId };
+  // EFECTIVO exige caja abierta y sale de ella — ver cxp.service.ts.
+  const dataSource   = { query: jest.fn().mockResolvedValue([{ id: 900 }]) };
+  const cajaService  = { registrarRetiro: jest.fn().mockResolvedValue({ id: 1 }) };
 
   const svc: any = Object.create(CxPService.prototype);
   svc.logger            = { log: jest.fn(), warn: jest.fn(), error: jest.fn() };
@@ -66,7 +69,9 @@ function makeService(opts: {
   svc.tesoreriaService   = tesoreriaService;
   svc.realtimeService    = realtimeService;
   svc.tenantService      = tenantService;
-  return { svc, compraRepository, cuenta };
+  svc.dataSource         = dataSource;
+  svc.cajaService        = cajaService;
+  return { svc, compraRepository, cuenta, cajaService };
 }
 
 describe('CxPService — resolverYActualizarFormaPago() tras registrarPago()', () => {

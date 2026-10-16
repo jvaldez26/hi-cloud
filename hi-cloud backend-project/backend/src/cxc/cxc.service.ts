@@ -24,6 +24,8 @@ import { TenantService } from '../tenant/tenant.service';
 import { fechaHoyRD } from '../common/utils/fecha-local.util';
 import { MetodoPago } from '../common/enums/metodo-pago.enum';
 import { reportServiceError } from '../common/observability/sentry';
+import { ReciboCobro, MetodoPagoRecibo } from '../recibos-cobro/entities/recibo-cobro.entity';
+import { resolverCajaDiariaAbierta } from '../common/caja/resolver-caja-diaria.util';
 
 @Injectable()
 export class CxCService {
@@ -151,18 +153,67 @@ export class CxCService {
     const nuevoPendiente = Number((Number(cuenta.montoOriginal) - nuevoPagado).toFixed(2));
     const nuevoEstado    = nuevoPendiente <= 0 ? EstadoCuenta.PAGADA : EstadoCuenta.PAGADA_PARCIAL;
 
-    // Transacción atómica: pago + actualización CxC + factura en una sola operación
+    // EFECTIVO exige una caja abierta — ver incidente 2026-10-15/16
+    // (docs/deuda-tecnica-bancos-tesoreria.md): antes este cobro no
+    // quedaba imputado a NINGÚN lado del sistema (ni caja ni tesorería,
+    // tras el fix que sacó el efectivo de los depósitos automáticos a
+    // banco). Falla rápido, ANTES de tocar nada.
+    let cajaId: number | null = null;
+    if (dto.metodoPago === MetodoPago.EFECTIVO) {
+      cajaId = await resolverCajaDiariaAbierta(this.dataSource, cuenta.empresaId, userId);
+      if (!cajaId) {
+        throw new BadRequestException('Debes tener una caja abierta para cobrar en efectivo.');
+      }
+    }
+    const clienteNombre = cuenta.clienteId
+      ? (await this.dataSource.query<{ nombre: string }[]>(
+          `SELECT nombre FROM clientes WHERE id = $1 AND "empresaId" = $2 LIMIT 1`,
+          [cuenta.clienteId, cuenta.empresaId],
+        ).catch(() => []))[0]?.nombre
+      : undefined;
+
+    // Transacción atómica: pago + actualización CxC + factura (+ recibo de
+    // caja si es efectivo) en una sola operación
     let ultimoPagoId = 0;
     await this.dataSource.transaction(async (em) => {
-      const pagoRepo  = em.getRepository(PagoCobrado);
-      const cxcRepo   = em.getRepository(CuentaPorCobrar);
-      const factRepo  = em.getRepository(Factura);
+      const pagoRepo   = em.getRepository(PagoCobrado);
+      const cxcRepo    = em.getRepository(CuentaPorCobrar);
+      const factRepo   = em.getRepository(Factura);
+      const reciboRepo = em.getRepository(ReciboCobro);
 
       // Número secuencial por empresa — atómico dentro de la transacción
       const [{ n }] = await em.query<{ n: number }[]>(
         `SELECT siguiente_numero_secuencia($1, 'RDP') AS n`, [cuenta.empresaId],
       );
       const numero = `RDP-${String(n).padStart(5, '0')}`;
+
+      // EFECTIVO: crea el recibo que imputa el cobro a la caja abierta —
+      // la MISMA tabla que caja.service.ts ya lee para "Cobros recibidos"
+      // y el esperado de efectivo (ver calcularEsperadoPorForma), sin tocar
+      // esa lectura. No-efectivo sigue yendo a tesorería (ver abajo).
+      let reciboCobroId: number | undefined;
+      if (dto.metodoPago === MetodoPago.EFECTIVO) {
+        const [{ n: nRec }] = await em.query<{ n: number }[]>(
+          `SELECT siguiente_numero_secuencia($1, 'REC') AS n`, [cuenta.empresaId],
+        );
+        const recibo = await reciboRepo.save(reciboRepo.create({
+          empresaId:     cuenta.empresaId,
+          numero:        `REC-${String(nRec).padStart(5, '0')}`,
+          fecha:         (dto.fechaPago ? new Date(dto.fechaPago) : new Date()).toISOString().substring(0, 10),
+          clienteId:     cuenta.clienteId,
+          clienteNombre,
+          monto:         dto.monto,
+          metodoPago:    MetodoPagoRecibo.EFECTIVO,
+          concepto:      `Cobro CxC #${id}${dto.referencia ? ' — ' + dto.referencia : ''}`,
+          facturaId:     cuenta.facturaId,
+          cxcId:         id,
+          referencia:    dto.referencia,
+          cajaDiariaId:  cajaId!,
+          usuarioId:     userId,
+          moneda:        cuenta.moneda ?? 'DOP',
+        }));
+        reciboCobroId = recibo.id;
+      }
 
       const nuevoPago = await pagoRepo.save(pagoRepo.create({
         cuentaPorCobrarId: id,
@@ -176,6 +227,7 @@ export class CxCService {
         numero,
         moneda:      cuenta.moneda    ?? 'DOP',
         tipoCambio:  Number(dto.tipoCambio ?? cuenta.tipoCambio ?? 1),
+        reciboCobroId,
       }));
       ultimoPagoId = nuevoPago.id;
 

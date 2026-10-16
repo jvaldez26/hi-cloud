@@ -39,7 +39,14 @@ function makeService(opts: {
   };
 
   const dataSource = {
-    query: jest.fn().mockResolvedValue([{ numero: 1 }]),
+    // resolverCajaDiariaAbierta() (EFECTIVO) consulta cierres_caja/vendedores
+    // con la MISMA dataSource.query — se devuelve una caja abierta (id: 900)
+    // para esas consultas específicas, y el numero secuencial para el resto.
+    query: jest.fn((sql: string) => {
+      if (sql.includes('cierres_caja')) return Promise.resolve([{ id: 900 }]);
+      if (sql.includes('vendedores'))   return Promise.resolve([]);
+      return Promise.resolve([{ numero: 1 }]);
+    }),
     transaction: jest.fn(async (cb: any) => cb(em)),
   };
 

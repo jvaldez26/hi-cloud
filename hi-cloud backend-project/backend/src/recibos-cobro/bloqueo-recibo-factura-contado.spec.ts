@@ -16,7 +16,13 @@ function makeService(opts: { factura: any; cxcEncontrada: any }) {
   const cxcRepo = { findOne: jest.fn().mockResolvedValue(opts.cxcEncontrada) };
   const facturaRepo = { findOne: jest.fn().mockResolvedValue(opts.factura) };
   const anticipoRepo = {};
-  const dataSource = { query: jest.fn().mockResolvedValue([]) };
+  // resolverCajaDiariaAbierta() (EFECTIVO) consulta cierres_caja — se le da
+  // una caja abierta por defecto para que el guard nuevo (2026-10-16, "caja
+  // abierta para cobrar en efectivo") no tape el guard que este archivo
+  // prueba ("factura de contado ya pagada").
+  const dataSource = {
+    query: jest.fn((sql: string) => sql.includes('cierres_caja') ? Promise.resolve([{ id: 900 }]) : Promise.resolve([])),
+  };
   const asientosService = {};
   const tesoreriaService = {};
   const tenantSvc = { getEmpresaId: () => 7 };

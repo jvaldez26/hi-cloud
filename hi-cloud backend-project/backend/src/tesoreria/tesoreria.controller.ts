@@ -21,9 +21,11 @@ import {
   RegistrarRetiroDto,
   RegistrarTransferenciaDto,
   AjustarSaldoDto,
+  RegistrarDepositoEfectivoDto,
 } from './dto/registrar-movimiento.dto';
 import { CreateConciliacionDto } from './dto/create-conciliacion.dto';
 import { FiltroMovimientoDto, FiltroConciliacionDto } from './dto/filtro-tesoreria.dto';
+import { RequiereSupervisor } from '../supervisor-politicas/guards/requiere-supervisor.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -127,6 +129,22 @@ export class TesoreriaController {
   @ApiOperation({ summary: 'Ajustar el saldo de una cuenta bancaria — exige motivo, queda auditado y genera asiento' })
   ajustarSaldo(@Body() dto: AjustarSaldoDto, @GetUser() usuario: User) {
     return this.tesoreriaService.ajustarSaldo(dto, usuario.id);
+  }
+
+  /**
+   * Efectivo que sale de una caja abierta y entra a una cuenta bancaria
+   * (depósito físico, con volante) — ver TesoreriaService.registrarDepositoEfectivo.
+   * Mismo guard de supervisor que un retiro de caja normal: por eso lo
+   * puede hacer un VENDEDOR, no solo ADMIN/CONTADOR — es quien físicamente
+   * deposita el efectivo de su cajón.
+   */
+  @Post('movimientos/deposito-efectivo')
+  @HttpCode(HttpStatus.CREATED)
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR, UserRole.VENDEDOR)
+  @UseGuards(RequiereSupervisor('registrar_retiro'))
+  @ApiOperation({ summary: 'Depósito de efectivo: sale de una caja abierta y entra a una cuenta bancaria, con referencia del volante' })
+  registrarDepositoEfectivo(@Body() dto: RegistrarDepositoEfectivoDto, @GetUser() usuario: User) {
+    return this.tesoreriaService.registrarDepositoEfectivo(dto, usuario.id, usuario.nombre);
   }
 
   @Post('movimientos/previsualizar-asiento')

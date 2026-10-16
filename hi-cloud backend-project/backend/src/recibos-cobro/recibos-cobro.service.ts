@@ -18,6 +18,7 @@ import { TipoMovimientoBancario, OrigenMovimiento } from '../tesoreria/entities/
 import { TenantService } from '../tenant/tenant.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { reportServiceError } from '../common/observability/sentry';
+import { resolverCajaDiariaAbierta } from '../common/caja/resolver-caja-diaria.util';
 
 interface CreateReciboDto {
   clienteId?:          number;
@@ -67,45 +68,14 @@ export class RecibosCobrosService {
     );
   }
 
-  /** Encuentra la caja diaria abierta para este recibo.
-   *  Prioridad: vendedorId del POS → perfil vendedor del usuario → cualquier caja abierta del usuario */
+  /** Caja diaria abierta para este recibo — ver common/caja/resolver-caja-diaria.util.ts
+   *  (compartido con cxc.service.ts/cxp.service.ts desde el incidente 2026-10-15/16). */
   private async resolverCajaDiaria(
     empresaId: number,
     usuarioId: number,
     vendedorId?: number,
   ): Promise<number | null> {
-    const hoy = fechaHoyRD();
-
-    // 1. Si el POS envió vendedorId → caja de ese vendedor
-    if (vendedorId) {
-      const rows = await this.dataSource.query<{ id: number }[]>(
-        `SELECT id FROM cierres_caja
-         WHERE "empresaId" = $1 AND DATE(fecha) = $2
-           AND estado = 'abierta' AND "vendedorId" = $3 LIMIT 1`,
-        [empresaId, hoy, vendedorId],
-      );
-      if (rows[0]?.id) return rows[0].id;
-    }
-
-    // 2. Buscar perfil vendedor del usuario autenticado y su caja
-    const perfilRows = await this.dataSource.query<{ id: number }[]>(
-      `SELECT id FROM vendedores WHERE "usuarioId" = $1 AND "empresaId" = $2 AND "isActive" = true LIMIT 1`,
-      [usuarioId, empresaId],
-    ).catch(() => []);
-    const perfilVendedorId = perfilRows[0]?.id;
-
-    if (perfilVendedorId) {
-      const rows = await this.dataSource.query<{ id: number }[]>(
-        `SELECT id FROM cierres_caja
-         WHERE "empresaId" = $1 AND DATE(fecha) = $2
-           AND estado = 'abierta' AND "vendedorId" = $3 LIMIT 1`,
-        [empresaId, hoy, perfilVendedorId],
-      );
-      if (rows[0]?.id) return rows[0].id;
-    }
-
-    // 3. Ninguna caja encontrada → recibo no se imputa a ninguna caja
-    return null;
+    return resolverCajaDiariaAbierta(this.dataSource, empresaId, usuarioId, vendedorId);
   }
 
   async crear(dto: CreateReciboDto, usuarioId: number) {
@@ -199,6 +169,13 @@ export class RecibosCobrosService {
 
     // ── 3. Resolver caja diaria y guardar recibo ───────────────────
     const cajaDiariaId = await this.resolverCajaDiaria(empresaId, usuarioId, dto.vendedorId);
+    // EFECTIVO exige caja abierta — mismo criterio que cxc.service.ts/
+    // cxp.service.ts (incidente 2026-10-15/16): antes un recibo en efectivo
+    // sin caja abierta se guardaba igual, sin quedar imputado a ningún
+    // cierre — el efectivo no aparecía en ningún cuadre.
+    if (dto.metodoPago === MetodoPagoRecibo.EFECTIVO && !cajaDiariaId) {
+      throw new BadRequestException('Debes tener una caja abierta para cobrar en efectivo.');
+    }
     const numero    = await this.generarNumero();
     // Número secuencial del registro en pagos_cobrados (RDP-XXXXX).
     // Se genera aquí —antes de la transacción— para que el contador se
