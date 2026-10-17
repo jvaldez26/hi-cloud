@@ -27,6 +27,7 @@ import type { MovimientoInventario } from '../../types';
 import { fmt } from '../../utils/formatters';
 import { dRD } from '../../utils/fechaRD';
 import { costoParaPrellenar } from '../../utils/costoInicialEntrada';
+import { extraerErroresPorCampo } from '../../utils/erroresValidacion';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -103,7 +104,19 @@ function MovimientosTab() {
   const entradaMut = useMutation({
     mutationFn: ({ productoId, cantidad, motivo, costoUnitario }: any) => inventarioApi.entrada(productoId, cantidad, motivo, costoUnitario),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['inventario'] }); cerrarModal(); message.success('Entrada registrada'); },
-    onError: (e: any) => message.error(e?.friendlyMessage ?? 'Error'),
+    onError: (e: any) => {
+      // Si el 400 trae el detalle por campo (class-validator), resaltarlo
+      // directo en el formulario — "costoUnitario must be a number..." ya
+      // traducido queda bajo el input, no solo como un toast genérico que
+      // el usuario puede no relacionar con el campo exacto.
+      const porCampo = extraerErroresPorCampo(e);
+      if (porCampo) {
+        form.setFields(
+          Object.entries(porCampo).map(([name, error]) => ({ name, errors: [error] })),
+        );
+      }
+      message.error(e?.friendlyMessage ?? 'Error');
+    },
   });
   const salidaMut = useMutation({
     mutationFn: ({ productoId, cantidad, motivo }: any) => inventarioApi.salida(productoId, cantidad, motivo),
@@ -113,8 +126,17 @@ function MovimientosTab() {
 
   const cerrarModal = () => { setModal(null); form.resetFields(); setProductoSeleccionado(null); };
   const handleSubmit = (v: any) => {
-    if (modal === 'entrada') entradaMut.mutate({ productoId: v.productoId, cantidad: v.cantidad, motivo: v.motivo, costoUnitario: v.costoUnitario });
-    else salidaMut.mutate({ productoId: v.productoId, cantidad: v.cantidad, motivo: v.motivo });
+    if (modal === 'entrada') {
+      // RegistrarEntradaDto.costoUnitario solo acepta 2 decimales — el
+      // InputNumber ya tiene precision={2}, pero esto es la última guarda
+      // antes de enviar (p.ej. un valor prellenado programáticamente, ver
+      // costoInicialEntrada.ts) para redondear en vez de que el backend
+      // rechace la entrada entera con un 400.
+      const costoUnitario = v.costoUnitario != null ? Math.round(v.costoUnitario * 100) / 100 : v.costoUnitario;
+      entradaMut.mutate({ productoId: v.productoId, cantidad: v.cantidad, motivo: v.motivo, costoUnitario });
+    } else {
+      salidaMut.mutate({ productoId: v.productoId, cantidad: v.cantidad, motivo: v.motivo });
+    }
   };
 
   const handleExcel = useCallback(async () => {

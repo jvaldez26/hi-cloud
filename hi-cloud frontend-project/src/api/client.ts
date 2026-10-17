@@ -5,6 +5,7 @@ import { moduloActual } from '../observability/sentryScope';
 import { emitSessionEnd, markNavigatingAway, isNavigatingAway, solicitarReautenticacion, solicitarAutorizacionSupervisor } from '../utils/sessionEvents';
 import { registrarHoraServidor } from '../utils/fechaRD';
 import { leerJSON } from '../utils/safeStorage';
+import { traducirMensajeValidacion } from '../utils/erroresValidacion';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '/api/v1';
 
@@ -547,7 +548,11 @@ apiClient.interceptors.response.use(
     // puedan mostrarlo directamente sin parsear la respuesta.
     const enrichedErr = err as any;
     switch (status) {
-      case 400: enrichedErr.friendlyMessage = message; break;
+      // Un 400 casi siempre es un mensaje crudo de class-validator ("campoX
+      // must be a number conforming to..."), en inglés y uno por campo —
+      // traducirMensajeValidacion() lo vuelve legible para cualquier
+      // formulario que muestre este friendlyMessage en un toast genérico.
+      case 400: enrichedErr.friendlyMessage = traducirMensajeValidacion(message); break;
       case 403: {
         const m403 = message.toLowerCase();
         // Un 403 con supervisorClaveRequerida SIEMPRE llega aquí con un

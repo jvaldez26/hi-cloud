@@ -32,4 +32,13 @@ describe('costoParaPrellenar', () => {
   it('costoPromedio como string (tal como viaja desde el backend en decimales de Postgres): lo interpreta igual', () => {
     expect(costoParaPrellenar({ costoPromedio: '65.5000' })).toBe(65.5);
   });
+
+  it('costoPromedio AVCO con 4 decimales reales: redondea a 2 — el DTO (maxDecimalPlaces: 2) rechazaba el valor sin tocar', () => {
+    expect(costoParaPrellenar({ costoPromedio: 95.5833 })).toBe(95.58);
+    expect(costoParaPrellenar({ costoPromedio: '95.5833' })).toBe(95.58);
+  });
+
+  it('redondea hacia arriba cuando corresponde (no trunca)', () => {
+    expect(costoParaPrellenar({ costoPromedio: 95.5850 })).toBe(95.59);
+  });
 });
