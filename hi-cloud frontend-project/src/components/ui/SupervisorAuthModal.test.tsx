@@ -68,7 +68,7 @@ describe('SupervisorAuthModal — autorización remota', () => {
     const textarea = await screen.findByPlaceholderText(/Explica por qué/i);
     fireEvent.change(textarea, { target: { value: 'ab' } });
     fireEvent.click(screen.getByText('Enviar solicitud'));
-    expect(await screen.findByText(/mínimo 5 caracteres/i)).toBeInTheDocument();
+    expect(await screen.findByText(/mínimo 10 caracteres/i)).toBeInTheDocument();
     expect(supervisor.solicitarAutorizacionRemota).not.toHaveBeenCalled();
   });
 

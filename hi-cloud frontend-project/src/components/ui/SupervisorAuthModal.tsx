@@ -72,7 +72,7 @@ export default function SupervisorAuthModal({ supervisor }: { supervisor: Return
   };
 
   const enviarSolicitudRemota = async () => {
-    if (motivoRemoto.trim().length < 5) { setError('Escribe el motivo (mínimo 5 caracteres)'); return; }
+    if (motivoRemoto.trim().length < 10) { setError('Escribe el motivo (mínimo 10 caracteres)'); return; }
     setEnviandoRemoto(true); setError('');
     try {
       await supervisor.solicitarAutorizacionRemota(motivoRemoto.trim());

@@ -126,6 +126,84 @@ describe('AutorizacionRemotaService', () => {
     });
   });
 
+  describe('avisarNuevaSolicitud — contenido de la notificación (aviso específico, no genérico)', () => {
+    // Bug real (2026-10-17): el toast del POS mostraba "Nuevo aviso crítico" /
+    // "Bsndj — vence en 3 minutos." — el supervisor no sabía qué acción se
+    // pedía ni con qué datos, sin abrir el detalle. Cubre: título con el
+    // nombre legible de la política (nunca la clave cruda ni "Nuevo aviso
+    // crítico"), cuerpo con cajero + sucursal + monto + cliente + motivo
+    // entre comillas, y que el mismo texto llega a push.notificarUsuario.
+    function buildServiceConLookups(nombres: { sucursal?: string; cliente?: string; folio?: string } = {}) {
+      return buildService({
+        queryImpl: (sql) => {
+          if (sql.includes('SELECT id FROM solicitudes_autorizacion_remota')) return Promise.resolve([]);
+          if (sql.includes('COUNT(*)::text AS count')) return Promise.resolve([{ count: '0' }]);
+          if (sql.includes('SELECT nombre FROM sucursales'))
+            return Promise.resolve(nombres.sucursal ? [{ nombre: nombres.sucursal }] : []);
+          if (sql.includes('SELECT nombre FROM clientes'))
+            return Promise.resolve(nombres.cliente ? [{ nombre: nombres.cliente }] : []);
+          if (sql.includes('SELECT folio FROM facturas'))
+            return Promise.resolve(nombres.folio ? [{ folio: nombres.folio }] : []);
+          // destinatarios(): sin config de empresa → cae a admin/contador reales.
+          if (sql.includes('FROM usuario_empresa')) return Promise.resolve([{ id: 20 }]);
+          return Promise.resolve([]);
+        },
+      });
+    }
+
+    it('asunto: "Autorización solicitada: {label}" — nunca el nombre del cajero ni la clave cruda', async () => {
+      const { svc, notificaciones } = buildServiceConLookups();
+      await svc.crear(EMPRESA, CAJERO, 3, null, { clave: 'venta_credito', motivo: 'Cliente de toda la vida' });
+      await new Promise(r => setTimeout(r, 0));
+      const [, , asunto] = notificaciones.notificarSistemaUsuario.mock.calls[0];
+      expect(asunto).toBe('Autorización solicitada: Venta a crédito');
+    });
+
+    it('cuerpo: cajero (sucursal) — monto a cliente · Motivo: "..."', async () => {
+      const { svc, notificaciones } = buildServiceConLookups({ sucursal: 'Sucursal Piantini', cliente: 'Juan Pérez' });
+      await svc.crear(EMPRESA, CAJERO, 3, null, {
+        clave: 'venta_credito', motivo: 'Cliente de confianza, sin supervisor presente', monto: 4500, clienteId: 88,
+      });
+      await new Promise(r => setTimeout(r, 0));
+      const [, , , mensaje] = notificaciones.notificarSistemaUsuario.mock.calls[0];
+      expect(mensaje).toBe(
+        `${CAJERO.nombre} (Sucursal Piantini) — RD$ 4,500.00 a Juan Pérez · Motivo: "Cliente de confianza, sin supervisor presente"`,
+      );
+      expect(mensaje).not.toMatch(/vence en/i);
+    });
+
+    it('sin monto/cliente/sucursal: degrada a cajero + motivo entre comillas, sin reventar', async () => {
+      const { svc, notificaciones } = buildServiceConLookups();
+      await svc.crear(EMPRESA, CAJERO, null, null, { clave: 'anular_documento', motivo: 'Factura duplicada por error' });
+      await new Promise(r => setTimeout(r, 0));
+      const [, , asunto, mensaje] = notificaciones.notificarSistemaUsuario.mock.calls[0];
+      expect(asunto).toBe('Autorización solicitada: Anular factura/documento');
+      expect(mensaje).toBe(`${CAJERO.nombre} — Motivo: "Factura duplicada por error"`);
+    });
+
+    it('con factura pero sin cliente: muestra el folio', async () => {
+      const { svc, notificaciones } = buildServiceConLookups({ folio: 'FAC-00456' });
+      await svc.crear(EMPRESA, CAJERO, null, null, {
+        clave: 'anular_documento', motivo: 'Factura duplicada por error', facturaId: 456,
+      });
+      await new Promise(r => setTimeout(r, 0));
+      const [, , , mensaje] = notificaciones.notificarSistemaUsuario.mock.calls[0];
+      expect(mensaje).toBe(`${CAJERO.nombre} — Factura FAC-00456 · Motivo: "Factura duplicada por error"`);
+    });
+
+    it('push.notificarUsuario recibe el MISMO título y cuerpo que la campanita', async () => {
+      const { svc, notificaciones, push } = buildServiceConLookups({ sucursal: 'Sucursal Piantini', cliente: 'Juan Pérez' });
+      await svc.crear(EMPRESA, CAJERO, 3, null, {
+        clave: 'venta_credito', motivo: 'Cliente de confianza, sin supervisor presente', monto: 4500, clienteId: 88,
+      });
+      await new Promise(r => setTimeout(r, 0));
+      const [, , asuntoCampanita, mensajeCampanita] = notificaciones.notificarSistemaUsuario.mock.calls[0];
+      const [, pushPayload] = push.notificarUsuario.mock.calls[0];
+      expect(pushPayload.title).toBe(asuntoCampanita);
+      expect(pushPayload.body).toBe(mensajeCampanita);
+    });
+  });
+
   describe('decidir — aprobación de punta a punta', () => {
     it('ADMIN aprueba: queda aprobada, se emite un token y estado() lo expone', async () => {
       const solicitud = {

@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Card, Table, Tag, Button, Modal, Input, Typography, Empty, Space, message } from 'antd';
 import { CheckOutlined, CloseOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import api from '../../api/client';
 import { autorizacionRemotaApi, type SolicitudAutorizacionRemota } from '../../api/autorizacionRemota.api';
 import { mensajeDeError } from '../../utils/mensajeDeError';
 import { fmt } from '../../utils/formatters';
@@ -40,6 +42,22 @@ export default function SolicitudesAutorizacionPage() {
   const qc = useQueryClient();
   const [decidiendo, setDecidiendo] = useState<{ solicitud: SolicitudAutorizacionRemota; decision: 'aprobada' | 'rechazada' } | null>(null);
   const [comentario, setComentario] = useState('');
+  // "Ver y responder" del toast/campanita llega con ?id= — resalta esa fila
+  // entre las pendientes para que el supervisor no tenga que buscarla.
+  const [searchParams] = useSearchParams();
+  const idResaltado = Number(searchParams.get('id')) || null;
+
+  // Mismo queryKey que useSupervisor.ts (POLITICAS_QUERY_KEY) — comparte caché,
+  // no dispara una segunda petición si el POS/Configuración ya la pidió.
+  const { data: politicas } = useQuery<{ clave: string; label: string }[]>({
+    queryKey:  ['supervisor-politicas'],
+    queryFn:   () => api.get('/configuracion/supervisor-politicas').then(r => r.data?.data ?? r.data),
+    staleTime: 5 * 60_000,
+  });
+  // Nunca la clave cruda ("venta_credito") frente al supervisor — el nombre
+  // legible del catálogo, igual que ahora exige el título de la notificación
+  // ("Autorización solicitada: Venta a crédito").
+  const labelClave = (clave: string) => politicas?.find(p => p.clave === clave)?.label ?? clave;
 
   const { data: pendientes, isLoading: cargandoPendientes } = useQuery({
     queryKey: ['autorizacion-remota-pendientes'],
@@ -69,6 +87,10 @@ export default function SolicitudesAutorizacionPage() {
 
   return (
     <div style={{ padding: 24 }}>
+      <style>{`
+        .solicitud-remota-resaltada > td { background: rgba(245,158,11,0.10) !important; }
+        [data-theme="dark"] .solicitud-remota-resaltada > td { background: rgba(245,158,11,0.16) !important; }
+      `}</style>
       <Title level={4} style={{ marginBottom: 4 }}>Solicitudes de autorización</Title>
       <Text type="secondary">Autorizaciones remotas de Modo Supervisor pedidas desde el POS.</Text>
 
@@ -80,9 +102,10 @@ export default function SolicitudesAutorizacionPage() {
             rowKey="id"
             dataSource={pendientes}
             pagination={false}
+            rowClassName={s => s.id === idResaltado ? 'solicitud-remota-resaltada' : ''}
             columns={[
               { title: 'Cajero', dataIndex: 'cajeroNombre' },
-              { title: 'Acción', dataIndex: 'clave', render: (v: string) => <Tag>{v}</Tag> },
+              { title: 'Acción', dataIndex: 'clave', render: (v: string) => <Tag>{labelClave(v)}</Tag> },
               { title: 'Motivo', dataIndex: 'motivo', render: (v: string, s) => (
                 <div>
                   <div>{v}</div>
@@ -115,7 +138,7 @@ export default function SolicitudesAutorizacionPage() {
           columns={[
             { title: 'Fecha', dataIndex: 'createdAt', render: (v: string) => new Date(v).toLocaleString('es-DO') },
             { title: 'Cajero', dataIndex: 'cajeroNombre' },
-            { title: 'Acción', dataIndex: 'clave', render: (v: string) => <Tag>{v}</Tag> },
+            { title: 'Acción', dataIndex: 'clave', render: (v: string) => <Tag>{labelClave(v)}</Tag> },
             { title: 'Estado', dataIndex: 'estado', render: (v: string) => {
               const cfg = ESTADO_TAG[v] ?? { color: 'default', label: v };
               return <Tag color={cfg.color}>{cfg.label}</Tag>;
@@ -138,7 +161,7 @@ export default function SolicitudesAutorizacionPage() {
       >
         {decidiendo && (
           <div>
-            <p><strong>{decidiendo.solicitud.cajeroNombre}</strong> — {decidiendo.solicitud.clave}</p>
+            <p><strong>{decidiendo.solicitud.cajeroNombre}</strong> — {labelClave(decidiendo.solicitud.clave)}</p>
             <p>{decidiendo.solicitud.motivo}</p>
             {detalleCorto(decidiendo.solicitud) && <p><Text type="secondary">{detalleCorto(decidiendo.solicitud)}</Text></p>}
             <Input.TextArea

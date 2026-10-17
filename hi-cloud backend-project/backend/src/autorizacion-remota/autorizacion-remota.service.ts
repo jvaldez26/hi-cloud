@@ -145,10 +145,61 @@ export class AutorizacionRemotaService {
     return solicitud;
   }
 
+  private formatearMonto(monto: number): string {
+    return 'RD$ ' + Number(monto).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  /**
+   * Cuerpo legible de la notificación — cajero, ubicación, monto y
+   * cliente/factura en una línea, más el motivo entre comillas (el texto
+   * real que escribió el cajero, para que el supervisor sepa que es suyo).
+   * Antes esto era genérico ("Nuevo aviso crítico" en el toast del
+   * frontend) o, en el mejor de los casos, solo el motivo pelado sin
+   * ningún dato de la acción — un supervisor no podía saber a qué estaba
+   * autorizando sin abrir el detalle. Mismo patrón de lookup por SQL crudo
+   * que ya usan facturas/cotizaciones/compras para resolver nombres de
+   * sucursal (ver pdf.service.ts, cotizaciones.service.ts).
+   */
+  private async construirMensaje(s: SolicitudAutorizacionRemota): Promise<string> {
+    const [sucursal, cliente, factura] = await Promise.all([
+      s.sucursalId
+        ? this.dataSource.query<{ nombre: string }[]>(`SELECT nombre FROM sucursales WHERE id = $1`, [s.sucursalId])
+            .then(r => r[0]?.nombre ?? null).catch(() => null)
+        : Promise.resolve(null),
+      s.clienteId
+        ? this.dataSource.query<{ nombre: string }[]>(`SELECT nombre FROM clientes WHERE id = $1`, [s.clienteId])
+            .then(r => r[0]?.nombre ?? null).catch(() => null)
+        : Promise.resolve(null),
+      // Si ya hay cliente, el folio es ruido — una sola línea, no dos identificadores.
+      s.facturaId && !s.clienteId
+        ? this.dataSource.query<{ folio: string }[]>(`SELECT folio FROM facturas WHERE id = $1`, [s.facturaId])
+            .then(r => r[0]?.folio ?? null).catch(() => null)
+        : Promise.resolve(null),
+    ]);
+
+    const linea1 = s.cajeroNombre + (sucursal ? ` (${sucursal})` : '');
+
+    const partes: string[] = [];
+    if (s.monto != null) {
+      const montoTxt = this.formatearMonto(Number(s.monto));
+      partes.push(cliente ? `${montoTxt} a ${cliente}` : montoTxt);
+    } else if (cliente) {
+      partes.push(`Cliente: ${cliente}`);
+    } else if (factura) {
+      partes.push(`Factura ${factura}`);
+    }
+    partes.push(`Motivo: "${s.motivo}"`);
+
+    return `${linea1} — ${partes.join(' · ')}`;
+  }
+
   private async avisarNuevaSolicitud(empresaId: number, s: SolicitudAutorizacionRemota, labelClave: string): Promise<void> {
     const ids = await this.destinatarios(empresaId);
-    const asunto = `${s.cajeroNombre} pide autorización — ${labelClave}`;
-    const mensaje = `${s.motivo} — vence en 3 minutos.`;
+    // "Autorización solicitada: {acción}" — el nombre legible de la política
+    // (CATALOGO_SUPERVISOR), no la clave cruda ni el nombre del cajero (que
+    // ahora va en el cuerpo, junto con el resto del contexto).
+    const asunto  = `Autorización solicitada: ${labelClave}`;
+    const mensaje = await this.construirMensaje(s);
     await Promise.all(ids.map(userId =>
       this.notificaciones.notificarSistemaUsuario(
         userId, TipoNotificacion.AUTORIZACION_REMOTA_SOLICITADA, asunto, mensaje, String(s.id), empresaId,

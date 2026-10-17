@@ -798,6 +798,29 @@ const RUTAS = {
     ],
     meta: { total: 2, page: 1, limit: 10, totalPages: 1 },
   }),
+
+  // ── Centro de Notificaciones — títulos/descripciones largos sin espacios
+  //    donde cortar a propósito, para capturar que la tabla ya NO se
+  //    desborda horizontalmente (bug real, 2026-10-17). El primer item usa
+  //    el formato específico del aviso de autorización remota (otro bug
+  //    real, mismo día: antes salía "Nuevo aviso crítico" genérico).
+  '/notificaciones-centro': () => ({
+    items: [
+      { id: 'evento-1', origen: 'evento', tipo: 'autorizacion_remota_solicitada', prioridad: 0,
+        titulo: 'Autorización solicitada: Venta a crédito',
+        descripcion: 'Samuel Gonzalez (Sucursal Piantini) — RD$ 4,500.00 a Juan Pérez · Motivo: "cliente frecuente"',
+        ruta: '/autorizacion-remota?id=1', emoji: '🔔', fecha: new Date().toISOString(), atendido: false },
+      { id: 'alerta-1', origen: 'alerta', tipo: 'descuadre_caja', prioridad: 2,
+        titulo: 'Descuadre de caja — Samuel',
+        descripcion: 'Caja #825 del 2026-10-16: efectivo -500.00. Revísalo en Caja Diaria.',
+        ruta: '/caja', emoji: '🔔', fecha: new Date().toISOString(), atendido: false },
+      { id: 'alerta-2', origen: 'alerta', tipo: 'caja_huerfana', prioridad: 3,
+        titulo: '1 caja abierta de días anteriores sin cerrar',
+        descripcion: 'Sigue abierta de un día anterior: Samuel (desde el 15/10/2026). Ciérrala o revísala desde Caja Diaria.',
+        ruta: '/caja', emoji: '🏦', fecha: new Date().toISOString(), atendido: false },
+    ],
+    noLeidos: 13, noVistas: 6, total: 19,
+  }),
 };
 
 const PREFIJO = /^\/api(\/v1)?/;

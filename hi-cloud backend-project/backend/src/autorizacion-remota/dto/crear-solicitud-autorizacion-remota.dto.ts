@@ -5,7 +5,7 @@ export class CrearSolicitudAutorizacionRemotaDto {
   clave!: string;
 
   @IsString()
-  @MinLength(5, { message: 'El motivo debe tener al menos 5 caracteres' })
+  @MinLength(10, { message: 'El motivo debe tener al menos 10 caracteres' })
   motivo!: string;
 
   @IsOptional()

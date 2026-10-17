@@ -89,6 +89,13 @@ export default function NotificacionesPage() {
           pagination={{ pageSize: 10 }}
           locale={{ emptyText: <Empty description="Sin notificaciones" /> }}
           rowClassName={row => (row.atendido ? '' : 'notif-no-atendida')}
+          // rc-table usa table-layout:auto por defecto, donde `width` es solo
+          // una sugerencia — un título/descripción largo (sin espacios donde
+          // cortar, ej. "Samuel Gonzalez pide autorización — Inventario")
+          // estira la columna "Aviso" y desborda la tabla horizontalmente en
+          // vez de hacer salto de línea. Con tableLayout="fixed" las columnas
+          // SÍ respetan su `width` y el texto se ajusta dentro de la suya.
+          tableLayout="fixed"
           columns={[
             {
               title: '', dataIndex: 'emoji', width: 36,
@@ -97,7 +104,7 @@ export default function NotificacionesPage() {
             {
               title: 'Aviso', dataIndex: 'titulo',
               render: (_: string, row) => (
-                <div>
+                <div style={{ wordBreak: 'break-word' }}>
                   <Text strong={!row.atendido}>{row.titulo}</Text>
                   <br />
                   <Text type="secondary" style={{ fontSize: 12 }}>{row.descripcion}</Text>

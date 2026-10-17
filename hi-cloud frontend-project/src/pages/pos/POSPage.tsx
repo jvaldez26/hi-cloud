@@ -9399,7 +9399,7 @@ export default function POSPage() {
   const [enviandoRemotoSup, setEnviandoRemotoSup] = useState(false);
   const supCountdownRemoto = useCountdown(supervisor.remotoEnEspera?.expiraEn);
   const enviarSolicitudRemotaSup = async () => {
-    if (motivoRemotoSup.trim().length < 5) { setSupError('Escribe el motivo (mínimo 5 caracteres)'); return; }
+    if (motivoRemotoSup.trim().length < 10) { setSupError('Escribe el motivo (mínimo 10 caracteres)'); return; }
     setEnviandoRemotoSup(true); setSupError('');
     try {
       await supervisor.solicitarAutorizacionRemota(motivoRemotoSup.trim());
