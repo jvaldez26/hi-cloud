@@ -22,8 +22,8 @@ import { registrarCajaAbiertaEquipo, limpiarCajaAbiertaEquipoSiEs } from '../../
 import { useRncLookup } from '../../hooks/useRncLookup';
 import { POS_PANELES, NAV_ITEMS, MENU_EXTRAS, PANEL_TITLES, CLAVE_SUPERVISOR_POR_PANEL, type PanelId } from '../../config/posPanelesConfig';
 import QRCode from 'qrcode';
-import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover, Input, Button, Segmented, Tabs, InputNumber, Radio, Checkbox } from 'antd';
-import { SearchOutlined, ShoppingCartOutlined, CheckCircleOutlined, DisconnectOutlined, LogoutOutlined, PrinterOutlined, LockOutlined, UserSwitchOutlined, SwapOutlined, EyeOutlined, EyeInvisibleOutlined, ShopOutlined, MailOutlined, FileExcelOutlined, FilePdfOutlined, PlayCircleOutlined, CameraOutlined, IdcardOutlined } from '@ant-design/icons';
+import { Select, Modal, Badge, Empty, Spin, Tooltip, message, Avatar, Popover, Input, Button, Segmented, Tabs, InputNumber, Radio, Checkbox, Alert } from 'antd';
+import { SearchOutlined, ShoppingCartOutlined, CheckCircleOutlined, DisconnectOutlined, LogoutOutlined, PrinterOutlined, LockOutlined, UserSwitchOutlined, SwapOutlined, EyeOutlined, EyeInvisibleOutlined, ShopOutlined, MailOutlined, FileExcelOutlined, FilePdfOutlined, PlayCircleOutlined, CameraOutlined, IdcardOutlined, ClockCircleOutlined, SendOutlined } from '@ant-design/icons';
 import ChoferInput from '../../components/ChoferInput';
 import { imprimirConduceTermico } from '../../utils/imprimirConduce';
 import ModalDevolucion from '../../components/ModalDevolucion';
@@ -62,6 +62,7 @@ import { conectarImpresora, desconectarImpresora, estaConectada, getNombreImpres
 import { useThemeStore } from '../../store/theme.store';
 import { useOfflineQueue } from '../../hooks/useOfflineQueue';
 import { useSupervisor } from '../../hooks/useSupervisor';
+import { useCountdown, RESULTADO_LABEL } from '../../components/ui/SupervisorAuthModal';
 import { esFormatoTarjetaSupervisor } from '../../utils/tarjetaSupervisor';
 import { AutoEnvioTarjeta, enmascararCodigoTarjeta } from './tarjetaScanAutoSubmit';
 import { EscanerCamaraModal } from '../../components/EscanerCamaraModal';
@@ -9382,7 +9383,30 @@ export default function POSPage() {
   const limpiarModalSupervisor = () => {
     setSupId(null); setSupPassword(''); setSupPasswordVisible(false);
     setSupCodigoTarjeta(''); setSupTarjetaPin(null); setSupError('');
+    setPidiendoRemotoSup(false); setMotivoRemotoSup('');
     autoEnvioTarjetaRef.current?.reset();
+  };
+
+  // ── Autorización remota (ADMIN/CONTADOR autoriza desde otro dispositivo) ──
+  // El modal genérico (SupervisorAuthModal.tsx, fuera del POS) ya tenía este
+  // flujo — faltaba conectarlo aquí, en el modal propio del POS (escaneo de
+  // tarjeta + PIN rápido), que es donde el cajero realmente lo pide. Hasta
+  // este fix, "Solicitar autorización remota" no existía en el POS: solo
+  // podía escanear una tarjeta o teclear la contraseña/PIN de un supervisor
+  // presente físicamente.
+  const [pidiendoRemotoSup, setPidiendoRemotoSup] = useState(false);
+  const [motivoRemotoSup,   setMotivoRemotoSup]   = useState('');
+  const [enviandoRemotoSup, setEnviandoRemotoSup] = useState(false);
+  const supCountdownRemoto = useCountdown(supervisor.remotoEnEspera?.expiraEn);
+  const enviarSolicitudRemotaSup = async () => {
+    if (motivoRemotoSup.trim().length < 5) { setSupError('Escribe el motivo (mínimo 5 caracteres)'); return; }
+    setEnviandoRemotoSup(true); setSupError('');
+    try {
+      await supervisor.solicitarAutorizacionRemota(motivoRemotoSup.trim());
+      setPidiendoRemotoSup(false); setMotivoRemotoSup('');
+    } catch (e: any) {
+      setSupError(mensajeDeError(e, { fallback: 'No se pudo enviar la solicitud' }));
+    } finally { setEnviandoRemotoSup(false); }
   };
 
   // Único camino para verificar+autorizar por contraseña/PIN — lo usan el
@@ -13287,11 +13311,61 @@ export default function POSPage() {
           Autorización de Supervisor
         </span>
       }
-      open={!!supervisor.pendingAction}
-      onCancel={() => { supervisor.resolveModal(false); limpiarModalSupervisor(); }}
+      open={!!supervisor.pendingAction || !!supervisor.remotoEnEspera || !!supervisor.remotoResultado}
+      onCancel={() => {
+        if (supervisor.remotoEnEspera) void supervisor.cancelarAutorizacionRemota();
+        supervisor.limpiarRemotoResultado();
+        supervisor.resolveModal(false);
+        limpiarModalSupervisor();
+      }}
       footer={null} width={420} destroyOnClose
     >
-      {supervisor.pendingAction && (() => {
+      {supervisor.remotoEnEspera ? (
+        <div style={{ textAlign: 'center', padding: '12px 0' }}>
+          <ClockCircleOutlined style={{ fontSize: 32, color: '#F59E0B', marginBottom: 12 }} />
+          <div style={{ fontSize: 14, marginBottom: 4 }}>Esperando autorización de un supervisor…</div>
+          <div style={{ fontSize: 28, fontWeight: 700, color: '#F59E0B', marginBottom: 16 }}>{supCountdownRemoto}</div>
+          <Button onClick={() => void supervisor.cancelarAutorizacionRemota()}>Cancelar</Button>
+        </div>
+      ) : supervisor.remotoResultado ? (
+        <div>
+          <Alert
+            type={supervisor.remotoResultado.estado === 'expirada' ? 'warning' : 'error'}
+            showIcon
+            message={RESULTADO_LABEL[supervisor.remotoResultado.estado]}
+            description={supervisor.remotoResultado.comentario || undefined}
+            style={{ marginBottom: 16 }}
+          />
+          <Button block onClick={() => { supervisor.limpiarRemotoResultado(); supervisor.resolveModal(false); limpiarModalSupervisor(); }}>
+            Entendido
+          </Button>
+        </div>
+      ) : pidiendoRemotoSup ? (
+        <div>
+          <div style={{
+            background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8,
+            padding: '8px 12px', marginBottom: 16, fontSize: 12, color: '#92400E',
+          }}>
+            <strong>Acción:</strong> {supervisor.pendingAction?.action}
+            {supervisor.pendingAction?.detail && <> — {supervisor.pendingAction.detail}</>}
+          </div>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Motivo (obligatorio)</div>
+          <Input.TextArea
+            rows={3}
+            placeholder="Explica por qué necesitas autorización remota — el supervisor lo verá en su pantalla"
+            value={motivoRemotoSup}
+            onChange={e => { setMotivoRemotoSup(e.target.value); setSupError(''); }}
+            maxLength={500}
+          />
+          {supError && <div style={{ color: '#EF4444', fontSize: 12, marginTop: 6 }}>{supError}</div>}
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            <Button onClick={() => { setPidiendoRemotoSup(false); setMotivoRemotoSup(''); setSupError(''); }}>Volver</Button>
+            <Button type="primary" icon={<SendOutlined />} loading={enviandoRemotoSup} onClick={() => void enviarSolicitudRemotaSup()} block>
+              Enviar solicitud
+            </Button>
+          </div>
+        </div>
+      ) : supervisor.pendingAction && (() => {
         // Una vez la tarjeta resolvió quién es (nivel "Tarjeta + PIN"), el
         // campo de contraseña se trata SIEMPRE como PIN — es el mismo
         // criterio que supTienePin, pero la identidad ya no viene del
@@ -13543,6 +13617,11 @@ export default function POSPage() {
                 ? `Bloqueado — espera ${supBlockCountdown >= 60 ? `${Math.floor(supBlockCountdown / 60)}:${String(supBlockCountdown % 60).padStart(2, '0')} min` : `${supBlockCountdown}s`}`
                 : (verificandoSupNuevo ? 'Verificando...' : 'Autorizar')}
             </button>
+            )}
+            {supervisor.pendingActionPermiteRemoto && (
+              <Button type="link" size="small" onClick={() => setPidiendoRemotoSup(true)} style={{ padding: 0, alignSelf: 'center' }}>
+                Solicitar autorización remota
+              </Button>
             )}
           </div>
         </form>

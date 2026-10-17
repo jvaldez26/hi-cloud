@@ -20,8 +20,10 @@ import api from '../../api/client';
 import { mensajeDeError } from '../../utils/mensajeDeError';
 import type { useSupervisor } from '../../hooks/useSupervisor';
 
-/** "2:45" a partir de un timestamp de expiración — cuenta regresiva de la espera remota. */
-function useCountdown(expiraEn: number | undefined): string {
+/** "2:45" a partir de un timestamp de expiración — cuenta regresiva de la espera remota.
+ *  Exportado: lo reusa también el modal de supervisor propio del POS (POSPage.tsx),
+ *  que tiene su propia UI de escaneo/PIN pero comparte el mismo flujo remoto. */
+export function useCountdown(expiraEn: number | undefined): string {
   const [restante, setRestante] = useState(() => Math.max(0, (expiraEn ?? 0) - Date.now()));
   useEffect(() => {
     if (!expiraEn) return;
@@ -33,7 +35,7 @@ function useCountdown(expiraEn: number | undefined): string {
   return `${Math.floor(segs / 60)}:${String(segs % 60).padStart(2, '0')}`;
 }
 
-const RESULTADO_LABEL: Record<string, string> = {
+export const RESULTADO_LABEL: Record<string, string> = {
   rechazada: 'El supervisor rechazó la solicitud',
   expirada:  'La solicitud venció sin respuesta',
   cancelada: 'Solicitud cancelada',
