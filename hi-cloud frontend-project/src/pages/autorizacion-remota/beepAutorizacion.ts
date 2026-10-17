@@ -43,3 +43,20 @@ export function reproducirBeepAutorizacion(): boolean {
   tono(audioCtx, 1175, 0.18, 0.18);
   return true;
 }
+
+/**
+ * Llamar DENTRO del handler de un gesto real del usuario (click/touch/tecla)
+ * — es lo único que los navegadores aceptan para desbloquear audio. Crea el
+ * AudioContext si hace falta y espera a que quede 'running'; si el gesto no
+ * alcanzó (pasa en algunos navegadores/iOS con el primer toque) queda en
+ * 'suspended' y esta función devuelve false — ahí es cuando el aviso "Toca
+ * para activar el sonido" debe seguir visible.
+ */
+export async function intentarDesbloquearAudio(): Promise<boolean> {
+  const audioCtx = obtenerContexto();
+  if (!audioCtx) return false;
+  if (audioCtx.state === 'suspended') {
+    try { await audioCtx.resume(); } catch { /* el estado se revisa igual abajo */ }
+  }
+  return audioCtx.state === 'running';
+}

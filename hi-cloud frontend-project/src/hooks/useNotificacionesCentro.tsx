@@ -2,8 +2,13 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { notification, Button, Typography } from 'antd';
-import { ClockCircleOutlined } from '@ant-design/icons';
+import { ClockCircleOutlined, SoundOutlined } from '@ant-design/icons';
 import api from '../api/client';
+import { useAutorizacionRemotaSonidoStore } from '../store/autorizacionRemotaSonido.store';
+import { intentarDesbloquearAudio } from '../pages/autorizacion-remota/beepAutorizacion';
+import { debeMostrarAvisoActivarSonido } from '../pages/autorizacion-remota/desbloqueoAudioGate';
+import { guardarPreferenciaSonido } from '../pages/autorizacion-remota/autorizacionSonidoPreferencia';
+import { useAuthStore } from '../store/auth.store';
 
 const { Text } = Typography;
 
@@ -33,9 +38,42 @@ export function AvisoAutorizacionRemota({ item, onVer }: { item: ItemCentro; onV
   const expiraEn = new Date(item.fecha).getTime() + TTL_SOLICITUD_REMOTA_MS;
   const restanteMs = useCountdownMs(expiraEn);
   const segs = Math.floor(restanteMs / 1000);
+  const userId = useAuthStore(s => s.user?.id);
+  const preferencia = useAutorizacionRemotaSonidoStore(s => s.preferencia);
+  const audioDesbloqueado = useAutorizacionRemotaSonidoStore(s => s.audioDesbloqueado);
+  const setPreferencia = useAutorizacionRemotaSonidoStore(s => s.setPreferencia);
+  const setAudioDesbloqueado = useAutorizacionRemotaSonidoStore(s => s.setAudioDesbloqueado);
+
+  // Línea visible SOLO si, pese al gesto global (AutorizacionRemotaSonidoGlobal.tsx),
+  // el navegador sigue bloqueando el audio de verdad — y nunca si el usuario
+  // lo apagó a mano en Perfil. Vive DENTRO del toast (no en una barra aparte)
+  // para que no desaparezca al navegar ni tape nada más.
+  const mostrarAvisoSonido = debeMostrarAvisoActivarSonido(preferencia, audioDesbloqueado);
+
+  const activarSonido = () => {
+    void intentarDesbloquearAudio().then((ok) => {
+      setAudioDesbloqueado(ok);
+      if (!ok) return;
+      setPreferencia('on');
+      if (userId != null) guardarPreferenciaSonido(userId, 'on');
+      if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+        void Notification.requestPermission();
+      }
+    });
+  };
+
   return (
     <div>
       <Text>{item.descripcion}</Text>
+      {mostrarAvisoSonido && (
+        <div
+          role="button"
+          onClick={activarSonido}
+          style={{ marginTop: 6, cursor: 'pointer', fontSize: 12, color: '#d48806' }}
+        >
+          <SoundOutlined /> Toca para activar el sonido
+        </div>
+      )}
       <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <Text type={segs <= 30 ? 'danger' : 'secondary'} style={{ fontSize: 12 }}>
           <ClockCircleOutlined /> {restanteMs > 0
@@ -120,7 +158,10 @@ export function useNotificacionesCentro() {
           key,
           message:     criticaNueva.titulo,
           description: <AvisoAutorizacionRemota item={criticaNueva} onVer={() => { navigate(criticaNueva.ruta); notification.destroy(key); }} />,
-          placement:   'bottomRight',
+          // 'top' (no 'bottomRight'): en móvil el bottomRight tapaba la barra
+          // de navegación inferior; varias solicitudes se apilan igual con
+          // antd al compartir el mismo placement.
+          placement:   'top',
           duration:    0, // accionable — el supervisor lo cierra al decidir o expira sola
         });
       } else {

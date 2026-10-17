@@ -16,6 +16,12 @@ interface AutorizacionRemotaSonidoState {
   marcarVista: (id: number) => void;
   preferencia: 'on' | 'off' | null;
   setPreferencia: (v: 'on' | 'off' | null) => void;
+  /** true desde que el AudioContext quedó 'running' por primera vez en esta
+   *  pestaña — sobrevive la navegación (el store no depende de la ruta), así
+   *  que el aviso "Toca para activar el sonido" nunca reaparece por haber
+   *  cambiado de pantalla, solo porque el audio de verdad siga bloqueado. */
+  audioDesbloqueado: boolean;
+  setAudioDesbloqueado: (v: boolean) => void;
 }
 
 export const useAutorizacionRemotaSonidoStore = create<AutorizacionRemotaSonidoState>((set, get) => ({
@@ -26,4 +32,6 @@ export const useAutorizacionRemotaSonidoStore = create<AutorizacionRemotaSonidoS
   },
   preferencia: null,
   setPreferencia: (v) => set({ preferencia: v }),
+  audioDesbloqueado: false,
+  setAudioDesbloqueado: (v) => set({ audioDesbloqueado: v }),
 }));

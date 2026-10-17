@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Button } from 'antd';
-import { SoundOutlined, CloseOutlined } from '@ant-design/icons';
 import { autorizacionRemotaApi } from '../../api/autorizacionRemota.api';
 import { useAuthStore } from '../../store/auth.store';
 import { useAutorizacionRemotaSonidoStore } from '../../store/autorizacionRemotaSonido.store';
-import { reproducirBeepAutorizacion } from './beepAutorizacion';
+import { reproducirBeepAutorizacion, intentarDesbloquearAudio } from './beepAutorizacion';
 import { solicitudesQueDebenSonar, hayPendientesSinVer, contarPendientesSinVer, type SolicitudParaSonido } from './autorizacionSonidoGate';
+import { debeIntentarDesbloqueoEnGesto } from './desbloqueoAudioGate';
 import { leerPreferenciaSonido, guardarPreferenciaSonido } from './autorizacionSonidoPreferencia';
 
 /**
@@ -65,9 +64,6 @@ function AutorizacionRemotaSonidoGlobalInner() {
     })),
     [pendientesRaw],
   );
-
-  const sinVer = hayPendientesSinVer(pendientes, vistas, Date.now());
-  const cantidadSinVer = contarPendientesSinVer(pendientes, vistas, Date.now());
 
   // Refs: el tick de 1s lee el valor más reciente sin recrear el interval
   // en cada cambio (evitaría perder el timing exacto de repetición).
@@ -130,40 +126,33 @@ function AutorizacionRemotaSonidoGlobalInner() {
   // pestaña parpadeando para un usuario que ya no tiene sesión.
   useEffect(() => () => { document.title = tituloOriginalRef.current; }, []);
 
-  const mostrarBanner = sinVer && preferencia == null;
-  if (!mostrarBanner) return null;
+  // Desbloqueo automático con el PRIMER gesto real del usuario en cualquier
+  // parte de la app — tocar "Ver y responder", el menú o cualquier botón
+  // ya activa el sonido, sin un paso extra ni un banner aparte. Si el
+  // usuario lo apagó a mano en Perfil, este listener no hace nada (nunca
+  // se reactiva solo). `{ once: true }` en cada tipo de evento: basta un
+  // gesto para decidir si el audio quedó desbloqueado o no.
+  useEffect(() => {
+    const onGesto = () => {
+      const st = useAutorizacionRemotaSonidoStore.getState();
+      if (!debeIntentarDesbloqueoEnGesto(st.preferencia)) return;
+      void intentarDesbloquearAudio().then((ok) => {
+        st.setAudioDesbloqueado(ok);
+        if (!ok) return;
+        guardarPreferencia('on');
+        if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+          void Notification.requestPermission();
+        }
+      });
+    };
+    window.addEventListener('pointerdown', onGesto, { once: true });
+    window.addEventListener('keydown', onGesto, { once: true });
+    return () => {
+      window.removeEventListener('pointerdown', onGesto);
+      window.removeEventListener('keydown', onGesto);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
-  return (
-    <div
-      role="status"
-      style={{
-        position: 'fixed', bottom: 16, right: 16, zIndex: 1100,
-        background: '#1e293b', color: '#fff', borderRadius: 10,
-        padding: '12px 14px', boxShadow: '0 8px 24px rgba(0,0,0,.25)',
-        display: 'flex', alignItems: 'center', gap: 10, maxWidth: 340,
-      }}
-    >
-      <SoundOutlined style={{ fontSize: 18, color: '#fbbf24', flexShrink: 0 }} />
-      <div style={{ flex: 1, fontSize: 13, lineHeight: 1.4 }}>
-        {cantidadSinVer > 1 ? `${cantidadSinVer} autorizaciones pendientes` : 'Autorización pendiente'} —
-        activa el sonido para enterarte sin revisar la pantalla.
-      </div>
-      <Button
-        size="small" type="primary"
-        onClick={() => {
-          reproducirBeepAutorizacion();
-          if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-            void Notification.requestPermission();
-          }
-          guardarPreferencia('on');
-        }}
-      >
-        Activar sonido
-      </Button>
-      <CloseOutlined
-        style={{ cursor: 'pointer', color: 'rgba(255,255,255,.6)', flexShrink: 0 }}
-        onClick={() => setPreferencia('off')} // no guarda 'off' en localStorage: solo descarta por ahora, vuelve a preguntar la próxima vez
-      />
-    </div>
-  );
+  return null;
 }
