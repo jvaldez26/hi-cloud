@@ -1,6 +1,7 @@
-import { Entity, Column, Index } from 'typeorm';
+import { Entity, Column, Index, ManyToOne, JoinColumn } from 'typeorm';
 import { TenantBaseEntity } from '../../common/entities/tenant-base.entity';
 import { TenantScoped } from '../../tenant/decorators/tenant-scoped.decorator';
+import { CategoriaProducto } from './categoria-producto.entity';
 
 @TenantScoped()
 @Entity('productos')
@@ -45,8 +46,18 @@ export class Producto extends TenantBaseEntity {
   @Column({ type: 'decimal', precision: 12, scale: 4, nullable: true })
   stockMaximo?: number;
 
+  // Texto libre histórico — de solo lectura desde la migración a catálogo.
+  // Se elimina en una migración aparte una vez confirmado que categoriaId
+  // quedó bien asignado en todas las empresas (ver src/migrations/*-CategoriasProductos.ts).
   @Column({ length: 100, nullable: true })
   categoria?: string;
+
+  @ManyToOne(() => CategoriaProducto, { nullable: true })
+  @JoinColumn({ name: 'categoriaId' })
+  categoriaProducto?: CategoriaProducto | null;
+
+  @Column({ type: 'int', nullable: true })
+  categoriaId?: number | null;
 
   @Column({ length: 10, nullable: true })
   claveProductoSat?: string;

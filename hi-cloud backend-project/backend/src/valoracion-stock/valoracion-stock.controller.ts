@@ -17,8 +17,8 @@ export class ValoracionStockController {
 
   @Get()
   @ApiOperation({ summary: 'Valoración completa del inventario usando método AVCO' })
-  getValoracion(@Query('categoria') categoria?: string) {
-    return this.svc.getValoracion(categoria);
+  getValoracion(@Query('categoriaId') categoriaId?: string) {
+    return this.svc.getValoracion(categoriaId ? Number(categoriaId) : undefined);
   }
 
   @Get('categorias')

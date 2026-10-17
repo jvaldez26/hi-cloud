@@ -1061,14 +1061,15 @@ export class ReportesService {
     const rows = await this.dataSource.query<{
       id: number; codigo: string; nombre: string; unidadMedida: string;
       stock: string; stockMinimo: string; stockMaximo: string;
-      precio: string; categoria: string;
+      precio: string; categoria: string | null;
     }[]>(
-      `SELECT id, codigo, nombre, "unidadMedida",
-              stock::text, "stockMinimo"::text, "stockMaximo"::text,
-              precio::text, categoria
-       FROM productos
-       WHERE "isActive" = true AND "empresaId" = $1
-       ORDER BY nombre`,
+      `SELECT p.id, p.codigo, p.nombre, p."unidadMedida",
+              p.stock::text, p."stockMinimo"::text, p."stockMaximo"::text,
+              p.precio::text, cp.nombre AS categoria
+       FROM productos p
+       LEFT JOIN categorias_productos cp ON cp.id = p."categoriaId"
+       WHERE p."isActive" = true AND p."empresaId" = $1
+       ORDER BY p.nombre`,
       [this.eid],
     );
 
@@ -1168,13 +1169,14 @@ export class ReportesService {
       categoria: string; totalProductos: string;
       totalUnidades: string; valorTotal: string;
     }[]>(
-      `SELECT COALESCE(categoria,'Sin categoría') AS categoria,
+      `SELECT COALESCE(cp.nombre,'Sin categoría') AS categoria,
               COUNT(*) AS "totalProductos",
-              COALESCE(SUM(stock),0)          AS "totalUnidades",
-              COALESCE(SUM(stock * precio),0) AS "valorTotal"
-       FROM productos
-       WHERE "isActive" = true AND "empresaId" = $1
-       GROUP BY categoria
+              COALESCE(SUM(p.stock),0)          AS "totalUnidades",
+              COALESCE(SUM(p.stock * p.precio),0) AS "valorTotal"
+       FROM productos p
+       LEFT JOIN categorias_productos cp ON cp.id = p."categoriaId"
+       WHERE p."isActive" = true AND p."empresaId" = $1
+       GROUP BY cp.nombre
        ORDER BY "valorTotal" DESC`,
       [this.eid],
     );

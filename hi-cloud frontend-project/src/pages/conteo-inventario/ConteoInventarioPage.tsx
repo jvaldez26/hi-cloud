@@ -15,6 +15,7 @@ import {
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
+import { categoriasProductoApi } from '../../api/categoriasProducto.api';
 import { exportarHojaConteo } from '../../utils/exportExcel';
 import { fecha } from '../../utils/fechaRD';
 
@@ -846,6 +847,12 @@ export default function ConteoInventarioPage() {
     queryFn:  () => api.get('/almacenes').then((r: any) => r.data?.data ?? r.data ?? []),
   });
 
+  const { data: categoriasCat = [] } = useQuery({
+    queryKey: ['categorias-producto'],
+    queryFn:  () => categoriasProductoApi.listar(),
+    staleTime: 5 * 60_000,
+  });
+
   const crear = useMutation({
     mutationFn: (dto: any) => api.post('/conteo-inventario', dto),
     onSuccess: (res: any) => {
@@ -982,12 +989,13 @@ export default function ConteoInventarioPage() {
           initialValues={{ tipo: 'total', modalidad: 'ciego', umbralTipo: 'unidades', umbralValor: 10 }}
           onFinish={values => {
             const dto: any = { ...values };
-            if (tipoSel === 'categoria' && values.filtroTexto) {
-              dto.filtros = { categorias: values.filtroTexto.split(',').map((s: string) => s.trim()).filter(Boolean) };
+            if (tipoSel === 'categoria' && values.categoriaIds?.length) {
+              dto.filtros = { categoriaIds: values.categoriaIds };
             } else if (tipoSel === 'marca' && values.filtroTexto) {
               dto.filtros = { marcas: values.filtroTexto.split(',').map((s: string) => s.trim()).filter(Boolean) };
             }
             delete dto.filtroTexto;
+            delete dto.categoriaIds;
             crear.mutate(dto);
           }}
         >
@@ -1028,13 +1036,19 @@ export default function ConteoInventarioPage() {
             </Col>
           </Row>
 
-          {(tipoSel === 'categoria' || tipoSel === 'marca') && (
+          {tipoSel === 'categoria' && (
+            <Form.Item name="categoriaIds" label="Categorías" rules={[{ required: true, message: 'Selecciona al menos una' }]}>
+              <Select mode="multiple" placeholder="Lácteos, Bebidas, Granos..." showSearch optionFilterProp="label"
+                options={categoriasCat.map(c => ({ value: c.id, label: c.ruta }))} />
+            </Form.Item>
+          )}
+          {tipoSel === 'marca' && (
             <Form.Item
               name="filtroTexto"
-              label={tipoSel === 'categoria' ? 'Categorías (separadas por coma)' : 'Marcas (separadas por coma)'}
+              label="Marcas (separadas por coma)"
               rules={[{ required: true, message: 'Ingresa al menos un valor' }]}
             >
-              <Input placeholder={tipoSel === 'categoria' ? 'Lácteos, Bebidas, Granos' : 'Nestlé, Unilever'} />
+              <Input placeholder="Nestlé, Unilever" />
             </Form.Item>
           )}
 

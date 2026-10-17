@@ -22,7 +22,8 @@ export interface LineaValoracion {
   productoId:     number;
   codigo:         string;
   nombre:         string;
-  categoria?:     string;
+  categoriaId?:   number | null;
+  categoriaNombre?: string | null;
   stock:          number;
   costoPromedio:  number;
   valorTotal:     number;
@@ -159,16 +160,28 @@ export class ValoracionStockService {
 
   // ─── Valoración completa del inventario ────────────────────────────────────
 
-  async getValoracion(categoria?: string): Promise<{
+  async getValoracion(categoriaId?: number): Promise<{
     lineas:        LineaValoracion[];
     totales:       { cantidadProductos: number; valorTotal: number; valorPorCategoria: Record<string, number> };
     generadoEn:    string;
   }> {
     const empresaId = this.tenantSvc.getEmpresaId();
     const where: any = { empresaId, isActive: true };
-    if (categoria) where.categoria = categoria;
+    if (categoriaId) where.categoriaId = categoriaId;
 
-    const productos = await this.prodRepo.find({ where, order: { categoria: 'ASC', nombre: 'ASC' } });
+    const productos = await this.prodRepo.find({ where, order: { categoriaId: 'ASC', nombre: 'ASC' } });
+
+    // Sin inyectar CategoriasProductoService: crearía un ciclo de módulos
+    // (ProductosModule ya importa ValoracionStockModule). Mismo patrón de
+    // lookup por SQL crudo que el resto del backend (ver facturas/pdf.service.ts
+    // para sucursales).
+    const idsCategoria = [...new Set(productos.map(p => p.categoriaId).filter((id): id is number => id != null))];
+    const nombresPorId = idsCategoria.length
+      ? new Map((await this.dataSource.query<{ id: number; nombre: string }[]>(
+          `SELECT id, nombre FROM categorias_productos WHERE "empresaId" = $1 AND id = ANY($2)`,
+          [empresaId, idsCategoria],
+        )).map(c => [c.id, c.nombre]))
+      : new Map<number, string>();
 
     const lineas: LineaValoracion[] = productos.map(p => {
       const stock          = Number(p.stock ?? 0);
@@ -177,7 +190,8 @@ export class ValoracionStockService {
         productoId:    p.id,
         codigo:        p.codigo ?? '',
         nombre:        p.nombre,
-        categoria:     p.categoria,
+        categoriaId:   p.categoriaId ?? null,
+        categoriaNombre: p.categoriaId != null ? (nombresPorId.get(p.categoriaId) ?? null) : null,
         stock,
         costoPromedio,
         valorTotal:    +(stock * costoPromedio).toFixed(2),
@@ -189,7 +203,7 @@ export class ValoracionStockService {
 
     const valorPorCategoria: Record<string, number> = {};
     lineas.forEach(l => {
-      const cat = l.categoria ?? 'Sin categoría';
+      const cat = l.categoriaNombre ?? 'Sin categoría';
       valorPorCategoria[cat] = +(( valorPorCategoria[cat] ?? 0) + l.valorTotal).toFixed(2);
     });
 
@@ -234,16 +248,13 @@ export class ValoracionStockService {
 
   // ─── Categorías disponibles ─────────────────────────────────────────────────
 
-  async getCategorias() {
+  /** @deprecated usar GET /categorias-productos — se mantiene por compatibilidad
+   *  con el filtro viejo de ValoracionStockPage mientras se actualiza el frontend. */
+  async getCategorias(): Promise<{ id: number; nombre: string }[]> {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const rows = await this.prodRepo
-      .createQueryBuilder('p')
-      .select('DISTINCT p.categoria', 'categoria')
-      .where('p.empresaId = :eid', { eid: empresaId })
-      .andWhere('p.isActive = :a', { a: true })
-      .andWhere('p.categoria IS NOT NULL')
-      .orderBy('p.categoria', 'ASC')
-      .getRawMany<{ categoria: string }>();
-    return rows.map(r => r.categoria).filter(Boolean);
+    return this.dataSource.query<{ id: number; nombre: string }[]>(
+      `SELECT id, nombre FROM categorias_productos WHERE "empresaId" = $1 AND "isActive" = true ORDER BY nombre ASC`,
+      [empresaId],
+    );
   }
 }

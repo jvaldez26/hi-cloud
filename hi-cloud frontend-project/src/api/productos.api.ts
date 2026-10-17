@@ -8,7 +8,7 @@ export interface ProductoPayload {
   precio2?: number | null; precio3?: number | null;
   costo?: number | null;
   unidadMedida?: string; porcentajeIva?: number;
-  stock?: number; stockMinimo?: number; categoria?: string;
+  stock?: number; stockMinimo?: number; categoriaId?: number | null;
   descripcion?: string; imagenUrl?: string;
   almacenId?: number;
   ubicacionId?: number;
@@ -85,8 +85,9 @@ export const productosApi = {
   stockBajo: () =>
     api.get<ApiResponse<Producto[]>>('/productos/stock-bajo').then(r => r.data.data),
 
+  /** @deprecated usar categoriasProductoApi.listar() — GET /categorias-productos. */
   categorias: () =>
-    api.get<ApiResponse<string[]>>('/productos/categorias').then(r => r.data.data ?? []),
+    api.get<ApiResponse<{ id: number; nombre: string }[]>>('/productos/categorias').then(r => r.data.data ?? []),
 
   marcas: () =>
     api.get<ApiResponse<string[]>>('/productos/marcas').then(r => r.data.data ?? []),
@@ -129,7 +130,7 @@ export type DireccionRedondeo = 'cercano' | 'arriba' | 'abajo';
 export interface PreviewAjusteBody {
   /** Selección manual — tiene prioridad sobre los demás filtros. */
   productoIds?:          number[];
-  categoria?:            string;
+  categoriaId?:          number;
   marca?:                string;
   /** Búsqueda parcial por nombre o código. */
   busqueda?:             string;
@@ -161,7 +162,7 @@ export interface FilaAjuste {
 
 export interface FilaAjusteProducto extends FilaAjuste {
   id: number; codigo?: string; nombre: string;
-  categoria?: string; marca?: string; porcentajeIva: number;
+  categoriaId?: number; marca?: string; porcentajeIva: number;
   precio2: FilaAjuste | null;
   precio3: FilaAjuste | null;
 }

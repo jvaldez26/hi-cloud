@@ -193,9 +193,10 @@ export class BalanzaService {
     const empresaId = this.empresaId;
     return this.patronRepo.manager.query<any[]>(
       `SELECT p.id, p.plu, p.nombre, CAST(p.precio AS FLOAT) AS precio,
-              p."porcentajeIva" AS iva, p.categoria, p.codigo,
+              p."porcentajeIva" AS iva, cp.nombre AS categoria, p.codigo,
               p."codigoBarras", p."unidadMedida"
        FROM productos p
+       LEFT JOIN categorias_productos cp ON cp.id = p."categoriaId"
        WHERE p."esPesable" = true
          AND p.plu IS NOT NULL
          AND p."empresaId" = $1

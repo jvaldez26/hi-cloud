@@ -497,7 +497,7 @@ export async function exportarCatalogo(productos: any[], sufijo: string): Promis
       'Código':        p.codigo ?? '',
       'Nombre':        p.nombre ?? '',
       'Tipo':          p.tipo === 'servicio' ? 'Servicio' : 'Producto',
-      'Categoría':     p.categoria ?? '',
+      'Categoría':     p.categoriaNombre ?? '',
       'Precio P1':     Number(p.precio ?? 0),
       'Precio P2':     p.precio2 != null ? Number(p.precio2) : '',
       'Precio P3':     p.precio3 != null ? Number(p.precio3) : '',

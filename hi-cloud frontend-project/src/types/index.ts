@@ -96,7 +96,11 @@ export interface Producto {
   stock:           number;
   stockMinimo:     number;
   stockMaximo?:    number;
+  /** @deprecated texto libre histórico — usar categoriaId/categoriaNombre (catálogo). */
   categoria?:        string;
+  categoriaId?:      number | null;
+  /** Resuelto por el backend (catalogoPos/findAll) — nombre del catálogo, no texto libre. */
+  categoriaNombre?:  string | null;
   imagenUrl?:        string;
   isActive:          boolean;
   permiteDecimales?: boolean;

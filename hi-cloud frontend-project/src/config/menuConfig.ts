@@ -378,6 +378,7 @@ export const MENU_CATEGORIES_DATA: MenuCategoryData[] = [
     id: 'inventario', label: 'Inventario & Logística',
     items: [
       { path: '/productos',          label: 'Productos', codigo: 'IN02', accionRapida: { path: '/productos?nuevo=1', label: 'Nuevo Producto', codigo: 'IN01' } },
+      { path: '/categorias-productos', label: 'Categorías', codigo: 'IN14' },
       { path: '/almacenes',          label: 'Almacenes / Bodegas', codigo: 'IN04' },
       { path: '/inventario',         label: 'Movimientos de Stock', codigo: 'IN05' },
       { path: '/conteo-inventario',  label: 'Conteo Físico', codigo: 'IN06' },

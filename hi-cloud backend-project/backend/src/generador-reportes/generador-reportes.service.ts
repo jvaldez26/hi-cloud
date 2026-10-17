@@ -61,17 +61,18 @@ export class GeneradorReportesService {
   async topProductos(desde: string, hasta: string, limite = 20) {
     return this.ds.query(`
       SELECT
-        p.id, p.codigo, p.nombre, p.categoria,
+        p.id, p.codigo, p.nombre, cp.nombre AS categoria,
         COALESCE(SUM(fd.cantidad),0)::text    AS "cantidadVendida",
         COALESCE(SUM(fd.total),0)::text       AS ingresos,
         COUNT(DISTINCT f.id)::text            AS "enFacturas"
       FROM factura_detalles fd
       JOIN facturas f  ON f.id  = fd."facturaId"
       JOIN productos p ON p.id  = fd."productoId"
+      LEFT JOIN categorias_productos cp ON cp.id = p."categoriaId"
       WHERE f."isActive" = true AND f."empresaId" = $4
         AND f.estado IN ('emitida','pagada')
         AND f.fecha BETWEEN $1 AND $2
-      GROUP BY p.id, p.codigo, p.nombre, p.categoria
+      GROUP BY p.id, p.codigo, p.nombre, cp.nombre
       ORDER BY SUM(fd.total) DESC
       LIMIT $3
     `, [desde, hasta, limite, this.eid]);
@@ -82,7 +83,7 @@ export class GeneradorReportesService {
   async inventarioCritico() {
     return this.ds.query(`
       SELECT
-        p.id, p.codigo, p.nombre, p.categoria,
+        p.id, p.codigo, p.nombre, cp.nombre AS categoria,
         p.stock::text         AS stock,
         p."stockMinimo"::text AS stockMinimo,
         p."costoPromedio"::text AS costoPromedio,
@@ -94,6 +95,7 @@ export class GeneradorReportesService {
           ELSE 'ok'
         END AS nivel
       FROM productos p
+      LEFT JOIN categorias_productos cp ON cp.id = p."categoriaId"
       WHERE p."isActive" = true AND p."empresaId" = $1
         AND p.tipo <> 'servicio'
         AND p."stockMinimo" > 0

@@ -14,6 +14,8 @@ import { motion } from 'framer-motion';
 import api from '../../api/client';
 import { fmt } from '../../utils/formatters';
 import { useAuthStore } from '../../store/auth.store';
+import { categoriasProductoApi } from '../../api/categoriasProducto.api';
+import CategoriaSelect from '../../components/productos/CategoriaSelect';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -232,6 +234,19 @@ function ReglasTab() {
 
   const { data: reglas, isLoading } = useQuery({ queryKey: ['reglas-comision'], queryFn: comisionesApi.reglas });
 
+  // La regla POR_CATEGORIA guarda categoriaId (texto, misma columna "categoria"
+  // de la BD, ver regla-comision.entity.ts) — antes era el nombre tecleado a
+  // mano, sin diccionario, comparado case-insensitive contra Producto.categoria.
+  const { data: categoriasCat = [] } = useQuery({
+    queryKey: ['categorias-producto'],
+    queryFn:  () => categoriasProductoApi.listar(),
+    staleTime: 5 * 60_000,
+  });
+  const nombreCategoriaPorId = useMemo(
+    () => new Map(categoriasCat.map(c => [String(c.id), c.nombre])),
+    [categoriasCat],
+  );
+
   const crearMut = useMutation({
     mutationFn: comisionesApi.crearRegla,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['reglas-comision'] }); setOpen(false); form.resetFields(); message.success('Regla creada'); },
@@ -255,7 +270,7 @@ function ReglasTab() {
     { title: '%', dataIndex: 'porcentaje', width: 80, render: (v: number) => <Tag color="blue">{v}%</Tag> },
     { title: 'Condición', key: 'cond', ellipsis: true, render: (_: any, r: any) => {
         if (r.tipo === 'por_vendedor')   return `Vendedor ID: ${r.vendedorId}`;
-        if (r.tipo === 'por_categoria')  return `Cat: ${r.categoria}`;
+        if (r.tipo === 'por_categoria')  return `Cat: ${nombreCategoriaPorId.get(r.categoriaId) ?? r.categoriaId}`;
         if (r.tipo === 'por_monto')      return `${fmt.money(r.montoDesde ?? 0)} — ${r.montoHasta ? fmt.money(r.montoHasta) : '∞'}`;
         if (r.tipo === 'por_antiguedad') return `Cobrado en ≤${r.diasMaximoCobro} días`;
         return 'Aplica a todos';
@@ -294,7 +309,11 @@ function ReglasTab() {
         scroll={{ x: 'max-content' }} pagination={false} />
 
       <Modal title="Nueva regla de comisión" open={open} onCancel={() => { setOpen(false); form.resetFields(); }} footer={null} width={540}>
-        <Form form={form} layout="vertical" onFinish={(v) => crearMut.mutate(v)}>
+        <Form form={form} layout="vertical" onFinish={(v) => crearMut.mutate({
+          ...v,
+          // CreateReglaDto.categoriaId es string (columna varchar reutilizada) — CategoriaSelect entrega number.
+          categoriaId: v.categoriaId != null ? String(v.categoriaId) : undefined,
+        })}>
           <Row gutter={12}>
             <Col xs={24} sm={16}><Form.Item name="nombre" label="Nombre" rules={[{ required: true }]}><Input /></Form.Item></Col>
             <Col xs={24} sm={8}><Form.Item name="prioridad" label="Prioridad" initialValue={100}><InputNumber style={{ width: '100%' }} min={1} /></Form.Item></Col>
@@ -303,7 +322,7 @@ function ReglasTab() {
             </Form.Item></Col>
             <Col xs={24} sm={12}><Form.Item name="porcentaje" label="% Comisión" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} min={0} max={100} precision={2} addonAfter="%" /></Form.Item></Col>
             {watchTipo === 'por_vendedor'   && <Col span={24}><Form.Item name="vendedorId" label="ID del vendedor"><InputNumber style={{ width: '100%' }} min={1} /></Form.Item></Col>}
-            {watchTipo === 'por_categoria'  && <Col span={24}><Form.Item name="categoria"  label="Categoría del producto"><Input /></Form.Item></Col>}
+            {watchTipo === 'por_categoria'  && <Col span={24}><Form.Item name="categoriaId" label="Categoría del producto"><CategoriaSelect style={{ width: '100%' }} /></Form.Item></Col>}
             {watchTipo === 'por_monto'      && <>
               <Col xs={24} sm={12}><Form.Item name="montoDesde" label="Monto desde (RD$)"><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
               <Col xs={24} sm={12}><Form.Item name="montoHasta" label="Monto hasta (RD$)"><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item></Col>
@@ -323,7 +342,7 @@ function ReglasTab() {
         }}>
           <Form.Item name="monto" label="Monto de venta (RD$)" rules={[{ required: true }]}><InputNumber style={{ width: '100%' }} min={0} precision={2} /></Form.Item>
           <Row gutter={12}>
-            <Col xs={24} sm={12}><Form.Item name="categoria" label="Categoría producto"><Input /></Form.Item></Col>
+            <Col xs={24} sm={12}><Form.Item name="categoriaId" label="Categoría producto"><CategoriaSelect style={{ width: '100%' }} /></Form.Item></Col>
             <Col xs={24} sm={12}><Form.Item name="diasPago" label="Días para cobro"><InputNumber style={{ width: '100%' }} min={0} /></Form.Item></Col>
           </Row>
           <Button type="primary" htmlType="submit" block icon={<ThunderboltOutlined />}>Calcular</Button>

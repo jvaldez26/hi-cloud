@@ -35,16 +35,17 @@ function buildDeps() {
       // el movimiento inicial (y, si aplica, llama a AVCO).
       query: jest.fn().mockResolvedValue([{ id: ALMACEN_ID }]),
     },
-    tenantSvc: { getEmpresaId: () => EMPRESA, getUserId: () => 1 },
+    tenantSvc: { getEmpresaId: () => EMPRESA, getUserId: () => 1, getRolEmpresa: () => 'admin' },
     prodProvSvc: { registrarDesdeCompra: jest.fn() },
     valoracionSvc: { actualizarCostoPromedio: jest.fn().mockResolvedValue(undefined) },
+    categoriasProductoSvc: { resolverOCrearPorNombre: jest.fn() },
   };
 }
 
 function buildService(d: ReturnType<typeof buildDeps>): ImportacionService {
   return new ImportacionService(
     d.clienteRepo as any, d.productoRepo as any, d.proveedorRepo as any, d.ds as any,
-    d.tenantSvc as any, d.prodProvSvc as any, d.valoracionSvc as any,
+    d.tenantSvc as any, d.prodProvSvc as any, d.valoracionSvc as any, d.categoriasProductoSvc as any,
   );
 }
 

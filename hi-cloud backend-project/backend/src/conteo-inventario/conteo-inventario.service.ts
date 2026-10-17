@@ -134,9 +134,9 @@ export class ConteoInventarioService {
       const ids = (filtros!.productoIds as unknown[]).filter(Number.isInteger);
       if (ids.length) { params.push(ids); extraWhere.push(`p.id = ANY($${params.length}::int[])`); }
     }
-    if ((tipo === 'categoria') && Array.isArray(filtros?.categorias)) {
-      params.push(filtros!.categorias as string[]);
-      extraWhere.push(`p.categoria = ANY($${params.length}::text[])`);
+    if ((tipo === 'categoria') && Array.isArray(filtros?.categoriaIds)) {
+      const ids = (filtros!.categoriaIds as unknown[]).filter(Number.isInteger);
+      if (ids.length) { params.push(ids); extraWhere.push(`p."categoriaId" = ANY($${params.length}::int[])`); }
     }
     if ((tipo === 'marca') && Array.isArray(filtros?.marcas)) {
       params.push(filtros!.marcas as string[]);

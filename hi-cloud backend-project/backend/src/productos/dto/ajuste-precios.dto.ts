@@ -18,7 +18,7 @@ export const DIRECCIONES = ['cercano', 'arriba', 'abajo'] as const;
  *
  * Jerarquía de alcance (del más específico al más amplio):
  *   1. productoIds  — selección manual, ignora los demás
- *   2. categoria / marca / busqueda / soloConExistencia / vendidosUltimosMeses
+ *   2. categoriaId / marca / busqueda / soloConExistencia / vendidosUltimosMeses
  *      — filtros de DB, combinables entre sí
  *   3. soloNoRedondos — post-filtro: de los cargados, solo los que tienen centavos
  *   4. precioMin / precioMax — post-filtro por rango de precio al público actual
@@ -35,8 +35,8 @@ export class PreviewAjustePreciosDto {
   @IsInt({ each: true }) @Type(() => Number)
   productoIds?: number[];
 
-  @IsOptional() @IsString() @MaxLength(100)
-  categoria?: string;
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number)
+  categoriaId?: number;
 
   @IsOptional() @IsString() @MaxLength(100)
   marca?: string;

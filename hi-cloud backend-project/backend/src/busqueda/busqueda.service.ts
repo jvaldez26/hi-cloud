@@ -52,13 +52,14 @@ export class BusquedaService {
       // codigoBarras, no solo por codigo: un escáner o un folio de compra
       // suele traer el EAN/UPC, no el código interno del producto.
       this.ds.query<any[]>(`
-        SELECT id, nombre AS titulo,
-               CONCAT(codigo, ' · ', COALESCE(categoria, '')) AS subtitulo,
-               stock::text AS extra
-        FROM productos
-        WHERE "empresaId" = $1 AND "isActive" = true
-          AND (nombre ILIKE $2 OR codigo ILIKE $2 OR "codigoBarras" ILIKE $2)
-        ORDER BY nombre ASC LIMIT 5
+        SELECT p.id, p.nombre AS titulo,
+               CONCAT(p.codigo, ' · ', COALESCE(cp.nombre, '')) AS subtitulo,
+               p.stock::text AS extra
+        FROM productos p
+        LEFT JOIN categorias_productos cp ON cp.id = p."categoriaId"
+        WHERE p."empresaId" = $1 AND p."isActive" = true
+          AND (p.nombre ILIKE $2 OR p.codigo ILIKE $2 OR p."codigoBarras" ILIKE $2)
+        ORDER BY p.nombre ASC LIMIT 5
       `, [empresaId, term]),
 
       // Proveedores

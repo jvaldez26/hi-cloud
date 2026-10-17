@@ -96,10 +96,14 @@ export class CreateProductoDto {
   @Type(() => Number)
   stockMinimo?: number;
 
+  // El DTO ya NO acepta categoría en texto — categoriaId es la única vía,
+  // validada contra el catálogo de la empresa en ProductosService.crear/
+  // actualizar (categorias-producto.service.ts::existeYPerteneceAEmpresa).
   @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  categoria?: string;
+  @IsInt()
+  @IsPositive()
+  @Type(() => Number)
+  categoriaId?: number | null;
 
   @IsOptional()
   @IsString()

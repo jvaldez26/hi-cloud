@@ -31,7 +31,7 @@ export default function AjustePreciosModal({
   onClose:     () => void;
   /** Llamado tras aplicar exitosamente — el padre puede invalidar el query de productos. */
   onApplied?:  () => void;
-  categorias:  string[];
+  categorias:  { id: number; ruta: string }[];
   marcas:      string[];
   seleccionIds?: number[];
 }) {
@@ -40,7 +40,7 @@ export default function AjustePreciosModal({
   const [usarSeleccion,       setUsarSeleccion]     = useState(tieneSeleccion);
 
   const [soloNoRedondos,      setSoloNoRedondos]    = useState(!tieneSeleccion);
-  const [categoria,           setCategoria]         = useState<string | undefined>();
+  const [categoriaId,         setCategoriaId]       = useState<number | undefined>();
   const [marca,               setMarca]             = useState<string | undefined>();
   const [busqueda,            setBusqueda]          = useState('');
   const [soloConExistencia,   setSoloConExistencia] = useState(false);
@@ -78,7 +78,7 @@ export default function AjustePreciosModal({
         ? { productoIds: seleccionIds }
         : {
           ...(soloNoRedondos           ? { soloNoRedondos: true }               : {}),
-          ...(categoria                ? { categoria }                           : {}),
+          ...(categoriaId              ? { categoriaId }                         : {}),
           ...(marca                    ? { marca }                               : {}),
           ...(busqueda.trim()          ? { busqueda: busqueda.trim() }           : {}),
           ...(soloConExistencia        ? { soloConExistencia: true }             : {}),
@@ -256,8 +256,8 @@ export default function AjustePreciosModal({
               <Divider type="vertical" />
 
               <Select allowClear placeholder="Categoría" style={{ width: 170 }} size="small"
-                value={categoria} onChange={setCategoria}
-                options={categorias.map(c => ({ value: c, label: c }))} />
+                value={categoriaId} onChange={setCategoriaId}
+                options={categorias.map(c => ({ value: c.id, label: c.ruta }))} />
               <Select allowClear placeholder="Marca" style={{ width: 155 }} size="small"
                 value={marca} onChange={setMarca}
                 options={marcas.map(m => ({ value: m, label: m }))} />

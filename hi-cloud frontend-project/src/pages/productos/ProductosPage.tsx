@@ -19,6 +19,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSucursalesQuery, useUomUnidadesQuery } from '../../hooks/useCatalogQueries';
 import dayjs from 'dayjs';
 import { productosApi } from '../../api/productos.api';
+import { categoriasProductoApi } from '../../api/categoriasProducto.api';
 import { atributosApi } from '../../api/atributos.api';
 import api from '../../api/client';
 import { useCanDo } from '../../hooks/useCanDo';
@@ -439,7 +440,7 @@ export default function ProductosPage() {
 // ── Catálogo de Productos (extraído como sub-componente) ───────────────────────
 function ProductosCatalogo() {
   const [search,         setSearch]         = useState('');
-  const [categoria,      setCategoria]      = useState<string | undefined>();
+  const [categoriaId,    setCategoriaId]    = useState<number | undefined>();
   const [page,           setPage]           = useState(1);
   const PAGE_SIZE = 15;
   const [sucursalFiltro, setSucursalFiltro] = useState<number | undefined>();
@@ -482,15 +483,15 @@ function ProductosCatalogo() {
   const filtroAlerta = soloPendientes ? 'pendiente-completar' : estadoStock === 'bajo-ventas' ? 'stock-bajo' : undefined;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['productos', page, search, categoria, filtroAlerta],
+    queryKey: ['productos', page, search, categoriaId, filtroAlerta],
     queryFn:  () => productosApi.list(page, PAGE_SIZE, search, true, filtroAlerta),
   });
   const showSkeleton = useSkeletonDelay(isLoading, 200);
 
   // Categorías y marcas: cargan todo el catálogo (no solo la página actual) para Selects completos
   const { data: catalogoCats } = useQuery({
-    queryKey: ['productos-categorias'],
-    queryFn: productosApi.categorias,
+    queryKey: ['categorias-producto'],
+    queryFn: () => categoriasProductoApi.listar(),
     staleTime: 5 * 60_000,
   });
   const { data: catalogoMarcas } = useQuery({
@@ -500,6 +501,7 @@ function ProductosCatalogo() {
   });
   const categorias = catalogoCats ?? [];
   const marcas     = catalogoMarcas ?? [];
+  const nombreCategoriaPorId = useMemo(() => new Map(categorias.map(c => [c.id, c.nombre])), [categorias]);
   const { data: uomUnidades = [] } = useUomUnidadesQuery();
   // Ajustar precios al público toca precios de venta: solo ADMIN (el backend lo exige igual)
   const esAdminPrecios = String((user as any)?.role ?? '').toLowerCase() === 'admin';
@@ -518,8 +520,8 @@ function ProductosCatalogo() {
   }, [almacenesTodos, sucursales]);
 
   const rows = useMemo(() => {
-    let r: any[] = categoria
-      ? (data?.data ?? []).filter((p: Producto) => p.categoria === categoria)
+    let r: any[] = categoriaId
+      ? (data?.data ?? []).filter((p: Producto) => p.categoriaId === categoriaId)
       : (data?.data ?? []);
     if (sucursalFiltro) {
       r = r.filter((p: any) => {
@@ -538,7 +540,7 @@ function ProductosCatalogo() {
       });
     }
     return r;
-  }, [data, categoria, sucursalFiltro, estadoStock, almacenSucursalMap]);
+  }, [data, categoriaId, sucursalFiltro, estadoStock, almacenSucursalMap]);
 
   // ── Exportar a Excel ────────────────────────────────────────────────────────
   const [exportando, setExportando] = useState(false);
@@ -551,7 +553,7 @@ function ProductosCatalogo() {
       const result = await productosApi.list(1, 5000, '', true);
       const todos: any[] = result?.data ?? [];
       if (!todos.length) { message.warning('No hay productos para exportar'); return; }
-      exportarCatalogo(todos, `todo_${fechaHoy()}`);
+      exportarCatalogo(todos.map(p => ({ ...p, categoriaNombre: p.categoriaId != null ? nombreCategoriaPorId.get(p.categoriaId) : undefined })), `todo_${fechaHoy()}`);
       message.success(`${todos.length} productos exportados`);
     } catch {
       message.error('Error al exportar el catálogo completo');
@@ -566,7 +568,7 @@ function ProductosCatalogo() {
       const result = await productosApi.list(1, 5000, search, true, filtroAlerta);
       let filtrados: any[] = result?.data ?? [];
       // Aplicar filtros client-side adicionales que no pasan por el backend
-      if (categoria) filtrados = filtrados.filter((p: any) => p.categoria === categoria);
+      if (categoriaId) filtrados = filtrados.filter((p: any) => p.categoriaId === categoriaId);
       if (sucursalFiltro) {
         filtrados = filtrados.filter((p: any) => {
           const spa: any[] = p.stockPorAlmacen ?? [];
@@ -585,7 +587,7 @@ function ProductosCatalogo() {
       }
       if (!filtrados.length) { message.warning('Ningún producto coincide con los filtros actuales'); return; }
       const sufijo = [search && `q-${search.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 20)}`, fechaHoy()].filter(Boolean).join('_');
-      exportarCatalogo(filtrados, `filtrado_${sufijo}`);
+      exportarCatalogo(filtrados.map(p => ({ ...p, categoriaNombre: p.categoriaId != null ? nombreCategoriaPorId.get(p.categoriaId) : undefined })), `filtrado_${sufijo}`);
       message.success(`${filtrados.length} productos exportados`);
     } catch {
       message.error('Error al exportar los productos filtrados');
@@ -752,7 +754,8 @@ function ProductosCatalogo() {
         const codes = [...new Set((spa ?? []).map((s: any) => s.ubicacionCodigo).filter(Boolean))];
         return codes.length > 0 ? <Text style={{ fontSize: 12 }}>{codes.join(', ')}</Text> : <Text type="secondary">—</Text>;
       }},
-    { title: 'Categoría', key: 'categoria', dataIndex: 'categoria', ellipsis: true, mobileHide: true, render: (v: string) => v ? <Tag>{v}</Tag> : '—' },
+    { title: 'Categoría', key: 'categoria', dataIndex: 'categoriaId', ellipsis: true, mobileHide: true,
+      render: (id: number | null) => id != null && nombreCategoriaPorId.get(id) ? <Tag>{nombreCategoriaPorId.get(id)}</Tag> : '—' },
     // ITBIS% y Mín. omitidos — disponibles al editar el producto
     { title: '', key: 'actions', width: 80, isActions: true,
       render: (_: unknown, r: Producto) => (
@@ -792,8 +795,8 @@ function ProductosCatalogo() {
               onChange={e => { setSearch(e.target.value); setPage(1); }}
               allowClear style={{ width: '100%', minWidth: 0, maxWidth: 220 }}
             />
-            <Select placeholder="Categoría" value={categoria} onChange={v => { setCategoria(v); setPage(1); }} allowClear style={{ width: 150 }}>
-              {categorias.map(c => <Select.Option key={c} value={c}>{c}</Select.Option>)}
+            <Select placeholder="Categoría" value={categoriaId} onChange={v => { setCategoriaId(v); setPage(1); }} allowClear style={{ width: 170 }}>
+              {categorias.map(c => <Select.Option key={c.id} value={c.id}>{c.ruta}</Select.Option>)}
             </Select>
             {sucursales.length > 1 && (
               <Select placeholder="Sucursal" value={sucursalFiltro} onChange={v => setSucursalFiltro(v)} allowClear style={{ width: 140 }}>
@@ -922,7 +925,7 @@ function ProductosCatalogo() {
                     { label: 'Código',    value: detalleProducto?.codigo },
                     { label: 'SKU',       value: (detalleProducto as any)?.sku },
                     { label: 'Nombre',    value: detalleProducto?.nombre, span: 2 },
-                    { label: 'Categoría', value: detalleProducto?.categoria },
+                    { label: 'Categoría', value: detalleProducto?.categoriaId != null ? nombreCategoriaPorId.get(detalleProducto.categoriaId) : undefined },
                     { label: 'Precio',    value: detalleProducto?.precio !== undefined
                         ? `RD$${Number(detalleProducto.precio).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`
                         : undefined },

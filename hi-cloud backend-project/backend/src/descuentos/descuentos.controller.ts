@@ -30,7 +30,7 @@ class CreateReglaDto {
 
 class ItemCalculo {
   @IsInt() @IsPositive() @Type(() => Number)                     productoId!: number;
-  @IsOptional() @IsString()                                      categoria?: string;
+  @IsOptional() @IsInt() @IsPositive() @Type(() => Number)       categoriaId?: number;
   @IsNumber() @Min(0.01) @Type(() => Number)                     cantidad!: number;
   @IsNumber() @Min(0) @Type(() => Number)                        precioUnitario!: number;
   @IsNumber() @Min(0) @Type(() => Number)                        subtotalLinea!: number;

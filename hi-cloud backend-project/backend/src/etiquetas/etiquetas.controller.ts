@@ -24,10 +24,10 @@ export class EtiquetasController {
 
   @Get('productos')
   @ApiOperation({ summary: 'Buscar productos para generación de etiquetas' })
-  async buscarProductos(@Query('q') q?: string, @Query('categoria') categoria?: string) {
+  async buscarProductos(@Query('q') q?: string, @Query('categoriaId') categoriaId?: string) {
     const empresaId = this.tenantSvc.getEmpresaId();
     const base: any = { empresaId, isActive: true };
-    if (categoria) base.categoria = categoria;
+    if (categoriaId) base.categoriaId = Number(categoriaId);
 
     const where = q
       ? [
@@ -38,27 +38,35 @@ export class EtiquetasController {
 
     const productos = await this.productoRepo.find({
       where,
-      select: ['id', 'codigo', 'nombre', 'precio', 'porcentajeIva', 'unidadMedida', 'categoria', 'stock', 'imagenUrl'],
+      select: ['id', 'codigo', 'nombre', 'precio', 'porcentajeIva', 'unidadMedida', 'categoriaId', 'stock', 'imagenUrl'],
       order: { nombre: 'ASC' },
       take: 50, // búsqueda server-side: 50 resultados por término, el usuario escribe para filtrar
     });
 
-    return productos;
+    if (!productos.length) return productos;
+    const nombresPorId = await this.nombresDeCategoria(empresaId, productos.map(p => p.categoriaId));
+    return productos.map(p => ({ ...p, categoriaNombre: p.categoriaId != null ? (nombresPorId.get(p.categoriaId) ?? null) : null }));
   }
 
   @Get('categorias')
   @ApiOperation({ summary: 'Lista de categorías de productos para filtro en etiquetas' })
   async getCategorias() {
     const empresaId = this.tenantSvc.getEmpresaId();
-    const raw = await this.productoRepo
-      .createQueryBuilder('p')
-      .select('DISTINCT p.categoria', 'categoria')
-      .where('p.empresaId = :eid', { eid: empresaId })
-      .andWhere('p.isActive = :a',  { a: true })
-      .andWhere('p.categoria IS NOT NULL')
-      .orderBy('p.categoria', 'ASC')
-      .getRawMany<{ categoria: string }>();
+    return this.productoRepo.manager.query<{ id: number; nombre: string }[]>(
+      `SELECT id, nombre FROM categorias_productos WHERE "empresaId" = $1 AND "isActive" = true ORDER BY nombre ASC`,
+      [empresaId],
+    );
+  }
 
-    return raw.map(r => r.categoria).filter(Boolean);
+  /** Mismo patrón de lookup por lote que productos.service.ts::catalogoPos — sin
+   *  inyectar CategoriasProductoService para no acoplar este módulo chico al de Productos. */
+  private async nombresDeCategoria(empresaId: number, ids: (number | null | undefined)[]): Promise<Map<number, string>> {
+    const unicos = [...new Set(ids.filter((id): id is number => id != null))];
+    if (!unicos.length) return new Map();
+    const filas = await this.productoRepo.manager.query<{ id: number; nombre: string }[]>(
+      `SELECT id, nombre FROM categorias_productos WHERE "empresaId" = $1 AND id = ANY($2)`,
+      [empresaId, unicos],
+    );
+    return new Map(filas.map(f => [f.id, f.nombre]));
   }
 }

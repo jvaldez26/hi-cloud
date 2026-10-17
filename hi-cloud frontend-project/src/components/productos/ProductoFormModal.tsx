@@ -35,6 +35,7 @@ import { useProductoImagen } from '../../hooks/useProductoImagen';
 import { useRol } from '../../hooks/useCanDo';
 import { useAuthStore } from '../../store/auth.store';
 import { UomSelect } from '../ui/UomSelect';
+import CategoriaSelect from './CategoriaSelect';
 import api from '../../api/client';
 import type { Producto } from '../../types';
 
@@ -206,7 +207,7 @@ export function ProductoFormModal({
         codigo: p.codigo ?? '',
         nombre: p.nombre ?? '',
         codigoBarras: p.codigoBarras ?? '',
-        categoria: p.categoria ?? '',
+        categoriaId: p.categoriaId ?? undefined,
         descripcion: p.descripcion ?? '',
         imagenUrl: p.imagenUrl ?? '',
         proveedorId: proveedorIdInicial ?? p.proveedorId,
@@ -488,7 +489,9 @@ export function ProductoFormModal({
           )}
 
           <Col xs={24} sm={modo === 'rapido' ? 24 : 8}>
-            <Form.Item name="categoria" label="Categoría"><Input /></Form.Item>
+            <Form.Item name="categoriaId" label="Categoría">
+              <CategoriaSelect style={{ width: '100%' }} />
+            </Form.Item>
           </Col>
 
           {modo === 'completo' && (

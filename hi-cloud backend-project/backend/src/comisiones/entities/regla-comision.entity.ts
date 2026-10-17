@@ -27,8 +27,14 @@ export class ReglaComision extends TenantBaseEntity {
   @Column({ nullable: true })
   vendedorId?: number;          // para POR_VENDEDOR
 
-  @Column({ length: 100, nullable: true })
-  categoria?: string;           // para POR_CATEGORIA
+  // Columna física sigue llamándose "categoria" (varchar) para no pedir una
+  // migración nueva — guarda el categoriaId del catálogo DE PRODUCTOS como
+  // texto, mismo truco que ReglaDescuento.condicionValor. Antes guardaba el
+  // NOMBRE de la categoría en texto libre y comparaba case-insensitive
+  // contra Producto.categoria — el mismo bug de typos/acentos silenciosos
+  // que ya se corrigió en descuentos.
+  @Column({ name: 'categoria', length: 100, nullable: true })
+  categoriaId?: string;         // para POR_CATEGORIA — string porque la columna es varchar
 
   @Column({ type: 'decimal', precision: 14, scale: 2, nullable: true })
   montoDesde?: number;          // para POR_MONTO

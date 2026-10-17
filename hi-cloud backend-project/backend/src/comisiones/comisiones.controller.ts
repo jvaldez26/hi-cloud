@@ -23,7 +23,10 @@ class CreateReglaDto {
   @IsNumber() @Min(0) @Max(100)         porcentaje!:      number;
   @IsOptional() @IsInt() @Min(1)        prioridad?:       number;
   @IsOptional() @IsInt() @IsPositive()  vendedorId?:      number;
-  @IsOptional() @IsString()             categoria?:       string;
+  // string, no number: la entidad guarda el categoriaId en una columna
+  // varchar reutilizada (ver regla-comision.entity.ts) — el valor que llega
+  // aquí ya viene como texto desde el Select del frontend.
+  @IsOptional() @IsString()             categoriaId?:     string;
   @IsOptional() @IsNumber() @Min(0)     montoDesde?:      number;
   @IsOptional() @IsNumber() @Min(0)     montoHasta?:      number;
   @IsOptional() @IsInt() @Min(0)        diasMaximoCobro?: number;
@@ -31,10 +34,10 @@ class CreateReglaDto {
 }
 
 class SimularDto {
-  @IsOptional() @IsInt() @IsPositive()  vendedorId?: number;
-  @IsNumber() @Min(0)                   monto!:      number;
-  @IsOptional() @IsString()             categoria?:  string;
-  @IsOptional() @IsInt() @Min(0)        diasPago?:   number;
+  @IsOptional() @IsInt() @IsPositive()  vendedorId?:  number;
+  @IsNumber() @Min(0)                   monto!:       number;
+  @IsOptional() @IsInt() @IsPositive()  categoriaId?: number;
+  @IsOptional() @IsInt() @Min(0)        diasPago?:    number;
 }
 
 @ApiTags('Comisiones de Vendedores')

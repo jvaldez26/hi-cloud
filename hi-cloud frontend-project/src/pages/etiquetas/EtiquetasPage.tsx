@@ -29,7 +29,8 @@ interface ProductoEtiqueta {
   precio:       number;
   porcentajeIva: number;
   unidadMedida: string;
-  categoria?:   string;
+  categoriaId?:     number | null;
+  categoriaNombre?: string | null;
   imagenUrl?:   string;
   cantidad:     number;
 }
@@ -229,8 +230,8 @@ function Etiqueta({
                 {producto.nombre.slice(0, 55)}
               </div>
               {config.mostrarCodigo && <div style={{ fontSize: 8, color: '#6b7280', marginBottom: 2 }}>Cód: {producto.codigo}</div>}
-              {config.mostrarCategoria && producto.categoria && (
-                <div style={{ fontSize: 8, color: '#9ca3af' }}>{producto.categoria}</div>
+              {config.mostrarCategoria && producto.categoriaNombre && (
+                <div style={{ fontSize: 8, color: '#9ca3af' }}>{producto.categoriaNombre}</div>
               )}
             </div>
           </div>
@@ -258,8 +259,8 @@ function Etiqueta({
                 {producto.nombre}
               </div>
               {config.mostrarCodigo && <div style={{ fontSize: 9, color: '#6b7280', marginBottom: 2 }}>Código: <strong>{producto.codigo}</strong></div>}
-              {config.mostrarCategoria && producto.categoria && (
-                <div style={{ fontSize: 8, color: '#9ca3af', marginBottom: 2 }}>{producto.categoria}</div>
+              {config.mostrarCategoria && producto.categoriaNombre && (
+                <div style={{ fontSize: 8, color: '#9ca3af', marginBottom: 2 }}>{producto.categoriaNombre}</div>
               )}
               <div style={{ fontSize: 8, color: '#9ca3af' }}>Unidad: {producto.unidadMedida}</div>
             </div>
@@ -569,7 +570,7 @@ export default function EtiquetasPage() {
                       <Text strong style={{ fontSize: 13 }}>{p.nombre}</Text>
                       <div>
                         <Tag style={{ fontSize: 10 }}>{p.codigo}</Tag>
-                        {p.categoria && <Tag color="blue" style={{ fontSize: 10 }}>{p.categoria}</Tag>}
+                        {p.categoriaNombre && <Tag color="blue" style={{ fontSize: 10 }}>{p.categoriaNombre}</Tag>}
                       </div>
                     </div>
                     <div style={{ textAlign: 'right', flexShrink: 0 }}>

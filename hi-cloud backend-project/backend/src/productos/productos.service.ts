@@ -25,6 +25,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { LimitesService } from '../suscripciones/limites.service';
 import { S3Service } from '../common/s3/s3.service';
 import { ValoracionStockService } from '../valoracion-stock/valoracion-stock.service';
+import { CategoriasProductoService } from './categorias-producto.service';
 
 // Carpeta dentro de AWS_S3_BUCKET donde se guardan las imágenes
 const IMAGENES_FOLDER = 'imagenes/productos';
@@ -51,21 +52,17 @@ export class ProductosService implements OnModuleInit {
     private s3Service:       S3Service,
     private productoProveedorSvc: ProductoProveedorService,
     private valoracionService: ValoracionStockService,
+    private categoriasProductoSvc: CategoriasProductoService,
   ) {}
 
-  /** Devuelve todas las categorías distintas del catálogo de la empresa (para Selects). */
-  async getCategorias(): Promise<string[]> {
-    const empresaId = this.tenantService.getEmpresaId();
-    const rows = await this.productoRepository
-      .createQueryBuilder('p')
-      .select('DISTINCT p.categoria', 'categoria')
-      .where('p."empresaId" = :empresaId', { empresaId })
-      .andWhere('p."isActive" = true')
-      .andWhere('p.categoria IS NOT NULL')
-      .andWhere("p.categoria != ''")
-      .orderBy('p.categoria', 'ASC')
-      .getRawMany<{ categoria: string }>();
-    return rows.map(r => r.categoria);
+  /**
+   * Catálogo de categorías de la empresa (ver categorias-producto.service.ts).
+   * @deprecated usar CategoriasProductoService.listar() / GET /categorias-productos
+   * directamente — se mantiene como delegado solo para no romper
+   * GET /productos/categorias mientras queden llamadores viejos.
+   */
+  async getCategorias() {
+    return this.categoriasProductoSvc.listar();
   }
 
   /** Devuelve todas las marcas distintas del catálogo de la empresa (para Selects). */
@@ -299,6 +296,11 @@ export class ProductosService implements OnModuleInit {
       if (byBarras) throw new ConflictException(`Ya existe un producto con el código de barras '${dto.codigoBarras}'`);
     }
 
+    if (dto.categoriaId != null) {
+      const ok = await this.categoriasProductoSvc.existeYPerteneceAEmpresa(dto.categoriaId, empresaId);
+      if (!ok) throw new BadRequestException(`La categoría #${dto.categoriaId} no existe en el catálogo de esta empresa`);
+    }
+
     // proveedorId se extrae aquí: no es columna de `productos` sino un vínculo en
     // producto_proveedor, y si se colara en productoData TypeORM lo ignoraría en
     // silencio (o peor, el validador de esquema empezaría a quejarse).
@@ -459,9 +461,15 @@ export class ProductosService implements OnModuleInit {
       const tokens = search.trim().split(/\s+/).filter(Boolean);
       tokens.forEach((token, i) => {
         const param = `srch${i}`;
+        // EXISTS, no JOIN — mismo motivo que el filtro de almacén de arriba
+        // (no disparar el DISTINCT que TypeORM añade con getManyAndCount()
+        // en cuanto detecta un JOIN). Busca el nombre del CATÁLOGO, no el
+        // viejo texto libre `producto.categoria` (congelado desde la
+        // migración a categoriaId — ver producto.entity.ts).
         qb.andWhere(
           `(producto.nombre ILIKE :${param} OR producto.codigo ILIKE :${param}
-            OR producto.categoria ILIKE :${param} OR producto."codigoBarras" ILIKE :${param})`,
+            OR producto."codigoBarras" ILIKE :${param}
+            OR EXISTS (SELECT 1 FROM categorias_productos cp WHERE cp.id = producto."categoriaId" AND cp.nombre ILIKE :${param}))`,
           { [param]: `%${token}%` },
         );
       });
@@ -573,13 +581,13 @@ export class ProductosService implements OnModuleInit {
 
     // Sin getManyAndCount: el POS no usa el total y el COUNT(*) repetiría el
     // mismo filtro sobre toda la tabla para nada.
-    const data = await this.productoRepository
+    const productos = await this.productoRepository
       .createQueryBuilder('p')
       .select([
         'p.id', 'p.nombre', 'p.codigo', 'p.codigoBarras',
         'p.precio', 'p.precio2', 'p.precio3',
         'p.stock', 'p.stockMinimo',
-        'p.porcentajeIva', 'p.unidadMedida', 'p.categoria', 'p.tipo',
+        'p.porcentajeIva', 'p.unidadMedida', 'p.categoriaId', 'p.tipo',
         'p.imagenUrl',          // ProductCard la pinta cuando existe
         'p.esPesable', 'p.plu', // balanza: procesarScan los necesita
       ])
@@ -588,6 +596,16 @@ export class ProductosService implements OnModuleInit {
       .orderBy('p.nombre', 'ASC')
       .take(CATALOGO_POS_MAX)
       .getMany();
+
+    // Nombre de categoría ya resuelto — el POS carga esto UNA vez y lo
+    // cachea en memoria; sin esto, la barra lateral de categorías
+    // necesitaría una segunda llamada. Mismo patrón de Map por lote que el
+    // stock-por-almacén de abajo, para no hacer N+1.
+    const categoriaIds = [...new Set(productos.map(p => p.categoriaId).filter((id): id is number => id != null))];
+    const nombrePorCategoria = categoriaIds.length
+      ? new Map((await this.categoriasProductoSvc.listar()).map(c => [c.id, c.nombre]))
+      : new Map<number, string>();
+    const data = productos.map(p => ({ ...p, categoriaNombre: p.categoriaId != null ? (nombrePorCategoria.get(p.categoriaId) ?? null) : null }));
 
     // `p.stock` de la tabla productos es el GLOBAL (todos los almacenes). El POS
     // debe mostrar el del almacén de SU sucursal, o el badge miente en empresas
@@ -728,6 +746,11 @@ export class ProductosService implements OnModuleInit {
         .andWhere('p.id != :id', { id })
         .getOne();
       if (nomExists) throw new ConflictException(`Ya existe un producto con el nombre '${dto.nombre}'`);
+    }
+
+    if (dto.categoriaId != null) {
+      const ok = await this.categoriasProductoSvc.existeYPerteneceAEmpresa(dto.categoriaId, empresaId);
+      if (!ok) throw new BadRequestException(`La categoría #${dto.categoriaId} no existe en el catálogo de esta empresa`);
     }
 
     // Si viene base64 en imagenUrl, subirla a S3 antes de guardar
@@ -1045,7 +1068,7 @@ export class ProductosService implements OnModuleInit {
    *
    * El conjunto se acota mediante uno o varios filtros combinables:
    *   - productoIds (selección manual — prioridad)
-   *   - categoria / marca / busqueda
+   *   - categoriaId / marca / busqueda
    *   - soloNoRedondos (post-filtro, libera el requisito de categoría/marca)
    *   - soloConExistencia / vendidosUltimosMeses (filtros de DB)
    *   - precioMin / precioMax (post-filtro por rango de precio final)
@@ -1063,7 +1086,7 @@ export class ProductosService implements OnModuleInit {
 
     const tieneFiltro =
       !!dto.productoIds?.length ||
-      !!dto.categoria ||
+      !!dto.categoriaId ||
       !!dto.marca ||
       !!dto.busqueda ||
       !!dto.soloNoRedondos ||
@@ -1094,7 +1117,7 @@ export class ProductosService implements OnModuleInit {
       // Selección manual — ignora el resto de filtros de DB
       qb.andWhere('p.id IN (:...ids)', { ids: dto.productoIds });
     } else {
-      if (dto.categoria) qb.andWhere('p.categoria = :categoria', { categoria: dto.categoria });
+      if (dto.categoriaId) qb.andWhere('p."categoriaId" = :categoriaId', { categoriaId: dto.categoriaId });
       if (dto.marca)     qb.andWhere('p.marca = :marca',         { marca: dto.marca });
       if (dto.busqueda) {
         const tokens = dto.busqueda.trim().split(/\s+/).filter(Boolean);
@@ -1128,7 +1151,7 @@ export class ProductosService implements OnModuleInit {
 
     const productos = await qb
       .select(['p.id', 'p.codigo', 'p.nombre', 'p.precio', 'p.precio2', 'p.precio3',
-               'p.porcentajeIva', 'p.categoria', 'p.marca'])
+               'p.porcentajeIva', 'p.categoriaId', 'p.marca'])
       .orderBy('p.nombre', 'ASC')
       .getMany();
 
@@ -1145,7 +1168,7 @@ export class ProductosService implements OnModuleInit {
 
       return {
         id: p.id, codigo: p.codigo, nombre: p.nombre,
-        categoria: p.categoria, marca: p.marca, porcentajeIva: pctIva,
+        categoriaId: p.categoriaId, marca: p.marca, porcentajeIva: pctIva,
         ...base,
         precio2: p2, precio3: p3,
       };

@@ -29,16 +29,16 @@ const COLORES = ['#1a56db','#059669','#7c3aed','#d97706','#dc2626','#0891b2','#d
 export default function ValoracionStockPage() {
   const { token } = theme.useToken();
   const [search, setSearch] = useState('');
-  const [categoriaFiltro, setCategoriaFiltro] = useState<string | undefined>();
+  const [categoriaFiltro, setCategoriaFiltro] = useState<number | undefined>();
 
-  const { data: categorias = [] } = useQuery<string[]>({
+  const { data: categorias = [] } = useQuery<{ id: number; nombre: string }[]>({
     queryKey: ['vs-categorias'],
     queryFn: () => api.get('/valoracion-stock/categorias').then((r: any) => r.data?.data ?? r.data),
   });
 
   const { data, isLoading } = useQuery<any>({
     queryKey: ['valoracion-stock', categoriaFiltro],
-    queryFn: () => api.get(`/valoracion-stock${categoriaFiltro ? `?categoria=${categoriaFiltro}` : ''}`).then((r: any) => r.data?.data ?? r.data),
+    queryFn: () => api.get(`/valoracion-stock${categoriaFiltro ? `?categoriaId=${categoriaFiltro}` : ''}`).then((r: any) => r.data?.data ?? r.data),
   });
 
   const lineas    = data?.lineas ?? [];
@@ -70,7 +70,7 @@ export default function ValoracionStockPage() {
     const rows = [
       ['Código', 'Nombre', 'Categoría', 'Stock', 'Unidad', 'Costo Promedio', 'Valor Total'].join(','),
       ...lineas.map((l: any) =>
-        [l.codigo, `"${l.nombre}"`, l.categoria ?? '', l.stock, l.unidadMedida, l.costoPromedio, l.valorTotal].join(',')
+        [l.codigo, `"${l.nombre}"`, l.categoriaNombre ?? '', l.stock, l.unidadMedida, l.costoPromedio, l.valorTotal].join(',')
       ),
     ].join('\n');
     const blob = new Blob([rows], { type: 'text/csv;charset=utf-8;' });
@@ -106,14 +106,14 @@ export default function ValoracionStockPage() {
             value={categoriaFiltro}
             onChange={setCategoriaFiltro}
           >
-            {categorias.map(c => <Option key={c} value={c}>{c}</Option>)}
+            {categorias.map(c => <Option key={c.id} value={c.id}>{c.nombre}</Option>)}
           </Select>
           <Tooltip title="Exportar a CSV">
             <Button icon={<FileExcelOutlined />} onClick={() => {
               const filas = lineas.map((l: any) => ({
                 'Código':          l.codigo ?? '',
                 'Nombre':          l.nombre ?? '',
-                'Categoría':       l.categoria ?? '',
+                'Categoría':       l.categoriaNombre ?? '',
                 'Stock':           Number(l.stock ?? 0),
                 'Unidad':          l.unidadMedida ?? '',
                 'Costo Promedio':  Number(l.costoPromedio ?? 0),
@@ -169,7 +169,7 @@ export default function ValoracionStockPage() {
                   render: (v, r: any) => (
                     <div>
                       <Text strong style={{ fontSize: 13 }}>{v}</Text>
-                      {r.categoria && <div><Text type="secondary" style={{ fontSize: 11 }}>{r.categoria}</Text></div>}
+                      {r.categoriaNombre && <div><Text type="secondary" style={{ fontSize: 11 }}>{r.categoriaNombre}</Text></div>}
                     </div>
                   ),
                 },

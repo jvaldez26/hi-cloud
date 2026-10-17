@@ -16,6 +16,8 @@ import { exportarExcel } from '../../utils/exportExcel';
 import dayjs from 'dayjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
+import { categoriasProductoApi } from '../../api/categoriasProducto.api';
+import CategoriaSelect from '../../components/productos/CategoriaSelect';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -53,6 +55,21 @@ export default function DescuentosPage() {
     queryKey: ['descuentos'],
     queryFn: () => api.get('/descuentos').then((r: any) => r.data?.data ?? r.data),
   });
+
+  // Para condicion='categoria', condicionValor guarda el categoriaId como
+  // texto (mismo truco que 'producto' guarda el productoId) — antes era el
+  // NOMBRE tecleado a mano ("Ej. Electrónica"), sin diccionario, y un typo o
+  // acento distinto del de Producto.categoria hacía que el descuento nunca
+  // se aplicara, en silencio.
+  const { data: categoriasCat = [] } = useQuery({
+    queryKey: ['categorias-producto'],
+    queryFn:  () => categoriasProductoApi.listar(),
+    staleTime: 5 * 60_000,
+  });
+  const nombreCategoriaPorId = useMemo(
+    () => new Map(categoriasCat.map(c => [String(c.id), c.nombre])),
+    [categoriasCat],
+  );
 
   const reglasFiltradas = useMemo(() => {
     if (!search.trim()) return reglas;
@@ -99,6 +116,8 @@ export default function DescuentosPage() {
     setEditando(r);
     form.setFieldsValue({
       ...r,
+      // CategoriaSelect trabaja con number; condicionValor en BD es texto.
+      condicionValor: r.condicion === 'categoria' && r.condicionValor ? Number(r.condicionValor) : r.condicionValor,
       rango: r.fechaDesde && r.fechaHasta ? [dayjs(r.fechaDesde), dayjs(r.fechaHasta)] : undefined,
     });
     setModalVisible(true);
@@ -107,6 +126,11 @@ export default function DescuentosPage() {
   const handleFinish = (values: any) => {
     const dto = {
       ...values,
+      // condicionValor guarda el categoriaId como texto (columna varchar,
+      // mismo criterio que 'producto' con el productoId) — CategoriaSelect
+      // entrega un número.
+      condicionValor: values.condicion === 'categoria' && values.condicionValor != null
+        ? String(values.condicionValor) : values.condicionValor,
       fechaDesde: values.rango?.[0]?.format('YYYY-MM-DD'),
       fechaHasta: values.rango?.[1]?.format('YYYY-MM-DD'),
     };
@@ -200,7 +224,11 @@ export default function DescuentosPage() {
               render: (_, r: any) => (
                 <div>
                   <Tag>{CONDICION_LABELS[r.condicion]?.label ?? r.condicion}</Tag>
-                  {r.condicionValor && <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>{r.condicionValor}</Text>}
+                  {r.condicionValor && (
+                    <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
+                      {r.condicion === 'categoria' ? (nombreCategoriaPorId.get(r.condicionValor) ?? `#${r.condicionValor}`) : r.condicionValor}
+                    </Text>
+                  )}
                 </div>
               ),
             },
@@ -300,20 +328,24 @@ export default function DescuentosPage() {
             </Select>
           </Form.Item>
 
-          {condicion && condicion !== 'siempre' && condicion !== 'fecha' && (
+          {condicion === 'categoria' && (
+            <Form.Item name="condicionValor" label="Categoría" rules={[{ required: true, message: 'Selecciona una categoría' }]}>
+              <CategoriaSelect style={{ width: '100%' }} allowClear={false} />
+            </Form.Item>
+          )}
+
+          {condicion && condicion !== 'siempre' && condicion !== 'fecha' && condicion !== 'categoria' && (
             <Form.Item
               name="condicionValor"
               label={
-                condicion === 'categoria' ? 'Nombre de Categoría'
-                : condicion === 'producto' ? 'ID del Producto'
+                condicion === 'producto' ? 'ID del Producto'
                 : condicion === 'cantidad_min' ? 'Cantidad Mínima'
                 : 'Monto Mínimo (RD$)'
               }
               rules={[{ required: true }]}
             >
               <Input placeholder={
-                condicion === 'categoria' ? 'Ej. Electrónica'
-                : condicion === 'producto' ? 'Ej. 42'
+                condicion === 'producto' ? 'Ej. 42'
                 : condicion === 'cantidad_min' ? 'Ej. 10'
                 : 'Ej. 5000'
               } />

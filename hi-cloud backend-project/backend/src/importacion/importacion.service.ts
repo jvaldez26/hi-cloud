@@ -7,6 +7,8 @@ import { Proveedor } from '../proveedores/entities/proveedor.entity';
 import { TenantService } from '../tenant/tenant.service';
 import { ProductoProveedorService } from '../productos/producto-proveedor.service';
 import { ValoracionStockService } from '../valoracion-stock/valoracion-stock.service';
+import { CategoriasProductoService } from '../productos/categorias-producto.service';
+import { UserRole } from '../users/enums/user-role.enum';
 
 export interface ImportResult {
   total:     number;
@@ -33,6 +35,7 @@ export class ImportacionService {
     private tenantService: TenantService,
     private productoProveedorSvc: ProductoProveedorService,
     private valoracionService: ValoracionStockService,
+    private categoriasProductoSvc: CategoriasProductoService,
   ) {}
 
   // ──────────────────────────────────────────────────────────────────
@@ -238,6 +241,25 @@ export class ImportacionService {
     // Acepta porcentajeItbis o porcentajeIva (compatibilidad)
     const idxItbis = idx('porcentajeitbis') >= 0 ? idx('porcentajeitbis') : idx('porcentajeiva');
 
+    // La columna `categoria` del CSV se resuelve por NOMBRE contra el
+    // catálogo (ver categorias-producto.service.ts) — nunca vuelve a ser
+    // texto libre en `productos`. Solo ADMIN/CONTADOR pueden crear una
+    // categoría nueva al importar; un VENDEDOR que importa con un nombre
+    // que no existe recibe un error claro en esa fila, no una categoría
+    // silenciosa. Caché local para no repetir la misma resolución/creación
+    // por cada fila que repite el mismo nombre dentro de un mismo CSV.
+    const rol = this.tenantService.getRolEmpresa();
+    const puedeCrearCategoria = rol === UserRole.ADMIN || rol === UserRole.CONTADOR;
+    const categoriaIdPorNombre = new Map<string, number>();
+    const resolverCategoriaId = async (nombreCrudo: string): Promise<number> => {
+      const clave = nombreCrudo.trim().toLowerCase();
+      const cacheado = categoriaIdPorNombre.get(clave);
+      if (cacheado != null) return cacheado;
+      const categoria = await this.categoriasProductoSvc.resolverOCrearPorNombre(nombreCrudo, puedeCrearCategoria);
+      categoriaIdPorNombre.set(clave, categoria.id);
+      return categoria.id;
+    };
+
     for (let i = 1; i < filas.length; i++) {
       result.total++;
       const fila = filas[i];
@@ -279,6 +301,9 @@ export class ImportacionService {
         const costoRaw = idx('costo') >= 0 ? fila[idx('costo')] : '';
         const costoInicial = costoRaw?.trim() ? parseFloat(costoRaw) : undefined;
 
+        const categoriaNombreCsv = idx('categoria') >= 0 ? fila[idx('categoria')]?.trim() : '';
+        const categoriaId = categoriaNombreCsv ? await resolverCategoriaId(categoriaNombreCsv) : undefined;
+
         const producto = await this.productoRepository.save(
           this.productoRepository.create({
             empresaId,
@@ -290,7 +315,7 @@ export class ImportacionService {
             porcentajeIva: isNaN(pItbis) ? 18 : pItbis,
             unidadMedida: idx('unidadmedida') >= 0 ? (fila[idx('unidadmedida')] || 'PZA') : 'PZA',
             stockMinimo:  isNaN(sMin) ? 0 : sMin,
-            categoria:    idx('categoria')   >= 0 ? (fila[idx('categoria')]    || undefined) : undefined,
+            categoriaId,
             descripcion:  idx('descripcion') >= 0 ? (fila[idx('descripcion')]  || undefined) : undefined,
             tipo,
             stock: 0,

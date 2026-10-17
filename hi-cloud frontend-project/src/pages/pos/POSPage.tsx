@@ -43,6 +43,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useMobile } from '../../hooks/useMediaQuery';
 import { productosApi } from '../../api/productos.api';
+import { categoriasProductoApi } from '../../api/categoriasProducto.api';
 import { ProductoFormModal } from '../../components/productos/ProductoFormModal';
 import api from '../../api/client';
 import { clientesApi } from '../../api/clientes.api';
@@ -360,7 +361,7 @@ const ProductCard = memo(function ProductCard({ produto, onAdd, mostrarStock = t
   const stockBajo= !esServicio && !sinStock && Number(produto.stock) <= Number((produto as any).stockMinimo ?? 3);
   const stock    = Number(produto.stock);
 
-  const cat   = (produto as any).categoria as string | undefined;
+  const cat   = (produto as any).categoriaNombre as string | undefined;
   const color = cardColor(cat ?? produto.nombre, isDark); // solo se usa para el ícono
   const icon  = categoryIcon(cat);
 
@@ -916,7 +917,7 @@ export function buildSaleItemsFromDetalles(detalles: any[]): CartItem[] {
         precio:        precioOrig ?? Number(d.precioUnitario),
         stock:         999,
         porcentajeIva: Number(d.porcentajeIva ?? 18),
-        codigo: '', categoria: '', unidadMedida: '',
+        codigo: '', unidadMedida: '',
       } as any,
       cantidad:       Number(d.cantidad),
       precio:         precioOrig ?? Number(d.precioUnitario),
@@ -1493,18 +1494,22 @@ function TopBar({ empresaNombre, cajeroNombre, isOffline, onExit, onBloquear, on
 }
 
 // ── Categories sidebar ────────────────────────────────────────────────────────
+// categoriaTab: '__all__' | categoriaId numérico como string — el catálogo
+// del POS ya no agrupa por el texto libre `categoria`, sino por el
+// categoriaId real del catálogo (ver categorias-producto.service.ts). Se usa
+// string (no number) porque '__all__' tiene que convivir en el mismo tipo.
 function CategoriasSidebar({ categorias, selected, onSelect }: {
-  categorias: string[]; selected: string; onSelect: (c: string) => void;
+  categorias: { tab: string; nombre: string }[]; selected: string; onSelect: (c: string) => void;
 }) {
   const C = useC();
   const icons: Record<string, string> = { '__all__': '🏪', Bebidas: '🥤', Comida: '🍔', Electrónica: '📱', Ropa: '👔', Servicios: '⚙️' };
   return (
     <div style={{ width: 220, flexShrink: 0, background: C.sidebar, borderRight: `1px solid ${C.border}`, overflowY: 'auto', padding: '10px 8px', scrollbarWidth: 'thin', scrollbarColor: C.border + ' transparent' }}>
       <div style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 8, paddingLeft: 8 }}>Categorías</div>
-      {categorias.map(cat => {
-        const isSel = selected === cat;
+      {categorias.map(({ tab, nombre }) => {
+        const isSel = selected === tab;
         return (
-          <button key={cat} onClick={() => onSelect(cat)} style={{
+          <button key={tab} onClick={() => onSelect(tab)} style={{
             width: '100%', height: 36, borderRadius: 8, border: 'none',
             background: isSel ? C.blue : 'transparent',
             color: isSel ? '#fff' : C.textSub,
@@ -1516,8 +1521,8 @@ function CategoriasSidebar({ categorias, selected, onSelect }: {
             onMouseEnter={(e) => { if (!isSel) (e.currentTarget as HTMLButtonElement).style.background = C.sidebarHov; }}
             onMouseLeave={(e) => { if (!isSel) (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
           >
-            <span style={{ fontSize: 14 }}>{icons[cat] ?? '📦'}</span>
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat === '__all__' ? 'Todos' : cat}</span>
+            <span style={{ fontSize: 14 }}>{icons[nombre] ?? '📦'}</span>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nombre}</span>
           </button>
         );
       })}
@@ -3019,6 +3024,16 @@ function POSInventarioPanel({ C, onVolver }: {
   });
   const productos = data ?? [];
 
+  const { data: categoriasCat } = useQuery({
+    queryKey: ['categorias-producto'],
+    queryFn:  () => categoriasProductoApi.listar(),
+    staleTime: 5 * 60_000,
+  });
+  const nombreCategoriaPorId = useMemo(
+    () => new Map((categoriasCat ?? []).map(c => [c.id, c.nombre])),
+    [categoriasCat],
+  );
+
   const { data: movData, isLoading: movLoading } = useQuery<any>({
     queryKey: ['pos-movimientos', movLimit],
     queryFn:  () => inventarioApi.movimientos(1, movLimit),
@@ -3163,7 +3178,7 @@ function POSInventarioPanel({ C, onVolver }: {
                               {p.tipo === 'servicio' ? '∞' : p.stock}
                             </td>
                             <td style={{ padding: '7px 10px', color: C.textSub }}>{p.tipo === 'servicio' ? '—' : (p.stockMinimo ?? '—')}</td>
-                            <td style={{ padding: '7px 10px', color: C.textSub, fontSize: 11 }}>{p.categoria ?? '—'}</td>
+                            <td style={{ padding: '7px 10px', color: C.textSub, fontSize: 11 }}>{nombreCategoriaPorId.get(p.categoriaId) ?? '—'}</td>
                             <td style={{ padding: '4px 8px', textAlign: 'right' }}>
                               <button onClick={() => handleEditar(p)}
                                 style={{ background: 'none', border: `1px solid ${C.border}`, borderRadius: 6,
@@ -8135,7 +8150,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           items:                   (doc.detalles ?? []).map((d: any) => ({
             produto:   { id: d.productoId ?? 0, nombre: d.descripcion, precio: Number(d.precioUnitario),
                          stock: 999, porcentajeIva: Number(d.porcentajeIva ?? 18),
-                         codigo: '', categoria: '', unidadMedida: '' } as any,
+                         codigo: '', unidadMedida: '' } as any,
             cantidad:  Number(d.cantidad),
             precio:    Number(d.precioUnitario),
             descuentoMonto: 0,
@@ -8179,7 +8194,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           items:                   (doc.items ?? []).map((i: any) => ({
             produto:   { id: i.productoId ?? 0, nombre: i.descripcion, precio: Number(i.precio),
                          stock: 999, porcentajeIva: Number(i.porcentajeItbis ?? 18),
-                         codigo: '', categoria: '', unidadMedida: '' } as any,
+                         codigo: '', unidadMedida: '' } as any,
             cantidad:  Number(i.cantidad),
             precio:    Number(i.precio),
             descuentoMonto: 0,
@@ -8221,7 +8236,7 @@ function POSPanel({ panel, palette, onVolver, confirmarAnulacion, permitirAnular
           items:                  (doc.detalles ?? []).map((d: any) => ({
             produto:   { id: d.productoId ?? 0, nombre: d.descripcion, precio: Number(d.precioUnitario),
                          stock: 999, porcentajeIva: Number(d.porcentajeIva ?? 18),
-                         codigo: '', categoria: '', unidadMedida: '' } as any,
+                         codigo: '', unidadMedida: '' } as any,
             cantidad:  Number(d.cantidad),
             precio:    Number(d.precioUnitario),
             descuentoMonto: 0,
@@ -9224,12 +9239,13 @@ function filtrarCatalogo(
         p.nombre?.toLowerCase().includes(tok) ||
         p.codigo?.toLowerCase().includes(tok) ||
         (p.codigoBarras ?? '').toLowerCase().includes(tok) ||
-        p.categoria?.toLowerCase().includes(tok),
+        p.categoriaNombre?.toLowerCase().includes(tok),
       )
     );
   }
 
-  if (categoriaTab !== '__all__') list = list.filter(p => p.categoria === categoriaTab);
+  // categoriaTab es '__all__' o el categoriaId como string (ver CategoriasSidebar).
+  if (categoriaTab !== '__all__') list = list.filter(p => String(p.categoriaId ?? '') === categoriaTab);
 
   if (filtroStock === 'con-stock')  list = list.filter(p => Number(p.stock) > 0);
   if (filtroStock === 'sin-stock')  list = list.filter(p => p.tipo !== 'servicio' && Number(p.stock) <= 0);
@@ -10109,10 +10125,18 @@ export default function POSPage() {
   // esto se recalculaba en CADA render, y este componente tiene 73 useState:
   // cada tecla, cada cambio de cantidad en el carrito y cada apertura de modal
   // volvían a filtrar y reordenar los 5 000.
-  const categorias = useMemo(
-    () => ['__all__', ...new Set(todosProdutos.map((p: any) => p.categoria).filter(Boolean) as string[])],
-    [todosProdutos],
-  );
+  const categorias = useMemo(() => {
+    const porId = new Map<number, string>();
+    for (const p of todosProdutos as any[]) {
+      if (p.categoriaId != null && p.categoriaNombre) porId.set(p.categoriaId, p.categoriaNombre);
+    }
+    return [
+      { tab: '__all__', nombre: 'Todos' },
+      ...[...porId.entries()]
+        .sort((a, b) => a[1].localeCompare(b[1]))
+        .map(([id, nombre]) => ({ tab: String(id), nombre })),
+    ];
+  }, [todosProdutos]);
 
   // El filtrado usa el término DEBOUNCED: mientras el cajero teclea (o el
   // scanner dispara su ráfaga con el foco en el buscador) el input se actualiza
@@ -12285,14 +12309,14 @@ export default function POSPage() {
                     return <><b style={{color:C.text}}>12</b> de {productosFiltrados.length} productos</>;
                   return <><b style={{color:C.text}}>{productosFiltrados.length}</b> productos</>;
                 })()}
-                {categoriaTab !== '__all__' && <> · <span style={{color:C.blue}}>{categoriaTab}</span></>}
+                {categoriaTab !== '__all__' && <> · <span style={{color:C.blue}}>{categorias.find(c => c.tab === categoriaTab)?.nombre ?? ''}</span></>}
               </span>
               {/* Categorías scroll */}
               <div style={{ flex:1, display:'flex', gap:6, overflowX:'auto', paddingBottom:2, scrollbarWidth:'none' }}>
-                {categorias.map(cat => {
-                  const active = categoriaTab === cat;
+                {categorias.map(({ tab, nombre }) => {
+                  const active = categoriaTab === tab;
                   return (
-                    <button key={cat} onClick={()=>setCategoriaTab(cat)} style={{
+                    <button key={tab} onClick={()=>setCategoriaTab(tab)} style={{
                       flexShrink:0, height:28, padding:'0 12px', borderRadius:20,
                       border: active ? 'none' : `1px solid ${C.border2}`,
                       background: active ? C.blue : 'transparent',
@@ -12301,7 +12325,7 @@ export default function POSPage() {
                       cursor:'pointer', outline:'none', whiteSpace:'nowrap',
                       transition:'all 0.12s',
                     }}>
-                      {cat === '__all__' ? 'Todos' : cat}
+                      {nombre}
                     </button>
                   );
                 })}

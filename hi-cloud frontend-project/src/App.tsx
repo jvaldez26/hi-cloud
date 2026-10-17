@@ -33,6 +33,7 @@ const DashboardPage      = lazy(() => import('./pages/dashboard/DashboardPage'))
 const BandejaPage        = lazy(() => import('./pages/bandeja/BandejaPage'));
 const ClientesPage       = lazy(() => import('./pages/clientes/ClientesPage'));
 const ProductosPage      = lazy(() => import('./pages/productos/ProductosPage'));
+const CategoriasProductoPage = lazy(() => import('./pages/productos/CategoriasProductoPage'));
 const FacturasPage       = lazy(() => import('./pages/facturas/FacturasPage'));
 const FacturaFormPage    = lazy(() => import('./pages/facturas/FacturaFormPage'));
 const FacturaDetailPage  = lazy(() => import('./pages/facturas/FacturaDetailPage'));
@@ -825,6 +826,7 @@ export default function App() {
                     <Route path="/clientes"                     element={<ClientesPage />} />
                     <Route path="/clientes/:id/estado-cuenta"   element={<EstadoCuentaPage />} />
                     <Route path="/productos"                    element={<ProductosPage />} />
+                    <Route path="/categorias-productos"         element={<CategoriasProductoPage />} />
 
                     {/* ── Ventas ── */}
                     <Route path="/cotizaciones"              element={<CotizacionesPage />} />

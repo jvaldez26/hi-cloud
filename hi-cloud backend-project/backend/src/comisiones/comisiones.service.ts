@@ -23,7 +23,7 @@ export class ComisionesService {
 
   async crearRegla(dto: {
     nombre: string; tipo: TipoReglaComision; porcentaje: number;
-    prioridad?: number; vendedorId?: number; categoria?: string;
+    prioridad?: number; vendedorId?: number; categoriaId?: string;
     montoDesde?: number; montoHasta?: number; diasMaximoCobro?: number;
     descripcion?: string;
   }) {
@@ -59,7 +59,7 @@ export class ComisionesService {
   private async evaluarRegla(
     vendedorId: number,
     totalVenta: number,
-    categoriaProducto: string | null,
+    categoriaProductoId: number | null,
     diasPago: number | null,
     reglas: ReglaComision[],
     porcentajeDefault: number,
@@ -74,7 +74,7 @@ export class ComisionesService {
           break;
 
         case TipoReglaComision.POR_CATEGORIA:
-          if (r.categoria && categoriaProducto?.toLowerCase() === r.categoria.toLowerCase())
+          if (r.categoriaId && categoriaProductoId != null && String(categoriaProductoId) === r.categoriaId)
             return { porcentaje: Number(r.porcentaje), reglaAplicada: r.nombre };
           break;
 
@@ -111,7 +111,7 @@ export class ComisionesService {
     const rows = await this.dataSource.query<{
       vendedorId: number; vendedorNombre: string; facturaId: number;
       facturaFolio: string; total: string; fechaFactura: string;
-      fechaPago: string | null; categoriaProducto: string | null;
+      fechaPago: string | null; categoriaProductoId: number | null;
     }[]>(`
       SELECT
         f."usuarioId"            AS "vendedorId",
@@ -123,9 +123,9 @@ export class ComisionesService {
         (SELECT MAX(pc.fecha)::text FROM pagos_cobrados pc
           JOIN cuentas_por_cobrar cxc ON cxc.id = pc."cuentaPorCobrarId"
           WHERE cxc."facturaId" = f.id) AS "fechaPago",
-        (SELECT p.categoria FROM factura_detalles fd
+        (SELECT p."categoriaId" FROM factura_detalles fd
           JOIN productos p ON p.id = fd."productoId"
-          WHERE fd."facturaId" = f.id LIMIT 1) AS "categoriaProducto"
+          WHERE fd."facturaId" = f.id LIMIT 1) AS "categoriaProductoId"
       FROM facturas f
       JOIN users u ON u.id = f."usuarioId"
       WHERE f."isActive" = true
@@ -152,7 +152,7 @@ export class ComisionesService {
       }
 
       const { porcentaje, reglaAplicada } = await this.evaluarRegla(
-        r.vendedorId, totalVenta, r.categoriaProducto, diasPago, reglas, porcentajeBase,
+        r.vendedorId, totalVenta, r.categoriaProductoId, diasPago, reglas, porcentajeBase,
       );
 
       const montoComision = Number((totalVenta * porcentaje / 100).toFixed(2));
@@ -183,11 +183,11 @@ export class ComisionesService {
 
   // ── Simulador de comisión ─────────────────────────────────────────────────
 
-  async simular(dto: { vendedorId?: number; monto: number; categoria?: string; diasPago?: number }) {
+  async simular(dto: { vendedorId?: number; monto: number; categoriaId?: number; diasPago?: number }) {
     const empresaId = this.tenantService.getEmpresaId();
     const reglas    = await this.reglaRepo.find({ where: { empresaId, isActive: true }, order: { prioridad: 'ASC' } });
     const { porcentaje, reglaAplicada } = await this.evaluarRegla(
-      dto.vendedorId ?? 0, dto.monto, dto.categoria ?? null, dto.diasPago ?? null, reglas, 5,
+      dto.vendedorId ?? 0, dto.monto, dto.categoriaId ?? null, dto.diasPago ?? null, reglas, 5,
     );
     return {
       monto:         dto.monto,

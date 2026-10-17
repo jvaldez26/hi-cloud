@@ -45,6 +45,7 @@ function makeService(opts: { rol: string; cuentas?: any[] }) {
   svc.movimientoRepository = { save: jest.fn().mockResolvedValue({}) };
   svc.valoracionService = { actualizarCostoPromedio: jest.fn().mockResolvedValue(undefined) };
   svc.realtimeService = { notify: jest.fn() };
+  svc.categoriasProductoSvc = { existeYPerteneceAEmpresa: jest.fn().mockResolvedValue(true) };
   return { svc: svc as ProductosService, productoRepository };
 }
 
@@ -53,16 +54,16 @@ describe('Contrato — payload de los 4 entry points valida contra CreateProduct
     'Inventario (modo completo)': {
       tipo: 'producto', nombre: 'Aceite Motor 5W30 1L', codigo: 'ACE-001', codigoBarras: '7501234567890',
       precio: 450, precio2: 420, precio3: 400, costo: 300, porcentajeIva: 18, unidadMedida: 'PZA',
-      stock: 10, stockMinimo: 2, categoria: 'Lubricantes', referencia: 'REF-1', marca: 'Castrol', modelo: '5W30',
+      stock: 10, stockMinimo: 2, categoriaId: 1, referencia: 'REF-1', marca: 'Castrol', modelo: '5W30',
       almacenId: 4, proveedorId: 9, codigoProveedor: 'PROV-55', esPesable: false,
     },
     'POS (modo completo, mismo payload que Inventario)': {
       tipo: 'producto', nombre: 'Refresco Cola 2L', codigoBarras: '7501112223334',
-      precio: 120, porcentajeIva: 18, unidadMedida: 'PZA', stock: 24, stockMinimo: 6, categoria: 'Bebidas',
+      precio: 120, porcentajeIva: 18, unidadMedida: 'PZA', stock: 24, stockMinimo: 6, categoriaId: 2,
     },
     'Compras (modo rápido)': {
       tipo: 'producto', nombre: 'Filtro de aceite genérico', codigoBarras: '7509998887776',
-      precio: 180, costo: 120, porcentajeIva: 18, unidadMedida: 'PZA', categoria: 'Filtros',
+      precio: 180, costo: 120, porcentajeIva: 18, unidadMedida: 'PZA', categoriaId: 3,
       proveedorId: 9, esCreacionRapida: true,
     },
     'Xlink (modo rápido, sin proveedor)': {
@@ -119,6 +120,45 @@ describe('ProductosService — VENDEDOR nunca ve ni edita costo/precio2/precio3'
     expect(actualizado.costo).toBeUndefined();
     expect(actualizado.precio2).toBeUndefined();
     expect(actualizado.precio3).toBeUndefined();
+  });
+});
+
+describe('ProductosService — categoriaId valida contra el catálogo de la empresa', () => {
+  it('create(): categoriaId de una categoría real de la empresa → se asigna sin problema', async () => {
+    const { svc, productoRepository } = makeService({ rol: 'admin' });
+    (svc as any).categoriasProductoSvc.existeYPerteneceAEmpresa.mockResolvedValue(true);
+    const dto: any = { tipo: 'producto', nombre: 'Taladro', precio: 500, categoriaId: 7 };
+
+    await svc.create(dto);
+
+    expect((svc as any).categoriasProductoSvc.existeYPerteneceAEmpresa).toHaveBeenCalledWith(7, 53);
+    const creado = productoRepository.create.mock.calls[0][0];
+    expect(creado.categoriaId).toBe(7);
+  });
+
+  it('create(): categoriaId que no existe o es de otra empresa → BadRequestException, nunca crea el producto', async () => {
+    const { svc, productoRepository } = makeService({ rol: 'admin' });
+    (svc as any).categoriasProductoSvc.existeYPerteneceAEmpresa.mockResolvedValue(false);
+    const dto: any = { tipo: 'producto', nombre: 'Taladro', precio: 500, categoriaId: 999 };
+
+    await expect(svc.create(dto)).rejects.toThrow(/categoría #999/);
+    expect(productoRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('create(): sin categoriaId (producto sin categoría) — no consulta el catálogo, no falla', async () => {
+    const { svc } = makeService({ rol: 'admin' });
+    const dto: any = { tipo: 'producto', nombre: 'Genérico', precio: 10 };
+
+    await expect(svc.create(dto)).resolves.toBeDefined();
+    expect((svc as any).categoriasProductoSvc.existeYPerteneceAEmpresa).not.toHaveBeenCalled();
+  });
+
+  it('update(): categoriaId inválido → BadRequestException', async () => {
+    const { svc, productoRepository } = makeService({ rol: 'admin' });
+    productoRepository.findOne.mockResolvedValue({ id: 5, empresaId: 53, nombre: 'Prod', codigo: 'X' });
+    (svc as any).categoriasProductoSvc.existeYPerteneceAEmpresa.mockResolvedValue(false);
+
+    await expect(svc.update(5, { categoriaId: 999 } as any)).rejects.toThrow(/categoría #999/);
   });
 });
 

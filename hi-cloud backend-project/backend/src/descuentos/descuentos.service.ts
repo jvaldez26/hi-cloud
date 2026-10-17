@@ -7,7 +7,7 @@ import { fechaHoyRD } from '../common/utils/fecha-local.util';
 
 interface CalcularDescuentoDto {
   productoId:    number;
-  categoria?:    string;
+  categoriaId?:  number;
   cantidad:      number;
   precioUnitario: number;
   subtotalLinea: number;
@@ -98,8 +98,11 @@ export class DescuentosService {
         return true;
 
       case CondicionDescuento.CATEGORIA:
-        return !!item.categoria &&
-          item.categoria.toLowerCase() === (regla.condicionValor ?? '').toLowerCase();
+        // condicionValor guarda el categoriaId como texto — mismo criterio
+        // que CondicionDescuento.PRODUCTO con productoId. Antes comparaba
+        // nombres de categoría en texto libre; un typo/acento distinto en
+        // la regla hacía que el descuento nunca se aplicara, en silencio.
+        return item.categoriaId != null && String(item.categoriaId) === (regla.condicionValor ?? '');
 
       case CondicionDescuento.PRODUCTO:
         return String(item.productoId) === (regla.condicionValor ?? '');
