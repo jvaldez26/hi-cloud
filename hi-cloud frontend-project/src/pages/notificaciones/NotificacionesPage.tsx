@@ -94,15 +94,22 @@ export default function NotificacionesPage() {
           // cortar, ej. "Samuel Gonzalez pide autorización — Inventario")
           // estira la columna "Aviso" y desborda la tabla horizontalmente en
           // vez de hacer salto de línea. Con tableLayout="fixed" las columnas
-          // SÍ respetan su `width` y el texto se ajusta dentro de la suya.
+          // SÍ respetan su `width` y el texto se ajusta dentro de la suya —
+          // pero ESA MISMA propiedad exige que TODA columna declare un
+          // `width` (si no, se queda con "lo que sobre" y el día que no
+          // sobre se colapsa a cero — ver tabla-fixed-columnas-con-ancho.test.ts,
+          // el caso real fue el buscador de productos de Orden de Compra).
+          // `scroll.x` deja que la tabla se desplace en vez de apretarse en
+          // viewports angostos, mismo patrón que XlinkPage.
           tableLayout="fixed"
+          scroll={{ x: 800 }}
           columns={[
             {
               title: '', dataIndex: 'emoji', width: 36,
               render: (e: string) => <span style={{ fontSize: 16 }}>{e}</span>,
             },
             {
-              title: 'Aviso', dataIndex: 'titulo',
+              title: 'Aviso', dataIndex: 'titulo', width: 320,
               render: (_: string, row) => (
                 <div style={{ wordBreak: 'break-word' }}>
                   <Text strong={!row.atendido}>{row.titulo}</Text>
