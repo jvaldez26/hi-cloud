@@ -138,12 +138,12 @@ describe('AutorizacionRemotaService', () => {
         queryImpl: (sql) => {
           if (sql.includes('SELECT id FROM solicitudes_autorizacion_remota')) return Promise.resolve([]);
           if (sql.includes('COUNT(*)::text AS count')) return Promise.resolve([{ count: '0' }]);
-          if (sql.includes('SELECT nombre FROM sucursales'))
-            return Promise.resolve(nombres.sucursal ? [{ nombre: nombres.sucursal }] : []);
-          if (sql.includes('SELECT nombre FROM clientes'))
-            return Promise.resolve(nombres.cliente ? [{ nombre: nombres.cliente }] : []);
-          if (sql.includes('SELECT folio FROM facturas'))
-            return Promise.resolve(nombres.folio ? [{ folio: nombres.folio }] : []);
+          if (sql.includes('SELECT id, nombre FROM sucursales'))
+            return Promise.resolve(nombres.sucursal ? [{ id: 3, nombre: nombres.sucursal }] : []);
+          if (sql.includes('SELECT id, nombre FROM clientes'))
+            return Promise.resolve(nombres.cliente ? [{ id: 88, nombre: nombres.cliente }] : []);
+          if (sql.includes('SELECT id, folio FROM facturas'))
+            return Promise.resolve(nombres.folio ? [{ id: 456, folio: nombres.folio }] : []);
           // destinatarios(): sin config de empresa → cae a admin/contador reales.
           if (sql.includes('FROM usuario_empresa')) return Promise.resolve([{ id: 20 }]);
           return Promise.resolve([]);
@@ -201,6 +201,49 @@ describe('AutorizacionRemotaService', () => {
       const [, pushPayload] = push.notificarUsuario.mock.calls[0];
       expect(pushPayload.title).toBe(asuntoCampanita);
       expect(pushPayload.body).toBe(mensajeCampanita);
+    });
+  });
+
+  describe('pendientes — con sucursal/cliente/factura ya resueltos (una sola pasada, no N+1)', () => {
+    it('devuelve sucursalNombre/clienteNombre/facturaFolio para cada solicitud', async () => {
+      const ahora = Date.now();
+      const { svc, query } = buildService({
+        savedRows: [
+          { id: 1, empresaId: EMPRESA, cajeroId: 10, cajeroNombre: 'Cajero Uno', clave: 'venta_credito',
+            estado: 'pendiente', motivo: 'motivo', sucursalId: 3, clienteId: 88, facturaId: null, monto: 1500,
+            expiraEn: new Date(ahora + 60_000), createdAt: new Date() },
+          { id: 2, empresaId: EMPRESA, cajeroId: 11, cajeroNombre: 'Cajero Dos', clave: 'anular_documento',
+            estado: 'pendiente', motivo: 'motivo2', sucursalId: null, clienteId: null, facturaId: 456, monto: null,
+            expiraEn: new Date(ahora + 60_000), createdAt: new Date() },
+        ],
+        queryImpl: (sql: string, params: any[]) => {
+          if (sql.includes('SELECT id, nombre FROM sucursales')) return Promise.resolve([{ id: 3, nombre: 'Sucursal Piantini' }]);
+          if (sql.includes('SELECT id, nombre FROM clientes'))  return Promise.resolve([{ id: 88, nombre: 'Juan Pérez' }]);
+          if (sql.includes('SELECT id, folio FROM facturas'))   return Promise.resolve([{ id: 456, folio: 'FAC-00456' }]);
+          return Promise.resolve([]);
+        },
+      });
+
+      const pendientes = await svc.pendientes(EMPRESA);
+
+      expect(pendientes).toHaveLength(2);
+      expect(pendientes[0]).toMatchObject({ id: 1, sucursalNombre: 'Sucursal Piantini', clienteNombre: 'Juan Pérez', facturaFolio: null });
+      expect(pendientes[1]).toMatchObject({ id: 2, sucursalNombre: null, clienteNombre: null, facturaFolio: 'FAC-00456' });
+
+      // Una sola consulta por tabla para TODAS las solicitudes, no una por solicitud.
+      const llamadasSucursales = query.mock.calls.filter(([sql]: any[]) => sql.includes('SELECT id, nombre FROM sucursales'));
+      expect(llamadasSucursales).toHaveLength(1);
+    });
+
+    it('solicitud expirada: no aparece en pendientes', async () => {
+      const { svc } = buildService({
+        savedRows: [
+          { id: 3, empresaId: EMPRESA, cajeroId: 10, cajeroNombre: 'Cajero Uno', clave: 'venta_credito',
+            estado: 'pendiente', motivo: 'motivo', sucursalId: null, clienteId: null, facturaId: null, monto: null,
+            expiraEn: new Date(Date.now() - 1000), createdAt: new Date() },
+        ],
+      });
+      expect(await svc.pendientes(EMPRESA)).toHaveLength(0);
     });
   });
 

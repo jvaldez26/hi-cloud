@@ -5,9 +5,12 @@ import { UserOutlined, LockOutlined, SaveOutlined, SafetyOutlined,
          EditOutlined, CloseOutlined, GoogleOutlined, LinkOutlined,
          DesktopOutlined, LogoutOutlined, TeamOutlined, BellOutlined,
          NumberOutlined, EyeOutlined, EyeInvisibleOutlined, IdcardOutlined,
-         DownloadOutlined } from '@ant-design/icons';
+         DownloadOutlined, SoundOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
+import { useAutorizacionRemotaSonidoStore } from '../../store/autorizacionRemotaSonido.store';
+import { reproducirBeepAutorizacion } from '../autorizacion-remota/beepAutorizacion';
+import { guardarPreferenciaSonido } from '../autorizacion-remota/autorizacionSonidoPreferencia';
 import api from '../../api/client';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -388,6 +391,55 @@ function PreferenciasNotificacionesSection() {
             ))}
           </Space>
         </>
+      )}
+    </Card>
+  );
+}
+
+/**
+ * Sonido + notificación de sistema para "autorización remota pendiente"
+ * (ver AutorizacionRemotaSonidoGlobal.tsx, montado siempre en App.tsx).
+ * Solo ADMIN/CONTADOR: son quienes reciben la solicitud. La preferencia
+ * vive en el store compartido (no solo en localStorage) para que activarla
+ * aquí surta efecto al instante en el componente global, ya montado en la
+ * misma pestaña.
+ */
+function SonidoAutorizacionSection() {
+  const userId = useAuthStore(s => s.user?.id);
+  const preferencia = useAutorizacionRemotaSonidoStore(s => s.preferencia);
+  const setPreferencia = useAutorizacionRemotaSonidoStore(s => s.setPreferencia);
+  const activo = preferencia === 'on';
+
+  const cambiar = (v: boolean) => {
+    const valor: 'on' | 'off' = v ? 'on' : 'off';
+    setPreferencia(valor);
+    if (userId != null) guardarPreferenciaSonido(userId, valor);
+    if (v) {
+      reproducirBeepAutorizacion();
+      if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+        void Notification.requestPermission();
+      }
+    }
+  };
+
+  return (
+    <Card title={<><SoundOutlined /> Sonido de autorizaciones</>} style={{ marginTop: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <div>
+          <Text style={{ fontSize: 13 }}>
+            Reproduce un sonido (y lo repite cada 30s) cuando un cajero pide autorización, hasta que la veas o venza.
+          </Text>
+          <br />
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            Con la pestaña oculta o el navegador minimizado, además manda una notificación del sistema.
+          </Text>
+        </div>
+        <Switch checked={activo} onChange={cambiar} />
+      </div>
+      {activo && (
+        <Button size="small" style={{ marginTop: 12 }} icon={<SoundOutlined />} onClick={() => reproducirBeepAutorizacion()}>
+          Probar sonido
+        </Button>
       )}
     </Card>
   );
@@ -1124,6 +1176,8 @@ export default function ProfilePage() {
           <AlertaDispositivoSection />
 
           <PreferenciasNotificacionesSection />
+
+          {['admin', 'contador'].includes(user?.role ?? '') && <SonidoAutorizacionSection />}
 
           {['admin', 'contador'].includes(user?.role ?? '') && <PinSupervisorSection />}
 

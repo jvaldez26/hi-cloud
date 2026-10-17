@@ -21,6 +21,7 @@ import ReautenticacionGlobalModal from './components/auth/ReautenticacionGlobalM
 import SupervisorAuthModal      from './components/ui/SupervisorAuthModal';
 import { useSupervisor }        from './hooks/useSupervisor';
 import MensajeNotificador       from './components/ui/MensajeNotificador';
+import AutorizacionRemotaSonidoGlobal from './pages/autorizacion-remota/AutorizacionRemotaSonidoGlobal';
 import PortalEmpleadoLayout     from './components/layout/PortalEmpleadoLayout';
 import ErrorBoundary     from './components/ui/ErrorBoundary';
 import PageLoader        from './components/ui/PageLoader';
@@ -778,6 +779,11 @@ export default function App() {
                 En la raíz por la misma razón que ActividadGuard: el POS y
                 /super-admin/* viven fuera de AppLayout. */}
             <MensajeNotificador />
+            {/* Sonido + parpadeo de título para autorización remota pendiente
+                — mismo motivo que ActividadGuard/MensajeNotificador (cubre
+                POS y cualquier pantalla fuera de AppLayout). Solo ADMIN/
+                CONTADOR: son quienes reciben la solicitud. */}
+            <AutorizacionRemotaSonidoGlobal />
             <NewVersionBanner />
             <ErrorBoundary>
               <Suspense fallback={<PageLoader />}>

@@ -18,6 +18,12 @@ const MAX_SOLICITUDES_POR_MINUTO = 5;
 
 export interface ActorRequest { id: number; nombre: string; ip?: string; userAgent?: string }
 
+export interface SolicitudPendienteEnriquecida extends SolicitudAutorizacionRemota {
+  sucursalNombre: string | null;
+  clienteNombre:  string | null;
+  facturaFolio:   string | null;
+}
+
 @Injectable()
 export class AutorizacionRemotaService {
   private readonly logger = new Logger(AutorizacionRemotaService.name);
@@ -150,32 +156,55 @@ export class AutorizacionRemotaService {
   }
 
   /**
+   * Resuelve nombre de sucursal, nombre de cliente y folio de factura para
+   * un LOTE de solicitudes de una sola pasada (3 queries con `= ANY($1)`,
+   * no N+1) — lo usan tanto construirMensaje() (una sola solicitud, recién
+   * creada) como pendientes() (la lista completa, para que el supervisor
+   * vea a quién/qué autoriza sin abrir cada una). Mismo patrón de lookup
+   * por SQL crudo que ya usan facturas/cotizaciones/compras para resolver
+   * nombres de sucursal (ver pdf.service.ts, cotizaciones.service.ts).
+   */
+  private async resolverNombres(solicitudes: SolicitudAutorizacionRemota[]): Promise<{
+    sucursalPorId: Map<number, string>; clientePorId: Map<number, string>; facturaPorId: Map<number, string>;
+  }> {
+    const sucursalIds = [...new Set(solicitudes.map(s => s.sucursalId).filter((id): id is number => id != null))];
+    const clienteIds  = [...new Set(solicitudes.map(s => s.clienteId).filter((id): id is number => id != null))];
+    const facturaIds  = [...new Set(solicitudes.map(s => s.facturaId).filter((id): id is number => id != null))];
+
+    const [sucursales, clientes, facturas] = await Promise.all([
+      sucursalIds.length
+        ? this.dataSource.query<{ id: number; nombre: string }[]>(`SELECT id, nombre FROM sucursales WHERE id = ANY($1)`, [sucursalIds]).catch(() => [] as { id: number; nombre: string }[])
+        : Promise.resolve([] as { id: number; nombre: string }[]),
+      clienteIds.length
+        ? this.dataSource.query<{ id: number; nombre: string }[]>(`SELECT id, nombre FROM clientes WHERE id = ANY($1)`, [clienteIds]).catch(() => [] as { id: number; nombre: string }[])
+        : Promise.resolve([] as { id: number; nombre: string }[]),
+      facturaIds.length
+        ? this.dataSource.query<{ id: number; folio: string }[]>(`SELECT id, folio FROM facturas WHERE id = ANY($1)`, [facturaIds]).catch(() => [] as { id: number; folio: string }[])
+        : Promise.resolve([] as { id: number; folio: string }[]),
+    ]);
+
+    return {
+      sucursalPorId: new Map(sucursales.map(s => [s.id, s.nombre])),
+      clientePorId:  new Map(clientes.map(c => [c.id, c.nombre])),
+      facturaPorId:  new Map(facturas.map(f => [f.id, f.folio])),
+    };
+  }
+
+  /**
    * Cuerpo legible de la notificación — cajero, ubicación, monto y
    * cliente/factura en una línea, más el motivo entre comillas (el texto
    * real que escribió el cajero, para que el supervisor sepa que es suyo).
    * Antes esto era genérico ("Nuevo aviso crítico" en el toast del
    * frontend) o, en el mejor de los casos, solo el motivo pelado sin
    * ningún dato de la acción — un supervisor no podía saber a qué estaba
-   * autorizando sin abrir el detalle. Mismo patrón de lookup por SQL crudo
-   * que ya usan facturas/cotizaciones/compras para resolver nombres de
-   * sucursal (ver pdf.service.ts, cotizaciones.service.ts).
+   * autorizando sin abrir el detalle.
    */
   private async construirMensaje(s: SolicitudAutorizacionRemota): Promise<string> {
-    const [sucursal, cliente, factura] = await Promise.all([
-      s.sucursalId
-        ? this.dataSource.query<{ nombre: string }[]>(`SELECT nombre FROM sucursales WHERE id = $1`, [s.sucursalId])
-            .then(r => r[0]?.nombre ?? null).catch(() => null)
-        : Promise.resolve(null),
-      s.clienteId
-        ? this.dataSource.query<{ nombre: string }[]>(`SELECT nombre FROM clientes WHERE id = $1`, [s.clienteId])
-            .then(r => r[0]?.nombre ?? null).catch(() => null)
-        : Promise.resolve(null),
-      // Si ya hay cliente, el folio es ruido — una sola línea, no dos identificadores.
-      s.facturaId && !s.clienteId
-        ? this.dataSource.query<{ folio: string }[]>(`SELECT folio FROM facturas WHERE id = $1`, [s.facturaId])
-            .then(r => r[0]?.folio ?? null).catch(() => null)
-        : Promise.resolve(null),
-    ]);
+    const { sucursalPorId, clientePorId, facturaPorId } = await this.resolverNombres([s]);
+    const sucursal = s.sucursalId != null ? sucursalPorId.get(s.sucursalId) : undefined;
+    const cliente  = s.clienteId  != null ? clientePorId.get(s.clienteId)   : undefined;
+    // Si ya hay cliente, el folio es ruido — una sola línea, no dos identificadores.
+    const factura  = s.facturaId != null && !s.clienteId ? facturaPorId.get(s.facturaId) : undefined;
 
     const linea1 = s.cajeroNombre + (sucursal ? ` (${sucursal})` : '');
 
@@ -318,11 +347,25 @@ export class AutorizacionRemotaService {
   // Consultas
   // ──────────────────────────────────────────────────────────────────
 
-  async pendientes(empresaId: number): Promise<SolicitudAutorizacionRemota[]> {
-    return this.repo.find({
+  /**
+   * Con nombre de sucursal/cliente y folio de factura ya resueltos — el
+   * supervisor tiene que ver A QUIÉN/QUÉ autoriza en la propia lista, sin
+   * tener que abrir cada solicitud una por una (ver SolicitudesAutorizacionPage,
+   * fila expandible).
+   */
+  async pendientes(empresaId: number): Promise<SolicitudPendienteEnriquecida[]> {
+    const rows = (await this.repo.find({
       where: { empresaId, estado: 'pendiente' },
       order: { createdAt: 'ASC' },
-    }).then(rows => rows.filter(r => r.expiraEn.getTime() > Date.now()));
+    })).filter(r => r.expiraEn.getTime() > Date.now());
+
+    const { sucursalPorId, clientePorId, facturaPorId } = await this.resolverNombres(rows);
+    return rows.map(r => ({
+      ...r,
+      sucursalNombre: r.sucursalId != null ? (sucursalPorId.get(r.sucursalId) ?? null) : null,
+      clienteNombre:  r.clienteId  != null ? (clientePorId.get(r.clienteId) ?? null) : null,
+      facturaFolio:   r.facturaId  != null ? (facturaPorId.get(r.facturaId) ?? null) : null,
+    }));
   }
 
   async historial(empresaId: number, limit = 50): Promise<SolicitudAutorizacionRemota[]> {

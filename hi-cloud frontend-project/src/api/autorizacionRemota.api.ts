@@ -26,6 +26,16 @@ export interface SolicitudAutorizacionRemota {
   expiraEn: string;
 }
 
+/** Lo que devuelve GET /autorizacion-remota/pendientes — con nombre de
+ *  sucursal/cliente y folio de factura ya resueltos (ver pendientes() en
+ *  el backend), para que el supervisor vea a quién/qué autoriza sin abrir
+ *  cada solicitud una por una. */
+export interface SolicitudPendienteAutorizacionRemota extends SolicitudAutorizacionRemota {
+  sucursalNombre: string | null;
+  clienteNombre:  string | null;
+  facturaFolio:   string | null;
+}
+
 export interface CrearSolicitudAutorizacionRemotaPayload {
   clave: string;
   motivo: string;
@@ -58,7 +68,7 @@ export const autorizacionRemotaApi = {
     api.post(`/autorizacion-remota/${id}/cancelar`).then(r => unwrap<{ ok: boolean }>(r)),
 
   pendientes: () =>
-    api.get('/autorizacion-remota/pendientes').then(r => unwrap<SolicitudAutorizacionRemota[]>(r)),
+    api.get('/autorizacion-remota/pendientes').then(r => unwrap<SolicitudPendienteAutorizacionRemota[]>(r)),
 
   historial: () =>
     api.get('/autorizacion-remota/historial').then(r => unwrap<SolicitudAutorizacionRemota[]>(r)),

@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type Key } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Card, Table, Tag, Button, Modal, Input, Typography, Empty, Space, message } from 'antd';
 import { CheckOutlined, CloseOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../api/client';
-import { autorizacionRemotaApi, type SolicitudAutorizacionRemota } from '../../api/autorizacionRemota.api';
+import { autorizacionRemotaApi, type SolicitudPendienteAutorizacionRemota } from '../../api/autorizacionRemota.api';
+import { useAutorizacionRemotaSonidoStore } from '../../store/autorizacionRemotaSonido.store';
 import { mensajeDeError } from '../../utils/mensajeDeError';
 import { fmt } from '../../utils/formatters';
 
@@ -30,22 +31,26 @@ function Countdown({ expiraEn }: { expiraEn: string }) {
   </Text>;
 }
 
-function detalleCorto(s: SolicitudAutorizacionRemota): string {
+function detalleCorto(s: SolicitudPendienteAutorizacionRemota): string {
   const partes: string[] = [];
+  if (s.sucursalNombre) partes.push(s.sucursalNombre);
   if (s.monto != null) partes.push(`Monto: ${fmt.money(Number(s.monto))}`);
-  if (s.clienteId != null) partes.push(`Cliente #${s.clienteId}`);
-  if (s.facturaId != null) partes.push(`Factura #${s.facturaId}`);
+  if (s.clienteNombre) partes.push(`Cliente: ${s.clienteNombre}`);
+  else if (s.facturaFolio) partes.push(`Factura ${s.facturaFolio}`);
   return partes.join(' · ');
 }
 
 export default function SolicitudesAutorizacionPage() {
   const qc = useQueryClient();
-  const [decidiendo, setDecidiendo] = useState<{ solicitud: SolicitudAutorizacionRemota; decision: 'aprobada' | 'rechazada' } | null>(null);
+  const [decidiendo, setDecidiendo] = useState<{ solicitud: SolicitudPendienteAutorizacionRemota; decision: 'aprobada' | 'rechazada' } | null>(null);
   const [comentario, setComentario] = useState('');
   // "Ver y responder" del toast/campanita llega con ?id= — resalta esa fila
-  // entre las pendientes para que el supervisor no tenga que buscarla.
+  // Y la deja expandida, para que el supervisor caiga directo en el detalle.
   const [searchParams] = useSearchParams();
   const idResaltado = Number(searchParams.get('id')) || null;
+  const [expandidas, setExpandidas] = useState<Key[]>(idResaltado ? [idResaltado] : []);
+  const marcarVista = useAutorizacionRemotaSonidoStore(s => s.marcarVista);
+  useEffect(() => { if (idResaltado) marcarVista(idResaltado); }, [idResaltado, marcarVista]);
 
   // Mismo queryKey que useSupervisor.ts (POLITICAS_QUERY_KEY) — comparte caché,
   // no dispara una segunda petición si el POS/Configuración ya la pidió.
@@ -103,28 +108,49 @@ export default function SolicitudesAutorizacionPage() {
             dataSource={pendientes}
             pagination={false}
             rowClassName={s => s.id === idResaltado ? 'solicitud-remota-resaltada' : ''}
+            // No hay botones Aprobar/Rechazar en la fila colapsada a propósito
+            // — "no se aprueba sin ver qué se autoriza". Expandir es el único
+            // camino hacia la decisión, y expandir también apaga el sonido/
+            // parpadeo de esa solicitud (ver autorizacionRemotaSonido.store).
+            expandable={{
+              expandedRowKeys: expandidas,
+              onExpandedRowsChange: (keys) => {
+                setExpandidas(keys as Key[]);
+                for (const k of keys) marcarVista(Number(k));
+              },
+              expandedRowRender: (s) => (
+                <div style={{ padding: '4px 8px' }}>
+                  <Space direction="vertical" size={4} style={{ marginBottom: 12 }}>
+                    <Text><strong>Cajero:</strong> {s.cajeroNombre}</Text>
+                    {s.sucursalNombre && <Text><strong>Sucursal:</strong> {s.sucursalNombre}</Text>}
+                    {s.monto != null && <Text><strong>Monto:</strong> {fmt.money(Number(s.monto))}</Text>}
+                    {s.clienteNombre && <Text><strong>Cliente:</strong> {s.clienteNombre}</Text>}
+                    {s.facturaFolio && <Text><strong>Factura:</strong> {s.facturaFolio}</Text>}
+                    <Text><strong>Motivo:</strong> &ldquo;{s.motivo}&rdquo;</Text>
+                  </Space>
+                  <Space>
+                    <Button type="primary" icon={<CheckOutlined />}
+                      onClick={() => setDecidiendo({ solicitud: s, decision: 'aprobada' })}>
+                      Aprobar
+                    </Button>
+                    <Button danger icon={<CloseOutlined />}
+                      onClick={() => setDecidiendo({ solicitud: s, decision: 'rechazada' })}>
+                      Rechazar
+                    </Button>
+                  </Space>
+                </div>
+              ),
+            }}
             columns={[
               { title: 'Cajero', dataIndex: 'cajeroNombre' },
               { title: 'Acción', dataIndex: 'clave', render: (v: string) => <Tag>{labelClave(v)}</Tag> },
-              { title: 'Motivo', dataIndex: 'motivo', render: (v: string, s) => (
+              { title: 'Detalle', dataIndex: 'motivo', render: (v: string, s) => (
                 <div>
                   <div>{v}</div>
                   {detalleCorto(s) && <Text type="secondary" style={{ fontSize: 12 }}>{detalleCorto(s)}</Text>}
                 </div>
               ) },
               { title: 'Vence en', dataIndex: 'expiraEn', render: (v: string) => <Countdown expiraEn={v} /> },
-              { title: 'Acciones', key: 'acciones', render: (_: unknown, s: SolicitudAutorizacionRemota) => (
-                <Space>
-                  <Button size="small" type="primary" icon={<CheckOutlined />}
-                    onClick={() => setDecidiendo({ solicitud: s, decision: 'aprobada' })}>
-                    Aprobar
-                  </Button>
-                  <Button size="small" danger icon={<CloseOutlined />}
-                    onClick={() => setDecidiendo({ solicitud: s, decision: 'rechazada' })}>
-                    Rechazar
-                  </Button>
-                </Space>
-              ) },
             ]}
           />
         )}
